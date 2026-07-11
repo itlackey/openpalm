@@ -668,10 +668,24 @@ jobs:
           cache-from: type=gha,scope=openpalm/guardian
           cache-to: type=gha,scope=openpalm/guardian,mode=max
 
+  # unit=assistant is IMAGE-ONLY: its compute-version anchor is
+  # containers/assistant/VERSION, a version scheme entirely independent of the
+  # platform npm version — bumping it produces e.g. "0.13.1" whether or not
+  # @openpalm/client@0.13.1 / @openpalm/skeleton@0.13.1 have ever been
+  # published. Pre-I1-fix, that unit-local anchor was baked directly into the
+  # image as PLATFORM_VERSION, which the entrypoint uses for
+  # `npm install @openpalm/client@$PLATFORM_VERSION` at every container boot —
+  # a 404 there bricks the chat surface silently (I1, review 2026-07-10).
+  # npm-client/npm-skeleton ordering + the preflight below close that gap.
   docker-assistant:
     name: Docker openpalm/assistant
-    needs: [compute-version, bump]
-    if: always() && needs.bump.result == 'success' && (inputs.unit == 'assistant' || inputs.unit == 'images' || inputs.unit == 'all' || (inputs.unit == 'platform' && inputs.include_images))
+    needs: [compute-version, bump, npm-client, npm-skeleton]
+    if: |
+      always() &&
+      needs.bump.result == 'success' &&
+      needs.npm-client.result != 'failure' &&
+      needs.npm-skeleton.result != 'failure' &&
+      (inputs.unit == 'assistant' || inputs.unit == 'images' || inputs.unit == 'all' || (inputs.unit == 'platform' && inputs.include_images))
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
@@ -701,10 +715,42 @@ jobs:
           tags: |
             type=raw,value=latest,enable=${{ needs.compute-version.outputs.prerelease == 'false' }}
             type=raw,value=${{ needs.compute-version.outputs.new_version }}
+      - name: Resolve platform version for baked client/skeleton (I1)
+        id: platform_version
+        env:
+          UNIT: ${{ inputs.unit }}
+          ANCHOR_VERSION: ${{ needs.compute-version.outputs.new_version }}
+        run: |
+          if [ "${UNIT}" = 'assistant' ]; then
+            # unit=assistant's own anchor (containers/assistant/VERSION) has no
+            # relationship to the platform npm version — resolve the actual
+            # last-stamped platform version from the root manifest instead
+            # (platform releases stamp + publish package.json in lockstep).
+            V=$(node -p "require('./package.json').version")
+            echo "unit=assistant: PLATFORM_VERSION resolved from root package.json (${V}), NOT the assistant unit anchor (${ANCHOR_VERSION})"
+          else
+            V="${ANCHOR_VERSION}"
+          fi
+          echo "platform_version=${V}" >> "$GITHUB_OUTPUT"
+      - name: Preflight — baked client/skeleton must exist on npm (I1)
+        run: |
+          V="${{ steps.platform_version.outputs.platform_version }}"
+          fail=0
+          for PKG in @openpalm/client @openpalm/skeleton; do
+            if npm view "${PKG}@${V}" version >/dev/null 2>&1; then
+              echo "OK: ${PKG}@${V} is published"
+            else
+              echo "::error::${PKG}@${V} is not published on npm — building this image would bake a PLATFORM_VERSION with no installable chat surface on boot (I1). Publish it first (unit=platform/all) or pass an explicit --version matching a published release." >&2
+              fail=1
+            fi
+          done
+          if [ "${fail}" -ne 0 ]; then
+            exit 1
+          fi
       - name: Assistant image smoke (amd64 only)
         run: |
           docker build -f containers/assistant/Dockerfile \
-            --build-arg PLATFORM_VERSION=${{ needs.compute-version.outputs.new_version }} \
+            --build-arg PLATFORM_VERSION=${{ steps.platform_version.outputs.platform_version }} \
             -t openpalm-assistant-smoke:${{ github.run_id }} .
           docker run --rm --entrypoint bash openpalm-assistant-smoke:${{ github.run_id }} \
             -lc 'codex --version && claude --version && pi --version && copilot --version'
@@ -714,7 +760,7 @@ jobs:
           context: .
           file: containers/assistant/Dockerfile
           build-args: |
-            PLATFORM_VERSION=${{ needs.compute-version.outputs.new_version }}
+            PLATFORM_VERSION=${{ steps.platform_version.outputs.platform_version }}
           platforms: ${{ inputs.dry_run && 'linux/amd64' || 'linux/amd64,linux/arm64' }}
           push: ${{ !inputs.dry_run }}
           # Provenance/SBOM attestations add extra manifests + blobs that make

@@ -273,6 +273,57 @@ describe("C1 — every workspace:* runtime dependency of a published package is 
 	}
 });
 
+// ── I1 (2026-07-10 review): docker-assistant needs only [compute-version,
+// bump] — no ordering after npm-client/npm-skeleton, and nothing stops it
+// baking a PLATFORM_VERSION that has no published @openpalm/client or
+// @openpalm/skeleton (a `unit=assistant` release anchors on the completely
+// independent containers/assistant/VERSION file, NOT the platform npm
+// version). Fix: unit-tolerant needs on npm-client/npm-skeleton + a preflight
+// step resolving/validating PLATFORM_VERSION before the image build.
+describe("I1 — docker-assistant is ordered after npm-client/npm-skeleton and preflights PLATFORM_VERSION", () => {
+	const release = parseWorkflow(RELEASE_WORKFLOW);
+	const jobs = jobsOf(release);
+	const assistantJob = jobs["docker-assistant"];
+
+	test("docker-assistant needs npm-client and npm-skeleton", () => {
+		const needs = needsList(assistantJob ?? {});
+		expect(needs).toContain("npm-client");
+		expect(needs).toContain("npm-skeleton");
+	});
+
+	test("docker-assistant's if is unit-tolerant of npm-client/npm-skeleton being skipped (standalone unit=assistant runs)", () => {
+		// Matches the house pattern used by docker-guardian: `!= 'failure'` (not
+		// `== 'success'`), because npm-client/npm-skeleton are only requested for
+		// unit=platform/all and are legitimately 'skipped' for unit=assistant/images.
+		const cond = String(assistantJob?.if ?? "");
+		expect(cond).toContain("needs.npm-client.result != 'failure'");
+		expect(cond).toContain("needs.npm-skeleton.result != 'failure'");
+	});
+
+	test("docker-assistant preflights that the baked client/skeleton version is actually published on npm", () => {
+		const steps = assistantJob?.steps ?? [];
+		const preflight = steps.find((s) => /npm view/.test(s.run ?? ""));
+		expect(preflight).toBeDefined();
+		expect(preflight?.run ?? "").toContain("@openpalm/client");
+		expect(preflight?.run ?? "").toContain("@openpalm/skeleton");
+		// Must actually fail the build on a 404, not just warn.
+		expect(preflight?.run ?? "").toMatch(/exit 1|::error::/);
+	});
+
+	test("docker-assistant does not blindly bake compute-version's unit-local anchor as PLATFORM_VERSION for image-only units", () => {
+		// unit=assistant's compute-version output is bumped from
+		// containers/assistant/VERSION — an anchor independent of the platform npm
+		// version. The build-arg must come from a step that resolves the actual
+		// last-published platform version for that unit, not
+		// needs.compute-version.outputs.new_version directly.
+		const steps = assistantJob?.steps ?? [];
+		const buildStep = steps.find((s) => s.name === "Build and push");
+		const buildArgs = String(buildStep?.with?.["build-args"] ?? "");
+		expect(buildArgs).not.toContain("needs.compute-version.outputs.new_version");
+		expect(buildArgs).toMatch(/PLATFORM_VERSION=\$\{\{\s*steps\.\w+\.outputs\.\w+\s*\}\}/);
+	});
+});
+
 describe("guardian image dry-run stays buildable before npm publish", () => {
 	const release = parseWorkflow(RELEASE_WORKFLOW);
 	const jobs = jobsOf(release);
