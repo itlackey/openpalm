@@ -118,8 +118,6 @@ export type ChatControllerState = {
   pendingPermission: PendingPermissionState | null;
   /** A structured question awaiting an answer (§B4), or null. */
   pendingQuestion: PendingQuestionState | null;
-  /** Whether the SSE event stream is currently connected. */
-  connected: boolean;
   error: string;
   /** Text of the last send() that failed — non-empty enables the retry action. */
   lastFailedText: string;
@@ -187,6 +185,29 @@ function isAbortError(e: unknown): boolean {
   return e instanceof Error && e.name === 'AbortError';
 }
 
+/** §C8: the single extractor category a given raw SSE event.type maps to
+ *  (or null for a type none of them care about) — the five extractors in
+ *  `../transport/index.js` (extractTextDelta/extractToolUpdate/
+ *  extractPermissionAsk/extractQuestionAsk/isTurnEnd) match disjoint
+ *  type-sets, so `handleEvent()` dispatches through this instead of running
+ *  all five (each re-checking event.type/sessionID itself) on every frame.
+ *  `'message.part.updated'` maps to `'tool-update'` here because
+ *  extractToolUpdate handles it when the part is a tool part — the
+ *  reasoning-part-snapshot learning for that same type is unconditional in
+ *  `handleEvent()`, not part of this dispatch. Exported so the mapping is
+ *  pinned directly by a unit test. */
+export type EventCategory = 'text-delta' | 'tool-update' | 'permission-ask' | 'question-ask' | 'turn-end' | null;
+
+export function classifyEvent(type: string): EventCategory {
+  if (type === 'session.next.text.delta' || type === 'message.part.delta') return 'text-delta';
+  if (type === 'message.part.updated') return 'tool-update';
+  if (type.startsWith('session.next.tool.')) return 'tool-update';
+  if (type === 'permission.asked') return 'permission-ask';
+  if (type === 'question.asked') return 'question-ask';
+  if (type === 'session.idle' || type === 'session.status') return 'turn-end';
+  return null;
+}
+
 function entryFromFlattened(entry: FlattenedEntry): ChatEntry | null {
   // FlattenedToolGroup is the only member with a `type` field at all (always
   // 'tool-group'); FlattenedMessage has none. A tool-only group (no
@@ -229,7 +250,6 @@ export function createChatController(
     pendingToolStates: [],
     pendingPermission: null,
     pendingQuestion: null,
-    connected: false,
     error: '',
     lastFailedText: '',
   };
@@ -373,43 +393,68 @@ export function createChatController(
     // `message.part.updated` snapshot BEFORE their deltas arrive, mirroring
     // `git show 455d8728:packages/ui/src/lib/chat/chat-state.svelte.ts`
     // `_onLiveEvent()`'s `partSnapshotType` use — without this, a reasoning
-    // model's thinking-token deltas render as the assistant reply.
-    const snapshot = partSnapshotType(event);
-    if (snapshot?.type === 'reasoning') {
-      turn.reasoningPartIds.add(snapshot.partID);
+    // model's thinking-token deltas render as the assistant reply. Always
+    // runs for `message.part.updated` regardless of the `classifyEvent`
+    // dispatch below (that same event type ALSO carries tool-part updates —
+    // see 'tool-update' below).
+    if (event.type === 'message.part.updated') {
+      const snapshot = partSnapshotType(event);
+      if (snapshot?.type === 'reasoning') {
+        turn.reasoningPartIds.add(snapshot.partID);
+      }
     }
 
-    const delta = extractTextDelta(event, sessionId, turn.reasoningPartIds);
-    if (delta) {
-      state.pendingText += delta;
-      notify();
-    }
-
-    const toolUpdate = extractToolUpdate(event, sessionId);
-    if (toolUpdate) {
-      upsertToolState(toolUpdate);
-      notify();
-    }
-
-    const permissionAsk = extractPermissionAsk(event, sessionId);
-    if (permissionAsk) {
-      state.pendingPermission = { ...permissionAsk, status: 'pending', decision: '', message: '' };
-      notify();
-    }
-
-    const questionAsk = extractQuestionAsk(event, sessionId);
-    if (questionAsk) {
-      state.pendingQuestion = {
-        ...questionAsk,
-        status: 'pending',
-        answers: questionAsk.questions.map(() => ''),
-        message: '',
-      };
-      notify();
-    }
-
-    if (isTurnEnd(event, sessionId)) {
-      finalizeTurn(turn);
+    // §C8: the five extractors' matched type-sets are disjoint — dispatch
+    // on `event.type` to the single relevant one instead of running every
+    // extractor (each doing its own sessionID/type re-check) on every SSE
+    // frame. Behavior-equivalent to the old run-them-all code: at most one
+    // extractor now runs, at most one notify() per frame, same as before.
+    switch (classifyEvent(event.type)) {
+      case 'text-delta': {
+        const delta = extractTextDelta(event, sessionId, turn.reasoningPartIds);
+        if (delta) {
+          state.pendingText += delta;
+          notify();
+        }
+        break;
+      }
+      case 'tool-update': {
+        const toolUpdate = extractToolUpdate(event, sessionId);
+        if (toolUpdate) {
+          upsertToolState(toolUpdate);
+          notify();
+        }
+        break;
+      }
+      case 'permission-ask': {
+        const permissionAsk = extractPermissionAsk(event, sessionId);
+        if (permissionAsk) {
+          state.pendingPermission = { ...permissionAsk, status: 'pending', decision: '', message: '' };
+          notify();
+        }
+        break;
+      }
+      case 'question-ask': {
+        const questionAsk = extractQuestionAsk(event, sessionId);
+        if (questionAsk) {
+          state.pendingQuestion = {
+            ...questionAsk,
+            status: 'pending',
+            answers: questionAsk.questions.map(() => ''),
+            message: '',
+          };
+          notify();
+        }
+        break;
+      }
+      case 'turn-end': {
+        if (isTurnEnd(event, sessionId)) {
+          finalizeTurn(turn);
+        }
+        break;
+      }
+      default:
+      // Not a type any extractor cares about — nothing to do.
     }
   }
 
@@ -492,14 +537,12 @@ export function createChatController(
     async init() {
       unsubscribeEvents = transport.subscribeEvents({
         onEvent: handleEvent,
-        onConnect: () => {
-          state.connected = true;
-          notify();
-        },
-        onDisconnect: () => {
-          state.connected = false;
-          notify();
-        },
+        // §C7: no onConnect/onDisconnect handlers — nothing in the UI
+        // renders a live/idle status indicator for the SSE stream (that
+        // used to be written on every open/close but never read anywhere),
+        // and adding one is scope creep here. Wiring those handlers up just
+        // to notify() every subscriber on each reconnect churn was pure
+        // overhead with no reader on the other end.
         // §F6: a 401/403 on the /event stream is not a transient
         // disconnect — it will never self-heal by reconnecting, so the
         // transport stops retrying and hands it here instead of looping
@@ -507,7 +550,6 @@ export function createChatController(
         // already renders (friendlyMessage() gives 401/403 its own
         // "check your credentials" copy).
         onAuthError: (error) => {
-          state.connected = false;
           state.error = friendlyMessage(error, 'The live update stream failed.');
           notify();
         },
