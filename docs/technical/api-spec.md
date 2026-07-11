@@ -154,9 +154,11 @@ Response:
 ```
 
 > The former `POST /api/host/upgrade` endpoint was removed in 0.12.36. Updates now
-> run through `POST /api/host/update` (above) plus `POST /api/host/migrate-apply`,
-> which performs the full reconcile under lock when a home is detected stale (see
-> the splash apply flow).
+> run entirely through `POST /api/host/update` (above): it performs the full
+> forward-migration reconcile under lock (`reconcileStack`/`performUpgrade` in
+> `packages/lib/src/control-plane/lifecycle.ts`) whenever a home is detected
+> stale against the running `PLATFORM_VERSION` — there is no separate
+> apply/migrate endpoint to call first.
 
 ## Container Operations
 
@@ -267,23 +269,6 @@ Error responses:
 - `500 docker_error` -- `docker events` failed.
 - `500 parse_error` -- Failed to parse events output.
 
-### `GET /api/host/network/check`
-
-Checks inter-container connectivity by probing each core service health endpoint from the host admin process.
-
-Auth: `requireAuth`
-
-Response:
-
-```json
-{
-  "results": {
-    "guardian": { "status": "reachable", "latencyMs": 12 },
-    "assistant": { "status": "unreachable", "latencyMs": 0, "error": "fetch failed" }
-  }
-}
-```
-
 ---
 
 ## Addon Management
@@ -380,92 +365,8 @@ Error responses:
 ## Automations
 
 Automation task files live under `~/.openpalm/knowledge/tasks/` and are owned by AKM.
-
-### `GET /api/host/automations/catalog`
-
-Lists available automation tasks from `~/.openpalm/knowledge/tasks/`. Portal addons
-are managed via `/api/host/addons` and Compose profiles.
-
-Response:
-
-```json
-{
-  "automations": [
-    { "name": "health-check", "type": "automation", "installed": true, "description": "...", "schedule": "0 */5 * * *" }
-  ],
-  "source": "registry"
-}
-```
-
-`source` is `"remote"` when loaded from a cloned registry repo, `"bundled"`
-when using build-time bundled stack assets.
-
-### `POST /api/host/automations/catalog/install`
-
-Install a registry automation. Portal addons are managed via
-`POST /api/host/addons/:name`.
-
-Body:
-
-```json
-{ "name": "daily-summary", "type": "automation" }
-```
-
-- `name` (required) -- Must match `^[a-z0-9][a-z0-9-]{0,62}$`.
-- `type` (required) -- Must be `"automation"`. Passing `"channel"` returns 400.
-
-Copies the `.md` into `~/.openpalm/knowledge/tasks/`.
-The assistant container picks up the new file within 60 s via its background `akm tasks sync` loop.
-
-Response:
-
-```json
-{ "ok": true, "name": "daily-summary", "type": "automation" }
-```
-
-Error responses:
-
-- `400 invalid_input` -- Invalid name, type is not `"automation"`, item not
-  found in registry, or item already installed.
-
-### `POST /api/host/automations/catalog/refresh`
-
-Refreshes the registry index from the configured registry source.
-
-Response:
-
-```json
-{ "ok": true, "updated": true }
-```
-
-Error responses:
-
-- `500 registry_sync_error` — Refresh failed.
-
-### `POST /api/host/automations/catalog/uninstall`
-
-Uninstall a registry automation. Portal addons are managed via
-`POST /api/host/addons/:name`.
-
-Body:
-
-```json
-{ "name": "daily-summary", "type": "automation" }
-```
-
-- `name` (required) -- Automation name.
-- `type` (required) -- Must be `"automation"`. Passing `"channel"` returns 400.
-
-Removes the `.md` from `~/.openpalm/knowledge/tasks/`.
-The assistant container drops the cron entry within 60 s via its background `akm tasks sync` loop.
-
-Response:
-
-```json
-{ "ok": true, "name": "daily-summary", "type": "automation" }
-```
-
-## Automations
+Portal addons (Discord/Slack/etc.) are managed via `/api/host/addons`, not this
+section.
 
 ### `GET /api/host/automations`
 
@@ -575,50 +476,6 @@ When validation finds issues:
 - `ok: false` is non-fatal — services continue running.
 - Failures are logged to the audit trail under action `config.validate`.
 - This endpoint is called periodically by the `validate-config` core automation.
-
-## Artifact and Audit APIs
-
-### `GET /api/host/artifacts`
-
-```json
-{ "artifacts": [{ "name": "compose", "sha256": "...", "generatedAt": "...", "bytes": 1234 }] }
-```
-
-### `GET /api/host/artifacts/manifest`
-
-```json
-{ "manifest": [{ "name": "compose", "sha256": "...", "generatedAt": "...", "bytes": 1234 }] }
-```
-
-### `GET /api/host/artifacts/:name`
-
-- Allowed names: `compose`.
-- Returns `text/plain` and may include `x-artifact-sha256` header.
-
-### `GET /api/host/audit?limit=<n>&source=<source>`
-
-Query parameters:
-
-- `limit` (optional) -- Maximum entries to return (capped at 1000).
-- `source` (optional, default `"admin"`) -- `"admin"` returns admin audit entries,
-  `"guardian"` returns guardian audit entries, `"all"` merges both sources sorted
-  by timestamp descending. Each merged entry includes a `_source` field indicating
-  its origin.
-
-```json
-{ "audit": [{ "at": "...", "action": "install", "ok": true }] }
-```
-
-## Installed Services
-
-### `GET /api/host/installed`
-
-```json
-{
-  "installed": ["chat"],
-  "activeServices": { "assistant": "running" }
-}
-```
 
 ## UI Distribution
 
@@ -736,154 +593,127 @@ Error responses:
 - `502 download_failed` — npm download or integrity verification failed
   (message from the underlying error is included).
 
-## Local Provider Detection
+## Host OpenCode Detection & Import
 
-### `GET /api/host/providers/local`
+Local-LLM-provider port probing (Ollama/LM Studio/Docker Model Runner) is a
+**setup-time** concern — see `GET /api/setup/detect-providers` below. This
+section covers importing credentials from an *existing host OpenCode
+installation* into OP_HOME, which is a distinct feature.
 
-Probes well-known local LLM provider endpoints to detect which are running.
-Requires admin auth.
+### `GET /api/host/providers/host-status`
 
-Probed providers:
+Detects whether the host has an existing OpenCode installation (`~/.local/share/opencode`
+or platform equivalent) and returns provider + credential counts for the
+import-host confirmation modal. Never returns credential values.
 
-| Provider | Probe URLs |
-|----------|-----------|
-| `model-runner` | `model-runner.docker.internal/engines/v1/models`, `:12434` variants, `localhost:12434` |
-| `ollama` | `host.docker.internal:11434/api/tags`, `localhost:11434` |
-| `lmstudio` | `host.docker.internal:1234/v1/models`, `localhost:1234` |
+Auth: `requireAdmin`
 
 Response:
 
 ```json
 {
-  "providers": [
-    { "provider": "model-runner", "url": "http://model-runner.docker.internal/engines", "available": true },
-    { "provider": "ollama", "url": "", "available": false },
-    { "provider": "lmstudio", "url": "", "available": false }
-  ]
+  "detected": true,
+  "providerCount": 2,
+  "credentialCount": 2,
+  "configPath": "/home/user/.local/share/opencode/opencode.json",
+  "authPath": "/home/user/.local/share/opencode/auth.json"
 }
+```
+
+### `POST /api/host/providers/import-host`
+
+Copies the host's `opencode.json` (stripped of plugin/mcp/permission keys,
+merged with the existing OP_HOME config) and `auth.json` (byte-copied,
+chmod 0600) into OP_HOME, then best-effort pushes each imported credential to
+the running OpenCode server via `PUT /auth/{id}` so providers appear
+connected without a restart. The assistant container is restarted afterward
+so `opencode.json` provider blocks are re-read.
+
+Auth: `requireAdmin`
+
+Body (optional):
+
+```json
+{ "overwriteConflicts": false }
 ```
 
 ## Secrets Management
 
-Manage secrets via the detected secret backend (env-file or pass-based).
+The secrets API is a plain per-file editor over `OP_HOME/knowledge/secrets/`
+(mode 0600 on write) — there is no key/value store abstraction, prefix
+filter, or generate-a-random-value affordance. `GET /api/host/secrets` lists
+filenames + byte sizes; the file's contents are only ever read/written/deleted
+through `/api/host/secrets/<name>`, one file at a time.
 
 ### `GET /api/host/secrets`
 
-Lists secret entry names (values are never returned in full).
-
-Query parameters:
-
-- `prefix` (optional, default `"openpalm/"`) -- Filter entries by prefix.
+Lists the files in the secrets directory. Values are never included.
 
 Auth: `requireAdmin`
 
 Response:
 
 ```json
-{
-  "provider": "env-file",
-  "capabilities": { "generate": true },
-  "entries": [
-    { "key": "openpalm/OPENAI_API_KEY", "scope": "user", "kind": "api-key" }
-  ]
-}
+{ "files": [{ "name": "openai_api_key", "bytes": 51 }] }
 ```
 
-### `POST /api/host/secrets`
+### `GET /api/host/secrets/:name`
 
-Set or update a secret value.
+Reads one secret file's raw contents.
+
+Auth: `requireAdmin`
+
+Response:
+
+```json
+{ "name": "openai_api_key", "value": "sk-..." }
+```
+
+Error responses:
+
+- `400 bad_request` -- `name` fails the safe-basename check (path traversal guard).
+- `404 not_found` -- No file at that name.
+
+### `PUT /api/host/secrets/:name`
+
+Writes (creating or overwriting) one secret file with mode 0600.
 
 Auth: `requireAdmin`
 
 Body:
 
 ```json
-{ "key": "openpalm/OPENAI_API_KEY", "value": "sk-..." }
+{ "value": "sk-..." }
 ```
-
-- `key` (required) -- Secret entry name. Must pass `validatePassEntryName`.
-- `value` (required) -- Secret value (must be non-empty; use DELETE to remove).
 
 Response:
 
 ```json
-{ "ok": true, "provider": "env-file", "entry": { "key": "openpalm/OPENAI_API_KEY", "scope": "user", "kind": "api-key" } }
+{ "ok": true, "name": "openai_api_key" }
 ```
 
-Error responses:
+### `DELETE /api/host/secrets/:name`
 
-- `400 bad_request` -- `key` or `value` missing/empty.
-- `400 invalid_key` -- Key fails `validatePassEntryName` validation.
-- `500 internal_error` -- Failed to write secret.
-
-### `DELETE /api/host/secrets`
-
-Delete a secret entry.
+Deletes one secret file.
 
 Auth: `requireAdmin`
 
-Query parameters:
-
-- `key` (required) -- Secret entry name to delete.
-
 Response:
 
 ```json
-{ "ok": true, "key": "openpalm/OPENAI_API_KEY", "provider": "env-file" }
+{ "ok": true, "name": "openai_api_key" }
 ```
 
-Error responses:
+### `GET /api/host/secrets/user-env` / `POST /api/host/secrets/user-env` / `DELETE /api/host/secrets/user-env`
 
-- `400 bad_request` -- `key` query parameter missing.
-- `500 internal_error` -- Failed to remove secret.
-
-### `POST /api/host/secrets/generate`
-
-Generate a random secret and store it under the given key.
+Separate key/value store for the shared AKM user env (`knowledge/env/user.env`
+— assistant-visible config, distinct from the per-file secrets above). GET
+returns key names only (never values); POST writes one `{ key, value }` pair;
+DELETE removes one key by `?key=`.
 
 Auth: `requireAdmin`
-
-Body:
-
-```json
-{ "key": "openpalm/guardian-admin-token", "length": 32 }
-```
-
-- `key` (required) -- Secret entry name.
-- `length` (optional, default `32`) -- Length of generated secret (16--4096).
-
-Response:
-
-```json
-{ "ok": true, "provider": "env-file", "entry": { "key": "openpalm/guardian-admin-token", "scope": "system", "kind": "generated" } }
-```
-
-Error responses:
-
-- `400 bad_request` -- `key` missing or `length` out of range.
-- `400 invalid_key` -- Key fails validation.
-- `400 unsupported_operation` -- Backend does not support generation.
-- `500 internal_error` -- Failed to generate secret.
 
 ## OpenCode Management
-
-### `GET /api/host/opencode/status`
-
-Returns whether the OpenCode process is reachable.
-
-Auth: `requireAdmin`
-
-Response:
-
-```json
-{ "status": "ready", "url": "http://localhost:4096/" }
-```
-
-When unreachable:
-
-```json
-{ "status": "unavailable", "url": "http://localhost:4096/" }
-```
 
 ### `GET /api/assistant/model`
 
@@ -930,30 +760,6 @@ Error responses:
 
 - `400 bad_request` -- `model` is missing or empty.
 - `500 internal_error` -- persisting the OpenCode model selection failed.
-
-### `GET /api/host/opencode/providers`
-
-Lists all OpenCode providers with auth status and available models.
-
-Auth: `requireAdmin`
-
-Response:
-
-```json
-{
-  "providers": [
-    {
-      "id": "anthropic",
-      "name": "Anthropic",
-      "env": ["ANTHROPIC_API_KEY"],
-      "connected": true,
-      "modelCount": 5,
-      "models": [{ "id": "claude-sonnet-4", "name": "Claude Sonnet 4" }],
-      "authMethods": [{ "type": "api_key" }]
-    }
-  ]
-}
-```
 
 ### `GET /api/host/opencode/providers/:id/auth`
 
@@ -1020,6 +826,18 @@ Error responses:
 - `400 bad_request` -- Invalid mode, missing `apiKey`, invalid API key format,
   unsupported provider, or invalid `methodIndex`.
 - `500 internal_error` -- Failed to write API key to the user env.
+
+### `DELETE /api/host/opencode/providers/:id/auth`
+
+Remove stored credentials for a provider.
+
+Auth: `requireAdmin`
+
+Response:
+
+```json
+{ "ok": true }
+```
 
 ### `GET /api/host/opencode/providers/:id/models`
 
