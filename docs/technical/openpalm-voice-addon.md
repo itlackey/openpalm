@@ -227,7 +227,9 @@ End-to-end on click of **"Enable OpenPalm Voice"** in the Voice tab:
 
 ```
 [User clicks "Enable OpenPalm Voice"]
-  → POST /admin/voice/openpalm-voice/enable
+  → POST /admin/voice/openpalm-voice/enable (this proposal's endpoint shape;
+    the shipped implementation uses a single PUT /api/host/voice instead — see
+    the disclaimer at the top of this doc)
 [Server runs in order]
   1. setAddonEnabled(homeDir, stackDir, "openpalm-voice", true)
      — records voice in config/stack/enabled-addons.json
@@ -245,8 +247,10 @@ End-to-end on click of **"Enable OpenPalm Voice"** in the Voice tab:
   3. composeUp({ files, services: ["voice-tts", "voice-stt"], envFiles })
      — pulls images on first enable (logs streamed via existing endpoint)
   4. Return 202 Accepted with { ok: true, polling: "/admin/voice/probe" }
+     (this proposal's polling path; shipped: GET /api/host/voice)
 [UI starts polling]
-  → GET /admin/voice/probe (every 2 s, max 90 s)
+  → GET /api/host/voice (every 2 s, max 90 s; shipped path — this proposal's
+    doc originally named /admin/voice/probe)
 [Containers go healthy]
   → probe returns { tts: 'ok', stt: 'ok' }
 [VoiceTab UI flips to "Active"]
@@ -287,9 +291,10 @@ the enable endpoint all use one constant.
 
 ### Disable
 
-`POST /admin/voice/openpalm-voice/disable`:
+`POST /admin/voice/openpalm-voice/disable` (this proposal's endpoint shape;
+shipped: `PUT /api/host/voice`):
 1. `composeStop(["voice-tts", "voice-stt"], options)` — `performAddonToggle`
-   already does this for us, so we reuse `POST /admin/addons/voice`
+   already does this for us, so we reuse `POST /api/host/addons/voice`
    with `{ enabled: false }`.
 2. **Do NOT clear `TTS_BASE_URL` / `STT_BASE_URL` from `stack.env`.** Leaving
    them lets re-enable be instant. If the user explicitly switches to a
@@ -311,7 +316,7 @@ the enable endpoint all use one constant.
 New endpoint:
 
 ```
-GET /admin/voice/probe
+GET /api/host/voice
 → 200 OK
   {
     "tts": "ok" | "starting" | "unreachable" | "misconfigured" | "disabled",
@@ -490,7 +495,7 @@ Phases are sequential. Sizes: S = ≤50 LOC, M = 50–150 LOC, L = 150–400 LOC
 |---|---|---|---|---|
 | A. Addon manifest | S | ~120 | New `data/registry/addons/voice/{compose.yml,.env.schema,README.md}`. Pin image digests. Add to registry tests. | — |
 | B. Lib: voice presets | S | ~50 | New `packages/lib/src/control-plane/voice-presets.ts` with `OPENPALM_VOICE_PRESET` constant (engine name, default URLs, default models, default voice). Export from lib barrel. Used by the enable endpoint AND the wizard. | — |
-| C. Server endpoints | M | ~250 | New `routes/admin/voice/openpalm-voice/+server.ts` (POST enable/disable wraps addon toggle + writeVoiceVars + composeUp). New `routes/admin/voice/probe/+server.ts`. Host-aware URL resolution. | A, B |
+| C. Server endpoints | M | ~250 | New `routes/admin/voice/openpalm-voice/+server.ts` (POST enable/disable wraps addon toggle + writeVoiceVars + composeUp). New `routes/admin/voice/probe/+server.ts`. Host-aware URL resolution. **As shipped:** both collapsed into the single `routes/api/host/voice/+server.ts`. | A, B |
 | D. UI: VoiceTab integration | M | ~200 | Add `openpalm-voice` to `TTS_OPTIONS` / `STT_OPTIONS`. New `OpenPalmVoiceCard.svelte` rendering the 4 states from §8. Polling hook. | C |
 | E. Tests | M | ~300 | Compose-overlay structural test (services, networks, healthchecks). probe endpoint unit tests with mock fetch. Playwright happy-path (enable → mocked probe `ok` → "Active" badge) under mocked Playwright. | A, C, D |
 | F. Docs + wizard | S | ~80 | Mention OpenPalm Voice as recommended in the wizard Voice step. Update `registry.md` addon list. | A |

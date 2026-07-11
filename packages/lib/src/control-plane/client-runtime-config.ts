@@ -31,7 +31,7 @@ export type ClientRuntimeConfig = {
    * Optional link back to the host UI (e.g. `http://127.0.0.1:3880/host`).
    * Consumed by the client SPA (A2/H4) to render a "Manage assistant" /
    * "Open OpenPalm admin" escape hatch — the client SPA otherwise has no
-   * route back to setup/admin/voice. Absent when the writer has no host UI
+   * route back to setup/host/voice. Absent when the writer has no host UI
    * to point at (e.g. a container-only deployment with no host process).
    */
   hostUrl?: string;

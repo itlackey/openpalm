@@ -240,7 +240,7 @@ export function resolveAssistantUrl(homeDir: string): string {
 export function buildUIServerEnv(homeDir: string, port: number, update?: UpdateInfo | null): NodeJS.ProcessEnv {
   // Operator-managed stack config (knowledge/env/stack.env) holds settings the
   // host UI server's own routes read from process.env — notably the Voice
-  // engine vars (OP_TTS_*/OP_STT_*/OP_VOICE_*) written by /admin/voice. Without
+  // engine vars (OP_TTS_*/OP_STT_*/OP_VOICE_*) written by /api/host/voice. Without
   // merging them here, /api/speak + /api/transcribe see empty OP_*_BASE_URL and
   // 503 ("Configure a TTS/STT engine"). Merge stack.env BUT skip the per-unit
   // version vars: the docker-compose deploy path reads them via --env-file and
@@ -713,7 +713,7 @@ export async function ensureClientAppBuild(): Promise<void> {
 /**
  * Options written alongside the client's locked default connection (A2).
  * `hostUrl` gives the client SPA — which otherwise has zero path back to
- * setup/admin/voice — a link to the host UI's admin dashboard. Factored out
+ * setup/host/voice — a link to the host UI's admin dashboard. Factored out
  * as a pure function so the value is unit-testable without spawning the
  * client child.
  */

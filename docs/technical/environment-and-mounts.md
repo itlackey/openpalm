@@ -205,7 +205,7 @@ Notes:
 
 - `crond` runs in the background; no network port, no Docker socket.
 - `akm tasks sync` registers task files with the user crontab at boot and every 60 s.
-- Manual trigger: `POST /admin/automations/<name>/run` (admin spawns `akm tasks run <name>` directly).
+- Manual trigger: `POST /api/host/automations/<name>/run` (admin spawns `akm tasks run <name>` directly).
 
 ---
 

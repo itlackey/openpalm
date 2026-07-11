@@ -13,7 +13,8 @@ const baseURL = STACK_TESTS
 
 // The self-contained *.pw.ts suite runs the built preview server against a
 // throwaway OP_HOME (never a developer's `.dev` or `~/.openpalm`) with a
-// known login password and OP_ENABLE_ADMIN=1 so /admin/* is reachable. No
+// known login password and OP_ENABLE_ADMIN=1 so /host (and /api/host/*) is
+// reachable in host-ui mode. No
 // docker, no compose files, no live stack — every route under test either
 // never reaches the docker layer (auth checks run first) or degrades
 // gracefully when docker/compose files are absent (see containers/list,

@@ -143,7 +143,7 @@ export function loadMarkdownTasks(stashDir: string): MarkdownTask[] {
 }
 
 // ── AutomationConfig adapter ──────────────────────────────────────────────
-// Keeps the GET /admin/automations response shape compatible so the existing
+// Keeps the GET /api/host/automations response shape compatible so the existing
 // UI does not require changes.
 
 export function taskToAutomationConfig(task: MarkdownTask): AutomationConfig {
