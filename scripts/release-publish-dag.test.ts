@@ -310,6 +310,55 @@ describe("I1 — docker-assistant is ordered after npm-client/npm-skeleton and p
 		expect(preflight?.run ?? "").toMatch(/exit 1|::error::/);
 	});
 
+	// F13 (2026-07-10 review, dry-run guard follow-up): the preflight has no
+	// `if: !inputs.dry_run` guard, unlike every "Guard — fail if image tag
+	// already exists" step — the docker-portal, docker-guardian, and
+	// docker-assistant jobs each carry one. dry_run=true is the default and
+	// documented "always run first"
+	// mode — npm-client/npm-skeleton pack-and-validate but deliberately SKIP
+	// the actual publish on dry-run, so the freshly-bumped PLATFORM_VERSION is
+	// never on npm and `npm view` 404s, failing docker-assistant on every
+	// dry-run of unit=all/images/platform(+images). Fix: guard the preflight
+	// step with the same `if: !inputs.dry_run` the image-tag guards use.
+	test("F13 — the npm-published-version preflight is skipped in dry-run (matches the image-tag guard steps)", () => {
+		const steps = assistantJob?.steps ?? [];
+		const preflight = steps.find((s) => /npm view/.test(s.run ?? ""));
+		expect(preflight).toBeDefined();
+		expect(String(preflight?.if ?? "")).toContain("!inputs.dry_run");
+	});
+
+	// F13 follow-up (2026-07-11 review): guarding the preflight above is not
+	// enough on its own — the same unpublished freshly-bumped platform_version
+	// is still passed as a literal --build-arg to BOTH the smoke build and the
+	// real "Build and push" step, which are NOT guarded by dry_run (the smoke
+	// step has no `if:` at all; "Build and push" always builds, only `push` is
+	// gated). containers/assistant/Dockerfile hard-fails via
+	// `npm install ... "@openpalm/client@${PLATFORM_VERSION}"` (no fallback)
+	// whenever PLATFORM_VERSION is non-empty, so a dry-run of unit=all/images/
+	// platform(+images) still fails at docker-assistant — one step later, as an
+	// opaque npm E404 from inside the docker build instead of the preflight's
+	// explicit ::error::. Fix: gate the build-arg itself so dry-run bakes an
+	// empty PLATFORM_VERSION, which the Dockerfile already treats as a no-op
+	// ("Skipped when PLATFORM_VERSION is unset").
+	test("F13 — the assistant image smoke build does not bake a live PLATFORM_VERSION on dry-run", () => {
+		const steps = assistantJob?.steps ?? [];
+		const smoke = steps.find((s) => s.name === "Assistant image smoke (amd64 only)");
+		expect(smoke).toBeDefined();
+		const run = String(smoke?.run ?? "");
+		expect(run).toMatch(
+			/--build-arg PLATFORM_VERSION=\$\{\{\s*!inputs\.dry_run\s*&&\s*steps\.\w+\.outputs\.\w+\s*\|\|\s*''\s*\}\}/,
+		);
+	});
+
+	test("F13 — the Build and push step does not bake a live PLATFORM_VERSION on dry-run", () => {
+		const steps = assistantJob?.steps ?? [];
+		const buildStep = steps.find((s) => s.name === "Build and push");
+		const buildArgs = String(buildStep?.with?.["build-args"] ?? "");
+		expect(buildArgs).toMatch(
+			/PLATFORM_VERSION=\$\{\{\s*!inputs\.dry_run\s*&&\s*steps\.\w+\.outputs\.\w+\s*\|\|\s*''\s*\}\}/,
+		);
+	});
+
 	test("docker-assistant does not blindly bake compute-version's unit-local anchor as PLATFORM_VERSION for image-only units", () => {
 		// unit=assistant's compute-version output is bumped from
 		// containers/assistant/VERSION — an anchor independent of the platform npm
@@ -320,7 +369,7 @@ describe("I1 — docker-assistant is ordered after npm-client/npm-skeleton and p
 		const buildStep = steps.find((s) => s.name === "Build and push");
 		const buildArgs = String(buildStep?.with?.["build-args"] ?? "");
 		expect(buildArgs).not.toContain("needs.compute-version.outputs.new_version");
-		expect(buildArgs).toMatch(/PLATFORM_VERSION=\$\{\{\s*steps\.\w+\.outputs\.\w+\s*\}\}/);
+		expect(buildArgs).toMatch(/PLATFORM_VERSION=\$\{\{[\s\S]*?steps\.\w+\.outputs\.\w+[\s\S]*?\}\}/);
 	});
 });
 

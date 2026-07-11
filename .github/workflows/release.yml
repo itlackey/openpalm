@@ -733,6 +733,7 @@ jobs:
           fi
           echo "platform_version=${V}" >> "$GITHUB_OUTPUT"
       - name: Preflight — baked client/skeleton must exist on npm (I1)
+        if: ${{ !inputs.dry_run }}
         run: |
           V="${{ steps.platform_version.outputs.platform_version }}"
           fail=0
@@ -747,10 +748,17 @@ jobs:
           if [ "${fail}" -ne 0 ]; then
             exit 1
           fi
+      # PLATFORM_VERSION is empty on dry-run (rather than the freshly-bumped,
+      # never-published-yet version): the preflight above is skipped in
+      # dry-run too, so baking the raw version here would still hit
+      # containers/assistant/Dockerfile's unconditional `npm install
+      # @openpalm/client@$PLATFORM_VERSION` and fail with an opaque E404 (F13
+      # follow-up, review 2026-07-11). An unset PLATFORM_VERSION is a
+      # documented no-op for that Dockerfile stage.
       - name: Assistant image smoke (amd64 only)
         run: |
           docker build -f containers/assistant/Dockerfile \
-            --build-arg PLATFORM_VERSION=${{ steps.platform_version.outputs.platform_version }} \
+            --build-arg PLATFORM_VERSION=${{ !inputs.dry_run && steps.platform_version.outputs.platform_version || '' }} \
             -t openpalm-assistant-smoke:${{ github.run_id }} .
           docker run --rm --entrypoint bash openpalm-assistant-smoke:${{ github.run_id }} \
             -lc 'codex --version && claude --version && pi --version && copilot --version'
@@ -760,7 +768,7 @@ jobs:
           context: .
           file: containers/assistant/Dockerfile
           build-args: |
-            PLATFORM_VERSION=${{ steps.platform_version.outputs.platform_version }}
+            PLATFORM_VERSION=${{ !inputs.dry_run && steps.platform_version.outputs.platform_version || '' }}
           platforms: ${{ inputs.dry_run && 'linux/amd64' || 'linux/amd64,linux/arm64' }}
           push: ${{ !inputs.dry_run }}
           # Provenance/SBOM attestations add extra manifests + blobs that make
