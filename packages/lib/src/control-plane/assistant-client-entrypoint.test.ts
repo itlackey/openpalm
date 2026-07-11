@@ -26,6 +26,10 @@ import { spawnSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import {
+  ASSISTANT_LOCKED_CONNECTION_ID,
+  ASSISTANT_LOCKED_CONNECTION_LABEL,
+} from './client-runtime-config.js';
 
 const REPO_ROOT = join(import.meta.dir, '../../../..');
 const ENTRYPOINT_PATH = join(REPO_ROOT, 'containers/assistant/entrypoint.sh');
@@ -264,8 +268,28 @@ describe('P5d entrypoint — client co-process (static-only)', () => {
     expect(startOpencode).toContain('http://127.0.0.1:${host_client_port}');
     expect(startOpencode).toContain('OP_CLIENT_BIND_ADDRESS');
     expect(startOpencode).toContain('OP_ASSISTANT_BIND_ADDRESS');
-    expect(startOpencode).toContain('cors_origins+=("*")');
+    // I3 (review, security-critical): a wildcard CORS grant must NEVER be
+    // constructed, even for the wildcard-bind LAN case that used to add one.
+    expect(startOpencode).not.toContain('cors_origins+=("*")');
+    expect(startOpencode).not.toContain("cors_origins+=('*')");
     expect(startOpencode).toContain('cmd+=(--cors "$origin")');
+  });
+
+  // I3 (review, security-critical, DECIDED POSTURE): "never emit `--cors *`
+  // anywhere — explicit origins only" is a repo-wide invariant, not just a
+  // property of one branch in start_opencode. Grep the WHOLE entrypoint (not
+  // just the extracted function) so a future edit anywhere in the file can
+  // never reintroduce a wildcard CORS grant.
+  test('the entrypoint never emits a wildcard CORS origin anywhere (I3)', () => {
+    // Scoped to CORS-specific constructs (the `--cors` flag itself and the
+    // `cors_origins` array it's built from), not a blanket ban on the
+    // two-character substring `"*"` anywhere in the file — that would
+    // false-fail on any unrelated future edit containing a legitimate `"*"`
+    // (a comment, a glob string, an unrelated array literal).
+    expect(entrypoint).not.toMatch(/--cors\s+["']?\*/);
+    expect(entrypoint).not.toContain('cors_origins+=("*")');
+    expect(entrypoint).not.toContain("cors_origins+=('*')");
+    expect(entrypoint).not.toMatch(/cors_origins\s*=\s*\(\s*["']?\*["']?\s*\)/);
   });
 
   // CHARACTERIZATION (green today): syntax gate. shellcheck is unavailable in
@@ -273,6 +297,31 @@ describe('P5d entrypoint — client co-process (static-only)', () => {
   test('entrypoint stays bash -n clean (characterization)', () => {
     const proc = spawnSync('bash', ['-n', ENTRYPOINT_PATH], { encoding: 'utf8' });
     expect(proc.status, proc.stderr).toBe(0);
+  });
+
+  // I5 (review): the entrypoint's inline JS writer and the lib's
+  // client-runtime-config.ts writer must agree on the locked default
+  // connection's id/label — otherwise a future shared origin would make one
+  // writer's boot silently delete/replace the other's locked entry. Import
+  // the EXPORTED constants rather than re-typing the literal so this test
+  // cannot drift from the lib source of truth.
+  test('entrypoint embeds the SAME locked-connection id/label the lib writer exports (I5)', () => {
+    expect(entrypoint).toContain(`id: "${ASSISTANT_LOCKED_CONNECTION_ID}"`);
+    expect(entrypoint).toContain(`label: "${ASSISTANT_LOCKED_CONNECTION_LABEL}"`);
+    // The old, divergent literal must be fully gone — not just superseded.
+    expect(entrypoint).not.toContain('assistant-container-opencode');
+  });
+
+  // E1 (review): a browser-facing URL must never carry a wildcard bind host,
+  // even when the source is an operator override (OP_CLIENT_DEFAULT_ASSISTANT_URL)
+  // that could itself be misderived from a bind-address setting upstream.
+  // Mirrors packages/lib/src/control-plane/url-normalize.ts normalizeLoopbackUrl.
+  test('start_client normalizes a wildcard host out of the runtime-config URL before writing it (E1, static)', () => {
+    const startClient = extractFunction(entrypoint, 'start_client') ?? '';
+    expect(startClient, 'expected start_client() to be defined').not.toBe('');
+    expect(startClient).toMatch(/0\\\.0\\\.0\\\.0/);
+    expect(startClient).toContain('127.0.0.1');
+    expect(startClient).toContain('normalizedUrl');
   });
 });
 
@@ -288,5 +337,219 @@ describe('P5d assistant Dockerfile (static-only)', () => {
   test('PLATFORM_VERSION build arg is re-exported for runtime resolution (characterization)', () => {
     expect(dockerfile).toContain('ARG PLATFORM_VERSION');
     expect(dockerfile).toMatch(/PLATFORM_VERSION=\$\{PLATFORM_VERSION\}/);
+  });
+
+  // I2 (review): boot-time `npm install @openpalm/client` has no fallback —
+  // an offline/air-gapped/npm-outage first boot silently ships no chat
+  // surface on OP_CLIENT_PORT. Bake a real client build into the image at
+  // build time (mirrors containers/guardian/Dockerfile's baked
+  // guardian/skeleton install) so the assistant-artifacts named volume seeds
+  // itself from real content the first time it is created.
+  test('bakes a fallback @openpalm/client install at build time (I2)', () => {
+    expect(dockerfile).toMatch(/npm install --prefix \/opt\/openpalm\/client "@openpalm\/client@\$\{PLATFORM_VERSION\}"/);
+  });
+});
+
+describe('I2 — entrypoint client co-process supervision (static-only)', () => {
+  test('start_client respawns the co-process with a capped, backed-off retry loop', () => {
+    const startClient = extractFunction(entrypoint, 'start_client') ?? '';
+    expect(startClient, 'expected start_client() to be defined').not.toBe('');
+    // A retry loop must exist around the node invocation...
+    expect(startClient).toMatch(/while true; do/);
+    // ...that is CAPPED (gives up eventually, does not retry forever)...
+    expect(startClient).toMatch(/max_attempts/);
+    // ...and BACKED OFF (the delay grows and is capped), mirroring
+    // packages/cli/src/lib/client-server.ts's respawn semantics.
+    expect(startClient).toMatch(/delay \* 2/);
+    expect(startClient).toMatch(/max_delay/);
+  });
+});
+
+// ── Behavioral harness for start_client / start_opencode (I2/I3/E1/I5) ──────
+// A second driver, distinct from the install_runtime_artifacts one above: it
+// seeds a FAKE already-installed @openpalm/client package (serve.mjs + a
+// built index.html) so start_client gets past its "build not found" gate,
+// then invokes whichever function the scenario needs. `node` and `sleep` are
+// stubbed so the capped-backoff loop (which really sleeps 1/2/4/8/16s)
+// resolves near-instantly in tests.
+const FUNCTION_DRIVER = `#!/usr/bin/env bash
+set -uo pipefail
+
+ENTRYPOINT="$1"
+WORK="$2"
+FUNC="$3"
+
+mkdir -p "$WORK/bin"
+
+# Resolve the REAL node BEFORE shadowing PATH with the stub dir below, so the
+# stub can delegate genuine \`-e\` evals (the runtime-config.json writer) to a
+# real interpreter — E1/I5 assert on the ACTUAL JSON the entrypoint's inline
+# JS produces — while only intercepting/controlling the serve.mjs
+# invocation (the thing under test for I2's supervision loop).
+export REAL_NODE="$(command -v node)"
+
+cat > "$WORK/bin/node" <<'STUB'
+#!/usr/bin/env bash
+printf 'node %s\n' "$*" >> "$NPM_LOG"
+if printf '%s' "$*" | grep -q "serve.mjs"; then
+  exit "\${STUB_NODE_SERVE_EXIT:-0}"
+fi
+exec "$REAL_NODE" "$@"
+STUB
+chmod +x "$WORK/bin/node"
+
+# Instant no-op sleep so the capped-backoff loop doesn't really wait.
+cat > "$WORK/bin/sleep" <<'STUB'
+#!/usr/bin/env bash
+exit 0
+STUB
+chmod +x "$WORK/bin/sleep"
+
+export PATH="$WORK/bin:$PATH"
+
+# Fake an already-installed @openpalm/client package + build so start_client
+# gets past its "build not found" gate in every scenario.
+CLIENT_PKG="$WORK/artifacts/client/node_modules/@openpalm/client"
+mkdir -p "$CLIENT_PKG/bin" "$CLIENT_PKG/build"
+: > "$CLIENT_PKG/bin/serve.mjs"
+: > "$CLIENT_PKG/build/index.html"
+
+awk '!/^[a-z_][a-z0-9_]*$/ || /^(fi|done|esac|then|else|do)$/' "$ENTRYPOINT" > "$WORK/functions.sh"
+sed -i "s#/opt/openpalm#$WORK/artifacts#g" "$WORK/functions.sh"
+sed -i "s#/tmp/openpalm-client-skip#$WORK/client-skip-marker#g" "$WORK/functions.sh"
+
+# shellcheck disable=SC1091
+source "$WORK/functions.sh"
+
+"$FUNC"
+
+# start_client backgrounds its supervision loop and returns immediately (the
+# real entrypoint then execs OpenCode and keeps running under tini) — but
+# spawnSync does NOT wait for an orphaned grandchild holding the stdio pipes
+# open once THIS driver process exits, so an explicit 'wait' here is required
+# for the test to observe the loop's output at all.
+wait
+`;
+
+type FunctionScenarioResult = {
+  exitCode: number;
+  stderr: string;
+  npmLog: string;
+  skipMarkerExists: boolean;
+  runtimeConfig: string | null;
+};
+
+function runFunctionScenario(
+  func: string,
+  scenarioEnv: Record<string, string>,
+): FunctionScenarioResult {
+  const tempDir = mkdtempSync(join(tmpdir(), 'openpalm-p5d-fn-'));
+  try {
+    const driverPath = join(tempDir, 'driver.sh');
+    writeFileSync(driverPath, FUNCTION_DRIVER, { mode: 0o755 });
+    const npmLogPath = join(tempDir, 'npm.log');
+    writeFileSync(npmLogPath, '');
+    const home = join(tempDir, 'home');
+    mkdirSync(home, { recursive: true });
+    const proc = spawnSync('bash', [driverPath, ENTRYPOINT_PATH, tempDir, func], {
+      encoding: 'utf8',
+      env: {
+        PATH: process.env.PATH ?? '/usr/bin:/bin',
+        HOME: home,
+        NPM_LOG: npmLogPath,
+        ...scenarioEnv,
+      },
+    });
+    const runtimeConfigPath = join(
+      tempDir,
+      'artifacts/client/node_modules/@openpalm/client/runtime-config.json',
+    );
+    let runtimeConfig: string | null = null;
+    try {
+      runtimeConfig = readFileSync(runtimeConfigPath, 'utf8');
+    } catch {
+      runtimeConfig = null;
+    }
+    return {
+      exitCode: proc.status ?? 1,
+      stderr: proc.stderr ?? '',
+      npmLog: readFileSync(npmLogPath, 'utf8'),
+      skipMarkerExists: (() => {
+        try {
+          readFileSync(join(tempDir, 'client-skip-marker'));
+          return true;
+        } catch {
+          return false;
+        }
+      })(),
+      runtimeConfig,
+    };
+  } finally {
+    rmSync(tempDir, { recursive: true, force: true });
+  }
+}
+
+describe('I3 — start_client LAN-exposure safety gate (behavioral)', () => {
+  test('refuses to start the client co-process when the assistant binds non-loopback AND OpenCode auth is disabled', () => {
+    const result = runFunctionScenario('start_client', {
+      OP_ASSISTANT_BIND_ADDRESS: '0.0.0.0',
+      // OPENCODE_AUTH left unset — defaults to "false" (disabled), matching
+      // the shipped compose default (core.compose.yml OPENCODE_AUTH: "false").
+    });
+    expect(result.stderr).toContain('OPENCODE_AUTH');
+    expect(result.stderr).toContain('OP_ASSISTANT_BIND_ADDRESS');
+    expect(result.skipMarkerExists, 'expected the client-skip marker to be written').toBe(true);
+    // The unsafe path must never reach the node serve invocation.
+    expect(result.npmLog).not.toContain('serve.mjs');
+    expect(result.runtimeConfig, 'runtime-config.json must not be written on the unsafe path').toBeNull();
+  });
+
+  test('starts the client normally when the assistant bind stays loopback (today\'s default deployment)', () => {
+    const result = runFunctionScenario('start_client', {});
+    expect(result.skipMarkerExists).toBe(false);
+    expect(result.npmLog).toContain('serve.mjs');
+    expect(result.runtimeConfig).not.toBeNull();
+  });
+
+  test('starts the client when bound non-loopback but OPENCODE_AUTH is explicitly enabled (legitimate hardened LAN path)', () => {
+    const result = runFunctionScenario('start_client', {
+      OP_ASSISTANT_BIND_ADDRESS: '0.0.0.0',
+      OPENCODE_AUTH: 'true',
+    });
+    expect(result.skipMarkerExists).toBe(false);
+    expect(result.npmLog).toContain('serve.mjs');
+  });
+});
+
+describe('E1 — start_client runtime-config URL normalization (behavioral)', () => {
+  test('a wildcard-host OP_CLIENT_DEFAULT_ASSISTANT_URL override is normalized to loopback before it reaches runtime-config.json', () => {
+    const result = runFunctionScenario('start_client', {
+      OP_CLIENT_DEFAULT_ASSISTANT_URL: 'http://0.0.0.0:3800',
+    });
+    expect(result.runtimeConfig, 'expected runtime-config.json to be written').not.toBeNull();
+    const config = JSON.parse(result.runtimeConfig as string);
+    expect(config.connections[0].url).toBe('http://127.0.0.1:3800');
+  });
+});
+
+describe('I5 — start_client runtime-config connection id/label (behavioral)', () => {
+  test('the written locked connection uses the lib-exported id/label', () => {
+    const result = runFunctionScenario('start_client', {});
+    expect(result.runtimeConfig).not.toBeNull();
+    const config = JSON.parse(result.runtimeConfig as string);
+    expect(config.connections[0].id).toBe(ASSISTANT_LOCKED_CONNECTION_ID);
+    expect(config.connections[0].label).toBe(ASSISTANT_LOCKED_CONNECTION_LABEL);
+  });
+});
+
+describe('I2 — start_client co-process supervision (behavioral)', () => {
+  test('respawns on unexpected exit and gives up after the attempt cap, logging the give-up message', () => {
+    const result = runFunctionScenario('start_client', {
+      STUB_NODE_SERVE_EXIT: '1',
+    });
+    // Every attempt is logged; the loop must stop (not run forever) and say so.
+    const respawnCount = (result.stderr.match(/restarting in/g) ?? []).length;
+    expect(respawnCount).toBeGreaterThan(0);
+    expect(result.stderr).toMatch(/giving up on respawn/);
   });
 });
