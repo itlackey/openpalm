@@ -28,15 +28,31 @@
   //     inserted/removed around the reply.
   //   §G4 — the active session row gets aria-current + an sr-only
   //     "(current)" suffix (border color alone doesn't reach screen readers).
+  //   §B4 — PermissionCard/QuestionCard (copied from packages/ui, adapted to
+  //     chat-controller's own pending-ask types) surface tool-permission
+  //     requests and structured questions instead of silently wedging the
+  //     turn for 150s.
+  //   §B9 — ToolLog renders `pendingToolStates` (live) plus every entry's
+  //     captured `toolStates` (history), deduped by id, instead of an opaque
+  //     wait during long tool-running turns.
+  //   §B14 — below 44rem the sessions list moves into a togglable drawer
+  //     built on the ui-kit Drawer (G3's promoted focus-trap) instead of
+  //     being unreachable `display:none` with no alternative path.
   import { onMount, tick } from 'svelte';
   import { goto } from '$app/navigation';
   import IconAdd from '@openpalm/ui-kit/components/icons/IconAdd.svelte';
+  import IconConversations from '@openpalm/ui-kit/components/icons/IconConversations.svelte';
+  import Drawer from '@openpalm/ui-kit/components/common/Drawer.svelte';
   import ChatInput from '$lib/components/chat/ChatInput.svelte';
   import ChatTurn from '$lib/components/chat/ChatTurn.svelte';
+  import PermissionCard from '$lib/components/chat/PermissionCard.svelte';
+  import QuestionCard from '$lib/components/chat/QuestionCard.svelte';
+  import ToolLog from '$lib/components/chat/ToolLog.svelte';
   import { getClientBoot } from '$lib/boot.js';
   import { createTransport, type Transport } from '$lib/transport/index.js';
   import type { ConnectionEntry } from '$lib/connections/index.js';
   import { createChatController, type ChatControllerState } from '$lib/chat/chat-controller.js';
+  import type { ToolStateSnapshot } from '$lib/transport/index.js';
   import { renderMarkdown } from '$lib/markdown.js';
   import { nextFollowState } from '$lib/chat/autoscroll.js';
 
@@ -53,6 +69,9 @@
     entries: [],
     sending: false,
     pendingText: '',
+    pendingToolStates: [],
+    pendingPermission: null,
+    pendingQuestion: null,
     connected: false,
     error: '',
     lastFailedText: '',
@@ -60,6 +79,75 @@
 
   let threadEl = $state<HTMLElement | undefined>();
   let scrollAnchorEl = $state<HTMLDivElement | undefined>();
+
+  // ── B14 small-screen sessions drawer ────────────────────────────────────
+  // Below 44rem the `.sessions` aside is display:none (see the styles below)
+  // — this drawer is the reachable alternative (mouse, touch, keyboard, and screen
+  // reader alike), built on the ui-kit Drawer so it inherits G3's promoted
+  // focus-trap: focus moves in on open, Tab is trapped, Escape closes, and
+  // focus returns to the toggle button on close.
+  let sessionsDrawerOpen = $state(false);
+
+  function openSessionsDrawer(): void {
+    sessionsDrawerOpen = true;
+  }
+  function closeSessionsDrawer(): void {
+    sessionsDrawerOpen = false;
+  }
+
+  // ── B9 tool-activity visibility ─────────────────────────────────────────
+  // Every entry's captured toolStates (history) plus the in-flight turn's
+  // pendingToolStates (live), deduped by id so a keyed {#each} never
+  // collides across the history/live boundary (mirrors 455d8728 chat-state's
+  // `toolLog` getter).
+  const toolLogItems = $derived.by((): ToolStateSnapshot[] => {
+    const seen = new Set<string>();
+    const out: ToolStateSnapshot[] = [];
+    const push = (states: ToolStateSnapshot[] | undefined): void => {
+      if (!states) return;
+      for (const tool of states) {
+        if (seen.has(tool.id)) continue;
+        seen.add(tool.id);
+        out.push(tool);
+      }
+    };
+    for (const entry of chatState.entries) {
+      push((entry as { toolStates?: ToolStateSnapshot[] }).toolStates);
+    }
+    push(chatState.pendingToolStates);
+    return out;
+  });
+
+  // ── B4 permission/question replies ──────────────────────────────────────
+  // The '' branch of `decision` only occurs before a reply has been chosen
+  // (status 'pending'), never while 'submitting' — but the union type
+  // doesn't encode that, so it's narrowed explicitly here for PermissionCard's
+  // narrower prop type.
+  const permissionActionInFlight = $derived.by((): 'once' | 'always' | 'reject' | null => {
+    const permission = chatState.pendingPermission;
+    if (permission?.status !== 'submitting') return null;
+    return permission.decision || null;
+  });
+
+  function handlePermissionReply(reply: 'once' | 'always' | 'reject'): void {
+    void controller?.answerPermission(reply);
+  }
+
+  function handleQuestionOption(label: string): void {
+    void controller?.answerQuestion(label);
+  }
+
+  function handleQuestionDraft(index: number, value: string): void {
+    controller?.setQuestionAnswer(index, value);
+  }
+
+  function handleQuestionSubmit(): void {
+    void controller?.answerQuestion();
+  }
+
+  function handleQuestionReject(): void {
+    void controller?.rejectQuestion();
+  }
 
   // ── B13 autoscroll follow-state ─────────────────────────────────────────
   let followingLatest = $state(true);
@@ -119,7 +207,11 @@
 
   // ── G1 persistent status text ───────────────────────────────────────────
   const statusText = $derived(
-    chatState.sending && !chatState.pendingText ? 'Thinking…' : chatState.error ? chatState.error : ''
+    chatState.sending && !chatState.pendingText && !chatState.pendingPermission && !chatState.pendingQuestion
+      ? 'Thinking…'
+      : chatState.error
+        ? chatState.error
+        : ''
   );
 
   function handleReachabilityProbe(reachable: boolean): void {
@@ -208,39 +300,59 @@
   <title>Chat — OpenPalm</title>
 </svelte:head>
 
-<div class="chat">
+{#snippet sessionsList()}
+  <div class="sessions-head">
+    <span class="sessions-title">Sessions</span>
+    <button type="button" class="new-chat" onclick={newSession} aria-label="New chat">
+      <IconAdd size={14} />
+    </button>
+  </div>
+  <ul>
+    {#each chatState.sessions as session (session.id)}
+      <li>
+        <button
+          type="button"
+          class="session"
+          class:current={session.id === chatState.sessionId}
+          aria-current={session.id === chatState.sessionId ? 'true' : undefined}
+          onclick={() => selectSession(session.id)}
+        >
+          {sessionLabel(session)}{#if session.id === chatState.sessionId}<span class="sr-only"> (current)</span>{/if}
+        </button>
+      </li>
+    {:else}
+      <li class="empty">No sessions yet.</li>
+    {/each}
+  </ul>
+  {#if connection}
+    <a class="connection-note" href="/connections" title={connection.url}>
+      via {connection.label}
+    </a>
+  {/if}
+{/snippet}
+
+<!-- B14: the rest of the page is inert while the small-screen sessions
+     drawer owns the top layer (its own focus trap + Escape close come from
+     the ui-kit Drawer/G3 focus-trap). -->
+<div class="chat" inert={sessionsDrawerOpen}>
   <aside class="sessions" aria-label="Sessions">
-    <div class="sessions-head">
-      <span class="sessions-title">Sessions</span>
-      <button type="button" class="new-chat" onclick={newSession} aria-label="New chat">
-        <IconAdd size={14} />
-      </button>
-    </div>
-    <ul>
-      {#each chatState.sessions as session (session.id)}
-        <li>
-          <button
-            type="button"
-            class="session"
-            class:current={session.id === chatState.sessionId}
-            aria-current={session.id === chatState.sessionId ? 'true' : undefined}
-            onclick={() => selectSession(session.id)}
-          >
-            {sessionLabel(session)}{#if session.id === chatState.sessionId}<span class="sr-only"> (current)</span>{/if}
-          </button>
-        </li>
-      {:else}
-        <li class="empty">No sessions yet.</li>
-      {/each}
-    </ul>
-    {#if connection}
-      <a class="connection-note" href="/connections" title={connection.url}>
-        via {connection.label}
-      </a>
-    {/if}
+    {@render sessionsList()}
   </aside>
 
   <section class="thread-pane">
+    <div class="mobile-sessions-bar">
+      <button
+        type="button"
+        class="sessions-toggle"
+        aria-haspopup="dialog"
+        aria-expanded={sessionsDrawerOpen}
+        onclick={openSessionsDrawer}
+      >
+        <IconConversations size={16} />
+        <span>Sessions</span>
+      </button>
+    </div>
+
     <!-- role="log": a div, not <main> — <main> already carries the implicit
          "main" landmark, and role="log" would override (not add to) it. -->
     <div class="thread" bind:this={threadEl} role="log" aria-label="Chat history">
@@ -249,13 +361,34 @@
           <ChatTurn {entry} />
         {/each}
 
-        {#if chatState.sending && chatState.pendingText}
-          <div class="turn master">
-            <div class="master-words settled">
-              <!-- eslint-disable-next-line svelte/no-at-html-tags -- renderMarkdown uses markdown-it with html:false; see ChatTurn.svelte -->
-              <div class="markdown-body">{@html renderMarkdown(chatState.pendingText)}</div>
+        {#if chatState.sending}
+          {#if chatState.pendingText}
+            <div class="turn master">
+              <div class="master-words settled">
+                <!-- eslint-disable-next-line svelte/no-at-html-tags -- renderMarkdown uses markdown-it with html:false; see ChatTurn.svelte -->
+                <div class="markdown-body">{@html renderMarkdown(chatState.pendingText)}</div>
+              </div>
             </div>
-          </div>
+          {/if}
+
+          {#if chatState.pendingPermission}
+            <PermissionCard
+              permission={chatState.pendingPermission}
+              actionInFlight={permissionActionInFlight}
+              onReply={handlePermissionReply}
+            />
+          {/if}
+
+          {#if chatState.pendingQuestion}
+            <QuestionCard
+              question={chatState.pendingQuestion}
+              onOption={handleQuestionOption}
+              onSelect={(index, label) => controller?.setQuestionAnswer(index, label)}
+              onDraft={handleQuestionDraft}
+              onSubmit={handleQuestionSubmit}
+              onReject={handleQuestionReject}
+            />
+          {/if}
         {/if}
 
         <div bind:this={scrollAnchorEl} aria-hidden="true" style="height:1px"></div>
@@ -265,6 +398,12 @@
            screen reader gets a completion signal instead of a silent wait. -->
       <div class="s-status" aria-live="polite">{statusText}</div>
     </div>
+
+    {#if toolLogItems.length > 0}
+      <aside class="activity-rail" aria-label="Assistant activity">
+        <ToolLog items={toolLogItems} />
+      </aside>
+    {/if}
 
     {#if !followingLatest && chatState.sending}
       <button class="jump-latest" type="button" aria-label="Jump to latest" onclick={jumpToLatest}>
@@ -288,6 +427,14 @@
   </section>
 </div>
 
+<!-- B14: small-screen sessions drawer — same session list content as the
+     `.sessions` aside (display:none below 44rem), reachable via the toggle
+     button above. Rendered outside `.chat` so its fixed-position scrim/panel
+     (see Drawer.svelte) sit above the now-inert page. -->
+<Drawer open={sessionsDrawerOpen} title="Sessions" onClose={closeSessionsDrawer}>
+  {@render sessionsList()}
+</Drawer>
+
 <style>
   .chat {
     flex: 1;
@@ -309,6 +456,50 @@
     .sessions {
       display: none;
     }
+  }
+
+  /* B14: the toggle that opens the small-screen sessions drawer — the
+     opposite breakpoint from `.sessions` above, so exactly one of the two
+     session-access paths is present at any width. */
+  .mobile-sessions-bar {
+    display: none;
+  }
+
+  @media (max-width: 44rem) {
+    .mobile-sessions-bar {
+      display: flex;
+      padding: var(--s-sp-2) clamp(1rem, 6vw, 4rem) 0;
+    }
+  }
+
+  .sessions-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    appearance: none;
+    border: var(--s-hair) solid var(--s-line);
+    border-radius: 2px;
+    background: none;
+    color: var(--s-ink-2);
+    cursor: pointer;
+    min-height: 44px;
+    padding: 0.35rem 0.7rem;
+    font-family: var(--s-font-mono);
+    font-size: var(--s-type-mark);
+    letter-spacing: var(--s-track-label);
+    text-transform: uppercase;
+  }
+
+  .sessions-toggle:hover {
+    color: var(--s-ink);
+    border-color: var(--s-seal);
+  }
+
+  .activity-rail {
+    border-top: var(--s-hair) solid var(--s-line);
+    padding: var(--s-sp-3) clamp(1rem, 6vw, 4rem);
+    max-height: 12rem;
+    overflow-y: auto;
   }
 
   .sessions-head {

@@ -650,6 +650,173 @@ export function isTurnEnd(event: RawEvent, sessionId: string): boolean {
   return false;
 }
 
+// ── Permission/question/tool asks (§B4, §B9, ported from packages/ui oc-events.ts) ──
+// Layered on top of subscribeEvents()'s onEvent callback by the UI stage
+// (chat-controller.ts), the same way extractTextDelta/isTurnEnd already are.
+
+export type ToolUpdate = {
+  callID: string;
+  tool: string;
+  status: string;
+  title?: string;
+  detail?: string;
+  output?: string;
+  error?: string;
+};
+
+export type PermissionAsk = {
+  requestID: string;
+  permission: string;
+  patterns: string[];
+  always: string[];
+  tool: string;
+  detail: string;
+};
+
+export type QuestionOption = {
+  label: string;
+  description: string;
+};
+
+export type QuestionInfo = {
+  question: string;
+  header: string;
+  options: QuestionOption[];
+};
+
+export type QuestionAsk = {
+  requestID: string;
+  questions: QuestionInfo[];
+};
+
+function askValueToText(value: unknown): string | undefined {
+  if (typeof value === 'string') return value;
+  if (value == null) return undefined;
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return undefined;
+  }
+}
+
+function askFirstText(...values: unknown[]): string | undefined {
+  for (const value of values) {
+    const text = askValueToText(value);
+    if (text) return text;
+  }
+  return undefined;
+}
+
+/**
+ * Extract a `permission.asked` event for `sessionId`, or null (wrong session,
+ * wrong type, or no request id). Ported from
+ * packages/ui/src/lib/chat/oc-events.ts extractPermissionAsk().
+ */
+export function extractPermissionAsk(event: RawEvent, sessionId: string): PermissionAsk | null {
+  if (event.type !== 'permission.asked') return null;
+  if (propStr(event.properties, 'sessionID') !== sessionId) return null;
+  const id = propStr(event.properties, 'id');
+  if (!id) return null;
+  const patterns = Array.isArray(event.properties?.patterns)
+    ? (event.properties.patterns as unknown[]).filter((item): item is string => typeof item === 'string')
+    : [];
+  const always = Array.isArray(event.properties?.always)
+    ? (event.properties.always as unknown[]).filter((item): item is string => typeof item === 'string')
+    : [];
+  const toolRecord = event.properties?.tool as Record<string, unknown> | undefined;
+  return {
+    requestID: id,
+    permission: propStr(event.properties, 'permission') ?? 'tool',
+    patterns,
+    always,
+    tool: propStr(toolRecord, 'callID') ?? propStr(event.properties, 'permission') ?? 'tool',
+    detail: askFirstText(event.properties?.metadata, event.properties?.message) ?? '',
+  };
+}
+
+/**
+ * Extract a `question.asked` event for `sessionId`, or null (wrong session,
+ * wrong type, or an empty questions array). Ported from
+ * packages/ui/src/lib/chat/oc-events.ts extractQuestionAsk().
+ */
+export function extractQuestionAsk(event: RawEvent, sessionId: string): QuestionAsk | null {
+  if (event.type !== 'question.asked') return null;
+  if (propStr(event.properties, 'sessionID') !== sessionId) return null;
+  const id = propStr(event.properties, 'id');
+  if (!id) return null;
+  const rawQuestions = Array.isArray(event.properties?.questions) ? event.properties.questions : [];
+  const questions: QuestionInfo[] = [];
+  for (const raw of rawQuestions) {
+    const item = raw as { question?: unknown; header?: unknown; options?: unknown };
+    const options = Array.isArray(item.options)
+      ? item.options
+          .map((option) => option as { label?: unknown; description?: unknown })
+          .filter((option) => typeof option.label === 'string')
+          .map((option) => ({
+            label: option.label as string,
+            description: typeof option.description === 'string' ? option.description : '',
+          }))
+      : [];
+    questions.push({
+      question: typeof item.question === 'string' ? item.question : '',
+      header: typeof item.header === 'string' ? item.header : '',
+      options,
+    });
+  }
+  if (questions.length === 0) return null;
+  return { requestID: id, questions };
+}
+
+/**
+ * Extract a live tool-activity update from a raw event (either a
+ * `message.part.updated` tool part, or an OpenCode `session.next.tool.*`
+ * lifecycle event), or null. Ported from packages/ui/src/lib/chat/
+ * oc-events.ts extractToolUpdate() — drives the B9 ToolLog rail while a turn
+ * is in flight (the history counterpart, `toolStateFromPart` above, covers
+ * already-completed turns loaded via getSessionMessages()).
+ */
+export function extractToolUpdate(event: RawEvent, sessionId: string): ToolUpdate | null {
+  const props = event.properties ?? {};
+  if (propStr(props, 'sessionID') !== sessionId) return null;
+
+  const part = (props.part ?? props.tool) as Record<string, unknown> | undefined;
+  if (event.type === 'message.part.updated' && part && (part.type === 'tool' || part.state)) {
+    const state = (part.state ?? {}) as Record<string, unknown>;
+    return {
+      callID: String(part.callID ?? part.id ?? ''),
+      tool: String(part.tool ?? 'tool'),
+      status: String(state.status ?? 'running'),
+      title: typeof state.title === 'string' ? state.title : undefined,
+      detail: askFirstText(state.input, state.metadata, state.progress, state.output),
+      output: askValueToText(state.output),
+      error: typeof state.error === 'string' ? state.error : undefined,
+    };
+  }
+
+  if (event.type.startsWith('session.next.tool.')) {
+    const type = event.type.replace('session.next.tool.', '');
+    return {
+      callID: propStr(props, 'callID') ?? '',
+      tool: propStr(props, 'tool') ?? 'tool',
+      status:
+        type === 'completed'
+          ? 'completed'
+          : type === 'failed'
+            ? 'error'
+            : type === 'called'
+              ? 'running'
+              : (propStr(props, 'status') ?? 'running'),
+      title: propStr(props, 'title') ?? propStr(props, 'tool'),
+      detail: askFirstText(props.message, props.delta, props.progress, props.input, props.metadata),
+      output: askFirstText(props.output, props.result),
+      error: askFirstText(props.error),
+    };
+  }
+
+  return null;
+}
+
 // ── Session-history flattening (§B5, ported from packages/ui session-messages.ts + tool-strip.ts) ──
 
 function valueToText(value: unknown): string {
