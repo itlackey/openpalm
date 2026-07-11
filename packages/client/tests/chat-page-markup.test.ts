@@ -83,3 +83,29 @@ describe('+page.svelte (chat) — B16 visibilitychange reachability probe', () =
     expect(src).toContain('probeHealth');
   });
 });
+
+describe('+page.svelte (chat) — onMount lifecycle-leak guard (review 2026-07-11 seam 4)', () => {
+  // packages/client has no component-render harness, so — same "source pin"
+  // limit as the rest of this file — this asserts the guard exists in source
+  // rather than actually mounting/unmounting the component mid-resolveAuth.
+  // Without a re-check, an unmount during `secrets.resolveAuth(active)` (a
+  // WebCrypto decrypt for encrypted-secret connections) still runs
+  // `createChatController` + `controller.init()` afterwards, opening a
+  // self-reconnecting subscribeEvents() stream that is never torn down.
+  test('re-checks `if (destroyed) return;` after resolveAuth and before creating/initing the controller', () => {
+    const src = source();
+    const mountStart = src.indexOf('onMount(() => {');
+    expect(mountStart, 'expected an onMount(() => { ... }) block').toBeGreaterThan(-1);
+    const mountEnd = src.indexOf('return () => {', mountStart);
+    expect(mountEnd, 'expected the onMount cleanup return').toBeGreaterThan(mountStart);
+    const mountBody = src.slice(mountStart, mountEnd);
+
+    const authIdx = mountBody.indexOf('secrets.resolveAuth(');
+    const controllerIdx = mountBody.indexOf('createChatController(');
+    expect(authIdx, 'expected a secrets.resolveAuth(...) call in onMount').toBeGreaterThan(-1);
+    expect(controllerIdx, 'expected createChatController(...) to be created after resolveAuth').toBeGreaterThan(authIdx);
+
+    const between = mountBody.slice(authIdx, controllerIdx);
+    expect(between).toMatch(/if\s*\(destroyed\)\s*return;/);
+  });
+});

@@ -232,7 +232,14 @@
       }
       if (destroyed) return;
       connection = active;
-      transport = createTransport({ baseUrl: active.url, auth: await secrets.resolveAuth(active) });
+      const auth = await secrets.resolveAuth(active);
+      // Re-check after the resolveAuth await (review 2026-07-11 seam 4): an
+      // unmount during this WebCrypto decrypt must not still create/init the
+      // controller below — that would open a self-reconnecting
+      // subscribeEvents() stream with no teardown path (the earlier
+      // `destroyed` check above is stale by the time this line runs).
+      if (destroyed) return;
+      transport = createTransport({ baseUrl: active.url, auth });
       controller = createChatController(transport);
       controller.subscribe(() => {
         if (!controller) return;
