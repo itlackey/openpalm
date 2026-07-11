@@ -238,6 +238,45 @@ describe('chat-controller — cross-turn contamination guard (review 2026-07-11 
     expect(state.sending).toBe(false);
     expect(state.entries.map((e) => e.text)).toEqual(['first', 'A reply', 'second', 'B reply']);
   });
+
+  test('an SSE-driven finalize that cancels the in-flight POST still refreshes the session list', async () => {
+    // Regression: finalizeTurn() aborting the redundant POST makes send()'s
+    // await reject with AbortError and early-return — the session-list refresh
+    // must not be skipped on that path (it is what populates the sidebar after
+    // the first message of a new session; caught by parity-contract.pw.ts:155).
+    // Unlike the deferred fakes above, this sendMessage honors the abort
+    // signal the way real fetch does.
+    const { createChatController } = await loadControllerModule();
+    let listCalls = 0;
+    const { transport, emit } = makeFakeTransport({
+      createSession: async () => ({ id: 'sess-1' }),
+      listSessions: async () => {
+        listCalls += 1;
+        return [{ id: 'sess-1', title: 'First', createdAt: 1, updatedAt: 1 }];
+      },
+      sendMessage: (_sessionId, _text, opts) =>
+        new Promise((_resolve, reject) => {
+          opts?.signal?.addEventListener('abort', () =>
+            reject(new DOMException('The operation was aborted.', 'AbortError'))
+          );
+        }),
+    });
+    const controller = createChatController(transport);
+    await controller.init();
+    const callsAfterInit = listCalls;
+
+    const sendPromise = controller.send('hello');
+    await Promise.resolve();
+    await Promise.resolve();
+    emit(textDeltaEvent('sess-1', 'the reply'));
+    emit(turnEndEvent('sess-1')); // SSE finalize — aborts the still-pending POST
+    await sendPromise;
+
+    const state = controller.getState();
+    expect(state.sending).toBe(false);
+    expect(state.entries.at(-1)).toMatchObject({ role: 'assistant', text: 'the reply' });
+    expect(listCalls, 'the SSE-finalized turn must still refresh the session list').toBeGreaterThan(callsAfterInit);
+  });
 });
 
 describe('chat-controller — B3 stop', () => {

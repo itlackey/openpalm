@@ -268,6 +268,11 @@ export function createChatController(
     resetPendingRenderState();
     activeTurn = null;
     notify();
+    // Refresh here, not in send(): the abort() above rejects send()'s await
+    // with AbortError on the SSE-finalize path, so a refresh placed after it
+    // would be skipped — leaving the sidebar unpopulated after a new
+    // session's first message (parity-contract.pw.ts history pin).
+    void refreshSessions();
     // §B12: content-free by default (notifier decides what, if anything, to
     // surface) — mirrors 455d8728's finalizeTurn() call site.
     notifier.notifyReply(text === '(The assistant sent no text.)' ? '' : text);
@@ -379,9 +384,10 @@ export function createChatController(
     try {
       const response = await transport.sendMessage(sessionId, trimmed, { signal: abort.signal });
       finalizeTurn(turn, assistantTextFromResponse(response));
-      void refreshSessions();
     } catch (e) {
-      if (isAbortError(e)) return; // stop() already finalized (or will, via the aborted signal path).
+      // stop() or an SSE-driven finalizeTurn() aborted this POST — the turn
+      // is already finalized (and sessions refreshed) on that path.
+      if (isAbortError(e)) return;
       // A stale turn superseded by a newer one (see finalizeTurn) must not
       // clobber the newer turn's in-flight state — same identity guard.
       if (activeTurn !== turn) return;
