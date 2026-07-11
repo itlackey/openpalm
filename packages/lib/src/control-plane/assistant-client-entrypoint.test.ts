@@ -291,6 +291,35 @@ describe('P5d entrypoint — client co-process (static-only)', () => {
     expect(startOpencode).toMatch(/rejecting/i);
   });
 
+  // H2 (review, CONFIRMED): a wildcard client bind (0.0.0.0/::) derives NO
+  // auto-generated LAN CORS origin (see the I3 comment right above the
+  // origin-derivation `if` in start_opencode) — by design, since a wildcard
+  // bind cannot be turned into the one true browser Origin a LAN visitor's
+  // browser will send. But when OPENCODE_AUTH is ALSO enabled (the legitimate
+  // hardened-LAN path start_client's own safety gate allows through), that
+  // silent gap left LAN chat failing OpenCode's CORS preflight with only a
+  // source comment to explain it — no operator-facing signal at all. Pin
+  // that a loud runtime warning, naming the fix-it knob
+  // (OP_CLIENT_CORS_ALLOWED_ORIGINS), is emitted to stderr specifically in
+  // that configuration (static: extractFunction + regex, consistent with the
+  // other start_opencode CORS assertions in this describe block — invoking
+  // start_opencode behaviorally would exec a real `opencode` process and
+  // touch hardcoded absolute host paths (/work, /home/opencode) outside the
+  // FUNCTION_DRIVER's sandbox).
+  test('start_opencode warns loudly when a wildcard client bind combines with OPENCODE_AUTH enabled and no explicit CORS origins (H2)', () => {
+    const startOpencode = extractFunction(entrypoint, 'start_opencode') ?? '';
+    expect(startOpencode, 'expected start_opencode() to be defined').not.toBe('');
+    // The warning must exist, go to stderr, and name the operator knob.
+    expect(startOpencode).toMatch(/WARNING:[^\n]*OP_CLIENT_CORS_ALLOWED_ORIGINS/);
+    // Gated on: wildcard client bind ...
+    expect(startOpencode).toMatch(/client_bind_address"\s*=\s*"0\.0\.0\.0"/);
+    expect(startOpencode).toMatch(/client_bind_address"\s*=\s*"::"/);
+    // ... AND auth enabled ...
+    expect(startOpencode).toMatch(/opencode_auth_enabled/);
+    // ... AND no explicit origins already configured to fill the gap.
+    expect(startOpencode).toMatch(/-z\s+"\$\{OP_CLIENT_CORS_ALLOWED_ORIGINS:-\}"/);
+  });
+
   // I3 (review, security-critical, DECIDED POSTURE): "never emit `--cors *`
   // anywhere — explicit origins only" is a repo-wide invariant, not just a
   // property of one branch in start_opencode. Grep the WHOLE entrypoint (not
@@ -394,6 +423,7 @@ set -uo pipefail
 ENTRYPOINT="$1"
 WORK="$2"
 FUNC="$3"
+export WORK
 
 mkdir -p "$WORK/bin"
 
@@ -408,6 +438,34 @@ cat > "$WORK/bin/node" <<'STUB'
 #!/usr/bin/env bash
 printf 'node %s\n' "$*" >> "$NPM_LOG"
 if printf '%s' "$*" | grep -q "serve.mjs"; then
+  # SUPERVISOR-RESET test hook: if STUB_NODE_HEALTHY_AT is set, count
+  # serve.mjs invocations (persisted in a file under $WORK so it survives
+  # across the loop's repeated node stub invocations) and really sleep past
+  # the (test-shrunk) healthy-uptime threshold on the Nth invocation, so the
+  # supervision loop's own elapsed-time measurement sees a genuinely long
+  # run. Every other invocation returns instantly, same as before this hook
+  # existed.
+  if [ -n "\${STUB_NODE_HEALTHY_AT:-}" ]; then
+    count_file="$WORK/node-invocations.count"
+    count=$(( $(cat "$count_file" 2>/dev/null || echo 0) + 1 ))
+    echo "$count" > "$count_file"
+    if [ "$count" = "\${STUB_NODE_HEALTHY_AT}" ]; then
+      /bin/sleep "\${STUB_NODE_HEALTHY_SLEEP_S:-1.5}"
+    fi
+  fi
+  # "keeps running" test hook: a real client does not exit right after
+  # starting — it serves traffic indefinitely. Scenarios that only care
+  # about the SYNCHRONOUS part of start_client (config written, the I3
+  # safety gate's decision, the first serve.mjs invocation) opt into this via
+  # STUB_NODE_ALWAYS_SLEEP_S so the respawn loop never reaches a give-up
+  # state during the bounded observation window below — without it, the
+  # default instant-exit stub makes EVERY start_client scenario cycle
+  # through all give-up attempts in a few milliseconds, which is honest for
+  # the crash-loop tests (I2/F4/SUPERVISOR-RESET) but wrong for a
+  # "starts fine" scenario.
+  if [ -n "\${STUB_NODE_ALWAYS_SLEEP_S:-}" ]; then
+    /bin/sleep "\${STUB_NODE_ALWAYS_SLEEP_S}"
+  fi
   exit "\${STUB_NODE_SERVE_EXIT:-0}"
 fi
 exec "$REAL_NODE" "$@"
@@ -424,11 +482,15 @@ chmod +x "$WORK/bin/sleep"
 export PATH="$WORK/bin:$PATH"
 
 # Fake an already-installed @openpalm/client package + build so start_client
-# gets past its "build not found" gate in every scenario.
+# gets past its "build not found" gate in every scenario — UNLESS
+# STUB_SKIP_CLIENT_BUILD is set (F4: simulates a missing/never-installed
+# client build so the "build not found" skip path itself can be exercised).
 CLIENT_PKG="$WORK/artifacts/client/node_modules/@openpalm/client"
 mkdir -p "$CLIENT_PKG/bin" "$CLIENT_PKG/build"
-: > "$CLIENT_PKG/bin/serve.mjs"
-: > "$CLIENT_PKG/build/index.html"
+if [ -z "\${STUB_SKIP_CLIENT_BUILD:-}" ]; then
+  : > "$CLIENT_PKG/bin/serve.mjs"
+  : > "$CLIENT_PKG/build/index.html"
+fi
 
 awk '!/^[a-z_][a-z0-9_]*$/ || /^(fi|done|esac|then|else|do)$/' "$ENTRYPOINT" > "$WORK/functions.sh"
 sed -i "s#/opt/openpalm#$WORK/artifacts#g" "$WORK/functions.sh"
@@ -442,9 +504,22 @@ source "$WORK/functions.sh"
 # start_client backgrounds its supervision loop and returns immediately (the
 # real entrypoint then execs OpenCode and keeps running under tini) — but
 # spawnSync does NOT wait for an orphaned grandchild holding the stdio pipes
-# open once THIS driver process exits, so an explicit 'wait' here is required
-# for the test to observe the loop's output at all.
-wait
+# open once THIS driver process exits, so waiting here is required for the
+# test to observe the loop's output at all.
+#
+# BOUNDED wait, not a blind 'wait': every crash/backoff/reset scenario in
+# this suite (I2 give-up, F4, SUPERVISOR-RESET) finishes on its own — via
+# instant stub exits, or SUPERVISOR-RESET's one genuinely-slept ~1.5s
+# interval — comfortably inside this cap. A "keeps running" scenario
+# (STUB_NODE_ALWAYS_SLEEP_S) is DELIBERATELY longer than the cap so it never
+# finishes naturally here; once the cap is hit, any still-running
+# supervision loop is reaped so its held-open stdio can't hang spawnSync.
+for _ in $(seq 1 30); do
+  [ -z "$(jobs -r)" ] && break
+  /bin/sleep 0.1
+done
+kill $(jobs -p) 2>/dev/null || true
+wait 2>/dev/null || true
 `;
 
 type FunctionScenarioResult = {
@@ -590,7 +665,13 @@ describe('I3 — start_client LAN-exposure safety gate (behavioral)', () => {
   });
 
   test('starts the client normally when the assistant bind stays loopback (today\'s default deployment)', () => {
-    const result = runFunctionScenario('start_client', {});
+    // STUB_NODE_ALWAYS_SLEEP_S: simulate a client that starts fine and keeps
+    // serving (like the real co-process) rather than exiting instantly —
+    // without this, the default instant-exit stub makes the respawn loop
+    // cycle through all give-up attempts within the bounded observation
+    // window regardless of scenario, which would make F4's now-correct
+    // give-up marker write look like it fired on a "normal" start too.
+    const result = runFunctionScenario('start_client', { STUB_NODE_ALWAYS_SLEEP_S: '6' });
     expect(result.skipMarkerExists).toBe(false);
     expect(result.npmLog).toContain('serve.mjs');
     expect(result.runtimeConfig).not.toBeNull();
@@ -600,6 +681,7 @@ describe('I3 — start_client LAN-exposure safety gate (behavioral)', () => {
     const result = runFunctionScenario('start_client', {
       OP_ASSISTANT_BIND_ADDRESS: '0.0.0.0',
       OPENCODE_AUTH: 'true',
+      STUB_NODE_ALWAYS_SLEEP_S: '6',
     });
     expect(result.skipMarkerExists).toBe(false);
     expect(result.npmLog).toContain('serve.mjs');
@@ -636,5 +718,74 @@ describe('I2 — start_client co-process supervision (behavioral)', () => {
     const respawnCount = (result.stderr.match(/restarting in/g) ?? []).length;
     expect(respawnCount).toBeGreaterThan(0);
     expect(result.stderr).toMatch(/giving up on respawn/);
+  });
+
+  // F4 (review, CONFIRMED): giving up on respawn is a non-fatal, permanent
+  // condition for the rest of this boot — the healthcheck (Dockerfile +
+  // core.compose.yml) probes OP_CLIENT_PORT UNLESS /tmp/openpalm-client-skip
+  // exists. Before the fix, the give-up path exited without writing that
+  // marker, so a persistently-crashing client made the healthcheck fail
+  // forever -> assistant unhealthy -> guardian's `depends_on: condition:
+  // service_healthy` blocks every service behind it, directly contradicting
+  // the give-up log line's own claim that "the assistant keeps serving
+  // without it".
+  test('F4: writes the client-skip marker after giving up on respawn (so the healthcheck stops expecting a dead client)', () => {
+    const result = runFunctionScenario('start_client', {
+      STUB_NODE_SERVE_EXIT: '1',
+    });
+    expect(result.stderr).toMatch(/giving up on respawn/);
+    expect(result.skipMarkerExists, 'expected /tmp/openpalm-client-skip to be written after giving up').toBe(true);
+  });
+});
+
+// ── F4 (review, CONFIRMED): "client build not found" must also skip healthy ──
+describe('F4 — start_client "build not found" skip path writes the client-skip marker', () => {
+  test('writes /tmp/openpalm-client-skip when the client build is missing, so the healthcheck does not expect a client that was never installed', () => {
+    const result = runFunctionScenario('start_client', {
+      STUB_SKIP_CLIENT_BUILD: '1',
+    });
+    expect(result.stderr).toContain('client co-process skipped');
+    expect(result.skipMarkerExists, 'expected /tmp/openpalm-client-skip to be written on the build-not-found path').toBe(true);
+    // The build-not-found path returns before ever invoking serve.mjs.
+    expect(result.npmLog).not.toContain('serve.mjs');
+  });
+});
+
+// ── SUPERVISOR-RESET (review, CONFIRMED): the respawn attempt counter must ──
+// reset after a sustained healthy run, mirroring
+// packages/cli/src/lib/client-server.ts's HEALTHY_UPTIME_MS reset. Otherwise
+// crashes spread arbitrarily far apart across the container's whole lifetime
+// (not a tight crash loop) permanently exhaust max_attempts and disable the
+// client forever after only 5 crashes, ever.
+//
+// The node stub's STUB_NODE_HEALTHY_AT hook makes ONE specific invocation
+// really sleep (via /bin/sleep, bypassing the instant `sleep` PATH stub) past
+// a test-shrunk OP_CLIENT_RESPAWN_HEALTHY_UPTIME_MS threshold, so the
+// supervision loop's own real elapsed-time measurement sees a genuinely long
+// run and must reset its counter — this is a true behavioral test of the
+// timing logic, not a mocked clock.
+describe('SUPERVISOR-RESET — start_client respawn counter resets after a sustained healthy run (behavioral)', () => {
+  test('a run that stays up past the healthy-uptime threshold resets the give-up counter, so it takes MORE than max_attempts total crashes to give up', () => {
+    const result = runFunctionScenario('start_client', {
+      STUB_NODE_SERVE_EXIT: '1',
+      // Every invocation "crashes" immediately except the 3rd, which sleeps
+      // ~1.5s (STUB_NODE_HEALTHY_SLEEP_S default) — comfortably past this
+      // 300ms threshold, while every fast (non-healthy) invocation stays
+      // comfortably under it (plain process fork/exec overhead).
+      OP_CLIENT_RESPAWN_HEALTHY_UPTIME_MS: '300',
+      STUB_NODE_HEALTHY_AT: '3',
+    });
+    // max_attempts is 5: WITHOUT the reset, attempt counts 1,2,3,4,5 across
+    // invocations 1-5 and gives up at invocation 5 (4 "restarting" messages
+    // logged before it). WITH the reset, invocation 3's long run resets the
+    // counter back to 0 before it increments to 1, so giving up is deferred
+    // until invocation 7 (6 "restarting" messages logged before it).
+    const restartCount = (result.stderr.match(/restarting in/g) ?? []).length;
+    expect(result.stderr, result.stderr).toMatch(/giving up on respawn/);
+    expect(
+      restartCount,
+      `expected the healthy run at invocation 3 to reset the counter (>5 restarts before giving up); got stderr:\n${result.stderr}`,
+    ).toBeGreaterThan(5);
+    expect(result.skipMarkerExists).toBe(true);
   });
 });
