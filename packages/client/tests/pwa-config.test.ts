@@ -62,6 +62,7 @@ function makeRequest(init: {
   cookie?: string;
   credentials?: RequestCredentials;
   accept?: string;
+  cache?: RequestCache;
 }): Request {
   const headers = new Headers();
   if (init.authorization) headers.set('authorization', init.authorization);
@@ -71,7 +72,8 @@ function makeRequest(init: {
   return {
     method: init.method ?? 'GET',
     headers,
-    credentials: init.credentials ?? 'omit'
+    credentials: init.credentials ?? 'omit',
+    cache: init.cache ?? 'default'
   } as Request;
 }
 
@@ -196,6 +198,15 @@ describe('PWA source config', () => {
     expect(apiRule?.urlPattern?.({ request: eventStreamRequest, url: sameOrigin })).toBe(false);
     // A plain anonymous GET (no Accept: text/event-stream) is still eligible.
     expect(apiRule?.urlPattern?.({ request: anonymous, url: sameOrigin })).toBe(true);
+
+    // §H1 completeness (Codex review of PR #562): probeHealth() sets
+    // `cache: 'no-store'`, but that only bypasses the browser HTTP cache — a
+    // NetworkFirst service-worker route still serves the request from Cache
+    // Storage on a network failure/timeout, so a single cached 200 would keep
+    // the health badge "accessible" through an outage. The urlPattern must
+    // exclude no-store requests so the probe always hits the real network.
+    const noStoreProbe = makeRequest({ credentials: 'omit', cache: 'no-store' });
+    expect(apiRule?.urlPattern?.({ request: noStoreProbe, url: sameOrigin })).toBe(false);
   });
 });
 

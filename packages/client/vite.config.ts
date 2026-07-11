@@ -69,6 +69,15 @@ export const pwaOptions: Partial<SvelteKitPWAOptions> = {
         urlPattern: ({ request, url }) => {
           if (request.method !== 'GET') return false;
 
+          // A `cache: 'no-store'` request (probeHealth() sets it, §H1) must
+          // reach the real network — bypassing the browser HTTP cache is not
+          // enough, because a NetworkFirst SW route would still satisfy it
+          // from Cache Storage on a failure/timeout, keeping the health badge
+          // "accessible" through an outage. Never intercept no-store.
+          if (request.cache === 'no-store' || request.cache === 'reload') {
+            return false;
+          }
+
           const authorization = request.headers.get('authorization');
           const hasCookieHeader = request.headers.has('cookie');
           if (authorization || hasCookieHeader || request.credentials === 'include') {
