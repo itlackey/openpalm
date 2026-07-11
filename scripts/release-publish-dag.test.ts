@@ -310,6 +310,22 @@ describe("I1 — docker-assistant is ordered after npm-client/npm-skeleton and p
 		expect(preflight?.run ?? "").toMatch(/exit 1|::error::/);
 	});
 
+	// F13 (2026-07-10 review, dry-run guard follow-up): the preflight has no
+	// `if: !inputs.dry_run` guard, unlike every "Guard — fail if image tag
+	// already exists" step (docker-portal/docker-guardian/docker-assistant all
+	// carry it). dry_run=true is the default and documented "always run first"
+	// mode — npm-client/npm-skeleton pack-and-validate but deliberately SKIP
+	// the actual publish on dry-run, so the freshly-bumped PLATFORM_VERSION is
+	// never on npm and `npm view` 404s, failing docker-assistant on every
+	// dry-run of unit=all/images/platform(+images). Fix: guard the preflight
+	// step with the same `if: !inputs.dry_run` the image-tag guards use.
+	test("F13 — the npm-published-version preflight is skipped in dry-run (matches the image-tag guard steps)", () => {
+		const steps = assistantJob?.steps ?? [];
+		const preflight = steps.find((s) => /npm view/.test(s.run ?? ""));
+		expect(preflight).toBeDefined();
+		expect(String(preflight?.if ?? "")).toContain("!inputs.dry_run");
+	});
+
 	test("docker-assistant does not blindly bake compute-version's unit-local anchor as PLATFORM_VERSION for image-only units", () => {
 		// unit=assistant's compute-version output is bumped from
 		// containers/assistant/VERSION — an anchor independent of the platform npm

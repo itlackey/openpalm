@@ -733,6 +733,7 @@ jobs:
           fi
           echo "platform_version=${V}" >> "$GITHUB_OUTPUT"
       - name: Preflight — baked client/skeleton must exist on npm (I1)
+        if: ${{ !inputs.dry_run }}
         run: |
           V="${{ steps.platform_version.outputs.platform_version }}"
           fail=0
