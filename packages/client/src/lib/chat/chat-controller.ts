@@ -57,6 +57,7 @@ import {
   extractTextDelta,
   extractToolUpdate,
   isTurnEnd,
+  partSnapshotType,
   type FlattenedEntry,
   type PermissionAsk,
   type QuestionAsk,
@@ -117,8 +118,6 @@ export type ChatControllerState = {
   pendingPermission: PendingPermissionState | null;
   /** A structured question awaiting an answer (§B4), or null. */
   pendingQuestion: PendingQuestionState | null;
-  /** Whether the SSE event stream is currently connected. */
-  connected: boolean;
   error: string;
   /** Text of the last send() that failed — non-empty enables the retry action. */
   lastFailedText: string;
@@ -186,6 +185,29 @@ function isAbortError(e: unknown): boolean {
   return e instanceof Error && e.name === 'AbortError';
 }
 
+/** §C8: the single extractor category a given raw SSE event.type maps to
+ *  (or null for a type none of them care about) — the five extractors in
+ *  `../transport/index.js` (extractTextDelta/extractToolUpdate/
+ *  extractPermissionAsk/extractQuestionAsk/isTurnEnd) match disjoint
+ *  type-sets, so `handleEvent()` dispatches through this instead of running
+ *  all five (each re-checking event.type/sessionID itself) on every frame.
+ *  `'message.part.updated'` maps to `'tool-update'` here because
+ *  extractToolUpdate handles it when the part is a tool part — the
+ *  reasoning-part-snapshot learning for that same type is unconditional in
+ *  `handleEvent()`, not part of this dispatch. Exported so the mapping is
+ *  pinned directly by a unit test. */
+export type EventCategory = 'text-delta' | 'tool-update' | 'permission-ask' | 'question-ask' | 'turn-end' | null;
+
+export function classifyEvent(type: string): EventCategory {
+  if (type === 'session.next.text.delta' || type === 'message.part.delta') return 'text-delta';
+  if (type === 'message.part.updated') return 'tool-update';
+  if (type.startsWith('session.next.tool.')) return 'tool-update';
+  if (type === 'permission.asked') return 'permission-ask';
+  if (type === 'question.asked') return 'question-ask';
+  if (type === 'session.idle' || type === 'session.status') return 'turn-end';
+  return null;
+}
+
 function entryFromFlattened(entry: FlattenedEntry): ChatEntry | null {
   // FlattenedToolGroup is the only member with a `type` field at all (always
   // 'tool-group'); FlattenedMessage has none. A tool-only group (no
@@ -202,10 +224,23 @@ function entryFromFlattened(entry: FlattenedEntry): ChatEntry | null {
   };
 }
 
+/** §F3: the hard ceiling send() applies on top of (not instead of) a caller
+ *  AbortSignal — mirrors `git show 455d8728:packages/ui/src/lib/chat/
+ *  chat-state.svelte.ts`'s `STREAM_TURN_TIMEOUT_MS`. Configurable per
+ *  controller instance so tests can shorten it instead of waiting 150s. */
+export type ChatControllerOptions = {
+  /** Default: 150_000 (150s, matching the transport's own no-signal default). */
+  sendCeilingMs?: number;
+};
+
+const DEFAULT_SEND_CEILING_MS = 150_000;
+
 export function createChatController(
   transport: Transport,
-  notifier: ChatNotifier = defaultNotifier
+  notifier: ChatNotifier = defaultNotifier,
+  options: ChatControllerOptions = {}
 ): ChatController {
+  const sendCeilingMs = options.sendCeilingMs ?? DEFAULT_SEND_CEILING_MS;
   const state: ChatControllerState = {
     sessions: [],
     sessionId: null,
@@ -215,7 +250,6 @@ export function createChatController(
     pendingToolStates: [],
     pendingPermission: null,
     pendingQuestion: null,
-    connected: false,
     error: '',
     lastFailedText: '',
   };
@@ -226,9 +260,19 @@ export function createChatController(
   }
 
   let unsubscribeEvents: (() => void) | null = null;
-  /** The session id + abort controller for the turn currently in flight, if any. */
-  type ActiveTurn = { sessionId: string; abort: AbortController };
+  /** The session id + abort controller for the turn currently in flight, if
+   *  any. `reasoningPartIds` (§F10) is the per-turn set of part ids the
+   *  stream has told us are reasoning/thinking parts (via a preceding
+   *  `message.part.updated` snapshot) — extractTextDelta uses it to exclude
+   *  those parts' deltas from the rendered assistant reply. */
+  type ActiveTurn = { sessionId: string; abort: AbortController; reasoningPartIds: Set<string> };
   let activeTurn: ActiveTurn | null = null;
+  /** §F12: fallback ids for callID-less tool updates, keyed by tool name so
+   *  repeated lifecycle updates for the SAME tool call collapse into one
+   *  row instead of a new row per update (a length-derived fallback id
+   *  shifts every time the array grows). Reset per turn alongside the rest
+   *  of the pending-render state. */
+  let toolFallbackIds = new Map<string, string>();
 
   /** Clears every pending-render field (§B4/§B9) — called whenever a turn ends. */
   function resetPendingRenderState(): void {
@@ -236,6 +280,22 @@ export function createChatController(
     state.pendingToolStates = [];
     state.pendingPermission = null;
     state.pendingQuestion = null;
+    toolFallbackIds = new Map();
+  }
+
+  /**
+   * Abort and clear whatever turn is in flight, if any (§F1/§F9) — used by
+   * selectSession()/newSession() (switching away must not let the old
+   * turn's SSE deltas or POST response land in the new session) and by
+   * destroy() (unmounting mid-turn must not leak the in-flight POST).
+   * Idempotent: a no-op when nothing is sending.
+   */
+  function cancelActiveTurn(): void {
+    if (!activeTurn) return;
+    activeTurn.abort.abort();
+    activeTurn = null;
+    state.sending = false;
+    resetPendingRenderState();
   }
 
   function finalizeTurn(turn: ActiveTurn, replyTextOverride?: string): void {
@@ -250,7 +310,15 @@ export function createChatController(
     // Cancels the POST if it's still in flight (the SSE-driven finalize path
     // below never awaited it) — idempotent if stop() already aborted it.
     turn.abort.abort();
-    const raw = replyTextOverride ?? state.pendingText;
+    // §F8: `replyTextOverride ?? state.pendingText` used to let an
+    // EMPTY-STRING override win outright — nullish coalescing only rejects
+    // `undefined`/`null`, not `''` — so a text-less POST body resolving
+    // before session.idle (override === '') discarded whatever had already
+    // streamed in via SSE. Prefer whichever side actually has text; only
+    // fall through to the "no text" placeholder when BOTH are empty.
+    const overrideTrimmed = replyTextOverride?.trim();
+    const pendingTrimmed = state.pendingText.trim();
+    const raw = overrideTrimmed ? replyTextOverride! : pendingTrimmed ? state.pendingText : (replyTextOverride ?? state.pendingText);
     const text = raw.trim() || '(The assistant sent no text.)';
     const capturedToolStates = state.pendingToolStates.length > 0 ? [...state.pendingToolStates] : undefined;
     state.entries = [
@@ -289,7 +357,17 @@ export function createChatController(
     output?: string;
     error?: string;
   }): void {
-    const id = update.callID || `${update.tool}:${state.pendingToolStates.length}`;
+    // §F12: a length-derived fallback (`${tool}:${pendingToolStates.length}`)
+    // shifts to a NEW id every time the array grows, so successive
+    // lifecycle updates for the same callID-less tool used to duplicate
+    // instead of upsert. Assign a stable id once per (tool, first-seen) via
+    // a per-turn map instead.
+    let id = update.callID;
+    if (!id) {
+      const existingFallback = toolFallbackIds.get(update.tool);
+      id = existingFallback ?? `${update.tool}:${randomId()}`;
+      if (!existingFallback) toolFallbackIds.set(update.tool, id);
+    }
     const next: ToolStateSnapshot = {
       id,
       tool: update.tool,
@@ -310,37 +388,73 @@ export function createChatController(
     if (!state.sending || !activeTurn) return;
     const turn = activeTurn;
     const sessionId = turn.sessionId;
-    const delta = extractTextDelta(event, sessionId);
-    if (delta) {
-      state.pendingText += delta;
-      notify();
+
+    // §F10: learn which part ids are reasoning/thinking parts from their
+    // `message.part.updated` snapshot BEFORE their deltas arrive, mirroring
+    // `git show 455d8728:packages/ui/src/lib/chat/chat-state.svelte.ts`
+    // `_onLiveEvent()`'s `partSnapshotType` use — without this, a reasoning
+    // model's thinking-token deltas render as the assistant reply. Always
+    // runs for `message.part.updated` regardless of the `classifyEvent`
+    // dispatch below (that same event type ALSO carries tool-part updates —
+    // see 'tool-update' below).
+    if (event.type === 'message.part.updated') {
+      const snapshot = partSnapshotType(event);
+      if (snapshot?.type === 'reasoning') {
+        turn.reasoningPartIds.add(snapshot.partID);
+      }
     }
 
-    const toolUpdate = extractToolUpdate(event, sessionId);
-    if (toolUpdate) {
-      upsertToolState(toolUpdate);
-      notify();
-    }
-
-    const permissionAsk = extractPermissionAsk(event, sessionId);
-    if (permissionAsk) {
-      state.pendingPermission = { ...permissionAsk, status: 'pending', decision: '', message: '' };
-      notify();
-    }
-
-    const questionAsk = extractQuestionAsk(event, sessionId);
-    if (questionAsk) {
-      state.pendingQuestion = {
-        ...questionAsk,
-        status: 'pending',
-        answers: questionAsk.questions.map(() => ''),
-        message: '',
-      };
-      notify();
-    }
-
-    if (isTurnEnd(event, sessionId)) {
-      finalizeTurn(turn);
+    // §C8: the five extractors' matched type-sets are disjoint — dispatch
+    // on `event.type` to the single relevant one instead of running every
+    // extractor (each doing its own sessionID/type re-check) on every SSE
+    // frame. Behavior-equivalent to the old run-them-all code: at most one
+    // extractor now runs, at most one notify() per frame, same as before.
+    switch (classifyEvent(event.type)) {
+      case 'text-delta': {
+        const delta = extractTextDelta(event, sessionId, turn.reasoningPartIds);
+        if (delta) {
+          state.pendingText += delta;
+          notify();
+        }
+        break;
+      }
+      case 'tool-update': {
+        const toolUpdate = extractToolUpdate(event, sessionId);
+        if (toolUpdate) {
+          upsertToolState(toolUpdate);
+          notify();
+        }
+        break;
+      }
+      case 'permission-ask': {
+        const permissionAsk = extractPermissionAsk(event, sessionId);
+        if (permissionAsk) {
+          state.pendingPermission = { ...permissionAsk, status: 'pending', decision: '', message: '' };
+          notify();
+        }
+        break;
+      }
+      case 'question-ask': {
+        const questionAsk = extractQuestionAsk(event, sessionId);
+        if (questionAsk) {
+          state.pendingQuestion = {
+            ...questionAsk,
+            status: 'pending',
+            answers: questionAsk.questions.map(() => ''),
+            message: '',
+          };
+          notify();
+        }
+        break;
+      }
+      case 'turn-end': {
+        if (isTurnEnd(event, sessionId)) {
+          finalizeTurn(turn);
+        }
+        break;
+      }
+      default:
+      // Not a type any extractor cares about — nothing to do.
     }
   }
 
@@ -377,12 +491,22 @@ export function createChatController(
     resetPendingRenderState();
     state.error = '';
     const abort = new AbortController();
-    const turn: ActiveTurn = { sessionId, abort };
+    const turn: ActiveTurn = { sessionId, abort, reasoningPartIds: new Set() };
     activeTurn = turn;
     notify();
 
+    // §F3: passing ONLY the caller-owned `abort.signal` here used to
+    // suppress the transport's own 150s `AbortSignal.timeout` default (it
+    // applies only when `options.signal` is omitted) with no replacement
+    // ceiling of our own — a POST that never settles, with no SSE turn-end
+    // either, wedged `sending` forever. Combine the caller signal WITH a
+    // hard ceiling so stop()/session-switch cancellation still works AND a
+    // hung request still gets cut off (mirrors `git show 455d8728:packages/
+    // ui/src/lib/chat/chat-state.svelte.ts`'s STREAM_TURN_TIMEOUT_MS).
+    const signal = AbortSignal.any([abort.signal, AbortSignal.timeout(sendCeilingMs)]);
+
     try {
-      const response = await transport.sendMessage(sessionId, trimmed, { signal: abort.signal });
+      const response = await transport.sendMessage(sessionId, trimmed, { signal });
       finalizeTurn(turn, assistantTextFromResponse(response));
     } catch (e) {
       // stop() or an SSE-driven finalizeTurn() aborted this POST — the turn
@@ -413,12 +537,20 @@ export function createChatController(
     async init() {
       unsubscribeEvents = transport.subscribeEvents({
         onEvent: handleEvent,
-        onConnect: () => {
-          state.connected = true;
-          notify();
-        },
-        onDisconnect: () => {
-          state.connected = false;
+        // §C7: no onConnect/onDisconnect handlers — nothing in the UI
+        // renders a live/idle status indicator for the SSE stream (that
+        // used to be written on every open/close but never read anywhere),
+        // and adding one is scope creep here. Wiring those handlers up just
+        // to notify() every subscriber on each reconnect churn was pure
+        // overhead with no reader on the other end.
+        // §F6: a 401/403 on the /event stream is not a transient
+        // disconnect — it will never self-heal by reconnecting, so the
+        // transport stops retrying and hands it here instead of looping
+        // forever. Surfaced through the same `state.error` the alert banner
+        // already renders (friendlyMessage() gives 401/403 its own
+        // "check your credentials" copy).
+        onAuthError: (error) => {
+          state.error = friendlyMessage(error, 'The live update stream failed.');
           notify();
         },
       });
@@ -428,12 +560,23 @@ export function createChatController(
     destroy() {
       unsubscribeEvents?.();
       unsubscribeEvents = null;
+      // §F9: unsubscribing from events left an in-flight turn's POST
+      // running with nothing left to ever finalize it — abort it too.
+      cancelActiveTurn();
     },
 
     refreshSessions,
 
     async selectSession(id: string): Promise<void> {
       if (id === state.sessionId) return;
+      // §F1: switching sessions mid-stream used to leave the OLD turn's
+      // AbortController un-aborted and `sending`/`pendingText` untouched —
+      // its SSE deltas and/or POST response could still land (finalizeTurn
+      // appends unconditionally to `state.entries`), corrupting the NEW
+      // session's transcript. Cancel it first; finalizeTurn/handleEvent's
+      // `activeTurn !== turn` identity guard then no-ops anything the stale
+      // turn does afterwards.
+      cancelActiveTurn();
       state.sessionId = id;
       state.entries = [];
       state.error = '';
@@ -448,6 +591,9 @@ export function createChatController(
     },
 
     newSession() {
+      // §F1: same guard as selectSession() above — New chat mid-stream must
+      // not let the old turn's reply land once a new session starts.
+      cancelActiveTurn();
       state.sessionId = null;
       state.entries = [];
       state.error = '';
@@ -461,11 +607,12 @@ export function createChatController(
       const turn = activeTurn;
       const { sessionId, abort } = turn;
       abort.abort();
-      try {
-        await transport.abortTurn(sessionId);
-      } catch {
-        // Best-effort — the turn finishes locally below regardless.
-      }
+      // §F5: finalize LOCALLY first — `transport.abortTurn()` is a fetch
+      // with no timeout of its own; awaiting it before finalizing used to
+      // strand `sending=true` forever if the remote POST /abort hung, even
+      // though the local turn was already aborted above. Finalizing first
+      // makes stop() always resolve the turn; the remote abort is now
+      // best-effort and fire-and-forget so a hang there can never block it.
       if (state.pendingText) {
         finalizeTurn(turn, state.pendingText);
       } else if (activeTurn === turn) {
@@ -475,6 +622,9 @@ export function createChatController(
         state.entries = [...state.entries, { id: randomId(), kind: 'note', text: 'Stopped.', timestamp: Date.now() }];
         notify();
       }
+      void transport.abortTurn(sessionId).catch(() => {
+        // Best-effort — the turn already finished locally above regardless.
+      });
     },
 
     async retryFailedSend(): Promise<void> {

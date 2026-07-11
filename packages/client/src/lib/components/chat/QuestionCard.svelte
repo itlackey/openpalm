@@ -45,8 +45,33 @@
           </button>
         {/each}
       </div>
+      <p class="s-action-hint">or write your answer below</p>
     {/if}
-    <p class="s-action-hint">or write your answer below</p>
+    <!-- P1 (review 2026-07-11): a single options:[] question used to render
+         NOTHING past this point — no free-text input, no submit, no reject
+         — making it unanswerable and undeclineable. Mirrors the multi-
+         question branch's controls (the else case just below). -->
+    <input
+      class="s-question-input"
+      type="text"
+      value={question.answers[0]}
+      placeholder="Type an answer"
+      oninput={(event) => onDraft(0, (event.currentTarget as HTMLInputElement).value)}
+      disabled={locked}
+    />
+    <div class="s-action-btns">
+      <button
+        class="s-action-btn s-action-btn-primary"
+        type="button"
+        onclick={() => onSubmit()}
+        disabled={locked}
+      >
+        submit answer
+      </button>
+      <button class="s-action-btn" type="button" onclick={() => onReject()} disabled={locked}>
+        can't answer
+      </button>
+    </div>
   {:else}
     <div class="s-multi-questions">
       {#each question.questions as item, index (`${question.requestID}:question:${index}`)}

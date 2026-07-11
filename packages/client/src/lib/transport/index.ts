@@ -85,6 +85,14 @@ export type StreamHandlers = {
   onEvent(event: RawEvent): void;
   onConnect?(): void;
   onDisconnect?(error: Error): void;
+  /**
+   * Called instead of an indefinite reconnect loop when the `/event` stream
+   * fails with 401/403 (review F6) — the stored credentials were rejected,
+   * which will never self-heal by retrying. `subscribeEvents()` stops
+   * reconnecting once this fires; the consumer (chat-controller) surfaces it
+   * as an error state instead of silently retrying forever.
+   */
+  onAuthError?(error: Error): void;
 };
 
 /** A raw OpenCode session-message part, as returned by `GET /session/:id/message`. */
@@ -389,17 +397,24 @@ export function createTransport(options: TransportOptions): Transport {
       let controller = new AbortController();
       let lastEventId: string | undefined;
 
+      // §T2: the `{ once: true }` abort listener below only ever self-removes
+      // when `controller.signal` actually aborts — which never happens on the
+      // normal (non-aborted) path of a reconnect delay elapsing on its own,
+      // so every ordinary sleep() call left one more listener permanently
+      // attached to the same long-lived signal. Explicitly remove it once
+      // the timer fires too, so a clean elapse cleans up just as the abort
+      // path does.
       const sleep = (ms: number): Promise<void> =>
         new Promise((resolve) => {
-          const timer = setTimeout(resolve, ms);
-          controller.signal.addEventListener(
-            'abort',
-            () => {
-              clearTimeout(timer);
-              resolve();
-            },
-            { once: true }
-          );
+          const onAbort = () => {
+            clearTimeout(timer);
+            resolve();
+          };
+          const timer = setTimeout(() => {
+            controller.signal.removeEventListener('abort', onAbort);
+            resolve();
+          }, ms);
+          controller.signal.addEventListener('abort', onAbort, { once: true });
         });
 
       async function readStream(): Promise<void> {
@@ -412,7 +427,14 @@ export function createTransport(options: TransportOptions): Transport {
           signal: controller.signal,
         });
         if (!response.ok || !response.body) {
-          throw new Error(`SSE stream failed: ${response.status} ${response.statusText}`);
+          // §F6: attach `status` (mirrors request() above) so 401/403 can be
+          // told apart from a generic transient disconnect below — a bare
+          // Error with no status made an auth failure indistinguishable from
+          // "the network hiccuped", so it reconnect-looped with backoff
+          // forever instead of ever giving up.
+          throw Object.assign(new Error(`SSE stream failed: ${response.status} ${response.statusText}`), {
+            status: response.status,
+          });
         }
         handlers.onConnect?.();
         for await (const frame of parseSseStream(response.body)) {
@@ -444,6 +466,15 @@ export function createTransport(options: TransportOptions): Transport {
             // disconnect worth reporting.
             if (error.name !== 'AbortError') {
               handlers.onDisconnect?.(error);
+            }
+            // §F6: 401/403 means the stored credentials were rejected — that
+            // will never self-heal by retrying, so surface it as an
+            // auth-failure and stop reconnecting instead of looping with
+            // backoff forever.
+            const status = (error as { status?: number }).status;
+            if (status === 401 || status === 403) {
+              handlers.onAuthError?.(error);
+              return;
             }
             const backoff = Math.min(INITIAL_BACKOFF_MS * 2 ** Math.max(0, attempt - 1), MAX_BACKOFF_MS);
             await sleep(backoff);
@@ -602,6 +633,23 @@ export async function* parseSseStream(
 function propStr(props: Record<string, unknown> | undefined, key: string): string | undefined {
   const value = props?.[key];
   return typeof value === 'string' ? value : undefined;
+}
+
+/**
+ * Identify a `message.part.updated` event's part id/type (e.g. `'reasoning'`
+ * vs `'text'`), or null if the event isn't a part-snapshot at all. Ported
+ * from packages/ui/src/lib/chat/oc-events.ts partSnapshotType() — the
+ * chat-controller uses this to build a per-turn `reasoningPartIds` set
+ * (§F10) so `extractTextDelta` can exclude a reasoning model's thinking-token
+ * deltas from the rendered assistant reply.
+ */
+export function partSnapshotType(event: RawEvent): { partID: string; type: string } | null {
+  if (event.type !== 'message.part.updated') return null;
+  const part = event.properties?.part as { id?: unknown; type?: unknown } | undefined;
+  if (typeof part?.id === 'string' && typeof part.type === 'string') {
+    return { partID: part.id, type: part.type };
+  }
+  return null;
 }
 
 /**

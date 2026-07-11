@@ -38,7 +38,7 @@
   //   §B14 — below 44rem the sessions list moves into a togglable drawer
   //     built on the ui-kit Drawer (G3's promoted focus-trap) instead of
   //     being unreachable `display:none` with no alternative path.
-  import { onMount, tick } from 'svelte';
+  import { onMount } from 'svelte';
   import { goto } from '$app/navigation';
   import IconAdd from '@openpalm/ui-kit/components/icons/IconAdd.svelte';
   import IconConversations from '@openpalm/ui-kit/components/icons/IconConversations.svelte';
@@ -53,8 +53,8 @@
   import type { ConnectionEntry } from '$lib/connections/index.js';
   import { createChatController, type ChatControllerState } from '$lib/chat/chat-controller.js';
   import type { ToolStateSnapshot } from '$lib/transport/index.js';
-  import { renderMarkdown } from '$lib/markdown.js';
   import { nextFollowState } from '$lib/chat/autoscroll.js';
+  import { createToolLogItemsDeriver } from '$lib/chat/tool-log-items.js';
 
   let connection = $state<ConnectionEntry | null>(null);
   let transport: Transport | null = null;
@@ -72,7 +72,6 @@
     pendingToolStates: [],
     pendingPermission: null,
     pendingQuestion: null,
-    connected: false,
     error: '',
     lastFailedText: '',
   });
@@ -100,23 +99,19 @@
   // pendingToolStates (live), deduped by id so a keyed {#each} never
   // collides across the history/live boundary (mirrors 455d8728 chat-state's
   // `toolLog` getter).
-  const toolLogItems = $derived.by((): ToolStateSnapshot[] => {
-    const seen = new Set<string>();
-    const out: ToolStateSnapshot[] = [];
-    const push = (states: ToolStateSnapshot[] | undefined): void => {
-      if (!states) return;
-      for (const tool of states) {
-        if (seen.has(tool.id)) continue;
-        seen.add(tool.id);
-        out.push(tool);
-      }
-    };
-    for (const entry of chatState.entries) {
-      push((entry as { toolStates?: ToolStateSnapshot[] }).toolStates);
-    }
-    push(chatState.pendingToolStates);
-    return out;
-  });
+  //
+  // P3 (PR #562 review): this used to re-scan ALL of chatState.entries on
+  // EVERY controller notify, even a pendingText-only delta that never
+  // touched entries — because the subscribe callback below replaces
+  // `chatState` wholesale on every notify, invalidating any $derived that
+  // reads any of its properties. createToolLogItemsDeriver() (tested in
+  // tests/tool-log-items.test.ts) memoizes the O(entries) history scan by
+  // the entries ARRAY REFERENCE, which chat-controller.ts only ever changes
+  // when entries genuinely changes.
+  const deriveToolLogItems = createToolLogItemsDeriver();
+  const toolLogItems = $derived.by((): ToolStateSnapshot[] =>
+    deriveToolLogItems(chatState.entries, chatState.pendingToolStates)
+  );
 
   // ── B4 permission/question replies ──────────────────────────────────────
   // The '' branch of `decision` only occurs before a reply has been chosen
@@ -156,10 +151,18 @@
     followingLatest = following;
   }
 
+  // P4 (PR #562 review): a single cached MediaQueryList instead of calling
+  // matchMedia() (which constructs a new list every time) at every scroll
+  // site — `.matches` still reflects the CURRENT OS setting live, so this
+  // loses no correctness, only the redundant re-construction.
+  const reduceMotionQuery =
+    typeof window !== 'undefined' ? window.matchMedia('(prefers-reduced-motion: reduce)') : null;
+  function prefersReducedMotion(): boolean {
+    return reduceMotionQuery?.matches ?? false;
+  }
+
   function scrollToLatest(): void {
-    const reduceMotion =
-      typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    scrollAnchorEl?.scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth' });
+    scrollAnchorEl?.scrollIntoView({ behavior: prefersReducedMotion() ? 'auto' : 'smooth' });
   }
 
   function jumpToLatest(): void {
@@ -192,9 +195,7 @@
     scroller?.addEventListener('scroll', handleScroll, { passive: true });
     const observer = new MutationObserver(() => {
       if (!params.isFollowing()) return;
-      const reduceMotion =
-        typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-      queueMicrotask(() => scrollAnchorEl?.scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth' }));
+      queueMicrotask(() => scrollAnchorEl?.scrollIntoView({ behavior: prefersReducedMotion() ? 'auto' : 'smooth' }));
     });
     observer.observe(node, { childList: true, subtree: true, characterData: true });
     return {
@@ -244,7 +245,12 @@
       controller.subscribe(() => {
         if (!controller) return;
         chatState = { ...controller.getState() };
-        void scrollIfFollowing();
+        // P4 (PR #562 review): no scroll-to-latest call here — the
+        // autoscroll action's MutationObserver below already fires once
+        // Svelte actually applies this state change to the DOM, so a
+        // second, redundant scroll-to-latest trigger keyed off the
+        // notification itself (racing the DOM update instead of following
+        // it) only doubled the work per delta without adding coverage.
       });
       await controller.init();
     })();
@@ -265,14 +271,6 @@
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   });
-
-  async function scrollIfFollowing(): Promise<void> {
-    if (!followingLatest) return;
-    await tick();
-    const reduceMotion =
-      typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    scrollAnchorEl?.scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth' });
-  }
 
   function selectSession(id: string): void {
     void controller?.selectSession(id);
@@ -310,7 +308,17 @@
 {#snippet sessionsList()}
   <div class="sessions-head">
     <span class="sessions-title">Sessions</span>
-    <button type="button" class="new-chat" onclick={newSession} aria-label="New chat">
+    <!-- F1 (review 2026-07-11): the controller now cancels an in-flight turn
+         cleanly on newSession()/selectSession() (aborts the POST, drops the
+         old turn's SSE deltas), but disabling these while sending too avoids
+         a mid-abort visual flash and accidental rapid-fire switching. -->
+    <button
+      type="button"
+      class="new-chat"
+      onclick={newSession}
+      aria-label="New chat"
+      disabled={chatState.sending}
+    >
       <IconAdd size={14} />
     </button>
   </div>
@@ -323,6 +331,7 @@
           class:current={session.id === chatState.sessionId}
           aria-current={session.id === chatState.sessionId ? 'true' : undefined}
           onclick={() => selectSession(session.id)}
+          disabled={chatState.sending && session.id !== chatState.sessionId}
         >
           {sessionLabel(session)}{#if session.id === chatState.sessionId}<span class="sr-only"> (current)</span>{/if}
         </button>
@@ -381,9 +390,19 @@
         {#if chatState.sending}
           {#if chatState.pendingText}
             <div class="turn master">
+              <!-- P2 (PR #562 review): the LIVE streaming text renders as
+                   plain, Svelte-auto-escaped text (no @html, no
+                   markdown-it) — re-parsing the full accumulated
+                   pendingText with markdown-it on every SSE delta was
+                   O(turn-length^2) over a turn. Once the turn finalizes,
+                   this whole block unmounts and the committed entry renders
+                   through ChatTurn (which DOES markdown-render, once,
+                   below) — markdown formatting simply doesn't appear until
+                   the reply is done streaming. white-space: pre-wrap here
+                   stands in for the markdown renderer's paragraph/<br>
+                   handling so line breaks are still visible meanwhile. -->
               <div class="master-words settled">
-                <!-- eslint-disable-next-line svelte/no-at-html-tags -- renderMarkdown uses markdown-it with html:false; see ChatTurn.svelte -->
-                <div class="markdown-body">{@html renderMarkdown(chatState.pendingText)}</div>
+                <div class="pending-text">{chatState.pendingText}</div>
               </div>
             </div>
           {/if}
@@ -549,6 +568,12 @@
     border-color: var(--s-seal);
   }
 
+  .new-chat:disabled,
+  .session:disabled {
+    opacity: 0.4;
+    cursor: default;
+  }
+
   .sessions ul {
     flex: 1;
     overflow-y: auto;
@@ -638,6 +663,14 @@
     display: flex;
     flex-direction: column;
     gap: var(--s-sp-5);
+  }
+
+  /* P2: the live-streaming turn is plain text, not markdown-it HTML — this
+     stands in for the paragraph/<br> handling the finalized (ChatTurn)
+     render gets from markdown-it's `breaks: true` once the turn ends. */
+  .pending-text {
+    white-space: pre-wrap;
+    word-break: break-word;
   }
 
   .s-status {
