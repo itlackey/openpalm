@@ -99,6 +99,32 @@ describe("P5e — packages/ui-kit stays a private raw-source package (characteri
 	});
 });
 
+describe("C4 — packages/ui-kit belongs to a release unit (RED until C4 fix)", () => {
+	// d8b3fe04 "stamp all to 0.13.0-beta.1" missed packages/ui-kit — it belongs
+	// to no release unit, so it silently drifted to 0.12.52 and CI's per-unit
+	// version-sync check (ci.yml "Validate per-unit version sync") can't catch
+	// it because ui-kit isn't a member of any unit's manifest list. Not
+	// load-bearing today (private, workspace:* raw source, never published —
+	// see the P5e "ui-kit stays unpublished" tests above, which this fix does
+	// NOT change), but it misleads debugging and any future publish decision.
+	test(".github/release-package-groups.json platform unit lists packages/ui-kit/package.json", () => {
+		const groups = JSON.parse(
+			readFileSync(join(ROOT, ".github/release-package-groups.json"), "utf-8"),
+		) as { units: Record<string, string[]> };
+		expect(groups.units.platform).toContain("packages/ui-kit/package.json");
+	});
+
+	test("scripts/bump-unit.mjs stamps packages/ui-kit/package.json with the platform unit", () => {
+		const bumpUnit = readFileSync(join(ROOT, "scripts/bump-unit.mjs"), "utf-8");
+		expect(bumpUnit).toContain("packages/ui-kit/package.json");
+	});
+
+	test("packages/ui-kit stays private (this fix wires the unit membership only — it does not publish ui-kit)", () => {
+		const uiKit = readJson("packages/ui-kit/package.json");
+		expect(uiKit.private).toBe(true);
+	});
+});
+
 describe("P5e — platform stamp/version-sync membership for packages/client (RED until P5e item 1)", () => {
 	test(".github/release-package-groups.json platform unit lists packages/client/package.json", () => {
 		// CI's "Validate per-unit version sync" step reads this file; membership

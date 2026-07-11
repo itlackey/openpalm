@@ -185,6 +185,145 @@ describe("P5e — client-bundle purity gate wired into CI (RED until P5e item 3)
 	});
 });
 
+// ── C1 (2026-07-10 review): @openpalm/portal-sdk was never added to the
+// publish DAG. The live 0.13.0-beta.1 discord/slack portal packages pin
+// @openpalm/portal-sdk@0.12.52 exact (baked in by `bun pm pack` resolving the
+// workspace:* dependency at pack time) — but portal-sdk was never published,
+// so the adapters are uninstallable (E404). Fix: add an npm-portal-sdk job
+// mirroring the other npm-* jobs, needs-ed by both portal adapters + tag-release.
+describe("C1 — @openpalm/portal-sdk joins the publish DAG (RED until C1 fix)", () => {
+	const release = parseWorkflow(RELEASE_WORKFLOW);
+	const jobs = jobsOf(release);
+	const portalSdkEntry = publishJobs(release).find(
+		([, job]) => job.with?.["package-name"] === "@openpalm/portal-sdk",
+	);
+
+	test("a job publishes @openpalm/portal-sdk via the reusable publish-npm-package.yml", () => {
+		expect(portalSdkEntry).toBeDefined();
+	});
+
+	test("portal-sdk publish mirrors the discord/slack portal jobs: package-dir, exact-version pin, computed version", () => {
+		const w = portalSdkEntry?.[1].with ?? {};
+		expect(w["package-dir"]).toBe("packages/portal-sdk");
+		expect(w["exact-version"]).toBe(true);
+		expect(String(w.version ?? "")).toContain("compute-version.outputs.new_version");
+	});
+
+	test("portal-sdk publish is gated on the same units as the discord/slack portals (portals | all)", () => {
+		const cond = String(portalSdkEntry?.[1].if ?? "");
+		expect(cond).toContain("inputs.unit == 'portals'");
+		expect(cond).toContain("inputs.unit == 'all'");
+	});
+
+	test("portal-sdk publish depends on compute-version + bump", () => {
+		const needs = needsList(portalSdkEntry?.[1] ?? {});
+		expect(needs).toContain("compute-version");
+		expect(needs).toContain("bump");
+	});
+
+	test("both discord-portal and slack-portal publish jobs need npm-portal-sdk (sdk before adapters)", () => {
+		const portalSdkJobId = portalSdkEntry?.[0] ?? "<missing @openpalm/portal-sdk publish job>";
+		const discordEntry = publishJobs(release).find(
+			([, job]) => job.with?.["package-name"] === "@openpalm/discord-portal",
+		);
+		const slackEntry = publishJobs(release).find(
+			([, job]) => job.with?.["package-name"] === "@openpalm/slack-portal",
+		);
+		expect(needsList(discordEntry?.[1] ?? {})).toContain(portalSdkJobId);
+		expect(needsList(slackEntry?.[1] ?? {})).toContain(portalSdkJobId);
+	});
+
+	test("tag-release (TAG-LAST invariant) waits on the portal-sdk publish job", () => {
+		const portalSdkJobId = portalSdkEntry?.[0] ?? "<missing @openpalm/portal-sdk publish job>";
+		expect(needsList(jobs["tag-release"] ?? {})).toContain(portalSdkJobId);
+	});
+});
+
+// The generic DAG-completeness invariant the review calls out as "THE KEY
+// REGRESSION TEST": every RUNTIME (dependencies, not devDependencies)
+// workspace:* dependency of a published package must itself be published in
+// the same DAG. devDependencies workspace:* refs (e.g. @openpalm/ui-kit into
+// @openpalm/ui / @openpalm/client) are build-time-only and get inlined by the
+// consuming app's bundler — they are NOT baked into the tarball as a runtime
+// dependency by `bun pm pack`, unlike a `dependencies` entry, which bun
+// resolves to the workspace package's on-disk version at pack time. This is
+// exactly the shape of the C1 bug: portals/{discord,slack}/package.json list
+// @openpalm/portal-sdk under `dependencies` as workspace:*.
+describe("C1 — every workspace:* runtime dependency of a published package is a published DAG node", () => {
+	const release = parseWorkflow(RELEASE_WORKFLOW);
+	const nodes = publishJobs(release);
+	const publishedNames = new Set(nodes.map(([, job]) => String(job.with?.["package-name"])));
+
+	for (const [id, job] of nodes) {
+		const packageDir = job.with?.["package-dir"];
+		if (typeof packageDir !== "string") continue;
+		const manifestPath = join(ROOT, packageDir, "package.json");
+		if (!existsSync(manifestPath)) continue;
+		const manifest = JSON.parse(readFileSync(manifestPath, "utf-8")) as {
+			dependencies?: Record<string, string>;
+		};
+		const workspaceRuntimeDeps = Object.entries(manifest.dependencies ?? {}).filter(
+			([, range]) => range === "workspace:*",
+		);
+		for (const [depName] of workspaceRuntimeDeps) {
+			test(`${id} (${String(job.with?.["package-name"])}) declares runtime workspace:* dep ${depName}, which must be a published node`, () => {
+				expect(publishedNames.has(depName)).toBe(true);
+			});
+		}
+	}
+});
+
+// ── I1 (2026-07-10 review): docker-assistant needs only [compute-version,
+// bump] — no ordering after npm-client/npm-skeleton, and nothing stops it
+// baking a PLATFORM_VERSION that has no published @openpalm/client or
+// @openpalm/skeleton (a `unit=assistant` release anchors on the completely
+// independent containers/assistant/VERSION file, NOT the platform npm
+// version). Fix: unit-tolerant needs on npm-client/npm-skeleton + a preflight
+// step resolving/validating PLATFORM_VERSION before the image build.
+describe("I1 — docker-assistant is ordered after npm-client/npm-skeleton and preflights PLATFORM_VERSION", () => {
+	const release = parseWorkflow(RELEASE_WORKFLOW);
+	const jobs = jobsOf(release);
+	const assistantJob = jobs["docker-assistant"];
+
+	test("docker-assistant needs npm-client and npm-skeleton", () => {
+		const needs = needsList(assistantJob ?? {});
+		expect(needs).toContain("npm-client");
+		expect(needs).toContain("npm-skeleton");
+	});
+
+	test("docker-assistant's if is unit-tolerant of npm-client/npm-skeleton being skipped (standalone unit=assistant runs)", () => {
+		// Matches the house pattern used by docker-guardian: `!= 'failure'` (not
+		// `== 'success'`), because npm-client/npm-skeleton are only requested for
+		// unit=platform/all and are legitimately 'skipped' for unit=assistant/images.
+		const cond = String(assistantJob?.if ?? "");
+		expect(cond).toContain("needs.npm-client.result != 'failure'");
+		expect(cond).toContain("needs.npm-skeleton.result != 'failure'");
+	});
+
+	test("docker-assistant preflights that the baked client/skeleton version is actually published on npm", () => {
+		const steps = assistantJob?.steps ?? [];
+		const preflight = steps.find((s) => /npm view/.test(s.run ?? ""));
+		expect(preflight).toBeDefined();
+		expect(preflight?.run ?? "").toContain("@openpalm/client");
+		expect(preflight?.run ?? "").toContain("@openpalm/skeleton");
+		// Must actually fail the build on a 404, not just warn.
+		expect(preflight?.run ?? "").toMatch(/exit 1|::error::/);
+	});
+
+	test("docker-assistant does not blindly bake compute-version's unit-local anchor as PLATFORM_VERSION for image-only units", () => {
+		// unit=assistant's compute-version output is bumped from
+		// containers/assistant/VERSION — an anchor independent of the platform npm
+		// version. The build-arg must come from a step that resolves the actual
+		// last-published platform version for that unit, not
+		// needs.compute-version.outputs.new_version directly.
+		const steps = assistantJob?.steps ?? [];
+		const buildStep = steps.find((s) => s.name === "Build and push");
+		const buildArgs = String(buildStep?.with?.["build-args"] ?? "");
+		expect(buildArgs).not.toContain("needs.compute-version.outputs.new_version");
+		expect(buildArgs).toMatch(/PLATFORM_VERSION=\$\{\{\s*steps\.\w+\.outputs\.\w+\s*\}\}/);
+	});
+});
+
 describe("guardian image dry-run stays buildable before npm publish", () => {
 	const release = parseWorkflow(RELEASE_WORKFLOW);
 	const jobs = jobsOf(release);
