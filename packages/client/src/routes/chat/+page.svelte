@@ -331,6 +331,29 @@
   {/if}
 {/snippet}
 
+<!-- G2/B14 (review 2026-07-10): this toggle lives OUTSIDE the `inert`-guarded
+     `.chat` div below on purpose — it's the drawer's own invoker, and the
+     ui-kit Drawer's focus-trap (G3) restores focus to it BY REFERENCE when
+     the drawer closes (Escape/scrim/Close button). Nesting it inside `.chat`
+     used to mean "close the drawer" and "make the invoker interactive again"
+     raced within the same reactive update: a synchronous `.focus()` call
+     against a button still covered by `inert={true}` silently no-ops to
+     `<body>` (caught by the G2 Playwright suite's 375px keyboard-traversal
+     spec — the same class of bug as the connections page's vanishing
+     "+ Add connection" invoker). -->
+<div class="mobile-sessions-bar">
+  <button
+    type="button"
+    class="sessions-toggle"
+    aria-haspopup="dialog"
+    aria-expanded={sessionsDrawerOpen}
+    onclick={openSessionsDrawer}
+  >
+    <IconConversations size={16} />
+    <span>Sessions</span>
+  </button>
+</div>
+
 <!-- B14: the rest of the page is inert while the small-screen sessions
      drawer owns the top layer (its own focus trap + Escape close come from
      the ui-kit Drawer/G3 focus-trap). -->
@@ -340,19 +363,6 @@
   </aside>
 
   <section class="thread-pane">
-    <div class="mobile-sessions-bar">
-      <button
-        type="button"
-        class="sessions-toggle"
-        aria-haspopup="dialog"
-        aria-expanded={sessionsDrawerOpen}
-        onclick={openSessionsDrawer}
-      >
-        <IconConversations size={16} />
-        <span>Sessions</span>
-      </button>
-    </div>
-
     <!-- role="log": a div, not <main> — <main> already carries the implicit
          "main" landmark, and role="log" would override (not add to) it. -->
     <div class="thread" bind:this={threadEl} role="log" aria-label="Chat history">

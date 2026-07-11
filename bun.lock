@@ -32,7 +32,9 @@
         "openpalm-client-serve": "bin/serve.mjs",
       },
       "devDependencies": {
+        "@axe-core/playwright": "^4.11.3",
         "@openpalm/ui-kit": "workspace:*",
+        "@playwright/test": "^1.58.1",
         "@sveltejs/adapter-static": "^3.0.10",
         "@sveltejs/kit": "^2.53.3",
         "@sveltejs/vite-plugin-svelte": "^7.1.2",

@@ -26,10 +26,14 @@
     "preview": "vite preview",
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --fail-on-warnings",
     "test": "bun test",
-    "serve": "node bin/serve.mjs"
+    "serve": "node bin/serve.mjs",
+    "test:e2e": "playwright test",
+    "test:browsers": "playwright install --with-deps chromium"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.11.3",
     "@openpalm/ui-kit": "workspace:*",
+    "@playwright/test": "^1.58.1",
     "@sveltejs/adapter-static": "^3.0.10",
     "@vite-pwa/sveltekit": "^1.1.0",
     "@types/markdown-it": "^14.1.2",

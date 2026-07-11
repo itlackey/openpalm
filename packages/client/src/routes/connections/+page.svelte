@@ -340,11 +340,21 @@
     {/each}
   </section>
 
-  {#if formMode === 'idle'}
-    <button type="button" class="btn btn-primary" onclick={openAddForm}>
-      + Add connection
-    </button>
-  {/if}
+  <!-- G2/G3 (review 2026-07-10): stays mounted while the drawer is open
+       rather than `{#if formMode === 'idle'}`-gated (and NOT `disabled` —
+       a `disabled` attribute takes a focused button out of the focus order
+       synchronously too). The ui-kit Drawer's focus-trap (G3) restores
+       focus to whatever `document.activeElement` WAS at open time, by
+       object reference — hiding or disabling this button when the drawer
+       opens invalidated that reference (a removed/disabled node can't be
+       refocused), so `.focus()` on close silently no-op'd to `<body>`
+       (caught by the G2 Playwright suite's Escape/Cancel focus-restore
+       assertions). Harmless to leave live: the Drawer's full-viewport
+       `.drawer-scrim` sits above it in the stacking order and intercepts
+       any click while open. -->
+  <button type="button" class="btn btn-primary" onclick={openAddForm}>
+    + Add connection
+  </button>
 
   <!-- G3 (review 2026-07-10 §G3): the add/edit/credentials form used to be
        an inline expand-in-place block with no focus management at all —
