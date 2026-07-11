@@ -8,32 +8,56 @@
     <script>
       // Theme boot — same storage key and resolution order as the host app
       // so a browser that uses both stays on one theme.
+      //
+      // review 2026-07-10 §B16: this used to be a one-shot IIFE, so an
+      // OS-scheduled dark-mode change (e.g. a sunset auto-switch) mid-session
+      // was ignored until the next full reload. When the stored preference is
+      // 'system' (the default), a matchMedia 'change' listener re-runs the
+      // same resolve+apply logic live. An explicit 'light'/'dark' choice is
+      // never overridden by the OS.
       (() => {
         const storageKey = 'openpalm.theme';
         const darkThemeColor = '#161c22';
         const lightThemeColor = '#f9fafb';
 
+        function isThemePreference(value) {
+          return value === 'light' || value === 'dark' || value === 'system';
+        }
+
+        function apply() {
+          try {
+            const stored = window.localStorage.getItem(storageKey);
+            const preference = isThemePreference(stored) ? stored : 'system';
+            const systemPrefersDark = window.matchMedia?.('(prefers-color-scheme: dark)')?.matches ?? false;
+            const resolved = preference === 'system' ? (systemPrefersDark ? 'dark' : 'light') : preference;
+            const root = document.documentElement;
+            root.setAttribute('data-theme', resolved);
+            root.style.colorScheme = resolved;
+
+            const themeColorMeta = document.querySelector('meta[name="theme-color"]');
+            if (themeColorMeta) {
+              themeColorMeta.setAttribute('content', resolved === 'dark' ? darkThemeColor : lightThemeColor);
+            }
+
+            const colorSchemeMeta = document.querySelector('meta[name="color-scheme"]');
+            if (colorSchemeMeta) {
+              colorSchemeMeta.setAttribute('content', resolved);
+            }
+          } catch {
+            // Keep the default light metadata if storage access is unavailable.
+          }
+        }
+
+        apply();
+
         try {
-          const stored = window.localStorage.getItem(storageKey);
-          const preference = stored === 'light' || stored === 'dark' || stored === 'system' ? stored : 'system';
-          const resolved = preference === 'system'
-            ? (window.matchMedia?.('(prefers-color-scheme: dark)')?.matches ? 'dark' : 'light')
-            : preference;
-          const root = document.documentElement;
-          root.setAttribute('data-theme', resolved);
-          root.style.colorScheme = resolved;
-
-          const themeColorMeta = document.querySelector('meta[name="theme-color"]');
-          if (themeColorMeta) {
-            themeColorMeta.setAttribute('content', resolved === 'dark' ? darkThemeColor : lightThemeColor);
-          }
-
-          const colorSchemeMeta = document.querySelector('meta[name="color-scheme"]');
-          if (colorSchemeMeta) {
-            colorSchemeMeta.setAttribute('content', resolved);
-          }
+          const media = window.matchMedia?.('(prefers-color-scheme: dark)');
+          // apply() re-reads the stored preference every time it runs, so a
+          // system-preference change is a no-op for an explicit 'light'/'dark'
+          // choice — no need to gate the listener itself on the preference.
+          media?.addEventListener?.('change', apply);
         } catch {
-          // Keep the default light metadata if storage access is unavailable.
+          // matchMedia unavailable/unsupported — the initial apply() still ran.
         }
       })();
     </script>

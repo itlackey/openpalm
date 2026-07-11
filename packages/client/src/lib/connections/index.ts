@@ -40,6 +40,15 @@ export type NewConnectionInput = Omit<ConnectionEntry, 'id'> & { id?: string };
 /** Shape of the runtime-config.json written beside the static build (P5d). */
 export type RuntimeConfig = {
   connections: ConnectionEntry[];
+  /**
+   * Optional link back to the host UI (review 2026-07-10 §A2/H4), e.g.
+   * `http://127.0.0.1:3880/host`. Written by Electron/CLI
+   * (`writeClientRuntimeConfig`'s `hostUrl` option) when a host process
+   * exists alongside the client server; absent for container-only
+   * deployments with no host UI to point at. `+layout.svelte` renders a
+   * "Manage assistant" link only when this is present.
+   */
+  hostUrl?: string;
 };
 
 function isLoopbackHost(hostname: string): boolean {
@@ -65,6 +74,11 @@ function adaptRuntimeConfigForBrowser(config: RuntimeConfig): RuntimeConfig {
       ...entry,
       url: entry.locked ? rewriteLoopbackUrlForBrowserHost(entry.url) : entry.url,
     })),
+    // hostUrl is Electron/CLI-written and always a loopback URL local to the
+    // machine running the host process — same rewrite as locked connection
+    // entries, so a LAN-accessed client still points the link at the visited
+    // hostname rather than an unreachable 127.0.0.1.
+    ...(config.hostUrl ? { hostUrl: rewriteLoopbackUrlForBrowserHost(config.hostUrl) } : {}),
   };
 }
 
