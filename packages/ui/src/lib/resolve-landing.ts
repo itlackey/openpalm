@@ -35,6 +35,29 @@ import type { RuntimeContext } from '$lib/types.js';
  */
 export const HOST_ADMIN_LANDING = '/host';
 
+/**
+ * The blocking-migration landing surface.
+ *
+ * K4 (review 2026-07-11): callers that need to know whether a resolved
+ * landing is BLOCKING (usage routes must not bypass it) must check
+ * membership in BLOCKING_LANDINGS below — never string-compare against this
+ * literal directly. Blocking-ness is a property of the landing STATE, not a
+ * magic string duplicated at each call site; encoding it only as a literal
+ * comparison means a future second blocking landing would return a new
+ * string and every literal-match call site would silently keep exempting
+ * usage routes from it.
+ */
+export const HOST_ATTENTION_LANDING = '/attention';
+
+/**
+ * Landings that block the usage routes (/chat, /advanced, /connections)
+ * from bypassing the launch-routing redirect (hooks.server.ts). Today only
+ * HOST_ATTENTION_LANDING is blocking; adding a future second blocking
+ * landing means adding it here — the usage-route gate then covers it
+ * automatically, with no call-site changes required.
+ */
+export const BLOCKING_LANDINGS: ReadonlySet<string> = new Set([HOST_ATTENTION_LANDING]);
+
 /** Blocking-migration gate: 'pending' blocks; anything else does not.
  *  Nothing produces 'pending' yet — the gate (and the /attention surface it
  *  routes to) is wired ahead of the first blocking OP_HOME migration. */
@@ -57,7 +80,7 @@ export type LaunchState = {
  *  global state; the gate is CAPABILITY-driven, not hostMode-driven. */
 export function resolveLanding(ctx: RuntimeContext, state: LaunchState): string {
   if (ctx.effectiveCapabilities.includes('host:setup')) {
-    if (state.migration.status === 'pending') return '/attention';
+    if (state.migration.status === 'pending') return HOST_ATTENTION_LANDING;
     if (state.local.state === 'not_installed') {
       return state.connections.length === 0 ? '/setup' : '/chat';
     }

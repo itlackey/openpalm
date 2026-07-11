@@ -7,7 +7,7 @@
     toolAriaLabel,
     toolDetailRows,
   } from '$lib/chat/tool-strip.js';
-  import { createFocusTrap, handleTrapKeydown } from '$lib/actions/focus-trap.js';
+  import { createFocusTrap, handleTrapKeydown } from '@openpalm/ui-kit/actions/focus-trap.js';
   import IconClose from '@openpalm/ui-kit/components/icons/IconClose.svelte';
   import IconAlert from '@openpalm/ui-kit/components/icons/IconAlert.svelte';
   import IconRefresh from '@openpalm/ui-kit/components/icons/IconRefresh.svelte';
