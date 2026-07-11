@@ -128,28 +128,18 @@
     return (await boot.secrets.peekUsername(entry.auth.secretRef)) ?? '';
   }
 
-  async function openEditForm(entry: ConnectionEntry): Promise<void> {
-    formMode = 'edit';
-    formId = entry.id;
-    formLabel = entry.label;
-    formUrl = entry.url;
-    formAuthMode = entry.auth.mode;
-    formSecret = '';
-    formClearSecret = false;
-    formError = '';
-    formUsername = await loadStoredUsername(entry);
-  }
-
   /**
-   * E6 (review 2026-07-10 §E6): "Set credentials" on a locked entry opens
-   * the same form, but formMode is 'credentials' — submitForm() routes to
-   * store.setSecretRef() (bypasses only the locked check, and only for
-   * auth) rather than store.update(), so a locked entry's url/label/kind
+   * S3 (review of PR #562): openEditForm() and "Set credentials" used to be
+   * two byte-identical functions differing only in which formMode they set
+   * — collapsed into one helper. E6 (review 2026-07-10 §E6): 'credentials'
+   * opens the SAME form for a locked entry, but submitForm() routes THAT
+   * mode to store.setSecretRef() (bypasses only the locked check, and only
+   * for auth) rather than store.update(), so a locked entry's url/label/kind
    * stay immutable even though the form technically holds copies of them
    * (for display + so the shared submit validation still passes).
    */
-  async function openCredentialsForm(entry: ConnectionEntry): Promise<void> {
-    formMode = 'credentials';
+  async function openEntryForm(entry: ConnectionEntry, mode: 'edit' | 'credentials'): Promise<void> {
+    formMode = mode;
     formId = entry.id;
     formLabel = entry.label;
     formUrl = entry.url;
@@ -317,11 +307,11 @@
                  but they CAN receive credentials — a config-owned default
                  assistant URL that requires auth previously had no UI path
                  to supply it and permanently 401s. -->
-            <button type="button" class="btn btn-secondary btn-sm" onclick={() => openCredentialsForm(conn)}>
+            <button type="button" class="btn btn-secondary btn-sm" onclick={() => openEntryForm(conn, 'credentials')}>
               Set credentials
             </button>
           {:else}
-            <button type="button" class="btn btn-secondary btn-sm" onclick={() => openEditForm(conn)}>
+            <button type="button" class="btn btn-secondary btn-sm" onclick={() => openEntryForm(conn, 'edit')}>
               Edit
             </button>
             <button
