@@ -104,3 +104,42 @@ describe('+page.svelte (connections) — E7 residual-exposure form copy', () => 
     expect(src).toMatch(/this browser/i);
   });
 });
+
+describe('+page.svelte (connections) — S3 openEditForm/openCredentialsForm dedup', () => {
+  // S3 (review of PR #562): openCredentialsForm() was a byte-identical copy
+  // of openEditForm() except for which formMode it set. Collapsed into one
+  // openEntryForm(entry, mode) helper — openAddForm stays separate (it is
+  // genuinely different: no entry to prefill from, no peekUsername lookup).
+  test('a single openEntryForm(entry, mode) helper backs both Edit and Set credentials', () => {
+    const src = source();
+    expect(src).toMatch(/async function\s+openEntryForm\s*\(/);
+  });
+
+  test('the Edit button opens the shared helper in "edit" mode', () => {
+    const src = source();
+    expect(src).toMatch(/openEntryForm\(conn,\s*['"]edit['"]\)/);
+  });
+
+  test('the "Set credentials" button opens the shared helper in "credentials" mode', () => {
+    const src = source();
+    expect(src).toMatch(/openEntryForm\(conn,\s*['"]credentials['"]\)/);
+  });
+
+  test('openEditForm/openCredentialsForm no longer exist as separate duplicated functions', () => {
+    const src = source();
+    expect(src).not.toMatch(/async function\s+openEditForm\s*\(/);
+    expect(src).not.toMatch(/async function\s+openCredentialsForm\s*\(/);
+  });
+
+  test('openAddForm is untouched — it stays its own function (genuinely different: no entry to prefill)', () => {
+    const src = source();
+    expect(src).toMatch(/function\s+openAddForm\s*\(/);
+  });
+
+  test('the shared helper still awaits loadStoredUsername to prefill the username in both modes', () => {
+    const src = source();
+    const match = src.match(/async function\s+openEntryForm\s*\([\s\S]*?\n {2}\}/);
+    expect(match).not.toBeNull();
+    expect(match?.[0]).toContain('await loadStoredUsername(entry)');
+  });
+});

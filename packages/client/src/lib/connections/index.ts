@@ -200,7 +200,22 @@ function idbRequest<T>(request: IDBRequest<T>): Promise<T> {
   });
 }
 
-function openDatabase(): Promise<IDBDatabase> {
+/**
+ * F11 (review 2026-07-10 §F11, PR #562 fix round): IDB_VERSION was bumped
+ * 1 -> 2 for E7 with no `onblocked` handler and no `versionchange` listener
+ * on the opened connection. If another tab holds an older-version
+ * connection open, the upgrade transaction can't start: `onupgradeneeded`/
+ * `onsuccess`/`onerror` never fire — only `onblocked` does — and without a
+ * handler for it this Promise never settled, so getClientBoot() hung
+ * forever with no error surfaced anywhere.
+ *
+ * `onVersionChange` is invoked once a successfully-opened connection later
+ * receives its OWN `versionchange` event (some other tab needs a further
+ * upgrade): the connection closes itself immediately so it can't go on to
+ * block that upgrade in turn, and the caller uses the callback to drop its
+ * cached db promise so the NEXT storage operation reopens fresh.
+ */
+function openDatabase(onVersionChange: () => void): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     const request = indexedDB.open(IDB_NAME, IDB_VERSION);
     request.onupgradeneeded = () => {
@@ -215,8 +230,21 @@ function openDatabase(): Promise<IDBDatabase> {
         db.createObjectStore(STORE_KEYS);
       }
     };
-    request.onsuccess = () => resolve(request.result);
+    request.onsuccess = () => {
+      const db = request.result;
+      db.onversionchange = () => {
+        db.close();
+        onVersionChange();
+      };
+      resolve(db);
+    };
     request.onerror = () => reject(request.error ?? new Error('IndexedDB open failed'));
+    request.onblocked = () =>
+      reject(
+        new Error(
+          'IndexedDB upgrade blocked by another open connection (close other tabs of this app and retry)'
+        )
+      );
   });
 }
 
@@ -226,8 +254,11 @@ function openDatabase(): Promise<IDBDatabase> {
  */
 export function createIndexedDbStorage(): ConnectionStorage {
   let db: Promise<IDBDatabase> | null = null;
+  const invalidate = (): void => {
+    db = null;
+  };
   const database = (): Promise<IDBDatabase> => {
-    db ??= openDatabase();
+    db ??= openDatabase(invalidate);
     return db;
   };
   const store = async (name: string, mode: IDBTransactionMode): Promise<IDBObjectStore> =>

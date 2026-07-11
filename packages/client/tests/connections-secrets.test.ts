@@ -166,6 +166,71 @@ describe('createSecretStore encryption (E7)', () => {
   });
 });
 
+describe('concurrent key generation (F2 — lockless getOrCreateKey check-then-act race)', () => {
+  // F2 (independent-verifier review of PR #562): getOrCreateKey() reads
+  // storage.getCryptoKey(), and if absent, generates a new key and persists
+  // it — with an `await` between the read and the write. probeAll() on the
+  // connections page fires resolveAuth() for every connection in a single
+  // Promise.all; on a pre-E7 install every entry lazily migrates via
+  // writeMaterial -> getOrCreateKey CONCURRENTLY. Without serialization,
+  // every concurrent first-time caller sees "no key yet", each generates a
+  // DIFFERENT key, and the last storage.setCryptoKey() call wins — every
+  // record encrypted under a losing key becomes permanently undecryptable.
+  //
+  // This wrapper widens the real race window (storage.getCryptoKey()/
+  // setCryptoKey() are effectively instant in the in-memory backend, and
+  // crypto.subtle.generateKey() resolves purely through microtasks here —
+  // a SINGLE delayed hop isn't enough: it just serializes the callers one
+  // at a time instead of interleaving them, since the first caller's
+  // whole read->generate->persist chain finishes via microtasks before
+  // the next caller's read timer even fires). Delaying BOTH getCryptoKey
+  // AND setCryptoKey (macrotask hops on both sides of the generate step)
+  // forces every caller past its OWN "no key yet" read before any of them
+  // reaches "persist the key I generated" — the actual concurrent-writers
+  // shape of the real bug (many probeAll() callers racing through
+  // writeMaterial() at once).
+  function delayedStorage(base: ReturnType<typeof import('../src/lib/connections/index.ts').createMemoryStorage>) {
+    return {
+      ...base,
+      async getCryptoKey() {
+        await new Promise((resolve) => setTimeout(resolve, 5));
+        return base.getCryptoKey();
+      },
+      async setCryptoKey(key: CryptoKey) {
+        await new Promise((resolve) => setTimeout(resolve, 5));
+        return base.setCryptoKey(key);
+      },
+    };
+  }
+
+  function entryFor(ref: string) {
+    return {
+      id: 'conn-race',
+      label: 'Race target',
+      kind: 'remote-opencode' as const,
+      url: 'http://gw.example:8443',
+      auth: { mode: 'basic' as const, secretRef: ref },
+    };
+  }
+
+  test('many concurrent first-time getOrCreateKey callers resolve to ONE key, and every record written concurrently still decrypts afterward', async () => {
+    const { createMemoryStorage, createSecretStore } = await loadModules();
+    const base = createMemoryStorage();
+    const storage = delayedStorage(base);
+    const store = createSecretStore(storage);
+
+    const refs = ['sec_1', 'sec_2', 'sec_3', 'sec_4', 'sec_5'] as const;
+    await Promise.all(refs.map((ref, i) => store.set(ref, { password: `pass-${i}` })));
+
+    for (const [i, ref] of refs.entries()) {
+      expect(await store.resolveAuth(entryFor(ref))).toEqual({
+        mode: 'basic',
+        password: `pass-${i}`,
+      });
+    }
+  });
+});
+
 describe('peekUsername / updateUsername (E9 — edit form must not lose/revert the username)', () => {
   test('peekUsername returns the stored username without exposing the password', async () => {
     const { createMemoryStorage, createSecretStore } = await loadModules();
