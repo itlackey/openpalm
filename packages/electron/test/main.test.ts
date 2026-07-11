@@ -61,6 +61,10 @@ const { mockNotificationShow } = vi.hoisted(() => ({
   mockNotificationShow: vi.fn(),
 }));
 
+const { mockClearStorageData } = vi.hoisted(() => ({
+  mockClearStorageData: vi.fn(() => Promise.resolve()),
+}));
+
 vi.mock('electron', () => ({
   app: {
     getVersion: vi.fn(() => '0.11.0'),
@@ -125,6 +129,11 @@ vi.mock('electron', () => ({
     },
     { isSupported: vi.fn(() => true) },
   ),
+  session: {
+    defaultSession: {
+      clearStorageData: mockClearStorageData,
+    },
+  },
 }));
 
 // ── Mock @openpalm/lib ───────────────────────────────────────────────────────
@@ -141,9 +150,17 @@ vi.mock('@openpalm/lib', () => ({
   uiUpdateChannel: vi.fn((v: string) => (v.includes('-') ? 'next' : 'latest')),
   parseEnvFile: vi.fn(() => ({})),
   PLATFORM_VERSION: 'v0.11.0',
-  resolveClientAppPort: vi.fn(() => 3890),
+  // Faithful reimplementation of lib's resolveClientAppPort (reads
+  // OP_HOST_CLIENT_PORT from the given env) so resolveElectronClientPort's
+  // (E2) env-merge is actually exercised under test, not masked by a stub
+  // that ignores its argument.
+  resolveClientAppPort: vi.fn((env: NodeJS.ProcessEnv = process.env) => Number(env.OP_HOST_CLIENT_PORT) || 3890),
   resolveClientAppUrl: vi.fn(() => 'http://127.0.0.1:3890/chat'),
   writeClientRuntimeConfig: vi.fn(),
+  // E1: the shared assistant-endpoint resolver main.ts now delegates to
+  // instead of re-deriving the OP_ASSISTANT_BIND_ADDRESS/PORT precedence
+  // chain locally (which is how the http://0.0.0.0:3800 seed bug happened).
+  resolveAssistantEndpoint: vi.fn(() => 'http://127.0.0.1:3800'),
   checkDocker: vi.fn(() => Promise.resolve({ ok: true, stdout: '', stderr: '', code: 0 })),
   checkDockerCompose: vi.fn(() => Promise.resolve({ ok: true, stdout: '', stderr: '', code: 0 })),
   // Faithful reimplementation of lib's waitForReady (poll /health; 200 or 401 ==
@@ -225,10 +242,15 @@ vi.mock('../src/local-opencode.js', () => ({
 }));
 
 import {
+  buildClientRuntimeConfigOptions,
   buildUIServerEnv,
+  ensureClientAppBuild,
   ensureDockerReady,
   getLaunchOnLoginStatus,
+  isClientAppUrl,
+  openLocalApp,
   resolveAssistantUrl,
+  resolveElectronClientPort,
   setLaunchOnLogin,
   showNotification,
   supportsLaunchOnLogin,
@@ -315,50 +337,126 @@ describe('harness contract', () => {
   });
 });
 
-// ── resolveAssistantUrl ──────────────────────────────────────────────────────
-
+// ── resolveAssistantUrl (E1) ─────────────────────────────────────────────────
+// E1: three divergent env-resolution chains (Electron process-env-only,
+// CLI's persisted-stack merge, the container entrypoint's own inline logic)
+// produced a browser-breaking http://0.0.0.0:3800 seed whenever the admin
+// LAN-exposure toggle set OP_ASSISTANT_BIND_ADDRESS=0.0.0.0 — this exact test
+// file used to PIN that broken 0.0.0.0 output (see git history). Electron now
+// delegates to the ONE shared `resolveAssistantEndpoint(homeDir)` in
+// @openpalm/lib (also used by the CLI/container writers), which always
+// normalizes wildcard bind hosts to 127.0.0.1. The precedence chain itself is
+// exhaustively tested in packages/lib/src/control-plane/assistant-endpoint.test.ts;
+// this suite only pins the DELEGATION — main.ts must not re-derive the chain
+// or re-introduce a raw wildcard host locally.
 describe('resolveAssistantUrl', () => {
-  const originalEnv = { ...process.env };
-
   afterEach(() => {
-    process.env = { ...originalEnv };
-    vi.mocked(lib.parseEnvFile).mockReset();
+    vi.mocked(lib.resolveAssistantEndpoint).mockReset();
   });
 
-  it('defaults to 127.0.0.1:3800 when stack.env is empty', () => {
-    vi.mocked(lib.parseEnvFile).mockReturnValue({});
-    delete process.env.OP_OPENCODE_URL;
-    delete process.env.OP_ASSISTANT_URL;
+  it('delegates to lib.resolveAssistantEndpoint(homeDir) instead of re-deriving the precedence chain', () => {
+    vi.mocked(lib.resolveAssistantEndpoint).mockReturnValue('http://127.0.0.1:3800');
     expect(resolveAssistantUrl('/home/user/.openpalm')).toBe('http://127.0.0.1:3800');
+    expect(lib.resolveAssistantEndpoint).toHaveBeenCalledWith('/home/user/.openpalm');
   });
 
-  it('uses OP_ASSISTANT_PORT and OP_ASSISTANT_BIND_ADDRESS from stack.env', () => {
-    vi.mocked(lib.parseEnvFile).mockReturnValue({
-      OP_ASSISTANT_PORT: '4800',
-      OP_ASSISTANT_BIND_ADDRESS: '0.0.0.0',
-    });
-    delete process.env.OP_OPENCODE_URL;
-    delete process.env.OP_ASSISTANT_URL;
-    expect(resolveAssistantUrl('/home/user/.openpalm')).toBe('http://0.0.0.0:4800');
-  });
-
-  it('respects OP_OPENCODE_URL from the shell environment', () => {
-    process.env.OP_OPENCODE_URL = 'http://example.test:9999';
+  it('never re-wraps or mutates the resolver result — whatever lib returns is returned as-is (lib owns normalization)', () => {
+    vi.mocked(lib.resolveAssistantEndpoint).mockReturnValue('http://example.test:9999');
     expect(resolveAssistantUrl('/home/user/.openpalm')).toBe('http://example.test:9999');
   });
 
-  it('falls back to OP_ASSISTANT_URL when OP_OPENCODE_URL is unset', () => {
-    delete process.env.OP_OPENCODE_URL;
-    process.env.OP_ASSISTANT_URL = 'http://example.test:1234';
-    expect(resolveAssistantUrl('/home/user/.openpalm')).toBe('http://example.test:1234');
+  it('CANNOT produce the pre-fix http://0.0.0.0:PORT seed (E1) — the resolver is the only source of truth and it always normalizes', () => {
+    // Even if the resolver were somehow asked to return a wildcard host, this
+    // pins that main.ts performs no local bind-address-to-URL derivation that
+    // could bypass lib's normalization (the pre-fix bug lived entirely in
+    // main.ts's own stack.env-parsing logic, since removed).
+    vi.mocked(lib.resolveAssistantEndpoint).mockReturnValue('http://127.0.0.1:4800');
+    expect(resolveAssistantUrl('/home/user/.openpalm')).not.toContain('0.0.0.0');
+  });
+});
+
+// ── resolveElectronClientPort (E2) ──────────────────────────────────────────
+// E2: Electron used to resolve the client port from process.env ONLY, while
+// the CLI merges the persisted stack.env (OP_HOME/knowledge/env/stack.env)
+// under process.env first (client-server.ts). A Finder-launched Electron has
+// a minimal env, so a persisted OP_HOST_CLIENT_PORT override (the only
+// realistic override channel for it) was silently ignored — the client
+// server bound the DEFAULT port while OpenCode's CORS allowlist (set up via
+// the CLI/container path) only trusted the CUSTOM one, breaking every chat
+// request's preflight. Mirror the CLI's merge here.
+describe('resolveElectronClientPort', () => {
+  afterEach(() => {
+    vi.mocked(lib.parseEnvFile).mockReset();
+  });
+
+  it('falls back to the default client port with no persisted stack.env and no process env override', () => {
+    vi.mocked(lib.parseEnvFile).mockReturnValue({});
+    expect(resolveElectronClientPort('/home/user/.openpalm', {})).toBe(3890);
+  });
+
+  it('honors OP_HOST_CLIENT_PORT persisted in stack.env when process.env has none', () => {
+    vi.mocked(lib.parseEnvFile).mockReturnValue({ OP_HOST_CLIENT_PORT: '9392' });
+    expect(resolveElectronClientPort('/home/user/.openpalm', {})).toBe(9392);
+  });
+
+  it('process.env OP_HOST_CLIENT_PORT wins over the persisted stack.env value', () => {
+    vi.mocked(lib.parseEnvFile).mockReturnValue({ OP_HOST_CLIENT_PORT: '9392' });
+    expect(resolveElectronClientPort('/home/user/.openpalm', { OP_HOST_CLIENT_PORT: '4444' })).toBe(4444);
   });
 
   it('reads stack.env from ${homeDir}/knowledge/env/stack.env', () => {
     vi.mocked(lib.parseEnvFile).mockReturnValue({});
-    delete process.env.OP_OPENCODE_URL;
-    delete process.env.OP_ASSISTANT_URL;
-    resolveAssistantUrl('/some/home');
+    resolveElectronClientPort('/some/home', {});
     expect(lib.parseEnvFile).toHaveBeenCalledWith('/some/home/knowledge/env/stack.env');
+  });
+
+  it('never throws when the persisted stack.env is unreadable (parseEnvFile itself is best-effort)', () => {
+    vi.mocked(lib.parseEnvFile).mockImplementation(() => {
+      throw new Error('ENOENT');
+    });
+    expect(() => resolveElectronClientPort('/home/user/.openpalm', {})).not.toThrow();
+    expect(resolveElectronClientPort('/home/user/.openpalm', {})).toBe(3890);
+  });
+});
+
+// ── buildClientRuntimeConfigOptions (A2) ────────────────────────────────────
+// A2: the client SPA had no way back to the admin dashboard — no tray entry,
+// no in-app link, nothing. The lib foundation (writeClientRuntimeConfig's
+// optional `hostUrl` field) lets Electron seed a link back to the host UI's
+// /host admin surface into the client's runtime-config.json; the client SPA
+// lane renders it. Pin that Electron actually passes it, pointed at /host on
+// the UI_PORT (not /chat, not bare root).
+describe('buildClientRuntimeConfigOptions', () => {
+  it('points hostUrl at the host UI /host admin dashboard on UI_PORT', () => {
+    expect(buildClientRuntimeConfigOptions()).toEqual({ hostUrl: 'http://127.0.0.1:3880/host' });
+  });
+});
+
+// ── isClientAppUrl (B11) ─────────────────────────────────────────────────────
+// B11: the global mic shortcut (Ctrl/Cmd+Shift+M) was registered SYSTEM-WIDE
+// unconditionally but the only consumer of the mic IPC surface
+// (global-mic-toggle / set-tray-mic-recording / request-mic-permission) is
+// packages/ui's VoiceControl — when the resolved window fronts the client
+// SPA (which has no voice UI at all, plan §12.2), the shortcut silently
+// no-ops while still stealing the chord from other apps. main.ts now checks
+// this predicate against the resolved initial URL before registering it.
+describe('isClientAppUrl', () => {
+  it('is true for a URL on the client port', () => {
+    expect(isClientAppUrl('http://127.0.0.1:3890/chat', 3890)).toBe(true);
+  });
+
+  it('is true regardless of path, as long as the port matches', () => {
+    expect(isClientAppUrl('http://127.0.0.1:3890/connections', 3890)).toBe(true);
+  });
+
+  it('is false for a host UI URL on a different port', () => {
+    expect(isClientAppUrl('http://127.0.0.1:3880/chat', 3890)).toBe(false);
+  });
+
+  it('is false for the host UI /setup, /host, and root URLs', () => {
+    expect(isClientAppUrl('http://127.0.0.1:3880/setup', 3890)).toBe(false);
+    expect(isClientAppUrl('http://127.0.0.1:3880/host?tab=diagnostics', 3890)).toBe(false);
+    expect(isClientAppUrl('http://127.0.0.1:3880', 3890)).toBe(false);
   });
 });
 
@@ -399,6 +497,67 @@ describe('waitForReady', () => {
 
     const result = await promise;
     expect(result).toBe(false);
+  });
+});
+
+// ── ensureClientAppBuild — clear stale SW/cache on a build swap (H3) ────────
+// H3: nothing anywhere reset the client origin's service-worker/cache when a
+// newer @openpalm/client build swapped in — a stale SW could keep pinning a
+// dead build indefinitely (extends C3). checkAndUpdateClientBuild reports
+// `updated: true` exactly when a new build was installed; clear the client's
+// own loopback origin (scoped — never the host UI's or any other site's data)
+// whenever that happens. Best-effort: a clear failure must not be fatal.
+describe('ensureClientAppBuild — clears the client origin on a build swap (H3)', () => {
+  afterEach(() => {
+    mockClearStorageData.mockClear();
+    vi.mocked(lib.checkAndUpdateClientBuild).mockReset();
+  });
+
+  it('clears the client origin service-worker/cache storage when a newer build was installed', async () => {
+    vi.mocked(lib.checkAndUpdateClientBuild).mockResolvedValue({ updated: true, latestVersion: '0.13.0' });
+    await ensureClientAppBuild();
+    expect(mockClearStorageData).toHaveBeenCalledWith({
+      origin: 'http://127.0.0.1:3890',
+      storages: ['serviceworkers', 'cachestorage'],
+    });
+  });
+
+  it('does NOT clear anything when the build was already up to date', async () => {
+    vi.mocked(lib.checkAndUpdateClientBuild).mockResolvedValue({ updated: false, latestVersion: '0.12.0' });
+    await ensureClientAppBuild();
+    expect(mockClearStorageData).not.toHaveBeenCalled();
+  });
+
+  it('is best-effort: a clearStorageData failure does not throw', async () => {
+    vi.mocked(lib.checkAndUpdateClientBuild).mockResolvedValue({ updated: true, latestVersion: '0.13.0' });
+    mockClearStorageData.mockRejectedValueOnce(new Error('boom'));
+    await expect(ensureClientAppBuild()).resolves.toBeUndefined();
+  });
+});
+
+// ── openLocalApp (E4) ────────────────────────────────────────────────────────
+// E4: the tray's "Open Local App" (and its IPC twin) opened a hardcoded
+// client URL with NO health check — a missing build or a crashed
+// (non-respawned) client child produced a bare ERR_CONNECTION_REFUSED
+// browser tab. Guard the open with a quick probe and fall back to the host
+// UI chat (always running) instead of a dead link.
+describe('openLocalApp', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.mocked(shell.openExternal).mockClear();
+  });
+
+  it('opens the client app URL when the client server responds healthy', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, status: 200 }));
+    await openLocalApp();
+    expect(shell.openExternal).toHaveBeenCalledWith('http://127.0.0.1:3890/chat');
+  });
+
+  it('falls back to the host UI chat when the client server does not respond (E4)', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('ECONNREFUSED')));
+    await openLocalApp();
+    expect(shell.openExternal).toHaveBeenCalledWith('http://127.0.0.1:3880/chat');
+    expect(shell.openExternal).not.toHaveBeenCalledWith('http://127.0.0.1:3890/chat');
   });
 });
 

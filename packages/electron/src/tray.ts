@@ -14,6 +14,16 @@ export interface TrayCallbacks {
   onOpen: () => void;
   /** "Open Local App" — open the localhost client app in the system browser. */
   onOpenLocalApp: () => void;
+  /**
+   * Whether the client app is currently reachable (A2/E4). Backs the "Open
+   * Local App" item's enabled state so a click can never land on an
+   * ERR_CONNECTION_REFUSED page while the client child is down/absent —
+   * main.ts wires this to `clientProcess !== null` and rebuilds the menu
+   * whenever that changes.
+   */
+  isClientAppAvailable: () => boolean;
+  /** "Open Admin Dashboard" — open the host UI's /host admin surface (A2). */
+  onOpenAdmin: () => void;
   /** "Show Logs" — reveal the log directory. */
   onShowLogs: () => void;
   /** Current launch-on-login status (drives the checkbox state + enablement). */
@@ -24,6 +34,13 @@ export interface TrayCallbacks {
   isPrereleaseEnabled: () => boolean;
   /** "Check for prerelease versions" toggle. */
   onTogglePrerelease: (enabled: boolean) => void;
+  /**
+   * Whether the A1 client-chat opt-in is currently on (see
+   * isClientChatOptedIn/resolveInitialUrl in main.ts).
+   */
+  isClientChatOptedIn: () => boolean;
+  /** "Use the new app chat (experimental)" toggle (A1). */
+  onToggleClientChatOptIn: (enabled: boolean) => void;
   /** "Quit" — tear down and exit. */
   onQuit: () => void;
 }
@@ -110,7 +127,22 @@ export class TrayController {
     const loginSettings = cb.getLaunchOnLoginStatus();
     const contextMenu = Menu.buildFromTemplate([
       { label: 'Open OpenPalm', click: () => cb.onOpen() },
-      { label: 'Open Local App', click: () => cb.onOpenLocalApp() },
+      {
+        // Disabled while the client server isn't up (E4) — otherwise this
+        // opened a hardcoded localhost URL straight into
+        // ERR_CONNECTION_REFUSED whenever the build was missing or the
+        // child had crashed (it isn't auto-respawned).
+        label: 'Open Local App',
+        enabled: cb.isClientAppAvailable(),
+        click: () => cb.onOpenLocalApp(),
+      },
+      {
+        // A2: the only path back to the admin dashboard used to be a probe
+        // FAILURE (the client server being down fell back to the host UI,
+        // whose chrome has /host links) — add a direct one that always works.
+        label: 'Open Admin Dashboard',
+        click: () => cb.onOpenAdmin(),
+      },
       { label: 'Show Logs', click: () => cb.onShowLogs() },
       { type: 'separator' },
       {
@@ -135,6 +167,17 @@ export class TrayController {
         checked: cb.isPrereleaseEnabled(),
         click: (menuItem) => {
           cb.onTogglePrerelease(menuItem.checked);
+        },
+      },
+      {
+        // A1: the client SPA chat fails the plan's §12.2 parity contract (no
+        // voice, no streaming, no stop, no history, ...) — it stays an
+        // explicit opt-in until that contract passes. Off by default.
+        label: 'Use the new app chat (experimental)',
+        type: 'checkbox',
+        checked: cb.isClientChatOptedIn(),
+        click: (menuItem) => {
+          cb.onToggleClientChatOptIn(menuItem.checked);
         },
       },
       { type: 'separator' },
