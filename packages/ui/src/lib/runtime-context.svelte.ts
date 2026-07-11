@@ -118,9 +118,17 @@ export function initializeRuntimeContext(
  * correct for the common case (regular browser tab), so capabilities
  * resolved here already match what `onMount` would (re)compute for that case;
  * `onMount` only changes the outcome for electron / standalone-pwa displays.
+ *
+ * `publicBaseUrl` is deliberately EXCLUDED: it is the one request-derived
+ * field (`event.url.origin`), and during SSR this store is process-global
+ * under adapter-node — writing it here would leak one request's Host-derived
+ * origin to every later reader (PR #562 review). SSR chrome only needs
+ * capabilities/hostMode/routes; the browser writes publicBaseUrl per-tab via
+ * `initializeRuntimeContext` in `onMount`.
  */
 export function initializeServerRuntimeContext(serverCtx: ServerRuntimeContext): void {
-  Object.assign(runtimeContext, serverCtx);
+  const { publicBaseUrl: _requestDerived, ...envDerived } = serverCtx;
+  Object.assign(runtimeContext, envDerived);
   runtimeContext.effectiveCapabilities = resolveCapabilities(
     serverCtx.serverCapabilities,
     runtimeContext.clientContext,

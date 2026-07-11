@@ -28,7 +28,10 @@
   // admin button) present in the FIRST server-rendered HTML instead of
   // flashing in after client-side hydration. `untrack()` marks this as an
   // intentional one-time read, not a reactive subscription — data.serverRuntimeContext
-  // is env-derived and doesn't change within a single navigation.
+  // is env-derived and doesn't change within a single navigation. The one
+  // request-derived field (publicBaseUrl) is excluded inside
+  // initializeServerRuntimeContext and only written in onMount (PR #562
+  // review: this store is process-global during SSR).
   untrack(() => initializeServerRuntimeContext(data.serverRuntimeContext));
 
   onMount(() => {

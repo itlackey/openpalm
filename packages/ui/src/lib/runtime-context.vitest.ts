@@ -295,6 +295,33 @@ describe('initializeServerRuntimeContext (review 2026-07-10 K2 — SSR-safe serv
     // to render true in the FIRST server-rendered HTML, before onMount runs.
     expect(hasCapability('host:stack:read')).toBe(true);
   });
+
+  test('never writes the request-derived publicBaseUrl into the shared store (PR #562 review)', () => {
+    // publicBaseUrl comes from event.url.origin — the ONE per-request field in
+    // ServerRuntimeContext. During SSR this store is process-global under
+    // adapter-node, so writing it would leak one request's Host-derived origin
+    // into every later reader. SSR chrome needs capabilities/hostMode/routes
+    // only; the browser sets publicBaseUrl in onMount (per-tab store — safe).
+    const before = runtimeContext.publicBaseUrl;
+    initializeServerRuntimeContext({
+      version: 2,
+      hostMode: 'host-ui',
+      serverCapabilities: HOST_SERVER_CAPS,
+      publicBaseUrl: 'http://attacker-controlled-host-header.example',
+      uiVersion: '',
+      skeletonVersion: '',
+      activeConnectionMode: 'multi',
+      routes: {},
+      security: {
+        hostAdminLoopbackOnly: true,
+        requiresHttpsForRemoteConnections: false,
+        csrfMode: 'loopback-origin',
+      },
+    });
+    expect(runtimeContext.publicBaseUrl).toBe(before);
+    // The env-derived halves must still land (that's K2's whole point).
+    expect(runtimeContext.hostMode).toBe('host-ui');
+  });
 });
 
 // ── integration: computeServerRuntimeContext × resolveCapabilities ───────────
