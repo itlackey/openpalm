@@ -48,6 +48,10 @@ export default defineConfig({
       use: {
         ...devices['Desktop Chrome'],
         launchOptions: existsSync(SANDBOX_CHROMIUM) ? { executablePath: SANDBOX_CHROMIUM } : undefined,
+        // The copy affordance uses the async clipboard API, which headless
+        // chromium on CI runners denies without an explicit grant (locally
+        // some sandboxes auto-grant, which is why this only failed in CI).
+        permissions: ['clipboard-read', 'clipboard-write'],
       },
     },
   ],
