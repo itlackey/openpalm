@@ -40,6 +40,15 @@ export type NewConnectionInput = Omit<ConnectionEntry, 'id'> & { id?: string };
 /** Shape of the runtime-config.json written beside the static build (P5d). */
 export type RuntimeConfig = {
   connections: ConnectionEntry[];
+  /**
+   * Optional link back to the host UI (review 2026-07-10 §A2/H4), e.g.
+   * `http://127.0.0.1:3880/host`. Written by Electron/CLI
+   * (`writeClientRuntimeConfig`'s `hostUrl` option) when a host process
+   * exists alongside the client server; absent for container-only
+   * deployments with no host UI to point at. `+layout.svelte` renders a
+   * "Manage assistant" link only when this is present.
+   */
+  hostUrl?: string;
 };
 
 function isLoopbackHost(hostname: string): boolean {
@@ -65,6 +74,11 @@ function adaptRuntimeConfigForBrowser(config: RuntimeConfig): RuntimeConfig {
       ...entry,
       url: entry.locked ? rewriteLoopbackUrlForBrowserHost(entry.url) : entry.url,
     })),
+    // hostUrl is Electron/CLI-written and always a loopback URL local to the
+    // machine running the host process — same rewrite as locked connection
+    // entries, so a LAN-accessed client still points the link at the visited
+    // hostname rather than an unreachable 127.0.0.1.
+    ...(config.hostUrl ? { hostUrl: rewriteLoopbackUrlForBrowserHost(config.hostUrl) } : {}),
   };
 }
 
@@ -82,6 +96,15 @@ export type ConnectionStorage = {
   getMeta(key: string): Promise<string | null>;
   /** null deletes the key. */
   setMeta(key: string, value: string | null): Promise<void>;
+  /**
+   * Structured-clone value area for the secret store's non-extractable
+   * AES-GCM wrapping key (E7, review 2026-07-10 §E7). `getMeta`/`setMeta`
+   * round-trip JSON strings and cannot carry an actual CryptoKey object —
+   * IndexedDB's structured-clone algorithm can, so this is a distinct area
+   * rather than an overload. Returns null until a key has been generated.
+   */
+  getCryptoKey(): Promise<CryptoKey | null>;
+  setCryptoKey(key: CryptoKey): Promise<void>;
 };
 
 export type ConnectionStore = {
@@ -104,6 +127,15 @@ export type ConnectionStore = {
    * (label/url updates apply on re-seed); user-added entries are untouched.
    */
   seedFromRuntimeConfig(config: RuntimeConfig | null): Promise<void>;
+  /**
+   * Attach/clear credentials on ANY entry, including locked ones (E6, review
+   * 2026-07-10 §E6): a locked, config-owned default assistant URL can be
+   * auth-fronted, and update()/remove() rejecting locked entries wholesale
+   * left no path to supply credentials for it. This bypasses ONLY the
+   * locked check, and ONLY for `auth` — url/label/kind/locked are untouched
+   * even when the target is locked. Rejects for unknown ids.
+   */
+  setSecretRef(id: string, auth: ConnectionEntry['auth']): Promise<ConnectionEntry>;
 };
 
 const ACTIVE_ID_KEY = 'activeId';
@@ -116,6 +148,7 @@ function clone<T>(value: T): T {
 export function createMemoryStorage(): ConnectionStorage {
   const entries = new Map<string, ConnectionEntry>();
   const meta = new Map<string, string>();
+  let cryptoKey: CryptoKey | null = null;
   return {
     async getAll() {
       return [...entries.values()].map(clone);
@@ -137,15 +170,28 @@ export function createMemoryStorage(): ConnectionStorage {
       if (value === null) meta.delete(key);
       else meta.set(key, value);
     },
+    async getCryptoKey() {
+      return cryptoKey;
+    },
+    async setCryptoKey(key) {
+      cryptoKey = key;
+    },
   };
 }
 
 // ── IndexedDB backend (browser) ──────────────────────────────────────────
 
 const IDB_NAME = 'openpalm-client';
-const IDB_VERSION = 1;
+// Bumped 1 -> 2 for E7 (review 2026-07-10 §E7): STORE_KEYS holds the secret
+// store's non-extractable AES-GCM key as an actual CryptoKey object (only
+// IndexedDB's structured-clone area can carry one — getMeta/setMeta are
+// JSON strings). onupgradeneeded fires for existing v1 databases too, so
+// upgrading installs gain the store with no data loss.
+const IDB_VERSION = 2;
 const STORE_CONNECTIONS = 'connections';
 const STORE_META = 'meta';
+const STORE_KEYS = 'keys';
+const CRYPTO_KEY_ID = 'secret-store-aes-gcm-key';
 
 function idbRequest<T>(request: IDBRequest<T>): Promise<T> {
   return new Promise((resolve, reject) => {
@@ -164,6 +210,9 @@ function openDatabase(): Promise<IDBDatabase> {
       }
       if (!db.objectStoreNames.contains(STORE_META)) {
         db.createObjectStore(STORE_META);
+      }
+      if (!db.objectStoreNames.contains(STORE_KEYS)) {
+        db.createObjectStore(STORE_KEYS);
       }
     };
     request.onsuccess = () => resolve(request.result);
@@ -215,6 +264,15 @@ export function createIndexedDbStorage(): ConnectionStorage {
       if (value === null) await idbRequest(metaStore.delete(key));
       else await idbRequest(metaStore.put(value, key));
     },
+    async getCryptoKey() {
+      const found = await idbRequest<CryptoKey | undefined>(
+        (await store(STORE_KEYS, 'readonly')).get(CRYPTO_KEY_ID) as IDBRequest<CryptoKey | undefined>
+      );
+      return found ?? null;
+    },
+    async setCryptoKey(key) {
+      await idbRequest((await store(STORE_KEYS, 'readwrite')).put(key, CRYPTO_KEY_ID));
+    },
   };
 }
 
@@ -261,6 +319,13 @@ export function createConnectionStore(options: { storage: ConnectionStorage }): 
       if ((await storage.getMeta(ACTIVE_ID_KEY)) === id) {
         await storage.setMeta(ACTIVE_ID_KEY, null);
       }
+    },
+
+    async setSecretRef(id, auth) {
+      const entry = await requireEntry(id);
+      const updated: ConnectionEntry = { ...entry, auth, id };
+      await storage.put(updated);
+      return clone(updated);
     },
 
     getActiveId() {

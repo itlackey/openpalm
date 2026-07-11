@@ -16,7 +16,8 @@
       "svelte": "./src/lib/components/*",
       "default": "./src/lib/components/*"
     },
-    "./theme/*": "./src/lib/theme/*"
+    "./theme/*": "./src/lib/theme/*",
+    "./actions/*": "./src/lib/actions/*"
   },
   "//check": "svelte-check gives the raw-source files their ONLY TS coverage: the consuming apps' vite builds strip types without checking, and packages/ui's check only validates ui-kit's public prop surface at usage sites. Must stay 0 errors / 0 warnings (--fail-on-warnings enforces both).",
   "scripts": {

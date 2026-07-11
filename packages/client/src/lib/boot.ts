@@ -22,6 +22,12 @@ import { createSecretStore, type SecretStore } from './connections/secrets.js';
 export type ClientBoot = {
   store: ConnectionStore;
   secrets: SecretStore;
+  /**
+   * Review 2026-07-10 §A2/H4: link back to the host UI, when the runtime
+   * config carries one (Electron/CLI write it; container-only deployments
+   * omit it). `undefined` means render no "Manage assistant" link.
+   */
+  hostUrl?: string;
 };
 
 let bootPromise: Promise<ClientBoot> | null = null;
@@ -41,8 +47,9 @@ function pickStorage(): { storage: ConnectionStorage; persistent: boolean } {
 
 async function bootWithStorage(storage: ConnectionStorage): Promise<ClientBoot> {
   const store = createConnectionStore({ storage });
-  await store.seedFromRuntimeConfig(await loadRuntimeConfig());
-  return { store, secrets: createSecretStore(storage) };
+  const config = await loadRuntimeConfig();
+  await store.seedFromRuntimeConfig(config);
+  return { store, secrets: createSecretStore(storage), hostUrl: config?.hostUrl };
 }
 
 export function getClientBoot(): Promise<ClientBoot> {

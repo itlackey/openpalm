@@ -351,3 +351,42 @@ jobs:
 
       - name: Run Electron unit tests
         run: bun run --cwd packages/electron test
+
+  client-browser-tests:
+    name: Client browser tests (Playwright)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    # G2 [HIGH] (review 2026-07-10 §G2): packages/client had zero browser/e2e
+    # coverage — every chat-parity/accessibility regression in the migration
+    # review shipped without a test able to catch it. Wired as its own job
+    # (mirroring the ui-unit-tests/electron-tests job style above), running
+    # its own build-then-test steps the same way quality-gates' "Build
+    # client app" step precedes its test step: build once, then drive the
+    # built app with Playwright against a stubbed assistant
+    # (e2e/fixtures/stub-assistant.ts) — no docker, no live OpenCode/guardian.
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+
+      - name: Install Bun workspace dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Install Playwright browsers
+        # Run through the package where `playwright` is a devDependency so the
+        # binary resolves (npx at the repo root can't find the workspace bin).
+        run: bun run --cwd packages/client test:browsers
+
+      - name: Build client app
+        run: bun run client:build
+
+      - name: Run client Playwright e2e suite
+        run: bun run --cwd packages/client test:e2e

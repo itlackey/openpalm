@@ -1,7 +1,10 @@
 <script lang="ts">
   import type { Snippet } from 'svelte';
   import IconClose from '../icons/IconClose.svelte';
-  import { createFocusTrap, handleTrapKeydown } from '$lib/actions/focus-trap.js';
+  // G3 (review 2026-07-10): kit-internal relative import — the module used to
+  // be reached via an app-provided $lib alias contract; see
+  // ../../actions/focus-trap.ts for why that made Drawer unusable from the client.
+  import { createFocusTrap, handleTrapKeydown } from '../../actions/focus-trap.js';
 
   // Reusable slide-in drawer (right edge). The app-wide replacement for inline
   // expand-in-place forms: edit flows open here instead of pushing page content

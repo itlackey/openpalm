@@ -115,6 +115,58 @@ describe('connection store CRUD (P5b item 2)', () => {
   });
 });
 
+describe('setSecretRef (E6, review 2026-07-10 — locked entries can still receive credentials)', () => {
+  // Locked/config-owned entries (e.g. a seeded auth-fronted default assistant
+  // URL) previously could never carry credentials at all: update()/remove()
+  // reject for locked entries and the UI only offered Edit/Remove behind
+  // `!conn.locked`. setSecretRef() is a narrow path that bypasses ONLY the
+  // locked check, and ONLY for `auth` — url/label/kind/locked stay immutable
+  // even when called on a locked entry (the store, not the UI, is the
+  // enforcement point).
+  test('attaches auth to a locked entry, touching nothing else', async () => {
+    const { store } = await freshStore();
+    const locked = await store.add(
+      guardianInput({ id: 'conn-locked', locked: true, url: 'http://default.example', auth: { mode: 'none' } })
+    );
+    const updated = await store.setSecretRef(locked.id, { mode: 'basic', secretRef: 'sec_locked' });
+    expect(updated.auth).toEqual({ mode: 'basic', secretRef: 'sec_locked' });
+    expect(updated.url).toBe('http://default.example');
+    expect(updated.locked).toBe(true);
+    expect(updated.label).toBe('Home guardian');
+    expect(await store.get(locked.id)).toEqual(updated);
+  });
+
+  test('clears auth back to none on a locked entry', async () => {
+    const { store } = await freshStore();
+    const locked = await store.add(
+      guardianInput({ id: 'conn-locked', locked: true, auth: { mode: 'basic', secretRef: 'sec_locked' } })
+    );
+    const updated = await store.setSecretRef(locked.id, { mode: 'none' });
+    expect(updated.auth).toEqual({ mode: 'none' });
+    expect(updated.locked).toBe(true);
+  });
+
+  test('works identically on unlocked entries (not a locked-only special case)', async () => {
+    const { store } = await freshStore();
+    const added = await store.add(guardianInput());
+    const updated = await store.setSecretRef(added.id, { mode: 'bearer', secretRef: 'tok_1' });
+    expect(updated.auth).toEqual({ mode: 'bearer', secretRef: 'tok_1' });
+  });
+
+  test('rejects for an unknown id', async () => {
+    const { store } = await freshStore();
+    expect(store.setSecretRef('missing', { mode: 'none' })).rejects.toThrow();
+  });
+
+  test('the identity/url of a locked entry stays immutable via update() even after setSecretRef()', async () => {
+    const { store } = await freshStore();
+    const locked = await store.add(guardianInput({ id: 'conn-locked', locked: true }));
+    await store.setSecretRef(locked.id, { mode: 'basic', secretRef: 'sec_1' });
+    expect(store.update(locked.id, { url: 'http://evil.example' })).rejects.toThrow();
+    expect((await store.get(locked.id))?.url).toBe('http://gw.example:8443');
+  });
+});
+
 describe('active connection selection (P5b item 2)', () => {
   test('nothing is active initially, and add() does not implicitly activate', async () => {
     const { store } = await freshStore();

@@ -11,6 +11,8 @@ export type RecordedRequest = {
   /** undefined when the caller did not set an explicit credentials mode. */
   credentials: RequestCredentials | undefined;
   body: string | null;
+  /** undefined when the caller did not set an explicit cache mode (H1). */
+  cache: RequestCache | undefined;
 };
 
 export type Responder = (request: RecordedRequest) => Response | Promise<Response>;
@@ -36,7 +38,8 @@ export function recordingFetch(respond?: Responder): RecordingFetch {
         method: (init?.method ?? input.method).toUpperCase(),
         headers: new Headers(init?.headers ?? input.headers),
         credentials: init?.credentials ?? input.credentials,
-        body: input.body === null ? null : await input.clone().text()
+        body: input.body === null ? null : await input.clone().text(),
+        cache: init?.cache ?? input.cache
       };
     } else {
       const rawBody = init?.body;
@@ -45,7 +48,8 @@ export function recordingFetch(respond?: Responder): RecordingFetch {
         method: (init?.method ?? 'GET').toUpperCase(),
         headers: new Headers(init?.headers),
         credentials: init?.credentials,
-        body: typeof rawBody === 'string' ? rawBody : rawBody == null ? null : String(rawBody)
+        body: typeof rawBody === 'string' ? rawBody : rawBody == null ? null : String(rawBody),
+        cache: init?.cache
       };
     }
     calls.push(recorded);
