@@ -20,7 +20,12 @@
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import type { RequestEvent } from '@sveltejs/kit';
 import type { Capability, ClientContext } from '$lib/types.js';
-import { hasCapability, resolveCapabilities, runtimeContext } from './runtime-context.svelte.js';
+import {
+  hasCapability,
+  initializeServerRuntimeContext,
+  resolveCapabilities,
+  runtimeContext,
+} from './runtime-context.svelte.js';
 import { computeServerRuntimeContext } from '$lib/server/features.js';
 
 // ── fixtures ─────────────────────────────────────────────────────────────────
@@ -223,6 +228,72 @@ describe('hasCapability — reads the reactive runtimeContext store', () => {
     runtimeContext.effectiveCapabilities = ['chat'];
     expect(hasCapability('host:setup')).toBe(false);
     expect(hasCapability('connections:manage')).toBe(false);
+  });
+});
+
+// ── initializeServerRuntimeContext — review 2026-07-10 K2 ────────────────────
+// The server half must be callable synchronously (script-body time, not
+// onMount) and produce a correct effectiveCapabilities set against the
+// store's current clientContext WITHOUT requiring a ClientContext argument —
+// that's what lets it run during SSR, before the browser-only client half
+// (detectClientDisplayMode) has anything to contribute.
+
+describe('initializeServerRuntimeContext (review 2026-07-10 K2 — SSR-safe server-half init)', () => {
+  let savedContext: typeof runtimeContext.clientContext;
+  let savedEffective: Capability[];
+
+  beforeEach(() => {
+    savedContext = runtimeContext.clientContext;
+    savedEffective = runtimeContext.effectiveCapabilities;
+    runtimeContext.clientContext = { displayMode: 'browser' };
+  });
+
+  afterEach(() => {
+    runtimeContext.clientContext = savedContext;
+    runtimeContext.effectiveCapabilities = savedEffective;
+  });
+
+  test('populates serverCapabilities/hostMode/routes from the server context', () => {
+    initializeServerRuntimeContext({
+      version: 2,
+      hostMode: 'host-ui',
+      serverCapabilities: HOST_SERVER_CAPS,
+      publicBaseUrl: 'http://127.0.0.1:3880',
+      uiVersion: '0.13.0-beta.1',
+      skeletonVersion: '0.13.0-beta.1',
+      activeConnectionMode: 'multi',
+      routes: { chat: '/chat', host: '/host' },
+      security: {
+        hostAdminLoopbackOnly: true,
+        requiresHttpsForRemoteConnections: false,
+        csrfMode: 'loopback-origin',
+      },
+    });
+    expect(runtimeContext.hostMode).toBe('host-ui');
+    expect(runtimeContext.routes.host).toBe('/host');
+  });
+
+  test('derives effectiveCapabilities against the CURRENT clientContext (no clientCtx argument needed)', () => {
+    runtimeContext.clientContext = { displayMode: 'browser' };
+    initializeServerRuntimeContext({
+      version: 2,
+      hostMode: 'host-ui',
+      serverCapabilities: HOST_SERVER_CAPS,
+      publicBaseUrl: '',
+      uiVersion: '',
+      skeletonVersion: '',
+      activeConnectionMode: 'multi',
+      routes: {},
+      security: {
+        hostAdminLoopbackOnly: true,
+        requiresHttpsForRemoteConnections: false,
+        csrfMode: 'loopback-origin',
+      },
+    });
+    // host:stack:read is in the fixture's HOST_SERVER_CAPS — this is exactly
+    // what SSR needs available for the admin-button check (hasCapability)
+    // to render true in the FIRST server-rendered HTML, before onMount runs.
+    expect(hasCapability('host:stack:read')).toBe(true);
   });
 });
 

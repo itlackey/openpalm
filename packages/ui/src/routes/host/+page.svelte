@@ -5,6 +5,7 @@
   import { page } from '$app/state';
   import { formatTime } from '$lib/format-date.js';
   import Navbar from '$lib/components/chrome/Navbar.svelte';
+  import VoiceStopControl from '$lib/components/chrome/VoiceStopControl.svelte';
   import TabBar, { type TabId } from '$lib/components/chrome/TabBar.svelte';
   import OverviewTab from '$lib/components/admin/overview/OverviewTab.svelte';
   import UpdatesTab from '$lib/components/admin/updates/UpdatesTab.svelte';
@@ -296,7 +297,9 @@
   <title>OpenPalm Console</title>
 </svelte:head>
 
-<Navbar />
+<Navbar>
+  <VoiceStopControl />
+</Navbar>
 
 <TabBar active={activeTab} onSelect={handleTabSelect} />
 
