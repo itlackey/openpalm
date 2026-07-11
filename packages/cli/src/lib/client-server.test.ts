@@ -37,6 +37,7 @@ import * as ports from './ports.ts';
 import {
   startClientServer, resolveClientServeScript, resolveDefaultAssistantUrl,
   resolveClientServePort, resolveClientServeUrl,
+  resolveHostUiPort, resolveHostUiUrl,
 } from './client-server.ts';
 
 // ── fakes ─────────────────────────────────────────────────────────────────────
@@ -89,7 +90,7 @@ function harness(opts: {
   const procs = opts.procs ?? [fakeClientProc()];
   const spawns: SpawnRecord[] = [];
   const logs: string[] = [];
-  const runtimeConfigWrites: Array<{ path: string; assistantUrl: string }> = [];
+  const runtimeConfigWrites: Array<{ path: string; assistantUrl: string; hostUrl?: string }> = [];
   const handlePromise = startClientServer({
     port: opts.port,
     resolveBuildDir: () => buildDir,
@@ -102,7 +103,9 @@ function harness(opts: {
     logError: (...a: unknown[]) => { logs.push(a.map(String).join(' ')); },
     resolveRuntimeConfigPath: () => '/op-home/data/client/runtime-config.json',
     resolveAssistantUrl: () => process.env.OP_CLIENT_DEFAULT_ASSISTANT_URL || `http://127.0.0.1:${process.env.OP_ASSISTANT_PORT || '3800'}`,
-    writeRuntimeConfig: (path: string, assistantUrl: string) => { runtimeConfigWrites.push({ path, assistantUrl }); },
+    writeRuntimeConfig: (path: string, assistantUrl: string, options?: { hostUrl?: string }) => {
+      runtimeConfigWrites.push({ path, assistantUrl, ...(options?.hostUrl ? { hostUrl: options.hostUrl } : {}) });
+    },
     sleep: (ms: number) => { opts.sleepDelays?.push(ms); return Promise.resolve(); },
     stopTimeoutMs: 5,
     now: opts.now,
@@ -208,6 +211,7 @@ describe('startClientServer spawn env/args', () => {
   const savedHostClientPort = { value: undefined as string | undefined };
   const savedAssistantPort = { value: undefined as string | undefined };
   const savedDefaultAssistantUrl = { value: undefined as string | undefined };
+  const savedHostUiPort = { value: undefined as string | undefined };
 
   beforeEach(() => {
     savedRemote.value = process.env.OP_ALLOW_REMOTE_SETUP;
@@ -215,11 +219,13 @@ describe('startClientServer spawn env/args', () => {
     savedHostClientPort.value = process.env.OP_HOST_CLIENT_PORT;
     savedAssistantPort.value = process.env.OP_ASSISTANT_PORT;
     savedDefaultAssistantUrl.value = process.env.OP_CLIENT_DEFAULT_ASSISTANT_URL;
+    savedHostUiPort.value = process.env.OP_HOST_UI_PORT;
     delete process.env.OP_ALLOW_REMOTE_SETUP;
     delete process.env.OP_CLIENT_PORT;
     delete process.env.OP_HOST_CLIENT_PORT;
     delete process.env.OP_ASSISTANT_PORT;
     delete process.env.OP_CLIENT_DEFAULT_ASSISTANT_URL;
+    delete process.env.OP_HOST_UI_PORT;
   });
 
   afterEach(() => {
@@ -233,6 +239,8 @@ describe('startClientServer spawn env/args', () => {
     else process.env.OP_ASSISTANT_PORT = savedAssistantPort.value;
     if (savedDefaultAssistantUrl.value === undefined) delete process.env.OP_CLIENT_DEFAULT_ASSISTANT_URL;
     else process.env.OP_CLIENT_DEFAULT_ASSISTANT_URL = savedDefaultAssistantUrl.value;
+    if (savedHostUiPort.value === undefined) delete process.env.OP_HOST_UI_PORT;
+    else process.env.OP_HOST_UI_PORT = savedHostUiPort.value;
   });
 
   it('spawns the serve script with PORT=3890 (default), HOST=127.0.0.1, and OP_CLIENT_DIR=<resolved build>', async () => {
@@ -247,7 +255,11 @@ describe('startClientServer spawn env/args', () => {
     expect(env.OP_CLIENT_DIR).toBe(buildDir);
     expect(env.OP_CLIENT_RUNTIME_CONFIG).toBe('/op-home/data/client/runtime-config.json');
     expect(runtimeConfigWrites).toEqual([
-      { path: '/op-home/data/client/runtime-config.json', assistantUrl: 'http://127.0.0.1:3800' },
+      {
+        path: '/op-home/data/client/runtime-config.json',
+        assistantUrl: 'http://127.0.0.1:3800',
+        hostUrl: 'http://127.0.0.1:3880/host',
+      },
     ]);
     // The child IS the serve script from the resolved client build.
     expect(cmd).toContain(resolveClientServeScript(buildDir));
@@ -266,7 +278,11 @@ describe('startClientServer spawn env/args', () => {
     const { handlePromise, runtimeConfigWrites } = harness({});
     const handle = await handlePromise;
     expect(runtimeConfigWrites).toEqual([
-      { path: '/op-home/data/client/runtime-config.json', assistantUrl: 'https://assistant.example/oc' },
+      {
+        path: '/op-home/data/client/runtime-config.json',
+        assistantUrl: 'https://assistant.example/oc',
+        hostUrl: 'http://127.0.0.1:3880/host',
+      },
     ]);
     await handle?.stop();
   });
@@ -296,6 +312,47 @@ describe('startClientServer spawn env/args', () => {
     const handle = await handlePromise;
     expect((spawns[0] as SpawnRecord).env.HOST).toBe('127.0.0.1');
     await handle?.stop();
+  });
+
+  // Review advisory (LOW, consistency): the CLI-served client never received
+  // hostUrl, so it silently lacked the "Manage assistant" affordance the
+  // Electron-served client gets (main.ts's buildClientRuntimeConfigOptions).
+  // The CLI IS a host process serving the host UI at OP_HOST_UI_PORT (default
+  // DEFAULT_UI_PORT/3880) on this same machine, so it can point the client at
+  // the same /host admin surface.
+  it('seeds runtime-config.json hostUrl with the host UI\'s /host URL (default port)', async () => {
+    const { handlePromise, runtimeConfigWrites } = harness({});
+    const handle = await handlePromise;
+    expect(runtimeConfigWrites.at(-1)?.hostUrl).toBe('http://127.0.0.1:3880/host');
+    await handle?.stop();
+  });
+
+  it('honors OP_HOST_UI_PORT for the seeded hostUrl', async () => {
+    process.env.OP_HOST_UI_PORT = '4880';
+    const { handlePromise, runtimeConfigWrites } = harness({});
+    const handle = await handlePromise;
+    expect(runtimeConfigWrites.at(-1)?.hostUrl).toBe('http://127.0.0.1:4880/host');
+    await handle?.stop();
+  });
+});
+
+// ── resolveHostUiPort / resolveHostUiUrl (A2/H4 CLI parity) ───────────────────
+
+describe('resolveHostUiPort / resolveHostUiUrl', () => {
+  it('uses OP_HOST_UI_PORT from persisted stack.env when process.env has none', () => {
+    expect(resolveHostUiPort({}, { OP_HOST_UI_PORT: '9200' })).toBe(9200);
+    expect(resolveHostUiUrl({}, { OP_HOST_UI_PORT: '9200' })).toBe('http://127.0.0.1:9200');
+  });
+
+  it('lets process.env override the persisted value', () => {
+    expect(resolveHostUiPort(
+      { OP_HOST_UI_PORT: '9300' } as NodeJS.ProcessEnv,
+      { OP_HOST_UI_PORT: '9200' },
+    )).toBe(9300);
+  });
+
+  it('falls back to DEFAULT_UI_PORT (3880) when nothing is set', () => {
+    expect(resolveHostUiPort({}, {})).toBe(3880);
   });
 });
 

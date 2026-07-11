@@ -25,7 +25,9 @@ import {
   resolveDataDir,
   resolveOpenPalmHome,
   writeClientRuntimeConfig,
+  type WriteClientRuntimeConfigOptions,
 } from '@openpalm/lib';
+import { DEFAULT_UI_PORT } from './ports.ts';
 
 const STOP_TIMEOUT_MS = 5_000;
 const RESPAWN_BASE_DELAY_MS = 1_000;
@@ -109,6 +111,36 @@ export function resolveDefaultAssistantUrl(
   return resolveAssistantEndpoint(homeDir, env);
 }
 
+/**
+ * Resolve the host UI's own port — same persisted stack.env (OP_HOST_UI_PORT)
+ * + process.env merge precedence as ui-server.ts's resolveUiServePort.
+ * Duplicated (not imported) to avoid a client-server.ts <-> ui-server.ts
+ * import cycle: ui-server.ts already imports startClientServer /
+ * resolveClientServeUrl from this file.
+ */
+export function resolveHostUiPort(
+  env: NodeJS.ProcessEnv = process.env,
+  persistedEnv: Record<string, string> = readPersistedStackEnv(),
+): number {
+  const merged = { ...persistedEnv, ...env };
+  return Number(merged.OP_HOST_UI_PORT) || DEFAULT_UI_PORT;
+}
+
+/**
+ * The host UI's own URL (no path), built from {@link resolveHostUiPort}. Used
+ * to seed runtime-config.json's `hostUrl` (A2/H4 "Manage assistant" escape
+ * hatch — review advisory, LOW, consistency with Electron's
+ * buildClientRuntimeConfigOptions in main.ts). The CLI is a host process
+ * serving the host UI on this same machine, so the client it also serves can
+ * point back at it.
+ */
+export function resolveHostUiUrl(
+  env: NodeJS.ProcessEnv = process.env,
+  persistedEnv: Record<string, string> = readPersistedStackEnv(),
+): string {
+  return `http://127.0.0.1:${resolveHostUiPort(env, persistedEnv)}`;
+}
+
 /** Running client-server handle: stop() kills the child and ends supervision. */
 export interface ClientServerHandle {
   stop: () => Promise<void>;
@@ -126,7 +158,10 @@ export interface ClientServerDeps {
   spawnFn?: (cmd: string[], opts: { env: Record<string, string | undefined> }) => ClientChildProc;
   resolveRuntimeConfigPath?: () => string;
   resolveAssistantUrl?: () => string;
-  writeRuntimeConfig?: (path: string, assistantUrl: string) => void;
+  /** Resolve the host UI's own URL (no path) for the runtime-config.json
+   *  `hostUrl` seed (defaults to {@link resolveHostUiUrl}). */
+  resolveUiBaseUrl?: () => string;
+  writeRuntimeConfig?: (path: string, assistantUrl: string, options?: WriteClientRuntimeConfigOptions) => void;
   log?: (...args: unknown[]) => void;
   logError?: (...args: unknown[]) => void;
   /** Sleep for the respawn delay and the stop grace window. */
@@ -157,6 +192,7 @@ export async function startClientServer(deps: ClientServerDeps = {}): Promise<Cl
   const stopTimeoutMs = deps.stopTimeoutMs ?? STOP_TIMEOUT_MS;
   const resolveRuntimeConfigPath = deps.resolveRuntimeConfigPath ?? (() => resolveHostClientRuntimeConfigPath());
   const resolveAssistantUrl = deps.resolveAssistantUrl ?? (() => resolveDefaultAssistantUrl(process.env));
+  const resolveUiBaseUrl = deps.resolveUiBaseUrl ?? (() => resolveHostUiUrl());
   const writeRuntimeConfig = deps.writeRuntimeConfig ?? writeClientRuntimeConfig;
 
   const buildDir = resolveBuildDir();
@@ -168,7 +204,12 @@ export async function startClientServer(deps: ClientServerDeps = {}): Promise<Cl
 
   const runtimeConfigPath = resolveRuntimeConfigPath();
   try {
-    writeRuntimeConfig(runtimeConfigPath, resolveAssistantUrl());
+    // A2/H4: seed hostUrl so the CLI-served client gets the same "Manage
+    // assistant" affordance Electron writes (buildClientRuntimeConfigOptions,
+    // main.ts) — the CLI is a host process serving the host UI on this same
+    // machine's UI port.
+    const uiUrl = resolveUiBaseUrl();
+    writeRuntimeConfig(runtimeConfigPath, resolveAssistantUrl(), { hostUrl: `${uiUrl}/host` });
   } catch (err) {
     logError(`Failed to write client runtime config at ${runtimeConfigPath}: ${err instanceof Error ? err.message : String(err)}`);
   }
