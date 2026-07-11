@@ -388,7 +388,18 @@ export function createConnectionStore(options: { storage: ConnectionStorage }): 
         const existing = await storage.get(entry.id);
         // Config wins for the entries it owns (locked), including on
         // re-seed; a same-id entry the user somehow owns is left alone.
-        if (!existing || existing.locked) await storage.put(clone(entry));
+        if (!existing) {
+          await storage.put(clone(entry));
+        } else if (existing.locked) {
+          // Config refreshes the fields it owns (url/label/…), but a user may
+          // have attached credentials to this locked entry via setSecretRef
+          // (E6); the config's locked entries always ship auth:{mode:'none'},
+          // so a wholesale rewrite would silently drop those creds on every
+          // reload. Preserve a user-supplied non-none auth across the reseed.
+          const seeded = clone(entry);
+          const preserveAuth = existing.auth && existing.auth.mode !== 'none';
+          await storage.put(preserveAuth ? { ...seeded, auth: existing.auth } : seeded);
+        }
       }
       if ((await storage.getMeta(ACTIVE_ID_KEY)) !== null) return;
       const fallback = config.connections.find((entry) => entry.isDefault);

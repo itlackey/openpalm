@@ -170,6 +170,32 @@ describe('seedFromRuntimeConfig (P5b item 2 — locked default)', () => {
     );
   });
 
+  test('re-seeding preserves user-attached credentials on a locked entry (Codex review of PR #562)', async () => {
+    // E6 lets a user attach Basic/Bearer creds to a locked, config-owned
+    // assistant/guardian via setSecretRef(). But every boot re-runs
+    // seedFromRuntimeConfig(), whose locked entries always ship
+    // auth:{mode:'none'} (the container never mints the user's creds). A
+    // wholesale rewrite would drop the secretRef on the next reload, silently
+    // reverting the connection to unauthenticated — defeating E6 in exactly
+    // the scenario it exists for. Config still wins for label/url; only the
+    // user-supplied auth is preserved.
+    const { store } = await storeWithBackend();
+    await store.seedFromRuntimeConfig({ connections: [seededEntry()] });
+    await store.setSecretRef('seed-local-opencode', { mode: 'basic', secretRef: 'sec_user' });
+
+    await store.seedFromRuntimeConfig({
+      connections: [seededEntry({ label: 'Renamed by config', url: 'http://127.0.0.1:5096' })]
+    });
+
+    const entry = await store.get('seed-local-opencode');
+    // User credentials survive the reseed...
+    expect(entry?.auth).toEqual({ mode: 'basic', secretRef: 'sec_user' });
+    // ...while config still refreshes the fields it owns.
+    expect(entry?.label).toBe('Renamed by config');
+    expect(entry?.url).toBe('http://127.0.0.1:5096');
+    expect((await store.list()).length).toBe(1);
+  });
+
   test('seeding never steals an explicit user selection', async () => {
     const { store } = await storeWithBackend();
     const mine = await store.add({
