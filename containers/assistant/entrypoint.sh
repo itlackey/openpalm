@@ -190,6 +190,15 @@ start_client() {
   local client_build="${client_pkg}/build"
   if [ ! -f "$serve_script" ] || [ ! -f "${client_build}/index.html" ]; then
     echo "entrypoint: @openpalm/client build not found — client co-process skipped" >&2
+    # F4 (review): a missing/never-installed client build is a non-fatal,
+    # permanent condition for this boot — the healthcheck (Dockerfile +
+    # core.compose.yml) probes OP_CLIENT_PORT UNLESS this marker exists, so
+    # without it a legitimately-absent client would fail the healthcheck
+    # forever, marking the assistant unhealthy and blocking every service
+    # behind guardian's `depends_on: condition: service_healthy` — directly
+    # contradicting the "the assistant keeps serving without it" log line
+    # above. Write the marker so this skip is recognized as healthy.
+    : > /tmp/openpalm-client-skip
     return 0
   fi
 
@@ -247,16 +256,43 @@ start_client() {
     local max_attempts=5
     local delay=1
     local max_delay=30
+    # SUPERVISOR-RESET (review): mirrors packages/cli/src/lib/client-server.ts's
+    # HEALTHY_UPTIME_MS reset — a child that stays up for at least this long
+    # before exiting resets the give-up counter, so only a PERSISTENTLY-broken
+    # client (no healthy stretch between crashes) can ever exhaust
+    # max_attempts. Without this, crashes spread across the container's whole
+    # lifetime (e.g. one every few days) permanently disabled the client after
+    # only 5 of them, total, ever — contradicting the comment's claim to
+    # mirror client-server.ts, which DOES reset. Millisecond resolution (via
+    # `date +%s%3N`, GNU coreutils) both matches client-server.ts's Date.now()
+    # units and avoids second-granularity rounding incorrectly classifying a
+    # fast crash-loop iteration as "healthy" near a wall-clock second boundary.
+    # Configurable (test hook); unset uses the same 60000ms threshold as
+    # client-server.ts's HEALTHY_UPTIME_MS.
+    local healthy_uptime_ms="${OP_CLIENT_RESPAWN_HEALTHY_UPTIME_MS:-60000}"
     while true; do
+      local start_ts
+      start_ts="$(date +%s%3N)"
       local exit_code
       if node "$serve_script" --host 0.0.0.0 --port "$client_port" --dir "$client_build"; then
         exit_code=0
       else
         exit_code=$?
       fi
+      local end_ts
+      end_ts="$(date +%s%3N)"
+      if [ "$((end_ts - start_ts))" -ge "$healthy_uptime_ms" ]; then
+        attempt=0
+      fi
       attempt=$((attempt + 1))
       if [ "$attempt" -ge "$max_attempts" ]; then
         echo "warning: client co-process exited $attempt times (last exit $exit_code); giving up on respawn — the assistant keeps serving without it" >&2
+        # F4 (review): a permanently-dead client (attempt cap exhausted) is
+        # the SAME non-fatal, boot-scoped condition as "build not found"
+        # above — write the skip marker so the healthcheck (which probes
+        # OP_CLIENT_PORT unless this marker exists) stops expecting a client
+        # that will never come back this boot, instead of failing forever.
+        : > /tmp/openpalm-client-skip
         break
       fi
       echo "warning: client co-process exited (code $exit_code) — restarting in ${delay}s (attempt $((attempt + 1))/${max_attempts})" >&2
@@ -502,6 +538,19 @@ start_opencode() {
      && [ "$client_bind_address" != "0.0.0.0" ] && [ "$client_bind_address" != "::" ] \
      && [ "$assistant_bind_address" != "127.0.0.1" ] && [ "$assistant_bind_address" != "localhost" ]; then
     cors_origins+=("http://${client_bind_address}:${client_host_port}")
+  fi
+  # H2 (review): the comment above documents that a wildcard client bind
+  # derives NO LAN CORS origin — but a wildcard bind is exactly the
+  # configuration a LAN operator who has ALSO turned on OPENCODE_AUTH (the
+  # legitimate hardened-LAN path start_client's safety gate allows) would
+  # use. Silently deriving nothing left LAN chat failing OpenCode's CORS
+  # preflight with no operator-facing signal — only this source comment.
+  # Emit a loud runtime warning naming the knob operators must set
+  # (OP_CLIENT_CORS_ALLOWED_ORIGINS) whenever that gap is live: wildcard
+  # client bind + auth enabled + no explicit origins configured to fill it.
+  if { [ "$client_bind_address" = "0.0.0.0" ] || [ "$client_bind_address" = "::" ]; } \
+     && opencode_auth_enabled && [ -z "${OP_CLIENT_CORS_ALLOWED_ORIGINS:-}" ]; then
+    echo "WARNING: OP_CLIENT_BIND_ADDRESS/OP_BIND_ADDRESS=${client_bind_address} is a wildcard bind with OPENCODE_AUTH enabled, but no LAN browser Origin can be auto-derived from a wildcard bind — set OP_CLIENT_CORS_ALLOWED_ORIGINS to the exact http(s) origin(s) LAN browsers will use (e.g. http://<lan-ip>:${client_host_port}), or the client will silently fail OpenCode's CORS preflight." >&2
   fi
   if [ -n "${OP_CLIENT_CORS_ALLOWED_ORIGINS:-}" ]; then
     local old_ifs="$IFS"

@@ -233,8 +233,18 @@ EXPOSE 4096 3000
 # entrypoint's I3 LAN-exposure safety gate deliberately skipped starting it
 # (marker file /tmp/openpalm-client-skip) — that security-motivated skip must
 # not itself register as a healthcheck failure.
+#
+# H3 (review): mirrors core.compose.yml's own healthcheck exactly (same
+# curl'd /health + client-port HTTP probe, same skip-marker exemption, same
+# fixed in-container OP_CLIENT_PORT default of 3000) instead of a separate
+# /dev/tcp TCP-connect check. The two probes previously disagreed: a
+# TCP-connect only confirms something is LISTENING, so a client co-process
+# that accepted the connection but served 500s (or hung mid-response) could
+# read healthy here while compose's curl probe — which requires an actual
+# successful HTTP response — read unhealthy for the exact same container.
+# curl is already installed in this image (see the apt-get install above).
 HEALTHCHECK --interval=15s --timeout=5s --start-period=30s --retries=3 \
-  CMD bash -c 'echo > /dev/tcp/localhost/${OPENCODE_PORT:-4096} && { [ -f /tmp/openpalm-client-skip ] || echo > /dev/tcp/localhost/${OP_CLIENT_PORT:-3000}; }' || exit 1
+  CMD bash -c 'curl -sf http://localhost:${OPENCODE_PORT:-4096}/health >/dev/null && { [ -f /tmp/openpalm-client-skip ] || curl -sf http://localhost:${OP_CLIENT_PORT:-3000}/ >/dev/null; }' || exit 1
 
 ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/opencode-entrypoint.sh"]
 USER node
