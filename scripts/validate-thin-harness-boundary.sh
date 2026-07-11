@@ -96,6 +96,12 @@ ALLOWED_IMPORTS=(
   # 127.0.0.1 for the browser-facing seeded connection URL. Read-only — no
   # state mutation, no migrations; bootstrap needs it to write runtime-config.
   resolveAssistantEndpoint
+  # Pure regex helper (E4, review 2026-07-11): rewrites a wildcard bind host
+  # (0.0.0.0/[::]/:: ) at the front of a URL to 127.0.0.1. Read-only string
+  # transform — no state mutation, no migrations. Re-exported by
+  # local-opencode.ts instead of duplicating the same regex the migration
+  # relocated FROM that file into @openpalm/lib.
+  normalizeLoopbackUrl
   # Pure version-compare helpers (update-check.ts's notify-only GitHub update
   # poll): no state mutation, no migration — just string comparison.
   normalizeVersion

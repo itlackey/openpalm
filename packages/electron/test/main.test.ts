@@ -260,6 +260,7 @@ import {
 import { app, Notification, shell } from 'electron';
 import * as lib from '@openpalm/lib';
 import { HARNESS_CONTRACT_VERSION, HARNESS_CONTRACT } from '../src/harness-contract.js';
+import { TrayController } from '../src/tray.js';
 
 // ── buildUIServerEnv ─────────────────────────────────────────────────────────
 
@@ -458,6 +459,38 @@ describe('isClientAppUrl', () => {
     expect(isClientAppUrl('http://127.0.0.1:3880/setup', 3890)).toBe(false);
     expect(isClientAppUrl('http://127.0.0.1:3880/host?tab=diagnostics', 3890)).toBe(false);
     expect(isClientAppUrl('http://127.0.0.1:3880', 3890)).toBe(false);
+  });
+});
+
+// ── set-tray-mic-recording IPC handler (E5) ─────────────────────────────────
+// E5: the handler used to `if (frontsClientChat) return;` before forwarding to
+// trayController.setMicRecording — a defense-in-depth guard that can never
+// actually fire: the sole emitter of this IPC (packages/ui's VoiceControl)
+// never loads under the client window in the first place (same B11 fact the
+// isClientAppUrl suite above documents), so there is no real caller this
+// guard could ever intercept. Removed the dead branch; the handler now always
+// forwards. Pinned two ways: (1) the handler still does its one real job
+// (forwards to the tray controller) — a spy-based behavior test that would
+// pass with or without the dead guard present, since frontsClientChat is
+// false in this harness by default; and (2) a source-shape pin that the
+// handler body no longer references frontsClientChat at all, which DOES
+// discriminate the fix (red with the guard in place, green once removed).
+describe('set-tray-mic-recording IPC handler (E5)', () => {
+  it('forwards the recording flag to trayController.setMicRecording', () => {
+    const spy = vi.spyOn(TrayController.prototype, 'setMicRecording');
+    const handler = ipcMainHandleHandlers.get('set-tray-mic-recording');
+    expect(handler).toBeDefined();
+    handler!(null, true);
+    expect(spy).toHaveBeenCalledWith(true);
+    handler!(null, false);
+    expect(spy).toHaveBeenCalledWith(false);
+    spy.mockRestore();
+  });
+
+  it('no longer guards on frontsClientChat — the dead defense-in-depth branch is gone', () => {
+    const handler = ipcMainHandleHandlers.get('set-tray-mic-recording');
+    expect(handler).toBeDefined();
+    expect(handler!.toString()).not.toContain('frontsClientChat');
   });
 });
 

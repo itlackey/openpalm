@@ -1239,12 +1239,13 @@ ipcMain.on('notify', (_event, payload: { title?: string; body?: string } | null)
   notification.show();
 });
 
+// E5: this used to also `if (frontsClientChat) return;` before forwarding —
+// unreachable defense-in-depth, since the sole emitter of this IPC
+// (packages/ui's VoiceControl) never loads under the client window in the
+// first place (same B11 fact isClientAppUrl's tests document), so there is
+// no real caller this guard could ever intercept. Removed; the handler for
+// the host-UI emitter path is unchanged.
 ipcMain.handle('set-tray-mic-recording', (_event, recording: boolean) => {
-  // B11: no-op while fronting the client SPA — it has no VoiceControl to
-  // have produced this call in the first place, but guard it anyway so the
-  // recording-animation affordance can never appear over a window that has
-  // no mic UI to correspond to it.
-  if (frontsClientChat) return;
   trayController.setMicRecording(recording);
 });
 
