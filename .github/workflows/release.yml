@@ -822,7 +822,7 @@ jobs:
   # Always:     unit=all
   electron:
     name: Electron (${{ matrix.platform }})
-    needs: [compute-version, bump, npm-skeleton, npm-lib, npm-cli, npm-ui, npm-guardian]
+    needs: [compute-version, bump, npm-skeleton, npm-lib, npm-cli, npm-ui, npm-guardian, npm-client]
     if: |
       always() &&
       needs.bump.result == 'success' &&
@@ -834,6 +834,7 @@ jobs:
           needs.npm-cli.result == 'success' &&
           needs.npm-ui.result == 'success' &&
           needs.npm-guardian.result == 'success' &&
+          needs.npm-client.result == 'success' &&
           (inputs.unit == 'all' || (inputs.unit == 'platform' && (inputs.include_electron == true || inputs.bump != 'patch')))
         )
       )
@@ -864,6 +865,12 @@ jobs:
         run: bun install --frozen-lockfile
       - name: Build UI
         run: bun run ui:build
+      - name: Build client
+        # Packages the @openpalm/client static bundle into
+        # packages/client/build so electron-builder.yml's extraResources can
+        # bundle it (C2) — resolveLocalClientBuild()'s Electron strategy and
+        # main.ts's serve-script resolution both depend on it being present.
+        run: bun run client:build
       - name: Bundle Electron app
         run: bun run --cwd packages/electron bundle
       - name: Build Electron installer

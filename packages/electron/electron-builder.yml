@@ -21,6 +21,18 @@ extraResources:
   - from: ../../packages/skeleton
     to: openpalm-skeleton
     filter: "**/*"
+  # @openpalm/client static bundle (C2, review 2026-07-10): without these two,
+  # resolveLocalClientBuild()'s Electron strategy (client-assets.ts:79-84,
+  # `resourcesPath/client-build`) and main.ts's serve-script resolution
+  # (`join(buildDir, '..', 'bin', 'serve.mjs')` => `resourcesPath/bin/serve.mjs`)
+  # both dead-end, and every packaged desktop install silently falls back to
+  # the host UI with no client chat surface, offline or online.
+  - from: ../../packages/client/build
+    to: client-build
+    filter: "**/*"
+  - from: ../../packages/client/bin
+    to: bin
+    filter: "**/*"
 
 # NOTE: OpenPalm desktop builds are UNSIGNED (no Apple/Windows code-signing certs).
 # To keep install as frictionless as possible we ship plain archives, not OS
