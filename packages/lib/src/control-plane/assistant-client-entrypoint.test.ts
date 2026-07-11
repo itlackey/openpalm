@@ -281,11 +281,15 @@ describe('P5d entrypoint — client co-process (static-only)', () => {
   // just the extracted function) so a future edit anywhere in the file can
   // never reintroduce a wildcard CORS grant.
   test('the entrypoint never emits a wildcard CORS origin anywhere (I3)', () => {
+    // Scoped to CORS-specific constructs (the `--cors` flag itself and the
+    // `cors_origins` array it's built from), not a blanket ban on the
+    // two-character substring `"*"` anywhere in the file — that would
+    // false-fail on any unrelated future edit containing a legitimate `"*"`
+    // (a comment, a glob string, an unrelated array literal).
     expect(entrypoint).not.toMatch(/--cors\s+["']?\*/);
     expect(entrypoint).not.toContain('cors_origins+=("*")');
     expect(entrypoint).not.toContain("cors_origins+=('*')");
-    expect(entrypoint).not.toContain('"*"');
-    expect(entrypoint).not.toContain("'*'");
+    expect(entrypoint).not.toMatch(/cors_origins\s*=\s*\(\s*["']?\*["']?\s*\)/);
   });
 
   // CHARACTERIZATION (green today): syntax gate. shellcheck is unavailable in

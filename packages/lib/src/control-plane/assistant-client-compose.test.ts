@@ -141,7 +141,44 @@ describe('I2 — assistant healthcheck also probes the client co-process', () =>
 
   test('the healthcheck command probes the client port, not just OpenCode', () => {
     expect(healthcheckTest).toContain('4096');
-    expect(healthcheckTest).toMatch(/OP_CLIENT_PORT/);
+    // Must resolve, one way or another, to the client's port in-container.
+    expect(healthcheckTest).toMatch(/localhost:(\$\$\{OP_CLIENT_PORT:-3000\}|3000)\//);
+  });
+
+  // Reviewer finding (adversarial review, I2 regression): the probe MUST
+  // target the FIXED in-container port the client co-process always listens
+  // on (3000), never the host-facing OP_CLIENT_PORT knob interpolated by
+  // Compose at config-load time. OP_CLIENT_PORT is the operator-facing HOST
+  // port mapping value (default 3810, commonly overridden — see
+  // docs/operations/manual-compose-runbook.md); it is deliberately NEVER
+  // passed into the container's own environment (see the volumes/ports
+  // comments above), so the client co-process always serves on the fixed
+  // in-container port 3000 regardless of OP_CLIENT_PORT.
+  //
+  // A raw (unescaped) `${OP_CLIENT_PORT:-3000}` fragment in a CMD-SHELL
+  // healthcheck gets interpolated by Compose using the HOST env BEFORE the
+  // container ever sees the string. For an operator who customizes
+  // OP_CLIENT_PORT (e.g. OP_CLIENT_PORT=3840), Compose would bake
+  // `localhost:3840` into the in-container curl probe — a dead port, since
+  // the client is listening on 3000 inside the container. The assistant
+  // would then be perpetually "unhealthy", and because guardian has
+  // `depends_on: assistant: condition: service_healthy`, a customized
+  // OP_CLIENT_PORT deploy would fail the ENTIRE stack.
+  //
+  // The fix must hardcode `3000`, or escape the reference as
+  // `$${OP_CLIENT_PORT:-3000}` so Compose leaves it untouched and the
+  // CONTAINER's own shell expands it instead (where OP_CLIENT_PORT is
+  // deliberately unset, so it also defaults to 3000) — mirroring how the
+  // Dockerfile's own HEALTHCHECK already gets this right via container-side
+  // shell expansion (containers/assistant/Dockerfile).
+  test('the client probe targets the fixed in-container port, never a host-interpolated OP_CLIENT_PORT (I2 review fix)', () => {
+    // A bare (non-doubled) `${OP_CLIENT_PORT...}` reference would be
+    // host-interpolated by Compose at config-load time — forbidden.
+    const hostInterpolatedReference = /(^|[^$])\$\{OP_CLIENT_PORT\b/;
+    expect(
+      healthcheckTest,
+      `healthcheck must not contain a raw, host-interpolated \${OP_CLIENT_PORT...} reference (bakes the HOST port into the container-side probe): ${healthcheckTest}`,
+    ).not.toMatch(hostInterpolatedReference);
   });
 
   test('the healthcheck exempts the I3 deliberate client-skip marker rather than treating every skip as unhealthy', () => {
