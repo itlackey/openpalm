@@ -247,6 +247,7 @@ import {
   ensureClientAppBuild,
   ensureDockerReady,
   getLaunchOnLoginStatus,
+  isAllowedInAppWindowUrl,
   isClientAppUrl,
   openLocalApp,
   resolveAssistantUrl,
@@ -457,6 +458,46 @@ describe('isClientAppUrl', () => {
     expect(isClientAppUrl('http://127.0.0.1:3880/setup', 3890)).toBe(false);
     expect(isClientAppUrl('http://127.0.0.1:3880/host?tab=diagnostics', 3890)).toBe(false);
     expect(isClientAppUrl('http://127.0.0.1:3880', 3890)).toBe(false);
+  });
+});
+
+// ── isAllowedInAppWindowUrl (security review hardening) ─────────────────────
+// PRE-EXISTING (not introduced by this diff): setWindowOpenHandler used to
+// gate in-app windows with `url.startsWith('http://127.0.0.1') ||
+// url.startsWith('http://localhost')`. Prefix matching admits non-loopback
+// hosts such as http://127.0.0.1.evil.com (subdomain) and
+// http://127.0.0.1@evil.com (userinfo) — both would open attacker content in
+// an in-app BrowserWindow instead of deferring to the external browser.
+// isAllowedInAppWindowUrl replaces the prefix check with real URL parsing:
+// only http: URLs whose HOSTNAME is exactly 127.0.0.1 or localhost (any
+// port) are allowed.
+describe('isAllowedInAppWindowUrl', () => {
+  it('allows http://127.0.0.1 with any port', () => {
+    expect(isAllowedInAppWindowUrl('http://127.0.0.1:3880/host')).toBe(true);
+  });
+
+  it('allows http://localhost with any port', () => {
+    expect(isAllowedInAppWindowUrl('http://localhost:3890/chat')).toBe(true);
+  });
+
+  it('rejects a subdomain bypass (http://127.0.0.1.evil.com)', () => {
+    expect(isAllowedInAppWindowUrl('http://127.0.0.1.evil.com')).toBe(false);
+  });
+
+  it('rejects a userinfo bypass (http://127.0.0.1@evil.com)', () => {
+    expect(isAllowedInAppWindowUrl('http://127.0.0.1@evil.com')).toBe(false);
+  });
+
+  it('rejects https (protocol must be exactly http:)', () => {
+    expect(isAllowedInAppWindowUrl('https://127.0.0.1:3880')).toBe(false);
+  });
+
+  it('rejects a non-loopback host', () => {
+    expect(isAllowedInAppWindowUrl('http://example.com')).toBe(false);
+  });
+
+  it('rejects unparsable input', () => {
+    expect(isAllowedInAppWindowUrl('not a url')).toBe(false);
   });
 });
 

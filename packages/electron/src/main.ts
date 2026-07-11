@@ -876,6 +876,28 @@ export function isClientAppUrl(url: string, clientPort: number): boolean {
   return url.startsWith(`http://127.0.0.1:${clientPort}`);
 }
 
+/**
+ * Whether `url` may open as an in-app Electron BrowserWindow
+ * (setWindowOpenHandler below) rather than being deferred to the external
+ * system browser. SECURITY (review): a prior prefix check —
+ * `url.startsWith('http://127.0.0.1') || url.startsWith('http://localhost')`
+ * — admitted non-loopback hosts such as `http://127.0.0.1.evil.com`
+ * (subdomain bypass) and `http://127.0.0.1@evil.com` (userinfo bypass),
+ * either of which would open attacker content inside the trusted app's
+ * in-app window instead of the external browser. Real URL parsing: only
+ * http: URLs whose HOSTNAME is exactly `127.0.0.1` or `localhost` (any port)
+ * are allowed.
+ */
+export function isAllowedInAppWindowUrl(url: string): boolean {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return false;
+  }
+  return parsed.protocol === 'http:' && (parsed.hostname === '127.0.0.1' || parsed.hostname === 'localhost');
+}
+
 /** Returns the URL the window was loaded with (B11 — callers use this to gate host-UI-only surfaces like the global mic shortcut). */
 async function createWindow(): Promise<string> {
   const update = getCachedUpdateInfo();
@@ -912,7 +934,7 @@ async function createWindow(): Promise<string> {
 
   // Open external links in the system browser
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-    if (url.startsWith('http://127.0.0.1') || url.startsWith('http://localhost')) {
+    if (isAllowedInAppWindowUrl(url)) {
       return { action: 'allow' };
     }
     shell.openExternal(url);
