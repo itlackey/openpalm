@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync, unlinkSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync, unlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -23,8 +23,13 @@ beforeAll(async () => {
   dir = join(rootDir, 'build');
   runtimeConfigDir = rootDir;
   explicitRuntimeConfig = join(rootDir, 'explicit-runtime-config.json');
-  mkdirSync(dir, { recursive: true });
+  mkdirSync(join(dir, '_app', 'immutable', 'chunks'), { recursive: true });
   writeFileSync(join(dir, 'index.html'), '<!doctype html><title>ok</title>');
+  writeFileSync(join(dir, 'sw.js'), 'self.addEventListener("install",()=>{});');
+  writeFileSync(join(dir, 'registerSW.js'), 'navigator.serviceWorker?.register("/sw.js");');
+  // A real build asset — present on disk, must be served normally (not the
+  // H2 scenario below).
+  writeFileSync(join(dir, '_app', 'immutable', 'chunks', 'present-abc123.js'), 'export default 1;');
   writeFileSync(join(runtimeConfigDir, 'runtime-config.json'), '{"connections":[]}');
   writeFileSync(explicitRuntimeConfig, '{"connections":[{"id":"explicit"}]}');
   child = Bun.spawn(['node', SERVE, '--port', String(PORT), '--dir', dir], {
@@ -94,5 +99,88 @@ describe('serve.mjs resilience', () => {
     expect(res.status).toBe(200);
     expect(res.headers.get('cache-control')).toBe('no-store');
     expect(await res.text()).toContain('build');
+  });
+});
+
+// H2 (review 2026-07-10 §H2): a non-atomic artifact swap/seed or any partial
+// copy used to be invisible — any missing on-disk asset (a JS chunk the SW's
+// precache manifest names, a CSS file, …) fell through the unconditional-200
+// SPA fallback and got index.html back with a 200. The SW's generateSW
+// precache strategy trusts the response body for whatever URL it asked for;
+// caching index.html under a .js URL durably corrupts every future load of
+// that chunk until a byte-different sw.js ships. The fallback must be
+// restricted to navigation-style requests (extensionless path, or an
+// explicit `Accept: text/html`) — everything else that 404s on disk 404s.
+describe('serve.mjs SPA fallback scope (H2)', () => {
+  it('404s a missing extensioned asset instead of returning index.html', async () => {
+    const res = await fetch(`${BASE}/_app/immutable/chunks/missing-def456.js`);
+    expect(res.status).toBe(404);
+    expect(res.headers.get('content-type')).not.toContain('text/html');
+  });
+
+  it('404s a missing .css asset the same way', async () => {
+    const res = await fetch(`${BASE}/_app/immutable/assets/missing.css`);
+    expect(res.status).toBe(404);
+  });
+
+  it('still serves an asset that genuinely exists on disk', async () => {
+    const res = await fetch(`${BASE}/_app/immutable/chunks/present-abc123.js`);
+    expect(res.status).toBe(200);
+    expect(await res.text()).toContain('export default 1');
+  });
+
+  it('SPA-falls-back for an extensionless deep link (client-side route)', async () => {
+    const res = await fetch(`${BASE}/connections/new`);
+    expect(res.status).toBe(200);
+    expect(res.headers.get('content-type')).toContain('text/html');
+  });
+
+  it('SPA-falls-back for an extensioned path when the request declares Accept: text/html (a real navigation)', async () => {
+    const res = await fetch(`${BASE}/some/deep.route`, {
+      headers: { accept: 'text/html,application/xhtml+xml' },
+    });
+    expect(res.status).toBe(200);
+    expect(res.headers.get('content-type')).toContain('text/html');
+  });
+});
+
+// H2: the SW must never precache a stale index.html/sw.js/registerSW.js
+// under `no-cache` semantics — a byte-identical-looking install would
+// otherwise wedge on a browser/CDN cache instead of always revalidating.
+describe('serve.mjs cache-control (H2)', () => {
+  it('serves index.html with cache-control: no-cache', async () => {
+    const res = await fetch(`${BASE}/`);
+    expect(res.headers.get('cache-control')).toBe('no-cache');
+  });
+
+  it('serves sw.js with cache-control: no-cache', async () => {
+    const res = await fetch(`${BASE}/sw.js`);
+    expect(res.status).toBe(200);
+    expect(res.headers.get('cache-control')).toBe('no-cache');
+  });
+
+  it('serves registerSW.js with cache-control: no-cache', async () => {
+    const res = await fetch(`${BASE}/registerSW.js`);
+    expect(res.status).toBe(200);
+    expect(res.headers.get('cache-control')).toBe('no-cache');
+  });
+
+  it('does not force no-cache on an ordinary hashed asset (safe to cache immutably)', async () => {
+    const res = await fetch(`${BASE}/_app/immutable/chunks/present-abc123.js`);
+    expect(res.headers.get('cache-control')).not.toBe('no-cache');
+  });
+});
+
+// D4 (review 2026-07-10 §D4, half): the direct `openpalm-client-serve`/
+// `node bin/serve.mjs` invocation was the only place in the repo that
+// defaulted to port 4180 — every other surface (Electron, CLI, docs)
+// converges on the platform's 3890 (packages/lib DEFAULT_CLIENT_PORT). This
+// package deliberately never depends on @openpalm/lib (see package.json),
+// so the fallback is pinned here as a literal instead of a shared import.
+describe('serve.mjs default port (D4)', () => {
+  it('falls back to the platform default port 3890, not 4180', () => {
+    const source = readFileSync(SERVE, 'utf8');
+    expect(source).not.toMatch(/\?\?\s*4180/);
+    expect(source).toMatch(/\?\?\s*3890/);
   });
 });

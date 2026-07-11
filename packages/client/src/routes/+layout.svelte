@@ -7,7 +7,9 @@
   import IconThemeSystem from '@openpalm/ui-kit/components/icons/IconThemeSystem.svelte';
   import IconThemeLight from '@openpalm/ui-kit/components/icons/IconThemeLight.svelte';
   import IconThemeDark from '@openpalm/ui-kit/components/icons/IconThemeDark.svelte';
+  import IconRefresh from '@openpalm/ui-kit/components/icons/IconRefresh.svelte';
   import { getClientBoot } from '$lib/boot.js';
+  import { resetAppCache } from '$lib/reset-app-cache.js';
   import {
     THEME_STORAGE_KEY,
     isThemePreference,
@@ -56,6 +58,16 @@
       // Storage unavailable — the in-session toggle still applies below.
     }
     applyTheme(themePreference);
+  }
+
+  // H3 (review 2026-07-10 §H3, client half): the only cache-escape
+  // affordance in the client — a stale/dead build has no other recovery
+  // path short of clearing browser site data by hand. A confirm() gate
+  // (same pattern as the connections page's remove()) since this reloads
+  // the page immediately and drops any unsent draft.
+  function handleResetAppCache(): void {
+    if (!confirm('Reset the app cache and reload? Any unsent message will be lost.')) return;
+    void resetAppCache();
   }
 
   onMount(() => {
@@ -121,6 +133,17 @@
         {:else}
           <IconThemeDark size={14} />
         {/if}
+      </button>
+      <!-- H3: the only cache-escape affordance in the client — recovers a
+           stale/dead precached build with no route back to setup otherwise. -->
+      <button
+        type="button"
+        class="theme-toggle reset-cache-btn"
+        onclick={handleResetAppCache}
+        aria-label="Reset app cache and reload"
+        title="Reset app cache and reload"
+      >
+        <IconRefresh size={14} />
       </button>
     </nav>
   </header>

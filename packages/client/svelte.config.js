@@ -24,8 +24,10 @@ const config = {
       directives: {
         'default-src': ['self'],
         'script-src': ['self'],
-        'style-src': ['self', 'unsafe-inline', 'https://fonts.googleapis.com'],
-        'font-src': ['self', 'https://fonts.gstatic.com'],
+        // H4 (review 2026-07-10 §H4): fonts are self-hosted under
+        // static/fonts — no external font origin needed any more.
+        'style-src': ['self', 'unsafe-inline'],
+        'font-src': ['self'],
         'img-src': ['self', 'data:'],
         'connect-src': ['self', 'http:', 'https:'],
         'object-src': ['none'],

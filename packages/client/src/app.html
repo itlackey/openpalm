@@ -61,12 +61,12 @@
         }
       })();
     </script>
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap"
-      rel="stylesheet"
-    />
+    <!-- H4 (review 2026-07-10 §H4): fonts are self-hosted (src/app.css
+         @font-face, packages/client/static/fonts/) so an installed PWA
+         renders correct typography with no network at all. This used to
+         preconnect + load Source Sans 3/IBM Plex Mono from Google Fonts —
+         dead weight: no font-family in this package ever named those
+         families (the tokens use Poor Story/Iosevka Charon Mono). -->
     <script defer src="/registerSW.js"></script>
     %sveltekit.head%
   </head>

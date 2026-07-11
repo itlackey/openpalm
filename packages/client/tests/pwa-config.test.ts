@@ -61,10 +61,12 @@ function makeRequest(init: {
   authorization?: string;
   cookie?: string;
   credentials?: RequestCredentials;
+  accept?: string;
 }): Request {
   const headers = new Headers();
   if (init.authorization) headers.set('authorization', init.authorization);
   if (init.cookie) headers.set('cookie', init.cookie);
+  if (init.accept) headers.set('accept', init.accept);
 
   return {
     method: init.method ?? 'GET',
@@ -74,20 +76,28 @@ function makeRequest(init: {
 }
 
 describe('PWA source config', () => {
-  test('SvelteKit CSP allows the app shell and its declared external font origins without opening script execution', async () => {
+  test('SvelteKit CSP allows only the app shell — H4 (review 2026-07-10): fonts are self-hosted, so no external font origin is needed for style-src/font-src to open, and offline typography survives without them', async () => {
     const config = await loadSvelteConfig();
     expect(config.kit?.csp?.mode).toBe('hash');
     expect(config.kit?.csp?.directives?.['default-src']).toEqual(['self']);
     expect(config.kit?.csp?.directives?.['script-src']).toEqual(['self']);
-    expect(config.kit?.csp?.directives?.['style-src']).toEqual([
-      'self',
-      'unsafe-inline',
-      'https://fonts.googleapis.com'
-    ]);
-    expect(config.kit?.csp?.directives?.['font-src']).toEqual(['self', 'https://fonts.gstatic.com']);
+    expect(config.kit?.csp?.directives?.['style-src']).toEqual(['self', 'unsafe-inline']);
+    expect(config.kit?.csp?.directives?.['font-src']).toEqual(['self']);
     expect(config.kit?.csp?.directives?.['connect-src']).toEqual(['self', 'http:', 'https:']);
     expect(config.kit?.csp?.directives?.['object-src']).toEqual(['none']);
     expect(config.kit?.csp?.directives?.['base-uri']).toEqual(['none']);
+  });
+
+  test('H4 (review 2026-07-10 §H4): fonts are self-hosted under static/fonts so offline typography survives — no fonts.googleapis.com/fonts.gstatic.com reference anywhere in the app shell or stylesheet source', () => {
+    const appHtml = readFileSync(APP_HTML_PATH, 'utf8');
+    expect(appHtml).not.toContain('fonts.googleapis.com');
+    expect(appHtml).not.toContain('fonts.gstatic.com');
+    const appCss = readFileSync(join(PKG_ROOT, 'src', 'app.css'), 'utf8');
+    expect(appCss).not.toContain('fonts.googleapis.com');
+    expect(appCss).not.toContain('fonts.gstatic.com');
+    expect(appCss).toContain('@font-face');
+    expect(existsSync(join(STATIC_DIR, 'fonts', 'poor-story-400.woff2'))).toBe(true);
+    expect(existsSync(join(STATIC_DIR, 'fonts', 'iosevka-charon-mono-400.woff2'))).toBe(true);
   });
 
   test('app shell explicitly wires the generated PWA registration script', () => {
@@ -173,6 +183,19 @@ describe('PWA source config', () => {
     ))).toBe(false);
     expect(apiRule?.urlPattern?.({ request: anonymous, url: sameOrigin })).toBe(true);
     expect(apiRule?.urlPattern?.({ request: nonGet, url: sameOrigin })).toBe(false);
+
+    // H1 (review 2026-07-10 §H1): the rule used to have no
+    // networkTimeoutSeconds/expiration at all — a healthy period followed by
+    // an outage was invisible (cached health probes/session lists kept
+    // rendering as if the assistant were up) and the same broad urlPattern
+    // would happily try to cache a future unauthenticated SSE response body.
+    expect(apiRule?.options?.networkTimeoutSeconds).toBeGreaterThan(0);
+    expect(apiRule?.options?.expiration?.maxEntries).toBeGreaterThan(0);
+    expect(apiRule?.options?.expiration?.maxAgeSeconds).toBeGreaterThan(0);
+    const eventStreamRequest = makeRequest({ accept: 'text/event-stream' });
+    expect(apiRule?.urlPattern?.({ request: eventStreamRequest, url: sameOrigin })).toBe(false);
+    // A plain anonymous GET (no Accept: text/event-stream) is still eligible.
+    expect(apiRule?.urlPattern?.({ request: anonymous, url: sameOrigin })).toBe(true);
   });
 });
 

@@ -56,6 +56,16 @@ export const pwaOptions: Partial<SvelteKitPWAOptions> = {
         },
       },
       {
+        // H1 (review 2026-07-10 §H1): this used to have no
+        // networkTimeoutSeconds/expiration at all — any unauthenticated GET
+        // (session lists, health probes) could be served from cache
+        // indefinitely, so a real outage after a healthy period was
+        // invisible (cached data kept rendering as if the assistant were
+        // up), and the same broad match would try to cache a future
+        // unauthenticated SSE stream's (infinite) body. Excluding
+        // `Accept: text/event-stream` plus a short network timeout and a
+        // bounded expiration turn this back into "prefer live data, fall
+        // back briefly to a recent cache" instead of "cache forever".
         urlPattern: ({ request, url }) => {
           if (request.method !== 'GET') return false;
 
@@ -73,12 +83,24 @@ export const pwaOptions: Partial<SvelteKitPWAOptions> = {
             return false;
           }
 
+          // Never intercept an SSE subscription (transport subscribeEvents()
+          // GETs /event with Accept: text/event-stream) — NetworkFirst would
+          // otherwise buffer the whole (never-ending) stream body trying to
+          // decide whether to cache it.
+          if (request.headers.get('accept') === 'text/event-stream') return false;
+
           return url.protocol === 'http:' || url.protocol === 'https:';
         },
         handler: 'NetworkFirst',
         options: {
           cacheName: 'openpalm-public-get',
           cacheableResponse: { statuses: [200] },
+          // A slow/hanging connection falls back to cache after 3s instead
+          // of leaving the UI waiting on a dead network indefinitely.
+          networkTimeoutSeconds: 3,
+          // Bounded so a cached outage-era response can't outlive its
+          // usefulness — old session lists/health data expire on their own.
+          expiration: { maxEntries: 50, maxAgeSeconds: 60 },
         },
       },
     ],

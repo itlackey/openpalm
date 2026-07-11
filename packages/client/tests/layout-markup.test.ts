@@ -48,3 +48,11 @@ describe('+layout.svelte — B16 manual theme toggle', () => {
     expect(src).toContain('THEME_STORAGE_KEY');
   });
 });
+
+describe('+layout.svelte — H3 reset app cache', () => {
+  test('renders a reset-app-cache action wired to the resetAppCache module', () => {
+    const src = source();
+    expect(src).toContain("from '$lib/reset-app-cache.js'");
+    expect(src).toMatch(/onclick=\{handleResetAppCache\}/);
+  });
+});

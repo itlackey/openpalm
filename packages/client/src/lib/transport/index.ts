@@ -477,6 +477,12 @@ export function createTransport(options: TransportOptions): Transport {
           method: 'GET',
           headers: buildHeaders(),
           credentials: 'omit',
+          // H1 (review 2026-07-10 §H1): a service worker's NetworkFirst
+          // runtime cache would otherwise happily serve a stale cached probe
+          // response through a real outage — the connection badge and the
+          // chat page's reachability check would both keep reporting
+          // "reachable" forever. 'no-store' never enters Cache Storage.
+          cache: 'no-store',
           signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
         });
         if (response.status === 401 || response.status === 403) {
