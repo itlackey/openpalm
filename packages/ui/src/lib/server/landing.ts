@@ -38,9 +38,35 @@ type LaunchRouting = {
 
 let launchRoutingCache: { expiresAt: number; value: LaunchRouting } | null = null;
 
+// Review 2026-07-10 K3: classifyLocalInstall does several existsSync +
+// dotenv-parse calls. hooks.server.ts's early setup guard needs the same
+// install-state classification resolveLaunchRouting() below computes, but
+// runs BEFORE the landing resolution (and for every request, including
+// /api/* and /proxy/* traffic and the host UI's poll) — so it shares this
+// cache rather than calling classifyLocalInstall a second, uncached time.
+let installStateCache: { expiresAt: number; value: ReturnType<typeof classifyLocalInstall> } | null = null;
+
 /** Test-only: clear the 5s launch-routing cache so each test resolves fresh. */
 export function _resetLaunchCache(): void {
   launchRoutingCache = null;
+  installStateCache = null;
+}
+
+/**
+ * classifyLocalInstall, cached for 5s (K3). Shared by hooks.server.ts's
+ * setup guard and resolveLaunchRouting() below, so a request that touches
+ * both call sites only classifies the install once.
+ */
+export function getCachedLocalInstallState(
+  stackDir: string,
+  homeDir: string,
+): ReturnType<typeof classifyLocalInstall> {
+  if (installStateCache && installStateCache.expiresAt > Date.now()) {
+    return installStateCache.value;
+  }
+  const value = classifyLocalInstall(stackDir, homeDir);
+  installStateCache = { value, expiresAt: Date.now() + 5_000 };
+  return value;
 }
 
 function parseComposePsServices(stdout: string): ComposeServiceStatus[] {
@@ -67,7 +93,7 @@ async function resolveLaunchRouting(): Promise<LaunchRouting> {
     return launchRoutingCache.value;
   }
   const state = getState();
-  const installState = classifyLocalInstall(state.stackDir, state.homeDir);
+  const installState = getCachedLocalInstallState(state.stackDir, state.homeDir);
   const composeResult = await composePs(buildComposeOptions(state));
   const services = composeResult.ok ? parseComposePsServices(composeResult.stdout) : [];
   const localState = deriveLocalStackState(installState, services);
