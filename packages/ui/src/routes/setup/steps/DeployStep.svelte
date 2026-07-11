@@ -52,7 +52,7 @@
 
   const serviceLinks = $derived<Record<string, { port: number; label: string; path: string }>>({
     assistant: { port: assistantPort, label: 'Assistant (OpenCode)', path: '' },
-    admin: { port: adminPort, label: 'Admin Dashboard', path: '' },
+    admin: { port: adminPort, label: 'Admin Dashboard', path: '/host' },
   });
 
   const services = $derived(deployData.deployStatus ?? []);
@@ -247,7 +247,7 @@
              drop the session cookie, which is scoped per-host. -->
         <a href={resolve('/chat')} class="btn btn-primary">Open Chat</a>
         <a href="http://127.0.0.1:{assistantPort}" target="_blank" rel="noopener" class="btn btn-secondary">OpenCode UI</a>
-        <a href={resolve('/')} class="btn btn-secondary">Admin Dashboard</a>
+        <a href={resolve('/host')} class="btn btn-secondary">Admin Dashboard</a>
       </div>
     {/if}
   </div>

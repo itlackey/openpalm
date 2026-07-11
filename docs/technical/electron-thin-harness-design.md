@@ -5,7 +5,10 @@
 > `scripts/validate-thin-harness-boundary.sh` pins the boundary). Companion
 > deployment fixes #492 (host-vs-target guard) and #494 (prerelease auto-jump)
 > shipped alongside. The §5.1 contract surface is enumerated in
-> `packages/electron/src/harness-contract.ts` at `HARNESS_CONTRACT_VERSION = 1`.
+> `packages/electron/src/harness-contract.ts` (`HARNESS_CONTRACT_VERSION` is
+> bumped as the surface evolves — currently `2`; treat the enumerated
+> `HARNESS_CONTRACT` object in that file as authoritative over any specific
+> version number pinned in prose here).
 > **Audit note (orchestrator, 2026-06-15):** Produced by a 5-agent analysis, then independently verified.
 > The load-bearing root-cause evidence was re-confirmed against compiled output: `packages/electron/dist/main.js`
 > has **0** migration references; `packages/ui/build/server/chunks/*` contain them; `vite.config.ts:59` inlines
@@ -337,7 +340,7 @@ bootstrap trap") is **load-bearing for this design**, with one correction the th
 - `packages/electron/src/main.ts` (`buildUIServerEnv` `:199-217`): emit `OP_HARNESS_CONTRACT_VERSION`. **S**
 - `@openpalm/ui` published manifest: declare `minHarnessContract`. The harness's update decision (§5.3)
   compares it before pulling. **M**
-- `packages/ui/src/routes/admin/versions/+server.ts`: report `harnessVersion` (native shell) and
+- `packages/ui/src/routes/api/host/versions/+server.ts`: report `harnessVersion` (native shell) and
   `platformVersion` (running control plane) as **separate** fields with independent update-available flags, so
   the UI can tell users "platform updated automatically; app re-download only needed for harness vX." **S**
 

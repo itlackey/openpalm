@@ -16,7 +16,7 @@ afterEach(() => {
 
 describe('desktop settings', () => {
   it('defaults checkPrerelease to false when no file exists', () => {
-    expect(loadSettings(dir)).toEqual({ checkPrerelease: false });
+    expect(loadSettings(dir)).toEqual({ checkPrerelease: false, preferClientChat: false });
   });
 
   it('round-trips a saved value', () => {
@@ -28,7 +28,7 @@ describe('desktop settings', () => {
 
   it('falls back to defaults for a corrupt file (never throws)', () => {
     writeFileSync(settingsPath(dir), '{ not json', 'utf-8');
-    expect(loadSettings(dir)).toEqual({ checkPrerelease: false });
+    expect(loadSettings(dir)).toEqual({ checkPrerelease: false, preferClientChat: false });
   });
 
   it('falls back to default for a mistyped field', () => {
@@ -41,5 +41,24 @@ describe('desktop settings', () => {
     // An empty patch must preserve the existing value.
     const merged = saveSettings(dir, {});
     expect(merged.checkPrerelease).toBe(true);
+  });
+
+  // ── preferClientChat (A1 opt-in) ──────────────────────────────────────────
+  // A1: Electron used to default to the feature-poor client chat whenever its
+  // health probe answered. The fix inverts the default to the host chat and
+  // gates the client chat behind this explicit desktop-settings opt-in
+  // (mirrors the checkPrerelease checkbox pattern exactly).
+  it('defaults preferClientChat to false when no file exists', () => {
+    expect(loadSettings(dir).preferClientChat).toBe(false);
+  });
+
+  it('round-trips a saved preferClientChat value independently of checkPrerelease', () => {
+    saveSettings(dir, { preferClientChat: true });
+    expect(loadSettings(dir)).toEqual({ checkPrerelease: false, preferClientChat: true });
+  });
+
+  it('falls back to default for a mistyped preferClientChat field', () => {
+    writeFileSync(settingsPath(dir), JSON.stringify({ preferClientChat: 'yes' }), 'utf-8');
+    expect(loadSettings(dir).preferClientChat).toBe(false);
   });
 });

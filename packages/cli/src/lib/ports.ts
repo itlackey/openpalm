@@ -11,3 +11,20 @@ export const DEFAULT_UI_PORT = 3880;
 export const DEFAULT_ASSISTANT_PORT = 3800;
 
 export { DEFAULT_CLIENT_PORT } from '@openpalm/lib';
+
+/**
+ * Merge-and-resolve `OP_HOST_UI_PORT`: a persisted-env record (e.g. headless
+ * install's stack.env) layered under a live env (live env wins), falling back
+ * to {@link DEFAULT_UI_PORT}. Hoisted here (review finding U2) so
+ * ui-server.ts's `resolveUiServePort` and client-server.ts's
+ * `resolveHostUiPort` share ONE implementation instead of byte-duplicating
+ * it — both already import this module, which imports neither of them, so
+ * there is no import-cycle reason to keep the logic separate.
+ */
+export function resolveHostUiPortFromEnv(
+  env: NodeJS.ProcessEnv,
+  persistedEnv: Record<string, string>,
+): number {
+  const merged = { ...persistedEnv, ...env };
+  return Number(merged.OP_HOST_UI_PORT) || DEFAULT_UI_PORT;
+}

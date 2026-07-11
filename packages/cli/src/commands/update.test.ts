@@ -32,6 +32,7 @@ describe('runUpgradeAction', () => {
         currentVersionArg = currentVersion;
         return { updated: false, latestVersion: '0.12.0-rc.3' };
       },
+      checkAndUpdateClientBuild: async () => ({ updated: false, latestVersion: '0.12.0-rc.3' }),
     }));
     mock.module(moduleUrls.cliState, () => ({
       ensureValidState: () => ({ dataDir: '/tmp/openpalm-data' }),
@@ -41,6 +42,37 @@ describe('runUpgradeAction', () => {
     await runUpgradeAction();
 
     expect(currentVersionArg).toBe('v0.12.0-rc.1');
+  });
+
+  // C3: `openpalm update` previously never refreshed the client artifact —
+  // checkAndUpdateClientBuild was dead code, only ever called lazily at
+  // `openpalm ui serve` time. It must now run on every `openpalm update`,
+  // passed the SAME reference version as the UI build check.
+  test('also refreshes the client app build (C3) — checkAndUpdateClientBuild was previously never called by update', async () => {
+    let clientVersionArg: string | null = null;
+
+    mock.module('@openpalm/lib', () => ({
+      performUpgrade: async () => ({
+        imageTag: 'v0.12.5',
+        namespace: 'openpalm',
+        backupDir: null,
+        assetsUpdated: [],
+        restarted: [],
+      }),
+      checkAndUpdateUiBuild: async () => ({ updated: false, latestVersion: '0.12.5' }),
+      checkAndUpdateClientBuild: async (currentVersion: string) => {
+        clientVersionArg = currentVersion;
+        return { updated: true, latestVersion: '0.12.6' };
+      },
+    }));
+    mock.module(moduleUrls.cliState, () => ({
+      ensureValidState: () => ({ dataDir: '/tmp/openpalm-data' }),
+    }));
+
+    const { runUpgradeAction } = await import(`${updateModuleUrl}?t=${Math.random()}`);
+    await runUpgradeAction();
+
+    expect(clientVersionArg).toBe('v0.12.5');
   });
 
   // #494: `openpalm update` stays on stable by default; `--pre` opts into rc/beta.
@@ -53,6 +85,7 @@ describe('runUpgradeAction', () => {
         return { imageTag: 'v0.12.0', namespace: 'openpalm', backupDir: null, assetsUpdated: [], restarted: [] };
       },
       checkAndUpdateUiBuild: async () => ({ updated: false, latestVersion: '0.12.0' }),
+      checkAndUpdateClientBuild: async () => ({ updated: false, latestVersion: '0.12.0' }),
     }));
     mock.module(moduleUrls.cliState, () => ({
       ensureValidState: () => ({ dataDir: '/tmp/openpalm-data' }),

@@ -22,7 +22,14 @@ function arg(name) {
   return index !== -1 ? process.argv[index + 1] : undefined;
 }
 
-const port = Number(arg('port') ?? process.env.PORT ?? 4180);
+// D4 (review 2026-07-10 §D4): 3890 mirrors the platform's default client
+// port (packages/lib DEFAULT_CLIENT_PORT) everywhere else — Electron, the
+// CLI, and docs all converge on it. This package deliberately never depends
+// on @openpalm/lib (see the file header above), so the literal is pinned
+// here instead of imported; a direct `openpalm-client-serve`/`node
+// bin/serve.mjs` invocation with no --port/PORT used to be the one surface
+// still landing on the unrelated 4180.
+const port = Number(arg('port') ?? process.env.PORT ?? 3890);
 const host = arg('host') ?? process.env.HOST ?? '127.0.0.1';
 const dir = resolve(
   arg('dir') ?? process.env.OP_CLIENT_DIR ?? join(fileURLToPath(new URL('..', import.meta.url)), 'build')
@@ -58,6 +65,37 @@ function runtimeConfigHeaders() {
   return { 'cache-control': 'no-store' };
 }
 
+// H2 (review 2026-07-10 §H2): index.html/sw.js/registerSW.js are the three
+// files a browser/SW re-fetches to decide "is there a new build" — letting
+// an intermediary cache them (even briefly) can wedge an install on a stale
+// answer to that question. Everything else under the build dir is a
+// content-hashed, genuinely immutable asset and keeps no explicit
+// cache-control (the default: cacheable).
+const NEVER_CACHE_NAMES = new Set(['/index.html', '/sw.js', '/registerSW.js']);
+
+function staticHeaders(pathname) {
+  return NEVER_CACHE_NAMES.has(pathname) || pathname === '/' ? { 'cache-control': 'no-cache' } : {};
+}
+
+// H2: the SPA fallback used to answer ANY unresolved path with a 200
+// index.html — including a JS/CSS chunk URL the SW's precache manifest
+// names but that never made it to disk (a non-atomic artifact swap/seed, a
+// partial copy). Workbox's generateSW strategy trusts whatever body comes
+// back for that URL: an HTML document gets precached under a `.js` cache
+// key and durably corrupts every future load of that chunk until a
+// byte-different sw.js ships. Only a genuine navigation — a client-side
+// route with no file extension, or a request that explicitly declares it
+// wants HTML — gets the SPA shell; anything else that doesn't exist on disk
+// is a real 404.
+function looksLikeNavigation(req, pathname) {
+  const accept = req.headers['accept'];
+  if (typeof accept === 'string' && accept.includes('text/html')) return true;
+  // The last path segment has no '.' -> no file extension -> a client-side
+  // route (e.g. /connections/new), not a missing static asset.
+  const lastSegment = pathname.slice(pathname.lastIndexOf('/') + 1);
+  return !lastSegment.includes('.');
+}
+
 const server = createServer((req, res) => {
   const method = req.method ?? 'GET';
   const supportsBody = method !== 'HEAD';
@@ -77,7 +115,7 @@ const server = createServer((req, res) => {
     if (pathname === '/runtime-config.json') {
       return send(res, candidate, 200, runtimeConfigHeaders(), supportsBody);
     }
-    return send(res, candidate, 200, {}, supportsBody);
+    return send(res, candidate, 200, staticHeaders(pathname), supportsBody);
   }
   // runtime-config.json may live beside the build dir instead of inside it
   // (the assistant container writes it next to the extracted bundle, P5d).
@@ -94,9 +132,12 @@ const server = createServer((req, res) => {
     });
     return res.end('no runtime-config.json');
   }
-  // SPA fallback: every route is client-rendered from index.html.
-  const fallback = join(dir, 'index.html');
-  if (existsSync(fallback)) return send(res, fallback, 200, {}, supportsBody);
+  // SPA fallback: a client-side route is client-rendered from index.html;
+  // a missing static asset is a genuine 404 (H2 — see looksLikeNavigation).
+  if (looksLikeNavigation(req, pathname)) {
+    const fallback = join(dir, 'index.html');
+    if (existsSync(fallback)) return send(res, fallback, 200, staticHeaders('/index.html'), supportsBody);
+  }
   res.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' });
   res.end('client build not found — run `bun run client:build`');
 });

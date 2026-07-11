@@ -47,7 +47,13 @@
 	// commands on the HOST (/api/host/akm/*) — show them only with host
 	// capabilities. hasCapability() is UX only; the endpoints enforce
 	// capabilities server-side.
-	const hostMaintenance = hasCapability('host:containers');
+	//
+	// Review 2026-07-10 K2: this used to be captured once as a plain `const`
+	// at component init, so it never updated if `runtimeContext` resolved (or
+	// changed) capabilities after this component was already mounted —
+	// latent staleness. `$derived` re-reads `hasCapability()` whenever
+	// `runtimeContext.effectiveCapabilities` changes.
+	const hostMaintenance = $derived(hasCapability('host:containers'));
 
 	// ── LLM Profiles ─────────────────────────────────────────────────────────────
 	let llmProfiles = $state<LlmProfile[]>([]);

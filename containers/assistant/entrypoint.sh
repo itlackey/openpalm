@@ -130,17 +130,75 @@ install_runtime_artifacts() {
   fi
 }
 
+# ── LAN-exposure helpers ─────────────────────────────────────────────────────
+# Shared by start_client (I3 safety gate, below) and start_opencode (I3
+# explicit-origin CORS, further down).
+is_loopback_address() {
+  case "$1" in
+    127.0.0.1|localhost) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+opencode_auth_enabled() {
+  case "${OPENCODE_AUTH:-false}" in
+    true|TRUE|True|1|yes|YES) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+# I3 residual (review, SECURITY): validate an OP_CLIENT_CORS_ALLOWED_ORIGINS
+# entry before start_opencode ever appends it to cors_origins — operator input
+# is otherwise appended to OpenCode's --cors verbatim, so
+# OP_CLIENT_CORS_ALLOWED_ORIGINS=* would silently reintroduce a wildcard CORS
+# grant. Mirrors guardian's normalizeExactOrigin (packages/guardian/src/
+# config.ts): never a wildcard, never anything but an EXACT http(s) origin —
+# no userinfo, no path beyond an optional trailing slash, no query, no
+# fragment.
+is_allowed_cors_origin() {
+  local origin="$1"
+  [[ "$origin" =~ ^https?://[^/@?#[:space:]]+/?$ ]]
+}
+
 start_client() {
   # Static chat client (@openpalm/client, plan §6.9 Slice A). The co-process
   # only serves bytes — the BROWSER talks to OpenCode directly at the
   # host-published assistant URL, so there is no server-side API base URL to
   # wire into this process (the old adapter-node co-process env plumbing, and
   # its wiring bug, are gone with it).
+
+  # ── I3: LAN-exposure safety gate ─────────────────────────────────────────
+  # Never publish an unauthenticated chat client onto a network the assistant
+  # itself made reachable. When OpenCode is bound off loopback
+  # (OP_ASSISTANT_BIND_ADDRESS / OP_BIND_ADDRESS) AND OpenCode auth is
+  # disabled (OPENCODE_AUTH, default "false"), any web page a LAN visitor
+  # opens could script the assistant cross-origin through this client port.
+  # Warn loudly, naming the exact knobs, and refuse to start the client
+  # surface — this is a deliberate degrade (the rest of the stack, including
+  # OpenCode itself, keeps running), never a hard failure of the container.
+  local assistant_bind_address="${OP_ASSISTANT_BIND_ADDRESS:-${OP_BIND_ADDRESS:-127.0.0.1}}"
+  rm -f /tmp/openpalm-client-skip
+  if ! is_loopback_address "$assistant_bind_address" && ! opencode_auth_enabled; then
+    echo "WARNING: OP_ASSISTANT_BIND_ADDRESS/OP_BIND_ADDRESS=${assistant_bind_address} exposes OpenCode beyond loopback while OPENCODE_AUTH=${OPENCODE_AUTH:-false} leaves it unauthenticated." >&2
+    echo "WARNING: refusing to start the unauthenticated client chat co-process on OP_CLIENT_PORT — set OPENCODE_AUTH=true (with real OpenCode credentials) before exposing this stack beyond loopback." >&2
+    : > /tmp/openpalm-client-skip
+    return 0
+  fi
+
   local client_pkg="/opt/openpalm/client/node_modules/@openpalm/client"
   local serve_script="${client_pkg}/bin/serve.mjs"
   local client_build="${client_pkg}/build"
   if [ ! -f "$serve_script" ] || [ ! -f "${client_build}/index.html" ]; then
     echo "entrypoint: @openpalm/client build not found — client co-process skipped" >&2
+    # F4 (review): a missing/never-installed client build is a non-fatal,
+    # permanent condition for this boot — the healthcheck (Dockerfile +
+    # core.compose.yml) probes OP_CLIENT_PORT UNLESS this marker exists, so
+    # without it a legitimately-absent client would fail the healthcheck
+    # forever, marking the assistant unhealthy and blocking every service
+    # behind guardian's `depends_on: condition: service_healthy` — directly
+    # contradicting the "the assistant keeps serving without it" log line
+    # above. Write the marker so this skip is recognized as healthy.
+    : > /tmp/openpalm-client-skip
     return 0
   fi
 
@@ -156,13 +214,21 @@ start_client() {
   node -e '
     const fs = require("fs");
     const [file, url] = process.argv.slice(1);
+    // E1: never let a wildcard bind host leak into a browser-facing URL — an
+    // operator override may itself be derived from a bind-address setting
+    // upstream. Mirrors packages/lib/src/control-plane/url-normalize.ts
+    // normalizeLoopbackUrl exactly (see assistant-client-entrypoint.test.ts).
+    const normalizedUrl = url.replace(/^(https?:\/\/)(0\.0\.0\.0|\[::\]|::)(?=[:/]|$)/i, "$1127.0.0.1");
     const config = {
       connections: [
         {
-          id: "assistant-container-opencode",
+          // I5: literal id/label must match packages/lib/src/control-plane/
+          // client-runtime-config.ts ASSISTANT_LOCKED_CONNECTION_ID / _LABEL —
+          // pinned by a static test in assistant-client-entrypoint.test.ts.
+          id: "openpalm-assistant-opencode",
           label: "This assistant",
           kind: "local-opencode",
-          url,
+          url: normalizedUrl,
           auth: { mode: "none" },
           isDefault: true,
           locked: true,
@@ -176,11 +242,67 @@ start_client() {
   local client_port="${OP_CLIENT_PORT:-3000}"
   echo "entrypoint: starting client co-process on port ${client_port}..." >&2
 
-  # Bind 0.0.0.0 INSIDE the container only: host exposure is governed by the
-  # compose port mapping, which defaults to loopback (OP_BIND_ADDRESS policy).
-  node "$serve_script" --host 0.0.0.0 --port "$client_port" --dir "$client_build" &
+  # ── I2: supervise + respawn with capped exponential backoff ──────────────
+  # Mirrors packages/cli/src/lib/client-server.ts's host-side supervision
+  # semantics: an unexpected exit respawns the co-process instead of leaving
+  # the published port silently dead (the compose healthcheck now probes it —
+  # see core.compose.yml), but a crash loop backs off (1s, 2s, 4s, 8s, 16s,
+  # capped at 30s) and gives up after max_attempts so a persistently broken
+  # client can't spin the container's CPU/log forever. Bind 0.0.0.0 INSIDE the
+  # container only: host exposure is governed by the compose port mapping,
+  # which defaults to loopback (OP_BIND_ADDRESS policy).
+  (
+    local attempt=0
+    local max_attempts=5
+    local delay=1
+    local max_delay=30
+    # SUPERVISOR-RESET (review): mirrors packages/cli/src/lib/client-server.ts's
+    # HEALTHY_UPTIME_MS reset — a child that stays up for at least this long
+    # before exiting resets the give-up counter, so only a PERSISTENTLY-broken
+    # client (no healthy stretch between crashes) can ever exhaust
+    # max_attempts. Without this, crashes spread across the container's whole
+    # lifetime (e.g. one every few days) permanently disabled the client after
+    # only 5 of them, total, ever — contradicting the comment's claim to
+    # mirror client-server.ts, which DOES reset. Millisecond resolution (via
+    # `date +%s%3N`, GNU coreutils) both matches client-server.ts's Date.now()
+    # units and avoids second-granularity rounding incorrectly classifying a
+    # fast crash-loop iteration as "healthy" near a wall-clock second boundary.
+    # Configurable (test hook); unset uses the same 60000ms threshold as
+    # client-server.ts's HEALTHY_UPTIME_MS.
+    local healthy_uptime_ms="${OP_CLIENT_RESPAWN_HEALTHY_UPTIME_MS:-60000}"
+    while true; do
+      local start_ts
+      start_ts="$(date +%s%3N)"
+      local exit_code
+      if node "$serve_script" --host 0.0.0.0 --port "$client_port" --dir "$client_build"; then
+        exit_code=0
+      else
+        exit_code=$?
+      fi
+      local end_ts
+      end_ts="$(date +%s%3N)"
+      if [ "$((end_ts - start_ts))" -ge "$healthy_uptime_ms" ]; then
+        attempt=0
+      fi
+      attempt=$((attempt + 1))
+      if [ "$attempt" -ge "$max_attempts" ]; then
+        echo "warning: client co-process exited $attempt times (last exit $exit_code); giving up on respawn — the assistant keeps serving without it" >&2
+        # F4 (review): a permanently-dead client (attempt cap exhausted) is
+        # the SAME non-fatal, boot-scoped condition as "build not found"
+        # above — write the skip marker so the healthcheck (which probes
+        # OP_CLIENT_PORT unless this marker exists) stops expecting a client
+        # that will never come back this boot, instead of failing forever.
+        : > /tmp/openpalm-client-skip
+        break
+      fi
+      echo "warning: client co-process exited (code $exit_code) — restarting in ${delay}s (attempt $((attempt + 1))/${max_attempts})" >&2
+      sleep "$delay"
+      delay=$((delay * 2))
+      if [ "$delay" -gt "$max_delay" ]; then delay=$max_delay; fi
+    done
+  ) &
 
-  echo "entrypoint: client co-process PID $! started" >&2
+  echo "entrypoint: client co-process supervisor PID $! started" >&2
 }
 
 seed_default_agents_md() {
@@ -402,16 +524,33 @@ start_opencode() {
     "http://127.0.0.1:${host_client_port}"
     "http://localhost:${host_client_port}"
   )
+  # I3: EXPLICIT ORIGINS ONLY — never emit a wildcard CORS grant. When the
+  # client bind address is a concrete non-loopback host/IP (an operator
+  # opting a specific LAN address into the client's origin set), add that
+  # exact origin; it is still one named origin, never a wildcard grant. A
+  # wildcard client bind (0.0.0.0/::) cannot be turned into the one true
+  # browser Origin a LAN visitor's browser will actually send, so nothing is
+  # auto-derived for it — operators add the exact origin(s) they expect via
+  # OP_CLIENT_CORS_ALLOWED_ORIGINS below. See also start_client's LAN-exposure
+  # safety gate, which refuses to serve the client surface at all when auth
+  # stays disabled on a non-loopback assistant bind.
   if [ "$client_bind_address" != "127.0.0.1" ] && [ "$client_bind_address" != "localhost" ] \
+     && [ "$client_bind_address" != "0.0.0.0" ] && [ "$client_bind_address" != "::" ] \
      && [ "$assistant_bind_address" != "127.0.0.1" ] && [ "$assistant_bind_address" != "localhost" ]; then
-    if [ "$client_bind_address" = "0.0.0.0" ] || [ "$client_bind_address" = "::" ]; then
-      # With wildcard binds the real browser Origin is the operator-chosen LAN
-      # hostname/IP, which the container cannot know. The assistant itself is
-      # already explicitly LAN-exposed in this mode, so allow browser origins.
-      cors_origins+=("*")
-    else
-      cors_origins+=("http://${client_bind_address}:${client_host_port}")
-    fi
+    cors_origins+=("http://${client_bind_address}:${client_host_port}")
+  fi
+  # H2 (review): the comment above documents that a wildcard client bind
+  # derives NO LAN CORS origin — but a wildcard bind is exactly the
+  # configuration a LAN operator who has ALSO turned on OPENCODE_AUTH (the
+  # legitimate hardened-LAN path start_client's safety gate allows) would
+  # use. Silently deriving nothing left LAN chat failing OpenCode's CORS
+  # preflight with no operator-facing signal — only this source comment.
+  # Emit a loud runtime warning naming the knob operators must set
+  # (OP_CLIENT_CORS_ALLOWED_ORIGINS) whenever that gap is live: wildcard
+  # client bind + auth enabled + no explicit origins configured to fill it.
+  if { [ "$client_bind_address" = "0.0.0.0" ] || [ "$client_bind_address" = "::" ]; } \
+     && opencode_auth_enabled && [ -z "${OP_CLIENT_CORS_ALLOWED_ORIGINS:-}" ]; then
+    echo "WARNING: OP_CLIENT_BIND_ADDRESS/OP_BIND_ADDRESS=${client_bind_address} is a wildcard bind with OPENCODE_AUTH enabled, but no LAN browser Origin can be auto-derived from a wildcard bind — set OP_CLIENT_CORS_ALLOWED_ORIGINS to the exact http(s) origin(s) LAN browsers will use (e.g. http://<lan-ip>:${client_host_port}), or the client will silently fail OpenCode's CORS preflight." >&2
   fi
   if [ -n "${OP_CLIENT_CORS_ALLOWED_ORIGINS:-}" ]; then
     local old_ifs="$IFS"
@@ -423,7 +562,11 @@ start_opencode() {
       origin="${origin#${origin%%[![:space:]]*}}"
       origin="${origin%${origin##*[![:space:]]}}"
       if [ -n "$origin" ]; then
-        cors_origins+=("$origin")
+        if is_allowed_cors_origin "$origin"; then
+          cors_origins+=("$origin")
+        else
+          echo "warning: rejecting invalid OP_CLIENT_CORS_ALLOWED_ORIGINS entry (must be an exact http(s) origin — no wildcard, userinfo, path, query, or fragment): $origin" >&2
+        fi
       fi
     done
   fi

@@ -134,7 +134,9 @@ Notes:
 
 - The assistant has no Docker socket mount.
 - The assistant reads user secrets via `akm env:user` — there is no `/etc/vault/` container mount.
-- If both the assistant and assistant-container client are explicitly bound off loopback, the entrypoint allows browser client origins for the LAN path. Wildcard host binds (`0.0.0.0`/`::`) cannot reveal the operator's chosen LAN hostname to the container, so the entrypoint adds OpenCode `--cors "*"` only in that already-LAN-exposed mode.
+- If both the assistant and assistant-container client are explicitly bound off loopback, the entrypoint adds ONE explicit named origin for that address (`http://<address>:<client port>`) to OpenCode's `--cors` allowlist. **The entrypoint never emits a wildcard `--cors "*"` grant, under any configuration** — a wildcard host bind (`0.0.0.0`/`::`) cannot be resolved to the one true browser Origin a LAN visitor's browser will send, so nothing is auto-derived for that case; operators add exact origins via `OP_CLIENT_CORS_ALLOWED_ORIGINS` instead.
+- **LAN-exposure safety gate (I3):** when the assistant binds off loopback (`OP_ASSISTANT_BIND_ADDRESS`/`OP_BIND_ADDRESS`) AND `OPENCODE_AUTH` stays disabled (the default), the entrypoint logs a prominent warning naming both knobs and refuses to start the client chat co-process — publishing an unauthenticated chat client onto a network the assistant made reachable would let any web page a LAN visitor opens script the assistant cross-origin. This is a deliberate degrade (OpenCode itself keeps running); set `OPENCODE_AUTH=true` with real OpenCode credentials to serve the client on a non-loopback bind.
+- The compose healthcheck for the assistant service probes both OpenCode (`:4096`) and the client port, so a failed/skipped client install is no longer reported as a healthy container. The one exception is the I3 safety-skip above: the entrypoint leaves a marker file (`/tmp/openpalm-client-skip`) so that deliberate, security-motivated skip does not itself fail the healthcheck.
 - The entrypoint starts as root only long enough to normalize permissions and optional SSH setup, then drops privileges.
 
 ### Guardian
@@ -171,7 +173,8 @@ Key env:
 | `GUARDIAN_AUDIT_PATH` | `/opt/openpalm/logs/guardian-audit.log` | Audit log path |
 | `PORTAL_<NAME>_SECRET_FILE` | `/run/secrets/portal_<name>_secret` | Portal principal seed secret file |
 | `GUARDIAN_CONTENT_VALIDATION` | `0` | Enable opt-in, fail-closed content validation of inbound messages |
-| `GUARDIAN_CORS_ALLOWED_ORIGINS` | empty | Comma-separated exact browser origins allowed on guardian direct ingress CORS responses |
+| `GUARDIAN_DIRECT_INGRESS` | `false` | Enables the browser-facing direct-ingress path on `GUARDIAN_DIRECT_PORT`/`OP_GUARDIAN_PORT`; off by default (404 when disabled) |
+| `GUARDIAN_CORS_ALLOWED_ORIGINS` | defaults to the shipped client origins (`http://127.0.0.1:${OP_CLIENT_PORT:-3810}`, `http://localhost:${OP_CLIENT_PORT:-3810}`, and the same pair for `OP_HOST_CLIENT_PORT:-3890}`) | Comma-separated exact browser origins allowed on guardian direct-ingress CORS responses; override to replace, never a wildcard (guardian rejects a literal `*` here) |
 | `GUARDIAN_MODERATION_URL` | `http://127.0.0.1:4097` | Local OpenCode moderator endpoint |
 | `GUARDIAN_MODERATION_PORT` | `4097` | Loopback port the entrypoint starts the moderator on |
 | `GUARDIAN_MODERATION_THRESHOLD` | `3` | Heuristic risk score at/above which a message escalates to the model |
@@ -182,6 +185,7 @@ Notes:
 - Guardian's main proxy is localhost-published by default and never exposed publicly unless the bind address is changed deliberately.
 - It is the only bridge between addon ingress networks and `assistant_net`.
 - Guardian receives only explicitly granted secret files from `knowledge/secrets/`; it must not use service-level `env_file` or raw secret env values.
+- `GUARDIAN_DIRECT_INGRESS` and `GUARDIAN_CORS_ALLOWED_ORIGINS` work together: direct-ingress must be enabled AND the connecting browser origin must be in the CORS allowlist, or the connection is dead-on-arrival (404 when ingress is off; CORS-denied even when it's on). `GUARDIAN_CORS_ALLOWED_ORIGINS` now defaults to the same client origins the assistant entrypoint auto-seeds into OpenCode's CORS allowlist (see the assistant section above), so a browser client that already reaches the assistant directly also reaches guardian once `GUARDIAN_DIRECT_INGRESS=true` is set; a custom client origin still needs an explicit override.
 
 ### Scheduler co-process
 
@@ -201,7 +205,7 @@ Notes:
 
 - `crond` runs in the background; no network port, no Docker socket.
 - `akm tasks sync` registers task files with the user crontab at boot and every 60 s.
-- Manual trigger: `POST /admin/automations/<name>/run` (admin spawns `akm tasks run <name>` directly).
+- Manual trigger: `POST /api/host/automations/<name>/run` (admin spawns `akm tasks run <name>` directly).
 
 ---
 

@@ -24,10 +24,10 @@ import {
   readSecret,
   collectBindAddressWarnings,
   isRemoteSetupAllowed,
-  classifyLocalInstall,
   stackDirFor,
 } from "@openpalm/lib";
-import { resolveRequestLanding } from "$lib/server/landing.js";
+import { resolveRequestLanding, getCachedLocalInstallState } from "$lib/server/landing.js";
+import { BLOCKING_LANDINGS } from "$lib/resolve-landing.js";
 
 // Launch-fact collection + the 5s cache live in $lib/server/landing.ts; the
 // reset hook is re-exported here so tests keep one import site.
@@ -36,6 +36,17 @@ export { _resetLaunchCache } from "$lib/server/landing.js";
 const logger = createLogger("admin");
 
 let startupApplyDone = false;
+// K3 (review 2026-07-10): once setup is observed complete, it stays complete
+// for the life of the process — a live install never regresses to
+// incomplete. Memoizing false→true means isSetupComplete's dotenv-parse +
+// existsSync work runs at most once per process instead of on every request
+// (including every /api/*, /proxy/*, and the host UI's 10s poll).
+let setupCompleteMemo = false;
+
+/** Test-only: clear the setup-complete memo so each test resolves fresh. */
+export function _resetSetupCompleteMemo(): void {
+  setupCompleteMemo = false;
+}
 
 // Load the process-level config the UI needs to serve, READ-ONLY w.r.t. OP_HOME.
 // install/update own every OP_HOME write (via applyHome), so merely serving
@@ -139,8 +150,9 @@ export const handle: Handle = async ({ event, resolve }) => {
   // can't race the owner to configure the stack. After setup completes the
   // re-run path at /setup?rerun=1 requires admin auth and this guard is skipped.
   const homeDir = resolveOpenPalmHome();
-  const setupComplete = isSetupComplete(homeDir);
-  const localInstallState = classifyLocalInstall(stackDirFor(homeDir), homeDir);
+  const setupComplete = setupCompleteMemo || isSetupComplete(homeDir);
+  if (setupComplete) setupCompleteMemo = true;
+  const localInstallState = getCachedLocalInstallState(stackDirFor(homeDir), homeDir);
 
   if (
     wantsHtml &&
@@ -176,12 +188,25 @@ export const handle: Handle = async ({ event, resolve }) => {
     const [landingPath] = landing.split('?');
     const usageRoute = path.startsWith('/chat') || path.startsWith('/advanced')
       || path.startsWith('/connections');
+    // J3 (review 2026-07-10): usage routes are exempt from the landing
+    // redirect EXCEPT when the resolved landing is BLOCKING (a migration in
+    // progress). Nothing produces that status today ($lib/server/landing.ts's
+    // migration.status is always 'none'), so this branch is inert until the
+    // first real blocking migration exists — but it must be wired ahead of
+    // that migration, not as a hotfix once one ships and finds
+    // chat/advanced/connections silently bypassing the blocking screen.
+    //
+    // K4 (review 2026-07-11): membership in BLOCKING_LANDINGS, not a literal
+    // '/attention' string comparison — a future second blocking landing only
+    // needs registering in that set (resolve-landing.ts) to also gate these
+    // routes, with no changes required here.
+    const usageExempt = usageRoute && !BLOCKING_LANDINGS.has(landingPath);
     // '/host' is the admin surface itself; '/admin' stays exempt so requests
     // into the dead namespace fall through to the router 404 instead of
     // bouncing to the landing (no alias, no gate — plan Phase 4 step 1).
     const exempt = path.startsWith('/api/') || path.startsWith('/proxy/') || path.startsWith('/login')
       || path.startsWith('/health') || path.startsWith('/guardian/health') || path.startsWith('/host')
-      || path.startsWith('/admin') || usageRoute;
+      || path.startsWith('/admin') || usageExempt;
     if (path === '/' || (path !== landingPath && !exempt)) {
       redirect(302, landing);
     }

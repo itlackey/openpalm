@@ -6,7 +6,7 @@
     - Remote (OpenAI-compatible) — endpoint URL + optional API key + model.
     - Browser — only shown when the relevant Web Speech API is present.
 
-  Saves to PUT /admin/voice. The route validates the selection (rejects
+  Saves to PUT /api/host/voice. The route validates the selection (rejects
   `openpalm-voice` and rejects `remote` without a baseURL) and the user-facing
   error surfaces in the banner below.
 -->
@@ -255,7 +255,7 @@
 				const va = result.voiceAddon;
 				if (result.status === 202 && va) {
 					// Background pull kicked off. Switch the sticky toast to
-					// the "downloading" copy and start polling /admin/voice
+					// the "downloading" copy and start polling /api/host/voice
 					// for completion.
 					notifications.push(
 						'info',
@@ -311,7 +311,7 @@
 
 	/**
 	 * Background voice-job poll. The PUT returned 202 (image is being
-	 * pulled in the background); we now poll GET /admin/voice every 3s,
+	 * pulled in the background); we now poll GET /api/host/voice every 3s,
 	 * watching `addon.activeJob.state` until it flips to healthy or
 	 * error. Caps at 30 minutes; gives the operator one last toast at
 	 * the timeout cap regardless. The sticky toast id is passed in so we

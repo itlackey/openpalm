@@ -481,7 +481,7 @@ async function withStackEnvRollback<T>(state: ControlPlaneState, run: () => Prom
  * pins already written in stack.env.
  *
  * There are NO Docker Hub calls: image versions are user-managed in stack.env
- * (PATCH /admin/versions), and the platform asset version is the running lib's
+ * (PATCH /api/host/versions), and the platform asset version is the running lib's
  * PLATFORM_VERSION — never resolved from a remote registry.
  *
  * `allowPrerelease` is accepted for caller intent/forward-compatibility but is
@@ -503,7 +503,7 @@ export async function performUpgrade(
     // PLATFORM_VERSION is authoritative. OP_HOME asset application (overwrite the
     // managed system/ tree + seed user/data once) happens inside reconcileStack
     // via applyHome; there are NO GitHub/registry calls — image versions are
-    // user-managed in stack.env (PATCH /admin/versions).
+    // user-managed in stack.env (PATCH /api/host/versions).
     const namespace = resolveImageNamespace(state);
 
     // compose+pull: fetch each image from its OP_*_VERSION pin, then recreate

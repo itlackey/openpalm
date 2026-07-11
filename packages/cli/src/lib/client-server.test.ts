@@ -30,9 +30,15 @@
 //   • Supervision: an unexpected child exit respawns it; stop() SIGTERMs the
 //     child and suppresses any further respawn.
 import { describe, expect, it, beforeEach, afterEach } from 'bun:test';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import * as ports from './ports.ts';
-import { startClientServer, resolveClientServeScript, resolveDefaultAssistantUrl } from './client-server.ts';
+import {
+  startClientServer, resolveClientServeScript, resolveDefaultAssistantUrl,
+  resolveClientServePort, resolveClientServeUrl,
+  resolveHostUiPort, resolveHostUiUrl,
+} from './client-server.ts';
 
 // ── fakes ─────────────────────────────────────────────────────────────────────
 
@@ -75,12 +81,16 @@ function harness(opts: {
   /** false = the resolved client build is absent (skip-when-absent path). */
   present?: boolean;
   port?: number;
+  /** Records every ms a respawn/stop `sleep` call was made with (D1 backoff test). */
+  sleepDelays?: number[];
+  /** Fake clock for the respawn-counter reset test (advisory fix). */
+  now?: () => number;
 }) {
   const buildDir = opts.buildDir ?? '/op-home/data/client/build';
   const procs = opts.procs ?? [fakeClientProc()];
   const spawns: SpawnRecord[] = [];
   const logs: string[] = [];
-  const runtimeConfigWrites: Array<{ path: string; assistantUrl: string }> = [];
+  const runtimeConfigWrites: Array<{ path: string; assistantUrl: string; hostUrl?: string }> = [];
   const handlePromise = startClientServer({
     port: opts.port,
     resolveBuildDir: () => buildDir,
@@ -93,9 +103,12 @@ function harness(opts: {
     logError: (...a: unknown[]) => { logs.push(a.map(String).join(' ')); },
     resolveRuntimeConfigPath: () => '/op-home/data/client/runtime-config.json',
     resolveAssistantUrl: () => process.env.OP_CLIENT_DEFAULT_ASSISTANT_URL || `http://127.0.0.1:${process.env.OP_ASSISTANT_PORT || '3800'}`,
-    writeRuntimeConfig: (path: string, assistantUrl: string) => { runtimeConfigWrites.push({ path, assistantUrl }); },
-    sleep: () => Promise.resolve(),
+    writeRuntimeConfig: (path: string, assistantUrl: string, options?: { hostUrl?: string }) => {
+      runtimeConfigWrites.push({ path, assistantUrl, ...(options?.hostUrl ? { hostUrl: options.hostUrl } : {}) });
+    },
+    sleep: (ms: number) => { opts.sleepDelays?.push(ms); return Promise.resolve(); },
     stopTimeoutMs: 5,
+    now: opts.now,
   });
   return { handlePromise, spawns, logs, buildDir, procs, runtimeConfigWrites };
 }
@@ -123,18 +136,70 @@ describe('resolveClientServeScript', () => {
   });
 });
 
-describe('resolveDefaultAssistantUrl', () => {
-  it('uses persisted stack env when process env does not override it', () => {
-    expect(resolveDefaultAssistantUrl({}, { OP_ASSISTANT_PORT: '4800' })).toBe('http://127.0.0.1:4800');
-    expect(resolveDefaultAssistantUrl({}, { OP_CLIENT_DEFAULT_ASSISTANT_URL: 'https://assistant.example' }))
-      .toBe('https://assistant.example');
+// E1: resolveDefaultAssistantUrl now delegates to @openpalm/lib's
+// resolveAssistantEndpoint(homeDir, env), so it picks up the SAME
+// OP_OPENCODE_URL / OP_ASSISTANT_URL overrides the host UI honors — before
+// this fix the CLI only ever looked at OP_CLIENT_DEFAULT_ASSISTANT_URL and
+// silently ignored the other two, producing "chat works in the host UI but
+// not the CLI-served client app" for operators who set them.
+describe('resolveDefaultAssistantUrl (E1: shared @openpalm/lib resolver)', () => {
+  let tmpHome: string;
+  const saved: Record<string, string | undefined> = {};
+  const ENV_KEYS = ['OP_HOME', 'OP_CLIENT_DEFAULT_ASSISTANT_URL', 'OP_OPENCODE_URL', 'OP_ASSISTANT_URL', 'OP_ASSISTANT_PORT'];
+
+  beforeEach(() => {
+    for (const key of ENV_KEYS) { saved[key] = process.env[key]; delete process.env[key]; }
+    tmpHome = mkdtempSync(join(tmpdir(), 'openpalm-e1-'));
+    process.env.OP_HOME = tmpHome;
   });
 
-  it('lets process env override persisted stack env', () => {
-    expect(resolveDefaultAssistantUrl(
-      { OP_ASSISTANT_PORT: '4900' } as NodeJS.ProcessEnv,
-      { OP_ASSISTANT_PORT: '4800' }
-    )).toBe('http://127.0.0.1:4900');
+  afterEach(() => {
+    for (const key of ENV_KEYS) {
+      if (saved[key] === undefined) delete process.env[key];
+      else process.env[key] = saved[key];
+    }
+    rmSync(tmpHome, { recursive: true, force: true });
+  });
+
+  it('falls back to the loopback assistant port when nothing overrides it', () => {
+    expect(resolveDefaultAssistantUrl()).toBe('http://127.0.0.1:3800');
+    process.env.OP_ASSISTANT_PORT = '4800';
+    expect(resolveDefaultAssistantUrl()).toBe('http://127.0.0.1:4800');
+  });
+
+  it('honors OP_CLIENT_DEFAULT_ASSISTANT_URL', () => {
+    process.env.OP_CLIENT_DEFAULT_ASSISTANT_URL = 'https://assistant.example';
+    expect(resolveDefaultAssistantUrl()).toBe('https://assistant.example');
+  });
+
+  it('honors OP_OPENCODE_URL (previously ignored by the CLI)', () => {
+    process.env.OP_OPENCODE_URL = 'https://oc.example.internal';
+    expect(resolveDefaultAssistantUrl()).toBe('https://oc.example.internal');
+  });
+
+  it('honors OP_ASSISTANT_URL (previously ignored by the CLI)', () => {
+    process.env.OP_ASSISTANT_URL = 'https://assistant2.example.internal';
+    expect(resolveDefaultAssistantUrl()).toBe('https://assistant2.example.internal');
+  });
+});
+
+// ── D2: one authoritative client port/URL resolver ────────────────────────────
+
+describe('resolveClientServePort / resolveClientServeUrl (D2)', () => {
+  it('uses OP_HOST_CLIENT_PORT from persisted stack.env when process.env has none — the SAME merge startClientServer spawns on', () => {
+    expect(resolveClientServePort({}, { OP_HOST_CLIENT_PORT: '9392' })).toBe(9392);
+    expect(resolveClientServeUrl({}, { OP_HOST_CLIENT_PORT: '9392' })).toBe('http://127.0.0.1:9392/chat');
+  });
+
+  it('lets process.env override the persisted value', () => {
+    expect(resolveClientServePort(
+      { OP_HOST_CLIENT_PORT: '9400' } as NodeJS.ProcessEnv,
+      { OP_HOST_CLIENT_PORT: '9392' },
+    )).toBe(9400);
+  });
+
+  it('falls back to DEFAULT_CLIENT_PORT (3890) when nothing is set', () => {
+    expect(resolveClientServePort({}, {})).toBe(3890);
   });
 });
 
@@ -146,6 +211,7 @@ describe('startClientServer spawn env/args', () => {
   const savedHostClientPort = { value: undefined as string | undefined };
   const savedAssistantPort = { value: undefined as string | undefined };
   const savedDefaultAssistantUrl = { value: undefined as string | undefined };
+  const savedHostUiPort = { value: undefined as string | undefined };
 
   beforeEach(() => {
     savedRemote.value = process.env.OP_ALLOW_REMOTE_SETUP;
@@ -153,11 +219,13 @@ describe('startClientServer spawn env/args', () => {
     savedHostClientPort.value = process.env.OP_HOST_CLIENT_PORT;
     savedAssistantPort.value = process.env.OP_ASSISTANT_PORT;
     savedDefaultAssistantUrl.value = process.env.OP_CLIENT_DEFAULT_ASSISTANT_URL;
+    savedHostUiPort.value = process.env.OP_HOST_UI_PORT;
     delete process.env.OP_ALLOW_REMOTE_SETUP;
     delete process.env.OP_CLIENT_PORT;
     delete process.env.OP_HOST_CLIENT_PORT;
     delete process.env.OP_ASSISTANT_PORT;
     delete process.env.OP_CLIENT_DEFAULT_ASSISTANT_URL;
+    delete process.env.OP_HOST_UI_PORT;
   });
 
   afterEach(() => {
@@ -171,6 +239,8 @@ describe('startClientServer spawn env/args', () => {
     else process.env.OP_ASSISTANT_PORT = savedAssistantPort.value;
     if (savedDefaultAssistantUrl.value === undefined) delete process.env.OP_CLIENT_DEFAULT_ASSISTANT_URL;
     else process.env.OP_CLIENT_DEFAULT_ASSISTANT_URL = savedDefaultAssistantUrl.value;
+    if (savedHostUiPort.value === undefined) delete process.env.OP_HOST_UI_PORT;
+    else process.env.OP_HOST_UI_PORT = savedHostUiPort.value;
   });
 
   it('spawns the serve script with PORT=3890 (default), HOST=127.0.0.1, and OP_CLIENT_DIR=<resolved build>', async () => {
@@ -185,7 +255,11 @@ describe('startClientServer spawn env/args', () => {
     expect(env.OP_CLIENT_DIR).toBe(buildDir);
     expect(env.OP_CLIENT_RUNTIME_CONFIG).toBe('/op-home/data/client/runtime-config.json');
     expect(runtimeConfigWrites).toEqual([
-      { path: '/op-home/data/client/runtime-config.json', assistantUrl: 'http://127.0.0.1:3800' },
+      {
+        path: '/op-home/data/client/runtime-config.json',
+        assistantUrl: 'http://127.0.0.1:3800',
+        hostUrl: 'http://127.0.0.1:3880/host',
+      },
     ]);
     // The child IS the serve script from the resolved client build.
     expect(cmd).toContain(resolveClientServeScript(buildDir));
@@ -204,7 +278,11 @@ describe('startClientServer spawn env/args', () => {
     const { handlePromise, runtimeConfigWrites } = harness({});
     const handle = await handlePromise;
     expect(runtimeConfigWrites).toEqual([
-      { path: '/op-home/data/client/runtime-config.json', assistantUrl: 'https://assistant.example/oc' },
+      {
+        path: '/op-home/data/client/runtime-config.json',
+        assistantUrl: 'https://assistant.example/oc',
+        hostUrl: 'http://127.0.0.1:3880/host',
+      },
     ]);
     await handle?.stop();
   });
@@ -233,6 +311,100 @@ describe('startClientServer spawn env/args', () => {
     const { handlePromise, spawns } = harness({});
     const handle = await handlePromise;
     expect((spawns[0] as SpawnRecord).env.HOST).toBe('127.0.0.1');
+    await handle?.stop();
+  });
+
+  // Review advisory (LOW, consistency): the CLI-served client never received
+  // hostUrl, so it silently lacked the "Manage assistant" affordance the
+  // Electron-served client gets (main.ts's buildClientRuntimeConfigOptions).
+  // The CLI IS a host process serving the host UI at OP_HOST_UI_PORT (default
+  // DEFAULT_UI_PORT/3880) on this same machine, so it can point the client at
+  // the same /host admin surface.
+  it('seeds runtime-config.json hostUrl with the host UI\'s /host URL (default port)', async () => {
+    const { handlePromise, runtimeConfigWrites } = harness({});
+    const handle = await handlePromise;
+    expect(runtimeConfigWrites.at(-1)?.hostUrl).toBe('http://127.0.0.1:3880/host');
+    await handle?.stop();
+  });
+
+  it('honors OP_HOST_UI_PORT for the seeded hostUrl', async () => {
+    process.env.OP_HOST_UI_PORT = '4880';
+    const { handlePromise, runtimeConfigWrites } = harness({});
+    const handle = await handlePromise;
+    expect(runtimeConfigWrites.at(-1)?.hostUrl).toBe('http://127.0.0.1:4880/host');
+    await handle?.stop();
+  });
+});
+
+// ── resolveHostUiPort / resolveHostUiUrl (A2/H4 CLI parity) ───────────────────
+
+describe('resolveHostUiPort / resolveHostUiUrl', () => {
+  it('uses OP_HOST_UI_PORT from persisted stack.env when process.env has none', () => {
+    expect(resolveHostUiPort({}, { OP_HOST_UI_PORT: '9200' })).toBe(9200);
+    expect(resolveHostUiUrl({}, { OP_HOST_UI_PORT: '9200' })).toBe('http://127.0.0.1:9200');
+  });
+
+  it('lets process.env override the persisted value', () => {
+    expect(resolveHostUiPort(
+      { OP_HOST_UI_PORT: '9300' } as NodeJS.ProcessEnv,
+      { OP_HOST_UI_PORT: '9200' },
+    )).toBe(9300);
+  });
+
+  it('falls back to DEFAULT_UI_PORT (3880) when nothing is set', () => {
+    expect(resolveHostUiPort({}, {})).toBe(3880);
+  });
+});
+
+// ── U3: read the persisted stack.env record ONCE per startClientServer() call ─
+//
+// Before this fix, startClientServer's default resolvers each independently
+// re-read (and re-parsed) the persisted stack.env: resolveClientServePort()
+// (for `port`), resolveHostUiUrl() -> resolveHostUiPort() (for
+// `resolveUiBaseUrl`'s default), and resolveDefaultAssistantUrl() ->
+// resolveAssistantEndpoint() (for `resolveAssistantUrl`'s default) — three
+// reads of the same file at startup. This reads it ONCE and threads the
+// resulting record through resolveClientServePort and the resolveUiBaseUrl
+// default (the resolveAssistantUrl default still goes through
+// resolveAssistantEndpoint in @openpalm/lib, which does its own internal
+// readStackEnv call — out of this package's ownership boundary to change).
+describe('startClientServer reads the persisted stack.env record ONCE (U3)', () => {
+  it('calls the injected persisted-env reader exactly once and threads its record through the port + host-UI-URL resolvers', async () => {
+    let calls = 0;
+    const readPersistedEnv = () => {
+      calls += 1;
+      return { OP_HOST_CLIENT_PORT: '5001', OP_HOST_UI_PORT: '5002' };
+    };
+    const proc = fakeClientProc();
+    const spawns: SpawnRecord[] = [];
+    const runtimeConfigWrites: Array<{ path: string; assistantUrl: string; hostUrl?: string }> = [];
+    const handle = await startClientServer({
+      readPersistedEnv,
+      resolveBuildDir: () => '/op-home/data/client/build',
+      existsSync: () => true,
+      spawnFn: (cmd: string[], o: { env: Record<string, string | undefined> }) => {
+        spawns.push({ cmd: [...cmd], env: { ...o.env } });
+        return proc;
+      },
+      resolveRuntimeConfigPath: () => '/op-home/data/client/runtime-config.json',
+      writeRuntimeConfig: (path: string, assistantUrl: string, options?: { hostUrl?: string }) => {
+        runtimeConfigWrites.push({ path, assistantUrl, ...(options?.hostUrl ? { hostUrl: options.hostUrl } : {}) });
+      },
+      log: () => {},
+      logError: () => {},
+      sleep: () => Promise.resolve(),
+      stopTimeoutMs: 5,
+    });
+
+    // ONE read of the persisted record for this whole startClientServer() call.
+    expect(calls).toBe(1);
+    // The single read's OP_HOST_CLIENT_PORT reached the spawned child's PORT
+    // (via the default `port`, since deps.port was not overridden here).
+    expect(spawns[0]?.env.PORT).toBe('5001');
+    // The same single read's OP_HOST_UI_PORT reached the seeded hostUrl (via
+    // the default resolveUiBaseUrl, not overridden here either).
+    expect(runtimeConfigWrites.at(-1)?.hostUrl).toBe('http://127.0.0.1:5002/host');
+
     await handle?.stop();
   });
 });
@@ -267,6 +439,64 @@ describe('startClientServer supervision', () => {
     await tick();
 
     expect(spawns.length).toBe(2); // supervised: a fresh child was spawned
+    await handle?.stop();
+  });
+
+  // D1: an immediately-crashing child (e.g. EADDRINUSE) must not respawn at a
+  // flat 1/s forever — cap the attempts and back off exponentially between them.
+  it('caps the respawn loop and backs off exponentially instead of respawning forever', async () => {
+    const procs = Array.from({ length: 6 }, () => fakeClientProc());
+    const sleepDelays: number[] = [];
+    const { handlePromise, spawns, logs } = harness({ procs, sleepDelays });
+    const handle = await handlePromise;
+    expect(spawns.length).toBe(1);
+
+    for (const proc of procs) {
+      proc.die(1);
+      await tick();
+    }
+
+    // 1 initial spawn + 5 respawns (MAX_RESPAWN_ATTEMPTS) = 6 total; the 6th
+    // exit does NOT trigger a 7th respawn — the loop gave up.
+    expect(spawns.length).toBe(6);
+    expect(sleepDelays).toEqual([1000, 2000, 4000, 8000, 16000]);
+    expect(logs.join('\n')).toMatch(/giving up/i);
+
+    await handle?.stop();
+  });
+
+  // Advisory (review): respawnAttempt used to never reset once incremented, so
+  // a child that crashed MAX_RESPAWN_ATTEMPTS times cumulatively over the
+  // ENTIRE process lifetime — even hours apart, with long healthy stretches
+  // in between — permanently gave up. A sustained healthy run should reset
+  // the counter so only a PERSISTENTLY-broken child exhausts the cap.
+  it('resets the respawn-attempt counter after a sustained healthy run instead of accumulating forever', async () => {
+    const procs = Array.from({ length: 4 }, () => fakeClientProc());
+    const sleepDelays: number[] = [];
+    let clock = 0;
+    const { handlePromise, spawns, logs } = harness({ procs, sleepDelays, now: () => clock });
+    const handle = await handlePromise;
+    expect(spawns.length).toBe(1); // initial spawn, spawnedAt = clock (0)
+
+    // Two quick crashes (uptime 0 both times): attempts 1 and 2, exponential backoff.
+    procs[0].die(1);
+    await tick();
+    procs[1].die(1);
+    await tick();
+    expect(spawns.length).toBe(3);
+    expect(sleepDelays).toEqual([1000, 2000]);
+
+    // The third child runs healthy for a full minute before crashing — long
+    // enough to reset the give-up counter.
+    clock += 60_000;
+    procs[2].die(1);
+    await tick();
+    // Reset happened: back to the BASE delay (1000ms), not the next
+    // exponential step (4000ms) an un-reset counter would have used.
+    expect(sleepDelays).toEqual([1000, 2000, 1000]);
+    expect(spawns.length).toBe(4);
+    expect(logs.join('\n')).not.toMatch(/giving up/i);
+
     await handle?.stop();
   });
 

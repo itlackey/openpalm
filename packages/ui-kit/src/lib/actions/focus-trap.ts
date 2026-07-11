@@ -1,10 +1,21 @@
 /**
  * Shared modal focus-trap primitives (WCAG 2.4.3 / APG dialog pattern).
  *
- * Consolidates three byte-for-byte copies that previously lived in the chat
- * page (`+page.svelte`), the common `Drawer.svelte`, and the `ToolStrip.svelte`
- * tool-detail modal. Use `createFocusTrap` as a Svelte attachment on the dialog
- * panel and `handleTrapKeydown` as its `onkeydown` handler.
+ * Promoted from packages/ui's `$lib/actions/focus-trap.js` into ui-kit itself
+ * (review 2026-07-10 §G3): Drawer.svelte previously imported the primitives
+ * via `$lib/actions/focus-trap.js`, an app-provided contract resolved by
+ * whichever app's Vite/SvelteKit pipeline compiles the raw ui-kit source
+ * against ITS OWN `src/lib`. packages/ui ships that file; packages/client
+ * does not, so the kit's only accessible-dialog primitive (Drawer) was
+ * structurally unusable from the client — this also blocked the B14
+ * small-screen sessions drawer. This module is the real, kit-internal
+ * implementation; Drawer.svelte (and any future kit dialog) imports it by
+ * relative path, and it is additionally re-exported to consuming apps via the
+ * `./actions/*` package.json subpath for direct use (e.g. a client-owned
+ * dialog that isn't built on Drawer).
+ *
+ * Use `createFocusTrap` as a Svelte attachment on the dialog panel and
+ * `handleTrapKeydown` as its `onkeydown` handler.
  */
 
 /** Selector matching every natively focusable / tabbable element. */
@@ -21,8 +32,8 @@ export function focusables(root: Element): HTMLElement[] {
 export interface FocusTrapOptions {
   /**
    * When false the trap is inert: no focus move, no cleanup. Used for panels
-   * that stay mounted and toggle via a boolean (the chat veil / tool drawer).
-   * Defaults to true — the mount/unmount dialog case (Drawer, ToolStrip modal).
+   * that stay mounted and toggle via a boolean (a persistent veil/drawer).
+   * Defaults to true — the mount/unmount dialog case (Drawer).
    */
   active?: boolean;
   /**

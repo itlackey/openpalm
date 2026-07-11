@@ -7,6 +7,7 @@
   import { onMount } from 'svelte';
   import { page } from '$app/state';
   import IconLock from '@openpalm/ui-kit/components/icons/IconLock.svelte';
+  import Drawer from '@openpalm/ui-kit/components/common/Drawer.svelte';
   import { getClientBoot, type ClientBoot } from '$lib/boot.js';
   import { createTransport, type HealthProbeResult } from '$lib/transport/index.js';
   import type { ConnectionEntry } from '$lib/connections/index.js';
@@ -20,7 +21,12 @@
   let pageError = $state('');
 
   // ── Form state ─────────────────────────────────────────────────────────
-  let formMode = $state<'idle' | 'add' | 'edit'>('idle');
+  // 'credentials' (E6, review 2026-07-10 §E6) is a fourth mode alongside
+  // add/edit: it opens the SAME form for a locked entry, but the
+  // label/url fields are read-only context and submitForm() routes to
+  // store.setSecretRef() instead of the locked-rejecting store.update() —
+  // identity stays config-owned, only auth may change.
+  let formMode = $state<'idle' | 'add' | 'edit' | 'credentials'>('idle');
   let formId = $state<string | null>(null);
   let formLabel = $state('');
   let formUrl = $state('');
@@ -30,6 +36,10 @@
   let formClearSecret = $state(false);
   let formSubmitting = $state(false);
   let formError = $state('');
+
+  const formTitle = $derived(
+    formMode === 'add' ? 'Add connection' : formMode === 'credentials' ? 'Set credentials' : 'Edit connection'
+  );
 
   let deletingId = $state<string | null>(null);
 
@@ -66,7 +76,32 @@
     if (!status) return { text: 'checking…', tone: 'idle' };
     if (status.state === 'accessible') return { text: 'reachable', tone: 'ok' };
     if (status.state === 'unauthorized') return { text: 'auth failed', tone: 'warn' };
+    // E3 (UI half, review 2026-07-10 §E3): a CORS-denied fetch and a
+    // genuinely down connection both used to render bare "unreachable" —
+    // transport.probeHealth() disambiguates them (transport-health-cors
+    // .test.ts), so surface that as its own state with remediation, instead
+    // of collapsing it back into the same dead end.
+    if (status.state === 'blocked' && status.detail === 'cors') {
+      return { text: 'blocked (CORS)', tone: 'warn' };
+    }
     return { text: 'unreachable', tone: 'bad' };
+  }
+
+  /**
+   * E3/I4: remediation copy for a CORS-blocked probe, naming the two knobs
+   * that actually fix it — GUARDIAN_CORS_ALLOWED_ORIGINS (the allowlist
+   * itself) and GUARDIAN_DIRECT_INGRESS (which must be enabled for a
+   * guardian-fronted connection to answer direct browser requests at all;
+   * review §I4). null when the connection isn't in the blocked/cors state.
+   */
+  function healthRemediation(id: string): string | null {
+    const status = health[id];
+    if (status?.state !== 'blocked' || status.detail !== 'cors') return null;
+    return (
+      'The server refused this cross-origin request. Add this app’s origin to ' +
+      'GUARDIAN_CORS_ALLOWED_ORIGINS on the connection’s server, and make sure ' +
+      'GUARDIAN_DIRECT_INGRESS is enabled if this is a guardian-fronted connection.'
+    );
   }
 
   function openAddForm(): void {
@@ -81,16 +116,38 @@
     formError = '';
   }
 
-  function openEditForm(entry: ConnectionEntry): void {
-    formMode = 'edit';
+  /**
+   * E9 (review 2026-07-10 §E9): loads the stored Basic username via
+   * secrets.peekUsername() — never the password/token — so a custom
+   * username survives round-tripping through the edit form instead of
+   * silently reverting to the 'openpalm' default whenever the password
+   * isn't retyped.
+   */
+  async function loadStoredUsername(entry: ConnectionEntry): Promise<string> {
+    if (!boot || entry.auth.mode !== 'basic' || !entry.auth.secretRef) return '';
+    return (await boot.secrets.peekUsername(entry.auth.secretRef)) ?? '';
+  }
+
+  /**
+   * S3 (review of PR #562): openEditForm() and "Set credentials" used to be
+   * two byte-identical functions differing only in which formMode they set
+   * — collapsed into one helper. E6 (review 2026-07-10 §E6): 'credentials'
+   * opens the SAME form for a locked entry, but submitForm() routes THAT
+   * mode to store.setSecretRef() (bypasses only the locked check, and only
+   * for auth) rather than store.update(), so a locked entry's url/label/kind
+   * stay immutable even though the form technically holds copies of them
+   * (for display + so the shared submit validation still passes).
+   */
+  async function openEntryForm(entry: ConnectionEntry, mode: 'edit' | 'credentials'): Promise<void> {
+    formMode = mode;
     formId = entry.id;
     formLabel = entry.label;
     formUrl = entry.url;
     formAuthMode = entry.auth.mode;
-    formUsername = '';
     formSecret = '';
     formClearSecret = false;
     formError = '';
+    formUsername = await loadStoredUsername(entry);
   }
 
   function cancelForm(): void {
@@ -110,6 +167,14 @@
       // No new material entered: keep the existing secret if the mode
       // didn't change, otherwise the credential is required.
       if (existing && existing.auth.mode === formAuthMode && previousRef) {
+        // E9: the password wasn't retyped, but the username field is still
+        // live-edited (it was preloaded via peekUsername) — apply it
+        // without touching the stored password, instead of silently
+        // discarding the change (the E9 bug: this branch used to return
+        // `existing.auth` verbatim).
+        if (formAuthMode === 'basic') {
+          await boot.secrets.updateUsername(previousRef, formUsername || undefined);
+        }
         return existing.auth;
       }
       throw new Error(formAuthMode === 'basic' ? 'A password is required.' : 'A token is required.');
@@ -146,6 +211,12 @@
         const existing = await boot.store.get(formId);
         const auth = await buildAuth(existing);
         await boot.store.update(formId, { label, url, auth });
+      } else if (formMode === 'credentials' && formId) {
+        // E6: locked entries route through setSecretRef, never update() —
+        // label/url are read-only context in this mode and are never sent.
+        const existing = await boot.store.get(formId);
+        const auth = await buildAuth(existing);
+        await boot.store.setSecretRef(formId, auth);
       }
       await refresh();
       formMode = 'idle';
@@ -209,10 +280,21 @@
             {#if conn.locked}<span class="badge default">Managed</span>{/if}
             {#if conn.isDefault}<span class="badge default">Default</span>{/if}
             {#if conn.id === activeId}<span class="badge active">Active</span>{/if}
-            {#if conn.auth.mode !== 'none'}<span class="badge password" title="Credentials configured"><IconLock size={11} /></span>{/if}
+            {#if conn.auth.mode !== 'none'}
+              <!-- G4 (review 2026-07-10 §G4): an icon-only span with only a
+                   hover title is invisible to screen readers — role="img" +
+                   aria-label gives it an accessible name independent of
+                   hover/title support. -->
+              <span class="badge password" role="img" aria-label="Credentials configured" title="Credentials configured">
+                <IconLock size={11} />
+              </span>
+            {/if}
             <span class="badge health {healthLabel(conn.id).tone}">{healthLabel(conn.id).text}</span>
           </div>
           <div class="connection-url">{conn.url}</div>
+          {#if healthRemediation(conn.id)}
+            <p class="remediation">{healthRemediation(conn.id)}</p>
+          {/if}
         </div>
         <div class="connection-actions">
           {#if conn.id !== activeId}
@@ -220,8 +302,16 @@
               Use this
             </button>
           {/if}
-          {#if !conn.locked}
-            <button type="button" class="btn btn-secondary btn-sm" onclick={() => openEditForm(conn)}>
+          {#if conn.locked}
+            <!-- E6 (review 2026-07-10 §E6): locked entries can't be edited,
+                 but they CAN receive credentials — a config-owned default
+                 assistant URL that requires auth previously had no UI path
+                 to supply it and permanently 401s. -->
+            <button type="button" class="btn btn-secondary btn-sm" onclick={() => openEntryForm(conn, 'credentials')}>
+              Set credentials
+            </button>
+          {:else}
+            <button type="button" class="btn btn-secondary btn-sm" onclick={() => openEntryForm(conn, 'edit')}>
               Edit
             </button>
             <button
@@ -240,14 +330,40 @@
     {/each}
   </section>
 
-  {#if formMode === 'idle'}
-    <button type="button" class="btn btn-primary" onclick={openAddForm}>
-      + Add connection
-    </button>
-  {:else}
-    <form class="connection-form" onsubmit={submitForm}>
-      <h2>{formMode === 'add' ? 'Add connection' : 'Edit connection'}</h2>
+  <!-- G2/G3 (review 2026-07-10): stays mounted while the drawer is open
+       rather than `{#if formMode === 'idle'}`-gated (and NOT `disabled` —
+       a `disabled` attribute takes a focused button out of the focus order
+       synchronously too). The ui-kit Drawer's focus-trap (G3) restores
+       focus to whatever `document.activeElement` WAS at open time, by
+       object reference — hiding or disabling this button when the drawer
+       opens invalidated that reference (a removed/disabled node can't be
+       refocused), so `.focus()` on close silently no-op'd to `<body>`
+       (caught by the G2 Playwright suite's Escape/Cancel focus-restore
+       assertions). Harmless to leave live: the Drawer's full-viewport
+       `.drawer-scrim` sits above it in the stacking order and intercepts
+       any click while open. -->
+  <button type="button" class="btn btn-primary" onclick={openAddForm}>
+    + Add connection
+  </button>
 
+  <!-- G3 (review 2026-07-10 §G3): the add/edit/credentials form used to be
+       an inline expand-in-place block with no focus management at all —
+       focus dropped to <body> on open/cancel/save, no Escape, no trap. The
+       ui-kit Drawer (G3's promoted focus-trap, reused from the chat page's
+       sessions drawer) focuses the first field on open, restores focus to
+       the button that opened it on cancel/save, and closes on Escape. -->
+  <Drawer open={formMode !== 'idle'} title={formTitle} onClose={cancelForm}>
+    <form id="connection-form" onsubmit={submitForm}>
+      {#if formMode === 'credentials'}
+        <!-- E6: identity is read-only context here — submitForm() routes
+             this mode to store.setSecretRef(), which never touches
+             url/label/kind, so there is deliberately no editable url/label
+             input in this branch (not just a disabled one). -->
+        <p class="credentials-context">
+          Setting credentials for <strong>{formLabel}</strong> (<code>{formUrl}</code>). This
+          connection's URL is managed by the server that hosts this app and can't be changed here.
+        </p>
+      {:else}
       <label class="field">
         <span>Label</span>
         <input
@@ -270,6 +386,7 @@
         />
         <small>The base URL where the assistant (OpenCode or guardian) is reachable.</small>
       </label>
+      {/if}
 
       <label class="field">
         <span>Authentication</span>
@@ -296,10 +413,18 @@
           <input
             type="password"
             bind:value={formSecret}
-            placeholder={formMode === 'edit' ? 'Leave blank to keep current' : ''}
+            placeholder={formMode !== 'add' ? 'Leave blank to keep current' : ''}
             autocomplete="new-password"
           />
-          <small>Stored in this browser and sent only to this connection's URL.</small>
+          <!-- E7 (review 2026-07-10 §E7): document the residual exposure —
+               encrypting at rest stops casual "read the IndexedDB" access,
+               but any script that runs on this page can still ask the
+               secret store to use the credential (the trust boundary is
+               this browser tab/origin, not this device). -->
+          <small>
+            Encrypted at rest in this browser; still usable by any script that runs on this page.
+            Sent only to this connection's URL.
+          </small>
         </label>
       {:else if formAuthMode === 'bearer'}
         <label class="field">
@@ -307,14 +432,17 @@
           <input
             type="password"
             bind:value={formSecret}
-            placeholder={formMode === 'edit' ? 'Leave blank to keep current' : ''}
+            placeholder={formMode !== 'add' ? 'Leave blank to keep current' : ''}
             autocomplete="off"
           />
-          <small>Stored in this browser and sent only to this connection's URL.</small>
+          <small>
+            Encrypted at rest in this browser; still usable by any script that runs on this page.
+            Sent only to this connection's URL.
+          </small>
         </label>
       {/if}
 
-      {#if formMode === 'edit' && formAuthMode !== 'none'}
+      {#if formMode !== 'add' && formAuthMode !== 'none'}
         <label class="field-inline">
           <input type="checkbox" bind:checked={formClearSecret} />
           <span>Clear stored credentials</span>
@@ -324,17 +452,17 @@
       {#if formError}
         <div class="alert error" role="alert">{formError}</div>
       {/if}
-
-      <div class="form-actions">
-        <button type="submit" class="btn btn-primary" disabled={formSubmitting}>
-          {formSubmitting ? 'Saving…' : 'Save'}
-        </button>
-        <button type="button" class="btn btn-secondary" onclick={cancelForm} disabled={formSubmitting}>
-          Cancel
-        </button>
-      </div>
     </form>
-  {/if}
+
+    {#snippet footer()}
+      <button type="submit" form="connection-form" class="btn btn-primary" disabled={formSubmitting}>
+        {formSubmitting ? 'Saving…' : 'Save'}
+      </button>
+      <button type="button" class="btn btn-secondary" onclick={cancelForm} disabled={formSubmitting}>
+        Cancel
+      </button>
+    {/snippet}
+  </Drawer>
 </main>
 
 <style>
@@ -376,7 +504,7 @@
   .connection-card {
     display: flex;
     justify-content: space-between;
-    align-items: center;
+    align-items: flex-start;
     gap: var(--s-sp-4);
     padding: var(--s-sp-4);
     border: var(--s-hair) solid var(--s-line);
@@ -411,6 +539,14 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+  /* E3/I4 (review 2026-07-10): remediation text for a CORS-blocked probe —
+     unlike .connection-url this wraps; it names two env vars and needs to
+     stay legible. */
+  .remediation {
+    color: var(--s-seal);
+    font-size: var(--s-type-deed);
+    margin: var(--s-sp-1) 0 0;
   }
 
   .badge {
@@ -457,17 +593,23 @@
     flex-shrink: 0;
   }
 
-  .connection-form {
+  /* The form now lives in the ui-kit Drawer (G3) — its body already
+     supplies padding/scroll, so the form itself is just a field stack. */
+  #connection-form {
     display: flex;
     flex-direction: column;
     gap: var(--s-sp-3);
-    padding: var(--s-sp-5);
-    border: var(--s-hair) solid var(--s-line);
-    border-radius: 2px;
-    background: var(--s-paper);
   }
-  .connection-form h2 {
+
+  .credentials-context {
     margin: 0;
+    color: var(--s-ink-3);
+  }
+  .credentials-context code {
+    font-family: var(--s-font-mono);
+    background: var(--s-paper-deep);
+    padding: 1px 4px;
+    border-radius: 4px;
   }
 
   .field {
@@ -505,8 +647,4 @@
     gap: var(--s-sp-2);
   }
 
-  .form-actions {
-    display: flex;
-    gap: var(--s-sp-2);
-  }
 </style>

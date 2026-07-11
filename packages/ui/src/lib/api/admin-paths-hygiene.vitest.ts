@@ -24,6 +24,7 @@ import { fileURLToPath } from 'node:url';
 
 const SRC_ROOT = fileURLToPath(new URL('../../', import.meta.url));
 const API_CLIENT_DIR = fileURLToPath(new URL('./', import.meta.url));
+const REPO_ROOT = fileURLToPath(new URL('../../../../../', import.meta.url));
 
 /** A quote character immediately followed by /admin at a path boundary. */
 const QUOTED_ADMIN_PATH = /['"`]\/admin(?=['"`/?])/;
@@ -68,6 +69,102 @@ describe('no /admin paths left in client code (plan Phase 4 step 1)', () => {
 
   test('no .svelte component (outside the deleted routes/admin tree) references a /admin path', () => {
     expect(offendersIn(svelteFiles())).toEqual([]);
+  });
+});
+
+// Review 2026-07-10 F1: packages/skeleton/knowledge ships to every user
+// install (assistant-visible skills/docs). A dead /admin path there is worse
+// than one in our own source — it's advice we hand to the assistant that
+// drives a live "why isn't my connection working?" flow straight into a 404.
+// Scanned as plain text (not just .md) so future knowledge file types are
+// covered without editing this walker.
+const SKELETON_KNOWLEDGE_DIR = fileURLToPath(
+  new URL('../../../../skeleton/knowledge/', import.meta.url)
+);
+
+function knowledgeFiles(): string[] {
+  if (!existsSync(SKELETON_KNOWLEDGE_DIR)) return [];
+  return (readdirSync(SKELETON_KNOWLEDGE_DIR, { recursive: true }) as string[])
+    .filter((rel) => /\.(md|ts|js|json)$/.test(rel))
+    .map((rel) => join(SKELETON_KNOWLEDGE_DIR, rel));
+}
+
+// Knowledge files are prose/markdown, not JS/TS source, so an endpoint
+// mention typically isn't quote-delimited (e.g. `` `GET /admin/config/validate` ``
+// wraps the whole "GET /admin/..." phrase in one pair of backticks — the
+// backtick sits before "GET", not before "/admin"). Match the bare path
+// instead: a path-shaped /admin/<segment> anywhere in the line.
+const BARE_ADMIN_PATH = /\/admin\/[a-zA-Z][\w-]*/;
+
+function bareOffendersRelativeTo(files: string[], base: string): string[] {
+  const offenders: string[] = [];
+  for (const file of files) {
+    const lines = readFileSync(file, 'utf-8').split('\n');
+    for (let i = 0; i < lines.length; i++) {
+      if (BARE_ADMIN_PATH.test(lines[i])) {
+        offenders.push(`${file.slice(base.length)}:${i + 1}`);
+      }
+    }
+  }
+  return offenders;
+}
+
+function bareOffendersIn(files: string[]): string[] {
+  return bareOffendersRelativeTo(files, SKELETON_KNOWLEDGE_DIR);
+}
+
+describe('no /admin paths left in shipped skeleton knowledge (review 2026-07-10 F1)', () => {
+  test('the scan sees the tree (sanity)', () => {
+    expect(knowledgeFiles().length).toBeGreaterThanOrEqual(5);
+  });
+
+  test('no shipped skill/doc under packages/skeleton/knowledge references a dead /admin path', () => {
+    expect(bareOffendersIn(knowledgeFiles())).toEqual([]);
+  });
+});
+
+// Review 2026-07-10 F4: one-time stale-reference sweep after the Phase 4
+// /admin -> /api/host rename found dead /admin/voice, /admin/providers/
+// import-host, /admin/versions, /admin/automations comments surviving in
+// packages/electron and packages/lib (and a stale playwright.config.ts
+// comment) — files the earlier walkers above never looked at because they
+// only cover packages/ui/src. Extend the sweep so shipped comments in the
+// harness/lib packages can't drift back to the dead namespace unnoticed.
+// Scoped to comment/doc-string prose (bare paths, same convention as the F1
+// skeleton-knowledge scan below) since these packages' actual route CALLS
+// were never on /admin in the first place — only their comments went stale.
+const ELECTRON_SRC_DIR = fileURLToPath(new URL('../../../../electron/src/', import.meta.url));
+const LIB_SRC_DIR = fileURLToPath(new URL('../../../../lib/src/', import.meta.url));
+const PLAYWRIGHT_CONFIGS = [
+  fileURLToPath(new URL('../../../playwright.config.ts', import.meta.url)),
+  fileURLToPath(new URL('../../../../cli/playwright.config.ts', import.meta.url)),
+  fileURLToPath(new URL('../../../../client/playwright.config.ts', import.meta.url)),
+].filter((p) => existsSync(p));
+
+function tsFilesUnder(root: string): string[] {
+  if (!existsSync(root)) return [];
+  return (readdirSync(root, { recursive: true }) as string[])
+    .filter((rel) => rel.endsWith('.ts'))
+    .map((rel) => join(root, rel));
+}
+
+describe('no stale /admin path comments in electron/lib/playwright-config (review 2026-07-10 F4)', () => {
+  test('the scans see the trees (sanity)', () => {
+    expect(tsFilesUnder(ELECTRON_SRC_DIR).length).toBeGreaterThan(10);
+    expect(tsFilesUnder(LIB_SRC_DIR).length).toBeGreaterThan(10);
+    expect(PLAYWRIGHT_CONFIGS.length).toBeGreaterThanOrEqual(1);
+  });
+
+  test('packages/electron/src has no dead /admin path reference', () => {
+    expect(bareOffendersRelativeTo(tsFilesUnder(ELECTRON_SRC_DIR), ELECTRON_SRC_DIR)).toEqual([]);
+  });
+
+  test('packages/lib/src has no dead /admin path reference', () => {
+    expect(bareOffendersRelativeTo(tsFilesUnder(LIB_SRC_DIR), LIB_SRC_DIR)).toEqual([]);
+  });
+
+  test('playwright configs have no dead /admin path reference', () => {
+    expect(bareOffendersRelativeTo(PLAYWRIGHT_CONFIGS, REPO_ROOT)).toEqual([]);
   });
 });
 
