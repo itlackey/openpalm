@@ -227,7 +227,8 @@ export function createChatController(
 
   let unsubscribeEvents: (() => void) | null = null;
   /** The session id + abort controller for the turn currently in flight, if any. */
-  let activeTurn: { sessionId: string; abort: AbortController } | null = null;
+  type ActiveTurn = { sessionId: string; abort: AbortController };
+  let activeTurn: ActiveTurn | null = null;
 
   /** Clears every pending-render field (§B4/§B9) — called whenever a turn ends. */
   function resetPendingRenderState(): void {
@@ -237,10 +238,18 @@ export function createChatController(
     state.pendingQuestion = null;
   }
 
-  function finalizeTurn(sessionId: string, replyTextOverride?: string): void {
+  function finalizeTurn(turn: ActiveTurn, replyTextOverride?: string): void {
     // Guards the SSE-isTurnEnd-vs-sendMessage-resolving race (whichever
-    // notices first finalizes; the other is a no-op).
-    if (!state.sending || !activeTurn || activeTurn.sessionId !== sessionId) return;
+    // notices first finalizes; the other is a no-op) AND cross-turn
+    // contamination when a new turn starts on the SAME session before the
+    // previous turn's POST resolves (review 2026-07-11 seam 4, MEDIUM):
+    // identity (activeTurn === turn), not sessionId, is the source of truth
+    // for "is this still the turn being finalized" — two turns on one
+    // session share a sessionId, but never a turn object.
+    if (!state.sending || activeTurn !== turn) return;
+    // Cancels the POST if it's still in flight (the SSE-driven finalize path
+    // below never awaited it) — idempotent if stop() already aborted it.
+    turn.abort.abort();
     const raw = replyTextOverride ?? state.pendingText;
     const text = raw.trim() || '(The assistant sent no text.)';
     const capturedToolStates = state.pendingToolStates.length > 0 ? [...state.pendingToolStates] : undefined;
@@ -294,7 +303,8 @@ export function createChatController(
 
   function handleEvent(event: RawEvent): void {
     if (!state.sending || !activeTurn) return;
-    const sessionId = activeTurn.sessionId;
+    const turn = activeTurn;
+    const sessionId = turn.sessionId;
     const delta = extractTextDelta(event, sessionId);
     if (delta) {
       state.pendingText += delta;
@@ -325,7 +335,7 @@ export function createChatController(
     }
 
     if (isTurnEnd(event, sessionId)) {
-      finalizeTurn(sessionId);
+      finalizeTurn(turn);
     }
   }
 
@@ -362,15 +372,19 @@ export function createChatController(
     resetPendingRenderState();
     state.error = '';
     const abort = new AbortController();
-    activeTurn = { sessionId, abort };
+    const turn: ActiveTurn = { sessionId, abort };
+    activeTurn = turn;
     notify();
 
     try {
       const response = await transport.sendMessage(sessionId, trimmed, { signal: abort.signal });
-      finalizeTurn(sessionId, assistantTextFromResponse(response));
+      finalizeTurn(turn, assistantTextFromResponse(response));
       void refreshSessions();
     } catch (e) {
       if (isAbortError(e)) return; // stop() already finalized (or will, via the aborted signal path).
+      // A stale turn superseded by a newer one (see finalizeTurn) must not
+      // clobber the newer turn's in-flight state — same identity guard.
+      if (activeTurn !== turn) return;
       state.entries = state.entries.filter((entry) => entry.id !== userEntry.id);
       state.lastFailedText = trimmed;
       state.sending = false;
@@ -438,7 +452,8 @@ export function createChatController(
 
     async stop(): Promise<void> {
       if (!state.sending || !activeTurn) return;
-      const { sessionId, abort } = activeTurn;
+      const turn = activeTurn;
+      const { sessionId, abort } = turn;
       abort.abort();
       try {
         await transport.abortTurn(sessionId);
@@ -446,8 +461,8 @@ export function createChatController(
         // Best-effort — the turn finishes locally below regardless.
       }
       if (state.pendingText) {
-        finalizeTurn(sessionId, state.pendingText);
-      } else {
+        finalizeTurn(turn, state.pendingText);
+      } else if (activeTurn === turn) {
         state.sending = false;
         resetPendingRenderState();
         activeTurn = null;

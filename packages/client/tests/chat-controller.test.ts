@@ -180,6 +180,66 @@ describe('chat-controller — B2 live streaming', () => {
   });
 });
 
+describe('chat-controller — cross-turn contamination guard (review 2026-07-11 seam 4)', () => {
+  test('turn A finalized by SSE while its POST is still in flight must not let that POST finalize turn B on the same session', async () => {
+    const { createChatController } = await loadControllerModule();
+    const sendA = deferred<unknown>();
+    const sendB = deferred<unknown>();
+    let sendCount = 0;
+    const { transport, emit } = makeFakeTransport({
+      createSession: async () => ({ id: 'sess-shared' }),
+      sendMessage: async () => {
+        sendCount += 1;
+        return sendCount === 1 ? sendA.promise : sendB.promise;
+      },
+    });
+    const controller = createChatController(transport);
+    await controller.init();
+
+    // Turn A starts on sess-shared.
+    const sendPromiseA = controller.send('first');
+    await Promise.resolve();
+    await Promise.resolve();
+    emit(textDeltaEvent('sess-shared', 'A reply'));
+
+    // The SSE session.idle event finalizes A BEFORE its POST resolves — the
+    // exact race window the advisory describes.
+    emit(turnEndEvent('sess-shared'));
+    let state = controller.getState();
+    expect(state.sending).toBe(false);
+    expect(state.entries.at(-1)).toMatchObject({ role: 'assistant', text: 'A reply' });
+
+    // The user immediately sends turn B on the SAME session, before A's POST
+    // has resolved.
+    const sendPromiseB = controller.send('second');
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(controller.getState().sending).toBe(true);
+
+    // A's POST now resolves late, with a DIFFERENT response than what A was
+    // already finalized with. It must be a no-op: sessionId alone matches (both
+    // turns share sess-shared), but turn identity must not.
+    sendA.resolve({ parts: [{ type: 'text', text: 'STALE A RESPONSE' }] });
+    await sendPromiseA;
+
+    state = controller.getState();
+    expect(state.sending, 'B must still be in flight — A\'s stale POST must not finalize it').toBe(true);
+    expect(state.entries.some((e) => e.text === 'STALE A RESPONSE')).toBe(false);
+    expect(state.entries.map((e) => e.text)).toEqual(['first', 'A reply', 'second']);
+
+    // B finishes normally afterwards — its own reply must land correctly,
+    // proving the guard didn't just swallow both finalizations.
+    emit(textDeltaEvent('sess-shared', 'B reply'));
+    emit(turnEndEvent('sess-shared'));
+    sendB.resolve({ parts: [{ type: 'text', text: 'B reply' }] });
+    await sendPromiseB;
+
+    state = controller.getState();
+    expect(state.sending).toBe(false);
+    expect(state.entries.map((e) => e.text)).toEqual(['first', 'A reply', 'second', 'B reply']);
+  });
+});
+
 describe('chat-controller — B3 stop', () => {
   test('stop() aborts the turn and finalizes using the accumulated pending text', async () => {
     const { createChatController } = await loadControllerModule();
