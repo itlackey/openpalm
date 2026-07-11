@@ -104,6 +104,35 @@ describe('resolveAssistantEndpoint', () => {
     );
   });
 
+  it('honors a specific non-wildcard OP_ASSISTANT_BIND_ADDRESS in the fallback URL (E1 follow-up)', () => {
+    // A concrete LAN IP (as opposed to a wildcard 0.0.0.0/::) is something
+    // docker publishes the assistant port ONLY on — 127.0.0.1 is not
+    // reachable in that configuration, so the fallback must preserve it
+    // instead of collapsing to loopback.
+    writeStackEnv(home, 'OP_ASSISTANT_BIND_ADDRESS=192.168.1.50\nOP_ASSISTANT_PORT=3800\n');
+    expect(resolveAssistantEndpoint(home, {})).toBe('http://192.168.1.50:3800');
+  });
+
+  it('still normalizes wildcard bind hosts to 127.0.0.1 even though specific hosts are preserved', () => {
+    writeStackEnv(home, 'OP_ASSISTANT_BIND_ADDRESS=0.0.0.0\nOP_ASSISTANT_PORT=3800\n');
+    expect(resolveAssistantEndpoint(home, {})).toBe('http://127.0.0.1:3800');
+    writeStackEnv(home, 'OP_ASSISTANT_BIND_ADDRESS=::\nOP_ASSISTANT_PORT=3800\n');
+    expect(resolveAssistantEndpoint(home, {})).toBe('http://127.0.0.1:3800');
+  });
+
+  it('an explicit override still wins over a specific OP_ASSISTANT_BIND_ADDRESS', () => {
+    writeStackEnv(home, 'OP_ASSISTANT_BIND_ADDRESS=192.168.1.50\n');
+    expect(
+      resolveAssistantEndpoint(home, { OP_ASSISTANT_URL: 'http://example.test:9999' })
+    ).toBe('http://example.test:9999');
+  });
+
+  it('an unset or loopback OP_ASSISTANT_BIND_ADDRESS falls back to 127.0.0.1 as before', () => {
+    expect(resolveAssistantEndpoint(home, {})).toBe('http://127.0.0.1:3800');
+    writeStackEnv(home, 'OP_ASSISTANT_BIND_ADDRESS=127.0.0.1\nOP_ASSISTANT_PORT=3800\n');
+    expect(resolveAssistantEndpoint(home, {})).toBe('http://127.0.0.1:3800');
+  });
+
   it('defaults env to process.env when omitted', () => {
     const prior = process.env.OP_ASSISTANT_URL;
     process.env.OP_ASSISTANT_URL = 'http://from-process-global.test:1';
