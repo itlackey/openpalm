@@ -27,6 +27,7 @@ import {
   stackDirFor,
 } from "@openpalm/lib";
 import { resolveRequestLanding, getCachedLocalInstallState } from "$lib/server/landing.js";
+import { BLOCKING_LANDINGS } from "$lib/resolve-landing.js";
 
 // Launch-fact collection + the 5s cache live in $lib/server/landing.ts; the
 // reset hook is re-exported here so tests keep one import site.
@@ -188,14 +189,18 @@ export const handle: Handle = async ({ event, resolve }) => {
     const usageRoute = path.startsWith('/chat') || path.startsWith('/advanced')
       || path.startsWith('/connections');
     // J3 (review 2026-07-10): usage routes are exempt from the landing
-    // redirect EXCEPT when the landing is '/attention' — a blocking
-    // migration in progress. Nothing produces that status today
-    // ($lib/server/landing.ts's migration.status is always 'none'), so this
-    // branch is inert until the first real blocking migration exists — but
-    // it must be wired ahead of that migration, not as a hotfix once one
-    // ships and finds chat/advanced/connections silently bypassing the
-    // blocking screen.
-    const usageExempt = usageRoute && landingPath !== '/attention';
+    // redirect EXCEPT when the resolved landing is BLOCKING (a migration in
+    // progress). Nothing produces that status today ($lib/server/landing.ts's
+    // migration.status is always 'none'), so this branch is inert until the
+    // first real blocking migration exists — but it must be wired ahead of
+    // that migration, not as a hotfix once one ships and finds
+    // chat/advanced/connections silently bypassing the blocking screen.
+    //
+    // K4 (review 2026-07-11): membership in BLOCKING_LANDINGS, not a literal
+    // '/attention' string comparison — a future second blocking landing only
+    // needs registering in that set (resolve-landing.ts) to also gate these
+    // routes, with no changes required here.
+    const usageExempt = usageRoute && !BLOCKING_LANDINGS.has(landingPath);
     // '/host' is the admin surface itself; '/admin' stays exempt so requests
     // into the dead namespace fall through to the router 404 instead of
     // bouncing to the landing (no alias, no gate — plan Phase 4 step 1).

@@ -11,7 +11,7 @@
 	import Presence from '$lib/components/chat/Presence.svelte';
 	import PermissionCard from '$lib/components/chat/PermissionCard.svelte';
 	import QuestionCard from '$lib/components/chat/QuestionCard.svelte';
-	import { createFocusTrap, handleTrapKeydown } from '$lib/actions/focus-trap.js';
+	import { createFocusTrap, handleTrapKeydown } from '@openpalm/ui-kit/actions/focus-trap.js';
 	import { isLocalAssistantUrl } from '$lib/assistant-endpoint.js';
 	// Direct domain-client import (plan Phase 3 step 4, #555): the chat page
 	// must not import the $lib/api.js barrel, which re-exports every admin

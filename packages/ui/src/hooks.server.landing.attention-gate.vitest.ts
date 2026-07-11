@@ -38,6 +38,21 @@ vi.mock('$lib/server/landing.js', async (orig) => ({
     (resolveRequestLandingMock as unknown as (...a: unknown[]) => Promise<string>)(...args),
 }));
 
+// K4 (review 2026-07-11): the gate must key off the resolver's BLOCKING_LANDINGS
+// classification, not a literal '/attention' string comparison — otherwise a
+// future SECOND blocking landing silently bypasses the usage-route gate. This
+// hoisted, mutable set stands in for "a future second blocking landing" so
+// the test below can prove the gate reacts to the set's CONTENTS, not to a
+// hardcoded string.
+const { blockingLandingsMock } = vi.hoisted(() => ({
+  blockingLandingsMock: new Set<string>(['/attention']),
+}));
+
+vi.mock('$lib/resolve-landing.js', async (orig) => ({
+  ...(await orig<typeof import('$lib/resolve-landing.js')>()),
+  BLOCKING_LANDINGS: blockingLandingsMock,
+}));
+
 import { handle } from './hooks.server.js';
 
 function seedStackEnv(stackDir: string, setupComplete: boolean): void {
@@ -125,5 +140,48 @@ describe('hooks.server — a pending-migration landing (/attention) gates the us
     resolveRequestLandingMock.mockResolvedValue('/host?tab=diagnostics');
     const res = await handle({ event: makeEvent('/connections', createSession()), resolve });
     expect(res.status).toBe(200);
+  });
+});
+
+describe('hooks.server — a SECOND blocking landing also gates the usage routes (review 2026-07-11 K4)', () => {
+  let home = '';
+  let prevHome: string | undefined;
+
+  beforeEach(() => {
+    process.env.PORT = '3880';
+    process.env.OP_ENABLE_ADMIN = '1';
+    prevHome = process.env.OP_HOME;
+    home = mkdtempSync(join(tmpdir(), 'op-hooks-attention-gate-k4-'));
+    process.env.OP_HOME = home;
+    const state = resetState('test-admin-pw');
+    seedStackEnv(state.stackDir, true); // setup complete — bypass the setup-guard redirect
+    resolveRequestLandingMock.mockReset();
+    // Simulate a future second blocking landing being registered in the
+    // resolver's BLOCKING_LANDINGS set — the gate must react to this, not
+    // stay hardwired to the '/attention' literal.
+    blockingLandingsMock.add('/attention2-stub');
+  });
+
+  afterEach(() => {
+    delete process.env.PORT;
+    delete process.env.OP_ENABLE_ADMIN;
+    if (prevHome === undefined) delete process.env.OP_HOME;
+    else process.env.OP_HOME = prevHome;
+    rmSync(home, { recursive: true, force: true });
+    blockingLandingsMock.delete('/attention2-stub');
+  });
+
+  test('GET /chat redirects to the stubbed second blocking landing', async () => {
+    resolveRequestLandingMock.mockResolvedValue('/attention2-stub');
+    await expect(handle({ event: makeEvent('/chat', createSession()), resolve })).rejects.toMatchObject({
+      location: '/attention2-stub',
+    });
+  });
+
+  test('GET /connections redirects to the stubbed second blocking landing', async () => {
+    resolveRequestLandingMock.mockResolvedValue('/attention2-stub');
+    await expect(handle({ event: makeEvent('/connections', createSession()), resolve })).rejects.toMatchObject({
+      location: '/attention2-stub',
+    });
   });
 });
