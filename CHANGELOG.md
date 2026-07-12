@@ -253,6 +253,12 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **Guardian mDNS no longer advertises an unreachable front door** (PR #564
+  P2-1): the `<name>-guardian.local` advertisement is now gated on
+  `GUARDIAN_DIRECT_INGRESS` being enabled, so a LAN-visible guardian bind with
+  direct ingress off (e.g. the shared-guardian preset default) stops pointing
+  the LAN at a `:3830` listener that returns 404.
+
 - **`OPENCODE_BASE_URL` was ignored by the portal adapters** (#491).
   `BasePortal.createOcClient` hardcoded `baseUrl: 'http://guardian:8080/oc'`,
   so `OcClient`'s existing `OPENCODE_BASE_URL` env fallback was dead code

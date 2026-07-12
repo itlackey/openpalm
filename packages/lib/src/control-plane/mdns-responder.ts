@@ -106,6 +106,11 @@ function isMdnsOffToken(value: string | undefined): boolean {
 
 function isGuardianGated(env: Record<string, string | undefined>): boolean {
   if (isMdnsOffToken(env.OP_MDNS)) return false;
+  // PR #564 P2-1: the advertised `<name>-guardian.local:3830` is the direct
+  // ingress front door. Never advertise it while direct ingress is disabled —
+  // otherwise the LAN is pointed at a listener that 404s (the shared-guardian
+  // preset leaves ingress off). Matches guardian server.ts: only literal 'true'.
+  if (env.GUARDIAN_DIRECT_INGRESS !== "true") return false;
   const bind = env.OP_BIND_ADDRESS;
   return !!bind && !isLoopback(bind);
 }
