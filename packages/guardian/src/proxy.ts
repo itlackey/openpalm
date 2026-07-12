@@ -64,7 +64,7 @@ import {
   setTurnAbortFn,
 } from "./oc-bounds";
 import { getPolicyProvider, type PolicyDecision } from "./policy";
-import { ASSISTANT_URL, SESSION_TTL_MS as SESSION_REUSE_TTL_MS } from "./config";
+import { ASSISTANT_URL, SESSION_TTL_MS as SESSION_REUSE_TTL_MS, withAssistantUpstreamAuth } from "./config";
 import { BoundedTtlMap } from "./bounded-map";
 
 const logger = createLogger("guardian:proxy");
@@ -81,7 +81,7 @@ const OC_MAX_BODY_BYTES = Number(Bun.env.GUARDIAN_OC_MAX_BODY_BYTES ?? 1_048_576
 // upstream abort itself (it must stay free of the upstream fetch to remain
 // unit-testable); the proxy owns that side-effect. Best-effort, fire-and-forget.
 setTurnAbortFn((sessionId) => {
-  const headers = new Headers({ "content-type": "application/json" });
+  const headers = withAssistantUpstreamAuth(new Headers({ "content-type": "application/json" }));
   void fetch(`${ASSISTANT_URL}/session/${sessionId}/abort`, { method: "POST", headers, body: "{}" })
     .then(() => logger.warn("oc_turn_wall_clock_abort", { sessionId }))
     .catch((err) => logger.error("oc_turn_abort_failed", { sessionId, error: String(err) }));
@@ -106,7 +106,9 @@ function buildUpstreamHeaders(req: Request, hasBody: boolean): Headers {
   // Pass through the SSE Accept for /event so OpenCode streams text/event-stream.
   const accept = req.headers.get("accept");
   if (accept) headers.set("accept", accept);
-  return headers;
+  // #563 D2 — attach guardian→assistant upstream Basic auth when the assistant's
+  // own OpenCode auth is on. No-op (never forwards inbound auth) by default.
+  return withAssistantUpstreamAuth(headers);
 }
 
 /**

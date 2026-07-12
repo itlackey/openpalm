@@ -42,7 +42,7 @@ import {
 } from "./ownership";
 import { endTurnsForSession } from "./oc-bounds";
 import { runDriftCheck } from './drift';
-import { ASSISTANT_URL } from './config';
+import { ASSISTANT_URL, withAssistantUpstreamAuth } from './config';
 import { parseSseFrames, extractData } from './sse.ts';
 
 const logger = createLogger("guardian:event");
@@ -270,7 +270,8 @@ async function runUpstream(): Promise<void> {
   const abort = new AbortController();
   upstreamAbort = abort;
   try {
-    const headers = new Headers({ accept: "text/event-stream" });
+    // #563 D2 — attach guardian→assistant upstream Basic auth when enabled.
+    const headers = withAssistantUpstreamAuth(new Headers({ accept: "text/event-stream" }));
 
     const resp = await fetch(`${ASSISTANT_URL}/event`, {
       method: "GET",

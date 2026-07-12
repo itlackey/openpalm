@@ -25,7 +25,7 @@
 
 import { OC_ALLOWLIST } from './oc-allowlist.ts';
 import { createLogger } from './logger.ts';
-import { ASSISTANT_URL } from './config.ts';
+import { ASSISTANT_URL, withAssistantUpstreamAuth } from './config.ts';
 
 const logger = createLogger("guardian:drift");
 
@@ -188,7 +188,8 @@ function collectPropertyKeys(doc: unknown): Set<string> {
 export async function runDriftCheck(): Promise<boolean> {
   let doc: unknown;
   try {
-    const headers = new Headers({ accept: "application/json" });
+    // #563 D2 — attach guardian→assistant upstream Basic auth when enabled.
+    const headers = withAssistantUpstreamAuth(new Headers({ accept: "application/json" }));
     const resp = await fetch(`${ASSISTANT_URL}/doc`, {
       method: "GET",
       headers,
