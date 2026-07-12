@@ -222,3 +222,51 @@ describe('computeServerRuntimeContext — serverCapabilities per hostMode (plan 
 // 1–3. Phase 4 deleted computeFeatureFlags() with its last readers; the
 // legacy env mapping it pinned (OP_INSIDE_ELECTRON / OP_ENABLE_ADMIN) stays
 // covered by the resolveHostMode tests above.
+
+// ── clientAppUrl (#511 T5, D8) ────────────────────────────────────────────
+// Additive optional field on ServerRuntimeContext — version stays 2. Computed
+// for electron-host/host-ui/pwa-static from lib's resolveClientAppPort();
+// omitted for assistant-container (no sibling static client there).
+// RED reason: the field is `undefined` for every mode pre-implementation
+// (features.ts does not set it yet).
+
+describe('computeServerRuntimeContext — clientAppUrl (#511 D8)', () => {
+  const CLIENT_ENV_KEYS = ['OP_HOST_CLIENT_PORT'] as const;
+  let savedClientEnv: Record<string, string | undefined> = {};
+
+  beforeEach(() => {
+    savedClientEnv = {};
+    for (const key of CLIENT_ENV_KEYS) {
+      savedClientEnv[key] = process.env[key];
+      delete process.env[key];
+    }
+  });
+
+  afterEach(() => {
+    for (const key of CLIENT_ENV_KEYS) {
+      const prev = savedClientEnv[key];
+      if (prev === undefined) delete process.env[key];
+      else process.env[key] = prev;
+    }
+  });
+
+  test('exposes clientAppUrl for host-capable and pwa-static modes', () => {
+    process.env.OP_UI_HOST_MODE = 'host-ui';
+    process.env.OP_HOST_CLIENT_PORT = '4444';
+    expect(computeServerRuntimeContext(makeEvent()).clientAppUrl).toBe('http://127.0.0.1:4444');
+
+    delete process.env.OP_HOST_CLIENT_PORT;
+    expect(computeServerRuntimeContext(makeEvent()).clientAppUrl).toBe('http://127.0.0.1:3890');
+
+    process.env.OP_UI_HOST_MODE = 'electron-host';
+    expect(computeServerRuntimeContext(makeEvent()).clientAppUrl).toBe('http://127.0.0.1:3890');
+
+    process.env.OP_UI_HOST_MODE = 'pwa-static';
+    expect(computeServerRuntimeContext(makeEvent()).clientAppUrl).toBe('http://127.0.0.1:3890');
+  });
+
+  test('omits clientAppUrl in assistant-container mode', () => {
+    process.env.OP_UI_HOST_MODE = 'assistant-container';
+    expect(computeServerRuntimeContext(makeEvent()).clientAppUrl).toBeUndefined();
+  });
+});
