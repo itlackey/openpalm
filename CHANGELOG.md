@@ -253,6 +253,13 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **mDNS record correctness** (PR #564 r3566892051, r3566892362): a specific
+  non-IPv4 bind (IPv6 literal or hostname) is no longer encoded into a
+  malformed A record — such addresses are skipped. Legacy-unicast replies
+  (RFC 6762 §6.7, queries from a non-5353 source port) now echo the question,
+  clear the cache-flush bit, and use a short (≤10s) TTL so conventional
+  one-shot resolvers accept them.
+
 - **`channel_lan` deprecation guard no longer blocks uninstall/update**
   (PR #564 r3566892768): the guard now throws only on activation
   (install/upgrade), so a leftover `channel_lan` reference in a user

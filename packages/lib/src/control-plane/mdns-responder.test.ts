@@ -427,6 +427,38 @@ describe("resolveMdnsAdvertisements", () => {
       expect(adverts).toEqual([]);
     }
   });
+
+  // PR #564 r3566892051: a specific non-IPv4 bind (IPv6 literal / hostname)
+  // must not be encoded into an A record — it would emit malformed rdata
+  // (NaN&0xff bytes, wrong rdlength). Skip it instead.
+  test("a specific IPv6 bind is skipped (no malformed A record)", () => {
+    expect(
+      resolveMdnsAdvertisements({ OP_BIND_ADDRESS: "fd00::5", GUARDIAN_DIRECT_INGRESS: "true" }, HOST_IPV4),
+    ).toEqual([]);
+  });
+
+  test("a specific hostname bind is skipped (no malformed A record)", () => {
+    expect(
+      resolveMdnsAdvertisements({ OP_ASSISTANT_BIND_ADDRESS: "my-host.lan" }, HOST_IPV4),
+    ).toEqual([]);
+  });
+
+  test("a specific IPv4 bind is advertised with that exact address", () => {
+    const adverts = resolveMdnsAdvertisements({ OP_ASSISTANT_BIND_ADDRESS: "192.168.1.7" }, HOST_IPV4);
+    expect(adverts).toEqual([
+      { service: "assistant", name: "openpalm.local", port: 3800, addresses: ["192.168.1.7"] },
+    ]);
+  });
+
+  test("wildcard bind filters host addresses to IPv4 only", () => {
+    const adverts = resolveMdnsAdvertisements(
+      { OP_ASSISTANT_BIND_ADDRESS: "0.0.0.0" },
+      ["192.168.1.20", "fe80::1", "not-an-ip"],
+    );
+    expect(adverts).toEqual([
+      { service: "assistant", name: "openpalm.local", port: 3800, addresses: ["192.168.1.20"] },
+    ]);
+  });
 });
 
 describe("resolveMdnsStatus", () => {
@@ -565,6 +597,44 @@ describe("buildMdnsAnswer", () => {
     expect(packet).not.toBeNull();
     const decoded = decodeMdnsPacket(packet as Uint8Array);
     expect(decoded.id).toBe(0x1234);
+  });
+
+  // PR #564 r3566892362: legacy-unicast replies (RFC 6762 §6.7) must echo the
+  // question, clear the cache-flush bit, and use a short (≤10s) TTL — otherwise
+  // conventional one-shot resolvers reject them.
+  const CACHE_FLUSH = 0x8000;
+  test("legacy-unicast reply echoes the question (qdcount=1)", () => {
+    const advert = makeAssistantAdvert();
+    const questions: DnsQuestion[] = [{ name: "openpalm.local", type: TYPE_A, qclass: CLASS_IN }];
+    const packet = buildMdnsAnswer(questions, [advert], { queryId: 0x1234, legacy: true });
+    const decoded = decodeMdnsPacket(packet as Uint8Array);
+    expect(decoded.qdcount).toBe(1);
+    expect(decoded.questions[0].name.toLowerCase()).toBe("openpalm.local");
+    expect(decoded.questions[0].type).toBe(TYPE_A);
+  });
+
+  test("legacy-unicast A record clears the cache-flush bit and uses a short TTL", () => {
+    const advert = makeAssistantAdvert();
+    const questions: DnsQuestion[] = [{ name: "openpalm.local", type: TYPE_A, qclass: CLASS_IN }];
+    const packet = buildMdnsAnswer(questions, [advert], { queryId: 0x1234, legacy: true });
+    const decoded = decodeMdnsPacket(packet as Uint8Array);
+    const a = decoded.answers.find((r) => r.type === TYPE_A);
+    assertDefined(a);
+    expect(a.qclass & CACHE_FLUSH).toBe(0); // cache-flush bit cleared
+    expect(a.qclass & 0x7fff).toBe(CLASS_IN);
+    expect(a.ttl).toBeLessThanOrEqual(10);
+  });
+
+  test("multicast reply keeps qdcount=0, cache-flush set, TTL 120", () => {
+    const advert = makeAssistantAdvert();
+    const questions: DnsQuestion[] = [{ name: "openpalm.local", type: TYPE_A, qclass: CLASS_IN }];
+    const packet = buildMdnsAnswer(questions, [advert]);
+    const decoded = decodeMdnsPacket(packet as Uint8Array);
+    expect(decoded.qdcount).toBe(0);
+    const a = decoded.answers.find((r) => r.type === TYPE_A);
+    assertDefined(a);
+    expect(a.qclass & CACHE_FLUSH).toBe(CACHE_FLUSH);
+    expect(a.ttl).toBe(120);
   });
 });
 

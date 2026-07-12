@@ -37,6 +37,8 @@ const TYPE_ANY = 255;
 const CLASS_IN = 1;
 const CACHE_FLUSH_BIT = 0x8000;
 const TTL = 120;
+/** RFC 6762 §6.7: legacy-unicast responses use a short TTL (≤10s). */
+const LEGACY_UNICAST_TTL = 10;
 const HTTP_SERVICE = "_http._tcp.local";
 const DEFAULT_GUARDIAN_PORT = 3830;
 const DEFAULT_ASSISTANT_PORT = 3800;
@@ -147,10 +149,21 @@ function defaultHostIpv4(): string[] {
 }
 
 /** A specific bind IP narrows the addresses; a wildcard bind uses the host interface list. */
+/** True only for a dotted-quad IPv4 literal (4 octets, each 0-255). */
+function isIpv4(address: string): boolean {
+  const parts = address.trim().split(".");
+  if (parts.length !== 4) return false;
+  return parts.every((p) => /^\d{1,3}$/.test(p) && Number(p) <= 255);
+}
+
 function resolveAdvertAddresses(bind: string, hostIpv4: string[]): string[] {
   const v = bind.trim();
-  if (v !== "" && v !== "0.0.0.0" && v !== "::") return [v];
-  return hostIpv4;
+  const candidates = v !== "" && v !== "0.0.0.0" && v !== "::" ? [v] : hostIpv4;
+  // PR #564 r3566892051: only IPv4 addresses can be encoded as A records. A
+  // specific IPv6 literal / hostname bind (or a non-IPv4 host address) is
+  // skipped rather than mangled into malformed rdata; an advert that resolves
+  // to zero addresses is dropped by the caller.
+  return candidates.filter(isIpv4);
 }
 
 /**
@@ -346,8 +359,13 @@ function ipv4ToBytes(address: string): number[] {
   return address.split(".").map((part) => Number.parseInt(part, 10) & 0xff);
 }
 
-function buildARecord(name: string, address: string, ttl = TTL): number[] {
-  return encodeRR(name, TYPE_A, CLASS_IN | CACHE_FLUSH_BIT, ttl, ipv4ToBytes(address));
+function buildARecord(name: string, address: string, ttl = TTL, cacheFlush = true): number[] {
+  return encodeRR(name, TYPE_A, cacheFlush ? CLASS_IN | CACHE_FLUSH_BIT : CLASS_IN, ttl, ipv4ToBytes(address));
+}
+
+/** Encode a question section entry (name + QTYPE + QCLASS), for legacy-unicast echo. */
+function encodeQuestion(q: DnsQuestion): number[] {
+  return [...encodeName(q.name), (q.type >> 8) & 0xff, q.type & 0xff, (q.qclass >> 8) & 0xff, q.qclass & 0xff];
 }
 
 function mdnsInstanceName(name: string): string {
@@ -355,27 +373,33 @@ function mdnsInstanceName(name: string): string {
   return `${base}.${HTTP_SERVICE}`;
 }
 
-function buildPtrRecord(instanceName: string): number[] {
-  return encodeRR(HTTP_SERVICE, TYPE_PTR, CLASS_IN, TTL, encodeName(instanceName));
+function buildPtrRecord(instanceName: string, ttl = TTL): number[] {
+  return encodeRR(HTTP_SERVICE, TYPE_PTR, CLASS_IN, ttl, encodeName(instanceName));
 }
 
-function buildSrvRecord(instanceName: string, target: string, port: number): number[] {
+function buildSrvRecord(instanceName: string, target: string, port: number, ttl = TTL): number[] {
   const rdata = [0, 0, 0, 0, (port >> 8) & 0xff, port & 0xff, ...encodeName(target)];
-  return encodeRR(instanceName, TYPE_SRV, CLASS_IN, TTL, rdata);
+  return encodeRR(instanceName, TYPE_SRV, CLASS_IN, ttl, rdata);
 }
 
-function buildTxtRecord(instanceName: string, strings: string[]): number[] {
+function buildTxtRecord(instanceName: string, strings: string[], ttl = TTL): number[] {
   const rdata: number[] = [];
   for (const s of strings) {
     rdata.push(s.length & 0xff);
     for (let i = 0; i < s.length; i++) rdata.push(s.charCodeAt(i) & 0xff);
   }
-  return encodeRR(instanceName, TYPE_TXT, CLASS_IN, TTL, rdata);
+  return encodeRR(instanceName, TYPE_TXT, CLASS_IN, ttl, rdata);
 }
 
-function buildPacket(id: number, flags: number, answers: number[][], additionals: number[][]): Uint8Array {
-  const header = buildHeader(id, flags, 0, answers.length, 0, additionals.length);
-  return new Uint8Array([...header, ...answers.flat(), ...additionals.flat()]);
+function buildPacket(
+  id: number,
+  flags: number,
+  answers: number[][],
+  additionals: number[][],
+  questions: number[][] = [],
+): Uint8Array {
+  const header = buildHeader(id, flags, questions.length, answers.length, 0, additionals.length);
+  return new Uint8Array([...header, ...questions.flat(), ...answers.flat(), ...additionals.flat()]);
 }
 
 /**
@@ -390,32 +414,43 @@ function buildPacket(id: number, flags: number, answers: number[][], additionals
 export function buildMdnsAnswer(
   questions: DnsQuestion[],
   adverts: MdnsAdvertisement[],
-  opts: { queryId?: number } = {},
+  opts: { queryId?: number; legacy?: boolean } = {},
 ): Uint8Array | null {
+  // PR #564 r3566892362: a legacy-unicast reply (RFC 6762 §6.7 — query from a
+  // non-5353 source port) must echo the question, clear the cache-flush bit,
+  // and use a short (≤10s) TTL, or conventional one-shot resolvers reject it.
+  const legacy = opts.legacy === true;
+  const ttl = legacy ? LEGACY_UNICAST_TTL : TTL;
+  const cacheFlush = !legacy;
   const answers: number[][] = [];
   const additionals: number[][] = [];
+  const echoedQuestions: number[][] = [];
 
   for (const q of questions) {
     const qName = q.name.toLowerCase();
+    let matched = false;
     if (q.type === TYPE_A || q.type === TYPE_ANY) {
       const advert = adverts.find((a) => a.name.toLowerCase() === qName);
       if (advert) {
-        for (const address of advert.addresses) answers.push(buildARecord(advert.name, address));
+        for (const address of advert.addresses) answers.push(buildARecord(advert.name, address, ttl, cacheFlush));
+        matched = true;
       }
     }
     if ((q.type === TYPE_PTR || q.type === TYPE_ANY) && qName === HTTP_SERVICE) {
       for (const advert of adverts) {
         const instanceName = mdnsInstanceName(advert.name);
-        answers.push(buildPtrRecord(instanceName));
-        additionals.push(buildSrvRecord(instanceName, advert.name, advert.port));
-        additionals.push(buildTxtRecord(instanceName, ["path=/"]));
-        for (const address of advert.addresses) additionals.push(buildARecord(advert.name, address));
+        answers.push(buildPtrRecord(instanceName, ttl));
+        additionals.push(buildSrvRecord(instanceName, advert.name, advert.port, ttl));
+        additionals.push(buildTxtRecord(instanceName, ["path=/"], ttl));
+        for (const address of advert.addresses) additionals.push(buildARecord(advert.name, address, ttl, cacheFlush));
       }
+      matched = true;
     }
+    if (matched && legacy) echoedQuestions.push(encodeQuestion(q));
   }
 
   if (answers.length === 0) return null;
-  return buildPacket(opts.queryId ?? 0, QR_AA_FLAGS, answers, additionals);
+  return buildPacket(opts.queryId ?? 0, QR_AA_FLAGS, answers, additionals, echoedQuestions);
 }
 
 /** Gratuitous announcement (one A answer per advert address) sent at startup. */
@@ -507,7 +542,7 @@ function createResponder(
         const questions = parseDnsQuestions(msg);
         if (!questions) return;
         const legacy = rinfo.port !== MDNS_PORT;
-        const answer = buildMdnsAnswer(questions, adverts, legacy ? { queryId: readU16(msg, 0) } : {});
+        const answer = buildMdnsAnswer(questions, adverts, legacy ? { queryId: readU16(msg, 0), legacy: true } : {});
         if (!answer) return;
         if (legacy) safeSend(answer, rinfo.port, rinfo.address);
         else safeSend(answer, MDNS_PORT, MDNS_ADDR);
