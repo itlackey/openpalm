@@ -893,6 +893,19 @@ describe("DiscordChannel", () => {
       expect(channel.secret).toBe("channel-secret");
     });
   });
+
+  // #491, D3: direct-env secret fallback (standalone mode has no *_FILE mount).
+  it("botToken falls back to direct DISCORD_BOT_TOKEN env", () => {
+    const original = Bun.env.DISCORD_BOT_TOKEN;
+    Bun.env.DISCORD_BOT_TOKEN = "tok";
+    try {
+      const channel = new DiscordChannel();
+      expect(channel.botToken).toBe("tok");
+    } finally {
+      if (original === undefined) delete Bun.env.DISCORD_BOT_TOKEN;
+      else Bun.env.DISCORD_BOT_TOKEN = original;
+    }
+  });
 });
 
 // ── Thread TTL tracking ─────────────────────────────────────────────────────

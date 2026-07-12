@@ -18,6 +18,25 @@ import { describe, test, expect } from 'bun:test';
 import { BasePortal, collectTurnAnswer, createLogger, type ForwardResult } from './index.ts';
 import type { OcClient, OcSession } from './opencode.ts';
 
+/** A minimal concrete portal that does NOT override createOcClient — unlike
+ * TestPortal below — so BasePortal's real createOcClient wiring (base URL,
+ * secret resolution) is exercised end to end. */
+class EnvPortal extends BasePortal {
+  readonly name = 'env-portal';
+  protected readonly maxMessageLength = 4000;
+  protected readonly threadTtlMs = 1000;
+
+  constructor() {
+    super(createLogger('env-portal'));
+  }
+
+  start(): void {}
+
+  session() {
+    return this.ocClient.createSession('u1', 'k1');
+  }
+}
+
 /**
  * A fake OcClient whose events() yields from a manually-fed queue and counts
  * opens, plus the createSession/prompt the buffered path needs. One shared
@@ -160,5 +179,60 @@ describe("BasePortal /health payload", () => {
 
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ ok: true, service: "portal-slack" });
+  });
+});
+
+// #491 — OPENCODE_BASE_URL regression fix (D1) + direct-env secret fallback (D3)
+describe('BasePortal — OPENCODE_BASE_URL + secret fallback (#491)', () => {
+  test('BasePortal wires OPENCODE_BASE_URL from the environment into its OcClient (regression #491)', async () => {
+    const original = Bun.env.OPENCODE_BASE_URL;
+    Bun.env.OPENCODE_BASE_URL = 'http://oc.example:4096';
+    try {
+      const portal = new EnvPortal();
+      Object.defineProperty(portal, 'secret', { value: 's' });
+
+      const urls: string[] = [];
+      const fakeFetch = (async (input: Request | string | URL): Promise<Response> => {
+        const url = input instanceof Request ? input.url : String(input);
+        urls.push(url);
+        return new Response(JSON.stringify({ id: 'sess1', title: 'chat' }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }) as unknown as typeof fetch;
+      portal.createFetch(fakeFetch);
+
+      await portal.session();
+
+      expect(urls[0]).toStartWith('http://oc.example:4096/session');
+      expect(urls[0]).not.toStartWith('http://guardian:8080');
+    } finally {
+      if (original === undefined) delete Bun.env.OPENCODE_BASE_URL;
+      else Bun.env.OPENCODE_BASE_URL = original;
+    }
+  });
+
+  test('secret resolves from direct PRINCIPAL_SECRET when no _FILE is set', () => {
+    const original = Bun.env.PRINCIPAL_SECRET;
+    Bun.env.PRINCIPAL_SECRET = 'direct-secret';
+    try {
+      const portal = new EnvPortal();
+      expect(portal.secret).toBe('direct-secret');
+    } finally {
+      if (original === undefined) delete Bun.env.PRINCIPAL_SECRET;
+      else Bun.env.PRINCIPAL_SECRET = original;
+    }
+  });
+
+  test('secret resolves from OPENCODE_PASSWORD as the standalone fallback', () => {
+    const original = Bun.env.OPENCODE_PASSWORD;
+    Bun.env.OPENCODE_PASSWORD = 'oc-pass';
+    try {
+      const portal = new EnvPortal();
+      expect(portal.secret).toBe('oc-pass');
+    } finally {
+      if (original === undefined) delete Bun.env.OPENCODE_PASSWORD;
+      else Bun.env.OPENCODE_PASSWORD = original;
+    }
   });
 });

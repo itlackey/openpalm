@@ -5,7 +5,10 @@
  * and OcClient are covered by session.test.ts and opencode.test.ts.)
  */
 import { describe, expect, it } from 'bun:test';
-import { parseIdList, splitMessage } from './runtime.ts';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { parseIdList, readRequiredSecret, SecretFileError, splitMessage } from './runtime.ts';
 
 describe('parseIdList', () => {
   it('returns an empty set for undefined/empty/whitespace', () => {
@@ -64,5 +67,88 @@ describe('splitMessage', () => {
 
   it('drops empty chunks', () => {
     for (const c of splitMessage('a'.repeat(300), 50)) expect(c.length).toBeGreaterThan(0);
+  });
+});
+
+/**
+ * `readRequiredSecret` — the D3 direct-env secret fallback. `_FILE` beats a
+ * direct var for the same key (Compose-secrets discipline wins); everything
+ * fails closed. Env is passed explicitly (the function's second param) rather
+ * than mutating Bun.env, mirroring readRequiredSecretFile's existing
+ * signature — only the `_FILE` cases need a real temp file on disk.
+ *
+ * `readRequiredSecret` is not exported yet — this import fails to resolve,
+ * failing every test below at load time (red stage).
+ */
+function withTempSecretFile(value: string, run: (path: string) => void): void {
+  const dir = mkdtempSync(join(tmpdir(), 'openpalm-secret-test-'));
+  const path = join(dir, 'secret');
+  writeFileSync(path, value);
+  try {
+    run(path);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+describe('readRequiredSecret', () => {
+  it('reads the _FILE variant when set', () => {
+    withTempSecretFile('s3cret\n', (path) => {
+      const value = readRequiredSecret('PRINCIPAL_SECRET', { PRINCIPAL_SECRET_FILE: path });
+      expect(value).toBe('s3cret');
+    });
+  });
+
+  it('falls back to the direct env var when the _FILE variant is unset', () => {
+    const value = readRequiredSecret('PRINCIPAL_SECRET', { PRINCIPAL_SECRET: 'direct' });
+    expect(value).toBe('direct');
+  });
+
+  it('_FILE takes precedence over the direct var for the same key', () => {
+    withTempSecretFile('from-file', (path) => {
+      const value = readRequiredSecret('PRINCIPAL_SECRET', {
+        PRINCIPAL_SECRET_FILE: path,
+        PRINCIPAL_SECRET: 'direct',
+      });
+      expect(value).toBe('from-file');
+    });
+  });
+
+  it('fails closed when a configured _FILE path is unreadable, even if the direct var is set', () => {
+    expect(() =>
+      readRequiredSecret('PRINCIPAL_SECRET', {
+        PRINCIPAL_SECRET_FILE: '/nonexistent',
+        PRINCIPAL_SECRET: 'direct',
+      }),
+    ).toThrow(SecretFileError);
+  });
+
+  it('tries keys in priority order', () => {
+    expect(
+      readRequiredSecret(['PRINCIPAL_SECRET', 'OPENCODE_PASSWORD'], { OPENCODE_PASSWORD: 'pw' }),
+    ).toBe('pw');
+    expect(
+      readRequiredSecret(['PRINCIPAL_SECRET', 'OPENCODE_PASSWORD'], {
+        PRINCIPAL_SECRET: 'ps',
+        OPENCODE_PASSWORD: 'pw',
+      }),
+    ).toBe('ps');
+  });
+
+  it('throws SecretFileError naming every accepted variable when nothing is configured', () => {
+    try {
+      readRequiredSecret(['PRINCIPAL_SECRET', 'OPENCODE_PASSWORD'], {});
+      throw new Error('expected readRequiredSecret to throw');
+    } catch (err) {
+      expect(err).toBeInstanceOf(SecretFileError);
+      const message = (err as Error).message;
+      expect(message).toContain('PRINCIPAL_SECRET_FILE');
+      expect(message).toContain('PRINCIPAL_SECRET');
+      expect(message).toContain('OPENCODE_PASSWORD');
+    }
+  });
+
+  it('ignores whitespace-only direct values', () => {
+    expect(() => readRequiredSecret('PRINCIPAL_SECRET', { PRINCIPAL_SECRET: '   ' })).toThrow(SecretFileError);
   });
 });
