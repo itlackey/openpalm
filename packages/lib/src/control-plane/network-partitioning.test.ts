@@ -221,3 +221,26 @@ describe("mDNS — native OpenCode responder (no avahi sidecars)", () => {
     expect(server?.hostname).toBe("127.0.0.1");
   });
 });
+
+describe("#488 — host mDNS responder gate vars match compose reality (pin)", () => {
+  // These pin the EXACT env vars the new host mDNS responder's gating logic
+  // (resolveMdnsAdvertisements in mdns-responder.ts) keys on, so a future
+  // rename of the compose bind-address vars can't silently decouple the
+  // gate from what is actually published on the host network interface.
+
+  test("guardian direct-listener host port defaults to loopback via OP_BIND_ADDRESS", () => {
+    const guardianPorts = allServices.guardian?.ports ?? [];
+    const hasGuardianDirectPort = guardianPorts.some(
+      (p) => p === "${OP_BIND_ADDRESS:-127.0.0.1}:${OP_GUARDIAN_PORT:-3830}:3830",
+    );
+    expect(hasGuardianDirectPort).toBe(true);
+  });
+
+  test("assistant host port gates on OP_ASSISTANT_BIND_ADDRESS with loopback default", () => {
+    const assistantPorts = allServices.assistant?.ports ?? [];
+    const hasAssistantPort = assistantPorts.some(
+      (p) => p === "${OP_ASSISTANT_BIND_ADDRESS:-127.0.0.1}:${OP_ASSISTANT_PORT:-3800}:4096",
+    );
+    expect(hasAssistantPort).toBe(true);
+  });
+});

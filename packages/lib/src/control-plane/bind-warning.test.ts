@@ -1,5 +1,5 @@
 import { describe, test, expect } from "bun:test";
-import { collectBindAddressWarnings, isRemoteSetupAllowed } from "./bind-warning.js";
+import { collectBindAddressWarnings, isLoopback, isRemoteSetupAllowed } from "./bind-warning.js";
 
 describe("collectBindAddressWarnings", () => {
   test("returns [] when env is empty (compose default is 127.0.0.1)", () => {
@@ -95,5 +95,17 @@ describe("isRemoteSetupAllowed", () => {
   test("false for other values", () => {
     expect(isRemoteSetupAllowed({ OP_ALLOW_REMOTE_SETUP: "0" })).toBe(false);
     expect(isRemoteSetupAllowed({ OP_ALLOW_REMOTE_SETUP: "off" })).toBe(false);
+  });
+});
+
+// #488 — isLoopback must be exported so mdns-responder.ts can reuse it for
+// bind-gating instead of duplicating the loopback check.
+describe("isLoopback", () => {
+  test("recognises 127.0.0.1 / localhost / ::1 and rejects 0.0.0.0 and LAN IPs", () => {
+    expect(isLoopback("127.0.0.1")).toBe(true);
+    expect(isLoopback("localhost")).toBe(true);
+    expect(isLoopback("::1")).toBe(true);
+    expect(isLoopback("0.0.0.0")).toBe(false);
+    expect(isLoopback("192.168.1.10")).toBe(false);
   });
 });
