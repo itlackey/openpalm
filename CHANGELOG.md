@@ -29,9 +29,15 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   standalone-pwa / browser) is now stamped on `<html data-display-mode>` and
   drives a browser-only "install as an app" hint on the client's
   `/connections` page. A new Playwright suite
-  (`packages/client/e2e/offline-shell.pw.ts`) verifies the offline app shell
-  and saved IndexedDB connections render after a service-worker-controlled
-  reload. Hosted-origin CI deploy to `app.openpalm.dev` (and the matching
+  (`packages/client/e2e/offline-shell.pw.ts`) targets the offline app shell
+  and saved IndexedDB connections after a service-worker-controlled reload;
+  its two tests are `test.fixme()`-guarded because Chromium's CDP-driven
+  `context.setOffline(true)` does not dispatch page navigation to the
+  Service Worker's `fetch` handler (reproduced against the same Chromium
+  build CI's `client-browser-tests` job installs) — a browser-automation
+  limitation, not a product gap. The offline plumbing itself stays covered
+  by shipped green unit tests (`pwa-config.test.ts`, `boot.test.ts`,
+  `connections-store.test.ts`). Hosted-origin CI deploy to `app.openpalm.dev` (and the matching
   guardian CORS default) remains explicitly deferred pending a hosting
   provider — everything else is origin-agnostic and unblocked by that.
   `docs/managing-openpalm.md` documents the pairing-UI flow as the primary
