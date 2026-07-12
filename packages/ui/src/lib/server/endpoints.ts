@@ -364,15 +364,47 @@ export function setActiveConnectionId(id: string | null): ActiveConnection {
   return getActiveConnection();
 }
 
-export type ConnectionInput = { label: string; url: string; password?: string };
+/**
+ * User-addable connection kinds (#486 D2). `local-opencode` is reserved for
+ * synthesized entries (the env-derived default, the Electron local-runtime
+ * entry) and is never accepted from a write path.
+ */
+export const USER_ADDABLE_CONNECTION_KINDS = ['remote-opencode', 'openpalm-client-api'] as const;
+
+/**
+ * Normalize a guardian ('openpalm-client-api'-kind) connection URL so it
+ * always ends in `/oc` — the guardian's direct-ingress base path
+ * (#486 D2). Operates on an ALREADY `normalizeEndpointUrl`-ed string (no
+ * trailing slash), so only the `/oc` suffix logic is needed here.
+ *
+ * `packages/client/src/lib/connections/url-policy.ts` carries a deliberate
+ * CLIENT-side twin (`normalizeGuardianUrl`) with the same rule — the client
+ * artifact may not import host code and vice versa, so this is the same
+ * accepted duplication as `validateConnectionUrl`/`validateEndpointUrl`.
+ * Both are pinned by their own tests.
+ */
+export function normalizeGuardianOcUrl(url: string): string {
+  return url.endsWith('/oc') ? url : `${url}/oc`;
+}
+
+export type ConnectionInput = { label: string; url: string; password?: string; kind?: ConnectionKind };
 /** Legacy name — kept until every consumer migrates to connection language. */
 export type EndpointInput = ConnectionInput;
+
+function assertAddableKind(kind: ConnectionKind | undefined): void {
+  if (kind === undefined) return;
+  if (!(USER_ADDABLE_CONNECTION_KINDS as readonly string[]).includes(kind)) {
+    throw new Error('Invalid connection kind');
+  }
+}
 
 export function addConnection(input: ConnectionInput): ConnectionEntry {
   const label = input.label.trim();
   if (!label) throw new Error('Label is required');
-  const url = normalizeEndpointUrl(input.url);
+  let url = normalizeEndpointUrl(input.url);
   if (!url) throw new Error('URL must be a valid http(s) URL');
+  assertAddableKind(input.kind);
+  if (input.kind === 'openpalm-client-api') url = normalizeGuardianOcUrl(url);
 
   const data = readFile();
   const entry: ConnectionEntry = {
@@ -380,6 +412,7 @@ export function addConnection(input: ConnectionInput): ConnectionEntry {
     label,
     url,
     ...(input.password ? { password: input.password } : {}),
+    ...(input.kind ? { kind: input.kind } : {}),
   };
   data.endpoints.push(entry);
   writeFile(data);
@@ -391,6 +424,7 @@ export type ConnectionPatch = {
   url?: string;
   /** undefined = leave unchanged; null = clear; string = set */
   password?: string | null;
+  kind?: ConnectionKind;
 };
 /** Legacy name — kept until every consumer migrates to connection language. */
 export type EndpointPatch = ConnectionPatch;
@@ -400,6 +434,7 @@ export function updateConnection(id: string, patch: ConnectionPatch): Connection
   if (id === LOCAL_ELECTRON_ID) {
     throw new Error('Cannot edit the local Electron OpenCode entry (it is ephemeral and per-launch)');
   }
+  assertAddableKind(patch.kind);
 
   const data = readFile();
   const idx = data.endpoints.findIndex((e) => e.id === id);
@@ -421,6 +456,16 @@ export function updateConnection(id: string, patch: ConnectionPatch): Connection
     delete next.password;
   } else if (typeof patch.password === 'string') {
     next.password = patch.password;
+  }
+  if (patch.kind !== undefined) next.kind = patch.kind;
+  // Re-normalize the stored URL whenever the EFFECTIVE kind (patched or
+  // existing) is 'openpalm-client-api' — including a kind-only patch that
+  // switches an existing plain URL over to the guardian kind with no `url`
+  // in the same request. Switching a guardian entry back to
+  // 'remote-opencode' does not attempt to strip `/oc` — the stored URL
+  // stays authoritative (no un-normalization).
+  if (next.kind === 'openpalm-client-api') {
+    next.url = normalizeGuardianOcUrl(next.url);
   }
 
   data.endpoints[idx] = next;
@@ -447,8 +492,12 @@ async function probeEndpoint(endpoint: ActiveConnection): Promise<RemoteStatus> 
     const username = endpoint.username ?? 'openpalm';
     headers.set('authorization', `Basic ${Buffer.from(`${username}:${endpoint.password}`).toString('base64')}`);
   }
+  // #486 D2: a guardian /oc base's bare root (`GET /oc/`) is not an
+  // allowlisted route and 404s even when the guardian is fully healthy —
+  // probe the allowlisted `/session` route instead.
+  const probeUrl = endpoint.kind === 'openpalm-client-api' ? `${endpoint.url}/session` : endpoint.url;
   try {
-    const response = await fetch(endpoint.url, {
+    const response = await fetch(probeUrl, {
       method: 'GET',
       headers,
       redirect: 'manual',

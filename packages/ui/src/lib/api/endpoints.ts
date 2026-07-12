@@ -37,6 +37,8 @@ export async function createConnection(input: {
   label: string;
   url: string;
   password?: string;
+  /** #486 D2: 'remote-opencode' | 'openpalm-client-api' (server-validated). */
+  kind?: ConnectionKind;
 }): Promise<{ connection: AssistantConnection }> {
   const res = await requireOk(await request('POST', '/api/connections', input));
   return (await res.json()) as { connection: AssistantConnection };
@@ -44,7 +46,7 @@ export async function createConnection(input: {
 
 export async function updateConnection(
   id: string,
-  patch: { label?: string; url?: string; password?: string | null }
+  patch: { label?: string; url?: string; password?: string | null; kind?: ConnectionKind }
 ): Promise<{ connection: AssistantConnection }> {
   const res = await requireOk(
     await request('PATCH', `/api/connections/${encodeURIComponent(id)}`, patch)

@@ -10,17 +10,24 @@
     deleteConnection,
     type AssistantConnection,
   } from '$lib/api.js';
+  import type { ConnectionKind } from '$lib/types.js';
 
   // Capability-guarded surface (plan ui-runtime-modes-plan.md Phase 2, #486):
   // this page replaces /admin/endpoints and works in every mode that
   // advertises `connections:manage` — the API it talks to enforces the
   // capability server-side; auth is enforced in hooks.server.ts.
 
+  /** Add/edit form kind: 'local-opencode' is reserved for the synthesized
+   *  env-derived default and is never offered here (#486 D2). */
+  type FormKind = Extract<ConnectionKind, 'remote-opencode' | 'openpalm-client-api'>;
+
   // ── Form state ─────────────────────────────────────────────────────────
   let formMode = $state<'idle' | 'add' | 'edit'>('idle');
   let formId = $state<string | null>(null);
   let formLabel = $state('');
   let formUrl = $state('');
+  // #486 D2: connection-kind selector.
+  let formKind = $state<FormKind>('remote-opencode');
   let formPassword = $state('');
   let formClearPassword = $state(false);
   let formSubmitting = $state(false);
@@ -44,6 +51,7 @@
     formId = null;
     formLabel = '';
     formUrl = '';
+    formKind = 'remote-opencode';
     formPassword = '';
     formClearPassword = false;
     formError = '';
@@ -54,6 +62,7 @@
     formId = c.id;
     formLabel = c.label;
     formUrl = c.url;
+    formKind = c.kind === 'openpalm-client-api' ? 'openpalm-client-api' : 'remote-opencode';
     formPassword = '';
     formClearPassword = false;
     formError = '';
@@ -81,12 +90,14 @@
         await createConnection({
           label,
           url,
+          kind: formKind,
           ...(formPassword ? { password: formPassword } : {}),
         });
       } else if (formMode === 'edit' && formId) {
-        const patch: { label: string; url: string; password?: string | null } = {
+        const patch: { label: string; url: string; kind: ConnectionKind; password?: string | null } = {
           label,
           url,
+          kind: formKind,
         };
         if (formClearPassword) {
           patch.password = null;
@@ -158,6 +169,7 @@
               <span class="connection-label">{conn.label}</span>
               {#if conn.isDefault}<span class="badge default">Default</span>{/if}
               {#if conn.id === active?.id}<span class="badge active">Active</span>{/if}
+              {#if conn.kind === 'openpalm-client-api'}<span class="badge kind">guardian</span>{/if}
               {#if conn.hasPassword}<span class="badge password" title="Server password configured"><IconLock size={11} /></span>{/if}
             </div>
             <div class="connection-url">{conn.url}</div>
@@ -205,6 +217,17 @@
           />
         </label>
 
+        <!-- #486 D2: connection-kind selector. 'local-opencode' is reserved
+             for the synthesized env-derived default and is never offered
+             here — only the two user-addable kinds. -->
+        <label class="field">
+          <span>Kind</span>
+          <select bind:value={formKind}>
+            <option value="remote-opencode">OpenCode server (direct)</option>
+            <option value="openpalm-client-api">OpenPalm guardian (/oc)</option>
+          </select>
+        </label>
+
         <label class="field">
           <span>URL</span>
           <input
@@ -214,7 +237,11 @@
             required
             autocomplete="off"
           />
-          <small>The host:port where the remote OpenPalm assistant (OpenCode) is reachable.</small>
+          {#if formKind === 'openpalm-client-api'}
+            <small>The guardian's base URL — <code>/oc</code> is appended automatically if you leave it off.</small>
+          {:else}
+            <small>The host:port where the remote OpenPalm assistant (OpenCode) is reachable.</small>
+          {/if}
         </label>
 
         <label class="field">
@@ -354,6 +381,10 @@
   .badge.active {
     background: var(--s-seal);
     color: white;
+  }
+  .badge.kind {
+    background: var(--s-paper-deep);
+    color: var(--s-ink-3);
   }
   .badge.password {
     background: transparent;
