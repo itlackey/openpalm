@@ -147,3 +147,18 @@ describe('BasePortal shared /event hub', () => {
     streamSub.close();
   });
 });
+
+// #490: the /health payload's `service` field drops the deprecated
+// `channel-<name>` prefix in favor of `portal-<name>`.
+describe("BasePortal /health payload", () => {
+  test("/health reports service portal-<name>", async () => {
+    const f = fakeClient("sbuf");
+    const portal = new TestPortal(f.client);
+
+    const handler = portal.createFetch();
+    const res = await handler(new Request("http://localhost/health"));
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true, service: "portal-slack" });
+  });
+});

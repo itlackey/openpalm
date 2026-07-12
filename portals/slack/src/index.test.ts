@@ -508,7 +508,7 @@ describe("SlackChannel", () => {
     expect(resp.status).toBe(200);
     const body = (await resp.json()) as Record<string, unknown>;
     expect(body.ok).toBe(true);
-    expect(body.service).toBe("channel-slack");
+    expect(body.service).toBe("portal-slack");
   });
 
   it("health endpoint responds to any host header", async () => {

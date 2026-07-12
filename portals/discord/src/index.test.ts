@@ -104,7 +104,7 @@ describe("health endpoint", () => {
     expect(resp.status).toBe(200);
     const body = (await resp.json()) as Record<string, unknown>;
     expect(body.ok).toBe(true);
-    expect(body.service).toBe("channel-discord");
+    expect(body.service).toBe("portal-discord");
   });
 
   it("GET /health responds to any host header", async () => {
