@@ -105,3 +105,37 @@ describe('validateConnectionUrl (#557 D1)', () => {
     );
   });
 });
+
+// ── #486 D2: guardian /oc URL normalization ───────────────────────────────────
+//
+// normalizeGuardianUrl() is a pure string-in/string-out helper the connections
+// form applies when the user selects the 'openpalm-client-api' kind: the
+// stored URL always ends in /oc (the guardian's direct-ingress base path), so
+// the transport's baseUrl already routes every other call without further
+// rewriting. Validation (rejecting garbage input) is validateConnectionUrl's
+// job — this helper never throws, it just normalizes.
+//
+// RED until normalizeGuardianUrl is exported from
+// packages/client/src/lib/connections/url-policy.ts — the import fails.
+describe('normalizeGuardianUrl (#486 D2)', () => {
+  test('appends /oc when the path lacks it', async () => {
+    const { normalizeGuardianUrl } = await loadUrlPolicyModule();
+    expect(normalizeGuardianUrl('http://10.0.0.9:3830')).toBe('http://10.0.0.9:3830/oc');
+  });
+
+  test('is idempotent for URLs already ending in /oc (with or without trailing slash)', async () => {
+    const { normalizeGuardianUrl } = await loadUrlPolicyModule();
+    expect(normalizeGuardianUrl('http://10.0.0.9:3830/oc')).toBe('http://10.0.0.9:3830/oc');
+    expect(normalizeGuardianUrl('http://10.0.0.9:3830/oc/')).toBe('http://10.0.0.9:3830/oc');
+  });
+
+  test('preserves scheme, host, port, and any existing path prefix', async () => {
+    const { normalizeGuardianUrl } = await loadUrlPolicyModule();
+    expect(normalizeGuardianUrl('https://gw.ts.net/proxy')).toBe('https://gw.ts.net/proxy/oc');
+  });
+
+  test('returns unparseable input unchanged', async () => {
+    const { normalizeGuardianUrl } = await loadUrlPolicyModule();
+    expect(normalizeGuardianUrl('not a url')).toBe('not a url');
+  });
+});

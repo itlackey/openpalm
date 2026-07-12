@@ -85,12 +85,14 @@ function harness(opts: {
   sleepDelays?: number[];
   /** Fake clock for the respawn-counter reset test (advisory fix). */
   now?: () => number;
+  /** #486 D1a: whether a local install is present (default: true, today's behavior). */
+  hasLocalInstall?: () => boolean;
 }) {
   const buildDir = opts.buildDir ?? '/op-home/data/client/build';
   const procs = opts.procs ?? [fakeClientProc()];
   const spawns: SpawnRecord[] = [];
   const logs: string[] = [];
-  const runtimeConfigWrites: Array<{ path: string; assistantUrl: string; hostUrl?: string }> = [];
+  const runtimeConfigWrites: Array<{ path: string; assistantUrl: string | null; hostUrl?: string }> = [];
   const handlePromise = startClientServer({
     port: opts.port,
     resolveBuildDir: () => buildDir,
@@ -103,13 +105,14 @@ function harness(opts: {
     logError: (...a: unknown[]) => { logs.push(a.map(String).join(' ')); },
     resolveRuntimeConfigPath: () => '/op-home/data/client/runtime-config.json',
     resolveAssistantUrl: () => process.env.OP_CLIENT_DEFAULT_ASSISTANT_URL || `http://127.0.0.1:${process.env.OP_ASSISTANT_PORT || '3800'}`,
-    writeRuntimeConfig: (path: string, assistantUrl: string, options?: { hostUrl?: string }) => {
+    writeRuntimeConfig: (path: string, assistantUrl: string | null, options?: { hostUrl?: string }) => {
       runtimeConfigWrites.push({ path, assistantUrl, ...(options?.hostUrl ? { hostUrl: options.hostUrl } : {}) });
     },
     sleep: (ms: number) => { opts.sleepDelays?.push(ms); return Promise.resolve(); },
     stopTimeoutMs: 5,
     now: opts.now,
-  });
+    hasLocalInstall: opts.hasLocalInstall,
+  } as Parameters<typeof startClientServer>[0]);
   return { handlePromise, spawns, logs, buildDir, procs, runtimeConfigWrites };
 }
 
@@ -332,6 +335,43 @@ describe('startClientServer spawn env/args', () => {
     const { handlePromise, runtimeConfigWrites } = harness({});
     const handle = await handlePromise;
     expect(runtimeConfigWrites.at(-1)?.hostUrl).toBe('http://127.0.0.1:4880/host');
+    await handle?.stop();
+  });
+});
+
+// ── #486 D1a: stack-less runtime config (no local install → empty connections) ──
+//
+// On a machine with no local install, the CLI-written runtime-config.json
+// must NOT seed the locked "This assistant" connection pointing at a dead
+// http://127.0.0.1:3800 — otherwise the client's landing resolver counts 1
+// stored connection and lands on /chat against a dead target instead of
+// /connections/new. `hasLocalInstall` is injectable so this deps.hasLocalInstall
+// stands in for classifyLocalInstall(resolveStackDir(), resolveOpenPalmHome())
+// !== 'not_installed' without touching the real filesystem.
+describe('stack-less runtime config (#486 D1a)', () => {
+  it('writes an empty-connections runtime config (assistantUrl null) when no local install is present', async () => {
+    const { handlePromise, runtimeConfigWrites } = harness({ hasLocalInstall: () => false });
+    const handle = await handlePromise;
+    expect(runtimeConfigWrites).toEqual([
+      {
+        path: '/op-home/data/client/runtime-config.json',
+        assistantUrl: null,
+        hostUrl: 'http://127.0.0.1:3880/host',
+      },
+    ]);
+    await handle?.stop();
+  });
+
+  it('keeps seeding the locked local-assistant entry when an install is present', async () => {
+    const { handlePromise, runtimeConfigWrites } = harness({ hasLocalInstall: () => true });
+    const handle = await handlePromise;
+    expect(runtimeConfigWrites).toEqual([
+      {
+        path: '/op-home/data/client/runtime-config.json',
+        assistantUrl: 'http://127.0.0.1:3800',
+        hostUrl: 'http://127.0.0.1:3880/host',
+      },
+    ]);
     await handle?.stop();
   });
 });

@@ -209,3 +209,29 @@ describe('POST /api/connections — connections:manage guard on writes', () => {
     expect(res.status).toBe(201);
   });
 });
+
+// ── #486 D2: connection kind on POST /api/connections ─────────────────────────
+
+describe("POST /api/connections — connection kind (#486 D2)", () => {
+  test("accepts kind 'openpalm-client-api' and returns it in the published connection", async () => {
+    process.env.OP_UI_HOST_MODE = 'host-ui';
+    const { POST } = await loadRoute();
+    const res = await POST(
+      makePostEvent({ label: 'Guardian', url: 'https://gw.example:8443', kind: 'openpalm-client-api' }),
+    );
+    expect(res.status).toBe(201);
+    const body = (await res.json()) as { connection: { kind: string } };
+    expect(body.connection.kind).toBe('openpalm-client-api');
+  });
+
+  test("rejects kind 'local-opencode' (reserved for synthesized entries) with 400 invalid_connection", async () => {
+    process.env.OP_UI_HOST_MODE = 'host-ui';
+    const { POST } = await loadRoute();
+    const res = await POST(
+      makePostEvent({ label: 'Fake local', url: 'http://10.0.0.9:3800', kind: 'local-opencode' }),
+    );
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { error?: string };
+    expect(body.error).toBe('invalid_connection');
+  });
+});

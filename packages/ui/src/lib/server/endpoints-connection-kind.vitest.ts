@@ -24,7 +24,15 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { _replaceState, getState } from './state.js';
 import { makeTestState, registerCleanup, trackDir } from './test-helpers.js';
-import { addEndpoint, getActiveEndpoint, listEndpoints, setActiveId } from './endpoints.js';
+import {
+  addEndpoint,
+  getActiveEndpoint,
+  listEndpoints,
+  setActiveId,
+  updateEndpoint,
+  _resetRemoteStatusCache,
+  listRemoteStatuses,
+} from './endpoints.js';
 
 registerCleanup();
 
@@ -154,5 +162,78 @@ describe('endpoints.json on-disk schema is NOT renamed (CHARACTERIZATION — gre
       password: 'shh',
       isDefault: false,
     });
+  });
+});
+
+// ── #486 D2: kind persistence on write ────────────────────────────────────────
+
+describe('kind persistence on write (#486 D2)', () => {
+  it("addEndpoint persists an explicit kind 'openpalm-client-api' to disk and returns it", () => {
+    const entry = addEndpoint({
+      label: 'Guardian',
+      url: 'https://gw.example:8443/oc',
+      kind: 'openpalm-client-api',
+    } as Parameters<typeof addEndpoint>[0]);
+    expect(kindOf(entry)).toBe('openpalm-client-api');
+    const parsed = JSON.parse(readFileSync(endpointsJsonPath(), 'utf-8')) as {
+      endpoints: Array<{ id: string; kind?: string }>;
+    };
+    const onDisk = parsed.endpoints.find((e) => e.id === entry.id);
+    expect(onDisk).toBeDefined();
+    expect(onDisk?.kind).toBe('openpalm-client-api');
+  });
+
+  it('addEndpoint without kind writes no kind key (legacy on-disk shape preserved)', () => {
+    const entry = addEndpoint({ label: 'Remote', url: 'http://10.0.0.9:3800' });
+    const parsed = JSON.parse(readFileSync(endpointsJsonPath(), 'utf-8')) as {
+      endpoints: Array<Record<string, unknown>>;
+    };
+    const onDisk = parsed.endpoints.find((e) => e.id === entry.id);
+    expect(onDisk).toBeDefined();
+    expect(onDisk).not.toHaveProperty('kind');
+  });
+
+  it('updateEndpoint can set kind on an existing record', () => {
+    const entry = addEndpoint({ label: 'Remote', url: 'http://10.0.0.9:3800' });
+    expect(kindOf(entry)).toBeUndefined();
+    const updated = updateEndpoint(entry.id, {
+      kind: 'openpalm-client-api',
+    } as Parameters<typeof updateEndpoint>[1]);
+    expect(kindOf(updated)).toBe('openpalm-client-api');
+  });
+
+  it('addEndpoint normalizes a guardian-kind URL to end in /oc', () => {
+    const entry = addEndpoint({
+      label: 'Guardian',
+      url: 'http://10.0.0.9:3830',
+      kind: 'openpalm-client-api',
+    } as Parameters<typeof addEndpoint>[0]);
+    expect(entry.url).toBe('http://10.0.0.9:3830/oc');
+  });
+
+  it('listRemoteStatuses probes ${url}/session for guardian-kind entries', async () => {
+    addEndpoint({
+      label: 'Guardian',
+      url: 'http://10.0.0.9:3830/oc',
+      kind: 'openpalm-client-api',
+    } as Parameters<typeof addEndpoint>[0]);
+    addEndpoint({ label: 'Plain remote', url: 'http://10.0.0.10:3800' });
+
+    const probedUrls: string[] = [];
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      probedUrls.push(String(input));
+      return new Response('ok', { status: 200 });
+    }) as typeof fetch;
+
+    try {
+      _resetRemoteStatusCache();
+      await listRemoteStatuses();
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+
+    expect(probedUrls).toContain('http://10.0.0.9:3830/oc/session');
+    expect(probedUrls).toContain('http://10.0.0.10:3800');
   });
 });
