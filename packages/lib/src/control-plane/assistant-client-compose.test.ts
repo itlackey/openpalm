@@ -217,4 +217,19 @@ describe('I4 — guardian CORS default mirrors the shipped client origins', () =
     expect(envAndMounts.includes('GUARDIAN_DIRECT_INGRESS')).toBe(true);
     expect(envAndMounts.includes('GUARDIAN_CORS_ALLOWED_ORIGINS')).toBe(true);
   });
+
+  // #557 D2 — green-on-arrival pin: the hosted origin is deliberately NOT
+  // pre-baked into the default CORS allowlist until #511's hosted deploy
+  // actually exists (ratifies implementation-plan.md's cross-cutting
+  // decision + assessment risk 1). This test already passes against the
+  // current tree (the default only references OP_CLIENT_PORT/
+  // OP_HOST_CLIENT_PORT loopback origins) — it pins the decision so a future
+  // "helpful" addition of app.openpalm.dev is a deliberate, test-breaking
+  // act rather than a silent widen of the browser-reachable surface.
+  test('the default CORS allowlist does not pre-bake the hosted origin (D2, #557 — revisit under #511)', () => {
+    const value = String(
+      (guardian?.environment as Record<string, unknown> | undefined)?.GUARDIAN_CORS_ALLOWED_ORIGINS ?? '',
+    );
+    expect(value).not.toContain('app.openpalm.dev');
+  });
 });
