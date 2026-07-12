@@ -147,6 +147,23 @@ opencode_auth_enabled() {
   esac
 }
 
+# #563: resolve OpenCode's Basic-auth password from the compose secret file.
+# Explicit OPENCODE_SERVER_PASSWORD env wins; otherwise read *_FILE (trailing
+# newline stripped by command substitution). Fail fast when auth is enabled but
+# no password resolves — auth-on with an unknown password is a dead stack that
+# looks healthy, so failing loud here is the debuggable behavior.
+resolve_opencode_server_password() {
+  if [ -z "${OPENCODE_SERVER_PASSWORD:-}" ] \
+     && [ -n "${OPENCODE_SERVER_PASSWORD_FILE:-}" ] && [ -s "${OPENCODE_SERVER_PASSWORD_FILE}" ]; then
+    OPENCODE_SERVER_PASSWORD="$(cat "${OPENCODE_SERVER_PASSWORD_FILE}")"
+    export OPENCODE_SERVER_PASSWORD
+  fi
+  if opencode_auth_enabled && [ -z "${OPENCODE_SERVER_PASSWORD:-}" ]; then
+    echo "ERROR: OPENCODE_AUTH=${OPENCODE_AUTH:-} is enabled but no password is available — set OPENCODE_SERVER_PASSWORD or OPENCODE_SERVER_PASSWORD_FILE (compose secret opencode_server_password)." >&2
+    exit 1
+  fi
+}
+
 # I3 residual (review, SECURITY): validate an OP_CLIENT_CORS_ALLOWED_ORIGINS
 # entry before start_opencode ever appends it to cors_origins — operator input
 # is otherwise appended to OpenCode's --cors verbatim, so
@@ -586,5 +603,6 @@ seed_default_agents_md
 run_akm_schema_migration
 persist_akm_stash_dir_fallback
 start_cron_and_sync_tasks
+resolve_opencode_server_password
 start_client
 start_opencode

@@ -132,6 +132,12 @@ services:
       # default is exact origins only, consistent with the I3 CORS posture.
       GUARDIAN_CORS_ALLOWED_ORIGINS: ${GUARDIAN_CORS_ALLOWED_ORIGINS:-http://127.0.0.1:${OP_CLIENT_PORT:-3810},http://localhost:${OP_CLIENT_PORT:-3810},http://127.0.0.1:${OP_HOST_CLIENT_PORT:-3890},http://localhost:${OP_HOST_CLIENT_PORT:-3890}}
       GUARDIAN_MCP: ${GUARDIAN_MCP:-false}
+      # #563 — upstream credential for assistant_net calls to the assistant
+      # when a home-password network access preset turns assistant auth on.
+      # The moderator's own loopback OpenCode spawn pins OPENCODE_AUTH=false
+      # separately (containers/guardian/entrypoint.sh) — unaffected by this.
+      OPENCODE_AUTH: ${OPENCODE_AUTH:-false}
+      OPENCODE_SERVER_PASSWORD_FILE: /run/secrets/opencode_server_password
       GUARDIAN_ADMIN_TOKEN_FILE: /run/secrets/op_guardian_admin_token
       GUARDIAN_MCP_TOKEN_FILE: /run/secrets/op_guardian_mcp_token
       PORTAL_CHAT_SECRET_FILE: /run/secrets/portal_chat_secret
@@ -183,6 +189,7 @@ services:
       - op_guardian_admin_token
       - op_guardian_mcp_token
       - op_api_key
+      - opencode_server_password
     networks: [portal_net, assistant_net]
     depends_on:
       assistant:
@@ -215,6 +222,11 @@ secrets:
     file: ${OP_HOME}/knowledge/secrets/op_guardian_mcp_token
   op_api_key:
     file: ${OP_HOME}/knowledge/secrets/op_api_key
+  # #563 — declared here too (not only in core.compose.yml) so this file
+  # stands alone for `docker compose config` when portals.compose.yml is the
+  # only file naming the secret in a given invocation.
+  opencode_server_password:
+    file: ${OP_HOME}/knowledge/secrets/op_opencode_password
 
 volumes:
   # Named volumes for npm artifact caches (/opt/openpalm).
