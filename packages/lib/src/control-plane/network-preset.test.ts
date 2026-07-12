@@ -102,9 +102,18 @@ describe("resolveNetworkPreset — mDNS equivalence with the #488 responder (D1 
     for (const preset of NETWORK_ACCESS_PRESETS) {
       const opts = preset === "home-password" ? { opencodePassword: HOME_PASSWORD } : undefined;
       const r = resolveNetworkPreset(preset, opts);
-      const status = resolveMdnsStatus(r.env);
+      // Guardian advertisement additionally requires GUARDIAN_DIRECT_INGRESS
+      // (PR #564 P2-1): a preset never enables ingress itself (the conservative
+      // shared-guardian default leaves it off), so guardian discovery is only
+      // REALIZED once the operator opts into direct ingress. The guardianMdns
+      // flag encodes that INTENT; verify the responder honors it when ingress
+      // is on, and (below) that it stays dark while ingress is off.
+      const withIngress = r.guardianMdns ? { ...r.env, GUARDIAN_DIRECT_INGRESS: "true" } : r.env;
+      const status = resolveMdnsStatus(withIngress);
       expect(status.assistant.advertised).toBe(r.assistantMdns);
       expect(status.guardian.advertised).toBe(r.guardianMdns);
+      // Ingress off ⇒ guardian never advertised, regardless of intent.
+      expect(resolveMdnsStatus(r.env).guardian.advertised).toBe(false);
     }
   });
 });
@@ -201,8 +210,35 @@ describe("validateNetworkPresetEnv", () => {
     ).toBe(true);
   });
 
-  test("other presets are always valid regardless of host env", () => {
-    for (const preset of ["this-pc", "home-password", "home-open"] as NetworkAccessPreset[]) {
+  // PR #564 r3566887693: this-pc pins BOTH binds to loopback, so a leftover
+  // host-env override that would expose either must fail closed (Compose gives
+  // process env precedence over --env-file, so the written loopback row alone
+  // does not protect against it).
+  test("this-pc fails closed when the host env exposes the assistant", () => {
+    const result = validateNetworkPresetEnv("this-pc", { OP_ASSISTANT_BIND_ADDRESS: "0.0.0.0" });
+    expect(result.valid).toBe(false);
+    expect(result.errors.some((e) => e.includes("OP_ASSISTANT_BIND_ADDRESS"))).toBe(true);
+    expect(result.errors.some((e) => e.includes("This PC only") || e.includes("this-pc"))).toBe(true);
+  });
+
+  test("this-pc fails closed when the host env exposes the guardian", () => {
+    const result = validateNetworkPresetEnv("this-pc", { OP_BIND_ADDRESS: "0.0.0.0" });
+    expect(result.valid).toBe(false);
+    expect(result.errors.some((e) => e.includes("OP_BIND_ADDRESS"))).toBe(true);
+  });
+
+  test("this-pc is valid when the host env is loopback/unset", () => {
+    expect(validateNetworkPresetEnv("this-pc", {}).valid).toBe(true);
+    expect(
+      validateNetworkPresetEnv("this-pc", {
+        OP_ASSISTANT_BIND_ADDRESS: "127.0.0.1",
+        OP_BIND_ADDRESS: "127.0.0.1",
+      }).valid,
+    ).toBe(true);
+  });
+
+  test("home presets deliberately expose the assistant — always valid", () => {
+    for (const preset of ["home-password", "home-open"] as NetworkAccessPreset[]) {
       expect(validateNetworkPresetEnv(preset, { OP_ASSISTANT_BIND_ADDRESS: "0.0.0.0" }).valid).toBe(true);
     }
   });

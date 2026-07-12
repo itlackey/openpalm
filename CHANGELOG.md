@@ -253,6 +253,13 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **`this-pc` network preset now fails closed against host-env bind overrides**
+  (PR #564 r3566887693): `validateNetworkPresetEnv` rejects a setup when the
+  host process env exposes `OP_ASSISTANT_BIND_ADDRESS` or `OP_BIND_ADDRESS`
+  under the "This PC only" preset, instead of silently writing a loopback row
+  that Compose's process-env precedence would override — which could publish an
+  unauthenticated OpenCode/guardian on the LAN despite the operator's choice.
+
 - **Guardian mDNS no longer advertises an unreachable front door** (PR #564
   P2-1): the `<name>-guardian.local` advertisement is now gated on
   `GUARDIAN_DIRECT_INGRESS` being enabled, so a LAN-visible guardian bind with

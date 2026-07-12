@@ -225,25 +225,38 @@ export function detectNetworkPreset(
  * Validate a target preset against the HOST PROCESS env (as opposed to
  * stack.env) it will be layered under. Compose gives process env precedence
  * over `--env-file`, so a leftover `OP_ASSISTANT_BIND_ADDRESS=0.0.0.0` in the
- * host process would silently defeat the shared-guardian hard-pin even though
- * the resolver correctly writes the loopback row to stack.env. Only
- * shared-guardian has a combination to guard against — the other three
- * presets never depend on the assistant staying loopback.
+ * host process would silently defeat a preset's loopback pin even though the
+ * resolver correctly writes the loopback row to stack.env.
+ *
+ * Presets that pin a bind to loopback must fail closed if the host env would
+ * override it: `shared-guardian` pins the assistant (PR #564), and `this-pc`
+ * pins BOTH the assistant and the guardian (PR #564 r3566887693 — otherwise a
+ * leftover host-env bind exposes an unauthenticated OpenCode / guardian on the
+ * LAN despite the operator's "This PC only" choice). The home presets
+ * deliberately expose the assistant, so they have nothing to guard.
  */
 export function validateNetworkPresetEnv(
   preset: NetworkAccessPreset,
   env: Record<string, string | undefined>,
 ): { valid: boolean; errors: string[] } {
-  if (preset !== "shared-guardian") return { valid: true, errors: [] };
-  if (isExposed(env, "OP_ASSISTANT_BIND_ADDRESS")) {
-    return {
-      valid: false,
-      errors: [
-        `The "shared-guardian" network access preset requires the assistant to stay loopback-only, but the current environment already exposes OP_ASSISTANT_BIND_ADDRESS="${env.OP_ASSISTANT_BIND_ADDRESS}". Unset it (or set it to 127.0.0.1) in the host process environment before switching to shared-guardian.`,
-      ],
-    };
+  const label = NETWORK_PRESET_LABELS[preset];
+  const errors: string[] = [];
+  const rejectExposed = (key: "OP_ASSISTANT_BIND_ADDRESS" | "OP_BIND_ADDRESS") => {
+    if (isExposed(env, key)) {
+      errors.push(
+        `The "${preset}" (${label}) network access preset requires ${key} to stay loopback-only, but the current environment already exposes ${key}="${env[key]}". Unset it (or set it to 127.0.0.1) in the host process environment before switching to ${preset}.`,
+      );
+    }
+  };
+
+  if (preset === "this-pc") {
+    rejectExposed("OP_ASSISTANT_BIND_ADDRESS");
+    rejectExposed("OP_BIND_ADDRESS");
+  } else if (preset === "shared-guardian") {
+    rejectExposed("OP_ASSISTANT_BIND_ADDRESS");
   }
-  return { valid: true, errors: [] };
+
+  return { valid: errors.length === 0, errors };
 }
 
 // ── Warning composition (D9) ─────────────────────────────────────────────
