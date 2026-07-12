@@ -54,6 +54,11 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
     (`openpalm-guardian`), and a `files` allowlist that excludes test files.
 - The audit writer is created lazily on first write, so importing the guardian
   library has no filesystem side effects.
+- Guardian admin API: `DELETE /admin/principals/:id` removes a principal row
+  outright (Bearer-authed like the rest of `/admin`; 404 for unknown ids; the
+  auth cache is invalidated immediately). Principals seeded from
+  `PORTAL_*_SECRET_FILE` env are re-seeded at the next guardian boot — use the
+  addon/secret lifecycle to retire those. (#433)
 
 ### Changed
 
@@ -76,6 +81,10 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   strategies that verify against a remote JWKS), and the exported `authenticate()`
   is now async. The built-in `basicTokenAuthStrategy` and its behavior are
   unchanged (it still resolves synchronously).
+- The guardian state DB (`data/guardian/state.db`) now runs in SQLite WAL
+  mode with `PRAGMA user_version` schema-migration bookkeeping. `-wal`/`-shm`
+  sidecar files appear next to `state.db` inside `data/guardian/` and are kept
+  guardian-private (mode 0600). (#433)
 
 ### Removed
 

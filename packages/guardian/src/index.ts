@@ -61,6 +61,7 @@ export {
   upsertPrincipal,
   rotatePrincipal,
   setPrincipalEnabled,
+  deletePrincipal,
   seedPortalPrincipalsFromEnv,
   hashToken,
 } from './state-db.ts';

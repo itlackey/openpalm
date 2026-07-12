@@ -4,6 +4,7 @@ import { json } from './http-util.ts';
 import { invalidatePrincipalCache } from './auth';
 import { constantTimeEqual } from './crypto.ts';
 import {
+  deletePrincipal,
   listPrincipals,
   rotatePrincipal,
   setPrincipalEnabled,
@@ -89,6 +90,17 @@ export async function handleAdminRequest(req: Request, requestId: string): Promi
     const principal = setPrincipalEnabled(decodeURIComponent(disableMatch[1]), disableMatch[2] === 'enable');
     invalidatePrincipalCache(decodeURIComponent(disableMatch[1]));
     return principal ? json(200, { principal: { ...principal, tokenHash: undefined }, requestId }) : json(404, { error: 'not_found', requestId });
+  }
+
+  const deleteMatch = url.pathname.match(/^\/admin\/principals\/([^/]+)$/);
+  if (deleteMatch && req.method === 'DELETE') {
+    const id = decodeURIComponent(deleteMatch[1]);
+    const deleted = deletePrincipal(id);
+    // NOTE: principals seeded from PORTAL_*_SECRET_FILE env are re-created at
+    // next boot (seedPortalPrincipalsFromEnv) — delete is for registry-managed
+    // rows; remove the addon/secret to retire an env-seeded portal principal.
+    invalidatePrincipalCache(id);
+    return deleted ? json(200, { deleted: id, requestId }) : json(404, { error: 'not_found', requestId });
   }
 
   logger.warn('admin_not_found', { requestId, path: url.pathname, method: req.method });
