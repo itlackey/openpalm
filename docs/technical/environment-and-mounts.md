@@ -277,6 +277,7 @@ These variables are consumed by Compose and service env blocks.
 | `OP_VOICE_BIND_ADDRESS`, `OP_VOICE_PORT` | Voice addon host bind |
 | `OP_OWNER_NAME` | Operator display name |
 | `OP_OWNER_EMAIL` | Operator email |
+| `OP_MDNS` | (default unset = enabled-but-gated) `0`/`false`/`off`/`no` disables the host mDNS responder entirely — the escape hatch for coexisting with an already-configured host mDNS publisher (avahi/Bonjour). #488: `OP_BIND_ADDRESS`/`OP_ASSISTANT_BIND_ADDRESS` additionally gate host-side mDNS self-advertisement of `<name>-guardian.local` / `<name>.local` (`<name>` from `OP_PROJECT_NAME`) — non-loopback ⇒ advertised on `OP_GUARDIAN_PORT`/`OP_ASSISTANT_PORT`; the loopback default opens no socket. See `docs/technical/network-partitioning-d5a.md`. |
 
 ---
 

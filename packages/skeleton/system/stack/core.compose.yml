@@ -167,13 +167,16 @@ services:
       start_period: 30s
 
   # ── mDNS service discovery ───────────────────────────────────────────
-  # mDNS is no longer published by avahi sidecars. OpenCode advertises its own
-  # `.local` name in-process via its native mDNS responder (server.mdns /
-  # server.mdnsDomain in the assistant + guardian opencode.jsonc files). See
-  # those config files and docs/technical/network-partitioning-d5a.md for the
-  # native approach and its limitations (LAN reachability requires the OpenCode
-  # process to bind a LAN-facing interface; the guardian moderator stays
-  # loopback-only by design and does NOT advertise).
+  # mDNS is no longer published by avahi sidecars. The PRIMARY LAN advertiser
+  # (#488) is the HOST control-plane responder (packages/lib mdns-responder.ts,
+  # started from the host UI process) — it actually reaches the LAN, gated by
+  # OP_BIND_ADDRESS (guardian, <name>-guardian.local) / OP_ASSISTANT_BIND_ADDRESS
+  # (assistant, <name>.local); loopback defaults open no socket at all;
+  # OP_MDNS=off disables it. OpenCode's native in-process mDNS responder
+  # (server.mdns / server.mdnsDomain in the assistant + guardian opencode.jsonc
+  # files) remains a manual/advanced in-container path — bridge-network
+  # multicast never reaches the physical LAN, so it is off by default. See
+  # docs/technical/network-partitioning-d5a.md for both mechanisms.
 
 # Portal-style ingress services join portal_net to reach the guardian.
 networks:

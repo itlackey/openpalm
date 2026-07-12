@@ -23,13 +23,16 @@
   //     "url": "http://127.0.0.1:8787/mcp"
   //   }
   // },
-  // The assistant binds 0.0.0.0, so OpenCode's native in-process mDNS responder
-  // would pass its loopback gate and publish a `.local` record. We ship it OFF
-  // (LAN-first default): mDNS only makes sense once the assistant is actually
-  // LAN-exposed.
+  // #488 — the PRIMARY LAN mDNS advertisement mechanism is now the HOST
+  // control-plane responder (packages/lib/src/control-plane/mdns-responder.ts,
+  // started from the host UI process's hooks.server.ts). It is gated by
+  // OP_BIND_ADDRESS (guardian) / OP_ASSISTANT_BIND_ADDRESS (assistant) and
+  // reaches the real LAN — this in-container OpenCode block cannot (see the
+  // reachability gap below). See docs/technical/network-partitioning-d5a.md.
   //
-  // NATIVE mDNS — how it works and its limits (see
-  // docs/technical/network-partitioning-d5a.md):
+  // NATIVE mDNS below remains a MANUAL/ADVANCED path only, kept off by
+  // default and documented for operators who understand the bridge-network
+  // limitation:
   //   - Set "mdns": true to publish. OpenCode advertises service type
   //     `_http._tcp.local` with a HARDCODED instance label `opencode-4096`
   //     (the port; not configurable) and an SRV/A host target of "mdnsDomain"

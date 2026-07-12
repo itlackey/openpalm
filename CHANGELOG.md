@@ -9,6 +9,25 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Host control-plane LAN mDNS self-advertisement for the guardian and
+  assistant** (#488). A hand-rolled `node:dgram` responder in `@openpalm/lib`
+  runs inside the long-lived host UI process (started from
+  `hooks.server.ts`; every supervisor — `openpalm ui serve`, `openpalm`,
+  Electron — spawns it) and advertises `<name>-guardian.local` /
+  `<name>.local` (`<name>` derived from `OP_PROJECT_NAME`, default
+  `openpalm`) whenever the corresponding bind address
+  (`OP_BIND_ADDRESS` / `OP_ASSISTANT_BIND_ADDRESS`) is set non-loopback. The
+  loopback-only default opens no socket at all. A new `OP_MDNS=0|false|off`
+  knob in `stack.env` force-disables the responder (e.g. to avoid conflicting
+  with an operator's existing avahi/Bonjour setup). The admin UI's LAN
+  Exposure card (Assistant tab) now shows the derived `.local` name(s) and
+  whether each is currently advertised. This replaces the guardian container
+  as the advertisement locus documented in the original issue — container
+  mDNS on the default Docker bridge network never reaches the physical LAN
+  (see `docs/technical/network-partitioning-d5a.md`); the guardian
+  container/image is unchanged by this work. OpenCode's native in-container
+  mDNS responder (`server.mdns`/`server.mdnsDomain` in the assistant/guardian
+  `opencode.jsonc`) remains as a manual/advanced fallback.
 - **Opt-in mTLS adapter transport identity on the guardian direct listener**
   (port 3830 only — internal 8080 and admin 3831 stay plain HTTP; #435). Set
   `GUARDIAN_TLS_CERT_FILE` / `GUARDIAN_TLS_KEY_FILE` / `GUARDIAN_MTLS_CA_FILE`
