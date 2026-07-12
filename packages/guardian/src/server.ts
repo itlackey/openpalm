@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+import { readFileSync } from 'node:fs';
 import { createLogger } from './logger.ts';
 import guardianPkg from '../package.json' with { type: 'json' };
 
@@ -22,8 +23,9 @@ import { handleProxy, OC_PREFIX } from './proxy';
 import { activeRateLimiters, PORTAL_RATE_LIMIT, PORTAL_RATE_WINDOW_MS, USER_RATE_LIMIT, USER_RATE_WINDOW_MS } from './rate-limit';
 import { runDriftCheckWithRetry, startProxyRecovery, stopProxyRecovery, isProxyEnabled } from './drift';
 import { initializePrincipalStore, listPrincipals, seedPortalPrincipalsFromEnv } from './state-db';
+import { startTlsPassthrough, type TlsPassthrough } from './tls-passthrough.ts';
 import { matchTransport, registerTransport, type Transport } from './transport';
-import { DIRECT_PORT, resolveCorsAllowedOrigin } from './config';
+import { DIRECT_PORT, DIRECT_TLS, resolveCorsAllowedOrigin } from './config';
 
 const logger = createLogger('guardian');
 
@@ -226,6 +228,24 @@ async function handleAdminListenerRequest(req: Request): Promise<Response> {
   return json(404, { error: 'not_found', requestId });
 }
 
+/**
+ * Read a configured TLS file, failing closed with a clear error naming the
+ * env var and path — never the file's contents — on missing/empty file
+ * (spec 435 § file-level change #6).
+ */
+function readTlsFile(envVar: string, path: string): string {
+  let contents: string;
+  try {
+    contents = readFileSync(path, 'utf-8');
+  } catch (err) {
+    throw new Error(`Guardian direct-listener TLS boot error: cannot read ${envVar} (${path}): ${err instanceof Error ? err.message : String(err)}`);
+  }
+  if (!contents.trim()) {
+    throw new Error(`Guardian direct-listener TLS boot error: ${envVar} (${path}) is empty`);
+  }
+  return contents;
+}
+
 /** A running guardian: its three Bun listeners plus a combined stop(). */
 export interface GuardianServers {
   internal: ReturnType<typeof Bun.serve>;
@@ -268,11 +288,39 @@ export function startGuardian(options: StartGuardianOptions = {}): GuardianServe
     idleTimeout: 0,
     fetch: (req, server) => handleInternalRequest(req, server.requestIP(req)?.address ?? ''),
   });
-  const direct = Bun.serve({
-    port: DIRECT_PORT,
-    idleTimeout: 0,
-    fetch: (req, server) => handleDirectRequest(req, server.requestIP(req)?.address ?? ''),
-  });
+
+  // Direct listener (3830): plain HTTP unchanged when TLS is off (D3
+  // default); when mTLS is configured, the plain-HTTP handler moves to a
+  // loopback ephemeral port and a verified `Bun.listen` TLS passthrough
+  // fronts the public port instead (spec 435 D1 — see tls-passthrough.ts for
+  // why `Bun.serve({ tls })`/`node:https` are not used here).
+  let direct: ReturnType<typeof Bun.serve>;
+  let tlsPassthrough: TlsPassthrough | undefined;
+  if (DIRECT_TLS.mode === 'mtls') {
+    const cert = readTlsFile('GUARDIAN_TLS_CERT_FILE', DIRECT_TLS.certPath);
+    const key = readTlsFile('GUARDIAN_TLS_KEY_FILE', DIRECT_TLS.keyPath);
+    const ca = readTlsFile('GUARDIAN_MTLS_CA_FILE', DIRECT_TLS.caPath);
+    direct = Bun.serve({
+      port: 0,
+      hostname: '127.0.0.1',
+      idleTimeout: 0,
+      fetch: (req, server) => handleDirectRequest(req, server.requestIP(req)?.address ?? ''),
+    });
+    tlsPassthrough = startTlsPassthrough({
+      port: DIRECT_PORT,
+      upstreamPort: direct.port,
+      cert,
+      key,
+      ca,
+    });
+  } else {
+    direct = Bun.serve({
+      port: DIRECT_PORT,
+      idleTimeout: 0,
+      fetch: (req, server) => handleDirectRequest(req, server.requestIP(req)?.address ?? ''),
+    });
+  }
+
   const admin = Bun.serve({ port: ADMIN_PORT, idleTimeout: 0, fetch: handleAdminListenerRequest });
 
   audit({
@@ -295,6 +343,7 @@ export function startGuardian(options: StartGuardianOptions = {}): GuardianServe
     directPort: DIRECT_PORT,
     adminPort: ADMIN_PORT,
     directIngressEnabled: DIRECT_INGRESS_ENABLED,
+    directTls: DIRECT_TLS.mode,
     seededPrincipals: listPrincipals().length,
   });
 
@@ -305,6 +354,7 @@ export function startGuardian(options: StartGuardianOptions = {}): GuardianServe
     stop() {
       stopProxyRecovery();
       internal.stop();
+      tlsPassthrough?.stop();
       direct.stop();
       admin.stop();
     },

@@ -69,3 +69,36 @@ export function resolveCorsAllowedOrigin(origin: string | null): string | null {
 export function resolveGuardianUrl(): string {
   return Bun.env.GUARDIAN_URL ?? "http://guardian:8080";
 }
+
+/**
+ * Opt-in mTLS adapter transport identity on the direct listener (spec 435,
+ * D3). `GUARDIAN_TLS_CERT_FILE` / `GUARDIAN_TLS_KEY_FILE` /
+ * `GUARDIAN_MTLS_CA_FILE` must all be set (mTLS on) or all be unset/empty
+ * (off, the default) — no server-only-TLS mode, and no partial config: any
+ * other combination fails closed at module load (boot error) naming the
+ * missing variable(s). Values here are file PATHS only; contents are read
+ * later by the caller (`server.ts`).
+ */
+export type DirectTlsConfig =
+  | { mode: 'off' }
+  | { mode: 'mtls'; certPath: string; keyPath: string; caPath: string };
+
+export function parseDirectTlsEnv(env: Record<string, string | undefined>): DirectTlsConfig {
+  const certPath = env.GUARDIAN_TLS_CERT_FILE || '';
+  const keyPath = env.GUARDIAN_TLS_KEY_FILE || '';
+  const caPath = env.GUARDIAN_MTLS_CA_FILE || '';
+
+  if (!certPath && !keyPath && !caPath) return { mode: 'off' };
+  if (certPath && keyPath && caPath) return { mode: 'mtls', certPath, keyPath, caPath };
+
+  const missing: string[] = [];
+  if (!certPath) missing.push('GUARDIAN_TLS_CERT_FILE');
+  if (!keyPath) missing.push('GUARDIAN_TLS_KEY_FILE');
+  if (!caPath) missing.push('GUARDIAN_MTLS_CA_FILE');
+  throw new Error(
+    `Guardian direct-listener TLS config is partial: all three of GUARDIAN_TLS_CERT_FILE, GUARDIAN_TLS_KEY_FILE, and GUARDIAN_MTLS_CA_FILE must be set together (mTLS on) or all left unset/empty (off). Missing: ${missing.join(', ')}.`,
+  );
+}
+
+/** Read once at module load, matching the CORS-parser idiom above. */
+export const DIRECT_TLS = parseDirectTlsEnv(Bun.env);
