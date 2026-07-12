@@ -201,7 +201,9 @@ Produce an implementation-ready fix spec and WRITE IT to ${specPath(t.id)} (crea
 5. Out-of-scope / non-goals, and any coordination with sibling clusters (e.g. shared username default value).${specFeedback ? `\n\nA prior version of this spec was REJECTED by review. Address every required change:\n${specFeedback}` : ''}
 
 Return summary + per_finding + test_first_list via the schema.`,
-      { model: 'fable', effort: 'max', label: `spec:${t.id}:r${round}`, phase: t.phase, schema: SPEC_SCHEMA },
+      // Spec author was Fable (ultracode); Fable 5 credits were exhausted mid-run,
+      // so specs now use opus (the error's own "/model to switch models" remedy).
+      { model: 'opus', effort: 'high', label: `spec:${t.id}:r${round}`, phase: t.phase, schema: SPEC_SCHEMA },
     )
     if (!spec) break
 
