@@ -256,14 +256,26 @@ describe('GET/PUT /api/host/stack — mdns surface (#488)', () => {
     expect(mdns.guardian.name).toBe('my-lab-guardian.local');
   });
 
-  test('OP_BIND_ADDRESS in stack.env marks the guardian name advertised', async () => {
+  test('OP_BIND_ADDRESS + GUARDIAN_DIRECT_INGRESS in stack.env marks the guardian name advertised', async () => {
+    // PR #564 P2-1: guardian mDNS is gated on direct ingress being enabled, so
+    // the advertised front door is never a listener that 404s.
+    process.env.OP_UI_HOST_MODE = 'host-ui';
+    seedSecretsEnv(homeDir, 'OP_BIND_ADDRESS=0.0.0.0\nGUARDIAN_DIRECT_INGRESS=true\n');
+    const { GET } = await loadRoute();
+    const res = await GET(makeGetEvent());
+    const body = (await res.json()) as Record<string, unknown>;
+    const mdns = body.mdns as { guardian: { advertised: boolean } };
+    expect(mdns.guardian.advertised).toBe(true);
+  });
+
+  test('OP_BIND_ADDRESS without GUARDIAN_DIRECT_INGRESS leaves the guardian un-advertised (P2-1)', async () => {
     process.env.OP_UI_HOST_MODE = 'host-ui';
     seedSecretsEnv(homeDir, 'OP_BIND_ADDRESS=0.0.0.0\n');
     const { GET } = await loadRoute();
     const res = await GET(makeGetEvent());
     const body = (await res.json()) as Record<string, unknown>;
     const mdns = body.mdns as { guardian: { advertised: boolean } };
-    expect(mdns.guardian.advertised).toBe(true);
+    expect(mdns.guardian.advertised).toBe(false);
   });
 
   test('OP_MDNS=off in stack.env reports both names un-advertised even with LAN exposure on', async () => {
