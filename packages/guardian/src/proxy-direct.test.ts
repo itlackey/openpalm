@@ -67,12 +67,14 @@ function getAvailablePort(): Promise<number> {
 function directCall(
   method: string,
   ocPath: string,
-  opts: { userId?: string; body?: string } = {},
+  opts: { userId?: string; body?: string; id?: string; secret?: string } = {},
 ): Promise<Response> {
   const userId = opts.userId ?? "direct-user";
+  const id = opts.id ?? DIRECT_ID;
+  const secret = opts.secret ?? DIRECT_SECRET;
   const body = opts.body ?? "";
   const headers = new Headers({
-    authorization: `Basic ${Buffer.from(`${DIRECT_ID}:${DIRECT_SECRET}`, "utf-8").toString("base64")}`,
+    authorization: `Basic ${Buffer.from(`${id}:${secret}`, "utf-8").toString("base64")}`,
     "x-openpalm-user": userId,
   });
   if (body) headers.set("content-type", "application/json");
@@ -332,5 +334,87 @@ describe("/oc proxy — direct tier: gate 1c rate limit fires BEFORE upstream", 
 
     expect(hit429).toBe(true);
     expect(status429MessageHits).toBe(0); // upstream was NOT contacted on the 429 call
+  });
+});
+
+describe("admin DELETE /admin/principals/:id (#433)", () => {
+  // Dedicated principal id + fresh x-openpalm-user ids so the rate-limit
+  // describe block above (which exhausts buckets for "rate-limit-user-direct"
+  // on DIRECT_ID) is never shared with these tests.
+  const DELETE_ID = "delete-me";
+  const DELETE_SECRET = "delete-me-secret-7777";
+  const DELETE_USER = "delete-me-user";
+
+  test("DELETE /admin/principals/:id removes the principal and invalidates the auth cache", async () => {
+    // Register the principal.
+    const seedResp = await fetch(`${adminUrl}/admin/principals`, {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${ADMIN_TOKEN}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ id: DELETE_ID, kind: "direct", token: DELETE_SECRET, label: "Delete-me test client" }),
+    });
+    expect(seedResp.status).toBe(200);
+
+    // Prime the positive auth-cache entry with a successful call.
+    const beforeDelete = await directCall("POST", "/session", {
+      id: DELETE_ID,
+      secret: DELETE_SECRET,
+      userId: DELETE_USER,
+      body: JSON.stringify({}),
+    });
+    expect(beforeDelete.status).toBe(200);
+
+    // The DELETE route is unmatched today — handleAdminRequest falls through
+    // to 404, so this is the first assertion to fail pre-implementation.
+    const deleteResp = await fetch(`${adminUrl}/admin/principals/${DELETE_ID}`, {
+      method: "DELETE",
+      headers: { authorization: `Bearer ${ADMIN_TOKEN}` },
+    });
+    expect(deleteResp.status).toBe(200);
+
+    // A stale cache would still 200 here — this proves BOTH the row is gone
+    // AND the auth cache was invalidated immediately.
+    const afterDelete = await directCall("POST", "/session", {
+      id: DELETE_ID,
+      secret: DELETE_SECRET,
+      userId: DELETE_USER,
+      body: JSON.stringify({}),
+    });
+    expect(afterDelete.status).toBe(401);
+
+    // No longer listed.
+    const listResp = await fetch(`${adminUrl}/admin/principals`, {
+      headers: { authorization: `Bearer ${ADMIN_TOKEN}` },
+    });
+    const listed = (await listResp.json()) as { principals: Array<{ id: string }> };
+    expect(listed.principals.some((p) => p.id === DELETE_ID)).toBe(false);
+  });
+
+  test("DELETE on an unknown principal returns 404", async () => {
+    // DELETE_ID was already deleted by the previous test (bun runs tests in
+    // declaration order within a file), so this is a genuine "unknown id" case.
+    const resp = await fetch(`${adminUrl}/admin/principals/${DELETE_ID}`, {
+      method: "DELETE",
+      headers: { authorization: `Bearer ${ADMIN_TOKEN}` },
+    });
+    expect(resp.status).toBe(404);
+    const body = (await resp.json()) as { error?: string };
+    expect(body.error).toBe("not_found");
+  });
+
+  test("DELETE without the admin bearer token is rejected 401 (positive control)", async () => {
+    // Passes before AND after the DELETE route lands — the Bearer gate at the
+    // top of handleAdminRequest covers every /admin route already. Documented
+    // control, not a red test.
+    const noAuthResp = await fetch(`${adminUrl}/admin/principals/${DELETE_ID}`, { method: "DELETE" });
+    expect(noAuthResp.status).toBe(401);
+
+    const wrongAuthResp = await fetch(`${adminUrl}/admin/principals/${DELETE_ID}`, {
+      method: "DELETE",
+      headers: { authorization: "Bearer wrong-token" },
+    });
+    expect(wrongAuthResp.status).toBe(401);
   });
 });
