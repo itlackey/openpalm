@@ -41,6 +41,10 @@ export type ServerRuntimeContext = {
   uiVersion: string;
   skeletonVersion: string;
   activeConnectionMode: 'single' | 'multi';
+  /** Loopback origin of the sibling @openpalm/client static app, when this
+   *  deployment serves one (electron-host / host-ui / pwa-static). Additive,
+   *  optional — version stays 2. */
+  clientAppUrl?: string;
   routes: {
     chat?: string;
     connections?: string;

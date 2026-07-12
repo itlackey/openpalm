@@ -64,3 +64,14 @@ export async function setActiveConnection(
   const res = await requireOk(await request('POST', '/api/connections/active', { id }));
   return (await res.json()) as { activeId: string; connection: AssistantConnection };
 }
+
+/** #511 D3/D4/D6: mint a one-time device-pairing QR/code via the host's
+ *  guardian admin API. `host:stack:write`-gated server-side; UI-gated the
+ *  same way via `hasCapability('host:stack:write')`. */
+export async function mintPairingCode(input: {
+  label: string;
+  url: string;
+}): Promise<{ code: string; principalId: string; qrSvg: string; warnings: string[] }> {
+  const res = await requireOk(await request('POST', '/api/connections/pairing', input));
+  return (await res.json()) as { code: string; principalId: string; qrSvg: string; warnings: string[] };
+}

@@ -15,7 +15,14 @@ import { probeClientApp } from './client-app.js';
 
 describe('probeClientApp', () => {
   test('resolves true when a no-cors probe resolves', async () => {
-    const fetchImpl = vi.fn().mockResolvedValue(new Response(null, { status: 0 })); // opaque-ish
+    // A real no-cors browser fetch resolves an opaque Response (status 0,
+    // type 'opaque') — but the Fetch spec's Response constructor only
+    // accepts 200-599 (undici enforces this), so status 0 isn't
+    // constructible here; a plain 200 exercises the same "resolved, don't
+    // inspect the body" contract (test-only deviation from the spec's
+    // literal "opaque-ish" construction; recorded in the #511 implementer
+    // report).
+    const fetchImpl = vi.fn().mockResolvedValue(new Response(null, { status: 200 }));
     const result = await probeClientApp('http://127.0.0.1:3890', fetchImpl as unknown as typeof fetch);
     expect(result).toBe(true);
     expect(fetchImpl).toHaveBeenCalledTimes(1);

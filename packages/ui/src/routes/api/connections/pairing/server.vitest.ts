@@ -24,7 +24,7 @@ import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { tmpdir } from 'node:os';
-import { writeSecret, decodePairingCode } from '@openpalm/lib';
+import { writeSecret, removeSecretFile, decodePairingCode } from '@openpalm/lib';
 import { cleanupTempDirs, resetState, seedSecretsEnv, trackDir } from '$lib/server/test-helpers.js';
 import { getState } from '$lib/server/state.js';
 
@@ -180,7 +180,13 @@ describe('POST /api/connections/pairing — mint (#511 D3/D4)', () => {
   });
 
   test('500 with an actionable error when op_guardian_admin_token is missing', async () => {
-    // No writeSecret() call — the secret is absent in this temp OP_HOME.
+    // resetState()'s ensureSecrets() auto-provisions op_guardian_admin_token
+    // as part of normal state bootstrap (mirrors real app-startup behavior,
+    // packages/lib/src/control-plane/secrets.ts:156) — remove it explicitly
+    // to simulate the fail-closed scenario this test targets (test-only
+    // deviation from the spec's literal "no writeSecret() call" phrasing;
+    // recorded in the #511 implementer report).
+    removeSecretFile(getState().homeDir, 'op_guardian_admin_token');
     const fetchStub = stubGuardianAdmin(200);
 
     const { POST } = await loadRoute();
