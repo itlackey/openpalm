@@ -40,7 +40,8 @@ scripts/azure/.generated/prod.generated.bicepparam
 scripts/azure/vm-declarative/deploy.env
 scripts/azure/vm-declarative/deploy.spec.yaml
 scripts/azure/vm-declarative/deploy.key
-.claude/
+.claude/*
+!.claude/workflows/
 packages/electron/dist/
 .dev_*/*
 # UX validation gate artifacts (skill:web-ux/ux-dom-audit)
