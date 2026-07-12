@@ -126,13 +126,28 @@ process either.
 The native in-container responder documented below **remains unchanged**
 (`"mdns": false, "mdnsDomain": "openpalm.local"` in the assistant/guardian
 `opencode.jsonc`) and is **not** file-assembled to the derived host-responder
-name by #488 — the host responder is now the primary (and only
-LAN-reachable) advertisement mechanism, the native path is inert on bridge
-networks regardless, and #563 (network access presets) already plans
-post-overwrite file assembly for `opencode.jsonc` per preset, so doing it
-here would be duplicated, soon-replaced work. Only the comment blocks in
+name — the host responder is the primary (and only LAN-reachable)
+advertisement mechanism, and the native path is inert on bridge networks
+regardless (and entirely inert on macOS). #563 (network access presets)
+**ratified this as final, not a placeholder**: presets drive the HOST
+responder exclusively, by writing bind vars (`OP_ASSISTANT_BIND_ADDRESS` /
+`OP_BIND_ADDRESS`) to `stack.env` — there is no per-preset `opencode.jsonc`
+file-assembly step and none is planned. `network-preset.ts` exposes
+`assistantMdns`/`guardianMdns` intent flags whose equivalence to
+`resolveMdnsStatus()` (this responder) is pinned by test, so the two
+mechanisms can never silently diverge. Only the comment blocks in
 `core.compose.yml` and `opencode.jsonc` were updated to point at the host
-responder as primary.
+responder as primary; the native `"mdns": false` block stays the permanent
+manual/advanced path for operators who bind-mount their own `opencode.jsonc`.
+
+**Preset → mDNS mapping (#563):**
+
+| Preset | `<name>.local` (assistant) | `<name>-guardian.local` (guardian) |
+|---|---|---|
+| This PC only | off | off |
+| Home network, with password | **on** | off |
+| Home network, open access | **on** | off |
+| Shared network, guardian protected | off | **on** |
 
 ### How native OpenCode mDNS works
 

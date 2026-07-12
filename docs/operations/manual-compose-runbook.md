@@ -321,10 +321,14 @@ cp "$CLIENT_TARBALL" "$VERIFY_HOME/knowledge/$(basename "$CLIENT_TARBALL")"
 printf '{}\n' > "$VERIFY_HOME/knowledge/secrets/auth.json"
 chmod 600 "$VERIFY_HOME/knowledge/secrets/auth.json"
 
-for name in portal_chat_secret portal_api_secret portal_discord_secret portal_slack_secret op_guardian_admin_token op_guardian_mcp_token op_api_key; do
+for name in portal_chat_secret portal_api_secret portal_discord_secret portal_slack_secret op_guardian_admin_token op_guardian_mcp_token op_api_key op_opencode_password; do
   openssl rand -hex 16 > "$VERIFY_HOME/knowledge/secrets/$name"
   chmod 600 "$VERIFY_HOME/knowledge/secrets/$name"
 done
+# op_opencode_password (#563): both core.compose.yml (assistant) and
+# portals.compose.yml (guardian) reference this file unconditionally via the
+# opencode_server_password compose secret — it must exist before `compose up`
+# even when OPENCODE_AUTH stays off (the value is inert in that case).
 ```
 
 ### 3. Write an isolated `stack.env`

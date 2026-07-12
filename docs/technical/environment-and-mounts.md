@@ -114,7 +114,8 @@ Key env:
 |---|---|---|
 | `OPENCODE_CONFIG_DIR` | `/etc/opencode` | OpenPalm-managed OpenCode config root |
 | `OPENCODE_PORT` | `4096` | OpenCode web server listen port |
-| `OPENCODE_AUTH` | `false` | Auth disabled because host binding is loopback-only by default |
+| `OPENCODE_AUTH` | `${OPENCODE_AUTH:-false}` | Compose-interpolated, off by default. The supported way to turn it on is a network access preset (#563, Setup → Network access) — the home-password preset sets this `true` |
+| `OPENCODE_SERVER_PASSWORD_FILE` | `/run/secrets/opencode_server_password` (compose secret `opencode_server_password` → `knowledge/secrets/op_opencode_password`) | OpenCode's Basic-auth password, read at boot when `OPENCODE_AUTH=true`; always granted (the secret is always materialized, inert while auth is off) |
 | `HOME` | `/home/opencode` | Runtime home |
 | `AKM_STASH_DIR` | `/stash` | AKM stash location hint |
 | `AKM_CONFIG_DIR` | `/etc/akm` | AKM config directory |
@@ -173,6 +174,8 @@ Key env:
 | `GUARDIAN_AUDIT_PATH` | `/opt/openpalm/logs/guardian-audit.log` | Audit log path |
 | `PORTAL_<NAME>_SECRET_FILE` | `/run/secrets/portal_<name>_secret` | Portal principal seed secret file |
 | `GUARDIAN_CONTENT_VALIDATION` | `0` | Enable opt-in, fail-closed content validation of inbound messages |
+| `OPENCODE_AUTH` | `${OPENCODE_AUTH:-false}` | Same flag the assistant reads; when `true`, the guardian attaches upstream Basic auth to every `assistant_net` call (proxy, event-fanout `/event`, drift-check `/doc`) so its own OpenCode auth doesn't break portal traffic (#563/D2). The moderator's own loopback OpenCode spawn is unaffected — it pins its own `OPENCODE_AUTH=false` |
+| `OPENCODE_SERVER_PASSWORD_FILE` | `/run/secrets/opencode_server_password` | Same secret file the assistant serves Basic auth from; read once at module load, fail-closed boot error if `OPENCODE_AUTH=true` and the file is missing/empty |
 | `GUARDIAN_DIRECT_INGRESS` | `false` | Enables the browser-facing direct-ingress path on `GUARDIAN_DIRECT_PORT`/`OP_GUARDIAN_PORT`; off by default (404 when disabled) |
 | `GUARDIAN_CORS_ALLOWED_ORIGINS` | defaults to the shipped client origins (`http://127.0.0.1:${OP_CLIENT_PORT:-3810}`, `http://localhost:${OP_CLIENT_PORT:-3810}`, and the same pair for `OP_HOST_CLIENT_PORT:-3890}`) | Comma-separated exact browser origins allowed on guardian direct-ingress CORS responses; override to replace, never a wildcard (guardian rejects a literal `*` here) |
 | `GUARDIAN_MODERATION_URL` | `http://127.0.0.1:4097` | Local OpenCode moderator endpoint |
@@ -253,6 +256,44 @@ Portal services use `user: "${OP_UID:-1000}:${OP_GID:-1000}"` where they write h
 | `assistant_net` | `assistant` (also hosts the scheduler co-process), `guardian` | Core internal service mesh |
 | `portal_net` | `guardian` and LAN-facing portal/addon edges | Default portal ingress network |
 | `portal_public` | `guardian` only in core; public-facing overlays can join it intentionally | Public ingress isolation |
+
+---
+
+## Network access presets (#563)
+
+The setup wizard's "Network access" step (and the equivalent `network` block
+in a headless install spec) resolves to one of four presets via
+`packages/lib/src/control-plane/network-preset.ts`. Every preset writes ALL
+of the managed keys below explicitly (loopback rather than "leave unset"), so
+switching between presets always converges:
+
+| Preset | `OP_BIND_ADDRESS` | `OP_ASSISTANT_BIND_ADDRESS` | `OP_CLIENT_BIND_ADDRESS` | `OP_VOICE_BIND_ADDRESS` | `OPENCODE_AUTH` | mDNS |
+|---|---|---|---|---|---|---|
+| This PC only | `127.0.0.1` | `127.0.0.1` | `127.0.0.1` | `127.0.0.1` | `false` | none |
+| Home network, with password | `127.0.0.1` | `0.0.0.0` | `127.0.0.1` | `127.0.0.1` | `true` (+ `op_opencode_password` secret) | `<name>.local` |
+| Home network, open access | `127.0.0.1` | `0.0.0.0` | `127.0.0.1` | `127.0.0.1` | `false` | `<name>.local` |
+| Shared network, guardian protected | `0.0.0.0` | `127.0.0.1` | `127.0.0.1` | `127.0.0.1` | `false` | `<name>-guardian.local` |
+
+Notes:
+
+- `OP_CHAT_BIND_ADDRESS` / `OP_API_BIND_ADDRESS` are deliberately **not**
+  managed by any preset — they are listeners inside the guardian container,
+  fail-closed API-key-authenticated (`OPENAI_COMPAT_API_KEY_FILE`), so they
+  ride the `OP_BIND_ADDRESS` cascade: under "Shared network, guardian
+  protected" this gives OpenAI-compatible LAN clients a real, credentialed
+  surface out of the box.
+- `GUARDIAN_DIRECT_INGRESS` is never touched by any preset — the direct
+  listener stays 404-closed until the operator opts in via the documented
+  provisioning flow (`docs/technical/guardian-direct-mtls.md` and friends).
+  Presets configure *exposure*, not *ingress enablement*.
+- mDNS is delivered entirely by the host control-plane responder
+  (`packages/lib/src/control-plane/mdns-responder.ts`, #488) — see
+  `docs/technical/network-partitioning-d5a.md` for the preset → mDNS mapping
+  and why the native in-container OpenCode `server.mdns` block stays a
+  manual/advanced path.
+- The admin Assistant tab (`GET/PUT /api/host/stack`) surfaces the detected
+  preset read-only (`networkPreset`, `null` = custom/hand-tuned); switching
+  presets happens in the wizard (rerun from the dashboard), not there.
 
 ---
 

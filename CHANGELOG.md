@@ -43,6 +43,28 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `docs/managing-openpalm.md` documents the pairing-UI flow as the primary
   remote-client provisioning path, with the manual `curl` mint kept as the
   advanced/headless alternative.
+- **Network access presets: bundle binding + auth + mDNS into one wizard
+  choice** (#563). A single "Network access" step in the setup wizard (and
+  the equivalent `network` block in a headless `SetupSpec`) replaces
+  independently-tuned bind vars with four presets — "This PC only" (default),
+  "Home network, with password", "Home network, open access", and "Shared
+  network, guardian protected" — resolved by a new pure `network-preset.ts`
+  in `@openpalm/lib`. The home-password preset turns on OpenCode's own Basic
+  auth (`OPENCODE_AUTH` + a password stored as the `op_opencode_password`
+  file secret, always materialized but inert until a preset enables it); the
+  guardian now attaches the same credential to every upstream assistant call
+  (proxy, event-fanout, drift-check) so portal traffic keeps working once
+  auth is on. Per-preset `.local` mDNS advertisement is delivered entirely by
+  the existing host mDNS responder (#488) via the bind vars each preset
+  writes — no new file-assembly step. `collectBindAddressWarnings` and the
+  new `collectNetworkExposureWarnings` reword startup warnings to name the
+  preset that deliberately configures an exposure, collapsing the noise for
+  a matched preset while keeping unexplained exposure loud. The admin
+  Assistant tab now shows the detected active preset (read-only; switching
+  stays in the wizard via rerun) and the default OpenCode connection picks
+  up the preset's password automatically when auth is on. Security defaults
+  are unchanged — every knob stays off/loopback unless an operator picks a
+  non-default preset.
 - **Remote-only (client) install completion** (#486). `openpalm app` now
   tolerates a machine with no local stack: it serves the pwa-static host UI
   plus the localhost `@openpalm/client` connection manager and lands on
