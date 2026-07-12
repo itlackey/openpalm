@@ -3,7 +3,7 @@ import {
   createLogger,
   deliverBufferedAnswer,
   errMessage,
-  readRequiredSecretFile,
+  readRequiredSecret,
 } from '@openpalm/portal-sdk';
 import { App, type GenericMessageEvent, type KnownEventFromType } from "@slack/bolt";
 import { checkPermissions, loadPermissionConfig } from "./permissions.ts";
@@ -78,12 +78,20 @@ export default class SlackChannel extends BasePortal {
     return this.permissionRegistryInstance;
   }
 
+  /**
+   * Display name used in modal titles and the App Home tab (D4, #491).
+   * Trimmed; blank/unset falls back to "OpenPalm". Callback/action IDs
+   * (ASK_MODAL_CALLBACK_ID etc. above) are Slack app-manifest identifiers and
+   * stay fixed regardless of this setting.
+   */
+  private readonly botName = Bun.env.SLACK_BOT_NAME?.trim() || "OpenPalm";
+
   get botToken(): string {
-    return readRequiredSecretFile("SLACK_BOT_TOKEN_FILE");
+    return readRequiredSecret("SLACK_BOT_TOKEN");
   }
 
   get appToken(): string {
-    return readRequiredSecretFile("SLACK_APP_TOKEN_FILE");
+    return readRequiredSecret("SLACK_APP_TOKEN");
   }
 
   start(): void {
@@ -102,7 +110,7 @@ export default class SlackChannel extends BasePortal {
       botToken = this.botToken;
       appToken = this.appToken;
     } catch (err) {
-      log.error("startup_error", { reason: err instanceof Error ? err.message : "Slack secret file could not be read" });
+      log.error("startup_error", { reason: err instanceof Error ? err.message : "no Slack bot/app token configured: set SLACK_BOT_TOKEN(_FILE) and SLACK_APP_TOKEN(_FILE)" });
       process.exit(1);
     }
 
@@ -321,7 +329,7 @@ export default class SlackChannel extends BasePortal {
       private_metadata: JSON.stringify(metadata),
       title: {
         type: "plain_text",
-        text: "Ask OpenPalm",
+        text: `Ask ${this.botName}`,
       },
       submit: {
         type: "plain_text",
@@ -374,8 +382,8 @@ export default class SlackChannel extends BasePortal {
   private async onMessageShortcut(shortcut: MessageShortcut, client: SlackClient): Promise<void> {
     const messageText = shortcut.message.text?.trim() ?? "";
     const initialPrompt = messageText
-      ? `Ask OpenPalm about this message:\n${messageText}\n\n`
-      : "Ask OpenPalm about this message:\n\n";
+      ? `Ask ${this.botName} about this message:\n${messageText}\n\n`
+      : `Ask ${this.botName} about this message:\n\n`;
 
     const metadata: ModalMetadata = {
       source: "message-shortcut",
@@ -548,7 +556,7 @@ export default class SlackChannel extends BasePortal {
               type: "header",
               text: {
                 type: "plain_text",
-                text: "OpenPalm on Slack",
+                text: `${this.botName} on Slack`,
               },
             },
             {
@@ -569,7 +577,7 @@ export default class SlackChannel extends BasePortal {
               type: "section",
               text: {
                 type: "mrkdwn",
-                text: "*Shortcuts*\n• `Ask OpenPalm` (global shortcut)\n• `Ask OpenPalm about this message` (message shortcut)",
+                text: `*Shortcuts*\n• \`Ask ${this.botName}\` (global shortcut)\n• \`Ask ${this.botName} about this message\` (message shortcut)`,
               },
             },
           ],

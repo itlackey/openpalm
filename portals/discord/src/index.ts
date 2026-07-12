@@ -4,7 +4,7 @@ import {
   deliverBufferedAnswer,
   type DeliverySink,
   errMessage,
-  readRequiredSecretFile,
+  readRequiredSecret,
 } from '@openpalm/portal-sdk';
 import {
   Client,
@@ -82,7 +82,7 @@ export default class DiscordChannel extends BasePortal {
   private primedSessions = new Set<string>();
 
   get botToken(): string {
-    return readRequiredSecretFile("DISCORD_BOT_TOKEN_FILE");
+    return readRequiredSecret("DISCORD_BOT_TOKEN");
   }
 
   get applicationId(): string {
@@ -103,7 +103,7 @@ export default class DiscordChannel extends BasePortal {
     try {
       botToken = this.botToken;
     } catch (err) {
-      log.error("startup_error", { reason: err instanceof Error ? err.message : "DISCORD_BOT_TOKEN_FILE could not be read" });
+      log.error("startup_error", { reason: err instanceof Error ? err.message : "no bot token configured: set DISCORD_BOT_TOKEN_FILE or DISCORD_BOT_TOKEN" });
       process.exit(1);
     }
 

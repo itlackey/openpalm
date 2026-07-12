@@ -23,7 +23,7 @@ import {
   isTurnEnd,
   OcClient,
   partSnapshotType,
-  readRequiredSecretFile,
+  readRequiredSecret,
   SecretFileError,
 } from './runtime.ts';
 import { OcEventHub } from './oc-event-hub.ts';
@@ -77,7 +77,6 @@ export abstract class BasePortal {
   protected abstract readonly maxMessageLength: number;
 
   port: number = Number(Bun.env.PORT) || 8080;
-  guardianUrl = 'http://guardian:8080';
   protected _fetchFn: typeof fetch = fetch;
   protected conversationQueue = new ConversationQueue();
 
@@ -111,9 +110,16 @@ export abstract class BasePortal {
     this.log = log;
   }
 
-  /** The portal principal secret, read fresh from PRINCIPAL_SECRET_FILE. */
+  /**
+   * The portal principal secret, resolved fresh on every read (D3, #491):
+   * `PRINCIPAL_SECRET_FILE`/`PRINCIPAL_SECRET` first, falling back to
+   * `OPENCODE_PASSWORD_FILE`/`OPENCODE_PASSWORD` — the natural standalone name,
+   * since against a plain OpenCode server the Basic password IS the OpenCode
+   * server password (`PRINCIPAL_ID` stays the free-form username). `_FILE`
+   * always wins over a direct var for the same key.
+   */
   get secret(): string {
-    return readRequiredSecretFile('PRINCIPAL_SECRET_FILE');
+    return readRequiredSecret(['PRINCIPAL_SECRET', 'OPENCODE_PASSWORD']);
   }
 
   /** Gateway/socket portals take no inbound HTTP beyond `/health`. */
@@ -185,12 +191,16 @@ export abstract class BasePortal {
     return this._ocClient;
   }
 
-  /** Build the shared /oc client. Overridable so tests can inject a fake. */
+  /**
+   * Build the shared /oc client. Overridable so tests can inject a fake. Base
+   * URL resolution is OcClient's own job (D1, #491): `OPENCODE_BASE_URL`,
+   * default `http://guardian:8080/oc`. Passing no `baseUrl` here lets that one
+   * resolution point apply instead of hardcoding the guardian URL twice.
+   */
   protected createOcClient(): OcClient {
     return new OcClient({
       principalId: Bun.env.PRINCIPAL_ID ?? this.name,
       secret: this.secret,
-      baseUrl: `${this.guardianUrl}/oc`,
       fetch: this._fetchFn,
     });
   }
@@ -229,7 +239,9 @@ export abstract class BasePortal {
       this.secret;
     } catch (err) {
       this.log.error('startup_error', {
-        reason: err instanceof SecretFileError ? err.message : 'PRINCIPAL_SECRET_FILE could not be read',
+        reason: err instanceof SecretFileError
+          ? err.message
+          : 'no principal secret configured: set PRINCIPAL_SECRET_FILE, PRINCIPAL_SECRET, or OPENCODE_PASSWORD',
       });
       process.exit(1);
     }
