@@ -129,7 +129,11 @@ natural checkpoint boundaries.
    per preset (post-overwrite file assembly for `opencode.jsonc`), bind-warning
    rewording, admin LAN-toggle reconciliation, #486 copy updates.
 
-### Phase 6 — Design-language reconciliation (L)
+### Phase 6 — Design-language reconciliation (L) — MOVED OUT
+
+> **2026-07-12:** #506 is removed from the automated implementation workflow.
+> It will be re-scoped and handled in a separate coding session. The notes
+> below are retained for that re-scoping.
 
 10. **#506 — Wizard design language across normal modes.** Last because it
     touches every route the earlier phases modify. Wizard steps onto shared

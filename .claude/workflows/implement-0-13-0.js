@@ -27,7 +27,8 @@ export const meta = {
     { title: '#486 remote-only install' },
     { title: '#511 PWA install paths' },
     { title: '#563 network presets' },
-    { title: '#506 design language' },
+    // #506 (design language) removed 2026-07-12: re-scoped and handled in a
+    // separate coding session — see .github/roadmap/0.13.0/implementation-plan.md.
   ],
 }
 
@@ -103,16 +104,8 @@ const TASKS = [
     title: 'Network access presets: resolver in lib, SetupSpec + validation, OPENCODE_AUTH plumbing, wizard step, per-preset mDNS, bind-warning rewording',
     gates: ['bun run lib:test', 'bun run cli:test', 'bun run ui:check', 'cd packages/guardian && bun test --no-orphans'],
   },
-  {
-    n: 506,
-    phase: '#506 design language',
-    title: 'Reconcile normal-mode routes to the setup-wizard design language (wizard components, /connections restyle in ui+client, chat empty states, documented wiz-* vocabulary)',
-    gates: [
-      'bun run check',
-      'bun run client:build && bun run client:test',
-      'bun test --cwd packages/ui-kit',
-    ],
-  },
+  // #506 (design language) removed from this workflow 2026-07-12 — re-scoped
+  // and handled in a separate coding session.
 ]
 
 const COMMON_GATES = ['bun run lint', 'bun run check']
