@@ -24,7 +24,7 @@ import {
   runDeploy,
   writeSystemEnv,
   patchSecretsEnvFile,
-  collectBindAddressWarnings,
+  collectNetworkExposureWarnings,
   type SetupSpec,
 } from '@openpalm/lib';
 import { detectHostInfo } from '../lib/host-info.ts';
@@ -144,8 +144,10 @@ async function parseConfigFile(filePath: string, raw: string): Promise<Record<st
 
 export async function bootstrapInstall(options: InstallOptions): Promise<void> {
   // Warn early if any bind address is non-loopback so the operator sees it
-  // before services start.
-  for (const line of collectBindAddressWarnings(process.env as Record<string, string>)) {
+  // before services start. #563 — preset-aware: a matched network access
+  // preset collapses to one informational line; unexplained exposure stays
+  // loud (D9).
+  for (const line of collectNetworkExposureWarnings(process.env as Record<string, string>)) {
     logger.warn(line);
   }
 

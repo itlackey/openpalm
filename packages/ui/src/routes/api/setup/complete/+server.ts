@@ -1,5 +1,5 @@
 import { json } from "@sveltejs/kit";
-import { performSetup, checkDocker, mapDockerError, type SetupSpec } from "@openpalm/lib";
+import { performSetup, checkDocker, mapDockerError, reconcileMdnsResponder, type SetupSpec } from "@openpalm/lib";
 import { resetState, getState } from "$lib/server/state.js";
 import { prepareSetupRestorePoint, startDeploy, resetDeployState } from "$lib/server/setup-deploy.js";
 import { getUiLoginPassword, requireAdmin, getRequestId } from "$lib/server/helpers.js";
@@ -49,6 +49,11 @@ export const POST: RequestHandler = async (event) => {
   // Reset state singleton so next getState() re-reads fresh paths.
   resetState();
   const state = getState();
+
+  // #563 — synchronous, non-throwing, and gated (same call the host/stack PUT
+  // makes): a network access preset that changed the bind vars flips mDNS
+  // advertisement immediately, without waiting for a host-process restart.
+  reconcileMdnsResponder(state.homeDir);
 
   // Kick off Docker deploy in the background (non-blocking) — unless the
   // caller passed dryRun:true (validation / test path).

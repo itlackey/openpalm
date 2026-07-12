@@ -324,6 +324,14 @@
             <option value="remote-opencode">OpenCode server (direct)</option>
             <option value="openpalm-client-api">OpenPalm guardian (/oc)</option>
           </select>
+          <small>
+            {#if formKind === 'openpalm-client-api'}
+              The "Shared network, guardian protected" story — connect to the guardian's protected front door.
+            {:else}
+              A direct OpenCode connection is the supported "Home network" preset story (Setup → Network access),
+              not a dev/advanced-only path.
+            {/if}
+          </small>
         </label>
 
         <label class="field">
@@ -351,18 +359,20 @@
             autocomplete="new-password"
           />
           <small>
-            Forwarded as HTTP Basic auth. Only required if the remote OpenCode was started with
-            <code>OPENCODE_SERVER_PASSWORD</code>.
+            Forwarded as HTTP Basic auth. Only required for a remote assistant running the
+            <strong>Home network, with password</strong> network access preset (<code>OPENCODE_AUTH=true</code>).
           </small>
           {#if formMode === 'edit'}
             <small class="rotate-hint">
               <strong>Rotating this password?</strong>
-              OpenCode reads <code>OPENCODE_SERVER_PASSWORD</code> from its env at startup, so
-              rotation is a two-step process:
+              The password lives as the file secret <code>knowledge/secrets/op_opencode_password</code> on the
+              remote host — never in <code>stack.env</code>. Rotation is a two-step process:
               <ol>
                 <li>
-                  On the remote host: update <code>OP_OPENCODE_PASSWORD</code> in
-                  <code>stack.env</code> and restart the <code>assistant</code> container.
+                  On the remote host: re-run setup's Network access step (choose
+                  <strong>Home network, with password</strong> again with the new password), or edit
+                  <code>knowledge/secrets/op_opencode_password</code> directly and restart the
+                  <code>assistant</code> container.
                 </li>
                 <li>Paste the new value here and save.</li>
               </ol>

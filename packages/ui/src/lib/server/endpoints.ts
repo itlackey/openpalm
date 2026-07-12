@@ -255,7 +255,17 @@ function defaultEndpoint(): ActiveConnection {
     process.env.OP_ASSISTANT_URL ??
     `http://127.0.0.1:${process.env.OP_ASSISTANT_PORT ?? persisted.OP_ASSISTANT_PORT ?? '3800'}`;
   const username = process.env.OPENCODE_SERVER_USERNAME || 'openpalm';
-  const password = process.env.OPENCODE_SERVER_PASSWORD || undefined;
+  // #563 D10 — an explicit host OPENCODE_SERVER_PASSWORD always wins
+  // (T63, pin). Otherwise fall back to the network-preset-managed
+  // OP_OPENCODE_PASSWORD secret, but ONLY when OPENCODE_AUTH is truthy: the
+  // secret file is now always materialized (#563/D3), so an unconditional
+  // fallback would start attaching Basic auth for every existing install —
+  // gating on OPENCODE_AUTH keeps the default posture byte-identical.
+  const authEnabled = /^(true|1|yes)$/i.test((process.env.OPENCODE_AUTH ?? '').trim());
+  const password =
+    process.env.OPENCODE_SERVER_PASSWORD ||
+    (authEnabled ? process.env.OP_OPENCODE_PASSWORD : undefined) ||
+    undefined;
   return {
     id: DEFAULT_ID,
     label: 'Local Assistant',

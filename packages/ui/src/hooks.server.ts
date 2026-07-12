@@ -22,7 +22,7 @@ import {
   resolveOpenPalmHome,
   readStackRuntimeEnv,
   readSecret,
-  collectBindAddressWarnings,
+  collectNetworkExposureWarnings,
   isRemoteSetupAllowed,
   stackDirFor,
   reconcileMdnsResponder,
@@ -56,8 +56,10 @@ function loadProcessEnv(): void {
   if (startupApplyDone) return;
   startupApplyDone = true;
 
-  // Warn early if any bind address is non-loopback.
-  for (const line of collectBindAddressWarnings(process.env as Record<string, string>)) {
+  // Warn early if any bind address is non-loopback. #563 — preset-aware: a
+  // matched network access preset collapses to one informational line;
+  // unexplained exposure stays loud (D9).
+  for (const line of collectNetworkExposureWarnings(process.env as Record<string, string>)) {
     logger.warn(line);
   }
 

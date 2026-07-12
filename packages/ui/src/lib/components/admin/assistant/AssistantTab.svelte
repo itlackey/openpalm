@@ -10,6 +10,7 @@
   } from '$lib/api.js';
   import { hasCapability } from '$lib/runtime-context.svelte.js';
   import { notifications } from '$lib/notifications.svelte.js';
+  import { NETWORK_PRESET_LABELS, type NetworkAccessPreset } from '@openpalm/lib/control-plane/network-preset.js';
 
   // Phase 4 split (plan ui-runtime-modes-plan.md §5.F, Phase 4 step 2): host
   // STACK settings (project name, bind address → /api/host/stack) are a
@@ -26,6 +27,9 @@
   let lanExposureEnabled = $state(false);
   let stackEnvPath = $state('knowledge/env/stack.env');
   let mdns: MdnsSurface | null = $state(null);
+  // #563 — read-only preset surfacing (D8); null = custom/hand-tuned.
+  let networkPreset: NetworkAccessPreset | null = $state(null);
+  const networkPresetLabel = $derived(networkPreset ? NETWORK_PRESET_LABELS[networkPreset] : 'Custom (hand-configured)');
 
   // ── Assistant persona (assistant-settings:write) ───────────────────────────
   let personaSaving = $state(false);
@@ -49,6 +53,7 @@
         lanExposureEnabled = stack.lanExposureEnabled;
         stackEnvPath = stack.stackEnvPath;
         mdns = stack.mdns;
+        networkPreset = stack.networkPreset;
       }
       if (showPersona) {
         const persona = await fetchAssistantPersona();
@@ -71,6 +76,7 @@
       projectName = data.projectName;
       lanExposureEnabled = data.lanExposureEnabled;
       mdns = data.mdns;
+      networkPreset = data.networkPreset;
       notifications.push(
         'success',
         data.projectRenamed
@@ -140,6 +146,8 @@
       <section class="settings-card">
         <h3>LAN Exposure</h3>
         <p class="section-note">This writes <code>OP_ASSISTANT_BIND_ADDRESS</code> in <code>{stackEnvPath}</code>.</p>
+        <div class="path-chip">Network access preset: {networkPresetLabel}</div>
+        <p class="field-hint">Presets (This PC only / Home network / Shared network) are chosen in Setup — rerun the wizard from the dashboard to switch. The checkbox below is the advanced raw <code>OP_ASSISTANT_BIND_ADDRESS</code> override.</p>
         <label class="field-inline" for="assistant-lan-exposure">
           <input id="assistant-lan-exposure" type="checkbox" bind:checked={lanExposureEnabled} disabled={loading || saving || !canEditStack} />
           <span>Expose the assistant OpenCode server on the host LAN</span>

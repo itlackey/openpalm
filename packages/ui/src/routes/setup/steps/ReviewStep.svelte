@@ -2,10 +2,13 @@
   import { PORTALS, friendlyProviderName } from '$lib/client/constants.js';
   import IconAgent from '@openpalm/ui-kit/components/icons/IconAgent.svelte';
   import IconMic from '@openpalm/ui-kit/components/icons/IconMic.svelte';
+  import IconLock from '@openpalm/ui-kit/components/icons/IconLock.svelte';
   import { isPortalEnabled as _isPortalEnabled } from '$lib/client/helpers.js';
   import FriendlyError from '@openpalm/ui-kit/components/common/FriendlyError.svelte';
   import { friendlyError } from '$lib/client/error-messages.js';
   import { setupState } from '$lib/setup/setup-state.svelte.js';
+  import { NETWORK_PRESET_LABELS } from '@openpalm/lib/control-plane/network-preset.js';
+  import NetworkAccessStep from './NetworkAccessStep.svelte';
 
   // Takes NO props: this step reads the setup-state store directly. Local
   // aliases (`$derived` off the store) keep the rest of the component body
@@ -27,6 +30,15 @@
   const systemCheckPassed = $derived(s.systemCheckPassed);
   const oneditmodels = (): void => s.goToStep(1);
   const oneditextras = (): void => s.goToStep(2);
+  const networkPreset = $derived(s.networkPreset);
+  const networkPresetLabel = $derived(
+    networkPreset ? NETWORK_PRESET_LABELS[networkPreset] : 'Custom (kept as-is)',
+  );
+  // "Change" stays on the Finish step (D5: the network step is a section of
+  // it, not a separate screen) and just scrolls/focuses that section.
+  const oneditnetwork = (): void => {
+    document.getElementById('network-access-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
 
   function isPortalEnabled(chId: string, locked?: boolean): boolean {
     return _isPortalEnabled(portalSelection, chId, locked);
@@ -175,6 +187,10 @@
   </div>
 {/if}
 
+<div id="network-access-section">
+  <NetworkAccessStep />
+</div>
+
 <!-- ── What's being set up: hairline-divider summary rows ─────── -->
 <div class="summary-list" aria-label="What's set up">
   <p class="summary-section-label">What's being set up</p>
@@ -229,6 +245,16 @@
       <button type="button" class="btn-change" onclick={oneditextras}>Change</button>
     </div>
   {/if}
+
+  <!-- Network access (#563) -->
+  <div class="summary-row">
+    <span class="summary-icon" aria-hidden="true"><IconLock size={16} /></span>
+    <div class="summary-body">
+      <div class="summary-key">Network access</div>
+      <div class="summary-val">{networkPresetLabel}</div>
+    </div>
+    <button type="button" class="btn-change" onclick={oneditnetwork}>Change</button>
+  </div>
 
   <!-- Portals (only those enabled) -->
   {#each activePortals as ch (ch.id)}
