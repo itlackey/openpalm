@@ -13,7 +13,9 @@
  * behavior the P5d implementation must not regress.
  */
 import { describe, expect, test } from 'bun:test';
-import { readFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { parse as yamlParse } from 'yaml';
 
@@ -24,6 +26,7 @@ type ComposeService = {
   ports?: unknown[];
   environment?: Record<string, unknown> | string[];
   volumes?: unknown[];
+  healthcheck?: { test?: unknown };
 };
 type ComposeDoc = { services?: Record<string, ComposeService> };
 
@@ -183,6 +186,127 @@ describe('I2 — assistant healthcheck also probes the client co-process', () =>
 
   test('the healthcheck exempts the I3 deliberate client-skip marker rather than treating every skip as unhealthy', () => {
     expect(healthcheckTest).toContain('openpalm-client-skip');
+  });
+});
+
+// ── P1-1 (PR #564 c11): the /health probe must authenticate when the
+// container-side OPENCODE_AUTH is truthy — otherwise OpenCode 401s the
+// unauthenticated probe under the home-password preset, the healthcheck
+// reports unhealthy, and guardian's `depends_on: assistant: condition:
+// service_healthy` blocks the entire stack. The gate mirrors the
+// entrypoint's opencode_auth_enabled truthy set exactly (D2) so probe and
+// server can never disagree about the posture.
+describe('P1-1 (#564 c11) — assistant healthcheck authenticates when OPENCODE_AUTH is truthy', () => {
+  const healthcheckTest = String(assistant?.healthcheck?.test ?? []);
+
+  // RED today: the probe has no case/-u/username reference at all — it
+  // unconditionally curls /health with no credentials.
+  test('the OpenCode probe gates on container-side OPENCODE_AUTH and sends Basic credentials when truthy', () => {
+    expect(healthcheckTest).toContain('case "$${OPENCODE_AUTH:-false}"');
+    expect(healthcheckTest).toContain('true|TRUE|True|1|yes|YES'); // exact entrypoint truthy set
+    expect(healthcheckTest).toContain('curl -sf -u "$${OPENCODE_SERVER_USERNAME:-opencode}:');
+  });
+
+  // RED today on the positive assertions: the credential fragment does not
+  // exist yet. The negative assertions guard the compose-interpolation
+  // hazard: a Docker healthcheck process only ever sees the container's
+  // CREATED env (compose `environment:` map) — never variables the
+  // entrypoint exports later — so the probe must `cat` the secret file
+  // itself, container-side (`$$(cat ...)`, doubled for the Compose escape),
+  // never a host-interpolated `${...}` fragment (which Compose would
+  // resolve against the HOST's env at config-load time, not the container's).
+  test('the authenticated probe reads the secret file container-side — no host-interpolated auth fragment', () => {
+    expect(healthcheckTest).toContain('$$(cat');
+    expect(healthcheckTest).toContain('opencode_server_password');
+    for (const name of ['OPENCODE_AUTH', 'OPENCODE_SERVER_USERNAME', 'OPENCODE_SERVER_PASSWORD_FILE']) {
+      const hostInterpolatedReference = new RegExp(`(^|[^$])\\$\\{${name}\\b`);
+      expect(
+        healthcheckTest,
+        `healthcheck must not contain a raw, host-interpolated \${${name}...} reference: ${healthcheckTest}`,
+      ).not.toMatch(hostInterpolatedReference);
+    }
+    // A single-`$` `$(cat` would be host-shell-evaluated at config-load time
+    // (and is an invalid Compose interpolation to boot) — only the doubled
+    // `$$(cat` (container-side) form is allowed.
+    expect(healthcheckTest).not.toMatch(/(^|[^$])\$\(cat/);
+  });
+
+  // PIN, green-on-arrival (PR #564 P1-1): the default (auth-off) posture's
+  // probe stays byte-stable as the `*)` branch of the new case statement —
+  // guards against a "helpful" rewrite that also changes the unauthenticated
+  // path's behavior.
+  test('the auth-off branch still probes /health plain (default posture unchanged)', () => {
+    expect(healthcheckTest).toContain('curl -sf http://localhost:4096/health');
+  });
+
+  // RED today (scenario A): the static greps above cannot catch
+  // quoting/folding mistakes in the actual interpolated shell command, so
+  // this test EXECUTES the probe for real — simulating Compose's `$$` -> `$`
+  // interpolation, then running the resulting command under `sh -c` with a
+  // stub `curl` that records its argv. No `-u` is ever logged today because
+  // the probe has no auth branch at all.
+  describe('behavioral: the interpolated probe sends Basic credentials exactly when OPENCODE_AUTH is truthy', () => {
+    const probe = String((assistant?.healthcheck?.test as unknown[] | undefined)?.[1] ?? '');
+
+    function runProbeScenario(scenarioEnv: Record<string, string>): { exitCode: number; curlLines: string[] } {
+      const tempDir = mkdtempSync(join(tmpdir(), 'openpalm-healthcheck-probe-'));
+      try {
+        const binDir = join(tempDir, 'bin');
+        mkdirSync(binDir, { recursive: true });
+        const curlLog = join(tempDir, 'curl.log');
+        writeFileSync(curlLog, '');
+        writeFileSync(
+          join(binDir, 'curl'),
+          '#!/usr/bin/env bash\nprintf \'%s\\n\' "$*" >> "$CURL_LOG"\nexit 0\n',
+          { mode: 0o755 },
+        );
+        // Simulate Compose's `$$` -> `$` interpolation (the probe string
+        // contains only `$$` escapes per test 7's negative assertions), then
+        // hermeticize the skip-marker path so this run cannot observe or
+        // depend on a REAL /tmp file.
+        const interpolated = probe
+          .replaceAll('$$', '$')
+          .replaceAll('/tmp/openpalm-client-skip', join(tempDir, 'client-skip'));
+        const proc = spawnSync('sh', ['-c', interpolated], {
+          encoding: 'utf8',
+          env: {
+            PATH: `${binDir}:${process.env.PATH ?? '/usr/bin:/bin'}`,
+            CURL_LOG: curlLog,
+            ...scenarioEnv,
+          },
+        });
+        const curlLines = readFileSync(curlLog, 'utf8').split('\n').filter((l) => l.length > 0);
+        return { exitCode: proc.status ?? 1, curlLines };
+      } finally {
+        rmSync(tempDir, { recursive: true, force: true });
+      }
+    }
+
+    test('scenario A: OPENCODE_AUTH=true sends Basic credentials read from the secret file (default username)', () => {
+      const tempDir = mkdtempSync(join(tmpdir(), 'openpalm-healthcheck-secret-'));
+      try {
+        const secretFile = join(tempDir, 'opencode_server_password');
+        writeFileSync(secretFile, 'hc-pass\n');
+        const result = runProbeScenario({
+          OPENCODE_AUTH: 'true',
+          OPENCODE_SERVER_PASSWORD_FILE: secretFile,
+        });
+        expect(result.exitCode, JSON.stringify(result.curlLines)).toBe(0);
+        expect(result.curlLines.length).toBeGreaterThan(0);
+        const healthLine = result.curlLines.find((l) => l.includes('/health')) ?? '';
+        expect(healthLine).toContain('-u opencode:hc-pass');
+        expect(healthLine).toContain('/health');
+      } finally {
+        rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    test('scenario B: default posture (OPENCODE_AUTH unset) probes /health with no credentials', () => {
+      const result = runProbeScenario({});
+      expect(result.exitCode, JSON.stringify(result.curlLines)).toBe(0);
+      const healthLine = result.curlLines.find((l) => l.includes('/health')) ?? '';
+      expect(healthLine).not.toContain('-u');
+    });
   });
 });
 
