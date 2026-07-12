@@ -31,11 +31,11 @@ function buildForwardHeaders(
   }
   if (password) {
     // OpenCode rejects Basic auth with an empty username — the upstream
-    // default `OPENCODE_SERVER_USERNAME` is `"opencode"`. OpenPalm configures
-    // all of its OpenCode servers (assistant container + Electron-spawned
-    // local) with `"openpalm"`, so that's our fallback when the endpoint
-    // entry doesn't specify one.
-    const user = username || 'openpalm';
+    // OpenCode's server default username is `"opencode"` and the shipped
+    // assistant compose never overrides OPENCODE_SERVER_USERNAME, so an
+    // endpoint without an explicit username must forward `opencode:<pw>` or a
+    // correct password 401s (PR #564 r3566888629).
+    const user = username || 'opencode';
     headers.authorization = `Basic ${btoa(`${user}:${password}`)}`;
   }
   return headers;

@@ -253,6 +253,15 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **Host-UI Basic auth to OpenCode is correct on every path** (PR #564
+  r3566888629, r3566889513): all host-UI forwarders (default/runtime endpoint,
+  probe, chat proxy, host health, opencode http client) now default the Basic
+  username to OpenCode's server default `opencode` instead of `openpalm`, so a
+  correct password no longer 401s a user-added remote-OpenCode connection; and
+  the synthesized Local Assistant endpoint reads `OPENCODE_AUTH` and the
+  password fresh from stack.env / the secret file, so completing the
+  home-password wizard takes effect without restarting the host UI.
+
 - **Pairing principal IDs are collision-resistant and oversized labels are
   rejected** (PR #564 r3566891355, r3566891768): the device-principal id suffix
   widened from 16 to 64 bits so a same-label collision can no longer silently

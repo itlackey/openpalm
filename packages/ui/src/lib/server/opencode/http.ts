@@ -14,7 +14,8 @@ export async function opencodeFetch<T>(path: string, init?: RequestInit): Promis
 		...(init?.headers as Record<string, string> | undefined),
 	};
 	if (endpoint.password) {
-		const user = endpoint.username || 'openpalm';
+		// PR #564 r3566888629: default to OpenCode's server username 'opencode'.
+		const user = endpoint.username || 'opencode';
 		headers.authorization = `Basic ${btoa(`${user}:${endpoint.password}`)}`;
 	}
 	const response = await fetch(`${endpoint.url}${path}`, {

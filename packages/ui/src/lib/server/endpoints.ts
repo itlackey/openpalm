@@ -23,7 +23,7 @@ import { readFileSync, writeFileSync, mkdirSync, existsSync, chmodSync, unlinkSy
 import { dirname } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { getState } from './state.js';
-import { readStackEnv, type RemoteStatus } from '@openpalm/lib';
+import { readSecret, readStackEnv, type RemoteStatus } from '@openpalm/lib';
 import type { ConnectionKind } from '$lib/types.js';
 
 export type ConnectionEntry = {
@@ -84,6 +84,15 @@ function kindOf(entry: ConnectionEntry): ConnectionKind {
 }
 
 const DEFAULT_ID = 'default';
+
+/**
+ * OpenCode's server default Basic-auth username. The shipped assistant compose
+ * never overrides OPENCODE_SERVER_USERNAME, and the guardian's upstream auth
+ * sends `opencode:<password>`, so every host-UI forwarder must default here or
+ * a correct password 401s (PR #564 r3566888629). User-added connections may
+ * still carry an explicit username.
+ */
+export const DEFAULT_OPENCODE_USERNAME = 'opencode';
 const LOCAL_ELECTRON_ID = 'local-electron';
 let wizardOpencodeUrl: string | null = null;
 let remoteStatusCache: { expiresAt: number; value: RemoteStatus[] } | null = null;
@@ -186,7 +195,7 @@ function localEndpoint(): ActiveConnection | null {
     id: LOCAL_ELECTRON_ID,
     label: 'OpenPalm Admin',
     url: normalizeBrowserFacingUrl(rt.url),
-    username: rt.username || 'openpalm',
+    username: rt.username || DEFAULT_OPENCODE_USERNAME,
     ...(rt.password ? { password: rt.password } : {}),
     kind: 'local-opencode',
     isDefault: false,
@@ -259,18 +268,28 @@ function defaultEndpoint(): ActiveConnection {
   // overrides OPENCODE_SERVER_USERNAME, so 'openpalm' here meant the
   // home-password preset 401ed from the host UI (guardian upstream auth
   // already sends 'opencode:<password>').
-  const username = process.env.OPENCODE_SERVER_USERNAME || 'opencode';
+  const username = process.env.OPENCODE_SERVER_USERNAME || DEFAULT_OPENCODE_USERNAME;
   // #563 D10 — an explicit host OPENCODE_SERVER_PASSWORD always wins
-  // (T63, pin). Otherwise fall back to the network-preset-managed
-  // OP_OPENCODE_PASSWORD secret, but ONLY when OPENCODE_AUTH is truthy: the
-  // secret file is now always materialized (#563/D3), so an unconditional
-  // fallback would start attaching Basic auth for every existing install —
-  // gating on OPENCODE_AUTH keeps the default posture byte-identical.
-  const authEnabled = /^(true|1|yes)$/i.test((process.env.OPENCODE_AUTH ?? '').trim());
-  const password =
-    process.env.OPENCODE_SERVER_PASSWORD ||
-    (authEnabled ? process.env.OP_OPENCODE_PASSWORD : undefined) ||
-    undefined;
+  // (T63, pin). Otherwise fall back to the network-preset-managed OpenCode
+  // password, but ONLY when OPENCODE_AUTH is truthy: the secret file is always
+  // materialized (#563/D3), so an unconditional fallback would start attaching
+  // Basic auth for every existing install — gating on OPENCODE_AUTH keeps the
+  // default posture byte-identical.
+  //
+  // PR #564 r3566889513: read auth from the SAME fresh sources as the URL, not
+  // the frozen (startup-promoted) process.env. Completing the wizard writes
+  // OPENCODE_AUTH to stack.env and the password to knowledge/secrets/
+  // op_opencode_password; the long-lived host UI must see them without a
+  // restart. OPENCODE_AUTH is non-secret → fresh via readStackEnv (`persisted`);
+  // the password is a secret file (readStackEnv strips *_PASSWORD keys) → read
+  // it fresh from the secret store. process.env remains the fallback.
+  const authEnabled = /^(true|1|yes)$/i.test(
+    (persisted.OPENCODE_AUTH ?? process.env.OPENCODE_AUTH ?? '').trim(),
+  );
+  const presetPassword = authEnabled
+    ? readSecret(getState().homeDir, 'op_opencode_password')?.trim() || process.env.OP_OPENCODE_PASSWORD
+    : undefined;
+  const password = process.env.OPENCODE_SERVER_PASSWORD || presetPassword || undefined;
   return {
     id: DEFAULT_ID,
     label: 'Local Assistant',
@@ -504,7 +523,7 @@ export function deleteConnection(id: string): void {
 async function probeEndpoint(endpoint: ActiveConnection): Promise<RemoteStatus> {
   const headers = new Headers();
   if (endpoint.password) {
-    const username = endpoint.username ?? 'openpalm';
+    const username = endpoint.username ?? DEFAULT_OPENCODE_USERNAME;
     headers.set('authorization', `Basic ${Buffer.from(`${username}:${endpoint.password}`).toString('base64')}`);
   }
   // #486 D2: a guardian /oc base's bare root (`GET /oc/`) is not an

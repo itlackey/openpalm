@@ -25,7 +25,8 @@ export const GET: RequestHandler = async (event) => {
 	try {
 		const headers: Record<string, string> = {};
 		if (endpoint.password) {
-			const user = endpoint.username || 'openpalm';
+			// PR #564 r3566888629: default to OpenCode's server username 'opencode'.
+			const user = endpoint.username || 'opencode';
 			headers.authorization = `Basic ${btoa(`${user}:${endpoint.password}`)}`;
 		}
 		const res = await fetch(`${endpoint.url}/health`, {

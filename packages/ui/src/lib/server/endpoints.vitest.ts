@@ -150,6 +150,19 @@ describe('default endpoint synthesis', () => {
     expect(getActiveEndpoint().password).toBe('preset-password');
   });
 
+  it('T64 (PR #564 r3566889513): reads OPENCODE_AUTH + password fresh from stack.env/secret without process.env or a restart', () => {
+    // Simulate "the wizard just completed": stack.env now has OPENCODE_AUTH and
+    // the password secret is materialized — but the long-lived process.env was
+    // frozen at startup with neither set.
+    const homeDir = getState().homeDir;
+    mkdirSync(`${homeDir}/knowledge/env`, { recursive: true });
+    writeFileSync(`${homeDir}/knowledge/env/stack.env`, 'OPENCODE_AUTH=true\n');
+    mkdirSync(`${homeDir}/knowledge/secrets`, { recursive: true });
+    writeFileSync(`${homeDir}/knowledge/secrets/op_opencode_password`, 'fresh-lan-pass\n', { mode: 0o600 });
+    // No process.env.OPENCODE_AUTH / OP_OPENCODE_PASSWORD (cleared in beforeEach).
+    expect(getActiveEndpoint().password).toBe('fresh-lan-pass');
+  });
+
   it("T61b: default endpoint username matches OpenCode's server default ('opencode') so home-password Basic auth is accepted upstream", () => {
     process.env.OPENCODE_AUTH = 'true';
     process.env.OP_OPENCODE_PASSWORD = 'preset-password';
