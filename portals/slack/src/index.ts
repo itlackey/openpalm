@@ -328,8 +328,11 @@ export default class SlackChannel extends BasePortal {
       callback_id: ASK_MODAL_CALLBACK_ID,
       private_metadata: JSON.stringify(metadata),
       title: {
+        // Slack caps a view (modal) title at 24 chars — a long SLACK_BOT_NAME
+        // would otherwise make views.open fail with invalid_arguments and the
+        // modal never opens. Clamp so it always renders.
         type: "plain_text",
-        text: `Ask ${this.botName}`,
+        text: `Ask ${this.botName}`.slice(0, 24),
       },
       submit: {
         type: "plain_text",

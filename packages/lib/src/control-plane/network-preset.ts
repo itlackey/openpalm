@@ -154,9 +154,31 @@ export function resolveNetworkPreset(
 
 // ── Detection ─────────────────────────────────────────────────────────────
 
+/**
+ * Per-service binds whose compose host-port default NESTS `${OP_BIND_ADDRESS}`
+ * (core.compose.yml OP_CLIENT / services.compose.yml OP_VOICE:
+ * `${OP_X_BIND_ADDRESS:-${OP_BIND_ADDRESS:-127.0.0.1}}`). An unset value
+ * therefore inherits the GLOBAL bind, not loopback. `OP_ASSISTANT_BIND_ADDRESS`
+ * is deliberately absent — its host-port line defaults straight to 127.0.0.1
+ * with no OP_BIND_ADDRESS fallback.
+ */
+const OP_BIND_CASCADING_KEYS: ReadonlySet<string> = new Set([
+  "OP_CLIENT_BIND_ADDRESS",
+  "OP_VOICE_BIND_ADDRESS",
+]);
+
 function boundValue(env: Record<string, string | undefined>, key: (typeof MANAGED_BIND_KEYS)[number]): string {
   const raw = env[key]?.trim();
-  return raw ? raw : LOOPBACK_DEFAULT;
+  if (raw) return raw;
+  // Mirror the compose cascade so detection sees the SAME exposure the stack
+  // actually gets: an unset cascading bind inherits OP_BIND_ADDRESS (only then
+  // loopback), so `OP_BIND_ADDRESS=0.0.0.0` alone reads as client/voice exposed
+  // (drift → "custom" + loud warning), not a clean shared-guardian.
+  if (OP_BIND_CASCADING_KEYS.has(key)) {
+    const globalBind = env.OP_BIND_ADDRESS?.trim();
+    if (globalBind) return globalBind;
+  }
+  return LOOPBACK_DEFAULT;
 }
 
 function isExposed(env: Record<string, string | undefined>, key: (typeof MANAGED_BIND_KEYS)[number]): boolean {

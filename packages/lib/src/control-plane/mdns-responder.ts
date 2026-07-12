@@ -60,7 +60,10 @@ export function sanitizeDnsLabel(raw: string, maxLength = 54): string {
   const mapped = trimmed.replace(/[^a-z0-9-]/g, "-");
   const collapsed = mapped.replace(/-+/g, "-");
   const stripped = collapsed.replace(/^-+|-+$/g, "");
-  const truncated = stripped.slice(0, maxLength);
+  // Re-strip AFTER truncation: slicing can land on a hyphen and re-introduce a
+  // trailing "-" (an invalid DNS label ending, and an ugly "--guardian" once
+  // the guardian suffix is appended).
+  const truncated = stripped.slice(0, maxLength).replace(/-+$/g, "");
   return truncated || "openpalm";
 }
 

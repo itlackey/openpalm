@@ -162,8 +162,10 @@ export function startTlsPassthrough(options: TlsPassthroughOptions): TlsPassthro
               queueAndTryWrite(client, client.data.pendingToClient, chunk);
             },
             drain(upstreamSocket) {
+              // The upstream socket is writable again — retry the bytes queued
+              // FOR the upstream (client→upstream), not the client-bound queue.
               const client = upstreamSocket.data.client;
-              flushPending(client, client.data.pendingToClient);
+              flushPending(upstreamSocket, client.data.pendingToUpstream);
             },
             close(upstreamSocket) {
               upstreamSocket.data.client.end();
@@ -195,7 +197,9 @@ export function startTlsPassthrough(options: TlsPassthroughOptions): TlsPassthro
         queueAndTryWrite(socket.data.upstream, socket.data.pendingToUpstream, chunk);
       },
       drain(socket) {
-        if (socket.data.upstream) flushPending(socket.data.upstream, socket.data.pendingToUpstream);
+        // The client socket is writable again — retry the bytes queued FOR the
+        // client (upstream→client), not the upstream-bound queue.
+        flushPending(socket, socket.data.pendingToClient);
       },
       close(socket) {
         socket.data.upstream?.end();

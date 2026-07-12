@@ -17,7 +17,7 @@
  */
 import type { RequestHandler } from './$types';
 import { renderSVG } from 'uqr';
-import { mintDirectPrincipalPairingCode, readStackRuntimeEnv } from '@openpalm/lib';
+import { mintDirectPrincipalPairingCode, readStackRuntimeEnv, isLoopback } from '@openpalm/lib';
 import {
   errorResponse,
   getRequestId,
@@ -27,10 +27,6 @@ import {
 } from '$lib/server/helpers.js';
 import { validateConnectionUrl } from '$lib/server/endpoints.js';
 import { getState } from '$lib/server/state.js';
-
-function isLoopbackHostname(hostname: string): boolean {
-  return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1';
-}
 
 /** Warnings named in the panel copy so the operator knows exactly which env
  *  keys / prerequisites this pairing code depends on (D3 risk 6: the pairing
@@ -45,7 +41,7 @@ function computeWarnings(mergedEnv: Record<string, string>, targetUrl: string): 
   }
   try {
     const parsed = new URL(targetUrl);
-    if (parsed.protocol === 'http:' && !isLoopbackHostname(parsed.hostname)) {
+    if (parsed.protocol === 'http:' && !isLoopback(parsed.hostname)) {
       warnings.push(
         'This URL is plain HTTP, not HTTPS, and not loopback — phones and hosted clients refuse plain-HTTP remote connections. See docs/remote-access-tls.md.',
       );
