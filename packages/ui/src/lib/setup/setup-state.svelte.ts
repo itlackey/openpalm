@@ -131,6 +131,8 @@ export const INITIAL = {
   // payload only sends `network` when this is true (D7: a rerun over a
   // hand-tuned env, or over a previous preset, never silently rewrites it).
   networkDirty: false,
+  // PR #564 r3566887969 — existing OpenCode password on a rerun (keep-as-is guard).
+  hasExistingOpencodePassword: false,
   // Step 5: Review + Install
   installError: '',
   installing: false,
@@ -234,6 +236,9 @@ export class SetupState {
   opencodePassword = $state(INITIAL.opencodePassword);
   homeOpenAck = $state(INITIAL.homeOpenAck);
   networkDirty = $state(INITIAL.networkDirty);
+  // PR #564 r3566887969 — set from rerun current-config; keeps a keep-as-is
+  // home-password rerun from rotating the existing OpenCode password secret.
+  hasExistingOpencodePassword = $state(INITIAL.hasExistingOpencodePassword);
 
   // ── Step 5: Review + Install ─────────────────────────────────────────────────
   installError = $state(INITIAL.installError);
@@ -957,10 +962,23 @@ export class SetupState {
    * does not re-prompt). Event-handler-driven — no `$effect`.
    */
   handleNetworkPresetChange(preset: NetworkAccessPreset): void {
+    // PR #564 r3566887969: re-selecting the already-active home-password preset
+    // on a rerun (empty box because the secret is never returned, and an
+    // existing password on disk) must KEEP the existing secret — never mint a
+    // new one or mark the step dirty, which would rotate the password and 401
+    // every already-paired device. A genuine change (typing a password, or
+    // switching FROM another preset) still rotates as intended.
+    const keepExistingHomePassword =
+      preset === 'home-password' &&
+      this.networkPreset === 'home-password' &&
+      this.isRerun &&
+      this.hasExistingOpencodePassword &&
+      !this.opencodePassword;
     if (this.networkPreset === 'home-open' && preset !== 'home-open') {
       this.homeOpenAck = false;
     }
     this.networkPreset = preset;
+    if (keepExistingHomePassword) return; // networkDirty stays false → payload omits network
     if (preset === 'home-password' && !this.opencodePassword) {
       this.opencodePassword = generatePassword();
     }
@@ -1214,6 +1232,9 @@ export class SetupState {
           // must NOT dirty the field — networkDirty stays false until the
           // operator actively touches the step (D7).
           this.networkPreset = parsed.networkPreset ?? null;
+          if (parsed.hasOpencodePassword !== undefined) {
+            this.hasExistingOpencodePassword = parsed.hasOpencodePassword;
+          }
 
           // Enabled addons + portal credentials — mutate the existing portal
           // selection objects so credential fields land on reactive state.

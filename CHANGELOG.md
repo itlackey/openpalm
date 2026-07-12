@@ -253,6 +253,13 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **Re-running setup over a home-password install no longer rotates the
+  password** (PR #564 r3566887969): re-selecting the already-active
+  home-password preset on a rerun (empty box because the secret is never
+  returned) now keeps the existing OpenCode password instead of minting a new
+  one, so already-paired devices are not silently 401'd. Typing a new password
+  still rotates it as intended.
+
 - **Guardian upstream auth matches OpenCode exactly** (PR #564 r3566888272,
   r3566889740): the guardian now strips only trailing newlines from the
   OpenCode password (matching the assistant entrypoint's `$(cat)` instead of

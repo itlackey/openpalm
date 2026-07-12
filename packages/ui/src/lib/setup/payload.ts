@@ -217,6 +217,10 @@ export interface RawSetupConfig {
   portalCredentials?: Record<string, Record<string, unknown>> | null;
   /** #563 — the detected network access preset (null = custom/hand-tuned). */
   network?: { preset?: string | null } | null;
+  /** PR #564 r3566887969 — whether the install already has an OpenCode password
+   *  secret. The secret value itself is never returned; this flag lets a rerun
+   *  distinguish "keep the existing password" from "set a new one". */
+  hasOpencodePassword?: boolean;
 }
 
 /**
@@ -245,6 +249,8 @@ export interface PartialSetupState {
    * preset is absent/unrecognized (custom/hand-tuned env, D7/D8).
    */
   networkPreset?: NetworkAccessPreset | null;
+  /** PR #564 r3566887969 — the install already has an OpenCode password. */
+  hasOpencodePassword?: boolean;
 }
 
 /**
@@ -306,6 +312,11 @@ export function parseSetupConfig(data: RawSetupConfig): PartialSetupState {
   if (data.network !== undefined && data.network !== null) {
     const preset = data.network.preset;
     result.networkPreset = isNetworkAccessPreset(preset) ? preset : null;
+  }
+  // PR #564 r3566887969 — surface whether a password already exists so a rerun
+  // keep-as-is over home-password doesn't mint (rotate) a new one.
+  if (typeof data.hasOpencodePassword === 'boolean') {
+    result.hasOpencodePassword = data.hasOpencodePassword;
   }
 
   return result;

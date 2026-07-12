@@ -69,6 +69,45 @@ describe('SetupState — defaults', () => {
   });
 });
 
+describe('SetupState — home-password rerun keep-as-is (PR #564 r3566887969)', () => {
+  it('re-selecting the active home-password preset on a rerun does NOT rotate the password', () => {
+    const s = new SetupState();
+    // Simulate a rerun over an existing home-password install: the secret is
+    // never returned, so the box is empty, but the install already has one.
+    s.isRerun = true;
+    s.hasExistingOpencodePassword = true;
+    s.networkPreset = 'home-password';
+    s.opencodePassword = '';
+    s.networkDirty = false;
+
+    s.handleNetworkPresetChange('home-password'); // re-click the selected row
+
+    expect(s.opencodePassword).toBe(''); // no generatePassword()
+    expect(s.networkDirty).toBe(false); // not marked dirty
+    expect(s.payload.network).toBeUndefined(); // payload omits network → no rotation
+  });
+
+  it('typing a new password on the rerun IS a genuine change and rotates', () => {
+    const s = new SetupState();
+    s.isRerun = true;
+    s.hasExistingOpencodePassword = true;
+    s.networkPreset = 'home-password';
+    s.opencodePassword = '';
+
+    s.handleOpencodePasswordInput('a-brand-new-pw');
+
+    expect(s.networkDirty).toBe(true);
+    expect(s.payload.network).toEqual({ preset: 'home-password', opencodePassword: 'a-brand-new-pw' });
+  });
+
+  it('a fresh (non-rerun) install still auto-generates a home-password', () => {
+    const s = new SetupState();
+    s.handleNetworkPresetChange('home-password');
+    expect(s.opencodePassword.length).toBeGreaterThanOrEqual(8);
+    expect(s.networkDirty).toBe(true);
+  });
+});
+
 describe('SetupState — canComplete', () => {
   it('is true once a chat model is selected', () => {
     const s = new SetupState();
