@@ -15,6 +15,7 @@
     ".": "./src/index.ts",
     "./provider-constants": "./src/provider-constants.ts",
     "./shared/logger": "./src/logger.ts",
+    "./control-plane/*.js": "./src/control-plane/*.ts",
     "./control-plane/*": "./src/control-plane/*.ts"
   },
   "files": [

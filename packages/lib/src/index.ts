@@ -527,7 +527,22 @@ export type { AkmStats } from './control-plane/akm-stats.js';
 export { getAkmStats, parseAkmStats } from './control-plane/akm-stats.js';
 
 // ── Bind Address Startup Warning ─────────────────────────────────────────────
-export { collectBindAddressWarnings, isRemoteSetupAllowed } from "./control-plane/bind-warning.js";
+export { collectBindAddressWarnings, isRemoteSetupAllowed, isLoopback } from "./control-plane/bind-warning.js";
+
+// ── mDNS host self-advertisement (#488) ──────────────────────────────────────
+// Pure packet functions (sanitizeDnsLabel, parseDnsQuestions, buildMdnsAnswer,
+// etc.) stay reachable via the ./control-plane/mdns-responder.js subpath for
+// tests; only the consumer-facing surface goes through this barrel.
+export {
+  deriveMdnsNames,
+  resolveMdnsAdvertisements,
+  resolveMdnsStatus,
+  reconcileMdnsResponder,
+  _setMdnsSocketFactoryForTests,
+  _resetMdnsResponderForTests,
+  type MdnsAdvertisement,
+  type MdnsStatus,
+} from "./control-plane/mdns-responder.js";
 
 // ── UI asset seeding and resolution ─────────────────────────────────────────
 export type { UiBuildUpdateResult, SkeletonUpdateResult, UiUpdateChannel } from "./control-plane/ui-assets.js";

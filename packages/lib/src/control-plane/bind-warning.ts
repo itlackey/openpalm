@@ -19,7 +19,8 @@ const PER_SERVICE_BIND_VARS: readonly string[] = [
   "OP_VOICE_BIND_ADDRESS",
 ];
 
-function isLoopback(value: string): boolean {
+/** Exported for reuse by mdns-responder.ts's bind-gating logic (#488). */
+export function isLoopback(value: string): boolean {
   const v = value.trim();
   return v === "127.0.0.1" || v === "localhost" || v === "::1";
 }
