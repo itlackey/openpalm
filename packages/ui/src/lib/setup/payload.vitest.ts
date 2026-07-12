@@ -36,6 +36,10 @@ function baseInput(overrides: Partial<SetupPayloadInput> = {}): SetupPayloadInpu
     uiLoginPassword: 'pw',
     imageTag: '',
     hostAkmEnabled: false,
+    // #563 — network access preset. Default matches the wizard default
+    // (D5/D7): 'this-pc' on every first run.
+    networkPreset: 'this-pc',
+    opencodePassword: '',
     ...overrides,
   };
 }
@@ -50,6 +54,10 @@ describe('buildSetupPayload', () => {
       addons: { api: true }, // locked API portal is always enabled
       security: { uiLoginPassword: 'secret' },
       connections: [],
+      // #563 — the default networkPreset ('this-pc') always emits a network
+      // block with no password (D7: the wizard sends `network` on every
+      // first run).
+      network: { preset: 'this-pc' },
     });
   });
 
@@ -144,6 +152,70 @@ describe('buildSetupPayload', () => {
     const p = buildSetupPayload(baseInput({ imageTag: '   ' }));
     expect(p.imageTag).toBeUndefined();
   });
+});
+
+// ── #563 network access preset (T44-T48) ─────────────────────────────────────
+
+describe('buildSetupPayload — network access preset (#563)', () => {
+  test('T44: default input emits network {preset:"this-pc"} with no password', () => {
+    const p = buildSetupPayload(baseInput());
+    expect(p.network).toEqual({ preset: 'this-pc' });
+  });
+
+  test('T45: home-password emits the password', () => {
+    const p = buildSetupPayload(baseInput({ networkPreset: 'home-password', opencodePassword: 'lan-secret-123' }));
+    expect(p.network).toEqual({ preset: 'home-password', opencodePassword: 'lan-secret-123' });
+  });
+
+  test('T45: home-open does not emit a password', () => {
+    const p = buildSetupPayload(baseInput({ networkPreset: 'home-open', opencodePassword: 'ignored' }));
+    expect(p.network).toEqual({ preset: 'home-open' });
+  });
+
+  test('T45: shared-guardian does not emit a password', () => {
+    const p = buildSetupPayload(baseInput({ networkPreset: 'shared-guardian', opencodePassword: 'ignored' }));
+    expect(p.network).toEqual({ preset: 'shared-guardian' });
+  });
+
+  test('T46: networkPreset null (rerun over a custom env) omits the network field entirely', () => {
+    const p = buildSetupPayload(baseInput({ networkPreset: null }));
+    expect(p.network).toBeUndefined();
+  });
+});
+
+describe('parseSetupConfig — network access preset (#563)', () => {
+  test('T47: maps network.preset onto PartialSetupState.networkPreset', () => {
+    const r = parseSetupConfig({ network: { preset: 'home-password' } } as RawSetupConfig);
+    expect(r.networkPreset).toBe('home-password');
+  });
+
+  test('T47: maps network.preset === null onto PartialSetupState.networkPreset === null', () => {
+    const r = parseSetupConfig({ network: { preset: null } } as RawSetupConfig);
+    expect(r.networkPreset).toBeNull();
+  });
+
+  test('T47: an unknown preset string maps to null (never a garbage passthrough)', () => {
+    const r = parseSetupConfig({ network: { preset: 'not-a-real-preset' } } as RawSetupConfig);
+    expect(r.networkPreset).toBeNull();
+  });
+
+  test('T47: a missing network field leaves networkPreset unset', () => {
+    const r = parseSetupConfig({});
+    expect(r.networkPreset).toBeUndefined();
+  });
+});
+
+describe('network access preset round-trip: build → parse (T48)', () => {
+  test.each(['this-pc', 'home-password', 'home-open', 'shared-guardian'] as const)(
+    'T48: %s round-trips through the install payload back to the same preset',
+    (preset) => {
+      const built = buildSetupPayload(
+        baseInput({ networkPreset: preset, opencodePassword: preset === 'home-password' ? 'lan-secret-123' : '' }),
+      );
+      const parsed = parseSetupConfig({ network: built.network ?? { preset: null } } as RawSetupConfig);
+      expect(parsed.networkPreset).toBe(preset);
+    },
+  );
 });
 
 // ── parseSetupConfig ─────────────────────────────────────────────────────────

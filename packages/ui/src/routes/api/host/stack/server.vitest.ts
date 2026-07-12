@@ -277,3 +277,64 @@ describe('GET/PUT /api/host/stack — mdns surface (#488)', () => {
     expect(mdns.guardian.advertised).toBe(false);
   });
 });
+
+// #563 — networkPreset surfaced on GET/PUT /api/host/stack (D8, T58-T60).
+describe('GET/PUT /api/host/stack — networkPreset surface (#563 D8)', () => {
+  test('T58: GET reports networkPreset "this-pc" on a fresh env', async () => {
+    process.env.OP_UI_HOST_MODE = 'host-ui';
+    const { GET } = await loadRoute();
+    const res = await GET(makeGetEvent());
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as Record<string, unknown>;
+    expect(body.networkPreset).toBe('this-pc');
+  });
+
+  test('T59: GET detects a seeded home-password row', async () => {
+    process.env.OP_UI_HOST_MODE = 'host-ui';
+    seedSecretsEnv(
+      homeDir,
+      [
+        'OP_BIND_ADDRESS=127.0.0.1',
+        'OP_ASSISTANT_BIND_ADDRESS=0.0.0.0',
+        'OP_CLIENT_BIND_ADDRESS=127.0.0.1',
+        'OP_VOICE_BIND_ADDRESS=127.0.0.1',
+        'OPENCODE_AUTH=true',
+        '',
+      ].join('\n'),
+    );
+    const { GET } = await loadRoute();
+    const res = await GET(makeGetEvent());
+    const body = (await res.json()) as Record<string, unknown>;
+    expect(body.networkPreset).toBe('home-password');
+  });
+
+  test('T59: a drifted env reports networkPreset null', async () => {
+    process.env.OP_UI_HOST_MODE = 'host-ui';
+    seedSecretsEnv(
+      homeDir,
+      [
+        'OP_BIND_ADDRESS=0.0.0.0',
+        'OP_ASSISTANT_BIND_ADDRESS=0.0.0.0',
+        'OPENCODE_AUTH=true',
+        '',
+      ].join('\n'),
+    );
+    const { GET } = await loadRoute();
+    const res = await GET(makeGetEvent());
+    const body = (await res.json()) as Record<string, unknown>;
+    expect(body.networkPreset).toBeNull();
+  });
+
+  test('T60: PUT lanExposureEnabled:true reports networkPreset "home-open" in its response and on the follow-up GET', async () => {
+    process.env.OP_UI_HOST_MODE = 'host-ui';
+    const { GET, PUT } = await loadRoute();
+    const putRes = await PUT(makePutEvent({ projectName: 'openpalm', lanExposureEnabled: true }));
+    expect(putRes.status).toBe(200);
+    const putBody = (await putRes.json()) as Record<string, unknown>;
+    expect(putBody.networkPreset).toBe('home-open');
+
+    const getRes = await GET(makeGetEvent());
+    const getBody = (await getRes.json()) as Record<string, unknown>;
+    expect(getBody.networkPreset).toBe('home-open');
+  });
+});

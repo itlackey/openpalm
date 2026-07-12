@@ -789,3 +789,74 @@ describe('SUPERVISOR-RESET — start_client respawn counter resets after a susta
     expect(result.skipMarkerExists).toBe(true);
   });
 });
+
+// ── #563 T34-T36 — resolve_opencode_server_password (behavioral) ───────────
+// A minimal driver, distinct from FUNCTION_DRIVER above: sources ONLY the
+// entrypoint's function definitions (same awk strip as checkCorsOrigin),
+// calls resolve_opencode_server_password directly, then reports whether
+// OPENCODE_SERVER_PASSWORD ended up set (and to what) via stdout markers —
+// no docker/opencode boot, no client-build side effects.
+function runResolvePasswordScenario(
+  scenarioEnv: Record<string, string>,
+): { exitCode: number; stdout: string; stderr: string } {
+  const tempDir = mkdtempSync(join(tmpdir(), 'openpalm-resolve-pw-'));
+  try {
+    const functionsPath = join(tempDir, 'functions.sh');
+    const driverPath = join(tempDir, 'driver.sh');
+    writeFileSync(
+      driverPath,
+      [
+        '#!/usr/bin/env bash',
+        'set -uo pipefail',
+        'awk \'!/^[a-z_][a-z0-9_]*$/ || /^(fi|done|esac|then|else|do)$/\' "$1" > "$2"',
+        '# shellcheck disable=SC1090',
+        'source "$2"',
+        'resolve_opencode_server_password',
+        'rc=$?',
+        'if [ -n "${OPENCODE_SERVER_PASSWORD+x}" ]; then',
+        '  printf \'SET:%s\\n\' "$OPENCODE_SERVER_PASSWORD"',
+        'else',
+        '  printf \'UNSET\\n\'',
+        'fi',
+        'exit $rc',
+        '',
+      ].join('\n'),
+      { mode: 0o755 },
+    );
+    const proc = spawnSync('bash', [driverPath, ENTRYPOINT_PATH, functionsPath], {
+      encoding: 'utf8',
+      env: { PATH: process.env.PATH ?? '/usr/bin:/bin', ...scenarioEnv },
+    });
+    return { exitCode: proc.status ?? 1, stdout: proc.stdout ?? '', stderr: proc.stderr ?? '' };
+  } finally {
+    rmSync(tempDir, { recursive: true, force: true });
+  }
+}
+
+describe('#563 — resolve_opencode_server_password (behavioral)', () => {
+  test('T34: exports the file contents with the trailing newline stripped', () => {
+    const tempDir = mkdtempSync(join(tmpdir(), 'openpalm-resolve-pw-file-'));
+    try {
+      const pwFile = join(tempDir, 'opencode_server_password');
+      writeFileSync(pwFile, 's3cret-pw\n');
+      const result = runResolvePasswordScenario({ OPENCODE_SERVER_PASSWORD_FILE: pwFile });
+      expect(result.exitCode, result.stderr).toBe(0);
+      expect(result.stdout.trim()).toBe('SET:s3cret-pw');
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  test('T35: OPENCODE_AUTH=true with no resolvable password fails fast naming both vars', () => {
+    const result = runResolvePasswordScenario({ OPENCODE_AUTH: 'true' });
+    expect(result.exitCode).not.toBe(0);
+    expect(result.stderr).toContain('OPENCODE_AUTH');
+    expect(result.stderr).toContain('OPENCODE_SERVER_PASSWORD_FILE');
+  });
+
+  test('T36: auth off with no file resolves silently (default posture) — variable stays unset', () => {
+    const result = runResolvePasswordScenario({});
+    expect(result.exitCode, result.stderr).toBe(0);
+    expect(result.stdout.trim()).toBe('UNSET');
+  });
+});

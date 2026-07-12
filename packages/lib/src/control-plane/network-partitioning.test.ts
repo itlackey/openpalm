@@ -222,6 +222,84 @@ describe("mDNS — native OpenCode responder (no avahi sidecars)", () => {
   });
 });
 
+describe("#563 — OPENCODE_AUTH + opencode_server_password compose plumbing", () => {
+  // Raw text search rather than the parsed ComposeDoc type above (which does
+  // not model `secrets:` blocks) — mirrors the style of the loopback-default
+  // string checks elsewhere in this file.
+  const coreRaw = readFileSync(join(STACK_DIR, "core.compose.yml"), "utf8");
+  const coreDoc = yamlParse(coreRaw) as {
+    services?: Record<string, { environment?: Record<string, unknown>; secrets?: unknown[] }>;
+    secrets?: Record<string, { file?: string }>;
+  };
+  const portalsRaw = readFileSync(join(STACK_DIR, "portals.compose.yml"), "utf8");
+  const portalsDoc = yamlParse(portalsRaw) as {
+    services?: Record<string, { environment?: Record<string, unknown>; secrets?: unknown[] }>;
+    secrets?: Record<string, { file?: string }>;
+  };
+
+  test("T28: assistant OPENCODE_AUTH is compose-interpolated with a false default", () => {
+    const env = coreDoc.services?.assistant?.environment ?? {};
+    expect(env.OPENCODE_AUTH).toBe("${OPENCODE_AUTH:-false}");
+  });
+
+  test("T29: assistant receives the OpenCode server password as a *_FILE secret, never raw", () => {
+    const env = coreDoc.services?.assistant?.environment ?? {};
+    expect(env.OPENCODE_SERVER_PASSWORD_FILE).toBe("/run/secrets/opencode_server_password");
+    expect(env).not.toHaveProperty("OPENCODE_SERVER_PASSWORD");
+
+    const secrets = (coreDoc.services?.assistant?.secrets ?? []) as string[];
+    expect(secrets).toContain("opencode_server_password");
+
+    expect(coreDoc.secrets?.opencode_server_password?.file).toBe(
+      "${OP_HOME}/knowledge/secrets/op_opencode_password",
+    );
+  });
+
+  test("T30: guardian receives the same auth pair", () => {
+    const env = portalsDoc.services?.guardian?.environment ?? {};
+    expect(env.OPENCODE_AUTH).toBe("${OPENCODE_AUTH:-false}");
+    expect(env.OPENCODE_SERVER_PASSWORD_FILE).toBe("/run/secrets/opencode_server_password");
+
+    const secrets = (portalsDoc.services?.guardian?.secrets ?? []) as string[];
+    expect(secrets).toContain("opencode_server_password");
+
+    // Each managed compose file must stand alone for `docker compose config` —
+    // the top-level secret declaration must exist in portals.compose.yml too,
+    // not only in core.compose.yml.
+    expect(portalsDoc.secrets?.opencode_server_password?.file).toBe(
+      "${OP_HOME}/knowledge/secrets/op_opencode_password",
+    );
+  });
+});
+
+describe("#563 — the preset-managed cascade set matches compose reality (T31, pin)", () => {
+  test("client port line nests OP_CLIENT_BIND_ADDRESS then OP_BIND_ADDRESS", () => {
+    const assistantPorts = allServices.assistant?.ports ?? [];
+    expect(assistantPorts).toContain(
+      "${OP_CLIENT_BIND_ADDRESS:-${OP_BIND_ADDRESS:-127.0.0.1}}:${OP_CLIENT_PORT:-3810}:3000",
+    );
+  });
+
+  test("chat/api port lines nest their per-service var then OP_BIND_ADDRESS (guardian-container, key-authenticated cascade)", () => {
+    const guardianPorts = allServices.guardian?.ports ?? [];
+    expect(guardianPorts).toContain(
+      "${OP_CHAT_BIND_ADDRESS:-${OP_BIND_ADDRESS:-127.0.0.1}}:${OP_CHAT_PORT:-3820}:8182",
+    );
+    expect(guardianPorts).toContain(
+      "${OP_API_BIND_ADDRESS:-${OP_BIND_ADDRESS:-127.0.0.1}}:${OP_API_PORT:-3821}:8182",
+    );
+  });
+
+  test("every voice variant's port line nests OP_VOICE_BIND_ADDRESS then OP_BIND_ADDRESS", () => {
+    for (const name of ["voice", "voice-cuda", "voice-rocm"]) {
+      const ports = allServices[name]?.ports ?? [];
+      expect(ports).toContain(
+        "${OP_VOICE_BIND_ADDRESS:-${OP_BIND_ADDRESS:-127.0.0.1}}:${OP_VOICE_PORT_HOST:-8880}:8880",
+      );
+    }
+  });
+});
+
 describe("#488 — host mDNS responder gate vars match compose reality (pin)", () => {
   // These pin the EXACT env vars the new host mDNS responder's gating logic
   // (resolveMdnsAdvertisements in mdns-responder.ts) keys on, so a future

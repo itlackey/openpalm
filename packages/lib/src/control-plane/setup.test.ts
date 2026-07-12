@@ -1,5 +1,5 @@
 import { describe, expect, it, beforeEach, afterEach } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync, readFileSync, existsSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync, readFileSync, existsSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -196,6 +196,78 @@ describe("validateSetupSpec", () => {
     expect(result.errors.some((e) => e.includes("owner.name"))).toBe(true);
   });
 
+  // ── #563 T19-T22: network preset validation ─────────────────────────────
+
+  it("T19 (pin): accepts a spec without network (backward compatible)", () => {
+    const input = makeValidSpec();
+    delete (input as Record<string, unknown>).network;
+    const result = validateSetupSpec(input);
+    expect(result.valid).toBe(true);
+    expect(result.errors).toHaveLength(0);
+  });
+
+  it("T20: accepts network {preset:'this-pc'}", () => {
+    const input = makeValidSpec({ network: { preset: "this-pc" } });
+    const result = validateSetupSpec(input);
+    expect(result.valid).toBe(true);
+  });
+
+  it("T20: rejects an unknown preset", () => {
+    const input = makeValidSpec();
+    (input as Record<string, unknown>).network = { preset: "bogus-preset" };
+    const result = validateSetupSpec(input);
+    expect(result.valid).toBe(false);
+    expect(result.errors.some((e) => e.includes("network"))).toBe(true);
+  });
+
+  it("T20: rejects a non-object network", () => {
+    const input = makeValidSpec();
+    (input as Record<string, unknown>).network = "this-pc";
+    const result = validateSetupSpec(input);
+    expect(result.valid).toBe(false);
+    expect(result.errors.some((e) => e.includes("network"))).toBe(true);
+  });
+
+  it("T21: home-password requires opencodePassword (min 8 chars) — missing", () => {
+    const input = makeValidSpec();
+    (input as Record<string, unknown>).network = { preset: "home-password" };
+    const result = validateSetupSpec(input);
+    expect(result.valid).toBe(false);
+    expect(result.errors.some((e) => e.includes("network.opencodePassword"))).toBe(true);
+  });
+
+  it("T21: home-password requires opencodePassword (min 8 chars) — empty", () => {
+    const input = makeValidSpec();
+    (input as Record<string, unknown>).network = { preset: "home-password", opencodePassword: "" };
+    const result = validateSetupSpec(input);
+    expect(result.valid).toBe(false);
+    expect(result.errors.some((e) => e.includes("network.opencodePassword"))).toBe(true);
+  });
+
+  it("T21: home-password requires opencodePassword (min 8 chars) — 7-char", () => {
+    const input = makeValidSpec();
+    (input as Record<string, unknown>).network = { preset: "home-password", opencodePassword: "1234567" };
+    const result = validateSetupSpec(input);
+    expect(result.valid).toBe(false);
+    expect(result.errors.some((e) => e.includes("network.opencodePassword"))).toBe(true);
+  });
+
+  it("T21: an 8-char opencodePassword on home-password is valid", () => {
+    const input = makeValidSpec();
+    (input as Record<string, unknown>).network = { preset: "home-password", opencodePassword: "12345678" };
+    const result = validateSetupSpec(input);
+    expect(result.valid).toBe(true);
+  });
+
+  it("T22: rejects opencodePassword on non-password presets, naming the preset", () => {
+    for (const preset of ["this-pc", "home-open", "shared-guardian"]) {
+      const input = makeValidSpec();
+      (input as Record<string, unknown>).network = { preset, opencodePassword: "12345678" };
+      const result = validateSetupSpec(input);
+      expect(result.valid).toBe(false);
+      expect(result.errors.some((e) => e.includes(preset))).toBe(true);
+    }
+  });
 });
 
 // ── Tests: buildOwnerEnvFromSetup ─────────────────────────────────────────
@@ -795,6 +867,87 @@ describe("performSetup", () => {
     const stackEnv = readFileSync(join(homeDir, "knowledge", "env", "stack.env"), 'utf-8');
     expect(stackEnv).toContain('DISCORD_APPLICATION_ID=discord-app-id-123');
     expect(stackEnv).not.toContain('DISCORD_BOT_TOKEN=');
+  });
+
+  // ── #563 T23-T27: network preset plumbing through performSetup ───────────
+
+  const secretPathFor = (name: string) => join(homeDir, "knowledge", "secrets", name);
+
+  it("T23: home-password writes the full managed row to stack.env and the password to the secret file", async () => {
+    const result = await performSetup(
+      makeValidSpec({ network: { preset: "home-password", opencodePassword: "lan-secret-123" } }),
+    );
+    expect(result.ok).toBe(true);
+
+    const stackEnv = readFileSync(join(homeDir, "knowledge", "env", "stack.env"), "utf-8");
+    expect(stackEnv).toMatch(/^OP_ASSISTANT_BIND_ADDRESS=0\.0\.0\.0$/m);
+    expect(stackEnv).toMatch(/^OPENCODE_AUTH=true$/m);
+    expect(stackEnv).toMatch(/^OP_BIND_ADDRESS=127\.0\.0\.1$/m);
+    expect(stackEnv).toMatch(/^OP_CLIENT_BIND_ADDRESS=127\.0\.0\.1$/m);
+    expect(stackEnv).toMatch(/^OP_VOICE_BIND_ADDRESS=127\.0\.0\.1$/m);
+    expect(stackEnv).not.toContain("lan-secret-123");
+
+    expect(readSecret(homeDir, "op_opencode_password")).toBe("lan-secret-123\n");
+  });
+
+  it("T24: shared-guardian writes the guardian row with the assistant hard-pin", async () => {
+    const result = await performSetup(makeValidSpec({ network: { preset: "shared-guardian" } }));
+    expect(result.ok).toBe(true);
+
+    const stackEnv = readFileSync(join(homeDir, "knowledge", "env", "stack.env"), "utf-8");
+    expect(stackEnv).toMatch(/^OP_BIND_ADDRESS=0\.0\.0\.0$/m);
+    expect(stackEnv).toMatch(/^OP_ASSISTANT_BIND_ADDRESS=127\.0\.0\.1$/m);
+    expect(stackEnv).toMatch(/^OP_CLIENT_BIND_ADDRESS=127\.0\.0\.1$/m);
+    expect(stackEnv).toMatch(/^OP_VOICE_BIND_ADDRESS=127\.0\.0\.1$/m);
+    expect(stackEnv).toMatch(/^OPENCODE_AUTH=false$/m);
+  });
+
+  it("T25: a spec without network leaves pre-seeded bind values untouched", async () => {
+    // Seed a pre-existing OP_ASSISTANT_BIND_ADDRESS before running a
+    // network-less setup — it must survive (D7: absent network = don't touch).
+    const stackEnvPath = join(homeDir, "knowledge", "env", "stack.env");
+    writeFileSync(
+      stackEnvPath,
+      `${readFileSync(stackEnvPath, "utf-8")}\nOP_ASSISTANT_BIND_ADDRESS=10.0.0.5\n`,
+    );
+
+    const input = makeValidSpec();
+    delete (input as Record<string, unknown>).network;
+    const result = await performSetup(input);
+    expect(result.ok).toBe(true);
+
+    const stackEnv = readFileSync(stackEnvPath, "utf-8");
+    expect(stackEnv).toMatch(/^OP_ASSISTANT_BIND_ADDRESS=10\.0\.0\.5$/m);
+  });
+
+  it("T26: shared-guardian fails closed when process.env exposes the assistant", async () => {
+    const saved = process.env.OP_ASSISTANT_BIND_ADDRESS;
+    process.env.OP_ASSISTANT_BIND_ADDRESS = "0.0.0.0";
+    try {
+      const result = await performSetup(makeValidSpec({ network: { preset: "shared-guardian" } }));
+      expect(result.ok).toBe(false);
+      expect(result.error).toBeDefined();
+      expect(result.error ?? "").toContain("OP_ASSISTANT_BIND_ADDRESS");
+
+      // Never wrote the shared-guardian row over the fail-closed rejection.
+      const stackEnv = readFileSync(join(homeDir, "knowledge", "env", "stack.env"), "utf-8");
+      expect(stackEnv).not.toMatch(/^OP_BIND_ADDRESS=0\.0\.0\.0$/m);
+    } finally {
+      if (saved === undefined) delete process.env.OP_ASSISTANT_BIND_ADDRESS;
+      else process.env.OP_ASSISTANT_BIND_ADDRESS = saved;
+    }
+  });
+
+  it("T27: every setup materializes the op_opencode_password secret file", async () => {
+    const input = makeValidSpec();
+    delete (input as Record<string, unknown>).network;
+    const result = await performSetup(input);
+    expect(result.ok).toBe(true);
+
+    const path = secretPathFor("op_opencode_password");
+    expect(existsSync(path)).toBe(true);
+    expect((statSync(path).mode & 0o777)).toBe(0o600);
+    expect(readFileSync(path, "utf-8").trim().length).toBeGreaterThan(0);
   });
 
   it("ensureOpenCodeConfig never writes forbidden keys (providers, smallModel, model) to the user config", async () => {

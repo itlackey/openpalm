@@ -109,3 +109,25 @@ describe("isLoopback", () => {
     expect(isLoopback("192.168.1.10")).toBe(false);
   });
 });
+
+// #563 — T18: per-var warning wording names the preset that configures that
+// exposure deliberately (D9). Red reason: today's strings are raw env-var
+// wording only, with no preset framing. The existing cases above (counts,
+// env-name containment, the "host network interface" phrase, loopback
+// []-cases) are preserved unchanged by the rewording contract — this test
+// only adds the NEW preset-framing assertion on top of the existing shape.
+describe("collectBindAddressWarnings — preset framing (#563 D9, T18)", () => {
+  test("OP_ASSISTANT_BIND_ADDRESS warning names the Home network preset framing", () => {
+    const warnings = collectBindAddressWarnings({ OP_ASSISTANT_BIND_ADDRESS: "0.0.0.0" });
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain("Home network");
+    expect(warnings[0]).toContain("OP_ASSISTANT_BIND_ADDRESS");
+  });
+
+  test("OP_BIND_ADDRESS warning names the Shared network preset framing", () => {
+    const warnings = collectBindAddressWarnings({ OP_BIND_ADDRESS: "0.0.0.0" });
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain("Shared network");
+    expect(warnings[0]).toContain("OP_BIND_ADDRESS");
+  });
+});

@@ -22,7 +22,15 @@ import {
 
 registerCleanup();
 
-const ENV_KEYS = ['OP_OPENCODE_URL', 'OP_ASSISTANT_URL', 'OP_ASSISTANT_PORT', 'OPENCODE_SERVER_PASSWORD'] as const;
+const ENV_KEYS = [
+  'OP_OPENCODE_URL',
+  'OP_ASSISTANT_URL',
+  'OP_ASSISTANT_PORT',
+  'OPENCODE_SERVER_PASSWORD',
+  // #563 D10 — the default-endpoint password fallback, gated on OPENCODE_AUTH.
+  'OPENCODE_AUTH',
+  'OP_OPENCODE_PASSWORD',
+] as const;
 const savedEnv: Record<string, string | undefined> = {};
 
 beforeEach(() => {
@@ -129,9 +137,34 @@ describe('default endpoint synthesis', () => {
     expect(getActiveEndpoint().url).toBe('http://127.0.0.1:3900');
   });
 
-  it('picks up OPENCODE_SERVER_PASSWORD for default', () => {
+  it('picks up OPENCODE_SERVER_PASSWORD for default (pin: T63 — explicit host env wins unconditionally)', () => {
     process.env.OPENCODE_SERVER_PASSWORD = 'secret';
     expect(getActiveEndpoint().password).toBe('secret');
+  });
+
+  // #563 D10 — T61/T62: OP_OPENCODE_PASSWORD fallback, gated on OPENCODE_AUTH.
+  it('T61: uses OP_OPENCODE_PASSWORD as the default endpoint password when OPENCODE_AUTH is truthy', () => {
+    process.env.OPENCODE_AUTH = 'true';
+    process.env.OP_OPENCODE_PASSWORD = 'preset-password';
+    expect(getActiveEndpoint().password).toBe('preset-password');
+  });
+
+  it('T62: no password is attached from OP_OPENCODE_PASSWORD while OPENCODE_AUTH is unset (default-posture pin)', () => {
+    process.env.OP_OPENCODE_PASSWORD = 'preset-password';
+    expect(getActiveEndpoint().password).toBeUndefined();
+  });
+
+  it('T62: no password is attached from OP_OPENCODE_PASSWORD while OPENCODE_AUTH is explicitly false', () => {
+    process.env.OPENCODE_AUTH = 'false';
+    process.env.OP_OPENCODE_PASSWORD = 'preset-password';
+    expect(getActiveEndpoint().password).toBeUndefined();
+  });
+
+  it('T63 (pin): explicit OPENCODE_SERVER_PASSWORD still wins over OP_OPENCODE_PASSWORD even when OPENCODE_AUTH is truthy', () => {
+    process.env.OPENCODE_AUTH = 'true';
+    process.env.OP_OPENCODE_PASSWORD = 'preset-password';
+    process.env.OPENCODE_SERVER_PASSWORD = 'explicit-secret';
+    expect(getActiveEndpoint().password).toBe('explicit-secret');
   });
 });
 

@@ -17,6 +17,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { SetupState, setupState, INITIAL } from './setup-state.svelte.js';
 import type { ProviderState } from '$lib/client/types.js';
+import { fetchCurrentConfig } from '$lib/setup-api.js';
 
 // Stub the data-access layer so the exported singleton's init() discovery
 // fetches resolve to benign values instead of hitting the network (or throwing
@@ -251,6 +252,154 @@ describe('SetupState — payload derivation delegates to buildSetupPayload', () 
     s.modelSelection.llm = { connId: 'openai', model: 'gpt-4o', dims: 0 };
     expect(s.payload.llm).toBeDefined();
     expect(s.payload.llm?.model).toBe('gpt-4o');
+  });
+});
+
+// ── #563 T49-T53: network access preset store fields/derivations ───────────
+
+describe('SetupState — network access preset defaults (#563 T49)', () => {
+  it('T49: INITIAL carries networkPreset "this-pc", empty opencodePassword, homeOpenAck false', () => {
+    const s = new SetupState();
+    expect(s.networkPreset).toBe('this-pc');
+    expect(s.opencodePassword).toBe('');
+    expect(s.homeOpenAck).toBe(false);
+  });
+
+  it('T49: reset() restores networkPreset/opencodePassword/homeOpenAck to their INITIAL defaults', () => {
+    const s = new SetupState();
+    s.networkPreset = 'home-open';
+    s.opencodePassword = 'typed-pw';
+    s.homeOpenAck = true;
+    s.reset();
+    expect(s.networkPreset).toBe('this-pc');
+    expect(s.opencodePassword).toBe('');
+    expect(s.homeOpenAck).toBe(false);
+  });
+});
+
+describe('SetupState — handleNetworkPresetChange (#563 T50/T51)', () => {
+  it('T50: pre-fills a generated password only when switching to home-password with an empty field', () => {
+    const s = new SetupState();
+    expect(s.opencodePassword).toBe('');
+    s.handleNetworkPresetChange('home-password');
+    expect(s.networkPreset).toBe('home-password');
+    expect(s.opencodePassword).not.toBe('');
+    expect(s.opencodePassword.length).toBeGreaterThanOrEqual(8);
+  });
+
+  it('T50: a user-typed password survives re-selecting home-password', () => {
+    const s = new SetupState();
+    s.handleNetworkPresetChange('home-password');
+    s.opencodePassword = 'my-own-password';
+    s.handleNetworkPresetChange('home-password');
+    expect(s.opencodePassword).toBe('my-own-password');
+  });
+
+  it('T50: switching away and back to home-password does not regenerate an existing password', () => {
+    const s = new SetupState();
+    s.handleNetworkPresetChange('home-password');
+    s.opencodePassword = 'my-own-password';
+    s.handleNetworkPresetChange('this-pc');
+    s.handleNetworkPresetChange('home-password');
+    expect(s.opencodePassword).toBe('my-own-password');
+  });
+
+  it('T51: clears homeOpenAck when leaving home-open', () => {
+    const s = new SetupState();
+    s.handleNetworkPresetChange('home-open');
+    s.homeOpenAck = true;
+    s.handleNetworkPresetChange('this-pc');
+    expect(s.homeOpenAck).toBe(false);
+  });
+
+  it('T51: homeOpenAck is untouched when re-selecting home-open', () => {
+    const s = new SetupState();
+    s.handleNetworkPresetChange('home-open');
+    s.homeOpenAck = true;
+    s.handleNetworkPresetChange('home-open');
+    expect(s.homeOpenAck).toBe(true);
+  });
+});
+
+describe('SetupState — networkChoiceValid gates install (#563 T52)', () => {
+  it('this-pc and shared-guardian are always valid', () => {
+    const s = new SetupState();
+    s.handleNetworkPresetChange('this-pc');
+    expect(s.networkChoiceValid).toBe(true);
+    s.handleNetworkPresetChange('shared-guardian');
+    expect(s.networkChoiceValid).toBe(true);
+  });
+
+  it('home-open requires the risk-acknowledgement checkbox', () => {
+    const s = new SetupState();
+    s.handleNetworkPresetChange('home-open');
+    expect(s.networkChoiceValid).toBe(false);
+    s.homeOpenAck = true;
+    expect(s.networkChoiceValid).toBe(true);
+  });
+
+  it('home-password requires an 8+ char password', () => {
+    const s = new SetupState();
+    s.handleNetworkPresetChange('home-password');
+    s.opencodePassword = '1234567';
+    expect(s.networkChoiceValid).toBe(false);
+    s.opencodePassword = '12345678';
+    expect(s.networkChoiceValid).toBe(true);
+  });
+
+  it('payload reflects the chosen preset (delegation to buildSetupPayload)', () => {
+    const s = new SetupState();
+    s.handleNetworkPresetChange('home-password');
+    s.opencodePassword = 'lan-secret-123';
+    expect(s.payload.network).toEqual({ preset: 'home-password', opencodePassword: 'lan-secret-123' });
+  });
+});
+
+describe('SetupState — rerun network preset pre-fill / networkDirty contract (#563 T53, D7)', () => {
+  afterEach(() => {
+    vi.mocked(fetchCurrentConfig).mockReset();
+    vi.mocked(fetchCurrentConfig).mockImplementation(async () => null);
+  });
+
+  it('T53: rerun with a detected preset pre-fills it; networkDirty stays false', async () => {
+    vi.mocked(fetchCurrentConfig).mockResolvedValueOnce({ network: { preset: 'shared-guardian' } } as never);
+    vi.stubGlobal('window', { location: { search: '?rerun=1' } });
+    const s = new SetupState();
+    s.init();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(s.networkPreset).toBe('shared-guardian');
+    expect(s.networkDirty).toBe(false);
+    s.dispose();
+  });
+
+  it('T53: rerun keeps network out of the payload until a network field is touched', async () => {
+    vi.mocked(fetchCurrentConfig).mockResolvedValueOnce({ network: { preset: 'home-password' } } as never);
+    vi.stubGlobal('window', { location: { search: '?rerun=1' } });
+    const s = new SetupState();
+    s.init();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(s.networkPreset).toBe('home-password');
+    // Rerun prefill alone must NOT dirty the field — a rerun over a custom
+    // stack.env must never silently rewrite it (D7).
+    expect(s.payload.network).toBeUndefined();
+
+    // Now the operator actively touches the network step — networkDirty
+    // flips and the payload starts sending it.
+    s.handleNetworkPresetChange('home-password');
+    s.opencodePassword = 'lan-secret-123';
+    expect(s.payload.network).toEqual({ preset: 'home-password', opencodePassword: 'lan-secret-123' });
+    s.dispose();
+  });
+
+  it('T53: rerun over a custom (undetected) env leaves networkPreset null', async () => {
+    vi.mocked(fetchCurrentConfig).mockResolvedValueOnce({} as never);
+    vi.stubGlobal('window', { location: { search: '?rerun=1' } });
+    const s = new SetupState();
+    s.init();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(s.networkPreset).toBeNull();
+    expect(s.payload.network).toBeUndefined();
+    s.dispose();
   });
 });
 
