@@ -555,10 +555,9 @@ describe("SlackChannel", () => {
     expect(typeof channel.port).toBe("number");
   });
 
-  it("inherits guardianUrl from env or defaults", () => {
+  it("has no hardcoded guardian base URL field", () => {
     const channel = new SlackChannel();
-    expect(typeof channel.guardianUrl).toBe("string");
-    expect(channel.guardianUrl).toContain("guardian");
+    expect((channel as { guardianUrl?: unknown }).guardianUrl).toBeUndefined();
   });
 
   it("secret resolves from PRINCIPAL_SECRET_FILE", () => {

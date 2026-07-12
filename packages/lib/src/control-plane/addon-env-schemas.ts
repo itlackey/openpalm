@@ -84,6 +84,14 @@ SLACK_ALLOWED_USERS=
 # Comma-separated blocked user IDs.
 SLACK_BLOCKED_USERS=
 
+# ---
+# Appearance
+# ---
+
+# Display name used in Slack modal titles and the App Home tab.
+# Default: OpenPalm
+SLACK_BOT_NAME=
+
 `,
   gateway: '',
   ollama: '',

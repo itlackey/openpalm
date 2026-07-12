@@ -14,9 +14,13 @@
   },
   "files": [
     "src",
+    "bin",
     "README.md"
   ],
   "main": "src/index.ts",
+  "bin": {
+    "openpalm-slack-portal": "bin/openpalm-slack-portal.ts"
+  },
   "dependencies": {
     "@openpalm/portal-sdk": "workspace:*",
     "@slack/bolt": "^4.1.0"

@@ -62,6 +62,7 @@ services:
       SLACK_STREAMING: "${SLACK_STREAMING:-true}"
       SLACK_BOT_TOKEN_FILE: /run/secrets/slack_bot_token
       SLACK_APP_TOKEN_FILE: /run/secrets/slack_app_token
+      SLACK_BOT_NAME: ${SLACK_BOT_NAME:-}
       SLACK_ALLOWED_CHANNELS: ${SLACK_ALLOWED_CHANNELS:-}
       SLACK_ALLOWED_USERS: ${SLACK_ALLOWED_USERS:-}
       SLACK_BLOCKED_USERS: ${SLACK_BLOCKED_USERS:-}
