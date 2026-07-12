@@ -9,6 +9,19 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Remote-access TLS guide and client-side HTTPS enforcement** (#557).
+  `docs/remote-access-tls.md` documents fronting the guardian direct listener
+  with real HTTPS for phones/remote clients: Tailscale `serve` as the
+  recommended default (automatic Let's Encrypt, no port forwarding), Caddy +
+  a user-owned domain (DNS-challenge Let's Encrypt) as the alternative, and
+  an explicit non-goal of ever installing a private CA on a phone. The
+  OpenPalm client now refuses a plain-HTTP connection URL for a non-loopback
+  host whenever it itself runs on an `https:` origin (the mixed-content
+  platform rule) — the add/edit connection form rejects the entry with a
+  message deep-linking the guide, and connection health reports a `needs
+  HTTPS` badge instead of a misleading "unreachable" for an existing
+  connection that becomes insecure. Loopback targets, the loopback-origin
+  desktop default, and the LAN-served plain-HTTP client tier are unaffected.
 - **Host control-plane LAN mDNS self-advertisement for the guardian and
   assistant** (#488). A hand-rolled `node:dgram` responder in `@openpalm/lib`
   runs inside the long-lived host UI process (started from
@@ -97,6 +110,10 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **Docs:** the hosted client origin (`https://app.openpalm.dev`) is
+  deliberately **not** pre-baked into the guardian's default CORS allowlist —
+  it stays an operator opt-in via `GUARDIAN_CORS_ALLOWED_ORIGINS` until #511's
+  hosted deploy actually exists. (#557, trails #511)
 - **Portal `/health` now reports `service: portal-<name>`** (was
   `channel-<name>`) — update any external monitoring scripted against the old
   string. (#490)
