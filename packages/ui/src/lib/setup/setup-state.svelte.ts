@@ -330,7 +330,18 @@ export class SetupState {
   // #563 — install-time validity of the network access choice: home-open
   // requires the risk acknowledgement; home-password requires a real
   // password; the other two presets are always valid (no extra input).
+  //
+  // On a rerun the operator may never touch this step at all — init()
+  // pre-fills networkPreset from the detected config (S3: the password is
+  // never returned, so home-password rehydrates with opencodePassword=''),
+  // and the payload correctly sends nothing (keep-as-is) while
+  // networkDirty stays false. This gate MUST mirror that same
+  // `!isRerun || networkDirty` condition, or an untouched rerun over a
+  // home-password/home-open install gets blocked from installing at all —
+  // forcing a brand-new password/ack that silently rewrites the existing
+  // secret (violates D7's keep-as-is contract).
   networkChoiceValid = $derived.by(() => {
+    if (this.isRerun && !this.networkDirty) return true;
     if (this.networkPreset === 'home-open') return this.homeOpenAck;
     if (this.networkPreset === 'home-password') return this.opencodePassword.length >= 8;
     return true;

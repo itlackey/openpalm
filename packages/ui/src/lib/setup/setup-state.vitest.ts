@@ -353,6 +353,41 @@ describe('SetupState — networkChoiceValid gates install (#563 T52)', () => {
     s.opencodePassword = 'lan-secret-123';
     expect(s.payload.network).toEqual({ preset: 'home-password', opencodePassword: 'lan-secret-123' });
   });
+
+  // Regression: a rerun over an untouched home-password (or home-open) install
+  // must remain valid — the payload already omits `network` (keep-as-is, D7),
+  // so the gate must not force the operator to re-enter a password/ack it
+  // never asked for. Mirrors the payload's own send condition
+  // `(!isRerun || networkDirty)`.
+  it('rerun + untouched home-password preset (password never returned, S3) is valid', () => {
+    const s = new SetupState();
+    s.isRerun = true;
+    s.networkPreset = 'home-password';
+    s.opencodePassword = ''; // never sent back by the server
+    s.networkDirty = false;
+    expect(s.networkChoiceValid).toBe(true);
+    expect(s.payload.network).toBeUndefined();
+  });
+
+  it('rerun + untouched home-open preset is valid even with homeOpenAck still false', () => {
+    const s = new SetupState();
+    s.isRerun = true;
+    s.networkPreset = 'home-open';
+    s.homeOpenAck = false;
+    s.networkDirty = false;
+    expect(s.networkChoiceValid).toBe(true);
+  });
+
+  it('rerun + DIRTIED home-password preset still requires a real password', () => {
+    const s = new SetupState();
+    s.isRerun = true;
+    s.networkPreset = 'home-password';
+    s.opencodePassword = '';
+    s.networkDirty = true;
+    expect(s.networkChoiceValid).toBe(false);
+    s.opencodePassword = '12345678';
+    expect(s.networkChoiceValid).toBe(true);
+  });
 });
 
 describe('SetupState — rerun network preset pre-fill / networkDirty contract (#563 T53, D7)', () => {
