@@ -189,20 +189,33 @@ export interface ClientOpenTargetDeps {
 }
 
 /**
+ * Landing paths the CLIENT app (not the host UI) can serve (#486 D1b). The
+ * client artifact has both `/connections` and `/connections/new` routes
+ * (`packages/client/src/routes/connections/`) — a stack-less machine with no
+ * install lands on `/connections/new`, and today ANY landing ≠ `/chat` opens
+ * the host UI, whose `/api/connections` writes are admin-session-gated (a
+ * dead end on a passwordless stack-less machine).
+ */
+const CLIENT_LANDINGS = new Set(['/chat', '/connections', '/connections/new']);
+
+/**
  * Resolve where `--open-target client` (`openpalm app`) should actually open
- * (review findings A4 + J1). Before this, an unreachable client app or an
- * interrupted install hard-exited(1) instead of falling back to the
- * voice-capable, setup-aware host UI.
+ * (review findings A4 + J1, plus #486 D1b). Before this, an unreachable
+ * client app or an interrupted install hard-exited(1) instead of falling
+ * back to the voice-capable, setup-aware host UI.
  *
  * Probes the host UI's unauthenticated `GET /api/runtime/landing` (contract:
  * `200 { landing: string }`) first — a setup-incomplete/offline/broken install
  * routes through the SAME landing matrix Electron consults (J2), so `openpalm
  * app` stops being setup-unaware. If that route isn't deployed yet (404/absent
  * — the electron lane adds it in parallel), fall back to `GET
- * /api/setup/status` and land on `/setup` when incomplete. Only once the host
- * UI reports (or can't be asked and defaults to) a healthy `/chat` landing do
- * we attempt the client; if the client is unreachable, fall back to the host
- * UI chat with a clear message — NEVER `process.exit(1)` for this (A4).
+ * /api/setup/status` and land on `/setup` when incomplete (defaulting to
+ * `/chat` when nothing else applies, preserving the original fallback
+ * chain). Non-client landings (e.g. `/setup`, `/host?tab=diagnostics`) always
+ * open the host UI. Client-capable landings (`/chat`, `/connections`,
+ * `/connections/new`) open the CLIENT app at that same path when it's
+ * reachable; if the client is unreachable, fall back to the host UI at that
+ * same path with a clear message — NEVER `process.exit(1)` for this (A4).
  */
 export async function resolveClientOpenTarget(
   uiUrl: string,
@@ -214,29 +227,47 @@ export async function resolveClientOpenTarget(
   const timeoutMs = deps.timeoutMs ?? PROBE_TIMEOUT_MS;
   const waitForClient = deps.waitForClient ?? (() => waitForClientApp(clientUrl));
 
+  let landingPath = '/chat';
   const landing = await probeJson<{ landing?: string }>(fetchFn, `${uiUrl}/api/runtime/landing`, timeoutMs);
   if (landing !== null) {
-    if (typeof landing.landing === 'string' && landing.landing !== '/chat') {
-      return { url: `${uiUrl}${landing.landing}` };
-    }
+    if (typeof landing.landing === 'string') landingPath = landing.landing;
   } else {
     // /api/runtime/landing not deployed / not reachable — fall back to the
     // setup-status probe so an interrupted install still redirects (J1).
     const setup = await probeJson<{ setupComplete?: boolean }>(fetchFn, `${uiUrl}/api/setup/status`, timeoutMs);
     if (setup?.setupComplete === false) {
-      return { url: `${uiUrl}/setup` };
+      landingPath = '/setup';
     }
   }
 
-  if (hasClientHandle && await waitForClient()) {
-    return { url: clientUrl };
+  if (!CLIENT_LANDINGS.has(landingPath)) {
+    return { url: `${uiUrl}${landingPath}` };
   }
 
+  if (hasClientHandle && await waitForClient()) {
+    const clientBase = clientUrl.replace(/\/chat$/, '');
+    return { url: landingPath === '/chat' ? clientUrl : `${clientBase}${landingPath}` };
+  }
+
+  // A4: never process.exit(1) here — fall back to the host UI at the same
+  // landing path. `/chat` keeps the pre-#486 bare-uiUrl shape (the host UI's
+  // own landing guard resolves `/` to `/chat` on a healthy install); other
+  // client-capable landings (e.g. `/connections/new`) fall back to that exact
+  // host UI path instead.
+  if (landingPath === '/chat') {
+    return {
+      url: uiUrl,
+      message:
+        `Localhost client app is not reachable at ${clientUrl} — opening the host UI chat ` +
+        `instead (${uiUrl}/chat).`,
+    };
+  }
+  const fallbackUrl = `${uiUrl}${landingPath}`;
   return {
-    url: uiUrl,
+    url: fallbackUrl,
     message:
-      `Localhost client app is not reachable at ${clientUrl} — opening the host UI chat ` +
-      `instead (${uiUrl}/chat).`,
+      `Localhost client app is not reachable at ${clientUrl} — opening the host UI ` +
+      `instead (${fallbackUrl}).`,
   };
 }
 
@@ -502,8 +533,13 @@ export async function startUIServer(opts: UIServerOptions = {}): Promise<void> {
 
   // Admin (host-ui) mode serves even on a machine with no install — the UI's
   // existing setup guard lands on /setup (the CLI does not reimplement wizard
-  // logic). The bare serve path keeps requiring a valid install.
-  const state = opts.adminHostUi ? resolveServeState() : ensureValidState();
+  // logic). #486: a client-only machine with no local stack also tolerates a
+  // not-installed OP_HOME — `openpalm app` serves the connection manager
+  // (pwa-static host UI + the localhost client), and the UI's own pwa-static
+  // landing handles routing; the CLI reimplements no wizard/landing logic
+  // here either. The bare serve path (`openpalm ui serve`, no openTarget)
+  // keeps requiring a valid install.
+  const state = (opts.adminHostUi === true || opts.openTarget === 'client') ? resolveServeState() : ensureValidState();
   const uiUrl = `http://localhost:${port}`;
   // D2: probe/open the client on the port it will ACTUALLY be spawned on
   // (persisted stack.env merged under process.env), not process.env alone.

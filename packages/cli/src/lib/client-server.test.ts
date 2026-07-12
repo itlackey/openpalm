@@ -111,7 +111,14 @@ function harness(opts: {
     sleep: (ms: number) => { opts.sleepDelays?.push(ms); return Promise.resolve(); },
     stopTimeoutMs: 5,
     now: opts.now,
-    hasLocalInstall: opts.hasLocalInstall,
+    // #486 D1a: harness default is `true` ("today's behavior", per the
+    // opts.hasLocalInstall doc comment above) — tests in this file run under
+    // the repo's OP_HOME test-isolation preload (bunfig.toml), which always
+    // points OP_HOME at a fresh, empty temp dir, so startClientServer's own
+    // production default (a real classifyLocalInstall() filesystem check)
+    // would otherwise report "not installed" for every test in this file
+    // that doesn't explicitly opt into the D1a scenario below.
+    hasLocalInstall: opts.hasLocalInstall ?? (() => true),
   } as Parameters<typeof startClientServer>[0]);
   return { handlePromise, spawns, logs, buildDir, procs, runtimeConfigWrites };
 }
