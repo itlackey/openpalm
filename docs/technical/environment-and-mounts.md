@@ -189,6 +189,7 @@ Notes:
 - It is the only bridge between addon ingress networks and `assistant_net`.
 - Guardian receives only explicitly granted secret files from `knowledge/secrets/`; it must not use service-level `env_file` or raw secret env values.
 - `GUARDIAN_DIRECT_INGRESS` and `GUARDIAN_CORS_ALLOWED_ORIGINS` work together: direct-ingress must be enabled AND the connecting browser origin must be in the CORS allowlist, or the connection is dead-on-arrival (404 when ingress is off; CORS-denied even when it's on). `GUARDIAN_CORS_ALLOWED_ORIGINS` now defaults to the same client origins the assistant entrypoint auto-seeds into OpenCode's CORS allowlist (see the assistant section above), so a browser client that already reaches the assistant directly also reaches guardian once `GUARDIAN_DIRECT_INGRESS=true` is set; a custom client origin still needs an explicit override.
+- Fronting the direct listener with HTTPS for remote/phone clients: see [`docs/remote-access-tls.md`](../remote-access-tls.md) (Tailscale `serve` recommended, Caddy + own domain alternative). Once TLS-fronted, add the (https) client origin to `GUARDIAN_CORS_ALLOWED_ORIGINS` — see above.
 
 ### Scheduler co-process
 

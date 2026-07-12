@@ -109,12 +109,23 @@ The PWA build excludes `runtime-config.json` from precache and treats it as `Net
 - The guardian CORS allowlist (`GUARDIAN_CORS_ALLOWED_ORIGINS`) is the only
   **shipped, code-enforced** boundary on browser-direct remote connections —
   a request from an origin not on the allowlist is rejected.
-- HTTPS for remote (non-loopback) guardian connections is **policy, not yet
-  enforcement**: `features.ts` computes a `requiresHttpsForRemoteConnections`
-  flag (true for `pwa-static`) but it has zero consumers today — no client
-  code refuses a plain-HTTP remote connection. Client-side enforcement +
-  refusal UX is unshipped Phase 6.5 work (review 2026-07-10 finding F3;
-  `docs/technical/ui-runtime-modes-plan.md` §12.4/§12).
+- HTTPS for remote (non-loopback) guardian connections is now **enforced
+  client-locally** (#557): `validateConnectionUrl()`
+  (`packages/client/src/lib/connections/url-policy.ts`) refuses a plain-HTTP
+  connection URL for a non-loopback host whenever the app itself runs on an
+  `https:` origin — the platform mixed-content rule, computed from
+  `globalThis.location` rather than from any server-declared flag. The
+  `/connections` add/edit form refuses the entry before it's saved (error
+  deep-links `docs/remote-access-tls.md`), and `probeHealth()` reports an
+  existing insecure entry as `'insecure'` (`needs HTTPS` badge) instead of a
+  misleading `'unreachable'`. Loopback targets, the loopback-origin desktop
+  default, and the LAN-served plain-HTTP client tier are deliberately
+  unaffected — see `docs/remote-access-tls.md` for the full tier breakdown.
+  `features.ts`'s `requiresHttpsForRemoteConnections` flag remains the
+  host-side declaration of this same policy (unchanged; available to a
+  future `/api/runtime` handshake) — the client computes the same condition
+  itself rather than depending on that flag, since the static client cannot
+  read host server context.
 - LAN posture (review 2026-07-10 finding I3, fixed): the stack never emits
   `--cors *`; binding a service to a non-loopback address without auth
   configured produces a prominent warning and the client chat co-process is
@@ -157,12 +168,10 @@ them regressed from a prior working state; they were never built:
 - **Pairing / QR connection setup** (plan §6.6) — host app `/connections`
   minting a QR + one-time code, client `/connections/new` accepting
   paste-or-scan.
-- **Client-side HTTPS-for-remote enforcement + refusal UX** (Phase 6.5, see
-  Security Boundaries above) and the accompanying **TLS guide** (Tailscale
-  `ts.net` default, Caddy + user domain alternative).
-- **Protocol validation** for guardian TLS/CORS hardening (Phase 6.5, #557).
 
-Tracking: #511 (PWA/hosted install, pairing), #557 (guardian TLS/CORS). See
+Tracking: #511 (PWA/hosted install, pairing). #557 (guardian edge TLS guide +
+client-side HTTPS refusal) shipped — see `docs/remote-access-tls.md` and the
+Security Boundaries section above. See
 `docs/technical/ui-runtime-modes-plan.md` §12.3-12.4 for the full work-item
 breakdown.
 
