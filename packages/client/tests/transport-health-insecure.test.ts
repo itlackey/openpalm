@@ -50,7 +50,7 @@ async function withLocation<T>(
 }
 
 async function withNoLocation<T>(run: () => Promise<T>): Promise<T> {
-  const hasOwn = Object.prototype.hasOwnProperty.call(globalThis, 'location');
+  const hasOwn = Object.hasOwn(globalThis, 'location');
   const originalDescriptor = hasOwn
     ? Object.getOwnPropertyDescriptor(globalThis, 'location')
     : undefined;
@@ -64,7 +64,6 @@ async function withNoLocation<T>(run: () => Promise<T>): Promise<T> {
     if (originalDescriptor) {
       Object.defineProperty(globalThis, 'location', originalDescriptor);
     } else {
-      // biome-ignore lint: test cleanup only — remove the stub we added.
       delete (globalThis as Record<string, unknown>).location;
     }
   }
