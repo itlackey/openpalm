@@ -12,7 +12,13 @@
  * pwa-static) is still refused with 403.
  */
 import type { RequestHandler } from './$types';
-import { patchSecretsEnvFile, readStackEnv, recordProjectRename } from '@openpalm/lib';
+import {
+  patchSecretsEnvFile,
+  readStackEnv,
+  recordProjectRename,
+  reconcileMdnsResponder,
+  resolveMdnsStatus,
+} from '@openpalm/lib';
 import { getState } from '$lib/server/state.js';
 import {
   errorResponse,
@@ -51,6 +57,7 @@ export const GET: RequestHandler = async (event) => {
       projectName: env.OP_PROJECT_NAME?.trim() || DEFAULT_PROJECT_NAME,
       lanExposureEnabled: (env.OP_ASSISTANT_BIND_ADDRESS?.trim() || DEFAULT_ASSISTANT_BIND_ADDRESS) === LAN_ASSISTANT_BIND_ADDRESS,
       stackEnvPath: 'knowledge/env/stack.env',
+      mdns: resolveMdnsStatus(env),
     },
     requestId,
   );
@@ -92,6 +99,10 @@ export const PUT: RequestHandler = async (event) => {
       recordProjectRename(state.homeDir, previousProjectName, projectName);
     }
 
+    // Synchronous, non-throwing, and gated — with LAN exposure just enabled
+    // this starts advertising immediately (no restart of the host process).
+    const mdns = reconcileMdnsResponder(state.homeDir);
+
     return jsonResponse(
       200,
       {
@@ -100,6 +111,7 @@ export const PUT: RequestHandler = async (event) => {
         projectRenamed,
         lanExposureEnabled: body.lanExposureEnabled,
         stackEnvPath: 'knowledge/env/stack.env',
+        mdns,
       },
       requestId,
     );

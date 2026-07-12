@@ -25,6 +25,7 @@ import {
   collectBindAddressWarnings,
   isRemoteSetupAllowed,
   stackDirFor,
+  reconcileMdnsResponder,
 } from "@openpalm/lib";
 import { resolveRequestLanding, getCachedLocalInstallState } from "$lib/server/landing.js";
 import { BLOCKING_LANDINGS } from "$lib/resolve-landing.js";
@@ -77,6 +78,11 @@ function loadProcessEnv(): void {
     for (const [k, v] of Object.entries(stackVars)) {
       if (v && !process.env[k]) process.env[k] = v;
     }
+    // #488 — host-side LAN mDNS advertisement; no-op socket-free when every
+    // bind is loopback (the default) or OP_MDNS=off. This is the single
+    // start locus: every supervisor spawns this process, so the CLI needs no
+    // separate wiring.
+    reconcileMdnsResponder(state.homeDir);
   } catch (err) {
     logger.error("process env load failed", { error: String(err) });
   }

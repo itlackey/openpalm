@@ -6,6 +6,7 @@
     fetchHostStackSettings,
     saveAssistantPersona,
     saveHostStackSettings,
+    type MdnsSurface,
   } from '$lib/api.js';
   import { hasCapability } from '$lib/runtime-context.svelte.js';
   import { notifications } from '$lib/notifications.svelte.js';
@@ -24,6 +25,7 @@
   let projectName = $state('openpalm');
   let lanExposureEnabled = $state(false);
   let stackEnvPath = $state('knowledge/env/stack.env');
+  let mdns: MdnsSurface | null = $state(null);
 
   // ── Assistant persona (assistant-settings:write) ───────────────────────────
   let personaSaving = $state(false);
@@ -46,6 +48,7 @@
         projectName = stack.projectName;
         lanExposureEnabled = stack.lanExposureEnabled;
         stackEnvPath = stack.stackEnvPath;
+        mdns = stack.mdns;
       }
       if (showPersona) {
         const persona = await fetchAssistantPersona();
@@ -67,6 +70,7 @@
       const data = await saveHostStackSettings({ projectName, lanExposureEnabled });
       projectName = data.projectName;
       lanExposureEnabled = data.lanExposureEnabled;
+      mdns = data.mdns;
       notifications.push(
         'success',
         data.projectRenamed
@@ -141,6 +145,19 @@
           <span>Expose the assistant OpenCode server on the host LAN</span>
         </label>
         <p class="field-hint">Off keeps the host bind on <code>127.0.0.1</code>. On switches it to <code>0.0.0.0</code> so other devices on your LAN can reach the host port.</p>
+        {#if mdns}
+          <div class="path-chip mdns-chip">
+            {#if mdns.assistant.advertised}
+              <span>Assistant: <a href={`http://${mdns.assistant.name}:${mdns.assistant.port}`}>http://{mdns.assistant.name}:{mdns.assistant.port}</a></span>
+            {:else}
+              <span class="mdns-muted">Assistant: {mdns.assistant.name}:{mdns.assistant.port} (off — enable LAN exposure)</span>
+            {/if}
+            {#if mdns.guardian.advertised}
+              <span>Guardian: <a href={`http://${mdns.guardian.name}:${mdns.guardian.port}`}>http://{mdns.guardian.name}:{mdns.guardian.port}</a></span>
+            {/if}
+          </div>
+          <p class="field-hint">Names derive from <code>OP_PROJECT_NAME</code> and are broadcast by the host <code>openpalm</code> process only while it runs.</p>
+        {/if}
         {#if canEditStack}
           <div class="card-actions">
             <button class="btn btn-primary btn-sm" onclick={() => void saveStack()} disabled={loading || saving}>
@@ -187,6 +204,8 @@
   .mono { font-family: var(--s-font-mono); font-size: var(--s-type-mark); }
   .field-hint { margin: var(--s-sp-2) 0 0; font-family: var(--s-font-display); font-size: var(--s-type-deed); color: var(--s-ink-3); }
   .path-chip { display: inline-flex; align-items: center; margin-bottom: var(--s-sp-3); padding: var(--s-sp-1) var(--s-sp-2); border-radius: 2px; border: var(--s-hair) solid var(--s-line-soft); background: var(--s-paper-deep); color: var(--s-ink-3); font-family: var(--s-font-mono); font-size: var(--s-type-mark-sm); letter-spacing: var(--s-track-label); }
+  .mdns-chip { flex-direction: column; align-items: flex-start; gap: var(--s-sp-1); }
+  .mdns-muted { color: var(--s-ink-3); }
   .persona-editor { min-height: 26rem; resize: vertical; font-family: var(--s-font-mono) !important; font-size: var(--s-type-mark-sm) !important; background: color-mix(in srgb, var(--s-ink) 2%, var(--s-paper)) !important; border: var(--s-hair) solid var(--s-line-soft) !important; border-bottom: var(--s-hair) solid var(--s-line-soft) !important; border-radius: 2px !important; padding: var(--s-sp-3) !important; color: var(--s-ink-2) !important; }
   .unsaved-hint { font-family: var(--s-font-mono); font-size: var(--s-type-mark-sm); letter-spacing: var(--s-track-label); text-transform: uppercase; color: var(--s-seal); }
   .card-actions { display: flex; align-items: center; justify-content: flex-end; gap: var(--s-sp-3); margin-top: var(--s-sp-3); }

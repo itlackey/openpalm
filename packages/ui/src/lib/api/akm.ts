@@ -52,10 +52,16 @@ export async function reindexAkm(): Promise<{ ok: boolean; message: string; outp
 // ── Host stack settings + assistant persona (the old /admin/assistant split
 // into /api/host/stack and /api/assistant/persona — plan Phase 4 step 2) ──────
 
+export type MdnsSurface = {
+  assistant: { name: string; port: number; advertised: boolean };
+  guardian: { name: string; port: number; advertised: boolean };
+};
+
 export type HostStackSettings = {
   projectName: string;
   lanExposureEnabled: boolean;
   stackEnvPath: string;
+  mdns: MdnsSurface;
 };
 
 export async function fetchHostStackSettings(): Promise<HostStackSettings> {
@@ -66,9 +72,23 @@ export async function fetchHostStackSettings(): Promise<HostStackSettings> {
 export async function saveHostStackSettings(input: {
   projectName: string;
   lanExposureEnabled: boolean;
-}): Promise<{ ok: boolean; projectName: string; projectRenamed: boolean; lanExposureEnabled: boolean; stackEnvPath: string }> {
+}): Promise<{
+  ok: boolean;
+  projectName: string;
+  projectRenamed: boolean;
+  lanExposureEnabled: boolean;
+  stackEnvPath: string;
+  mdns: MdnsSurface;
+}> {
   const res = await requireOk(await request('PUT', '/api/host/stack', input));
-  return (await res.json()) as { ok: boolean; projectName: string; projectRenamed: boolean; lanExposureEnabled: boolean; stackEnvPath: string };
+  return (await res.json()) as {
+    ok: boolean;
+    projectName: string;
+    projectRenamed: boolean;
+    lanExposureEnabled: boolean;
+    stackEnvPath: string;
+    mdns: MdnsSurface;
+  };
 }
 
 export type AssistantPersona = {
