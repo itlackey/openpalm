@@ -253,6 +253,13 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **Guardian upstream auth matches OpenCode exactly** (PR #564 r3566888272,
+  r3566889740): the guardian now strips only trailing newlines from the
+  OpenCode password (matching the assistant entrypoint's `$(cat)` instead of
+  `.trim()`, so a password with surrounding spaces no longer 401s every
+  guardian→assistant call), and honors `OPENCODE_SERVER_USERNAME` (default
+  `opencode`) instead of hardcoding the username.
+
 - **Host-UI Basic auth to OpenCode is correct on every path** (PR #564
   r3566888629, r3566889513): all host-UI forwarders (default/runtime endpoint,
   probe, chat proxy, host health, opencode http client) now default the Basic

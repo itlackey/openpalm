@@ -48,6 +48,31 @@ describe("resolveAssistantUpstreamAuth (pure, fail-closed boot contract)", () =>
     }
   });
 
+  it("T39b (PR #564 r3566888272): preserves surrounding spaces in the password to match the assistant entrypoint", () => {
+    // The assistant entrypoint reads the same secret with $(cat ...), which
+    // strips only trailing newlines — surrounding spaces are preserved. The
+    // guardian must send the identical bytes or every upstream call 401s.
+    const expected = `Basic ${Buffer.from("opencode:lanpass1 ", "utf-8").toString("base64")}`;
+    const result = resolveAssistantUpstreamAuth(
+      { OPENCODE_AUTH: "true", OPENCODE_SERVER_PASSWORD_FILE: "/fake/opencode_server_password" },
+      () => "lanpass1 \n",
+    );
+    expect(result?.authorization).toBe(expected);
+  });
+
+  it("T39c (PR #564 r3566889740): honors OPENCODE_SERVER_USERNAME instead of hardcoding 'opencode'", () => {
+    const expected = `Basic ${Buffer.from("alice:s3cret", "utf-8").toString("base64")}`;
+    const result = resolveAssistantUpstreamAuth(
+      {
+        OPENCODE_AUTH: "true",
+        OPENCODE_SERVER_USERNAME: "alice",
+        OPENCODE_SERVER_PASSWORD_FILE: "/fake/opencode_server_password",
+      },
+      () => "s3cret\n",
+    );
+    expect(result?.authorization).toBe(expected);
+  });
+
   it("T40: enabled auth with a missing password-file var throws naming both env vars", () => {
     expect(() => resolveAssistantUpstreamAuth({ OPENCODE_AUTH: "true" }, () => "s3cret\n")).toThrow(
       /OPENCODE_AUTH/,
