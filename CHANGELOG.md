@@ -253,6 +253,15 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **Guardian mTLS passthrough robustness** (PR #564 r3566890023, r3566890224,
+  r3566890583, r3566890804): the raw-byte relay now caps each direction's
+  userspace queue (dropping a connection past 8 MiB instead of growing the
+  guardian heap unboundedly on a slow reader), flushes queued bytes before
+  ending a peer on close (no truncated response body), tears down an upstream
+  that finished connecting after its client already disconnected (no orphaned
+  loopback socket), and reaps a connection that never completes its TLS
+  handshake (slowloris fd exhaustion).
+
 - **Re-running setup over a home-password install no longer rotates the
   password** (PR #564 r3566887969): re-selecting the already-active
   home-password preset on a rerun (empty box because the secret is never

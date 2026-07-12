@@ -20,6 +20,29 @@ import { createLogger } from './logger.ts';
 
 const logger = createLogger('guardian.mtls');
 
+/**
+ * Per-direction userspace relay-queue cap (PR #564 r3566890023). A verified
+ * client that reads slowly while the upstream produces at full speed (or vice
+ * versa) would otherwise accumulate every undelivered byte in a JS array →
+ * unbounded heap → OOM. Past this many buffered bytes we drop the connection
+ * rather than the guardian.
+ */
+const MAX_RELAY_QUEUE_BYTES = 8 * 1024 * 1024;
+
+/**
+ * Seconds a connection may stay open WITHOUT completing the TLS handshake
+ * (PR #564 r3566890804). Reaps slowloris / half-open pre-handshake sockets that
+ * never trigger the `handshake` callback. Cleared once the handshake resolves.
+ */
+const HANDSHAKE_TIMEOUT_SECONDS = 15;
+
+/** Total queued bytes across a relay buffer. */
+function queuedBytes(queue: Uint8Array[]): number {
+  let total = 0;
+  for (const chunk of queue) total += chunk.byteLength;
+  return total;
+}
+
 export interface TlsPassthroughOptions {
   /** Public bind port (DIRECT_PORT). */
   port: number;
@@ -33,6 +56,9 @@ export interface TlsPassthroughOptions {
   cert: string;
   key: string;
   ca: string;
+  /** Pre-handshake reap timeout in seconds (PR #564 r3566890804). Test seam;
+   *  defaults to HANDSHAKE_TIMEOUT_SECONDS. */
+  handshakeTimeoutSeconds?: number;
 }
 
 export interface TlsPassthrough {
@@ -43,6 +69,17 @@ export interface TlsPassthrough {
 interface ClientSocketData {
   /** Set once the handshake explicitly rejects — stops any further relay. */
   rejected: boolean;
+  /** Set once the client socket has closed. Guards the connect-window race
+   *  (PR #564 r3566890583): if the upstream finishes connecting after the
+   *  client is already gone, it must be torn down, not attached+orphaned. */
+  clientClosed: boolean;
+  /** Set once the upstream has closed and we are draining the remaining
+   *  client-bound bytes before ending the client (PR #564 r3566890224). */
+  upstreamClosed: boolean;
+  /** Pre-handshake reap timer (PR #564 r3566890804); cleared once the handshake
+   *  callback fires. A plain JS timer — Bun's socket.timeout() does not reap a
+   *  TLS socket that never sends a ClientHello. */
+  handshakeTimer: ReturnType<typeof setTimeout> | null;
   upstream: Socket<UpstreamSocketData> | null;
   /**
    * Client bytes not yet relayed to the upstream: pre-connect buffer, write
@@ -68,10 +105,15 @@ interface UpstreamSocketData {
   client: Socket<ClientSocketData>;
 }
 
-/** Push `chunk` onto `queue` and attempt to drain it into `target` immediately. */
-function queueAndTryWrite(target: Socket<unknown>, queue: Uint8Array[], chunk: Uint8Array): void {
+/**
+ * Push `chunk` onto `queue` and drain what `write()` accepts. Returns false and
+ * leaves the queue intact when the buffered backlog exceeds
+ * MAX_RELAY_QUEUE_BYTES — the caller drops the connection (PR #564 r3566890023).
+ */
+function queueAndTryWrite(target: Socket<unknown>, queue: Uint8Array[], chunk: Uint8Array): boolean {
   queue.push(chunk);
   flushPending(target, queue);
+  return queuedBytes(queue) <= MAX_RELAY_QUEUE_BYTES;
 }
 
 /** Drain as much of `queue` into `target` as `write()` currently accepts, honoring backpressure. */
@@ -97,6 +139,7 @@ function flushPending(target: Socket<unknown>, queue: Uint8Array[]): void {
 
 export function startTlsPassthrough(options: TlsPassthroughOptions): TlsPassthrough {
   const upstreamHostname = options.upstreamHostname ?? '127.0.0.1';
+  const handshakeTimeoutSeconds = options.handshakeTimeoutSeconds ?? HANDSHAKE_TIMEOUT_SECONDS;
 
   const server: TCPSocketListener<ClientSocketData> = listen<ClientSocketData>({
     hostname: options.hostname ?? '0.0.0.0',
@@ -110,9 +153,28 @@ export function startTlsPassthrough(options: TlsPassthroughOptions): TlsPassthro
     },
     socket: {
       open(socket) {
-        socket.data = { rejected: false, upstream: null, pendingToUpstream: [], pendingToClient: [] };
+        socket.data = {
+          rejected: false,
+          clientClosed: false,
+          upstreamClosed: false,
+          handshakeTimer: null,
+          upstream: null,
+          pendingToUpstream: [],
+          pendingToClient: [],
+        };
+        // PR #564 r3566890804: reap a connection that never completes its TLS
+        // handshake (slowloris). Cleared on the first `handshake` callback.
+        socket.data.handshakeTimer = setTimeout(() => {
+          logger.warn('mtls_handshake_timeout', { remoteAddress: socket.remoteAddress });
+          socket.end();
+        }, handshakeTimeoutSeconds * 1000);
       },
       handshake(socket, success, authorizationError) {
+        // Handshake resolved — clear the pre-handshake reap timer.
+        if (socket.data.handshakeTimer) {
+          clearTimeout(socket.data.handshakeTimer);
+          socket.data.handshakeTimer = null;
+        }
         // Fail-closed acceptance condition (spec 435 D1): both `success`
         // AND a null `authorizationError` are required. `socket.authorized`
         // is NOT trusted here — the spike found it reports `true` even when
@@ -154,12 +216,23 @@ export function startTlsPassthrough(options: TlsPassthroughOptions): TlsPassthro
           data: { client: socket },
           socket: {
             open(upstreamSocket) {
+              // PR #564 r3566890583: the client may have disconnected while
+              // this upstream was still connecting. Attaching + flushing to a
+              // dead client would orphan this upstream forever (idleTimeout:0).
+              // Tear it down instead.
+              if (socket.data.clientClosed) {
+                upstreamSocket.end();
+                return;
+              }
               socket.data.upstream = upstreamSocket;
               flushPending(upstreamSocket, socket.data.pendingToUpstream);
             },
             data(upstreamSocket, chunk) {
               const client = upstreamSocket.data.client;
-              queueAndTryWrite(client, client.data.pendingToClient, chunk);
+              if (!queueAndTryWrite(client, client.data.pendingToClient, chunk)) {
+                logger.warn('mtls_relay_queue_overflow', { direction: 'upstream_to_client' });
+                upstreamSocket.end(); // drop the connection (close handlers tear down both)
+              }
             },
             drain(upstreamSocket) {
               // The upstream socket is writable again — retry the bytes queued
@@ -168,7 +241,17 @@ export function startTlsPassthrough(options: TlsPassthroughOptions): TlsPassthro
               flushPending(upstreamSocket, client.data.pendingToUpstream);
             },
             close(upstreamSocket) {
-              upstreamSocket.data.client.end();
+              // PR #564 r3566890224: flush any client-bound bytes still queued
+              // (userspace backpressure buffer) before ending the client, so a
+              // slow reader's response body isn't truncated. If the queue can't
+              // fully drain now, mark half-closed and finish on the client drain.
+              const client = upstreamSocket.data.client;
+              flushPending(client, client.data.pendingToClient);
+              if (client.data.pendingToClient.length === 0) {
+                client.end();
+              } else {
+                client.data.upstreamClosed = true;
+              }
             },
             error(upstreamSocket, error) {
               logger.warn('mtls_upstream_error', { error: error.message });
@@ -190,22 +273,43 @@ export function startTlsPassthrough(options: TlsPassthroughOptions): TlsPassthro
           // the upstream connection is still opening — buffer either way.
           // Only the accept branch of `handshake` ever opens the upstream,
           // so this buffer never reaches it unless the handshake accepted
-          // (fail-closed by construction).
+          // (fail-closed by construction). Still bound the buffer (PR #564
+          // r3566890023) — a client can flood before the upstream opens.
           socket.data.pendingToUpstream.push(chunk);
+          if (queuedBytes(socket.data.pendingToUpstream) > MAX_RELAY_QUEUE_BYTES) {
+            logger.warn('mtls_relay_queue_overflow', { direction: 'client_to_upstream_preconnect' });
+            socket.end();
+          }
           return;
         }
-        queueAndTryWrite(socket.data.upstream, socket.data.pendingToUpstream, chunk);
+        if (!queueAndTryWrite(socket.data.upstream, socket.data.pendingToUpstream, chunk)) {
+          logger.warn('mtls_relay_queue_overflow', { direction: 'client_to_upstream' });
+          socket.end(); // drop the connection (close handlers tear down both)
+        }
       },
       drain(socket) {
         // The client socket is writable again — retry the bytes queued FOR the
         // client (upstream→client), not the upstream-bound queue.
         flushPending(socket, socket.data.pendingToClient);
+        // PR #564 r3566890224: if the upstream already closed and we were only
+        // holding to drain the tail, end the client once the queue is empty.
+        if (socket.data.upstreamClosed && socket.data.pendingToClient.length === 0) {
+          socket.end();
+        }
       },
       close(socket) {
+        // PR #564 r3566890583: record the client is gone so a still-connecting
+        // upstream tears itself down instead of attaching to a dead client.
+        socket.data.clientClosed = true;
+        if (socket.data.handshakeTimer) {
+          clearTimeout(socket.data.handshakeTimer);
+          socket.data.handshakeTimer = null;
+        }
         socket.data.upstream?.end();
       },
       error(socket, error) {
         logger.warn('mtls_client_error', { error: error.message });
+        socket.data.clientClosed = true;
         socket.data.upstream?.end();
       },
     },

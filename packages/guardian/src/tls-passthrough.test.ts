@@ -182,4 +182,32 @@ describe("startTlsPassthrough", () => {
       }),
     ).resolves.toBeUndefined();
   });
+
+  it("reaps a connection that never completes the TLS handshake (slowloris, PR #564 r3566890804)", async () => {
+    const port = await getAvailablePort();
+    const pt = startTlsPassthrough({
+      port,
+      hostname: "127.0.0.1",
+      upstreamPort,
+      upstreamHostname: "127.0.0.1",
+      cert: SERVER_CERT_PEM,
+      key: SERVER_KEY_PEM,
+      ca: CA_CERT_PEM,
+      handshakeTimeoutSeconds: 1,
+    });
+    try {
+      const reaped = await new Promise<boolean>((resolve) => {
+        // Raw TCP, no TLS ClientHello — the `handshake` callback never fires.
+        const socket = connect({ host: "127.0.0.1", port }, () => {
+          /* connected; deliberately send nothing */
+        });
+        socket.on("close", () => resolve(true));
+        socket.on("error", () => resolve(true));
+        setTimeout(() => resolve(false), 3000);
+      });
+      expect(reaped).toBe(true);
+    } finally {
+      pt.stop();
+    }
+  });
 });
