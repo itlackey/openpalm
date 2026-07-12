@@ -57,6 +57,9 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **Portal `/health` now reports `service: portal-<name>`** (was
+  `channel-<name>`) — update any external monitoring scripted against the old
+  string. (#490)
 - **Version tags are now bare semver everywhere — the `v` prefix is retired.**
   Docker images publish as `openpalm/<svc>:X.Y.Z` (was `:vX.Y.Z`), the git
   summary tag is `X.Y.Z` (was `vX.Y.Z`), and `OP_*_VERSION` / `.skeleton-version`
@@ -76,6 +79,15 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Removed
 
+- **The deprecated `channel_lan` Docker network** (renamed to `portal_net` in
+  0.12.0, retained one release as an empty bridge) is gone from
+  `core.compose.yml`. Custom `custom.compose.yml` overlays still attaching
+  services to `channel_lan` must rename to `portal_net`; lifecycle operations
+  now fail fast with an actionable message (before changing anything) when
+  such a reference is detected, and warn when an overlay self-defines a
+  deprecated `channel_lan` network. (#490)
+- **The legacy `CHANNEL_NAME` compose marker is no longer recognized** for
+  portal discovery — `PORTAL_NAME` is the only marker. (#490)
 - Dead control-plane exports pruned from `@openpalm/lib`: `formatForDocker`
   (the `v`-prefix boundary, no longer needed), `ensureCoreCompose`, and
   `seedAssistantPersonaFiles` (zero production callers after the 0.12.34–0.12.40

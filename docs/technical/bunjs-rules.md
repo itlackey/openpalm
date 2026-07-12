@@ -93,7 +93,7 @@ operational events.
 
 ```typescript
 import { createLogger } from '@openpalm/lib';
-const logger = createLogger("guardian"); // or "channel-discord", "channel-slack", etc.
+const logger = createLogger("guardian"); // or "portal-discord", "portal-slack", etc.
 
 logger.info("Request accepted", { requestId, actor });
 logger.warn("Replay detected", { requestId });

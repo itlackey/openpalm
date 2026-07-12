@@ -35,6 +35,9 @@ export async function runUpgradeAction(opts: { allowPrerelease?: boolean } = {})
   if (result.assetsUpdated.length > 0) {
     console.log(`Assets updated: ${result.assetsUpdated.join(', ')}`);
   }
+  for (const w of result.warnings) {
+    console.warn(`Warning: ${w}`);
+  }
 
   // Check for a newer UI build on GitHub and install it if available.
   // Passes the pre-upgrade image tag as the reference version so any newer

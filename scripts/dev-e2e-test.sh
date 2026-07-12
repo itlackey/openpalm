@@ -120,8 +120,8 @@ OP_DOCKER_SOCK=${docker_sock}
 OP_IMAGE_NAMESPACE=openpalm
 OP_IMAGE_TAG=dev
 OP_ASSISTANT_PORT=${OP_E2E_ASSISTANT_PORT:-3891}
-# Guardian has no host port mapping (network-only). Channels reach it via
-# http://guardian:8080 over the channel_lan Docker network.
+# Guardian has no host port mapping (network-only). Portals reach it via
+# http://guardian:8080 over the portal_net Docker network.
 # Note: OP_VOICE_PORT is unused; voice compose binds via OP_VOICE_PORT_HOST.
 OP_VOICE_PORT_HOST=${OP_E2E_VOICE_PORT:-8187}
 OP_HOST_UI_PORT=${OP_E2E_UI_PORT}

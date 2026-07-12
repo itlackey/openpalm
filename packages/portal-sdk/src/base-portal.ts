@@ -104,7 +104,7 @@ export abstract class BasePortal {
   /** Thread inactivity TTL in ms (each portal supplies its own env-driven value). */
   protected abstract readonly threadTtlMs: number;
 
-  /** Structured logger scoped to this channel (`channel-<name>`). */
+  /** Structured logger scoped to this channel (`portal-<name>`). */
   protected readonly log: PortalLogger;
 
   protected constructor(log: PortalLogger) {
@@ -213,7 +213,7 @@ export abstract class BasePortal {
     return async (req: Request): Promise<Response> => {
       const url = new URL(req.url);
       if (url.pathname === '/health') {
-        return json(200, { ok: true, service: `channel-${this.name}` });
+        return json(200, { ok: true, service: `portal-${this.name}` });
       }
       return json(404, { error: 'not_found' });
     };
