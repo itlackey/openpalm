@@ -9,6 +9,22 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Opt-in mTLS adapter transport identity on the guardian direct listener**
+  (port 3830 only — internal 8080 and admin 3831 stay plain HTTP; #435). Set
+  `GUARDIAN_TLS_CERT_FILE` / `GUARDIAN_TLS_KEY_FILE` / `GUARDIAN_MTLS_CA_FILE`
+  (all three together or none — any partial combination is a fail-closed boot
+  error) to require every direct-listener connection to present a client
+  certificate signed by the operator's adapter CA. Default off; existing
+  behavior is byte-for-byte unchanged when unset. The Principal still comes
+  from HTTP Basic auth exactly as before — this is a machine/transport
+  identity for adapters, not an identity provider. A pre-spec spike found
+  Bun's `Bun.serve({ tls })` and the `node:https` shim both accept a client
+  certificate signed by *any* CA on the current runtime, so the guardian
+  instead terminates via a verified `Bun.listen` TCP passthrough that checks
+  the handshake's `authorizationError`, and CI pins the wrong-CA-rejection
+  case. See `docs/technical/guardian-direct-mtls.md` for the design note,
+  spike evidence, operator provisioning (openssl one-liners), and rotation
+  procedure.
 - **New `@openpalm/client` npm package** — the unprivileged chat/connections
   static app extracted from the admin UI (host/client split, #555). It joins the
   platform release exactly like `@openpalm/ui`: published by `platform`/`all`
