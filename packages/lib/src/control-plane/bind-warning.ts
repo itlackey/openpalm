@@ -10,6 +10,22 @@
  * are also checked and reported individually.
  */
 
+import { GUARDIAN_INGRESS_ADDON_IDS } from "./addon-ids.js";
+
+/**
+ * True when OP_ENABLED_ADDONS names at least one guardian-ingress addon — i.e.
+ * a guardian proxy is actually deployed in front of the exposed services.
+ * Parses the comma-separated OP_ENABLED_ADDONS directly (no dependency on
+ * addons.ts, to keep this module import-light and cycle-free).
+ */
+function hasGuardianIngress(env: Record<string, string | undefined>): boolean {
+  const enabled = (env.OP_ENABLED_ADDONS ?? "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  return enabled.some((a) => GUARDIAN_INGRESS_ADDON_IDS.includes(a));
+}
+
 /** Known per-service bind address env var names (mirrors compose files). */
 const PER_SERVICE_BIND_VARS: readonly string[] = [
   "OP_ASSISTANT_BIND_ADDRESS",
@@ -70,10 +86,18 @@ export function collectBindAddressWarnings(
 
   const globalBind = env.OP_BIND_ADDRESS;
   if (globalBind && !isLoopback(globalBind)) {
+    // PR #564 r3566893095: "guardian protected" is only truthful when a
+    // guardian-ingress addon is actually enabled. Without one, the exposed
+    // OP_BIND_ADDRESS cascade (which nests into OP_CLIENT_*/OP_VOICE_*) puts
+    // raw services on the LAN with no guardian proxy in front — say so.
     warnings.push(
-      `${PRESET_FRAMING.OP_BIND_ADDRESS} exposure — OP_BIND_ADDRESS is set to "${globalBind}", exposing ` +
-        `services on the host network interface, not just loopback. Ensure a firewall is in place if ` +
-        `this host is reachable from untrusted networks.`,
+      hasGuardianIngress(env)
+        ? `${PRESET_FRAMING.OP_BIND_ADDRESS} exposure — OP_BIND_ADDRESS is set to "${globalBind}", exposing ` +
+            `services on the host network interface, not just loopback. Ensure a firewall is in place if ` +
+            `this host is reachable from untrusted networks.`
+        : `Unprotected LAN exposure — OP_BIND_ADDRESS is set to "${globalBind}" but no guardian-ingress addon ` +
+            `is enabled, so services are exposed directly on the host network interface with no guardian proxy ` +
+            `in front. Enable a guardian-ingress addon (chat/api/gateway/discord/slack) or keep this loopback-only.`,
     );
   }
 

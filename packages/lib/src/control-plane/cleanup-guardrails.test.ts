@@ -368,4 +368,19 @@ describe("guardrail: overlay deprecation guard is wired", () => {
     expect(rollbackIdx).toBeGreaterThan(-1);
     expect(guardIdx).toBeLessThan(rollbackIdx);
   });
+
+  // PR #564 r3566892768: the blockError throw must be gated on `activate`
+  // (install/upgrade). uninstall/update must NOT be blocked by a leftover
+  // channel_lan overlay reference — an operator must always be able to tear
+  // down or update, and the guard's rationale (applyHome overwriting managed
+  // compose) is an activation concern only.
+  test("the channel_lan blockError throw is gated on `activate` (install/upgrade only)", () => {
+    const lifecycleTs = readFileSync(join(LIB_CONTROL_PLANE_DIR, "lifecycle.ts"), "utf-8");
+    const fnStart = lifecycleTs.indexOf("function reconcileStack(");
+    const guardIdx = lifecycleTs.indexOf("overlayCheck.blockError", fnStart);
+    // The `if (... blockError ...)` throw line must also reference `activate`.
+    const throwLineEnd = lifecycleTs.indexOf("\n", guardIdx);
+    const throwLine = lifecycleTs.slice(guardIdx, throwLineEnd);
+    expect(throwLine).toContain("activate");
+  });
 });

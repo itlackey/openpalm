@@ -246,7 +246,12 @@ function reconcileStack(
   // managed files were already overwritten. Fail fast instead, while nothing
   // has changed yet.
   const overlayCheck = checkCustomComposeChannelLan(state.homeDir);
-  if (overlayCheck.blockError) throw new Error(overlayCheck.blockError);
+  // PR #564 r3566892768: only BLOCK on activation (install/upgrade), where
+  // applyHome overwrites managed compose and a later channel_lan reference
+  // would fail cryptically. uninstall/update must never be blocked by a
+  // deprecated overlay reference — the operator must always be able to tear
+  // down or update. The warning still fires for every op kind (informational).
+  if (overlayCheck.blockError && activate) throw new Error(overlayCheck.blockError);
   if (overlayCheck.warning) lifecycleLogger.warn(overlayCheck.warning);
 
   return withStackEnvRollback(state, async () => {

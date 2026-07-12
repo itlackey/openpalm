@@ -253,6 +253,15 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **`channel_lan` deprecation guard no longer blocks uninstall/update**
+  (PR #564 r3566892768): the guard now throws only on activation
+  (install/upgrade), so a leftover `channel_lan` reference in a user
+  `custom.compose.yml` can no longer prevent tearing down or updating the stack.
+- **Bind-address warning no longer claims "guardian protected" without a
+  guardian** (PR #564 r3566893095): a non-loopback `OP_BIND_ADDRESS` with no
+  guardian-ingress addon enabled now warns that services are exposed
+  UNPROTECTED, instead of falsely asserting guardian protection.
+
 - **`this-pc` network preset now fails closed against host-env bind overrides**
   (PR #564 r3566887693): `validateNetworkPresetEnv` rejects a setup when the
   host process env exposes `OP_ASSISTANT_BIND_ADDRESS` or `OP_BIND_ADDRESS`

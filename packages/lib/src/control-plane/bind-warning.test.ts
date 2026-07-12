@@ -32,6 +32,25 @@ describe("collectBindAddressWarnings", () => {
     expect(warnings[0]).toContain("192.168.1.10");
   });
 
+  // PR #564 r3566893095: the "guardian protected" framing is only truthful when
+  // a guardian-ingress addon is actually enabled. With OP_BIND_ADDRESS exposed
+  // but no guardian ingress, the services are exposed UNPROTECTED.
+  test("OP_BIND_ADDRESS exposed with NO guardian-ingress addon warns UNPROTECTED, not 'guardian protected'", () => {
+    const warnings = collectBindAddressWarnings({ OP_BIND_ADDRESS: "0.0.0.0" });
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0].toLowerCase()).toContain("unprotected");
+    expect(warnings[0]).not.toContain("guardian protected");
+  });
+
+  test("OP_BIND_ADDRESS exposed WITH a guardian-ingress addon uses the 'guardian protected' framing", () => {
+    const warnings = collectBindAddressWarnings({
+      OP_BIND_ADDRESS: "0.0.0.0",
+      OP_ENABLED_ADDONS: "chat",
+    });
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain("guardian protected");
+  });
+
   test("returns individual warnings for non-loopback per-service overrides", () => {
     const warnings = collectBindAddressWarnings({
       OP_CHAT_BIND_ADDRESS: "0.0.0.0",
@@ -124,8 +143,10 @@ describe("collectBindAddressWarnings — preset framing (#563 D9, T18)", () => {
     expect(warnings[0]).toContain("OP_ASSISTANT_BIND_ADDRESS");
   });
 
-  test("OP_BIND_ADDRESS warning names the Shared network preset framing", () => {
-    const warnings = collectBindAddressWarnings({ OP_BIND_ADDRESS: "0.0.0.0" });
+  test("OP_BIND_ADDRESS warning names the Shared network preset framing (guardian ingress enabled)", () => {
+    // PR #564 r3566893095: the "Shared network, guardian protected" framing is
+    // only used when a guardian-ingress addon is actually enabled.
+    const warnings = collectBindAddressWarnings({ OP_BIND_ADDRESS: "0.0.0.0", OP_ENABLED_ADDONS: "chat" });
     expect(warnings).toHaveLength(1);
     expect(warnings[0]).toContain("Shared network");
     expect(warnings[0]).toContain("OP_BIND_ADDRESS");
