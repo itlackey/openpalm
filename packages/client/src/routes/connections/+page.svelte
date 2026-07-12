@@ -11,6 +11,7 @@
   import { getClientBoot, type ClientBoot } from '$lib/boot.js';
   import { createTransport, type HealthProbeResult } from '$lib/transport/index.js';
   import type { ConnectionEntry } from '$lib/connections/index.js';
+  import { validateConnectionUrl, TLS_GUIDE_URL } from '$lib/connections/url-policy.js';
 
   type AuthMode = 'none' | 'basic' | 'bearer';
 
@@ -36,6 +37,9 @@
   let formClearSecret = $state(false);
   let formSubmitting = $state(false);
   let formError = $state('');
+  // #557 D1: set only for an 'insecure-remote' refusal, so the error alert
+  // can deep-link the TLS guide; cleared everywhere formError is reset.
+  let formErrorGuideUrl = $state<string | null>(null);
 
   const formTitle = $derived(
     formMode === 'add' ? 'Add connection' : formMode === 'credentials' ? 'Set credentials' : 'Edit connection'
@@ -84,6 +88,13 @@
     if (status.state === 'blocked' && status.detail === 'cors') {
       return { text: 'blocked (CORS)', tone: 'warn' };
     }
+    // #557 D6: a plain-http remote target on this app's https origin is
+    // refused by the browser's mixed-content blocker before any request is
+    // even attempted — distinct badge text from "unreachable" so the fix
+    // (use HTTPS) is obvious rather than looking like a dead server.
+    if (status.state === 'insecure') {
+      return { text: 'needs HTTPS', tone: 'warn' };
+    }
     return { text: 'unreachable', tone: 'bad' };
   }
 
@@ -104,6 +115,16 @@
     );
   }
 
+  /**
+   * #557 D6/D7: remediation for the 'insecure' probe state — this app runs
+   * on a secure (https) origin, so browsers block plain-HTTP connections to
+   * remote servers (mixed content). null when the connection isn't in that
+   * state.
+   */
+  function isInsecure(id: string): boolean {
+    return health[id]?.state === 'insecure';
+  }
+
   function openAddForm(): void {
     formMode = 'add';
     formId = null;
@@ -114,6 +135,7 @@
     formSecret = '';
     formClearSecret = false;
     formError = '';
+    formErrorGuideUrl = null;
   }
 
   /**
@@ -147,12 +169,14 @@
     formSecret = '';
     formClearSecret = false;
     formError = '';
+    formErrorGuideUrl = null;
     formUsername = await loadStoredUsername(entry);
   }
 
   function cancelForm(): void {
     formMode = 'idle';
     formError = '';
+    formErrorGuideUrl = null;
   }
 
   /** Store new credential material (if any) and return the auth descriptor. */
@@ -198,11 +222,25 @@
     const url = formUrl.trim();
     if (!label || !url) {
       formError = 'Label and URL are required.';
+      formErrorGuideUrl = null;
       return;
+    }
+
+    // #557 D1: the URL field is validated in add/edit modes only —
+    // 'credentials' mode never submits a URL, identity is config-owned
+    // there (see the read-only context block above).
+    if (formMode === 'add' || formMode === 'edit') {
+      const verdict = validateConnectionUrl(url);
+      if (!verdict.ok) {
+        formError = verdict.message;
+        formErrorGuideUrl = verdict.reason === 'insecure-remote' ? verdict.guideUrl : null;
+        return;
+      }
     }
 
     formSubmitting = true;
     formError = '';
+    formErrorGuideUrl = null;
     try {
       if (formMode === 'add') {
         const auth = await buildAuth(null);
@@ -295,6 +333,14 @@
           {#if healthRemediation(conn.id)}
             <p class="remediation">{healthRemediation(conn.id)}</p>
           {/if}
+          {#if isInsecure(conn.id)}
+            <p class="remediation">
+              This app runs on a secure (https) origin, so browsers block plain-HTTP connections
+              to remote servers. <a href={TLS_GUIDE_URL} target="_blank" rel="noopener noreferrer"
+                >Set up HTTPS for remote access</a
+              >.
+            </p>
+          {/if}
         </div>
         <div class="connection-actions">
           {#if conn.id !== activeId}
@@ -380,7 +426,7 @@
         <input
           type="url"
           bind:value={formUrl}
-          placeholder="http://10.0.0.5:8443"
+          placeholder="https://home-server.tailnet.ts.net"
           required
           autocomplete="off"
         />
@@ -450,7 +496,14 @@
       {/if}
 
       {#if formError}
-        <div class="alert error" role="alert">{formError}</div>
+        <div class="alert error" role="alert">
+          {formError}
+          {#if formErrorGuideUrl}
+            <a href={formErrorGuideUrl} target="_blank" rel="noopener noreferrer"
+              >Set up HTTPS for remote access</a
+            >
+          {/if}
+        </div>
       {/if}
     </form>
 

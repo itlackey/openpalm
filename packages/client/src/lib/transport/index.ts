@@ -34,7 +34,15 @@
  *     connection from a genuinely down one,
  *   - §E5 structured error-body extraction on !response.ok,
  *   - §E8 UTF-8-safe Basic-auth header encoding.
+ *
+ * #557 D6 — probeHealth()'s 'insecure' state: a plain-http remote target on
+ * an https app origin is refused by the browser's mixed-content blocker
+ * before any response is observable, so a raw fetch there would surface as
+ * a misleading 'unreachable' (a TypeError, then a no-cors re-probe that is
+ * ALSO mixed-content-blocked). validateConnectionUrl() (./connections/
+ * url-policy.ts) is consulted first and short-circuits with zero network I/O.
  */
+import { validateConnectionUrl } from '../connections/url-policy.js';
 
 export type ConnectionAuth =
   | { mode: 'none' }
@@ -53,10 +61,15 @@ export type HealthProbeResult = {
   /**
    * 'blocked' (review 2026-07-10 §E3) means the connection is very likely UP
    * but its CORS policy refuses the browser origin — see the heuristic on
-   * `probeCorsBlock` below. Existing consumers that only match the
-   * pre-existing three states keep working; 'blocked' is additive.
+   * `probeCorsBlock` below. 'insecure' (#557 D6) means the target is a
+   * plain-http non-loopback URL and the app itself runs on an https origin —
+   * the browser's mixed-content blocker would refuse the request outright,
+   * so `probeHealth()` short-circuits via `validateConnectionUrl()` instead
+   * of performing a doomed fetch (`detail: 'plain-http-remote'`). Existing
+   * consumers that only match the pre-existing states keep working; both are
+   * additive.
    */
-  state: 'accessible' | 'unauthorized' | 'unreachable' | 'blocked';
+  state: 'accessible' | 'unauthorized' | 'unreachable' | 'blocked' | 'insecure';
   detail?: string;
 };
 
@@ -503,6 +516,16 @@ export function createTransport(options: TransportOptions): Transport {
      * not an exception path.
      */
     async probeHealth(): Promise<HealthProbeResult> {
+      // #557 D6: an `insecure-remote` verdict means the fetch below is
+      // doomed (mixed-content-blocked by the browser before it ever leaves)
+      // — short-circuit with zero network I/O rather than let it surface as
+      // a misleading 'unreachable'. An `invalid-url` verdict does NOT
+      // short-circuit: an unparseable base already surfaces as 'unreachable'
+      // via the fetch throw below, unchanged behavior.
+      const verdict = validateConnectionUrl(base);
+      if (!verdict.ok && verdict.reason === 'insecure-remote') {
+        return { state: 'insecure', detail: 'plain-http-remote' };
+      }
       try {
         const response = await fetchImpl(`${base}/`, {
           method: 'GET',

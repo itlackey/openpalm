@@ -15,6 +15,8 @@
  * beside the static build, P5d). Absent file = no default connection.
  */
 
+import { isLoopbackHost } from './url-policy.js';
+
 export type ConnectionKind = 'local-opencode' | 'remote-opencode' | 'openpalm-client-api';
 
 /**
@@ -50,10 +52,6 @@ export type RuntimeConfig = {
    */
   hostUrl?: string;
 };
-
-function isLoopbackHost(hostname: string): boolean {
-  return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1' || hostname === '[::1]';
-}
 
 function rewriteLoopbackUrlForBrowserHost(rawUrl: string): string {
   const locationLike = globalThis.location;
