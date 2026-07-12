@@ -540,6 +540,20 @@ export { getAkmStats, parseAkmStats } from './control-plane/akm-stats.js';
 // ── Bind Address Startup Warning ─────────────────────────────────────────────
 export { collectBindAddressWarnings, isRemoteSetupAllowed, isLoopback } from "./control-plane/bind-warning.js";
 
+// ── Network access presets (#563) ────────────────────────────────────────────
+export {
+  NETWORK_ACCESS_PRESETS,
+  NETWORK_PRESET_LABELS,
+  isNetworkAccessPreset,
+  resolveNetworkPreset,
+  detectNetworkPreset,
+  validateNetworkPresetEnv,
+  collectNetworkExposureWarnings,
+  type NetworkAccessPreset,
+  type NetworkPresetEnv,
+  type NetworkPresetResolution,
+} from "./control-plane/network-preset.js";
+
 // ── mDNS host self-advertisement (#488) ──────────────────────────────────────
 // Pure packet functions (sanitizeDnsLabel, parseDnsQuestions, buildMdnsAnswer,
 // etc.) stay reachable via the ./control-plane/mdns-responder.js subpath for

@@ -31,6 +31,7 @@ import { writeVoiceVars } from "./voice-env.js";
 import type { ControlPlaneState } from "./types.js";
 import { validateSetupSpec } from "./setup-validation.js";
 import { getRegistryAutomation, setAddonEnabled, setAddonProfileSelection } from "./addons.js";
+import { resolveNetworkPreset, validateNetworkPresetEnv, type NetworkAccessPreset } from "./network-preset.js";
 export { validateSetupSpec } from "./setup-validation.js";
 
 const logger = createLogger("setup");
@@ -69,6 +70,8 @@ export type SetupSpec = {
   ollamaProfile?: string;
   imageTag?: string;
   hostAkm?: boolean;
+  /** Network access preset (issue #563). Absent = leave network config untouched. */
+  network?: { preset: NetworkAccessPreset; opencodePassword?: string };
 };
 
 // ── Secrets Builder ──────────────────────────────────────────────────────
@@ -303,7 +306,17 @@ export async function performSetup(
   const validation = validateSetupSpec(input);
   if (!validation.valid) return { ok: false, error: validation.errors.join("; ") };
 
-  const { llm, embedding, tts, stt, security, owner, connections, portalCredentials, addons, voiceProfile, ollamaProfile, imageTag, hostAkm } = input;
+  // #563 D7 — fail closed BEFORE any write when the target preset conflicts
+  // with the HOST PROCESS env (not stack.env): compose gives process env
+  // precedence over --env-file, so a leftover OP_ASSISTANT_BIND_ADDRESS=0.0.0.0
+  // in the host process would silently defeat the shared-guardian hard-pin
+  // this resolver is about to write to stack.env.
+  if (input.network) {
+    const envCheck = validateNetworkPresetEnv(input.network.preset, process.env);
+    if (!envCheck.valid) return { ok: false, error: envCheck.errors.join("; ") };
+  }
+
+  const { llm, embedding, tts, stt, security, owner, connections, portalCredentials, addons, voiceProfile, ollamaProfile, imageTag, hostAkm, network } = input;
   const state = opts?.state ?? createState();
   initializeStateSecrets(state);
 
@@ -332,6 +345,19 @@ export async function performSetup(
       updateSecretsEnv(state, updates);
       persistPortalCredentials(state, portalCredentials);
       patchSecretsEnvFile(state.homeDir, { OP_UI_LOGIN_PASSWORD: security.uiLoginPassword });
+      // #563 — network access preset. Absent `network` means "leave whatever
+      // is already in stack.env untouched" (D7): a rerun over a hand-tuned
+      // env, or over a previous preset choice, never silently rewrites it
+      // unless the operator actively picked a preset this run.
+      if (network) {
+        const resolution = resolveNetworkPreset(network.preset, {
+          opencodePassword: network.opencodePassword,
+        });
+        patchSecretsEnvFile(state.homeDir, {
+          ...resolution.env,
+          ...(resolution.opencodePassword ? { OP_OPENCODE_PASSWORD: resolution.opencodePassword } : {}),
+        });
+      }
       // Provider API keys land in OpenCode's auth.json (bind-mounted into
       // the assistant container) — never in stack.env.
       writeAuthJsonProviderKeys(state, providerKeys);

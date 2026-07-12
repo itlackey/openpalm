@@ -19,6 +19,21 @@ const PER_SERVICE_BIND_VARS: readonly string[] = [
   "OP_VOICE_BIND_ADDRESS",
 ];
 
+/**
+ * #563 D9 — per-var warnings lead with WHAT is exposed and which network
+ * access preset (packages/lib/src/control-plane/network-preset.ts)
+ * deliberately configures that exposure, so operators reading the log can
+ * tell "I did this on purpose" from "something hand-edited this". Only
+ * `OP_ASSISTANT_BIND_ADDRESS` (the Home network presets) and
+ * `OP_BIND_ADDRESS` (the Shared network preset) are ever set by a preset;
+ * the other per-service vars (client/chat/api/voice) are never preset-managed
+ * so they keep generic wording naming no preset.
+ */
+const PRESET_FRAMING: Record<string, string> = {
+  OP_BIND_ADDRESS: "Shared network, guardian protected",
+  OP_ASSISTANT_BIND_ADDRESS: "Home network",
+};
+
 /** Exported for reuse by mdns-responder.ts's bind-gating logic (#488). */
 export function isLoopback(value: string): boolean {
   const v = value.trim();
@@ -56,16 +71,20 @@ export function collectBindAddressWarnings(
   const globalBind = env.OP_BIND_ADDRESS;
   if (globalBind && !isLoopback(globalBind)) {
     warnings.push(
-      `OP_BIND_ADDRESS is set to "${globalBind}" — services will be exposed on the host network interface, not just loopback. ` +
-        `Ensure a firewall is in place if this host is reachable from untrusted networks.`,
+      `${PRESET_FRAMING.OP_BIND_ADDRESS} exposure — OP_BIND_ADDRESS is set to "${globalBind}", exposing ` +
+        `services on the host network interface, not just loopback. Ensure a firewall is in place if ` +
+        `this host is reachable from untrusted networks.`,
     );
   }
 
   for (const key of PER_SERVICE_BIND_VARS) {
     const val = env[key];
     if (val && !isLoopback(val)) {
+      const framing = PRESET_FRAMING[key];
       warnings.push(
-        `${key} is set to "${val}" — this service will be exposed on the host network interface.`,
+        framing
+          ? `${framing} exposure — ${key} is set to "${val}", exposing this service on the host network interface.`
+          : `${key} is set to "${val}" — this service will be exposed on the host network interface.`,
       );
     }
   }
