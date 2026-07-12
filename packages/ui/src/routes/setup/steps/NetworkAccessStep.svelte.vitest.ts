@@ -38,7 +38,9 @@ describe('NetworkAccessStep — home-password reveals an editable, pre-filled pa
 
     const passwordInput = page.getByLabelText(/password/i);
     await expect.element(passwordInput).toBeVisible();
-    const value = await passwordInput.element().getAttribute('value');
+    // Svelte renders `value={...}` as the DOM property, not the attribute, so
+    // read the live input value rather than getAttribute('value').
+    const value = (passwordInput.element() as HTMLInputElement).value;
     expect(value, 'expected the password field to be pre-filled, not blank').toBeTruthy();
 
     // The user CAN type over it — this is not a read-only/locked field.
@@ -54,8 +56,10 @@ describe('NetworkAccessStep — home-open risk warning + required acknowledgemen
     await page.getByRole('radio', { name: /Home network, open access/i }).click();
 
     // Explicit risk warning is visible (D5: "explicit risk-acknowledgement
-    // checkbox before Install enables").
-    await expect.element(page.getByText(/without a password|open access|anyone on your network/i)).toBeVisible();
+    // checkbox before Install enables"). Target the role="alert" warning —
+    // the same phrases also appear in the always-visible option copy.
+    await expect.element(page.getByRole('alert')).toBeVisible();
+    expect(page.getByRole('alert').element().textContent).toMatch(/without a password/i);
 
     const ackCheckbox = page.getByRole('checkbox');
     await expect.element(ackCheckbox).not.toBeChecked();

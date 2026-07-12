@@ -18,7 +18,7 @@
  * reaches them.
  */
 import { describe, expect, test } from 'vitest';
-import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { dirname, join, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -30,7 +30,11 @@ const ICONS_DIR = join(SRC_ROOT, 'lib', 'components', 'icons');
 function sourceFiles(): string[] {
   return (readdirSync(SRC_ROOT, { recursive: true }) as string[])
     .filter((rel) => /\.(svelte|ts|js)$/.test(rel))
-    .map((rel) => join(SRC_ROOT, rel));
+    .map((rel) => join(SRC_ROOT, rel))
+    // Vitest browser mode saves failure screenshots under directories named
+    // after the test FILE (…/__screenshots__/Foo.vitest.ts/), so an
+    // extension-matching entry is not necessarily a file.
+    .filter((abs) => statSync(abs).isFile());
 }
 
 /** Collect every static, side-effect, re-export, and dynamic import specifier. */
