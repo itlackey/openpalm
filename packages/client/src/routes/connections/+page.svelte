@@ -6,6 +6,7 @@
   // probed directly against each connection URL.
   import { onMount } from 'svelte';
   import { page } from '$app/state';
+  import { replaceState } from '$app/navigation';
   import IconLock from '@openpalm/ui-kit/components/icons/IconLock.svelte';
   import Drawer from '@openpalm/ui-kit/components/common/Drawer.svelte';
   import { getClientBoot, type ClientBoot } from '$lib/boot.js';
@@ -17,6 +18,9 @@
     TLS_GUIDE_URL,
     REMOTE_CLIENT_GUIDE_URL,
   } from '$lib/connections/url-policy.js';
+  import { parsePairingCode, type PairingPayload } from '$lib/connections/pairing.js';
+  import { checkRuntimeContract, type RuntimeContractResult } from '$lib/runtime-handshake.js';
+  import { detectClientDisplayMode, type ClientDisplayMode } from '$lib/client-context.js';
 
   type AuthMode = 'none' | 'basic' | 'bearer';
   /** Add/edit form kind: 'local-opencode' is reserved for synthesized/locked
@@ -53,6 +57,22 @@
   // can deep-link the TLS guide; cleared everywhere formError is reset.
   let formErrorGuideUrl = $state<string | null>(null);
 
+  // #511 D3/D4: "Have a pairing code?" paste field, shown at the top of the
+  // add-mode form only. Applying a code prefills the same form fields a
+  // manual guardian-kind entry would use; the secret then flows through the
+  // existing buildAuth() -> secrets.set() encrypted-store path below —
+  // nothing pairing-specific touches storage.
+  let pairingPasteCode = $state('');
+
+  // #511 D2: per-connection runtime-contract handshake result, probed
+  // alongside health for 'openpalm-client-api' entries only (plain
+  // remote-opencode targets have nothing to handshake).
+  let contracts = $state<Record<string, RuntimeContractResult>>({});
+
+  // #511 D8: browser-only install hint, resolved once in onMount (never
+  // server-computed — mirrors +layout.svelte's dataset.displayMode stamp).
+  let displayMode = $state<ClientDisplayMode>('browser');
+
   const formTitle = $derived(
     formMode === 'add' ? 'Add connection' : formMode === 'credentials' ? 'Set credentials' : 'Edit connection'
   );
@@ -60,9 +80,25 @@
   let deletingId = $state<string | null>(null);
 
   onMount(async () => {
+    displayMode = detectClientDisplayMode();
     boot = await getClientBoot();
     await refresh();
     if (page.url.searchParams.get('new') === '1') openAddForm();
+
+    // #511 D3/D4: ?pair= deep link — parse, open the add form prefilled the
+    // same way the paste field does, then strip the parameter from history
+    // so the credential-bearing code doesn't linger in the URL bar.
+    const pairParam = page.url.searchParams.get('pair');
+    if (pairParam) {
+      const result = parsePairingCode(pairParam);
+      if (result.ok) {
+        openAddForm();
+        applyPairingPayload(result.payload);
+      }
+      const url = new URL(page.url);
+      url.searchParams.delete('pair');
+      replaceState(url, {});
+    }
   });
 
   async function refresh(): Promise<void> {
@@ -89,6 +125,58 @@
       })
     );
     health = Object.fromEntries(updates.map((u) => [u.id, u.result]));
+
+    // #511 D2: the handshake probes the connection's ORIGIN root, not the
+    // OpenCode/guardian API surface the transport talks to — scoped to
+    // 'openpalm-client-api' entries only (D2: a plain remote-opencode target
+    // is by definition not an OpenPalm host, nothing to handshake).
+    const guardianEntries = entries.filter((entry) => entry.kind === 'openpalm-client-api');
+    const contractUpdates = await Promise.all(
+      guardianEntries.map(async (entry) => ({ id: entry.id, result: await checkRuntimeContract(entry.url) }))
+    );
+    contracts = Object.fromEntries(contractUpdates.map((u) => [u.id, u.result]));
+  }
+
+  /** Contract-skew remediation copy — null when nothing to say (legacy /
+   *  compatible / not yet probed). */
+  function contractRemediation(entry: ConnectionEntry): string | null {
+    const contract = contracts[entry.id];
+    if (!contract) return null;
+    if (contract.state === 'newer') {
+      return `This server speaks a newer OpenPalm protocol (v${contract.version}) than this app supports (v2). Chat still works; update this app.`;
+    }
+    if (contract.state === 'older') {
+      return `This server speaks an older OpenPalm protocol (v${contract.version}) than this app expects (v2). Some features may be unavailable.`;
+    }
+    return null;
+  }
+
+  /** Prefill the add form from a decoded pairing payload (#511 D3/D4). The
+   *  secret then flows through the EXISTING buildAuth() -> secrets.set()
+   *  encrypted-store path on submit — the stored ConnectionEntry carries
+   *  only secretRef, never the raw secret. */
+  function applyPairingPayload(payload: PairingPayload): void {
+    formKind = 'openpalm-client-api';
+    formLabel = payload.label ?? formLabel;
+    formUrl = payload.url;
+    formAuthMode = 'basic';
+    formUsername = payload.username;
+    formSecret = payload.secret;
+    pairingPasteCode = '';
+    formError = '';
+    formErrorGuideUrl = null;
+  }
+
+  function applyPairingPaste(): void {
+    const code = pairingPasteCode.trim();
+    if (!code) return;
+    const result = parsePairingCode(code);
+    if (!result.ok) {
+      formError = result.error;
+      formErrorGuideUrl = null;
+      return;
+    }
+    applyPairingPayload(result.payload);
   }
 
   function healthLabel(id: string): { text: string; tone: 'ok' | 'warn' | 'bad' | 'idle' } {
@@ -405,6 +493,11 @@
               >.
             </p>
           {/if}
+          {#if contractRemediation(conn)}
+            <!-- #511 D2: version-skew notice — legacy/compatible render
+                 nothing, only 'newer'/'older' get a remediation paragraph. -->
+            <p class="remediation">{contractRemediation(conn)}</p>
+          {/if}
         </div>
         <div class="connection-actions">
           {#if conn.id !== activeId}
@@ -439,6 +532,12 @@
       <p class="empty">No connections yet — add one to start chatting.</p>
     {/each}
   </section>
+
+  {#if displayMode === 'browser'}
+    <!-- #511 D8: hidden when already standalone-pwa or inside Electron —
+         this is the issue's display-mode consumer for the client artifact. -->
+    <p class="install-hint">Tip: install OpenPalm as an app — use your browser's Install control.</p>
+  {/if}
 
   <!-- G2/G3 (review 2026-07-10): stays mounted while the drawer is open
        rather than `{#if formMode === 'idle'}`-gated (and NOT `disabled` —
@@ -484,6 +583,31 @@
           autocomplete="off"
         />
       </label>
+
+      {#if formMode === 'add'}
+        <!-- #511 D3/D4: pairing paste field — applies a host-minted pairing
+             code to prefill the rest of this form. The scan (any camera/QR
+             app) or the ?pair= deep link both land here too. Placed right
+             after Label (not literally first) so the Drawer's focus-trap
+             initial-focus target stays Label, unchanged from before this
+             field existed (G2/G3 focus-management contract,
+             e2e/connections-form.pw.ts). -->
+        <label class="field">
+          <span>Have a pairing code?</span>
+          <div class="field-inline">
+            <input
+              type="text"
+              bind:value={pairingPasteCode}
+              placeholder="openpalm-pair:…"
+              autocomplete="off"
+            />
+            <button type="button" class="btn btn-secondary btn-sm" onclick={applyPairingPaste}>
+              Apply
+            </button>
+          </div>
+          <small>Paste a code minted from another OpenPalm device's Connections page.</small>
+        </label>
+      {/if}
 
       <!-- #486 D2: connection-kind selector. 'local-opencode' is reserved
            for synthesized/locked runtime-config entries and is never offered
@@ -639,6 +763,12 @@
 
   .empty {
     color: var(--s-ink-3);
+  }
+
+  .install-hint {
+    color: var(--s-ink-3);
+    font-size: var(--s-type-deed);
+    margin: 0;
   }
 
   .connection-card {
