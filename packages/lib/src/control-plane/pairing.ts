@@ -169,7 +169,11 @@ export async function mintDirectPrincipalPairingCode(options: {
   }
   const adminToken = rawToken.trim();
 
-  const principalId = `${slugifyLabel(label)}-${randomHex(2)}`;
+  // PR #564 r3566891355: 8 random bytes (64 bits) — the guardian principal
+  // store upserts by id, so a same-label suffix collision would silently
+  // overwrite an existing device's credential. 16 bits (randomHex(2)) was far
+  // too narrow; 64 bits is collision-resistant across any realistic fleet.
+  const principalId = `${slugifyLabel(label)}-${randomHex(8)}`;
   const principalToken = randomHex(32);
 
   let response: Response;

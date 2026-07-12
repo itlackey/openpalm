@@ -137,6 +137,10 @@ describe('mintDirectPrincipalPairingCode', () => {
     expect(body.kind).toBe('direct');
     expect(body.token).toMatch(/^[0-9a-f]{48,}$/);
     expect(body.label).toBe('My Device');
+    // PR #564 r3566891355: the random suffix must be collision-resistant
+    // (>= 8 bytes / 16 hex chars), not the old 16-bit (4 hex) suffix that an
+    // upsert store would silently clobber on a same-label collision.
+    expect(body.id).toMatch(/^my-device-[0-9a-f]{16,}$/);
 
     const decoded = decodePairingCode(result.code);
     expect(decoded.ok).toBe(true);
@@ -166,9 +170,10 @@ describe('mintDirectPrincipalPairingCode', () => {
 
     expect(result.ok).toBe(true);
     if (!result.ok) throw new Error('expected ok result');
-    // slug(label) + '-' + 4 hex chars — never the bare slug (never clobbers an
-    // existing principal via bare-label upsert).
-    expect(result.principalId).toMatch(/^my-device-[0-9a-f]{4}$/);
+    // slug(label) + '-' + a collision-resistant 64-bit (16 hex) suffix (PR #564
+    // r3566891355) — never the bare slug (never clobbers an existing principal
+    // via bare-label upsert).
+    expect(result.principalId).toMatch(/^my-device-[0-9a-f]{16}$/);
     expect(result.principalId).not.toBe('my-device');
 
     const second = await mintDirectPrincipalPairingCode({

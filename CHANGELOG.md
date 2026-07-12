@@ -253,6 +253,14 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **Pairing principal IDs are collision-resistant and oversized labels are
+  rejected** (PR #564 r3566891355, r3566891768): the device-principal id suffix
+  widened from 16 to 64 bits so a same-label collision can no longer silently
+  overwrite (unpair) an existing device via the upsert store; and the pairing
+  endpoint caps the device label (and no longer lets a QR-render failure escape
+  after minting), so an oversized label can never orphan a durable guardian
+  principal.
+
 - **mDNS record correctness** (PR #564 r3566892051, r3566892362): a specific
   non-IPv4 bind (IPv6 literal or hostname) is no longer encoded into a
   malformed A record — such addresses are skipped. Legacy-unicast replies

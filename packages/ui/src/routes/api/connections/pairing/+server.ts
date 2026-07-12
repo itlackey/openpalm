@@ -28,6 +28,10 @@ import {
 import { validateConnectionUrl } from '$lib/server/endpoints.js';
 import { getState } from '$lib/server/state.js';
 
+/** Max device-label length (PR #564 r3566891768). Keeps the pairing code well
+ *  under a QR code's byte capacity so renderSVG cannot throw after minting. */
+const MAX_PAIRING_LABEL_LENGTH = 64;
+
 /** Warnings named in the panel copy so the operator knows exactly which env
  *  keys / prerequisites this pairing code depends on (D3 risk 6: the pairing
  *  endpoint never mutates stack env implicitly — it only tells the operator
@@ -63,6 +67,20 @@ export const POST: RequestHandler = async (event) => {
     if (!label) {
       return errorResponse(400, 'invalid_connection', 'label is required', {}, requestId);
     }
+    // PR #564 r3566891768: cap the label BEFORE minting. The label is embedded
+    // in the pairing code, and an oversized code overflows the QR byte capacity
+    // (~2953 bytes) so renderSVG throws — if that happened after the principal
+    // was minted, it would orphan a durable guardian principal whose one-time
+    // code was never returned. Reject early instead.
+    if (label.length > MAX_PAIRING_LABEL_LENGTH) {
+      return errorResponse(
+        400,
+        'invalid_connection',
+        `label must be at most ${MAX_PAIRING_LABEL_LENGTH} characters`,
+        {},
+        requestId,
+      );
+    }
     const urlCheck = validateConnectionUrl(rawUrl);
     if (!urlCheck.ok) {
       return errorResponse(400, 'invalid_connection', 'URL must be a valid http(s) URL', {}, requestId);
@@ -89,7 +107,16 @@ export const POST: RequestHandler = async (event) => {
     }
 
     const warnings = computeWarnings(mergedEnv, urlCheck.url);
-    const qrSvg = renderSVG(result.code);
+    // Defensive: the label cap above keeps the code well under the QR byte
+    // limit, but never let a renderSVG failure escape as an uncaught 500 after
+    // the principal is already minted — return the pairing code without a QR
+    // rather than orphaning the (usable) principal (PR #564 r3566891768).
+    let qrSvg: string | null = null;
+    try {
+      qrSvg = renderSVG(result.code);
+    } catch {
+      qrSvg = null;
+    }
 
     return jsonResponse(
       201,

@@ -168,6 +168,20 @@ describe('POST /api/connections/pairing — mint (#511 D3/D4)', () => {
     expect(fetchStub).not.toHaveBeenCalled();
   });
 
+  test('400 for an over-long label (rejected before minting a principal) — PR #564 r3566891768', async () => {
+    writeSecret(getState().homeDir, 'op_guardian_admin_token', 'f'.repeat(48));
+    const fetchStub = stubGuardianAdmin(200);
+
+    const { POST } = await loadRoute();
+    const res = await POST(
+      makePairingPostEvent({ label: 'x'.repeat(300), url: 'https://gw.example.ts.net/oc' }),
+    );
+    expect(res.status).toBe(400);
+    // The principal must NOT be minted for an over-long label — otherwise a
+    // downstream renderSVG overflow would orphan a durable guardian principal.
+    expect(fetchStub).not.toHaveBeenCalled();
+  });
+
   test('502 with an actionable error when the guardian admin listener is unreachable', async () => {
     writeSecret(getState().homeDir, 'op_guardian_admin_token', 'f'.repeat(48));
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('fetch failed')));
