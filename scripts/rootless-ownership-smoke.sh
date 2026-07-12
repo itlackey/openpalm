@@ -27,12 +27,17 @@ KEEP="${OP_ROOTLESS_SMOKE_KEEP:-0}"
 UI_PID=""
 PLATFORM_VERSION="$(smoke_platform_version)"
 
+# PR #564 P3-3: the assistant host port must ALSO differ per target, or the
+# `stack` and `portal-discord` smoke projects collide on 3896 when run
+# concurrently (every other port already has a per-target default).
+assistant_port_default=3896
 guardian_port_default=3930
 guardian_admin_port_default=3931
 chat_port_default=3920
 api_port_default=3921
 client_port_default=3910
 if [[ "$TARGET" == "portal-discord" ]]; then
+  assistant_port_default=3996
   guardian_port_default=3940
   guardian_admin_port_default=3941
   chat_port_default=3942
@@ -92,8 +97,14 @@ cleanup() {
   fi
 
   if [[ -f "$SMOKE_HOME/knowledge/env/stack.env" ]]; then
-    dev_compose down --remove-orphans --volumes >/dev/null 2>&1 || true
+    # PR #564 P3-4: `up` starts profile-gated services (guardian + the portal),
+    # so `down` MUST enable the same profiles or those containers leak past a
+    # "successful" run. Enable both first-party addon profiles unconditionally.
+    dev_compose --profile addon.discord --profile addon.chat down --remove-orphans --volumes >/dev/null 2>&1 || true
   fi
+  # Backstop (profile-agnostic): force-remove anything still labelled with this
+  # smoke project, so no container survives a successful OR failed run.
+  docker ps -aq --filter "label=com.docker.compose.project=${COMPOSE_PROJECT_NAME}" 2>/dev/null | xargs -r docker rm -f >/dev/null 2>&1 || true
   docker run --rm -v "$(dirname "$SMOKE_HOME"):/smoke-parent" alpine sh -c 'rm -rf "/smoke-parent/$1"' _ "$(basename "$SMOKE_HOME")" >/dev/null 2>&1 || true
 }
 trap cleanup EXIT
@@ -105,7 +116,7 @@ fi
 docker run --rm -v "$(dirname "$SMOKE_HOME"):/smoke-parent" alpine sh -c "rm -rf /smoke-parent/$(basename "$SMOKE_HOME")" >/dev/null 2>&1 || true
 smoke_copy_skeleton "$SMOKE_HOME"
 smoke_write_stack_env "$SMOKE_HOME" "$PLATFORM_VERSION" \
-  "${OP_ROOTLESS_SMOKE_ASSISTANT_PORT:-3896}" \
+  "${OP_ROOTLESS_SMOKE_ASSISTANT_PORT:-${assistant_port_default}}" \
   "${OP_ROOTLESS_SMOKE_GUARDIAN_PORT:-${guardian_port_default}}" \
   "${OP_ROOTLESS_SMOKE_GUARDIAN_ADMIN_PORT:-${guardian_admin_port_default}}" \
   "${OP_ROOTLESS_SMOKE_CHAT_PORT:-${chat_port_default}}" \

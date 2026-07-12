@@ -253,6 +253,12 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **Rootless smoke fixture hygiene** (PR #564 P3-3, P3-4): the `stack` and
+  `portal-discord` smoke targets now use distinct default assistant ports
+  (3896 / 3996) so they can run concurrently, and cleanup enables the addon
+  profiles on `down` (plus a project-label force-remove backstop) so a
+  successful run no longer leaks the guardian/discord containers.
+
 - **Guardian mTLS server wiring** (PR #564 r3566888940, r3566889234): under
   mTLS the direct handler now recovers each request's real client IP from the
   passthrough (correlating the loopback peer port) instead of seeing every
