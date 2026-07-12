@@ -9,6 +9,20 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Standalone OpenCode-compatible portal packages** (#491). `@openpalm/discord-portal`
+  and `@openpalm/slack-portal` are now runnable standalone with Bun
+  (`bunx @openpalm/discord-portal` / `@openpalm/slack-portal`) against any
+  OpenCode server, not only the shipped guardian-fronted stack: new `bin/`
+  CLI entrypoints (`openpalm-discord-portal`, `openpalm-slack-portal`) with a
+  crash safety net, a client-side session-reuse fallback
+  (`PORTAL_SESSION_REUSE=client`, `PORTAL_SESSION_TTL_MS`) for plain OpenCode
+  servers that ignore the guardian's session-reuse hint header, a direct-env
+  secret fallback alongside the existing `*_FILE` discipline
+  (`readRequiredSecret`: `PRINCIPAL_SECRET`/`OPENCODE_PASSWORD`,
+  `DISCORD_BOT_TOKEN`, `SLACK_BOT_TOKEN`/`SLACK_APP_TOKEN`), a
+  `SLACK_BOT_NAME` branding variable, and rewritten standalone READMEs
+  carrying the mandated security framing (guardian-fronted vs. personal /
+  small-trusted-team standalone use).
 - **Remote-access TLS guide and client-side HTTPS enforcement** (#557).
   `docs/remote-access-tls.md` documents fronting the guardian direct listener
   with real HTTPS for phones/remote clients: Tailscale `serve` as the
@@ -110,6 +124,13 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **`@openpalm/portal-sdk` removes the unused public `BasePortal.guardianUrl`
+  field** (#491). Base URL resolution is now `OcClient`'s job alone
+  (`OPENCODE_BASE_URL`, default `http://guardian:8080/oc`) — the field's only
+  consumers were the two in-repo portal test suites (updated in this change);
+  the guardian's own `GuardianOpenAiApi` has a separate local field and no
+  portal-sdk dependency. Breaking change for any out-of-tree consumer reading
+  `guardianUrl` directly; the package is pre-1.0 beta.
 - **Docs:** the hosted client origin (`https://app.openpalm.dev`) is
   deliberately **not** pre-baked into the guardian's default CORS allowlist —
   it stays an operator opt-in via `GUARDIAN_CORS_ALLOWED_ORIGINS` until #511's
@@ -158,6 +179,14 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **`OPENCODE_BASE_URL` was ignored by the portal adapters** (#491).
+  `BasePortal.createOcClient` hardcoded `baseUrl: 'http://guardian:8080/oc'`,
+  so `OcClient`'s existing `OPENCODE_BASE_URL` env fallback was dead code
+  even though the shipped compose overlay and both READMEs advertised it.
+  The shipped compose sets `OPENCODE_BASE_URL` to exactly the old hardcoded
+  value, so first-party installs see no behavior change; custom-compose users
+  who set `DISCORD_OPENCODE_BASE_URL`/`SLACK_OPENCODE_BASE_URL` now get the
+  documented behavior.
 - **`packages/skeleton/tools.json` now installs the real `opencode-ai` npm
   package.** It referenced `opencode`, which does not exist on npm (404), so the
   tool install never produced the `opencode` binary. With

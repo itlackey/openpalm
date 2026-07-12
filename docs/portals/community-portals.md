@@ -62,6 +62,19 @@ policy, Basic-auth `/oc/*` calls, and session/stream behavior.
 - `portals/discord/README.md`
 - `portals/slack/README.md`
 
+## First-party adapters standalone
+
+Both first-party adapters are also published, independently runnable npm
+packages (`@openpalm/discord-portal`, `@openpalm/slack-portal`) — a standard
+OpenCode-SDK client you can run with Bun (`bunx @openpalm/discord-portal` /
+`bunx @openpalm/slack-portal`) against **any** OpenCode server, not only the
+shipped guardian-fronted stack. Runs best behind the OpenPalm guardian (or
+another auth/rate-limiting reverse proxy); standalone is for personal /
+small-trusted-team use against your own OpenCode server. See
+[`portals/discord/README.md`](../../portals/discord/README.md) and
+[`portals/slack/README.md`](../../portals/slack/README.md) for the full
+standalone quick start and environment variable reference.
+
 ## Related addons
 
 - The voice addon serves a static browser UI and is not a guardian-fronted portal.
