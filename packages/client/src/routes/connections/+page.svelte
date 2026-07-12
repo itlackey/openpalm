@@ -10,10 +10,18 @@
   import Drawer from '@openpalm/ui-kit/components/common/Drawer.svelte';
   import { getClientBoot, type ClientBoot } from '$lib/boot.js';
   import { createTransport, type HealthProbeResult } from '$lib/transport/index.js';
-  import type { ConnectionEntry } from '$lib/connections/index.js';
-  import { validateConnectionUrl, TLS_GUIDE_URL } from '$lib/connections/url-policy.js';
+  import type { ConnectionEntry, ConnectionKind } from '$lib/connections/index.js';
+  import {
+    validateConnectionUrl,
+    normalizeGuardianUrl,
+    TLS_GUIDE_URL,
+    REMOTE_CLIENT_GUIDE_URL,
+  } from '$lib/connections/url-policy.js';
 
   type AuthMode = 'none' | 'basic' | 'bearer';
+  /** Add/edit form kind: 'local-opencode' is reserved for synthesized/locked
+   *  runtime-config entries and is never offered here (#486 D2). */
+  type FormKind = Extract<ConnectionKind, 'remote-opencode' | 'openpalm-client-api'>;
 
   let boot: ClientBoot | null = null;
   let connections = $state<ConnectionEntry[]>([]);
@@ -31,6 +39,10 @@
   let formId = $state<string | null>(null);
   let formLabel = $state('');
   let formUrl = $state('');
+  // #486 D2: the connection-kind selector. Only rendered in add/edit modes —
+  // locked entries only ever open in 'credentials' mode, which never touches
+  // identity fields (kind included).
+  let formKind = $state<FormKind>('remote-opencode');
   let formAuthMode = $state<AuthMode>('none');
   let formUsername = $state('');
   let formSecret = $state('');
@@ -68,6 +80,10 @@
         const transport = createTransport({
           baseUrl: entry.url,
           auth: await secrets.resolveAuth(entry),
+          // #486 D2: a guardian /oc base's bare root (`GET /oc/`) is not an
+          // allowlisted route and 404s even when the guardian is fully
+          // healthy — probe the allowlisted `/session` route instead.
+          probePath: entry.kind === 'openpalm-client-api' ? '/session' : '/',
         });
         return { id: entry.id, result: await transport.probeHealth() };
       })
@@ -103,16 +119,34 @@
    * that actually fix it — GUARDIAN_CORS_ALLOWED_ORIGINS (the allowlist
    * itself) and GUARDIAN_DIRECT_INGRESS (which must be enabled for a
    * guardian-fronted connection to answer direct browser requests at all;
-   * review §I4). null when the connection isn't in the blocked/cors state.
+   * review §I4). #486 D2 additionally names GUARDIAN_DIRECT_INGRESS alone
+   * for a guardian-kind connection reporting `unreachable` + `HTTP 404` — a
+   * healthy guardian with its direct listener off 404s every route
+   * (including the allowlisted `/session` probe), which otherwise looks
+   * indistinguishable from a genuinely dead server. null when the connection
+   * isn't in either remediable state.
    */
-  function healthRemediation(id: string): string | null {
-    const status = health[id];
-    if (status?.state !== 'blocked' || status.detail !== 'cors') return null;
-    return (
-      'The server refused this cross-origin request. Add this app’s origin to ' +
-      'GUARDIAN_CORS_ALLOWED_ORIGINS on the connection’s server, and make sure ' +
-      'GUARDIAN_DIRECT_INGRESS is enabled if this is a guardian-fronted connection.'
-    );
+  function healthRemediation(entry: ConnectionEntry): string | null {
+    const status = health[entry.id];
+    if (status?.state === 'blocked' && status.detail === 'cors') {
+      return (
+        'The server refused this cross-origin request. Add this app’s origin to ' +
+        'GUARDIAN_CORS_ALLOWED_ORIGINS on the connection’s server, and make sure ' +
+        'GUARDIAN_DIRECT_INGRESS is enabled if this is a guardian-fronted connection.'
+      );
+    }
+    if (
+      entry.kind === 'openpalm-client-api' &&
+      status?.state === 'unreachable' &&
+      status.detail === 'HTTP 404'
+    ) {
+      return (
+        'The guardian answered but reported HTTP 404 — its direct listener is off. Set ' +
+        'GUARDIAN_DIRECT_INGRESS=true on the guardian and restart it (see the remote-client ' +
+        'setup guide).'
+      );
+    }
+    return null;
   }
 
   /**
@@ -130,12 +164,26 @@
     formId = null;
     formLabel = '';
     formUrl = '';
+    formKind = 'remote-opencode';
     formAuthMode = 'none';
     formUsername = '';
     formSecret = '';
     formClearSecret = false;
     formError = '';
     formErrorGuideUrl = null;
+  }
+
+  /**
+   * #486 D2: guardian principals always authenticate with HTTP Basic — force
+   * `formAuthMode` when the user switches the kind selector to the guardian
+   * kind in add mode. An `onchange` handler (NOT `$effect` — sveltekit-
+   * rules.md treats `$effect` as a bug), so it only fires on an explicit
+   * user interaction, not on every reactive re-render.
+   */
+  function onFormKindChange(): void {
+    if (formMode === 'add' && formKind === 'openpalm-client-api') {
+      formAuthMode = 'basic';
+    }
   }
 
   /**
@@ -165,6 +213,10 @@
     formId = entry.id;
     formLabel = entry.label;
     formUrl = entry.url;
+    // #486 D2: kinds are only editable in add/edit modes; a 'local-opencode'
+    // locked entry only ever opens in 'credentials' mode (never 'edit'), so
+    // this narrowing is safe — it's display-only context there anyway.
+    formKind = entry.kind === 'openpalm-client-api' ? 'openpalm-client-api' : 'remote-opencode';
     formAuthMode = entry.auth.mode;
     formSecret = '';
     formClearSecret = false;
@@ -238,17 +290,22 @@
       }
     }
 
+    // #486 D2: guardian-kind connections are stored with a normalized `/oc`
+    // suffix so the transport's baseUrl already routes every call correctly
+    // with no further rewriting.
+    const storedUrl = formKind === 'openpalm-client-api' ? normalizeGuardianUrl(url) : url;
+
     formSubmitting = true;
     formError = '';
     formErrorGuideUrl = null;
     try {
       if (formMode === 'add') {
         const auth = await buildAuth(null);
-        await boot.store.add({ label, url, kind: 'remote-opencode', auth });
+        await boot.store.add({ label, url: storedUrl, kind: formKind, auth });
       } else if (formMode === 'edit' && formId) {
         const existing = await boot.store.get(formId);
         const auth = await buildAuth(existing);
-        await boot.store.update(formId, { label, url, auth });
+        await boot.store.update(formId, { label, url: storedUrl, kind: formKind, auth });
       } else if (formMode === 'credentials' && formId) {
         // E6: locked entries route through setSecretRef, never update() —
         // label/url are read-only context in this mode and are never sent.
@@ -330,8 +387,15 @@
             <span class="badge health {healthLabel(conn.id).tone}">{healthLabel(conn.id).text}</span>
           </div>
           <div class="connection-url">{conn.url}</div>
-          {#if healthRemediation(conn.id)}
-            <p class="remediation">{healthRemediation(conn.id)}</p>
+          {#if healthRemediation(conn)}
+            <p class="remediation">
+              {healthRemediation(conn)}
+              {#if conn.kind === 'openpalm-client-api'}
+                <a href={REMOTE_CLIENT_GUIDE_URL} target="_blank" rel="noopener noreferrer"
+                  >Remote client setup guide</a
+                >
+              {/if}
+            </p>
           {/if}
           {#if isInsecure(conn.id)}
             <p class="remediation">
@@ -421,6 +485,17 @@
         />
       </label>
 
+      <!-- #486 D2: connection-kind selector. 'local-opencode' is reserved
+           for synthesized/locked runtime-config entries and is never offered
+           here — only the two user-addable kinds. -->
+      <label class="field">
+        <span>Kind</span>
+        <select bind:value={formKind} onchange={onFormKindChange}>
+          <option value="remote-opencode">OpenCode server (direct)</option>
+          <option value="openpalm-client-api">OpenPalm guardian (/oc)</option>
+        </select>
+      </label>
+
       <label class="field">
         <span>URL</span>
         <input
@@ -430,7 +505,13 @@
           required
           autocomplete="off"
         />
-        <small>The base URL where the assistant (OpenCode or guardian) is reachable.</small>
+        {#if formKind === 'openpalm-client-api'}
+          <small>
+            The guardian's base URL — <code>/oc</code> is appended automatically if you leave it off.
+          </small>
+        {:else}
+          <small>The base URL where the assistant (OpenCode or guardian) is reachable.</small>
+        {/if}
       </label>
       {/if}
 
@@ -452,7 +533,13 @@
             placeholder="openpalm"
             autocomplete="off"
           />
-          <small>Defaults to <code>openpalm</code> — the username the OpenPalm stack provisions.</small>
+          {#if formKind === 'openpalm-client-api'}
+            <!-- #486 D2: guardian principals authenticate as their principal
+                 id, not the stack's shared 'openpalm' default. -->
+            <small>The username is the guardian principal id you minted (e.g. <code>my-phone</code>), not <code>openpalm</code>.</small>
+          {:else}
+            <small>Defaults to <code>openpalm</code> — the username the OpenPalm stack provisions.</small>
+          {/if}
         </label>
         <label class="field">
           <span>Password</span>

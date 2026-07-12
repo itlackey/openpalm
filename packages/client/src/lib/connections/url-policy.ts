@@ -24,6 +24,14 @@
 export const TLS_GUIDE_URL =
   'https://github.com/itlackey/openpalm/blob/main/docs/remote-access-tls.md';
 
+/** Canonical deep link to the remote-client provisioning walkthrough (#486
+ * D3: enable GUARDIAN_DIRECT_INGRESS, add the client origin to
+ * GUARDIAN_CORS_ALLOWED_ORIGINS, mint a `direct` principal). Same pinning
+ * idiom as {@link TLS_GUIDE_URL} — a test asserts the path segment names a
+ * real file, so a docs rename breaks CI instead of shipping a dead link. */
+export const REMOTE_CLIENT_GUIDE_URL =
+  'https://github.com/itlackey/openpalm/blob/main/docs/managing-openpalm.md';
+
 /** Moved verbatim from `./index.ts` (D6) — not duplicated. */
 export function isLoopbackHost(hostname: string): boolean {
   return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1' || hostname === '[::1]';
@@ -70,4 +78,32 @@ export function validateConnectionUrl(
       'remote servers. Use an https:// URL — see the TLS setup guide.',
     guideUrl: TLS_GUIDE_URL,
   };
+}
+
+/**
+ * #486 D2: normalize a guardian ('openpalm-client-api'-kind) connection URL
+ * so it always ends in `/oc` — the guardian's direct-ingress base path
+ * (`GUARDIAN_DIRECT_INGRESS`). Once stored with the `/oc` suffix, the
+ * transport's baseUrl already routes every call correctly with no further
+ * rewriting. Pure string-in/string-out: never throws (validation — rejecting
+ * garbage input — is {@link validateConnectionUrl}'s job), and unparseable
+ * input is returned unchanged.
+ *
+ * `packages/ui/src/lib/server/endpoints.ts` carries a deliberate SERVER-side
+ * twin (`normalizeGuardianOcUrl`) with the same rule — the client may not
+ * import host code and vice versa (this package never depends on the shared
+ * host control-plane library or any other host modules), so this is the same
+ * accepted duplication as `validateConnectionUrl`/`validateEndpointUrl`.
+ * Both are pinned by their own tests.
+ */
+export function normalizeGuardianUrl(rawUrl: string): string {
+  let url: URL;
+  try {
+    url = new URL(rawUrl);
+  } catch {
+    return rawUrl;
+  }
+  const pathname = url.pathname.replace(/\/+$/, '');
+  url.pathname = pathname.endsWith('/oc') ? pathname : `${pathname}/oc`;
+  return url.toString().replace(/\/+$/, '');
 }

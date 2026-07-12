@@ -79,6 +79,14 @@ export type TransportOptions = {
   auth?: ConnectionAuth;
   /** Injectable for tests; defaults to globalThis.fetch. */
   fetch?: typeof globalThis.fetch;
+  /**
+   * Path `probeHealth()` GETs relative to `baseUrl` (default `'/'`). Guardian
+   * `/oc`-fronted connections ('openpalm-client-api' kind, #486 D2) probe an
+   * allowlisted route (`'/session'`) instead — bare `GET /oc/` is not an
+   * allowlisted guardian route and 404s even against a fully healthy
+   * guardian.
+   */
+  probePath?: string;
 };
 
 /** Raw OpenCode SSE event envelope (session.*, message.*, tool.*, permission.*, question.*, …). */
@@ -254,6 +262,7 @@ export function createTransport(options: TransportOptions): Transport {
   // Trailing-slash and path-prefix safe: '/opencode/' + '/session' must
   // become '/opencode/session' (reverse-proxied instances keep their prefix).
   const base = options.baseUrl.replace(/\/+$/, '');
+  const probePath = options.probePath ?? '/';
 
   function buildHeaders(extra?: Record<string, string>): Record<string, string> {
     const headers: Record<string, string> = { ...extra };
@@ -527,7 +536,7 @@ export function createTransport(options: TransportOptions): Transport {
         return { state: 'insecure', detail: 'plain-http-remote' };
       }
       try {
-        const response = await fetchImpl(`${base}/`, {
+        const response = await fetchImpl(`${base}${probePath}`, {
           method: 'GET',
           headers: buildHeaders(),
           credentials: 'omit',
