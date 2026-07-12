@@ -116,6 +116,29 @@ services:
   });
 });
 
+describe('auditComposeSecrets — spec 435 op_guardian_tls_* / op_guardian_mtls_ca (D4)', () => {
+  it('allows op_guardian_tls_* and op_guardian_mtls_ca grants to the guardian service', () => {
+    // Green-on-arrival pin (the `op_guardian_` prefix already passes,
+    // secret-audit.ts:112) — pins the validity of the documented
+    // custom.compose.yml overlay snippet (spec 435 D4), per the assessment
+    // ("verify with the existing secret-audit tests rather than new lib code").
+    const issues = auditComposeSecrets({
+      services: {
+        guardian: {
+          environment: [
+            'GUARDIAN_TLS_CERT_FILE=/run/secrets/op_guardian_tls_cert',
+            'GUARDIAN_TLS_KEY_FILE=/run/secrets/op_guardian_tls_key',
+            'GUARDIAN_MTLS_CA_FILE=/run/secrets/op_guardian_mtls_ca',
+          ],
+          secrets: ['op_guardian_tls_cert', 'op_guardian_tls_key', 'op_guardian_mtls_ca'],
+        },
+      },
+    });
+
+    expect(issues).toEqual([]);
+  });
+});
+
 describe('auditComposeSecrets against shipped stack compose files', () => {
   it('reports zero issues auditing the actual shipped compose files', () => {
     const composeFiles = readdirSync(SHIPPED_STACK_DIR).filter((name) => name.endsWith('.compose.yml'));

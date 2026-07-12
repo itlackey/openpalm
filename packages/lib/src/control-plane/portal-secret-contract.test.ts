@@ -120,6 +120,30 @@ describe("portal verification-secret contract (compose ↔ portalSecretName ↔ 
     });
   });
 
+  // Spec 435 D4: opt-in mTLS adapter transport identity on the guardian
+  // direct listener. The managed compose gets only the three env
+  // pass-throughs (default empty = off); secret grants live in the
+  // operator's custom.compose.yml overlay, never in the managed file.
+  describe("435 — guardian direct-listener mTLS env pass-throughs (D4)", () => {
+    const guardian = services.guardian;
+
+    it("wires the three TLS env pass-throughs defaulting to off", () => {
+      expect(guardian?.environment?.GUARDIAN_TLS_CERT_FILE).toBe("${GUARDIAN_TLS_CERT_FILE:-}");
+      expect(guardian?.environment?.GUARDIAN_TLS_KEY_FILE).toBe("${GUARDIAN_TLS_KEY_FILE:-}");
+      expect(guardian?.environment?.GUARDIAN_MTLS_CA_FILE).toBe("${GUARDIAN_MTLS_CA_FILE:-}");
+    });
+
+    it("does not unconditionally grant TLS material in secrets: (D4: grants come from the user overlay)", () => {
+      // Green-on-arrival pin — guards against a reviewer "helpfully" adding
+      // the mounts and breaking every certless install (Compose fails
+      // `compose up` when a secrets: file is missing on disk).
+      const grants = guardian?.secrets ?? [];
+      expect(grants).not.toContain("op_guardian_tls_cert");
+      expect(grants).not.toContain("op_guardian_tls_key");
+      expect(grants).not.toContain("op_guardian_mtls_ca");
+    });
+  });
+
   it("every secret a service references is declared at the top level (else Compose fails to start)", () => {
     const declared = new Set(Object.keys(topLevelSecrets));
     const missing: string[] = [];
