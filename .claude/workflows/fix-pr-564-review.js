@@ -11,19 +11,23 @@
 
 export const meta = {
   name: 'fix-pr-564-review',
-  description: 'Fix the 18 PR #564 review findings test-first, with opus spec + code review gates',
-  whenToUse: 'Addressing the fwdslsh-dev review on PR #564 (findings in .github/roadmap/0.13.0/review-564/)',
+  description: 'Fix the PR #564 review findings + manual-test blockers test-first, with opus spec + code review gates',
+  whenToUse: 'Addressing the PR #564 review + manual test notes (findings in .github/roadmap/0.13.0/review-564/)',
   phases: [
+    { title: 'c11 assistant auth health' },
+    { title: 'c12 mdns ingress gate' },
+    { title: 'c8 pairing' },
     { title: 'c1 host username+auth' },
     { title: 'c2 guardian upstream auth' },
     { title: 'c3 network-preset this-pc' },
     { title: 'c4 home-password rerun' },
+    { title: 'c7 mdns records' },
     { title: 'c5 tls-passthrough' },
     { title: 'c6 mtls server wiring' },
-    { title: 'c7 mdns records' },
-    { title: 'c8 pairing' },
     { title: 'c9 lifecycle guard' },
     { title: 'c10 bind-warning framing' },
+    { title: 'c13 api-spec pairing' },
+    { title: 'c14 smoke hygiene' },
   ],
 }
 
@@ -32,16 +36,13 @@ const DIR = `${REPO}/.github/roadmap/0.13.0/review-564`
 const briefPath = (id) => `${DIR}/${id}.md`
 const specPath = (id) => `${DIR}/specs/${id}.md`
 
-// Ordered least-risk-first where independent; clusters sharing files stay ordered
-// so the second sees the first's committed state.
+// Confirmed deploy-blockers (P1/P2 from the manual test notes) first, then the
+// critical/major code-review findings, then docs/test-infra. Sequential — each
+// cluster sees the prior's committed state; overlapping files stay ordered.
 const TASKS = [
-  { id: 'c9-lifecycle-guard', phase: 'c9 lifecycle guard',
-    gates: ['bun run lib:test'] },
-  { id: 'c10-bind-warning', phase: 'c10 bind-warning framing',
-    gates: ['bun run lib:test'] },
-  { id: 'c3-network-preset-thispc', phase: 'c3 network-preset this-pc',
-    gates: ['bun run lib:test'] },
-  { id: 'c7-mdns-records', phase: 'c7 mdns records',
+  { id: 'c11-assistant-auth-health', phase: 'c11 assistant auth health',
+    gates: ['cd packages/guardian && bun test --no-orphans'] },
+  { id: 'c12-mdns-ingress-gate', phase: 'c12 mdns ingress gate',
     gates: ['bun run lib:test'] },
   { id: 'c8-pairing', phase: 'c8 pairing',
     gates: ['bun run lib:test', 'bun run ui:check'] },
@@ -49,12 +50,24 @@ const TASKS = [
     gates: ['bun run ui:check', 'cd packages/ui && npx vitest --run src/lib/server/endpoints.vitest.ts'] },
   { id: 'c2-guardian-upstream-auth', phase: 'c2 guardian upstream auth',
     gates: ['cd packages/guardian && bun test --no-orphans', 'bun run lib:test'] },
+  { id: 'c3-network-preset-thispc', phase: 'c3 network-preset this-pc',
+    gates: ['bun run lib:test'] },
   { id: 'c4-home-password-rerun', phase: 'c4 home-password rerun',
     gates: ['bun run ui:check', 'cd packages/ui && npx vitest --run src/lib/setup/setup-state.vitest.ts'] },
+  { id: 'c7-mdns-records', phase: 'c7 mdns records',
+    gates: ['bun run lib:test'] },
   { id: 'c5-tls-passthrough', phase: 'c5 tls-passthrough',
     gates: ['cd packages/guardian && bun test --no-orphans'] },
   { id: 'c6-mtls-server-wiring', phase: 'c6 mtls server wiring',
     gates: ['cd packages/guardian && bun test --no-orphans'] },
+  { id: 'c9-lifecycle-guard', phase: 'c9 lifecycle guard',
+    gates: ['bun run lib:test'] },
+  { id: 'c10-bind-warning', phase: 'c10 bind-warning framing',
+    gates: ['bun run lib:test'] },
+  { id: 'c13-api-spec-pairing', phase: 'c13 api-spec pairing',
+    gates: ['bun run lint'] },
+  { id: 'c14-smoke-hygiene', phase: 'c14 smoke hygiene',
+    gates: ['bash -n scripts/rootless-ownership-smoke.sh'] },
 ]
 
 const COMMON_GATES = ['bun run lint']
