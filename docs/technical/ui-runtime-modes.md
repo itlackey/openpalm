@@ -178,13 +178,25 @@ The PWA build excludes `runtime-config.json` from precache and treats it as `Net
   configured produces a prominent warning and the client chat co-process is
   not started.
 - Assistant-container mode remains isolated from Docker and broad `OP_HOME` access.
-- Remote-credential provisioning (#486 D3) is a **documented manual flow**,
-  not a host-UI minting affordance: `GUARDIAN_DIRECT_INGRESS` stays `false`
-  by default, binds stay loopback, and a `direct` principal is minted only
-  via the guardian's loopback-only, Bearer-gated admin listener (port
-  3831). See "Connect a remote client" in `docs/managing-openpalm.md` for
-  the full flow; a host-UI minting affordance (pairing/QR) is deferred to
-  #511.
+- Remote-credential provisioning (#486 D3, #511 D3/D4/D6): `GUARDIAN_DIRECT_INGRESS`
+  stays `false` by default and binds stay loopback. Two equivalent paths mint
+  a `direct` principal against the SAME guardian admin listener
+  (loopback-only, Bearer-gated, port 3831): the documented manual `curl` flow
+  ("Connect a remote client" in `docs/managing-openpalm.md`), and the host
+  UI's `/connections` "Pair a device" panel (`POST /api/connections/pairing`).
+  The pairing endpoint is double-guarded — the `host:stack:write` capability
+  (not `connections:manage`: minting is a host-stack mutation, and
+  `pwa-static` mode has no local guardian to mint against) plus the admin
+  session + origin check every sibling `/api/connections` write uses — and
+  never persists or logs the minted secret; it is returned exactly once
+  inside a self-contained `openpalm-pair:` code (QR + copyable string) that
+  the client's `/connections` add form parses to prefill itself. The durable
+  artifact is the minted guardian principal, individually revocable via
+  `DELETE /admin/principals/:id` (#433). A companion `/api/runtime`
+  contract-version handshake (`packages/client/src/lib/runtime-handshake.ts`)
+  lets a client detect a version-skewed OpenPalm host (or a plain
+  OpenCode/guardian target with no such endpoint — the normal "legacy" case,
+  not an error) and degrades gracefully either way.
 
 ## Electron Default Surface (A1/J2/J3)
 
@@ -218,16 +230,23 @@ them regressed from a prior working state; they were never built:
   chat-only; ship only when browser-editable assistant settings are actually
   wanted.
 - **Phone / hosted install** at `app.openpalm.dev` — CI deploy of the static
-  client build to a canonical hosted origin (plan §12.3 item 3).
-- **Pairing / QR connection setup** (plan §6.6) — host app `/connections`
-  minting a QR + one-time code, client `/connections/new` accepting
-  paste-or-scan.
+  client build to a canonical hosted origin (plan §12.3 item 3), and the
+  guardian CORS default gaining `https://app.openpalm.dev` (the milestone's
+  cross-cutting decision binds that literal to the deploy actually existing).
+  **Explicitly descoped in #511 (D1):** the hosting provider is TBD outside
+  this repo — no target, credentials, or DNS exist yet. Everything else
+  #511 shipped is origin-agnostic (keyed on `location.origin` / connection
+  URLs, no hosted-origin literals in product code), so this deploy job is
+  the only missing piece for the phone install path once a provider is
+  chosen.
 
-Tracking: #511 (PWA/hosted install, pairing). #557 (guardian edge TLS guide +
-client-side HTTPS refusal) shipped — see `docs/remote-access-tls.md` and the
-Security Boundaries section above. See
-`docs/technical/ui-runtime-modes-plan.md` §12.3-12.4 for the full work-item
-breakdown.
+#511 (PWA/hosted install, pairing) otherwise shipped: pairing/QR connection
+setup, the `/api/runtime` contract-version handshake, `clientDisplayMode`,
+the host "Install OpenPalm app" affordance, and offline end-to-end
+verification — see the Security Boundaries section above. #557 (guardian
+edge TLS guide + client-side HTTPS refusal) shipped — see
+`docs/remote-access-tls.md`. See `docs/technical/ui-runtime-modes-plan.md`
+§12.3-12.4 for the full work-item breakdown.
 
 ## #486 close-out: as-built vs. issue text
 
@@ -241,10 +260,12 @@ interpreted against. Within that shape, #486 closes: stack-less `openpalm
 app` entry (above), the `openpalm-client-api` connection kind wired in both
 forms (above), and the documented remote-credential provisioning flow
 (Security Boundaries above). What the issue also named but is **not** part
-of this shape — pairing/QR connection setup, a hosted-origin
-(`app.openpalm.dev`) deploy, install affordances beyond the localhost PWA
-path, and an `/api/runtime` contract-version handshake — remains tracked
-under #511, unchanged by this task.
+of this shape — pairing/QR connection setup, install affordances beyond the
+localhost PWA path, and an `/api/runtime` contract-version handshake — #511
+shipped (Security Boundaries above). The one item still outstanding from
+that list, a hosted-origin (`app.openpalm.dev`) deploy, is explicitly
+descoped by #511 D1 (see "Not Yet Shipped" above) pending a hosting
+provider.
 
 ## Related Files
 

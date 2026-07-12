@@ -9,6 +9,34 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **PWA install paths: pairing UX, runtime handshake, install affordances,
+  offline verification** (#511). Host admin `/connections` gains a "Pair a
+  device" panel (`host:stack:write`-gated): it mints a one-time,
+  individually-revocable guardian `direct` principal via the existing
+  loopback-only admin listener and renders a QR code + copyable
+  `openpalm-pair:` code, shown exactly once and never persisted or logged.
+  The `@openpalm/client` `/connections` add form parses that code (a paste
+  field, or a `?pair=` deep link stripped from history on consumption) to
+  prefill itself — the credential then flows through the existing encrypted
+  secret store. A new client-side `/api/runtime` contract-version handshake
+  (`checkRuntimeContract`) probes `openpalm-client-api`-kind connections and
+  renders a version-skew notice for a `newer`/`older` host, while treating a
+  missing endpoint (plain OpenCode/guardian) as the normal legacy case, not
+  an error. `ServerRuntimeContext` gains an additive `clientAppUrl` field;
+  the host `/connections` page shows an "Install OpenPalm app" button once a
+  browser-side reachability probe confirms the sibling static client is
+  actually being served. `detectClientDisplayMode()` (electron /
+  standalone-pwa / browser) is now stamped on `<html data-display-mode>` and
+  drives a browser-only "install as an app" hint on the client's
+  `/connections` page. A new Playwright suite
+  (`packages/client/e2e/offline-shell.pw.ts`) verifies the offline app shell
+  and saved IndexedDB connections render after a service-worker-controlled
+  reload. Hosted-origin CI deploy to `app.openpalm.dev` (and the matching
+  guardian CORS default) remains explicitly deferred pending a hosting
+  provider — everything else is origin-agnostic and unblocked by that.
+  `docs/managing-openpalm.md` documents the pairing-UI flow as the primary
+  remote-client provisioning path, with the manual `curl` mint kept as the
+  advanced/headless alternative.
 - **Remote-only (client) install completion** (#486). `openpalm app` now
   tolerates a machine with no local stack: it serves the pwa-static host UI
   plus the localhost `@openpalm/client` connection manager and lands on

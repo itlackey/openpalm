@@ -445,7 +445,7 @@ containers with the updated images. Equivalent to a manual
 and written to `knowledge/env/stack.env`. You do not need to set it manually.
 If the admin fails to reach Docker, check that the socket exists and is readable.
 
-**Connect a remote client (another computer or phone)** (#486):
+**Connect a remote client (another computer or phone)** (#486, #511):
 
 The `@openpalm/client` app (installed via `openpalm app`, or as a PWA) can
 attach to a guardian on a different machine over its direct-ingress
@@ -472,8 +472,33 @@ this is an explicit, per-connection operator opt-in.
    localhost client origins (`http://127.0.0.1:3890` and friends); a remote
    or hosted client origin must be added explicitly.
 
-3. **Mint a `direct` principal** on the guardian's loopback-only admin
-   listener (port 3831, Bearer-token gated):
+3. **Apply the env changes:**
+
+   ```bash
+   docker compose ... up -d guardian
+   ```
+
+   (or the admin UI's apply flow — either restarts the guardian with the
+   new ingress/CORS settings.)
+
+4. **Mint and hand off a credential to the other device.** Two equivalent
+   ways to mint a `direct` principal — pick whichever fits:
+
+   **Primary path — pairing UI (#511):** on the host admin UI's
+   `/connections` page, click **Pair a device**, give it a label and the
+   guardian URL AS REACHABLE BY THE OTHER DEVICE (the LAN address or
+   Tailscale/`ts.net` hostname — not `127.0.0.1`), and mint. The page shows
+   a QR code and a copyable `openpalm-pair:` code **once** — scan it with
+   any camera/QR app, or copy it. On the other device's `@openpalm/client`
+   `/connections` page, paste the code into "Have a pairing code?" (or open
+   the `?pair=` link, if a hosted client origin exists) and apply — it
+   prefills the add form (kind, URL, Basic auth username/password) with
+   nothing left to type by hand. The code is never persisted host-side or
+   logged; the durable artifact is the minted guardian principal.
+
+   **Advanced / headless path — manual `curl`:** mint directly against the
+   guardian's loopback-only admin listener (port 3831, Bearer-token gated),
+   useful for scripting or when no browser is available on the host:
 
    ```bash
    curl -X POST http://127.0.0.1:3831/admin/principals \
@@ -482,7 +507,15 @@ this is an explicit, per-connection operator opt-in.
      -d '{"id":"my-phone","kind":"direct","token":"'"$(openssl rand -hex 24)"'","label":"My phone"}'
    ```
 
-   Rotate/disable/delete the same way, against the same endpoint:
+   Then in the client's `/connections`, add the connection by hand: kind
+   **OpenPalm guardian (/oc)**, URL = the guardian's base URL (`/oc` is
+   appended automatically), auth **Basic** with username = the **principal
+   id** you minted (e.g. `my-phone`, not `openpalm`) and password = the
+   token.
+
+   Rotate/disable/delete the same principal either way (the pairing UI's
+   "Pair a device" simply re-mints under a fresh id/token; to manage an
+   existing id directly):
 
    ```bash
    # Rotate: mint a new token with the same id (overwrites)
@@ -496,31 +529,20 @@ this is an explicit, per-connection operator opt-in.
      -H "authorization: Bearer $(cat ~/.openpalm/knowledge/secrets/op_guardian_admin_token)"
    ```
 
-4. **Add the connection in the client's `/connections`:** kind
-   **OpenPalm guardian (/oc)**, URL = the guardian's base URL (`/oc` is
-   appended automatically), auth **Basic** with username = the **principal
-   id** you minted (e.g. `my-phone`, not `openpalm`) and password = the
-   token.
-
-5. **Apply the env changes:**
-
-   ```bash
-   docker compose ... up -d guardian
-   ```
-
-   (or the admin UI's apply flow — either restarts the guardian with the
-   new ingress/CORS settings.)
-
 **Troubleshooting:**
 
 | Symptom | Cause | Fix |
 |---|---|---|
 | Connection health shows `unreachable` `HTTP 404` | `GUARDIAN_DIRECT_INGRESS` is off | Set it to `true` and restart the guardian (step 1) |
 | Connection health shows `blocked (CORS)` | The client's origin is missing from the allowlist | Add it to `GUARDIAN_CORS_ALLOWED_ORIGINS` (step 2) |
-| Connection health shows `auth failed` | Principal id/token mismatch | Re-check the username is the principal **id**, not `openpalm`; re-mint the token if needed (step 3) |
+| Connection health shows `auth failed` | Principal id/token mismatch | Re-check the username is the principal **id**, not `openpalm`; re-mint the token if needed (step 4) |
+| Pairing panel shows a `GUARDIAN_DIRECT_INGRESS` or HTTPS warning | Prerequisite from step 1/2 not yet set for the target URL | Follow the warning text — it names the exact env key |
 
 Security framing: fail-closed defaults are untouched by this flow — content
 validation still screens direct-tier prompts when enabled, and the minted
 token never enters `knowledge/env/stack.env` (non-secret) or any log; it
 lives only in the guardian's state DB and the client's own encrypted
-credential store.
+credential store. The pairing code (QR or copyable string) contains that
+same credential and is shown exactly once by the host UI — it is never
+persisted or logged host-side; only the guardian principal it minted
+persists, individually revocable via the `curl -X DELETE` above.
