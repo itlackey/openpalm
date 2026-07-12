@@ -27,6 +27,7 @@ const ENV_KEYS = [
   'OP_ASSISTANT_URL',
   'OP_ASSISTANT_PORT',
   'OPENCODE_SERVER_PASSWORD',
+  'OPENCODE_SERVER_USERNAME',
   // #563 D10 — the default-endpoint password fallback, gated on OPENCODE_AUTH.
   'OPENCODE_AUTH',
   'OP_OPENCODE_PASSWORD',
@@ -147,6 +148,20 @@ describe('default endpoint synthesis', () => {
     process.env.OPENCODE_AUTH = 'true';
     process.env.OP_OPENCODE_PASSWORD = 'preset-password';
     expect(getActiveEndpoint().password).toBe('preset-password');
+  });
+
+  it("T61b: default endpoint username matches OpenCode's server default ('opencode') so home-password Basic auth is accepted upstream", () => {
+    process.env.OPENCODE_AUTH = 'true';
+    process.env.OP_OPENCODE_PASSWORD = 'preset-password';
+    // The shipped assistant compose does not set OPENCODE_SERVER_USERNAME, so
+    // OpenCode uses its default username 'opencode'; the guardian's upstream
+    // auth (#563) sends 'opencode:<password>' — the host UI must match.
+    expect(getActiveEndpoint().username).toBe('opencode');
+  });
+
+  it('T61c: explicit OPENCODE_SERVER_USERNAME overrides the default endpoint username', () => {
+    process.env.OPENCODE_SERVER_USERNAME = 'custom-user';
+    expect(getActiveEndpoint().username).toBe('custom-user');
   });
 
   it('T62: no password is attached from OP_OPENCODE_PASSWORD while OPENCODE_AUTH is unset (default-posture pin)', () => {

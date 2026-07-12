@@ -30,7 +30,8 @@ import { createState, initializeStateSecrets } from "./lifecycle.js";
 import { writeVoiceVars } from "./voice-env.js";
 import type { ControlPlaneState } from "./types.js";
 import { validateSetupSpec } from "./setup-validation.js";
-import { getRegistryAutomation, setAddonEnabled, setAddonProfileSelection } from "./addons.js";
+import { getRegistryAutomation, listEnabledAddonIds, setAddonEnabled, setAddonProfileSelection } from "./addons.js";
+import { GUARDIAN_INGRESS_ADDON_IDS } from "./addon-ids.js";
 import { resolveNetworkPreset, validateNetworkPresetEnv, type NetworkAccessPreset } from "./network-preset.js";
 export { validateSetupSpec } from "./setup-validation.js";
 
@@ -418,6 +419,24 @@ export async function performSetup(
       if (addons) {
         for (const [name, enabled] of Object.entries(addons)) {
           if (enabled) setAddonEnabled(state.homeDir, name, true, state);
+        }
+      }
+
+      // #563 (PR #564 review) — the guardian service is profile-gated behind
+      // guardian-ingress addons, so bind addresses alone deploy no guardian.
+      // The shared-guardian preset promises a protected front door + pairing;
+      // when nothing else provides guardian ingress, enable the built-in chat
+      // portal (the only credential-less guardian-ingress addon).
+      if (network?.preset === "shared-guardian") {
+        const hasGuardianIngress = [
+          ...Object.entries(addons ?? {}).filter(([, on]) => on).map(([name]) => name),
+          ...listEnabledAddonIds(state.homeDir),
+        ].some((a) => GUARDIAN_INGRESS_ADDON_IDS.includes(a));
+        if (!hasGuardianIngress) {
+          setAddonEnabled(state.homeDir, "chat", true, state);
+          logger.info("shared-guardian preset auto-enabled the chat portal", {
+            reason: "guardian ingress required for the protected front door",
+          });
         }
       }
 

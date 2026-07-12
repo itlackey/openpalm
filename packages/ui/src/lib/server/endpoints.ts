@@ -39,10 +39,11 @@ export type ConnectionEntry = {
   kind?: ConnectionKind;
   /**
    * Basic-auth username forwarded as Authorization header. Defaults to
-   * `"openpalm"` for synthesized entries; user-added entries may override.
-   * OpenCode rejects Basic auth with an empty username — the default
-   * `OPENCODE_SERVER_USERNAME` on the upstream server is `"opencode"`, but
-   * OpenPalm sets it to `"openpalm"` on every server it spawns/configures.
+   * `"opencode"` for the synthesized Local Assistant entry — OpenCode's own
+   * server default; the shipped assistant compose does not override
+   * `OPENCODE_SERVER_USERNAME`, and the guardian's upstream auth (#563)
+   * likewise sends `opencode:<password>`. OpenCode rejects Basic auth with
+   * an empty username. User-added entries may override.
    */
   username?: string;
   /** Optional OpenCode Basic-auth password forwarded as Authorization header. */
@@ -254,7 +255,11 @@ function defaultEndpoint(): ActiveConnection {
     process.env.OP_OPENCODE_URL ??
     process.env.OP_ASSISTANT_URL ??
     `http://127.0.0.1:${process.env.OP_ASSISTANT_PORT ?? persisted.OP_ASSISTANT_PORT ?? '3800'}`;
-  const username = process.env.OPENCODE_SERVER_USERNAME || 'openpalm';
+  // OpenCode's server default username — the shipped assistant compose never
+  // overrides OPENCODE_SERVER_USERNAME, so 'openpalm' here meant the
+  // home-password preset 401ed from the host UI (guardian upstream auth
+  // already sends 'opencode:<password>').
+  const username = process.env.OPENCODE_SERVER_USERNAME || 'opencode';
   // #563 D10 — an explicit host OPENCODE_SERVER_PASSWORD always wins
   // (T63, pin). Otherwise fall back to the network-preset-managed
   // OP_OPENCODE_PASSWORD secret, but ONLY when OPENCODE_AUTH is truthy: the

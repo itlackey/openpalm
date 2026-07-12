@@ -902,6 +902,38 @@ describe("performSetup", () => {
     expect(stackEnv).toMatch(/^OPENCODE_AUTH=false$/m);
   });
 
+  it("T24b: shared-guardian auto-enables the chat portal so a guardian actually deploys (PR #564 review)", async () => {
+    // The guardian service is profile-gated behind guardian-ingress addons;
+    // binds alone deploy no guardian. The preset's promise ("guardian
+    // protected front door", pairing) requires one, so a shared-guardian
+    // setup with no guardian-ingress addon enables the built-in chat portal.
+    const result = await performSetup(makeValidSpec({ network: { preset: "shared-guardian" } }));
+    expect(result.ok).toBe(true);
+
+    const stateEnv = readFileSync(join(homeDir, "state", "stack.state.env"), "utf-8");
+    expect(stateEnv).toMatch(/^OP_ENABLED_ADDONS=.*\bchat\b/m);
+  });
+
+  it("T24c: shared-guardian does NOT add chat when another guardian-ingress addon is already requested", async () => {
+    const result = await performSetup(
+      makeValidSpec({ network: { preset: "shared-guardian" }, addons: { discord: true } }),
+    );
+    expect(result.ok).toBe(true);
+
+    const stateEnv = readFileSync(join(homeDir, "state", "stack.state.env"), "utf-8");
+    expect(stateEnv).toMatch(/^OP_ENABLED_ADDONS=.*\bdiscord\b/m);
+    expect(stateEnv).not.toMatch(/^OP_ENABLED_ADDONS=.*\bchat\b/m);
+  });
+
+  it("T24d: non-guardian presets do not auto-enable any addon", async () => {
+    const result = await performSetup(makeValidSpec({ network: { preset: "home-open" } }));
+    expect(result.ok).toBe(true);
+
+    const stateEnvPath = join(homeDir, "state", "stack.state.env");
+    const stateEnv = existsSync(stateEnvPath) ? readFileSync(stateEnvPath, "utf-8") : "";
+    expect(stateEnv).not.toMatch(/^OP_ENABLED_ADDONS=.*\bchat\b/m);
+  });
+
   it("T25: a spec without network leaves pre-seeded bind values untouched", async () => {
     // Seed a pre-existing OP_ASSISTANT_BIND_ADDRESS before running a
     // network-less setup — it must survive (D7: absent network = don't touch).

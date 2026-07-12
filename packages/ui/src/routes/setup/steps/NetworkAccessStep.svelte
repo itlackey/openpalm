@@ -34,7 +34,7 @@
     'home-open':
       'Anyone on your network can use the assistant without a password. The built-in browser chat client stays disabled in this mode — LAN users get OpenCode\'s own web UI instead.',
     'shared-guardian':
-      "Only the guardian's protected front door is reachable (e.g. http://openpalm-guardian.local); the assistant itself stays private on this PC. Connecting apps and devices need credentials you issue from the dashboard (Pair a device / API key).",
+      "Only the guardian's protected front door is reachable (e.g. http://openpalm-guardian.local); the assistant itself stays private on this PC. Enables the built-in chat portal when no other portal is selected, so the front door actually runs. Connecting apps and devices need credentials you issue from the dashboard (Pair a device / API key).",
   };
 
   function selectPreset(preset: NetworkAccessPreset): void {
