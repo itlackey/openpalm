@@ -55,9 +55,15 @@ beforeAll(async () => {
     port: upstreamPort,
     hostname: "127.0.0.1",
     idleTimeout: 0,
-    async fetch(req) {
+    async fetch(req, server) {
       upstreamRequestCount += 1;
       const url = new URL(req.url);
+      if (url.pathname === "/whoami") {
+        // The loopback peer port here is the passthrough's connect localPort;
+        // resolveClientIp maps it back to the verified client's real IP.
+        const port = server.requestIP(req)?.port ?? -1;
+        return Response.json({ clientIp: passthrough?.resolveClientIp(port) ?? null });
+      }
       if (url.pathname === "/echo") {
         return Response.json({ ok: true, path: url.pathname });
       }
@@ -181,6 +187,19 @@ describe("startTlsPassthrough", () => {
         socket.once("error", () => resolve());
       }),
     ).resolves.toBeUndefined();
+  });
+
+  it("resolves the real client IP for a forwarded connection (PR #564 r3566888940)", async () => {
+    await startPassthrough();
+    const resp = await fetch(`https://127.0.0.1:${passthroughPort}/whoami`, {
+      tls: { ca: CA_CERT_PEM, cert: CLIENT_CERT_PEM, key: CLIENT_KEY_PEM },
+    } as RequestInit);
+    expect(resp.status).toBe(200);
+    const body = (await resp.json()) as { clientIp: string | null };
+    // The verified client connects from loopback in-test; the point is that the
+    // passthrough recovered a real per-connection IP (not undefined), so the
+    // direct handler keys rate-limiting/audit on it instead of 127.0.0.1-always.
+    expect(body.clientIp).toBe("127.0.0.1");
   });
 
   it("reaps a connection that never completes the TLS handshake (slowloris, PR #564 r3566890804)", async () => {

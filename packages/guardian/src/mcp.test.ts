@@ -215,3 +215,17 @@ describe('guardian MCP gateway', () => {
     }
   });
 });
+
+import { setMcpDirectSelfDialPort, _mcpSelfDialBaseUrl } from './mcp';
+import { DIRECT_PORT } from './config';
+
+describe('MCP self-dial port (PR #564 r3566889234)', () => {
+  it('defaults to the plain-HTTP DIRECT_PORT and is overridable for the mTLS ephemeral port', () => {
+    // Default (plain-HTTP mode): self-dial the public direct port.
+    expect(_mcpSelfDialBaseUrl()).toBe(`http://127.0.0.1:${DIRECT_PORT}`);
+    // Under mTLS server.ts points it at the ephemeral loopback plain-HTTP port.
+    setMcpDirectSelfDialPort(49215);
+    expect(_mcpSelfDialBaseUrl()).toBe('http://127.0.0.1:49215');
+    setMcpDirectSelfDialPort(DIRECT_PORT); // restore
+  });
+});

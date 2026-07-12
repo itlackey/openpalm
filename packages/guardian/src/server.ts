@@ -8,7 +8,7 @@ import { authorizeAdminToken, handleAdminRequest } from './admin';
 import { audit } from './audit';
 import { basicTokenAuthStrategy, getAuthStrategy } from './auth.ts';
 import { eventSubscriberCount } from './event-fanout';
-import { handleMcpRequest, seedMcpPrincipalFromToken } from './mcp';
+import { handleMcpRequest, seedMcpPrincipalFromToken, setMcpDirectSelfDialPort } from './mcp';
 import { sessionOwnerCount, permissionOwnerCount } from './ownership';
 import {
   activeStreamPrincipalCount,
@@ -304,7 +304,13 @@ export function startGuardian(options: StartGuardianOptions = {}): GuardianServe
       port: 0,
       hostname: '127.0.0.1',
       idleTimeout: 0,
-      fetch: (req, server) => handleDirectRequest(req, server.requestIP(req)?.address ?? ''),
+      // PR #564 r3566888940: recover the real client IP from the passthrough
+      // (the raw-byte relay makes requestIP() always report 127.0.0.1 here).
+      fetch: (req, server) => {
+        const peer = server.requestIP(req);
+        const realIp = tlsPassthrough?.resolveClientIp(peer?.port ?? -1) ?? peer?.address ?? '';
+        return handleDirectRequest(req, realIp);
+      },
     });
     tlsPassthrough = startTlsPassthrough({
       port: DIRECT_PORT,
@@ -313,6 +319,10 @@ export function startGuardian(options: StartGuardianOptions = {}): GuardianServe
       key,
       ca,
     });
+    // PR #564 r3566889234: MCP self-dials the plain-HTTP direct listener, which
+    // under mTLS is this ephemeral loopback port — NOT DIRECT_PORT (now the TLS
+    // passthrough). Point it at the real port or every MCP askAssistant fails.
+    setMcpDirectSelfDialPort(direct.port);
   } else {
     direct = Bun.serve({
       port: DIRECT_PORT,

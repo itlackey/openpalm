@@ -253,6 +253,14 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **Guardian mTLS server wiring** (PR #564 r3566888940, r3566889234): under
+  mTLS the direct handler now recovers each request's real client IP from the
+  passthrough (correlating the loopback peer port) instead of seeing every
+  client as `127.0.0.1` — restoring per-IP pre-auth rate limiting and accurate
+  audit source IPs; and the MCP `ask_assistant` self-dial now targets the
+  plain-HTTP loopback port (not the TLS passthrough port), so MCP works when
+  mTLS is enabled.
+
 - **Guardian mTLS passthrough robustness** (PR #564 r3566890023, r3566890224,
   r3566890583, r3566890804): the raw-byte relay now caps each direction's
   userspace queue (dropping a connection past 8 MiB instead of growing the

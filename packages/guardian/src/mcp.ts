@@ -15,7 +15,19 @@ const logger = createLogger('guardian:mcp');
 const MCP_PRINCIPAL_ID = 'mcp';
 const MCP_LABEL = 'guardian-mcp';
 const MCP_TOKEN_FILE = Bun.env.GUARDIAN_MCP_TOKEN_FILE ?? '';
-const DIRECT_BASE_URL = `http://127.0.0.1:${DIRECT_PORT}`;
+// PR #564 r3566889234: MCP self-dials the guardian's PLAIN-HTTP direct listener.
+// Under mTLS that listener moves to an ephemeral loopback port (DIRECT_PORT is
+// the TLS passthrough), so server.ts overrides this at boot via
+// setMcpDirectSelfDialPort(). Defaults to DIRECT_PORT (plain-HTTP mode).
+let directSelfDialPort = DIRECT_PORT;
+export function setMcpDirectSelfDialPort(port: number): void {
+  directSelfDialPort = port;
+}
+const directBaseUrl = (): string => `http://127.0.0.1:${directSelfDialPort}`;
+/** Test-only: the effective self-dial base URL (PR #564 r3566889234). */
+export function _mcpSelfDialBaseUrl(): string {
+  return directBaseUrl();
+}
 
 type JsonObject = Record<string, unknown>;
 
@@ -95,7 +107,7 @@ async function askAssistant(prompt: string, userId: string, sessionKey: string, 
     'x-openpalm-session-key': sessionKey,
   });
 
-  const sessionRes = await fetch(`${DIRECT_BASE_URL}/oc/session`, {
+  const sessionRes = await fetch(`${directBaseUrl()}/oc/session`, {
     method: 'POST',
     headers,
     body: '{}',
@@ -118,7 +130,7 @@ async function askAssistant(prompt: string, userId: string, sessionKey: string, 
     };
   }
 
-  const messageRes = await fetch(`${DIRECT_BASE_URL}/oc/session/${sessionBody.id}/message`, {
+  const messageRes = await fetch(`${directBaseUrl()}/oc/session/${sessionBody.id}/message`, {
     method: 'POST',
     headers,
     body: JSON.stringify({ parts: [{ type: 'text', text: prompt }] }),
