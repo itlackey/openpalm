@@ -163,6 +163,17 @@ export {
 } from './control-plane/secrets-files.js';
 export type { SecretFileInfo } from './control-plane/secrets-files.js';
 export {
+  PAIRING_CODE_PREFIX,
+  encodePairingCode,
+  decodePairingCode,
+  mintDirectPrincipalPairingCode,
+} from './control-plane/pairing.js';
+export type {
+  PairingPayloadV1,
+  DecodePairingResult,
+  MintPairingResult,
+} from './control-plane/pairing.js';
+export {
   assertSafeTaskFilename,
   resolveTasksDir,
   listTaskFiles,
