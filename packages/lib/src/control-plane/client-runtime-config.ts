@@ -70,14 +70,24 @@ export type WriteClientRuntimeConfigOptions = {
  * key at all. New callers (Electron/CLI, adopting A2/H4 in parallel) pass a
  * third options argument: `writeClientRuntimeConfig(path, assistantUrl, {
  * hostUrl })`.
+ *
+ * A `null` `assistantUrl` is the stack-less client-only serve (#486): writes
+ * `connections: []` instead of the locked "This assistant" entry, so a
+ * machine with no local install doesn't seed a connection pointing at a dead
+ * `http://127.0.0.1:3800` (the client's landing resolver would otherwise
+ * count 1 stored connection and land on `/chat` against a dead target
+ * instead of `/connections/new`). The client store's `seedFromRuntimeConfig`
+ * already deletes a previously seeded locked entry absent from the new
+ * config, so a later `openpalm install` (or uninstall) round-trips cleanly.
  */
 export function writeClientRuntimeConfig(
   path: string,
-  assistantUrl: string,
+  assistantUrl: string | null,
   options: WriteClientRuntimeConfigOptions = {}
 ): void {
   mkdirSync(dirname(path), { recursive: true });
-  const config: ClientRuntimeConfig = buildLockedAssistantRuntimeConfig(assistantUrl);
+  const config: ClientRuntimeConfig =
+    assistantUrl === null ? { connections: [] } : buildLockedAssistantRuntimeConfig(assistantUrl);
   if (options.hostUrl) config.hostUrl = options.hostUrl;
   writeFileSync(path, `${JSON.stringify(config, null, 2)}\n`);
 }
