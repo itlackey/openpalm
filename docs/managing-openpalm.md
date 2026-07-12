@@ -444,3 +444,83 @@ containers with the updated images. Equivalent to a manual
 **Docker socket GID** is auto-detected from `/var/run/docker.sock` by the admin at startup
 and written to `knowledge/env/stack.env`. You do not need to set it manually.
 If the admin fails to reach Docker, check that the socket exists and is readable.
+
+**Connect a remote client (another computer or phone)** (#486):
+
+The `@openpalm/client` app (installed via `openpalm app`, or as a PWA) can
+attach to a guardian on a different machine over its direct-ingress
+listener. Nothing about the loopback/fail-closed default posture changes —
+this is an explicit, per-connection operator opt-in.
+
+1. **Enable the guardian's direct listener.** Add to
+   `knowledge/env/stack.env`:
+
+   ```
+   GUARDIAN_DIRECT_INGRESS=true
+   ```
+
+   This publishes the guardian's direct listener on
+   `${OP_BIND_ADDRESS:-127.0.0.1}:${OP_GUARDIAN_PORT:-3830}` — the loopback
+   default is unchanged; reaching it from another machine still needs
+   either the TLS front from [`remote-access-tls.md`](remote-access-tls.md)
+   (recommended, and required for a phone's browser mixed-content rules) or
+   an explicit non-loopback `OP_BIND_ADDRESS` on a trusted LAN.
+
+2. **Allow the client's origin through CORS.** Add the exact origin the
+   client app runs on (no wildcard) to `GUARDIAN_CORS_ALLOWED_ORIGINS` in
+   `knowledge/env/stack.env`. The shipped default already covers the
+   localhost client origins (`http://127.0.0.1:3890` and friends); a remote
+   or hosted client origin must be added explicitly.
+
+3. **Mint a `direct` principal** on the guardian's loopback-only admin
+   listener (port 3831, Bearer-token gated):
+
+   ```bash
+   curl -X POST http://127.0.0.1:3831/admin/principals \
+     -H "authorization: Bearer $(cat ~/.openpalm/knowledge/secrets/op_guardian_admin_token)" \
+     -H 'content-type: application/json' \
+     -d '{"id":"my-phone","kind":"direct","token":"'"$(openssl rand -hex 24)"'","label":"My phone"}'
+   ```
+
+   Rotate/disable/delete the same way, against the same endpoint:
+
+   ```bash
+   # Rotate: mint a new token with the same id (overwrites)
+   curl -X POST http://127.0.0.1:3831/admin/principals \
+     -H "authorization: Bearer $(cat ~/.openpalm/knowledge/secrets/op_guardian_admin_token)" \
+     -H 'content-type: application/json' \
+     -d '{"id":"my-phone","kind":"direct","token":"'"$(openssl rand -hex 24)"'","label":"My phone"}'
+
+   # Delete
+   curl -X DELETE http://127.0.0.1:3831/admin/principals/my-phone \
+     -H "authorization: Bearer $(cat ~/.openpalm/knowledge/secrets/op_guardian_admin_token)"
+   ```
+
+4. **Add the connection in the client's `/connections`:** kind
+   **OpenPalm guardian (/oc)**, URL = the guardian's base URL (`/oc` is
+   appended automatically), auth **Basic** with username = the **principal
+   id** you minted (e.g. `my-phone`, not `openpalm`) and password = the
+   token.
+
+5. **Apply the env changes:**
+
+   ```bash
+   docker compose ... up -d guardian
+   ```
+
+   (or the admin UI's apply flow — either restarts the guardian with the
+   new ingress/CORS settings.)
+
+**Troubleshooting:**
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| Connection health shows `unreachable` `HTTP 404` | `GUARDIAN_DIRECT_INGRESS` is off | Set it to `true` and restart the guardian (step 1) |
+| Connection health shows `blocked (CORS)` | The client's origin is missing from the allowlist | Add it to `GUARDIAN_CORS_ALLOWED_ORIGINS` (step 2) |
+| Connection health shows `auth failed` | Principal id/token mismatch | Re-check the username is the principal **id**, not `openpalm`; re-mint the token if needed (step 3) |
+
+Security framing: fail-closed defaults are untouched by this flow — content
+validation still screens direct-tier prompts when enabled, and the minted
+token never enters `knowledge/env/stack.env` (non-secret) or any log; it
+lives only in the guardian's state DB and the client's own encrypted
+credential store.

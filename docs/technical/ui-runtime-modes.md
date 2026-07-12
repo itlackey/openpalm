@@ -24,6 +24,20 @@ OpenPalm now ships one UI product as two artifacts:
 | `assistant-container` | `@openpalm/client` | Assistant container `start_client` co-process | Single locked connection chat surface; no host capabilities |
 | `pwa-static` | `@openpalm/client` | Harness localhost app server or hosted static origin | Connection manager + chat; no host capabilities |
 
+`openpalm app` (#486) serves this pwa-static host UI plus the localhost
+`@openpalm/client` connection manager even on a machine with **no local
+stack installed** — `startUIServer` tolerates a not-installed `OP_HOME` when
+`openTarget === 'client'` (the same tolerance `openpalm admin` already had
+via `resolveServeState()`), and the CLI-written `runtime-config.json` seeds
+zero connections (`assistantUrl: null`) rather than a locked entry pointing
+at a dead `http://127.0.0.1:3800`. The client's own landing resolver then
+counts 0 stored connections and lands on `/connections/new`, which
+`resolveClientOpenTarget` (`packages/cli/src/lib/ui-server.ts`) opens on the
+**client** app origin, not the host UI — the host UI's `/connections` writes
+are admin-session-gated, a dead end on a passwordless stack-less machine.
+Bare `openpalm ui serve` (no `--open-target client`) is unaffected and still
+requires a valid install.
+
 ## Client Display Modes
 
 The browser-side client context distinguishes:
@@ -58,6 +72,39 @@ Current namespaces:
 | `/proxy/assistant/*` | Host UI only |
 
 The assistant-container Slice A that shipped in Phase 5 is static-only. It serves `@openpalm/client` plus `runtime-config.json`; it does **not** ship the optional assistant-settings shim.
+
+`/connections` and `/connections/new` are client-capable landings (#486
+D1b) — `resolveClientOpenTarget` opens the client artifact at that same
+path rather than falling back to the host UI, on both the stack-less
+`openpalm app` entry above and a normal reachable-client machine.
+
+### Connection kinds (#486 D2)
+
+`ConnectionEntry.kind` is a real, user-selectable field in both connection
+forms (host UI `/connections`, client `/connections`): `remote-opencode`
+(a plain OpenCode server) or `openpalm-client-api` (a guardian's `/oc`
+direct-ingress base). `local-opencode` stays reserved for synthesized
+entries (the env-derived host default, the client's locked "This
+assistant" seed) and is rejected with `400 invalid_connection` from both
+`POST`/`PATCH /api/connections*` and the client store.
+
+Selecting the guardian kind:
+
+- normalizes the saved URL to end in `/oc` (`normalizeGuardianUrl` in the
+  client, `normalizeGuardianOcUrl` in `packages/ui/src/lib/server/
+  endpoints.ts` — a deliberate duplicated pair, the same accepted pattern as
+  `validateConnectionUrl`/`validateEndpointUrl`, since the client artifact
+  may never import host code);
+- probes health at `${url}/session` instead of the bare root — `GET /oc/`
+  is not an allowlisted guardian route and 404s even against a fully
+  healthy guardian (`TransportOptions.probePath` on the client,
+  `probeEndpoint`'s kind check on the host);
+- renders remediation naming `GUARDIAN_DIRECT_INGRESS` for an `unreachable`
+  `HTTP 404` result, and a Basic-auth username hint naming the guardian
+  **principal id** rather than the `openpalm` stack default.
+
+See "Connect a remote client" in `docs/managing-openpalm.md` for the
+operator-facing provisioning flow this wiring assumes.
 
 ## Localhost Client Origin
 
@@ -131,6 +178,13 @@ The PWA build excludes `runtime-config.json` from precache and treats it as `Net
   configured produces a prominent warning and the client chat co-process is
   not started.
 - Assistant-container mode remains isolated from Docker and broad `OP_HOME` access.
+- Remote-credential provisioning (#486 D3) is a **documented manual flow**,
+  not a host-UI minting affordance: `GUARDIAN_DIRECT_INGRESS` stays `false`
+  by default, binds stay loopback, and a `direct` principal is minted only
+  via the guardian's loopback-only, Bearer-gated admin listener (port
+  3831). See "Connect a remote client" in `docs/managing-openpalm.md` for
+  the full flow; a host-UI minting affordance (pairing/QR) is deferred to
+  #511.
 
 ## Electron Default Surface (A1/J2/J3)
 
@@ -174,6 +228,23 @@ client-side HTTPS refusal) shipped — see `docs/remote-access-tls.md` and the
 Security Boundaries section above. See
 `docs/technical/ui-runtime-modes-plan.md` §12.3-12.4 for the full work-item
 breakdown.
+
+## #486 close-out: as-built vs. issue text
+
+Issue #486 ("remote-only / client install completion") predates the
+two-artifact split documented above and describes a single "same SvelteKit
+build, capability-hidden" deployment. The shipped shape instead splits the
+host control plane (`@openpalm/ui`) from the client app (`@openpalm/client`)
+as two independently-built artifacts — the Host Modes and Summary tables
+above are the as-built reading the issue's acceptance criteria are
+interpreted against. Within that shape, #486 closes: stack-less `openpalm
+app` entry (above), the `openpalm-client-api` connection kind wired in both
+forms (above), and the documented remote-credential provisioning flow
+(Security Boundaries above). What the issue also named but is **not** part
+of this shape — pairing/QR connection setup, a hosted-origin
+(`app.openpalm.dev`) deploy, install affordances beyond the localhost PWA
+path, and an `/api/runtime` contract-version handshake — remains tracked
+under #511, unchanged by this task.
 
 ## Related Files
 

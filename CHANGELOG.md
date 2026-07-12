@@ -9,6 +9,24 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Remote-only (client) install completion** (#486). `openpalm app` now
+  tolerates a machine with no local stack: it serves the pwa-static host UI
+  plus the localhost `@openpalm/client` connection manager and lands on
+  `/connections/new` instead of throwing an install-required error (bare
+  `openpalm ui serve` still requires an install). The `openpalm-client-api`
+  (guardian `/oc`) connection kind is now wired end to end: both connection
+  forms (client app and host UI) offer a Kind selector, guardian URLs are
+  normalized to end in `/oc` on save, health checks probe the allowlisted
+  `GET /session` route instead of the guardian's un-allowlisted root (so a
+  healthy guardian no longer misreports `unreachable HTTP 404`), and a 404
+  from a guardian-kind connection now names `GUARDIAN_DIRECT_INGRESS` in its
+  remediation copy. `docs/managing-openpalm.md` documents the manual
+  remote-client provisioning flow (enable `GUARDIAN_DIRECT_INGRESS`, add the
+  client origin to `GUARDIAN_CORS_ALLOWED_ORIGINS`, mint a `direct` principal
+  via the guardian admin listener). A new end-to-end suite
+  (`packages/client/tests/remote-attach.e2e.test.ts`) drives a real spawned
+  guardian with the real client transport to verify the full remote-attach
+  path.
 - **Standalone OpenCode-compatible portal packages** (#491). `@openpalm/discord-portal`
   and `@openpalm/slack-portal` are now runnable standalone with Bun
   (`bunx @openpalm/discord-portal` / `@openpalm/slack-portal`) against any
