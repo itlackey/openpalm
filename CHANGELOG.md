@@ -275,6 +275,22 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `bun add ... --production` (the runtime it already uses), keeping the exact
   version pin and the `$prefix/node_modules/@openpalm/...` layout the final
   `bun run` depends on. (#518)
+- **The assistant's `/health` probe and its password export are now
+  consistent with `OPENCODE_AUTH`.** Under the home-password network preset
+  (or any real install/update, since `ensureSecrets` always materializes a
+  non-empty `opencode_server_password` secret file), the assistant enabled
+  OpenCode Basic auth while its own healthcheck probed `/health`
+  unauthenticated — the probe always 401'd, the assistant never reported
+  healthy, and guardian's `depends_on: service_healthy` then blocked the
+  whole stack from deploying. The assistant entrypoint now only resolves and
+  exports `OPENCODE_SERVER_PASSWORD` when `OPENCODE_AUTH` is truthy (an
+  explicit `OPENCODE_SERVER_PASSWORD` env value is still never unset when
+  auth is off — no silent auth downgrade); the `core.compose.yml` and image
+  `HEALTHCHECK` probes now send Basic credentials (read from the same
+  mounted secret file) exactly when the container-side `OPENCODE_AUTH` is
+  truthy, and stay a plain probe otherwise. `OPENCODE_AUTH` remains off by
+  default — no behavior change for the default (loopback, no auth) posture.
+  (PR #564 P1-1/P1-2)
 
 ## [0.12.10] - 2026-06-17
 

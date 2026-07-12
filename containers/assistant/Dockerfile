@@ -243,8 +243,20 @@ EXPOSE 4096 3000
 # read healthy here while compose's curl probe — which requires an actual
 # successful HTTP response — read unhealthy for the exact same container.
 # curl is already installed in this image (see the apt-get install above).
+#
+# #564 P1-1 (D3 mirror): the /health probe authenticates iff OPENCODE_AUTH is
+# truthy, using the same truthy set and username/password resolution as
+# core.compose.yml. This variant additionally prefers a raw OPENCODE_SERVER_
+# PASSWORD env value over the secret file (env wins, file fallback — mirrors
+# the entrypoint's own resolve_opencode_server_password precedence) because a
+# bare `docker run` may supply the password as env with no secret file
+# mounted; the managed compose stack forbids raw `*_PASSWORD` env (secret-
+# audit) so core.compose.yml's probe deliberately omits that branch. A
+# HEALTHCHECK CMD is expanded by the container's own shell, not at Dockerfile
+# build time, so healthcheck processes see created env (compose `environment:`
+# / `docker run -e`) but never variables the entrypoint exports later.
 HEALTHCHECK --interval=15s --timeout=5s --start-period=30s --retries=3 \
-  CMD bash -c 'curl -sf http://localhost:${OPENCODE_PORT:-4096}/health >/dev/null && { [ -f /tmp/openpalm-client-skip ] || curl -sf http://localhost:${OP_CLIENT_PORT:-3000}/ >/dev/null; }' || exit 1
+  CMD bash -c 'case "${OPENCODE_AUTH:-false}" in true|TRUE|True|1|yes|YES) curl -sf -u "${OPENCODE_SERVER_USERNAME:-opencode}:${OPENCODE_SERVER_PASSWORD:-$(cat "${OPENCODE_SERVER_PASSWORD_FILE:-/run/secrets/opencode_server_password}")}" http://localhost:${OPENCODE_PORT:-4096}/health >/dev/null ;; *) curl -sf http://localhost:${OPENCODE_PORT:-4096}/health >/dev/null ;; esac && { [ -f /tmp/openpalm-client-skip ] || curl -sf http://localhost:${OP_CLIENT_PORT:-3000}/ >/dev/null; }' || exit 1
 
 ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/opencode-entrypoint.sh"]
 USER node

@@ -147,18 +147,31 @@ opencode_auth_enabled() {
   esac
 }
 
-# #563: resolve OpenCode's Basic-auth password from the compose secret file.
-# Explicit OPENCODE_SERVER_PASSWORD env wins; otherwise read *_FILE (trailing
-# newline stripped by command substitution). Fail fast when auth is enabled but
-# no password resolves — auth-on with an unknown password is a dead stack that
-# looks healthy, so failing loud here is the debuggable behavior.
+# #563/#564 P1-2: resolve OpenCode's Basic-auth password from the compose
+# secret file, gated on opencode_auth_enabled. The secret file is ALWAYS
+# materialized non-empty by ensureSecrets (random seed on first install, or a
+# stale password left behind by a preset switch away from home-password) and
+# must stay inert while OPENCODE_AUTH is off — otherwise reading it here would
+# turn on OpenCode Basic auth against an unauthenticated healthcheck probe and
+# wedge the stack unhealthy. Decision D1: an explicit OPENCODE_SERVER_PASSWORD
+# env value is deliberately never unset when auth is off — silently dropping
+# an operator-supplied credential would be a silent auth downgrade; instead
+# the posture-gated healthcheck (core.compose.yml, containers/assistant/
+# Dockerfile) fails loud on the mismatch. Explicit OPENCODE_SERVER_PASSWORD
+# env wins over *_FILE; trailing newline stripped by command substitution.
+# Fail fast when auth is enabled but no password resolves — auth-on with an
+# unknown password is a dead stack that looks healthy, so failing loud here
+# is the debuggable behavior.
 resolve_opencode_server_password() {
+  if ! opencode_auth_enabled; then
+    return 0
+  fi
   if [ -z "${OPENCODE_SERVER_PASSWORD:-}" ] \
      && [ -n "${OPENCODE_SERVER_PASSWORD_FILE:-}" ] && [ -s "${OPENCODE_SERVER_PASSWORD_FILE}" ]; then
     OPENCODE_SERVER_PASSWORD="$(cat "${OPENCODE_SERVER_PASSWORD_FILE}")"
     export OPENCODE_SERVER_PASSWORD
   fi
-  if opencode_auth_enabled && [ -z "${OPENCODE_SERVER_PASSWORD:-}" ]; then
+  if [ -z "${OPENCODE_SERVER_PASSWORD:-}" ]; then
     echo "ERROR: OPENCODE_AUTH=${OPENCODE_AUTH:-} is enabled but no password is available — set OPENCODE_SERVER_PASSWORD or OPENCODE_SERVER_PASSWORD_FILE (compose secret opencode_server_password)." >&2
     exit 1
   fi
