@@ -122,7 +122,7 @@ function projectNameForState(state: ControlPlaneState): string {
  * avoids a needless network pull) and for a locally-built `dev` image (which
  * must never hit the network). An unset tag is treated as moving (safe: refresh).
  */
-export function resolvePullMode(imageTag: string): 'always' | 'missing' {
+function resolvePullMode(imageTag: string): 'always' | 'missing' {
   const isDevTag = imageTag.startsWith('dev');
   const isPinnedVersion = /^v?\d+\./.test(imageTag);
   return !isDevTag && !isPinnedVersion ? 'always' : 'missing';

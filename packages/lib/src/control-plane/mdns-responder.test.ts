@@ -93,12 +93,12 @@ function buildQuestion(name: string, type: number, qclass = CLASS_IN): number[] 
 function buildQueryPacket(
   name: string,
   type: number,
-  opts: { id?: number; flags?: number; qclass?: number } = {},
+  opts: { id?: number; flags?: number } = {},
 ): Uint8Array {
   const id = opts.id ?? 0;
   const flags = opts.flags ?? 0;
   const header = buildHeader(id, flags, 1);
-  const question = buildQuestion(name, type, opts.qclass ?? CLASS_IN);
+  const question = buildQuestion(name, type);
   return new Uint8Array([...header, ...question]);
 }
 
@@ -377,30 +377,10 @@ describe("resolveMdnsAdvertisements", () => {
   });
 
   test("resolveMdnsStatus reports guardian advertised:false when a LAN bind has ingress off", () => {
-    expect(resolveMdnsStatus({ OP_BIND_ADDRESS: "0.0.0.0" }, HOST_IPV4).guardian.advertised).toBe(false);
+    expect(resolveMdnsStatus({ OP_BIND_ADDRESS: "0.0.0.0" }).guardian.advertised).toBe(false);
     expect(
-      resolveMdnsStatus({ OP_BIND_ADDRESS: "0.0.0.0", GUARDIAN_DIRECT_INGRESS: "true" }, HOST_IPV4).guardian.advertised,
+      resolveMdnsStatus({ OP_BIND_ADDRESS: "0.0.0.0", GUARDIAN_DIRECT_INGRESS: "true" }).guardian.advertised,
     ).toBe(true);
-  });
-
-  // PR #564 retest P2-5: a bind-gated service with no encodable IPv4 address
-  // (IPv6/hostname-only) must report advertised:false — never a phantom true.
-  test("resolveMdnsStatus reports advertised:false for an IPv6-only bind (no A record emitted)", () => {
-    const status = resolveMdnsStatus(
-      { OP_BIND_ADDRESS: "2001:db8::10", GUARDIAN_DIRECT_INGRESS: "true" },
-      HOST_IPV4,
-    );
-    expect(status.guardian.advertised).toBe(false);
-    // And the advertisement list is genuinely empty for that bind.
-    expect(
-      resolveMdnsAdvertisements({ OP_BIND_ADDRESS: "2001:db8::10", GUARDIAN_DIRECT_INGRESS: "true" }, HOST_IPV4),
-    ).toEqual([]);
-  });
-
-  test("resolveMdnsStatus reports advertised:false for an assistant hostname bind", () => {
-    expect(
-      resolveMdnsStatus({ OP_ASSISTANT_BIND_ADDRESS: "my-host.lan" }, HOST_IPV4).assistant.advertised,
-    ).toBe(false);
   });
 
   test("OP_ASSISTANT_BIND_ADDRESS=0.0.0.0 advertises the assistant name only", () => {
@@ -496,19 +476,7 @@ describe("resolveMdnsStatus", () => {
 describe("parseDnsQuestions", () => {
   test("decodes a standard A question", () => {
     const packet = buildQueryPacket("OpenPalm.local", TYPE_A);
-    expect(parseDnsQuestions(packet)).toEqual([
-      { name: "openpalm.local", type: TYPE_A, qclass: CLASS_IN, unicastResponse: false },
-    ]);
-  });
-
-  // PR #564 retest P3-5: the top bit of the qclass is the RFC 6762 §5.4 QU
-  // (unicast-response) bit — parse must surface it and strip it from qclass so
-  // matching/echo see the real class (IN).
-  test("decodes the QU (unicast-response) bit and masks it off qclass", () => {
-    const packet = buildQueryPacket("openpalm.local", TYPE_A, { qclass: CLASS_IN | 0x8000 });
-    expect(parseDnsQuestions(packet)).toEqual([
-      { name: "openpalm.local", type: TYPE_A, qclass: CLASS_IN, unicastResponse: true },
-    ]);
+    expect(parseDnsQuestions(packet)).toEqual([{ name: "openpalm.local", type: TYPE_A, qclass: CLASS_IN }]);
   });
 
   test("returns null for a response packet (QR=1)", () => {
@@ -743,54 +711,6 @@ describe("startMdnsResponder", () => {
     handle?.stop();
   });
 
-  // PR #564 retest P3-5: a query from the mDNS port with the QU bit set (RFC
-  // 6762 §5.4) must be answered by UNICAST to the querier — but with a NORMAL-
-  // shaped response (ID 0, qdcount 0, cache-flush set, full TTL), not the
-  // legacy shaping reserved for non-5353 source ports.
-  test("QU bit on a 5353-source query routes the answer unicast, normally shaped", () => {
-    const { factory, sockets } = createStubSocketFactory();
-    const handle = startMdnsResponder([makeAssistantAdvert()], { createSocket: factory });
-    const [socket] = sockets;
-    assertDefined(socket);
-    socket.sends.length = 0;
-
-    socket.emitMessage(buildQueryPacket("openpalm.local", TYPE_A, { qclass: CLASS_IN | 0x8000, id: 0x4242 }), {
-      address: "192.168.1.77",
-      port: MDNS_PORT,
-    });
-
-    expect(socket.sends.length).toBeGreaterThanOrEqual(1);
-    const response = socket.sends[socket.sends.length - 1];
-    assertDefined(response);
-    // Unicast to the querier, NOT the multicast group.
-    expect(response.address).toBe("192.168.1.77");
-    expect(response.port).toBe(MDNS_PORT);
-    const decoded = decodeMdnsPacket(response.msg);
-    // Normal shaping (not legacy): ID 0, no echoed question, cache-flush + full TTL.
-    expect(decoded.id).toBe(0);
-    expect(decoded.qdcount).toBe(0);
-    const answer = decoded.answers.find((a) => a.type === TYPE_A);
-    assertDefined(answer);
-    expect((answer.qclass & 0x8000) !== 0).toBe(true);
-    expect(answer.ttl).toBe(120);
-    handle?.stop();
-  });
-
-  test("a plain 5353-source query (QU bit clear) is still answered by multicast", () => {
-    const { factory, sockets } = createStubSocketFactory();
-    const handle = startMdnsResponder([makeAssistantAdvert()], { createSocket: factory });
-    const [socket] = sockets;
-    assertDefined(socket);
-    socket.sends.length = 0;
-
-    socket.emitMessage(buildQueryPacket("openpalm.local", TYPE_A), { address: "192.168.1.77", port: MDNS_PORT });
-
-    const response = socket.sends[socket.sends.length - 1];
-    assertDefined(response);
-    expect(response.address).toBe(MDNS_ADDR);
-    handle?.stop();
-  });
-
   test("ignores non-matching and malformed messages", () => {
     const { factory, sockets } = createStubSocketFactory();
     const handle = startMdnsResponder([makeAssistantAdvert()], { createSocket: factory });
@@ -938,83 +858,5 @@ describe("reconcileMdnsResponder", () => {
     });
     expect(sockets).toHaveLength(0);
     expect(status.assistant.advertised).toBe(false);
-  });
-
-  // PR #564 retest P2-4: compose interpolates each ${VAR} from stack.env when
-  // it defines the key, else from the host process env (docker.ts runs compose
-  // with env:{...process.env, ...parsed-stack.env}). The responder must resolve
-  // its advertisement against that SAME effective config so its status can't
-  // disagree with the running stack in either direction.
-  describe("P2-4: effective config mirrors compose (stack.env over process env)", () => {
-    test("a process-env-only OP_ASSISTANT_BIND_ADDRESS (absent from stack.env) is advertised — matches what compose deploys", () => {
-      const home = makeHome();
-      // stack.env does NOT define the assistant bind; a leftover shell export
-      // does. Compose would honor it and expose the assistant, so the responder
-      // must advertise it rather than reading a phantom loopback default.
-      writeStackEnv(home, "OP_MDNS=on\n");
-      const { factory, sockets } = createStubSocketFactory();
-      const status = reconcileMdnsResponder(home, {
-        createSocket: factory,
-        hostIpv4: ["192.168.1.20"],
-        processEnv: { OP_ASSISTANT_BIND_ADDRESS: "0.0.0.0" },
-      });
-      expect(sockets.length).toBeGreaterThanOrEqual(1);
-      expect(status.assistant.advertised).toBe(true);
-    });
-
-    test("a process-env-only OP_BIND_ADDRESS + GUARDIAN_DIRECT_INGRESS exposes the guardian front door — advertised", () => {
-      const home = makeHome();
-      writeStackEnv(home, "OP_MDNS=on\n");
-      const { factory, sockets } = createStubSocketFactory();
-      const status = reconcileMdnsResponder(home, {
-        createSocket: factory,
-        hostIpv4: ["192.168.1.20"],
-        processEnv: { OP_BIND_ADDRESS: "0.0.0.0", GUARDIAN_DIRECT_INGRESS: "true" },
-      });
-      expect(sockets.length).toBeGreaterThanOrEqual(1);
-      expect(status.guardian.advertised).toBe(true);
-    });
-
-    test("stack.env WINS over a stale promoted process-env copy — the fresh loopback pin is honored (no phantom advert)", () => {
-      const home = makeHome();
-      // stack.env freshly pins loopback; process.env still carries a stale
-      // promoted 0.0.0.0 from before a PUT. Compose layers stack.env on top, so
-      // the service is loopback — the responder must NOT advertise.
-      writeStackEnv(home, "OP_ASSISTANT_BIND_ADDRESS=127.0.0.1\n");
-      const { factory, sockets } = createStubSocketFactory();
-      const status = reconcileMdnsResponder(home, {
-        createSocket: factory,
-        hostIpv4: ["192.168.1.20"],
-        processEnv: { OP_ASSISTANT_BIND_ADDRESS: "0.0.0.0" },
-      });
-      expect(sockets).toHaveLength(0);
-      expect(status.assistant.advertised).toBe(false);
-    });
-
-    test("stack.env exposure WINS over a process-env loopback override — advertised (matches compose)", () => {
-      const home = makeHome();
-      writeStackEnv(home, "OP_ASSISTANT_BIND_ADDRESS=0.0.0.0\n");
-      const { factory, sockets } = createStubSocketFactory();
-      const status = reconcileMdnsResponder(home, {
-        createSocket: factory,
-        hostIpv4: ["192.168.1.20"],
-        processEnv: { OP_ASSISTANT_BIND_ADDRESS: "127.0.0.1" },
-      });
-      expect(sockets.length).toBeGreaterThanOrEqual(1);
-      expect(status.assistant.advertised).toBe(true);
-    });
-
-    test("the project name in stack.env still wins over a process-env OP_PROJECT_NAME for the advertised label", () => {
-      const home = makeHome();
-      writeStackEnv(home, "OP_ASSISTANT_BIND_ADDRESS=0.0.0.0\nOP_PROJECT_NAME=my-lab\n");
-      const { factory, sockets } = createStubSocketFactory();
-      const status = reconcileMdnsResponder(home, {
-        createSocket: factory,
-        hostIpv4: ["192.168.1.20"],
-        processEnv: { OP_PROJECT_NAME: "stale-lab" },
-      });
-      expect(sockets.length).toBeGreaterThanOrEqual(1);
-      expect(status.assistant.name).toBe("my-lab.local");
-    });
   });
 });

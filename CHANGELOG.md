@@ -299,7 +299,7 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   contract); `api-spec.md` corrects `GET /guardian/stats` to the actual `GET
   /stats` guardian-admin **Bearer** route (not host-session cookie); the
   principal-rotation guide now curls the dedicated `/admin/principals/:id/rotate`
-  endpoint instead of the now-create-only collection endpoint (which 409s); and
+  endpoint; and
   the client connection form's username placeholder is `opencode` (not the stale
   `openpalm`), matching the corrected password-only default.
 
@@ -343,78 +343,11 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   needlessly recreates a healthy stack. A `5xx` or a connection error still reads
   as down.
 
-- **Pairing API status/error contract fully documented and tested** (PR #564
-  retest P3-2): `api-spec.md` now enumerates every status `POST
-  /api/connections/pairing` can return in evaluation order — `403
-  capability_not_available`, `403 forbidden_origin`, `401 unauthorized`, `503
-  admin_not_configured`, `413 too_large`, `400 invalid_json`, `400
-  invalid_connection`, `500`/`502 pairing_mint_failed` (including the create-only
-  id-collision case), and `201` on success — with a note on the stable error-body
-  shape. Contract tests assert each status, including the previously-untested
-  `forbidden_origin`, `invalid_json`, `too_large`, non-2xx, and
-  collision-exhausted paths.
-
 - **Pairing QR is `string | null` end-to-end with a text-code fallback** (PR
   #564 retest P3-3): the host UI pairing helper and `/connections` panel now type
   `qrSvg` as `string | null` (matching the route and spec) and render the text
   pairing code with an explanatory note instead of a broken/blank QR when the
   host could not generate the SVG — pairing still works without the image.
-
-- **Pairing principal insertion is create-only** (PR #564 retest P3-1): the
-  guardian admin `POST /admin/principals` now uses a create-only insert — a
-  colliding id is refused with `409 principal_exists` and the existing
-  principal's token is left completely untouched, instead of the previous upsert
-  that would silently rotate a live device's credential. The pairing mint
-  transparently retries with a freshly-drawn id on the (astronomically unlikely)
-  409, and gives up with a distinct conflict error only after exhausting its
-  attempts.
-
-- **Guardian proxy audit records carry the verified client IP** (PR #564 retest
-  P2-9): every `oc_proxy` denial record and the `oc_event_open` /
-  `oc_session_create` success records now include the verified client IP — the
-  mTLS-verified peer the passthrough recovers, or the plain-HTTP socket remote
-  address, never a spoofable forwarded header. Distinct clients produce distinct
-  audit values, so a rejected or accepted request can be attributed to its
-  source; the field is omitted only when no IP is known.
-
-- **mDNS honors the QU (unicast-response) bit** (PR #564 retest P3-5): the
-  responder now parses the RFC 6762 §5.4 unicast-response bit off each question's
-  qclass and, when a querier on port 5353 sets it, answers by unicast to the
-  querier instead of multicasting — but with a normally-shaped response (ID 0,
-  no echoed question, cache-flush bit, full TTL), distinct from the legacy-
-  unicast shaping still reserved for non-5353 source ports. Plain multicast
-  queries are unchanged.
-
-- **mDNS advertisement follows the effective config compose deploys** (PR #564
-  retest P2-4): `reconcileMdnsResponder` (and the read-only `GET /api/host/stack`
-  status echo) now resolve advertisement against fresh stack.env layered over
-  the host process env — the same precedence `docker compose` uses (it runs with
-  `env: { ...process.env, ...<parsed stack.env> }` plus `--env-file`). A
-  process-env-only bind override that Compose honors (a leftover shell export
-  absent from stack.env) is now reflected in what the responder advertises, and
-  a fresh stack.env pin always wins over a stale promoted process-env copy, so
-  the advertised status can no longer disagree with the running stack in either
-  direction. `OP_MDNS=off` in the process env remains a hard responder-only kill
-  switch on top.
-
-- **Network-preset host-env validation covers every managed key** (PR #564
-  retest P2-6): `validateNetworkPresetEnv` now fails closed on a host-process
-  override that would widen exposure past the target preset for ANY managed key
-  it pins — the client and voice binds (`OP_CLIENT_BIND_ADDRESS`,
-  `OP_VOICE_BIND_ADDRESS`), not just the assistant/guardian binds — plus an
-  `OPENCODE_AUTH=false` override that would strip the sign-in password off a
-  LAN-exposed assistant under `home-password`. The check keys off the raw
-  process value (never the `OP_BIND_ADDRESS` compose cascade, which the written
-  stack.env row already pins) and only rejects exposure-widening overrides;
-  restrictive fail-closed drift is still allowed through.
-
-- **mDNS admin status reports `advertised:true` only when a real record is
-  emitted** (PR #564 retest P2-5): `resolveMdnsStatus` now shares the exact
-  decision path as `resolveMdnsAdvertisements`, so a service whose bind resolves
-  to zero A records (an IPv6-literal or hostname bind, or a host with no
-  non-loopback IPv4) reports `advertised:false` instead of a phantom `true`. The
-  admin surface can no longer promise a `.local` name that the responder never
-  answers.
 
 - **`channel_lan` deprecation guard rejects a stale overlay before any writes on
   update too** (PR #564 retest P2-3): the guard now blocks install, update, and

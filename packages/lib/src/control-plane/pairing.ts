@@ -172,67 +172,49 @@ export async function mintDirectPrincipalPairingCode(options: {
   }
   const adminToken = rawToken.trim();
 
+  // PR #564 r3566891355: 8 random bytes (64 bits) of id suffix — collision-
+  // resistant across any realistic fleet.
+  const principalId = `${slugifyLabel(label)}-${randomHex(8)}`;
   const principalToken = randomHex(32);
 
-  // PR #564 r3566891355: 8 random bytes (64 bits) of id suffix — collision-
-  // resistant across any realistic fleet. PR #564 retest P3-1: the guardian
-  // admin store is now CREATE-ONLY and answers a colliding id with 409 (never
-  // an overwrite of a live device's credential), so on the astronomically
-  // unlikely 409 we retry with a freshly-drawn id rather than failing the mint.
-  const MAX_MINT_ATTEMPTS = 3;
-  let principalId = '';
-  for (let attempt = 1; attempt <= MAX_MINT_ATTEMPTS; attempt += 1) {
-    principalId = `${slugifyLabel(label)}-${randomHex(8)}`;
-
-    let response: Response;
-    try {
-      // Split across two literals so this doesn't trip the lib-wide "no dead
-      // /admin/* path" hygiene scan (admin-paths-hygiene.vitest.ts, packages/ui)
-      // — that scan targets the deleted SvelteKit UI /admin/* namespace, not
-      // this unrelated, very much alive guardian admin-listener route.
-      response = await fetchImpl(`${guardianAdminUrl}/admin${'/principals'}`, {
-        method: 'POST',
-        headers: {
-          authorization: `Bearer ${adminToken}`,
-          'content-type': 'application/json',
-        },
-        body: JSON.stringify({ id: principalId, kind: 'direct', token: principalToken, label }),
-        // PR #564 second retest: bound the admin call so a listener that accepts
-        // the connection but never responds cannot hang the mint indefinitely.
-        signal: AbortSignal.timeout(PAIRING_ADMIN_TIMEOUT_MS),
-      });
-    } catch {
-      return {
-        ok: false,
-        error: 'guardian admin listener unreachable — is the stack running with a guardian-ingress addon enabled?',
-      };
-    }
-
-    if (response.ok) {
-      const code = encodePairingCode({
-        v: 1,
-        kind: 'openpalm-client-api',
-        url,
-        label,
-        username: principalId,
-        secret: principalToken,
-      });
-      return { ok: true, code, principalId };
-    }
-
-    // 409 → the drawn id already exists; draw another and retry (create-only
-    // means the existing principal was left untouched). Any other status is a
-    // hard failure.
-    if (response.status !== 409) {
-      return {
-        ok: false,
-        error: `guardian admin API responded with HTTP ${response.status}`,
-      };
-    }
+  let response: Response;
+  try {
+    // Split across two literals so this doesn't trip the lib-wide "no dead
+    // /admin/* path" hygiene scan (admin-paths-hygiene.vitest.ts, packages/ui)
+    // — that scan targets the deleted SvelteKit UI /admin/* namespace, not
+    // this unrelated, very much alive guardian admin-listener route.
+    response = await fetchImpl(`${guardianAdminUrl}/admin${'/principals'}`, {
+      method: 'POST',
+      headers: {
+        authorization: `Bearer ${adminToken}`,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({ id: principalId, kind: 'direct', token: principalToken, label }),
+      // PR #564 second retest: bound the admin call so a listener that accepts
+      // the connection but never responds cannot hang the mint indefinitely.
+      signal: AbortSignal.timeout(PAIRING_ADMIN_TIMEOUT_MS),
+    });
+  } catch {
+    return {
+      ok: false,
+      error: 'guardian admin listener unreachable — is the stack running with a guardian-ingress addon enabled?',
+    };
+  }
+  if (!response.ok) {
+    return {
+      ok: false,
+      error: `guardian admin API responded with HTTP ${response.status}`,
+    };
   }
 
-  return {
-    ok: false,
-    error: `guardian admin API reported an id collision on every one of ${MAX_MINT_ATTEMPTS} pairing attempts — try again.`,
-  };
+  const code = encodePairingCode({
+    v: 1,
+    kind: 'openpalm-client-api',
+    url,
+    label,
+    username: principalId,
+    secret: principalToken,
+  });
+
+  return { ok: true, code, principalId };
 }

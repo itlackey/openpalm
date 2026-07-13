@@ -161,19 +161,6 @@ export function initializePrincipalStore(): void {
   openDatabase();
 }
 
-/**
- * Test-only seam: point the module singleton at a caller-provided,
- * already-{@link configureStateDatabase}d database (or `null` to restore the
- * env-bound default on the next open). The accessor helpers below key off the
- * singleton, which is bound to `GUARDIAN_STATE_DB_PATH` at import time and
- * therefore cannot be exercised in-process across test files without bleeding;
- * injecting an isolated in-memory DB per test file removes that cross-file
- * coupling (PR #564 retest P3-1 create-principal.test.ts).
- */
-export function _setStateDatabaseForTests(database: Database | null): void {
-  db = database;
-}
-
 export function listPrincipals(): PrincipalRecord[] {
   const rows = openDatabase().query('SELECT id, kind, label, token_hash, enabled, created_at FROM principals ORDER BY id').all() as Record<string, unknown>[];
   return rows.map((row) => rowToPrincipal(row)).filter((row): row is PrincipalRecord => row !== null);
@@ -198,25 +185,6 @@ export function upsertPrincipal(input: { id: string; kind: PrincipalKind; label?
   `).run(input.id, input.kind, label, hashToken(input.token), input.enabled === false ? 0 : 1, createdAt);
   // biome-ignore lint/style/noNonNullAssertion: the INSERT ... ON CONFLICT DO UPDATE above guarantees a row with input.id exists, so the immediate re-read cannot be null.
   return getPrincipalRecord(input.id)!;
-}
-
-/**
- * Create-only insertion (PR #564 retest P3-1). Unlike {@link upsertPrincipal},
- * a colliding `id` is NOT overwritten — the existing row (and its token) stays
- * exactly as it was and this returns `null`. Pairing mints a fresh device
- * principal, so a same-id collision must never silently rotate an existing
- * device's credential; the caller retries with a new id or reports a conflict.
- */
-export function createPrincipal(input: { id: string; kind: PrincipalKind; label?: string; token: string; enabled?: boolean }): PrincipalRecord | null {
-  const createdAt = Date.now();
-  const label = (input.label?.trim() || input.id).trim();
-  const result = openDatabase().query(`
-    INSERT INTO principals (id, kind, label, token_hash, enabled, created_at)
-    VALUES (?, ?, ?, ?, ?, ?)
-    ON CONFLICT(id) DO NOTHING
-  `).run(input.id, input.kind, label, hashToken(input.token), input.enabled === false ? 0 : 1, createdAt);
-  if (result.changes === 0) return null; // id already exists — leave it untouched
-  return getPrincipalRecord(input.id);
 }
 
 export function rotatePrincipal(id: string, token: string): PrincipalRecord | null {

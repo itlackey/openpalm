@@ -36,13 +36,6 @@ const TYPE_SRV = 33;
 const TYPE_ANY = 255;
 const CLASS_IN = 1;
 const CACHE_FLUSH_BIT = 0x8000;
-/**
- * RFC 6762 §5.4: the top bit of a QUESTION's qclass is the unicast-response
- * (QU) bit. A querier that sets it is asking for the answer by unicast even
- * though it queried from the mDNS port. Same bit position as CACHE_FLUSH_BIT,
- * but that one lives on RESOURCE RECORDS — this one only on questions.
- */
-const QU_BIT = 0x8000;
 const TTL = 120;
 /** RFC 6762 §6.7: legacy-unicast responses use a short TTL (≤10s). */
 const LEGACY_UNICAST_TTL = 10;
@@ -218,31 +211,23 @@ export function resolveMdnsAdvertisements(
 }
 
 /**
- * Names/ports/advertised-state for the admin UI. PR #564 retest P2-5:
- * `advertised` reflects whether an ACTUAL record is emitted — it shares the
- * exact decision path with `resolveMdnsAdvertisements`, so a service that is
- * bind-gated on but has no encodable IPv4 address (an IPv6/hostname-only bind
- * that is filtered from A records) reports `advertised:false`, never a phantom
- * `true` with an empty advertisement list.
+ * Names/ports/advertised-state for the admin UI, independent of whether any
+ * host IPv4 address can actually be resolved right now — `advertised`
+ * reflects the bind-address gate only (D6: gating is bind-address-only), so
+ * this never needs a `hostIpv4` param.
  */
-export function resolveMdnsStatus(
-  env: Record<string, string | undefined>,
-  hostIpv4: string[] = defaultHostIpv4(),
-): MdnsStatus {
+export function resolveMdnsStatus(env: Record<string, string | undefined>): MdnsStatus {
   const names = deriveMdnsNames(env);
-  const adverts = resolveMdnsAdvertisements(env, hostIpv4);
-  const advertisedFor = (service: MdnsAdvertisement["service"]): boolean =>
-    adverts.some((a) => a.service === service);
   return {
     assistant: {
       name: names.assistantName,
       port: parsePort(env.OP_ASSISTANT_PORT, DEFAULT_ASSISTANT_PORT),
-      advertised: advertisedFor("assistant"),
+      advertised: isAssistantGated(env),
     },
     guardian: {
       name: names.guardianName,
       port: parsePort(env.OP_GUARDIAN_PORT, DEFAULT_GUARDIAN_PORT),
-      advertised: advertisedFor("guardian"),
+      advertised: isGuardianGated(env),
     },
   };
 }
@@ -251,18 +236,7 @@ export function resolveMdnsStatus(
 //    the encoder trivial; the parser follows compression pointers defensively
 //    since it must handle arbitrary incoming query bytes) ──────────────────
 
-export type DnsQuestion = {
-  name: string;
-  type: number;
-  /** The class WITHOUT the QU bit (masked off into {@link unicastResponse}). */
-  qclass: number;
-  /**
-   * RFC 6762 §5.4 QU bit — the querier requested a unicast response. Always set
-   * by {@link parseDnsQuestions}; optional so hand-built questions (the answer
-   * builder never reads it) need not specify it.
-   */
-  unicastResponse?: boolean;
-};
+export type DnsQuestion = { name: string; type: number; qclass: number };
 
 function readU16(buf: Uint8Array, offset: number): number {
   if (offset < 0 || offset + 2 > buf.length) throw new RangeError("mdns: read past end of buffer");
@@ -318,13 +292,8 @@ export function parseDnsQuestions(msg: Uint8Array): DnsQuestion[] | null {
       const decoded = decodeName(msg, pos);
       if (!decoded) return null;
       const type = readU16(msg, decoded.next);
-      const rawClass = readU16(msg, decoded.next + 2);
-      questions.push({
-        name: decoded.name.toLowerCase(),
-        type,
-        qclass: rawClass & ~QU_BIT,
-        unicastResponse: (rawClass & QU_BIT) !== 0,
-      });
+      const qclass = readU16(msg, decoded.next + 2);
+      questions.push({ name: decoded.name.toLowerCase(), type, qclass });
       pos = decoded.next + 4;
     }
     return questions;
@@ -572,17 +541,10 @@ function createResponder(
       try {
         const questions = parseDnsQuestions(msg);
         if (!questions) return;
-        // A query from a non-5353 source port is a legacy-unicast resolver
-        // (RFC 6762 §6.7): reply unicast AND legacy-shaped (echo the question,
-        // short TTL, no cache-flush bit). A query from port 5353 with the QU
-        // bit set (§5.4) also wants a unicast reply, but a NORMAL-shaped one
-        // (ID 0, full TTL, cache-flush) — it is a regular mDNS response merely
-        // delivered by unicast. Anything else is answered by multicast.
         const legacy = rinfo.port !== MDNS_PORT;
-        const wantsUnicast = legacy || questions.some((q) => q.unicastResponse);
         const answer = buildMdnsAnswer(questions, adverts, legacy ? { queryId: readU16(msg, 0), legacy: true } : {});
         if (!answer) return;
-        if (wantsUnicast) safeSend(answer, rinfo.port, rinfo.address);
+        if (legacy) safeSend(answer, rinfo.port, rinfo.address);
         else safeSend(answer, MDNS_PORT, MDNS_ADDR);
       } catch (err) {
         logger.warn("mdns: message handling failed", { error: String(err), names });
@@ -676,64 +638,12 @@ export function startMdnsResponder(
 let active: { key: string; handle: MdnsResponderHandle; silentClose: () => void } | null = null;
 
 /**
- * The env keys whose values decide which mDNS records emit (bind gates, ports,
- * project name, ingress + kill switch). Only these are pulled from the host
- * process env when composing the effective config — unrelated process vars are
- * ignored.
- */
-const MDNS_COMPOSE_KEYS = [
-  "OP_PROJECT_NAME",
-  "OP_MDNS",
-  "GUARDIAN_DIRECT_INGRESS",
-  "OP_BIND_ADDRESS",
-  "OP_ASSISTANT_BIND_ADDRESS",
-  "OP_GUARDIAN_PORT",
-  "OP_ASSISTANT_PORT",
-] as const;
-
-/**
- * Build the config the responder must advertise against so it agrees with what
- * `docker compose` actually deploys. PR #564 retest P2-4: the deploy runs
- * compose with `env: { ...process.env, ...<parsed stack.env> }` (docker.ts) and
- * `--env-file`, so interpolation resolves each `${VAR}` from stack.env when it
- * defines the key, else from the host process env. A key present in the host
- * process but absent from stack.env (a leftover `OP_BIND_ADDRESS` shell export)
- * therefore reaches the containers and exposes a service — yet the old reconcile
- * read stack.env alone and never saw it, advertising a status that disagreed
- * with the running stack in both directions.
- *
- * Mirror that layering exactly: process env fills the gaps, fresh stack.env
- * wins every key it defines (so hooks.server.ts's only-if-unset promotion can
- * never go stale — the fresh stack.env value always overrides the promoted
- * process-env copy). `OP_MDNS=off` in the process env stays a hard override on
- * top: it force-disables the responder even against a stack.env that enables
- * mDNS, because the responder — not compose — is the sole consumer of that gate.
- */
-export function resolveEffectiveMdnsEnv(
-  stackEnv: Record<string, string | undefined>,
-  processEnv: Record<string, string | undefined>,
-): Record<string, string | undefined> {
-  const effective: Record<string, string | undefined> = {};
-  for (const key of MDNS_COMPOSE_KEYS) {
-    const stackVal = stackEnv[key];
-    effective[key] = stackVal !== undefined ? stackVal : processEnv[key];
-  }
-  // Carry any other stack.env keys through unchanged (future-proofing readers
-  // that consult keys outside MDNS_COMPOSE_KEYS), without letting process env
-  // leak in for them.
-  for (const [key, value] of Object.entries(stackEnv)) {
-    if (!(key in effective)) effective[key] = value;
-  }
-  if (isMdnsOffToken(processEnv.OP_MDNS)) effective.OP_MDNS = "off";
-  return effective;
-}
-
-/**
- * Reconcile the live responder against the effective config compose deploys —
- * fresh stack.env layered over the host process env for the mDNS-relevant keys
- * (see {@link resolveEffectiveMdnsEnv}), never stack.env alone. `OP_MDNS` in
- * `processEnv` force-disables (operator/test kill switch). Never throws.
- * Returns the effective `MdnsStatus` so route handlers can echo it.
+ * Reconcile the live responder against the current stack.env (read fresh on
+ * every call — never process.env for the gate vars, since hooks.server.ts's
+ * startup promotion is only-if-unset and would go stale after a PUT). The
+ * single process-env exception: `OP_MDNS` in `processEnv` force-disables
+ * (operator/test kill switch), checked alongside the stack.env value. Never
+ * throws. Returns the effective `MdnsStatus` so route handlers can echo it.
  */
 export function reconcileMdnsResponder(
   homeDir: string,
@@ -753,14 +663,14 @@ export function reconcileMdnsResponder(
   }
 
   const processEnv = deps.processEnv ?? process.env;
-  const effectiveEnv = resolveEffectiveMdnsEnv(env, processEnv);
+  const effectiveEnv = isMdnsOffToken(processEnv.OP_MDNS) ? { ...env, OP_MDNS: "off" } : env;
 
   try {
     const adverts = resolveMdnsAdvertisements(effectiveEnv, deps.hostIpv4);
     const key = JSON.stringify(adverts);
 
     if (active && active.key === key) {
-      return resolveMdnsStatus(effectiveEnv, deps.hostIpv4);
+      return resolveMdnsStatus(effectiveEnv);
     }
 
     if (active) {
@@ -780,7 +690,7 @@ export function reconcileMdnsResponder(
     logger.warn("mdns: reconcile failed", { error: String(err) });
   }
 
-  return resolveMdnsStatus(effectiveEnv, deps.hostIpv4);
+  return resolveMdnsStatus(effectiveEnv);
 }
 
 /** Test-only: stop the active responder (no goodbye) and clear the singleton. */

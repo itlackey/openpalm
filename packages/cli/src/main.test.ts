@@ -630,17 +630,6 @@ describe('audit-secrets command', () => {
   });
 });
 
-// PR #564 second retest R9: a healthy non-interactive (file) install must stamp
-// OP_SETUP_COMPLETE. runDeploy only does that when handed a markSetupComplete
-// callback; the install deploy previously called runDeploy bare. deploy.test.ts
-// covers that the callback fires on a healthy core, so here we pin the wiring.
-describe('install deploy wires the setup-completion callback (R9)', () => {
-  it('passes markSetupComplete into runDeploy', () => {
-    const src = readFileSync(new URL('./commands/install.ts', import.meta.url), 'utf8');
-    expect(src).toMatch(/runDeploy\(state,\s*\{[^}]*markSetupComplete/s);
-  });
-});
-
 // PR #564 retest P3-4: the bare-command health probe sends no Basic auth, so a
 // home-password stack answers /health with 401. That 401 proves the assistant
 // is up — it must read as "healthy" so the bare command doesn't run

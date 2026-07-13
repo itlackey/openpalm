@@ -108,16 +108,12 @@ describe("resolveNetworkPreset — mDNS equivalence with the #488 responder (D1 
       // REALIZED once the operator opts into direct ingress. The guardianMdns
       // flag encodes that INTENT; verify the responder honors it when ingress
       // is on, and (below) that it stays dark while ingress is off.
-      // PR #564 retest P2-5: resolveMdnsStatus now shares the advertisement
-      // path (advertised only when a real IPv4 record emits), so pass an
-      // explicit host IPv4 for a deterministic wildcard-bind result.
-      const HOST_IPV4 = ["192.168.1.20"];
       const withIngress = r.guardianMdns ? { ...r.env, GUARDIAN_DIRECT_INGRESS: "true" } : r.env;
-      const status = resolveMdnsStatus(withIngress, HOST_IPV4);
+      const status = resolveMdnsStatus(withIngress);
       expect(status.assistant.advertised).toBe(r.assistantMdns);
       expect(status.guardian.advertised).toBe(r.guardianMdns);
       // Ingress off ⇒ guardian never advertised, regardless of intent.
-      expect(resolveMdnsStatus(r.env, HOST_IPV4).guardian.advertised).toBe(false);
+      expect(resolveMdnsStatus(r.env).guardian.advertised).toBe(false);
     }
   });
 });
@@ -245,59 +241,6 @@ describe("validateNetworkPresetEnv", () => {
     for (const preset of ["home-password", "home-open"] as NetworkAccessPreset[]) {
       expect(validateNetworkPresetEnv(preset, { OP_ASSISTANT_BIND_ADDRESS: "0.0.0.0" }).valid).toBe(true);
     }
-  });
-
-  // PR #564 retest P2-6: the guard must cover EVERY managed key the preset pins
-  // to loopback (client + voice binds too), plus the OPENCODE_AUTH-off downgrade
-  // — not just the assistant/guardian binds. Each row exposes exactly one
-  // managed key via the host process env and asserts whether the preset rejects.
-  describe("P2-6: all managed keys are guarded in the exposure-widening direction", () => {
-    type Row = {
-      preset: NetworkAccessPreset;
-      env: Record<string, string>;
-      valid: boolean;
-      expectKey?: string;
-    };
-    const rows: Row[] = [
-      // this-pc pins all four binds loopback → every exposed bind fails closed.
-      { preset: "this-pc", env: { OP_CLIENT_BIND_ADDRESS: "0.0.0.0" }, valid: false, expectKey: "OP_CLIENT_BIND_ADDRESS" },
-      { preset: "this-pc", env: { OP_VOICE_BIND_ADDRESS: "0.0.0.0" }, valid: false, expectKey: "OP_VOICE_BIND_ADDRESS" },
-      // shared-guardian pins assistant/client/voice loopback (OP_BIND exposed on purpose).
-      { preset: "shared-guardian", env: { OP_CLIENT_BIND_ADDRESS: "0.0.0.0" }, valid: false, expectKey: "OP_CLIENT_BIND_ADDRESS" },
-      { preset: "shared-guardian", env: { OP_VOICE_BIND_ADDRESS: "0.0.0.0" }, valid: false, expectKey: "OP_VOICE_BIND_ADDRESS" },
-      { preset: "shared-guardian", env: { OP_BIND_ADDRESS: "0.0.0.0" }, valid: true },
-      // home presets pin client/voice loopback but expose the assistant.
-      { preset: "home-open", env: { OP_CLIENT_BIND_ADDRESS: "0.0.0.0" }, valid: false, expectKey: "OP_CLIENT_BIND_ADDRESS" },
-      { preset: "home-open", env: { OP_VOICE_BIND_ADDRESS: "0.0.0.0" }, valid: false, expectKey: "OP_VOICE_BIND_ADDRESS" },
-      { preset: "home-password", env: { OP_VOICE_BIND_ADDRESS: "0.0.0.0" }, valid: false, expectKey: "OP_VOICE_BIND_ADDRESS" },
-      // home-password enables auth → a host-env OPENCODE_AUTH=off strips the password.
-      { preset: "home-password", env: { OPENCODE_AUTH: "false" }, valid: false, expectKey: "OPENCODE_AUTH" },
-      { preset: "home-password", env: { OPENCODE_AUTH: "0" }, valid: false, expectKey: "OPENCODE_AUTH" },
-      // Restrictive/aligned overrides are safe fail-closed drift, never rejected.
-      { preset: "home-password", env: { OPENCODE_AUTH: "true" }, valid: true },
-      { preset: "home-open", env: { OPENCODE_AUTH: "true" }, valid: true },
-      { preset: "home-open", env: { OP_ASSISTANT_BIND_ADDRESS: "127.0.0.1" }, valid: true },
-      { preset: "shared-guardian", env: { OP_CLIENT_BIND_ADDRESS: "127.0.0.1", OP_VOICE_BIND_ADDRESS: "" }, valid: true },
-    ];
-    for (const row of rows) {
-      const label = `${row.preset} + ${JSON.stringify(row.env)} → ${row.valid ? "valid" : "rejected"}`;
-      test(label, () => {
-        const result = validateNetworkPresetEnv(row.preset, row.env);
-        expect(result.valid).toBe(row.valid);
-        if (row.expectKey) {
-          expect(result.errors.some((e) => e.includes(row.expectKey as string))).toBe(true);
-        }
-      });
-    }
-  });
-
-  test("a host-env OP_BIND_ADDRESS=0.0.0.0 does NOT falsely flag the cascading client/voice binds", () => {
-    // Compose cascade only fires when the key is unset in BOTH process and
-    // stack.env; the preset always writes it explicitly, so validation must key
-    // off the raw process value, not the OP_BIND_ADDRESS cascade.
-    const result = validateNetworkPresetEnv("shared-guardian", { OP_BIND_ADDRESS: "0.0.0.0" });
-    expect(result.valid).toBe(true);
-    expect(result.errors.some((e) => e.includes("OP_CLIENT_BIND_ADDRESS") || e.includes("OP_VOICE_BIND_ADDRESS"))).toBe(false);
   });
 });
 

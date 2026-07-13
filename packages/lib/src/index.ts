@@ -562,7 +562,6 @@ export {
   deriveMdnsNames,
   resolveMdnsAdvertisements,
   resolveMdnsStatus,
-  resolveEffectiveMdnsEnv,
   reconcileMdnsResponder,
   _setMdnsSocketFactoryForTests,
   _resetMdnsResponderForTests,
