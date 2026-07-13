@@ -143,6 +143,9 @@ export async function handleProxy(
   expectedKind?: 'portal' | 'direct',
   clientIp = '',
 ): Promise<Response> {
+  // PR #564 retest P2-9: every denial audit record carries the verified client IP.
+  const denyReq = (status: number, error: string, detail: Record<string, unknown> = {}) =>
+    deny(rid, status, error, detail, clientIp);
   const url = new URL(req.url);
 
   // The OpenCode path is everything after the /oc prefix. Use the RAW encoded
@@ -151,7 +154,7 @@ export async function handleProxy(
   // percent-decoded by URL — so reconstruct the raw path from the original URL.
   const rawPath = rawOcPath(req.url);
   if (rawPath === null) {
-    return deny(rid, 404, "not_found", { reason: "no_oc_prefix" });
+    return denyReq(404, "not_found", { reason: "no_oc_prefix" });
   }
 
   const method = req.method;
@@ -161,12 +164,12 @@ export async function handleProxy(
   // cannot credential-stuff or body-flood the pipeline. Generous by design; the
   // authenticated per-user / per-portal limiter below stays authoritative.
   if (!allowPreAuth(clientIp)) {
-    return deny(rid, 429, "rate_limited", { reason: "preauth_ip" });
+    return denyReq(429, "rate_limited", { reason: "preauth_ip" });
   }
 
   const authenticated = await authenticate(req, expectedKind);
   if (!authenticated) {
-    return deny(rid, 401, 'unauthorized', {});
+    return denyReq(401, 'unauthorized', {});
   }
 
   // ── Read the body (bounded) AFTER authenticate() (rev3-F3) ────────────────
@@ -177,7 +180,7 @@ export async function handleProxy(
   if (method !== "GET" && method !== "HEAD") {
     body = await req.text();
     if (body.length > OC_MAX_BODY_BYTES) {
-      return deny(rid, 413, "payload_too_large", { bodyLength: body.length });
+      return denyReq(413, "payload_too_large", { bodyLength: body.length });
     }
   }
 
@@ -192,7 +195,7 @@ export async function handleProxy(
     !allow(`user:oc:${authenticated.kind}:${authenticated.id}:${authenticated.userId}`, USER_RATE_LIMIT, USER_RATE_WINDOW_MS) ||
     !allow(`portal:oc:${authenticated.kind}:${authenticated.id}`, PORTAL_RATE_LIMIT, PORTAL_RATE_WINDOW_MS)
   ) {
-    return deny(rid, 429, "rate_limited", { principalId: authenticated.id, userId: authenticated.userId });
+    return denyReq(429, "rate_limited", { principalId: authenticated.id, userId: authenticated.userId });
   }
 
   // ── Gate 2: endpoint allowlist, default-deny, hardened matching ──────────
@@ -200,7 +203,7 @@ export async function handleProxy(
     ? matchAllowlist(method, rawPath)
     : allowDirect(method, rawPath);
   if (!match.allowed) {
-    return deny(rid, 403, "forbidden_endpoint", {
+    return denyReq(403, "forbidden_endpoint", {
       principalId: authenticated.id,
       userId: authenticated.userId,
       method,
@@ -231,14 +234,14 @@ export async function handleProxy(
       userId: authenticated.userId,
       error: String(err),
     });
-    return deny(rid, 403, 'forbidden_policy', {
+    return denyReq(403, 'forbidden_policy', {
       principalId: authenticated.id,
       userId: authenticated.userId,
       reason: 'policy_error',
     });
   }
   if (!policyDecision.allow) {
-    return deny(rid, 403, 'forbidden_policy', {
+    return denyReq(403, 'forbidden_policy', {
       principalId: authenticated.id,
       userId: authenticated.userId,
       reason: policyDecision.reason,
@@ -246,7 +249,7 @@ export async function handleProxy(
   }
 
   // ── Gate 3: session/permission ownership + body rewrite + filtering ──────
-  return await routeAllowed(req, rid, principal, match, rawPath, url.search, body);
+  return await routeAllowed(req, rid, principal, match, rawPath, url.search, body, clientIp);
 }
 
 function allowDirect(method: string, rawPath: string): AllowlistMatch {
@@ -295,7 +298,10 @@ async function routeAllowed(
   rawPath: string,
   search: string,
   body: string,
+  clientIp = '',
 ): Promise<Response> {
+  const denyReq = (status: number, error: string, detail: Record<string, unknown> = {}) =>
+    deny(rid, status, error, detail, clientIp);
   // biome-ignore lint/style/noNonNullAssertion: routeAllowed is only reached after the `!match.allowed` guard in handle(); every allowed AllowlistMatch (from matchAllowlist and allowDirect/directRouteFor) sets `route`, so it is provably non-null here.
   const template = match.route!.template;
   const params = match.params ?? {};
@@ -305,7 +311,7 @@ async function routeAllowed(
   // POST /session — guardian CONSTRUCTS the body (title) and DISCARDS the
   // client's; records ownership SYNCHRONOUSLY on the create response (§3.4).
   if (template === "/session" && req.method === "POST") {
-    return await forwardSessionCreate(req, rid, principal, rawPath, search);
+    return await forwardSessionCreate(req, rid, principal, rawPath, search, clientIp);
   }
 
   // GET /session — response filtered to the principal's own sessions (§3.4).
@@ -326,7 +332,7 @@ async function routeAllowed(
   // token tied to the originating prompt_async call to check it against.
   if (template === "/permission/{requestID}/reply") {
     if (!requestID || !ownsPermission(requestID, principal)) {
-      return deny(rid, 403, "forbidden_permission", { principalId: principal.id, userId: principal.userId, requestID });
+      return denyReq(403, "forbidden_permission", { principalId: principal.id, userId: principal.userId, requestID });
     }
     return await forwardTransparent(req, rid, rawPath, search, body);
   }
@@ -337,7 +343,7 @@ async function routeAllowed(
   // may answer/decline it (ownsPermission covers both per_ and que_ ids).
   if (template === "/question/{requestID}/reply" || template === "/question/{requestID}/reject") {
     if (!requestID || !ownsPermission(requestID, principal)) {
-      return deny(rid, 403, "forbidden_question", { principalId: principal.id, userId: principal.userId, requestID });
+      return denyReq(403, "forbidden_question", { principalId: principal.id, userId: principal.userId, requestID });
     }
     return await forwardTransparent(req, rid, rawPath, search, body);
   }
@@ -345,7 +351,7 @@ async function routeAllowed(
   // All other allowlisted routes are session-scoped: assert ownership of {id}.
   if (sessionId !== undefined) {
     if (!ownsSession(sessionId, principal)) {
-      return deny(rid, 403, "forbidden_session", { principalId: principal.id, userId: principal.userId, sessionId });
+      return denyReq(403, "forbidden_session", { principalId: principal.id, userId: principal.userId, sessionId });
     }
     // Gate 4: content moderation — WRITE-PATH ONLY (§3.5). Only the two
     // prompt-bearing POSTs are screened; everything else (GET/DELETE/abort)
@@ -367,7 +373,7 @@ async function routeAllowed(
         if (principal.kind === "direct") {
           promptBody = rewritePromptBody(body);
         } else {
-          return deny(rid, 403, "content_blocked", {
+          return denyReq(403, "content_blocked", {
             principalId: principal.id,
             userId: principal.userId,
             template,
@@ -383,7 +389,7 @@ async function routeAllowed(
       // (cap+1)th is 429'd.
       const turnId = beginTurn(principal, sessionId);
       if (turnId === null) {
-        return deny(rid, 429, "too_many_inflight_turns", {
+        return denyReq(429, "too_many_inflight_turns", {
           principalId: principal.id,
           userId: principal.userId,
           sessionId,
@@ -433,14 +439,14 @@ async function routeAllowed(
     // reconnect loop cannot grow the reconnect-tracking map without bound
     // (oc-bounds.ts).
     if (!allowEventReconnect(principal)) {
-      return deny(rid, 429, "event_reconnect_limited", { principalId: principal.id, userId: principal.userId });
+      return denyReq(429, "event_reconnect_limited", { principalId: principal.id, userId: principal.userId });
     }
     // §3.6 concurrent-stream cap: at most N held-open streams per principal.
     // Reserve a slot; release it when the stream closes (client abort/cancel).
     if (!reserveEventStream(principal)) {
-      return deny(rid, 429, "too_many_event_streams", { principalId: principal.id, userId: principal.userId });
+      return denyReq(429, "too_many_event_streams", { principalId: principal.id, userId: principal.userId });
     }
-      audit({ requestId: rid, action: "oc_event_open", status: "ok", portal: principal.id, userId: principal.userId });
+      audit({ requestId: rid, action: "oc_event_open", status: "ok", portal: principal.id, userId: principal.userId, ...(clientIp ? { clientIp } : {}) });
       const resp = openEventStream(principal, req.signal);
     // Release the concurrency slot once the client disconnects. openEventStream
     // wires the same signal to drop the subscriber; we mirror it for the slot so
@@ -452,7 +458,7 @@ async function routeAllowed(
   }
 
   // Unreachable: every allowlisted template is handled above.
-  return deny(rid, 403, "forbidden_endpoint", { principalId: principal.id, userId: principal.userId, path: rawPath });
+  return denyReq(403, "forbidden_endpoint", { principalId: principal.id, userId: principal.userId, path: rawPath });
 }
 
 /**
@@ -613,7 +619,10 @@ async function forwardSessionCreate(
   principal: Principal,
   rawPath: string,
   search: string,
+  clientIp = '',
 ): Promise<Response> {
+  const denyReq = (status: number, error: string, detail: Record<string, unknown> = {}) =>
+    deny(rid, status, error, detail, clientIp);
   // sessionKey rides as a header so multi-thread portals keep their grouping;
   // absent → falls back to userId inside resolveSessionTarget. The portal can
   // no longer inject an arbitrary title (prompt-injection / moderation-bypass).
@@ -664,11 +673,11 @@ async function forwardSessionCreate(
     sessionId = await inflight;
   } catch (err) {
     logger.warn("oc_session_create_failed", { requestId: rid, portal: principal.id, userId: principal.userId, error: String(err) });
-    return deny(rid, 502, "oc_session_create_failed", { principalId: principal.id, userId: principal.userId });
+    return denyReq(502, "oc_session_create_failed", { principalId: principal.id, userId: principal.userId });
   }
 
   recordSessionOwner(sessionId, principal);
-  audit({ requestId: rid, action: "oc_session_create", status: "ok", portal: principal.id, userId: principal.userId, sessionId });
+  audit({ requestId: rid, action: "oc_session_create", status: "ok", portal: principal.id, userId: principal.userId, sessionId, ...(clientIp ? { clientIp } : {}) });
   // Synthesize the create response the portal reads (it only needs id/title).
   return Response.json({ id: sessionId, title });
 }
@@ -792,8 +801,19 @@ function rawOcPath(rawUrl: string): string | null {
   return pathOnly.slice(OC_PREFIX.length); // keep the leading "/"
 }
 
-function deny(rid: string, status: number, error: string, detail: Record<string, unknown>): Response {
-  audit({ requestId: rid, action: "oc_proxy", status: status >= 500 ? "error" : "denied", reason: error, ...detail });
-  logger.warn("oc_proxy_denied", { requestId: rid, status, error, ...detail });
+function deny(
+  rid: string,
+  status: number,
+  error: string,
+  detail: Record<string, unknown>,
+  clientIp = '',
+): Response {
+  // PR #564 retest P2-9: stamp the verified client IP (the mTLS-verified peer
+  // recovered by the passthrough, or the socket remote address for plain HTTP —
+  // never a spoofable forwarded header) on every denial record so an operator
+  // can attribute a rejected request to its source.
+  const clientDetail = clientIp ? { clientIp } : {};
+  audit({ requestId: rid, action: "oc_proxy", status: status >= 500 ? "error" : "denied", reason: error, ...clientDetail, ...detail });
+  logger.warn("oc_proxy_denied", { requestId: rid, status, error, ...clientDetail, ...detail });
   return json(status, { error, requestId: rid });
 }

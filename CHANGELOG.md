@@ -253,6 +253,14 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **Guardian proxy audit records carry the verified client IP** (PR #564 retest
+  P2-9): every `oc_proxy` denial record and the `oc_event_open` /
+  `oc_session_create` success records now include the verified client IP — the
+  mTLS-verified peer the passthrough recovers, or the plain-HTTP socket remote
+  address, never a spoofable forwarded header. Distinct clients produce distinct
+  audit values, so a rejected or accepted request can be attributed to its
+  source; the field is omitted only when no IP is known.
+
 - **mDNS honors the QU (unicast-response) bit** (PR #564 retest P3-5): the
   responder now parses the RFC 6762 §5.4 unicast-response bit off each question's
   qclass and, when a querier on port 5353 sets it, answers by unicast to the
