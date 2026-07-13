@@ -229,4 +229,55 @@ describe("startTlsPassthrough", () => {
       pt.stop();
     }
   });
+
+  // PR #564 retest P2-8: the concurrent-connection cap sheds a socket accepted
+  // past the ceiling (before any handshake work) and frees the slot on close.
+  it("caps concurrent connections and releases the slot on close (P2-8)", async () => {
+    const port = await getAvailablePort();
+    const pt = startTlsPassthrough({
+      port,
+      hostname: "127.0.0.1",
+      upstreamPort,
+      upstreamHostname: "127.0.0.1",
+      cert: SERVER_CERT_PEM,
+      key: SERVER_KEY_PEM,
+      ca: CA_CERT_PEM,
+      maxConnections: 2,
+      handshakeTimeoutSeconds: 30, // keep the raw sockets alive across the test
+    });
+    const openRaw = () =>
+      new Promise<ReturnType<typeof connect>>((resolve) => {
+        const s = connect({ host: "127.0.0.1", port }, () => resolve(s));
+      });
+    const waitFor = async (cond: () => boolean, ms = 5000): Promise<void> => {
+      const deadline = Date.now() + ms;
+      while (!cond() && Date.now() < deadline) await Bun.sleep(20);
+    };
+    const sockets: ReturnType<typeof connect>[] = [];
+    try {
+      sockets.push(await openRaw());
+      sockets.push(await openRaw());
+      await waitFor(() => pt.activeConnectionCount() === 2);
+      expect(pt.activeConnectionCount()).toBe(2);
+
+      // A third connection is accepted at TCP then shed immediately — the client
+      // sees it close, and it is never counted against the cap.
+      const third = await openRaw();
+      const shed = await new Promise<boolean>((resolve) => {
+        third.on("close", () => resolve(true));
+        third.on("error", () => resolve(true));
+        setTimeout(() => resolve(false), 2000);
+      });
+      expect(shed).toBe(true);
+      expect(pt.activeConnectionCount()).toBe(2);
+
+      // Closing one live connection frees its slot (release on close).
+      sockets[0]?.destroy();
+      await waitFor(() => pt.activeConnectionCount() === 1);
+      expect(pt.activeConnectionCount()).toBe(1);
+    } finally {
+      for (const s of sockets) s.destroy();
+      pt.stop();
+    }
+  });
 });

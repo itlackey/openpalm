@@ -30,11 +30,39 @@ const logger = createLogger('guardian.mtls');
 const MAX_RELAY_QUEUE_BYTES = 8 * 1024 * 1024;
 
 /**
+ * AGGREGATE userspace relay-queue cap across ALL live connections (PR #564
+ * retest P2-8). The per-connection {@link MAX_RELAY_QUEUE_BYTES} bounds ONE
+ * slow peer, but N concurrent slow peers could each buffer up to that much →
+ * N × 8 MiB heap, unbounded in N. This ceiling bounds the SUM: once total
+ * buffered bytes across every connection would exceed it, the connection that
+ * pushed over the line is shed (deterministic — the newest over-budget writer
+ * loses, never the guardian). Released as queues drain and on close/error.
+ */
+const MAX_AGGREGATE_RELAY_QUEUE_BYTES = 64 * 1024 * 1024;
+
+/**
+ * Concurrent-connection cap across the whole listener (PR #564 retest P2-8).
+ * Bounds file descriptors + handshake/relay state regardless of how fast an
+ * attacker opens sockets: past this many live client sockets, a newly accepted
+ * connection is dropped immediately (before any handshake work). Decremented on
+ * close/error so the slot is reusable.
+ */
+const MAX_CONCURRENT_CONNECTIONS = 512;
+
+/**
  * Seconds a connection may stay open WITHOUT completing the TLS handshake
  * (PR #564 r3566890804). Reaps slowloris / half-open pre-handshake sockets that
  * never trigger the `handshake` callback. Cleared once the handshake resolves.
  */
 const HANDSHAKE_TIMEOUT_SECONDS = 15;
+
+/** Mutable aggregate-budget accumulator shared by every connection's queues. */
+export interface RelayBudget {
+  /** Running sum of buffered bytes across all connections' queues. */
+  queued: number;
+  /** Ceiling for {@link queued}; a push over this sheds the pushing connection. */
+  readonly maxAggregate: number;
+}
 
 /** Total queued bytes across a relay buffer. */
 function queuedBytes(queue: Uint8Array[]): number {
@@ -59,6 +87,12 @@ export interface TlsPassthroughOptions {
   /** Pre-handshake reap timeout in seconds (PR #564 r3566890804). Test seam;
    *  defaults to HANDSHAKE_TIMEOUT_SECONDS. */
   handshakeTimeoutSeconds?: number;
+  /** Concurrent-connection cap (PR #564 retest P2-8). Test seam; defaults to
+   *  MAX_CONCURRENT_CONNECTIONS. */
+  maxConnections?: number;
+  /** Aggregate relay-queue byte ceiling (PR #564 retest P2-8). Test seam;
+   *  defaults to MAX_AGGREGATE_RELAY_QUEUE_BYTES. */
+  maxAggregateQueueBytes?: number;
 }
 
 export interface TlsPassthrough {
@@ -73,9 +107,15 @@ export interface TlsPassthrough {
    * undefined when the port is unknown (caller falls back to the peer address).
    */
   resolveClientIp(loopbackPort: number): string | undefined;
+  /** Live client-socket count (PR #564 retest P2-8) — observability for the cap. */
+  activeConnectionCount(): number;
 }
 
 interface ClientSocketData {
+  /** True once this socket has been counted against the concurrent-connection
+   *  cap, so `close`/`error` releases the slot exactly once (PR #564 retest
+   *  P2-8). A connection dropped AT the cap is never counted. */
+  counted: boolean;
   /** Set once the handshake explicitly rejects — stops any further relay. */
   rejected: boolean;
   /** Set once the client socket has closed. Guards the connect-window race
@@ -115,14 +155,37 @@ interface UpstreamSocketData {
 }
 
 /**
- * Push `chunk` onto `queue` and drain what `write()` accepts. Returns false and
- * leaves the queue intact when the buffered backlog exceeds
- * MAX_RELAY_QUEUE_BYTES — the caller drops the connection (PR #564 r3566890023).
+ * Push `chunk` onto `queue`, drain what `write()` accepts, and keep the
+ * aggregate budget in sync. Returns false — the caller drops the connection —
+ * when EITHER this queue exceeds the per-connection MAX_RELAY_QUEUE_BYTES
+ * (PR #564 r3566890023) OR the shared aggregate would exceed its ceiling
+ * (PR #564 retest P2-8).
  */
-function queueAndTryWrite(target: Socket<unknown>, queue: Uint8Array[], chunk: Uint8Array): boolean {
+export function queueAndTryWrite(
+  target: Socket<unknown>,
+  queue: Uint8Array[],
+  chunk: Uint8Array,
+  budget: RelayBudget,
+): boolean {
+  const before = queuedBytes(queue);
   queue.push(chunk);
   flushPending(target, queue);
-  return queuedBytes(queue) <= MAX_RELAY_QUEUE_BYTES;
+  budget.queued += queuedBytes(queue) - before;
+  return queuedBytes(queue) <= MAX_RELAY_QUEUE_BYTES && budget.queued <= budget.maxAggregate;
+}
+
+/** Flush a queue and reconcile the aggregate budget by however many bytes left it. */
+function trackedFlush(target: Socket<unknown>, queue: Uint8Array[], budget: RelayBudget): void {
+  const before = queuedBytes(queue);
+  flushPending(target, queue);
+  budget.queued += queuedBytes(queue) - before;
+}
+
+/** Drop a queue's remaining bytes and release them from the aggregate budget (close/error/reject). */
+export function releaseQueue(queue: Uint8Array[], budget: RelayBudget): void {
+  budget.queued -= queuedBytes(queue);
+  if (budget.queued < 0) budget.queued = 0; // guard against double-release drift
+  queue.length = 0;
 }
 
 /** Drain as much of `queue` into `target` as `write()` currently accepts, honoring backpressure. */
@@ -149,6 +212,16 @@ function flushPending(target: Socket<unknown>, queue: Uint8Array[]): void {
 export function startTlsPassthrough(options: TlsPassthroughOptions): TlsPassthrough {
   const upstreamHostname = options.upstreamHostname ?? '127.0.0.1';
   const handshakeTimeoutSeconds = options.handshakeTimeoutSeconds ?? HANDSHAKE_TIMEOUT_SECONDS;
+  const maxConnections = options.maxConnections ?? MAX_CONCURRENT_CONNECTIONS;
+
+  // PR #564 retest P2-8: aggregate relay budget + concurrent-connection count,
+  // shared by every socket on this listener. `budget.queued` sums buffered bytes
+  // across all connections; `activeConnections` counts live client sockets.
+  const budget: RelayBudget = {
+    queued: 0,
+    maxAggregate: options.maxAggregateQueueBytes ?? MAX_AGGREGATE_RELAY_QUEUE_BYTES,
+  };
+  let activeConnections = 0;
 
   // PR #564 r3566888940: map the loopback upstream connection's local port
   // (which the direct Bun.serve sees as its peer's `requestIP().port`) to the
@@ -168,6 +241,7 @@ export function startTlsPassthrough(options: TlsPassthroughOptions): TlsPassthro
     socket: {
       open(socket) {
         socket.data = {
+          counted: false,
           rejected: false,
           clientClosed: false,
           upstreamClosed: false,
@@ -176,6 +250,18 @@ export function startTlsPassthrough(options: TlsPassthroughOptions): TlsPassthro
           pendingToUpstream: [],
           pendingToClient: [],
         };
+        // PR #564 retest P2-8: shed a newly accepted connection immediately when
+        // the concurrent-connection cap is already reached — before any handshake
+        // or relay state is allocated. Deterministic: the excess (newest) socket
+        // loses. `counted` stays false so `close` does not release a slot it never
+        // took.
+        if (activeConnections >= maxConnections) {
+          logger.warn('mtls_connection_cap_reached', { active: activeConnections, max: maxConnections });
+          socket.end();
+          return;
+        }
+        activeConnections += 1;
+        socket.data.counted = true;
         // PR #564 r3566890804: reap a connection that never completes its TLS
         // handshake (slowloris). Cleared on the first `handshake` callback.
         socket.data.handshakeTimer = setTimeout(() => {
@@ -199,7 +285,7 @@ export function startTlsPassthrough(options: TlsPassthroughOptions): TlsPassthro
             error: authorizationError ? authorizationError.message : 'handshake_failed',
           });
           socket.data.rejected = true;
-          socket.data.pendingToUpstream = [];
+          releaseQueue(socket.data.pendingToUpstream, budget);
           socket.end();
           return;
         }
@@ -245,12 +331,12 @@ export function startTlsPassthrough(options: TlsPassthroughOptions): TlsPassthro
               if (typeof loopbackPort === 'number' && socket.remoteAddress) {
                 clientIpByLoopbackPort.set(loopbackPort, socket.remoteAddress);
               }
-              flushPending(upstreamSocket, socket.data.pendingToUpstream);
+              trackedFlush(upstreamSocket, socket.data.pendingToUpstream, budget);
             },
             data(upstreamSocket, chunk) {
               const client = upstreamSocket.data.client;
-              if (!queueAndTryWrite(client, client.data.pendingToClient, chunk)) {
-                logger.warn('mtls_relay_queue_overflow', { direction: 'upstream_to_client' });
+              if (!queueAndTryWrite(client, client.data.pendingToClient, chunk, budget)) {
+                logger.warn('mtls_relay_queue_overflow', { direction: 'upstream_to_client', aggregate: budget.queued });
                 upstreamSocket.end(); // drop the connection (close handlers tear down both)
               }
             },
@@ -258,7 +344,7 @@ export function startTlsPassthrough(options: TlsPassthroughOptions): TlsPassthro
               // The upstream socket is writable again — retry the bytes queued
               // FOR the upstream (client→upstream), not the client-bound queue.
               const client = upstreamSocket.data.client;
-              flushPending(upstreamSocket, client.data.pendingToUpstream);
+              trackedFlush(upstreamSocket, client.data.pendingToUpstream, budget);
             },
             close(upstreamSocket) {
               const loopbackPort = (upstreamSocket as unknown as { localPort?: number }).localPort;
@@ -268,7 +354,7 @@ export function startTlsPassthrough(options: TlsPassthroughOptions): TlsPassthro
               // slow reader's response body isn't truncated. If the queue can't
               // fully drain now, mark half-closed and finish on the client drain.
               const client = upstreamSocket.data.client;
-              flushPending(client, client.data.pendingToClient);
+              trackedFlush(client, client.data.pendingToClient, budget);
               if (client.data.pendingToClient.length === 0) {
                 client.end();
               } else {
@@ -298,21 +384,25 @@ export function startTlsPassthrough(options: TlsPassthroughOptions): TlsPassthro
           // (fail-closed by construction). Still bound the buffer (PR #564
           // r3566890023) — a client can flood before the upstream opens.
           socket.data.pendingToUpstream.push(chunk);
-          if (queuedBytes(socket.data.pendingToUpstream) > MAX_RELAY_QUEUE_BYTES) {
-            logger.warn('mtls_relay_queue_overflow', { direction: 'client_to_upstream_preconnect' });
+          budget.queued += chunk.byteLength;
+          if (
+            queuedBytes(socket.data.pendingToUpstream) > MAX_RELAY_QUEUE_BYTES ||
+            budget.queued > budget.maxAggregate
+          ) {
+            logger.warn('mtls_relay_queue_overflow', { direction: 'client_to_upstream_preconnect', aggregate: budget.queued });
             socket.end();
           }
           return;
         }
-        if (!queueAndTryWrite(socket.data.upstream, socket.data.pendingToUpstream, chunk)) {
-          logger.warn('mtls_relay_queue_overflow', { direction: 'client_to_upstream' });
+        if (!queueAndTryWrite(socket.data.upstream, socket.data.pendingToUpstream, chunk, budget)) {
+          logger.warn('mtls_relay_queue_overflow', { direction: 'client_to_upstream', aggregate: budget.queued });
           socket.end(); // drop the connection (close handlers tear down both)
         }
       },
       drain(socket) {
         // The client socket is writable again — retry the bytes queued FOR the
         // client (upstream→client), not the upstream-bound queue.
-        flushPending(socket, socket.data.pendingToClient);
+        trackedFlush(socket, socket.data.pendingToClient, budget);
         // PR #564 r3566890224: if the upstream already closed and we were only
         // holding to drain the tail, end the client once the queue is empty.
         if (socket.data.upstreamClosed && socket.data.pendingToClient.length === 0) {
@@ -327,11 +417,22 @@ export function startTlsPassthrough(options: TlsPassthroughOptions): TlsPassthro
           clearTimeout(socket.data.handshakeTimer);
           socket.data.handshakeTimer = null;
         }
+        // PR #564 retest P2-8: release this connection's slot and its buffered
+        // bytes from the aggregate budget. `counted` guards against releasing a
+        // slot for a connection dropped AT the cap (never counted).
+        if (socket.data.counted) {
+          activeConnections -= 1;
+          socket.data.counted = false;
+        }
+        releaseQueue(socket.data.pendingToUpstream, budget);
+        releaseQueue(socket.data.pendingToClient, budget);
         socket.data.upstream?.end();
       },
       error(socket, error) {
         logger.warn('mtls_client_error', { error: error.message });
         socket.data.clientClosed = true;
+        // The slot + budget are released in `close`, which Bun always fires
+        // after `error`; releasing here too would double-count.
         socket.data.upstream?.end();
       },
     },
@@ -344,6 +445,9 @@ export function startTlsPassthrough(options: TlsPassthroughOptions): TlsPassthro
     },
     resolveClientIp(loopbackPort: number): string | undefined {
       return clientIpByLoopbackPort.get(loopbackPort);
+    },
+    activeConnectionCount(): number {
+      return activeConnections;
     },
   };
 }

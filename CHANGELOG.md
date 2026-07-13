@@ -253,6 +253,16 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **Guardian mTLS passthrough bounds aggregate memory and connection count**
+  (PR #564 retest P2-8): the per-connection 8 MiB relay-queue cap left N slow
+  peers able to buffer N × 8 MiB, and nothing capped the number of concurrent
+  sockets. A shared aggregate relay budget (64 MiB across all connections) now
+  sheds the connection that would push total buffered bytes over the ceiling,
+  and a concurrent-connection cap (512) drops a socket accepted past the limit
+  before any handshake work. Both release deterministically on close/error —
+  the aggregate reclaims a connection's buffered bytes and the connection cap
+  frees its slot.
+
 - **Guardian proxy audit records carry the verified client IP** (PR #564 retest
   P2-9): every `oc_proxy` denial record and the `oc_event_open` /
   `oc_session_create` success records now include the verified client IP — the
