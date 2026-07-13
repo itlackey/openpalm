@@ -369,18 +369,21 @@ describe("guardrail: overlay deprecation guard is wired", () => {
     expect(guardIdx).toBeLessThan(rollbackIdx);
   });
 
-  // PR #564 r3566892768: the blockError throw must be gated on `activate`
-  // (install/upgrade). uninstall/update must NOT be blocked by a leftover
-  // channel_lan overlay reference — an operator must always be able to tear
-  // down or update, and the guard's rationale (applyHome overwriting managed
-  // compose) is an activation concern only.
-  test("the channel_lan blockError throw is gated on `activate` (install/upgrade only)", () => {
+  // PR #564 r3566892768 + retest P2-3: the blockError throw must fire before any
+  // file write on every deploy that reconciles managed compose (install, update,
+  // upgrade) and be exempt ONLY for uninstall (deactivate) — so a stale
+  // channel_lan overlay produces the pre-write migration error, not a late
+  // post-write Compose failure, while uninstall stays available.
+  test("the channel_lan blockError throw is gated on `!deactivate` (uninstall exempt, update blocked)", () => {
     const lifecycleTs = readFileSync(join(LIB_CONTROL_PLANE_DIR, "lifecycle.ts"), "utf-8");
     const fnStart = lifecycleTs.indexOf("function reconcileStack(");
     const guardIdx = lifecycleTs.indexOf("overlayCheck.blockError", fnStart);
-    // The `if (... blockError ...)` throw line must also reference `activate`.
     const throwLineEnd = lifecycleTs.indexOf("\n", guardIdx);
     const throwLine = lifecycleTs.slice(guardIdx, throwLineEnd);
-    expect(throwLine).toContain("activate");
+    expect(throwLine).toContain("!deactivate");
+    // The guard must run BEFORE withStackEnvRollback (which wraps applyHome).
+    const guardPos = lifecycleTs.indexOf("overlayCheck.blockError", fnStart);
+    const rollbackPos = lifecycleTs.indexOf("return withStackEnvRollback(", fnStart);
+    expect(guardPos).toBeLessThan(rollbackPos);
   });
 });

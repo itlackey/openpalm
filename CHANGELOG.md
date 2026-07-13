@@ -253,6 +253,12 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **`channel_lan` deprecation guard rejects a stale overlay before any writes on
+  update too** (PR #564 retest P2-3): the guard now blocks install, update, and
+  upgrade (only uninstall is exempt) before `applyHome` touches any managed,
+  state, config, or secret file — so the operator gets the pre-write migration
+  instruction instead of a late post-write Compose failure.
+
 - **Host UI Basic auth sends the exact bytes OpenCode expects** (PR #564 retest
   P2-1): all host forwarders (default/probe endpoint, host health, host proxy,
   host OpenCode API client) now share one UTF-8-safe Basic-auth encoder instead
