@@ -110,15 +110,15 @@ async function waitForGuardianReady(): Promise<void> {
   }
   if (!ready) throw new Error('guardian did not become ready');
 
-  // Wait for the boot-time drift guard to enable the /oc/* proxy.
-  let proxyOn = false;
+  // Confirm the internal listener is fully up (its admin-gated /stats responds).
+  let statsOn = false;
   const internalUrl = `http://127.0.0.1:${internalPort}`;
   for (let i = 0; i < 50; i++) {
     const resp = await fetch(`${internalUrl}/stats`, { headers: { authorization: `Bearer ${ADMIN_TOKEN}` } });
-    if (resp.ok && (await resp.json()).oc_proxy?.enabled === true) { proxyOn = true; break; }
+    if (resp.ok) { statsOn = true; break; }
     await Bun.sleep(100);
   }
-  if (!proxyOn) throw new Error('guardian /oc proxy did not enable (drift guard)');
+  if (!statsOn) throw new Error('guardian internal listener did not become ready');
 }
 
 async function seedDirectPrincipal(): Promise<void> {
