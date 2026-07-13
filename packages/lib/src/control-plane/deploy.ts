@@ -113,6 +113,21 @@ function projectNameForState(state: ControlPlaneState): string {
   return resolveComposeProjectName(parseEnvFile(stackEnvPath(state)));
 }
 
+/**
+ * Choose compose's `--pull` mode for a deploy from the version-of-record tag
+ * (PR #564 second retest R8). `--pull missing` never refreshes a MOVING registry
+ * tag (`latest`, channel names) once the image is present locally, so a
+ * moving-tag rerun can recreate the OLD digest. Force `--pull always` for a
+ * moving tag; keep `--pull missing` for an immutable pinned semver (correct AND
+ * avoids a needless network pull) and for a locally-built `dev` image (which
+ * must never hit the network). An unset tag is treated as moving (safe: refresh).
+ */
+export function resolvePullMode(imageTag: string): 'always' | 'missing' {
+  const isDevTag = imageTag.startsWith('dev');
+  const isPinnedVersion = /^v?\d+\./.test(imageTag);
+  return !isDevTag && !isPinnedVersion ? 'always' : 'missing';
+}
+
 function resolveImageTag(state: ControlPlaneState): string {
   // Per-image versions replaced the single OP_IMAGE_TAG cascade. The assistant
   // is the version-of-record image; its tag is representative for the "dev tag ⇒
@@ -326,7 +341,7 @@ export async function runDeploy(state: ControlPlaneState, options: RunDeployOpti
     // cold boot of multi-GB images.
     const imageTag = resolveImageTag(state);
     const isDevTag = imageTag.startsWith('dev');
-    const stackResult = await applyStack({ kind: 'all' }, composeOpts, undefined, { pull: 'missing', healthTimeoutMs: 5 * 60_000 });
+    const stackResult = await applyStack({ kind: 'all' }, composeOpts, undefined, { pull: resolvePullMode(imageTag), healthTimeoutMs: 5 * 60_000 });
 
     if (!stackResult.ok) {
       // ONE `compose ps` refreshes the per-service display labels and splits the

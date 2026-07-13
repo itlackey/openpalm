@@ -253,6 +253,14 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **Moving image tags are refreshed on deploy** (PR #564 second retest R8): the
+  deploy always used `--pull missing`, which never refreshes an already-present
+  moving tag like `latest`, so a moving-tag rerun could recreate the old digest.
+  `resolvePullMode` now forces `--pull always` for a moving tag (`latest`,
+  channel names, unset) while keeping `--pull missing` for an immutable pinned
+  semver (avoids a needless pull) and for a locally-built `dev` image (never
+  hits the network).
+
 - **Non-interactive install stamps setup completion** (PR #564 second retest
   R9): the file/headless install deploy called `runDeploy` without its
   `markSetupComplete` callback, so a healthy non-interactive install never wrote
