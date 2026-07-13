@@ -654,7 +654,7 @@
           <input
             type="text"
             bind:value={formUsername}
-            placeholder="openpalm"
+            placeholder="opencode"
             autocomplete="off"
           />
           {#if formKind === 'openpalm-client-api'}

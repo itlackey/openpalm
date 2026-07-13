@@ -12,7 +12,7 @@
 import type { Handle } from "@sveltejs/kit";
 import { redirect } from "@sveltejs/kit";
 import { getState } from "$lib/server/state.js";
-import { checkHostHeader, checkOriginHeader, identifyCallerByToken } from "$lib/server/helpers.js";
+import { checkHostHeader, checkOriginHeader, getRequestId, identifyCallerByToken } from "$lib/server/helpers.js";
 import { touchSession } from "$lib/server/session-store.js";
 import { sessionCookieHeader, SESSION_COOKIE_NAME } from "$lib/server/session-cookie.js";
 import { computeServerRuntimeContext } from '$lib/server/features.js';
@@ -127,9 +127,12 @@ function isLocalhostAddress(ip: string): boolean {
 
 export const handle: Handle = async ({ event, resolve }) => {
   const runtimeContext = computeServerRuntimeContext(event);
-  const hostError = checkHostHeader(event.request);
+  // PR #564 second retest: thread requestId so the global Host/Origin rejections
+  // carry it too, matching the documented "every error body has requestId" contract.
+  const requestId = getRequestId(event);
+  const hostError = checkHostHeader(event.request, requestId);
   if (hostError) return hostError;
-  const originError = checkOriginHeader(event.request, runtimeContext.security.csrfMode);
+  const originError = checkOriginHeader(event.request, runtimeContext.security.csrfMode, requestId);
   if (originError) return originError;
 
   const path = event.url.pathname;

@@ -518,11 +518,13 @@ this is an explicit, per-connection operator opt-in.
    existing id directly):
 
    ```bash
-   # Rotate: mint a new token with the same id (overwrites)
-   curl -X POST http://127.0.0.1:3831/admin/principals \
+   # Rotate: set a new token for an EXISTING id. The collection endpoint
+   # (POST /admin/principals) is create-only and returns 409 for a known id —
+   # use the dedicated rotate endpoint instead.
+   curl -X POST http://127.0.0.1:3831/admin/principals/my-phone/rotate \
      -H "authorization: Bearer $(cat ~/.openpalm/knowledge/secrets/op_guardian_admin_token)" \
      -H 'content-type: application/json' \
-     -d '{"id":"my-phone","kind":"direct","token":"'"$(openssl rand -hex 24)"'","label":"My phone"}'
+     -d '{"token":"'"$(openssl rand -hex 24)"'"}'
 
    # Delete
    curl -X DELETE http://127.0.0.1:3831/admin/principals/my-phone \

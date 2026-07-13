@@ -253,6 +253,16 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **Error-body and documentation contract fixes** (PR #564 second retest): the
+  global Host-header and Origin rejections now include `requestId` in their JSON
+  bodies (matching the documented "every error body carries requestId"
+  contract); `api-spec.md` corrects `GET /guardian/stats` to the actual `GET
+  /stats` guardian-admin **Bearer** route (not host-session cookie); the
+  principal-rotation guide now curls the dedicated `/admin/principals/:id/rotate`
+  endpoint instead of the now-create-only collection endpoint (which 409s); and
+  the client connection form's username placeholder is `opencode` (not the stale
+  `openpalm`), matching the corrected password-only default.
+
 - **Setup input validation hardening** (PR #564 second retest): a JSON `null`
   (or array/primitive) request body is now rejected as `400 invalid_json` across
   all admin routes instead of throwing an unstructured 500 when a handler reads a

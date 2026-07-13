@@ -62,16 +62,17 @@ When the guardian is not running:
 
 Status code is `200` when running, `503` when unavailable.
 
-### `GET /guardian/stats`
+### `GET /stats`
 
 Returns guardian runtime statistics: uptime, rate limiter state, event/session
 ownership counters, and per-status request counters.
-This endpoint is served directly by the guardian process (not proxied through admin).
+This endpoint is served directly by the guardian process on its internal port
+(not proxied through the SvelteKit admin process).
 
-Auth: Protected by the `op_session` cookie when an admin password is
-configured. When no admin password is configured (dev/LAN), the endpoint is
-open. (Guardian's own port still serves this — it is not proxied through
-the SvelteKit admin process.)
+Auth: guardian-admin **Bearer** token — the same `GUARDIAN_ADMIN_TOKEN_FILE`
+secret the guardian admin listener enforces (`Authorization: Bearer <token>`).
+It is NOT gated by the host `op_session` cookie. An unconfigured/empty admin
+token fails closed (401), so the roster/counters are never served open.
 
 Response:
 
