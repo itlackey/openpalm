@@ -132,6 +132,11 @@ vi.mock('electron', () => ({
   session: {
     defaultSession: {
       clearStorageData: mockClearStorageData,
+      // configureMediaPermissions() runs during the main bootstrap; stub the
+      // permission handlers so it doesn't throw an unhandled rejection that
+      // fails the run (mirrors initial-url.test.ts).
+      setPermissionRequestHandler: vi.fn(),
+      setPermissionCheckHandler: vi.fn(),
     },
   },
 }));
