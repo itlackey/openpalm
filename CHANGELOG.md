@@ -253,6 +253,14 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **Bare `openpalm` health probe respects the auth posture** (PR #564 retest
+  P3-4): the assistant reachability probe sends no Basic auth, so under the
+  `home-password` preset (`OPENCODE_AUTH=true`) `/health` answers `401` — which
+  proves the container is up. The probe now treats a `401`/`403` as reachable
+  (like a `2xx`), so the bare command no longer runs `docker compose up -d` and
+  needlessly recreates a healthy stack. A `5xx` or a connection error still reads
+  as down.
+
 - **Pairing API status/error contract fully documented and tested** (PR #564
   retest P3-2): `api-spec.md` now enumerates every status `POST
   /api/connections/pairing` can return in evaluation order — `403

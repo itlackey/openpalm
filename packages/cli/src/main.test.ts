@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { EventEmitter } from 'node:events';
 import * as nodeChildProcess from 'node:child_process';
-import { detectHostInfo, main } from './main.ts';
+import { detectHostInfo, isAssistantHealthy, main } from './main.ts';
 import { readSecret, resolveRequestedImageTag, upsertEnvValue } from '@openpalm/lib';
 import { canReplaceCurrentExecutable, resolveCliArtifactName } from './commands/self-update.ts';
 
@@ -627,6 +627,51 @@ describe('audit-secrets command', () => {
       process.env.OP_HOME = originalHome;
       rmSync(tempHome, { recursive: true, force: true });
     }
+  });
+});
+
+// PR #564 retest P3-4: the bare-command health probe sends no Basic auth, so a
+// home-password stack answers /health with 401. That 401 proves the assistant
+// is up — it must read as "healthy" so the bare command doesn't run
+// `docker compose up -d` and needlessly recreate a running container.
+describe('isAssistantHealthy — auth-posture-aware reachability (P3-4)', () => {
+  const originalFetch = globalThis.fetch;
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  const stubHealth = (status: number) => {
+    globalThis.fetch = mock(async (input: string | URL) => {
+      if (String(input).endsWith('/health')) return new Response('', { status });
+      return new Response('', { status: 503 });
+    }) as unknown as typeof fetch;
+  };
+
+  it('treats a 200 as healthy', async () => {
+    stubHealth(200);
+    expect(await isAssistantHealthy()).toBe(true);
+  });
+
+  it('treats a 401 (OPENCODE_AUTH on, no creds sent) as healthy — no needless stack start', async () => {
+    stubHealth(401);
+    expect(await isAssistantHealthy()).toBe(true);
+  });
+
+  it('treats a 403 as healthy', async () => {
+    stubHealth(403);
+    expect(await isAssistantHealthy()).toBe(true);
+  });
+
+  it('treats a 5xx as NOT healthy (up-but-broken → start is the operator tool)', async () => {
+    stubHealth(503);
+    expect(await isAssistantHealthy()).toBe(false);
+  });
+
+  it('treats a thrown connection error as NOT healthy', async () => {
+    globalThis.fetch = mock(async () => {
+      throw new TypeError('fetch failed');
+    }) as unknown as typeof fetch;
+    expect(await isAssistantHealthy()).toBe(false);
   });
 });
 
