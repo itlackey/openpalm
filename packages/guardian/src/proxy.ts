@@ -63,7 +63,6 @@ import {
   endTurnsForSession,
   setTurnAbortFn,
 } from "./oc-bounds";
-import { getPolicyProvider, type PolicyDecision } from "./policy";
 import { ASSISTANT_URL, SESSION_TTL_MS as SESSION_REUSE_TTL_MS, withAssistantUpstreamAuth } from "./config";
 import { BoundedTtlMap } from "./bounded-map";
 
@@ -210,40 +209,6 @@ export async function handleProxy(
   }
 
   const principal: Principal = { id: authenticated.id, kind: authenticated.kind, userId: authenticated.userId };
-
-  // ── Gate 2b: pluggable authorization policy (default permissive) ──────────
-  let policyDecision: PolicyDecision;
-  try {
-    policyDecision = await getPolicyProvider().authorize({
-      principalId: authenticated.id,
-      kind: authenticated.kind,
-      action: `oc:${method}`,
-      resource: match.route?.template ?? rawPath,
-      attributes: { userId: authenticated.userId, path: rawPath },
-    });
-  } catch (err) {
-    // Fail closed on a policy-provider error, but never swallow the cause: log it
-    // structured so an operator can see WHY the gate tripped (a bare `catch {}`
-    // here previously collapsed every policy crash to an opaque 403).
-    logger.error('oc_policy_error', {
-      requestId: rid,
-      principalId: authenticated.id,
-      userId: authenticated.userId,
-      error: String(err),
-    });
-    return deny(rid, 403, 'forbidden_policy', {
-      principalId: authenticated.id,
-      userId: authenticated.userId,
-      reason: 'policy_error',
-    });
-  }
-  if (!policyDecision.allow) {
-    return deny(rid, 403, 'forbidden_policy', {
-      principalId: authenticated.id,
-      userId: authenticated.userId,
-      reason: policyDecision.reason,
-    });
-  }
 
   // ── Gate 3: session/permission ownership + body rewrite + filtering ──────
   return await routeAllowed(req, rid, principal, match, rawPath, url.search, body);
