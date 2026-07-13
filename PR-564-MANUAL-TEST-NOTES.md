@@ -2,7 +2,9 @@
 
 Initial review: `review/pr-564` at `3825e005` on 2026-07-12.
 
-Retest: current PR head `448c0bc8` on 2026-07-12. GitHub reported all six checks successful and merge state `CLEAN`. Manual release verdict remains **blocked** by the destructive unchanged-setup rerun defects below.
+Retest: PR head `448c0bc8` on 2026-07-12. GitHub reported all six checks successful and merge state `CLEAN`. Manual release verdict remained **blocked** by the destructive unchanged-setup rerun defects below.
+
+Second retest: PR head `524d010f` on 2026-07-13. GitHub again reported all six checks successful and merge state `CLEAN`. The prior password and portal-secret rerun corruption is fixed, but the manual release verdict remains **blocked** by newly reproduced security-posture, setup-idempotency, mTLS availability, and mutation-ordering defects.
 
 ## Environment
 
@@ -167,3 +169,106 @@ The passthrough maps the verified client IP and the proxy uses it for pre-auth l
 - A live legacy-unicast mDNS query was not received because UDP 5353 is shared by KDE Connect, Chrome, and the test responder. Socket activation and pure packet tests passed.
 - Aggregate mTLS memory exhaustion, handshake-timeout boundary races, and a real MCP call through an mTLS-enabled guardian were identified as residual risks but not load-tested end to end.
 - The long-lived main fixture's managed portal compose became stale during destructive lifecycle experiments and made its final guardian unhealthy. A fresh isolated lifecycle reproduction preserved the current file correctly, so this was treated as fixture contamination rather than a reproducible product defect.
+
+## Second Retest at `524d010f`
+
+### Completion criteria
+
+| Criterion | Result |
+| --- | --- |
+| Password byte parity across assistant, guardian, host proxy/health, and client | Pass. `päss 🔒 `, including the trailing space, worked on all four paths; a trimmed neighbor failed. |
+| Explicit UI-password change invalidates old credentials | Fail. Setup wrote the new password to disk, but the live server still accepted only the inherited old password (`old=200`, `new=401`). |
+| Auth-off transition with a stale password file | Pass. The assistant stayed healthy and unauthenticated with `OPENCODE_AUTH=false`. |
+| Password-only direct client defaults to `opencode` | Pass against the source-built authenticated assistant. |
+| `channel_lan` guard before writes | Partial. Full `applyUpdate` rejected before changing five hashed artifacts. A scoped UI update wrote its target version before returning 502, and setup persisted password/version changes before background deploy rejection. |
+| mDNS direct-ingress/status/effective-env fixes | Partial. Normal direct-ingress gating and IPv6 status are fixed. Mixed QU/QM routing and asynchronous socket-error status are not. |
+| mTLS aggregate flow-control bound | Fail. The aggregate budget exists, but an overflowed slow client retains its queue and active slot; normal blocked drain also has no deadline. |
+| Audit IP provenance | Pass for direct guardian traffic. Spoofed `X-Forwarded-For` and `X-Real-IP` were ignored; success and failure audit rows used the socket-derived bridge peer. |
+| Pairing create-only collision behavior and QR fallback | Pass for the advertised cases. Concurrent same-ID creates returned 200/409 and only the winner token authenticated; nullable QR client typing and manual-code fallback are present. |
+| Pairing/API status documentation | Fail. Hook-generated invalid-Host and forbidden-Origin bodies omit `requestId`, contrary to the pairing contract; additional route/documentation drift remains below. |
+| Rootless smoke cleanup and rerun isolation | Partial. Clean stack/portal runs and keep-then-rerun passed. Missing-env fallback reused retained networks/volumes, and an OP_HOME basename containing spaces survived the pre-run removal path. |
+| Quality and aggregate tests | Partial. Type checks, builds, diff check, shell syntax, lint, and focused tests passed. Aggregate suites retain six local failures and the Vitest browser executable is unavailable. |
+
+### Expanded completed tests
+
+| Scenario | Result |
+| --- | --- |
+| Source-backed stack and auth parity | Pass: source assistant/guardian became healthy; direct, guardian, host, and client auth agreed byte-for-byte. |
+| Real-Chrome unchanged rerun secret preservation | Pass for the prior blocker: payload sent `security:{}`, omitted portal credentials, preserved UI/Discord/Slack hashes, and retained the old UI password. |
+| Real-Chrome unchanged rerun state preservation | Fail: a current `dev` install submitted `imageTag:"latest"` and `addons:{api:true}`; an actual run rewrote all four component versions and unexpectedly pulled registry images. |
+| Ambient credential isolation | Fail: omitted UI/OpenCode/Discord/Slack values were replaced by same-named host process variables before keep-existing logic ran. |
+| Explicit rotation and clearing | Fail: UI password disk/runtime diverged; an explicit empty Discord token left the existing token unchanged. |
+| Setup failure atomicity | Fail: a fresh setup that rejected a missing UI password still persisted the submitted Discord token. With a live install lock, setup returned `install_in_progress` after generating five system secret files. |
+| Addon/profile rerun behavior | Fail: `{discord:false}` left Discord enabled; disabling voice retained `OP_VOICE_PROFILE`, kept the profile active, and the next migration re-enabled voice. The setup profile endpoint also returned `null` for a persisted ROCm profile because it passed `stackDir` instead of OP_HOME. |
+| Managed Compose environment parity | Fail: preflight resolved persisted `OPENCODE_AUTH=true`, while the streaming CLI execution inherited host `OPENCODE_AUTH=false`; the LAN-bound assistant then returned 200 without credentials. |
+| Full and scoped removed-network paths | Mixed: full update was byte-for-byte non-mutating; scoped update changed `OP_ASSISTANT_VERSION` before failing the same preflight. |
+| mTLS lifecycle fault injection | Fail: a 2 KiB aggregate overflow retained one active connection and 2 KiB queued; a second valid connection was rejected at the one-connection cap. |
+| mDNS packet/lifecycle fault injection | Fail: unmatched QU plus matched QM sent QM by unicast; socket error left `advertised:true` with no close; a 30,026-byte duplicate-question query built a 150,012-byte answer; QCLASS=CHAOS received an IN answer. |
+| Pairing and principal concurrency | Mixed: create-only race passed; JSON `null` returned unstructured 500; unknown principal kind silently became `portal`; ID `phone:one` was accepted but could not authenticate. |
+| Guardian admin-token rotation | Fail: replacing a cached token file left token A valid and token B rejected until restart. |
+| Pairing URL validation | Fail: `https://gw.example?tenant=home` was accepted and normalized to `https://gw.example/oc?tenant=home`; appending `/session` produced `...?tenant=home/session`. |
+| Host/Origin failure contracts | Fail: invalid Host and forbidden Origin returned hook-local JSON without `requestId`; ordinary unauthorized route failures included one. |
+| Rootless smoke clean/keep/rerun | Pass for stack and portal targets, including profile-gated teardown and post-run zero resources. |
+| Rootless smoke fallback cleanup | Fail: after deleting the retained fixture's `stack.env`, pre-run cleanup removed three containers but reused two networks and four volumes on the next run. |
+| Rootless smoke unusual path | Fail: with `OP_ROOTLESS_SMOKE_HOME='.rootless smoke space'`, a marker survived pre-run cleanup, demonstrating unsafe basename interpolation in the privileged removal command. |
+| Bare CLI unrelated listener | Fail closed-identity expectation: an arbitrary localhost HTTP server returning 401 was accepted as a healthy assistant. |
+| Client build | Pass. |
+| UI unit suite | 1,337 server tests passed; the command failed only because Vitest's Playwright provider could not find its pinned Chromium. Real Chrome 150 manual flows passed where noted. |
+| Aggregate non-UI suite | 2,128 passed, 10 skipped, 6 failed. Three policy tests pass when `OP_ASSISTANT_URL` is explicitly made unreachable; they otherwise wait on the ambient default upstream. Three supervisor tests expose host `date +%s%3N` incompatibility with uutils coreutils; the Debian assistant image emits the expected 13-digit millisecond value. |
+
+### Current release blockers
+
+#### P1-1: Managed preflight and execution use different environments
+
+`runComposeWithPreflight` validates with env-file overrides but the streaming execution path in `packages/cli/src/lib/cli-compose.ts` inherits raw process environment. Captured Compose wrappers have the same mismatch. With persisted LAN/home-password settings and ambient `OPENCODE_AUTH=false`, preflight passed the authenticated configuration while the real assistant started unauthenticated on `0.0.0.0`.
+
+#### P1-2: Unchanged setup reruns are not state-idempotent
+
+The fixed password/portal omission path still does not hydrate current image versions or addon selection. Real Chrome submitted `imageTag:"latest"` and the locked API addon even when the current installation used source `dev` images and no API addon. The actual rerun rewrote `OP_ASSISTANT_VERSION`, `OP_GUARDIAN_VERSION`, `OP_PORTAL_VERSION`, and `OP_VOICE_VERSION`, then pulled unrelated registry images. Omitted `hostAkm` is also interpreted as enabled, so an explicitly disabled host stash reappears.
+
+#### P1-3: Setup consumes ambient secrets as operator input
+
+`performSetup` initializes state from process environment before applying keep-existing semantics. A setup payload with no credential values replaced existing UI, OpenCode, Discord, and Slack secret files from ambient variables. This makes unchanged-rerun behavior depend on how the host UI process was launched and can silently rotate access credentials.
+
+#### P1-4: UI password rotation does not update the running auth authority
+
+An authenticated setup call wrote `rotated-ui-password` to `knowledge/secrets/op_ui_login_password`, but the running host UI continued to authenticate only `rootless-smoke-password` from its inherited environment. The response reported success. The new disk credential cannot log in until restart, while existing/old credentials remain valid.
+
+#### P1-5: mTLS backpressure failures retain capacity indefinitely
+
+The aggregate budget rejects overflow, but the upstream-to-client overflow path does not destroy the slow client or remove its queued chunks. In a one-slot/1 KiB injected budget, a 2 KiB upstream write left `activeConnections=1` and `aggregateQueuedBytes=2048`; a second client was rejected. Separately, a finite sub-limit response whose client never drains has no deadline. Authenticated idle connections also have no post-handshake lifetime bound.
+
+#### P1-6: Setup and update mutation boundaries remain incomplete
+
+Full `applyUpdate` now performs the removed-network check before writes, but scoped updates advance version state first and setup persists configuration before asynchronous deploy validation. Setup itself is not transactional: rejected fresh setup left a submitted portal token, and lock rejection occurred only after system-secret generation. Explicit false addons are additive-only, so reruns cannot reliably disable Discord, voice, or Ollama.
+
+#### P1-7: Pairing codes in `?pair=` disclose durable credentials to the HTTP request path
+
+The pairing payload contains the live guardian principal token. The documented client handoff uses `/connections?pair=<code>` and strips it only in `onMount`, after the initial request has reached the static host. Access logs, browser history, reverse proxies, and referrers can therefore retain the credential despite documentation claiming it is never logged.
+
+### Additional P2 findings
+
+- mDNS is vulnerable to response/allocation amplification: duplicate questions are not capped or deduplicated, non-IN classes are answered, direct legacy queries are accepted on the all-interface UDP socket, and repeated QM packets have no multicast suppression.
+- mDNS status remains stale after asynchronous socket errors, while direct file edits can change reported desired status without reconciling the active responder. Graceful host-UI shutdown has no production hook to send goodbyes.
+- Mixed QU/QM packets choose unicast if any matched or unmatched question has QU, rather than routing each matched response correctly.
+- Guardian admin-token reads are cached solely by path. Rotating file contents does not revoke the old token and makes host pairing use a new token the live guardian rejects.
+- Pairing JSON `null` reaches `body.label` and becomes a generic 500. Pairing fetch has no timeout against a listener that accepts but never responds.
+- Guardian admin creation accepts malformed kinds and IDs. Unknown kinds become portals; IDs containing `:` cannot round-trip through Basic-auth parsing.
+- Guardian URLs with query/fragment components pass server validation but break client route concatenation.
+- Setup's voice/Ollama profile endpoints call `getAddonProfileSelection(state.stackDir, ...)` instead of passing `state.homeDir`, so persisted hardware profiles are not restored.
+- Moving tags are recreated with `--pull missing`; an already-present `latest` image is not refreshed, so resetting reruns to `latest` can both unexpectedly change policy and later strand the old digest.
+- The headless file-install path calls `runDeploy` without its setup-completion callback. A healthy non-interactive install can therefore omit `OP_SETUP_COMPLETE=true` and return to the wizard later.
+- Full setup deploy calls Compose down before the risky pull/health-gated up. A failed replacement can remove a previously healthy stack rather than leaving it available.
+
+### Additional P3 findings
+
+- Pairing docs promise every error body has `requestId`; global Host/Origin rejections do not use the route response helper.
+- The documented principal-rotation curl still reposts to the now-create-only collection endpoint and returns 409; it should use `/admin/principals/:id/rotate`.
+- API docs list `/guardian/stats` with host-session auth, while the implemented guardian route is `/stats` with guardian-admin Bearer auth.
+- Client UI placeholder/completion docs still suggest username `openpalm`, contradicting the fixed `opencode` password-only default.
+- Rootless fallback cleanup removes only containers when fixture files are missing; labeled networks and volumes survive into the next run. Its privileged basename interpolation is unsafe for spaces.
+- The assistant supervisor tests assume GNU `date` honors `%3N`; Ubuntu 26.04's uutils `date` emitted nanoseconds, causing every fast crash to look healthy and the local behavioral test loop not to terminate. The source-built Debian runtime used milliseconds and was not affected.
+
+### Final verdict
+
+**Blocked.** The fixes at `524d010f` resolve the previous destructive password/portal rerun corruption and several posted completion criteria, but the expanded cycle found reproducible security and lifecycle failures: effective Compose execution can disable authentication after a passing preflight; unchanged reruns reset image/addon/AKM state; ambient secrets silently replace preserved credentials; explicit UI rotation leaves old runtime auth active; mTLS overflow retains the connection cap; and setup/update paths still mutate before their full rejection boundary.
