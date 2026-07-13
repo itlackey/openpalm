@@ -161,6 +161,19 @@ export function initializePrincipalStore(): void {
   openDatabase();
 }
 
+/**
+ * Test-only seam: point the module singleton at a caller-provided,
+ * already-{@link configureStateDatabase}d database (or `null` to restore the
+ * env-bound default on the next open). The accessor helpers below key off the
+ * singleton, which is bound to `GUARDIAN_STATE_DB_PATH` at import time and
+ * therefore cannot be exercised in-process across test files without bleeding;
+ * injecting an isolated in-memory DB per test file removes that cross-file
+ * coupling (PR #564 retest P3-1 create-principal.test.ts).
+ */
+export function _setStateDatabaseForTests(database: Database | null): void {
+  db = database;
+}
+
 export function listPrincipals(): PrincipalRecord[] {
   const rows = openDatabase().query('SELECT id, kind, label, token_hash, enabled, created_at FROM principals ORDER BY id').all() as Record<string, unknown>[];
   return rows.map((row) => rowToPrincipal(row)).filter((row): row is PrincipalRecord => row !== null);

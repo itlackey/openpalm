@@ -7,18 +7,34 @@
  * existing row — token and all — completely untouched and return null so the
  * caller retries with a new id or reports a conflict.
  *
- * The store lives in a throwaway temp DB; GUARDIAN_STATE_DB_PATH is set BEFORE
- * state-db.ts loads (same singleton-bleed constraint as auth.test.ts).
+ * The accessors key off the env-bound `openDatabase()` singleton, which cannot
+ * be exercised in-process across test files without bleeding (see the note in
+ * state-db.test.ts). We therefore inject an isolated in-memory DB via the
+ * `_setStateDatabaseForTests` seam and restore the default in afterAll, so this
+ * file is immune to whatever other guardian test files did to the singleton.
  */
-import { describe, it, expect } from 'bun:test';
-import { mkdtempSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { describe, it, expect, beforeAll, afterAll } from 'bun:test';
+import { Database } from 'bun:sqlite';
+import {
+  createPrincipal,
+  upsertPrincipal,
+  getPrincipalRecord,
+  configureStateDatabase,
+  _setStateDatabaseForTests,
+} from './state-db.ts';
 
-const tmpDir = mkdtempSync(join(tmpdir(), 'create-principal-'));
-Bun.env.GUARDIAN_STATE_DB_PATH = join(tmpDir, 'state.db');
+let testDb: Database;
 
-const { createPrincipal, upsertPrincipal, getPrincipalRecord } = await import('./state-db.ts');
+beforeAll(() => {
+  testDb = new Database(':memory:');
+  configureStateDatabase(testDb);
+  _setStateDatabaseForTests(testDb);
+});
+
+afterAll(() => {
+  _setStateDatabaseForTests(null); // restore the env-bound singleton for other files
+  testDb.close();
+});
 
 describe('createPrincipal — create-only (P3-1)', () => {
   it('inserts a brand-new principal and returns the record', () => {
