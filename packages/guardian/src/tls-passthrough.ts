@@ -56,6 +56,15 @@ const MAX_CONCURRENT_CONNECTIONS = 512;
  */
 const HANDSHAKE_TIMEOUT_SECONDS = 15;
 
+/**
+ * Seconds a VERIFIED connection may make no relay progress before it is shed
+ * (PR #564 second retest P1-5). Reset on every byte relayed in either direction
+ * and on every successful drain, so a busy stream never trips it; an idle
+ * authenticated connection, or a tail-drain blocked on a dead reader, is reaped
+ * rather than pinning the aggregate budget and a connection slot indefinitely.
+ */
+const RELAY_IDLE_TIMEOUT_SECONDS = 120;
+
 /** Mutable aggregate-budget accumulator shared by every connection's queues. */
 export interface RelayBudget {
   /** Running sum of buffered bytes across all connections' queues. */
@@ -93,6 +102,9 @@ export interface TlsPassthroughOptions {
   /** Aggregate relay-queue byte ceiling (PR #564 retest P2-8). Test seam;
    *  defaults to MAX_AGGREGATE_RELAY_QUEUE_BYTES. */
   maxAggregateQueueBytes?: number;
+  /** Post-handshake idle/stall reap timeout in seconds (PR #564 second retest
+   *  P1-5). Test seam; defaults to RELAY_IDLE_TIMEOUT_SECONDS. */
+  relayIdleTimeoutSeconds?: number;
 }
 
 export interface TlsPassthrough {
@@ -116,6 +128,16 @@ interface ClientSocketData {
    *  cap, so `close`/`error` releases the slot exactly once (PR #564 retest
    *  P2-8). A connection dropped AT the cap is never counted. */
   counted: boolean;
+  /** Set once this connection has been HARD-shed (overflow/idle/stall). Guards
+   *  every teardown path so the budget + slot are released exactly once and no
+   *  graceful tail-drain keeps an over-budget connection alive (PR #564 second
+   *  retest P1-5). */
+  shed: boolean;
+  /** Post-handshake activity timer (PR #564 second retest P1-5): reset on any
+   *  relay progress, fires a shed on a stall — bounds both an authenticated idle
+   *  connection and a blocked tail-drain that would otherwise hold the budget
+   *  and connection slot forever. */
+  idleTimer: ReturnType<typeof setTimeout> | null;
   /** Set once the handshake explicitly rejects — stops any further relay. */
   rejected: boolean;
   /** Set once the client socket has closed. Guards the connect-window race
@@ -213,6 +235,7 @@ export function startTlsPassthrough(options: TlsPassthroughOptions): TlsPassthro
   const upstreamHostname = options.upstreamHostname ?? '127.0.0.1';
   const handshakeTimeoutSeconds = options.handshakeTimeoutSeconds ?? HANDSHAKE_TIMEOUT_SECONDS;
   const maxConnections = options.maxConnections ?? MAX_CONCURRENT_CONNECTIONS;
+  const relayIdleTimeoutSeconds = options.relayIdleTimeoutSeconds ?? RELAY_IDLE_TIMEOUT_SECONDS;
 
   // PR #564 retest P2-8: aggregate relay budget + concurrent-connection count,
   // shared by every socket on this listener. `budget.queued` sums buffered bytes
@@ -228,6 +251,72 @@ export function startTlsPassthrough(options: TlsPassthroughOptions): TlsPassthro
   // verified client's real IP, so per-IP rate limiting + audit are accurate.
   const clientIpByLoopbackPort = new Map<number, string>();
 
+  /**
+   * HARD-shed a connection (PR #564 second retest P1-5): release its buffered
+   * bytes from the aggregate budget and its concurrency slot SYNCHRONOUSLY — so
+   * a fresh client can connect immediately even before the OS socket finishes
+   * closing — then force both sockets shut with NO graceful tail-drain (we shed
+   * precisely because we are over budget or stalled). Idempotent via `shed`; the
+   * later `close` callbacks find `counted` false and empty queues, so nothing is
+   * released twice.
+   */
+  function shedClient(client: Socket<ClientSocketData>): void {
+    const d = client.data;
+    if (!d || d.shed) return;
+    d.shed = true;
+    d.rejected = true;
+    d.clientClosed = true;
+    if (d.handshakeTimer) {
+      clearTimeout(d.handshakeTimer);
+      d.handshakeTimer = null;
+    }
+    if (d.idleTimer) {
+      clearTimeout(d.idleTimer);
+      d.idleTimer = null;
+    }
+    releaseQueue(d.pendingToUpstream, budget);
+    releaseQueue(d.pendingToClient, budget);
+    if (d.counted) {
+      activeConnections -= 1;
+      d.counted = false;
+    }
+    const up = d.upstream as (Socket<UpstreamSocketData> & { terminate?: () => void }) | null;
+    try {
+      up?.terminate?.();
+    } catch {
+      /* best-effort */
+    }
+    try {
+      up?.end();
+    } catch {
+      /* best-effort */
+    }
+    const c = client as Socket<ClientSocketData> & { terminate?: () => void };
+    try {
+      c.terminate?.();
+    } catch {
+      /* best-effort */
+    }
+    try {
+      c.end();
+    } catch {
+      /* best-effort */
+    }
+  }
+
+  /** (Re)arm the post-handshake idle/stall timer — any relay progress calls this. */
+  function armIdle(client: Socket<ClientSocketData>): void {
+    const d = client.data;
+    if (!d || d.shed) return;
+    if (d.idleTimer) clearTimeout(d.idleTimer);
+    const timer = setTimeout(() => {
+      logger.warn('mtls_relay_idle_reaped', { remoteAddress: client.remoteAddress });
+      shedClient(client);
+    }, relayIdleTimeoutSeconds * 1000);
+    (timer as { unref?: () => void }).unref?.();
+    d.idleTimer = timer;
+  }
+
   const server: TCPSocketListener<ClientSocketData> = listen<ClientSocketData>({
     hostname: options.hostname ?? '0.0.0.0',
     port: options.port,
@@ -242,6 +331,8 @@ export function startTlsPassthrough(options: TlsPassthroughOptions): TlsPassthro
       open(socket) {
         socket.data = {
           counted: false,
+          shed: false,
+          idleTimer: null,
           rejected: false,
           clientClosed: false,
           upstreamClosed: false,
@@ -332,13 +423,17 @@ export function startTlsPassthrough(options: TlsPassthroughOptions): TlsPassthro
                 clientIpByLoopbackPort.set(loopbackPort, socket.remoteAddress);
               }
               trackedFlush(upstreamSocket, socket.data.pendingToUpstream, budget);
+              // Verified + relaying: bound idle/stall lifetime from here on (P1-5).
+              armIdle(socket);
             },
             data(upstreamSocket, chunk) {
               const client = upstreamSocket.data.client;
               if (!queueAndTryWrite(client, client.data.pendingToClient, chunk, budget)) {
                 logger.warn('mtls_relay_queue_overflow', { direction: 'upstream_to_client', aggregate: budget.queued });
-                upstreamSocket.end(); // drop the connection (close handlers tear down both)
+                shedClient(client); // hard-shed: release budget + slot NOW, no graceful tail-drain (P1-5)
+                return;
               }
+              armIdle(client); // relay progress — reset the idle/stall timer
             },
             drain(upstreamSocket) {
               // The upstream socket is writable again — retry the bytes queued
@@ -390,19 +485,22 @@ export function startTlsPassthrough(options: TlsPassthroughOptions): TlsPassthro
             budget.queued > budget.maxAggregate
           ) {
             logger.warn('mtls_relay_queue_overflow', { direction: 'client_to_upstream_preconnect', aggregate: budget.queued });
-            socket.end();
+            shedClient(socket); // hard-shed: release the pre-connect buffer + slot NOW (P1-5)
           }
           return;
         }
         if (!queueAndTryWrite(socket.data.upstream, socket.data.pendingToUpstream, chunk, budget)) {
           logger.warn('mtls_relay_queue_overflow', { direction: 'client_to_upstream', aggregate: budget.queued });
-          socket.end(); // drop the connection (close handlers tear down both)
+          shedClient(socket); // hard-shed: release budget + slot NOW, no graceful tail-drain (P1-5)
+          return;
         }
+        armIdle(socket); // relay progress — reset the idle/stall timer
       },
       drain(socket) {
         // The client socket is writable again — retry the bytes queued FOR the
         // client (upstream→client), not the upstream-bound queue.
         trackedFlush(socket, socket.data.pendingToClient, budget);
+        armIdle(socket); // drain progress counts as activity (bounds a blocked tail-drain)
         // PR #564 r3566890224: if the upstream already closed and we were only
         // holding to drain the tail, end the client once the queue is empty.
         if (socket.data.upstreamClosed && socket.data.pendingToClient.length === 0) {
@@ -417,9 +515,14 @@ export function startTlsPassthrough(options: TlsPassthroughOptions): TlsPassthro
           clearTimeout(socket.data.handshakeTimer);
           socket.data.handshakeTimer = null;
         }
+        if (socket.data.idleTimer) {
+          clearTimeout(socket.data.idleTimer);
+          socket.data.idleTimer = null;
+        }
         // PR #564 retest P2-8: release this connection's slot and its buffered
         // bytes from the aggregate budget. `counted` guards against releasing a
-        // slot for a connection dropped AT the cap (never counted).
+        // slot for a connection dropped AT the cap (never counted); a prior
+        // shedClient() already released, leaving these idempotent no-ops.
         if (socket.data.counted) {
           activeConnections -= 1;
           socket.data.counted = false;

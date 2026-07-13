@@ -253,6 +253,17 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **mTLS relay overflow now sheds capacity immediately + bounds idle/stalled
+  connections** (PR #564 second retest P1-5): an over-budget relay write used to
+  `socket.end()` and then let the graceful tail-drain keep a blocked connection
+  alive, so `activeConnections` and the aggregate byte budget stayed pinned and a
+  fresh client was refused. Overflow now hard-sheds via `shedClient`, which
+  releases the buffered bytes and the connection slot **synchronously** (no
+  graceful drain — we shed precisely because we are over budget). A new
+  post-handshake activity timer, reset on every relayed byte and successful
+  drain, reaps a verified connection that makes no progress — bounding both an
+  idle authenticated connection and a tail-drain blocked on a dead reader.
+
 - **Error-body and documentation contract fixes** (PR #564 second retest): the
   global Host-header and Origin rejections now include `requestId` in their JSON
   bodies (matching the documented "every error body carries requestId"

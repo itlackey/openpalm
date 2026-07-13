@@ -14,6 +14,7 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "bun:test";
 import { createServer } from "node:net";
 import { connect } from "node:net";
+import { connect as tlsConnect } from "node:tls";
 import { startTlsPassthrough, type TlsPassthrough } from "./tls-passthrough.ts";
 import {
   CA_CERT_PEM,
@@ -225,6 +226,60 @@ describe("startTlsPassthrough", () => {
         setTimeout(() => resolve(false), 3000);
       });
       expect(reaped).toBe(true);
+    } finally {
+      pt.stop();
+    }
+  });
+
+  // PR #564 second retest P1-5: a VERIFIED connection that makes no relay
+  // progress must be reaped — releasing its connection slot (and, for an
+  // over-budget or blocked-drain connection, its buffered bytes) rather than
+  // pinning capacity indefinitely. Here an idle verified client is shed once the
+  // post-handshake idle timer fires, and the freed slot is observably reusable.
+  it("reaps a verified-but-idle connection and frees its slot (P1-5)", async () => {
+    const port = await getAvailablePort();
+    const pt = startTlsPassthrough({
+      port,
+      hostname: "127.0.0.1",
+      upstreamPort,
+      upstreamHostname: "127.0.0.1",
+      cert: SERVER_CERT_PEM,
+      key: SERVER_KEY_PEM,
+      ca: CA_CERT_PEM,
+      relayIdleTimeoutSeconds: 1, // reap fast for the test
+    });
+    try {
+      // Complete the mTLS handshake but send NO application bytes.
+      const sock = tlsConnect({
+        host: "127.0.0.1",
+        port,
+        ca: CA_CERT_PEM,
+        cert: CLIENT_CERT_PEM,
+        key: CLIENT_KEY_PEM,
+        rejectUnauthorized: true,
+      });
+      const closed = new Promise<boolean>((resolve) => {
+        sock.on("close", () => resolve(true));
+        sock.on("error", () => resolve(true));
+        setTimeout(() => resolve(false), 4000);
+      });
+
+      // The connection is counted while it is alive.
+      await new Promise<void>((resolve) => {
+        const deadline = Date.now() + 2000;
+        const tick = () => {
+          if (pt.activeConnectionCount() >= 1 || Date.now() > deadline) resolve();
+          else setTimeout(tick, 20);
+        };
+        sock.on("secureConnect", tick);
+        setTimeout(tick, 50);
+      });
+      expect(pt.activeConnectionCount()).toBeGreaterThanOrEqual(1);
+
+      // The idle reaper closes it and frees the slot.
+      expect(await closed).toBe(true);
+      await new Promise((r) => setTimeout(r, 100));
+      expect(pt.activeConnectionCount()).toBe(0);
     } finally {
       pt.stop();
     }
