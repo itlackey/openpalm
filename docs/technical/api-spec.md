@@ -896,7 +896,11 @@ Response (`201`):
 - `code` -- The one-time pairing code (contains the URL, username, and the
   principal secret). Returned exactly once; not recoverable afterward.
 - `principalId` -- The created principal's id (slugged label + a 64-bit random
-  suffix so re-pairing the same label never overwrites an existing device).
+  suffix). The guardian admin store is **create-only**: a colliding id is
+  refused with `409` and the existing principal (token and all) is left
+  untouched, so re-pairing can never overwrite or rotate a live device's
+  credential. The mint transparently retries with a freshly-drawn id on the
+  astronomically unlikely collision.
 - `qrSvg` -- An SVG QR encoding of `code`, or `null` if rendering failed (the
   `code` is still returned and usable).
 - `warnings` -- Non-fatal notes; notably, a warning when

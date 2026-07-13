@@ -4,11 +4,11 @@ import { json } from './http-util.ts';
 import { invalidatePrincipalCache } from './auth';
 import { constantTimeEqual } from './crypto.ts';
 import {
+  createPrincipal,
   deletePrincipal,
   listPrincipals,
   rotatePrincipal,
   setPrincipalEnabled,
-  upsertPrincipal,
 } from './state-db';
 
 const logger = createLogger('guardian:admin');
@@ -70,7 +70,15 @@ export async function handleAdminRequest(req: Request, requestId: string): Promi
     const token = typeof body.token === 'string' ? body.token : '';
     const label = typeof body.label === 'string' ? body.label : id;
     if (!id || !token) return json(400, { error: 'id_and_token_required', requestId });
-    const principal = upsertPrincipal({ id, kind, label, token, enabled: true });
+    // PR #564 retest P3-1: create-only. A colliding id must NOT rotate the
+    // existing principal's token (pairing mints fresh device credentials, and a
+    // silent overwrite would revoke a live device). Rotation is the explicit
+    // /rotate endpoint; a collision here is a 409 that leaves the row untouched.
+    const principal = createPrincipal({ id, kind, label, token, enabled: true });
+    if (!principal) {
+      logger.warn('admin_principal_conflict', { requestId, id });
+      return json(409, { error: 'principal_exists', requestId });
+    }
     invalidatePrincipalCache(id);
     return json(200, { principal: { ...principal, tokenHash: undefined }, requestId });
   }

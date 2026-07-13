@@ -187,6 +187,25 @@ export function upsertPrincipal(input: { id: string; kind: PrincipalKind; label?
   return getPrincipalRecord(input.id)!;
 }
 
+/**
+ * Create-only insertion (PR #564 retest P3-1). Unlike {@link upsertPrincipal},
+ * a colliding `id` is NOT overwritten — the existing row (and its token) stays
+ * exactly as it was and this returns `null`. Pairing mints a fresh device
+ * principal, so a same-id collision must never silently rotate an existing
+ * device's credential; the caller retries with a new id or reports a conflict.
+ */
+export function createPrincipal(input: { id: string; kind: PrincipalKind; label?: string; token: string; enabled?: boolean }): PrincipalRecord | null {
+  const createdAt = Date.now();
+  const label = (input.label?.trim() || input.id).trim();
+  const result = openDatabase().query(`
+    INSERT INTO principals (id, kind, label, token_hash, enabled, created_at)
+    VALUES (?, ?, ?, ?, ?, ?)
+    ON CONFLICT(id) DO NOTHING
+  `).run(input.id, input.kind, label, hashToken(input.token), input.enabled === false ? 0 : 1, createdAt);
+  if (result.changes === 0) return null; // id already exists — leave it untouched
+  return getPrincipalRecord(input.id);
+}
+
 export function rotatePrincipal(id: string, token: string): PrincipalRecord | null {
   openDatabase().query('UPDATE principals SET token_hash = ? WHERE id = ?').run(hashToken(token), id);
   return getPrincipalRecord(id);

@@ -253,6 +253,15 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **Pairing principal insertion is create-only** (PR #564 retest P3-1): the
+  guardian admin `POST /admin/principals` now uses a create-only insert — a
+  colliding id is refused with `409 principal_exists` and the existing
+  principal's token is left completely untouched, instead of the previous upsert
+  that would silently rotate a live device's credential. The pairing mint
+  transparently retries with a freshly-drawn id on the (astronomically unlikely)
+  409, and gives up with a distinct conflict error only after exhausting its
+  attempts.
+
 - **Guardian mTLS passthrough bounds aggregate memory and connection count**
   (PR #564 retest P2-8): the per-connection 8 MiB relay-queue cap left N slow
   peers able to buffer N × 8 MiB, and nothing capped the number of concurrent
