@@ -253,6 +253,13 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **Non-interactive install stamps setup completion** (PR #564 second retest
+  R9): the file/headless install deploy called `runDeploy` without its
+  `markSetupComplete` callback, so a healthy non-interactive install never wrote
+  `OP_SETUP_COMPLETE=true` and the UI would later bounce the operator back into
+  the setup wizard. The callback is now wired; `runDeploy` still only stamps
+  completion once core services are healthy, so it stays correct for every mode.
+
 - **Explicit `{addon:false}` in a setup rerun disables the addon** (PR #564
   second retest R6): the setup loop only acted on truthy addon flags, so
   `{discord:false}` left Discord enabled. It now honors an explicit `false` as a

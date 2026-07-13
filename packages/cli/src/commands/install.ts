@@ -22,6 +22,7 @@ import {
   ensureAkmUserEnv,
   PLATFORM_VERSION,
   runDeploy,
+  markSetupComplete,
   writeSystemEnv,
   patchSecretsEnvFile,
   collectNetworkExposureWarnings,
@@ -125,7 +126,12 @@ async function requireDocker(): Promise<void> {
 
 async function deployServices(mode: string, pull = true): Promise<string[]> {
   const state = ensureValidState();
-  const result = await runDeploy(state);
+  // PR #564 second retest R9: pass the setup-completion callback so a healthy
+  // non-interactive (file) install records OP_SETUP_COMPLETE=true. Without it,
+  // runDeploy brought the stack up healthy but never stamped completion, so the
+  // UI later bounced the operator back to the setup wizard. runDeploy only fires
+  // this once CORE services are healthy, so it stays correct for every mode.
+  const result = await runDeploy(state, { markSetupComplete: () => markSetupComplete(state) });
   if (result.deployError) throw new Error(result.deployError);
   console.log(JSON.stringify({ ok: true, mode, services: result.deployStatus.map((entry) => entry.service), pull }, null, 2));
   return result.deployStatus.map((entry) => entry.service);
