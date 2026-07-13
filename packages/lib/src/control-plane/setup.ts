@@ -255,10 +255,12 @@ export function persistAkmConfig(
 
 /**
  * Persist portal (discord/slack/…) credentials into the vault secrets env.
- * Credential values come from the setup spec first, falling back to the host
- * process environment for any canonical env var not supplied in the spec.
- * updateSecretsEnv routes secret-classified keys to their own files and the
- * rest to stack.env.
+ * Credential values come ONLY from the setup spec. PR #564 second retest P1-3:
+ * the previous host-process-env fallback silently consumed ambient variables
+ * (e.g. a leftover `DISCORD_BOT_TOKEN` in the operator's shell) as operator
+ * input, overwriting an existing secret BEFORE keep-existing semantics could
+ * preserve it. Omitting a credential now leaves the persisted secret untouched
+ * — updateSecretsEnv only writes the keys explicitly supplied.
  */
 export function persistPortalCredentials(
   state: ControlPlaneState,
@@ -267,13 +269,6 @@ export function persistPortalCredentials(
   const portalSecretUpdates = portalCredentials
     ? buildPortalCredentialEnvVars(portalCredentials)
     : {};
-  // Pick up portal credential env vars not already provided in the spec.
-  for (const mapping of Object.values(PORTAL_CREDENTIAL_ENV_MAP)) {
-    for (const envKey of Object.values(mapping)) {
-      if (!portalSecretUpdates[envKey] && process.env[envKey])
-        portalSecretUpdates[envKey] = process.env[envKey];
-    }
-  }
   updateSecretsEnv(state, portalSecretUpdates);
 }
 

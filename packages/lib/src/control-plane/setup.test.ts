@@ -891,6 +891,24 @@ describe("performSetup", () => {
     expect(stackEnv).not.toContain('DISCORD_BOT_TOKEN=');
   });
 
+  // PR #564 second retest P1-3: setup must NOT consume ambient host env vars as
+  // portal credentials — a leftover DISCORD_BOT_TOKEN in the operator's shell
+  // used to be silently written into the secret store, overriding keep-existing.
+  it("does not consume an ambient DISCORD_BOT_TOKEN when the spec omits it", async () => {
+    const saved = process.env.DISCORD_BOT_TOKEN;
+    process.env.DISCORD_BOT_TOKEN = "ambient-token-should-be-ignored";
+    try {
+      const input = makeValidSpec(); // no portalCredentials in the spec
+      const result = await performSetup(input);
+      expect(result.ok).toBe(true);
+      // The ambient value must NOT have been written to the secret store.
+      expect(readSecret(homeDir, 'discord_bot_token')).toBeNull();
+    } finally {
+      if (saved !== undefined) process.env.DISCORD_BOT_TOKEN = saved;
+      else delete process.env.DISCORD_BOT_TOKEN;
+    }
+  });
+
   // ── #563 T23-T27: network preset plumbing through performSetup ───────────
 
   const secretPathFor = (name: string) => join(homeDir, "knowledge", "secrets", name);

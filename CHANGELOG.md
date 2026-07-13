@@ -253,6 +253,14 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **Setup no longer consumes ambient host secrets as operator input** (PR #564
+  second retest P1-3): `persistPortalCredentials` fell back to the host process
+  environment for any portal credential the setup spec omitted, so a leftover
+  `DISCORD_BOT_TOKEN` (etc.) in the operator's shell was silently written into
+  the secret store — overriding the keep-existing preservation. Portal
+  credentials now come only from the explicit spec; an omitted credential leaves
+  the persisted secret untouched.
+
 - **mTLS relay overflow now sheds capacity immediately + bounds idle/stalled
   connections** (PR #564 second retest P1-5): an over-budget relay write used to
   `socket.end()` and then let the graceful tail-drain keep a blocked connection
