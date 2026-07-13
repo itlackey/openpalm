@@ -38,8 +38,7 @@ import { resolveSessionTarget } from "./session-target.ts";
 import { openEventStream } from "./event-fanout";
 import { audit } from "./audit";
 import { moderateMessage, type ModerationResult } from "./moderation";
-import { ASSISTANT_URL, SESSION_TTL_MS as SESSION_REUSE_TTL_MS, withAssistantUpstreamAuth } from "./config";
-import { BoundedTtlMap } from "./bounded-map";
+import { ASSISTANT_URL, withAssistantUpstreamAuth } from "./config";
 
 const logger = createLogger("guardian:proxy");
 
@@ -434,15 +433,8 @@ function extractPromptText(body: string): string {
 // (the durable component is the guardian); a guardian restart re-creates once
 // then reuses. Evicted on DELETE /session. Title unified to the buffered `/`
 // form so the two paths are consistent.
-const SESSION_REUSE_MAX = 10_000;
-// cacheKey → reused OpenCode sessionId. Per-entry TTL (SESSION_REUSE_TTL_MS),
-// oldest-first hard-cap eviction, and a 60s unref'd prune timer — the shared
-// BoundedTtlMap discipline (same as ownership.ts / rate-limit.ts).
-const ocSessionByKey = new BoundedTtlMap<string, string>({
-  ttlMs: SESSION_REUSE_TTL_MS,
-  maxSize: SESSION_REUSE_MAX,
-  pruneIntervalMs: 60_000,
-});
+// cacheKey → reused OpenCode sessionId.
+const ocSessionByKey = new Map<string, string>();
 const ocSessionCreateLocks = new Map<string, Promise<string>>();
 
 /** Forget the reused session for a deleted sessionId (called on DELETE /session). */
@@ -482,10 +474,9 @@ async function forwardSessionCreate(
   let inflight = ocSessionCreateLocks.get(cacheKey);
   if (!inflight) {
     inflight = (async (): Promise<string> => {
-      // get(_, true) returns a live cached sessionId (refreshing its TTL) or
-      // undefined if absent/expired. Refuse a cached id that some other principal
-      // now owns (defence-in-depth) — mint a fresh session instead of stealing it.
-      const cached = ocSessionByKey.get(cacheKey, true);
+      // Refuse a cached id that some other principal now owns (defence-in-depth)
+      // — mint a fresh session instead of stealing it.
+      const cached = ocSessionByKey.get(cacheKey);
       if (cached !== undefined && !sessionOwnedByOther(cached, principal)) return cached;
 
       // Match by title can cross principals (same portal+sessionKey → same title);
