@@ -27,12 +27,11 @@
  *     attempting resubscribe.
  *   - Ignore unknown event types / tolerate added fields (graceful degrade, §5).
  *
- * This is guardian-local runtime state on purpose (mirrors rate-limit.ts /
- * ownership.ts) — NOT @openpalm/lib.
+ * This is guardian-local runtime state on purpose (mirrors ownership.ts) —
+ * NOT @openpalm/lib.
  */
 
 import { createLogger } from './logger.ts';
-import { TURN_IDLE_STATUSES, statusName } from './oc-events.ts';
 
 import {
   type Principal,
@@ -40,7 +39,6 @@ import {
   ownedSessionIds,
   recordPermissionOwner,
 } from "./ownership";
-import { endTurnsForSession } from "./oc-bounds";
 import { ASSISTANT_URL, withAssistantUpstreamAuth } from './config';
 import { parseSseFrames, extractData } from './sse.ts';
 
@@ -127,26 +125,6 @@ function framePermissionRequestId(frameJson: string): string | undefined {
 }
 
 /**
- * Pure: does this frame signal turn-end for its session? Uses the SAME idle
- * definition the portals use (isTurnEnd / TURN_IDLE_STATUSES from the portal runtime) so
- * the guardian's turn accounting and the portal's render agree on "turn over".
- */
-function frameIsTurnEnd(frameJson: string): boolean {
-  try {
-    const parsed = JSON.parse(frameJson) as { type?: unknown; properties?: { status?: unknown } };
-    if (parsed.type === "session.idle") return true;
-    if (parsed.type === "session.status") {
-      // status is `{type:"idle"}` on live 1.15.13 (or a bare string elsewhere).
-      const name = statusName(parsed.properties?.status);
-      return name !== undefined && TURN_IDLE_STATUSES.has(name);
-    }
-    return false;
-  } catch {
-    return false;
-  }
-}
-
-/**
  * Route ONE parsed SSE frame (raw JSON text) to the subscribers that own its
  * sessionID. Exported for unit tests (no upstream needed).
  *
@@ -156,8 +134,6 @@ function frameIsTurnEnd(frameJson: string): boolean {
  * - For each owning subscriber, write the RAW UNMODIFIED frame.
  * - On permission.asked, record requestID→principal for each owner so the reply
  *   gate can authorize it.
- * - On turn-end, release the in-flight-turn slot for the session (the async
- *   prompt_async turn closes at session-idle, not at HTTP return — oc-bounds).
  */
 export function routeFrame(frameJson: string): void {
   const sessionId = frameSessionId(frameJson);
@@ -182,11 +158,6 @@ export function routeFrame(frameJson: string): void {
     if (interactiveRequestId) recordPermissionOwner(interactiveRequestId, sub.principal);
     writeTo(sub, sseBytes);
   }
-
-  // Turn-end accounting is independent of whether a subscriber is connected:
-  // the slot must be released so the in-flight cap and wall-clock sweep stay
-  // meaningful for async turns (§3.6).
-  if (frameIsTurnEnd(frameJson)) endTurnsForSession(sessionId);
 }
 
 function writeTo(sub: Subscriber, bytes: Uint8Array): void {

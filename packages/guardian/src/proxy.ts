@@ -3,26 +3,18 @@
  *
  * This is ~95% a byte-for-byte transparent reverse proxy (the UI proxy pattern:
  * stream `upstream.body` untouched, never buffer), PLUS the fail-closed gates from
- * the rich-UX design (docs/technical/portal-rich-ux-design.md §2–§3). Stage 1
- * implements:
+ * the rich-UX design (docs/technical/portal-rich-ux-design.md §2–§3):
  *
  *   1. Per-call Basic auth + user identity binding.
- *   2. Endpoint allowlist, default-deny, hardened matching — §3.3, oc-bounds.ts
- *      matchAllowlist.
+ *   2. Endpoint allowlist, default-deny, hardened matching — §3.3, matchAllowlist.
  *   3. Session-ownership authz + POST /session create-body rewrite + GET /session
  *      response filtering — §3.4, guardian-local ownership.ts.
- *   4. Transparent streaming passthrough of the response body — §0, UI proxy.
- *   5. Content moderation of message/prompt bodies — §3.5, WRITE-PATH ONLY,
- *      fail-closed, reuses moderation.ts (Stage 3, screenPromptBody below).
- *
- * Stage 4 adds (this change):
- *   6. Permission-reply ownership (§3.4): the /event relay records
+ *   4. Permission/question-reply ownership (§3.4): the /event relay records
  *      requestID→principal; a reply is authorized against that record so
  *      principal A cannot answer principal B's request.
- *   7. Resource bounds (§3.6): per-user/per-principal proxy call rate limits
- *      (reused rate-limit.ts), a /event reconnect cap, a concurrent-/event-
- *      stream cap (1/principal), and an in-flight-turn cap with a per-turn
- *      wall-clock abort — all in guardian-local oc-bounds.ts.
+ *   5. Transparent streaming passthrough of the response body — §0, UI proxy.
+ *   6. Content moderation of message/prompt bodies — §3.5, WRITE-PATH ONLY,
+ *      fail-closed, reuses moderation.ts (screenPromptBody below).
  *
  * The legacy buffered /portal/inbound transport has been removed; /oc/* is the
  * single assistant ingress path.
@@ -46,23 +38,6 @@ import { resolveSessionTarget } from "./session-target.ts";
 import { openEventStream } from "./event-fanout";
 import { audit } from "./audit";
 import { moderateMessage, type ModerationResult } from "./moderation";
-import {
-  allow,
-  allowPreAuth,
-  USER_RATE_LIMIT,
-  USER_RATE_WINDOW_MS,
-  PORTAL_RATE_LIMIT,
-  PORTAL_RATE_WINDOW_MS,
-} from "./rate-limit";
-import {
-  allowEventReconnect,
-  reserveEventStream,
-  releaseEventStream,
-  beginTurn,
-  endTurn,
-  endTurnsForSession,
-  setTurnAbortFn,
-} from "./oc-bounds";
 import { ASSISTANT_URL, SESSION_TTL_MS as SESSION_REUSE_TTL_MS, withAssistantUpstreamAuth } from "./config";
 import { BoundedTtlMap } from "./bounded-map";
 
@@ -74,17 +49,6 @@ const logger = createLogger("guardian:proxy");
 export const OC_PREFIX = "/oc";
 
 const OC_MAX_BODY_BYTES = Number(Bun.env.GUARDIAN_OC_MAX_BODY_BYTES ?? 1_048_576); // 1 MiB
-
-// Wire the stale-turn reaper's abort side-effect (§3.6 per-turn wall-clock cap).
-// The bounds module mints turn ids and detects breaches but cannot issue the
-// upstream abort itself (it must stay free of the upstream fetch to remain
-// unit-testable); the proxy owns that side-effect. Best-effort, fire-and-forget.
-setTurnAbortFn((sessionId) => {
-  const headers = withAssistantUpstreamAuth(new Headers({ "content-type": "application/json" }));
-  void fetch(`${ASSISTANT_URL}/session/${sessionId}/abort`, { method: "POST", headers, body: "{}" })
-    .then(() => logger.warn("oc_turn_wall_clock_abort", { sessionId }))
-    .catch((err) => logger.error("oc_turn_abort_failed", { sessionId, error: String(err) }));
-});
 
 const H_SESSION_KEY = 'x-openpalm-session-key';
 
@@ -140,7 +104,6 @@ export async function handleProxy(
   req: Request,
   rid: string,
   expectedKind?: 'portal' | 'direct',
-  clientIp = '',
 ): Promise<Response> {
   const url = new URL(req.url);
 
@@ -155,43 +118,18 @@ export async function handleProxy(
 
   const method = req.method;
 
-  // ── Gate 0: coarse per-IP pre-auth budget (rev3-F3) ──────────────────────
-  // Runs before authenticate() AND before the body is read, so a single source
-  // cannot credential-stuff or body-flood the pipeline. Generous by design; the
-  // authenticated per-user / per-portal limiter below stays authoritative.
-  if (!allowPreAuth(clientIp)) {
-    return deny(rid, 429, "rate_limited", { reason: "preauth_ip" });
-  }
-
   const authenticated = await authenticate(req, expectedKind);
   if (!authenticated) {
     return deny(rid, 401, 'unauthorized', {});
   }
 
-  // ── Read the body (bounded) AFTER authenticate() (rev3-F3) ────────────────
-  // An unauthenticated flood is rejected above without ever buffering a body.
-  // Auth is a Basic token compare (auth.ts) that does not read the body, so
-  // nothing before this point consumes it.
+  // ── Read the body (bounded) after authenticate() ──────────────────────────
   let body = "";
   if (method !== "GET" && method !== "HEAD") {
     body = await req.text();
     if (body.length > OC_MAX_BODY_BYTES) {
       return deny(rid, 413, "payload_too_large", { bodyLength: body.length });
     }
-  }
-
-  // ── Gate 1c: per-user / per-portal rate limit (§3.6) — counts discrete ──
-  // signed calls (a GET /event open counts as one), enforced AFTER
-  // authenticate() so an unauthenticated flood is rejected by auth first.
-  // Bucket keys carry an explicit `user:` / `portal:` prefix so rate-limit.ts
-  // classifies them by prefix rather than by counting `:` segments — userIds
-  // may themselves contain colons (e.g. `discord:<id>`), which broke the old
-  // segment-count heuristic.
-  if (
-    !allow(`user:oc:${authenticated.kind}:${authenticated.id}:${authenticated.userId}`, USER_RATE_LIMIT, USER_RATE_WINDOW_MS) ||
-    !allow(`portal:oc:${authenticated.kind}:${authenticated.id}`, PORTAL_RATE_LIMIT, PORTAL_RATE_WINDOW_MS)
-  ) {
-    return deny(rid, 429, "rate_limited", { principalId: authenticated.id, userId: authenticated.userId });
   }
 
   // ── Gate 2: endpoint allowlist, default-deny, hardened matching ──────────
@@ -343,44 +281,13 @@ async function routeAllowed(
           });
         }
       }
-      // §3.6 in-flight-turn cap: a prompt turn holds assistant compute until the
-      // session goes idle. Bound how many a principal can hold concurrently; the
-      // (cap+1)th is 429'd.
-      const turnId = beginTurn(principal, sessionId);
-      if (turnId === null) {
-        return deny(rid, 429, "too_many_inflight_turns", {
-          principalId: principal.id,
-          userId: principal.userId,
-          sessionId,
-        });
-      }
-      // A turn's slot must be released at the REAL end of the turn, which differs
-      // by endpoint:
-      //  - /message is BLOCKING: the upstream response IS turn-end → end in finally.
-      //  - /prompt_async returns 204 immediately while the model keeps working →
-      //    the turn ends when the /event fan-out observes session-idle for this
-      //    session (event-fanout → endTurnsForSession), with the wall-clock sweep
-      //    (setTurnAbortFn) as the backstop. Ending it here in finally would zero
-      //    the accounting instantly and make BOTH the in-flight cap and the
-      //    wall-clock abort dead (the bug this guards against). So only end early
-      //    on a non-OK upstream response — the turn never actually started.
-      if (template === "/session/{id}/message") {
-        try {
-           return await forwardTransparent(req, rid, rawPath, search, promptBody);
-        } finally {
-          endTurn(turnId);
-        }
-      }
-      const asyncResp = await forwardTransparent(req, rid, rawPath, search, promptBody);
-      if (!asyncResp.ok) endTurn(turnId);
-      return asyncResp;
+      return await forwardTransparent(req, rid, rawPath, search, promptBody);
     }
     // DELETE succeeds → forget ownership after a clean upstream response.
     if (req.method === "DELETE" && template === "/session/{id}") {
       const resp = await forwardTransparent(req, rid, rawPath, search, body);
       if (resp.ok) {
         forgetSession(sessionId);
-        endTurnsForSession(sessionId); // release any lingering turn for a deleted session
         evictOcSession(sessionId); // drop the reuse cache so /clear forces a fresh session
       }
       return resp;
@@ -394,26 +301,8 @@ async function routeAllowed(
   // (global) frames are hard-dropped. permission.asked frames also record
   // requestID→principal so the reply gate can authorize it (§3.4).
   if (template === "/event") {
-    // §3.6 reconnect cap: bound /event opens per principal per window so a
-    // reconnect loop cannot grow the reconnect-tracking map without bound
-    // (oc-bounds.ts).
-    if (!allowEventReconnect(principal)) {
-      return deny(rid, 429, "event_reconnect_limited", { principalId: principal.id, userId: principal.userId });
-    }
-    // §3.6 concurrent-stream cap: at most N held-open streams per principal.
-    // Reserve a slot; release it when the stream closes (client abort/cancel).
-    if (!reserveEventStream(principal)) {
-      return deny(rid, 429, "too_many_event_streams", { principalId: principal.id, userId: principal.userId });
-    }
-      audit({ requestId: rid, action: "oc_event_open", status: "ok", portal: principal.id, userId: principal.userId });
-      const resp = openEventStream(principal, req.signal);
-    // Release the concurrency slot once the client disconnects. openEventStream
-    // wires the same signal to drop the subscriber; we mirror it for the slot so
-    // a closed stream frees the principal to reconnect.
-    const release = () => releaseEventStream(principal);
-    if (req.signal.aborted) release();
-    else req.signal.addEventListener("abort", release, { once: true });
-    return resp;
+    audit({ requestId: rid, action: "oc_event_open", status: "ok", portal: principal.id, userId: principal.userId });
+    return openEventStream(principal, req.signal);
   }
 
   // Unreachable: every allowlisted template is handled above.

@@ -30,7 +30,6 @@ import {
   ownsPermission,
   _resetOwnershipForTest,
 } from "./ownership";
-import { beginTurn, inflightTurnCount, _resetBoundsForTest } from "./oc-bounds";
 
 const A: Principal = { id: "test", kind: "portal", userId: "alice" };
 const B: Principal = { id: "test", kind: "portal", userId: "bob" };
@@ -62,13 +61,11 @@ function payloads(frames: string[]): string[] {
 beforeEach(() => {
   _resetSubscribersForTest();
   _resetOwnershipForTest();
-  _resetBoundsForTest();
 });
 
 afterEach(() => {
   _resetSubscribersForTest();
   _resetOwnershipForTest();
-  _resetBoundsForTest();
 });
 
 describe("frameSessionId — hard drop rule (§3.2 F2a)", () => {
@@ -303,34 +300,6 @@ describe("eventSubscriberCount — /stats", () => {
     expect(eventSubscriberCount()).toBe(1);
     b.drop();
     expect(eventSubscriberCount()).toBe(0);
-  });
-});
-
-describe("routeFrame — turn-end releases the in-flight-turn slot (§3.6)", () => {
-  it("a session.idle frame for an owned session ends its in-flight turn AND is still forwarded", () => {
-    recordSessionOwner("ses_A", A);
-    const a = collector(A);
-    beginTurn(A, "ses_A");
-    expect(inflightTurnCount()).toBe(1);
-
-    const idle = JSON.stringify({ type: "session.idle", properties: { sessionID: "ses_A" } });
-    routeFrame(idle);
-
-    expect(inflightTurnCount()).toBe(0); // slot released at session-idle
-    expect(payloads(a.frames)).toEqual([idle]); // turn-end frame still delivered
-    a.drop();
-  });
-
-  it("an explicit idle session.status ends the turn; a non-idle one does NOT (real {type} shape)", () => {
-    recordSessionOwner("ses_A", A);
-    beginTurn(A, "ses_A");
-    // Live 1.15.13 shape: status is an object { type: "busy" | "idle" }.
-    routeFrame(JSON.stringify({ type: "session.status", properties: { sessionID: "ses_A", status: { type: "busy" } } }));
-    expect(inflightTurnCount()).toBe(1); // busy ≠ turn-end
-    routeFrame(JSON.stringify({ type: "session.status", properties: { sessionID: "ses_A" } }));
-    expect(inflightTurnCount()).toBe(1); // missing status ≠ turn-end (no premature end)
-    routeFrame(JSON.stringify({ type: "session.status", properties: { sessionID: "ses_A", status: { type: "idle" } } }));
-    expect(inflightTurnCount()).toBe(0); // explicit idle ends it
   });
 });
 

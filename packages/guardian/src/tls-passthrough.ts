@@ -64,15 +64,6 @@ export interface TlsPassthroughOptions {
 export interface TlsPassthrough {
   readonly port: number;
   stop(): void;
-  /**
-   * Resolve the verified client's real IP for a loopback connection, keyed on
-   * the loopback peer port the direct `Bun.serve` sees via `requestIP()`
-   * (PR #564 r3566888940). The passthrough relays raw bytes, so without this
-   * the direct handler would see every mTLS client as `127.0.0.1` — collapsing
-   * the per-IP pre-auth rate bucket and blanking audit source IPs. Returns
-   * undefined when the port is unknown (caller falls back to the peer address).
-   */
-  resolveClientIp(loopbackPort: number): string | undefined;
 }
 
 interface ClientSocketData {
@@ -149,11 +140,6 @@ function flushPending(target: Socket<unknown>, queue: Uint8Array[]): void {
 export function startTlsPassthrough(options: TlsPassthroughOptions): TlsPassthrough {
   const upstreamHostname = options.upstreamHostname ?? '127.0.0.1';
   const handshakeTimeoutSeconds = options.handshakeTimeoutSeconds ?? HANDSHAKE_TIMEOUT_SECONDS;
-
-  // PR #564 r3566888940: map the loopback upstream connection's local port
-  // (which the direct Bun.serve sees as its peer's `requestIP().port`) to the
-  // verified client's real IP, so per-IP rate limiting + audit are accurate.
-  const clientIpByLoopbackPort = new Map<number, string>();
 
   const server: TCPSocketListener<ClientSocketData> = listen<ClientSocketData>({
     hostname: options.hostname ?? '0.0.0.0',
@@ -239,12 +225,6 @@ export function startTlsPassthrough(options: TlsPassthroughOptions): TlsPassthro
                 return;
               }
               socket.data.upstream = upstreamSocket;
-              // Correlate this loopback connection's local port → real client IP
-              // (PR #564 r3566888940).
-              const loopbackPort = (upstreamSocket as unknown as { localPort?: number }).localPort;
-              if (typeof loopbackPort === 'number' && socket.remoteAddress) {
-                clientIpByLoopbackPort.set(loopbackPort, socket.remoteAddress);
-              }
               flushPending(upstreamSocket, socket.data.pendingToUpstream);
             },
             data(upstreamSocket, chunk) {
@@ -261,8 +241,6 @@ export function startTlsPassthrough(options: TlsPassthroughOptions): TlsPassthro
               flushPending(upstreamSocket, client.data.pendingToUpstream);
             },
             close(upstreamSocket) {
-              const loopbackPort = (upstreamSocket as unknown as { localPort?: number }).localPort;
-              if (typeof loopbackPort === 'number') clientIpByLoopbackPort.delete(loopbackPort);
               // PR #564 r3566890224: flush any client-bound bytes still queued
               // (userspace backpressure buffer) before ending the client, so a
               // slow reader's response body isn't truncated. If the queue can't
@@ -341,9 +319,6 @@ export function startTlsPassthrough(options: TlsPassthroughOptions): TlsPassthro
     port: server.port,
     stop() {
       server.stop(true);
-    },
-    resolveClientIp(loopbackPort: number): string | undefined {
-      return clientIpByLoopbackPort.get(loopbackPort);
     },
   };
 }

@@ -10,17 +10,7 @@ import { basicTokenAuthStrategy, getAuthStrategy } from './auth.ts';
 import { eventSubscriberCount } from './event-fanout';
 import { handleMcpRequest, seedMcpPrincipalFromToken, setMcpDirectSelfDialPort } from './mcp';
 import { sessionOwnerCount, permissionOwnerCount } from './ownership';
-import {
-  activeStreamPrincipalCount,
-  inflightTurnCount,
-  OC_EVENT_MAX_CONCURRENT_STREAMS,
-  OC_EVENT_RECONNECT_LIMIT,
-  OC_MAX_INFLIGHT_TURNS,
-  OC_TURN_WALL_CLOCK_MS,
-  reconnectBucketCount,
-} from './oc-bounds';
 import { handleProxy, OC_PREFIX } from './proxy';
-import { activeRateLimiters, PORTAL_RATE_LIMIT, PORTAL_RATE_WINDOW_MS, USER_RATE_LIMIT, USER_RATE_WINDOW_MS } from './rate-limit';
 import { initializePrincipalStore, listPrincipals, seedPortalPrincipalsFromEnv } from './state-db';
 import { startTlsPassthrough, type TlsPassthrough } from './tls-passthrough.ts';
 import { matchTransport, registerTransport, type Transport } from './transport';
@@ -111,33 +101,15 @@ function corsPreflightResponse(req: Request, requestId: string, origin: string |
 }
 
 function statsResponse(): Response {
-  const { activeUserLimiters, activePortalLimiters } = activeRateLimiters();
   return json(200, {
     uptime_seconds: Math.floor((Date.now() - startTime) / 1000),
     principals: listPrincipals().map(({ tokenHash, ...rest }) => rest),
     direct_ingress_enabled: DIRECT_INGRESS_ENABLED,
     mcp_enabled: MCP_ENABLED,
-    rate_limits: {
-      user_window_ms: USER_RATE_WINDOW_MS,
-      user_max_requests: USER_RATE_LIMIT,
-      portal_window_ms: PORTAL_RATE_WINDOW_MS,
-      portal_max_requests: PORTAL_RATE_LIMIT,
-      active_user_limiters: activeUserLimiters,
-      active_portal_limiters: activePortalLimiters,
-    },
     oc_proxy: {
       session_owners: sessionOwnerCount(),
       permission_owners: permissionOwnerCount(),
       event_subscribers: eventSubscriberCount(),
-      event_reconnect_buckets: reconnectBucketCount(),
-      event_stream_principals: activeStreamPrincipalCount(),
-      inflight_turns: inflightTurnCount(),
-      bounds: {
-        event_reconnect_limit: OC_EVENT_RECONNECT_LIMIT,
-        event_max_concurrent_streams: OC_EVENT_MAX_CONCURRENT_STREAMS,
-        max_inflight_turns: OC_MAX_INFLIGHT_TURNS,
-        turn_wall_clock_ms: OC_TURN_WALL_CLOCK_MS,
-      },
     },
     requests: {
       total: requestCounters.total,
@@ -154,33 +126,33 @@ async function handleHealthReady(requestId: string): Promise<Response> {
   return json(200, { ok: true, ready: true, requestId, time: new Date().toISOString() });
 }
 
-async function handleOcRequest(req: Request, requestId: string, expectedKind?: 'portal' | 'direct', clientIp = ''): Promise<Response> {
-  const response = await handleProxy(req, requestId, expectedKind, clientIp);
+async function handleOcRequest(req: Request, requestId: string, expectedKind?: 'portal' | 'direct'): Promise<Response> {
+  const response = await handleProxy(req, requestId, expectedKind);
   countRequest(`oc:${response.status}`);
   return response;
 }
 
-async function handleInternalRequest(req: Request, clientIp = ''): Promise<Response> {
+async function handleInternalRequest(req: Request): Promise<Response> {
   const url = new URL(req.url);
   const requestId = req.headers.get('x-request-id') ?? crypto.randomUUID();
 
   if (url.pathname === '/health' && req.method === 'GET') return handleHealth(requestId);
   if (url.pathname === '/health/ready' && req.method === 'GET') return handleHealthReady(requestId);
   if (url.pathname === '/stats' && req.method === 'GET') {
-    // /stats discloses the principal roster and rate-limit/ownership counters —
-    // useful for ops, but reconnaissance for anything on the guardian's bridge
+    // /stats discloses the principal roster and ownership counters — useful for
+    // ops, but reconnaissance for anything on the guardian's bridge
     // networks. Gate it on the same admin bearer token the admin listener
     // enforces (fail-closed: no configured token denies all).
     if (!(await authorizeAdminToken(req))) return json(401, { error: 'unauthorized', requestId });
     return statsResponse();
   }
   if (url.pathname === OC_PREFIX || url.pathname.startsWith(`${OC_PREFIX}/`)) {
-    return handleOcRequest(req, requestId, 'portal', clientIp);
+    return handleOcRequest(req, requestId, 'portal');
   }
   return json(404, { error: 'not_found', requestId });
 }
 
-async function handleDirectRequest(req: Request, clientIp = ''): Promise<Response> {
+async function handleDirectRequest(req: Request): Promise<Response> {
   const url = new URL(req.url);
   const requestId = req.headers.get('x-request-id') ?? crypto.randomUUID();
   const corsOrigin = resolveCorsAllowedOrigin(req.headers.get('origin'));
@@ -199,7 +171,7 @@ async function handleDirectRequest(req: Request, clientIp = ''): Promise<Respons
     return applyCorsHeaders(response, corsOrigin);
   }
   if (url.pathname === OC_PREFIX || url.pathname.startsWith(`${OC_PREFIX}/`)) {
-    const response = await handleOcRequest(req, requestId, 'direct', clientIp);
+    const response = await handleOcRequest(req, requestId, 'direct');
     return applyCorsHeaders(response, corsOrigin);
   }
   const transport = matchTransport(url, req);
@@ -268,7 +240,7 @@ export function startGuardian(options: StartGuardianOptions = {}): GuardianServe
     port: INTERNAL_PORT,
     hostname: INTERNAL_HOST,
     idleTimeout: 0,
-    fetch: (req, server) => handleInternalRequest(req, server.requestIP(req)?.address ?? ''),
+    fetch: (req) => handleInternalRequest(req),
   });
 
   // Direct listener (3830): plain HTTP unchanged when TLS is off (D3
@@ -286,13 +258,7 @@ export function startGuardian(options: StartGuardianOptions = {}): GuardianServe
       port: 0,
       hostname: '127.0.0.1',
       idleTimeout: 0,
-      // PR #564 r3566888940: recover the real client IP from the passthrough
-      // (the raw-byte relay makes requestIP() always report 127.0.0.1 here).
-      fetch: (req, server) => {
-        const peer = server.requestIP(req);
-        const realIp = tlsPassthrough?.resolveClientIp(peer?.port ?? -1) ?? peer?.address ?? '';
-        return handleDirectRequest(req, realIp);
-      },
+      fetch: (req) => handleDirectRequest(req),
     });
     tlsPassthrough = startTlsPassthrough({
       port: DIRECT_PORT,
@@ -309,7 +275,7 @@ export function startGuardian(options: StartGuardianOptions = {}): GuardianServe
     direct = Bun.serve({
       port: DIRECT_PORT,
       idleTimeout: 0,
-      fetch: (req, server) => handleDirectRequest(req, server.requestIP(req)?.address ?? ''),
+      fetch: (req) => handleDirectRequest(req),
     });
   }
 
