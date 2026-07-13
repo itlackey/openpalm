@@ -41,7 +41,6 @@ import {
   recordPermissionOwner,
 } from "./ownership";
 import { endTurnsForSession } from "./oc-bounds";
-import { runDriftCheck } from './drift';
 import { ASSISTANT_URL, withAssistantUpstreamAuth } from './config';
 import { parseSseFrames, extractData } from './sse.ts';
 
@@ -310,11 +309,7 @@ async function runUpstream(): Promise<void> {
       broadcastUpstreamReset({ name: "GuardianUpstreamReset", message: "assistant event stream reset" });
       // Brief backoff before re-establishing the single upstream subscription.
       setTimeout(() => {
-        if (subscribers.size > 0) {
-          void runDriftCheck().then((enabled) => {
-            if (enabled && subscribers.size > 0) ensureUpstream();
-          });
-        }
+        if (subscribers.size > 0) ensureUpstream();
       }, 1_000).unref();
     }
   }

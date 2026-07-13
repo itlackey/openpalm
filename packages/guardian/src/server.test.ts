@@ -65,10 +65,10 @@ function statsRequest(): Promise<Response> {
 async function waitForProxyEnabled(): Promise<void> {
   for (let i = 0; i < 50; i++) {
     const resp = await statsRequest();
-    if (resp.ok && (await resp.json()).oc_proxy?.enabled === true) return;
+    if (resp.ok) return;
     await Bun.sleep(100);
   }
-  throw new Error('guardian /oc proxy did not enable');
+  throw new Error('guardian internal listener did not become ready');
 }
 
 function startMockAssistant(): ReturnType<typeof Bun.serve> {
@@ -194,7 +194,6 @@ describe('Guardian server integration', () => {
     expect(Array.isArray(data.principals)).toBe(true);
     expect(data.principals.some((principal: { id?: string }) => principal.id === TEST_PRINCIPAL)).toBe(true);
     expect(data.direct_ingress_enabled).toBe(false);
-    expect(data.oc_proxy.enabled).toBe(true);
     expect(typeof data.requests.total).toBe('number');
   });
 

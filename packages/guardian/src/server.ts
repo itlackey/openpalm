@@ -21,7 +21,6 @@ import {
 } from './oc-bounds';
 import { handleProxy, OC_PREFIX } from './proxy';
 import { activeRateLimiters, PORTAL_RATE_LIMIT, PORTAL_RATE_WINDOW_MS, USER_RATE_LIMIT, USER_RATE_WINDOW_MS } from './rate-limit';
-import { runDriftCheckWithRetry, startProxyRecovery, stopProxyRecovery, isProxyEnabled } from './drift';
 import { initializePrincipalStore, listPrincipals, seedPortalPrincipalsFromEnv } from './state-db';
 import { startTlsPassthrough, type TlsPassthrough } from './tls-passthrough.ts';
 import { matchTransport, registerTransport, type Transport } from './transport';
@@ -127,7 +126,6 @@ function statsResponse(): Response {
       active_portal_limiters: activePortalLimiters,
     },
     oc_proxy: {
-      enabled: isProxyEnabled(),
       session_owners: sessionOwnerCount(),
       permission_owners: permissionOwnerCount(),
       event_subscribers: eventSubscriberCount(),
@@ -153,17 +151,10 @@ async function handleHealth(requestId: string): Promise<Response> {
 }
 
 async function handleHealthReady(requestId: string): Promise<Response> {
-  if (!isProxyEnabled()) {
-    return json(503, { ok: false, ready: false, requestId, reason: 'oc_proxy_disabled' });
-  }
   return json(200, { ok: true, ready: true, requestId, time: new Date().toISOString() });
 }
 
 async function handleOcRequest(req: Request, requestId: string, expectedKind?: 'portal' | 'direct', clientIp = ''): Promise<Response> {
-  if (!isProxyEnabled()) {
-    countRequest('oc:503');
-    return json(503, { error: 'oc_proxy_disabled', requestId });
-  }
   const response = await handleProxy(req, requestId, expectedKind, clientIp);
   countRequest(`oc:${response.status}`);
   return response;
@@ -260,8 +251,8 @@ export interface StartGuardianOptions {
 }
 
 /**
- * Composition root: seed the principal store, start drift recovery, and bind the
- * internal (8080), direct (3830) and admin (3831) listeners. Running
+ * Composition root: seed the principal store and bind the internal (8080),
+ * direct (3830) and admin (3831) listeners. Running
  * `bun run src/server.ts` calls this automatically (see the `import.meta.main`
  * guard below). Downstream distributions import and call it after registering
  * their transports / auth strategy / policy provider.
@@ -272,15 +263,6 @@ export function startGuardian(options: StartGuardianOptions = {}): GuardianServe
   initializePrincipalStore();
   seedPortalPrincipalsFromEnv();
   if (MCP_ENABLED) seedMcpPrincipalFromToken();
-
-  void runDriftCheckWithRetry()
-    .then((enabled) => {
-      if (!enabled) startProxyRecovery();
-    })
-    .catch((err) => {
-      logger.error('drift_check_error', { error: String(err) });
-      startProxyRecovery();
-    });
 
   const internal = Bun.serve({
     port: INTERNAL_PORT,
@@ -362,7 +344,6 @@ export function startGuardian(options: StartGuardianOptions = {}): GuardianServe
     direct,
     admin,
     stop() {
-      stopProxyRecovery();
       internal.stop();
       tlsPassthrough?.stop();
       direct.stop();

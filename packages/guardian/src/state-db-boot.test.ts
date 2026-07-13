@@ -10,10 +10,9 @@
  * before the module that reads it is loaded — here, before the guardian
  * subprocess is spawned).
  *
- * `OP_ASSISTANT_URL` points at a dead port so the boot-time drift guard just
- * leaves the `/oc` proxy disabled (no mock assistant needed) — the admin
- * listener (port GUARDIAN_ADMIN_PORT, `handleAdminListenerRequest`) works
- * regardless of proxy-enablement state.
+ * `OP_ASSISTANT_URL` points at a dead port (no mock assistant needed) — the
+ * admin listener (port GUARDIAN_ADMIN_PORT, `handleAdminListenerRequest`) works
+ * regardless of whether the assistant is reachable.
  */
 import { describe, test, expect, beforeAll, afterAll } from 'bun:test';
 import { Database } from 'bun:sqlite';

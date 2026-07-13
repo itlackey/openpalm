@@ -53,17 +53,6 @@ async function waitForGuardianReady(): Promise<void> {
     await Bun.sleep(100);
   }
   if (!ready) throw new Error(`guardian did not become ready on ${guardianUrl}`);
-
-  let proxyOn = false;
-  for (let i = 0; i < 50; i++) {
-    const r = await fetch(`${guardianUrl}/stats`, { headers: { authorization: `Bearer ${ADMIN_TOKEN}` } });
-    if (r.ok && (await r.json()).oc_proxy?.enabled === true) {
-      proxyOn = true;
-      break;
-    }
-    await Bun.sleep(100);
-  }
-  if (!proxyOn) throw new Error('guardian /oc proxy did not enable (drift guard)');
 }
 
 function spawnGuardian(): Subprocess {

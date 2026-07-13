@@ -447,10 +447,9 @@ async function routeAllowed(
  * POST /session/{id}/message and POST /session/{id}/prompt_async on the pinned
  * OpenCode version — `parts[].text` and `system` are the only free-text fields;
  * the rest (`messageID`, `model`, `agent`, `noReply`) are routing values, not
- * prose, so they are screened only for the rewrite whitelist, not moderated. If
- * OpenCode changes this shape on a version bump, the drift guard (§5, Stage 7)
- * fails the proxy route closed; keep this isolated and update it in lockstep
- * with OPENCODE_VERSION. Nothing else here parses bodies.
+ * prose, so they are screened only for the rewrite whitelist, not moderated.
+ * Keep this isolated and update it in lockstep with OPENCODE_VERSION if OpenCode
+ * changes this shape on a version bump. Nothing else here parses bodies.
  *
  * Fail-closed posture: an unparseable body is treated as having no extractable
  * text and screened as "" — moderation of empty text allows, so the upstream

@@ -119,10 +119,10 @@ beforeAll(async () => {
 
   for (let i = 0; i < 50; i++) {
     const r = await fetch(`${guardianUrl}/stats`, { headers: { authorization: `Bearer ${ADMIN_TOKEN}` } });
-    if (r.ok && (await r.json()).oc_proxy?.enabled === true) return;
+    if (r.ok) return;
     await Bun.sleep(100);
   }
-  throw new Error('guardian /oc proxy did not enable');
+  throw new Error('guardian internal listener did not become ready');
 });
 
 afterAll(() => {

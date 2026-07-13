@@ -154,17 +154,6 @@ async function waitForGuardianReady(guardianUrl: string, guardianProc: Subproces
     await Bun.sleep(100);
   }
   if (!ready) throw new Error(`guardian did not become ready on ${guardianUrl}`);
-
-  let proxyOn = false;
-  for (let i = 0; i < 50; i++) {
-    const r = await fetch(`${guardianUrl}/stats`, { headers: { authorization: `Bearer ${adminToken}` } });
-    if (r.ok && (await r.json()).oc_proxy?.enabled === true) {
-      proxyOn = true;
-      break;
-    }
-    await Bun.sleep(100);
-  }
-  if (!proxyOn) throw new Error("guardian /oc proxy did not enable (drift guard) — the /doc upstream call must have failed, e.g. missing/incorrect Authorization");
 }
 
 function ocCall(
@@ -281,14 +270,6 @@ describe("guardian upstream auth (subprocess, T42) — authenticates every upstr
     } catch {
       // best effort
     }
-  });
-
-  it("T42: the guardian becomes ready with the /oc proxy ENABLED (proves /doc drift-check carried auth)", async () => {
-    const resp = await fetch(`${guardianUrl}/stats`, { headers: { authorization: `Bearer ${adminToken}` } });
-    expect(resp.ok).toBe(true);
-    const stats = (await resp.json()) as { oc_proxy?: { enabled?: boolean } };
-    expect(stats.oc_proxy?.enabled).toBe(true);
-    expect(authByPath["/doc"]).toBe(EXPECTED_UPSTREAM_AUTH);
   });
 
   it("T42: a proxied POST /oc/session succeeds (proves the proxy path attaches upstream auth)", async () => {

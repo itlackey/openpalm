@@ -103,10 +103,10 @@ async function waitForGuardianReady(): Promise<void> {
     const resp = await fetch(`http://127.0.0.1:${internalPort}/stats`, {
       headers: { authorization: `Bearer ${TEST_ADMIN_TOKEN}` },
     });
-    if (resp.ok && (await resp.json()).oc_proxy?.enabled === true) return;
+    if (resp.ok) return;
     await Bun.sleep(100);
   }
-  throw new Error('guardian /oc proxy did not enable');
+  throw new Error('guardian internal listener did not become ready');
 }
 
 function startMockAssistant(): ReturnType<typeof Bun.serve> {
