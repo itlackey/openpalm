@@ -253,6 +253,15 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **UI-password rotation takes effect on the running server** (PR #564 second
+  retest P1-4): hooks.server.ts promotes the login password into
+  `process.env.OP_UI_LOGIN_PASSWORD` at startup and `getUiLoginPassword()` reads
+  env first, so an explicit rotation wrote the new password to disk but the
+  running host UI kept accepting only the old one (old=200, new=401) until a
+  restart. The `/api/setup/complete` route now syncs the live env to the
+  freshly-set password, so the new password authenticates immediately and old
+  sessions (signed with the previous password) are invalidated.
+
 - **Moving image tags are refreshed on deploy** (PR #564 second retest R8): the
   deploy always used `--pull missing`, which never refreshes an already-present
   moving tag like `latest`, so a moving-tag rerun could recreate the old digest.
