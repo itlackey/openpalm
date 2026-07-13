@@ -24,17 +24,29 @@ async function readBody(req: Request): Promise<JsonObject> {
   }
 }
 
-// Cache the admin token file read, keyed by path, so we don't hit the
-// filesystem on every admin request. A changed env path re-reads.
+// Cache the admin token file read so we don't hit the filesystem on every admin
+// request. PR #564 retest: key the cache on the file's mtime AS WELL AS its
+// path — rotating the token file's CONTENTS in place (same path) previously left
+// the OLD token valid and the NEW one rejected until a guardian restart, because
+// a path-only key never re-read. A changed path OR a changed mtime re-reads.
 let cachedTokenPath: string | undefined;
+let cachedTokenMtime = -1;
 let cachedToken = '';
 
 async function readAdminToken(): Promise<string> {
   const path = Bun.env.GUARDIAN_ADMIN_TOKEN_FILE ?? '';
-  if (path === cachedTokenPath) return cachedToken;
-  const raw = await Bun.file(path).text().catch(() => '');
+  const file = Bun.file(path);
+  let mtime = -1;
+  try {
+    mtime = file.lastModified; // ms; 0 for a missing file
+  } catch {
+    mtime = -1;
+  }
+  if (path === cachedTokenPath && mtime === cachedTokenMtime) return cachedToken;
+  const raw = await file.text().catch(() => '');
   cachedToken = raw.replace(/[\r\n]+$/, '');
   cachedTokenPath = path;
+  cachedTokenMtime = mtime;
   return cachedToken;
 }
 
@@ -66,10 +78,23 @@ export async function handleAdminRequest(req: Request, requestId: string): Promi
   if (url.pathname === '/admin/principals' && req.method === 'POST') {
     const body = await readBody(req);
     const id = typeof body.id === 'string' ? body.id.trim().toLowerCase() : '';
-    const kind = body.kind === 'direct' ? 'direct' : 'portal';
     const token = typeof body.token === 'string' ? body.token : '';
     const label = typeof body.label === 'string' ? body.label : id;
     if (!id || !token) return json(400, { error: 'id_and_token_required', requestId });
+    // PR #564 retest: the principal id is the Basic-auth USERNAME. HTTP Basic
+    // splits `user:pass` on the FIRST colon, so an id containing ':' (or any
+    // whitespace/control char) can never authenticate — reject it up front
+    // instead of minting a dead principal. Portal/MCP/pairing ids all fit this
+    // conservative charset.
+    if (!/^[a-z0-9._-]+$/.test(id)) {
+      return json(400, { error: 'invalid_principal_id', requestId });
+    }
+    // An explicitly-supplied kind must be one we recognize — silently coercing an
+    // unknown kind to 'portal' (the old default) minted the WRONG principal type.
+    if (body.kind !== undefined && body.kind !== 'portal' && body.kind !== 'direct') {
+      return json(400, { error: 'invalid_kind', requestId });
+    }
+    const kind = body.kind === 'direct' ? 'direct' : 'portal';
     // PR #564 retest P3-1: create-only. A colliding id must NOT rotate the
     // existing principal's token (pairing mints fresh device credentials, and a
     // silent overwrite would revoke a live device). Rotation is the explicit

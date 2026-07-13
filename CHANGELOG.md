@@ -253,6 +253,19 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **Guardian admin-token rotation takes effect without a restart** (PR #564
+  second retest): `readAdminToken` cached the token file keyed only by path, so
+  rotating the file's contents in place left the old token valid and the new one
+  rejected until the guardian restarted. The cache now keys on the file's mtime
+  as well, so an in-place rotation is picked up immediately.
+
+- **Guardian principal creation validates id and kind** (PR #564 second retest):
+  `POST /admin/principals` now rejects a principal id containing a colon (or any
+  char outside `[a-z0-9._-]`) with `400 invalid_principal_id` — the id is the
+  Basic-auth username, and a colon can never round-trip through `user:pass`
+  parsing — and rejects an explicitly-supplied unknown `kind` with `400
+  invalid_kind` instead of silently minting a `portal` principal.
+
 - **Rootless smoke pre-run cleanup is profile-aware** (PR #564 retest P2-7): the
   pre-run reset in `rootless-ownership-smoke.sh` ran a plain profile-unaware
   `docker compose down`, so a prior `--keep` run's profile-gated guardian/portal
