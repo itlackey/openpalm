@@ -253,6 +253,14 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **mDNS honors the QU (unicast-response) bit** (PR #564 retest P3-5): the
+  responder now parses the RFC 6762 §5.4 unicast-response bit off each question's
+  qclass and, when a querier on port 5353 sets it, answers by unicast to the
+  querier instead of multicasting — but with a normally-shaped response (ID 0,
+  no echoed question, cache-flush bit, full TTL), distinct from the legacy-
+  unicast shaping still reserved for non-5353 source ports. Plain multicast
+  queries are unchanged.
+
 - **mDNS advertisement follows the effective config compose deploys** (PR #564
   retest P2-4): `reconcileMdnsResponder` (and the read-only `GET /api/host/stack`
   status echo) now resolve advertisement against fresh stack.env layered over

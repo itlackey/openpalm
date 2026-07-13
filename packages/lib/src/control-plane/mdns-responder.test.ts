@@ -93,12 +93,12 @@ function buildQuestion(name: string, type: number, qclass = CLASS_IN): number[] 
 function buildQueryPacket(
   name: string,
   type: number,
-  opts: { id?: number; flags?: number } = {},
+  opts: { id?: number; flags?: number; qclass?: number } = {},
 ): Uint8Array {
   const id = opts.id ?? 0;
   const flags = opts.flags ?? 0;
   const header = buildHeader(id, flags, 1);
-  const question = buildQuestion(name, type);
+  const question = buildQuestion(name, type, opts.qclass ?? CLASS_IN);
   return new Uint8Array([...header, ...question]);
 }
 
@@ -496,7 +496,19 @@ describe("resolveMdnsStatus", () => {
 describe("parseDnsQuestions", () => {
   test("decodes a standard A question", () => {
     const packet = buildQueryPacket("OpenPalm.local", TYPE_A);
-    expect(parseDnsQuestions(packet)).toEqual([{ name: "openpalm.local", type: TYPE_A, qclass: CLASS_IN }]);
+    expect(parseDnsQuestions(packet)).toEqual([
+      { name: "openpalm.local", type: TYPE_A, qclass: CLASS_IN, unicastResponse: false },
+    ]);
+  });
+
+  // PR #564 retest P3-5: the top bit of the qclass is the RFC 6762 §5.4 QU
+  // (unicast-response) bit — parse must surface it and strip it from qclass so
+  // matching/echo see the real class (IN).
+  test("decodes the QU (unicast-response) bit and masks it off qclass", () => {
+    const packet = buildQueryPacket("openpalm.local", TYPE_A, { qclass: CLASS_IN | 0x8000 });
+    expect(parseDnsQuestions(packet)).toEqual([
+      { name: "openpalm.local", type: TYPE_A, qclass: CLASS_IN, unicastResponse: true },
+    ]);
   });
 
   test("returns null for a response packet (QR=1)", () => {
@@ -728,6 +740,54 @@ describe("startMdnsResponder", () => {
     assertDefined(answer);
     assertDefined(answer.rdata);
     expect(Array.from(answer.rdata)).toEqual([192, 168, 1, 20]);
+    handle?.stop();
+  });
+
+  // PR #564 retest P3-5: a query from the mDNS port with the QU bit set (RFC
+  // 6762 §5.4) must be answered by UNICAST to the querier — but with a NORMAL-
+  // shaped response (ID 0, qdcount 0, cache-flush set, full TTL), not the
+  // legacy shaping reserved for non-5353 source ports.
+  test("QU bit on a 5353-source query routes the answer unicast, normally shaped", () => {
+    const { factory, sockets } = createStubSocketFactory();
+    const handle = startMdnsResponder([makeAssistantAdvert()], { createSocket: factory });
+    const [socket] = sockets;
+    assertDefined(socket);
+    socket.sends.length = 0;
+
+    socket.emitMessage(buildQueryPacket("openpalm.local", TYPE_A, { qclass: CLASS_IN | 0x8000, id: 0x4242 }), {
+      address: "192.168.1.77",
+      port: MDNS_PORT,
+    });
+
+    expect(socket.sends.length).toBeGreaterThanOrEqual(1);
+    const response = socket.sends[socket.sends.length - 1];
+    assertDefined(response);
+    // Unicast to the querier, NOT the multicast group.
+    expect(response.address).toBe("192.168.1.77");
+    expect(response.port).toBe(MDNS_PORT);
+    const decoded = decodeMdnsPacket(response.msg);
+    // Normal shaping (not legacy): ID 0, no echoed question, cache-flush + full TTL.
+    expect(decoded.id).toBe(0);
+    expect(decoded.qdcount).toBe(0);
+    const answer = decoded.answers.find((a) => a.type === TYPE_A);
+    assertDefined(answer);
+    expect((answer.qclass & 0x8000) !== 0).toBe(true);
+    expect(answer.ttl).toBe(120);
+    handle?.stop();
+  });
+
+  test("a plain 5353-source query (QU bit clear) is still answered by multicast", () => {
+    const { factory, sockets } = createStubSocketFactory();
+    const handle = startMdnsResponder([makeAssistantAdvert()], { createSocket: factory });
+    const [socket] = sockets;
+    assertDefined(socket);
+    socket.sends.length = 0;
+
+    socket.emitMessage(buildQueryPacket("openpalm.local", TYPE_A), { address: "192.168.1.77", port: MDNS_PORT });
+
+    const response = socket.sends[socket.sends.length - 1];
+    assertDefined(response);
+    expect(response.address).toBe(MDNS_ADDR);
     handle?.stop();
   });
 

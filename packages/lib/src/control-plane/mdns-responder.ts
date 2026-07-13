@@ -36,6 +36,13 @@ const TYPE_SRV = 33;
 const TYPE_ANY = 255;
 const CLASS_IN = 1;
 const CACHE_FLUSH_BIT = 0x8000;
+/**
+ * RFC 6762 §5.4: the top bit of a QUESTION's qclass is the unicast-response
+ * (QU) bit. A querier that sets it is asking for the answer by unicast even
+ * though it queried from the mDNS port. Same bit position as CACHE_FLUSH_BIT,
+ * but that one lives on RESOURCE RECORDS — this one only on questions.
+ */
+const QU_BIT = 0x8000;
 const TTL = 120;
 /** RFC 6762 §6.7: legacy-unicast responses use a short TTL (≤10s). */
 const LEGACY_UNICAST_TTL = 10;
@@ -244,7 +251,18 @@ export function resolveMdnsStatus(
 //    the encoder trivial; the parser follows compression pointers defensively
 //    since it must handle arbitrary incoming query bytes) ──────────────────
 
-export type DnsQuestion = { name: string; type: number; qclass: number };
+export type DnsQuestion = {
+  name: string;
+  type: number;
+  /** The class WITHOUT the QU bit (masked off into {@link unicastResponse}). */
+  qclass: number;
+  /**
+   * RFC 6762 §5.4 QU bit — the querier requested a unicast response. Always set
+   * by {@link parseDnsQuestions}; optional so hand-built questions (the answer
+   * builder never reads it) need not specify it.
+   */
+  unicastResponse?: boolean;
+};
 
 function readU16(buf: Uint8Array, offset: number): number {
   if (offset < 0 || offset + 2 > buf.length) throw new RangeError("mdns: read past end of buffer");
@@ -300,8 +318,13 @@ export function parseDnsQuestions(msg: Uint8Array): DnsQuestion[] | null {
       const decoded = decodeName(msg, pos);
       if (!decoded) return null;
       const type = readU16(msg, decoded.next);
-      const qclass = readU16(msg, decoded.next + 2);
-      questions.push({ name: decoded.name.toLowerCase(), type, qclass });
+      const rawClass = readU16(msg, decoded.next + 2);
+      questions.push({
+        name: decoded.name.toLowerCase(),
+        type,
+        qclass: rawClass & ~QU_BIT,
+        unicastResponse: (rawClass & QU_BIT) !== 0,
+      });
       pos = decoded.next + 4;
     }
     return questions;
@@ -549,10 +572,17 @@ function createResponder(
       try {
         const questions = parseDnsQuestions(msg);
         if (!questions) return;
+        // A query from a non-5353 source port is a legacy-unicast resolver
+        // (RFC 6762 §6.7): reply unicast AND legacy-shaped (echo the question,
+        // short TTL, no cache-flush bit). A query from port 5353 with the QU
+        // bit set (§5.4) also wants a unicast reply, but a NORMAL-shaped one
+        // (ID 0, full TTL, cache-flush) — it is a regular mDNS response merely
+        // delivered by unicast. Anything else is answered by multicast.
         const legacy = rinfo.port !== MDNS_PORT;
+        const wantsUnicast = legacy || questions.some((q) => q.unicastResponse);
         const answer = buildMdnsAnswer(questions, adverts, legacy ? { queryId: readU16(msg, 0), legacy: true } : {});
         if (!answer) return;
-        if (legacy) safeSend(answer, rinfo.port, rinfo.address);
+        if (wantsUnicast) safeSend(answer, rinfo.port, rinfo.address);
         else safeSend(answer, MDNS_PORT, MDNS_ADDR);
       } catch (err) {
         logger.warn("mdns: message handling failed", { error: String(err), names });
