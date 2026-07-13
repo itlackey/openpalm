@@ -6,7 +6,7 @@
  * same-origin proxy, no op_session cookie. These tests pin:
  *   - base URL + API path joining (trailing slash / path-prefix safe),
  *   - Basic auth header derived from connection credentials (username
- *     defaults to 'openpalm', mirroring the host app's probeEndpoint()),
+ *     defaults to 'opencode' — OpenCode's server default (PR #564 P2-2)),
  *   - Bearer mode,
  *   - cookie hygiene: every request sets credentials 'omit' and never sends
  *     a cookie header (§6.8/§8.10 — the client holds per-connection
@@ -55,7 +55,7 @@ describe('transport request shaping (P5b item 1)', () => {
     expect(calls[0].headers.get('authorization')).toBe(`Basic ${btoa('alice:s3cret')}`);
   });
 
-  test('basic mode defaults the username to "openpalm" when only a password is held', async () => {
+  test('basic mode defaults the username to "opencode" when only a password is held', async () => {
     // Mirrors the host app's probeEndpoint() default so credentials minted by
     // the host stack (guardian Basic auth, #435) work without a username field.
     const { createTransport } = await loadTransportModule();
@@ -66,7 +66,7 @@ describe('transport request shaping (P5b item 1)', () => {
       fetch
     });
     await transport.listSessions();
-    expect(calls[0].headers.get('authorization')).toBe(`Basic ${btoa('openpalm:hunter2')}`);
+    expect(calls[0].headers.get('authorization')).toBe(`Basic ${btoa('opencode:hunter2')}`);
   });
 
   test('bearer mode sends a Bearer Authorization header', async () => {
