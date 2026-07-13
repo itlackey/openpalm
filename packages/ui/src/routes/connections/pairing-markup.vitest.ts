@@ -31,6 +31,17 @@ describe('connections +page.svelte — pairing panel wiring (#511)', () => {
     expect(src).toMatch(/shown only once|won't be shown again/i);
   });
 
+  // PR #564 retest P3-3: qrSvg is string|null; the panel must fall back to the
+  // text code (not render a null SVG) when the host could not generate the QR.
+  test('falls back to the text code when qrSvg is null', () => {
+    const src = pageSource();
+    // The QR block is conditional on a truthy qrSvg, with an else fallback.
+    expect(src).toMatch(/\{#if pairingQrSvg\}/);
+    expect(src).toMatch(/\{:else\}/);
+    // State typed to allow null (never a bare '' that hides the null case).
+    expect(src).toMatch(/pairingQrSvg\s*=\s*\$state<string \| null>/);
+  });
+
   test('renders an Install OpenPalm app affordance gated by the reachability probe', () => {
     const src = pageSource();
     expect(src).toMatch(/probeClientApp\(/);

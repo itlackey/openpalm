@@ -253,6 +253,12 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **Pairing QR is `string | null` end-to-end with a text-code fallback** (PR
+  #564 retest P3-3): the host UI pairing helper and `/connections` panel now type
+  `qrSvg` as `string | null` (matching the route and spec) and render the text
+  pairing code with an explanatory note instead of a broken/blank QR when the
+  host could not generate the SVG — pairing still works without the image.
+
 - **Pairing principal insertion is create-only** (PR #564 retest P3-1): the
   guardian admin `POST /admin/principals` now uses a create-only insert — a
   colliding id is refused with `409 principal_exists` and the existing

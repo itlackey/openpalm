@@ -71,7 +71,10 @@ export async function setActiveConnection(
 export async function mintPairingCode(input: {
   label: string;
   url: string;
-}): Promise<{ code: string; principalId: string; qrSvg: string; warnings: string[] }> {
+}): Promise<{ code: string; principalId: string; qrSvg: string | null; warnings: string[] }> {
+  // PR #564 retest P3-3: `qrSvg` is `string | null` — the route returns null when
+  // SVG rendering fails, and the client must not orphan the (usable) text code by
+  // typing it as a non-null string. Callers fall back to the code on null.
   const res = await requireOk(await request('POST', '/api/connections/pairing', input));
-  return (await res.json()) as { code: string; principalId: string; qrSvg: string; warnings: string[] };
+  return (await res.json()) as { code: string; principalId: string; qrSvg: string | null; warnings: string[] };
 }

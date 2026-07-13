@@ -51,7 +51,9 @@
   let pairingSubmitting = $state(false);
   let pairingError = $state('');
   let pairingCode = $state('');
-  let pairingQrSvg = $state('');
+  // PR #564 retest P3-3: null when the host could not render the QR SVG — the
+  // text code below is always shown, so pairing still works without a QR.
+  let pairingQrSvg = $state<string | null>(null);
   let pairingWarnings = $state<string[]>([]);
   let pairingCopied = $state(false);
 
@@ -132,7 +134,7 @@
   function donePairing(): void {
     pairingMode = 'idle';
     pairingCode = '';
-    pairingQrSvg = '';
+    pairingQrSvg = null;
     pairingWarnings = [];
     pairingCopied = false;
   }
@@ -463,7 +465,14 @@
           this stack's guardian if needed.
         </p>
 
-        <div class="pairing-qr">{@html pairingQrSvg}</div>
+        {#if pairingQrSvg}
+          <div class="pairing-qr">{@html pairingQrSvg}</div>
+        {:else}
+          <p class="alert" role="status">
+            The QR image couldn't be generated on this stack — scan isn't available, but the
+            pairing code below works exactly the same. Copy it into the new device.
+          </p>
+        {/if}
 
         <div class="field">
           <span id="pairing-code-label">Pairing code</span>
