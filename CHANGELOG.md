@@ -293,17 +293,6 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   credentials now come only from the explicit spec; an omitted credential leaves
   the persisted secret untouched.
 
-- **mTLS relay overflow now sheds capacity immediately + bounds idle/stalled
-  connections** (PR #564 second retest P1-5): an over-budget relay write used to
-  `socket.end()` and then let the graceful tail-drain keep a blocked connection
-  alive, so `activeConnections` and the aggregate byte budget stayed pinned and a
-  fresh client was refused. Overflow now hard-sheds via `shedClient`, which
-  releases the buffered bytes and the connection slot **synchronously** (no
-  graceful drain — we shed precisely because we are over budget). A new
-  post-handshake activity timer, reset on every relayed byte and successful
-  drain, reaps a verified connection that makes no progress — bounding both an
-  idle authenticated connection and a tail-drain blocked on a dead reader.
-
 - **Error-body and documentation contract fixes** (PR #564 second retest): the
   global Host-header and Origin rejections now include `requestId` in their JSON
   bodies (matching the documented "every error body carries requestId"
@@ -379,16 +368,6 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   transparently retries with a freshly-drawn id on the (astronomically unlikely)
   409, and gives up with a distinct conflict error only after exhausting its
   attempts.
-
-- **Guardian mTLS passthrough bounds aggregate memory and connection count**
-  (PR #564 retest P2-8): the per-connection 8 MiB relay-queue cap left N slow
-  peers able to buffer N × 8 MiB, and nothing capped the number of concurrent
-  sockets. A shared aggregate relay budget (64 MiB across all connections) now
-  sheds the connection that would push total buffered bytes over the ceiling,
-  and a concurrent-connection cap (512) drops a socket accepted past the limit
-  before any handshake work. Both release deterministically on close/error —
-  the aggregate reclaims a connection's buffered bytes and the connection cap
-  frees its slot.
 
 - **Guardian proxy audit records carry the verified client IP** (PR #564 retest
   P2-9): every `oc_proxy` denial record and the `oc_event_open` /
