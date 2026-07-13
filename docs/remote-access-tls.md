@@ -204,14 +204,12 @@ those default paths.
   plain-HTTP `.local` names for same-LAN discovery. That's a LAN-local
   affordance only — once you TLS-front the guardian, share the
   `ts.net`/domain HTTPS URL with remote clients, not the `.local` name.
-- **mTLS on the direct listener (#435).** The direct listener (3830) can
-  optionally terminate **mTLS** as an adapter transport identity (see
-  [`docs/technical/guardian-direct-mtls.md`](technical/guardian-direct-mtls.md)).
-  A browser TLS front (Tailscale `serve` or Caddy, above) and guardian-side
-  mTLS are **mutually exclusive on the same listener** — the proxy holds no
-  client certificate, so it can't complete an mTLS handshake with the
-  guardian. If you need both a browser-facing TLS front and mTLS-authenticated
-  adapters, see the client-cert discussion in the mTLS design note.
+- **TLS/mTLS termination is an infrastructure concern.** The guardian serves
+  plain HTTP on its direct listener (3830); it does not terminate TLS itself.
+  If you want transport encryption or client-certificate (mTLS) authentication,
+  terminate it at the reverse proxy you front the guardian with (Tailscale
+  `serve`, Caddy `tls { client_auth }`, nginx `ssl_verify_client`, etc.) and
+  forward plain HTTP to the guardian on the trusted network.
 
 ## Non-goals
 

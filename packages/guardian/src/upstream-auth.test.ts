@@ -5,7 +5,7 @@
  * not exist yet in `./config.ts` — this import fails, so EVERY test below
  * (pure and subprocess) fails at collection.
  *
- * Pure half mirrors the `parseDirectTlsEnv` fail-closed idiom (no subprocess).
+ * Pure half is a fail-closed config parse (no subprocess).
  * Subprocess half mirrors `proxy.test.ts`'s spawn harness: temp secret files,
  * a mock assistant (`Bun.serve`), `waitForGuardianReady`.
  */

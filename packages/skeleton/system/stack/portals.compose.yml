@@ -113,13 +113,9 @@ services:
       GUARDIAN_MODERATION_THRESHOLD: ${GUARDIAN_MODERATION_THRESHOLD:-3}
       GUARDIAN_AUDIT_PATH: /opt/openpalm/logs/guardian-audit.log
       GUARDIAN_DIRECT_INGRESS: ${GUARDIAN_DIRECT_INGRESS:-false}
-      # Opt-in mTLS adapter transport identity on the direct listener (3830).
-      # All three must be set (paths to files the operator grants via a
-      # custom.compose.yml secrets overlay — see docs/technical/guardian-direct-mtls.md);
-      # empty = off. Partial config is a fail-closed boot error.
-      GUARDIAN_TLS_CERT_FILE: ${GUARDIAN_TLS_CERT_FILE:-}
-      GUARDIAN_TLS_KEY_FILE: ${GUARDIAN_TLS_KEY_FILE:-}
-      GUARDIAN_MTLS_CA_FILE: ${GUARDIAN_MTLS_CA_FILE:-}
+      # TLS/mTLS termination for the direct listener (3830), if wanted, is an
+      # operator infrastructure concern — front the guardian with a reverse
+      # proxy. The guardian itself serves plain HTTP and does not terminate TLS.
       # I4: default to the SAME shipped browser client origins the assistant
       # entrypoint already auto-seeds into OpenCode's CORS allowlist (see
       # containers/assistant/entrypoint.sh start_opencode) — the assistant

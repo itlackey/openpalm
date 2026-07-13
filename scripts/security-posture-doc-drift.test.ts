@@ -128,19 +128,8 @@ describe("S.7 — x-openpalm-user trust model documented plainly (rev3-F4)", () 
   it("core-principles.md states the header is trusted from an authenticated principal", () => {
     expect(corePrinciples).toMatch(/x-openpalm-user/);
   });
-});
 
-// Spec 435: opt-in mTLS adapter transport identity on the guardian direct
-// listener. RED: core-principles.md has not been edited yet.
-describe("435 — opt-in mTLS transport identity documented on the direct listener", () => {
-  it("core-principles.md documents opt-in mTLS transport identity on the direct listener", () => {
-    expect(corePrinciples).toMatch(/GUARDIAN_MTLS_CA_FILE/);
-    expect(corePrinciples).toMatch(/transport identity/i);
-  });
-
-  it("mTLS prose uses current terminology (no channel_lan resurrection)", () => {
-    // Green-on-arrival regression pin (#490 already removed channel_lan) —
-    // guards against implementing this issue from the stale issue text.
+  it("does not resurrect the removed channel_lan terminology (#490)", () => {
     expect(corePrinciples).not.toMatch(/channel_lan/);
   });
 });

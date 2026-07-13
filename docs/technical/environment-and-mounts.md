@@ -182,9 +182,6 @@ Key env:
 | `GUARDIAN_MODERATION_PORT` | `4097` | Loopback port the entrypoint starts the moderator on |
 | `GUARDIAN_MODERATION_THRESHOLD` | `3` | Heuristic risk score at/above which a message escalates to the model |
 | `GUARDIAN_MODERATION_TIMEOUT_MS` | `4000` | Per-classification timeout; on expiry the message fails closed |
-| `GUARDIAN_TLS_CERT_FILE` | unset (off) | Container path to the direct listener's TLS server certificate (PEM); typically `/run/secrets/op_guardian_tls_cert`, granted via a `custom.compose.yml` overlay (see `docs/technical/guardian-direct-mtls.md`). Must be set together with the two vars below or none at all — all three or a boot error |
-| `GUARDIAN_TLS_KEY_FILE` | unset (off) | Container path to the matching private key (PEM); typically `/run/secrets/op_guardian_tls_key` |
-| `GUARDIAN_MTLS_CA_FILE` | unset (off) | Container path to the operator's adapter CA certificate (PEM); typically `/run/secrets/op_guardian_mtls_ca`. When all three are set, the direct listener (3830 only — internal 8080 and admin 3831 stay plain HTTP) terminates mTLS as an adapter transport identity; the Principal still comes from Basic auth |
 
 Notes:
 
@@ -283,9 +280,8 @@ Notes:
   protected" this gives OpenAI-compatible LAN clients a real, credentialed
   surface out of the box.
 - `GUARDIAN_DIRECT_INGRESS` is never touched by any preset — the direct
-  listener stays 404-closed until the operator opts in via the documented
-  provisioning flow (`docs/technical/guardian-direct-mtls.md` and friends).
-  Presets configure *exposure*, not *ingress enablement*.
+  listener stays 404-closed until the operator opts in. Presets configure
+  *exposure*, not *ingress enablement*.
 - mDNS is delivered entirely by the host control-plane responder
   (`packages/lib/src/control-plane/mdns-responder.ts`, #488) — see
   `docs/technical/network-partitioning-d5a.md` for the preset → mDNS mapping
