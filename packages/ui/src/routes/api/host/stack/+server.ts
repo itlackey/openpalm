@@ -18,6 +18,7 @@ import {
   recordProjectRename,
   reconcileMdnsResponder,
   resolveMdnsStatus,
+  resolveEffectiveMdnsEnv,
   detectNetworkPreset,
 } from '@openpalm/lib';
 import { getState } from '$lib/server/state.js';
@@ -58,7 +59,12 @@ export const GET: RequestHandler = async (event) => {
       projectName: env.OP_PROJECT_NAME?.trim() || DEFAULT_PROJECT_NAME,
       lanExposureEnabled: (env.OP_ASSISTANT_BIND_ADDRESS?.trim() || DEFAULT_ASSISTANT_BIND_ADDRESS) === LAN_ASSISTANT_BIND_ADDRESS,
       stackEnvPath: 'knowledge/env/stack.env',
-      mdns: resolveMdnsStatus(env),
+      // PR #564 retest P2-4: report the status against the effective config
+      // compose deploys (stack.env layered over the host process env), so this
+      // read matches what the responder actually advertises and what the PUT
+      // reconcile returns — a process-env-only bind override can't make GET and
+      // PUT disagree.
+      mdns: resolveMdnsStatus(resolveEffectiveMdnsEnv(env, process.env)),
       // #563 — read-only surfacing of the active network access preset (D8);
       // null means custom/hand-tuned. Preset SWITCHING stays in the wizard
       // (Setup → rerun) — this tab is drift detection only.

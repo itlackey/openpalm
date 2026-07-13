@@ -253,6 +253,18 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **mDNS advertisement follows the effective config compose deploys** (PR #564
+  retest P2-4): `reconcileMdnsResponder` (and the read-only `GET /api/host/stack`
+  status echo) now resolve advertisement against fresh stack.env layered over
+  the host process env — the same precedence `docker compose` uses (it runs with
+  `env: { ...process.env, ...<parsed stack.env> }` plus `--env-file`). A
+  process-env-only bind override that Compose honors (a leftover shell export
+  absent from stack.env) is now reflected in what the responder advertises, and
+  a fresh stack.env pin always wins over a stale promoted process-env copy, so
+  the advertised status can no longer disagree with the running stack in either
+  direction. `OP_MDNS=off` in the process env remains a hard responder-only kill
+  switch on top.
+
 - **Network-preset host-env validation covers every managed key** (PR #564
   retest P2-6): `validateNetworkPresetEnv` now fails closed on a host-process
   override that would widen exposure past the target preset for ANY managed key

@@ -646,12 +646,64 @@ export function startMdnsResponder(
 let active: { key: string; handle: MdnsResponderHandle; silentClose: () => void } | null = null;
 
 /**
- * Reconcile the live responder against the current stack.env (read fresh on
- * every call — never process.env for the gate vars, since hooks.server.ts's
- * startup promotion is only-if-unset and would go stale after a PUT). The
- * single process-env exception: `OP_MDNS` in `processEnv` force-disables
- * (operator/test kill switch), checked alongside the stack.env value. Never
- * throws. Returns the effective `MdnsStatus` so route handlers can echo it.
+ * The env keys whose values decide which mDNS records emit (bind gates, ports,
+ * project name, ingress + kill switch). Only these are pulled from the host
+ * process env when composing the effective config — unrelated process vars are
+ * ignored.
+ */
+const MDNS_COMPOSE_KEYS = [
+  "OP_PROJECT_NAME",
+  "OP_MDNS",
+  "GUARDIAN_DIRECT_INGRESS",
+  "OP_BIND_ADDRESS",
+  "OP_ASSISTANT_BIND_ADDRESS",
+  "OP_GUARDIAN_PORT",
+  "OP_ASSISTANT_PORT",
+] as const;
+
+/**
+ * Build the config the responder must advertise against so it agrees with what
+ * `docker compose` actually deploys. PR #564 retest P2-4: the deploy runs
+ * compose with `env: { ...process.env, ...<parsed stack.env> }` (docker.ts) and
+ * `--env-file`, so interpolation resolves each `${VAR}` from stack.env when it
+ * defines the key, else from the host process env. A key present in the host
+ * process but absent from stack.env (a leftover `OP_BIND_ADDRESS` shell export)
+ * therefore reaches the containers and exposes a service — yet the old reconcile
+ * read stack.env alone and never saw it, advertising a status that disagreed
+ * with the running stack in both directions.
+ *
+ * Mirror that layering exactly: process env fills the gaps, fresh stack.env
+ * wins every key it defines (so hooks.server.ts's only-if-unset promotion can
+ * never go stale — the fresh stack.env value always overrides the promoted
+ * process-env copy). `OP_MDNS=off` in the process env stays a hard override on
+ * top: it force-disables the responder even against a stack.env that enables
+ * mDNS, because the responder — not compose — is the sole consumer of that gate.
+ */
+export function resolveEffectiveMdnsEnv(
+  stackEnv: Record<string, string | undefined>,
+  processEnv: Record<string, string | undefined>,
+): Record<string, string | undefined> {
+  const effective: Record<string, string | undefined> = {};
+  for (const key of MDNS_COMPOSE_KEYS) {
+    const stackVal = stackEnv[key];
+    effective[key] = stackVal !== undefined ? stackVal : processEnv[key];
+  }
+  // Carry any other stack.env keys through unchanged (future-proofing readers
+  // that consult keys outside MDNS_COMPOSE_KEYS), without letting process env
+  // leak in for them.
+  for (const [key, value] of Object.entries(stackEnv)) {
+    if (!(key in effective)) effective[key] = value;
+  }
+  if (isMdnsOffToken(processEnv.OP_MDNS)) effective.OP_MDNS = "off";
+  return effective;
+}
+
+/**
+ * Reconcile the live responder against the effective config compose deploys —
+ * fresh stack.env layered over the host process env for the mDNS-relevant keys
+ * (see {@link resolveEffectiveMdnsEnv}), never stack.env alone. `OP_MDNS` in
+ * `processEnv` force-disables (operator/test kill switch). Never throws.
+ * Returns the effective `MdnsStatus` so route handlers can echo it.
  */
 export function reconcileMdnsResponder(
   homeDir: string,
@@ -671,14 +723,14 @@ export function reconcileMdnsResponder(
   }
 
   const processEnv = deps.processEnv ?? process.env;
-  const effectiveEnv = isMdnsOffToken(processEnv.OP_MDNS) ? { ...env, OP_MDNS: "off" } : env;
+  const effectiveEnv = resolveEffectiveMdnsEnv(env, processEnv);
 
   try {
     const adverts = resolveMdnsAdvertisements(effectiveEnv, deps.hostIpv4);
     const key = JSON.stringify(adverts);
 
     if (active && active.key === key) {
-      return resolveMdnsStatus(effectiveEnv);
+      return resolveMdnsStatus(effectiveEnv, deps.hostIpv4);
     }
 
     if (active) {
@@ -698,7 +750,7 @@ export function reconcileMdnsResponder(
     logger.warn("mdns: reconcile failed", { error: String(err) });
   }
 
-  return resolveMdnsStatus(effectiveEnv);
+  return resolveMdnsStatus(effectiveEnv, deps.hostIpv4);
 }
 
 /** Test-only: stop the active responder (no goodbye) and clear the singleton. */
