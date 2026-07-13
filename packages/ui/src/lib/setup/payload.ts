@@ -33,7 +33,13 @@ export interface SetupVoicePayload {
 export interface SetupPayload {
   version: 2;
   addons: Record<string, boolean>;
-  security: { uiLoginPassword: string };
+  /**
+   * PR #564 P1-1: `uiLoginPassword` is OPTIONAL. On an unchanged rerun it is
+   * OMITTED (the wizard never generates/sends a replacement the operator never
+   * saw), and the server preserves the existing secret. A fresh install (or an
+   * explicit change) sends it and it must be >= 8 chars.
+   */
+  security: { uiLoginPassword?: string };
   connections: SetupCapability[];
   llm?: { provider: string; model: string; baseUrl: string };
   embedding?: { provider: string; model: string; dims: number; baseUrl: string };
@@ -63,6 +69,9 @@ export interface SetupPayloadInput {
   selectedOllamaProfile: string;
   portalSelection: Record<string, boolean | PortalState>;
   uiLoginPassword: string;
+  /** PR #564 P1-1: true on an unchanged rerun — omit uiLoginPassword so the
+   *  server preserves the existing secret instead of rotating it. */
+  keepExistingUiLoginPassword?: boolean;
   imageTag: string;
   hostAkmEnabled: boolean;
   /** #563 — chosen network access preset; null means "don't touch network config" (rerun over a custom/undetected env, D7). */
@@ -97,7 +106,7 @@ export function buildSetupPayload(input: SetupPayloadInput): SetupPayload {
   const {
     modelSelection, verifiedProviders, providerState, ollamaEnabled, hostLocalLlmRunning,
     persistedVoiceTts, persistedVoiceStt, selectedVoiceProfile, selectedOllamaProfile,
-    portalSelection, uiLoginPassword, imageTag, hostAkmEnabled, networkPreset, opencodePassword,
+    portalSelection, uiLoginPassword, keepExistingUiLoginPassword, imageTag, hostAkmEnabled, networkPreset, opencodePassword,
   } = input;
 
   const llm = modelSelection.llm;
@@ -152,7 +161,9 @@ export function buildSetupPayload(input: SetupPayloadInput): SetupPayload {
   const result: SetupPayload = {
     version: 2,
     addons,
-    security: { uiLoginPassword },
+    // PR #564 P1-1: omit the password on an unchanged rerun so the server keeps
+    // the existing secret rather than rotating it to a value the operator never saw.
+    security: keepExistingUiLoginPassword ? {} : { uiLoginPassword },
     connections: capabilities,
   };
 
@@ -304,7 +315,23 @@ export function parseSetupConfig(data: RawSetupConfig): PartialSetupState {
   if (data.ollama?.selectedProfile && typeof data.ollama.selectedProfile === 'string') {
     result.selectedOllamaProfile = data.ollama.selectedProfile;
   }
-  result.portalCredentials = data.portalCredentials ?? {};
+  // PR #564 P1-2: current-config returns secret-PRESENCE metadata (objects like
+  // `{ envKey, present }`), never plaintext. Keep only genuine STRING values so
+  // a metadata object can never reach a string credential field (where it would
+  // serialize as "[object Object]" and corrupt the persisted secret). In
+  // practice this yields an empty map on rerun — presence-only creds stay empty
+  // (keep-existing) and are omitted from the payload.
+  const rawPortalCreds = data.portalCredentials ?? {};
+  const cleanedPortalCreds: Record<string, Record<string, string>> = {};
+  for (const [portal, fields] of Object.entries(rawPortalCreds)) {
+    if (!fields || typeof fields !== 'object') continue;
+    const stringFields: Record<string, string> = {};
+    for (const [field, value] of Object.entries(fields)) {
+      if (typeof value === 'string') stringFields[field] = value;
+    }
+    if (Object.keys(stringFields).length > 0) cleanedPortalCreds[portal] = stringFields;
+  }
+  result.portalCredentials = cleanedPortalCreds;
 
   // #563 — network access preset (D7/D8). Only set the field when the
   // response carries a `network` key at all; an unrecognized/absent preset

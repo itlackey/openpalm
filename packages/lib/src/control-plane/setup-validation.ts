@@ -61,7 +61,11 @@ function validateNetwork(body: Record<string, unknown>, errors: string[]): void 
 function validateSecurity(body: Record<string, unknown>, errors: string[]): void {
   const security = requireObj(body.security, "security object is required", errors);
   if (!security) return;
-  if (!requireStr(security, "uiLoginPassword", "security.uiLoginPassword is required and must be a non-empty string", errors)) return;
+  // PR #564 P1-1: uiLoginPassword is OPTIONAL — an unchanged rerun omits it and
+  // the server preserves the existing secret. When present it must be >= 8; a
+  // fresh install with no existing secret is caught server-side in performSetup.
+  if (security.uiLoginPassword === undefined) return;
+  if (!requireStr(security, "uiLoginPassword", "security.uiLoginPassword must be a non-empty string when provided", errors)) return;
   if ((security.uiLoginPassword as string).length < 8) errors.push("security.uiLoginPassword must be at least 8 characters");
 }
 

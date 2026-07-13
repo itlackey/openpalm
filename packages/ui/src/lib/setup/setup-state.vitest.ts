@@ -69,6 +69,31 @@ describe('SetupState — defaults', () => {
   });
 });
 
+describe('SetupState — UI login password rerun keep-as-is (PR #564 P1-1)', () => {
+  it('an unchanged rerun omits uiLoginPassword from the payload (server preserves the secret)', () => {
+    const s = new SetupState();
+    s.isRerun = true;
+    s.uiLoginPasswordDirty = false;
+    s.uiLoginPassword = ''; // never generated on rerun
+    expect(s.payload.security).toEqual({});
+    expect('uiLoginPassword' in s.payload.security).toBe(false);
+  });
+
+  it('an explicit password change on rerun IS sent', () => {
+    const s = new SetupState();
+    s.isRerun = true;
+    s.uiLoginPasswordDirty = true;
+    s.uiLoginPassword = 'operator-chose-this';
+    expect(s.payload.security).toEqual({ uiLoginPassword: 'operator-chose-this' });
+  });
+
+  it('a fresh (non-rerun) install always sends the password', () => {
+    const s = new SetupState();
+    s.uiLoginPassword = 'fresh-install-pw';
+    expect(s.payload.security).toEqual({ uiLoginPassword: 'fresh-install-pw' });
+  });
+});
+
 describe('SetupState — home-password rerun keep-as-is (PR #564 r3566887969)', () => {
   it('re-selecting the active home-password preset on a rerun does NOT rotate the password', () => {
     const s = new SetupState();

@@ -84,6 +84,9 @@ export const INITIAL = {
   voiceEnabled: false,
   // Step 0: Welcome
   uiLoginPassword: '',
+  // PR #564 P1-1 — true once the operator explicitly sets a new UI login
+  // password; a rerun keeps the existing secret unless this is set.
+  uiLoginPasswordDirty: false,
   step0Error: '',
   autoModeImporting: false,
   gpuDetected: false,
@@ -179,6 +182,7 @@ export class SetupState {
   // ── Step 0: Welcome ─────────────────────────────────────────────────────────
   // Operator UI login password — replaces the legacy "admin token" UI.
   uiLoginPassword = $state(INITIAL.uiLoginPassword);
+  uiLoginPasswordDirty = $state(INITIAL.uiLoginPasswordDirty);
   step0Error = $state(INITIAL.step0Error);
   // True while auto mode is performing a host provider import before jumping to Review
   autoModeImporting = $state(INITIAL.autoModeImporting);
@@ -370,6 +374,7 @@ export class SetupState {
     selectedOllamaProfile: this.selectedOllamaProfile,
     portalSelection: this.portalSelection,
     uiLoginPassword: this.uiLoginPassword,
+    keepExistingUiLoginPassword: this.isRerun && !this.uiLoginPasswordDirty,
     imageTag: this.imageTag,
     hostAkmEnabled: this.hostAkmEnabled,
     networkPreset: (!this.isRerun || this.networkDirty) ? this.networkPreset : null,
@@ -1203,7 +1208,12 @@ export class SetupState {
       // immediately and pre-fill every step from current config.
       this.systemCheckPassed = true;
       this.maxVisitedStep = 3;
-      this.uiLoginPassword = generatePassword(); // fallback; replaced if API returns existing
+      // PR #564 P1-1: do NOT generate a UI login password on a rerun. The
+      // current-config endpoint never returns the existing secret, so a
+      // generated fallback here would be sent in the payload and silently
+      // ROTATE the login password to a value the operator never saw (locking
+      // them out). Leave it empty; `keepExistingUiLoginPassword` (below) omits
+      // it from the payload so the server preserves the existing secret.
 
       fetchCurrentConfig()
         .then((data) => {
@@ -1242,8 +1252,19 @@ export class SetupState {
             const sel = this.portalSelection[chId];
             if (typeof sel === 'object' && sel !== null) {
               if (parsed.enabledAddons.includes(chId)) sel.enabled = true;
+              // PR #564 P1-2: current-config returns secret-PRESENCE metadata
+              // (e.g. `{ botToken: { envKey, present } }`), never plaintext.
+              // Only assign genuine STRING values — assigning a metadata object
+              // into a string field renders/serializes as "[object Object]" and
+              // corrupts the persisted credential. Presence-only fields are left
+              // empty (keep-existing): the payload omits them and the server
+              // preserves the stored secret.
               const c = parsed.portalCredentials[chId];
-              if (c && typeof c === 'object') Object.assign(sel, c);
+              if (c && typeof c === 'object') {
+                for (const [field, value] of Object.entries(c)) {
+                  if (typeof value === 'string') (sel as Record<string, unknown>)[field] = value;
+                }
+              }
             }
           }
         })

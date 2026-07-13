@@ -253,6 +253,16 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **Unchanged setup rerun no longer rotates the UI login password or corrupts
+  portal credentials** (PR #564 retest P1-1, P1-2). The wizard no longer
+  generates a UI login password on a rerun; `security.uiLoginPassword` is
+  optional and omitted on an unchanged rerun, and the server preserves the
+  existing secret (failing closed only when there is nothing to preserve). And
+  secret-presence metadata from current-config is never assigned into string
+  credential fields (which previously serialized as `[object Object]` and
+  overwrote Discord/Slack secrets) — presence-only credentials stay empty and
+  are preserved server-side.
+
 - **Rootless smoke fixture hygiene** (PR #564 P3-3, P3-4): the `stack` and
   `portal-discord` smoke targets now use distinct default assistant ports
   (3896 / 3996) so they can run concurrently, and cleanup enables the addon

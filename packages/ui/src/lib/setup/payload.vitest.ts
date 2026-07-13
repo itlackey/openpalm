@@ -61,6 +61,17 @@ describe('buildSetupPayload', () => {
     });
   });
 
+  test('P1-1: keepExistingUiLoginPassword omits the password (unchanged rerun keeps the secret)', () => {
+    const p = buildSetupPayload(baseInput({ uiLoginPassword: 'generated-never-shown', keepExistingUiLoginPassword: true }));
+    expect(p.security).toEqual({}); // no uiLoginPassword → server preserves existing
+    expect('uiLoginPassword' in p.security).toBe(false);
+  });
+
+  test('P1-1: an explicit password (or fresh install) still sends it', () => {
+    const p = buildSetupPayload(baseInput({ uiLoginPassword: 'chosen-pw', keepExistingUiLoginPassword: false }));
+    expect(p.security).toEqual({ uiLoginPassword: 'chosen-pw' });
+  });
+
   test('selected llm becomes a connection + top-level llm block', () => {
     const p = buildSetupPayload(baseInput({
       modelSelection: { llm: { connId: 'openai', model: 'gpt-4o' } },
@@ -225,6 +236,25 @@ describe('parseSetupConfig', () => {
     expect(parseSetupConfig({})).toEqual({ enabledAddons: [], portalCredentials: {} });
   });
 
+  test('P1-2: secret-presence metadata is filtered out (never becomes a string credential)', () => {
+    const r = parseSetupConfig({
+      // Shape current-config actually returns: presence metadata, not plaintext.
+      portalCredentials: {
+        discord: { botToken: { envKey: 'DISCORD_BOT_TOKEN', present: true } },
+        slack: { slackBotToken: { envKey: 'SLACK_BOT_TOKEN', present: true } },
+      },
+    } as unknown as RawSetupConfig);
+    // No metadata object survives → no field can serialize to "[object Object]".
+    expect(r.portalCredentials).toEqual({});
+  });
+
+  test('P1-2: genuine string credential values still pass through', () => {
+    const r = parseSetupConfig({
+      portalCredentials: { discord: { applicationId: '12345' } },
+    } as unknown as RawSetupConfig);
+    expect(r.portalCredentials).toEqual({ discord: { applicationId: '12345' } });
+  });
+
   test('llm/embedding map provider→connId', () => {
     const r = parseSetupConfig({
       llm: { provider: 'openai', model: 'gpt-4o' },
@@ -256,7 +286,9 @@ describe('parseSetupConfig', () => {
     expect(r.ollamaEnabled).toBe(true);
     expect(r.selectedOllamaProfile).toBe('ollama-cuda');
     expect(r.enabledAddons).toContain('discord');
-    expect(r.portalCredentials.discord).toBeDefined();
+    // PR #564 P1-2: the addon is enabled via enabledAddons, but the secret-
+    // presence metadata is NOT surfaced as a credential value (would corrupt).
+    expect(r.portalCredentials.discord).toBeUndefined();
   });
 
   test('hostAkm boolean passed through; non-boolean ignored', () => {

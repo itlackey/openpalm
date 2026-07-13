@@ -684,6 +684,28 @@ describe("performSetup", () => {
     expect(readSecret(homeDir, 'op_ui_login_password')).toBe("test-admin-token-12345\n");
   });
 
+  it("P1-1: an omitted uiLoginPassword on a rerun PRESERVES the existing secret byte-identically", async () => {
+    // First install sets the password.
+    expect((await performSetup(makeValidSpec())).ok).toBe(true);
+    const before = readSecret(homeDir, 'op_ui_login_password');
+    expect(before).toBe("test-admin-token-12345\n");
+
+    // Rerun with the password omitted (unchanged rerun) must not rotate it.
+    const rerun = makeValidSpec();
+    (rerun as { security: { uiLoginPassword?: string } }).security = {};
+    const result = await performSetup(rerun);
+    expect(result.ok).toBe(true);
+    expect(readSecret(homeDir, 'op_ui_login_password')).toBe(before);
+  });
+
+  it("P1-1: an omitted uiLoginPassword with NO existing secret fails closed", async () => {
+    const fresh = makeValidSpec();
+    (fresh as { security: { uiLoginPassword?: string } }).security = {};
+    const result = await performSetup(fresh);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toMatch(/uiLoginPassword/);
+  });
+
   it("writes akm config.json with llm and embedding", async () => {
     const result = await performSetup(makeValidSpec());
     expect(result.ok).toBe(true);

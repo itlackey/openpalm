@@ -27,6 +27,7 @@ import {
   writeAuthJsonProviderKeys,
 } from "./secrets.js";
 import { createState, initializeStateSecrets } from "./lifecycle.js";
+import { readSecret } from "./secrets-files.js";
 import { writeVoiceVars } from "./voice-env.js";
 import type { ControlPlaneState } from "./types.js";
 import { validateSetupSpec } from "./setup-validation.js";
@@ -62,7 +63,7 @@ export type SetupSpec = {
   /**
    * Operator-supplied UI login password. Persisted as a file-based secret.
    */
-  security: { uiLoginPassword: string };
+  security: { uiLoginPassword?: string };
   owner?: { name?: string; email?: string };
   connections: SetupConnection[];
   portalCredentials?: Record<string, Record<string, string>>;
@@ -345,7 +346,16 @@ export async function performSetup(
       ensureSecrets(state);
       updateSecretsEnv(state, updates);
       persistPortalCredentials(state, portalCredentials);
-      patchSecretsEnvFile(state.homeDir, { OP_UI_LOGIN_PASSWORD: security.uiLoginPassword });
+      // PR #564 P1-1: only write the UI login password when the operator
+      // actually supplied one. An unchanged rerun omits it — preserve the
+      // existing secret rather than rotating it to a value the operator never
+      // saw (which would lock them out). Fail closed if there is nothing to
+      // preserve (a fresh install must supply a password).
+      if (security.uiLoginPassword) {
+        patchSecretsEnvFile(state.homeDir, { OP_UI_LOGIN_PASSWORD: security.uiLoginPassword });
+      } else if (!readSecret(state.homeDir, "op_ui_login_password")?.trim()) {
+        throw new Error("security.uiLoginPassword is required — no existing UI login password to preserve.");
+      }
       // #563 — network access preset. Absent `network` means "leave whatever
       // is already in stack.env untouched" (D7): a rerun over a hand-tuned
       // env, or over a previous preset choice, never silently rewrites it
