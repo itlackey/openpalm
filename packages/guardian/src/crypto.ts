@@ -1,22 +1,19 @@
+import { createHash, timingSafeEqual } from "node:crypto";
+
 /**
- * Constant-time string comparison.
+ * Constant-time string comparison via the stdlib primitive.
  *
- * Runs in time independent of WHERE the first differing byte is, and — unlike a
- * naive `a.length !== b.length` short-circuit — does not leak the secret's length
- * via an early return. Always walks the longer of the two byte lengths and folds
- * a length mismatch into the diff so unequal lengths compare in constant time too.
+ * `timingSafeEqual` requires equal-length buffers, so both inputs are hashed to
+ * fixed-length (32-byte) SHA-256 digests first — that keeps the comparison
+ * constant-time AND avoids leaking either secret's length through an early
+ * length-mismatch return.
  *
  * This is the single shared implementation; all secret/token comparisons in the
  * guardian (principal token hashes, admin token, MCP bearer token, OpenAI/
  * Anthropic API keys) go through it.
  */
 export function constantTimeEqual(a: string, b: string): boolean {
-  const aBytes = new TextEncoder().encode(a);
-  const bBytes = new TextEncoder().encode(b);
-  const max = Math.max(aBytes.length, bBytes.length);
-  let diff = aBytes.length === bBytes.length ? 0 : 1;
-  for (let i = 0; i < max; i++) {
-    diff |= (aBytes[i] ?? 0) ^ (bBytes[i] ?? 0);
-  }
-  return diff === 0;
+  const ha = createHash("sha256").update(a, "utf8").digest();
+  const hb = createHash("sha256").update(b, "utf8").digest();
+  return timingSafeEqual(ha, hb);
 }
