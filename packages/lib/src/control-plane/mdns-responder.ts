@@ -10,14 +10,12 @@
  * macOS anyway). See `docs/technical/network-partitioning-d5a.md` for the
  * full rationale (D1 in `.github/roadmap/0.13.0/specs/488.md`).
  *
- * Layout: pure encode/decode/gating section first (no side-effecting
- * imports), socket section second, reconcile singleton last.
- *
- * Scope: `udp4` + A records only (no IPv6/AAAA), no RFC 6762 §8 probing/
- * conflict defense (we are the only intended publisher of these names —
- * `OP_MDNS=off` is the escape hatch for a foreign publisher on the LAN).
+ * The DNS wire format and multicast socket are handled by the maintained
+ * `multicast-dns` package; this module owns only the OpenPalm-specific policy:
+ * which `.local` names to advertise, gated on the bind-address env, and a
+ * reconcile singleton. Scope: A records + an `_http._tcp` service instance.
  */
-import dgram from "node:dgram";
+import makeMdns from "multicast-dns";
 import { networkInterfaces } from "node:os";
 import { createLogger } from "../logger.js";
 import { isLoopback } from "./bind-warning.js";
@@ -27,25 +25,11 @@ const logger = createLogger("mdns");
 
 // ── Constants ──────────────────────────────────────────────────────────────
 
-const MDNS_ADDR = "224.0.0.251";
 const MDNS_PORT = 5353;
-const TYPE_A = 1;
-const TYPE_PTR = 12;
-const TYPE_TXT = 16;
-const TYPE_SRV = 33;
-const TYPE_ANY = 255;
-const CLASS_IN = 1;
-const CACHE_FLUSH_BIT = 0x8000;
 const TTL = 120;
-/** RFC 6762 §6.7: legacy-unicast responses use a short TTL (≤10s). */
-const LEGACY_UNICAST_TTL = 10;
 const HTTP_SERVICE = "_http._tcp.local";
 const DEFAULT_GUARDIAN_PORT = 3830;
 const DEFAULT_ASSISTANT_PORT = 3800;
-/** QR (response) + AA (authoritative answer) flag bits. */
-const QR_AA_FLAGS = 0x8400;
-/** Bounded hop limit for compression-pointer following in the parser. */
-const MAX_NAME_POINTER_HOPS = 16;
 
 // ── Pure: name derivation ─────────────────────────────────────────────────
 
@@ -141,14 +125,13 @@ function defaultHostIpv4(): string[] {
       // @types/node; older Node runtimes can report the numeric family (4)
       // instead, so compare loosely without narrowing entry.family's type.
       const family: unknown = entry.family;
-      const isIpv4 = family === "IPv4" || family === 4;
-      if (isIpv4 && !entry.internal) addresses.push(entry.address);
+      const isIpv4Family = family === "IPv4" || family === 4;
+      if (isIpv4Family && !entry.internal) addresses.push(entry.address);
     }
   }
   return addresses;
 }
 
-/** A specific bind IP narrows the addresses; a wildcard bind uses the host interface list. */
 /** True only for a dotted-quad IPv4 literal (4 octets, each 0-255). */
 function isIpv4(address: string): boolean {
   const parts = address.trim().split(".");
@@ -156,13 +139,14 @@ function isIpv4(address: string): boolean {
   return parts.every((p) => /^\d{1,3}$/.test(p) && Number(p) <= 255);
 }
 
+/** A specific bind IP narrows the addresses; a wildcard bind uses the host interface list. */
 function resolveAdvertAddresses(bind: string, hostIpv4: string[]): string[] {
   const v = bind.trim();
   const candidates = v !== "" && v !== "0.0.0.0" && v !== "::" ? [v] : hostIpv4;
   // PR #564 r3566892051: only IPv4 addresses can be encoded as A records. A
   // specific IPv6 literal / hostname bind (or a non-IPv4 host address) is
-  // skipped rather than mangled into malformed rdata; an advert that resolves
-  // to zero addresses is dropped by the caller.
+  // skipped rather than mangled; an advert that resolves to zero addresses is
+  // dropped by the caller.
   return candidates.filter(isIpv4);
 }
 
@@ -232,288 +216,118 @@ export function resolveMdnsStatus(env: Record<string, string | undefined>): Mdns
   };
 }
 
-// ── Pure: DNS wire format (no name compression — legal per RFC 1035, keeps
-//    the encoder trivial; the parser follows compression pointers defensively
-//    since it must handle arbitrary incoming query bytes) ──────────────────
+// ── Answer building (record objects; the library encodes the wire bytes) ────
 
-export type DnsQuestion = { name: string; type: number; qclass: number };
-
-function readU16(buf: Uint8Array, offset: number): number {
-  if (offset < 0 || offset + 2 > buf.length) throw new RangeError("mdns: read past end of buffer");
-  return ((buf[offset] as number) << 8) | (buf[offset + 1] as number);
-}
-
-function decodeName(buf: Uint8Array, offset: number): { name: string; next: number } | null {
-  const labels: string[] = [];
-  let pos = offset;
-  let hops = 0;
-  let next = -1;
-  while (true) {
-    if (pos < 0 || pos >= buf.length) return null;
-    const len = buf[pos] as number;
-    if ((len & 0xc0) === 0xc0) {
-      // Compression pointer: bounded-hop follow, never loop forever.
-      if (pos + 1 >= buf.length) return null;
-      hops += 1;
-      if (hops > MAX_NAME_POINTER_HOPS) return null;
-      if (next === -1) next = pos + 2;
-      const lo = buf[pos + 1] as number;
-      pos = ((len & 0x3f) << 8) | lo;
-      continue;
-    }
-    if (len === 0) {
-      pos += 1;
-      if (next === -1) next = pos;
-      break;
-    }
-    if (pos + 1 + len > buf.length) return null;
-    let label = "";
-    for (let i = 0; i < len; i++) label += String.fromCharCode(buf[pos + 1 + i] as number);
-    labels.push(label);
-    pos += 1 + len;
-  }
-  return { name: labels.join("."), next };
-}
-
-/**
- * Decode the header + question section of a DNS/mDNS message. Defensive:
- * bounds-checked throughout, returns `null` (never throws) on QR=1
- * (response, not a query) or any malformation/truncation.
- */
-export function parseDnsQuestions(msg: Uint8Array): DnsQuestion[] | null {
-  try {
-    if (msg.length < 12) return null;
-    const flags = readU16(msg, 2);
-    if ((flags & 0x8000) !== 0) return null; // QR=1 → a response, not a query
-    const qdcount = readU16(msg, 4);
-    let pos = 12;
-    const questions: DnsQuestion[] = [];
-    for (let i = 0; i < qdcount; i++) {
-      const decoded = decodeName(msg, pos);
-      if (!decoded) return null;
-      const type = readU16(msg, decoded.next);
-      const qclass = readU16(msg, decoded.next + 2);
-      questions.push({ name: decoded.name.toLowerCase(), type, qclass });
-      pos = decoded.next + 4;
-    }
-    return questions;
-  } catch {
-    return null;
-  }
-}
-
-function buildHeader(
-  id: number,
-  flags: number,
-  qdcount: number,
-  ancount = 0,
-  nscount = 0,
-  arcount = 0,
-): number[] {
-  return [
-    (id >> 8) & 0xff,
-    id & 0xff,
-    (flags >> 8) & 0xff,
-    flags & 0xff,
-    (qdcount >> 8) & 0xff,
-    qdcount & 0xff,
-    (ancount >> 8) & 0xff,
-    ancount & 0xff,
-    (nscount >> 8) & 0xff,
-    nscount & 0xff,
-    (arcount >> 8) & 0xff,
-    arcount & 0xff,
-  ];
-}
-
-function encodeName(name: string): number[] {
-  const bytes: number[] = [];
-  for (const label of name.split(".")) {
-    if (label.length === 0) continue;
-    bytes.push(label.length);
-    for (let i = 0; i < label.length; i++) bytes.push(label.charCodeAt(i) & 0xff);
-  }
-  bytes.push(0);
-  return bytes;
-}
-
-function encodeRR(name: string, type: number, rrClass: number, ttl: number, rdata: number[]): number[] {
-  const rdlength = rdata.length;
-  return [
-    ...encodeName(name),
-    (type >> 8) & 0xff,
-    type & 0xff,
-    (rrClass >> 8) & 0xff,
-    rrClass & 0xff,
-    (ttl >>> 24) & 0xff,
-    (ttl >>> 16) & 0xff,
-    (ttl >>> 8) & 0xff,
-    ttl & 0xff,
-    (rdlength >> 8) & 0xff,
-    rdlength & 0xff,
-    ...rdata,
-  ];
-}
-
-function ipv4ToBytes(address: string): number[] {
-  return address.split(".").map((part) => Number.parseInt(part, 10) & 0xff);
-}
-
-function buildARecord(name: string, address: string, ttl = TTL, cacheFlush = true): number[] {
-  return encodeRR(name, TYPE_A, cacheFlush ? CLASS_IN | CACHE_FLUSH_BIT : CLASS_IN, ttl, ipv4ToBytes(address));
-}
-
-/** Encode a question section entry (name + QTYPE + QCLASS), for legacy-unicast echo. */
-function encodeQuestion(q: DnsQuestion): number[] {
-  return [...encodeName(q.name), (q.type >> 8) & 0xff, q.type & 0xff, (q.qclass >> 8) & 0xff, q.qclass & 0xff];
-}
-
+/** The `<name>._http._tcp.local` service instance for a `<name>.local` host. */
 function mdnsInstanceName(name: string): string {
   const base = name.toLowerCase().endsWith(".local") ? name.slice(0, -".local".length) : name;
   return `${base}.${HTTP_SERVICE}`;
 }
 
-function buildPtrRecord(instanceName: string, ttl = TTL): number[] {
-  return encodeRR(HTTP_SERVICE, TYPE_PTR, CLASS_IN, ttl, encodeName(instanceName));
-}
-
-function buildSrvRecord(instanceName: string, target: string, port: number, ttl = TTL): number[] {
-  const rdata = [0, 0, 0, 0, (port >> 8) & 0xff, port & 0xff, ...encodeName(target)];
-  return encodeRR(instanceName, TYPE_SRV, CLASS_IN, ttl, rdata);
-}
-
-function buildTxtRecord(instanceName: string, strings: string[], ttl = TTL): number[] {
-  const rdata: number[] = [];
-  for (const s of strings) {
-    rdata.push(s.length & 0xff);
-    for (let i = 0; i < s.length; i++) rdata.push(s.charCodeAt(i) & 0xff);
-  }
-  return encodeRR(instanceName, TYPE_TXT, CLASS_IN, ttl, rdata);
-}
-
-function buildPacket(
-  id: number,
-  flags: number,
-  answers: number[][],
-  additionals: number[][],
-  questions: number[][] = [],
-): Uint8Array {
-  const header = buildHeader(id, flags, questions.length, answers.length, 0, additionals.length);
-  return new Uint8Array([...header, ...questions.flat(), ...answers.flat(), ...additionals.flat()]);
-}
-
-/**
- * Build an answer packet for `questions` against the currently-advertised
- * `adverts`. Answers are multicast-shaped (ID 0) unless `opts.queryId` is
- * passed (legacy unicast reply, which preserves the original query ID). `A`
- * / `TYPE_ANY` queries match a name exactly (case-insensitively); `PTR` /
- * `TYPE_ANY` queries for `_http._tcp.local` list one instance per advert
- * with SRV/TXT/A in the additional section. Returns `null` when nothing
- * matches (no response packet at all).
- */
-export function buildMdnsAnswer(
-  questions: DnsQuestion[],
-  adverts: MdnsAdvertisement[],
-  opts: { queryId?: number; legacy?: boolean } = {},
-): Uint8Array | null {
-  // PR #564 r3566892362: a legacy-unicast reply (RFC 6762 §6.7 — query from a
-  // non-5353 source port) must echo the question, clear the cache-flush bit,
-  // and use a short (≤10s) TTL, or conventional one-shot resolvers reject it.
-  const legacy = opts.legacy === true;
-  const ttl = legacy ? LEGACY_UNICAST_TTL : TTL;
-  const cacheFlush = !legacy;
-  const answers: number[][] = [];
-  const additionals: number[][] = [];
-  const echoedQuestions: number[][] = [];
-
-  for (const q of questions) {
-    const qName = q.name.toLowerCase();
-    let matched = false;
-    if (q.type === TYPE_A || q.type === TYPE_ANY) {
-      const advert = adverts.find((a) => a.name.toLowerCase() === qName);
-      if (advert) {
-        for (const address of advert.addresses) answers.push(buildARecord(advert.name, address, ttl, cacheFlush));
-        matched = true;
-      }
-    }
-    if ((q.type === TYPE_PTR || q.type === TYPE_ANY) && qName === HTTP_SERVICE) {
-      for (const advert of adverts) {
-        const instanceName = mdnsInstanceName(advert.name);
-        answers.push(buildPtrRecord(instanceName, ttl));
-        additionals.push(buildSrvRecord(instanceName, advert.name, advert.port, ttl));
-        additionals.push(buildTxtRecord(instanceName, ["path=/"], ttl));
-        for (const address of advert.addresses) additionals.push(buildARecord(advert.name, address, ttl, cacheFlush));
-      }
-      matched = true;
-    }
-    if (matched && legacy) echoedQuestions.push(encodeQuestion(q));
-  }
-
-  if (answers.length === 0) return null;
-  return buildPacket(opts.queryId ?? 0, QR_AA_FLAGS, answers, additionals, echoedQuestions);
-}
-
-/** Gratuitous announcement (one A answer per advert address) sent at startup. */
-export function buildMdnsAnnouncement(adverts: MdnsAdvertisement[]): Uint8Array | null {
-  const answers = adverts.flatMap((a) => a.addresses.map((address) => buildARecord(a.name, address)));
-  if (answers.length === 0) return null;
-  return buildPacket(0, QR_AA_FLAGS, answers, []);
-}
-
-/** TTL-0 goodbye records for every advert, sent best-effort on stop(). */
-export function buildMdnsGoodbye(adverts: MdnsAdvertisement[]): Uint8Array | null {
-  const answers = adverts.flatMap((a) => a.addresses.map((address) => buildARecord(a.name, address, 0)));
-  if (answers.length === 0) return null;
-  return buildPacket(0, QR_AA_FLAGS, answers, []);
-}
-
-// ── Socket layer ───────────────────────────────────────────────────────────
-
 export type MdnsRemoteInfo = { address: string; port: number };
 
-export type MdnsSocketLike = {
-  bind(port: number, address: string, cb?: () => void): void;
-  addMembership(mcastAddr: string): void;
-  setMulticastTTL(ttl: number): void;
-  send(msg: Uint8Array, port: number, address: string): void;
-  close(): void;
-  on(event: "message", cb: (msg: Uint8Array, rinfo: MdnsRemoteInfo) => void): void;
-  on(event: "error", cb: (err: Error) => void): void;
-  unref?(): void;
+/** A record object in the shape `multicast-dns` (dns-packet) encodes. */
+export type MdnsAnswer = {
+  name: string;
+  type: "A" | "PTR" | "SRV" | "TXT";
+  ttl: number;
+  flush?: boolean;
+  data: unknown;
 };
 
-export type MdnsSocketFactory = () => MdnsSocketLike;
-export type MdnsResponderHandle = { stop(): void };
+type MdnsQuestion = { name?: string; type?: string };
+type MdnsQueryMessage = { questions?: MdnsQuestion[] };
 
-/** Test-only override consulted whenever a caller doesn't pass `deps.createSocket`. */
-let testSocketFactory: MdnsSocketFactory | null = null;
+/**
+ * Build the answer + additional records for `questions` against the currently
+ * advertised `adverts`. `A`/`ANY` queries match a `.local` name exactly; `PTR`/
+ * `ANY` queries for `_http._tcp.local` list one service instance per advert
+ * with SRV/TXT/A in the additional section. Returns `null` when nothing matches.
+ */
+function buildResponse(
+  questions: MdnsQuestion[],
+  adverts: MdnsAdvertisement[],
+): { answers: MdnsAnswer[]; additionals: MdnsAnswer[] } | null {
+  const answers: MdnsAnswer[] = [];
+  const additionals: MdnsAnswer[] = [];
 
-export function _setMdnsSocketFactoryForTests(factory: MdnsSocketFactory | null): void {
-  testSocketFactory = factory;
+  const aRecord = (name: string, address: string): MdnsAnswer => ({ name, type: "A", ttl: TTL, flush: true, data: address });
+
+  for (const q of questions) {
+    const qName = (q.name ?? "").toLowerCase();
+    const qType = q.type;
+    if (qType === "A" || qType === "ANY") {
+      const advert = adverts.find((a) => a.name.toLowerCase() === qName);
+      if (advert) for (const address of advert.addresses) answers.push(aRecord(advert.name, address));
+    }
+    if ((qType === "PTR" || qType === "ANY") && qName === HTTP_SERVICE) {
+      for (const advert of adverts) {
+        const instance = mdnsInstanceName(advert.name);
+        answers.push({ name: HTTP_SERVICE, type: "PTR", ttl: TTL, data: instance });
+        additionals.push({ name: instance, type: "SRV", ttl: TTL, data: { port: advert.port, target: advert.name } });
+        additionals.push({ name: instance, type: "TXT", ttl: TTL, data: ["path=/"] });
+        for (const address of advert.addresses) additionals.push(aRecord(advert.name, address));
+      }
+    }
+  }
+
+  if (answers.length === 0) return null;
+  return { answers, additionals };
 }
 
-function defaultSocketFactory(): MdnsSocketLike {
-  return dgram.createSocket({ type: "udp4", reuseAddr: true }) as unknown as MdnsSocketLike;
+/** Gratuitous announcement (one A answer per advert address). */
+function announcementAnswers(adverts: MdnsAdvertisement[]): MdnsAnswer[] {
+  return adverts.flatMap((a) => a.addresses.map((address): MdnsAnswer => ({ name: a.name, type: "A", ttl: TTL, flush: true, data: address })));
+}
+
+/** TTL-0 goodbye records for every advert address, sent best-effort on stop(). */
+function goodbyeAnswers(adverts: MdnsAdvertisement[]): MdnsAnswer[] {
+  return adverts.flatMap((a) => a.addresses.map((address): MdnsAnswer => ({ name: a.name, type: "A", ttl: 0, flush: true, data: address })));
+}
+
+// ── Responder (multicast-dns) ───────────────────────────────────────────────
+
+/** The subset of the `multicast-dns` instance this module uses. */
+export type MdnsInstance = {
+  on(event: "query", handler: (message: MdnsQueryMessage, rinfo: MdnsRemoteInfo) => void): void;
+  on(event: "warning" | "error", handler: (err: Error) => void): void;
+  respond(res: { answers: MdnsAnswer[]; additionals?: MdnsAnswer[] }, rinfo?: MdnsRemoteInfo): void;
+  destroy(): void;
+};
+
+export type MdnsFactory = () => MdnsInstance;
+export type MdnsResponderHandle = { stop(): void };
+
+/** Test-only override consulted whenever a caller doesn't pass `deps.makeMdns`. */
+let testMdnsFactory: MdnsFactory | null = null;
+
+export function _setMdnsFactoryForTests(factory: MdnsFactory | null): void {
+  testMdnsFactory = factory;
+}
+
+function defaultMdnsFactory(): MdnsInstance {
+  // loopback:false so we do not receive (and re-answer) our own multicast.
+  return makeMdns({ loopback: false }) as unknown as MdnsInstance;
 }
 
 /**
- * Build a live responder for `adverts`. Returns both the public handle
- * (`stop()` — goodbye + close) and an internal `silentClose` (close with no
- * goodbye packet, used only by `_resetMdnsResponderForTests`). All socket
- * failures are logged `warn` and swallowed — advertisement is a convenience
- * and must never take the UI server down.
+ * Build a live responder for `adverts`. Returns the public handle (`stop()` —
+ * goodbye + destroy) plus an internal `silentClose` (destroy with no goodbye,
+ * used only by `_resetMdnsResponderForTests`). All failures are logged `warn`
+ * and swallowed — advertisement is a convenience and must never take the UI
+ * server down.
  */
 function createResponder(
   adverts: MdnsAdvertisement[],
-  deps: { createSocket?: MdnsSocketFactory } = {},
+  deps: { makeMdns?: MdnsFactory } = {},
 ): { handle: MdnsResponderHandle; silentClose: () => void } | null {
   if (adverts.length === 0) return null;
 
-  const factory = deps.createSocket ?? testSocketFactory ?? defaultSocketFactory;
+  const factory = deps.makeMdns ?? testMdnsFactory ?? defaultMdnsFactory;
   const names = adverts.map((a) => a.name);
-  let socket: MdnsSocketLike;
+  let mdns: MdnsInstance;
   try {
-    socket = factory();
+    mdns = factory();
   } catch (err) {
     logger.warn("mdns: failed to create socket", { error: String(err), names });
     return null;
@@ -522,75 +336,55 @@ function createResponder(
   let stopped = false;
   let announceTimer: ReturnType<typeof setTimeout> | null = null;
 
-  function safeSend(msg: Uint8Array, port: number, address: string): void {
+  function announce(): void {
+    const answers = announcementAnswers(adverts);
+    if (answers.length === 0) return;
     try {
-      socket.send(msg, port, address);
+      mdns.respond({ answers });
     } catch (err) {
       logger.warn("mdns: send failed", { error: String(err), names });
     }
   }
 
-  function announce(): void {
-    const packet = buildMdnsAnnouncement(adverts);
-    if (packet) safeSend(packet, MDNS_PORT, MDNS_ADDR);
-  }
-
   try {
-    socket.on("message", (msg, rinfo) => {
+    mdns.on("query", (message, rinfo) => {
       if (stopped) return;
       try {
-        const questions = parseDnsQuestions(msg);
-        if (!questions) return;
+        const res = buildResponse(message.questions ?? [], adverts);
+        if (!res) return;
+        // A legacy-unicast query (source port ≠ 5353, RFC 6762 §6.7) is answered
+        // back to the sender; a standard multicast query is answered to the group.
         const legacy = rinfo.port !== MDNS_PORT;
-        const answer = buildMdnsAnswer(questions, adverts, legacy ? { queryId: readU16(msg, 0), legacy: true } : {});
-        if (!answer) return;
-        if (legacy) safeSend(answer, rinfo.port, rinfo.address);
-        else safeSend(answer, MDNS_PORT, MDNS_ADDR);
+        mdns.respond(res, legacy ? rinfo : undefined);
       } catch (err) {
         logger.warn("mdns: message handling failed", { error: String(err), names });
       }
     });
-    socket.on("error", (err) => {
-      logger.warn("mdns: socket error", { error: err.message, names });
-    });
+    mdns.on("error", (err) => logger.warn("mdns: socket error", { error: err.message, names }));
+    mdns.on("warning", (err) => logger.warn("mdns: warning", { error: err.message, names }));
   } catch (err) {
     logger.warn("mdns: listener setup failed", { error: String(err), names });
   }
 
-  try {
-    socket.bind(MDNS_PORT, "0.0.0.0", () => {
-      try {
-        socket.addMembership(MDNS_ADDR);
-        socket.setMulticastTTL(255);
-        socket.unref?.();
-        announce();
-        // Second startup announcement per RFC 6762 startup guidance, via an
-        // unref'd timer so it never keeps the process alive.
-        announceTimer = setTimeout(() => announce(), 1000);
-        announceTimer.unref?.();
-      } catch (err) {
-        logger.warn("mdns: post-bind setup failed", { error: String(err), names });
-      }
-    });
-  } catch (err) {
-    logger.warn("mdns: bind failed", { error: String(err), names });
+  announce();
+  // Second startup announcement per RFC 6762 guidance, via an unref'd timer so
+  // it never keeps the process alive.
+  announceTimer = setTimeout(() => announce(), 1000);
+  announceTimer.unref?.();
+
+  function destroy(): void {
+    if (announceTimer) clearTimeout(announceTimer);
     try {
-      socket.close();
-    } catch {
-      /* best-effort */
+      mdns.destroy();
+    } catch (err) {
+      logger.warn("mdns: close failed", { error: String(err), names });
     }
-    return null;
   }
 
   function silentClose(): void {
     if (stopped) return;
     stopped = true;
-    if (announceTimer) clearTimeout(announceTimer);
-    try {
-      socket.close();
-    } catch (err) {
-      logger.warn("mdns: close failed", { error: String(err), names });
-    }
+    destroy();
   }
 
   return {
@@ -598,18 +392,13 @@ function createResponder(
       stop(): void {
         if (stopped) return;
         stopped = true;
-        if (announceTimer) clearTimeout(announceTimer);
         try {
-          const goodbye = buildMdnsGoodbye(adverts);
-          if (goodbye) safeSend(goodbye, MDNS_PORT, MDNS_ADDR);
+          const answers = goodbyeAnswers(adverts);
+          if (answers.length > 0) mdns.respond({ answers });
         } catch (err) {
           logger.warn("mdns: goodbye failed", { error: String(err), names });
         }
-        try {
-          socket.close();
-        } catch (err) {
-          logger.warn("mdns: close failed", { error: String(err), names });
-        }
+        destroy();
       },
     },
     silentClose,
@@ -617,13 +406,13 @@ function createResponder(
 }
 
 /**
- * Start a responder for `adverts`. Returns `null` and opens no socket at
- * all when there is nothing to advertise (the loopback-default "no socket"
- * guarantee) — the socket factory is never even consulted in that case.
+ * Start a responder for `adverts`. Returns `null` and opens no socket at all
+ * when there is nothing to advertise (the loopback-default "no socket"
+ * guarantee) — the factory is never even consulted in that case.
  */
 export function startMdnsResponder(
   adverts: MdnsAdvertisement[],
-  deps: { createSocket?: MdnsSocketFactory } = {},
+  deps: { makeMdns?: MdnsFactory } = {},
 ): MdnsResponderHandle | null {
   return createResponder(adverts, deps)?.handle ?? null;
 }
@@ -650,7 +439,7 @@ export function reconcileMdnsResponder(
   deps: {
     env?: Record<string, string | undefined>;
     processEnv?: Record<string, string | undefined>;
-    createSocket?: MdnsSocketFactory;
+    makeMdns?: MdnsFactory;
     hostIpv4?: string[];
   } = {},
 ): MdnsStatus {
@@ -683,7 +472,7 @@ export function reconcileMdnsResponder(
     }
 
     if (adverts.length > 0) {
-      const created = createResponder(adverts, { createSocket: deps.createSocket });
+      const created = createResponder(adverts, { makeMdns: deps.makeMdns });
       if (created) active = { key, ...created };
     }
   } catch (err) {

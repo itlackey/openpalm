@@ -555,15 +555,15 @@ export {
 } from "./control-plane/network-preset.js";
 
 // ── mDNS host self-advertisement (#488) ──────────────────────────────────────
-// Pure packet functions (sanitizeDnsLabel, parseDnsQuestions, buildMdnsAnswer,
-// etc.) stay reachable via the ./control-plane/mdns-responder.js subpath for
-// tests; only the consumer-facing surface goes through this barrel.
+// Pure helpers (sanitizeDnsLabel, resolveMdnsAdvertisements, etc.) stay
+// reachable via the ./control-plane/mdns-responder.js subpath for tests; only
+// the consumer-facing surface goes through this barrel.
 export {
   deriveMdnsNames,
   resolveMdnsAdvertisements,
   resolveMdnsStatus,
   reconcileMdnsResponder,
-  _setMdnsSocketFactoryForTests,
+  _setMdnsFactoryForTests,
   _resetMdnsResponderForTests,
   type MdnsAdvertisement,
   type MdnsStatus,

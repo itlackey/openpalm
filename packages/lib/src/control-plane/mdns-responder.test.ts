@@ -2,296 +2,90 @@
  * #488 — Guardian/assistant LAN mDNS self-advertisement (host control-plane
  * responder in @openpalm/lib).
  *
- * Spec: .github/roadmap/0.13.0/specs/488.md §2.1.
- *
- * Idioms mirrored: bind-warning.test.ts (plain env-record in/out assertions),
- * network-partitioning.test.ts (socket-free fixture style), and the injected-deps
- * pattern used across lib (e.g. apply-stack-di.test.ts, project-rename.test.ts).
- * No real sockets anywhere — the responder tests use a stub socket factory
- * (MdnsSocketLike) and hand-rolled Uint8Array DNS packet fixtures.
- *
- * RED REASON: the module ./mdns-responder.js does not exist yet — every test
- * in this file fails at import.
+ * The DNS wire format + multicast socket are now the `multicast-dns` package's
+ * job; this suite covers the OpenPalm policy this module owns: name derivation,
+ * bind-address gating, and the responder/reconcile lifecycle. The responder
+ * tests inject a stub `MdnsInstance` (no real socket) and assert on the record
+ * objects handed to `respond()`.
  */
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
-  buildMdnsAnnouncement,
-  buildMdnsAnswer,
-  buildMdnsGoodbye,
   deriveMdnsNames,
   reconcileMdnsResponder,
   resolveMdnsAdvertisements,
   resolveMdnsStatus,
   sanitizeDnsLabel,
-  parseDnsQuestions,
   startMdnsResponder,
   _resetMdnsResponderForTests,
-  _setMdnsSocketFactoryForTests,
-  type DnsQuestion,
+  _setMdnsFactoryForTests,
   type MdnsAdvertisement,
+  type MdnsAnswer,
+  type MdnsFactory,
+  type MdnsInstance,
   type MdnsRemoteInfo,
   type MdnsResponderHandle,
-  type MdnsSocketFactory,
-  type MdnsSocketLike,
 } from "./mdns-responder.js";
 
-// ── DNS wire-format fixture helpers (independent hand-rolled encoder/decoder —
-//    NOT the implementation under test) ──────────────────────────────────────
-
-const TYPE_A = 1;
-const TYPE_PTR = 12;
-const TYPE_TXT = 16;
-const TYPE_SRV = 33;
-const TYPE_ANY = 255;
-const CLASS_IN = 1;
-const MDNS_ADDR = "224.0.0.251";
 const MDNS_PORT = 5353;
-const HTTP_SERVICE = "_http._tcp.local";
 
-function encodeName(name: string): number[] {
-  const bytes: number[] = [];
-  for (const label of name.split(".")) {
-    if (label.length === 0) continue;
-    bytes.push(label.length);
-    for (let i = 0; i < label.length; i++) bytes.push(label.charCodeAt(i));
-  }
-  bytes.push(0);
-  return bytes;
+function assertDefined<T>(value: T | undefined | null): asserts value is T {
+  expect(value).toBeDefined();
 }
 
-function buildHeader(
-  id: number,
-  flags: number,
-  qdcount: number,
-  ancount = 0,
-  nscount = 0,
-  arcount = 0,
-): number[] {
-  return [
-    (id >> 8) & 0xff,
-    id & 0xff,
-    (flags >> 8) & 0xff,
-    flags & 0xff,
-    (qdcount >> 8) & 0xff,
-    qdcount & 0xff,
-    (ancount >> 8) & 0xff,
-    ancount & 0xff,
-    (nscount >> 8) & 0xff,
-    nscount & 0xff,
-    (arcount >> 8) & 0xff,
-    arcount & 0xff,
-  ];
+function makeAssistantAdvert(): MdnsAdvertisement {
+  return { service: "assistant", name: "openpalm.local", port: 3800, addresses: ["192.168.1.20"] };
+}
+function makeGuardianAdvert(): MdnsAdvertisement {
+  return { service: "guardian", name: "openpalm-guardian.local", port: 3830, addresses: ["192.168.1.20"] };
 }
 
-function buildQuestion(name: string, type: number, qclass = CLASS_IN): number[] {
-  return [...encodeName(name), (type >> 8) & 0xff, type & 0xff, (qclass >> 8) & 0xff, qclass & 0xff];
-}
+// ── Stub multicast-dns instance (records respond()/destroy(), no socket) ─────
 
-function buildQueryPacket(
-  name: string,
-  type: number,
-  opts: { id?: number; flags?: number } = {},
-): Uint8Array {
-  const id = opts.id ?? 0;
-  const flags = opts.flags ?? 0;
-  const header = buildHeader(id, flags, 1);
-  const question = buildQuestion(name, type);
-  return new Uint8Array([...header, ...question]);
-}
-
-/** Safe indexed byte read — every buffer here is one this file built or the
- * implementation returned, so an out-of-range read only ever means a fixture
- * bug, and a 0 fallback keeps the decoder assertion-free (no `!`). */
-function byteAt(buf: Uint8Array, index: number): number {
-  return buf[index] ?? 0;
-}
-
-/** Narrows `value` to non-undefined without a non-null assertion. */
-function assertDefined<T>(value: T | undefined, message = "expected value to be defined"): asserts value is T {
-  if (value === undefined) throw new Error(message);
-}
-
-function readU16(buf: Uint8Array, off: number): number {
-  return (byteAt(buf, off) << 8) | byteAt(buf, off + 1);
-}
-
-function readU32(buf: Uint8Array, off: number): number {
-  return (
-    (byteAt(buf, off) << 24) |
-    (byteAt(buf, off + 1) << 16) |
-    (byteAt(buf, off + 2) << 8) |
-    byteAt(buf, off + 3)
-  ) >>> 0;
-}
-
-function decodeNameAt(buf: Uint8Array, offset: number): { name: string; next: number } {
-  const labels: string[] = [];
-  let pos = offset;
-  while (pos < buf.length) {
-    const len = byteAt(buf, pos);
-    if (len === 0) {
-      pos += 1;
-      break;
-    }
-    pos += 1;
-    let label = "";
-    for (let i = 0; i < len; i++) label += String.fromCharCode(byteAt(buf, pos + i));
-    labels.push(label);
-    pos += len;
-  }
-  return { name: labels.join("."), next: pos };
-}
-
-function decodeTxtRdata(buf: Uint8Array): string {
-  const parts: string[] = [];
-  let pos = 0;
-  while (pos < buf.length) {
-    const len = byteAt(buf, pos);
-    pos += 1;
-    let s = "";
-    for (let i = 0; i < len; i++) s += String.fromCharCode(byteAt(buf, pos + i));
-    parts.push(s);
-    pos += len;
-  }
-  return parts.join(";");
-}
-
-type DecodedRecord = { name: string; type: number; qclass: number; ttl?: number; rdata?: Uint8Array };
-type DecodedPacket = {
-  id: number;
-  flags: number;
-  qdcount: number;
-  ancount: number;
-  nscount: number;
-  arcount: number;
-  questions: DecodedRecord[];
-  answers: DecodedRecord[];
-  authorities: DecodedRecord[];
-  additionals: DecodedRecord[];
-};
-
-/**
- * Decode a full mDNS/DNS message (header + question + RR sections). Assumes
- * no name compression, matching the spec's encoder contract ("no name
- * compression ... keeps the encoder ~trivial"). This is a test-owned decoder,
- * independent of the implementation under test.
- */
-function decodeMdnsPacket(buf: Uint8Array): DecodedPacket {
-  const id = readU16(buf, 0);
-  const flags = readU16(buf, 2);
-  const qdcount = readU16(buf, 4);
-  const ancount = readU16(buf, 6);
-  const nscount = readU16(buf, 8);
-  const arcount = readU16(buf, 10);
-  let pos = 12;
-
-  const questions: DecodedRecord[] = [];
-  for (let i = 0; i < qdcount; i++) {
-    const { name, next } = decodeNameAt(buf, pos);
-    const type = readU16(buf, next);
-    const qclass = readU16(buf, next + 2);
-    questions.push({ name, type, qclass });
-    pos = next + 4;
-  }
-
-  function decodeRR(): DecodedRecord {
-    const { name, next } = decodeNameAt(buf, pos);
-    const type = readU16(buf, next);
-    const qclass = readU16(buf, next + 2);
-    const ttl = readU32(buf, next + 4);
-    const rdlength = readU16(buf, next + 8);
-    const rdataStart = next + 10;
-    const rdata = buf.slice(rdataStart, rdataStart + rdlength);
-    pos = rdataStart + rdlength;
-    return { name, type, qclass, ttl, rdata };
-  }
-
-  const answers = Array.from({ length: ancount }, () => decodeRR());
-  const authorities = Array.from({ length: nscount }, () => decodeRR());
-  const additionals = Array.from({ length: arcount }, () => decodeRR());
-
-  return { id, flags, qdcount, ancount, nscount, arcount, questions, answers, authorities, additionals };
-}
-
-function makeAssistantAdvert(overrides: Partial<MdnsAdvertisement> = {}): MdnsAdvertisement {
-  return {
-    service: "assistant",
-    name: "openpalm.local",
-    port: 3800,
-    addresses: ["192.168.1.20"],
-    ...overrides,
-  };
-}
-
-function makeGuardianAdvert(overrides: Partial<MdnsAdvertisement> = {}): MdnsAdvertisement {
-  return {
-    service: "guardian",
-    name: "openpalm-guardian.local",
-    port: 3830,
-    addresses: ["192.168.1.20"],
-    ...overrides,
-  };
-}
-
-// ── Stub socket (records bind/addMembership/send/close; emits message/error) ─
-
-class StubSocket implements MdnsSocketLike {
-  bindCalls: Array<{ port: number; address: string }> = [];
-  memberships: string[] = [];
-  ttlCalls: number[] = [];
-  sends: Array<{ msg: Uint8Array; port: number; address: string }> = [];
-  closed = false;
-  unrefCalled = false;
-  private messageHandler?: (msg: Uint8Array, rinfo: MdnsRemoteInfo) => void;
+class StubMdns implements MdnsInstance {
+  responses: Array<{ res: { answers: MdnsAnswer[]; additionals?: MdnsAnswer[] }; rinfo?: MdnsRemoteInfo }> = [];
+  destroyed = false;
+  private queryHandler?: (message: { questions?: { name?: string; type?: string }[] }, rinfo: MdnsRemoteInfo) => void;
   private errorHandler?: (err: Error) => void;
 
-  bind(port: number, address: string, cb?: () => void): void {
-    this.bindCalls.push({ port, address });
-    cb?.();
+  on(event: "query", handler: (message: { questions?: { name?: string; type?: string }[] }, rinfo: MdnsRemoteInfo) => void): void;
+  on(event: "warning" | "error", handler: (err: Error) => void): void;
+  on(event: string, handler: (...args: never[]) => void): void {
+    if (event === "query") this.queryHandler = handler as never;
+    else if (event === "error") this.errorHandler = handler as never;
   }
-  addMembership(mcastAddr: string): void {
-    this.memberships.push(mcastAddr);
+  respond(res: { answers: MdnsAnswer[]; additionals?: MdnsAnswer[] }, rinfo?: MdnsRemoteInfo): void {
+    this.responses.push({ res, rinfo });
   }
-  setMulticastTTL(ttl: number): void {
-    this.ttlCalls.push(ttl);
+  destroy(): void {
+    this.destroyed = true;
   }
-  send(msg: Uint8Array, port: number, address: string): void {
-    this.sends.push({ msg, port, address });
-  }
-  close(): void {
-    this.closed = true;
-  }
-  on(event: "message", cb: (msg: Uint8Array, rinfo: MdnsRemoteInfo) => void): void;
-  on(event: "error", cb: (err: Error) => void): void;
-  on(event: "message" | "error", cb: never): void {
-    if (event === "message") this.messageHandler = cb as (msg: Uint8Array, rinfo: MdnsRemoteInfo) => void;
-    else this.errorHandler = cb as (err: Error) => void;
-  }
-  unref(): void {
-    this.unrefCalled = true;
-  }
-  emitMessage(msg: Uint8Array, rinfo: MdnsRemoteInfo): void {
-    this.messageHandler?.(msg, rinfo);
+
+  emitQuery(questions: { name?: string; type?: string }[], rinfo: MdnsRemoteInfo): void {
+    this.queryHandler?.({ questions }, rinfo);
   }
   emitError(err: Error): void {
     this.errorHandler?.(err);
   }
+  /** Every answer record across all respond() calls (announcements + query answers). */
+  allAnswers(): MdnsAnswer[] {
+    return this.responses.flatMap((r) => r.res.answers);
+  }
 }
 
-function createStubSocketFactory(): { factory: MdnsSocketFactory; sockets: StubSocket[] } {
-  const sockets: StubSocket[] = [];
-  const factory: MdnsSocketFactory = () => {
-    const socket = new StubSocket();
-    sockets.push(socket);
-    return socket;
+function createStubMdnsFactory(): { factory: MdnsFactory; instances: StubMdns[] } {
+  const instances: StubMdns[] = [];
+  const factory: MdnsFactory = () => {
+    const m = new StubMdns();
+    instances.push(m);
+    return m;
   };
-  return { factory, sockets };
+  return { factory, instances };
 }
 
-// ── 1-6: name derivation ──────────────────────────────────────────────────
+// ── name derivation ──────────────────────────────────────────────────────────
 
 describe("sanitizeDnsLabel", () => {
   test("lowercases and maps underscores/invalid chars to hyphens", () => {
@@ -334,7 +128,7 @@ describe("deriveMdnsNames", () => {
   });
 });
 
-// ── 7-14: gating truth table ─────────────────────────────────────────────
+// ── gating truth table ───────────────────────────────────────────────────────
 
 describe("resolveMdnsAdvertisements", () => {
   const HOST_IPV4 = ["192.168.1.20"];
@@ -429,8 +223,7 @@ describe("resolveMdnsAdvertisements", () => {
   });
 
   // PR #564 r3566892051: a specific non-IPv4 bind (IPv6 literal / hostname)
-  // must not be encoded into an A record — it would emit malformed rdata
-  // (NaN&0xff bytes, wrong rdlength). Skip it instead.
+  // must not be encoded into an A record — skip it instead.
   test("a specific IPv6 bind is skipped (no malformed A record)", () => {
     expect(
       resolveMdnsAdvertisements({ OP_BIND_ADDRESS: "fd00::5", GUARDIAN_DIRECT_INGRESS: "true" }, HOST_IPV4),
@@ -471,303 +264,132 @@ describe("resolveMdnsStatus", () => {
   });
 });
 
-// ── 15-25: DNS wire format ────────────────────────────────────────────────
-
-describe("parseDnsQuestions", () => {
-  test("decodes a standard A question", () => {
-    const packet = buildQueryPacket("OpenPalm.local", TYPE_A);
-    expect(parseDnsQuestions(packet)).toEqual([{ name: "openpalm.local", type: TYPE_A, qclass: CLASS_IN }]);
-  });
-
-  test("returns null for a response packet (QR=1)", () => {
-    const packet = buildQueryPacket("openpalm.local", TYPE_A, { flags: 0x8000 });
-    expect(parseDnsQuestions(packet)).toBeNull();
-  });
-
-  test("returns null for truncated/malformed packets without throwing", () => {
-    expect(() => parseDnsQuestions(new Uint8Array())).not.toThrow();
-    expect(parseDnsQuestions(new Uint8Array())).toBeNull();
-
-    const headerOnly = new Uint8Array(buildHeader(0, 0, 1));
-    expect(() => parseDnsQuestions(headerOnly)).not.toThrow();
-    expect(parseDnsQuestions(headerOnly)).toBeNull();
-
-    const full = buildQueryPacket("openpalm.local", TYPE_A);
-    const cutMidName = full.slice(0, full.length - 6);
-    expect(() => parseDnsQuestions(cutMidName)).not.toThrow();
-    expect(parseDnsQuestions(cutMidName)).toBeNull();
-  });
-
-  test("handles a compression pointer without looping forever", () => {
-    // Self-referencing pointer: the question name at offset 12 is a 2-byte
-    // pointer (0xC0, 0x0C) pointing back at offset 12 — itself.
-    const header = buildHeader(0, 0, 1);
-    const question = [0xc0, 0x0c, 0x00, TYPE_A, 0x00, CLASS_IN];
-    const packet = new Uint8Array([...header, ...question]);
-    let result: unknown;
-    expect(() => {
-      result = parseDnsQuestions(packet);
-    }).not.toThrow();
-    expect(result).toBeNull();
-  });
-});
-
-describe("buildMdnsAnswer", () => {
-  test("answers an A query for an advertised name", () => {
-    const advert = makeAssistantAdvert();
-    const questions: DnsQuestion[] = [{ name: "openpalm.local", type: TYPE_A, qclass: CLASS_IN }];
-    const packet = buildMdnsAnswer(questions, [advert]);
-    expect(packet).not.toBeNull();
-    const decoded = decodeMdnsPacket(packet as Uint8Array);
-    expect(decoded.id).toBe(0);
-    // QR (0x8000) + AA (0x0400) both set.
-    expect(decoded.flags & 0x8400).toBe(0x8400);
-    expect(decoded.ancount).toBeGreaterThanOrEqual(1);
-    const answer = decoded.answers.find((a) => a.type === TYPE_A);
-    assertDefined(answer);
-    assertDefined(answer.rdata);
-    expect((answer.qclass & 0x8000) !== 0).toBe(true); // cache-flush bit
-    expect(answer.qclass & 0x7fff).toBe(CLASS_IN);
-    expect(answer.ttl).toBe(120);
-    expect(Array.from(answer.rdata)).toEqual([192, 168, 1, 20]);
-    expect(answer.name.toLowerCase()).toBe("openpalm.local");
-  });
-
-  test("answers TYPE_ANY queries for an advertised name", () => {
-    const advert = makeAssistantAdvert();
-    const questions: DnsQuestion[] = [{ name: "openpalm.local", type: TYPE_ANY, qclass: CLASS_IN }];
-    const packet = buildMdnsAnswer(questions, [advert]);
-    expect(packet).not.toBeNull();
-    const decoded = decodeMdnsPacket(packet as Uint8Array);
-    expect(decoded.answers.some((a) => a.type === TYPE_A)).toBe(true);
-  });
-
-  test("returns null for an unknown name", () => {
-    const advert = makeAssistantAdvert();
-    const questions: DnsQuestion[] = [{ name: "unknown.local", type: TYPE_A, qclass: CLASS_IN }];
-    expect(buildMdnsAnswer(questions, [advert])).toBeNull();
-  });
-
-  test("matches names case-insensitively", () => {
-    const advert = makeAssistantAdvert();
-    const questions: DnsQuestion[] = [{ name: "OpenPalm.LOCAL", type: TYPE_A, qclass: CLASS_IN }];
-    expect(buildMdnsAnswer(questions, [advert])).not.toBeNull();
-  });
-
-  test("answers a PTR query for _http._tcp.local with SRV/TXT/A additionals", () => {
-    const advert = makeAssistantAdvert();
-    const questions: DnsQuestion[] = [{ name: HTTP_SERVICE, type: TYPE_PTR, qclass: CLASS_IN }];
-    const packet = buildMdnsAnswer(questions, [advert]);
-    expect(packet).not.toBeNull();
-    const decoded = decodeMdnsPacket(packet as Uint8Array);
-
-    const ptr = decoded.answers.find((a) => a.type === TYPE_PTR);
-    assertDefined(ptr);
-    assertDefined(ptr.rdata);
-    expect(ptr.name.toLowerCase()).toBe(HTTP_SERVICE);
-    const instanceName = decodeNameAt(ptr.rdata, 0).name.toLowerCase();
-    expect(instanceName).toBe(`openpalm.${HTTP_SERVICE}`);
-
-    const srv = decoded.additionals.find((a) => a.type === TYPE_SRV);
-    assertDefined(srv);
-    assertDefined(srv.rdata);
-    expect(srv.name.toLowerCase()).toBe(instanceName);
-    const srvPort = readU16(srv.rdata, 4);
-    expect(srvPort).toBe(3800);
-    const srvTarget = decodeNameAt(srv.rdata, 6).name.toLowerCase();
-    expect(srvTarget).toBe("openpalm.local");
-
-    const txt = decoded.additionals.find((a) => a.type === TYPE_TXT);
-    assertDefined(txt);
-    assertDefined(txt.rdata);
-    expect(decodeTxtRdata(txt.rdata)).toContain("path=/");
-
-    const aRec = decoded.additionals.find(
-      (a) => a.type === TYPE_A && a.name.toLowerCase() === "openpalm.local",
-    );
-    assertDefined(aRec);
-    assertDefined(aRec.rdata);
-    expect(Array.from(aRec.rdata)).toEqual([192, 168, 1, 20]);
-  });
-
-  test("preserves the query ID and answers unicast for legacy (non-5353 source) queries", () => {
-    const advert = makeAssistantAdvert();
-    const questions: DnsQuestion[] = [{ name: "openpalm.local", type: TYPE_A, qclass: CLASS_IN }];
-    const packet = buildMdnsAnswer(questions, [advert], { queryId: 0x1234 });
-    expect(packet).not.toBeNull();
-    const decoded = decodeMdnsPacket(packet as Uint8Array);
-    expect(decoded.id).toBe(0x1234);
-  });
-
-  // PR #564 r3566892362: legacy-unicast replies (RFC 6762 §6.7) must echo the
-  // question, clear the cache-flush bit, and use a short (≤10s) TTL — otherwise
-  // conventional one-shot resolvers reject them.
-  const CACHE_FLUSH = 0x8000;
-  test("legacy-unicast reply echoes the question (qdcount=1)", () => {
-    const advert = makeAssistantAdvert();
-    const questions: DnsQuestion[] = [{ name: "openpalm.local", type: TYPE_A, qclass: CLASS_IN }];
-    const packet = buildMdnsAnswer(questions, [advert], { queryId: 0x1234, legacy: true });
-    const decoded = decodeMdnsPacket(packet as Uint8Array);
-    expect(decoded.qdcount).toBe(1);
-    expect(decoded.questions[0].name.toLowerCase()).toBe("openpalm.local");
-    expect(decoded.questions[0].type).toBe(TYPE_A);
-  });
-
-  test("legacy-unicast A record clears the cache-flush bit and uses a short TTL", () => {
-    const advert = makeAssistantAdvert();
-    const questions: DnsQuestion[] = [{ name: "openpalm.local", type: TYPE_A, qclass: CLASS_IN }];
-    const packet = buildMdnsAnswer(questions, [advert], { queryId: 0x1234, legacy: true });
-    const decoded = decodeMdnsPacket(packet as Uint8Array);
-    const a = decoded.answers.find((r) => r.type === TYPE_A);
-    assertDefined(a);
-    expect(a.qclass & CACHE_FLUSH).toBe(0); // cache-flush bit cleared
-    expect(a.qclass & 0x7fff).toBe(CLASS_IN);
-    expect(a.ttl).toBeLessThanOrEqual(10);
-  });
-
-  test("multicast reply keeps qdcount=0, cache-flush set, TTL 120", () => {
-    const advert = makeAssistantAdvert();
-    const questions: DnsQuestion[] = [{ name: "openpalm.local", type: TYPE_A, qclass: CLASS_IN }];
-    const packet = buildMdnsAnswer(questions, [advert]);
-    const decoded = decodeMdnsPacket(packet as Uint8Array);
-    expect(decoded.qdcount).toBe(0);
-    const a = decoded.answers.find((r) => r.type === TYPE_A);
-    assertDefined(a);
-    expect(a.qclass & CACHE_FLUSH).toBe(CACHE_FLUSH);
-    expect(a.ttl).toBe(120);
-  });
-});
-
-describe("buildMdnsAnnouncement / buildMdnsGoodbye", () => {
-  test("buildMdnsGoodbye emits TTL 0 records for every advert", () => {
-    const packet = buildMdnsGoodbye([makeAssistantAdvert(), makeGuardianAdvert()]);
-    expect(packet).not.toBeNull();
-    const decoded = decodeMdnsPacket(packet as Uint8Array);
-    expect(decoded.answers.length).toBeGreaterThanOrEqual(2);
-    for (const answer of decoded.answers) {
-      expect(answer.ttl).toBe(0);
-    }
-  });
-
-  test("buildMdnsAnnouncement produces at least one A answer per advert", () => {
-    const packet = buildMdnsAnnouncement([makeAssistantAdvert(), makeGuardianAdvert()]);
-    expect(packet).not.toBeNull();
-    const decoded = decodeMdnsPacket(packet as Uint8Array);
-    const aNames = decoded.answers.filter((a) => a.type === TYPE_A).map((a) => a.name.toLowerCase());
-    expect(aNames).toContain("openpalm.local");
-    expect(aNames).toContain("openpalm-guardian.local");
-  });
-});
-
-// ── 26-31: responder lifecycle (stub socket factory) ─────────────────────
+// ── responder lifecycle (stub MdnsInstance) ──────────────────────────────────
 
 describe("startMdnsResponder", () => {
-  test("returns null and opens no socket when there is nothing to advertise", () => {
-    const { factory, sockets } = createStubSocketFactory();
-    const handle = startMdnsResponder([], { createSocket: factory });
+  test("returns null and creates no responder when there is nothing to advertise", () => {
+    const { factory, instances } = createStubMdnsFactory();
+    const handle = startMdnsResponder([], { makeMdns: factory });
     expect(handle).toBeNull();
-    expect(sockets).toHaveLength(0);
+    expect(instances).toHaveLength(0);
   });
 
-  test("binds 5353, joins 224.0.0.251, and announces", () => {
-    const { factory, sockets } = createStubSocketFactory();
-    const handle = startMdnsResponder([makeAssistantAdvert()], { createSocket: factory });
+  test("creates one responder and announces an A record per advert address", () => {
+    const { factory, instances } = createStubMdnsFactory();
+    const handle = startMdnsResponder([makeAssistantAdvert()], { makeMdns: factory });
     expect(handle).not.toBeNull();
-    expect(sockets).toHaveLength(1);
-    const [socket] = sockets;
-    assertDefined(socket);
-    expect(socket.bindCalls).toHaveLength(1);
-    const [bindCall] = socket.bindCalls;
-    assertDefined(bindCall);
-    expect(bindCall.port).toBe(MDNS_PORT);
-    expect(socket.memberships).toContain(MDNS_ADDR);
-    expect(socket.sends.length).toBeGreaterThanOrEqual(1);
-    const [firstSend] = socket.sends;
-    assertDefined(firstSend);
-    expect(firstSend.address).toBe(MDNS_ADDR);
-    expect(firstSend.port).toBe(MDNS_PORT);
+    expect(instances).toHaveLength(1);
+    const [mdns] = instances;
+    assertDefined(mdns);
+    const announced = mdns.allAnswers().find((a) => a.type === "A");
+    assertDefined(announced);
+    expect(announced.name).toBe("openpalm.local");
+    expect(announced.data).toBe("192.168.1.20");
     handle?.stop();
   });
 
-  test("responder answers a matching query received on the socket", () => {
-    const { factory, sockets } = createStubSocketFactory();
-    const handle = startMdnsResponder([makeAssistantAdvert()], { createSocket: factory });
-    const [socket] = sockets;
-    assertDefined(socket);
-    socket.sends.length = 0; // clear the startup announcement(s)
+  test("answers a matching A query with the advert's address", () => {
+    const { factory, instances } = createStubMdnsFactory();
+    const handle = startMdnsResponder([makeAssistantAdvert()], { makeMdns: factory });
+    const [mdns] = instances;
+    assertDefined(mdns);
+    mdns.responses.length = 0; // drop startup announcements
 
-    socket.emitMessage(buildQueryPacket("openpalm.local", TYPE_A), { address: "192.168.1.50", port: MDNS_PORT });
+    mdns.emitQuery([{ name: "openpalm.local", type: "A" }], { address: "192.168.1.50", port: MDNS_PORT });
 
-    expect(socket.sends.length).toBeGreaterThanOrEqual(1);
-    const response = socket.sends[socket.sends.length - 1];
-    assertDefined(response);
-    expect(response.address).toBe(MDNS_ADDR);
-    expect(response.port).toBe(MDNS_PORT);
-    const decoded = decodeMdnsPacket(response.msg);
-    const answer = decoded.answers.find((a) => a.type === TYPE_A);
+    expect(mdns.responses.length).toBeGreaterThanOrEqual(1);
+    const last = mdns.responses[mdns.responses.length - 1];
+    assertDefined(last);
+    const answer = last.res.answers.find((a) => a.type === "A");
     assertDefined(answer);
-    assertDefined(answer.rdata);
-    expect(Array.from(answer.rdata)).toEqual([192, 168, 1, 20]);
+    expect(answer.data).toBe("192.168.1.20");
+    // A standard multicast query (source port 5353) is answered to the group.
+    expect(last.rinfo).toBeUndefined();
     handle?.stop();
   });
 
-  test("ignores non-matching and malformed messages", () => {
-    const { factory, sockets } = createStubSocketFactory();
-    const handle = startMdnsResponder([makeAssistantAdvert()], { createSocket: factory });
-    const [socket] = sockets;
-    assertDefined(socket);
-    socket.sends.length = 0;
+  test("answers a _http._tcp.local PTR query with SRV/TXT/A additionals", () => {
+    const { factory, instances } = createStubMdnsFactory();
+    const handle = startMdnsResponder([makeAssistantAdvert()], { makeMdns: factory });
+    const [mdns] = instances;
+    assertDefined(mdns);
+    mdns.responses.length = 0;
 
-    socket.emitMessage(buildQueryPacket("unknown.local", TYPE_A), { address: "192.168.1.50", port: MDNS_PORT });
-    expect(socket.sends).toHaveLength(0);
+    mdns.emitQuery([{ name: "_http._tcp.local", type: "PTR" }], { address: "192.168.1.50", port: MDNS_PORT });
 
-    socket.emitMessage(new Uint8Array([1, 2, 3]), { address: "192.168.1.50", port: MDNS_PORT });
-    expect(socket.sends).toHaveLength(0);
-
+    const last = mdns.responses[mdns.responses.length - 1];
+    assertDefined(last);
+    expect(last.res.answers.some((a) => a.type === "PTR")).toBe(true);
+    expect(last.res.additionals?.some((a) => a.type === "SRV")).toBe(true);
+    expect(last.res.additionals?.some((a) => a.type === "TXT")).toBe(true);
     handle?.stop();
   });
 
-  test("stop() sends goodbye and closes the socket", () => {
-    const { factory, sockets } = createStubSocketFactory();
-    const handle = startMdnsResponder([makeAssistantAdvert()], { createSocket: factory });
-    const [socket] = sockets;
-    assertDefined(socket);
-    const sendsBefore = socket.sends.length;
+  test("answers a legacy-unicast query (source port ≠ 5353) back to the sender", () => {
+    const { factory, instances } = createStubMdnsFactory();
+    const handle = startMdnsResponder([makeAssistantAdvert()], { makeMdns: factory });
+    const [mdns] = instances;
+    assertDefined(mdns);
+    mdns.responses.length = 0;
+
+    const rinfo = { address: "192.168.1.50", port: 54321 };
+    mdns.emitQuery([{ name: "openpalm.local", type: "A" }], rinfo);
+
+    const last = mdns.responses[mdns.responses.length - 1];
+    assertDefined(last);
+    expect(last.rinfo).toEqual(rinfo);
+    handle?.stop();
+  });
+
+  test("ignores non-matching queries", () => {
+    const { factory, instances } = createStubMdnsFactory();
+    const handle = startMdnsResponder([makeAssistantAdvert()], { makeMdns: factory });
+    const [mdns] = instances;
+    assertDefined(mdns);
+    mdns.responses.length = 0;
+
+    mdns.emitQuery([{ name: "unknown.local", type: "A" }], { address: "192.168.1.50", port: MDNS_PORT });
+    expect(mdns.responses).toHaveLength(0);
+    handle?.stop();
+  });
+
+  test("stop() sends TTL-0 goodbye records and destroys the responder", () => {
+    const { factory, instances } = createStubMdnsFactory();
+    const handle = startMdnsResponder([makeAssistantAdvert()], { makeMdns: factory });
+    const [mdns] = instances;
+    assertDefined(mdns);
+    const before = mdns.responses.length;
 
     handle?.stop();
 
-    expect(socket.sends.length).toBeGreaterThan(sendsBefore);
-    const goodbye = socket.sends[socket.sends.length - 1];
+    expect(mdns.responses.length).toBeGreaterThan(before);
+    const goodbye = mdns.responses[mdns.responses.length - 1];
     assertDefined(goodbye);
-    const decoded = decodeMdnsPacket(goodbye.msg);
-    expect(decoded.answers.length).toBeGreaterThanOrEqual(1);
-    for (const answer of decoded.answers) {
-      expect(answer.ttl).toBe(0);
-    }
-    expect(socket.closed).toBe(true);
+    expect(goodbye.res.answers.length).toBeGreaterThanOrEqual(1);
+    for (const answer of goodbye.res.answers) expect(answer.ttl).toBe(0);
+    expect(mdns.destroyed).toBe(true);
   });
 
-  test("socket errors are non-fatal", () => {
-    const throwingFactory: MdnsSocketFactory = () => {
+  test("factory/socket errors are non-fatal", () => {
+    const throwingFactory: MdnsFactory = () => {
       throw new Error("EADDRINUSE");
     };
     let handle: MdnsResponderHandle | null | undefined;
     expect(() => {
-      handle = startMdnsResponder([makeAssistantAdvert()], { createSocket: throwingFactory });
+      handle = startMdnsResponder([makeAssistantAdvert()], { makeMdns: throwingFactory });
     }).not.toThrow();
-    // Either the handle is inert (null) or stop() on it is still safe.
     expect(() => handle?.stop()).not.toThrow();
 
-    const { factory, sockets } = createStubSocketFactory();
-    const handle2 = startMdnsResponder([makeAssistantAdvert()], { createSocket: factory });
-    const [socket] = sockets;
-    assertDefined(socket);
-    expect(() => socket.emitError(new Error("EACCES"))).not.toThrow();
+    const { factory, instances } = createStubMdnsFactory();
+    const handle2 = startMdnsResponder([makeGuardianAdvert()], { makeMdns: factory });
+    const [mdns] = instances;
+    assertDefined(mdns);
+    expect(() => mdns.emitError(new Error("EACCES"))).not.toThrow();
     handle2?.stop();
   });
 });
 
-// ── 32-36: reconcile ──────────────────────────────────────────────────────
+// ── reconcile ────────────────────────────────────────────────────────────────
 
 describe("reconcileMdnsResponder", () => {
   const homes: string[] = [];
@@ -785,12 +407,12 @@ describe("reconcileMdnsResponder", () => {
 
   beforeEach(() => {
     _resetMdnsResponderForTests();
-    _setMdnsSocketFactoryForTests(null);
+    _setMdnsFactoryForTests(null);
   });
 
   afterEach(() => {
     _resetMdnsResponderForTests();
-    _setMdnsSocketFactoryForTests(null);
+    _setMdnsFactoryForTests(null);
     for (const home of homes.splice(0)) {
       rmSync(home, { recursive: true, force: true });
     }
@@ -799,9 +421,9 @@ describe("reconcileMdnsResponder", () => {
   test("starts nothing for a loopback stack.env", () => {
     const home = makeHome();
     writeStackEnv(home, "OP_BIND_ADDRESS=127.0.0.1\n");
-    const { factory, sockets } = createStubSocketFactory();
-    const status = reconcileMdnsResponder(home, { createSocket: factory, hostIpv4: ["192.168.1.20"] });
-    expect(sockets).toHaveLength(0);
+    const { factory, instances } = createStubMdnsFactory();
+    const status = reconcileMdnsResponder(home, { makeMdns: factory, hostIpv4: ["192.168.1.20"] });
+    expect(instances).toHaveLength(0);
     expect(status.assistant.advertised).toBe(false);
     expect(status.guardian.advertised).toBe(false);
   });
@@ -809,54 +431,54 @@ describe("reconcileMdnsResponder", () => {
   test("starts the responder when stack.env enables LAN exposure", () => {
     const home = makeHome();
     writeStackEnv(home, "OP_ASSISTANT_BIND_ADDRESS=0.0.0.0\n");
-    const { factory, sockets } = createStubSocketFactory();
-    const status = reconcileMdnsResponder(home, { createSocket: factory, hostIpv4: ["192.168.1.20"] });
-    expect(sockets.length).toBeGreaterThanOrEqual(1);
+    const { factory, instances } = createStubMdnsFactory();
+    const status = reconcileMdnsResponder(home, { makeMdns: factory, hostIpv4: ["192.168.1.20"] });
+    expect(instances.length).toBeGreaterThanOrEqual(1);
     expect(status.assistant.advertised).toBe(true);
   });
 
   test("is idempotent for an unchanged env", () => {
     const home = makeHome();
     writeStackEnv(home, "OP_ASSISTANT_BIND_ADDRESS=0.0.0.0\n");
-    const { factory, sockets } = createStubSocketFactory();
-    reconcileMdnsResponder(home, { createSocket: factory, hostIpv4: ["192.168.1.20"] });
-    const socketCountAfterFirst = sockets.length;
-    const [firstSocket] = sockets;
-    assertDefined(firstSocket);
+    const { factory, instances } = createStubMdnsFactory();
+    reconcileMdnsResponder(home, { makeMdns: factory, hostIpv4: ["192.168.1.20"] });
+    const countAfterFirst = instances.length;
+    const [first] = instances;
+    assertDefined(first);
 
-    reconcileMdnsResponder(home, { createSocket: factory, hostIpv4: ["192.168.1.20"] });
+    reconcileMdnsResponder(home, { makeMdns: factory, hostIpv4: ["192.168.1.20"] });
 
-    expect(sockets.length).toBe(socketCountAfterFirst); // no new socket opened
-    expect(firstSocket.closed).toBe(false); // no stop() on the unchanged handle
+    expect(instances.length).toBe(countAfterFirst); // no new responder created
+    expect(first.destroyed).toBe(false); // unchanged handle not stopped
   });
 
   test("stops the responder when the env returns to loopback", () => {
     const home = makeHome();
     writeStackEnv(home, "OP_ASSISTANT_BIND_ADDRESS=0.0.0.0\n");
-    const { factory, sockets } = createStubSocketFactory();
-    reconcileMdnsResponder(home, { createSocket: factory, hostIpv4: ["192.168.1.20"] });
-    const [firstSocket] = sockets;
-    assertDefined(firstSocket);
-    const sendsBefore = firstSocket.sends.length;
+    const { factory, instances } = createStubMdnsFactory();
+    reconcileMdnsResponder(home, { makeMdns: factory, hostIpv4: ["192.168.1.20"] });
+    const [first] = instances;
+    assertDefined(first);
+    const before = first.responses.length;
 
     writeStackEnv(home, "OP_ASSISTANT_BIND_ADDRESS=127.0.0.1\n");
-    const status = reconcileMdnsResponder(home, { createSocket: factory, hostIpv4: ["192.168.1.20"] });
+    const status = reconcileMdnsResponder(home, { makeMdns: factory, hostIpv4: ["192.168.1.20"] });
 
-    expect(firstSocket.sends.length).toBeGreaterThan(sendsBefore); // goodbye sent
-    expect(firstSocket.closed).toBe(true);
+    expect(first.responses.length).toBeGreaterThan(before); // goodbye sent
+    expect(first.destroyed).toBe(true);
     expect(status.assistant.advertised).toBe(false);
   });
 
   test("process.env OP_MDNS=0 force-disables reconcile regardless of stack.env", () => {
     const home = makeHome();
     writeStackEnv(home, "OP_ASSISTANT_BIND_ADDRESS=0.0.0.0\n");
-    const { factory, sockets } = createStubSocketFactory();
+    const { factory, instances } = createStubMdnsFactory();
     const status = reconcileMdnsResponder(home, {
-      createSocket: factory,
+      makeMdns: factory,
       hostIpv4: ["192.168.1.20"],
       processEnv: { OP_MDNS: "0" },
     });
-    expect(sockets).toHaveLength(0);
+    expect(instances).toHaveLength(0);
     expect(status.assistant.advertised).toBe(false);
   });
 });

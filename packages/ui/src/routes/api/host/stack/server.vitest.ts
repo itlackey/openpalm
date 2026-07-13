@@ -25,29 +25,21 @@ import { join } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { cleanupTempDirs, resetState, seedSecretsEnv, stackEnvFor, trackDir } from '$lib/server/test-helpers.js';
-import { _resetMdnsResponderForTests, _setMdnsSocketFactoryForTests } from '@openpalm/lib';
-import type { MdnsRemoteInfo, MdnsSocketFactory, MdnsSocketLike } from '@openpalm/lib/control-plane/mdns-responder.js';
+import { _resetMdnsResponderForTests, _setMdnsFactoryForTests } from '@openpalm/lib';
+import type { MdnsFactory, MdnsInstance } from '@openpalm/lib/control-plane/mdns-responder.js';
 
 /**
- * #488 — no-op mDNS socket double. The PUT handler now triggers a real
+ * #488 — no-op mDNS double. The PUT handler triggers a real
  * reconcileMdnsResponder() call; this stub factory guarantees the unit
  * suite never binds a real UDP 5353 socket.
  */
-class NoopMdnsSocket implements MdnsSocketLike {
-  bind(_port: number, _address: string, cb?: () => void): void {
-    cb?.();
-  }
-  addMembership(_mcastAddr: string): void {}
-  setMulticastTTL(_ttl: number): void {}
-  send(_msg: Uint8Array, _port: number, _address: string): void {}
-  close(): void {}
-  on(event: 'message', cb: (msg: Uint8Array, rinfo: MdnsRemoteInfo) => void): void;
-  on(event: 'error', cb: (err: Error) => void): void;
-  on(_event: 'message' | 'error', _cb: never): void {}
-  unref(): void {}
-}
+const noopMdnsInstance: MdnsInstance = {
+  on() {},
+  respond() {},
+  destroy() {},
+};
 
-const noopMdnsSocketFactory: MdnsSocketFactory = () => new NoopMdnsSocket();
+const noopMdnsFactory: MdnsFactory = () => noopMdnsInstance;
 
 type RouteHandler = (event: unknown) => Response | Promise<Response>;
 type HostStackRouteModule = { GET: RouteHandler; PUT: RouteHandler };
@@ -135,12 +127,12 @@ beforeEach(() => {
   process.env.OP_HOME = homeDir;
   resetState('admin-token');
   // #488 — never let the PUT handler's reconcile bind a real UDP socket.
-  _setMdnsSocketFactoryForTests(noopMdnsSocketFactory);
+  _setMdnsFactoryForTests(noopMdnsFactory);
 });
 
 afterEach(() => {
   _resetMdnsResponderForTests();
-  _setMdnsSocketFactoryForTests(null);
+  _setMdnsFactoryForTests(null);
   for (const key of ENV_KEYS) {
     const prev = savedEnv[key];
     if (prev === undefined) delete process.env[key];
