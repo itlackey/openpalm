@@ -253,6 +253,14 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **Explicit `{addon:false}` in a setup rerun disables the addon** (PR #564
+  second retest R6): the setup loop only acted on truthy addon flags, so
+  `{discord:false}` left Discord enabled. It now honors an explicit `false` as a
+  disable. Disabling a profile-bearing addon (voice/ollama) additionally clears
+  its `OP_VOICE_PROFILE`/`OP_OLLAMA_PROFILE` env key, so the profile-only
+  enablement migration can no longer re-derive and silently re-enable the addon
+  the operator just turned off.
+
 - **Setup no longer consumes ambient host secrets as operator input** (PR #564
   second retest P1-3): `persistPortalCredentials` fell back to the host process
   environment for any portal credential the setup spec omitted, so a leftover

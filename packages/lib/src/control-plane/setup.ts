@@ -419,11 +419,14 @@ export async function performSetup(
         writeVoiceVars({ tts, stt }, state.homeDir);
       }
 
-      // Enable requested addons (portals like discord, slack, etc.)
-      // setAddonEnabled records explicit activation state and ensures portal secret files.
+      // Enable/disable requested addons (portals like discord, slack, etc.).
+      // PR #564 second retest R6: honor an EXPLICIT `false` as a disable — the
+      // old `if (enabled)` skipped it, so `{discord:false}` left Discord enabled.
+      // setAddonEnabled records explicit activation state and ensures portal
+      // secret files (on enable) / clears the hardware-profile key (on disable).
       if (addons) {
         for (const [name, enabled] of Object.entries(addons)) {
-          if (enabled) setAddonEnabled(state.homeDir, name, true, state);
+          setAddonEnabled(state.homeDir, name, enabled === true, state);
         }
       }
 

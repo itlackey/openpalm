@@ -891,6 +891,28 @@ describe("performSetup", () => {
     expect(stackEnv).not.toContain('DISCORD_BOT_TOKEN=');
   });
 
+  // PR #564 second retest R6: an EXPLICIT {addon:false} must disable an existing
+  // addon — the old `if (enabled)` loop skipped false, leaving it enabled.
+  it("disables an existing addon when the rerun spec sets it false", async () => {
+    const enabledAddonsLine = (): string =>
+      readFileSync(join(homeDir, "state", "stack.state.env"), 'utf-8')
+        .split('\n')
+        .find((l) => l.startsWith('OP_ENABLED_ADDONS=')) ?? '';
+
+    // First enable discord.
+    const enable = await performSetup(makeValidSpec({
+      addons: { discord: true },
+      portalCredentials: { discord: { botToken: "discord-bot-token-xyz" } },
+    }));
+    expect(enable.ok).toBe(true);
+    expect(enabledAddonsLine()).toContain('discord');
+
+    // Rerun with discord:false — it must be removed from the enabled set.
+    const disable = await performSetup(makeValidSpec({ addons: { discord: false } }));
+    expect(disable.ok).toBe(true);
+    expect(enabledAddonsLine()).not.toContain('discord');
+  });
+
   // PR #564 second retest P1-3: setup must NOT consume ambient host env vars as
   // portal credentials — a leftover DISCORD_BOT_TOKEN in the operator's shell
   // used to be silently written into the secret store, overriding keep-existing.
