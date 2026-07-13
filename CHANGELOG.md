@@ -253,6 +253,17 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **Pairing API status/error contract fully documented and tested** (PR #564
+  retest P3-2): `api-spec.md` now enumerates every status `POST
+  /api/connections/pairing` can return in evaluation order — `403
+  capability_not_available`, `403 forbidden_origin`, `401 unauthorized`, `503
+  admin_not_configured`, `413 too_large`, `400 invalid_json`, `400
+  invalid_connection`, `500`/`502 pairing_mint_failed` (including the create-only
+  id-collision case), and `201` on success — with a note on the stable error-body
+  shape. Contract tests assert each status, including the previously-untested
+  `forbidden_origin`, `invalid_json`, `too_large`, non-2xx, and
+  collision-exhausted paths.
+
 - **Pairing QR is `string | null` end-to-end with a text-code fallback** (PR
   #564 retest P3-3): the host UI pairing helper and `/connections` panel now type
   `qrSvg` as `string | null` (matching the route and spec) and render the text

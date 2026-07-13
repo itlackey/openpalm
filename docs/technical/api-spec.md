@@ -907,13 +907,27 @@ Response (`201`):
   `GUARDIAN_DIRECT_INGRESS` is not enabled on the stack, because the paired
   client would otherwise `404` until the operator turns direct ingress on.
 
-Error responses:
+Success is **`201 Created`** (the fields above). Error responses, in the order
+the route evaluates them:
 
+- `403 capability_not_available` -- This deployment does not expose
+  `host:stack:write` (e.g. a `pwa-static` `openpalm app` with no local guardian
+  to mint against). The endpoint effectively does not exist there.
+- `403 forbidden_origin` -- The request's `Origin`/`Host` failed the CSRF
+  allowlist (a cross-site or disallowed-host caller).
+- `401 unauthorized` -- Missing or invalid host-admin session cookie.
+- `503 admin_not_configured` -- `OP_UI_LOGIN_PASSWORD` is unset; setup has not
+  completed, so there is no admin session to authenticate against.
+- `413 too_large` -- The request body exceeds the accepted size.
+- `400 invalid_json` -- The request body is not valid JSON.
 - `400 invalid_connection` -- `label` missing/too long, or `url` invalid.
-- `403` -- Missing `host:stack:write` capability or host-admin session.
 - `500 pairing_mint_failed` -- The guardian admin token secret is missing.
-- `502 pairing_mint_failed` -- The guardian admin listener is unreachable
-  (e.g. the guardian is not running with a guardian-ingress addon enabled).
+- `502 pairing_mint_failed` -- The guardian admin listener is unreachable, it
+  returned a non-2xx status, or it reported an id collision on every mint
+  attempt (create-only store; see `principalId` above).
+
+Every error body is `{ "error": "<code>", "requestId": "<id>" }` (some carry
+extra diagnostic fields); the `error` codes above are stable.
 
 ## Setup Wizard API
 

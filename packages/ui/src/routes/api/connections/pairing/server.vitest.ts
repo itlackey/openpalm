@@ -68,6 +68,35 @@ function makePairingPostEvent(body: Record<string, unknown>, token = 'admin-toke
   };
 }
 
+/**
+ * A pairing POST event with caller-controlled raw body + extra headers, for the
+ * body-parse / origin contract cases (PR #564 retest P3-2). Unlike
+ * makePairingPostEvent it does not JSON.stringify — the caller supplies the
+ * exact bytes (or a bad content-length) the route must reject.
+ */
+function makeRawPairingEvent(rawBody: string, extraHeaders: Record<string, string> = {}): unknown {
+  const url = new URL('http://127.0.0.1:3880/api/connections/pairing');
+  return {
+    url,
+    request: new Request(url, {
+      method: 'POST',
+      headers: {
+        cookie: 'op_session=admin-token',
+        'x-request-id': 'req-pairing-mint',
+        'content-type': 'application/json',
+        ...extraHeaders,
+      },
+      body: rawBody,
+    }),
+    params: {},
+    locals: { role: 'admin' },
+    route: { id: '/api/connections/pairing' },
+    getClientAddress: () => '127.0.0.1',
+    isDataRequest: false,
+    isSubRequest: false,
+  };
+}
+
 /** Stub the guardian admin listener's POST /admin/principals response. */
 function stubGuardianAdmin(status: number, body: unknown = { principal: { id: 'device-ab12' } }): ReturnType<typeof vi.fn> {
   const fn = vi.fn().mockResolvedValue(
@@ -253,6 +282,72 @@ describe('POST /api/connections/pairing — mint (#511 D3/D4)', () => {
     const res = await POST(makePairingPostEvent({ label: 'My Phone', url: 'http://127.0.0.1:3830' }));
     const body = (await res.json()) as { warnings: string[] };
     expect(body.warnings.some((w) => /https/i.test(w))).toBe(false);
+  });
+
+  // PR #564 retest P3-2: contract tests for the remaining documented statuses
+  // so the api-spec error table is provably exhaustive.
+  test('403 forbidden_origin for a cross-site Origin', async () => {
+    writeSecret(getState().homeDir, 'op_guardian_admin_token', 'f'.repeat(48));
+    const fetchStub = stubGuardianAdmin(200);
+
+    const { POST } = await loadRoute();
+    const res = await POST(
+      makeRawPairingEvent(JSON.stringify({ label: 'My Phone', url: 'https://gw.example.ts.net/oc' }), {
+        origin: 'https://evil.example.com',
+      }),
+    );
+    expect(res.status).toBe(403);
+    const body = (await res.json()) as { error?: string };
+    expect(body.error).toBe('forbidden_origin');
+    expect(fetchStub).not.toHaveBeenCalled();
+  });
+
+  test('400 invalid_json for a non-JSON body', async () => {
+    writeSecret(getState().homeDir, 'op_guardian_admin_token', 'f'.repeat(48));
+    const fetchStub = stubGuardianAdmin(200);
+
+    const { POST } = await loadRoute();
+    const res = await POST(makeRawPairingEvent('{ this is : not json'));
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { error?: string };
+    expect(body.error).toBe('invalid_json');
+    expect(fetchStub).not.toHaveBeenCalled();
+  });
+
+  test('413 too_large for an oversized body (content-length)', async () => {
+    writeSecret(getState().homeDir, 'op_guardian_admin_token', 'f'.repeat(48));
+    const fetchStub = stubGuardianAdmin(200);
+
+    const { POST } = await loadRoute();
+    const res = await POST(
+      makeRawPairingEvent(JSON.stringify({ label: 'x', url: 'https://gw.example.ts.net/oc' }), {
+        'content-length': String(2 * 1_048_576),
+      }),
+    );
+    expect(res.status).toBe(413);
+    const body = (await res.json()) as { error?: string };
+    expect(body.error).toBe('too_large');
+    expect(fetchStub).not.toHaveBeenCalled();
+  });
+
+  test('502 when the guardian admin returns a non-2xx status', async () => {
+    writeSecret(getState().homeDir, 'op_guardian_admin_token', 'f'.repeat(48));
+    stubGuardianAdmin(500, { error: 'boom' });
+
+    const { POST } = await loadRoute();
+    const res = await POST(makePairingPostEvent({ label: 'My Phone', url: 'https://gw.example.ts.net/oc' }));
+    expect(res.status).toBe(502);
+  });
+
+  test('502 when the guardian admin reports an id collision on every attempt (create-only, P3-1)', async () => {
+    writeSecret(getState().homeDir, 'op_guardian_admin_token', 'f'.repeat(48));
+    const fetchStub = stubGuardianAdmin(409, { error: 'principal_exists' });
+
+    const { POST } = await loadRoute();
+    const res = await POST(makePairingPostEvent({ label: 'My Phone', url: 'https://gw.example.ts.net/oc' }));
+    expect(res.status).toBe(502);
+    // create-only mint retries a bounded number of times before giving up.
+    expect(fetchStub.mock.calls.length).toBeGreaterThanOrEqual(2);
   });
 
   test('never persists or logs the minted secret', async () => {
