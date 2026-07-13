@@ -109,6 +109,22 @@ describe('validateEndpointUrl (discriminated reasons)', () => {
       url: 'https://remote.example:3800',
     });
   });
+
+  // PR #564 second retest: a connection base URL must not carry a query/fragment
+  // — the client concatenates paths onto it, so `?tenant=home` mangles into
+  // `...?tenant=home/session`.
+  it('rejects a URL carrying a query string', () => {
+    expect(validateEndpointUrl('https://gw.example?tenant=home')).toEqual({
+      ok: false,
+      reason: 'unexpected_query_or_fragment',
+    });
+  });
+  it('rejects a URL carrying a fragment', () => {
+    expect(validateEndpointUrl('https://gw.example/oc#frag')).toEqual({
+      ok: false,
+      reason: 'unexpected_query_or_fragment',
+    });
+  });
 });
 
 describe('default endpoint synthesis', () => {

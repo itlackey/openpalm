@@ -253,6 +253,17 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **Setup input validation hardening** (PR #564 second retest): a JSON `null`
+  (or array/primitive) request body is now rejected as `400 invalid_json` across
+  all admin routes instead of throwing an unstructured 500 when a handler reads a
+  field off it; a connection/guardian URL carrying a query or fragment is
+  rejected (`unexpected_query_or_fragment`) rather than normalized into an
+  unusable base that mangles client path concatenation; the pairing mint's
+  guardian-admin call is now time-bounded so a listener that accepts but never
+  responds can't hang it; and the voice/Ollama setup profile endpoints read the
+  persisted hardware profile from OP_HOME (not `stackDir`), so a rerun no longer
+  loses the selected profile.
+
 - **Guardian admin-token rotation takes effect without a restart** (PR #564
   second retest): `readAdminToken` cached the token file keyed only by path, so
   rotating the file's contents in place left the old token valid and the new one

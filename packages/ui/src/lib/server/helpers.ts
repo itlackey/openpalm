@@ -173,7 +173,15 @@ export async function parseJsonBody(
     if (contentLength && parseInt(contentLength, 10) > maxBytes) {
       return { error: "too_large" };
     }
-    return { data: (await request.json()) as Record<string, unknown> };
+    const parsed = await request.json();
+    // PR #564 second retest: a valid-JSON body that is NOT an object (literal
+    // `null`, an array, or a primitive) must be rejected as invalid_json — every
+    // route here reads named fields off `body`, and `null.label` otherwise throws
+    // an unstructured 500 instead of the documented 400.
+    if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      return { error: "invalid_json" };
+    }
+    return { data: parsed as Record<string, unknown> };
   } catch (e) {
     console.warn('[helpers] Failed to parse JSON request body', e);
     return { error: "invalid_json" };

@@ -302,7 +302,7 @@ function defaultEndpoint(): ActiveConnection {
   };
 }
 
-export type EndpointUrlError = 'invalid_url' | 'invalid_scheme' | 'missing_host';
+export type EndpointUrlError = 'invalid_url' | 'invalid_scheme' | 'missing_host' | 'unexpected_query_or_fragment';
 
 export type EndpointUrlValidation =
   | { ok: true; url: string }
@@ -325,6 +325,13 @@ export function validateEndpointUrl(input: string): EndpointUrlValidation {
   }
   if (!u.hostname) {
     return { ok: false, reason: 'missing_host' };
+  }
+  // PR #564 second retest: a connection/guardian URL is a BASE that the client
+  // concatenates API paths onto (`${base}/oc`, `${base}/session`). A query or
+  // fragment on the base mangles that concatenation (`...?tenant=home/session`),
+  // so reject it rather than silently normalizing an unusable endpoint.
+  if (u.search || u.hash) {
+    return { ok: false, reason: 'unexpected_query_or_fragment' };
   }
   // Strip trailing slash for consistency
   return { ok: true, url: u.toString().replace(/\/$/, '') };

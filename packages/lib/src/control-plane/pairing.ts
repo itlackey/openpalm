@@ -40,6 +40,9 @@ export type MintPairingResult =
   | { ok: false; error: string };
 
 const DEFAULT_GUARDIAN_ADMIN_URL = 'http://127.0.0.1:3831';
+/** Bound on the guardian admin mint call (PR #564 second retest) — a listener
+ *  that accepts but never responds must not hang the mint. */
+const PAIRING_ADMIN_TIMEOUT_MS = 5000;
 
 /** Encode a pairing payload as `openpalm-pair:` + base64url(JSON). */
 export function encodePairingCode(payload: PairingPayloadV1): string {
@@ -194,6 +197,9 @@ export async function mintDirectPrincipalPairingCode(options: {
           'content-type': 'application/json',
         },
         body: JSON.stringify({ id: principalId, kind: 'direct', token: principalToken, label }),
+        // PR #564 second retest: bound the admin call so a listener that accepts
+        // the connection but never responds cannot hang the mint indefinitely.
+        signal: AbortSignal.timeout(PAIRING_ADMIN_TIMEOUT_MS),
       });
     } catch {
       return {
