@@ -253,6 +253,17 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **Network-preset host-env validation covers every managed key** (PR #564
+  retest P2-6): `validateNetworkPresetEnv` now fails closed on a host-process
+  override that would widen exposure past the target preset for ANY managed key
+  it pins — the client and voice binds (`OP_CLIENT_BIND_ADDRESS`,
+  `OP_VOICE_BIND_ADDRESS`), not just the assistant/guardian binds — plus an
+  `OPENCODE_AUTH=false` override that would strip the sign-in password off a
+  LAN-exposed assistant under `home-password`. The check keys off the raw
+  process value (never the `OP_BIND_ADDRESS` compose cascade, which the written
+  stack.env row already pins) and only rejects exposure-widening overrides;
+  restrictive fail-closed drift is still allowed through.
+
 - **mDNS admin status reports `advertised:true` only when a real record is
   emitted** (PR #564 retest P2-5): `resolveMdnsStatus` now shares the exact
   decision path as `resolveMdnsAdvertisements`, so a service whose bind resolves

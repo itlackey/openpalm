@@ -222,18 +222,39 @@ export function detectNetworkPreset(
 // ── Env-combination validation ───────────────────────────────────────────
 
 /**
+ * True only when the host process ITSELF sets `key` to a non-loopback value.
+ * Unlike detection's `boundValue`, this deliberately does NOT apply the
+ * `OP_BIND_ADDRESS` cascade: the preset writes every managed bind to stack.env
+ * explicitly, so the `${OP_X:-${OP_BIND_ADDRESS...}}` fallback never fires — a
+ * client/voice bind is only overridden if the host PROCESS sets that exact key.
+ * An unset or empty override is not an override.
+ */
+function processExposesBind(env: Record<string, string | undefined>, key: string): boolean {
+  const raw = env[key]?.trim();
+  return !!raw && !isLoopback(raw);
+}
+
+/**
  * Validate a target preset against the HOST PROCESS env (as opposed to
  * stack.env) it will be layered under. Compose gives process env precedence
- * over `--env-file`, so a leftover `OP_ASSISTANT_BIND_ADDRESS=0.0.0.0` in the
- * host process would silently defeat a preset's loopback pin even though the
- * resolver correctly writes the loopback row to stack.env.
+ * over `--env-file`, so a leftover managed-key value in the host process would
+ * silently defeat the preset's pinned row even though the resolver correctly
+ * writes that row to stack.env.
  *
- * Presets that pin a bind to loopback must fail closed if the host env would
- * override it: `shared-guardian` pins the assistant (PR #564), and `this-pc`
- * pins BOTH the assistant and the guardian (PR #564 r3566887693 — otherwise a
- * leftover host-env bind exposes an unauthenticated OpenCode / guardian on the
- * LAN despite the operator's "This PC only" choice). The home presets
- * deliberately expose the assistant, so they have nothing to guard.
+ * The check covers EVERY managed key the preset pins, in the exposure-widening
+ * direction only (PR #564 retest P2-6 — the earlier version guarded only the
+ * assistant/guardian binds and silently ignored a host-env
+ * `OP_CLIENT_BIND_ADDRESS=0.0.0.0`, `OP_VOICE_BIND_ADDRESS=0.0.0.0`, or an
+ * `OPENCODE_AUTH=false` that would strip the password off an exposed
+ * assistant):
+ *   • Every bind the preset pins to loopback must fail closed if the host env
+ *     exposes it. A bind the preset deliberately exposes (`0.0.0.0`) is skipped
+ *     — its exposure is the operator's choice.
+ *   • A preset that enables `OPENCODE_AUTH` (home-password) must fail closed if
+ *     the host env turns it off, which would leave the LAN-exposed assistant
+ *     answering without the sign-in password.
+ * Restrictive overrides (loopback where the preset exposes, auth-on where the
+ * preset leaves it off) are safe fail-closed drift and are not rejected.
  */
 export function validateNetworkPresetEnv(
   preset: NetworkAccessPreset,
@@ -241,19 +262,28 @@ export function validateNetworkPresetEnv(
 ): { valid: boolean; errors: string[] } {
   const label = NETWORK_PRESET_LABELS[preset];
   const errors: string[] = [];
-  const rejectExposed = (key: "OP_ASSISTANT_BIND_ADDRESS" | "OP_BIND_ADDRESS") => {
-    if (isExposed(env, key)) {
+  // The row the resolver would write to stack.env — the source of truth for
+  // which keys this preset pins loopback and whether it enables auth.
+  const pinned = resolveNetworkPreset(
+    preset,
+    preset === "home-password" ? { opencodePassword: " validate-probe" } : undefined,
+  ).env;
+
+  for (const key of MANAGED_BIND_KEYS) {
+    if (!isLoopback(pinned[key])) continue; // preset exposes this bind on purpose
+    if (processExposesBind(env, key)) {
       errors.push(
         `The "${preset}" (${label}) network access preset requires ${key} to stay loopback-only, but the current environment already exposes ${key}="${env[key]}". Unset it (or set it to 127.0.0.1) in the host process environment before switching to ${preset}.`,
       );
     }
-  };
+  }
 
-  if (preset === "this-pc") {
-    rejectExposed("OP_ASSISTANT_BIND_ADDRESS");
-    rejectExposed("OP_BIND_ADDRESS");
-  } else if (preset === "shared-guardian") {
-    rejectExposed("OP_ASSISTANT_BIND_ADDRESS");
+  // A preset that turns auth ON must not be silently defeated by a host-env
+  // OPENCODE_AUTH override that turns it OFF.
+  if (pinned.OPENCODE_AUTH === "true" && env.OPENCODE_AUTH !== undefined && !isAuthOn(env)) {
+    errors.push(
+      `The "${preset}" (${label}) network access preset requires OPENCODE_AUTH to stay enabled, but the current environment sets OPENCODE_AUTH="${env.OPENCODE_AUTH}", which would expose the assistant without the sign-in password. Unset it (or set it to true) in the host process environment before switching to ${preset}.`,
+    );
   }
 
   return { valid: errors.length === 0, errors };
