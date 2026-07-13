@@ -108,12 +108,16 @@ describe("resolveNetworkPreset — mDNS equivalence with the #488 responder (D1 
       // REALIZED once the operator opts into direct ingress. The guardianMdns
       // flag encodes that INTENT; verify the responder honors it when ingress
       // is on, and (below) that it stays dark while ingress is off.
+      // PR #564 retest P2-5: resolveMdnsStatus now shares the advertisement
+      // path (advertised only when a real IPv4 record emits), so pass an
+      // explicit host IPv4 for a deterministic wildcard-bind result.
+      const HOST_IPV4 = ["192.168.1.20"];
       const withIngress = r.guardianMdns ? { ...r.env, GUARDIAN_DIRECT_INGRESS: "true" } : r.env;
-      const status = resolveMdnsStatus(withIngress);
+      const status = resolveMdnsStatus(withIngress, HOST_IPV4);
       expect(status.assistant.advertised).toBe(r.assistantMdns);
       expect(status.guardian.advertised).toBe(r.guardianMdns);
       // Ingress off ⇒ guardian never advertised, regardless of intent.
-      expect(resolveMdnsStatus(r.env).guardian.advertised).toBe(false);
+      expect(resolveMdnsStatus(r.env, HOST_IPV4).guardian.advertised).toBe(false);
     }
   });
 });

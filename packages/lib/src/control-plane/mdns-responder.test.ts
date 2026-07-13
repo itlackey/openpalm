@@ -377,10 +377,30 @@ describe("resolveMdnsAdvertisements", () => {
   });
 
   test("resolveMdnsStatus reports guardian advertised:false when a LAN bind has ingress off", () => {
-    expect(resolveMdnsStatus({ OP_BIND_ADDRESS: "0.0.0.0" }).guardian.advertised).toBe(false);
+    expect(resolveMdnsStatus({ OP_BIND_ADDRESS: "0.0.0.0" }, HOST_IPV4).guardian.advertised).toBe(false);
     expect(
-      resolveMdnsStatus({ OP_BIND_ADDRESS: "0.0.0.0", GUARDIAN_DIRECT_INGRESS: "true" }).guardian.advertised,
+      resolveMdnsStatus({ OP_BIND_ADDRESS: "0.0.0.0", GUARDIAN_DIRECT_INGRESS: "true" }, HOST_IPV4).guardian.advertised,
     ).toBe(true);
+  });
+
+  // PR #564 retest P2-5: a bind-gated service with no encodable IPv4 address
+  // (IPv6/hostname-only) must report advertised:false — never a phantom true.
+  test("resolveMdnsStatus reports advertised:false for an IPv6-only bind (no A record emitted)", () => {
+    const status = resolveMdnsStatus(
+      { OP_BIND_ADDRESS: "2001:db8::10", GUARDIAN_DIRECT_INGRESS: "true" },
+      HOST_IPV4,
+    );
+    expect(status.guardian.advertised).toBe(false);
+    // And the advertisement list is genuinely empty for that bind.
+    expect(
+      resolveMdnsAdvertisements({ OP_BIND_ADDRESS: "2001:db8::10", GUARDIAN_DIRECT_INGRESS: "true" }, HOST_IPV4),
+    ).toEqual([]);
+  });
+
+  test("resolveMdnsStatus reports advertised:false for an assistant hostname bind", () => {
+    expect(
+      resolveMdnsStatus({ OP_ASSISTANT_BIND_ADDRESS: "my-host.lan" }, HOST_IPV4).assistant.advertised,
+    ).toBe(false);
   });
 
   test("OP_ASSISTANT_BIND_ADDRESS=0.0.0.0 advertises the assistant name only", () => {

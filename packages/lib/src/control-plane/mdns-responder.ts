@@ -211,23 +211,31 @@ export function resolveMdnsAdvertisements(
 }
 
 /**
- * Names/ports/advertised-state for the admin UI, independent of whether any
- * host IPv4 address can actually be resolved right now — `advertised`
- * reflects the bind-address gate only (D6: gating is bind-address-only), so
- * this never needs a `hostIpv4` param.
+ * Names/ports/advertised-state for the admin UI. PR #564 retest P2-5:
+ * `advertised` reflects whether an ACTUAL record is emitted — it shares the
+ * exact decision path with `resolveMdnsAdvertisements`, so a service that is
+ * bind-gated on but has no encodable IPv4 address (an IPv6/hostname-only bind
+ * that is filtered from A records) reports `advertised:false`, never a phantom
+ * `true` with an empty advertisement list.
  */
-export function resolveMdnsStatus(env: Record<string, string | undefined>): MdnsStatus {
+export function resolveMdnsStatus(
+  env: Record<string, string | undefined>,
+  hostIpv4: string[] = defaultHostIpv4(),
+): MdnsStatus {
   const names = deriveMdnsNames(env);
+  const adverts = resolveMdnsAdvertisements(env, hostIpv4);
+  const advertisedFor = (service: MdnsAdvertisement["service"]): boolean =>
+    adverts.some((a) => a.service === service);
   return {
     assistant: {
       name: names.assistantName,
       port: parsePort(env.OP_ASSISTANT_PORT, DEFAULT_ASSISTANT_PORT),
-      advertised: isAssistantGated(env),
+      advertised: advertisedFor("assistant"),
     },
     guardian: {
       name: names.guardianName,
       port: parsePort(env.OP_GUARDIAN_PORT, DEFAULT_GUARDIAN_PORT),
-      advertised: isGuardianGated(env),
+      advertised: advertisedFor("guardian"),
     },
   };
 }

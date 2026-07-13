@@ -253,6 +253,14 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **mDNS admin status reports `advertised:true` only when a real record is
+  emitted** (PR #564 retest P2-5): `resolveMdnsStatus` now shares the exact
+  decision path as `resolveMdnsAdvertisements`, so a service whose bind resolves
+  to zero A records (an IPv6-literal or hostname bind, or a host with no
+  non-loopback IPv4) reports `advertised:false` instead of a phantom `true`. The
+  admin surface can no longer promise a `.local` name that the responder never
+  answers.
+
 - **`channel_lan` deprecation guard rejects a stale overlay before any writes on
   update too** (PR #564 retest P2-3): the guard now blocks install, update, and
   upgrade (only uninstall is exempt) before `applyHome` touches any managed,
