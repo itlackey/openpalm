@@ -1,13 +1,12 @@
 /**
- * BasePortal shared-hub wiring — the REAL fix for the guardian per-principal
- * /event 429.
+ * BasePortal shared-hub wiring — one upstream /event stream per principal.
  *
- * The guardian caps concurrent /event streams per principal at 1 (oc-bounds.ts),
- * and the principalKey includes userId (ownership.ts) — so a single user running
- * a STREAMED turn (portal streaming path → `eventHub.subscribe`) concurrently
- * with a BUFFERED turn (a `/ask` slash command → `forward` → the same hub) must
- * NOT open two upstream streams. Both paths therefore have to funnel through the
- * ONE hub instance BasePortal owns.
+ * A guardian /event subscription is principal-scoped (principalKey includes
+ * userId, ownership.ts) — so a single user running a STREAMED turn (portal
+ * streaming path → `eventHub.subscribe`) concurrently with a BUFFERED turn (a
+ * `/ask` slash command → `forward` → the same hub) should NOT open two
+ * redundant duplicate streams. Both paths therefore funnel through the ONE hub
+ * instance BasePortal owns.
  *
  * This test drives both paths through the portal's ACTUAL wiring (not a hand-rolled
  * hub) and asserts exactly one upstream /event open, and that each turn still
