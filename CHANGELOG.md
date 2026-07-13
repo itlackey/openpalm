@@ -253,6 +253,14 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **Host UI Basic auth sends the exact bytes OpenCode expects** (PR #564 retest
+  P2-1): all host forwarders (default/probe endpoint, host health, host proxy,
+  host OpenCode API client) now share one UTF-8-safe Basic-auth encoder instead
+  of Latin-1 `btoa`, and the file-backed password is stripped of trailing
+  newlines only (matching the assistant/guardian) instead of `.trim()`. A
+  password with surrounding spaces or non-ASCII characters (accents, CJK,
+  emoji) now authenticates identically everywhere.
+
 - **Unchanged setup rerun no longer rotates the UI login password or corrupts
   portal credentials** (PR #564 retest P1-1, P1-2). The wizard no longer
   generates a UI login password on a rerun; `security.uiLoginPassword` is

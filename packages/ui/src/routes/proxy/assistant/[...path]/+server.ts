@@ -16,6 +16,7 @@
  * disconnect signal (`event.request.signal`); when the browser aborts (tab
  * close, navigation away), we propagate the abort to upstream.
  */
+import { basicAuthHeader } from '$lib/server/basic-auth.js';
 import { requireAdmin, getRequestId } from '$lib/server/helpers.js';
 import { getActiveEndpoint } from '$lib/server/endpoints.js';
 import type { RequestHandler } from './$types';
@@ -36,7 +37,7 @@ function buildForwardHeaders(
     // endpoint without an explicit username must forward `opencode:<pw>` or a
     // correct password 401s (PR #564 r3566888629).
     const user = username || 'opencode';
-    headers.authorization = `Basic ${btoa(`${user}:${password}`)}`;
+    headers.authorization = basicAuthHeader(user, password);
   }
   return headers;
 }

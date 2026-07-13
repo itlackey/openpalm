@@ -24,6 +24,7 @@ import { dirname } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { getState } from './state.js';
 import { readSecret, readStackEnv, type RemoteStatus } from '@openpalm/lib';
+import { basicAuthHeader, DEFAULT_OPENCODE_USERNAME as SHARED_DEFAULT_OPENCODE_USERNAME, stripTrailingNewlines } from './basic-auth.js';
 import type { ConnectionKind } from '$lib/types.js';
 
 export type ConnectionEntry = {
@@ -92,7 +93,7 @@ const DEFAULT_ID = 'default';
  * a correct password 401s (PR #564 r3566888629). User-added connections may
  * still carry an explicit username.
  */
-export const DEFAULT_OPENCODE_USERNAME = 'opencode';
+export const DEFAULT_OPENCODE_USERNAME = SHARED_DEFAULT_OPENCODE_USERNAME;
 const LOCAL_ELECTRON_ID = 'local-electron';
 let wizardOpencodeUrl: string | null = null;
 let remoteStatusCache: { expiresAt: number; value: RemoteStatus[] } | null = null;
@@ -287,7 +288,7 @@ function defaultEndpoint(): ActiveConnection {
     (persisted.OPENCODE_AUTH ?? process.env.OPENCODE_AUTH ?? '').trim(),
   );
   const presetPassword = authEnabled
-    ? readSecret(getState().homeDir, 'op_opencode_password')?.trim() || process.env.OP_OPENCODE_PASSWORD
+    ? ((raw) => (raw ? stripTrailingNewlines(raw) : undefined))(readSecret(getState().homeDir, 'op_opencode_password') ?? undefined) || process.env.OP_OPENCODE_PASSWORD
     : undefined;
   const password = process.env.OPENCODE_SERVER_PASSWORD || presetPassword || undefined;
   return {
@@ -524,7 +525,7 @@ async function probeEndpoint(endpoint: ActiveConnection): Promise<RemoteStatus> 
   const headers = new Headers();
   if (endpoint.password) {
     const username = endpoint.username ?? DEFAULT_OPENCODE_USERNAME;
-    headers.set('authorization', `Basic ${Buffer.from(`${username}:${endpoint.password}`).toString('base64')}`);
+    headers.set('authorization', basicAuthHeader(username, endpoint.password));
   }
   // #486 D2: a guardian /oc base's bare root (`GET /oc/`) is not an
   // allowlisted route and 404s even when the guardian is fully healthy —
