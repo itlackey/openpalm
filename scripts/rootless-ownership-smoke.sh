@@ -85,6 +85,21 @@ dev_compose() {
     --project-name "$COMPOSE_PROJECT_NAME" "$@"
 }
 
+# Tear down a smoke stack completely, so no container survives to reference a
+# fixture we are about to delete. `up` starts profile-gated services (guardian +
+# the portal), so a plain `down` leaves them running — enable BOTH first-party
+# addon profiles, then a profile-agnostic label backstop for anything still
+# lingering. Shared by the EXIT cleanup AND the pre-run reset (PR #564 retest
+# P2-7: the pre-run path was previously a plain profile-unaware `down`, so a
+# prior `--keep` run's guardian/portal containers leaked into the next run and
+# were left dangling once its fixture dir was rm -rf'd).
+smoke_teardown_stack() {
+  if [[ -f "$SMOKE_HOME/knowledge/env/stack.env" ]]; then
+    dev_compose --profile addon.discord --profile addon.chat down --remove-orphans --volumes >/dev/null 2>&1 || true
+  fi
+  docker ps -aq --filter "label=com.docker.compose.project=${COMPOSE_PROJECT_NAME}" 2>/dev/null | xargs -r docker rm -f >/dev/null 2>&1 || true
+}
+
 cleanup() {
   if [[ -n "$UI_PID" ]] && kill -0 "$UI_PID" 2>/dev/null; then
     kill "$UI_PID" 2>/dev/null || true
@@ -96,23 +111,15 @@ cleanup() {
     return
   fi
 
-  if [[ -f "$SMOKE_HOME/knowledge/env/stack.env" ]]; then
-    # PR #564 P3-4: `up` starts profile-gated services (guardian + the portal),
-    # so `down` MUST enable the same profiles or those containers leak past a
-    # "successful" run. Enable both first-party addon profiles unconditionally.
-    dev_compose --profile addon.discord --profile addon.chat down --remove-orphans --volumes >/dev/null 2>&1 || true
-  fi
-  # Backstop (profile-agnostic): force-remove anything still labelled with this
-  # smoke project, so no container survives a successful OR failed run.
-  docker ps -aq --filter "label=com.docker.compose.project=${COMPOSE_PROJECT_NAME}" 2>/dev/null | xargs -r docker rm -f >/dev/null 2>&1 || true
+  smoke_teardown_stack
   docker run --rm -v "$(dirname "$SMOKE_HOME"):/smoke-parent" alpine sh -c 'rm -rf "/smoke-parent/$1"' _ "$(basename "$SMOKE_HOME")" >/dev/null 2>&1 || true
 }
 trap cleanup EXIT
 
 echo "Preparing isolated smoke OP_HOME at ${SMOKE_HOME}..."
-if [[ -f "$SMOKE_HOME/knowledge/env/stack.env" ]]; then
-  dev_compose down --remove-orphans --volumes >/dev/null 2>&1 || true
-fi
+# Profile-aware teardown BEFORE deleting the fixture — a prior `--keep` run may
+# have left profile-gated guardian/portal containers up (PR #564 retest P2-7).
+smoke_teardown_stack
 docker run --rm -v "$(dirname "$SMOKE_HOME"):/smoke-parent" alpine sh -c "rm -rf /smoke-parent/$(basename "$SMOKE_HOME")" >/dev/null 2>&1 || true
 smoke_copy_skeleton "$SMOKE_HOME"
 smoke_write_stack_env "$SMOKE_HOME" "$PLATFORM_VERSION" \

@@ -253,6 +253,14 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **Rootless smoke pre-run cleanup is profile-aware** (PR #564 retest P2-7): the
+  pre-run reset in `rootless-ownership-smoke.sh` ran a plain profile-unaware
+  `docker compose down`, so a prior `--keep` run's profile-gated guardian/portal
+  containers survived and were left dangling once the fixture directory was
+  deleted. Both the pre-run reset and the EXIT cleanup now share one teardown
+  that enables both addon profiles and a label backstop, so keep-then-rerun is
+  clean for the `stack` and `portal-discord` targets.
+
 - **Bare `openpalm` health probe respects the auth posture** (PR #564 retest
   P3-4): the assistant reachability probe sends no Basic auth, so under the
   `home-password` preset (`OPENCODE_AUTH=true`) `/health` answers `401` — which

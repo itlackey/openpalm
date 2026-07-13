@@ -80,4 +80,23 @@ describe('rootless phase-0 script guardrails', () => {
     expect(smokeScript).toContain('if [[ -f "$SMOKE_HOME/knowledge/env/stack.env" ]]');
     expect(hostSwapSmokeScript).toContain('if [[ -f "$SWAP_HOME/knowledge/env/stack.env" ]]');
   });
+
+  // PR #564 retest P2-7: the PRE-run reset must be profile-aware too. `up` starts
+  // profile-gated guardian/portal containers, so a plain `down` left a prior
+  // `--keep` run's containers alive; deleting the fixture then dangled them. Both
+  // the EXIT cleanup and the pre-run reset now go through one shared teardown
+  // that enables both addon profiles AND a label backstop.
+  test('pre-run reset shares the profile-aware teardown with the EXIT cleanup', () => {
+    // One shared function, enabling both addon profiles + the label backstop.
+    expect(smokeScript).toContain('smoke_teardown_stack() {');
+    expect(smokeScript).toMatch(/smoke_teardown_stack\(\)[\s\S]*--profile addon\.discord --profile addon\.chat down/);
+    expect(smokeScript).toMatch(/smoke_teardown_stack\(\)[\s\S]*label=com\.docker\.compose\.project=/);
+    // Called from BOTH the cleanup path and the pre-run "Preparing" path — so the
+    // pre-run reset can never regress to a bare profile-unaware `down`.
+    expect(smokeScript).toMatch(/Preparing isolated smoke OP_HOME[\s\S]*smoke_teardown_stack/);
+    const teardownCalls = smokeScript.match(/^\s*smoke_teardown_stack\s*$/gm) ?? [];
+    expect(teardownCalls.length).toBeGreaterThanOrEqual(2);
+    // The pre-run reset no longer runs a bare `dev_compose down` directly.
+    expect(smokeScript).not.toMatch(/\n\s*dev_compose down --remove-orphans/);
+  });
 });
