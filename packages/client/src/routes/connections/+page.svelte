@@ -659,10 +659,11 @@
           />
           {#if formKind === 'openpalm-client-api'}
             <!-- #486 D2: guardian principals authenticate as their principal
-                 id, not the stack's shared 'openpalm' default. -->
-            <small>The username is the guardian principal id you minted (e.g. <code>my-phone</code>), not <code>openpalm</code>.</small>
+                 id, not OpenCode's default username. -->
+            <small>The username is the guardian principal id you minted (e.g. <code>my-phone</code>), not <code>opencode</code>.</small>
           {:else}
-            <small>Defaults to <code>openpalm</code> — the username the OpenPalm stack provisions.</small>
+            <!-- PR #564 P2-2: OpenCode's server default username is 'opencode'. -->
+            <small>Defaults to <code>opencode</code> — OpenCode's server username.</small>
           {/if}
         </label>
         <label class="field">

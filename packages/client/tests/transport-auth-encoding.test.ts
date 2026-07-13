@@ -51,6 +51,18 @@ describe('authorizationHeader UTF-8 encoding (E8)', () => {
     expect(calls[0].headers.get('authorization')).toBe(`Basic ${btoa('alice:s3cret')}`);
   });
 
+  test('P2-2: a password-only Basic connection defaults the username to opencode', async () => {
+    const { createTransport } = await loadTransportModule();
+    const { fetch, calls } = recordingFetch(() => jsonResponse([]));
+    const transport = createTransport({
+      baseUrl: BASE,
+      auth: { mode: 'basic', password: 's3cret' },
+      fetch,
+    });
+    await transport.listSessions();
+    expect(calls[0].headers.get('authorization')).toBe(`Basic ${btoa('opencode:s3cret')}`);
+  });
+
   test('probeHealth also builds the header without throwing for a non-Latin-1 password', async () => {
     const { createTransport } = await loadTransportModule();
     const { fetch } = recordingFetch(() => new Response('ok', { status: 200 }));

@@ -12,9 +12,9 @@
  *     the client holds per-connection credentials, not host cookies —
  *     plan §6.8/§8.10),
  *   - auth is derived from the connection: Basic (username defaults to
- *     'openpalm', mirroring the host app's probeEndpoint() so guardian
- *     credentials minted by the host stack work without a username field,
- *     #435), Bearer, or none.
+ *     'opencode' — OpenCode's own server default and what the host app sends,
+ *     so shipped home-password credentials work without a username field
+ *     (PR #564 P2-2); the encoder is UTF-8-safe), Bearer, or none.
  *
  * Everything here is pure TS with an injectable fetch — unit-tested in
  * packages/client/tests/transport-*.test.ts (the pinned contract).
@@ -228,7 +228,7 @@ function base64Utf8(value: string): string {
 
 function authorizationHeader(auth: ConnectionAuth): string | null {
   if (auth.mode === 'basic') {
-    const username = auth.username ?? 'openpalm';
+    const username = auth.username ?? 'opencode';
     return `Basic ${base64Utf8(`${username}:${auth.password}`)}`;
   }
   if (auth.mode === 'bearer') return `Bearer ${auth.token}`;
