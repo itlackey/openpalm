@@ -22,7 +22,16 @@ import {
 
 registerCleanup();
 
-const ENV_KEYS = ['OP_OPENCODE_URL', 'OP_ASSISTANT_URL', 'OP_ASSISTANT_PORT', 'OPENCODE_SERVER_PASSWORD'] as const;
+const ENV_KEYS = [
+  'OP_OPENCODE_URL',
+  'OP_ASSISTANT_URL',
+  'OP_ASSISTANT_PORT',
+  'OPENCODE_SERVER_PASSWORD',
+  'OPENCODE_SERVER_USERNAME',
+  // #563 D10 — the default-endpoint password fallback, gated on OPENCODE_AUTH.
+  'OPENCODE_AUTH',
+  'OP_OPENCODE_PASSWORD',
+] as const;
 const savedEnv: Record<string, string | undefined> = {};
 
 beforeEach(() => {
@@ -100,6 +109,22 @@ describe('validateEndpointUrl (discriminated reasons)', () => {
       url: 'https://remote.example:3800',
     });
   });
+
+  // PR #564 second retest: a connection base URL must not carry a query/fragment
+  // — the client concatenates paths onto it, so `?tenant=home` mangles into
+  // `...?tenant=home/session`.
+  it('rejects a URL carrying a query string', () => {
+    expect(validateEndpointUrl('https://gw.example?tenant=home')).toEqual({
+      ok: false,
+      reason: 'unexpected_query_or_fragment',
+    });
+  });
+  it('rejects a URL carrying a fragment', () => {
+    expect(validateEndpointUrl('https://gw.example/oc#frag')).toEqual({
+      ok: false,
+      reason: 'unexpected_query_or_fragment',
+    });
+  });
 });
 
 describe('default endpoint synthesis', () => {
@@ -129,9 +154,61 @@ describe('default endpoint synthesis', () => {
     expect(getActiveEndpoint().url).toBe('http://127.0.0.1:3900');
   });
 
-  it('picks up OPENCODE_SERVER_PASSWORD for default', () => {
+  it('picks up OPENCODE_SERVER_PASSWORD for default (pin: T63 — explicit host env wins unconditionally)', () => {
     process.env.OPENCODE_SERVER_PASSWORD = 'secret';
     expect(getActiveEndpoint().password).toBe('secret');
+  });
+
+  // #563 D10 — T61/T62: OP_OPENCODE_PASSWORD fallback, gated on OPENCODE_AUTH.
+  it('T61: uses OP_OPENCODE_PASSWORD as the default endpoint password when OPENCODE_AUTH is truthy', () => {
+    process.env.OPENCODE_AUTH = 'true';
+    process.env.OP_OPENCODE_PASSWORD = 'preset-password';
+    expect(getActiveEndpoint().password).toBe('preset-password');
+  });
+
+  it('T64 (PR #564 r3566889513): reads OPENCODE_AUTH + password fresh from stack.env/secret without process.env or a restart', () => {
+    // Simulate "the wizard just completed": stack.env now has OPENCODE_AUTH and
+    // the password secret is materialized — but the long-lived process.env was
+    // frozen at startup with neither set.
+    const homeDir = getState().homeDir;
+    mkdirSync(`${homeDir}/knowledge/env`, { recursive: true });
+    writeFileSync(`${homeDir}/knowledge/env/stack.env`, 'OPENCODE_AUTH=true\n');
+    mkdirSync(`${homeDir}/knowledge/secrets`, { recursive: true });
+    writeFileSync(`${homeDir}/knowledge/secrets/op_opencode_password`, 'fresh-lan-pass\n', { mode: 0o600 });
+    // No process.env.OPENCODE_AUTH / OP_OPENCODE_PASSWORD (cleared in beforeEach).
+    expect(getActiveEndpoint().password).toBe('fresh-lan-pass');
+  });
+
+  it("T61b: default endpoint username matches OpenCode's server default ('opencode') so home-password Basic auth is accepted upstream", () => {
+    process.env.OPENCODE_AUTH = 'true';
+    process.env.OP_OPENCODE_PASSWORD = 'preset-password';
+    // The shipped assistant compose does not set OPENCODE_SERVER_USERNAME, so
+    // OpenCode uses its default username 'opencode'; the guardian's upstream
+    // auth (#563) sends 'opencode:<password>' — the host UI must match.
+    expect(getActiveEndpoint().username).toBe('opencode');
+  });
+
+  it('T61c: explicit OPENCODE_SERVER_USERNAME overrides the default endpoint username', () => {
+    process.env.OPENCODE_SERVER_USERNAME = 'custom-user';
+    expect(getActiveEndpoint().username).toBe('custom-user');
+  });
+
+  it('T62: no password is attached from OP_OPENCODE_PASSWORD while OPENCODE_AUTH is unset (default-posture pin)', () => {
+    process.env.OP_OPENCODE_PASSWORD = 'preset-password';
+    expect(getActiveEndpoint().password).toBeUndefined();
+  });
+
+  it('T62: no password is attached from OP_OPENCODE_PASSWORD while OPENCODE_AUTH is explicitly false', () => {
+    process.env.OPENCODE_AUTH = 'false';
+    process.env.OP_OPENCODE_PASSWORD = 'preset-password';
+    expect(getActiveEndpoint().password).toBeUndefined();
+  });
+
+  it('T63 (pin): explicit OPENCODE_SERVER_PASSWORD still wins over OP_OPENCODE_PASSWORD even when OPENCODE_AUTH is truthy', () => {
+    process.env.OPENCODE_AUTH = 'true';
+    process.env.OP_OPENCODE_PASSWORD = 'preset-password';
+    process.env.OPENCODE_SERVER_PASSWORD = 'explicit-secret';
+    expect(getActiveEndpoint().password).toBe('explicit-secret');
   });
 });
 

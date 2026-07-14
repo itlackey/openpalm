@@ -12,7 +12,7 @@
 import type { Handle } from "@sveltejs/kit";
 import { redirect } from "@sveltejs/kit";
 import { getState } from "$lib/server/state.js";
-import { checkHostHeader, checkOriginHeader, identifyCallerByToken } from "$lib/server/helpers.js";
+import { checkHostHeader, checkOriginHeader, getRequestId, identifyCallerByToken } from "$lib/server/helpers.js";
 import { touchSession } from "$lib/server/session-store.js";
 import { sessionCookieHeader, SESSION_COOKIE_NAME } from "$lib/server/session-cookie.js";
 import { computeServerRuntimeContext } from '$lib/server/features.js';
@@ -22,9 +22,10 @@ import {
   resolveOpenPalmHome,
   readStackRuntimeEnv,
   readSecret,
-  collectBindAddressWarnings,
+  collectNetworkExposureWarnings,
   isRemoteSetupAllowed,
   stackDirFor,
+  reconcileMdnsResponder,
 } from "@openpalm/lib";
 import { resolveRequestLanding, getCachedLocalInstallState } from "$lib/server/landing.js";
 import { BLOCKING_LANDINGS } from "$lib/resolve-landing.js";
@@ -36,17 +37,6 @@ export { _resetLaunchCache } from "$lib/server/landing.js";
 const logger = createLogger("admin");
 
 let startupApplyDone = false;
-// K3 (review 2026-07-10): once setup is observed complete, it stays complete
-// for the life of the process — a live install never regresses to
-// incomplete. Memoizing false→true means isSetupComplete's dotenv-parse +
-// existsSync work runs at most once per process instead of on every request
-// (including every /api/*, /proxy/*, and the host UI's 10s poll).
-let setupCompleteMemo = false;
-
-/** Test-only: clear the setup-complete memo so each test resolves fresh. */
-export function _resetSetupCompleteMemo(): void {
-  setupCompleteMemo = false;
-}
 
 // Load the process-level config the UI needs to serve, READ-ONLY w.r.t. OP_HOME.
 // install/update own every OP_HOME write (via applyHome), so merely serving
@@ -55,8 +45,10 @@ function loadProcessEnv(): void {
   if (startupApplyDone) return;
   startupApplyDone = true;
 
-  // Warn early if any bind address is non-loopback.
-  for (const line of collectBindAddressWarnings(process.env as Record<string, string>)) {
+  // Warn early if any bind address is non-loopback. #563 — preset-aware: a
+  // matched network access preset collapses to one informational line;
+  // unexplained exposure stays loud (D9).
+  for (const line of collectNetworkExposureWarnings(process.env as Record<string, string>)) {
     logger.warn(line);
   }
 
@@ -77,6 +69,11 @@ function loadProcessEnv(): void {
     for (const [k, v] of Object.entries(stackVars)) {
       if (v && !process.env[k]) process.env[k] = v;
     }
+    // #488 — host-side LAN mDNS advertisement; no-op socket-free when every
+    // bind is loopback (the default) or OP_MDNS=off. This is the single
+    // start locus: every supervisor spawns this process, so the CLI needs no
+    // separate wiring.
+    reconcileMdnsResponder(state.homeDir);
   } catch (err) {
     logger.error("process env load failed", { error: String(err) });
   }
@@ -119,9 +116,12 @@ function isLocalhostAddress(ip: string): boolean {
 
 export const handle: Handle = async ({ event, resolve }) => {
   const runtimeContext = computeServerRuntimeContext(event);
-  const hostError = checkHostHeader(event.request);
+  // PR #564 second retest: thread requestId so the global Host/Origin rejections
+  // carry it too, matching the documented "every error body has requestId" contract.
+  const requestId = getRequestId(event);
+  const hostError = checkHostHeader(event.request, requestId);
   if (hostError) return hostError;
-  const originError = checkOriginHeader(event.request, runtimeContext.security.csrfMode);
+  const originError = checkOriginHeader(event.request, runtimeContext.security.csrfMode, requestId);
   if (originError) return originError;
 
   const path = event.url.pathname;
@@ -150,8 +150,7 @@ export const handle: Handle = async ({ event, resolve }) => {
   // can't race the owner to configure the stack. After setup completes the
   // re-run path at /setup?rerun=1 requires admin auth and this guard is skipped.
   const homeDir = resolveOpenPalmHome();
-  const setupComplete = setupCompleteMemo || isSetupComplete(homeDir);
-  if (setupComplete) setupCompleteMemo = true;
+  const setupComplete = isSetupComplete(homeDir);
   const localInstallState = getCachedLocalInstallState(stackDirFor(homeDir), homeDir);
 
   if (

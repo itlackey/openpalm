@@ -41,9 +41,9 @@ function parseEndpoints(source: string): Endpoint[] {
 }
 
 // Real endpoints that are documented but are NOT packages/ui routes:
-// - GET /guardian/stats is served directly by the guardian process (the doc
-//   says so explicitly) — there is no routes/guardian/stats/+server.ts.
-const EXTERNAL_NON_UI_ENDPOINTS = new Set(['GET /guardian/stats']);
+// - GET /stats is served directly by the guardian process on its own port
+//   (the doc says so explicitly) — there is no routes/stats/+server.ts.
+const EXTERNAL_NON_UI_ENDPOINTS = new Set(['GET /stats']);
 
 /** Resolve a documented path (dynamic segments as `:name`) to a routes/ dir. */
 function resolveRouteDir(path: string): string | null {

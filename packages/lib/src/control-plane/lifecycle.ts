@@ -28,6 +28,7 @@ import { checkDocker, composePreflight, applyStack, composeConfigServices, build
 import { reconcileHostOwnership } from "./ownership-reconcile.js";
 import { buildComposeOptions } from "./compose-args.js";
 import { teardownRenamedProject } from "./project-rename.js";
+import { checkCustomComposeChannelLan } from "./overlay-deprecations.js";
 import { createLogger } from "../logger.js";
 
 const lifecycleLogger = createLogger("lifecycle");
@@ -232,10 +233,30 @@ export type LifecycleOp =
 function reconcileStack(
   state: ControlPlaneState,
   op: LifecycleOp,
-): Promise<{ active: string[]; assetsUpdated: string[]; backupDir: string | null }> {
+): Promise<{ active: string[]; assetsUpdated: string[]; backupDir: string | null; warnings: string[] }> {
   const activate = op.kind === "install" || op.kind === "upgrade";
   const deactivate = op.kind === "uninstall";
   const composes = op.kind === "upgrade";
+
+  // Overlay deprecation guard (#490): runs BEFORE withStackEnvRollback arms the
+  // pre-reconcile snapshot and BEFORE applyHome can overwrite core.compose.yml
+  // (core.compose.yml is not in the crash-restore set). A custom.compose.yml
+  // that still references the removed `channel_lan` network without defining
+  // it itself would otherwise fail later with a cryptic Docker error, AFTER
+  // managed files were already overwritten. Fail fast instead, while nothing
+  // has changed yet.
+  const overlayCheck = checkCustomComposeChannelLan(state.homeDir);
+  // PR #564 r3566892768 + retest P2-3: BLOCK before ANY file write on every
+  // deploy that reconciles managed compose — install, UPDATE, and upgrade —
+  // where applyHome overwrites managed compose and a later channel_lan
+  // reference would fail cryptically AFTER writes. Only `uninstall` (deactivate)
+  // is exempt: the operator must always be able to tear the stack down. This
+  // guard runs before withStackEnvRollback/applyHome, so a rejected deploy
+  // leaves managed/state/config/secret files byte-identical. The warning still
+  // fires for every op kind (informational).
+  if (overlayCheck.blockError && !deactivate) throw new Error(overlayCheck.blockError);
+  if (overlayCheck.warning) lifecycleLogger.warn(overlayCheck.warning);
+
   return withStackEnvRollback(state, async () => {
     // Activation flows (install/update/upgrade) may recreate containers; the
     // deactivation flow (uninstall) only rewrites runtime files reflecting the
@@ -300,7 +321,12 @@ function reconcileStack(
       }
     }
 
-    return { active, assetsUpdated: home.assetsUpdated, backupDir: home.backupDir };
+    return {
+      active,
+      assetsUpdated: home.assetsUpdated,
+      backupDir: home.backupDir,
+      warnings: overlayCheck.warning ? [overlayCheck.warning] : [],
+    };
   });
 }
 
@@ -511,7 +537,7 @@ export async function performUpgrade(
     // wrapper that drives compose itself — its consumers (CLI update, the admin
     // upgrade route) have no separate compose phase. withStackEnvRollback inside
     // reconcileStack restores stack.env + compose overlays if any step throws.
-    const { active, assetsUpdated, backupDir } = await reconcileStack(state, { kind: "upgrade" });
+    const { active, assetsUpdated, backupDir, warnings } = await reconcileStack(state, { kind: "upgrade" });
 
     return {
       // The published Docker image is tagged with the bare version (0.12.41+);
@@ -521,7 +547,7 @@ export async function performUpgrade(
       backupDir,
       assetsUpdated,
       restarted: active,
-      warnings: [],
+      warnings,
     };
   } finally {
     releaseLifecycleLock(lock, opts);

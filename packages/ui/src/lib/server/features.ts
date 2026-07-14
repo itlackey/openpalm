@@ -1,5 +1,5 @@
 import type { RequestEvent } from '@sveltejs/kit';
-import { PLATFORM_VERSION } from '@openpalm/lib';
+import { PLATFORM_VERSION, resolveClientAppPort } from '@openpalm/lib';
 import uiPkg from '../../../package.json';
 import type { Capability, ServerRuntimeContext, UiHostMode } from '$lib/types.js';
 
@@ -109,6 +109,13 @@ function routesForMode(mode: UiHostMode): ServerRuntimeContext['routes'] {
 export function computeServerRuntimeContext(event: RequestEvent): ServerRuntimeContext {
   const hostMode = resolveHostMode();
   const isHostCapable = hostMode === 'electron-host' || hostMode === 'host-ui';
+  // D8: additive optional field — the sibling @openpalm/client static app's
+  // loopback origin, when this deployment serves one. Omitted in
+  // assistant-container (no sibling static client there).
+  const clientAppUrl =
+    hostMode === 'assistant-container'
+      ? undefined
+      : `http://127.0.0.1:${resolveClientAppPort(process.env)}`;
   return {
     version: 2,
     hostMode,
@@ -121,6 +128,7 @@ export function computeServerRuntimeContext(event: RequestEvent): ServerRuntimeC
     // OP_SKELETON_VERSION is the explicit exact-pin override (plan §3).
     skeletonVersion: process.env.OP_SKELETON_VERSION?.trim() || PLATFORM_VERSION,
     activeConnectionMode: hostMode === 'assistant-container' ? 'single' : 'multi',
+    ...(clientAppUrl !== undefined ? { clientAppUrl } : {}),
     routes: routesForMode(hostMode),
     security: {
       // Host admin is loopback-only and never weakened (plan §8.3).

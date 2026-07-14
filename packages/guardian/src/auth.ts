@@ -10,6 +10,8 @@ export type AuthenticatedPrincipal = {
   userId: string;
 };
 
+export const USER_ID_MAX_LENGTH = 256;
+
 // Hard cap on cached principals. readCachedPrincipal negative-caches null keyed
 // by the client-supplied (attacker-controlled) Basic-auth id, so an unbounded
 // map would grow pre-auth under a flood of distinct unknown ids. Bound it with
@@ -88,6 +90,7 @@ export const basicTokenAuthStrategy: AuthStrategy = {
     if (!constantTimeEqual(record.tokenHash, tokenHash)) return null;
 
     const userId = req.headers.get('x-openpalm-user')?.trim() || basic.id;
+    if (userId.length > USER_ID_MAX_LENGTH) return null;
     if (expectedKind && record.kind !== expectedKind) return null;
 
     return {

@@ -13,6 +13,7 @@
  * shared `PermissionResult`/base `PermissionConfig`/`UserInfo` types.
  */
 export * from './runtime.ts';
+export * from './session-map.ts';
 export * from './errors.ts';
 export * from './permissions.ts';
 export * from './base-portal.ts';

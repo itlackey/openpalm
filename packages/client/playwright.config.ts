@@ -23,6 +23,8 @@ const baseURL = `http://127.0.0.1:${PORT}`;
 // won't have this literal path, so this stays a no-op there and normal
 // discovery (which DOES find the matching headless-shell binary) applies.
 const SANDBOX_CHROMIUM = '/opt/pw-browsers/chromium';
+const browserExecutablePath = process.env.OP_PLAYWRIGHT_EXECUTABLE_PATH?.trim()
+  || (existsSync(SANDBOX_CHROMIUM) ? SANDBOX_CHROMIUM : undefined);
 
 export default defineConfig({
   testDir: 'e2e',
@@ -47,7 +49,7 @@ export default defineConfig({
       name: 'chromium',
       use: {
         ...devices['Desktop Chrome'],
-        launchOptions: existsSync(SANDBOX_CHROMIUM) ? { executablePath: SANDBOX_CHROMIUM } : undefined,
+        launchOptions: browserExecutablePath ? { executablePath: browserExecutablePath } : undefined,
         // The copy affordance uses the async clipboard API, which headless
         // chromium on CI runners denies without an explicit grant (locally
         // some sandboxes auto-grant, which is why this only failed in CI).

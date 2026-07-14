@@ -147,6 +147,36 @@ opencode_auth_enabled() {
   esac
 }
 
+# #563/#564 P1-2: resolve OpenCode's Basic-auth password from the compose
+# secret file, gated on opencode_auth_enabled. The secret file is ALWAYS
+# materialized non-empty by ensureSecrets (random seed on first install, or a
+# stale password left behind by a preset switch away from home-password) and
+# must stay inert while OPENCODE_AUTH is off — otherwise reading it here would
+# turn on OpenCode Basic auth against an unauthenticated healthcheck probe and
+# wedge the stack unhealthy. Decision D1: an explicit OPENCODE_SERVER_PASSWORD
+# env value is deliberately never unset when auth is off — silently dropping
+# an operator-supplied credential would be a silent auth downgrade; instead
+# the posture-gated healthcheck (core.compose.yml, containers/assistant/
+# Dockerfile) fails loud on the mismatch. Explicit OPENCODE_SERVER_PASSWORD
+# env wins over *_FILE; trailing newline stripped by command substitution.
+# Fail fast when auth is enabled but no password resolves — auth-on with an
+# unknown password is a dead stack that looks healthy, so failing loud here
+# is the debuggable behavior.
+resolve_opencode_server_password() {
+  if ! opencode_auth_enabled; then
+    return 0
+  fi
+  if [ -z "${OPENCODE_SERVER_PASSWORD:-}" ] \
+     && [ -n "${OPENCODE_SERVER_PASSWORD_FILE:-}" ] && [ -s "${OPENCODE_SERVER_PASSWORD_FILE}" ]; then
+    OPENCODE_SERVER_PASSWORD="$(cat "${OPENCODE_SERVER_PASSWORD_FILE}")"
+    export OPENCODE_SERVER_PASSWORD
+  fi
+  if [ -z "${OPENCODE_SERVER_PASSWORD:-}" ]; then
+    echo "ERROR: OPENCODE_AUTH=${OPENCODE_AUTH:-} is enabled but no password is available — set OPENCODE_SERVER_PASSWORD or OPENCODE_SERVER_PASSWORD_FILE (compose secret opencode_server_password)." >&2
+    exit 1
+  fi
+}
+
 # I3 residual (review, SECURITY): validate an OP_CLIENT_CORS_ALLOWED_ORIGINS
 # entry before start_opencode ever appends it to cors_origins — operator input
 # is otherwise appended to OpenCode's --cors verbatim, so
@@ -264,15 +294,15 @@ start_client() {
     # lifetime (e.g. one every few days) permanently disabled the client after
     # only 5 of them, total, ever — contradicting the comment's claim to
     # mirror client-server.ts, which DOES reset. Millisecond resolution (via
-    # `date +%s%3N`, GNU coreutils) both matches client-server.ts's Date.now()
-    # units and avoids second-granularity rounding incorrectly classifying a
-    # fast crash-loop iteration as "healthy" near a wall-clock second boundary.
+    # `Date.now()` from the already-required Node runtime) both matches
+    # client-server.ts's units and avoids non-portable `date +%s%3N` behavior
+    # (uutils emits nanoseconds instead of GNU coreutils' milliseconds).
     # Configurable (test hook); unset uses the same 60000ms threshold as
     # client-server.ts's HEALTHY_UPTIME_MS.
     local healthy_uptime_ms="${OP_CLIENT_RESPAWN_HEALTHY_UPTIME_MS:-60000}"
     while true; do
       local start_ts
-      start_ts="$(date +%s%3N)"
+      start_ts="$(node -e 'process.stdout.write(String(Date.now()))')"
       local exit_code
       if node "$serve_script" --host 0.0.0.0 --port "$client_port" --dir "$client_build"; then
         exit_code=0
@@ -280,7 +310,7 @@ start_client() {
         exit_code=$?
       fi
       local end_ts
-      end_ts="$(date +%s%3N)"
+      end_ts="$(node -e 'process.stdout.write(String(Date.now()))')"
       if [ "$((end_ts - start_ts))" -ge "$healthy_uptime_ms" ]; then
         attempt=0
       fi
@@ -586,5 +616,6 @@ seed_default_agents_md
 run_akm_schema_migration
 persist_akm_stash_dir_fallback
 start_cron_and_sync_tasks
+resolve_opencode_server_password
 start_client
 start_opencode

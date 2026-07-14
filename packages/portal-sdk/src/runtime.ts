@@ -67,6 +67,39 @@ export function readRequiredSecretFile(envKey: string, env: Record<string, strin
   return value;
 }
 
+/**
+ * Direct-env secret fallback (D3, #491): the standalone auth UX alongside the
+ * `*_FILE` discipline above. For each key `K` in `envKeys` priority order:
+ *
+ *   1. If `K_FILE` is set, read it with {@link readRequiredSecretFile}'s exact
+ *      file semantics (trailing-newline strip, empty check) and FAIL CLOSED
+ *      if it is unreadable/empty — a configured-but-broken mount must never
+ *      silently fall through to a stale direct var.
+ *   2. Else if `K` is set to a non-blank (trimmed) value, return it.
+ *   3. Else try the next key.
+ *
+ * `K_FILE` always wins over `K` for the SAME key: Compose-secrets discipline
+ * wins, so an env injection cannot shadow a mounted secret. If nothing is
+ * configured across every key, throws {@link SecretFileError} naming every
+ * accepted variable (both forms, in order) so the operator sees the full
+ * menu of what would have worked.
+ */
+export function readRequiredSecret(envKeys: string | readonly string[], env: Record<string, string | undefined> = Bun.env): string {
+  const keys = typeof envKeys === 'string' ? [envKeys] : envKeys;
+
+  for (const key of keys) {
+    const fileKey = `${key}_FILE`;
+    if (env[fileKey]?.trim()) {
+      return readRequiredSecretFile(fileKey, env);
+    }
+    const direct = env[key]?.trim();
+    if (direct) return direct;
+  }
+
+  const accepted = keys.flatMap((key) => [`${key}_FILE`, key]).join(', ');
+  throw new SecretFileError(keys[0] ?? '', `no secret configured; set one of: ${accepted}`);
+}
+
 export function parseIdList(raw: string | undefined): Set<string> {
   if (!raw) return new Set();
   return new Set(

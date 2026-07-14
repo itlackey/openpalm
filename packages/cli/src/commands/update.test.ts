@@ -27,6 +27,7 @@ describe('runUpgradeAction', () => {
         backupDir: null,
         assetsUpdated: [],
         restarted: [],
+        warnings: [],
       }),
       checkAndUpdateUiBuild: async (currentVersion: string) => {
         currentVersionArg = currentVersion;
@@ -58,6 +59,7 @@ describe('runUpgradeAction', () => {
         backupDir: null,
         assetsUpdated: [],
         restarted: [],
+        warnings: [],
       }),
       checkAndUpdateUiBuild: async () => ({ updated: false, latestVersion: '0.12.5' }),
       checkAndUpdateClientBuild: async (currentVersion: string) => {
@@ -82,7 +84,7 @@ describe('runUpgradeAction', () => {
     mock.module('@openpalm/lib', () => ({
       performUpgrade: async (_state: unknown, opts?: { allowPrerelease?: boolean }) => {
         calls.push(opts?.allowPrerelease);
-        return { imageTag: 'v0.12.0', namespace: 'openpalm', backupDir: null, assetsUpdated: [], restarted: [] };
+        return { imageTag: 'v0.12.0', namespace: 'openpalm', backupDir: null, assetsUpdated: [], restarted: [], warnings: [] };
       },
       checkAndUpdateUiBuild: async () => ({ updated: false, latestVersion: '0.12.0' }),
       checkAndUpdateClientBuild: async () => ({ updated: false, latestVersion: '0.12.0' }),
@@ -97,5 +99,41 @@ describe('runUpgradeAction', () => {
     await runUpgradeAction({ allowPrerelease: true }); // --pre
 
     expect(calls).toEqual([undefined, true]);
+  });
+
+  // #490: the overlay channel_lan deprecation guard surfaces non-fatal
+  // findings through UpgradeResult.warnings; `openpalm update` must print
+  // them so operators actually see them.
+  test("prints performUpgrade warnings to the console", async () => {
+    mock.module('@openpalm/lib', () => ({
+      performUpgrade: async () => ({
+        imageTag: 'v0.12.0',
+        namespace: 'openpalm',
+        backupDir: null,
+        assetsUpdated: [],
+        restarted: [],
+        warnings: ['custom.compose.yml defines a channel_lan network — rename to portal_net'],
+      }),
+      checkAndUpdateUiBuild: async () => ({ updated: false, latestVersion: '0.12.0' }),
+      checkAndUpdateClientBuild: async () => ({ updated: false, latestVersion: '0.12.0' }),
+    }));
+    mock.module(moduleUrls.cliState, () => ({
+      ensureValidState: () => ({ dataDir: '/tmp/openpalm-data' }),
+    }));
+
+    const { runUpgradeAction } = await import(`${updateModuleUrl}?t=${Math.random()}`);
+
+    const originalWarn = console.warn;
+    const warnCalls: string[] = [];
+    console.warn = (...args: unknown[]) => {
+      warnCalls.push(args.map(String).join(' '));
+    };
+    try {
+      await runUpgradeAction();
+    } finally {
+      console.warn = originalWarn;
+    }
+
+    expect(warnCalls.some((line) => line.includes('custom.compose.yml defines a channel_lan network'))).toBe(true);
   });
 });

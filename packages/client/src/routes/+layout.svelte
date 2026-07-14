@@ -12,6 +12,7 @@
   import { getClientBoot } from '$lib/boot.js';
   import { resetAppCache } from '$lib/reset-app-cache.js';
   import { desktopNotifyEnabled, toggleDesktopNotify } from '$lib/desktop-notifications.js';
+  import { detectClientDisplayMode } from '$lib/client-context.js';
   import {
     THEME_STORAGE_KEY,
     isThemePreference,
@@ -85,6 +86,10 @@
   }
 
   onMount(() => {
+    // #511 D8: styling/e2e hook — mirrors the ui package's runtime-context
+    // clientContext.displayMode without importing it (purity gate).
+    document.documentElement.dataset.displayMode = detectClientDisplayMode();
+
     try {
       const stored = window.localStorage.getItem(THEME_STORAGE_KEY);
       themePreference = isThemePreference(stored) ? stored : 'system';

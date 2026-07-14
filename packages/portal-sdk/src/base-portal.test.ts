@@ -1,13 +1,12 @@
 /**
- * BasePortal shared-hub wiring — the REAL fix for the guardian per-principal
- * /event 429.
+ * BasePortal shared-hub wiring — one upstream /event stream per principal.
  *
- * The guardian caps concurrent /event streams per principal at 1 (oc-bounds.ts),
- * and the principalKey includes userId (ownership.ts) — so a single user running
- * a STREAMED turn (portal streaming path → `eventHub.subscribe`) concurrently
- * with a BUFFERED turn (a `/ask` slash command → `forward` → the same hub) must
- * NOT open two upstream streams. Both paths therefore have to funnel through the
- * ONE hub instance BasePortal owns.
+ * A guardian /event subscription is principal-scoped (principalKey includes
+ * userId, ownership.ts) — so a single user running a STREAMED turn (portal
+ * streaming path → `eventHub.subscribe`) concurrently with a BUFFERED turn (a
+ * `/ask` slash command → `forward` → the same hub) should NOT open two
+ * redundant duplicate streams. Both paths therefore funnel through the ONE hub
+ * instance BasePortal owns.
  *
  * This test drives both paths through the portal's ACTUAL wiring (not a hand-rolled
  * hub) and asserts exactly one upstream /event open, and that each turn still
@@ -17,6 +16,25 @@
 import { describe, test, expect } from 'bun:test';
 import { BasePortal, collectTurnAnswer, createLogger, type ForwardResult } from './index.ts';
 import type { OcClient, OcSession } from './opencode.ts';
+
+/** A minimal concrete portal that does NOT override createOcClient — unlike
+ * TestPortal below — so BasePortal's real createOcClient wiring (base URL,
+ * secret resolution) is exercised end to end. */
+class EnvPortal extends BasePortal {
+  readonly name = 'env-portal';
+  protected readonly maxMessageLength = 4000;
+  protected readonly threadTtlMs = 1000;
+
+  constructor() {
+    super(createLogger('env-portal'));
+  }
+
+  start(): void {}
+
+  session() {
+    return this.ocClient.createSession('u1', 'k1');
+  }
+}
 
 /**
  * A fake OcClient whose events() yields from a manually-fed queue and counts
@@ -145,5 +163,75 @@ describe('BasePortal shared /event hub', () => {
     expect(f.opens).toBe(1);
 
     streamSub.close();
+  });
+});
+
+// #490: the /health payload's `service` field drops the deprecated
+// `channel-<name>` prefix in favor of `portal-<name>`.
+describe("BasePortal /health payload", () => {
+  test("/health reports service portal-<name>", async () => {
+    const f = fakeClient("sbuf");
+    const portal = new TestPortal(f.client);
+
+    const handler = portal.createFetch();
+    const res = await handler(new Request("http://localhost/health"));
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true, service: "portal-slack" });
+  });
+});
+
+// #491 — OPENCODE_BASE_URL regression fix (D1) + direct-env secret fallback (D3)
+describe('BasePortal — OPENCODE_BASE_URL + secret fallback (#491)', () => {
+  test('BasePortal wires OPENCODE_BASE_URL from the environment into its OcClient (regression #491)', async () => {
+    const original = Bun.env.OPENCODE_BASE_URL;
+    Bun.env.OPENCODE_BASE_URL = 'http://oc.example:4096';
+    try {
+      const portal = new EnvPortal();
+      Object.defineProperty(portal, 'secret', { value: 's' });
+
+      const urls: string[] = [];
+      const fakeFetch = (async (input: Request | string | URL): Promise<Response> => {
+        const url = input instanceof Request ? input.url : String(input);
+        urls.push(url);
+        return new Response(JSON.stringify({ id: 'sess1', title: 'chat' }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }) as unknown as typeof fetch;
+      portal.createFetch(fakeFetch);
+
+      await portal.session();
+
+      expect(urls[0]).toStartWith('http://oc.example:4096/session');
+      expect(urls[0]).not.toStartWith('http://guardian:8080');
+    } finally {
+      if (original === undefined) delete Bun.env.OPENCODE_BASE_URL;
+      else Bun.env.OPENCODE_BASE_URL = original;
+    }
+  });
+
+  test('secret resolves from direct PRINCIPAL_SECRET when no _FILE is set', () => {
+    const original = Bun.env.PRINCIPAL_SECRET;
+    Bun.env.PRINCIPAL_SECRET = 'direct-secret';
+    try {
+      const portal = new EnvPortal();
+      expect(portal.secret).toBe('direct-secret');
+    } finally {
+      if (original === undefined) delete Bun.env.PRINCIPAL_SECRET;
+      else Bun.env.PRINCIPAL_SECRET = original;
+    }
+  });
+
+  test('secret resolves from OPENCODE_PASSWORD as the standalone fallback', () => {
+    const original = Bun.env.OPENCODE_PASSWORD;
+    Bun.env.OPENCODE_PASSWORD = 'oc-pass';
+    try {
+      const portal = new EnvPortal();
+      expect(portal.secret).toBe('oc-pass');
+    } finally {
+      if (original === undefined) delete Bun.env.OPENCODE_PASSWORD;
+      else Bun.env.OPENCODE_PASSWORD = original;
+    }
   });
 });

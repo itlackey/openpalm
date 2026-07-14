@@ -64,7 +64,6 @@ overlays.
 | Network | Purpose |
 |---------|---------|
 | `portal_net` | First-party portal adapter network |
-| `channel_lan` | Compatibility bridge for legacy/custom overlays |
 | `assistant_net` | Internal core-service communication |
 
 ## Files in this directory

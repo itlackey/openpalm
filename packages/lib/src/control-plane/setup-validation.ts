@@ -1,6 +1,7 @@
 /**
  * Validation logic for SetupSpec inputs.
  */
+import { isNetworkAccessPreset } from "./network-preset.js";
 
 const CAPABILITY_ID_RE = /^[A-Za-z0-9][A-Za-z0-9_-]*$/;
 
@@ -28,13 +29,43 @@ export function validateSetupSpec(input: unknown): { valid: boolean; errors: str
   if (body.portalCredentials !== undefined && (typeof body.portalCredentials !== "object" || body.portalCredentials === null)) {
     errors.push("portalCredentials must be an object if provided");
   }
+  validateNetwork(body, errors);
   return { valid: errors.length === 0, errors };
+}
+
+// #563 — network access preset. Absent means "do not touch network config"
+// (D7); when present, shape + password-contract validation happens here so
+// performSetup can trust the spec before it ever calls resolveNetworkPreset.
+function validateNetwork(body: Record<string, unknown>, errors: string[]): void {
+  if (body.network === undefined) return;
+  const network = requireObj(body.network, "network must be an object if provided", errors);
+  if (!network) return;
+
+  if (!isNetworkAccessPreset(network.preset)) {
+    errors.push(
+      `network.preset must be one of: this-pc, home-password, home-open, shared-guardian`,
+    );
+    return;
+  }
+
+  const password = network.opencodePassword;
+  if (network.preset === "home-password") {
+    if (typeof password !== "string" || password.length < 8) {
+      errors.push("network.opencodePassword is required for the home-password preset and must be at least 8 characters");
+    }
+  } else if (password !== undefined) {
+    errors.push(`network.opencodePassword must not be supplied for the "${network.preset}" preset`);
+  }
 }
 
 function validateSecurity(body: Record<string, unknown>, errors: string[]): void {
   const security = requireObj(body.security, "security object is required", errors);
   if (!security) return;
-  if (!requireStr(security, "uiLoginPassword", "security.uiLoginPassword is required and must be a non-empty string", errors)) return;
+  // PR #564 P1-1: uiLoginPassword is OPTIONAL — an unchanged rerun omits it and
+  // the server preserves the existing secret. When present it must be >= 8; a
+  // fresh install with no existing secret is caught server-side in performSetup.
+  if (security.uiLoginPassword === undefined) return;
+  if (!requireStr(security, "uiLoginPassword", "security.uiLoginPassword must be a non-empty string when provided", errors)) return;
   if ((security.uiLoginPassword as string).length < 8) errors.push("security.uiLoginPassword must be at least 8 characters");
 }
 

@@ -19,7 +19,9 @@ export const GET: RequestHandler = async (event) => {
 
 	const state = getState();
 	const profiles = await annotateAddonProfileAvailability(getAddonProfiles(state.homeDir, 'ollama'));
-	const selectedProfile = getAddonProfileSelection(state.stackDir, 'ollama');
+	// PR #564 second retest: getAddonProfileSelection expects OP_HOME, not stackDir
+	// — passing stackDir returned null and lost the persisted hardware profile on rerun.
+	const selectedProfile = getAddonProfileSelection(state.homeDir, 'ollama');
 
 	return json({ ok: true, profiles, selectedProfile });
 };

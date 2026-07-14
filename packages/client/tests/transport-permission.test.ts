@@ -86,7 +86,9 @@ describe('permission/question reply transport hygiene (B4)', () => {
     expect(calls.length).toBe(3);
     for (const call of calls) {
       expect(call.credentials).toBe('omit');
-      expect(call.headers.get('authorization')).toBe(`Basic ${btoa('openpalm:hunter2')}`);
+      // PR #564 P2-2: a password-only Basic connection defaults the username to
+      // OpenCode's server default 'opencode' (not 'openpalm').
+      expect(call.headers.get('authorization')).toBe(`Basic ${btoa('opencode:hunter2')}`);
     }
   });
 

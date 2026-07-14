@@ -20,14 +20,19 @@ const DB_PATH = Bun.env.GUARDIAN_STATE_DB_PATH ?? join(GUARDIAN_HOME, 'state.db'
 let db: Database | null = null;
 
 /**
- * Migrate an existing principals table from the old CHECK constraint
- * `kind IN ('channel', 'direct')` to `kind IN ('portal', 'direct')`.
+ * Migration v0 → v1: migrate an existing principals table from the old CHECK
+ * constraint `kind IN ('channel', 'direct')` to `kind IN ('portal', 'direct')`.
  *
  * SQLite CHECK constraints cannot be altered in-place, so we detect the old
  * schema via sqlite_master, then recreate the table with the new constraint
  * and migrate rows (replacing 'channel' → 'portal'). The operation is
  * idempotent: if the table already has the new constraint (or does not exist
- * yet), it is a no-op.
+ * yet), it is a no-op. The sqlite_master sniff is kept (rather than trusting
+ * user_version alone) so this step is correct on all three possible
+ * version-0 states: fresh DB, old-constraint 0.12.x DB, and an
+ * already-rewritten 0.12.x DB that was never stamped. The migration runner
+ * (below) owns the transaction the step runs in, so it no longer BEGINs/
+ * COMMITs itself — the version stamp commits atomically with the step.
  */
 function migrateKindConstraintIfNeeded(database: Database): void {
   type MasterRow = { sql: string };
@@ -44,7 +49,6 @@ function migrateKindConstraintIfNeeded(database: Database): void {
   // Old schema detected — recreate the table with the updated CHECK constraint
   // and remap any 'channel' rows to 'portal'.
   database.exec(`
-    BEGIN;
     CREATE TABLE IF NOT EXISTS principals_new (
       id TEXT PRIMARY KEY,
       kind TEXT NOT NULL CHECK(kind IN ('portal', 'direct')),
@@ -63,22 +67,54 @@ function migrateKindConstraintIfNeeded(database: Database): void {
       FROM principals;
     DROP TABLE principals;
     ALTER TABLE principals_new RENAME TO principals;
-    COMMIT;
   `);
 }
 
-function openDatabase(): Database {
-  if (db) return db;
-  mkdirSync(dirname(DB_PATH), { recursive: true, mode: 0o700 });
-  db = new Database(DB_PATH, { create: true });
-  chmodSync(DB_PATH, 0o600);
+// Ordered migrations: MIGRATIONS[n] takes user_version n → n+1.
+const MIGRATIONS: ReadonlyArray<(database: Database) => void> = [
+  migrateKindConstraintIfNeeded, // v0 → v1
+];
 
-  // Run the kind-constraint migration BEFORE creating the table (if the table
-  // already exists with the old schema the CREATE IF NOT EXISTS below is a
-  // no-op, so we must migrate first).
-  migrateKindConstraintIfNeeded(db);
+/**
+ * Bump when appending to MIGRATIONS. Column policy (#433 close-out):
+ * deferred registry columns (protocols, persona, rate_policy) and #435's
+ * cert_fingerprint are added by ALTER TABLE under a new user_version step
+ * ONLY when their consumer ships — never speculatively.
+ */
+export const STATE_DB_SCHEMA_VERSION = 1;
 
-  db.exec(`
+function readUserVersion(database: Database): number {
+  return (database.query('PRAGMA user_version').get() as { user_version: number }).user_version;
+}
+
+/**
+ * Apply pragmas, versioned migrations, base schema, and the 0600 file-mode
+ * discipline to an open state database. Exported as the unit-test seam
+ * (openDatabase() is a singleton bound to env at import time and cannot be
+ * exercised in-process across test files).
+ */
+export function configureStateDatabase(database: Database): void {
+  database.exec('PRAGMA journal_mode = WAL'); // must run outside a transaction
+
+  const version = readUserVersion(database);
+  if (version > STATE_DB_SCHEMA_VERSION) {
+    throw new Error(
+      `guardian state DB user_version ${version} is newer than supported ${STATE_DB_SCHEMA_VERSION} — refusing to open (downgrade?)`
+    );
+  }
+  for (let v = version; v < STATE_DB_SCHEMA_VERSION; v++) {
+    database.exec('BEGIN');
+    try {
+      MIGRATIONS[v](database);
+      database.exec(`PRAGMA user_version = ${v + 1}`);
+      database.exec('COMMIT');
+    } catch (err) {
+      database.exec('ROLLBACK');
+      throw err;
+    }
+  }
+
+  database.exec(`
     CREATE TABLE IF NOT EXISTS principals (
       id TEXT PRIMARY KEY,
       kind TEXT NOT NULL CHECK(kind IN ('portal', 'direct')),
@@ -88,6 +124,20 @@ function openDatabase(): Database {
       created_at INTEGER NOT NULL
     );
   `);
+
+  // 0600 discipline: DB file + any WAL sidecars that already exist. Sidecars
+  // SQLite creates later inherit the DB file's mode (unix VFS derives
+  // wal/shm modes from the main DB file).
+  for (const p of [database.filename, `${database.filename}-wal`, `${database.filename}-shm`]) {
+    if (existsSync(p)) chmodSync(p, 0o600);
+  }
+}
+
+function openDatabase(): Database {
+  if (db) return db;
+  mkdirSync(dirname(DB_PATH), { recursive: true, mode: 0o700 });
+  db = new Database(DB_PATH, { create: true });
+  configureStateDatabase(db);
   return db;
 }
 
@@ -145,6 +195,10 @@ export function rotatePrincipal(id: string, token: string): PrincipalRecord | nu
 export function setPrincipalEnabled(id: string, enabled: boolean): PrincipalRecord | null {
   openDatabase().query('UPDATE principals SET enabled = ? WHERE id = ?').run(enabled ? 1 : 0, id);
   return getPrincipalRecord(id);
+}
+
+export function deletePrincipal(id: string): boolean {
+  return openDatabase().query('DELETE FROM principals WHERE id = ?').run(id).changes > 0;
 }
 
 export function seedPortalPrincipalsFromEnv(): PrincipalRecord[] {

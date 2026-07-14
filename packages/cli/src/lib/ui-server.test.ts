@@ -310,6 +310,39 @@ describe('resolveClientOpenTarget', () => {
     expect(result.url).toBe(uiUrl);
     expect(result.message).toBeDefined();
   });
+
+  // ── #486 D1b: /connections and /connections/new are client-capable landings ──
+
+  it('opens the CLIENT app at /connections/new when the landing is /connections/new and the client is reachable (#486)', async () => {
+    const result = await resolveClientOpenTarget(uiUrl, clientUrl, true, {
+      fetchFn: routedFetch({ [`${uiUrl}/api/runtime/landing`]: { landing: '/connections/new' } }),
+      waitForClient: async () => true,
+    });
+    expect(result).toEqual({ url: 'http://127.0.0.1:3890/connections/new' });
+  });
+
+  it('falls back to the host UI /connections/new (with a message) when the client app is unreachable', async () => {
+    const result = await resolveClientOpenTarget(uiUrl, clientUrl, true, {
+      fetchFn: routedFetch({ [`${uiUrl}/api/runtime/landing`]: { landing: '/connections/new' } }),
+      waitForClient: async () => false,
+    });
+    expect(result.url).toBe(`${uiUrl}/connections/new`);
+    expect(result.message).toBeDefined();
+  });
+
+  it('still routes non-client landings (/setup, /host?tab=diagnostics) to the host UI', async () => {
+    const setupResult = await resolveClientOpenTarget(uiUrl, clientUrl, true, {
+      fetchFn: routedFetch({ [`${uiUrl}/api/runtime/landing`]: { landing: '/setup' } }),
+      waitForClient: async () => { throw new Error('should not probe the client for a non-client landing'); },
+    });
+    expect(setupResult).toEqual({ url: `${uiUrl}/setup` });
+
+    const diagResult = await resolveClientOpenTarget(uiUrl, clientUrl, true, {
+      fetchFn: routedFetch({ [`${uiUrl}/api/runtime/landing`]: { landing: '/host?tab=diagnostics' } }),
+      waitForClient: async () => { throw new Error('should not probe the client for a non-client landing'); },
+    });
+    expect(diagResult).toEqual({ url: `${uiUrl}/host?tab=diagnostics` });
+  });
 });
 
 // ── D3: persisted OP_HOST_UI_PORT is read back ────────────────────────────────

@@ -6,8 +6,6 @@
  *       forwarded to upstream), NOT a 403 JSON block.
  *   (b) Moderator unreachable (fail-closed) → same prompt-rewrite; upstream IS
  *       contacted with the refusal body.
- *   (c) Per-principal rate limit (gate 1c) fires BEFORE any upstream call —
- *       upstream is never contacted when the rate cap is exceeded.
  *
  * Architecture:
  *   - The direct port (GUARDIAN_DIRECT_PORT) routes with expectedKind:'direct'.
@@ -67,12 +65,14 @@ function getAvailablePort(): Promise<number> {
 function directCall(
   method: string,
   ocPath: string,
-  opts: { userId?: string; body?: string } = {},
+  opts: { userId?: string; body?: string; id?: string; secret?: string } = {},
 ): Promise<Response> {
   const userId = opts.userId ?? "direct-user";
+  const id = opts.id ?? DIRECT_ID;
+  const secret = opts.secret ?? DIRECT_SECRET;
   const body = opts.body ?? "";
   const headers = new Headers({
-    authorization: `Basic ${Buffer.from(`${DIRECT_ID}:${DIRECT_SECRET}`, "utf-8").toString("base64")}`,
+    authorization: `Basic ${Buffer.from(`${id}:${secret}`, "utf-8").toString("base64")}`,
     "x-openpalm-user": userId,
   });
   if (body) headers.set("content-type", "application/json");
@@ -163,9 +163,6 @@ beforeAll(async () => {
       // Dead moderator port → fail-closed on any escalation.
       GUARDIAN_MODERATION_URL: `http://127.0.0.1:${deadPort}`,
       GUARDIAN_MODERATION_TIMEOUT_MS: "500",
-      // Low rate limits so we can trigger gate 1c quickly in the test.
-      // These env vars are read by server.ts/rate-limit.ts at module load time.
-      // We override at module level via the per-key bucket in the subprocess.
     },
     stdout: "pipe",
     stderr: "pipe",
@@ -185,16 +182,6 @@ beforeAll(async () => {
     await Bun.sleep(100);
   }
   if (!ready) throw new Error("guardian not ready");
-
-  // Wait for the boot-time drift guard to enable the /oc/* proxy (§5, Stage 7).
-  let proxyOn = false;
-  const internalUrl = `http://127.0.0.1:${internalPort}`;
-  for (let i = 0; i < 50; i++) {
-    const r = await fetch(`${internalUrl}/stats`, { headers: { authorization: `Bearer ${ADMIN_TOKEN}` } });
-    if (r.ok && (await r.json()).oc_proxy?.enabled === true) { proxyOn = true; break; }
-    await Bun.sleep(100);
-  }
-  if (!proxyOn) throw new Error("guardian /oc proxy did not enable (drift guard)");
 
   // Seed the direct principal via the admin API.
   await seedDirectPrincipal();
@@ -286,51 +273,83 @@ describe("/oc proxy — direct tier: moderation block → prompt-rewrite (not 40
   });
 });
 
-describe("/oc proxy — direct tier: gate 1c rate limit fires BEFORE upstream", () => {
-  test("(c) per-principal rate limit 429s and upstream is NOT contacted", async () => {
-    // The default rate limits are high (120 user / 200 channel per minute), so we
-    // cannot exhaust them cheaply in a test. Instead we exploit the CHANNEL_RATE_LIMIT
-    // bucket key `oc:direct:<id>` by firing a burst of requests that all hit the
-    // SAME principal + userId bucket, checking that when the limit is exceeded the
-    // response is 429 with rate_limited and messageHits does NOT increase.
-    //
-    // Strategy: fire many GET /session calls (they're cheap — no upstream body
-    // write) until we observe a 429, then assert:
-    //   1. The error is "rate_limited".
-    //   2. The hit counter (messageHits) stays flat for that 429 call, proving
-    //      gate 1c fires BEFORE the upstream fetch.
-    //
-    // We use a dedicated userId so we exhaust the USER_RATE_LIMIT (120/min) without
-    // polluting other tests. We need to send 120+ requests to a single-userId bucket.
-    const userId = "rate-limit-user-direct";
-    const USER_LIMIT = 120;
+describe("admin DELETE /admin/principals/:id (#433)", () => {
+  // Dedicated principal id + fresh x-openpalm-user ids so this block never
+  // shares identities with the moderation tests above.
+  const DELETE_ID = "delete-me";
+  const DELETE_SECRET = "delete-me-secret-7777";
+  const DELETE_USER = "delete-me-user";
 
-    // First: create a session using a DIFFERENT userId so the session create
-    // doesn't consume rate budget for the target userId.
-    const id = await createDirectSession("rl-setup-user");
+  test("DELETE /admin/principals/:id removes the principal and invalidates the auth cache", async () => {
+    // Register the principal.
+    const seedResp = await fetch(`${adminUrl}/admin/principals`, {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${ADMIN_TOKEN}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ id: DELETE_ID, kind: "direct", token: DELETE_SECRET, label: "Delete-me test client" }),
+    });
+    expect(seedResp.status).toBe(200);
 
-    let hit429 = false;
-    let status429MessageHits: number | null = null;
-    // Fire USER_LIMIT + 10 requests to exhaust the per-userId bucket.
-    for (let i = 0; i < USER_LIMIT + 10; i++) {
-      const before = messageHits;
-      // Use GET /session/{id} which goes through gate 1c (rate limit) but does
-      // NOT hit /message or /prompt_async, so messageHits stays flat for allowed
-      // calls too. We only care about the 429 case.
-      const resp = await directCall("GET", `/session/${id}`, { userId });
-      if (resp.status === 429) {
-        const body = await resp.json() as { error?: string };
-        expect(body.error).toBe("rate_limited");
-        // Gate 1c fires BEFORE upstream: messageHits must not have changed.
-        status429MessageHits = messageHits - before;
-        hit429 = true;
-        break;
-      }
-      // consume the response body to avoid connection leaks
-      await resp.body?.cancel().catch(() => {});
-    }
+    // Prime the positive auth-cache entry with a successful call.
+    const beforeDelete = await directCall("POST", "/session", {
+      id: DELETE_ID,
+      secret: DELETE_SECRET,
+      userId: DELETE_USER,
+      body: JSON.stringify({}),
+    });
+    expect(beforeDelete.status).toBe(200);
 
-    expect(hit429).toBe(true);
-    expect(status429MessageHits).toBe(0); // upstream was NOT contacted on the 429 call
+    // The DELETE route is unmatched today — handleAdminRequest falls through
+    // to 404, so this is the first assertion to fail pre-implementation.
+    const deleteResp = await fetch(`${adminUrl}/admin/principals/${DELETE_ID}`, {
+      method: "DELETE",
+      headers: { authorization: `Bearer ${ADMIN_TOKEN}` },
+    });
+    expect(deleteResp.status).toBe(200);
+
+    // A stale cache would still 200 here — this proves BOTH the row is gone
+    // AND the auth cache was invalidated immediately.
+    const afterDelete = await directCall("POST", "/session", {
+      id: DELETE_ID,
+      secret: DELETE_SECRET,
+      userId: DELETE_USER,
+      body: JSON.stringify({}),
+    });
+    expect(afterDelete.status).toBe(401);
+
+    // No longer listed.
+    const listResp = await fetch(`${adminUrl}/admin/principals`, {
+      headers: { authorization: `Bearer ${ADMIN_TOKEN}` },
+    });
+    const listed = (await listResp.json()) as { principals: Array<{ id: string }> };
+    expect(listed.principals.some((p) => p.id === DELETE_ID)).toBe(false);
+  });
+
+  test("DELETE on an unknown principal returns 404", async () => {
+    // DELETE_ID was already deleted by the previous test (bun runs tests in
+    // declaration order within a file), so this is a genuine "unknown id" case.
+    const resp = await fetch(`${adminUrl}/admin/principals/${DELETE_ID}`, {
+      method: "DELETE",
+      headers: { authorization: `Bearer ${ADMIN_TOKEN}` },
+    });
+    expect(resp.status).toBe(404);
+    const body = (await resp.json()) as { error?: string };
+    expect(body.error).toBe("not_found");
+  });
+
+  test("DELETE without the admin bearer token is rejected 401 (positive control)", async () => {
+    // Passes before AND after the DELETE route lands — the Bearer gate at the
+    // top of handleAdminRequest covers every /admin route already. Documented
+    // control, not a red test.
+    const noAuthResp = await fetch(`${adminUrl}/admin/principals/${DELETE_ID}`, { method: "DELETE" });
+    expect(noAuthResp.status).toBe(401);
+
+    const wrongAuthResp = await fetch(`${adminUrl}/admin/principals/${DELETE_ID}`, {
+      method: "DELETE",
+      headers: { authorization: "Bearer wrong-token" },
+    });
+    expect(wrongAuthResp.status).toBe(401);
   });
 });

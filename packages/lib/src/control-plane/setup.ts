@@ -27,10 +27,13 @@ import {
   writeAuthJsonProviderKeys,
 } from "./secrets.js";
 import { createState, initializeStateSecrets } from "./lifecycle.js";
+import { readSecret } from "./secrets-files.js";
 import { writeVoiceVars } from "./voice-env.js";
 import type { ControlPlaneState } from "./types.js";
 import { validateSetupSpec } from "./setup-validation.js";
-import { getRegistryAutomation, setAddonEnabled, setAddonProfileSelection } from "./addons.js";
+import { getRegistryAutomation, listEnabledAddonIds, setAddonEnabled, setAddonProfileSelection } from "./addons.js";
+import { GUARDIAN_INGRESS_ADDON_IDS } from "./addon-ids.js";
+import { resolveNetworkPreset, validateNetworkPresetEnv, type NetworkAccessPreset } from "./network-preset.js";
 export { validateSetupSpec } from "./setup-validation.js";
 
 const logger = createLogger("setup");
@@ -60,7 +63,7 @@ export type SetupSpec = {
   /**
    * Operator-supplied UI login password. Persisted as a file-based secret.
    */
-  security: { uiLoginPassword: string };
+  security: { uiLoginPassword?: string };
   owner?: { name?: string; email?: string };
   connections: SetupConnection[];
   portalCredentials?: Record<string, Record<string, string>>;
@@ -69,6 +72,8 @@ export type SetupSpec = {
   ollamaProfile?: string;
   imageTag?: string;
   hostAkm?: boolean;
+  /** Network access preset (issue #563). Absent = leave network config untouched. */
+  network?: { preset: NetworkAccessPreset; opencodePassword?: string };
 };
 
 // ── Secrets Builder ──────────────────────────────────────────────────────
@@ -250,10 +255,12 @@ export function persistAkmConfig(
 
 /**
  * Persist portal (discord/slack/…) credentials into the vault secrets env.
- * Credential values come from the setup spec first, falling back to the host
- * process environment for any canonical env var not supplied in the spec.
- * updateSecretsEnv routes secret-classified keys to their own files and the
- * rest to stack.env.
+ * Credential values come ONLY from the setup spec. PR #564 second retest P1-3:
+ * the previous host-process-env fallback silently consumed ambient variables
+ * (e.g. a leftover `DISCORD_BOT_TOKEN` in the operator's shell) as operator
+ * input, overwriting an existing secret BEFORE keep-existing semantics could
+ * preserve it. Omitting a credential now leaves the persisted secret untouched
+ * — updateSecretsEnv only writes the keys explicitly supplied.
  */
 export function persistPortalCredentials(
   state: ControlPlaneState,
@@ -262,13 +269,6 @@ export function persistPortalCredentials(
   const portalSecretUpdates = portalCredentials
     ? buildPortalCredentialEnvVars(portalCredentials)
     : {};
-  // Pick up portal credential env vars not already provided in the spec.
-  for (const mapping of Object.values(PORTAL_CREDENTIAL_ENV_MAP)) {
-    for (const envKey of Object.values(mapping)) {
-      if (!portalSecretUpdates[envKey] && process.env[envKey])
-        portalSecretUpdates[envKey] = process.env[envKey];
-    }
-  }
   updateSecretsEnv(state, portalSecretUpdates);
 }
 
@@ -303,7 +303,17 @@ export async function performSetup(
   const validation = validateSetupSpec(input);
   if (!validation.valid) return { ok: false, error: validation.errors.join("; ") };
 
-  const { llm, embedding, tts, stt, security, owner, connections, portalCredentials, addons, voiceProfile, ollamaProfile, imageTag, hostAkm } = input;
+  // #563 D7 — fail closed BEFORE any write when the target preset conflicts
+  // with the HOST PROCESS env (not stack.env): compose gives process env
+  // precedence over --env-file, so a leftover OP_ASSISTANT_BIND_ADDRESS=0.0.0.0
+  // in the host process would silently defeat the shared-guardian hard-pin
+  // this resolver is about to write to stack.env.
+  if (input.network) {
+    const envCheck = validateNetworkPresetEnv(input.network.preset, process.env);
+    if (!envCheck.valid) return { ok: false, error: envCheck.errors.join("; ") };
+  }
+
+  const { llm, embedding, tts, stt, security, owner, connections, portalCredentials, addons, voiceProfile, ollamaProfile, imageTag, hostAkm, network } = input;
   const state = opts?.state ?? createState();
   initializeStateSecrets(state);
 
@@ -331,7 +341,29 @@ export async function performSetup(
       ensureSecrets(state);
       updateSecretsEnv(state, updates);
       persistPortalCredentials(state, portalCredentials);
-      patchSecretsEnvFile(state.homeDir, { OP_UI_LOGIN_PASSWORD: security.uiLoginPassword });
+      // PR #564 P1-1: only write the UI login password when the operator
+      // actually supplied one. An unchanged rerun omits it — preserve the
+      // existing secret rather than rotating it to a value the operator never
+      // saw (which would lock them out). Fail closed if there is nothing to
+      // preserve (a fresh install must supply a password).
+      if (security.uiLoginPassword) {
+        patchSecretsEnvFile(state.homeDir, { OP_UI_LOGIN_PASSWORD: security.uiLoginPassword });
+      } else if (!readSecret(state.homeDir, "op_ui_login_password")?.trim()) {
+        throw new Error("security.uiLoginPassword is required — no existing UI login password to preserve.");
+      }
+      // #563 — network access preset. Absent `network` means "leave whatever
+      // is already in stack.env untouched" (D7): a rerun over a hand-tuned
+      // env, or over a previous preset choice, never silently rewrites it
+      // unless the operator actively picked a preset this run.
+      if (network) {
+        const resolution = resolveNetworkPreset(network.preset, {
+          opencodePassword: network.opencodePassword,
+        });
+        patchSecretsEnvFile(state.homeDir, {
+          ...resolution.env,
+          ...(resolution.opencodePassword ? { OP_OPENCODE_PASSWORD: resolution.opencodePassword } : {}),
+        });
+      }
       // Provider API keys land in OpenCode's auth.json (bind-mounted into
       // the assistant container) — never in stack.env.
       writeAuthJsonProviderKeys(state, providerKeys);
@@ -387,11 +419,32 @@ export async function performSetup(
         writeVoiceVars({ tts, stt }, state.homeDir);
       }
 
-      // Enable requested addons (portals like discord, slack, etc.)
-      // setAddonEnabled records explicit activation state and ensures portal secret files.
+      // Enable/disable requested addons (portals like discord, slack, etc.).
+      // PR #564 second retest R6: honor an EXPLICIT `false` as a disable — the
+      // old `if (enabled)` skipped it, so `{discord:false}` left Discord enabled.
+      // setAddonEnabled records explicit activation state and ensures portal
+      // secret files (on enable) / clears the hardware-profile key (on disable).
       if (addons) {
         for (const [name, enabled] of Object.entries(addons)) {
-          if (enabled) setAddonEnabled(state.homeDir, name, true, state);
+          setAddonEnabled(state.homeDir, name, enabled === true, state);
+        }
+      }
+
+      // #563 (PR #564 review) — the guardian service is profile-gated behind
+      // guardian-ingress addons, so bind addresses alone deploy no guardian.
+      // The shared-guardian preset promises a protected front door + pairing;
+      // when nothing else provides guardian ingress, enable the built-in chat
+      // portal (the only credential-less guardian-ingress addon).
+      if (network?.preset === "shared-guardian") {
+        const hasGuardianIngress = [
+          ...Object.entries(addons ?? {}).filter(([, on]) => on).map(([name]) => name),
+          ...listEnabledAddonIds(state.homeDir),
+        ].some((a) => GUARDIAN_INGRESS_ADDON_IDS.includes(a));
+        if (!hasGuardianIngress) {
+          setAddonEnabled(state.homeDir, "chat", true, state);
+          logger.info("shared-guardian preset auto-enabled the chat portal", {
+            reason: "guardian ingress required for the protected front door",
+          });
         }
       }
 

@@ -9,18 +9,14 @@ import { basicTokenAuthStrategy, getAuthStrategy } from './auth.ts';
 import { eventSubscriberCount } from './event-fanout';
 import { handleMcpRequest, seedMcpPrincipalFromToken } from './mcp';
 import { sessionOwnerCount, permissionOwnerCount } from './ownership';
-import {
-  activeStreamPrincipalCount,
-  inflightTurnCount,
-  OC_EVENT_MAX_CONCURRENT_STREAMS,
-  OC_EVENT_RECONNECT_LIMIT,
-  OC_MAX_INFLIGHT_TURNS,
-  OC_TURN_WALL_CLOCK_MS,
-  reconnectBucketCount,
-} from './oc-bounds';
 import { handleProxy, OC_PREFIX } from './proxy';
-import { activeRateLimiters, PORTAL_RATE_LIMIT, PORTAL_RATE_WINDOW_MS, USER_RATE_LIMIT, USER_RATE_WINDOW_MS } from './rate-limit';
-import { runDriftCheckWithRetry, startProxyRecovery, stopProxyRecovery, isProxyEnabled } from './drift';
+import {
+  activeRateLimiters,
+  PORTAL_RATE_LIMIT,
+  PORTAL_RATE_WINDOW_MS,
+  USER_RATE_LIMIT,
+  USER_RATE_WINDOW_MS,
+} from './rate-limit.ts';
 import { initializePrincipalStore, listPrincipals, seedPortalPrincipalsFromEnv } from './state-db';
 import { matchTransport, registerTransport, type Transport } from './transport';
 import { DIRECT_PORT, resolveCorsAllowedOrigin } from './config';
@@ -125,19 +121,9 @@ function statsResponse(): Response {
       active_portal_limiters: activePortalLimiters,
     },
     oc_proxy: {
-      enabled: isProxyEnabled(),
       session_owners: sessionOwnerCount(),
       permission_owners: permissionOwnerCount(),
       event_subscribers: eventSubscriberCount(),
-      event_reconnect_buckets: reconnectBucketCount(),
-      event_stream_principals: activeStreamPrincipalCount(),
-      inflight_turns: inflightTurnCount(),
-      bounds: {
-        event_reconnect_limit: OC_EVENT_RECONNECT_LIMIT,
-        event_max_concurrent_streams: OC_EVENT_MAX_CONCURRENT_STREAMS,
-        max_inflight_turns: OC_MAX_INFLIGHT_TURNS,
-        turn_wall_clock_ms: OC_TURN_WALL_CLOCK_MS,
-      },
     },
     requests: {
       total: requestCounters.total,
@@ -151,17 +137,15 @@ async function handleHealth(requestId: string): Promise<Response> {
 }
 
 async function handleHealthReady(requestId: string): Promise<Response> {
-  if (!isProxyEnabled()) {
-    return json(503, { ok: false, ready: false, requestId, reason: 'oc_proxy_disabled' });
-  }
   return json(200, { ok: true, ready: true, requestId, time: new Date().toISOString() });
 }
 
-async function handleOcRequest(req: Request, requestId: string, expectedKind?: 'portal' | 'direct', clientIp = ''): Promise<Response> {
-  if (!isProxyEnabled()) {
-    countRequest('oc:503');
-    return json(503, { error: 'oc_proxy_disabled', requestId });
-  }
+async function handleOcRequest(
+  req: Request,
+  requestId: string,
+  expectedKind?: 'portal' | 'direct',
+  clientIp = '',
+): Promise<Response> {
   const response = await handleProxy(req, requestId, expectedKind, clientIp);
   countRequest(`oc:${response.status}`);
   return response;
@@ -174,8 +158,8 @@ async function handleInternalRequest(req: Request, clientIp = ''): Promise<Respo
   if (url.pathname === '/health' && req.method === 'GET') return handleHealth(requestId);
   if (url.pathname === '/health/ready' && req.method === 'GET') return handleHealthReady(requestId);
   if (url.pathname === '/stats' && req.method === 'GET') {
-    // /stats discloses the principal roster and rate-limit/ownership counters —
-    // useful for ops, but reconnaissance for anything on the guardian's bridge
+    // /stats discloses the principal roster and ownership counters — useful for
+    // ops, but reconnaissance for anything on the guardian's bridge
     // networks. Gate it on the same admin bearer token the admin listener
     // enforces (fail-closed: no configured token denies all).
     if (!(await authorizeAdminToken(req))) return json(401, { error: 'unauthorized', requestId });
@@ -240,8 +224,8 @@ export interface StartGuardianOptions {
 }
 
 /**
- * Composition root: seed the principal store, start drift recovery, and bind the
- * internal (8080), direct (3830) and admin (3831) listeners. Running
+ * Composition root: seed the principal store and bind the internal (8080),
+ * direct (3830) and admin (3831) listeners. Running
  * `bun run src/server.ts` calls this automatically (see the `import.meta.main`
  * guard below). Downstream distributions import and call it after registering
  * their transports / auth strategy / policy provider.
@@ -253,26 +237,22 @@ export function startGuardian(options: StartGuardianOptions = {}): GuardianServe
   seedPortalPrincipalsFromEnv();
   if (MCP_ENABLED) seedMcpPrincipalFromToken();
 
-  void runDriftCheckWithRetry()
-    .then((enabled) => {
-      if (!enabled) startProxyRecovery();
-    })
-    .catch((err) => {
-      logger.error('drift_check_error', { error: String(err) });
-      startProxyRecovery();
-    });
-
   const internal = Bun.serve({
     port: INTERNAL_PORT,
     hostname: INTERNAL_HOST,
     idleTimeout: 0,
     fetch: (req, server) => handleInternalRequest(req, server.requestIP(req)?.address ?? ''),
   });
+
+  // Direct listener (3830): plain HTTP. TLS/mTLS termination, if wanted, is the
+  // operator's infrastructure concern (a reverse proxy in front) — the guardian
+  // does not terminate TLS itself.
   const direct = Bun.serve({
     port: DIRECT_PORT,
     idleTimeout: 0,
     fetch: (req, server) => handleDirectRequest(req, server.requestIP(req)?.address ?? ''),
   });
+
   const admin = Bun.serve({ port: ADMIN_PORT, idleTimeout: 0, fetch: handleAdminListenerRequest });
 
   audit({
@@ -303,7 +283,6 @@ export function startGuardian(options: StartGuardianOptions = {}): GuardianServe
     direct,
     admin,
     stop() {
-      stopProxyRecovery();
       internal.stop();
       direct.stop();
       admin.stop();

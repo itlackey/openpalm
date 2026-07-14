@@ -31,7 +31,9 @@ import {
   getActiveConnection,
   listConnections,
   validateConnectionUrl,
+  USER_ADDABLE_CONNECTION_KINDS,
 } from '$lib/server/endpoints.js';
+import type { ConnectionKind } from '$lib/types.js';
 
 export const GET: RequestHandler = async (event) => {
   const requestId = getRequestId(event);
@@ -55,13 +57,33 @@ export const POST: RequestHandler = async (event) => {
     const password =
       typeof body.password === 'string' && body.password.length > 0 ? body.password : undefined;
 
+    // #486 D2: absent -> omitted; a string in USER_ADDABLE_CONNECTION_KINDS
+    // -> passed to addConnection; anything else (incl. the reserved
+    // 'local-opencode') -> 400 invalid_connection.
+    let kind: ConnectionKind | undefined;
+    if (body.kind !== undefined) {
+      if (
+        typeof body.kind !== 'string' ||
+        !(USER_ADDABLE_CONNECTION_KINDS as readonly string[]).includes(body.kind)
+      ) {
+        return errorResponse(
+          400,
+          'invalid_connection',
+          'kind must be remote-opencode or openpalm-client-api',
+          {},
+          requestId
+        );
+      }
+      kind = body.kind as ConnectionKind;
+    }
+
     const urlCheck = validateConnectionUrl(url);
     if (!urlCheck.ok) {
       return errorResponse(400, 'invalid_connection', 'URL must be a valid http(s) URL', {}, requestId);
     }
 
     try {
-      const entry = addConnection({ label, url: urlCheck.url, password });
+      const entry = addConnection({ label, url: urlCheck.url, password, kind });
       return jsonResponse(201, { connection: publishConnectionEntry(entry) }, requestId);
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'failed to create connection';

@@ -12,9 +12,9 @@
  *     the client holds per-connection credentials, not host cookies —
  *     plan §6.8/§8.10),
  *   - auth is derived from the connection: Basic (username defaults to
- *     'openpalm', mirroring the host app's probeEndpoint() so guardian
- *     credentials minted by the host stack work without a username field,
- *     #435), Bearer, or none.
+ *     'opencode' — OpenCode's own server default and what the host app sends,
+ *     so shipped home-password credentials work without a username field
+ *     (PR #564 P2-2); the encoder is UTF-8-safe), Bearer, or none.
  *
  * Everything here is pure TS with an injectable fetch — unit-tested in
  * packages/client/tests/transport-*.test.ts (the pinned contract).
@@ -34,7 +34,15 @@
  *     connection from a genuinely down one,
  *   - §E5 structured error-body extraction on !response.ok,
  *   - §E8 UTF-8-safe Basic-auth header encoding.
+ *
+ * #557 D6 — probeHealth()'s 'insecure' state: a plain-http remote target on
+ * an https app origin is refused by the browser's mixed-content blocker
+ * before any response is observable, so a raw fetch there would surface as
+ * a misleading 'unreachable' (a TypeError, then a no-cors re-probe that is
+ * ALSO mixed-content-blocked). validateConnectionUrl() (./connections/
+ * url-policy.ts) is consulted first and short-circuits with zero network I/O.
  */
+import { validateConnectionUrl } from '../connections/url-policy.js';
 
 export type ConnectionAuth =
   | { mode: 'none' }
@@ -53,10 +61,15 @@ export type HealthProbeResult = {
   /**
    * 'blocked' (review 2026-07-10 §E3) means the connection is very likely UP
    * but its CORS policy refuses the browser origin — see the heuristic on
-   * `probeCorsBlock` below. Existing consumers that only match the
-   * pre-existing three states keep working; 'blocked' is additive.
+   * `probeCorsBlock` below. 'insecure' (#557 D6) means the target is a
+   * plain-http non-loopback URL and the app itself runs on an https origin —
+   * the browser's mixed-content blocker would refuse the request outright,
+   * so `probeHealth()` short-circuits via `validateConnectionUrl()` instead
+   * of performing a doomed fetch (`detail: 'plain-http-remote'`). Existing
+   * consumers that only match the pre-existing states keep working; both are
+   * additive.
    */
-  state: 'accessible' | 'unauthorized' | 'unreachable' | 'blocked';
+  state: 'accessible' | 'unauthorized' | 'unreachable' | 'blocked' | 'insecure';
   detail?: string;
 };
 
@@ -66,6 +79,14 @@ export type TransportOptions = {
   auth?: ConnectionAuth;
   /** Injectable for tests; defaults to globalThis.fetch. */
   fetch?: typeof globalThis.fetch;
+  /**
+   * Path `probeHealth()` GETs relative to `baseUrl` (default `'/'`). Guardian
+   * `/oc`-fronted connections ('openpalm-client-api' kind, #486 D2) probe an
+   * allowlisted route (`'/session'`) instead — bare `GET /oc/` is not an
+   * allowlisted guardian route and 404s even against a fully healthy
+   * guardian.
+   */
+  probePath?: string;
 };
 
 /** Raw OpenCode SSE event envelope (session.*, message.*, tool.*, permission.*, question.*, …). */
@@ -207,7 +228,7 @@ function base64Utf8(value: string): string {
 
 function authorizationHeader(auth: ConnectionAuth): string | null {
   if (auth.mode === 'basic') {
-    const username = auth.username ?? 'openpalm';
+    const username = auth.username ?? 'opencode';
     return `Basic ${base64Utf8(`${username}:${auth.password}`)}`;
   }
   if (auth.mode === 'bearer') return `Bearer ${auth.token}`;
@@ -241,6 +262,7 @@ export function createTransport(options: TransportOptions): Transport {
   // Trailing-slash and path-prefix safe: '/opencode/' + '/session' must
   // become '/opencode/session' (reverse-proxied instances keep their prefix).
   const base = options.baseUrl.replace(/\/+$/, '');
+  const probePath = options.probePath ?? '/';
 
   function buildHeaders(extra?: Record<string, string>): Record<string, string> {
     const headers: Record<string, string> = { ...extra };
@@ -503,8 +525,18 @@ export function createTransport(options: TransportOptions): Transport {
      * not an exception path.
      */
     async probeHealth(): Promise<HealthProbeResult> {
+      // #557 D6: an `insecure-remote` verdict means the fetch below is
+      // doomed (mixed-content-blocked by the browser before it ever leaves)
+      // — short-circuit with zero network I/O rather than let it surface as
+      // a misleading 'unreachable'. An `invalid-url` verdict does NOT
+      // short-circuit: an unparseable base already surfaces as 'unreachable'
+      // via the fetch throw below, unchanged behavior.
+      const verdict = validateConnectionUrl(base);
+      if (!verdict.ok && verdict.reason === 'insecure-remote') {
+        return { state: 'insecure', detail: 'plain-http-remote' };
+      }
       try {
-        const response = await fetchImpl(`${base}/`, {
+        const response = await fetchImpl(`${base}${probePath}`, {
           method: 'GET',
           headers: buildHeaders(),
           credentials: 'omit',

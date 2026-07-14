@@ -2,10 +2,10 @@
  * OcEventHub — one shared /event stream per principal, fanned out to turns.
  *
  * The bug this fixes: concurrent Discord threads from one user each opened a
- * redundant principal-scoped /event stream and tripped the guardian's
- * concurrent-stream cap (429 too_many_event_streams). The hub guarantees exactly
- * ONE upstream stream per principal regardless of concurrent turns, and delivers
- * every frame to every subscriber (each filters by its own sessionId).
+ * redundant principal-scoped /event stream (each a full duplicate of the same
+ * fan-out). The hub guarantees exactly ONE upstream stream per principal
+ * regardless of concurrent turns, and delivers every frame to every subscriber
+ * (each filters by its own sessionId).
  *
  * We stub OcClient.events with a controllable async generator so the test never
  * needs a live guardian.

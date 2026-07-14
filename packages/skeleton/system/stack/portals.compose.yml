@@ -62,6 +62,7 @@ services:
       SLACK_STREAMING: "${SLACK_STREAMING:-true}"
       SLACK_BOT_TOKEN_FILE: /run/secrets/slack_bot_token
       SLACK_APP_TOKEN_FILE: /run/secrets/slack_app_token
+      SLACK_BOT_NAME: ${SLACK_BOT_NAME:-}
       SLACK_ALLOWED_CHANNELS: ${SLACK_ALLOWED_CHANNELS:-}
       SLACK_ALLOWED_USERS: ${SLACK_ALLOWED_USERS:-}
       SLACK_BLOCKED_USERS: ${SLACK_BLOCKED_USERS:-}
@@ -112,6 +113,9 @@ services:
       GUARDIAN_MODERATION_THRESHOLD: ${GUARDIAN_MODERATION_THRESHOLD:-3}
       GUARDIAN_AUDIT_PATH: /opt/openpalm/logs/guardian-audit.log
       GUARDIAN_DIRECT_INGRESS: ${GUARDIAN_DIRECT_INGRESS:-false}
+      # TLS/mTLS termination for the direct listener (3830), if wanted, is an
+      # operator infrastructure concern — front the guardian with a reverse
+      # proxy. The guardian itself serves plain HTTP and does not terminate TLS.
       # I4: default to the SAME shipped browser client origins the assistant
       # entrypoint already auto-seeds into OpenCode's CORS allowlist (see
       # containers/assistant/entrypoint.sh start_opencode) — the assistant
@@ -124,6 +128,12 @@ services:
       # default is exact origins only, consistent with the I3 CORS posture.
       GUARDIAN_CORS_ALLOWED_ORIGINS: ${GUARDIAN_CORS_ALLOWED_ORIGINS:-http://127.0.0.1:${OP_CLIENT_PORT:-3810},http://localhost:${OP_CLIENT_PORT:-3810},http://127.0.0.1:${OP_HOST_CLIENT_PORT:-3890},http://localhost:${OP_HOST_CLIENT_PORT:-3890}}
       GUARDIAN_MCP: ${GUARDIAN_MCP:-false}
+      # #563 — upstream credential for assistant_net calls to the assistant
+      # when a home-password network access preset turns assistant auth on.
+      # The moderator's own loopback OpenCode spawn pins OPENCODE_AUTH=false
+      # separately (containers/guardian/entrypoint.sh) — unaffected by this.
+      OPENCODE_AUTH: ${OPENCODE_AUTH:-false}
+      OPENCODE_SERVER_PASSWORD_FILE: /run/secrets/opencode_server_password
       GUARDIAN_ADMIN_TOKEN_FILE: /run/secrets/op_guardian_admin_token
       GUARDIAN_MCP_TOKEN_FILE: /run/secrets/op_guardian_mcp_token
       PORTAL_CHAT_SECRET_FILE: /run/secrets/portal_chat_secret
@@ -175,6 +185,7 @@ services:
       - op_guardian_admin_token
       - op_guardian_mcp_token
       - op_api_key
+      - opencode_server_password
     networks: [portal_net, assistant_net]
     depends_on:
       assistant:
@@ -207,6 +218,11 @@ secrets:
     file: ${OP_HOME}/knowledge/secrets/op_guardian_mcp_token
   op_api_key:
     file: ${OP_HOME}/knowledge/secrets/op_api_key
+  # #563 — declared here too (not only in core.compose.yml) so this file
+  # stands alone for `docker compose config` when portals.compose.yml is the
+  # only file naming the secret in a given invocation.
+  opencode_server_password:
+    file: ${OP_HOME}/knowledge/secrets/op_opencode_password
 
 volumes:
   # Named volumes for npm artifact caches (/opt/openpalm).

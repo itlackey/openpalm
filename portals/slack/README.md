@@ -1,20 +1,51 @@
 # @openpalm/slack-portal
 
-Slack Socket Mode adapter for OpenPalm.
-It normally runs via the `addon.slack` Compose profile and connects outbound to Slack, so no public inbound URL is required.
+Slack Socket Mode adapter for OpenPalm — a standard OpenCode-SDK client. It
+can run as part of the shipped OpenPalm stack (via the `addon.slack` Compose
+profile) or standalone with Bun against any OpenCode server. Socket Mode
+connects outbound to Slack, so no public inbound URL is required either way.
 
-## Features
+## Security model
 
-- Socket Mode WebSocket connection
-- Direct messages and channel @mentions
-- Threaded replies for channel conversations
-- Slash commands: `/ask`, `/clear`, `/help`
-- Global shortcut: `Ask OpenPalm` modal entry point
-- Message shortcut: `Ask OpenPalm about this message` with prefilled context
-- App Home onboarding tab with quick usage guidance
-- Per-session request queueing and thinking indicators
+Runs best behind the OpenPalm guardian (or another auth/rate-limiting reverse
+proxy). Standalone is for personal / small-trusted-team use against your own
+OpenCode server. Running standalone against a plain OpenCode server (no
+guardian in front) means you lose:
 
-## Deployment model
+- per-principal isolation (the guardian's Basic-auth principal boundary)
+- rate limiting
+- content moderation (the guardian's fail-closed inbound message screening)
+
+Every Slack user talking to a standalone bot shares one session namespace on
+the upstream OpenCode server — there is no per-user isolation without the
+guardian in front.
+
+## Standalone quick start
+
+Requires **Bun ≥1.0** — this package ships TypeScript source (no build step,
+no Node support); the `bunx`/`bun add` commands below fail fast at install
+time on a non-Bun runtime via the `engines.bun` check.
+
+```bash
+bunx @openpalm/slack-portal
+# or: bun add @openpalm/slack-portal && bunx openpalm-slack-portal
+```
+
+Minimal environment:
+
+```bash
+OPENCODE_BASE_URL=http://localhost:4096
+PORTAL_SESSION_REUSE=client
+PRINCIPAL_ID=my-slack-bot          # any free-form username
+OPENCODE_PASSWORD=...              # the OpenCode server password, if OPENCODE_AUTH is set
+SLACK_BOT_TOKEN=...
+SLACK_APP_TOKEN=...
+```
+
+`PORTAL_SESSION_REUSE=client` is required against a plain OpenCode server —
+see the `PORTAL_SESSION_REUSE` row below for why.
+
+## Deployment model (shipped stack)
 
 - Shipped service definition: `.openpalm/config/stack/portals.compose.yml`, profile `addon.slack`
 - Non-secret values: `~/.openpalm/knowledge/env/stack.env`
@@ -37,26 +68,53 @@ docker compose \
 
 The service definition uses explicit non-secret environment entries and Docker secret grants. It does not use service-level `env_file`.
 
-The Slack portal container uses `PRINCIPAL_ID` + `PRINCIPAL_SECRET_FILE` to authenticate guardian `/oc/*` calls.
-
 See `docs/portals/slack-setup.md` for the full setup guide.
 
 ## Environment variables
 
+Secrets accept BOTH a direct value and a `_FILE` path to a mounted secret
+file — when both are set for the same variable, `_FILE` wins (the shipped
+Compose stack always uses `_FILE`; the direct form is for standalone use where
+there's no secret mount).
+
 | Variable | Required | Purpose |
 |---|---|---|
 | `OPENCODE_BASE_URL` | no | OpenCode/guardian `/oc` base URL, default `http://guardian:8080/oc` |
-| `PRINCIPAL_ID` | system-managed | Guardian principal id used for Basic auth |
-| `PRINCIPAL_SECRET_FILE` | system-managed | Shared secret file path used for Basic auth |
-| `SLACK_BOT_TOKEN_FILE` | yes | Bot User OAuth token file path |
-| `SLACK_APP_TOKEN_FILE` | yes | App-level Socket Mode token file path |
+| `PRINCIPAL_ID` | yes | Basic-auth username — the guardian principal id in the shipped stack, or any free-form username against a plain OpenCode server |
+| `PRINCIPAL_SECRET` / `PRINCIPAL_SECRET_FILE` | yes (one of these, or `OPENCODE_PASSWORD`) | Basic-auth password |
+| `OPENCODE_PASSWORD` / `OPENCODE_PASSWORD_FILE` | standalone fallback | Same Basic-auth password slot as `PRINCIPAL_SECRET`, under the natural standalone name — against a plain OpenCode server this IS the OpenCode server password (`OPENCODE_AUTH`) |
+| `PORTAL_SESSION_REUSE` | no | `server` (default) or `client`. The shipped guardian stack owns session reuse server-side — leave this unset/`server`. Set `client` when running standalone against a plain OpenCode server: that server ignores the guardian's session-reuse hint header, so without client-side reuse every turn would start a brand-new session and multi-turn conversations would break. |
+| `PORTAL_SESSION_TTL_MS` | no | Client-mode session cache TTL in ms, default `900000` (15 min). Only relevant when `PORTAL_SESSION_REUSE=client`. |
+| `SLACK_BOT_TOKEN` / `SLACK_BOT_TOKEN_FILE` | yes | Bot User OAuth token |
+| `SLACK_APP_TOKEN` / `SLACK_APP_TOKEN_FILE` | yes | App-level Socket Mode token |
+| `SLACK_BOT_NAME` | no | Display name used in modal titles and the App Home tab. Default `OpenPalm`. Slack callback/action IDs (`ask_openpalm`, …) stay fixed regardless — they are Slack app-manifest identifiers, not display text. |
 | `SLACK_ALLOWED_CHANNELS` | no | Comma-separated channel allowlist |
 | `SLACK_ALLOWED_USERS` | no | Comma-separated user allowlist |
 | `SLACK_BLOCKED_USERS` | no | Comma-separated user blocklist |
 
-Secret values are stored as files and exposed only through `*_FILE` variables. The schema may collect `SLACK_BOT_TOKEN` and `SLACK_APP_TOKEN` for setup, but setup persists them under `knowledge/secrets/` and the runtime receives `SLACK_BOT_TOKEN_FILE` and `SLACK_APP_TOKEN_FILE`, not raw tokens.
+In the shipped stack, secret values are stored as files and exposed only
+through `*_FILE` variables. The schema may collect `SLACK_BOT_TOKEN` and
+`SLACK_APP_TOKEN` for setup, but setup persists them under
+`knowledge/secrets/` and the runtime receives `SLACK_BOT_TOKEN_FILE` and
+`SLACK_APP_TOKEN_FILE`, not raw tokens.
 
-The shipped Compose overlay exposes per-portal overrides through `SLACK_OPENCODE_BASE_URL`, `SLACK_PRINCIPAL_ID`, and `SLACK_PRINCIPAL_SECRET_FILE`; each defaults to the guardian-backed first-party wiring.
+The shipped Compose overlay exposes per-portal overrides through
+`SLACK_OPENCODE_BASE_URL`, `SLACK_PRINCIPAL_ID`, and
+`SLACK_PRINCIPAL_SECRET_FILE`; each defaults to the guardian-backed
+first-party wiring. `PORTAL_SESSION_REUSE` is deliberately not set by the
+shipped Compose overlay — the guardian stays authoritative for session reuse
+there.
+
+## Interactive prompts compatibility
+
+Interactive permission/question replies (`/permission/{id}/reply`,
+`/question/{id}/reply|reject`) are guaranteed by the OpenPalm guardian's `/oc`
+proxy, but are **not** part of the current upstream OpenCode SDK route map. If
+your OpenCode server doesn't expose those routes, the portal logs
+`permission_reply_failed` / `question_reply_failed` and the conversation turn
+continues normally — interactive permission/question prompts just won't get a
+reply delivered. Core buffered and streaming text flow (`/session`,
+`/session/{id}/message`, `/event`) works against any OpenCode server.
 
 ## Slack app configuration
 
@@ -93,3 +151,8 @@ The adapter does not require reaction scopes.
 - Channel mentions reply in a thread
 - Follow-ups sent while a session is busy are queued
 - `/clear` clears the active session and drops queued follow-ups
+
+## See also
+
+- [`docs/portals/community-portals.md`](../../docs/portals/community-portals.md)
+- [`docs/portals/slack-setup.md`](../../docs/portals/slack-setup.md)

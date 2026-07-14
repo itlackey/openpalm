@@ -62,16 +62,17 @@ When the guardian is not running:
 
 Status code is `200` when running, `503` when unavailable.
 
-### `GET /guardian/stats`
+### `GET /stats`
 
 Returns guardian runtime statistics: uptime, rate limiter state, event/session
 ownership counters, and per-status request counters.
-This endpoint is served directly by the guardian process (not proxied through admin).
+This endpoint is served directly by the guardian process on its internal port
+(not proxied through the SvelteKit admin process).
 
-Auth: Protected by the `op_session` cookie when an admin password is
-configured. When no admin password is configured (dev/LAN), the endpoint is
-open. (Guardian's own port still serves this — it is not proxied through
-the SvelteKit admin process.)
+Auth: guardian-admin **Bearer** token — the same `GUARDIAN_ADMIN_TOKEN_FILE`
+secret the guardian admin listener enforces (`Authorization: Bearer <token>`).
+It is NOT gated by the host `op_session` cookie. An unconfigured/empty admin
+token fails closed (401), so the roster/counters are never served open.
 
 Response:
 
@@ -854,6 +855,62 @@ Response:
 Error responses:
 
 - `404 not_found` -- Provider not found.
+
+## Connections
+
+### `POST /api/connections/pairing`
+
+Mint a one-time pairing code (and QR) for attaching a remote client to this
+stack's guardian. Creates a durable `direct` guardian principal on the guardian
+admin listener; the principal's token is embedded only in the returned code and
+is never exposed by any read endpoint.
+
+- **Capability:** `host:stack:write` (host UI only; a `pwa-static`/client build
+  cannot reach it).
+- **Session/origin:** requires the host-admin session cookie (httpOnly,
+  `SameSite=Strict`) and passes the Host-header allowlist, like every other
+  `/api/host/*` write.
+
+Body:
+
+```json
+{ "label": "My Phone", "url": "https://guardian.example.ts.net/oc" }
+```
+
+- `label` (required) -- Human device label. Max **64 characters** — longer
+  labels are rejected (`400`) before any principal is minted, so an oversized
+  pairing code can never orphan a durable principal.
+- `url` (required) -- The guardian `/oc` base URL the client will connect to;
+  must be a valid `http(s)` URL.
+
+Response (`201`):
+
+```json
+{
+  "code": "openpalm-pair:<base64url>",
+  "principalId": "my-phone-<16 hex>",
+  "qrSvg": "<svg ...>",
+  "warnings": ["GUARDIAN_DIRECT_INGRESS is not enabled ..."]
+}
+```
+
+- `code` -- The one-time pairing code (contains the URL, username, and the
+  principal secret). Returned exactly once; not recoverable afterward.
+- `principalId` -- The created principal's id (slugged label + a 64-bit random
+  suffix so re-pairing the same label never overwrites an existing device).
+- `qrSvg` -- An SVG QR encoding of `code`, or `null` if rendering failed (the
+  `code` is still returned and usable).
+- `warnings` -- Non-fatal notes; notably, a warning when
+  `GUARDIAN_DIRECT_INGRESS` is not enabled on the stack, because the paired
+  client would otherwise `404` until the operator turns direct ingress on.
+
+Error responses:
+
+- `400 invalid_connection` -- `label` missing/too long, or `url` invalid.
+- `403` -- Missing `host:stack:write` capability or host-admin session.
+- `500 pairing_mint_failed` -- The guardian admin token secret is missing.
+- `502 pairing_mint_failed` -- The guardian admin listener is unreachable
+  (e.g. the guardian is not running with a guardian-ingress addon enabled).
 
 ## Setup Wizard API
 

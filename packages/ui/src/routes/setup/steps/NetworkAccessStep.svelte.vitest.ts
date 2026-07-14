@@ -1,0 +1,84 @@
+/**
+ * #563 D5 — NetworkAccessStep.svelte: the wizard's network-access preset
+ * selector, rendered as a section of the Finish step (ReviewStep).
+ *
+ * Red reason: `./NetworkAccessStep.svelte` does not exist yet — the import
+ * fails. Mirrors `Screen1ModelsStep.svelte.vitest.ts` (vitest-browser-svelte,
+ * store-driven — the component takes no props, per D5/ReviewStep pattern).
+ */
+import { describe, expect, test, afterEach } from 'vitest';
+import { render } from 'vitest-browser-svelte';
+import { page } from 'vitest/browser';
+import NetworkAccessStep from './NetworkAccessStep.svelte';
+import { setupState } from '$lib/setup/setup-state.svelte.js';
+
+afterEach(() => {
+  setupState.reset();
+});
+
+describe('NetworkAccessStep — preset selector (#563 T54)', () => {
+  test('T54: renders all four presets with "This PC only" selected by default', async () => {
+    render(NetworkAccessStep);
+
+    await expect.element(page.getByText('This PC only')).toBeVisible();
+    await expect.element(page.getByText('Home network, with password')).toBeVisible();
+    await expect.element(page.getByText('Home network, open access')).toBeVisible();
+    await expect.element(page.getByText('Shared network, guardian protected')).toBeVisible();
+
+    const defaultRadio = page.getByRole('radio', { name: /This PC only/i });
+    await expect.element(defaultRadio).toBeChecked();
+  });
+});
+
+describe('NetworkAccessStep — home-password reveals an editable, pre-filled password (#563 T55)', () => {
+  test('T55: selecting "Home network, with password" reveals an editable, pre-filled password input', async () => {
+    render(NetworkAccessStep);
+
+    await page.getByRole('radio', { name: /Home network, with password/i }).click();
+
+    const passwordInput = page.getByLabelText(/password/i);
+    await expect.element(passwordInput).toBeVisible();
+    // Svelte renders `value={...}` as the DOM property, not the attribute, so
+    // read the live input value rather than getAttribute('value').
+    const value = (passwordInput.element() as HTMLInputElement).value;
+    expect(value, 'expected the password field to be pre-filled, not blank').toBeTruthy();
+
+    // The user CAN type over it — this is not a read-only/locked field.
+    await passwordInput.fill('my-own-password');
+    await expect.element(passwordInput).toHaveValue('my-own-password');
+  });
+});
+
+describe('NetworkAccessStep — home-open risk warning + required acknowledgement (#563 T56)', () => {
+  test('T56: selecting "Home network, open access" reveals the risk warning and requires the acknowledgement checkbox', async () => {
+    render(NetworkAccessStep);
+
+    await page.getByRole('radio', { name: /Home network, open access/i }).click();
+
+    // Explicit risk warning is visible (D5: "explicit risk-acknowledgement
+    // checkbox before Install enables"). Target the role="alert" warning —
+    // the same phrases also appear in the always-visible option copy.
+    await expect.element(page.getByRole('alert')).toBeVisible();
+    expect(page.getByRole('alert').element().textContent).toMatch(/without a password/i);
+
+    const ackCheckbox = page.getByRole('checkbox');
+    await expect.element(ackCheckbox).not.toBeChecked();
+    expect(setupState.networkChoiceValid).toBe(false);
+
+    await ackCheckbox.click();
+    await expect.element(ackCheckbox).toBeChecked();
+    expect(setupState.networkChoiceValid).toBe(true);
+  });
+});
+
+describe('NetworkAccessStep — shared-guardian copy (#563 T57)', () => {
+  test('T57: shared-guardian copy states the assistant stays private on this PC', async () => {
+    render(NetworkAccessStep);
+
+    await page.getByRole('radio', { name: /Shared network, guardian protected/i }).click();
+
+    await expect
+      .element(page.getByText(/assistant.*(stays|remains).*(private|loopback|this (pc|computer))/i))
+      .toBeVisible();
+  });
+});

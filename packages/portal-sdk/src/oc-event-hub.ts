@@ -1,18 +1,16 @@
 /**
- * Per-process shared OpenCode /event subscription (fixes guardian 429
- * `too_many_event_streams`).
+ * Per-process shared OpenCode /event subscription.
  *
  * The guardian's /event stream is PRINCIPAL-scoped: a single subscription already
  * carries every event for every session the principal owns (ownership-filtered
- * fan-out). The guardian therefore caps concurrent /event streams per principal
- * at 1 (oc-bounds.ts) — a second open is a leaked/duplicated stream.
+ * fan-out). A second open would just duplicate that same stream.
  *
- * But a user can run several turns at once (the ConversationQueue serializes
- * turns PER sessionKey, so different threads/DMs stream concurrently). If each
- * turn opened its OWN /event stream, the 2nd concurrent turn would 429. This is
- * shared by ALL stream-opening paths in both portals — Discord/Slack streaming
- * and the buffered `collectTurnAnswer` — so concurrent same-principal turns
- * never open a second upstream.
+ * A user can run several turns at once (the ConversationQueue serializes turns
+ * PER sessionKey, so different threads/DMs stream concurrently). If each turn
+ * opened its OWN /event stream, they would each receive the full duplicate
+ * frame set. This hub is shared by ALL stream-opening paths in both portals —
+ * Discord/Slack streaming and the buffered `collectTurnAnswer` — so concurrent
+ * same-principal turns share one upstream instead of opening redundant copies.
  *
  * This hub opens exactly ONE upstream /event stream per principal (userId) and
  * BROADCASTS every frame to all active per-turn subscribers, which each already
@@ -25,8 +23,8 @@
 import type { OcClient } from './opencode.ts';
 
 /** Grace period to keep the upstream open after the last turn unsubscribes, so
- * back-to-back turns in a thread don't churn open/close (and re-pay the 429
- * reconnect budget). Short — just bridges the gap between turns.
+ * back-to-back turns in a thread don't churn open/close. Short — just bridges
+ * the gap between turns.
  *
  * Configured via the portal-agnostic `PORTAL_EVENT_HUB_IDLE_MS` (this hub is
  * shared across portals). The legacy Discord-specific `DISCORD_EVENT_HUB_IDLE_MS`

@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+
 /**
  * Shared env-derived configuration for the guardian.
  *
@@ -68,4 +70,73 @@ export function resolveCorsAllowedOrigin(origin: string | null): string | null {
  */
 export function resolveGuardianUrl(): string {
   return Bun.env.GUARDIAN_URL ?? "http://guardian:8080";
+}
+
+/**
+ * #563 D2 — guardian upstream Basic auth to the assistant.
+ *
+ * When a network access preset turns the assistant's own OpenCode auth on
+ * (`OPENCODE_AUTH=true` + the operator's password in the `op_opencode_password`
+ * secret), the guardian's calls to the assistant over `assistant_net` would
+ * otherwise 401 — breaking every portal. This resolves the same two env vars
+ * the assistant's compose service and entrypoint use into a ready-to-attach
+ * `authorization` header value, fail-closed at boot: auth enabled with a
+ * missing/empty password file is a boot error naming both vars, never a silent
+ * 401 storm at request time.
+ * Gating on `OPENCODE_AUTH` (not on file presence, since the secret file is
+ * now ALWAYS materialized, #563/D3) keeps the default posture byte-identical:
+ * no header is ever attached unless the operator turned auth on.
+ */
+export type AssistantUpstreamAuth = { authorization: string };
+
+const UPSTREAM_AUTH_TRUTHY_RE = /^(true|1|yes)$/i;
+
+export function resolveAssistantUpstreamAuth(
+  env: Record<string, string | undefined>,
+  readFileFn: (path: string) => string = (p) => readFileSync(p, "utf-8"),
+): AssistantUpstreamAuth | null {
+  if (!UPSTREAM_AUTH_TRUTHY_RE.test((env.OPENCODE_AUTH ?? "").trim())) return null;
+
+  const passwordFile = env.OPENCODE_SERVER_PASSWORD_FILE || "";
+  if (!passwordFile) {
+    throw new Error(
+      "OPENCODE_AUTH is enabled but OPENCODE_SERVER_PASSWORD_FILE is not set — the guardian cannot authenticate its upstream assistant calls.",
+    );
+  }
+
+  let raw: string;
+  try {
+    raw = readFileFn(passwordFile);
+  } catch (err) {
+    throw new Error(
+      `OPENCODE_AUTH is enabled but OPENCODE_SERVER_PASSWORD_FILE (${passwordFile}) could not be read: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+
+  // PR #564 r3566888272: match the assistant entrypoint, which reads the same
+  // secret with `$(cat file)` — command substitution strips ONLY trailing
+  // newlines, preserving surrounding spaces/tabs. Using `.trim()` here diverged
+  // (guardian sent a differently-trimmed password than OpenCode expected → a
+  // silent 401 storm on every upstream call). Strip trailing newlines only; a
+  // whitespace-only file is still rejected as empty.
+  const password = raw.replace(/\n+$/, "");
+  if (password.trim() === "") {
+    throw new Error(
+      `OPENCODE_AUTH is enabled but OPENCODE_SERVER_PASSWORD_FILE (${passwordFile}) is empty.`,
+    );
+  }
+
+  // PR #564 r3566889740: honor OPENCODE_SERVER_USERNAME (default 'opencode'),
+  // matching the host UI (endpoints.ts) so an operator override doesn't 401.
+  const username = env.OPENCODE_SERVER_USERNAME || "opencode";
+  return { authorization: `Basic ${Buffer.from(`${username}:${password}`, "utf-8").toString("base64")}` };
+}
+
+/** Read once at module load. */
+export const ASSISTANT_UPSTREAM_AUTH = resolveAssistantUpstreamAuth(Bun.env);
+
+/** Sets `authorization` from ASSISTANT_UPSTREAM_AUTH when configured; no-op otherwise. */
+export function withAssistantUpstreamAuth(headers: Headers): Headers {
+  if (ASSISTANT_UPSTREAM_AUTH) headers.set("authorization", ASSISTANT_UPSTREAM_AUTH.authorization);
+  return headers;
 }

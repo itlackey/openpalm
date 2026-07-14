@@ -120,6 +120,27 @@ describe('addon runtime state', () => {
     expect(listEnabledAddonIds(homeDir)).toEqual([]);
   });
 
+  // PR #564 second retest R6: disabling a profile-bearing addon must clear its
+  // hardware-profile env key, or migrateProfileOnlyAddonEnablement re-derives the
+  // addon from the lingering profile and silently re-enables it.
+  it('clears OP_VOICE_PROFILE when voice is disabled, so a later migration does not re-enable it', () => {
+    setAddonEnabled(homeDir, 'voice', true);
+    setAddonProfileSelection(homeDir, 'voice', 'addon.voice.cuda');
+    expect(listEnabledAddonIds(homeDir)).toContain('voice');
+    expect(getAddonProfileSelection(homeDir, 'voice')).toBeTruthy();
+
+    const disabled = setAddonEnabled(homeDir, 'voice', false);
+    expect(disabled.ok).toBe(true);
+    expect(listEnabledAddonIds(homeDir)).not.toContain('voice');
+    // The profile key is gone …
+    expect(getAddonProfileSelection(homeDir, 'voice')).toBeNull();
+
+    // … so the profile-only migration has nothing to re-derive and voice stays off.
+    const migration = migrateProfileOnlyAddonEnablement(homeDir);
+    expect(migration.migratedAddons).not.toContain('voice');
+    expect(listEnabledAddonIds(homeDir)).not.toContain('voice');
+  });
+
   it('reads bundled addon profiles from the shipped compose assets', () => {
     expect(getAddonProfiles(homeDir, 'voice')).toEqual([
       { id: 'addon.voice.cpu', services: ['voice'], label: 'CPU', default: true },

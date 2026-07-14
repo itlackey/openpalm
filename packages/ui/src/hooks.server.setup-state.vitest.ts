@@ -1,17 +1,9 @@
 /**
- * Review 2026-07-10 K3 — `b629dc56` dropped the setup-complete memoization
- * and the classifyLocalInstall launch cache from hooks.server.ts's setup
- * guard: `isSetupComplete` (dotenv parses + existsSync) and
- * `classifyLocalInstall` (existsSync x3-4 + two more dotenv parses) now run
- * on EVERY request — including every `/api/*`/`/proxy/*` call and the host
- * UI's 10s poll — instead of once until setup first flips to complete (a
- * one-way transition; it never becomes incomplete again in a live install).
- *
- * Fix: restore the false→true memo for isSetupComplete (short-circuits so
- * isSetupComplete is never called again once true), and route
- * classifyLocalInstall through the same 5s cache `$lib/server/landing.ts`
- * already maintains for the launch-routing block (`_resetLaunchCache`),
- * rather than calling it fresh and uncached at this second call site.
+ * Setup completion is app-written state and can change while the UI process is
+ * running (setup rerun, uninstall, recovery). The request guard must observe
+ * the current state rather than permanently latching the first true value.
+ * classifyLocalInstall still uses the shared 5s launch cache because those
+ * filesystem probes are independent of the security-sensitive setup gate.
  *
  * Both underlying lib functions are wrapped with call counters here so the
  * tests observe cache/memo behavior directly rather than inferring it from
@@ -46,7 +38,7 @@ vi.mock('$lib/server/endpoints.js', async (orig) => ({
   listRemoteStatuses: vi.fn(async () => []),
 }));
 
-import { handle, _resetLaunchCache, _resetSetupCompleteMemo } from './hooks.server.js';
+import { handle, _resetLaunchCache } from './hooks.server.js';
 
 function seedStackEnv(stackDir: string, setupComplete: boolean): void {
   const kvDir = join(stackDir, '..', '..', 'knowledge', 'env');
@@ -72,7 +64,7 @@ function makeEvent(path: string): RequestEvent {
 
 const resolve = () => Promise.resolve(new Response('ok', { status: 200 }));
 
-describe('hooks.server — setup-complete memo + launch-cache reuse (review 2026-07-10 K3)', () => {
+describe('hooks.server — setup-state freshness + launch-cache reuse', () => {
   let home = '';
   let prevHome: string | undefined;
 
@@ -83,7 +75,6 @@ describe('hooks.server — setup-complete memo + launch-cache reuse (review 2026
     home = mkdtempSync(join(tmpdir(), 'op-hooks-setup-memo-'));
     process.env.OP_HOME = home;
     _resetLaunchCache();
-    _resetSetupCompleteMemo();
     isSetupCompleteCalls = 0;
     classifyLocalInstallCalls = 0;
   });
@@ -96,7 +87,7 @@ describe('hooks.server — setup-complete memo + launch-cache reuse (review 2026
     rmSync(home, { recursive: true, force: true });
   });
 
-  test('isSetupComplete is never called again once it has returned true (memo short-circuits)', async () => {
+  test('isSetupComplete is read on every request so app-written state changes take effect', async () => {
     const state = resetState('test-admin-pw');
     seedStackEnv(state.stackDir, false);
 
@@ -105,15 +96,14 @@ describe('hooks.server — setup-complete memo + launch-cache reuse (review 2026
 
     seedStackEnv(state.stackDir, true); // flips to complete on disk
     await handle({ event: makeEvent('/api/host/health'), resolve });
-    expect(isSetupCompleteCalls).toBe(2); // called once more — sees true, memo latches
+    expect(isSetupCompleteCalls).toBe(2);
 
-    // Revert the disk state back to incomplete. A live install never goes
-    // backwards, but this proves the memo — not a fresh disk read — is now
-    // authoritative: isSetupComplete must NOT be invoked a third time.
+    // Recovery/uninstall can move the app back to incomplete without restarting
+    // the UI process. The request guard must observe that transition.
     seedStackEnv(state.stackDir, false);
     await handle({ event: makeEvent('/api/host/health'), resolve });
     await handle({ event: makeEvent('/api/host/health'), resolve });
-    expect(isSetupCompleteCalls).toBe(2);
+    expect(isSetupCompleteCalls).toBe(4);
   });
 
   test('classifyLocalInstall is cached for 5s across requests (shared with the launch-routing cache)', async () => {

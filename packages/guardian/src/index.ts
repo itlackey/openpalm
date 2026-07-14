@@ -10,14 +10,12 @@
  * import { createGuardian } from '@openpalm/guardian';
  * createGuardian()
  *   .setAuthStrategy(myOidcStrategy)   // SSO/OIDC instead of Basic tokens
- *   .setPolicyProvider(myRbacPolicy)   // per-tenant / role-based authorization
  *   .registerTransport(myA2aTransport) // additive /a2a route
  *   .start();
  * ```
  */
 import { startGuardian, type GuardianServers, type StartGuardianOptions } from './server.ts';
 import { setAuthStrategy, type AuthStrategy } from './auth.ts';
-import { setPolicyProvider, type PolicyProvider } from './policy.ts';
 import type { Transport } from './transport.ts';
 
 // --- composition root ---
@@ -44,15 +42,6 @@ export {
 } from './auth.ts';
 export type { AuthStrategy, AuthenticatedPrincipal } from './auth.ts';
 
-// --- authorization policy seam (RBAC, data scope, routing) ---
-export {
-  setPolicyProvider,
-  getPolicyProvider,
-  resetPolicyProvider,
-  allowAllPolicy,
-} from './policy.ts';
-export type { PolicyProvider, PolicyRequest, PolicyDecision } from './policy.ts';
-
 // --- principal store (token-backed identities the guardian trusts) ---
 export {
   initializePrincipalStore,
@@ -61,6 +50,7 @@ export {
   upsertPrincipal,
   rotatePrincipal,
   setPrincipalEnabled,
+  deletePrincipal,
   seedPortalPrincipalsFromEnv,
   hashToken,
 } from './state-db.ts';
@@ -80,12 +70,11 @@ export type { Principal } from './ownership.ts';
 
 /**
  * Fluent composition root. Chain seam wiring, then {@link GuardianBuilder.start}.
- * Equivalent to the standalone `setAuthStrategy` / `setPolicyProvider` /
- * `registerTransport` + {@link startGuardian} calls.
+ * Equivalent to the standalone `setAuthStrategy` / `registerTransport` +
+ * {@link startGuardian} calls.
  */
 export interface GuardianBuilder {
   setAuthStrategy(strategy: AuthStrategy): GuardianBuilder;
-  setPolicyProvider(provider: PolicyProvider): GuardianBuilder;
   registerTransport(transport: Transport): GuardianBuilder;
   start(options?: StartGuardianOptions): GuardianServers;
 }
@@ -95,10 +84,6 @@ export function createGuardian(): GuardianBuilder {
   const builder: GuardianBuilder = {
     setAuthStrategy(strategy) {
       setAuthStrategy(strategy);
-      return builder;
-    },
-    setPolicyProvider(provider) {
-      setPolicyProvider(provider);
       return builder;
     },
     registerTransport(transport) {

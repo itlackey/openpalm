@@ -22,9 +22,10 @@ import {
   ensureAkmUserEnv,
   PLATFORM_VERSION,
   runDeploy,
+  markSetupComplete,
   writeSystemEnv,
   patchSecretsEnvFile,
-  collectBindAddressWarnings,
+  collectNetworkExposureWarnings,
   type SetupSpec,
 } from '@openpalm/lib';
 import { detectHostInfo } from '../lib/host-info.ts';
@@ -125,7 +126,12 @@ async function requireDocker(): Promise<void> {
 
 async function deployServices(mode: string, pull = true): Promise<string[]> {
   const state = ensureValidState();
-  const result = await runDeploy(state);
+  // PR #564 second retest R9: pass the setup-completion callback so a healthy
+  // non-interactive (file) install records OP_SETUP_COMPLETE=true. Without it,
+  // runDeploy brought the stack up healthy but never stamped completion, so the
+  // UI later bounced the operator back to the setup wizard. runDeploy only fires
+  // this once CORE services are healthy, so it stays correct for every mode.
+  const result = await runDeploy(state, { markSetupComplete: () => markSetupComplete(state) });
   if (result.deployError) throw new Error(result.deployError);
   console.log(JSON.stringify({ ok: true, mode, services: result.deployStatus.map((entry) => entry.service), pull }, null, 2));
   return result.deployStatus.map((entry) => entry.service);
@@ -144,8 +150,10 @@ async function parseConfigFile(filePath: string, raw: string): Promise<Record<st
 
 export async function bootstrapInstall(options: InstallOptions): Promise<void> {
   // Warn early if any bind address is non-loopback so the operator sees it
-  // before services start.
-  for (const line of collectBindAddressWarnings(process.env as Record<string, string>)) {
+  // before services start. #563 — preset-aware: a matched network access
+  // preset collapses to one informational line; unexplained exposure stays
+  // loud (D9).
+  for (const line of collectNetworkExposureWarnings(process.env as Record<string, string>)) {
     logger.warn(line);
   }
 

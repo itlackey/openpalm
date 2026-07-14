@@ -1,17 +1,50 @@
 # @openpalm/discord-portal
 
-Discord bot adapter for OpenPalm.
-It runs behind guardian and is normally enabled via the `addon.discord` Compose profile.
+Discord bot adapter for OpenPalm — a standard OpenCode-SDK client. It can run
+as part of the shipped OpenPalm stack (behind the guardian, via the
+`addon.discord` Compose profile) or standalone with Bun against any OpenCode
+server.
 
-## Features
+## Security model
 
-- Gateway-based Discord bot connection
-- Slash commands: `/ask`, `/queue`, `/health`, `/help`, `/clear`
-- Mention-to-thread conversations
-- Guild, role, and user allowlists plus user blocklist
-- Deferred responses, typing indicators, queued follow-ups, and long-reply splitting
+Runs best behind the OpenPalm guardian (or another auth/rate-limiting reverse
+proxy). Standalone is for personal / small-trusted-team use against your own
+OpenCode server. Running standalone against a plain OpenCode server (no
+guardian in front) means you lose:
 
-## Deployment model
+- per-principal isolation (the guardian's Basic-auth principal boundary)
+- rate limiting
+- content moderation (the guardian's fail-closed inbound message screening)
+
+Every Discord user talking to a standalone bot shares one session namespace on
+the upstream OpenCode server — there is no per-user isolation without the
+guardian in front.
+
+## Standalone quick start
+
+Requires **Bun ≥1.0** — this package ships TypeScript source (no build step,
+no Node support); the `bunx`/`bun add` commands below fail fast at install
+time on a non-Bun runtime via the `engines.bun` check.
+
+```bash
+bunx @openpalm/discord-portal
+# or: bun add @openpalm/discord-portal && bunx openpalm-discord-portal
+```
+
+Minimal environment:
+
+```bash
+OPENCODE_BASE_URL=http://localhost:4096
+PORTAL_SESSION_REUSE=client
+PRINCIPAL_ID=my-discord-bot        # any free-form username
+OPENCODE_PASSWORD=...              # the OpenCode server password, if OPENCODE_AUTH is set
+DISCORD_BOT_TOKEN=...
+```
+
+`PORTAL_SESSION_REUSE=client` is required against a plain OpenCode server —
+see the `PORTAL_SESSION_REUSE` row below for why.
+
+## Deployment model (shipped stack)
 
 - Shipped service definition: `.openpalm/config/stack/portals.compose.yml`, profile `addon.discord`
 - Non-secret values: `~/.openpalm/knowledge/env/stack.env`
@@ -38,13 +71,21 @@ The service definition uses explicit non-secret environment entries and Docker s
 
 ## Environment variables
 
+Secrets accept BOTH a direct value and a `_FILE` path to a mounted secret
+file — when both are set for the same variable, `_FILE` wins (the shipped
+Compose stack always uses `_FILE`; the direct form is for standalone use where
+there's no secret mount).
+
 | Variable | Required | Purpose |
 |---|---|---|
 | `OPENCODE_BASE_URL` | no | OpenCode/guardian `/oc` base URL, default `http://guardian:8080/oc` |
-| `PRINCIPAL_ID` | system-managed | Guardian principal id used for Basic auth |
-| `PRINCIPAL_SECRET_FILE` | system-managed | Shared secret file path used for Basic auth |
+| `PRINCIPAL_ID` | yes | Basic-auth username — the guardian principal id in the shipped stack, or any free-form username against a plain OpenCode server |
+| `PRINCIPAL_SECRET` / `PRINCIPAL_SECRET_FILE` | yes (one of these, or `OPENCODE_PASSWORD`) | Basic-auth password |
+| `OPENCODE_PASSWORD` / `OPENCODE_PASSWORD_FILE` | standalone fallback | Same Basic-auth password slot as `PRINCIPAL_SECRET`, under the natural standalone name — against a plain OpenCode server this IS the OpenCode server password (`OPENCODE_AUTH`) |
+| `PORTAL_SESSION_REUSE` | no | `server` (default) or `client`. The shipped guardian stack owns session reuse server-side — leave this unset/`server`. Set `client` when running standalone against a plain OpenCode server: that server ignores the guardian's session-reuse hint header, so without client-side reuse every turn would start a brand-new session and multi-turn conversations would break. |
+| `PORTAL_SESSION_TTL_MS` | no | Client-mode session cache TTL in ms, default `900000` (15 min). Only relevant when `PORTAL_SESSION_REUSE=client`. |
 | `DISCORD_APPLICATION_ID` | yes for command registration | Discord application ID |
-| `DISCORD_BOT_TOKEN_FILE` | yes | Bot token file path |
+| `DISCORD_BOT_TOKEN` / `DISCORD_BOT_TOKEN_FILE` | yes | Bot token |
 | `DISCORD_REGISTER_COMMANDS` | no | Disable startup command registration when `false` |
 | `DISCORD_ALLOWED_GUILDS` | no | Comma-separated guild allowlist |
 | `DISCORD_ALLOWED_ROLES` | no | Comma-separated role allowlist |
@@ -52,9 +93,28 @@ The service definition uses explicit non-secret environment entries and Docker s
 | `DISCORD_BLOCKED_USERS` | no | Comma-separated user blocklist |
 | `DISCORD_CUSTOM_COMMANDS` | no | JSON array of custom command definitions |
 
-Secret values are stored as files and exposed only through `*_FILE` variables. The schema may collect `DISCORD_BOT_TOKEN` for setup, but setup persists it under `knowledge/secrets/` and the runtime receives `DISCORD_BOT_TOKEN_FILE`, not the raw token.
+In the shipped stack, secret values are stored as files and exposed only
+through `*_FILE` variables. The schema may collect `DISCORD_BOT_TOKEN` for
+setup, but setup persists it under `knowledge/secrets/` and the runtime
+receives `DISCORD_BOT_TOKEN_FILE`, not the raw token.
 
-The shipped Compose overlay exposes per-portal overrides through `DISCORD_OPENCODE_BASE_URL`, `DISCORD_PRINCIPAL_ID`, and `DISCORD_PRINCIPAL_SECRET_FILE`; each defaults to the guardian-backed first-party wiring.
+The shipped Compose overlay exposes per-portal overrides through
+`DISCORD_OPENCODE_BASE_URL`, `DISCORD_PRINCIPAL_ID`, and
+`DISCORD_PRINCIPAL_SECRET_FILE`; each defaults to the guardian-backed
+first-party wiring. `PORTAL_SESSION_REUSE` is deliberately not set by the
+shipped Compose overlay — the guardian stays authoritative for session reuse
+there.
+
+## Interactive prompts compatibility
+
+Interactive permission/question replies (`/permission/{id}/reply`,
+`/question/{id}/reply|reject`) are guaranteed by the OpenPalm guardian's `/oc`
+proxy, but are **not** part of the current upstream OpenCode SDK route map. If
+your OpenCode server doesn't expose those routes, the portal logs
+`permission_reply_failed` / `question_reply_failed` and the conversation turn
+continues normally — interactive permission/question prompts just won't get a
+reply delivered. Core buffered and streaming text flow (`/session`,
+`/session/{id}/message`, `/event`) works against any OpenCode server.
 
 ## Conversation behavior
 
@@ -62,3 +122,8 @@ The shipped Compose overlay exposes per-portal overrides through `DISCORD_OPENCO
 - Replies inside that tracked thread keep the same backend session
 - `/ask` replies inline and does not create a thread
 - `/clear` clears the active conversation scope and drops queued follow-ups for that scope
+
+## See also
+
+- [`docs/portals/community-portals.md`](../../docs/portals/community-portals.md)
+- [`docs/portals/discord-setup.md`](../../docs/portals/discord-setup.md)

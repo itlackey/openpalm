@@ -47,6 +47,7 @@ import type {
 import type { VoiceAddonProfile } from '$lib/api.js';
 import type { SetupRecommendation } from '@openpalm/lib';
 import { addonProfileId } from '@openpalm/lib/provider-constants';
+import type { NetworkAccessPreset } from '@openpalm/lib/control-plane/network-preset.js';
 
 export type ModelMode = 'cloud' | 'local' | 'both';
 
@@ -83,6 +84,9 @@ export const INITIAL = {
   voiceEnabled: false,
   // Step 0: Welcome
   uiLoginPassword: '',
+  // PR #564 P1-1 — true once the operator explicitly sets a new UI login
+  // password; a rerun keeps the existing secret unless this is set.
+  uiLoginPasswordDirty: false,
   step0Error: '',
   autoModeImporting: false,
   gpuDetected: false,
@@ -120,6 +124,18 @@ export const INITIAL = {
   selectedOllamaProfile: '',
   imageTag: '',
   hostAkmEnabled: false,
+  // #563 — network access preset (Finish step, NetworkAccessStep.svelte).
+  // Default 'this-pc' requires zero interaction (D5); a rerun pre-fills the
+  // detected preset (or null for a custom/hand-tuned env, D7/D8).
+  networkPreset: 'this-pc' as NetworkAccessPreset | null,
+  opencodePassword: '',
+  homeOpenAck: false,
+  // True once the operator actively touches the network step on a rerun — the
+  // payload only sends `network` when this is true (D7: a rerun over a
+  // hand-tuned env, or over a previous preset, never silently rewrites it).
+  networkDirty: false,
+  // PR #564 r3566887969 — existing OpenCode password on a rerun (keep-as-is guard).
+  hasExistingOpencodePassword: false,
   // Step 5: Review + Install
   installError: '',
   installing: false,
@@ -166,6 +182,7 @@ export class SetupState {
   // ── Step 0: Welcome ─────────────────────────────────────────────────────────
   // Operator UI login password — replaces the legacy "admin token" UI.
   uiLoginPassword = $state(INITIAL.uiLoginPassword);
+  uiLoginPasswordDirty = $state(INITIAL.uiLoginPasswordDirty);
   step0Error = $state(INITIAL.step0Error);
   // True while auto mode is performing a host provider import before jumping to Review
   autoModeImporting = $state(INITIAL.autoModeImporting);
@@ -217,6 +234,15 @@ export class SetupState {
   selectedOllamaProfile = $state(INITIAL.selectedOllamaProfile);
   imageTag = $state(INITIAL.imageTag);
   hostAkmEnabled = $state(INITIAL.hostAkmEnabled);
+
+  // ── #563: Network access preset (Finish step) ──────────────────────────────
+  networkPreset = $state(INITIAL.networkPreset);
+  opencodePassword = $state(INITIAL.opencodePassword);
+  homeOpenAck = $state(INITIAL.homeOpenAck);
+  networkDirty = $state(INITIAL.networkDirty);
+  // PR #564 r3566887969 — set from rerun current-config; keeps a keep-as-is
+  // home-password rerun from rotating the existing OpenCode password secret.
+  hasExistingOpencodePassword = $state(INITIAL.hasExistingOpencodePassword);
 
   // ── Step 5: Review + Install ─────────────────────────────────────────────────
   installError = $state(INITIAL.installError);
@@ -310,8 +336,32 @@ export class SetupState {
   persistedVoiceTts = $derived(resolveVoiceSide(this.voiceTts, this.enableVoice, ''));
   persistedVoiceStt = $derived(resolveVoiceSide(this.voiceStt, this.enableVoice, ''));
 
+  // #563 — install-time validity of the network access choice: home-open
+  // requires the risk acknowledgement; home-password requires a real
+  // password; the other two presets are always valid (no extra input).
+  //
+  // On a rerun the operator may never touch this step at all — init()
+  // pre-fills networkPreset from the detected config (S3: the password is
+  // never returned, so home-password rehydrates with opencodePassword=''),
+  // and the payload correctly sends nothing (keep-as-is) while
+  // networkDirty stays false. This gate MUST mirror that same
+  // `!isRerun || networkDirty` condition, or an untouched rerun over a
+  // home-password/home-open install gets blocked from installing at all —
+  // forcing a brand-new password/ack that silently rewrites the existing
+  // secret (violates D7's keep-as-is contract).
+  networkChoiceValid = $derived.by(() => {
+    if (this.isRerun && !this.networkDirty) return true;
+    if (this.networkPreset === 'home-open') return this.homeOpenAck;
+    if (this.networkPreset === 'home-password') return this.opencodePassword.length >= 8;
+    return true;
+  });
+
   // Build the install payload for /api/setup/complete. The pure builder lives
   // in $lib/setup/payload.ts (round-trip tested against parseSetupConfig).
+  // D7: on a first run `network` is always sent (networkPreset defaults to
+  // 'this-pc'); on a rerun it is sent ONLY once the operator actively
+  // touches the network step (networkDirty) — never a silent rewrite of a
+  // hand-tuned env or a previous preset choice.
   payload = $derived(buildSetupPayload({
     modelSelection: this.modelSelection,
     verifiedProviders: this.verifiedProviders,
@@ -324,8 +374,11 @@ export class SetupState {
     selectedOllamaProfile: this.selectedOllamaProfile,
     portalSelection: this.portalSelection,
     uiLoginPassword: this.uiLoginPassword,
+    keepExistingUiLoginPassword: this.isRerun && !this.uiLoginPasswordDirty,
     imageTag: this.imageTag,
     hostAkmEnabled: this.hostAkmEnabled,
+    networkPreset: (!this.isRerun || this.networkDirty) ? this.networkPreset : null,
+    opencodePassword: this.opencodePassword,
   }));
 
   // ── Profile loaders ──────────────────────────────────────────────────────────
@@ -768,6 +821,14 @@ export class SetupState {
     if (this.installing) return;
     this.installError = '';
 
+    // #563 — guard-and-return: an unacknowledged home-open risk or a too-short
+    // home-password password must block Install, same as the store's other
+    // validity gates.
+    if (!this.networkChoiceValid) {
+      this.installError = 'Finish the network access step before installing.';
+      return;
+    }
+
     // Single "no AI configured" confirmation. When the payload has no `llm`,
     // require one explicit acknowledgment before installing. Rerun keeps
     // existing config, so don't re-prompt there.
@@ -894,6 +955,49 @@ export class SetupState {
     if (typeof sel === 'object' && sel !== null) {
       sel[credKey] = value;
     }
+  }
+
+  // ── #563: Network access preset (Finish step) ──────────────────────────────
+
+  /**
+   * Switch the network access preset. Pre-fills a fresh generated password
+   * ONLY when switching TO home-password with an empty field (never
+   * force-regenerates an existing user-typed password, D5); clears the
+   * home-open risk acknowledgement when LEAVING home-open (re-selecting it
+   * does not re-prompt). Event-handler-driven — no `$effect`.
+   */
+  handleNetworkPresetChange(preset: NetworkAccessPreset): void {
+    // PR #564 r3566887969: re-selecting the already-active home-password preset
+    // on a rerun (empty box because the secret is never returned, and an
+    // existing password on disk) must KEEP the existing secret — never mint a
+    // new one or mark the step dirty, which would rotate the password and 401
+    // every already-paired device. A genuine change (typing a password, or
+    // switching FROM another preset) still rotates as intended.
+    const keepExistingHomePassword =
+      preset === 'home-password' &&
+      this.networkPreset === 'home-password' &&
+      this.isRerun &&
+      this.hasExistingOpencodePassword &&
+      !this.opencodePassword;
+    if (this.networkPreset === 'home-open' && preset !== 'home-open') {
+      this.homeOpenAck = false;
+    }
+    this.networkPreset = preset;
+    if (keepExistingHomePassword) return; // networkDirty stays false → payload omits network
+    if (preset === 'home-password' && !this.opencodePassword) {
+      this.opencodePassword = generatePassword();
+    }
+    this.networkDirty = true;
+  }
+
+  handleOpencodePasswordInput(value: string): void {
+    this.opencodePassword = value;
+    this.networkDirty = true;
+  }
+
+  handleHomeOpenAckChange(value: boolean): void {
+    this.homeOpenAck = value;
+    this.networkDirty = true;
   }
 
   async handleDeployRetry(): Promise<void> {
@@ -1104,7 +1208,12 @@ export class SetupState {
       // immediately and pre-fill every step from current config.
       this.systemCheckPassed = true;
       this.maxVisitedStep = 3;
-      this.uiLoginPassword = generatePassword(); // fallback; replaced if API returns existing
+      // PR #564 P1-1: do NOT generate a UI login password on a rerun. The
+      // current-config endpoint never returns the existing secret, so a
+      // generated fallback here would be sent in the payload and silently
+      // ROTATE the login password to a value the operator never saw (locking
+      // them out). Leave it empty; `keepExistingUiLoginPassword` (below) omits
+      // it from the payload so the server preserves the existing secret.
 
       fetchCurrentConfig()
         .then((data) => {
@@ -1124,6 +1233,18 @@ export class SetupState {
           if (parsed.importedSmallModel) this.importedSmallModel = parsed.importedSmallModel;
           if (parsed.ollamaEnabled) this.ollamaEnabled = true;
           if (parsed.selectedOllamaProfile) this.selectedOllamaProfile = parsed.selectedOllamaProfile;
+          // #563 — pre-fill the detected network access preset (D8);
+          // unconditional (unlike the other fields above) because the
+          // rerun-fetched reality always wins over the INITIAL 'this-pc'
+          // default — a `network` field genuinely absent from the response
+          // maps to null (custom/hand-tuned), same as an unrecognized preset.
+          // null renders the "custom, kept as-is" notice. This prefill alone
+          // must NOT dirty the field — networkDirty stays false until the
+          // operator actively touches the step (D7).
+          this.networkPreset = parsed.networkPreset ?? null;
+          if (parsed.hasOpencodePassword !== undefined) {
+            this.hasExistingOpencodePassword = parsed.hasOpencodePassword;
+          }
 
           // Enabled addons + portal credentials — mutate the existing portal
           // selection objects so credential fields land on reactive state.
@@ -1131,8 +1252,19 @@ export class SetupState {
             const sel = this.portalSelection[chId];
             if (typeof sel === 'object' && sel !== null) {
               if (parsed.enabledAddons.includes(chId)) sel.enabled = true;
+              // PR #564 P1-2: current-config returns secret-PRESENCE metadata
+              // (e.g. `{ botToken: { envKey, present } }`), never plaintext.
+              // Only assign genuine STRING values — assigning a metadata object
+              // into a string field renders/serializes as "[object Object]" and
+              // corrupts the persisted credential. Presence-only fields are left
+              // empty (keep-existing): the payload omits them and the server
+              // preserves the stored secret.
               const c = parsed.portalCredentials[chId];
-              if (c && typeof c === 'object') Object.assign(sel, c);
+              if (c && typeof c === 'object') {
+                for (const [field, value] of Object.entries(c)) {
+                  if (typeof value === 'string') (sel as Record<string, unknown>)[field] = value;
+                }
+              }
             }
           }
         })

@@ -14,9 +14,13 @@
   },
   "files": [
     "src",
+    "bin",
     "README.md"
   ],
   "main": "src/index.ts",
+  "bin": {
+    "openpalm-discord-portal": "bin/openpalm-discord-portal.ts"
+  },
   "dependencies": {
     "@openpalm/portal-sdk": "workspace:*",
     "discord.js": "^14.16.3"

@@ -1,5 +1,5 @@
 import { describe, expect, it, beforeEach, afterEach } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync, readFileSync, existsSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync, readFileSync, existsSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -196,6 +196,78 @@ describe("validateSetupSpec", () => {
     expect(result.errors.some((e) => e.includes("owner.name"))).toBe(true);
   });
 
+  // ── #563 T19-T22: network preset validation ─────────────────────────────
+
+  it("T19 (pin): accepts a spec without network (backward compatible)", () => {
+    const input = makeValidSpec();
+    delete (input as Record<string, unknown>).network;
+    const result = validateSetupSpec(input);
+    expect(result.valid).toBe(true);
+    expect(result.errors).toHaveLength(0);
+  });
+
+  it("T20: accepts network {preset:'this-pc'}", () => {
+    const input = makeValidSpec({ network: { preset: "this-pc" } });
+    const result = validateSetupSpec(input);
+    expect(result.valid).toBe(true);
+  });
+
+  it("T20: rejects an unknown preset", () => {
+    const input = makeValidSpec();
+    (input as Record<string, unknown>).network = { preset: "bogus-preset" };
+    const result = validateSetupSpec(input);
+    expect(result.valid).toBe(false);
+    expect(result.errors.some((e) => e.includes("network"))).toBe(true);
+  });
+
+  it("T20: rejects a non-object network", () => {
+    const input = makeValidSpec();
+    (input as Record<string, unknown>).network = "this-pc";
+    const result = validateSetupSpec(input);
+    expect(result.valid).toBe(false);
+    expect(result.errors.some((e) => e.includes("network"))).toBe(true);
+  });
+
+  it("T21: home-password requires opencodePassword (min 8 chars) — missing", () => {
+    const input = makeValidSpec();
+    (input as Record<string, unknown>).network = { preset: "home-password" };
+    const result = validateSetupSpec(input);
+    expect(result.valid).toBe(false);
+    expect(result.errors.some((e) => e.includes("network.opencodePassword"))).toBe(true);
+  });
+
+  it("T21: home-password requires opencodePassword (min 8 chars) — empty", () => {
+    const input = makeValidSpec();
+    (input as Record<string, unknown>).network = { preset: "home-password", opencodePassword: "" };
+    const result = validateSetupSpec(input);
+    expect(result.valid).toBe(false);
+    expect(result.errors.some((e) => e.includes("network.opencodePassword"))).toBe(true);
+  });
+
+  it("T21: home-password requires opencodePassword (min 8 chars) — 7-char", () => {
+    const input = makeValidSpec();
+    (input as Record<string, unknown>).network = { preset: "home-password", opencodePassword: "1234567" };
+    const result = validateSetupSpec(input);
+    expect(result.valid).toBe(false);
+    expect(result.errors.some((e) => e.includes("network.opencodePassword"))).toBe(true);
+  });
+
+  it("T21: an 8-char opencodePassword on home-password is valid", () => {
+    const input = makeValidSpec();
+    (input as Record<string, unknown>).network = { preset: "home-password", opencodePassword: "12345678" };
+    const result = validateSetupSpec(input);
+    expect(result.valid).toBe(true);
+  });
+
+  it("T22: rejects opencodePassword on non-password presets, naming the preset", () => {
+    for (const preset of ["this-pc", "home-open", "shared-guardian"]) {
+      const input = makeValidSpec();
+      (input as Record<string, unknown>).network = { preset, opencodePassword: "12345678" };
+      const result = validateSetupSpec(input);
+      expect(result.valid).toBe(false);
+      expect(result.errors.some((e) => e.includes(preset))).toBe(true);
+    }
+  });
 });
 
 // ── Tests: buildOwnerEnvFromSetup ─────────────────────────────────────────
@@ -612,6 +684,28 @@ describe("performSetup", () => {
     expect(readSecret(homeDir, 'op_ui_login_password')).toBe("test-admin-token-12345\n");
   });
 
+  it("P1-1: an omitted uiLoginPassword on a rerun PRESERVES the existing secret byte-identically", async () => {
+    // First install sets the password.
+    expect((await performSetup(makeValidSpec())).ok).toBe(true);
+    const before = readSecret(homeDir, 'op_ui_login_password');
+    expect(before).toBe("test-admin-token-12345\n");
+
+    // Rerun with the password omitted (unchanged rerun) must not rotate it.
+    const rerun = makeValidSpec();
+    (rerun as { security: { uiLoginPassword?: string } }).security = {};
+    const result = await performSetup(rerun);
+    expect(result.ok).toBe(true);
+    expect(readSecret(homeDir, 'op_ui_login_password')).toBe(before);
+  });
+
+  it("P1-1: an omitted uiLoginPassword with NO existing secret fails closed", async () => {
+    const fresh = makeValidSpec();
+    (fresh as { security: { uiLoginPassword?: string } }).security = {};
+    const result = await performSetup(fresh);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toMatch(/uiLoginPassword/);
+  });
+
   it("writes akm config.json with llm and embedding", async () => {
     const result = await performSetup(makeValidSpec());
     expect(result.ok).toBe(true);
@@ -795,6 +889,159 @@ describe("performSetup", () => {
     const stackEnv = readFileSync(join(homeDir, "knowledge", "env", "stack.env"), 'utf-8');
     expect(stackEnv).toContain('DISCORD_APPLICATION_ID=discord-app-id-123');
     expect(stackEnv).not.toContain('DISCORD_BOT_TOKEN=');
+  });
+
+  // PR #564 second retest R6: an EXPLICIT {addon:false} must disable an existing
+  // addon — the old `if (enabled)` loop skipped false, leaving it enabled.
+  it("disables an existing addon when the rerun spec sets it false", async () => {
+    const enabledAddonsLine = (): string =>
+      readFileSync(join(homeDir, "state", "stack.state.env"), 'utf-8')
+        .split('\n')
+        .find((l) => l.startsWith('OP_ENABLED_ADDONS=')) ?? '';
+
+    // First enable discord.
+    const enable = await performSetup(makeValidSpec({
+      addons: { discord: true },
+      portalCredentials: { discord: { botToken: "discord-bot-token-xyz" } },
+    }));
+    expect(enable.ok).toBe(true);
+    expect(enabledAddonsLine()).toContain('discord');
+
+    // Rerun with discord:false — it must be removed from the enabled set.
+    const disable = await performSetup(makeValidSpec({ addons: { discord: false } }));
+    expect(disable.ok).toBe(true);
+    expect(enabledAddonsLine()).not.toContain('discord');
+  });
+
+  // PR #564 second retest P1-3: setup must NOT consume ambient host env vars as
+  // portal credentials — a leftover DISCORD_BOT_TOKEN in the operator's shell
+  // used to be silently written into the secret store, overriding keep-existing.
+  it("does not consume an ambient DISCORD_BOT_TOKEN when the spec omits it", async () => {
+    const saved = process.env.DISCORD_BOT_TOKEN;
+    process.env.DISCORD_BOT_TOKEN = "ambient-token-should-be-ignored";
+    try {
+      const input = makeValidSpec(); // no portalCredentials in the spec
+      const result = await performSetup(input);
+      expect(result.ok).toBe(true);
+      // The ambient value must NOT have been written to the secret store.
+      expect(readSecret(homeDir, 'discord_bot_token')).toBeNull();
+    } finally {
+      if (saved !== undefined) process.env.DISCORD_BOT_TOKEN = saved;
+      else delete process.env.DISCORD_BOT_TOKEN;
+    }
+  });
+
+  // ── #563 T23-T27: network preset plumbing through performSetup ───────────
+
+  const secretPathFor = (name: string) => join(homeDir, "knowledge", "secrets", name);
+
+  it("T23: home-password writes the full managed row to stack.env and the password to the secret file", async () => {
+    const result = await performSetup(
+      makeValidSpec({ network: { preset: "home-password", opencodePassword: "lan-secret-123" } }),
+    );
+    expect(result.ok).toBe(true);
+
+    const stackEnv = readFileSync(join(homeDir, "knowledge", "env", "stack.env"), "utf-8");
+    expect(stackEnv).toMatch(/^OP_ASSISTANT_BIND_ADDRESS=0\.0\.0\.0$/m);
+    expect(stackEnv).toMatch(/^OPENCODE_AUTH=true$/m);
+    expect(stackEnv).toMatch(/^OP_BIND_ADDRESS=127\.0\.0\.1$/m);
+    expect(stackEnv).toMatch(/^OP_CLIENT_BIND_ADDRESS=127\.0\.0\.1$/m);
+    expect(stackEnv).toMatch(/^OP_VOICE_BIND_ADDRESS=127\.0\.0\.1$/m);
+    expect(stackEnv).not.toContain("lan-secret-123");
+
+    expect(readSecret(homeDir, "op_opencode_password")).toBe("lan-secret-123\n");
+  });
+
+  it("T24: shared-guardian writes the guardian row with the assistant hard-pin", async () => {
+    const result = await performSetup(makeValidSpec({ network: { preset: "shared-guardian" } }));
+    expect(result.ok).toBe(true);
+
+    const stackEnv = readFileSync(join(homeDir, "knowledge", "env", "stack.env"), "utf-8");
+    expect(stackEnv).toMatch(/^OP_BIND_ADDRESS=0\.0\.0\.0$/m);
+    expect(stackEnv).toMatch(/^OP_ASSISTANT_BIND_ADDRESS=127\.0\.0\.1$/m);
+    expect(stackEnv).toMatch(/^OP_CLIENT_BIND_ADDRESS=127\.0\.0\.1$/m);
+    expect(stackEnv).toMatch(/^OP_VOICE_BIND_ADDRESS=127\.0\.0\.1$/m);
+    expect(stackEnv).toMatch(/^OPENCODE_AUTH=false$/m);
+  });
+
+  it("T24b: shared-guardian auto-enables the chat portal so a guardian actually deploys (PR #564 review)", async () => {
+    // The guardian service is profile-gated behind guardian-ingress addons;
+    // binds alone deploy no guardian. The preset's promise ("guardian
+    // protected front door", pairing) requires one, so a shared-guardian
+    // setup with no guardian-ingress addon enables the built-in chat portal.
+    const result = await performSetup(makeValidSpec({ network: { preset: "shared-guardian" } }));
+    expect(result.ok).toBe(true);
+
+    const stateEnv = readFileSync(join(homeDir, "state", "stack.state.env"), "utf-8");
+    expect(stateEnv).toMatch(/^OP_ENABLED_ADDONS=.*\bchat\b/m);
+  });
+
+  it("T24c: shared-guardian does NOT add chat when another guardian-ingress addon is already requested", async () => {
+    const result = await performSetup(
+      makeValidSpec({ network: { preset: "shared-guardian" }, addons: { discord: true } }),
+    );
+    expect(result.ok).toBe(true);
+
+    const stateEnv = readFileSync(join(homeDir, "state", "stack.state.env"), "utf-8");
+    expect(stateEnv).toMatch(/^OP_ENABLED_ADDONS=.*\bdiscord\b/m);
+    expect(stateEnv).not.toMatch(/^OP_ENABLED_ADDONS=.*\bchat\b/m);
+  });
+
+  it("T24d: non-guardian presets do not auto-enable any addon", async () => {
+    const result = await performSetup(makeValidSpec({ network: { preset: "home-open" } }));
+    expect(result.ok).toBe(true);
+
+    const stateEnvPath = join(homeDir, "state", "stack.state.env");
+    const stateEnv = existsSync(stateEnvPath) ? readFileSync(stateEnvPath, "utf-8") : "";
+    expect(stateEnv).not.toMatch(/^OP_ENABLED_ADDONS=.*\bchat\b/m);
+  });
+
+  it("T25: a spec without network leaves pre-seeded bind values untouched", async () => {
+    // Seed a pre-existing OP_ASSISTANT_BIND_ADDRESS before running a
+    // network-less setup — it must survive (D7: absent network = don't touch).
+    const stackEnvPath = join(homeDir, "knowledge", "env", "stack.env");
+    writeFileSync(
+      stackEnvPath,
+      `${readFileSync(stackEnvPath, "utf-8")}\nOP_ASSISTANT_BIND_ADDRESS=10.0.0.5\n`,
+    );
+
+    const input = makeValidSpec();
+    delete (input as Record<string, unknown>).network;
+    const result = await performSetup(input);
+    expect(result.ok).toBe(true);
+
+    const stackEnv = readFileSync(stackEnvPath, "utf-8");
+    expect(stackEnv).toMatch(/^OP_ASSISTANT_BIND_ADDRESS=10\.0\.0\.5$/m);
+  });
+
+  it("T26: shared-guardian fails closed when process.env exposes the assistant", async () => {
+    const saved = process.env.OP_ASSISTANT_BIND_ADDRESS;
+    process.env.OP_ASSISTANT_BIND_ADDRESS = "0.0.0.0";
+    try {
+      const result = await performSetup(makeValidSpec({ network: { preset: "shared-guardian" } }));
+      expect(result.ok).toBe(false);
+      expect(result.error).toBeDefined();
+      expect(result.error ?? "").toContain("OP_ASSISTANT_BIND_ADDRESS");
+
+      // Never wrote the shared-guardian row over the fail-closed rejection.
+      const stackEnv = readFileSync(join(homeDir, "knowledge", "env", "stack.env"), "utf-8");
+      expect(stackEnv).not.toMatch(/^OP_BIND_ADDRESS=0\.0\.0\.0$/m);
+    } finally {
+      if (saved === undefined) delete process.env.OP_ASSISTANT_BIND_ADDRESS;
+      else process.env.OP_ASSISTANT_BIND_ADDRESS = saved;
+    }
+  });
+
+  it("T27: every setup materializes the op_opencode_password secret file", async () => {
+    const input = makeValidSpec();
+    delete (input as Record<string, unknown>).network;
+    const result = await performSetup(input);
+    expect(result.ok).toBe(true);
+
+    const path = secretPathFor("op_opencode_password");
+    expect(existsSync(path)).toBe(true);
+    expect((statSync(path).mode & 0o777)).toBe(0o600);
+    expect(readFileSync(path, "utf-8").trim().length).toBeGreaterThan(0);
   });
 
   it("ensureOpenCodeConfig never writes forbidden keys (providers, smallModel, model) to the user config", async () => {

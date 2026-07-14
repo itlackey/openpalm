@@ -31,6 +31,7 @@ export default defineConfig(({ mode }) => {
     }
     process.env[key] ??= value;
   }
+  const browserExecutablePath = process.env.OP_PLAYWRIGHT_EXECUTABLE_PATH?.trim();
   // Note: the dev-server login-password bridge lives in src/hooks.server.ts
   // (server runtime, where @openpalm/lib is safely importable), not here — the
   // config eval has no Bun shim and shouldn't read secrets.
@@ -81,7 +82,11 @@ export default defineConfig(({ mode }) => {
             name: "client",
             browser: {
               enabled: true,
-              provider: playwright(),
+              provider: playwright(
+                browserExecutablePath
+                  ? { launchOptions: { executablePath: browserExecutablePath } }
+                  : {},
+              ),
               instances: [{ browser: "chromium", name: "chromium", headless: true }]
             },
             // The shared components moved to @openpalm/ui-kit (P5a, #555);

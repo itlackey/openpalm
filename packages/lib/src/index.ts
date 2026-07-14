@@ -163,6 +163,17 @@ export {
 } from './control-plane/secrets-files.js';
 export type { SecretFileInfo } from './control-plane/secrets-files.js';
 export {
+  PAIRING_CODE_PREFIX,
+  encodePairingCode,
+  decodePairingCode,
+  mintDirectPrincipalPairingCode,
+} from './control-plane/pairing.js';
+export type {
+  PairingPayloadV1,
+  DecodePairingResult,
+  MintPairingResult,
+} from './control-plane/pairing.js';
+export {
   assertSafeTaskFilename,
   resolveTasksDir,
   listTaskFiles,
@@ -527,7 +538,36 @@ export type { AkmStats } from './control-plane/akm-stats.js';
 export { getAkmStats, parseAkmStats } from './control-plane/akm-stats.js';
 
 // ── Bind Address Startup Warning ─────────────────────────────────────────────
-export { collectBindAddressWarnings, isRemoteSetupAllowed } from "./control-plane/bind-warning.js";
+export { collectBindAddressWarnings, isRemoteSetupAllowed, isLoopback } from "./control-plane/bind-warning.js";
+
+// ── Network access presets (#563) ────────────────────────────────────────────
+export {
+  NETWORK_ACCESS_PRESETS,
+  NETWORK_PRESET_LABELS,
+  isNetworkAccessPreset,
+  resolveNetworkPreset,
+  detectNetworkPreset,
+  validateNetworkPresetEnv,
+  collectNetworkExposureWarnings,
+  type NetworkAccessPreset,
+  type NetworkPresetEnv,
+  type NetworkPresetResolution,
+} from "./control-plane/network-preset.js";
+
+// ── mDNS host self-advertisement (#488) ──────────────────────────────────────
+// Pure helpers (sanitizeDnsLabel, resolveMdnsAdvertisements, etc.) stay
+// reachable via the ./control-plane/mdns-responder.js subpath for tests; only
+// the consumer-facing surface goes through this barrel.
+export {
+  deriveMdnsNames,
+  resolveMdnsAdvertisements,
+  resolveMdnsStatus,
+  reconcileMdnsResponder,
+  _setMdnsFactoryForTests,
+  _resetMdnsResponderForTests,
+  type MdnsAdvertisement,
+  type MdnsStatus,
+} from "./control-plane/mdns-responder.js";
 
 // ── UI asset seeding and resolution ─────────────────────────────────────────
 export type { UiBuildUpdateResult, SkeletonUpdateResult, UiUpdateChannel } from "./control-plane/ui-assets.js";

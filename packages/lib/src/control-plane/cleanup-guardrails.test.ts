@@ -300,3 +300,90 @@ describe("guardrail: component/instance system removed", () => {
     }
   });
 });
+
+// ── Guardrail 10: channel_lan network + CHANNEL_NAME marker removed (#490) ──
+
+describe("guardrail: no channel_lan in skeleton stack assets", () => {
+  test("skeleton compose files do not define or reference channel_lan", () => {
+    const repoRoot = join(import.meta.dir, "../../../..");
+    const skeletonStackDir = join(repoRoot, "packages/skeleton/system/stack");
+    const files = readdirSync(skeletonStackDir).filter((f) => f.endsWith(".yml"));
+    const violations: string[] = [];
+
+    for (const f of files) {
+      const content = readFileSync(join(skeletonStackDir, f), "utf-8");
+      if (content.includes("channel_lan")) {
+        violations.push(f);
+      }
+    }
+
+    const readmePath = join(skeletonStackDir, "README.md");
+    const readme = readFileSync(readmePath, "utf-8");
+    if (readme.includes("channel_lan")) {
+      violations.push("README.md");
+    }
+
+    expect(violations).toEqual([]);
+  });
+});
+
+describe("guardrail: no CHANNEL_NAME in control-plane source", () => {
+  test("control-plane source files do not reference CHANNEL_NAME", () => {
+    const files = readSourceFiles();
+    const violations: string[] = [];
+
+    for (const { path, content } of files) {
+      const filename = path.slice(path.lastIndexOf("/") + 1);
+      if (filename === "cleanup-guardrails.test.ts") continue;
+
+      const lines = content.split("\n");
+      for (let i = 0; i < lines.length; i++) {
+        if (lines[i].includes("CHANNEL_NAME")) {
+          violations.push(`${filename}:${i + 1}: ${lines[i].trim()}`);
+        }
+      }
+    }
+
+    expect(violations).toEqual([]);
+  });
+});
+
+// ── Guardrail 11: overlay channel_lan deprecation guard is wired (#490) ────
+
+describe("guardrail: overlay deprecation guard is wired", () => {
+  test("reconcileStack runs checkCustomComposeChannelLan before withStackEnvRollback", () => {
+    const lifecycleTs = readFileSync(join(LIB_CONTROL_PLANE_DIR, "lifecycle.ts"), "utf-8");
+    expect(lifecycleTs).toContain("checkCustomComposeChannelLan(");
+
+    // Isolate the reconcileStack function body and confirm the guard call
+    // appears before the `return withStackEnvRollback(` inside it (same
+    // source-index idiom as guardrail 3).
+    const fnStart = lifecycleTs.indexOf("function reconcileStack(");
+    expect(fnStart).toBeGreaterThan(-1);
+
+    const guardIdx = lifecycleTs.indexOf("checkCustomComposeChannelLan(", fnStart);
+    const rollbackIdx = lifecycleTs.indexOf("return withStackEnvRollback(", fnStart);
+
+    expect(guardIdx).toBeGreaterThan(-1);
+    expect(rollbackIdx).toBeGreaterThan(-1);
+    expect(guardIdx).toBeLessThan(rollbackIdx);
+  });
+
+  // PR #564 r3566892768 + retest P2-3: the blockError throw must fire before any
+  // file write on every deploy that reconciles managed compose (install, update,
+  // upgrade) and be exempt ONLY for uninstall (deactivate) — so a stale
+  // channel_lan overlay produces the pre-write migration error, not a late
+  // post-write Compose failure, while uninstall stays available.
+  test("the channel_lan blockError throw is gated on `!deactivate` (uninstall exempt, update blocked)", () => {
+    const lifecycleTs = readFileSync(join(LIB_CONTROL_PLANE_DIR, "lifecycle.ts"), "utf-8");
+    const fnStart = lifecycleTs.indexOf("function reconcileStack(");
+    const guardIdx = lifecycleTs.indexOf("overlayCheck.blockError", fnStart);
+    const throwLineEnd = lifecycleTs.indexOf("\n", guardIdx);
+    const throwLine = lifecycleTs.slice(guardIdx, throwLineEnd);
+    expect(throwLine).toContain("!deactivate");
+    // The guard must run BEFORE withStackEnvRollback (which wraps applyHome).
+    const guardPos = lifecycleTs.indexOf("overlayCheck.blockError", fnStart);
+    const rollbackPos = lifecycleTs.indexOf("return withStackEnvRollback(", fnStart);
+    expect(guardPos).toBeLessThan(rollbackPos);
+  });
+});

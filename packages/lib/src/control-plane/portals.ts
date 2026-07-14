@@ -13,7 +13,7 @@ import { composeFilePath, customComposeFilePath } from "./home.js";
 /** Strict portal name: lowercase alphanumeric + hyphens, 1–63 chars, must start with alnum */
 const PORTAL_NAME_RE = /^[a-z0-9][a-z0-9-]{0,62}$/;
 
-const PORTAL_MARKER_KEYS = ['PORTAL_NAME', 'CHANNEL_NAME'] as const;
+const PORTAL_MARKER_KEY = 'PORTAL_NAME';
 
 function isValidPortalName(name: string): boolean {
   return PORTAL_NAME_RE.test(name);
@@ -46,8 +46,8 @@ function portalNamesFromCompose(composePath: string): string[] {
       const env = (svcDef as Record<string, unknown>).environment;
       if (typeof env === "object" && env !== null) {
         if (Array.isArray(env)) {
-          if (env.some((e: unknown) => typeof e === 'string' && PORTAL_MARKER_KEYS.some((key) => e.startsWith(`${key}=`)))) names.push(svcName);
-        } else if (PORTAL_MARKER_KEYS.some((key) => key in (env as Record<string, unknown>))) {
+          if (env.some((e: unknown) => typeof e === 'string' && e.startsWith(`${PORTAL_MARKER_KEY}=`))) names.push(svcName);
+        } else if (PORTAL_MARKER_KEY in (env as Record<string, unknown>)) {
           names.push(svcName);
         }
       }
@@ -61,7 +61,7 @@ function portalNamesFromCompose(composePath: string): string[] {
 // ── Portal Discovery ──────────────────────────────────────────────────
 
 /**
- * Check if a compose file defines a portal service (has PORTAL_NAME or legacy CHANNEL_NAME).
+ * Check if a compose file defines a portal service (has a PORTAL_NAME environment variable).
  * Compose-derived: we parse the actual compose content rather than rely on
  * filename or directory naming conventions. (GUARDIAN_URL used to be a
  * fallback signal — it's been removed since the portal adapters now hardcode the
@@ -80,9 +80,9 @@ export function isPortalAddon(composePath: string): boolean {
       const env = (svcDef as Record<string, unknown>).environment;
       if (typeof env === "object" && env !== null) {
         if (Array.isArray(env)) {
-          if (env.some((e: unknown) => typeof e === 'string' && PORTAL_MARKER_KEYS.some((key) => e.startsWith(`${key}=`)))) return true;
+          if (env.some((e: unknown) => typeof e === 'string' && e.startsWith(`${PORTAL_MARKER_KEY}=`))) return true;
         } else {
-          if (PORTAL_MARKER_KEYS.some((key) => key in (env as Record<string, unknown>))) return true;
+          if (PORTAL_MARKER_KEY in (env as Record<string, unknown>)) return true;
         }
       }
     }
@@ -96,7 +96,7 @@ export function isPortalAddon(composePath: string): boolean {
  * Discover installed portals from explicit first-party addon state plus
  * custom stack/addons/ overlays.
  * A portal addon is identified by compose-derived truth: its compose.yml
- * defines services with a PORTAL_NAME environment variable (or the legacy CHANNEL_NAME during migration).
+ * defines services with a PORTAL_NAME environment variable.
  *
  * Non-portal addons (admin, ollama, etc.) are excluded.
  *

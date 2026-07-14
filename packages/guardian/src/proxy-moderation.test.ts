@@ -187,15 +187,6 @@ beforeAll(async () => {
     await Bun.sleep(100);
   }
   if (!ready) throw new Error("guardian not ready");
-
-  // Wait for the boot-time drift guard to enable the /oc/* proxy (§5, Stage 7).
-  let proxyOn = false;
-  for (let i = 0; i < 50; i++) {
-    const r = await fetch(`${guardianUrl}/stats`, { headers: { authorization: `Bearer ${ADMIN_TOKEN}` } });
-    if (r.ok && (await r.json()).oc_proxy?.enabled === true) { proxyOn = true; break; }
-    await Bun.sleep(100);
-  }
-  if (!proxyOn) throw new Error("guardian /oc proxy did not enable (drift guard)");
 });
 
 afterAll(() => {

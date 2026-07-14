@@ -173,7 +173,15 @@ export async function parseJsonBody(
     if (contentLength && parseInt(contentLength, 10) > maxBytes) {
       return { error: "too_large" };
     }
-    return { data: (await request.json()) as Record<string, unknown> };
+    const parsed = await request.json();
+    // PR #564 second retest: a valid-JSON body that is NOT an object (literal
+    // `null`, an array, or a primitive) must be rejected as invalid_json — every
+    // route here reads named fields off `body`, and `null.label` otherwise throws
+    // an unstructured 500 instead of the documented 400.
+    if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      return { error: "invalid_json" };
+    }
+    return { data: parsed as Record<string, unknown> };
   } catch (e) {
     console.warn('[helpers] Failed to parse JSON request body', e);
     return { error: "invalid_json" };
@@ -207,7 +215,7 @@ export async function withAdminBody(
 ): Promise<Response> {
   const requestId = getRequestId(event);
   const { security } = computeServerRuntimeContext(event);
-  const originError = checkOriginHeader(event.request, security.csrfMode);
+  const originError = checkOriginHeader(event.request, security.csrfMode, requestId);
   if (originError) return originError;
   const authError = requireAdmin(event, requestId);
   if (authError) return authError;
@@ -255,7 +263,7 @@ function isSameSite(request: Request, origin: URL): boolean {
   return requestHost === origin.hostname.toLowerCase();
 }
 
-export function checkHostHeader(request: Request): Response | null {
+export function checkHostHeader(request: Request, requestId?: string): Response | null {
   const host = request.headers.get("host") ?? "";
   // Allow any loopback host (any port, e.g. via SSH tunnel), or any host when
   // the operator has explicitly opted into remote access.
@@ -265,6 +273,8 @@ export function checkHostHeader(request: Request): Response | null {
       error: "invalid_host",
       host: host.trim().replace(/\.$/, ""),
       message: "Request rejected: Host header does not match allowed hosts. The UI binds to loopback (127.0.0.1) only; reach it via localhost or an SSH tunnel/reverse proxy, or set OP_ALLOW_REMOTE_SETUP=1 to allow remote access.",
+      // PR #564 second retest: every error body carries requestId (API contract).
+      ...(requestId ? { requestId } : {}),
     }),
     { status: 400, headers: { "content-type": "application/json" } }
   );
@@ -279,7 +289,7 @@ export function checkHostHeader(request: Request): Response | null {
  * @param request  Incoming Request
  * @returns        A 403 Response if the origin is rejected; null if allowed
  */
-export function checkOriginHeader(request: Request, csrfMode: CsrfMode = 'loopback-origin'): Response | null {
+export function checkOriginHeader(request: Request, csrfMode: CsrfMode = 'loopback-origin', requestId?: string): Response | null {
   const method = request.method.toUpperCase();
   if (method === "GET" || method === "HEAD" || method === "OPTIONS") return null;
 
@@ -311,7 +321,8 @@ export function checkOriginHeader(request: Request, csrfMode: CsrfMode = 'loopba
     // Unparseable Origin is treated as hostile
   }
   return new Response(
-    JSON.stringify({ error: "forbidden_origin", origin }),
+    // PR #564 second retest: every error body carries requestId (API contract).
+    JSON.stringify({ error: "forbidden_origin", origin, ...(requestId ? { requestId } : {}) }),
     { status: 403, headers: { "content-type": "application/json" } }
   );
 }

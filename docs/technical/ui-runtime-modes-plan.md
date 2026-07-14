@@ -935,11 +935,36 @@ for voice specifically) versus continuing host-chat-only voice indefinitely.
 3. Hosted origin: CI deploy of the static build to the official URL
    (`app.openpalm.dev`; hosting provider TBD). Client-side contract-version
    handshake against `/api/runtime` with graceful degradation.
+   ✅ **Handshake half DONE (#511)** —
+   `packages/client/src/lib/runtime-handshake.ts` `checkRuntimeContract()`:
+   compatible/newer/older/legacy states, probes the connection's origin root
+   with `credentials:'omit'`/`cache:'no-store'`, treats an absent endpoint
+   (plain OpenCode/guardian) as the normal legacy case; wired into
+   `/connections` for `openpalm-client-api`-kind entries with a version-skew
+   remediation notice. **Deploy half explicitly descoped to 0.14+ (#511 D1)**
+   — hosting provider/DNS/credentials don't exist in this repo; nothing in
+   #511 hardcodes the hosted origin (grep-clean product code), so the deploy
+   job is the only missing piece once a provider is chosen.
 4. Pairing UX (§6.6): host app `/connections` mints QR + one-time code; client
    `/connections/new` accepts paste-or-scan. Guardian side coordinates with
    #435/#557.
+   ✅ **DONE (#511 D3/D4/D6)** — `POST /api/connections/pairing`
+   (`host:stack:write`-gated, double-guarded like sibling `/api/connections`
+   writes) mints a `direct` guardian principal via the existing loopback-only
+   Bearer-gated admin listener (`@openpalm/lib`'s
+   `mintDirectPrincipalPairingCode`) and returns a one-time `openpalm-pair:`
+   code (QR + copyable string, `uqr` server-side render, never logged/persisted).
+   The client's `/connections` add form parses the code (paste field or a
+   `?pair=` deep link, stripped from history) to prefill itself; the secret
+   flows through the existing encrypted secret store. No new guardian ingress
+   surface — the durable artifact is the individually-revocable principal
+   (#433).
 5. Offline shell: the IndexedDB store landed in P5b — verify the offline boot
    path end-to-end once the SW exists.
+   ✅ **DONE (#511)** — `packages/client/e2e/offline-shell.pw.ts` drives the
+   real production build offline (SW-controlled reload + a deep-link
+   navigation) and asserts the shell chrome and saved IndexedDB connections
+   render instead of a blank page.
 
 ### 12.4 Phase 6.5 — guardian TLS + CORS (#557)
 
@@ -1019,15 +1044,18 @@ longer invites duplicate work.
 
 With items 1-5 above confirmed done, the actual outstanding Phase 6-8 work is:
 
-- **Hosted origin** (§12.3 item 3) — CI deploy of the static client build to
-  `app.openpalm.dev`; client-side `/api/runtime` contract-version handshake.
-- **Pairing / QR connection setup** (§12.3 item 4, §6.6).
-- **HTTPS-refusal UX** (§12.4/§7 Phase 6.5) — `requiresHttpsForRemoteConnections`
-  is computed (`features.ts`) but has zero consumers; no client code actually
-  refuses a plain-HTTP remote connection yet. See `docs/technical/ui-runtime-modes.md`
-  Security Boundaries for the current (unenforced) state.
+- **Hosted origin deploy** (§12.3 item 3) — CI deploy of the static client
+  build to `app.openpalm.dev`, and the guardian CORS default gaining that
+  literal origin. **Explicitly descoped to 0.14+ (#511 D1)** — hosting
+  provider/DNS/credentials TBD outside this repo; the client-side
+  `/api/runtime` handshake itself shipped (§12.3 item 3 above).
+- ~~Pairing / QR connection setup~~ — ✅ shipped (#511, §12.3 item 4 above).
+- ~~HTTPS-refusal UX~~ — ✅ shipped (#557): `validateConnectionUrl()` +
+  `TLS_GUIDE_URL` enforced in the connections form and `probeHealth()`'s
+  `'insecure'` state; see `docs/technical/ui-runtime-modes.md` Security
+  Boundaries.
 - **TLS guide** (§12.4) — Tailscale `ts.net` default, Caddy + user domain
-  alternative.
+  alternative. Shipped as `docs/remote-access-tls.md`.
 - **Slice B settings shim** (§6.9, optional — item 6 above).
 - **B15 — in-chat connection switcher**: `packages/client/src/routes/chat/+page.svelte`
   only reads the active connection once in `onMount` — switching the active

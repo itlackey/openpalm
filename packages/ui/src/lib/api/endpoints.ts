@@ -37,6 +37,8 @@ export async function createConnection(input: {
   label: string;
   url: string;
   password?: string;
+  /** #486 D2: 'remote-opencode' | 'openpalm-client-api' (server-validated). */
+  kind?: ConnectionKind;
 }): Promise<{ connection: AssistantConnection }> {
   const res = await requireOk(await request('POST', '/api/connections', input));
   return (await res.json()) as { connection: AssistantConnection };
@@ -44,7 +46,7 @@ export async function createConnection(input: {
 
 export async function updateConnection(
   id: string,
-  patch: { label?: string; url?: string; password?: string | null }
+  patch: { label?: string; url?: string; password?: string | null; kind?: ConnectionKind }
 ): Promise<{ connection: AssistantConnection }> {
   const res = await requireOk(
     await request('PATCH', `/api/connections/${encodeURIComponent(id)}`, patch)
@@ -61,4 +63,18 @@ export async function setActiveConnection(
 ): Promise<{ activeId: string; connection: AssistantConnection }> {
   const res = await requireOk(await request('POST', '/api/connections/active', { id }));
   return (await res.json()) as { activeId: string; connection: AssistantConnection };
+}
+
+/** #511 D3/D4/D6: mint a one-time device-pairing QR/code via the host's
+ *  guardian admin API. `host:stack:write`-gated server-side; UI-gated the
+ *  same way via `hasCapability('host:stack:write')`. */
+export async function mintPairingCode(input: {
+  label: string;
+  url: string;
+}): Promise<{ code: string; principalId: string; qrSvg: string | null; warnings: string[] }> {
+  // PR #564 retest P3-3: `qrSvg` is `string | null` — the route returns null when
+  // SVG rendering fails, and the client must not orphan the (usable) text code by
+  // typing it as a non-null string. Callers fall back to the code on null.
+  const res = await requireOk(await request('POST', '/api/connections/pairing', input));
+  return (await res.json()) as { code: string; principalId: string; qrSvg: string | null; warnings: string[] };
 }

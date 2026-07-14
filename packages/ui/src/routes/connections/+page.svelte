@@ -8,19 +8,29 @@
     createConnection,
     updateConnection,
     deleteConnection,
+    mintPairingCode,
     type AssistantConnection,
   } from '$lib/api.js';
+  import type { ConnectionKind } from '$lib/types.js';
+  import { hasCapability, runtimeContext } from '$lib/runtime-context.svelte.js';
+  import { probeClientApp } from '$lib/client-app.js';
 
   // Capability-guarded surface (plan ui-runtime-modes-plan.md Phase 2, #486):
   // this page replaces /admin/endpoints and works in every mode that
   // advertises `connections:manage` — the API it talks to enforces the
   // capability server-side; auth is enforced in hooks.server.ts.
 
+  /** Add/edit form kind: 'local-opencode' is reserved for the synthesized
+   *  env-derived default and is never offered here (#486 D2). */
+  type FormKind = Extract<ConnectionKind, 'remote-opencode' | 'openpalm-client-api'>;
+
   // ── Form state ─────────────────────────────────────────────────────────
   let formMode = $state<'idle' | 'add' | 'edit'>('idle');
   let formId = $state<string | null>(null);
   let formLabel = $state('');
   let formUrl = $state('');
+  // #486 D2: connection-kind selector.
+  let formKind = $state<FormKind>('remote-opencode');
   let formPassword = $state('');
   let formClearPassword = $state(false);
   let formSubmitting = $state(false);
@@ -28,6 +38,27 @@
 
   // ── Per-row state ───────────────────────────────────────────────────────
   let deletingId = $state<string | null>(null);
+
+  // ── Pairing panel state (#511 D3/D4/D6) ────────────────────────────────
+  // The pairing panel mints a one-time QR/code that lets another device
+  // (phone, laptop) add THIS stack as a guardian connection without typing a
+  // long secret by hand. The minted secret only ever lives in `pairingCode`
+  // — cleared entirely by `donePairing()` — never in `connectionsService` or
+  // any persisted store.
+  let pairingMode = $state<'idle' | 'form' | 'result'>('idle');
+  let pairingLabel = $state('');
+  let pairingUrl = $state('');
+  let pairingSubmitting = $state(false);
+  let pairingError = $state('');
+  let pairingCode = $state('');
+  // PR #564 retest P3-3: null when the host could not render the QR SVG — the
+  // text code below is always shown, so pairing still works without a QR.
+  let pairingQrSvg = $state<string | null>(null);
+  let pairingWarnings = $state<string[]>([]);
+  let pairingCopied = $state(false);
+
+  // ── Install-app affordance state (#511 D8) ─────────────────────────────
+  let clientAppReachable = $state(false);
 
   const connections = $derived(connectionsService.endpoints);
   const active = $derived(connectionsService.active);
@@ -37,13 +68,83 @@
     // The /connections/new landing (plan §6.5, Phase 3) aliases here with
     // ?new=1 — open the add form so "no connections yet" starts at the form.
     if (page.url.searchParams.get('new') === '1') openAddForm();
+
+    // "Install OpenPalm app" renders only after a reachability probe
+    // succeeds (the E4 dead-link lesson from Electron's openLocalApp()) —
+    // never a dead link to a static app that isn't actually being served.
+    const clientAppUrl = runtimeContext.clientAppUrl;
+    if (clientAppUrl) {
+      void probeClientApp(clientAppUrl).then((reachable) => {
+        clientAppReachable = reachable;
+      });
+    }
   });
+
+  function openPairingForm(): void {
+    pairingMode = 'form';
+    pairingLabel = '';
+    pairingUrl = '';
+    pairingError = '';
+  }
+
+  function cancelPairing(): void {
+    pairingMode = 'idle';
+    pairingError = '';
+  }
+
+  async function submitPairing(ev: Event): Promise<void> {
+    ev.preventDefault();
+    if (pairingSubmitting) return;
+    const label = pairingLabel.trim();
+    const url = pairingUrl.trim();
+    if (!label || !url) {
+      pairingError = 'Label and URL are required.';
+      return;
+    }
+
+    pairingSubmitting = true;
+    pairingError = '';
+    try {
+      const result = await mintPairingCode({ label, url });
+      pairingCode = result.code;
+      pairingQrSvg = result.qrSvg;
+      pairingWarnings = result.warnings;
+      pairingCopied = false;
+      pairingMode = 'result';
+    } catch (e) {
+      const err = e as { message?: string };
+      pairingError = err.message ?? 'Pairing failed.';
+    } finally {
+      pairingSubmitting = false;
+    }
+  }
+
+  async function copyPairingCode(): Promise<void> {
+    if (!pairingCode) return;
+    try {
+      await navigator.clipboard.writeText(pairingCode);
+      pairingCopied = true;
+    } catch {
+      pairingError = 'Copy failed — select the code and copy manually.';
+    }
+  }
+
+  /** Clears the panel state — the code is shown only once and is never kept
+   *  in component state (or anywhere else) after this. */
+  function donePairing(): void {
+    pairingMode = 'idle';
+    pairingCode = '';
+    pairingQrSvg = null;
+    pairingWarnings = [];
+    pairingCopied = false;
+  }
 
   function openAddForm(): void {
     formMode = 'add';
     formId = null;
     formLabel = '';
     formUrl = '';
+    formKind = 'remote-opencode';
     formPassword = '';
     formClearPassword = false;
     formError = '';
@@ -54,6 +155,7 @@
     formId = c.id;
     formLabel = c.label;
     formUrl = c.url;
+    formKind = c.kind === 'openpalm-client-api' ? 'openpalm-client-api' : 'remote-opencode';
     formPassword = '';
     formClearPassword = false;
     formError = '';
@@ -81,12 +183,14 @@
         await createConnection({
           label,
           url,
+          kind: formKind,
           ...(formPassword ? { password: formPassword } : {}),
         });
       } else if (formMode === 'edit' && formId) {
-        const patch: { label: string; url: string; password?: string | null } = {
+        const patch: { label: string; url: string; kind: ConnectionKind; password?: string | null } = {
           label,
           url,
+          kind: formKind,
         };
         if (formClearPassword) {
           patch.password = null;
@@ -158,6 +262,7 @@
               <span class="connection-label">{conn.label}</span>
               {#if conn.isDefault}<span class="badge default">Default</span>{/if}
               {#if conn.id === active?.id}<span class="badge active">Active</span>{/if}
+              {#if conn.kind === 'openpalm-client-api'}<span class="badge kind">guardian</span>{/if}
               {#if conn.hasPassword}<span class="badge password" title="Server password configured"><IconLock size={11} /></span>{/if}
             </div>
             <div class="connection-url">{conn.url}</div>
@@ -186,11 +291,18 @@
       {/each}
     </section>
 
-    {#if formMode === 'idle'}
-      <button type="button" class="btn btn-primary" onclick={openAddForm}>
-        + Add connection
-      </button>
-    {:else}
+    {#if formMode === 'idle' && pairingMode === 'idle'}
+      <div class="toolbar-row">
+        <button type="button" class="btn btn-primary" onclick={openAddForm}>
+          + Add connection
+        </button>
+        {#if hasCapability('host:stack:write')}
+          <button type="button" class="btn btn-secondary" onclick={openPairingForm}>
+            Pair a device
+          </button>
+        {/if}
+      </div>
+    {:else if formMode !== 'idle'}
       <form class="connection-form" onsubmit={submitForm}>
         <h2>{formMode === 'add' ? 'Add connection' : 'Edit connection'}</h2>
 
@@ -205,6 +317,25 @@
           />
         </label>
 
+        <!-- #486 D2: connection-kind selector. 'local-opencode' is reserved
+             for the synthesized env-derived default and is never offered
+             here — only the two user-addable kinds. -->
+        <label class="field">
+          <span>Kind</span>
+          <select bind:value={formKind}>
+            <option value="remote-opencode">OpenCode server (direct)</option>
+            <option value="openpalm-client-api">OpenPalm guardian (/oc)</option>
+          </select>
+          <small>
+            {#if formKind === 'openpalm-client-api'}
+              The "Shared network, guardian protected" story — connect to the guardian's protected front door.
+            {:else}
+              A direct OpenCode connection is the supported "Home network" preset story (Setup → Network access),
+              not a dev/advanced-only path.
+            {/if}
+          </small>
+        </label>
+
         <label class="field">
           <span>URL</span>
           <input
@@ -214,7 +345,11 @@
             required
             autocomplete="off"
           />
-          <small>The host:port where the remote OpenPalm assistant (OpenCode) is reachable.</small>
+          {#if formKind === 'openpalm-client-api'}
+            <small>The guardian's base URL — <code>/oc</code> is appended automatically if you leave it off.</small>
+          {:else}
+            <small>The host:port where the remote OpenPalm assistant (OpenCode) is reachable.</small>
+          {/if}
         </label>
 
         <label class="field">
@@ -226,18 +361,20 @@
             autocomplete="new-password"
           />
           <small>
-            Forwarded as HTTP Basic auth. Only required if the remote OpenCode was started with
-            <code>OPENCODE_SERVER_PASSWORD</code>.
+            Forwarded as HTTP Basic auth. Only required for a remote assistant running the
+            <strong>Home network, with password</strong> network access preset (<code>OPENCODE_AUTH=true</code>).
           </small>
           {#if formMode === 'edit'}
             <small class="rotate-hint">
               <strong>Rotating this password?</strong>
-              OpenCode reads <code>OPENCODE_SERVER_PASSWORD</code> from its env at startup, so
-              rotation is a two-step process:
+              The password lives as the file secret <code>knowledge/secrets/op_opencode_password</code> on the
+              remote host — never in <code>stack.env</code>. Rotation is a two-step process:
               <ol>
                 <li>
-                  On the remote host: update <code>OP_OPENCODE_PASSWORD</code> in
-                  <code>stack.env</code> and restart the <code>assistant</code> container.
+                  On the remote host: re-run setup's Network access step (choose
+                  <strong>Home network, with password</strong> again with the new password), or edit
+                  <code>knowledge/secrets/op_opencode_password</code> directly and restart the
+                  <code>assistant</code> container.
                 </li>
                 <li>Paste the new value here and save.</li>
               </ol>
@@ -265,6 +402,126 @@
           </button>
         </div>
       </form>
+    {:else if pairingMode === 'form'}
+      <form class="connection-form" onsubmit={submitPairing}>
+        <h2>Pair a device</h2>
+        <p class="lede">
+          Mint a one-time QR code / pairing code for another device (phone, laptop) to add this
+          stack as a connection. The code contains a fresh, individually-revocable credential — it
+          is shown only once.
+        </p>
+
+        <label class="field">
+          <span>Label</span>
+          <input
+            type="text"
+            bind:value={pairingLabel}
+            placeholder="e.g. My phone"
+            required
+            autocomplete="off"
+          />
+        </label>
+
+        <label class="field">
+          <span>Guardian URL (as reachable BY THE OTHER DEVICE)</span>
+          <input
+            type="url"
+            bind:value={pairingUrl}
+            placeholder="https://gw.example.ts.net or http://10.0.0.5:3830"
+            required
+            autocomplete="off"
+          />
+          <small>
+            Use the LAN address or Tailscale/ts.net hostname the other device can actually reach —
+            not <code>127.0.0.1</code>. Remote (non-loopback) origins must be reachable over HTTPS
+            and allow-listed via <code>GUARDIAN_CORS_ALLOWED_ORIGINS</code>; see
+            <a
+              href="https://github.com/itlackey/openpalm/blob/main/docs/remote-access-tls.md"
+              target="_blank"
+              rel="noopener noreferrer"
+            >remote-access-tls.md</a>.
+          </small>
+        </label>
+
+        {#if pairingError}
+          <div class="alert error" role="alert">{pairingError}</div>
+        {/if}
+
+        <div class="form-actions">
+          <button type="submit" class="btn btn-primary" disabled={pairingSubmitting}>
+            {pairingSubmitting ? 'Minting…' : 'Mint pairing code'}
+          </button>
+          <button type="button" class="btn btn-secondary" onclick={cancelPairing} disabled={pairingSubmitting}>
+            Cancel
+          </button>
+        </div>
+      </form>
+    {:else if pairingMode === 'result'}
+      <section class="connection-form pairing-result" aria-label="Pairing code">
+        <h2>Scan or copy the pairing code</h2>
+        <p class="alert warn" role="status">
+          This code will be shown only once and won't be shown again — copy it or scan it now.
+          It carries a live credential; the underlying device principal can be revoked later from
+          this stack's guardian if needed.
+        </p>
+
+        {#if pairingQrSvg}
+          <div class="pairing-qr">{@html pairingQrSvg}</div>
+        {:else}
+          <p class="alert" role="status">
+            The QR image couldn't be generated on this stack — scan isn't available, but the
+            pairing code below works exactly the same. Copy it into the new device.
+          </p>
+        {/if}
+
+        <div class="field">
+          <span id="pairing-code-label">Pairing code</span>
+          <code class="pairing-code" aria-labelledby="pairing-code-label">{pairingCode}</code>
+        </div>
+
+        <div class="form-actions">
+          <button type="button" class="btn btn-secondary" onclick={copyPairingCode}>
+            {pairingCopied ? 'Copied' : 'Copy code'}
+          </button>
+        </div>
+
+        {#if pairingWarnings.length > 0}
+          <ul class="alert warn pairing-warnings">
+            {#each pairingWarnings as warning}
+              <li>{warning}</li>
+            {/each}
+          </ul>
+        {/if}
+
+        <p class="lede">
+          On the other device, open the connections page and paste this code (or scan the QR with
+          any camera/QR app), or use it as the <code>?pair=</code> link if this stack has a hosted
+          client origin. Non-local client origins also need
+          <code>GUARDIAN_CORS_ALLOWED_ORIGINS</code> set for this guardian.
+        </p>
+
+        <div class="form-actions">
+          <button type="button" class="btn btn-primary" onclick={donePairing}>
+            Done
+          </button>
+        </div>
+      </section>
+    {/if}
+
+    {#if clientAppReachable && runtimeContext.clientAppUrl}
+      <section class="install-app" aria-label="Install OpenPalm app">
+        <a
+          class="btn btn-secondary"
+          href={runtimeContext.clientAppUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          Install OpenPalm app
+        </a>
+        <small>
+          Open the app at its stable localhost origin, then use your browser's Install control.
+        </small>
+      </section>
     {/if}
   </main>
 
@@ -291,6 +548,47 @@
     background: color-mix(in srgb, var(--s-seal) 8%, transparent);
     color: var(--s-seal);
     border: 1px solid color-mix(in srgb, var(--s-seal) 25%, transparent);
+  }
+
+  .alert.warn {
+    padding: var(--s-sp-3);
+    border-radius: 2px;
+    background: var(--s-paper-deep);
+    color: var(--s-ink);
+    border: 1px solid var(--s-line);
+    margin: 0;
+  }
+  ul.pairing-warnings {
+    padding-left: var(--s-sp-5);
+  }
+
+  .toolbar-row {
+    display: flex;
+    gap: var(--s-sp-2);
+  }
+
+  .pairing-qr :global(svg) {
+    width: 200px;
+    height: 200px;
+    max-width: 100%;
+  }
+  .pairing-code {
+    display: block;
+    word-break: break-all;
+    padding: var(--s-sp-2) var(--s-sp-3);
+    background: var(--s-paper-deep);
+    border-radius: 2px;
+    font-family: var(--s-font-mono);
+    font-size: var(--s-type-deed);
+  }
+
+  .install-app {
+    display: flex;
+    align-items: center;
+    gap: var(--s-sp-3);
+  }
+  .install-app small {
+    color: var(--s-ink-3);
   }
 
   .connections-list {
@@ -354,6 +652,10 @@
   .badge.active {
     background: var(--s-seal);
     color: white;
+  }
+  .badge.kind {
+    background: var(--s-paper-deep);
+    color: var(--s-ink-3);
   }
   .badge.password {
     background: transparent;

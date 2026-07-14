@@ -215,3 +215,12 @@ describe('guardian MCP gateway', () => {
     }
   });
 });
+
+import { _mcpSelfDialBaseUrl } from './mcp';
+import { DIRECT_PORT } from './config';
+
+describe('MCP self-dial port', () => {
+  it('self-dials the plain-HTTP DIRECT_PORT', () => {
+    expect(_mcpSelfDialBaseUrl()).toBe(`http://127.0.0.1:${DIRECT_PORT}`);
+  });
+});

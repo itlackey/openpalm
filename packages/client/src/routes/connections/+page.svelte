@@ -6,13 +6,26 @@
   // probed directly against each connection URL.
   import { onMount } from 'svelte';
   import { page } from '$app/state';
+  import { replaceState } from '$app/navigation';
   import IconLock from '@openpalm/ui-kit/components/icons/IconLock.svelte';
   import Drawer from '@openpalm/ui-kit/components/common/Drawer.svelte';
   import { getClientBoot, type ClientBoot } from '$lib/boot.js';
   import { createTransport, type HealthProbeResult } from '$lib/transport/index.js';
-  import type { ConnectionEntry } from '$lib/connections/index.js';
+  import type { ConnectionEntry, ConnectionKind } from '$lib/connections/index.js';
+  import {
+    validateConnectionUrl,
+    normalizeGuardianUrl,
+    TLS_GUIDE_URL,
+    REMOTE_CLIENT_GUIDE_URL,
+  } from '$lib/connections/url-policy.js';
+  import { parsePairingCode, type PairingPayload } from '$lib/connections/pairing.js';
+  import { checkRuntimeContract, type RuntimeContractResult } from '$lib/runtime-handshake.js';
+  import { detectClientDisplayMode, type ClientDisplayMode } from '$lib/client-context.js';
 
   type AuthMode = 'none' | 'basic' | 'bearer';
+  /** Add/edit form kind: 'local-opencode' is reserved for synthesized/locked
+   *  runtime-config entries and is never offered here (#486 D2). */
+  type FormKind = Extract<ConnectionKind, 'remote-opencode' | 'openpalm-client-api'>;
 
   let boot: ClientBoot | null = null;
   let connections = $state<ConnectionEntry[]>([]);
@@ -30,12 +43,35 @@
   let formId = $state<string | null>(null);
   let formLabel = $state('');
   let formUrl = $state('');
+  // #486 D2: the connection-kind selector. Only rendered in add/edit modes —
+  // locked entries only ever open in 'credentials' mode, which never touches
+  // identity fields (kind included).
+  let formKind = $state<FormKind>('remote-opencode');
   let formAuthMode = $state<AuthMode>('none');
   let formUsername = $state('');
   let formSecret = $state('');
   let formClearSecret = $state(false);
   let formSubmitting = $state(false);
   let formError = $state('');
+  // #557 D1: set only for an 'insecure-remote' refusal, so the error alert
+  // can deep-link the TLS guide; cleared everywhere formError is reset.
+  let formErrorGuideUrl = $state<string | null>(null);
+
+  // #511 D3/D4: "Have a pairing code?" paste field, shown at the top of the
+  // add-mode form only. Applying a code prefills the same form fields a
+  // manual guardian-kind entry would use; the secret then flows through the
+  // existing buildAuth() -> secrets.set() encrypted-store path below —
+  // nothing pairing-specific touches storage.
+  let pairingPasteCode = $state('');
+
+  // #511 D2: per-connection runtime-contract handshake result, probed
+  // alongside health for 'openpalm-client-api' entries only (plain
+  // remote-opencode targets have nothing to handshake).
+  let contracts = $state<Record<string, RuntimeContractResult>>({});
+
+  // #511 D8: browser-only install hint, resolved once in onMount (never
+  // server-computed — mirrors +layout.svelte's dataset.displayMode stamp).
+  let displayMode = $state<ClientDisplayMode>('browser');
 
   const formTitle = $derived(
     formMode === 'add' ? 'Add connection' : formMode === 'credentials' ? 'Set credentials' : 'Edit connection'
@@ -44,9 +80,25 @@
   let deletingId = $state<string | null>(null);
 
   onMount(async () => {
+    displayMode = detectClientDisplayMode();
     boot = await getClientBoot();
     await refresh();
     if (page.url.searchParams.get('new') === '1') openAddForm();
+
+    // #511 D3/D4: ?pair= deep link — parse, open the add form prefilled the
+    // same way the paste field does, then strip the parameter from history
+    // so the credential-bearing code doesn't linger in the URL bar.
+    const pairParam = page.url.searchParams.get('pair');
+    if (pairParam) {
+      const result = parsePairingCode(pairParam);
+      if (result.ok) {
+        openAddForm();
+        applyPairingPayload(result.payload);
+      }
+      const url = new URL(page.url);
+      url.searchParams.delete('pair');
+      replaceState(url, {});
+    }
   });
 
   async function refresh(): Promise<void> {
@@ -64,11 +116,67 @@
         const transport = createTransport({
           baseUrl: entry.url,
           auth: await secrets.resolveAuth(entry),
+          // #486 D2: a guardian /oc base's bare root (`GET /oc/`) is not an
+          // allowlisted route and 404s even when the guardian is fully
+          // healthy — probe the allowlisted `/session` route instead.
+          probePath: entry.kind === 'openpalm-client-api' ? '/session' : '/',
         });
         return { id: entry.id, result: await transport.probeHealth() };
       })
     );
     health = Object.fromEntries(updates.map((u) => [u.id, u.result]));
+
+    // #511 D2: the handshake probes the connection's ORIGIN root, not the
+    // OpenCode/guardian API surface the transport talks to — scoped to
+    // 'openpalm-client-api' entries only (D2: a plain remote-opencode target
+    // is by definition not an OpenPalm host, nothing to handshake).
+    const guardianEntries = entries.filter((entry) => entry.kind === 'openpalm-client-api');
+    const contractUpdates = await Promise.all(
+      guardianEntries.map(async (entry) => ({ id: entry.id, result: await checkRuntimeContract(entry.url) }))
+    );
+    contracts = Object.fromEntries(contractUpdates.map((u) => [u.id, u.result]));
+  }
+
+  /** Contract-skew remediation copy — null when nothing to say (legacy /
+   *  compatible / not yet probed). */
+  function contractRemediation(entry: ConnectionEntry): string | null {
+    const contract = contracts[entry.id];
+    if (!contract) return null;
+    if (contract.state === 'newer') {
+      return `This server speaks a newer OpenPalm protocol (v${contract.version}) than this app supports (v2). Chat still works; update this app.`;
+    }
+    if (contract.state === 'older') {
+      return `This server speaks an older OpenPalm protocol (v${contract.version}) than this app expects (v2). Some features may be unavailable.`;
+    }
+    return null;
+  }
+
+  /** Prefill the add form from a decoded pairing payload (#511 D3/D4). The
+   *  secret then flows through the EXISTING buildAuth() -> secrets.set()
+   *  encrypted-store path on submit — the stored ConnectionEntry carries
+   *  only secretRef, never the raw secret. */
+  function applyPairingPayload(payload: PairingPayload): void {
+    formKind = 'openpalm-client-api';
+    formLabel = payload.label ?? formLabel;
+    formUrl = payload.url;
+    formAuthMode = 'basic';
+    formUsername = payload.username;
+    formSecret = payload.secret;
+    pairingPasteCode = '';
+    formError = '';
+    formErrorGuideUrl = null;
+  }
+
+  function applyPairingPaste(): void {
+    const code = pairingPasteCode.trim();
+    if (!code) return;
+    const result = parsePairingCode(code);
+    if (!result.ok) {
+      formError = result.error;
+      formErrorGuideUrl = null;
+      return;
+    }
+    applyPairingPayload(result.payload);
   }
 
   function healthLabel(id: string): { text: string; tone: 'ok' | 'warn' | 'bad' | 'idle' } {
@@ -84,6 +192,13 @@
     if (status.state === 'blocked' && status.detail === 'cors') {
       return { text: 'blocked (CORS)', tone: 'warn' };
     }
+    // #557 D6: a plain-http remote target on this app's https origin is
+    // refused by the browser's mixed-content blocker before any request is
+    // even attempted — distinct badge text from "unreachable" so the fix
+    // (use HTTPS) is obvious rather than looking like a dead server.
+    if (status.state === 'insecure') {
+      return { text: 'needs HTTPS', tone: 'warn' };
+    }
     return { text: 'unreachable', tone: 'bad' };
   }
 
@@ -92,16 +207,44 @@
    * that actually fix it — GUARDIAN_CORS_ALLOWED_ORIGINS (the allowlist
    * itself) and GUARDIAN_DIRECT_INGRESS (which must be enabled for a
    * guardian-fronted connection to answer direct browser requests at all;
-   * review §I4). null when the connection isn't in the blocked/cors state.
+   * review §I4). #486 D2 additionally names GUARDIAN_DIRECT_INGRESS alone
+   * for a guardian-kind connection reporting `unreachable` + `HTTP 404` — a
+   * healthy guardian with its direct listener off 404s every route
+   * (including the allowlisted `/session` probe), which otherwise looks
+   * indistinguishable from a genuinely dead server. null when the connection
+   * isn't in either remediable state.
    */
-  function healthRemediation(id: string): string | null {
-    const status = health[id];
-    if (status?.state !== 'blocked' || status.detail !== 'cors') return null;
-    return (
-      'The server refused this cross-origin request. Add this app’s origin to ' +
-      'GUARDIAN_CORS_ALLOWED_ORIGINS on the connection’s server, and make sure ' +
-      'GUARDIAN_DIRECT_INGRESS is enabled if this is a guardian-fronted connection.'
-    );
+  function healthRemediation(entry: ConnectionEntry): string | null {
+    const status = health[entry.id];
+    if (status?.state === 'blocked' && status.detail === 'cors') {
+      return (
+        'The server refused this cross-origin request. Add this app’s origin to ' +
+        'GUARDIAN_CORS_ALLOWED_ORIGINS on the connection’s server, and make sure ' +
+        'GUARDIAN_DIRECT_INGRESS is enabled if this is a guardian-fronted connection.'
+      );
+    }
+    if (
+      entry.kind === 'openpalm-client-api' &&
+      status?.state === 'unreachable' &&
+      status.detail === 'HTTP 404'
+    ) {
+      return (
+        'The guardian answered but reported HTTP 404 — its direct listener is off. Set ' +
+        'GUARDIAN_DIRECT_INGRESS=true on the guardian and restart it (see the remote-client ' +
+        'setup guide).'
+      );
+    }
+    return null;
+  }
+
+  /**
+   * #557 D6/D7: remediation for the 'insecure' probe state — this app runs
+   * on a secure (https) origin, so browsers block plain-HTTP connections to
+   * remote servers (mixed content). null when the connection isn't in that
+   * state.
+   */
+  function isInsecure(id: string): boolean {
+    return health[id]?.state === 'insecure';
   }
 
   function openAddForm(): void {
@@ -109,11 +252,26 @@
     formId = null;
     formLabel = '';
     formUrl = '';
+    formKind = 'remote-opencode';
     formAuthMode = 'none';
     formUsername = '';
     formSecret = '';
     formClearSecret = false;
     formError = '';
+    formErrorGuideUrl = null;
+  }
+
+  /**
+   * #486 D2: guardian principals always authenticate with HTTP Basic — force
+   * `formAuthMode` when the user switches the kind selector to the guardian
+   * kind in add mode. An `onchange` handler (NOT `$effect` — sveltekit-
+   * rules.md treats `$effect` as a bug), so it only fires on an explicit
+   * user interaction, not on every reactive re-render.
+   */
+  function onFormKindChange(): void {
+    if (formMode === 'add' && formKind === 'openpalm-client-api') {
+      formAuthMode = 'basic';
+    }
   }
 
   /**
@@ -143,16 +301,22 @@
     formId = entry.id;
     formLabel = entry.label;
     formUrl = entry.url;
+    // #486 D2: kinds are only editable in add/edit modes; a 'local-opencode'
+    // locked entry only ever opens in 'credentials' mode (never 'edit'), so
+    // this narrowing is safe — it's display-only context there anyway.
+    formKind = entry.kind === 'openpalm-client-api' ? 'openpalm-client-api' : 'remote-opencode';
     formAuthMode = entry.auth.mode;
     formSecret = '';
     formClearSecret = false;
     formError = '';
+    formErrorGuideUrl = null;
     formUsername = await loadStoredUsername(entry);
   }
 
   function cancelForm(): void {
     formMode = 'idle';
     formError = '';
+    formErrorGuideUrl = null;
   }
 
   /** Store new credential material (if any) and return the auth descriptor. */
@@ -198,19 +362,38 @@
     const url = formUrl.trim();
     if (!label || !url) {
       formError = 'Label and URL are required.';
+      formErrorGuideUrl = null;
       return;
     }
 
+    // #557 D1: the URL field is validated in add/edit modes only —
+    // 'credentials' mode never submits a URL, identity is config-owned
+    // there (see the read-only context block above).
+    if (formMode === 'add' || formMode === 'edit') {
+      const verdict = validateConnectionUrl(url);
+      if (!verdict.ok) {
+        formError = verdict.message;
+        formErrorGuideUrl = verdict.reason === 'insecure-remote' ? verdict.guideUrl : null;
+        return;
+      }
+    }
+
+    // #486 D2: guardian-kind connections are stored with a normalized `/oc`
+    // suffix so the transport's baseUrl already routes every call correctly
+    // with no further rewriting.
+    const storedUrl = formKind === 'openpalm-client-api' ? normalizeGuardianUrl(url) : url;
+
     formSubmitting = true;
     formError = '';
+    formErrorGuideUrl = null;
     try {
       if (formMode === 'add') {
         const auth = await buildAuth(null);
-        await boot.store.add({ label, url, kind: 'remote-opencode', auth });
+        await boot.store.add({ label, url: storedUrl, kind: formKind, auth });
       } else if (formMode === 'edit' && formId) {
         const existing = await boot.store.get(formId);
         const auth = await buildAuth(existing);
-        await boot.store.update(formId, { label, url, auth });
+        await boot.store.update(formId, { label, url: storedUrl, kind: formKind, auth });
       } else if (formMode === 'credentials' && formId) {
         // E6: locked entries route through setSecretRef, never update() —
         // label/url are read-only context in this mode and are never sent.
@@ -292,8 +475,28 @@
             <span class="badge health {healthLabel(conn.id).tone}">{healthLabel(conn.id).text}</span>
           </div>
           <div class="connection-url">{conn.url}</div>
-          {#if healthRemediation(conn.id)}
-            <p class="remediation">{healthRemediation(conn.id)}</p>
+          {#if healthRemediation(conn)}
+            <p class="remediation">
+              {healthRemediation(conn)}
+              {#if conn.kind === 'openpalm-client-api'}
+                <a href={REMOTE_CLIENT_GUIDE_URL} target="_blank" rel="noopener noreferrer"
+                  >Remote client setup guide</a
+                >
+              {/if}
+            </p>
+          {/if}
+          {#if isInsecure(conn.id)}
+            <p class="remediation">
+              This app runs on a secure (https) origin, so browsers block plain-HTTP connections
+              to remote servers. <a href={TLS_GUIDE_URL} target="_blank" rel="noopener noreferrer"
+                >Set up HTTPS for remote access</a
+              >.
+            </p>
+          {/if}
+          {#if contractRemediation(conn)}
+            <!-- #511 D2: version-skew notice — legacy/compatible render
+                 nothing, only 'newer'/'older' get a remediation paragraph. -->
+            <p class="remediation">{contractRemediation(conn)}</p>
           {/if}
         </div>
         <div class="connection-actions">
@@ -329,6 +532,12 @@
       <p class="empty">No connections yet — add one to start chatting.</p>
     {/each}
   </section>
+
+  {#if displayMode === 'browser'}
+    <!-- #511 D8: hidden when already standalone-pwa or inside Electron —
+         this is the issue's display-mode consumer for the client artifact. -->
+    <p class="install-hint">Tip: install OpenPalm as an app — use your browser's Install control.</p>
+  {/if}
 
   <!-- G2/G3 (review 2026-07-10): stays mounted while the drawer is open
        rather than `{#if formMode === 'idle'}`-gated (and NOT `disabled` —
@@ -375,16 +584,58 @@
         />
       </label>
 
+      {#if formMode === 'add'}
+        <!-- #511 D3/D4: pairing paste field — applies a host-minted pairing
+             code to prefill the rest of this form. The scan (any camera/QR
+             app) or the ?pair= deep link both land here too. Placed right
+             after Label (not literally first) so the Drawer's focus-trap
+             initial-focus target stays Label, unchanged from before this
+             field existed (G2/G3 focus-management contract,
+             e2e/connections-form.pw.ts). -->
+        <label class="field">
+          <span>Have a pairing code?</span>
+          <div class="field-inline">
+            <input
+              type="text"
+              bind:value={pairingPasteCode}
+              placeholder="openpalm-pair:…"
+              autocomplete="off"
+            />
+            <button type="button" class="btn btn-secondary btn-sm" onclick={applyPairingPaste}>
+              Apply
+            </button>
+          </div>
+          <small>Paste a code minted from another OpenPalm device's Connections page.</small>
+        </label>
+      {/if}
+
+      <!-- #486 D2: connection-kind selector. 'local-opencode' is reserved
+           for synthesized/locked runtime-config entries and is never offered
+           here — only the two user-addable kinds. -->
+      <label class="field">
+        <span>Kind</span>
+        <select bind:value={formKind} onchange={onFormKindChange}>
+          <option value="remote-opencode">OpenCode server (direct)</option>
+          <option value="openpalm-client-api">OpenPalm guardian (/oc)</option>
+        </select>
+      </label>
+
       <label class="field">
         <span>URL</span>
         <input
           type="url"
           bind:value={formUrl}
-          placeholder="http://10.0.0.5:8443"
+          placeholder="https://home-server.tailnet.ts.net"
           required
           autocomplete="off"
         />
-        <small>The base URL where the assistant (OpenCode or guardian) is reachable.</small>
+        {#if formKind === 'openpalm-client-api'}
+          <small>
+            The guardian's base URL — <code>/oc</code> is appended automatically if you leave it off.
+          </small>
+        {:else}
+          <small>The base URL where the assistant (OpenCode or guardian) is reachable.</small>
+        {/if}
       </label>
       {/if}
 
@@ -403,10 +654,17 @@
           <input
             type="text"
             bind:value={formUsername}
-            placeholder="openpalm"
+            placeholder="opencode"
             autocomplete="off"
           />
-          <small>Defaults to <code>openpalm</code> — the username the OpenPalm stack provisions.</small>
+          {#if formKind === 'openpalm-client-api'}
+            <!-- #486 D2: guardian principals authenticate as their principal
+                 id, not OpenCode's default username. -->
+            <small>The username is the guardian principal id you minted (e.g. <code>my-phone</code>), not <code>opencode</code>.</small>
+          {:else}
+            <!-- PR #564 P2-2: OpenCode's server default username is 'opencode'. -->
+            <small>Defaults to <code>opencode</code> — OpenCode's server username.</small>
+          {/if}
         </label>
         <label class="field">
           <span>Password</span>
@@ -450,7 +708,14 @@
       {/if}
 
       {#if formError}
-        <div class="alert error" role="alert">{formError}</div>
+        <div class="alert error" role="alert">
+          {formError}
+          {#if formErrorGuideUrl}
+            <a href={formErrorGuideUrl} target="_blank" rel="noopener noreferrer"
+              >Set up HTTPS for remote access</a
+            >
+          {/if}
+        </div>
       {/if}
     </form>
 
@@ -499,6 +764,12 @@
 
   .empty {
     color: var(--s-ink-3);
+  }
+
+  .install-hint {
+    color: var(--s-ink-3);
+    font-size: var(--s-type-deed);
+    margin: 0;
   }
 
   .connection-card {

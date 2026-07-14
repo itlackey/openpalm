@@ -9,6 +9,124 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **PWA install paths: pairing UX, runtime handshake, install affordances,
+  offline verification** (#511). Host admin `/connections` gains a "Pair a
+  device" panel (`host:stack:write`-gated): it mints a one-time,
+  individually-revocable guardian `direct` principal via the existing
+  loopback-only admin listener and renders a QR code + copyable
+  `openpalm-pair:` code, shown exactly once and never persisted or logged.
+  The `@openpalm/client` `/connections` add form parses that code (a paste
+  field, or a `?pair=` deep link stripped from history on consumption) to
+  prefill itself — the credential then flows through the existing encrypted
+  secret store. A new client-side `/api/runtime` contract-version handshake
+  (`checkRuntimeContract`) probes `openpalm-client-api`-kind connections and
+  renders a version-skew notice for a `newer`/`older` host, while treating a
+  missing endpoint (plain OpenCode/guardian) as the normal legacy case, not
+  an error. `ServerRuntimeContext` gains an additive `clientAppUrl` field;
+  the host `/connections` page shows an "Install OpenPalm app" button once a
+  browser-side reachability probe confirms the sibling static client is
+  actually being served. `detectClientDisplayMode()` (electron /
+  standalone-pwa / browser) is now stamped on `<html data-display-mode>` and
+  drives a browser-only "install as an app" hint on the client's
+  `/connections` page. A new Playwright suite
+  (`packages/client/e2e/offline-shell.pw.ts`) targets the offline app shell
+  and saved IndexedDB connections after terminating both its isolated origin
+  server and stub assistant. Workbox now explicitly precaches `/index.html`:
+  adapter-static writes that fallback after the PWA plugin's output scan, so
+  relying on the glob alone left offline navigation without its registered
+  fallback. Both offline browser tests now run in CI without skips.
+  Hosted-origin CI deploy to `app.openpalm.dev` (and the matching guardian
+  CORS default) remains explicitly deferred pending a hosting provider —
+  everything else is origin-agnostic and unblocked by that.
+  `docs/managing-openpalm.md` documents the pairing-UI flow as the primary
+  remote-client provisioning path, with the manual `curl` mint kept as the
+  advanced/headless alternative.
+- **Network access presets: bundle binding + auth + mDNS into one wizard
+  choice** (#563). A single "Network access" step in the setup wizard (and
+  the equivalent `network` block in a headless `SetupSpec`) replaces
+  independently-tuned bind vars with four presets — "This PC only" (default),
+  "Home network, with password", "Home network, open access", and "Shared
+  network, guardian protected" — resolved by a new pure `network-preset.ts`
+  in `@openpalm/lib`. The home-password preset turns on OpenCode's own Basic
+  auth (`OPENCODE_AUTH` + a password stored as the `op_opencode_password`
+  file secret, always materialized but inert until a preset enables it); the
+  guardian now attaches the same credential to every upstream assistant call
+  (proxy, event-fanout, drift-check) so portal traffic keeps working once
+  auth is on. Per-preset `.local` mDNS advertisement is delivered entirely by
+  the existing host mDNS responder (#488) via the bind vars each preset
+  writes — no new file-assembly step. `collectBindAddressWarnings` and the
+  new `collectNetworkExposureWarnings` reword startup warnings to name the
+  preset that deliberately configures an exposure, collapsing the noise for
+  a matched preset while keeping unexplained exposure loud. The admin
+  Assistant tab now shows the detected active preset (read-only; switching
+  stays in the wizard via rerun) and the default OpenCode connection picks
+  up the preset's password automatically when auth is on. Security defaults
+  are unchanged — every knob stays off/loopback unless an operator picks a
+  non-default preset.
+- **Remote-only (client) install completion** (#486). `openpalm app` now
+  tolerates a machine with no local stack: it serves the pwa-static host UI
+  plus the localhost `@openpalm/client` connection manager and lands on
+  `/connections/new` instead of throwing an install-required error (bare
+  `openpalm ui serve` still requires an install). The `openpalm-client-api`
+  (guardian `/oc`) connection kind is now wired end to end: both connection
+  forms (client app and host UI) offer a Kind selector, guardian URLs are
+  normalized to end in `/oc` on save, health checks probe the allowlisted
+  `GET /session` route instead of the guardian's un-allowlisted root (so a
+  healthy guardian no longer misreports `unreachable HTTP 404`), and a 404
+  from a guardian-kind connection now names `GUARDIAN_DIRECT_INGRESS` in its
+  remediation copy. `docs/managing-openpalm.md` documents the manual
+  remote-client provisioning flow (enable `GUARDIAN_DIRECT_INGRESS`, add the
+  client origin to `GUARDIAN_CORS_ALLOWED_ORIGINS`, mint a `direct` principal
+  via the guardian admin listener). A new end-to-end suite
+  (`packages/client/tests/remote-attach.e2e.test.ts`) drives a real spawned
+  guardian with the real client transport to verify the full remote-attach
+  path.
+- **Standalone OpenCode-compatible portal packages** (#491). `@openpalm/discord-portal`
+  and `@openpalm/slack-portal` are now runnable standalone with Bun
+  (`bunx @openpalm/discord-portal` / `@openpalm/slack-portal`) against any
+  OpenCode server, not only the shipped guardian-fronted stack: new `bin/`
+  CLI entrypoints (`openpalm-discord-portal`, `openpalm-slack-portal`) with a
+  crash safety net, a client-side session-reuse fallback
+  (`PORTAL_SESSION_REUSE=client`, `PORTAL_SESSION_TTL_MS`) for plain OpenCode
+  servers that ignore the guardian's session-reuse hint header, a direct-env
+  secret fallback alongside the existing `*_FILE` discipline
+  (`readRequiredSecret`: `PRINCIPAL_SECRET`/`OPENCODE_PASSWORD`,
+  `DISCORD_BOT_TOKEN`, `SLACK_BOT_TOKEN`/`SLACK_APP_TOKEN`), a
+  `SLACK_BOT_NAME` branding variable, and rewritten standalone READMEs
+  carrying the mandated security framing (guardian-fronted vs. personal /
+  small-trusted-team standalone use).
+- **Remote-access TLS guide and client-side HTTPS enforcement** (#557).
+  `docs/remote-access-tls.md` documents fronting the guardian direct listener
+  with real HTTPS for phones/remote clients: Tailscale `serve` as the
+  recommended default (automatic Let's Encrypt, no port forwarding), Caddy +
+  a user-owned domain (DNS-challenge Let's Encrypt) as the alternative, and
+  an explicit non-goal of ever installing a private CA on a phone. The
+  OpenPalm client now refuses a plain-HTTP connection URL for a non-loopback
+  host whenever it itself runs on an `https:` origin (the mixed-content
+  platform rule) — the add/edit connection form rejects the entry with a
+  message deep-linking the guide, and connection health reports a `needs
+  HTTPS` badge instead of a misleading "unreachable" for an existing
+  connection that becomes insecure. Loopback targets, the loopback-origin
+  desktop default, and the LAN-served plain-HTTP client tier are unaffected.
+- **Host control-plane LAN mDNS self-advertisement for the guardian and
+  assistant** (#488). A `multicast-dns` responder in `@openpalm/lib`
+  runs inside the long-lived host UI process (started from
+  `hooks.server.ts`; every supervisor — `openpalm ui serve`, `openpalm`,
+  Electron — spawns it) and advertises `<name>-guardian.local` /
+  `<name>.local` (`<name>` derived from `OP_PROJECT_NAME`, default
+  `openpalm`) whenever the corresponding bind address
+  (`OP_BIND_ADDRESS` / `OP_ASSISTANT_BIND_ADDRESS`) is set non-loopback. The
+  loopback-only default opens no socket at all. A new `OP_MDNS=0|false|off`
+  knob in `stack.env` force-disables the responder (e.g. to avoid conflicting
+  with an operator's existing avahi/Bonjour setup). The admin UI's LAN
+  Exposure card (Assistant tab) now shows the derived `.local` name(s) and
+  whether each is currently advertised. This replaces the guardian container
+  as the advertisement locus documented in the original issue — container
+  mDNS on the default Docker bridge network never reaches the physical LAN
+  (see `docs/technical/network-partitioning-d5a.md`); the guardian
+  container/image is unchanged by this work. OpenCode's native in-container
+  mDNS responder (`server.mdns`/`server.mdnsDomain` in the assistant/guardian
+  `opencode.jsonc`) remains as a manual/advanced fallback.
 - **New `@openpalm/client` npm package** — the unprivileged chat/connections
   static app extracted from the admin UI (host/client split, #555). It joins the
   platform release exactly like `@openpalm/ui`: published by `platform`/`all`
@@ -47,16 +165,32 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   - `setAuthStrategy()` / `AuthStrategy` — replace the built-in HTTP Basic /
     principal-token authenticator (e.g. with SSO/OIDC). The default
     `basicTokenAuthStrategy` is unchanged.
-  - `setPolicyProvider()` / `PolicyProvider` — a port for richer authorization
-    (per-tenant data scope, RBAC, routing). The public default allows all;
-    ownership and rate limits still apply.
   - The package now declares `exports`, `main`/`types`, a `bin`
     (`openpalm-guardian`), and a `files` allowlist that excludes test files.
 - The audit writer is created lazily on first write, so importing the guardian
   library has no filesystem side effects.
+- Guardian admin API: `DELETE /admin/principals/:id` removes a principal row
+  outright (Bearer-authed like the rest of `/admin`; 404 for unknown ids; the
+  auth cache is invalidated immediately). Principals seeded from
+  `PORTAL_*_SECRET_FILE` env are re-seeded at the next guardian boot — use the
+  addon/secret lifecycle to retire those. (#433)
 
 ### Changed
 
+- **`@openpalm/portal-sdk` removes the unused public `BasePortal.guardianUrl`
+  field** (#491). Base URL resolution is now `OcClient`'s job alone
+  (`OPENCODE_BASE_URL`, default `http://guardian:8080/oc`) — the field's only
+  consumers were the two in-repo portal test suites (updated in this change);
+  the guardian's own `GuardianOpenAiApi` has a separate local field and no
+  portal-sdk dependency. Breaking change for any out-of-tree consumer reading
+  `guardianUrl` directly; the package is pre-1.0 beta.
+- **Docs:** the hosted client origin (`https://app.openpalm.dev`) is
+  deliberately **not** pre-baked into the guardian's default CORS allowlist —
+  it stays an operator opt-in via `GUARDIAN_CORS_ALLOWED_ORIGINS` until #511's
+  hosted deploy actually exists. (#557, trails #511)
+- **Portal `/health` now reports `service: portal-<name>`** (was
+  `channel-<name>`) — update any external monitoring scripted against the old
+  string. (#490)
 - **Version tags are now bare semver everywhere — the `v` prefix is retired.**
   Docker images publish as `openpalm/<svc>:X.Y.Z` (was `:vX.Y.Z`), the git
   summary tag is `X.Y.Z` (was `vX.Y.Z`), and `OP_*_VERSION` / `.skeleton-version`
@@ -73,9 +207,22 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   strategies that verify against a remote JWKS), and the exported `authenticate()`
   is now async. The built-in `basicTokenAuthStrategy` and its behavior are
   unchanged (it still resolves synchronously).
+- The guardian state DB (`data/guardian/state.db`) now runs in SQLite WAL
+  mode with `PRAGMA user_version` schema-migration bookkeeping. `-wal`/`-shm`
+  sidecar files appear next to `state.db` inside `data/guardian/` and are kept
+  guardian-private (mode 0600). (#433)
 
 ### Removed
 
+- **The deprecated `channel_lan` Docker network** (renamed to `portal_net` in
+  0.12.0, retained one release as an empty bridge) is gone from
+  `core.compose.yml`. Custom `custom.compose.yml` overlays still attaching
+  services to `channel_lan` must rename to `portal_net`; lifecycle operations
+  now fail fast with an actionable message (before changing anything) when
+  such a reference is detected, and warn when an overlay self-defines a
+  deprecated `channel_lan` network. (#490)
+- **The legacy `CHANNEL_NAME` compose marker is no longer recognized** for
+  portal discovery — `PORTAL_NAME` is the only marker. (#490)
 - Dead control-plane exports pruned from `@openpalm/lib`: `formatForDocker`
   (the `v`-prefix boundary, no longer needed), `ensureCoreCompose`, and
   `seedAssistantPersonaFiles` (zero production callers after the 0.12.34–0.12.40
@@ -85,6 +232,217 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **UI-password rotation takes effect on the running server** (PR #564 second
+  retest P1-4): hooks.server.ts promotes the login password into
+  `process.env.OP_UI_LOGIN_PASSWORD` at startup and `getUiLoginPassword()` reads
+  env first, so an explicit rotation wrote the new password to disk but the
+  running host UI kept accepting only the old one (old=200, new=401) until a
+  restart. The `/api/setup/complete` route now syncs the live env to the
+  freshly-set password, so the new password authenticates immediately and old
+  sessions (signed with the previous password) are invalidated.
+
+- **Moving image tags are refreshed on deploy** (PR #564 second retest R8): the
+  deploy always used `--pull missing`, which never refreshes an already-present
+  moving tag like `latest`, so a moving-tag rerun could recreate the old digest.
+  `resolvePullMode` now forces `--pull always` for a moving tag (`latest`,
+  channel names, unset) while keeping `--pull missing` for an immutable pinned
+  semver (avoids a needless pull) and for a locally-built `dev` image (never
+  hits the network).
+
+- **Non-interactive install stamps setup completion** (PR #564 second retest
+  R9): the file/headless install deploy called `runDeploy` without its
+  `markSetupComplete` callback, so a healthy non-interactive install never wrote
+  `OP_SETUP_COMPLETE=true` and the UI would later bounce the operator back into
+  the setup wizard. The callback is now wired; `runDeploy` still only stamps
+  completion once core services are healthy, so it stays correct for every mode.
+
+- **Explicit `{addon:false}` in a setup rerun disables the addon** (PR #564
+  second retest R6): the setup loop only acted on truthy addon flags, so
+  `{discord:false}` left Discord enabled. It now honors an explicit `false` as a
+  disable. Disabling a profile-bearing addon (voice/ollama) additionally clears
+  its `OP_VOICE_PROFILE`/`OP_OLLAMA_PROFILE` env key, so the profile-only
+  enablement migration can no longer re-derive and silently re-enable the addon
+  the operator just turned off.
+
+- **Setup no longer consumes ambient host secrets as operator input** (PR #564
+  second retest P1-3): `persistPortalCredentials` fell back to the host process
+  environment for any portal credential the setup spec omitted, so a leftover
+  `DISCORD_BOT_TOKEN` (etc.) in the operator's shell was silently written into
+  the secret store — overriding the keep-existing preservation. Portal
+  credentials now come only from the explicit spec; an omitted credential leaves
+  the persisted secret untouched.
+
+- **Error-body and documentation contract fixes** (PR #564 second retest): the
+  global Host-header and Origin rejections now include `requestId` in their JSON
+  bodies (matching the documented "every error body carries requestId"
+  contract); `api-spec.md` corrects `GET /guardian/stats` to the actual `GET
+  /stats` guardian-admin **Bearer** route (not host-session cookie); the
+  principal-rotation guide now curls the dedicated `/admin/principals/:id/rotate`
+  endpoint; and
+  the client connection form's username placeholder is `opencode` (not the stale
+  `openpalm`), matching the corrected password-only default.
+
+- **Setup input validation hardening** (PR #564 second retest): a JSON `null`
+  (or array/primitive) request body is now rejected as `400 invalid_json` across
+  all admin routes instead of throwing an unstructured 500 when a handler reads a
+  field off it; a connection/guardian URL carrying a query or fragment is
+  rejected (`unexpected_query_or_fragment`) rather than normalized into an
+  unusable base that mangles client path concatenation; the pairing mint's
+  guardian-admin call is now time-bounded so a listener that accepts but never
+  responds can't hang it; and the voice/Ollama setup profile endpoints read the
+  persisted hardware profile from OP_HOME (not `stackDir`), so a rerun no longer
+  loses the selected profile.
+
+- **Guardian admin-token rotation takes effect without a restart** (PR #564
+  second retest): `readAdminToken` cached the token file keyed only by path, so
+  rotating the file's contents in place left the old token valid and the new one
+  rejected until the guardian restarted. The cache now keys on the file's mtime
+  as well, so an in-place rotation is picked up immediately.
+
+- **Guardian principal creation validates id and kind** (PR #564 second retest):
+  `POST /admin/principals` now rejects a principal id containing a colon (or any
+  char outside `[a-z0-9._-]`) with `400 invalid_principal_id` — the id is the
+  Basic-auth username, and a colon can never round-trip through `user:pass`
+  parsing — and rejects an explicitly-supplied unknown `kind` with `400
+  invalid_kind` instead of silently minting a `portal` principal.
+
+- **Rootless smoke pre-run cleanup is profile-aware** (PR #564 retest P2-7): the
+  pre-run reset in `rootless-ownership-smoke.sh` ran a plain profile-unaware
+  `docker compose down`, so a prior `--keep` run's profile-gated guardian/portal
+  containers survived and were left dangling once the fixture directory was
+  deleted. Both the pre-run reset and the EXIT cleanup now share one teardown
+  that enables both addon profiles and a label backstop, so keep-then-rerun is
+  clean for the `stack` and `portal-discord` targets.
+
+- **Bare `openpalm` health probe respects the auth posture** (PR #564 retest
+  P3-4): the assistant reachability probe sends no Basic auth, so under the
+  `home-password` preset (`OPENCODE_AUTH=true`) `/health` answers `401` — which
+  proves the container is up. The probe now treats a `401`/`403` as reachable
+  (like a `2xx`), so the bare command no longer runs `docker compose up -d` and
+  needlessly recreates a healthy stack. A `5xx` or a connection error still reads
+  as down.
+
+- **Pairing QR is `string | null` end-to-end with a text-code fallback** (PR
+  #564 retest P3-3): the host UI pairing helper and `/connections` panel now type
+  `qrSvg` as `string | null` (matching the route and spec) and render the text
+  pairing code with an explanatory note instead of a broken/blank QR when the
+  host could not generate the SVG — pairing still works without the image.
+
+- **`channel_lan` deprecation guard rejects a stale overlay before any writes on
+  update too** (PR #564 retest P2-3): the guard now blocks install, update, and
+  upgrade (only uninstall is exempt) before `applyHome` touches any managed,
+  state, config, or secret file — so the operator gets the pre-write migration
+  instruction instead of a late post-write Compose failure.
+
+- **Host UI Basic auth sends the exact bytes OpenCode expects** (PR #564 retest
+  P2-1): all host forwarders (default/probe endpoint, host health, host proxy,
+  host OpenCode API client) now share one UTF-8-safe Basic-auth encoder instead
+  of Latin-1 `btoa`, and the file-backed password is stripped of trailing
+  newlines only (matching the assistant/guardian) instead of `.trim()`. A
+  password with surrounding spaces or non-ASCII characters (accents, CJK,
+  emoji) now authenticates identically everywhere.
+
+- **Unchanged setup rerun no longer rotates the UI login password or corrupts
+  portal credentials** (PR #564 retest P1-1, P1-2). The wizard no longer
+  generates a UI login password on a rerun; `security.uiLoginPassword` is
+  optional and omitted on an unchanged rerun, and the server preserves the
+  existing secret (failing closed only when there is nothing to preserve). And
+  secret-presence metadata from current-config is never assigned into string
+  credential fields (which previously serialized as `[object Object]` and
+  overwrote Discord/Slack secrets) — presence-only credentials stay empty and
+  are preserved server-side.
+
+- **Rootless smoke fixture hygiene** (PR #564 P3-3, P3-4): the `stack` and
+  `portal-discord` smoke targets now use distinct default assistant ports
+  (3896 / 3996) so they can run concurrently, and cleanup enables the addon
+  profiles on `down` (plus project-label container/network/volume backstops) so
+  a successful run no longer leaks Docker resources. Fixture setup/addon state
+  now lives in `state/stack.state.env`, matching the filesystem contract.
+
+- **Guardian ingress resource controls are enforced and bounded**: fixed-window
+  source-IP, principal, and per-user request budgets return `429`; ownership,
+  session-reuse, limiter, and event-subscriber state have hard caps; user IDs
+  and request bodies are length-bounded before they can consume unbounded
+  memory. `/stats` reports active user/portal limiter counts and configured
+  budgets.
+
+- **Setup-state transitions take effect without restarting the host UI**: the
+  request guard reads the app-written setup-completion record instead of
+  permanently latching the first completed state, so rerun/recovery/uninstall
+  transitions immediately reach the correct setup gate.
+
+- **Assistant client supervision uses portable millisecond timing**: the
+  entrypoint now reads `Date.now()` from its required Node runtime instead of
+  relying on GNU-specific `date +%s%3N` output.
+
+- **Re-running setup over a home-password install no longer rotates the
+  password** (PR #564 r3566887969): re-selecting the already-active
+  home-password preset on a rerun (empty box because the secret is never
+  returned) now keeps the existing OpenCode password instead of minting a new
+  one, so already-paired devices are not silently 401'd. Typing a new password
+  still rotates it as intended.
+
+- **Guardian upstream auth matches OpenCode exactly** (PR #564 r3566888272,
+  r3566889740): the guardian now strips only trailing newlines from the
+  OpenCode password (matching the assistant entrypoint's `$(cat)` instead of
+  `.trim()`, so a password with surrounding spaces no longer 401s every
+  guardian→assistant call), and honors `OPENCODE_SERVER_USERNAME` (default
+  `opencode`) instead of hardcoding the username.
+
+- **Host-UI Basic auth to OpenCode is correct on every path** (PR #564
+  r3566888629, r3566889513): all host-UI forwarders (default/runtime endpoint,
+  probe, chat proxy, host health, opencode http client) now default the Basic
+  username to OpenCode's server default `opencode` instead of `openpalm`, so a
+  correct password no longer 401s a user-added remote-OpenCode connection; and
+  the synthesized Local Assistant endpoint reads `OPENCODE_AUTH` and the
+  password fresh from stack.env / the secret file, so completing the
+  home-password wizard takes effect without restarting the host UI.
+
+- **Pairing principal IDs are collision-resistant and oversized labels are
+  rejected** (PR #564 r3566891355, r3566891768): the device-principal id suffix
+  widened from 16 to 64 bits so a same-label collision can no longer silently
+  overwrite (unpair) an existing device via the upsert store; and the pairing
+  endpoint caps the device label (and no longer lets a QR-render failure escape
+  after minting), so an oversized label can never orphan a durable guardian
+  principal.
+
+- **mDNS record correctness** (PR #564 r3566892051, r3566892362): a specific
+  non-IPv4 bind (IPv6 literal or hostname) is no longer encoded into a
+  malformed A record — such addresses are skipped. Legacy-unicast replies
+  (RFC 6762 §6.7, queries from a non-5353 source port) now echo the question,
+  clear the cache-flush bit, and use a short (≤10s) TTL so conventional
+  one-shot resolvers accept them.
+
+- **`channel_lan` deprecation guard no longer blocks uninstall/update**
+  (PR #564 r3566892768): the guard now throws only on activation
+  (install/upgrade), so a leftover `channel_lan` reference in a user
+  `custom.compose.yml` can no longer prevent tearing down or updating the stack.
+- **Bind-address warning no longer claims "guardian protected" without a
+  guardian** (PR #564 r3566893095): a non-loopback `OP_BIND_ADDRESS` with no
+  guardian-ingress addon enabled now warns that services are exposed
+  UNPROTECTED, instead of falsely asserting guardian protection.
+
+- **`this-pc` network preset now fails closed against host-env bind overrides**
+  (PR #564 r3566887693): `validateNetworkPresetEnv` rejects a setup when the
+  host process env exposes `OP_ASSISTANT_BIND_ADDRESS` or `OP_BIND_ADDRESS`
+  under the "This PC only" preset, instead of silently writing a loopback row
+  that Compose's process-env precedence would override — which could publish an
+  unauthenticated OpenCode/guardian on the LAN despite the operator's choice.
+
+- **Guardian mDNS no longer advertises an unreachable front door** (PR #564
+  P2-1): the `<name>-guardian.local` advertisement is now gated on
+  `GUARDIAN_DIRECT_INGRESS` being enabled, so a LAN-visible guardian bind with
+  direct ingress off (e.g. the shared-guardian preset default) stops pointing
+  the LAN at a `:3830` listener that returns 404.
+
+- **`OPENCODE_BASE_URL` was ignored by the portal adapters** (#491).
+  `BasePortal.createOcClient` hardcoded `baseUrl: 'http://guardian:8080/oc'`,
+  so `OcClient`'s existing `OPENCODE_BASE_URL` env fallback was dead code
+  even though the shipped compose overlay and both READMEs advertised it.
+  The shipped compose sets `OPENCODE_BASE_URL` to exactly the old hardcoded
+  value, so first-party installs see no behavior change; custom-compose users
+  who set `DISCORD_OPENCODE_BASE_URL`/`SLACK_OPENCODE_BASE_URL` now get the
+  documented behavior.
 - **`packages/skeleton/tools.json` now installs the real `opencode-ai` npm
   package.** It referenced `opencode`, which does not exist on npm (404), so the
   tool install never produced the `opencode` binary. With
@@ -99,6 +457,22 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `bun add ... --production` (the runtime it already uses), keeping the exact
   version pin and the `$prefix/node_modules/@openpalm/...` layout the final
   `bun run` depends on. (#518)
+- **The assistant's `/health` probe and its password export are now
+  consistent with `OPENCODE_AUTH`.** Under the home-password network preset
+  (or any real install/update, since `ensureSecrets` always materializes a
+  non-empty `opencode_server_password` secret file), the assistant enabled
+  OpenCode Basic auth while its own healthcheck probed `/health`
+  unauthenticated — the probe always 401'd, the assistant never reported
+  healthy, and guardian's `depends_on: service_healthy` then blocked the
+  whole stack from deploying. The assistant entrypoint now only resolves and
+  exports `OPENCODE_SERVER_PASSWORD` when `OPENCODE_AUTH` is truthy (an
+  explicit `OPENCODE_SERVER_PASSWORD` env value is still never unset when
+  auth is off — no silent auth downgrade); the `core.compose.yml` and image
+  `HEALTHCHECK` probes now send Basic credentials (read from the same
+  mounted secret file) exactly when the container-side `OPENCODE_AUTH` is
+  truthy, and stay a plain probe otherwise. `OPENCODE_AUTH` remains off by
+  default — no behavior change for the default (loopback, no auth) posture.
+  (PR #564 P1-1/P1-2)
 
 ## [0.12.10] - 2026-06-17
 

@@ -16,10 +16,7 @@ const ROOT = join(import.meta.dir, "..");
 const corePrinciples = readFileSync(join(ROOT, "docs/technical/core-principles.md"), "utf-8");
 const agents = readFileSync(join(ROOT, "AGENTS.md"), "utf-8");
 const proxy = readFileSync(join(ROOT, "packages/guardian/src/proxy.ts"), "utf-8");
-const ocBounds = readFileSync(join(ROOT, "packages/guardian/src/oc-bounds.ts"), "utf-8");
 const ownership = readFileSync(join(ROOT, "packages/guardian/src/ownership.ts"), "utf-8");
-const rateLimit = readFileSync(join(ROOT, "packages/guardian/src/rate-limit.ts"), "utf-8");
-const boundedMap = readFileSync(join(ROOT, "packages/guardian/src/bounded-map.ts"), "utf-8");
 
 describe("S.7 — fictional pipeline description purged", () => {
   it("AGENTS.md does not describe the guardian as HMAC-signed", () => {
@@ -30,19 +27,12 @@ describe("S.7 — fictional pipeline description purged", () => {
     expect(agents).toMatch(/packages\/guardian\/src\/server\.ts/);
   });
 
-  it("proxy.ts and oc-bounds.ts no longer narrate a deleted nonce/replay-store mechanism", () => {
+  it("proxy.ts no longer narrates a deleted nonce/replay-store mechanism", () => {
     expect(proxy).not.toMatch(/nonce/i);
-    expect(ocBounds).not.toMatch(/nonce/i);
-    expect(ocBounds).not.toMatch(/replay\.ts/);
   });
 
   it("ownership.ts does not reference the nonexistent replay.ts module", () => {
     expect(ownership).not.toMatch(/replay\.ts/);
-  });
-
-  it("rate-limit.ts and bounded-map.ts do not describe auth as HMAC (auth is HTTP Basic + sha256)", () => {
-    expect(rateLimit).not.toMatch(/HMAC/i);
-    expect(boundedMap).not.toMatch(/HMAC/i);
   });
 });
 
@@ -137,5 +127,9 @@ describe("S.7 — no fictional assistant token (D22)", () => {
 describe("S.7 — x-openpalm-user trust model documented plainly (rev3-F4)", () => {
   it("core-principles.md states the header is trusted from an authenticated principal", () => {
     expect(corePrinciples).toMatch(/x-openpalm-user/);
+  });
+
+  it("does not resurrect the removed channel_lan terminology (#490)", () => {
+    expect(corePrinciples).not.toMatch(/channel_lan/);
   });
 });

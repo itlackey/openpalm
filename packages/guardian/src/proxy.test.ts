@@ -53,17 +53,6 @@ async function waitForGuardianReady(): Promise<void> {
     await Bun.sleep(100);
   }
   if (!ready) throw new Error(`guardian did not become ready on ${guardianUrl}`);
-
-  let proxyOn = false;
-  for (let i = 0; i < 50; i++) {
-    const r = await fetch(`${guardianUrl}/stats`, { headers: { authorization: `Bearer ${ADMIN_TOKEN}` } });
-    if (r.ok && (await r.json()).oc_proxy?.enabled === true) {
-      proxyOn = true;
-      break;
-    }
-    await Bun.sleep(100);
-  }
-  if (!proxyOn) throw new Error('guardian /oc proxy did not enable (drift guard)');
 }
 
 function spawnGuardian(): Subprocess {
@@ -79,7 +68,6 @@ function spawnGuardian(): Subprocess {
       PORTAL_TEST_SECRET_FILE: secretPath,
       OP_ASSISTANT_URL: `http://127.0.0.1:${assistantPort}`,
       GUARDIAN_AUDIT_PATH: join(tmpDir, "audit.log"),
-      GUARDIAN_OC_EVENT_MAX_CONCURRENT_STREAMS: "1",
     },
     stdout: "pipe",
     stderr: "pipe",
@@ -298,6 +286,14 @@ describe("/oc proxy — authentication", () => {
     });
     expect(resp.status).toBe(401);
   });
+
+  it('rejects an oversized authenticated body before forwarding it', async () => {
+    const resp = await ocCall('POST', '/session', {
+      body: 'x'.repeat(1_048_577),
+    });
+    expect(resp.status).toBe(413);
+    expect(((await resp.json()) as { error: string }).error).toBe('payload_too_large');
+  });
 });
 
 describe("/oc proxy — endpoint allowlist deny-tests (§3.3)", () => {
@@ -514,54 +510,6 @@ describe("/oc proxy — session reuse is idempotent per (channel, sessionKey) (r
   });
 });
 
-describe("/oc proxy — resource bounds (§3.6)", () => {
-  it("concurrent /event streams capped at 1 per principal → second open 429", async () => {
-    eventFrames = [];
-    const ac1 = new AbortController();
-    const resp1 = await ocCall("GET", "/event", { userId: "bound-stream-u", signal: ac1.signal });
-    expect(resp1.status).toBe(200);
-
-    // A SECOND concurrent open by the same principal is rejected.
-    const ac2 = new AbortController();
-    const resp2 = await ocCall("GET", "/event", { userId: "bound-stream-u", signal: ac2.signal });
-    expect(resp2.status).toBe(429);
-    expect((await resp2.json()).error).toBe("too_many_event_streams");
-    ac2.abort();
-
-    // Closing the first frees the slot → a fresh open succeeds again.
-    ac1.abort();
-    await resp1.body?.cancel().catch(() => {});
-    await Bun.sleep(50);
-    const ac3 = new AbortController();
-    const resp3 = await ocCall("GET", "/event", { userId: "bound-stream-u", signal: ac3.signal });
-    expect(resp3.status).toBe(200);
-    ac3.abort();
-    await resp3.body?.cancel().catch(() => {});
-  });
-
-  it("in-flight turns capped per principal → overflow 429 too_many_inflight_turns", async () => {
-    // Use prompt_async (mock returns 204 immediately) but stack concurrent turns
-    // by firing the cap+1 in parallel so they overlap in flight. The mock's 204
-    // is near-instant, so to reliably observe the cap we fire many in parallel
-    // and assert AT LEAST one is rejected with the bound's error.
-    const id = await createSessionFor("inflight-u");
-    const body = JSON.stringify({ messageID: "^msg1", parts: [{ type: "text", text: "hi" }] });
-    const N = 12; // well above OC_MAX_INFLIGHT_TURNS (4)
-    const results = await Promise.all(
-      Array.from({ length: N }, () =>
-        ocCall("POST", `/session/${id}/prompt_async`, { userId: "inflight-u", body }),
-      ),
-    );
-    const statuses = results.map((r) => r.status);
-    const rejected = results.filter((r) => r.status === 429);
-    // At least one overflow turn must be rejected by the in-flight cap.
-    expect(rejected.length).toBeGreaterThan(0);
-    const rejectedBody = await rejected[0].json();
-    expect(rejectedBody.error).toBe("too_many_inflight_turns");
-    // And at least the cap's worth succeeded (204 forwarded as 204).
-    expect(statuses.filter((s) => s === 204).length).toBeGreaterThan(0);
-  });
-});
 
 describe("/oc proxy — /event filtered stream (§3.2)", () => {
   it("GET /event → 200 text/event-stream (filtered fan-out, not a transparent passthrough)", async () => {

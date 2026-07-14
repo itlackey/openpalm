@@ -10,13 +10,9 @@ import {
   resetAuthStrategy,
   basicTokenAuthStrategy,
   getAuthStrategy,
-  setPolicyProvider,
-  getPolicyProvider,
-  resetPolicyProvider,
-  allowAllPolicy,
   startGuardian,
 } from './index.ts';
-import type { Transport, AuthStrategy, PolicyProvider } from './index.ts';
+import type { Transport, AuthStrategy } from './index.ts';
 
 describe('library import is side-effect free (no listeners bound)', () => {
   test('importing the package entrypoint does not start the servers', async () => {
@@ -115,41 +111,19 @@ describe('auth strategy seam', () => {
   });
 });
 
-describe('policy provider seam', () => {
-  beforeEach(() => resetPolicyProvider());
-
-  test('defaults to allow-all', async () => {
-    expect(getPolicyProvider()).toBe(allowAllPolicy);
-    expect(await getPolicyProvider().authorize({ principalId: 'p', action: 'x' })).toEqual({ allow: true });
-  });
-
-  test('setPolicyProvider installs a custom policy', async () => {
-    const deny: PolicyProvider = { authorize: () => ({ allow: false, reason: 'nope' }) };
-    setPolicyProvider(deny);
-    expect(await getPolicyProvider().authorize({ principalId: 'p', action: 'x' })).toEqual({
-      allow: false,
-      reason: 'nope',
-    });
-  });
-});
-
 describe('createGuardian builder', () => {
   beforeEach(() => {
     clearTransports();
     resetAuthStrategy();
-    resetPolicyProvider();
   });
 
   test('chains seam wiring without starting', () => {
     const auth: AuthStrategy = { authenticate: () => null };
-    const policy: PolicyProvider = { authorize: () => ({ allow: true }) };
     const builder = createGuardian()
       .setAuthStrategy(auth)
-      .setPolicyProvider(policy)
       .registerTransport({ name: 't', matches: () => false, handle: async () => new Response() });
     // wiring applied immediately; transports are buffered until start()
     expect(getAuthStrategy()).toBe(auth);
-    expect(getPolicyProvider()).toBe(policy);
     expect(registeredTransports()).toHaveLength(0);
     expect(typeof builder.start).toBe('function');
     expect(typeof startGuardian).toBe('function');

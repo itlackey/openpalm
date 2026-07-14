@@ -282,9 +282,8 @@ export interface SlackStreamTurnArgs {
    * Open the /event subscription for this turn. Defaults to a fresh
    * `client.events(userId)` stream, but the adapter passes a SHARED per-principal
    * subscription (OcEventHub) so concurrent threads/DMs from one user don't each
-   * open a redundant stream and trip the guardian's per-principal
-   * concurrent-stream cap. Returns an async iterable with a `close()` the render
-   * loop calls on turn-end.
+   * open a redundant duplicate stream. Returns an async iterable with a `close()`
+   * the render loop calls on turn-end.
    */
   subscribeEvents?: () => AsyncIterable<unknown> & { close?: () => void };
 }

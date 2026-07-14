@@ -32,6 +32,15 @@ describe('checkHostHeader', () => {
     process.env.OP_ALLOW_REMOTE_SETUP = '1';
     expect(checkHostHeader(req('192.168.1.10:3880'))).toBeNull();
   });
+
+  // PR #564 second retest: the rejection body must carry requestId (API contract).
+  it('includes the passed requestId in the invalid_host body', async () => {
+    const res = checkHostHeader(req('192.168.1.10:3880'), 'rid-host-123');
+    expect(res?.status).toBe(400);
+    const body = (await res?.json()) as { error: string; requestId?: string };
+    expect(body.error).toBe('invalid_host');
+    expect(body.requestId).toBe('rid-host-123');
+  });
 });
 
 describe('checkOriginHeader', () => {
@@ -43,6 +52,19 @@ describe('checkOriginHeader', () => {
     expect(
       checkOriginHeader(req('localhost:5880', { method: 'POST', origin: 'http://localhost:5880' }), 'loopback-origin'),
     ).toBeNull();
+  });
+
+  // PR #564 second retest: the rejection body must carry requestId (API contract).
+  it('includes the passed requestId in the forbidden_origin body', async () => {
+    const res = checkOriginHeader(
+      req('192.168.1.10:3880', { method: 'POST', origin: 'http://evil.example' }),
+      'loopback-origin',
+      'rid-origin-456',
+    );
+    expect(res?.status).toBe(403);
+    const body = (await res?.json()) as { error: string; requestId?: string };
+    expect(body.error).toBe('forbidden_origin');
+    expect(body.requestId).toBe('rid-origin-456');
   });
 
   it('loopback-origin mode rejects non-loopback POST origin by default', () => {

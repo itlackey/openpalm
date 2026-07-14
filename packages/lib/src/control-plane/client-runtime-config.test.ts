@@ -79,4 +79,35 @@ describe('client runtime config', () => {
       rmSync(dir, { recursive: true, force: true });
     }
   });
+
+  // #486 D1a: a null assistant URL is the stack-less client-only serve — the
+  // CLI-written runtime-config.json must not seed the locked "This assistant"
+  // connection pointing at a dead http://127.0.0.1:3800, or the client's
+  // landing resolver counts 1 stored connection and lands on /chat against a
+  // dead target instead of /connections/new.
+  test('writeClientRuntimeConfig(path, null) writes connections: [] and still honors hostUrl', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'client-runtime-config-'));
+    try {
+      const path = join(dir, 'runtime-config.json');
+      writeClientRuntimeConfig(path, null, { hostUrl: 'http://127.0.0.1:3880/host' });
+      const parsed = JSON.parse(readFileSync(path, 'utf8'));
+      expect(parsed.connections).toEqual([]);
+      expect(parsed.hostUrl).toBe('http://127.0.0.1:3880/host');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('writeClientRuntimeConfig(path, null) omits hostUrl when not passed', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'client-runtime-config-'));
+    try {
+      const path = join(dir, 'runtime-config.json');
+      writeClientRuntimeConfig(path, null);
+      const parsed = JSON.parse(readFileSync(path, 'utf8'));
+      expect(parsed.connections).toEqual([]);
+      expect('hostUrl' in parsed).toBe(false);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
 });

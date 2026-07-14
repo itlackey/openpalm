@@ -1,15 +1,10 @@
 /**
- * Test-only fixture: a minimal OpenCode-shaped OpenAPI `/doc` document that
- * SATISFIES the drift guard (drift.ts assertDocCompatible). The mock assistants
- * in proxy.test.ts / proxy-moderation.test.ts serve this so the boot-time drift
- * check enables the /oc/* proxy; drift.test.ts mutates copies of it to prove the
- * guard trips on a missing allowlisted path or a missing payload shape.
+ * Test-only fixture: a minimal OpenCode-shaped OpenAPI `/doc` document. The mock
+ * assistants in the guardian test suite serve this as the upstream `/doc`
+ * response so a proxied GET /oc/doc returns a realistic shape.
  *
- * It must contain: every OC_ALLOWLIST (method, path) under `paths` (methods as
- * lowercase keys, OpenAPI style), and a `properties` object somewhere that
- * defines `sessionID`, `parts`, and `text` (the two pinned payload shapes).
- *
- * Kept deliberately minimal — only what the coarse drift tripwire reads.
+ * Kept deliberately minimal — just the allowlisted (method, path) pairs under
+ * `paths` and the pinned `sessionID`/`parts`/`text` payload shapes.
  */
 
 export const OC_DOC_FIXTURE = {

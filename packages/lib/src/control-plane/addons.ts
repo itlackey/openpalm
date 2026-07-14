@@ -282,6 +282,17 @@ function disableAddonByName(homeDir: string, name: string): MutationResult {
   try {
     if (!VALID_NAME_RE.test(name)) throw new Error(`Invalid addon name: ${name}`);
     setEnabledAddonState(homeDir, name, false);
+    // PR #564 second retest R6: clear the hardware-profile env key when disabling
+    // a profile-bearing addon (voice/ollama). A lingering OP_VOICE_PROFILE /
+    // OP_OLLAMA_PROFILE would otherwise be re-derived into OP_ENABLED_ADDONS by
+    // migrateProfileOnlyAddonEnablement on the next reconcile — silently
+    // re-enabling the addon the operator just disabled.
+    const profileKey = profileEnvKey(name);
+    if ((PROFILE_ONLY_ENV_KEYS as readonly string[]).includes(profileKey)) {
+      for (const path of [stateEnvFile(homeDir), legacyStackEnvFile(homeDir)]) {
+        removeEnvKeyFromFile(path, profileKey);
+      }
+    }
     return { ok: true };
   } catch (error) {
     return { ok: false, error: errMessage(error) };

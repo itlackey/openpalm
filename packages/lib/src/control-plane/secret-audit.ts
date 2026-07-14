@@ -109,7 +109,17 @@ function allowedSecretForService(serviceName: string, service: ComposeService, s
     // op_api_key backs the guardian's OpenAI/Anthropic-compatible edge
     // (OPENAI_COMPAT_API_KEY_FILE) — a guardian-hosted credential, so it is a
     // legitimate grant to this service (S.1b).
-    return secretId.startsWith('guardian_') || secretId.startsWith('portal_') || secretId.startsWith('op_guardian_') || secretId === 'op_api_key';
+    // opencode_server_password (#563/D2): the guardian attaches upstream
+    // Basic auth to its assistant calls when OPENCODE_AUTH is enabled, so it
+    // must read the same OpenCode server password the assistant serves —
+    // a legitimate two-service grant (assistant already matches /^opencode_/).
+    return (
+      secretId.startsWith('guardian_') ||
+      secretId.startsWith('portal_') ||
+      secretId.startsWith('op_guardian_') ||
+      secretId === 'op_api_key' ||
+      secretId === 'opencode_server_password'
+    );
   }
   if (serviceName === 'admin') {
     return /^(admin|ui|openpalm)_/.test(secretId);

@@ -13,13 +13,12 @@
  * /event fan-out stage (Stage 2); this module exposes the map + assert/record
  * seam now so the proxy can authorize replies once that lands.
  *
- * This mirrors rate-limit.ts exactly: a module-scoped Map (no class, no DI), a
- * `.unref()`'d prune timer, a hard size cap with oldest-first eviction, and a
- * size getter for /stats. It is guardian-local on purpose — NOT @openpalm/lib.
+ * Plain module-scoped Maps (no class, no DI). Guardian-local on purpose — NOT
+ * @openpalm/lib. Entries are dropped on explicit forget/DELETE and capped with
+ * oldest-first eviction so authenticated input cannot grow memory without bound.
  */
 
-import { SESSION_TTL_MS as OWNERSHIP_TTL_MS } from './config';
-import { BoundedTtlMap } from './bounded-map';
+import { setBoundedMapEntry } from './bounded-map.ts';
 
 /** The identity that owns a session/permission request. */
 export interface Principal {
@@ -36,54 +35,33 @@ export function principalKey(p: Principal): string {
   return JSON.stringify([p.kind, p.id, p.userId]);
 }
 
-// TTL mirrors the buffered session cache (GUARDIAN_SESSION_TTL_MS, default 15
-// min). Entries are pruned on TTL, on hard-cap, and on explicit delete.
-
-/** Hard caps — same discipline as rate-limit.ts's bucket cap (10k). */
-const SESSION_OWNERS_MAX = 50_000;
-const PERMISSION_OWNERS_MAX = 50_000;
-
-// sessionId → principalKey, requestID → principalKey. Per-entry TTL
-// (OWNERSHIP_TTL_MS), oldest-first hard-cap eviction, and a 60s unref'd prune
-// timer each — the shared BoundedTtlMap discipline (same as rate-limit.ts).
-const sessionOwners = new BoundedTtlMap<string, string>({
-  ttlMs: OWNERSHIP_TTL_MS,
-  maxSize: SESSION_OWNERS_MAX,
-  pruneIntervalMs: 60_000,
-});
-const permissionOwners = new BoundedTtlMap<string, string>({
-  ttlMs: OWNERSHIP_TTL_MS,
-  maxSize: PERMISSION_OWNERS_MAX,
-  pruneIntervalMs: 60_000,
-});
+// sessionId → principalKey, requestID → principalKey.
+const sessionOwners = new Map<string, string>();
+const permissionOwners = new Map<string, string>();
+export const OWNERSHIP_MAX_ENTRIES = 10_000;
 
 // ── Session ownership ─────────────────────────────────────────────────────
 
 /** Record that `principal` owns `sessionId`. Called on POST /session create. */
 export function recordSessionOwner(sessionId: string, principal: Principal): void {
-  sessionOwners.set(sessionId, principalKey(principal));
+  setBoundedMapEntry(sessionOwners, sessionId, principalKey(principal), OWNERSHIP_MAX_ENTRIES);
 }
 
 /**
  * Returns true only if `principal` owns `sessionId`. Fail-closed: an unknown
- * (or absent) sessionId returns false. Touches lastUsed on a hit to keep
- * active sessions from being pruned mid-conversation.
+ * (or absent) sessionId returns false.
  */
 export function ownsSession(sessionId: string, principal: Principal): boolean {
-  // get() lazily drops an expired entry and returns undefined.
   const ownerKey = sessionOwners.get(sessionId);
   if (ownerKey === undefined) return false;
-  if (ownerKey !== principalKey(principal)) return false;
-  sessionOwners.touch(sessionId);
-  return true;
+  return ownerKey === principalKey(principal);
 }
 
 /**
  * Returns true only if `sessionId` is currently owned by a DIFFERENT principal.
  * Fail-open for reuse decisions: an unknown/unowned session returns false (safe
  * to claim). Used by the create path to refuse re-pointing an already-owned
- * session to a new principal (which would silently steal it). Read-only — does
- * not touch lastUsed, so probing never extends the owner's lease.
+ * session to a new principal (which would silently steal it).
  */
 export function sessionOwnedByOther(sessionId: string, principal: Principal): boolean {
   const ownerKey = sessionOwners.get(sessionId);
@@ -100,7 +78,6 @@ export function forgetSession(sessionId: string): void {
 export function ownedSessionIds(principal: Principal): Set<string> {
   const key = principalKey(principal);
   const ids = new Set<string>();
-  // entries() yields only live (non-expired) [sessionId, ownerKey] pairs.
   for (const [sessionId, ownerKey] of sessionOwners.entries()) {
     if (ownerKey === key) ids.add(sessionId);
   }
@@ -115,7 +92,7 @@ export function ownedSessionIds(principal: Principal): Set<string> {
  * now so the proxy can authorize POST /permission/{requestID}/reply.
  */
 export function recordPermissionOwner(requestID: string, principal: Principal): void {
-  permissionOwners.set(requestID, principalKey(principal));
+  setBoundedMapEntry(permissionOwners, requestID, principalKey(principal), OWNERSHIP_MAX_ENTRIES);
 }
 
 /**
@@ -128,8 +105,6 @@ export function recordPermissionOwner(requestID: string, principal: Principal): 
  * /permission/{requestID}/reply.
  */
 export function ownsPermission(requestID: string, principal: Principal): boolean {
-  // get() lazily drops an expired entry and returns undefined. No touch here —
-  // a permission-reply lookup does not extend the request's lifetime.
   const ownerKey = permissionOwners.get(requestID);
   if (ownerKey === undefined) return false;
   return ownerKey === principalKey(principal);
@@ -146,8 +121,6 @@ export function sessionOwnerCount(): number {
 export function permissionOwnerCount(): number {
   return permissionOwners.size;
 }
-
-export { OWNERSHIP_TTL_MS, SESSION_OWNERS_MAX, PERMISSION_OWNERS_MAX };
 
 /** Test-only: clear both maps between cases. */
 export function _resetOwnershipForTest(): void {

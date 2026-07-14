@@ -1,5 +1,5 @@
 import { json } from "@sveltejs/kit";
-import { performSetup, checkDocker, mapDockerError, type SetupSpec } from "@openpalm/lib";
+import { performSetup, checkDocker, mapDockerError, reconcileMdnsResponder, type SetupSpec } from "@openpalm/lib";
 import { resetState, getState } from "$lib/server/state.js";
 import { prepareSetupRestorePoint, startDeploy, resetDeployState } from "$lib/server/setup-deploy.js";
 import { getUiLoginPassword, requireAdmin, getRequestId } from "$lib/server/helpers.js";
@@ -49,6 +49,22 @@ export const POST: RequestHandler = async (event) => {
   // Reset state singleton so next getState() re-reads fresh paths.
   resetState();
   const state = getState();
+
+  // PR #564 second retest P1-4: an explicit UI-password rotation persists the new
+  // value to the secret file, but hooks.server.ts promoted the OLD value into
+  // process.env.OP_UI_LOGIN_PASSWORD at startup and getUiLoginPassword() reads env
+  // FIRST — so without this the running server keeps accepting the old password
+  // (old=200, new=401) until a restart. Sync the live env to the freshly-set
+  // password so the rotation takes effect immediately: getUiLoginPassword(), the
+  // session-token signer, and login verification all pick up the new value.
+  if (typeof body.security?.uiLoginPassword === "string" && body.security.uiLoginPassword) {
+    process.env.OP_UI_LOGIN_PASSWORD = body.security.uiLoginPassword;
+  }
+
+  // #563 — synchronous, non-throwing, and gated (same call the host/stack PUT
+  // makes): a network access preset that changed the bind vars flips mDNS
+  // advertisement immediately, without waiting for a host-process restart.
+  reconcileMdnsResponder(state.homeDir);
 
   // Kick off Docker deploy in the background (non-blocking) — unless the
   // caller passed dryRun:true (validation / test path).

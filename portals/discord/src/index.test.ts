@@ -104,7 +104,7 @@ describe("health endpoint", () => {
     expect(resp.status).toBe(200);
     const body = (await resp.json()) as Record<string, unknown>;
     expect(body.ok).toBe(true);
-    expect(body.service).toBe("channel-discord");
+    expect(body.service).toBe("portal-discord");
   });
 
   it("GET /health responds to any host header", async () => {
@@ -881,10 +881,9 @@ describe("DiscordChannel", () => {
     expect(typeof channel.port).toBe("number");
   });
 
-  it("inherits guardianUrl from env or defaults", () => {
+  it("has no hardcoded guardian base URL field", () => {
     const channel = new DiscordChannel();
-    expect(typeof channel.guardianUrl).toBe("string");
-    expect(channel.guardianUrl).toContain("guardian");
+    expect((channel as { guardianUrl?: unknown }).guardianUrl).toBeUndefined();
   });
 
   it("secret resolves from PRINCIPAL_SECRET_FILE", () => {
@@ -892,6 +891,19 @@ describe("DiscordChannel", () => {
       const channel = new DiscordChannel();
       expect(channel.secret).toBe("channel-secret");
     });
+  });
+
+  // #491, D3: direct-env secret fallback (standalone mode has no *_FILE mount).
+  it("botToken falls back to direct DISCORD_BOT_TOKEN env", () => {
+    const original = Bun.env.DISCORD_BOT_TOKEN;
+    Bun.env.DISCORD_BOT_TOKEN = "tok";
+    try {
+      const channel = new DiscordChannel();
+      expect(channel.botToken).toBe("tok");
+    } finally {
+      if (original === undefined) delete Bun.env.DISCORD_BOT_TOKEN;
+      else Bun.env.DISCORD_BOT_TOKEN = original;
+    }
   });
 });
 

@@ -15,7 +15,12 @@ const logger = createLogger('guardian:mcp');
 const MCP_PRINCIPAL_ID = 'mcp';
 const MCP_LABEL = 'guardian-mcp';
 const MCP_TOKEN_FILE = Bun.env.GUARDIAN_MCP_TOKEN_FILE ?? '';
-const DIRECT_BASE_URL = `http://127.0.0.1:${DIRECT_PORT}`;
+// MCP self-dials the guardian's plain-HTTP direct listener on DIRECT_PORT.
+const directBaseUrl = (): string => `http://127.0.0.1:${DIRECT_PORT}`;
+/** Test-only: the effective self-dial base URL. */
+export function _mcpSelfDialBaseUrl(): string {
+  return directBaseUrl();
+}
 
 type JsonObject = Record<string, unknown>;
 
@@ -95,7 +100,7 @@ async function askAssistant(prompt: string, userId: string, sessionKey: string, 
     'x-openpalm-session-key': sessionKey,
   });
 
-  const sessionRes = await fetch(`${DIRECT_BASE_URL}/oc/session`, {
+  const sessionRes = await fetch(`${directBaseUrl()}/oc/session`, {
     method: 'POST',
     headers,
     body: '{}',
@@ -118,7 +123,7 @@ async function askAssistant(prompt: string, userId: string, sessionKey: string, 
     };
   }
 
-  const messageRes = await fetch(`${DIRECT_BASE_URL}/oc/session/${sessionBody.id}/message`, {
+  const messageRes = await fetch(`${directBaseUrl()}/oc/session/${sessionBody.id}/message`, {
     method: 'POST',
     headers,
     body: JSON.stringify({ parts: [{ type: 'text', text: prompt }] }),

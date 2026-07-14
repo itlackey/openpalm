@@ -18,12 +18,14 @@
 import { join, basename } from 'node:path';
 import { existsSync as nodeExistsSync } from 'node:fs';
 import {
+  classifyLocalInstall,
   readStackEnv,
   resolveAssistantEndpoint,
   resolveClientAppPort,
   resolveClientBuildDir,
   resolveDataDir,
   resolveOpenPalmHome,
+  resolveStackDir,
   writeClientRuntimeConfig,
   type WriteClientRuntimeConfigOptions,
 } from '@openpalm/lib';
@@ -161,7 +163,15 @@ export interface ClientServerDeps {
   /** Resolve the host UI's own URL (no path) for the runtime-config.json
    *  `hostUrl` seed (defaults to {@link resolveHostUiUrl}). */
   resolveUiBaseUrl?: () => string;
-  writeRuntimeConfig?: (path: string, assistantUrl: string, options?: WriteClientRuntimeConfigOptions) => void;
+  writeRuntimeConfig?: (path: string, assistantUrl: string | null, options?: WriteClientRuntimeConfigOptions) => void;
+  /**
+   * Whether a local install is present (#486 D1a). Defaults to
+   * `classifyLocalInstall(resolveStackDir(), resolveOpenPalmHome()) !==
+   * 'not_installed'`. On a machine with no local install, the seeded
+   * runtime-config.json must not point the client's locked "This assistant"
+   * entry at a dead `http://127.0.0.1:3800` — see {@link startClientServer}.
+   */
+  hasLocalInstall?: () => boolean;
   /** Read the persisted stack.env record ONCE for this call (defaults to the
    *  module's readPersistedStackEnv) — injectable so tests can count reads
    *  (review finding U3: this used to be re-read independently by
@@ -211,6 +221,8 @@ export async function startClientServer(deps: ClientServerDeps = {}): Promise<Cl
   const resolveAssistantUrl = deps.resolveAssistantUrl ?? (() => resolveDefaultAssistantUrl({ ...persistedEnv, ...process.env }));
   const resolveUiBaseUrl = deps.resolveUiBaseUrl ?? (() => resolveHostUiUrl(process.env, persistedEnv));
   const writeRuntimeConfig = deps.writeRuntimeConfig ?? writeClientRuntimeConfig;
+  const hasLocalInstall = deps.hasLocalInstall
+    ?? (() => classifyLocalInstall(resolveStackDir(), resolveOpenPalmHome()) !== 'not_installed');
 
   const buildDir = resolveBuildDir();
   const serveScript = resolveClientServeScript(buildDir);
@@ -226,7 +238,13 @@ export async function startClientServer(deps: ClientServerDeps = {}): Promise<Cl
     // main.ts) — the CLI is a host process serving the host UI on this same
     // machine's UI port.
     const uiUrl = resolveUiBaseUrl();
-    writeRuntimeConfig(runtimeConfigPath, resolveAssistantUrl(), { hostUrl: `${uiUrl}/host` });
+    // #486 D1a: a stack-less machine (no local install) must not seed the
+    // locked "This assistant" connection pointing at a dead
+    // http://127.0.0.1:3800 — pass a null assistantUrl so the client's
+    // runtime config seeds zero connections and the landing resolver routes
+    // to /connections/new instead of a dead /chat.
+    const assistantUrl = hasLocalInstall() ? resolveAssistantUrl() : null;
+    writeRuntimeConfig(runtimeConfigPath, assistantUrl, { hostUrl: `${uiUrl}/host` });
   } catch (err) {
     logError(`Failed to write client runtime config at ${runtimeConfigPath}: ${err instanceof Error ? err.message : String(err)}`);
   }

@@ -190,6 +190,14 @@ connections:
     apiKey: sk-...
 addons:
   chat: true
+# #563 — network access preset. Absent means "leave network config
+# untouched" (backward compatible with every spec above). One of the four
+# literals: this-pc | home-password | home-open | shared-guardian.
+# opencodePassword (min 8 chars) is REQUIRED for home-password and REJECTED
+# for every other preset.
+network:
+  preset: home-password
+  opencodePassword: change-me-too-please
 ```
 
 The full field set and validation rules live in

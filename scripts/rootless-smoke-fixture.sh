@@ -46,6 +46,10 @@ smoke_seed_secrets() {
   openssl rand -hex 16 > "$home/knowledge/secrets/op_api_key"
   openssl rand -hex 16 > "$home/knowledge/secrets/portal_discord_secret"
   openssl rand -hex 16 > "$home/knowledge/secrets/portal_slack_secret"
+  # op_opencode_password: always materialized by performSetup since #563 — the
+  # compose files grant it as a file-backed secret to assistant+guardian, so
+  # boot fails if it is absent. Empty file = OPENCODE_AUTH off (smoke posture).
+  : > "$home/knowledge/secrets/op_opencode_password"
   printf '%s\n' 'discord-smoke-token' > "$home/knowledge/secrets/discord_bot_token"
 
   touch "$home/knowledge/env/user.env"
@@ -86,9 +90,11 @@ OP_GUARDIAN_ADMIN_PORT=${guardian_admin_port}
 OP_CHAT_PORT=${chat_port}
 OP_API_PORT=${api_port}
 OP_CLIENT_PORT=${client_port}
-OP_SETUP_COMPLETE=true
 EOF
   chmod 600 "$home/knowledge/env/stack.env"
+  mkdir -p "$home/state"
+  printf 'OP_SETUP_COMPLETE=true\n' > "$home/state/stack.state.env"
+  chmod 600 "$home/state/stack.state.env"
 }
 
 # Create the runtime directory layout via the lib helper (identical in both

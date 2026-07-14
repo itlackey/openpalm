@@ -7,7 +7,7 @@
  * fail-closed. Uses a GET /admin/principals request since it needs no body.
  */
 import { describe, it, expect, beforeAll, afterAll } from "bun:test";
-import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
+import { mkdtempSync, writeFileSync, rmSync, utimesSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { handleAdminRequest } from "./admin.ts";
@@ -23,6 +23,14 @@ function adminReq(token?: string): Request {
   const headers = new Headers();
   if (token !== undefined) headers.set("authorization", `Bearer ${token}`);
   return new Request("http://localhost/admin/principals", { method: "GET", headers });
+}
+
+function adminPost(body: unknown, token = ADMIN_TOKEN): Request {
+  return new Request("http://localhost/admin/principals", {
+    method: "POST",
+    headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
 }
 
 beforeAll(() => {
@@ -63,5 +71,43 @@ describe("admin authorize", () => {
     Bun.env.GUARDIAN_ADMIN_TOKEN_FILE = emptyPath;
     expect((await handleAdminRequest(adminReq(""), "rid-unconfigured-empty")).status).toBe(401);
     expect((await handleAdminRequest(adminReq("anything"), "rid-unconfigured-any")).status).toBe(401);
+  });
+
+  // PR #564 retest: the principal id is the Basic-auth username — an id with a
+  // colon (or whitespace) can never authenticate, so the create must be rejected
+  // 400 rather than minting a dead principal. These 400s return before any DB.
+  it("rejects a principal id containing a colon (breaks Basic auth parsing)", async () => {
+    Bun.env.GUARDIAN_ADMIN_TOKEN_FILE = tokenPath;
+    const res = await handleAdminRequest(adminPost({ id: "phone:one", kind: "direct", token: "t" }), "rid-colon");
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as { error: string }).error).toBe("invalid_principal_id");
+  });
+
+  it("rejects an unknown principal kind instead of silently coercing to portal", async () => {
+    Bun.env.GUARDIAN_ADMIN_TOKEN_FILE = tokenPath;
+    const res = await handleAdminRequest(adminPost({ id: "dev-x", kind: "superuser", token: "t" }), "rid-kind");
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as { error: string }).error).toBe("invalid_kind");
+  });
+
+  // PR #564 retest: rotating the token file's CONTENTS in place must take effect
+  // without a guardian restart. The old path-only cache left token A valid and
+  // token B rejected; keying on mtime fixes it.
+  it("honors an in-place admin-token rotation (mtime-keyed cache)", async () => {
+    const rotatePath = join(tmpDir, "rotating-token");
+    writeFileSync(rotatePath, "token-A\n");
+    Bun.env.GUARDIAN_ADMIN_TOKEN_FILE = rotatePath;
+
+    expect((await handleAdminRequest(adminReq("token-A"), "rid-A")).status).toBe(200);
+    expect((await handleAdminRequest(adminReq("token-B"), "rid-B-before")).status).toBe(401);
+
+    // Rotate contents in place and bump mtime forward so the change is observable
+    // even on coarse-granularity filesystems.
+    writeFileSync(rotatePath, "token-B\n");
+    const future = new Date(Date.now() + 5000);
+    utimesSync(rotatePath, future, future);
+
+    expect((await handleAdminRequest(adminReq("token-B"), "rid-B-after")).status).toBe(200);
+    expect((await handleAdminRequest(adminReq("token-A"), "rid-A-after")).status).toBe(401);
   });
 });

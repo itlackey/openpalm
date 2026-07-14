@@ -126,7 +126,51 @@ describe('auditComposeSecrets against shipped stack compose files', () => {
       return auditComposeSecrets(readFileSync(path, 'utf-8')).map((entry) => ({ ...entry, path: `${name}:${entry.path}` }));
     });
 
+    // T33 (ordering gate, pin): this sweep goes red the moment #563's compose
+    // grant (guardian → opencode_server_password) lands WITHOUT the matching
+    // secret-audit allowlist rule below, and green again once both land
+    // together. Currently green because neither has landed yet.
     expect(issues).toEqual([]);
+  });
+});
+
+// #563 — T32: opencode_server_password is grantable to assistant and
+// guardian (D2/D3), not to a portal service.
+describe('auditComposeSecrets — #563 opencode_server_password (D2/D3)', () => {
+  it('T32 (pin): assistant may mount opencode_server_password (matches the existing /^opencode_/ allowance)', () => {
+    const issues = auditComposeSecrets({
+      services: {
+        assistant: {
+          environment: { OPENCODE_SERVER_PASSWORD_FILE: '/run/secrets/opencode_server_password' },
+          secrets: ['opencode_server_password'],
+        },
+      },
+    });
+    expect(issues).toEqual([]);
+  });
+
+  it('T32 (red until the guardian special-case lands): guardian may mount opencode_server_password (upstream Basic auth to the assistant)', () => {
+    const issues = auditComposeSecrets({
+      services: {
+        guardian: {
+          environment: { OPENCODE_SERVER_PASSWORD_FILE: '/run/secrets/opencode_server_password' },
+          secrets: ['opencode_server_password'],
+        },
+      },
+    });
+    expect(issues).toEqual([]);
+  });
+
+  it('T32 (pin): a portal service may NOT mount opencode_server_password', () => {
+    const issues = auditComposeSecrets({
+      services: {
+        chat: {
+          image: 'openpalm/portal:latest',
+          secrets: ['opencode_server_password'],
+        },
+      },
+    });
+    expect(issues.map((entry) => entry.code)).toEqual(['compose-secret-boundary']);
   });
 });
 

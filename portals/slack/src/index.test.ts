@@ -94,6 +94,7 @@ function createMockSay(): MockSay {
 
 beforeEach(() => {
   delete Bun.env.SLACK_FORWARD_TIMEOUT_MS;
+  delete Bun.env.SLACK_BOT_NAME;
 });
 
 // ── Forward timeout parsing ──────────────────────────────────────────────────
@@ -508,7 +509,7 @@ describe("SlackChannel", () => {
     expect(resp.status).toBe(200);
     const body = (await resp.json()) as Record<string, unknown>;
     expect(body.ok).toBe(true);
-    expect(body.service).toBe("channel-slack");
+    expect(body.service).toBe("portal-slack");
   });
 
   it("health endpoint responds to any host header", async () => {
@@ -554,10 +555,9 @@ describe("SlackChannel", () => {
     expect(typeof channel.port).toBe("number");
   });
 
-  it("inherits guardianUrl from env or defaults", () => {
+  it("has no hardcoded guardian base URL field", () => {
     const channel = new SlackChannel();
-    expect(typeof channel.guardianUrl).toBe("string");
-    expect(channel.guardianUrl).toContain("guardian");
+    expect((channel as { guardianUrl?: unknown }).guardianUrl).toBeUndefined();
   });
 
   it("secret resolves from PRINCIPAL_SECRET_FILE", () => {
@@ -1576,5 +1576,124 @@ describe("extractUserInfo", () => {
     }, client);
 
     expect(result.teamId).toBe("");
+  });
+});
+
+// ── SLACK_BOT_NAME branding (#491, D4) ──────────────────────────────────────
+// Callback/action IDs are Slack app-manifest identifiers and stay fixed
+// per D4 — only the display strings change.
+
+describe("SLACK_BOT_NAME branding", () => {
+  it("modal title uses SLACK_BOT_NAME", async () => {
+    Bun.env.SLACK_BOT_NAME = "Jarvis";
+    const channel = new SlackChannel();
+    const client = createMockClient();
+
+    await (channel as unknown as {
+      onGlobalShortcut: (shortcut: Record<string, unknown>, client: MockClient) => Promise<void>;
+    }).onGlobalShortcut(
+      { trigger_id: "trigger-1", user: { id: "U123" }, team: { id: "T1" } },
+      client,
+    );
+
+    const args = client.views.open.mock.calls[0]?.[0];
+    expect(args.view.title.text).toBe("Ask Jarvis");
+    expect(args.view.callback_id).toBe("ask_openpalm_modal");
+  });
+
+  it("message-shortcut prefill uses SLACK_BOT_NAME", async () => {
+    Bun.env.SLACK_BOT_NAME = "Jarvis";
+    const channel = new SlackChannel();
+    const client = createMockClient();
+
+    await (channel as unknown as {
+      onMessageShortcut: (shortcut: Record<string, unknown>, client: MockClient) => Promise<void>;
+    }).onMessageShortcut(
+      {
+        trigger_id: "trigger-2",
+        user: { id: "U123" },
+        team: { id: "T1" },
+        channel: { id: "C456" },
+        message: { ts: "1710000000.000001", text: "Please summarize this" },
+      },
+      client,
+    );
+
+    const args = client.views.open.mock.calls[0]?.[0];
+    const initialValue = args.view.blocks[0].element.initial_value as string;
+    expect(initialValue.startsWith("Ask Jarvis about this message:")).toBe(true);
+  });
+
+  it("Home tab header and shortcuts section use SLACK_BOT_NAME", async () => {
+    Bun.env.SLACK_BOT_NAME = "Jarvis";
+    const channel = new SlackChannel();
+    const client = createMockClient();
+
+    await (channel as unknown as {
+      onAppHomeOpened: (event: Record<string, unknown>, client: MockClient) => Promise<void>;
+    }).onAppHomeOpened({ user: "U123" }, client);
+
+    const payload = client.views.publish.mock.calls[0]?.[0];
+    const blocks = payload.view.blocks as Array<Record<string, unknown>>;
+    const header = blocks.find((b) => b.type === "header") as { text: { text: string } };
+    expect(header.text.text).toBe("Jarvis on Slack");
+    const shortcutsSection = blocks.find(
+      (b) => b.type === "section" && typeof (b.text as { text?: string })?.text === "string" && (b.text as { text: string }).text.includes("Shortcuts"),
+    ) as { text: { text: string } };
+    expect(shortcutsSection.text.text).toContain("Ask Jarvis");
+  });
+
+  it("defaults to OpenPalm when SLACK_BOT_NAME is unset or blank", async () => {
+    // Unset — already passes today (nothing to override).
+    delete Bun.env.SLACK_BOT_NAME;
+    const unsetChannel = new SlackChannel();
+    const unsetClient = createMockClient();
+    await (unsetChannel as unknown as {
+      onGlobalShortcut: (shortcut: Record<string, unknown>, client: MockClient) => Promise<void>;
+    }).onGlobalShortcut(
+      { trigger_id: "trigger-1", user: { id: "U123" }, team: { id: "T1" } },
+      unsetClient,
+    );
+    expect(unsetClient.views.open.mock.calls[0]?.[0].view.title.text).toBe("Ask OpenPalm");
+
+    // Blank string must be trimmed to the default, not used verbatim.
+    Bun.env.SLACK_BOT_NAME = "   ";
+    const blankChannel = new SlackChannel();
+    const blankClient = createMockClient();
+    await (blankChannel as unknown as {
+      onGlobalShortcut: (shortcut: Record<string, unknown>, client: MockClient) => Promise<void>;
+    }).onGlobalShortcut(
+      { trigger_id: "trigger-1", user: { id: "U123" }, team: { id: "T1" } },
+      blankClient,
+    );
+    expect(blankClient.views.open.mock.calls[0]?.[0].view.title.text).toBe("Ask OpenPalm");
+  });
+});
+
+// ── Auth UX: direct-env secret fallback (#491, D3) ──────────────────────────
+
+describe("SLACK_BOT_TOKEN / SLACK_APP_TOKEN direct-env fallback", () => {
+  it("botToken falls back to direct SLACK_BOT_TOKEN env", () => {
+    const original = Bun.env.SLACK_BOT_TOKEN;
+    Bun.env.SLACK_BOT_TOKEN = "xoxb-1";
+    try {
+      const channel = new SlackChannel();
+      expect(channel.botToken).toBe("xoxb-1");
+    } finally {
+      if (original === undefined) delete Bun.env.SLACK_BOT_TOKEN;
+      else Bun.env.SLACK_BOT_TOKEN = original;
+    }
+  });
+
+  it("appToken falls back to direct SLACK_APP_TOKEN env", () => {
+    const original = Bun.env.SLACK_APP_TOKEN;
+    Bun.env.SLACK_APP_TOKEN = "xapp-1";
+    try {
+      const channel = new SlackChannel();
+      expect(channel.appToken).toBe("xapp-1");
+    } finally {
+      if (original === undefined) delete Bun.env.SLACK_APP_TOKEN;
+      else Bun.env.SLACK_APP_TOKEN = original;
+    }
   });
 });

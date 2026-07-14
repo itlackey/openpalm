@@ -27,12 +27,17 @@ KEEP="${OP_ROOTLESS_SMOKE_KEEP:-0}"
 UI_PID=""
 PLATFORM_VERSION="$(smoke_platform_version)"
 
+# PR #564 P3-3: the assistant host port must ALSO differ per target, or the
+# `stack` and `portal-discord` smoke projects collide on 3896 when run
+# concurrently (every other port already has a per-target default).
+assistant_port_default=3896
 guardian_port_default=3930
 guardian_admin_port_default=3931
 chat_port_default=3920
 api_port_default=3921
 client_port_default=3910
 if [[ "$TARGET" == "portal-discord" ]]; then
+  assistant_port_default=3996
   guardian_port_default=3940
   guardian_admin_port_default=3941
   chat_port_default=3942
@@ -80,6 +85,23 @@ dev_compose() {
     --project-name "$COMPOSE_PROJECT_NAME" "$@"
 }
 
+# Tear down a smoke stack completely, so no container survives to reference a
+# fixture we are about to delete. `up` starts profile-gated services (guardian +
+# the portal), so a plain `down` leaves them running — enable BOTH first-party
+# addon profiles, then a profile-agnostic label backstop for anything still
+# lingering. Shared by the EXIT cleanup AND the pre-run reset (PR #564 retest
+# P2-7: the pre-run path was previously a plain profile-unaware `down`, so a
+# prior `--keep` run's guardian/portal containers leaked into the next run and
+# were left dangling once its fixture dir was rm -rf'd).
+smoke_teardown_stack() {
+  if [[ -f "$SMOKE_HOME/knowledge/env/stack.env" ]]; then
+    dev_compose --profile addon.discord --profile addon.chat down --remove-orphans --volumes >/dev/null 2>&1 || true
+  fi
+  docker ps -aq --filter "label=com.docker.compose.project=${COMPOSE_PROJECT_NAME}" 2>/dev/null | xargs -r docker rm -f >/dev/null 2>&1 || true
+  docker network ls -q --filter "label=com.docker.compose.project=${COMPOSE_PROJECT_NAME}" 2>/dev/null | xargs -r docker network rm >/dev/null 2>&1 || true
+  docker volume ls -q --filter "label=com.docker.compose.project=${COMPOSE_PROJECT_NAME}" 2>/dev/null | xargs -r docker volume rm >/dev/null 2>&1 || true
+}
+
 cleanup() {
   if [[ -n "$UI_PID" ]] && kill -0 "$UI_PID" 2>/dev/null; then
     kill "$UI_PID" 2>/dev/null || true
@@ -91,21 +113,19 @@ cleanup() {
     return
   fi
 
-  if [[ -f "$SMOKE_HOME/knowledge/env/stack.env" ]]; then
-    dev_compose down --remove-orphans --volumes >/dev/null 2>&1 || true
-  fi
+  smoke_teardown_stack
   docker run --rm -v "$(dirname "$SMOKE_HOME"):/smoke-parent" alpine sh -c 'rm -rf "/smoke-parent/$1"' _ "$(basename "$SMOKE_HOME")" >/dev/null 2>&1 || true
 }
 trap cleanup EXIT
 
 echo "Preparing isolated smoke OP_HOME at ${SMOKE_HOME}..."
-if [[ -f "$SMOKE_HOME/knowledge/env/stack.env" ]]; then
-  dev_compose down --remove-orphans --volumes >/dev/null 2>&1 || true
-fi
-docker run --rm -v "$(dirname "$SMOKE_HOME"):/smoke-parent" alpine sh -c "rm -rf /smoke-parent/$(basename "$SMOKE_HOME")" >/dev/null 2>&1 || true
+# Profile-aware teardown BEFORE deleting the fixture — a prior `--keep` run may
+# have left profile-gated guardian/portal containers up (PR #564 retest P2-7).
+smoke_teardown_stack
+docker run --rm -v "$(dirname "$SMOKE_HOME"):/smoke-parent" alpine sh -c 'rm -rf "/smoke-parent/$1"' _ "$(basename "$SMOKE_HOME")" >/dev/null 2>&1 || true
 smoke_copy_skeleton "$SMOKE_HOME"
 smoke_write_stack_env "$SMOKE_HOME" "$PLATFORM_VERSION" \
-  "${OP_ROOTLESS_SMOKE_ASSISTANT_PORT:-3896}" \
+  "${OP_ROOTLESS_SMOKE_ASSISTANT_PORT:-${assistant_port_default}}" \
   "${OP_ROOTLESS_SMOKE_GUARDIAN_PORT:-${guardian_port_default}}" \
   "${OP_ROOTLESS_SMOKE_GUARDIAN_ADMIN_PORT:-${guardian_admin_port_default}}" \
   "${OP_ROOTLESS_SMOKE_CHAT_PORT:-${chat_port_default}}" \
@@ -123,17 +143,7 @@ smoke_ensure_home_dirs "$SMOKE_HOME"
 smoke_write_version_override "$SMOKE_HOME/rootless-smoke.override.yml" "$PLATFORM_VERSION"
 
 if [[ "$TARGET" == "portal-discord" ]]; then
-  SMOKE_HOME_PATH="$SMOKE_HOME" python3 - <<'PY'
-import os
-from pathlib import Path
-path = Path(os.environ['SMOKE_HOME_PATH']) / 'knowledge' / 'env' / 'stack.env'
-content = path.read_text()
-if 'OP_ENABLED_ADDONS=' in content:
-    content = content.replace('OP_ENABLED_ADDONS=\n', 'OP_ENABLED_ADDONS=discord\n')
-else:
-    content += 'OP_ENABLED_ADDONS=discord\n'
-path.write_text(content)
-PY
+  printf 'OP_ENABLED_ADDONS=discord\n' >> "$SMOKE_HOME/state/stack.state.env"
 fi
 
 # Build (or, under OP_ROOTLESS_SMOKE_SKIP_BUILD=1 in CI, reuse) the dev images.

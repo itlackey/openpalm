@@ -42,16 +42,23 @@ services:
       # config under HOME (~/.config/opencode), so no extra mount is needed.
       OPENCODE_CONFIG_DIR: /etc/opencode
       OPENCODE_PORT: "4096"
-      # Auth is disabled because the assistant is only reachable via the
+      # Auth is off by default because the assistant is only reachable via the
       # internal assistant_net Docker network and the host port binding
-      # defaults to 127.0.0.1 (loopback-only). Guardian communicates with
-      # the assistant over assistant_net without credentials, and the
-      # scheduler now runs as a co-process inside this container so it
-      # reaches OpenCode via http://localhost:4096.
-      # If you change OP_ASSISTANT_BIND_ADDRESS to 0.0.0.0, the assistant is
-      # no longer loopback-only. Guardian-side upstream auth plumbing has been
-      # removed, so enabling assistant auth is not a supported hardening path.
-      OPENCODE_AUTH: "false"
+      # defaults to 127.0.0.1 (loopback-only). Guardian communicates with the
+      # assistant over assistant_net without credentials in that default
+      # posture, and the scheduler runs as a co-process inside this container
+      # so it reaches OpenCode via http://localhost:4096.
+      # The supported way to turn OPENCODE_AUTH on is a network access preset
+      # (#563, wizard "Network access" step / `openpalm install --file`): the
+      # home-password preset sets OPENCODE_AUTH=true and writes the operator's
+      # password to the op_opencode_password secret, which BOTH this service
+      # (serves Basic auth) and the guardian (attaches it upstream, see
+      # portals.compose.yml) read. See docs/technical/environment-and-mounts.md.
+      OPENCODE_AUTH: ${OPENCODE_AUTH:-false}
+      # #563 — the OpenCode server password, read from the compose secret
+      # below. Never a raw OPENCODE_SERVER_PASSWORD env value (secret-audit.ts
+      # forbids *_PASSWORD-suffixed compose environment keys).
+      OPENCODE_SERVER_PASSWORD_FILE: /run/secrets/opencode_server_password
       TERM: xterm-256color
       HOME: /home/opencode
       # akm-cli layout: user-managed config and stash are separate from
@@ -134,6 +141,8 @@ services:
       # to pin or update individual tool versions; bun update applies changes on next start.
       # Declared after the named volume so the bind-mount wins on all platforms.
       - ${OP_HOME}/data/assistant/tools:/opt/openpalm/tools
+    secrets:
+      - opencode_server_password
     networks: [ assistant_net ]
     # I2: probe the client co-process too, not just OpenCode — a boot-time
     # `npm install @openpalm/client` failure previously left port
@@ -159,21 +168,50 @@ services:
     # own shell instead, where OP_CLIENT_PORT is unset and so also correctly
     # defaults to 3000 (mirroring the Dockerfile's own HEALTHCHECK, which gets
     # this right via container-side shell expansion).
+    # #564 P1-1: the /health probe authenticates iff the container-side
+    # OPENCODE_AUTH is truthy. OpenCode enables Basic auth whenever the
+    # home-password preset is active, and an unauthenticated `curl -f` then
+    # 401s forever — guardian's `depends_on: assistant: condition:
+    # service_healthy` blocks on that and the whole stack never deploys. The
+    # gate mirrors the entrypoint's opencode_auth_enabled truthy set exactly
+    # so probe and server can never disagree about the posture. The username
+    # defaults to OpenCode's own default `opencode` (an overlay-injected
+    # OPENCODE_SERVER_USERNAME is honored); the password is `cat`ed from the
+    # same OPENCODE_SERVER_PASSWORD_FILE the entrypoint reads — a Docker
+    # healthcheck process only ever sees the container's created env, never
+    # variables the entrypoint exports later, so reading the file directly is
+    # the only correct source here. Gated on the operator's requested posture
+    # rather than on file non-emptiness, so a stale-secret regression (the
+    # secret file is always materialized non-empty by ensureSecrets) fails
+    # this healthcheck loudly instead of being silently masked.
     healthcheck:
-      test: [ "CMD-SHELL", "curl -sf http://localhost:4096/health || exit 1; if [ ! -f /tmp/openpalm-client-skip ]; then curl -sf http://localhost:$${OP_CLIENT_PORT:-3000}/ >/dev/null || exit 1; fi" ]
+      test:
+        - CMD-SHELL
+        - >-
+          case "$${OPENCODE_AUTH:-false}" in
+          true|TRUE|True|1|yes|YES)
+          curl -sf -u "$${OPENCODE_SERVER_USERNAME:-opencode}:$$(cat "$${OPENCODE_SERVER_PASSWORD_FILE:-/run/secrets/opencode_server_password}")"
+          http://localhost:4096/health || exit 1 ;;
+          *)
+          curl -sf http://localhost:4096/health || exit 1 ;;
+          esac;
+          if [ ! -f /tmp/openpalm-client-skip ]; then curl -sf http://localhost:$${OP_CLIENT_PORT:-3000}/ >/dev/null || exit 1; fi
       interval: 30s
       timeout: 10s
       retries: 5
       start_period: 30s
 
   # ── mDNS service discovery ───────────────────────────────────────────
-  # mDNS is no longer published by avahi sidecars. OpenCode advertises its own
-  # `.local` name in-process via its native mDNS responder (server.mdns /
-  # server.mdnsDomain in the assistant + guardian opencode.jsonc files). See
-  # those config files and docs/technical/network-partitioning-d5a.md for the
-  # native approach and its limitations (LAN reachability requires the OpenCode
-  # process to bind a LAN-facing interface; the guardian moderator stays
-  # loopback-only by design and does NOT advertise).
+  # mDNS is no longer published by avahi sidecars. The PRIMARY LAN advertiser
+  # (#488) is the HOST control-plane responder (packages/lib mdns-responder.ts,
+  # started from the host UI process) — it actually reaches the LAN, gated by
+  # OP_BIND_ADDRESS (guardian, <name>-guardian.local) / OP_ASSISTANT_BIND_ADDRESS
+  # (assistant, <name>.local); loopback defaults open no socket at all;
+  # OP_MDNS=off disables it. OpenCode's native in-process mDNS responder
+  # (server.mdns / server.mdnsDomain in the assistant + guardian opencode.jsonc
+  # files) remains a manual/advanced in-container path — bridge-network
+  # multicast never reaches the physical LAN, so it is off by default. See
+  # docs/technical/network-partitioning-d5a.md for both mechanisms.
 
 # Portal-style ingress services join portal_net to reach the guardian.
 networks:
@@ -185,11 +223,13 @@ networks:
   # bridge. Addons that genuinely need the assistant (e.g. ollama, the assistant's
   # LLM provider) are granted assistant_net PER SERVICE, not by default membership.
   addon_net:
-  # DEPRECATED (renamed to portal_net in 0.12.0). Retained as an empty bridge for
-  # ONE release so existing custom.compose.yml overlays that still reference
-  # `channel_lan` keep validating on upgrade. No first-party service joins it.
-  # REMOVED in 0.13.0 — migrate custom overlays to `portal_net` before upgrading.
-  channel_lan:
+
+# #563 — the OpenCode server password. Each managed compose file stands alone
+# for `docker compose config`, so this same top-level secret is also declared
+# in portals.compose.yml (the guardian's grant).
+secrets:
+  opencode_server_password:
+    file: ${OP_HOME}/knowledge/secrets/op_opencode_password
 
 volumes:
   assistant-persistent:

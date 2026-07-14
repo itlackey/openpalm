@@ -40,6 +40,9 @@ export const pwaOptions: Partial<SvelteKitPWAOptions> = {
   workbox: {
     globPatterns: ['**/*.{js,css,html,ico,png,svg,webmanifest}'],
     globIgnores: ['**/runtime-config.json'],
+    // adapter-static writes index.html after the PWA plugin scans SvelteKit's
+    // output, so add the navigation fallback explicitly to the precache.
+    additionalManifestEntries: [{ url: '/index.html', revision: null }],
     navigateFallback: '/index.html',
     runtimeCaching: [
       {

@@ -393,6 +393,17 @@ describe('P5d assistant Dockerfile (static-only)', () => {
   test('bakes a fallback @openpalm/client install at build time (I2)', () => {
     expect(dockerfile).toMatch(/npm install --prefix \/opt\/openpalm\/client "@openpalm\/client@\$\{PLATFORM_VERSION\}"/);
   });
+
+  // RED (PR #564 P1-1, D3 mirror): the image HEALTHCHECK (Dockerfile:246-247)
+  // probes /health unauthenticated regardless of OPENCODE_AUTH — the same
+  // defect as core.compose.yml's healthcheck, at the mirror site the file's
+  // own H3 comment declares must stay in lockstep with the compose probe.
+  test('H3 mirror: the image HEALTHCHECK authenticates the /health probe when OPENCODE_AUTH is truthy (P1-1)', () => {
+    expect(dockerfile).toContain('case "${OPENCODE_AUTH:-false}"');
+    expect(dockerfile).toContain('true|TRUE|True|1|yes|YES');
+    expect(dockerfile).toContain('-u "${OPENCODE_SERVER_USERNAME:-opencode}:${OPENCODE_SERVER_PASSWORD:-$(cat');
+    expect(dockerfile).toContain('openpalm-client-skip');
+  });
 });
 
 describe('I2 — entrypoint client co-process supervision (static-only)', () => {
@@ -787,5 +798,144 @@ describe('SUPERVISOR-RESET — start_client respawn counter resets after a susta
       `expected the healthy run at invocation 3 to reset the counter (>5 restarts before giving up); got stderr:\n${result.stderr}`,
     ).toBeGreaterThan(5);
     expect(result.skipMarkerExists).toBe(true);
+  });
+});
+
+// ── #563 T34-T36 — resolve_opencode_server_password (behavioral) ───────────
+// A minimal driver, distinct from FUNCTION_DRIVER above: sources ONLY the
+// entrypoint's function definitions (same awk strip as checkCorsOrigin),
+// calls resolve_opencode_server_password directly, then reports whether
+// OPENCODE_SERVER_PASSWORD ended up set (and to what) via stdout markers —
+// no docker/opencode boot, no client-build side effects.
+function runResolvePasswordScenario(
+  scenarioEnv: Record<string, string>,
+): { exitCode: number; stdout: string; stderr: string } {
+  const tempDir = mkdtempSync(join(tmpdir(), 'openpalm-resolve-pw-'));
+  try {
+    const functionsPath = join(tempDir, 'functions.sh');
+    const driverPath = join(tempDir, 'driver.sh');
+    writeFileSync(
+      driverPath,
+      [
+        '#!/usr/bin/env bash',
+        'set -uo pipefail',
+        'awk \'!/^[a-z_][a-z0-9_]*$/ || /^(fi|done|esac|then|else|do)$/\' "$1" > "$2"',
+        '# shellcheck disable=SC1090',
+        'source "$2"',
+        'resolve_opencode_server_password',
+        'rc=$?',
+        'if [ -n "${OPENCODE_SERVER_PASSWORD+x}" ]; then',
+        '  printf \'SET:%s\\n\' "$OPENCODE_SERVER_PASSWORD"',
+        'else',
+        '  printf \'UNSET\\n\'',
+        'fi',
+        'exit $rc',
+        '',
+      ].join('\n'),
+      { mode: 0o755 },
+    );
+    const proc = spawnSync('bash', [driverPath, ENTRYPOINT_PATH, functionsPath], {
+      encoding: 'utf8',
+      env: { PATH: process.env.PATH ?? '/usr/bin:/bin', ...scenarioEnv },
+    });
+    return { exitCode: proc.status ?? 1, stdout: proc.stdout ?? '', stderr: proc.stderr ?? '' };
+  } finally {
+    rmSync(tempDir, { recursive: true, force: true });
+  }
+}
+
+describe('#563 — resolve_opencode_server_password (behavioral)', () => {
+  // RE-SCOPE, not a red test (PR #564 P1-2): the original T34 scenario (auth
+  // unset + non-empty file -> exported) was itself a pin of the P1-2 defect —
+  // exporting the file's password with no OPENCODE_AUTH gate at all. Adding
+  // OPENCODE_AUTH: 'true' keeps the valid half of the old assertion (the
+  // newline-strip-on-export behavior) pinned under the posture where export
+  // SHOULD happen. GREEN before and after this change.
+  test('T34: exports the file contents with the trailing newline stripped when OPENCODE_AUTH is enabled', () => {
+    const tempDir = mkdtempSync(join(tmpdir(), 'openpalm-resolve-pw-file-'));
+    try {
+      const pwFile = join(tempDir, 'opencode_server_password');
+      writeFileSync(pwFile, 's3cret-pw\n');
+      const result = runResolvePasswordScenario({
+        OPENCODE_AUTH: 'true',
+        OPENCODE_SERVER_PASSWORD_FILE: pwFile,
+      });
+      expect(result.exitCode, result.stderr).toBe(0);
+      expect(result.stdout.trim()).toBe('SET:s3cret-pw');
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  test('T35: OPENCODE_AUTH=true with no resolvable password fails fast naming both vars', () => {
+    const result = runResolvePasswordScenario({ OPENCODE_AUTH: 'true' });
+    expect(result.exitCode).not.toBe(0);
+    expect(result.stderr).toContain('OPENCODE_AUTH');
+    expect(result.stderr).toContain('OPENCODE_SERVER_PASSWORD_FILE');
+  });
+
+  test('T36: auth off with no file resolves silently (default posture) — variable stays unset', () => {
+    const result = runResolvePasswordScenario({});
+    expect(result.exitCode, result.stderr).toBe(0);
+    expect(result.stdout.trim()).toBe('UNSET');
+  });
+
+  // RED (PR #564 P1-2): ensureSecrets ALWAYS materializes a non-empty
+  // opencode_server_password file (random seed, or a stale password left
+  // behind by a preset switch away from home-password) — that file's mere
+  // non-emptiness must NOT turn on Basic auth when the operator's posture
+  // (OPENCODE_AUTH) says off. Today the file-read/export branch has no
+  // opencode_auth_enabled gate, so a stale/random file is exported and
+  // OpenCode silently enables auth the unauthenticated healthcheck then
+  // 401s against, wedging the stack unhealthy.
+  test('P1-2: OPENCODE_AUTH=false ignores a stale non-empty password file — variable stays unset', () => {
+    const tempDir = mkdtempSync(join(tmpdir(), 'openpalm-resolve-pw-stale-'));
+    try {
+      const pwFile = join(tempDir, 'opencode_server_password');
+      writeFileSync(pwFile, 'stale-pw\n');
+      const result = runResolvePasswordScenario({
+        OPENCODE_AUTH: 'false',
+        OPENCODE_SERVER_PASSWORD_FILE: pwFile,
+      });
+      expect(result.exitCode, result.stderr).toBe(0);
+      expect(result.stdout.trim()).toBe('UNSET');
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  // RED (PR #564 P1-2): same defect, shipped-default posture (OPENCODE_AUTH
+  // unset entirely — this is literally old T34's scenario, now asserting the
+  // CORRECT outcome instead of pinning the bug). Kept as a separate test from
+  // the explicit-`false` case above because `unset` and `false` are the two
+  // distinct paths through entrypoint.sh's `${OPENCODE_AUTH:-false}` default.
+  test('P1-2: auth unset (shipped default posture) ignores a non-empty password file', () => {
+    const tempDir = mkdtempSync(join(tmpdir(), 'openpalm-resolve-pw-unset-'));
+    try {
+      const pwFile = join(tempDir, 'opencode_server_password');
+      writeFileSync(pwFile, 'stale-pw\n');
+      const result = runResolvePasswordScenario({ OPENCODE_SERVER_PASSWORD_FILE: pwFile });
+      expect(result.exitCode, result.stderr).toBe(0);
+      expect(result.stdout.trim()).toBe('UNSET');
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  // PIN, green-on-arrival (PR #564 P1-2 / decision D1): an explicit
+  // OPENCODE_SERVER_PASSWORD env value is an operator's deliberate act (bare
+  // `docker run -e ...` outside the managed stack — inside it, secret-audit
+  // forbids `*_PASSWORD` compose env keys) and must never be silently
+  // unset/downgraded when auth is off. Fail-closed means never silently
+  // dropping credentials; the posture-gated healthcheck (D2) is what makes
+  // this inconsistent configuration fail LOUD instead. This pins the
+  // no-unset rule so a future "helpful" fix cannot downgrade auth silently.
+  test('P1-2 guard: an explicit OPENCODE_SERVER_PASSWORD env value is preserved, never unset, when auth is off', () => {
+    const result = runResolvePasswordScenario({
+      OPENCODE_AUTH: 'false',
+      OPENCODE_SERVER_PASSWORD: 'envpass',
+    });
+    expect(result.exitCode, result.stderr).toBe(0);
+    expect(result.stdout.trim()).toBe('SET:envpass');
   });
 });

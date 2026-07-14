@@ -1,5 +1,6 @@
 import type { ModelSelection, PortalState, Provider, ProviderState, VoiceEngineValue } from '../client/types.js';
 import { buildPortalsConfig } from '../client/helpers.js';
+import { isNetworkAccessPreset, type NetworkAccessPreset } from '@openpalm/lib/control-plane/network-preset.js';
 
 // ── Install payload contract (POST /api/setup/complete) ──────────────────────
 // The pure builder + inverse parser for the setup install contract. Extracted
@@ -32,7 +33,13 @@ export interface SetupVoicePayload {
 export interface SetupPayload {
   version: 2;
   addons: Record<string, boolean>;
-  security: { uiLoginPassword: string };
+  /**
+   * PR #564 P1-1: `uiLoginPassword` is OPTIONAL. On an unchanged rerun it is
+   * OMITTED (the wizard never generates/sends a replacement the operator never
+   * saw), and the server preserves the existing secret. A fresh install (or an
+   * explicit change) sends it and it must be >= 8 chars.
+   */
+  security: { uiLoginPassword?: string };
   connections: SetupCapability[];
   llm?: { provider: string; model: string; baseUrl: string };
   embedding?: { provider: string; model: string; dims: number; baseUrl: string };
@@ -43,6 +50,8 @@ export interface SetupPayload {
   portalCredentials?: Record<string, Record<string, string>>;
   imageTag?: string;
   hostAkm?: boolean;
+  /** #563 — network access preset. Omitted entirely on a rerun the operator didn't touch (D7). */
+  network?: { preset: NetworkAccessPreset; opencodePassword?: string };
 }
 
 /** Everything buildSetupPayload needs — the resolved wizard state at install time. */
@@ -60,8 +69,15 @@ export interface SetupPayloadInput {
   selectedOllamaProfile: string;
   portalSelection: Record<string, boolean | PortalState>;
   uiLoginPassword: string;
+  /** PR #564 P1-1: true on an unchanged rerun — omit uiLoginPassword so the
+   *  server preserves the existing secret instead of rotating it. */
+  keepExistingUiLoginPassword?: boolean;
   imageTag: string;
   hostAkmEnabled: boolean;
+  /** #563 — chosen network access preset; null means "don't touch network config" (rerun over a custom/undetected env, D7). */
+  networkPreset: NetworkAccessPreset | null;
+  /** Password for the home-password preset; ignored (never sent) by every other preset. */
+  opencodePassword: string;
 }
 
 /** Serialize one voice side, or undefined when not chosen / a "skip-" sentinel. */
@@ -90,7 +106,7 @@ export function buildSetupPayload(input: SetupPayloadInput): SetupPayload {
   const {
     modelSelection, verifiedProviders, providerState, ollamaEnabled, hostLocalLlmRunning,
     persistedVoiceTts, persistedVoiceStt, selectedVoiceProfile, selectedOllamaProfile,
-    portalSelection, uiLoginPassword, imageTag, hostAkmEnabled,
+    portalSelection, uiLoginPassword, keepExistingUiLoginPassword, imageTag, hostAkmEnabled, networkPreset, opencodePassword,
   } = input;
 
   const llm = modelSelection.llm;
@@ -145,7 +161,9 @@ export function buildSetupPayload(input: SetupPayloadInput): SetupPayload {
   const result: SetupPayload = {
     version: 2,
     addons,
-    security: { uiLoginPassword },
+    // PR #564 P1-1: omit the password on an unchanged rerun so the server keeps
+    // the existing secret rather than rotating it to a value the operator never saw.
+    security: keepExistingUiLoginPassword ? {} : { uiLoginPassword },
     connections: capabilities,
   };
 
@@ -180,6 +198,15 @@ export function buildSetupPayload(input: SetupPayloadInput): SetupPayload {
   if (imageTag.trim()) result.imageTag = imageTag.trim();
   if (hostAkmEnabled) result.hostAkm = true;
 
+  // #563 — network access preset. null (rerun over a custom/undetected env
+  // the operator hasn't touched) omits the field entirely (D7); only
+  // home-password carries a password (D5/D7 — the other presets REJECT one).
+  if (networkPreset !== null) {
+    result.network = networkPreset === 'home-password'
+      ? { preset: networkPreset, opencodePassword }
+      : { preset: networkPreset };
+  }
+
   return result;
 }
 
@@ -199,6 +226,12 @@ export interface RawSetupConfig {
   enabledAddons?: unknown;
   ollama?: { selectedProfile?: unknown } | null;
   portalCredentials?: Record<string, Record<string, unknown>> | null;
+  /** #563 — the detected network access preset (null = custom/hand-tuned). */
+  network?: { preset?: string | null } | null;
+  /** PR #564 r3566887969 — whether the install already has an OpenCode password
+   *  secret. The secret value itself is never returned; this flag lets a rerun
+   *  distinguish "keep the existing password" from "set a new one". */
+  hasOpencodePassword?: boolean;
 }
 
 /**
@@ -221,6 +254,14 @@ export interface PartialSetupState {
   enabledAddons: string[];
   /** Raw per-portal credential metadata, applied onto the portal selection as-is. */
   portalCredentials: Record<string, Record<string, unknown>>;
+  /**
+   * #563 — the detected network access preset for rerun pre-fill. Unset when
+   * the response has no `network` field at all; `null` when present but the
+   * preset is absent/unrecognized (custom/hand-tuned env, D7/D8).
+   */
+  networkPreset?: NetworkAccessPreset | null;
+  /** PR #564 r3566887969 — the install already has an OpenCode password. */
+  hasOpencodePassword?: boolean;
 }
 
 /**
@@ -274,7 +315,36 @@ export function parseSetupConfig(data: RawSetupConfig): PartialSetupState {
   if (data.ollama?.selectedProfile && typeof data.ollama.selectedProfile === 'string') {
     result.selectedOllamaProfile = data.ollama.selectedProfile;
   }
-  result.portalCredentials = data.portalCredentials ?? {};
+  // PR #564 P1-2: current-config returns secret-PRESENCE metadata (objects like
+  // `{ envKey, present }`), never plaintext. Keep only genuine STRING values so
+  // a metadata object can never reach a string credential field (where it would
+  // serialize as "[object Object]" and corrupt the persisted secret). In
+  // practice this yields an empty map on rerun — presence-only creds stay empty
+  // (keep-existing) and are omitted from the payload.
+  const rawPortalCreds = data.portalCredentials ?? {};
+  const cleanedPortalCreds: Record<string, Record<string, string>> = {};
+  for (const [portal, fields] of Object.entries(rawPortalCreds)) {
+    if (!fields || typeof fields !== 'object') continue;
+    const stringFields: Record<string, string> = {};
+    for (const [field, value] of Object.entries(fields)) {
+      if (typeof value === 'string') stringFields[field] = value;
+    }
+    if (Object.keys(stringFields).length > 0) cleanedPortalCreds[portal] = stringFields;
+  }
+  result.portalCredentials = cleanedPortalCreds;
+
+  // #563 — network access preset (D7/D8). Only set the field when the
+  // response carries a `network` key at all; an unrecognized/absent preset
+  // inside it maps to null (custom/hand-tuned env), never a garbage passthrough.
+  if (data.network !== undefined && data.network !== null) {
+    const preset = data.network.preset;
+    result.networkPreset = isNetworkAccessPreset(preset) ? preset : null;
+  }
+  // PR #564 r3566887969 — surface whether a password already exists so a rerun
+  // keep-as-is over home-password doesn't mint (rotate) a new one.
+  if (typeof data.hasOpencodePassword === 'boolean') {
+    result.hasOpencodePassword = data.hasOpencodePassword;
+  }
 
   return result;
 }

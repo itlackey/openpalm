@@ -23,7 +23,8 @@ import { readFileSync, writeFileSync, mkdirSync, existsSync, chmodSync, unlinkSy
 import { dirname } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { getState } from './state.js';
-import { readStackEnv, type RemoteStatus } from '@openpalm/lib';
+import { readSecret, readStackEnv, type RemoteStatus } from '@openpalm/lib';
+import { basicAuthHeader, DEFAULT_OPENCODE_USERNAME as SHARED_DEFAULT_OPENCODE_USERNAME, stripTrailingNewlines } from './basic-auth.js';
 import type { ConnectionKind } from '$lib/types.js';
 
 export type ConnectionEntry = {
@@ -39,10 +40,11 @@ export type ConnectionEntry = {
   kind?: ConnectionKind;
   /**
    * Basic-auth username forwarded as Authorization header. Defaults to
-   * `"openpalm"` for synthesized entries; user-added entries may override.
-   * OpenCode rejects Basic auth with an empty username — the default
-   * `OPENCODE_SERVER_USERNAME` on the upstream server is `"opencode"`, but
-   * OpenPalm sets it to `"openpalm"` on every server it spawns/configures.
+   * `"opencode"` for the synthesized Local Assistant entry — OpenCode's own
+   * server default; the shipped assistant compose does not override
+   * `OPENCODE_SERVER_USERNAME`, and the guardian's upstream auth (#563)
+   * likewise sends `opencode:<password>`. OpenCode rejects Basic auth with
+   * an empty username. User-added entries may override.
    */
   username?: string;
   /** Optional OpenCode Basic-auth password forwarded as Authorization header. */
@@ -83,6 +85,15 @@ function kindOf(entry: ConnectionEntry): ConnectionKind {
 }
 
 const DEFAULT_ID = 'default';
+
+/**
+ * OpenCode's server default Basic-auth username. The shipped assistant compose
+ * never overrides OPENCODE_SERVER_USERNAME, and the guardian's upstream auth
+ * sends `opencode:<password>`, so every host-UI forwarder must default here or
+ * a correct password 401s (PR #564 r3566888629). User-added connections may
+ * still carry an explicit username.
+ */
+export const DEFAULT_OPENCODE_USERNAME = SHARED_DEFAULT_OPENCODE_USERNAME;
 const LOCAL_ELECTRON_ID = 'local-electron';
 let wizardOpencodeUrl: string | null = null;
 let remoteStatusCache: { expiresAt: number; value: RemoteStatus[] } | null = null;
@@ -185,7 +196,7 @@ function localEndpoint(): ActiveConnection | null {
     id: LOCAL_ELECTRON_ID,
     label: 'OpenPalm Admin',
     url: normalizeBrowserFacingUrl(rt.url),
-    username: rt.username || 'openpalm',
+    username: rt.username || DEFAULT_OPENCODE_USERNAME,
     ...(rt.password ? { password: rt.password } : {}),
     kind: 'local-opencode',
     isDefault: false,
@@ -254,8 +265,32 @@ function defaultEndpoint(): ActiveConnection {
     process.env.OP_OPENCODE_URL ??
     process.env.OP_ASSISTANT_URL ??
     `http://127.0.0.1:${process.env.OP_ASSISTANT_PORT ?? persisted.OP_ASSISTANT_PORT ?? '3800'}`;
-  const username = process.env.OPENCODE_SERVER_USERNAME || 'openpalm';
-  const password = process.env.OPENCODE_SERVER_PASSWORD || undefined;
+  // OpenCode's server default username — the shipped assistant compose never
+  // overrides OPENCODE_SERVER_USERNAME, so 'openpalm' here meant the
+  // home-password preset 401ed from the host UI (guardian upstream auth
+  // already sends 'opencode:<password>').
+  const username = process.env.OPENCODE_SERVER_USERNAME || DEFAULT_OPENCODE_USERNAME;
+  // #563 D10 — an explicit host OPENCODE_SERVER_PASSWORD always wins
+  // (T63, pin). Otherwise fall back to the network-preset-managed OpenCode
+  // password, but ONLY when OPENCODE_AUTH is truthy: the secret file is always
+  // materialized (#563/D3), so an unconditional fallback would start attaching
+  // Basic auth for every existing install — gating on OPENCODE_AUTH keeps the
+  // default posture byte-identical.
+  //
+  // PR #564 r3566889513: read auth from the SAME fresh sources as the URL, not
+  // the frozen (startup-promoted) process.env. Completing the wizard writes
+  // OPENCODE_AUTH to stack.env and the password to knowledge/secrets/
+  // op_opencode_password; the long-lived host UI must see them without a
+  // restart. OPENCODE_AUTH is non-secret → fresh via readStackEnv (`persisted`);
+  // the password is a secret file (readStackEnv strips *_PASSWORD keys) → read
+  // it fresh from the secret store. process.env remains the fallback.
+  const authEnabled = /^(true|1|yes)$/i.test(
+    (persisted.OPENCODE_AUTH ?? process.env.OPENCODE_AUTH ?? '').trim(),
+  );
+  const presetPassword = authEnabled
+    ? ((raw) => (raw ? stripTrailingNewlines(raw) : undefined))(readSecret(getState().homeDir, 'op_opencode_password') ?? undefined) || process.env.OP_OPENCODE_PASSWORD
+    : undefined;
+  const password = process.env.OPENCODE_SERVER_PASSWORD || presetPassword || undefined;
   return {
     id: DEFAULT_ID,
     label: 'Local Assistant',
@@ -267,7 +302,7 @@ function defaultEndpoint(): ActiveConnection {
   };
 }
 
-export type EndpointUrlError = 'invalid_url' | 'invalid_scheme' | 'missing_host';
+export type EndpointUrlError = 'invalid_url' | 'invalid_scheme' | 'missing_host' | 'unexpected_query_or_fragment';
 
 export type EndpointUrlValidation =
   | { ok: true; url: string }
@@ -290,6 +325,13 @@ export function validateEndpointUrl(input: string): EndpointUrlValidation {
   }
   if (!u.hostname) {
     return { ok: false, reason: 'missing_host' };
+  }
+  // PR #564 second retest: a connection/guardian URL is a BASE that the client
+  // concatenates API paths onto (`${base}/oc`, `${base}/session`). A query or
+  // fragment on the base mangles that concatenation (`...?tenant=home/session`),
+  // so reject it rather than silently normalizing an unusable endpoint.
+  if (u.search || u.hash) {
+    return { ok: false, reason: 'unexpected_query_or_fragment' };
   }
   // Strip trailing slash for consistency
   return { ok: true, url: u.toString().replace(/\/$/, '') };
@@ -364,15 +406,47 @@ export function setActiveConnectionId(id: string | null): ActiveConnection {
   return getActiveConnection();
 }
 
-export type ConnectionInput = { label: string; url: string; password?: string };
+/**
+ * User-addable connection kinds (#486 D2). `local-opencode` is reserved for
+ * synthesized entries (the env-derived default, the Electron local-runtime
+ * entry) and is never accepted from a write path.
+ */
+export const USER_ADDABLE_CONNECTION_KINDS = ['remote-opencode', 'openpalm-client-api'] as const;
+
+/**
+ * Normalize a guardian ('openpalm-client-api'-kind) connection URL so it
+ * always ends in `/oc` — the guardian's direct-ingress base path
+ * (#486 D2). Operates on an ALREADY `normalizeEndpointUrl`-ed string (no
+ * trailing slash), so only the `/oc` suffix logic is needed here.
+ *
+ * `packages/client/src/lib/connections/url-policy.ts` carries a deliberate
+ * CLIENT-side twin (`normalizeGuardianUrl`) with the same rule — the client
+ * artifact may not import host code and vice versa, so this is the same
+ * accepted duplication as `validateConnectionUrl`/`validateEndpointUrl`.
+ * Both are pinned by their own tests.
+ */
+export function normalizeGuardianOcUrl(url: string): string {
+  return url.endsWith('/oc') ? url : `${url}/oc`;
+}
+
+export type ConnectionInput = { label: string; url: string; password?: string; kind?: ConnectionKind };
 /** Legacy name — kept until every consumer migrates to connection language. */
 export type EndpointInput = ConnectionInput;
+
+function assertAddableKind(kind: ConnectionKind | undefined): void {
+  if (kind === undefined) return;
+  if (!(USER_ADDABLE_CONNECTION_KINDS as readonly string[]).includes(kind)) {
+    throw new Error('Invalid connection kind');
+  }
+}
 
 export function addConnection(input: ConnectionInput): ConnectionEntry {
   const label = input.label.trim();
   if (!label) throw new Error('Label is required');
-  const url = normalizeEndpointUrl(input.url);
+  let url = normalizeEndpointUrl(input.url);
   if (!url) throw new Error('URL must be a valid http(s) URL');
+  assertAddableKind(input.kind);
+  if (input.kind === 'openpalm-client-api') url = normalizeGuardianOcUrl(url);
 
   const data = readFile();
   const entry: ConnectionEntry = {
@@ -380,6 +454,7 @@ export function addConnection(input: ConnectionInput): ConnectionEntry {
     label,
     url,
     ...(input.password ? { password: input.password } : {}),
+    ...(input.kind ? { kind: input.kind } : {}),
   };
   data.endpoints.push(entry);
   writeFile(data);
@@ -391,6 +466,7 @@ export type ConnectionPatch = {
   url?: string;
   /** undefined = leave unchanged; null = clear; string = set */
   password?: string | null;
+  kind?: ConnectionKind;
 };
 /** Legacy name — kept until every consumer migrates to connection language. */
 export type EndpointPatch = ConnectionPatch;
@@ -400,6 +476,7 @@ export function updateConnection(id: string, patch: ConnectionPatch): Connection
   if (id === LOCAL_ELECTRON_ID) {
     throw new Error('Cannot edit the local Electron OpenCode entry (it is ephemeral and per-launch)');
   }
+  assertAddableKind(patch.kind);
 
   const data = readFile();
   const idx = data.endpoints.findIndex((e) => e.id === id);
@@ -421,6 +498,16 @@ export function updateConnection(id: string, patch: ConnectionPatch): Connection
     delete next.password;
   } else if (typeof patch.password === 'string') {
     next.password = patch.password;
+  }
+  if (patch.kind !== undefined) next.kind = patch.kind;
+  // Re-normalize the stored URL whenever the EFFECTIVE kind (patched or
+  // existing) is 'openpalm-client-api' — including a kind-only patch that
+  // switches an existing plain URL over to the guardian kind with no `url`
+  // in the same request. Switching a guardian entry back to
+  // 'remote-opencode' does not attempt to strip `/oc` — the stored URL
+  // stays authoritative (no un-normalization).
+  if (next.kind === 'openpalm-client-api') {
+    next.url = normalizeGuardianOcUrl(next.url);
   }
 
   data.endpoints[idx] = next;
@@ -444,11 +531,15 @@ export function deleteConnection(id: string): void {
 async function probeEndpoint(endpoint: ActiveConnection): Promise<RemoteStatus> {
   const headers = new Headers();
   if (endpoint.password) {
-    const username = endpoint.username ?? 'openpalm';
-    headers.set('authorization', `Basic ${Buffer.from(`${username}:${endpoint.password}`).toString('base64')}`);
+    const username = endpoint.username ?? DEFAULT_OPENCODE_USERNAME;
+    headers.set('authorization', basicAuthHeader(username, endpoint.password));
   }
+  // #486 D2: a guardian /oc base's bare root (`GET /oc/`) is not an
+  // allowlisted route and 404s even when the guardian is fully healthy —
+  // probe the allowlisted `/session` route instead.
+  const probeUrl = endpoint.kind === 'openpalm-client-api' ? `${endpoint.url}/session` : endpoint.url;
   try {
-    const response = await fetch(endpoint.url, {
+    const response = await fetch(probeUrl, {
       method: 'GET',
       headers,
       redirect: 'manual',
