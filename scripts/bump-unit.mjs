@@ -5,6 +5,7 @@
 //   UNIT    — platform | portals | assistant | guardian | images | electron | all
 //   BUMP    — patch | minor | major  (ignored when UNIT=images)
 //   STAMP   — 'true' to write files in place; any other value = compute-only (dry preview)
+//   VERSION_OVERRIDE — optional explicit semver; skips bump computation
 //
 // Out (when GITHUB_OUTPUT is set):
 //   new_version=X.Y.Z
@@ -262,9 +263,14 @@ function runCli() {
   const unit = process.env.UNIT;
   const bump = process.env.BUMP || 'patch';
   const doStamp = process.env.STAMP === 'true';
+  const versionOverride = process.env.VERSION_OVERRIDE?.trim() || null;
 
   if (!unit) {
     console.error('Error: UNIT env var is required (platform|portals|assistant|guardian|images|electron|all)');
+    process.exit(1);
+  }
+  if (versionOverride && !parseSemver(versionOverride)) {
+    console.error(`Error: Cannot parse VERSION_OVERRIDE: ${versionOverride}`);
     process.exit(1);
   }
 
@@ -276,8 +282,12 @@ function runCli() {
     // Images-only release: read current platform version, no bump.
     // Use --version override to tag images at a specific version.
     currentVersion = UNITS.images.anchorFn();
-    newVersion = currentVersion;
-    console.log(`images: using current platform version ${newVersion} (no bump; use version override for a new tag)`);
+    newVersion = versionOverride ?? currentVersion;
+    console.log(
+      versionOverride
+        ? `images: ${currentVersion} → ${newVersion} (explicit version)`
+        : `images: using current platform version ${newVersion} (no bump; use version override for a new tag)`,
+    );
     if (out) {
       appendFileSync(out, `${[
         `current_version=${currentVersion}`,
@@ -290,8 +300,10 @@ function runCli() {
     // Unlike the old 'major' unit, 'all' accepts any bump type (patch/minor/major) and
     // accepts an explicit version override for coordinated point releases.
     currentVersion = UNITS.platform.anchorFn();
-    newVersion = bumpVersion(currentVersion, bump);
-    console.log(`All-units release: ${currentVersion} → ${newVersion} (${bump} bump)`);
+    newVersion = versionOverride ?? bumpVersion(currentVersion, bump);
+    console.log(
+      `All-units release: ${currentVersion} → ${newVersion} (${versionOverride ? 'explicit version' : `${bump} bump`})`,
+    );
     console.log('Files to stamp:');
     if (doStamp) {
       for (const [name, cfg] of Object.entries(UNITS)) {
@@ -322,8 +334,10 @@ function runCli() {
       process.exit(1);
     }
     currentVersion = cfg.anchorFn();
-    newVersion = bumpVersion(currentVersion, bump);
-    console.log(`${unit}: ${currentVersion} → ${newVersion} (${bump} bump)`);
+    newVersion = versionOverride ?? bumpVersion(currentVersion, bump);
+    console.log(
+      `${unit}: ${currentVersion} → ${newVersion} (${versionOverride ? 'explicit version' : `${bump} bump`})`,
+    );
     if (doStamp) {
       cfg.stamp(newVersion);
     } else {

@@ -118,13 +118,17 @@ describe("P5e — @openpalm/client joins the publish DAG (RED until P5e item 1)"
 		expect(guard?.run ?? "").toContain("'@openpalm/client'");
 	});
 
-	test("the explicit-version stamp path stamps packages/client/package.json", () => {
-		// Mirrors packages/ui/package.json in the bump job's VERSION_OVERRIDE case
-		// list — otherwise an override release ships a client whose version does
-		// not match the platform pin the assistant container installs.
-		const stamp = (jobs.bump?.steps ?? []).find((s) => s.run?.includes("set-version.mjs"));
+	test("explicit-version stamping delegates to the canonical unit stamper", () => {
+		// A hand-maintained VERSION_OVERRIDE case list drifted from bump-unit.mjs
+		// and published beta.4 adapters pinned to portal-sdk beta.3. Every release
+		// path must use the same unit definitions.
+		const stamp = (jobs.bump?.steps ?? []).find((s) => s.name === "Stamp unit files");
 		expect(stamp).toBeDefined();
-		expect(stamp?.run ?? "").toContain("packages/client/package.json");
+		expect(stamp?.run ?? "").toContain("node scripts/bump-unit.mjs");
+		expect(stamp?.run ?? "").not.toContain("set-version.mjs");
+		expect(readFileSync(join(ROOT, "scripts/bump-unit.mjs"), "utf-8")).toContain(
+			"VERSION_OVERRIDE",
+		);
 	});
 });
 

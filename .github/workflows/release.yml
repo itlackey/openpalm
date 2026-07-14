@@ -129,16 +129,7 @@ jobs:
           BUMP: ${{ inputs.bump }}
           STAMP: 'false'
           VERSION_OVERRIDE: ${{ inputs.version }}
-        run: |
-          if [ -n "${VERSION_OVERRIDE}" ]; then
-            CURRENT=$(node -p "require('./package.json').version")
-            echo "current_version=${CURRENT}" >> "$GITHUB_OUTPUT"
-            echo "new_version=${VERSION_OVERRIDE}" >> "$GITHUB_OUTPUT"
-            echo "tag_prefix=${{ inputs.unit }}" >> "$GITHUB_OUTPUT"
-            echo "Version override: ${CURRENT} → ${VERSION_OVERRIDE}"
-          else
-            node scripts/bump-unit.mjs
-          fi
+        run: node scripts/bump-unit.mjs
 
       - name: Resolve prerelease flag
         id: meta
@@ -302,56 +293,7 @@ jobs:
           STAMP: 'true'
           VERSION_OVERRIDE: ${{ inputs.version }}
         run: |
-          if [ -n "${VERSION_OVERRIDE}" ]; then
-            V="${VERSION_OVERRIDE}"
-            # Stamp the same files bump-unit.mjs would for this unit
-            case "${UNIT}" in
-              platform)
-                for f in package.json packages/lib/package.json packages/skeleton/package.json \
-                          packages/guardian/package.json packages/cli/package.json \
-                          packages/ui/package.json packages/client/package.json \
-                          packages/electron/package.json \
-                          packages/electron/admin-tools/package.json; do
-                  node scripts/set-version.mjs "$f" "$V"
-                done
-                sed -i "s/^SCRIPT_VERSION=\".*\"/SCRIPT_VERSION=\"${V}\"/" scripts/setup.sh
-                sed -i "s/^\\\$ScriptVersion = '.*'/\$ScriptVersion = '${V}'/" scripts/setup.ps1
-                ;;
-              all)
-                for f in package.json packages/lib/package.json packages/skeleton/package.json \
-                          packages/guardian/package.json packages/cli/package.json \
-                          packages/ui/package.json packages/client/package.json \
-                          packages/electron/package.json \
-                          packages/electron/admin-tools/package.json; do
-                  node scripts/set-version.mjs "$f" "$V"
-                done
-                node scripts/set-version.mjs portals/discord/package.json "$V"
-                node scripts/set-version.mjs portals/slack/package.json "$V"
-                printf '%s\n' "$V" > containers/assistant/VERSION
-                sed -i "s/^SCRIPT_VERSION=\".*\"/SCRIPT_VERSION=\"${V}\"/" scripts/setup.sh
-                sed -i "s/^\\\$ScriptVersion = '.*'/\$ScriptVersion = '${V}'/" scripts/setup.ps1
-                ;;
-              electron)
-                node scripts/set-version.mjs packages/electron/package.json "$V"
-                node scripts/set-version.mjs packages/electron/admin-tools/package.json "$V"
-                ;;
-              portals)
-                node scripts/set-version.mjs portals/discord/package.json "$V"
-                node scripts/set-version.mjs portals/slack/package.json "$V"
-                ;;
-              guardian)
-                node scripts/set-version.mjs packages/guardian/package.json "$V"
-                ;;
-              images)
-                echo "Images-only release — no files to stamp."
-                ;;
-              *)
-                echo "::error::version override not supported for unit=${UNIT}"; exit 1
-                ;;
-            esac
-          else
-            node scripts/bump-unit.mjs
-          fi
+          node scripts/bump-unit.mjs
           bun install
 
       - name: Preview (dry-run — no commit)
