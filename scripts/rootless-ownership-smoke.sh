@@ -98,6 +98,8 @@ smoke_teardown_stack() {
     dev_compose --profile addon.discord --profile addon.chat down --remove-orphans --volumes >/dev/null 2>&1 || true
   fi
   docker ps -aq --filter "label=com.docker.compose.project=${COMPOSE_PROJECT_NAME}" 2>/dev/null | xargs -r docker rm -f >/dev/null 2>&1 || true
+  docker network ls -q --filter "label=com.docker.compose.project=${COMPOSE_PROJECT_NAME}" 2>/dev/null | xargs -r docker network rm >/dev/null 2>&1 || true
+  docker volume ls -q --filter "label=com.docker.compose.project=${COMPOSE_PROJECT_NAME}" 2>/dev/null | xargs -r docker volume rm >/dev/null 2>&1 || true
 }
 
 cleanup() {
@@ -120,7 +122,7 @@ echo "Preparing isolated smoke OP_HOME at ${SMOKE_HOME}..."
 # Profile-aware teardown BEFORE deleting the fixture — a prior `--keep` run may
 # have left profile-gated guardian/portal containers up (PR #564 retest P2-7).
 smoke_teardown_stack
-docker run --rm -v "$(dirname "$SMOKE_HOME"):/smoke-parent" alpine sh -c "rm -rf /smoke-parent/$(basename "$SMOKE_HOME")" >/dev/null 2>&1 || true
+docker run --rm -v "$(dirname "$SMOKE_HOME"):/smoke-parent" alpine sh -c 'rm -rf "/smoke-parent/$1"' _ "$(basename "$SMOKE_HOME")" >/dev/null 2>&1 || true
 smoke_copy_skeleton "$SMOKE_HOME"
 smoke_write_stack_env "$SMOKE_HOME" "$PLATFORM_VERSION" \
   "${OP_ROOTLESS_SMOKE_ASSISTANT_PORT:-${assistant_port_default}}" \
@@ -141,17 +143,7 @@ smoke_ensure_home_dirs "$SMOKE_HOME"
 smoke_write_version_override "$SMOKE_HOME/rootless-smoke.override.yml" "$PLATFORM_VERSION"
 
 if [[ "$TARGET" == "portal-discord" ]]; then
-  SMOKE_HOME_PATH="$SMOKE_HOME" python3 - <<'PY'
-import os
-from pathlib import Path
-path = Path(os.environ['SMOKE_HOME_PATH']) / 'knowledge' / 'env' / 'stack.env'
-content = path.read_text()
-if 'OP_ENABLED_ADDONS=' in content:
-    content = content.replace('OP_ENABLED_ADDONS=\n', 'OP_ENABLED_ADDONS=discord\n')
-else:
-    content += 'OP_ENABLED_ADDONS=discord\n'
-path.write_text(content)
-PY
+  printf 'OP_ENABLED_ADDONS=discord\n' >> "$SMOKE_HOME/state/stack.state.env"
 fi
 
 # Build (or, under OP_ROOTLESS_SMOKE_SKIP_BUILD=1 in CI, reuse) the dev images.

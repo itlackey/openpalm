@@ -194,6 +194,8 @@ describe('Guardian server integration', () => {
     expect(Array.isArray(data.principals)).toBe(true);
     expect(data.principals.some((principal: { id?: string }) => principal.id === TEST_PRINCIPAL)).toBe(true);
     expect(data.direct_ingress_enabled).toBe(false);
+    expect(data.rate_limits.user_max_requests).toBe(120);
+    expect(data.rate_limits.portal_max_requests).toBe(200);
     expect(typeof data.requests.total).toBe('number');
   });
 

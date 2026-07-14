@@ -90,9 +90,11 @@ OP_GUARDIAN_ADMIN_PORT=${guardian_admin_port}
 OP_CHAT_PORT=${chat_port}
 OP_API_PORT=${api_port}
 OP_CLIENT_PORT=${client_port}
-OP_SETUP_COMPLETE=true
 EOF
   chmod 600 "$home/knowledge/env/stack.env"
+  mkdir -p "$home/state"
+  printf 'OP_SETUP_COMPLETE=true\n' > "$home/state/stack.state.env"
+  chmod 600 "$home/state/stack.state.env"
 }
 
 # Create the runtime directory layout via the lib helper (identical in both

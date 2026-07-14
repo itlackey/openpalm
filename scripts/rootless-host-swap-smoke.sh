@@ -31,8 +31,11 @@ dev_compose() {
 
 cleanup() {
   if [[ -f "$SWAP_HOME/knowledge/env/stack.env" ]]; then
-    dev_compose down --remove-orphans --volumes >/dev/null 2>&1 || true
+    dev_compose --profile addon.chat --profile addon.discord down --remove-orphans --volumes >/dev/null 2>&1 || true
   fi
+  docker ps -aq --filter "label=com.docker.compose.project=${COMPOSE_PROJECT_NAME}" 2>/dev/null | xargs -r docker rm -f >/dev/null 2>&1 || true
+  docker network ls -q --filter "label=com.docker.compose.project=${COMPOSE_PROJECT_NAME}" 2>/dev/null | xargs -r docker network rm >/dev/null 2>&1 || true
+  docker volume ls -q --filter "label=com.docker.compose.project=${COMPOSE_PROJECT_NAME}" 2>/dev/null | xargs -r docker volume rm >/dev/null 2>&1 || true
   docker run --rm -v "$(dirname "$SWAP_HOME"):/smoke-parent" alpine sh -c 'rm -rf "/smoke-parent/$1"' _ "$(basename "$SWAP_HOME")" >/dev/null 2>&1 || true
 }
 trap cleanup EXIT
@@ -56,7 +59,7 @@ PLATFORM_VERSION="$(smoke_platform_version)"
 smoke_copy_skeleton "$SWAP_HOME"
 smoke_write_stack_env "$SWAP_HOME" "$PLATFORM_VERSION" \
   3996 3990 3991 3992 3993 3994
-printf 'OP_ENABLED_ADDONS=%s\n' 'chat' >> "$SWAP_HOME/knowledge/env/stack.env"
+printf 'OP_ENABLED_ADDONS=%s\n' 'chat' >> "$SWAP_HOME/state/stack.state.env"
 smoke_seed_secrets "$SWAP_HOME" 'swap-smoke-password'
 
 smoke_ensure_home_dirs "$SWAP_HOME"
@@ -86,7 +89,7 @@ fi
 grep -q 'Host swap detected for OP_HOME' /tmp/rootless-swap.err
 
 echo "Resetting swap fixture for adopt-host run..."
-dev_compose down --remove-orphans --volumes >/dev/null 2>&1 || true
+dev_compose --profile addon.chat --profile addon.discord down --remove-orphans --volumes >/dev/null 2>&1 || true
 docker run --rm -v "$SWAP_HOME:/smoke-home" alpine sh -c "chown -R 0:0 /smoke-home/state /smoke-home/config /smoke-home/system /smoke-home/knowledge /smoke-home/workspace /smoke-home/data/assistant /smoke-home/data/guardian /smoke-home/data/akm /smoke-home/data/logs && find /smoke-home/config /smoke-home/system /smoke-home/knowledge -type d -exec chmod 755 {} + && find /smoke-home/config /smoke-home/system /smoke-home/knowledge -type f -exec chmod 644 {} + && rm -f /smoke-home/state/host-identity.json"
 docker run --rm -v "$SWAP_HOME:/smoke-home" alpine sh -c "cat > /smoke-home/state/host-identity.json <<'EOF'
 {

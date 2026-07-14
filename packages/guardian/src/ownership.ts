@@ -14,9 +14,11 @@
  * seam now so the proxy can authorize replies once that lands.
  *
  * Plain module-scoped Maps (no class, no DI). Guardian-local on purpose — NOT
- * @openpalm/lib. Entries are dropped on explicit forget/DELETE; a personal
- * assistant's session/permission counts never approach memory pressure.
+ * @openpalm/lib. Entries are dropped on explicit forget/DELETE and capped with
+ * oldest-first eviction so authenticated input cannot grow memory without bound.
  */
+
+import { setBoundedMapEntry } from './bounded-map.ts';
 
 /** The identity that owns a session/permission request. */
 export interface Principal {
@@ -36,12 +38,13 @@ export function principalKey(p: Principal): string {
 // sessionId → principalKey, requestID → principalKey.
 const sessionOwners = new Map<string, string>();
 const permissionOwners = new Map<string, string>();
+export const OWNERSHIP_MAX_ENTRIES = 10_000;
 
 // ── Session ownership ─────────────────────────────────────────────────────
 
 /** Record that `principal` owns `sessionId`. Called on POST /session create. */
 export function recordSessionOwner(sessionId: string, principal: Principal): void {
-  sessionOwners.set(sessionId, principalKey(principal));
+  setBoundedMapEntry(sessionOwners, sessionId, principalKey(principal), OWNERSHIP_MAX_ENTRIES);
 }
 
 /**
@@ -89,7 +92,7 @@ export function ownedSessionIds(principal: Principal): Set<string> {
  * now so the proxy can authorize POST /permission/{requestID}/reply.
  */
 export function recordPermissionOwner(requestID: string, principal: Principal): void {
-  permissionOwners.set(requestID, principalKey(principal));
+  setBoundedMapEntry(permissionOwners, requestID, principalKey(principal), OWNERSHIP_MAX_ENTRIES);
 }
 
 /**

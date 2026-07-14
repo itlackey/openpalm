@@ -294,15 +294,15 @@ start_client() {
     # lifetime (e.g. one every few days) permanently disabled the client after
     # only 5 of them, total, ever — contradicting the comment's claim to
     # mirror client-server.ts, which DOES reset. Millisecond resolution (via
-    # `date +%s%3N`, GNU coreutils) both matches client-server.ts's Date.now()
-    # units and avoids second-granularity rounding incorrectly classifying a
-    # fast crash-loop iteration as "healthy" near a wall-clock second boundary.
+    # `Date.now()` from the already-required Node runtime) both matches
+    # client-server.ts's units and avoids non-portable `date +%s%3N` behavior
+    # (uutils emits nanoseconds instead of GNU coreutils' milliseconds).
     # Configurable (test hook); unset uses the same 60000ms threshold as
     # client-server.ts's HEALTHY_UPTIME_MS.
     local healthy_uptime_ms="${OP_CLIENT_RESPAWN_HEALTHY_UPTIME_MS:-60000}"
     while true; do
       local start_ts
-      start_ts="$(date +%s%3N)"
+      start_ts="$(node -e 'process.stdout.write(String(Date.now()))')"
       local exit_code
       if node "$serve_script" --host 0.0.0.0 --port "$client_port" --dir "$client_build"; then
         exit_code=0
@@ -310,7 +310,7 @@ start_client() {
         exit_code=$?
       fi
       local end_ts
-      end_ts="$(date +%s%3N)"
+      end_ts="$(node -e 'process.stdout.write(String(Date.now()))')"
       if [ "$((end_ts - start_ts))" -ge "$healthy_uptime_ms" ]; then
         attempt=0
       fi

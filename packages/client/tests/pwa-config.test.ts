@@ -144,6 +144,10 @@ describe('PWA source config', () => {
     expect(options?.workbox?.globIgnores).toEqual(
       expect.arrayContaining(['**/runtime-config.json'])
     );
+    expect(options?.workbox?.additionalManifestEntries).toContainEqual({
+      url: '/index.html',
+      revision: null
+    });
     expect(options?.workbox?.navigateFallback).toBe('/index.html');
 
     const runtimeConfigRule = options?.workbox?.runtimeCaching?.find((rule) => rule.options?.cacheName === 'runtime-config');
@@ -244,6 +248,7 @@ describe('PWA build output', () => {
 
   test('service worker preserves runtime-config freshness and avoids caching credentialed guardian/OpenCode traffic', () => {
     const serviceWorker = readFileSync(join(BUILD_DIR, 'sw.js'), 'utf8');
+    expect(serviceWorker).toContain('url:"/index.html",revision:null');
     expect(serviceWorker).toContain('runtime-config');
     expect(serviceWorker).toContain('NetworkFirst');
     expect(serviceWorker).toContain('runtime-config.json');

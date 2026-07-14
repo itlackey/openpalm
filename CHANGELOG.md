@@ -30,16 +30,14 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   drives a browser-only "install as an app" hint on the client's
   `/connections` page. A new Playwright suite
   (`packages/client/e2e/offline-shell.pw.ts`) targets the offline app shell
-  and saved IndexedDB connections after a service-worker-controlled reload;
-  its two tests are `test.fixme()`-guarded because Chromium's CDP-driven
-  `context.setOffline(true)` does not dispatch page navigation to the
-  Service Worker's `fetch` handler (reproduced against the same Chromium
-  build CI's `client-browser-tests` job installs) — a browser-automation
-  limitation, not a product gap. The offline plumbing itself stays covered
-  by shipped green unit tests (`pwa-config.test.ts`, `boot.test.ts`,
-  `connections-store.test.ts`). Hosted-origin CI deploy to `app.openpalm.dev` (and the matching
-  guardian CORS default) remains explicitly deferred pending a hosting
-  provider — everything else is origin-agnostic and unblocked by that.
+  and saved IndexedDB connections after terminating both its isolated origin
+  server and stub assistant. Workbox now explicitly precaches `/index.html`:
+  adapter-static writes that fallback after the PWA plugin's output scan, so
+  relying on the glob alone left offline navigation without its registered
+  fallback. Both offline browser tests now run in CI without skips.
+  Hosted-origin CI deploy to `app.openpalm.dev` (and the matching guardian
+  CORS default) remains explicitly deferred pending a hosting provider —
+  everything else is origin-agnostic and unblocked by that.
   `docs/managing-openpalm.md` documents the pairing-UI flow as the primary
   remote-client provisioning path, with the manual `curl` mint kept as the
   advanced/headless alternative.
@@ -111,7 +109,7 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   connection that becomes insecure. Loopback targets, the loopback-origin
   desktop default, and the LAN-served plain-HTTP client tier are unaffected.
 - **Host control-plane LAN mDNS self-advertisement for the guardian and
-  assistant** (#488). A hand-rolled `node:dgram` responder in `@openpalm/lib`
+  assistant** (#488). A `multicast-dns` responder in `@openpalm/lib`
   runs inside the long-lived host UI process (started from
   `hooks.server.ts`; every supervisor — `openpalm ui serve`, `openpalm`,
   Electron — spawns it) and advertises `<name>-guardian.local` /
@@ -129,22 +127,6 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   container/image is unchanged by this work. OpenCode's native in-container
   mDNS responder (`server.mdns`/`server.mdnsDomain` in the assistant/guardian
   `opencode.jsonc`) remains as a manual/advanced fallback.
-- **Opt-in mTLS adapter transport identity on the guardian direct listener**
-  (port 3830 only — internal 8080 and admin 3831 stay plain HTTP; #435). Set
-  `GUARDIAN_TLS_CERT_FILE` / `GUARDIAN_TLS_KEY_FILE` / `GUARDIAN_MTLS_CA_FILE`
-  (all three together or none — any partial combination is a fail-closed boot
-  error) to require every direct-listener connection to present a client
-  certificate signed by the operator's adapter CA. Default off; existing
-  behavior is byte-for-byte unchanged when unset. The Principal still comes
-  from HTTP Basic auth exactly as before — this is a machine/transport
-  identity for adapters, not an identity provider. A pre-spec spike found
-  Bun's `Bun.serve({ tls })` and the `node:https` shim both accept a client
-  certificate signed by *any* CA on the current runtime, so the guardian
-  instead terminates via a verified `Bun.listen` TCP passthrough that checks
-  the handshake's `authorizationError`, and CI pins the wrong-CA-rejection
-  case. See `docs/technical/guardian-direct-mtls.md` for the design note,
-  spike evidence, operator provisioning (openssl one-liners), and rotation
-  procedure.
 - **New `@openpalm/client` npm package** — the unprivileged chat/connections
   static app extracted from the admin UI (host/client split, #555). It joins the
   platform release exactly like `@openpalm/ui`: published by `platform`/`all`
@@ -183,9 +165,6 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   - `setAuthStrategy()` / `AuthStrategy` — replace the built-in HTTP Basic /
     principal-token authenticator (e.g. with SSO/OIDC). The default
     `basicTokenAuthStrategy` is unchanged.
-  - `setPolicyProvider()` / `PolicyProvider` — a port for richer authorization
-    (per-tenant data scope, RBAC, routing). The public default allows all;
-    ownership and rate limits still apply.
   - The package now declares `exports`, `main`/`types`, a `bin`
     (`openpalm-guardian`), and a `files` allowlist that excludes test files.
 - The audit writer is created lazily on first write, so importing the guardian
@@ -376,25 +355,25 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **Rootless smoke fixture hygiene** (PR #564 P3-3, P3-4): the `stack` and
   `portal-discord` smoke targets now use distinct default assistant ports
   (3896 / 3996) so they can run concurrently, and cleanup enables the addon
-  profiles on `down` (plus a project-label force-remove backstop) so a
-  successful run no longer leaks the guardian/discord containers.
+  profiles on `down` (plus project-label container/network/volume backstops) so
+  a successful run no longer leaks Docker resources. Fixture setup/addon state
+  now lives in `state/stack.state.env`, matching the filesystem contract.
 
-- **Guardian mTLS server wiring** (PR #564 r3566888940, r3566889234): under
-  mTLS the direct handler now recovers each request's real client IP from the
-  passthrough (correlating the loopback peer port) instead of seeing every
-  client as `127.0.0.1` — restoring per-IP pre-auth rate limiting and accurate
-  audit source IPs; and the MCP `ask_assistant` self-dial now targets the
-  plain-HTTP loopback port (not the TLS passthrough port), so MCP works when
-  mTLS is enabled.
+- **Guardian ingress resource controls are enforced and bounded**: fixed-window
+  source-IP, principal, and per-user request budgets return `429`; ownership,
+  session-reuse, limiter, and event-subscriber state have hard caps; user IDs
+  and request bodies are length-bounded before they can consume unbounded
+  memory. `/stats` reports active user/portal limiter counts and configured
+  budgets.
 
-- **Guardian mTLS passthrough robustness** (PR #564 r3566890023, r3566890224,
-  r3566890583, r3566890804): the raw-byte relay now caps each direction's
-  userspace queue (dropping a connection past 8 MiB instead of growing the
-  guardian heap unboundedly on a slow reader), flushes queued bytes before
-  ending a peer on close (no truncated response body), tears down an upstream
-  that finished connecting after its client already disconnected (no orphaned
-  loopback socket), and reaps a connection that never completes its TLS
-  handshake (slowloris fd exhaustion).
+- **Setup-state transitions take effect without restarting the host UI**: the
+  request guard reads the app-written setup-completion record instead of
+  permanently latching the first completed state, so rerun/recovery/uninstall
+  transitions immediately reach the correct setup gate.
+
+- **Assistant client supervision uses portable millisecond timing**: the
+  entrypoint now reads `Date.now()` from its required Node runtime instead of
+  relying on GNU-specific `date +%s%3N` output.
 
 - **Re-running setup over a home-password install no longer rotates the
   password** (PR #564 r3566887969): re-selecting the already-active

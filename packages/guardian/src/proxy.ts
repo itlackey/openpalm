@@ -24,28 +24,37 @@ import { matchAllowlist, type AllowlistMatch } from './oc-allowlist.ts';
 import { createLogger } from './logger.ts';
 
 import { json } from './http-util.ts';
-import { authenticate } from "./auth";
+import { authenticate } from './auth';
 import {
-  type Principal,
-  ownsSession,
-  ownsPermission,
-  recordSessionOwner,
-  sessionOwnedByOther,
-  forgetSession,
-  ownedSessionIds,
-} from "./ownership";
-import { resolveSessionTarget } from "./session-target.ts";
-import { openEventStream } from "./event-fanout";
-import { audit } from "./audit";
-import { moderateMessage, type ModerationResult } from "./moderation";
-import { ASSISTANT_URL, withAssistantUpstreamAuth } from "./config";
+	type Principal,
+	ownsSession,
+	ownsPermission,
+	recordSessionOwner,
+	sessionOwnedByOther,
+	forgetSession,
+	ownedSessionIds
+} from './ownership';
+import { resolveSessionTarget } from './session-target.ts';
+import { canOpenEventStream, openEventStream } from './event-fanout';
+import { audit } from './audit';
+import { moderateMessage, type ModerationResult } from './moderation';
+import { ASSISTANT_URL, withAssistantUpstreamAuth } from './config';
+import {
+	allow,
+	allowPreAuth,
+	PORTAL_RATE_LIMIT,
+	PORTAL_RATE_WINDOW_MS,
+	USER_RATE_LIMIT,
+	USER_RATE_WINDOW_MS
+} from './rate-limit.ts';
+import { setBoundedMapEntry } from './bounded-map.ts';
 
-const logger = createLogger("guardian:proxy");
+const logger = createLogger('guardian:proxy');
 
 // ── Config ──────────────────────────────────────────────────────────────
 
 /** Base path under which the native OpenCode proxy is served. */
-export const OC_PREFIX = "/oc";
+export const OC_PREFIX = '/oc';
 
 const OC_MAX_BODY_BYTES = Number(Bun.env.GUARDIAN_OC_MAX_BODY_BYTES ?? 1_048_576); // 1 MiB
 
@@ -60,17 +69,17 @@ const H_SESSION_KEY = 'x-openpalm-session-key';
  * the UI proxy's buildForwardHeaders.
  */
 function buildUpstreamHeaders(req: Request, hasBody: boolean): Headers {
-  const headers = new Headers();
-  if (hasBody) {
-    const ct = req.headers.get("content-type");
-    headers.set("content-type", ct ?? "application/json");
-  }
-  // Pass through the SSE Accept for /event so OpenCode streams text/event-stream.
-  const accept = req.headers.get("accept");
-  if (accept) headers.set("accept", accept);
-  // #563 D2 — attach guardian→assistant upstream Basic auth when the assistant's
-  // own OpenCode auth is on. No-op (never forwards inbound auth) by default.
-  return withAssistantUpstreamAuth(headers);
+	const headers = new Headers();
+	if (hasBody) {
+		const ct = req.headers.get('content-type');
+		headers.set('content-type', ct ?? 'application/json');
+	}
+	// Pass through the SSE Accept for /event so OpenCode streams text/event-stream.
+	const accept = req.headers.get('accept');
+	if (accept) headers.set('accept', accept);
+	// #563 D2 — attach guardian→assistant upstream Basic auth when the assistant's
+	// own OpenCode auth is on. No-op (never forwards inbound auth) by default.
+	return withAssistantUpstreamAuth(headers);
 }
 
 /**
@@ -79,14 +88,14 @@ function buildUpstreamHeaders(req: Request, hasBody: boolean): Headers {
  * request id. Mirrors the UI proxy's buildResponseHeaders.
  */
 function buildResponseHeaders(upstream: Response, rid: string): Headers {
-  const headers = new Headers();
-  headers.set("content-type", upstream.headers.get("content-type") ?? "application/json");
-  const cacheControl = upstream.headers.get("cache-control");
-  if (cacheControl) headers.set("cache-control", cacheControl);
-  const transferEncoding = upstream.headers.get("transfer-encoding");
-  if (transferEncoding) headers.set("transfer-encoding", transferEncoding);
-  headers.set("x-request-id", rid);
-  return headers;
+	const headers = new Headers();
+	headers.set('content-type', upstream.headers.get('content-type') ?? 'application/json');
+	const cacheControl = upstream.headers.get('cache-control');
+	if (cacheControl) headers.set('cache-control', cacheControl);
+	const transferEncoding = upstream.headers.get('transfer-encoding');
+	if (transferEncoding) headers.set('transfer-encoding', transferEncoding);
+	headers.set('x-request-id', rid);
+	return headers;
 }
 
 // ── Main handler ───────────────────────────────────────────────────────────
@@ -100,89 +109,162 @@ function buildResponseHeaders(upstream: Response, rid: string): Headers {
  *
  */
 export async function handleProxy(
-  req: Request,
-  rid: string,
-  expectedKind?: 'portal' | 'direct',
+	req: Request,
+	rid: string,
+	expectedKind?: 'portal' | 'direct',
+	clientIp = ''
 ): Promise<Response> {
-  const url = new URL(req.url);
+	const url = new URL(req.url);
 
-  // The OpenCode path is everything after the /oc prefix. Use the RAW encoded
-  // pathname so the allowlist can decode/canonicalize itself (it must see the
-  // pre-decoded form to reject `%2e%2e` traversal). url.pathname is already
-  // percent-decoded by URL — so reconstruct the raw path from the original URL.
-  const rawPath = rawOcPath(req.url);
-  if (rawPath === null) {
-    return deny(rid, 404, "not_found", { reason: "no_oc_prefix" });
-  }
+	// The OpenCode path is everything after the /oc prefix. Use the RAW encoded
+	// pathname so the allowlist can decode/canonicalize itself (it must see the
+	// pre-decoded form to reject `%2e%2e` traversal). url.pathname is already
+	// percent-decoded by URL — so reconstruct the raw path from the original URL.
+	const rawPath = rawOcPath(req.url);
+	if (rawPath === null) {
+		return deny(rid, 404, 'not_found', { reason: 'no_oc_prefix' });
+	}
 
-  const method = req.method;
+	const method = req.method;
 
-  const authenticated = await authenticate(req, expectedKind);
-  if (!authenticated) {
-    return deny(rid, 401, 'unauthorized', {});
-  }
+	if (!allowPreAuth(clientIp)) {
+		return deny(rid, 429, 'rate_limited', { reason: 'preauth_ip' });
+	}
 
-  // ── Read the body (bounded) after authenticate() ──────────────────────────
-  let body = "";
-  if (method !== "GET" && method !== "HEAD") {
-    body = await req.text();
-    if (body.length > OC_MAX_BODY_BYTES) {
-      return deny(rid, 413, "payload_too_large", { bodyLength: body.length });
-    }
-  }
+	const authenticated = await authenticate(req, expectedKind);
+	if (!authenticated) {
+		return deny(rid, 401, 'unauthorized', {});
+	}
 
-  // ── Gate 2: endpoint allowlist, default-deny, hardened matching ──────────
-  const match = authenticated.kind === 'portal'
-    ? matchAllowlist(method, rawPath)
-    : allowDirect(method, rawPath);
-  if (!match.allowed) {
-    return deny(rid, 403, "forbidden_endpoint", {
-      principalId: authenticated.id,
-      userId: authenticated.userId,
-      method,
-      path: rawPath,
-      reason: match.reason,
-    });
-  }
+	if (
+		!allow(
+			`portal:oc:${authenticated.kind}:${authenticated.id}`,
+			PORTAL_RATE_LIMIT,
+			PORTAL_RATE_WINDOW_MS
+		) ||
+		!allow(
+			`user:oc:${authenticated.kind}:${authenticated.id}:${authenticated.userId}`,
+			USER_RATE_LIMIT,
+			USER_RATE_WINDOW_MS
+		)
+	) {
+		return deny(rid, 429, 'rate_limited', {
+			principalId: authenticated.id,
+			userId: authenticated.userId
+		});
+	}
 
-  const principal: Principal = { id: authenticated.id, kind: authenticated.kind, userId: authenticated.userId };
+	// ── Read the body (bounded) after authenticate() ──────────────────────────
+	let body = '';
+	if (method !== 'GET' && method !== 'HEAD') {
+		const boundedBody = await readBoundedBody(req, OC_MAX_BODY_BYTES);
+		if (!boundedBody.ok) {
+			return deny(rid, 413, 'payload_too_large', { bodyLength: boundedBody.bodyLength });
+		}
+		body = boundedBody.body;
+	}
 
-  // ── Gate 3: session/permission ownership + body rewrite + filtering ──────
-  return await routeAllowed(req, rid, principal, match, rawPath, url.search, body);
+	// ── Gate 2: endpoint allowlist, default-deny, hardened matching ──────────
+	const match =
+		authenticated.kind === 'portal'
+			? matchAllowlist(method, rawPath)
+			: allowDirect(method, rawPath);
+	if (!match.allowed) {
+		return deny(rid, 403, 'forbidden_endpoint', {
+			principalId: authenticated.id,
+			userId: authenticated.userId,
+			method,
+			path: rawPath,
+			reason: match.reason
+		});
+	}
+
+	const principal: Principal = {
+		id: authenticated.id,
+		kind: authenticated.kind,
+		userId: authenticated.userId
+	};
+
+	// ── Gate 3: session/permission ownership + body rewrite + filtering ──────
+	return await routeAllowed(req, rid, principal, match, rawPath, url.search, body);
+}
+
+async function readBoundedBody(
+	req: Request,
+	maxBytes: number
+): Promise<{ ok: true; body: string } | { ok: false; bodyLength: number }> {
+	const declaredLength = Number(req.headers.get('content-length'));
+	if (Number.isFinite(declaredLength) && declaredLength > maxBytes) {
+		return { ok: false, bodyLength: declaredLength };
+	}
+	if (!req.body) return { ok: true, body: '' };
+
+	const reader = req.body.getReader();
+	const decoder = new TextDecoder();
+	let body = '';
+	let bodyLength = 0;
+	for (;;) {
+		const { done, value } = await reader.read();
+		if (done) break;
+		bodyLength += value.byteLength;
+		if (bodyLength > maxBytes) {
+			await reader.cancel();
+			return { ok: false, bodyLength };
+		}
+		body += decoder.decode(value, { stream: true });
+	}
+	body += decoder.decode();
+	return { ok: true, body };
 }
 
 function allowDirect(method: string, rawPath: string): AllowlistMatch {
-  if (rawPath === '/doc' && method === 'GET') {
-    return { allowed: true, route: { method, template: '/doc' }, params: {} } as AllowlistMatch;
-  }
-  const match = matchAllowlist(method, rawPath);
-  if (match.allowed) return match;
-  const route = directRouteFor(rawPath, method);
-  if (route) return route;
-  return match;
+	if (rawPath === '/doc' && method === 'GET') {
+		return { allowed: true, route: { method, template: '/doc' }, params: {} } as AllowlistMatch;
+	}
+	const match = matchAllowlist(method, rawPath);
+	if (match.allowed) return match;
+	const route = directRouteFor(rawPath, method);
+	if (route) return route;
+	return match;
 }
 
 function directRouteFor(rawPath: string, method: string): AllowlistMatch | null {
-  if (rawPath === '/event' && method === 'GET') {
-    return { allowed: true, route: { method, template: '/event' }, params: {} } as AllowlistMatch;
-  }
-  const sessionRoot = rawPath.match(/^\/session\/([^/]+)$/);
-  if (sessionRoot && (method === 'GET' || method === 'DELETE')) {
-    return { allowed: true, route: { method, template: '/session/{id}' }, params: { id: sessionRoot[1] } } as AllowlistMatch;
-  }
-  const message = rawPath.match(/^\/session\/([^/]+)\/(message|prompt_async|abort)$/);
-  if (message && method === 'POST') {
-    return { allowed: true, route: { method, template: `/session/{id}/${message[2]}` }, params: { id: message[1] } } as AllowlistMatch;
-  }
-  const permission = rawPath.match(/^\/permission\/([^/]+)\/reply$/);
-  if (permission && method === 'POST') {
-    return { allowed: true, route: { method, template: '/permission/{requestID}/reply' }, params: { requestID: permission[1] } } as AllowlistMatch;
-  }
-  const question = rawPath.match(/^\/question\/([^/]+)\/(reply|reject)$/);
-  if (question && method === 'POST') {
-    return { allowed: true, route: { method, template: `/question/{requestID}/${question[2]}` }, params: { requestID: question[1] } } as AllowlistMatch;
-  }
-  return null;
+	if (rawPath === '/event' && method === 'GET') {
+		return { allowed: true, route: { method, template: '/event' }, params: {} } as AllowlistMatch;
+	}
+	const sessionRoot = rawPath.match(/^\/session\/([^/]+)$/);
+	if (sessionRoot && (method === 'GET' || method === 'DELETE')) {
+		return {
+			allowed: true,
+			route: { method, template: '/session/{id}' },
+			params: { id: sessionRoot[1] }
+		} as AllowlistMatch;
+	}
+	const message = rawPath.match(/^\/session\/([^/]+)\/(message|prompt_async|abort)$/);
+	if (message && method === 'POST') {
+		return {
+			allowed: true,
+			route: { method, template: `/session/{id}/${message[2]}` },
+			params: { id: message[1] }
+		} as AllowlistMatch;
+	}
+	const permission = rawPath.match(/^\/permission\/([^/]+)\/reply$/);
+	if (permission && method === 'POST') {
+		return {
+			allowed: true,
+			route: { method, template: '/permission/{requestID}/reply' },
+			params: { requestID: permission[1] }
+		} as AllowlistMatch;
+	}
+	const question = rawPath.match(/^\/question\/([^/]+)\/(reply|reject)$/);
+	if (question && method === 'POST') {
+		return {
+			allowed: true,
+			route: { method, template: `/question/{requestID}/${question[2]}` },
+			params: { requestID: question[1] }
+		} as AllowlistMatch;
+	}
+	return null;
 }
 
 /**
@@ -190,122 +272,150 @@ function directRouteFor(rawPath: string, method: string): AllowlistMatch | null 
  * canonical template; `match.params` holds {id}/{requestID}.
  */
 async function routeAllowed(
-  req: Request,
-  rid: string,
-  principal: Principal,
-  match: AllowlistMatch,
-  rawPath: string,
-  search: string,
-  body: string,
+	req: Request,
+	rid: string,
+	principal: Principal,
+	match: AllowlistMatch,
+	rawPath: string,
+	search: string,
+	body: string
 ): Promise<Response> {
-  // biome-ignore lint/style/noNonNullAssertion: routeAllowed is only reached after the `!match.allowed` guard in handle(); every allowed AllowlistMatch (from matchAllowlist and allowDirect/directRouteFor) sets `route`, so it is provably non-null here.
-  const template = match.route!.template;
-  const params = match.params ?? {};
-  const sessionId = params.id;
-  const requestID = params.requestID;
+	// biome-ignore lint/style/noNonNullAssertion: routeAllowed is only reached after the `!match.allowed` guard in handle(); every allowed AllowlistMatch (from matchAllowlist and allowDirect/directRouteFor) sets `route`, so it is provably non-null here.
+	const template = match.route!.template;
+	const params = match.params ?? {};
+	const sessionId = params.id;
+	const requestID = params.requestID;
 
-  // POST /session — guardian CONSTRUCTS the body (title) and DISCARDS the
-  // client's; records ownership SYNCHRONOUSLY on the create response (§3.4).
-  if (template === "/session" && req.method === "POST") {
-    return await forwardSessionCreate(req, rid, principal, rawPath, search);
-  }
+	// POST /session — guardian CONSTRUCTS the body (title) and DISCARDS the
+	// client's; records ownership SYNCHRONOUSLY on the create response (§3.4).
+	if (template === '/session' && req.method === 'POST') {
+		return await forwardSessionCreate(req, rid, principal, rawPath, search);
+	}
 
-  // GET /session — response filtered to the principal's own sessions (§3.4).
-  if (template === "/session" && req.method === "GET") {
-    return await forwardSessionList(req, rid, principal, rawPath, search, body);
-  }
+	// GET /session — response filtered to the principal's own sessions (§3.4).
+	if (template === '/session' && req.method === 'GET') {
+		return await forwardSessionList(req, rid, principal, rawPath, search, body);
+	}
 
-  if (template === '/doc' && req.method === 'GET') {
-    return await forwardTransparent(req, rid, rawPath, search, body);
-  }
+	if (template === '/doc' && req.method === 'GET') {
+		return await forwardTransparent(req, rid, rawPath, search, body);
+	}
 
-  // POST /permission/{requestID}/reply — own requestID only (§3.4). The /event
-  // fan-out records requestID→principal when it relays the permission.asked
-  // frame (event-fanout.ts), so only the principal that was SHOWN the request
-  // can answer it. A reply for an unrelayed/foreign requestID is fail-closed
-  // denied (principal A cannot answer principal B's request). The reply itself
-  // carries fresh per-call Basic auth verified above (§3.1) — there is no
-  // token tied to the originating prompt_async call to check it against.
-  if (template === "/permission/{requestID}/reply") {
-    if (!requestID || !ownsPermission(requestID, principal)) {
-      return deny(rid, 403, "forbidden_permission", { principalId: principal.id, userId: principal.userId, requestID });
-    }
-    return await forwardTransparent(req, rid, rawPath, search, body);
-  }
+	// POST /permission/{requestID}/reply — own requestID only (§3.4). The /event
+	// fan-out records requestID→principal when it relays the permission.asked
+	// frame (event-fanout.ts), so only the principal that was SHOWN the request
+	// can answer it. A reply for an unrelayed/foreign requestID is fail-closed
+	// denied (principal A cannot answer principal B's request). The reply itself
+	// carries fresh per-call Basic auth verified above (§3.1) — there is no
+	// token tied to the originating prompt_async call to check it against.
+	if (template === '/permission/{requestID}/reply') {
+		if (!requestID || !ownsPermission(requestID, principal)) {
+			return deny(rid, 403, 'forbidden_permission', {
+				principalId: principal.id,
+				userId: principal.userId,
+				requestID
+			});
+		}
+		return await forwardTransparent(req, rid, rawPath, search, body);
+	}
 
-  // Interactive `question` tool reply/reject — the parallel of permission reply.
-  // Same ownership model: the /event relay recorded the que_ requestID→principal
-  // when it forwarded question.asked, so only the principal shown the question
-  // may answer/decline it (ownsPermission covers both per_ and que_ ids).
-  if (template === "/question/{requestID}/reply" || template === "/question/{requestID}/reject") {
-    if (!requestID || !ownsPermission(requestID, principal)) {
-      return deny(rid, 403, "forbidden_question", { principalId: principal.id, userId: principal.userId, requestID });
-    }
-    return await forwardTransparent(req, rid, rawPath, search, body);
-  }
+	// Interactive `question` tool reply/reject — the parallel of permission reply.
+	// Same ownership model: the /event relay recorded the que_ requestID→principal
+	// when it forwarded question.asked, so only the principal shown the question
+	// may answer/decline it (ownsPermission covers both per_ and que_ ids).
+	if (template === '/question/{requestID}/reply' || template === '/question/{requestID}/reject') {
+		if (!requestID || !ownsPermission(requestID, principal)) {
+			return deny(rid, 403, 'forbidden_question', {
+				principalId: principal.id,
+				userId: principal.userId,
+				requestID
+			});
+		}
+		return await forwardTransparent(req, rid, rawPath, search, body);
+	}
 
-  // All other allowlisted routes are session-scoped: assert ownership of {id}.
-  if (sessionId !== undefined) {
-    if (!ownsSession(sessionId, principal)) {
-      return deny(rid, 403, "forbidden_session", { principalId: principal.id, userId: principal.userId, sessionId });
-    }
-    // Gate 4: content moderation — WRITE-PATH ONLY (§3.5). Only the two
-    // prompt-bearing POSTs are screened; everything else (GET/DELETE/abort)
-    // forwards transparently. Responses are NEVER screened (the assistant is
-    // the trust boundary for its own output).
-    if (
-      req.method === "POST" &&
-      (template === "/session/{id}/message" || template === "/session/{id}/prompt_async")
-    ) {
-      // Screen the prompt, then apply the block-vs-rewrite decision HERE so the
-      // per-principal-kind policy is explicit at the call site (§3.5):
-      //   - portal principals → hard 403 block (assistant never contacted);
-      //   - direct principals → deliberate prompt-REWRITE into a refusal
-      //     instruction, forwarded upstream so the caller gets a safe answer
-      //     rather than a raw error. See the note on screenPromptBody.
-      const moderation = await screenPromptBody(rid, principal, template, body);
-      let promptBody = body;
-      if (moderation.verdict === "block") {
-        if (principal.kind === "direct") {
-          promptBody = rewritePromptBody(body);
-        } else {
-          return deny(rid, 403, "content_blocked", {
-            principalId: principal.id,
-            userId: principal.userId,
-            template,
-            source: moderation.source,
-            reason: moderation.reason,
-            signals: moderation.signals,
-            score: moderation.score,
-          });
-        }
-      }
-      return await forwardTransparent(req, rid, rawPath, search, promptBody);
-    }
-    // DELETE succeeds → forget ownership after a clean upstream response.
-    if (req.method === "DELETE" && template === "/session/{id}") {
-      const resp = await forwardTransparent(req, rid, rawPath, search, body);
-      if (resp.ok) {
-        forgetSession(sessionId);
-        evictOcSession(sessionId); // drop the reuse cache so /clear forces a fresh session
-      }
-      return resp;
-    }
-    return await forwardTransparent(req, rid, rawPath, search, body);
-  }
+	// All other allowlisted routes are session-scoped: assert ownership of {id}.
+	if (sessionId !== undefined) {
+		if (!ownsSession(sessionId, principal)) {
+			return deny(rid, 403, 'forbidden_session', {
+				principalId: principal.id,
+				userId: principal.userId,
+				sessionId
+			});
+		}
+		// Gate 4: content moderation — WRITE-PATH ONLY (§3.5). Only the two
+		// prompt-bearing POSTs are screened; everything else (GET/DELETE/abort)
+		// forwards transparently. Responses are NEVER screened (the assistant is
+		// the trust boundary for its own output).
+		if (
+			req.method === 'POST' &&
+			(template === '/session/{id}/message' || template === '/session/{id}/prompt_async')
+		) {
+			// Screen the prompt, then apply the block-vs-rewrite decision HERE so the
+			// per-principal-kind policy is explicit at the call site (§3.5):
+			//   - portal principals → hard 403 block (assistant never contacted);
+			//   - direct principals → deliberate prompt-REWRITE into a refusal
+			//     instruction, forwarded upstream so the caller gets a safe answer
+			//     rather than a raw error. See the note on screenPromptBody.
+			const moderation = await screenPromptBody(rid, principal, template, body);
+			let promptBody = body;
+			if (moderation.verdict === 'block') {
+				if (principal.kind === 'direct') {
+					promptBody = rewritePromptBody(body);
+				} else {
+					return deny(rid, 403, 'content_blocked', {
+						principalId: principal.id,
+						userId: principal.userId,
+						template,
+						source: moderation.source,
+						reason: moderation.reason,
+						signals: moderation.signals,
+						score: moderation.score
+					});
+				}
+			}
+			return await forwardTransparent(req, rid, rawPath, search, promptBody);
+		}
+		// DELETE succeeds → forget ownership after a clean upstream response.
+		if (req.method === 'DELETE' && template === '/session/{id}') {
+			const resp = await forwardTransparent(req, rid, rawPath, search, body);
+			if (resp.ok) {
+				forgetSession(sessionId);
+				evictOcSession(sessionId); // drop the reuse cache so /clear forces a fresh session
+			}
+			return resp;
+		}
+		return await forwardTransparent(req, rid, rawPath, search, body);
+	}
 
-  // GET /event — multiplexes ALL sessions; a transparent passthrough would
-  // cross-leak (§3.2). The guardian holds ONE upstream subscription and fans
-  // out only the frames whose sessionID this principal owns; no-sessionID
-  // (global) frames are hard-dropped. permission.asked frames also record
-  // requestID→principal so the reply gate can authorize it (§3.4).
-  if (template === "/event") {
-    audit({ requestId: rid, action: "oc_event_open", status: "ok", portal: principal.id, userId: principal.userId });
-    return openEventStream(principal, req.signal);
-  }
+	// GET /event — multiplexes ALL sessions; a transparent passthrough would
+	// cross-leak (§3.2). The guardian holds ONE upstream subscription and fans
+	// out only the frames whose sessionID this principal owns; no-sessionID
+	// (global) frames are hard-dropped. permission.asked frames also record
+	// requestID→principal so the reply gate can authorize it (§3.4).
+	if (template === '/event') {
+		if (!canOpenEventStream(principal)) {
+			return deny(rid, 429, 'too_many_event_streams', {
+				principalId: principal.id,
+				userId: principal.userId
+			});
+		}
+		audit({
+			requestId: rid,
+			action: 'oc_event_open',
+			status: 'ok',
+			portal: principal.id,
+			userId: principal.userId
+		});
+		return openEventStream(principal, req.signal);
+	}
 
-  // Unreachable: every allowlisted template is handled above.
-  return deny(rid, 403, "forbidden_endpoint", { principalId: principal.id, userId: principal.userId, path: rawPath });
+	// Unreachable: every allowlisted template is handled above.
+	return deny(rid, 403, 'forbidden_endpoint', {
+		principalId: principal.id,
+		userId: principal.userId,
+		path: rawPath
+	});
 }
 
 /**
@@ -346,25 +456,25 @@ async function routeAllowed(
  * block internally) is handled by the caller before the assistant is contacted.
  */
 async function screenPromptBody(
-  rid: string,
-  principal: Principal,
-  template: string,
-  body: string,
+	rid: string,
+	principal: Principal,
+	template: string,
+	body: string
 ): Promise<ModerationResult> {
-  const text = extractPromptText(body);
-  const moderation = await moderateMessage(text, undefined);
-  if (moderation.verdict === "flag") {
-    logger.warn("oc_content_flagged", {
-      requestId: rid,
-      portal: principal.id,
-      userId: principal.userId,
-      template,
-      reason: moderation.reason,
-      signals: moderation.signals,
-      score: moderation.score,
-    });
-  }
-  return moderation;
+	const text = extractPromptText(body);
+	const moderation = await moderateMessage(text, undefined);
+	if (moderation.verdict === 'flag') {
+		logger.warn('oc_content_flagged', {
+			requestId: rid,
+			portal: principal.id,
+			userId: principal.userId,
+			template,
+			reason: moderation.reason,
+			signals: moderation.signals,
+			score: moderation.score
+		});
+	}
+	return moderation;
 }
 
 // rev3-F5: only these fields may survive a moderation-block rewrite. Each is a
@@ -376,24 +486,25 @@ async function screenPromptBody(
 const REWRITE_SAFE_FIELDS = ['messageID', 'model', 'agent', 'noReply'] as const;
 
 export function rewritePromptBody(body: string): string {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(body);
-  } catch {
-    return JSON.stringify({ parts: [{ type: 'text', text: refusalText() }] });
-  }
-  const record = parsed && typeof parsed === 'object' && !Array.isArray(parsed)
-    ? parsed as Record<string, unknown>
-    : {};
-  const safe: Record<string, unknown> = {};
-  for (const field of REWRITE_SAFE_FIELDS) {
-    if (record[field] !== undefined) safe[field] = record[field];
-  }
-  return JSON.stringify({ ...safe, parts: [{ type: 'text', text: refusalText() }] });
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(body);
+	} catch {
+		return JSON.stringify({ parts: [{ type: 'text', text: refusalText() }] });
+	}
+	const record =
+		parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+			? (parsed as Record<string, unknown>)
+			: {};
+	const safe: Record<string, unknown> = {};
+	for (const field of REWRITE_SAFE_FIELDS) {
+		if (record[field] !== undefined) safe[field] = record[field];
+	}
+	return JSON.stringify({ ...safe, parts: [{ type: 'text', text: refusalText() }] });
 }
 
 function refusalText(): string {
-  return 'Refuse this request briefly and safely. Explain that the request was blocked by the guardian safety policy.';
+	return 'Refuse this request briefly and safely. Explain that the request was blocked by the guardian safety policy.';
 }
 
 /**
@@ -404,22 +515,22 @@ function refusalText(): string {
  * pinned OpenCode shape (see the schema-coupling note on screenPromptBody).
  */
 function extractPromptText(body: string): string {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(body);
-  } catch {
-    return "";
-  }
-  const record = parsed as { parts?: unknown; system?: unknown } | null;
-  const texts: string[] = [];
-  if (typeof record?.system === "string" && record.system) texts.push(record.system);
-  const parts = record?.parts;
-  if (!Array.isArray(parts)) return texts.join("\n");
-  for (const part of parts) {
-    const t = (part as { text?: unknown })?.text;
-    if (typeof t === "string" && t) texts.push(t);
-  }
-  return texts.join("\n");
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(body);
+	} catch {
+		return '';
+	}
+	const record = parsed as { parts?: unknown; system?: unknown } | null;
+	const texts: string[] = [];
+	if (typeof record?.system === 'string' && record.system) texts.push(record.system);
+	const parts = record?.parts;
+	if (!Array.isArray(parts)) return texts.join('\n');
+	for (const part of parts) {
+		const t = (part as { text?: unknown })?.text;
+		if (typeof t === 'string' && t) texts.push(t);
+	}
+	return texts.join('\n');
 }
 
 // ── Durable session reuse (idempotent POST /session per (portal, sessionKey)) ─
@@ -436,15 +547,17 @@ function extractPromptText(body: string): string {
 // cacheKey → reused OpenCode sessionId.
 const ocSessionByKey = new Map<string, string>();
 const ocSessionCreateLocks = new Map<string, Promise<string>>();
+const OC_SESSION_CACHE_MAX = 10_000;
+const OC_SESSION_CREATE_LOCK_MAX = 1_024;
 
 /** Forget the reused session for a deleted sessionId (called on DELETE /session). */
 function evictOcSession(sessionId: string): void {
-  for (const [k, v] of ocSessionByKey.entries()) if (v === sessionId) ocSessionByKey.delete(k);
+	for (const [k, v] of ocSessionByKey.entries()) if (v === sessionId) ocSessionByKey.delete(k);
 }
 
 /** Active reused-session count (for /stats). */
 export function ocReusedSessionCount(): number {
-  return ocSessionByKey.size;
+	return ocSessionByKey.size;
 }
 
 /**
@@ -453,91 +566,114 @@ export function ocReusedSessionCount(): number {
  * (idempotent — see ocSessionByKey above), then record sessionId→principal.
  */
 async function forwardSessionCreate(
-  req: Request,
-  rid: string,
-  principal: Principal,
-  rawPath: string,
-  search: string,
+	req: Request,
+	rid: string,
+	principal: Principal,
+	rawPath: string,
+	search: string
 ): Promise<Response> {
-  // sessionKey rides as a header so multi-thread portals keep their grouping;
-  // absent → falls back to userId inside resolveSessionTarget. The portal can
-  // no longer inject an arbitrary title (prompt-injection / moderation-bypass).
-  const sessionKey = req.headers.get(H_SESSION_KEY) ?? undefined;
-  const metadata = sessionKey ? { sessionKey } : undefined;
-  const target = resolveSessionTarget(principal.userId, principal.id, principal.kind, metadata);
-  // cacheKey binds the full principal identity (kind+portal+userId) + sessionKey
-  // so distinct users sharing a client-set sessionKey never collide. title is the
-  // upstream OpenCode session title (may still collide across users) — the
-  // ownership guard below refuses to reuse/rebind a foreign-owned match.
-  const { cacheKey, title } = target;
+	// sessionKey rides as a header so multi-thread portals keep their grouping;
+	// absent → falls back to userId inside resolveSessionTarget. The portal can
+	// no longer inject an arbitrary title (prompt-injection / moderation-bypass).
+	const sessionKey = req.headers.get(H_SESSION_KEY) ?? undefined;
+	const metadata = sessionKey ? { sessionKey } : undefined;
+	const target = resolveSessionTarget(principal.userId, principal.id, principal.kind, metadata);
+	// cacheKey binds the full principal identity (kind+portal+userId) + sessionKey
+	// so distinct users sharing a client-set sessionKey never collide. title is the
+	// upstream OpenCode session title (may still collide across users) — the
+	// ownership guard below refuses to reuse/rebind a foreign-owned match.
+	const { cacheKey, title } = target;
 
-  let inflight = ocSessionCreateLocks.get(cacheKey);
-  if (!inflight) {
-    inflight = (async (): Promise<string> => {
-      // Refuse a cached id that some other principal now owns (defence-in-depth)
-      // — mint a fresh session instead of stealing it.
-      const cached = ocSessionByKey.get(cacheKey);
-      if (cached !== undefined && !sessionOwnedByOther(cached, principal)) return cached;
+	let inflight = ocSessionCreateLocks.get(cacheKey);
+	if (!inflight) {
+		if (ocSessionCreateLocks.size >= OC_SESSION_CREATE_LOCK_MAX) {
+			return deny(rid, 429, 'too_many_session_creates', {
+				principalId: principal.id,
+				userId: principal.userId
+			});
+		}
+		inflight = (async (): Promise<string> => {
+			// Refuse a cached id that some other principal now owns (defence-in-depth)
+			// — mint a fresh session instead of stealing it.
+			const cached = ocSessionByKey.get(cacheKey);
+			if (cached !== undefined && !sessionOwnedByOther(cached, principal)) return cached;
 
-      // Match by title can cross principals (same portal+sessionKey → same title);
-      // never reuse/rebind a session already owned by a different principal.
-      const existing = await findExistingOcSessionId(req, title);
-      if (existing && !sessionOwnedByOther(existing, principal)) {
-        ocSessionByKey.set(cacheKey, existing);
-        return existing;
-      }
+			// Match by title can cross principals (same portal+sessionKey → same title);
+			// never reuse/rebind a session already owned by a different principal.
+			const existing = await findExistingOcSessionId(req, title);
+			if (existing && !sessionOwnedByOther(existing, principal)) {
+				setBoundedMapEntry(ocSessionByKey, cacheKey, existing, OC_SESSION_CACHE_MAX);
+				return existing;
+			}
 
-      const rewritten = JSON.stringify({ title });
-      const upstream = await fetchUpstream(req, rawPath, search, rewritten);
-      const text = await upstream.text();
-      if (!upstream.ok) throw new Error(`upstream_${upstream.status}:${text.slice(0, 200)}`);
-      const parsed = JSON.parse(text) as { id?: unknown };
-      const id = typeof parsed.id === "string" ? parsed.id : "";
-      if (!id) throw new Error("upstream_no_id");
-      ocSessionByKey.set(cacheKey, id);
-      return id;
-    })();
-    ocSessionCreateLocks.set(cacheKey, inflight);
-    void inflight.catch(() => {}).finally(() => {
-      if (ocSessionCreateLocks.get(cacheKey) === inflight) ocSessionCreateLocks.delete(cacheKey);
-    });
-  }
+			const rewritten = JSON.stringify({ title });
+			const upstream = await fetchUpstream(req, rawPath, search, rewritten);
+			const text = await upstream.text();
+			if (!upstream.ok) throw new Error(`upstream_${upstream.status}:${text.slice(0, 200)}`);
+			const parsed = JSON.parse(text) as { id?: unknown };
+			const id = typeof parsed.id === 'string' ? parsed.id : '';
+			if (!id) throw new Error('upstream_no_id');
+			setBoundedMapEntry(ocSessionByKey, cacheKey, id, OC_SESSION_CACHE_MAX);
+			return id;
+		})();
+		ocSessionCreateLocks.set(cacheKey, inflight);
+		void inflight
+			.catch(() => {})
+			.finally(() => {
+				if (ocSessionCreateLocks.get(cacheKey) === inflight) ocSessionCreateLocks.delete(cacheKey);
+			});
+	}
 
-  let sessionId: string;
-  try {
-    sessionId = await inflight;
-  } catch (err) {
-    logger.warn("oc_session_create_failed", { requestId: rid, portal: principal.id, userId: principal.userId, error: String(err) });
-    return deny(rid, 502, "oc_session_create_failed", { principalId: principal.id, userId: principal.userId });
-  }
+	let sessionId: string;
+	try {
+		sessionId = await inflight;
+	} catch (err) {
+		logger.warn('oc_session_create_failed', {
+			requestId: rid,
+			portal: principal.id,
+			userId: principal.userId,
+			error: String(err)
+		});
+		return deny(rid, 502, 'oc_session_create_failed', {
+			principalId: principal.id,
+			userId: principal.userId
+		});
+	}
 
-  recordSessionOwner(sessionId, principal);
-  audit({ requestId: rid, action: "oc_session_create", status: "ok", portal: principal.id, userId: principal.userId, sessionId });
-  // Synthesize the create response the portal reads (it only needs id/title).
-  return Response.json({ id: sessionId, title });
+	recordSessionOwner(sessionId, principal);
+	audit({
+		requestId: rid,
+		action: 'oc_session_create',
+		status: 'ok',
+		portal: principal.id,
+		userId: principal.userId,
+		sessionId
+	});
+	// Synthesize the create response the portal reads (it only needs id/title).
+	return Response.json({ id: sessionId, title });
 }
 
 async function findExistingOcSessionId(req: Request, title: string): Promise<string | null> {
-  const upstream = await fetch(`${ASSISTANT_URL}/session`, {
-    method: 'GET',
-    headers: buildUpstreamHeaders(req, false),
-    signal: req.signal,
-  });
-  if (!upstream.ok) return null;
+	const upstream = await fetch(`${ASSISTANT_URL}/session`, {
+		method: 'GET',
+		headers: buildUpstreamHeaders(req, false),
+		signal: req.signal
+	});
+	if (!upstream.ok) return null;
 
-  let parsed: unknown;
-  try {
-    parsed = await upstream.json();
-  } catch {
-    return null;
-  }
-  if (!Array.isArray(parsed)) return null;
+	let parsed: unknown;
+	try {
+		parsed = await upstream.json();
+	} catch {
+		return null;
+	}
+	if (!Array.isArray(parsed)) return null;
 
-  const match = parsed.find((session) => {
-    if (!session || typeof session !== 'object') return false;
-    return (session as { title?: unknown }).title === title;
-  }) as { id?: unknown } | undefined;
-  return typeof match?.id === 'string' && match.id ? match.id : null;
+	const match = parsed.find((session) => {
+		if (!session || typeof session !== 'object') return false;
+		return (session as { title?: unknown }).title === title;
+	}) as { id?: unknown } | undefined;
+	return typeof match?.id === 'string' && match.id ? match.id : null;
 }
 
 /**
@@ -545,33 +681,40 @@ async function findExistingOcSessionId(req: Request, title: string): Promise<str
  * sessions so other principals' titles never leak. Small JSON body — buffer it.
  */
 async function forwardSessionList(
-  req: Request,
-  rid: string,
-  principal: Principal,
-  rawPath: string,
-  search: string,
-  body: string,
+	req: Request,
+	rid: string,
+	principal: Principal,
+	rawPath: string,
+	search: string,
+	body: string
 ): Promise<Response> {
-  const upstream = await fetchUpstream(req, rawPath, search, body);
-  const text = await upstream.text();
-  if (!upstream.ok) {
-    return new Response(text, { status: upstream.status, headers: buildResponseHeaders(upstream, rid) });
-  }
-  let filtered: unknown[] = [];
-  try {
-    const parsed = JSON.parse(text);
-    const owned = ownedSessionIds(principal);
-    if (Array.isArray(parsed)) {
-      filtered = parsed.filter((s) => {
-        const id = (s as { id?: unknown })?.id;
-        return typeof id === "string" && owned.has(id);
-      });
-    }
-  } catch {
-    logger.warn("oc_session_list_unparsable", { requestId: rid, portal: principal.id, userId: principal.userId });
-    filtered = [];
-  }
-  return json(upstream.status, filtered);
+	const upstream = await fetchUpstream(req, rawPath, search, body);
+	const text = await upstream.text();
+	if (!upstream.ok) {
+		return new Response(text, {
+			status: upstream.status,
+			headers: buildResponseHeaders(upstream, rid)
+		});
+	}
+	let filtered: unknown[] = [];
+	try {
+		const parsed = JSON.parse(text);
+		const owned = ownedSessionIds(principal);
+		if (Array.isArray(parsed)) {
+			filtered = parsed.filter((s) => {
+				const id = (s as { id?: unknown })?.id;
+				return typeof id === 'string' && owned.has(id);
+			});
+		}
+	} catch {
+		logger.warn('oc_session_list_unparsable', {
+			requestId: rid,
+			portal: principal.id,
+			userId: principal.userId
+		});
+		filtered = [];
+	}
+	return json(upstream.status, filtered);
 }
 
 /**
@@ -580,14 +723,17 @@ async function forwardSessionList(
  * buffer SSE in memory and break streaming). Status + streaming headers copied.
  */
 async function forwardTransparent(
-  req: Request,
-  rid: string,
-  rawPath: string,
-  search: string,
-  body: string,
+	req: Request,
+	rid: string,
+	rawPath: string,
+	search: string,
+	body: string
 ): Promise<Response> {
-  const upstream = await fetchUpstream(req, rawPath, search, body);
-  return new Response(upstream.body, { status: upstream.status, headers: buildResponseHeaders(upstream, rid) });
+	const upstream = await fetchUpstream(req, rawPath, search, body);
+	return new Response(upstream.body, {
+		status: upstream.status,
+		headers: buildResponseHeaders(upstream, rid)
+	});
 }
 
 /**
@@ -596,25 +742,25 @@ async function forwardTransparent(
  * minutes; rely on client disconnect for teardown), mirroring the UI proxy.
  */
 function fetchUpstream(
-  req: Request,
-  rawPath: string,
-  search: string,
-  body: string | undefined,
+	req: Request,
+	rawPath: string,
+	search: string,
+	body: string | undefined
 ): Promise<Response> {
-  const targetUrl = `${ASSISTANT_URL}${rawPath}${search}`;
-  const method = req.method;
-  const hasBody = method !== "GET" && method !== "HEAD";
+	const targetUrl = `${ASSISTANT_URL}${rawPath}${search}`;
+	const method = req.method;
+	const hasBody = method !== 'GET' && method !== 'HEAD';
 
-  const controller = new AbortController();
-  const onClientAbort = () => controller.abort();
-  req.signal.addEventListener("abort", onClientAbort, { once: true });
+	const controller = new AbortController();
+	const onClientAbort = () => controller.abort();
+	req.signal.addEventListener('abort', onClientAbort, { once: true });
 
-  return fetch(targetUrl, {
-    method,
-    headers: buildUpstreamHeaders(req, hasBody),
-    body: hasBody ? (body ?? "") : undefined,
-    signal: controller.signal,
-  });
+	return fetch(targetUrl, {
+		method,
+		headers: buildUpstreamHeaders(req, hasBody),
+		body: hasBody ? (body ?? '') : undefined,
+		signal: controller.signal
+	});
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────
@@ -628,16 +774,27 @@ function fetchUpstream(
  * escapes — and the allowlist must see the encoded form to reject `%2e%2e`.
  */
 function rawOcPath(rawUrl: string): string | null {
-  // Strip scheme://host, then split off the query/fragment.
-  const noScheme = rawUrl.replace(/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\/[^/]*/, "");
-  const pathOnly = noScheme.split("?")[0].split("#")[0];
-  if (pathOnly === OC_PREFIX) return "/"; // "/oc" alone → "/"
-  if (!pathOnly.startsWith(`${OC_PREFIX}/`)) return null;
-  return pathOnly.slice(OC_PREFIX.length); // keep the leading "/"
+	// Strip scheme://host, then split off the query/fragment.
+	const noScheme = rawUrl.replace(/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\/[^/]*/, '');
+	const pathOnly = noScheme.split('?')[0].split('#')[0];
+	if (pathOnly === OC_PREFIX) return '/'; // "/oc" alone → "/"
+	if (!pathOnly.startsWith(`${OC_PREFIX}/`)) return null;
+	return pathOnly.slice(OC_PREFIX.length); // keep the leading "/"
 }
 
-function deny(rid: string, status: number, error: string, detail: Record<string, unknown>): Response {
-  audit({ requestId: rid, action: "oc_proxy", status: status >= 500 ? "error" : "denied", reason: error, ...detail });
-  logger.warn("oc_proxy_denied", { requestId: rid, status, error, ...detail });
-  return json(status, { error, requestId: rid });
+function deny(
+	rid: string,
+	status: number,
+	error: string,
+	detail: Record<string, unknown>
+): Response {
+	audit({
+		requestId: rid,
+		action: 'oc_proxy',
+		status: status >= 500 ? 'error' : 'denied',
+		reason: error,
+		...detail
+	});
+	logger.warn('oc_proxy_denied', { requestId: rid, status, error, ...detail });
+	return json(status, { error, requestId: rid });
 }

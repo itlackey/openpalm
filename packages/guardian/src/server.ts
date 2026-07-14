@@ -10,6 +10,13 @@ import { eventSubscriberCount } from './event-fanout';
 import { handleMcpRequest, seedMcpPrincipalFromToken } from './mcp';
 import { sessionOwnerCount, permissionOwnerCount } from './ownership';
 import { handleProxy, OC_PREFIX } from './proxy';
+import {
+  activeRateLimiters,
+  PORTAL_RATE_LIMIT,
+  PORTAL_RATE_WINDOW_MS,
+  USER_RATE_LIMIT,
+  USER_RATE_WINDOW_MS,
+} from './rate-limit.ts';
 import { initializePrincipalStore, listPrincipals, seedPortalPrincipalsFromEnv } from './state-db';
 import { matchTransport, registerTransport, type Transport } from './transport';
 import { DIRECT_PORT, resolveCorsAllowedOrigin } from './config';
@@ -99,11 +106,20 @@ function corsPreflightResponse(req: Request, requestId: string, origin: string |
 }
 
 function statsResponse(): Response {
+  const { activeUserLimiters, activePortalLimiters } = activeRateLimiters();
   return json(200, {
     uptime_seconds: Math.floor((Date.now() - startTime) / 1000),
     principals: listPrincipals().map(({ tokenHash, ...rest }) => rest),
     direct_ingress_enabled: DIRECT_INGRESS_ENABLED,
     mcp_enabled: MCP_ENABLED,
+    rate_limits: {
+      user_window_ms: USER_RATE_WINDOW_MS,
+      user_max_requests: USER_RATE_LIMIT,
+      portal_window_ms: PORTAL_RATE_WINDOW_MS,
+      portal_max_requests: PORTAL_RATE_LIMIT,
+      active_user_limiters: activeUserLimiters,
+      active_portal_limiters: activePortalLimiters,
+    },
     oc_proxy: {
       session_owners: sessionOwnerCount(),
       permission_owners: permissionOwnerCount(),
@@ -124,13 +140,18 @@ async function handleHealthReady(requestId: string): Promise<Response> {
   return json(200, { ok: true, ready: true, requestId, time: new Date().toISOString() });
 }
 
-async function handleOcRequest(req: Request, requestId: string, expectedKind?: 'portal' | 'direct'): Promise<Response> {
-  const response = await handleProxy(req, requestId, expectedKind);
+async function handleOcRequest(
+  req: Request,
+  requestId: string,
+  expectedKind?: 'portal' | 'direct',
+  clientIp = '',
+): Promise<Response> {
+  const response = await handleProxy(req, requestId, expectedKind, clientIp);
   countRequest(`oc:${response.status}`);
   return response;
 }
 
-async function handleInternalRequest(req: Request): Promise<Response> {
+async function handleInternalRequest(req: Request, clientIp = ''): Promise<Response> {
   const url = new URL(req.url);
   const requestId = req.headers.get('x-request-id') ?? crypto.randomUUID();
 
@@ -145,12 +166,12 @@ async function handleInternalRequest(req: Request): Promise<Response> {
     return statsResponse();
   }
   if (url.pathname === OC_PREFIX || url.pathname.startsWith(`${OC_PREFIX}/`)) {
-    return handleOcRequest(req, requestId, 'portal');
+    return handleOcRequest(req, requestId, 'portal', clientIp);
   }
   return json(404, { error: 'not_found', requestId });
 }
 
-async function handleDirectRequest(req: Request): Promise<Response> {
+async function handleDirectRequest(req: Request, clientIp = ''): Promise<Response> {
   const url = new URL(req.url);
   const requestId = req.headers.get('x-request-id') ?? crypto.randomUUID();
   const corsOrigin = resolveCorsAllowedOrigin(req.headers.get('origin'));
@@ -169,7 +190,7 @@ async function handleDirectRequest(req: Request): Promise<Response> {
     return applyCorsHeaders(response, corsOrigin);
   }
   if (url.pathname === OC_PREFIX || url.pathname.startsWith(`${OC_PREFIX}/`)) {
-    const response = await handleOcRequest(req, requestId, 'direct');
+    const response = await handleOcRequest(req, requestId, 'direct', clientIp);
     return applyCorsHeaders(response, corsOrigin);
   }
   const transport = matchTransport(url, req);
@@ -220,7 +241,7 @@ export function startGuardian(options: StartGuardianOptions = {}): GuardianServe
     port: INTERNAL_PORT,
     hostname: INTERNAL_HOST,
     idleTimeout: 0,
-    fetch: (req) => handleInternalRequest(req),
+    fetch: (req, server) => handleInternalRequest(req, server.requestIP(req)?.address ?? ''),
   });
 
   // Direct listener (3830): plain HTTP. TLS/mTLS termination, if wanted, is the
@@ -229,7 +250,7 @@ export function startGuardian(options: StartGuardianOptions = {}): GuardianServe
   const direct = Bun.serve({
     port: DIRECT_PORT,
     idleTimeout: 0,
-    fetch: (req) => handleDirectRequest(req),
+    fetch: (req, server) => handleDirectRequest(req, server.requestIP(req)?.address ?? ''),
   });
 
   const admin = Bun.serve({ port: ADMIN_PORT, idleTimeout: 0, fetch: handleAdminListenerRequest });

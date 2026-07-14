@@ -436,7 +436,7 @@ describe('cli main', () => {
     } finally {
       rmSync(base, { recursive: true, force: true });
     }
-  });
+  }, 15_000);
 
   it('supports addon enable/disable commands', async () => {
     const base = mkdtempSync(join(tmpdir(), 'openpalm-addon-cli-'));

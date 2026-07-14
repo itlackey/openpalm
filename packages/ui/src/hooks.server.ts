@@ -37,17 +37,6 @@ export { _resetLaunchCache } from "$lib/server/landing.js";
 const logger = createLogger("admin");
 
 let startupApplyDone = false;
-// K3 (review 2026-07-10): once setup is observed complete, it stays complete
-// for the life of the process — a live install never regresses to
-// incomplete. Memoizing false→true means isSetupComplete's dotenv-parse +
-// existsSync work runs at most once per process instead of on every request
-// (including every /api/*, /proxy/*, and the host UI's 10s poll).
-let setupCompleteMemo = false;
-
-/** Test-only: clear the setup-complete memo so each test resolves fresh. */
-export function _resetSetupCompleteMemo(): void {
-  setupCompleteMemo = false;
-}
 
 // Load the process-level config the UI needs to serve, READ-ONLY w.r.t. OP_HOME.
 // install/update own every OP_HOME write (via applyHome), so merely serving
@@ -161,8 +150,7 @@ export const handle: Handle = async ({ event, resolve }) => {
   // can't race the owner to configure the stack. After setup completes the
   // re-run path at /setup?rerun=1 requires admin auth and this guard is skipped.
   const homeDir = resolveOpenPalmHome();
-  const setupComplete = setupCompleteMemo || isSetupComplete(homeDir);
-  if (setupComplete) setupCompleteMemo = true;
+  const setupComplete = isSetupComplete(homeDir);
   const localInstallState = getCachedLocalInstallState(stackDirFor(homeDir), homeDir);
 
   if (

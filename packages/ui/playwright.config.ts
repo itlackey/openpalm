@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 const STACK_TESTS = process.env.RUN_DOCKER_STACK_TESTS === '1';
+const browserExecutablePath = process.env.OP_PLAYWRIGHT_EXECUTABLE_PATH?.trim();
 // Use ADMIN_URL if set (populated by global-setup from stack.env), or fall back to
 // the test-isolated port 9100 — offset from the default dev stack (8100) to prevent
 // tests from accidentally hitting a developer's running stack.
@@ -33,7 +34,10 @@ export default defineConfig({
 	globalTeardown: './e2e/global-teardown.ts',
 	reporter: [['list'], ['./e2e/no-skip-reporter.mjs']],
 	workers: STACK_TESTS ? 1 : undefined,
-	use: { baseURL },
+	use: {
+		baseURL,
+		launchOptions: browserExecutablePath ? { executablePath: browserExecutablePath } : undefined,
+	},
 	webServer: STACK_TESTS
 		? undefined
 		: { command: 'npm run build && npm run preview', port: 4173, env: MOCKED_ENV },

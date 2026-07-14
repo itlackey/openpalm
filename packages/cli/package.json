@@ -21,7 +21,6 @@
     "start": "bun run src/main.ts",
     "test": "bun test",
     "typecheck": "tsc --noEmit",
-    "test:e2e": "npx playwright test",
     "wizard:local": "bun run src/main.ts install --no-start --force",
     "build": "bun build src/main.ts --compile --outfile dist/openpalm-cli",
     "build:linux-x64": "bun build src/main.ts --compile --target=bun-linux-x64 --outfile dist/openpalm-cli-linux-x64",

@@ -48,7 +48,7 @@ The `ollama`/`voice` presence on `assistant_net` is intentional and correct: the
 
 **Ratified.** The #488 issue text says "the guardian … advertise[s]", but that
 literal reading is explicitly **rejected**: mDNS self-advertisement runs as a
-hand-rolled `node:dgram` responder inside the long-lived **host UI server
+`multicast-dns` responder inside the long-lived **host UI server
 process** (`packages/lib/src/control-plane/mdns-responder.ts`, started by
 `hooks.server.ts`'s one-shot init — every supervisor, `openpalm ui serve`,
 `openpalm`, Electron, spawns this process, so there is a single start locus

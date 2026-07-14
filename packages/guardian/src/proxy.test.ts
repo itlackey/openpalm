@@ -286,6 +286,14 @@ describe("/oc proxy — authentication", () => {
     });
     expect(resp.status).toBe(401);
   });
+
+  it('rejects an oversized authenticated body before forwarding it', async () => {
+    const resp = await ocCall('POST', '/session', {
+      body: 'x'.repeat(1_048_577),
+    });
+    expect(resp.status).toBe(413);
+    expect(((await resp.json()) as { error: string }).error).toBe('payload_too_large');
+  });
 });
 
 describe("/oc proxy — endpoint allowlist deny-tests (§3.3)", () => {

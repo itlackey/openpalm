@@ -25,6 +25,7 @@ const {
   basicTokenAuthStrategy,
   invalidatePrincipalCache,
   PRINCIPAL_CACHE_MAX,
+  USER_ID_MAX_LENGTH,
   _principalCacheSizeForTest,
 } = await import('./auth.ts');
 const { upsertPrincipal, setPrincipalEnabled } = await import('./state-db.ts');
@@ -33,6 +34,16 @@ function reqWithBasic(id: string, secret: string): Request {
   const cred = Buffer.from(`${id}:${secret}`).toString('base64');
   return new Request('http://guardian.test/', {
     headers: { authorization: `Basic ${cred}` },
+  });
+}
+
+function reqWithUser(id: string, secret: string, userId: string): Request {
+  const cred = Buffer.from(`${id}:${secret}`).toString('base64');
+  return new Request('http://guardian.test/', {
+    headers: {
+      authorization: `Basic ${cred}`,
+      'x-openpalm-user': userId,
+    },
   });
 }
 
@@ -74,5 +85,19 @@ describe('auth — principal cache bounding', () => {
 
     // Now the disabled record is re-read from the DB → authentication fails.
     expect(basicTokenAuthStrategy.authenticate(reqWithBasic('bob', 'pw'))).toBeNull();
+  });
+
+  it('rejects an oversized caller-controlled user id', () => {
+    upsertPrincipal({ id: 'bounded-user', kind: 'portal', token: 'pw', enabled: true });
+    expect(
+      basicTokenAuthStrategy.authenticate(
+        reqWithUser('bounded-user', 'pw', 'x'.repeat(USER_ID_MAX_LENGTH + 1)),
+      ),
+    ).toBeNull();
+    expect(
+      basicTokenAuthStrategy.authenticate(
+        reqWithUser('bounded-user', 'pw', 'x'.repeat(USER_ID_MAX_LENGTH)),
+      )?.userId,
+    ).toHaveLength(USER_ID_MAX_LENGTH);
   });
 });

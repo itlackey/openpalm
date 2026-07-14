@@ -34,28 +34,44 @@
 import { createLogger } from './logger.ts';
 
 import {
-  type Principal,
-  ownsSession,
-  ownedSessionIds,
-  recordPermissionOwner,
-} from "./ownership";
+	type Principal,
+	ownsSession,
+	ownedSessionIds,
+	principalKey,
+	recordPermissionOwner
+} from './ownership';
 import { ASSISTANT_URL, withAssistantUpstreamAuth } from './config';
 import { parseSseFrames, extractData } from './sse.ts';
 
-const logger = createLogger("guardian:event");
+const logger = createLogger('guardian:event');
 
 // ── A connected principal stream ───────────────────────────────────────────
 
 interface Subscriber {
-  principal: Principal;
-  /** SSE bytes are pushed here; the proxy hands the readable side to the portal. */
-  controller: ReadableStreamDefaultController<Uint8Array>;
-  closed: boolean;
+	principal: Principal;
+	/** SSE bytes are pushed here; the proxy hands the readable side to the portal. */
+	controller: ReadableStreamDefaultController<Uint8Array>;
+	closed: boolean;
 }
 
 // All connected principal streams. Multiple opens per principal are possible
 // (the proxy enforces concurrency caps separately); each gets its own entry.
 const subscribers = new Set<Subscriber>();
+export const EVENT_MAX_STREAMS_PER_PRINCIPAL = 2;
+export const EVENT_MAX_SUBSCRIBERS = 1_024;
+export const EVENT_SUBSCRIBER_BUFFER_BYTES = 256 * 1_024;
+
+export function canOpenEventStream(principal: Principal): boolean {
+	if (subscribers.size >= EVENT_MAX_SUBSCRIBERS) return false;
+	const key = principalKey(principal);
+	let count = 0;
+	for (const sub of subscribers) {
+		if (principalKey(sub.principal) !== key) continue;
+		count += 1;
+		if (count >= EVENT_MAX_STREAMS_PER_PRINCIPAL) return false;
+	}
+	return true;
+}
 
 const encoder = new TextEncoder();
 
@@ -67,7 +83,7 @@ const encoder = new TextEncoder();
 const KEEPALIVE_MS = Number(Bun.env.GUARDIAN_OC_EVENT_KEEPALIVE_MS ?? 20_000);
 const keepaliveBytes = encoder.encode(`: ping\n\n`);
 const keepaliveTimer = setInterval(() => {
-  for (const sub of subscribers) writeTo(sub, keepaliveBytes);
+	for (const sub of subscribers) writeTo(sub, keepaliveBytes);
 }, KEEPALIVE_MS);
 keepaliveTimer.unref();
 
@@ -84,17 +100,17 @@ let upstreamAbort: AbortController | null = null;
  * Tolerates unknown event types and added fields (graceful degrade).
  */
 export function frameSessionId(frameJson: string): string | undefined {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(frameJson);
-  } catch {
-    return undefined;
-  }
-  const props = (parsed as { properties?: unknown })?.properties;
-  if (!props || typeof props !== "object") return undefined;
-  const sid = (props as { sessionID?: unknown }).sessionID;
-  if (typeof sid !== "string" || sid.length === 0) return undefined;
-  return sid;
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(frameJson);
+	} catch {
+		return undefined;
+	}
+	const props = (parsed as { properties?: unknown })?.properties;
+	if (!props || typeof props !== 'object') return undefined;
+	const sid = (props as { sessionID?: unknown }).sessionID;
+	if (typeof sid !== 'string' || sid.length === 0) return undefined;
+	return sid;
 }
 
 /**
@@ -102,12 +118,12 @@ export function frameSessionId(frameJson: string): string | undefined {
  * the guardian can record requestID→principal at relay time.
  */
 function frameType(frameJson: string): string | undefined {
-  try {
-    const parsed = JSON.parse(frameJson) as { type?: unknown };
-    return typeof parsed.type === "string" ? parsed.type : undefined;
-  } catch {
-    return undefined;
-  }
+	try {
+		const parsed = JSON.parse(frameJson) as { type?: unknown };
+		return typeof parsed.type === 'string' ? parsed.type : undefined;
+	} catch {
+		return undefined;
+	}
 }
 
 /**
@@ -115,13 +131,13 @@ function frameType(frameJson: string): string | undefined {
  * properties IS the PermissionRequest and its `id` is the requestID (§1.2).
  */
 function framePermissionRequestId(frameJson: string): string | undefined {
-  try {
-    const parsed = JSON.parse(frameJson) as { properties?: { id?: unknown } };
-    const id = parsed.properties?.id;
-    return typeof id === "string" && id.length > 0 ? id : undefined;
-  } catch {
-    return undefined;
-  }
+	try {
+		const parsed = JSON.parse(frameJson) as { properties?: { id?: unknown } };
+		const id = parsed.properties?.id;
+		return typeof id === 'string' && id.length > 0 ? id : undefined;
+	} catch {
+		return undefined;
+	}
 }
 
 /**
@@ -136,49 +152,56 @@ function framePermissionRequestId(frameJson: string): string | undefined {
  *   gate can authorize it.
  */
 export function routeFrame(frameJson: string): void {
-  const sessionId = frameSessionId(frameJson);
-  // rev3-F8: a frame with no sessionID (server.*, installation.*) has no owner
-  // to scope it to, so it is dropped for EVERY principal — portal AND direct.
-  // There is no direct-principal carve-out: the HARD DROP RULE applies
-  // uniformly, so a global broadcast never fans out to any stream.
-  if (sessionId === undefined) return;
+	const sessionId = frameSessionId(frameJson);
+	// rev3-F8: a frame with no sessionID (server.*, installation.*) has no owner
+	// to scope it to, so it is dropped for EVERY principal — portal AND direct.
+	// There is no direct-principal carve-out: the HARD DROP RULE applies
+	// uniformly, so a global broadcast never fans out to any stream.
+	if (sessionId === undefined) return;
 
-  // permission.asked AND question.asked both carry their reply id at
-  // properties.id (per_… / que_…) and are answered by requestID; record
-  // requestID→principal for either so the reply gate can authorize it (§3.4).
-  const ft = frameType(frameJson);
-  const interactiveRequestId =
-    ft === "permission.asked" || ft === "question.asked" ? framePermissionRequestId(frameJson) : undefined;
+	// permission.asked AND question.asked both carry their reply id at
+	// properties.id (per_… / que_…) and are answered by requestID; record
+	// requestID→principal for either so the reply gate can authorize it (§3.4).
+	const ft = frameType(frameJson);
+	const interactiveRequestId =
+		ft === 'permission.asked' || ft === 'question.asked'
+			? framePermissionRequestId(frameJson)
+			: undefined;
 
-  const sseBytes = encoder.encode(`data: ${frameJson}\n\n`);
+	const sseBytes = encoder.encode(`data: ${frameJson}\n\n`);
 
-  for (const sub of subscribers) {
-    if (sub.closed) continue;
-    if (!ownsSession(sessionId, sub.principal)) continue;
-    if (interactiveRequestId) recordPermissionOwner(interactiveRequestId, sub.principal);
-    writeTo(sub, sseBytes);
-  }
+	for (const sub of subscribers) {
+		if (sub.closed) continue;
+		if (!ownsSession(sessionId, sub.principal)) continue;
+		if (interactiveRequestId) recordPermissionOwner(interactiveRequestId, sub.principal);
+		writeTo(sub, sseBytes);
+	}
 }
 
 function writeTo(sub: Subscriber, bytes: Uint8Array): void {
-  if (sub.closed) return;
-  try {
-    sub.controller.enqueue(bytes);
-  } catch {
-    // Controller already closed/errored by the platform — drop the subscriber.
-    dropSubscriber(sub);
-  }
+	if (sub.closed) return;
+	try {
+		const desiredSize = sub.controller.desiredSize;
+		if (typeof desiredSize === 'number' && bytes.byteLength > desiredSize) {
+			dropSubscriber(sub);
+			return;
+		}
+		sub.controller.enqueue(bytes);
+	} catch {
+		// Controller already closed/errored by the platform — drop the subscriber.
+		dropSubscriber(sub);
+	}
 }
 
 function dropSubscriber(sub: Subscriber): void {
-  if (sub.closed) return;
-  sub.closed = true;
-  subscribers.delete(sub);
-  try {
-    sub.controller.close();
-  } catch {
-    // already closed
-  }
+	if (sub.closed) return;
+	sub.closed = true;
+	subscribers.delete(sub);
+	try {
+		sub.controller.close();
+	} catch {
+		// already closed
+	}
 }
 
 /**
@@ -194,18 +217,23 @@ function dropSubscriber(sub: Subscriber): void {
  * tear down) so the connection-level signal is not entirely swallowed.
  */
 export function broadcastUpstreamReset(error: { name: string; message: string }): void {
-  for (const sub of subscribers) {
-    if (sub.closed) continue;
-    const owned = ownedSessionIds(sub.principal);
-    if (owned.size === 0) {
-      writeTo(sub, encoder.encode(`data: ${JSON.stringify({ type: "session.error", properties: { error } })}\n\n`));
-      continue;
-    }
-    for (const sessionID of owned) {
-      const frame = JSON.stringify({ type: "session.error", properties: { sessionID, error } });
-      writeTo(sub, encoder.encode(`data: ${frame}\n\n`));
-    }
-  }
+	for (const sub of subscribers) {
+		if (sub.closed) continue;
+		const owned = ownedSessionIds(sub.principal);
+		if (owned.size === 0) {
+			writeTo(
+				sub,
+				encoder.encode(
+					`data: ${JSON.stringify({ type: 'session.error', properties: { error } })}\n\n`
+				)
+			);
+			continue;
+		}
+		for (const sessionID of owned) {
+			const frame = JSON.stringify({ type: 'session.error', properties: { sessionID, error } });
+			writeTo(sub, encoder.encode(`data: ${frame}\n\n`));
+		}
+	}
 }
 
 /**
@@ -216,12 +244,12 @@ export function broadcastUpstreamReset(error: { name: string; message: string })
  * Exported for unit tests.
  */
 export function consumeSseBuffer(buffer: string): string {
-  const { frames, rest } = parseSseFrames(buffer);
-  for (const rawFrame of frames) {
-    const dataPayload = extractData(rawFrame);
-    if (dataPayload !== null) routeFrame(dataPayload);
-  }
-  return rest;
+	const { frames, rest } = parseSseFrames(buffer);
+	for (const rawFrame of frames) {
+		const dataPayload = extractData(rawFrame);
+		if (dataPayload !== null) routeFrame(dataPayload);
+	}
+	return rest;
 }
 
 /**
@@ -231,59 +259,62 @@ export function consumeSseBuffer(buffer: string): string {
  * schedules a resubscribe.
  */
 function ensureUpstream(): void {
-  if (upstreamActive) return;
-  upstreamActive = true;
-  void runUpstream();
+	if (upstreamActive) return;
+	upstreamActive = true;
+	void runUpstream();
 }
 
 async function runUpstream(): Promise<void> {
-  const abort = new AbortController();
-  upstreamAbort = abort;
-  try {
-    // #563 D2 — attach guardian→assistant upstream Basic auth when enabled.
-    const headers = withAssistantUpstreamAuth(new Headers({ accept: "text/event-stream" }));
+	const abort = new AbortController();
+	upstreamAbort = abort;
+	try {
+		// #563 D2 — attach guardian→assistant upstream Basic auth when enabled.
+		const headers = withAssistantUpstreamAuth(new Headers({ accept: 'text/event-stream' }));
 
-    const resp = await fetch(`${ASSISTANT_URL}/event`, {
-      method: "GET",
-      headers,
-      signal: abort.signal,
-    });
-    if (!resp.ok || !resp.body) {
-      throw new Error(`upstream /event status ${resp.status}`);
-    }
+		const resp = await fetch(`${ASSISTANT_URL}/event`, {
+			method: 'GET',
+			headers,
+			signal: abort.signal
+		});
+		if (!resp.ok || !resp.body) {
+			throw new Error(`upstream /event status ${resp.status}`);
+		}
 
-    logger.info("event_upstream_open", {});
-    const reader = resp.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = "";
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-      buffer = consumeSseBuffer(buffer);
-    }
-    logger.warn("event_upstream_closed", { reason: "stream_ended" });
-  } catch (err) {
-    if (abort.signal.aborted) {
-      // We aborted deliberately (no subscribers left) — not an error.
-      logger.info("event_upstream_aborted", {});
-    } else {
-      logger.error("event_upstream_error", { error: String(err) });
-    }
-  } finally {
-    upstreamActive = false;
-    upstreamAbort = null;
-    // Assistant restart mid-stream: tell every open portal BEFORE resubscribe
-    // so they tear down orphaned interactive controls (permission buttons whose
-    // requestID is now invalid). A bare synthetic frame; portals surface it.
-    if (subscribers.size > 0) {
-      broadcastUpstreamReset({ name: "GuardianUpstreamReset", message: "assistant event stream reset" });
-      // Brief backoff before re-establishing the single upstream subscription.
-      setTimeout(() => {
-        if (subscribers.size > 0) ensureUpstream();
-      }, 1_000).unref();
-    }
-  }
+		logger.info('event_upstream_open', {});
+		const reader = resp.body.getReader();
+		const decoder = new TextDecoder();
+		let buffer = '';
+		for (;;) {
+			const { done, value } = await reader.read();
+			if (done) break;
+			buffer += decoder.decode(value, { stream: true });
+			buffer = consumeSseBuffer(buffer);
+		}
+		logger.warn('event_upstream_closed', { reason: 'stream_ended' });
+	} catch (err) {
+		if (abort.signal.aborted) {
+			// We aborted deliberately (no subscribers left) — not an error.
+			logger.info('event_upstream_aborted', {});
+		} else {
+			logger.error('event_upstream_error', { error: String(err) });
+		}
+	} finally {
+		upstreamActive = false;
+		upstreamAbort = null;
+		// Assistant restart mid-stream: tell every open portal BEFORE resubscribe
+		// so they tear down orphaned interactive controls (permission buttons whose
+		// requestID is now invalid). A bare synthetic frame; portals surface it.
+		if (subscribers.size > 0) {
+			broadcastUpstreamReset({
+				name: 'GuardianUpstreamReset',
+				message: 'assistant event stream reset'
+			});
+			// Brief backoff before re-establishing the single upstream subscription.
+			setTimeout(() => {
+				if (subscribers.size > 0) ensureUpstream();
+			}, 1_000).unref();
+		}
+	}
 }
 
 // ── Public API: open a filtered /event stream for a principal ──────────────
@@ -297,61 +328,70 @@ async function runUpstream(): Promise<void> {
  * the last subscriber leaves, the upstream subscription is aborted.
  */
 export function openEventStream(principal: Principal, clientSignal: AbortSignal): Response {
-  let sub: Subscriber;
-  const stream = new ReadableStream<Uint8Array>({
-    start(controller) {
-      sub = { principal, controller, closed: false };
-      subscribers.add(sub);
-      // Flush headers immediately with an SSE comment so the portal sees an
-      // open 200 stream without waiting for the first owned frame (an empty
-      // event-stream otherwise buffers headers until first byte).
-      try {
-        controller.enqueue(encoder.encode(": open\n\n"));
-      } catch {
-        // controller already closed — drop below
-      }
-      ensureUpstream();
-      const onAbort = () => dropSubscriber(sub);
-      if (clientSignal.aborted) onAbort();
-      else clientSignal.addEventListener("abort", onAbort, { once: true });
-    },
-    cancel() {
-      dropSubscriber(sub);
-      maybeStopUpstream();
-    },
-  });
+	let sub: Subscriber;
+	const stream = new ReadableStream<Uint8Array>(
+		{
+			start(controller) {
+				sub = { principal, controller, closed: false };
+				subscribers.add(sub);
+				// Flush headers immediately with an SSE comment so the portal sees an
+				// open 200 stream without waiting for the first owned frame (an empty
+				// event-stream otherwise buffers headers until first byte).
+				try {
+					controller.enqueue(encoder.encode(': open\n\n'));
+				} catch {
+					// controller already closed — drop below
+				}
+				ensureUpstream();
+				const onAbort = () => dropSubscriber(sub);
+				if (clientSignal.aborted) onAbort();
+				else clientSignal.addEventListener('abort', onAbort, { once: true });
+			},
+			cancel() {
+				dropSubscriber(sub);
+				maybeStopUpstream();
+			}
+		},
+		{
+			highWaterMark: EVENT_SUBSCRIBER_BUFFER_BYTES,
+			size: (chunk) => chunk.byteLength
+		}
+	);
 
-  return new Response(stream, {
-    status: 200,
-    headers: {
-      "content-type": "text/event-stream",
-      "cache-control": "no-cache",
-    },
-  });
+	return new Response(stream, {
+		status: 200,
+		headers: {
+			'content-type': 'text/event-stream',
+			'cache-control': 'no-cache'
+		}
+	});
 }
 
 function maybeStopUpstream(): void {
-  if (subscribers.size === 0 && upstreamAbort) {
-    upstreamAbort.abort();
-  }
+	if (subscribers.size === 0 && upstreamAbort) {
+		upstreamAbort.abort();
+	}
 }
 
 // ── /stats + test helpers ──────────────────────────────────────────────────
 
 /** Number of currently-connected filtered /event subscribers (for /stats). */
 export function eventSubscriberCount(): number {
-  return subscribers.size;
+	return subscribers.size;
 }
 
 /** Test-only: register a subscriber with an externally-driven controller. */
-export function _addTestSubscriber(principal: Principal, controller: ReadableStreamDefaultController<Uint8Array>): { drop: () => void } {
-  const sub: Subscriber = { principal, controller, closed: false };
-  subscribers.add(sub);
-  return { drop: () => dropSubscriber(sub) };
+export function _addTestSubscriber(
+	principal: Principal,
+	controller: ReadableStreamDefaultController<Uint8Array>
+): { drop: () => void } {
+	const sub: Subscriber = { principal, controller, closed: false };
+	subscribers.add(sub);
+	return { drop: () => dropSubscriber(sub) };
 }
 
 /** Test-only: clear all subscribers between cases. */
 export function _resetSubscribersForTest(): void {
-  for (const sub of [...subscribers]) dropSubscriber(sub);
-  subscribers.clear();
+	for (const sub of [...subscribers]) dropSubscriber(sub);
+	subscribers.clear();
 }

@@ -15,8 +15,8 @@
         "openpalm": "./bin/openpalm.js",
       },
       "dependencies": {
-        "@openpalm/lib": ">=0.12.52 <1.0.0",
-        "@openpalm/skeleton": "0.12.52",
+        "@openpalm/lib": ">=0.13.0-beta.3 <1.0.0",
+        "@openpalm/skeleton": "0.13.0-beta.3",
         "citty": "^0.2.1",
         "yaml": "^2.8.0",
       },
