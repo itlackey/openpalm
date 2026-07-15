@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'bun:test';
 import {
-  createCliUiSupervisor, type CliChildProc, waitForClientApp,
+  createCliUiSupervisor, type CliChildProc,
   resolveAdminUrl, resolveExpectedHostMode, checkExistingUiInstance,
-  resolveClientOpenTarget, resolveUiServePort,
+  resolveUiServePort,
 } from './ui-server.ts';
 
 // Behavioral coverage for the CLI's thin UiSupervisor adapter, driven through
@@ -153,36 +153,6 @@ describe('createCliUiSupervisor exit policy', () => {
   });
 });
 
-describe('waitForClientApp', () => {
-  it('returns true once the localhost client app becomes reachable', async () => {
-    let attempts = 0;
-    const originalFetch = globalThis.fetch;
-    globalThis.fetch = (async () => {
-      attempts += 1;
-      if (attempts < 2) throw new Error('not ready');
-      return new Response('<html></html>', { status: 200 });
-    }) as typeof fetch;
-
-    try {
-      expect(await waitForClientApp('http://127.0.0.1:3890/chat', 1500)).toBe(true);
-    } finally {
-      globalThis.fetch = originalFetch;
-    }
-  });
-
-  it('returns false when the localhost client app never becomes reachable', async () => {
-    const originalFetch = globalThis.fetch;
-    globalThis.fetch = (async () => {
-      throw new Error('still down');
-    }) as typeof fetch;
-
-    try {
-      expect(await waitForClientApp('http://127.0.0.1:3890/chat', 250)).toBe(false);
-    } finally {
-      globalThis.fetch = originalFetch;
-    }
-  });
-});
 
 // ── A3: `openpalm admin` opens/prints /host, not the root ────────────────────
 
@@ -274,89 +244,6 @@ describe('checkExistingUiInstance', () => {
   });
 });
 
-// ── A4/J1: `openpalm app` (`--open-target client`) target resolution ─────────
-
-describe('resolveClientOpenTarget', () => {
-  const uiUrl = 'http://localhost:3880';
-  const clientUrl = 'http://127.0.0.1:3890/chat';
-
-  it('opens the client when the landing probe reports /chat and the client is reachable', async () => {
-    const result = await resolveClientOpenTarget(uiUrl, clientUrl, true, {
-      fetchFn: routedFetch({ [`${uiUrl}/api/runtime/landing`]: { landing: '/chat' } }),
-      waitForClient: async () => true,
-    });
-    expect(result).toEqual({ url: clientUrl });
-  });
-
-  it('routes to the host UI landing path when it is NOT /chat (setup-incomplete/offline/broken — J1/J2)', async () => {
-    const result = await resolveClientOpenTarget(uiUrl, clientUrl, true, {
-      fetchFn: routedFetch({ [`${uiUrl}/api/runtime/landing`]: { landing: '/host?tab=diagnostics' } }),
-      waitForClient: async () => true,
-    });
-    expect(result).toEqual({ url: `${uiUrl}/host?tab=diagnostics` });
-  });
-
-  it('falls back to /api/setup/status when /api/runtime/landing is not deployed (404), and routes to /setup on an interrupted install (J1)', async () => {
-    const result = await resolveClientOpenTarget(uiUrl, clientUrl, true, {
-      fetchFn: routedFetch({ [`${uiUrl}/api/setup/status`]: { ok: true, setupComplete: false } }),
-      waitForClient: async () => true,
-    });
-    expect(result).toEqual({ url: `${uiUrl}/setup` });
-  });
-
-  it('falls back to the host UI chat (never process.exit) when the client app is unreachable (A4)', async () => {
-    const result = await resolveClientOpenTarget(uiUrl, clientUrl, true, {
-      fetchFn: routedFetch({
-        [`${uiUrl}/api/runtime/landing`]: { landing: '/chat' },
-      }),
-      waitForClient: async () => false,
-    });
-    expect(result.url).toBe(uiUrl);
-    expect(result.message).toMatch(/host UI chat/i);
-  });
-
-  it('falls back to the host UI chat when there is no client handle at all (build absent)', async () => {
-    const result = await resolveClientOpenTarget(uiUrl, clientUrl, false, {
-      fetchFn: routedFetch({ [`${uiUrl}/api/runtime/landing`]: { landing: '/chat' } }),
-      waitForClient: async () => { throw new Error('should not be called when hasClientHandle is false'); },
-    });
-    expect(result.url).toBe(uiUrl);
-    expect(result.message).toBeDefined();
-  });
-
-  // ── #486 D1b: /connections and /connections/new are client-capable landings ──
-
-  it('opens the CLIENT app at /connections/new when the landing is /connections/new and the client is reachable (#486)', async () => {
-    const result = await resolveClientOpenTarget(uiUrl, clientUrl, true, {
-      fetchFn: routedFetch({ [`${uiUrl}/api/runtime/landing`]: { landing: '/connections/new' } }),
-      waitForClient: async () => true,
-    });
-    expect(result).toEqual({ url: 'http://127.0.0.1:3890/connections/new' });
-  });
-
-  it('falls back to the host UI /connections/new (with a message) when the client app is unreachable', async () => {
-    const result = await resolveClientOpenTarget(uiUrl, clientUrl, true, {
-      fetchFn: routedFetch({ [`${uiUrl}/api/runtime/landing`]: { landing: '/connections/new' } }),
-      waitForClient: async () => false,
-    });
-    expect(result.url).toBe(`${uiUrl}/connections/new`);
-    expect(result.message).toBeDefined();
-  });
-
-  it('still routes non-client landings (/setup, /host?tab=diagnostics) to the host UI', async () => {
-    const setupResult = await resolveClientOpenTarget(uiUrl, clientUrl, true, {
-      fetchFn: routedFetch({ [`${uiUrl}/api/runtime/landing`]: { landing: '/setup' } }),
-      waitForClient: async () => { throw new Error('should not probe the client for a non-client landing'); },
-    });
-    expect(setupResult).toEqual({ url: `${uiUrl}/setup` });
-
-    const diagResult = await resolveClientOpenTarget(uiUrl, clientUrl, true, {
-      fetchFn: routedFetch({ [`${uiUrl}/api/runtime/landing`]: { landing: '/host?tab=diagnostics' } }),
-      waitForClient: async () => { throw new Error('should not probe the client for a non-client landing'); },
-    });
-    expect(diagResult).toEqual({ url: `${uiUrl}/host?tab=diagnostics` });
-  });
-});
 
 // ── D3: persisted OP_HOST_UI_PORT is read back ────────────────────────────────
 
