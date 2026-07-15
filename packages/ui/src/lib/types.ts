@@ -57,12 +57,7 @@ export type ServerRuntimeContext = {
 
 export type ClientDisplayMode = 'electron' | 'standalone-pwa' | 'browser';
 
-/** Connection kinds (plan §6.6). `endpoints.json` is not renamed; the
- *  internal model uses "connection" language. */
-export type ConnectionKind = 'local-opencode' | 'remote-opencode' | 'openpalm-client-api';
-
 export type ActiveConnectionContext = {
-  kind: ConnectionKind;
   id: string;
   /** Server-verified at connection-add time (plan §8.9) — never self-granted. */
   grantedCapabilities?: Capability[];

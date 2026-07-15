@@ -32,7 +32,6 @@ const endpoint = {
   id: 'alpha',
   label: 'Local assistant',
   url: 'http://127.0.0.1:3800',
-  kind: 'local-opencode' as const,
   isDefault: true,
   hasPassword: false,
 };

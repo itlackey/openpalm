@@ -1,19 +1,11 @@
 /**
- * Tests for /api/connections/[id] — Phase 4 connection kind wiring (#486 D2).
+ * Tests for /api/connections/[id] PATCH.
  *
  * Mirrors the sibling ../server.vitest.ts harness (computed-specifier dynamic
- * import so svelte-check stays green while PATCH's kind handling doesn't
- * exist yet; makeTestState-backed temp OP_HOME via resetState/trackDir).
+ * import; makeTestState-backed temp OP_HOME via resetState/trackDir).
  *
- * Contract under test:
- *  - PATCH accepts an optional `kind` in the body and applies it to the
- *    stored connection, re-normalizing a guardian ('openpalm-client-api')
- *    URL to end in /oc (same normalization POST already needs — D2).
- *  - PATCH rejects kind 'local-opencode' (reserved for synthesized entries)
- *    with 400 invalid_connection, same as POST.
- *
- * RED until routes/api/connections/[id]/+server.ts's PATCH reads body.kind —
- * today it is silently ignored (ConnectionPatch has no `kind` field).
+ * Contract under test: PATCH rejects a URL carrying userinfo without echoing
+ * either credential back in the response (url-policy hardening).
  */
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { mkdirSync, writeFileSync } from 'node:fs';
@@ -107,24 +99,7 @@ afterEach(() => {
   cleanupTempDirs();
 });
 
-describe('PATCH /api/connections/[id] — connection kind (#486 D2)', () => {
-  test('updates kind and re-normalizes a guardian URL to /oc', async () => {
-    const { PATCH } = await loadRoute();
-    const res = await PATCH(makePatchEvent(EXISTING_ID, { kind: 'openpalm-client-api' }));
-    expect(res.status).toBe(200);
-    const body = (await res.json()) as { connection: { kind: string; url: string } };
-    expect(body.connection.kind).toBe('openpalm-client-api');
-    expect(body.connection.url).toBe('http://10.0.0.9:3830/oc');
-  });
-
-  test("rejects kind 'local-opencode' with 400", async () => {
-    const { PATCH } = await loadRoute();
-    const res = await PATCH(makePatchEvent(EXISTING_ID, { kind: 'local-opencode' }));
-    expect(res.status).toBe(400);
-    const body = (await res.json()) as { error?: string };
-    expect(body.error).toBe('invalid_connection');
-  });
-
+describe('PATCH /api/connections/[id]', () => {
   test('rejects URL userinfo without echoing either credential', async () => {
     const { PATCH } = await loadRoute();
     const res = await PATCH(

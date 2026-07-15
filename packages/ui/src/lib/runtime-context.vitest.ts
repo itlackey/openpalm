@@ -92,7 +92,6 @@ describe('resolveCapabilities — electron display mode', () => {
     const result = resolveCapabilities(HOST_SERVER_CAPS, {
       displayMode: 'electron',
       activeConnection: {
-        kind: 'remote-opencode',
         id: 'r1',
         grantedCapabilities: ['pwa:install'],
       },
@@ -113,7 +112,6 @@ describe('resolveCapabilities — host-capable server + browser (host-ui row)', 
     const result = resolveCapabilities(HOST_SERVER_CAPS, {
       displayMode: 'browser',
       activeConnection: {
-        kind: 'remote-opencode',
         id: 'r1',
         grantedCapabilities: ['pwa:install'],
       },
@@ -173,7 +171,6 @@ describe('resolveCapabilities — pwa-static baseline row', () => {
     const result = resolveCapabilities(PWA_BASELINE_CAPS, {
       displayMode: 'standalone-pwa',
       activeConnection: {
-        kind: 'remote-opencode',
         id: 'r1',
         grantedCapabilities: ['assistant-settings:read', 'assistant-settings:write'],
       },
@@ -191,7 +188,6 @@ describe('resolveCapabilities — pwa-static baseline row', () => {
     const result = resolveCapabilities(PWA_BASELINE_CAPS, {
       displayMode: 'browser',
       activeConnection: {
-        kind: 'remote-opencode',
         id: 'r1',
         grantedCapabilities: ['chat', 'assistant-settings:read'],
       },

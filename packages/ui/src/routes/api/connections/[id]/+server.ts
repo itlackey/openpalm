@@ -23,10 +23,8 @@ import {
   deleteConnection,
   updateConnection,
   validateConnectionUrl,
-  USER_ADDABLE_CONNECTION_KINDS,
   type ConnectionPatch,
 } from '$lib/server/endpoints.js';
-import type { ConnectionKind } from '$lib/types.js';
 
 export const PATCH: RequestHandler = async (event) => {
   const requestId = getRequestId(event);
@@ -46,22 +44,6 @@ export const PATCH: RequestHandler = async (event) => {
     }
     if (body.password === null) patch.password = null;
     else if (typeof body.password === 'string') patch.password = body.password;
-    // #486 D2: same optional parse as POST /api/connections.
-    if (body.kind !== undefined) {
-      if (
-        typeof body.kind !== 'string' ||
-        !(USER_ADDABLE_CONNECTION_KINDS as readonly string[]).includes(body.kind)
-      ) {
-        return errorResponse(
-          400,
-          'invalid_connection',
-          'kind must be remote-opencode or openpalm-client-api',
-          {},
-          requestId
-        );
-      }
-      patch.kind = body.kind as ConnectionKind;
-    }
 
     try {
       const entry = updateConnection(id, patch);

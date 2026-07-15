@@ -18,7 +18,6 @@ export type PublicConnection = {
   id: string;
   label: string;
   url: string;
-  kind: string;
   isDefault: boolean;
   hasPassword: boolean;
 };
@@ -29,15 +28,14 @@ export function publishConnection(c: ActiveConnection): PublicConnection {
     id: c.id,
     label: c.label,
     url: redactEndpointUrlUserinfo(c.url),
-    kind: c.kind,
     isDefault: c.isDefault,
     hasPassword: Boolean(c.password),
   };
 }
 
-/** Serialize a user-persisted record (kind defaulted the same way reads default it). */
+/** Serialize a user-persisted record. */
 export function publishConnectionEntry(entry: ConnectionEntry): PublicConnection {
-  return publishConnection({ ...entry, kind: entry.kind ?? 'remote-opencode', isDefault: false });
+  return publishConnection({ ...entry, isDefault: false });
 }
 
 /**

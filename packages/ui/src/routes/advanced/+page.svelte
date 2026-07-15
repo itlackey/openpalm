@@ -28,7 +28,6 @@
     | 'ready'
     | 'dead'
     | 'credentialed'
-    | 'external'
     | 'mixed-content'
     | 'invalid';
   let probeState = $state<Probe>('checking');
@@ -68,10 +67,6 @@
     const endpoint = endpointsService.active;
     if (!endpoint) {
       probeState = 'dead';
-      return;
-    }
-    if (endpoint.kind === 'openpalm-client-api') {
-      probeState = 'external';
       return;
     }
     const urlKind = classifyUrl(endpoint.url);
@@ -200,14 +195,6 @@
         <p>
           This OpenCode connection requires credentials. OpenPalm keeps them out of iframe URLs and
           browser content; use Chat here or manage the connection through a trusted external route.
-        </p>
-        <a class="btn btn-secondary btn-lg" href={resolvePath('/connections')}>Manage connection</a>
-      {:else if probeState === 'external'}
-        <h2>Advanced UI is managed externally</h2>
-        <p>
-          {active?.label ?? 'This connection'} exposes the secured OpenPalm client API through
-          Guardian, not an embeddable OpenCode web interface. Use Chat here or manage the target
-          outside this frame.
         </p>
         <a class="btn btn-secondary btn-lg" href={resolvePath('/connections')}>Manage connection</a>
       {:else if probeState === 'mixed-content'}
