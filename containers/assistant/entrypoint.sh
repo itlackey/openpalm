@@ -64,15 +64,16 @@ maybe_source_akm_user_env() {
 install_runtime_artifacts() {
   # ── Exact-pinned npm artifacts ──────────────────────────────────────────────
   # The UI and skeleton versions come from their env overrides, then fall back
-  # to PLATFORM_VERSION (set at image build time via ARG). Hard error if neither
-  # is set — no 'latest' fallback for exact-pinned components.
+  # to PLATFORM_VERSION (set at image build time via ARG). No 'latest' fallback
+  # for these exact-pinned components.
   local ui_version="${OP_UI_VERSION:-${PLATFORM_VERSION:-}}"
   local skeleton_version="${OP_SKELETON_VERSION:-${PLATFORM_VERSION:-}}"
 
-  if [ -z "$ui_version" ]; then
-    echo "ERROR: set OP_UI_VERSION or PLATFORM_VERSION to install @openpalm/ui" >&2
-    exit 1
-  fi
+  # The skeleton (managed OpenCode config/plugins) is REQUIRED — hard error if no
+  # version resolves. The UI is a SECONDARY co-process: when no version resolves
+  # (e.g. an image built without PLATFORM_VERSION), skip its install and let
+  # start_ui's absent-build path write the skip marker so the assistant stays
+  # healthy on OpenCode alone rather than wedging the whole stack.
   if [ -z "$skeleton_version" ]; then
     echo "ERROR: set OP_SKELETON_VERSION or PLATFORM_VERSION to install @openpalm/skeleton" >&2
     exit 1
@@ -95,12 +96,16 @@ install_runtime_artifacts() {
   # Capture npm's exit via PIPESTATUS and surface real failures — a silent
   # EACCES here would leave the stack serving a stale ui/skeleton forever.
   local npm_rc
-  echo "entrypoint: installing @openpalm/ui@${ui_version}..." >&2
-  npm_rc=0
-  npm_config_cache="$npm_cache_dir" npm install --prefix /opt/openpalm/ui "@openpalm/ui@${ui_version}" \
-    --omit=dev --prefer-offline --no-fund --no-audit 2>&1 | grep -v "^npm warn" || npm_rc="${PIPESTATUS[0]}"
-  if [ "$npm_rc" != "0" ]; then
-    echo "ERROR: @openpalm/ui@${ui_version} install failed (exit ${npm_rc}); continuing with the existing artifact if present" >&2
+  if [ -n "$ui_version" ]; then
+    echo "entrypoint: installing @openpalm/ui@${ui_version}..." >&2
+    npm_rc=0
+    npm_config_cache="$npm_cache_dir" npm install --prefix /opt/openpalm/ui "@openpalm/ui@${ui_version}" \
+      --omit=dev --prefer-offline --no-fund --no-audit 2>&1 | grep -v "^npm warn" || npm_rc="${PIPESTATUS[0]}"
+    if [ "$npm_rc" != "0" ]; then
+      echo "ERROR: @openpalm/ui@${ui_version} install failed (exit ${npm_rc}); continuing with the existing artifact if present" >&2
+    fi
+  else
+    echo "warning: no OP_UI_VERSION/PLATFORM_VERSION set — skipping @openpalm/ui install; the UI co-process is skipped when no build is present" >&2
   fi
 
   echo "entrypoint: installing @openpalm/skeleton@${skeleton_version}..." >&2

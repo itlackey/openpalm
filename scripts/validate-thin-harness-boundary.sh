@@ -74,6 +74,7 @@ ALLOWED_IMPORTS=(
   # NOT mutate control-plane state or run migrations, so they stay bootstrap-side.
   waitForReady
   restoreUiBackup
+  consumePendingUiBackup
   UiSupervisor
   # Client static-app bootstrap (P5c): resolve the already-seeded client build,
   # write the browser runtime config, and compute the stable localhost client
@@ -83,6 +84,11 @@ ALLOWED_IMPORTS=(
   resolveClientAppPort
   resolveClientAppUrl
   writeClientRuntimeConfig
+  # One-UI served-build runtime-config seed (Electron/CLI): writes the browser's
+  # locked default connection beside the @openpalm/ui build, wrapping the
+  # allowlisted writeClientRuntimeConfig + resolveAssistantEndpoint. Bootstrap
+  # seed only — no control-plane/lifecycle mutation, no migration.
+  seedServedUiRuntimeConfig
   # Pure assistant-endpoint resolver (E1, review 2026-07-10): reads persisted
   # stack.env merged under process.env and normalizes wildcard bind hosts to
   # 127.0.0.1 for the browser-facing seeded connection URL. Read-only — no
