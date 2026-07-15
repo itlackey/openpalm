@@ -122,23 +122,17 @@ describe('#500 install lock recovery', () => {
     expect(readFileSync(lockPath, 'utf-8')).toContain('999999');
   });
 
-  it('grants a reentrant handle when the SAME process already holds the lock', () => {
+  it('rejects an independent acquisition from the same process', () => {
     const outer = acquireInstallLock(dataDir);
     expect(outer).not.toBeNull();
-    expect(outer?.reentrant).toBeFalsy();
-
-    // Nested acquire from this same process (wrapper → migration helper) must not
-    // deadlock: it returns a reentrant no-op handle.
-    const inner = acquireInstallLock(dataDir);
-    expect(inner).not.toBeNull();
-    expect(inner?.reentrant).toBe(true);
-
-    // Releasing the reentrant handle leaves the outer lock in place...
-    releaseInstallLock(inner);
-    expect(existsSync(lockPath)).toBe(true);
-    // ...and only the outermost release removes the file.
-    releaseInstallLock(outer);
-    expect(existsSync(lockPath)).toBe(false);
+    try {
+      // A PID identifies the UI process, not one request. Nested lifecycle calls
+      // must receive the outer handle explicitly instead of reacquiring it.
+      expect(acquireInstallLock(dataDir)).toBeNull();
+      expect(existsSync(lockPath)).toBe(true);
+    } finally {
+      releaseInstallLock(outer);
+    }
   });
 
   it('refuses (null) when the lock is held by a FOREIGN live PID', () => {

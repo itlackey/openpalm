@@ -5,8 +5,8 @@ import {
   requireAdmin,
   requireCapability,
 } from "$lib/server/helpers.js";
+import { withAdminUpdateLock } from '$lib/server/admin-update-lock.js';
 import { getState } from "$lib/server/state.js";
-import { withSerialQueue } from "$lib/server/serial-queue.js";
 import { buildComposeOptions, buildManagedServices, createLogger } from "@openpalm/lib";
 import { applyStack, checkDocker } from "@openpalm/lib";
 import type { RequestHandler } from "./$types";
@@ -21,8 +21,8 @@ export const POST: RequestHandler = async (event) => {
   const authError = requireAdmin(event, requestId);
   if (authError) return authError;
 
-  return withSerialQueue("admin:containers:pull", async () => {
-    const state = getState();
+  const state = getState();
+  return withAdminUpdateLock(state, requestId, async () => {
 
     const dockerCheck = await checkDocker();
     if (!dockerCheck.ok) {

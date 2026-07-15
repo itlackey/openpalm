@@ -43,6 +43,8 @@ type DeployScenario = {
   expectedServices?: string[];
   /** Simulate a `--wait` health-gate failure: applyStack mock returns ok:false. */
   composeUpFails?: boolean;
+  /** Simulate an explicit pull failure before containers are mutated. */
+  pullFails?: boolean;
   /** Seed a custom overlay that grants an unauthorized secret (S.2.2 refusal). */
   badOverlay?: boolean;
 };
@@ -137,6 +139,9 @@ mock.module(${JSON.stringify(moduleUrls.docker)}, () => ({
   // scenario returns a partial failure (upFailed:false) — runDeploy then reads
   // composePs via refreshDeployStatus to split the failure into core/optional.
   applyStack: async () => {
+    if (scenario.pullFails) {
+      return { ok: false, started: [], failed: [], error: 'manifest unknown', pullFailed: true };
+    }
     if (scenario.composeUpFails) {
       return { ok: false, started: [], failed: [], error: 'up failed: container is unhealthy', upFailed: false, rawStderr: 'up failed: container is unhealthy' };
     }
@@ -178,6 +183,7 @@ mock.module(${JSON.stringify(moduleUrls.coreAssets)}, () => ({
 mock.module(${JSON.stringify(moduleUrls.lifecycle)}, () => ({
   applyInstall: async () => {},
   buildManagedServices: async () => scenario.expectedServices ?? ['assistant'],
+  restoreSnapshotAndApplyStack: async () => {},
 }));
 
 mock.module(${JSON.stringify(moduleUrls.installLock)}, () => ({
@@ -286,6 +292,19 @@ describe('S.2.2: deploy refuses a compose overlay that grants an unauthorized se
 // ── (b) Health poll matches by Service label, not container name suffix ───────
 
 describe('A2b(b): health poll matches containers by com.docker.compose.service label', () => {
+  it('reports a pull failure even when the old containers are still healthy', () => {
+    const result = runDeployScenario({
+      pullFails: true,
+      expectedServices: ['assistant'],
+      composePsRows: [{ Service: 'assistant', State: 'running', Health: '' }],
+    });
+    expect(result.exitCode, `stderr: ${result.stderr}`).toBe(0);
+
+    const output = JSON.parse(result.stdout.trim().split('\n').filter((line) => line.startsWith('{')).at(-1) ?? '{}');
+    expect(output.deployError).toContain('manifest unknown');
+    expect(output.phase).not.toBe('ready');
+  });
+
   it('marks service running when composePs returns Service:"assistant" (not "assistant-1")', () => {
     // The composePs output uses the service name (e.g. "assistant"), NOT the
     // container name suffix (e.g. "assistant-1"). The health poller must match
@@ -358,26 +377,17 @@ describe('A2b(c): install lock held through deploy; second concurrent deploy ref
     releaseInstallLock(handle);
   });
 
-  it('second SAME-PROCESS acquire is reentrant (no self-deadlock) while first lock is held', () => {
+  it('second same-process acquire is refused because it is an independent request', () => {
     lockDir = mkdtempSync(join(tmpdir(), 'op-lock-test-'));
     const first = acquireInstallLock(lockDir);
     expect(first).not.toBeNull();
-    expect(first?.reentrant).toBeFalsy();
 
     try {
-      // A nested acquire from the SAME process (e.g. a lifecycle wrapper holds the
-      // lock, then a migration helper acquires it again) must NOT deadlock — it
-      // returns a reentrant no-op handle. Releasing it does not clear the file.
-      const second = acquireInstallLock(lockDir);
-      expect(second).not.toBeNull();
-      expect(second?.reentrant).toBe(true);
-      releaseInstallLock(second);
-      // The outer lock is still held after releasing the reentrant handle.
+      expect(acquireInstallLock(lockDir)).toBeNull();
       expect(existsSync(join(lockDir, '.install.lock'))).toBe(true);
     } finally {
       releaseInstallLock(first);
     }
-    // Outermost release clears the file.
     expect(existsSync(join(lockDir, '.install.lock'))).toBe(false);
   });
 
@@ -404,7 +414,7 @@ describe('A2b(c): install lock held through deploy; second concurrent deploy ref
     writeFileSync(lockPath, `1\n${Date.now()}\n`, { mode: 0o644 });
 
     // acquireInstallLock sees EEXIST, the holder PID is foreign and alive and the
-    // timestamp is recent → not stale, not reentrant → returns null.
+    // timestamp is recent → not stale → returns null.
     const handle = acquireInstallLock(lockDir);
     expect(handle).toBeNull();
   });

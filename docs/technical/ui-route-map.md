@@ -103,7 +103,7 @@ router, which 404s because the route tree is deleted (plan §6.4).
   `backups`, `stack` (project name + bind address — the host half of the old
   assistant tab)
 - Containers (`host:containers`): `containers/{list,up,down,restart,pull,stats,events}`
-- Versions (`host:updates`): `versions`, `versions/{latest,releases,ui}`, `ui-version`
+- Versions (`host:updates`): `versions`, `versions/{releases,ui}`, `ui-version`
 - Add-ons (`host:addons`): `addons`, `addons/[name]`, `addons/[name]/credentials`
 - Automations (`host:stack:*`/`host:logs`): `automations`, `automations/[name]/{file,log,run}`
 - AKM host-level (`host:containers`, `host:akm-sharing`, `host:stack:read`):

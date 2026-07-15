@@ -8,7 +8,11 @@
  */
 import type { RequestEvent } from '@sveltejs/kit';
 import { requireAdmin, requireCapability } from './helpers.js';
-import type { ActiveConnection, ConnectionEntry } from './endpoints.js';
+import {
+  redactEndpointUrlUserinfo,
+  type ActiveConnection,
+  type ConnectionEntry,
+} from './endpoints.js';
 
 export type PublicConnection = {
   id: string;
@@ -24,7 +28,7 @@ export function publishConnection(c: ActiveConnection): PublicConnection {
   return {
     id: c.id,
     label: c.label,
-    url: c.url,
+    url: redactEndpointUrlUserinfo(c.url),
     kind: c.kind,
     isDefault: c.isDefault,
     hasPassword: Boolean(c.password),

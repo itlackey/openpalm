@@ -88,8 +88,8 @@ export async function startStubAssistant(options: StubAssistantOptions = {}): Pr
       const method = req.method ?? 'GET';
 
       if (method === 'GET' && url.pathname === '/') {
-        res.writeHead(200, { 'content-type': 'text/plain' });
-        return res.end('ok');
+        res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+        return res.end('<!doctype html><h1>Cross-origin OpenCode test frame</h1>');
       }
 
       if (method === 'GET' && url.pathname === '/event') {

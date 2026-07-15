@@ -20,6 +20,7 @@ import {
   resolveClientAppPort,
   writeClientRuntimeConfig,
   waitForReady as libWaitForReady,
+  consumePendingUiBackup,
   restoreUiBackup,
   UiSupervisor,
   resolveAssistantEndpoint,
@@ -615,7 +616,7 @@ const uiSupervisor = new UiSupervisor<ChildProcess>({
     // respawn restores the correct build (mirrors the pre-refactor capture-then-
     // clear at restartUIServer's top).
     beforeRestart: () => {
-      restartBackupDir = pendingUiBackupDir;
+      restartBackupDir = consumePendingUiBackup(resolveDataDir()) ?? pendingUiBackupDir;
       pendingUiBackupDir = null;
     },
     // Post-swap failure → restore the prior data/ui with a local rename — no

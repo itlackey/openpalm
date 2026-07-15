@@ -15,12 +15,7 @@ import { timestampDirName } from "./backup.js";
  *  Only config/ system files are included — user-editable config files
  *  are never overwritten by lifecycle operations.
  *
- *  Scope note (intentionally NOT unified with withStackEnvRollback's in-memory
- *  protected set in lifecycle.ts): this is the manual `openpalm rollback`
- *  scope, which additionally covers services.compose.yml/core.compose.yml
- *  (restored) and auth.json (backed up only — see RESTORE_FILES below).
- *  withStackEnvRollback's set is the narrower crash-restore scope for a single
- *  in-flight lifecycle op. */
+ *  auth.json is backed up but not restored automatically (see RESTORE_FILES). */
 const SNAPSHOT_FILES = [
   "knowledge/env/stack.env",
   "state/stack.state.env",
@@ -37,7 +32,6 @@ const SNAPSHOT_FILES = [
 const RESTORE_FILES = SNAPSHOT_FILES.filter((rel) => rel !== "knowledge/secrets/auth.json");
 
 const SNAPSHOT_TS_FILE = '.snapshot-ts';
-const SNAPSHOT_ARMED_FILE = '.snapshot-armed';
 
 /**
  * Copy a file if it exists, creating parent directories as needed.
@@ -52,7 +46,7 @@ function safeCopy(src: string, dest: string): void {
  * Save the current live configuration files to the rollback directory.
  * Also snapshots stack/core.compose.yml.
  */
-export function snapshotCurrentState(state: ControlPlaneState, opts: { arm?: boolean } = {}): void {
+export function snapshotCurrentState(state: ControlPlaneState): void {
   const rollbackDir = resolveRollbackDir();
   mkdirSync(rollbackDir, { recursive: true });
 
@@ -80,9 +74,6 @@ export function snapshotCurrentState(state: ControlPlaneState, opts: { arm?: boo
     `${new Date().toISOString()}\n`,
   );
 
-  if (opts.arm) {
-    writeFileSync(join(rollbackDir, SNAPSHOT_ARMED_FILE), 'true\n');
-  }
 }
 
 /**
@@ -118,8 +109,6 @@ export function restoreSnapshot(state: ControlPlaneState): void {
     safeCopy(srcCoreCompose, join(state.homeDir, "system/stack/core.compose.yml"));
   }
 
-  clearArmedSnapshot();
-
 }
 
 /**
@@ -128,14 +117,6 @@ export function restoreSnapshot(state: ControlPlaneState): void {
 export function hasSnapshot(): boolean {
   const rollbackDir = resolveRollbackDir();
   return existsSync(join(rollbackDir, SNAPSHOT_TS_FILE));
-}
-
-export function hasArmedSnapshot(): boolean {
-  return existsSync(join(resolveRollbackDir(), SNAPSHOT_ARMED_FILE));
-}
-
-export function clearArmedSnapshot(): void {
-  rmSync(join(resolveRollbackDir(), SNAPSHOT_ARMED_FILE), { force: true });
 }
 
 /**

@@ -39,6 +39,7 @@ function harness(opts: {
   readyQueue: boolean[];
   proc?: FakeProc;
   uiBackupDir?: string | undefined;
+  pendingBackupDir?: string | null;
   /** Bypass the readyQueue entirely (D1 race test needs a fn under its own control). */
   waitForReadyFn?: () => Promise<boolean>;
 }) {
@@ -55,6 +56,7 @@ function harness(opts: {
     }),
     waitForReadyFn: opts.waitForReadyFn ?? (async () => readyQueue.shift() ?? false),
     restoreBackup: (b) => restores.push(b),
+    consumePendingBackup: () => opts.pendingBackupDir ?? null,
     exit: (c) => { exits.push(c); },
     logRestartError: (...a) => errs.push(a),
     stopTimeoutMs: 5,
@@ -99,6 +101,17 @@ describe('createCliUiSupervisor exit policy', () => {
     expect(await supervisor.restart()).toBe(false);
     expect(restores).toEqual(['/data/.ui-backup']);
     expect(exits).toEqual([1]);
+  });
+
+  it('prefers the on-demand backup handed off by the UI child', async () => {
+    const { supervisor, restores } = harness({
+      readyQueue: [true, false],
+      uiBackupDir: '/data/old-startup-backup',
+      pendingBackupDir: '/data/on-demand-backup',
+    });
+    expect(await supervisor.start()).toBe(true);
+    expect(await supervisor.restart()).toBe(false);
+    expect(restores).toEqual(['/data/on-demand-backup']);
   });
 
   it('a successful restart neither restores a backup nor exits', async () => {

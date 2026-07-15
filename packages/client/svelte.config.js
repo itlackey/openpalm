@@ -30,6 +30,9 @@ const config = {
         'font-src': ['self'],
         'img-src': ['self', 'data:'],
         'connect-src': ['self', 'http:', 'https:'],
+        // Advanced mode embeds the active connection selected from IndexedDB.
+        // Its origin is not known at build time; this relaxes frames only.
+        'frame-src': ['self', 'http:', 'https:'],
         'object-src': ['none'],
         'base-uri': ['none'],
         'frame-ancestors': ['none'],

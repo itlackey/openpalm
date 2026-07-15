@@ -4,11 +4,10 @@ import type { ControlPlaneState } from './types.js';
 import { CORE_SERVICES } from './types.js';
 import { writeFileAtomic } from './fs-atomic.js';
 import { buildComposeOptions } from './compose-args.js';
-import { applyInstall } from './lifecycle.js';
-import { buildManagedServices } from './lifecycle.js';
-import { applyStack, composeDown, composePs, detectExistingProject, parseComposePsRows, resolveComposeProjectName } from './docker.js';
+import { applyInstall, buildManagedServices, restoreSnapshotAndApplyStack } from './lifecycle.js';
+import { applyStack, composePs, detectExistingProject, parseComposePsRows, resolveComposeProjectName } from './docker.js';
 import { parseEnvFile } from './env.js';
-import { patchStateEnvFile } from './secrets.js';
+import { patchStateEnvFile, readStackEnv } from './secrets.js';
 import { acquireInstallLock, releaseInstallLock, isProcessAlive } from './install-lock.js';
 import { resolveBackupsDir } from './home.js';
 import { stackEnvPath } from './paths.js';
@@ -17,8 +16,29 @@ import { teardownRenamedProject } from './project-rename.js';
 import { auditComposeSecrets } from './secret-audit.js';
 import { validateProposedState } from './validate.js';
 import { createLogger } from '../logger.js';
+import { restoreSnapshot } from './rollback.js';
 
 const deployLogger = createLogger('deploy');
+
+function restoreDeployFiles(state: ControlPlaneState): void {
+  try {
+    restoreSnapshot(state);
+  } catch (error) {
+    deployLogger.error('failed to restore deploy snapshot', {
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
+async function restoreDeployStack(state: ControlPlaneState): Promise<void> {
+  try {
+    await restoreSnapshotAndApplyStack(state);
+  } catch (error) {
+    deployLogger.error('failed to restore deployed stack', {
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
 
 export type DeployEntry = {
   service: string;
@@ -113,27 +133,8 @@ function projectNameForState(state: ControlPlaneState): string {
   return resolveComposeProjectName(parseEnvFile(stackEnvPath(state)));
 }
 
-/**
- * Choose compose's `--pull` mode for a deploy from the version-of-record tag
- * (PR #564 second retest R8). `--pull missing` never refreshes a MOVING registry
- * tag (`latest`, channel names) once the image is present locally, so a
- * moving-tag rerun can recreate the OLD digest. Force `--pull always` for a
- * moving tag; keep `--pull missing` for an immutable pinned semver (correct AND
- * avoids a needless network pull) and for a locally-built `dev` image (which
- * must never hit the network). An unset tag is treated as moving (safe: refresh).
- */
-function resolvePullMode(imageTag: string): 'always' | 'missing' {
-  const isDevTag = imageTag.startsWith('dev');
-  const isPinnedVersion = /^v?\d+\./.test(imageTag);
-  return !isDevTag && !isPinnedVersion ? 'always' : 'missing';
-}
-
 function resolveImageTag(state: ControlPlaneState): string {
-  // Per-image versions replaced the single OP_IMAGE_TAG cascade. The assistant
-  // is the version-of-record image; its tag is representative for the "dev tag ⇒
-  // skip remote pull" heuristic. Fall back to the legacy OP_IMAGE_TAG for an
-  // install whose stack.env predates the version migration.
-  const env = parseEnvFile(stackEnvPath(state));
+  const env = readStackEnv(state.homeDir);
   return env.OP_ASSISTANT_VERSION ?? env.OP_IMAGE_TAG ?? '';
 }
 
@@ -143,6 +144,7 @@ async function detectProjectCollision(state: ControlPlaneState): Promise<string 
   for (let attempt = 0; attempt < delays.length; attempt++) {
     if (delays[attempt] > 0) await new Promise((resolve) => setTimeout(resolve, delays[attempt]));
     const existing = await detectExistingProject({ projectName, expectedWorkingDir: state.stackDir });
+    if (existing.error) continue;
     if (!existing.exists) return null;
     if (existing.isOurs) return null;
     if (!existing.workingDir) continue;
@@ -292,6 +294,7 @@ export async function runDeploy(state: ControlPlaneState, options: RunDeployOpti
     const audit = await auditApplyState(state);
     for (const warning of audit.warnings) deployLogger.warn(warning);
     if (audit.errors.length > 0) {
+      restoreDeployFiles(state);
       progress.deployError = `Refusing to deploy: configuration validation failed.\n${audit.errors.join('\n')}`;
       progress.deploying = false;
       emitProgress(options, progress);
@@ -313,6 +316,7 @@ export async function runDeploy(state: ControlPlaneState, options: RunDeployOpti
     const renameTeardown = await teardownRenamedProject(state);
     if (renameTeardown.warning) deployLogger.warn(renameTeardown.warning);
     if (renameTeardown.blocked) {
+      restoreDeployFiles(state);
       progress.deployError = renameTeardown.warning ?? 'Project rename teardown failed.';
       progress.deploying = false;
       emitProgress(options, progress);
@@ -322,26 +326,16 @@ export async function runDeploy(state: ControlPlaneState, options: RunDeployOpti
       deployLogger.info(`project rename: stopped previous docker project "${renameTeardown.downed}"`);
     }
 
-    try {
-      await composeDown({ ...composeOpts, removeVolumes: false, removeOrphans: true });
-    } catch {
-      // Best-effort cleanup only.
-    }
-
     progress.phase = 'starting';
     progress.deployStatus = progress.deployStatus.map((entry) => ({ ...entry, status: 'pending', label: 'Starting...' }));
     emitProgress(options, progress);
 
-    // The single compose driver (§4.3, plan 2.2): ONE `up --pull missing --wait
-    // --force-recreate --remove-orphans` call — no separate pull step. `--pull
-    // missing` never makes a network call for a locally-built dev image (a
-    // present image is not "missing"); a changed pin makes its tag "missing" so
-    // compose pulls it in the same `up` and a pull failure is fatal. `--wait` is
-    // the health gate; a wider health timeout tolerates a first install's slow
-    // cold boot of multi-GB images.
     const imageTag = resolveImageTag(state);
     const isDevTag = imageTag.startsWith('dev');
-    const stackResult = await applyStack({ kind: 'all' }, composeOpts, undefined, { pull: resolvePullMode(imageTag), healthTimeoutMs: 5 * 60_000 });
+    const stackResult = await applyStack({ kind: 'all' }, composeOpts, undefined, {
+      pull: isDevTag ? 'missing' : 'always',
+      healthTimeoutMs: 5 * 60_000,
+    });
 
     if (!stackResult.ok) {
       // ONE `compose ps` refreshes the per-service display labels and splits the
@@ -349,11 +343,16 @@ export async function runDeploy(state: ControlPlaneState, options: RunDeployOpti
       // an addon/portal hiccup can't wedge a fresh install (§2.1). `upFailed`
       // means nothing came up at all, always a hard failure.
       const { failedCore, failedOptional } = await refreshDeployStatus(state, progress, true);
-      if (failedCore.length > 0 || stackResult.upFailed) {
+      if (stackResult.pullFailed || failedCore.length > 0 || stackResult.upFailed) {
+        if (stackResult.pullFailed && !renameTeardown.downed) restoreDeployFiles(state);
+        else await restoreDeployStack(state);
         const allFailed = [...failedCore, ...failedOptional];
+        const failureDetail = allFailed.length > 0
+          ? allFailed.join(', ')
+          : stackResult.error ?? 'stack update';
         progress.deployError = isDevTag
-          ? `Dev images not found locally or failed to start (tag: ${imageTag}): ${allFailed.join(', ')}. Run \`bun run dev:build\` from the project root to build them, then retry setup.`
-          : `Services started but the following did not become healthy: ${allFailed.join(', ')}. ${buildLogHint(state, allFailed)}`;
+          ? `Dev images not found locally or failed to start (tag: ${imageTag}): ${failureDetail}. Run \`bun run dev:build\` from the project root to build them, then retry setup.`
+          : `Stack update failed: ${failureDetail}.${allFailed.length > 0 ? ` ${buildLogHint(state, allFailed)}` : ''}`;
         progress.deploying = false;
         emitProgress(options, progress);
         return progress;

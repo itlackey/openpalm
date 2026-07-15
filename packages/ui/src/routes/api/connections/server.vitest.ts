@@ -181,7 +181,7 @@ describe('GET /api/connections — connections:manage guard (plan §6.4, §8.5)'
         {
           id: '11111111-1111-4111-8111-111111111111',
           label: 'Remote',
-          url: 'http://10.0.0.9:3800',
+          url: 'http://legacy-user:legacy-url-password@10.0.0.9:3800',
           password: 'super-secret-pw',
         },
       ],
@@ -191,6 +191,9 @@ describe('GET /api/connections — connections:manage guard (plan §6.4, §8.5)'
     expect(res.status).toBe(200);
     const raw = JSON.stringify(await res.json());
     expect(raw).not.toContain('super-secret-pw');
+    expect(raw).not.toContain('legacy-user');
+    expect(raw).not.toContain('legacy-url-password');
+    expect(raw).toContain('http://10.0.0.9:3800');
   });
 });
 
@@ -207,6 +210,21 @@ describe('POST /api/connections — connections:manage guard on writes', () => {
     const { POST } = await loadRoute();
     const res = await POST(makePostEvent({ label: 'Remote', url: 'http://10.0.0.9:3800' }));
     expect(res.status).toBe(201);
+  });
+
+  test('rejects URL userinfo without echoing either credential in the API response', async () => {
+    process.env.OP_UI_HOST_MODE = 'host-ui';
+    const { POST } = await loadRoute();
+    const res = await POST(
+      makePostEvent({
+        label: 'Unsafe',
+        url: 'https://api-user:api-password@remote.example',
+      })
+    );
+    const raw = await res.text();
+    expect(res.status).toBe(400);
+    expect(raw).not.toContain('api-user');
+    expect(raw).not.toContain('api-password');
   });
 });
 

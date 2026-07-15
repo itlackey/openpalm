@@ -273,14 +273,14 @@ write to the same config files.
 OpenPalm separates **the app you installed** from **the control plane that runs your stack**, so most updates need no reinstall.
 
 - **Control plane / platform** (`PLATFORM_VERSION`) — the admin UI build, the migration/lifecycle engine, and the Docker stack images. This **self-updates in place**:
-  - **Desktop app:** updates `data/ui` from npm at launch and on demand; click **Update now** in the admin UI to pull newer stack images and run migrations. No app re-download.
+  - **Desktop app:** updates `data/ui` from npm at launch and on demand; use **Update OpenPalm stack** in the admin UI to refresh managed files and run the configured Compose stack. No app re-download.
   - **`openpalm ui serve`:** self-updates `data/ui` before serving, same as the desktop app.
-  - **`openpalm update`:** refreshes stack assets, pulls images, and recreates containers for the CLI command path. By default a **stable** install stays on stable — pass `--pre` to opt into rc/beta versions.
+  - **`openpalm update`:** refreshes stack assets, pulls the configured images, and recreates containers.
 - **Native app / CLI binary** — the macOS/Linux/Windows desktop shell and the compiled `openpalm` binary. These change rarely:
   - The **desktop app** only needs a re-download when its native surface changes (a `HARNESS_CONTRACT_VERSION` bump); the admin UI tells you when. Otherwise the platform updates underneath it automatically.
   - The **CLI binary** carries its own copy of the migration engine for its own `update`/`migrate` commands; refresh it with `openpalm self-update`. The UI it *serves* still floats with `data/ui`, so a CLI user gets platform updates for the served admin UI without re-downloading the binary.
 
-> Stable users get stable everywhere (CLI, the admin "Update now" card, and the desktop update check now agree). Reaching a prerelease is always a deliberate choice (`openpalm update --pre`).
+> Container updates use the image tags already configured in Compose. The normal default is `latest`; exact tags remain available under Advanced image tags.
 
 **Knowing an update exists.** `openpalm status` ends with a one-line advisory
 (on stderr, so the JSON on stdout stays script-clean) when a newer release is
@@ -306,11 +306,8 @@ openpalm migrate --dry-run --to 0.12.0
 **Advanced options** has the same **"Preview changes"** button. Migrations are
 copy-only, backup-first, and idempotent; nothing is deleted.
 
-**Downgrades.** Selecting a version older than the one you're running is a
-downgrade: release migrations are **forward-only**, so the picker requires an
-explicit confirmation and points you at **restore from backup** if your data
-isn't compatible with the older release. Prefer restoring a backup over
-downgrading in place.
+OpenPalm does not add version-ordering policy on top of Docker Compose. If you
+configure an older exact image tag, the next update pulls and runs that tag.
 
 **If an operation seems stuck.** Install/update hold a short-lived lock that
 auto-heals after 30 minutes. If you're certain nothing is running, clear a

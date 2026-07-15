@@ -1,22 +1,14 @@
 <script lang="ts">
-  import IconMic from '@openpalm/ui-kit/components/icons/IconMic.svelte';
   import IconSend from '@openpalm/ui-kit/components/icons/IconSend.svelte';
   import IconStop from '@openpalm/ui-kit/components/icons/IconStop.svelte';
-  import IconWaves from '@openpalm/ui-kit/components/icons/IconWaves.svelte';
 
   interface Props {
     sending: boolean;
     questionPending?: boolean;
     onSend: (text: string) => void;
     onStop?: () => void;
-    voiceEnabled?: boolean;
-    voiceActive?: boolean;
-    onMicToggle?: () => void;
     /** Composer text — bindable so dictation can insert into the draft. */
     draft?: string;
-    conversationEnabled?: boolean;
-    conversationActive?: boolean;
-    onConversationToggle?: () => void;
   }
 
   let {
@@ -24,13 +16,7 @@
     questionPending = false,
     onSend,
     onStop,
-    voiceEnabled = false,
-    voiceActive = false,
-    onMicToggle,
     draft = $bindable(''),
-    conversationEnabled = false,
-    conversationActive = false,
-    onConversationToggle,
   }: Props = $props();
 
   let textareaEl = $state<HTMLTextAreaElement | undefined>();
@@ -90,30 +76,6 @@
   ></textarea>
   <div class="s-footer">
     <div class="s-rule"></div>
-    {#if voiceEnabled}
-      <button
-        class="s-mic-btn"
-        class:active={voiceActive}
-        type="button"
-        aria-label={voiceActive ? 'Stop listening' : 'Start listening'}
-        aria-pressed={voiceActive}
-        onclick={onMicToggle}
-      >
-        <IconMic size={16} />
-      </button>
-    {/if}
-    {#if conversationEnabled}
-      <button
-        class="s-mic-btn"
-        class:active={conversationActive}
-        type="button"
-        aria-label={conversationActive ? 'End conversation mode' : 'Start conversation mode'}
-        aria-pressed={conversationActive}
-        onclick={onConversationToggle}
-      >
-        <IconWaves size={16} />
-      </button>
-    {/if}
     {#if showStop}
       <button
         class="s-send-btn"
@@ -172,7 +134,7 @@
     transition: color var(--s-t-theme) var(--s-ease);
   }
 
-  /* Footer row: rule line + optional mic/send buttons.
+  /* Footer row: rule line + send/stop button.
      UX-25: span the full composer (textarea) width so the action buttons read
      as part of the input rather than floating at the end of a short rule. */
   .s-footer {
@@ -182,7 +144,6 @@
     width: 100%;
   }
 
-  .s-mic-btn,
   .s-send-btn {
     flex-shrink: 0;
     appearance: none;
@@ -204,33 +165,14 @@
     transition: color var(--s-t-quick) var(--s-ease);
   }
 
-  .s-mic-btn:hover,
   .s-send-btn:hover { color: var(--s-ink); }
 
-  .s-mic-btn:active,
   .s-send-btn:active { transform: scale(0.9); }
-
-  .s-mic-btn.active {
-    color: var(--s-seal);
-    animation: s-mic-pulse 1.4s ease-in-out infinite;
-  }
 
   .s-send-btn:disabled {
     opacity: 0.35;
     cursor: default;
   }
-
-  @keyframes s-mic-pulse {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.45; }
-  }
-
-  .s-mic-btn:focus-visible {
-    outline: none;
-    box-shadow: 0 0 0 1px var(--s-paper), 0 0 0 2px var(--s-ink-3);
-  }
-
-  .s-mic-btn :global(.s-icon) { display: block; }
 
   .s-composer textarea::placeholder {
     color: var(--s-ink-3);
@@ -264,18 +206,12 @@
     animation: s-ripple 1s var(--s-ease);
   }
 
-  /* UX-22: respect reduced-motion — no infinite mic pulse, no active-scale. */
+  /* UX-22: respect reduced-motion — no active-scale. */
   @media (prefers-reduced-motion: reduce) {
-    .s-mic-btn.active {
-      animation: none;
-    }
-
-    .s-mic-btn:active,
     .s-send-btn:active {
       transform: none;
     }
 
-    .s-mic-btn,
     .s-send-btn {
       transition: none;
     }

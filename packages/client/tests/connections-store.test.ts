@@ -82,6 +82,33 @@ describe('connection store CRUD (P5b item 2)', () => {
     expect(await store.get(added.id)).toEqual(updated);
   });
 
+  test('add and update reject URL userinfo before writing a connection record', async () => {
+    const { store, storage } = await freshStore();
+    await expect(
+      store.add(guardianInput({ url: 'https://url-user:url-password@gw.example' }))
+    ).rejects.toThrow(/Authentication fields/);
+    expect(await storage.getAll()).toEqual([]);
+
+    const added = await store.add(guardianInput());
+    await expect(
+      store.update(added.id, { url: 'https://next-user:next-password@gw.example' })
+    ).rejects.toThrow(/Authentication fields/);
+    expect((await storage.get(added.id))?.url).toBe('http://gw.example:8443');
+  });
+
+  test('the low-level storage boundary strips userinfo from legacy-shaped writes', async () => {
+    const { storage } = await freshStore();
+    await storage.put({
+      ...guardianInput({ id: 'legacy-write' }),
+      id: 'legacy-write',
+      url: 'https://legacy-user:legacy-password@gw.example',
+    });
+    const raw = JSON.stringify(await storage.get('legacy-write'));
+    expect(raw).not.toContain('legacy-user');
+    expect(raw).not.toContain('legacy-password');
+    expect((await storage.get('legacy-write'))?.url).toBe('https://gw.example');
+  });
+
   test('update() rejects for an unknown id', async () => {
     const { store } = await freshStore();
     expect(store.update('missing', { label: 'x' })).rejects.toThrow();

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
-import { mkdirSync, rmSync, existsSync, readFileSync } from 'node:fs';
+import { mkdirSync, rmSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { tmpdir } from 'node:os';
@@ -123,6 +123,22 @@ describe('PUT /api/host/voice', () => {
 	test('requires admin auth', async () => {
 		const res = await PUT(makePutEvent({}, 'bad-token'));
 		expect(res.status).toBe(401);
+	});
+
+	test('returns structured 409 without writing voice settings while an update holds the install lock', async () => {
+		const state = getState();
+		const lockPath = join(state.dataDir, '.install.lock');
+		mkdirSync(state.dataDir, { recursive: true });
+		writeFileSync(lockPath, `1\n${Date.now()}\n`);
+
+		try {
+			const res = await PUT(makePutEvent({ tts: { engine: 'browser' } }));
+			expect(res.status).toBe(409);
+			expect(await res.json()).toMatchObject({ error: 'install_in_progress' });
+			expect(readStackEnv(state.homeDir).OP_TTS_ENGINE).toBeUndefined();
+		} finally {
+			rmSync(lockPath, { force: true });
+		}
 	});
 
 	test('accepts engine "openpalm-voice" and auto-fills the preset baseURL/model', async () => {

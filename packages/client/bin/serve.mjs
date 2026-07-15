@@ -12,7 +12,7 @@
  * Usage: serve.mjs [--port N] [--host ADDR] [--dir PATH]
  * Env:   PORT, HOST, OP_CLIENT_DIR
  */
-import { createReadStream, existsSync, statSync } from 'node:fs';
+import { createReadStream, existsSync, readFileSync, statSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { extname, join, normalize, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -37,6 +37,22 @@ const dir = resolve(
 const runtimeConfigPath = process.env.OP_CLIENT_RUNTIME_CONFIG
   ? resolve(process.env.OP_CLIENT_RUNTIME_CONFIG)
   : '';
+
+function readDocumentCsp() {
+  const indexPath = join(dir, 'index.html');
+  if (!existsSync(indexPath)) return '';
+  const html = readFileSync(indexPath, 'utf8');
+  const match = html.match(/<meta\s+http-equiv=["']content-security-policy["']\s+content=(["'])([\s\S]*?)\1/i);
+  if (!match) return '';
+  const policy = match[2]
+    .replaceAll('&quot;', '"')
+    .replaceAll('&#39;', "'")
+    .replaceAll('&#x27;', "'")
+    .replaceAll('&amp;', '&');
+  return policy.includes('frame-ancestors') ? policy : `${policy}; frame-ancestors 'none'`;
+}
+
+const documentCsp = readDocumentCsp();
 
 const MIME = {
   '.html': 'text/html; charset=utf-8',
@@ -77,6 +93,16 @@ function staticHeaders(pathname) {
   return NEVER_CACHE_NAMES.has(pathname) || pathname === '/' ? { 'cache-control': 'no-cache' } : {};
 }
 
+function documentHeaders(pathname) {
+  return {
+    ...staticHeaders(pathname),
+    ...(documentCsp ? { 'content-security-policy': documentCsp } : {}),
+    'x-frame-options': 'DENY',
+    'x-content-type-options': 'nosniff',
+    'referrer-policy': 'no-referrer',
+  };
+}
+
 // H2: the SPA fallback used to answer ANY unresolved path with a 200
 // index.html — including a JS/CSS chunk URL the SW's precache manifest
 // names but that never made it to disk (a non-atomic artifact swap/seed, a
@@ -88,7 +114,7 @@ function staticHeaders(pathname) {
 // wants HTML — gets the SPA shell; anything else that doesn't exist on disk
 // is a real 404.
 function looksLikeNavigation(req, pathname) {
-  const accept = req.headers['accept'];
+  const accept = req.headers.accept;
   if (typeof accept === 'string' && accept.includes('text/html')) return true;
   // The last path segment has no '.' -> no file extension -> a client-side
   // route (e.g. /connections/new), not a missing static asset.
@@ -115,7 +141,13 @@ const server = createServer((req, res) => {
     if (pathname === '/runtime-config.json') {
       return send(res, candidate, 200, runtimeConfigHeaders(), supportsBody);
     }
-    return send(res, candidate, 200, staticHeaders(pathname), supportsBody);
+    return send(
+      res,
+      candidate,
+      200,
+      extname(candidate) === '.html' ? documentHeaders(pathname) : staticHeaders(pathname),
+      supportsBody,
+    );
   }
   // runtime-config.json may live beside the build dir instead of inside it
   // (the assistant container writes it next to the extracted bundle, P5d).
@@ -136,7 +168,9 @@ const server = createServer((req, res) => {
   // a missing static asset is a genuine 404 (H2 — see looksLikeNavigation).
   if (looksLikeNavigation(req, pathname)) {
     const fallback = join(dir, 'index.html');
-    if (existsSync(fallback)) return send(res, fallback, 200, staticHeaders('/index.html'), supportsBody);
+    if (existsSync(fallback)) {
+      return send(res, fallback, 200, documentHeaders('/index.html'), supportsBody);
+    }
   }
   res.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' });
   res.end('client build not found — run `bun run client:build`');

@@ -18,6 +18,7 @@ type ApplyStackFn = (scope: unknown, opts: unknown) => Promise<{
 const applyInstallMock = vi.fn<() => Promise<void>>();
 const applyStackMock = vi.fn<ApplyStackFn>();
 const checkDockerMock = vi.fn<() => Promise<{ ok: boolean; stdout: string; stderr: string; code: number }>>();
+const restoreSnapshotAndApplyStackMock = vi.fn<() => Promise<void>>();
 
 vi.mock('@openpalm/lib', async () => {
   const actual = await vi.importActual<typeof import('@openpalm/lib')>('@openpalm/lib');
@@ -26,6 +27,8 @@ vi.mock('@openpalm/lib', async () => {
     applyInstall: (...args: unknown[]) => applyInstallMock(...(args as [])),
     applyStack: (...args: unknown[]) => applyStackMock(...(args as [unknown, unknown])),
     checkDocker: (...args: unknown[]) => checkDockerMock(...(args as [])),
+    restoreSnapshot: vi.fn(),
+    restoreSnapshotAndApplyStack: (...args: unknown[]) => restoreSnapshotAndApplyStackMock(...(args as [])),
     ensureHomeDirs: () => undefined,
     ensureOpenCodeConfig: () => undefined,
     ensureOpenCodeSystemConfig: () => undefined,
@@ -60,10 +63,12 @@ beforeEach(() => {
   applyInstallMock.mockReset();
   applyStackMock.mockReset();
   checkDockerMock.mockReset();
+  restoreSnapshotAndApplyStackMock.mockReset();
 
   applyInstallMock.mockResolvedValue(undefined);
   checkDockerMock.mockResolvedValue({ ok: true, stdout: '24.0.0', stderr: '', code: 0 });
   applyStackMock.mockResolvedValue({ ok: true, started: ['assistant', 'guardian'], failed: [] });
+  restoreSnapshotAndApplyStackMock.mockResolvedValue(undefined);
 });
 
 afterEach(() => {
@@ -152,5 +157,6 @@ describe('POST /api/host/install', () => {
     expect(body.overallSuccess).toBe(false);
     expect(body.failed).toHaveLength(1);
     expect(body.failed[0].reason).toMatch(/manifest unknown/);
+    expect(restoreSnapshotAndApplyStackMock).toHaveBeenCalledTimes(1);
   });
 });

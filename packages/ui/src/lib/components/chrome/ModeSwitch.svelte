@@ -4,7 +4,6 @@
   import ToggleButton from '@openpalm/ui-kit/components/common/ToggleButton.svelte';
   import { advancedModeService } from '$lib/advanced-mode-state.svelte.js';
   import { buildAdvancedPath, buildChatPath, currentChatSessionId } from '$lib/chat/navigation.js';
-  import { chat } from '$lib/chat/chat-state.svelte.js';
   import IconAdvanced from '@openpalm/ui-kit/components/icons/IconAdvanced.svelte';
 
   // Single "Advanced" toggle for the chat surface: off on /chat, on
@@ -16,13 +15,12 @@
   function toggle(): void {
     const enabled = advancedModeService.toggle();
     if (onAdmin) return;
-    // Returning from advanced → chat: stale session cache won't auto-refresh
-    // because onEndpointChanged() skips loadSessions() when sessionsLoaded=true.
-    // Invalidate so the chat panel re-fetches the session list on next load.
-    if (!enabled) {
-      chat.invalidateSessions(chat.activeEndpointId);
-    }
-    const sessionId = page.url.searchParams.get('session') ?? currentChatSessionId();
+    // Advanced validates its requested session before updating the chat cursor.
+    // On the return path that validated cursor is authoritative; blindly reusing
+    // the URL query would revive a deleted/session-on-another-endpoint id.
+    const sessionId = enabled
+      ? page.url.searchParams.get('session') ?? currentChatSessionId()
+      : currentChatSessionId();
     const target = enabled ? buildAdvancedPath(sessionId) : buildChatPath(sessionId);
     // eslint-disable-next-line svelte/no-navigation-without-resolve -- dynamic session path built internally, not a static route id
     void goto(target);

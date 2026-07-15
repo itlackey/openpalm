@@ -164,6 +164,21 @@ describe('teardownRenamedProject', () => {
 		expect(recordedMarker()).toBe('');
 	});
 
+	it('keeps the marker when Docker could not verify whether the old project exists', async () => {
+		writeStackEnv('OP_PROJECT_NAME=my-agent\n');
+		recordProjectRename(home, 'openpalm', 'my-agent');
+		const { deps, calls } = makeDeps({
+			existing: { exists: false, isOurs: false, workingDir: '', error: 'daemon unavailable' }
+		});
+
+		const result = await teardownRenamedProject(makeState(), deps);
+
+		expect(result.blocked).toBe(true);
+		expect(result.warning).toContain('daemon unavailable');
+		expect(calls.down.length).toBe(0);
+		expect(recordedMarker()).toBe('openpalm');
+	});
+
 	it('KEEPS the marker and BLOCKS when the down fails, so callers abort and the next apply retries', async () => {
 		writeStackEnv('OP_PROJECT_NAME=my-agent\n');
 		recordProjectRename(home, 'openpalm', 'my-agent');

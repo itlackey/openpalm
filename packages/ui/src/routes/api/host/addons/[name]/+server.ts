@@ -68,11 +68,5 @@ export const POST: RequestHandler = async (event) => {
   const body = result.data;
 
   const requestedEnabled: boolean | undefined = typeof body.enabled === "boolean" ? body.enabled : undefined;
-  const toggle = await performAddonToggle(state, name, requestedEnabled, requestId);
-
-  if (!toggle.ok) {
-    return errorResponse(500, "internal_error", toggle.error, {}, requestId);
-  }
-
-  return jsonResponse(200, { ok: true, addon: name, enabled: toggle.enabled, changed: toggle.changed }, requestId);
+  return performAddonToggle(state, name, requestedEnabled, requestId);
 };

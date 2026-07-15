@@ -184,6 +184,7 @@ vi.mock('@openpalm/lib', () => ({
     }
     return false;
   }),
+  consumePendingUiBackup: vi.fn(() => null),
   restoreUiBackup: vi.fn(() => ({ status: 'no-backup' as const })),
   // Faithful reimplementation of lib's UiSupervisor state machine (same style as
   // the waitForReady mock above) so the restart path the harness drives — stop →
@@ -231,6 +232,8 @@ vi.mock('@openpalm/lib', () => ({
         this.cb.onReloadRenderer?.();
         return true;
       } catch (err) {
+        this.cb.restoreBackup?.();
+        await this.cb.onRestartFailure?.();
         this.cb.onRestartError?.(err);
         return false;
       } finally {

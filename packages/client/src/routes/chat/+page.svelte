@@ -39,7 +39,8 @@
   //     built on the ui-kit Drawer (G3's promoted focus-trap) instead of
   //     being unreachable `display:none` with no alternative path.
   import { onMount } from 'svelte';
-  import { goto } from '$app/navigation';
+  import { goto, replaceState } from '$app/navigation';
+  import { page } from '$app/state';
   import IconAdd from '@openpalm/ui-kit/components/icons/IconAdd.svelte';
   import IconConversations from '@openpalm/ui-kit/components/icons/IconConversations.svelte';
   import Drawer from '@openpalm/ui-kit/components/common/Drawer.svelte';
@@ -55,6 +56,8 @@
   import type { ToolStateSnapshot } from '$lib/transport/index.js';
   import { nextFollowState } from '$lib/chat/autoscroll.js';
   import { createToolLogItemsDeriver } from '$lib/chat/tool-log-items.js';
+  import { buildChatPath } from '$lib/advanced-mode.js';
+  import { chatRouteState } from '$lib/chat-route-state.svelte.js';
 
   let connection = $state<ConnectionEntry | null>(null);
   let transport: Transport | null = null;
@@ -223,10 +226,14 @@
 
   onMount(() => {
     let destroyed = false;
+    let unsubscribeState: (() => void) | null = null;
+    let reflectedSessionId = page.url.searchParams.get('session');
+    const requestedSessionId = reflectedSessionId;
+    chatRouteState.enter(requestedSessionId);
 
     void (async () => {
       const { store, secrets } = await getClientBoot();
-      const active = (await store.getActive()) ?? (await store.list())[0] ?? null;
+      const active = await store.getActive();
       if (!active) {
         await goto('/connections/new', { replaceState: true });
         return;
@@ -242,9 +249,14 @@
       if (destroyed) return;
       transport = createTransport({ baseUrl: active.url, auth });
       controller = createChatController(transport);
-      controller.subscribe(() => {
+      unsubscribeState = controller.subscribe(() => {
         if (!controller) return;
         chatState = { ...controller.getState() };
+        if (chatState.sessionId !== reflectedSessionId && page.url.pathname === '/chat') {
+          reflectedSessionId = chatState.sessionId;
+          chatRouteState.setSession(chatState.sessionId);
+          replaceState(buildChatPath(chatState.sessionId), {});
+        }
         // P4 (PR #562 review): no scroll-to-latest call here — the
         // autoscroll action's MutationObserver below already fires once
         // Svelte actually applies this state change to the DOM, so a
@@ -253,6 +265,10 @@
         // it) only doubled the work per delta without adding coverage.
       });
       await controller.init();
+      if (destroyed) return;
+      if (requestedSessionId && controller.getState().sessions.some((session) => session.id === requestedSessionId)) {
+        await controller.selectSession(requestedSessionId);
+      }
     })();
 
     // §B16: an OS/tab-switch reachability probe. Assistant outages are
@@ -267,6 +283,8 @@
 
     return () => {
       destroyed = true;
+      chatRouteState.leave();
+      unsubscribeState?.();
       controller?.destroy();
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
@@ -366,7 +384,7 @@
     onclick={openSessionsDrawer}
   >
     <IconConversations size={16} />
-    <span>Sessions</span>
+    <span>Conversations</span>
   </button>
 </div>
 
@@ -467,7 +485,7 @@
      `.sessions` aside (display:none below 44rem), reachable via the toggle
      button above. Rendered outside `.chat` so its fixed-position scrim/panel
      (see Drawer.svelte) sit above the now-inert page. -->
-<Drawer open={sessionsDrawerOpen} title="Sessions" onClose={closeSessionsDrawer}>
+<Drawer open={sessionsDrawerOpen} title="Conversations" onClose={closeSessionsDrawer}>
   {@render sessionsList()}
 </Drawer>
 
@@ -504,7 +522,34 @@
   @media (max-width: 44rem) {
     .mobile-sessions-bar {
       display: flex;
-      padding: var(--s-sp-2) clamp(1rem, 6vw, 4rem) 0;
+      position: fixed;
+      left: calc(var(--s-sp-3) + env(safe-area-inset-left));
+      bottom: calc(var(--s-sp-3) + env(safe-area-inset-bottom));
+      z-index: 10;
+    }
+
+    .sessions-toggle span {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      border: 0;
+    }
+
+    .s-status,
+    .alert,
+    .composer-row {
+      margin-left: calc(44px + var(--s-sp-5) + env(safe-area-inset-left));
+      margin-right: env(safe-area-inset-right);
+    }
+
+    .composer-row {
+      padding-right: calc(var(--s-sp-4) + env(safe-area-inset-right));
+      padding-bottom: calc(var(--s-sp-5) + env(safe-area-inset-bottom));
     }
   }
 
@@ -518,12 +563,14 @@
     background: none;
     color: var(--s-ink-2);
     cursor: pointer;
+    min-width: 44px;
     min-height: 44px;
     padding: 0.35rem 0.7rem;
     font-family: var(--s-font-mono);
     font-size: var(--s-type-mark);
     letter-spacing: var(--s-track-label);
     text-transform: uppercase;
+    justify-content: center;
   }
 
   .sessions-toggle:hover {

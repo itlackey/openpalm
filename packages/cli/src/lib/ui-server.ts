@@ -11,7 +11,7 @@ import { existsSync } from 'node:fs';
 import {
   resolveOpenPalmHome, resolveUiBuildDir, createLogger, readSecret, readStackEnv,
   checkAndUpdateClientBuild, checkAndUpdateUiBuild, checkAndUpdateSkeleton, PLATFORM_VERSION,
-  isRemoteSetupAllowed, restoreUiBackup, UiSupervisor, waitForReady,
+  consumePendingUiBackup, isRemoteSetupAllowed, restoreUiBackup, UiSupervisor, waitForReady,
 } from '@openpalm/lib';
 import { ensureValidState, resolveServeState } from './cli-state.ts';
 import { openBrowser } from './browser.ts';
@@ -422,6 +422,8 @@ export interface CliUiSupervisorDeps {
   waitForReadyFn?: (port: number) => Promise<boolean>;
   /** Restore the previous data/ui after a post-restart ready-failure. */
   restoreBackup: (backupDir: string | undefined) => void;
+  /** Consume an on-demand update backup recorded by the UI child. */
+  consumePendingBackup?: () => string | null;
   /** Process exit (defaults to process.exit) — the exit-based failure policy. */
   exit?: (code: number) => void;
   /** Structured restart-error logger (defaults to the cli:ui logger). */
@@ -459,7 +461,8 @@ export function createCliUiSupervisor(deps: CliUiSupervisorDeps): {
   // Tracks the LAST spawn's backup path so a post-restart ready-failure restores
   // the build that just failed (spawnUiChild re-runs the update check on each
   // respawn, so this is reassigned per spawn — matching the pre-refactor flow).
-  let lastUiBackupDir: string | undefined;
+  let pendingUiBackupDir: string | undefined;
+  let restartUiBackupDir: string | undefined;
   // Tracks the LAST spawned handle so waitForReadyFn (below) can race it (D1).
   let lastHandle: Bun.Subprocess | null = null;
 
@@ -490,7 +493,7 @@ export function createCliUiSupervisor(deps: CliUiSupervisorDeps): {
     strategy: {
       spawn: async () => {
         const spawnResult = await spawnChild();
-        lastUiBackupDir = spawnResult.uiBackupDir;
+        if (spawnResult.uiBackupDir) pendingUiBackupDir = spawnResult.uiBackupDir;
         lastHandle = spawnResult.proc;
         return spawnResult.proc;
       },
@@ -498,6 +501,10 @@ export function createCliUiSupervisor(deps: CliUiSupervisorDeps): {
     },
     callbacks: {
       waitForReady: waitForReadyFn,
+      beforeRestart: () => {
+        restartUiBackupDir = deps.consumePendingBackup?.() ?? pendingUiBackupDir;
+        pendingUiBackupDir = undefined;
+      },
       // Ready-timeout on first start → kill the child and exit non-zero (the lib
       // never exits; this policy hook does).
       onStartFailure: (proc) => {
@@ -507,7 +514,7 @@ export function createCliUiSupervisor(deps: CliUiSupervisorDeps): {
       },
       // Post-swap failure → restore the prior data/ui (§4.4 / §6) with a local
       // rename — no registry needed (shared lib routine)…
-      restoreBackup: () => { restoreBackup(lastUiBackupDir); },
+      restoreBackup: () => { restoreBackup(restartUiBackupDir); },
       // …then exit non-zero, as the pre-refactor CLI supervisor did.
       onRestartFailure: () => { exit(1); },
       onRestartError: logRestartError,
@@ -589,6 +596,7 @@ export async function startUIServer(opts: UIServerOptions = {}): Promise<void> {
     port,
     spawnChild: () => spawnUiChild(port, homeDir, state, opts.adminHostUi === true),
     restoreBackup: (backupDir) => restoreUiBackup(state.dataDir, backupDir),
+    consumePendingBackup: () => consumePendingUiBackup(state.dataDir),
   });
 
   if (!await supervisor.start()) return; // onStartFailure already exited

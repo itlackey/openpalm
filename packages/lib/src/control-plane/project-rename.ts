@@ -120,9 +120,15 @@ export async function teardownRenamedProject(
 		projectName: previous,
 		expectedWorkingDir: state.stackDir
 	});
+	if (existing.error) {
+		return {
+			downed: null,
+			warning: `Project rename: could not verify previous docker project "${previous}" (${existing.error}).`,
+			blocked: true
+		};
+	}
 	if (!existing.exists) {
-		// Nothing running under the old name (already stopped, or the detection
-		// errored — detection is best-effort by design). Clear the marker: with
+		// Nothing is running under the old name. Clear the marker: with
 		// no running containers there are no port conflicts, and stopped old
 		// containers are harmless leftovers, not a split stack.
 		clearRecordedProjectRename(state.homeDir);

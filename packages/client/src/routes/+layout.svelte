@@ -4,6 +4,7 @@
   import { page } from '$app/state';
   import IconChat from '@openpalm/ui-kit/components/icons/IconChat.svelte';
   import IconConnect from '@openpalm/ui-kit/components/icons/IconConnect.svelte';
+  import IconAdvanced from '@openpalm/ui-kit/components/icons/IconAdvanced.svelte';
   import IconThemeSystem from '@openpalm/ui-kit/components/icons/IconThemeSystem.svelte';
   import IconThemeLight from '@openpalm/ui-kit/components/icons/IconThemeLight.svelte';
   import IconThemeDark from '@openpalm/ui-kit/components/icons/IconThemeDark.svelte';
@@ -13,6 +14,8 @@
   import { resetAppCache } from '$lib/reset-app-cache.js';
   import { desktopNotifyEnabled, toggleDesktopNotify } from '$lib/desktop-notifications.js';
   import { detectClientDisplayMode } from '$lib/client-context.js';
+  import { buildAdvancedPath, buildChatPath } from '$lib/advanced-mode.js';
+  import { chatRouteState } from '$lib/chat-route-state.svelte.js';
   import {
     THEME_STORAGE_KEY,
     isThemePreference,
@@ -29,6 +32,11 @@
   let { children }: Props = $props();
 
   const path = $derived(page.url.pathname);
+  const sessionId = $derived(
+    chatRouteState.active ? chatRouteState.sessionId : page.url.searchParams.get('session')
+  );
+  const chatHref = $derived(buildChatPath(sessionId));
+  const advancedHref = $derived(buildAdvancedPath(sessionId));
 
   // A2/H4 (review 2026-07-10): link back to the host UI when the runtime
   // config carries one — absent for container-only deployments with no host
@@ -124,11 +132,15 @@
 
 <div class="shell">
   <header class="topbar">
-    <a class="brand" href="/chat">OpenPalm</a>
+    <a class="brand" href={chatHref}>OpenPalm</a>
     <nav aria-label="Primary">
-      <a href="/chat" class="nav-link" class:current={path.startsWith('/chat')} aria-current={path.startsWith('/chat') ? 'page' : undefined}>
+      <a href={chatHref} class="nav-link" class:current={path.startsWith('/chat')} aria-current={path.startsWith('/chat') ? 'page' : undefined}>
         <IconChat size={14} />
         <span>Chat</span>
+      </a>
+      <a href={advancedHref} class="nav-link" class:current={path.startsWith('/advanced')} aria-current={path.startsWith('/advanced') ? 'page' : undefined}>
+        <IconAdvanced size={14} />
+        <span>Advanced</span>
       </a>
       <a href="/connections" class="nav-link" class:current={path.startsWith('/connections')} aria-current={path.startsWith('/connections') ? 'page' : undefined}>
         <IconConnect size={14} />
@@ -213,7 +225,9 @@
 
   nav {
     display: flex;
+    align-items: center;
     gap: var(--s-sp-2);
+    overflow-x: auto;
   }
 
   .nav-link {

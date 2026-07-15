@@ -14,7 +14,16 @@ import { expect, type Page } from '@playwright/test';
  * redirects to `/connections/new` -> `/connections?new=1` with the add form
  * auto-opened (see src/routes/+page.ts's resolveLanding()).
  */
-export async function addConnection(page: Page, url: string, label = 'Stub assistant'): Promise<void> {
+export async function addConnection(
+  page: Page,
+  url: string,
+  label = 'Stub assistant',
+  options: {
+    kind?: 'remote-opencode' | 'openpalm-client-api';
+    username?: string;
+    password?: string;
+  } = {}
+): Promise<void> {
   await page.goto('/');
   await page.waitForURL(/\/connections/);
   // The add-connection drawer auto-opens (see the doc comment above) — wait
@@ -26,7 +35,12 @@ export async function addConnection(page: Page, url: string, label = 'Stub assis
   const labelInput = page.getByLabel('Label');
   await expect(labelInput).toBeVisible();
   await labelInput.fill(label);
-  await page.getByLabel('URL').fill(url);
+  if (options.kind) await page.getByLabel('Kind').selectOption(options.kind);
+  await page.getByRole('textbox', { name: /^URL/ }).fill(url);
+  if (options.password) {
+    await page.getByLabel('Username (optional)').fill(options.username ?? 'opencode');
+    await page.locator('input[type="password"]').fill(options.password);
+  }
   await page.getByRole('button', { name: 'Save' }).click();
   await expect(page.getByText(label, { exact: true }).first()).toBeVisible();
 }

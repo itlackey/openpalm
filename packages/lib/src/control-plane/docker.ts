@@ -1,6 +1,6 @@
 /** Docker integration — executes docker compose commands via execFile (no shell). */
 import { execFile, execFileSync, spawn } from "node:child_process";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { parseEnvFile } from "./env.js";
 import { mapDockerError } from "./compose-errors.js";
 
@@ -49,68 +49,29 @@ export function toDockerResult(
   return result;
 }
 
-// ── Injection seam (DockerClient + FileStore) ────────────────────────────────
-//
-// docker.ts hard-wires node:child_process (execFile) and node:fs at module
-// scope, so the §4.3 compose driver (applyStack) and its health/inspect helpers
-// could only be exercised against a real daemon + disk. These two narrow
-// interfaces let callers inject fakes — mirroring the DI already in
-// ui-supervisor.ts and install-lock.ts. Defaults are the real impls, so every
-// existing caller (which omits `deps`) is byte-identical.
-
-/** Options for a single {@link DockerClient.run} invocation. */
+/** Injectable command runner used by the focused Compose tests. */
 export type DockerRunOptions = {
   cwd?: string;
-  /** Kill budget in ms; omit for the {@link run} default (120s). */
   timeoutMs?: number;
-  /** Extra env layered over process.env for this invocation. */
   env?: Record<string, string>;
 };
 
-/**
- * Narrow seam over the docker CLI: one `run(args, opts?)` method mirroring the
- * module-level {@link run} execFile wrapper. Injecting a fake lets applyStack and
- * the inspect/health helpers be unit-tested without spawning docker.
- */
 export interface DockerClient {
   run(args: string[], opts?: DockerRunOptions): Promise<DockerResult>;
 }
 
-/**
- * Narrow seam over the fs the compose driver touches: `exists` gates the
- * `--env-file` compose args; `read`/`write` are provided for the deploy/lifecycle
- * consumers that share this contract. Injecting a fake removes the disk
- * dependency from unit tests.
- */
-export interface FileStore {
-  exists(path: string): boolean;
-  read(path: string): string;
-  write(path: string, data: string, mode?: number): void;
-}
-
-/** Injected dependencies for the compose driver. Defaults to the real impls. */
 export interface StackDeps {
   docker: DockerClient;
-  files: FileStore;
+  fileExists(path: string): boolean;
 }
 
-/** Real DockerClient — thin adapter over the execFile-backed {@link run}. */
 export const realDockerClient: DockerClient = {
   run: (args, opts) => run(args, opts?.cwd, opts?.timeoutMs, opts?.env),
 };
 
-/** Real FileStore — thin adapter over node:fs. */
-export const realFileStore: FileStore = {
-  exists: (path) => existsSync(path),
-  read: (path) => readFileSync(path, "utf-8"),
-  write: (path, data, mode) =>
-    writeFileSync(path, data, mode !== undefined ? { mode } : undefined),
-};
-
-/** The default (real) dependency bundle threaded when a caller omits `deps`. */
 export const defaultStackDeps: StackDeps = {
   docker: realDockerClient,
-  files: realFileStore,
+  fileExists: existsSync,
 };
 
 /**
@@ -169,20 +130,21 @@ export type ExistingProject = {
   exists: boolean;
   isOurs: boolean;
   workingDir: string;
+  error?: string;
 };
 
 /**
  * Decide whether a running compose project (identified by its
  * `com.docker.compose.project.working_dir` label) is OURS — i.e. was launched
- * from this install's working dir. An empty/unknown label can't prove foreign,
- * so it counts as ours (reconcile rather than wrongly refuse a redeploy).
+ * from this install's working dir. An empty/unknown label proves nothing, so it
+ * must not authorize destructive project operations.
  *
  * Pure decision split out from detectExistingProject so the ours-vs-foreign
  * rule is unit-testable without a Docker daemon.
  */
 export function isProjectOurs(workingDirLabel: string, expectedWorkingDir: string): boolean {
   const label = workingDirLabel.trim();
-  return label === "" || label === expectedWorkingDir;
+  return label !== "" && label === expectedWorkingDir;
 }
 
 /**
@@ -191,9 +153,8 @@ export function isProjectOurs(workingDirLabel: string, expectedWorkingDir: strin
  * `com.docker.compose.project.working_dir` label against `expectedWorkingDir`
  * (the install's OP_HOME / compose context).
  *
- * Returns `{ exists:false }` on any docker error (daemon down, no permission) —
- * detection is best-effort and never blocks the caller; a real failure surfaces
- * later through composeUp.
+ * Docker errors are returned separately from a confirmed absent project so
+ * callers never mistake "could not check" for "safe to continue".
  */
 export async function detectExistingProject(opts: {
   projectName: string;
@@ -205,7 +166,7 @@ export async function detectExistingProject(opts: {
     undefined,
     10_000,
   );
-  if (!ps.ok) return none;
+  if (!ps.ok) return { ...none, error: ps.stderr || "Could not query Docker projects" };
   const ids = ps.stdout.trim().split(/\s+/).filter(Boolean);
   if (ids.length === 0) return none;
   const inspect = await run(
@@ -218,7 +179,14 @@ export async function detectExistingProject(opts: {
     undefined,
     10_000,
   );
-  if (!inspect.ok) return { exists: true, isOurs: false, workingDir: "" };
+  if (!inspect.ok) {
+    return {
+      exists: true,
+      isOurs: false,
+      workingDir: "",
+      error: inspect.stderr || "Could not inspect Docker project ownership",
+    };
+  }
   const workingDir = inspect.stdout.trim();
   return { exists: true, isOurs: isProjectOurs(workingDir, opts.expectedWorkingDir), workingDir };
 }
@@ -287,12 +255,12 @@ export function collectComposeEnvOverrides(envFiles?: string[]): Record<string, 
 /** Build common docker compose args: -f ... --project-name ... --env-file ... --profile ... */
 export function buildComposeCommandArgs(
   options: { files: string[]; envFiles?: string[]; profiles?: string[]; projectName?: string },
-  files: FileStore = realFileStore,
+  fileExists: (path: string) => boolean = existsSync,
 ): string[] {
   const envOverrides = collectComposeEnvOverrides(options.envFiles);
   const args = ["--project-name", options.projectName ?? resolveComposeProjectName(envOverrides), ...options.files.flatMap((f) => ["-f", f])];
   for (const ef of options.envFiles ?? []) {
-    if (files.exists(ef)) args.push("--env-file", ef);
+    if (fileExists(ef)) args.push("--env-file", ef);
   }
   for (const p of options.profiles ?? []) args.push("--profile", p);
   return args;
@@ -301,13 +269,13 @@ export function buildComposeCommandArgs(
 /** Build common prefix: compose --progress plain -f ... --project-name ... --env-file ... --profile ... */
 function buildComposeArgs(
   options: { files: string[]; envFiles?: string[]; profiles?: string[]; projectName?: string },
-  files: FileStore = realFileStore,
+  fileExists: (path: string) => boolean = existsSync,
 ): string[] {
   // --progress plain on every non-interactive (captured, non-tty) invocation —
   // deterministic line-oriented output, no braille spinner frames to parse (§2.1).
   // The one EXCLUDED caller is runComposeStreaming (stdio-inherited, genuinely
   // interactive), which keeps compose's default renderer.
-  return ["compose", "--progress", "plain", ...buildComposeCommandArgs(options, files)];
+  return ["compose", "--progress", "plain", ...buildComposeCommandArgs(options, fileExists)];
 }
 
 /**
@@ -784,91 +752,6 @@ export async function getDockerEvents(
 }
 
 
-/**
- * Full runtime image info for a single container (§5 truthful state).
- *
- * - `digest`      — {{.Image}}: the sha256 the container was CREATED FROM.
- * - `tag`         — {{.Config.Image}}: the human tag (e.g. openpalm/assistant:latest).
- * - `healthStatus`— {{.State.Health.Status}}: "healthy"|"unhealthy"|"starting"|"" (no healthcheck).
- * - `state`       — "running"|"stopped"|"not_installed".
- *
- * Stopped containers still have a known image; absent containers are "not_installed".
- */
-export type ContainerImageInfo = {
-  digest: string;
-  tag: string;
-  healthStatus: string;
-  state: "running" | "stopped" | "not_installed";
-};
-
-/**
- * Inspect a single container by name and return its full image + health info.
- * "not_installed" when the container does not exist; "stopped" when it exists but is not running.
- */
-export async function inspectContainerImage(
-  containerName: string,
-  deps: StackDeps = defaultStackDeps,
-): Promise<ContainerImageInfo> {
-  const result = await deps.docker.run(
-    [
-      "inspect",
-      "--format",
-      "{{.State.Status}}\t{{.Image}}\t{{.Config.Image}}\t{{if .State.Health}}{{.State.Health.Status}}{{end}}",
-      containerName,
-    ],
-    { timeoutMs: 10_000 },
-  );
-  if (!result.ok) {
-    // Container does not exist (exit code 1, "No such object")
-    return { digest: "", tag: "", healthStatus: "", state: "not_installed" };
-  }
-  const [rawState = "", digest = "", tag = "", healthStatus = ""] = result.stdout
-    .trim()
-    .split("\t");
-  const state = rawState === "running" ? "running" : "stopped";
-  return { digest, tag, healthStatus, state };
-}
-
-/**
- * Return the running image info for every container in a compose project (§5 truthful state).
- *
- * Keys are compose service names; values are ContainerImageInfo.
- * Services that have no container (not created yet) are returned with state "not_installed".
- * Services that exist but are stopped say "stopped".
- *
- * This is the canonical "what is actually running" data source — never env-file pins.
- */
-export async function getRunningImages(options: {
-  files: string[];
-  envFiles?: string[];
-  profiles?: string[];
-}): Promise<Record<string, ContainerImageInfo>> {
-  // Get the list of service names from `compose ps --format json`
-  const psArgs = buildComposeArgs(options);
-  psArgs.push("ps", "--format", "json", "--all");
-  const psResult = await run(psArgs, undefined, 15_000, collectComposeEnvOverrides(options.envFiles));
-
-  const out: Record<string, ContainerImageInfo> = {};
-
-  if (!psResult.ok || !psResult.stdout.trim()) {
-    return out;
-  }
-
-  // compose ps --format json may output one JSON object per line or a JSON array
-  const lines = psResult.stdout.trim().split(/\r?\n/).filter(Boolean);
-  for (const line of lines) {
-    let entry: { Service?: string; Name?: string } | undefined;
-    try { entry = JSON.parse(line); } catch { continue; }
-    const service = entry?.Service ?? entry?.Name ?? "";
-    if (!service) continue;
-    // Inspect by container name (Name field) or fall back to service
-    const containerName = (entry as { Name?: string }).Name ?? service;
-    out[service] = await inspectContainerImage(containerName);
-  }
-
-  return out;
-}
-
 // ── applyStack — the single compose driver (§4.3) ───────────────────────────
 
 export type ApplyStackScope =
@@ -900,19 +783,18 @@ export type ApplyStackResult = {
    * translation over the untouched stderr.
    */
   rawStderr?: string;
+  /** Explicit pull failed before Compose was allowed to mutate containers. */
+  pullFailed?: boolean;
 };
 
 /**
  * Options for the single {@link applyStack} driver. Both fields are optional;
  * omitting the param is byte-identical to the default apply.
  *
- * - `pull` maps straight to compose's own `up --pull` flag. Default `"missing"`
- *   (plan 2.2's single semantic): an image already present locally needs no
- *   network call — a locally-built dev tag comes up without a doomed registry
- *   pull, and an apply that changes no pin never touches the registry — while a
- *   changed pin makes the new tag "missing", so compose pulls it as part of the
- *   same `up` and that pull failure is FATAL. `"always"` force-refreshes even a
- *   same-tag image (the manual "pull latest" button).
+ * - `pull: "missing"` uses Compose's simple inline `up --pull missing` path,
+ *   which supports installs and local development without forcing a registry
+ *   lookup for an image already present. `pull: "always"` first runs an explicit
+ *   `compose pull` for the requested scope and only then runs `up --pull never`.
  * - `healthTimeoutMs` widens compose's own `--wait-timeout` beyond the default
  *   for a caller (e.g. the voice addon's slow cold boot) that tolerates a longer
  *   start.
@@ -925,16 +807,11 @@ export type ApplyStackOptions = {
 /**
  * The SINGLE Docker Compose driver for install/update/upgrade/pull (§4.3, plan 2.2).
  *
- * ONE `up -d --pull <mode> --wait --force-recreate` invocation — no separate
- * `pull` step. `--pull missing` (the default) resolves the R1-R4 semantic fork
- * the same way for every caller: an image already present locally needs no
- * network call, so an apply that doesn't change any version pin never touches
- * the registry and a locally-built dev tag comes up without a doomed registry
- * pull; a pin that DID change makes the new tag "missing", so compose pulls it
- * as part of `up` and a pull failure there is FATAL — surfaced via the same
- * `!upResult.ok` path as any other `up` failure, never a silent fall-through to
- * a stale local image. `--pull always` (the manual pull button) force-refreshes
- * even a same-tag image. `--force-recreate` is REQUIRED on every scope so a
+ * The default `--pull missing` path remains one `up` call. `pull: "always"`
+ * deliberately uses two ordered calls: `pull` must succeed for the complete
+ * requested scope before `up --pull never` may mutate containers. This prevents
+ * a multi-service update from starting against a partially refreshed image set.
+ * `--force-recreate` is REQUIRED on every scope so a
  * container whose managed compose config is unchanged still restarts onto a
  * freshly pulled same-tag image (#450). Active profiles are always passed
  * (§4.3). Success = running AND healthy — `up -d --wait` IS the single health
@@ -943,9 +820,9 @@ export type ApplyStackOptions = {
  * per-container poll loop; on failure ONE `compose ps --format json` call names
  * which services didn't come up.
  *
- * scope = { kind:"service", service:"assistant" }    →  up --pull <mode> --wait --force-recreate --no-deps <svc>
- * scope = { kind:"services", services:["a","b"] }     →  up --pull <mode> --wait --force-recreate --no-deps <a> <b>
- * scope = { kind:"all" }                              →  up --pull <mode> --wait --force-recreate --remove-orphans
+ * scope = { kind:"service", service:"assistant" }    →  pull/up the service
+ * scope = { kind:"services", services:["a","b"] }     →  pull/up both services
+ * scope = { kind:"all" }                              →  pull/up the active project
  *
  * `services` (plural) is the multi-service sibling of `service` — a named,
  * pre-resolved subset (e.g. every service in one addon profile) recreated
@@ -963,16 +840,41 @@ export async function applyStack(
   deps: StackDeps = defaultStackDeps,
   applyOpts: ApplyStackOptions = {},
 ): Promise<ApplyStackResult> {
-  const { docker, files } = deps;
+  if (scope.kind === "services" && scope.services.length === 0) {
+    return { ok: true, started: [], failed: [] };
+  }
+  const { docker, fileExists } = deps;
   const envOverrides = collectComposeEnvOverrides(options.envFiles);
-  const base = buildComposeArgs(options, files);
+  const base = buildComposeArgs(options, fileExists);
   const pullMode = applyOpts.pull ?? "missing";
   const waitTimeoutSec = applyOpts.healthTimeoutMs
     ? Math.max(1, Math.ceil(applyOpts.healthTimeoutMs / 1000))
     : composeWaitTimeoutSec();
 
-  // ── 1. ONE `up` — pull, recreate, and the `--wait` health gate all together ──
-  const upArgs = [...base, "up", "-d", "--pull", pullMode, "--wait", "--wait-timeout", String(waitTimeoutSec), "--force-recreate"];
+  const scopedServices = scope.kind === "service" ? [scope.service] : scope.kind === "services" ? scope.services : [];
+
+  if (pullMode === "always") {
+    const pullArgs = [...base, "pull", ...scopedServices];
+    const pullResult = await docker.run(pullArgs, {
+      timeoutMs: PULL_TIMEOUT_MS,
+      env: envOverrides,
+    });
+    if (!pullResult.ok) {
+      const mapped = mapDockerError(pullResult.stderr || `docker compose pull exited with code ${pullResult.code}`);
+      return {
+        ok: false,
+        started: [],
+        failed: scopedServices.map((service) => ({ service, reason: mapped.message })),
+        error: mapped.message,
+        pullFailed: true,
+      };
+    }
+  }
+
+  // `always` was completed transactionally above; never perform a second,
+  // implicit pull while containers are being recreated.
+  const upPullMode = pullMode === "always" ? "never" : "missing";
+  const upArgs = [...base, "up", "-d", "--pull", upPullMode, "--wait", "--wait-timeout", String(waitTimeoutSec), "--force-recreate"];
   if (scope.kind === "service") {
     upArgs.push("--no-deps", scope.service);
   } else if (scope.kind === "services") {
@@ -981,10 +883,8 @@ export async function applyStack(
     upArgs.push("--remove-orphans");
   }
 
-  // Budget covers both the (possible) pull and the recreate: a changed pin's
-  // image may need the full pull window (multi-GB, slow connection) AND the
-  // full up window (multi-GB extraction on slow disk) in the same call.
-  const upResult = await docker.run(upArgs, { timeoutMs: PULL_TIMEOUT_MS + composeUpTimeoutMs(), env: envOverrides });
+  const upTimeout = pullMode === "always" ? composeUpTimeoutMs() : PULL_TIMEOUT_MS + composeUpTimeoutMs();
+  const upResult = await docker.run(upArgs, { timeoutMs: upTimeout, env: envOverrides });
 
   const targetServices =
     scope.kind === "service"

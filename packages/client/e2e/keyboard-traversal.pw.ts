@@ -47,13 +47,14 @@ test.describe('desktop keyboard-only traversal', () => {
 
     // B14: at desktop width the sessions drawer toggle is display:none —
     // out of the accessibility tree and the tab order entirely.
-    await expect(page.getByRole('button', { name: 'Sessions', exact: true })).toBeHidden();
+    await expect(page.getByRole('button', { name: 'Conversations', exact: true })).toBeHidden();
     // The desktop sessions list is directly visible (no drawer needed).
     await expect(page.locator('aside.sessions')).toBeVisible();
 
     await page.locator('a.brand').focus();
     const expectedOrder = [
       'Chat',
+      'Advanced',
       'Connections',
       /Theme:/,
       'Reset app cache and reload',
@@ -93,7 +94,7 @@ test.describe('375px keyboard-only traversal (B14 sessions drawer)', () => {
     // B14: below the breakpoint the aside is display:none — the drawer
     // toggle is the only reachable path to the session list.
     await expect(page.locator('aside.sessions')).toBeHidden();
-    const toggle = page.getByRole('button', { name: 'Sessions', exact: true });
+    const toggle = page.getByRole('button', { name: 'Conversations', exact: true });
     await expect(toggle).toBeVisible();
 
     await toggle.focus();
@@ -103,7 +104,7 @@ test.describe('375px keyboard-only traversal (B14 sessions drawer)', () => {
     // sessionsList snippet renders into both the (CSS-hidden but still
     // mounted) desktop aside AND the drawer, so scope to the dialog to
     // avoid matching the hidden copy.
-    const dialog = page.getByRole('dialog', { name: 'Sessions' });
+    const dialog = page.getByRole('dialog', { name: 'Conversations' });
     await expect(dialog).toBeVisible();
     await expect(dialog.getByLabel('New chat')).toBeFocused();
 

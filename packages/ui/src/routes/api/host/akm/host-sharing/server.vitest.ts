@@ -7,10 +7,11 @@
  */
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { join } from 'node:path';
-import { mkdirSync, rmSync } from 'node:fs';
+import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { resetState } from '$lib/server/test-helpers.js';
+import { getState } from '$lib/server/state.js';
 
 vi.mock('@openpalm/lib', async (importOriginal) => {
 	const original = await importOriginal<typeof import('@openpalm/lib')>();
@@ -90,6 +91,18 @@ describe('PUT /api/host/akm/host-sharing', () => {
 		expect(enableHostAkmSharing).toHaveBeenCalledWith(expect.anything());
 		const body = (await res.json()) as Record<string, unknown>;
 		expect(body.profilesImported).toEqual(['profiles.llm']);
+	});
+
+	test('returns structured 409 without enabling while an update holds the install lock', async () => {
+		const state = getState();
+		mkdirSync(state.dataDir, { recursive: true });
+		writeFileSync(join(state.dataDir, '.install.lock'), `1\n${Date.now()}\n`);
+
+		const res = await PUT(makeEvent('PUT', {}));
+
+		expect(res.status).toBe(409);
+		expect(await res.json()).toMatchObject({ error: 'install_in_progress' });
+		expect(enableHostAkmSharing).not.toHaveBeenCalled();
 	});
 });
 

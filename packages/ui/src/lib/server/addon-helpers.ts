@@ -7,19 +7,20 @@
  */
 import { createLogger, getAddonServiceNames, listEnabledAddonIds, setAddonEnabled, composeStop, buildComposeOptions, checkDocker } from '@openpalm/lib';
 import type { ControlPlaneState } from '@openpalm/lib';
+import { errorResponse, jsonResponse } from './helpers.js';
+import { withAdminUpdateLock } from './admin-update-lock.js';
 import { resetState } from './state.js';
 
 const logger = createLogger('addon-helpers');
 
-export type AddonToggleResult =
+type AddonToggleResult =
   | { ok: true; enabled: boolean; changed: boolean }
   | { ok: false; error: string };
 
 /**
  * Stop running services if disabling, then call setAddonEnabled.
- * Returns the mutation result with the final enabled state.
  */
-export async function performAddonToggle(
+async function performAddonToggleMutation(
   state: ControlPlaneState,
   name: string,
   requestedEnabled: boolean | undefined,
@@ -58,4 +59,23 @@ export async function performAddonToggle(
 
   const resultEnabled = listEnabledAddonIds(state.homeDir).includes(name);
   return { ok: true, enabled: resultEnabled, changed: mutation.changed };
+}
+
+export function performAddonToggle(
+  state: ControlPlaneState,
+  name: string,
+  requestedEnabled: boolean | undefined,
+  requestId: string,
+): Promise<Response> {
+  return withAdminUpdateLock(state, requestId, async () => {
+    const toggle = await performAddonToggleMutation(state, name, requestedEnabled, requestId);
+    if (!toggle.ok) {
+      return errorResponse(500, 'internal_error', toggle.error, {}, requestId);
+    }
+    return jsonResponse(
+      200,
+      { ok: true, addon: name, enabled: toggle.enabled, changed: toggle.changed },
+      requestId,
+    );
+  });
 }

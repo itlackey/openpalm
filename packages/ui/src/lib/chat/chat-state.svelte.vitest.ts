@@ -149,6 +149,25 @@ describe('onEndpointChanged', () => {
     expect(chat.activeEndpointId).toBe('default');
   });
 
+	it('repairs a disconnected stream without treating same-endpoint route re-entry as a switch', async () => {
+		mocked.listSessions.mockResolvedValueOnce([session('s1', 1000)]);
+		mocked.getSessionMessages.mockResolvedValueOnce([]);
+		await chat.onEndpointChanged('alpha');
+		sseCaptured.handlers?.onConnect?.();
+		expect(chat.liveConnected).toBe(true);
+
+		sseCaptured.handlers?.onDisconnect?.(new Error('route transition'));
+		chat.sending = true;
+		await chat.onEndpointChanged('alpha');
+
+		expect(chat.error).toBe('');
+		expect(chat.activeEndpointId).toBe('alpha');
+		expect(chat.activeSessionId).toBe('s1');
+		expect(mocked.listSessions).toHaveBeenCalledTimes(1);
+		expect(sseCaptured.unsub).toHaveBeenCalledOnce();
+		expect(mocked.subscribeSessionEvents).toHaveBeenCalledTimes(2);
+	});
+
   it('leaves activeSessionId null when the endpoint has zero sessions', async () => {
     mocked.listSessions.mockResolvedValueOnce([]);
     await chat.onEndpointChanged('empty');
@@ -176,6 +195,28 @@ describe('startNewSession', () => {
     // New session should be prepended.
     expect(chat.byEndpoint.get('alpha')?.sessions[0].id).toBe('new-1');
   });
+});
+
+describe('setActiveSessionId', () => {
+	it('updates the requested endpoint cursor without changing the active endpoint', () => {
+		chat.activeEndpointId = 'beta';
+
+		chat.setActiveSessionId('alpha-session', 'alpha');
+
+		expect(chat.activeEndpointId).toBe('beta');
+		expect(chat.byEndpoint.get('alpha')?.activeSessionId).toBe('alpha-session');
+		expect(chat.activeSessionId).toBeNull();
+	});
+
+	it('can explicitly align a direct Advanced entry before storing its cursor', () => {
+		chat.activeEndpointId = 'old';
+
+		chat.alignActiveEndpoint('remote');
+		chat.setActiveSessionId('remote-session', 'remote');
+
+		expect(chat.activeEndpointId).toBe('remote');
+		expect(chat.activeSessionId).toBe('remote-session');
+	});
 });
 
 describe('openSession', () => {

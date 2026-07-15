@@ -197,12 +197,25 @@ class ChatService {
 	 */
 	async onEndpointChanged(id: EndpointId): Promise<void> {
 		if (this.sending) {
+			// A route round trip is not an endpoint switch. Preserve the in-flight
+			// turn and its render state; only repair the stream if it went away while
+			// Advanced was mounted.
+			if (id === this.activeEndpointId) {
+				this.error = '';
+				if (!this.liveConnected) this._resubscribeEvents();
+				return;
+			}
 			this.error = 'Wait for the current reply to finish before switching.';
 			return;
 		}
 		this.activeEndpointId = id;
 		this.entries = [];
 		this.error = '';
+
+		// Route transitions can leave the prior fetch-backed SSE stream stale even
+		// though this singleton survives. Replace it before any session requests so
+		// returning from Advanced immediately has a live event path again.
+		this._resubscribeEvents();
 
 		// Always re-fetch sessions on endpoint activation. The cache guard
 		// (`sessionsLoaded`) caused stale lists when returning to a previously-
@@ -227,10 +240,6 @@ class ChatService {
 			await this.openSession(nextSessionId);
 		}
 
-		// Subscribe to live session events on the new endpoint. The proxy
-		// resolves the endpoint server-side per request so the consumer
-		// doesn't need to know the id.
-		this._resubscribeEvents();
 	}
 
 	/**
@@ -587,18 +596,18 @@ class ChatService {
 		}
 	}
 
-	/** Mark sessions as stale so the next onEndpointChanged call re-fetches. */
-	invalidateSessions(id: EndpointId): void {
-		this.setEndpointState(id, { sessionsLoaded: false });
+	/**
+	 * Sync one endpoint's session cursor without loading messages or changing
+	 * which endpoint is active. Advanced uses this only after verifying that its
+	 * captured endpoint and probe generation are still current.
+	 */
+	setActiveSessionId(sessionId: string | null, endpointId = this.activeEndpointId): void {
+		this.setEndpointState(endpointId, { activeSessionId: sessionId });
 	}
 
-	/**
-	 * Sync the active session cursor without loading messages. Used by the
-	 * advanced-mode page to keep the chat layer's cursor in step with what is
-	 * displayed in the embedded OpenCode iframe.
-	 */
-	setActiveSessionId(sessionId: string | null): void {
-		this.setEndpointState(this.activeEndpointId, { activeSessionId: sessionId });
+	/** Align the in-memory cursor owner on a validated direct Advanced entry. */
+	alignActiveEndpoint(endpointId: string): void {
+		this.activeEndpointId = endpointId;
 	}
 
 	/** Fetch the session list for the active endpoint. */

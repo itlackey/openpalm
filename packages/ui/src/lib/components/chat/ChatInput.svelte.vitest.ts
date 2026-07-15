@@ -97,38 +97,12 @@ describe('ChatInput — bindable draft', () => {
   });
 });
 
-describe('ChatInput — conversation mode toggle', () => {
-  test('hidden unless conversationEnabled is set', async () => {
-    await render(ChatInput, { props: { sending: false, onSend: vi.fn() } });
-    await expect.element(page.getByRole('button', { name: 'Start conversation mode' })).not.toBeInTheDocument();
-  });
-
-  test('renders next to the mic and calls onConversationToggle', async () => {
-    const onConversationToggle = vi.fn();
-    await render(ChatInput, {
-      props: {
-        sending: false,
-        onSend: vi.fn(),
-        voiceEnabled: true,
-        conversationEnabled: true,
-        onConversationToggle,
-      },
-    });
-    await page.getByRole('button', { name: 'Start conversation mode' }).click();
-    expect(onConversationToggle).toHaveBeenCalledOnce();
-  });
-
-  test('shows the end-conversation label while active', async () => {
-    await render(ChatInput, {
-      props: {
-        sending: false,
-        onSend: vi.fn(),
-        conversationEnabled: true,
-        conversationActive: true,
-        onConversationToggle: vi.fn(),
-      },
-    });
-    await expect.element(page.getByRole('button', { name: 'End conversation mode' })).toBeVisible();
+describe('ChatInput — focused composer controls', () => {
+  test('keeps voice and conversation controls out of the composer', async () => {
+    const { container } = render(ChatInput, { props: { sending: false, onSend: vi.fn() } });
+    expect(container.querySelector('[aria-label="Start recording"]')).toBeNull();
+    expect(container.querySelector('[aria-label="Start conversation mode"]')).toBeNull();
+    await expect.element(page.getByRole('button', { name: 'Send message' })).toBeVisible();
   });
 });
 

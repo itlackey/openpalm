@@ -1,14 +1,32 @@
 import {
-  getRequestId,
-  jsonResponse,
+  checkAndUpdateUiBuild,
+  createLogger,
+  PLATFORM_VERSION,
+  readChannelPreference,
+  recordPendingUiBackup,
+  restoreUiBackup,
+} from '@openpalm/lib';
+import { withAdminUpdateLock } from '$lib/server/admin-update-lock.js';
+import {
   errorResponse,
+  getRequestId,
+  jsonBodyError,
+  jsonResponse,
+  parseJsonBody,
   requireAdmin,
   requireCapability,
-} from "$lib/server/helpers.js";
-import { seedUiBuild, resolveDataDir, createLogger, normalizeVersion } from "@openpalm/lib";
-import type { RequestHandler } from "./$types";
+} from '$lib/server/helpers.js';
+import { getState } from '$lib/server/state.js';
+import type { RequestHandler } from './$types';
 
-const logger = createLogger("ui-version");
+const logger = createLogger('ui-version');
+
+function harnessContractVersion(): number | null | undefined {
+  const raw = process.env.OP_HARNESS_CONTRACT_VERSION?.trim();
+  if (!raw) return process.env.OP_UI_SUPERVISOR === 'electron' ? null : undefined;
+  const parsed = Number(raw);
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
+}
 
 export const POST: RequestHandler = async (event) => {
   const requestId = getRequestId(event);
@@ -17,57 +35,93 @@ export const POST: RequestHandler = async (event) => {
   const authError = requireAdmin(event, requestId);
   if (authError) return authError;
 
-  let body: { tag?: string };
-  try { body = await event.request.json(); } catch { return errorResponse(400, "invalid_json", "Request body must be valid JSON", {}, requestId); }
-
-  const tag = typeof body.tag === "string" ? body.tag.trim() : "";
-  if (!tag) return errorResponse(400, "tag_required", "tag is required", {}, requestId);
-  if (!/^[a-zA-Z0-9._-]+$/.test(tag)) return errorResponse(400, "invalid_tag", "Tag must be alphanumeric with . _ or - only", {}, requestId);
-
-  const dataDir = resolveDataDir();
-  // UI builds resolve from the npm registry by bare version; strip any legacy `v`.
-  const repoRef = normalizeVersion(tag);
-
-  try {
-    await seedUiBuild(repoRef, dataDir, { forceRemote: true });
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    logger.error("ui-version download failed", { requestId, error: msg });
-    return errorResponse(502, "download_failed", msg, { message: msg }, requestId);
+  const parsedBody = await parseJsonBody(event.request);
+  if ('error' in parsedBody) return jsonBodyError(parsedBody, requestId);
+  if (Object.keys(parsedBody.data).length > 0) {
+    return errorResponse(400, 'unknown_update_key', 'UI update does not accept request fields', {}, requestId);
   }
 
-  // The freshly seeded data/ui does nothing until the Node child running THIS
-  // process is respawned (design §6.2). The restart mechanism differs by supervisor:
-  //
-  // • electron — SIGUSR2 from a detached child to its Electron parent is silently
-  //   dropped on Linux (different process groups) and unreliable on macOS in newer
-  //   Electron/Node builds. The Electron preload already exposes window.openpalm.restartUiServer()
-  //   via contextBridge → ipcMain.handle('restart-ui-server') → restartUIServer(). The
-  //   client calls that IPC path after receiving pendingRestart:true here. No signal needed.
-  //
-  // • cli / other — SIGUSR2 to ppid remains the signal path; the CLI supervisor
-  //   installs a handler that re-resolves data/ui and respawns the child.
-  //
-  // • none (dev preview, direct node) — no supervisor; report restarting:false so
-  //   the client prompts the user to restart manually.
-  const supervisor = process.env.OP_UI_SUPERVISOR ?? "";
-  let restarting = false;
-  let pendingRestart = false;
-
-  if (supervisor === "electron") {
-    // IPC path: client renderer must call window.openpalm.restartUiServer() after this response.
-    pendingRestart = true;
-    logger.info("ui-version downloaded (electron — client will restart via IPC)", { requestId, tag });
-  } else if (supervisor && process.ppid && process.ppid > 1) {
-    try {
-      process.kill(process.ppid, "SIGUSR2");
-      restarting = true;
-      logger.info("ui-version restart signalled", { requestId, supervisor, ppid: process.ppid });
-    } catch (e) {
-      logger.warn("ui-version restart signal failed", { requestId, error: e instanceof Error ? e.message : String(e) });
+  const state = getState();
+  return withAdminUpdateLock(state, requestId, async () => {
+    const harnessContract = harnessContractVersion();
+    if (harnessContract === null) {
+      return errorResponse(
+        500,
+        'invalid_harness_contract',
+        'Electron did not provide a valid OP_HARNESS_CONTRACT_VERSION; refusing an unchecked UI update',
+        {},
+        requestId,
+      );
     }
-  }
 
-  logger.info("ui-version downloaded", { requestId, tag, restarting, pendingRestart });
-  return jsonResponse(200, { ok: true, tag, restarting, pendingRestart }, requestId);
+    const channel = readChannelPreference(state);
+    const result = await checkAndUpdateUiBuild(
+      PLATFORM_VERSION,
+      state.dataDir,
+      channel,
+      harnessContract,
+    );
+
+    if (result.error) {
+      if (result.backupDir) restoreUiBackup(state.dataDir, result.backupDir);
+      logger.error('UI update failed', { requestId, channel, error: result.error });
+      return errorResponse(502, 'update_failed', result.error, {}, requestId);
+    }
+
+    if (result.redownloadRequired) {
+      return jsonResponse(200, {
+        ok: true,
+        updated: false,
+        latestVersion: result.latestVersion,
+        restarting: false,
+        pendingRestart: false,
+        redownloadRequired: true,
+        requiredHarnessContract: result.requiredHarnessContract,
+      }, requestId);
+    }
+
+    if (!result.updated) {
+      return jsonResponse(200, {
+        ok: true,
+        updated: false,
+        latestVersion: result.latestVersion,
+        restarting: false,
+        pendingRestart: false,
+        redownloadRequired: false,
+      }, requestId);
+    }
+
+    if (result.backupDir) recordPendingUiBackup(state.dataDir, result.backupDir);
+
+    const supervisor = process.env.OP_UI_SUPERVISOR ?? '';
+    let restarting = false;
+    const pendingRestart = supervisor === 'electron';
+    if (supervisor && !pendingRestart && process.ppid > 1) {
+      try {
+        process.kill(process.ppid, 'SIGUSR2');
+        restarting = true;
+      } catch (error) {
+        logger.warn('UI restart signal failed', {
+          requestId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+
+    logger.info('UI update completed', {
+      requestId,
+      channel,
+      latestVersion: result.latestVersion,
+      restarting,
+      pendingRestart,
+    });
+    return jsonResponse(200, {
+      ok: true,
+      updated: true,
+      latestVersion: result.latestVersion,
+      restarting,
+      pendingRestart,
+      redownloadRequired: false,
+    }, requestId);
+  });
 };

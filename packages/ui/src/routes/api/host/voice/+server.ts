@@ -28,7 +28,7 @@ import {
   requireAdmin,
   requireCapability,
 } from '$lib/server/helpers.js';
-import { withSerialQueue } from '$lib/server/serial-queue.js';
+import { withAdminUpdateLock } from '$lib/server/admin-update-lock.js';
 import {
   VOICE_ADDON,
   engageVoiceAddon,
@@ -181,16 +181,7 @@ function validateSection(section: VoiceSection | null, kind: 'tts' | 'stt'): str
   return null;
 }
 
-// Per-process serialization: rapid double-saves (double-click on Save,
-// or two operators racing) used to race two composeUp --force-recreate
-// invocations on the same project, killing each other's containers
-// mid-healthcheck. The serial queue chains saves through one promise so
-// the second waits for the first to finish before starting its own work.
-export const PUT: RequestHandler = (event) => {
-  return withSerialQueue('admin:voice:put', () => handlePut(event));
-};
-
-async function handlePut(event: Parameters<RequestHandler>[0]): Promise<Response> {
+export const PUT: RequestHandler = async (event) => {
   const requestId = getRequestId(event);
   const capabilityError = requireCapability(event, 'host:stack:write', requestId);
   if (capabilityError) return capabilityError;
@@ -247,68 +238,71 @@ async function handlePut(event: Parameters<RequestHandler>[0]): Promise<Response
     };
   }
 
-  writeVoiceVars(config, state.homeDir);
+  return withAdminUpdateLock(state, requestId, async (_lock, deferReleaseUntil) => {
+    writeVoiceVars(config, state.homeDir);
 
-  // If either side targets OpenPalm Voice, make sure the addon is
-  // enabled + running before we tell the operator "saved". This is the
-  // one extra step that makes "select the engine → save" actually
-  // produce a working setup, instead of saving the config and leaving
-  // the user to discover the addon needs to be enabled separately.
-  const wantsVoiceAddon =
-    ttsSection?.engine === 'openpalm-voice' || sttSection?.engine === 'openpalm-voice';
+    // If either side targets OpenPalm Voice, make sure the addon is
+    // enabled + running before we tell the operator "saved". This is the
+    // one extra step that makes "select the engine → save" actually
+    // produce a working setup, instead of saving the config and leaving
+    // the user to discover the addon needs to be enabled separately.
+    const wantsVoiceAddon =
+      ttsSection?.engine === 'openpalm-voice' || sttSection?.engine === 'openpalm-voice';
 
-  const requestedProfile = typeof b.profile === 'string' ? b.profile.trim() : '';
+    const requestedProfile = typeof b.profile === 'string' ? b.profile.trim() : '';
 
-  // Delegate the entire Docker/compose bring-up lifecycle to the service.
-  const result = await engageVoiceAddon({ state, wantsVoiceAddon, requestedProfile });
+    // Delegate the entire Docker/compose bring-up lifecycle to the service.
+    const result = await engageVoiceAddon({ state, wantsVoiceAddon, requestedProfile });
 
-  switch (result.status) {
-    case 'disengaged':
-      return jsonResponse(200, { ok: true }, requestId);
-    case 'invalid_profile':
-      return errorResponse(400, 'invalid_profile', result.message, {}, requestId);
-    case 'error':
-      return jsonResponse(
-        502,
-        {
-          ok: false,
-          voiceAddon: {
-            wasAlreadyEnabled: result.wasAlreadyEnabled,
-            steps: result.steps,
-            error: result.error,
+    switch (result.status) {
+      case 'disengaged':
+        return jsonResponse(200, { ok: true }, requestId);
+      case 'invalid_profile':
+        return errorResponse(400, 'invalid_profile', result.message, {}, requestId);
+      case 'error':
+        return jsonResponse(
+          502,
+          {
+            ok: false,
+            voiceAddon: {
+              wasAlreadyEnabled: result.wasAlreadyEnabled,
+              steps: result.steps,
+              error: result.error,
+            },
           },
-        },
-        requestId,
-      );
-    case 'background':
-      return jsonResponse(
-        202,
-        {
-          ok: true,
-          voiceAddon: {
-            wasAlreadyEnabled: result.wasAlreadyEnabled,
-            status: 'pulling',
-            steps: result.steps,
-            message: result.message,
+          requestId,
+        );
+      case 'background':
+        deferReleaseUntil(result.completion);
+        return jsonResponse(
+          202,
+          {
+            ok: true,
+            voiceAddon: {
+              wasAlreadyEnabled: result.wasAlreadyEnabled,
+              status: 'pulling',
+              steps: result.steps,
+              message: result.message,
+            },
           },
-        },
-        requestId,
-      );
-    case 'final':
-      return jsonResponse(
-        result.healthy || result.warming ? 200 : 502,
-        {
-          ok: result.healthy || result.warming,
-          voiceAddon: {
-            wasAlreadyEnabled: result.wasAlreadyEnabled,
-            steps: result.steps,
-            ...(result.warming ? { warming: true } : {}),
-            ...(result.healthy || result.warming
-              ? {}
-              : { error: 'Voice addon is starting but did not become healthy in time.' }),
+          requestId,
+        );
+      case 'final':
+        return jsonResponse(
+          result.healthy || result.warming ? 200 : 502,
+          {
+            ok: result.healthy || result.warming,
+            voiceAddon: {
+              wasAlreadyEnabled: result.wasAlreadyEnabled,
+              steps: result.steps,
+              ...(result.warming ? { warming: true } : {}),
+              ...(result.healthy || result.warming
+                ? {}
+                : { error: 'Voice addon is starting but did not become healthy in time.' }),
+            },
           },
-        },
-        requestId,
-      );
-  }
-}
+          requestId,
+        );
+    }
+  });
+};

@@ -5,14 +5,15 @@ import {
   requireAdmin,
   requireCapability,
 } from "$lib/server/helpers.js";
+import { withAdminUpdateLock } from '$lib/server/admin-update-lock.js';
 import { getState } from "$lib/server/state.js";
-import { withSerialQueue } from "$lib/server/serial-queue.js";
 import {
   applyUninstall,
   buildComposeOptions,
   createLogger,
   composeDown,
   checkDocker,
+  teardownRenamedProject,
 } from "@openpalm/lib";
 import type { RequestHandler } from "./$types";
 
@@ -26,19 +27,28 @@ export const POST: RequestHandler = async (event) => {
   const authError = requireAdmin(event, requestId);
   if (authError) return authError;
 
-  return withSerialQueue("admin:uninstall", async () => {
+  const state = getState();
+  return withAdminUpdateLock(state, requestId, async (lock) => {
     try {
-      const state = getState();
-
       // Stop Docker containers first
       const dockerCheck = await checkDocker();
       if (dockerCheck.ok) {
+        const renameTeardown = await teardownRenamedProject(state);
+        if (renameTeardown.blocked) {
+          return errorResponse(
+            502,
+            'project_rename_teardown_failed',
+            renameTeardown.warning ?? 'Failed to stop the previous project',
+            {},
+            requestId,
+          );
+        }
         await composeDown(buildComposeOptions(state));
       }
 
       logger.info("stopping containers and applying uninstall", { requestId, dockerAvailable: dockerCheck.ok });
       // OpenCode session logs are the audit trail (D6a).
-      const result = await applyUninstall(state);
+      const result = await applyUninstall(state, { lock });
       logger.info("uninstall completed", { requestId, stopped: result.stopped });
 
       return jsonResponse(200, { ok: true, ...result, dockerAvailable: dockerCheck.ok }, requestId);

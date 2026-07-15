@@ -98,6 +98,17 @@ describe('validateConnectionUrl (#557 D1)', () => {
     }
   });
 
+  test('rejects URL userinfo and redacts it without preserving either credential', async () => {
+    const { validateConnectionUrl, redactUrlUserinfo } = await loadUrlPolicyModule();
+    const raw = 'https://url-user:url-password@assistant.example:4096';
+    const verdict = validateConnectionUrl(raw, null);
+    expect(verdict.ok).toBe(false);
+    if (verdict.ok) throw new Error('expected refusal');
+    expect(verdict.reason).toBe('userinfo-not-allowed');
+    expect(verdict.message).toMatch(/Authentication fields/);
+    expect(redactUrlUserinfo(raw)).toBe('https://assistant.example:4096');
+  });
+
   test('TLS_GUIDE_URL deep-links docs/remote-access-tls.md on GitHub', async () => {
     const { TLS_GUIDE_URL } = await loadUrlPolicyModule();
     expect(TLS_GUIDE_URL).toMatch(
@@ -137,5 +148,13 @@ describe('normalizeGuardianUrl (#486 D2)', () => {
   test('returns unparseable input unchanged', async () => {
     const { normalizeGuardianUrl } = await loadUrlPolicyModule();
     expect(normalizeGuardianUrl('not a url')).toBe('not a url');
+  });
+
+  test('never carries legacy URL userinfo into the normalized guardian URL', async () => {
+    const { normalizeGuardianUrl } = await loadUrlPolicyModule();
+    const normalized = normalizeGuardianUrl('https://url-user:url-password@gw.example');
+    expect(normalized).toBe('https://gw.example/oc');
+    expect(normalized).not.toContain('url-user');
+    expect(normalized).not.toContain('url-password');
   });
 });

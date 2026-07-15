@@ -56,3 +56,21 @@ describe('+layout.svelte — H3 reset app cache', () => {
     expect(src).toMatch(/onclick=\{handleResetAppCache\}/);
   });
 });
+
+describe('+layout.svelte — client mode navigation', () => {
+  test('offers Chat and Advanced links that preserve the current session query', () => {
+    const src = source();
+    expect(src).toContain('buildChatPath(sessionId)');
+    expect(src).toContain('buildAdvancedPath(sessionId)');
+    expect(src).toContain('chatRouteState.sessionId');
+    expect(src).toMatch(/<span>Advanced<\/span>/);
+  });
+
+  test('mode anchors retain native modifier-click behavior', () => {
+    const src = source();
+    expect(src).not.toContain('navigateToAdvanced');
+    expect(src).not.toContain('navigateToChat');
+    expect(src).not.toContain('event.preventDefault()');
+    expect(src).not.toMatch(/href=\{advancedHref\}[^>]*onclick=/);
+  });
+});

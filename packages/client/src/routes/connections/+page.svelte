@@ -6,7 +6,7 @@
   // probed directly against each connection URL.
   import { onMount } from 'svelte';
   import { page } from '$app/state';
-  import { replaceState } from '$app/navigation';
+  import { goto, replaceState } from '$app/navigation';
   import IconLock from '@openpalm/ui-kit/components/icons/IconLock.svelte';
   import Drawer from '@openpalm/ui-kit/components/common/Drawer.svelte';
   import { getClientBoot, type ClientBoot } from '$lib/boot.js';
@@ -15,6 +15,7 @@
   import {
     validateConnectionUrl,
     normalizeGuardianUrl,
+    redactUrlUserinfo,
     TLS_GUIDE_URL,
     REMOTE_CLIENT_GUIDE_URL,
   } from '$lib/connections/url-policy.js';
@@ -76,7 +77,6 @@
   const formTitle = $derived(
     formMode === 'add' ? 'Add connection' : formMode === 'credentials' ? 'Set credentials' : 'Edit connection'
   );
-
   let deletingId = $state<string | null>(null);
 
   onMount(async () => {
@@ -372,6 +372,7 @@
     if (formMode === 'add' || formMode === 'edit') {
       const verdict = validateConnectionUrl(url);
       if (!verdict.ok) {
+        if (verdict.reason === 'userinfo-not-allowed') formUrl = redactUrlUserinfo(url);
         formError = verdict.message;
         formErrorGuideUrl = verdict.reason === 'insecure-remote' ? verdict.guideUrl : null;
         return;
@@ -389,7 +390,8 @@
     try {
       if (formMode === 'add') {
         const auth = await buildAuth(null);
-        await boot.store.add({ label, url: storedUrl, kind: formKind, auth });
+        const added = await boot.store.add({ label, url: storedUrl, kind: formKind, auth });
+        if (!(await boot.store.getActiveId())) await boot.store.setActive(added.id);
       } else if (formMode === 'edit' && formId) {
         const existing = await boot.store.get(formId);
         const auth = await buildAuth(existing);
@@ -425,9 +427,22 @@
     if (!confirm(`Remove connection "${entry.label}"?`)) return;
     deletingId = entry.id;
     try {
+      const removingActive = entry.id === activeId;
       if (entry.auth.secretRef) await boot.secrets.delete(entry.auth.secretRef);
       await boot.store.remove(entry.id);
+      const remaining = await boot.store.list();
+      if (removingActive && remaining.length > 0) {
+        const next = [...remaining].sort((a, b) => {
+          if (a.label !== b.label) return a.label < b.label ? -1 : 1;
+          return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+        })[0];
+        await boot.store.setActive(next.id);
+      }
       await refresh();
+      if (remaining.length === 0) {
+        openAddForm();
+        await goto('/connections?new=1', { replaceState: true });
+      }
     } catch (e) {
       pageError = e instanceof Error ? e.message : 'Delete failed.';
     } finally {
@@ -442,6 +457,13 @@
 
 <main class="page">
   <header class="page-header">
+    {#if activeId}
+      <a class="back-link" href="/chat">Back to chat</a>
+    {:else if connections.length === 0}
+      <a class="back-link" href="/connections/new">Set up a connection</a>
+    {:else}
+      <span class="back-link back-link-status">Choose a connection to chat</span>
+    {/if}
     <h1>Connections</h1>
     <p class="lede">
       Connect to local or remote OpenPalm assistants. Entries marked
@@ -742,6 +764,18 @@
   }
   .page-header h1 {
     margin: 0 0 var(--s-sp-2);
+  }
+  .back-link {
+    display: inline-flex;
+    margin-bottom: var(--s-sp-2);
+    color: var(--s-ink-2);
+    font-family: var(--s-font-mono);
+    font-size: var(--s-type-mark);
+    letter-spacing: var(--s-track-label);
+    text-transform: uppercase;
+  }
+  .back-link-status {
+    text-decoration: none;
   }
   .lede {
     color: var(--s-ink-3);

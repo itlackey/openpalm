@@ -8,13 +8,8 @@
 #       trace of the mutating control-plane lifecycle engine. The harness is
 #       bootstrap-only; every state-mutating op runs in the updatable data/ui
 #       control plane. Checked with a SINGLE categorical sentinel rather than a
-#       hand-enumerated symbol list (remediation 3.2): `reconcileStack`
-#       (packages/lib/src/control-plane/lifecycle.ts) is the one private engine
-#       every mutating lifecycle op — applyInstall/applyUpdate/applyUninstall/
-#       performUpgrade, and any future one added the same way — funnels
-#       through. A hand-enumerated list goes stale silently (the previous list
-#       checked for `applyTagChange`, which no longer exists anywhere in the
-#       codebase, so that half of the check had validated nothing for some time).
+#       current stack-update entry point: `performUpgrade`. Source imports are
+#       independently restricted by the bootstrap allowlist below.
 #   (b) packages/ui/build/server/chunks/* (the updatable control plane) DOES
 #       contain performUpgrade — proving the upgrade/control-plane code travels
 #       with the npm-published @openpalm/ui build, not the frozen harness.
@@ -45,11 +40,8 @@ MAIN_BUNDLE="${THBOUNDARY_MAIN_BUNDLE:-packages/electron/dist/main.js}"
 UI_CHUNKS_DIR="${THBOUNDARY_UI_CHUNKS_DIR:-packages/ui/build/server/chunks}"
 ELECTRON_SRC_DIR="${THBOUNDARY_ELECTRON_SRC_DIR:-packages/electron/src}"
 
-# The single categorical sentinel for "some mutating lifecycle op leaked into
-# the frozen harness bundle" (see (a) above). Not itself exported from
-# @openpalm/lib — grepped as plain text against the built bundle, the same way
-# the previous FORBIDDEN_SYMBOLS list was.
-MUTATION_SENTINEL="reconcileStack"
+# The stack-update sentinel for the frozen harness bundle (see (a) above).
+MUTATION_SENTINEL="performUpgrade"
 
 # The ONLY @openpalm/lib symbols packages/electron/src may import (design §2.1
 # bootstrap allowlist, extended in 0.12.0 with PLATFORM_VERSION + the Docker

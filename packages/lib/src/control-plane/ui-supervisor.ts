@@ -14,7 +14,14 @@
  * No `process.exit` here — these functions return/throw and the CLI/Electron
  * entry points decide exit behavior.
  */
-import { existsSync as nodeExistsSync, renameSync as nodeRenameSync } from 'node:fs';
+import {
+  existsSync as nodeExistsSync,
+  mkdirSync,
+  readFileSync,
+  renameSync as nodeRenameSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { errMessage } from './errors.js';
 import { join } from 'node:path';
 
@@ -25,6 +32,29 @@ import { join } from 'node:path';
  * spuriously fail the supervisor.
  */
 export const DEFAULT_READY_TIMEOUT_MS = 60_000;
+const UI_BACKUP_MARKER = '.ui-update-backup';
+
+/** Persist an on-demand UI swap's backup path for the parent supervisor. */
+export function recordPendingUiBackup(dataDir: string, backupDir: string): void {
+  mkdirSync(dataDir, { recursive: true });
+  const marker = join(dataDir, UI_BACKUP_MARKER);
+  const tmp = `${marker}.tmp`;
+  writeFileSync(tmp, `${backupDir}\n`, { mode: 0o600 });
+  nodeRenameSync(tmp, marker);
+}
+
+/** Read and clear the backup path handed off by the UI child. */
+export function consumePendingUiBackup(dataDir: string): string | null {
+  const marker = join(dataDir, UI_BACKUP_MARKER);
+  try {
+    const backupDir = readFileSync(marker, 'utf8').trim();
+    return backupDir || null;
+  } catch {
+    return null;
+  } finally {
+    rmSync(marker, { force: true });
+  }
+}
 
 /** Injectable dependencies for {@link waitForReady} (defaults to real timers/fetch). */
 export interface WaitForReadyDeps {
@@ -337,6 +367,8 @@ export class UiSupervisor<Handle> {
       this.cb.onReloadRenderer?.();
       return true;
     } catch (err) {
+      this.cb.restoreBackup?.();
+      await this.cb.onRestartFailure?.();
       this.cb.onRestartError?.(err);
       return false;
     } finally {

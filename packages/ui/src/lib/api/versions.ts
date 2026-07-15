@@ -1,95 +1,55 @@
-import { request, requireOk, requireJsonBody } from './core.js';
+import type { VersionKey } from '@openpalm/lib';
+import { request, requireOk } from './core.js';
 
-// ── Update lifecycle ─────────────────────────────────────────────────────────
+export type { VersionKey } from '@openpalm/lib';
 
-export type ApplyChangesResult = {
-  ok: boolean;
-  restarted: string[];
-  failed: { service: string; reason: string }[];
-  dockerAvailable: boolean;
-  overallSuccess: boolean;
-  error?: string;
+async function update(body: Record<string, string>): Promise<void> {
+	await requireOk(await request('POST', '/api/host/update', body));
+}
+
+export function applyServiceUpdate(service: string): Promise<void> {
+	return update({ service });
+}
+
+export function applyChanges(): Promise<void> {
+	return update({});
+}
+
+export type UpdateChannel = 'latest' | 'next';
+
+export type VersionsResponse = {
+	configured: Record<VersionKey, string>;
+	channel: UpdateChannel;
 };
 
-export async function applyChanges(versions: Record<string, string> = {}): Promise<ApplyChangesResult> {
-  // The route returns 502 when individual services fail (e.g. an addon
-  // image isn't available). The body still carries the structured result,
-  // so parse it before requireOk would throw.
-  // `versions` carries the target each component should advance to (the resolved
-  // channel-latest or a pin) so the update actually moves forward (see UpdatesTab).
-  const res = await request('POST', '/api/host/update', { versions });
-  return requireJsonBody<ApplyChangesResult>(res, `Apply failed (HTTP ${res.status})`);
-}
-
-/** Scoped single-service update (§4, §7 "Update <container>"):
- *  pull + recreate ONLY the named compose service. Pull failure is FATAL (§6). */
-export async function applyServiceUpdate(service: string, versions: Record<string, string> = {}): Promise<ApplyChangesResult> {
-  const res = await request('POST', '/api/host/update', { service, versions });
-  return requireJsonBody<ApplyChangesResult>(res, `Update failed (HTTP ${res.status})`);
-}
-
-// ── Version management ───────────────────────────────────────────────────────
-
-/** Phase-5 per-component version info (three distinct values per component, §5). */
-export interface ComponentVersionInfo {
-  /** Running: what the live container was created from. Null when not running. */
-  running: {
-    digest: string;
-    tag: string;
-    /** Plain version with hardware variant suffix stripped (voice images). */
-    plainVersion: string;
-    healthStatus: string;
-    containerState: string;
-  } | null;
-  /** Explicit pin from state file, or null = track latest. */
-  pinned: string | null;
-  /** Best-effort latest on the active channel (null when registry unreachable). */
-  available: string | null;
-}
-
-/** GET /api/host/versions response (Phase 5 shape + backward-compat legacy fields). */
-export interface VersionsResponse {
-  /** Phase-5 per-component detail (three distinct values per key, §5). */
-  components: Record<string, ComponentVersionInfo>;
-  /** Channel preference: "latest" (stable releases) or "next" (prereleases). */
-  channel: 'latest' | 'next';
-  platformVersion: string;
-  // Legacy backward-compat fields — old UIs still read these
-  versions: Record<string, string>;
-  autoUpdate: boolean;
-}
-
 export async function fetchVersions(): Promise<VersionsResponse> {
-  const res = await requireOk(await request('GET', '/api/host/versions'));
-  return (await res.json()) as VersionsResponse;
+	const response = await requireOk(await request('GET', '/api/host/versions'));
+	return (await response.json()) as VersionsResponse;
 }
 
-/** Persist version pins to stack.env. Only SERVICE_VERSION_KEYS + OP_AUTO_UPDATE
- *  are accepted; the change takes effect on the next POST /api/host/update. */
-export async function patchVersions(versions: Record<string, string>): Promise<{ ok: boolean; versions: Record<string, string> }> {
-  const res = await requireOk(await request('PATCH', '/api/host/versions', { versions }));
-  return (await res.json()) as { ok: boolean; versions: Record<string, string> };
+export async function patchVersions(
+	versions: Partial<Record<VersionKey, string>>,
+	channel?: UpdateChannel
+): Promise<void> {
+	await requireOk(
+		await request('PATCH', '/api/host/versions', {
+			...(Object.keys(versions).length > 0 ? { versions } : {}),
+			...(channel ? { channel } : {})
+		})
+	);
 }
 
-/** Response from GET /api/host/versions/latest — resolved latest versions from
- *  GitHub releases (images) and npm registry (packages). null means the registry
- *  was unreachable for that key. */
-export interface LatestVersionsResponse {
-  versions: Record<string, string | null>;
-  errors: string[];
-  fetchedAt: string;
-}
+export type UiBuildUpdateResponse = {
+	ok: boolean;
+	updated: boolean;
+	latestVersion: string | null;
+	restarting: boolean;
+	pendingRestart: boolean;
+	redownloadRequired: boolean;
+	requiredHarnessContract?: number;
+};
 
-/** Query the latest available versions from GitHub releases + npm registry.
- *  Called only on explicit user action; never auto-polled. */
-export async function fetchLatestVersions(): Promise<LatestVersionsResponse> {
-  const res = await requireOk(await request('GET', '/api/host/versions/latest'));
-  return (await res.json()) as LatestVersionsResponse;
-}
-
-export async function downloadUiVersion(
-  tag: string,
-): Promise<{ ok: boolean; tag: string; restarting: boolean; pendingRestart: boolean }> {
-  const res = await requireOk(await request('POST', '/api/host/ui-version', { tag }));
-  return (await res.json()) as { ok: boolean; tag: string; restarting: boolean; pendingRestart: boolean };
+export async function updateUiBuild(): Promise<UiBuildUpdateResponse> {
+	const response = await requireOk(await request('POST', '/api/host/ui-version', {}));
+	return (await response.json()) as UiBuildUpdateResponse;
 }

@@ -21,6 +21,7 @@ import {
   detectNetworkPreset,
 } from '@openpalm/lib';
 import { getState } from '$lib/server/state.js';
+import { withAdminUpdateLock } from '$lib/server/admin-update-lock.js';
 import {
   errorResponse,
   getRequestId,
@@ -90,40 +91,42 @@ export const PUT: RequestHandler = async (event) => {
     }
 
     const state = getState();
-    // Capture the outgoing project name BEFORE the patch overwrites it — a
-    // rename must be recorded so the next locked apply (deploy/update/start)
-    // tears the old compose project down instead of leaving it running
-    // unaddressed beside the new one (#540).
-    const previousProjectName = readStackEnv(state.homeDir).OP_PROJECT_NAME?.trim() || DEFAULT_PROJECT_NAME;
-    patchSecretsEnvFile(state.homeDir, {
-      OP_PROJECT_NAME: projectName,
-      OP_ASSISTANT_BIND_ADDRESS: body.lanExposureEnabled ? LAN_ASSISTANT_BIND_ADDRESS : DEFAULT_ASSISTANT_BIND_ADDRESS,
+    return withAdminUpdateLock(state, requestId, () => {
+      // Capture the outgoing project name BEFORE the patch overwrites it — a
+      // rename must be recorded so the next locked apply (deploy/update/start)
+      // tears the old compose project down instead of leaving it running
+      // unaddressed beside the new one (#540).
+      const previousProjectName = readStackEnv(state.homeDir).OP_PROJECT_NAME?.trim() || DEFAULT_PROJECT_NAME;
+      patchSecretsEnvFile(state.homeDir, {
+        OP_PROJECT_NAME: projectName,
+        OP_ASSISTANT_BIND_ADDRESS: body.lanExposureEnabled ? LAN_ASSISTANT_BIND_ADDRESS : DEFAULT_ASSISTANT_BIND_ADDRESS,
+      });
+      const projectRenamed = previousProjectName !== projectName;
+      if (projectRenamed) {
+        recordProjectRename(state.homeDir, previousProjectName, projectName);
+      }
+
+      // Synchronous, non-throwing, and gated — with LAN exposure just enabled
+      // this starts advertising immediately (no restart of the host process).
+      const mdns = reconcileMdnsResponder(state.homeDir);
+      // #563 — recompute AFTER the patch so the response reflects reality;
+      // enabling the raw LAN-exposure toggle truthfully detects as home-open
+      // (that IS the exposure it creates, D8).
+      const networkPreset = detectNetworkPreset(readStackEnv(state.homeDir));
+
+      return jsonResponse(
+        200,
+        {
+          ok: true,
+          projectName,
+          projectRenamed,
+          lanExposureEnabled: body.lanExposureEnabled,
+          stackEnvPath: 'knowledge/env/stack.env',
+          mdns,
+          networkPreset,
+        },
+        requestId,
+      );
     });
-    const projectRenamed = previousProjectName !== projectName;
-    if (projectRenamed) {
-      recordProjectRename(state.homeDir, previousProjectName, projectName);
-    }
-
-    // Synchronous, non-throwing, and gated — with LAN exposure just enabled
-    // this starts advertising immediately (no restart of the host process).
-    const mdns = reconcileMdnsResponder(state.homeDir);
-    // #563 — recompute AFTER the patch so the response reflects reality;
-    // enabling the raw LAN-exposure toggle truthfully detects as home-open
-    // (that IS the exposure it creates, D8).
-    const networkPreset = detectNetworkPreset(readStackEnv(state.homeDir));
-
-    return jsonResponse(
-      200,
-      {
-        ok: true,
-        projectName,
-        projectRenamed,
-        lanExposureEnabled: body.lanExposureEnabled,
-        stackEnvPath: 'knowledge/env/stack.env',
-        mdns,
-        networkPreset,
-      },
-      requestId,
-    );
   });
 };

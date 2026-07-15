@@ -169,6 +169,7 @@ vi.mock('@openpalm/lib', () => ({
     return false;
   }),
   restoreUiBackup: vi.fn(() => ({ status: 'no-backup' as const })),
+  consumePendingUiBackup: vi.fn(() => null),
   // Faithful minimal UiSupervisor stub (main.ts constructs one at module scope).
   UiSupervisor: class {
     private handle: unknown = null;

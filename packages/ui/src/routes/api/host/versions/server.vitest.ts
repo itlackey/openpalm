@@ -1,189 +1,98 @@
-/**
- * Route-level tests for GET + PATCH /api/host/versions.
- *
- * Pins are STATE (constitution §1): GET reads every version key (Docker image
- * tags) from OP_HOME/state, falling back to the legacy stack.env during the
- * transition window, with documented defaults for unset keys; PATCH validates
- * each key against the SERVICE_VERSION_KEYS allowlist and writes it to the state
- * file. No Docker Hub / npm lookups, no version cache.
- */
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { dirname } from 'node:path';
-import { resetState } from '$lib/server/test-helpers.js';
-import { getState } from '$lib/server/state.js';
 import { SERVICE_VERSION_KEYS } from '@openpalm/lib';
+import { getState } from '$lib/server/state.js';
+import { resetState } from '$lib/server/test-helpers.js';
 import { GET, PATCH } from './+server.js';
 
-function stackEnvPath(): string {
-  return `${getState().stashDir}/env/stack.env`;
+function event(method: 'GET' | 'PATCH', body?: unknown, token = 'admin-token') {
+	return {
+		request: new Request('http://localhost/api/host/versions', {
+			method,
+			headers: {
+				cookie: `op_session=${token}`,
+				'x-request-id': 'req-versions',
+				...(body === undefined ? {} : { 'content-type': 'application/json' })
+			},
+			...(body === undefined ? {} : { body: JSON.stringify(body) })
+		})
+	};
 }
-
-/** Pins are STATE now (constitution §1): written to OP_HOME/state, not stack.env. */
-function stateEnvPath(): string {
-  return `${getState().homeDir}/state/stack.state.env`;
-}
-
-function seedStackEnv(content: string): void {
-  const path = stackEnvPath();
-  mkdirSync(dirname(path), { recursive: true });
-  writeFileSync(path, content);
-}
-
-function makeGetEvent(token = 'admin-token'): Parameters<typeof GET>[0] {
-  return {
-    url: new URL('http://localhost/api/host/versions'),
-    request: new Request('http://localhost/api/host/versions', {
-      method: 'GET',
-      headers: { cookie: `op_session=${token}`, 'x-request-id': 'req-versions-get' },
-    }),
-  } as Parameters<typeof GET>[0];
-}
-
-function makePatchEvent(body: unknown, token = 'admin-token'): Parameters<typeof PATCH>[0] {
-  return {
-    url: new URL('http://localhost/api/host/versions'),
-    request: new Request('http://localhost/api/host/versions', {
-      method: 'PATCH',
-      headers: { cookie: `op_session=${token}`, 'content-type': 'application/json', 'x-request-id': 'req-versions-patch' },
-      body: JSON.stringify(body),
-    }),
-  } as Parameters<typeof PATCH>[0];
-}
-
-type VersionsBody = { versions: Record<string, string>; platformVersion: string };
 
 beforeEach(() => {
-  // Phase 4: /api/host + /api/assistant endpoints are capability-guarded;
-  // run this suite as a host-capable mode.
-  process.env.OP_UI_HOST_MODE = 'host-ui';
-  resetState('admin-token');
+	process.env.OP_UI_HOST_MODE = 'host-ui';
+	resetState('admin-token');
 });
 
 afterEach(() => {
-  delete process.env.OP_UI_HOST_MODE;
-  // resetState builds a fresh temp OP_HOME each run; nothing to undo.
+	delete process.env.OP_UI_HOST_MODE;
+	rmSync(join(getState().dataDir, '.install.lock'), { force: true });
 });
 
 describe('GET /api/host/versions', () => {
-  test('requires admin auth', async () => {
-    const res = await GET(makeGetEvent('bad-token'));
-    expect(res.status).toBe(401);
-  });
+	test('requires admin auth', async () => {
+		expect((await GET(event('GET', undefined, 'bad-token') as Parameters<typeof GET>[0])).status).toBe(401);
+	});
 
-  test('returns defaults for every version key when stack.env is empty', async () => {
-    const res = await GET(makeGetEvent());
-    expect(res.status).toBe(200);
-    const body = (await res.json()) as VersionsBody;
-    for (const key of SERVICE_VERSION_KEYS) {
-      expect(body.versions).toHaveProperty(key);
-    }
-    expect(body.versions.OP_ASSISTANT_VERSION).toBe('latest');
-    expect(body.versions.OP_GUARDIAN_VERSION).toBe('latest');
-    expect(typeof body.platformVersion).toBe('string');
-    expect(body.platformVersion.length).toBeGreaterThan(0);
-  });
+	test('returns only configured image tags and the UI channel', async () => {
+		const response = await GET(event('GET') as Parameters<typeof GET>[0]);
 
-  test('reflects values written in stack.env', async () => {
-    seedStackEnv('OP_ASSISTANT_VERSION=v0.12.18\nOP_PORTAL_VERSION=v0.12.18\n');
-    const res = await GET(makeGetEvent());
-    const body = (await res.json()) as VersionsBody;
-    expect(body.versions.OP_ASSISTANT_VERSION).toBe('v0.12.18');
-    expect(body.versions.OP_PORTAL_VERSION).toBe('v0.12.18');
-    // Unset keys still fall back to defaults.
-    expect(body.versions.OP_GUARDIAN_VERSION).toBe('latest');
-  });
+		expect(response.status).toBe(200);
+		expect(await response.json()).toEqual({
+			configured: {
+				OP_ASSISTANT_VERSION: 'latest',
+				OP_GUARDIAN_VERSION: 'latest',
+				OP_PORTAL_VERSION: 'latest',
+				OP_VOICE_VERSION: 'latest'
+			},
+			channel: expect.stringMatching(/^(latest|next)$/)
+		});
+	});
 });
 
 describe('PATCH /api/host/versions', () => {
-  test('requires admin auth', async () => {
-    const res = await PATCH(makePatchEvent({ versions: { OP_ASSISTANT_VERSION: 'v1' } }, 'bad-token'));
-    expect(res.status).toBe(401);
-  });
+	test('rejects unknown configuration fields', async () => {
+		const response = await PATCH(
+			event('PATCH', { versions: { OP_UNKNOWN_VERSION: '1.0.0' } }) as Parameters<typeof PATCH>[0]
+		);
+		expect(response.status).toBe(400);
+	});
 
-  test('rejects a body without a versions object', async () => {
-    const res = await PATCH(makePatchEvent({ nope: true }));
-    expect(res.status).toBe(400);
-  });
+	test('writes only requested tags and channel to state', async () => {
+		mkdirSync(getState().dataDir, { recursive: true });
+		const response = await PATCH(
+			event('PATCH', {
+				versions: {
+					OP_ASSISTANT_VERSION: '0.13.1',
+					OP_PORTAL_VERSION: 'latest'
+				},
+				channel: 'next'
+			}) as Parameters<typeof PATCH>[0]
+		);
 
-  test('rejects unknown version keys', async () => {
-    const res = await PATCH(makePatchEvent({ versions: { OP_NOT_A_KEY: 'x' } }));
-    expect(res.status).toBe(400);
-    const body = (await res.json()) as { error: string };
-    expect(body.error).toBe('unknown_version_key');
-  });
+		expect(response.status).toBe(200);
+		const content = readFileSync(join(getState().homeDir, 'state', 'stack.state.env'), 'utf-8');
+		expect(content).toContain('OP_ASSISTANT_VERSION=0.13.1');
+		expect(content).toContain('OP_PORTAL_VERSION=latest');
+		expect(content).toContain('OP_UI_CHANNEL=next');
+		for (const key of SERVICE_VERSION_KEYS) {
+			if (key !== 'OP_ASSISTANT_VERSION' && key !== 'OP_PORTAL_VERSION') {
+				expect(content).not.toContain(`${key}=`);
+			}
+		}
+	});
 
-  test('rejects a non-string version value', async () => {
-    const res = await PATCH(makePatchEvent({ versions: { OP_ASSISTANT_VERSION: 123 } }));
-    expect(res.status).toBe(400);
-    const body = (await res.json()) as { error: string };
-    expect(body.error).toBe('invalid_version_value');
-  });
+	test('rejects writes while another lifecycle mutation holds the lock', async () => {
+		const state = getState();
+		mkdirSync(state.dataDir, { recursive: true });
+		writeFileSync(join(state.dataDir, '.install.lock'), `${process.pid}\n${Date.now()}\n`);
 
-  test('writes valid version keys to the state file and echoes the full set', async () => {
-    const res = await PATCH(
-      makePatchEvent({
-        versions: { OP_ASSISTANT_VERSION: 'v0.12.18', OP_PORTAL_VERSION: 'v0.12.18' },
-      }),
-    );
-    expect(res.status).toBe(200);
-    const body = (await res.json()) as { ok: boolean; versions: Record<string, string> };
-    expect(body.ok).toBe(true);
-    expect(body.versions.OP_ASSISTANT_VERSION).toBe('v0.12.18');
-    expect(body.versions.OP_PORTAL_VERSION).toBe('v0.12.18');
+		const response = await PATCH(
+			event('PATCH', { versions: { OP_ASSISTANT_VERSION: '0.13.1' } }) as Parameters<typeof PATCH>[0]
+		);
 
-    // Persisted to the STATE file (OP_HOME/state), not the legacy stack.env.
-    const onDisk = readFileSync(stateEnvPath(), 'utf-8');
-    expect(onDisk).toContain('OP_ASSISTANT_VERSION=v0.12.18');
-    expect(onDisk).toContain('OP_PORTAL_VERSION=v0.12.18');
-  });
-
-  test('writing a pin never touches the legacy stack.env (its keys are left intact)', async () => {
-    seedStackEnv('OP_ENABLED_ADDONS=voice\nOP_IMAGE_NAMESPACE=openpalm\n');
-    const res = await PATCH(makePatchEvent({ versions: { OP_VOICE_VERSION: 'v0.12.18' } }));
-    expect(res.status).toBe(200);
-    // The pin lands in the state file…
-    expect(readFileSync(stateEnvPath(), 'utf-8')).toContain('OP_VOICE_VERSION=v0.12.18');
-    // …and the legacy stack.env is untouched (not rewritten, nothing lost).
-    const legacy = readFileSync(stackEnvPath(), 'utf-8');
-    expect(legacy).toContain('OP_ENABLED_ADDONS=voice');
-    expect(legacy).toContain('OP_IMAGE_NAMESPACE=openpalm');
-    expect(legacy).not.toContain('OP_VOICE_VERSION');
-  });
-
-  // ── OP_CHANNEL routing (§4.2) ─────────────────────────────────────────────
-  //
-  // OP_CHANNEL is routed through writeChannelPreference (state file, atomic write)
-  // and MUST NOT update any stack.env version key.
-
-  test('OP_CHANNEL: writes channel preference to state file and returns ok', async () => {
-    // Ensure state dir exists (resetState() creates homeDir but not state/ subdir in all paths)
-    const { mkdirSync: mkdir } = await import('node:fs');
-    mkdir(`${getState().homeDir}/state`, { recursive: true });
-
-    const res = await PATCH(makePatchEvent({ versions: { OP_CHANNEL: 'next' } }));
-    expect(res.status).toBe(200);
-    const body = (await res.json()) as { ok: boolean; versions: Record<string, string> };
-    expect(body.ok).toBe(true);
-
-    // Channel is written to the state file as OP_UI_CHANNEL (writeChannelPreference)
-    const stateContent = readFileSync(stateEnvPath(), 'utf-8');
-    expect(stateContent).toContain('OP_UI_CHANNEL=next');
-
-    // No service version pin is written alongside the channel update
-    for (const key of SERVICE_VERSION_KEYS) {
-      expect(stateContent).not.toContain(`${key}=next`);
-    }
-  });
-
-  test('OP_CHANNEL: invalid channel returns 400 invalid_channel without touching stack.env', async () => {
-    seedStackEnv('OP_ENABLED_ADDONS=voice\n');
-    const res = await PATCH(makePatchEvent({ versions: { OP_CHANNEL: 'alpha' } }));
-    expect(res.status).toBe(400);
-    const body = (await res.json()) as { error: string };
-    expect(body.error).toBe('invalid_channel');
-
-    // stack.env must be untouched
-    expect(readFileSync(stackEnvPath(), 'utf-8')).toContain('OP_ENABLED_ADDONS=voice');
-  });
+		expect(response.status).toBe(409);
+		expect(await response.json()).toMatchObject({ error: 'install_in_progress' });
+	});
 });

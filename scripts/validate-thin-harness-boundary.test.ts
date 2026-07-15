@@ -11,9 +11,8 @@
 //   (a) the bundle check used to grep for 2 hand-enumerated symbol names
 //       (`performUpgrade`, `applyTagChange`) — one of which (`applyTagChange`)
 //       no longer exists anywhere in the codebase, so it silently checked
-//       nothing. It now greps for `reconcileStack`, the single private engine
-//       every mutating lifecycle op (applyInstall/applyUpdate/applyUninstall/
-//       performUpgrade) funnels through — categorical, not name-enumerated.
+//       nothing. It now checks the current stack-update entry point while the
+//       source-import allowlist categorically blocks all other lifecycle APIs.
 //   (b) the import-allowlist check used to read only `main.ts`'s FIRST
 //       `@openpalm/lib` brace-import block, so `update-check.ts` and
 //       `docker-preflight.ts` (which also import from `@openpalm/lib`) were
@@ -76,14 +75,10 @@ describe("validate-thin-harness-boundary.sh — sentinel bundle check", () => {
     expect(result.status).toBe(0);
   });
 
-  it("fails when the bundle carries reconcileStack — the shared engine behind every mutating lifecycle op (install/update/uninstall/upgrade), not just the 2 formerly-enumerated names", () => {
-    // Simulates a violation that the OLD 2-name FORBIDDEN_SYMBOLS array would
-    // have MISSED (neither name here is `performUpgrade` or the dead
-    // `applyTagChange`) but the categorical sentinel catches because any
-    // mutating lifecycle entry point routes through reconcileStack.
-    const result = run("function applyInstall(){} function reconcileStack(){}\n");
+  it("fails when the frozen bundle carries the stack-update entry point", () => {
+    const result = run("function performUpgrade(){}\n");
     expect(result.status).not.toBe(0);
-    expect(result.stderr + result.stdout).toMatch(/reconcileStack/);
+    expect(result.stderr + result.stdout).toMatch(/performUpgrade/);
   });
 });
 

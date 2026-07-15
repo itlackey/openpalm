@@ -35,6 +35,8 @@
 	} from '$lib/voice/voice-state.svelte.js';
 	import IconSoundOn from '@openpalm/ui-kit/components/icons/IconSoundOn.svelte';
 	import IconSoundOff from '@openpalm/ui-kit/components/icons/IconSoundOff.svelte';
+	import IconMic from '@openpalm/ui-kit/components/icons/IconMic.svelte';
+	import IconWaves from '@openpalm/ui-kit/components/icons/IconWaves.svelte';
 	import IconConversations from '@openpalm/ui-kit/components/icons/IconConversations.svelte';
 	import IconActivity from '@openpalm/ui-kit/components/icons/IconActivity.svelte';
 	import IconClose from '@openpalm/ui-kit/components/icons/IconClose.svelte';
@@ -70,6 +72,10 @@
 	}
 	function closeToolDrawer(): void {
 		toolDrawerOpen = false;
+	}
+	function openActivityFromGarden(): void {
+		closeGarden();
+		toolDrawerOpen = true;
 	}
 
 	// ── Helpers ──────────────────────────────────────────────────────────
@@ -207,11 +213,8 @@
 	let draft = $state('');
 
 	function toggleVoice(): void {
-		// Single-shot dictation and conversation mode are mutually exclusive.
-		if (voiceState.conversationActive) {
-			stopConversation();
-			return;
-		}
+		// startListening takes the mic from conversation mode, so the dedicated
+		// record control always does what its accessible name promises.
 		if (voiceActive) {
 			stopListening();
 		} else {
@@ -309,7 +312,12 @@
 				}
 				await endpointsService.load();
 				await chat.onEndpointChanged(endpointsService.activeId);
-				if (requestedSessionId) {
+				const requestedSessionExists =
+					requestedSessionId &&
+					chat.byEndpoint
+						.get(chat.activeEndpointId)
+						?.sessions.some((session) => session.id === requestedSessionId);
+				if (requestedSessionExists && requestedSessionId !== chat.activeSessionId) {
 					await chat.openSession(requestedSessionId);
 				}
 				if (page.url.searchParams.get('new') === '1') {
@@ -350,7 +358,7 @@
 <div class="s-corner s-corner-left">
 	<Presence
 		height={32}
-		{voiceEnabled}
+		voiceEnabled={false}
 		sending={chat.sending}
 		voiceStatus={voiceState.status}
 		onToggle={toggleVoice}
@@ -358,7 +366,7 @@
 </div>
 
 <!-- top-right: advanced -->
-<div class="s-corner s-corner-right" class:drawer-hidden={toolDrawerOpen}>
+<div class="s-corner s-corner-right" class:drawer-hidden={toolDrawerOpen || gardenOpen}>
 	<div class="s-glyph-cell">
 		<button
 			class="s-glyph-btn"
@@ -368,7 +376,7 @@
 			onclick={() => {
 				advancedModeService.setEnabled(true);
 				// eslint-disable-next-line svelte/no-navigation-without-resolve -- dynamic session path built internally, not a static route id
-				void goto(buildAdvancedPath(page.url.searchParams.get('session') ?? chat.activeSessionId));
+				void goto(buildAdvancedPath(chat.activeSessionId));
 			}}
 		>
 			<IconAdvanced size={20} />
@@ -377,27 +385,41 @@
 	</div>
 </div>
 
-<!-- bottom-left: voice (conditional) + theme toggle -->
-<div class="s-corner s-corner-bottom-left">
-	{#if ttsAvailable && voiceEnabled}
-		<div class="s-glyph-cell">
-			<span class="s-glyph-label">voice</span>
-			<button
-				class="s-glyph-btn"
-				type="button"
-				aria-label={ttsEnabled ? 'Turn off spoken responses' : 'Turn on spoken responses'}
-				aria-pressed={ttsEnabled}
-				onclick={toggleSpeak}
-			>
-				{#if ttsEnabled}
-					<IconSoundOn size={20} />
-				{:else}
-					<IconSoundOff size={20} />
-				{/if}
-			</button>
-		</div>
-	{/if}
+<!-- bottom-left: conversations first, then small-screen activity + theme -->
+<div class="s-corner s-corner-bottom-left" class:drawer-hidden={toolDrawerOpen}>
 	<div class="s-glyph-cell">
+		<span class="s-glyph-label">{gardenOpen ? 'close' : 'conversations'}</span>
+		<button
+			class="s-glyph-btn"
+			type="button"
+			aria-haspopup="dialog"
+			aria-expanded={gardenOpen}
+			aria-controls="s-garden-veil"
+			onclick={gardenOpen ? closeGarden : openGarden}
+			aria-label={gardenOpen ? 'Return to the conversation' : 'Conversations'}
+		>
+			{#if gardenOpen}
+				<IconClose size={20} />
+			{:else}
+				<IconConversations size={22} />
+			{/if}
+		</button>
+	</div>
+	<div class="s-glyph-cell s-tool-toggle-cell s-footer-extra" class:modal-hidden={gardenOpen}>
+		<span class="s-glyph-label">activity</span>
+		<button
+			class="s-glyph-btn"
+			type="button"
+			aria-haspopup="dialog"
+			aria-expanded={toolDrawerOpen}
+			aria-controls="s-tool-drawer"
+			aria-label="Activity"
+			onclick={toggleToolDrawer}
+		>
+			<IconActivity size={20} />
+		</button>
+	</div>
+	<div class="s-glyph-cell s-footer-extra" class:modal-hidden={gardenOpen}>
 		<span class="s-glyph-label">theme</span>
 		<button
 			class="s-glyph-btn s-orb-btn"
@@ -420,42 +442,61 @@
 	</div>
 </div>
 
-<!-- bottom-right: activity (small screens) + conversations -->
+<!-- bottom-right: spoken responses, dictation, and hands-free conversation -->
 <!-- Hidden while the drawer is open: the drawer owns the top layer (its close X,
      the scrim and Escape close it), so this cluster must not bleed through. -->
-<div class="s-corner s-corner-bottom-right" class:drawer-hidden={toolDrawerOpen}>
-	<div class="s-glyph-cell s-tool-toggle-cell">
-		<span class="s-glyph-label">activity</span>
-		<button
-			class="s-glyph-btn"
-			type="button"
-			aria-haspopup="dialog"
-			aria-expanded={toolDrawerOpen}
-			aria-controls="s-tool-drawer"
-			aria-label="Activity"
-			onclick={toggleToolDrawer}
-		>
-			<IconActivity size={20} />
-		</button>
-	</div>
-	<div class="s-glyph-cell">
-		<span class="s-glyph-label">{gardenOpen ? 'close' : 'conversations'}</span>
-		<button
-			class="s-glyph-btn"
-			type="button"
-			aria-haspopup="dialog"
-			aria-expanded={gardenOpen}
-			aria-controls="s-garden-veil"
-			onclick={gardenOpen ? closeGarden : openGarden}
-			aria-label={gardenOpen ? 'Return to the conversation' : 'Conversations'}
-		>
-			{#if gardenOpen}
-				<IconClose size={20} />
-			{:else}
-				<IconConversations size={22} />
-			{/if}
-		</button>
-	</div>
+<div
+	class="s-corner s-corner-bottom-right"
+	class:drawer-hidden={toolDrawerOpen || gardenOpen}
+>
+	{#if ttsAvailable}
+		<div class="s-glyph-cell">
+			<span class="s-glyph-label">speaker</span>
+			<button
+				class="s-glyph-btn"
+				type="button"
+				aria-label={ttsEnabled ? 'Turn off spoken responses' : 'Turn on spoken responses'}
+				aria-pressed={ttsEnabled}
+				onclick={toggleSpeak}
+			>
+				{#if ttsEnabled}
+					<IconSoundOn size={20} />
+				{:else}
+					<IconSoundOff size={20} />
+				{/if}
+			</button>
+		</div>
+	{/if}
+	{#if voiceEnabled}
+		<div class="s-glyph-cell">
+			<span class="s-glyph-label">{voiceActive ? 'recording' : 'record'}</span>
+			<button
+				class="s-glyph-btn"
+				class:active={voiceActive}
+				type="button"
+				aria-label={voiceActive ? 'Stop recording' : 'Start recording'}
+				aria-pressed={voiceActive}
+				onclick={toggleVoice}
+			>
+				<IconMic size={20} />
+			</button>
+		</div>
+		<div class="s-glyph-cell">
+			<span class="s-glyph-label">{voiceState.conversationActive ? 'listening' : 'conversation'}</span>
+			<button
+				class="s-glyph-btn"
+				class:active={voiceState.conversationActive}
+				type="button"
+				aria-label={voiceState.conversationActive
+					? 'End conversation mode'
+					: 'Start conversation mode'}
+				aria-pressed={voiceState.conversationActive}
+				onclick={toggleConversation}
+			>
+				<IconWaves size={20} />
+			</button>
+		</div>
+	{/if}
 </div>
 
 <!-- left rail: running tool activity (wide screens) -->
@@ -568,12 +609,6 @@
 		questionPending={!!chat.pendingQuestion && chat.pendingQuestion.questions.length === 1}
 		onSend={handleSend}
 		onStop={() => void chat.stopTurn()}
-		{voiceEnabled}
-		{voiceActive}
-		onMicToggle={toggleVoice}
-		conversationEnabled={voiceEnabled}
-		conversationActive={voiceState.conversationActive}
-		onConversationToggle={toggleConversation}
 	/>
 </div>
 
@@ -679,6 +714,32 @@
 				</button>
 			</div>
 			<SessionList onChosen={closeGarden} hideNewBtn={true} />
+		</section>
+
+		<section class="s-veil-section s-veil-utilities" aria-label="Chat display and activity">
+			<button class="s-utility-btn" type="button" onclick={openActivityFromGarden}>
+				<IconActivity size={18} />
+				<span>Activity</span>
+			</button>
+			<button
+				class="s-utility-btn"
+				type="button"
+				onclick={() => themeService.toggle()}
+				aria-label={themeService.preference === 'system'
+					? 'Switch to light theme'
+					: themeService.preference === 'light'
+						? 'Switch to dark theme'
+						: 'Switch to system theme'}
+			>
+				{#if themeService.preference === 'light'}
+					<IconThemeLight size={18} />
+				{:else if themeService.preference === 'dark'}
+					<IconThemeDark size={18} />
+				{:else}
+					<IconThemeSystem size={18} />
+				{/if}
+				<span>Theme</span>
+			</button>
 		</section>
 	</div>
 </div>
@@ -805,19 +866,27 @@
 		top: 0;
 		left: 0;
 		align-items: flex-start;
+		padding-top: max(var(--s-chrome-pad), env(safe-area-inset-top));
+		padding-left: max(var(--s-chrome-pad), env(safe-area-inset-left));
 	}
 	.s-corner-right {
 		top: 0;
 		right: 0;
 		align-items: flex-start;
+		padding-top: max(var(--s-chrome-pad), env(safe-area-inset-top));
+		padding-right: max(var(--s-chrome-pad), env(safe-area-inset-right));
 	}
 	.s-corner-bottom-left {
 		bottom: 0;
 		left: 0;
+		padding-bottom: max(var(--s-chrome-pad), env(safe-area-inset-bottom));
+		padding-left: max(var(--s-chrome-pad), env(safe-area-inset-left));
 	}
 	.s-corner-bottom-right {
 		bottom: 0;
 		right: 0;
+		padding-right: max(var(--s-chrome-pad), env(safe-area-inset-right));
+		padding-bottom: max(var(--s-chrome-pad), env(safe-area-inset-bottom));
 	}
 
 	/* Each icon + its label stacked vertically */
@@ -831,6 +900,7 @@
 		align-items: flex-end;
 	}
 	.s-glyph-btn {
+		position: relative;
 		appearance: none;
 		border: 0;
 		background: none;
@@ -903,10 +973,44 @@
 		color: var(--s-seal);
 	}
 
+	/* Recording and conversation remain visibly active when responsive rules
+	   hide their text labels. The inset ring does not depend on color alone. */
+	.s-corner-bottom-right .s-glyph-btn.active::after {
+		content: '';
+		position: absolute;
+		inset: 5px;
+		border: 1px solid currentColor;
+		border-radius: 50%;
+		pointer-events: none;
+	}
+
 	/* While the activity drawer owns the top layer, hide the corner clusters that
 	   would otherwise bleed over it (corners sit above the drawer otherwise). */
 	.s-corner.drawer-hidden {
 		display: none;
+	}
+
+	.s-glyph-cell.modal-hidden {
+		display: none;
+	}
+
+	.s-veil-utilities {
+		display: flex;
+		flex-wrap: wrap;
+		gap: var(--s-sp-2);
+	}
+
+	.s-utility-btn {
+		display: inline-flex;
+		align-items: center;
+		gap: var(--s-sp-2);
+		min-height: 44px;
+		padding: 0.5rem 0.75rem;
+		border: var(--s-hair) solid var(--s-line);
+		background: none;
+		color: var(--s-ink-2);
+		font: inherit;
+		cursor: pointer;
 	}
 
 	@media (prefers-reduced-motion: reduce) {
@@ -1066,7 +1170,11 @@
 		display: flex;
 		flex-direction: column;
 		align-items: center;
-		padding: 0 var(--s-frame) clamp(1.4rem, 4vh, 2.4rem);
+		/* The bottom-right voice cluster always owns a full footer row. Keep the
+		   composer above it at every width; horizontal separation alone is not
+		   reliable once labels or localized accessible chrome grow. */
+		padding: 0 var(--s-frame);
+		padding-bottom: calc(5.25rem + env(safe-area-inset-bottom));
 		background: linear-gradient(
 			to top,
 			var(--s-paper) 0%,
@@ -1564,6 +1672,9 @@
 		.s-scroll {
 			padding-left: clamp(220px, 23vw, 300px);
 		}
+		.s-base {
+			left: clamp(220px, 23vw, 300px);
+		}
 	}
 
 	@media (max-width: 900px) {
@@ -1585,6 +1696,34 @@
 		.s-thread {
 			padding-top: 30vh;
 			padding-bottom: 44vh;
+		}
+	}
+
+	/* A reduced dynamic viewport is the portable signal available when a soft
+	   keyboard is open. Preserve the 44px controls while shedding hover labels
+	   and excess vertical spacing. */
+	@media (max-height: 34rem) {
+		.s-corner-bottom-left .s-glyph-label,
+		.s-corner-bottom-right .s-glyph-label {
+			display: none;
+		}
+		.s-thread {
+			padding-top: 22vh;
+			padding-bottom: 52vh;
+		}
+	}
+
+	@media (max-width: 420px) {
+		.s-corner-bottom-left,
+		.s-corner-bottom-right {
+			gap: 0;
+		}
+		.s-corner-bottom-left .s-footer-extra {
+			display: none;
+		}
+		.s-corner-bottom-left .s-glyph-label,
+		.s-corner-bottom-right .s-glyph-label {
+			display: none;
 		}
 	}
 

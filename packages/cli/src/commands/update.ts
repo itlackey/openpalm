@@ -1,23 +1,21 @@
 import { defineCommand } from 'citty';
-import { performUpgrade, checkAndUpdateUiBuild, checkAndUpdateClientBuild } from '@openpalm/lib';
+import {
+  PLATFORM_VERSION,
+  performUpgrade,
+  checkAndUpdateUiBuild,
+  checkAndUpdateClientBuild,
+} from '@openpalm/lib';
 import { ensureValidState } from '../lib/cli-state.ts';
 import { defineAction } from '../lib/action.ts';
 
 export default defineCommand({
   meta: {
     name: 'update',
-    description: 'Refresh stack assets, pull latest images, and recreate containers',
-  },
-  args: {
-    pre: {
-      type: 'boolean',
-      description: 'Opt in to prerelease (rc/beta) versions. By default a stable install stays on stable.',
-      default: false,
-    },
+    description: 'Refresh stack assets and safely reapply running containers',
   },
   run: defineAction(
-    async ({ args }) => {
-      await runUpgradeAction({ allowPrerelease: !!args.pre });
+    async () => {
+      await runUpgradeAction();
     },
     (message) => {
       console.error(message);
@@ -26,27 +24,19 @@ export default defineCommand({
   ),
 });
 
-export async function runUpgradeAction(opts: { allowPrerelease?: boolean } = {}): Promise<void> {
+export async function runUpgradeAction(): Promise<void> {
   const state = ensureValidState();
 
-  console.log(`Upgrading stack${opts.allowPrerelease ? ' (including prereleases)' : ''}...`);
-  const result = await performUpgrade(state, { allowPrerelease: opts.allowPrerelease });
-  console.log(`Image tag: ${result.namespace}/*:${result.imageTag}`);
-  if (result.assetsUpdated.length > 0) {
-    console.log(`Assets updated: ${result.assetsUpdated.join(', ')}`);
-  }
-  for (const w of result.warnings) {
-    console.warn(`Warning: ${w}`);
-  }
+  console.log('Updating stack...');
+  await performUpgrade(state);
 
   // Check for a newer UI build on GitHub and install it if available.
-  // Passes the pre-upgrade image tag as the reference version so any newer
+  // Pass the running control-plane version as the reference so any newer
   // release (including the one just upgraded to) triggers a download.
   // Existing data/ui/ is backed up to data/backups/ui-{timestamp}/ before
   // replacement. Non-fatal — existing build remains on any error.
-  const currentVersion = result.imageTag;
   console.log('Checking for UI build update...');
-  const uiResult = await checkAndUpdateUiBuild(currentVersion, state.dataDir);
+  const uiResult = await checkAndUpdateUiBuild(PLATFORM_VERSION, state.dataDir);
   if (uiResult.updated) {
     console.log(`UI build updated to v${uiResult.latestVersion}.`);
   } else if (uiResult.error) {
@@ -59,7 +49,7 @@ export async function runUpgradeAction(opts: { allowPrerelease?: boolean } = {})
   // only ever refreshed lazily at `openpalm ui serve` time. Refresh it the
   // same way (and on the same reference version) as the UI build above.
   console.log('Checking for client app update...');
-  const clientResult = await checkAndUpdateClientBuild(currentVersion, state.dataDir);
+  const clientResult = await checkAndUpdateClientBuild(PLATFORM_VERSION, state.dataDir);
   if (clientResult.updated) {
     console.log(`Client app updated to v${clientResult.latestVersion}.`);
   } else if (clientResult.error) {

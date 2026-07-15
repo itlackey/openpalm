@@ -120,6 +120,22 @@ describe('POST /api/host/addons', () => {
     expect(res.status).toBe(404);
   });
 
+  test('returns structured 409 without enabling an addon while an update holds the install lock', async () => {
+    const state = getState();
+    const lockPath = join(state.dataDir, '.install.lock');
+    mkdirSync(state.dataDir, { recursive: true });
+    writeFileSync(lockPath, `1\n${Date.now()}\n`);
+
+    try {
+      const res = await POST(makePostEvent({ name: 'discord', enabled: true }));
+      expect(res.status).toBe(409);
+      expect(await res.json()).toMatchObject({ error: 'install_in_progress' });
+      expect(readEnabledAddonsEnv(state.homeDir)).not.toContain('discord');
+    } finally {
+      rmSync(lockPath, { force: true });
+    }
+  });
+
   test('enables an addon', async () => {
     const state = getState();
     seedRegistryAddon(state.homeDir, 'discord');

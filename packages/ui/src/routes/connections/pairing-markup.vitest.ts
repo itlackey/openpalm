@@ -1,23 +1,24 @@
 /**
  * Source-pin tests for routes/connections/+page.svelte — pairing UX wiring
- * (#511 D3/D6/D8). Idiom: lib/api/admin-paths-hygiene.vitest.ts (source scan
+ * (#511 D3/D6). Idiom: lib/api/admin-paths-hygiene.vitest.ts (source scan
  * of .svelte files); packages/client/tests/connections-https-refusal.test.ts
  * is the same readFileSync + regex pattern in bun.
  *
  * RED reason (every test): the marker regex has nothing to match — the
- * pairing panel / install affordance are not wired into +page.svelte yet.
+ * pairing panel is not wired into +page.svelte yet.
  */
 import { describe, expect, test } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 const PAGE_PATH = fileURLToPath(new URL('./+page.svelte', import.meta.url));
+const HOST_PAGE_PATH = fileURLToPath(new URL('../host/+page.svelte', import.meta.url));
 
 function pageSource(): string {
   return readFileSync(PAGE_PATH, 'utf-8');
 }
 
-describe('connections +page.svelte — pairing panel wiring (#511)', () => {
+describe('connections +page.svelte — host UX and pairing wiring', () => {
   test('wires a Pair-a-device flow through the api helper', () => {
     const src = pageSource();
     expect(src).toMatch(/mintPairingCode\(/);
@@ -42,11 +43,22 @@ describe('connections +page.svelte — pairing panel wiring (#511)', () => {
     expect(src).toMatch(/pairingQrSvg\s*=\s*\$state<string \| null>/);
   });
 
-  test('renders an Install OpenPalm app affordance gated by the reachability probe', () => {
+  test('provides a visible route back to host admin with a chat fallback', () => {
     const src = pageSource();
-    expect(src).toMatch(/probeClientApp\(/);
-    expect(src).toMatch(/clientAppUrl/);
-    expect(src).toMatch(/Install OpenPalm app/);
+    expect(src).toMatch(/hasCapability\(\s*['"`]host:stack:read['"`]\s*\)/);
+    expect(src).toMatch(/runtimeContext\.routes\.host/);
+    expect(src).toMatch(/runtimeContext\.routes\.chat/);
+    expect(src).toMatch(/aria-label=\{exitLabel\}>← \{exitLabel\}/);
+    expect(src).toMatch(/'Back to Admin'/);
+    expect(src).toMatch(/'Back to Chat'/);
+  });
+
+  test('does not advertise installing the client app from host UI surfaces', () => {
+    const sources = [pageSource(), readFileSync(HOST_PAGE_PATH, 'utf-8')];
+    for (const src of sources) {
+      expect(src).not.toMatch(/Install OpenPalm app/);
+      expect(src).not.toMatch(/app-install-banner|class="install-app"/);
+    }
   });
 
   test('pairing panel copy names the ingress/CORS prerequisites', () => {

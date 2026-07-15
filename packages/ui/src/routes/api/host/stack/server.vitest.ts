@@ -20,7 +20,7 @@
  *    session, and stack.env stays untouched.
  */
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
-import { existsSync, mkdirSync, readFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { tmpdir } from 'node:os';
@@ -173,6 +173,23 @@ describe('GET /api/host/stack — host stack settings (plan Phase 4 step 2)', ()
     const { GET } = await loadRoute();
     const res = await GET(makeGetEvent(''));
     expect(res.status).toBe(401);
+  });
+
+  test('returns structured 409 without changing stack settings while an update holds the install lock', async () => {
+    process.env.OP_UI_HOST_MODE = 'host-ui';
+    const lockPath = join(homeDir, 'data', '.install.lock');
+    mkdirSync(join(homeDir, 'data'), { recursive: true });
+    writeFileSync(lockPath, `1\n${Date.now()}\n`);
+    const { PUT } = await loadRoute();
+
+    try {
+      const res = await PUT(makePutEvent({ projectName: 'blocked-name', lanExposureEnabled: true }));
+      expect(res.status).toBe(409);
+      expect(await res.json()).toMatchObject({ error: 'install_in_progress' });
+      expect(readStackEnvIfAny()).not.toContain('blocked-name');
+    } finally {
+      rmSync(lockPath, { force: true });
+    }
   });
 });
 

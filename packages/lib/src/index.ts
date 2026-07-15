@@ -306,14 +306,13 @@ export {
   applyUninstall,
   buildManagedServices,
   performUpgrade,
+  restoreSnapshotAndApplyStack,
 } from './control-plane/lifecycle.js';
 
 // ── Rollback ─────────────────────────────────────────────────────────────
 export {
   restoreSnapshot,
   hasSnapshot,
-  hasArmedSnapshot,
-  clearArmedSnapshot,
   snapshotTimestamp,
 } from "./control-plane/rollback.js";
 
@@ -324,7 +323,6 @@ export {
 
 // ── Lifecycle ───────────────────────────────────────────────────────────
 export {
-  DowngradeConfirmationRequired,
   buildComposeFileList,
   normalizeCaller,
 } from "./control-plane/lifecycle.js";
@@ -333,27 +331,24 @@ export {
 export {
   SERVICE_VERSION_KEYS,
   VERSION_DEFAULTS,
-  DOCKER_IMAGE_NAMES,
   isVersionKey,
   readVersions,
   writeVersions,
-  // Phase 5: pin-null semantics, channel preference, voice variant utilities
-  readPinnedVersions,
   readChannelPreference,
+  isChannelPreference,
   writeChannelPreference,
-  stripVoiceVariantSuffix,
-  normalizePinValue,
 } from "./control-plane/versions.js";
 export type { VersionKey, ChannelPreference } from "./control-plane/versions.js";
 
 // ── Docker ──────────────────────────────────────────────────────────────
-export type { DockerResult, ExistingProject, ContainerImageInfo, ComposePsRow, ApplyStackScope, ApplyStackResult } from "./control-plane/docker.js";
+export type { DockerResult, ExistingProject, ComposePsRow, ApplyStackScope, ApplyStackResult } from "./control-plane/docker.js";
 export {
   checkDocker,
   checkDockerCompose,
   detectExistingProject,
   resolveComposeProjectName,
   composePreflight,
+  composeConfigServices,
   buildComposePreflightError,
   composeUpTimeoutMs,
   composeWaitTimeoutSec,
@@ -369,8 +364,6 @@ export {
   composeStats,
   composeExec,
   getDockerEvents,
-  inspectContainerImage,
-  getRunningImages,
   applyStack,
 } from "./control-plane/docker.js";
 
@@ -625,6 +618,8 @@ export type {
 } from "./control-plane/ui-supervisor.js";
 export {
   DEFAULT_READY_TIMEOUT_MS,
+  consumePendingUiBackup,
+  recordPendingUiBackup,
   waitForReady,
   restoreUiBackup,
   UiSupervisor,

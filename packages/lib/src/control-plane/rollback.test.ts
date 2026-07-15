@@ -13,8 +13,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ControlPlaneState } from "./types.js";
 import {
-  clearArmedSnapshot,
-  hasArmedSnapshot,
   hasSnapshot,
   restoreSnapshot,
   snapshotCurrentState,
@@ -132,35 +130,5 @@ describe("rollback snapshot/restore (0.3 — state env + non-destructive restore
     // so the torn (half-written) snapshot correctly reads as absent instead of
     // looking like a complete, trustworthy snapshot at the old timestamp.
     expect(hasSnapshot()).toBe(false);
-  });
-});
-
-describe("armed-snapshot lifecycle helpers (0.2)", () => {
-  let home: string;
-  let state: ControlPlaneState;
-  let previousOpHome: string | undefined;
-
-  beforeEach(() => {
-    home = mkdtempSync(join(tmpdir(), "openpalm-armed-test-"));
-    previousOpHome = process.env.OP_HOME;
-    process.env.OP_HOME = home;
-    mkdirSync(join(home, "knowledge", "env"), { recursive: true });
-    writeFileSync(join(home, "knowledge", "env", "stack.env"), "OP_IMAGE_NAMESPACE=openpalm\n");
-    state = makeState(home);
-  });
-
-  afterEach(() => {
-    rmSync(home, { recursive: true, force: true });
-    if (previousOpHome === undefined) delete process.env.OP_HOME;
-    else process.env.OP_HOME = previousOpHome;
-  });
-
-  test("clearArmedSnapshot clears the armed marker written by an armed snapshot", () => {
-    snapshotCurrentState(state, { arm: true });
-    expect(hasArmedSnapshot()).toBe(true);
-
-    clearArmedSnapshot();
-
-    expect(hasArmedSnapshot()).toBe(false);
   });
 });

@@ -7,6 +7,7 @@ import {
   parseJsonBody,
   jsonBodyError
 } from "$lib/server/helpers.js";
+import { withAdminUpdateLock } from '$lib/server/admin-update-lock.js';
 import { getState } from "$lib/server/state.js";
 import { isAllowedService, buildComposeOptions, createLogger, reconcileHostOwnership, HostSwapBlockedError } from "@openpalm/lib";
 import { composeStart, checkDocker } from "@openpalm/lib";
@@ -33,9 +34,10 @@ export const POST: RequestHandler = async (event) => {
     return errorResponse(400, "invalid_service", "Service is not in allowlist", { service }, requestId);
   }
 
-  // Try real Docker — only update state based on actual result
-  const dockerCheck = await checkDocker();
-  if (dockerCheck.ok) {
+  return withAdminUpdateLock(state, requestId, async () => {
+    // Try real Docker — only update state based on actual result
+    const dockerCheck = await checkDocker();
+    if (dockerCheck.ok) {
     // Shared host-ownership reconcile (swap detection + ownership repair) before
     // touching containers — the same lib step the CLI runs. The UI has no
     // `--adopt-host` flag, so an un-adopted host swap surfaces as an actionable
@@ -54,19 +56,20 @@ export const POST: RequestHandler = async (event) => {
       }
       throw err;
     }
-    const result = await composeStart([service], buildComposeOptions(state));
-    if (result.ok) {
-      state.services[service] = "running";
+      const result = await composeStart([service], buildComposeOptions(state));
+      if (result.ok) {
+        state.services[service] = "running";
+      } else {
+        return errorResponse(500, "docker_error", `Failed to start service: ${result.stderr}`, { service }, requestId);
+      }
     } else {
-      return errorResponse(500, "docker_error", `Failed to start service: ${result.stderr}`, { service }, requestId);
+      state.services[service] = "running";
     }
-  } else {
-    state.services[service] = "running";
-  }
 
-  return jsonResponse(
-    200,
-    { ok: true, service, status: state.services[service] },
-    requestId
-  );
+    return jsonResponse(
+      200,
+      { ok: true, service, status: state.services[service] },
+      requestId
+    );
+  });
 };

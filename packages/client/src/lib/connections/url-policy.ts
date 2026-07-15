@@ -40,9 +40,22 @@ export function isLoopbackHost(hostname: string): boolean {
 export type ConnectionUrlVerdict =
   | { ok: true }
   | { ok: false; reason: 'invalid-url'; message: string }
+  | { ok: false; reason: 'userinfo-not-allowed'; message: string }
   | { ok: false; reason: 'insecure-remote'; message: string; guideUrl: string };
 
-type BrowserOrigin = { protocol: string; hostname: string };
+export type BrowserOrigin = { protocol: string; hostname: string };
+
+/** Remove legacy URL-embedded credentials before a URL reaches UI or storage. */
+export function redactUrlUserinfo(rawUrl: string): string {
+  try {
+    const url = new URL(rawUrl);
+    url.username = '';
+    url.password = '';
+    return url.toString().replace(/\/$/, url.pathname === '/' && !rawUrl.endsWith('/') ? '' : '/');
+  } catch {
+    return rawUrl;
+  }
+}
 
 /**
  * D1: refuse a plain-http non-loopback connection URL iff the app's own
@@ -65,6 +78,13 @@ export function validateConnectionUrl(
   }
   if (url.protocol !== 'http:' && url.protocol !== 'https:') {
     return { ok: false, reason: 'invalid-url', message: 'The URL must use http:// or https://.' };
+  }
+  if (url.username || url.password) {
+    return {
+      ok: false,
+      reason: 'userinfo-not-allowed',
+      message: 'Do not put credentials in the URL. Use the Authentication fields instead.',
+    };
   }
   if (url.protocol === 'https:') return { ok: true };
   if (isLoopbackHost(url.hostname)) return { ok: true };
@@ -99,7 +119,7 @@ export function validateConnectionUrl(
 export function normalizeGuardianUrl(rawUrl: string): string {
   let url: URL;
   try {
-    url = new URL(rawUrl);
+    url = new URL(redactUrlUserinfo(rawUrl));
   } catch {
     return rawUrl;
   }

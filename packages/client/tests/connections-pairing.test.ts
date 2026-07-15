@@ -84,6 +84,18 @@ describe('parsePairingCode (#511 D3/D4)', () => {
     expect(parsePairingCode(localEncode(missingSecret)).ok).toBe(false);
   });
 
+  test('rejects a pairing URL carrying userinfo before it can prefill the form', async () => {
+    const { parsePairingCode } = await loadPairingModule();
+    const result = parsePairingCode(
+      localEncode({ ...PAYLOAD, url: 'https://url-user:url-password@gw.example/oc' })
+    );
+    expect(result.ok).toBe(false);
+    if (result.ok) throw new Error('expected refusal');
+    expect(result.error).toMatch(/Authentication fields/);
+    expect(JSON.stringify(result)).not.toContain('url-user');
+    expect(JSON.stringify(result)).not.toContain('url-password');
+  });
+
   test('round-trips a code minted by @openpalm/lib', async () => {
     const { parsePairingCode } = await loadPairingModule();
     // Tests-only cross-import — packages/client never imports @openpalm/lib

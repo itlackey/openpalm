@@ -131,6 +131,27 @@ describe('loadRuntimeConfig (P5b item 2)', () => {
 
     expect(loaded?.connections[0]?.url).toBe('http://127.0.0.1:3800');
   });
+
+  test('redacts legacy userinfo from runtime connection and host-link URLs', async () => {
+    const { loadRuntimeConfig } = await loadConnectionsModule();
+    const config: RuntimeConfig = {
+      connections: [
+        seededEntry({ url: 'http://legacy-user:legacy-password@127.0.0.1:3800' }),
+      ],
+      hostUrl: 'http://host-user:host-password@127.0.0.1:3880/host',
+    };
+    const { fetch } = recordingFetch(() => jsonResponse(config));
+
+    const loaded = await loadRuntimeConfig(fetch);
+    const serialized = JSON.stringify(loaded);
+
+    expect(loaded?.connections[0]?.url).toBe('http://127.0.0.1:3800');
+    expect(loaded?.hostUrl).toBe('http://127.0.0.1:3880/host');
+    expect(serialized).not.toContain('legacy-user');
+    expect(serialized).not.toContain('legacy-password');
+    expect(serialized).not.toContain('host-user');
+    expect(serialized).not.toContain('host-password');
+  });
 });
 
 describe('seedFromRuntimeConfig (P5b item 2 — locked default)', () => {

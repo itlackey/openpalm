@@ -8,7 +8,6 @@ import {
   buildComposePreflightError,
   checkDocker,
   checkDockerCompose,
-  inspectContainerImage,
 } from "./docker.js";
 import type { ControlPlaneState } from "./types.js";
 
@@ -126,7 +125,7 @@ describe("buildComposePreflightError preserves the reconcileCore message content
 });
 
 // ── run()-routing coverage for the docker probes ────────────────────────────
-// checkDocker / checkDockerCompose / inspectContainerImage were rerouted through
+// checkDocker / checkDockerCompose were rerouted through
 // the shared run() execFile wrapper. Exercise each end-to-end against a fake
 // `docker` binary injected onto PATH so the ok/stdout/stderr/code semantics are
 // locked without a real daemon.
@@ -134,7 +133,7 @@ describe("buildComposePreflightError preserves the reconcileCore message content
 describe("run()-routed docker probes (fake docker on PATH)", () => {
   let binDir: string;
   const savedPath = process.env.PATH;
-  const fakeEnvKeys = ["FAKE_INFO_STDOUT", "FAKE_INFO_EXIT", "FAKE_INSPECT_NOTFOUND"] as const;
+  const fakeEnvKeys = ["FAKE_INFO_STDOUT", "FAKE_INFO_EXIT"] as const;
   const savedFakeEnv: Record<string, string | undefined> = {};
 
   beforeEach(() => {
@@ -148,14 +147,6 @@ describe("run()-routed docker probes (fake docker on PATH)", () => {
       "    ;;",
       "  compose)",
       "    printf 'Docker Compose version v2.20.0\\n'",
-      "    exit 0",
-      "    ;;",
-      "  inspect)",
-      '    if [ "$FAKE_INSPECT_NOTFOUND" = "1" ]; then',
-      "      printf 'Error: No such object' 1>&2",
-      "      exit 1",
-      "    fi",
-      "    printf 'running\\tsha256:abc\\topenpalm/assistant:latest\\thealthy'",
       "    exit 0",
       "    ;;",
       "esac",
@@ -209,22 +200,5 @@ describe("run()-routed docker probes (fake docker on PATH)", () => {
     const r = await checkDockerCompose();
     expect(r.ok).toBe(true);
     expect(r.stdout).toContain("Docker Compose version");
-  });
-
-  it("inspectContainerImage: parses tab-separated inspect output", async () => {
-    delete process.env.FAKE_INSPECT_NOTFOUND;
-    const info = await inspectContainerImage("some-container");
-    expect(info).toEqual({
-      digest: "sha256:abc",
-      tag: "openpalm/assistant:latest",
-      healthStatus: "healthy",
-      state: "running",
-    });
-  });
-
-  it("inspectContainerImage: not_installed when inspect fails (no such object)", async () => {
-    process.env.FAKE_INSPECT_NOTFOUND = "1";
-    const info = await inspectContainerImage("ghost-container");
-    expect(info).toEqual({ digest: "", tag: "", healthStatus: "", state: "not_installed" });
   });
 });

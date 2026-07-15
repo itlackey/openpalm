@@ -124,4 +124,17 @@ describe('PATCH /api/connections/[id] — connection kind (#486 D2)', () => {
     const body = (await res.json()) as { error?: string };
     expect(body.error).toBe('invalid_connection');
   });
+
+  test('rejects URL userinfo without echoing either credential', async () => {
+    const { PATCH } = await loadRoute();
+    const res = await PATCH(
+      makePatchEvent(EXISTING_ID, {
+        url: 'https://patch-user:patch-password@remote.example',
+      })
+    );
+    const raw = await res.text();
+    expect(res.status).toBe(400);
+    expect(raw).not.toContain('patch-user');
+    expect(raw).not.toContain('patch-password');
+  });
 });

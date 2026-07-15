@@ -1,62 +1,19 @@
 /**
- * Unit tests for versions.ts — Phase 5 pin-null semantics, channel preference,
- * and voice variant suffix utilities (constitution §4.2, §5).
+ * Unit tests for configured image versions and channel preference.
  */
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import {
-  stripVoiceVariantSuffix,
-  normalizePinValue,
-  readPinnedVersions,
   readChannelPreference,
   writeChannelPreference,
   writeVersions,
   readVersions,
+  ensureVersionDefaults,
 } from "./versions.js";
 import type { ControlPlaneState } from "./types.js";
-
-// ── stripVoiceVariantSuffix ──────────────────────────────────────────────────
-
-describe("stripVoiceVariantSuffix", () => {
-  it("strips -cpu suffix", () => {
-    expect(stripVoiceVariantSuffix("0.12.0-cpu")).toBe("0.12.0");
-  });
-  it("strips -cu121 suffix", () => {
-    expect(stripVoiceVariantSuffix("0.12.0-cu121")).toBe("0.12.0");
-  });
-  it("strips -rocm6 suffix", () => {
-    expect(stripVoiceVariantSuffix("0.12.0-rocm6")).toBe("0.12.0");
-  });
-  it("is a no-op when no known suffix", () => {
-    expect(stripVoiceVariantSuffix("0.12.0")).toBe("0.12.0");
-    expect(stripVoiceVariantSuffix("latest")).toBe("latest");
-    expect(stripVoiceVariantSuffix("0.12.0-rc.1")).toBe("0.12.0-rc.1");
-  });
-  it("also strips from a full image tag", () => {
-    expect(stripVoiceVariantSuffix("openpalm/voice:0.12.0-cpu")).toBe("openpalm/voice:0.12.0");
-  });
-  it("strips moving-tag variant (latest-cpu)", () => {
-    expect(stripVoiceVariantSuffix("latest-cpu")).toBe("latest");
-  });
-});
-
-// ── normalizePinValue ────────────────────────────────────────────────────────
-
-describe("normalizePinValue", () => {
-  it("strips a legacy leading v", () => {
-    expect(normalizePinValue("v0.12.0")).toBe("0.12.0");
-    expect(normalizePinValue("v0.11.0")).toBe("0.11.0");
-  });
-  it("is a no-op for already-bare versions", () => {
-    expect(normalizePinValue("0.12.0")).toBe("0.12.0");
-    expect(normalizePinValue("latest")).toBe("latest");
-  });
-  it("trims whitespace", () => {
-    expect(normalizePinValue("  0.12.0  ")).toBe("0.12.0");
-  });
-});
+import { distTagForVersion, PLATFORM_VERSION } from "./versioning.js";
 
 // ── Harness ──────────────────────────────────────────────────────────────────
 
@@ -81,96 +38,57 @@ function makeState(): { state: ControlPlaneState; cleanup: () => void } {
   };
 }
 
-// ── readPinnedVersions ───────────────────────────────────────────────────────
-
-describe("readPinnedVersions", () => {
+describe("version configuration", () => {
   let home: ReturnType<typeof makeState>;
   beforeEach(() => { home = makeState(); });
   afterEach(() => { home.cleanup(); });
 
-  it("returns null for every key when no state file exists (track latest)", () => {
-    const pinned = readPinnedVersions(home.state);
-    for (const v of Object.values(pinned)) expect(v).toBeNull();
-  });
-
-  it("returns null when the value is the moving tag 'latest'", () => {
-    writeFileSync(
-      join(home.state.homeDir, "state", "stack.state.env"),
-      "OP_ASSISTANT_VERSION=latest\n"
-    );
-    const pinned = readPinnedVersions(home.state);
-    expect(pinned.OP_ASSISTANT_VERSION).toBeNull();
-  });
-
-  it("returns null when the value is the moving tag 'next'", () => {
-    writeFileSync(
-      join(home.state.homeDir, "state", "stack.state.env"),
-      "OP_ASSISTANT_VERSION=next\n"
-    );
-    const pinned = readPinnedVersions(home.state);
-    expect(pinned.OP_ASSISTANT_VERSION).toBeNull();
-  });
-
-  it("returns the normalized version when explicitly pinned", () => {
-    writeFileSync(
-      join(home.state.homeDir, "state", "stack.state.env"),
-      "OP_ASSISTANT_VERSION=0.12.0\n"
-    );
-    const pinned = readPinnedVersions(home.state);
-    expect(pinned.OP_ASSISTANT_VERSION).toBe("0.12.0");
-  });
-
-  it("strips legacy v-prefix from a pinned value", () => {
-    writeFileSync(
-      join(home.state.homeDir, "state", "stack.state.env"),
-      "OP_ASSISTANT_VERSION=v0.11.0\n"
-    );
-    const pinned = readPinnedVersions(home.state);
-    expect(pinned.OP_ASSISTANT_VERSION).toBe("0.11.0");
-  });
-
-  it("strips voice variant suffix from OP_VOICE_VERSION on read (tolerant read §4.2)", () => {
-    writeFileSync(
-      join(home.state.homeDir, "state", "stack.state.env"),
-      "OP_VOICE_VERSION=0.12.0-cpu\n"
-    );
-    const pinned = readPinnedVersions(home.state);
-    // Legacy value with variant suffix — normalized to plain version
-    expect(pinned.OP_VOICE_VERSION).toBe("0.12.0");
-  });
-
-  it("a legacy stack.env value is NOT a pin — it is the applied/current version, so pinned is null (the freeze-bug fix)", () => {
-    // The old updater auto-wrote OP_*_VERSION into the legacy stack.env as the
-    // CURRENT version. Reading it as a pin froze every existing install: the UI
-    // showed it pinned and "update" re-applied that version forever. A deliberate
-    // pin lives ONLY in state/; a legacy-only value means "tracking" (pinned null),
-    // and update is free to advance it to the channel-latest.
-    writeFileSync(
-      join(home.state.homeDir, "knowledge", "env", "stack.env"),
-      "OP_GUARDIAN_VERSION=0.12.33\n"
-    );
-    const pinned = readPinnedVersions(home.state);
-    expect(pinned.OP_GUARDIAN_VERSION).toBe(null);
+  it("does not reinterpret a legacy applied version as a pin", () => {
+    writeFileSync(join(home.state.homeDir, "knowledge", "env", "stack.env"), "OP_GUARDIAN_VERSION=0.12.33\n");
+    expect(readVersions(home.state).OP_GUARDIAN_VERSION).toBe("latest");
   });
 
   it("state file wins over legacy when both present", () => {
-    writeFileSync(
-      join(home.state.homeDir, "knowledge", "env", "stack.env"),
-      "OP_ASSISTANT_VERSION=0.11.0\n"
-    );
-    writeFileSync(
-      join(home.state.homeDir, "state", "stack.state.env"),
-      "OP_ASSISTANT_VERSION=0.12.0\n"
-    );
-    const pinned = readPinnedVersions(home.state);
-    expect(pinned.OP_ASSISTANT_VERSION).toBe("0.12.0");
+    writeFileSync(join(home.state.homeDir, "knowledge", "env", "stack.env"), "OP_ASSISTANT_VERSION=0.11.0\n");
+    writeFileSync(join(home.state.homeDir, "state", "stack.state.env"), "OP_ASSISTANT_VERSION=0.12.0\n");
+    expect(readVersions(home.state).OP_ASSISTANT_VERSION).toBe("0.12.0");
   });
 
-  it("acceptance: pin v0.11.0 → readPinnedVersions returns 0.11.0 (strips v)", () => {
-    // Phase 5 acceptance criterion: pin v0.11.0 is normalized to 0.11.0
-    writeVersions(home.state, { OP_ASSISTANT_VERSION: "v0.11.0" });
-    const pinned = readPinnedVersions(home.state);
-    expect(pinned.OP_ASSISTANT_VERSION).toBe("0.11.0");
+  it("a moving state tag wins over the legacy configured version", () => {
+    writeFileSync(join(home.state.homeDir, "knowledge", "env", "stack.env"), "OP_ASSISTANT_VERSION=0.13.0-beta.6\n");
+    writeFileSync(join(home.state.homeDir, "state", "stack.state.env"), "OP_ASSISTANT_VERSION=next\n");
+    expect(readVersions(home.state).OP_ASSISTANT_VERSION).toBe("next");
+  });
+
+  it("writes latest and next honestly to the state file", () => {
+    writeFileSync(
+      join(home.state.homeDir, "state", "stack.state.env"),
+      "OP_UI_CHANNEL=next\nOP_ASSISTANT_VERSION=0.12.0\n",
+    );
+    writeVersions(home.state, {
+      OP_ASSISTANT_VERSION: "latest",
+      OP_GUARDIAN_VERSION: "next",
+    });
+    const content = readFileSync(join(home.state.homeDir, "state", "stack.state.env"), "utf-8");
+    expect(content).toContain("OP_UI_CHANNEL=next");
+    expect(content).toContain("OP_ASSISTANT_VERSION=latest");
+    expect(content).toContain("OP_GUARDIAN_VERSION=next");
+  });
+
+  it("falls back to the documented defaults", () => {
+    expect(readVersions(home.state).OP_ASSISTANT_VERSION).toBe("latest");
+  });
+
+  it("writes missing defaults without changing an existing pin", () => {
+    writeFileSync(join(home.state.homeDir, "state", "stack.state.env"), "OP_ASSISTANT_VERSION=0.12.0\n");
+
+    ensureVersionDefaults(home.state);
+
+    const content = readFileSync(join(home.state.homeDir, "state", "stack.state.env"), "utf-8");
+    expect(content).toContain("OP_ASSISTANT_VERSION=0.12.0");
+    expect(content).toContain("OP_GUARDIAN_VERSION=latest");
+    expect(content).toContain("OP_PORTAL_VERSION=latest");
+    expect(content).toContain("OP_VOICE_VERSION=latest");
   });
 });
 
@@ -181,8 +99,8 @@ describe("readChannelPreference", () => {
   beforeEach(() => { home = makeState(); });
   afterEach(() => { home.cleanup(); });
 
-  it("defaults to 'latest' when no state file", () => {
-    expect(readChannelPreference(home.state)).toBe("latest");
+  it("defaults to the running platform release channel when unset", () => {
+    expect(readChannelPreference(home.state)).toBe(distTagForVersion(PLATFORM_VERSION));
   });
 
   it("reads 'next' from state file", () => {
@@ -201,12 +119,12 @@ describe("readChannelPreference", () => {
     expect(readChannelPreference(home.state)).toBe("latest");
   });
 
-  it("falls back to 'latest' for unrecognized values", () => {
+  it("falls back to the platform channel for unrecognized values", () => {
     writeFileSync(
       join(home.state.homeDir, "state", "stack.state.env"),
       "OP_UI_CHANNEL=bogus\n"
     );
-    expect(readChannelPreference(home.state)).toBe("latest");
+    expect(readChannelPreference(home.state)).toBe(distTagForVersion(PLATFORM_VERSION));
   });
 
   it("falls back to legacy stack.env (dual-read §1a)", () => {

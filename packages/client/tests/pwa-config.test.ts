@@ -86,6 +86,7 @@ describe('PWA source config', () => {
     expect(config.kit?.csp?.directives?.['style-src']).toEqual(['self', 'unsafe-inline']);
     expect(config.kit?.csp?.directives?.['font-src']).toEqual(['self']);
     expect(config.kit?.csp?.directives?.['connect-src']).toEqual(['self', 'http:', 'https:']);
+    expect(config.kit?.csp?.directives?.['frame-src']).toEqual(['self', 'http:', 'https:']);
     expect(config.kit?.csp?.directives?.['object-src']).toEqual(['none']);
     expect(config.kit?.csp?.directives?.['base-uri']).toEqual(['none']);
   });

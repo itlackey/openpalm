@@ -51,12 +51,12 @@ describe('VoiceStatusStrip — transcribing', () => {
 });
 
 describe('VoiceStatusStrip — conversation mode', () => {
-	test('shows listening… with an End button while the conversation is armed', async () => {
+	test('shows listening status without duplicating the footer conversation control', async () => {
 		voiceState.conversationActive = true;
 		voiceState.status = 'recording';
 		render(VoiceStatusStrip);
 		await expect.element(page.getByText('listening…', { exact: true })).toBeVisible();
-		await expect.element(page.getByRole('button', { name: 'End conversation mode' })).toBeVisible();
+		await expect.element(page.getByRole('button', { name: 'End conversation mode' })).not.toBeInTheDocument();
 	});
 
 	test('shows speaking… while TTS is playing', async () => {
@@ -81,14 +81,6 @@ describe('VoiceStatusStrip — conversation mode', () => {
 		await expect.element(page.getByText('so about that', { exact: true })).toBeVisible();
 	});
 
-	test('clicking End exits conversation mode', async () => {
-		voiceState.conversationActive = true;
-		voiceState.status = 'recording';
-		render(VoiceStatusStrip);
-		await page.getByRole('button', { name: 'End conversation mode' }).click();
-		expect(voiceState.conversationActive).toBe(false);
-		await expect.element(page.getByText('listening…', { exact: true })).not.toBeInTheDocument();
-	});
 });
 
 describe('VoiceStatusStrip — autoplay recovery', () => {
@@ -115,7 +107,6 @@ describe('VoiceStatusStrip — autoplay recovery', () => {
 		voiceState.autoplayBlocked = true;
 		render(VoiceStatusStrip);
 		await expect.element(page.getByText('listening…', { exact: true })).toBeVisible();
-		await expect.element(page.getByRole('button', { name: 'End conversation mode' })).toBeVisible();
 		await expect.element(page.getByRole('button', { name: 'Resume paused audio' })).toBeVisible();
 	});
 

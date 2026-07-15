@@ -1,6 +1,11 @@
-import { describe, test, expect } from "bun:test";
+import { afterEach, describe, test, expect } from "bun:test";
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
+  consumePendingUiBackup,
   DEFAULT_READY_TIMEOUT_MS,
+  recordPendingUiBackup,
   waitForReady,
   restoreUiBackup,
   UiSupervisor,
@@ -8,6 +13,26 @@ import {
   type UiChildStrategy,
   type UiSupervisorCallbacks,
 } from "./ui-supervisor.js";
+
+const tempDirs: string[] = [];
+
+afterEach(() => {
+  for (const dir of tempDirs.splice(0)) rmSync(dir, { recursive: true, force: true });
+});
+
+describe("UI backup handoff", () => {
+  test("records and consumes an on-demand update backup exactly once", () => {
+    const dataDir = mkdtempSync(join(tmpdir(), "openpalm-ui-backup-handoff-"));
+    tempDirs.push(dataDir);
+    const backupDir = join(dataDir, "backups", "ui-123");
+
+    recordPendingUiBackup(dataDir, backupDir);
+
+    expect(existsSync(join(dataDir, ".ui-update-backup"))).toBe(true);
+    expect(consumePendingUiBackup(dataDir)).toBe(backupDir);
+    expect(consumePendingUiBackup(dataDir)).toBeNull();
+  });
+});
 
 // ── waitForReady ─────────────────────────────────────────────────────────────
 // Characterization: locks in the /health poll contract shared by the CLI and
@@ -402,6 +427,8 @@ describe("UiSupervisor.restart", () => {
 
   test("a thrown strategy error routes to onRestartError and resets the guard", async () => {
     const errs: unknown[] = [];
+    let restores = 0;
+    let restartFailures = 0;
     const { strategy, events } = fakeStrategy();
     const boom = new Error("spawn blew up");
     let readyCall = 0;
@@ -419,6 +446,8 @@ describe("UiSupervisor.restart", () => {
       callbacks: {
         waitForReady: () => Promise.resolve(true),
         onStartFailure: () => {},
+        restoreBackup: () => { restores += 1; },
+        onRestartFailure: () => { restartFailures += 1; },
         onRestartError: (e) => errs.push(e),
         log: () => {},
       },
@@ -426,6 +455,8 @@ describe("UiSupervisor.restart", () => {
     await sup.start();
     expect(await sup.restart()).toBe(false);
     expect(errs).toEqual([boom]);
+    expect(restores).toBe(1);
+    expect(restartFailures).toBe(1);
     // Guard is released in `finally` so a later restart can proceed.
     expect(sup.isRestarting).toBe(false);
   });

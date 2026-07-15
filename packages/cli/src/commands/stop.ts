@@ -2,6 +2,7 @@ import { defineCommand } from 'citty';
 import { ensureValidState } from '../lib/cli-state.ts';
 import { runComposeWithPreflight } from '../lib/cli-compose.ts';
 import { defineAction } from '../lib/action.ts';
+import { acquireInstallLock, releaseInstallLock } from '@openpalm/lib';
 
 export default defineCommand({
   meta: {
@@ -22,14 +23,19 @@ export default defineCommand({
 });
 
 export async function runStopAction(services: string[]): Promise<void> {
+  const state = ensureValidState();
+  const lock = acquireInstallLock(state.dataDir);
+  if (!lock) throw new Error('install_in_progress: Another lifecycle operation is already running.');
+  try {
   if (services.length === 0) {
-    const state = ensureValidState();
     await runComposeWithPreflight(state, ['down']);
     return;
   }
 
-  const state = ensureValidState();
   for (const service of services) {
     await runComposeWithPreflight(state, ['stop', service]);
+  }
+  } finally {
+    releaseInstallLock(lock);
   }
 }

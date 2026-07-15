@@ -18,9 +18,9 @@ describe("isProjectOurs (ours-vs-foreign decision)", () => {
     expect(isProjectOurs("/home/other/.openpalm", "/home/me/.openpalm")).toBe(false);
   });
 
-  it("treats an empty/unknown working_dir as ours (reconcile, don't refuse)", () => {
-    expect(isProjectOurs("", "/home/me/.openpalm")).toBe(true);
-    expect(isProjectOurs("   ", "/home/me/.openpalm")).toBe(true);
+  it("does not authorize an empty or unknown working_dir", () => {
+    expect(isProjectOurs("", "/home/me/.openpalm")).toBe(false);
+    expect(isProjectOurs("   ", "/home/me/.openpalm")).toBe(false);
   });
 
   it("ignores surrounding whitespace on the label", () => {

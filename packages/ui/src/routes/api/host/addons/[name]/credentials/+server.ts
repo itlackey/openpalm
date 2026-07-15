@@ -13,6 +13,7 @@
  */
 import type { RequestHandler } from "./$types";
 import { getState } from "$lib/server/state.js";
+import { withAdminUpdateLock } from '$lib/server/admin-update-lock.js';
 import {
   jsonResponse,
   errorResponse,
@@ -190,19 +191,21 @@ export const POST: RequestHandler = async (event) => {
     return errorResponse(400, "bad_request", "no schema-declared keys supplied", {}, requestId);
   }
 
-  try {
-    if (Object.keys(sensitiveUpdates).length > 0) {
-      writeStackSecretEnv(state, sensitiveUpdates);
+  return withAdminUpdateLock(state, requestId, () => {
+    try {
+      if (Object.keys(sensitiveUpdates).length > 0) {
+        writeStackSecretEnv(state, sensitiveUpdates);
+      }
+      if (Object.keys(configUpdates).length > 0) {
+        patchSecretsEnvFile(state.homeDir, configUpdates);
+      }
+    } catch (err) {
+      logger.error("write failed", { name, error: String(err), requestId });
+      return errorResponse(500, "internal_error", err instanceof Error ? err.message : "write failed", {}, requestId);
     }
-    if (Object.keys(configUpdates).length > 0) {
-      patchSecretsEnvFile(state.homeDir, configUpdates);
-    }
-  } catch (err) {
-    logger.error("write failed", { name, error: String(err), requestId });
-    return errorResponse(500, "internal_error", err instanceof Error ? err.message : "write failed", {}, requestId);
-  }
 
-  const updated = [...Object.keys(sensitiveUpdates), ...Object.keys(configUpdates)].sort();
+    const updated = [...Object.keys(sensitiveUpdates), ...Object.keys(configUpdates)].sort();
 
-  return jsonResponse(200, { ok: true, name, updated }, requestId);
+    return jsonResponse(200, { ok: true, name, updated }, requestId);
+  });
 };

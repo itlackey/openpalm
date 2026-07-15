@@ -11,6 +11,7 @@
  * UTF-8-safe approach as the transport's `base64Utf8` encoder
  * (transport/index.ts:222-227), inverted for decoding.
  */
+import { validateConnectionUrl } from './url-policy.js';
 
 const PAIRING_CODE_PREFIX = 'openpalm-pair:';
 
@@ -74,6 +75,10 @@ export function parsePairingCode(code: string): ParsePairingResult {
   }
   if (typeof value.url !== 'string' || !value.url) {
     return { ok: false, error: 'Pairing code is missing a url.' };
+  }
+  const urlVerdict = validateConnectionUrl(value.url, null);
+  if (!urlVerdict.ok) {
+    return { ok: false, error: urlVerdict.message };
   }
   if (typeof value.username !== 'string' || !value.username) {
     return { ok: false, error: 'Pairing code is missing a username.' };

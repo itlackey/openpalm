@@ -15,7 +15,7 @@
  * beside the static build, P5d). Absent file = no default connection.
  */
 
-import { isLoopbackHost } from './url-policy.js';
+import { isLoopbackHost, redactUrlUserinfo } from './url-policy.js';
 
 export type ConnectionKind = 'local-opencode' | 'remote-opencode' | 'openpalm-client-api';
 
@@ -55,22 +55,42 @@ export type RuntimeConfig = {
 
 function rewriteLoopbackUrlForBrowserHost(rawUrl: string): string {
   const locationLike = globalThis.location;
-  if (!locationLike || isLoopbackHost(locationLike.hostname)) return rawUrl;
+  const redactedUrl = redactUrlUserinfo(rawUrl);
+  if (!locationLike || isLoopbackHost(locationLike.hostname)) return redactedUrl;
   try {
-    const url = new URL(rawUrl);
-    if (!isLoopbackHost(url.hostname)) return rawUrl;
+    const url = new URL(redactedUrl);
+    if (!isLoopbackHost(url.hostname)) return redactedUrl;
     url.hostname = locationLike.hostname;
     return url.toString();
   } catch {
-    return rawUrl;
+    return redactedUrl;
+  }
+}
+
+function redactEntryUrl(entry: ConnectionEntry): ConnectionEntry {
+  const url = redactUrlUserinfo(entry.url);
+  return url === entry.url ? entry : { ...entry, url };
+}
+
+function assertUrlHasNoUserinfo(rawUrl: string): void {
+  let url: URL;
+  try {
+    url = new URL(rawUrl);
+  } catch {
+    return;
+  }
+  if (url.username || url.password) {
+    throw new Error('Credentials must use the Authentication fields, not the connection URL.');
   }
 }
 
 function adaptRuntimeConfigForBrowser(config: RuntimeConfig): RuntimeConfig {
   return {
     connections: config.connections.map((entry) => ({
-      ...entry,
-      url: entry.locked ? rewriteLoopbackUrlForBrowserHost(entry.url) : entry.url,
+      ...redactEntryUrl(entry),
+      url: entry.locked
+        ? rewriteLoopbackUrlForBrowserHost(entry.url)
+        : redactUrlUserinfo(entry.url),
     })),
     // hostUrl is Electron/CLI-written and always a loopback URL local to the
     // machine running the host process — same rewrite as locked connection
@@ -156,7 +176,7 @@ export function createMemoryStorage(): ConnectionStorage {
       return entry ? clone(entry) : null;
     },
     async put(entry) {
-      entries.set(entry.id, clone(entry));
+      entries.set(entry.id, clone(redactEntryUrl(entry)));
     },
     async delete(id) {
       entries.delete(id);
@@ -277,7 +297,7 @@ export function createIndexedDbStorage(): ConnectionStorage {
       return found ?? null;
     },
     async put(entry) {
-      await idbRequest((await store(STORE_CONNECTIONS, 'readwrite')).put(entry));
+      await idbRequest((await store(STORE_CONNECTIONS, 'readwrite')).put(redactEntryUrl(entry)));
     },
     async delete(id) {
       await idbRequest((await store(STORE_CONNECTIONS, 'readwrite')).delete(id));
@@ -310,30 +330,47 @@ export function createIndexedDbStorage(): ConnectionStorage {
 export function createConnectionStore(options: { storage: ConnectionStorage }): ConnectionStore {
   const { storage } = options;
 
+  async function readEntry(id: string): Promise<ConnectionEntry | null> {
+    const stored = await storage.get(id);
+    if (!stored) return null;
+    const entry = redactEntryUrl(stored);
+    if (entry.url !== stored.url) await storage.put(entry);
+    return entry;
+  }
+
   async function requireEntry(id: string): Promise<ConnectionEntry> {
-    const entry = await storage.get(id);
+    const entry = await readEntry(id);
     if (!entry) throw new Error(`Unknown connection: ${id}`);
     return entry;
   }
 
   const store: ConnectionStore = {
-    list() {
-      return storage.getAll();
+    async list() {
+      const stored = await storage.getAll();
+      const entries = stored.map(redactEntryUrl);
+      await Promise.all(
+        entries.map((entry, index) =>
+          entry.url === stored[index]?.url ? Promise.resolve() : storage.put(entry)
+        )
+      );
+      return entries;
     },
 
     get(id) {
-      return storage.get(id);
+      return readEntry(id);
     },
 
     async add(input) {
+      assertUrlHasNoUserinfo(input.url);
       const id = input.id ?? crypto.randomUUID();
-      if (await storage.get(id)) throw new Error(`Connection already exists: ${id}`);
+      if (await readEntry(id)) throw new Error(`Connection already exists: ${id}`);
       const entry: ConnectionEntry = { ...input, id };
       await storage.put(entry);
       return clone(entry);
     },
 
     async update(id, patch) {
+      if (patch.url !== undefined) assertUrlHasNoUserinfo(patch.url);
       const entry = await requireEntry(id);
       if (entry.locked) throw new Error(`Connection is locked (config-owned): ${id}`);
       const updated: ConnectionEntry = { ...entry, ...patch, id };
@@ -363,7 +400,7 @@ export function createConnectionStore(options: { storage: ConnectionStorage }): 
 
     async getActive() {
       const id = await storage.getMeta(ACTIVE_ID_KEY);
-      return id === null ? null : storage.get(id);
+      return id === null ? null : readEntry(id);
     },
 
     async setActive(id) {
@@ -383,18 +420,19 @@ export function createConnectionStore(options: { storage: ConnectionStorage }): 
         }
       }
       for (const entry of config.connections) {
-        const existing = await storage.get(entry.id);
+        const seededEntry = redactEntryUrl(entry);
+        const existing = await readEntry(entry.id);
         // Config wins for the entries it owns (locked), including on
         // re-seed; a same-id entry the user somehow owns is left alone.
         if (!existing) {
-          await storage.put(clone(entry));
+          await storage.put(clone(seededEntry));
         } else if (existing.locked) {
           // Config refreshes the fields it owns (url/label/…), but a user may
           // have attached credentials to this locked entry via setSecretRef
           // (E6); the config's locked entries always ship auth:{mode:'none'},
           // so a wholesale rewrite would silently drop those creds on every
           // reload. Preserve a user-supplied non-none auth across the reseed.
-          const seeded = clone(entry);
+          const seeded = clone(seededEntry);
           const preserveAuth = existing.auth && existing.auth.mode !== 'none';
           await storage.put(preserveAuth ? { ...seeded, auth: existing.auth } : seeded);
         }

@@ -13,7 +13,6 @@
   } from '$lib/api.js';
   import type { ConnectionKind } from '$lib/types.js';
   import { hasCapability, runtimeContext } from '$lib/runtime-context.svelte.js';
-  import { probeClientApp } from '$lib/client-app.js';
 
   // Capability-guarded surface (plan ui-runtime-modes-plan.md Phase 2, #486):
   // this page replaces /admin/endpoints and works in every mode that
@@ -57,27 +56,19 @@
   let pairingWarnings = $state<string[]>([]);
   let pairingCopied = $state(false);
 
-  // ── Install-app affordance state (#511 D8) ─────────────────────────────
-  let clientAppReachable = $state(false);
-
   const connections = $derived(connectionsService.endpoints);
   const active = $derived(connectionsService.active);
+  const hostRoute = $derived(
+    hasCapability('host:stack:read') ? runtimeContext.routes.host : undefined,
+  );
+  const exitRoute = $derived(hostRoute ?? runtimeContext.routes.chat ?? '/chat');
+  const exitLabel = $derived(hostRoute ? 'Back to Admin' : 'Back to Chat');
 
   onMount(() => {
     void connectionsService.load(true);
     // The /connections/new landing (plan §6.5, Phase 3) aliases here with
     // ?new=1 — open the add form so "no connections yet" starts at the form.
     if (page.url.searchParams.get('new') === '1') openAddForm();
-
-    // "Install OpenPalm app" renders only after a reachability probe
-    // succeeds (the E4 dead-link lesson from Electron's openLocalApp()) —
-    // never a dead link to a static app that isn't actually being served.
-    const clientAppUrl = runtimeContext.clientAppUrl;
-    if (clientAppUrl) {
-      void probeClientApp(clientAppUrl).then((reachable) => {
-        clientAppReachable = reachable;
-      });
-    }
   });
 
   function openPairingForm(): void {
@@ -242,6 +233,8 @@
 
 <main class="page">
     <header class="page-header">
+      <!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- destination comes from runtimeContext.routes, not a static route id -->
+      <a class="back-link" href={exitRoute} aria-label={exitLabel}>← {exitLabel}</a>
       <h1>Connections</h1>
       <p class="lede">
         Connect to local or remote OpenPalm assistants. The <strong>Default</strong> entry comes
@@ -507,22 +500,6 @@
         </div>
       </section>
     {/if}
-
-    {#if clientAppReachable && runtimeContext.clientAppUrl}
-      <section class="install-app" aria-label="Install OpenPalm app">
-        <a
-          class="btn btn-secondary"
-          href={runtimeContext.clientAppUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          Install OpenPalm app
-        </a>
-        <small>
-          Open the app at its stable localhost origin, then use your browser's Install control.
-        </small>
-      </section>
-    {/if}
   </main>
 
 <style>
@@ -536,6 +513,18 @@
   }
   .page-header h1 {
     margin: 0 0 var(--s-sp-2);
+  }
+  .back-link {
+    display: inline-block;
+    margin-bottom: var(--s-sp-3);
+    color: var(--s-ink-3);
+    font-family: var(--s-font-mono);
+    font-size: var(--s-type-deed);
+    text-decoration: none;
+  }
+  .back-link:hover {
+    color: var(--s-ink);
+    text-decoration: underline;
   }
   .lede {
     color: var(--s-ink-3);
@@ -580,15 +569,6 @@
     border-radius: 2px;
     font-family: var(--s-font-mono);
     font-size: var(--s-type-deed);
-  }
-
-  .install-app {
-    display: flex;
-    align-items: center;
-    gap: var(--s-sp-3);
-  }
-  .install-app small {
-    color: var(--s-ink-3);
   }
 
   .connections-list {

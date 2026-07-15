@@ -190,7 +190,7 @@ describe("scenario: a foreign project shares our compose project-name", () => {
     expect(isProjectOurs("/some/other/dir", "/home/u/.openpalm")).toBe(false);
     // Our own (or an unlabeled) project is treated as ours → safe to redeploy.
     expect(isProjectOurs("/home/u/.openpalm", "/home/u/.openpalm")).toBe(true);
-    expect(isProjectOurs("", "/home/u/.openpalm")).toBe(true);
+    expect(isProjectOurs("", "/home/u/.openpalm")).toBe(false);
   });
 });
 

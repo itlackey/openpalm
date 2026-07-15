@@ -1,5 +1,5 @@
 import { defineConfig } from '@playwright/test';
-import { mkdtempSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -21,6 +21,20 @@ const baseURL = STACK_TESTS
 // gracefully when docker/compose files are absent (see containers/list,
 // hooks.server.ts's launch-routing probe).
 const MOCKED_OP_HOME = STACK_TESTS ? undefined : mkdtempSync(join(tmpdir(), 'openpalm-pw-'));
+if (MOCKED_OP_HOME) {
+  mkdirSync(join(MOCKED_OP_HOME, 'state'), { recursive: true });
+  mkdirSync(join(MOCKED_OP_HOME, 'knowledge', 'env'), { recursive: true });
+  writeFileSync(join(MOCKED_OP_HOME, 'state', 'stack.state.env'), 'OP_SETUP_COMPLETE=true\n');
+  writeFileSync(
+    join(MOCKED_OP_HOME, 'knowledge', 'env', 'stack.env'),
+    [
+      'OP_STT_ENGINE=remote',
+      'OP_STT_BASE_URL=http://127.0.0.1:1',
+      'OP_TTS_ENGINE=browser',
+      '',
+    ].join('\n'),
+  );
+}
 const MOCKED_ENV = STACK_TESTS
   ? undefined
   : {

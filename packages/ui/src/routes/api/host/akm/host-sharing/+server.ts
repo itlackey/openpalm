@@ -22,6 +22,7 @@ import {
   requireAdmin,
   requireCapability,
 } from '$lib/server/helpers.js';
+import { withAdminUpdateLock } from '$lib/server/admin-update-lock.js';
 
 export const GET: RequestHandler = async (event) => {
   const requestId = getRequestId(event);
@@ -41,8 +42,10 @@ export const PUT: RequestHandler = async (event) => {
   if (authError) return authError;
 
   const state = getState();
-  const { profilesImported } = enableHostAkmSharing(state);
-  return jsonResponse(200, { ...getHostAkmSharingStatus(state), profilesImported }, requestId);
+  return withAdminUpdateLock(state, requestId, () => {
+    const { profilesImported } = enableHostAkmSharing(state);
+    return jsonResponse(200, { ...getHostAkmSharingStatus(state), profilesImported }, requestId);
+  });
 };
 
 export const DELETE: RequestHandler = async (event) => {
@@ -53,6 +56,8 @@ export const DELETE: RequestHandler = async (event) => {
   if (authError) return authError;
 
   const state = getState();
-  disableHostAkmSharing(state);
-  return jsonResponse(200, getHostAkmSharingStatus(state), requestId);
+  return withAdminUpdateLock(state, requestId, () => {
+    disableHostAkmSharing(state);
+    return jsonResponse(200, getHostAkmSharingStatus(state), requestId);
+  });
 };

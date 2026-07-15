@@ -1,203 +1,101 @@
-/**
- * Unit tests for applyStack driven through the DockerClient + FileStore injection
- * seam — NO real docker daemon, NO disk. A fake DockerClient records every
- * invocation and returns canned DockerResults; a fake FileStore answers the
- * compose-arg env-file existence probe.
- *
- * These pin the REAL orchestration rules of the §4.3 / §2.1 compose driver:
- *   (1) ONE `up -d --pull <mode> --wait --force-recreate` invocation — no
- *       separate `pull` step (plan 2.2)
- *   (2) a pull failure during `up` is FATAL and maps to the scope
- *   (3) health-gate — `up -d --wait` IS the gate; a health-gate failure means
- *       `up` itself exits non-zero, and ONE `compose ps --format json` call
- *       (not a per-container inspect poll) names the failed service
- *   (4) the injected FileStore (not real fs) gates --env-file
- *   (5) a successful `up` needs NO follow-up ps/inspect calls — `--wait`
- *       already confirmed health
- *
- * Before the seam existed, exercising applyStack required a fake `docker` binary
- * on PATH in a subprocess (see apply-stack-service.test.ts). This asserts the
- * same rules in-process against injected doubles.
- */
-import { describe, it, expect } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import {
   applyStack,
   type DockerClient,
   type DockerResult,
-  type DockerRunOptions,
-  type FileStore,
   type StackDeps,
 } from "./docker.js";
 
-function ok(stdout = ""): DockerResult {
-  return { ok: true, stdout, stderr: "", code: 0 };
-}
-function fail(stderr: string, code = 1): DockerResult {
-  return { ok: false, stdout: "", stderr, code };
+const OPTIONS = {
+  files: ["/fake/compose.yml"],
+  envFiles: ["/fake/stack.env"],
+  profiles: ["addon.discord"],
+};
+
+function result(ok: boolean, stderr = ""): DockerResult {
+  return { ok, stdout: "", stderr, code: ok ? 0 : 1 };
 }
 
 class FakeDocker implements DockerClient {
   readonly calls: string[][] = [];
-  constructor(private readonly handler: (args: string[]) => DockerResult) {}
-  async run(args: string[], _opts?: DockerRunOptions): Promise<DockerResult> {
+
+  constructor(private readonly respond: (args: string[]) => DockerResult = () => result(true)) {}
+
+  async run(args: string[]): Promise<DockerResult> {
     this.calls.push(args);
-    return this.handler(args);
-  }
-  indexOfArg(arg: string): number {
-    return this.calls.findIndex((c) => c.includes(arg));
-  }
-  isPsFormatJsonCall(args: string[]): boolean {
-    return args.includes("ps") && args.includes("--format") && args.includes("json");
+    return this.respond(args);
   }
 }
 
-/** Running but explicitly unhealthy. */
-const UNHEALTHY_PS_ROW = JSON.stringify({ Service: "assistant", State: "running", Health: "unhealthy" });
-
-function makeFiles(existsCalls: string[]): FileStore {
-  return {
-    exists: (p: string) => {
-      existsCalls.push(p);
-      return true;
-    },
-    read: () => "",
-    write: () => {},
-  };
+function deps(docker: FakeDocker): StackDeps {
+  return { docker, fileExists: () => true };
 }
 
-const OPTS = { files: ["/fake/compose.yml"], envFiles: ["/fake/stack.env"], profiles: [] as string[] };
+describe("applyStack", () => {
+  test("pulls the complete stack before one apply", async () => {
+    const docker = new FakeDocker();
 
-describe("applyStack — DockerClient + FileStore seam", () => {
-  it("(1) brings the service up with --pull missing + --wait in ONE call (no separate pull step) and reports started with NO follow-up ps", async () => {
-    const docker = new FakeDocker((args) => {
-      if (args.includes("up")) return ok();
-      return ok();
-    });
-    const existsCalls: string[] = [];
-    const deps: StackDeps = { docker, files: makeFiles(existsCalls) };
+    const applied = await applyStack({ kind: "all" }, OPTIONS, deps(docker), { pull: "always" });
 
-    const result = await applyStack({ kind: "service", service: "assistant" }, OPTS, deps);
-
-    expect(result.ok).toBe(true);
-    expect(result.started).toEqual(["assistant"]);
-    expect(result.failed).toEqual([]);
-
-    // ONE `up` invocation — NO separate `pull` command (plan 2.2).
-    const upCalls = docker.calls.filter((c) => c.includes("up"));
-    expect(upCalls).toHaveLength(1);
-    expect(docker.calls.some((c) => c.includes("pull") && !c.includes("up"))).toBe(false);
-
-    // Inline pull policy + scoped recreate flags (§4.3) + the single health gate (§2.1).
-    const upCall = upCalls[0];
-    expect(upCall).toContain("--pull");
-    expect(upCall).toContain("missing");
-    expect(upCall).toContain("--force-recreate");
-    expect(upCall).toContain("--no-deps");
-    expect(upCall).toContain("assistant");
-    expect(upCall).toContain("--wait");
-    expect(upCall).toContain("--wait-timeout");
-    expect(upCall).not.toContain("--remove-orphans");
-
-    // (5) `--wait` already confirmed health — no per-container ps/inspect call follows a SUCCESSFUL up.
-    expect(docker.calls.some((c) => docker.isPsFormatJsonCall(c))).toBe(false);
-    expect(docker.indexOfArg("inspect")).toBe(-1);
+    expect(applied.ok).toBe(true);
+    expect(docker.calls).toHaveLength(3);
+    expect(docker.calls[0]).toContain("pull");
+    expect(docker.calls[1]).toContain("up");
+    expect(docker.calls[1]).toContain("--remove-orphans");
+    expect(docker.calls[2]).toEqual(expect.arrayContaining(["config", "--services"]));
   });
 
-  it("(1b) honors pull: 'always' (the manual pull button) on the up call", async () => {
-    const docker = new FakeDocker((args) => (args.includes("up") ? ok() : ok()));
-    const deps: StackDeps = { docker, files: makeFiles([]) };
+  test("pulls and force-recreates only one service", async () => {
+    const docker = new FakeDocker();
 
-    await applyStack({ kind: "service", service: "assistant" }, OPTS, deps, { pull: "always" });
+    await applyStack(
+      { kind: "service", service: "assistant" },
+      OPTIONS,
+      deps(docker),
+      { pull: "always" },
+    );
 
-    const upCall = docker.calls[docker.indexOfArg("up")];
-    expect(upCall).toContain("--pull");
-    expect(upCall).toContain("always");
-    expect(upCall).not.toContain("missing");
+    expect(docker.calls).toHaveLength(2);
+    expect(docker.calls[0]).toEqual(expect.arrayContaining(["pull", "assistant"]));
+    expect(docker.calls[1]).toEqual(
+      expect.arrayContaining(["up", "--force-recreate", "--no-deps", "assistant"]),
+    );
+    expect(docker.calls[1]).not.toContain("--remove-orphans");
   });
 
-  it("(4) gates --env-file through the injected FileStore, not real fs", async () => {
-    const docker = new FakeDocker((args) => {
-      if (args.includes("up")) return ok();
-      return ok();
-    });
-    const existsCalls: string[] = [];
-    const deps: StackDeps = { docker, files: makeFiles(existsCalls) };
+  test("does not mutate containers when pull fails", async () => {
+    const docker = new FakeDocker((args) =>
+      args.includes("pull") ? result(false, "manifest unknown: openpalm/assistant:bad") : result(true),
+    );
 
-    await applyStack({ kind: "service", service: "assistant" }, OPTS, deps);
+    const applied = await applyStack(
+      { kind: "service", service: "assistant" },
+      OPTIONS,
+      deps(docker),
+      { pull: "always" },
+    );
 
-    expect(existsCalls).toContain("/fake/stack.env");
-    const upCall = docker.calls[docker.indexOfArg("up")];
-    expect(upCall).toContain("--env-file");
-    expect(upCall).toContain("/fake/stack.env");
+    expect(applied.ok).toBe(false);
+    expect(applied.pullFailed).toBe(true);
+    expect(applied.error).toContain("manifest");
+    expect(docker.calls).toHaveLength(1);
   });
 
-  it("(2) a pull failure during up is FATAL and maps to the scope", async () => {
-    const docker = new FakeDocker((args) => {
-      if (args.includes("up")) return fail("pull access denied");
-      return ok();
-    });
-    const deps: StackDeps = { docker, files: makeFiles([]) };
+  test("surfaces an apply failure after a successful pull", async () => {
+    const docker = new FakeDocker((args) =>
+      args.includes("up") ? result(false, "container assistant is unhealthy") : result(true),
+    );
 
-    const result = await applyStack({ kind: "service", service: "guardian" }, OPTS, deps);
+    const applied = await applyStack(
+      { kind: "service", service: "assistant" },
+      OPTIONS,
+      deps(docker),
+      { pull: "always" },
+    );
 
-    expect(result.ok).toBe(false);
-    expect(result.started).toEqual([]);
-    expect(result.failed).toHaveLength(1);
-    expect(result.failed[0].service).toBe("guardian");
-    expect(result.error).toBeTruthy();
-    // The `up` (which carries the pull) IS attempted, and its failure is fatal.
-    expect(result.upFailed).toBe(true);
-  });
-
-  it("(3) health-gate: `up --wait` fails, and ONE `compose ps --format json` call names the unhealthy service", async () => {
-    const docker = new FakeDocker((args) => {
-      if (args.includes("pull")) return ok();
-      if (args.includes("up")) return fail("container assistant is unhealthy");
-      if (docker.isPsFormatJsonCall(args)) return ok(UNHEALTHY_PS_ROW);
-      return ok();
-    });
-    const deps: StackDeps = { docker, files: makeFiles([]) };
-
-    const result = await applyStack({ kind: "service", service: "assistant" }, OPTS, deps);
-
-    expect(result.ok).toBe(false);
-    expect(result.started).toEqual([]);
-    expect(result.failed).toHaveLength(1);
-    expect(result.failed[0].service).toBe("assistant");
-    expect(result.failed[0].reason).toMatch(/health check/i);
-
-    // Exactly ONE `ps --format json` call — no per-container inspect polling.
-    const psCalls = docker.calls.filter((c) => docker.isPsFormatJsonCall(c));
-    expect(psCalls).toHaveLength(1);
-    expect(docker.indexOfArg("inspect")).toBe(-1);
-  });
-
-  it("(3b) partial 'all'-scope failure: the ps rows split healthy from unhealthy services", async () => {
-    // scope:"all" targets BOTH assistant and guardian; `up --wait` fails because
-    // guardian never became healthy, while assistant's own row is fine. The ONE
-    // ps call must attribute the failure to guardian only, not assistant.
-    const psRows = [
-      JSON.stringify({ Service: "assistant", State: "running", Health: "" }),
-      JSON.stringify({ Service: "guardian", State: "running", Health: "unhealthy" }),
-    ].join("\n");
-    const docker = new FakeDocker((args) => {
-      if (args.includes("pull")) return ok();
-      if (args.includes("up")) return fail("guardian is unhealthy");
-      if (args.includes("config") && args.includes("--services")) return ok("assistant\nguardian\n");
-      if (docker.isPsFormatJsonCall(args)) return ok(psRows);
-      return ok();
-    });
-    const deps: StackDeps = { docker, files: makeFiles([]) };
-
-    const result = await applyStack({ kind: "all" }, OPTS, deps);
-
-    expect(result.ok).toBe(false);
-    expect(result.started).toEqual(["assistant"]);
-    expect(result.failed).toHaveLength(1);
-    expect(result.failed[0].service).toBe("guardian");
-    expect(result.failed[0].reason).toMatch(/health check/i);
-
-    // Exactly ONE `ps --format json` call, still.
-    expect(docker.calls.filter((c) => docker.isPsFormatJsonCall(c))).toHaveLength(1);
+    expect(applied.ok).toBe(false);
+    expect(applied.error).toBeTruthy();
+    expect(docker.calls[0]).toContain("pull");
+    expect(docker.calls[1]).toContain("up");
   });
 });

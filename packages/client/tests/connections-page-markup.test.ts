@@ -143,3 +143,21 @@ describe('+page.svelte (connections) — S3 openEditForm/openCredentialsForm ded
     expect(match?.[0]).toContain('await loadStoredUsername(entry)');
   });
 });
+
+describe('+page.svelte (connections) — accessible exit', () => {
+  test('offers chat only for an active connection and a safe setup landing when none exist', () => {
+    const src = source();
+    expect(src).toMatch(/\{#if activeId\}[\s\S]*href="\/chat"/);
+    expect(src).toMatch(/connections\.length === 0[\s\S]*href="\/connections\/new"/);
+    expect(src).toContain('Back to chat');
+    expect(src).toContain('Set up a connection');
+    expect(src).toContain('Choose a connection to chat');
+  });
+
+  test('deleting the active connection deterministically selects a remaining entry or routes to setup', () => {
+    const src = source();
+    expect(src).toContain('const removingActive = entry.id === activeId');
+    expect(src).toMatch(/remaining\.length > 0[\s\S]*store\.setActive\(next\.id\)/);
+    expect(src).toMatch(/remaining\.length === 0[\s\S]*openAddForm\(\)[\s\S]*goto\('\/connections\?new=1'/);
+  });
+});

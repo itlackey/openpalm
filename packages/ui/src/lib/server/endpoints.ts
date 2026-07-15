@@ -207,6 +207,8 @@ function localEndpoint(): ActiveConnection | null {
 function normalizeBrowserFacingUrl(raw: string): string {
   try {
     const url = new URL(raw);
+    url.username = '';
+    url.password = '';
     const host = url.hostname.toLowerCase().replace(/^\[|\]$/g, '');
     if (host === '0.0.0.0' || host === '::') {
       url.hostname = '127.0.0.1';
@@ -215,6 +217,16 @@ function normalizeBrowserFacingUrl(raw: string): string {
   } catch {
     return raw;
   }
+}
+
+/** Strip legacy URL userinfo before a connection reaches a serializer or view. */
+export function redactEndpointUrlUserinfo(raw: string): string {
+  return normalizeBrowserFacingUrl(raw);
+}
+
+function redactEntryUrl(entry: ConnectionEntry): ConnectionEntry {
+  const url = redactEndpointUrlUserinfo(entry.url);
+  return url === entry.url ? entry : { ...entry, url };
 }
 
 function readFile(): EndpointsFile {
@@ -237,7 +249,9 @@ function readFile(): EndpointsFile {
     const parsed = JSON.parse(readFileSync(path, 'utf-8')) as Partial<EndpointsFile>;
     return {
       activeId: typeof parsed.activeId === 'string' ? parsed.activeId : null,
-      endpoints: Array.isArray(parsed.endpoints) ? parsed.endpoints.filter(isValidEntry) : [],
+      endpoints: Array.isArray(parsed.endpoints)
+        ? parsed.endpoints.filter(isValidEntry).map(redactEntryUrl)
+        : [],
     };
   } catch (e) {
     console.warn('[endpoints] Failed to parse endpoints.json, resetting:', e);
@@ -254,7 +268,8 @@ function isValidEntry(e: unknown): e is EndpointEntry {
 function writeFile(data: EndpointsFile): void {
   const path = endpointsPath();
   mkdirSync(dirname(path), { recursive: true });
-  writeFileSync(path, JSON.stringify(data, null, 2), { encoding: 'utf-8', mode: 0o600 });
+  const safeData = { ...data, endpoints: data.endpoints.map(redactEntryUrl) };
+  writeFileSync(path, JSON.stringify(safeData, null, 2), { encoding: 'utf-8', mode: 0o600 });
   // Re-chmod in case the file already existed with looser perms
   try { chmodSync(path, 0o600); } catch { /* best effort */ }
 }
@@ -302,7 +317,12 @@ function defaultEndpoint(): ActiveConnection {
   };
 }
 
-export type EndpointUrlError = 'invalid_url' | 'invalid_scheme' | 'missing_host' | 'unexpected_query_or_fragment';
+export type EndpointUrlError =
+  | 'invalid_url'
+  | 'invalid_scheme'
+  | 'missing_host'
+  | 'userinfo_not_allowed'
+  | 'unexpected_query_or_fragment';
 
 export type EndpointUrlValidation =
   | { ok: true; url: string }
@@ -325,6 +345,9 @@ export function validateEndpointUrl(input: string): EndpointUrlValidation {
   }
   if (!u.hostname) {
     return { ok: false, reason: 'missing_host' };
+  }
+  if (u.username || u.password) {
+    return { ok: false, reason: 'userinfo_not_allowed' };
   }
   // PR #564 second retest: a connection/guardian URL is a BASE that the client
   // concatenates API paths onto (`${base}/oc`, `${base}/session`). A query or

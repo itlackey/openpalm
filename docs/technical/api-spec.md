@@ -117,30 +117,104 @@ Policy for this section:
 - Ensures directories + OpenCode starter config + starter user secrets.
 - Seeds only missing defaults in `config/`; never overwrites existing user files.
 - Writes configuration files to their final locations.
-- Runs `docker compose up -d` using `config/stack/core.compose.yml`, installed addon overlays, non-secret `stack.env`, and file-based Compose secret grants.
+- Runs `docker compose up -d` using managed compose files from `system/stack/`,
+  the user overlay from `config/stack/custom.compose.yml`, non-secret env files,
+  and file-based Compose secret grants.
 
 Response:
 
 ```json
 {
   "ok": true,
-  "started": ["assistant", "guardian", "chat"],
+  "started": ["assistant", "guardian"],
+  "failed": [],
   "dockerAvailable": true,
-  "composeResult": { "ok": true, "stderr": "" }
+  "overallSuccess": true
 }
 ```
 
 ### `POST /api/host/update`
 
-- Non-destructive for existing user config; seeds missing defaults only.
-- Writes configuration files to their final locations.
-- Re-applies compose with addon overlays.
+- The body is a JSON object containing only an optional Compose `service` name.
+  Unknown fields, empty service names, and non-string service names return `400`
+  before mutation.
+- The operation holds the admin lifecycle lock and verifies Docker availability.
+- With `service`, the route validates the name against `docker compose config
+  --services`, then calls the shared Compose driver for that exact service with
+  `pull: "always"`.
+- Without `service`, the route calls the shared `performUpgrade` operation, which
+  refreshes managed files and applies the configured Compose stack with
+  `pull: "always"` under the same lock.
+- The route does not accept version targets, component aliases, downgrade flags,
+  or rollback options. Configured image tags are managed separately through
+  `PATCH /api/host/versions`.
 
-Response:
+Service request:
 
 ```json
-{ "ok": true, "restarted": ["guardian"], "dockerAvailable": true }
+{ "service": "voice-cuda" }
 ```
+
+The full-stack request body is `{}`.
+
+Success response:
+
+```json
+{ "ok": true }
+```
+
+Operational failure response:
+
+```json
+{
+  "error": "docker_unavailable",
+  "message": "Docker is unavailable",
+  "details": {},
+  "requestId": "req-123"
+}
+```
+
+### `GET /api/host/versions`
+
+Returns the four configured image tags and the UI update channel. Container state
+comes from `GET /api/host/containers/list`; this route does not duplicate it or
+make update-availability claims.
+
+```json
+{
+  "configured": {
+    "OP_ASSISTANT_VERSION": "latest",
+    "OP_GUARDIAN_VERSION": "latest",
+    "OP_PORTAL_VERSION": "0.13.0-beta.5",
+    "OP_VOICE_VERSION": "latest"
+  },
+  "channel": "next"
+}
+```
+
+The response does not query a registry and does not include `updateAvailable`,
+component rollups, applied version state, or an up-to-date claim.
+
+### `PATCH /api/host/versions`
+
+Writes configured image tags through `writeVersions` and the channel through
+`writeChannelPreference`; each helper performs an atomic file replacement. The
+route validates the complete request before writing. These small config writes do
+not acquire the lifecycle lock.
+
+```json
+{
+  "versions": {
+    "OP_ASSISTANT_VERSION": "0.13.0-beta.6",
+    "OP_GUARDIAN_VERSION": "latest"
+  },
+  "channel": "next"
+}
+```
+
+Only the four `SERVICE_VERSION_KEYS` are accepted in `versions`; `channel` is
+`"latest"` or `"next"`. Either field may be omitted, but at least one change must
+be supplied. Success returns `{ "ok": true }`.
 
 ### `POST /api/host/uninstall`
 
@@ -154,12 +228,10 @@ Response:
 { "ok": true, "stopped": ["assistant"], "dockerAvailable": true }
 ```
 
-> The former `POST /api/host/upgrade` endpoint was removed in 0.12.36. Updates now
-> run entirely through `POST /api/host/update` (above): it performs the full
-> forward-migration reconcile under lock (`reconcileStack`/`performUpgrade` in
-> `packages/lib/src/control-plane/lifecycle.ts`) whenever a home is detected
-> stale against the running `PLATFORM_VERSION` — there is no separate
-> apply/migrate endpoint to call first.
+> The former `POST /api/host/upgrade` endpoint was removed in 0.12.36. The admin
+> update path is now the direct `performUpgrade` operation documented
+> above. Image tags are configured independently and are never derived from
+> `PLATFORM_VERSION`.
 
 ## Container Operations
 
@@ -562,37 +634,51 @@ npm package via `GET /api/host/versions/ui`.
 
 ### `POST /api/host/ui-version`
 
-Seeds a specific `@openpalm/ui` npm version (or dist-tag) into `data/ui/`. The
-build is downloaded from the npm registry, integrity-verified (sha512, fail-
-closed), and extracted atomically — a failed download never leaves `data/ui/`
-empty.
+Checks the active UI channel for a newer `@openpalm/ui` build and installs it
+into `data/ui/`. The build is downloaded from the npm registry,
+integrity-verified (sha512, fail-closed), and extracted atomically after moving
+the current build to a backup. A failed update restores that backup.
 
 Auth: `requireAdmin`
 
 Body:
 
 ```json
-{ "tag": "0.11.0-rc.2" }
+{}
 ```
 
-- `tag` (required) — An `@openpalm/ui` npm version (e.g. `"0.11.0-rc.2"`) or
-  dist-tag (e.g. `"latest"`, `"next"`). **This is no longer a GitHub platform
-  release tag**; use `GET /api/host/versions/ui` to list installable versions.
-  Must match `^[a-zA-Z0-9._\-]+$`.
+No request fields are accepted. The updater uses the configured
+`OP_UI_CHANNEL`; when unset, the platform release stream selects `latest` for a
+stable build or `next` for a prerelease build.
 
 Response:
 
 ```json
-{ "ok": true, "tag": "0.11.0-rc.2" }
+{
+  "ok": true,
+  "updated": true,
+  "latestVersion": "0.13.0-beta.9",
+  "restarting": false,
+  "pendingRestart": true,
+  "redownloadRequired": false
+}
 ```
+
+When a newer UI requires a native harness contract newer than the running
+Electron harness, no build is installed and the response includes
+`"redownloadRequired": true` and `requiredHarnessContract`. The operator must
+download a newer application build instead of self-updating the UI.
 
 Error responses:
 
-- `400 tag_required` — `tag` field missing or empty.
-- `400 invalid_tag` — `tag` contains characters outside `[a-zA-Z0-9._-]`.
 - `400 invalid_json` — Request body is not valid JSON.
-- `502 download_failed` — npm download or integrity verification failed
-  (message from the underlying error is included).
+- `400 unknown_update_key` — The body contains any request field.
+- `409 install_in_progress` — Another lifecycle or container mutation holds the
+  shared install lock.
+- `500 invalid_harness_contract` — Electron did not provide a valid
+  `OP_HARNESS_CONTRACT_VERSION`; the update fails closed.
+- `502 update_failed` — npm resolution, download, integrity verification, or
+  extraction failed (the previous build is restored).
 
 ## Host OpenCode Detection & Import
 

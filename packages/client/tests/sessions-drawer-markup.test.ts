@@ -50,4 +50,18 @@ describe('+page.svelte (chat) — B14 small-screen sessions drawer', () => {
     const src = source();
     expect(src).toMatch(/@media \(max-width: 44rem\)/);
   });
+
+  test('the mobile Conversations control is anchored in the bottom-left corner', () => {
+    const src = source();
+    expect(src).toContain('<span>Conversations</span>');
+    expect(src).toMatch(/\.mobile-sessions-bar\s*\{[\s\S]*?position:\s*fixed;[\s\S]*?left:[\s\S]*?bottom:/);
+  });
+
+  test('the fixed control and reserved content gutter include safe-area offsets', () => {
+    const src = source();
+    expect(src).toContain('env(safe-area-inset-left)');
+    expect(src).toContain('env(safe-area-inset-right)');
+    expect(src).toContain('env(safe-area-inset-bottom)');
+    expect(src).toMatch(/\.s-status,[\s\S]*?\.alert,[\s\S]*?\.composer-row[\s\S]*?margin-left:/);
+  });
 });

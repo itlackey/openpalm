@@ -80,6 +80,9 @@ describe('normalizeEndpointUrl', () => {
     expect(normalizeEndpointUrl('not a url')).toBeNull();
     expect(normalizeEndpointUrl('')).toBeNull();
   });
+  it('rejects URL userinfo instead of treating it as connection credentials', () => {
+    expect(normalizeEndpointUrl('https://url-user:url-password@remote.example:3800')).toBeNull();
+  });
 });
 
 describe('validateEndpointUrl (discriminated reasons)', () => {
@@ -107,6 +110,13 @@ describe('validateEndpointUrl (discriminated reasons)', () => {
     expect(validateEndpointUrl('https://remote.example:3800')).toEqual({
       ok: true,
       url: 'https://remote.example:3800',
+    });
+  });
+
+  it('reports URL userinfo as disallowed', () => {
+    expect(validateEndpointUrl('https://url-user:url-password@remote.example:3800')).toEqual({
+      ok: false,
+      reason: 'userinfo_not_allowed',
     });
   });
 
@@ -234,6 +244,21 @@ describe('CRUD', () => {
   it('rejects invalid input on add', () => {
     expect(() => addEndpoint({ label: '', url: 'http://x' })).toThrow(/Label/);
     expect(() => addEndpoint({ label: 'x', url: 'nope' })).toThrow(/URL/);
+  });
+
+  it('rejects URL userinfo on add and update without serializing it', () => {
+    expect(() =>
+      addEndpoint({ label: 'Unsafe', url: 'https://url-user:url-password@remote.example' })
+    ).toThrow(/URL/);
+    const entry = addEndpoint({ label: 'Safe', url: 'https://remote.example' });
+    expect(() =>
+      updateEndpoint(entry.id, { url: 'https://next-user:next-password@remote.example' })
+    ).toThrow(/URL/);
+    const raw = readFileSync(`${getState().configDir}/endpoints.json`, 'utf-8');
+    expect(raw).not.toContain('url-user');
+    expect(raw).not.toContain('url-password');
+    expect(raw).not.toContain('next-user');
+    expect(raw).not.toContain('next-password');
   });
 
   it('updates label and url', () => {

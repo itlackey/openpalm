@@ -441,7 +441,13 @@ export type VoiceEngageResult =
   | { status: 'disengaged' }
   | { status: 'invalid_profile'; message: string }
   | { status: 'error'; wasAlreadyEnabled: boolean; steps: VoiceJobStep[]; error: string }
-  | { status: 'background'; wasAlreadyEnabled: boolean; steps: VoiceJobStep[]; message: string }
+  | {
+      status: 'background';
+      wasAlreadyEnabled: boolean;
+      steps: VoiceJobStep[];
+      message: string;
+      completion: Promise<void>;
+    }
   | {
       status: 'final';
       wasAlreadyEnabled: boolean;
@@ -654,9 +660,7 @@ export async function engageVoiceAddon(input: {
       finishedAt: undefined,
       error: undefined,
     });
-    // Fire-and-forget. The job runner writes its own terminal state into
-    // activeJobs; we never await it.
-    void runBringUpJob({
+    const completion = runBringUpJob({
       state,
       services,
       activeProfile,
@@ -671,6 +675,7 @@ export async function engageVoiceAddon(input: {
       message:
         'Voice image is downloading in the background (~2–8 GB). ' +
         'Poll GET /api/host/voice for progress; UI auto-refreshes.',
+      completion,
     };
   }
 

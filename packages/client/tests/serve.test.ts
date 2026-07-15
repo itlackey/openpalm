@@ -24,7 +24,10 @@ beforeAll(async () => {
   runtimeConfigDir = rootDir;
   explicitRuntimeConfig = join(rootDir, 'explicit-runtime-config.json');
   mkdirSync(join(dir, '_app', 'immutable', 'chunks'), { recursive: true });
-  writeFileSync(join(dir, 'index.html'), '<!doctype html><title>ok</title>');
+  writeFileSync(
+    join(dir, 'index.html'),
+    '<!doctype html><meta http-equiv="content-security-policy" content="default-src \'self\'; script-src \'self\' \'sha256-test=\'; connect-src \'self\' http: https:; frame-src \'self\' http: https:; object-src \'none\'; base-uri \'none\'"><title>ok</title>',
+  );
   writeFileSync(join(dir, 'sw.js'), 'self.addEventListener("install",()=>{});');
   writeFileSync(join(dir, 'registerSW.js'), 'navigator.serviceWorker?.register("/sw.js");');
   // A real build asset — present on disk, must be served normally (not the
@@ -168,6 +171,21 @@ describe('serve.mjs cache-control (H2)', () => {
   it('does not force no-cache on an ordinary hashed asset (safe to cache immutably)', async () => {
     const res = await fetch(`${BASE}/_app/immutable/chunks/present-abc123.js`);
     expect(res.headers.get('cache-control')).not.toBe('no-cache');
+  });
+});
+
+describe('serve.mjs production security headers', () => {
+  it('promotes the generated document CSP to a header without relaxing non-frame directives', async () => {
+    const res = await fetch(`${BASE}/advanced`);
+    const csp = res.headers.get('content-security-policy') ?? '';
+    expect(csp).toContain("default-src 'self'");
+    expect(csp).toContain("script-src 'self' 'sha256-test='");
+    expect(csp).toContain("connect-src 'self' http: https:");
+    expect(csp).toContain("frame-src 'self' http: https:");
+    expect(csp).toContain("object-src 'none'");
+    expect(csp).toContain("base-uri 'none'");
+    expect(csp).toContain("frame-ancestors 'none'");
+    expect(res.headers.get('x-frame-options')).toBe('DENY');
   });
 });
 

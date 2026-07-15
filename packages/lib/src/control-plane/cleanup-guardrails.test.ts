@@ -107,18 +107,6 @@ describe("guardrail: compose preflight before mutation", () => {
     expect(typeof mod.composeConfigServices).toBe("function");
   });
 
-  test("lifecycle.ts reconcileCore calls composePreflight before snapshotCurrentState", () => {
-    const lifecycleTs = readFileSync(join(LIB_CONTROL_PLANE_DIR, "lifecycle.ts"), "utf-8");
-    // Verify composePreflight is imported
-    expect(lifecycleTs).toContain("composePreflight");
-    // Verify preflight appears BEFORE snapshot in the source
-    const preflightIdx = lifecycleTs.indexOf("composePreflight({ files, envFiles, profiles })");
-    const snapshotIdx = lifecycleTs.indexOf("snapshotCurrentState(state)");
-    expect(preflightIdx).toBeGreaterThan(0);
-    expect(snapshotIdx).toBeGreaterThan(0);
-    expect(preflightIdx).toBeLessThan(snapshotIdx);
-  });
-
   test("preflight error is routed through the shared structured-field helper", () => {
     // reconcileCore must delegate the failed-preflight message to the single
     // source of truth buildComposePreflightError so lib and the CLI never
@@ -351,39 +339,17 @@ describe("guardrail: no CHANNEL_NAME in control-plane source", () => {
 // ── Guardrail 11: overlay channel_lan deprecation guard is wired (#490) ────
 
 describe("guardrail: overlay deprecation guard is wired", () => {
-  test("reconcileStack runs checkCustomComposeChannelLan before withStackEnvRollback", () => {
+  test("checks the user overlay before snapshotting or writing managed files", () => {
     const lifecycleTs = readFileSync(join(LIB_CONTROL_PLANE_DIR, "lifecycle.ts"), "utf-8");
-    expect(lifecycleTs).toContain("checkCustomComposeChannelLan(");
-
-    // Isolate the reconcileStack function body and confirm the guard call
-    // appears before the `return withStackEnvRollback(` inside it (same
-    // source-index idiom as guardrail 3).
-    const fnStart = lifecycleTs.indexOf("function reconcileStack(");
+    const fnStart = lifecycleTs.indexOf("async function applyManagedFiles(");
     expect(fnStart).toBeGreaterThan(-1);
 
     const guardIdx = lifecycleTs.indexOf("checkCustomComposeChannelLan(", fnStart);
-    const rollbackIdx = lifecycleTs.indexOf("return withStackEnvRollback(", fnStart);
+    const snapshotIdx = lifecycleTs.indexOf("snapshotCurrentState(", fnStart);
+    const applyIdx = lifecycleTs.indexOf("await applyHome(", fnStart);
 
     expect(guardIdx).toBeGreaterThan(-1);
-    expect(rollbackIdx).toBeGreaterThan(-1);
-    expect(guardIdx).toBeLessThan(rollbackIdx);
-  });
-
-  // PR #564 r3566892768 + retest P2-3: the blockError throw must fire before any
-  // file write on every deploy that reconciles managed compose (install, update,
-  // upgrade) and be exempt ONLY for uninstall (deactivate) — so a stale
-  // channel_lan overlay produces the pre-write migration error, not a late
-  // post-write Compose failure, while uninstall stays available.
-  test("the channel_lan blockError throw is gated on `!deactivate` (uninstall exempt, update blocked)", () => {
-    const lifecycleTs = readFileSync(join(LIB_CONTROL_PLANE_DIR, "lifecycle.ts"), "utf-8");
-    const fnStart = lifecycleTs.indexOf("function reconcileStack(");
-    const guardIdx = lifecycleTs.indexOf("overlayCheck.blockError", fnStart);
-    const throwLineEnd = lifecycleTs.indexOf("\n", guardIdx);
-    const throwLine = lifecycleTs.slice(guardIdx, throwLineEnd);
-    expect(throwLine).toContain("!deactivate");
-    // The guard must run BEFORE withStackEnvRollback (which wraps applyHome).
-    const guardPos = lifecycleTs.indexOf("overlayCheck.blockError", fnStart);
-    const rollbackPos = lifecycleTs.indexOf("return withStackEnvRollback(", fnStart);
-    expect(guardPos).toBeLessThan(rollbackPos);
+    expect(guardIdx).toBeLessThan(snapshotIdx);
+    expect(snapshotIdx).toBeLessThan(applyIdx);
   });
 });

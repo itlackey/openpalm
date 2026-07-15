@@ -237,7 +237,7 @@ describe("applyUpdate", () => {
     delete process.env.OP_SKIP_COMPOSE_PREFLIGHT;
   });
 
-  test("reports the already-running set and PRESERVES prior service state (no force-activate)", async () => {
+  test("preserves prior service state", async () => {
     const state = makeTestState();
     trackDir(state.homeDir);
     process.env.OP_HOME = state.homeDir;
@@ -248,15 +248,10 @@ describe("applyUpdate", () => {
     // A stack.env supplies OP_IMAGE_NAMESPACE for image resolution.
     seedSecretsEnv(state.homeDir, "OP_IMAGE_NAMESPACE=openpalm\n");
 
-    const result = await applyUpdate(state);
-    // Already-running services are reported as restarted...
-    expect(result.restarted).toContain("admin");
-    expect(result.restarted).toContain("guardian");
-    // ...but applyUpdate passes NO activate flag (reconcileStack({})), so a
-    // deliberately-stopped core service is NOT force-marked running by an update.
-    // The route drives the real recreate from buildManagedServices; the persisted
-    // service state must reflect what the operator left it as.
-    expect(result.restarted).not.toContain("assistant");
+    await applyUpdate(state);
+
+    expect(state.services.admin).toBe("running");
+    expect(state.services.guardian).toBe("running");
     expect(state.services.assistant).toBe("stopped");
   });
 });
@@ -290,4 +285,3 @@ describe("applyUninstall", () => {
     }
   });
 });
-
