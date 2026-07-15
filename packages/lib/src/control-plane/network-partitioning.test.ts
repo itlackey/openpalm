@@ -273,11 +273,10 @@ describe("#563 — OPENCODE_AUTH + opencode_server_password compose plumbing", (
 });
 
 describe("#563 — the preset-managed cascade set matches compose reality (T31, pin)", () => {
-  test("client port line nests OP_CLIENT_BIND_ADDRESS then OP_BIND_ADDRESS", () => {
+  test("assistant no longer publishes the removed container-client port", () => {
     const assistantPorts = allServices.assistant?.ports ?? [];
-    expect(assistantPorts).toContain(
-      "${OP_CLIENT_BIND_ADDRESS:-${OP_BIND_ADDRESS:-127.0.0.1}}:${OP_CLIENT_PORT:-3810}:3000",
-    );
+    expect(assistantPorts.some((port) => String(port).includes("OP_CLIENT_PORT"))).toBe(false);
+    expect(assistantPorts.some((port) => String(port).endsWith(":3000"))).toBe(false);
   });
 
   test("chat/api port lines nest their per-service var then OP_BIND_ADDRESS (guardian-container, key-authenticated cascade)", () => {

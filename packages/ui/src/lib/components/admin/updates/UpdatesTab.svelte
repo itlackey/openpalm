@@ -35,12 +35,10 @@
 	let {
 		containers,
 		dockerAvailable,
-		containersLoading,
 		onRefresh
 	}: {
 		containers: ServiceEntry[];
 		dockerAvailable: boolean;
-		containersLoading: boolean;
 		onRefresh: () => Promise<void>;
 	} = $props();
 
@@ -236,7 +234,7 @@
 			<p class="msg msg-error" role="alert">{loadError}</p>
 		{/if}
 
-		{#if loading || containersLoading}
+		{#if loading}
 			<p class="loading-line"><Spinner /> Loading container versions...</p>
 		{:else}
 			<section aria-labelledby="containers-heading">

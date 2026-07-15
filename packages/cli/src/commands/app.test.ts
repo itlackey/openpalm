@@ -48,7 +48,7 @@ describe('openpalm app', () => {
       calls.push(options);
     });
 
-    expect(calls).toEqual([{ openTarget: 'client' }]);
+    expect(calls).toEqual([{ allowUninstalled: true }]);
   });
 
   it('registers the app subcommand in the main command map', async () => {
@@ -63,7 +63,7 @@ describe('openpalm app', () => {
 // ── #486 stack-less client entry — `openpalm app` on a not-installed OP_HOME ──
 //
 // D1: startUIServer's ensureValidState()/resolveServeState() ternary must
-// also tolerate `openTarget === 'client'`, not just `adminHostUi`. Harness
+// tolerate the explicit uninstalled-app entry, not just `adminHostUi`. Harness
 // mirrors packages/cli/src/commands/admin.test.ts's serve harness
 // (seedServeHome / captureSpawns / captureLogs / waitFor / restoreOpenPalmLib)
 // — the real @openpalm/lib + cli-state against a seeded temp OP_HOME, with

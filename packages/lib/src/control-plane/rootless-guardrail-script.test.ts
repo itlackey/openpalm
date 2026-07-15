@@ -70,10 +70,12 @@ describe('rootless phase-0 script guardrails', () => {
     expect(fixtureHelper).toContain('smoke_ensure_home_dirs');
   });
 
-  test('rootless smoke fixtures assign an isolated assistant-container client port', () => {
-    expect(fixtureHelper).toContain('OP_CLIENT_PORT=${client_port}');
-    expect(smokeScript).toContain('OP_ROOTLESS_SMOKE_CLIENT_PORT');
-    expect(hostSwapSmokeScript).toContain('3994');
+  test('rootless smoke fixtures no longer configure the removed assistant client runtime', () => {
+    expect(fixtureHelper).not.toContain('OP_CLIENT_PORT=');
+    expect(fixtureHelper).not.toContain('OP_CLIENT_VERSION');
+    expect(smokeScript).not.toContain('OP_ROOTLESS_SMOKE_CLIENT_PORT');
+    expect(hostSwapSmokeScript).not.toContain('3994');
+    expect(fixtureHelper).toContain('OP_SKELETON_VERSION');
   });
 
   test('rootless smokes only run compose down when the prior stack env still exists', () => {

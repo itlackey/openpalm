@@ -10,13 +10,12 @@ import { join, basename } from 'node:path';
 import { existsSync } from 'node:fs';
 import {
   resolveOpenPalmHome, resolveUiBuildDir, createLogger, readSecret, readStackEnv,
-  checkAndUpdateClientBuild, checkAndUpdateUiBuild, checkAndUpdateSkeleton, PLATFORM_VERSION,
+  checkAndUpdateUiBuild, checkAndUpdateSkeleton, PLATFORM_VERSION,
   consumePendingUiBackup, isRemoteSetupAllowed, restoreUiBackup, UiSupervisor, waitForReady,
 } from '@openpalm/lib';
 import { ensureValidState, resolveServeState } from './cli-state.ts';
 import { openBrowser } from './browser.ts';
 import { resolveHostUiPortFromEnv } from './ports.ts';
-import { startClientServer, resolveClientServeUrl } from './client-server.ts';
 
 const logger = createLogger('cli:ui');
 const STOP_TIMEOUT_MS  = 5_000;
@@ -97,7 +96,8 @@ export function resolveExpectedHostMode(adminHostUi: boolean, env: NodeJS.Proces
 export interface UIServerOptions {
   port?: number;
   open?: boolean;
-  openTarget?: 'ui' | 'client';
+  /** Allow the UI landing resolver to handle a not-yet-installed OP_HOME. */
+  allowUninstalled?: boolean;
   /**
    * host-ui admin mode (`openpalm admin`, plan Phase 1.5): enable the admin
    * capability in the spawned UI child (OP_ENABLE_ADMIN=1 + OP_UI_HOST_MODE=
@@ -538,19 +538,12 @@ export async function startUIServer(opts: UIServerOptions = {}): Promise<void> {
     process.exit(1);
   }
 
-  // Admin (host-ui) mode serves even on a machine with no install — the UI's
-  // existing setup guard lands on /setup (the CLI does not reimplement wizard
-  // logic). #486: a client-only machine with no local stack also tolerates a
-  // not-installed OP_HOME — `openpalm app` serves the connection manager
-  // (pwa-static host UI + the localhost client), and the UI's own pwa-static
-  // landing handles routing; the CLI reimplements no wizard/landing logic
-  // here either. The bare serve path (`openpalm ui serve`, no openTarget)
-  // keeps requiring a valid install.
-  const state = (opts.adminHostUi === true || opts.openTarget === 'client') ? resolveServeState() : ensureValidState();
+  // Admin mode and `openpalm app` may serve before installation; the full
+  // UI's landing resolver owns setup/recovery routing in both cases.
+  const state = (opts.adminHostUi === true || opts.allowUninstalled === true)
+    ? resolveServeState()
+    : ensureValidState();
   const uiUrl = `http://localhost:${port}`;
-  // D2: probe/open the client on the port it will ACTUALLY be spawned on
-  // (persisted stack.env merged under process.env), not process.env alone.
-  const clientUrl = resolveClientServeUrl();
 
   // D1: pre-spawn instance-identity probe. A bare port poll has no way to
   // tell an already-running OpenPalm instance of a DIFFERENT hostMode (e.g. a
@@ -581,13 +574,7 @@ export async function startUIServer(opts: UIServerOptions = {}): Promise<void> {
       `(hostMode=${existing.hostMode}).`
     );
     if (opts.open !== false) {
-      if (opts.openTarget === 'client') {
-        const target = await resolveClientOpenTarget(uiUrl, clientUrl, true);
-        if (target.message) console.warn(target.message);
-        await openBrowser(target.url);
-      } else {
-        await openBrowser(resolveAdminUrl(uiUrl, opts.adminHostUi === true));
-      }
+      await openBrowser(resolveAdminUrl(uiUrl, opts.adminHostUi === true));
     }
     return;
   }
@@ -607,40 +594,10 @@ export async function startUIServer(opts: UIServerOptions = {}): Promise<void> {
   // UI's own landing guard resolves to `/chat` on a healthy install.
   console.log(`UI server running at ${resolveAdminUrl(uiUrl, opts.adminHostUi === true)}`);
 
-  // Serve the @openpalm/client static app beside the UI on its stable loopback
-  // port (P5c, #555; plan Phase 5 item 3). Both the default serve path and
-  // `openpalm admin` come through here. Non-fatal: absent build → log + skip
-  // (null handle), and the UI keeps serving.
-  console.log('Checking for client app update...');
-  const clientResult = await checkAndUpdateClientBuild(PLATFORM_VERSION, state.dataDir);
-  if (clientResult.updated) {
-    console.log(`Client app updated to v${clientResult.latestVersion}.`);
-  } else if (clientResult.error) {
-    console.warn(`Warning: client app update skipped — ${clientResult.error}. Existing build still active.`);
-  }
-  const clientHandle = await startClientServer();
-
-  // D2 caution for future edits: "stop both children on every failure path"
-  // is satisfied today only because there IS no failure path here anymore —
-  // A4 removed the only early-return/exit(1) that used to orphan the UI child
-  // after this point. If a future change reintroduces an early return (or a
-  // process.exit) between here and the end of this function, it MUST also
-  // tear down `stopUiProc`/`clientHandle` explicitly — don't assume this
-  // block stays exit-free.
   if (opts.open !== false) {
-    if (opts.openTarget === 'client') {
-      // A4/J1: probe the host UI's landing (setup-incomplete/offline/broken →
-      // its own recovery route) before honoring 'client'; an unreachable
-      // client app falls back to the host UI chat with a message — NEVER
-      // process.exit(1) (both children stay up and supervised either way).
-      const target = await resolveClientOpenTarget(uiUrl, clientUrl, clientHandle !== null);
-      if (target.message) console.warn(target.message);
-      await openBrowser(target.url);
-    } else {
-      // A3: `openpalm admin` opens/prints `/host`, not the root (which the
-      // landing guard resolves to `/chat`).
-      await openBrowser(resolveAdminUrl(uiUrl, opts.adminHostUi === true));
-    }
+    // `openpalm admin` opens `/host`; every other entry uses the full UI's
+    // own landing resolver from the root URL.
+    await openBrowser(resolveAdminUrl(uiUrl, opts.adminHostUi === true));
   }
 
   // Supervisor restart (§4.4): the UI child (admin "install UI version" route)
@@ -654,7 +611,6 @@ export async function startUIServer(opts: UIServerOptions = {}): Promise<void> {
     supervisor.markShuttingDown();
     console.log(`\nReceived ${signal}. Shutting down...`);
     try {
-      if (clientHandle) await clientHandle.stop();
       const proc = supervisor.current;
       if (proc) await stopUiProc(proc);
       console.log('Shutdown complete.');

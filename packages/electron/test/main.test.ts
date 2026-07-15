@@ -61,10 +61,6 @@ const { mockNotificationShow } = vi.hoisted(() => ({
   mockNotificationShow: vi.fn(),
 }));
 
-const { mockClearStorageData } = vi.hoisted(() => ({
-  mockClearStorageData: vi.fn(() => Promise.resolve()),
-}));
-
 vi.mock('electron', () => ({
   app: {
     getVersion: vi.fn(() => '0.11.0'),
@@ -86,7 +82,7 @@ vi.mock('electron', () => ({
   // Regular function (not arrow) so `new BrowserWindow(...)` works as a
   // constructor; vitest 4 enforces this stricter than 3 did.
   BrowserWindow: Object.assign(
-    function MockBrowserWindow() { return mockBrowserWindow; },
+    vi.fn(function MockBrowserWindow() { return mockBrowserWindow; }),
     { getAllWindows: vi.fn(() => [mockBrowserWindow]) },
   ),
   contextBridge: { exposeInMainWorld: vi.fn() },
@@ -131,7 +127,6 @@ vi.mock('electron', () => ({
   ),
   session: {
     defaultSession: {
-      clearStorageData: mockClearStorageData,
       // configureMediaPermissions() runs during the main bootstrap; stub the
       // permission handlers so it doesn't throw an unhandled rejection that
       // fails the run (mirrors initial-url.test.ts).
@@ -150,18 +145,10 @@ vi.mock('@openpalm/lib', () => ({
   seedUiBuild: vi.fn(() => Promise.resolve()),
   ensureHomeDirs: vi.fn(),
   checkAndUpdateUiBuild: vi.fn(() => Promise.resolve({ updated: false, latestVersion: '0.11.0' })),
-  checkAndUpdateClientBuild: vi.fn(() => Promise.resolve({ updated: false, latestVersion: '0.11.0' })),
   checkAndUpdateSkeleton: vi.fn(() => Promise.resolve({ updated: false, latestVersion: '0.11.0' })),
   uiUpdateChannel: vi.fn((v: string) => (v.includes('-') ? 'next' : 'latest')),
   parseEnvFile: vi.fn(() => ({})),
   PLATFORM_VERSION: 'v0.11.0',
-  // Faithful reimplementation of lib's resolveClientAppPort (reads
-  // OP_HOST_CLIENT_PORT from the given env) so resolveElectronClientPort's
-  // (E2) env-merge is actually exercised under test, not masked by a stub
-  // that ignores its argument.
-  resolveClientAppPort: vi.fn((env: NodeJS.ProcessEnv = process.env) => Number(env.OP_HOST_CLIENT_PORT) || 3890),
-  resolveClientAppUrl: vi.fn(() => 'http://127.0.0.1:3890/chat'),
-  writeClientRuntimeConfig: vi.fn(),
   // E1: the shared assistant-endpoint resolver main.ts now delegates to
   // instead of re-deriving the OP_ASSISTANT_BIND_ADDRESS/PORT precedence
   // chain locally (which is how the http://0.0.0.0:3800 seed bug happened).
@@ -250,22 +237,19 @@ vi.mock('../src/local-opencode.js', () => ({
 }));
 
 import {
-  buildClientRuntimeConfigOptions,
   buildUIServerEnv,
-  ensureClientAppBuild,
   ensureDockerReady,
   getLaunchOnLoginStatus,
+  handleWindowOpen,
   isAllowedInAppWindowUrl,
-  isClientAppUrl,
   openLocalApp,
   resolveAssistantUrl,
-  resolveElectronClientPort,
   setLaunchOnLogin,
   showNotification,
   supportsLaunchOnLogin,
   waitForReady,
 } from '../src/main.js';
-import { app, Notification, shell } from 'electron';
+import { app, BrowserWindow, Notification, shell } from 'electron';
 import * as lib from '@openpalm/lib';
 import { HARNESS_CONTRACT_VERSION, HARNESS_CONTRACT } from '../src/harness-contract.js';
 import { TrayController } from '../src/tray.js';
@@ -385,135 +369,16 @@ describe('resolveAssistantUrl', () => {
   });
 });
 
-// ── resolveElectronClientPort (E2) ──────────────────────────────────────────
-// E2: Electron used to resolve the client port from process.env ONLY, while
-// the CLI merges the persisted stack.env (OP_HOME/knowledge/env/stack.env)
-// under process.env first (client-server.ts). A Finder-launched Electron has
-// a minimal env, so a persisted OP_HOST_CLIENT_PORT override (the only
-// realistic override channel for it) was silently ignored — the client
-// server bound the DEFAULT port while OpenCode's CORS allowlist (set up via
-// the CLI/container path) only trusted the CUSTOM one, breaking every chat
-// request's preflight. Mirror the CLI's merge here.
-describe('resolveElectronClientPort', () => {
-  afterEach(() => {
-    vi.mocked(lib.parseEnvFile).mockReset();
-  });
-
-  it('falls back to the default client port with no persisted stack.env and no process env override', () => {
-    vi.mocked(lib.parseEnvFile).mockReturnValue({});
-    expect(resolveElectronClientPort('/home/user/.openpalm', {})).toBe(3890);
-  });
-
-  it('honors OP_HOST_CLIENT_PORT persisted in stack.env when process.env has none', () => {
-    vi.mocked(lib.parseEnvFile).mockReturnValue({ OP_HOST_CLIENT_PORT: '9392' });
-    expect(resolveElectronClientPort('/home/user/.openpalm', {})).toBe(9392);
-  });
-
-  it('process.env OP_HOST_CLIENT_PORT wins over the persisted stack.env value', () => {
-    vi.mocked(lib.parseEnvFile).mockReturnValue({ OP_HOST_CLIENT_PORT: '9392' });
-    expect(resolveElectronClientPort('/home/user/.openpalm', { OP_HOST_CLIENT_PORT: '4444' })).toBe(4444);
-  });
-
-  it('reads stack.env from ${homeDir}/knowledge/env/stack.env', () => {
-    vi.mocked(lib.parseEnvFile).mockReturnValue({});
-    resolveElectronClientPort('/some/home', {});
-    expect(lib.parseEnvFile).toHaveBeenCalledWith('/some/home/knowledge/env/stack.env');
-  });
-
-  it('never throws when the persisted stack.env is unreadable (parseEnvFile itself is best-effort)', () => {
-    vi.mocked(lib.parseEnvFile).mockImplementation(() => {
-      throw new Error('ENOENT');
-    });
-    expect(() => resolveElectronClientPort('/home/user/.openpalm', {})).not.toThrow();
-    expect(resolveElectronClientPort('/home/user/.openpalm', {})).toBe(3890);
-  });
-});
-
-// ── buildClientRuntimeConfigOptions (A2) ────────────────────────────────────
-// A2: the client SPA had no way back to the admin dashboard — no tray entry,
-// no in-app link, nothing. The lib foundation (writeClientRuntimeConfig's
-// optional `hostUrl` field) lets Electron seed a link back to the host UI's
-// /host admin surface into the client's runtime-config.json; the client SPA
-// lane renders it. Pin that Electron actually passes it, pointed at /host on
-// the UI_PORT (not /chat, not bare root).
-describe('buildClientRuntimeConfigOptions', () => {
-  it('points hostUrl at the host UI /host admin dashboard on UI_PORT', () => {
-    expect(buildClientRuntimeConfigOptions()).toEqual({ hostUrl: 'http://127.0.0.1:3880/host' });
-  });
-});
-
-// ── isClientAppUrl (B11) ─────────────────────────────────────────────────────
-// B11: the global mic shortcut (Ctrl/Cmd+Shift+M) was registered SYSTEM-WIDE
-// unconditionally but the only consumer of the mic IPC surface
-// (global-mic-toggle / set-tray-mic-recording / request-mic-permission) is
-// packages/ui's VoiceControl — when the resolved window fronts the client
-// SPA (which has no voice UI at all, plan §12.2), the shortcut silently
-// no-ops while still stealing the chord from other apps. main.ts now checks
-// this predicate against the resolved initial URL before registering it.
-describe('isClientAppUrl', () => {
-  it('is true for a URL on the client port', () => {
-    expect(isClientAppUrl('http://127.0.0.1:3890/chat', 3890)).toBe(true);
-  });
-
-  it('is true regardless of path, as long as the port matches', () => {
-    expect(isClientAppUrl('http://127.0.0.1:3890/connections', 3890)).toBe(true);
-  });
-
-  it('is false for a host UI URL on a different port', () => {
-    expect(isClientAppUrl('http://127.0.0.1:3880/chat', 3890)).toBe(false);
-  });
-
-  it('is false for the host UI /setup, /host, and root URLs', () => {
-    expect(isClientAppUrl('http://127.0.0.1:3880/setup', 3890)).toBe(false);
-    expect(isClientAppUrl('http://127.0.0.1:3880/host?tab=diagnostics', 3890)).toBe(false);
-    expect(isClientAppUrl('http://127.0.0.1:3880', 3890)).toBe(false);
-  });
-
-  it('is false for a host UI port that merely shares the client port as a prefix (Codex review of PR #562)', () => {
-    // A prefix startsWith('http://127.0.0.1:3890') matched 38900 too, so a
-    // host UI on OP_HOST_UI_PORT=38900 was mistaken for the client SPA and had
-    // its voice hotkey disabled. Exact port comparison, not prefix.
-    expect(isClientAppUrl('http://127.0.0.1:38900/chat', 3890)).toBe(false);
-    expect(isClientAppUrl('http://127.0.0.1:38901', 3890)).toBe(false);
-  });
-
-  it('is false for a look-alike host that only starts with the loopback prefix', () => {
-    // Same subdomain/userinfo bypass class the in-app window gate was hardened
-    // against — a prefix check would admit these.
-    expect(isClientAppUrl('http://127.0.0.1:3890.evil.com/chat', 3890)).toBe(false);
-    expect(isClientAppUrl('http://127.0.0.1:3890@evil.com/chat', 3890)).toBe(false);
-  });
-});
-
-// ── set-tray-mic-recording IPC handler (E5) ─────────────────────────────────
-// E5: the handler used to `if (frontsClientChat) return;` before forwarding to
-// trayController.setMicRecording — a defense-in-depth guard that can never
-// actually fire: the sole emitter of this IPC (packages/ui's VoiceControl)
-// never loads under the client window in the first place (same B11 fact the
-// isClientAppUrl suite above documents), so there is no real caller this
-// guard could ever intercept. Removed the dead branch; the handler now always
-// forwards. Pinned two ways: (1) the handler still does its one real job
-// (forwards to the tray controller) — a spy-based behavior test that would
-// pass with or without the dead guard present, since frontsClientChat is
-// false in this harness by default; and (2) a source-shape pin that the
-// handler body no longer references frontsClientChat at all, which DOES
-// discriminate the fix (red with the guard in place, green once removed).
-describe('set-tray-mic-recording IPC handler (E5)', () => {
+describe('set-tray-mic-recording IPC handler', () => {
   it('forwards the recording flag to trayController.setMicRecording', () => {
     const spy = vi.spyOn(TrayController.prototype, 'setMicRecording');
     const handler = ipcMainHandleHandlers.get('set-tray-mic-recording');
     expect(handler).toBeDefined();
-    handler!(null, true);
+    handler?.(null, true);
     expect(spy).toHaveBeenCalledWith(true);
-    handler!(null, false);
+    handler?.(null, false);
     expect(spy).toHaveBeenCalledWith(false);
     spy.mockRestore();
-  });
-
-  it('no longer guards on frontsClientChat — the dead defense-in-depth branch is gone', () => {
-    const handler = ipcMainHandleHandlers.get('set-tray-mic-recording');
-    expect(handler).toBeDefined();
-    expect(handler!.toString()).not.toContain('frontsClientChat');
   });
 });
 
@@ -557,6 +422,43 @@ describe('isAllowedInAppWindowUrl', () => {
   });
 });
 
+describe('popup handling', () => {
+  beforeEach(() => {
+    mockBrowserWindow.loadURL.mockClear();
+    mockBrowserWindow.show.mockClear();
+    mockBrowserWindow.focus.mockClear();
+    vi.mocked(shell.openExternal).mockClear();
+  });
+
+  it('reuses the existing main window for allowed loopback URLs and denies the popup', () => {
+    const windowCount = vi.mocked(BrowserWindow).mock.calls.length;
+    const result = handleWindowOpen(
+      mockBrowserWindow as unknown as InstanceType<typeof BrowserWindow>,
+      'http://127.0.0.1:3880/chat/session-1',
+    );
+
+    expect(result).toEqual({ action: 'deny' });
+    expect(mockBrowserWindow.loadURL).toHaveBeenCalledWith('http://127.0.0.1:3880/chat/session-1');
+    expect(mockBrowserWindow.show).toHaveBeenCalledOnce();
+    expect(mockBrowserWindow.focus).toHaveBeenCalledOnce();
+    expect(shell.openExternal).not.toHaveBeenCalled();
+    expect(vi.mocked(BrowserWindow)).toHaveBeenCalledTimes(windowCount);
+  });
+
+  it('opens external URLs in the system browser and denies the popup', () => {
+    const windowCount = vi.mocked(BrowserWindow).mock.calls.length;
+    const result = handleWindowOpen(
+      mockBrowserWindow as unknown as InstanceType<typeof BrowserWindow>,
+      'https://example.com/docs',
+    );
+
+    expect(result).toEqual({ action: 'deny' });
+    expect(shell.openExternal).toHaveBeenCalledWith('https://example.com/docs');
+    expect(mockBrowserWindow.loadURL).not.toHaveBeenCalled();
+    expect(vi.mocked(BrowserWindow)).toHaveBeenCalledTimes(windowCount);
+  });
+});
+
 // ── waitForReady ─────────────────────────────────────────────────────────────
 
 describe('waitForReady', () => {
@@ -597,64 +499,20 @@ describe('waitForReady', () => {
   });
 });
 
-// ── ensureClientAppBuild — clear stale SW/cache on a build swap (H3) ────────
-// H3: nothing anywhere reset the client origin's service-worker/cache when a
-// newer @openpalm/client build swapped in — a stale SW could keep pinning a
-// dead build indefinitely (extends C3). checkAndUpdateClientBuild reports
-// `updated: true` exactly when a new build was installed; clear the client's
-// own loopback origin (scoped — never the host UI's or any other site's data)
-// whenever that happens. Best-effort: a clear failure must not be fatal.
-describe('ensureClientAppBuild — clears the client origin on a build swap (H3)', () => {
-  afterEach(() => {
-    mockClearStorageData.mockClear();
-    vi.mocked(lib.checkAndUpdateClientBuild).mockReset();
-  });
-
-  it('clears the client origin service-worker/cache storage when a newer build was installed', async () => {
-    vi.mocked(lib.checkAndUpdateClientBuild).mockResolvedValue({ updated: true, latestVersion: '0.13.0' });
-    await ensureClientAppBuild();
-    expect(mockClearStorageData).toHaveBeenCalledWith({
-      origin: 'http://127.0.0.1:3890',
-      storages: ['serviceworkers', 'cachestorage'],
-    });
-  });
-
-  it('does NOT clear anything when the build was already up to date', async () => {
-    vi.mocked(lib.checkAndUpdateClientBuild).mockResolvedValue({ updated: false, latestVersion: '0.12.0' });
-    await ensureClientAppBuild();
-    expect(mockClearStorageData).not.toHaveBeenCalled();
-  });
-
-  it('is best-effort: a clearStorageData failure does not throw', async () => {
-    vi.mocked(lib.checkAndUpdateClientBuild).mockResolvedValue({ updated: true, latestVersion: '0.13.0' });
-    mockClearStorageData.mockRejectedValueOnce(new Error('boom'));
-    await expect(ensureClientAppBuild()).resolves.toBeUndefined();
-  });
-});
-
-// ── openLocalApp (E4) ────────────────────────────────────────────────────────
-// E4: the tray's "Open Local App" (and its IPC twin) opened a hardcoded
-// client URL with NO health check — a missing build or a crashed
-// (non-respawned) client child produced a bare ERR_CONNECTION_REFUSED
-// browser tab. Guard the open with a quick probe and fall back to the host
-// UI chat (always running) instead of a dead link.
+// ── openLocalApp compatibility alias ─────────────────────────────────────────
 describe('openLocalApp', () => {
   afterEach(() => {
     vi.restoreAllMocks();
     vi.mocked(shell.openExternal).mockClear();
   });
 
-  it('opens the client app URL when the client server responds healthy', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, status: 200 }));
-    await openLocalApp();
-    expect(shell.openExternal).toHaveBeenCalledWith('http://127.0.0.1:3890/chat');
-  });
-
-  it('falls back to the host UI chat when the client server does not respond (E4)', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('ECONNREFUSED')));
+  it('opens the canonical UI chat without probing another server', async () => {
+    const fetchSpy = vi.fn();
+    vi.stubGlobal('fetch', fetchSpy);
     await openLocalApp();
     expect(shell.openExternal).toHaveBeenCalledWith('http://127.0.0.1:3880/chat');
     expect(shell.openExternal).not.toHaveBeenCalledWith('http://127.0.0.1:3890/chat');
+    expect(fetchSpy).not.toHaveBeenCalled();
   });
 });
 
@@ -896,18 +754,19 @@ describe('Docker preflight', () => {
   });
 });
 
-describe('localhost client app affordance', () => {
+describe('open-local-app compatibility IPC', () => {
   beforeEach(() => {
     vi.mocked(shell.openExternal).mockClear();
   });
 
-  it('registers an open-local-app handler that opens the stable loopback client origin', async () => {
+  it('opens the canonical UI chat rather than port 3890', async () => {
     const handler = ipcMainHandleHandlers.get('open-local-app');
     expect(handler).toBeDefined();
 
     await handler?.();
 
-    expect(shell.openExternal).toHaveBeenCalledWith('http://127.0.0.1:3890/chat');
+    expect(shell.openExternal).toHaveBeenCalledWith('http://127.0.0.1:3880/chat');
+    expect(shell.openExternal).not.toHaveBeenCalledWith('http://127.0.0.1:3890/chat');
   });
 });
 

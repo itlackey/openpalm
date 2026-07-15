@@ -30,15 +30,14 @@ describe('packages/electron/dist is not git-tracked', () => {
   });
 });
 
-describe('Electron client app artifact bootstrap', () => {
-  it('updates/seeds the client artifact before probing the resolved build dir', () => {
+describe('Electron chat surface', () => {
+  it('does not import, update, start, or stop the client SPA', () => {
     const mainSource = readFileSync(resolve(REPO_ROOT, 'packages/electron/src/main.ts'), 'utf-8');
-    const updateIndex = mainSource.indexOf('await ensureClientAppBuild();');
-    const startIndex = mainSource.indexOf('startClientAppServer();');
 
-    expect(mainSource).toContain('checkAndUpdateClientBuild');
-    expect(mainSource).toContain('const buildDir = resolveClientBuildDir();');
-    expect(updateIndex).toBeGreaterThanOrEqual(0);
-    expect(startIndex).toBeGreaterThan(updateIndex);
+    expect(mainSource).not.toContain('resolveClientBuildDir');
+    expect(mainSource).not.toContain('checkAndUpdateClientBuild');
+    expect(mainSource).not.toContain('startClientAppServer');
+    expect(mainSource).not.toContain('stopClientAppServer');
+    expect(mainSource).not.toContain('OP_HOST_CLIENT_PORT');
   });
 });

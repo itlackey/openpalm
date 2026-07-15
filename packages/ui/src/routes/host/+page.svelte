@@ -301,7 +301,6 @@
       <UpdatesTab
         containers={serviceEntries}
         dockerAvailable={containerData?.dockerAvailable ?? false}
-        containersLoading={containersLoading}
         onRefresh={loadContainers}
       />
     {:else if activeTab === 'recovery'}
