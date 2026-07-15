@@ -581,11 +581,6 @@ export {
 // removed with the client-hosting surface — the assistant container, Electron,
 // and CLI all serve @openpalm/ui now.
 export {
-  DEFAULT_CLIENT_PORT,
-  resolveClientAppPort,
-  resolveClientAppUrl,
-} from './control-plane/client-app-url.js';
-export {
   buildLockedAssistantRuntimeConfig,
   writeClientRuntimeConfig,
   ASSISTANT_LOCKED_CONNECTION_ID,

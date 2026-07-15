@@ -17,30 +17,7 @@ afterEach(() => {
 });
 
 describe('openpalm app', () => {
-  it('resolves the stable localhost client origin on the default port', async () => {
-    const { resolveClientAppUrl } = await import('@openpalm/lib');
-
-    expect(resolveClientAppUrl()).toBe('http://127.0.0.1:3890/chat');
-  });
-
-  it('uses OP_HOST_CLIENT_PORT and ignores OP_CLIENT_PORT collisions', async () => {
-    process.env.OP_CLIENT_PORT = '4810';
-    process.env.OP_HOST_CLIENT_PORT = '4890';
-    const { resolveClientAppPort, resolveClientAppUrl } = await import('@openpalm/lib');
-
-    expect(resolveClientAppPort()).toBe(4890);
-    expect(resolveClientAppUrl()).toBe('http://127.0.0.1:4890/chat');
-  });
-
-  it('keeps the stable localhost origin when only OP_CLIENT_PORT is set', async () => {
-    process.env.OP_CLIENT_PORT = '4810';
-    const { resolveClientAppPort, resolveClientAppUrl } = await import('@openpalm/lib');
-
-    expect(resolveClientAppPort()).toBe(3890);
-    expect(resolveClientAppUrl()).toBe('http://127.0.0.1:3890/chat');
-  });
-
-  it('routes through the UI/client supervisor so the localhost app is served before opening', async () => {
+  it('routes through the UI supervisor so the localhost app is served before opening', async () => {
     const calls: UIServerOptions[] = [];
     const mod = await import('./app.ts');
 
