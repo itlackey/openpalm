@@ -1,61 +1,49 @@
 /**
- * Guardian-LOCAL /event ownership filtering + fan-out (design §3.2, Stage 2).
+ * Guardian /oc/event — per-connection native-preserving SSE relay with tenant
+ * filtering (design §3.2).
  *
  * GET /event on the assistant multiplexes the OpenCode Event union for ALL
  * sessions of the instance. A byte-for-byte proxy would leak one principal's
- * tokens, tool output, and permission requests to another — a held-open
- * cross-tenant breach. So the guardian MUST parse the stream and forward only
- * frames whose `sessionID` the requesting principal owns.
+ * tokens, tool output, and permission requests to another. So the guardian parses
+ * the stream and forwards only frames whose `sessionID` the requesting principal
+ * owns — but it forwards those frames VERBATIM (id:/event:/data: lines intact) so
+ * OpenCode's native framing and `Last-Event-ID` resume survive.
  *
- * Design points implemented here:
- *   - ONE upstream subscription is held; filtered frames fan out to each
- *     connected principal stream, keyed by owned sessionIDs (§3.2 fan-out).
- *     Per-principal upstream subscription is the fallback, not used here.
- *   - Parse each SSE frame as { type, properties }. Read sessionID at
- *     event.properties.sessionID (for permission.asked, properties IS the
- *     PermissionRequest; its sessionID field reads the same way — §1.1).
- *   - HARD DROP RULE (§3.2 F2a): forward the RAW UNMODIFIED frame ONLY when
- *     sessionID is a non-empty string owned by the principal; otherwise DROP.
- *     Do NOT rely on Map.has(undefined). Global events (server.*, installation.*)
- *     carry no sessionID and thus never reach ANY principal — there is no owner
- *     to scope them to, so the safe default (drop) applies uniformly regardless
- *     of principal kind (rev3-F8: no direct-principal carve-out).
- *   - On permission.asked, record requestID→principal (ownership.ts) so a later
- *     POST /permission/{requestID}/reply can be authorized (§3.4).
- *   - Assistant restart mid-stream (§3.2, medium): if the upstream /event drops,
- *     broadcast a synthetic session.error to every open principal stream BEFORE
- *     attempting resubscribe.
- *   - Ignore unknown event types / tolerate added fields (graceful degrade, §5).
+ * TRANSPARENT model (replaces the old single shared upstream subscription): each
+ * client /event connection opens its OWN upstream /event subscription, forwarding
+ * the client's query string (directory scope) and `Last-Event-ID` header so resume
+ * is exact and per-connection. The guardian never rewrites frame schema — it only
+ * DROPS frames the principal does not own.
  *
- * This is guardian-local runtime state on purpose (mirrors ownership.ts) —
- * NOT @openpalm/lib.
+ * Filtering rules (unchanged security posture):
+ *   - A frame with a non-empty `properties.sessionID` owned by the principal →
+ *     forwarded verbatim.
+ *   - A frame the principal does not own → dropped.
+ *   - A frame with no sessionID (server.*, installation.*, heartbeat) → dropped for
+ *     EVERY principal: it has no owner to scope it to (rev3-F8, tenant isolation).
+ *   - On `permission.asked` / `question.asked` for an owned session, record
+ *     requestID→principal so the reply gate can authorize it (§3.4).
+ *
+ * This is guardian-local runtime state on purpose — NOT @openpalm/lib.
  */
 
 import { createLogger } from './logger.ts';
 
-import {
-	type Principal,
-	ownsSession,
-	ownedSessionIds,
-	principalKey,
-	recordPermissionOwner
-} from './ownership';
+import { type Principal, ownsSession, ownedSessionIds, principalKey, recordPermissionOwner } from './ownership';
 import { ASSISTANT_URL, withAssistantUpstreamAuth } from './config';
 import { parseSseFrames, extractData } from './sse.ts';
 
 const logger = createLogger('guardian:event');
 
-// ── A connected principal stream ───────────────────────────────────────────
+// ── A connected principal relay ─────────────────────────────────────────────
 
 interface Subscriber {
 	principal: Principal;
-	/** SSE bytes are pushed here; the proxy hands the readable side to the portal. */
 	controller: ReadableStreamDefaultController<Uint8Array>;
 	closed: boolean;
 }
 
-// All connected principal streams. Multiple opens per principal are possible
-// (the proxy enforces concurrency caps separately); each gets its own entry.
+// All connected principal relays (for the concurrency cap + keepalive sweep).
 const subscribers = new Set<Subscriber>();
 export const EVENT_MAX_STREAMS_PER_PRINCIPAL = 2;
 export const EVENT_MAX_SUBSCRIBERS = 1_024;
@@ -75,11 +63,10 @@ export function canOpenEventStream(principal: Principal): boolean {
 
 const encoder = new TextEncoder();
 
-// Keepalive: the guardian drops upstream server.heartbeat frames (no sessionID,
-// §3.2), so a turn whose model is quiet would send NO bytes to the portal for a
-// long time. Emit an SSE comment (`: ping`) to every subscriber periodically so
-// the held-open connection stays alive across intermediaries and half-open
-// sockets are detected. Comments are ignored by SSE parsers (no event dispatched).
+// Keepalive: the guardian drops upstream no-sessionID heartbeat frames (§3.2), so
+// a turn whose model is quiet would send NO bytes to the client for a long time.
+// Emit an SSE comment (`: ping`) to every relay periodically so the held-open
+// connection stays alive across intermediaries and half-open sockets are detected.
 const KEEPALIVE_MS = Number(Bun.env.GUARDIAN_OC_EVENT_KEEPALIVE_MS ?? 20_000);
 const keepaliveBytes = encoder.encode(`: ping\n\n`);
 const keepaliveTimer = setInterval(() => {
@@ -87,17 +74,12 @@ const keepaliveTimer = setInterval(() => {
 }, KEEPALIVE_MS);
 keepaliveTimer.unref();
 
-// ── Single upstream subscription ───────────────────────────────────────────
-
-let upstreamActive = false;
-let upstreamAbort: AbortController | null = null;
+// ── Pure frame inspection (exported for unit tests; no upstream needed) ───────
 
 /**
- * Pure SSE frame parser: read the `sessionID` an OpenCode event carries.
- *
- * Returns the sessionID ONLY when it is a non-empty string at
- * event.properties.sessionID; otherwise undefined (→ caller hard-drops).
- * Tolerates unknown event types and added fields (graceful degrade).
+ * The `sessionID` an OpenCode event carries, ONLY when it is a non-empty string at
+ * event.properties.sessionID; otherwise undefined (→ caller drops). Tolerates
+ * unknown event types and added fields (graceful degrade).
  */
 export function frameSessionId(frameJson: string): string | undefined {
 	let parsed: unknown;
@@ -113,11 +95,8 @@ export function frameSessionId(frameJson: string): string | undefined {
 	return sid;
 }
 
-/**
- * Pure: the event type name, or undefined. Used to detect permission.asked so
- * the guardian can record requestID→principal at relay time.
- */
-function frameType(frameJson: string): string | undefined {
+/** The event type name, or undefined. */
+export function frameType(frameJson: string): string | undefined {
 	try {
 		const parsed = JSON.parse(frameJson) as { type?: unknown };
 		return typeof parsed.type === 'string' ? parsed.type : undefined;
@@ -127,10 +106,10 @@ function frameType(frameJson: string): string | undefined {
 }
 
 /**
- * Pure: the permission requestID from a permission.asked frame, where
- * properties IS the PermissionRequest and its `id` is the requestID (§1.2).
+ * The permission/question requestID from a permission.asked / question.asked
+ * frame, where properties IS the request and its `id` is the requestID (§1.2).
  */
-function framePermissionRequestId(frameJson: string): string | undefined {
+export function framePermissionRequestId(frameJson: string): string | undefined {
 	try {
 		const parsed = JSON.parse(frameJson) as { properties?: { id?: unknown } };
 		const id = parsed.properties?.id;
@@ -140,43 +119,7 @@ function framePermissionRequestId(frameJson: string): string | undefined {
 	}
 }
 
-/**
- * Route ONE parsed SSE frame (raw JSON text) to the subscribers that own its
- * sessionID. Exported for unit tests (no upstream needed).
- *
- * - sessionID absent/null/empty → drop for EVERY principal, portal or direct
- *   (rev3-F8: a global frame has no owner to scope it to, so it is never
- *   broadcast — the same hard-drop rule applies uniformly).
- * - For each owning subscriber, write the RAW UNMODIFIED frame.
- * - On permission.asked, record requestID→principal for each owner so the reply
- *   gate can authorize it.
- */
-export function routeFrame(frameJson: string): void {
-	const sessionId = frameSessionId(frameJson);
-	// rev3-F8: a frame with no sessionID (server.*, installation.*) has no owner
-	// to scope it to, so it is dropped for EVERY principal — portal AND direct.
-	// There is no direct-principal carve-out: the HARD DROP RULE applies
-	// uniformly, so a global broadcast never fans out to any stream.
-	if (sessionId === undefined) return;
-
-	// permission.asked AND question.asked both carry their reply id at
-	// properties.id (per_… / que_…) and are answered by requestID; record
-	// requestID→principal for either so the reply gate can authorize it (§3.4).
-	const ft = frameType(frameJson);
-	const interactiveRequestId =
-		ft === 'permission.asked' || ft === 'question.asked'
-			? framePermissionRequestId(frameJson)
-			: undefined;
-
-	const sseBytes = encoder.encode(`data: ${frameJson}\n\n`);
-
-	for (const sub of subscribers) {
-		if (sub.closed) continue;
-		if (!ownsSession(sessionId, sub.principal)) continue;
-		if (interactiveRequestId) recordPermissionOwner(interactiveRequestId, sub.principal);
-		writeTo(sub, sseBytes);
-	}
-}
+// ── Per-connection relay ─────────────────────────────────────────────────────
 
 function writeTo(sub: Subscriber, bytes: Uint8Array): void {
 	if (sub.closed) return;
@@ -188,7 +131,6 @@ function writeTo(sub: Subscriber, bytes: Uint8Array): void {
 		}
 		sub.controller.enqueue(bytes);
 	} catch {
-		// Controller already closed/errored by the platform — drop the subscriber.
 		dropSubscriber(sub);
 	}
 }
@@ -205,80 +147,72 @@ function dropSubscriber(sub: Subscriber): void {
 }
 
 /**
- * Broadcast a synthetic upstream-reset to EVERY open principal stream (§3.2): on
- * an assistant /event drop, portals must tear down orphaned interactive controls
- * (permission buttons whose requestID is now invalid).
- *
- * The frame MUST carry a `sessionID` the portal owns — the portal-side
- * `isSessionError(e, sessionId)` filters by `properties.sessionID`, so a
- * no-sessionID frame would be silently dropped and the teardown signal lost. We
- * therefore emit one session.error PER session each subscriber owns. A subscriber
- * that currently owns no session still gets a bare frame (harmless; nothing to
- * tear down) so the connection-level signal is not entirely swallowed.
+ * Relay one COMPLETE upstream SSE frame (content, separator stripped) to `sub` if
+ * the principal owns it. Forwards the frame VERBATIM (all lines preserved) so
+ * OpenCode's native framing + `id:` (Last-Event-ID) survive. Records permission
+ * ownership for owned permission.asked/question.asked frames.
  */
-export function broadcastUpstreamReset(error: { name: string; message: string }): void {
-	for (const sub of subscribers) {
-		if (sub.closed) continue;
-		const owned = ownedSessionIds(sub.principal);
-		if (owned.size === 0) {
-			writeTo(
-				sub,
-				encoder.encode(
-					`data: ${JSON.stringify({ type: 'session.error', properties: { error } })}\n\n`
-				)
-			);
-			continue;
-		}
-		for (const sessionID of owned) {
-			const frame = JSON.stringify({ type: 'session.error', properties: { sessionID, error } });
-			writeTo(sub, encoder.encode(`data: ${frame}\n\n`));
-		}
+function relayFrame(sub: Subscriber, frameContent: string): void {
+	const payload = extractData(frameContent);
+	// Comment / keepalive frames (no data:) carry nothing tenant-scoped; the
+	// guardian emits its own keepalive, so upstream comments are simply dropped.
+	if (payload === null) return;
+
+	const sessionId = frameSessionId(payload);
+	// No sessionID (server.*, installation.*, heartbeat) → no owner to scope it to
+	// → dropped for every principal (tenant isolation, rev3-F8).
+	if (sessionId === undefined) return;
+	if (!ownsSession(sessionId, sub.principal)) return;
+
+	const ft = frameType(payload);
+	if (ft === 'permission.asked' || ft === 'question.asked') {
+		const requestId = framePermissionRequestId(payload);
+		if (requestId) recordPermissionOwner(requestId, sub.principal);
+	}
+
+	// Verbatim re-emit: the original frame lines + a blank-line terminator.
+	writeTo(sub, encoder.encode(`${frameContent}\n\n`));
+}
+
+/**
+ * Emit a synthetic session.error to the relay for every session the principal
+ * owns (§3.2): on an upstream /event drop, clients must tear down orphaned
+ * interactive controls (permission buttons whose requestID is now invalid). A
+ * client with no owned session gets one bare frame so the connection-level signal
+ * is not entirely swallowed.
+ */
+function emitUpstreamReset(sub: Subscriber, error: { name: string; message: string }): void {
+	if (sub.closed) return;
+	const owned = ownedSessionIds(sub.principal);
+	if (owned.size === 0) {
+		writeTo(sub, encoder.encode(`data: ${JSON.stringify({ type: 'session.error', properties: { error } })}\n\n`));
+		return;
+	}
+	for (const sessionID of owned) {
+		const frame = JSON.stringify({ type: 'session.error', properties: { sessionID, error } });
+		writeTo(sub, encoder.encode(`data: ${frame}\n\n`));
 	}
 }
 
 /**
- * Parse a chunk of the upstream SSE byte stream, splitting on the blank-line
- * frame boundary, extracting the `data:` payload of each complete frame, and
- * routing it. Returns the unconsumed tail (a partial frame) to prepend next.
- *
- * Exported for unit tests.
+ * Pump this connection's own upstream /event subscription, filtering + relaying
+ * owned frames until the client disconnects or the upstream ends.
  */
-export function consumeSseBuffer(buffer: string): string {
-	const { frames, rest } = parseSseFrames(buffer);
-	for (const rawFrame of frames) {
-		const dataPayload = extractData(rawFrame);
-		if (dataPayload !== null) routeFrame(dataPayload);
-	}
-	return rest;
-}
+async function pumpUpstream(sub: Subscriber, req: Request): Promise<void> {
+	const clientUrl = new URL(req.url);
+	const headers = withAssistantUpstreamAuth(new Headers({ accept: 'text/event-stream' }));
+	// Forward Last-Event-ID (exact resume) — the client's, not a shared cursor.
+	const lastEventId = req.headers.get('last-event-id');
+	if (lastEventId) headers.set('last-event-id', lastEventId);
 
-/**
- * Ensure the single upstream /event subscription is running. Idempotent — a
- * second caller while one is active is a no-op. On stream end/error it
- * broadcasts a synthetic session.error to all subscribers, then (if any remain)
- * schedules a resubscribe.
- */
-function ensureUpstream(): void {
-	if (upstreamActive) return;
-	upstreamActive = true;
-	void runUpstream();
-}
-
-async function runUpstream(): Promise<void> {
-	const abort = new AbortController();
-	upstreamAbort = abort;
 	try {
-		// #563 D2 — attach guardian→assistant upstream Basic auth when enabled.
-		const headers = withAssistantUpstreamAuth(new Headers({ accept: 'text/event-stream' }));
-
-		const resp = await fetch(`${ASSISTANT_URL}/event`, {
+		// Forward the client's query string (directory scope etc.) verbatim.
+		const resp = await fetch(`${ASSISTANT_URL}/event${clientUrl.search}`, {
 			method: 'GET',
 			headers,
-			signal: abort.signal
+			signal: req.signal,
 		});
-		if (!resp.ok || !resp.body) {
-			throw new Error(`upstream /event status ${resp.status}`);
-		}
+		if (!resp.ok || !resp.body) throw new Error(`upstream /event status ${resp.status}`);
 
 		logger.info('event_upstream_open', {});
 		const reader = resp.body.getReader();
@@ -288,31 +222,24 @@ async function runUpstream(): Promise<void> {
 			const { done, value } = await reader.read();
 			if (done) break;
 			buffer += decoder.decode(value, { stream: true });
-			buffer = consumeSseBuffer(buffer);
+			const { frames, rest } = parseSseFrames(buffer);
+			buffer = rest;
+			for (const frameContent of frames) relayFrame(sub, frameContent);
+			if (sub.closed) break;
 		}
 		logger.warn('event_upstream_closed', { reason: 'stream_ended' });
 	} catch (err) {
-		if (abort.signal.aborted) {
-			// We aborted deliberately (no subscribers left) — not an error.
+		if (req.signal.aborted) {
 			logger.info('event_upstream_aborted', {});
-		} else {
-			logger.error('event_upstream_error', { error: String(err) });
+			return;
 		}
+		logger.error('event_upstream_error', { error: String(err) });
 	} finally {
-		upstreamActive = false;
-		upstreamAbort = null;
-		// Assistant restart mid-stream: tell every open portal BEFORE resubscribe
-		// so they tear down orphaned interactive controls (permission buttons whose
-		// requestID is now invalid). A bare synthetic frame; portals surface it.
-		if (subscribers.size > 0) {
-			broadcastUpstreamReset({
-				name: 'GuardianUpstreamReset',
-				message: 'assistant event stream reset'
-			});
-			// Brief backoff before re-establishing the single upstream subscription.
-			setTimeout(() => {
-				if (subscribers.size > 0) ensureUpstream();
-			}, 1_000).unref();
+		if (!sub.closed && !req.signal.aborted) {
+			// Upstream ended/reset (assistant restart): signal teardown, then close so
+			// the client's EventSource reconnects (with its Last-Event-ID) on its own.
+			emitUpstreamReset(sub, { name: 'GuardianUpstreamReset', message: 'assistant event stream reset' });
+			dropSubscriber(sub);
 		}
 	}
 }
@@ -321,76 +248,56 @@ async function runUpstream(): Promise<void> {
 
 /**
  * Open a filtered SSE stream for `principal`. Returns a Response whose body is a
- * ReadableStream of `data: <frame>\n\n` lines — only frames for sessions the
- * principal owns. The single upstream subscription is started on first open.
- *
- * The client abort signal (portal disconnect) tears down this subscriber; when
- * the last subscriber leaves, the upstream subscription is aborted.
+ * ReadableStream of the OpenCode frames — VERBATIM — for sessions the principal
+ * owns. This connection holds its own upstream /event subscription; the client
+ * abort signal (disconnect) tears both down.
  */
-export function openEventStream(principal: Principal, clientSignal: AbortSignal): Response {
+export function openEventStream(principal: Principal, req: Request): Response {
 	let sub: Subscriber;
 	const stream = new ReadableStream<Uint8Array>(
 		{
 			start(controller) {
 				sub = { principal, controller, closed: false };
 				subscribers.add(sub);
-				// Flush headers immediately with an SSE comment so the portal sees an
-				// open 200 stream without waiting for the first owned frame (an empty
-				// event-stream otherwise buffers headers until first byte).
+				// Flush headers immediately with an SSE comment so the client sees an
+				// open 200 stream without waiting for the first owned frame.
 				try {
 					controller.enqueue(encoder.encode(': open\n\n'));
 				} catch {
 					// controller already closed — drop below
 				}
-				ensureUpstream();
 				const onAbort = () => dropSubscriber(sub);
-				if (clientSignal.aborted) onAbort();
-				else clientSignal.addEventListener('abort', onAbort, { once: true });
+				if (req.signal.aborted) onAbort();
+				else req.signal.addEventListener('abort', onAbort, { once: true });
+				void pumpUpstream(sub, req);
 			},
 			cancel() {
 				dropSubscriber(sub);
-				maybeStopUpstream();
-			}
+			},
 		},
 		{
 			highWaterMark: EVENT_SUBSCRIBER_BUFFER_BYTES,
-			size: (chunk) => chunk.byteLength
-		}
+			size: (chunk) => chunk.byteLength,
+		},
 	);
 
 	return new Response(stream, {
 		status: 200,
 		headers: {
 			'content-type': 'text/event-stream',
-			'cache-control': 'no-cache'
-		}
+			'cache-control': 'no-cache',
+		},
 	});
-}
-
-function maybeStopUpstream(): void {
-	if (subscribers.size === 0 && upstreamAbort) {
-		upstreamAbort.abort();
-	}
 }
 
 // ── /stats + test helpers ──────────────────────────────────────────────────
 
-/** Number of currently-connected filtered /event subscribers (for /stats). */
+/** Number of currently-connected filtered /event relays (for /stats). */
 export function eventSubscriberCount(): number {
 	return subscribers.size;
 }
 
-/** Test-only: register a subscriber with an externally-driven controller. */
-export function _addTestSubscriber(
-	principal: Principal,
-	controller: ReadableStreamDefaultController<Uint8Array>
-): { drop: () => void } {
-	const sub: Subscriber = { principal, controller, closed: false };
-	subscribers.add(sub);
-	return { drop: () => dropSubscriber(sub) };
-}
-
-/** Test-only: clear all subscribers between cases. */
+/** Test-only: drop all relays between cases. */
 export function _resetSubscribersForTest(): void {
 	for (const sub of [...subscribers]) dropSubscriber(sub);
 	subscribers.clear();

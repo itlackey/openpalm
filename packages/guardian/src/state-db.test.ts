@@ -94,7 +94,7 @@ describe('state-db — configureStateDatabase', () => {
 
     expect(journalMode(database)).toBe('wal');
     expect(userVersion(database)).toBe(STATE_DB_SCHEMA_VERSION);
-    expect(userVersion(database)).toBe(1);
+    expect(userVersion(database)).toBe(STATE_DB_SCHEMA_VERSION);
 
     const sql = schemaSql(database);
     expect(sql).toBeDefined();
@@ -105,7 +105,7 @@ describe('state-db — configureStateDatabase', () => {
     rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  it('0.12.x old-constraint DB: migrates channel→portal rows and stamps user_version 1', () => {
+  it('0.12.x old-constraint DB: migrates channel→portal rows and stamps the current schema version', () => {
     buildOldDb(dbPath);
     const database = new Database(dbPath);
     configureStateDatabase(database);
@@ -115,14 +115,14 @@ describe('state-db — configureStateDatabase', () => {
     expect(rows.find((r) => r.id === 'chan1')?.kind).toBe('portal');
     expect(rows.find((r) => r.id === 'dir1')?.kind).toBe('direct');
 
-    expect(userVersion(database)).toBe(1);
+    expect(userVersion(database)).toBe(STATE_DB_SCHEMA_VERSION);
     expect(schemaSql(database)).not.toContain("'channel'");
 
     database.close();
     rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  it('0.12.x already-rewritten DB at user_version 0: stamped to 1 without data loss', () => {
+  it('0.12.x already-rewritten DB at user_version 0: stamped to the current version without data loss', () => {
     buildAlreadyRewrittenDb(dbPath);
     const database = new Database(dbPath);
     // Sanity: this fixture starts at user_version 0 despite the new schema
@@ -135,7 +135,7 @@ describe('state-db — configureStateDatabase', () => {
     expect(rows).toHaveLength(1);
     expect(rows[0].id).toBe('p1');
     expect(rows[0].kind).toBe('portal');
-    expect(userVersion(database)).toBe(1);
+    expect(userVersion(database)).toBe(STATE_DB_SCHEMA_VERSION);
 
     database.close();
     rmSync(tmpDir, { recursive: true, force: true });
@@ -203,6 +203,81 @@ describe('state-db — configureStateDatabase', () => {
     }
 
     database.close();
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('creates the /oc ownership tables (session_owners, permission_owners) on a fresh DB', () => {
+    const database = new Database(dbPath, { create: true });
+    configureStateDatabase(database);
+    const tables = database
+      .query<{ name: string }, []>("SELECT name FROM sqlite_master WHERE type='table'")
+      .all()
+      .map((r) => r.name);
+    expect(tables).toContain('session_owners');
+    expect(tables).toContain('permission_owners');
+    expect(userVersion(database)).toBe(STATE_DB_SCHEMA_VERSION);
+    database.close();
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('migrates a v1 principals-only DB up to the ownership schema without data loss', () => {
+    // A pre-ownership v1 DB: principals present, stamped user_version = 1, no owner tables.
+    const seed = new Database(dbPath, { create: true });
+    seed.exec(`
+      CREATE TABLE principals (
+        id TEXT PRIMARY KEY,
+        kind TEXT NOT NULL CHECK(kind IN ('portal', 'direct')),
+        label TEXT NOT NULL,
+        token_hash TEXT NOT NULL,
+        enabled INTEGER NOT NULL,
+        created_at INTEGER NOT NULL
+      );
+      INSERT INTO principals (id, kind, label, token_hash, enabled, created_at)
+        VALUES ('p1', 'portal', 'p1', 'aaa', 1, 1);
+      PRAGMA user_version = 1;
+    `);
+    seed.close();
+
+    const database = new Database(dbPath);
+    configureStateDatabase(database);
+    const tables = database
+      .query<{ name: string }, []>("SELECT name FROM sqlite_master WHERE type='table'")
+      .all()
+      .map((r) => r.name);
+    expect(tables).toContain('session_owners');
+    expect(tables).toContain('permission_owners');
+    expect(userVersion(database)).toBe(STATE_DB_SCHEMA_VERSION);
+    // Principal data preserved across the migration.
+    const rows = database.query<PrincipalRow, []>('SELECT id FROM principals').all();
+    expect(rows).toHaveLength(1);
+    expect(rows[0].id).toBe('p1');
+    database.close();
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('session/permission ownership rows survive a DB reopen (restart survival — bug #1)', () => {
+    const first = new Database(dbPath, { create: true });
+    configureStateDatabase(first);
+    first
+      .query('INSERT INTO session_owners (session_id, principal_key, created_at) VALUES (?, ?, ?)')
+      .run('ses_1', 'principal-A', 1);
+    first
+      .query('INSERT INTO permission_owners (request_id, principal_key, created_at) VALUES (?, ?, ?)')
+      .run('per_1', 'principal-A', 1);
+    first.close();
+
+    // Reopen the same file — a guardian "restart". Ownership MUST persist: it used
+    // to live in in-memory Maps that reset on restart, orphaning live sessions
+    // (every follow-up call 403'd forbidden_session).
+    const second = new Database(dbPath);
+    configureStateDatabase(second);
+    expect(second.query('SELECT principal_key FROM session_owners WHERE session_id = ?').get('ses_1')).toEqual({
+      principal_key: 'principal-A',
+    });
+    expect(second.query('SELECT principal_key FROM permission_owners WHERE request_id = ?').get('per_1')).toEqual({
+      principal_key: 'principal-A',
+    });
+    second.close();
     rmSync(tmpDir, { recursive: true, force: true });
   });
 
