@@ -25,7 +25,7 @@ import {
   requireCapability,
   withAdminBody,
 } from '$lib/server/helpers.js';
-import { validateConnectionUrl } from '$lib/server/endpoints.js';
+import { validateConnectionUrl } from '$lib/server/opencode-target.js';
 import { getState } from '$lib/server/state.js';
 
 /** Max device-label length (PR #564 r3566891768). Keeps the pairing code well

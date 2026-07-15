@@ -1,16 +1,16 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { page } from '$app/state';
+  import { replaceState } from '$app/navigation';
   import ChatNavbar from '$lib/components/chrome/ChatNavbar.svelte';
   import IconLock from '@openpalm/ui-kit/components/icons/IconLock.svelte';
-  import { endpointsService as connectionsService } from '$lib/endpoints-state.svelte.js';
   import {
-    createConnection,
-    updateConnection,
-    deleteConnection,
-    mintPairingCode,
-    type AssistantConnection,
-  } from '$lib/api.js';
+    endpointsService as connectionsService,
+    type ConnectionView,
+  } from '$lib/endpoints-state.svelte.js';
+  import { mintPairingCode } from '$lib/api.js';
+  import { getConnectionStore, getSecretStore } from '$lib/connections/boot.js';
+  import { parsePairingCode, type PairingPayload } from '$lib/connections/pairing.js';
   import { hasCapability, runtimeContext } from '$lib/runtime-context.svelte.js';
 
   // Capability-guarded surface (plan ui-runtime-modes-plan.md Phase 2, #486):
@@ -23,10 +23,15 @@
   let formId = $state<string | null>(null);
   let formLabel = $state('');
   let formUrl = $state('');
+  let formUsername = $state('');
   let formPassword = $state('');
   let formClearPassword = $state(false);
   let formSubmitting = $state(false);
   let formError = $state('');
+  // #511 D3/D4: "Have a pairing code?" paste field, shown at the top of the
+  // add form. Applying a code prefills the same fields a manual entry uses; the
+  // secret then flows through the existing secret-store path below.
+  let pairingPasteCode = $state('');
 
   // ── Per-row state ───────────────────────────────────────────────────────
   let deletingId = $state<string | null>(null);
@@ -62,7 +67,48 @@
     // The /connections/new landing (plan §6.5, Phase 3) aliases here with
     // ?new=1 — open the add form so "no connections yet" starts at the form.
     if (page.url.searchParams.get('new') === '1') openAddForm();
+
+    // #511 D3/D4: ?pair= deep link — parse, open the add form prefilled, then
+    // strip the credential-bearing parameter from history so the code doesn't
+    // linger in the URL bar.
+    const pairParam = page.url.searchParams.get('pair');
+    if (pairParam) {
+      const result = parsePairingCode(pairParam);
+      if (result.ok) {
+        openAddForm();
+        applyPairingPayload(result.payload);
+      } else {
+        openAddForm();
+        formError = result.error;
+      }
+      const url = new URL(page.url);
+      url.searchParams.delete('pair');
+      replaceState(url, {});
+    }
   });
+
+  /** Prefill the add form from a decoded pairing payload. The secret then flows
+   *  through the existing secret-store path on submit — the stored connection
+   *  carries only auth.secretRef, never the raw secret. */
+  function applyPairingPayload(payload: PairingPayload): void {
+    formLabel = payload.label ?? formLabel;
+    formUrl = payload.url;
+    formUsername = payload.username;
+    formPassword = payload.secret;
+    pairingPasteCode = '';
+    formError = '';
+  }
+
+  function applyPairingPaste(): void {
+    const code = pairingPasteCode.trim();
+    if (!code) return;
+    const result = parsePairingCode(code);
+    if (!result.ok) {
+      formError = result.error;
+      return;
+    }
+    applyPairingPayload(result.payload);
+  }
 
   function openPairingForm(): void {
     pairingMode = 'form';
@@ -128,18 +174,24 @@
     formId = null;
     formLabel = '';
     formUrl = '';
+    formUsername = '';
     formPassword = '';
     formClearPassword = false;
+    pairingPasteCode = '';
     formError = '';
   }
 
-  function openEditForm(c: AssistantConnection): void {
+  function openEditForm(c: ConnectionView): void {
     formMode = 'edit';
     formId = c.id;
     formLabel = c.label;
     formUrl = c.url;
+    // Username is stored inline on the connection's auth; the password lives
+    // encrypted in the secret store and is never re-displayed.
+    formUsername = c.auth.mode === 'basic' ? c.auth.username : '';
     formPassword = '';
     formClearPassword = false;
+    pairingPasteCode = '';
     formError = '';
   }
 
@@ -157,27 +209,38 @@
       formError = 'Label and URL are required.';
       return;
     }
+    const username = formUsername.trim() || 'opencode';
 
     formSubmitting = true;
     formError = '';
     try {
+      const store = getConnectionStore();
+      const secrets = getSecretStore();
       if (formMode === 'add') {
-        await createConnection({
-          label,
-          url,
-          ...(formPassword ? { password: formPassword } : {}),
-        });
-      } else if (formMode === 'edit' && formId) {
-        const patch: { label: string; url: string; password?: string | null } = {
-          label,
-          url,
-        };
-        if (formClearPassword) {
-          patch.password = null;
-        } else if (formPassword) {
-          patch.password = formPassword;
+        if (formPassword) {
+          const secretRef = crypto.randomUUID();
+          await secrets.set(secretRef, { username, password: formPassword });
+          await store.add({ label, baseUrl: url, auth: { mode: 'basic', username, secretRef } });
+        } else {
+          await store.add({ label, baseUrl: url, auth: { mode: 'none' } });
         }
-        await updateConnection(formId, patch);
+      } else if (formMode === 'edit' && formId) {
+        const existing = await store.get(formId);
+        const currentRef = existing?.auth.mode === 'basic' ? existing.auth.secretRef : null;
+        if (formClearPassword) {
+          if (currentRef) await secrets.delete(currentRef);
+          await store.update(formId, { label, baseUrl: url, auth: { mode: 'none' } });
+        } else if (formPassword) {
+          const secretRef = currentRef ?? crypto.randomUUID();
+          await secrets.set(secretRef, { username, password: formPassword });
+          await store.update(formId, { label, baseUrl: url, auth: { mode: 'basic', username, secretRef } });
+        } else if (currentRef) {
+          // Keep the stored password; the username may still have changed.
+          await secrets.updateUsername(currentRef, username);
+          await store.update(formId, { label, baseUrl: url, auth: { mode: 'basic', username, secretRef: currentRef } });
+        } else {
+          await store.update(formId, { label, baseUrl: url, auth: { mode: 'none' } });
+        }
       }
       await connectionsService.load(true);
       formMode = 'idle';
@@ -197,12 +260,14 @@
     }
   }
 
-  async function remove(c: AssistantConnection): Promise<void> {
+  async function remove(c: ConnectionView): Promise<void> {
     if (c.isDefault) return;
     if (!confirm(`Remove connection "${c.label}"?`)) return;
     deletingId = c.id;
     try {
-      await deleteConnection(c.id);
+      const store = getConnectionStore();
+      if (c.auth.mode === 'basic') await getSecretStore().delete(c.auth.secretRef);
+      await store.remove(c.id);
       await connectionsService.load(true);
     } catch (err) {
       const e2 = err as { message?: string };
@@ -287,6 +352,24 @@
       <form class="connection-form" onsubmit={submitForm}>
         <h2>{formMode === 'add' ? 'Add connection' : 'Edit connection'}</h2>
 
+        {#if formMode === 'add'}
+          <label class="field">
+            <span>Have a pairing code?</span>
+            <div class="paste-row">
+              <input
+                type="text"
+                bind:value={pairingPasteCode}
+                placeholder="openpalm-pair:…"
+                autocomplete="off"
+              />
+              <button type="button" class="btn btn-secondary btn-sm" onclick={applyPairingPaste}>
+                Apply
+              </button>
+            </div>
+            <small>Paste a code from another stack's “Pair a device” panel to prefill this form.</small>
+          </label>
+        {/if}
+
         <label class="field">
           <span>Label</span>
           <input
@@ -312,6 +395,17 @@
             <code>http://10.0.0.5:3800</code>) or a guardian front door including its
             <code>/oc</code> path. OpenPalm speaks native OpenCode against either.
           </small>
+        </label>
+
+        <label class="field">
+          <span>Username (optional)</span>
+          <input
+            type="text"
+            bind:value={formUsername}
+            placeholder="opencode"
+            autocomplete="off"
+          />
+          <small>Basic-auth username. Defaults to <code>opencode</code> (OpenCode's server default).</small>
         </label>
 
         <label class="field">
@@ -673,6 +767,19 @@
     display: flex;
     align-items: center;
     gap: var(--s-sp-2);
+  }
+
+  .paste-row {
+    display: flex;
+    gap: var(--s-sp-2);
+  }
+  .paste-row input {
+    flex: 1;
+    min-width: 0;
+    padding: var(--s-sp-2) var(--s-sp-3);
+    border: var(--s-hair) solid var(--s-line);
+    border-radius: 2px;
+    font: inherit;
   }
 
   .form-actions {

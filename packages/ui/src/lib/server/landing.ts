@@ -25,7 +25,7 @@ import {
   type ComposeServiceStatus,
 } from '@openpalm/lib';
 import { getState } from '$lib/server/state.js';
-import { listRemoteStatuses } from '$lib/server/endpoints.js';
+import { listRemoteStatuses } from '$lib/server/opencode-target.js';
 import { computeServerRuntimeContext } from '$lib/server/features.js';
 import { resolveCapabilities } from '$lib/runtime-context.svelte.js';
 import { resolveLanding, type LaunchState } from '$lib/resolve-landing.js';

@@ -1,21 +1,17 @@
 /**
- * Hand-rolled SSE consumer for OpenCode's `/event` stream.
+ * SSE consumer for OpenCode's `/event` stream.
  *
- * Why not `@opencode-ai/sdk`'s `createSseClient`? Pulling the SDK into the
- * client bundle drags in the rest of its generated code (~hundreds of kB).
- * The protocol we need is ~50 lines: split frames on `\n\n`, parse
- * `event:`/`data:`/`id:`, dispatch session events, reconnect on disconnect
- * with exponential backoff, send `Last-Event-ID` on resume.
- *
- * Why not `EventSource`? Setting `Last-Event-ID` on reconnect via the
- * standard SSE header is fine in `EventSource`, but we want exponential
- * backoff and explicit abort semantics — `EventSource`'s built-in retry
- * timer is opaque. Hand-rolled `fetch` + reader gives full control and
- * still pipes through `/proxy/assistant/event` so the SvelteKit broker
- * injects Basic auth + the active endpoint URL server-side.
+ * Phase 3b ("One UI, delete the split"): the underlying stream is now opened by
+ * the browser-owned direct transport (`$lib/connections/boot.getTransport()`
+ * → `subscribeEvents(onFrame, signal)`), which talks to the active connection's
+ * OpenCode/Guardian base URL directly (no host proxy, no admin cookie) and
+ * REUSES this module's `parseFrame`. Reconnect/backoff, session-scoped dispatch,
+ * and abort semantics stay here — the chat layer's concern, not the transport's.
  *
  * Phase D of docs/technical/multi-endpoint-session-ux.md.
  */
+import { getTransport } from '$lib/connections/boot.js';
+import type { RawEvent } from './oc-events.js';
 
 export type SessionEventHandlers = {
   onCreated(sessionId: string): void;
@@ -28,7 +24,6 @@ export type SessionEventHandlers = {
 
 const INITIAL_BACKOFF_MS = 1000;
 const MAX_BACKOFF_MS = 30000;
-const STREAM_URL = '/proxy/assistant/event';
 
 type ParsedFrame = {
   event?: string;
@@ -38,7 +33,7 @@ type ParsedFrame = {
 
 /**
  * Parse one `\n\n`-delimited SSE frame. Multi-line `data:` fields are
- * concatenated with `\n` per the SSE spec.
+ * concatenated with `\n` per the SSE spec. Reused by the direct transport.
  */
 export function parseFrame(chunk: string): ParsedFrame {
   const frame: ParsedFrame = {};
@@ -94,14 +89,17 @@ function dispatch(handlers: SessionEventHandlers, payload: OpenCodeSessionEventP
 }
 
 /**
- * Open an SSE connection to `/proxy/assistant/event` and dispatch
- * session-scoped events. Returns an unsubscribe function that aborts the
- * stream and prevents reconnection.
+ * Open the active connection's `/event` SSE stream (via the direct transport)
+ * and dispatch session-scoped events. Returns an unsubscribe function that
+ * aborts the stream and prevents reconnection.
+ *
+ * `onConnect` fires on the first frame of each (re)connected stream — the point
+ * at which live updates are demonstrably flowing. The transport owns the fetch;
+ * this loop owns exponential-backoff reconnect and abort.
  */
 export function subscribeSessionEvents(handlers: SessionEventHandlers): () => void {
   let stopped = false;
   let controller = new AbortController();
-  let lastEventId: string | undefined;
 
   const sleep = (ms: number): Promise<void> =>
     new Promise((resolve) => {
@@ -117,53 +115,18 @@ export function subscribeSessionEvents(handlers: SessionEventHandlers): () => vo
     });
 
   async function readStream(): Promise<void> {
-    const headers: Record<string, string> = { accept: 'text/event-stream' };
-    if (lastEventId !== undefined) headers['Last-Event-ID'] = lastEventId;
-
-    const response = await fetch(STREAM_URL, {
-      method: 'GET',
-      headers,
-      credentials: 'include',
-      signal: controller.signal,
-    });
-    if (!response.ok || !response.body) {
-      throw new Error(`SSE stream failed: ${response.status} ${response.statusText}`);
-    }
-
-    handlers.onConnect?.();
-    const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
-    let buffer = '';
-
-    try {
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += value;
-        const chunks = buffer.split('\n\n');
-        buffer = chunks.pop() ?? '';
-        for (const chunk of chunks) {
-          if (!chunk) continue;
-          const frame = parseFrame(chunk);
-          if (frame.id !== undefined) lastEventId = frame.id;
-          if (!frame.data) continue;
-          let payload: OpenCodeSessionEventPayload;
-          try {
-            payload = JSON.parse(frame.data) as OpenCodeSessionEventPayload;
-          } catch (err) {
-            console.warn('[session-events] Bad JSON in SSE frame', err);
-            continue;
-          }
-          handlers.onEvent?.(payload);
-          dispatch(handlers, payload);
-        }
+    let connected = false;
+    await getTransport().subscribeEvents((event: RawEvent) => {
+      if (!connected) {
+        connected = true;
+        handlers.onConnect?.();
       }
-    } finally {
-      try {
-        reader.releaseLock();
-      } catch {
-        // already released
-      }
-    }
+      // A RawEvent is the parsed `/event` frame JSON — the same object shape as
+      // OpenCodeSessionEventPayload (type + properties[+ sessionID]).
+      const payload = event as unknown as OpenCodeSessionEventPayload;
+      handlers.onEvent?.(payload);
+      dispatch(handlers, payload);
+    }, controller.signal);
   }
 
   void (async () => {

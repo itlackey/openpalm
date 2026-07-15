@@ -69,8 +69,13 @@ describe('every /api/host/**/+server.ts calls requireCapability (plan Phase 4 st
     expect(existsSync(join(API_HOST_DIR, 'auth'))).toBe(false);
   });
 
-  test('CONSTRAINT (green today): connections stay at /api/connections (Phase 2 EXCEPT clause)', () => {
+  test('CONSTRAINT (green today): the host connection STORE is gone; only the pairing MINT route stays', () => {
+    // Phase 3b ("One UI, delete the split"): the browser owns connections, so
+    // the host connection-store CRUD (`/api/connections` list/create/[id]/active)
+    // and its host-admin namespace are deleted. Only the host-minted device
+    // pairing route survives under /api/connections.
     expect(existsSync(join(API_HOST_DIR, 'endpoints'))).toBe(false);
-    expect(existsSync(join(ROUTES_DIR, 'api', 'connections', '+server.ts'))).toBe(true);
+    expect(existsSync(join(ROUTES_DIR, 'api', 'connections', '+server.ts'))).toBe(false);
+    expect(existsSync(join(ROUTES_DIR, 'api', 'connections', 'pairing', '+server.ts'))).toBe(true);
   });
 });

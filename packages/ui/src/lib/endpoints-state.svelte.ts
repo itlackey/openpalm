@@ -1,36 +1,63 @@
 /**
- * Client-side store for the assistant connections list + active selection
- * (internal model renamed endpoint → connection in Phase 2 / #486; plan
- * ui-runtime-modes-plan.md §6.6).
+ * Reactive connection list + active selection for the switcher and pages.
  *
- * Loaded lazily on first access. Other components ($lib/components/Navbar)
- * and pages (/connections) share this state so a change anywhere is
- * reflected everywhere without a full reload.
+ * Phase 3b ("One UI, delete the split"): backed by the browser-owned
+ * connection store (`$lib/connections/boot`), not the deleted host
+ * `/api/connections` surface. The store persists in IndexedDB; this class is
+ * the shared reactive view over it so a change anywhere (switcher, /connections
+ * page) is reflected everywhere without a reload.
+ *
+ * Seeds locked/default entries from `loadRuntimeConfig()` once on first load.
+ * Keeps the transport's active-connection snapshot in sync via
+ * `setActiveConnection()` — a plain call, no `$effect`.
  *
  * NOTE on naming: the file name and the `endpointsService` export (and its
  * `endpoints`/`activeId` fields) are pinned by existing components and their
- * browser tests; they migrate with the Phase 5 client extraction. New code
- * is written in connection language.
+ * browser tests, so they are preserved. New code is written in connection
+ * language.
  *
  * Untangled from chat (plan Phase 2 step 6): this store NEVER imports chat
  * modules. Activation emits through $lib/connection-events; the chat store
  * subscribes (and registers its "not while sending" guard) from its own side.
  */
-import {
-  fetchConnections,
-  setActiveConnection,
-  type AssistantConnection,
-} from './api.js';
+import { getConnectionStore, setActiveConnection } from './connections/boot.js';
+import { loadRuntimeConfig, type Connection } from './connections/store.js';
 import { activationBlockReason, emitConnectionActivated } from './connection-events.js';
 
+/**
+ * The connection shape existing consumers (switcher, ActivityTab, /connections)
+ * read. A superset of the stored `Connection` that preserves the historical
+ * `url` / `isDefault` / `hasPassword` fields:
+ *   - `url`        — alias of `baseUrl`
+ *   - `isDefault`  — config-owned (locked) or seeded default → not removable
+ *   - `hasPassword`— Basic credentials attached
+ */
+export type ConnectionView = Connection & {
+  url: string;
+  isDefault: boolean;
+  hasPassword: boolean;
+};
+
+function toView(c: Connection): ConnectionView {
+  return {
+    ...c,
+    url: c.baseUrl,
+    isDefault: Boolean(c.isDefault || c.locked),
+    hasPassword: c.auth.mode === 'basic',
+  };
+}
+
 class ConnectionsService {
-  endpoints = $state<AssistantConnection[]>([]);
-  activeId = $state<string>('default');
+  endpoints = $state<ConnectionView[]>([]);
+  activeId = $state<string>('');
   loading = $state(false);
   loaded = $state(false);
   error = $state('');
 
-  active = $derived<AssistantConnection | null>(
+  /** Runtime-config seed runs exactly once per browsing session. */
+  private seeded = false;
+
+  active = $derived<ConnectionView | null>(
     this.endpoints.find((e) => e.id === this.activeId) ?? this.endpoints[0] ?? null
   );
 
@@ -40,16 +67,23 @@ class ConnectionsService {
     this.loading = true;
     this.error = '';
     try {
-      const { connections, activeId } = await fetchConnections();
-      this.endpoints = connections;
-      this.activeId = activeId;
+      const store = getConnectionStore();
+      if (!this.seeded) {
+        this.seeded = true;
+        await store.seedFromRuntimeConfig(await loadRuntimeConfig());
+      }
+      const [connections, storedActiveId] = await Promise.all([
+        store.list(),
+        store.getActiveId(),
+      ]);
+      this.endpoints = connections.map(toView);
+      this.activeId = storedActiveId ?? this.endpoints[0]?.id ?? '';
+      // Keep the transport's active connection in sync (no $effect).
+      setActiveConnection(connections.find((c) => c.id === this.activeId) ?? null);
       this.loaded = true;
     } catch (e) {
       const err = e as { message?: string; status?: number };
-      // 401 is the auth gate's responsibility — don't surface here
-      if (err.status !== 401) {
-        this.error = err.message ?? 'Failed to load connections';
-      }
+      this.error = err.message ?? 'Failed to load connections';
     } finally {
       this.loading = false;
     }
@@ -67,8 +101,10 @@ class ConnectionsService {
     }
     const previous = this.activeId;
     this.activeId = id;
+    const store = getConnectionStore();
     try {
-      await setActiveConnection(id);
+      await store.setActive(id);
+      setActiveConnection((await store.get(id)) ?? null);
       // Hand off to subscribers (the chat store loads this connection's
       // sessions, restores the previously-open one, and fetches messages —
       // see docs/technical/multi-endpoint-session-ux.md). Awaited so a
@@ -76,6 +112,7 @@ class ConnectionsService {
       await emitConnectionActivated(id);
     } catch (e) {
       this.activeId = previous;
+      setActiveConnection((await store.get(previous).catch(() => null)) ?? null);
       const err = e as { message?: string };
       this.error = err.message ?? 'Failed to switch connection';
       throw e;

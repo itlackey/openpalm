@@ -203,7 +203,7 @@ export const handle: Handle = async ({ event, resolve }) => {
     // '/host' is the admin surface itself; '/admin' stays exempt so requests
     // into the dead namespace fall through to the router 404 instead of
     // bouncing to the landing (no alias, no gate — plan Phase 4 step 1).
-    const exempt = path.startsWith('/api/') || path.startsWith('/proxy/') || path.startsWith('/login')
+    const exempt = path.startsWith('/api/') || path.startsWith('/login')
       || path.startsWith('/health') || path.startsWith('/guardian/health') || path.startsWith('/host')
       || path.startsWith('/admin') || usageExempt;
     if (path === '/' || (path !== landingPath && !exempt)) {

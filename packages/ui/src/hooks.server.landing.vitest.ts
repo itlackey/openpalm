@@ -32,8 +32,8 @@ import { fileURLToPath } from 'node:url';
 import type { RequestEvent } from '@sveltejs/kit';
 import { resetState } from '$lib/server/test-helpers.js';
 
-vi.mock('$lib/server/endpoints.js', async (orig) => ({
-  ...(await orig<typeof import('$lib/server/endpoints.js')>()),
+vi.mock('$lib/server/opencode-target.js', async (orig) => ({
+  ...(await orig<typeof import('$lib/server/opencode-target.js')>()),
   listRemoteStatuses: vi.fn(async () => []),
 }));
 vi.mock('@openpalm/lib', async (orig) => ({

@@ -3,9 +3,6 @@ import { EventEmitter } from 'node:events';
 
 const spawnMock = vi.fn();
 
-vi.mock('$lib/server/endpoints.js', () => ({
-}));
-
 vi.mock('node:child_process', () => ({
   spawn: spawnMock,
 }));

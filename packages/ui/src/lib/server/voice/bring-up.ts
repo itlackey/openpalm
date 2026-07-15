@@ -1,8 +1,8 @@
 /**
  * Voice addon bring-up engine — the Docker/compose infrastructure behind
  * PUT /api/host/voice. Extracted from the route so the HTTP handler stays a
- * thin request-validation + delegation layer (mirrors the
- * lib/server/endpoints.ts ↔ admin/endpoints/+server.ts split).
+ * thin request-validation + delegation layer (the thin-route-over-service
+ * pattern used across the host-admin API).
  *
  * Responsibilities:
  *   - Docker image inspection + resolution (dockerImagePresent / resolveServiceImage)

@@ -3,32 +3,33 @@ import {
   flattenSessionMessages,
   type SessionMessageRow,
 } from '$lib/chat/session-messages.js';
-import { request, requireOk, readErrorMessage, buildHeaders } from './core.js';
+import { getTransport } from '$lib/connections/boot.js';
 
-// ── Chat Proxy ────────────────────────────────────────────────────────────────
+// ── Chat transport ─────────────────────────────────────────────────────────
+//
+// Phase 3b ("One UI, delete the split"): the browser talks to the active
+// connection's OpenCode/Guardian base URL DIRECTLY via the shared direct
+// transport (`$lib/connections/boot.getTransport()`) — no host proxy, no admin
+// cookie (`credentials: 'omit'` lives in the transport). The active connection
+// is chosen browser-side by the connection switcher. Exported function
+// names/signatures are unchanged so `chat-state` and the chat components need
+// no changes.
 
-/**
- * Create a new OpenCode session via the SvelteKit broker.
- *
- * Only `/proxy/assistant/*` is reachable from the browser. The active
- * OpenCode instance is selected server-side via the connection switcher.
- */
+/** Create a new session on the active connection's OpenCode instance. */
 export async function createSession(): Promise<{ id: string }> {
-  const res = await requireOk(
-    await request('POST', `/proxy/assistant/session`, {})
-  );
+  const res = await getTransport().request('POST', '/session', {});
   return (await res.json()) as { id: string };
 }
 
 /**
- * List sessions on the active OpenCode endpoint.
+ * List sessions on the active connection.
  *
  * OpenCode returns `Array<Session>` with no ordering guarantee; we sort
  * desc by `time.updated` here so consumers can rely on it. See
  * docs/technical/multi-endpoint-session-ux.md §2.
  */
 export async function listSessions(): Promise<SessionSummary[]> {
-  const res = await requireOk(await request('GET', '/proxy/assistant/session'));
+  const res = await getTransport().request('GET', '/session');
   const raw = (await res.json()) as Array<{
     id: string;
     title?: string;
@@ -51,88 +52,51 @@ export async function listSessions(): Promise<SessionSummary[]> {
  * (`$lib/chat/session-messages.ts`) — this client only handles transport.
  */
 export async function getSessionMessages(sessionId: string): Promise<ChatEntry[]> {
-  const res = await requireOk(
-    await request(
-      'GET',
-      `/proxy/assistant/session/${encodeURIComponent(sessionId)}/message`
-    )
+  const res = await getTransport().request(
+    'GET',
+    `/session/${encodeURIComponent(sessionId)}/message`
   );
   const rows = (await res.json()) as SessionMessageRow[];
   return flattenSessionMessages(rows);
 }
 
 /**
- * Send a message to an existing OpenCode session via the SvelteKit broker.
- * Uses direct fetch with a 150s AbortSignal timeout — OpenCode responses
- * can take 30–120s.
+ * Send a message to an existing session and await the full response (the
+ * non-streaming fallback used when the SSE event stream isn't connected).
  */
 export async function sendChatMessage(
   sessionId: string,
   text: string
 ): Promise<OpenCodeMessageResponse> {
-  const res = await fetch(
-    `/proxy/assistant/session/${encodeURIComponent(sessionId)}/message`,
-    {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        ...buildHeaders(),
-      },
-      credentials: 'include',
-      body: JSON.stringify({ parts: [{ type: 'text', text }] }),
-      signal: AbortSignal.timeout(150_000),
-    }
+  const res = await getTransport().request(
+    'POST',
+    `/session/${encodeURIComponent(sessionId)}/message`,
+    { parts: [{ type: 'text', text }] }
   );
-  if (res.status === 401) {
-    throw Object.assign(new Error('Sign-in required.'), { status: 401 });
-  }
-  if (!res.ok) {
-    const msg = await readErrorMessage(res);
-    throw Object.assign(new Error(msg), { status: res.status });
-  }
   return (await res.json()) as OpenCodeMessageResponse;
 }
 
+/** Start a turn without awaiting the reply — the SSE stream carries deltas. */
 export async function startChatMessageTurn(
   sessionId: string,
   text: string
 ): Promise<void> {
-  const res = await fetch(
-    `/proxy/assistant/session/${encodeURIComponent(sessionId)}/message`,
-    {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        ...buildHeaders(),
-      },
-      credentials: 'include',
-      body: JSON.stringify({
-        parts: [{ type: 'text', text }],
-      }),
-      signal: AbortSignal.timeout(150_000),
-    }
+  await getTransport().request(
+    'POST',
+    `/session/${encodeURIComponent(sessionId)}/message`,
+    { parts: [{ type: 'text', text }] }
   );
-  if (res.status === 401) {
-    throw Object.assign(new Error('Sign-in required.'), { status: 401 });
-  }
-  if (!res.ok) {
-    const msg = await readErrorMessage(res);
-    throw Object.assign(new Error(msg), { status: res.status });
-  }
 }
 
 /**
- * Abort the in-flight turn on an existing session via the SvelteKit broker.
- * Best-effort from the caller's perspective — OpenCode exposes this as
- * `POST /session/{id}/abort` (see `@opencode-ai/sdk` `session.abort`).
+ * Abort the in-flight turn on an existing session. Best-effort from the
+ * caller's perspective — OpenCode exposes this as `POST /session/{id}/abort`.
  */
 export async function abortChatTurn(sessionId: string): Promise<void> {
-  const res = await requireOk(
-    await request(
-      'POST',
-      `/proxy/assistant/session/${encodeURIComponent(sessionId)}/abort`,
-      {}
-    )
+  const res = await getTransport().request(
+    'POST',
+    `/session/${encodeURIComponent(sessionId)}/abort`,
+    {}
   );
   await res.text().catch(() => '');
 }
@@ -141,40 +105,37 @@ export async function replyChatPermission(
   requestId: string,
   reply: 'once' | 'always' | 'reject'
 ): Promise<void> {
-  const res = await requireOk(
-    await request('POST', `/proxy/assistant/permission/${encodeURIComponent(requestId)}/reply`, { reply })
+  const res = await getTransport().request(
+    'POST',
+    `/permission/${encodeURIComponent(requestId)}/reply`,
+    { reply }
   );
   await res.text().catch(() => '');
 }
 
 export async function replyChatQuestion(requestId: string, answers: string[][]): Promise<void> {
-  const res = await requireOk(
-    await request('POST', `/proxy/assistant/question/${encodeURIComponent(requestId)}/reply`, { answers })
+  const res = await getTransport().request(
+    'POST',
+    `/question/${encodeURIComponent(requestId)}/reply`,
+    { answers }
   );
   await res.text().catch(() => '');
 }
 
 export async function rejectChatQuestion(requestId: string): Promise<void> {
-  const res = await requireOk(
-    await request('POST', `/proxy/assistant/question/${encodeURIComponent(requestId)}/reject`, {})
+  const res = await getTransport().request(
+    'POST',
+    `/question/${encodeURIComponent(requestId)}/reject`,
+    {}
   );
   await res.text().catch(() => '');
 }
 
 /**
- * Probe whether the assistant broker is reachable.
- * Returns true if the probe succeeds within 3s.
+ * Probe whether the active connection is reachable. Returns true only when the
+ * direct health probe reports the endpoint as accessible.
  */
 export async function probeChatBackend(): Promise<boolean> {
-  try {
-    const res = await fetch(`/proxy/assistant/provider`, {
-      method: 'GET',
-      headers: buildHeaders(),
-      credentials: 'include',
-      signal: AbortSignal.timeout(3000),
-    });
-    return res.ok;
-  } catch {
-    return false;
-  }
+  const result = await getTransport().probeHealth();
+  return result.status === 'accessible';
 }

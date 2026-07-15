@@ -167,8 +167,8 @@ export type OpenCodeAuthMethod = {
 
 // ── Chat Types ──────────────────────────────────────────────────────────
 
-// Messages route through `/proxy/assistant/...` only; the active OpenCode
-// instance is chosen via the connection switcher.
+// Messages route directly to the active connection's OpenCode instance,
+// chosen browser-side via the connection switcher.
 
 export type ChatMessage = {
   id: string;

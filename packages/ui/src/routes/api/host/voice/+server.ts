@@ -8,9 +8,8 @@
  *                     to operator-actionable copy.
  *
  * Request validation + response shaping live here; the Docker/compose
- * bring-up engine lives in $lib/server/voice/bring-up.ts (see the
- * lib/server/endpoints.ts ↔ admin/endpoints/+server.ts split for the
- * thin-route-over-service pattern this mirrors).
+ * bring-up engine lives in $lib/server/voice/bring-up.ts (the
+ * thin-route-over-service pattern used across the host-admin API).
  */
 import type { RequestHandler } from './$types';
 import { getState } from '$lib/server/state.js';

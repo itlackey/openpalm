@@ -2,7 +2,7 @@ import type { ChatEntry, ChatMessage, ChatToolGroup, ToolStripEntry } from '$lib
 import { toolStripEntryFromSessionPart, type SessionMessagePart } from '$lib/chat/tool-strip.js';
 
 /** A raw OpenCode message row as returned by
- *  `GET /proxy/assistant/session/:id/message`. */
+ *  `GET /session/:id/message` on the active connection. */
 export type SessionMessageRow = {
   info: {
     id: string;

@@ -24,8 +24,8 @@ const mockEndpoint = {
   password: '',
 };
 
-vi.mock('$lib/server/endpoints.js', () => ({
-  getActiveEndpoint: vi.fn(() => mockEndpoint),
+vi.mock('$lib/server/opencode-target.js', () => ({
+  getHostOpencodeTarget: vi.fn(() => mockEndpoint),
 }));
 
 import { GET } from './+server.js';
