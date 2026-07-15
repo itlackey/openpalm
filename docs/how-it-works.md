@@ -54,17 +54,21 @@ Responsibilities:
 - Writes the audit log
 
 ### Guardian (Bun server, port 8080)
-The security checkpoint for all inbound portal traffic. The image also ships the
+The security checkpoint for all inbound portal traffic. Guardian is a
+**transparent 1:1 reverse proxy** in front of the assistant's OpenCode server —
+it forwards every method/path/query/body and streams responses (including SSE)
+untouched, with fail-closed policy overlays on the handful of tenant-scoped
+paths (never an allowlist, never a second protocol). The image also ships the
 OpenCode binary so it can run optional content validation (below).
 
 For every inbound request it:
-1. Validates payload shape, endpoint allowlist, and ownership context
-2. Authenticates the principal with Basic auth using `PRINCIPAL_ID` and `PRINCIPAL_SECRET_FILE`
-3. Enforces session/request ownership and rate/resource limits
+1. Canonicalizes the request path (percent-decode + `..` traversal refusal), then classifies the tenant-scoped route
+2. Authenticates the principal with Basic auth using `PRINCIPAL_ID` and `PRINCIPAL_SECRET_FILE` (the principal id is the Basic username)
+3. Enforces session/permission ownership (persisted in Guardian's SQLite state DB, so a restart no longer orphans live sessions) and rate/resource limits
 4. **Optional content validation** (`GUARDIAN_CONTENT_VALIDATION`, off by default): a heuristic pre-screen escalates suspicious prompt-bearing writes to a local OpenCode moderator that returns allow/flag/block. Fail-closed — an unclassifiable suspicious request is blocked (`403 content_blocked`).
-5. Proxies validated OpenCode traffic to the assistant
+5. Forwards the request to the assistant's OpenCode, injecting upstream credentials server-side and stripping the inbound Guardian credentials + hop-by-hop headers
 
-A message that fails any check never reaches the assistant.
+A message that fails an overlay check never reaches the assistant.
 
 ### Assistant (OpenCode runtime, host port 3800)
 The AI. Runs OpenCode. Has no Docker socket.
@@ -109,8 +113,8 @@ portal adapter (:3820 host -> :8182 container for chat/api)
         v
 Guardian validates:
   + Principal credentials match a seeded token
-  + Endpoint is allowlisted
-  + Session/request ownership matches the principal
+  + Request path is canonical (percent-decoded, no `..` traversal)
+  + Session/permission ownership matches the principal
   + Rate limit and resource bounds allow the call
   + Content validation (optional, fail-closed): heuristic screen -> local moderator
         |
@@ -194,11 +198,12 @@ There is no intermediate staging step. The standard wrapper includes
 
 Each portal has its own principal secret file. The portal adapter reads the path
 from `PRINCIPAL_SECRET_FILE`, authenticates to Guardian with Basic auth, and
-Guardian enforces ownership and endpoint allowlists before proxying `/oc/*`.
+Guardian enforces per-call auth, session/permission ownership, and its
+fail-closed policy overlays before transparently proxying `/oc/*`.
 
-### Allowlist enforcement
+### Admin action allowlist
 
-The admin keeps an explicit allowlist of:
+The admin API (host control plane) keeps an explicit allowlist of:
 - **Legal service names** -- core services + any installed addon service such as `chat`, `api`, or `voice`
 - **Legal actions** -- lifecycle/config endpoints, `containers.*`, `addons.*`,
   `registry.*` (automations), `artifacts.*`, and `audit.*` routes implemented by admin

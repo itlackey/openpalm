@@ -261,8 +261,8 @@ Containers from addons no longer in the file list are stopped and removed.
 Use this flow before a release or after stack/entrypoint changes. It exercises a
 real Compose stack without touching `~/.openpalm`, production ports, or the
 default `openpalm` project name. It does not require live LLM provider
-credentials; chat/model calls may fail, but health, client artifact
-installation, static client serving, runtime config, CORS/preflight, and common
+credentials; chat/model calls may fail, but health, `@openpalm/ui` artifact
+installation, `@openpalm/ui` serving, runtime config, CORS/preflight, and common
 operator mistakes are covered.
 
 Important host caveat: some Docker daemons cannot bind source files from
@@ -271,15 +271,15 @@ secret file under `/tmp` as missing, use `/var/tmp` or a repo-local temporary
 directory instead. The stack is still temporary; the key safety requirement is a
 unique `OP_HOME`, `OP_PROJECT_NAME`, and non-production ports.
 
-Artifact boundary: this tarball path verifies an unpublished `@openpalm/client`
+Artifact boundary: this tarball path verifies an unpublished `@openpalm/ui`
 because the assistant mounts `knowledge/` at `/stash`. The guardian and skeleton
 entrypoints still resolve `@openpalm/guardian` and `@openpalm/skeleton` from npm
 by version. If local guardian or skeleton source differs from the npm artifact at
 the same semver, this stack follows the npm artifact, not your working tree.
 
-### 1. Choose an isolated home and build the unpublished client tarball
+### 1. Choose an isolated home and build the unpublished `@openpalm/ui` tarball
 
-For a feature branch where `@openpalm/client@<version>` is not on npm yet, build
+For a feature branch where `@openpalm/ui@<version>` is not on npm yet, build
 and pack it locally, then install that tarball through the same assistant
 entrypoint path by using a `file:/stash/...` version spec.
 
@@ -293,16 +293,16 @@ VERIFY_VERSION="$(node -p "require('./package.json').version")"
 rm -rf "$VERIFY_ROOT"
 mkdir -p "$VERIFY_HOME"
 
-bun run client:build
-bun pm pack --cwd packages/client --destination "$VERIFY_ROOT" --quiet
-CLIENT_TARBALL="$(ls "$VERIFY_ROOT"/openpalm-client-*.tgz | tail -1)"
+bun run ui:build
+bun pm pack --cwd packages/ui --destination "$VERIFY_ROOT" --quiet
+UI_TARBALL="$(ls "$VERIFY_ROOT"/openpalm-ui-*.tgz | tail -1)"
 ```
 
-Expected: the tarball contains at least `package/build/index.html`,
-`package/build/.openpalm-client-version`, and `package/bin/serve.mjs`.
+Expected: the tarball contains at least `package/build/index.js`,
+`package/build/.openpalm-ui-version`, and the `package/build/client/` static assets.
 
 ```bash
-tar -tf "$CLIENT_TARBALL" | grep -E 'package/(build/index.html|build/.openpalm-client-version|bin/serve.mjs)'
+tar -tf "$UI_TARBALL" | grep -E 'package/build/(index.js|.openpalm-ui-version|client/)'
 ```
 
 ### 2. Seed the isolated OP_HOME
@@ -317,7 +317,7 @@ rsync -a \
 
 OP_HOME="$VERIFY_HOME" bun -e "import { ensureHomeDirs } from './packages/lib/src/index.ts'; ensureHomeDirs();"
 mkdir -p "$VERIFY_HOME/knowledge/env" "$VERIFY_HOME/knowledge/secrets"
-cp "$CLIENT_TARBALL" "$VERIFY_HOME/knowledge/$(basename "$CLIENT_TARBALL")"
+cp "$UI_TARBALL" "$VERIFY_HOME/knowledge/$(basename "$UI_TARBALL")"
 printf '{}\n' > "$VERIFY_HOME/knowledge/secrets/auth.json"
 chmod 600 "$VERIFY_HOME/knowledge/secrets/auth.json"
 
@@ -344,7 +344,7 @@ OP_ASSISTANT_VERSION=dev
 OP_GUARDIAN_VERSION=dev
 OP_PORTAL_VERSION=dev
 OP_GUARDIAN_NPM_VERSION=$VERIFY_VERSION
-OP_CLIENT_VERSION=file:/stash/$(basename "$CLIENT_TARBALL")
+OP_UI_VERSION=file:/stash/$(basename "$UI_TARBALL")
 OP_SKELETON_VERSION=$VERIFY_VERSION
 OP_PROJECT_NAME=$VERIFY_PROJECT
 OP_SETUP_COMPLETE=true
@@ -353,7 +353,7 @@ OP_GUARDIAN_PORT=9190
 OP_GUARDIAN_ADMIN_PORT=9181
 OP_CHAT_PORT=9220
 OP_API_PORT=9221
-OP_CLIENT_PORT=3840
+OP_UI_PORT=3840
 OP_ENABLED_ADDONS=chat
 COMPOSE_PROFILES=addon.chat
 GUARDIAN_DIRECT_INGRESS=true
@@ -362,14 +362,14 @@ EOF
 chmod 600 "$VERIFY_HOME/knowledge/env/stack.env"
 ```
 
-Common user error: setting `OP_CLIENT_VERSION=$VERIFY_VERSION` before the client
-package is published makes the assistant try npm and skip the client co-process
+Common user error: setting `OP_UI_VERSION=$VERIFY_VERSION` before the `@openpalm/ui`
+package is published makes the assistant try npm and skip the `@openpalm/ui` co-process
 when npm returns 404. Use the `file:/stash/...` tarball spec for unpublished
 feature-branch verification, then use the plain semver after release.
 
 The same npm availability rule applies to `OP_GUARDIAN_NPM_VERSION` and
 `OP_SKELETON_VERSION`. This runbook only provides local-tarball plumbing for the
-client artifact; do not trust it to validate unpublished guardian or skeleton
+`@openpalm/ui` artifact; do not trust it to validate unpublished guardian or skeleton
 package code unless you add equivalent local artifact plumbing first.
 
 ### 4. Validate and start
@@ -395,7 +395,7 @@ compose_verify ps -a
 ```
 
 Expected: `assistant` becomes healthy, `guardian` becomes healthy when the chat
-profile is enabled, and the client port is published on `127.0.0.1:3840`.
+profile is enabled, and the `@openpalm/ui` co-process port is published on `127.0.0.1:3840`.
 
 ### 5. Manual assertions
 
@@ -403,13 +403,13 @@ profile is enabled, and the client port is published on `127.0.0.1:3840`.
 # Assistant OpenCode health
 curl -fsS http://127.0.0.1:4820/health >/dev/null
 
-# Static client: HEAD must return headers and no body
+# @openpalm/ui: HEAD must return headers and no body
 curl -sS -o /dev/null -D - -X HEAD http://127.0.0.1:3840/
 
-# Static client: SPA fallback
+# @openpalm/ui: SPA fallback
 curl -fsS http://127.0.0.1:3840/connections/new | grep '<!doctype html>'
 
-# Static client: runtime config is no-store and points at the host-published assistant URL
+# @openpalm/ui: runtime config is no-store and points at the host-published assistant URL
 curl -fsS -D - http://127.0.0.1:3840/runtime-config.json
 
 # Guardian direct listener health
@@ -433,7 +433,7 @@ curl -i -sS -X OPTIONS http://127.0.0.1:9190/oc/session \
 | Wrong compose tree | Replace `system/stack/core.compose.yml` with `config/stack/core.compose.yml` in a dry command | Command fails because managed compose files live under `system/stack` |
 | Missing secret file | Move one `portal_*_secret` aside, run `compose_verify config --quiet` or `up -d` | Compose fails before guardian starts; restore the file and rerun |
 | `/tmp` bind-source trap | Put `VERIFY_HOME` under `/tmp` on a snap/private-tmp Docker host | Docker may report existing secret files as missing; move to `/var/tmp` or repo-local tmp |
-| Unpublished client package | Set `OP_CLIENT_VERSION=$VERIFY_VERSION` before npm publish | Assistant logs npm 404 and skips client co-process; use `file:/stash/<tarball>.tgz` |
+| Unpublished @openpalm/ui package | Set `OP_UI_VERSION=$VERIFY_VERSION` before npm publish | Assistant logs npm 404 and skips the @openpalm/ui co-process; use `file:/stash/<tarball>.tgz` |
 | Published package drift | Set `OP_GUARDIAN_NPM_VERSION` or `OP_SKELETON_VERSION` to a semver that exists on npm while local source has newer same-version commits | Stack boots from the npm artifact; behavior may differ from local source, such as stale CORS/preflight handling |
 | Port already allocated | Pre-bind `3840`/`4820`/`9190` or reuse an old project | Docker fails port programming; choose new ports and rerun `compose_verify up -d` |
 | Direct ingress disabled | Set `GUARDIAN_DIRECT_INGRESS=false`, recreate guardian, retry browser preflight | `/oc/*` preflight returns `404 not_found`, not `204`; current guardian code also keeps allowed-origin CORS headers on the error |

@@ -14,7 +14,7 @@ not just that the source tree is green.
 
 `unit=all` publishes all coordinated release artifacts at one version:
 
-- npm: `@openpalm/{lib,ui,client,guardian,skeleton}`, `openpalm`, `@openpalm/{discord,slack}-portal`
+- npm: `@openpalm/{lib,ui,guardian,skeleton}`, `openpalm`, `@openpalm/{discord,slack}-portal`
 - Docker: `openpalm/{assistant,guardian,portal}`
 - Electron installers
 - CLI binaries
@@ -54,7 +54,7 @@ Important artifact note:
 
 - pre-publish checks validate source, local builds, and release orchestration
 - post-publish checks validate the actual published npm packages, container images, installers, and tags
-- if there is no private staging registry, the public RC is the first true shipped-artifact test for guardian, skeleton, client, UI, CLI, and images
+- if there is no private staging registry, the public RC is the first true shipped-artifact test for guardian, skeleton, UI, CLI, and images
 
 ---
 
@@ -68,7 +68,7 @@ pass or has an explicit, reviewed waiver.
 - [ ] fresh install passed
 - [ ] upgrade test passed
 - [ ] failure/rollback test passed
-- [ ] assistant/client isolated runtime test passed
+- [ ] assistant/UI isolated runtime test passed
 - [ ] guardian direct-ingress/auth/CORS test passed
 - [ ] browser-backed live stack test passed
 - [ ] host UI smoke passed
@@ -114,11 +114,10 @@ Evidence:
 
 ```bash
 bun install --frozen-lockfile
-bun run client:build
+bun run ui:build
 bun run test
 bun run ui:check
 bun run ui-kit:check
-bun run client:check
 bun run --cwd packages/ui test:browsers
 bun run ui:test:unit
 bun run electron:test
@@ -197,11 +196,11 @@ Evidence:
 
 ---
 
-## 6. Assistant And Client Isolated Runtime Test
+## 6. Assistant And UI Isolated Runtime Test
 
 - [ ] Run the isolated compose flow from `manual-compose-runbook.md`.
-- [ ] Build and pack a local client tarball.
-- [ ] Boot assistant with `OP_CLIENT_VERSION=file:/stash/...`.
+- [ ] Build and pack a local `@openpalm/ui` tarball.
+- [ ] Boot assistant with `OP_UI_VERSION=file:/stash/...`.
 
 Verify:
 
@@ -215,7 +214,7 @@ curl -fsS -D - http://127.0.0.1:3840/runtime-config.json
 Pass criteria:
 
 - [ ] assistant health returns 200
-- [ ] client `HEAD /` succeeds
+- [ ] UI `HEAD /` succeeds
 - [ ] SPA fallback serves the app shell
 - [ ] `runtime-config.json` is `cache-control: no-store`
 - [ ] the locked default connection points at the host-published assistant URL
@@ -273,7 +272,7 @@ Pass criteria:
 - [ ] connections UI works
 - [ ] chat UI works
 - [ ] runtime-config-driven routing works
-- [ ] no assistant/client/UI artifact mismatch appears
+- [ ] no assistant/UI artifact mismatch appears
 
 ---
 
@@ -288,7 +287,7 @@ Pass criteria:
 - [ ] `/chat` loads
 - [ ] admin login succeeds
 - [ ] provider/auth state looks correct
-- [ ] host UI and assistant-container client do not conflict or drift
+- [ ] the host UI and the assistant-container UI co-process do not conflict or drift
 
 Evidence:
 
@@ -298,7 +297,7 @@ Evidence:
 
 ## 10. PWA Smoke
 
-- [ ] Test localhost PWA installability from the host-served client origin.
+- [ ] Test localhost PWA installability from the host-served UI origin.
 - [ ] Test hosted PWA installability if applicable to this RC.
 
 Pass criteria:
@@ -437,7 +436,7 @@ Pass criteria:
 
 - [ ] app launches successfully
 - [ ] packaged skeleton resolution works
-- [ ] expected client/host UI routing works
+- [ ] expected container-served and host UI routing works
 - [ ] no packaged/runtime asset mismatch appears
 - [ ] no repo checkout is required for normal operation
 
@@ -471,7 +470,6 @@ Pass criteria:
 npm view @openpalm/lib@"$RC_VERSION" version
 npm view openpalm@"$RC_VERSION" version
 npm view @openpalm/ui@"$RC_VERSION" version
-npm view @openpalm/client@"$RC_VERSION" version
 npm view @openpalm/guardian@"$RC_VERSION" version
 npm view @openpalm/skeleton@"$RC_VERSION" version
 npm view @openpalm/discord-portal@"$RC_VERSION" version
@@ -481,7 +479,6 @@ npm view @openpalm/slack-portal@"$RC_VERSION" version
 - [ ] Record dist-tags for key artifacts.
 
 ```bash
-npm view @openpalm/client dist-tags --json
 npm view @openpalm/guardian dist-tags --json
 npm view @openpalm/skeleton dist-tags --json
 ```
@@ -539,8 +536,8 @@ Pass criteria:
 Pass criteria:
 
 - [ ] runtime behavior matches pre-publish expectations
-- [ ] no guardian/skeleton/client artifact drift appears
-- [ ] health, client serving, auth, and direct-ingress checks still pass
+- [ ] no guardian/skeleton/UI artifact drift appears
+- [ ] health, UI serving, auth, and direct-ingress checks still pass
 
 ---
 
@@ -548,7 +545,7 @@ Pass criteria:
 
 If time is limited, prioritize these in order:
 
-1. shipped guardian/skeleton/client artifact behavior
+1. shipped guardian/skeleton/UI artifact behavior
 2. upgrade plus rollback behavior
 3. rootless ownership and host accessibility
 4. browser-backed live stack flow

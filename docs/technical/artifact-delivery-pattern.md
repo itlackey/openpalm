@@ -18,7 +18,7 @@ There are two strategies:
 | Artifact | Package | Installed by | Resolution chain |
 |---|---|---|---|
 | Host UI build | `@openpalm/ui` | Host control plane seeding/updater | Host-side UI logic; not a container entrypoint artifact |
-| Client app | `@openpalm/client` | Assistant container entrypoint | `OP_CLIENT_VERSION` -> `PLATFORM_VERSION` -> hard error |
+| Container UI co-process | `@openpalm/ui` | Assistant container entrypoint | `OP_UI_VERSION` -> `PLATFORM_VERSION` -> hard error |
 | Skeleton seed | `@openpalm/skeleton` | Assistant + guardian entrypoints; CLI local dep for repo/npm installs | `OP_SKELETON_VERSION` -> `PLATFORM_VERSION` or guardian package version -> hard error/paired default |
 | Guardian package | `@openpalm/guardian` | Guardian thin-host entrypoint | `OP_GUARDIAN_NPM_VERSION` -> `GUARDIAN_VERSION` -> hard error |
 
@@ -49,9 +49,8 @@ The release workflow stamps versioned manifests through `scripts/set-version.mjs
 
 For the platform unit this means:
 
-- root, lib, skeleton, guardian, cli, ui, client, electron, and admin-tools package versions are stamped together
+- root, lib, skeleton, guardian, cli, ui, electron, and admin-tools package versions are stamped together
 - `packages/cli/package.json` keeps an exact `@openpalm/skeleton` pin equal to the platform version
-- `@openpalm/client` publishes alongside `@openpalm/ui`
 - the npm regression guard treats `@openpalm/skeleton` and `@openpalm/guardian` as dual-owned packages
 
 That exact CLI skeleton pin matters because npm-installed CLI builds resolve the seeding skeleton through their own dependency tree.
@@ -62,24 +61,19 @@ That exact CLI skeleton pin matters because npm-installed CLI builds resolve the
 
 - Resolved into `OP_HOME/data/ui`
 - Updated by the host control plane
+- Served on the host-local origin `http://127.0.0.1:${OP_HOST_UI_PORT:-3880}`, opened by `openpalm app` and preferred by Electron when healthy
 - Supervised by Electron or `openpalm admin`
 
-### Harness Localhost Client App
+### Assistant Container UI Co-process
 
-- Resolved into `OP_HOME/data/client`
-- Served on the stable host-local origin `http://127.0.0.1:${OP_HOST_CLIENT_PORT:-3890}/chat`
-- Opened by `openpalm app` and preferred by Electron when healthy
-
-### Assistant Container Client App
-
-- Installed into `/opt/openpalm/client`
-- Served from the package's `bin/serve.mjs`
-- Published on `${OP_CLIENT_PORT:-3810}` externally and port `3000` internally
+- Installed into `/opt/openpalm/ui`
+- Served as a supervised co-process from its adapter-node build (`node build/index.js`)
+- Published on `${OP_UI_PORT:-3810}` externally and port `3000` internally
 - Seeded with `runtime-config.json` containing one locked default connection
 
 ### Hosted PWA
 
-- Same static `@openpalm/client` build
+- Same `@openpalm/ui` build
 - Served from the hosted origin used by current tests/docs: `https://app.openpalm.dev`
 - Requires guardian TLS + CORS for remote instance connections
 
@@ -97,6 +91,5 @@ That exact CLI skeleton pin matters because npm-installed CLI builds resolve the
 | `scripts/bump-unit.mjs` | Release-unit version computation and stamping |
 | `.github/workflows/release.yml` | Release DAG |
 | `packages/lib/src/control-plane/ui-assets.ts` | Host UI artifact delivery |
-| `packages/lib/src/control-plane/client-assets.ts` | Harness localhost client artifact delivery |
 | `containers/assistant/entrypoint.sh` | Assistant-container runtime install path |
 | `containers/guardian/entrypoint.sh` | Guardian thin-host runtime install path |
