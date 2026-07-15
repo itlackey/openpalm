@@ -174,11 +174,10 @@ These non-secret `stack.env` vars control the exact npm artifacts the running pl
 
 | Variable | Used by | Resolution | Notes |
 |---|---|---|---|
-| `OP_UI_VERSION` | Host UI updater / seeding path | `OP_UI_VERSION` -> channel/default logic in the host control plane | Host-side UI artifact only |
-| `OP_CLIENT_VERSION` | Assistant container entrypoint | `OP_CLIENT_VERSION` -> image `PLATFORM_VERSION` -> hard error | Exact-pins `@openpalm/client`; no `latest` fallback |
+| `OP_UI_VERSION` | Host UI updater / seeding path **and** the assistant container entrypoint | Host: `OP_UI_VERSION` -> channel/default logic in the host control plane. Container: `OP_UI_VERSION` -> image `PLATFORM_VERSION` -> hard error | Exact-pins the single `@openpalm/ui` build served everywhere (host process, Electron, container co-process); no `latest` fallback in the container |
 | `OP_SKELETON_VERSION` | Assistant + guardian entrypoints | Assistant: `OP_SKELETON_VERSION` -> image `PLATFORM_VERSION` -> hard error. Guardian: `OP_SKELETON_VERSION` -> guardian package version. | Exact-pins `@openpalm/skeleton`; keep equal to the platform version in normal releases |
 
-`OP_CLIENT_PORT` and `OP_CLIENT_BIND_ADDRESS` are separate: they control the assistant container's published client co-process listener (`127.0.0.1:3810` by default), not the host-local PWA/dev origin.
+`OP_UI_PORT` and `OP_UI_BIND_ADDRESS` control the assistant container's published `@openpalm/ui` co-process listener (`127.0.0.1:3810` by default), separate from the host-local UI/dev origin (`OP_HOST_UI_PORT`, default `3880`).
 
 ## Release Smoke Checklist
 

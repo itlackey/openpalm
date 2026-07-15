@@ -1,12 +1,12 @@
 # UI Route Map
 
-**Date:** 2026-07-06 (Phase 4 of `ui-runtime-modes-plan.md`)
-**Package:** `packages/ui` (`@openpalm/ui` — the host app)
-**Status:** current truth after the Phase 4 control-plane split. `/admin/*` is
-a **dead namespace** (router 404, no alias): pages live at `/host`, privileged
-JSON endpoints at `/api/host/*`, assistant-owned settings at
-`/api/assistant/*`, session lifecycle at `/api/auth/*`. Phase 5 moves the
-chat + connections views into `packages/client`.
+**Package:** `packages/ui` (`@openpalm/ui` — the single UI, served in the
+container / Electron / as a PWA; see [`architecture.md`](./architecture.md))
+**Status:** current truth. `/admin/*` is a **dead namespace** (router 404, no
+alias): pages live at `/host`, privileged JSON endpoints at `/api/host/*`,
+assistant-owned settings at `/api/assistant/*`, session lifecycle at
+`/api/auth/*`. Chat and connections views live in this one package — there is
+no separate client app.
 
 Surfaces (plan §1): **Host** = host control plane (stack lifecycle, secrets,
 privileged ops), **Assistant** = chat against the active connection +

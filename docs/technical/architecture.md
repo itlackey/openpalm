@@ -12,11 +12,18 @@ There is a single front-end package, **`@openpalm/ui`** (SvelteKit,
 
 - **container-served** — a supervised co-process inside the assistant container,
 - **run in Electron** — the thin desktop harness loads it, and
-- **installable as a PWA** — from whichever origin serves it.
+- **origin-portable** — it derives its origin from the request and couples to no
+  host, so any origin that serves it is a valid front door (this is the property
+  a PWA install builds on).
 
 There is no second app. The old `@openpalm/client` SPA and the `UiHostMode`
 "runtime modes" matrix are gone; the UI behaves the same everywhere it runs and
 is only ever *more* capable when launched as an admin process (below).
+
+> **PWA install status:** the origin-portable build is what makes a PWA install
+> possible, and mobile "Add to Home Screen" already works. A full installable
+> PWA (a shipped `manifest.webmanifest` with square/maskable icons, and any
+> offline service worker) is a deliberately-deferred enhancement — not yet wired.
 
 ## The UI is a self-contained browser app
 
@@ -78,7 +85,7 @@ CLI admin path stays direct.
 | **Assistant container** | supervised adapter-node co-process, loopback-first bind, rootless, no docker socket, no host `OP_HOME`/creds | no (`OP_ENABLE_ADMIN` unset) |
 | **Electron** | thin native harness spawns the build; carries the admin boundary | yes |
 | **CLI** (`openpalm admin` / `openpalm app`) | host process serves the build | admin only for `openpalm admin` |
-| **PWA** | installed from the served origin | inherits that origin (no admin) |
+| **PWA** | added to home screen from the served origin (full install manifest deferred, see above) | inherits that origin (no admin) |
 
 The container co-process keeps the already-landed LAN-exposure safety gate:
 it refuses to publish an unauthenticated UI when OpenCode is bound off-loopback
