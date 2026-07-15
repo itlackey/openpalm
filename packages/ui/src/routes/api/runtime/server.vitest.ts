@@ -12,7 +12,7 @@
  *  - 200 with no session cookie (public — unlike every /admin/* endpoint)
  *  - 200 with a garbage session cookie (auth is never consulted)
  *  - JSON body carrying version: 2 and the full ServerRuntimeContext shape
- *  - hostMode reflects the env mapping (OP_INSIDE_ELECTRON / baseline)
+ *  - admin reflects the env mapping (OP_INSIDE_ELECTRON / OP_ENABLE_ADMIN)
  */
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { GET } from './+server.js';
@@ -31,7 +31,7 @@ function makeEvent(headers: Record<string, string> = {}) {
   } as unknown as Parameters<typeof GET>[0];
 }
 
-const MODE_ENV_KEYS = ['OP_UI_HOST_MODE', 'OP_INSIDE_ELECTRON', 'OP_ENABLE_ADMIN'] as const;
+const MODE_ENV_KEYS = ['OP_INSIDE_ELECTRON', 'OP_ENABLE_ADMIN'] as const;
 let savedEnv: Record<string, string | undefined> = {};
 
 beforeEach(() => {
@@ -77,25 +77,24 @@ describe('GET /api/runtime — public runtime-context endpoint (plan §6.4)', ()
     const body = (await res.json()) as Record<string, unknown>;
     expect(Array.isArray(body.serverCapabilities)).toBe(true);
     expect(body.serverCapabilities).toContain('chat');
-    expect(typeof body.hostMode).toBe('string');
+    expect(typeof body.admin).toBe('boolean');
     expect(typeof body.publicBaseUrl).toBe('string');
     expect(typeof body.uiVersion).toBe('string');
     expect(typeof body.skeletonVersion).toBe('string');
-    expect(['single', 'multi']).toContain(body.activeConnectionMode);
     expect(body.routes).toBeTypeOf('object');
     expect(body.security).toBeTypeOf('object');
   });
 
-  test("hostMode reflects OP_INSIDE_ELECTRON=1 → 'electron-host'", async () => {
+  test('admin reflects OP_INSIDE_ELECTRON=1 → true', async () => {
     process.env.OP_INSIDE_ELECTRON = '1';
     const res = await GET(makeEvent());
     const body = (await res.json()) as Record<string, unknown>;
-    expect(body.hostMode).toBe('electron-host');
+    expect(body.admin).toBe(true);
   });
 
-  test("hostMode is the 'pwa-static' baseline when no mode env is set", async () => {
+  test('admin is false when no admin env is set (served baseline)', async () => {
     const res = await GET(makeEvent());
     const body = (await res.json()) as Record<string, unknown>;
-    expect(body.hostMode).toBe('pwa-static');
+    expect(body.admin).toBe(false);
   });
 });

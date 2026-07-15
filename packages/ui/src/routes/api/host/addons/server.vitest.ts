@@ -61,14 +61,14 @@ let originalHome: string | undefined;
 beforeEach(() => {
   // Phase 4: /api/host + /api/assistant endpoints are capability-guarded;
   // run this suite as a host-capable mode.
-  process.env.OP_UI_HOST_MODE = 'host-ui';
+  process.env.OP_ENABLE_ADMIN = '1';
   originalHome = process.env.OP_HOME;
   process.env.OP_HOME = makeTempDir();
   resetState('admin-token');
 });
 
 afterEach(() => {
-  delete process.env.OP_UI_HOST_MODE;
+  delete process.env.OP_ENABLE_ADMIN;
   process.env.OP_HOME = originalHome;
   cleanupTempDirs();
   rmSync(getState().homeDir, { recursive: true, force: true });

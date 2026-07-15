@@ -5,9 +5,9 @@ import { request, requireOk } from './core.js';
 // Phase 2 (#486): the internal model uses "connection" language (plan
 // ui-runtime-modes-plan.md §6.6) and the client talks to /api/connections/*,
 // which is guarded by the `connections:manage` capability instead of the
-// host-admin-only legacy /admin namespace — so connection management works in
-// every mode that advertises the capability (host-ui, electron-host,
-// pwa-static). This module keeps its historical file name (api/endpoints.ts)
+// host-admin-only legacy /admin namespace. Connection management is a BASE
+// capability, so it works in every process (the browser owns connections
+// uniformly). This module keeps its historical file name (api/endpoints.ts)
 // until the Phase 5 client extraction relocates it.
 
 export type AssistantConnection = {

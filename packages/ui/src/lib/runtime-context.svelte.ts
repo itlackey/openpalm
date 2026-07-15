@@ -24,21 +24,20 @@ export function resolveCapabilities(
 ): Capability[] {
   const { displayMode, activeConnection } = clientCtx;
 
+  // Electron is the fully-trusted surface — everything the server granted.
   if (displayMode === 'electron') return serverCaps;
 
+  // A host-capable server viewed in a regular browser (`openpalm admin`) keeps
+  // everything minus Electron-only caps (none reserved yet).
   if (serverCaps.includes('host:stack:read') && displayMode === 'browser') {
     return serverCaps.filter((c) => !isElectronOnlyCap(c));
   }
 
-  if (serverCaps.includes('connections:single')) {
-    // assistant-container: chat + assistant settings
-    return serverCaps.filter((c) => c === 'chat' || c.startsWith('assistant-settings'));
-  }
-
-  // pwa-static: connections + chat
-  let caps = serverCaps.filter(
-    (c) => c.startsWith('connections') || c === 'chat' || c === 'pwa:install',
-  );
+  // Everything else — a non-admin process (served/PWA), or a host-capable
+  // server on a standalone-pwa display where host:* is not usable: keep the
+  // base surface (chat + connections + assistant-settings + pwa:install) and
+  // drop host:* .
+  let caps = serverCaps.filter((c) => !c.startsWith('host:'));
 
   // Extension point: active connection may grant additional capabilities
   if (activeConnection?.grantedCapabilities) {
@@ -55,23 +54,22 @@ function isElectronOnlyCap(_c: Capability): boolean {
 }
 
 /**
- * Reactive runtime context. Starts at the unprivileged pwa-static baseline
+ * Reactive runtime context. Starts at the unprivileged non-admin baseline
  * with zero capabilities until +layout.svelte initializes it — capabilities
  * are opted INTO from server data, never defaulted on.
  */
 export const runtimeContext = $state<RuntimeContext>({
   version: 2,
-  hostMode: 'pwa-static',
+  admin: false,
   serverCapabilities: [],
   publicBaseUrl: '',
   uiVersion: '',
   skeletonVersion: '',
-  activeConnectionMode: 'multi',
   routes: {},
   security: {
     hostAdminLoopbackOnly: true,
     requiresHttpsForRemoteConnections: true,
-    csrfMode: 'loopback-origin',
+    csrfMode: 'same-site',
   },
   clientContext: { displayMode: 'browser' },
   effectiveCapabilities: [],
@@ -99,7 +97,7 @@ export function initializeRuntimeContext(
 
 /**
  * Populate ONLY the server half of the store (everything ServerRuntimeContext
- * carries — capabilities, routes, hostMode, security, versions) and re-derive
+ * carries — capabilities, routes, admin, security, versions) and re-derive
  * `effectiveCapabilities` against whatever clientContext is already in the
  * store (the 'browser' baseline until the client half runs).
  *
@@ -123,7 +121,7 @@ export function initializeRuntimeContext(
  * field (`event.url.origin`), and during SSR this store is process-global
  * under adapter-node — writing it here would leak one request's Host-derived
  * origin to every later reader (PR #562 review). SSR chrome only needs
- * capabilities/hostMode/routes; the browser writes publicBaseUrl per-tab via
+ * capabilities/admin/routes; the browser writes publicBaseUrl per-tab via
  * `initializeRuntimeContext` in `onMount`.
  */
 export function initializeServerRuntimeContext(serverCtx: ServerRuntimeContext): void {

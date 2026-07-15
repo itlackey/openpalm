@@ -110,7 +110,7 @@ async function handleOutcome(event: RequestEvent): Promise<unknown> {
   }
 }
 
-const MODE_ENV_KEYS = ['OP_UI_HOST_MODE', 'OP_INSIDE_ELECTRON', 'OP_ENABLE_ADMIN'] as const;
+const MODE_ENV_KEYS = ['OP_INSIDE_ELECTRON', 'OP_ENABLE_ADMIN'] as const;
 
 describe('hooks.server — /admin/* is a dead namespace, no alias (plan Phase 4, §6.4)', () => {
   let home = '';
@@ -145,7 +145,7 @@ describe('hooks.server — /admin/* is a dead namespace, no alias (plan Phase 4,
   });
 
   test('authenticated /admin document navigation is a router 404, not the dashboard', async () => {
-    process.env.OP_UI_HOST_MODE = 'host-ui';
+    process.env.OP_ENABLE_ADMIN = '1';
     const event = makeEvent('/admin', { token: 'test-admin-pw' });
 
     const outcome = await handleOutcome(event);
@@ -157,7 +157,7 @@ describe('hooks.server — /admin/* is a dead namespace, no alias (plan Phase 4,
   });
 
   test('/admin/endpoints no longer aliases to /connections (Phase 2 alias removed)', async () => {
-    process.env.OP_UI_HOST_MODE = 'pwa-static';
+    delete process.env.OP_ENABLE_ADMIN;
     const event = makeEvent('/admin/endpoints', { token: 'test-admin-pw' });
 
     const outcome = await handleOutcome(event);
@@ -167,7 +167,7 @@ describe('hooks.server — /admin/* is a dead namespace, no alias (plan Phase 4,
   });
 
   test('/admin document navigation in pwa-static mode 404s instead of redirecting to /chat', async () => {
-    process.env.OP_UI_HOST_MODE = 'pwa-static';
+    delete process.env.OP_ENABLE_ADMIN;
     const event = makeEvent('/admin', { token: 'test-admin-pw' });
 
     const outcome = await handleOutcome(event);
@@ -176,8 +176,8 @@ describe('hooks.server — /admin/* is a dead namespace, no alias (plan Phase 4,
     expect((outcome as Response).status).toBe(404);
   });
 
-  test('/admin/* fetch in assistant-container mode 404s instead of redirecting to /chat', async () => {
-    process.env.OP_UI_HOST_MODE = 'assistant-container';
+  test('/admin/* fetch in non-admin mode 404s instead of redirecting to /chat', async () => {
+    delete process.env.OP_ENABLE_ADMIN;
     // Browser fetch() sends Accept: */* — never the document-navigation guard.
     const event = makeEvent('/admin/akm', { accept: 'application/json' });
 
@@ -188,7 +188,7 @@ describe('hooks.server — /admin/* is a dead namespace, no alias (plan Phase 4,
   });
 
   test('/ with an installed-but-offline stack lands on /host (was /admin)', async () => {
-    process.env.OP_UI_HOST_MODE = 'host-ui';
+    process.env.OP_ENABLE_ADMIN = '1';
     const state = resetState('test-admin-pw');
     seedStackEnv(state.stackDir, true); // setup complete, composePs fails → installed_offline
 
@@ -235,7 +235,7 @@ describe('host landing + route pointers flip to /host (plan Phase 4 step 1)', ()
   });
 
   test("runtime context routes.host points at '/host' — nav must never point at a 404", () => {
-    process.env.OP_UI_HOST_MODE = 'host-ui';
+    process.env.OP_ENABLE_ADMIN = '1';
     const url = new URL('http://127.0.0.1:3880/host');
     const ctx = computeServerRuntimeContext({ url } as unknown as RequestEvent);
     expect(ctx.routes.host).toBe('/host');

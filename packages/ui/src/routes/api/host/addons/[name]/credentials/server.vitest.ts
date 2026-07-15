@@ -26,14 +26,14 @@ function makePostEvent(values: Record<string, unknown>): Parameters<typeof POST>
 
 beforeEach(() => {
 	originalHome = process.env.OP_HOME;
-	process.env.OP_UI_HOST_MODE = 'host-ui';
+	process.env.OP_ENABLE_ADMIN = '1';
 	homeDir = mkdtempSync(join(tmpdir(), 'openpalm-addon-credentials-'));
 	process.env.OP_HOME = homeDir;
 	resetState('admin-token');
 });
 
 afterEach(() => {
-	delete process.env.OP_UI_HOST_MODE;
+	delete process.env.OP_ENABLE_ADMIN;
 	if (originalHome === undefined) delete process.env.OP_HOME;
 	else process.env.OP_HOME = originalHome;
 	rmSync(homeDir, { recursive: true, force: true });

@@ -80,7 +80,7 @@ function makeEvent(path: string): RequestEvent {
 
 const resolve = () => Promise.resolve(new Response('ok', { status: 200 }));
 
-const MODE_ENV_KEYS = ['OP_UI_HOST_MODE', 'OP_INSIDE_ELECTRON'] as const;
+const MODE_ENV_KEYS = ['OP_INSIDE_ELECTRON'] as const;
 
 describe('hooks.server — landing routing through resolveLanding (plan Phase 3)', () => {
   let home = '';

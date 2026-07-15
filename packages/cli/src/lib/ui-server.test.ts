@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 import {
   createCliUiSupervisor, type CliChildProc,
-  resolveAdminUrl, resolveExpectedHostMode, checkExistingUiInstance,
+  resolveAdminUrl, resolveExpectedAdmin, checkExistingUiInstance,
   resolveUiServePort,
 } from './ui-server.ts';
 
@@ -166,45 +166,36 @@ describe('resolveAdminUrl', () => {
   });
 });
 
-describe('resolveExpectedHostMode', () => {
-  it('is host-ui for admin mode, pwa-static otherwise (mirrors spawnUiChild adminEnv)', () => {
-    expect(resolveExpectedHostMode(true)).toBe('host-ui');
-    expect(resolveExpectedHostMode(false)).toBe('pwa-static');
+describe('resolveExpectedAdmin', () => {
+  it('is true for admin mode, false otherwise (mirrors spawnUiChild adminEnv)', () => {
+    expect(resolveExpectedAdmin(true)).toBe(true);
+    expect(resolveExpectedAdmin(false)).toBe(false);
   });
 });
 
-// F14: the spawned child's /api/runtime hostMode (packages/ui/src/lib/server/
-// features.ts resolveHostMode) honors OP_UI_HOST_MODE / OP_ENABLE_ADMIN /
-// OP_INSIDE_ELECTRON from its inherited env — for a NON-admin reuse
-// (spawnUiChild's adminEnv override does not apply, so the child inherits
-// process.env untouched), resolveExpectedHostMode must replicate that same
-// precedence or a shell with e.g. OP_ENABLE_ADMIN=1 set makes a legitimate
-// `openpalm` reuse compute 'pwa-static' while its own child reports
-// 'host-ui' — a false 'mismatch' that refuses to attach and exits(1).
-describe('resolveExpectedHostMode (F14: inherited OP_UI_HOST_MODE / OP_ENABLE_ADMIN / OP_INSIDE_ELECTRON)', () => {
-  it('is host-ui for admin mode regardless of inherited env (spawnUiChild always overrides OP_UI_HOST_MODE in the child)', () => {
-    expect(resolveExpectedHostMode(true, { OP_ENABLE_ADMIN: undefined, OP_UI_HOST_MODE: 'pwa-static' } as NodeJS.ProcessEnv))
-      .toBe('host-ui');
+// F14: the spawned child's /api/runtime admin flag (packages/ui/src/lib/server/
+// features.ts isAdminCapable) honors OP_ENABLE_ADMIN / OP_INSIDE_ELECTRON from
+// its inherited env — for a NON-admin reuse (spawnUiChild's adminEnv override
+// does not apply, so the child inherits process.env untouched),
+// resolveExpectedAdmin must replicate that same logic or a shell with e.g.
+// OP_ENABLE_ADMIN=1 set makes a legitimate `openpalm` reuse compute admin=false
+// while its own child reports admin=true — a false 'mismatch' that refuses to
+// attach and exits(1).
+describe('resolveExpectedAdmin (F14: inherited OP_ENABLE_ADMIN / OP_INSIDE_ELECTRON)', () => {
+  it('is true for admin mode regardless of inherited env (spawnUiChild always sets OP_ENABLE_ADMIN in the child)', () => {
+    expect(resolveExpectedAdmin(true, { OP_ENABLE_ADMIN: undefined } as NodeJS.ProcessEnv)).toBe(true);
   });
 
   it('honors an inherited OP_ENABLE_ADMIN=1 for non-admin reuse (the child inherits process.env untouched)', () => {
-    expect(resolveExpectedHostMode(false, { OP_ENABLE_ADMIN: '1' } as NodeJS.ProcessEnv)).toBe('host-ui');
-  });
-
-  it('honors an inherited explicit OP_UI_HOST_MODE for non-admin reuse', () => {
-    expect(resolveExpectedHostMode(false, { OP_UI_HOST_MODE: 'electron-host' } as NodeJS.ProcessEnv)).toBe('electron-host');
-  });
-
-  it('ignores an invalid/garbage explicit OP_UI_HOST_MODE and falls through the rest of the precedence', () => {
-    expect(resolveExpectedHostMode(false, { OP_UI_HOST_MODE: 'bogus', OP_ENABLE_ADMIN: '1' } as NodeJS.ProcessEnv)).toBe('host-ui');
+    expect(resolveExpectedAdmin(false, { OP_ENABLE_ADMIN: '1' } as NodeJS.ProcessEnv)).toBe(true);
   });
 
   it('honors an inherited OP_INSIDE_ELECTRON=1 for non-admin reuse', () => {
-    expect(resolveExpectedHostMode(false, { OP_INSIDE_ELECTRON: '1' } as NodeJS.ProcessEnv)).toBe('electron-host');
+    expect(resolveExpectedAdmin(false, { OP_INSIDE_ELECTRON: '1' } as NodeJS.ProcessEnv)).toBe(true);
   });
 
-  it('falls back to pwa-static when nothing is set', () => {
-    expect(resolveExpectedHostMode(false, {})).toBe('pwa-static');
+  it('is false when nothing is set', () => {
+    expect(resolveExpectedAdmin(false, {})).toBe(false);
   });
 });
 
@@ -223,24 +214,24 @@ function routedFetch(routes: Record<string, unknown>, unreachable: string[] = []
 
 describe('checkExistingUiInstance', () => {
   it('reports absent when nothing answers the port', async () => {
-    const result = await checkExistingUiInstance(3880, 'host-ui', {
+    const result = await checkExistingUiInstance(3880, true, {
       fetchFn: routedFetch({}, ['http://127.0.0.1:3880/api/runtime']),
     });
     expect(result).toEqual({ status: 'absent' });
   });
 
-  it('reports match when the running instance reports the expected hostMode', async () => {
-    const result = await checkExistingUiInstance(3880, 'host-ui', {
-      fetchFn: routedFetch({ 'http://127.0.0.1:3880/api/runtime': { hostMode: 'host-ui' } }),
+  it('reports match when the running instance reports the expected admin flag', async () => {
+    const result = await checkExistingUiInstance(3880, true, {
+      fetchFn: routedFetch({ 'http://127.0.0.1:3880/api/runtime': { admin: true } }),
     });
-    expect(result).toEqual({ status: 'match', hostMode: 'host-ui' });
+    expect(result).toEqual({ status: 'match', admin: true });
   });
 
-  it('reports mismatch when a DIFFERENT hostMode is already listening (e.g. a bare openpalm under `openpalm admin`)', async () => {
-    const result = await checkExistingUiInstance(3880, 'host-ui', {
-      fetchFn: routedFetch({ 'http://127.0.0.1:3880/api/runtime': { hostMode: 'pwa-static' } }),
+  it('reports mismatch when a DIFFERENT admin level is already listening (e.g. a bare openpalm under `openpalm admin`)', async () => {
+    const result = await checkExistingUiInstance(3880, true, {
+      fetchFn: routedFetch({ 'http://127.0.0.1:3880/api/runtime': { admin: false } }),
     });
-    expect(result).toEqual({ status: 'mismatch', hostMode: 'pwa-static' });
+    expect(result).toEqual({ status: 'mismatch', admin: false });
   });
 });
 

@@ -94,7 +94,7 @@ let fetchSpy: ReturnType<typeof vi.spyOn> | undefined;
 beforeEach(() => {
   // Phase 4: /api/host + /api/assistant endpoints are capability-guarded;
   // run this suite as a host-capable mode.
-  process.env.OP_UI_HOST_MODE = 'host-ui';
+  process.env.OP_ENABLE_ADMIN = '1';
 	originalHome = process.env.OP_HOME;
 	originalVoicePort = process.env.OP_VOICE_PORT_HOST;
 	process.env.OP_HOME = makeTempDir();
@@ -109,7 +109,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  delete process.env.OP_UI_HOST_MODE;
+  delete process.env.OP_ENABLE_ADMIN;
 	process.env.OP_HOME = originalHome;
 	if (originalVoicePort === undefined) delete process.env.OP_VOICE_PORT_HOST;
 	else process.env.OP_VOICE_PORT_HOST = originalVoicePort;

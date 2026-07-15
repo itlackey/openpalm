@@ -11,14 +11,11 @@
  *  - /api/connections is guarded SERVER-SIDE by the `connections:manage`
  *    capability. `hasCapability()` in the browser is UX only — the security
  *    boundary is this route.
- *  - assistant-container mode carries no `connections:manage`, so the guard
- *    returns 403 even when a VALID admin session cookie is presented: the
- *    check is capability-based (hostMode → serverCapabilities), not
- *    session-based.
- *  - host-ui mode carries `connections:manage` → requests succeed.
- *  - pwa-static mode also carries `connections:manage` (§4.3) → connection
- *    management is reachable without any host-admin mode (Phase 2
- *    acceptance: "connection management reachable without /admin").
+ *  - `connections:manage` is a BASE capability present in EVERY process (the
+ *    browser owns connections uniformly), so the guard passes regardless of
+ *    admin capability; a valid admin session cookie is still required (401
+ *    otherwise). Connection management is reachable without any host-admin
+ *    mode (Phase 2 acceptance: "connection management reachable without /admin").
  *  - Stored connection passwords are never serialized into responses
  *    (parity with the /admin/endpoints publish() contract).
  */
@@ -99,7 +96,6 @@ function seedEndpointsFile(payload: unknown): void {
 }
 
 const ENV_KEYS = [
-  'OP_UI_HOST_MODE',
   'OP_INSIDE_ELECTRON',
   'OP_ENABLE_ADMIN',
   'OP_HOME',
@@ -131,37 +127,26 @@ afterEach(() => {
 });
 
 describe('GET /api/connections — connections:manage guard (plan §6.4, §8.5)', () => {
-  test('403 in assistant-container mode even with a valid admin session', async () => {
-    process.env.OP_UI_HOST_MODE = 'assistant-container';
+  test('401 without a valid session cookie (requireAdmin still enforced)', async () => {
     const { GET } = await loadRoute();
-    const res = await GET(makeGetEvent());
-    expect(res.status).toBe(403);
+    const res = await GET(makeGetEvent(''));
+    expect(res.status).toBe(401);
   });
 
-  test('the 403 is a JSON error envelope, not an HTML login redirect', async () => {
-    process.env.OP_UI_HOST_MODE = 'assistant-container';
-    const { GET } = await loadRoute();
-    const res = await GET(makeGetEvent());
-    expect(res.status).toBe(403);
-    expect(res.headers.get('content-type') ?? '').toContain('application/json');
-  });
-
-  test('200 in host-ui mode with a valid admin session (capability present)', async () => {
-    process.env.OP_UI_HOST_MODE = 'host-ui';
+  test('200 in a non-admin process with a valid admin session (base capability present)', async () => {
     const { GET } = await loadRoute();
     const res = await GET(makeGetEvent());
     expect(res.status).toBe(200);
   });
 
-  test('reachable in pwa-static mode — no host-admin mode required (Phase 2 acceptance)', async () => {
-    process.env.OP_UI_HOST_MODE = 'pwa-static';
+  test('reachable in an admin process too — no host-admin mode required (Phase 2 acceptance)', async () => {
+    process.env.OP_ENABLE_ADMIN = '1';
     const { GET } = await loadRoute();
     const res = await GET(makeGetEvent());
     expect(res.status).toBe(200);
   });
 
   test('lists the env-derived default connection', async () => {
-    process.env.OP_UI_HOST_MODE = 'host-ui';
     const { GET } = await loadRoute();
     const res = await GET(makeGetEvent());
     expect(res.status).toBe(200);
@@ -174,7 +159,6 @@ describe('GET /api/connections — connections:manage guard (plan §6.4, §8.5)'
   });
 
   test('never serializes stored connection passwords', async () => {
-    process.env.OP_UI_HOST_MODE = 'host-ui';
     seedEndpointsFile({
       activeId: null,
       endpoints: [
@@ -198,22 +182,19 @@ describe('GET /api/connections — connections:manage guard (plan §6.4, §8.5)'
 });
 
 describe('POST /api/connections — connections:manage guard on writes', () => {
-  test('403 in assistant-container mode even with a valid admin session', async () => {
-    process.env.OP_UI_HOST_MODE = 'assistant-container';
+  test('401 without a valid session cookie (requireAdmin still enforced)', async () => {
     const { POST } = await loadRoute();
-    const res = await POST(makePostEvent({ label: 'Remote', url: 'http://10.0.0.9:3800' }));
-    expect(res.status).toBe(403);
+    const res = await POST(makePostEvent({ label: 'Remote', url: 'http://10.0.0.9:3800' }, ''));
+    expect(res.status).toBe(401);
   });
 
-  test('creates a connection in host-ui mode with a valid session', async () => {
-    process.env.OP_UI_HOST_MODE = 'host-ui';
+  test('creates a connection in a non-admin process with a valid session', async () => {
     const { POST } = await loadRoute();
     const res = await POST(makePostEvent({ label: 'Remote', url: 'http://10.0.0.9:3800' }));
     expect(res.status).toBe(201);
   });
 
   test('rejects URL userinfo without echoing either credential in the API response', async () => {
-    process.env.OP_UI_HOST_MODE = 'host-ui';
     const { POST } = await loadRoute();
     const res = await POST(
       makePostEvent({

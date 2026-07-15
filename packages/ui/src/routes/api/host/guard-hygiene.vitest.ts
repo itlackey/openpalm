@@ -18,7 +18,7 @@
  * Partition constraints pinned alongside (GREEN today, must stay green):
  *  - Session lifecycle (auth login/logout/session) must NOT live under
  *    /api/host — login must stay reachable in every mode (a capability guard
- *    on login would lock assistant-container out of its own assistant
+ *    on login would lock non-admin out of its own assistant
  *    settings). Its new home is pinned by lib/api/admin-paths-hygiene.
  *  - Connections stay at /api/connections (Phase 2 EXCEPT-clause) — no
  *    /api/host/endpoints resurrection.
@@ -63,7 +63,7 @@ describe('every /api/host/**/+server.ts calls requireCapability (plan Phase 4 st
   });
 
   test('CONSTRAINT (green today): session lifecycle endpoints are not under /api/host', () => {
-    // requireCapability on login would 403 assistant-container before it
+    // requireCapability on login would 403 non-admin before it
     // could ever authenticate for /api/assistant/* — auth lives outside the
     // capability-guarded namespaces.
     expect(existsSync(join(API_HOST_DIR, 'auth'))).toBe(false);

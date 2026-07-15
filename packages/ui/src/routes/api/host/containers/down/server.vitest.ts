@@ -36,7 +36,7 @@ function makePostEvent(token = 'admin-token', body: unknown = { service: 'assist
 beforeEach(() => {
   // Phase 4: /api/host + /api/assistant endpoints are capability-guarded;
   // run this suite as a host-capable mode.
-  process.env.OP_UI_HOST_MODE = 'host-ui';
+  process.env.OP_ENABLE_ADMIN = '1';
   resetState('admin-token');
   composeStopMock.mockReset();
   checkDockerMock.mockReset();
@@ -46,7 +46,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  delete process.env.OP_UI_HOST_MODE;
+  delete process.env.OP_ENABLE_ADMIN;
   vi.clearAllMocks();
 });
 

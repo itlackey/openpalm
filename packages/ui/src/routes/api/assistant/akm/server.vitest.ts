@@ -9,13 +9,12 @@
  * while red.
  *
  * Contract under test — the AkmTab split (plan §9 "AKM"):
- *  - The AKM runtime config (config/akm/config.json — a read/write mount of
- *    the assistant container, plan §6.9) is assistant-scoped → lives under
- *    /api/assistant/akm, guarded by the assistant-settings capabilities +
- *    requireAdmin.
- *  - Phase 4 acceptance: assistant-container CAN edit AKM → GET/PATCH 200.
- *  - pwa-static has no assistant-settings capability → 403 with a valid
- *    session (capability-based, not session-based; plan §8.5).
+ *  - The AKM runtime config (config/akm/config.json) is assistant-scoped →
+ *    lives under /api/assistant/akm, guarded by the assistant-settings
+ *    capabilities + requireAdmin.
+ *  - assistant-settings:read/write are BASE capabilities present in every
+ *    process → GET/PATCH 200 regardless of admin capability; the requireAdmin
+ *    cookie check is still enforced (401 without a session).
  *  - Host-LEVEL AKM (host key sharing) stays under /api/host — pinned by
  *    routes/api/host/guard-hygiene.vitest.ts, not here.
  */
@@ -94,7 +93,6 @@ function makePatchEvent(body: Record<string, unknown>, token = 'admin-token'): u
 }
 
 const ENV_KEYS = [
-  'OP_UI_HOST_MODE',
   'OP_INSIDE_ELECTRON',
   'OP_ENABLE_ADMIN',
   'OP_HOME',
@@ -123,8 +121,7 @@ afterEach(() => {
 });
 
 describe('GET /api/assistant/akm — assistant-scoped AKM config (plan Phase 4 step 2)', () => {
-  test('200 in assistant-container mode with a valid session — returns the config', async () => {
-    process.env.OP_UI_HOST_MODE = 'assistant-container';
+  test('200 in a non-admin process with a valid session — returns the config', async () => {
     seedAkmConfig({ defaults: { llm: 'main' } });
     const { GET } = await loadRoute();
     const res = await GET(makeGetEvent());
@@ -133,34 +130,26 @@ describe('GET /api/assistant/akm — assistant-scoped AKM config (plan Phase 4 s
     expect((body.config.defaults as Record<string, unknown>).llm).toBe('main');
   });
 
-  test('403 in pwa-static mode even with a valid admin session', async () => {
-    process.env.OP_UI_HOST_MODE = 'pwa-static';
-    const { GET } = await loadRoute();
-    const res = await GET(makeGetEvent());
-    expect(res.status).toBe(403);
-  });
-
   test('401 without a session cookie (requireAdmin still enforced)', async () => {
-    process.env.OP_UI_HOST_MODE = 'assistant-container';
     const { GET } = await loadRoute();
     const res = await GET(makeGetEvent(''));
     expect(res.status).toBe(401);
   });
 });
 
-describe('PATCH /api/assistant/akm — assistant-container can edit AKM (Phase 4 acceptance)', () => {
-  test('200 in assistant-container mode: the patch is persisted to config/akm/config.json', async () => {
-    process.env.OP_UI_HOST_MODE = 'assistant-container';
+describe('PATCH /api/assistant/akm — the browser can edit AKM (Phase 4 acceptance)', () => {
+  test('200 in a non-admin process: the patch is persisted to config/akm/config.json', async () => {
     const { PATCH } = await loadRoute();
     const res = await PATCH(makePatchEvent({ defaults: { llm: 'primary' } }));
     expect(res.status).toBe(200);
     expect(readFileSync(akmConfigFile(), 'utf-8')).toContain('primary');
   });
 
-  test('403 in pwa-static mode even with a valid admin session', async () => {
-    process.env.OP_UI_HOST_MODE = 'pwa-static';
+  test('200 in an admin process too (assistant-settings:write is a base capability)', async () => {
+    process.env.OP_ENABLE_ADMIN = '1';
     const { PATCH } = await loadRoute();
     const res = await PATCH(makePatchEvent({ defaults: { llm: 'primary' } }));
-    expect(res.status).toBe(403);
+    expect(res.status).toBe(200);
+    expect(readFileSync(akmConfigFile(), 'utf-8')).toContain('primary');
   });
 });

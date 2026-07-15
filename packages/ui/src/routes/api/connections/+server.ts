@@ -3,11 +3,11 @@
  * ui-runtime-modes-plan.md Phase 2, issue #486).
  *
  * Guarded SERVER-SIDE by the `connections:manage` capability (plan §6.4,
- * §8.5): host-ui / electron-host / pwa-static expose it, assistant-container
- * does not — there the guard returns 403 even for a valid admin session,
- * because the check is capability-based (hostMode → serverCapabilities), not
- * session-based. Requests additionally require the admin session (plan §6.8:
- * the host app gates connection management behind the host admin session).
+ * §8.5). Connection management is a BASE capability — the browser owns
+ * connections uniformly in every process — so the guard is capability-based
+ * (serverCapabilities), not session-based. Requests additionally require the
+ * admin session (plan §6.8: the host app gates connection management behind
+ * the host admin session).
  *
  * Delegates to the same server module as the legacy /admin/endpoints routes
  * (lib/server/endpoints.ts); the on-disk endpoints.json is shared and NOT

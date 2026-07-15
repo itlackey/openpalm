@@ -59,7 +59,6 @@ function seedEndpointsFile(payload: unknown): void {
 }
 
 const ENV_KEYS = [
-  'OP_UI_HOST_MODE',
   'OP_INSIDE_ELECTRON',
   'OP_ENABLE_ADMIN',
   'OP_HOME',
@@ -80,7 +79,7 @@ beforeEach(() => {
     delete process.env[key];
   }
   process.env.OP_HOME = makeTempHome();
-  process.env.OP_UI_HOST_MODE = 'host-ui';
+  // connections:manage is a base capability — no admin mode needed.
   resetState('admin-token');
   seedEndpointsFile({
     activeId: null,

@@ -8,8 +8,8 @@
  * /api/assistant/persona — it is deliberately absent from this payload.
  *
  * Guarded by the host:stack capabilities in addition to requireAdmin (plan
- * §8.5): a valid admin session in a mode without host:* (assistant-container,
- * pwa-static) is still refused with 403.
+ * §8.5): a valid admin session in a non-admin process (host:* absent) is
+ * still refused with 403.
  */
 import type { RequestHandler } from './$types';
 import {

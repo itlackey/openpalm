@@ -8,15 +8,13 @@
  * svelte-check stays clean while red.
  *
  * Contract under test:
- *  - Persona is assistant-scoped (config/assistant/persona.md — one of the
- *    two read/write mounts the assistant container keeps, plan §6.9). It is
- *    served from /api/assistant/persona guarded by the assistant-settings
+ *  - Persona is assistant-scoped (config/assistant/persona.md). It is served
+ *    from /api/assistant/persona guarded by the assistant-settings
  *    capabilities + the requireAdmin cookie check.
- *  - Phase 4 acceptance: assistant-container CAN edit persona — its
- *    serverCapabilities carry assistant-settings:read/write → 200 here.
- *  - Host modes keep assistant-settings:write → 200 in host-ui too.
- *  - pwa-static carries NO assistant-settings capability → 403 even with a
- *    valid admin session (capability-based, not session-based; plan §8.5).
+ *  - assistant-settings:read/write are BASE capabilities present in every
+ *    process, so the browser can read/write the persona regardless of admin
+ *    capability → 200 here. The requireAdmin cookie check is still enforced
+ *    (401 without a session).
  */
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -93,7 +91,6 @@ function makePutEvent(body: Record<string, unknown>, token = 'admin-token'): unk
 }
 
 const ENV_KEYS = [
-  'OP_UI_HOST_MODE',
   'OP_INSIDE_ELECTRON',
   'OP_ENABLE_ADMIN',
   'OP_HOME',
@@ -122,8 +119,7 @@ afterEach(() => {
 });
 
 describe('GET /api/assistant/persona — assistant-settings guard (plan Phase 4 step 2)', () => {
-  test('200 in assistant-container mode with a valid session — returns the persona', async () => {
-    process.env.OP_UI_HOST_MODE = 'assistant-container';
+  test('200 in a non-admin process with a valid session — returns the persona', async () => {
     seedPersona('# Persona\n');
     const { GET } = await loadRoute();
     const res = await GET(makeGetEvent());
@@ -132,15 +128,7 @@ describe('GET /api/assistant/persona — assistant-settings guard (plan Phase 4 
     expect(body.personaContent).toBe('# Persona\n');
   });
 
-  test('403 in pwa-static mode even with a valid admin session', async () => {
-    process.env.OP_UI_HOST_MODE = 'pwa-static';
-    const { GET } = await loadRoute();
-    const res = await GET(makeGetEvent());
-    expect(res.status).toBe(403);
-  });
-
   test('401 without a session cookie (requireAdmin still enforced)', async () => {
-    process.env.OP_UI_HOST_MODE = 'assistant-container';
     const { GET } = await loadRoute();
     const res = await GET(makeGetEvent(''));
     expect(res.status).toBe(401);
@@ -148,34 +136,22 @@ describe('GET /api/assistant/persona — assistant-settings guard (plan Phase 4 
 });
 
 describe('PUT /api/assistant/persona — assistant-settings:write (Phase 4 acceptance)', () => {
-  test('assistant-container CAN edit the persona: 200 + write to config/assistant/persona.md', async () => {
-    process.env.OP_UI_HOST_MODE = 'assistant-container';
+  test('a non-admin process CAN edit the persona: 200 + write to config/assistant/persona.md', async () => {
     const { PUT } = await loadRoute();
     const res = await PUT(makePutEvent({ personaContent: '# Updated persona' }));
     expect(res.status).toBe(200);
     expect(readFileSync(personaFile(), 'utf-8').trimEnd()).toBe('# Updated persona');
   });
 
-  test('200 in host-ui mode (host modes keep assistant-settings:write)', async () => {
-    process.env.OP_UI_HOST_MODE = 'host-ui';
+  test('200 in an admin process too (assistant-settings:write is a base capability)', async () => {
+    process.env.OP_ENABLE_ADMIN = '1';
     const { PUT } = await loadRoute();
     const res = await PUT(makePutEvent({ personaContent: '# Host-edited persona' }));
     expect(res.status).toBe(200);
     expect(readFileSync(personaFile(), 'utf-8').trimEnd()).toBe('# Host-edited persona');
   });
 
-  test('403 in pwa-static mode even with a valid session — capability guard, not auth', async () => {
-    process.env.OP_UI_HOST_MODE = 'pwa-static';
-    const { PUT } = await loadRoute();
-    const res = await PUT(makePutEvent({ personaContent: 'nope' }));
-    expect(res.status).toBe(403);
-    expect(res.headers.get('content-type') ?? '').toContain('application/json');
-    const body = (await res.json()) as Record<string, unknown>;
-    expect(body.error).toBe('capability_not_available');
-  });
-
   test('401 without a session cookie', async () => {
-    process.env.OP_UI_HOST_MODE = 'assistant-container';
     const { PUT } = await loadRoute();
     const res = await PUT(makePutEvent({ personaContent: '# P' }, ''));
     expect(res.status).toBe(401);

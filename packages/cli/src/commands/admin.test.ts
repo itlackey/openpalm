@@ -8,7 +8,7 @@
  *    src/commands/admin.ts) and shows up in `openpalm --help`.
  *  - The command serves the existing UI through the existing startUIServer
  *    path, with the admin capability enabled in the SPAWNED UI child env:
- *    OP_ENABLE_ADMIN=1 and OP_UI_HOST_MODE=host-ui.
+ *    OP_ENABLE_ADMIN=1.
  *  - host-ui mode is loopback-only ALWAYS: a non-loopback bind config
  *    (OP_ALLOW_REMOTE_SETUP) is refused/ignored for this command — the child
  *    binds 127.0.0.1 with a pinned loopback ORIGIN, and the flag is
@@ -70,7 +70,6 @@ const originalWarn = console.warn;
 const SAVED_ENV_KEYS = [
   'OP_HOME',
   'OP_ENABLE_ADMIN',
-  'OP_UI_HOST_MODE',
   'OP_ALLOW_REMOTE_SETUP',
   'OP_HOST_UI_PORT',
   'OPENPALM_REPO_ROOT',
@@ -183,7 +182,6 @@ function seedServeHome(opts: { installed: boolean }): string {
   // Make sure nothing ambient can fake an admin-mode pass (spawnUiChild
   // spreads process.env into the child env).
   delete process.env.OP_ENABLE_ADMIN;
-  delete process.env.OP_UI_HOST_MODE;
   delete process.env.OP_ALLOW_REMOTE_SETUP;
   delete process.env.OP_HOST_UI_PORT;
   delete process.env.OPENPALM_SKELETON_DIR;
@@ -290,7 +288,6 @@ describe('openpalm admin serve mode (#556)', () => {
       );
       // Admin capability enabled in the spawned UI server env (plan Phase 1.5).
       expect(child.env?.OP_ENABLE_ADMIN).toBe('1');
-      expect(child.env?.OP_UI_HOST_MODE).toBe('host-ui');
       // Loopback-only bind with a pinned loopback origin.
       expect(child.env?.HOST).toBe('127.0.0.1');
       expect(child.env?.PORT).toBe('4611');
@@ -326,12 +323,12 @@ describe('openpalm admin serve mode (#556)', () => {
     async () => {
       seedServeHome({ installed: true });
       // A different (or a previous) `openpalm admin` invocation is already
-      // listening on this port and reports the same hostMode — checkExistingUiInstance
+      // listening on this port and reports admin=true — checkExistingUiInstance
       // should call this a 'match' and skip spawning a second UI child.
       globalThis.fetch = (async (input: string | URL | Request) => {
         const url = String(input instanceof Request ? input.url : input);
         if (url.endsWith('/api/runtime')) {
-          return new Response(JSON.stringify({ hostMode: 'host-ui' }), {
+          return new Response(JSON.stringify({ admin: true }), {
             status: 200,
             headers: { 'content-type': 'application/json' },
           });
@@ -382,7 +379,6 @@ describe('openpalm admin serve mode (#556)', () => {
         () => run.error
       );
       expect(child.env?.OP_ENABLE_ADMIN).toBe('1');
-      expect(child.env?.OP_UI_HOST_MODE).toBe('host-ui');
       // NOT the remote bind (0.0.0.0 + Host-header origin) — loopback, pinned.
       expect(child.env?.HOST).toBe('127.0.0.1');
       expect(child.env?.ORIGIN).toBe('http://127.0.0.1:4612');
@@ -423,7 +419,6 @@ describe('openpalm admin serve mode (#556)', () => {
         () => run.error
       );
       expect(child.env?.OP_ENABLE_ADMIN).toBe('1');
-      expect(child.env?.OP_UI_HOST_MODE).toBe('host-ui');
       expect(child.env?.HOST).toBe('127.0.0.1');
       expect(child.env?.ORIGIN).toBe('http://127.0.0.1:4613');
     },
@@ -463,9 +458,8 @@ describe('bare serve path spawn env (characterization — green pre-change)', ()
       expect(child.env?.HOST).toBe('127.0.0.1');
       expect(child.env?.ORIGIN).toBe('http://127.0.0.1:4614');
       expect(child.env?.HOST_HEADER).toBeUndefined();
-      // Bare serve is NOT the admin surface: no admin/mode env is introduced.
+      // Bare serve is NOT the admin surface: no admin env is introduced.
       expect(child.env?.OP_ENABLE_ADMIN).toBeUndefined();
-      expect(child.env?.OP_UI_HOST_MODE).toBeUndefined();
     },
     15000
   );

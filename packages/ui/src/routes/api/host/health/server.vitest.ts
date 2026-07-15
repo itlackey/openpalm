@@ -13,7 +13,7 @@
  *    guard in addition to the requireAdmin cookie check (plan §8.5;
  *    hasCapability() in the browser is UX only). The guard is
  *    capability-based, not session-based: a VALID admin session in a mode
- *    whose serverCapabilities carry no host:* capability (assistant-container,
+ *    whose serverCapabilities carry no host:* capability (non-admin,
  *    pwa-static) is still refused with 403.
  *  - host-ui / electron-host expose the host:* capability set → 200.
  *  - requireAdmin still applies: no session cookie → 401 even in host modes.
@@ -60,7 +60,6 @@ function makeGetEvent(token = 'admin-token'): unknown {
 }
 
 const ENV_KEYS = [
-  'OP_UI_HOST_MODE',
   'OP_INSIDE_ELECTRON',
   'OP_ENABLE_ADMIN',
   'OP_HOME',
@@ -96,15 +95,15 @@ afterEach(() => {
 });
 
 describe('GET /api/host/health — host capability guard (plan Phase 4 step 3, §8.5)', () => {
-  test('403 in assistant-container mode even with a valid admin session', async () => {
-    process.env.OP_UI_HOST_MODE = 'assistant-container';
+  test('403 in non-admin mode even with a valid admin session', async () => {
+    delete process.env.OP_ENABLE_ADMIN;
     const { GET } = await loadRoute();
     const res = await GET(makeGetEvent());
     expect(res.status).toBe(403);
   });
 
-  test('the assistant-container 403 is the capability guard, not generic auth', async () => {
-    process.env.OP_UI_HOST_MODE = 'assistant-container';
+  test('the non-admin 403 is the capability guard, not generic auth', async () => {
+    delete process.env.OP_ENABLE_ADMIN;
     const { GET } = await loadRoute();
     const res = await GET(makeGetEvent());
     expect(res.status).toBe(403);
@@ -114,14 +113,14 @@ describe('GET /api/host/health — host capability guard (plan Phase 4 step 3, �
   });
 
   test('403 in pwa-static mode even with a valid admin session', async () => {
-    process.env.OP_UI_HOST_MODE = 'pwa-static';
+    delete process.env.OP_ENABLE_ADMIN;
     const { GET } = await loadRoute();
     const res = await GET(makeGetEvent());
     expect(res.status).toBe(403);
   });
 
   test('200 in host-ui mode with a valid admin session', async () => {
-    process.env.OP_UI_HOST_MODE = 'host-ui';
+    process.env.OP_ENABLE_ADMIN = '1';
     const { GET } = await loadRoute();
     const res = await GET(makeGetEvent());
     expect(res.status).toBe(200);
@@ -130,14 +129,14 @@ describe('GET /api/host/health — host capability guard (plan Phase 4 step 3, �
   });
 
   test('200 in electron-host mode with a valid admin session', async () => {
-    process.env.OP_UI_HOST_MODE = 'electron-host';
+    process.env.OP_ENABLE_ADMIN = '1';
     const { GET } = await loadRoute();
     const res = await GET(makeGetEvent());
     expect(res.status).toBe(200);
   });
 
   test('401 in host-ui mode without a session cookie (requireAdmin still enforced)', async () => {
-    process.env.OP_UI_HOST_MODE = 'host-ui';
+    process.env.OP_ENABLE_ADMIN = '1';
     const { GET } = await loadRoute();
     const res = await GET(makeGetEvent(''));
     expect(res.status).toBe(401);

@@ -6,18 +6,11 @@ import type { ToolStripEntry } from '$lib/chat/tool-strip.js';
 
 // ── RuntimeContext v2 (plan §6.1, issue #509) ──────────────────────────
 
-export type UiHostMode =
-  | 'electron-host'
-  | 'host-ui'
-  | 'assistant-container'
-  | 'pwa-static';
-
 export type Capability =
   | 'chat'
   | 'connections:read'
   | 'connections:manage'
   | 'connections:switch'
-  | 'connections:single'
   | 'assistant-settings:read'
   | 'assistant-settings:write'
   | 'host:setup'
@@ -35,12 +28,18 @@ export type Capability =
 export type ServerRuntimeContext = {
   /** Contract version — the /api/runtime handshake for remote/hosted clients. */
   version: 2;
-  hostMode: UiHostMode;
+  /**
+   * True when this process is admin-capable — running inside Electron
+   * (OP_INSIDE_ELECTRON=1) or explicitly opted in (OP_ENABLE_ADMIN=1, e.g.
+   * `openpalm admin`). Admin capability is an Electron-or-CLI-only security
+   * boundary: a served/container build can never self-grant it (there is no
+   * env-based self-grant footgun anymore).
+   */
+  admin: boolean;
   serverCapabilities: Capability[];
   publicBaseUrl: string;
   uiVersion: string;
   skeletonVersion: string;
-  activeConnectionMode: 'single' | 'multi';
   routes: {
     chat?: string;
     connections?: string;
@@ -51,7 +50,7 @@ export type ServerRuntimeContext = {
   security: {
     hostAdminLoopbackOnly: boolean;
     requiresHttpsForRemoteConnections: boolean;
-    csrfMode: 'loopback-origin' | 'same-site' | 'bearer-token';
+    csrfMode: 'loopback-origin' | 'same-site';
   };
 };
 

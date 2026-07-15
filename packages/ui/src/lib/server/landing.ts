@@ -10,9 +10,9 @@
  *
  * The server cannot detect the client display mode (client-only by design,
  * plan §6.3), so capabilities are resolved with the 'browser' baseline —
- * which yields the correct host:setup gating for every hostMode: host-capable
- * modes keep their host:* capabilities in a browser, and the other modes
- * never had them.
+ * which yields the correct host:setup gating for every process: an
+ * adminCapable process keeps its host:* capabilities in a browser, and a
+ * non-admin process never had them.
  */
 import type { RequestEvent } from '@sveltejs/kit';
 import {

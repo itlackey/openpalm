@@ -63,7 +63,6 @@ const originalWarn = console.warn;
 const SAVED_ENV_KEYS = [
   'OP_HOME',
   'OP_ENABLE_ADMIN',
-  'OP_UI_HOST_MODE',
   'OP_ALLOW_REMOTE_SETUP',
   'OP_HOST_UI_PORT',
   'OPENPALM_REPO_ROOT',
@@ -186,7 +185,6 @@ function seedServeHome(): string {
   writeFileSync(join(home, 'data', 'ui', 'index.js'), '// stub adapter-node entry\n');
   process.env.OP_HOME = home;
   delete process.env.OP_ENABLE_ADMIN;
-  delete process.env.OP_UI_HOST_MODE;
   delete process.env.OP_ALLOW_REMOTE_SETUP;
   delete process.env.OPENPALM_SKELETON_DIR;
   delete process.env.OP_CLIENT_PORT;

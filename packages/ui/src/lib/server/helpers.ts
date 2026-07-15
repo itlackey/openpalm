@@ -118,14 +118,13 @@ export function requireAdmin(event: RequestEvent, requestId: string): Response |
 /**
  * Server-side capability guard (plan ui-runtime-modes-plan.md §6.4, §8.5).
  *
- * Returns a 403 JSON error Response when the resolved host mode does not
- * expose `capability`, or null when it does. This is the SECURITY boundary —
- * the browser-side `hasCapability()` is UX only. The check is deliberately
- * capability-based, not session-based: a valid admin session in a mode
- * without the capability (e.g. `connections:manage` in assistant-container)
- * is still refused. Capability→mode logic itself lives ONLY in
- * computeServerRuntimeContext / resolveCapabilities (plan §8.6); this helper
- * just reads the advertised server capability set.
+ * Returns a 403 JSON error Response when this process does not expose
+ * `capability`, or null when it does. This is the SECURITY boundary — the
+ * browser-side `hasCapability()` is UX only. The check is deliberately
+ * capability-based, not session-based: a valid admin session in a non-admin
+ * process (host:* absent) is still refused. Capability computation itself
+ * lives ONLY in computeServerRuntimeContext / resolveCapabilities (plan §8.6);
+ * this helper just reads the advertised server capability set.
  */
 export function requireCapability(
   event: RequestEvent,
@@ -137,8 +136,8 @@ export function requireCapability(
     return errorResponse(
       403,
       "capability_not_available",
-      `This deployment (${ctx.hostMode}) does not provide the '${capability}' capability.`,
-      { capability, hostMode: ctx.hostMode },
+      `This deployment (admin=${ctx.admin}) does not provide the '${capability}' capability.`,
+      { capability, admin: ctx.admin },
       requestId,
     );
   }
@@ -308,12 +307,6 @@ export function checkOriginHeader(request: Request, csrfMode: CsrfMode = 'loopba
         break;
       }
       case 'same-site':
-        if (isSameSite(request, u)) return null;
-        break;
-      case 'bearer-token':
-        // In bearer-mode, allow requests carrying explicit auth headers
-        // in addition to same-site traffic.
-        if (request.headers.get('authorization')) return null;
         if (isSameSite(request, u)) return null;
         break;
     }

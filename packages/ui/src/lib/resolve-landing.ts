@@ -20,10 +20,9 @@
  *     local installed_offline    → HOST_ADMIN_LANDING
  *     local installed_broken     → HOST_ADMIN_LANDING?tab=diagnostics
  *     otherwise (running)        → /chat
- *   no host:setup capability:
- *     assistant-container        → /chat (always — no host stack in view)
- *     pwa-static, 0 connections  → /connections/new
- *     pwa-static, ≥1 connection  → /chat
+ *   no host:setup capability (non-admin process):
+ *     0 connections              → /connections/new
+ *     ≥1 connection              → /chat
  *     anything else              → /chat
  */
 import type { LocalStackState } from '@openpalm/lib';
@@ -77,7 +76,7 @@ export type LaunchState = {
 };
 
 /** Resolve the landing path for a session (plan §6.5). Pure — no I/O, no
- *  global state; the gate is CAPABILITY-driven, not hostMode-driven. */
+ *  global state; the gate is CAPABILITY-driven, not admin-flag-driven. */
 export function resolveLanding(ctx: RuntimeContext, state: LaunchState): string {
   if (ctx.effectiveCapabilities.includes('host:setup')) {
     if (state.migration.status === 'pending') return HOST_ATTENTION_LANDING;
@@ -89,9 +88,7 @@ export function resolveLanding(ctx: RuntimeContext, state: LaunchState): string 
     if (state.local.state === 'installed_broken') return `${HOST_ADMIN_LANDING}?tab=diagnostics`;
     return '/chat';
   }
-  if (ctx.hostMode === 'assistant-container') return '/chat';
-  if (ctx.hostMode === 'pwa-static') {
-    return state.connections.length === 0 ? '/connections/new' : '/chat';
-  }
-  return '/chat';
+  // Non-admin process (no host:setup): the browser owns connections — land on
+  // the add-connection surface when there is nowhere to chat yet, else /chat.
+  return state.connections.length === 0 ? '/connections/new' : '/chat';
 }
