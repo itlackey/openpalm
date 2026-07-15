@@ -398,7 +398,7 @@ export function createCliUiSupervisor(deps: CliUiSupervisorDeps): {
 export async function startUIServer(opts: UIServerOptions = {}): Promise<void> {
   const homeDir = resolveOpenPalmHome();
   // D3: read back a persisted (headless-install) OP_HOST_UI_PORT, not just
-  // process.env — mirrors client-server.ts's stack.env merge.
+  // process.env (resolveUiServePort merges persisted stack.env under process.env).
   const port = resolveUiServePort(opts.port, homeDir);
   if (Number.isNaN(port) || port < 1 || port > 65535) {
     console.error(`Invalid port: ${port}`);

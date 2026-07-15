@@ -24,7 +24,7 @@
  * two together so they can never silently diverge.
  *
  * D4 (managed key matrix): every preset writes ALL of `OP_BIND_ADDRESS`,
- * `OP_ASSISTANT_BIND_ADDRESS`, `OP_CLIENT_BIND_ADDRESS`, `OP_VOICE_BIND_ADDRESS`,
+ * `OP_ASSISTANT_BIND_ADDRESS`, `OP_UI_BIND_ADDRESS`, `OP_VOICE_BIND_ADDRESS`,
  * and `OPENCODE_AUTH` explicitly (loopback rather than "leave unset"), so
  * switching between presets always converges regardless of prior state.
  * `OP_CHAT_BIND_ADDRESS` / `OP_API_BIND_ADDRESS` are deliberately NOT managed —
@@ -68,14 +68,14 @@ const LAN_VALUE = "0.0.0.0";
 const MANAGED_BIND_KEYS = [
   "OP_BIND_ADDRESS",
   "OP_ASSISTANT_BIND_ADDRESS",
-  "OP_CLIENT_BIND_ADDRESS",
+  "OP_UI_BIND_ADDRESS",
   "OP_VOICE_BIND_ADDRESS",
 ] as const;
 
 export type NetworkPresetEnv = {
   OP_BIND_ADDRESS: string;
   OP_ASSISTANT_BIND_ADDRESS: string;
-  OP_CLIENT_BIND_ADDRESS: string;
+  OP_UI_BIND_ADDRESS: string;
   OP_VOICE_BIND_ADDRESS: string;
   OPENCODE_AUTH: "true" | "false";
 };
@@ -93,7 +93,7 @@ export type NetworkPresetResolution = {
 const ALL_LOOPBACK: NetworkPresetEnv = {
   OP_BIND_ADDRESS: LOOPBACK_DEFAULT,
   OP_ASSISTANT_BIND_ADDRESS: LOOPBACK_DEFAULT,
-  OP_CLIENT_BIND_ADDRESS: LOOPBACK_DEFAULT,
+  OP_UI_BIND_ADDRESS: LOOPBACK_DEFAULT,
   OP_VOICE_BIND_ADDRESS: LOOPBACK_DEFAULT,
   OPENCODE_AUTH: "false",
 };
@@ -156,14 +156,14 @@ export function resolveNetworkPreset(
 
 /**
  * Per-service binds whose compose host-port default NESTS `${OP_BIND_ADDRESS}`
- * (core.compose.yml OP_CLIENT / services.compose.yml OP_VOICE:
+ * (core.compose.yml OP_UI / services.compose.yml OP_VOICE:
  * `${OP_X_BIND_ADDRESS:-${OP_BIND_ADDRESS:-127.0.0.1}}`). An unset value
  * therefore inherits the GLOBAL bind, not loopback. `OP_ASSISTANT_BIND_ADDRESS`
  * is deliberately absent — its host-port line defaults straight to 127.0.0.1
  * with no OP_BIND_ADDRESS fallback.
  */
 const OP_BIND_CASCADING_KEYS: ReadonlySet<string> = new Set([
-  "OP_CLIENT_BIND_ADDRESS",
+  "OP_UI_BIND_ADDRESS",
   "OP_VOICE_BIND_ADDRESS",
 ]);
 
@@ -172,7 +172,7 @@ function boundValue(env: Record<string, string | undefined>, key: (typeof MANAGE
   if (raw) return raw;
   // Mirror the compose cascade so detection sees the SAME exposure the stack
   // actually gets: an unset cascading bind inherits OP_BIND_ADDRESS (only then
-  // loopback), so `OP_BIND_ADDRESS=0.0.0.0` alone reads as client/voice exposed
+  // loopback), so `OP_BIND_ADDRESS=0.0.0.0` alone reads as ui/voice exposed
   // (drift → "custom" + loud warning), not a clean shared-guardian.
   if (OP_BIND_CASCADING_KEYS.has(key)) {
     const globalBind = env.OP_BIND_ADDRESS?.trim();
@@ -203,17 +203,17 @@ export function detectNetworkPreset(
 ): NetworkAccessPreset | null {
   const globalExposed = isExposed(env, "OP_BIND_ADDRESS");
   const assistantExposed = isExposed(env, "OP_ASSISTANT_BIND_ADDRESS");
-  const clientExposed = isExposed(env, "OP_CLIENT_BIND_ADDRESS");
+  const uiExposed = isExposed(env, "OP_UI_BIND_ADDRESS");
   const voiceExposed = isExposed(env, "OP_VOICE_BIND_ADDRESS");
   const authOn = isAuthOn(env);
 
-  if (!globalExposed && !assistantExposed && !clientExposed && !voiceExposed && !authOn) {
+  if (!globalExposed && !assistantExposed && !uiExposed && !voiceExposed && !authOn) {
     return "this-pc";
   }
-  if (!globalExposed && assistantExposed && !clientExposed && !voiceExposed) {
+  if (!globalExposed && assistantExposed && !uiExposed && !voiceExposed) {
     return authOn ? "home-password" : "home-open";
   }
-  if (globalExposed && !assistantExposed && !clientExposed && !voiceExposed && !authOn) {
+  if (globalExposed && !assistantExposed && !uiExposed && !voiceExposed && !authOn) {
     return "shared-guardian";
   }
   return null;

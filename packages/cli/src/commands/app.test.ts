@@ -1,20 +1,10 @@
-import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test';
+import { afterEach, describe, expect, it, mock } from 'bun:test';
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { runCommand, type CommandDef } from 'citty';
 import * as realLib from '../../../lib/src/index.ts';
-
-beforeEach(() => {
-  delete process.env.OP_CLIENT_PORT;
-  delete process.env.OP_HOST_CLIENT_PORT;
-});
-
-afterEach(() => {
-  delete process.env.OP_CLIENT_PORT;
-  delete process.env.OP_HOST_CLIENT_PORT;
-});
 
 describe('openpalm app', () => {
   it('routes through the UI supervisor so the localhost app is served before opening', async () => {
@@ -37,7 +27,7 @@ describe('openpalm app', () => {
   });
 });
 
-// ── #486 stack-less client entry — `openpalm app` on a not-installed OP_HOME ──
+// ── #486 stack-less app entry — `openpalm app` on a not-installed OP_HOME ──
 //
 // D1: startUIServer's ensureValidState()/resolveServeState() ternary must
 // tolerate the explicit uninstalled-app entry, not just `adminHostUi`. Harness
@@ -67,9 +57,6 @@ const SAVED_ENV_KEYS = [
   'OP_HOST_UI_PORT',
   'OPENPALM_REPO_ROOT',
   'OPENPALM_SKELETON_DIR',
-  'OP_CLIENT_PORT',
-  'OP_HOST_CLIENT_PORT',
-  'OP_CLIENT_DEFAULT_ASSISTANT_URL',
   'OP_ASSISTANT_PORT',
 ] as const;
 const savedEnv2: Record<string, string | undefined> = {};
@@ -187,9 +174,6 @@ function seedServeHome(): string {
   delete process.env.OP_ENABLE_ADMIN;
   delete process.env.OP_ALLOW_REMOTE_SETUP;
   delete process.env.OPENPALM_SKELETON_DIR;
-  delete process.env.OP_CLIENT_PORT;
-  delete process.env.OP_HOST_CLIENT_PORT;
-  delete process.env.OP_CLIENT_DEFAULT_ASSISTANT_URL;
   delete process.env.OP_ASSISTANT_PORT;
   process.env.OPENPALM_REPO_ROOT = repoRoot;
   globalThis.fetch = (async (input: string | URL | Request) => {
@@ -239,9 +223,9 @@ async function runApp(): Promise<{ error?: unknown }> {
   return state;
 }
 
-describe('openpalm app on a not-installed OP_HOME (#486 stack-less client entry)', () => {
+describe('openpalm app on a not-installed OP_HOME (#486 stack-less app entry)', () => {
   it(
-    'serves the UI child in pwa-static mode instead of throwing',
+    'serves the UI child instead of throwing',
     async () => {
       seedServeHome();
       process.env.OP_HOST_UI_PORT = '4711';
@@ -286,7 +270,7 @@ describe('openpalm app on a not-installed OP_HOME (#486 stack-less client entry)
   );
 });
 
-describe('bare serve keeps requiring an install (tolerance is scoped to the client target)', () => {
+describe('bare serve keeps requiring an install (tolerance is scoped to the uninstalled app entry)', () => {
   it(
     'startUIServer({ open: false }) on an empty OP_HOME rejects/throws with the install-first error',
     async () => {

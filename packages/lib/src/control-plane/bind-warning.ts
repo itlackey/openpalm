@@ -29,7 +29,7 @@ function hasGuardianIngress(env: Record<string, string | undefined>): boolean {
 /** Known per-service bind address env var names (mirrors compose files). */
 const PER_SERVICE_BIND_VARS: readonly string[] = [
   "OP_ASSISTANT_BIND_ADDRESS",
-  "OP_CLIENT_BIND_ADDRESS",
+  "OP_UI_BIND_ADDRESS",
   "OP_CHAT_BIND_ADDRESS",
   "OP_API_BIND_ADDRESS",
   "OP_VOICE_BIND_ADDRESS",
@@ -42,8 +42,9 @@ const PER_SERVICE_BIND_VARS: readonly string[] = [
  * tell "I did this on purpose" from "something hand-edited this". Only
  * `OP_ASSISTANT_BIND_ADDRESS` (the Home network presets) and
  * `OP_BIND_ADDRESS` (the Shared network preset) are ever set by a preset;
- * the other per-service vars (client/chat/api/voice) are never preset-managed
- * so they keep generic wording naming no preset.
+ * the other per-service vars (ui/chat/api/voice) keep generic wording naming
+ * no preset. OP_UI_BIND_ADDRESS is preset-managed too, but every preset pins it
+ * to loopback, so it never actually surfaces a warning here.
  */
 const PRESET_FRAMING: Record<string, string> = {
   OP_BIND_ADDRESS: "Shared network, guardian protected",
@@ -88,7 +89,7 @@ export function collectBindAddressWarnings(
   if (globalBind && !isLoopback(globalBind)) {
     // PR #564 r3566893095: "guardian protected" is only truthful when a
     // guardian-ingress addon is actually enabled. Without one, the exposed
-    // OP_BIND_ADDRESS cascade (which nests into OP_CLIENT_*/OP_VOICE_*) puts
+    // OP_BIND_ADDRESS cascade (which nests into OP_UI_*/OP_VOICE_*) puts
     // raw services on the LAN with no guardian proxy in front — say so.
     warnings.push(
       hasGuardianIngress(env)

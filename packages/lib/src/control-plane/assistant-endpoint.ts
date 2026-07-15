@@ -8,14 +8,14 @@
  *     bind address (e.g. 0.0.0.0, set by the admin LAN-exposure toggle)
  *     directly into a browser-facing URL — http://0.0.0.0:3800 cannot be
  *     fetched from a browser.
- *   - The CLI honored OP_CLIENT_DEFAULT_ASSISTANT_URL but ignored
- *     OP_OPENCODE_URL/OP_ASSISTANT_URL that the host UI honors.
+ *   - Each surface honored a different override name and ignored the others.
  *   - The container entrypoint had its own inline precedence.
  *
- * `resolveAssistantEndpoint` is the ONE place this precedence is decided.
- * Callers (Electron main.ts, the CLI client-server, the container
- * entrypoint's config generation) should all resolve through this instead of
- * re-deriving it locally.
+ * `resolveAssistantEndpoint` is the ONE place this precedence is decided for
+ * the host-process surfaces. Electron main.ts resolves through it to seed the
+ * browser's locked default connection (the container entrypoint, being a shell
+ * script, mirrors the same precedence inline — both honor the same
+ * OP_UI_DEFAULT_ASSISTANT_URL override so an operator override is consistent).
  */
 import { readStackEnv } from './secrets.js';
 import { STACK_DEFAULTS } from './defaults.js';
@@ -32,10 +32,10 @@ type EnvLike = Record<string, string | undefined>;
 const WILDCARD_BIND_HOST = /^(0\.0\.0\.0|\[::\]|::)$/i;
 
 /**
- * Resolve the assistant (OpenCode) URL the UI/client should target.
+ * Resolve the assistant (OpenCode) URL the UI should target.
  *
  * Precedence (first non-empty wins):
- *   1. OP_CLIENT_DEFAULT_ASSISTANT_URL
+ *   1. OP_UI_DEFAULT_ASSISTANT_URL
  *   2. OP_OPENCODE_URL
  *   3. OP_ASSISTANT_URL
  *   4. `http://${host}:${OP_ASSISTANT_PORT ?? 3800}`, where `host` is:
@@ -68,7 +68,7 @@ const WILDCARD_BIND_HOST = /^(0\.0\.0\.0|\[::\]|::)$/i;
  */
 export function resolveAssistantEndpoint(homeDir: string, env: EnvLike = process.env): string {
   const merged = { ...readStackEnv(homeDir), ...env };
-  const override = merged.OP_CLIENT_DEFAULT_ASSISTANT_URL || merged.OP_OPENCODE_URL || merged.OP_ASSISTANT_URL;
+  const override = merged.OP_UI_DEFAULT_ASSISTANT_URL || merged.OP_OPENCODE_URL || merged.OP_ASSISTANT_URL;
   const port = merged.OP_ASSISTANT_PORT || String(STACK_DEFAULTS.ports.assistant);
   const bindAddress = merged.OP_ASSISTANT_BIND_ADDRESS?.trim();
   const host = bindAddress && !WILDCARD_BIND_HOST.test(bindAddress) ? bindAddress : '127.0.0.1';

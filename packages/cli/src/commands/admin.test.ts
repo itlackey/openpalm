@@ -74,9 +74,6 @@ const SAVED_ENV_KEYS = [
   'OP_HOST_UI_PORT',
   'OPENPALM_REPO_ROOT',
   'OPENPALM_SKELETON_DIR',
-  'OP_CLIENT_PORT',
-  'OP_HOST_CLIENT_PORT',
-  'OP_CLIENT_DEFAULT_ASSISTANT_URL',
   'OP_ASSISTANT_PORT'
 ] as const;
 const savedEnv: Record<string, string | undefined> = {};
@@ -185,9 +182,6 @@ function seedServeHome(opts: { installed: boolean }): string {
   delete process.env.OP_ALLOW_REMOTE_SETUP;
   delete process.env.OP_HOST_UI_PORT;
   delete process.env.OPENPALM_SKELETON_DIR;
-  delete process.env.OP_CLIENT_PORT;
-  delete process.env.OP_HOST_CLIENT_PORT;
-  delete process.env.OP_CLIENT_DEFAULT_ASSISTANT_URL;
   delete process.env.OP_ASSISTANT_PORT;
   process.env.OPENPALM_REPO_ROOT = repoRoot;
   globalThis.fetch = (async (input: string | URL | Request) => {

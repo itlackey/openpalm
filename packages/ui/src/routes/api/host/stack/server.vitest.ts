@@ -316,7 +316,7 @@ describe('GET/PUT /api/host/stack — networkPreset surface (#563 D8)', () => {
       [
         'OP_BIND_ADDRESS=127.0.0.1',
         'OP_ASSISTANT_BIND_ADDRESS=0.0.0.0',
-        'OP_CLIENT_BIND_ADDRESS=127.0.0.1',
+        'OP_UI_BIND_ADDRESS=127.0.0.1',
         'OP_VOICE_BIND_ADDRESS=127.0.0.1',
         'OPENCODE_AUTH=true',
         '',
