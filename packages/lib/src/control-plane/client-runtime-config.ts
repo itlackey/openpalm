@@ -1,5 +1,6 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
-import { dirname } from 'node:path';
+import { dirname, join } from 'node:path';
+import { resolveAssistantEndpoint } from './assistant-endpoint.js';
 
 /**
  * Locked default connection id/label (review finding I5). The container
@@ -95,4 +96,32 @@ export function writeClientRuntimeConfig(
     assistantUrl === null ? { connections: [] } : buildLockedAssistantRuntimeConfig(assistantUrl);
   if (options.hostUrl) config.hostUrl = options.hostUrl;
   writeFileSync(path, `${JSON.stringify(config, null, 2)}\n`);
+}
+
+/**
+ * Seed `runtime-config.json` for a HOST-served `@openpalm/ui` build (Electron /
+ * CLI), matching what the assistant container entrypoint writes inline.
+ *
+ * The browser's connection store fetches `/runtime-config.json` from its own
+ * origin (packages/ui connections/store.ts `loadRuntimeConfig`); adapter-node
+ * serves the build's `client/` directory at the app root, so the file must land
+ * at `<uiBuildDir>/client/runtime-config.json`. Without this, an Electron/CLI
+ * launch opens the UI with an empty connection list instead of the locked
+ * "This assistant" default.
+ *
+ * The connection URL comes from the ONE shared {@link resolveAssistantEndpoint}
+ * precedence (so `OP_UI_DEFAULT_ASSISTANT_URL`/`OP_OPENCODE_URL`/… win), exactly
+ * as the container's inline seed does. Re-callable — the host UI supervisor
+ * re-seeds on every (re)spawn so a changed assistant URL is picked up, and a
+ * stale locked entry is pruned by the store's `seedFromRuntimeConfig`.
+ */
+export function seedServedUiRuntimeConfig(
+  uiBuildDir: string,
+  homeDir: string,
+  env: Record<string, string | undefined> = process.env,
+): void {
+  writeClientRuntimeConfig(
+    join(uiBuildDir, 'client', 'runtime-config.json'),
+    resolveAssistantEndpoint(homeDir, env),
+  );
 }

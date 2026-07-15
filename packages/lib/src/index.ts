@@ -583,6 +583,7 @@ export {
 export {
   buildLockedAssistantRuntimeConfig,
   writeClientRuntimeConfig,
+  seedServedUiRuntimeConfig,
   ASSISTANT_LOCKED_CONNECTION_ID,
   ASSISTANT_LOCKED_CONNECTION_LABEL,
   type ClientRuntimeConfig,

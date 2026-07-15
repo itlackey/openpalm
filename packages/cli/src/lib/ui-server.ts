@@ -12,6 +12,7 @@ import {
   resolveOpenPalmHome, resolveUiBuildDir, createLogger, readSecret, readStackEnv,
   checkAndUpdateUiBuild, checkAndUpdateSkeleton, PLATFORM_VERSION,
   consumePendingUiBackup, isRemoteSetupAllowed, restoreUiBackup, UiSupervisor, waitForReady,
+  seedServedUiRuntimeConfig,
 } from '@openpalm/lib';
 import { ensureValidState, resolveServeState } from './cli-state.ts';
 import { openBrowser } from './browser.ts';
@@ -184,6 +185,18 @@ async function spawnUiChild(
     console.error(`UI build not found at ${uiBuildDir}`);
     console.error('Run: bun run ui:build');
     process.exit(1);
+  }
+
+  // Seed the served build's runtime-config.json so the browser store gets the
+  // locked "This assistant" default connection — the SAME seed the assistant
+  // container entrypoint writes. adapter-node serves the build's client/ dir at
+  // the app origin, where the browser's loadRuntimeConfig() fetches it. Best-
+  // effort and re-run on every (re)spawn; a write failure degrades to an empty
+  // connection list, never a failed serve.
+  try {
+    seedServedUiRuntimeConfig(uiBuildDir, homeDir);
+  } catch (err) {
+    console.warn(`Could not seed UI runtime-config.json: ${err instanceof Error ? err.message : String(err)}`);
   }
   // OP_UI_LOGIN_PASSWORD is unset during first-run install — the SvelteKit
   // hooks detect that and redirect /* to /setup, where the wizard sets

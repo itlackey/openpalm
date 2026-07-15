@@ -20,6 +20,7 @@ import {
   restoreUiBackup,
   UiSupervisor,
   resolveAssistantEndpoint,
+  seedServedUiRuntimeConfig,
 } from '@openpalm/lib';
 import { HARNESS_CONTRACT_VERSION } from './harness-contract.js';
 import { checkForElectronUpdate, getCachedUpdateInfo, type UpdateInfo } from './update-check.js';
@@ -417,6 +418,18 @@ function spawnUIServer(
   uiPidFile: string,
   appUpdate?: UpdateInfo | null,
 ): void {
+  // Seed the served build's runtime-config.json so the browser store gets the
+  // locked "This assistant" default connection — the SAME seed the assistant
+  // container entrypoint writes. adapter-node serves the build's client/ dir at
+  // the app origin, where the browser's loadRuntimeConfig() fetches it. Best-
+  // effort and re-run on every (re)spawn: a write failure degrades to an empty
+  // connection list, never a failed launch.
+  try {
+    seedServedUiRuntimeConfig(uiBuildDir, homeDir);
+  } catch (err) {
+    console.warn('Could not seed UI runtime-config.json:', err instanceof Error ? err.message : String(err));
+  }
+
   // Spawn the UI Node server with Electron's OWN bundled Node (process.execPath
   // + ELECTRON_RUN_AS_NODE) rather than a bare `node` on PATH. Finder-launched
   // macOS apps don't get Homebrew/nvm on PATH, so `spawn('node', …)` failed

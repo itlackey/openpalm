@@ -7,6 +7,7 @@ import {
   ASSISTANT_LOCKED_CONNECTION_LABEL,
   buildLockedAssistantRuntimeConfig,
   writeClientRuntimeConfig,
+  seedServedUiRuntimeConfig,
 } from './client-runtime-config.js';
 
 describe('client runtime config', () => {
@@ -50,10 +51,10 @@ describe('client runtime config', () => {
     }
   });
 
-  // A2/H4 enabler: an optional hostUrl lets the client SPA render a "Manage
-  // assistant" / "Open OpenPalm admin" link back to the host UI (3880) — the
-  // escape hatch A2 and H4 need. Existing 2-arg callers must keep compiling
-  // and keep writing no hostUrl field at all (backward compatible).
+  // The writer still supports an optional hostUrl field (a loopback link to the
+  // host admin surface). It is inert in the one-UI store today — the served UI
+  // owns /host on its own origin — but the field stays supported and backward
+  // compatible: 2-arg callers keep compiling and write no hostUrl at all.
   test('writes an optional hostUrl alongside the connections when provided', () => {
     const dir = mkdtempSync(join(tmpdir(), 'client-runtime-config-'));
     try {
@@ -79,11 +80,10 @@ describe('client runtime config', () => {
     }
   });
 
-  // #486 D1a: a null assistant URL is the stack-less client-only serve — the
-  // CLI-written runtime-config.json must not seed the locked "This assistant"
-  // connection pointing at a dead http://127.0.0.1:3800, or the client's
-  // landing resolver counts 1 stored connection and lands on /chat against a
-  // dead target instead of /connections/new.
+  // A null assistant URL writes connections: [] instead of the locked "This
+  // assistant" entry — the writer's contract for a serve with no known assistant
+  // to seed. The store's seedFromRuntimeConfig prunes a previously-seeded locked
+  // entry absent from the new config, so this round-trips cleanly.
   test('writeClientRuntimeConfig(path, null) writes connections: [] and still honors hostUrl', () => {
     const dir = mkdtempSync(join(tmpdir(), 'client-runtime-config-'));
     try {
@@ -108,5 +108,34 @@ describe('client runtime config', () => {
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+
+  // The host serve path (Electron/CLI spawnUiChild) uses this to seed the same
+  // locked default connection the container entrypoint writes — into the served
+  // build's client/ static dir, where the browser store fetches
+  // /runtime-config.json from the app origin.
+  describe('seedServedUiRuntimeConfig', () => {
+    test('writes <uiBuildDir>/client/runtime-config.json with the derived default connection', () => {
+      const dir = mkdtempSync(join(tmpdir(), 'seed-ui-runtime-'));
+      try {
+        // empty homeDir + empty env → resolveAssistantEndpoint's derived default
+        seedServedUiRuntimeConfig(dir, dir, {});
+        const parsed = JSON.parse(readFileSync(join(dir, 'client', 'runtime-config.json'), 'utf8'));
+        expect(parsed).toEqual(buildLockedAssistantRuntimeConfig('http://127.0.0.1:3800'));
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    });
+
+    test('honors the OP_UI_DEFAULT_ASSISTANT_URL override from env', () => {
+      const dir = mkdtempSync(join(tmpdir(), 'seed-ui-runtime-'));
+      try {
+        seedServedUiRuntimeConfig(dir, dir, { OP_UI_DEFAULT_ASSISTANT_URL: 'https://assistant.example' });
+        const parsed = JSON.parse(readFileSync(join(dir, 'client', 'runtime-config.json'), 'utf8'));
+        expect(parsed.connections[0].baseUrl).toBe('https://assistant.example');
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    });
   });
 });
