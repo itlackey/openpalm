@@ -7,22 +7,28 @@ import { dirname } from 'node:path';
  * via its own inline JS and must use the SAME id/label as this lib writer —
  * exporting them as named constants lets that lane pin its literal against
  * this value instead of the two copies silently drifting. The two writers are
- * pinned equal: the entrypoint writes this exact `openpalm-assistant-opencode`
- * id (containers/assistant/entrypoint.sh:206), and
- * assistant-client-entrypoint.test.ts's "entrypoint embeds the SAME
- * locked-connection id/label the lib writer exports (I5)" test asserts the
- * entrypoint embeds this constant's value and that the old, divergent
- * `assistant-container-opencode` literal is gone. Do not change this value
- * without also updating the entrypoint.
+ * pinned equal: the assistant entrypoint's `start_ui` co-process writes this
+ * exact `openpalm-assistant-opencode` id/label beside the served
+ * `@openpalm/ui` build. Do not change this value without also updating the
+ * entrypoint.
  */
 export const ASSISTANT_LOCKED_CONNECTION_ID = 'openpalm-assistant-opencode';
 export const ASSISTANT_LOCKED_CONNECTION_LABEL = 'This assistant';
 
+/**
+ * One connection record as seeded into the browser-owned connection store
+ * (packages/ui/src/lib/connections/store.ts). The store's `Connection` shape
+ * is `{ id, label, baseUrl, auth }` — the `url`/`kind` fields of the old
+ * @openpalm/client store were dropped when the UI became the single surface
+ * ("One UI, delete the split"): `url` → `baseUrl`, and Guardian is a
+ * transparent OpenCode proxy so a connection `kind` no longer exists. The
+ * locked default always ships `auth: { mode: 'none' }`; the browser can attach
+ * Basic credentials to it later (store.setSecretRef → `{ mode: 'basic', … }`).
+ */
 export type ClientRuntimeConnection = {
   id: string;
   label: string;
-  kind: 'local-opencode';
-  url: string;
+  baseUrl: string;
   auth: { mode: 'none' };
   isDefault: true;
   locked: true;
@@ -40,14 +46,13 @@ export type ClientRuntimeConfig = {
   hostUrl?: string;
 };
 
-export function buildLockedAssistantRuntimeConfig(url: string): ClientRuntimeConfig {
+export function buildLockedAssistantRuntimeConfig(baseUrl: string): ClientRuntimeConfig {
   return {
     connections: [
       {
         id: ASSISTANT_LOCKED_CONNECTION_ID,
         label: ASSISTANT_LOCKED_CONNECTION_LABEL,
-        kind: 'local-opencode',
-        url,
+        baseUrl,
         auth: { mode: 'none' },
         isDefault: true,
         locked: true,

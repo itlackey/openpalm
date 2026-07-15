@@ -10,14 +10,13 @@ import {
 } from './client-runtime-config.js';
 
 describe('client runtime config', () => {
-  test('builds one locked default local-opencode connection', () => {
+  test('builds one locked default connection in the UI store shape (baseUrl, no kind)', () => {
     expect(buildLockedAssistantRuntimeConfig('http://127.0.0.1:3800')).toEqual({
       connections: [
         {
           id: 'openpalm-assistant-opencode',
           label: 'This assistant',
-          kind: 'local-opencode',
-          url: 'http://127.0.0.1:3800',
+          baseUrl: 'http://127.0.0.1:3800',
           auth: { mode: 'none' },
           isDefault: true,
           locked: true,

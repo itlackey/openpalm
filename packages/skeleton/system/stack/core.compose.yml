@@ -71,15 +71,54 @@ services:
       OP_UID: ${OP_UID:-1000}
       OP_GID: ${OP_GID:-1000}
       OPENCODE_API_URL: http://localhost:4096
+      # @openpalm/ui co-process ("One UI, delete the split" Phase 4). The
+      # assistant container serves the SvelteKit adapter-node UI build as a
+      # supervised co-process alongside OpenCode. OP_UI_VERSION is the exact-pin
+      # override for the UI artifact the entrypoint installs; empty falls back to
+      # the image's baked PLATFORM_VERSION. It must reach the container
+      # ENVIRONMENT (not just compose interpolation) so a restart with a new pin
+      # picks up the new UI. NOTE: OP_ENABLE_ADMIN is deliberately NOT set — the
+      # container-served UI runs the NON-admin build (Electron/CLI-only admin
+      # boundary), so its /host routes 404.
+      OP_UI_VERSION: ${OP_UI_VERSION:-}
       # The assistant entrypoint installs @openpalm/skeleton using this
       # exact-pin override, falling back to the image's PLATFORM_VERSION.
       OP_SKELETON_VERSION: ${OP_SKELETON_VERSION:-}
+      # The entrypoint writes the UI's runtime-config.json pointing the BROWSER
+      # at the host-published OpenCode URL — that is the assistant port mapping
+      # below, NOT the in-container :4096 (unreachable from a browser).
+      # OP_UI_DEFAULT_ASSISTANT_URL overrides the full URL for non-default
+      # topologies (e.g. a reverse proxy in front of the stack).
+      OP_ASSISTANT_PORT: ${OP_ASSISTANT_PORT:-3800}
+      OP_UI_DEFAULT_ASSISTANT_URL: ${OP_UI_DEFAULT_ASSISTANT_URL:-}
+      # The served UI's browser calls OpenCode DIRECTLY (browser-owned transport,
+      # no host proxy), so OpenCode must CORS-allow the UI's browser origin. The
+      # entrypoint's start_opencode builds that origin from OP_UI_HOST_PORT — the
+      # HOST-published UI port (the port mapping below), DISTINCT from the
+      # deliberately-unpassed OP_UI_PORT (the healthcheck's in-container :3000
+      # default; passing OP_UI_PORT into the container would break that probe).
+      # Operators serving the UI on a LAN host / reverse proxy add exact
+      # comma-separated origins via OP_UI_CORS_ALLOWED_ORIGINS (never a wildcard).
+      OP_UI_HOST_PORT: ${OP_UI_PORT:-3810}
+      OP_UI_CORS_ALLOWED_ORIGINS: ${OP_UI_CORS_ALLOWED_ORIGINS:-}
+      # Loopback-first bind knobs for the entrypoint's LAN-exposure safety gate:
+      # it refuses to start the unauthenticated UI co-process when OpenCode is
+      # bound off loopback (OP_ASSISTANT_BIND_ADDRESS/OP_BIND_ADDRESS) with
+      # OPENCODE_AUTH still disabled.
+      OP_BIND_ADDRESS: ${OP_BIND_ADDRESS:-127.0.0.1}
+      OP_ASSISTANT_BIND_ADDRESS: ${OP_ASSISTANT_BIND_ADDRESS:-${OP_BIND_ADDRESS:-127.0.0.1}}
       # Provider credentials live in OpenCode's auth.json (bind-mounted
       # below) — NOT in this env block. The Connections tab and the setup
       # wizard both call OpenCode's PUT /auth/{providerID}; ai-sdk picks
       # the key up via OpenCode at call time.
     ports:
       - "${OP_ASSISTANT_BIND_ADDRESS:-127.0.0.1}:${OP_ASSISTANT_PORT:-3800}:4096"
+      # UI co-process (@openpalm/ui adapter-node, in-container port 3000).
+      # Loopback by default; honors the global OP_BIND_ADDRESS policy with a
+      # per-service OP_UI_BIND_ADDRESS override, same as the assistant listener.
+      # OP_UI_PORT is the HOST-facing port only; it is deliberately NOT passed
+      # into the container env (the UI always serves on 3000 in-container).
+      - "${OP_UI_BIND_ADDRESS:-${OP_BIND_ADDRESS:-127.0.0.1}}:${OP_UI_PORT:-3810}:3000"
     volumes:
       # data/assistant is HOME (runtime). config/assistant is the power-user's
       # OpenCode GLOBAL config, mounted at ~/.config/opencode (nested over HOME).
@@ -107,8 +146,8 @@ services:
       # under $HOME. Prefer $HOME/.local when possible; use /opt/persistent for
       # tools that require an explicit non-home prefix.
       - assistant-persistent:/opt/persistent
-      # Platform artifact cache persists @openpalm/skeleton across restarts so
-      # warm starts do not re-download it.
+      # Platform artifact cache — persists @openpalm/ui and @openpalm/skeleton
+      # across restarts so warm starts don't re-download.
       - assistant-artifacts:/opt/openpalm
       # Tool packages managed via package.json. Edit OP_HOME/data/assistant/tools/package.json
       # to pin or update individual tool versions; bun update applies changes on next start.
@@ -117,6 +156,25 @@ services:
     secrets:
       - opencode_server_password
     networks: [ assistant_net ]
+    # Probe the UI co-process too, not just OpenCode — a boot-time
+    # `npm install @openpalm/ui` failure would otherwise leave the published UI
+    # port with nothing listening while this healthcheck still reported healthy.
+    # Skipped (not failed) when the entrypoint deliberately did not start the UI
+    # (marker file /tmp/openpalm-ui-skip: the LAN-exposure safety gate, a missing
+    # build, or a give-up-after-crash-loop) — an intentional degrade, not a
+    # health problem.
+    #
+    # IMPORTANT: the probe targets the FIXED in-container port 3000, not the
+    # host-facing OP_UI_PORT knob (default 3810; operators may override it).
+    # Compose interpolates a bare `${OP_UI_PORT:-3000}` using the HOST env at
+    # config-load time — but OP_UI_PORT is deliberately NEVER passed into the
+    # container's own environment (the UI co-process always serves on 3000
+    # in-container regardless of the host port mapping). The `$${...}` below is
+    # the Compose escape for a literal `$`: it is left untouched by Compose and
+    # expanded by the CONTAINER's own shell, where OP_UI_PORT is unset and so
+    # correctly defaults to 3000 (mirroring the Dockerfile's own HEALTHCHECK,
+    # which gets this right via container-side shell expansion). The UI's /health
+    # route is exempt from the login/setup wall (packages/ui hooks.server.ts).
     # #564 P1-1: the /health probe authenticates iff the container-side
     # OPENCODE_AUTH is truthy. OpenCode enables Basic auth whenever the
     # home-password preset is active, and an unauthenticated `curl -f` then
@@ -143,7 +201,8 @@ services:
           http://localhost:4096/health || exit 1 ;;
           *)
           curl -sf http://localhost:4096/health || exit 1 ;;
-          esac
+          esac;
+          if [ ! -f /tmp/openpalm-ui-skip ]; then curl -sf http://localhost:$${OP_UI_PORT:-3000}/health >/dev/null || exit 1; fi
       interval: 30s
       timeout: 10s
       retries: 5
@@ -181,6 +240,6 @@ secrets:
 
 volumes:
   assistant-persistent:
-  # Named volume for @openpalm/skeleton artifacts.
+  # Named volume for @openpalm/ui and @openpalm/skeleton artifacts.
   # The tools subpath (/opt/openpalm/tools) is overlaid by the bind-mount above.
   assistant-artifacts:
