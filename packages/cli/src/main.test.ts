@@ -352,16 +352,12 @@ describe('cli main', () => {
     const originalProject = process.env.OP_PROJECT_NAME;
     const originalAssistantPort = process.env.OP_ASSISTANT_PORT;
     const originalHostUiPort = process.env.OP_HOST_UI_PORT;
-    const originalHostClientPort = process.env.OP_HOST_CLIENT_PORT;
-    const originalClientPort = process.env.OP_CLIENT_PORT;
 
     process.env.OP_HOME = base;
     process.env.OP_WORK_DIR = workDir;
     process.env.OP_PROJECT_NAME = 'openpalm-test-install';
     process.env.OP_ASSISTANT_PORT = '4802';
     process.env.OP_HOST_UI_PORT = '9300';
-    process.env.OP_HOST_CLIENT_PORT = '9390';
-    process.env.OP_CLIENT_PORT = '3842';
 
     mockDockerCli();
     globalThis.fetch = mock(async (input: string | URL) => {
@@ -382,8 +378,6 @@ describe('cli main', () => {
       expect(stackEnv).toContain('OP_PROJECT_NAME=openpalm-test-install');
       expect(stackEnv).toContain('OP_ASSISTANT_PORT=4802');
       expect(stackEnv).toContain('OP_HOST_UI_PORT=9300');
-      expect(stackEnv).toContain('OP_HOST_CLIENT_PORT=9390');
-      expect(stackEnv).toContain('OP_CLIENT_PORT=3842');
     } finally {
       if (originalProject === undefined) delete process.env.OP_PROJECT_NAME;
       else process.env.OP_PROJECT_NAME = originalProject;
@@ -391,10 +385,6 @@ describe('cli main', () => {
       else process.env.OP_ASSISTANT_PORT = originalAssistantPort;
       if (originalHostUiPort === undefined) delete process.env.OP_HOST_UI_PORT;
       else process.env.OP_HOST_UI_PORT = originalHostUiPort;
-      if (originalHostClientPort === undefined) delete process.env.OP_HOST_CLIENT_PORT;
-      else process.env.OP_HOST_CLIENT_PORT = originalHostClientPort;
-      if (originalClientPort === undefined) delete process.env.OP_CLIENT_PORT;
-      else process.env.OP_CLIENT_PORT = originalClientPort;
       rmSync(base, { recursive: true, force: true });
     }
   });
