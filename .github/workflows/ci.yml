@@ -54,6 +54,27 @@ jobs:
         with:
           fetch-depth: 0
 
+      # This job builds three Docker images (the assistant image alone bakes a
+      # multi-GB tool node_modules — see containers/assistant/Dockerfile) and
+      # then boots them with volumes whose entrypoints install more tools at
+      # runtime. That footprint has outgrown the stock ubuntu-latest runner:
+      # run 29520797034 hit "Free space left: 0 MB" mid-smoke and the guardian
+      # died on ENOSPC installing opencode. Reclaim the big preinstalled
+      # bundles this job never uses (~20+ GB) before the heavy steps.
+      - name: Free runner disk space
+        run: |
+          set -euo pipefail
+          echo "Disk before cleanup:"; df -h /
+          sudo rm -rf \
+            /usr/local/lib/android \
+            /usr/share/dotnet \
+            /opt/ghc \
+            /usr/local/.ghcup \
+            /opt/hostedtoolcache/CodeQL \
+            /usr/share/swift
+          sudo docker image prune -af >/dev/null
+          echo "Disk after cleanup:"; df -h /
+
       - name: Scan for leaked API keys
         # CI has no real secrets, so varlock scan has nothing to resolve.
         # Use grep patterns on the PR diff for provider-specific key formats.
@@ -135,6 +156,17 @@ jobs:
         run: |
           source scripts/rootless-smoke-fixture.sh
           smoke_build_images assistant guardian portal
+
+      # The assistant image's intermediate build stages (toolbuild's ~3.5 GB
+      # npm tree, the model bundle) stay behind as BuildKit cache after the
+      # :dev images are tagged — dead weight that roughly doubles the build's
+      # disk cost while the smokes below need room for container volumes.
+      # Pruning build cache never touches tagged images.
+      - name: Drop Docker build cache before smokes
+        run: |
+          set -euo pipefail
+          docker builder prune -af >/dev/null
+          df -h /
 
       - name: Rootless ownership smoke (assistant+guardian)
         env:
