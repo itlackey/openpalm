@@ -11,11 +11,12 @@
  *  - Every /api/host/* endpoint carries a SERVER-SIDE requireCapability()
  *    guard in addition to the requireAdmin cookie check (hasCapability() in
  *    the browser is UX only). The guard is
- *    capability-based, not session-based: a VALID admin session in a mode
- *    whose serverCapabilities carry no host:* capability (non-admin,
- *    pwa-static) is still refused with 403.
- *  - host-ui / electron-host expose the host:* capability set → 200.
- *  - requireAdmin still applies: no session cookie → 401 even in host modes.
+ *    capability-based, not session-based: a VALID admin session in a
+ *    non-admin process (whose serverCapabilities carry no host:* capability)
+ *    is still refused with 403.
+ *  - An admin-capable process (Electron / `openpalm admin`) exposes the
+ *    host:* capability set → 200.
+ *  - requireAdmin still applies: no session cookie → 401 even when admin-capable.
  */
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { mkdirSync } from 'node:fs';
@@ -111,14 +112,7 @@ describe('GET /api/host/health — host capability guard', () => {
     expect(body.error).toBe('capability_not_available');
   });
 
-  test('403 in pwa-static mode even with a valid admin session', async () => {
-    delete process.env.OP_ENABLE_ADMIN;
-    const { GET } = await loadRoute();
-    const res = await GET(makeGetEvent());
-    expect(res.status).toBe(403);
-  });
-
-  test('200 in host-ui mode with a valid admin session', async () => {
+  test('200 in admin mode with a valid admin session', async () => {
     process.env.OP_ENABLE_ADMIN = '1';
     const { GET } = await loadRoute();
     const res = await GET(makeGetEvent());
@@ -127,14 +121,7 @@ describe('GET /api/host/health — host capability guard', () => {
     expect(body.ok).toBe(true);
   });
 
-  test('200 in electron-host mode with a valid admin session', async () => {
-    process.env.OP_ENABLE_ADMIN = '1';
-    const { GET } = await loadRoute();
-    const res = await GET(makeGetEvent());
-    expect(res.status).toBe(200);
-  });
-
-  test('401 in host-ui mode without a session cookie (requireAdmin still enforced)', async () => {
+  test('401 in admin mode without a session cookie (requireAdmin still enforced)', async () => {
     process.env.OP_ENABLE_ADMIN = '1';
     const { GET } = await loadRoute();
     const res = await GET(makeGetEvent(''));

@@ -11,7 +11,8 @@
  * Contract under test (spec §2 T3, §3 packages/ui):
  *  - Capability guard is `host:stack:write` (D6), NOT `connections:manage` —
  *    minting writes a principal into the LOCAL stack's guardian, a
- *    host-stack mutation only electron-host/host-ui expose.
+ *    host-stack mutation only an admin-capable process (Electron / `openpalm
+ *    admin`) exposes.
  *  - Double guard: capability check (403) + admin session/origin via
  *    withAdminBody (401), same as sibling /api/connections writes.
  *  - Delegates minting to @openpalm/lib's mintDirectPrincipalPairingCode —

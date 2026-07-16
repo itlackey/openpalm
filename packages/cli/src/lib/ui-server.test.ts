@@ -157,7 +157,7 @@ describe('createCliUiSupervisor exit policy', () => {
 // ── A3: `openpalm admin` opens/prints /host, not the root ────────────────────
 
 describe('resolveAdminUrl', () => {
-  it('points at /host when admin (host-ui) mode is active', () => {
+  it('points at /host when admin mode is active', () => {
     expect(resolveAdminUrl('http://localhost:3880', true)).toBe('http://localhost:3880/host');
   });
 

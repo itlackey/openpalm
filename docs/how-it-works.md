@@ -42,8 +42,8 @@ Three hard rules define the whole design:
 The web face of the harness. Runs as a host process — no container. Accesses Docker and `~/.openpalm/` directly on the host.
 
 Three ways to reach the admin surface (all loopback-only — host admin is never reachable remotely):
-- **Electron app** — the desktop harness supervises the UI process and opens it with the admin capability enabled (`electron-host` mode).
-- **`openpalm admin`** — the CLI serves the same UI with the admin capability enabled (`host-ui` mode), prints the URL, and opens your browser. This mode refuses non-loopback bind config: `OP_ALLOW_REMOTE_SETUP` is ignored and neutralized. On a machine with no install it lands on the `/setup` wizard.
+- **Electron app** — the desktop harness supervises the UI process and opens it with the admin capability enabled.
+- **`openpalm admin`** — the CLI serves the same UI with the admin capability enabled, prints the URL, and opens your browser. This mode refuses non-loopback bind config: `OP_ALLOW_REMOTE_SETUP` is ignored and neutralized. On a machine with no install it lands on the `/setup` wizard.
 - **Dev only: `OP_ENABLE_ADMIN=1`** — set on a locally run UI server (e.g. the dev server) to enable the admin capability without a harness. Never set this in production.
 
 Responsibilities:

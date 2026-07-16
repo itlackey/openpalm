@@ -951,8 +951,8 @@ stack's guardian. Creates a durable `direct` guardian principal on the guardian
 admin listener; the principal's token is embedded only in the returned code and
 is never exposed by any read endpoint.
 
-- **Capability:** `host:stack:write` (host UI only; a `pwa-static`/client build
-  cannot reach it).
+- **Capability:** `host:stack:write` (admin-capable process only; a non-admin
+  served/PWA build cannot reach it).
 - **Session/origin:** requires the host-admin session cookie (httpOnly,
   `SameSite=Strict`) and passes the Host-header allowlist, like every other
   `/api/host/*` write.

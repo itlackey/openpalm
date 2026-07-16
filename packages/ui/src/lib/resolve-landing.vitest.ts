@@ -70,7 +70,7 @@ async function loadResolveLanding(): Promise<ResolveLandingFn> {
 
 // ── fixtures ──────────────────────────────────────────────────────────────────
 
-/** Effective capabilities of a host-capable session (electron / host-ui browser). */
+/** Effective capabilities of an admin-capable session (Electron or `openpalm admin` browser). */
 const HOST_EFFECTIVE: Capability[] = [
   'chat',
   'connections:read',
@@ -91,7 +91,7 @@ const HOST_EFFECTIVE: Capability[] = [
 ];
 
 /** non-admin effective baseline (resolveCapabilities output). */
-const PWA_EFFECTIVE: Capability[] = [
+const BASE_EFFECTIVE: Capability[] = [
   'chat',
   'connections:read',
   'connections:manage',
@@ -151,7 +151,7 @@ describe('resolveLanding — module contract', () => {
   });
 });
 
-// ── host:setup rows (electron-host / host-ui with full capabilities) ──────────
+// ── host:setup rows (admin-capable session: Electron or `openpalm admin`) ─────
 
 describe('resolveLanding — host:setup capability present', () => {
   const hostCtx = makeCtx(true, HOST_EFFECTIVE);
@@ -209,15 +209,6 @@ describe('resolveLanding — host:setup capability present', () => {
     expect(resolveLanding(hostCtx, makeLaunchState())).toBe('/chat');
   });
 
-  test('electron-host resolves through the same host rows', async () => {
-    const resolveLanding = await loadResolveLanding();
-    const electronCtx = makeCtx(true, HOST_EFFECTIVE);
-    expect(resolveLanding(electronCtx, makeLaunchState())).toBe('/chat');
-    expect(
-      resolveLanding(electronCtx, makeLaunchState({ local: { state: 'installed_offline' } })),
-    ).toBe(HOST_ADMIN_LANDING);
-  });
-
   test('the gate is CAPABILITY-driven, not admin-flag-driven: a host-capable server viewed without host:setup falls through to /chat', async () => {
     const resolveLanding = await loadResolveLanding();
     // admin server × standalone-pwa display: resolveCapabilities strips host:*
@@ -237,7 +228,7 @@ describe('resolveLanding — host:setup capability present', () => {
 // ── non-admin (base) row ──────────────────────────────────────────────────────
 
 describe('resolveLanding — non-admin process', () => {
-  const ctx = makeCtx(false, PWA_EFFECTIVE);
+  const ctx = makeCtx(false, BASE_EFFECTIVE);
 
   test('zero connections lands on /connections/new', async () => {
     const resolveLanding = await loadResolveLanding();

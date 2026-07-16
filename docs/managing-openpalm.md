@@ -504,9 +504,10 @@ this is an explicit, per-connection operator opt-in.
      -d '{"id":"my-phone","kind":"direct","token":"'"$(openssl rand -hex 24)"'","label":"My phone"}'
    ```
 
-   Then in the client's `/connections`, add the connection by hand: kind
-   **OpenPalm guardian (/oc)**, URL = the guardian's base URL (`/oc` is
-   appended automatically), auth **Basic** with username = the **principal
+   Then in the client's `/connections`, add the connection by hand: URL = the
+   guardian's direct-ingress base URL **including the `/oc` path** (e.g.
+   `https://your-host/oc`) — there is no connection "kind" selector and `/oc`
+   is not appended for you — auth **Basic** with username = the **principal
    id** you minted (e.g. `my-phone`, not `openpalm`) and password = the
    token.
 

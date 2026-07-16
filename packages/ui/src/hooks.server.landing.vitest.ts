@@ -88,7 +88,7 @@ describe('hooks.server — landing routing through resolveLanding', () => {
 
   beforeEach(() => {
     process.env.PORT = '3880';
-    // host-ui mode: host:setup is in the server capabilities, so the host
+    // admin mode: host:setup is in the server capabilities, so the host
     // rows of the §6.5 matrix apply.
     process.env.OP_ENABLE_ADMIN = '1';
     savedModeEnv = {};

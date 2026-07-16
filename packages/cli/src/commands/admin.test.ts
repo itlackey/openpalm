@@ -1,5 +1,5 @@
 /**
- * Phase 1.5 (#556) — `openpalm admin` (host-ui mode).
+ * Phase 1.5 (#556) — `openpalm admin` (admin mode).
  *
  * TDD red suite written BEFORE the implementation. Contract under test:
  *
@@ -8,7 +8,7 @@
  *  - The command serves the existing UI through the existing startUIServer
  *    path, with the admin capability enabled in the SPAWNED UI child env:
  *    OP_ENABLE_ADMIN=1.
- *  - host-ui mode is loopback-only ALWAYS: a non-loopback bind config
+ *  - admin mode is loopback-only ALWAYS: a non-loopback bind config
  *    (OP_ALLOW_REMOTE_SETUP) is refused/ignored for this command — the child
  *    binds 127.0.0.1 with a pinned loopback ORIGIN, and the flag is
  *    neutralized in the child env so the respawned `openpalm ui` child and
@@ -266,7 +266,7 @@ describe('admin subcommand registration (#556)', () => {
 
 describe('openpalm admin serve mode (#556)', () => {
   it(
-    'spawns the UI child with the admin capability + host-ui mode env, prints the URL, opens the browser',
+    'spawns the UI child with the admin capability env, prints the URL, opens the browser',
     async () => {
       seedServeHome({ installed: true });
       const calls = captureSpawns();

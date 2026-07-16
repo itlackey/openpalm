@@ -28,10 +28,8 @@ launchState)` (`src/lib/resolve-landing.ts`):
 | `host:setup` + local `installed_offline` | `/host` |
 | `host:setup` + local `installed_broken` | `/host?tab=diagnostics` |
 | `host:setup` + local `running` | `/chat` |
-| no `host:setup`, `assistant-container` mode | `/chat` |
-| no `host:setup`, `pwa-static` mode, 0 connections | `/connections/new` |
-| no `host:setup`, `pwa-static` mode, ≥1 connection | `/chat` |
-| anything else | `/chat` |
+| no `host:setup`, 0 connections | `/connections/new` |
+| no `host:setup`, ≥1 connection | `/chat` |
 
 The launch-routing guard fires **before** the auth guard, so `/` and stale
 `/splash` bookmarks never bounce through `/login` first. `/splash` no longer
@@ -44,8 +42,9 @@ release only.
   `op_session` cookie redirect to `/login?redirectTo=…`. API/data requests are
   left to the endpoint's own JSON 401.
 - **host capability gate** — `/host/*` pages require the server to advertise
-  the `host:*` capability set (`electron-host`/`host-ui`); otherwise redirects
-  to `/chat`. UX only — the security boundary is per-endpoint.
+  the `host:*` capability set (an admin-capable process — Electron or `openpalm
+  admin`); otherwise redirects to `/chat`. UX only — the security boundary is
+  per-endpoint.
 - **requireAdmin()** — per-endpoint session check in `+server.ts` handlers
   (`$lib/server/helpers.js`); JSON 401, never an HTML redirect.
 - **requireCapability(cap)** — per-endpoint server-side capability check
@@ -74,8 +73,8 @@ router, which 404s because the route tree is deleted.
 | `/setup` | Host | setup localhost | First-run wizard; `?rerun=1` after completion requires admin auth |
 | `/chat` | Assistant | auth | Stillness chat; own corner chrome (hides the navbar); imports domain clients directly, never the `$lib/api.js` barrel (#555) |
 | `/advanced` | Assistant | auth | Embedded OpenCode web UI; mounts `ChatNavbar` (chat chrome composition) |
-| `/connections` | Connection | auth (page) + `connections:manage` (its API) | Connection manager; mounts `ChatNavbar`; `?new=1` opens the add form |
-| `/connections/new` | Connection | auth | pwa-static "no connections yet" landing; 302 alias to `/connections?new=1` |
+| `/connections` | Connection | auth (page); `connections:manage` UX-gates the manager | Connection manager over the browser-owned (IndexedDB) list; mounts `ChatNavbar`; `?new=1` opens the add form |
+| `/connections/new` | Connection | auth | non-admin "no connections yet" landing; 302 alias to `/connections?new=1` |
 | `/host` | Host | host capability gate + auth | Dashboard (tabbed); mounts the chat-free `Navbar` shell (#555); honors `?tab=diagnostics` (Systems tab) |
 | `/admin`, `/admin/*` | — | none | **404.** Dead namespace since Phase 4 (the Phase 2 `/admin/endpoints` → `/connections` alias is gone too) |
 
@@ -86,14 +85,13 @@ router, which 404s because the route tree is deleted.
 | `/api/runtime` | Entry | **public** | GET server runtime context — the contract-version handshake |
 | `/health` | Entry | public | Liveness probe |
 | `/guardian/health` | Entry | public | Guardian reachability probe |
-| `/api/auth/{login,logout,session}` | Entry | public (login) / session | Session lifecycle. Deliberately **outside** `/api/host` — a capability guard on login would lock assistant-container out before it could authenticate |
+| `/api/auth/{login,logout,session}` | Entry | public (login) / session | Session lifecycle. Deliberately **outside** `/api/host` — a capability guard on login would lock a served (non-admin) deployment out before it could authenticate |
 | `/api/setup/*` | Host | setup localhost | 19 endpoints: `status`, `system-check`, `recommend`, `detect-providers`, `current-config`, `complete`, `deploy-status`, `retry-deploy`, `host-status`, `import-host`, `models/[provider]`, `ollama-profiles`, `voice-profiles`, `opencode/{ensure,status,providers,auth/[provider],provider/[provider]/oauth/{authorize,callback}}` |
-| `/api/connections`, `/api/connections/[id]`, `/api/connections/active` | Connection | requireAdmin + `requireCapability('connections:manage')` | Connection CRUD + activation (Phase 2, #486 — stays here, not under `/api/host`) |
-| `/api/assistant/*` | Assistant | requireAdmin + `requireCapability('assistant-settings:read'/'write')` | Assistant-owned settings — editable from assistant-container: `persona` (config/assistant/persona.md), `akm` (config/akm/config.json), `model` (OpenCode default/small model) |
-| `/api/host/*` | Host | requireAdmin + `requireCapability('host:…')` per endpoint | Privileged host control plane (see below); 403 `capability_not_available` in assistant-container/pwa-static even with a valid session |
+| `/api/connections/pairing` | Connection | requireAdmin + `requireCapability('host:stack:write')` | POST-only: host-mints a one-time QR/pairing code against the LOCAL guardian (#511). The connection LIST itself is browser-owned (IndexedDB) — there is no server-side connection CRUD |
+| `/api/assistant/*` | Assistant | requireAdmin + `requireCapability('assistant-settings:read'/'write')` | Assistant-owned settings — editable from a non-admin served build: `persona` (config/assistant/persona.md), `akm` (config/akm/config.json), `model` (OpenCode default/small model) |
+| `/api/host/*` | Host | requireAdmin + `requireCapability('host:…')` per endpoint | Privileged host control plane (see below); 403 `capability_not_available` in a non-admin process even with a valid session |
 | `/api/speak`, `/api/transcribe` | Assistant | requireAdmin | Voice TTS/STT relays |
 | `/api/electron/update-status` | Host | (Electron harness) | Control-plane self-update status |
-| `/proxy/assistant/[...path]` | Assistant | requireAdmin (same-origin cookie) | Same-origin assistant broker; resolves the active connection per request. Host app only |
 
 `/api/host/*` JSON endpoints (each carries requireAdmin + the listed
 `requireCapability` guard):

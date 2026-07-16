@@ -189,8 +189,8 @@ artifact verification.
 For the ordered execution procedure that drives that checklist, use the
 [RC release runbook](release-rc-runbook.md).
 
-- [ ] `electron-host`: launch Electron against a seeded install; verify the window lands on the UI chat at `http://127.0.0.1:${OP_HOST_UI_PORT:-3880}/chat`, and host routes remain available.
-- [ ] `host-ui`: run `openpalm admin`; verify the browser opens on the loopback host UI and `/host`, `/connections`, and `/chat` all load.
+- [ ] `Electron (admin)`: launch Electron against a seeded install; verify the window lands on the UI chat at `http://127.0.0.1:${OP_HOST_UI_PORT:-3880}/chat`, and host routes remain available.
+- [ ] `openpalm admin (browser)`: run `openpalm admin`; verify the browser opens on the loopback host UI and `/host`, `/connections`, and `/chat` all load.
 - [ ] `assistant-container`: boot the assistant with `OP_UI_VERSION` and `OP_SKELETON_VERSION` overrides; verify the container installs those exact versions, serves `@openpalm/ui` on the assistant's published UI port, and chat reaches the locked default assistant connection.
 - [ ] `localhost PWA install`: from the host-served UI origin `http://127.0.0.1:${OP_HOST_UI_PORT:-3880}`, verify installability and that the installed app reopens on the same origin.
 - [ ] `hosted PWA install`: from the hosted UI origin (currently `https://app.openpalm.dev` in tests/docs), verify installability, `/api/runtime` compatibility, and that remote connections require HTTPS guardians plus the expected guardian CORS allowlist.

@@ -165,7 +165,7 @@ describe('hooks.server — /admin/* is a dead namespace, no alias', () => {
     expect((outcome as Response).status).toBe(404);
   });
 
-  test('/admin document navigation in pwa-static mode 404s instead of redirecting to /chat', async () => {
+  test('/admin document navigation in non-admin mode 404s instead of redirecting to /chat', async () => {
     delete process.env.OP_ENABLE_ADMIN;
     const event = makeEvent('/admin', { token: 'test-admin-pw' });
 

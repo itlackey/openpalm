@@ -140,7 +140,7 @@ afterEach(() => {
 });
 
 describe('GET /api/host/stack — host stack settings', () => {
-  test('200 in host-ui mode: project name + LAN exposure, and NO persona (partitioned)', async () => {
+  test('200 in admin mode: project name + LAN exposure, and NO persona (partitioned)', async () => {
     process.env.OP_ENABLE_ADMIN = '1';
     const { GET } = await loadRoute();
     const res = await GET(makeGetEvent());
@@ -159,14 +159,7 @@ describe('GET /api/host/stack — host stack settings', () => {
     expect(res.status).toBe(403);
   });
 
-  test('403 in pwa-static mode even with a valid admin session', async () => {
-    delete process.env.OP_ENABLE_ADMIN;
-    const { GET } = await loadRoute();
-    const res = await GET(makeGetEvent());
-    expect(res.status).toBe(403);
-  });
-
-  test('401 in host-ui mode without a session cookie', async () => {
+  test('401 in admin mode without a session cookie', async () => {
     process.env.OP_ENABLE_ADMIN = '1';
     const { GET } = await loadRoute();
     const res = await GET(makeGetEvent(''));
@@ -192,7 +185,7 @@ describe('GET /api/host/stack — host stack settings', () => {
 });
 
 describe('PUT /api/host/stack — host:stack:write guard (Phase 4 acceptance)', () => {
-  test('updates project name and bind address in host-ui mode — persona no longer required', async () => {
+  test('updates project name and bind address in admin mode — persona no longer required', async () => {
     process.env.OP_ENABLE_ADMIN = '1';
     const { PUT } = await loadRoute();
     const res = await PUT(makePutEvent({ projectName: 'openpalm-dev', lanExposureEnabled: true }));
@@ -212,7 +205,7 @@ describe('PUT /api/host/stack — host:stack:write guard (Phase 4 acceptance)', 
     expect(readStackEnvIfAny()).not.toContain('intruder');
   });
 
-  test('401 in host-ui mode without a session cookie', async () => {
+  test('401 in admin mode without a session cookie', async () => {
     process.env.OP_ENABLE_ADMIN = '1';
     const { PUT } = await loadRoute();
     const res = await PUT(makePutEvent({ projectName: 'openpalm', lanExposureEnabled: false }, ''));
