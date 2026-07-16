@@ -78,7 +78,7 @@ export { getUiLoginPassword };
  *
  * Phase 2 of the auth/proxy refactor (docs/technical/auth-and-proxy-refactor-plan.md)
  * removed the legacy `x-admin-token` / `Authorization: Bearer` header fallbacks.
- * The cookie is HttpOnly + SameSite=Strict and is the ONLY credential the browser
+ * The cookie is HttpOnly + SameSite=Lax and is the ONLY credential the browser
  * holds; XSS cannot read it and out-of-process callers must obtain a session via
  * `POST /api/auth/login` (or `/session`) and present the cookie on subsequent
  * requests.
