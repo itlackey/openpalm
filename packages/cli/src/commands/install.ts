@@ -7,7 +7,8 @@ import { promptYesNo } from '../lib/prompt.ts';
 import { resolveLatestReleaseTag } from '../lib/github.ts';
 import { DEFAULT_UI_PORT } from '../lib/ports.ts';
 import { resolveOpenPalmHome, resolveConfigDir } from '@openpalm/lib';
-import { ensureDirectoryTree, applyHomeSeed, seedUiBuild, uiUpdateChannel } from '../lib/io.ts';
+import { ensureDirectoryTree } from '../lib/io.ts';
+import { applyHomeSeed, seedUiBuild, uiUpdateChannel } from '@openpalm/lib';
 import {
   backupOpenPalmHome,
   pruneBackupDirs,
