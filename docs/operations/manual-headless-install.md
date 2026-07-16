@@ -225,8 +225,6 @@ project and port layout automatically:
 - `OP_PROJECT_NAME`
 - `OP_ASSISTANT_PORT`
 - `OP_HOST_UI_PORT`
-- `OP_HOST_CLIENT_PORT`
-- `OP_CLIENT_PORT`
 
 Example:
 
@@ -235,8 +233,6 @@ OP_HOME="$PWD/.tmp-openpalm-install/home" \
 OP_PROJECT_NAME=openpalm-test-install \
 OP_ASSISTANT_PORT=4802 \
 OP_HOST_UI_PORT=9302 \
-OP_HOST_CLIENT_PORT=9392 \
-OP_CLIENT_PORT=3842 \
 openpalm install --file ./setup-spec.yaml --no-start
 
 # Later, the same install can be started without re-specifying those overrides:

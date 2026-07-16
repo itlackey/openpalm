@@ -91,26 +91,6 @@ export async function executeAutomation(
   });
 }
 
-// ── Sync crontab with knowledge/tasks/*.yml ──────────────────────────────────
-
-export async function syncAutomations(akmEnv: NodeJS.ProcessEnv): Promise<void> {
-  assertAkmEnvComplete(akmEnv); // I-6: never let akm fall back to the global config
-  return new Promise((resolve, reject) => {
-    execFile(
-      "akm",
-      ["tasks", "sync"],
-      { env: { ...process.env, ...akmEnv } },
-      (error, _stdout, stderr) => {
-        if (error) {
-          reject(new Error(stderr?.trim() || error.message));
-        } else {
-          resolve();
-        }
-      }
-    );
-  });
-}
-
 // ── Read akm task execution logs ──────────────────────────────────────────
 
 export function readAutomationLogs(

@@ -1,4 +1,5 @@
 import { createLogger } from './logger.ts';
+import { readPositiveIntEnv } from './config.ts';
 import type { OcClient } from './openai-api-oc-client.ts';
 import {
   extractPermissionAsk,
@@ -10,7 +11,7 @@ import {
 import { decidePermission, type PermissionPolicy } from './openai-api-permissions.ts';
 
 const log = createLogger('guardian:openai-api:stream');
-const TURN_RENDER_TIMEOUT_MS = Number(Bun.env.OP_API_TURN_RENDER_TIMEOUT_MS) || 10 * 60_000;
+const TURN_RENDER_TIMEOUT_MS = readPositiveIntEnv('OP_API_TURN_RENDER_TIMEOUT_MS', 10 * 60_000);
 const created = () => Math.floor(Date.now() / 1000);
 
 export function openAiChunk(id: string, model: string, delta: string): string {

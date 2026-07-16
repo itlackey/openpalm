@@ -6,7 +6,7 @@ This document describes the Admin API routes currently implemented in
 ## Conventions
 
 - Base URL: `http://localhost:3880`
-- Namespaces (Phase 4 of `ui-runtime-modes-plan.md`): privileged host
+- Namespaces: privileged host
   endpoints live under `/api/host/*` (requireAdmin + a server-side
   `requireCapability('host:…')` guard — 403 `capability_not_available` in
   modes without host capabilities), assistant-owned settings under
@@ -951,8 +951,8 @@ stack's guardian. Creates a durable `direct` guardian principal on the guardian
 admin listener; the principal's token is embedded only in the returned code and
 is never exposed by any read endpoint.
 
-- **Capability:** `host:stack:write` (host UI only; a `pwa-static`/client build
-  cannot reach it).
+- **Capability:** `host:stack:write` (admin-capable process only; a non-admin
+  served/PWA build cannot reach it).
 - **Session/origin:** requires the host-admin session cookie (httpOnly,
   `SameSite=Strict`) and passes the Host-header allowlist, like every other
   `/api/host/*` write.

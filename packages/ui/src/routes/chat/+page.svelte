@@ -13,7 +13,7 @@
 	import QuestionCard from '$lib/components/chat/QuestionCard.svelte';
 	import { createFocusTrap, handleTrapKeydown } from '@openpalm/ui-kit/actions/focus-trap.js';
 	import { isLocalAssistantUrl } from '$lib/assistant-endpoint.js';
-	// Direct domain-client import (plan Phase 3 step 4, #555): the chat page
+	// Direct domain-client import (#555): the chat page
 	// must not import the $lib/api.js barrel, which re-exports every admin
 	// domain client and would drag them all into the chat chunk.
 	import { probeChatBackend } from '$lib/api/chat.js';

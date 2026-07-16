@@ -7,7 +7,7 @@ import { readOptionalSecretFile } from './openai-api-secret-file.ts';
 import { streamTurn, openAiChatFramer, openAiLegacyFramer, anthropicFramer, type SseFramer } from './openai-api-stream.ts';
 import { extractChatText } from './openai-api-utils.ts';
 import { asRecord, json } from './http-util.ts';
-import { resolveGuardianUrl } from './config.ts';
+import { readPositiveIntEnv, resolveGuardianUrl } from './config.ts';
 
 type ErrorFormatter = (message: string, type?: string) => Record<string, unknown>;
 type ForwardResult = { userId: string; text: string; metadata?: Record<string, unknown> };
@@ -100,7 +100,7 @@ function readCachedSecretFile(envKey: string): string {
 
 export class GuardianOpenAiApi {
   name = Bun.env.PRINCIPAL_ID ?? 'api';
-  port: number = Number(Bun.env.PORT) || 8182;
+  port: number = readPositiveIntEnv('PORT', 8182);
   guardianUrl = resolveGuardianUrl();
   private _fetchFn: typeof fetch = fetch;
   private permissionPolicy: PermissionPolicy = loadPermissionPolicy();

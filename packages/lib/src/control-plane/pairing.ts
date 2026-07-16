@@ -5,9 +5,10 @@
  * and orchestrating the guardian admin-API mint both live here so a future
  * `openpalm pair` CLI command never has to duplicate them (core-principles
  * §Shared control-plane library). `packages/ui`'s pairing route is a thin
- * transport wrapper over `mintDirectPrincipalPairingCode`; `packages/client`
- * carries a hand-maintained twin decoder (`parsePairingCode`) because the
- * client artifact never imports `@openpalm/lib` (purity gate).
+ * transport wrapper over `mintDirectPrincipalPairingCode`, and its browser
+ * decoder (`connections/pairing.ts` `parsePairingCode`) is a hand-maintained
+ * twin of `decodePairingCode` here — the browser bundle never imports
+ * `@openpalm/lib`.
  *
  * The pairing code itself is a self-contained, signed-nothing payload (D3):
  * `openpalm-pair:` + base64url(JSON). It is never persisted host-side — the
@@ -21,8 +22,8 @@ export const PAIRING_CODE_PREFIX = 'openpalm-pair:';
 
 export type PairingPayloadV1 = {
   v: 1;
-  kind: 'openpalm-client-api';
-  /** Operator-entered guardian base URL (client normalizes /oc on save). */
+  kind: 'openpalm-connection';
+  /** Operator-entered guardian base URL. */
   url: string;
   label?: string;
   /** Minted principal id. */
@@ -86,7 +87,7 @@ export function decodePairingCode(code: string): DecodePairingResult {
   if (value.v !== 1) {
     return { ok: false, error: 'Pairing code has an unsupported version.' };
   }
-  if (value.kind !== 'openpalm-client-api') {
+  if (value.kind !== 'openpalm-connection') {
     return { ok: false, error: 'Pairing code has an unsupported kind.' };
   }
   if (typeof value.url !== 'string' || !value.url) {
@@ -104,7 +105,7 @@ export function decodePairingCode(code: string): DecodePairingResult {
 
   const payload: PairingPayloadV1 = {
     v: 1,
-    kind: 'openpalm-client-api',
+    kind: 'openpalm-connection',
     url: value.url,
     username: value.username,
     secret: value.secret,
@@ -209,7 +210,7 @@ export async function mintDirectPrincipalPairingCode(options: {
 
   const code = encodePairingCode({
     v: 1,
-    kind: 'openpalm-client-api',
+    kind: 'openpalm-connection',
     url,
     label,
     username: principalId,

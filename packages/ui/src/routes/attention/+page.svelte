@@ -1,6 +1,6 @@
 <script lang="ts">
-  // /attention — the migration/blocking surface split out of /splash (plan
-  // ui-runtime-modes-plan.md §6.5, Phase 3). resolveLanding() routes
+  // /attention — the migration/blocking surface split out of /splash.
+  // resolveLanding() routes
   // host-capable sessions here when a blocking task (migration.status ===
   // 'pending') must finish before the stack can continue. Nothing produces
   // 'pending' yet — the surface is wired ahead of the first blocking OP_HOME

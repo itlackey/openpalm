@@ -103,7 +103,16 @@ function allowedSecretForService(serviceName: string, service: ComposeService, s
   const secretId = normalizedSecretName(secretName);
 
   if (serviceName === 'assistant') {
-    return /^(assistant|opencode|provider|llm|embedding|akm|user)_/.test(secretId);
+    // ui_login_password ("One UI" Phase 4, PR #565 review): the assistant
+    // container serves the @openpalm/ui co-process, which mints op_session
+    // login cookies with the SAME UI login password as the host UI — the
+    // route contract keeps /api/auth outside /api/host precisely so a served
+    // non-admin deployment can authenticate. A deliberate single-secret
+    // grant, mirroring guardian's opencode_server_password rule below.
+    return (
+      /^(assistant|opencode|provider|llm|embedding|akm|user)_/.test(secretId) ||
+      secretId === 'ui_login_password'
+    );
   }
   if (serviceName === 'guardian') {
     // op_api_key backs the guardian's OpenAI/Anthropic-compatible edge

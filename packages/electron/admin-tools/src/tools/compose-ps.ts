@@ -5,18 +5,7 @@
  * recent compose versions). Parses each line so the model gets a clean array.
  */
 import { tool } from "@opencode-ai/plugin";
-import { execFile } from "node:child_process";
-
-function run(bin: string, args: string[]): Promise<{ stdout: string; stderr: string; code: number }> {
-  return new Promise((resolve) => {
-    execFile(bin, args, { maxBuffer: 4 * 1024 * 1024 }, (err, stdout, stderr) => {
-      const code = err && typeof (err as NodeJS.ErrnoException).code === "number"
-        ? Number((err as NodeJS.ErrnoException).code)
-        : (err ? 1 : 0);
-      resolve({ stdout: stdout?.toString() ?? "", stderr: stderr?.toString() ?? "", code });
-    });
-  });
-}
+import { runCapture } from "./_exec.js";
 
 export function parsePsOutput(stdout: string): Array<Record<string, unknown>> {
   const trimmed = stdout.trim();
@@ -46,7 +35,7 @@ export default tool({
     "`docker compose ps --format json`.",
   args: {},
   async execute() {
-    const { stdout, stderr, code } = await run("docker", ["compose", "ps", "--format", "json"]);
+    const { stdout, stderr, code } = await runCapture("docker", ["compose", "ps", "--format", "json"]);
     if (code !== 0) {
       return JSON.stringify({ ok: false, exitCode: code, stderr: stderr.trim() }, null, 2);
     }

@@ -10,22 +10,12 @@ type SessionCreateResponse = {
   id: string;
 };
 
-type SessionListItemResponse = {
-  id?: unknown;
-  title?: unknown;
-};
-
 type MessageResponse = {
   info?: unknown;
   parts?: Array<{ type: string; text?: string; content?: string }>;
 };
 
 const SESSION_ID_RE = /^[a-zA-Z0-9_-]+$/;
-
-export type AssistantSessionSummary = {
-  id: string;
-  title: string;
-};
 
 function describeAssistantError(status: number, body: string): string {
   if (body) {
@@ -92,39 +82,6 @@ export async function createSession(opts: AssistantClientOptions, title: string)
       throw new Error('Invalid session ID from assistant');
     }
     return sessionId;
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
-export async function listSessions(opts: AssistantClientOptions): Promise<AssistantSessionSummary[]> {
-  const { baseUrl, createTimeoutMs = 10_000 } = opts;
-  const headers = buildHeaders(opts);
-
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), createTimeoutMs);
-  try {
-    const resp = await fetch(`${baseUrl}/session`, {
-      method: 'GET',
-      headers,
-      signal: ctrl.signal,
-    });
-    if (!resp.ok) {
-      const body = await resp.text().catch(() => '');
-      throw new Error(`Assistant session listing failed (HTTP ${resp.status}): ${describeAssistantError(resp.status, body)}`);
-    }
-    const data = await resp.json() as unknown;
-    if (!Array.isArray(data)) {
-      throw new Error('Invalid session list from assistant');
-    }
-    const sessions: AssistantSessionSummary[] = [];
-    for (const item of data) {
-      const record = item as SessionListItemResponse;
-      if (typeof record.id !== 'string' || !SESSION_ID_RE.test(record.id)) continue;
-      if (typeof record.title !== 'string') continue;
-      sessions.push({ id: record.id, title: record.title });
-    }
-    return sessions;
   } finally {
     clearTimeout(timer);
   }

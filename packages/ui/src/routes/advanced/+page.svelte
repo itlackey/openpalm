@@ -4,150 +4,147 @@
   import { resolve as resolvePath } from '$app/paths';
   import { onMount } from 'svelte';
   import ChatNavbar from '$lib/components/chrome/ChatNavbar.svelte';
+  import ChatMessage from '$lib/components/chat/ChatMessage.svelte';
+  import ChatInput from '$lib/components/chat/ChatInput.svelte';
+  import PermissionCard from '$lib/components/chat/PermissionCard.svelte';
+  import QuestionCard from '$lib/components/chat/QuestionCard.svelte';
   import { buildAdvancedIframeUrl } from '$lib/chat/navigation.js';
   import { endpointsService } from '$lib/endpoints-state.svelte.js';
   import { chat } from '$lib/chat/chat-state.svelte.js';
+  import { getTransport } from '$lib/connections/boot.js';
+  import { isLoopbackHost } from '$lib/connections/url-policy.js';
   import { onConnectionActivated } from '$lib/connection-events.js';
 
-  // Auth is enforced server-side in hooks.server.ts; this page only renders
-  // when the visitor is already an authenticated admin.
+  // Phase 3b ("One UI, delete the split"): the browser owns connections and
+  // talks to OpenCode DIRECTLY — there is no host proxy to probe. Embeddability
+  // is classified from the active connection's URL + credentials:
+  //   - an unauthenticated OpenCode web UI (loopback / same-scheme, no creds)
+  //     embeds in an iframe pointed straight at connection.baseUrl;
+  //   - a credentialed / Guardian connection can't carry Basic auth into an
+  //     iframe, so we render the native chat surface (the existing chat
+  //     components against the direct transport) instead of a dead-end.
 
   const active = $derived(endpointsService.active);
   const requestedSessionId = $derived(page.url.searchParams.get('session'));
 
-  // The resolved OpenCode web-UI URL. Set by resolve() once we've confirmed the
-  // active endpoint is reachable and (if a session was requested) that the
-  // session exists there — with its REAL directory. Empty until first resolve.
+  type Mode = 'checking' | 'iframe' | 'native' | 'dead';
+  let mode = $state<Mode>('checking');
+  // The resolved OpenCode web-UI URL for the iframe. Empty until resolve().
   let frameUrl = $state('');
-
-  // The embedded OpenCode UI loads directly from the endpoint. A same-origin
-  // proxy probe may use server-held credentials, but an iframe cannot, so only
-  // raw unauthenticated OpenCode targets are eligible for embedding.
-  type Probe =
-    | 'checking'
-    | 'ready'
-    | 'dead'
-    | 'credentialed'
-    | 'external'
-    | 'mixed-content'
-    | 'invalid';
-  let probeState = $state<Probe>('checking');
   let reconnecting = $state(false);
   let reloadNonce = $state(0);
   let probeToken = 0; // discard stale async probe results
 
-  function classifyUrl(raw: string): 'safe' | 'credentialed' | 'mixed-content' | 'invalid' {
+  /**
+   * Can this connection's OpenCode web UI ride in an iframe? Only when it needs
+   * no credentials (none attached, no URL userinfo) AND the browser won't block
+   * it as mixed content (loopback, or same http(s) scheme as this app).
+   */
+  function isEmbeddable(conn: { baseUrl: string; hasPassword: boolean }): boolean {
+    if (conn.hasPassword) return false;
     try {
-      const url = new URL(raw);
-      if (
-        (url.protocol !== 'http:' && url.protocol !== 'https:') ||
-        url.search.length > 0 ||
-        url.hash.length > 0
-      ) {
-        return 'invalid';
-      }
-      if (url.username.length > 0 || url.password.length > 0) return 'credentialed';
-      const loopback = url.hostname === 'localhost' || url.hostname === '127.0.0.1' || url.hostname === '::1';
-      if (page.url.protocol === 'https:' && url.protocol === 'http:' && !loopback) {
-        return 'mixed-content';
-      }
-      return 'safe';
+      const url = new URL(conn.baseUrl);
+      if (url.protocol !== 'http:' && url.protocol !== 'https:') return false;
+      if (url.username || url.password) return false;
+      if (isLoopbackHost(url.hostname)) return true;
+      // Mixed content: an https app can't embed a plain-http remote target.
+      if (page.url.protocol === 'https:' && url.protocol === 'http:') return false;
+      return true;
     } catch {
-      return 'invalid';
+      return false;
     }
   }
 
-  function isCurrentProbe(token: number, endpointId: string): boolean {
-    return token === probeToken && endpointsService.active?.id === endpointId;
+  function isCurrentProbe(token: number, connectionId: string): boolean {
+    return token === probeToken && endpointsService.active?.id === connectionId;
   }
 
   async function resolve(reloadFrame = false): Promise<void> {
     const token = ++probeToken;
-    probeState = 'checking';
+    mode = 'checking';
     frameUrl = '';
-    const endpoint = endpointsService.active;
-    if (!endpoint) {
-      probeState = 'dead';
+    const conn = endpointsService.active;
+    if (!conn) {
+      mode = 'dead';
       return;
     }
-    if (endpoint.kind === 'openpalm-client-api') {
-      probeState = 'external';
-      return;
-    }
-    const urlKind = classifyUrl(endpoint.url);
-    if (endpoint.hasPassword || urlKind === 'credentialed') {
-      probeState = 'credentialed';
-      return;
-    }
-    if (urlKind === 'mixed-content') {
-      probeState = 'mixed-content';
-      return;
-    }
-    if (urlKind === 'invalid') {
-      probeState = 'invalid';
-      return;
-    }
-    const endpointId = endpoint.id;
-    const base = endpoint.url;
-    const sessionId = requestedSessionId;
-    try {
-      // 1. Reachability: root of the OpenCode web server via the proxy → 200
-      //    when reachable, 503 (endpoint_unreachable) / non-OK when dead.
-      const root = await fetch('/proxy/assistant/', { headers: { accept: 'text/html' } });
-      if (!isCurrentProbe(token, endpointId)) return;
-      if (!root.ok) { probeState = 'dead'; return; }
 
-      // 2. Resolve the requested session ON THE ACTIVE ENDPOINT. OpenCode scopes
-      //    its session list by directory, so deep-linking needs the session's
-      //    real `directory`; and a session created on a DIFFERENT endpoint (or
-      //    since deleted) 404s here. In both bad cases fall back to the base URL
-      //    (OpenCode opens its default view) rather than a "Session not found".
-      let url = base;
-      if (sessionId) {
-        const res = await fetch(
-          `/proxy/assistant/session/${encodeURIComponent(sessionId)}`,
-          { headers: { accept: 'application/json' } },
-        );
-        if (!isCurrentProbe(token, endpointId)) return;
-        if (res.ok) {
-          const session: unknown = await res.json().catch(() => null);
-          if (!isCurrentProbe(token, endpointId)) return;
-          const directory =
-            session &&
-            typeof session === 'object' &&
-            'directory' in session &&
-            typeof session.directory === 'string' &&
-            session.directory.length > 0
-              ? session.directory
-              : null;
-          if (directory) {
-            url = buildAdvancedIframeUrl(base, sessionId, directory);
-            chat.alignActiveEndpoint(endpointId);
-            chat.setActiveSessionId(sessionId, endpointId);
-          }
-        }
-        // non-ok → leave url = base (no broken deep link)
+    // Credentialed / Guardian / mixed-content connection → native chat surface.
+    if (!isEmbeddable(conn)) {
+      mode = 'native';
+      // The chat store now talks to the active connection via the direct
+      // transport; make sure this connection's sessions are loaded.
+      await chat.onEndpointChanged(conn.id);
+      if (requestedSessionId) {
+        void chat.openSession(requestedSessionId);
       }
-      if (!isCurrentProbe(token, endpointId)) return;
-      frameUrl = url;
-      probeState = 'ready';
-      if (reloadFrame) reloadNonce++;
-    } catch {
-      if (!isCurrentProbe(token, endpointId)) return;
-      probeState = 'dead';
+      return;
     }
+
+    // Embeddable: confirm reachability via the direct transport, then embed.
+    const connectionId = conn.id;
+    const base = conn.baseUrl;
+    const sessionId = requestedSessionId;
+    const health = await getTransport().probeHealth();
+    if (!isCurrentProbe(token, connectionId)) return;
+    if (health.status !== 'accessible') {
+      mode = 'dead';
+      return;
+    }
+
+    let url = base;
+    if (sessionId) {
+      // Resolve the requested session on THIS connection for its real directory
+      // (OpenCode scopes its session list by directory). A missing/foreign
+      // session falls back to the base URL rather than a broken deep link.
+      try {
+        const res = await getTransport().request('GET', `/session/${encodeURIComponent(sessionId)}`);
+        if (!isCurrentProbe(token, connectionId)) return;
+        const session: unknown = await res.json().catch(() => null);
+        const directory =
+          session && typeof session === 'object' && 'directory' in session &&
+          typeof session.directory === 'string' && session.directory.length > 0
+            ? session.directory
+            : null;
+        if (directory) {
+          url = buildAdvancedIframeUrl(base, sessionId, directory);
+          chat.alignActiveEndpoint(connectionId);
+          chat.setActiveSessionId(sessionId, connectionId);
+        }
+      } catch {
+        // non-ok / unreachable → leave url = base (no broken deep link)
+      }
+    }
+    if (!isCurrentProbe(token, connectionId)) return;
+    frameUrl = url;
+    mode = 'iframe';
+    if (reloadFrame) reloadNonce++;
   }
 
   async function reconnect(): Promise<void> {
     if (reconnecting) return;
     reconnecting = true;
     try {
-      // Re-read the endpoint list first — a restarted admin OpenCode advertises a
-      // new ephemeral URL in its runtime file, so the cached frame URL may be stale.
       await endpointsService.load(true);
       await resolve(true);
     } finally {
       reconnecting = false;
+    }
+  }
+
+  // ── Native chat surface wiring (credentialed fallback) ───────────────────
+  let permissionActionInFlight = $state<'once' | 'always' | 'reject' | null>(null);
+
+  async function handleSend(text: string): Promise<void> {
+    await chat.send(text);
+  }
+
+  async function handlePermissionReply(reply: 'once' | 'always' | 'reject'): Promise<void> {
+    permissionActionInFlight = reply;
+    try {
+      await chat.answerPermission(reply);
+    } finally {
+      permissionActionInFlight = null;
     }
   }
 
@@ -179,7 +176,7 @@
 <ChatNavbar />
 
 <div class="advanced-layout">
-  {#if probeState === 'ready'}
+  {#if mode === 'iframe'}
     <!-- The Chat↔Advanced switch is in the global navbar; session management
          lives inside OpenCode itself, so the frame fills the whole area.
          {#key} forces a fresh load after a reconnect even if the URL is unchanged. -->
@@ -191,45 +188,64 @@
         allow="clipboard-read; clipboard-write; microphone"
       ></iframe>
     {/key}
+  {:else if mode === 'native'}
+    <!-- Credentialed / Guardian connection: OpenPalm keeps Basic auth out of
+         iframe URLs, so the embedded OpenCode UI can't authenticate. Render the
+         native chat surface (direct transport) instead of a dead-end. -->
+    <section class="native-chat" aria-label="Chat with {active?.label ?? 'your assistant'}">
+      <div class="native-scroll">
+        {#if chat.entriesLoading}
+          <p class="native-status" role="status">Loading conversation…</p>
+        {:else if chat.entries.length === 0}
+          <p class="native-status" role="status">
+            Start chatting with {active?.label ?? 'your assistant'} below.
+          </p>
+        {/if}
+        {#each chat.entries as entry (entry.id)}
+          <ChatMessage {entry} />
+        {/each}
+        {#if chat.pendingAssistantText}
+          <div class="native-pending">{chat.pendingAssistantText}</div>
+        {/if}
+        {#if chat.pendingPermission}
+          <PermissionCard
+            permission={chat.pendingPermission}
+            actionInFlight={permissionActionInFlight}
+            onReply={handlePermissionReply}
+          />
+        {/if}
+        {#if chat.pendingQuestion}
+          <QuestionCard
+            question={chat.pendingQuestion}
+            onOption={(answer) => void chat.answerQuestion(answer)}
+            onSelect={(index, label) => chat.setQuestionAnswer(index, label)}
+            onDraft={(index, value) => chat.setQuestionAnswer(index, value)}
+            onSubmit={() => void chat.answerQuestion()}
+            onReject={() => void chat.rejectQuestion()}
+          />
+        {/if}
+      </div>
+      {#if chat.error}
+        <div class="alert error" role="alert">{chat.error}</div>
+      {/if}
+      <ChatInput
+        sending={chat.sending}
+        questionPending={chat.pendingQuestion?.status === 'pending'}
+        onSend={handleSend}
+        onStop={() => void chat.stopTurn()}
+      />
+    </section>
   {:else}
-    <div class="advanced-status" role={probeState === 'dead' ? 'alert' : 'status'} aria-live="polite">
-      {#if probeState === 'checking'}
+    <div class="advanced-status" role={mode === 'dead' ? 'alert' : 'status'} aria-live="polite">
+      {#if mode === 'checking'}
         <p class="status-line">Connecting to {active?.label ?? 'your assistant'}…</p>
-      {:else if probeState === 'credentialed'}
-        <h2>Advanced UI unavailable for this secured connection</h2>
-        <p>
-          This OpenCode connection requires credentials. OpenPalm keeps them out of iframe URLs and
-          browser content; use Chat here or manage the connection through a trusted external route.
-        </p>
-        <a class="btn btn-secondary btn-lg" href={resolvePath('/connections')}>Manage connection</a>
-      {:else if probeState === 'external'}
-        <h2>Advanced UI is managed externally</h2>
-        <p>
-          {active?.label ?? 'This connection'} exposes the secured OpenPalm client API through
-          Guardian, not an embeddable OpenCode web interface. Use Chat here or manage the target
-          outside this frame.
-        </p>
-        <a class="btn btn-secondary btn-lg" href={resolvePath('/connections')}>Manage connection</a>
-      {:else if probeState === 'mixed-content'}
-        <h2>Advanced UI unavailable over this connection</h2>
-        <p>
-          This page is running over HTTPS, so the browser will block an embedded plain-HTTP remote
-          OpenCode server as mixed content. Configure HTTPS for that connection or continue in Chat.
-        </p>
-        <a class="btn btn-secondary btn-lg" href={resolvePath('/connections')}>Manage connection</a>
-      {:else if probeState === 'invalid'}
-        <h2>Advanced UI unavailable for this endpoint</h2>
-        <p>
-          Advanced mode requires a plain HTTP(S) endpoint URL without user information, a query,
-          or a fragment. Update this connection before embedding its OpenCode interface.
-        </p>
-        <a class="btn btn-secondary btn-lg" href={resolvePath('/connections')}>Manage connection</a>
       {:else}
         <h2>Can’t reach {active?.label ?? 'your assistant'}</h2>
         <p>The connection looks dead or its session expired. Reconnect to try again, or pick a different assistant from the switcher above.</p>
         <button class="btn btn-primary btn-lg" onclick={reconnect} disabled={reconnecting}>
           {reconnecting ? 'Reconnecting…' : 'Reconnect'}
         </button>
+        <a class="btn btn-secondary btn-lg" href={resolvePath('/connections')}>Manage connection</a>
       {/if}
     </div>
   {/if}
@@ -251,6 +267,45 @@
     width: 100%;
     flex: 1;
     border: none;
+  }
+
+  .native-chat {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+  .native-scroll {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: var(--s-sp-3);
+    padding: var(--s-sp-4);
+    max-width: 52rem;
+    width: 100%;
+    margin: 0 auto;
+  }
+  .native-status {
+    color: var(--s-ink-2);
+    text-align: center;
+    margin: var(--s-sp-6) 0;
+  }
+  .native-pending {
+    white-space: pre-wrap;
+    color: var(--s-ink-2);
+  }
+
+  .alert.error {
+    margin: 0 auto var(--s-sp-2);
+    max-width: 52rem;
+    width: 100%;
+    padding: var(--s-sp-3);
+    border-radius: 2px;
+    background: color-mix(in srgb, var(--s-seal) 8%, transparent);
+    color: var(--s-seal);
+    border: 1px solid color-mix(in srgb, var(--s-seal) 25%, transparent);
   }
 
   .advanced-status {

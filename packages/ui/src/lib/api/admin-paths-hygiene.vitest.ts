@@ -1,7 +1,6 @@
 /**
- * Phase 4 hygiene — no client code calls or links a `/admin` path (plan
- * ui-runtime-modes-plan.md Phase 4 step 1: "/admin/* → 404, no alias" +
- * "Update lib/api/* client paths accordingly").
+ * Phase 4 hygiene — no client code calls or links a `/admin` path: /admin/* → 404,
+ * no alias, and lib/api/* client paths are updated accordingly.
  *
  * With the alias gone, ANY surviving quoted '/admin…' path in a domain
  * client or component is a dead call/link: lib/api clients must target
@@ -55,7 +54,7 @@ function offendersIn(files: string[]): string[] {
   return offenders;
 }
 
-describe('no /admin paths left in client code (plan Phase 4 step 1)', () => {
+describe('no /admin paths left in client code', () => {
   test('the scans see the trees (sanity)', () => {
     // Guards the walkers: an empty file list would make the hygiene
     // assertions below pass vacuously.

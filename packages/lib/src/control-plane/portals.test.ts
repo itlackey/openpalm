@@ -14,7 +14,7 @@ import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { discoverPortals, isPortalAddon } from "./portals.js";
+import { discoverPortals } from "./portals.js";
 
 function writeStackCompose(homeDir: string, filename: string, yml: string): void {
   const stackDir = filename === "custom.compose.yml"
@@ -27,30 +27,6 @@ function writeStackCompose(homeDir: string, filename: string, yml: string): void
 function tempHome(): string {
   return mkdtempSync(join(tmpdir(), "openpalm-portals-marker-"));
 }
-
-describe("isPortalAddon — CHANNEL_NAME marker removal", () => {
-  test("returns false for a service carrying only CHANNEL_NAME (map form)", () => {
-    const home = tempHome();
-    const composePath = join(home, "legacy.compose.yml");
-    writeFileSync(
-      composePath,
-      "services:\n  legacy:\n    environment:\n      CHANNEL_NAME: Legacy\n",
-    );
-
-    expect(isPortalAddon(composePath)).toBe(false);
-  });
-
-  test("returns false for CHANNEL_NAME in list form", () => {
-    const home = tempHome();
-    const composePath = join(home, "legacy-list.compose.yml");
-    writeFileSync(
-      composePath,
-      "services:\n  legacy:\n    environment:\n      - CHANNEL_NAME=legacy\n",
-    );
-
-    expect(isPortalAddon(composePath)).toBe(false);
-  });
-});
 
 describe("discoverPortals — CHANNEL_NAME marker removal", () => {
   test("does not discover a CHANNEL_NAME-only service", () => {

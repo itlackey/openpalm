@@ -1,19 +1,12 @@
 /**
- * G3 [MEDIUM] (review 2026-07-10) — ui-kit's Drawer imported
- * `$lib/actions/focus-trap.js`, an app-provided contract (like
- * theme-state/notifications/error-messages): whichever app's Vite/SvelteKit
- * pipeline compiles Drawer.svelte resolves `$lib` against ITS OWN
- * `src/lib`, so the import only works for an app that happens to ship a
- * `src/lib/actions/focus-trap.js` of its own. packages/ui does; packages/client
- * does not — so the kit's only accessible-dialog primitive was unusable from
- * the client, which also blocked the B14 small-screen sessions drawer.
- *
- * Fix: promote focus-trap into ui-kit as a REAL export — a kit-internal
- * module at `src/lib/actions/focus-trap.ts`, referenced from Drawer.svelte by
- * a relative import (not `$lib`), and exposed to consumers via a
- * `./actions/*` package.json subpath (mirroring the existing
- * `./components/*` / `./theme/*` pattern) so `@openpalm/ui-kit/actions/
- * focus-trap.js` resolves from ANY consuming app, including packages/client.
+ * Pins focus-trap as a REAL kit-internal export, NOT an app-provided `$lib`
+ * contract: a module at `src/lib/actions/focus-trap.ts`, referenced from
+ * Drawer.svelte by a relative import (not `$lib`), and exposed to consumers via
+ * a `./actions/*` package.json subpath (mirroring the existing `./components/*`
+ * / `./theme/*` pattern) so `@openpalm/ui-kit/actions/focus-trap.js` resolves
+ * from ANY consuming app. Were it an app-provided `$lib` contract instead, an
+ * app that didn't ship its own `src/lib/actions/focus-trap.js` could not use the
+ * kit's only accessible-dialog primitive (Drawer).
  *
  * Source-level test (reads files, not a rendered DOM) — the invariant is
  * about the module graph / package contract, and Drawer's actual focus

@@ -1,15 +1,14 @@
 /**
- * Landing resolver — the single place that decides where a session lands
- * (plan ui-runtime-modes-plan.md §6.5, Phase 3 step 1).
+ * Landing resolver — the single place that decides where a session lands.
  *
  * PURE by contract: reads `ctx.effectiveCapabilities` — never the global
  * `runtimeContext` store — so hooks.server.ts can call it per-request on the
  * server (where no client store exists) and +layout/svelte code can call it
  * with the store's value. Capability RESOLUTION stays in
- * `resolveCapabilities()` (plan §8.6); this function only reads the
+ * `resolveCapabilities()`; this function only reads the
  * already-resolved list.
  *
- * Landing matrix (plan §6.5):
+ * Landing matrix:
  *   host:setup capability present:
  *     migration pending          → /attention (precedence over local state)
  *     local not_installed        → /setup — unless an accessible connection
@@ -20,10 +19,9 @@
  *     local installed_offline    → HOST_ADMIN_LANDING
  *     local installed_broken     → HOST_ADMIN_LANDING?tab=diagnostics
  *     otherwise (running)        → /chat
- *   no host:setup capability:
- *     assistant-container        → /chat (always — no host stack in view)
- *     pwa-static, 0 connections  → /connections/new
- *     pwa-static, ≥1 connection  → /chat
+ *   no host:setup capability (non-admin process):
+ *     0 connections              → /connections/new
+ *     ≥1 connection              → /chat
  *     anything else              → /chat
  */
 import type { LocalStackState } from '@openpalm/lib';
@@ -67,8 +65,8 @@ export type MigrationStatus = 'pending' | 'none';
  * Launch facts, derived from the launch-status probes that used to feed the
  * /splash page (`local.state` is @openpalm/lib's LocalStackState). On the
  * server, `connections` is the list of connections usable right now
- * (accessible remotes, plus the local assistant when it is running); the
- * static client feeds its own stored connection list.
+ * (accessible remotes, plus the local assistant when it is running); in the
+ * browser, the connection store supplies its own persisted list.
  */
 export type LaunchState = {
   migration: { status: MigrationStatus };
@@ -76,8 +74,8 @@ export type LaunchState = {
   connections: ReadonlyArray<{ id: string }>;
 };
 
-/** Resolve the landing path for a session (plan §6.5). Pure — no I/O, no
- *  global state; the gate is CAPABILITY-driven, not hostMode-driven. */
+/** Resolve the landing path for a session. Pure — no I/O, no
+ *  global state; the gate is CAPABILITY-driven, not admin-flag-driven. */
 export function resolveLanding(ctx: RuntimeContext, state: LaunchState): string {
   if (ctx.effectiveCapabilities.includes('host:setup')) {
     if (state.migration.status === 'pending') return HOST_ATTENTION_LANDING;
@@ -89,9 +87,7 @@ export function resolveLanding(ctx: RuntimeContext, state: LaunchState): string 
     if (state.local.state === 'installed_broken') return `${HOST_ADMIN_LANDING}?tab=diagnostics`;
     return '/chat';
   }
-  if (ctx.hostMode === 'assistant-container') return '/chat';
-  if (ctx.hostMode === 'pwa-static') {
-    return state.connections.length === 0 ? '/connections/new' : '/chat';
-  }
-  return '/chat';
+  // Non-admin process (no host:setup): the browser owns connections — land on
+  // the add-connection surface when there is nowhere to chat yet, else /chat.
+  return state.connections.length === 0 ? '/connections/new' : '/chat';
 }

@@ -5,18 +5,7 @@
  * (OpenCode logs tool invocations natively, D6a).
  */
 import { tool } from "@opencode-ai/plugin";
-import { execFile } from "node:child_process";
-
-function run(bin: string, args: string[]): Promise<{ stdout: string; stderr: string; code: number }> {
-  return new Promise((resolve) => {
-    execFile(bin, args, { maxBuffer: 4 * 1024 * 1024 }, (err, stdout, stderr) => {
-      const code = err && typeof (err as NodeJS.ErrnoException).code === "number"
-        ? Number((err as NodeJS.ErrnoException).code)
-        : (err ? 1 : 0);
-      resolve({ stdout: stdout?.toString() ?? "", stderr: stderr?.toString() ?? "", code });
-    });
-  });
-}
+import { runCapture } from "./_exec.js";
 
 export default tool({
   description:
@@ -31,7 +20,7 @@ export default tool({
   async execute(args) {
     const dockerArgs = ["compose", "down"];
     if (args.service) dockerArgs.push(args.service);
-    const { stdout, stderr, code } = await run("docker", dockerArgs);
+    const { stdout, stderr, code } = await runCapture("docker", dockerArgs);
     return JSON.stringify({
       ok: code === 0,
       command: `docker ${dockerArgs.join(" ")}`,

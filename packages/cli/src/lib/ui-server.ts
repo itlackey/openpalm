@@ -12,6 +12,7 @@ import {
   resolveOpenPalmHome, resolveUiBuildDir, createLogger, readSecret, readStackEnv,
   checkAndUpdateUiBuild, checkAndUpdateSkeleton, PLATFORM_VERSION,
   consumePendingUiBackup, isRemoteSetupAllowed, restoreUiBackup, UiSupervisor, waitForReady,
+  seedServedUiRuntimeConfig,
 } from '@openpalm/lib';
 import { ensureValidState, resolveServeState } from './cli-state.ts';
 import { openBrowser } from './browser.ts';
@@ -19,8 +20,6 @@ import { resolveHostUiPortFromEnv } from './ports.ts';
 
 const logger = createLogger('cli:ui');
 const STOP_TIMEOUT_MS  = 5_000;
-const CLIENT_READY_TIMEOUT_MS = 5_000;
-const CLIENT_READY_POLL_MS = 200;
 /** Short probe timeout for the pre-spawn instance-identity check and the
  *  landing/setup-status probes below — these targets are on loopback and
  *  either answer near-instantly or aren't there at all. */
@@ -48,49 +47,33 @@ export function resolveUiServePort(
 /**
  * `openpalm admin` opens/prints the root URL, which the UI's own landing
  * guard resolves to `/chat` on a healthy install — not the admin dashboard
- * (review finding A3). When admin (host-ui) mode is active, both the printed
- * and opened URL should point at `/host` instead.
+ * (review finding A3). When admin mode is active, both the printed and opened
+ * URL should point at `/host` instead.
  */
 export function resolveAdminUrl(uiUrl: string, adminHostUi: boolean): string {
   return adminHostUi ? `${uiUrl}/host` : uiUrl;
 }
 
 /**
- * Valid `OP_UI_HOST_MODE` values — mirrors HOST_MODES in
- * packages/ui/src/lib/server/features.ts. Duplicated (not imported): the CLI
- * has no dependency on @openpalm/ui (a SvelteKit app, not a library), so this
- * is kept in sync by hand with that module's resolveHostMode() precedence.
- */
-const UI_HOST_MODES = ['electron-host', 'host-ui', 'assistant-container', 'pwa-static'] as const;
-
-/**
- * The `OP_UI_HOST_MODE` a freshly-spawned UI child of THIS invocation would
- * report at `/api/runtime`. Used by {@link checkExistingUiInstance} (D1) to
- * detect when something else is already answering on the target port.
+ * Whether a freshly-spawned UI child of THIS invocation would report itself as
+ * admin-capable at `/api/runtime` (`body.admin`). Used by
+ * {@link checkExistingUiInstance} (D1) to detect when something else is already
+ * answering on the target port with a DIFFERENT capability level.
  *
- * In admin (host-ui) mode, {@link spawnUiChild}'s `adminEnv` ALWAYS forces
- * `OP_UI_HOST_MODE=host-ui` in the child regardless of inherited env, so the
- * expected mode is unconditionally 'host-ui'.
- *
- * Otherwise `adminEnv` is `{}` — the child inherits `env` (defaults to
- * `process.env`) UNTOUCHED, and packages/ui/src/lib/server/features.ts's
- * `resolveHostMode()` ALSO honors `OP_UI_HOST_MODE` / `OP_INSIDE_ELECTRON` /
- * `OP_ENABLE_ADMIN` from that inherited env. F14: before this, a non-admin
- * reuse computed 'pwa-static' unconditionally, so e.g. a shell with
- * `OP_ENABLE_ADMIN=1` set made a legitimate `openpalm` reuse see its own
- * already-running child (which correctly reports 'host-ui') as a 'mismatch'
- * — "Refusing to attach" + `process.exit(1)`. Replicates resolveHostMode's
- * exact precedence (explicit valid OP_UI_HOST_MODE > OP_INSIDE_ELECTRON=1 >
- * OP_ENABLE_ADMIN=1 > 'pwa-static') so the identity probe matches what the
- * child actually reports.
+ * Admin capability is an Electron-or-CLI-only boundary — a single boolean, not
+ * a mode matrix. In admin mode, {@link spawnUiChild}'s `adminEnv` ALWAYS forces
+ * `OP_ENABLE_ADMIN=1` in the child regardless of inherited env, so the child is
+ * unconditionally admin-capable. Otherwise `adminEnv` is `{}` — the child
+ * inherits `env` (defaults to `process.env`) UNTOUCHED, and
+ * packages/ui/src/lib/server/features.ts's `isAdminCapable()` honors
+ * `OP_INSIDE_ELECTRON=1` / `OP_ENABLE_ADMIN=1` from that inherited env. F14: a
+ * shell with `OP_ENABLE_ADMIN=1` set must make a legitimate non-admin reuse
+ * expect admin=true (matching what the child reports), not a false 'mismatch'
+ * that refuses to attach and exits(1).
  */
-export function resolveExpectedHostMode(adminHostUi: boolean, env: NodeJS.ProcessEnv = process.env): string {
-  if (adminHostUi) return 'host-ui';
-  const explicit = env.OP_UI_HOST_MODE?.trim() ?? '';
-  if ((UI_HOST_MODES as readonly string[]).includes(explicit)) return explicit;
-  if (env.OP_INSIDE_ELECTRON === '1') return 'electron-host';
-  if (env.OP_ENABLE_ADMIN === '1') return 'host-ui';
-  return 'pwa-static';
+export function resolveExpectedAdmin(adminHostUi: boolean, env: NodeJS.ProcessEnv = process.env): boolean {
+  if (adminHostUi) return true;
+  return env.OP_INSIDE_ELECTRON === '1' || env.OP_ENABLE_ADMIN === '1';
 }
 
 export interface UIServerOptions {
@@ -99,29 +82,13 @@ export interface UIServerOptions {
   /** Allow the UI landing resolver to handle a not-yet-installed OP_HOME. */
   allowUninstalled?: boolean;
   /**
-   * host-ui admin mode (`openpalm admin`, plan Phase 1.5): enable the admin
-   * capability in the spawned UI child (OP_ENABLE_ADMIN=1 + OP_UI_HOST_MODE=
-   * host-ui) and pin the bind to loopback ALWAYS — OP_ALLOW_REMOTE_SETUP is
-   * ignored and neutralized in the child env, so no non-loopback bind is
-   * possible in this mode (plan §8.3: host admin is never reachable remotely).
+   * Admin mode (`openpalm admin`, plan Phase 1.5): enable the admin capability
+   * in the spawned UI child (OP_ENABLE_ADMIN=1) and pin the bind to loopback
+   * ALWAYS — OP_ALLOW_REMOTE_SETUP is ignored and neutralized in the child env,
+   * so no non-loopback bind is possible in this mode (host admin is
+   * never reachable remotely).
    */
   adminHostUi?: boolean;
-}
-
-export async function waitForClientApp(url: string, timeoutMs = CLIENT_READY_TIMEOUT_MS): Promise<boolean> {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    try {
-      const response = await fetch(url, {
-        signal: AbortSignal.timeout(1_000),
-      });
-      if (response.ok) return true;
-    } catch {
-      // Not ready yet.
-    }
-    await new Promise<void>((resolve) => setTimeout(resolve, CLIENT_READY_POLL_MS));
-  }
-  return false;
 }
 
 /** Fetch and parse a JSON body; `null` on any failure (network error, non-2xx,
@@ -144,131 +111,33 @@ async function probeJson<T>(
 /** Outcome of {@link checkExistingUiInstance}. */
 export type UiInstanceCheck =
   | { status: 'absent' }
-  | { status: 'match'; hostMode: string }
-  | { status: 'mismatch'; hostMode: string };
+  | { status: 'match'; admin: boolean }
+  | { status: 'mismatch'; admin: boolean };
 
 /**
  * Pre-spawn instance-identity probe (review finding D1). Readiness was a bare
  * port poll (200 OR 401) with no check that whatever answered is even an
- * OpenPalm UI instance of the mode THIS invocation wants — with a bare
- * `openpalm` already on 3880, `openpalm admin` would poll-succeed, "reuse" it,
- * and open a UI with no admin capability while its own spawn attempt EADDRINUSEs
- * into a respawn loop.
+ * OpenPalm UI instance of the capability level THIS invocation wants — with a
+ * bare `openpalm` already on 3880, `openpalm admin` would poll-succeed, "reuse"
+ * it, and open a UI with no admin capability while its own spawn attempt
+ * EADDRINUSEs into a respawn loop.
  *
  * If port is silent → 'absent' (proceed with the normal spawn). If it answers
- * `/api/runtime` with the expected `hostMode` → 'match' (safe to treat as
- * already-running; skip spawning a second child). Any other hostMode →
+ * `/api/runtime` with the expected `admin` boolean → 'match' (safe to treat as
+ * already-running; skip spawning a second child). A different `admin` value →
  * 'mismatch' (a clear, actionable error — never a silent wrong-capability open).
  */
 export async function checkExistingUiInstance(
   port: number,
-  expectedHostMode: string,
+  expectedAdmin: boolean,
   deps: { fetchFn?: typeof fetch; timeoutMs?: number } = {},
 ): Promise<UiInstanceCheck> {
   const fetchFn = deps.fetchFn ?? fetch;
   const timeoutMs = deps.timeoutMs ?? PROBE_TIMEOUT_MS;
-  const body = await probeJson<{ hostMode?: string }>(fetchFn, `http://127.0.0.1:${port}/api/runtime`, timeoutMs);
+  const body = await probeJson<{ admin?: boolean }>(fetchFn, `http://127.0.0.1:${port}/api/runtime`, timeoutMs);
   if (body === null) return { status: 'absent' };
-  const hostMode = body.hostMode ?? '';
-  return hostMode === expectedHostMode ? { status: 'match', hostMode } : { status: 'mismatch', hostMode };
-}
-
-/** Result of {@link resolveClientOpenTarget}. */
-export interface ClientOpenTargetResult {
-  url: string;
-  /** Set when falling back away from the client (never a hard failure — A4). */
-  message?: string;
-}
-
-/** Injectable deps for {@link resolveClientOpenTarget} (real fetch/probe by default). */
-export interface ClientOpenTargetDeps {
-  fetchFn?: typeof fetch;
-  /** Client reachability probe (defaults to {@link waitForClientApp} against clientUrl). */
-  waitForClient?: () => Promise<boolean>;
-  timeoutMs?: number;
-}
-
-/**
- * Landing paths the CLIENT app (not the host UI) can serve (#486 D1b). The
- * client artifact has both `/connections` and `/connections/new` routes
- * (`packages/client/src/routes/connections/`) — a stack-less machine with no
- * install lands on `/connections/new`, and today ANY landing ≠ `/chat` opens
- * the host UI, whose `/api/connections` writes are admin-session-gated (a
- * dead end on a passwordless stack-less machine).
- */
-const CLIENT_LANDINGS = new Set(['/chat', '/connections', '/connections/new']);
-
-/**
- * Resolve where `--open-target client` (`openpalm app`) should actually open
- * (review findings A4 + J1, plus #486 D1b). Before this, an unreachable
- * client app or an interrupted install hard-exited(1) instead of falling
- * back to the voice-capable, setup-aware host UI.
- *
- * Probes the host UI's unauthenticated `GET /api/runtime/landing` (contract:
- * `200 { landing: string }`) first — a setup-incomplete/offline/broken install
- * routes through the SAME landing matrix Electron consults (J2), so `openpalm
- * app` stops being setup-unaware. If that route isn't deployed yet (404/absent
- * — the electron lane adds it in parallel), fall back to `GET
- * /api/setup/status` and land on `/setup` when incomplete (defaulting to
- * `/chat` when nothing else applies, preserving the original fallback
- * chain). Non-client landings (e.g. `/setup`, `/host?tab=diagnostics`) always
- * open the host UI. Client-capable landings (`/chat`, `/connections`,
- * `/connections/new`) open the CLIENT app at that same path when it's
- * reachable; if the client is unreachable, fall back to the host UI at that
- * same path with a clear message — NEVER `process.exit(1)` for this (A4).
- */
-export async function resolveClientOpenTarget(
-  uiUrl: string,
-  clientUrl: string,
-  hasClientHandle: boolean,
-  deps: ClientOpenTargetDeps = {},
-): Promise<ClientOpenTargetResult> {
-  const fetchFn = deps.fetchFn ?? fetch;
-  const timeoutMs = deps.timeoutMs ?? PROBE_TIMEOUT_MS;
-  const waitForClient = deps.waitForClient ?? (() => waitForClientApp(clientUrl));
-
-  let landingPath = '/chat';
-  const landing = await probeJson<{ landing?: string }>(fetchFn, `${uiUrl}/api/runtime/landing`, timeoutMs);
-  if (landing !== null) {
-    if (typeof landing.landing === 'string') landingPath = landing.landing;
-  } else {
-    // /api/runtime/landing not deployed / not reachable — fall back to the
-    // setup-status probe so an interrupted install still redirects (J1).
-    const setup = await probeJson<{ setupComplete?: boolean }>(fetchFn, `${uiUrl}/api/setup/status`, timeoutMs);
-    if (setup?.setupComplete === false) {
-      landingPath = '/setup';
-    }
-  }
-
-  if (!CLIENT_LANDINGS.has(landingPath)) {
-    return { url: `${uiUrl}${landingPath}` };
-  }
-
-  if (hasClientHandle && await waitForClient()) {
-    const clientBase = clientUrl.replace(/\/chat$/, '');
-    return { url: landingPath === '/chat' ? clientUrl : `${clientBase}${landingPath}` };
-  }
-
-  // A4: never process.exit(1) here — fall back to the host UI at the same
-  // landing path. `/chat` keeps the pre-#486 bare-uiUrl shape (the host UI's
-  // own landing guard resolves `/` to `/chat` on a healthy install); other
-  // client-capable landings (e.g. `/connections/new`) fall back to that exact
-  // host UI path instead.
-  if (landingPath === '/chat') {
-    return {
-      url: uiUrl,
-      message:
-        `Localhost client app is not reachable at ${clientUrl} — opening the host UI chat ` +
-        `instead (${uiUrl}/chat).`,
-    };
-  }
-  const fallbackUrl = `${uiUrl}${landingPath}`;
-  return {
-    url: fallbackUrl,
-    message:
-      `Localhost client app is not reachable at ${clientUrl} — opening the host UI ` +
-      `instead (${fallbackUrl}).`,
-  };
+  const admin = body.admin === true;
+  return admin === expectedAdmin ? { status: 'match', admin } : { status: 'mismatch', admin };
 }
 
 /**
@@ -317,6 +186,18 @@ async function spawnUiChild(
     console.error('Run: bun run ui:build');
     process.exit(1);
   }
+
+  // Seed the served build's runtime-config.json so the browser store gets the
+  // locked "This assistant" default connection — the SAME seed the assistant
+  // container entrypoint writes. adapter-node serves the build's client/ dir at
+  // the app origin, where the browser's loadRuntimeConfig() fetches it. Best-
+  // effort and re-run on every (re)spawn; a write failure degrades to an empty
+  // connection list, never a failed serve.
+  try {
+    seedServedUiRuntimeConfig(uiBuildDir, homeDir);
+  } catch (err) {
+    console.warn(`Could not seed UI runtime-config.json: ${err instanceof Error ? err.message : String(err)}`);
+  }
   // OP_UI_LOGIN_PASSWORD is unset during first-run install — the SvelteKit
   // hooks detect that and redirect /* to /setup, where the wizard sets
   // it. Don't short-circuit here, or the install wizard can never come up.
@@ -338,19 +219,18 @@ async function spawnUiChild(
   // Default: bind loopback with a pinned ORIGIN. With OP_ALLOW_REMOTE_SETUP the
   // server binds all interfaces and lets adapter-node derive the origin from the
   // request Host header (HOST_HEADER), so it works under whatever LAN host/IP the
-  // operator reaches it by. Admin (host-ui) mode is loopback ALWAYS: the
+  // operator reaches it by. Admin mode is loopback ALWAYS: the
   // remote-setup escape hatch never applies to the host admin surface (§8.3).
   const remote = !adminHostUi && isRemoteSetupAllowed();
   const networkEnv = remote
     ? { HOST: '0.0.0.0', PORT: String(port), HOST_HEADER: 'host', PROTOCOL_HEADER: 'x-forwarded-proto' }
     : { HOST: '127.0.0.1', PORT: String(port), ORIGIN: `http://127.0.0.1:${port}` };
-  // Admin (host-ui) mode: enable the admin capability in the UI child and
-  // neutralize OP_ALLOW_REMOTE_SETUP (spread in from process.env below) so
-  // neither the respawned `openpalm ui` child nor the UI server's own
-  // remote-setup relaxations (Host/Origin allowlist, setup gate) can re-derive
-  // a remote bind.
+  // Admin mode: enable the admin capability in the UI child and neutralize
+  // OP_ALLOW_REMOTE_SETUP (spread in from process.env below) so neither the
+  // respawned `openpalm ui` child nor the UI server's own remote-setup
+  // relaxations (Host/Origin allowlist, setup gate) can re-derive a remote bind.
   const adminEnv = adminHostUi
-    ? { OP_ENABLE_ADMIN: '1', OP_UI_HOST_MODE: 'host-ui', OP_ALLOW_REMOTE_SETUP: '0' }
+    ? { OP_ENABLE_ADMIN: '1', OP_ALLOW_REMOTE_SETUP: '0' }
     : {};
   const proc = Bun.spawn(
     [process.execPath, ...childArgs],
@@ -531,7 +411,7 @@ export function createCliUiSupervisor(deps: CliUiSupervisorDeps): {
 export async function startUIServer(opts: UIServerOptions = {}): Promise<void> {
   const homeDir = resolveOpenPalmHome();
   // D3: read back a persisted (headless-install) OP_HOST_UI_PORT, not just
-  // process.env — mirrors client-server.ts's stack.env merge.
+  // process.env (resolveUiServePort merges persisted stack.env under process.env).
   const port = resolveUiServePort(opts.port, homeDir);
   if (Number.isNaN(port) || port < 1 || port > 65535) {
     console.error(`Invalid port: ${port}`);
@@ -546,16 +426,16 @@ export async function startUIServer(opts: UIServerOptions = {}): Promise<void> {
   const uiUrl = `http://localhost:${port}`;
 
   // D1: pre-spawn instance-identity probe. A bare port poll has no way to
-  // tell an already-running OpenPalm instance of a DIFFERENT hostMode (e.g. a
-  // bare `openpalm` already on this port when `openpalm admin` runs) apart
-  // from a match — reuse only on a genuine match, refuse with a clear error
-  // otherwise, and never silently attach to the wrong capability level.
-  const expectedHostMode = resolveExpectedHostMode(opts.adminHostUi === true);
-  const existing = await checkExistingUiInstance(port, expectedHostMode);
+  // tell an already-running OpenPalm instance of a DIFFERENT capability level
+  // (e.g. a bare `openpalm` already on this port when `openpalm admin` runs)
+  // apart from a match — reuse only on a genuine match, refuse with a clear
+  // error otherwise, and never silently attach to the wrong capability level.
+  const expectedAdmin = resolveExpectedAdmin(opts.adminHostUi === true);
+  const existing = await checkExistingUiInstance(port, expectedAdmin);
   if (existing.status === 'mismatch') {
     console.error(
-      `A different OpenPalm UI instance (hostMode=${existing.hostMode}) is already listening ` +
-      `on port ${port}, but this command expected hostMode=${expectedHostMode}. Refusing to ` +
+      `A different OpenPalm UI instance (admin=${existing.admin}) is already listening ` +
+      `on port ${port}, but this command expected admin=${expectedAdmin}. Refusing to ` +
       'attach — stop the other instance first, or choose a different --port.'
     );
     process.exit(1);
@@ -571,7 +451,7 @@ export async function startUIServer(opts: UIServerOptions = {}): Promise<void> {
     // non-reuse "UI server running at" log further down.
     console.log(
       `Reusing already-running UI server at ${resolveAdminUrl(uiUrl, opts.adminHostUi === true)} ` +
-      `(hostMode=${existing.hostMode}).`
+      `(admin=${existing.admin}).`
     );
     if (opts.open !== false) {
       await openBrowser(resolveAdminUrl(uiUrl, opts.adminHostUi === true));

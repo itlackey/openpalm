@@ -9,7 +9,7 @@
    * mirrored INTO it by app code (e.g. packages/ui's root layout mirrors
    * `voiceState.errorMessage`) — never from here: this component must stay
    * presentational, with no reach into app subsystems that carry server
-   * assumptions (plan ui-runtime-modes-plan.md §6.11).
+   * assumptions.
    */
   import { notifications, type Toast } from '$lib/notifications.svelte.js';
   import IconDone from '../icons/IconDone.svelte';

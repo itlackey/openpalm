@@ -9,8 +9,7 @@
   import { advancedModeService } from '$lib/advanced-mode-state.svelte.js';
   import { buildAdvancedPath, buildChatPath, currentChatSessionId } from '$lib/chat/navigation.js';
 
-  // Chat-surface chrome COMPOSITION (plan ui-runtime-modes-plan.md Phase 3
-  // step 4, #555): the Navbar shell plus the global chat controls —
+  // Chat-surface chrome COMPOSITION (#555): the Navbar shell plus the global chat controls —
   //   - assistant switcher (EndpointSwitcher)
   //   - session picker (SessionPicker)
   //   - mic + speaker (VoiceControl) — VoiceControl.initVoice() runs here so

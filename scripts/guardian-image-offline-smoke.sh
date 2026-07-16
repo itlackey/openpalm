@@ -22,6 +22,13 @@
 # under the real deployment shape.
 #
 # Run locally: ./scripts/guardian-image-offline-smoke.sh
+#
+# NOTE (2026-07): this guards a REAL security invariant (S.4) but is currently
+# wired into NOTHING — no CI job and no package.json script runs it, so the
+# baked-guardian invariant it protects is never actually exercised. TODO:
+# either wire it into CI (a cheap `--network none` boot on image changes) or
+# remove it if S.4 is covered elsewhere. Do not leave it as silently-
+# unexercised guard code.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

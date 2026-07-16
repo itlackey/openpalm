@@ -1,23 +1,15 @@
 import type { ToolStripEntry } from '$lib/chat/tool-strip.js';
 
-// The legacy FeatureFlags { admin } alias was deleted in Phase 4 (plan
-// ui-runtime-modes-plan.md §6.4): nothing read it anymore — capability checks
+// The legacy FeatureFlags { admin } alias was deleted in Phase 4: nothing read it anymore — capability checks
 // live in computeServerRuntimeContext/resolveCapabilities + hasCapability().
 
-// ── RuntimeContext v2 (plan §6.1, issue #509) ──────────────────────────
-
-export type UiHostMode =
-  | 'electron-host'
-  | 'host-ui'
-  | 'assistant-container'
-  | 'pwa-static';
+// ── RuntimeContext v2 (issue #509) ──────────────────────────
 
 export type Capability =
   | 'chat'
   | 'connections:read'
   | 'connections:manage'
   | 'connections:switch'
-  | 'connections:single'
   | 'assistant-settings:read'
   | 'assistant-settings:write'
   | 'host:setup'
@@ -35,16 +27,18 @@ export type Capability =
 export type ServerRuntimeContext = {
   /** Contract version — the /api/runtime handshake for remote/hosted clients. */
   version: 2;
-  hostMode: UiHostMode;
+  /**
+   * True when this process is admin-capable — running inside Electron
+   * (OP_INSIDE_ELECTRON=1) or explicitly opted in (OP_ENABLE_ADMIN=1, e.g.
+   * `openpalm admin`). Admin capability is an Electron-or-CLI-only security
+   * boundary: a served/container build can never self-grant it (there is no
+   * env-based self-grant footgun anymore).
+   */
+  admin: boolean;
   serverCapabilities: Capability[];
   publicBaseUrl: string;
   uiVersion: string;
   skeletonVersion: string;
-  activeConnectionMode: 'single' | 'multi';
-  /** Loopback origin of the sibling @openpalm/client static app, when this
-   *  deployment serves one (electron-host / host-ui / pwa-static). Additive,
-   *  optional — version stays 2. */
-  clientAppUrl?: string;
   routes: {
     chat?: string;
     connections?: string;
@@ -55,20 +49,15 @@ export type ServerRuntimeContext = {
   security: {
     hostAdminLoopbackOnly: boolean;
     requiresHttpsForRemoteConnections: boolean;
-    csrfMode: 'loopback-origin' | 'same-site' | 'bearer-token';
+    csrfMode: 'loopback-origin' | 'same-site';
   };
 };
 
 export type ClientDisplayMode = 'electron' | 'standalone-pwa' | 'browser';
 
-/** Connection kinds (plan §6.6). `endpoints.json` is not renamed; the
- *  internal model uses "connection" language. */
-export type ConnectionKind = 'local-opencode' | 'remote-opencode' | 'openpalm-client-api';
-
 export type ActiveConnectionContext = {
-  kind: ConnectionKind;
   id: string;
-  /** Server-verified at connection-add time (plan §8.9) — never self-granted. */
+  /** Server-verified at connection-add time — never self-granted. */
   grantedCapabilities?: Capability[];
 };
 
@@ -177,8 +166,8 @@ export type OpenCodeAuthMethod = {
 
 // ── Chat Types ──────────────────────────────────────────────────────────
 
-// Messages route through `/proxy/assistant/...` only; the active OpenCode
-// instance is chosen via the connection switcher.
+// Messages route directly to the active connection's OpenCode instance,
+// chosen browser-side via the connection switcher.
 
 export type ChatMessage = {
   id: string;

@@ -1,4 +1,3 @@
-import { advancedModeService } from '$lib/advanced-mode-state.svelte.js';
 import { chat } from '$lib/chat/chat-state.svelte.js';
 
 function encodeWorkspacePath(path: string): string {
@@ -15,10 +14,6 @@ export function currentChatSessionId(): string | null {
   return chat.activeSessionId;
 }
 
-export function preferredChatPath(): '/chat' | '/advanced' {
-  return advancedModeService.preferredChatPath();
-}
-
 export function buildAdvancedPath(sessionId?: string | null): string {
   const params = new URLSearchParams();
   if (sessionId) {
@@ -28,13 +23,10 @@ export function buildAdvancedPath(sessionId?: string | null): string {
   return query ? `/advanced?${query}` : '/advanced';
 }
 
-export function buildChatPath(sessionId?: string | null, options?: { newChat?: boolean }): string {
+export function buildChatPath(sessionId?: string | null): string {
   const params = new URLSearchParams();
   if (sessionId) {
     params.set('session', sessionId);
-  }
-  if (options?.newChat) {
-    params.set('new', '1');
   }
   const query = params.toString();
   return query ? `/chat?${query}` : '/chat';

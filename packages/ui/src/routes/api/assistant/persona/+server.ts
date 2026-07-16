@@ -1,12 +1,11 @@
 /**
- * GET/PUT /api/assistant/persona — the assistant-owned persona markdown
- * (plan ui-runtime-modes-plan.md Phase 4 step 2, §5.F, §6.4).
+ * GET/PUT /api/assistant/persona — the assistant-owned persona markdown.
  *
  * The ASSISTANT-SCOPED half of the old /admin/assistant endpoint. Persona
- * lives in config/assistant/persona.md — one of the two read/write mounts the
- * assistant container keeps (plan §6.9) — so assistant-container mode CAN
- * edit it, while pwa-static (no assistant-settings capability) is refused
- * with 403 even for a valid admin session (plan §8.5).
+ * lives in config/assistant/persona.md. Assistant settings are a BASE
+ * capability (every process), so the browser can read/write the persona
+ * regardless of admin capability; the guard is capability-based, and the
+ * admin session is still required.
  */
 import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';

@@ -5,7 +5,6 @@ import { join } from 'node:path';
 import {
   detectHostIdentity,
   describeHostRuntime,
-  hostIdentityMatches,
   readHostIdentity,
   writeHostIdentity,
   type HostIdentity,
@@ -47,43 +46,6 @@ describe('describeHostRuntime (Docker Desktop seam)', () => {
 afterEach(() => {
   if (tempDir) rmSync(tempDir, { recursive: true, force: true });
   tempDir = '';
-});
-
-describe('host identity matching', () => {
-  test('matches identical identity tuples', () => {
-    expect(hostIdentityMatches(
-      { kind: 'linux', host: 'host-a', uid: 1000, gid: 1000 },
-      { kind: 'linux', host: 'host-a', uid: 1000, gid: 1000 },
-    )).toBe(true);
-  });
-
-  test('does not match differing tuples', () => {
-    expect(hostIdentityMatches(
-      { kind: 'linux', host: 'host-a', uid: 1000, gid: 1000 },
-      { kind: 'darwin', host: 'host-b', uid: 501, gid: 20 },
-    )).toBe(false);
-  });
-
-  test('ignores hostname-only changes when kind and ids are stable', () => {
-    expect(hostIdentityMatches(
-      { kind: 'linux', host: 'host-a', uid: 1000, gid: 1000 },
-      { kind: 'linux', host: 'renamed-host', uid: 1000, gid: 1000 },
-    )).toBe(true);
-  });
-
-  test('uses hostname when operator ids are unavailable', () => {
-    expect(hostIdentityMatches(
-      { kind: 'win32', host: 'host-a', uid: null, gid: null },
-      { kind: 'win32', host: 'host-b', uid: null, gid: null },
-    )).toBe(false);
-  });
-
-  test('does not match when only one side has concrete ids', () => {
-    expect(hostIdentityMatches(
-      { kind: 'linux', host: 'host-a', uid: 1000, gid: 1000 },
-      { kind: 'linux', host: 'host-a', uid: null, gid: null },
-    )).toBe(false);
-  });
 });
 
 describe('detectHostIdentity', () => {

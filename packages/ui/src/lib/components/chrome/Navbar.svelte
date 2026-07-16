@@ -9,13 +9,12 @@
   import IconSettings from '@openpalm/ui-kit/components/icons/IconSettings.svelte';
 
   // Top chrome SHELL: brand, the chat↔host utility button, and the theme
-  // toggle. Deliberately free of chat components and chat stores (plan
-  // ui-runtime-modes-plan.md Phase 3 step 4, #555) so the admin surface can
+  // toggle. Deliberately free of chat components and chat stores (#555) so the admin surface can
   // mount it without dragging chat modules into the host bundle. Conversation
   // surfaces mount ChatNavbar.svelte, which composes this shell with the
   // global chat controls (assistant switcher, session picker, voice).
   //
-  // Navigation is capability-driven (plan §8.6): destinations come from
+  // Navigation is capability-driven: destinations come from
   // runtimeContext.routes and visibility from hasCapability() — never the
   // legacy admin feature flag.
   interface Props {

@@ -392,7 +392,6 @@ export {
   SCHEDULE_PRESETS,
   loadAutomations,
   executeAutomation,
-  syncAutomations,
   readAutomationLogs,
 } from "./control-plane/scheduler.js";
 
@@ -457,7 +456,6 @@ export type { HostIdentity, OwnershipDecision, HostRuntime } from './control-pla
 export {
   detectHostIdentity,
   describeHostRuntime,
-  hostIdentityMatches,
   readHostIdentity,
   writeHostIdentity,
 } from './control-plane/host-identity.js';
@@ -577,30 +575,15 @@ export {
   declaredUiChannel,
 } from "./control-plane/ui-assets.js";
 
-// ── Client app (static SPA) asset seeding and resolution (#555 P5c) ─────────
-export type { ClientBuildUpdateResult } from "./control-plane/client-assets.js";
-export {
-  CLIENT_VERSION_STAMP,
-  readClientBuildVersion,
-  resolveLocalClientBuild,
-  resolveClientBuildDir,
-  seedClientBuild,
-  checkAndUpdateClientBuild,
-} from "./control-plane/client-assets.js";
-export {
-  DEFAULT_CLIENT_PORT,
-  resolveClientAppPort,
-  resolveClientAppUrl,
-} from './control-plane/client-app-url.js';
 export {
   buildLockedAssistantRuntimeConfig,
-  writeClientRuntimeConfig,
+  writeUiRuntimeConfig,
+  seedServedUiRuntimeConfig,
   ASSISTANT_LOCKED_CONNECTION_ID,
   ASSISTANT_LOCKED_CONNECTION_LABEL,
-  type ClientRuntimeConfig,
-  type ClientRuntimeConnection,
-  type WriteClientRuntimeConfigOptions,
-} from './control-plane/client-runtime-config.js';
+  type UiRuntimeConfig,
+  type UiRuntimeConnection,
+} from './control-plane/ui-runtime-config.js';
 
 // ── Shared assistant endpoint resolution (E1) — one precedence chain for ────
 // Electron / CLI / container writers instead of three divergent ones. ───────
@@ -634,7 +617,6 @@ export {
   majorVersionOf,
   isSameMajorVersion,
   normalizeVersion,
-  formatForDisplay,
   isPrerelease,
   distTagForVersion,
 } from "./control-plane/versioning.js";

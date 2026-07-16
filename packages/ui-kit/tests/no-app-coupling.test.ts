@@ -1,8 +1,6 @@
 /**
- * P5a (#555) HYGIENE — ui-kit is presentational only (plan
- * ui-runtime-modes-plan.md §6.11: "ui-kit contains no stores with server
- * assumptions — presentational components, icons, and theme only"; §8.10:
- * the client app never bundles @openpalm/lib).
+ * P5a (#555) HYGIENE — ui-kit is presentational only: ui-kit contains no stores with server
+ * assumptions — presentational components, icons, and theme only.
  *
  * No source file under packages/ui-kit/src may import:
  *   - $lib/api (the ui app's API-client barrel or its submodules)
@@ -88,7 +86,7 @@ const FORBIDDEN: { name: string; pattern: RegExp }[] = [
   }
 ];
 
-describe('ui-kit source has no app coupling (plan §6.11, §8.10)', () => {
+describe('ui-kit source has no app coupling', () => {
   test('no source file imports $lib/api, $lib/server, @openpalm/lib, chat state, the connections store, or voice state', () => {
     const offenders: string[] = [];
     for (const file of sourceFiles()) {

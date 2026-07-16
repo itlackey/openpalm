@@ -35,7 +35,7 @@ describe("resolveNetworkPreset — preset matrix", () => {
     expect(r.env).toEqual({
       OP_BIND_ADDRESS: "127.0.0.1",
       OP_ASSISTANT_BIND_ADDRESS: "127.0.0.1",
-      OP_CLIENT_BIND_ADDRESS: "127.0.0.1",
+      OP_UI_BIND_ADDRESS: "127.0.0.1",
       OP_VOICE_BIND_ADDRESS: "127.0.0.1",
       OPENCODE_AUTH: "false",
     });
@@ -48,7 +48,7 @@ describe("resolveNetworkPreset — preset matrix", () => {
     const r = resolveNetworkPreset("home-password", { opencodePassword: HOME_PASSWORD });
     expect(r.env.OP_ASSISTANT_BIND_ADDRESS).toBe("0.0.0.0");
     expect(r.env.OP_BIND_ADDRESS).toBe("127.0.0.1");
-    expect(r.env.OP_CLIENT_BIND_ADDRESS).toBe("127.0.0.1");
+    expect(r.env.OP_UI_BIND_ADDRESS).toBe("127.0.0.1");
     expect(r.env.OP_VOICE_BIND_ADDRESS).toBe("127.0.0.1");
     expect(r.env.OPENCODE_AUTH).toBe("true");
     expect(r.opencodePassword).toBe(HOME_PASSWORD);
@@ -60,18 +60,18 @@ describe("resolveNetworkPreset — preset matrix", () => {
     const r = resolveNetworkPreset("home-open");
     expect(r.env.OP_ASSISTANT_BIND_ADDRESS).toBe("0.0.0.0");
     expect(r.env.OP_BIND_ADDRESS).toBe("127.0.0.1");
-    expect(r.env.OP_CLIENT_BIND_ADDRESS).toBe("127.0.0.1");
+    expect(r.env.OP_UI_BIND_ADDRESS).toBe("127.0.0.1");
     expect(r.env.OP_VOICE_BIND_ADDRESS).toBe("127.0.0.1");
     expect(r.env.OPENCODE_AUTH).toBe("false");
     expect(r.opencodePassword).toBeUndefined();
     expect(r.assistantMdns).toBe(true);
   });
 
-  test("T4: shared-guardian exposes the guardian and hard-pins the assistant (and client/voice) to loopback", () => {
+  test("T4: shared-guardian exposes the guardian and hard-pins the assistant (and ui/voice) to loopback", () => {
     const r = resolveNetworkPreset("shared-guardian");
     expect(r.env.OP_BIND_ADDRESS).toBe("0.0.0.0");
     expect(r.env.OP_ASSISTANT_BIND_ADDRESS).toBe("127.0.0.1");
-    expect(r.env.OP_CLIENT_BIND_ADDRESS).toBe("127.0.0.1");
+    expect(r.env.OP_UI_BIND_ADDRESS).toBe("127.0.0.1");
     expect(r.env.OP_VOICE_BIND_ADDRESS).toBe("127.0.0.1");
     expect(r.env.OPENCODE_AUTH).toBe("false");
     expect(r.guardianMdns).toBe(true);
@@ -138,7 +138,7 @@ describe("detectNetworkPreset", () => {
       detectNetworkPreset({
         OP_BIND_ADDRESS: "localhost",
         OP_ASSISTANT_BIND_ADDRESS: "::1",
-        OP_CLIENT_BIND_ADDRESS: "127.0.0.1",
+        OP_UI_BIND_ADDRESS: "127.0.0.1",
         OP_VOICE_BIND_ADDRESS: "127.0.0.1",
         OPENCODE_AUTH: "false",
       }),
@@ -148,7 +148,7 @@ describe("detectNetworkPreset", () => {
       detectNetworkPreset({
         OP_BIND_ADDRESS: "127.0.0.1",
         OP_ASSISTANT_BIND_ADDRESS: "192.168.1.20",
-        OP_CLIENT_BIND_ADDRESS: "127.0.0.1",
+        OP_UI_BIND_ADDRESS: "127.0.0.1",
         OP_VOICE_BIND_ADDRESS: "127.0.0.1",
         OPENCODE_AUTH: "true",
       }),
@@ -156,12 +156,12 @@ describe("detectNetworkPreset", () => {
   });
 
   test("T11: detect returns null on drift", () => {
-    // Assistant LAN + client LAN — not a shape any preset produces.
+    // Assistant LAN + ui LAN — not a shape any preset produces.
     expect(
       detectNetworkPreset({
         OP_BIND_ADDRESS: "127.0.0.1",
         OP_ASSISTANT_BIND_ADDRESS: "0.0.0.0",
-        OP_CLIENT_BIND_ADDRESS: "0.0.0.0",
+        OP_UI_BIND_ADDRESS: "0.0.0.0",
         OP_VOICE_BIND_ADDRESS: "127.0.0.1",
         OPENCODE_AUTH: "false",
       }),
@@ -172,7 +172,7 @@ describe("detectNetworkPreset", () => {
       detectNetworkPreset({
         OP_BIND_ADDRESS: "0.0.0.0",
         OP_ASSISTANT_BIND_ADDRESS: "127.0.0.1",
-        OP_CLIENT_BIND_ADDRESS: "127.0.0.1",
+        OP_UI_BIND_ADDRESS: "127.0.0.1",
         OP_VOICE_BIND_ADDRESS: "127.0.0.1",
         OPENCODE_AUTH: "true",
       }),
@@ -184,7 +184,7 @@ describe("detectNetworkPreset", () => {
       detectNetworkPreset({
         OP_BIND_ADDRESS: "127.0.0.1",
         OP_ASSISTANT_BIND_ADDRESS: "127.0.0.1",
-        OP_CLIENT_BIND_ADDRESS: "127.0.0.1",
+        OP_UI_BIND_ADDRESS: "127.0.0.1",
         OP_VOICE_BIND_ADDRESS: "127.0.0.1",
         OPENCODE_AUTH: "false",
         OP_CHAT_BIND_ADDRESS: "0.0.0.0",
@@ -285,13 +285,13 @@ describe("collectNetworkExposureWarnings", () => {
     const drifted = {
       OP_BIND_ADDRESS: "127.0.0.1",
       OP_ASSISTANT_BIND_ADDRESS: "0.0.0.0",
-      OP_CLIENT_BIND_ADDRESS: "0.0.0.0",
+      OP_UI_BIND_ADDRESS: "0.0.0.0",
       OP_VOICE_BIND_ADDRESS: "127.0.0.1",
       OPENCODE_AUTH: "false",
     };
     const warnings = collectNetworkExposureWarnings(drifted);
     expect(warnings.some((w) => w.includes("OP_ASSISTANT_BIND_ADDRESS"))).toBe(true);
-    expect(warnings.some((w) => w.includes("OP_CLIENT_BIND_ADDRESS"))).toBe(true);
+    expect(warnings.some((w) => w.includes("OP_UI_BIND_ADDRESS"))).toBe(true);
     // No single collapsed preset line should be present for a drifted env.
     for (const preset of NETWORK_ACCESS_PRESETS) {
       expect(warnings.some((w) => w.includes(NETWORK_PRESET_LABELS[preset]))).toBe(false);
@@ -310,7 +310,7 @@ describe("collectNetworkExposureWarnings", () => {
     const unmatched = collectNetworkExposureWarnings({
       OP_BIND_ADDRESS: "127.0.0.1",
       OP_ASSISTANT_BIND_ADDRESS: "0.0.0.0",
-      OP_CLIENT_BIND_ADDRESS: "0.0.0.0",
+      OP_UI_BIND_ADDRESS: "0.0.0.0",
       OP_ALLOW_REMOTE_SETUP: "1",
     });
     expect(unmatched.some((w) => w.includes("OP_ALLOW_REMOTE_SETUP"))).toBe(true);

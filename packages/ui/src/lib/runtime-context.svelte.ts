@@ -1,11 +1,10 @@
 /**
- * Runtime context — RuntimeContext v2 (plan ui-runtime-modes-plan.md §6.2,
- * issue #509).
+ * Runtime context — RuntimeContext v2 (issue #509).
  *
  * This module is the ONLY place capability logic lives. Components call
  * `hasCapability(cap)` and nothing else — no scattered `if (features.admin)`
- * checks (plan §8.6). `hasCapability()` is UX only; APIs enforce capabilities
- * server-side (plan §8.5).
+ * checks. `hasCapability()` is UX only; APIs enforce capabilities
+ * server-side.
  *
  * The `runtimeContext` store is populated by +layout.svelte from the layout
  * server data (ServerRuntimeContext) plus the browser-detected ClientContext,
@@ -24,21 +23,21 @@ export function resolveCapabilities(
 ): Capability[] {
   const { displayMode, activeConnection } = clientCtx;
 
-  if (displayMode === 'electron') return serverCaps;
-
-  if (serverCaps.includes('host:stack:read') && displayMode === 'browser') {
-    return serverCaps.filter((c) => !isElectronOnlyCap(c));
+  // Fully-trusted surfaces get everything the server granted: Electron, and a
+  // host-capable server viewed in a regular browser (`openpalm admin`). No
+  // Electron-only capabilities are reserved yet, so the two are identical.
+  if (
+    displayMode === 'electron' ||
+    (serverCaps.includes('host:stack:read') && displayMode === 'browser')
+  ) {
+    return serverCaps;
   }
 
-  if (serverCaps.includes('connections:single')) {
-    // assistant-container: chat + assistant settings
-    return serverCaps.filter((c) => c === 'chat' || c.startsWith('assistant-settings'));
-  }
-
-  // pwa-static: connections + chat
-  let caps = serverCaps.filter(
-    (c) => c.startsWith('connections') || c === 'chat' || c === 'pwa:install',
-  );
+  // Everything else — a non-admin process (served/PWA), or a host-capable
+  // server on a standalone-pwa display where host:* is not usable: keep the
+  // base surface (chat + connections + assistant-settings + pwa:install) and
+  // drop host:* .
+  let caps = serverCaps.filter((c) => !c.startsWith('host:'));
 
   // Extension point: active connection may grant additional capabilities
   if (activeConnection?.grantedCapabilities) {
@@ -49,29 +48,23 @@ export function resolveCapabilities(
   return caps;
 }
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars -- signature fixed by plan §6.2; the parameter is consulted once Electron IPC-dependent capabilities exist
-function isElectronOnlyCap(_c: Capability): boolean {
-  return false; // reserved for future Electron IPC-dependent features
-}
-
 /**
- * Reactive runtime context. Starts at the unprivileged pwa-static baseline
+ * Reactive runtime context. Starts at the unprivileged non-admin baseline
  * with zero capabilities until +layout.svelte initializes it — capabilities
  * are opted INTO from server data, never defaulted on.
  */
 export const runtimeContext = $state<RuntimeContext>({
   version: 2,
-  hostMode: 'pwa-static',
+  admin: false,
   serverCapabilities: [],
   publicBaseUrl: '',
   uiVersion: '',
   skeletonVersion: '',
-  activeConnectionMode: 'multi',
   routes: {},
   security: {
     hostAdminLoopbackOnly: true,
     requiresHttpsForRemoteConnections: true,
-    csrfMode: 'loopback-origin',
+    csrfMode: 'same-site',
   },
   clientContext: { displayMode: 'browser' },
   effectiveCapabilities: [],
@@ -99,7 +92,7 @@ export function initializeRuntimeContext(
 
 /**
  * Populate ONLY the server half of the store (everything ServerRuntimeContext
- * carries — capabilities, routes, hostMode, security, versions) and re-derive
+ * carries — capabilities, routes, admin, security, versions) and re-derive
  * `effectiveCapabilities` against whatever clientContext is already in the
  * store (the 'browser' baseline until the client half runs).
  *
@@ -123,7 +116,7 @@ export function initializeRuntimeContext(
  * field (`event.url.origin`), and during SSR this store is process-global
  * under adapter-node — writing it here would leak one request's Host-derived
  * origin to every later reader (PR #562 review). SSR chrome only needs
- * capabilities/hostMode/routes; the browser writes publicBaseUrl per-tab via
+ * capabilities/admin/routes; the browser writes publicBaseUrl per-tab via
  * `initializeRuntimeContext` in `onMount`.
  */
 export function initializeServerRuntimeContext(serverCtx: ServerRuntimeContext): void {

@@ -6,7 +6,7 @@ name: Release
 # its own slice. A partial unit will silently leave the other units behind (e.g.
 # `platform` does NOT touch the portal image or the discord/slack npm adapters).
 # For a complete, coordinated release of the whole platform, use `all`.
-#   platform  — @openpalm/lib + openpalm (CLI) + @openpalm/ui + @openpalm/client (npm) +
+#   platform  — @openpalm/lib + openpalm (CLI) + @openpalm/ui (npm) +
 #               admin-tools + CLI native binaries + optional Electron + git tag + GitHub release
 #               (add include_images=true to also rebuild guardian + assistant images).
 #               PARTIAL: no portal image, no portal npm, no voice.
@@ -26,7 +26,7 @@ name: Release
 #               Always pass version explicitly (the version the existing npm packages are at). PARTIAL.
 #   all       — COMPLETE coordinated release. Publishes EVERY unit at one version,
 #               flag-free (no include_images / include_electron needed):
-#                 npm: @openpalm/{lib,ui,client,guardian,skeleton} + openpalm (CLI)
+#                 npm: @openpalm/{lib,ui,guardian,skeleton} + openpalm (CLI)
 #                      + @openpalm/{discord,slack}-portal
 #                 images: openpalm/{assistant,guardian,portal}  (+ :latest when stable)
 #                 electron installers (mac/linux/win) + CLI native binaries
@@ -163,8 +163,8 @@ jobs:
             // platform release can never compute a next version at or below an
             // already-published skeleton/guardian, which npm rejects.
             const npmPackages = {
-              platform: ['@openpalm/lib', 'openpalm', '@openpalm/ui', '@openpalm/client', '@openpalm/skeleton', '@openpalm/guardian'],
-              all: ['@openpalm/lib', 'openpalm', '@openpalm/ui', '@openpalm/client', '@openpalm/skeleton', '@openpalm/guardian'],
+              platform: ['@openpalm/lib', 'openpalm', '@openpalm/ui', '@openpalm/skeleton', '@openpalm/guardian'],
+              all: ['@openpalm/lib', 'openpalm', '@openpalm/ui', '@openpalm/skeleton', '@openpalm/guardian'],
               guardian: ['@openpalm/guardian', '@openpalm/skeleton'],
             };
             const packages = npmPackages[unit] || [];
@@ -244,13 +244,9 @@ jobs:
         if: inputs.unit == 'platform' || inputs.unit == 'all'
         run: |
           bun install --frozen-lockfile
-          # The client purity gate greps the BUILT bundle (packages/client/tests/
-          # purity.test.ts fails when build/ is absent), so build before bun run test.
-          bun run client:build
           bun run test
           bun run ui:check
           bun run ui-kit:check
-          bun run client:check
           bun run --cwd packages/ui test:browsers
           bun run ui:test:unit
           bun run electron:test
@@ -331,7 +327,7 @@ jobs:
   # ── npm layer ─────────────────────────────────────────────────────────────────
   # skeleton + guardian: published for unit=guardian (thin-host needs both at runtime)
   #                      and unit=platform + unit=all (full coordinated release)
-  # lib + cli + ui + client: platform + all only (guardian npm pkg has no lib dep)
+  # lib + cli + ui: platform + all only (guardian npm pkg has no lib dep)
   # NOTE: guardian and skeleton are published independently of lib to avoid
   # blocking the platform regression guard. lib is platform-managed.
   npm-skeleton:
@@ -412,32 +408,10 @@ jobs:
       exact-version: true
       dry-run: ${{ inputs.dry_run }}
 
-  # Client app (@openpalm/client): exact-pin delivered like @openpalm/ui — the
-  # assistant container installs @openpalm/client@<platform version> at startup
-  # (ui-runtime-modes-plan.md §1 exact-pin table, Phase 5 item 5). needs-build
-  # compiles the adapter-static bundle; @openpalm/ui-kit is inlined from the
-  # workspace at build time (raw-source, NEVER published). Unlike npm-ui there
-  # is no npm-lib ordering dependency: the client never bundles @openpalm/lib
-  # (§8.10 purity rule, enforced by packages/client/tests/purity.test.ts in CI).
-  npm-client:
-    name: npm @openpalm/client
-    needs: [compute-version, bump]
-    if: always() && needs.bump.result == 'success' && (inputs.unit == 'platform' || inputs.unit == 'all')
-    uses: ./.github/workflows/publish-npm-package.yml
-    secrets: inherit
-    with:
-      package-dir: packages/client
-      package-name: '@openpalm/client'
-      needs-build: true
-      version: ${{ needs.compute-version.outputs.new_version }}
-      ref: ${{ github.ref_name }}
-      exact-version: true
-      dry-run: ${{ inputs.dry_run }}
-
   # Portal SDK: shared base class + OpenCode client the discord/slack adapters
   # depend on via `"@openpalm/portal-sdk": "workspace:*"` in `dependencies`
   # (NOT devDependencies — this is a real runtime dependency, unlike ui-kit's
-  # workspace:* into ui/client). `bun pm pack` resolves workspace:* to the
+  # workspace:* into ui). `bun pm pack` resolves workspace:* to the
   # on-disk version of packages/portal-sdk at pack time, so portal-sdk MUST be
   # published in lockstep with the adapters, and published FIRST (C1, review
   # 2026-07-10: portal-sdk was never added to the DAG, leaving the published
@@ -613,19 +587,17 @@ jobs:
   # unit=assistant is IMAGE-ONLY: its compute-version anchor is
   # containers/assistant/VERSION, a version scheme entirely independent of the
   # platform npm version — bumping it produces e.g. "0.13.1" whether or not
-  # @openpalm/client@0.13.1 / @openpalm/skeleton@0.13.1 have ever been
-  # published. Pre-I1-fix, that unit-local anchor was baked directly into the
-  # image as PLATFORM_VERSION, which the entrypoint uses for
-  # `npm install @openpalm/client@$PLATFORM_VERSION` at every container boot —
-  # a 404 there bricks the chat surface silently (I1, review 2026-07-10).
-  # npm-client/npm-skeleton ordering + the preflight below close that gap.
+  # @openpalm/skeleton@0.13.1 has ever been published. Pre-I1-fix, that
+  # unit-local anchor was baked directly into the image as PLATFORM_VERSION,
+  # which the entrypoint uses for `npm install @openpalm/skeleton@$PLATFORM_VERSION`
+  # at every container boot — a 404 there bricks the stack silently (I1, review
+  # 2026-07-10). npm-skeleton ordering + the preflight below close that gap.
   docker-assistant:
     name: Docker openpalm/assistant
-    needs: [compute-version, bump, npm-client, npm-skeleton]
+    needs: [compute-version, bump, npm-skeleton]
     if: |
       always() &&
       needs.bump.result == 'success' &&
-      needs.npm-client.result != 'failure' &&
       needs.npm-skeleton.result != 'failure' &&
       (inputs.unit == 'assistant' || inputs.unit == 'images' || inputs.unit == 'all' || (inputs.unit == 'platform' && inputs.include_images))
     runs-on: ubuntu-latest
@@ -657,7 +629,7 @@ jobs:
           tags: |
             type=raw,value=latest,enable=${{ needs.compute-version.outputs.prerelease == 'false' }}
             type=raw,value=${{ needs.compute-version.outputs.new_version }}
-      - name: Resolve platform version for baked client/skeleton (I1)
+      - name: Resolve platform version for baked skeleton (I1)
         id: platform_version
         env:
           UNIT: ${{ inputs.unit }}
@@ -674,16 +646,16 @@ jobs:
             V="${ANCHOR_VERSION}"
           fi
           echo "platform_version=${V}" >> "$GITHUB_OUTPUT"
-      - name: Preflight — baked client/skeleton must exist on npm (I1)
+      - name: Preflight — baked skeleton must exist on npm (I1)
         if: ${{ !inputs.dry_run }}
         run: |
           V="${{ steps.platform_version.outputs.platform_version }}"
           fail=0
-          for PKG in @openpalm/client @openpalm/skeleton; do
+          for PKG in @openpalm/skeleton; do
             if npm view "${PKG}@${V}" version >/dev/null 2>&1; then
               echo "OK: ${PKG}@${V} is published"
             else
-              echo "::error::${PKG}@${V} is not published on npm — building this image would bake a PLATFORM_VERSION with no installable chat surface on boot (I1). Publish it first (unit=platform/all) or pass an explicit --version matching a published release." >&2
+              echo "::error::${PKG}@${V} is not published on npm — building this image would bake a PLATFORM_VERSION with no installable skeleton on boot (I1). Publish it first (unit=platform/all) or pass an explicit --version matching a published release." >&2
               fail=1
             fi
           done
@@ -692,11 +664,10 @@ jobs:
           fi
       # PLATFORM_VERSION is empty on dry-run (rather than the freshly-bumped,
       # never-published-yet version): the preflight above is skipped in
-      # dry-run too, so baking the raw version here would still hit
-      # containers/assistant/Dockerfile's unconditional `npm install
-      # @openpalm/client@$PLATFORM_VERSION` and fail with an opaque E404 (F13
-      # follow-up, review 2026-07-11). An unset PLATFORM_VERSION is a
-      # documented no-op for that Dockerfile stage.
+      # dry-run too, so baking the raw version here would still hit the
+      # assistant entrypoint's `npm install @openpalm/skeleton@$PLATFORM_VERSION`
+      # and fail with an opaque E404 (F13 follow-up, review 2026-07-11). An unset
+      # PLATFORM_VERSION is a documented no-op for that entrypoint step.
       - name: Assistant image smoke (amd64 only)
         run: |
           docker build -f containers/assistant/Dockerfile \
@@ -772,7 +743,7 @@ jobs:
   # Always:     unit=all
   electron:
     name: Electron (${{ matrix.platform }})
-    needs: [compute-version, bump, npm-skeleton, npm-lib, npm-cli, npm-ui, npm-guardian, npm-client]
+    needs: [compute-version, bump, npm-skeleton, npm-lib, npm-cli, npm-ui, npm-guardian]
     if: |
       always() &&
       needs.bump.result == 'success' &&
@@ -784,7 +755,6 @@ jobs:
           needs.npm-cli.result == 'success' &&
           needs.npm-ui.result == 'success' &&
           needs.npm-guardian.result == 'success' &&
-          needs.npm-client.result == 'success' &&
           (inputs.unit == 'all' || (inputs.unit == 'platform' && (inputs.include_electron == true || inputs.bump != 'patch')))
         )
       )
@@ -815,12 +785,6 @@ jobs:
         run: bun install --frozen-lockfile
       - name: Build UI
         run: bun run ui:build
-      - name: Build client
-        # Packages the @openpalm/client static bundle into
-        # packages/client/build so electron-builder.yml's extraResources can
-        # bundle it (C2) — resolveLocalClientBuild()'s Electron strategy and
-        # main.ts's serve-script resolution both depend on it being present.
-        run: bun run client:build
       - name: Bundle Electron app
         run: bun run --cwd packages/electron bundle
       - name: Build Electron installer
@@ -848,7 +812,6 @@ jobs:
       - npm-guardian
       - npm-cli
       - npm-ui
-      - npm-client
       - npm-portal-sdk
       - npm-discord-portal
       - npm-slack-portal

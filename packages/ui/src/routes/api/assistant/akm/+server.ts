@@ -2,11 +2,10 @@
  * GET  /api/assistant/akm  — Return current akm config from OP_HOME/config/akm/config.json
  * PATCH /api/assistant/akm — Update config fields aligned with AKM 0.8.0 schema
  *
- * Assistant-SCOPED AKM configuration (plan ui-runtime-modes-plan.md Phase 4
- * steps 2+3, §6.4): config/akm/config.json is a read/write mount of the
- * assistant container (plan §6.9), so assistant-container mode CAN edit it.
- * Guarded by the assistant-settings capabilities in addition to requireAdmin;
- * pwa-static is refused with 403 even for a valid admin session (plan §8.5).
+ * Assistant-SCOPED AKM configuration: config/akm/config.json holds the assistant's AKM settings.
+ * Assistant settings are a BASE capability (every process), so the browser can
+ * read/write this config regardless of admin capability; guarded by the
+ * assistant-settings capabilities in addition to requireAdmin.
  * Host-LEVEL AKM (host key sharing) stays at /api/host/akm/host-sharing.
  */
 import type { RequestHandler } from './$types';

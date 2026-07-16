@@ -133,12 +133,3 @@ export function distTagForVersion(version: string | null | undefined): 'latest' 
   return isPrerelease(version) ? 'next' : 'latest';
 }
 
-/**
- * User-facing presentation form: drop the leading `v` so the UI shows one
- * canonical spelling regardless of whether the value arrived as a Docker tag or
- * an npm version. Non-semver values are returned trimmed but otherwise untouched
- * (e.g. a moving `latest`/`dev` tag).
- */
-export function formatForDisplay(version: string | null | undefined): string {
-  return normalizeVersion(version);
-}

@@ -131,12 +131,12 @@ export const handle: Handle = async ({ event, resolve }) => {
     (event.request.headers.get("accept") ?? "").includes("text/html");
 
   // Capability gate: the /host control plane only renders where the server
-  // advertises the host:* capability set (plan Phase 4 step 4 — the old
+  // advertises the host:* capability set (the old
   // admin feature-flag gate, re-expressed as a capability check; the SECURITY
   // boundary stays server-side in every /api/host/* route via
   // requireCapability). Redirect to /chat so the user lands somewhere useful.
   // /admin/* is deliberately NOT gated or aliased: the tree is deleted, so
-  // requests fall through to the router's 404 (plan §6.4 "No /admin alias").
+  // requests fall through to the router's 404 ("No /admin alias").
   if (
     (path === '/host' || path.startsWith('/host/')) &&
     !runtimeContext.serverCapabilities.includes('host:stack:read')
@@ -177,8 +177,8 @@ export const handle: Handle = async ({ event, resolve }) => {
     }
   }
 
-  // ── Launch routing: document navigations land where resolveLanding() says
-  // (plan ui-runtime-modes-plan.md §6.5, Phase 3). Fires BEFORE the auth guard
+  // ── Launch routing: document navigations land where resolveLanding() says.
+  // Fires BEFORE the auth guard
   // so `/` and stale `/splash` bookmarks never bounce through /login first.
   // The /splash ROUTE is gone (Phase 3 split it into /attention + the §6.5
   // landings); the /splash PATH keeps redirecting here for this release.
@@ -203,7 +203,7 @@ export const handle: Handle = async ({ event, resolve }) => {
     // '/host' is the admin surface itself; '/admin' stays exempt so requests
     // into the dead namespace fall through to the router 404 instead of
     // bouncing to the landing (no alias, no gate — plan Phase 4 step 1).
-    const exempt = path.startsWith('/api/') || path.startsWith('/proxy/') || path.startsWith('/login')
+    const exempt = path.startsWith('/api/') || path.startsWith('/login')
       || path.startsWith('/health') || path.startsWith('/guardian/health') || path.startsWith('/host')
       || path.startsWith('/admin') || usageExempt;
     if (path === '/' || (path !== landingPath && !exempt)) {

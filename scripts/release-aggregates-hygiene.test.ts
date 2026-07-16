@@ -1,19 +1,15 @@
-// P5e (#555) — STATIC/CONFIG repo-hygiene tests for release integration
-// (ui-runtime-modes-plan.md Phase 5 items 5-6, §8 invariants).
+// P5e (#555) — STATIC/CONFIG repo-hygiene tests for release integration.
 //
-// Asserts the ROOT package.json check/test aggregates reference the two new
-// UI packages (packages/client, packages/ui-kit), that packages/client is
-// npm-publishable the same way @openpalm/ui is (exact-pin delivered), that
-// packages/ui-kit stays a private raw-source package, and that the client
-// manifest is a member of the platform stamp/version-sync sets.
+// Asserts the ROOT package.json check/test aggregates reference the shared UI
+// package (packages/ui-kit), that packages/ui-kit stays a private raw-source
+// package, and that the ui-kit manifest is a member of the platform
+// stamp/version-sync sets.
 //
 // Red/green map (test-first):
-//   - check aggregate + client workspace scripts        -> GREEN (characterization — wired in P5b)
+//   - check aggregate covers ui + ui-kit                 -> GREEN (characterization)
 //   - test aggregate runs packages/ui-kit               -> GREEN (characterization)
-//   - test aggregate runs packages/client               -> RED until P5e item 2
-//   - client manifest publishable like @openpalm/ui     -> RED until P5e item 1
 //   - ui-kit manifest stays private                     -> GREEN (characterization — must stay)
-//   - platform stamp/version-sync membership            -> RED until P5e item 1
+//   - platform stamp/version-sync membership            -> GREEN
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -36,54 +32,17 @@ function readJson(relPath: string): Manifest {
 const rootPkg = readJson("package.json");
 const rootScripts = rootPkg.scripts ?? {};
 
-describe("P5e — root check aggregate covers the new packages (characterization — green)", () => {
-	test("`bun run check` includes ui:check + ui-kit:check + client:check", () => {
+describe("P5e — root check aggregate covers the UI packages (characterization — green)", () => {
+	test("`bun run check` includes ui:check + ui-kit:check", () => {
 		const check = rootScripts.check ?? "";
 		expect(check).toContain("ui:check");
 		expect(check).toContain("ui-kit:check");
-		expect(check).toContain("client:check");
-	});
-
-	test("client workspace scripts exist at the root and point at packages/client", () => {
-		expect(rootScripts["client:check"] ?? "").toContain("packages/client");
-		expect(rootScripts["client:build"] ?? "").toContain("packages/client");
-		expect(rootScripts["client:test"] ?? "").toContain("packages/client");
 	});
 });
 
-describe("P5e — root test aggregate runs the new packages' test dirs", () => {
+describe("P5e — root test aggregate runs the shared UI package test dir", () => {
 	test("`bun run test` runs packages/ui-kit (characterization — green)", () => {
 		expect(rootScripts.test ?? "").toContain("packages/ui-kit");
-	});
-
-	test("`bun run test` runs packages/client (RED until P5e item 2)", () => {
-		// Either the dir joins the `bun test` path list directly, or the aggregate
-		// chains the client:test workspace script — both satisfy the gate.
-		expect(rootScripts.test ?? "").toMatch(/packages\/client\b|client:test/);
-	});
-});
-
-describe("P5e — packages/client manifest is publishable like @openpalm/ui (RED until P5e item 1)", () => {
-	const client = readJson("packages/client/package.json");
-
-	test("named @openpalm/client and NOT private (npm refuses to publish private packages)", () => {
-		expect(client.name).toBe("@openpalm/client");
-		expect(client.private).not.toBe(true);
-	});
-
-	test("scoped package declares publishConfig.access public (mirrors @openpalm/ui)", () => {
-		expect(client.publishConfig?.access).toBe("public");
-	});
-
-	test("ships the built bundle via files: ['build', ...]", () => {
-		expect(client.files ?? []).toContain("build");
-	});
-
-	test("version stays in lockstep with the root platform version (exact-pin table)", () => {
-		// The assistant container installs @openpalm/client@$OP_CLIENT_VERSION
-		// with PLATFORM_VERSION as the fallback (P5d) — the client MUST be
-		// stamped at the platform version, exactly like @openpalm/ui.
-		expect(client.version).toBe(rootPkg.version);
 	});
 });
 
@@ -122,23 +81,5 @@ describe("C4 — packages/ui-kit belongs to a release unit (RED until C4 fix)", 
 	test("packages/ui-kit stays private (this fix wires the unit membership only — it does not publish ui-kit)", () => {
 		const uiKit = readJson("packages/ui-kit/package.json");
 		expect(uiKit.private).toBe(true);
-	});
-});
-
-describe("P5e — platform stamp/version-sync membership for packages/client (RED until P5e item 1)", () => {
-	test(".github/release-package-groups.json platform unit lists packages/client/package.json", () => {
-		// CI's "Validate per-unit version sync" step reads this file; membership
-		// is what enforces client == root version on every PR.
-		const groups = JSON.parse(
-			readFileSync(join(ROOT, ".github/release-package-groups.json"), "utf-8"),
-		) as { units: Record<string, string[]> };
-		expect(groups.units.platform).toContain("packages/client/package.json");
-	});
-
-	test("scripts/bump-unit.mjs stamps packages/client/package.json with the platform unit", () => {
-		// Mirrors packages/ui/package.json in the platform stamp list so a normal
-		// (non-override) release bumps the client with the rest of the unit.
-		const bumpUnit = readFileSync(join(ROOT, "scripts/bump-unit.mjs"), "utf-8");
-		expect(bumpUnit).toContain("packages/client/package.json");
 	});
 });

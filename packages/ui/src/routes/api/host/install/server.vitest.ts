@@ -58,7 +58,7 @@ function makePostEvent(token = 'admin-token'): Parameters<typeof POST>[0] {
 beforeEach(() => {
   // Phase 4: /api/host + /api/assistant endpoints are capability-guarded;
   // run this suite as a host-capable mode.
-  process.env.OP_UI_HOST_MODE = 'host-ui';
+  process.env.OP_ENABLE_ADMIN = '1';
   resetState('admin-token');
   applyInstallMock.mockReset();
   applyStackMock.mockReset();
@@ -72,7 +72,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  delete process.env.OP_UI_HOST_MODE;
+  delete process.env.OP_ENABLE_ADMIN;
   vi.clearAllMocks();
   // The lock-contention test writes a foreign-held .install.lock into the
   // (test-shared) dataDir; remove it so it can't wedge later tests.

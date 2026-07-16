@@ -33,8 +33,8 @@ vi.mock('@openpalm/lib', async (orig) => {
     },
   };
 });
-vi.mock('$lib/server/endpoints.js', async (orig) => ({
-  ...(await orig<typeof import('$lib/server/endpoints.js')>()),
+vi.mock('$lib/server/opencode-target.js', async (orig) => ({
+  ...(await orig<typeof import('$lib/server/opencode-target.js')>()),
   listRemoteStatuses: vi.fn(async () => []),
 }));
 
@@ -116,7 +116,7 @@ describe('hooks.server — setup-state freshness + launch-cache reuse', () => {
 
     // Repeated requests within the cache window must not re-invoke it.
     await handle({ event: makeEvent('/api/host/health'), resolve });
-    await handle({ event: makeEvent('/proxy/assistant/health'), resolve });
+    await handle({ event: makeEvent('/api/host/health'), resolve });
     expect(classifyLocalInstallCalls).toBe(afterFirst);
 
     // Busting the shared cache (as the 5s expiry eventually does) allows a

@@ -21,6 +21,7 @@ import { screenContent, type ContentSignal } from './content-screen.ts';
 import { createSession, deleteSession, sendMessage } from './assistant-client.ts';
 import type { AssistantClientOptions } from './assistant-client.ts';
 import { createLogger } from './logger.ts';
+import { readPositiveIntEnv } from './config.ts';
 
 const logger = createLogger("guardian-moderation");
 
@@ -42,8 +43,8 @@ export function contentValidationEnabled(): boolean {
   return !(v === "0" || v === "false" || v === "no" || v === "off");
 }
 const MODERATOR_URL = Bun.env.GUARDIAN_MODERATION_URL ?? "http://127.0.0.1:4097";
-const TIMEOUT_MS = Number(Bun.env.GUARDIAN_MODERATION_TIMEOUT_MS ?? 4_000);
-const ESCALATE_THRESHOLD = Number(Bun.env.GUARDIAN_MODERATION_THRESHOLD ?? 3);
+const TIMEOUT_MS = readPositiveIntEnv('GUARDIAN_MODERATION_TIMEOUT_MS', 4_000);
+const ESCALATE_THRESHOLD = readPositiveIntEnv('GUARDIAN_MODERATION_THRESHOLD', 3);
 
 // ── Types ───────────────────────────────────────────────────────────────────
 

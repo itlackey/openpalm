@@ -29,8 +29,8 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { resetState } from '$lib/server/test-helpers.js';
 
-vi.mock('$lib/server/endpoints.js', async (orig) => ({
-  ...(await orig<typeof import('$lib/server/endpoints.js')>()),
+vi.mock('$lib/server/opencode-target.js', async (orig) => ({
+  ...(await orig<typeof import('$lib/server/opencode-target.js')>()),
   listRemoteStatuses: vi.fn(async () => []),
 }));
 vi.mock('@openpalm/lib', async (orig) => ({
@@ -73,7 +73,7 @@ describe('GET /api/runtime/landing — public landing-resolver endpoint (J2/J3)'
   beforeEach(() => {
     prevHome = process.env.OP_HOME;
     prevAdmin = process.env.OP_ENABLE_ADMIN;
-    // host-ui mode: host:setup is in the server capabilities, so the host
+    // admin mode: host:setup is in the server capabilities, so the host
     // rows of the §6.5 matrix apply — the ones Electron/CLI actually need.
     process.env.OP_ENABLE_ADMIN = '1';
     home = mkdtempSync(join(tmpdir(), 'op-runtime-landing-'));

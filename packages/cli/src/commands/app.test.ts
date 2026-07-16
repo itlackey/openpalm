@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test';
+import { afterEach, describe, expect, it, mock } from 'bun:test';
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
@@ -6,41 +6,8 @@ import { fileURLToPath } from 'node:url';
 import { runCommand, type CommandDef } from 'citty';
 import * as realLib from '../../../lib/src/index.ts';
 
-beforeEach(() => {
-  delete process.env.OP_CLIENT_PORT;
-  delete process.env.OP_HOST_CLIENT_PORT;
-});
-
-afterEach(() => {
-  delete process.env.OP_CLIENT_PORT;
-  delete process.env.OP_HOST_CLIENT_PORT;
-});
-
 describe('openpalm app', () => {
-  it('resolves the stable localhost client origin on the default port', async () => {
-    const { resolveClientAppUrl } = await import('@openpalm/lib');
-
-    expect(resolveClientAppUrl()).toBe('http://127.0.0.1:3890/chat');
-  });
-
-  it('uses OP_HOST_CLIENT_PORT and ignores OP_CLIENT_PORT collisions', async () => {
-    process.env.OP_CLIENT_PORT = '4810';
-    process.env.OP_HOST_CLIENT_PORT = '4890';
-    const { resolveClientAppPort, resolveClientAppUrl } = await import('@openpalm/lib');
-
-    expect(resolveClientAppPort()).toBe(4890);
-    expect(resolveClientAppUrl()).toBe('http://127.0.0.1:4890/chat');
-  });
-
-  it('keeps the stable localhost origin when only OP_CLIENT_PORT is set', async () => {
-    process.env.OP_CLIENT_PORT = '4810';
-    const { resolveClientAppPort, resolveClientAppUrl } = await import('@openpalm/lib');
-
-    expect(resolveClientAppPort()).toBe(3890);
-    expect(resolveClientAppUrl()).toBe('http://127.0.0.1:3890/chat');
-  });
-
-  it('routes through the UI/client supervisor so the localhost app is served before opening', async () => {
+  it('routes through the UI supervisor so the localhost app is served before opening', async () => {
     const calls: UIServerOptions[] = [];
     const mod = await import('./app.ts');
 
@@ -60,7 +27,7 @@ describe('openpalm app', () => {
   });
 });
 
-// ── #486 stack-less client entry — `openpalm app` on a not-installed OP_HOME ──
+// ── #486 stack-less app entry — `openpalm app` on a not-installed OP_HOME ──
 //
 // D1: startUIServer's ensureValidState()/resolveServeState() ternary must
 // tolerate the explicit uninstalled-app entry, not just `adminHostUi`. Harness
@@ -86,14 +53,10 @@ const originalWarn = console.warn;
 const SAVED_ENV_KEYS = [
   'OP_HOME',
   'OP_ENABLE_ADMIN',
-  'OP_UI_HOST_MODE',
   'OP_ALLOW_REMOTE_SETUP',
   'OP_HOST_UI_PORT',
   'OPENPALM_REPO_ROOT',
   'OPENPALM_SKELETON_DIR',
-  'OP_CLIENT_PORT',
-  'OP_HOST_CLIENT_PORT',
-  'OP_CLIENT_DEFAULT_ASSISTANT_URL',
   'OP_ASSISTANT_PORT',
 ] as const;
 const savedEnv2: Record<string, string | undefined> = {};
@@ -209,12 +172,8 @@ function seedServeHome(): string {
   writeFileSync(join(home, 'data', 'ui', 'index.js'), '// stub adapter-node entry\n');
   process.env.OP_HOME = home;
   delete process.env.OP_ENABLE_ADMIN;
-  delete process.env.OP_UI_HOST_MODE;
   delete process.env.OP_ALLOW_REMOTE_SETUP;
   delete process.env.OPENPALM_SKELETON_DIR;
-  delete process.env.OP_CLIENT_PORT;
-  delete process.env.OP_HOST_CLIENT_PORT;
-  delete process.env.OP_CLIENT_DEFAULT_ASSISTANT_URL;
   delete process.env.OP_ASSISTANT_PORT;
   process.env.OPENPALM_REPO_ROOT = repoRoot;
   globalThis.fetch = (async (input: string | URL | Request) => {
@@ -264,9 +223,9 @@ async function runApp(): Promise<{ error?: unknown }> {
   return state;
 }
 
-describe('openpalm app on a not-installed OP_HOME (#486 stack-less client entry)', () => {
+describe('openpalm app on a not-installed OP_HOME (#486 stack-less app entry)', () => {
   it(
-    'serves the UI child in pwa-static mode instead of throwing',
+    'serves the UI child instead of throwing',
     async () => {
       seedServeHome();
       process.env.OP_HOST_UI_PORT = '4711';
@@ -311,7 +270,7 @@ describe('openpalm app on a not-installed OP_HOME (#486 stack-less client entry)
   );
 });
 
-describe('bare serve keeps requiring an install (tolerance is scoped to the client target)', () => {
+describe('bare serve keeps requiring an install (tolerance is scoped to the uninstalled app entry)', () => {
   it(
     'startUIServer({ open: false }) on an empty OP_HOME rejects/throws with the install-first error',
     async () => {

@@ -61,38 +61,6 @@ function portalNamesFromCompose(composePath: string): string[] {
 // ── Portal Discovery ──────────────────────────────────────────────────
 
 /**
- * Check if a compose file defines a portal service (has a PORTAL_NAME environment variable).
- * Compose-derived: we parse the actual compose content rather than rely on
- * filename or directory naming conventions. (GUARDIAN_URL used to be a
- * fallback signal — it's been removed since the portal adapters now hardcode the
- * in-network guardian URL.)
- */
-export function isPortalAddon(composePath: string): boolean {
-  try {
-    const content = readFileSync(composePath, "utf-8");
-    const doc = yamlParse(content);
-    if (typeof doc !== "object" || doc === null) return false;
-    const services = (doc as Record<string, unknown>).services;
-    if (typeof services !== "object" || services === null) return false;
-
-    for (const svcDef of Object.values(services as Record<string, unknown>)) {
-      if (typeof svcDef !== "object" || svcDef === null) continue;
-      const env = (svcDef as Record<string, unknown>).environment;
-      if (typeof env === "object" && env !== null) {
-        if (Array.isArray(env)) {
-          if (env.some((e: unknown) => typeof e === 'string' && e.startsWith(`${PORTAL_MARKER_KEY}=`))) return true;
-        } else {
-          if (PORTAL_MARKER_KEY in (env as Record<string, unknown>)) return true;
-        }
-      }
-    }
-    return false;
-  } catch {
-    return false;
-  }
-}
-
-/**
  * Discover installed portals from explicit first-party addon state plus
  * custom stack/addons/ overlays.
  * A portal addon is identified by compose-derived truth: its compose.yml

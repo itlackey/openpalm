@@ -17,10 +17,6 @@ const MCP_LABEL = 'guardian-mcp';
 const MCP_TOKEN_FILE = Bun.env.GUARDIAN_MCP_TOKEN_FILE ?? '';
 // MCP self-dials the guardian's plain-HTTP direct listener on DIRECT_PORT.
 const directBaseUrl = (): string => `http://127.0.0.1:${DIRECT_PORT}`;
-/** Test-only: the effective self-dial base URL. */
-export function _mcpSelfDialBaseUrl(): string {
-  return directBaseUrl();
-}
 
 type JsonObject = Record<string, unknown>;
 
