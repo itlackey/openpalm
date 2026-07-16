@@ -300,11 +300,27 @@ function disableAddonByName(homeDir: string, name: string): MutationResult {
 }
 
 /**
- * Env keys that only a now-removed built-in addon ever wrote. Stripped alongside
- * the addon id so upgraded installs don't carry the stale value forever.
- * `ssh` (OPENCODE_ENABLE_SSH) is the only removed addon that shipped an env key.
+ * Retired env keys stripped from both env files on every reconcile so upgraded
+ * installs don't carry stale values forever:
+ *  - OPENCODE_ENABLE_SSH — written by the removed `ssh` addon.
+ *  - OP_TTS_* / OP_STT_* — the pre-split host-side voice provider config
+ *    (written by the retired writeVoiceVars / admin Voice tab). TTS/STT
+ *    provider choice is a client-owned browser setting now; nothing reads
+ *    these keys anymore.
  */
-const REMOVED_ADDON_ENV_KEYS = ['OPENCODE_ENABLE_SSH'] as const;
+const RETIRED_ENV_KEYS = [
+  'OPENCODE_ENABLE_SSH',
+  'OP_TTS_ENGINE',
+  'OP_TTS_PROVIDER',
+  'OP_TTS_BASE_URL',
+  'OP_TTS_MODEL',
+  'OP_TTS_VOICE',
+  'OP_STT_ENGINE',
+  'OP_STT_PROVIDER',
+  'OP_STT_BASE_URL',
+  'OP_STT_MODEL',
+  'OP_STT_LANGUAGE',
+] as const;
 
 /** Remove a key from an env file if present. Returns whether the file changed. */
 function removeEnvKeyFromFile(path: string, key: string): boolean {
@@ -316,11 +332,11 @@ function removeEnvKeyFromFile(path: string, key: string): boolean {
   return true;
 }
 
-/** Strip every removed-addon env key from both env files. Returns the keys removed. */
-function removeRemovedAddonEnvKeys(homeDir: string): string[] {
+/** Strip every retired env key from both env files. Returns the keys removed. */
+function removeRetiredEnvKeys(homeDir: string): string[] {
   const removed = new Set<string>();
   for (const path of [stateEnvFile(homeDir), legacyStackEnvFile(homeDir)]) {
-    for (const key of REMOVED_ADDON_ENV_KEYS) {
+    for (const key of RETIRED_ENV_KEYS) {
       if (removeEnvKeyFromFile(path, key)) removed.add(key);
     }
   }
@@ -331,8 +347,8 @@ function removeRemovedAddonEnvKeys(homeDir: string): string[] {
  * One-time cleanup of addon state left behind by addons that were removed from
  * BUILTIN_ADDON_IDS (currently `ssh`). On an upgraded install OP_ENABLED_ADDONS
  * can still list a removed addon — `resolveActiveProfiles` then emits its stale
- * `--profile addon.<id>` on every compose call — and a prior `openpalm addon
- * enable ssh` may have left OPENCODE_ENABLE_SSH in the env.
+ * `--profile addon.<id>` on every compose call — plus retired env keys (see
+ * RETIRED_ENV_KEYS) left by older releases.
  *
  * Idempotent and skip-if-absent: strips any OP_ENABLED_ADDONS entry that is no
  * longer built in and drops the removed-addon env keys. A no-op that writes
@@ -350,7 +366,7 @@ export function pruneRemovedAddonState(
     setEnabledAddonState(homeDir, removedAddons, false);
   }
 
-  const removedEnvKeys = removeRemovedAddonEnvKeys(homeDir);
+  const removedEnvKeys = removeRetiredEnvKeys(homeDir);
 
   return {
     changed: removedAddons.length > 0 || removedEnvKeys.length > 0,
@@ -418,7 +434,7 @@ export function setAddonEnabled(homeDir: string, name: string, enabled: boolean,
       return { ok: true, enabled: false, changed: false, services: [] };
     }
     setEnabledAddonState(homeDir, name, false);
-    removeRemovedAddonEnvKeys(homeDir);
+    removeRetiredEnvKeys(homeDir);
     return { ok: true, enabled: false, changed: true, services: [] };
   }
 

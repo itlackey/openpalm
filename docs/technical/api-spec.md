@@ -346,6 +346,26 @@ Error responses:
 
 ## Addon Management
 
+### `GET /voice/:path` / `POST /voice/:path`
+
+Transparent same-origin pass-through to the local voice container's
+OpenAI-compatible surface — the transport behind the chat client's
+"OpenPalm Voice" provider (advertised as `voice.url = '/voice'` in the
+runtime handshake). Method, path, query, body, and content-type forward 1:1;
+no provider configuration lives here.
+
+Auth: session cookie (`requireAdmin` — an ordinary logged-in session; no
+`host:*` capability, using voice is not a privileged host operation).
+
+Allowed paths: `v1/audio/speech`, `v1/audio/transcriptions`, `v1/models`,
+`health`. Anything else is `404 not_found`.
+
+Error responses:
+
+- `503 voice_unavailable` -- The process has no local voice service (not an
+  admin-capable process, or the voice addon is disabled).
+- `502 voice_unreachable` -- The container did not respond (still starting).
+
 ### `GET /api/host/addons`
 
 Returns all available addons with enabled status, plus the voice addon's

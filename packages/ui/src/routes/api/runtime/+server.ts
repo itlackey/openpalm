@@ -12,6 +12,6 @@ import type { RequestHandler } from './$types';
 
 export const GET: RequestHandler = (event) => {
   const ctx = computeServerRuntimeContext(event);
-  const voice = computeVoiceRuntime(event);
+  const voice = computeVoiceRuntime();
   return json(voice ? { ...ctx, voice } : ctx);
 };

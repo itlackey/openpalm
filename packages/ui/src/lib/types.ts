@@ -52,12 +52,10 @@ export type ServerRuntimeContext = {
     csrfMode: 'loopback-origin' | 'same-site';
   };
   /**
-   * Advertised when this host's stack has the voice addon enabled: the
-   * OpenAI-compatible TTS/STT endpoint (the openpalm/voice container) as
-   * reachable BY THE REQUESTING BROWSER — the hostname is taken from the
-   * request, so it is request-derived (like publicBaseUrl) and excluded from
-   * the SSR store seed. Clients use it to offer/auto-select the "OpenPalm
-   * Voice" speech provider.
+   * Advertised when this process can serve the local voice container: the
+   * same-origin base path of the transparent /voice pass-through (session-
+   * authed, OpenAI-compatible surface). Clients use it to offer/auto-select
+   * the "OpenPalm Voice" speech provider.
    */
   voice?: { url: string };
 };

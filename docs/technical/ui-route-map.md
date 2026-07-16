@@ -91,6 +91,7 @@ router, which 404s because the route tree is deleted.
 | `/api/assistant/*` | Assistant | requireAdmin + `requireCapability('assistant-settings:read'/'write')` | Assistant-owned settings — editable from a non-admin served build: `persona` (config/assistant/persona.md), `akm` (config/akm/config.json), `model` (OpenCode default/small model) |
 | `/api/host/*` | Host | requireAdmin + `requireCapability('host:…')` per endpoint | Privileged host control plane (see below); 403 `capability_not_available` in a non-admin process even with a valid session |
 | `/api/electron/update-status` | Host | (Electron harness) | Control-plane self-update status |
+| `/voice/[...path]` | Assistant | requireAdmin (session only — no capability) | Transparent same-origin pass-through to the local voice container's OpenAI surface (the chat client's "OpenPalm Voice" provider transport); 503 when the process can't serve it |
 
 `/api/host/*` JSON endpoints (each carries requireAdmin + the listed
 `requireCapability` guard):

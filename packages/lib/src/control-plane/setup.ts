@@ -58,14 +58,6 @@ export type SetupSpec = {
   llm?: { provider: string; model: string; baseUrl?: string };
   embedding?: { provider: string; model: string; dims: number; baseUrl?: string };
   /**
-   * Legacy (pre client-owned voice settings): older wizards still send
-   * tts/stt engine blocks. They are accepted and IGNORED — TTS/STT provider
-   * choice is a per-browser client setting now; the host only owns the voice
-   * addon (enable + hardware profile via `addons` / `voiceProfile`).
-   */
-  tts?: { enabled?: boolean; engine?: string; provider?: string; baseURL?: string; model?: string; voice?: string };
-  stt?: { enabled?: boolean; engine?: string; provider?: string; baseURL?: string; model?: string; language?: string };
-  /**
    * Operator-supplied UI login password. Persisted as a file-based secret.
    */
   security: { uiLoginPassword?: string };

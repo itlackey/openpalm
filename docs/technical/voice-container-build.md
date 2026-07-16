@@ -8,7 +8,9 @@
 > **2026-07 update:** the enable-flow/VoiceTab/presets material referenced from
 > the older doc is retired — see
 > [`voice-settings-architecture.md`](./voice-settings-architecture.md).
-> The container now also serves permissive CORS: browsers call it directly.
+> Clients reach the container through the UI server's same-origin `/voice/*`
+> pass-through; the container itself is unchanged (no auth, no CORS,
+> loopback-bound).
 >
 > One process. OpenAI-compatible HTTP. CPU by default, CUDA on `--gpus all`.
 > Target image: <1.5 GB compressed. No auth, internal `assistant_net` only.

@@ -209,11 +209,11 @@
         {#if form.provider === 'openpalm-voice'}
           {#if openpalmUrl}
             <p class="hint status-ok">
-              ● Available at <code>{openpalmUrl}</code>{openpalmReachable === false ? ' (not responding yet — it may still be starting)' : ''}
+              ● Available on this host{openpalmReachable === false ? ' (not responding yet — it may still be starting)' : ''}
             </p>
           {:else}
             <p class="hint status-warn">
-              ○ This host is not advertising a voice service. Enable the Voice capability in
+              ○ This host is not offering a voice service. Enable the Voice capability in
               Admin → Capabilities, then <button type="button" class="linklike" onclick={() => void probeOpenpalm()}>re-check</button>.
             </p>
           {/if}
@@ -340,8 +340,7 @@
     color: var(--s-ink-3);
     font-size: var(--s-type-deed);
   }
-  .field code,
-  .hint code {
+  .field code {
     font-family: var(--s-font-mono);
     background: var(--s-paper-deep);
     padding: 1px 4px;

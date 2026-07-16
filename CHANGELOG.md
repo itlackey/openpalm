@@ -15,11 +15,13 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `127.0.0.1:3830/oc`) once per browsing session and adds the first reachable
   one as an ordinary connection when no loopback entry exists yet. Removing a
   discovered entry records a per-browser dismissal so it is not re-offered.
-- **Voice endpoint advertisement in the runtime handshake.** `GET
-  /api/runtime` (and the layout data) carries `voice: { url }` when the local
-  stack has the voice addon enabled, resolved against the request host so LAN
-  clients get a reachable address. Clients use it to offer/auto-select the
-  "OpenPalm Voice" speech provider.
+- **Voice advertisement + same-origin pass-through.** `GET /api/runtime`
+  (and the layout data) carries `voice: { url: '/voice' }` when the host
+  process can serve the local voice container and the addon is enabled. The
+  new `/voice/*` route is a transparent, config-free, session-authed pipe to
+  the container's OpenAI surface (the guardian `/oc` pattern) — no CORS, no
+  container changes, and it works with the container's default loopback-only
+  binding even for LAN clients.
 
 ### Changed
 
@@ -29,20 +31,22 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   lives entirely under Admin → Capabilities (`POST /api/host/addons(/voice)`);
   the old "Configure → Voice tab" special case is gone. TTS/STT provider
   choice is now a per-device CLIENT setting edited in the Voice section of
-  `/connections`: browser speech, the host's OpenPalm Voice container, or any
-  OpenAI-compatible endpoint — persisted in the browser (API keys in the
-  encrypted secret store) and called DIRECTLY from the browser. The voice
-  container now serves permissive CORS for exactly this reason.
+  `/connections`: browser speech, the host's OpenPalm Voice container
+  (reached via the same-origin `/voice/*` pass-through), or any
+  OpenAI-compatible endpoint called directly from the browser — persisted in
+  the browser, with API keys in the encrypted secret store.
 
 ### Removed
 
 - **Legacy host-side voice config plumbing.** The admin Voice tab,
-  `GET/PUT /api/host/voice`, the admin-only `/api/speak` / `/api/transcribe`
-  relays (which broke voice for non-admin clients and pinned every device to
-  the local host's config), `writeVoiceVars`, and the `OP_TTS_*` / `OP_STT_*`
-  stack.env keys. Leftover keys on upgraded installs are inert. The setup
-  wizard's voice step is capability-only (addon + hardware profile); legacy
-  `tts`/`stt` blocks in the setup payload are accepted and ignored.
+  `GET/PUT /api/host/voice`, the config-holding `/api/speak` /
+  `/api/transcribe` relays (which pinned every device to the local host's
+  stack.env provider config), `writeVoiceVars`, and the `OP_TTS_*` /
+  `OP_STT_*` stack.env keys — leftover keys on upgraded installs are pruned
+  automatically on the next reconcile. The setup wizard's voice step is
+  capability-only (a plain toggle → addon + hardware profile); the wizard's
+  entire tts/stt engine plumbing (payload blocks, engine tables,
+  `VoiceEngineValue`, `resolveVoiceSide`) is deleted with it.
 
 - **Device pairing for remote connections** (#511). Host admin `/connections`
   gains a "Pair a device" panel (`host:stack:write`-gated): it mints a

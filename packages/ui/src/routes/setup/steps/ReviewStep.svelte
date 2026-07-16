@@ -18,8 +18,6 @@
   const uiLoginPassword = $derived(s.uiLoginPassword);
   const verifiedProviders = $derived(s.verifiedProviders);
   const modelSelection = $derived(s.modelSelection);
-  const activeTts = $derived(s.voiceEnabled ? s.displayedVoiceTts.engine : '');
-  const activeStt = $derived(s.voiceEnabled ? s.displayedVoiceStt.engine : '');
   const portalSelection = $derived(s.portalSelection);
   const ollamaEnabled = $derived(s.ollamaEnabled);
   // Label for the running host provider (e.g. "Ollama"). Shown when ollamaEnabled is false.
@@ -51,11 +49,8 @@
     return friendlyProviderName(connId, { localLabel: 'Runs on this computer' });
   });
 
-  // Voice is active when either side has an actual engine (not skip/empty)
-  const voiceActive = $derived(
-    !!(activeTts && !activeTts.startsWith('skip-')) ||
-    !!(activeStt && !activeStt.startsWith('skip-'))
-  );
+  // Voice = the bundled voice addon toggle.
+  const voiceActive = $derived(s.voiceEnabled);
 
   // Active non-locked portals
   const activePortals = $derived(

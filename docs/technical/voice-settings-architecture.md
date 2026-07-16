@@ -39,23 +39,31 @@ The architecture is now split along that line.
 - Providers: `browser` (Web Speech API), `openpalm-voice` (the host's voice
   container), `openai-compatible` (any OpenAI-shaped `/v1/audio` endpoint),
   or `disabled` — independently for STT and TTS.
-- The chat client calls providers **directly from the browser**
-  (`packages/ui/src/lib/voice/providers.ts`) — OpenAI-shaped
-  `/v1/audio/transcriptions` and `/v1/audio/speech`. There is no host relay:
-  the old `/api/speak` / `/api/transcribe` routes are gone (they required an
-  admin session and pinned every client to the local host's config). The
-  voice container serves permissive CORS for exactly this reason (it is
-  unauthenticated and loopback/LAN-bound by design).
+- Transport (`packages/ui/src/lib/voice/providers.ts`) — OpenAI-shaped
+  `/v1/audio/transcriptions` and `/v1/audio/speech`, one of two ways:
+  - **`openpalm-voice` → the same-origin `/voice/*` pass-through**
+    (`packages/ui/src/routes/voice/[...path]/+server.ts`): a transparent,
+    config-free pipe from the UI origin to `127.0.0.1:OP_VOICE_PORT_HOST`
+    (the guardian's `/oc` pattern). Session-authed, allowlisted to the
+    container's OpenAI surface. Same-origin is the point: no CORS anywhere,
+    the container image is untouched, and it works with the container's
+    default loopback-only binding — a LAN browser reaches the UI origin and
+    the host process makes the local hop, so no port is ever opened for
+    voice.
+  - **`openai-compatible` → called directly from the browser** with the
+    client-held API key (the provider's own CORS policy governs, exactly as
+    it does for any browser caller of that provider).
+- There is no config-holding relay: the old `/api/speak` / `/api/transcribe`
+  routes (which read host-global stack.env provider config) are gone.
 
 ## Discovery — how a client finds "OpenPalm Voice"
 
-The runtime handshake advertises the endpoint: `GET /api/runtime` (and the
-layout server data) carries `voice: { url }` when the local stack has the
-voice addon enabled. The URL's hostname is taken from the request (the host
-the browser used to reach the UI server) and the port from
-`OP_VOICE_PORT_HOST` (default 8880), so it is reachable by that same browser.
-Like `publicBaseUrl`, the field is request-derived and excluded from the SSR
-store seed (`initializeServerRuntimeContext`).
+The runtime handshake advertises the pass-through: `GET /api/runtime` (and
+the layout server data) carries `voice: { url: '/voice' }` when the process
+is admin-capable (the host process is the only one with a loopback path to
+the container — a served/in-container build is not, and never advertises)
+and the voice addon is enabled. The path is same-origin and env-derived —
+nothing request-dependent.
 
 Client defaults when nothing has been saved: prefer `openpalm-voice` when
 advertised, else `browser` when the Web Speech API is usable (iOS Safari's
@@ -64,22 +72,26 @@ broken SpeechRecognition is detected and avoided), else `disabled`. A saved
 advertising the endpoint.
 
 For a **remote** connection's voice container, the user configures it as an
-`openai-compatible` provider with the remote host's URL — remote hosts do not
-(yet) advertise their voice endpoint through the connection itself.
+`openai-compatible` provider with an endpoint that host exposes — remote
+hosts do not (yet) advertise their voice endpoint through the connection
+itself.
 
 ## Setup wizard
 
-The wizard's voice step is capability-only: it enables the voice addon and
-records the hardware profile (`addons.voice` + `voiceProfile` in the setup
-payload). The legacy `tts`/`stt` engine blocks in `SetupSpec` are accepted and
-ignored (older wizards still send them); `writeVoiceVars` and the
-`OP_TTS_*`/`OP_STT_*` stack.env keys are gone. Fresh installs get working
-voice with zero client configuration via the advertisement defaults above.
+The wizard's voice step is capability-only: a plain toggle that enables the
+voice addon and records the hardware profile (`addons.voice` + `voiceProfile`
+in the setup payload). The entire tts/stt engine plumbing — `SetupSpec`
+blocks, payload serialization, engine tables, `writeVoiceVars`, the
+`OP_TTS_*`/`OP_STT_*` stack.env keys — is deleted, not deprecated. Fresh
+installs get working voice with zero client configuration via the
+advertisement defaults above.
 
 ## Migration notes
 
 - `OP_TTS_*` / `OP_STT_*` keys left in `knowledge/env/stack.env` by older
-  releases are inert — nothing reads them anymore. Client settings are not
+  releases are **removed automatically** on the next reconcile (the same
+  retired-key prune that strips removed-addon state — see `RETIRED_ENV_KEYS`
+  in `packages/lib/src/control-plane/addons.ts`). Client settings are not
   migrated from them: defaults auto-select the host's voice container when
   advertised; users of remote third-party TTS/STT re-enter that endpoint once
   in the /connections Voice section (keys now stay in the browser, which is

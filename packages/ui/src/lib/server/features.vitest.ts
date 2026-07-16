@@ -197,6 +197,7 @@ describe('computeVoiceRuntime — voice-endpoint advertisement', () => {
     homeDir = join(tmpdir(), `openpalm-voice-rt-${randomBytes(4).toString('hex')}`);
     mkdirSync(homeDir, { recursive: true });
     process.env.OP_HOME = homeDir;
+    process.env.OP_ENABLE_ADMIN = '1';
     resetState();
   });
 
@@ -213,25 +214,17 @@ describe('computeVoiceRuntime — voice-endpoint advertisement', () => {
   }
 
   test('absent when the voice addon is not enabled', () => {
-    expect(computeVoiceRuntime(makeEvent())).toBeUndefined();
+    expect(computeVoiceRuntime()).toBeUndefined();
   });
 
-  test('advertises the request host + default port when enabled', () => {
+  test('advertises the same-origin /voice path when enabled', () => {
     enableVoice();
-    expect(computeVoiceRuntime(makeEvent('http://myhost.lan:3880/'))).toEqual({
-      url: 'http://myhost.lan:8880',
-    });
+    expect(computeVoiceRuntime()).toEqual({ url: '/voice' });
   });
 
-  test('honors OP_VOICE_PORT_HOST from stack.env', () => {
-    enableVoice('OP_ENABLED_ADDONS=voice\nOP_VOICE_PORT_HOST=9123\n');
-    expect(computeVoiceRuntime(makeEvent('http://127.0.0.1:3880/'))).toEqual({
-      url: 'http://127.0.0.1:9123',
-    });
-  });
-
-  test('absent when the event has no url (capability-guard stub events)', () => {
+  test('absent in a non-admin-capable process even with the addon enabled', () => {
     enableVoice();
-    expect(computeVoiceRuntime({} as RequestEvent)).toBeUndefined();
+    delete process.env.OP_ENABLE_ADMIN;
+    expect(computeVoiceRuntime()).toBeUndefined();
   });
 });

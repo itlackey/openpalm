@@ -14,7 +14,8 @@
 > been retired. See [`voice-settings-architecture.md`](./voice-settings-architecture.md)
 > for the current split: the voice CONTAINER is a Capabilities addon
 > (`POST /api/host/addons/voice`), and TTS/STT provider choice is a
-> client-owned browser setting calling providers directly.
+> client-owned browser setting (the bundled container is reached through the
+> same-origin `/voice/*` pass-through).
 
 OpenPalm Voice is a bundled local-container addon that gives users one-click
 TTS + STT without any external setup. The user clicks **"Enable OpenPalm Voice"**

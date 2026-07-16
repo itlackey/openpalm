@@ -14,9 +14,9 @@
  *
  * Voice architecture (see docs/technical/voice-settings-architecture.md):
  * the container lifecycle + hardware profile live under the Capabilities
- * addon API (`/api/host/addons`); the chat client calls the container's
- * OpenAI-compatible endpoints DIRECTLY (no /api/speak relay), so the
- * synthesis check below talks straight to the container port.
+ * addon API (`/api/host/addons`); the chat client reaches the container
+ * through the same-origin `/voice/*` pass-through, so the synthesis check
+ * below exercises exactly that path.
  *
  * Validates:
  *   - Auth gate on GET /api/host/addons
@@ -28,8 +28,8 @@
  *   - POST /api/host/addons/voice {enabled:true, profile:…} starts it
  *     (200 healthy/warming, or 202 background pull)
  *   - Profile selection persists (selectedProfile round-trips)
- *   - Direct POST <container>/v1/audio/speech returns audio/wav with CORS
- *     headers (the browser calls this cross-origin)
+ *   - POST /voice/v1/audio/speech (the same-origin pass-through the chat
+ *     client uses) returns audio/wav; /voice/v1/models lists both models
  *
  * Run with:
  *   RUN_DOCKER_STACK_TESTS=1 \
@@ -50,7 +50,6 @@ import { addonProfileId } from '@openpalm/lib';
 import { execFileSync } from 'node:child_process';
 
 const ADMIN_URL = process.env.ADMIN_URL ?? 'http://127.0.0.1:9100';
-const VOICE_URL = process.env.VOICE_URL ?? 'http://127.0.0.1:8880';
 const OP_UI_LOGIN_PASSWORD = process.env.OP_UI_LOGIN_PASSWORD ?? '';
 const SKIP = !process.env.RUN_DOCKER_STACK_TESTS;
 const VOICE_PROFILE_IDS = [
@@ -225,29 +224,26 @@ test.describe('Voice addon — enable/disable lifecycle', () => {
   });
 });
 
-test.describe('Voice container — direct browser-style calls', () => {
+test.describe('Voice pass-through — the path the chat client uses', () => {
   test.skip(!!SKIP, 'Requires RUN_DOCKER_STACK_TESTS=1 and running compose stack');
 
-  test('POST /v1/audio/speech → 200 + audio/wav RIFF header + CORS', async ({ request }) => {
+  test('POST /voice/v1/audio/speech → 200 + audio/wav RIFF header', async ({ request }) => {
     // The container needs a moment after start before /health returns 200
     // and TTS is loaded — bound the poll so a slow start doesn't flake.
     let res: Awaited<ReturnType<typeof request.post>> | undefined;
     for (let attempt = 0; attempt < 30; attempt++) {
-      res = await request.post(`${VOICE_URL}/v1/audio/speech`, {
-        headers: { 'content-type': 'application/json', origin: 'http://ui.example' },
-        data: { model: 'kokoro', input: 'hello from e2e', voice: 'bf_isabella', response_format: 'wav' },
+      res = await request.post(`${ADMIN_URL}/voice/v1/audio/speech`, {
+        headers: authHeaders(),
+        data: { model: 'kokoro', input: 'hello from e2e', response_format: 'wav' },
       });
       if (res.status() === 200) break;
       await new Promise((r) => setTimeout(r, 1_000));
     }
-    if (!res) throw new Error('voice container never responded');
+    if (!res) throw new Error('voice pass-through never responded');
     expect(res.status()).toBe(200);
 
     const contentType = res.headers()['content-type'] ?? '';
     expect(contentType).toMatch(/audio\/wav/);
-
-    // The browser calls this endpoint cross-origin — CORS must be open.
-    expect(res.headers()['access-control-allow-origin']).toBe('*');
 
     const buf = await res.body();
     expect(buf.length).toBeGreaterThan(100);
@@ -256,11 +252,19 @@ test.describe('Voice container — direct browser-style calls', () => {
     expect(buf.subarray(8, 12).toString('ascii')).toBe('WAVE');
   });
 
-  test('GET /v1/models lists whisper-1 and kokoro', async ({ request }) => {
-    const res = await request.get(`${VOICE_URL}/v1/models`);
+  test('GET /voice/v1/models lists whisper-1 and kokoro', async ({ request }) => {
+    const res = await request.get(`${ADMIN_URL}/voice/v1/models`, { headers: authHeaders() });
     expect(res.status()).toBe(200);
     const body = await res.json();
     const ids = body.data.map((m: { id: string }) => m.id);
     expect(ids).toEqual(expect.arrayContaining(['whisper-1', 'kokoro']));
+  });
+
+  test('POST /voice/v1/audio/speech unauthenticated → 401', async ({ request }) => {
+    const res = await request.post(`${ADMIN_URL}/voice/v1/audio/speech`, {
+      headers: { 'content-type': 'application/json', 'x-request-id': crypto.randomUUID() },
+      data: { model: 'kokoro', input: 'hello' },
+    });
+    expect(res.status()).toBe(401);
   });
 });

@@ -62,7 +62,6 @@ describe('SetupState — defaults', () => {
     expect(s.modelMode).toBe('cloud');
     expect(s.voiceEnabled).toBe(false);
     expect(s.canComplete).toBe(false);
-    expect(s.enableVoice).toBe(false);
     expect(s.hasUsableAI).toBe(false);
     expect(s.verifiedCount).toBe(0);
     expect(s.verifiedProviders).toEqual([]);
@@ -160,40 +159,24 @@ describe('SetupState — canComplete', () => {
   });
 });
 
-describe('SetupState — enableVoice / voice toggle', () => {
-  it('enableVoice reflects the bundled engine on either side', () => {
+describe('SetupState — voice toggle', () => {
+  it('handleEnableVoiceChange flips the explicit toggle', () => {
     const s = new SetupState();
-    expect(s.enableVoice).toBe(false);
-    s.voiceTts = { engine: 'openpalm-voice' };
-    expect(s.enableVoice).toBe(true);
-    s.voiceTts = { engine: '' };
-    expect(s.enableVoice).toBe(false);
-    s.voiceStt = { engine: 'openpalm-voice' };
-    expect(s.enableVoice).toBe(true);
-  });
-
-  it('handleEnableVoiceChange drives both engines and the derived follows', () => {
-    const s = new SetupState();
+    expect(s.voiceEnabled).toBe(false);
     s.handleEnableVoiceChange(true);
-    expect(s.voiceTts.engine).toBe('openpalm-voice');
-    expect(s.voiceStt.engine).toBe('openpalm-voice');
-    expect(s.enableVoice).toBe(true);
-
+    expect(s.voiceEnabled).toBe(true);
     s.handleEnableVoiceChange(false);
-    expect(s.voiceTts.engine).toBe('');
-    expect(s.voiceStt.engine).toBe('');
-    expect(s.enableVoice).toBe(false);
+    expect(s.voiceEnabled).toBe(false);
   });
 
-  it('persisted voice sides drop when disabled, display a fallback engine', () => {
+  it('enabling picks a default hardware profile when profiles are known', () => {
     const s = new SetupState();
-    // No engine chosen, voice off → persisted side is '' (won't be saved),
-    // displayed side falls back to the browser default.
-    expect(s.persistedVoiceTts.engine).toBe('');
-    expect(s.displayedVoiceTts.engine).toBe('browser-tts');
+    s.voiceProfiles = [
+      { id: 'addon.voice.cpu', services: ['voice'], default: true, available: true },
+      { id: 'addon.voice.cuda', services: ['voice-cuda'], available: false },
+    ];
     s.handleEnableVoiceChange(true);
-    expect(s.persistedVoiceTts.engine).toBe('openpalm-voice');
-    expect(s.displayedVoiceTts.engine).toBe('openpalm-voice');
+    expect(s.selectedVoiceProfile).toBe('addon.voice.cpu');
   });
 });
 
@@ -213,13 +196,6 @@ describe('SetupState — verified providers derivations', () => {
     expect(s.verifiedCount).toBe(2);
   });
 
-  it('voiceDefaults switch to OpenAI voices once OpenAI is verified', () => {
-    const s = new SetupState();
-    s.initProviderState();
-    expect(s.voiceDefaults).toEqual({ tts: 'browser-tts', stt: 'browser-stt' });
-    s.providerState.openai.verified = true;
-    expect(s.voiceDefaults).toEqual({ tts: 'openai-tts', stt: 'openai-stt' });
-  });
 });
 
 describe('SetupState — handleConnectModeChange (cloud ↔ local)', () => {
@@ -519,8 +495,6 @@ describe('SetupState — module singleton is reset on a fresh (non-rerun) mount'
     setupState.systemCheckPassed = true;
     setupState.modelMode = 'local';
     setupState.voiceEnabled = true;
-    setupState.voiceTts = { engine: 'openpalm-voice' };
-    setupState.voiceStt = { engine: 'openpalm-voice' };
     setupState.selectedVoiceProfile = 'voice-cuda';
     setupState.modelSelection.llm = { connId: 'openai', model: 'gpt-4o', dims: 0 };
     setupState.ollamaEnabled = true;

@@ -42,21 +42,31 @@ function seed(settings: Partial<VoiceClientSettings>): void {
 }
 
 describe('target resolution', () => {
-  test('openpalm-voice resolves through the advertised URL with preset defaults', async () => {
-    _setAdvertisedVoiceUrlForTests('http://myhost:8880');
+  test('openpalm-voice resolves through the advertised pass-through with fixed models', async () => {
+    _setAdvertisedVoiceUrlForTests('/voice');
     seed({ stt: { provider: 'openpalm-voice' }, tts: { provider: 'openpalm-voice' } });
 
     expect(await resolveSttTarget()).toEqual({
-      baseURL: 'http://myhost:8880',
+      baseURL: '/voice',
       model: 'whisper-1',
-      voice: undefined,
       language: undefined,
     });
-    expect(await resolveTtsTarget()).toMatchObject({
-      baseURL: 'http://myhost:8880',
+    // `voice` is omitted so the host's configured default voice applies.
+    expect(await resolveTtsTarget()).toEqual({
+      baseURL: '/voice',
       model: 'kokoro',
-      voice: 'bf_isabella',
+      language: undefined,
     });
+  });
+
+  test('openpalm-voice ignores a stored baseURL — the advertisement is authoritative', async () => {
+    _setAdvertisedVoiceUrlForTests('/voice');
+    seed({
+      stt: { provider: 'openpalm-voice', baseURL: 'http://evil.example' },
+      tts: { provider: 'openpalm-voice', baseURL: 'http://evil.example' },
+    });
+    expect((await resolveSttTarget())?.baseURL).toBe('/voice');
+    expect((await resolveTtsTarget())?.baseURL).toBe('/voice');
   });
 
   test('openpalm-voice without an advertisement resolves to no target', async () => {
@@ -124,8 +134,8 @@ describe('transcribe', () => {
 });
 
 describe('synthesize', () => {
-  test('POSTs OpenAI-shaped JSON to /v1/audio/speech', async () => {
-    _setAdvertisedVoiceUrlForTests('http://myhost:8880');
+  test('POSTs OpenAI-shaped JSON to the pass-through /v1/audio/speech', async () => {
+    _setAdvertisedVoiceUrlForTests('/voice');
     seed({ tts: { provider: 'openpalm-voice' } });
     const fetchMock = vi.fn(async () =>
       new Response(new Blob(['audio']), { status: 200, headers: { 'content-type': 'audio/wav' } })
@@ -135,11 +145,11 @@ describe('synthesize', () => {
     const res = await synthesize('hello');
     expect(res?.status).toBe(200);
     const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
-    expect(url).toBe('http://myhost:8880/v1/audio/speech');
+    expect(url).toBe('/voice/v1/audio/speech');
+    // No `voice` field — the host's configured default voice applies.
     expect(JSON.parse(String(init.body))).toEqual({
       model: 'kokoro',
       input: 'hello',
-      voice: 'bf_isabella',
       response_format: 'wav',
     });
   });

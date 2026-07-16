@@ -28,8 +28,7 @@ function baseInput(overrides: Partial<SetupPayloadInput> = {}): SetupPayloadInpu
     providerState: {},
     ollamaEnabled: false,
     hostLocalLlmRunning: false,
-    persistedVoiceTts: { engine: '' },
-    persistedVoiceStt: { engine: '' },
+    voiceEnabled: false,
     selectedVoiceProfile: '',
     selectedOllamaProfile: '',
     portalSelection: {},
@@ -106,35 +105,24 @@ describe('buildSetupPayload', () => {
     expect(p.ollamaProfile).toBe('ollama-cpu');
   });
 
-  test('bundled voice: addon + tts/stt blocks + voiceProfile', () => {
+  test('bundled voice toggle: addon + voiceProfile (no engine blocks — provider choice is client-owned)', () => {
     const p = buildSetupPayload(baseInput({
-      persistedVoiceTts: { engine: 'openpalm-voice' },
-      persistedVoiceStt: { engine: 'openpalm-voice' },
+      voiceEnabled: true,
       selectedVoiceProfile: 'voice-cuda',
     }));
     expect(p.addons.voice).toBe(true);
-    expect(p.tts).toEqual({ enabled: true, engine: 'openpalm-voice' });
-    expect(p.stt).toEqual({ enabled: true, engine: 'openpalm-voice' });
     expect(p.voiceProfile).toBe('voice-cuda');
+    expect(p).not.toHaveProperty('tts');
+    expect(p).not.toHaveProperty('stt');
   });
 
-  test('skip- and empty voice engines are omitted (no addon)', () => {
+  test('voice off: no addon, no profile', () => {
     const p = buildSetupPayload(baseInput({
-      persistedVoiceTts: { engine: 'skip-tts' },
-      persistedVoiceStt: { engine: '' },
+      voiceEnabled: false,
+      selectedVoiceProfile: 'voice-cuda',
     }));
-    expect(p.tts).toBeUndefined();
-    expect(p.stt).toBeUndefined();
     expect(p.addons.voice).toBeUndefined();
-  });
-
-  test('explicit cloud voice engine serialized with its fields', () => {
-    const p = buildSetupPayload(baseInput({
-      persistedVoiceTts: { engine: 'openai-tts', provider: 'openai', baseURL: 'https://x', model: 'tts-1', voice: 'alloy' },
-    }));
-    expect(p.tts).toEqual({ enabled: true, engine: 'openai-tts', provider: 'openai', baseURL: 'https://x', model: 'tts-1', voice: 'alloy' });
-    // openai-tts is not the bundled voice, so no addon
-    expect(p.addons.voice).toBeUndefined();
+    expect(p.voiceProfile).toBeUndefined();
   });
 
   test('portal with credentials → addon + flattened portalCredentials', () => {
@@ -264,17 +252,13 @@ describe('parseSetupConfig', () => {
     expect(r.embedding).toEqual({ connId: 'openai', model: 'emb', dims: 1536 });
   });
 
-  test('voice sides with engine kept; missing engine collapses to empty', () => {
+  test('voice: profile pre-fills, enabled addon flips the toggle', () => {
     const r = parseSetupConfig({
-      voice: {
-        tts: { engine: 'openai-tts', model: 'tts-1', voice: 'alloy' },
-        stt: { engine: '', baseURL: 'x' },
-        selectedProfile: 'voice-cpu',
-      },
+      voice: { selectedProfile: 'voice-cpu' },
+      enabledAddons: ['voice'],
     });
-    expect(r.voiceTts).toEqual({ engine: 'openai-tts', model: 'tts-1', voice: 'alloy' });
-    expect(r.voiceStt).toEqual({ engine: '' });
     expect(r.selectedVoiceProfile).toBe('voice-cpu');
+    expect(r.voiceEnabled).toBe(true);
   });
 
   test('enabledAddons drives ollama + portal enable', () => {
@@ -309,12 +293,7 @@ function payloadToCurrentConfig(p: SetupPayload): RawSetupConfig {
     hostAkm: p.hostAkm ?? false,
     llm: p.llm ? { provider: p.llm.provider, model: p.llm.model } : null,
     embedding: p.embedding ? { provider: p.embedding.provider, model: p.embedding.model, dims: p.embedding.dims } : null,
-    voice: {
-      // current-config returns tts as {engine, baseURL, model, voice}
-      tts: p.tts ? { engine: p.tts.engine, baseURL: p.tts.baseURL, model: p.tts.model, voice: p.tts.voice } : { engine: '' },
-      stt: p.stt ? { engine: p.stt.engine, baseURL: p.stt.baseURL, model: p.stt.model } : { engine: '' },
-      selectedProfile: p.voiceProfile ?? null,
-    },
+    voice: { selectedProfile: p.voiceProfile ?? null },
     enabledAddons,
     ollama: { selectedProfile: p.ollamaProfile ?? null },
     portalCredentials: p.portalCredentials ?? {},
@@ -330,8 +309,7 @@ describe('build → parse round-trip', () => {
       },
       verifiedProviders: [provider('openai')],
       providerState: { openai: providerState({ baseUrl: 'https://api.openai.com', apiKey: 'sk-x' }) },
-      persistedVoiceTts: { engine: 'openai-tts', model: 'tts-1', voice: 'alloy' },
-      persistedVoiceStt: { engine: 'openpalm-voice' },
+      voiceEnabled: true,
       selectedVoiceProfile: 'voice-cuda',
       ollamaEnabled: true,
       selectedOllamaProfile: 'ollama-cpu',
@@ -345,10 +323,8 @@ describe('build → parse round-trip', () => {
     // Models
     expect(parsed.llm).toEqual({ connId: 'openai', model: 'gpt-4o' });
     expect(parsed.embedding).toEqual({ connId: 'openai', model: 'text-embedding-3-small', dims: 1536 });
-    // Voice engines
-    expect(parsed.voiceTts?.engine).toBe('openai-tts');
-    expect(parsed.voiceTts?.model).toBe('tts-1');
-    expect(parsed.voiceStt?.engine).toBe('openpalm-voice');
+    // Voice: the capability toggle + hardware profile round-trip
+    expect(parsed.voiceEnabled).toBe(true);
     expect(parsed.selectedVoiceProfile).toBe('voice-cuda');
     // Ollama
     expect(parsed.ollamaEnabled).toBe(true);
@@ -365,7 +341,7 @@ describe('build → parse round-trip', () => {
     expect(parsed.llm).toBeUndefined();
     expect(parsed.embedding).toBeUndefined();
     expect(parsed.ollamaEnabled).toBeUndefined();
-    expect(parsed.voiceTts).toEqual({ engine: '' });
+    expect(parsed.voiceEnabled).toBeUndefined();
     expect(parsed.hostAkmEnabled).toBe(false);
   });
 });

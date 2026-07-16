@@ -1,5 +1,5 @@
 import type { RequestEvent } from '@sveltejs/kit';
-import { PLATFORM_VERSION, listEnabledAddonIds, readStackEnv } from '@openpalm/lib';
+import { PLATFORM_VERSION, listEnabledAddonIds } from '@openpalm/lib';
 import uiPkg from '../../../package.json';
 import type { Capability, ServerRuntimeContext } from '$lib/types.js';
 import { getState } from '$lib/server/state.js';
@@ -54,37 +54,24 @@ const HOST_CAPABILITIES: readonly Capability[] = [
 ];
 
 /**
- * Voice-endpoint advertisement for the runtime handshake. Present only when
- * the local stack has the voice addon enabled. The URL's hostname comes from
- * the REQUEST (the host the browser used to reach this UI server), so the
- * endpoint is reachable by that same browser — `127.0.0.1` in stack.env would
- * be wrong for a LAN-served UI. Plain http is correct: the container serves
- * http, and loopback/LAN targets are what it binds to.
+ * Voice advertisement for the runtime handshake: the same-origin path of the
+ * /voice pass-through, present when this process can actually serve it — an
+ * admin-capable process (the host process is the only one with a loopback
+ * path to the voice container) with the voice addon enabled. Same-origin, so
+ * no host/port resolution and nothing request-derived.
  *
  * Deliberately NOT part of computeServerRuntimeContext(): that function runs
- * on requireCapability's per-request hot path with stub events, and this one
- * reads the stack env from disk. Only the two runtime-context producers
- * (+layout.server.ts and GET /api/runtime) call it.
+ * on requireCapability's per-request hot path, and this one reads the stack
+ * env from disk. Only the two runtime-context producers (+layout.server.ts
+ * and GET /api/runtime) call it.
  */
-export function computeVoiceRuntime(event: RequestEvent): { url: string } | undefined {
+export function computeVoiceRuntime(): { url: string } | undefined {
+  if (!isAdminCapable()) return undefined;
   try {
-    let hostname = event.url?.hostname;
-    if (!hostname) return undefined;
-    // URL.hostname strips the brackets from an IPv6 literal; re-add them so
-    // the assembled URL parses.
-    if (hostname.includes(':') && !hostname.startsWith('[')) hostname = `[${hostname}]`;
-    const state = getState();
-    if (!listEnabledAddonIds(state.homeDir).includes('voice')) return undefined;
-    const rawPort = (
-      readStackEnv(state.homeDir).OP_VOICE_PORT_HOST ||
-      process.env.OP_VOICE_PORT_HOST ||
-      ''
-    ).trim();
-    const parsed = rawPort ? Number(rawPort) : NaN;
-    const port = Number.isFinite(parsed) && parsed > 0 ? parsed : 8880;
-    return { url: `http://${hostname}:${port}` };
+    if (!listEnabledAddonIds(getState().homeDir).includes('voice')) return undefined;
+    return { url: '/voice' };
   } catch {
-    // No readable stack state (served build without a host stack) → no ad.
+    // No readable stack state → no advertisement.
     return undefined;
   }
 }

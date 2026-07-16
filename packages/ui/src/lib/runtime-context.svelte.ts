@@ -120,9 +120,7 @@ export function initializeRuntimeContext(
  * `initializeRuntimeContext` in `onMount`.
  */
 export function initializeServerRuntimeContext(serverCtx: ServerRuntimeContext): void {
-  // `voice` is request-derived too (its hostname comes from the request Host,
-  // like publicBaseUrl) — same SSR process-global leak rule applies.
-  const { publicBaseUrl: _requestDerived, voice: _requestDerivedVoice, ...envDerived } = serverCtx;
+  const { publicBaseUrl: _requestDerived, ...envDerived } = serverCtx;
   Object.assign(runtimeContext, envDerived);
   runtimeContext.effectiveCapabilities = resolveCapabilities(
     serverCtx.serverCapabilities,

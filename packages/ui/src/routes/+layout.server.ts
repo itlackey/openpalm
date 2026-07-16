@@ -3,7 +3,7 @@ import { computeServerRuntimeContext, computeVoiceRuntime } from '$lib/server/fe
 
 export const load: LayoutServerLoad = (event) => {
   const serverRuntimeContext = computeServerRuntimeContext(event);
-  const voice = computeVoiceRuntime(event);
+  const voice = computeVoiceRuntime();
   return {
     serverRuntimeContext: voice ? { ...serverRuntimeContext, voice } : serverRuntimeContext,
   };

@@ -1,21 +1,28 @@
 /**
- * Direct browser → speech-provider transport.
+ * Browser-side speech-provider transport.
  *
- * The chat client calls its configured TTS/STT provider straight from the
- * browser — there is no host relay anymore (the old /api/speak and
- * /api/transcribe proxies read host-global stack.env config and required an
- * admin session, which broke voice for non-admin clients and for remote
- * connections). The voice container sends permissive CORS headers, and
- * OpenAI-compatible endpoints the user configures are called with the API key
- * held in the browser's encrypted secret store — the same trust model as
- * connection passwords.
+ * The chat client owns its TTS/STT provider choice and calls the provider's
+ * OpenAI-shaped /v1/audio endpoints from the browser — there is no
+ * config-holding relay anymore (the old /api/speak and /api/transcribe
+ * proxies read host-global stack.env config, which conflated per-device
+ * preference with host state). Two transports:
  *
- * "OpenPalm Voice" resolution: the host advertises its voice container's
- * browser-reachable URL in the /api/runtime handshake (`voice.url`) when the
- * voice addon is enabled. We fetch that handshake lazily (once per page load;
- * `refreshAdvertisedVoiceUrl` re-probes) instead of reading the reactive
- * runtime-context store, so resolution works regardless of layout-mount
- * ordering and in non-component callers.
+ *   - 'openpalm-voice'    → the SAME-ORIGIN `/voice` pass-through the host
+ *                           advertises in the runtime handshake. Same-origin
+ *                           means no CORS and no exposed container port; the
+ *                           session cookie rides along automatically
+ *                           (fetch's default same-origin credentials mode).
+ *   - 'openai-compatible' → the user's configured endpoint, called directly
+ *                           with the API key held in the browser's encrypted
+ *                           secret store — the same trust model as
+ *                           connection passwords.
+ *
+ * "OpenPalm Voice" resolution: the handshake's `voice.url` (present when the
+ * host process can serve the pass-through and the addon is enabled). We
+ * fetch the handshake lazily (once per page load; `refreshAdvertisedVoiceUrl`
+ * re-probes) instead of reading the reactive runtime-context store, so
+ * resolution works regardless of layout-mount ordering and in non-component
+ * callers.
  */
 
 import { getSecretStore } from '$lib/connections/boot.js';
@@ -28,7 +35,6 @@ import {
 
 const OPENPALM_VOICE_TTS_MODEL = 'kokoro';
 const OPENPALM_VOICE_STT_MODEL = 'whisper-1';
-const OPENPALM_VOICE_DEFAULT_VOICE = 'bf_isabella';
 const UPSTREAM_TIMEOUT_MS = 60_000;
 const HANDSHAKE_TIMEOUT_MS = 5_000;
 
@@ -109,17 +115,15 @@ async function resolveTarget(
 ): Promise<ServerVoiceTarget | null> {
   const provider: VoiceProviderId | undefined = section?.provider;
   if (provider === 'openpalm-voice') {
-    const url = section?.baseURL?.trim() || (await advertisedVoiceUrl());
+    // Always the advertised same-origin pass-through — there is nothing to
+    // configure. Model is fixed by the container; `voice` is deliberately
+    // omitted so the host's configured default (OP_VOICE_KOKORO_VOICE)
+    // applies.
+    const url = await advertisedVoiceUrl();
     if (!url) return null;
     return {
       baseURL: url,
-      model:
-        section?.model?.trim() ||
-        (kind === 'tts' ? OPENPALM_VOICE_TTS_MODEL : OPENPALM_VOICE_STT_MODEL),
-      voice:
-        kind === 'tts'
-          ? (section as VoiceTtsSettings | undefined)?.voice?.trim() || OPENPALM_VOICE_DEFAULT_VOICE
-          : undefined,
+      model: kind === 'tts' ? OPENPALM_VOICE_TTS_MODEL : OPENPALM_VOICE_STT_MODEL,
       language: kind === 'stt' ? (section as VoiceSttSettings | undefined)?.language : undefined,
     };
   }
