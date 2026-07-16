@@ -86,10 +86,10 @@ describe('resolveCapabilities — electron display mode', () => {
 });
 
 describe('resolveCapabilities — admin server + browser (openpalm admin row)', () => {
-  test('host:stack:read + browser yields everything minus Electron-only caps (none reserved yet)', () => {
+  test('host:stack:read + browser yields the full server capability set', () => {
     const result = resolveCapabilities(ADMIN_SERVER_CAPS, browser);
-    // isElectronOnlyCap() is reserved and returns false for every capability
-    // today, so "ALL minus Electron-only" is currently the full set.
+    // No Electron-only capabilities are reserved yet, so a host-capable server
+    // in a regular browser (`openpalm admin`) keeps everything it granted.
     expect(sorted(result)).toEqual(sorted(ADMIN_SERVER_CAPS));
   });
 
