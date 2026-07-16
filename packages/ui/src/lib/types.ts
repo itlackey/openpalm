@@ -1,10 +1,9 @@
 import type { ToolStripEntry } from '$lib/chat/tool-strip.js';
 
-// The legacy FeatureFlags { admin } alias was deleted in Phase 4 (plan
-// ui-runtime-modes-plan.md §6.4): nothing read it anymore — capability checks
+// The legacy FeatureFlags { admin } alias was deleted in Phase 4: nothing read it anymore — capability checks
 // live in computeServerRuntimeContext/resolveCapabilities + hasCapability().
 
-// ── RuntimeContext v2 (plan §6.1, issue #509) ──────────────────────────
+// ── RuntimeContext v2 (issue #509) ──────────────────────────
 
 export type Capability =
   | 'chat'
@@ -58,7 +57,7 @@ export type ClientDisplayMode = 'electron' | 'standalone-pwa' | 'browser';
 
 export type ActiveConnectionContext = {
   id: string;
-  /** Server-verified at connection-add time (plan §8.9) — never self-granted. */
+  /** Server-verified at connection-add time — never self-granted. */
   grantedCapabilities?: Capability[];
 };
 

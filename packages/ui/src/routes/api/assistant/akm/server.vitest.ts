@@ -1,6 +1,5 @@
 /**
- * Tests for /api/assistant/akm — assistant-SCOPED AKM configuration (plan
- * ui-runtime-modes-plan.md Phase 4 steps 2+3, §6.4).
+ * Tests for /api/assistant/akm — assistant-SCOPED AKM configuration.
  *
  * ALL RED until Phase 4 lands: routes/api/assistant/akm/+server.ts does not
  * exist yet (it is the move of the assistant-scoped part of
@@ -8,7 +7,7 @@
  * Loaded via computed-specifier dynamic import so svelte-check stays clean
  * while red.
  *
- * Contract under test — the AkmTab split (plan §9 "AKM"):
+ * Contract under test — the AkmTab split:
  *  - The AKM runtime config (config/akm/config.json) is assistant-scoped →
  *    lives under /api/assistant/akm, guarded by the assistant-settings
  *    capabilities + requireAdmin.
@@ -120,7 +119,7 @@ afterEach(() => {
   cleanupTempDirs();
 });
 
-describe('GET /api/assistant/akm — assistant-scoped AKM config (plan Phase 4 step 2)', () => {
+describe('GET /api/assistant/akm — assistant-scoped AKM config', () => {
   test('200 in a non-admin process with a valid session — returns the config', async () => {
     seedAkmConfig({ defaults: { llm: 'main' } });
     const { GET } = await loadRoute();

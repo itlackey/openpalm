@@ -2,11 +2,10 @@
  * GET  /api/assistant/akm  — Return current akm config from OP_HOME/config/akm/config.json
  * PATCH /api/assistant/akm — Update config fields aligned with AKM 0.8.0 schema
  *
- * Assistant-SCOPED AKM configuration (plan ui-runtime-modes-plan.md Phase 4
- * steps 2+3, §6.4): config/akm/config.json holds the assistant's AKM settings.
+ * Assistant-SCOPED AKM configuration: config/akm/config.json holds the assistant's AKM settings.
  * Assistant settings are a BASE capability (every process), so the browser can
  * read/write this config regardless of admin capability; guarded by the
- * assistant-settings capabilities in addition to requireAdmin (plan §8.5).
+ * assistant-settings capabilities in addition to requireAdmin.
  * Host-LEVEL AKM (host key sharing) stays at /api/host/akm/host-sharing.
  */
 import type { RequestHandler } from './$types';

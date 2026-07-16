@@ -1,15 +1,14 @@
 /**
- * Landing resolver — the single place that decides where a session lands
- * (plan ui-runtime-modes-plan.md §6.5, Phase 3 step 1).
+ * Landing resolver — the single place that decides where a session lands.
  *
  * PURE by contract: reads `ctx.effectiveCapabilities` — never the global
  * `runtimeContext` store — so hooks.server.ts can call it per-request on the
  * server (where no client store exists) and +layout/svelte code can call it
  * with the store's value. Capability RESOLUTION stays in
- * `resolveCapabilities()` (plan §8.6); this function only reads the
+ * `resolveCapabilities()`; this function only reads the
  * already-resolved list.
  *
- * Landing matrix (plan §6.5):
+ * Landing matrix:
  *   host:setup capability present:
  *     migration pending          → /attention (precedence over local state)
  *     local not_installed        → /setup — unless an accessible connection
@@ -75,7 +74,7 @@ export type LaunchState = {
   connections: ReadonlyArray<{ id: string }>;
 };
 
-/** Resolve the landing path for a session (plan §6.5). Pure — no I/O, no
+/** Resolve the landing path for a session. Pure — no I/O, no
  *  global state; the gate is CAPABILITY-driven, not admin-flag-driven. */
 export function resolveLanding(ctx: RuntimeContext, state: LaunchState): string {
   if (ctx.effectiveCapabilities.includes('host:setup')) {

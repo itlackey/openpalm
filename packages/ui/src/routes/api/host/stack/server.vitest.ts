@@ -1,13 +1,12 @@
 /**
  * Tests for /api/host/stack — the HOST-SCOPED half of the old
- * /admin/assistant endpoint (plan ui-runtime-modes-plan.md Phase 4 step 2,
- * §5.F, §6.4).
+ * /admin/assistant endpoint.
  *
  * ALL RED until Phase 4 lands: routes/api/host/stack/+server.ts does not
  * exist yet. Loaded via computed-specifier dynamic import so svelte-check
  * stays clean while red.
  *
- * Contract under test — the AssistantTab split (plan §9 "Assistant settings"):
+ * Contract under test — the AssistantTab split:
  *  - Project name (OP_PROJECT_NAME) and assistant bind address
  *    (OP_ASSISTANT_BIND_ADDRESS, surfaced as lanExposureEnabled) are HOST
  *    STACK settings → they live at GET/PUT /api/host/stack, guarded by the
@@ -140,7 +139,7 @@ afterEach(() => {
   cleanupTempDirs();
 });
 
-describe('GET /api/host/stack — host stack settings (plan Phase 4 step 2)', () => {
+describe('GET /api/host/stack — host stack settings', () => {
   test('200 in host-ui mode: project name + LAN exposure, and NO persona (partitioned)', async () => {
     process.env.OP_ENABLE_ADMIN = '1';
     const { GET } = await loadRoute();

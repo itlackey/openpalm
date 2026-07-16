@@ -4,7 +4,7 @@
  * ALL RED until the implementation lands: routes/api/runtime/+server.ts does
  * not exist yet.
  *
- * Per plan §6.4 this endpoint is PUBLIC (no auth) and returns the
+ * This endpoint is PUBLIC (no auth) and returns the
  * ServerRuntimeContext, including the contract version field that the future
  * hosted client uses as a version-skew handshake before enabling features.
  *
@@ -50,7 +50,7 @@ afterEach(() => {
   }
 });
 
-describe('GET /api/runtime — public runtime-context endpoint (plan §6.4)', () => {
+describe('GET /api/runtime — public runtime-context endpoint', () => {
   test('returns 200 with no session cookie (no auth required)', async () => {
     const res = await GET(makeEvent());
     expect(res.status).toBe(200);
@@ -72,7 +72,7 @@ describe('GET /api/runtime — public runtime-context endpoint (plan §6.4)', ()
     expect(body.version).toBe(2);
   });
 
-  test('body exposes the ServerRuntimeContext shape (plan §6.1)', async () => {
+  test('body exposes the ServerRuntimeContext shape', async () => {
     const res = await GET(makeEvent());
     const body = (await res.json()) as Record<string, unknown>;
     expect(Array.isArray(body.serverCapabilities)).toBe(true);

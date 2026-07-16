@@ -13,7 +13,7 @@
   import { parsePairingCode, type PairingPayload } from '$lib/connections/pairing.js';
   import { hasCapability, runtimeContext } from '$lib/runtime-context.svelte.js';
 
-  // Capability-guarded surface (plan ui-runtime-modes-plan.md Phase 2, #486):
+  // Capability-guarded surface (#486):
   // this page replaces /admin/endpoints and works in every mode that
   // advertises `connections:manage` — the API it talks to enforces the
   // capability server-side; auth is enforced in hooks.server.ts.
@@ -64,7 +64,7 @@
 
   onMount(() => {
     void connectionsService.load(true);
-    // The /connections/new landing (plan §6.5, Phase 3) aliases here with
+    // The /connections/new landing aliases here with
     // ?new=1 — open the add form so "no connections yet" starts at the form.
     if (page.url.searchParams.get('new') === '1') openAddForm();
 

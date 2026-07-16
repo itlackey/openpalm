@@ -28,7 +28,7 @@ function makeEvent(url = 'http://127.0.0.1:3880/'): RequestEvent {
   } as unknown as RequestEvent;
 }
 
-/** The full host:* capability set from plan §6.1. */
+/** The full host:* capability set. */
 const HOST_CAPS: Capability[] = [
   'host:setup',
   'host:stack:read',
@@ -42,7 +42,7 @@ const HOST_CAPS: Capability[] = [
   'host:akm-sharing',
 ];
 
-/** The base capability set granted to EVERY process (plan §6.1). */
+/** The base capability set granted to EVERY process. */
 const BASE_CAPS: Capability[] = [
   'chat',
   'connections:read',
@@ -108,7 +108,7 @@ describe('computeServerRuntimeContext — admin flag reflects the env', () => {
 
 // ── contract shape ───────────────────────────────────────────────────────────
 
-describe('computeServerRuntimeContext — ServerRuntimeContext shape (plan §6.1)', () => {
+describe('computeServerRuntimeContext — ServerRuntimeContext shape', () => {
   test('carries contract version 2', () => {
     expect(computeServerRuntimeContext(makeEvent()).version).toBe(2);
   });
@@ -126,7 +126,7 @@ describe('computeServerRuntimeContext — ServerRuntimeContext shape (plan §6.1
     expect(['loopback-origin', 'same-site']).toContain(ctx.security.csrfMode);
   });
 
-  test('host admin stays loopback-only in an admin process (plan §8.3)', () => {
+  test('host admin stays loopback-only in an admin process', () => {
     process.env.OP_INSIDE_ELECTRON = '1';
     expect(computeServerRuntimeContext(makeEvent()).security.hostAdminLoopbackOnly).toBe(true);
     delete process.env.OP_INSIDE_ELECTRON;
@@ -163,7 +163,7 @@ describe('computeServerRuntimeContext — ServerRuntimeContext shape (plan §6.1
 
 // ── serverCapabilities: base everywhere, host:* only when admin ───────────────
 
-describe('computeServerRuntimeContext — serverCapabilities (plan §6.1)', () => {
+describe('computeServerRuntimeContext — serverCapabilities', () => {
   test('a non-admin process has the base capabilities but NO host:*', () => {
     const caps = computeServerRuntimeContext(makeEvent()).serverCapabilities;
     expect(caps).toEqual(expect.arrayContaining(BASE_CAPS));

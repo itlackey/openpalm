@@ -8,7 +8,7 @@ assistant-owned settings at `/api/assistant/*`, session lifecycle at
 `/api/auth/*`. Chat and connections views live in this one package — there is
 no separate client app.
 
-Surfaces (plan §1): **Host** = host control plane (stack lifecycle, secrets,
+Surfaces: **Host** = host control plane (stack lifecycle, secrets,
 privileged ops), **Assistant** = chat against the active connection +
 assistant-owned settings, **Connection** = connection management, **Entry** =
 landing/auth/first-run plumbing shared by all surfaces.
@@ -17,7 +17,7 @@ landing/auth/first-run plumbing shared by all surfaces.
 
 Every document navigation to `/` (and the legacy `/splash` path) is redirected
 by `hooks.server.ts` to the landing resolved by `resolveLanding(ctx,
-launchState)` (`src/lib/resolve-landing.ts`, plan §6.5):
+launchState)` (`src/lib/resolve-landing.ts`):
 
 | Condition (in precedence order) | Landing |
 |---|---|
@@ -49,7 +49,7 @@ release only.
 - **requireAdmin()** — per-endpoint session check in `+server.ts` handlers
   (`$lib/server/helpers.js`); JSON 401, never an HTML redirect.
 - **requireCapability(cap)** — per-endpoint server-side capability check
-  (plan §8.5; `hasCapability()` in components is UX only). Every
+  (`hasCapability()` in components is UX only). Every
   `/api/host/*` endpoint carries one (enforced by
   `src/routes/api/host/guard-hygiene.vitest.ts`), as does every
   `/api/assistant/*` endpoint — a valid admin session in a mode without the
@@ -58,10 +58,10 @@ release only.
   before first-run completes but restricted to loopback clients (unless
   `OP_ALLOW_REMOTE_SETUP`); after completion, re-runs require admin auth.
 - **host/origin** — SEC-1/SEC-2 Host-header allowlist + Origin check apply to
-  every request; host admin stays loopback-only (plan §8.3).
+  every request; host admin stays loopback-only.
 
 `/admin/*` has **no guard and no alias**: hooks let it fall through to the
-router, which 404s because the route tree is deleted (plan §6.4).
+router, which 404s because the route tree is deleted.
 
 ## Page routes
 
@@ -83,7 +83,7 @@ router, which 404s because the route tree is deleted (plan §6.4).
 
 | Namespace | Surface | Guard | Endpoints |
 |---|---|---|---|
-| `/api/runtime` | Entry | **public** | GET server runtime context — the contract-version handshake (plan §6.4) |
+| `/api/runtime` | Entry | **public** | GET server runtime context — the contract-version handshake |
 | `/health` | Entry | public | Liveness probe |
 | `/guardian/health` | Entry | public | Guardian reachability probe |
 | `/api/auth/{login,logout,session}` | Entry | public (login) / session | Session lifecycle. Deliberately **outside** `/api/host` — a capability guard on login would lock assistant-container out before it could authenticate |
@@ -93,7 +93,7 @@ router, which 404s because the route tree is deleted (plan §6.4).
 | `/api/host/*` | Host | requireAdmin + `requireCapability('host:…')` per endpoint | Privileged host control plane (see below); 403 `capability_not_available` in assistant-container/pwa-static even with a valid session |
 | `/api/speak`, `/api/transcribe` | Assistant | requireAdmin | Voice TTS/STT relays |
 | `/api/electron/update-status` | Host | (Electron harness) | Control-plane self-update status |
-| `/proxy/assistant/[...path]` | Assistant | requireAdmin (same-origin cookie) | Same-origin assistant broker; resolves the active connection per request. Host app only (plan §6.4) |
+| `/proxy/assistant/[...path]` | Assistant | requireAdmin (same-origin cookie) | Same-origin assistant broker; resolves the active connection per request. Host app only |
 
 `/api/host/*` JSON endpoints (each carries requireAdmin + the listed
 `requireCapability` guard):

@@ -1,11 +1,10 @@
 /**
- * Runtime context — RuntimeContext v2 (plan ui-runtime-modes-plan.md §6.2,
- * issue #509).
+ * Runtime context — RuntimeContext v2 (issue #509).
  *
  * This module is the ONLY place capability logic lives. Components call
  * `hasCapability(cap)` and nothing else — no scattered `if (features.admin)`
- * checks (plan §8.6). `hasCapability()` is UX only; APIs enforce capabilities
- * server-side (plan §8.5).
+ * checks. `hasCapability()` is UX only; APIs enforce capabilities
+ * server-side.
  *
  * The `runtimeContext` store is populated by +layout.svelte from the layout
  * server data (ServerRuntimeContext) plus the browser-detected ClientContext,
@@ -48,7 +47,7 @@ export function resolveCapabilities(
   return caps;
 }
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars -- signature fixed by plan §6.2; the parameter is consulted once Electron IPC-dependent capabilities exist
+// eslint-disable-next-line @typescript-eslint/no-unused-vars -- signature fixed; the parameter is consulted once Electron IPC-dependent capabilities exist
 function isElectronOnlyCap(_c: Capability): boolean {
   return false; // reserved for future Electron IPC-dependent features
 }

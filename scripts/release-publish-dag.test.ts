@@ -1,6 +1,6 @@
 // P5e (#555) — STATIC/CONFIG tests for the release publish DAG
-// (ui-runtime-modes-plan.md Phase 5 item 5; §8.10 / simplicity guardrails:
-// @openpalm/ui-kit is a raw-source workspace package and is NEVER published).
+// (simplicity guardrails: @openpalm/ui-kit is a raw-source workspace package
+// and is NEVER published).
 //
 // The publish DAG lives in .github/workflows/release.yml (the plan's
 // "platform-release.yml" — there is no separate file; unit=platform/all of

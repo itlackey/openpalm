@@ -1,7 +1,6 @@
 /**
  * Phase 4 hygiene — every /api/host/* endpoint carries a server-side
- * requireCapability() guard (plan ui-runtime-modes-plan.md Phase 4 step 3,
- * §8.5: "APIs enforce capabilities server-side").
+ * requireCapability() guard ("APIs enforce capabilities server-side").
  *
  * Source-level test, like features-admin-hygiene.vitest.ts: the invariant is
  * that no privileged host endpoint can ever ship without the capability
@@ -41,7 +40,7 @@ function serverRouteFiles(root: string): string[] {
     .map((rel) => join(root, rel));
 }
 
-describe('every /api/host/**/+server.ts calls requireCapability (plan Phase 4 step 3, §8.5)', () => {
+describe('every /api/host/**/+server.ts calls requireCapability', () => {
   test('the privileged /admin API surface moved under /api/host (>= 20 endpoints)', () => {
     // Guards the walker against vacuous passes: while routes/api/host is
     // missing or near-empty, the per-file assertion below proves nothing.

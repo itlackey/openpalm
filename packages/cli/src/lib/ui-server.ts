@@ -85,7 +85,7 @@ export interface UIServerOptions {
    * Admin mode (`openpalm admin`, plan Phase 1.5): enable the admin capability
    * in the spawned UI child (OP_ENABLE_ADMIN=1) and pin the bind to loopback
    * ALWAYS — OP_ALLOW_REMOTE_SETUP is ignored and neutralized in the child env,
-   * so no non-loopback bind is possible in this mode (plan §8.3: host admin is
+   * so no non-loopback bind is possible in this mode (host admin is
    * never reachable remotely).
    */
   adminHostUi?: boolean;

@@ -1,5 +1,5 @@
 /**
- * `openpalm admin` — the CLI admin entry (plan Phase 1.5, #556).
+ * `openpalm admin` — the CLI admin entry (#556).
  *
  * Serves the existing UI through the existing startUIServer supervisor with
  * the admin capability enabled in the spawned UI child (OP_ENABLE_ADMIN=1),

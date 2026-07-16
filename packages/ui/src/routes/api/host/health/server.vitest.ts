@@ -1,7 +1,6 @@
 /**
  * Tests for GET /api/host/health — the representative privileged host
- * endpoint of the Phase 4 control-plane split (plan ui-runtime-modes-plan.md
- * Phase 4 steps 1+3, §6.4 API namespace table).
+ * endpoint of the Phase 4 control-plane split.
  *
  * ALL RED until Phase 4 lands: routes/api/host/health/+server.ts does not
  * exist yet (it is the mechanical move of routes/admin/health/+server.ts).
@@ -10,8 +9,8 @@
  *
  * Contract under test:
  *  - Every /api/host/* endpoint carries a SERVER-SIDE requireCapability()
- *    guard in addition to the requireAdmin cookie check (plan §8.5;
- *    hasCapability() in the browser is UX only). The guard is
+ *    guard in addition to the requireAdmin cookie check (hasCapability() in
+ *    the browser is UX only). The guard is
  *    capability-based, not session-based: a VALID admin session in a mode
  *    whose serverCapabilities carry no host:* capability (non-admin,
  *    pwa-static) is still refused with 403.
@@ -94,7 +93,7 @@ afterEach(() => {
   cleanupTempDirs();
 });
 
-describe('GET /api/host/health — host capability guard (plan Phase 4 step 3, §8.5)', () => {
+describe('GET /api/host/health — host capability guard', () => {
   test('403 in non-admin mode even with a valid admin session', async () => {
     delete process.env.OP_ENABLE_ADMIN;
     const { GET } = await loadRoute();

@@ -24,7 +24,7 @@ test.describe('Setup guard — fresh instance (mocked-lib)', () => {
   test('GET / never serves raw admin/chat content unauthenticated', async ({ page }) => {
     const res = await page.goto('/');
     expect(res?.status()).toBeLessThan(400);
-    // Whatever landing resolveLanding() picks (plan §6.5: setup, attention,
+    // Whatever landing resolveLanding() picks (setup, attention,
     // connections, or a bounce through chat/admin straight to the login
     // gate), it must be one of these — never a bare admin page rendered with
     // no session.

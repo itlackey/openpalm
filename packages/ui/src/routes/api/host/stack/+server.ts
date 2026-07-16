@@ -1,6 +1,5 @@
 /**
- * GET/PUT /api/host/stack — host stack settings (plan ui-runtime-modes-plan.md
- * Phase 4 step 2, §5.F, §6.4).
+ * GET/PUT /api/host/stack — host stack settings.
  *
  * The HOST-SCOPED half of the old /admin/assistant endpoint: compose project
  * name (OP_PROJECT_NAME) and assistant bind address (OP_ASSISTANT_BIND_ADDRESS,

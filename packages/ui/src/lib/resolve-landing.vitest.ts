@@ -1,6 +1,5 @@
 /**
- * Phase 3 — resolveLanding(ctx, launchState) landing matrix (plan
- * ui-runtime-modes-plan.md §6.5, Phase 3 step 1).
+ * Phase 3 — resolveLanding(ctx, launchState) landing matrix.
  *
  * ALL RED until the implementation lands: the module under test does not
  * exist yet. The contract pinned here:
@@ -14,10 +13,10 @@
  *  - `resolveLanding` is PURE: it consults ctx.effectiveCapabilities — never
  *    the global runtimeContext store — so hooks.server.ts can call it
  *    per-request on the server, where no client store exists. Capability
- *    RESOLUTION still lives only in resolveCapabilities() (plan §8.6);
+ *    RESOLUTION still lives only in resolveCapabilities();
  *    resolveLanding merely reads the already-resolved list.
  *
- *  Landing matrix (plan §6.5, exactly):
+ *  Landing matrix:
  *    host:setup capability present (admin process):
  *      migration pending          → /attention
  *      local not_installed        → /setup
@@ -65,7 +64,7 @@ async function loadResolveLanding(): Promise<ResolveLandingFn> {
   throw new Error(
     `resolveLanding module not found — expected packages/ui/src/lib/<${CANDIDATE_MODULE_BASES.join(
       '|',
-    )}>.ts exporting resolveLanding(ctx, launchState) per plan §6.5`,
+    )}>.ts exporting resolveLanding(ctx, launchState)`,
   );
 }
 
@@ -154,7 +153,7 @@ describe('resolveLanding — module contract', () => {
 
 // ── host:setup rows (electron-host / host-ui with full capabilities) ──────────
 
-describe('resolveLanding — host:setup capability present (plan §6.5)', () => {
+describe('resolveLanding — host:setup capability present', () => {
   const hostCtx = makeCtx(true, HOST_EFFECTIVE);
 
   test('pending migration lands on /attention', async () => {
@@ -222,7 +221,7 @@ describe('resolveLanding — host:setup capability present (plan §6.5)', () => 
   test('the gate is CAPABILITY-driven, not admin-flag-driven: a host-capable server viewed without host:setup falls through to /chat', async () => {
     const resolveLanding = await loadResolveLanding();
     // admin server × standalone-pwa display: resolveCapabilities strips host:*
-    // per plan §4.2, so even a broken local stack must not land this session on
+    // so even a broken local stack must not land this session on
     // the host admin surface it cannot use.
     const restrictedCtx = makeCtx(true, [
       'chat',
@@ -237,7 +236,7 @@ describe('resolveLanding — host:setup capability present (plan §6.5)', () => 
 
 // ── non-admin (base) row ──────────────────────────────────────────────────────
 
-describe('resolveLanding — non-admin process (plan §6.5)', () => {
+describe('resolveLanding — non-admin process', () => {
   const ctx = makeCtx(false, PWA_EFFECTIVE);
 
   test('zero connections lands on /connections/new', async () => {

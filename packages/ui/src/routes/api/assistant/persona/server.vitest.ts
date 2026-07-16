@@ -1,7 +1,6 @@
 /**
  * Tests for /api/assistant/persona — the ASSISTANT-OWNED half of the old
- * /admin/assistant endpoint (plan ui-runtime-modes-plan.md Phase 4 step 2,
- * §5.F, §6.4 "/api/assistant/* — assistant-owned settings").
+ * /admin/assistant endpoint ("/api/assistant/* — assistant-owned settings").
  *
  * ALL RED until Phase 4 lands: routes/api/assistant/persona/+server.ts does
  * not exist yet. Loaded via computed-specifier dynamic import so
@@ -118,7 +117,7 @@ afterEach(() => {
   cleanupTempDirs();
 });
 
-describe('GET /api/assistant/persona — assistant-settings guard (plan Phase 4 step 2)', () => {
+describe('GET /api/assistant/persona — assistant-settings guard', () => {
   test('200 in a non-admin process with a valid session — returns the persona', async () => {
     seedPersona('# Persona\n');
     const { GET } = await loadRoute();

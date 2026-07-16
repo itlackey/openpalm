@@ -1,6 +1,6 @@
 /**
  * GET /api/runtime/landing — public landing-resolver endpoint (review
- * findings J2/J3, plan ui-runtime-modes-plan.md §6.5).
+ * findings J2/J3).
  *
  * PUBLIC by design (same posture as /api/setup/status and /api/runtime): no
  * auth is consulted. Wraps the SAME `resolveRequestLanding()` the host UI's

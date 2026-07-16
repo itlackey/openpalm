@@ -6,7 +6,7 @@ This document describes the Admin API routes currently implemented in
 ## Conventions
 
 - Base URL: `http://localhost:3880`
-- Namespaces (Phase 4 of `ui-runtime-modes-plan.md`): privileged host
+- Namespaces: privileged host
   endpoints live under `/api/host/*` (requireAdmin + a server-side
   `requireCapability('host:…')` guard — 403 `capability_not_available` in
   modes without host capabilities), assistant-owned settings under

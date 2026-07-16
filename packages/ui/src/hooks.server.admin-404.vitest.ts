@@ -1,6 +1,5 @@
 /**
- * Phase 4 — `/admin/*` becomes a dead namespace (plan ui-runtime-modes-plan.md
- * Phase 4, §6.4 "No /admin alias", issue #555).
+ * Phase 4 — `/admin/*` becomes a dead namespace ("No /admin alias", issue #555).
  *
  * Contract pinned here:
  *  - The `routes/admin/` tree is DELETED: pages move to `routes/host/`, the
@@ -112,7 +111,7 @@ async function handleOutcome(event: RequestEvent): Promise<unknown> {
 
 const MODE_ENV_KEYS = ['OP_INSIDE_ELECTRON', 'OP_ENABLE_ADMIN'] as const;
 
-describe('hooks.server — /admin/* is a dead namespace, no alias (plan Phase 4, §6.4)', () => {
+describe('hooks.server — /admin/* is a dead namespace, no alias', () => {
   let home = '';
   let prevHome: string | undefined;
   let savedModeEnv: Record<string, string | undefined> = {};
@@ -200,7 +199,7 @@ describe('hooks.server — /admin/* is a dead namespace, no alias (plan Phase 4,
 
 // ── route split: routes/admin deleted, routes/host created (Phase 4 step 1) ──
 
-describe('route files — /admin moved to /host (plan Phase 4 step 1)', () => {
+describe('route files — /admin moved to /host', () => {
   test('the routes/admin/ tree is deleted (pages → routes/host, APIs → routes/api/host)', () => {
     expect(existsSync(join(ROUTES_DIR, 'admin'))).toBe(false);
   });
@@ -212,7 +211,7 @@ describe('route files — /admin moved to /host (plan Phase 4 step 1)', () => {
 
 // ── the Phase 3 TODO constants flip to /host ──────────────────────────────────
 
-describe('host landing + route pointers flip to /host (plan Phase 4 step 1)', () => {
+describe('host landing + route pointers flip to /host', () => {
   const savedEnv: Record<string, string | undefined> = {};
 
   beforeEach(() => {

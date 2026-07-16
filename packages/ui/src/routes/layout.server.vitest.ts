@@ -4,12 +4,12 @@
  * TDD status:
  *  - The `features.admin` characterization block that protected the derived
  *    alias through Phases 1–3 was retired with the alias itself in Phase 4
- *    (plan Phase 4 step 4: delete when grep finds no reader — nothing
+ *    (delete when grep finds no reader — nothing
  *    consumed `data.features` anymore). The env → admin mapping it pinned
  *    is covered by the serverRuntimeContext tests below.
  *  - The `serverRuntimeContext` tests describe the #509 layout payload: the
  *    load returns the ServerRuntimeContext computed by
- *    computeServerRuntimeContext(event) (plan Phase 1 step 3).
+ *    computeServerRuntimeContext(event).
  */
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import type { ServerRuntimeContext } from '$lib/types.js';
@@ -58,7 +58,7 @@ afterEach(() => {
 
 // ── serverRuntimeContext (#509 layout payload) ────────────────────────────────
 
-describe('+layout.server load — serverRuntimeContext (plan Phase 1)', () => {
+describe('+layout.server load — serverRuntimeContext', () => {
   test('layout data includes serverRuntimeContext with contract version 2', async () => {
     const data = await runLoad();
     const ctx = data.serverRuntimeContext as ServerRuntimeContext | undefined;

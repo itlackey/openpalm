@@ -1,8 +1,7 @@
 /**
  * Phase 1.5 (#556) — `openpalm admin` (host-ui mode).
  *
- * TDD red suite written BEFORE the implementation. Contract under test
- * (docs/technical/ui-runtime-modes-plan.md §7 Phase 1.5, §4.1 host-ui row):
+ * TDD red suite written BEFORE the implementation. Contract under test:
  *
  *  - `admin` is registered in src/main.ts's subCommands map (new
  *    src/commands/admin.ts) and shows up in `openpalm --help`.
@@ -14,7 +13,7 @@
  *    binds 127.0.0.1 with a pinned loopback ORIGIN, and the flag is
  *    neutralized in the child env so the respawned `openpalm ui` child and
  *    the UI's own remote-setup relaxations cannot re-derive a remote bind
- *    (plan §8.3: host admin remains loopback-only, never weakened).
+ *    (host admin remains loopback-only, never weakened).
  *  - It prints the URL and opens the browser (reusing the existing
  *    open-browser helper via startUIServer); --no-open suppresses that.
  *  - On a machine with no install it still serves — the UI's existing setup
@@ -280,7 +279,7 @@ describe('openpalm admin serve mode (#556)', () => {
         'admin UI child spawn',
         () => run.error
       );
-      // Admin capability enabled in the spawned UI server env (plan Phase 1.5).
+      // Admin capability enabled in the spawned UI server env.
       expect(child.env?.OP_ENABLE_ADMIN).toBe('1');
       // Loopback-only bind with a pinned loopback origin.
       expect(child.env?.HOST).toBe('127.0.0.1');
@@ -360,7 +359,7 @@ describe('openpalm admin serve mode (#556)', () => {
     async () => {
       seedServeHome({ installed: true });
       // Operator has the remote-setup escape hatch enabled — admin mode must
-      // stay loopback-only anyway (plan §8.3, Phase 1.5 "refuse non-loopback binds").
+      // stay loopback-only anyway ("refuse non-loopback binds").
       process.env.OP_ALLOW_REMOTE_SETUP = '1';
       const calls = captureSpawns();
       const logs = captureLogs();

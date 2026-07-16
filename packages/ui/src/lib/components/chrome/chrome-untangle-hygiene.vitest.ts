@@ -1,7 +1,6 @@
 /**
  * Phase 3 hygiene — the admin-surface chrome must not import chat
- * components/stores (plan ui-runtime-modes-plan.md Phase 3 step 4, issue
- * #555: "Navbar must stop importing chat components/stores into the admin
+ * components/stores (issue #555: "Navbar must stop importing chat components/stores into the admin
  * surface — split chrome so admin surface uses a chrome without chat state;
  * chat surface gets its own chrome composition").
  *
@@ -88,7 +87,7 @@ function adminChromeModules(): string[] {
   return [...files];
 }
 
-describe('admin-surface chrome ↔ chat untangling (plan Phase 3 step 4, #555)', () => {
+describe('admin-surface chrome ↔ chat untangling (#555)', () => {
   test('the admin surface exists and mounts a chrome module from $lib/components/chrome/', () => {
     // CHARACTERIZATION (green today): guards the resolver — if the admin
     // surface stopped importing any chrome module, the hygiene assertion

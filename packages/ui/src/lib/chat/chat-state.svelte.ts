@@ -986,7 +986,7 @@ class ChatService {
 
 export const chat = new ChatService();
 
-// ── Connection-activation subscription (plan Phase 2 step 6, #486) ──────────
+// ── Connection-activation subscription (#486) ──────────
 // The chat side subscribes to connection activation; the connections store
 // never imports chat modules. The guard preserves the pre-Phase-2 behavior:
 // mid-generation switches are refused with the same user-facing message.

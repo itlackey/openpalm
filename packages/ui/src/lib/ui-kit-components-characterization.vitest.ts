@@ -1,8 +1,7 @@
 /**
  * P5a (#555) CHARACTERIZATION — representative shared components render the
- * same markup regardless of which package they live in (plan
- * ui-runtime-modes-plan.md §6.11 / Phase 5 step 1: the extraction is "pure
- * file moves + import rewrites; zero behavior change").
+ * same markup regardless of which package they live in: the extraction is "pure
+ * file moves + import rewrites; zero behavior change".
  *
  * GREEN before AND after the move: the two representative components
  * (IconButton from common/, IconClose from icons/) are resolved from

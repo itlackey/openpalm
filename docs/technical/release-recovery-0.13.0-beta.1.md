@@ -1,8 +1,7 @@
 # Release recovery — uninstallable 0.13.0-beta.1 portal packages (C1)
 
 > Written 2026-07-11 as part of the release-DAG fix for the PR #559
-> post-merge review (`docs/reviews/ui-admin-migration-review-2026-07-10.md`,
-> finding **C1**). This doc cannot be executed from the sandbox this fix was
+> post-merge review (finding **C1**). This doc cannot be executed from the sandbox this fix was
 > authored in — no npm publish credentials, no network egress to the
 > registry. It documents the exact manual commands a maintainer with npm
 > publish access needs to run to unbreak the already-published beta. Delete

@@ -119,7 +119,7 @@ describe('hooks.server — sliding renewal', () => {
     expect(setCookie).not.toContain(`${SESSION_COOKIE_NAME}=`);
   });
 
-  test('first-run document navigation routes to /setup (resolveLanding, plan §6.5)', async () => {
+  test('first-run document navigation routes to /setup (resolveLanding)', async () => {
     // Pre-Phase-3 this pinned '/' → /splash; the Phase 3 landing matrix sends
     // not_installed straight to /setup (same scenario is also pinned in
     // hooks.server.landing.vitest.ts).

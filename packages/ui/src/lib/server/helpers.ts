@@ -116,14 +116,14 @@ export function requireAdmin(event: RequestEvent, requestId: string): Response |
 }
 
 /**
- * Server-side capability guard (plan ui-runtime-modes-plan.md §6.4, §8.5).
+ * Server-side capability guard.
  *
  * Returns a 403 JSON error Response when this process does not expose
  * `capability`, or null when it does. This is the SECURITY boundary — the
  * browser-side `hasCapability()` is UX only. The check is deliberately
  * capability-based, not session-based: a valid admin session in a non-admin
  * process (host:* absent) is still refused. Capability computation itself
- * lives ONLY in computeServerRuntimeContext / resolveCapabilities (plan §8.6);
+ * lives ONLY in computeServerRuntimeContext / resolveCapabilities;
  * this helper just reads the advertised server capability set.
  */
 export function requireCapability(

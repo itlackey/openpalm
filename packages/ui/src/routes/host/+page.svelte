@@ -264,7 +264,7 @@
   // ── Mount ────────────────────────────────────────────────────────────────────
 
   onMount(() => {
-    // Landing deep-link (plan ui-runtime-modes-plan.md §6.5): installed_broken
+    // Landing deep-link: installed_broken
     // lands on ?tab=diagnostics — the Systems tab is where unhealthy services
     // and their state are listed.
     if (page.url.searchParams.get('tab') === 'diagnostics') {

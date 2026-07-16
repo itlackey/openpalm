@@ -16,7 +16,7 @@
  * browser tests, so they are preserved. New code is written in connection
  * language.
  *
- * Untangled from chat (plan Phase 2 step 6): this store NEVER imports chat
+ * Untangled from chat: this store NEVER imports chat
  * modules. Activation emits through $lib/connection-events; the chat store
  * subscribes (and registers its "not while sending" guard) from its own side.
  */

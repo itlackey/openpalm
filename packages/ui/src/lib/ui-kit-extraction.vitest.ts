@@ -1,10 +1,8 @@
 /**
  * P5a (#555) acceptance — components/common and components/icons move out of
- * packages/ui into the @openpalm/ui-kit workspace package (plan
- * ui-runtime-modes-plan.md §6.11 + Phase 5 step 1: "Create packages/ui-kit
- * (raw-source workspace package); move components/common/, icons/, theme
- * tokens"; §9 change map: "packages/ui/src/lib/components/{common,icons} →
- * Move to packages/ui-kit").
+ * packages/ui into the @openpalm/ui-kit workspace package: create packages/ui-kit
+ * (raw-source workspace package) and move components/common/, icons/, and theme
+ * tokens there.
  *
  * RED until P5a lands:
  *   - src/lib/components/{common,icons} still exist here,
@@ -77,7 +75,7 @@ function targetsOldLocation(specifier: string, importingFile: string): boolean {
   return false;
 }
 
-describe('P5a — components/{common,icons} extracted to @openpalm/ui-kit (plan §6.11)', () => {
+describe('P5a — components/{common,icons} extracted to @openpalm/ui-kit', () => {
   test('src/lib/components/common no longer exists in packages/ui', () => {
     expect(existsSync(COMMON_DIR)).toBe(false);
   });

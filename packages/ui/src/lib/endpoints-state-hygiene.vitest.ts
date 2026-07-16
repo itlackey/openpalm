@@ -1,8 +1,8 @@
 /**
  * Phase 2 (#486) hygiene — the connections store must not import chat state
- * (plan ui-runtime-modes-plan.md Phase 2 step 6: "break the endpoints-state ↔
+ * (break the endpoints-state ↔
  * chat-state bidirectional import (connection activation emits an event; chat
- * subscribes)"; §6.11: the coupling is untangled BEFORE the Phase 5 client
+ * subscribes); the coupling is untangled BEFORE the Phase 5 client
  * extraction, so the later move is file relocation, not surgery).
  *
  * RED until Phase 2 lands: lib/endpoints-state.svelte.ts currently does
@@ -63,7 +63,7 @@ function isChatModuleSpecifier(specifier: string): boolean {
   return /chat-state/.test(specifier) || /(?:^|\/)chat\//.test(specifier);
 }
 
-describe('endpoints-state ↔ chat-state untangling (plan Phase 2 step 6)', () => {
+describe('endpoints-state ↔ chat-state untangling', () => {
   test('the connections store module exists in $lib', () => {
     expect(resolveStoreFile()).not.toBeNull();
   });

@@ -1,5 +1,4 @@
-// P5e (#555) — STATIC/CONFIG repo-hygiene tests for release integration
-// (ui-runtime-modes-plan.md Phase 5 items 5-6, §8 invariants).
+// P5e (#555) — STATIC/CONFIG repo-hygiene tests for release integration.
 //
 // Asserts the ROOT package.json check/test aggregates reference the shared UI
 // package (packages/ui-kit), that packages/ui-kit stays a private raw-source

@@ -1,6 +1,6 @@
 /**
  * Tests for lib/runtime-context.svelte.ts — RuntimeContext v2 (issue #509),
- * after the "One UI, delete the split" refactor. Per plan §6.2 this module is
+ * after the "One UI, delete the split" refactor. This module is
  * the ONLY place capability logic lives, exporting
  * `resolveCapabilities(serverCaps, clientCtx)`, `hasCapability(cap)` and the
  * reactive `runtimeContext` store.
@@ -65,7 +65,7 @@ const BASE_CAPS: Capability[] = [
 /** Server capabilities of an adminCapable process (base + host:*). */
 const ADMIN_SERVER_CAPS: Capability[] = [...BASE_CAPS, ...HOST_CAPS];
 
-// ── resolveCapabilities — plan §6.2, exactly ─────────────────────────────────
+// ── resolveCapabilities ─────────────────────────────────
 
 describe('resolveCapabilities — electron display mode', () => {
   test('returns the server capabilities unchanged (ALL)', () => {
@@ -122,7 +122,7 @@ describe('resolveCapabilities — non-admin (base) surface', () => {
     expect(sorted(result)).toEqual(sorted(BASE_CAPS));
   });
 
-  test('activeConnection.grantedCapabilities are unioned in (plan §4.3 extension point)', () => {
+  test('activeConnection.grantedCapabilities are unioned in (extension point)', () => {
     const result = resolveCapabilities(BASE_CAPS, {
       displayMode: 'standalone-pwa',
       activeConnection: {

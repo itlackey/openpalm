@@ -4,8 +4,7 @@ import uiPkg from '../../../package.json';
 import type { Capability, ServerRuntimeContext } from '$lib/types.js';
 
 /**
- * Server runtime context — RuntimeContext v2 (plan ui-runtime-modes-plan.md
- * §6.1, issue #509). Computed server-side on every request via
+ * Server runtime context — RuntimeContext v2 (issue #509). Computed server-side on every request via
  * +layout.server.ts and served publicly at GET /api/runtime (the
  * contract-version handshake for remote/hosted clients).
  *
@@ -27,7 +26,7 @@ export function isAdminCapable(): boolean {
   return process.env.OP_INSIDE_ELECTRON === '1' || process.env.OP_ENABLE_ADMIN === '1';
 }
 
-/** Base capabilities granted to EVERY process (plan §6.1). The browser owns
+/** Base capabilities granted to EVERY process. The browser owns
  *  connections uniformly — multiple assistants + switching work everywhere. */
 const BASE_CAPABILITIES: readonly Capability[] = [
   'chat',
@@ -39,7 +38,7 @@ const BASE_CAPABILITIES: readonly Capability[] = [
   'pwa:install',
 ];
 
-/** The host:* capability set (plan §6.1) — added only when adminCapable. */
+/** The host:* capability set — added only when adminCapable. */
 const HOST_CAPABILITIES: readonly Capability[] = [
   'host:setup',
   'host:stack:read',
@@ -66,8 +65,8 @@ export function computeServerRuntimeContext(event: RequestEvent): ServerRuntimeC
     // from route handlers whose test event stubs may omit `url`.
     publicBaseUrl: event.url?.origin ?? '',
     uiVersion: uiPkg.version,
-    // Skeleton version equals platform version in production (plan §8.2);
-    // OP_SKELETON_VERSION is the explicit exact-pin override (plan §3).
+    // Skeleton version equals platform version in production;
+    // OP_SKELETON_VERSION is the explicit exact-pin override.
     skeletonVersion: process.env.OP_SKELETON_VERSION?.trim() || PLATFORM_VERSION,
     // chat + connections are reachable everywhere; the host dashboard and
     // setup wizard only exist in an adminCapable process (Phase 2 (#486)
@@ -77,10 +76,10 @@ export function computeServerRuntimeContext(event: RequestEvent): ServerRuntimeC
       ? { chat: '/chat', connections: '/connections', host: '/host', setup: '/setup' }
       : { chat: '/chat', connections: '/connections' },
     security: {
-      // Host admin is loopback-only and never weakened (plan §8.3).
+      // Host admin is loopback-only and never weakened.
       hostAdminLoopbackOnly: true,
       // Browser-direct remote connections need HTTPS; the loopback admin
-      // process proxies server-side and does not (plan §6.10).
+      // process proxies server-side and does not.
       requiresHttpsForRemoteConnections: !admin,
       csrfMode: admin ? 'loopback-origin' : 'same-site',
     },
