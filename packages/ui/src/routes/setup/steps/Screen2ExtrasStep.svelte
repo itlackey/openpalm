@@ -5,19 +5,18 @@
    * Flat hairline-row layout (spec: /tmp/wiz/extras-finish-redesign.html).
    * Three rows with inline accordion expansion (no modal, no bordered cards,
    * no sub-section headings):
-   *   1. Voice  — bundled openpalm-voice; toggle drives onvoiceenabledchange + engine defaults
+   *   1. Voice  — bundled openpalm-voice; the toggle enables the addon (capability)
    *   2. Discord — botToken + applicationId credential fields
    *   3. Slack  — slackBotToken + slackAppToken credential fields
    *
    * Takes NO props: this step reads the setup-state store
-   * ($lib/setup/setup-state.svelte.ts) directly for modelMode / voiceEnabled /
-   * displayed voice engines / hasOpenAI / portalSelection, and writes back
-   * through the store (handleEnableVoiceChange, voice engine setters,
-   * handlePortalToggle, handleCredentialChange). Local aliases near the top of
-   * the script map those store members to the names the template uses.
+   * ($lib/setup/setup-state.svelte.ts) directly for voiceEnabled /
+   * portalSelection, and writes back through the store
+   * (handleEnableVoiceChange, handlePortalToggle, handleCredentialChange).
+   * Local aliases near the top of the script map those store members to the
+   * names the template uses.
    */
 
-  import type { VoiceEngineValue } from '$lib/client/types.js';
   import { PORTALS } from '$lib/client/constants.js';
   import { isPortalEnabled as _isPortalEnabled, getCredValue as _getCredValue } from '$lib/client/helpers.js';
   import { setupState } from '$lib/setup/setup-state.svelte.js';
@@ -25,65 +24,17 @@
   // Takes NO props: this step reads the setup-state store directly. Local
   // aliases (`$derived` off the store) keep the rest of the component body
   // unchanged; the change handlers write back through the store.
-  //
-  // voiceEnabled is deliberately the store's explicit on/off $state — NOT
-  // derived from engine selection. Only when it is true is the voice addon
-  // included in the payload. `voiceTts`/`voiceStt` mirror the store's DISPLAY
-  // values (displayedVoice*), matching what the page previously threaded here.
   const s = setupState;
 
-  const modelMode = $derived(s.modelMode);
   const voiceEnabled = $derived(s.voiceEnabled);
-  const voiceTts = $derived(s.displayedVoiceTts);
-  const voiceStt = $derived(s.displayedVoiceStt);
-  const hasOpenAI = $derived(s.hasOpenAI);
   const portalSelection = $derived(s.portalSelection);
 
-  const onvoiceenabledchange = (enabled: boolean): void => {
-    s.voiceEnabled = enabled;
-    s.handleEnableVoiceChange(enabled);
-  };
-  const onchangetts = (v: VoiceEngineValue): void => { s.voiceTts = v; };
-  const onchangestt = (v: VoiceEngineValue): void => { s.voiceStt = v; };
   const onportaltoggle = (id: string): void => s.handlePortalToggle(id);
   const oncredentialchange = (chId: string, credKey: string, value: string): void =>
     s.handleCredentialChange(chId, credKey, value);
 
-  // Determine default TTS/STT engine based on modelMode and hasOpenAI.
-  // Called by the toggle handler when voice is turned ON to initialize engines.
-  function defaultTtsEngine(): string {
-    if (modelMode === 'local' || modelMode === 'both') return 'openpalm-voice';
-    if (hasOpenAI) return 'openai-tts';
-    return 'browser-tts';
-  }
-
-  function defaultSttEngine(): string {
-    if (modelMode === 'local' || modelMode === 'both') return 'openpalm-voice';
-    if (hasOpenAI) return 'openai-stt';
-    return 'browser-stt';
-  }
-
   function handleVoiceToggle() {
-    const next = !voiceEnabled;
-    onvoiceenabledchange(next);
-    if (next) {
-      // When turning voice ON, set the bundled openpalm-voice engine so the
-      // payload's addons.voice is included. Mirror what handleEnableVoiceChange
-      // does in the parent for the engines, falling back to defaults.
-      if (!voiceTts.engine || voiceTts.engine === '') {
-        onchangetts({ engine: defaultTtsEngine() });
-      }
-      if (!voiceStt.engine || voiceStt.engine === '') {
-        onchangestt({ engine: defaultSttEngine() });
-      }
-      // Ensure bundled engine is set when the new default is openpalm-voice
-      if (defaultTtsEngine() === 'openpalm-voice') {
-        onchangetts({ engine: 'openpalm-voice' });
-      }
-      if (defaultSttEngine() === 'openpalm-voice') {
-        onchangestt({ engine: 'openpalm-voice' });
-      }
-    }
+    s.handleEnableVoiceChange(!voiceEnabled);
   }
 
   function isPortalEnabled(chId: string, locked?: boolean): boolean {

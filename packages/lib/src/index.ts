@@ -438,12 +438,6 @@ export {
   summarizeComposeStderr,
 } from "./control-plane/compose-errors.js";
 
-// ── Voice Env ───────────────────────────────────────────────────────────
-export type { VoiceVarsConfig } from "./control-plane/voice-env.js";
-export {
-  writeVoiceVars,
-} from "./control-plane/voice-env.js";
-
 // ── Operator UID/GID Detection ──────────────────────────────────────────
 export type { OperatorIds } from "./control-plane/operator-ids.js";
 export {

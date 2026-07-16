@@ -1,4 +1,4 @@
-import type { ModelSelection, OpenCodeProvider, PortalState, Provider, ProviderState, VoiceEngineValue } from './types.js';
+import type { ModelSelection, OpenCodeProvider, PortalState, Provider, ProviderState } from './types.js';
 import { PORTALS, PROVIDERS } from './constants.js';
 import { addonProfileId, KNOWN_EMBEDDING_MODEL_DIMS } from '@openpalm/lib/provider-constants';
 import { LOCAL_PROVIDER_IDS } from './constants.js';
@@ -122,21 +122,6 @@ export function buildModelOptions(
   );
 }
 
-/**
- * Resolve which voice engine to use for one side (TTS or STT).
- *
- * - An explicit engine in `side` wins unconditionally.
- * - No explicit engine + bundled voice enabled → openpalm-voice.
- * - No explicit engine + bundled voice off → fallback engine (e.g. 'browser-tts').
- *
- * Pass fallbackEngine='' for the "persisted" form (nothing saved when untouched).
- * Pass a concrete fallback for the "displayed" form so the UI shows the real default.
- */
-export function resolveVoiceSide(side: VoiceEngineValue, enableVoice: boolean, fallbackEngine: string): VoiceEngineValue {
-  if (side.engine) return side;
-  if (enableVoice) return { engine: 'openpalm-voice' };
-  return { engine: fallbackEngine };
-}
 
 export function isPortalEnabled(portalSelection: Record<string, boolean | PortalState>, chId: string, locked?: boolean): boolean {
   if (locked) return true;

@@ -10,9 +10,9 @@
  *   - the connections store (endpoints-state / connections-state /
  *     connection-state, any rename the store has carried)
  *   - voice state (voice-state or anything under a voice/ module dir —
- *     the voice subsystem imports transcribeAudio/fetchVoiceConfig from
- *     $lib/api, so importing it drags the app's API client into ui-kit
- *     one hop out; review finding on P5a)
+ *     the voice subsystem depends on app modules like the client voice
+ *     settings store and provider transport, so importing it drags app
+ *     coupling into ui-kit one hop out; review finding on P5a)
  *
  * CHARACTERIZATION NOTE: this test is GREEN before the P5a move lands
  * (src/ is empty, so the scan has nothing to flag). It is written ahead of

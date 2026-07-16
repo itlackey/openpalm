@@ -34,7 +34,7 @@ const config = {
         // Without an explicit media-src directive, CSP falls back to
         // default-src 'self' which blocks blob: URIs and the audio element
         // refuses to play. Allow self + blob: so MP3/WAV responses streamed
-        // from /api/speak can be loaded into <audio>.
+        // from the TTS provider can be loaded into <audio>.
         "media-src": ["self", "blob:"],
         // /advanced embeds the active user-selected OpenCode origin. CSP cannot
         // enumerate that runtime value, so permit HTTP(S) frames while keeping

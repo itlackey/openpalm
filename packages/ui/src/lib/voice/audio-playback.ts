@@ -15,6 +15,7 @@
  */
 import { notifications } from '$lib/notifications.svelte.js';
 import { toSpeakableText } from './speakable-text.js';
+import { synthesize } from './providers.js';
 import type { TtsEngine, VoiceStatus } from './voice-state.svelte.js';
 
 /**
@@ -57,7 +58,7 @@ export class AudioPlaybackController {
 
   // True from playOne entry until the utterance reaches a terminal state
   // (ended, errored, skipped as unspeakable, or no engine available).
-  // `host.status` only flips to 'speaking' AFTER the /api/speak synthesis
+  // `host.status` only flips to 'speaking' AFTER the provider synthesis
   // fetch resolves, so it cannot serialize streamed chunks — a burst of
   // speakText calls during synthesis would otherwise start overlapping
   // playOne pipelines. Autoplay-blocked audio keeps this true as well:
@@ -187,7 +188,7 @@ export class AudioPlaybackController {
   }
 
   /**
-   * Read text aloud. Tries server-side TTS via /api/speak first (when the
+   * Read text aloud. Tries server-side TTS via the provider transport first (when the
    * configured engine is openpalm-voice or remote); falls back to browser
    * speech synthesis. Silent no-op if neither path is available.
    *
@@ -266,14 +267,12 @@ export class AudioPlaybackController {
     const useServer = engine === 'openpalm-voice' || engine === 'remote';
 
     if (useServer) {
-      let res: Response | undefined;
+      let res: Response | undefined | null;
       try {
-        res = await fetch('/api/speak', {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify({ text: speakableText }),
-        });
+        // Direct browser → provider call (the configured OpenAI-compatible
+        // endpoint or the host's voice container). Null = no server target
+        // configured; falls through to browser TTS like a failure would.
+        res = await synthesize(speakableText);
       } catch {
         // Network/CORS — fall through to browser TTS if available.
       }
@@ -366,9 +365,9 @@ export class AudioPlaybackController {
   }
 
   /**
-   * Convert a non-OK /api/speak response into a human-readable string.
-   * Recognises the two common shapes the route returns; falls back to a
-   * generic message keyed off the HTTP status.
+   * Convert a non-OK synthesis response into a human-readable string.
+   * Recognises the /voice pass-through's structured codes; any other 5xx
+   * (a provider whose model is still loading) reads as "warming up".
    */
   private async extractSpeakError(res: Response): Promise<string> {
     let code: string | undefined;
@@ -378,10 +377,10 @@ export class AudioPlaybackController {
     } catch {
       /* non-JSON body */
     }
-    if (code === 'tts_not_configured') {
-      return 'TTS is not configured.';
+    if (code === 'voice_unavailable') {
+      return 'OpenPalm Voice is not enabled on this host.';
     }
-    if (code === 'upstream_error' || res.status === 502 || res.status === 503) {
+    if (code === 'voice_unreachable' || res.status >= 500) {
       return 'Voice engine is warming up — try again in a moment.';
     }
     return `TTS failed (HTTP ${res.status}).`;

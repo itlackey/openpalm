@@ -193,6 +193,34 @@ describe('removed-addon state cleanup (R8: stale ssh)', () => {
     expect(after).not.toContain('OPENCODE_ENABLE_SSH');
   });
 
+  it('strips retired OP_TTS_*/OP_STT_* host voice-config keys from the legacy stack.env', () => {
+    seedStateEnv('OP_ENABLED_ADDONS=voice\n');
+    const legacyEnv = join(homeDir, 'knowledge', 'env', 'stack.env');
+    mkdirSync(join(homeDir, 'knowledge', 'env'), { recursive: true });
+    writeFileSync(
+      legacyEnv,
+      'OP_ASSISTANT_PORT=3800\n\n' +
+        '# ── Voice Channel (TTS/STT) ──────────────────────────────────────────\n' +
+        'OP_TTS_ENGINE=openpalm-voice\nOP_TTS_BASE_URL=http://127.0.0.1:8880\nOP_TTS_MODEL=kokoro\nOP_TTS_VOICE=bf_isabella\n' +
+        'OP_STT_ENGINE=openpalm-voice\nOP_STT_BASE_URL=http://127.0.0.1:8880\nOP_STT_MODEL=whisper-1\nOP_STT_LANGUAGE=en\n'
+    );
+
+    const result = pruneRemovedAddonState(homeDir);
+    expect(result.changed).toBe(true);
+    expect(result.removedEnvKeys).toEqual(
+      expect.arrayContaining(['OP_TTS_ENGINE', 'OP_TTS_BASE_URL', 'OP_STT_MODEL', 'OP_STT_LANGUAGE'])
+    );
+
+    const after = readFileSync(legacyEnv, 'utf-8');
+    expect(after).toContain('OP_ASSISTANT_PORT=3800');
+    expect(after).not.toContain('OP_TTS_');
+    expect(after).not.toContain('OP_STT_');
+    // The now-empty section header goes with its keys.
+    expect(after).not.toContain('Voice Channel');
+    // The voice ADDON stays enabled — only the retired provider config goes.
+    expect(listEnabledAddonIds(homeDir)).toEqual(['voice']);
+  });
+
   it('is idempotent — a second prune is a no-op that writes nothing', () => {
     seedStateEnv('OP_ENABLED_ADDONS=ssh\nOPENCODE_ENABLE_SSH=1\n');
     expect(pruneRemovedAddonState(homeDir).changed).toBe(true);

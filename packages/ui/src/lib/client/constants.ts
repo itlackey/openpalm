@@ -1,4 +1,4 @@
-import type { Provider, ProviderGroup, TtsOption, SttOption, Portal, OpenCodeProvider, VoiceEngineConfig } from './types.js';
+import type { Provider, ProviderGroup, Portal, OpenCodeProvider } from './types.js';
 import { OLLAMA_DEFAULT_CHAT_MODEL } from '@openpalm/lib/provider-constants';
 
 export { OLLAMA_DEFAULT_CHAT_MODEL };
@@ -75,110 +75,6 @@ export const STEP_LABELS = ['Models', 'Extras', 'Review'];
 /** Provider IDs excluded from the setup wizard's OAuth provider list. */
 export const WIZARD_EXCLUDED_PROVIDERS = new Set(['anthropic']);
 export const MAX_VISIBLE_MODELS = 6;
-
-export const TTS_OPTIONS: TtsOption[] = [
-  { id: 'openpalm-voice', name: 'Built-in voice', type: 'local', recommended: true, desc: 'Free — runs on this computer. Downloads once when you turn it on.' },
-  { id: 'openai-tts', name: 'OpenAI voices', type: 'cloud', desc: 'Uses your OpenAI account.' },
-  { id: 'elevenlabs-tts', name: 'ElevenLabs', type: 'cloud', desc: 'High-quality voices. Needs an ElevenLabs account.' },
-  { id: 'browser-tts', name: 'Your web browser', type: 'builtin', desc: 'Free, no setup needed.' },
-  { id: 'skip-tts', name: 'Skip for now', type: 'skip', desc: 'Add voice later from the dashboard.' },
-];
-
-export const STT_OPTIONS: SttOption[] = [
-  { id: 'openpalm-voice', name: 'Built-in voice', type: 'local', recommended: true, desc: 'Free — runs on this computer. Downloads once when you turn it on.' },
-  { id: 'openai-stt', name: 'OpenAI', type: 'cloud', desc: 'Uses your OpenAI account.' },
-  { id: 'browser-stt', name: 'Your web browser', type: 'builtin', desc: 'Free, no setup needed.' },
-  { id: 'skip-stt', name: 'Skip for now', type: 'skip', desc: 'Add later from the dashboard.' },
-];
-
-/**
- * Per-engine configuration fields. Empty `fields` means "no extra settings".
- * `provider` is written to stack.env as OP_TTS_PROVIDER / OP_STT_PROVIDER
- * so the voice channel can resolve the runtime URL.
- *
- * Shared between the setup wizard's VoiceStep and the admin Capabilities tab.
- */
-// Field definitions shared by engines that talk to an HTTP backend.
-const BASE_URL_FIELD = (placeholder: string, hint: string) => ({
-  key: 'baseURL' as const,
-  label: 'Endpoint URL',
-  placeholder,
-  hint,
-});
-
-export const TTS_ENGINES: Record<string, VoiceEngineConfig> = {
-  // Bundled openpalm/voice container — same engine the admin Voice tab
-  // calls 'openpalm-voice'. No URL/model fields: the route writes the
-  // loopback preset (http://127.0.0.1:8880, kokoro, bf_isabella) at
-  // save time so the operator never has to think about it.
-  'openpalm-voice': {
-    id: 'openpalm-voice',
-    provider: 'openpalm-voice',
-    fields: [],
-  },
-  'openai-tts': {
-    id: 'openai-tts',
-    provider: 'openai',
-    fields: [
-      BASE_URL_FIELD(
-        'https://api.openai.com/v1',
-        'Leave empty to use the default OpenAI endpoint. Override for proxies / Azure-compat.',
-      ),
-      { key: 'model', label: 'Model', options: ['tts-1', 'tts-1-hd', 'gpt-4o-mini-tts'] },
-      { key: 'voice', label: 'Voice', options: ['alloy', 'echo', 'fable', 'onyx', 'nova', 'shimmer'] },
-    ],
-  },
-  'elevenlabs-tts': {
-    id: 'elevenlabs-tts',
-    provider: 'elevenlabs',
-    fields: [
-      { key: 'apiKey', label: 'API Key', placeholder: 'sk_...', hint: 'Your ElevenLabs API key from elevenlabs.io.' },
-      { key: 'voice', label: 'Voice ID', placeholder: 'EXAVITQu4vr4xnSDxMaL', hint: 'ElevenLabs voice ID (from your Voice Library).' },
-      { key: 'model', label: 'Model', options: ['eleven_multilingual_v2', 'eleven_turbo_v2_5', 'eleven_flash_v2_5'] },
-    ],
-  },
-  'browser-tts': {
-    id: 'browser-tts',
-    fields: [],
-  },
-  'skip-tts': {
-    id: 'skip-tts',
-    fields: [],
-  },
-};
-
-export const STT_ENGINES: Record<string, VoiceEngineConfig> = {
-  // Bundled openpalm/voice container (same engine as TTS — one image
-  // serves both endpoints). No URL/model fields: the route writes the
-  // loopback preset (http://127.0.0.1:8880, whisper-1) at save time.
-  'openpalm-voice': {
-    id: 'openpalm-voice',
-    provider: 'openpalm-voice',
-    fields: [],
-  },
-  'openai-stt': {
-    id: 'openai-stt',
-    provider: 'openai',
-    fields: [
-      BASE_URL_FIELD(
-        'https://api.openai.com/v1',
-        'Leave empty to use the default OpenAI endpoint.',
-      ),
-      { key: 'model', label: 'Model', options: ['whisper-1', 'gpt-4o-mini-transcribe', 'gpt-4o-transcribe'] },
-      { key: 'language', label: 'Language', placeholder: 'en', hint: 'A language code like `en` or `fr`, or leave blank to detect automatically.' },
-    ],
-  },
-  'browser-stt': {
-    id: 'browser-stt',
-    fields: [
-      { key: 'language', label: 'Language', placeholder: 'en-US', hint: 'A language code like `en` or `fr`, or leave blank to detect automatically.' },
-    ],
-  },
-  'skip-stt': {
-    id: 'skip-stt',
-    fields: [],
-  },
-};
 
 export const PORTALS: Portal[] = [
   { id: 'api', name: 'API', icon: '🔌', desc: 'OpenAI-compatible REST API endpoint', locked: true },

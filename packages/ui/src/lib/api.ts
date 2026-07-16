@@ -2,7 +2,7 @@
 //
 // The former 975-line god-client has been split into a shared transport core
 // (`./api/core.ts`) plus one cohesive domain client module per feature area
-// (`./api/voice.ts`, `./api/versions.ts`, `./api/akm.ts`, …). Each module owns
+// (`./api/versions.ts`, `./api/akm.ts`, …). Each module owns
 // its own endpoint functions AND the DTOs those endpoints return.
 //
 // This barrel re-exports every public symbol so existing call sites keep
@@ -25,7 +25,6 @@ export * from './api/backups.js';
 export * from './api/automations.js';
 export * from './api/addons.js';
 export * from './api/secrets.js';
-export * from './api/voice.js';
 export * from './api/akm.js';
 export * from './api/pairing.js';
 export * from './api/chat.js';

@@ -51,6 +51,13 @@ export type ServerRuntimeContext = {
     requiresHttpsForRemoteConnections: boolean;
     csrfMode: 'loopback-origin' | 'same-site';
   };
+  /**
+   * Advertised when this process can serve the local voice container: the
+   * same-origin base path of the transparent /voice pass-through (session-
+   * authed, OpenAI-compatible surface). Clients use it to offer/auto-select
+   * the "OpenPalm Voice" speech provider.
+   */
+  voice?: { url: string };
 };
 
 export type ClientDisplayMode = 'electron' | 'standalone-pwa' | 'browser';

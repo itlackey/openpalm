@@ -25,15 +25,7 @@ if (MOCKED_OP_HOME) {
   mkdirSync(join(MOCKED_OP_HOME, 'state'), { recursive: true });
   mkdirSync(join(MOCKED_OP_HOME, 'knowledge', 'env'), { recursive: true });
   writeFileSync(join(MOCKED_OP_HOME, 'state', 'stack.state.env'), 'OP_SETUP_COMPLETE=true\n');
-  writeFileSync(
-    join(MOCKED_OP_HOME, 'knowledge', 'env', 'stack.env'),
-    [
-      'OP_STT_ENGINE=remote',
-      'OP_STT_BASE_URL=http://127.0.0.1:1',
-      'OP_TTS_ENGINE=browser',
-      '',
-    ].join('\n'),
-  );
+  writeFileSync(join(MOCKED_OP_HOME, 'knowledge', 'env', 'stack.env'), 'OP_SETUP_COMPLETE=true\n');
 }
 const MOCKED_ENV = STACK_TESTS
   ? undefined

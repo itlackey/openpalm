@@ -17,7 +17,8 @@ import {
   listAvailableAddonIds,
   listEnabledAddonIds,
 } from "@openpalm/lib";
-import { performAddonToggle } from "$lib/server/addon-helpers.js";
+import { handleAddonToggleRequest } from "$lib/server/addon-helpers.js";
+import { voiceAddonInfo } from "$lib/server/voice/bring-up.js";
 
 type AddonItem = { name: string; enabled: boolean; available: boolean };
 
@@ -37,7 +38,12 @@ export const GET: RequestHandler = async (event) => {
   const availableIds = listAvailableAddonIds();
   const addons = buildAddonList(availableIds, listEnabledAddonIds(state.homeDir));
 
-  return jsonResponse(200, { addons }, requestId);
+  // The voice addon carries a hardware profile (CPU/CUDA/ROCm) and can have a
+  // background bring-up job in flight — surface both so the Add-ons tab can
+  // render the profile picker and poll pull/start progress.
+  const voice = await voiceAddonInfo(state.homeDir);
+
+  return jsonResponse(200, { addons, voice }, requestId);
 };
 
 export const POST: RequestHandler = async (event) => {
@@ -60,6 +66,5 @@ export const POST: RequestHandler = async (event) => {
     return errorResponse(404, "not_found", `Addon "${name}" is not available`, { name }, requestId);
   }
 
-  const requestedEnabled: boolean | undefined = typeof body.enabled === "boolean" ? body.enabled : undefined;
-  return performAddonToggle(state, name, requestedEnabled, requestId);
+  return handleAddonToggleRequest(state, name, body, requestId);
 };

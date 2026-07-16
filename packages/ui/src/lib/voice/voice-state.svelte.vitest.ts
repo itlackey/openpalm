@@ -9,6 +9,23 @@ import {
 } from './voice-state.svelte.js';
 import { notifications } from '$lib/notifications.svelte.js';
 
+// Client-owned voice settings live in localStorage; the direct-transport
+// resolver reads them per call, so seeding/clearing per test is enough.
+const SETTINGS_KEY = 'openpalm.voice.settings';
+function seedRemoteProvider(baseURL = 'http://tts.example'): void {
+	window.localStorage.setItem(
+		SETTINGS_KEY,
+		JSON.stringify({
+			version: 1,
+			stt: { provider: 'openai-compatible', baseURL },
+			tts: { provider: 'openai-compatible', baseURL },
+		}),
+	);
+}
+function clearVoiceSettings(): void {
+	window.localStorage.removeItem(SETTINGS_KEY);
+}
+
 describe('voice-state engine selection', () => {
 	test('sttSupported reflects engine availability (browser path)', () => {
 		// Whether the test runner actually has the Web Speech API, the call
@@ -61,22 +78,26 @@ describe('voice-state TTS warm-up', () => {
 		globalThis.fetch = originalFetch;
 		voiceState.ttsEngine = 'disabled';
 		voiceState.ttsAutoEnabled = false;
+		clearVoiceSettings();
 	});
 
 	// The warm-up fires at most once per page load (module-level flag). This
 	// is the only test that consumes it — the toggle tests above run with the
 	// 'disabled' engine, where the warm-up is skipped without consuming it.
-	test('enabling auto-TTS with a server engine fires one warm-up POST per page load', () => {
-		voiceState.ttsEngine = 'openpalm-voice';
+	test('enabling auto-TTS with a server engine fires one warm-up synthesis per page load', async () => {
+		seedRemoteProvider();
+		voiceState.ttsEngine = 'remote';
 		voiceState.ttsAutoEnabled = false;
 		const fetchMock = vi.fn(async () => new Response('', { status: 404 }));
 		globalThis.fetch = fetchMock as unknown as typeof fetch;
 
 		setTtsAutoEnabled(true);
-		expect(fetchMock).toHaveBeenCalledTimes(1);
+		// The provider target resolves asynchronously before the fetch fires.
+		await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
 		const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
-		expect(String(url)).toBe('/api/speak');
-		expect(JSON.parse(String(init?.body))).toEqual({ text: 'ok' });
+		expect(String(url)).toBe('http://tts.example/v1/audio/speech');
+		const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+		expect(body.input).toBe('ok');
 
 		// Toggling off and back on must not fire a second warm-up.
 		setTtsAutoEnabled(false);
@@ -93,12 +114,14 @@ describe('voice-state speakText error surfacing', () => {
 		voiceState.errorMessage = '';
 		voiceState.status = 'idle';
 		stopSpeaking();
+		clearVoiceSettings();
 	});
 
-	test('503 from /api/speak surfaces an error when no browser TTS fallback exists', async () => {
+	test('503 voice_unavailable from the pass-through surfaces an error when no browser TTS fallback exists', async () => {
+		seedRemoteProvider();
 		voiceState.ttsEngine = 'remote';
 		globalThis.fetch = vi.fn(async () =>
-			new Response(JSON.stringify({ error: 'tts_not_configured' }), {
+			new Response(JSON.stringify({ error: 'voice_unavailable' }), {
 				status: 503,
 				headers: { 'content-type': 'application/json' },
 			}),
@@ -110,7 +133,7 @@ describe('voice-state speakText error surfacing', () => {
 		try {
 			delete (window as unknown as { speechSynthesis?: unknown }).speechSynthesis;
 			await speakText('hello');
-			expect(voiceState.errorMessage).toMatch(/not configured/i);
+			expect(voiceState.errorMessage).toMatch(/not enabled/i);
 		} finally {
 			if (ss !== undefined) {
 				(window as unknown as { speechSynthesis: SpeechSynthesis }).speechSynthesis = ss;
@@ -118,10 +141,11 @@ describe('voice-state speakText error surfacing', () => {
 		}
 	});
 
-	test('502 from /api/speak yields a "warming up" message when no fallback exists', async () => {
+	test('502 from the provider yields a "warming up" message when no fallback exists', async () => {
+		seedRemoteProvider();
 		voiceState.ttsEngine = 'remote';
 		globalThis.fetch = vi.fn(async () =>
-			new Response(JSON.stringify({ error: 'upstream_error' }), {
+			new Response(JSON.stringify({ error: 'voice_unreachable' }), {
 				status: 502,
 				headers: { 'content-type': 'application/json' },
 			}),
@@ -139,12 +163,13 @@ describe('voice-state speakText error surfacing', () => {
 		}
 	});
 
-	test('posts only { text } (markdown-stripped) to /api/speak', async () => {
+	test('posts markdown-stripped input to the provider', async () => {
+		seedRemoteProvider();
 		voiceState.ttsEngine = 'remote';
 		let capturedBody = '';
 		const mockFetch = vi.fn(async (_url, init) => {
 			capturedBody = String(init?.body ?? '');
-			return new Response(JSON.stringify({ error: 'tts_not_configured' }), {
+			return new Response(JSON.stringify({ error: 'voice_unavailable' }), {
 				status: 503,
 				headers: { 'content-type': 'application/json' },
 			});
@@ -156,7 +181,8 @@ describe('voice-state speakText error surfacing', () => {
 			delete (window as unknown as { speechSynthesis?: unknown }).speechSynthesis;
 			await speakText('Here is **the** answer.');
 			const parsed = JSON.parse(capturedBody) as Record<string, unknown>;
-			expect(parsed).toEqual({ text: 'Here is the answer.' });
+			expect(parsed.input).toBe('Here is the answer.');
+			expect(parsed).not.toHaveProperty('text');
 		} finally {
 			if (ss !== undefined) {
 				(window as unknown as { speechSynthesis: SpeechSynthesis }).speechSynthesis = ss;
@@ -169,7 +195,7 @@ describe('voice-state queue', () => {
 	const originalFetch = globalThis.fetch;
 
 	/**
-	 * Install a /api/speak mock whose synthesis fetch never resolves — the
+	 * Install a synthesis fetch mock that never resolves — the
 	 * first speakText occupies the playback pipeline (busy) for the rest of
 	 * the test, exactly like a chunk mid-synthesis while later streamed
 	 * chunks arrive.
@@ -187,28 +213,36 @@ describe('voice-state queue', () => {
 		voiceState.errorMessage = '';
 		stopSpeaking();
 		notifications.clear();
+		clearVoiceSettings();
 	});
 
 	test('speakText queues while a prior synthesis fetch is unresolved', async () => {
-		// The busy window opens at playOne entry, BEFORE the /api/speak fetch
+		seedRemoteProvider();
+		// The busy window opens at playOne entry, BEFORE the synthesis fetch
 		// resolves — status is still 'idle' at that point, so serialization
 		// must not key off status. A second speakText during synthesis has to
 		// queue, not open a concurrent synthesis fetch.
 		voiceState.ttsEngine = 'remote';
 		const fetchMock = hangSynthesis();
 		void speakText('first streamed sentence');
-		expect(fetchMock).toHaveBeenCalledTimes(1);
+		// Target resolution is async — the fetch fires a microtask later.
+		await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
 		await speakText('second streamed sentence');
 		expect(fetchMock).toHaveBeenCalledTimes(1);
 	});
 
 	test('stopSpeaking during an in-flight synthesis discards the result', async () => {
+		seedRemoteProvider();
 		voiceState.ttsEngine = 'remote';
 		let resolveFetch: ((res: Response) => void) | undefined;
-		globalThis.fetch = vi.fn(
+		const fetchMock = vi.fn(
 			() => new Promise<Response>((resolve) => { resolveFetch = resolve; }),
-		) as unknown as typeof fetch;
+		);
+		globalThis.fetch = fetchMock as unknown as typeof fetch;
 		const spoken = speakText('stopped mid-synthesis');
+		// Target resolution is async — wait for the synthesis fetch to be
+		// in flight before cancelling it.
+		await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
 		stopSpeaking();
 		resolveFetch?.(
 			new Response(new Blob(['audio-bytes']), {
@@ -280,6 +314,7 @@ describe('voice-state queue', () => {
 	});
 
 	test('queue overflow pushes an info notification once per burst', async () => {
+		seedRemoteProvider();
 		voiceState.ttsEngine = 'remote';
 		hangSynthesis();
 		void speakText('active utterance');
@@ -296,6 +331,7 @@ describe('voice-state queue', () => {
 	});
 
 	test('queue overflow notification re-arms after the queue drains', async () => {
+		seedRemoteProvider();
 		voiceState.ttsEngine = 'remote';
 		hangSynthesis();
 		void speakText('active utterance');

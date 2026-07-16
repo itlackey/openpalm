@@ -1,6 +1,6 @@
 /**
  * Zero-dependency voice-activity detection for conversation mode's remote
- * (MediaRecorder + /api/transcribe) engine.
+ * (MediaRecorder + provider transcription) engine.
  *
  * The detector is RMS-energy hysteresis over an AnalyserNode sampled on a
  * fixed interval: speech starts after `startFrames` consecutive frames

@@ -49,8 +49,8 @@
   // Mirror voice errors into the toast queue so the voice subsystem's
   // error surface renders through the single <Toast /> outlet below. This
   // lives in APP code — not in ui-kit's Toast — because voice-state depends
-  // on $lib/api (POST /api/transcribe), a server assumption ui-kit source
-  // must never carry (enforced by
+  // on app modules (client voice settings + provider transport), coupling
+  // ui-kit source must never carry (enforced by
   // packages/ui-kit/tests/no-app-coupling.test.ts). Consecutive errors
   // reuse the same toast id so they update in place instead of stacking.
   let voiceErrorToastId: string | null = null;

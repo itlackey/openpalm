@@ -136,19 +136,9 @@ export const GET: RequestHandler = async (event) => {
       dims: akm.embedding.dimension ?? 0,
       baseUrl: deriveBaseUrl(akm.embedding.endpoint),
     } : null,
+    // TTS/STT provider choice is client-owned (per-browser) now — the host
+    // only reports the voice addon's hardware profiles + selection.
     voice: {
-      tts: {
-        engine: env.OP_TTS_ENGINE ?? "",
-        baseURL: env.OP_TTS_BASE_URL ?? "",
-        model: env.OP_TTS_MODEL ?? "",
-        voice: env.OP_TTS_VOICE ?? "",
-      },
-      stt: {
-        engine: env.OP_STT_ENGINE ?? "",
-        baseURL: env.OP_STT_BASE_URL ?? "",
-        model: env.OP_STT_MODEL ?? "",
-        language: env.OP_STT_LANGUAGE ?? "",
-      },
       profiles: voiceProfiles,
       selectedProfile: selectedVoiceProfile,
     },

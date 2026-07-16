@@ -11,8 +11,10 @@
   import { mintPairingCode } from '$lib/api.js';
   import { getConnectionStore, getSecretStore } from '$lib/connections/boot.js';
   import { newConnectionId } from '$lib/connections/store.js';
+  import { isDiscoveryCandidateUrl, markLocalDiscoveryDismissed } from '$lib/connections/discovery.js';
   import { parsePairingCode, type PairingPayload } from '$lib/connections/pairing.js';
   import { hasCapability, runtimeContext } from '$lib/runtime-context.svelte.js';
+  import VoiceClientSettings from '$lib/components/voice/VoiceClientSettings.svelte';
 
   // Capability-guarded surface (#486):
   // this page replaces /admin/endpoints and works in every mode that
@@ -283,6 +285,10 @@
       const store = getConnectionStore();
       if (c.auth.mode === 'basic') await getSecretStore().delete(c.auth.secretRef);
       await store.remove(c.id);
+      // Removing an auto-discovered local entry is a "stop offering this"
+      // signal — record it so discovery doesn't resurrect the card on the
+      // next load.
+      if (isDiscoveryCandidateUrl(c.url)) markLocalDiscoveryDismissed();
       await connectionsService.load(true);
     } catch (err) {
       const e2 = err as { message?: string };
@@ -584,6 +590,11 @@
         </div>
       </section>
     {/if}
+
+    <!-- Client-owned voice settings: which TTS/STT provider THIS device uses.
+         Lives here (not under /host) because it is per-browser preference, not
+         host configuration — see docs/technical/voice-settings-architecture. -->
+    <VoiceClientSettings />
   </main>
 
 <style>

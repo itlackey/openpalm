@@ -8,7 +8,6 @@
 	import IconAgent from '@openpalm/ui-kit/components/icons/IconAgent.svelte';
 	import IconSharing from '@openpalm/ui-kit/components/icons/IconSharing.svelte';
 	import IconActivity from '@openpalm/ui-kit/components/icons/IconActivity.svelte';
-	import IconMic from '@openpalm/ui-kit/components/icons/IconMic.svelte';
 	import IconAddons from '@openpalm/ui-kit/components/icons/IconAddons.svelte';
 	import IconAutomations from '@openpalm/ui-kit/components/icons/IconAutomations.svelte';
 	import IconLock from '@openpalm/ui-kit/components/icons/IconLock.svelte';
@@ -21,7 +20,6 @@
 		| 'automations'
 		| 'connections'
 		| 'secrets'
-		| 'voice'
 		| 'akm'
 		| 'assistant'
 		| 'host-sharing'
@@ -31,7 +29,7 @@
 		| 'updates'
 		| 'recovery';
 
-	type SectionId = 'health' | 'mind' | 'voice' | 'routines' | 'capabilities' | 'knowledge';
+	type SectionId = 'health' | 'mind' | 'routines' | 'capabilities' | 'knowledge';
 
 	interface SubTab {
 		id: TabId;
@@ -71,11 +69,6 @@
 			id: 'mind',
 			label: 'Mind',
 			tabs: [{ id: 'connections', label: 'AI Providers', icon: IconLink }],
-		},
-		{
-			id: 'voice',
-			label: 'Voice',
-			tabs: [{ id: 'voice', label: 'Voice', icon: IconMic }],
 		},
 		{
 			id: 'routines',

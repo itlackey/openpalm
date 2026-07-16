@@ -41,7 +41,7 @@ Open the app. The setup wizard will:
 2. **Welcome** — a secure admin password is auto-generated and displayed for you to copy.
 3. **Providers** — choose your AI provider (OpenAI, Anthropic, Ollama, LM Studio, etc.).
 4. **Models** — pick chat, embedding, and (optional) small model.
-5. **Voice** — TTS/STT settings.
+5. **Voice** — enable the built-in voice service (optional; each device picks its own speech settings later from the chat UI's Connections page).
 6. **Options** — portals (Discord, Slack), addons, image tag.
 7. **Review & Install** — confirm and deploy.
 

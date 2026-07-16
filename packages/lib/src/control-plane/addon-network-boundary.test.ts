@@ -12,8 +12,8 @@ import { parse as yamlParse } from 'yaml';
 //
 // Sweep of services.compose.yml (verified against source, 2026-07-05):
 //   - voice{,-cuda,-rocm}: consumed by the UI host process over the published loopback
-//     port 127.0.0.1:8880 (packages/ui/src/lib/server/voice/bring-up.ts openpalmVoiceBaseURL,
-//     packages/ui/src/routes/api/speak/+server.ts). There is NO in-container path from the
+//     port 127.0.0.1:8880 (packages/ui/src/lib/server/voice/bring-up.ts voiceHostPort,
+//     packages/ui/src/routes/voice/[...path]/+server.ts). There is NO in-container path from the
 //     assistant to voice or from voice back to the assistant (containers/voice has no :4096
 //     / OpenCode callback). => voice needs NO assistant reachability and is fully segmented
 //     onto addon_net. (This REVERSES the plan's tentative guess that voice was the exception.)

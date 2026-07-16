@@ -1,7 +1,7 @@
 /**
  * Deterministic markdown-to-speech text stripping. Pure and dependency-free
  * so both the browser TTS fallback (audio-playback.ts) and the server TTS
- * route (routes/api/speak/+server.ts) can run the exact same rules without
+ * provider transport (voice/providers.ts) can run the exact same rules without
  * ever handing raw markdown syntax to a speech engine.
  *
  * Order matters: fenced code blocks and inline code are handled before any

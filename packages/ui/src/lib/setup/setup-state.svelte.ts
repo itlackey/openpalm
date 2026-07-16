@@ -27,7 +27,7 @@ import {
   PROVIDERS, LOCAL_PROVIDERS, OLLAMA_DEFAULT_CHAT_MODEL, LOCAL_PROVIDER_IDS,
 } from '$lib/client/constants.js';
 import {
-  buildModelOptions, selectAddonProfileId, resolveVoiceSide,
+  buildModelOptions, selectAddonProfileId,
   generatePassword, buildVerifiedProviders,
   computeAutoModelSelection, resolvePreferredModelSelection,
 } from '$lib/client/helpers.js';
@@ -42,7 +42,7 @@ import {
 } from '$lib/setup-api.js';
 import type {
   ProviderState, ModelSelection, DetectedProvider, PortalState,
-  OpenCodeProvider, AuthMethod, VoiceEngineValue, Provider,
+  OpenCodeProvider, AuthMethod, Provider,
 } from '$lib/client/types.js';
 import type { VoiceAddonProfile } from '$lib/api.js';
 import type { SetupRecommendation } from '@openpalm/lib';
@@ -108,8 +108,6 @@ export const INITIAL = {
   // Step 2: Models
   modelSelection: {} as { llm?: ModelSelection; embedding?: ModelSelection; small?: ModelSelection },
   // Step 3: Voice
-  voiceTts: { engine: '' } as VoiceEngineValue,
-  voiceStt: { engine: '' } as VoiceEngineValue,
   voiceProfiles: [] as VoiceAddonProfile[],
   selectedVoiceProfile: '',
   importedLlmModel: undefined as string | undefined,
@@ -174,9 +172,9 @@ export class SetupState {
   // modelMode: which high-level option the user chose on Screen 1.
   // Pre-set to 'cloud'; detection may update it before Screen 1 renders.
   modelMode = $state(INITIAL.modelMode);
-  // voiceEnabled: explicit toggle state — OFF by default, always.
-  // Separate from the `enableVoice` derived (which drives the payload).
-  // Screen2ExtrasStep reads this and only sets engine values when true.
+  // voiceEnabled: the explicit voice-capability toggle — OFF by default,
+  // always. Drives addons.voice (+ voiceProfile) in the payload; TTS/STT
+  // provider choice is client-owned and not part of setup.
   voiceEnabled = $state(INITIAL.voiceEnabled);
 
   // ── Step 0: Welcome ─────────────────────────────────────────────────────────
@@ -217,9 +215,6 @@ export class SetupState {
   modelSelection = $state(INITIAL.modelSelection);
 
   // ── Step 3: Voice ───────────────────────────────────────────────────────────
-  // VoiceEngineValue holds engine id + per-engine settings (model/voice/language).
-  voiceTts = $state(INITIAL.voiceTts);
-  voiceStt = $state(INITIAL.voiceStt);
   // Hardware profiles for the bundled OpenPalm Voice addon (CPU / CUDA / …)
   voiceProfiles = $state(INITIAL.voiceProfiles);
   selectedVoiceProfile = $state(INITIAL.selectedVoiceProfile);
@@ -316,26 +311,6 @@ export class SetupState {
     PROVIDERS.some((p) => p.id === 'openai' && this.providerState[p.id]?.verified)
   );
 
-  voiceDefaults = $derived(this.hasOpenAI
-    ? { tts: 'openai-tts', stt: 'openai-stt' }
-    : { tts: 'browser-tts', stt: 'browser-stt' });
-
-  // "Voice enabled" = the bundled OpenPalm Voice engine is selected on either
-  // side. DERIVED (not manually-synced state) so it can never drift from the
-  // engines after rerun deserialization or any out-of-band engine edit.
-  enableVoice = $derived(
-    this.voiceTts.engine === 'openpalm-voice' || this.voiceStt.engine === 'openpalm-voice',
-  );
-
-  // Resolve one voice side (tts|stt): an explicit engine wins; else OpenPalm
-  // Voice when the bundled voice is enabled; else the given fallback. The
-  // `displayed*` derivations pass a sensible default engine (for the UI); the
-  // `persisted*` ones pass '' (an empty engine means "don't save this side").
-  displayedVoiceTts = $derived(resolveVoiceSide(this.voiceTts, this.enableVoice, this.voiceDefaults.tts));
-  displayedVoiceStt = $derived(resolveVoiceSide(this.voiceStt, this.enableVoice, this.voiceDefaults.stt));
-  persistedVoiceTts = $derived(resolveVoiceSide(this.voiceTts, this.enableVoice, ''));
-  persistedVoiceStt = $derived(resolveVoiceSide(this.voiceStt, this.enableVoice, ''));
-
   // #563 — install-time validity of the network access choice: home-open
   // requires the risk acknowledgement; home-password requires a real
   // password; the other two presets are always valid (no extra input).
@@ -368,8 +343,7 @@ export class SetupState {
     providerState: this.providerState,
     ollamaEnabled: this.ollamaEnabled,
     hostLocalLlmRunning: this.hostLocalLlmRunning,
-    persistedVoiceTts: this.persistedVoiceTts,
-    persistedVoiceStt: this.persistedVoiceStt,
+    voiceEnabled: this.voiceEnabled,
     selectedVoiceProfile: this.selectedVoiceProfile,
     selectedOllamaProfile: this.selectedOllamaProfile,
     portalSelection: this.portalSelection,
@@ -533,21 +507,12 @@ export class SetupState {
   }
 
   handleEnableVoiceChange(v: boolean): void {
-    // enableVoice is derived from the engines below — toggling drives the
-    // engines, and the derived follows.
-    if (v) {
-      // Toggle ON → make the Voice step concretely reflect OpenPalm Voice on
-      // both sides (unless they already target it).
-      if (this.voiceTts.engine !== 'openpalm-voice') this.voiceTts = { engine: 'openpalm-voice' };
-      if (this.voiceStt.engine !== 'openpalm-voice') this.voiceStt = { engine: 'openpalm-voice' };
-      if (!this.selectedVoiceProfile) {
-        const match = selectAddonProfileId(this.voiceProfiles, 'voice', this.gpuDetected);
-        if (match) this.selectedVoiceProfile = match;
-      }
-    } else {
-      // Toggle OFF → clear any OpenPalm Voice engine back to "not chosen".
-      if (this.voiceTts.engine === 'openpalm-voice') this.voiceTts = { engine: '' };
-      if (this.voiceStt.engine === 'openpalm-voice') this.voiceStt = { engine: '' };
+    // The toggle IS the state: it enables the voice addon (capability) in the
+    // payload. TTS/STT provider choice is client-owned and not part of setup.
+    this.voiceEnabled = v;
+    if (v && !this.selectedVoiceProfile) {
+      const match = selectAddonProfileId(this.voiceProfiles, 'voice', this.gpuDetected);
+      if (match) this.selectedVoiceProfile = match;
     }
   }
 
@@ -844,8 +809,7 @@ export class SetupState {
     this.installing = true;
 
     // Ensure a voice profile is selected when voice is enabled.
-    const usesBundledVoice = this.persistedVoiceTts.engine === 'openpalm-voice' || this.persistedVoiceStt.engine === 'openpalm-voice';
-    if (usesBundledVoice && !this.selectedVoiceProfile) {
+    if (this.voiceEnabled && !this.selectedVoiceProfile) {
       this.selectedVoiceProfile = selectAddonProfileId(this.voiceProfiles, 'voice', this.gpuDetected)
         ?? addonProfileId('voice', 'cpu');
     }
@@ -1182,7 +1146,7 @@ export class SetupState {
 
     // Restore EVERY resettable field from the single INITIAL source. A fresh
     // structuredClone per reset means object fields (providerState,
-    // portalSelection with its nested credentials, voiceTts/Stt, deployData, …)
+    // portalSelection with its nested credentials, deployData, …)
     // become brand-new instances — never aliases of INITIAL or of a prior
     // mount's state (the rerun path mutates some of these in place). Because
     // this is derived from INITIAL, adding a resettable field there auto-covers
@@ -1224,9 +1188,10 @@ export class SetupState {
           if (parsed.hostAkmEnabled !== undefined) this.hostAkmEnabled = parsed.hostAkmEnabled;
           if (parsed.llm) this.modelSelection.llm = parsed.llm;
           if (parsed.embedding) this.modelSelection.embedding = parsed.embedding;
-          if (parsed.voiceTts) this.voiceTts = parsed.voiceTts;
-          if (parsed.voiceStt) this.voiceStt = parsed.voiceStt;
           if (parsed.selectedVoiceProfile) this.selectedVoiceProfile = parsed.selectedVoiceProfile;
+          // The enabled voice ADDON is the host-side signal that the bundled
+          // voice was chosen (TTS/STT provider choice is client-owned).
+          if (parsed.voiceEnabled) this.voiceEnabled = true;
           // Restore host-imported model preferences so a rerun keeps the chat /
           // small model the user configured on their host OpenCode.
           if (parsed.importedLlmModel) this.importedLlmModel = parsed.importedLlmModel;

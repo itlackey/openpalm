@@ -94,8 +94,9 @@ it during dev work.
 - **HMR works**: edit `.svelte` / `.ts` → page reloads in <1s.
 - **Mic works**: Vite serves a real browser context, so the Web Speech
   API isn't gated behind Electron's bundled Chromium. The MediaRecorder
-  fallback in `voice-state.svelte.ts` exercises the same `/api/transcribe`
-  path the Electron app uses — useful for verifying STT end-to-end.
+  fallback in `voice-state.svelte.ts` exercises the same provider transport
+  (the `/voice/*` pass-through for OpenPalm Voice) the Electron app uses —
+  useful for verifying STT end-to-end.
 - **Switching to the prod build**: `bun run ui:build` produces
   `packages/ui/build/` which can be swapped into `~/.openpalm/data/ui/`
   for live testing in the Electron app.

@@ -1,12 +1,12 @@
-import type { ModelSelection, PortalState, Provider, ProviderState, VoiceEngineValue } from '../client/types.js';
+import type { ModelSelection, PortalState, Provider, ProviderState } from '../client/types.js';
 import { buildPortalsConfig } from '../client/helpers.js';
 import { isNetworkAccessPreset, type NetworkAccessPreset } from '@openpalm/lib/control-plane/network-preset.js';
 
 // ── Install payload contract (POST /api/setup/complete) ──────────────────────
 // The pure builder + inverse parser for the setup install contract. Extracted
 // from setup/+page.svelte so the assembly rules (capability selection, addon
-// suppression, voice serialization, portal-credential flattening) are testable
-// and can't silently drift from the rerun deserializer (parseSetupConfig).
+// suppression, portal-credential flattening) are testable and can't silently
+// drift from the rerun deserializer (parseSetupConfig).
 
 /** One connection entry sent under `connections`. */
 export interface SetupCapability {
@@ -15,18 +15,6 @@ export interface SetupCapability {
   provider: string;
   baseUrl: string;
   apiKey: string;
-}
-
-/** Serialized voice engine block (tts/stt). Omitted entirely when not chosen. */
-export interface SetupVoicePayload {
-  enabled: true;
-  engine: string;
-  provider?: string;
-  baseURL?: string;
-  model?: string;
-  voice?: string;
-  language?: string;
-  apiKey?: string;
 }
 
 /** The full install payload posted to /api/setup/complete. */
@@ -43,8 +31,6 @@ export interface SetupPayload {
   connections: SetupCapability[];
   llm?: { provider: string; model: string; baseUrl: string };
   embedding?: { provider: string; model: string; dims: number; baseUrl: string };
-  tts?: SetupVoicePayload;
-  stt?: SetupVoicePayload;
   voiceProfile?: string;
   ollamaProfile?: string;
   portalCredentials?: Record<string, Record<string, string>>;
@@ -62,9 +48,8 @@ export interface SetupPayloadInput {
   ollamaEnabled: boolean;
   /** A host Ollama/LM Studio is running — suppresses the redundant in-stack Ollama addon. */
   hostLocalLlmRunning: boolean;
-  /** Resolved (persisted-form) voice sides — '' engine means "don't save this side". */
-  persistedVoiceTts: VoiceEngineValue;
-  persistedVoiceStt: VoiceEngineValue;
+  /** Enable the bundled voice addon (TTS/STT provider choice is client-owned — the wizard only toggles the capability). */
+  voiceEnabled: boolean;
   selectedVoiceProfile: string;
   selectedOllamaProfile: string;
   portalSelection: Record<string, boolean | PortalState>;
@@ -80,32 +65,19 @@ export interface SetupPayloadInput {
   opencodePassword: string;
 }
 
-/** Serialize one voice side, or undefined when not chosen / a "skip-" sentinel. */
-function voicePayload(v: VoiceEngineValue): SetupVoicePayload | undefined {
-  if (!v.engine || v.engine.startsWith('skip-')) return undefined;
-  const out: SetupVoicePayload = { enabled: true, engine: v.engine };
-  if (v.provider) out.provider = v.provider;
-  if (v.baseURL) out.baseURL = v.baseURL;
-  if (v.model) out.model = v.model;
-  if (v.voice) out.voice = v.voice;
-  if (v.language) out.language = v.language;
-  if (v.apiKey) out.apiKey = v.apiKey;
-  return out;
-}
-
 /**
  * Build the install payload for /api/setup/complete from resolved wizard state.
  *
  * Pure — no reactivity, no fetch. Mirrors the former `payload` $derived exactly:
  *  - capabilities: verified providers referenced by the selected llm/emb/small.
  *  - addons: in-stack Ollama (suppressed when a host runtime is running), the
- *    bundled voice addon (when either side targets openpalm-voice), and portals.
- *  - llm/embedding go directly to akm config; voice sides only when explicit.
+ *    bundled voice addon (the explicit toggle), and portals.
+ *  - llm/embedding go directly to akm config.
  */
 export function buildSetupPayload(input: SetupPayloadInput): SetupPayload {
   const {
     modelSelection, verifiedProviders, providerState, ollamaEnabled, hostLocalLlmRunning,
-    persistedVoiceTts, persistedVoiceStt, selectedVoiceProfile, selectedOllamaProfile,
+    voiceEnabled, selectedVoiceProfile, selectedOllamaProfile,
     portalSelection, uiLoginPassword, keepExistingUiLoginPassword, imageTag, hostAkmEnabled, networkPreset, opencodePassword,
   } = input;
 
@@ -135,10 +107,10 @@ export function buildSetupPayload(input: SetupPayloadInput): SetupPayload {
   const addons: Record<string, boolean> = {};
   // Suppress the in-stack Ollama addon when a host Ollama/LM Studio is running.
   if (ollamaEnabled && !hostLocalLlmRunning) addons.ollama = true;
-  // Enable the bundled voice addon when either side targets it.
-  if (persistedVoiceTts.engine === 'openpalm-voice' || persistedVoiceStt.engine === 'openpalm-voice') {
-    addons.voice = true;
-  }
+  // The bundled voice addon: an explicit wizard toggle. Always sent —
+  // setAddonEnabled honors an explicit false (PR #564 R6), so a rerun that
+  // turns the toggle OFF actually disables the addon.
+  addons.voice = voiceEnabled;
 
   const portalCredentials: Record<string, Record<string, string>> = {};
   const portalsConfig = buildPortalsConfig(portalSelection);
@@ -175,14 +147,8 @@ export function buildSetupPayload(input: SetupPayloadInput): SetupPayload {
     result.embedding = { provider: embProvider, model: emb.model, dims: emb.dims ?? 1536, baseUrl: embCap?.baseUrl ?? '' };
   }
 
-  // Voice engines — only persist an explicit, non-"skip" side.
-  const ttsCap = voicePayload(persistedVoiceTts);
-  if (ttsCap) result.tts = ttsCap;
-  const sttCap = voicePayload(persistedVoiceStt);
-  if (sttCap) result.stt = sttCap;
-
   // Hardware profile for the bundled voice addon.
-  if ((persistedVoiceTts.engine === 'openpalm-voice' || persistedVoiceStt.engine === 'openpalm-voice') && selectedVoiceProfile) {
+  if (voiceEnabled && selectedVoiceProfile) {
     result.voiceProfile = selectedVoiceProfile;
   }
 
@@ -217,11 +183,7 @@ export interface RawSetupConfig {
   hostAkm?: unknown;
   llm?: { provider?: string; model?: string } | null;
   embedding?: { provider?: string; model?: string; dims?: number } | null;
-  voice?: {
-    tts?: { engine?: string; baseURL?: string; model?: string; voice?: string } | null;
-    stt?: { engine?: string; baseURL?: string; model?: string; language?: string } | null;
-    selectedProfile?: unknown;
-  } | null;
+  voice?: { selectedProfile?: unknown } | null;
   importedModelPreferences?: { model?: string; small_model?: string } | null;
   enabledAddons?: unknown;
   ollama?: { selectedProfile?: unknown } | null;
@@ -243,8 +205,8 @@ export interface PartialSetupState {
   hostAkmEnabled?: boolean;
   llm?: ModelSelection;
   embedding?: ModelSelection;
-  voiceTts?: VoiceEngineValue;
-  voiceStt?: VoiceEngineValue;
+  /** The bundled voice addon is enabled (TTS/STT provider choice is client-owned, not stored host-side). */
+  voiceEnabled?: boolean;
   selectedVoiceProfile?: string;
   importedLlmModel?: string;
   importedSmallModel?: string;
@@ -289,16 +251,8 @@ export function parseSetupConfig(data: RawSetupConfig): PartialSetupState {
     };
   }
 
-  // Voice — pre-fill connection fields only when the stored config explicitly
-  // names the engine. No URL sniffing.
-  if (data.voice?.tts) {
-    const storedTts = data.voice.tts;
-    result.voiceTts = storedTts.engine ? { ...storedTts, engine: storedTts.engine } : { engine: '' };
-  }
-  if (data.voice?.stt) {
-    const storedStt = data.voice.stt;
-    result.voiceStt = storedStt.engine ? { ...storedStt, engine: storedStt.engine } : { engine: '' };
-  }
+  // Voice — the enabled ADDON is the host-side signal that the bundled voice
+  // was chosen; the profile pre-fills the hardware selector.
   if (data.voice?.selectedProfile && typeof data.voice.selectedProfile === 'string') {
     result.selectedVoiceProfile = data.voice.selectedProfile;
   }
@@ -311,6 +265,7 @@ export function parseSetupConfig(data: RawSetupConfig): PartialSetupState {
   // Enabled addons + portal credentials
   const enabled: string[] = Array.isArray(data.enabledAddons) ? (data.enabledAddons as string[]) : [];
   result.enabledAddons = enabled;
+  if (enabled.includes('voice')) result.voiceEnabled = true;
   if (enabled.includes('ollama')) result.ollamaEnabled = true;
   if (data.ollama?.selectedProfile && typeof data.ollama.selectedProfile === 'string') {
     result.selectedOllamaProfile = data.ollama.selectedProfile;

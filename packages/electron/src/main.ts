@@ -196,10 +196,9 @@ export function resolveAssistantUrl(homeDir: string): string {
  */
 export function buildUIServerEnv(homeDir: string, port: number, update?: UpdateInfo | null): NodeJS.ProcessEnv {
   // Operator-managed stack config (knowledge/env/stack.env) holds settings the
-  // host UI server's own routes read from process.env — notably the Voice
-  // engine vars (OP_TTS_*/OP_STT_*/OP_VOICE_*) written by /api/host/voice. Without
-  // merging them here, /api/speak + /api/transcribe see empty OP_*_BASE_URL and
-  // 503 ("Configure a TTS/STT engine"). Merge stack.env BUT skip the per-unit
+  // host UI server's own routes read from process.env — e.g. OP_VOICE_PORT_HOST,
+  // which the /voice pass-through and the voice bring-up use to find the local
+  // voice container. Merge stack.env BUT skip the per-unit
   // version vars: the docker-compose deploy path reads them via --env-file and
   // shell-env takes precedence over --env-file, so injecting them here would
   // override the authoritative versions (see the version-var note below).
