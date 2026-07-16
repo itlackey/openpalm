@@ -1,10 +1,14 @@
 # Voice Container Build — `openpalm/voice`
 
-> Status: **DESIGN** (not yet implemented). Supersedes the "two containers"
-> recommendation in [`openpalm-voice-addon.md`](./openpalm-voice-addon.md)
-> — this design bundles Kokoro TTS + Whisper STT into one image. The rest of
-> that doc (enable flow, probe endpoint, VoiceTab UX, presets) still applies
-> with `voice-tts`/`voice-stt` collapsed to a single `voice` service.
+> Status: **DESIGN** (largely implemented in `containers/voice/`). Supersedes
+> the "two containers" recommendation in
+> [`openpalm-voice-addon.md`](./openpalm-voice-addon.md) — this design bundles
+> Kokoro TTS + Whisper STT into one image.
+>
+> **2026-07 update:** the enable-flow/VoiceTab/presets material referenced from
+> the older doc is retired — see
+> [`voice-settings-architecture.md`](./voice-settings-architecture.md).
+> The container now also serves permissive CORS: browsers call it directly.
 >
 > One process. OpenAI-compatible HTTP. CPU by default, CUDA on `--gpus all`.
 > Target image: <1.5 GB compressed. No auth, internal `assistant_net` only.

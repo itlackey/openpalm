@@ -58,7 +58,7 @@ export class AudioPlaybackController {
 
   // True from playOne entry until the utterance reaches a terminal state
   // (ended, errored, skipped as unspeakable, or no engine available).
-  // `host.status` only flips to 'speaking' AFTER the /api/speak synthesis
+  // `host.status` only flips to 'speaking' AFTER the provider synthesis
   // fetch resolves, so it cannot serialize streamed chunks — a burst of
   // speakText calls during synthesis would otherwise start overlapping
   // playOne pipelines. Autoplay-blocked audio keeps this true as well:
@@ -188,7 +188,7 @@ export class AudioPlaybackController {
   }
 
   /**
-   * Read text aloud. Tries server-side TTS via /api/speak first (when the
+   * Read text aloud. Tries server-side TTS via the provider transport first (when the
    * configured engine is openpalm-voice or remote); falls back to browser
    * speech synthesis. Silent no-op if neither path is available.
    *

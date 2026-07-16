@@ -56,7 +56,7 @@
 
 	// Mic states (mutually exclusive, evaluated in priority order):
 	//   recording — actively capturing audio
-	//   transcribing — recorded audio is being sent to /api/transcribe
+	//   transcribing — recorded audio is being sent to the STT provider
 	//   processing — message in flight to the assistant
 	//   idle — neutral
 	let isRecording = $derived(voiceState.status === 'recording');

@@ -1,5 +1,36 @@
 import { request, requireOk, readErrorMessage } from './core.js';
-import type { VoiceAddonInfo, VoiceAddonStep } from './voice.js';
+
+// ── Voice addon types (hardware profiles + background bring-up jobs) ────────
+
+export type VoiceAddonProfile = {
+  id: string;
+  services: string[];
+  label?: string;
+  requires?: string;
+  default?: boolean;
+  /** Set by the server when the host can actually run this profile (e.g. NVIDIA drivers detected). */
+  available?: boolean;
+  /** Human-readable explanation surfaced as a tooltip when `available` is false. */
+  reason?: string;
+};
+
+export type VoiceAddonStep = { step: string; ok: boolean; detail?: string };
+
+export type VoiceActiveJob = {
+  state: 'pulling' | 'starting' | 'healthy' | 'error';
+  steps: VoiceAddonStep[];
+  error?: string;
+  startedAt: number;
+  finishedAt?: number;
+  profile?: string;
+};
+
+export type VoiceAddonInfo = {
+  profiles: VoiceAddonProfile[];
+  selectedProfile: string | null;
+  /** Present while a background pull/start is in flight or has just completed. */
+  activeJob?: VoiceActiveJob;
+};
 
 // ── Addon Management ──────────────────────────────────────────────────────────
 

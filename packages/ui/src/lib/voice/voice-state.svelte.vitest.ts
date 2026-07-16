@@ -195,7 +195,7 @@ describe('voice-state queue', () => {
 	const originalFetch = globalThis.fetch;
 
 	/**
-	 * Install a /api/speak mock whose synthesis fetch never resolves — the
+	 * Install a synthesis fetch mock that never resolves — the
 	 * first speakText occupies the playback pipeline (busy) for the rest of
 	 * the test, exactly like a chunk mid-synthesis while later streamed
 	 * chunks arrive.
@@ -218,7 +218,7 @@ describe('voice-state queue', () => {
 
 	test('speakText queues while a prior synthesis fetch is unresolved', async () => {
 		seedRemoteProvider();
-		// The busy window opens at playOne entry, BEFORE the /api/speak fetch
+		// The busy window opens at playOne entry, BEFORE the synthesis fetch
 		// resolves — status is still 'idle' at that point, so serialization
 		// must not key off status. A second speakText during synthesis has to
 		// queue, not open a concurrent synthesis fetch.

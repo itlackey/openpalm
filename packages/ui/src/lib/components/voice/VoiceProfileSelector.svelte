@@ -3,7 +3,7 @@
   Voice addon. Shows a <select> when multiple profiles exist, or a static
   label when only one is available.
 
-  Used by both the admin VoiceTab and the setup wizard VoiceStep.
+  Used by the Capabilities (Add-ons) voice drawer and the setup wizard.
 -->
 <script lang="ts">
 	import type { VoiceAddonProfile } from '$lib/api.js';

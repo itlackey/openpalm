@@ -90,7 +90,6 @@ router, which 404s because the route tree is deleted.
 | `/api/connections/pairing` | Connection | requireAdmin + `requireCapability('host:stack:write')` | POST-only: host-mints a one-time QR/pairing code against the LOCAL guardian (#511). The connection LIST itself is browser-owned (IndexedDB) — there is no server-side connection CRUD |
 | `/api/assistant/*` | Assistant | requireAdmin + `requireCapability('assistant-settings:read'/'write')` | Assistant-owned settings — editable from a non-admin served build: `persona` (config/assistant/persona.md), `akm` (config/akm/config.json), `model` (OpenCode default/small model) |
 | `/api/host/*` | Host | requireAdmin + `requireCapability('host:…')` per endpoint | Privileged host control plane (see below); 403 `capability_not_available` in a non-admin process even with a valid session |
-| `/api/speak`, `/api/transcribe` | Assistant | requireAdmin | Voice TTS/STT relays |
 | `/api/electron/update-status` | Host | (Electron harness) | Control-plane self-update status |
 
 `/api/host/*` JSON endpoints (each carries requireAdmin + the listed
@@ -103,12 +102,15 @@ router, which 404s because the route tree is deleted.
 - Containers (`host:containers`): `containers/{list,up,down,restart,pull,stats,events}`
 - Versions (`host:updates`): `versions`, `versions/{releases,ui}`, `ui-version`
 - Add-ons (`host:addons`): `addons`, `addons/[name]`, `addons/[name]/credentials`
+  — voice is a normal addon here (enable/disable + hardware profile +
+  bring-up job polling); client TTS/STT provider choice is browser-owned
+  (see `voice-settings-architecture.md`), so there is no host voice-config
+  endpoint and no `/api/speak`/`/api/transcribe` relay
 - Automations (`host:stack:*`/`host:logs`): `automations`, `automations/[name]/{file,log,run}`
 - AKM host-level (`host:containers`, `host:akm-sharing`, `host:stack:read`):
   `akm/{health,health-report,stats,reindex,host-sharing}`,
   `akm/embedding/{detect,test}` — the assistant-scoped AKM config lives at
   `/api/assistant/akm`
-- Voice (`host:stack:*`): `voice`
 - Providers (`host:secrets`): `providers`, `providers/[id]`,
   `providers/{host-status,import-host}`, `providers/assistant-clis`,
   `providers/assistant-clis/[toolId]/use-provider`,

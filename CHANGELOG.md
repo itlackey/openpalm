@@ -9,6 +9,41 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Local assistant auto-discovery for the connections list.** After the
+  browser-owned connection list loads, the UI probes the well-known local
+  endpoints (direct assistant `127.0.0.1:3800`, guardian front door
+  `127.0.0.1:3830/oc`) once per browsing session and adds the first reachable
+  one as an ordinary connection when no loopback entry exists yet. Removing a
+  discovered entry records a per-browser dismissal so it is not re-offered.
+- **Voice endpoint advertisement in the runtime handshake.** `GET
+  /api/runtime` (and the layout data) carries `voice: { url }` when the local
+  stack has the voice addon enabled, resolved against the request host so LAN
+  clients get a reachable address. Clients use it to offer/auto-select the
+  "OpenPalm Voice" speech provider.
+
+### Changed
+
+- **Voice settings split into client vs. host halves**
+  (`docs/technical/voice-settings-architecture.md`). The voice CONTAINER
+  (enable/disable + CPU/CUDA/ROCm hardware profile + bring-up job polling) now
+  lives entirely under Admin → Capabilities (`POST /api/host/addons(/voice)`);
+  the old "Configure → Voice tab" special case is gone. TTS/STT provider
+  choice is now a per-device CLIENT setting edited in the Voice section of
+  `/connections`: browser speech, the host's OpenPalm Voice container, or any
+  OpenAI-compatible endpoint — persisted in the browser (API keys in the
+  encrypted secret store) and called DIRECTLY from the browser. The voice
+  container now serves permissive CORS for exactly this reason.
+
+### Removed
+
+- **Legacy host-side voice config plumbing.** The admin Voice tab,
+  `GET/PUT /api/host/voice`, the admin-only `/api/speak` / `/api/transcribe`
+  relays (which broke voice for non-admin clients and pinned every device to
+  the local host's config), `writeVoiceVars`, and the `OP_TTS_*` / `OP_STT_*`
+  stack.env keys. Leftover keys on upgraded installs are inert. The setup
+  wizard's voice step is capability-only (addon + hardware profile); legacy
+  `tts`/`stt` blocks in the setup payload are accepted and ignored.
+
 - **Device pairing for remote connections** (#511). Host admin `/connections`
   gains a "Pair a device" panel (`host:stack:write`-gated): it mints a
   one-time, individually-revocable guardian `direct` principal via the

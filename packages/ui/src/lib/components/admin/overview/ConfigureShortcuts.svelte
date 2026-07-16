@@ -18,13 +18,9 @@
     <span class="shortcut-name">Knowledge</span>
     <span class="shortcut-desc">Assistant memory &amp; behavior</span>
   </button>
-  <button class="shortcut" onclick={() => onNavigate('voice')}>
-    <span class="shortcut-name">Voice</span>
-    <span class="shortcut-desc">Speech-to-text &amp; text-to-speech</span>
-  </button>
   <button class="shortcut" onclick={() => onNavigate('addons')}>
-    <span class="shortcut-name">Portals &amp; add-ons</span>
-    <span class="shortcut-desc">Discord, Slack, API &amp; more</span>
+    <span class="shortcut-name">Capabilities</span>
+    <span class="shortcut-desc">Voice, Discord, Slack, API &amp; more</span>
   </button>
   <button class="shortcut" onclick={() => onNavigate('secrets')}>
     <span class="shortcut-name">Secrets</span>

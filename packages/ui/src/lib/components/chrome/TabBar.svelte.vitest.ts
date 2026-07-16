@@ -3,7 +3,7 @@ import { render } from 'vitest-browser-svelte';
 import TabBar from './TabBar.svelte';
 
 describe('TabBar', () => {
-  it('renders the six entity sections in order', async () => {
+  it('renders the five entity sections in order', async () => {
     render(TabBar, { props: { active: 'overview', onSelect: vi.fn() } });
 
     const sectionTablist = document.querySelector('[aria-label="Sections"]');
@@ -12,7 +12,9 @@ describe('TabBar', () => {
     const sectionTabs = Array.from(
       sectionTablist.querySelectorAll<HTMLElement>('[role="tab"]')
     ).map((t) => t.textContent?.trim() ?? '');
-    expect(sectionTabs).toEqual(['Health', 'Mind', 'Voice', 'Routines', 'Capabilities', 'Knowledge']);
+    // Voice is no longer a section: the container lives under Capabilities,
+    // client speech settings live on /connections.
+    expect(sectionTabs).toEqual(['Health', 'Mind', 'Routines', 'Capabilities', 'Knowledge']);
   });
 
   it('shows Health subtabs when active is "overview"', async () => {

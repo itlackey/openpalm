@@ -1227,6 +1227,10 @@ export class SetupState {
           if (parsed.voiceTts) this.voiceTts = parsed.voiceTts;
           if (parsed.voiceStt) this.voiceStt = parsed.voiceStt;
           if (parsed.selectedVoiceProfile) this.selectedVoiceProfile = parsed.selectedVoiceProfile;
+          // TTS/STT provider choice is client-owned now and not stored
+          // host-side; on rerun the enabled voice ADDON is the host-side
+          // signal that the bundled voice was chosen.
+          if (parsed.enabledAddons.includes('voice')) this.handleEnableVoiceChange(true);
           // Restore host-imported model preferences so a rerun keeps the chat /
           // small model the user configured on their host OpenCode.
           if (parsed.importedLlmModel) this.importedLlmModel = parsed.importedLlmModel;

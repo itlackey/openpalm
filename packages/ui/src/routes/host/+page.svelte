@@ -20,7 +20,6 @@
   import ActivityTab from '$lib/components/admin/activity/ActivityTab.svelte';
   import AkmTab from '$lib/components/akm/AkmTab.svelte';
   import HostSharingSection from '$lib/components/akm/HostSharingSection.svelte';
-  import VoiceTab from '$lib/components/voice/VoiceTab.svelte';
 
   import {
     fetchHealth,
@@ -339,9 +338,7 @@
     {:else if activeTab === 'secrets'}
       <SecretsTab />
     {/if}
-    {#if activeTab === 'voice'}
-      <VoiceTab />
-    {:else if activeTab === 'akm'}
+    {#if activeTab === 'akm'}
       <AkmTab />
     {:else if activeTab === 'host-sharing'}
       <HostSharingSection />

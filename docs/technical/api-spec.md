@@ -348,7 +348,8 @@ Error responses:
 
 ### `GET /api/host/addons`
 
-Returns all available addons with enabled status.
+Returns all available addons with enabled status, plus the voice addon's
+hardware profiles, current selection, and any in-flight bring-up job.
 
 Response:
 
@@ -357,10 +358,20 @@ Response:
   "addons": [
     { "name": "chat", "enabled": true, "available": true },
     { "name": "discord", "enabled": false, "available": true },
-    { "name": "admin", "enabled": true, "available": true }
-  ]
+    { "name": "voice", "enabled": true, "available": true }
+  ],
+  "voice": {
+    "profiles": [
+      { "id": "addon.voice.cpu", "services": ["voice"], "label": "CPU", "default": true, "available": true }
+    ],
+    "selectedProfile": "addon.voice.cpu",
+    "activeJob": { "state": "pulling", "steps": [], "startedAt": 0 }
+  }
 }
 ```
+
+`voice.activeJob` is present only while a background pull/start is in flight
+or shortly after it finished (`state`: `pulling | starting | healthy | error`).
 
 ### `POST /api/host/addons`
 
@@ -369,11 +380,20 @@ Enable or disable an addon.
 Body:
 
 ```json
-{ "name": "chat", "enabled": true }
+{ "name": "chat", "enabled": true, "profile": "addon.voice.cuda" }
 ```
 
 - `name` (required) -- Built-in addon/profile name.
 - `enabled` (optional) -- Set to `true` or `false` to enable/disable.
+- `profile` (optional, voice only) -- Canonical hardware-profile id
+  (`addon.voice.cpu|cuda|rocm`).
+
+Voice is special-cased: an enable (or a profile change while enabled) runs the
+full container bring-up — port pre-flight, image inspect, CDI/rootless overlay
+selection, compose up + health wait. A first-time pull of the multi-GB image
+forks to a background job and replies `202`; the UI polls `GET /api/host/addons`
+for the `voice.activeJob`. A profile change while the addon is disabled only
+records the selection. Disables use the generic stop + toggle path.
 
 Response:
 
@@ -381,11 +401,16 @@ Response:
 { "ok": true, "addon": "chat", "enabled": true, "changed": true }
 ```
 
+Voice enables additionally carry a `voiceAddon` block
+(`{ steps, status?, warming?, message?, error? }`) on `200`/`202`/`502`.
+
 Error responses:
 
 - `400 bad_request` -- `name` is missing.
+- `400 invalid_profile` -- Unknown voice hardware-profile id.
 - `404 not_found` -- Addon name is not a built-in optional service.
 - `500 internal_error` -- Failed to update addon state on disk.
+- `502` -- Voice bring-up failed (details in `voiceAddon.error`).
 
 ### `GET /api/host/addons/:name`
 
@@ -405,13 +430,18 @@ Response:
 }
 ```
 
+For `voice`, the response additionally carries the same `voice` block as
+`GET /api/host/addons` (profiles, selected profile, active job).
+
 Error responses:
 
 - `404 not_found` -- Addon name is not a built-in optional service.
 
 ### `POST /api/host/addons/:name`
 
-Enable or disable a specific addon.
+Enable or disable a specific addon. Same semantics as `POST /api/host/addons`
+(including the voice bring-up special case and optional `profile`), with the
+name in the path.
 
 Body:
 

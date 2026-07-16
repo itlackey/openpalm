@@ -1,8 +1,9 @@
 /**
- * Voice addon bring-up engine — the Docker/compose infrastructure behind
- * PUT /api/host/voice. Extracted from the route so the HTTP handler stays a
- * thin request-validation + delegation layer (the thin-route-over-service
- * pattern used across the host-admin API).
+ * Voice addon bring-up engine — the Docker/compose infrastructure behind the
+ * voice addon toggle (POST /api/host/addons(/voice) via
+ * $lib/server/addon-helpers.performVoiceEngage). Kept out of the route so the
+ * HTTP handler stays a thin request-validation + delegation layer (the
+ * thin-route-over-service pattern used across the host-admin API).
  *
  * Responsibilities:
  *   - Docker image inspection + resolution (dockerImagePresent / resolveServiceImage)
@@ -62,7 +63,7 @@ const PORT_PROBE_TIMEOUT_MS = 750;
 // staring at a "network error" while the pull is still running. To
 // decouple, when we detect an absent large-tag image we kick off the
 // long work (the applyStack compose-up + health-wait) in the background, return 202
-// immediately, and have the UI poll GET /api/host/voice for status.
+// immediately, and have the UI poll GET /api/host/addons for status.
 type VoiceJobState = 'pulling' | 'starting' | 'healthy' | 'error';
 export type VoiceJobStep = { step: string; ok: boolean; detail?: string };
 export type VoiceActiveJob = {
@@ -152,10 +153,6 @@ export function voiceHostPort(): number {
   const raw = process.env.OP_VOICE_PORT_HOST?.trim();
   const n = raw ? Number(raw) : NaN;
   return Number.isFinite(n) && n > 0 ? n : 8880;
-}
-
-export function openpalmVoiceBaseURL(): string {
-  return `http://127.0.0.1:${voiceHostPort()}`;
 }
 
 // ── Helpers: docker image inspect, port probe, container probe ─────
@@ -417,7 +414,7 @@ type BringUpJobInput = Omit<BringUpInput, 'steps'> & { baseSteps: VoiceJobStep[]
 /**
  * Background variant: runs runBringUp and persists state transitions
  * into the activeJobs map. Returns nothing — the UI polls GET
- * /api/host/voice to observe completion.
+ * /api/host/addons to observe completion.
  */
 async function runBringUpJob(input: BringUpJobInput): Promise<void> {
   const steps = [...input.baseSteps];
@@ -477,10 +474,10 @@ export type VoiceEngageResult =
     };
 
 /**
- * The full PUT /api/host/voice bring-up lifecycle after request validation:
+ * The full voice-addon bring-up lifecycle after request validation:
  * auto-stop when disengaging, else resolve profile → enable addon →
  * port pre-flight → image inspect → host fallback overlays → background
- * short-circuit or synchronous compose-up + /health poll.
+ * short-circuit or synchronous compose-up + health wait.
  */
 export async function engageVoiceAddon(input: {
   state: ReturnType<typeof getState>;
@@ -537,7 +534,7 @@ export async function engageVoiceAddon(input: {
   const enabledIds = listEnabledAddonIds(state.homeDir);
   const wasAlreadyEnabled = enabledIds.includes(VOICE_ADDON);
 
-  // Track each side-effect for the operator-facing toast in VoiceTab.
+  // Track each side-effect for the operator-facing steps in the Add-ons tab.
   const steps: VoiceJobStep[] = [];
 
   if (!wasAlreadyEnabled) {
@@ -584,7 +581,7 @@ export async function engageVoiceAddon(input: {
   // If the image is missing locally AND its tag is a known large one,
   // we'll fork the long work (the applyStack compose-up + healthcheck) into a
   // background job so the UI can return immediately and poll
-  // GET /api/host/voice for progress.
+  // GET /api/host/addons for progress.
   const profileServices = activeProfile
     ? (availableProfiles.find((p) => p.id === activeProfile)?.services ?? [])
     : [];
@@ -670,7 +667,7 @@ export async function engageVoiceAddon(input: {
   // (composeStop, then applyStack's compose-up + health-wait) into a job that updates the
   // module-level activeJobs map. Return so the route replies 202
   // immediately and the browser/SvelteKit fetch doesn't time out during
-  // the multi-minute pull. UI polls GET /api/host/voice for the activeJob.
+  // the multi-minute pull. UI polls GET /api/host/addons for the activeJob.
   if (backgroundPull) {
     setJob(VOICE_ADDON, {
       state: 'pulling',
@@ -694,7 +691,7 @@ export async function engageVoiceAddon(input: {
       steps,
       message:
         'Voice image is downloading in the background (~2–8 GB). ' +
-        'Poll GET /api/host/voice for progress; UI auto-refreshes.',
+        'Poll GET /api/host/addons for progress; UI auto-refreshes.',
       completion,
     };
   }

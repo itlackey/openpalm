@@ -28,7 +28,6 @@ import {
 } from "./secrets.js";
 import { createState, initializeStateSecrets } from "./lifecycle.js";
 import { readSecret } from "./secrets-files.js";
-import { writeVoiceVars } from "./voice-env.js";
 import type { ControlPlaneState } from "./types.js";
 import { validateSetupSpec } from "./setup-validation.js";
 import { getRegistryAutomation, listEnabledAddonIds, setAddonEnabled, setAddonProfileSelection } from "./addons.js";
@@ -58,6 +57,12 @@ export type SetupSpec = {
   version: 2;
   llm?: { provider: string; model: string; baseUrl?: string };
   embedding?: { provider: string; model: string; dims: number; baseUrl?: string };
+  /**
+   * Legacy (pre client-owned voice settings): older wizards still send
+   * tts/stt engine blocks. They are accepted and IGNORED — TTS/STT provider
+   * choice is a per-browser client setting now; the host only owns the voice
+   * addon (enable + hardware profile via `addons` / `voiceProfile`).
+   */
   tts?: { enabled?: boolean; engine?: string; provider?: string; baseURL?: string; model?: string; voice?: string };
   stt?: { enabled?: boolean; engine?: string; provider?: string; baseURL?: string; model?: string; language?: string };
   /**
@@ -313,7 +318,7 @@ export async function performSetup(
     if (!envCheck.valid) return { ok: false, error: envCheck.errors.join("; ") };
   }
 
-  const { llm, embedding, tts, stt, security, owner, connections, portalCredentials, addons, voiceProfile, ollamaProfile, imageTag, hostAkm, network } = input;
+  const { llm, embedding, security, owner, connections, portalCredentials, addons, voiceProfile, ollamaProfile, imageTag, hostAkm, network } = input;
   const state = opts?.state ?? createState();
   initializeStateSecrets(state);
 
@@ -412,11 +417,6 @@ export async function performSetup(
         logger.info("host akm sharing enabled during setup", { profilesImported });
       } else {
         disableHostAkmSharing(state);
-      }
-
-      // Write TTS/STT vars to stack.env for the voice channel
-      if (tts || stt) {
-        writeVoiceVars({ tts, stt }, state.homeDir);
       }
 
       // Enable/disable requested addons (portals like discord, slack, etc.).
