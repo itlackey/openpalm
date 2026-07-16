@@ -107,8 +107,10 @@ export function buildSetupPayload(input: SetupPayloadInput): SetupPayload {
   const addons: Record<string, boolean> = {};
   // Suppress the in-stack Ollama addon when a host Ollama/LM Studio is running.
   if (ollamaEnabled && !hostLocalLlmRunning) addons.ollama = true;
-  // The bundled voice addon: an explicit wizard toggle.
-  if (voiceEnabled) addons.voice = true;
+  // The bundled voice addon: an explicit wizard toggle. Always sent —
+  // setAddonEnabled honors an explicit false (PR #564 R6), so a rerun that
+  // turns the toggle OFF actually disables the addon.
+  addons.voice = voiceEnabled;
 
   const portalCredentials: Record<string, Record<string, string>> = {};
   const portalsConfig = buildPortalsConfig(portalSelection);

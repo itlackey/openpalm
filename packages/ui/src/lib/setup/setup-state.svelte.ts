@@ -172,9 +172,9 @@ export class SetupState {
   // modelMode: which high-level option the user chose on Screen 1.
   // Pre-set to 'cloud'; detection may update it before Screen 1 renders.
   modelMode = $state(INITIAL.modelMode);
-  // voiceEnabled: explicit toggle state — OFF by default, always.
-  // Separate from the `enableVoice` derived (which drives the payload).
-  // Screen2ExtrasStep reads this and only sets engine values when true.
+  // voiceEnabled: the explicit voice-capability toggle — OFF by default,
+  // always. Drives addons.voice (+ voiceProfile) in the payload; TTS/STT
+  // provider choice is client-owned and not part of setup.
   voiceEnabled = $state(INITIAL.voiceEnabled);
 
   // ── Step 0: Welcome ─────────────────────────────────────────────────────────

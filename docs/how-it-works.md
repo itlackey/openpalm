@@ -14,7 +14,7 @@ The **stack** is what the harness runs. At its core: an OpenCode assistant in Do
 You (browser / CLI / API client)
         |
         v
-Admin :3880                  Addon edge (e.g. chat :3820, api :3821, voice :3810)
+Admin :3880                  Addon edge (e.g. chat :3820, api :3821)
                                     |
                                     v
                              Guardian :8080 (internal)   <- validates every addon message
@@ -87,8 +87,10 @@ Its durable home is `~/.openpalm/data/assistant/`, and its shared workspace is
 ### Addon edge services (e.g. `chat`, host port 3820)
 Translate external protocols into Guardian `/oc/*` requests. The `chat` addon is
 the lighter conversational edge, while `api` is the broader compatibility
-facade. Discord, Slack, and voice addons speak their native protocols. Portal
-adapters authenticate with Basic auth and call Guardian.
+facade. Discord and Slack addons speak their native protocols; the voice addon
+is not a portal at all — it serves OpenAI-compatible TTS/STT on host loopback,
+reached by chat clients through the admin UI's same-origin `/voice/*`
+pass-through. Portal adapters authenticate with Basic auth and call Guardian.
 
 The runtime image for registry-backed adapters is the unified
 `portal`, built from `containers/portal/Dockerfile`.

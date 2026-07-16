@@ -16,6 +16,7 @@
   } from '$lib/api.js';
   import { isAuthError, toMessage } from '$lib/api/errors.js';
   import { notifications } from '$lib/notifications.svelte.js';
+  import { refreshAdvertisedVoiceUrl } from '$lib/voice/providers.js';
   import VoiceProfileSelector from '$lib/components/voice/VoiceProfileSelector.svelte';
   import SecretSelect from '@openpalm/ui-kit/components/common/SecretSelect.svelte';
   import Spinner from '@openpalm/ui-kit/components/common/Spinner.svelte';
@@ -149,6 +150,10 @@
       } else if (!result.ok) {
         error = result.voiceAddon?.error ?? `Could not ${enabled ? 'enable' : 'disable'} ${name}.`;
       }
+      // The chat client resolves the OpenPalm Voice provider through the
+      // runtime advertisement — drop its cache so the toggle takes effect
+      // without a reload.
+      if (name === 'voice') void refreshAdvertisedVoiceUrl();
       await loadAddons();
     } catch (err) {
       if (isAuthError(err)) { onAuthError(); return; }

@@ -531,7 +531,7 @@ describe('SetupState — module singleton is reset on a fresh (non-rerun) mount'
       'detectedProviders', 'opencodeAvailable', 'opencodeProviders', 'opencodeAuth',
       'hostProviderCount', 'allowEmptyInstall', 'recommendation', 'recommendationAlert',
       'recommendationApplied', 'detectedGpuVramMb', 'detectedGpuVendor', 'detectedGpuName',
-      'modelSelection', 'voiceTts', 'voiceStt', 'voiceProfiles', 'selectedVoiceProfile',
+      'modelSelection', 'voiceProfiles', 'selectedVoiceProfile',
       'importedLlmModel', 'importedSmallModel', 'portalSelection', 'ollamaEnabled',
       'ollamaProfiles', 'selectedOllamaProfile', 'imageTag', 'hostAkmEnabled',
       'installError', 'installing', 'emptyAiAck', 'deployData', 'deployDone',

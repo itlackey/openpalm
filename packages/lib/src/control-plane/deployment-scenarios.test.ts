@@ -15,7 +15,7 @@
  * UI-endpoint scenarios from #466 are covered by their own vitest files (the
  * assertion has to live where the handler does) — indexed here so this file is
  * the single map of the deployment regression net:
- *   - voice configured but proxy blind → 200      packages/ui/.../api/transcribe/server.vitest.ts
+ *   - voice pass-through availability + upstream   packages/ui/.../routes/voice/[...path]/server.vitest.ts
  *   - guardian gated off → not_deployed (no 503)  packages/ui/.../guardian/health (+ guardian-gating.test.ts)
  *   - pull-fallback → imageWarning surfaced       packages/ui/.../setup-deploy (DeployState.imageWarning)
  *   - `compose up --wait` health-gate failure      §2.1: refreshDeployStatus() (deploy.ts) returns the

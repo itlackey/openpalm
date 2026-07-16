@@ -365,9 +365,9 @@ export class AudioPlaybackController {
   }
 
   /**
-   * Convert a non-OK synthesis response into a human-readable string. A 5xx
-   * from the provider usually means the model is still loading; anything
-   * else keys off the HTTP status.
+   * Convert a non-OK synthesis response into a human-readable string.
+   * Recognises the /voice pass-through's structured codes; any other 5xx
+   * (a provider whose model is still loading) reads as "warming up".
    */
   private async extractSpeakError(res: Response): Promise<string> {
     let code: string | undefined;
@@ -377,10 +377,10 @@ export class AudioPlaybackController {
     } catch {
       /* non-JSON body */
     }
-    if (code === 'tts_not_configured') {
-      return 'TTS is not configured.';
+    if (code === 'voice_unavailable') {
+      return 'OpenPalm Voice is not enabled on this host.';
     }
-    if (code === 'upstream_error' || res.status >= 500) {
+    if (code === 'voice_unreachable' || res.status >= 500) {
       return 'Voice engine is warming up — try again in a moment.';
     }
     return `TTS failed (HTTP ${res.status}).`;

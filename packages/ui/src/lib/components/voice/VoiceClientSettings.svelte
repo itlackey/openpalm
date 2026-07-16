@@ -125,7 +125,17 @@
   }
 
   async function persistKey(form: SectionForm): Promise<void> {
-    if (form.provider !== 'openai-compatible' || !form.apiKey.trim()) return;
+    if (form.provider !== 'openai-compatible') {
+      // Switched away from the key-bearing provider: delete the stored key
+      // instead of orphaning unreferenced ciphertext in the secret store.
+      if (form.secretRef) {
+        try { await getSecretStore().delete(form.secretRef); } catch { /* best-effort */ }
+        form.secretRef = undefined;
+        form.hasStoredKey = false;
+      }
+      return;
+    }
+    if (!form.apiKey.trim()) return;
     const secrets = getSecretStore();
     const ref = form.secretRef ?? newConnectionId();
     await secrets.set(ref, { password: form.apiKey.trim() });
@@ -134,15 +144,25 @@
     form.apiKey = '';
   }
 
-  async function save(): Promise<void> {
+  async function clearStoredKey(form: SectionForm): Promise<void> {
+    if (form.secretRef) {
+      try { await getSecretStore().delete(form.secretRef); } catch { /* best-effort */ }
+    }
+    form.secretRef = undefined;
+    form.hasStoredKey = false;
+    form.apiKey = '';
+  }
+
+  /** Returns false when validation failed / the save errored. */
+  async function save(): Promise<boolean> {
     error = '';
     if (stt.provider === 'openai-compatible' && !stt.baseURL.trim()) {
       error = 'Speech-to-text: an endpoint URL is required for an OpenAI-compatible provider.';
-      return;
+      return false;
     }
     if (tts.provider === 'openai-compatible' && !tts.baseURL.trim()) {
       error = 'Text-to-speech: an endpoint URL is required for an OpenAI-compatible provider.';
-      return;
+      return false;
     }
     saving = true;
     try {
@@ -157,8 +177,10 @@
       setTtsAutoEnabled(autoSpeak);
       await initVoice();
       notifications.push('success', 'Voice settings saved for this device.');
+      return true;
     } catch (e) {
       error = e instanceof Error ? e.message : 'Save failed.';
+      return false;
     } finally {
       saving = false;
     }
@@ -167,8 +189,10 @@
   async function testSpeaker(): Promise<void> {
     testing = true;
     try {
-      await save();
+      if (!(await save())) return;
       await speakText('Hello! This is your OpenPalm assistant.');
+    } catch (e) {
+      error = e instanceof Error ? e.message : 'Speaker test failed.';
     } finally {
       testing = false;
     }
@@ -239,6 +263,11 @@
             <span>API key {form.hasStoredKey ? '(stored — leave blank to keep)' : '(optional)'}</span>
             <input type="password" bind:value={form.apiKey} autocomplete="new-password" />
             <small>Stored encrypted in this browser only, like connection passwords.</small>
+            {#if form.hasStoredKey}
+              <button type="button" class="linklike" onclick={() => void clearStoredKey(form)}>
+                Clear stored key
+              </button>
+            {/if}
           </label>
         {/if}
 

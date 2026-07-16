@@ -115,18 +115,22 @@ export async function discoverLocalAssistant(
     if (typeof fetchImpl !== 'function') return null;
     if (isLocalDiscoveryDismissed()) return null;
 
-    const existing = await store.list();
-    const hasLocal = existing.some((c) => {
-      try {
-        return isLoopbackHost(new URL(c.baseUrl).hostname);
-      } catch {
-        return false;
-      }
-    });
-    if (hasLocal) return null;
+    const hasLocal = async (): Promise<boolean> =>
+      (await store.list()).some((c) => {
+        try {
+          return isLoopbackHost(new URL(c.baseUrl).hostname);
+        } catch {
+          return false;
+        }
+      });
+    if (await hasLocal()) return null;
 
     for (const candidate of LOCAL_DISCOVERY_CANDIDATES) {
       if (!(await probe(candidate.baseUrl, fetchImpl))) continue;
+      // Re-check right before adding: the probe can take seconds, and the
+      // user may have added a loopback connection (form or pairing code) in
+      // the meantime — don't create a duplicate.
+      if (await hasLocal()) return null;
       return await store.add({
         label: candidate.label,
         baseUrl: candidate.baseUrl,

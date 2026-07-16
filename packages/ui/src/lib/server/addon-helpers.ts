@@ -106,7 +106,10 @@ export function performVoiceEngage(
           {
             ok: false,
             addon: VOICE_ADDON,
-            enabled: true,
+            // The 'error' state covers both "enable succeeded, bring-up
+            // failed" (addon IS enabled) and "the enable write itself threw"
+            // (it is NOT) — report what actually happened.
+            enabled: result.wasAlreadyEnabled || result.steps.some((s) => s.step === 'enable' && s.ok),
             voiceAddon: { steps: result.steps, error: result.error },
           },
           requestId,
@@ -171,16 +174,18 @@ export function handleAddonToggleRequest(
     }
     if (requestedProfile && !isEnabled) {
       // Disabled addon: remember the choice for the next enable, no compose.
+      // Still taken under the admin lock — it writes state/stack.state.env,
+      // which a concurrent install/update also mutates.
       const known = getAddonProfiles(state.homeDir, VOICE_ADDON).some((p) => p.id === requestedProfile);
       if (!known) {
         return Promise.resolve(
           errorResponse(400, 'invalid_profile', `Unknown voice profile "${requestedProfile}"`, {}, requestId),
         );
       }
-      setAddonProfileSelection(state.homeDir, VOICE_ADDON, requestedProfile);
-      return Promise.resolve(
-        jsonResponse(200, { ok: true, addon: VOICE_ADDON, enabled: false, changed: false }, requestId),
-      );
+      return withAdminUpdateLock(state, requestId, () => {
+        setAddonProfileSelection(state.homeDir, VOICE_ADDON, requestedProfile);
+        return jsonResponse(200, { ok: true, addon: VOICE_ADDON, enabled: false, changed: false }, requestId);
+      });
     }
   }
 

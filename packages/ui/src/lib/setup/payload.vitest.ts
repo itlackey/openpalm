@@ -50,7 +50,9 @@ describe('buildSetupPayload', () => {
     const p = buildSetupPayload(baseInput({ uiLoginPassword: 'secret' }));
     expect(p).toEqual({
       version: 2,
-      addons: { api: true }, // locked API portal is always enabled
+      // Locked API portal is always enabled; voice is always explicit so a
+      // rerun can disable it.
+      addons: { api: true, voice: false },
       security: { uiLoginPassword: 'secret' },
       connections: [],
       // #563 — the default networkPreset ('this-pc') always emits a network
@@ -116,12 +118,12 @@ describe('buildSetupPayload', () => {
     expect(p).not.toHaveProperty('stt');
   });
 
-  test('voice off: no addon, no profile', () => {
+  test('voice off: explicit addons.voice=false (a rerun can disable), no profile', () => {
     const p = buildSetupPayload(baseInput({
       voiceEnabled: false,
       selectedVoiceProfile: 'voice-cuda',
     }));
-    expect(p.addons.voice).toBeUndefined();
+    expect(p.addons.voice).toBe(false);
     expect(p.voiceProfile).toBeUndefined();
   });
 

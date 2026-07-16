@@ -116,6 +116,13 @@ class ConnectionsService {
       this.endpoints = connections.map(toView);
       this.activeId = storedActiveId ?? this.endpoints[0]?.id ?? '';
       setActiveConnection(connections.find((c) => c.id === this.activeId) ?? null);
+      // When the discovered entry just became the effective active connection
+      // (a previously empty list), complete the activation handoff so the
+      // chat store loads its sessions instead of staying on "not reachable"
+      // until a manual switch. Same veto guard as activate().
+      if (this.activeId === added.id && !activationBlockReason()) {
+        await emitConnectionActivated(added.id);
+      }
     } catch {
       // best-effort only
     }

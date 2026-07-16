@@ -1,6 +1,6 @@
 /**
  * Browser MediaRecorder wrapper. Streams microphone audio into a single
- * Blob that the caller can POST to /api/transcribe.
+ * Blob that the caller can send to the configured STT provider.
  *
  * All browser API access is intentionally lazy — this module is safe to
  * import in SSR contexts; the throws happen only at startRecording().

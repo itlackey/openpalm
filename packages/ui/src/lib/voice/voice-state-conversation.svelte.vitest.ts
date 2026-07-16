@@ -50,6 +50,7 @@ vi.mock('./providers.js', () => ({
 	transcribe: vi.fn(async () => 'hello from vad'),
 	synthesize: vi.fn(async () => null),
 	advertisedVoiceUrl: vi.fn(async () => null),
+	refreshAdvertisedVoiceUrl: vi.fn(async () => null),
 }));
 
 import * as api from './providers.js';

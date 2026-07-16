@@ -332,12 +332,39 @@ function removeEnvKeyFromFile(path: string, key: string): boolean {
   return true;
 }
 
-/** Strip every retired env key from both env files. Returns the keys removed. */
+/**
+ * Section-header comment lines that only retired keys ever lived under. Once
+ * their keys are gone the header would advertise a section that no longer
+ * exists, so the prune drops the exact line too (exact match keeps this
+ * idempotent and unable to touch operator-authored comments).
+ */
+const RETIRED_ENV_SECTION_HEADERS = [
+  '# ── Voice Channel (TTS/STT) ──────────────────────────────────────────',
+] as const;
+
+/** Remove an exact comment line from an env file if present. Returns whether the file changed. */
+function removeEnvCommentLineFromFile(path: string, commentLine: string): boolean {
+  if (!existsSync(path)) return false;
+  const before = readFileSync(path, 'utf-8');
+  const lines = before.split('\n');
+  const out = lines.filter((line) => line.trim() !== commentLine);
+  if (out.length === lines.length) return false;
+  // Collapse a doubled blank line the deletion left behind (mirrors removeEnvKey).
+  while (out.length > 1 && out[out.length - 1] === '' && out[out.length - 2] === '') out.pop();
+  const after = out.join('\n');
+  writeFileSync(path, after.endsWith('\n') || after.length === 0 ? after : `${after}\n`, { mode: 0o600 });
+  return true;
+}
+
+/** Strip every retired env key (and orphaned section header) from both env files. Returns the keys removed. */
 function removeRetiredEnvKeys(homeDir: string): string[] {
   const removed = new Set<string>();
   for (const path of [stateEnvFile(homeDir), legacyStackEnvFile(homeDir)]) {
     for (const key of RETIRED_ENV_KEYS) {
       if (removeEnvKeyFromFile(path, key)) removed.add(key);
+    }
+    for (const header of RETIRED_ENV_SECTION_HEADERS) {
+      removeEnvCommentLineFromFile(path, header);
     }
   }
   return [...removed];

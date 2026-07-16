@@ -117,11 +117,11 @@ describe('voice-state speakText error surfacing', () => {
 		clearVoiceSettings();
 	});
 
-	test('503 from the provider surfaces an error when no browser TTS fallback exists', async () => {
+	test('503 voice_unavailable from the pass-through surfaces an error when no browser TTS fallback exists', async () => {
 		seedRemoteProvider();
 		voiceState.ttsEngine = 'remote';
 		globalThis.fetch = vi.fn(async () =>
-			new Response(JSON.stringify({ error: 'tts_not_configured' }), {
+			new Response(JSON.stringify({ error: 'voice_unavailable' }), {
 				status: 503,
 				headers: { 'content-type': 'application/json' },
 			}),
@@ -133,7 +133,7 @@ describe('voice-state speakText error surfacing', () => {
 		try {
 			delete (window as unknown as { speechSynthesis?: unknown }).speechSynthesis;
 			await speakText('hello');
-			expect(voiceState.errorMessage).toMatch(/not configured/i);
+			expect(voiceState.errorMessage).toMatch(/not enabled/i);
 		} finally {
 			if (ss !== undefined) {
 				(window as unknown as { speechSynthesis: SpeechSynthesis }).speechSynthesis = ss;
@@ -145,7 +145,7 @@ describe('voice-state speakText error surfacing', () => {
 		seedRemoteProvider();
 		voiceState.ttsEngine = 'remote';
 		globalThis.fetch = vi.fn(async () =>
-			new Response(JSON.stringify({ error: 'upstream_error' }), {
+			new Response(JSON.stringify({ error: 'voice_unreachable' }), {
 				status: 502,
 				headers: { 'content-type': 'application/json' },
 			}),
@@ -169,7 +169,7 @@ describe('voice-state speakText error surfacing', () => {
 		let capturedBody = '';
 		const mockFetch = vi.fn(async (_url, init) => {
 			capturedBody = String(init?.body ?? '');
-			return new Response(JSON.stringify({ error: 'tts_not_configured' }), {
+			return new Response(JSON.stringify({ error: 'voice_unavailable' }), {
 				status: 503,
 				headers: { 'content-type': 'application/json' },
 			});

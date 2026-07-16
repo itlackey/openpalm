@@ -17,7 +17,7 @@
 
 import { startRecording, recordFromStream, type RecordingSession } from './media-recorder.js';
 import { startVad, type VadSession } from './vad.js';
-import { advertisedVoiceUrl, synthesize, transcribe } from './providers.js';
+import { refreshAdvertisedVoiceUrl, synthesize, transcribe } from './providers.js';
 import { loadVoiceSettings, type VoiceProviderId } from './settings-store.js';
 import { AudioPlaybackController } from './audio-playback.js';
 
@@ -37,11 +37,11 @@ class VoiceState {
 	/** Partial transcript text while browser STT is mid-utterance. Cleared on stop/error. */
 	interimTranscript = $state('');
 
-	/** Active engine resolved from /api/host/voice. */
+	/** Active engine resolved from the client-owned voice settings. */
 	sttEngine = $state<SttEngine>('disabled');
 	ttsEngine = $state<TtsEngine>('disabled');
 
-	/** Optional language hint (forwarded to /api/transcribe). */
+	/** Optional language hint (forwarded to the STT provider). */
 	sttLanguage = $state('');
 
 	/** Global toggle: when true, assistant chat replies are spoken automatically. */
@@ -243,6 +243,11 @@ export async function initVoice(): Promise<void> {
 	}
 	const browserSttOk = Boolean(getSpeechRecognitionCtor()) && !voiceState.browserSttUnsupportedReason;
 
+	// Re-probe the advertisement every init: it is one same-origin GET, and it
+	// is what lets an addon toggle in Capabilities take effect on the next
+	// chat mount instead of after a hard reload.
+	const advertised = await refreshAdvertisedVoiceUrl();
+
 	const settings = loadVoiceSettings();
 	if (settings) {
 		voiceState.sttEngine = providerToEngine(settings.stt.provider);
@@ -253,7 +258,7 @@ export async function initVoice(): Promise<void> {
 		// to the browser engine when available so the mic/speaker stay usable.
 		if (
 			(voiceState.sttEngine === 'openpalm-voice' || voiceState.ttsEngine === 'openpalm-voice') &&
-			!(await advertisedVoiceUrl())
+			!advertised
 		) {
 			if (voiceState.sttEngine === 'openpalm-voice') {
 				voiceState.sttEngine = browserSttOk ? 'browser' : 'disabled';
@@ -265,7 +270,6 @@ export async function initVoice(): Promise<void> {
 	} else {
 		// No saved settings — capability-based defaults. Prefer the host's
 		// voice container when advertised; otherwise the browser's own APIs.
-		const advertised = await advertisedVoiceUrl();
 		voiceState.sttLanguage = '';
 		voiceState.sttEngine =
 			advertised && isMediaRecorderSupported()
@@ -318,7 +322,7 @@ export function startListening(onResult: (transcript: string) => void): void {
 		return;
 	}
 
-	// remote / openpalm-voice → MediaRecorder + /api/transcribe
+	// remote / openpalm-voice → MediaRecorder + the provider transport
 	void startRemoteRecording();
 }
 
@@ -534,7 +538,7 @@ export function startConversation(onUtterance: (text: string) => void): void {
 		return;
 	}
 
-	// remote / openpalm-voice → VAD-segmented MediaRecorder + /api/transcribe
+	// remote / openpalm-voice → VAD-segmented MediaRecorder + the provider transport
 	void startConversationVad();
 }
 
@@ -791,7 +795,7 @@ export function resumeAutoplay(): void {
 }
 
 /**
- * Read text aloud. Tries server-side TTS via /api/speak first (when the
+ * Read text aloud. Tries server-side TTS via the provider transport first (when the
  * configured engine is openpalm-voice or remote); falls back to browser
  * speech synthesis. Silent no-op if neither path is available.
  *

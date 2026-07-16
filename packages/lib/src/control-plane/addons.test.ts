@@ -199,7 +199,8 @@ describe('removed-addon state cleanup (R8: stale ssh)', () => {
     mkdirSync(join(homeDir, 'knowledge', 'env'), { recursive: true });
     writeFileSync(
       legacyEnv,
-      'OP_ASSISTANT_PORT=3800\n' +
+      'OP_ASSISTANT_PORT=3800\n\n' +
+        '# ── Voice Channel (TTS/STT) ──────────────────────────────────────────\n' +
         'OP_TTS_ENGINE=openpalm-voice\nOP_TTS_BASE_URL=http://127.0.0.1:8880\nOP_TTS_MODEL=kokoro\nOP_TTS_VOICE=bf_isabella\n' +
         'OP_STT_ENGINE=openpalm-voice\nOP_STT_BASE_URL=http://127.0.0.1:8880\nOP_STT_MODEL=whisper-1\nOP_STT_LANGUAGE=en\n'
     );
@@ -214,6 +215,8 @@ describe('removed-addon state cleanup (R8: stale ssh)', () => {
     expect(after).toContain('OP_ASSISTANT_PORT=3800');
     expect(after).not.toContain('OP_TTS_');
     expect(after).not.toContain('OP_STT_');
+    // The now-empty section header goes with its keys.
+    expect(after).not.toContain('Voice Channel');
     // The voice ADDON stays enabled — only the retired provider config goes.
     expect(listEnabledAddonIds(homeDir)).toEqual(['voice']);
   });

@@ -42,6 +42,9 @@ const HANDSHAKE_TIMEOUT_MS = 5_000;
 
 let advertisedUrl: string | null | undefined;
 let advertisedFetch: Promise<string | null> | null = null;
+// Bumped by refresh/test seeding so an in-flight fetch that loses the race
+// cannot clobber a newer value.
+let advertisedGeneration = 0;
 
 async function fetchAdvertisedUrl(): Promise<string | null> {
   try {
@@ -59,31 +62,42 @@ async function fetchAdvertisedUrl(): Promise<string | null> {
   }
 }
 
+function startAdvertisedFetch(): Promise<string | null> {
+  const generation = advertisedGeneration;
+  const inFlight = fetchAdvertisedUrl().then((url) => {
+    if (generation === advertisedGeneration) {
+      advertisedUrl = url;
+      advertisedFetch = null;
+    }
+    return url;
+  });
+  advertisedFetch = inFlight;
+  return inFlight;
+}
+
 /**
- * The host's advertised voice-container URL, or null when the voice addon is
- * disabled / the handshake is unreachable. Cached for the page's lifetime;
- * concurrent first callers share one fetch.
+ * The host's advertised voice pass-through URL, or null when the voice addon
+ * is disabled / the handshake is unreachable. Cached between refreshes;
+ * concurrent callers share one fetch. `initVoice` refreshes on every run (a
+ * cheap same-origin GET), so an addon toggle is picked up on the next chat
+ * mount without a hard reload.
  */
 export function advertisedVoiceUrl(): Promise<string | null> {
   if (advertisedUrl !== undefined) return Promise.resolve(advertisedUrl);
-  advertisedFetch ??= fetchAdvertisedUrl().then((url) => {
-    advertisedUrl = url;
-    advertisedFetch = null;
-    return url;
-  });
-  return advertisedFetch;
+  return advertisedFetch ?? startAdvertisedFetch();
 }
 
-/** Drop the cached advertisement (the voice settings UI re-probes after the
- * admin toggles the addon). */
+/** Drop the cached advertisement and re-probe (initVoice, the voice settings
+ * UI, and the Add-ons tab after a toggle). */
 export function refreshAdvertisedVoiceUrl(): Promise<string | null> {
+  advertisedGeneration++;
   advertisedUrl = undefined;
-  advertisedFetch = null;
-  return advertisedVoiceUrl();
+  return startAdvertisedFetch();
 }
 
 /** Test-only: seed/clear the cached advertisement without network. */
 export function _setAdvertisedVoiceUrlForTests(url: string | null | undefined): void {
+  advertisedGeneration++;
   advertisedUrl = url;
   advertisedFetch = null;
 }
