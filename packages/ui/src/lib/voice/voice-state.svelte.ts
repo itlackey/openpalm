@@ -1,14 +1,14 @@
 /**
- * Voice state module — browser-native STT (via MediaRecorder + a
- * server-side transcription proxy) and browser TTS via speechSynthesis.
+ * Voice state module — the chat client's speech runtime.
  *
- * Engines:
+ * Engines (resolved from the CLIENT-owned voice settings — see
+ * ./settings-store.ts; the host's stack.env plays no part):
  *   - 'browser'         → Web Speech API (only when present in the window)
- *   - 'remote'          → MediaRecorder + POST /api/transcribe
- *   - 'openpalm-voice'  → Treated like 'remote' at the network layer (the
- *                         addon exposes an OpenAI-compatible STT endpoint).
- *                         Reserved in the picker UI; STT_BASE_URL has to
- *                         actually point at it before this engine works.
+ *   - 'remote'          → MediaRecorder + a direct call to the configured
+ *                         OpenAI-compatible endpoint (./providers.ts)
+ *   - 'openpalm-voice'  → Same transport, targeting the host's voice
+ *                         container discovered via the /api/runtime
+ *                         handshake's `voice.url` advertisement.
  *   - 'disabled'        → Mic is hidden in the navbar.
  *
  * Only access browser APIs (window, navigator, MediaRecorder) from
@@ -17,7 +17,8 @@
 
 import { startRecording, recordFromStream, type RecordingSession } from './media-recorder.js';
 import { startVad, type VadSession } from './vad.js';
-import { transcribeAudio, fetchVoiceConfig } from '$lib/api.js';
+import { advertisedVoiceUrl, synthesize, transcribe } from './providers.js';
+import { loadVoiceSettings, type VoiceProviderId } from './settings-store.js';
 import { AudioPlaybackController } from './audio-playback.js';
 
 export type VoiceStatus = 'idle' | 'recording' | 'transcribing' | 'speaking';
@@ -119,7 +120,7 @@ const CONVERSATION_SEGMENT_MAX_MS = 30_000;
 let ttsWarmupFired = false;
 
 /**
- * Fire-and-forget one priming POST to /api/speak so the voice container is
+ * Fire-and-forget one priming synthesis request so the voice container is
  * warm before the first real utterance. The response body is discarded and
  * the audio never plays. Server-TTS engines only — browser TTS has no
  * container to warm.
@@ -129,12 +130,7 @@ function warmUpTts(): void {
 	if (voiceState.ttsEngine !== 'remote' && voiceState.ttsEngine !== 'openpalm-voice') return;
 	if (typeof window === 'undefined') return;
 	ttsWarmupFired = true;
-	void fetch('/api/speak', {
-		method: 'POST',
-		headers: { 'content-type': 'application/json' },
-		credentials: 'include',
-		body: JSON.stringify({ text: 'ok' }),
-	}).catch(() => {
+	void synthesize('ok').catch(() => {
 		/* warm-up is best-effort */
 	});
 }
@@ -212,17 +208,19 @@ function resolveEngineSupport(engine: SttEngine): boolean {
 	}
 }
 
-function normalizeEngine(raw: string): SttEngine {
-	if (raw === 'browser' || raw === 'browser-stt') return 'browser';
-	if (raw === 'openpalm-voice') return 'openpalm-voice';
-	// Anything else with a non-empty engine string means remote (OpenAI-compat).
-	if (raw && !raw.startsWith('skip-')) return 'remote';
+function providerToEngine(provider: VoiceProviderId): SttEngine {
+	if (provider === 'browser') return 'browser';
+	if (provider === 'openpalm-voice') return 'openpalm-voice';
+	if (provider === 'openai-compatible') return 'remote';
 	return 'disabled';
 }
 
 /**
- * Probe browser capabilities and resolve which STT engine is active.
- * Must be called from onMount or $effect (client-side only).
+ * Probe browser capabilities and resolve which STT/TTS engines are active
+ * from the client-owned voice settings. When nothing has been saved yet, the
+ * defaults prefer the host's voice container (when the /api/runtime
+ * handshake advertises one) and otherwise fall back to the browser's own
+ * speech APIs. Must be called from onMount or $effect (client-side only).
  */
 export async function initVoice(): Promise<void> {
 	const browserTts = typeof window !== 'undefined' && 'speechSynthesis' in window;
@@ -234,70 +232,66 @@ export async function initVoice(): Promise<void> {
 		}
 	}
 
-	try {
-		const cfg = await fetchVoiceConfig();
-		const stt = (cfg.stt ?? {}) as Record<string, unknown>;
-		const tts = (cfg.tts ?? {}) as Record<string, unknown>;
-		const rawSttEngine = typeof stt.engine === 'string' ? stt.engine : '';
-		const rawTtsEngine = typeof tts.engine === 'string' ? tts.engine : '';
-		const language = typeof stt.language === 'string' ? stt.language : '';
-		voiceState.sttLanguage = language;
-		voiceState.sttEngine = normalizeEngine(rawSttEngine);
-		voiceState.ttsEngine = normalizeEngine(rawTtsEngine) as TtsEngine;
-	} catch {
-		// 401 (signed out) or network — the picker decides what to show; the
-		// mic stays hidden until the user signs in and re-runs initVoice.
+	// iOS Safari: SpeechRecognition is present in the window but `start()`
+	// errors immediately. Flag it up front so both the defaults below and the
+	// settings UI can avoid the dead engine.
+	if (isIosSafari() && getSpeechRecognitionCtor()) {
+		voiceState.browserSttUnsupportedReason =
+			'iOS Safari does not support Web Speech recognition';
+	} else {
+		voiceState.browserSttUnsupportedReason = '';
+	}
+	const browserSttOk = Boolean(getSpeechRecognitionCtor()) && !voiceState.browserSttUnsupportedReason;
+
+	const settings = loadVoiceSettings();
+	if (settings) {
+		voiceState.sttEngine = providerToEngine(settings.stt.provider);
+		voiceState.ttsEngine = providerToEngine(settings.tts.provider) as TtsEngine;
+		voiceState.sttLanguage = settings.stt.language ?? '';
+		// A saved openpalm-voice selection degrades when the host no longer
+		// advertises the endpoint (addon disabled, different host): fall back
+		// to the browser engine when available so the mic/speaker stay usable.
+		if (
+			(voiceState.sttEngine === 'openpalm-voice' || voiceState.ttsEngine === 'openpalm-voice') &&
+			!(await advertisedVoiceUrl())
+		) {
+			if (voiceState.sttEngine === 'openpalm-voice') {
+				voiceState.sttEngine = browserSttOk ? 'browser' : 'disabled';
+			}
+			if (voiceState.ttsEngine === 'openpalm-voice') {
+				voiceState.ttsEngine = browserTts ? 'browser' : 'disabled';
+			}
+		}
+	} else {
+		// No saved settings — capability-based defaults. Prefer the host's
+		// voice container when advertised; otherwise the browser's own APIs.
+		const advertised = await advertisedVoiceUrl();
+		voiceState.sttLanguage = '';
+		voiceState.sttEngine =
+			advertised && isMediaRecorderSupported()
+				? 'openpalm-voice'
+				: browserSttOk
+					? 'browser'
+					: 'disabled';
+		voiceState.ttsEngine = advertised ? 'openpalm-voice' : browserTts ? 'browser' : 'disabled';
+	}
+
+	// If the resolved STT engine happens to be 'browser' on iOS Safari,
+	// degrade to 'disabled' so the navbar mic isn't dangling.
+	if (voiceState.sttEngine === 'browser' && voiceState.browserSttUnsupportedReason) {
 		voiceState.sttEngine = 'disabled';
-		voiceState.ttsEngine = 'disabled';
 	}
 
 	// ttsSupported = "can we produce audio at all". Server-side TTS
-	// (openpalm-voice or remote) plays via /api/speak; browser TTS plays
-	// via window.speechSynthesis. Either path is enough.
+	// (openpalm-voice or remote) plays via a direct provider call; browser
+	// TTS plays via window.speechSynthesis. Either path is enough.
 	//
-	// 'disabled' is an explicit operator choice — do NOT silently fall
-	// back to browser TTS in that case. The mic/speaker UI hides entirely.
+	// 'disabled' is an explicit user choice — do NOT silently fall back to
+	// browser TTS in that case. The mic/speaker UI hides entirely.
 	voiceState.ttsSupported =
 		voiceState.ttsEngine === 'openpalm-voice' ||
 		voiceState.ttsEngine === 'remote' ||
 		(voiceState.ttsEngine === 'browser' && browserTts);
-
-	// iOS Safari: SpeechRecognition is present in the window but `start()`
-	// errors immediately. Flag it so the picker can hide the card, and if
-	// the resolved engine happens to be 'browser', degrade to 'disabled'
-	// so the navbar mic isn't dangling either.
-	if (isIosSafari() && getSpeechRecognitionCtor()) {
-		voiceState.browserSttUnsupportedReason =
-			'iOS Safari does not support Web Speech recognition';
-		if (voiceState.sttEngine === 'browser') {
-			voiceState.sttEngine = 'disabled';
-		}
-	} else {
-		voiceState.browserSttUnsupportedReason = '';
-	}
-
-	// Friendly default: if no engine was configured server-side AND the
-	// browser natively supports SpeechRecognition (Chrome / Edge), default
-	// to the browser engine so the mic appears immediately. This is
-	// client-side only — picking an explicit engine in admin → voice
-	// overrides on the next page load. Skip the default on iOS Safari
-	// (see above).
-	if (
-		voiceState.sttEngine === 'disabled' &&
-		getSpeechRecognitionCtor() &&
-		!voiceState.browserSttUnsupportedReason
-	) {
-		voiceState.sttEngine = 'browser';
-	}
-
-	// Friendly default: if no TTS engine was configured AND the browser has
-	// speechSynthesis, enable browser TTS so the speak button is functional.
-	// An explicit server engine (openpalm-voice / remote) overrides this on
-	// the next page load via admin → voice settings.
-	if (voiceState.ttsEngine === 'disabled' && browserTts) {
-		voiceState.ttsEngine = 'browser';
-		voiceState.ttsSupported = true;
-	}
 
 	voiceState.sttSupported = resolveEngineSupport(voiceState.sttEngine);
 }
@@ -444,7 +438,7 @@ async function finalizeRecording(): Promise<void> {
 	}
 
 	try {
-		const transcript = await transcribeAudio(blob, {
+		const transcript = await transcribe(blob, {
 			language: voiceState.sttLanguage || undefined,
 		});
 		const trimmed = transcript.trim();
@@ -753,7 +747,7 @@ async function finishConversationSegment(): Promise<void> {
 	}
 
 	try {
-		const transcript = await transcribeAudio(blob, {
+		const transcript = await transcribe(blob, {
 			language: voiceState.sttLanguage || undefined,
 		});
 		const trimmed = transcript.trim();

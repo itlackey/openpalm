@@ -36,6 +36,12 @@ export type SecretStore = {
   set(ref: string, material: SecretMaterial): Promise<void>;
   delete(ref: string): Promise<void>;
   /**
+   * Read stored material by ref. Null for a missing ref or undecryptable
+   * record. Used by non-connection consumers (the client voice settings
+   * store keeps provider API keys here as `{ password }`).
+   */
+  get(ref: string): Promise<SecretMaterial | null>;
+  /**
    * Build the transport auth for a connection. Missing or unreadable secret
    * material degrades to { mode: 'none' } — the health probe then reports
    * 'unauthorized' instead of the app crashing.
@@ -205,6 +211,10 @@ export function createSecretStore(storage: ConnectionStorage): SecretStore {
 
     async delete(ref) {
       await storage.setMeta(META_PREFIX + ref, null);
+    },
+
+    get(ref) {
+      return readMaterial(storage, ref);
     },
 
     async resolveAuth(entry) {

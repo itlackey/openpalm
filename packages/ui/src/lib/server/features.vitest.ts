@@ -8,9 +8,14 @@
  * additionally gets host:*.
  */
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
+import { randomBytes } from 'node:crypto';
 import type { RequestEvent } from '@sveltejs/kit';
 import type { Capability } from '$lib/types.js';
-import { computeServerRuntimeContext, isAdminCapable } from './features.js';
+import { computeServerRuntimeContext, computeVoiceRuntime, isAdminCapable } from './features.js';
+import { resetState } from '$lib/server/test-helpers.js';
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -180,5 +185,53 @@ describe('computeServerRuntimeContext — serverCapabilities', () => {
     process.env.OP_ENABLE_ADMIN = '1';
     const caps = computeServerRuntimeContext(makeEvent()).serverCapabilities;
     expect(caps).toEqual(expect.arrayContaining([...BASE_CAPS, ...HOST_CAPS]));
+  });
+});
+
+describe('computeVoiceRuntime — voice-endpoint advertisement', () => {
+  let homeDir = '';
+  let savedHome: string | undefined;
+
+  beforeEach(() => {
+    savedHome = process.env.OP_HOME;
+    homeDir = join(tmpdir(), `openpalm-voice-rt-${randomBytes(4).toString('hex')}`);
+    mkdirSync(homeDir, { recursive: true });
+    process.env.OP_HOME = homeDir;
+    resetState();
+  });
+
+  afterEach(() => {
+    process.env.OP_HOME = savedHome;
+    rmSync(homeDir, { recursive: true, force: true });
+    resetState();
+  });
+
+  function enableVoice(env = 'OP_ENABLED_ADDONS=voice\n'): void {
+    const envDir = join(homeDir, 'knowledge', 'env');
+    mkdirSync(envDir, { recursive: true });
+    writeFileSync(join(envDir, 'stack.env'), env);
+  }
+
+  test('absent when the voice addon is not enabled', () => {
+    expect(computeVoiceRuntime(makeEvent())).toBeUndefined();
+  });
+
+  test('advertises the request host + default port when enabled', () => {
+    enableVoice();
+    expect(computeVoiceRuntime(makeEvent('http://myhost.lan:3880/'))).toEqual({
+      url: 'http://myhost.lan:8880',
+    });
+  });
+
+  test('honors OP_VOICE_PORT_HOST from stack.env', () => {
+    enableVoice('OP_ENABLED_ADDONS=voice\nOP_VOICE_PORT_HOST=9123\n');
+    expect(computeVoiceRuntime(makeEvent('http://127.0.0.1:3880/'))).toEqual({
+      url: 'http://127.0.0.1:9123',
+    });
+  });
+
+  test('absent when the event has no url (capability-guard stub events)', () => {
+    enableVoice();
+    expect(computeVoiceRuntime({} as RequestEvent)).toBeUndefined();
   });
 });

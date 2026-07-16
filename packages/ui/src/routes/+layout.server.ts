@@ -1,8 +1,10 @@
 import type { LayoutServerLoad } from './$types';
-import { computeServerRuntimeContext } from '$lib/server/features.js';
+import { computeServerRuntimeContext, computeVoiceRuntime } from '$lib/server/features.js';
 
 export const load: LayoutServerLoad = (event) => {
+  const serverRuntimeContext = computeServerRuntimeContext(event);
+  const voice = computeVoiceRuntime(event);
   return {
-    serverRuntimeContext: computeServerRuntimeContext(event),
+    serverRuntimeContext: voice ? { ...serverRuntimeContext, voice } : serverRuntimeContext,
   };
 };

@@ -23,6 +23,7 @@ from typing import Optional
 
 import onnxruntime as ort
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
@@ -74,6 +75,18 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="openpalm/voice", version="0.11.0", lifespan=lifespan)
+
+# The chat client calls this service DIRECTLY from the browser (no host
+# relay), so cross-origin requests from whatever origin serves the UI must be
+# allowed. Wildcard is deliberate: the service is unauthenticated by design,
+# bound to loopback/LAN, and carries no cookies or credentials — CORS here
+# gates nothing security-relevant, it only unblocks the browser caller.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 def _component_state(component) -> str:

@@ -14,6 +14,7 @@
   import { isDiscoveryCandidateUrl, markLocalDiscoveryDismissed } from '$lib/connections/discovery.js';
   import { parsePairingCode, type PairingPayload } from '$lib/connections/pairing.js';
   import { hasCapability, runtimeContext } from '$lib/runtime-context.svelte.js';
+  import VoiceClientSettings from '$lib/components/voice/VoiceClientSettings.svelte';
 
   // Capability-guarded surface (#486):
   // this page replaces /admin/endpoints and works in every mode that
@@ -589,6 +590,11 @@
         </div>
       </section>
     {/if}
+
+    <!-- Client-owned voice settings: which TTS/STT provider THIS device uses.
+         Lives here (not under /host) because it is per-browser preference, not
+         host configuration — see docs/technical/voice-settings-architecture. -->
+    <VoiceClientSettings />
   </main>
 
 <style>

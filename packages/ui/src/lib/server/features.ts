@@ -1,7 +1,8 @@
 import type { RequestEvent } from '@sveltejs/kit';
-import { PLATFORM_VERSION } from '@openpalm/lib';
+import { PLATFORM_VERSION, listEnabledAddonIds, readStackEnv } from '@openpalm/lib';
 import uiPkg from '../../../package.json';
 import type { Capability, ServerRuntimeContext } from '$lib/types.js';
+import { getState } from '$lib/server/state.js';
 
 /**
  * Server runtime context — RuntimeContext v2 (issue #509). Computed server-side on every request via
@@ -51,6 +52,42 @@ const HOST_CAPABILITIES: readonly Capability[] = [
   'host:recovery',
   'host:akm-sharing',
 ];
+
+/**
+ * Voice-endpoint advertisement for the runtime handshake. Present only when
+ * the local stack has the voice addon enabled. The URL's hostname comes from
+ * the REQUEST (the host the browser used to reach this UI server), so the
+ * endpoint is reachable by that same browser — `127.0.0.1` in stack.env would
+ * be wrong for a LAN-served UI. Plain http is correct: the container serves
+ * http, and loopback/LAN targets are what it binds to.
+ *
+ * Deliberately NOT part of computeServerRuntimeContext(): that function runs
+ * on requireCapability's per-request hot path with stub events, and this one
+ * reads the stack env from disk. Only the two runtime-context producers
+ * (+layout.server.ts and GET /api/runtime) call it.
+ */
+export function computeVoiceRuntime(event: RequestEvent): { url: string } | undefined {
+  try {
+    let hostname = event.url?.hostname;
+    if (!hostname) return undefined;
+    // URL.hostname strips the brackets from an IPv6 literal; re-add them so
+    // the assembled URL parses.
+    if (hostname.includes(':') && !hostname.startsWith('[')) hostname = `[${hostname}]`;
+    const state = getState();
+    if (!listEnabledAddonIds(state.homeDir).includes('voice')) return undefined;
+    const rawPort = (
+      readStackEnv(state.homeDir).OP_VOICE_PORT_HOST ||
+      process.env.OP_VOICE_PORT_HOST ||
+      ''
+    ).trim();
+    const parsed = rawPort ? Number(rawPort) : NaN;
+    const port = Number.isFinite(parsed) && parsed > 0 ? parsed : 8880;
+    return { url: `http://${hostname}:${port}` };
+  } catch {
+    // No readable stack state (served build without a host stack) → no ad.
+    return undefined;
+  }
+}
 
 export function computeServerRuntimeContext(event: RequestEvent): ServerRuntimeContext {
   const admin = isAdminCapable();

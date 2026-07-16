@@ -46,12 +46,13 @@ vi.mock('./media-recorder.js', () => ({
 	}),
 }));
 
-vi.mock('$lib/api.js', () => ({
-	transcribeAudio: vi.fn(async () => 'hello from vad'),
-	fetchVoiceConfig: vi.fn(async () => ({ tts: {}, stt: {} })),
+vi.mock('./providers.js', () => ({
+	transcribe: vi.fn(async () => 'hello from vad'),
+	synthesize: vi.fn(async () => null),
+	advertisedVoiceUrl: vi.fn(async () => null),
 }));
 
-import * as api from '$lib/api.js';
+import * as api from './providers.js';
 import {
 	startConversation,
 	stopConversation,
@@ -277,7 +278,7 @@ describe('conversation mode — remote engine', () => {
 		vadCaptured.opts = null;
 		vadCaptured.stop = vi.fn();
 		recorderCaptured.segments = [];
-		vi.mocked(api.transcribeAudio).mockClear();
+		vi.mocked(api.transcribe).mockClear();
 		voiceState.sttEngine = 'remote';
 		refreshSttSupport();
 		voiceState.status = 'idle';
@@ -323,13 +324,13 @@ describe('conversation mode — remote engine', () => {
 	});
 
 	test('an empty transcript is not delivered', async () => {
-		vi.mocked(api.transcribeAudio).mockResolvedValueOnce('   ');
+		vi.mocked(api.transcribe).mockResolvedValueOnce('   ');
 		const onUtterance = await startRemote();
 
 		getVadOpts().onSpeechStart();
 		getVadOpts().onSpeechEnd();
 		await vi.waitFor(() => {
-			expect(api.transcribeAudio).toHaveBeenCalledOnce();
+			expect(api.transcribe).toHaveBeenCalledOnce();
 			expect(voiceState.status).toBe('recording');
 		});
 		expect(onUtterance).not.toHaveBeenCalled();
@@ -363,7 +364,7 @@ describe('conversation mode — remote engine', () => {
 	});
 
 	test('a noise-only cycle while speaking never stops playback and sends nothing', async () => {
-		vi.mocked(api.transcribeAudio).mockResolvedValueOnce('   ');
+		vi.mocked(api.transcribe).mockResolvedValueOnce('   ');
 		const cancelSpy = vi.spyOn(window.speechSynthesis, 'cancel');
 		try {
 			const onUtterance = await startRemote();
@@ -372,7 +373,7 @@ describe('conversation mode — remote engine', () => {
 			getVadOpts().onSpeechStart();
 			getVadOpts().onSpeechEnd();
 			await vi.waitFor(() => {
-				expect(api.transcribeAudio).toHaveBeenCalledOnce();
+				expect(api.transcribe).toHaveBeenCalledOnce();
 				expect(voiceState.status).toBe('recording');
 			});
 			// Empty transcript = noise: discarded silently, playback untouched.

@@ -15,6 +15,7 @@
  */
 import { notifications } from '$lib/notifications.svelte.js';
 import { toSpeakableText } from './speakable-text.js';
+import { synthesize } from './providers.js';
 import type { TtsEngine, VoiceStatus } from './voice-state.svelte.js';
 
 /**
@@ -266,14 +267,12 @@ export class AudioPlaybackController {
     const useServer = engine === 'openpalm-voice' || engine === 'remote';
 
     if (useServer) {
-      let res: Response | undefined;
+      let res: Response | undefined | null;
       try {
-        res = await fetch('/api/speak', {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify({ text: speakableText }),
-        });
+        // Direct browser → provider call (the configured OpenAI-compatible
+        // endpoint or the host's voice container). Null = no server target
+        // configured; falls through to browser TTS like a failure would.
+        res = await synthesize(speakableText);
       } catch {
         // Network/CORS — fall through to browser TTS if available.
       }
@@ -366,9 +365,9 @@ export class AudioPlaybackController {
   }
 
   /**
-   * Convert a non-OK /api/speak response into a human-readable string.
-   * Recognises the two common shapes the route returns; falls back to a
-   * generic message keyed off the HTTP status.
+   * Convert a non-OK synthesis response into a human-readable string. A 5xx
+   * from the provider usually means the model is still loading; anything
+   * else keys off the HTTP status.
    */
   private async extractSpeakError(res: Response): Promise<string> {
     let code: string | undefined;
@@ -381,7 +380,7 @@ export class AudioPlaybackController {
     if (code === 'tts_not_configured') {
       return 'TTS is not configured.';
     }
-    if (code === 'upstream_error' || res.status === 502 || res.status === 503) {
+    if (code === 'upstream_error' || res.status >= 500) {
       return 'Voice engine is warming up — try again in a moment.';
     }
     return `TTS failed (HTTP ${res.status}).`;

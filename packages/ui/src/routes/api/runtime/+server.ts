@@ -7,9 +7,11 @@
  * secrets — mode, capability names, versions, and route pointers only.
  */
 import { json } from '@sveltejs/kit';
-import { computeServerRuntimeContext } from '$lib/server/features.js';
+import { computeServerRuntimeContext, computeVoiceRuntime } from '$lib/server/features.js';
 import type { RequestHandler } from './$types';
 
 export const GET: RequestHandler = (event) => {
-  return json(computeServerRuntimeContext(event));
+  const ctx = computeServerRuntimeContext(event);
+  const voice = computeVoiceRuntime(event);
+  return json(voice ? { ...ctx, voice } : ctx);
 };
