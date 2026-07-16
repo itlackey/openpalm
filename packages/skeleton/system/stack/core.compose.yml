@@ -100,7 +100,22 @@ services:
       # Operators serving the UI on a LAN host / reverse proxy add exact
       # comma-separated origins via OP_UI_CORS_ALLOWED_ORIGINS (never a wildcard).
       OP_UI_HOST_PORT: ${OP_UI_PORT:-3810}
+      # The HOST-served UI (Electron / `openpalm ui serve` / `openpalm admin`,
+      # default port 3880) is a SECOND browser origin whose transport also
+      # talks to OpenCode directly at the published assistant port — so
+      # start_opencode must CORS-allow its loopback origins too, or chat from
+      # the host-served UI fails preflight out of the box.
+      OP_HOST_UI_PORT: ${OP_HOST_UI_PORT:-3880}
       OP_UI_CORS_ALLOWED_ORIGINS: ${OP_UI_CORS_ALLOWED_ORIGINS:-}
+      # The served UI's session login uses the SAME UI login password as the
+      # host UI (route contract: /api/auth is deliberately outside /api/host so
+      # a served non-admin deployment can authenticate). Without this secret
+      # the co-process has no password source (no OP_HOME in-container), login
+      # can never mint a session, and the published UI dead-ends at /login.
+      # File-based like OPENCODE_SERVER_PASSWORD_FILE (secret-audit forbids raw
+      # *_PASSWORD compose env keys); the entrypoint resolves it for the UI
+      # child only. Setup fail-closes before deploy if no password exists.
+      OP_UI_LOGIN_PASSWORD_FILE: /run/secrets/ui_login_password
       # Loopback-first bind knobs for the entrypoint's LAN-exposure safety gate:
       # it refuses to start the unauthenticated UI co-process when OpenCode is
       # bound off loopback (OP_ASSISTANT_BIND_ADDRESS/OP_BIND_ADDRESS) with
@@ -155,6 +170,7 @@ services:
       - ${OP_HOME}/data/assistant/tools:/opt/openpalm/tools
     secrets:
       - opencode_server_password
+      - ui_login_password
     networks: [ assistant_net ]
     # Probe the UI co-process too, not just OpenCode — a boot-time
     # `npm install @openpalm/ui` failure would otherwise leave the published UI
@@ -237,6 +253,12 @@ networks:
 secrets:
   opencode_server_password:
     file: ${OP_HOME}/knowledge/secrets/op_opencode_password
+  # UI login password for the container-served @openpalm/ui co-process.
+  # Guaranteed present before any shipped deploy: setup fail-closes without it
+  # (setup.ts security.uiLoginPassword), and the dev/smoke fixtures seed it.
+  # Manual-compose users: see docs/operations/manual-compose-runbook.md.
+  ui_login_password:
+    file: ${OP_HOME}/knowledge/secrets/op_ui_login_password
 
 volumes:
   assistant-persistent:

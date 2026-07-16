@@ -321,7 +321,7 @@ cp "$UI_TARBALL" "$VERIFY_HOME/knowledge/$(basename "$UI_TARBALL")"
 printf '{}\n' > "$VERIFY_HOME/knowledge/secrets/auth.json"
 chmod 600 "$VERIFY_HOME/knowledge/secrets/auth.json"
 
-for name in portal_chat_secret portal_api_secret portal_discord_secret portal_slack_secret op_guardian_admin_token op_guardian_mcp_token op_api_key op_opencode_password; do
+for name in portal_chat_secret portal_api_secret portal_discord_secret portal_slack_secret op_guardian_admin_token op_guardian_mcp_token op_api_key op_opencode_password op_ui_login_password; do
   openssl rand -hex 16 > "$VERIFY_HOME/knowledge/secrets/$name"
   chmod 600 "$VERIFY_HOME/knowledge/secrets/$name"
 done
@@ -329,6 +329,9 @@ done
 # portals.compose.yml (guardian) reference this file unconditionally via the
 # opencode_server_password compose secret — it must exist before `compose up`
 # even when OPENCODE_AUTH stays off (the value is inert in that case).
+# op_ui_login_password: core.compose.yml grants it to the assistant so the
+# container-served UI co-process can mint login sessions — it must exist before
+# `compose up`, and its value is the password you log into the :3810 UI with.
 ```
 
 ### 3. Write an isolated `stack.env`

@@ -270,6 +270,23 @@ start_ui() {
     || echo "warning: could not write runtime-config.json; UI starts with no default connection" >&2
 
   local ui_port="${OP_UI_PORT:-3000}"
+
+  # ── UI session login password ─────────────────────────────────────────────
+  # The served UI authenticates browsers with the SAME UI login password as the
+  # host UI (op_session cookie; /api/auth is deliberately outside /api/host so a
+  # non-admin served deployment can log in). The container has no OP_HOME, so
+  # the password arrives as a compose secret file (OP_UI_LOGIN_PASSWORD_FILE,
+  # core.compose.yml) and is resolved into the UI child's env ONLY — same
+  # pattern as OPENCODE_SERVER_PASSWORD_FILE in start_opencode. Without a
+  # usable password every HTML navigation dead-ends at /login, so warn loudly.
+  local ui_login_password=""
+  if [ -n "${OP_UI_LOGIN_PASSWORD_FILE:-}" ] && [ -s "${OP_UI_LOGIN_PASSWORD_FILE}" ]; then
+    ui_login_password="$(cat "${OP_UI_LOGIN_PASSWORD_FILE}")"
+  fi
+  if [ -z "$ui_login_password" ]; then
+    echo "WARNING: no UI login password available (OP_UI_LOGIN_PASSWORD_FILE missing or empty) — the served UI will redirect to /login but no session can be minted. Run setup (or seed knowledge/secrets/op_ui_login_password) to fix." >&2
+  fi
+
   echo "entrypoint: starting UI co-process on port ${ui_port}..." >&2
 
   # ── supervise + respawn with capped exponential backoff ──────────────────
@@ -293,7 +310,8 @@ start_ui() {
   # NON-admin build: OP_ENABLE_ADMIN and OP_INSIDE_ELECTRON are explicitly UNSET
   # in the child so isAdminCapable() is false and every /host (host:*) route
   # 404s — the Phase-5 Electron/CLI-only admin boundary holds in the container.
-  # No host OP_HOME / host creds are injected (compose does not mount them).
+  # No host OP_HOME is injected; the ONLY credential the child receives is the
+  # UI login password resolved above (session auth — not a host:* capability).
   (
     local attempt=0
     local max_attempts=5
@@ -311,6 +329,7 @@ start_ui() {
       local exit_code
       if env -u OP_ENABLE_ADMIN -u OP_INSIDE_ELECTRON \
            HOST=0.0.0.0 PORT="$ui_port" HOST_HEADER=host PROTOCOL_HEADER=x-forwarded-proto \
+           OP_UI_LOGIN_PASSWORD="$ui_login_password" \
            node "$ui_index"; then
         exit_code=0
       else
@@ -558,6 +577,17 @@ start_opencode() {
     "http://127.0.0.1:${ui_host_port}"
     "http://localhost:${ui_host_port}"
   )
+  # The HOST-served UI (Electron / `openpalm ui serve` / `openpalm admin`,
+  # OP_HOST_UI_PORT, default 3880) is a second loopback browser origin whose
+  # transport also calls OpenCode directly at the published assistant port —
+  # grant it too, or chat from the host-served UI fails preflight by default.
+  local host_ui_port="${OP_HOST_UI_PORT:-3880}"
+  if [ "$host_ui_port" != "$ui_host_port" ]; then
+    cors_origins+=(
+      "http://127.0.0.1:${host_ui_port}"
+      "http://localhost:${host_ui_port}"
+    )
+  fi
   if [ -n "${OP_UI_CORS_ALLOWED_ORIGINS:-}" ]; then
     local prev_ifs="$IFS"
     IFS=','
