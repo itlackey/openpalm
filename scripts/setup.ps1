@@ -12,7 +12,7 @@ if ($PSVersionTable.PSVersion.Major -lt 7) {
 
 $Repo = 'itlackey/openpalm'
 $Binary = 'openpalm-cli-windows-x64.exe'
-$ScriptVersion = '0.13.0-beta.6'
+$ScriptVersion = '0.13.0-beta.7'
 
 function Normalize-Version {
     param(

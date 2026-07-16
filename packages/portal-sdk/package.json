@@ -1,7 +1,7 @@
 {
   "name": "@openpalm/portal-sdk",
   "description": "Shared portal SDK for OpenPalm chat adapters (Discord, Slack) — OpenCode client, event interpreters, runtime helpers, and the BasePortal base class",
-  "version": "0.13.0-beta.6",
+  "version": "0.13.0-beta.7",
   "type": "module",
   "license": "MPL-2.0",
   "repository": {
