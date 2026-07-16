@@ -2,7 +2,6 @@ import { describe, it, expect } from 'bun:test';
 import {
   PLATFORM_VERSION,
   normalizeVersion,
-  formatForDisplay,
   isPrerelease,
   distTagForVersion,
   isComparableSemver,
@@ -29,13 +28,6 @@ describe('normalizeVersion', () => {
     expect(normalizeVersion('')).toBe('');
     expect(normalizeVersion(null)).toBe('');
     expect(normalizeVersion(undefined)).toBe('');
-  });
-});
-
-describe('formatForDisplay', () => {
-  it('drops the v for user-facing display', () => {
-    expect(formatForDisplay('v0.12.0')).toBe('0.12.0');
-    expect(formatForDisplay('0.12.0')).toBe('0.12.0');
   });
 });
 

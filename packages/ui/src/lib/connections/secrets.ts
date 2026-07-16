@@ -17,7 +17,7 @@
  * backup/sync leaks.
  *
  * Existing plaintext records (written by an install from before encryption
- * shipped) are still readable — resolveAuth()/peekUsername() fall back to a
+ * shipped) are still readable — resolveAuth() falls back to a
  * plaintext JSON.parse() when the stored value isn't the encrypted envelope
  * shape — and are transparently re-encrypted in place on first read (lazy
  * migration; no separate migration step/version bump needed).
@@ -41,13 +41,6 @@ export type SecretStore = {
    * 'unauthorized' instead of the app crashing.
    */
   resolveAuth(entry: Connection): Promise<ResolvedAuth>;
-  /**
-   * The NON-secret half only — never the password. Lets the edit form show
-   * (and let the user correct) a stored Basic username without ever
-   * re-displaying, or requiring a retype of, the password. Undefined when no
-   * username is stored or the ref is unknown.
-   */
-  peekUsername(ref: string): Promise<string | undefined>;
   /**
    * Rewrite ONLY the username half of stored Basic material, preserving
    * whatever password is already stored. `undefined` clears the username. No-op
@@ -213,11 +206,6 @@ export function createSecretStore(storage: ConnectionStorage): SecretStore {
       return username
         ? { mode: 'basic', username, password: material.password }
         : { mode: 'basic', password: material.password };
-    },
-
-    async peekUsername(ref) {
-      const material = await readMaterial(storage, ref);
-      return material?.username;
     },
 
     async updateUsername(ref, username) {

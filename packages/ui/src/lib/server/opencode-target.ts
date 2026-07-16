@@ -173,11 +173,6 @@ export function validateConnectionUrl(input: string): ConnectionUrlValidation {
 
 let remoteStatusCache: { expiresAt: number; value: RemoteStatus[] } | null = null;
 
-/** Reset the in-memory probe cache. Exposed for tests only. */
-export function _resetRemoteStatusCache(): void {
-  remoteStatusCache = null;
-}
-
 async function probeTarget(target: HostOpencodeTarget): Promise<RemoteStatus> {
   const headers = new Headers();
   if (target.password) {

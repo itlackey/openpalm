@@ -392,7 +392,6 @@ export {
   SCHEDULE_PRESETS,
   loadAutomations,
   executeAutomation,
-  syncAutomations,
   readAutomationLogs,
 } from "./control-plane/scheduler.js";
 
@@ -457,7 +456,6 @@ export type { HostIdentity, OwnershipDecision, HostRuntime } from './control-pla
 export {
   detectHostIdentity,
   describeHostRuntime,
-  hostIdentityMatches,
   readHostIdentity,
   writeHostIdentity,
 } from './control-plane/host-identity.js';
@@ -619,7 +617,6 @@ export {
   majorVersionOf,
   isSameMajorVersion,
   normalizeVersion,
-  formatForDisplay,
   isPrerelease,
   distTagForVersion,
 } from "./control-plane/versioning.js";

@@ -162,7 +162,7 @@ describe('concurrent key generation (lockless getOrCreateKey check-then-act race
   });
 });
 
-describe('peekUsername / updateUsername (edit form must not lose/revert the username)', () => {
+describe('updateUsername (edit form must not lose/revert the username)', () => {
   function refEntry(): Connection {
     return {
       id: 'conn-1',
@@ -171,23 +171,6 @@ describe('peekUsername / updateUsername (edit form must not lose/revert the user
       auth: { mode: 'basic', username: '', secretRef: 'sec_1' },
     };
   }
-
-  test('peekUsername returns the stored username without exposing the password', async () => {
-    const store = createSecretStore(createMemoryStorage());
-    await store.set('sec_1', { username: 'carol', password: 'hunter2' });
-    expect(await store.peekUsername('sec_1')).toBe('carol');
-  });
-
-  test('peekUsername returns undefined when no username is stored', async () => {
-    const store = createSecretStore(createMemoryStorage());
-    await store.set('sec_1', { password: 'hunter2' });
-    expect(await store.peekUsername('sec_1')).toBeUndefined();
-  });
-
-  test('peekUsername returns undefined for an unknown ref', async () => {
-    const store = createSecretStore(createMemoryStorage());
-    expect(await store.peekUsername('missing')).toBeUndefined();
-  });
 
   test('updateUsername rewrites only the username half, preserving the stored password', async () => {
     const store = createSecretStore(createMemoryStorage());
