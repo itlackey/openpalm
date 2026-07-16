@@ -10,6 +10,7 @@
   } from '$lib/endpoints-state.svelte.js';
   import { mintPairingCode } from '$lib/api.js';
   import { getConnectionStore, getSecretStore } from '$lib/connections/boot.js';
+  import { newConnectionId } from '$lib/connections/store.js';
   import { parsePairingCode, type PairingPayload } from '$lib/connections/pairing.js';
   import { hasCapability, runtimeContext } from '$lib/runtime-context.svelte.js';
 
@@ -67,28 +68,37 @@
     // The /connections/new landing aliases here with
     // ?new=1 — open the add form so "no connections yet" starts at the form.
     if (page.url.searchParams.get('new') === '1') openAddForm();
-
-    // #511 D3/D4 · PR #564 P1-7: #pair= deep-link fragment — parse, open the
-    // add form prefilled, then strip the credential-bearing fragment from
-    // history so the code doesn't linger in the URL bar. The pairing code rides
-    // in the URL FRAGMENT, never the query string: the browser never sends the
-    // fragment to the UI's static host, so the durable credential stays out of
-    // access logs, reverse proxies, and Referer headers.
-    const pairCode = new URLSearchParams(window.location.hash.slice(1)).get('pair');
-    if (pairCode) {
-      const result = parsePairingCode(pairCode);
-      if (result.ok) {
-        openAddForm();
-        applyPairingPayload(result.payload);
-      } else {
-        openAddForm();
-        formError = result.error;
-      }
-      const url = new URL(page.url);
-      url.hash = '';
-      replaceState(url, {});
-    }
+    consumePairDeepLink();
   });
+
+  /**
+   * #511 D3/D4 · PR #564 P1-7: consume a `#pair=` deep link — parse, open the
+   * add form prefilled, then strip the credential-bearing fragment from
+   * history so the code doesn't linger in the URL bar. The pairing code rides
+   * in the URL FRAGMENT, never the query string: the browser never sends the
+   * fragment to the UI's static host, so the durable credential stays out of
+   * access logs, reverse proxies, and Referer headers.
+   *
+   * Wired to BOTH mount and window `hashchange`: a fragment-only URL change
+   * on a tab already showing /connections is a same-document navigation — no
+   * remount, no load — so without the hashchange hook the code would be
+   * silently ignored AND left sitting in the URL bar/history.
+   */
+  function consumePairDeepLink(): void {
+    const pairCode = new URLSearchParams(window.location.hash.slice(1)).get('pair');
+    if (!pairCode) return;
+    const result = parsePairingCode(pairCode);
+    if (result.ok) {
+      openAddForm();
+      applyPairingPayload(result.payload);
+    } else {
+      openAddForm();
+      formError = result.error;
+    }
+    const url = new URL(window.location.href);
+    url.hash = '';
+    replaceState(url, {});
+  }
 
   /** Prefill the add form from a decoded pairing payload. The secret then flows
    *  through the existing secret-store path on submit — the stored connection
@@ -221,7 +231,9 @@
       const secrets = getSecretStore();
       if (formMode === 'add') {
         if (formPassword) {
-          const secretRef = crypto.randomUUID();
+          // newConnectionId, not bare crypto.randomUUID(): randomUUID is
+          // secure-context-only and would throw on the plain-http LAN tier.
+          const secretRef = newConnectionId();
           await secrets.set(secretRef, { username, password: formPassword });
           await store.add({ label, baseUrl: url, auth: { mode: 'basic', username, secretRef } });
         } else {
@@ -234,7 +246,7 @@
           if (currentRef) await secrets.delete(currentRef);
           await store.update(formId, { label, baseUrl: url, auth: { mode: 'none' } });
         } else if (formPassword) {
-          const secretRef = currentRef ?? crypto.randomUUID();
+          const secretRef = currentRef ?? newConnectionId();
           await secrets.set(secretRef, { username, password: formPassword });
           await store.update(formId, { label, baseUrl: url, auth: { mode: 'basic', username, secretRef } });
         } else if (currentRef) {
@@ -285,6 +297,11 @@
 <svelte:head>
   <title>Connections — OpenPalm</title>
 </svelte:head>
+
+<!-- Fragment-only navigation to an already-open /connections tab never
+     remounts the page; the hashchange hook keeps #pair= deep links working
+     (and stripped) there too. -->
+<svelte:window onhashchange={consumePairDeepLink} />
 
 <ChatNavbar />
 

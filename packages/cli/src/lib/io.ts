@@ -1,9 +1,7 @@
 /**
- * Filesystem and HTTP helpers used by the CLI install/upgrade flows.
- *
- * Asset seeding (applyHomeSeed, seedUiBuild) and path resolution
- * (resolveLocalUiBuild, resolveUiBuildDir) now live in @openpalm/lib
- * so both the CLI and any future Electron shell can import them directly.
+ * Directory-tree setup for the CLI install flow. Asset seeding
+ * (applyHomeSeed, seedUiBuild) and path resolution live in @openpalm/lib and
+ * are imported from there directly.
  */
 import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';

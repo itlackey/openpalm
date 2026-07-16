@@ -15,7 +15,11 @@ import { existsSync, mkdtempSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { configureStateDatabase, STATE_DB_SCHEMA_VERSION } from './state-db.ts';
+import {
+  _clampOwnershipMaxRows,
+  configureStateDatabase,
+  STATE_DB_SCHEMA_VERSION,
+} from './state-db.ts';
 
 type MasterRow = { sql: string };
 type PrincipalRow = { id: string; kind: string };
@@ -287,4 +291,34 @@ describe('state-db — configureStateDatabase', () => {
   // documented above — is unsafe to exercise across test files in-process.
   // Its contract is covered end-to-end via the admin API in
   // proxy-direct.test.ts (DELETE /admin/principals/:id).
+});
+
+describe('_clampOwnershipMaxRows — malformed GUARDIAN_OWNERSHIP_MAX_ROWS overrides', () => {
+  // A bad value here is catastrophic: NaN binds to SQLite as NULL and turns
+  // evictOldest's `LIMIT MAX(0, count - ?)` unbounded; a clamp result of 0
+  // makes the limit `count - 0` — either way the ENTIRE ownership table is
+  // deleted on the next insert. The clamp must reject every such shape.
+  it('accepts a plain positive integer', () => {
+    expect(_clampOwnershipMaxRows('50')).toBe(50);
+  });
+
+  it('floors a fractional value >= 1', () => {
+    expect(_clampOwnershipMaxRows('12.9')).toBe(12);
+  });
+
+  it('rejects a fractional value in (0, 1) — floors to 0, which would wipe the table', () => {
+    expect(_clampOwnershipMaxRows('0.5')).toBe(10_000);
+  });
+
+  it('rejects zero, negatives, and non-numeric strings', () => {
+    expect(_clampOwnershipMaxRows('0')).toBe(10_000);
+    expect(_clampOwnershipMaxRows('-5')).toBe(10_000);
+    expect(_clampOwnershipMaxRows('all')).toBe(10_000);
+    expect(_clampOwnershipMaxRows('Infinity')).toBe(10_000);
+  });
+
+  it('defaults to 10000 when unset (empty string coerces to 0 → rejected too)', () => {
+    expect(_clampOwnershipMaxRows(undefined)).toBe(10_000);
+    expect(_clampOwnershipMaxRows('')).toBe(10_000);
+  });
 });

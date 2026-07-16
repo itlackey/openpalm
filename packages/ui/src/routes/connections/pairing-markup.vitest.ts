@@ -45,6 +45,15 @@ describe('connections +page.svelte — host UX and pairing wiring', () => {
     expect(src).not.toMatch(/\?pair=/);
   });
 
+  // A fragment-only URL change on an already-open /connections tab is a
+  // same-document navigation — onMount never re-runs — so consumption must
+  // ALSO be wired to window hashchange, or a #pair= link opened into a live
+  // tab is silently ignored and the credential lingers in the URL bar.
+  test('consumes #pair= on hashchange, not only on mount', () => {
+    const src = pageSource();
+    expect(src).toMatch(/<svelte:window[^>]*onhashchange=\{consumePairDeepLink\}/);
+  });
+
   // PR #564 retest P3-3: qrSvg is string|null; the panel must fall back to the
   // text code (not render a null SVG) when the host could not generate the QR.
   test('falls back to the text code when qrSvg is null', () => {

@@ -249,14 +249,21 @@ export function seedPortalPrincipalsFromEnv(): PrincipalRecord[] {
 //
 // Bounded oldest-first (created_at) so authenticated input cannot grow the DB
 // without limit — the same size-cap discipline the previous in-memory Maps used.
-const OWNERSHIP_MAX_ROWS = ((): number => {
-  // A non-numeric override yields NaN, which binds to SQLite as NULL and turns
-  // the eviction `LIMIT MAX(0, count - ?)` into `LIMIT NULL` (unbounded) —
-  // deleting the ENTIRE ownership table on the next insert. Clamp to the
-  // default for anything not a positive finite number.
-  const parsed = Number(Bun.env.GUARDIAN_OWNERSHIP_MAX_ROWS ?? 10_000);
-  return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : 10_000;
-})();
+/**
+ * Clamp a GUARDIAN_OWNERSHIP_MAX_ROWS override to a usable positive integer.
+ * A non-numeric override yields NaN, which binds to SQLite as NULL and turns
+ * the eviction `LIMIT MAX(0, count - ?)` into `LIMIT NULL` (unbounded) —
+ * deleting the ENTIRE ownership table on the next insert. Floor FIRST, then
+ * validate: a fractional value in (0, 1) would otherwise pass a `> 0` check
+ * and floor to 0, making the eviction limit `count - 0` — the same full-table
+ * wipe. Exported for tests.
+ */
+export function _clampOwnershipMaxRows(raw: string | undefined): number {
+  const parsed = Math.floor(Number(raw ?? 10_000));
+  return Number.isFinite(parsed) && parsed >= 1 ? parsed : 10_000;
+}
+
+const OWNERSHIP_MAX_ROWS = _clampOwnershipMaxRows(Bun.env.GUARDIAN_OWNERSHIP_MAX_ROWS);
 
 // `table` is a compile-time constant (never user input) so the interpolation
 // below cannot be injected — this is the one safe use of a table name in SQL text.

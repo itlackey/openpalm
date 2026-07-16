@@ -191,6 +191,13 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   reconcile consolidation). Also deleted the unused client-side
   `packages/ui/src/lib/version-compare.ts` duplicate; the one server route that
   needed semver comparison now imports `compareComparableVersions` from the lib.
+- Further dead exports pruned from the published `@openpalm/lib` barrel:
+  `syncAutomations` (host cron sync was replaced by the container's
+  `akm tasks sync` loop), `hostIdentityMatches`, and `formatForDisplay` (a
+  byte-for-byte alias of the still-exported `normalizeVersion`). The unused
+  guardian tunable `GUARDIAN_SESSION_TTL_MS` (config `SESSION_TTL_MS`) is also
+  retired — session/permission ownership is SQLite row-count evicted
+  (`GUARDIAN_OWNERSHIP_MAX_ROWS`), not TTL-cached.
 
 ### Fixed
 

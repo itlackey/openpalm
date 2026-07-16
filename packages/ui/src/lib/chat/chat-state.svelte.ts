@@ -50,6 +50,7 @@ import {
 	type RawEvent,
 	type StepUpdate,
 } from './oc-events.js';
+import { randomId } from '../random-id.js';
 import type { ToolStripEntry } from './tool-strip.js';
 import { isUserFacingTool } from './tool-strip.js';
 import { SvelteMap } from 'svelte/reactivity';
@@ -343,7 +344,7 @@ class ChatService {
 
 	private _appendAssistantReply(text: string, toolStates?: LiveToolState[]): void {
 		const assistantEntry: ChatMessage = {
-			id: crypto.randomUUID(),
+			id: randomId(),
 			role: 'assistant',
 			text,
 			timestamp: Date.now(),
@@ -392,7 +393,7 @@ class ChatService {
 		// "Answer sent." isn't lost when pendingQuestion is cleared below.
 		if (this.pendingQuestion?.status === 'answered' && this.pendingQuestion.message) {
 			const questionNote = {
-				id: crypto.randomUUID(),
+				id: randomId(),
 				type: 'note' as const,
 				label: 'Question answered',
 				text: this.pendingQuestion.message,
@@ -718,7 +719,7 @@ class ChatService {
 		}
 
 		const userEntry: ChatMessage = {
-			id: crypto.randomUUID(),
+			id: randomId(),
 			role: 'user',
 			text: trimmed,
 			timestamp: Date.now(),
@@ -846,7 +847,7 @@ class ChatService {
 		} else {
 			this._resetPendingRenderState();
 			const stoppedNote = {
-				id: crypto.randomUUID(),
+				id: randomId(),
 				type: 'note' as const,
 				label: 'Stopped',
 				text: 'Stopped.',

@@ -2,11 +2,16 @@
 // The single fetch primitive and error-handling helpers every domain client
 // module builds on. Owns no endpoints and no feature DTOs — just transport.
 
+import { randomId } from '../random-id.js';
+
 const apiBase = '';
 
 export function buildHeaders(): HeadersInit {
   return {
-    'x-request-id': crypto.randomUUID(),
+    // randomId, not bare crypto.randomUUID(): randomUUID is
+    // secure-context-only and would throw on the plain-http LAN tier,
+    // breaking EVERY API call from that origin.
+    'x-request-id': randomId(),
     'x-requested-by': 'ui'
   };
 }

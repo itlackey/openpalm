@@ -149,10 +149,6 @@ Ports and network:
 - container: `8080`
 - networks: `portal_net`, `assistant_net`
 
-Additional env:
-
-- `GUARDIAN_SESSION_TTL_MS` -- Session TTL in milliseconds (default `900000` / 15 minutes). Sessions idle longer than this are evicted from the cache.
-
 Portal request metadata fields:
 
 - `x-openpalm-session-key` -- When present on the inbound request, overrides the default per-user session grouping key and allows portals to maintain multiple independent sessions per user.

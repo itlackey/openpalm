@@ -31,6 +31,14 @@ set -euo pipefail
 UNIT="${1:?Usage: release.sh <unit> <version> [ref]}"
 VERSION="${2:?Usage: release.sh <unit> <version> [ref]}"
 REF="${3:-$(git rev-parse --abbrev-ref HEAD)}"
+# In a detached-HEAD checkout (e.g. right after `git checkout <tag>`),
+# `--abbrev-ref HEAD` prints the literal string "HEAD", which is not a
+# dispatchable ref — fail here with a clear message instead of letting
+# `gh workflow run --ref HEAD` die opaquely after the confirm prompt.
+if [[ "${REF}" == "HEAD" ]]; then
+  echo "Error: detached HEAD — pass an explicit branch or tag name as the third argument" >&2
+  exit 1
+fi
 DRY_RUN_INPUT="false"
 [[ "${DRY_RUN:-}" == "1" ]] && DRY_RUN_INPUT="true"
 
@@ -71,10 +79,13 @@ if [[ -t 0 && "${RELEASE_YES:-}" != "1" ]]; then
 fi
 
 # The target ref to release IS the dispatch ref (`--ref`): release.yml runs on it
-# and releases it. `version` is the explicit override, so `bump` is ignored.
+# and releases it. `bump` is passed explicitly because release.yml declares it
+# required — its value is ignored whenever `version` is set (as it always is
+# here), so `patch` is inert.
 gh workflow run "release.yml" \
   --ref "${REF}" \
   -f unit="${UNIT}" \
+  -f bump=patch \
   -f version="${VERSION}" \
   -f dry_run="${DRY_RUN_INPUT}"
 

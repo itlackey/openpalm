@@ -89,6 +89,11 @@ class ConnectionsService {
     }
   }
 
+  /** Monotonic activation counter: a failed activation may only roll state
+   *  back if no NEWER activation has started since (otherwise a slow failure
+   *  would clobber the selection a later, successful switch just persisted). */
+  private activationSeq = 0;
+
   async activate(id: string): Promise<void> {
     if (id === this.activeId) return;
     // A subscriber may veto the switch (the chat side blocks mid-generation
@@ -99,7 +104,12 @@ class ConnectionsService {
       this.error = blocked;
       throw new Error(blocked);
     }
+    const seq = ++this.activationSeq;
     const previous = this.activeId;
+    // Capture the previous connection NOW, from memory: on rollback it may
+    // already be gone from the store (removed in another tab), and the store
+    // round-trip is redundant when we already hold the object.
+    const previousConnection = this.endpoints.find((e) => e.id === previous) ?? null;
     this.activeId = id;
     const store = getConnectionStore();
     try {
@@ -111,12 +121,24 @@ class ConnectionsService {
       // failed handoff rolls the switch back.
       await emitConnectionActivated(id);
     } catch (e) {
-      this.activeId = previous;
-      // setActive(id) above already persisted the selection; roll the PERSISTED
-      // active id back too, or a reload would land on the connection whose
-      // handoff just failed. Best-effort — `previous` may be '' or since-removed.
-      await store.setActive(previous).catch(() => {});
-      setActiveConnection((await store.get(previous).catch(() => null)) ?? null);
+      // Only the LATEST activation may roll back — a stale failure must not
+      // overwrite state a newer activate() has since established.
+      if (seq === this.activationSeq) {
+        this.activeId = previous;
+        if (previousConnection) {
+          // setActive(id) above may have persisted the failed selection; roll
+          // the PERSISTED id back too, or a reload would land on the
+          // connection whose handoff just failed.
+          await store.setActive(previous).catch(() => {});
+          setActiveConnection(previousConnection);
+        } else {
+          // No usable previous ('' on first activation, or since-removed):
+          // CLEAR the persisted selection — setActive('') would reject and
+          // leave the failed id persisted, resurrecting it on reload.
+          await store.clearActive().catch(() => {});
+          setActiveConnection(null);
+        }
+      }
       const err = e as { message?: string };
       this.error = err.message ?? 'Failed to switch connection';
       throw e;

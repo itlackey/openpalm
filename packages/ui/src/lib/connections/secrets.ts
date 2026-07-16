@@ -120,6 +120,13 @@ async function getOrCreateKey(storage: ConnectionStorage): Promise<CryptoKey> {
       return key;
     })();
     pendingKeys.set(storage, pending);
+    // Evict a REJECTED generation from the memo: a memoized rejection (e.g. a
+    // transient IndexedDB write failure in setCryptoKey) would otherwise be
+    // handed to every later caller, permanently poisoning all secret writes
+    // and encrypted reads for this backend until page reload.
+    pending.catch(() => {
+      pendingKeys.delete(storage);
+    });
   }
   return pending;
 }
@@ -176,12 +183,16 @@ async function readMaterial(storage: ConnectionStorage, ref: string): Promise<Se
   }
   // Legacy plaintext record: still a plain SecretMaterial shape. Use it, then
   // migrate it to the encrypted envelope so the next read (and the on-disk
-  // state) is no longer plaintext.
+  // state) is no longer plaintext. Skip the rewrite entirely when SubtleCrypto
+  // is unavailable (insecure origin): writeMaterial would just re-store the
+  // identical plaintext — a wasted IndexedDB write on EVERY read, forever.
   const material = parsed as SecretMaterial;
-  try {
-    await writeMaterial(storage, ref, material);
-  } catch {
-    // Migration failing shouldn't block using the credential this once.
+  if (subtleAvailable()) {
+    try {
+      await writeMaterial(storage, ref, material);
+    } catch {
+      // Migration failing shouldn't block using the credential this once.
+    }
   }
   return material;
 }
