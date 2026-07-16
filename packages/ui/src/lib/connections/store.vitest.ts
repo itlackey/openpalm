@@ -3,9 +3,8 @@
  * in-memory backend (the tests are the spec for both backends, so everything
  * is async and nothing lives only in store-instance fields).
  *
- * Ported from packages/client/tests/connections-store.test.ts and
- * connections-seed.test.ts, adapted to the ui Connection shape: `url` renamed
- * to `baseUrl`, `kind` dropped, auth narrowed to none | basic.
+ * The ui Connection shape is `{ id, label, baseUrl, auth }` with auth narrowed
+ * to none | basic.
  */
 import { describe, expect, test } from 'vitest';
 import {
@@ -348,10 +347,9 @@ describe('loadRuntimeConfig', () => {
     expect(loaded?.connections[0]?.baseUrl).toBe('http://127.0.0.1:3800');
   });
 
-  test('redacts legacy userinfo from runtime connection and host-link URLs', async () => {
+  test('redacts legacy userinfo from runtime connection URLs', async () => {
     const config: RuntimeConfig = {
       connections: [seededEntry({ baseUrl: 'http://legacy-user:legacy-password@127.0.0.1:3800' })],
-      hostUrl: 'http://host-user:host-password@127.0.0.1:3880/host',
     };
     const { fetch } = recordingFetch(() => jsonResponse(config));
 
@@ -359,11 +357,8 @@ describe('loadRuntimeConfig', () => {
     const serialized = JSON.stringify(loaded);
 
     expect(loaded?.connections[0]?.baseUrl).toBe('http://127.0.0.1:3800');
-    expect(loaded?.hostUrl).toBe('http://127.0.0.1:3880/host');
     expect(serialized).not.toContain('legacy-user');
     expect(serialized).not.toContain('legacy-password');
-    expect(serialized).not.toContain('host-user');
-    expect(serialized).not.toContain('host-password');
   });
 });
 

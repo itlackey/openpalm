@@ -3,8 +3,7 @@
  *
  * A leaf module with zero imports so both the direct transport
  * (`probeHealth()` short-circuit) and the connections form can consult it
- * without pulling in the IndexedDB store module. Ported from
- * packages/client/src/lib/connections/url-policy.ts, minus the guardian
+ * without pulling in the IndexedDB store module. There is no guardian
  * `/oc`-appending helper — Guardian is a transparent OpenCode proxy now, so
  * the user provides the exact baseUrl and no path inference is performed.
  *

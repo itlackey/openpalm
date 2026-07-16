@@ -2,9 +2,8 @@
  * Browser-owned pairing-code decoder (Phase 3a — "One UI, delete the split").
  *
  * Decode + strictly validate a one-time pairing code minted host-side by
- * `@openpalm/lib`'s `encodePairingCode` (the host mint route already exists in
- * ui). This is the decode half only; ported from
- * packages/client/src/lib/connections/pairing.ts.
+ * `@openpalm/lib`'s `encodePairingCode`. This is the decode half only (the host
+ * mint route lives in ui).
  *
  * base64url decode via `atob` + `Uint8Array` + `TextDecoder` — the UTF-8-safe
  * inverse of the transport's `base64Utf8` encoder.
@@ -15,7 +14,7 @@ const PAIRING_CODE_PREFIX = 'openpalm-pair:';
 
 export type PairingPayload = {
   v: 1;
-  kind: 'openpalm-client-api';
+  kind: 'openpalm-connection';
   url: string;
   label?: string;
   username: string;
@@ -68,7 +67,7 @@ export function parsePairingCode(code: string): ParsePairingResult {
   if (value.v !== 1) {
     return { ok: false, error: 'Pairing code has an unsupported version.' };
   }
-  if (value.kind !== 'openpalm-client-api') {
+  if (value.kind !== 'openpalm-connection') {
     return { ok: false, error: 'Pairing code has an unsupported kind.' };
   }
   if (typeof value.url !== 'string' || !value.url) {
@@ -90,7 +89,7 @@ export function parsePairingCode(code: string): ParsePairingResult {
 
   const payload: PairingPayload = {
     v: 1,
-    kind: 'openpalm-client-api',
+    kind: 'openpalm-connection',
     url: value.url,
     username: value.username,
     secret: value.secret,

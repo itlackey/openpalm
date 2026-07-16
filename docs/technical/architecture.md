@@ -16,9 +16,9 @@ There is a single front-end package, **`@openpalm/ui`** (SvelteKit,
   host, so any origin that serves it is a valid front door (this is the property
   a PWA install builds on).
 
-There is no second app. The old `@openpalm/client` SPA and the `UiHostMode`
-"runtime modes" matrix are gone; the UI behaves the same everywhere it runs and
-is only ever *more* capable when launched as an admin process (below).
+There is no second app and no "runtime modes" matrix: the UI behaves the same
+everywhere it runs and is only ever *more* capable when launched as an admin
+process (below).
 
 > **PWA install status:** the origin-portable build is what makes a PWA install
 > possible, and mobile "Add to Home Screen" already works. A full installable

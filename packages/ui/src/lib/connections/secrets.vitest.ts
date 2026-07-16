@@ -4,9 +4,9 @@
  * persisted in the storage backend's structured-clone area. Legacy plaintext
  * records still decode and are transparently re-encrypted in place.
  *
- * Ported from packages/client/tests/connections-secrets.test.ts, narrowed to
- * the none | basic auth model and the ui Connection shape (baseUrl, username
- * inline on the entry). Uses createMemoryStorage() — no real IndexedDB needed.
+ * Covers the none | basic auth model and the ui Connection shape (baseUrl,
+ * username inline on the entry). Uses createMemoryStorage() — no real IndexedDB
+ * needed.
  */
 import { describe, expect, test } from 'vitest';
 import { createMemoryStorage, type Connection, type ConnectionStorage } from './store.js';

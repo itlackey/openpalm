@@ -29,7 +29,7 @@ function tempHomeDir(): string {
 
 const SAMPLE_PAYLOAD: PairingPayloadV1 = {
   v: 1,
-  kind: 'openpalm-client-api',
+  kind: 'openpalm-connection',
   url: 'https://gw.example.ts.net/oc',
   label: 'Élise’s phone 📱',
   username: 'elises-phone-ab12',
@@ -147,7 +147,7 @@ describe('mintDirectPrincipalPairingCode', () => {
     if (!decoded.ok) throw new Error('expected decodable code');
     expect(decoded.payload).toEqual({
       v: 1,
-      kind: 'openpalm-client-api',
+      kind: 'openpalm-connection',
       url: 'https://gw.example.ts.net/oc',
       label: 'My Device',
       username: body.id,

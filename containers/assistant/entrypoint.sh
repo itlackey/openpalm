@@ -240,9 +240,9 @@ start_ui() {
   # is unreachable from a browser. Non-default topologies override the full URL
   # via OP_UI_DEFAULT_ASSISTANT_URL. JSON is emitted via node (present in the
   # base image) so an unusual URL value can never produce a malformed file. The
-  # record shape MUST match the ui store: { id, label, baseUrl, auth } — NOT the
-  # old url/kind shape — and id/label MUST equal packages/lib
-  # client-runtime-config.ts's ASSISTANT_LOCKED_CONNECTION_ID / _LABEL.
+  # record shape MUST match the ui store: { id, label, baseUrl, auth }, and
+  # id/label MUST equal packages/lib ui-runtime-config.ts's
+  # ASSISTANT_LOCKED_CONNECTION_ID / _LABEL.
   local assistant_url="${OP_UI_DEFAULT_ASSISTANT_URL:-http://127.0.0.1:${OP_ASSISTANT_PORT:-3800}}"
   mkdir -p "$ui_client_dir"
   node -e '

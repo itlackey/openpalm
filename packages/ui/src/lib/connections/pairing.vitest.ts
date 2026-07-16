@@ -2,15 +2,13 @@
  * Pure unit tests for the browser-owned pairing-code decoder — the decode half
  * of @openpalm/lib's encodePairingCode/decodePairingCode. Pinned compatible
  * against the lib encoder by the last test (tests-only cross-import).
- *
- * Ported from packages/client/tests/connections-pairing.test.ts.
  */
 import { describe, expect, test } from 'vitest';
 import { parsePairingCode } from './pairing.js';
 
 const PAYLOAD = {
   v: 1 as const,
-  kind: 'openpalm-client-api' as const,
+  kind: 'openpalm-connection' as const,
   url: 'https://gw.example.ts.net/oc',
   label: 'My Phone',
   username: 'my-phone-ab12',

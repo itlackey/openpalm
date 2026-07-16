@@ -66,8 +66,8 @@ export type MigrationStatus = 'pending' | 'none';
  * Launch facts, derived from the launch-status probes that used to feed the
  * /splash page (`local.state` is @openpalm/lib's LocalStackState). On the
  * server, `connections` is the list of connections usable right now
- * (accessible remotes, plus the local assistant when it is running); the
- * static client feeds its own stored connection list.
+ * (accessible remotes, plus the local assistant when it is running); in the
+ * browser, the connection store supplies its own persisted list.
  */
 export type LaunchState = {
   migration: { status: MigrationStatus };

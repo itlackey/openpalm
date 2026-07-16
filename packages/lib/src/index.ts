@@ -577,19 +577,15 @@ export {
   declaredUiChannel,
 } from "./control-plane/ui-assets.js";
 
-// NOTE: the @openpalm/client static SPA build seeder (client-assets.ts) was
-// removed with the client-hosting surface — the assistant container, Electron,
-// and CLI all serve @openpalm/ui now.
 export {
   buildLockedAssistantRuntimeConfig,
-  writeClientRuntimeConfig,
+  writeUiRuntimeConfig,
   seedServedUiRuntimeConfig,
   ASSISTANT_LOCKED_CONNECTION_ID,
   ASSISTANT_LOCKED_CONNECTION_LABEL,
-  type ClientRuntimeConfig,
-  type ClientRuntimeConnection,
-  type WriteClientRuntimeConfigOptions,
-} from './control-plane/client-runtime-config.js';
+  type UiRuntimeConfig,
+  type UiRuntimeConnection,
+} from './control-plane/ui-runtime-config.js';
 
 // ── Shared assistant endpoint resolution (E1) — one precedence chain for ────
 // Electron / CLI / container writers instead of three divergent ones. ───────

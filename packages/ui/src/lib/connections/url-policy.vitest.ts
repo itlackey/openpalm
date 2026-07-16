@@ -4,9 +4,8 @@
  * the app itself runs on an https: origin (the mixed-content platform rule),
  * while preserving every other plain-HTTP tier.
  *
- * Ported from packages/client/tests/connections-url-policy.test.ts (the
- * guardian `/oc`-normalization block is intentionally dropped — Guardian is a
- * transparent OpenCode proxy now, so there is no path inference to test).
+ * There is intentionally no guardian `/oc`-normalization block — Guardian is a
+ * transparent OpenCode proxy now, so there is no path inference to test.
  */
 import { describe, expect, test } from 'vitest';
 import { redactUrlUserinfo, TLS_GUIDE_URL, validateConnectionUrl } from './url-policy.js';

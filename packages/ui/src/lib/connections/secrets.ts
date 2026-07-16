@@ -22,8 +22,7 @@
  * shape — and are transparently re-encrypted in place on first read (lazy
  * migration; no separate migration step/version bump needed).
  *
- * Ported from packages/client/src/lib/connections/secrets.ts, narrowed to the
- * none | basic auth model (bearer/token dropped).
+ * Narrowed to the none | basic auth model (bearer/token dropped).
  */
 import type { ResolvedAuth } from '../transport/direct.js';
 import type { Connection, ConnectionStorage } from './store.js';

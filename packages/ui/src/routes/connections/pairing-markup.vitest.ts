@@ -1,11 +1,7 @@
 /**
  * Source-pin tests for routes/connections/+page.svelte — pairing UX wiring
- * (#511 D3/D6). Idiom: lib/api/admin-paths-hygiene.vitest.ts (source scan
- * of .svelte files); packages/client/tests/connections-https-refusal.test.ts
- * is the same readFileSync + regex pattern in bun.
- *
- * RED reason (every test): the marker regex has nothing to match — the
- * pairing panel is not wired into +page.svelte yet.
+ * (#511 D3/D6). Idiom: lib/api/admin-paths-hygiene.vitest.ts — a readFileSync +
+ * regex scan of the .svelte source.
  */
 import { describe, expect, test } from 'vitest';
 import { readFileSync } from 'node:fs';

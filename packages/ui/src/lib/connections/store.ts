@@ -10,9 +10,7 @@
  * Locked/default entries are seeded from a runtime-config.json fetched from
  * the app's own origin at boot. Absent file = no default connection.
  *
- * Ported from packages/client/src/lib/connections/index.ts, adapted to the
- * target Connection shape: `url` renamed to `baseUrl`, the connection `kind`
- * and `grantedCapabilities` fields dropped, and auth narrowed to
+ * The Connection shape is `{ id, label, baseUrl, auth }` with auth narrowed to
  * none | basic (Guardian is a transparent OpenCode proxy — Basic is the only
  * connection credential model).
  */
@@ -42,12 +40,6 @@ export type NewConnectionInput = Omit<Connection, 'id'> & { id?: string };
 /** Shape of the runtime-config.json written beside the static build. */
 export type RuntimeConfig = {
   connections: Connection[];
-  /**
-   * Optional link back to a host UI (e.g. `http://127.0.0.1:3880/host`),
-   * written when a host process exists alongside the served UI; absent for
-   * container-only deployments with no host UI to point at.
-   */
-  hostUrl?: string;
 };
 
 function rewriteLoopbackUrlForBrowserHost(rawUrl: string): string {
@@ -89,11 +81,6 @@ function adaptRuntimeConfigForBrowser(config: RuntimeConfig): RuntimeConfig {
         ? rewriteLoopbackUrlForBrowserHost(entry.baseUrl)
         : redactUrlUserinfo(entry.baseUrl),
     })),
-    // hostUrl is host-written and always a loopback URL local to the machine
-    // running the host process — same rewrite as locked connection entries, so
-    // a LAN-accessed client still points the link at the visited hostname
-    // rather than an unreachable 127.0.0.1.
-    ...(config.hostUrl ? { hostUrl: rewriteLoopbackUrlForBrowserHost(config.hostUrl) } : {}),
   };
 }
 

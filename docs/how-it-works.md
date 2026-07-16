@@ -102,7 +102,7 @@ The runtime image for registry-backed adapters is the unified
 ## Message Flow (end to end)
 
 ```
-User sends message via chat client
+User sends a message (Discord / Slack / OpenAI-compatible API)
         |
         v
 portal adapter (:3820 host -> :8182 container for chat/api)
