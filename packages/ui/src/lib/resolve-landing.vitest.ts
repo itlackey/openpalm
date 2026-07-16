@@ -1,6 +1,5 @@
 /**
- * Phase 3 — resolveLanding(ctx, launchState) landing matrix (plan
- * ui-runtime-modes-plan.md §6.5, Phase 3 step 1).
+ * Phase 3 — resolveLanding(ctx, launchState) landing matrix.
  *
  * ALL RED until the implementation lands: the module under test does not
  * exist yet. The contract pinned here:
@@ -14,22 +13,20 @@
  *  - `resolveLanding` is PURE: it consults ctx.effectiveCapabilities — never
  *    the global runtimeContext store — so hooks.server.ts can call it
  *    per-request on the server, where no client store exists. Capability
- *    RESOLUTION still lives only in resolveCapabilities() (plan §8.6);
+ *    RESOLUTION still lives only in resolveCapabilities();
  *    resolveLanding merely reads the already-resolved list.
  *
- *  Landing matrix (plan §6.5, exactly):
- *    host:setup capability present:
+ *  Landing matrix:
+ *    host:setup capability present (admin process):
  *      migration pending          → /attention
  *      local not_installed        → /setup
  *      local setup_incomplete     → /setup
  *      local installed_offline    → host admin landing
  *      local installed_broken     → host admin landing + ?tab=diagnostics
  *      otherwise (running)        → /chat
- *    no host:setup capability:
- *      assistant-container        → /chat (always)
- *      pwa-static, 0 connections  → /connections/new
- *      pwa-static, ≥1 connection  → /chat
- *      anything else              → /chat
+ *    no host:setup capability (non-admin process):
+ *      0 connections              → /connections/new
+ *      ≥1 connection              → /chat
  *
  * Phase 4 moved the host admin landing from /admin to /host; the
  * HOST_ADMIN_LANDING constant below flipped with it (and nothing else in
@@ -42,7 +39,7 @@
 import { describe, expect, test } from 'vitest';
 import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import type { Capability, RuntimeContext, UiHostMode } from '$lib/types.js';
+import type { Capability, RuntimeContext } from '$lib/types.js';
 
 // Phase 4 value: the host admin surface moved from /admin to /host.
 const HOST_ADMIN_LANDING = '/host';
@@ -67,13 +64,13 @@ async function loadResolveLanding(): Promise<ResolveLandingFn> {
   throw new Error(
     `resolveLanding module not found — expected packages/ui/src/lib/<${CANDIDATE_MODULE_BASES.join(
       '|',
-    )}>.ts exporting resolveLanding(ctx, launchState) per plan §6.5`,
+    )}>.ts exporting resolveLanding(ctx, launchState)`,
   );
 }
 
 // ── fixtures ──────────────────────────────────────────────────────────────────
 
-/** Effective capabilities of a host-capable session (electron / host-ui browser). */
+/** Effective capabilities of an admin-capable session (Electron or `openpalm admin` browser). */
 const HOST_EFFECTIVE: Capability[] = [
   'chat',
   'connections:read',
@@ -93,36 +90,30 @@ const HOST_EFFECTIVE: Capability[] = [
   'host:akm-sharing',
 ];
 
-/** assistant-container effective set (resolveCapabilities output, plan §4.3). */
-const ASSISTANT_CONTAINER_EFFECTIVE: Capability[] = [
-  'chat',
-  'assistant-settings:read',
-  'assistant-settings:write',
-];
-
-/** pwa-static effective baseline (resolveCapabilities output, plan §4.3). */
-const PWA_EFFECTIVE: Capability[] = [
+/** non-admin effective baseline (resolveCapabilities output). */
+const BASE_EFFECTIVE: Capability[] = [
   'chat',
   'connections:read',
   'connections:manage',
   'connections:switch',
+  'assistant-settings:read',
+  'assistant-settings:write',
   'pwa:install',
 ];
 
-function makeCtx(hostMode: UiHostMode, effectiveCapabilities: Capability[]): RuntimeContext {
+function makeCtx(admin: boolean, effectiveCapabilities: Capability[]): RuntimeContext {
   return {
     version: 2,
-    hostMode,
+    admin,
     serverCapabilities: [...effectiveCapabilities],
     publicBaseUrl: 'http://127.0.0.1:3880',
     uiVersion: '0.0.0-test',
     skeletonVersion: '0.0.0-test',
-    activeConnectionMode: hostMode === 'assistant-container' ? 'single' : 'multi',
     routes: {},
     security: {
       hostAdminLoopbackOnly: true,
-      requiresHttpsForRemoteConnections: hostMode === 'pwa-static',
-      csrfMode: 'loopback-origin',
+      requiresHttpsForRemoteConnections: !admin,
+      csrfMode: admin ? 'loopback-origin' : 'same-site',
     },
     clientContext: { displayMode: 'browser' },
     effectiveCapabilities,
@@ -160,10 +151,10 @@ describe('resolveLanding — module contract', () => {
   });
 });
 
-// ── host:setup rows (electron-host / host-ui with full capabilities) ──────────
+// ── host:setup rows (admin-capable session: Electron or `openpalm admin`) ─────
 
-describe('resolveLanding — host:setup capability present (plan §6.5)', () => {
-  const hostCtx = makeCtx('host-ui', HOST_EFFECTIVE);
+describe('resolveLanding — host:setup capability present', () => {
+  const hostCtx = makeCtx(true, HOST_EFFECTIVE);
 
   test('pending migration lands on /attention', async () => {
     const resolveLanding = await loadResolveLanding();
@@ -218,21 +209,12 @@ describe('resolveLanding — host:setup capability present (plan §6.5)', () => 
     expect(resolveLanding(hostCtx, makeLaunchState())).toBe('/chat');
   });
 
-  test('electron-host resolves through the same host rows', async () => {
+  test('the gate is CAPABILITY-driven, not admin-flag-driven: a host-capable server viewed without host:setup falls through to /chat', async () => {
     const resolveLanding = await loadResolveLanding();
-    const electronCtx = makeCtx('electron-host', HOST_EFFECTIVE);
-    expect(resolveLanding(electronCtx, makeLaunchState())).toBe('/chat');
-    expect(
-      resolveLanding(electronCtx, makeLaunchState({ local: { state: 'installed_offline' } })),
-    ).toBe(HOST_ADMIN_LANDING);
-  });
-
-  test('the gate is CAPABILITY-driven, not hostMode-driven: a host-capable server viewed without host:setup falls through to /chat', async () => {
-    const resolveLanding = await loadResolveLanding();
-    // host-ui × standalone-pwa display: resolveCapabilities strips host:* per
-    // plan §4.2, so even a broken local stack must not land this session on
+    // admin server × standalone-pwa display: resolveCapabilities strips host:*
+    // so even a broken local stack must not land this session on
     // the host admin surface it cannot use.
-    const restrictedCtx = makeCtx('host-ui', [
+    const restrictedCtx = makeCtx(true, [
       'chat',
       'connections:read',
       'connections:manage',
@@ -243,34 +225,10 @@ describe('resolveLanding — host:setup capability present (plan §6.5)', () => 
   });
 });
 
-// ── assistant-container row ───────────────────────────────────────────────────
+// ── non-admin (base) row ──────────────────────────────────────────────────────
 
-describe('resolveLanding — assistant-container (plan §6.5)', () => {
-  const ctx = makeCtx('assistant-container', ASSISTANT_CONTAINER_EFFECTIVE);
-
-  test('always lands on /chat', async () => {
-    const resolveLanding = await loadResolveLanding();
-    expect(resolveLanding(ctx, makeLaunchState())).toBe('/chat');
-  });
-
-  test('lands on /chat regardless of local stack state or connection count', async () => {
-    const resolveLanding = await loadResolveLanding();
-    // The co-process has no view of a host stack — local state is meaningless.
-    const state = makeLaunchState({ local: { state: 'not_installed' }, connections: [] });
-    expect(resolveLanding(ctx, state)).toBe('/chat');
-  });
-
-  test('a pending migration does not divert it (no host:setup → gate skipped)', async () => {
-    const resolveLanding = await loadResolveLanding();
-    const state = makeLaunchState({ migration: { status: 'pending' } });
-    expect(resolveLanding(ctx, state)).toBe('/chat');
-  });
-});
-
-// ── pwa-static row ────────────────────────────────────────────────────────────
-
-describe('resolveLanding — pwa-static (plan §6.5)', () => {
-  const ctx = makeCtx('pwa-static', PWA_EFFECTIVE);
+describe('resolveLanding — non-admin process', () => {
+  const ctx = makeCtx(false, BASE_EFFECTIVE);
 
   test('zero connections lands on /connections/new', async () => {
     const resolveLanding = await loadResolveLanding();

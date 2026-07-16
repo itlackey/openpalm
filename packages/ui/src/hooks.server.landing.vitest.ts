@@ -1,6 +1,5 @@
 /**
- * Phase 3 — root + /splash routing through resolveLanding (plan
- * ui-runtime-modes-plan.md §6.5, Phase 3 step 2).
+ * Phase 3 — root + /splash routing through resolveLanding.
  *
  * Contract pinned here:
  *  - hooks.server.ts derives the landing for document navigations from
@@ -32,8 +31,8 @@ import { fileURLToPath } from 'node:url';
 import type { RequestEvent } from '@sveltejs/kit';
 import { resetState } from '$lib/server/test-helpers.js';
 
-vi.mock('$lib/server/endpoints.js', async (orig) => ({
-  ...(await orig<typeof import('$lib/server/endpoints.js')>()),
+vi.mock('$lib/server/opencode-target.js', async (orig) => ({
+  ...(await orig<typeof import('$lib/server/opencode-target.js')>()),
   listRemoteStatuses: vi.fn(async () => []),
 }));
 vi.mock('@openpalm/lib', async (orig) => ({
@@ -80,16 +79,16 @@ function makeEvent(path: string): RequestEvent {
 
 const resolve = () => Promise.resolve(new Response('ok', { status: 200 }));
 
-const MODE_ENV_KEYS = ['OP_UI_HOST_MODE', 'OP_INSIDE_ELECTRON'] as const;
+const MODE_ENV_KEYS = ['OP_INSIDE_ELECTRON'] as const;
 
-describe('hooks.server — landing routing through resolveLanding (plan Phase 3)', () => {
+describe('hooks.server — landing routing through resolveLanding', () => {
   let home = '';
   let prevHome: string | undefined;
   let savedModeEnv: Record<string, string | undefined> = {};
 
   beforeEach(() => {
     process.env.PORT = '3880';
-    // host-ui mode: host:setup is in the server capabilities, so the host
+    // admin mode: host:setup is in the server capabilities, so the host
     // rows of the §6.5 matrix apply.
     process.env.OP_ENABLE_ADMIN = '1';
     savedModeEnv = {};
@@ -181,7 +180,7 @@ describe('hooks.server — landing routing through resolveLanding (plan Phase 3)
 
 // ── route split: /splash removed, /attention created (Phase 3 step 2) ────────
 
-describe('route split — /splash removed, /attention exists (plan Phase 3)', () => {
+describe('route split — /splash removed, /attention exists', () => {
   const routesDir = fileURLToPath(new URL('./routes/', import.meta.url));
 
   test('the /splash route files are removed (redirect lives in hooks, not a route)', () => {

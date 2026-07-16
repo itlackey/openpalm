@@ -46,8 +46,7 @@ MUTATION_SENTINEL="performUpgrade"
 # The ONLY @openpalm/lib symbols packages/electron/src may import (design §2.1
 # bootstrap allowlist, extended in 0.12.0 with PLATFORM_VERSION + the Docker
 # preflight probes §6.5/§5, in Phase 4 with checkAndUpdateSkeleton for skeleton
-# self-update bootstrap, in Phase 5 with checkAndUpdateClientBuild for the
-# static client artifact, and covering update-check.ts's pure version-compare
+# self-update bootstrap, and covering update-check.ts's pure version-compare
 # helpers now that the scan is repo-wide instead of main.ts-only).
 # waitForReady + restoreUiBackup are the shared UI-supervisor primitives (§6.2/§6.3):
 # waiting on the spawned UI's /health, and rolling back a failed checkAndUpdateUiBuild
@@ -60,7 +59,6 @@ ALLOWED_IMPORTS=(
   seedUiBuild
   ensureHomeDirs
   checkAndUpdateUiBuild
-  checkAndUpdateClientBuild
   checkAndUpdateSkeleton
   uiUpdateChannel
   parseEnvFile
@@ -74,15 +72,13 @@ ALLOWED_IMPORTS=(
   # NOT mutate control-plane state or run migrations, so they stay bootstrap-side.
   waitForReady
   restoreUiBackup
+  consumePendingUiBackup
   UiSupervisor
-  # Client static-app bootstrap (P5c): resolve the already-seeded client build,
-  # write the browser runtime config, and compute the stable localhost client
-  # origin/port. These support the Electron-spawned client child only; they do
-  # not run install/update/uninstall lifecycle operations.
-  resolveClientBuildDir
-  resolveClientAppPort
-  resolveClientAppUrl
-  writeClientRuntimeConfig
+  # One-UI served-build runtime-config seed (Electron/CLI): writes the browser's
+  # locked default connection beside the @openpalm/ui build (internally via
+  # writeUiRuntimeConfig + resolveAssistantEndpoint). Bootstrap seed only — no
+  # control-plane/lifecycle mutation, no migration.
+  seedServedUiRuntimeConfig
   # Pure assistant-endpoint resolver (E1, review 2026-07-10): reads persisted
   # stack.env merged under process.env and normalizes wildcard bind hosts to
   # 127.0.0.1 for the browser-facing seeded connection URL. Read-only — no

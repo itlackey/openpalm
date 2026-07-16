@@ -63,7 +63,6 @@ Do not merge and do not cut `0.13.0-rc.1` until every gate here is green.
 
 - [ ] release workflow changes required for the RC are merged
 - [ ] `git status --short` is clean on the merge target
-- [ ] `@openpalm/client` first-publish readiness is confirmed
 - [ ] all local blocker fixes are committed and pushed
 
 ### RC cut gates
@@ -72,7 +71,7 @@ Do not merge and do not cut `0.13.0-rc.1` until every gate here is green.
 - [ ] checklist items marked required in `unit-all-rc-checklist.md` pass
 - [ ] no unresolved security-boundary regressions remain
 - [ ] no unresolved rootless/ownership regressions remain
-- [ ] no unresolved guardian/client/skeleton artifact drift remains
+- [ ] no unresolved guardian/UI/skeleton artifact drift remains
 
 ---
 
@@ -81,7 +80,6 @@ Do not merge and do not cut `0.13.0-rc.1` until every gate here is green.
 ### 1.1 Check which packages already exist
 
 ```bash
-npm view @openpalm/client versions --json
 npm view @openpalm/guardian versions --json
 npm view @openpalm/skeleton versions --json
 npm view @openpalm/ui versions --json
@@ -90,14 +88,12 @@ npm view openpalm versions --json
 
 Expected at time of writing:
 
-- `@openpalm/client` may 404 if it has never been published
 - `@openpalm/guardian`, `@openpalm/skeleton`, `@openpalm/ui`, and `openpalm`
   should already exist
 
 Record:
 
 - command output
-- whether `@openpalm/client` still needs first publish
 
 ### 1.2 Confirm npm trusted publisher configuration
 
@@ -106,7 +102,6 @@ Required packages:
 - `@openpalm/lib`
 - `openpalm`
 - `@openpalm/ui`
-- `@openpalm/client`
 - `@openpalm/skeleton`
 - `@openpalm/guardian`
 
@@ -116,13 +111,9 @@ Required trusted publisher values:
 - Workflow: `release.yml`
 - Environment: none
 
-If `@openpalm/client` is new, this is the one package most likely to still need
-explicit npm-side setup.
-
 Pass criteria:
 
 - [ ] every required package has a matching trusted publisher entry
-- [ ] the maintainer account has publish rights to `@openpalm/client`
 
 ---
 
@@ -222,11 +213,10 @@ Capture the failing step and exact command/output.
 
 ```bash
 bun install --frozen-lockfile
-bun run client:build
+bun run ui:build
 bun run test
 bun run ui:check
 bun run ui-kit:check
-bun run client:check
 bun run --cwd packages/ui test:browsers
 bun run ui:test:unit
 bun run electron:test
@@ -254,7 +244,7 @@ Use the dedicated checklist for exact items.
 
 Minimum required runtime validations before RC publish:
 
-- [ ] isolated assistant/client runtime
+- [ ] isolated assistant/UI runtime
 - [ ] guardian direct-ingress/CORS/auth
 - [ ] browser-backed stack test
 - [ ] rootless ownership stack smoke
@@ -288,7 +278,6 @@ Guidance:
 ### Do not merge if any of these are true
 
 - [ ] guardian Docker dry run still fails
-- [ ] `@openpalm/client` publish readiness is unknown
 - [ ] rootless ownership is still red
 - [ ] guardian direct-ingress behavior differs between source and built artifact
 - [ ] upgrade/rollback behavior has not been validated
@@ -335,7 +324,6 @@ Immediately verify the real artifacts.
 npm view @openpalm/lib@"$RC_VERSION" version
 npm view openpalm@"$RC_VERSION" version
 npm view @openpalm/ui@"$RC_VERSION" version
-npm view @openpalm/client@"$RC_VERSION" version
 npm view @openpalm/guardian@"$RC_VERSION" version
 npm view @openpalm/skeleton@"$RC_VERSION" version
 npm view @openpalm/discord-portal@"$RC_VERSION" version
@@ -345,7 +333,6 @@ npm view @openpalm/slack-portal@"$RC_VERSION" version
 ### dist-tags
 
 ```bash
-npm view @openpalm/client dist-tags --json
 npm view @openpalm/guardian dist-tags --json
 npm view @openpalm/skeleton dist-tags --json
 ```
@@ -407,8 +394,6 @@ OpenPalm 0.13.0-rc.1 signoff
 
 - Prefer `--ref "$RELEASE_REF"` for all release workflow dispatches so the
   intended workflow definition is used
-- Treat a new package like `@openpalm/client` as an npm-configuration task as
-  well as a code/release task
 - Keep the checklist and this runbook updated together; the checklist is the
   gate list, this runbook is the operating procedure
 

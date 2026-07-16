@@ -9,7 +9,7 @@
 
 export const OC_DOC_FIXTURE = {
   openapi: "3.0.0",
-  info: { title: "opencode", version: "1.15.13" },
+  info: { title: "opencode", version: "1.17.13" },
   paths: {
     "/session": {
       post: { responses: { "200": { description: "ok" } } },

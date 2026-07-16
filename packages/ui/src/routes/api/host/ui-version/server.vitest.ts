@@ -34,7 +34,7 @@ function event(): Parameters<typeof POST>[0] {
 }
 
 beforeEach(() => {
-  process.env.OP_UI_HOST_MODE = 'host-ui';
+  process.env.OP_ENABLE_ADMIN = '1';
   process.env.OP_UI_SUPERVISOR = 'electron';
   process.env.OP_HARNESS_CONTRACT_VERSION = '2';
   resetState('admin-token');
@@ -45,7 +45,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  delete process.env.OP_UI_HOST_MODE;
+  delete process.env.OP_ENABLE_ADMIN;
   delete process.env.OP_UI_SUPERVISOR;
   delete process.env.OP_HARNESS_CONTRACT_VERSION;
   vi.clearAllMocks();

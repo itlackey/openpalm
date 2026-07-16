@@ -17,7 +17,7 @@
   let { children, data }: Props = $props();
 
   // Components read capabilities via hasCapability()/runtimeContext only
-  // (plan §8.6) — the legacy admin feature-flag alias survives solely in
+  // — the legacy admin feature-flag alias survives solely in
   // server code (hooks.server.ts / +layout.server.ts) pending Phase 4.
 
   // Review 2026-07-10 K2: the server half of the runtime context is
@@ -50,7 +50,7 @@
   // error surface renders through the single <Toast /> outlet below. This
   // lives in APP code — not in ui-kit's Toast — because voice-state depends
   // on $lib/api (POST /api/transcribe), a server assumption ui-kit source
-  // must never carry (plan ui-runtime-modes-plan.md §6.11; enforced by
+  // must never carry (enforced by
   // packages/ui-kit/tests/no-app-coupling.test.ts). Consecutive errors
   // reuse the same toast id so they update in place instead of stacking.
   let voiceErrorToastId: string | null = null;

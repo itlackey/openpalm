@@ -444,8 +444,8 @@ If the admin fails to reach Docker, check that the socket exists and is readable
 
 **Connect a remote client (another computer or phone)** (#486, #511):
 
-The `@openpalm/client` app (installed via `openpalm app`, or as a PWA) can
-attach to a guardian on a different machine over its direct-ingress
+The OpenPalm UI (`@openpalm/ui`, opened in a browser or installed as a PWA)
+can attach to a guardian on a different machine over its direct-ingress
 listener. Nothing about the loopback/fail-closed default posture changes —
 this is an explicit, per-connection operator opt-in.
 
@@ -463,11 +463,11 @@ this is an explicit, per-connection operator opt-in.
    (recommended, and required for a phone's browser mixed-content rules) or
    an explicit non-loopback `OP_BIND_ADDRESS` on a trusted LAN.
 
-2. **Allow the client's origin through CORS.** Add the exact origin the
-   client app runs on (no wildcard) to `GUARDIAN_CORS_ALLOWED_ORIGINS` in
-   `knowledge/env/stack.env`. The shipped default already covers the
-   localhost client origins (`http://127.0.0.1:3890` and friends); a remote
-   or hosted client origin must be added explicitly.
+2. **Allow the UI's origin through CORS.** Add the exact origin the OpenPalm
+   UI runs on (no wildcard) to `GUARDIAN_CORS_ALLOWED_ORIGINS` in
+   `knowledge/env/stack.env`. This is empty by default, so every origin that
+   will reach the guardian directly — including the local UI origin — must be
+   listed explicitly.
 
 3. **Apply the env changes:**
 
@@ -486,12 +486,15 @@ this is an explicit, per-connection operator opt-in.
    guardian URL AS REACHABLE BY THE OTHER DEVICE (the LAN address or
    Tailscale/`ts.net` hostname — not `127.0.0.1`), and mint. The page shows
    a QR code and a copyable `openpalm-pair:` code **once** — scan it with
-   any camera/QR app, or copy it. On the other device's `@openpalm/client`
+   any camera/QR app, or copy it. On the other device's OpenPalm UI
    `/connections` page, paste the code into "Have a pairing code?" (or open
-   the `?pair=` link, if a hosted client origin exists) and apply — it
-   prefills the add form (kind, URL, Basic auth username/password) with
-   nothing left to type by hand. The code is never persisted host-side or
-   logged; the durable artifact is the minted guardian principal.
+   the `#pair=` link, if a hosted UI origin exists) and apply — it
+   prefills the add form (label, base URL, Basic auth username/password) with
+   nothing left to type by hand. The deep link carries the code in the URL
+   **fragment** (`#pair=`, not `?pair=`); browsers never send the fragment to
+   the server, so the credential stays out of the UI host's access logs,
+   reverse proxies, and `Referer` headers. The code is never persisted
+   host-side or logged; the durable artifact is the minted guardian principal.
 
    **Advanced / headless path — manual `curl`:** mint directly against the
    guardian's loopback-only admin listener (port 3831, Bearer-token gated),
@@ -504,9 +507,10 @@ this is an explicit, per-connection operator opt-in.
      -d '{"id":"my-phone","kind":"direct","token":"'"$(openssl rand -hex 24)"'","label":"My phone"}'
    ```
 
-   Then in the client's `/connections`, add the connection by hand: kind
-   **OpenPalm guardian (/oc)**, URL = the guardian's base URL (`/oc` is
-   appended automatically), auth **Basic** with username = the **principal
+   Then in the client's `/connections`, add the connection by hand: URL = the
+   guardian's direct-ingress base URL **including the `/oc` path** (e.g.
+   `https://your-host/oc`) — there is no connection "kind" selector and `/oc`
+   is not appended for you — auth **Basic** with username = the **principal
    id** you minted (e.g. `my-phone`, not `openpalm`) and password = the
    token.
 

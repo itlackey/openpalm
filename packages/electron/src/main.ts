@@ -1,4 +1,4 @@
-import { app, BrowserWindow, shell, dialog, ipcMain, globalShortcut, Notification, session } from 'electron';
+import { app, BrowserWindow, shell, dialog, ipcMain, globalShortcut, Notification } from 'electron';
 import { join, dirname } from 'node:path';
 import { existsSync, readFileSync, writeFileSync, rmSync, mkdirSync, createWriteStream, type WriteStream } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -8,22 +8,19 @@ import {
   resolveOpenPalmHome,
   resolveDataDir,
   resolveUiBuildDir,
-  resolveClientBuildDir,
   seedUiBuild,
   ensureHomeDirs,
   checkAndUpdateUiBuild,
-  checkAndUpdateClientBuild,
   checkAndUpdateSkeleton,
   uiUpdateChannel,
   parseEnvFile,
   PLATFORM_VERSION,
-  resolveClientAppPort,
-  writeClientRuntimeConfig,
   waitForReady as libWaitForReady,
   consumePendingUiBackup,
   restoreUiBackup,
   UiSupervisor,
   resolveAssistantEndpoint,
+  seedServedUiRuntimeConfig,
 } from '@openpalm/lib';
 import { HARNESS_CONTRACT_VERSION } from './harness-contract.js';
 import { checkForElectronUpdate, getCachedUpdateInfo, type UpdateInfo } from './update-check.js';
@@ -135,42 +132,12 @@ function resolveAdminToolsPluginPath(): string {
 const DEFAULT_UI_PORT = 3880;
 const UI_PORT = Number(process.env.OP_HOST_UI_PORT) || DEFAULT_UI_PORT;
 
-/**
- * Resolve the client app's serve port (E2 fix).
- *
- * Electron used to call `resolveClientAppPort(process.env)` directly, reading
- * ONLY the live process env — but a Finder-launched app inherits a minimal
- * env with no realistic way to carry a persisted override, and the CLI's
- * equivalent (packages/cli/src/lib/client-server.ts) merges the persisted
- * `OP_HOME/knowledge/env/stack.env` UNDER process.env first. When an operator
- * set OP_HOST_CLIENT_PORT via the persisted stack config (the CLI-served
- * client + container CORS allowlist agree on it), the Electron-served client
- * silently stayed on the default port instead — an origin OpenCode wasn't
- * configured to trust, so every chat request failed CORS preflight. Mirror
- * the CLI's merge (process.env wins over the persisted value) so both
- * surfaces resolve the same port from the same override channel.
- */
-export function resolveElectronClientPort(homeDir: string, env: NodeJS.ProcessEnv = process.env): number {
-  let persisted: Record<string, string> = {};
-  try {
-    persisted = parseEnvFile(join(homeDir, 'knowledge', 'env', 'stack.env'));
-  } catch {
-    // best-effort: an unreadable/missing stack.env just means no override
-  }
-  return resolveClientAppPort({ ...persisted, ...env });
-}
-
-const CLIENT_PORT = resolveElectronClientPort(resolveOpenPalmHome(), process.env);
 const READY_TIMEOUT_MS = 60_000;
-// Bound on the client-health probe in resolveInitialUrl — a dead client must
-// not stall window creation (the fallback to the host UI chat covers it).
-const CLIENT_PROBE_TIMEOUT_MS = 1_500;
 const MIC_SHORTCUT = 'CommandOrControl+Shift+M';
 const APP_USER_MODEL_ID = 'com.openpalm.app';
 
 let mainWindow: BrowserWindow | null = null;
 let uiProcess: ChildProcess | null = null;
-let clientProcess: ChildProcess | null = null;
 let localOpencode: LocalOpencodeHandle | null = null;
 let registeredMicShortcut: string | null = null;
 // Whether the GitHub update check should surface prereleases (#504). Loaded from
@@ -182,14 +149,6 @@ let checkPrereleaseUpdates = false;
 // state — replacing the prior `(app as any).isQuitting` cast that stuffed this
 // onto the shared Electron app object.
 let isQuitting = false;
-// Whether the current window fronts the client SPA rather than the host UI
-// (B11). Set once per createWindow() call, from resolveInitialUrl's result;
-// gates the global mic shortcut registration and the mic-recording tray IPC
-// — both host-UI-only surfaces (packages/ui's VoiceControl is their only
-// consumer) that would otherwise silently no-op (or, worse, keep a
-// system-wide shortcut registered) against a window that can't answer them.
-let frontsClientChat = false;
-
 // Owned handles for the extracted UI concerns. The splash window is shared with
 // the Docker preflight screen (which reuses it); the tray owns its own icon +
 // animation state.
@@ -215,17 +174,14 @@ export function getRecentStderr(maxLines = 40): string {
 // ── Pure helpers (exported for testing) ──────────────────────────────────────
 
 /**
- * Resolve the assistant (OpenCode) URL the UI proxy should target — and,
- * separately, the URL Electron seeds as the client SPA's locked default
- * connection (startClientAppServer, below).
+ * Resolve the assistant (OpenCode) URL the UI proxy should target.
  *
  * E1 fix: this used to re-derive its own precedence chain (env override,
  * else raw OP_ASSISTANT_BIND_ADDRESS/PORT from stack.env) and could produce
  * `http://0.0.0.0:3800` whenever the admin LAN-exposure toggle set
- * OP_ASSISTANT_BIND_ADDRESS=0.0.0.0 — a URL no browser can fetch, and (worse)
- * one that got written straight into the client's runtime-config.json. The
- * CLI and container entrypoint each had their own slightly different chain
- * too ("three divergent env/port resolution chains", review finding E1).
+ * OP_ASSISTANT_BIND_ADDRESS=0.0.0.0 — a URL no browser can fetch. The CLI and
+ * container entrypoint each had their own slightly different chain too
+ * ("three divergent env/port resolution chains", review finding E1).
  * Delegate to the ONE shared resolver in @openpalm/lib instead, which merges
  * the persisted stack.env under process.env and ALWAYS normalizes a wildcard
  * bind host to 127.0.0.1 before returning.
@@ -462,6 +418,18 @@ function spawnUIServer(
   uiPidFile: string,
   appUpdate?: UpdateInfo | null,
 ): void {
+  // Seed the served build's runtime-config.json so the browser store gets the
+  // locked "This assistant" default connection — the SAME seed the assistant
+  // container entrypoint writes. adapter-node serves the build's client/ dir at
+  // the app origin, where the browser's loadRuntimeConfig() fetches it. Best-
+  // effort and re-run on every (re)spawn: a write failure degrades to an empty
+  // connection list, never a failed launch.
+  try {
+    seedServedUiRuntimeConfig(uiBuildDir, homeDir);
+  } catch (err) {
+    console.warn('Could not seed UI runtime-config.json:', err instanceof Error ? err.message : String(err));
+  }
+
   // Spawn the UI Node server with Electron's OWN bundled Node (process.execPath
   // + ELECTRON_RUN_AS_NODE) rather than a bare `node` on PATH. Finder-launched
   // macOS apps don't get Homebrew/nvm on PATH, so `spawn('node', …)` failed
@@ -668,175 +636,13 @@ function stopUIServer(): void {
   try { rmSync(join(resolveDataDir(), '.ui-server.pid'), { force: true }); } catch { /* best-effort */ }
 }
 
-// ── Client app static server (P5c, #555) ─────────────────────────────────────
-// The @openpalm/client static SPA is served by its zero-dependency serve script
-// (bin/serve.mjs, a sibling of the resolved build) on the stable loopback
-// CLIENT_PORT. Spawn-env/child work only — no bridge surface, no IPC, so
-// HARNESS_CONTRACT_VERSION is untouched. Non-fatal when the build is absent:
-// log + skip, and resolveInitialUrl falls back to the host UI chat on 3880.
-
-/**
- * Best-effort clear of the client origin's service-worker registrations and
- * caches (H3). When a newer @openpalm/client build swaps in, a previously
- * registered SW can keep serving the OLD build's precached shell/assets
- * indefinitely (the client's own PWA precache has no version-aware bust) —
- * a resolved build-version change is exactly the signal that a stale SW
- * could now be pinning a dead build. Scoped to the client's own loopback
- * origin only — never the host UI's or any other site's storage. Errors are
- * logged, never fatal: the new build still serves fine without this, it's
- * only the STALE CACHE this guards against.
- */
-async function clearClientOrigin(): Promise<void> {
-  try {
-    await session.defaultSession.clearStorageData({
-      origin: `http://127.0.0.1:${CLIENT_PORT}`,
-      storages: ['serviceworkers', 'cachestorage'],
-    });
-  } catch (err) {
-    console.warn('Failed to clear client origin storage (non-fatal):', err instanceof Error ? err.message : String(err));
-  }
-}
-
-export async function ensureClientAppBuild(): Promise<void> {
-  try {
-    const result = await checkAndUpdateClientBuild(PLATFORM_VERSION, resolveDataDir());
-    if (result.updated) {
-      console.log(`Client app updated to v${result.latestVersion}`);
-      await clearClientOrigin();
-    } else if (result.error) {
-      console.log(`Client app update check skipped: ${result.error}`);
-    }
-  } catch (err) {
-    console.log('Client app update check skipped:', err instanceof Error ? err.message : String(err));
-  }
-}
-
-/**
- * Options written alongside the client's locked default connection (A2).
- * `hostUrl` gives the client SPA — which otherwise has zero path back to
- * setup/host/voice — a link to the host UI's admin dashboard. Factored out
- * as a pure function so the value is unit-testable without spawning the
- * client child.
- */
-export function buildClientRuntimeConfigOptions(): { hostUrl: string } {
-  return { hostUrl: `http://127.0.0.1:${UI_PORT}/host` };
-}
-
-function startClientAppServer(): void {
-  try {
-    const buildDir = resolveClientBuildDir();
-    const serveScript = join(buildDir, '..', 'bin', 'serve.mjs');
-    if (!existsSync(join(buildDir, 'index.html')) || !existsSync(serveScript)) {
-      console.log(`Client app build not found at ${buildDir} — skipping the client server (chat falls back to the host UI).`);
-      return;
-    }
-    const runtimeConfigPath = join(resolveDataDir(), 'client', 'runtime-config.json');
-    writeClientRuntimeConfig(
-      runtimeConfigPath,
-      resolveAssistantUrl(resolveOpenPalmHome()),
-      buildClientRuntimeConfigOptions(),
-    );
-    // Same bundled-Node spawn as the UI child (no system `node` required).
-    // serve.mjs reads PORT / HOST / OP_CLIENT_DIR from the environment; HOST is
-    // pinned to loopback unconditionally — the client server has no remote
-    // escape hatch.
-    clientProcess = spawn(process.execPath, [serveScript], {
-      env: {
-        ...process.env,
-        ELECTRON_RUN_AS_NODE: '1',
-        PORT: String(CLIENT_PORT),
-        HOST: '127.0.0.1',
-        OP_CLIENT_DIR: buildDir,
-        OP_CLIENT_RUNTIME_CONFIG: runtimeConfigPath,
-      },
-      stdio: ['ignore', 'pipe', 'pipe'],
-    });
-    clientProcess.stdout?.on('data', (chunk: Buffer) => { writeChildLog(chunk.toString()); });
-    clientProcess.stderr?.on('data', (chunk: Buffer) => { writeChildLog(chunk.toString()); });
-    clientProcess.on('error', (err) => {
-      // Non-fatal: the window falls back to the host UI chat.
-      console.warn('Client app server process error:', err.message);
-      clientProcess = null;
-      // E4: disable "Open Local App" immediately rather than leaving it
-      // clickable until the next unrelated menu rebuild.
-      trayController.rebuildMenu();
-    });
-    clientProcess.on('exit', (code) => {
-      if (code !== 0 && code !== null) console.warn(`Client app server exited with code ${code}`);
-      clientProcess = null;
-      trayController.rebuildMenu();
-    });
-    console.log(`Client app served at http://127.0.0.1:${CLIENT_PORT} (from ${buildDir})`);
-  } catch (err) {
-    console.warn('Client app server failed to start (non-fatal):', err instanceof Error ? err.message : String(err));
-    clientProcess = null;
-  }
-}
-
-function stopClientAppServer(): void {
-  const proc = clientProcess;
-  clientProcess = null;
-  // Plain kill — serve.mjs spawns no children of its own.
-  if (proc?.pid) {
-    try { proc.kill('SIGTERM'); } catch { /* already dead */ }
-  }
-}
-
 // ── Window management ────────────────────────────────────────────────────────
 
 /**
- * Whether the client SPA chat is opted into (A1). Defaults to false: the
- * client chat fails all six items of the plan's §12.2 chat-parity contract
- * (no voice, no streaming, no stop, no history, no markdown, no copy), so
- * Electron defaults to the full host chat until that contract passes. Either
- * source enables it — the desktop settings checkbox (persists across
- * launches, toggled from the tray, mirrors the "Check for prerelease
- * versions" pattern) or the OP_CLIENT_CHAT_OPT_IN=1 env var (per-launch,
- * useful for quick manual testing without touching settings).
- */
-export function isClientChatOptedIn(dataDir: string, env: NodeJS.ProcessEnv = process.env): boolean {
-  return env.OP_CLIENT_CHAT_OPT_IN === '1' || loadSettings(dataDir).preferClientChat === true;
-}
-
-/**
- * Decide which page the window opens on (exported for tests — A1 / #555 / J2):
- *
- * A1 root-cause fix: this used to prefer the client SPA chat whenever its
- * capability-blind health probe answered — the probe couldn't tell a fully
- * working host chat from a feature-poor SPA shell, so every gap in the
- * client's chat (voice, streaming, stop, history, markdown, copy, ...)
- * became a live regression for every user, silently. The default now is
- * ALWAYS the host chat; the client chat is reachable only via explicit
- * opt-in (see {@link isClientChatOptedIn}) — and even then only once its own
- * health probe answers (a dead/missing client build still falls back to the
- * host chat, unchanged from before).
- *
- * J2 fix: the routing decision is no longer "is setup complete?" — it
- * consults the SAME landing resolver the host UI's own navigation guard uses
- * (GET /api/runtime/landing, review finding J2), so a stopped/crashed/
- * unhealthy stack at launch reaches the landing matrix's recovery branches
- * (installed_offline → /host, installed_broken → /host?tab=diagnostics) and
- * a future blocking migration reaches /attention (J3) — instead of only ever
- * landing on /setup or a dead /chat. Whenever the landing is anything other
- * than '/chat' the host app ALWAYS wins, opt-in or not: the client artifact
- * has none of those surfaces (plan §8.10).
- *
- *   landing !== '/chat'                     → host app at UI_PORT + landing
- *                                              (setup/host/host?tab=.../
- *                                              attention/...), UNCONDITIONALLY
- *   landing === '/chat', opted in, client
- *     server healthy                        → the CLIENT app chat
- *                                              (http://127.0.0.1:CLIENT_PORT/chat)
- *   landing === '/chat', otherwise           → the HOST APP chat on UI_PORT
- *     (dumb fallback: probe, and on any failure/no-opt-in use the host UI —
- *     e.g. no client build on disk; startClientAppServer's skip is non-fatal)
- *   landing-probe failure                   → host app root (its own landing
- *     guard redirects — existing behavior, unchanged)
+ * Resolve the canonical UI landing page. On probe failure, load the UI root so
+ * its own navigation guard can perform the same landing decision.
  */
 export async function resolveInitialUrl(): Promise<string> {
-  // Consult the shared landing resolver so we can land directly on the right
-  // page. Falls back to root (which itself redirects appropriately) on any
-  // probe failure.
   try {
     const res = await fetch(`http://127.0.0.1:${UI_PORT}/api/runtime/landing`, {
       signal: AbortSignal.timeout(2000),
@@ -844,20 +650,7 @@ export async function resolveInitialUrl(): Promise<string> {
     if (res.ok) {
       const data = await res.json() as { landing?: string };
       const landing = data.landing ?? '/chat';
-      // Any non-chat landing (setup, host/host?tab=diagnostics, attention,
-      // and whatever the resolver grows next) ALWAYS routes to the host
-      // app — the client artifact structurally lacks these surfaces.
-      if (landing !== '/chat') return `http://127.0.0.1:${UI_PORT}${landing}`;
-      // '/chat': host chat is the default (A1) — only consult/probe the
-      // client server when the opt-in is set, so a dead client build is
-      // never even probed in the common (non-opted-in) case.
-      if (
-        isClientChatOptedIn(resolveDataDir()) &&
-        (await waitForReady(CLIENT_PORT, CLIENT_PROBE_TIMEOUT_MS))
-      ) {
-        return `http://127.0.0.1:${CLIENT_PORT}/chat`;
-      }
-      return `http://127.0.0.1:${UI_PORT}/chat`;
+      return `http://127.0.0.1:${UI_PORT}${landing}`;
     }
   } catch {
     // ignore; fall through to root
@@ -866,36 +659,8 @@ export async function resolveInitialUrl(): Promise<string> {
 }
 
 /**
- * Whether `url` fronts the @openpalm/client SPA (i.e. targets CLIENT_PORT),
- * as opposed to the host UI (B11). The global mic shortcut and its tray
- * affordances are host-UI-only surfaces (packages/ui's VoiceControl is their
- * only consumer — plan §12.2, the client SPA has no voice UI at all) — this
- * predicate is how main.ts decides whether to register/expose them for the
- * window that was actually opened.
- */
-export function isClientAppUrl(url: string, clientPort: number): boolean {
-  // Parse rather than prefix-match: startsWith('http://127.0.0.1:3890')
-  // also matched a host UI on port 38900 (mistaking it for the client SPA and
-  // killing the voice hotkey) and would admit look-alikes like
-  // `127.0.0.1:3890.evil.com` — same bypass class isAllowedInAppWindowUrl
-  // was hardened against below. Exact loopback host + exact port only.
-  let parsed: URL;
-  try {
-    parsed = new URL(url);
-  } catch {
-    return false;
-  }
-  return (
-    parsed.protocol === 'http:' &&
-    parsed.hostname === '127.0.0.1' &&
-    parsed.port === String(clientPort)
-  );
-}
-
-/**
- * Whether `url` may open as an in-app Electron BrowserWindow
- * (setWindowOpenHandler below) rather than being deferred to the external
- * system browser. SECURITY (review): a prior prefix check —
+ * Whether `url` may replace the current Electron window rather than being
+ * deferred to the external system browser. SECURITY (review): a prior prefix check —
  * `url.startsWith('http://127.0.0.1') || url.startsWith('http://localhost')`
  * — admitted non-loopback hosts such as `http://127.0.0.1.evil.com`
  * (subdomain bypass) and `http://127.0.0.1@evil.com` (userinfo bypass),
@@ -914,15 +679,25 @@ export function isAllowedInAppWindowUrl(url: string): boolean {
   return parsed.protocol === 'http:' && (parsed.hostname === '127.0.0.1' || parsed.hostname === 'localhost');
 }
 
-/** Returns the URL the window was loaded with (B11 — callers use this to gate host-UI-only surfaces like the global mic shortcut). */
-async function createWindow(): Promise<string> {
+export function handleWindowOpen(window: BrowserWindow, url: string): { action: 'deny' } {
+  if (isAllowedInAppWindowUrl(url)) {
+    void window.loadURL(url);
+    window.show();
+    window.focus();
+  } else {
+    void shell.openExternal(url);
+  }
+  return { action: 'deny' };
+}
+
+async function createWindow(): Promise<void> {
   const update = getCachedUpdateInfo();
   const title = update?.updateAvailable
     ? `OpenPalm — Update available (v${update.latestVersion})`
     : 'OpenPalm';
   const icon = resolveAssetPath('icon.png') ?? undefined;
 
-  mainWindow = new BrowserWindow({
+  const window = new BrowserWindow({
     width: 1280,
     height: 900,
     // Narrow enough for a mobile-shaped sidecar window (300×500-ish). The
@@ -939,37 +714,33 @@ async function createWindow(): Promise<string> {
       backgroundThrottling: false,
     },
   });
+  mainWindow = window;
 
   const initialUrl = await resolveInitialUrl();
-  mainWindow.loadURL(initialUrl);
+  window.loadURL(initialUrl);
 
-  mainWindow.once('ready-to-show', () => {
+  window.once('ready-to-show', () => {
     splash.close();
-    mainWindow?.show();
+    window.show();
   });
 
-  // Open external links in the system browser
-  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-    if (isAllowedInAppWindowUrl(url)) {
-      return { action: 'allow' };
-    }
-    shell.openExternal(url);
-    return { action: 'deny' };
+  // Reuse the existing window for loopback links. Denying every popup prevents
+  // Electron from creating a second BrowserWindow.
+  window.webContents.setWindowOpenHandler(({ url }) => {
+    return handleWindowOpen(window, url);
   });
 
   // Hide to tray instead of closing
-  mainWindow.on('close', (event) => {
+  window.on('close', (event) => {
     if (!isQuitting) {
       event.preventDefault();
-      mainWindow?.hide();
+      window.hide();
     }
   });
 
-  mainWindow.on('closed', () => {
-    mainWindow = null;
+  window.on('closed', () => {
+    if (mainWindow === window) mainWindow = null;
   });
-
-  return initialUrl;
 }
 
 function showWindow(): void {
@@ -981,28 +752,8 @@ function showWindow(): void {
   }
 }
 
-/**
- * Open the client app in the system browser — the tray "Open Local App" item
- * and its `open-local-app` IPC twin both funnel through here (E4 fix).
- *
- * Previously this opened a hardcoded client URL with NO health check: a
- * missing build, an update still downloading, or a crashed (non-respawned)
- * client child all produced a bare ERR_CONNECTION_REFUSED tab. Probe first
- * (same bounded timeout resolveInitialUrl uses) and fall back to the host UI
- * chat — which is always running — with a notification, instead of a dead
- * link. The tray's own enabled/disabled state (isClientAppAvailable) covers
- * the common case; this probe is the belt-and-suspenders check for the
- * window between a crash and the next tray rebuild, and for the IPC path
- * (which has no menu-disabled affordance at all).
- */
+/** Compatibility alias that opens the canonical UI chat in the system browser. */
 export async function openLocalApp(): Promise<void> {
-  const clientReady = await waitForReady(CLIENT_PORT, CLIENT_PROBE_TIMEOUT_MS);
-  if (clientReady) {
-    void shell.openExternal(`http://127.0.0.1:${CLIENT_PORT}/chat`);
-    return;
-  }
-  console.warn(`Open Local App: client server on port ${CLIENT_PORT} is not responding — opening the host chat instead.`);
-  showNotification('OpenPalm', 'The local app is unavailable right now — opening the host chat instead.');
   void shell.openExternal(`http://127.0.0.1:${UI_PORT}/chat`);
 }
 
@@ -1031,27 +782,9 @@ function registerGlobalMicShortcut(): void {
   console.warn('Failed to register a global mic shortcut.');
 }
 
-function unregisterGlobalMicShortcut(): void {
-  if (!registeredMicShortcut) return;
-  globalShortcut.unregister(registeredMicShortcut);
-  registeredMicShortcut = null;
-}
-
-/**
- * Open (or recreate) the main window and re-sync the global mic shortcut's
- * registration state against WHICHEVER surface it actually landed on (B11).
- * Every window-(re)creation path (initial boot, dock-icon reopen, macOS
- * 'activate' with zero windows) funnels through this so the shortcut can
- * never stay registered across a session that ends up fronting the client
- * SPA, or stay unregistered after a client session is replaced by a host-UI
- * one (e.g. the opt-in was toggled off and the app relaunched).
- */
 async function openWindow(): Promise<void> {
-  const initialUrl = await createWindow();
-  frontsClientChat = isClientAppUrl(initialUrl, CLIENT_PORT);
-  if (frontsClientChat) {
-    unregisterGlobalMicShortcut();
-  } else if (!registeredMicShortcut) {
+  await createWindow();
+  if (!registeredMicShortcut) {
     registerGlobalMicShortcut();
   }
 }
@@ -1103,27 +836,13 @@ async function setCheckPrerelease(enabled: boolean): Promise<void> {
   }
 }
 
-// ── Client-chat opt-in toggle (A1) ────────────────────────────────────────────
-// Persist the desktop-local "use the new app chat" opt-in and rebuild the tray
-// so the checkbox reflects the new state. Notify-only w.r.t. the CURRENT
-// window: like the prerelease toggle, it takes effect the next time a window
-// is (re)created — it does not tear down/reload an already-open window.
-function setPreferClientChat(enabled: boolean): void {
-  saveSettings(resolveDataDir(), { preferClientChat: enabled });
-  trayController.rebuildMenu();
-}
-
 // ── Tray ─────────────────────────────────────────────────────────────────────
 
 /** Wire the tray context-menu callbacks to the app's window/settings actions. */
 function createTray(): void {
   trayController.create({
     onOpen: showWindow,
-    onOpenLocalApp: () => { void openLocalApp(); },
-    // E4: reflects whether the client child process is alive right now — the
-    // openLocalApp() probe above is the belt-and-suspenders check; this is
-    // what keeps the menu item itself from looking clickable when it isn't.
-    isClientAppAvailable: () => clientProcess !== null,
+    onOpenChatInBrowser: () => { void openLocalApp(); },
     // A2: always-available path to the host admin dashboard.
     onOpenAdmin: () => { void shell.openExternal(`http://127.0.0.1:${UI_PORT}/host`); },
     onShowLogs: () => { void shell.openPath(app.getPath('logs')); },
@@ -1131,8 +850,6 @@ function createTray(): void {
     onSetLaunchOnLogin: (enabled) => { setLaunchOnLogin(enabled); },
     isPrereleaseEnabled: () => checkPrereleaseUpdates,
     onTogglePrerelease: (enabled) => { void setCheckPrerelease(enabled); },
-    isClientChatOptedIn: () => isClientChatOptedIn(resolveDataDir()),
-    onToggleClientChatOptIn: (enabled) => { setPreferClientChat(enabled); },
     onQuit: () => {
       // Set isQuitting here so the window 'close' handler (which hides to
       // tray when !isQuitting) does not re-hide during teardown.
@@ -1164,12 +881,6 @@ app.whenReady().then(async () => {
     return;
   }
 
-  // Start the @openpalm/client static server child after the UI server (P5c,
-  // #555). Non-fatal by design: absent build or spawn failure → log + skip,
-  // and resolveInitialUrl lands the window on the host UI chat instead.
-  await ensureClientAppBuild();
-  startClientAppServer();
-
   // Spawn the ephemeral local OpenCode (Phase 3). Non-fatal: if the binary
   // is missing or spawn fails, the UI shows a sentinel and remote endpoints
   // continue to work.
@@ -1187,10 +898,6 @@ app.whenReady().then(async () => {
   }
 
   configureMediaPermissions();
-  // B11: openWindow() resolves the initial URL AND (un)registers the global
-  // mic shortcut to match whichever surface it actually landed on — a
-  // host-UI-only surface that would otherwise stay registered (stealing the
-  // chord from other apps) while silently no-oping against the client SPA.
   await openWindow();
   createTray();
 
@@ -1255,12 +962,6 @@ ipcMain.on('notify', (_event, payload: { title?: string; body?: string } | null)
   notification.show();
 });
 
-// E5: this used to also `if (frontsClientChat) return;` before forwarding —
-// unreachable defense-in-depth, since the sole emitter of this IPC
-// (packages/ui's VoiceControl) never loads under the client window in the
-// first place (same B11 fact isClientAppUrl's tests document), so there is
-// no real caller this guard could ever intercept. Removed; the handler for
-// the host-UI emitter path is unchanged.
 ipcMain.handle('set-tray-mic-recording', (_event, recording: boolean) => {
   trayController.setMicRecording(recording);
 });
@@ -1295,7 +996,6 @@ app.on('before-quit', (event) => {
   event.preventDefault();
   globalShortcut.unregisterAll();
   trayController.stopAnimation();
-  stopClientAppServer();
   stopUIServer();
   const handle = localOpencode;
   localOpencode = null;

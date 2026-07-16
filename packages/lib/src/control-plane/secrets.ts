@@ -79,14 +79,6 @@ function writeVaultFile(path: string, content: string): void {
   }
 }
 
-export function stackSecretsDir(homeDir: string): string {
-  return resolveSecretsDir(homeDir);
-}
-
-export function stackSecretPath(homeDir: string, envKey: string): string {
-  return `${stackSecretsDir(homeDir)}/${envKey.toLowerCase()}`;
-}
-
 export function readStackSecretEnv(homeDir: string): Record<string, string> {
   const out: Record<string, string> = {};
   for (const name of listSecretNames(homeDir)) {

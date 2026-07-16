@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'bun:test';
 import {
-  createCliUiSupervisor, type CliChildProc, waitForClientApp,
-  resolveAdminUrl, resolveExpectedHostMode, checkExistingUiInstance,
-  resolveClientOpenTarget, resolveUiServePort,
+  createCliUiSupervisor, type CliChildProc,
+  resolveAdminUrl, resolveExpectedAdmin, checkExistingUiInstance,
+  resolveUiServePort,
 } from './ui-server.ts';
 
 // Behavioral coverage for the CLI's thin UiSupervisor adapter, driven through
@@ -153,41 +153,11 @@ describe('createCliUiSupervisor exit policy', () => {
   });
 });
 
-describe('waitForClientApp', () => {
-  it('returns true once the localhost client app becomes reachable', async () => {
-    let attempts = 0;
-    const originalFetch = globalThis.fetch;
-    globalThis.fetch = (async () => {
-      attempts += 1;
-      if (attempts < 2) throw new Error('not ready');
-      return new Response('<html></html>', { status: 200 });
-    }) as typeof fetch;
-
-    try {
-      expect(await waitForClientApp('http://127.0.0.1:3890/chat', 1500)).toBe(true);
-    } finally {
-      globalThis.fetch = originalFetch;
-    }
-  });
-
-  it('returns false when the localhost client app never becomes reachable', async () => {
-    const originalFetch = globalThis.fetch;
-    globalThis.fetch = (async () => {
-      throw new Error('still down');
-    }) as typeof fetch;
-
-    try {
-      expect(await waitForClientApp('http://127.0.0.1:3890/chat', 250)).toBe(false);
-    } finally {
-      globalThis.fetch = originalFetch;
-    }
-  });
-});
 
 // ── A3: `openpalm admin` opens/prints /host, not the root ────────────────────
 
 describe('resolveAdminUrl', () => {
-  it('points at /host when admin (host-ui) mode is active', () => {
+  it('points at /host when admin mode is active', () => {
     expect(resolveAdminUrl('http://localhost:3880', true)).toBe('http://localhost:3880/host');
   });
 
@@ -196,45 +166,36 @@ describe('resolveAdminUrl', () => {
   });
 });
 
-describe('resolveExpectedHostMode', () => {
-  it('is host-ui for admin mode, pwa-static otherwise (mirrors spawnUiChild adminEnv)', () => {
-    expect(resolveExpectedHostMode(true)).toBe('host-ui');
-    expect(resolveExpectedHostMode(false)).toBe('pwa-static');
+describe('resolveExpectedAdmin', () => {
+  it('is true for admin mode, false otherwise (mirrors spawnUiChild adminEnv)', () => {
+    expect(resolveExpectedAdmin(true)).toBe(true);
+    expect(resolveExpectedAdmin(false)).toBe(false);
   });
 });
 
-// F14: the spawned child's /api/runtime hostMode (packages/ui/src/lib/server/
-// features.ts resolveHostMode) honors OP_UI_HOST_MODE / OP_ENABLE_ADMIN /
-// OP_INSIDE_ELECTRON from its inherited env — for a NON-admin reuse
-// (spawnUiChild's adminEnv override does not apply, so the child inherits
-// process.env untouched), resolveExpectedHostMode must replicate that same
-// precedence or a shell with e.g. OP_ENABLE_ADMIN=1 set makes a legitimate
-// `openpalm` reuse compute 'pwa-static' while its own child reports
-// 'host-ui' — a false 'mismatch' that refuses to attach and exits(1).
-describe('resolveExpectedHostMode (F14: inherited OP_UI_HOST_MODE / OP_ENABLE_ADMIN / OP_INSIDE_ELECTRON)', () => {
-  it('is host-ui for admin mode regardless of inherited env (spawnUiChild always overrides OP_UI_HOST_MODE in the child)', () => {
-    expect(resolveExpectedHostMode(true, { OP_ENABLE_ADMIN: undefined, OP_UI_HOST_MODE: 'pwa-static' } as NodeJS.ProcessEnv))
-      .toBe('host-ui');
+// F14: the spawned child's /api/runtime admin flag (packages/ui/src/lib/server/
+// features.ts isAdminCapable) honors OP_ENABLE_ADMIN / OP_INSIDE_ELECTRON from
+// its inherited env — for a NON-admin reuse (spawnUiChild's adminEnv override
+// does not apply, so the child inherits process.env untouched),
+// resolveExpectedAdmin must replicate that same logic or a shell with e.g.
+// OP_ENABLE_ADMIN=1 set makes a legitimate `openpalm` reuse compute admin=false
+// while its own child reports admin=true — a false 'mismatch' that refuses to
+// attach and exits(1).
+describe('resolveExpectedAdmin (F14: inherited OP_ENABLE_ADMIN / OP_INSIDE_ELECTRON)', () => {
+  it('is true for admin mode regardless of inherited env (spawnUiChild always sets OP_ENABLE_ADMIN in the child)', () => {
+    expect(resolveExpectedAdmin(true, { OP_ENABLE_ADMIN: undefined } as NodeJS.ProcessEnv)).toBe(true);
   });
 
   it('honors an inherited OP_ENABLE_ADMIN=1 for non-admin reuse (the child inherits process.env untouched)', () => {
-    expect(resolveExpectedHostMode(false, { OP_ENABLE_ADMIN: '1' } as NodeJS.ProcessEnv)).toBe('host-ui');
-  });
-
-  it('honors an inherited explicit OP_UI_HOST_MODE for non-admin reuse', () => {
-    expect(resolveExpectedHostMode(false, { OP_UI_HOST_MODE: 'electron-host' } as NodeJS.ProcessEnv)).toBe('electron-host');
-  });
-
-  it('ignores an invalid/garbage explicit OP_UI_HOST_MODE and falls through the rest of the precedence', () => {
-    expect(resolveExpectedHostMode(false, { OP_UI_HOST_MODE: 'bogus', OP_ENABLE_ADMIN: '1' } as NodeJS.ProcessEnv)).toBe('host-ui');
+    expect(resolveExpectedAdmin(false, { OP_ENABLE_ADMIN: '1' } as NodeJS.ProcessEnv)).toBe(true);
   });
 
   it('honors an inherited OP_INSIDE_ELECTRON=1 for non-admin reuse', () => {
-    expect(resolveExpectedHostMode(false, { OP_INSIDE_ELECTRON: '1' } as NodeJS.ProcessEnv)).toBe('electron-host');
+    expect(resolveExpectedAdmin(false, { OP_INSIDE_ELECTRON: '1' } as NodeJS.ProcessEnv)).toBe(true);
   });
 
-  it('falls back to pwa-static when nothing is set', () => {
-    expect(resolveExpectedHostMode(false, {})).toBe('pwa-static');
+  it('is false when nothing is set', () => {
+    expect(resolveExpectedAdmin(false, {})).toBe(false);
   });
 });
 
@@ -253,110 +214,27 @@ function routedFetch(routes: Record<string, unknown>, unreachable: string[] = []
 
 describe('checkExistingUiInstance', () => {
   it('reports absent when nothing answers the port', async () => {
-    const result = await checkExistingUiInstance(3880, 'host-ui', {
+    const result = await checkExistingUiInstance(3880, true, {
       fetchFn: routedFetch({}, ['http://127.0.0.1:3880/api/runtime']),
     });
     expect(result).toEqual({ status: 'absent' });
   });
 
-  it('reports match when the running instance reports the expected hostMode', async () => {
-    const result = await checkExistingUiInstance(3880, 'host-ui', {
-      fetchFn: routedFetch({ 'http://127.0.0.1:3880/api/runtime': { hostMode: 'host-ui' } }),
+  it('reports match when the running instance reports the expected admin flag', async () => {
+    const result = await checkExistingUiInstance(3880, true, {
+      fetchFn: routedFetch({ 'http://127.0.0.1:3880/api/runtime': { admin: true } }),
     });
-    expect(result).toEqual({ status: 'match', hostMode: 'host-ui' });
+    expect(result).toEqual({ status: 'match', admin: true });
   });
 
-  it('reports mismatch when a DIFFERENT hostMode is already listening (e.g. a bare openpalm under `openpalm admin`)', async () => {
-    const result = await checkExistingUiInstance(3880, 'host-ui', {
-      fetchFn: routedFetch({ 'http://127.0.0.1:3880/api/runtime': { hostMode: 'pwa-static' } }),
+  it('reports mismatch when a DIFFERENT admin level is already listening (e.g. a bare openpalm under `openpalm admin`)', async () => {
+    const result = await checkExistingUiInstance(3880, true, {
+      fetchFn: routedFetch({ 'http://127.0.0.1:3880/api/runtime': { admin: false } }),
     });
-    expect(result).toEqual({ status: 'mismatch', hostMode: 'pwa-static' });
-  });
-});
-
-// ── A4/J1: `openpalm app` (`--open-target client`) target resolution ─────────
-
-describe('resolveClientOpenTarget', () => {
-  const uiUrl = 'http://localhost:3880';
-  const clientUrl = 'http://127.0.0.1:3890/chat';
-
-  it('opens the client when the landing probe reports /chat and the client is reachable', async () => {
-    const result = await resolveClientOpenTarget(uiUrl, clientUrl, true, {
-      fetchFn: routedFetch({ [`${uiUrl}/api/runtime/landing`]: { landing: '/chat' } }),
-      waitForClient: async () => true,
-    });
-    expect(result).toEqual({ url: clientUrl });
-  });
-
-  it('routes to the host UI landing path when it is NOT /chat (setup-incomplete/offline/broken — J1/J2)', async () => {
-    const result = await resolveClientOpenTarget(uiUrl, clientUrl, true, {
-      fetchFn: routedFetch({ [`${uiUrl}/api/runtime/landing`]: { landing: '/host?tab=diagnostics' } }),
-      waitForClient: async () => true,
-    });
-    expect(result).toEqual({ url: `${uiUrl}/host?tab=diagnostics` });
-  });
-
-  it('falls back to /api/setup/status when /api/runtime/landing is not deployed (404), and routes to /setup on an interrupted install (J1)', async () => {
-    const result = await resolveClientOpenTarget(uiUrl, clientUrl, true, {
-      fetchFn: routedFetch({ [`${uiUrl}/api/setup/status`]: { ok: true, setupComplete: false } }),
-      waitForClient: async () => true,
-    });
-    expect(result).toEqual({ url: `${uiUrl}/setup` });
-  });
-
-  it('falls back to the host UI chat (never process.exit) when the client app is unreachable (A4)', async () => {
-    const result = await resolveClientOpenTarget(uiUrl, clientUrl, true, {
-      fetchFn: routedFetch({
-        [`${uiUrl}/api/runtime/landing`]: { landing: '/chat' },
-      }),
-      waitForClient: async () => false,
-    });
-    expect(result.url).toBe(uiUrl);
-    expect(result.message).toMatch(/host UI chat/i);
-  });
-
-  it('falls back to the host UI chat when there is no client handle at all (build absent)', async () => {
-    const result = await resolveClientOpenTarget(uiUrl, clientUrl, false, {
-      fetchFn: routedFetch({ [`${uiUrl}/api/runtime/landing`]: { landing: '/chat' } }),
-      waitForClient: async () => { throw new Error('should not be called when hasClientHandle is false'); },
-    });
-    expect(result.url).toBe(uiUrl);
-    expect(result.message).toBeDefined();
-  });
-
-  // ── #486 D1b: /connections and /connections/new are client-capable landings ──
-
-  it('opens the CLIENT app at /connections/new when the landing is /connections/new and the client is reachable (#486)', async () => {
-    const result = await resolveClientOpenTarget(uiUrl, clientUrl, true, {
-      fetchFn: routedFetch({ [`${uiUrl}/api/runtime/landing`]: { landing: '/connections/new' } }),
-      waitForClient: async () => true,
-    });
-    expect(result).toEqual({ url: 'http://127.0.0.1:3890/connections/new' });
-  });
-
-  it('falls back to the host UI /connections/new (with a message) when the client app is unreachable', async () => {
-    const result = await resolveClientOpenTarget(uiUrl, clientUrl, true, {
-      fetchFn: routedFetch({ [`${uiUrl}/api/runtime/landing`]: { landing: '/connections/new' } }),
-      waitForClient: async () => false,
-    });
-    expect(result.url).toBe(`${uiUrl}/connections/new`);
-    expect(result.message).toBeDefined();
-  });
-
-  it('still routes non-client landings (/setup, /host?tab=diagnostics) to the host UI', async () => {
-    const setupResult = await resolveClientOpenTarget(uiUrl, clientUrl, true, {
-      fetchFn: routedFetch({ [`${uiUrl}/api/runtime/landing`]: { landing: '/setup' } }),
-      waitForClient: async () => { throw new Error('should not probe the client for a non-client landing'); },
-    });
-    expect(setupResult).toEqual({ url: `${uiUrl}/setup` });
-
-    const diagResult = await resolveClientOpenTarget(uiUrl, clientUrl, true, {
-      fetchFn: routedFetch({ [`${uiUrl}/api/runtime/landing`]: { landing: '/host?tab=diagnostics' } }),
-      waitForClient: async () => { throw new Error('should not probe the client for a non-client landing'); },
-    });
-    expect(diagResult).toEqual({ url: `${uiUrl}/host?tab=diagnostics` });
+    expect(result).toEqual({ status: 'mismatch', admin: false });
   });
 });
+
 
 // ── D3: persisted OP_HOST_UI_PORT is read back ────────────────────────────────
 

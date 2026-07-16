@@ -1,6 +1,6 @@
 // Run via vitest (Node). Covers the harness-local desktop settings store (#504).
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { loadSettings, saveSettings, settingsPath } from '../src/settings.js';
@@ -16,7 +16,7 @@ afterEach(() => {
 
 describe('desktop settings', () => {
   it('defaults checkPrerelease to false when no file exists', () => {
-    expect(loadSettings(dir)).toEqual({ checkPrerelease: false, preferClientChat: false });
+    expect(loadSettings(dir)).toEqual({ checkPrerelease: false });
   });
 
   it('round-trips a saved value', () => {
@@ -28,7 +28,7 @@ describe('desktop settings', () => {
 
   it('falls back to defaults for a corrupt file (never throws)', () => {
     writeFileSync(settingsPath(dir), '{ not json', 'utf-8');
-    expect(loadSettings(dir)).toEqual({ checkPrerelease: false, preferClientChat: false });
+    expect(loadSettings(dir)).toEqual({ checkPrerelease: false });
   });
 
   it('falls back to default for a mistyped field', () => {
@@ -43,22 +43,22 @@ describe('desktop settings', () => {
     expect(merged.checkPrerelease).toBe(true);
   });
 
-  // ── preferClientChat (A1 opt-in) ──────────────────────────────────────────
-  // A1: Electron used to default to the feature-poor client chat whenever its
-  // health probe answered. The fix inverts the default to the host chat and
-  // gates the client chat behind this explicit desktop-settings opt-in
-  // (mirrors the checkPrerelease checkbox pattern exactly).
-  it('defaults preferClientChat to false when no file exists', () => {
-    expect(loadSettings(dir).preferClientChat).toBe(false);
+  it('ignores a legacy preferClientChat field without rejecting the settings file', () => {
+    writeFileSync(
+      settingsPath(dir),
+      JSON.stringify({ checkPrerelease: true, preferClientChat: true }),
+      'utf-8',
+    );
+    expect(loadSettings(dir)).toEqual({ checkPrerelease: true });
   });
 
-  it('round-trips a saved preferClientChat value independently of checkPrerelease', () => {
-    saveSettings(dir, { preferClientChat: true });
-    expect(loadSettings(dir)).toEqual({ checkPrerelease: false, preferClientChat: true });
-  });
-
-  it('falls back to default for a mistyped preferClientChat field', () => {
-    writeFileSync(settingsPath(dir), JSON.stringify({ preferClientChat: 'yes' }), 'utf-8');
-    expect(loadSettings(dir).preferClientChat).toBe(false);
+  it('drops legacy fields the next time current settings are saved', () => {
+    writeFileSync(
+      settingsPath(dir),
+      JSON.stringify({ checkPrerelease: false, preferClientChat: true }),
+      'utf-8',
+    );
+    saveSettings(dir, { checkPrerelease: true });
+    expect(JSON.parse(readFileSync(settingsPath(dir), 'utf-8'))).toEqual({ checkPrerelease: true });
   });
 });

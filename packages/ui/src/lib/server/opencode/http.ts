@@ -6,10 +6,10 @@
  * so user switches in the UI take effect immediately.
  */
 import { basicAuthHeader } from '../basic-auth.js';
-import { getActiveEndpoint } from '../endpoints.js';
+import { getHostOpencodeTarget } from '../opencode-target.js';
 
 export async function opencodeFetch<T>(path: string, init?: RequestInit): Promise<T> {
-	const endpoint = getActiveEndpoint();
+	const endpoint = getHostOpencodeTarget();
 	const headers: Record<string, string> = {
 		'content-type': 'application/json',
 		...(init?.headers as Record<string, string> | undefined),

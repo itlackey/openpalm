@@ -42,10 +42,8 @@ import {
 const logger = createLogger('lib:ui-assets');
 
 // ── Shared helpers ───────────────────────────────────────────────────────────
-// Exported for the sibling asset modules (client-assets.ts) — not part of the
-// package barrel.
 
-export function copyTree(
+function copyTree(
   src: string,
   dest: string,
   opts?: { skipExisting?: boolean },

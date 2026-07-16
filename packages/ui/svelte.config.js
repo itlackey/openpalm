@@ -40,7 +40,11 @@ const config = {
         // enumerate that runtime value, so permit HTTP(S) frames while keeping
         // every script, connection, object, and base restriction unchanged.
         "frame-src": ["self", "http:", "https:"],
-        "connect-src": ["self"],
+        // The browser fetches the active connection's OpenCode/Guardian baseUrl
+        // DIRECTLY (Phase 3b — no host proxy). CSP cannot enumerate that runtime
+        // value, so permit HTTP(S) connections while keeping script/object/base
+        // restrictions unchanged.
+        "connect-src": ["self", "http:", "https:"],
         "object-src": ["none"],
         "base-uri": ["none"],
         // `frame-ancestors` is silently ignored in <meta>; X-Frame-Options

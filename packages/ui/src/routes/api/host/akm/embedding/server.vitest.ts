@@ -37,7 +37,7 @@ function makeEvent(path: string, body?: unknown, token = 'admin-token') {
 beforeEach(() => {
   // Phase 4: /api/host + /api/assistant endpoints are capability-guarded;
   // run this suite as a host-capable mode.
-  process.env.OP_UI_HOST_MODE = 'host-ui';
+  process.env.OP_ENABLE_ADMIN = '1';
 	rootDir = join(tmpdir(), `openpalm-akm-embedding-${randomBytes(4).toString('hex')}`);
 	mkdirSync(rootDir, { recursive: true });
 	originalHome = process.env.OP_HOME;
@@ -47,7 +47,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  delete process.env.OP_UI_HOST_MODE;
+  delete process.env.OP_ENABLE_ADMIN;
 	process.env.OP_HOME = originalHome;
 	rmSync(rootDir, { recursive: true, force: true });
 	vi.restoreAllMocks();

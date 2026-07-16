@@ -1,7 +1,6 @@
 /**
- * Phase 3 hygiene — no component reads `features.admin` (plan
- * ui-runtime-modes-plan.md Phase 3 step 3, §8.6: "hasCapability(cap) is the
- * only check components call. No `if (features.admin)` anywhere").
+ * Phase 3 hygiene — no component reads `features.admin`: hasCapability(cap) is the
+ * only check components call. No `if (features.admin)` anywhere.
  *
  * RED until Phase 3 lands: chrome/Navbar.svelte still branches on
  * `featuresService.admin`.
@@ -10,7 +9,7 @@
  * pattern) because the invariant is about where capability logic lives, not
  * runtime behavior: components must consult runtimeContext.routes +
  * hasCapability() so that adding a capability rule stays a one-function
- * change (plan §11). Phase 4 deleted the legacy alias entirely
+ * change. Phase 4 deleted the legacy alias entirely
  * (computeFeatureFlags/FeatureFlags are gone); this scan keeps the read
  * pattern from ever coming back into components.
  */
@@ -31,7 +30,7 @@ function svelteFiles(): string[] {
  *  `featuresService.admin`, `data.features.admin`, optional-chained forms. */
 const FEATURES_ADMIN_READ = /\bfeatures(?:Service)?\??\.admin\b/;
 
-describe('no features.admin reads in .svelte components (plan §8.6, Phase 3 step 3)', () => {
+describe('no features.admin reads in .svelte components', () => {
   test('the scan sees the component tree (sanity)', () => {
     // Guards the walker itself: if this ever returns [], the hygiene
     // assertion below would pass vacuously.

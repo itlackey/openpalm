@@ -61,7 +61,7 @@ const onRefresh = vi.fn().mockResolvedValue(undefined);
 
 function renderUpdates(): void {
 	render(UpdatesTab, {
-		props: { containers, dockerAvailable: true, containersLoading: false, onRefresh }
+		props: { containers, dockerAvailable: true, onRefresh }
 	});
 }
 

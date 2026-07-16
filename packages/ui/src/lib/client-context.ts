@@ -1,6 +1,5 @@
 /**
- * Client display-mode detection — plan ui-runtime-modes-plan.md §6.3
- * (issue #509). Browser-side ONLY: initialized in +layout.svelte, never
+ * Client display-mode detection (issue #509). Browser-side ONLY: initialized in +layout.svelte, never
  * server-computed. On the server (no `navigator`/`window`) it returns the
  * 'browser' default.
  */

@@ -167,7 +167,7 @@ See [docs/technical/foundations.md](../docs/technical/foundations.md) for the fu
 
 OpenPalm has two release tracks (see [docs/operations/release-management.md](../docs/operations/release-management.md) for the full guide):
 
-- **Platform release (single coordinated version)** — guardian, portal image, baked portal adapters, CLI binaries, Electron installers, and other platform manifests ship together through `.github/workflows/platform-release.yml`.
+- **Platform release (single coordinated version)** — guardian, portal image, baked portal adapters, CLI binaries, Electron installers, and other platform manifests ship together through `.github/workflows/release.yml`.
 - **UI release (independent npm)** — `packages/ui` remains independently published to npm.
 
 ## Key docs for contributors

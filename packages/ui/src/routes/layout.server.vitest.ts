@@ -4,12 +4,12 @@
  * TDD status:
  *  - The `features.admin` characterization block that protected the derived
  *    alias through Phases 1–3 was retired with the alias itself in Phase 4
- *    (plan Phase 4 step 4: delete when grep finds no reader — nothing
- *    consumed `data.features` anymore). The env → hostMode mapping it pinned
+ *    (delete when grep finds no reader — nothing
+ *    consumed `data.features` anymore). The env → admin mapping it pinned
  *    is covered by the serverRuntimeContext tests below.
  *  - The `serverRuntimeContext` tests describe the #509 layout payload: the
  *    load returns the ServerRuntimeContext computed by
- *    computeServerRuntimeContext(event) (plan Phase 1 step 3).
+ *    computeServerRuntimeContext(event).
  */
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import type { ServerRuntimeContext } from '$lib/types.js';
@@ -33,7 +33,7 @@ async function runLoad(): Promise<Record<string, unknown>> {
   return (await load(makeEvent())) as unknown as Record<string, unknown>;
 }
 
-const MODE_ENV_KEYS = ['OP_UI_HOST_MODE', 'OP_INSIDE_ELECTRON', 'OP_ENABLE_ADMIN'] as const;
+const MODE_ENV_KEYS = ['OP_INSIDE_ELECTRON', 'OP_ENABLE_ADMIN'] as const;
 let savedEnv: Record<string, string | undefined> = {};
 
 beforeEach(() => {
@@ -58,7 +58,7 @@ afterEach(() => {
 
 // ── serverRuntimeContext (#509 layout payload) ────────────────────────────────
 
-describe('+layout.server load — serverRuntimeContext (plan Phase 1)', () => {
+describe('+layout.server load — serverRuntimeContext', () => {
   test('layout data includes serverRuntimeContext with contract version 2', async () => {
     const data = await runLoad();
     const ctx = data.serverRuntimeContext as ServerRuntimeContext | undefined;
@@ -66,17 +66,23 @@ describe('+layout.server load — serverRuntimeContext (plan Phase 1)', () => {
     expect(ctx?.version).toBe(2);
   });
 
-  test("serverRuntimeContext.hostMode maps OP_INSIDE_ELECTRON=1 → 'electron-host'", async () => {
+  test('serverRuntimeContext.admin maps OP_INSIDE_ELECTRON=1 → true', async () => {
     process.env.OP_INSIDE_ELECTRON = '1';
     const data = await runLoad();
     const ctx = data.serverRuntimeContext as ServerRuntimeContext | undefined;
-    expect(ctx?.hostMode).toBe('electron-host');
+    expect(ctx?.admin).toBe(true);
   });
 
-  test("serverRuntimeContext.hostMode maps OP_ENABLE_ADMIN=1 → 'host-ui'", async () => {
+  test('serverRuntimeContext.admin maps OP_ENABLE_ADMIN=1 → true', async () => {
     process.env.OP_ENABLE_ADMIN = '1';
     const data = await runLoad();
     const ctx = data.serverRuntimeContext as ServerRuntimeContext | undefined;
-    expect(ctx?.hostMode).toBe('host-ui');
+    expect(ctx?.admin).toBe(true);
+  });
+
+  test('serverRuntimeContext.admin is false when no admin env is set (served baseline)', async () => {
+    const data = await runLoad();
+    const ctx = data.serverRuntimeContext as ServerRuntimeContext | undefined;
+    expect(ctx?.admin).toBe(false);
   });
 });

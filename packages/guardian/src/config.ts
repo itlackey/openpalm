@@ -23,11 +23,29 @@ import { readFileSync } from "node:fs";
 /** Upstream OpenCode assistant base URL. Read once at module load. */
 export const ASSISTANT_URL = Bun.env.OP_ASSISTANT_URL ?? "http://assistant:4096";
 
-/** Session-cache / ownership TTL, in ms (15 min default). Read once at module load. */
-export const SESSION_TTL_MS = Number(Bun.env.GUARDIAN_SESSION_TTL_MS ?? 15 * 60_000);
+/**
+ * Clamp a raw env string to a positive integer, falling back on ANY malformed
+ * value. `Number(garbage)` is NaN, and NaN flowing onward fails far from the
+ * cause: a NaN port makes Bun.serve blow up at boot, and a NaN SQLite binding
+ * is NULL — which once turned a bounded ownership-table DELETE unbounded (see
+ * state-db.ts). Floor FIRST: a fractional value in (0, 1) would pass a
+ * positivity check and then floor to 0 at the use site.
+ * Pure half of {@link readPositiveIntEnv}, exported for reuse and tests.
+ */
+export function clampPositiveInt(raw: string | undefined, fallback: number): number {
+  if (raw === undefined) return fallback;
+  const parsed = Math.floor(Number(raw));
+  return Number.isFinite(parsed) && parsed >= 1 ? parsed : fallback;
+}
+
+/** Read a positive-integer env override via {@link clampPositiveInt} — the
+ *  one way guardian code reads numeric env (ports, limits, timeouts). */
+export function readPositiveIntEnv(name: string, fallback: number): number {
+  return clampPositiveInt(Bun.env[name], fallback);
+}
 
 /** Guardian direct-ingress port. Read once at module load. */
-export const DIRECT_PORT = Number(Bun.env.GUARDIAN_DIRECT_PORT ?? 3830);
+export const DIRECT_PORT = readPositiveIntEnv("GUARDIAN_DIRECT_PORT", 3830);
 
 function normalizeExactOrigin(value: string): string {
   if (value === '*') throw new Error('GUARDIAN_CORS_ALLOWED_ORIGINS must not contain wildcard origins');

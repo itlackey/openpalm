@@ -100,13 +100,4 @@ describe('checkOriginHeader', () => {
       ),
     ).toBeNull();
   });
-
-  it('bearer-token mode allows Authorization-bearing requests across sites', () => {
-    const request = req('192.168.1.10:3880', {
-      method: 'POST',
-      origin: 'http://evil.example:3880',
-      authorization: 'Bearer test-token',
-    });
-    expect(checkOriginHeader(request, 'bearer-token')).toBeNull();
-  });
 });

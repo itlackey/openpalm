@@ -48,8 +48,8 @@ RUN npm install --omit=dev --no-fund --no-audit \
 FROM node:22-trixie-slim
 
 ARG BUN_VERSION=bun-v1.3.10
-# Platform version — drives OP_CLIENT_VERSION and OP_SKELETON_VERSION defaults
-# in the entrypoint when no per-component env var override is set.
+# Platform version — drives the OP_SKELETON_VERSION default in the entrypoint
+# when no per-component env var override is set.
 ARG PLATFORM_VERSION
 
 # Re-export for runtime introspection.
@@ -170,30 +170,30 @@ RUN set -e; \
 # layer. The tools tree is bind-mounted (host-owned) at runtime, so its baked
 # mode is moot. Secrets (knowledge/secrets, 0600) are a separate bind-mount tree.
 RUN mkdir -p /home/opencode/.cache /home/opencode/.local/bin /work /stash /opt/akm/cache /opt/akm/data /opt/persistent/bin \
-    && mkdir -p /opt/openpalm/client /opt/openpalm/skeleton /opt/openpalm/tools \
-    && chown -R node:node /home/opencode /work /stash /opt/akm /opt/persistent /opt/openpalm/client /opt/openpalm/skeleton \
-    && chmod -R a+rwX /home/opencode /work /stash /opt/akm /opt/persistent /opt/openpalm/client /opt/openpalm/skeleton
+    && mkdir -p /opt/openpalm/ui /opt/openpalm/skeleton /opt/openpalm/tools \
+    && chown -R node:node /home/opencode /work /stash /opt/akm /opt/persistent /opt/openpalm/ui /opt/openpalm/skeleton \
+    && chmod -R a+rwX /home/opencode /work /stash /opt/akm /opt/persistent /opt/openpalm/ui /opt/openpalm/skeleton
 
-# ── Fallback @openpalm/client bake (review finding I2) ──────────────────────
+# ── Fallback @openpalm/ui bake ──────────────────────────────────────────────
 # Same approach as containers/guardian/Dockerfile's baked guardian/skeleton
-# install: put a real @openpalm/client build at its runtime path INSIDE the
-# image, so an offline/air-gapped/npm-outage first boot still has a chat
-# surface to serve on OP_CLIENT_PORT instead of silently publishing an empty
-# port (the entrypoint's boot-time `npm install` in install_runtime_artifacts
-# then upgrades this in place on every boot that CAN reach the registry — this
-# bake is only the floor, not the steady-state install path). This works
-# because assistant-artifacts (the named volume compose mounts at
-# /opt/openpalm) is seeded from this image path the FIRST time the volume is
-# created — unlike a bind mount, it does not shadow the baked content with an
-# empty host directory. Skipped when PLATFORM_VERSION is unset (local/dev
-# builds with no resolvable exact pin) so the image still builds without one;
-# every versioned release build gets the fallback.
+# install: put a real @openpalm/ui build at its runtime path INSIDE the image,
+# so an offline/air-gapped/npm-outage first boot still has a UI to serve on the
+# UI co-process port instead of silently publishing an empty port (the
+# entrypoint's boot-time `npm install` in install_runtime_artifacts then
+# upgrades this in place on every boot that CAN reach the registry — this bake
+# is only the floor, not the steady-state install path). This works because
+# assistant-artifacts (the named volume compose mounts at /opt/openpalm) is
+# seeded from this image path the FIRST time the volume is created — unlike a
+# bind mount, it does not shadow the baked content with an empty host directory.
+# Skipped when PLATFORM_VERSION is unset (local/dev builds with no resolvable
+# exact pin) so the image still builds without one; every versioned release
+# build gets the fallback.
 RUN if [ -n "$PLATFORM_VERSION" ]; then \
-      npm install --prefix /opt/openpalm/client "@openpalm/client@${PLATFORM_VERSION}" \
+      npm install --prefix /opt/openpalm/ui "@openpalm/ui@${PLATFORM_VERSION}" \
         --omit=dev --no-fund --no-audit \
-      && chmod -R a+rwX /opt/openpalm/client; \
+      && chmod -R a+rwX /opt/openpalm/ui; \
     else \
-      echo "WARN: PLATFORM_VERSION unset at build time — no fallback @openpalm/client baked (dev/local build only)" >&2; \
+      echo "WARN: PLATFORM_VERSION unset at build time — no fallback @openpalm/ui baked (dev/local build only)" >&2; \
     fi
 
 COPY containers/assistant/entrypoint.sh /usr/local/bin/opencode-entrypoint.sh
@@ -229,20 +229,16 @@ COPY AGENTS.md /usr/local/share/openpalm/AGENTS.md
 
 EXPOSE 4096 3000
 
-# Probes OpenCode unconditionally, plus the client co-process (I2) UNLESS the
-# entrypoint's I3 LAN-exposure safety gate deliberately skipped starting it
-# (marker file /tmp/openpalm-client-skip) — that security-motivated skip must
-# not itself register as a healthcheck failure.
-#
-# H3 (review): mirrors core.compose.yml's own healthcheck exactly (same
-# curl'd /health + client-port HTTP probe, same skip-marker exemption, same
-# fixed in-container OP_CLIENT_PORT default of 3000) instead of a separate
-# /dev/tcp TCP-connect check. The two probes previously disagreed: a
-# TCP-connect only confirms something is LISTENING, so a client co-process
-# that accepted the connection but served 500s (or hung mid-response) could
-# read healthy here while compose's curl probe — which requires an actual
-# successful HTTP response — read unhealthy for the exact same container.
-# curl is already installed in this image (see the apt-get install above).
+# Probes OpenCode unconditionally, plus the UI co-process UNLESS the entrypoint's
+# LAN-exposure safety gate deliberately skipped starting it (marker file
+# /tmp/openpalm-ui-skip) — that security-motivated skip (and a legitimately
+# absent/permanently-dead UI, which writes the same marker) must not itself
+# register as a healthcheck failure. The UI probe hits the login/setup-exempt
+# /health route on the FIXED in-container UI port 3000 (OP_UI_PORT is the
+# host-facing knob and is deliberately NEVER passed into the container env, so
+# the container-side default 3000 is always the real listen port). Mirrors
+# core.compose.yml's own healthcheck (same skip-marker exemption, same fixed
+# port). curl is already installed above.
 #
 # #564 P1-1 (D3 mirror): the /health probe authenticates iff OPENCODE_AUTH is
 # truthy, using the same truthy set and username/password resolution as
@@ -256,7 +252,7 @@ EXPOSE 4096 3000
 # build time, so healthcheck processes see created env (compose `environment:`
 # / `docker run -e`) but never variables the entrypoint exports later.
 HEALTHCHECK --interval=15s --timeout=5s --start-period=30s --retries=3 \
-  CMD bash -c 'case "${OPENCODE_AUTH:-false}" in true|TRUE|True|1|yes|YES) curl -sf -u "${OPENCODE_SERVER_USERNAME:-opencode}:${OPENCODE_SERVER_PASSWORD:-$(cat "${OPENCODE_SERVER_PASSWORD_FILE:-/run/secrets/opencode_server_password}")}" http://localhost:${OPENCODE_PORT:-4096}/health >/dev/null ;; *) curl -sf http://localhost:${OPENCODE_PORT:-4096}/health >/dev/null ;; esac && { [ -f /tmp/openpalm-client-skip ] || curl -sf http://localhost:${OP_CLIENT_PORT:-3000}/ >/dev/null; }' || exit 1
+  CMD bash -c 'case "${OPENCODE_AUTH:-false}" in true|TRUE|True|1|yes|YES) curl -sf -u "${OPENCODE_SERVER_USERNAME:-opencode}:${OPENCODE_SERVER_PASSWORD:-$(cat "${OPENCODE_SERVER_PASSWORD_FILE:-/run/secrets/opencode_server_password}")}" http://localhost:${OPENCODE_PORT:-4096}/health >/dev/null ;; *) curl -sf http://localhost:${OPENCODE_PORT:-4096}/health >/dev/null ;; esac && { [ -f /tmp/openpalm-ui-skip ] || curl -sf http://localhost:${OP_UI_PORT:-3000}/health >/dev/null; }' || exit 1
 
 ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/opencode-entrypoint.sh"]
 USER node

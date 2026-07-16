@@ -1,7 +1,7 @@
 /**
  * Tests for the E1 fix: one shared resolveAssistantEndpoint(homeDir, env) used
  * by Electron/CLI/container writers instead of three divergent chains. Pins:
- *   - precedence OP_CLIENT_DEFAULT_ASSISTANT_URL || OP_OPENCODE_URL ||
+ *   - precedence OP_UI_DEFAULT_ASSISTANT_URL || OP_OPENCODE_URL ||
  *     OP_ASSISTANT_URL || http://127.0.0.1:<port>
  *   - env (process.env) wins over the persisted stack.env/state env
  *   - wildcard bind hosts (0.0.0.0 / :: / [::]) are ALWAYS normalized to
@@ -57,14 +57,14 @@ describe('resolveAssistantEndpoint', () => {
     ).toBe('http://opencode.test:1');
   });
 
-  it('prefers OP_CLIENT_DEFAULT_ASSISTANT_URL over everything else', () => {
+  it('prefers OP_UI_DEFAULT_ASSISTANT_URL over everything else', () => {
     expect(
       resolveAssistantEndpoint(home, {
-        OP_CLIENT_DEFAULT_ASSISTANT_URL: 'https://client-default.test',
+        OP_UI_DEFAULT_ASSISTANT_URL: 'https://ui-default.test',
         OP_OPENCODE_URL: 'http://opencode.test:1',
         OP_ASSISTANT_URL: 'http://assistant.test:2',
       })
-    ).toBe('https://client-default.test');
+    ).toBe('https://ui-default.test');
   });
 
   it('merges process-env OVER the persisted stack env (env wins)', () => {
@@ -99,7 +99,7 @@ describe('resolveAssistantEndpoint', () => {
     expect(resolveAssistantEndpoint(home, { OP_OPENCODE_URL: 'http://[::]:3800' })).toBe(
       'http://127.0.0.1:3800'
     );
-    expect(resolveAssistantEndpoint(home, { OP_CLIENT_DEFAULT_ASSISTANT_URL: 'http://[::]/chat' })).toBe(
+    expect(resolveAssistantEndpoint(home, { OP_UI_DEFAULT_ASSISTANT_URL: 'http://[::]/chat' })).toBe(
       'http://127.0.0.1/chat'
     );
   });

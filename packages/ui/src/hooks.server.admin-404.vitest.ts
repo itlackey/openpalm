@@ -1,6 +1,5 @@
 /**
- * Phase 4 — `/admin/*` becomes a dead namespace (plan ui-runtime-modes-plan.md
- * Phase 4, §6.4 "No /admin alias", issue #555).
+ * Phase 4 — `/admin/*` becomes a dead namespace ("No /admin alias", issue #555).
  *
  * Contract pinned here:
  *  - The `routes/admin/` tree is DELETED: pages move to `routes/host/`, the
@@ -37,8 +36,8 @@ import { resetState } from '$lib/server/test-helpers.js';
 import { HOST_ADMIN_LANDING } from '$lib/resolve-landing.js';
 import { computeServerRuntimeContext } from '$lib/server/features.js';
 
-vi.mock('$lib/server/endpoints.js', async (orig) => ({
-  ...(await orig<typeof import('$lib/server/endpoints.js')>()),
+vi.mock('$lib/server/opencode-target.js', async (orig) => ({
+  ...(await orig<typeof import('$lib/server/opencode-target.js')>()),
   listRemoteStatuses: vi.fn(async () => []),
 }));
 vi.mock('@openpalm/lib', async (orig) => ({
@@ -110,9 +109,9 @@ async function handleOutcome(event: RequestEvent): Promise<unknown> {
   }
 }
 
-const MODE_ENV_KEYS = ['OP_UI_HOST_MODE', 'OP_INSIDE_ELECTRON', 'OP_ENABLE_ADMIN'] as const;
+const MODE_ENV_KEYS = ['OP_INSIDE_ELECTRON', 'OP_ENABLE_ADMIN'] as const;
 
-describe('hooks.server — /admin/* is a dead namespace, no alias (plan Phase 4, §6.4)', () => {
+describe('hooks.server — /admin/* is a dead namespace, no alias', () => {
   let home = '';
   let prevHome: string | undefined;
   let savedModeEnv: Record<string, string | undefined> = {};
@@ -145,7 +144,7 @@ describe('hooks.server — /admin/* is a dead namespace, no alias (plan Phase 4,
   });
 
   test('authenticated /admin document navigation is a router 404, not the dashboard', async () => {
-    process.env.OP_UI_HOST_MODE = 'host-ui';
+    process.env.OP_ENABLE_ADMIN = '1';
     const event = makeEvent('/admin', { token: 'test-admin-pw' });
 
     const outcome = await handleOutcome(event);
@@ -157,7 +156,7 @@ describe('hooks.server — /admin/* is a dead namespace, no alias (plan Phase 4,
   });
 
   test('/admin/endpoints no longer aliases to /connections (Phase 2 alias removed)', async () => {
-    process.env.OP_UI_HOST_MODE = 'pwa-static';
+    delete process.env.OP_ENABLE_ADMIN;
     const event = makeEvent('/admin/endpoints', { token: 'test-admin-pw' });
 
     const outcome = await handleOutcome(event);
@@ -166,8 +165,8 @@ describe('hooks.server — /admin/* is a dead namespace, no alias (plan Phase 4,
     expect((outcome as Response).status).toBe(404);
   });
 
-  test('/admin document navigation in pwa-static mode 404s instead of redirecting to /chat', async () => {
-    process.env.OP_UI_HOST_MODE = 'pwa-static';
+  test('/admin document navigation in non-admin mode 404s instead of redirecting to /chat', async () => {
+    delete process.env.OP_ENABLE_ADMIN;
     const event = makeEvent('/admin', { token: 'test-admin-pw' });
 
     const outcome = await handleOutcome(event);
@@ -176,8 +175,8 @@ describe('hooks.server — /admin/* is a dead namespace, no alias (plan Phase 4,
     expect((outcome as Response).status).toBe(404);
   });
 
-  test('/admin/* fetch in assistant-container mode 404s instead of redirecting to /chat', async () => {
-    process.env.OP_UI_HOST_MODE = 'assistant-container';
+  test('/admin/* fetch in non-admin mode 404s instead of redirecting to /chat', async () => {
+    delete process.env.OP_ENABLE_ADMIN;
     // Browser fetch() sends Accept: */* — never the document-navigation guard.
     const event = makeEvent('/admin/akm', { accept: 'application/json' });
 
@@ -188,7 +187,7 @@ describe('hooks.server — /admin/* is a dead namespace, no alias (plan Phase 4,
   });
 
   test('/ with an installed-but-offline stack lands on /host (was /admin)', async () => {
-    process.env.OP_UI_HOST_MODE = 'host-ui';
+    process.env.OP_ENABLE_ADMIN = '1';
     const state = resetState('test-admin-pw');
     seedStackEnv(state.stackDir, true); // setup complete, composePs fails → installed_offline
 
@@ -200,7 +199,7 @@ describe('hooks.server — /admin/* is a dead namespace, no alias (plan Phase 4,
 
 // ── route split: routes/admin deleted, routes/host created (Phase 4 step 1) ──
 
-describe('route files — /admin moved to /host (plan Phase 4 step 1)', () => {
+describe('route files — /admin moved to /host', () => {
   test('the routes/admin/ tree is deleted (pages → routes/host, APIs → routes/api/host)', () => {
     expect(existsSync(join(ROUTES_DIR, 'admin'))).toBe(false);
   });
@@ -212,7 +211,7 @@ describe('route files — /admin moved to /host (plan Phase 4 step 1)', () => {
 
 // ── the Phase 3 TODO constants flip to /host ──────────────────────────────────
 
-describe('host landing + route pointers flip to /host (plan Phase 4 step 1)', () => {
+describe('host landing + route pointers flip to /host', () => {
   const savedEnv: Record<string, string | undefined> = {};
 
   beforeEach(() => {
@@ -235,7 +234,7 @@ describe('host landing + route pointers flip to /host (plan Phase 4 step 1)', ()
   });
 
   test("runtime context routes.host points at '/host' — nav must never point at a 404", () => {
-    process.env.OP_UI_HOST_MODE = 'host-ui';
+    process.env.OP_ENABLE_ADMIN = '1';
     const url = new URL('http://127.0.0.1:3880/host');
     const ctx = computeServerRuntimeContext({ url } as unknown as RequestEvent);
     expect(ctx.routes.host).toBe('/host');

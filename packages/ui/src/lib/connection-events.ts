@@ -1,12 +1,11 @@
 /**
- * Connection-activation event channel (plan ui-runtime-modes-plan.md Phase 2
- * step 6, issue #486).
+ * Connection-activation event channel (issue #486).
  *
  * Breaks the endpoints-state ↔ chat-state bidirectional import: the
  * connections store EMITS through this module and the chat side SUBSCRIBES
  * from its own module — the connections store never imports chat code. This
  * keeps the module graph acyclic so the Phase 5 client extraction is file
- * relocation, not surgery (plan §6.11).
+ * relocation, not surgery.
  *
  * Two hooks:
  *  - activation guards: a subscriber may veto a switch before it starts

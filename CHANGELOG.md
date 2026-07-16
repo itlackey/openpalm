@@ -9,38 +9,24 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
-- **PWA install paths: pairing UX, runtime handshake, install affordances,
-  offline verification** (#511). Host admin `/connections` gains a "Pair a
-  device" panel (`host:stack:write`-gated): it mints a one-time,
-  individually-revocable guardian `direct` principal via the existing
-  loopback-only admin listener and renders a QR code + copyable
+- **Device pairing for remote connections** (#511). Host admin `/connections`
+  gains a "Pair a device" panel (`host:stack:write`-gated): it mints a
+  one-time, individually-revocable guardian `direct` principal via the
+  existing loopback-only admin listener and renders a QR code + copyable
   `openpalm-pair:` code, shown exactly once and never persisted or logged.
-  The `@openpalm/client` `/connections` add form parses that code (a paste
-  field, or a `?pair=` deep link stripped from history on consumption) to
-  prefill itself — the credential then flows through the existing encrypted
-  secret store. A new client-side `/api/runtime` contract-version handshake
-  (`checkRuntimeContract`) probes `openpalm-client-api`-kind connections and
-  renders a version-skew notice for a `newer`/`older` host, while treating a
-  missing endpoint (plain OpenCode/guardian) as the normal legacy case, not
-  an error. `ServerRuntimeContext` gains an additive `clientAppUrl` field;
-  the host `/connections` page shows an "Install OpenPalm app" button once a
-  browser-side reachability probe confirms the sibling static client is
-  actually being served. `detectClientDisplayMode()` (electron /
-  standalone-pwa / browser) is now stamped on `<html data-display-mode>` and
-  drives a browser-only "install as an app" hint on the client's
-  `/connections` page. A new Playwright suite
-  (`packages/client/e2e/offline-shell.pw.ts`) targets the offline app shell
-  and saved IndexedDB connections after terminating both its isolated origin
-  server and stub assistant. Workbox now explicitly precaches `/index.html`:
-  adapter-static writes that fallback after the PWA plugin's output scan, so
-  relying on the glob alone left offline navigation without its registered
-  fallback. Both offline browser tests now run in CI without skips.
-  Hosted-origin CI deploy to `app.openpalm.dev` (and the matching guardian
-  CORS default) remains explicitly deferred pending a hosting provider —
-  everything else is origin-agnostic and unblocked by that.
-  `docs/managing-openpalm.md` documents the pairing-UI flow as the primary
-  remote-client provisioning path, with the manual `curl` mint kept as the
-  advanced/headless alternative.
+  The mint warns when the stack's guardian direct ingress
+  (`GUARDIAN_DIRECT_INGRESS`) is not enabled, since the paired connection
+  would otherwise 404. The `/connections` add form parses that code — a paste
+  field, or a `#pair=` URL-fragment deep link (carried in the fragment, so the
+  durable credential never reaches the request path — no access logs, reverse
+  proxies, or `Referer` headers — and stripped from history on consumption) —
+  to prefill itself; the credential then flows through the browser's
+  encrypted (WebCrypto AES-GCM) secret store. `detectClientDisplayMode()`
+  (electron / standalone-pwa / browser) feeds capability resolution so a
+  served build can never claim host capabilities. Hosted-origin CI deploy to
+  `app.openpalm.dev` (and the matching guardian CORS default) remains
+  explicitly deferred pending a hosting provider — everything else is
+  origin-agnostic and unblocked by that.
 - **Network access presets: bundle binding + auth + mDNS into one wizard
   choice** (#563). A single "Network access" step in the setup wizard (and
   the equivalent `network` block in a headless `SetupSpec`) replaces
@@ -63,24 +49,14 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   up the preset's password automatically when auth is on. Security defaults
   are unchanged — every knob stays off/loopback unless an operator picks a
   non-default preset.
-- **Remote-only (client) install completion** (#486). `openpalm app` now
-  tolerates a machine with no local stack: it serves the pwa-static host UI
-  plus the localhost `@openpalm/client` connection manager and lands on
+- **Stack-less (remote-only) operation** (#486). `openpalm app` now tolerates
+  a machine with no local stack: it serves the UI and lands on
   `/connections/new` instead of throwing an install-required error (bare
-  `openpalm ui serve` still requires an install). The `openpalm-client-api`
-  (guardian `/oc`) connection kind is now wired end to end: both connection
-  forms (client app and host UI) offer a Kind selector, guardian URLs are
-  normalized to end in `/oc` on save, health checks probe the allowlisted
-  `GET /session` route instead of the guardian's un-allowlisted root (so a
-  healthy guardian no longer misreports `unreachable HTTP 404`), and a 404
-  from a guardian-kind connection now names `GUARDIAN_DIRECT_INGRESS` in its
-  remediation copy. `docs/managing-openpalm.md` documents the manual
-  remote-client provisioning flow (enable `GUARDIAN_DIRECT_INGRESS`, add the
-  client origin to `GUARDIAN_CORS_ALLOWED_ORIGINS`, mint a `direct` principal
-  via the guardian admin listener). A new end-to-end suite
-  (`packages/client/tests/remote-attach.e2e.test.ts`) drives a real spawned
-  guardian with the real client transport to verify the full remote-attach
-  path.
+  `openpalm ui serve` still requires an install). The connection list is
+  browser-owned, so a session with no local assistant can add a remote
+  OpenCode/guardian endpoint and chat against it directly — a connection is
+  just `{ id, label, baseUrl, auth }`, with no server-side connection store
+  and no connection "kinds".
 - **Standalone OpenCode-compatible portal packages** (#491). `@openpalm/discord-portal`
   and `@openpalm/slack-portal` are now runnable standalone with Bun
   (`bunx @openpalm/discord-portal` / `@openpalm/slack-portal`) against any
@@ -127,20 +103,6 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   container/image is unchanged by this work. OpenCode's native in-container
   mDNS responder (`server.mdns`/`server.mdnsDomain` in the assistant/guardian
   `opencode.jsonc`) remains as a manual/advanced fallback.
-- **New `@openpalm/client` npm package** — the unprivileged chat/connections
-  static app extracted from the admin UI (host/client split, #555). It joins the
-  platform release exactly like `@openpalm/ui`: published by `platform`/`all`
-  releases, always exact-pinned to the platform version. The assistant container
-  installs it at startup as a co-process next to OpenCode (#510), pinned via
-  **`OP_CLIENT_VERSION`** in `stack.env` (empty = the image's `PLATFORM_VERSION`;
-  never `latest` — the same contract as `OP_UI_VERSION` for the host UI), and
-  serves it on **`OP_CLIENT_PORT`** (default host bind `127.0.0.1:3810`, behind
-  the existing `OP_CLIENT_BIND_ADDRESS`/`OP_BIND_ADDRESS` loopback policy).
-  `docker restart` with a new `OP_CLIENT_VERSION` picks up the new client. CI now
-  enforces a client-bundle purity gate: the built artifact must contain no
-  `@openpalm/lib` and no host control-plane (`/api/host`) code. The shared
-  `@openpalm/ui-kit` workspace package is inlined at build time and is never
-  published.
 - The guardian thin-host entrypoint can now install and boot a configurable
   guardian composition package via `OP_GUARDIAN_PACKAGE` (default
   `@openpalm/guardian`) with an overridable boot entry `OP_GUARDIAN_ENTRY`
@@ -229,6 +191,13 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   reconcile consolidation). Also deleted the unused client-side
   `packages/ui/src/lib/version-compare.ts` duplicate; the one server route that
   needed semver comparison now imports `compareComparableVersions` from the lib.
+- Further dead exports pruned from the published `@openpalm/lib` barrel:
+  `syncAutomations` (host cron sync was replaced by the container's
+  `akm tasks sync` loop), `hostIdentityMatches`, and `formatForDisplay` (a
+  byte-for-byte alias of the still-exported `normalizeVersion`). The unused
+  guardian tunable `GUARDIAN_SESSION_TTL_MS` (config `SESSION_TTL_MS`) is also
+  retired — session/permission ownership is SQLite row-count evicted
+  (`GUARDIAN_OWNERSHIP_MAX_ROWS`), not TTL-cached.
 
 ### Fixed
 

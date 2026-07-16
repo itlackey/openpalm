@@ -1,7 +1,6 @@
 /**
  * Phase 4 hygiene — every /api/host/* endpoint carries a server-side
- * requireCapability() guard (plan ui-runtime-modes-plan.md Phase 4 step 3,
- * §8.5: "APIs enforce capabilities server-side").
+ * requireCapability() guard ("APIs enforce capabilities server-side").
  *
  * Source-level test, like features-admin-hygiene.vitest.ts: the invariant is
  * that no privileged host endpoint can ever ship without the capability
@@ -18,7 +17,7 @@
  * Partition constraints pinned alongside (GREEN today, must stay green):
  *  - Session lifecycle (auth login/logout/session) must NOT live under
  *    /api/host — login must stay reachable in every mode (a capability guard
- *    on login would lock assistant-container out of its own assistant
+ *    on login would lock non-admin out of its own assistant
  *    settings). Its new home is pinned by lib/api/admin-paths-hygiene.
  *  - Connections stay at /api/connections (Phase 2 EXCEPT-clause) — no
  *    /api/host/endpoints resurrection.
@@ -41,7 +40,7 @@ function serverRouteFiles(root: string): string[] {
     .map((rel) => join(root, rel));
 }
 
-describe('every /api/host/**/+server.ts calls requireCapability (plan Phase 4 step 3, §8.5)', () => {
+describe('every /api/host/**/+server.ts calls requireCapability', () => {
   test('the privileged /admin API surface moved under /api/host (>= 20 endpoints)', () => {
     // Guards the walker against vacuous passes: while routes/api/host is
     // missing or near-empty, the per-file assertion below proves nothing.
@@ -63,14 +62,19 @@ describe('every /api/host/**/+server.ts calls requireCapability (plan Phase 4 st
   });
 
   test('CONSTRAINT (green today): session lifecycle endpoints are not under /api/host', () => {
-    // requireCapability on login would 403 assistant-container before it
+    // requireCapability on login would 403 non-admin before it
     // could ever authenticate for /api/assistant/* — auth lives outside the
     // capability-guarded namespaces.
     expect(existsSync(join(API_HOST_DIR, 'auth'))).toBe(false);
   });
 
-  test('CONSTRAINT (green today): connections stay at /api/connections (Phase 2 EXCEPT clause)', () => {
+  test('CONSTRAINT (green today): the host connection STORE is gone; only the pairing MINT route stays', () => {
+    // Phase 3b ("One UI, delete the split"): the browser owns connections, so
+    // the host connection-store CRUD (`/api/connections` list/create/[id]/active)
+    // and its host-admin namespace are deleted. Only the host-minted device
+    // pairing route survives under /api/connections.
     expect(existsSync(join(API_HOST_DIR, 'endpoints'))).toBe(false);
-    expect(existsSync(join(ROUTES_DIR, 'api', 'connections', '+server.ts'))).toBe(true);
+    expect(existsSync(join(ROUTES_DIR, 'api', 'connections', '+server.ts'))).toBe(false);
+    expect(existsSync(join(ROUTES_DIR, 'api', 'connections', 'pairing', '+server.ts'))).toBe(true);
   });
 });

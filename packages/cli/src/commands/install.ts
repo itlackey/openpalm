@@ -7,7 +7,8 @@ import { promptYesNo } from '../lib/prompt.ts';
 import { resolveLatestReleaseTag } from '../lib/github.ts';
 import { DEFAULT_UI_PORT } from '../lib/ports.ts';
 import { resolveOpenPalmHome, resolveConfigDir } from '@openpalm/lib';
-import { ensureDirectoryTree, applyHomeSeed, seedUiBuild, seedClientBuild, uiUpdateChannel } from '../lib/io.ts';
+import { ensureDirectoryTree } from '../lib/io.ts';
+import { applyHomeSeed, seedUiBuild, uiUpdateChannel } from '@openpalm/lib';
 import {
   backupOpenPalmHome,
   pruneBackupDirs,
@@ -282,16 +283,6 @@ export async function prepareInstallFiles(
   } catch (err) {
     logger.warn('UI build not seeded; it will be installed on first `ui serve`/update', { error: String(err) });
   }
-  // Install the client app build to data/client/ ({build,bin}) the SAME way
-  // (C3): before this, the client artifact was only ever fetched lazily at
-  // `openpalm ui serve` time, so an air-gapped/offline install never got one
-  // at all. NON-FATAL for the same reason as the UI build above.
-  try {
-    await seedClientBuild(uiUpdateChannel(version), dataDir);
-  } catch (err) {
-    logger.warn('Client build not seeded; it will be installed on first `ui serve`/update', { error: String(err) });
-  }
-
   console.log('Configuring secrets...');
   const bootstrapState = createState();
   initializeStateSecrets(bootstrapState);
@@ -361,8 +352,6 @@ async function runFileInstall(filePath: string, noStart: boolean, explicitImageT
       'OP_PROJECT_NAME',
       'OP_ASSISTANT_PORT',
       'OP_HOST_UI_PORT',
-      'OP_HOST_CLIENT_PORT',
-      'OP_CLIENT_PORT',
     ].flatMap((key) => {
       const value = process.env[key]?.trim();
       return value ? [[key, value]] : [];

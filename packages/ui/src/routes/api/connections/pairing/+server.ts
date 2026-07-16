@@ -4,9 +4,9 @@
  *
  * Minting writes a `direct` principal into the LOCAL stack's guardian — a
  * host-stack mutation, not a connections-list mutation — so this is guarded
- * by `host:stack:write` (D6), NOT `connections:manage`: `pwa-static` mode
- * advertises `connections:manage` (stack-less `openpalm app`) but has no
- * local guardian to mint against, and this endpoint must not exist there.
+ * by `host:stack:write` (D6), NOT `connections:manage`: a non-admin (served
+ * / PWA) build advertises `connections:manage` but has no local guardian to
+ * mint against, and this endpoint must not exist there.
  * Double-guarded like sibling `/api/connections` writes: the capability
  * check above PLUS the admin session + origin check inside `withAdminBody`.
  *
@@ -25,7 +25,7 @@ import {
   requireCapability,
   withAdminBody,
 } from '$lib/server/helpers.js';
-import { validateConnectionUrl } from '$lib/server/endpoints.js';
+import { validateConnectionUrl } from '$lib/server/opencode-target.js';
 import { getState } from '$lib/server/state.js';
 
 /** Max device-label length (PR #564 r3566891768). Keeps the pairing code well

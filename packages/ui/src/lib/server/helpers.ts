@@ -3,7 +3,7 @@
  */
 import type { RequestEvent } from "@sveltejs/kit";
 import { timingSafeEqual, createHash } from "node:crypto";
-import { getActiveEndpoint } from "./endpoints.js";
+import { getHostOpencodeTarget } from "./opencode-target.js";
 import { createOpenCodeClient, isRemoteSetupAllowed } from "@openpalm/lib";
 import { validateSession, getUiLoginPassword } from "./session-store.js";
 import { computeServerRuntimeContext } from "./features.js";
@@ -17,7 +17,7 @@ import type { Capability, ServerRuntimeContext } from "$lib/types.js";
 let _openCodeClient: ReturnType<typeof createOpenCodeClient> | undefined;
 let _openCodeClientUrl: string | undefined;
 export function getOpenCodeClient(): ReturnType<typeof createOpenCodeClient> {
-  const { url } = getActiveEndpoint();
+  const { url } = getHostOpencodeTarget();
   if (!_openCodeClient || url !== _openCodeClientUrl) {
     _openCodeClient = createOpenCodeClient({ baseUrl: url });
     _openCodeClientUrl = url;
@@ -78,7 +78,7 @@ export { getUiLoginPassword };
  *
  * Phase 2 of the auth/proxy refactor (docs/technical/auth-and-proxy-refactor-plan.md)
  * removed the legacy `x-admin-token` / `Authorization: Bearer` header fallbacks.
- * The cookie is HttpOnly + SameSite=Strict and is the ONLY credential the browser
+ * The cookie is HttpOnly + SameSite=Lax and is the ONLY credential the browser
  * holds; XSS cannot read it and out-of-process callers must obtain a session via
  * `POST /api/auth/login` (or `/session`) and present the cookie on subsequent
  * requests.
@@ -116,16 +116,15 @@ export function requireAdmin(event: RequestEvent, requestId: string): Response |
 }
 
 /**
- * Server-side capability guard (plan ui-runtime-modes-plan.md §6.4, §8.5).
+ * Server-side capability guard.
  *
- * Returns a 403 JSON error Response when the resolved host mode does not
- * expose `capability`, or null when it does. This is the SECURITY boundary —
- * the browser-side `hasCapability()` is UX only. The check is deliberately
- * capability-based, not session-based: a valid admin session in a mode
- * without the capability (e.g. `connections:manage` in assistant-container)
- * is still refused. Capability→mode logic itself lives ONLY in
- * computeServerRuntimeContext / resolveCapabilities (plan §8.6); this helper
- * just reads the advertised server capability set.
+ * Returns a 403 JSON error Response when this process does not expose
+ * `capability`, or null when it does. This is the SECURITY boundary — the
+ * browser-side `hasCapability()` is UX only. The check is deliberately
+ * capability-based, not session-based: a valid admin session in a non-admin
+ * process (host:* absent) is still refused. Capability computation itself
+ * lives ONLY in computeServerRuntimeContext / resolveCapabilities;
+ * this helper just reads the advertised server capability set.
  */
 export function requireCapability(
   event: RequestEvent,
@@ -137,8 +136,8 @@ export function requireCapability(
     return errorResponse(
       403,
       "capability_not_available",
-      `This deployment (${ctx.hostMode}) does not provide the '${capability}' capability.`,
-      { capability, hostMode: ctx.hostMode },
+      `This deployment (admin=${ctx.admin}) does not provide the '${capability}' capability.`,
+      { capability, admin: ctx.admin },
       requestId,
     );
   }
@@ -308,12 +307,6 @@ export function checkOriginHeader(request: Request, csrfMode: CsrfMode = 'loopba
         break;
       }
       case 'same-site':
-        if (isSameSite(request, u)) return null;
-        break;
-      case 'bearer-token':
-        // In bearer-mode, allow requests carrying explicit auth headers
-        // in addition to same-site traffic.
-        if (request.headers.get('authorization')) return null;
         if (isSameSite(request, u)) return null;
         break;
     }

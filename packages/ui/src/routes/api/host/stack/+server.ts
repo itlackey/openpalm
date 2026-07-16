@@ -1,6 +1,5 @@
 /**
- * GET/PUT /api/host/stack — host stack settings (plan ui-runtime-modes-plan.md
- * Phase 4 step 2, §5.F, §6.4).
+ * GET/PUT /api/host/stack — host stack settings.
  *
  * The HOST-SCOPED half of the old /admin/assistant endpoint: compose project
  * name (OP_PROJECT_NAME) and assistant bind address (OP_ASSISTANT_BIND_ADDRESS,
@@ -8,8 +7,8 @@
  * /api/assistant/persona — it is deliberately absent from this payload.
  *
  * Guarded by the host:stack capabilities in addition to requireAdmin (plan
- * §8.5): a valid admin session in a mode without host:* (assistant-container,
- * pwa-static) is still refused with 403.
+ * §8.5): a valid admin session in a non-admin process (host:* absent) is
+ * still refused with 403.
  */
 import type { RequestHandler } from './$types';
 import {

@@ -4,13 +4,13 @@ import { startUIServer, type UIServerOptions } from '../lib/ui-server.ts';
 export async function runAppCommand(
   start = (options: UIServerOptions) => startUIServer(options),
 ): Promise<void> {
-  await start({ openTarget: 'client' });
+  await start({ allowUninstalled: true });
 }
 
 export default defineCommand({
   meta: {
     name: 'app',
-    description: 'Open the localhost OpenPalm app at the stable loopback client origin',
+    description: 'Open the full OpenPalm app',
   },
   async run() {
     await runAppCommand();

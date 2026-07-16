@@ -48,8 +48,8 @@ function makeEvent(method: string, body?: unknown, token = 'admin-token'): Param
 
 beforeEach(() => {
   // Phase 4: /api/host + /api/assistant endpoints are capability-guarded;
-  // run this suite as a host-capable mode.
-  process.env.OP_UI_HOST_MODE = 'host-ui';
+  // assistant-settings is a base capability, present in every process.
+  process.env.OP_ENABLE_ADMIN = '1';
   rootDir = makeTempDir();
   originalHome = process.env.OP_HOME;
   process.env.OP_HOME = rootDir;
@@ -57,7 +57,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  delete process.env.OP_UI_HOST_MODE;
+  delete process.env.OP_ENABLE_ADMIN;
   process.env.OP_HOME = originalHome;
   rmSync(rootDir, { recursive: true, force: true });
   vi.clearAllMocks();

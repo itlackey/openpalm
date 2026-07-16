@@ -1,18 +1,9 @@
 /**
  * Shared modal focus-trap primitives (WCAG 2.4.3 / APG dialog pattern).
  *
- * Promoted from packages/ui's `$lib/actions/focus-trap.js` into ui-kit itself
- * (review 2026-07-10 §G3): Drawer.svelte previously imported the primitives
- * via `$lib/actions/focus-trap.js`, an app-provided contract resolved by
- * whichever app's Vite/SvelteKit pipeline compiles the raw ui-kit source
- * against ITS OWN `src/lib`. packages/ui ships that file; packages/client
- * does not, so the kit's only accessible-dialog primitive (Drawer) was
- * structurally unusable from the client — this also blocked the B14
- * small-screen sessions drawer. This module is the real, kit-internal
- * implementation; Drawer.svelte (and any future kit dialog) imports it by
- * relative path, and it is additionally re-exported to consuming apps via the
- * `./actions/*` package.json subpath for direct use (e.g. a client-owned
- * dialog that isn't built on Drawer).
+ * A REAL kit-internal module — NOT an app-provided `$lib` contract. Drawer.svelte
+ * and any future kit dialog import it by relative path, and it is re-exported to
+ * consuming apps via the `./actions/*` package.json subpath for direct use.
  *
  * Use `createFocusTrap` as a Svelte attachment on the dialog panel and
  * `handleTrapKeydown` as its `onkeydown` handler.

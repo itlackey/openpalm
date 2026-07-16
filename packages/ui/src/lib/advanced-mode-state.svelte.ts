@@ -21,10 +21,6 @@ class AdvancedModeService {
     return next;
   }
 
-  preferredChatPath(): '/chat' | '/advanced' {
-    return this.enabled ? '/advanced' : '/chat';
-  }
-
   #readStoredPreference(): boolean {
     if (typeof window === 'undefined') return false;
     try {

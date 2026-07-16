@@ -19,8 +19,8 @@ import { SESSION_COOKIE_NAME } from '$lib/server/session-cookie.js';
 // (a reachable assistant on :3800 used to flip the not_installed case to /chat).
 // Everything else from these modules stays real (secret/config
 // startup, the pure routing derivations).
-vi.mock('$lib/server/endpoints.js', async (orig) => ({
-  ...(await orig<typeof import('$lib/server/endpoints.js')>()),
+vi.mock('$lib/server/opencode-target.js', async (orig) => ({
+  ...(await orig<typeof import('$lib/server/opencode-target.js')>()),
   listRemoteStatuses: vi.fn(async () => []),
 }));
 vi.mock('@openpalm/lib', async (orig) => ({
@@ -30,7 +30,7 @@ vi.mock('@openpalm/lib', async (orig) => ({
 }));
 
 import { handle, _resetLaunchCache } from './hooks.server.js';
-import { listRemoteStatuses } from '$lib/server/endpoints.js';
+import { listRemoteStatuses } from '$lib/server/opencode-target.js';
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -119,7 +119,7 @@ describe('hooks.server — sliding renewal', () => {
     expect(setCookie).not.toContain(`${SESSION_COOKIE_NAME}=`);
   });
 
-  test('first-run document navigation routes to /setup (resolveLanding, plan §6.5)', async () => {
+  test('first-run document navigation routes to /setup (resolveLanding)', async () => {
     // Pre-Phase-3 this pinned '/' → /splash; the Phase 3 landing matrix sends
     // not_installed straight to /setup (same scenario is also pinned in
     // hooks.server.landing.vitest.ts).
@@ -146,15 +146,5 @@ describe('hooks.server — sliding renewal', () => {
 
     const event = makeEvent('/', null, 'text/html');
     await expect(handle({ event, resolve })).rejects.toMatchObject({ location: '/chat' });
-  });
-
-  test('proxy data requests are NOT launch-redirected (chat SSE/session must reach the route)', async () => {
-    // Regression: the launch-routing guard must exempt /proxy/* like /api/ and
-    // /admin/. Otherwise the chat's /proxy/assistant/event SSE (and session POST)
-    // get 302'd to an HTML page, the EventSource can't parse it, and it enters a
-    // reconnect loop ("Failed to start session: Unexpected token '<', <!doctype").
-    const event = makeEvent('/proxy/assistant/event', null, 'text/event-stream');
-    const response = await handle({ event, resolve });
-    expect(response.status).toBe(200); // reached the route, not redirected to HTML
   });
 });

@@ -3,7 +3,6 @@ import {
   PLATFORM_VERSION,
   performUpgrade,
   checkAndUpdateUiBuild,
-  checkAndUpdateClientBuild,
 } from '@openpalm/lib';
 import { ensureValidState } from '../lib/cli-state.ts';
 import { defineAction } from '../lib/action.ts';
@@ -43,19 +42,6 @@ export async function runUpgradeAction(): Promise<void> {
     console.warn(`Warning: UI build update skipped — ${uiResult.error}. Existing build still active.`);
   } else {
     console.log(`UI build is current (v${uiResult.latestVersion}).`);
-  }
-
-  // C3: `openpalm update` previously left the client artifact stale — it was
-  // only ever refreshed lazily at `openpalm ui serve` time. Refresh it the
-  // same way (and on the same reference version) as the UI build above.
-  console.log('Checking for client app update...');
-  const clientResult = await checkAndUpdateClientBuild(PLATFORM_VERSION, state.dataDir);
-  if (clientResult.updated) {
-    console.log(`Client app updated to v${clientResult.latestVersion}.`);
-  } else if (clientResult.error) {
-    console.warn(`Warning: client app update skipped — ${clientResult.error}. Existing build still active.`);
-  } else {
-    console.log(`Client app is current (v${clientResult.latestVersion}).`);
   }
 
   console.log('Update complete.');

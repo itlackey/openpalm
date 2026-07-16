@@ -11,7 +11,8 @@
  * Contract under test (spec §2 T3, §3 packages/ui):
  *  - Capability guard is `host:stack:write` (D6), NOT `connections:manage` —
  *    minting writes a principal into the LOCAL stack's guardian, a
- *    host-stack mutation only electron-host/host-ui expose.
+ *    host-stack mutation only an admin-capable process (Electron / `openpalm
+ *    admin`) exposes.
  *  - Double guard: capability check (403) + admin session/origin via
  *    withAdminBody (401), same as sibling /api/connections writes.
  *  - Delegates minting to @openpalm/lib's mintDirectPrincipalPairingCode —
@@ -108,7 +109,7 @@ function stubGuardianAdmin(status: number, body: unknown = { principal: { id: 'd
 
 const originalFetch = globalThis.fetch;
 
-const ENV_KEYS = ['OP_UI_HOST_MODE', 'OP_INSIDE_ELECTRON', 'OP_ENABLE_ADMIN', 'OP_HOME'] as const;
+const ENV_KEYS = ['OP_INSIDE_ELECTRON', 'OP_ENABLE_ADMIN', 'OP_HOME'] as const;
 let savedEnv: Record<string, string | undefined> = {};
 
 beforeEach(() => {
@@ -118,7 +119,7 @@ beforeEach(() => {
     delete process.env[key];
   }
   process.env.OP_HOME = makeTempHome();
-  process.env.OP_UI_HOST_MODE = 'host-ui';
+  process.env.OP_ENABLE_ADMIN = '1';
   resetState('admin-token');
 });
 
@@ -167,8 +168,8 @@ describe('POST /api/connections/pairing — mint (#511 D3/D4)', () => {
     expect(sentBody.kind).toBe('direct');
   });
 
-  test('403 in a mode without host:stack:write (pwa-static)', async () => {
-    process.env.OP_UI_HOST_MODE = 'pwa-static';
+  test('403 in a non-admin process without host:stack:write', async () => {
+    delete process.env.OP_ENABLE_ADMIN;
     writeSecret(getState().homeDir, 'op_guardian_admin_token', 'f'.repeat(48));
 
     const { POST } = await loadRoute();

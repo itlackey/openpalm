@@ -50,7 +50,7 @@ export async function isAssistantHealthy(): Promise<boolean> {
  *
  * The UI server runs in the foreground until SIGINT/SIGTERM. This is
  * the canonical way to "run OpenPalm". `openpalm admin` serves the same
- * UI with the host admin capability enabled (host-ui mode, loopback-only).
+ * UI with the host admin capability enabled (loopback-only).
  */
 async function autoRun(opts: BareRunOpts = {}): Promise<void> {
   const isInstalled = classifyLocalInstall(resolveStackDir(), resolveOpenPalmHome()) !== 'not_installed';
@@ -112,7 +112,6 @@ const subCommands = {
   automations: () => import('./commands/automations.ts').then((m) => m.default),
   unlock: () => import('./commands/unlock.ts').then((m) => m.default),
   ui: () => import('./commands/ui.ts').then((m) => m.default),
-  'client-serve': () => import('./commands/client-serve.ts').then((m) => m.default),
 };
 
 export const mainCommand = defineCommand({

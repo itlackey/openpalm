@@ -1,6 +1,5 @@
 /**
- * GET /api/runtime — public runtime-context endpoint (plan
- * ui-runtime-modes-plan.md §6.4, issue #509).
+ * GET /api/runtime — public runtime-context endpoint (issue #509).
  *
  * PUBLIC by design: no auth is consulted. The body is the ServerRuntimeContext
  * whose `version` field is the contract-version handshake remote/hosted

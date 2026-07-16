@@ -17,7 +17,7 @@ Distribution core:
 
 Independent versioning + publishing:
 - **`release-package-groups.json`**: `packages/ui/package.json` removed from `platformManifests` and `packages/ui` added to `independentNpmPackages`. So `bump-platform.sh` no longer touches the UI version and the CI "platform version sync" check no longer requires it to match root — the UI version **floats**.
-- **`.github/workflows/platform-release.yml`** is now the single trusted-publisher entry point. The UI is published through its `ui` unit rather than a standalone `publish-ui.yml` workflow.
+- **`.github/workflows/release.yml`** is now the single trusted-publisher entry point. The UI is published through its `ui` unit rather than a standalone `publish-ui.yml` workflow.
 - The platform release workflow still builds the UI for the Electron bundle and other host artifacts as needed.
 - **The updater now compares against the on-disk UI stamp, not the app version.** Because the UI floats, `checkAndUpdateUiBuild(appVersion, …)` uses `appVersion` only to pick the dist-tag CHANNEL, then compares the newest UI on that channel against `readUiBuildVersion(resolveUiBuildDir())` — the version actually running. The first-seed callers (electron fallback, CLI install) seed by `uiUpdateChannel(version)` (`latest`/`next`) instead of the platform version, which is no longer a valid `@openpalm/ui` version.
 
@@ -54,7 +54,7 @@ We do **not** need to invent this. The repo already has the core mechanisms need
 
 - `bump-platform.sh` excludes `packages/ui` from the coordinated platform manifest bump set.
 - Portal adapters are baked into `containers/portal`, while the OpenAI-compatible API runs from `containers/guardian`.
-- `platform-release.yml` already publishes npm artifacts with `--provenance` and prerelease-aware dist-tags.
+- `release.yml` already publishes npm artifacts with `--provenance` and prerelease-aware dist-tags.
 
 So `@openpalm/ui` would be a **fourth instance of an existing, proven job** — not new infrastructure. Consistency with the adapter model is itself a strong argument: one mental model ("runtime-swappable components are dist-tagged npm packages") instead of two.
 

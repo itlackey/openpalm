@@ -2,6 +2,7 @@ import { Database } from 'bun:sqlite';
 import { createHash } from 'node:crypto';
 import { chmodSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
+import { clampPositiveInt } from './config.ts';
 
 export type PrincipalKind = 'portal' | 'direct';
 
@@ -70,9 +71,36 @@ function migrateKindConstraintIfNeeded(database: Database): void {
   `);
 }
 
+/**
+ * Migration v1 → v2: add the /oc proxy's session + permission ownership tables.
+ *
+ * Ownership (which principal owns a session / a permission-or-question request)
+ * used to live in in-memory module Maps and was LOST on every guardian restart —
+ * orphaning live conversations (every follow-up call 403'd forbidden_session).
+ * Persisting it here means a restarted guardian still recognises the sessions and
+ * pending permission requests its principals own. Idempotent CREATE IF NOT EXISTS
+ * so a fresh DB and an existing v1 DB converge on the same schema.
+ */
+function createOwnershipTables(database: Database): void {
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS session_owners (
+      session_id TEXT PRIMARY KEY,
+      principal_key TEXT NOT NULL,
+      created_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS session_owners_principal ON session_owners(principal_key);
+    CREATE TABLE IF NOT EXISTS permission_owners (
+      request_id TEXT PRIMARY KEY,
+      principal_key TEXT NOT NULL,
+      created_at INTEGER NOT NULL
+    );
+  `);
+}
+
 // Ordered migrations: MIGRATIONS[n] takes user_version n → n+1.
 const MIGRATIONS: ReadonlyArray<(database: Database) => void> = [
   migrateKindConstraintIfNeeded, // v0 → v1
+  createOwnershipTables, // v1 → v2
 ];
 
 /**
@@ -81,7 +109,7 @@ const MIGRATIONS: ReadonlyArray<(database: Database) => void> = [
  * cert_fingerprint are added by ALTER TABLE under a new user_version step
  * ONLY when their consumer ships — never speculatively.
  */
-export const STATE_DB_SCHEMA_VERSION = 1;
+export const STATE_DB_SCHEMA_VERSION = 2;
 
 function readUserVersion(database: Database): number {
   return (database.query('PRAGMA user_version').get() as { user_version: number }).user_version;
@@ -124,6 +152,9 @@ export function configureStateDatabase(database: Database): void {
       created_at INTEGER NOT NULL
     );
   `);
+  // Ownership tables share their DDL with the v1 → v2 migration so a fresh DB
+  // and an upgraded one can never drift.
+  createOwnershipTables(database);
 
   // 0600 discipline: DB file + any WAL sidecars that already exist. Sidecars
   // SQLite creates later inherit the DB file's mode (unix VFS derives
@@ -212,4 +243,100 @@ export function seedPortalPrincipalsFromEnv(): PrincipalRecord[] {
     seeded.push(upsertPrincipal({ id, kind: 'portal', label: id, token }));
   }
   return seeded;
+}
+
+// ── /oc proxy ownership (session + permission), persisted so a guardian restart
+// does not orphan the sessions/permission requests its principals own. ──────────
+//
+// Bounded oldest-first (created_at) so authenticated input cannot grow the DB
+// without limit — the same size-cap discipline the previous in-memory Maps used.
+/**
+ * Clamp a GUARDIAN_OWNERSHIP_MAX_ROWS override to a usable positive integer.
+ * A non-numeric override yields NaN, which binds to SQLite as NULL and turns
+ * the eviction `LIMIT MAX(0, count - ?)` into `LIMIT NULL` (unbounded) —
+ * deleting the ENTIRE ownership table on the next insert; a fractional value
+ * in (0, 1) flooring to 0 would wipe it the same way. Delegates to config's
+ * shared clampPositiveInt (floor-first, >= 1). Exported for tests.
+ */
+export function _clampOwnershipMaxRows(raw: string | undefined): number {
+  return clampPositiveInt(raw, 10_000);
+}
+
+const OWNERSHIP_MAX_ROWS = _clampOwnershipMaxRows(Bun.env.GUARDIAN_OWNERSHIP_MAX_ROWS);
+
+// `table` is a compile-time constant (never user input) so the interpolation
+// below cannot be injected — this is the one safe use of a table name in SQL text.
+function evictOldest(database: Database, table: 'session_owners' | 'permission_owners', keyCol: string): void {
+  database
+    .query(
+      `DELETE FROM ${table} WHERE ${keyCol} IN (
+         SELECT ${keyCol} FROM ${table}
+         ORDER BY created_at ASC, ${keyCol} ASC
+         LIMIT MAX(0, (SELECT COUNT(*) FROM ${table}) - ?))`,
+    )
+    .run(OWNERSHIP_MAX_ROWS);
+}
+
+export function recordSessionOwnerRow(sessionId: string, principalKey: string, createdAt: number): void {
+  const database = openDatabase();
+  database
+    .query(
+      `INSERT INTO session_owners (session_id, principal_key, created_at)
+       VALUES (?, ?, ?)
+       ON CONFLICT(session_id) DO UPDATE SET principal_key = excluded.principal_key`,
+    )
+    .run(sessionId, principalKey, createdAt);
+  evictOldest(database, 'session_owners', 'session_id');
+}
+
+export function getSessionOwnerKey(sessionId: string): string | null {
+  const row = openDatabase()
+    .query('SELECT principal_key FROM session_owners WHERE session_id = ?')
+    .get(sessionId) as { principal_key?: unknown } | null;
+  return row && typeof row.principal_key === 'string' ? row.principal_key : null;
+}
+
+export function deleteSessionOwnerRow(sessionId: string): void {
+  openDatabase().query('DELETE FROM session_owners WHERE session_id = ?').run(sessionId);
+}
+
+export function listOwnedSessionIds(principalKey: string): string[] {
+  const rows = openDatabase()
+    .query('SELECT session_id FROM session_owners WHERE principal_key = ?')
+    .all(principalKey) as { session_id: string }[];
+  return rows.map((row) => row.session_id);
+}
+
+export function countSessionOwners(): number {
+  return (openDatabase().query('SELECT COUNT(*) AS n FROM session_owners').get() as { n: number }).n;
+}
+
+export function recordPermissionOwnerRow(requestId: string, principalKey: string, createdAt: number): void {
+  const database = openDatabase();
+  database
+    .query(
+      `INSERT INTO permission_owners (request_id, principal_key, created_at)
+       VALUES (?, ?, ?)
+       ON CONFLICT(request_id) DO UPDATE SET principal_key = excluded.principal_key`,
+    )
+    .run(requestId, principalKey, createdAt);
+  evictOldest(database, 'permission_owners', 'request_id');
+}
+
+export function getPermissionOwnerKey(requestId: string): string | null {
+  const row = openDatabase()
+    .query('SELECT principal_key FROM permission_owners WHERE request_id = ?')
+    .get(requestId) as { principal_key?: unknown } | null;
+  return row && typeof row.principal_key === 'string' ? row.principal_key : null;
+}
+
+export function countPermissionOwners(): number {
+  return (openDatabase().query('SELECT COUNT(*) AS n FROM permission_owners').get() as { n: number }).n;
+}
+
+/** Test-only: clear both ownership tables between cases. */
+export function clearOwnershipTables(): void {
+  const database = openDatabase();
+  database.query('DELETE FROM session_owners').run();
+  database.query('DELETE FROM permission_owners').run();
 }

@@ -9,7 +9,7 @@
   //
   // The store operations are injected as props (rather than imported from the
   // app's API client) so this component stays presentational — ui-kit source
-  // must not depend on $lib/api (plan ui-runtime-modes-plan.md §6.11).
+  // must not depend on $lib/api.
   interface Props {
     /** Selected secret NAME (bindable). */
     value?: string;

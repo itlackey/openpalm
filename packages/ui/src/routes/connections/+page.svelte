@@ -1,39 +1,38 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { page } from '$app/state';
+  import { replaceState } from '$app/navigation';
   import ChatNavbar from '$lib/components/chrome/ChatNavbar.svelte';
   import IconLock from '@openpalm/ui-kit/components/icons/IconLock.svelte';
-  import { endpointsService as connectionsService } from '$lib/endpoints-state.svelte.js';
   import {
-    createConnection,
-    updateConnection,
-    deleteConnection,
-    mintPairingCode,
-    type AssistantConnection,
-  } from '$lib/api.js';
-  import type { ConnectionKind } from '$lib/types.js';
+    endpointsService as connectionsService,
+    type ConnectionView,
+  } from '$lib/endpoints-state.svelte.js';
+  import { mintPairingCode } from '$lib/api.js';
+  import { getConnectionStore, getSecretStore } from '$lib/connections/boot.js';
+  import { newConnectionId } from '$lib/connections/store.js';
+  import { parsePairingCode, type PairingPayload } from '$lib/connections/pairing.js';
   import { hasCapability, runtimeContext } from '$lib/runtime-context.svelte.js';
 
-  // Capability-guarded surface (plan ui-runtime-modes-plan.md Phase 2, #486):
+  // Capability-guarded surface (#486):
   // this page replaces /admin/endpoints and works in every mode that
   // advertises `connections:manage` — the API it talks to enforces the
   // capability server-side; auth is enforced in hooks.server.ts.
-
-  /** Add/edit form kind: 'local-opencode' is reserved for the synthesized
-   *  env-derived default and is never offered here (#486 D2). */
-  type FormKind = Extract<ConnectionKind, 'remote-opencode' | 'openpalm-client-api'>;
 
   // ── Form state ─────────────────────────────────────────────────────────
   let formMode = $state<'idle' | 'add' | 'edit'>('idle');
   let formId = $state<string | null>(null);
   let formLabel = $state('');
   let formUrl = $state('');
-  // #486 D2: connection-kind selector.
-  let formKind = $state<FormKind>('remote-opencode');
+  let formUsername = $state('');
   let formPassword = $state('');
   let formClearPassword = $state(false);
   let formSubmitting = $state(false);
   let formError = $state('');
+  // #511 D3/D4: "Have a pairing code?" paste field, shown at the top of the
+  // add form. Applying a code prefills the same fields a manual entry uses; the
+  // secret then flows through the existing secret-store path below.
+  let pairingPasteCode = $state('');
 
   // ── Per-row state ───────────────────────────────────────────────────────
   let deletingId = $state<string | null>(null);
@@ -66,10 +65,63 @@
 
   onMount(() => {
     void connectionsService.load(true);
-    // The /connections/new landing (plan §6.5, Phase 3) aliases here with
+    // The /connections/new landing aliases here with
     // ?new=1 — open the add form so "no connections yet" starts at the form.
     if (page.url.searchParams.get('new') === '1') openAddForm();
+    consumePairDeepLink();
   });
+
+  /**
+   * #511 D3/D4 · PR #564 P1-7: consume a `#pair=` deep link — parse, open the
+   * add form prefilled, then strip the credential-bearing fragment from
+   * history so the code doesn't linger in the URL bar. The pairing code rides
+   * in the URL FRAGMENT, never the query string: the browser never sends the
+   * fragment to the UI's static host, so the durable credential stays out of
+   * access logs, reverse proxies, and Referer headers.
+   *
+   * Wired to BOTH mount and window `hashchange`: a fragment-only URL change
+   * on a tab already showing /connections is a same-document navigation — no
+   * remount, no load — so without the hashchange hook the code would be
+   * silently ignored AND left sitting in the URL bar/history.
+   */
+  function consumePairDeepLink(): void {
+    const pairCode = new URLSearchParams(window.location.hash.slice(1)).get('pair');
+    if (!pairCode) return;
+    const result = parsePairingCode(pairCode);
+    if (result.ok) {
+      openAddForm();
+      applyPairingPayload(result.payload);
+    } else {
+      openAddForm();
+      formError = result.error;
+    }
+    const url = new URL(window.location.href);
+    url.hash = '';
+    replaceState(url, {});
+  }
+
+  /** Prefill the add form from a decoded pairing payload. The secret then flows
+   *  through the existing secret-store path on submit — the stored connection
+   *  carries only auth.secretRef, never the raw secret. */
+  function applyPairingPayload(payload: PairingPayload): void {
+    formLabel = payload.label ?? formLabel;
+    formUrl = payload.url;
+    formUsername = payload.username;
+    formPassword = payload.secret;
+    pairingPasteCode = '';
+    formError = '';
+  }
+
+  function applyPairingPaste(): void {
+    const code = pairingPasteCode.trim();
+    if (!code) return;
+    const result = parsePairingCode(code);
+    if (!result.ok) {
+      formError = result.error;
+      return;
+    }
+    applyPairingPayload(result.payload);
+  }
 
   function openPairingForm(): void {
     pairingMode = 'form';
@@ -135,20 +187,24 @@
     formId = null;
     formLabel = '';
     formUrl = '';
-    formKind = 'remote-opencode';
+    formUsername = '';
     formPassword = '';
     formClearPassword = false;
+    pairingPasteCode = '';
     formError = '';
   }
 
-  function openEditForm(c: AssistantConnection): void {
+  function openEditForm(c: ConnectionView): void {
     formMode = 'edit';
     formId = c.id;
     formLabel = c.label;
     formUrl = c.url;
-    formKind = c.kind === 'openpalm-client-api' ? 'openpalm-client-api' : 'remote-opencode';
+    // Username is stored inline on the connection's auth; the password lives
+    // encrypted in the secret store and is never re-displayed.
+    formUsername = c.auth.mode === 'basic' ? c.auth.username : '';
     formPassword = '';
     formClearPassword = false;
+    pairingPasteCode = '';
     formError = '';
   }
 
@@ -166,29 +222,40 @@
       formError = 'Label and URL are required.';
       return;
     }
+    const username = formUsername.trim() || 'opencode';
 
     formSubmitting = true;
     formError = '';
     try {
+      const store = getConnectionStore();
+      const secrets = getSecretStore();
       if (formMode === 'add') {
-        await createConnection({
-          label,
-          url,
-          kind: formKind,
-          ...(formPassword ? { password: formPassword } : {}),
-        });
-      } else if (formMode === 'edit' && formId) {
-        const patch: { label: string; url: string; kind: ConnectionKind; password?: string | null } = {
-          label,
-          url,
-          kind: formKind,
-        };
-        if (formClearPassword) {
-          patch.password = null;
-        } else if (formPassword) {
-          patch.password = formPassword;
+        if (formPassword) {
+          // newConnectionId, not bare crypto.randomUUID(): randomUUID is
+          // secure-context-only and would throw on the plain-http LAN tier.
+          const secretRef = newConnectionId();
+          await secrets.set(secretRef, { username, password: formPassword });
+          await store.add({ label, baseUrl: url, auth: { mode: 'basic', username, secretRef } });
+        } else {
+          await store.add({ label, baseUrl: url, auth: { mode: 'none' } });
         }
-        await updateConnection(formId, patch);
+      } else if (formMode === 'edit' && formId) {
+        const existing = await store.get(formId);
+        const currentRef = existing?.auth.mode === 'basic' ? existing.auth.secretRef : null;
+        if (formClearPassword) {
+          if (currentRef) await secrets.delete(currentRef);
+          await store.update(formId, { label, baseUrl: url, auth: { mode: 'none' } });
+        } else if (formPassword) {
+          const secretRef = currentRef ?? newConnectionId();
+          await secrets.set(secretRef, { username, password: formPassword });
+          await store.update(formId, { label, baseUrl: url, auth: { mode: 'basic', username, secretRef } });
+        } else if (currentRef) {
+          // Keep the stored password; the username may still have changed.
+          await secrets.updateUsername(currentRef, username);
+          await store.update(formId, { label, baseUrl: url, auth: { mode: 'basic', username, secretRef: currentRef } });
+        } else {
+          await store.update(formId, { label, baseUrl: url, auth: { mode: 'none' } });
+        }
       }
       await connectionsService.load(true);
       formMode = 'idle';
@@ -208,12 +275,14 @@
     }
   }
 
-  async function remove(c: AssistantConnection): Promise<void> {
+  async function remove(c: ConnectionView): Promise<void> {
     if (c.isDefault) return;
     if (!confirm(`Remove connection "${c.label}"?`)) return;
     deletingId = c.id;
     try {
-      await deleteConnection(c.id);
+      const store = getConnectionStore();
+      if (c.auth.mode === 'basic') await getSecretStore().delete(c.auth.secretRef);
+      await store.remove(c.id);
       await connectionsService.load(true);
     } catch (err) {
       const e2 = err as { message?: string };
@@ -228,6 +297,11 @@
 <svelte:head>
   <title>Connections — OpenPalm</title>
 </svelte:head>
+
+<!-- Fragment-only navigation to an already-open /connections tab never
+     remounts the page; the hashchange hook keeps #pair= deep links working
+     (and stripped) there too. -->
+<svelte:window onhashchange={consumePairDeepLink} />
 
 <ChatNavbar />
 
@@ -255,7 +329,6 @@
               <span class="connection-label">{conn.label}</span>
               {#if conn.isDefault}<span class="badge default">Default</span>{/if}
               {#if conn.id === active?.id}<span class="badge active">Active</span>{/if}
-              {#if conn.kind === 'openpalm-client-api'}<span class="badge kind">guardian</span>{/if}
               {#if conn.hasPassword}<span class="badge password" title="Server password configured"><IconLock size={11} /></span>{/if}
             </div>
             <div class="connection-url">{conn.url}</div>
@@ -299,6 +372,24 @@
       <form class="connection-form" onsubmit={submitForm}>
         <h2>{formMode === 'add' ? 'Add connection' : 'Edit connection'}</h2>
 
+        {#if formMode === 'add'}
+          <label class="field">
+            <span>Have a pairing code?</span>
+            <div class="paste-row">
+              <input
+                type="text"
+                bind:value={pairingPasteCode}
+                placeholder="openpalm-pair:…"
+                autocomplete="off"
+              />
+              <button type="button" class="btn btn-secondary btn-sm" onclick={applyPairingPaste}>
+                Apply
+              </button>
+            </div>
+            <small>Paste a code from another stack's “Pair a device” panel to prefill this form.</small>
+          </label>
+        {/if}
+
         <label class="field">
           <span>Label</span>
           <input
@@ -310,25 +401,6 @@
           />
         </label>
 
-        <!-- #486 D2: connection-kind selector. 'local-opencode' is reserved
-             for the synthesized env-derived default and is never offered
-             here — only the two user-addable kinds. -->
-        <label class="field">
-          <span>Kind</span>
-          <select bind:value={formKind}>
-            <option value="remote-opencode">OpenCode server (direct)</option>
-            <option value="openpalm-client-api">OpenPalm guardian (/oc)</option>
-          </select>
-          <small>
-            {#if formKind === 'openpalm-client-api'}
-              The "Shared network, guardian protected" story — connect to the guardian's protected front door.
-            {:else}
-              A direct OpenCode connection is the supported "Home network" preset story (Setup → Network access),
-              not a dev/advanced-only path.
-            {/if}
-          </small>
-        </label>
-
         <label class="field">
           <span>URL</span>
           <input
@@ -338,11 +410,22 @@
             required
             autocomplete="off"
           />
-          {#if formKind === 'openpalm-client-api'}
-            <small>The guardian's base URL — <code>/oc</code> is appended automatically if you leave it off.</small>
-          {:else}
-            <small>The host:port where the remote OpenPalm assistant (OpenCode) is reachable.</small>
-          {/if}
+          <small>
+            The full base URL of the OpenCode API — a direct assistant (e.g.
+            <code>http://10.0.0.5:3800</code>) or a guardian front door including its
+            <code>/oc</code> path. OpenPalm speaks native OpenCode against either.
+          </small>
+        </label>
+
+        <label class="field">
+          <span>Username (optional)</span>
+          <input
+            type="text"
+            bind:value={formUsername}
+            placeholder="opencode"
+            autocomplete="off"
+          />
+          <small>Basic-auth username. Defaults to <code>opencode</code> (OpenCode's server default).</small>
         </label>
 
         <label class="field">
@@ -488,8 +571,9 @@
 
         <p class="lede">
           On the other device, open the connections page and paste this code (or scan the QR with
-          any camera/QR app), or use it as the <code>?pair=</code> link if this stack has a hosted
-          client origin. Non-local client origins also need
+          any camera/QR app), or use it as the <code>#pair=</code> URL-fragment link if this stack
+          has a hosted client origin — the fragment keeps the credential out of server logs.
+          Non-local client origins also need
           <code>GUARDIAN_CORS_ALLOWED_ORIGINS</code> set for this guardian.
         </p>
 
@@ -633,10 +717,6 @@
     background: var(--s-seal);
     color: white;
   }
-  .badge.kind {
-    background: var(--s-paper-deep);
-    color: var(--s-ink-3);
-  }
   .badge.password {
     background: transparent;
     color: var(--s-ink-3);
@@ -708,6 +788,19 @@
     display: flex;
     align-items: center;
     gap: var(--s-sp-2);
+  }
+
+  .paste-row {
+    display: flex;
+    gap: var(--s-sp-2);
+  }
+  .paste-row input {
+    flex: 1;
+    min-width: 0;
+    padding: var(--s-sp-2) var(--s-sp-3);
+    border: var(--s-hair) solid var(--s-line);
+    border-radius: 2px;
+    font: inherit;
   }
 
   .form-actions {

@@ -945,7 +945,7 @@ describe("performSetup", () => {
     expect(stackEnv).toMatch(/^OP_ASSISTANT_BIND_ADDRESS=0\.0\.0\.0$/m);
     expect(stackEnv).toMatch(/^OPENCODE_AUTH=true$/m);
     expect(stackEnv).toMatch(/^OP_BIND_ADDRESS=127\.0\.0\.1$/m);
-    expect(stackEnv).toMatch(/^OP_CLIENT_BIND_ADDRESS=127\.0\.0\.1$/m);
+    expect(stackEnv).toMatch(/^OP_UI_BIND_ADDRESS=127\.0\.0\.1$/m);
     expect(stackEnv).toMatch(/^OP_VOICE_BIND_ADDRESS=127\.0\.0\.1$/m);
     expect(stackEnv).not.toContain("lan-secret-123");
 
@@ -959,7 +959,7 @@ describe("performSetup", () => {
     const stackEnv = readFileSync(join(homeDir, "knowledge", "env", "stack.env"), "utf-8");
     expect(stackEnv).toMatch(/^OP_BIND_ADDRESS=0\.0\.0\.0$/m);
     expect(stackEnv).toMatch(/^OP_ASSISTANT_BIND_ADDRESS=127\.0\.0\.1$/m);
-    expect(stackEnv).toMatch(/^OP_CLIENT_BIND_ADDRESS=127\.0\.0\.1$/m);
+    expect(stackEnv).toMatch(/^OP_UI_BIND_ADDRESS=127\.0\.0\.1$/m);
     expect(stackEnv).toMatch(/^OP_VOICE_BIND_ADDRESS=127\.0\.0\.1$/m);
     expect(stackEnv).toMatch(/^OPENCODE_AUTH=false$/m);
   });

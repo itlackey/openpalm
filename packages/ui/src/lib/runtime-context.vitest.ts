@@ -1,16 +1,15 @@
 /**
- * Tests for lib/runtime-context.svelte.ts — Phase 1 RuntimeContext v2 (issue #509).
- *
- * ALL RED until the implementation lands: the module under test does not exist
- * yet. Per plan §6.2 it must be the ONLY place capability logic lives, exporting
+ * Tests for lib/runtime-context.svelte.ts — RuntimeContext v2 (issue #509),
+ * after the "One UI, delete the split" refactor. This module is
+ * the ONLY place capability logic lives, exporting
  * `resolveCapabilities(serverCaps, clientCtx)`, `hasCapability(cap)` and the
  * reactive `runtimeContext` store.
  *
- * Pins the full effective-capability matrix from plan §4.3:
- *   electron-host + electron            → ALL server capabilities
- *   host-ui + browser                   → ALL minus Electron-only (none reserved yet)
- *   connections:single (+ any display)  → chat + assistant-settings:*
- *   pwa baseline (+ any display)        → connections:* + chat + pwa:install
+ * Effective-capability rows (display-mode driven, no per-mode matrix):
+ *   admin server + electron            → ALL server capabilities
+ *   admin server + browser             → ALL minus Electron-only (none reserved yet)
+ *   admin server + standalone-pwa      → base surface (host:* stripped)
+ *   non-admin (base) + any display     → base surface
  *   activeConnection.grantedCapabilities → unioned in (deduped)
  *
  * Runs in the node ("server") vitest project; the `.svelte.ts` module is
@@ -52,152 +51,98 @@ const HOST_CAPS: Capability[] = [
   'host:akm-sharing',
 ];
 
-/** Server capabilities of a host-capable process (electron-host / host-ui). */
-const HOST_SERVER_CAPS: Capability[] = [
+/** The base capability set granted to EVERY process. */
+const BASE_CAPS: Capability[] = [
   'chat',
   'connections:read',
   'connections:manage',
   'connections:switch',
   'assistant-settings:read',
   'assistant-settings:write',
-  ...HOST_CAPS,
-];
-
-/** Server capabilities in assistant-container mode (single locked connection). */
-const ASSISTANT_CONTAINER_CAPS: Capability[] = [
-  'connections:single',
-  'chat',
-  'assistant-settings:read',
-  'assistant-settings:write',
-];
-
-/** The pwa-static baseline. */
-const PWA_BASELINE_CAPS: Capability[] = [
-  'chat',
-  'connections:read',
-  'connections:manage',
-  'connections:switch',
   'pwa:install',
 ];
 
-// ── resolveCapabilities — plan §6.2, exactly ─────────────────────────────────
+/** Server capabilities of an adminCapable process (base + host:*). */
+const ADMIN_SERVER_CAPS: Capability[] = [...BASE_CAPS, ...HOST_CAPS];
+
+// ── resolveCapabilities ─────────────────────────────────
 
 describe('resolveCapabilities — electron display mode', () => {
   test('returns the server capabilities unchanged (ALL)', () => {
-    const result = resolveCapabilities(HOST_SERVER_CAPS, electron);
-    expect(sorted(result)).toEqual(sorted(HOST_SERVER_CAPS));
+    const result = resolveCapabilities(ADMIN_SERVER_CAPS, electron);
+    expect(sorted(result)).toEqual(sorted(ADMIN_SERVER_CAPS));
   });
 
   test('ignores connection-granted capabilities — electron already has everything', () => {
-    const result = resolveCapabilities(HOST_SERVER_CAPS, {
+    const result = resolveCapabilities(ADMIN_SERVER_CAPS, {
       displayMode: 'electron',
       activeConnection: {
-        kind: 'remote-opencode',
         id: 'r1',
         grantedCapabilities: ['pwa:install'],
       },
     });
-    expect(sorted(result)).toEqual(sorted(HOST_SERVER_CAPS));
+    expect(sorted(result)).toEqual(sorted(ADMIN_SERVER_CAPS));
   });
 });
 
-describe('resolveCapabilities — host-capable server + browser (host-ui row)', () => {
-  test('host:stack:read + browser yields everything minus Electron-only caps (none reserved yet)', () => {
-    const result = resolveCapabilities(HOST_SERVER_CAPS, browser);
-    // isElectronOnlyCap() is reserved and returns false for every capability
-    // today, so "ALL minus Electron-only" is currently the full set.
-    expect(sorted(result)).toEqual(sorted(HOST_SERVER_CAPS));
+describe('resolveCapabilities — admin server + browser (openpalm admin row)', () => {
+  test('host:stack:read + browser yields the full server capability set', () => {
+    const result = resolveCapabilities(ADMIN_SERVER_CAPS, browser);
+    // No Electron-only capabilities are reserved yet, so a host-capable server
+    // in a regular browser (`openpalm admin`) keeps everything it granted.
+    expect(sorted(result)).toEqual(sorted(ADMIN_SERVER_CAPS));
   });
 
-  test('a host-capable browser session does not union connection-granted caps', () => {
-    const result = resolveCapabilities(HOST_SERVER_CAPS, {
+  test('an admin browser session does not union connection-granted caps', () => {
+    const result = resolveCapabilities(ADMIN_SERVER_CAPS, {
       displayMode: 'browser',
       activeConnection: {
-        kind: 'remote-opencode',
         id: 'r1',
         grantedCapabilities: ['pwa:install'],
       },
     });
-    expect(sorted(result)).toEqual(sorted(HOST_SERVER_CAPS));
+    expect(sorted(result)).toEqual(sorted(ADMIN_SERVER_CAPS));
   });
 
-  test('host-capable server + standalone-pwa display falls back to connection management (plan §4.2)', () => {
-    const result = resolveCapabilities(HOST_SERVER_CAPS, standalonePwa);
-    expect(sorted(result)).toEqual(
-      sorted(['chat', 'connections:read', 'connections:manage', 'connections:switch']),
-    );
-  });
-});
-
-describe('resolveCapabilities — connections:single (assistant-container row)', () => {
-  test('browser display yields exactly chat + assistant-settings:*', () => {
-    const result = resolveCapabilities(ASSISTANT_CONTAINER_CAPS, browser);
-    expect(sorted(result)).toEqual(
-      sorted(['chat', 'assistant-settings:read', 'assistant-settings:write']),
-    );
-  });
-
-  test('standalone-pwa display yields the same set', () => {
-    const result = resolveCapabilities(ASSISTANT_CONTAINER_CAPS, standalonePwa);
-    expect(sorted(result)).toEqual(
-      sorted(['chat', 'assistant-settings:read', 'assistant-settings:write']),
-    );
-  });
-
-  test("the 'connections:single' marker itself is not an effective capability", () => {
-    const result = resolveCapabilities(ASSISTANT_CONTAINER_CAPS, browser);
-    expect(result).not.toContain('connections:single');
+  test('admin server + standalone-pwa display strips host:* to the base surface', () => {
+    const result = resolveCapabilities(ADMIN_SERVER_CAPS, standalonePwa);
+    expect(sorted(result)).toEqual(sorted(BASE_CAPS));
+    for (const cap of HOST_CAPS) expect(result).not.toContain(cap);
   });
 });
 
-describe('resolveCapabilities — pwa-static baseline row', () => {
-  test('browser display keeps connections:* + chat + pwa:install', () => {
-    const result = resolveCapabilities(PWA_BASELINE_CAPS, browser);
-    expect(sorted(result)).toEqual(sorted(PWA_BASELINE_CAPS));
+describe('resolveCapabilities — non-admin (base) surface', () => {
+  test('browser display keeps the full base surface', () => {
+    const result = resolveCapabilities(BASE_CAPS, browser);
+    expect(sorted(result)).toEqual(sorted(BASE_CAPS));
   });
 
-  test('standalone-pwa display keeps the same baseline', () => {
-    const result = resolveCapabilities(PWA_BASELINE_CAPS, standalonePwa);
-    expect(sorted(result)).toEqual(sorted(PWA_BASELINE_CAPS));
+  test('standalone-pwa display keeps the same base surface', () => {
+    const result = resolveCapabilities(BASE_CAPS, standalonePwa);
+    expect(sorted(result)).toEqual(sorted(BASE_CAPS));
   });
 
-  test('non-baseline capabilities are filtered out unless connection-granted', () => {
-    const result = resolveCapabilities(
-      [...PWA_BASELINE_CAPS, 'assistant-settings:write'],
-      browser,
-    );
-    expect(result).not.toContain('assistant-settings:write');
-  });
-
-  test('activeConnection.grantedCapabilities are unioned in (plan §4.3 extension point)', () => {
-    const result = resolveCapabilities(PWA_BASELINE_CAPS, {
+  test('activeConnection.grantedCapabilities are unioned in (extension point)', () => {
+    const result = resolveCapabilities(BASE_CAPS, {
       displayMode: 'standalone-pwa',
       activeConnection: {
-        kind: 'remote-opencode',
         id: 'r1',
-        grantedCapabilities: ['assistant-settings:read', 'assistant-settings:write'],
+        grantedCapabilities: ['host:logs'],
       },
     });
-    expect(result).toEqual(
-      expect.arrayContaining([
-        ...PWA_BASELINE_CAPS,
-        'assistant-settings:read',
-        'assistant-settings:write',
-      ]),
-    );
+    expect(result).toEqual(expect.arrayContaining([...BASE_CAPS, 'host:logs']));
   });
 
-  test('granted capabilities are deduplicated against the baseline', () => {
-    const result = resolveCapabilities(PWA_BASELINE_CAPS, {
+  test('granted capabilities are deduplicated against the base surface', () => {
+    const result = resolveCapabilities(BASE_CAPS, {
       displayMode: 'browser',
       activeConnection: {
-        kind: 'remote-opencode',
         id: 'r1',
         grantedCapabilities: ['chat', 'assistant-settings:read'],
       },
     });
     expect(new Set(result).size).toBe(result.length);
-    expect(sorted(result)).toEqual(sorted([...PWA_BASELINE_CAPS, 'assistant-settings:read']));
+    expect(sorted(result)).toEqual(sorted(BASE_CAPS));
   });
 });
 
@@ -253,15 +198,14 @@ describe('initializeServerRuntimeContext (review 2026-07-10 K2 — SSR-safe serv
     runtimeContext.effectiveCapabilities = savedEffective;
   });
 
-  test('populates serverCapabilities/hostMode/routes from the server context', () => {
+  test('populates serverCapabilities/admin/routes from the server context', () => {
     initializeServerRuntimeContext({
       version: 2,
-      hostMode: 'host-ui',
-      serverCapabilities: HOST_SERVER_CAPS,
+      admin: true,
+      serverCapabilities: ADMIN_SERVER_CAPS,
       publicBaseUrl: 'http://127.0.0.1:3880',
       uiVersion: '0.13.0-beta.1',
       skeletonVersion: '0.13.0-beta.1',
-      activeConnectionMode: 'multi',
       routes: { chat: '/chat', host: '/host' },
       security: {
         hostAdminLoopbackOnly: true,
@@ -269,7 +213,7 @@ describe('initializeServerRuntimeContext (review 2026-07-10 K2 — SSR-safe serv
         csrfMode: 'loopback-origin',
       },
     });
-    expect(runtimeContext.hostMode).toBe('host-ui');
+    expect(runtimeContext.admin).toBe(true);
     expect(runtimeContext.routes.host).toBe('/host');
   });
 
@@ -277,12 +221,11 @@ describe('initializeServerRuntimeContext (review 2026-07-10 K2 — SSR-safe serv
     runtimeContext.clientContext = { displayMode: 'browser' };
     initializeServerRuntimeContext({
       version: 2,
-      hostMode: 'host-ui',
-      serverCapabilities: HOST_SERVER_CAPS,
+      admin: true,
+      serverCapabilities: ADMIN_SERVER_CAPS,
       publicBaseUrl: '',
       uiVersion: '',
       skeletonVersion: '',
-      activeConnectionMode: 'multi',
       routes: {},
       security: {
         hostAdminLoopbackOnly: true,
@@ -290,7 +233,7 @@ describe('initializeServerRuntimeContext (review 2026-07-10 K2 — SSR-safe serv
         csrfMode: 'loopback-origin',
       },
     });
-    // host:stack:read is in the fixture's HOST_SERVER_CAPS — this is exactly
+    // host:stack:read is in the fixture's ADMIN_SERVER_CAPS — this is exactly
     // what SSR needs available for the admin-button check (hasCapability)
     // to render true in the FIRST server-rendered HTML, before onMount runs.
     expect(hasCapability('host:stack:read')).toBe(true);
@@ -300,17 +243,16 @@ describe('initializeServerRuntimeContext (review 2026-07-10 K2 — SSR-safe serv
     // publicBaseUrl comes from event.url.origin — the ONE per-request field in
     // ServerRuntimeContext. During SSR this store is process-global under
     // adapter-node, so writing it would leak one request's Host-derived origin
-    // into every later reader. SSR chrome needs capabilities/hostMode/routes
+    // into every later reader. SSR chrome needs capabilities/admin/routes
     // only; the browser sets publicBaseUrl in onMount (per-tab store — safe).
     const before = runtimeContext.publicBaseUrl;
     initializeServerRuntimeContext({
       version: 2,
-      hostMode: 'host-ui',
-      serverCapabilities: HOST_SERVER_CAPS,
+      admin: true,
+      serverCapabilities: ADMIN_SERVER_CAPS,
       publicBaseUrl: 'http://attacker-controlled-host-header.example',
       uiVersion: '',
       skeletonVersion: '',
-      activeConnectionMode: 'multi',
       routes: {},
       security: {
         hostAdminLoopbackOnly: true,
@@ -320,16 +262,16 @@ describe('initializeServerRuntimeContext (review 2026-07-10 K2 — SSR-safe serv
     });
     expect(runtimeContext.publicBaseUrl).toBe(before);
     // The env-derived halves must still land (that's K2's whole point).
-    expect(runtimeContext.hostMode).toBe('host-ui');
+    expect(runtimeContext.admin).toBe(true);
   });
 });
 
 // ── integration: computeServerRuntimeContext × resolveCapabilities ───────────
-// Pins the four rows of the plan §4.3 matrix end-to-end through the real
-// env → hostMode → serverCapabilities → effectiveCapabilities pipeline.
+// Pins the effective-capability rows end-to-end through the real
+// env → admin → serverCapabilities → effectiveCapabilities pipeline.
 
-describe('capability matrix — plan §4.3 rows end-to-end', () => {
-  const MODE_ENV_KEYS = ['OP_UI_HOST_MODE', 'OP_INSIDE_ELECTRON', 'OP_ENABLE_ADMIN'] as const;
+describe('capability rows — end-to-end', () => {
+  const MODE_ENV_KEYS = ['OP_INSIDE_ELECTRON', 'OP_ENABLE_ADMIN'] as const;
   let savedEnv: Record<string, string | undefined> = {};
 
   function makeEvent(url = 'http://127.0.0.1:3880/'): RequestEvent {
@@ -362,7 +304,7 @@ describe('capability matrix — plan §4.3 rows end-to-end', () => {
     }
   });
 
-  test('electron-host × electron → ALL', () => {
+  test('admin × electron → ALL', () => {
     process.env.OP_INSIDE_ELECTRON = '1';
     const ctx = computeServerRuntimeContext(makeEvent());
     const effective = resolveCapabilities(ctx.serverCapabilities, electron);
@@ -372,7 +314,7 @@ describe('capability matrix — plan §4.3 rows end-to-end', () => {
     );
   });
 
-  test('host-ui × browser → ALL minus Electron-only', () => {
+  test('admin × browser → ALL minus Electron-only', () => {
     process.env.OP_ENABLE_ADMIN = '1';
     const ctx = computeServerRuntimeContext(makeEvent());
     const effective = resolveCapabilities(ctx.serverCapabilities, browser);
@@ -381,25 +323,21 @@ describe('capability matrix — plan §4.3 rows end-to-end', () => {
     );
   });
 
-  test('assistant-container × browser → chat + assistant-settings only', () => {
-    process.env.OP_UI_HOST_MODE = 'assistant-container';
+  test('non-admin × browser → base surface, no host:*', () => {
     const ctx = computeServerRuntimeContext(makeEvent());
     const effective = resolveCapabilities(ctx.serverCapabilities, browser);
-    expect(sorted(effective)).toEqual(
-      sorted(['chat', 'assistant-settings:read', 'assistant-settings:write']),
+    expect(effective).toEqual(
+      expect.arrayContaining(['chat', 'connections:manage', 'assistant-settings:write', 'pwa:install']),
     );
     for (const cap of HOST_CAPS) expect(effective).not.toContain(cap);
-    expect(effective).not.toContain('connections:manage');
   });
 
-  test('pwa-static × standalone-pwa → connections + chat + pwa:install', () => {
-    process.env.OP_UI_HOST_MODE = 'pwa-static';
+  test('non-admin × standalone-pwa → base surface', () => {
     const ctx = computeServerRuntimeContext(makeEvent());
     const effective = resolveCapabilities(ctx.serverCapabilities, standalonePwa);
     expect(effective).toEqual(
       expect.arrayContaining(['connections:manage', 'connections:switch', 'chat', 'pwa:install']),
     );
     for (const cap of HOST_CAPS) expect(effective).not.toContain(cap);
-    expect(effective).not.toContain('assistant-settings:write');
   });
 });

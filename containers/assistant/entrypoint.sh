@@ -63,16 +63,17 @@ maybe_source_akm_user_env() {
 
 install_runtime_artifacts() {
   # ── Exact-pinned npm artifacts ──────────────────────────────────────────────
-  # Client and skeleton versions come from OP_*_VERSION env overrides, then
-  # fall back to PLATFORM_VERSION (set at image build time via ARG). Hard error
-  # if neither is set — no 'latest' fallback for exact-pinned components.
-  local client_version="${OP_CLIENT_VERSION:-${PLATFORM_VERSION:-}}"
+  # The UI and skeleton versions come from their env overrides, then fall back
+  # to PLATFORM_VERSION (set at image build time via ARG). No 'latest' fallback
+  # for these exact-pinned components.
+  local ui_version="${OP_UI_VERSION:-${PLATFORM_VERSION:-}}"
   local skeleton_version="${OP_SKELETON_VERSION:-${PLATFORM_VERSION:-}}"
 
-  if [ -z "$client_version" ]; then
-    echo "ERROR: set OP_CLIENT_VERSION or PLATFORM_VERSION to install @openpalm/client" >&2
-    exit 1
-  fi
+  # The skeleton (managed OpenCode config/plugins) is REQUIRED — hard error if no
+  # version resolves. The UI is a SECONDARY co-process: when no version resolves
+  # (e.g. an image built without PLATFORM_VERSION), skip its install and let
+  # start_ui's absent-build path write the skip marker so the assistant stays
+  # healthy on OpenCode alone rather than wedging the whole stack.
   if [ -z "$skeleton_version" ]; then
     echo "ERROR: set OP_SKELETON_VERSION or PLATFORM_VERSION to install @openpalm/skeleton" >&2
     exit 1
@@ -86,21 +87,25 @@ install_runtime_artifacts() {
   local bun_cache_dir="/home/opencode/.cache/bun/install"
 
   # Existing assistant-artifacts named volumes shadow Dockerfile-created paths.
-  # Older images only created /opt/openpalm/{ui,skeleton}; create the current
-  # prefixes here so upgrades can install @openpalm/client as the node user.
-  mkdir -p /opt/openpalm/client /opt/openpalm/skeleton
+  # Older images only created /opt/openpalm/skeleton; create the ui prefix here
+  # too so upgrades can install @openpalm/ui as the node user into an old volume.
+  mkdir -p /opt/openpalm/ui /opt/openpalm/skeleton
 
   # `grep -v` exits 1 when npm produced only warnings (or nothing), so the
   # pipeline's own exit code can't distinguish "npm failed" from "no output".
   # Capture npm's exit via PIPESTATUS and surface real failures — a silent
-  # EACCES here would leave the stack serving stale client/skeleton forever.
+  # EACCES here would leave the stack serving a stale ui/skeleton forever.
   local npm_rc
-  echo "entrypoint: installing @openpalm/client@${client_version}..." >&2
-  npm_rc=0
-  npm_config_cache="$npm_cache_dir" npm install --prefix /opt/openpalm/client "@openpalm/client@${client_version}" \
-    --omit=dev --prefer-offline --no-fund --no-audit 2>&1 | grep -v "^npm warn" || npm_rc="${PIPESTATUS[0]}"
-  if [ "$npm_rc" != "0" ]; then
-    echo "ERROR: @openpalm/client@${client_version} install failed (exit ${npm_rc}); continuing with the existing artifact if present" >&2
+  if [ -n "$ui_version" ]; then
+    echo "entrypoint: installing @openpalm/ui@${ui_version}..." >&2
+    npm_rc=0
+    npm_config_cache="$npm_cache_dir" npm install --prefix /opt/openpalm/ui "@openpalm/ui@${ui_version}" \
+      --omit=dev --prefer-offline --no-fund --no-audit 2>&1 | grep -v "^npm warn" || npm_rc="${PIPESTATUS[0]}"
+    if [ "$npm_rc" != "0" ]; then
+      echo "ERROR: @openpalm/ui@${ui_version} install failed (exit ${npm_rc}); continuing with the existing artifact if present" >&2
+    fi
+  else
+    echo "warning: no OP_UI_VERSION/PLATFORM_VERSION set — skipping @openpalm/ui install; the UI co-process is skipped when no build is present" >&2
   fi
 
   echo "entrypoint: installing @openpalm/skeleton@${skeleton_version}..." >&2
@@ -130,14 +135,24 @@ install_runtime_artifacts() {
   fi
 }
 
-# ── LAN-exposure helpers ─────────────────────────────────────────────────────
-# Shared by start_client (I3 safety gate, below) and start_opencode (I3
-# explicit-origin CORS, further down).
+# ── LAN-exposure helper ──────────────────────────────────────────────────────
+# Used by start_ui's safety gate: refuse to publish an UNAUTHENTICATED UI when
+# OpenCode is bound off-loopback with auth disabled (see start_ui below).
 is_loopback_address() {
   case "$1" in
     127.0.0.1|localhost) return 0 ;;
     *) return 1 ;;
   esac
+}
+
+# Validate an OP_UI_CORS_ALLOWED_ORIGINS entry before start_opencode appends it
+# to OpenCode's --cors — operator input is otherwise forwarded verbatim, so
+# OP_UI_CORS_ALLOWED_ORIGINS=* would silently reintroduce a wildcard CORS grant.
+# Mirrors guardian's normalizeExactOrigin: an EXACT http(s) origin only — no
+# wildcard, no userinfo, no path/query/fragment beyond an optional trailing slash.
+is_allowed_cors_origin() {
+  local origin="$1"
+  [[ "$origin" =~ ^https?://[^/@?#[:space:]]+/?$ ]]
 }
 
 opencode_auth_enabled() {
@@ -177,88 +192,73 @@ resolve_opencode_server_password() {
   fi
 }
 
-# I3 residual (review, SECURITY): validate an OP_CLIENT_CORS_ALLOWED_ORIGINS
-# entry before start_opencode ever appends it to cors_origins — operator input
-# is otherwise appended to OpenCode's --cors verbatim, so
-# OP_CLIENT_CORS_ALLOWED_ORIGINS=* would silently reintroduce a wildcard CORS
-# grant. Mirrors guardian's normalizeExactOrigin (packages/guardian/src/
-# config.ts): never a wildcard, never anything but an EXACT http(s) origin —
-# no userinfo, no path beyond an optional trailing slash, no query, no
-# fragment.
-is_allowed_cors_origin() {
-  local origin="$1"
-  [[ "$origin" =~ ^https?://[^/@?#[:space:]]+/?$ ]]
-}
+start_ui() {
+  # Served OpenPalm UI (@openpalm/ui, "One UI, delete the split" Phase 4). The
+  # assistant container serves the SvelteKit adapter-node build as a supervised
+  # co-process ALONGSIDE OpenCode. The BROWSER talks to OpenCode directly at the
+  # host-published assistant URL (seeded as the one locked connection in
+  # runtime-config.json below); this co-process only serves the UI app.
 
-start_client() {
-  # Static chat client (@openpalm/client, plan §6.9 Slice A). The co-process
-  # only serves bytes — the BROWSER talks to OpenCode directly at the
-  # host-published assistant URL, so there is no server-side API base URL to
-  # wire into this process (the old adapter-node co-process env plumbing, and
-  # its wiring bug, are gone with it).
-
-  # ── I3: LAN-exposure safety gate ─────────────────────────────────────────
-  # Never publish an unauthenticated chat client onto a network the assistant
-  # itself made reachable. When OpenCode is bound off loopback
-  # (OP_ASSISTANT_BIND_ADDRESS / OP_BIND_ADDRESS) AND OpenCode auth is
-  # disabled (OPENCODE_AUTH, default "false"), any web page a LAN visitor
-  # opens could script the assistant cross-origin through this client port.
-  # Warn loudly, naming the exact knobs, and refuse to start the client
-  # surface — this is a deliberate degrade (the rest of the stack, including
-  # OpenCode itself, keeps running), never a hard failure of the container.
+  # ── LAN-exposure safety gate ─────────────────────────────────────────────
+  # Never publish an UNAUTHENTICATED UI onto a network the assistant itself made
+  # reachable. When OpenCode is bound off loopback (OP_ASSISTANT_BIND_ADDRESS /
+  # OP_BIND_ADDRESS) AND OpenCode auth is disabled (OPENCODE_AUTH, default
+  # "false"), a LAN visitor's browser could drive the assistant through the
+  # seeded connection. Warn loudly, naming the exact knobs, and refuse to start
+  # the UI surface — a deliberate degrade (OpenCode itself keeps running), never
+  # a hard container failure.
   local assistant_bind_address="${OP_ASSISTANT_BIND_ADDRESS:-${OP_BIND_ADDRESS:-127.0.0.1}}"
-  rm -f /tmp/openpalm-client-skip
+  rm -f /tmp/openpalm-ui-skip
   if ! is_loopback_address "$assistant_bind_address" && ! opencode_auth_enabled; then
     echo "WARNING: OP_ASSISTANT_BIND_ADDRESS/OP_BIND_ADDRESS=${assistant_bind_address} exposes OpenCode beyond loopback while OPENCODE_AUTH=${OPENCODE_AUTH:-false} leaves it unauthenticated." >&2
-    echo "WARNING: refusing to start the unauthenticated client chat co-process on OP_CLIENT_PORT — set OPENCODE_AUTH=true (with real OpenCode credentials) before exposing this stack beyond loopback." >&2
-    : > /tmp/openpalm-client-skip
+    echo "WARNING: refusing to start the unauthenticated UI co-process — set OPENCODE_AUTH=true (with real OpenCode credentials) before exposing this stack beyond loopback." >&2
+    : > /tmp/openpalm-ui-skip
     return 0
   fi
 
-  local client_pkg="/opt/openpalm/client/node_modules/@openpalm/client"
-  local serve_script="${client_pkg}/bin/serve.mjs"
-  local client_build="${client_pkg}/build"
-  if [ ! -f "$serve_script" ] || [ ! -f "${client_build}/index.html" ]; then
-    echo "entrypoint: @openpalm/client build not found — client co-process skipped" >&2
-    # F4 (review): a missing/never-installed client build is a non-fatal,
-    # permanent condition for this boot — the healthcheck (Dockerfile +
-    # core.compose.yml) probes OP_CLIENT_PORT UNLESS this marker exists, so
-    # without it a legitimately-absent client would fail the healthcheck
-    # forever, marking the assistant unhealthy and blocking every service
-    # behind guardian's `depends_on: condition: service_healthy` — directly
-    # contradicting the "the assistant keeps serving without it" log line
-    # above. Write the marker so this skip is recognized as healthy.
-    : > /tmp/openpalm-client-skip
+  local ui_pkg="/opt/openpalm/ui/node_modules/@openpalm/ui"
+  local ui_build="${ui_pkg}/build"
+  local ui_index="${ui_build}/index.js"
+  local ui_client_dir="${ui_build}/client"
+  if [ ! -f "$ui_index" ]; then
+    echo "entrypoint: @openpalm/ui build not found — UI co-process skipped" >&2
+    # A missing/never-installed UI build is a non-fatal, permanent condition for
+    # this boot — the healthcheck (Dockerfile + core.compose.yml) probes the UI
+    # port UNLESS this marker exists, so without it a legitimately-absent UI
+    # would fail the healthcheck forever, marking the assistant unhealthy and
+    # blocking every service behind guardian's depends_on: service_healthy.
+    : > /tmp/openpalm-ui-skip
     return 0
   fi
 
-  # Write runtime-config.json beside the build BEFORE serving (serve.mjs looks
-  # for it next to the build dir). It seeds the browser's connection store with
-  # ONE locked default connection: the assistant's OpenCode as published on the
-  # HOST — compose maps ${OP_ASSISTANT_PORT:-3800} -> in-container 4096, and
-  # the in-container :4096 would be unreachable from a browser. Non-default
-  # topologies override the full URL via OP_CLIENT_DEFAULT_ASSISTANT_URL.
-  # JSON is emitted via node (present in the base image) so an unusual URL
-  # value can never produce a malformed file.
-  local assistant_url="${OP_CLIENT_DEFAULT_ASSISTANT_URL:-http://127.0.0.1:${OP_ASSISTANT_PORT:-3800}}"
+  # Write runtime-config.json into the served static root: adapter-node serves
+  # build/client at the app origin, so the browser store's GET
+  # /runtime-config.json (packages/ui connections/store.ts loadRuntimeConfig)
+  # resolves here. It seeds the connection store with ONE locked default
+  # connection: the assistant's OpenCode as published on the HOST — compose maps
+  # ${OP_ASSISTANT_PORT:-3800} -> in-container 4096, and the in-container :4096
+  # is unreachable from a browser. Non-default topologies override the full URL
+  # via OP_UI_DEFAULT_ASSISTANT_URL. JSON is emitted via node (present in the
+  # base image) so an unusual URL value can never produce a malformed file. The
+  # record shape MUST match the ui store: { id, label, baseUrl, auth }, and
+  # id/label MUST equal packages/lib ui-runtime-config.ts's
+  # ASSISTANT_LOCKED_CONNECTION_ID / _LABEL.
+  local assistant_url="${OP_UI_DEFAULT_ASSISTANT_URL:-http://127.0.0.1:${OP_ASSISTANT_PORT:-3800}}"
+  mkdir -p "$ui_client_dir"
   node -e '
     const fs = require("fs");
     const [file, url] = process.argv.slice(1);
-    // E1: never let a wildcard bind host leak into a browser-facing URL — an
+    // Never let a wildcard bind host leak into a browser-facing URL — an
     // operator override may itself be derived from a bind-address setting
     // upstream. Mirrors packages/lib/src/control-plane/url-normalize.ts
-    // normalizeLoopbackUrl exactly (see assistant-client-entrypoint.test.ts).
+    // normalizeLoopbackUrl.
     const normalizedUrl = url.replace(/^(https?:\/\/)(0\.0\.0\.0|\[::\]|::)(?=[:/]|$)/i, "$1127.0.0.1");
     const config = {
       connections: [
         {
-          // I5: literal id/label must match packages/lib/src/control-plane/
-          // client-runtime-config.ts ASSISTANT_LOCKED_CONNECTION_ID / _LABEL —
-          // pinned by a static test in assistant-client-entrypoint.test.ts.
           id: "openpalm-assistant-opencode",
           label: "This assistant",
-          kind: "local-opencode",
-          url: normalizedUrl,
+          baseUrl: normalizedUrl,
           auth: { mode: "none" },
           isDefault: true,
           locked: true,
@@ -266,45 +266,71 @@ start_client() {
       ],
     };
     fs.writeFileSync(file, JSON.stringify(config, null, 2) + "\n");
-  ' "${client_pkg}/runtime-config.json" "$assistant_url" \
-    || echo "warning: could not write runtime-config.json; client starts with no default connection" >&2
+  ' "${ui_client_dir}/runtime-config.json" "$assistant_url" \
+    || echo "warning: could not write runtime-config.json; UI starts with no default connection" >&2
 
-  local client_port="${OP_CLIENT_PORT:-3000}"
-  echo "entrypoint: starting client co-process on port ${client_port}..." >&2
+  local ui_port="${OP_UI_PORT:-3000}"
 
-  # ── I2: supervise + respawn with capped exponential backoff ──────────────
-  # Mirrors packages/cli/src/lib/client-server.ts's host-side supervision
-  # semantics: an unexpected exit respawns the co-process instead of leaving
-  # the published port silently dead (the compose healthcheck now probes it —
-  # see core.compose.yml), but a crash loop backs off (1s, 2s, 4s, 8s, 16s,
-  # capped at 30s) and gives up after max_attempts so a persistently broken
-  # client can't spin the container's CPU/log forever. Bind 0.0.0.0 INSIDE the
-  # container only: host exposure is governed by the compose port mapping,
-  # which defaults to loopback (OP_BIND_ADDRESS policy).
+  # ── UI session login password ─────────────────────────────────────────────
+  # The served UI authenticates browsers with the SAME UI login password as the
+  # host UI (op_session cookie; /api/auth is deliberately outside /api/host so a
+  # non-admin served deployment can log in). The container has no OP_HOME, so
+  # the password arrives as a compose secret file (OP_UI_LOGIN_PASSWORD_FILE,
+  # core.compose.yml) and is resolved into the UI child's env ONLY — same
+  # pattern as OPENCODE_SERVER_PASSWORD_FILE in start_opencode. Without a
+  # usable password every HTML navigation dead-ends at /login, so warn loudly.
+  local ui_login_password=""
+  if [ -n "${OP_UI_LOGIN_PASSWORD_FILE:-}" ] && [ -s "${OP_UI_LOGIN_PASSWORD_FILE}" ]; then
+    ui_login_password="$(cat "${OP_UI_LOGIN_PASSWORD_FILE}")"
+  fi
+  if [ -z "$ui_login_password" ]; then
+    echo "WARNING: no UI login password available (OP_UI_LOGIN_PASSWORD_FILE missing or empty) — the served UI will redirect to /login but no session can be minted. Run setup (or seed knowledge/secrets/op_ui_login_password) to fix." >&2
+  fi
+
+  echo "entrypoint: starting UI co-process on port ${ui_port}..." >&2
+
+  # ── supervise + respawn with capped exponential backoff ──────────────────
+  # Mirrors the host-side UI supervisor semantics (packages/lib ui-supervisor.ts,
+  # packages/cli ui-server.ts): an unexpected exit respawns the co-process
+  # instead of leaving the published port silently dead (the compose + Dockerfile
+  # healthchecks probe it), but a crash loop backs off (1s, 2s, 4s, 8s, 16s,
+  # capped at 30s) and gives up after max_attempts so a persistently broken UI
+  # can't spin the container's CPU/log forever.
+  #
+  # Bind 0.0.0.0 INSIDE the container only: Docker's published port mapping
+  # forwards to the container's interface, so a 127.0.0.1 in-container bind would
+  # be unreachable through it. Loopback-first HOST exposure is governed by the
+  # compose port mapping, which defaults to 127.0.0.1 (OP_BIND_ADDRESS policy),
+  # exactly as OpenCode itself binds --hostname 0.0.0.0 here. HOST_HEADER lets
+  # adapter-node derive its origin from the request Host header so CSRF/Origin
+  # checks pass across the host<->container port mapping; the app-level SEC-1
+  # Host allowlist (packages/ui hooks.server.ts) still rejects non-loopback Host
+  # headers by default.
+  #
+  # NON-admin build: OP_ENABLE_ADMIN and OP_INSIDE_ELECTRON are explicitly UNSET
+  # in the child so isAdminCapable() is false and every /host (host:*) route
+  # 404s — the Phase-5 Electron/CLI-only admin boundary holds in the container.
+  # No host OP_HOME is injected; the ONLY credential the child receives is the
+  # UI login password resolved above (session auth — not a host:* capability).
   (
     local attempt=0
     local max_attempts=5
     local delay=1
     local max_delay=30
-    # SUPERVISOR-RESET (review): mirrors packages/cli/src/lib/client-server.ts's
-    # HEALTHY_UPTIME_MS reset — a child that stays up for at least this long
-    # before exiting resets the give-up counter, so only a PERSISTENTLY-broken
-    # client (no healthy stretch between crashes) can ever exhaust
-    # max_attempts. Without this, crashes spread across the container's whole
-    # lifetime (e.g. one every few days) permanently disabled the client after
-    # only 5 of them, total, ever — contradicting the comment's claim to
-    # mirror client-server.ts, which DOES reset. Millisecond resolution (via
-    # `Date.now()` from the already-required Node runtime) both matches
-    # client-server.ts's units and avoids non-portable `date +%s%3N` behavior
-    # (uutils emits nanoseconds instead of GNU coreutils' milliseconds).
-    # Configurable (test hook); unset uses the same 60000ms threshold as
-    # client-server.ts's HEALTHY_UPTIME_MS.
-    local healthy_uptime_ms="${OP_CLIENT_RESPAWN_HEALTHY_UPTIME_MS:-60000}"
+    # A child that stays up at least this long before exiting resets the give-up
+    # counter, so only a PERSISTENTLY-broken UI (no healthy stretch between
+    # crashes) can exhaust max_attempts. Millisecond resolution via Node's
+    # Date.now() (portable; avoids uutils `date +%s%3N` nanosecond drift).
+    # Configurable (test hook) via OP_UI_RESPAWN_HEALTHY_UPTIME_MS.
+    local healthy_uptime_ms="${OP_UI_RESPAWN_HEALTHY_UPTIME_MS:-60000}"
     while true; do
       local start_ts
       start_ts="$(node -e 'process.stdout.write(String(Date.now()))')"
       local exit_code
-      if node "$serve_script" --host 0.0.0.0 --port "$client_port" --dir "$client_build"; then
+      if env -u OP_ENABLE_ADMIN -u OP_INSIDE_ELECTRON \
+           HOST=0.0.0.0 PORT="$ui_port" HOST_HEADER=host PROTOCOL_HEADER=x-forwarded-proto \
+           OP_UI_LOGIN_PASSWORD="$ui_login_password" \
+           node "$ui_index"; then
         exit_code=0
       else
         exit_code=$?
@@ -316,23 +342,22 @@ start_client() {
       fi
       attempt=$((attempt + 1))
       if [ "$attempt" -ge "$max_attempts" ]; then
-        echo "warning: client co-process exited $attempt times (last exit $exit_code); giving up on respawn — the assistant keeps serving without it" >&2
-        # F4 (review): a permanently-dead client (attempt cap exhausted) is
-        # the SAME non-fatal, boot-scoped condition as "build not found"
-        # above — write the skip marker so the healthcheck (which probes
-        # OP_CLIENT_PORT unless this marker exists) stops expecting a client
-        # that will never come back this boot, instead of failing forever.
-        : > /tmp/openpalm-client-skip
+        echo "warning: UI co-process exited $attempt times (last exit $exit_code); giving up on respawn — the assistant keeps serving without it" >&2
+        # A permanently-dead UI (attempt cap exhausted) is the SAME non-fatal,
+        # boot-scoped condition as "build not found" above — write the skip
+        # marker so the healthcheck (which probes the UI port unless this marker
+        # exists) stops expecting a UI that will never come back this boot.
+        : > /tmp/openpalm-ui-skip
         break
       fi
-      echo "warning: client co-process exited (code $exit_code) — restarting in ${delay}s (attempt $((attempt + 1))/${max_attempts})" >&2
+      echo "warning: UI co-process exited (code $exit_code) — restarting in ${delay}s (attempt $((attempt + 1))/${max_attempts})" >&2
       sleep "$delay"
       delay=$((delay * 2))
       if [ "$delay" -gt "$max_delay" ]; then delay=$max_delay; fi
     done
   ) &
 
-  echo "entrypoint: client co-process supervisor PID $! started" >&2
+  echo "entrypoint: UI co-process supervisor PID $! started" >&2
 }
 
 seed_default_agents_md() {
@@ -541,68 +566,46 @@ start_opencode() {
   # --log-level sets verbosity (override via OPENCODE_LOG_LEVEL).
   local cmd=(opencode web --hostname 0.0.0.0 --port "$PORT" --print-logs --log-level "${OPENCODE_LOG_LEVEL:-INFO}")
 
-  # Browser clients are served from separate loopback origins and call OpenCode
-  # directly. Allow the shipped origins by default, and let operators add exact
-  # comma-separated origins for custom reverse-proxy/client deployments.
-  local client_host_port="${OP_CLIENT_HOST_PORT:-${OP_CLIENT_PORT:-3810}}"
-  local host_client_port="${OP_HOST_CLIENT_PORT:-3890}"
-  local client_bind_address="${OP_CLIENT_BIND_ADDRESS:-${OP_BIND_ADDRESS:-127.0.0.1}}"
-  local assistant_bind_address="${OP_ASSISTANT_BIND_ADDRESS:-${OP_BIND_ADDRESS:-127.0.0.1}}"
+  # The @openpalm/ui build is served from a separate loopback origin (OP_UI_PORT)
+  # and its browser talks to OpenCode DIRECTLY (browser-owned transport, no host
+  # proxy), so OpenCode must grant that origin CORS or the browser's calls fail
+  # preflight. Ship the loopback UI origins by default; operators add exact
+  # comma-separated origins (a LAN host, a reverse proxy) via
+  # OP_UI_CORS_ALLOWED_ORIGINS. EXPLICIT ORIGINS ONLY — never a wildcard.
+  local ui_host_port="${OP_UI_HOST_PORT:-${OP_UI_PORT:-3810}}"
   local cors_origins=(
-    "http://127.0.0.1:${client_host_port}"
-    "http://localhost:${client_host_port}"
-    "http://127.0.0.1:${host_client_port}"
-    "http://localhost:${host_client_port}"
+    "http://127.0.0.1:${ui_host_port}"
+    "http://localhost:${ui_host_port}"
   )
-  # I3: EXPLICIT ORIGINS ONLY — never emit a wildcard CORS grant. When the
-  # client bind address is a concrete non-loopback host/IP (an operator
-  # opting a specific LAN address into the client's origin set), add that
-  # exact origin; it is still one named origin, never a wildcard grant. A
-  # wildcard client bind (0.0.0.0/::) cannot be turned into the one true
-  # browser Origin a LAN visitor's browser will actually send, so nothing is
-  # auto-derived for it — operators add the exact origin(s) they expect via
-  # OP_CLIENT_CORS_ALLOWED_ORIGINS below. See also start_client's LAN-exposure
-  # safety gate, which refuses to serve the client surface at all when auth
-  # stays disabled on a non-loopback assistant bind.
-  if [ "$client_bind_address" != "127.0.0.1" ] && [ "$client_bind_address" != "localhost" ] \
-     && [ "$client_bind_address" != "0.0.0.0" ] && [ "$client_bind_address" != "::" ] \
-     && [ "$assistant_bind_address" != "127.0.0.1" ] && [ "$assistant_bind_address" != "localhost" ]; then
-    cors_origins+=("http://${client_bind_address}:${client_host_port}")
+  # The HOST-served UI (Electron / `openpalm ui serve` / `openpalm admin`,
+  # OP_HOST_UI_PORT, default 3880) is a second loopback browser origin whose
+  # transport also calls OpenCode directly at the published assistant port —
+  # grant it too, or chat from the host-served UI fails preflight by default.
+  local host_ui_port="${OP_HOST_UI_PORT:-3880}"
+  if [ "$host_ui_port" != "$ui_host_port" ]; then
+    cors_origins+=(
+      "http://127.0.0.1:${host_ui_port}"
+      "http://localhost:${host_ui_port}"
+    )
   fi
-  # H2 (review): the comment above documents that a wildcard client bind
-  # derives NO LAN CORS origin — but a wildcard bind is exactly the
-  # configuration a LAN operator who has ALSO turned on OPENCODE_AUTH (the
-  # legitimate hardened-LAN path start_client's safety gate allows) would
-  # use. Silently deriving nothing left LAN chat failing OpenCode's CORS
-  # preflight with no operator-facing signal — only this source comment.
-  # Emit a loud runtime warning naming the knob operators must set
-  # (OP_CLIENT_CORS_ALLOWED_ORIGINS) whenever that gap is live: wildcard
-  # client bind + auth enabled + no explicit origins configured to fill it.
-  if { [ "$client_bind_address" = "0.0.0.0" ] || [ "$client_bind_address" = "::" ]; } \
-     && opencode_auth_enabled && [ -z "${OP_CLIENT_CORS_ALLOWED_ORIGINS:-}" ]; then
-    echo "WARNING: OP_CLIENT_BIND_ADDRESS/OP_BIND_ADDRESS=${client_bind_address} is a wildcard bind with OPENCODE_AUTH enabled, but no LAN browser Origin can be auto-derived from a wildcard bind — set OP_CLIENT_CORS_ALLOWED_ORIGINS to the exact http(s) origin(s) LAN browsers will use (e.g. http://<lan-ip>:${client_host_port}), or the client will silently fail OpenCode's CORS preflight." >&2
-  fi
-  if [ -n "${OP_CLIENT_CORS_ALLOWED_ORIGINS:-}" ]; then
-    local old_ifs="$IFS"
+  if [ -n "${OP_UI_CORS_ALLOWED_ORIGINS:-}" ]; then
+    local prev_ifs="$IFS"
     IFS=','
-    read -ra extra_origins <<< "${OP_CLIENT_CORS_ALLOWED_ORIGINS}"
-    IFS="$old_ifs"
-    local origin
-    for origin in "${extra_origins[@]}"; do
-      origin="${origin#${origin%%[![:space:]]*}}"
-      origin="${origin%${origin##*[![:space:]]}}"
-      if [ -n "$origin" ]; then
-        if is_allowed_cors_origin "$origin"; then
-          cors_origins+=("$origin")
-        else
-          echo "warning: rejecting invalid OP_CLIENT_CORS_ALLOWED_ORIGINS entry (must be an exact http(s) origin — no wildcard, userinfo, path, query, or fragment): $origin" >&2
-        fi
+    local extra_origin
+    for extra_origin in $OP_UI_CORS_ALLOWED_ORIGINS; do
+      extra_origin="${extra_origin//[[:space:]]/}"
+      [ -z "$extra_origin" ] && continue
+      if is_allowed_cors_origin "$extra_origin"; then
+        cors_origins+=("$extra_origin")
+      else
+        echo "warning: rejecting invalid OP_UI_CORS_ALLOWED_ORIGINS entry (must be an exact http(s) origin — no wildcard, userinfo, path, query, or fragment): $extra_origin" >&2
       fi
     done
+    IFS="$prev_ifs"
   fi
-  local origin
-  for origin in "${cors_origins[@]}"; do
-    cmd+=(--cors "$origin")
+  local cors_origin
+  for cors_origin in "${cors_origins[@]}"; do
+    cmd+=(--cors "$cors_origin")
   done
 
   exec "${cmd[@]}"
@@ -617,5 +620,5 @@ run_akm_schema_migration
 persist_akm_stash_dir_fallback
 start_cron_and_sync_tasks
 resolve_opencode_server_password
-start_client
+start_ui
 start_opencode

@@ -93,7 +93,7 @@ docker compose \
   up -d
 ```
 
-See [Manual Compose Runbook](../docs/operations/manual-compose-runbook.md) for the full reference.
+See [Manual Compose Runbook](../../docs/operations/manual-compose-runbook.md) for the full reference.
 
 The live stack is defined by the fixed compose file set in `config/stack/`.
 Built-in optional services are activated with Compose profiles; manual custom

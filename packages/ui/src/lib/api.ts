@@ -27,7 +27,7 @@ export * from './api/addons.js';
 export * from './api/secrets.js';
 export * from './api/voice.js';
 export * from './api/akm.js';
-export * from './api/endpoints.js';
+export * from './api/pairing.js';
 export * from './api/chat.js';
 export * from './api/providers.js';
 export * from './api/errors.js';

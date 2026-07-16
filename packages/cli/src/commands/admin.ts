@@ -1,10 +1,12 @@
 /**
- * `openpalm admin` — host-ui mode (plan Phase 1.5, #556).
+ * `openpalm admin` — the CLI admin entry (#556).
  *
  * Serves the existing UI through the existing startUIServer supervisor with
- * the admin capability enabled in the spawned UI child (OP_ENABLE_ADMIN=1 +
- * OP_UI_HOST_MODE=host-ui), prints the URL, and opens the browser. Full host
- * management from a browser on the host machine, without Electron.
+ * the admin capability enabled in the spawned UI child (OP_ENABLE_ADMIN=1),
+ * prints the URL, and opens the browser. Full host management from a browser
+ * on the host machine, without Electron. Admin capability is an
+ * Electron-or-CLI-only security boundary — a served/container build can never
+ * self-grant it.
  *
  * Loopback-only ALWAYS: this mode refuses non-loopback bind config —
  * OP_ALLOW_REMOTE_SETUP is ignored and neutralized in the child env (plan

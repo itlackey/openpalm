@@ -1,103 +1,74 @@
 /**
- * Unit tests for the hand-rolled SSE consumer.
+ * Unit tests for the SSE consumer.
  *
- * Runs in the node project — no Svelte runes here, just fetch + streams.
- * We mock `globalThis.fetch` to return a controllable ReadableStream so we
- * never open a socket. `TransformStream` + `TextEncoder` produce SSE frames
- * the consumer parses.
- *
- * Phase D of docs/technical/multi-endpoint-session-ux.md.
+ * Runs in the node project. `parseFrame` is a pure function. For
+ * `subscribeSessionEvents`, the underlying stream is now the browser-owned
+ * direct transport (`$lib/connections/boot.getTransport()`), so we stub that
+ * module with a controllable fake transport whose `subscribeEvents` we drive by
+ * hand — pushing parsed `/event` frames, ending the stream, or failing it.
+ * Reconnect/backoff and dispatch still live in this module.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { parseFrame, subscribeSessionEvents } from './session-events.js';
+type FrameHandler = (event: { type: string; properties?: Record<string, unknown> }) => void;
 
-type StreamHandle = {
-  encoder: TextEncoder;
-  writer: WritableStreamDefaultWriter<Uint8Array>;
-  body: ReadableStream<Uint8Array>;
-  close: () => Promise<void>;
+type StreamCall = {
+  onFrame: FrameHandler;
+  resolve: () => void;
+  reject: (error: Error) => void;
+  signal: AbortSignal;
 };
 
-type StreamHandleInternal = StreamHandle & {
-  abort: (reason?: unknown) => Promise<void>;
-};
-
-function makeStream(): StreamHandleInternal {
-  const encoder = new TextEncoder();
-  const ts = new TransformStream<Uint8Array, Uint8Array>();
-  const writer = ts.writable.getWriter();
+const transport = vi.hoisted(() => {
+  const calls: StreamCall[] = [];
+  const subscribeEvents = vi.fn(
+    (onFrame: FrameHandler, signal: AbortSignal) =>
+      new Promise<void>((resolve, reject) => {
+        const call: StreamCall = { onFrame, resolve, reject, signal };
+        calls.push(call);
+        signal.addEventListener(
+          'abort',
+          () => {
+            const error = new Error('aborted');
+            error.name = 'AbortError';
+            reject(error);
+          },
+          { once: true }
+        );
+      })
+  );
   return {
-    encoder,
-    writer,
-    body: ts.readable,
-    async close() {
-      try {
-        await writer.close();
-      } catch {
-        // already closed
-      }
-    },
-    async abort(reason?: unknown) {
-      try {
-        await writer.abort(reason);
-      } catch {
-        // already aborted
-      }
+    calls,
+    subscribeEvents,
+    request: vi.fn(),
+    probeHealth: vi.fn(),
+    reset() {
+      calls.length = 0;
+      subscribeEvents.mockClear();
     },
   };
-}
-
-async function writeChunk(handle: StreamHandle, text: string): Promise<void> {
-  await handle.writer.write(handle.encoder.encode(text));
-}
-
-const SESSION_CREATED_FRAME = `data: ${JSON.stringify({
-  type: 'session.created',
-  properties: { info: { id: 'sess-1' } },
-})}\n\n`;
-
-const SESSION_UPDATED_FRAME = `data: ${JSON.stringify({
-  type: 'session.updated',
-  properties: { info: { id: 'sess-1', title: 'Renamed', time: { updated: 42 } } },
-})}\n\n`;
-
-const SESSION_DELETED_FRAME = `data: ${JSON.stringify({
-  type: 'session.deleted',
-  properties: { info: { id: 'sess-1' } },
-})}\n\n`;
-
-let fetchSpy: ReturnType<typeof vi.spyOn>;
-let openStreams: StreamHandle[] = [];
-
-beforeEach(() => {
-  openStreams = [];
-  fetchSpy = vi.spyOn(globalThis, 'fetch');
 });
 
-afterEach(async () => {
-  // Close any leaked streams so vitest doesn't hang on pending writers.
-  for (const s of openStreams) {
-    await s.close().catch(() => {});
-  }
-  vi.restoreAllMocks();
-});
+vi.mock('$lib/connections/boot.js', () => ({ getTransport: () => transport }));
 
-/** Tick the event loop so the consumer's reader can drain pending chunks. */
-async function tick(times = 4): Promise<void> {
-  for (let i = 0; i < times; i++) {
-    await Promise.resolve();
-  }
-}
+import { parseFrame, subscribeSessionEvents } from './session-events.js';
 
-/** Helper: wait until a predicate becomes true or a budget expires. */
-async function waitFor(predicate: () => boolean, budgetMs = 1000): Promise<void> {
+/** Wait until a predicate becomes true or a budget expires. */
+async function waitFor(predicate: () => boolean, budgetMs = 2000): Promise<void> {
   const start = Date.now();
   while (!predicate() && Date.now() - start < budgetMs) {
     await new Promise((resolve) => setTimeout(resolve, 5));
   }
   if (!predicate()) throw new Error('waitFor: predicate never became true');
 }
+
+beforeEach(() => {
+  transport.reset();
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
 describe('parseFrame', () => {
   it('parses a single-line data frame', () => {
@@ -122,16 +93,7 @@ describe('parseFrame', () => {
 });
 
 describe('subscribeSessionEvents', () => {
-  it('dispatches a session.created event', async () => {
-    const handle = makeStream();
-    openStreams.push(handle);
-    fetchSpy.mockResolvedValueOnce(
-      new Response(handle.body, {
-        status: 200,
-        headers: { 'content-type': 'text/event-stream' },
-      })
-    );
-
+  it('fires onConnect on the first frame and dispatches session.created', async () => {
     const onCreated = vi.fn();
     const onConnect = vi.fn();
     const unsub = subscribeSessionEvents({
@@ -141,22 +103,15 @@ describe('subscribeSessionEvents', () => {
       onConnect,
     });
 
-    await tick();
-    await writeChunk(handle, SESSION_CREATED_FRAME);
-    await waitFor(() => onCreated.mock.calls.length > 0);
+    await waitFor(() => transport.calls.length === 1);
+    transport.calls[0].onFrame({ type: 'session.created', properties: { info: { id: 'sess-1' } } });
 
-    expect(onConnect).toHaveBeenCalled();
+    expect(onConnect).toHaveBeenCalledTimes(1);
     expect(onCreated).toHaveBeenCalledWith('sess-1');
     unsub();
   });
 
   it('dispatches multiple events in order', async () => {
-    const handle = makeStream();
-    openStreams.push(handle);
-    fetchSpy.mockResolvedValueOnce(
-      new Response(handle.body, { status: 200 })
-    );
-
     const events: string[] = [];
     const unsub = subscribeSessionEvents({
       onCreated: (id) => events.push(`created:${id}`),
@@ -164,119 +119,32 @@ describe('subscribeSessionEvents', () => {
       onDeleted: (id) => events.push(`deleted:${id}`),
     });
 
-    await tick();
-    await writeChunk(handle, SESSION_CREATED_FRAME);
-    await writeChunk(handle, SESSION_UPDATED_FRAME);
-    await writeChunk(handle, SESSION_DELETED_FRAME);
-    await waitFor(() => events.length === 3);
+    await waitFor(() => transport.calls.length === 1);
+    const push = transport.calls[0].onFrame;
+    push({ type: 'session.created', properties: { info: { id: 'sess-1' } } });
+    push({ type: 'session.updated', properties: { info: { id: 'sess-1', title: 'Renamed', time: { updated: 42 } } } });
+    push({ type: 'session.deleted', properties: { info: { id: 'sess-1' } } });
 
     expect(events).toEqual(['created:sess-1', 'updated:sess-1', 'deleted:sess-1']);
     unsub();
   });
 
-  it('parses multi-line data fields as one JSON payload', async () => {
-    const handle = makeStream();
-    openStreams.push(handle);
-    fetchSpy.mockResolvedValueOnce(new Response(handle.body, { status: 200 }));
-
-    const onCreated = vi.fn();
+  it('reconnects after the stream ends cleanly', async () => {
     const unsub = subscribeSessionEvents({
-      onCreated,
+      onCreated: vi.fn(),
       onUpdated: vi.fn(),
       onDeleted: vi.fn(),
     });
 
-    await tick();
-    // SSE spec: multiple `data:` lines in one frame concatenate with `\n`
-    // before JSON.parse. Split between top-level fields where embedded
-    // whitespace is JSON-legal.
-    const a = '{"type":"session.created",';
-    const b = '"properties":{"info":{"id":"multi-line"}}}';
-    await writeChunk(handle, `data: ${a}\ndata: ${b}\n\n`);
-    await waitFor(() => onCreated.mock.calls.length > 0);
-
-    expect(onCreated).toHaveBeenCalledWith('multi-line');
+    await waitFor(() => transport.calls.length === 1);
+    // Server closed the stream — the consumer must reopen after a short delay.
+    transport.calls[0].resolve();
+    await waitFor(() => transport.subscribeEvents.mock.calls.length === 2);
+    expect(transport.calls.length).toBe(2);
     unsub();
   });
 
-  it('reconnects after a stream error and sends Last-Event-ID', async () => {
-    const first = makeStream();
-    openStreams.push(first);
-    const second = makeStream();
-    openStreams.push(second);
-
-    fetchSpy
-      .mockResolvedValueOnce(new Response(first.body, { status: 200 }))
-      .mockResolvedValueOnce(new Response(second.body, { status: 200 }));
-
-    const onCreated = vi.fn();
-    const onUpdated = vi.fn();
-    const onDisconnect = vi.fn();
-    const unsub = subscribeSessionEvents({
-      onCreated,
-      onUpdated,
-      onDeleted: vi.fn(),
-      onDisconnect,
-    });
-
-    await tick();
-    // First stream: send an event with an id, then close to trigger reconnect.
-    const framed = `id: 42\ndata: ${JSON.stringify({
-      type: 'session.created',
-      properties: { info: { id: 'A' } },
-    })}\n\n`;
-    await writeChunk(first, framed);
-    await waitFor(() => onCreated.mock.calls.length > 0);
-    expect(onCreated).toHaveBeenCalledWith('A');
-
-    // Close the first stream — consumer should reconnect with backoff.
-    await first.close();
-
-    // Second stream should be requested. With 1s initial backoff this can
-    // take up to ~1.5s, give it 3s.
-    await waitFor(() => fetchSpy.mock.calls.length === 2, 3500);
-
-    const secondCallHeaders = (fetchSpy.mock.calls[1][1] as RequestInit).headers as
-      | Record<string, string>
-      | undefined;
-    expect(secondCallHeaders?.['Last-Event-ID']).toBe('42');
-
-    await writeChunk(second, SESSION_UPDATED_FRAME);
-    await waitFor(() => onUpdated.mock.calls.length > 0);
-    expect(onUpdated).toHaveBeenCalledWith('sess-1', expect.objectContaining({ title: 'Renamed' }));
-    unsub();
-  }, 8000);
-
-  it('unsubscribe aborts the controller and prevents reconnection', async () => {
-    const handle = makeStream();
-    openStreams.push(handle);
-    fetchSpy.mockResolvedValueOnce(new Response(handle.body, { status: 200 }));
-
-    const unsub = subscribeSessionEvents({
-      onCreated: vi.fn(),
-      onUpdated: vi.fn(),
-      onDeleted: vi.fn(),
-    });
-
-    await tick();
-    unsub();
-    // Trigger the stream-end path. With stopped=true, the loop must exit
-    // and NOT call fetch again.
-    await handle.close();
-
-    // Give the consumer ample time to (incorrectly) reconnect.
-    await new Promise((resolve) => setTimeout(resolve, 1500));
-    expect(fetchSpy).toHaveBeenCalledTimes(1);
-  }, 4000);
-
-  it('fires onDisconnect for non-abort errors', async () => {
-    const first = makeStream();
-    openStreams.push(first);
-    fetchSpy
-      .mockResolvedValueOnce(new Response(first.body, { status: 200 }))
-      .mockRejectedValueOnce(new Error('boom'))
-      .mockImplementation(() => new Promise(() => {})); // hang
-
+  it('fires onDisconnect for non-abort errors and reconnects with backoff', async () => {
     const onDisconnect = vi.fn();
     const unsub = subscribeSessionEvents({
       onCreated: vi.fn(),
@@ -285,10 +153,25 @@ describe('subscribeSessionEvents', () => {
       onDisconnect,
     });
 
-    await tick();
-    await first.close();
-    await waitFor(() => onDisconnect.mock.calls.length > 0, 4000);
+    await waitFor(() => transport.calls.length === 1);
+    transport.calls[0].reject(new Error('boom'));
+    await waitFor(() => onDisconnect.mock.calls.length > 0);
     expect(onDisconnect.mock.calls[0][0]).toBeInstanceOf(Error);
     unsub();
-  }, 6000);
+  });
+
+  it('unsubscribe aborts the stream and prevents reconnection', async () => {
+    const unsub = subscribeSessionEvents({
+      onCreated: vi.fn(),
+      onUpdated: vi.fn(),
+      onDeleted: vi.fn(),
+    });
+
+    await waitFor(() => transport.calls.length === 1);
+    unsub();
+    // The abort rejects the in-flight stream with an AbortError; the loop must
+    // see `stopped` and NOT reopen.
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    expect(transport.subscribeEvents).toHaveBeenCalledTimes(1);
+  });
 });

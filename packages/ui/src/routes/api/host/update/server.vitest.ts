@@ -57,7 +57,7 @@ function makeRawEvent(body: string): Parameters<typeof POST>[0] {
 }
 
 beforeEach(() => {
-	process.env.OP_UI_HOST_MODE = 'host-ui';
+	process.env.OP_ENABLE_ADMIN = '1';
 	resetState('admin-token');
 	vi.clearAllMocks();
 	checkDockerMock.mockResolvedValue({ ok: true, stdout: '26.0.0', stderr: '', code: 0 });
@@ -68,7 +68,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-	delete process.env.OP_UI_HOST_MODE;
+	delete process.env.OP_ENABLE_ADMIN;
 	rmSync(join(getState().dataDir, '.install.lock'), { force: true });
 });
 

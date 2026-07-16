@@ -12,7 +12,7 @@
   import { notifications } from '$lib/notifications.svelte.js';
   import { NETWORK_PRESET_LABELS, type NetworkAccessPreset } from '@openpalm/lib/control-plane/network-preset.js';
 
-  // Phase 4 split (plan ui-runtime-modes-plan.md §5.F, Phase 4 step 2): host
+  // Phase 4 split: host
   // STACK settings (project name, bind address → /api/host/stack) are a
   // separate concern from ASSISTANT settings (persona → /api/assistant/persona)
   // with separate capabilities, endpoints, and save actions. hasCapability()

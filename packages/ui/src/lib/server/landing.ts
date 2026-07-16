@@ -1,6 +1,5 @@
 /**
- * Server-side landing resolution (plan ui-runtime-modes-plan.md §6.5,
- * Phase 3 step 2).
+ * Server-side landing resolution.
  *
  * Collects the launch facts (local install state, container health, remote
  * reachability — the probes that used to feed the /splash page) and runs them
@@ -8,11 +7,11 @@
  * navigations to `/` and `/splash`, and by routes/+page.server.ts for
  * client-side navigations to `/`.
  *
- * The server cannot detect the client display mode (client-only by design,
- * plan §6.3), so capabilities are resolved with the 'browser' baseline —
- * which yields the correct host:setup gating for every hostMode: host-capable
- * modes keep their host:* capabilities in a browser, and the other modes
- * never had them.
+ * The server cannot detect the client display mode (client-only by design),
+ * so capabilities are resolved with the 'browser' baseline —
+ * which yields the correct host:setup gating for every process: an
+ * adminCapable process keeps its host:* capabilities in a browser, and a
+ * non-admin process never had them.
  */
 import type { RequestEvent } from '@sveltejs/kit';
 import {
@@ -25,7 +24,7 @@ import {
   type ComposeServiceStatus,
 } from '@openpalm/lib';
 import { getState } from '$lib/server/state.js';
-import { listRemoteStatuses } from '$lib/server/endpoints.js';
+import { listRemoteStatuses } from '$lib/server/opencode-target.js';
 import { computeServerRuntimeContext } from '$lib/server/features.js';
 import { resolveCapabilities } from '$lib/runtime-context.svelte.js';
 import { resolveLanding, type LaunchState } from '$lib/resolve-landing.js';
@@ -111,7 +110,7 @@ async function resolveLaunchRouting(): Promise<LaunchRouting> {
 }
 
 /**
- * Resolve the landing path for a request via resolveLanding() (plan §6.5).
+ * Resolve the landing path for a request via resolveLanding().
  * May return a path with a query string (e.g. '/host?tab=diagnostics').
  */
 export async function resolveRequestLanding(event: RequestEvent): Promise<string> {
@@ -141,7 +140,7 @@ export async function resolveRequestLanding(event: RequestEvent): Promise<string
   ];
   const launchState: LaunchState = {
     // No blocking migration exists yet — the gate (and /attention) is wired
-    // ahead of the first one (plan §6.5).
+    // ahead of the first one.
     migration: { status: 'none' },
     local: { state: localState },
     connections,

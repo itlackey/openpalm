@@ -1,6 +1,6 @@
 /**
  * Phase 3 hygiene — the chat page must not import the $lib/api.js barrel
- * (plan ui-runtime-modes-plan.md Phase 3 step 4, issue #555: "Chat stops
+ * (issue #555: "Chat stops
  * importing the $lib/api.js barrel (direct domain-client imports only)").
  *
  * RED until Phase 3 lands: chat/+page.svelte still does
@@ -47,7 +47,7 @@ function isApiBarrelSpecifier(specifier: string): boolean {
   );
 }
 
-describe('chat page ↔ admin API barrel untangling (plan Phase 3 step 4, #555)', () => {
+describe('chat page ↔ admin API barrel untangling (#555)', () => {
   test('the chat page exists (sanity)', () => {
     // CHARACTERIZATION (green today): guards the path this hygiene scan pins.
     expect(existsSync(CHAT_PAGE)).toBe(true);

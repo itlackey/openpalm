@@ -273,10 +273,15 @@ describe("#563 — OPENCODE_AUTH + opencode_server_password compose plumbing", (
 });
 
 describe("#563 — the preset-managed cascade set matches compose reality (T31, pin)", () => {
-  test("client port line nests OP_CLIENT_BIND_ADDRESS then OP_BIND_ADDRESS", () => {
+  test("assistant publishes the @openpalm/ui co-process port (loopback-first), not the removed OP_CLIENT_PORT", () => {
     const assistantPorts = allServices.assistant?.ports ?? [];
+    // The removed @openpalm/client knob must stay gone ("One UI, delete the split").
+    expect(assistantPorts.some((port) => String(port).includes("OP_CLIENT_PORT"))).toBe(false);
+    // Phase 4 re-adds the UI co-process on the FIXED in-container port 3000,
+    // published loopback-first: per-service OP_UI_BIND_ADDRESS nested over the
+    // global OP_BIND_ADDRESS cascade, host knob OP_UI_PORT (default 3810).
     expect(assistantPorts).toContain(
-      "${OP_CLIENT_BIND_ADDRESS:-${OP_BIND_ADDRESS:-127.0.0.1}}:${OP_CLIENT_PORT:-3810}:3000",
+      "${OP_UI_BIND_ADDRESS:-${OP_BIND_ADDRESS:-127.0.0.1}}:${OP_UI_PORT:-3810}:3000",
     );
   });
 

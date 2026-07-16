@@ -1,42 +1,44 @@
 import type { RequestEvent } from '@sveltejs/kit';
-import { PLATFORM_VERSION, resolveClientAppPort } from '@openpalm/lib';
+import { PLATFORM_VERSION } from '@openpalm/lib';
 import uiPkg from '../../../package.json';
-import type { Capability, ServerRuntimeContext, UiHostMode } from '$lib/types.js';
+import type { Capability, ServerRuntimeContext } from '$lib/types.js';
 
 /**
- * Server runtime context — RuntimeContext v2 (plan ui-runtime-modes-plan.md
- * §6.1, issue #509). Computed server-side on every request via
+ * Server runtime context — RuntimeContext v2 (issue #509). Computed server-side on every request via
  * +layout.server.ts and served publicly at GET /api/runtime (the
  * contract-version handshake for remote/hosted clients).
  *
- * hostMode resolution (Phase 1):
- *   OP_UI_HOST_MODE (explicit) → that mode
- *   else OP_INSIDE_ELECTRON=1  → 'electron-host' (legacy, injected by
- *                                 packages/electron/src/main.ts)
- *   else OP_ENABLE_ADMIN=1     → 'host-ui' (legacy, local dev / openpalm admin)
- *   else                       → 'pwa-static' baseline
+ * Admin capability is an Electron-or-CLI-only security boundary — there is no
+ * per-mode capability matrix and no env self-grant footgun (a served/container
+ * build must never be able to claim host mode). A single boolean:
+ *   OP_INSIDE_ELECTRON=1 (injected by packages/electron/src/main.ts) OR
+ *   OP_ENABLE_ADMIN=1    (local dev / `openpalm admin`) → adminCapable
+ * Every process gets the base capability set; only an adminCapable process
+ * additionally gets host:*.
  */
 
-const HOST_MODES: readonly UiHostMode[] = [
-  'electron-host',
-  'host-ui',
-  'assistant-container',
-  'pwa-static',
+/**
+ * True when this process is admin-capable — running inside Electron or
+ * explicitly opted into admin. This is the ONLY gate for host:* capabilities;
+ * a served/container/PWA build is never admin-capable.
+ */
+export function isAdminCapable(): boolean {
+  return process.env.OP_INSIDE_ELECTRON === '1' || process.env.OP_ENABLE_ADMIN === '1';
+}
+
+/** Base capabilities granted to EVERY process. The browser owns
+ *  connections uniformly — multiple assistants + switching work everywhere. */
+const BASE_CAPABILITIES: readonly Capability[] = [
+  'chat',
+  'connections:read',
+  'connections:manage',
+  'connections:switch',
+  'assistant-settings:read',
+  'assistant-settings:write',
+  'pwa:install',
 ];
 
-function isUiHostMode(value: string): value is UiHostMode {
-  return (HOST_MODES as readonly string[]).includes(value);
-}
-
-function resolveHostMode(): UiHostMode {
-  const explicit = process.env.OP_UI_HOST_MODE?.trim() ?? '';
-  if (isUiHostMode(explicit)) return explicit;
-  if (process.env.OP_INSIDE_ELECTRON === '1') return 'electron-host';
-  if (process.env.OP_ENABLE_ADMIN === '1') return 'host-ui';
-  return 'pwa-static';
-}
-
-/** The full host:* capability set (plan §6.1) — host-capable modes only. */
+/** The host:* capability set — added only when adminCapable. */
 const HOST_CAPABILITIES: readonly Capability[] = [
   'host:setup',
   'host:stack:read',
@@ -50,97 +52,36 @@ const HOST_CAPABILITIES: readonly Capability[] = [
   'host:akm-sharing',
 ];
 
-/** Capabilities of a host-capable process (electron-host / host-ui). Note:
- *  never 'connections:single' — that marker is the assistant-container
- *  branch key in resolveCapabilities() (plan §6.2). */
-const HOST_MODE_CAPABILITIES: readonly Capability[] = [
-  'chat',
-  'connections:read',
-  'connections:manage',
-  'connections:switch',
-  'assistant-settings:read',
-  'assistant-settings:write',
-  ...HOST_CAPABILITIES,
-];
-
-const SERVER_CAPABILITIES: Record<UiHostMode, readonly Capability[]> = {
-  'electron-host': HOST_MODE_CAPABILITIES,
-  'host-ui': HOST_MODE_CAPABILITIES,
-  // Single locked connection to the local OpenCode: chat + assistant settings,
-  // no host:* and no connection management.
-  'assistant-container': [
-    'connections:single',
-    'chat',
-    'assistant-settings:read',
-    'assistant-settings:write',
-  ],
-  // Baseline: connection management + chat (when connected) + PWA install.
-  'pwa-static': [
-    'chat',
-    'connections:read',
-    'connections:manage',
-    'connections:switch',
-    'pwa:install',
-  ],
-};
-
-/** Route pointers per mode — current-truth URLs. Phase 2 (#486) moved
- *  connections to /connections; Phase 4 moved the host dashboard to /host
- *  (/admin/* is a dead namespace — router 404, no alias). */
-function routesForMode(mode: UiHostMode): ServerRuntimeContext['routes'] {
-  switch (mode) {
-    case 'electron-host':
-    case 'host-ui':
-      return {
-        chat: '/chat',
-        connections: '/connections',
-        host: '/host',
-        setup: '/setup',
-      };
-    case 'assistant-container':
-      return { chat: '/chat' };
-    case 'pwa-static':
-      // Connection management is capability-guarded, not host-admin-gated —
-      // reachable in pwa-static (plan §4.3).
-      return { chat: '/chat', connections: '/connections' };
-  }
-}
-
 export function computeServerRuntimeContext(event: RequestEvent): ServerRuntimeContext {
-  const hostMode = resolveHostMode();
-  const isHostCapable = hostMode === 'electron-host' || hostMode === 'host-ui';
-  // D8: additive optional field — the sibling @openpalm/client static app's
-  // loopback origin, when this deployment serves one. Omitted in
-  // assistant-container (no sibling static client there).
-  const clientAppUrl =
-    hostMode === 'assistant-container'
-      ? undefined
-      : `http://127.0.0.1:${resolveClientAppPort(process.env)}`;
+  const admin = isAdminCapable();
+  const serverCapabilities: Capability[] = admin
+    ? [...BASE_CAPABILITIES, ...HOST_CAPABILITIES]
+    : [...BASE_CAPABILITIES];
   return {
     version: 2,
-    hostMode,
-    serverCapabilities: [...SERVER_CAPABILITIES[hostMode]],
+    admin,
+    serverCapabilities,
     // Only publicBaseUrl depends on the event; requireCapability() calls this
     // from route handlers whose test event stubs may omit `url`.
     publicBaseUrl: event.url?.origin ?? '',
     uiVersion: uiPkg.version,
-    // Skeleton version equals platform version in production (plan §8.2);
-    // OP_SKELETON_VERSION is the explicit exact-pin override (plan §3).
+    // Skeleton version equals platform version in production;
+    // OP_SKELETON_VERSION is the explicit exact-pin override.
     skeletonVersion: process.env.OP_SKELETON_VERSION?.trim() || PLATFORM_VERSION,
-    activeConnectionMode: hostMode === 'assistant-container' ? 'single' : 'multi',
-    ...(clientAppUrl !== undefined ? { clientAppUrl } : {}),
-    routes: routesForMode(hostMode),
+    // chat + connections are reachable everywhere; the host dashboard and
+    // setup wizard only exist in an adminCapable process (Phase 2 (#486)
+    // moved connections to /connections; Phase 4 moved the host dashboard to
+    // /host — /admin/* is a dead namespace, router 404, no alias).
+    routes: admin
+      ? { chat: '/chat', connections: '/connections', host: '/host', setup: '/setup' }
+      : { chat: '/chat', connections: '/connections' },
     security: {
-      // Host admin is loopback-only and never weakened (plan §8.3).
+      // Host admin is loopback-only and never weakened.
       hostAdminLoopbackOnly: true,
-      // Only browser-direct remote connections (the static client) need HTTPS;
-      // host modes proxy server-side (plan §6.10).
-      requiresHttpsForRemoteConnections: hostMode === 'pwa-static',
-      csrfMode: isHostCapable
-        ? 'loopback-origin'
-        : hostMode === 'assistant-container'
-          ? 'same-site'
-          : 'bearer-token',
+      // Browser-direct remote connections need HTTPS; the loopback admin
+      // process proxies server-side and does not.
+      requiresHttpsForRemoteConnections: !admin,
+      csrfMode: admin ? 'loopback-origin' : 'same-site',
     },
   };
 }
