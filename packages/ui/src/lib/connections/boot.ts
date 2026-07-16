@@ -57,8 +57,8 @@ function ensure(): void {
     () => activeConnection,
     async (connection) => {
       const resolved = await secretStore.resolveAuth(connection);
-      const authorization = authorizationHeader(resolved);
-      return authorization ? { authorization } : {};
+      // The transport's authHeaders already drops an undefined authorization.
+      return { authorization: authorizationHeader(resolved) ?? undefined };
     }
   );
   store = connectionStore;

@@ -63,6 +63,17 @@ const IV_BYTES = 12;
 
 type EncryptedRecord = { v: typeof ENCRYPTED_MARKER; iv: string; ciphertext: string };
 
+/**
+ * WebCrypto's `SubtleCrypto` is secure-context-only: on a plain-http LAN origin
+ * (the LAN-served tier) `crypto.subtle` is undefined, so encryption is simply
+ * not available there. Callers degrade to the legacy plaintext record shape —
+ * which `readMaterial` already reads — rather than throwing and blocking the
+ * user from saving a credential at all.
+ */
+function subtleAvailable(): boolean {
+  return typeof crypto !== 'undefined' && !!crypto.subtle;
+}
+
 function isEncryptedRecord(value: unknown): value is EncryptedRecord {
   return (
     !!value &&
@@ -135,6 +146,13 @@ async function decryptRecord(key: CryptoKey, record: EncryptedRecord): Promise<S
 }
 
 async function writeMaterial(storage: ConnectionStorage, ref: string, material: SecretMaterial): Promise<void> {
+  if (!subtleAvailable()) {
+    // Insecure context (plain-http LAN origin): no SubtleCrypto, so store the
+    // legacy plaintext record shape rather than throwing. There is no at-rest
+    // encryption to be had on such an origin either way.
+    await storage.setMeta(META_PREFIX + ref, JSON.stringify(material));
+    return;
+  }
   const key = await getOrCreateKey(storage);
   const record = await encryptMaterial(key, material);
   await storage.setMeta(META_PREFIX + ref, JSON.stringify(record));

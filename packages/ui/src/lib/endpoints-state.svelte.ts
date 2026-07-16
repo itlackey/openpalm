@@ -112,6 +112,10 @@ class ConnectionsService {
       await emitConnectionActivated(id);
     } catch (e) {
       this.activeId = previous;
+      // setActive(id) above already persisted the selection; roll the PERSISTED
+      // active id back too, or a reload would land on the connection whose
+      // handoff just failed. Best-effort — `previous` may be '' or since-removed.
+      await store.setActive(previous).catch(() => {});
       setActiveConnection((await store.get(previous).catch(() => null)) ?? null);
       const err = e as { message?: string };
       this.error = err.message ?? 'Failed to switch connection';

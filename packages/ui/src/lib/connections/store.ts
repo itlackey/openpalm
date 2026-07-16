@@ -147,6 +147,24 @@ function clone<T>(value: T): T {
   return structuredClone(value);
 }
 
+/**
+ * Generate a connection id. `crypto.randomUUID()` is secure-context-only, so on
+ * a plain-http LAN origin (the LAN-served tier this store supports) it is
+ * undefined and calling it throws before a connection can be added. Fall back
+ * to a v4 UUID built from `crypto.getRandomValues`, which IS available in
+ * insecure contexts.
+ */
+function newConnectionId(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  const b = crypto.getRandomValues(new Uint8Array(16));
+  b[6] = (b[6] & 0x0f) | 0x40;
+  b[8] = (b[8] & 0x3f) | 0x80;
+  const h = Array.from(b, (x) => x.toString(16).padStart(2, '0'));
+  return `${h[0]}${h[1]}${h[2]}${h[3]}-${h[4]}${h[5]}-${h[6]}${h[7]}-${h[8]}${h[9]}-${h[10]}${h[11]}${h[12]}${h[13]}${h[14]}${h[15]}`;
+}
+
 /** In-memory storage backend — same semantics as the IndexedDB one. */
 export function createMemoryStorage(): ConnectionStorage {
   const entries = new Map<string, Connection>();
@@ -338,7 +356,7 @@ export function createConnectionStore(options: { storage: ConnectionStorage }): 
 
     async add(input) {
       assertUrlHasNoUserinfo(input.baseUrl);
-      const id = input.id ?? crypto.randomUUID();
+      const id = input.id ?? newConnectionId();
       if (await readEntry(id)) throw new Error(`Connection already exists: ${id}`);
       const entry: Connection = { ...input, id };
       await storage.put(entry);

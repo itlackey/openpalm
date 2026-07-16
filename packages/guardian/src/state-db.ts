@@ -150,18 +150,10 @@ export function configureStateDatabase(database: Database): void {
       enabled INTEGER NOT NULL,
       created_at INTEGER NOT NULL
     );
-    CREATE TABLE IF NOT EXISTS session_owners (
-      session_id TEXT PRIMARY KEY,
-      principal_key TEXT NOT NULL,
-      created_at INTEGER NOT NULL
-    );
-    CREATE INDEX IF NOT EXISTS session_owners_principal ON session_owners(principal_key);
-    CREATE TABLE IF NOT EXISTS permission_owners (
-      request_id TEXT PRIMARY KEY,
-      principal_key TEXT NOT NULL,
-      created_at INTEGER NOT NULL
-    );
   `);
+  // Ownership tables share their DDL with the v1 → v2 migration so a fresh DB
+  // and an upgraded one can never drift.
+  createOwnershipTables(database);
 
   // 0600 discipline: DB file + any WAL sidecars that already exist. Sidecars
   // SQLite creates later inherit the DB file's mode (unix VFS derives
@@ -257,7 +249,14 @@ export function seedPortalPrincipalsFromEnv(): PrincipalRecord[] {
 //
 // Bounded oldest-first (created_at) so authenticated input cannot grow the DB
 // without limit — the same size-cap discipline the previous in-memory Maps used.
-const OWNERSHIP_MAX_ROWS = Number(Bun.env.GUARDIAN_OWNERSHIP_MAX_ROWS ?? 10_000);
+const OWNERSHIP_MAX_ROWS = ((): number => {
+  // A non-numeric override yields NaN, which binds to SQLite as NULL and turns
+  // the eviction `LIMIT MAX(0, count - ?)` into `LIMIT NULL` (unbounded) —
+  // deleting the ENTIRE ownership table on the next insert. Clamp to the
+  // default for anything not a positive finite number.
+  const parsed = Number(Bun.env.GUARDIAN_OWNERSHIP_MAX_ROWS ?? 10_000);
+  return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : 10_000;
+})();
 
 // `table` is a compile-time constant (never user input) so the interpolation
 // below cannot be injected — this is the one safe use of a table name in SQL text.
