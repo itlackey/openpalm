@@ -28,6 +28,23 @@ describe('connections +page.svelte — host UX and pairing wiring', () => {
     expect(src).toMatch(/shown only once|won't be shown again/i);
   });
 
+  // PR #564 P1-7: the pairing deep link must ride in the URL FRAGMENT, not the
+  // query string. The browser never sends the fragment to the UI's static
+  // host, so the durable credential stays out of access logs, reverse proxies,
+  // and Referer headers. Consumption still strips it from history.
+  test('consumes the pairing code from the URL fragment, never the query string', () => {
+    const src = pageSource();
+    // Reads the code from the hash and advertises the #pair= fragment form.
+    expect(src).toMatch(/window\.location\.hash/);
+    expect(src).toMatch(/#pair=/);
+    // Still strips the credential from history after consuming it.
+    expect(src).toMatch(/replaceState\(/);
+    // No longer reads or advertises the credential-leaking ?pair= query param.
+    expect(src).not.toMatch(/searchParams\.get\(\s*['"`]pair['"`]\s*\)/);
+    expect(src).not.toMatch(/searchParams\.delete\(\s*['"`]pair['"`]\s*\)/);
+    expect(src).not.toMatch(/\?pair=/);
+  });
+
   // PR #564 retest P3-3: qrSvg is string|null; the panel must fall back to the
   // text code (not render a null SVG) when the host could not generate the QR.
   test('falls back to the text code when qrSvg is null', () => {

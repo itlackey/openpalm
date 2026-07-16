@@ -68,12 +68,15 @@
     // ?new=1 — open the add form so "no connections yet" starts at the form.
     if (page.url.searchParams.get('new') === '1') openAddForm();
 
-    // #511 D3/D4: ?pair= deep link — parse, open the add form prefilled, then
-    // strip the credential-bearing parameter from history so the code doesn't
-    // linger in the URL bar.
-    const pairParam = page.url.searchParams.get('pair');
-    if (pairParam) {
-      const result = parsePairingCode(pairParam);
+    // #511 D3/D4 · PR #564 P1-7: #pair= deep-link fragment — parse, open the
+    // add form prefilled, then strip the credential-bearing fragment from
+    // history so the code doesn't linger in the URL bar. The pairing code rides
+    // in the URL FRAGMENT, never the query string: the browser never sends the
+    // fragment to the UI's static host, so the durable credential stays out of
+    // access logs, reverse proxies, and Referer headers.
+    const pairCode = new URLSearchParams(window.location.hash.slice(1)).get('pair');
+    if (pairCode) {
+      const result = parsePairingCode(pairCode);
       if (result.ok) {
         openAddForm();
         applyPairingPayload(result.payload);
@@ -82,7 +85,7 @@
         formError = result.error;
       }
       const url = new URL(page.url);
-      url.searchParams.delete('pair');
+      url.hash = '';
       replaceState(url, {});
     }
   });
@@ -551,8 +554,9 @@
 
         <p class="lede">
           On the other device, open the connections page and paste this code (or scan the QR with
-          any camera/QR app), or use it as the <code>?pair=</code> link if this stack has a hosted
-          client origin. Non-local client origins also need
+          any camera/QR app), or use it as the <code>#pair=</code> URL-fragment link if this stack
+          has a hosted client origin — the fragment keeps the credential out of server logs.
+          Non-local client origins also need
           <code>GUARDIAN_CORS_ALLOWED_ORIGINS</code> set for this guardian.
         </p>
 

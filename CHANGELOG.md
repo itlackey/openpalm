@@ -17,8 +17,10 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   The mint warns when the stack's guardian direct ingress
   (`GUARDIAN_DIRECT_INGRESS`) is not enabled, since the paired connection
   would otherwise 404. The `/connections` add form parses that code — a paste
-  field, or a `?pair=` deep link that is stripped from history on consumption
-  — to prefill itself; the credential then flows through the browser's
+  field, or a `#pair=` URL-fragment deep link (carried in the fragment, so the
+  durable credential never reaches the request path — no access logs, reverse
+  proxies, or `Referer` headers — and stripped from history on consumption) —
+  to prefill itself; the credential then flows through the browser's
   encrypted (WebCrypto AES-GCM) secret store. `detectClientDisplayMode()`
   (electron / standalone-pwa / browser) feeds capability resolution so a
   served build can never claim host capabilities. Hosted-origin CI deploy to

@@ -246,6 +246,8 @@ Full `applyUpdate` now performs the removed-network check before writes, but sco
 
 The pairing payload contains the live guardian principal token. The documented client handoff uses `/connections?pair=<code>` and strips it only in `onMount`, after the initial request has reached the static host. Access logs, browser history, reverse proxies, and referrers can therefore retain the credential despite documentation claiming it is never logged.
 
+**Resolved (branch `claude/friendly-fermat-ukr9v1`):** the deep link now rides in the URL **fragment** (`/connections#pair=<code>`), which the browser never transmits to the server. The consumer reads the code from `window.location.hash` and strips the fragment via `replaceState`, so the durable credential no longer reaches access logs, reverse proxies, or `Referer` headers. `docs/managing-openpalm.md` and the #511 CHANGELOG entry were updated to match, and a regression test asserts the page no longer reads a `?pair=` query param.
+
 ### Additional P2 findings
 
 - mDNS is vulnerable to response/allocation amplification: duplicate questions are not capped or deduplicated, non-IN classes are answered, direct legacy queries are accepted on the all-interface UDP socket, and repeated QM packets have no multicast suppression.
