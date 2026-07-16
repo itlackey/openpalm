@@ -19,11 +19,11 @@ import {
 } from './rate-limit.ts';
 import { initializePrincipalStore, listPrincipals, seedPortalPrincipalsFromEnv } from './state-db';
 import { matchTransport, registerTransport, type Transport } from './transport';
-import { DIRECT_PORT, resolveCorsAllowedOrigin } from './config';
+import { DIRECT_PORT, readPositiveIntEnv, resolveCorsAllowedOrigin } from './config';
 
 const logger = createLogger('guardian');
 
-const INTERNAL_PORT = Number(Bun.env.PORT ?? 8080);
+const INTERNAL_PORT = readPositiveIntEnv('PORT', 8080);
 // Interface the internal (portal-ingress) listener binds. Configurable so a
 // deployment can pin it to the portal-net interface instead of every interface
 // (e.g. keeping it off assistant_net). Unset ⇒ Bun binds all interfaces, which
@@ -32,7 +32,7 @@ const INTERNAL_PORT = Number(Bun.env.PORT ?? 8080);
 // OpenAI co-process both dial `localhost:8080`), two interfaces a single
 // hostname cannot cover.
 const INTERNAL_HOST = Bun.env.GUARDIAN_INTERNAL_HOST || undefined;
-const ADMIN_PORT = Number(Bun.env.GUARDIAN_ADMIN_PORT ?? 3831);
+const ADMIN_PORT = readPositiveIntEnv('GUARDIAN_ADMIN_PORT', 3831);
 const DIRECT_INGRESS_ENABLED = Bun.env.GUARDIAN_DIRECT_INGRESS === 'true';
 const MCP_ENABLED = Bun.env.GUARDIAN_MCP === 'true';
 

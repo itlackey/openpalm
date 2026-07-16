@@ -30,7 +30,7 @@
 import { createLogger } from './logger.ts';
 
 import { type Principal, ownsSession, ownedSessionIds, principalKey, recordPermissionOwner } from './ownership';
-import { ASSISTANT_URL, withAssistantUpstreamAuth } from './config';
+import { ASSISTANT_URL, readPositiveIntEnv, withAssistantUpstreamAuth } from './config';
 import { parseSseFrames, extractData } from './sse.ts';
 
 const logger = createLogger('guardian:event');
@@ -67,7 +67,7 @@ const encoder = new TextEncoder();
 // a turn whose model is quiet would send NO bytes to the client for a long time.
 // Emit an SSE comment (`: ping`) to every relay periodically so the held-open
 // connection stays alive across intermediaries and half-open sockets are detected.
-const KEEPALIVE_MS = Number(Bun.env.GUARDIAN_OC_EVENT_KEEPALIVE_MS ?? 20_000);
+const KEEPALIVE_MS = readPositiveIntEnv('GUARDIAN_OC_EVENT_KEEPALIVE_MS', 20_000);
 const keepaliveBytes = encoder.encode(`: ping\n\n`);
 const keepaliveTimer = setInterval(() => {
 	for (const sub of subscribers) writeTo(sub, keepaliveBytes);

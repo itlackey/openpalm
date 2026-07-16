@@ -2,6 +2,7 @@ import { Database } from 'bun:sqlite';
 import { createHash } from 'node:crypto';
 import { chmodSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
+import { clampPositiveInt } from './config.ts';
 
 export type PrincipalKind = 'portal' | 'direct';
 
@@ -253,14 +254,12 @@ export function seedPortalPrincipalsFromEnv(): PrincipalRecord[] {
  * Clamp a GUARDIAN_OWNERSHIP_MAX_ROWS override to a usable positive integer.
  * A non-numeric override yields NaN, which binds to SQLite as NULL and turns
  * the eviction `LIMIT MAX(0, count - ?)` into `LIMIT NULL` (unbounded) —
- * deleting the ENTIRE ownership table on the next insert. Floor FIRST, then
- * validate: a fractional value in (0, 1) would otherwise pass a `> 0` check
- * and floor to 0, making the eviction limit `count - 0` — the same full-table
- * wipe. Exported for tests.
+ * deleting the ENTIRE ownership table on the next insert; a fractional value
+ * in (0, 1) flooring to 0 would wipe it the same way. Delegates to config's
+ * shared clampPositiveInt (floor-first, >= 1). Exported for tests.
  */
 export function _clampOwnershipMaxRows(raw: string | undefined): number {
-  const parsed = Math.floor(Number(raw ?? 10_000));
-  return Number.isFinite(parsed) && parsed >= 1 ? parsed : 10_000;
+  return clampPositiveInt(raw, 10_000);
 }
 
 const OWNERSHIP_MAX_ROWS = _clampOwnershipMaxRows(Bun.env.GUARDIAN_OWNERSHIP_MAX_ROWS);

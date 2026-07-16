@@ -40,7 +40,7 @@ import {
 import { canOpenEventStream, openEventStream } from './event-fanout';
 import { audit } from './audit';
 import { moderateMessage, type ModerationResult } from './moderation';
-import { ASSISTANT_URL, withAssistantUpstreamAuth } from './config';
+import { ASSISTANT_URL, readPositiveIntEnv, withAssistantUpstreamAuth } from './config';
 import {
 	allow,
 	allowPreAuth,
@@ -57,7 +57,7 @@ const logger = createLogger('guardian:proxy');
 /** Base path under which the native OpenCode proxy is served. */
 export const OC_PREFIX = '/oc';
 
-const OC_MAX_BODY_BYTES = Number(Bun.env.GUARDIAN_OC_MAX_BODY_BYTES ?? 1_048_576); // 1 MiB
+const OC_MAX_BODY_BYTES = readPositiveIntEnv('GUARDIAN_OC_MAX_BODY_BYTES', 1_048_576); // 1 MiB
 
 // Hop-by-hop headers (RFC 7230 §6.1) plus host/content-length: never forwarded in
 // either direction — they describe THIS connection, not the end-to-end message, and
