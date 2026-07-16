@@ -23,13 +23,14 @@ export function resolveCapabilities(
 ): Capability[] {
   const { displayMode, activeConnection } = clientCtx;
 
-  // Electron is the fully-trusted surface — everything the server granted.
-  if (displayMode === 'electron') return serverCaps;
-
-  // A host-capable server viewed in a regular browser (`openpalm admin`) keeps
-  // everything minus Electron-only caps (none reserved yet).
-  if (serverCaps.includes('host:stack:read') && displayMode === 'browser') {
-    return serverCaps.filter((c) => !isElectronOnlyCap(c));
+  // Fully-trusted surfaces get everything the server granted: Electron, and a
+  // host-capable server viewed in a regular browser (`openpalm admin`). No
+  // Electron-only capabilities are reserved yet, so the two are identical.
+  if (
+    displayMode === 'electron' ||
+    (serverCaps.includes('host:stack:read') && displayMode === 'browser')
+  ) {
+    return serverCaps;
   }
 
   // Everything else — a non-admin process (served/PWA), or a host-capable
@@ -45,11 +46,6 @@ export function resolveCapabilities(
   }
 
   return caps;
-}
-
-// eslint-disable-next-line @typescript-eslint/no-unused-vars -- signature fixed; the parameter is consulted once Electron IPC-dependent capabilities exist
-function isElectronOnlyCap(_c: Capability): boolean {
-  return false; // reserved for future Electron IPC-dependent features
 }
 
 /**

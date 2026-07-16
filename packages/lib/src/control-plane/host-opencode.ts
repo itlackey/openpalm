@@ -68,9 +68,6 @@ function hostAuthJsonPath(): string {
 
 // ── opencode.json parsing ────────────────────────────────────────────────────
 
-/** Keys that are safe to import from host opencode.json into OP_HOME config. */
-const ALLOWED_CONFIG_KEYS = new Set(["$schema", "provider", "model", "small_model", "disabled_providers"]);
-
 type OpenCodeJson = Record<string, unknown>;
 
 function readJsonFileSafe(path: string): OpenCodeJson | null {
@@ -92,9 +89,9 @@ function stripDisallowedKeys(obj: OpenCodeJson): OpenCodeJson {
   if (Array.isArray(obj.disabled_providers) && obj.disabled_providers.every((entry) => typeof entry === 'string')) {
     next.disabled_providers = obj.disabled_providers;
   }
-  return Object.fromEntries(
-    Object.entries(next).filter(([k]) => ALLOWED_CONFIG_KEYS.has(k))
-  );
+  // `next` is built from only the allow-listed keys above, so it needs no
+  // further filtering.
+  return next;
 }
 
 function countProviders(obj: OpenCodeJson): number {

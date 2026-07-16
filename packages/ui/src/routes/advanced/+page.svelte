@@ -12,6 +12,7 @@
   import { endpointsService } from '$lib/endpoints-state.svelte.js';
   import { chat } from '$lib/chat/chat-state.svelte.js';
   import { getTransport } from '$lib/connections/boot.js';
+  import { isLoopbackHost } from '$lib/connections/url-policy.js';
   import { onConnectionActivated } from '$lib/connection-events.js';
 
   // Phase 3b ("One UI, delete the split"): the browser owns connections and
@@ -33,10 +34,6 @@
   let reconnecting = $state(false);
   let reloadNonce = $state(0);
   let probeToken = 0; // discard stale async probe results
-
-  function isLoopbackHost(hostname: string): boolean {
-    return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1' || hostname === '[::1]';
-  }
 
   /**
    * Can this connection's OpenCode web UI ride in an iframe? Only when it needs

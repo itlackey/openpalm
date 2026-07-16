@@ -104,11 +104,11 @@ function defaultTarget(): HostOpencodeTarget {
   const authEnabled = /^(true|1|yes)$/i.test(
     (persisted.OPENCODE_AUTH ?? process.env.OPENCODE_AUTH ?? '').trim()
   );
-  const presetPassword = authEnabled
-    ? ((raw) => (raw ? stripTrailingNewlines(raw) : undefined))(
-        readSecret(getState().homeDir, 'op_opencode_password') ?? undefined
-      ) || process.env.OP_OPENCODE_PASSWORD
-    : undefined;
+  let presetPassword: string | undefined;
+  if (authEnabled) {
+    const raw = readSecret(getState().homeDir, 'op_opencode_password');
+    presetPassword = (raw ? stripTrailingNewlines(raw) : undefined) || process.env.OP_OPENCODE_PASSWORD;
+  }
   const password = process.env.OPENCODE_SERVER_PASSWORD || presetPassword || undefined;
   return {
     id: DEFAULT_ID,
