@@ -1,19 +1,22 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onDestroy, onMount } from 'svelte';
   import EmptyState from '@openpalm/ui-kit/components/common/EmptyState.svelte';
   import {
     fetchAddons,
     toggleAddon,
+    saveVoiceProfile,
     fetchAddonCredentials,
     saveAddonCredentials,
     fetchSecretFile,
     fetchSecretFiles,
     saveSecretFile,
     type AddonCredentialField,
+    type AddonEntry,
+    type VoiceAddonInfo,
   } from '$lib/api.js';
   import { isAuthError, toMessage } from '$lib/api/errors.js';
   import { notifications } from '$lib/notifications.svelte.js';
-  import { type TabId } from '$lib/components/chrome/TabBar.svelte';
+  import VoiceProfileSelector from '$lib/components/voice/VoiceProfileSelector.svelte';
   import SecretSelect from '@openpalm/ui-kit/components/common/SecretSelect.svelte';
   import Spinner from '@openpalm/ui-kit/components/common/Spinner.svelte';
   import IconAddons from '@openpalm/ui-kit/components/icons/IconAddons.svelte';
@@ -21,12 +24,9 @@
 
   interface Props {
     onAuthError: () => void;
-    onNavigate?: (tab: TabId) => void;
   }
 
-  let { onAuthError, onNavigate }: Props = $props();
-
-  type AddonEntry = { name: string; enabled: boolean; available: boolean };
+  let { onAuthError }: Props = $props();
 
   // Human-readable label for a raw addon identifier (the raw name stays as a
   // tooltip). Known acronyms keep their casing; everything else is Title Cased.
@@ -43,6 +43,55 @@
   let loading = $state(false);
   let error = $state('');
   let actionLoading = $state<string | null>(null);
+
+  // ── Voice addon: hardware profile + background bring-up job ─────────────
+  // Voice is the one addon whose enable actually starts a container (and on
+  // first enable pulls a multi-GB image in the background). The list endpoint
+  // returns its profiles/selection/activeJob; while a job is in flight we
+  // poll so the row badge tracks pulling → starting → healthy/error.
+  let voiceInfo = $state<VoiceAddonInfo | null>(null);
+  let voiceProfile = $state('');
+  let voicePollTimer: ReturnType<typeof setTimeout> | null = null;
+
+  const voiceJobRunning = $derived(
+    voiceInfo?.activeJob?.state === 'pulling' || voiceInfo?.activeJob?.state === 'starting'
+  );
+
+  function scheduleVoicePoll(): void {
+    if (voicePollTimer) return;
+    voicePollTimer = setTimeout(() => {
+      voicePollTimer = null;
+      void loadAddons().then(() => {
+        if (voiceJobRunning) scheduleVoicePoll();
+      });
+    }, 3000);
+  }
+
+  onDestroy(() => {
+    if (voicePollTimer) clearTimeout(voicePollTimer);
+  });
+
+  async function applyVoiceProfile(): Promise<void> {
+    if (!voiceProfile) return;
+    actionLoading = 'voice';
+    try {
+      const result = await saveVoiceProfile(voiceProfile);
+      if (result.status === 202) {
+        notifications.push('success', 'Voice image is downloading in the background.');
+        scheduleVoicePoll();
+      } else if (!result.ok) {
+        notifications.push('error', result.voiceAddon?.error ?? 'Voice profile change failed.');
+      } else {
+        notifications.push('success', 'Voice hardware profile saved.');
+      }
+      await loadAddons();
+    } catch (err) {
+      if (isAuthError(err)) { onAuthError(); return; }
+      notifications.push('error', toMessage(err, String(err)));
+    } finally {
+      actionLoading = null;
+    }
+  }
 
   // Per-addon credentials editor state (lazy — populated when expanded).
   let expanded = $state<string | null>(null);
@@ -73,7 +122,11 @@
     loading = true;
     error = '';
     try {
-      addons = await fetchAddons();
+      const list = await fetchAddons();
+      addons = list.addons;
+      voiceInfo = list.voice ?? null;
+      if (!voiceProfile && voiceInfo?.selectedProfile) voiceProfile = voiceInfo.selectedProfile;
+      if (voiceJobRunning) scheduleVoicePoll();
     } catch (err) {
       if (isAuthError(err)) { onAuthError(); return; }
       error = toMessage(err, String(err));
@@ -85,7 +138,17 @@
   async function toggle(name: string, enabled: boolean): Promise<void> {
     actionLoading = name;
     try {
-      await toggleAddon(name, enabled);
+      const result = await toggleAddon(
+        name,
+        enabled,
+        name === 'voice' && enabled && voiceProfile ? { profile: voiceProfile } : undefined
+      );
+      if (result.status === 202) {
+        notifications.push('success', 'Voice image is downloading in the background — this can take several minutes.');
+        scheduleVoicePoll();
+      } else if (!result.ok) {
+        error = result.voiceAddon?.error ?? `Could not ${enabled ? 'enable' : 'disable'} ${name}.`;
+      }
       await loadAddons();
     } catch (err) {
       if (isAuthError(err)) { onAuthError(); return; }
@@ -204,25 +267,26 @@
               <span class="badge" class:badge-enabled={addon.enabled} class:badge-disabled={!addon.enabled}>
                 {addon.enabled ? 'Enabled' : 'Disabled'}
               </span>
+              {#if addon.name === 'voice' && voiceInfo?.activeJob}
+                {@const job = voiceInfo.activeJob}
+                <span
+                  class="badge badge-job"
+                  class:badge-enabled={job.state === 'healthy'}
+                  class:badge-error={job.state === 'error'}
+                  title={job.error ?? undefined}
+                >
+                  {job.state === 'pulling' ? 'Downloading…' : job.state === 'starting' ? 'Starting…' : job.state}
+                </span>
+              {/if}
             </span>
             <span class="addon-col addon-col--actions">
-              {#if addon.name === 'voice' && addon.enabled}
-                <button
-                  class="btn btn-sm btn-secondary"
-                  aria-label="Configure Voice addon settings"
-                  onclick={() => onNavigate?.('voice')}
-                >
-                  Configure
-                </button>
-              {:else}
-                <button
-                  class="btn btn-sm btn-secondary"
-                  onclick={() => void openCredentials(addon.name)}
-                  disabled={!addon.available}
-                >
-                  Credentials
-                </button>
-              {/if}
+              <button
+                class="btn btn-sm btn-secondary"
+                onclick={() => void openCredentials(addon.name)}
+                disabled={!addon.available}
+              >
+                Configure
+              </button>
               <button
                 class="btn btn-sm"
                 class:btn-danger={addon.enabled}
@@ -246,7 +310,33 @@
   <!-- Credentials editor opens in a drawer instead of expanding inline. -->
   {#if expanded}
     {@const aid = expanded}
-    <Drawer open={true} title="{formatAddonName(aid)} credentials" onClose={closeCredentials}>
+    <Drawer open={true} title="{formatAddonName(aid)} settings" onClose={closeCredentials}>
+      {#if aid === 'voice' && voiceInfo && voiceInfo.profiles.length > 0}
+        <!-- Host capability config: which compose profile (CPU/CUDA/ROCm)
+             runs the voice container. Client TTS/STT preferences live in the
+             chat UI's connection settings, not here. -->
+        <div class="engine-section voice-profile-block">
+          <span class="creds-label">Hardware profile</span>
+          <VoiceProfileSelector
+            profiles={voiceInfo.profiles}
+            selectedProfile={voiceProfile}
+            onchange={(id) => { voiceProfile = id; }}
+          />
+          <div class="voice-profile-actions">
+            <button
+              class="btn btn-sm btn-secondary"
+              disabled={actionLoading === 'voice' || !voiceProfile || voiceProfile === voiceInfo.selectedProfile}
+              onclick={() => void applyVoiceProfile()}
+            >
+              {#if actionLoading === 'voice'}<Spinner />{/if}
+              Apply profile
+            </button>
+          </div>
+          <p class="creds-desc">
+            Applying while the addon is enabled restarts the voice container on the new profile.
+          </p>
+        </div>
+      {/if}
       {#if credLoading === aid}
         <div class="creds-loading"><Spinner /> Loading credentials…</div>
       {:else if (credFields[aid]?.length ?? 0) === 0}
@@ -401,6 +491,28 @@
     .addon-col--status {
       flex: 0 0 auto;
     }
+  }
+
+  .badge-job {
+    margin-left: var(--s-sp-2);
+  }
+
+  .badge-error {
+    color: var(--s-seal);
+    border-color: var(--s-seal);
+  }
+
+  .voice-profile-block {
+    display: flex;
+    flex-direction: column;
+    gap: var(--s-sp-2);
+    padding-bottom: var(--s-sp-3);
+    border-bottom: var(--s-hair) solid var(--s-line-soft);
+  }
+
+  .voice-profile-actions {
+    display: flex;
+    gap: var(--s-sp-2);
   }
 
   /* ── Credentials editor (in a drawer) ───────────────────────────── */

@@ -123,6 +123,26 @@ export function resolveDefaultProfile(profiles: AddonProfile[]): string | null {
   return profiles[0].id;
 }
 
+/**
+ * The Capabilities-facing view of the voice addon: annotated hardware
+ * profiles, the current selection (falling back to the host-appropriate
+ * default), and the in-flight background job when one exists. Served by
+ * GET /api/host/addons(/voice) so the Add-ons drawer can render the
+ * hardware-profile picker and poll bring-up progress.
+ */
+export async function voiceAddonInfo(homeDir: string): Promise<{
+  profiles: AddonProfile[];
+  selectedProfile: string | null;
+  activeJob?: VoiceActiveJob;
+}> {
+  const rawProfiles = getAddonProfiles(homeDir, VOICE_ADDON);
+  const profiles = await annotateAddonProfileAvailability(rawProfiles);
+  const selectedProfile =
+    getAddonProfileSelection(homeDir, VOICE_ADDON) ?? resolveDefaultProfile(profiles);
+  const activeJob = getActiveJob(VOICE_ADDON);
+  return { profiles, selectedProfile, ...(activeJob ? { activeJob } : {}) };
+}
+
 // Preset values for the bundled openpalm/voice addon. The voice container
 // exposes both endpoints on a single host:port and the UI server reaches
 // it through the loopback binding in the voice addon's compose overlay.

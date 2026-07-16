@@ -19,7 +19,8 @@ import {
   listEnabledAddonIds,
   getRegistryAddonConfig,
 } from "@openpalm/lib";
-import { performAddonToggle } from "$lib/server/addon-helpers.js";
+import { handleAddonToggleRequest } from "$lib/server/addon-helpers.js";
+import { VOICE_ADDON, voiceAddonInfo } from "$lib/server/voice/bring-up.js";
 
 const logger = createLogger("addons.name");
 
@@ -46,7 +47,10 @@ export const GET: RequestHandler = async (event) => {
     return errorResponse(500, "internal_error", `Addon "${name}" schema is unavailable`, {}, requestId);
   }
 
-  return jsonResponse(200, { name, enabled, config }, requestId);
+  // Voice carries a hardware profile + possibly an in-flight bring-up job.
+  const voice = name === VOICE_ADDON ? await voiceAddonInfo(state.homeDir) : undefined;
+
+  return jsonResponse(200, { name, enabled, config, ...(voice ? { voice } : {}) }, requestId);
 };
 
 export const POST: RequestHandler = async (event) => {
@@ -67,6 +71,5 @@ export const POST: RequestHandler = async (event) => {
   if ('error' in result) return jsonBodyError(result, requestId);
   const body = result.data;
 
-  const requestedEnabled: boolean | undefined = typeof body.enabled === "boolean" ? body.enabled : undefined;
-  return performAddonToggle(state, name, requestedEnabled, requestId);
+  return handleAddonToggleRequest(state, name, body, requestId);
 };

@@ -165,6 +165,34 @@ describe('POST /api/host/addons', () => {
     expect(readEnabledAddonsEnv(state.homeDir)).not.toContain('discord');
   });
 
+  // Voice is the one addon with a hardware profile. A profile change while the
+  // addon is DISABLED must persist the selection only — no enable, no compose.
+  test('voice profile change while disabled persists the selection without enabling', async () => {
+    const state = getState();
+    const stackDir = join(state.homeDir, 'system', 'stack');
+    mkdirSync(stackDir, { recursive: true });
+    writeFileSync(
+      join(stackDir, 'services.compose.yml'),
+      'services:\n' +
+        '  voice:\n    profiles: ["addon.voice.cpu"]\n    image: test\n' +
+        '  voice-cuda:\n    profiles: ["addon.voice.cuda"]\n    image: test\n'
+    );
+
+    const res = await POST(makePostEvent({ name: 'voice', profile: 'addon.voice.cpu' }));
+    expect(res.status).toBe(200);
+    const body = await res.json() as { ok: boolean; enabled: boolean };
+    expect(body.ok).toBe(true);
+    expect(body.enabled).toBe(false);
+    expect(readEnabledAddonsEnv(state.homeDir)).not.toContain('OP_ENABLED_ADDONS=voice');
+    expect(readEnabledAddonsEnv(state.homeDir)).toContain('OP_VOICE_PROFILE=addon.voice.cpu');
+  });
+
+  test('voice profile change rejects an unknown profile id', async () => {
+    const res = await POST(makePostEvent({ name: 'voice', profile: 'addon.voice.quantum' }));
+    expect(res.status).toBe(400);
+    expect(await res.json()).toMatchObject({ error: 'invalid_profile' });
+  });
+
   // Source-of-truth regression: state.services seeds guardian (channel ingress)
   // only when a channel is enabled, ONCE at creation. Disabling the last channel
   // must rebuild the singleton so guardian stops being reported as a phantom

@@ -27,9 +27,9 @@ function fetchRespondingTo(urls: Record<string, number>): typeof globalThis.fetc
   }) as typeof globalThis.fetch;
 }
 
-const fetchNothing: typeof globalThis.fetch = (async () => {
+const fetchNothing = (async () => {
   throw new TypeError('fetch failed');
-}) as typeof globalThis.fetch;
+}) as unknown as typeof globalThis.fetch;
 
 // The server test project runs in plain Node (no localStorage); the module
 // reads globalThis.localStorage per call, so a minimal in-memory shim works.

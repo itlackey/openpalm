@@ -306,10 +306,7 @@
     {:else if activeTab === 'recovery'}
       <RecoveryTab />
     {:else if activeTab === 'addons'}
-      <AddonsTab
-        onAuthError={handleComponentsAuthError}
-        onNavigate={handleTabSelect}
-      />
+      <AddonsTab onAuthError={handleComponentsAuthError} />
     {:else if activeTab === 'containers'}
       <ContainersTab
         {containerData}
