@@ -11,6 +11,7 @@
   import { mintPairingCode } from '$lib/api.js';
   import { getConnectionStore, getSecretStore } from '$lib/connections/boot.js';
   import { newConnectionId } from '$lib/connections/store.js';
+  import { isDiscoveryCandidateUrl, markLocalDiscoveryDismissed } from '$lib/connections/discovery.js';
   import { parsePairingCode, type PairingPayload } from '$lib/connections/pairing.js';
   import { hasCapability, runtimeContext } from '$lib/runtime-context.svelte.js';
 
@@ -283,6 +284,10 @@
       const store = getConnectionStore();
       if (c.auth.mode === 'basic') await getSecretStore().delete(c.auth.secretRef);
       await store.remove(c.id);
+      // Removing an auto-discovered local entry is a "stop offering this"
+      // signal — record it so discovery doesn't resurrect the card on the
+      // next load.
+      if (isDiscoveryCandidateUrl(c.url)) markLocalDiscoveryDismissed();
       await connectionsService.load(true);
     } catch (err) {
       const e2 = err as { message?: string };

@@ -22,6 +22,7 @@
  */
 import { getConnectionStore, setActiveConnection } from './connections/boot.js';
 import { loadRuntimeConfig, type Connection } from './connections/store.js';
+import { discoverLocalAssistant } from './connections/discovery.js';
 import { activationBlockReason, emitConnectionActivated } from './connection-events.js';
 
 /**
@@ -81,11 +82,42 @@ class ConnectionsService {
       // Keep the transport's active connection in sync (no $effect).
       setActiveConnection(connections.find((c) => c.id === this.activeId) ?? null);
       this.loaded = true;
+      if (!this.discoveryStarted) {
+        this.discoveryStarted = true;
+        // Fire-and-forget: the probe can take up to its timeout when nothing
+        // is listening, and boot must not wait on it.
+        void this.discoverLocal();
+      }
     } catch (e) {
       const err = e as { message?: string; status?: number };
       this.error = err.message ?? 'Failed to load connections';
     } finally {
       this.loading = false;
+    }
+  }
+
+  /** Localhost auto-discovery runs at most once per browsing session. */
+  private discoveryStarted = false;
+
+  /**
+   * Probe the well-known local assistant endpoints and, when one is
+   * reachable and not yet listed, add it and refresh the view. Best-effort:
+   * failures are swallowed (discovery must never break boot).
+   */
+  private async discoverLocal(): Promise<void> {
+    try {
+      const store = getConnectionStore();
+      const added = await discoverLocalAssistant(store);
+      if (!added) return;
+      const [connections, storedActiveId] = await Promise.all([
+        store.list(),
+        store.getActiveId(),
+      ]);
+      this.endpoints = connections.map(toView);
+      this.activeId = storedActiveId ?? this.endpoints[0]?.id ?? '';
+      setActiveConnection(connections.find((c) => c.id === this.activeId) ?? null);
+    } catch {
+      // best-effort only
     }
   }
 
