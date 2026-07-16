@@ -58,11 +58,11 @@ function seedStackEnv(stackDir: string, setupComplete: boolean): void {
 /** compose ps --format json output for a single healthy running service. */
 const RUNNING_PS = '{"Service":"assistant","State":"running","Health":"healthy"}\n';
 
-function makeEvent(path: string): RequestEvent {
+function makeEvent(path: string, accept = 'text/html'): RequestEvent {
   const url = new URL(`http://localhost:3880${path}`);
   const headers: Record<string, string> = {
     host: 'localhost:3880',
-    accept: 'text/html',
+    accept,
   };
   return {
     url,
@@ -175,6 +175,21 @@ describe('hooks.server — landing routing through resolveLanding', () => {
     await expect(handle({ event: makeEvent('/splash'), resolve })).rejects.toMatchObject({
       location: '/setup',
     });
+  });
+
+  // ── /voice pass-through is exempt from the landing redirect ────────────────
+
+  test('/voice/* is never bounced to the landing (speech fetches must reach the proxy)', async () => {
+    // installed-but-offline: '/' would 302 to /host here. A /voice fetch must
+    // NOT take that bounce — fetch() follows redirects into an HTML page, which
+    // kills STT/TTS and fools the availability probe with a false 200.
+    const state = resetState('test-admin-pw');
+    seedStackEnv(state.stackDir, true);
+
+    // fetch()-style request: browsers send `Accept: */*`, not text/html.
+    const res = await handle({ event: makeEvent('/voice/v1/models', '*/*'), resolve });
+    // Falls through the landing guard to the route (stubbed resolve → 200).
+    expect(res.status).toBe(200);
   });
 });
 

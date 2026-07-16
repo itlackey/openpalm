@@ -222,9 +222,9 @@ describe('computeVoiceRuntime — voice-endpoint advertisement', () => {
     expect(computeVoiceRuntime()).toEqual({ url: '/voice' });
   });
 
-  test('absent in a non-admin-capable process even with the addon enabled', () => {
+  test('advertised in a non-admin-capable process (voice is not a host:* privilege)', () => {
     enableVoice();
     delete process.env.OP_ENABLE_ADMIN;
-    expect(computeVoiceRuntime()).toBeUndefined();
+    expect(computeVoiceRuntime()).toEqual({ url: '/voice' });
   });
 });

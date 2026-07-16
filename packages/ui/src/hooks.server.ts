@@ -203,9 +203,13 @@ export const handle: Handle = async ({ event, resolve }) => {
     // '/host' is the admin surface itself; '/admin' stays exempt so requests
     // into the dead namespace fall through to the router 404 instead of
     // bouncing to the landing (no alias, no gate — plan Phase 4 step 1).
+    // '/voice' is the same-origin speech pass-through — a fetch() surface like
+    // /api/*, never a document navigation. Redirecting it to the landing page
+    // breaks every STT/TTS call (fetch follows the 302 into HTML) and fools
+    // the reachability probe into reporting the voice service as available.
     const exempt = path.startsWith('/api/') || path.startsWith('/login')
       || path.startsWith('/health') || path.startsWith('/guardian/health') || path.startsWith('/host')
-      || path.startsWith('/admin') || usageExempt;
+      || path.startsWith('/admin') || path.startsWith('/voice') || usageExempt;
     if (path === '/' || (path !== landingPath && !exempt)) {
       redirect(302, landing);
     }

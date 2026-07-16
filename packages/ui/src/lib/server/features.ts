@@ -55,10 +55,14 @@ const HOST_CAPABILITIES: readonly Capability[] = [
 
 /**
  * Voice advertisement for the runtime handshake: the same-origin path of the
- * /voice pass-through, present when this process can actually serve it — an
- * admin-capable process (the host process is the only one with a loopback
- * path to the voice container) with the voice addon enabled. Same-origin, so
- * no host/port resolution and nothing request-derived.
+ * /voice pass-through, present when this process can actually serve it —
+ * i.e. it can read the stack state and the voice addon is enabled. Every UI
+ * server is a host process (`openpalm ui serve` / Electron) with a loopback
+ * path to the voice container, so this is deliberately NOT gated on admin
+ * capability: using voice is not a privileged host operation, and a served
+ * non-admin process must still offer it. A process without readable stack
+ * state (no OP_HOME) naturally advertises nothing. Same-origin, so no
+ * host/port resolution and nothing request-derived.
  *
  * Deliberately NOT part of computeServerRuntimeContext(): that function runs
  * on requireCapability's per-request hot path, and this one reads the stack
@@ -66,7 +70,6 @@ const HOST_CAPABILITIES: readonly Capability[] = [
  * and GET /api/runtime) call it.
  */
 export function computeVoiceRuntime(): { url: string } | undefined {
-  if (!isAdminCapable()) return undefined;
   try {
     if (!listEnabledAddonIds(getState().homeDir).includes('voice')) return undefined;
     return { url: '/voice' };

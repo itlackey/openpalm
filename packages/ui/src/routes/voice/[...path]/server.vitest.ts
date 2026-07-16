@@ -1,7 +1,9 @@
 /**
- * /voice/* pass-through: session-authed, availability-gated (admin-capable
- * process + enabled addon), allowlisted to the container's OpenAI surface,
- * and transparent (method/path/query/body/content-type forwarded 1:1).
+ * /voice/* pass-through: session-authed, availability-gated (enabled addon in
+ * readable stack state — NOT admin capability; a served non-admin host
+ * process must still pass voice through), allowlisted to the container's
+ * OpenAI surface, and transparent (method/path/query/body/content-type
+ * forwarded 1:1).
  */
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
@@ -72,11 +74,16 @@ describe('/voice pass-through', () => {
     expect(await res.json()).toMatchObject({ error: 'voice_unavailable' });
   });
 
-  test('503 voice_unavailable in a non-admin-capable process', async () => {
+  test('passes through in a non-admin-capable process (voice is not a host:* privilege)', async () => {
     enableVoiceAddon(getState().homeDir);
     delete process.env.OP_ENABLE_ADMIN;
+    const fetchMock = vi.fn(async () =>
+      new Response('{"data":[]}', { status: 200, headers: { 'content-type': 'application/json' } })
+    );
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
     const res = await GET(makeEvent('v1/models'));
-    expect(res.status).toBe(503);
+    expect(res.status).toBe(200);
+    expect(fetchMock).toHaveBeenCalled();
   });
 
   test('404 for a path outside the OpenAI surface', async () => {

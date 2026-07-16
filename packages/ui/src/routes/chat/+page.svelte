@@ -18,6 +18,7 @@
 	// domain client and would drag them all into the chat chunk.
 	import { probeChatBackend } from '$lib/api/chat.js';
 	import { advancedModeService } from '$lib/advanced-mode-state.svelte.js';
+	import { hasCapability, runtimeContext } from '$lib/runtime-context.svelte.js';
 	import { buildAdvancedPath } from '$lib/chat/navigation.js';
 	import { nextFollowState } from '$lib/chat/autoscroll.js';
 	import { chat } from '$lib/chat/chat-state.svelte.js';
@@ -44,6 +45,7 @@
 	import IconThemeLight from '@openpalm/ui-kit/components/icons/IconThemeLight.svelte';
 	import IconThemeDark from '@openpalm/ui-kit/components/icons/IconThemeDark.svelte';
 	import IconAdvanced from '@openpalm/ui-kit/components/icons/IconAdvanced.svelte';
+	import IconSettings from '@openpalm/ui-kit/components/icons/IconSettings.svelte';
 
 	let scrollAnchorEl = $state<HTMLDivElement | undefined>();
 
@@ -207,6 +209,17 @@
 	const voiceEnabled = $derived(voiceState.sttEngine !== 'disabled' && voiceState.sttSupported);
 	const ttsAvailable = $derived(voiceState.ttsSupported);
 
+	// Admin is reachable straight from the chat chrome when this process
+	// grants host:* — previously it hid behind a per-endpoint link inside the
+	// conversations veil, which only rendered for local endpoint URLs.
+	const adminRoute = $derived(
+		hasCapability('host:stack:read') ? runtimeContext.routes.host : undefined
+	);
+	// Voice settings live on the connections page (client-owned, per-device).
+	// Link straight to the section so voice is always configurable — and
+	// recoverable — from chat, even when no engine is currently usable.
+	const voiceSettingsHref = `${resolve('/connections')}#voice`;
+
 	// Composer draft — dictation inserts here instead of auto-sending, so
 	// the user reviews spoken text before it goes out. (The navbar
 	// VoiceControl keeps its auto-send behavior on other pages.)
@@ -365,8 +378,17 @@
 	/>
 </div>
 
-<!-- top-right: advanced -->
+<!-- top-right: admin (capability-gated) + advanced -->
 <div class="s-corner s-corner-right" class:drawer-hidden={toolDrawerOpen || gardenOpen}>
+	{#if adminRoute}
+		<div class="s-glyph-cell">
+			<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- destination comes from runtimeContext.routes, not a static route id -->
+			<a class="s-glyph-btn" href={adminRoute} aria-label="Admin — manage this host">
+				<IconSettings size={20} />
+			</a>
+			<span class="s-glyph-label">admin</span>
+		</div>
+	{/if}
 	<div class="s-glyph-cell">
 		<button
 			class="s-glyph-btn"
@@ -449,6 +471,16 @@
 	class="s-corner s-corner-bottom-right"
 	class:drawer-hidden={toolDrawerOpen || gardenOpen}
 >
+	<!-- Always rendered — including when no speech engine is usable — so voice
+	     is configurable (and recoverable) from the place its controls live,
+	     instead of silently vanishing with no path to settings. -->
+	<div class="s-glyph-cell">
+		<span class="s-glyph-label">voice settings</span>
+		<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- resolve()d route + '#voice' fragment -->
+		<a class="s-glyph-btn" href={voiceSettingsHref} aria-label="Voice settings">
+			<IconSettings size={20} />
+		</a>
+	</div>
 	{#if ttsAvailable}
 		<div class="s-glyph-cell">
 			<span class="s-glyph-label">speaker</span>
@@ -717,6 +749,18 @@
 		</section>
 
 		<section class="s-veil-section s-veil-utilities" aria-label="Chat display and activity">
+			<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- resolve()d route + '#voice' fragment -->
+			<a class="s-utility-btn" href={voiceSettingsHref} onclick={closeGarden}>
+				<IconMic size={18} />
+				<span>Voice settings</span>
+			</a>
+			{#if adminRoute}
+				<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- destination comes from runtimeContext.routes, not a static route id -->
+				<a class="s-utility-btn" href={adminRoute} onclick={closeGarden}>
+					<IconSettings size={18} />
+					<span>Admin</span>
+				</a>
+			{/if}
 			<button class="s-utility-btn" type="button" onclick={openActivityFromGarden}>
 				<IconActivity size={18} />
 				<span>Activity</span>
@@ -905,6 +949,8 @@
 		border: 0;
 		background: none;
 		cursor: pointer;
+		/* Renders as <button> or <a> (admin / voice-settings links). */
+		text-decoration: none;
 		color: var(--s-ink-2);
 		/* >= 44x44 hit area without enlarging the 20px icon and without the old
 		   negative margin that pushed the focus ring off the viewport edge. The
@@ -1011,6 +1057,8 @@
 		color: var(--s-ink-2);
 		font: inherit;
 		cursor: pointer;
+		/* Renders as <button> or <a> (voice settings / admin links). */
+		text-decoration: none;
 	}
 
 	@media (prefers-reduced-motion: reduce) {
@@ -1721,9 +1769,35 @@
 		.s-corner-bottom-left .s-footer-extra {
 			display: none;
 		}
+	}
+
+	/* Narrow + hover-capable (small desktop windows): labels reappear on
+	   hover, so hiding them saves the space for the composer. */
+	@media (max-width: 420px) and (hover: hover) {
 		.s-corner-bottom-left .s-glyph-label,
 		.s-corner-bottom-right .s-glyph-label {
 			display: none;
+		}
+	}
+
+	/* Narrow + touch (phones): there is no hover, so these labels are the ONLY
+	   thing explaining the cryptic glyphs — keep them, just smaller and
+	   wrapping within the cell so the two fixed corner clusters can't collide
+	   across a 320–420px viewport. The old unconditional display:none here
+	   silently defeated the (hover: none) always-visible rule on every phone. */
+	@media (max-width: 420px) and (hover: none) {
+		.s-corner-bottom-left .s-glyph-label,
+		.s-corner-bottom-right .s-glyph-label {
+			font-size: var(--s-type-mark-sm);
+			letter-spacing: 0.04em;
+			white-space: normal;
+			/* Long single words ("conversations") must break too, or the two
+			   fixed corner clusters collide across a 320px viewport. */
+			overflow-wrap: anywhere;
+			hyphens: auto;
+			max-width: 52px;
+			text-align: center;
+			line-height: 1.2;
 		}
 	}
 

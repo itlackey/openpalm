@@ -65,14 +65,19 @@ describe('connections +page.svelte — host UX and pairing wiring', () => {
     expect(src).toMatch(/pairingQrSvg\s*=\s*\$state<string \| null>/);
   });
 
-  test('provides a visible route back to host admin with a chat fallback', () => {
+  test('provides an explicit route back to chat plus a separate admin link when capable', () => {
     const src = pageSource();
     expect(src).toMatch(/hasCapability\(\s*['"`]host:stack:read['"`]\s*\)/);
     expect(src).toMatch(/runtimeContext\.routes\.host/);
-    expect(src).toMatch(/runtimeContext\.routes\.chat/);
-    expect(src).toMatch(/aria-label=\{exitLabel\}>← \{exitLabel\}/);
-    expect(src).toMatch(/'Back to Admin'/);
-    expect(src).toMatch(/'Back to Chat'/);
+    // The back link ALWAYS returns to the conversation (session-aware,
+    // honoring advanced mode) — users arrive here from chat's veil, and the
+    // way back must never be hijacked by an admin-first exit.
+    expect(src).toMatch(/aria-label="Back to Chat"/);
+    expect(src).toMatch(/buildChatPath/);
+    expect(src).toMatch(/buildAdvancedPath/);
+    // Admin is its own explicit link, shown only with the host capability.
+    expect(src).toMatch(/aria-label="Open Admin"/);
+    expect(src).not.toMatch(/Back to Admin/);
   });
 
   test('does not advertise installing the client app from host UI surfaces', () => {

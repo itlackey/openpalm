@@ -283,12 +283,17 @@ export async function synthesize(
 /** Best-effort reachability probe of a speech endpoint (GET /v1/models). */
 export async function probeVoiceEndpoint(baseURL: string): Promise<boolean> {
   try {
+    // redirect: 'manual' — a redirect means the speech endpoint is NOT here
+    // (e.g. an app-level route guard bouncing to a landing page). Following
+    // it would land on an HTML 200 and report a dead endpoint as available.
     const res = await fetch(`${openaiApiBase(baseURL)}/models`, {
       method: 'GET',
       cache: 'no-store',
+      redirect: 'manual',
       signal: AbortSignal.timeout(2_000),
     });
-    return res.status < 500;
+    // Manual-mode redirects surface as opaqueredirect with status 0.
+    return res.status > 0 && res.status < 500 && !(res.status >= 300 && res.status < 400);
   } catch {
     return false;
   }

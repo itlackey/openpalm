@@ -15,16 +15,17 @@
  * path/method/body/query pass through 1:1 (the same transparent-proxy
  * pattern as the guardian's /oc). Provider choice lives in the client.
  *
- * Availability mirrors the advertisement (computeVoiceRuntime): the process
- * must be admin-capable (the host process is the only one with a loopback
- * path to the container — a served/in-container build has neither) and the
- * voice addon must be enabled. Auth is the ordinary session check — no
- * host:* capability, because using voice is not a privileged host operation.
+ * Availability mirrors the advertisement (computeVoiceRuntime): the voice
+ * addon must be enabled in readable stack state. Every UI server is a host
+ * process (`openpalm ui serve` / Electron) with a loopback path to the
+ * container, so availability is deliberately NOT gated on admin capability —
+ * using voice is not a privileged host operation and a served non-admin
+ * process must still pass it through. Auth is the ordinary session check —
+ * no host:* capability for the same reason.
  */
 import type { RequestHandler } from './$types';
 import { listEnabledAddonIds } from '@openpalm/lib';
 import { getState } from '$lib/server/state.js';
-import { isAdminCapable } from '$lib/server/features.js';
 import { errorResponse, getRequestId, requireAdmin } from '$lib/server/helpers.js';
 import { VOICE_ADDON, voiceHostPort } from '$lib/server/voice/bring-up.js';
 
@@ -34,9 +35,6 @@ const UPSTREAM_TIMEOUT_MS = 60_000;
 const ALLOWED_PATHS = new Set(['v1/audio/speech', 'v1/audio/transcriptions', 'v1/models', 'health']);
 
 function unavailable(requestId: string): Response | null {
-  if (!isAdminCapable()) {
-    return errorResponse(503, 'voice_unavailable', 'This process has no local voice service.', {}, requestId);
-  }
   try {
     if (!listEnabledAddonIds(getState().homeDir).includes(VOICE_ADDON)) {
       return errorResponse(
