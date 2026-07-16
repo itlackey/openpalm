@@ -97,6 +97,23 @@ describe('target resolution', () => {
     expect(await resolveSttTarget()).toBeNull();
     expect(await resolveTtsTarget()).toBeNull();
   });
+
+  // Zero-config default (Codex P1): a fresh browser with NO saved settings
+  // must still reach the advertised OpenPalm Voice pass-through — initVoice
+  // defaults the engine to openpalm-voice when the host advertises one, so
+  // the transport has to resolve the same target or the mic/speaker no-op.
+  test('no saved settings + advertised host → the /voice pass-through target', async () => {
+    _setAdvertisedVoiceUrlForTests('/voice');
+    // No seed(): loadVoiceSettings() is null.
+    expect(await resolveSttTarget()).toEqual({ baseURL: '/voice', model: 'whisper-1', language: undefined });
+    expect(await resolveTtsTarget()).toEqual({ baseURL: '/voice', model: 'kokoro', language: undefined });
+  });
+
+  test('no saved settings + no advertisement → no server target', async () => {
+    _setAdvertisedVoiceUrlForTests(null);
+    expect(await resolveSttTarget()).toBeNull();
+    expect(await resolveTtsTarget()).toBeNull();
+  });
 });
 
 describe('transcribe', () => {
@@ -119,6 +136,38 @@ describe('transcribe', () => {
     expect(form.get('language')).toBe('en');
     expect(form.get('response_format')).toBe('json');
     expect(form.get('file')).toBeInstanceOf(Blob);
+  });
+
+  // OpenAI and every compatible service document a base_url ending in /v1;
+  // pasting it verbatim must NOT double to /v1/v1 (the whole point of "no
+  // config beyond endpoint + key + model/voice").
+  test.each([
+    ['https://api.openai.com/v1', 'https://api.openai.com/v1/audio/transcriptions'],
+    ['https://api.openai.com/v1/', 'https://api.openai.com/v1/audio/transcriptions'],
+    ['https://api.openai.com', 'https://api.openai.com/v1/audio/transcriptions'],
+    ['https://api.groq.com/openai/v1', 'https://api.groq.com/openai/v1/audio/transcriptions'],
+    ['http://localhost:1234/v2', 'http://localhost:1234/v2/audio/transcriptions'],
+  ])('normalizes base %s → %s (no /v1 doubling)', async (baseURL, expected) => {
+    seed({ stt: { provider: 'openai-compatible', baseURL } });
+    const fetchMock = vi.fn(async () =>
+      new Response(JSON.stringify({ text: 'ok' }), { status: 200, headers: { 'content-type': 'application/json' } })
+    );
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+    await transcribe(new Blob(['x'], { type: 'audio/webm' }));
+    expect(String((fetchMock.mock.calls[0] as unknown as [string])[0])).toBe(expected);
+  });
+
+  test('sends the API key as a bearer header', async () => {
+    const { getSecretStore } = await import('$lib/connections/boot.js');
+    await getSecretStore().set('ref-stt', { password: 'sk-stt-key' });
+    seed({ stt: { provider: 'openai-compatible', baseURL: 'https://api.example/v1', secretRef: 'ref-stt' } });
+    const fetchMock = vi.fn(async () =>
+      new Response(JSON.stringify({ text: 'ok' }), { status: 200, headers: { 'content-type': 'application/json' } })
+    );
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+    await transcribe(new Blob(['x'], { type: 'audio/webm' }));
+    const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect((init.headers as Record<string, string>).authorization).toBe('Bearer sk-stt-key');
   });
 
   test('throws a friendly error when no provider is configured', async () => {

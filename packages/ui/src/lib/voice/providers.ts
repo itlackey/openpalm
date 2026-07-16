@@ -123,23 +123,39 @@ async function apiKeyFor(secretRef: string | undefined): Promise<string | undefi
   }
 }
 
+/**
+ * The advertised OpenPalm Voice pass-through target, or null when the host
+ * offers none. Model is fixed by the container; `voice` is deliberately
+ * omitted so the host's configured default (OP_VOICE_KOKORO_VOICE) applies.
+ */
+async function openpalmVoiceTarget(
+  section: VoiceSttSettings | VoiceTtsSettings | undefined,
+  kind: 'stt' | 'tts'
+): Promise<ServerVoiceTarget | null> {
+  const url = await advertisedVoiceUrl();
+  if (!url) return null;
+  return {
+    baseURL: url,
+    model: kind === 'tts' ? OPENPALM_VOICE_TTS_MODEL : OPENPALM_VOICE_STT_MODEL,
+    language: kind === 'stt' ? (section as VoiceSttSettings | undefined)?.language : undefined,
+  };
+}
+
 async function resolveTarget(
   section: VoiceSttSettings | VoiceTtsSettings | undefined,
   kind: 'stt' | 'tts'
 ): Promise<ServerVoiceTarget | null> {
   const provider: VoiceProviderId | undefined = section?.provider;
+  // No saved settings on this device (fresh browser): mirror initVoice's
+  // zero-config default — prefer the advertised OpenPalm Voice pass-through
+  // when the host offers one. Without this the advertised default engine
+  // (openpalm-voice) has no target, so transcribe()/synthesize() no-op and
+  // the "works out of the box" path is dead until the user opens /connections
+  // and saves. A saved section with provider 'browser'/'disabled' is a
+  // deliberate choice and stays null (handled by the browser path elsewhere).
+  if (!provider) return openpalmVoiceTarget(section, kind);
   if (provider === 'openpalm-voice') {
-    // Always the advertised same-origin pass-through — there is nothing to
-    // configure. Model is fixed by the container; `voice` is deliberately
-    // omitted so the host's configured default (OP_VOICE_KOKORO_VOICE)
-    // applies.
-    const url = await advertisedVoiceUrl();
-    if (!url) return null;
-    return {
-      baseURL: url,
-      model: kind === 'tts' ? OPENPALM_VOICE_TTS_MODEL : OPENPALM_VOICE_STT_MODEL,
-      language: kind === 'stt' ? (section as VoiceSttSettings | undefined)?.language : undefined,
-    };
+    return openpalmVoiceTarget(section, kind);
   }
   if (provider === 'openai-compatible') {
     const baseURL = section?.baseURL?.trim();
@@ -165,8 +181,22 @@ export function resolveTtsTarget(): Promise<ServerVoiceTarget | null> {
 
 // ── Direct provider calls ────────────────────────────────────────────────
 
-function joinBase(baseURL: string, path: string): string {
-  return `${baseURL.replace(/\/+$/, '')}${path}`;
+/**
+ * Resolve the OpenAI-shaped API base from the user's configured endpoint.
+ *
+ * OpenAI and every compatible service (OpenRouter, Groq, LM Studio, vLLM,
+ * Ollama, …) document a `base_url` that already ends in a version segment —
+ * almost always `/v1`. We respect a version the user supplied and add `/v1`
+ * only when absent, so pasting the provider's documented base URL Just
+ * Works whether or not it includes `/v1` (no double `/v1/v1`, no hint to
+ * remember). The openpalm-voice pass-through base (`/voice`) has no version,
+ * so it also gets `/v1`, matching the container's `/v1/audio/*` surface.
+ *
+ * Sub-paths are then appended WITHOUT a leading `/v1` (e.g. `/audio/speech`).
+ */
+function openaiApiBase(baseURL: string): string {
+  const trimmed = baseURL.replace(/\/+$/, '');
+  return /\/v\d+$/.test(trimmed) ? trimmed : `${trimmed}/v1`;
 }
 
 /**
@@ -197,7 +227,7 @@ export async function transcribe(
 
   let res: Response;
   try {
-    res = await fetch(joinBase(target.baseURL, '/v1/audio/transcriptions'), {
+    res = await fetch(`${openaiApiBase(target.baseURL)}/audio/transcriptions`, {
       method: 'POST',
       headers,
       body: form,
@@ -235,7 +265,7 @@ export async function synthesize(
   const headers: Record<string, string> = { 'content-type': 'application/json' };
   if (target.apiKey) headers.authorization = `Bearer ${target.apiKey}`;
 
-  return fetch(joinBase(target.baseURL, '/v1/audio/speech'), {
+  return fetch(`${openaiApiBase(target.baseURL)}/audio/speech`, {
     method: 'POST',
     headers,
     body: JSON.stringify({
@@ -253,7 +283,7 @@ export async function synthesize(
 /** Best-effort reachability probe of a speech endpoint (GET /v1/models). */
 export async function probeVoiceEndpoint(baseURL: string): Promise<boolean> {
   try {
-    const res = await fetch(joinBase(baseURL, '/v1/models'), {
+    const res = await fetch(`${openaiApiBase(baseURL)}/models`, {
       method: 'GET',
       cache: 'no-store',
       signal: AbortSignal.timeout(2_000),

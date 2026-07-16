@@ -246,8 +246,8 @@
         {#if form.provider === 'openai-compatible'}
           <label class="field">
             <span>Endpoint URL</span>
-            <input type="url" bind:value={form.baseURL} placeholder="https://api.openai.com" autocomplete="off" />
-            <small>Must serve <code>/v1/audio/{section.kind === 'stt' ? 'transcriptions' : 'speech'}</code>.</small>
+            <input type="url" bind:value={form.baseURL} placeholder="https://api.openai.com/v1" autocomplete="off" />
+            <small>Your provider's OpenAI base URL (e.g. <code>https://api.openai.com/v1</code>). The <code>/v1</code> is optional — it's added if you leave it off.</small>
           </label>
           <label class="field">
             <span>Model</span>
