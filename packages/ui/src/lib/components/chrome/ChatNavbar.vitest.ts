@@ -13,16 +13,16 @@ describe('conversation navbar contract', () => {
     expect(source).toContain('drawerOpen = $bindable(false)');
     expect(source.match(/<Drawer\b/g)).toHaveLength(1);
     expect(source).toMatch(/<Navbar[^>]*inactive=\{drawerOpen\}[^>]*showUtilities=\{false\}/);
+    expect(source).toContain('<NewChatButton />');
     expect(source).not.toContain('VoiceControl');
   });
 
-  test('builds return destinations from mode, session, and assistant context', () => {
+  test('builds the settings destination from mode, session, and assistant context', () => {
     const source = readFileSync(CHAT_NAVBAR, 'utf8');
 
     expect(source).toMatch(/buildConversationPath\([^,]+,[^,]+,[^)]+\)/);
     expect(source).toContain("buildReturnToPath(resolve('/connections'), conversationPath)");
-    expect(source).toContain("buildReturnToPath(resolve('/settings/voice'), conversationPath)");
-    expect(source).toContain("?tab=addons&addon=voice");
+    expect(source).not.toContain("resolve('/settings/voice')");
   });
 
   test('keeps the generic navbar free of chat state and supports inert utilities-free composition', () => {

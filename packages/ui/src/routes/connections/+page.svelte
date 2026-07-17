@@ -1,9 +1,11 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import { resolve } from '$app/paths';
   import { page } from '$app/state';
   import { replaceState } from '$app/navigation';
   import Navbar from '$lib/components/chrome/Navbar.svelte';
   import DeviceSettingsNav from '$lib/components/chrome/DeviceSettingsNav.svelte';
+  import VoiceClientSettings from '$lib/components/voice/VoiceClientSettings.svelte';
   import IconLock from '@openpalm/ui-kit/components/icons/IconLock.svelte';
   import {
     endpointsService as connectionsService,
@@ -19,9 +21,12 @@
   import {
     buildAdvancedPath,
     buildChatPath,
+    buildReturnToPath,
     currentChatSessionId,
     resolveReturnToPath,
   } from '$lib/chat/navigation.js';
+  import type { ThemePreference } from '$lib/theme-state.svelte.js';
+  import { themeService } from '$lib/theme-state.svelte.js';
 
   // Capability-guarded surface (#486):
   // this page replaces /admin/endpoints and works in every mode that
@@ -75,6 +80,9 @@
   });
   const chatReturnHref = $derived(
     resolveReturnToPath(page.url.searchParams.get('returnTo'), fallbackChatHref),
+  );
+  const hostSettingsHref = $derived(
+    buildReturnToPath(resolve('/host'), chatReturnHref),
   );
 
   onMount(() => {
@@ -311,10 +319,13 @@
     }
   }
 
+  function setTheme(preference: ThemePreference): void {
+    themeService.setPreference(preference);
+  }
 </script>
 
 <svelte:head>
-  <title>Assistant connections — OpenPalm</title>
+  <title>Settings — OpenPalm</title>
 </svelte:head>
 
 <!-- Fragment-only navigation to an already-open /connections tab never
@@ -323,11 +334,23 @@
 <svelte:window onhashchange={consumePairDeepLink} />
 
 <Navbar brandHref={chatReturnHref} showUtilities={false} />
-<DeviceSettingsNav active="connections" {chatReturnHref} />
+<DeviceSettingsNav {chatReturnHref} />
 
 <main class="page">
-    <header class="page-header">
-      <h1>Assistant connections</h1>
+  <header class="page-header">
+    <h1>Settings</h1>
+    <p class="lede">
+      Manage the connections and preferences stored in this browser on this device.
+    </p>
+    {#if hasCapability('host:stack:read')}
+      <!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- return-aware host path starts from a resolved internal route -->
+      <a class="host-settings-link" href={hostSettingsHref}>Manage host <span aria-hidden="true">→</span></a>
+    {/if}
+  </header>
+
+  <section id="connections" class="settings-section" aria-labelledby="connections-heading">
+    <header class="section-header">
+      <h2 id="connections-heading">Connections</h2>
       <p class="lede">
         Connect to local or remote OpenPalm assistants. The <strong>Default</strong> entry comes
         from the environment (set by the launcher) and cannot be deleted. Add more connections to
@@ -602,8 +625,35 @@
         </div>
       </section>
     {/if}
+  </section>
 
-  </main>
+  <section id="voice" class="settings-section" aria-labelledby="voice-heading">
+    <header class="section-header">
+      <h2 id="voice-heading">Voice</h2>
+      <p class="lede">
+        Choose speech input, language, and spoken response behavior for this browser.
+      </p>
+    </header>
+    <VoiceClientSettings />
+  </section>
+
+  <section id="appearance" class="settings-section" aria-labelledby="appearance-heading">
+    <header class="section-header">
+      <h2 id="appearance-heading">Appearance</h2>
+      <p class="lede">Use your system theme or choose one for this device.</p>
+    </header>
+    <div class="theme-options" role="group" aria-label="Appearance">
+      {#each ['system', 'light', 'dark'] as preference (preference)}
+        <button
+          type="button"
+          class:active={themeService.preference === preference}
+          aria-pressed={themeService.preference === preference}
+          onclick={() => setTheme(preference as ThemePreference)}
+        >{preference[0].toUpperCase() + preference.slice(1)}</button>
+      {/each}
+    </div>
+  </section>
+</main>
 
 <style>
   .page {
@@ -617,9 +667,87 @@
   .page-header h1 {
     margin: 0 0 var(--s-sp-2);
   }
+  .page-header {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .host-settings-link {
+    box-sizing: border-box;
+    display: inline-flex;
+    align-items: center;
+    gap: var(--s-sp-2);
+    min-width: 44px;
+    min-height: 44px;
+    margin-top: var(--s-sp-3);
+    padding: var(--s-sp-2) var(--s-sp-3);
+    border: var(--s-hair) solid var(--s-line);
+    border-radius: 2px;
+    color: var(--s-ink-3);
+    font-family: var(--s-font-mono);
+    font-size: var(--s-type-deed);
+    text-decoration: none;
+  }
+  .host-settings-link:hover {
+    color: var(--s-ink);
+    border-color: var(--s-ink-3);
+  }
+  .host-settings-link:focus-visible,
+  .theme-options button:focus-visible {
+    outline: 2px solid var(--s-ink);
+    outline-offset: 2px;
+  }
+  .settings-section {
+    display: flex;
+    flex-direction: column;
+    gap: var(--s-sp-4);
+    scroll-margin-top: 120px;
+  }
+
+  @media (max-width: 640px) {
+    .settings-section {
+      scroll-margin-top: 168px;
+    }
+  }
+  .settings-section + .settings-section {
+    padding-top: var(--s-sp-6);
+    border-top: var(--s-hair) solid var(--s-line-soft);
+  }
+  .section-header h2 {
+    margin: 0 0 var(--s-sp-2);
+  }
   .lede {
     color: var(--s-ink-3);
     margin: 0;
+  }
+
+  .theme-options {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: var(--s-sp-1);
+    width: 100%;
+    padding: var(--s-sp-1);
+    border-radius: 8px;
+    background: var(--s-paper-deep);
+  }
+  .theme-options button {
+    min-width: 44px;
+    min-height: 44px;
+    border: 0;
+    border-radius: 5px;
+    background: transparent;
+    color: var(--s-ink-2);
+    font: inherit;
+    cursor: pointer;
+  }
+  .theme-options button:hover {
+    color: var(--s-ink);
+  }
+  .theme-options button.active {
+    background: var(--s-paper);
+    color: var(--s-ink);
+    box-shadow: 0 1px 3px color-mix(in srgb, var(--s-ink) 15%, transparent);
+    font-weight: 700;
   }
 
   .alert.error {
@@ -822,5 +950,11 @@
   }
   .btn-danger:hover:not(:disabled) {
     background: color-mix(in srgb, var(--s-seal) 14%, transparent);
+  }
+
+  @media (max-width: 480px) {
+    .page {
+      padding: var(--s-sp-3);
+    }
   }
 </style>

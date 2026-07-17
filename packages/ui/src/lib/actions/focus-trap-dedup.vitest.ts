@@ -29,6 +29,9 @@ const CHAT_PAGE = fileURLToPath(new URL('../../routes/chat/+page.svelte', import
 const CHAT_NAVBAR = fileURLToPath(
   new URL('../components/chrome/ChatNavbar.svelte', import.meta.url),
 );
+const CHAT_ACTIVITY = fileURLToPath(
+  new URL('../components/chat/ChatActivity.svelte', import.meta.url),
+);
 const TOOL_STRIP = fileURLToPath(new URL('../components/chat/ToolStrip.svelte', import.meta.url));
 const LOCAL_FOCUS_TRAP_TS = fileURLToPath(new URL('./focus-trap.ts', import.meta.url));
 const LOCAL_FOCUS_TRAP_BROWSER_TEST = fileURLToPath(
@@ -47,9 +50,11 @@ describe('FOCUS-TRAP-DEDUP — packages/ui imports the shared ui-kit focus-trap 
   test('the chat route delegates focus ownership to the shared ui-kit Drawer', () => {
     const pageSource = readFileSync(CHAT_PAGE, 'utf-8');
     const navbarSource = readFileSync(CHAT_NAVBAR, 'utf-8');
+    const activitySource = readFileSync(CHAT_ACTIVITY, 'utf-8');
     expect(pageSource).not.toMatch(/actions\/focus-trap/);
     expect(pageSource).toMatch(/components\/chrome\/ChatNavbar\.svelte/);
     expect(navbarSource).toMatch(/@openpalm\/ui-kit\/components\/common\/Drawer\.svelte/);
+    expect(activitySource).toMatch(/@openpalm\/ui-kit\/components\/common\/Drawer\.svelte/);
   });
 
   test('lib/components/chat/ToolStrip.svelte imports createFocusTrap/handleTrapKeydown from @openpalm/ui-kit/actions/focus-trap.js', () => {

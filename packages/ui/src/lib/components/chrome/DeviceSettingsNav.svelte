@@ -1,41 +1,26 @@
 <script lang="ts">
-	import { resolve } from '$app/paths';
-	import { buildReturnToPath } from '$lib/chat/navigation.js';
-
-	type DeviceSettingsPage = 'connections' | 'voice';
-
 	type Props = {
-		active: DeviceSettingsPage;
 		chatReturnHref: string;
 	};
 
-	let { active, chatReturnHref }: Props = $props();
+	let { chatReturnHref }: Props = $props();
 </script>
 
-<nav class="device-settings-nav" aria-label="Device settings">
+<nav class="device-settings-nav" aria-label="Settings sections">
 	<div class="nav-inner">
 		<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- validated session-aware conversation path -->
 		<a class="nav-target back-link" href={chatReturnHref}>&larr; Return to conversation</a>
-		<!-- eslint-disable svelte/no-navigation-without-resolve -- peer destinations are resolved before the validated return path is appended -->
-		<ul class="peer-tabs" aria-label="Device settings pages">
+		<ul class="peer-tabs">
 			<li>
-				<a
-					class="nav-target peer-link"
-					class:active={active === 'connections'}
-					href={buildReturnToPath(resolve('/connections'), chatReturnHref)}
-					aria-current={active === 'connections' ? 'page' : undefined}>Assistant connections</a
-				>
+				<a class="nav-target peer-link" href="#connections">Connections</a>
 			</li>
 			<li>
-				<a
-					class="nav-target peer-link"
-					class:active={active === 'voice'}
-					href={buildReturnToPath(resolve('/settings/voice'), chatReturnHref)}
-					aria-current={active === 'voice' ? 'page' : undefined}>Voice input &amp; playback</a
-				>
+				<a class="nav-target peer-link" href="#voice">Voice</a>
+			</li>
+			<li>
+				<a class="nav-target peer-link" href="#appearance">Appearance</a>
 			</li>
 		</ul>
-		<!-- eslint-enable svelte/no-navigation-without-resolve -->
 	</div>
 </nav>
 
@@ -105,11 +90,6 @@
 		white-space: nowrap;
 	}
 
-	.peer-link.active {
-		color: var(--s-ink);
-		border-bottom-color: var(--s-ink);
-	}
-
 	@media (max-width: 640px) {
 		.nav-inner {
 			flex-wrap: wrap;
@@ -123,7 +103,7 @@
 
 		.peer-tabs {
 			display: grid;
-			grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+			grid-template-columns: repeat(3, minmax(0, 1fr));
 			width: 100%;
 			margin-left: 0;
 			overflow: visible;

@@ -3,20 +3,27 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, test } from 'vitest';
 
 const CHAT_PAGE = fileURLToPath(new URL('./+page.svelte', import.meta.url));
+const CHAT_ACTIVITY = fileURLToPath(
+	new URL('../../lib/components/chat/ChatActivity.svelte', import.meta.url)
+);
 const CHAT_INPUT = fileURLToPath(
 	new URL('../../lib/components/chat/ChatInput.svelte', import.meta.url)
 );
 
 describe('responsive chat frame source contract', () => {
-	test('uses the shared chat navbar without page-owned navigation drawers', () => {
+	test('uses the shared chat navbar with a separate page-level Activity control', () => {
 		const source = readFileSync(CHAT_PAGE, 'utf8');
+		const activitySource = readFileSync(CHAT_ACTIVITY, 'utf8');
 
 		expect(source).toMatch(
 			/import ChatNavbar from '\$lib\/components\/chrome\/ChatNavbar\.svelte'/
 		);
-		expect(source).toMatch(
-			/<ChatNavbar bind:drawerOpen=\{navigationOpen\} bind:activityRailOpen\s*\/>/
+		expect(source).toMatch(/<ChatNavbar bind:drawerOpen=\{navigationOpen\}\s*\/>/);
+		expect(source).toMatch(/<ChatActivity[\s\S]*?bind:drawerOpen=\{navigationOpen\}/);
+		expect(activitySource).toMatch(
+			/\.activity-trigger\s*\{[\s\S]*?position:\s*fixed;[\s\S]*?left:[\s\S]*?bottom:/
 		);
+		expect(activitySource).toMatch(/<Drawer[\s\S]*?side="left"/);
 		for (const obsolete of [
 			'ChatFrameHeader',
 			'EndpointList',
@@ -42,7 +49,7 @@ describe('responsive chat frame source contract', () => {
 			's-error-banner',
 			's-jump-latest',
 			's-base',
-			's-dictate-btn'
+			's-voice-controls'
 		]) {
 			expect(source).toMatch(
 				new RegExp(`class="${className}"[\\s\\S]*?inert=\\{navigationOpen\\}`)
@@ -59,10 +66,28 @@ describe('responsive chat frame source contract', () => {
 		expect(
 			source.match(/aria-label=\{voiceActive \? 'Stop dictation' : 'Dictate message'\}/g)
 		).toHaveLength(1);
-		expect(source).toMatch(/class="s-dictate-btn"/);
-		expect(source).toMatch(/\.s-dictate-btn\s*\{[\s\S]*?right:[\s\S]*?bottom:/);
-		expect(source).toMatch(/width:\s*44px;[\s\S]*?height:\s*44px/);
+		expect(
+			source.match(/title=\{voiceActive \? 'Stop dictation' : 'Dictate message'\}/g)
+		).toHaveLength(1);
+		expect(source).not.toMatch(/<span>Dictate<\/span>/);
+		expect(source).not.toContain('s-dictate-state');
+		expect(source).toMatch(/class="[^"]*s-dictate-btn[^"]*"/);
+		expect(source).toMatch(/\.s-voice-controls\s*\{[\s\S]*?right:[\s\S]*?bottom:/);
+		expect(source).toMatch(/\.s-voice-btn\s*\{[\s\S]*?width:\s*44px;[\s\S]*?height:\s*44px/);
 		expect(source).toMatch(/voiceState\.status === 'transcribing'/);
+	});
+
+	test('keeps conversation and spoken-response toggles beside editable dictation', () => {
+		const source = readFileSync(CHAT_PAGE, 'utf8');
+
+		expect(source).toMatch(/role="toolbar" aria-label="Voice controls"/);
+		expect(source).toMatch(
+			/aria-label=\{voiceState\.conversationActive[\s\S]*?'Stop conversation mode'[\s\S]*?'Start conversation mode'\}/
+		);
+		expect(source).toContain("'Turn on spoken responses'");
+		expect(source).toContain("'Turn off spoken responses'");
+		expect(source).toMatch(/startConversation\(\(transcript\) => void handleSend\(transcript\)\)/);
+		expect(source).toMatch(/setTtsAutoEnabled\(!voiceState\.ttsAutoEnabled\)/);
 	});
 
 	test('keeps the desktop contextual activity rail box-safe at 1101px and above', () => {

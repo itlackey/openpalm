@@ -7,7 +7,7 @@
   // ../../actions/focus-trap.ts for why that made Drawer unusable from the client.
   import { createFocusTrap, handleTrapKeydown } from '../../actions/focus-trap.js';
 
-  // Reusable slide-in drawer (right edge). The app-wide replacement for inline
+  // Reusable slide-in drawer. The app-wide replacement for inline
   // expand-in-place forms: edit flows open here instead of pushing page content
   // down and forcing the user to scroll.
   interface Props {
@@ -26,6 +26,8 @@
     headerStart?: Snippet;
     /** Drawer width (CSS length). */
     width?: string;
+    /** Edge from which the drawer enters. */
+    side?: 'left' | 'right';
   }
   const generatedId = $props.id();
   let {
@@ -39,6 +41,7 @@
     footer,
     headerStart,
     width = '32rem',
+    side = 'right',
   }: Props = $props();
   const titleId = $derived(`${id}-title`);
 
@@ -74,19 +77,20 @@
   <div
     {id}
     class="drawer"
+    class:drawer-left={side === 'left'}
     style="--drawer-width: {width}"
     role="dialog"
     aria-modal="true"
     aria-labelledby={titleId}
     tabindex="-1"
     onkeydown={(e) => handleTrapKeydown(e, onClose)}
-    transition:fly={{ x: 48, duration: transitionDuration() }}
+    transition:fly={{ x: side === 'left' ? -48 : 48, duration: transitionDuration() }}
     onoutroend={onClosed}
     {@attach manageFocus}
   >
     <header class="drawer-header">
       {#if headerStart}{@render headerStart()}{/if}
-      <h3 class="drawer-title" id={titleId}>{title}</h3>
+      <h2 class="drawer-title" id={titleId}>{title}</h2>
       <button
         class="drawer-close"
         type="button"
@@ -129,6 +133,12 @@
     border-left: var(--s-hair) solid var(--s-line);
     z-index: 201;
     will-change: transform;
+  }
+  .drawer-left {
+    right: auto;
+    left: 0;
+    border-right: var(--s-hair) solid var(--s-line);
+    border-left: 0;
   }
   .drawer-header {
     display: flex;

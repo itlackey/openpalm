@@ -5,7 +5,6 @@
   import { onMount } from 'svelte';
   import ChatNavbar from '$lib/components/chrome/ChatNavbar.svelte';
   import ChatMessage from '$lib/components/chat/ChatMessage.svelte';
-  import ToolLog from '$lib/components/chat/ToolLog.svelte';
   import ChatInput from '$lib/components/chat/ChatInput.svelte';
   import VoiceControl from '$lib/components/chat/VoiceControl.svelte';
   import PermissionCard from '$lib/components/chat/PermissionCard.svelte';
@@ -41,7 +40,6 @@
   let reconnecting = $state(false);
   let reloadNonce = $state(0);
   let navigationOpen = $state(false);
-  let activityRailOpen = $state(true);
   let probeToken = 0; // discard stale async probe results
 
   const activeSession = $derived(
@@ -242,37 +240,11 @@
   <title>Advanced Chat — OpenPalm</title>
 </svelte:head>
 
-<ChatNavbar bind:drawerOpen={navigationOpen} bind:activityRailOpen />
+<ChatNavbar bind:drawerOpen={navigationOpen} />
 
 <div class="advanced-layout" inert={navigationOpen}>
-  {#if chat.toolLog.length > 0 && activityRailOpen}
-    <aside
-      class="advanced-activity"
-      id="conversation-activity-rail"
-      aria-label={`Activity for ${activeConversationTitle}`}
-    >
-      <div class="activity-context">
-        <span>Activity</span>
-        <strong>{activeConversationTitle}</strong>
-        <small>{active?.label ?? 'No assistant selected'}</small>
-        <p>OpenCode navigation is independent from this OpenPalm context.</p>
-      </div>
-      <ToolLog items={chat.toolLog} showHeading={false} />
-    </aside>
-  {/if}
-
   <div class="advanced-workspace">
     {#if mode === 'iframe'}
-      <!-- Parent Activity follows an explicit ?session= request. The frame may be
-           cross-origin, so internal iframe navigation cannot be observed or
-           synchronized back into parent state. -->
-      <header class="opencode-context">
-        <div>
-          <h1>OpenCode</h1>
-          <span>{activeConversationTitle} · {active?.label ?? 'No assistant selected'}</span>
-        </div>
-        <p>Activity follows this OpenPalm conversation. Navigation inside OpenCode is independent.</p>
-      </header>
       <div class="opencode-shell">
         {#key reloadNonce}
           <iframe
@@ -355,7 +327,6 @@
       </div>
     {/if}
     <div class="advanced-voice">
-      <span>Speak &amp; send</span>
       <VoiceControl showSpeaker={false} />
     </div>
   </div>
@@ -388,15 +359,9 @@
     z-index: 40;
     display: flex;
     align-items: center;
-    min-height: 44px;
-    padding-left: var(--s-sp-3);
     background: var(--s-paper);
     border: var(--s-hair) solid var(--s-line-soft);
     border-radius: 99px;
-    color: var(--s-ink-2);
-    font-family: var(--s-font-mono);
-    font-size: 0.75rem;
-    font-weight: 600;
   }
 
   .opencode-frame {
@@ -406,41 +371,6 @@
     flex: 1;
     border: none;
     background: var(--s-paper-deep);
-  }
-
-  .opencode-context {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: var(--s-sp-4);
-    min-height: 56px;
-    padding: var(--s-sp-2) var(--s-sp-4);
-    border-bottom: var(--s-hair) solid var(--s-line-soft);
-    background: var(--s-paper);
-  }
-  .opencode-context > div {
-    display: flex;
-    min-width: 0;
-    flex-direction: column;
-  }
-  .opencode-context h1 {
-    margin: 0;
-    color: var(--s-ink);
-    font-family: var(--s-font-header);
-    font-size: 1.25rem;
-    line-height: 1.1;
-  }
-  .opencode-context span,
-  .opencode-context p {
-    overflow: hidden;
-    color: var(--s-ink-2);
-    font-size: 0.75rem;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .opencode-context p {
-    margin: 0;
-    max-width: 32rem;
   }
   .opencode-shell {
     position: relative;
@@ -482,40 +412,6 @@
     flex: 1;
     min-height: 0;
     display: flex;
-  }
-  .advanced-activity {
-    flex: 0 0 clamp(14rem, 23vw, 19rem);
-    min-height: 0;
-    overflow-y: auto;
-    padding: var(--s-sp-4);
-    border-right: var(--s-hair) solid var(--s-line-soft);
-  }
-  .activity-context {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-    padding-bottom: var(--s-sp-4);
-    margin-bottom: var(--s-sp-3);
-    border-bottom: var(--s-hair) solid var(--s-line-soft);
-  }
-  .activity-context span,
-  .activity-context small {
-    color: var(--s-ink-3);
-    font-family: var(--s-font-mono);
-    font-size: 0.75rem;
-  }
-  .activity-context strong {
-    overflow: hidden;
-    color: var(--s-ink);
-    font-size: 0.875rem;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .activity-context p {
-    margin: var(--s-sp-2) 0 0;
-    color: var(--s-ink-2);
-    font-size: 0.75rem;
-    line-height: 1.45;
   }
   .native-chat {
     flex: 1;
@@ -577,18 +473,12 @@
     .native-shell { flex-direction: column; }
   }
 
-  @media (max-width: 1100px) {
-    .advanced-activity { display: none; }
-  }
-
   @media (max-width: 999px) {
     .advanced-layout { height: calc(100dvh - 112px); }
-    .opencode-context p { display: none; }
   }
 
   @media (max-width: 479px) {
     .advanced-layout { height: calc(100dvh - 144px); }
-    .opencode-context { min-height: 64px; }
   }
 
   @media (prefers-reduced-motion: reduce) {

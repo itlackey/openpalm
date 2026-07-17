@@ -1,11 +1,11 @@
 <!--
-  VoiceClientSettings — the chat client's speech settings, rendered on the
-  /settings/voice page.
+  VoiceClientSettings — the chat client's speech settings, rendered in the
+  Voice section of the user settings page.
 
   These are CLIENT-owned preferences persisted in this browser (settings in
   localStorage, API keys in the browser secret store) — they never touch the
   host's stack.env. The host side of voice (running the container,
-  hardware profile) lives under Admin → Capabilities; this panel only picks
+  hardware profile) lives under the host dashboard; this panel only picks
   which provider THIS device talks to:
 
     browser            — the browser's own Web Speech APIs
@@ -272,7 +272,7 @@
 </script>
 
 <section class="voice-settings" aria-label="Voice settings">
-  <h2>Speech providers</h2>
+  <h3>Speech providers</h3>
   <p class="lede">
     Choose the speech-to-text and text-to-speech providers used by this browser.
   </p>
@@ -284,7 +284,7 @@
     ] as section (section.kind)}
       {@const form = section.form}
       <div class="voice-card">
-        <h3>{section.title}</h3>
+        <h4>{section.title}</h4>
         <label class="field">
           <span>Provider</span>
           <select bind:value={form.provider}>
@@ -314,8 +314,8 @@
             </p>
           {:else}
             <p class="hint status-warn">
-              ○ This host is not offering a voice service. Enable the Voice capability in
-              Admin → Capabilities, then <button type="button" class="linklike" onclick={() => void probeOpenpalm()}>re-check</button>.
+              ○ This host is not offering a voice service. Enable the Voice add-on under
+              Manage host, then <button type="button" class="linklike" onclick={() => void probeOpenpalm()}>re-check</button>.
             </p>
           {/if}
         {/if}
@@ -434,7 +434,7 @@
     border-radius: 2px;
     background: var(--s-paper);
   }
-  .voice-settings h2 {
+  .voice-settings h3 {
     margin: 0;
   }
   .lede {
@@ -459,7 +459,7 @@
     border: var(--s-hair) solid var(--s-line-soft);
     border-radius: 2px;
   }
-  .voice-card h3 {
+  .voice-card h4 {
     margin: 0;
     font-family: var(--s-font-mono);
     font-size: var(--s-type-mark);

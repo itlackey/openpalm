@@ -5,6 +5,7 @@
 	import { goto, replaceState } from '$app/navigation';
 	import ChatMessage from '$lib/components/chat/ChatMessage.svelte';
 	import ChatInput from '$lib/components/chat/ChatInput.svelte';
+	import ChatActivity from '$lib/components/chat/ChatActivity.svelte';
 	import ChatNavbar from '$lib/components/chrome/ChatNavbar.svelte';
 	import VoiceStatusStrip from '$lib/components/chat/VoiceStatusStrip.svelte';
 	import ToolLog from '$lib/components/chat/ToolLog.svelte';
@@ -24,12 +25,18 @@
 	import { resolveSessionTitle } from '$lib/session-title.js';
 	import {
 		voiceState,
+		setTtsAutoEnabled,
+		startConversation,
 		startListening,
 		stopListening,
 		stopConversation,
 		initVoice
 	} from '$lib/voice/voice-state.svelte.js';
 	import IconMic from '@openpalm/ui-kit/components/icons/IconMic.svelte';
+	import IconSoundOff from '@openpalm/ui-kit/components/icons/IconSoundOff.svelte';
+	import IconSoundOn from '@openpalm/ui-kit/components/icons/IconSoundOn.svelte';
+	import IconStop from '@openpalm/ui-kit/components/icons/IconStop.svelte';
+	import IconWaves from '@openpalm/ui-kit/components/icons/IconWaves.svelte';
 
 	let scrollAnchorEl = $state<HTMLDivElement | undefined>();
 
@@ -176,14 +183,11 @@
 		!voiceState.conversationActive &&
 			(voiceState.status === 'recording' || voiceState.status === 'transcribing')
 	);
-	const dictateStatus = $derived(
-		!voiceState.conversationActive && voiceState.status === 'recording'
-			? 'Recording'
-			: !voiceState.conversationActive && voiceState.status === 'transcribing'
-				? 'Transcribing'
-				: null
-	);
 	const voiceEnabled = $derived(voiceState.sttEngine !== 'disabled' && voiceState.sttSupported);
+	const ttsEnabled = $derived(voiceState.ttsEngine !== 'disabled' && voiceState.ttsSupported);
+	const dictationTranscribing = $derived(
+		!voiceState.conversationActive && voiceState.status === 'transcribing'
+	);
 	type OpenPalmVoiceBridge = {
 		requestMicPermission?: () => Promise<string>;
 	};
@@ -220,6 +224,19 @@
 				draft = draft.trim().length > 0 ? `${draft.trimEnd()} ${trimmed}` : trimmed;
 			});
 		}
+	}
+
+	async function toggleConversation(): Promise<void> {
+		if (voiceState.conversationActive) {
+			stopConversation();
+			return;
+		}
+		if (!(await prepareMicrophoneAccess())) return;
+		startConversation((transcript) => void handleSend(transcript));
+	}
+
+	function toggleSpokenResponses(): void {
+		setTtsAutoEnabled(!voiceState.ttsAutoEnabled);
 	}
 
 	async function syncSessionUrl(sessionId: string | null, replace: boolean): Promise<void> {
@@ -349,7 +366,13 @@
 <div class="s-moon"></div>
 <div class="s-grain"></div>
 
-<ChatNavbar bind:drawerOpen={navigationOpen} bind:activityRailOpen />
+<ChatNavbar bind:drawerOpen={navigationOpen} />
+<ChatActivity
+	bind:drawerOpen={navigationOpen}
+	bind:railOpen={activityRailOpen}
+	conversationTitle={activeConversationTitle}
+	connectionLabel={activeConnectionLabel}
+/>
 
 {#if chat.toolLog.length > 0 && activityRailOpen}
 	<aside
@@ -469,7 +492,11 @@
 {/if}
 
 <!-- composer -->
-<div class="s-base" class:has-activity={chat.toolLog.length > 0 && activityRailOpen} inert={navigationOpen}>
+<div
+	class="s-base"
+	class:has-activity={chat.toolLog.length > 0 && activityRailOpen}
+	inert={navigationOpen}
+>
 	<VoiceStatusStrip thinking={chat.sending} />
 	<ChatInput
 		bind:draft
@@ -480,24 +507,59 @@
 	/>
 </div>
 
-<button
-	class="s-dictate-btn"
-	class:active={voiceActive}
-	class:transcribing={dictateStatus === 'Transcribing'}
-	type="button"
-	aria-label={voiceActive ? 'Stop dictation' : 'Dictate message'}
-	aria-pressed={voiceActive}
-	disabled={!voiceEnabled}
-	inert={navigationOpen}
-	onclick={toggleVoice}
->
-	{#if dictateStatus}
-		<span class="s-dictate-state" aria-live="polite">{dictateStatus}</span>
-	{:else}
-		<IconMic size={19} />
-		<span>Dictate</span>
-	{/if}
-</button>
+<div class="s-voice-controls" role="toolbar" aria-label="Voice controls" inert={navigationOpen}>
+	<button
+		class="s-voice-btn"
+		class:active={voiceState.ttsAutoEnabled}
+		type="button"
+		aria-label={voiceState.ttsAutoEnabled
+			? 'Turn off spoken responses'
+			: 'Turn on spoken responses'}
+		title={voiceState.ttsAutoEnabled ? 'Spoken responses are on' : 'Spoken responses are off'}
+		aria-pressed={voiceState.ttsAutoEnabled}
+		disabled={!ttsEnabled}
+		onclick={toggleSpokenResponses}
+	>
+		{#if voiceState.ttsAutoEnabled}
+			<IconSoundOn size={18} />
+		{:else}
+			<IconSoundOff size={18} />
+		{/if}
+	</button>
+	<button
+		class="s-voice-btn"
+		class:active={voiceState.conversationActive}
+		type="button"
+		aria-label={voiceState.conversationActive
+			? 'Stop conversation mode'
+			: 'Start conversation mode'}
+		title={voiceState.conversationActive
+			? 'Stop hands-free conversation'
+			: 'Start hands-free conversation'}
+		aria-pressed={voiceState.conversationActive}
+		disabled={!voiceEnabled || !ttsEnabled}
+		onclick={toggleConversation}
+	>
+		<IconWaves size={19} />
+	</button>
+	<button
+		class="s-voice-btn s-dictate-btn"
+		class:active={voiceActive}
+		class:transcribing={dictationTranscribing}
+		type="button"
+		aria-label={voiceActive ? 'Stop dictation' : 'Dictate message'}
+		title={voiceActive ? 'Stop dictation' : 'Dictate message'}
+		aria-pressed={voiceActive}
+		disabled={!voiceEnabled}
+		onclick={toggleVoice}
+	>
+		{#if voiceActive && !dictationTranscribing}
+			<IconStop size={17} />
+		{:else}
+			<IconMic size={19} />
+		{/if}
+	</button>
+</div>
 
 <style>
 	/* Visually hidden but available to assistive tech (document outline / h1). */
@@ -712,32 +774,33 @@
 		margin-block: 0;
 	}
 
-	.s-dictate-btn {
+	.s-voice-controls {
 		position: fixed;
 		z-index: 70;
 		right: max(var(--s-sp-3), env(safe-area-inset-right));
 		bottom: max(var(--s-sp-3), env(safe-area-inset-bottom));
-		min-width: 44px;
-		width: auto;
-		height: 44px;
-		padding: 0 var(--s-sp-3);
+		display: flex;
+		align-items: center;
+		gap: var(--s-sp-1);
+	}
+
+	.s-voice-btn {
+		position: relative;
 		display: inline-flex;
-		flex-direction: row;
 		align-items: center;
 		justify-content: center;
-		gap: var(--s-sp-2);
+		width: 44px;
+		height: 44px;
+		padding: 0;
 		border: var(--s-hair) solid var(--s-line);
-		border-radius: 99px;
+		border-radius: 50%;
 		background: var(--s-paper);
 		color: var(--s-ink-3);
-		font-family: var(--s-font-mono);
-		font-size: 0.75rem;
-		font-weight: 600;
 		cursor: pointer;
 	}
 
-	.s-dictate-btn:hover,
-	.s-dictate-btn.active {
+	.s-voice-btn:hover,
+	.s-voice-btn.active {
 		color: var(--s-seal);
 		border-color: currentColor;
 	}
@@ -746,21 +809,14 @@
 		border-style: dashed;
 	}
 
-	.s-dictate-btn:disabled {
+	.s-voice-btn:disabled {
 		opacity: 0.45;
 		cursor: not-allowed;
 	}
 
-	.s-dictate-btn:focus-visible {
+	.s-voice-btn:focus-visible {
 		outline: 2px solid var(--s-seal);
 		outline-offset: 1px;
-	}
-
-	.s-dictate-state {
-		font-size: 0.75rem;
-		line-height: 1.2;
-		letter-spacing: 0;
-		text-align: center;
 	}
 
 	/* ── Error banner ─────────────────────────────────────────────────── */
@@ -923,6 +979,10 @@
 	}
 
 	@media (max-width: 720px) {
+		.s-voice-controls {
+			flex-direction: column;
+		}
+
 		.s-thread {
 			padding-top: 4rem;
 			padding-bottom: 10rem;
@@ -935,7 +995,14 @@
 
 		.s-base {
 			padding-top: var(--s-sp-4);
-			padding-right: calc(max(var(--s-sp-3), env(safe-area-inset-right)) + 104px);
+			padding-left: calc(max(var(--s-sp-3), env(safe-area-inset-left)) + 104px);
+			padding-right: calc(max(var(--s-sp-3), env(safe-area-inset-right)) + 52px);
+		}
+	}
+
+	@media (max-width: 360px) {
+		.s-base {
+			padding-left: calc(max(var(--s-sp-3), env(safe-area-inset-left)) + 52px);
 		}
 	}
 

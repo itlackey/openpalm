@@ -55,7 +55,7 @@
     grid-template-columns: 1fr 1fr;
     min-width: 168px;
     height: 48px;
-    padding: 2px;
+    padding: 1px;
     border: var(--s-hair) solid var(--s-line-soft);
     border-radius: 8px;
     background: var(--s-paper-deep);
@@ -64,6 +64,7 @@
     min-width: 76px;
     min-height: 44px;
     padding: 0 var(--s-sp-2);
+    overflow: hidden;
     border: 0;
     border-radius: 5px;
     background: transparent;

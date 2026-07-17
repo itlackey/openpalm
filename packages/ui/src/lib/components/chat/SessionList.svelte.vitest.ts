@@ -141,6 +141,31 @@ describe('SessionList', () => {
     expect(mocks.chat.renameSession).toHaveBeenCalledWith('sess-1', 'Project launch');
   });
 
+  test('dismisses conversation actions before the enclosing drawer', async () => {
+    const { container } = render(SessionList);
+    const trigger = page.getByRole('button', { name: 'More actions for First conversation' });
+
+    await trigger.click();
+    await page.getByRole('searchbox', { name: 'Search conversations' }).click();
+    await expect
+      .element(page.getByRole('button', { name: 'Rename', exact: true }))
+      .not.toBeInTheDocument();
+
+    await trigger.click();
+    const parentKeydown = vi.fn();
+    container.parentElement?.addEventListener('keydown', parentKeydown);
+    trigger
+      .element()
+      .dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    container.parentElement?.removeEventListener('keydown', parentKeydown);
+
+    await expect.element(trigger).toHaveAttribute('aria-expanded', 'false');
+    await expect
+      .element(page.getByRole('button', { name: 'Rename', exact: true }))
+      .not.toBeInTheDocument();
+    expect(parentKeydown).not.toHaveBeenCalled();
+  });
+
   test('requires confirmation before deleting and routes an active fallback', async () => {
     mocks.chat.deleteSession.mockImplementationOnce(async () => {
       mocks.chat.activeSessionId = 'sess-2';

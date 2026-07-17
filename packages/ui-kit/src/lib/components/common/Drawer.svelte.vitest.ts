@@ -10,7 +10,7 @@ describe('Drawer', () => {
 
     const dialog = page.getByRole('dialog', { name: 'First drawer' });
     await expect.element(dialog).toHaveAttribute('id', 'first-drawer');
-    expect(document.querySelector('#first-drawer-title')).toHaveTextContent('First drawer');
+    await expect.element(page.getByRole('heading', { name: 'First drawer', level: 2 })).toBeVisible();
     expect(
       (page.getByRole('button', { name: /^Close/ }).element() as HTMLElement)
         .getBoundingClientRect().height,

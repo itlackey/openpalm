@@ -11,8 +11,8 @@ function componentSource(): string {
 describe('VoiceClientSettings route presentation', () => {
   test('identifies itself as the provider controls beneath the route heading', () => {
     const source = componentSource();
-    expect(source).toMatch(/<h2>Speech providers<\/h2>/);
-    expect(source).toMatch(/\/settings\/voice/);
+    expect(source).toMatch(/<h3>Speech providers<\/h3>/);
+    expect(source).not.toMatch(/<h2>/);
   });
 
   test('does not force 280px or 240px columns beyond the mobile container', () => {

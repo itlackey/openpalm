@@ -105,7 +105,26 @@
   async function retry(): Promise<void> {
     await chat.loadSessions();
   }
+
+  function handleBodyClick(event: MouseEvent): void {
+    const target = event.target;
+    if (
+      actionsId &&
+      (!(target instanceof Element) || !target.closest('.session-actions'))
+    ) {
+      actionsId = null;
+    }
+  }
+
+  function handleBodyKeydown(event: KeyboardEvent): void {
+    if (event.key !== 'Escape' || !actionsId) return;
+    event.preventDefault();
+    event.stopPropagation();
+    actionsId = null;
+  }
 </script>
+
+<svelte:window onclick={handleBodyClick} onkeydowncapture={handleBodyKeydown} />
 
 <div class="session-body">
   <div class="panel-intro">

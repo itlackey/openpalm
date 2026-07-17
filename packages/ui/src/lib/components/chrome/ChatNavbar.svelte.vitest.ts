@@ -51,11 +51,12 @@ const mocks = vi.hoisted(() => {
     (_pathname: string, sessionId: string | null, assistantId: string | null) =>
       `/advanced?session=${sessionId}&assistant=${assistantId}`,
   );
-  return { appPage, buildConversationPath, chat, endpointsService };
+  const goto = vi.fn().mockResolvedValue(undefined);
+  return { appPage, buildConversationPath, chat, endpointsService, goto };
 });
 
 vi.mock('$app/state', () => ({ page: mocks.appPage }));
-vi.mock('$app/navigation', () => ({ goto: vi.fn().mockResolvedValue(undefined) }));
+vi.mock('$app/navigation', () => ({ goto: mocks.goto }));
 vi.mock('$lib/chat/chat-state.svelte.js', () => ({ chat: mocks.chat }));
 vi.mock('$lib/endpoints-state.svelte.js', () => ({ endpointsService: mocks.endpointsService }));
 vi.mock('$lib/advanced-mode-state.svelte.js', () => ({
@@ -63,12 +64,6 @@ vi.mock('$lib/advanced-mode-state.svelte.js', () => ({
     enabled: true,
     init: vi.fn(),
     setEnabled: vi.fn(),
-  },
-}));
-vi.mock('$lib/theme-state.svelte.js', () => ({
-  themeService: {
-    preference: 'system',
-    setPreference: vi.fn(),
   },
 }));
 vi.mock('$lib/runtime-context.svelte.js', () => ({
@@ -98,6 +93,8 @@ beforeEach(() => {
   mocks.appPage.url = new URL('http://localhost/advanced?session=session-1');
   mocks.chat.toolLog = [];
   mocks.buildConversationPath.mockClear();
+  mocks.chat.startNewSession.mockClear();
+  mocks.goto.mockClear();
 });
 
 describe('ChatNavbar', () => {
@@ -111,7 +108,7 @@ describe('ChatNavbar', () => {
       'Conversation: Current conversation',
       'Simple mode',
       'OpenCode mode',
-      'Activity for Current conversation',
+      'Start a new conversation',
       'Open settings',
     ]);
     for (const target of targets) {
@@ -127,8 +124,6 @@ describe('ChatNavbar', () => {
     for (const name of [
       'Assistant: Workshop assistant',
       'Conversation: Current conversation',
-      'Activity for Current conversation',
-      'Open settings',
     ]) {
       const trigger = page.getByRole('button', { name, exact: true });
       await expect.element(trigger).toHaveAttribute('aria-haspopup', 'dialog');
@@ -146,40 +141,33 @@ describe('ChatNavbar', () => {
     expect(document.querySelectorAll('[role="dialog"]')).toHaveLength(1);
   });
 
-  test('shows an explicit empty activity state for the current conversation', async () => {
+  test('routes the single settings entry with conversation return context', async () => {
     render(ChatNavbar);
-    await page.getByRole('button', { name: 'Activity for Current conversation' }).click();
 
-    await expect.element(page.getByText('No activity yet')).toBeVisible();
-  });
-
-  test('groups exact settings labels and preserves conversation return context', async () => {
-    render(ChatNavbar);
-    await page.getByRole('button', { name: 'Open settings' }).click();
-
-    await expect.element(page.getByRole('heading', { name: 'This device' })).toBeVisible();
-    await expect.element(page.getByRole('heading', { name: 'This host' })).toBeVisible();
-    await expect.element(page.getByRole('link', { name: 'Assistant connections' })).toHaveAttribute(
+    await expect.element(page.getByRole('link', { name: 'Open settings' })).toHaveAttribute(
       'href',
       '/connections?returnTo=%2Fadvanced%3Fsession%3Dsession-1%26assistant%3Dassistant-1',
     );
-    await expect.element(page.getByRole('link', { name: /Voice input & playback/ })).toHaveAttribute(
-      'href',
-      '/settings/voice?returnTo=%2Fadvanced%3Fsession%3Dsession-1%26assistant%3Dassistant-1',
-    );
-    await expect.element(page.getByRole('link', { name: /Open host dashboard/ })).toHaveAttribute(
-      'href',
-      '/host?returnTo=%2Fadvanced%3Fsession%3Dsession-1%26assistant%3Dassistant-1',
-    );
-    await expect.element(page.getByRole('link', { name: /Manage host Voice/ })).toHaveAttribute(
-      'href',
-      '/host?tab=addons&addon=voice&returnTo=%2Fadvanced%3Fsession%3Dsession-1%26assistant%3Dassistant-1',
-    );
-    await expect.element(page.getByRole('group', { name: 'Appearance' })).toBeVisible();
     expect(mocks.buildConversationPath).toHaveBeenCalledWith(
       '/advanced',
       'session-1',
       'assistant-1',
+    );
+  });
+
+  test('starts a new conversation in one click without changing modes', async () => {
+    render(ChatNavbar);
+
+    await page.getByRole('button', { name: 'Start a new conversation' }).click();
+
+    expect(mocks.chat.startNewSession).toHaveBeenCalledOnce();
+    expect(mocks.buildConversationPath).toHaveBeenCalledWith(
+      '/advanced',
+      'new-session',
+      'assistant-1',
+    );
+    expect(mocks.goto).toHaveBeenCalledWith(
+      '/advanced?session=new-session&assistant=assistant-1',
     );
   });
 });

@@ -74,20 +74,23 @@ describe('connections +page.svelte — host UX and pairing wiring', () => {
     expect(src).toMatch(/connectionsService\.activeId/);
   });
 
-  test('uses plain destination chrome and the shared device-settings subnav', () => {
+  test('renders one settings page with the shared section navigation', () => {
     const src = pageSource();
     expect(src).toMatch(
-      /<Navbar brandHref=\{chatReturnHref\} showUtilities=\{false\} \/>[\s\S]*<DeviceSettingsNav active="connections" \{chatReturnHref\} \/>[\s\S]*<main/,
+      /<Navbar brandHref=\{chatReturnHref\} showUtilities=\{false\} \/>[\s\S]*<DeviceSettingsNav \{chatReturnHref\} \/>[\s\S]*<main/,
     );
     expect(src).not.toMatch(/ChatNavbar/);
-    expect(src).not.toMatch(/VoiceClientSettings/);
-    expect(src).not.toMatch(/#voice|focusVoiceSection|voiceSectionEl/);
+    expect(src).toMatch(/<h1>Settings<\/h1>/);
+    expect(src).toMatch(/id="connections"[\s\S]*id="voice"[\s\S]*id="appearance"/);
+    expect(src).toMatch(/<VoiceClientSettings \/>/);
+    expect(src).toMatch(/themeService\.setPreference/);
   });
 
-  test('does not expose generic Host or Admin navigation', () => {
+  test('links clearly to host management when host controls are available', () => {
     const src = pageSource();
-    expect(src).not.toMatch(/runtimeContext\.routes\.host|hostRoute|Open Admin|Admin →/);
-    expect(src).not.toMatch(/hasCapability\(\s*['"`]host:stack:read['"`]\s*\)/);
+    expect(src).toMatch(/hasCapability\(\s*['"`]host:stack:read['"`]\s*\)/);
+    expect(src).toMatch(/buildReturnToPath\(resolve\(\s*['"`]\/host['"`]\s*\), chatReturnHref\)/);
+    expect(src).toMatch(/href=\{hostSettingsHref\}>Manage host/);
   });
 
   test('retains new-connection and fragment pairing behavior alongside return context', () => {

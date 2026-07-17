@@ -253,7 +253,7 @@
 >
 	<div class="panel-header">
 		<div>
-			<h2>Connections</h2>
+			<h2>AI Providers</h2>
 			<p class="panel-subtitle">AI providers · model defaults</p>
 		</div>
 		<div class="panel-header-actions">

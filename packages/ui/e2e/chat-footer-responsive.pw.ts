@@ -9,7 +9,8 @@ test.use({
 const ASSISTANT_ID = 'responsive-assistant';
 const SESSION_ID = 'responsive-session';
 const CHAT_PATH = `/chat?session=${SESSION_ID}&assistant=${ASSISTANT_ID}`;
-const ENCODED_RETURN_TO = '%2Fchat%3Fsession%3Dresponsive-session%26assistant%3Dresponsive-assistant';
+const ENCODED_RETURN_TO =
+	'%2Fchat%3Fsession%3Dresponsive-session%26assistant%3Dresponsive-assistant';
 
 type Rect = { left: number; right: number; top: number; bottom: number };
 
@@ -47,12 +48,7 @@ async function expectHitTarget(locator: Locator, description: string): Promise<v
 }
 
 async function expectChatInert(page: Page, expected: boolean): Promise<void> {
-	for (const selector of [
-		'.s-scroll',
-		'.s-base',
-		'.s-tool-rail',
-		'.s-dictate-btn'
-	]) {
+	for (const selector of ['.s-scroll', '.s-base', '.s-tool-rail', '.s-voice-controls']) {
 		const locator = page.locator(selector);
 		if ((await locator.count()) === 0) continue;
 		expect(await locator.evaluate((element) => (element as HTMLElement).inert), selector).toBe(
@@ -62,20 +58,20 @@ async function expectChatInert(page: Page, expected: boolean): Promise<void> {
 	await expect(page.locator('.navbar')).toBeVisible();
 }
 
-async function expectOneDrawer(page: Page, name: string): Promise<Locator> {
+async function expectOneDrawer(
+	page: Page,
+	name: string,
+	id = 'chat-navbar-drawer'
+): Promise<Locator> {
 	const dialog = page.getByRole('dialog', { name, exact: true });
 	await expect(dialog).toBeVisible();
-	await expect(dialog).toHaveAttribute('id', 'chat-navbar-drawer');
+	await expect(dialog).toHaveAttribute('id', id);
 	await expect(page.getByRole('dialog')).toHaveCount(1);
 	await expectChatInert(page, true);
 	return dialog;
 }
 
-async function closeDrawerWithOutro(
-	page: Page,
-	dialog: Locator,
-	trigger: Locator
-): Promise<void> {
+async function closeDrawerWithOutro(page: Page, dialog: Locator, trigger: Locator): Promise<void> {
 	await dialog.getByRole('button', { name: /^Close/ }).click();
 	await expect(dialog).toBeAttached();
 	const animationCount = await dialog.evaluate((element) => element.getAnimations().length);
@@ -86,9 +82,10 @@ async function closeDrawerWithOutro(
 }
 
 async function login(page: Page): Promise<void> {
-	const password = process.env.RUN_DOCKER_STACK_TESTS === '1'
-		? process.env.OP_UI_LOGIN_PASSWORD
-		: 'e2e-mocked-password';
+	const password =
+		process.env.RUN_DOCKER_STACK_TESTS === '1'
+			? process.env.OP_UI_LOGIN_PASSWORD
+			: 'e2e-mocked-password';
 	const response = await page.request.post('/api/auth/login', {
 		data: { password: password ?? '' }
 	});
@@ -213,14 +210,40 @@ test('shared chat navbar and footer remain responsive from 320px through desktop
 	await expect(page).toHaveURL(new RegExp(`${CHAT_PATH.replaceAll('?', '\\?')}$`));
 
 	const navbar = page.locator('.navbar');
-	const assistant = navbar.getByRole('button', { name: 'Assistant: Responsive assistant', exact: true });
-	const conversation = navbar.getByRole('button', { name: 'Conversation: Responsive frame work', exact: true });
-	const activity = navbar.getByRole('button', { name: 'Activity for Responsive frame work', exact: true });
-	const settings = navbar.getByRole('button', { name: 'Open settings', exact: true });
+	const assistant = navbar.getByRole('button', {
+		name: 'Assistant: Responsive assistant',
+		exact: true
+	});
+	const conversation = navbar.getByRole('button', {
+		name: 'Conversation: Responsive frame work',
+		exact: true
+	});
+	const newConversation = navbar.getByRole('button', {
+		name: 'Start a new conversation',
+		exact: true
+	});
+	const activity = page.getByRole('button', {
+		name: 'Activity for Responsive frame work',
+		exact: true
+	});
+	const settings = navbar.getByRole('link', { name: 'Open settings', exact: true });
 	const simpleMode = navbar.getByRole('button', { name: 'Simple mode', exact: true });
 	const openCodeMode = navbar.getByRole('button', { name: 'OpenCode mode', exact: true });
 	const brand = navbar.getByRole('link', { name: 'OpenPalm - go to chat', exact: true });
-	const headerTargets = [brand, assistant, conversation, simpleMode, openCodeMode, activity, settings];
+	const headerTargets = [
+		brand,
+		assistant,
+		conversation,
+		simpleMode,
+		openCodeMode,
+		newConversation,
+		settings
+	];
+	const speaker = page.getByRole('button', { name: 'Turn on spoken responses', exact: true });
+	const conversationMode = page.getByRole('button', {
+		name: 'Start conversation mode',
+		exact: true
+	});
 	const dictate = page.getByRole('button', { name: 'Dictate message', exact: true });
 	const composer = page.locator('.s-composer');
 	const input = page.getByRole('textbox', { name: 'Message input' });
@@ -246,15 +269,37 @@ test('shared chat navbar and footer remain responsive from 320px through desktop
 		expect(scrollRect.top, `${width}px chat starts below header`).toBe(144);
 		expect(scrollRect.bottom, `${width}px chat fills remaining viewport`).toBe(700);
 		expect(intersects(navbarRect, composerRect), `${width}px header overlaps composer`).toBe(false);
-		expect(intersects(dictateRect, composerRect), `${width}px bottom mic overlaps composer`).toBe(false);
+		expect(intersects(dictateRect, composerRect), `${width}px bottom mic overlaps composer`).toBe(
+			false
+		);
 		expect(intersects(dictateRect, sendRect), `${width}px bottom mic overlaps Send`).toBe(false);
 		expect(width - dictateRect.right, `${width}px mic right-corner offset`).toBeLessThanOrEqual(16);
 		expect(700 - dictateRect.bottom, `${width}px mic bottom-corner offset`).toBeLessThanOrEqual(16);
 
-		for (const control of [...headerTargets, dictate, send]) {
+		const modeOverflow = await navbar.locator('.mode-switch').evaluate((switcher) => {
+			const bounds = switcher.getBoundingClientRect();
+			return Array.from(switcher.querySelectorAll('button')).some((button) => {
+				const buttonBounds = button.getBoundingClientRect();
+				return (
+					buttonBounds.left < bounds.left ||
+					buttonBounds.right > bounds.right ||
+					buttonBounds.top < bounds.top ||
+					buttonBounds.bottom > bounds.bottom
+				);
+			});
+		});
+		expect(modeOverflow, `${width}px mode switch overflow`).toBe(false);
+
+		for (const control of [...headerTargets, activity, speaker, conversationMode, dictate, send]) {
 			const controlRect = await rect(control);
-			expect(controlRect.right - controlRect.left, `${width}px target width`).toBeGreaterThanOrEqual(44);
-			expect(controlRect.bottom - controlRect.top, `${width}px target height`).toBeGreaterThanOrEqual(44);
+			expect(
+				controlRect.right - controlRect.left,
+				`${width}px target width`
+			).toBeGreaterThanOrEqual(44);
+			expect(
+				controlRect.bottom - controlRect.top,
+				`${width}px target height`
+			).toBeGreaterThanOrEqual(44);
 			expect(controlRect.left, `${width}px target left edge`).toBeGreaterThanOrEqual(0);
 			expect(controlRect.right, `${width}px target right edge`).toBeLessThanOrEqual(width);
 			await expectHitTarget(control, `${width}px target is unobstructed`);
@@ -266,15 +311,32 @@ test('shared chat navbar and footer remain responsive from 320px through desktop
 	await page.getByRole('button', { name: 'Stop dictation' }).click();
 	await expect(dictate).toBeVisible();
 
-	for (const trigger of [assistant, conversation, activity, settings]) {
+	await conversationMode.click();
+	const stopConversationMode = page.getByRole('button', { name: 'Stop conversation mode' });
+	await expect(stopConversationMode).toBeVisible();
+	await stopConversationMode.click();
+	await expect(conversationMode).toBeVisible();
+
+	await speaker.click();
+	const stopSpeaker = page.getByRole('button', { name: 'Turn off spoken responses' });
+	await expect(stopSpeaker).toBeVisible();
+	await stopSpeaker.click();
+	await expect(speaker).toBeVisible();
+
+	for (const trigger of [assistant, conversation]) {
 		await expect(trigger).toHaveAttribute('aria-haspopup', 'dialog');
 		await expect(trigger).toHaveAttribute('aria-controls', 'chat-navbar-drawer');
 	}
+	await expect(activity).toHaveAttribute('aria-haspopup', 'dialog');
+	await expect(activity).toHaveAttribute('aria-controls', 'conversation-activity-drawer');
+	await expect(settings).toHaveAttribute('href', `/connections?returnTo=${ENCODED_RETURN_TO}`);
 
 	await assistant.click();
 	const assistantDialog = await expectOneDrawer(page, 'Switch assistant');
 	await expect(assistantDialog.getByRole('group', { name: 'Assistants' })).toBeVisible();
-	await expect(assistantDialog.getByRole('link', { name: /Manage assistant connections/ })).toBeVisible();
+	await expect(
+		assistantDialog.getByRole('link', { name: /Manage assistant connections/ })
+	).toBeVisible();
 	await closeDrawerWithOutro(page, assistantDialog, assistant);
 
 	await conversation.click();
@@ -285,32 +347,9 @@ test('shared chat navbar and footer remain responsive from 320px through desktop
 	await closeDrawerWithOutro(page, conversationDialog, conversation);
 
 	await activity.click();
-	const activityDialog = await expectOneDrawer(page, 'Activity');
+	const activityDialog = await expectOneDrawer(page, 'Activity', 'conversation-activity-drawer');
 	await expect(activityDialog.locator('.tool-log')).toBeVisible();
 	await closeDrawerWithOutro(page, activityDialog, activity);
-
-	await settings.click();
-	const settingsDialog = await expectOneDrawer(page, 'Settings');
-	for (const scope of ['This device', 'This host']) {
-		await expect(settingsDialog.getByRole('heading', { name: scope, exact: true })).toBeVisible();
-	}
-	await expect(settingsDialog.getByRole('link', { name: 'Assistant connections' })).toHaveAttribute(
-		'href',
-		`/connections?returnTo=${ENCODED_RETURN_TO}`
-	);
-	await expect(settingsDialog.getByRole('link', { name: /Voice input & playback/ })).toHaveAttribute(
-		'href',
-		`/settings/voice?returnTo=${ENCODED_RETURN_TO}`
-	);
-	await expect(settingsDialog.getByRole('link', { name: /Open host dashboard/ })).toHaveAttribute(
-		'href',
-		`/host?returnTo=${ENCODED_RETURN_TO}`
-	);
-	await expect(settingsDialog.getByRole('link', { name: /Manage host Voice/ })).toHaveAttribute(
-		'href',
-		`/host?tab=addons&addon=voice&returnTo=${ENCODED_RETURN_TO}`
-	);
-	await closeDrawerWithOutro(page, settingsDialog, settings);
 
 	await page.getByRole('button', { name: 'Send message' }).click();
 	const stop = page.getByRole('button', { name: 'Stop generating' });

@@ -70,8 +70,8 @@ describe('chat page ↔ admin API barrel untangling (#555)', () => {
   test('prepares Electron microphone permission before editable dictation starts', () => {
     const source = readFileSync(CHAT_PAGE, 'utf-8');
     expect(source).toMatch(/requestMicPermission/);
-    expect(source.match(/await prepareMicrophoneAccess\(\)/g)).toHaveLength(1);
+    expect(source.match(/await prepareMicrophoneAccess\(\)/g)).toHaveLength(2);
     expect(source).toMatch(/if \(await prepareMicrophoneAccess\(\)\)[\s\S]*?startListening\(/);
-    expect(source).not.toMatch(/startConversation\(/);
+    expect(source).toMatch(/startConversation\(\(transcript\) => void handleSend\(transcript\)\)/);
   });
 });

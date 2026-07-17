@@ -6,27 +6,34 @@ const ADVANCED_PAGE = fileURLToPath(new URL('./+page.svelte', import.meta.url));
 const CHAT_NAVBAR = fileURLToPath(
 	new URL('../../lib/components/chrome/ChatNavbar.svelte', import.meta.url),
 );
+const CHAT_ACTIVITY = fileURLToPath(
+	new URL('../../lib/components/chat/ChatActivity.svelte', import.meta.url),
+);
+const CHAT_PAGE = fileURLToPath(new URL('../chat/+page.svelte', import.meta.url));
 
 describe('Advanced fallback coherence', () => {
-	test('uses the shared chat header and makes the page inert while its drawer is open', () => {
+	test('uses the application header and makes the page inert while its drawer is open', () => {
 		const source = readFileSync(ADVANCED_PAGE, 'utf8');
 
-		expect(source).toMatch(
-			/<ChatNavbar bind:drawerOpen=\{navigationOpen\} bind:activityRailOpen\s*\/>/
-		);
+		expect(source).toMatch(/<ChatNavbar bind:drawerOpen=\{navigationOpen\}\s*\/>/);
 		expect(source).toMatch(/<div class="advanced-layout" inert=\{navigationOpen\}>/);
 		expect(source).toMatch(/height:\s*calc\(100dvh - 64px\)/);
 		expect(source).toMatch(/height:\s*calc\(100dvh - 112px\)/);
 	});
 
-	test('keeps Activity available through the shared header at mobile widths', () => {
-		const source = readFileSync(CHAT_NAVBAR, 'utf8');
+	test('keeps the bottom-left Activity drawer in conversation mode', () => {
+		const navbarSource = readFileSync(CHAT_NAVBAR, 'utf8');
+		const activitySource = readFileSync(CHAT_ACTIVITY, 'utf8');
+		const chatSource = readFileSync(CHAT_PAGE, 'utf8');
 
-		expect(source).toMatch(/Activity/);
-		expect(source).toMatch(/drawerOpen/);
-		expect(source).not.toMatch(
-			/@media\s*\([^)]*max-width[^)]*\)[\s\S]*?activity[^}]*display:\s*none/i,
+		expect(navbarSource).not.toMatch(/Activity/);
+		expect(chatSource).toMatch(/<ChatActivity[\s\S]*?bind:drawerOpen=\{navigationOpen\}/);
+		expect(activitySource).toMatch(/<Drawer[\s\S]*?title="Activity"/);
+		expect(activitySource).toMatch(
+			/\.activity-trigger\s*\{[\s\S]*?position:\s*fixed;[\s\S]*?left:[\s\S]*?bottom:/
 		);
+		expect(activitySource).not.toMatch(/\.activity-trigger\s*\{[^}]*display:\s*none/i);
+		expect(activitySource).not.toMatch(/openCode|OpenCode/);
 	});
 
 	test('activates only the exact assistant requested by the route before resolving it', () => {
@@ -42,13 +49,13 @@ describe('Advanced fallback coherence', () => {
 		expect(source).toMatch(/buildAdvancedPath\(chat\.activeSessionId, assistantId\)/);
 	});
 
-	test('shows one shared desktop Activity rail for the parent conversation', () => {
+	test('renders OpenCode directly without Activity UI or reserved layout', () => {
 		const source = readFileSync(ADVANCED_PAGE, 'utf8');
 
-		expect(source).toMatch(/import ToolLog from ['"]\$lib\/components\/chat\/ToolLog\.svelte['"]/);
-		expect(source.match(/<ToolLog\b/g)).toHaveLength(1);
-		expect(source).toMatch(/id="conversation-activity-rail"[\s\S]*?<ToolLog/);
-		expect(source).toMatch(/OpenCode navigation is independent/);
+		expect(source).toMatch(/\{#if mode === 'iframe'\}\s*<div class="opencode-shell">/);
+		expect(source).not.toMatch(/ChatActivity|ToolLog|activityRailOpen/);
+		expect(source).not.toMatch(/opencode-context|conversation-activity|advanced-activity/);
+		expect(source).not.toMatch(/\bActivity\b/);
 	});
 
 	test('keeps credentials out of the iframe and uses the direct transport', () => {
@@ -57,17 +64,16 @@ describe('Advanced fallback coherence', () => {
 		expect(source).toMatch(/if \(conn\.hasPassword\) return false/);
 		expect(source).toMatch(/if \(url\.username \|\| url\.password\) return false/);
 		expect(source).toMatch(/getTransport\(\)\.probeHealth\(\)/);
-		expect(source).toMatch(/getTransport\(\)\.request\('GET'/);
+		expect(source).toMatch(/getTransport\(\)\.request\(\s*'GET'/);
 		expect(source).toMatch(/<iframe[\s\S]*?src=\{frameUrl\}/);
 	});
 
-	test('loads an explicitly requested iframe session into parent Activity state', () => {
+	test('loads an explicitly requested iframe session into shared conversation state', () => {
 		const source = readFileSync(ADVANCED_PAGE, 'utf8');
 
 		expect(source).toMatch(
 			/await chat\.onEndpointChanged\(connectionId\)[\s\S]*?await chat\.openSession\(sessionId\)/,
 		);
-		expect(source).toMatch(/cross-origin[\s\S]*?internal iframe navigation/i);
 	});
 
 	test('provides one bottom-right page microphone outside the shared header', () => {
@@ -79,6 +85,7 @@ describe('Advanced fallback coherence', () => {
 		expect(pageSource).toMatch(
 			/\.advanced-voice\s*\{[\s\S]*?position:\s*fixed;[\s\S]*?right:[^;]+;[\s\S]*?bottom:/,
 		);
+		expect(pageSource).not.toContain('Speak &amp; send');
 		expect(navbarSource).not.toMatch(/<VoiceControl\b/);
 	});
 });

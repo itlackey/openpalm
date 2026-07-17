@@ -16,19 +16,18 @@
     {
       "id": "chat",
       "path": "/chat",
-      "waitFor": ".chat-frame-header"
+      "waitFor": "header.navbar"
     },
     {
       "id": "chat-assistants",
       "path": "/chat",
-      "waitFor": "#s-chat-side-panel",
-      "setup": "(async () => { document.querySelector('button[aria-label=\"Assistants\"]')?.click(); await new Promise(r => setTimeout(r, 300)); })()"
+      "waitFor": "#chat-navbar-drawer",
+      "setup": "(async () => { document.querySelector('button[aria-label^=\"Assistant:\"]')?.click(); await new Promise(r => setTimeout(r, 300)); })()"
     },
     {
-      "id": "chat-voice",
+      "id": "chat-voice-controls",
       "path": "/chat",
-      "waitFor": "#s-chat-side-panel",
-      "setup": "(async () => { document.querySelector('button[aria-label=\"Voice\"]')?.click(); await new Promise(r => setTimeout(r, 300)); })()"
+      "waitFor": ".s-voice-controls"
     },
     { "id": "admin-overview", "path": "/host", "waitFor": "header.navbar" },
     {
@@ -43,7 +42,7 @@
     },
     {
       "id": "device-voice",
-      "path": "/settings/voice",
+      "path": "/connections#voice",
       "waitFor": ".voice-settings"
     },
     {
