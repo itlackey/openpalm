@@ -41,6 +41,7 @@
 		pathname === '/advanced' ||
 		pathname.startsWith('/advanced/'),
 	);
+	let advancedSurface = $derived(pathname === '/advanced' || pathname.startsWith('/advanced/'));
 
 	onMount(() => {
 		void initVoice().then(() => {
@@ -207,24 +208,28 @@
 				: !supported
 					? 'Voice input unavailable'
 				: isRecording
-					? 'Stop recording'
+					? advancedSurface ? 'Stop recording and send' : 'Stop recording'
 					: isTranscribing
-						? 'Transcribing…'
+						? advancedSurface ? 'Transcribing and sending…' : 'Transcribing…'
 						: isProcessing
 							? 'Sending message…'
-							: 'Start recording'}
+							: advancedSurface ? 'Speak and send' : 'Start recording'}
 			aria-pressed={isRecording}
 			title={!chatSurface
 				? 'Open chat to dictate an editable message or start a spoken conversation'
 				: !supported
 					? 'Voice input is unavailable — no speech-to-text engine is configured for this browser'
 				: isRecording
-					? 'Stop recording'
+					? advancedSurface
+						? 'Stop recording — your speech will be sent immediately in OpenCode'
+						: 'Stop recording'
 					: isTranscribing
 						? 'Transcribing…'
 						: isProcessing
 							? 'Sending message…'
-							: 'Speak — message will be sent to the selected assistant'}
+							: advancedSurface
+								? 'Speak and send — speech is sent immediately to the selected OpenPalm conversation'
+								: 'Start recording'}
 		>
 			{#if !supported}
 				<!-- mic-off: STT unavailable -->
@@ -249,7 +254,9 @@
 			{isRecording && voiceState.interimTranscript
 				? voiceState.interimTranscript
 				: isRecording
-				? 'Recording'
+				? advancedSurface
+					? 'Recording. Your message will be sent when recording stops.'
+					: 'Recording'
 				: isTranscribing
 					? 'Transcribing'
 					: isProcessing

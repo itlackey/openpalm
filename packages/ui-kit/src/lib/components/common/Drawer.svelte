@@ -16,6 +16,10 @@
     open: boolean;
     title: string;
     onClose: () => void;
+    /** Called after the panel's closing transition has fully completed. */
+    onClosed?: () => void;
+    /** Defer focus restoration until a parent can release background inertness. */
+    deferFocusRestore?: boolean;
     children: Snippet;
     footer?: Snippet;
     /** Optional content rendered at the start of the header (e.g. a back button). */
@@ -29,6 +33,8 @@
     open,
     title,
     onClose,
+    onClosed,
+    deferFocusRestore = false,
     children,
     footer,
     headerStart,
@@ -40,7 +46,12 @@
   // the shared focus-trap primitives: on mount move focus into the body (so the
   // user doesn't land on Close), on unmount restore it; Escape closes and Tab is
   // trapped within the panel.
-  const manageFocus = createFocusTrap({ initialFocus: '.drawer-body' });
+  function manageFocus(node: HTMLElement): (() => void) | undefined {
+    return createFocusTrap({
+      initialFocus: '.drawer-body',
+      deferRestore: deferFocusRestore,
+    })(node);
+  }
 
   function transitionDuration(): number {
     return typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches
@@ -70,12 +81,19 @@
     tabindex="-1"
     onkeydown={(e) => handleTrapKeydown(e, onClose)}
     transition:fly={{ x: 48, duration: transitionDuration() }}
+    onoutroend={onClosed}
     {@attach manageFocus}
   >
     <header class="drawer-header">
       {#if headerStart}{@render headerStart()}{/if}
       <h3 class="drawer-title" id={titleId}>{title}</h3>
-      <button class="drawer-close" type="button" onclick={onClose} aria-label="Close" title="Close {title}">
+      <button
+        class="drawer-close"
+        type="button"
+        onclick={onClose}
+        aria-label="Close {title} panel"
+        title="Close {title}"
+      >
         <IconClose size={18} />
       </button>
     </header>
@@ -117,19 +135,18 @@
     align-items: center;
     justify-content: space-between;
     gap: var(--s-sp-3);
-    padding: var(--s-sp-4) var(--s-sp-5);
+    min-height: 64px;
+    padding: var(--s-sp-2) var(--s-sp-5);
     border-bottom: var(--s-hair) solid var(--s-line-soft);
     flex-shrink: 0;
   }
   .drawer-title {
     flex: 1;
     min-width: 0;
-    font-family: var(--s-font-mono);
-    font-size: var(--s-type-mark);
-    font-weight: 400;
-    text-transform: uppercase;
-    letter-spacing: var(--s-track-label);
-    color: var(--s-ink-3);
+    font-family: var(--s-font-header);
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: var(--s-ink);
   }
   .drawer-close {
     display: inline-flex;
@@ -165,5 +182,11 @@
     gap: var(--s-sp-2);
     padding: var(--s-sp-4) var(--s-sp-5);
     border-top: var(--s-hair) solid var(--s-line-soft);
+  }
+
+  @media (max-width: 480px) {
+    .drawer-body {
+      padding: var(--s-sp-4);
+    }
   }
 </style>

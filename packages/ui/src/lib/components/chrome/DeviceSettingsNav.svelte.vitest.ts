@@ -12,9 +12,9 @@ describe('DeviceSettingsNav', () => {
 
 		const links = Array.from(container.querySelectorAll<HTMLAnchorElement>('a'));
 		expect(links.map((link) => link.textContent?.trim())).toEqual([
-			'← Back to conversation',
+			'← Return to conversation',
 			'Assistant connections',
-			'Voice on this device'
+			'Voice input & playback'
 		]);
 		expect(links[0]?.href).toContain('/advanced?session=session/one&assistant=assistant&one');
 		await expect
@@ -36,7 +36,7 @@ describe('DeviceSettingsNav', () => {
 				'/connections?returnTo=%2Fadvanced%3Fsession%3Dsession%252Fone%26assistant%3Dassistant%2526one'
 			);
 		await expect
-			.element(page.getByRole('link', { name: 'Voice on this device' }))
+			.element(page.getByRole('link', { name: 'Voice input & playback' }))
 			.toHaveAttribute(
 				'href',
 				'/settings/voice?returnTo=%2Fadvanced%3Fsession%3Dsession%252Fone%26assistant%3Dassistant%2526one'

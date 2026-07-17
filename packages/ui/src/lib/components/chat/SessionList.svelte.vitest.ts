@@ -84,8 +84,8 @@ describe('SessionList', () => {
 
     await userEvent.type(search, 'needle');
 
-    await expect.element(page.getByRole('button', { name: 'Needle planning', exact: true })).toBeVisible();
-    await expect.element(page.getByRole('button', { name: 'Conversation 1', exact: true })).not.toBeInTheDocument();
+    await expect.element(page.getByRole('button', { name: /Resume conversation: Needle planning/ })).toBeVisible();
+    await expect.element(page.getByRole('button', { name: /Resume conversation: Conversation 1/ })).not.toBeInTheDocument();
   });
 
   test('gives Show all a 44px target', async () => {
@@ -94,7 +94,7 @@ describe('SessionList', () => {
     ));
     render(SessionList);
 
-    const showAll = page.getByRole('button', { name: 'Show all (1 more)' });
+    const showAll = page.getByRole('button', { name: 'Show 1 more conversations' });
     await expect.element(showAll).toBeVisible();
     expect((showAll.element() as HTMLButtonElement).getBoundingClientRect().height).toBeGreaterThanOrEqual(44);
   });
@@ -102,7 +102,7 @@ describe('SessionList', () => {
   test('selects a session and updates the canonical simple-mode URL', async () => {
     render(SessionList);
 
-    await page.getByRole('button', { name: 'Second conversation', exact: true }).click();
+    await page.getByRole('button', { name: /Resume conversation: Second conversation/ }).click();
 
     expect(mocks.chat.openSession).toHaveBeenCalledWith('sess-2');
     expect(mocks.goto).toHaveBeenCalledWith('/chat?session=sess-2&assistant=default');
@@ -112,7 +112,7 @@ describe('SessionList', () => {
     mocks.appPage.url = new URL('http://localhost/advanced?session=sess-1');
     render(SessionList);
 
-    await page.getByRole('button', { name: 'Second conversation', exact: true }).click();
+    await page.getByRole('button', { name: /Resume conversation: Second conversation/ }).click();
 
     expect(mocks.goto).toHaveBeenCalledWith('/advanced?session=sess-2&assistant=default');
   });
@@ -129,7 +129,8 @@ describe('SessionList', () => {
   test('renames a conversation only after an explicit save', async () => {
     render(SessionList);
 
-    await page.getByRole('button', { name: 'Rename First conversation' }).click();
+    await page.getByRole('button', { name: 'More actions for First conversation' }).click();
+    await page.getByRole('button', { name: 'Rename', exact: true }).click();
     const input = page.getByRole('textbox', { name: 'Conversation name' });
     await userEvent.clear(input);
     await userEvent.type(input, 'Project launch');
@@ -147,13 +148,14 @@ describe('SessionList', () => {
     });
     render(SessionList);
 
-    await page.getByRole('button', { name: 'Delete First conversation' }).click();
+    await page.getByRole('button', { name: 'More actions for First conversation' }).click();
+    await page.getByRole('button', { name: 'Delete conversation', exact: true }).click();
     await expect.element(
       page.getByRole('alertdialog', { name: 'Delete First conversation?' }),
     ).toBeVisible();
     expect(mocks.chat.deleteSession).not.toHaveBeenCalled();
 
-    await page.getByRole('button', { name: 'Delete conversation' }).click();
+    await page.getByRole('alertdialog').getByRole('button', { name: 'Delete conversation' }).click();
 
     expect(mocks.chat.deleteSession).toHaveBeenCalledWith('sess-1');
     expect(mocks.goto).toHaveBeenCalledWith('/chat?session=sess-2&assistant=default');

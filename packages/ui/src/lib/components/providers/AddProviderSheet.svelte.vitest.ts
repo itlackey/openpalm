@@ -46,7 +46,7 @@ describe('AddProviderSheet accessibility', () => {
 	test('traps focus and closes with Escape', async () => {
 		const { onclose } = renderSheet();
 		const search = page.getByRole('searchbox', { name: 'Search providers' });
-		const close = page.getByRole('button', { name: 'Close' });
+		const close = page.getByRole('button', { name: /^Close/ });
 
 		await expect.element(search).toHaveFocus();
 		await userEvent.keyboard('{Shift>}{Tab}{/Shift}');

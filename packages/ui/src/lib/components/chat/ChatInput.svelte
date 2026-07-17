@@ -67,17 +67,20 @@
   class:sending
   onsubmit={(e) => { e.preventDefault(); submit(); }}
 >
-  <textarea
-    bind:this={textareaEl}
-    bind:value={draft}
-    onkeydown={handleKeydown}
-    oninput={handleInput}
-    placeholder="Write a message..."
-    rows="1"
-    aria-label="Message input"
-    autocomplete="off"
-    spellcheck="false"
-  ></textarea>
+  <label class="composer-field">
+    <span>Message</span>
+    <textarea
+      bind:this={textareaEl}
+      bind:value={draft}
+      onkeydown={handleKeydown}
+      oninput={handleInput}
+      placeholder="Write a message..."
+      rows="1"
+      aria-label="Message input"
+      autocomplete="off"
+      spellcheck="false"
+    ></textarea>
+  </label>
   <div class="s-footer">
     {#if leadingAction}
       {@render leadingAction()}
@@ -112,6 +115,21 @@
     flex-direction: column;
     align-items: center;
     gap: var(--s-sp-1);
+  }
+
+  .composer-field {
+    display: flex;
+    width: 100%;
+    flex-direction: column;
+    align-items: center;
+    gap: 0;
+  }
+  .composer-field > span {
+    align-self: flex-start;
+    color: var(--s-ink-3);
+    font-family: var(--s-font-mono);
+    font-size: 0.75rem;
+    line-height: 1.2;
   }
 
   /* UX-09: keep the composer (and its right-side send button) clear of the

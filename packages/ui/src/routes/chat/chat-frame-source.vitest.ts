@@ -14,7 +14,9 @@ describe('responsive chat frame source contract', () => {
 		expect(source).toMatch(
 			/import ChatNavbar from '\$lib\/components\/chrome\/ChatNavbar\.svelte'/
 		);
-		expect(source).toMatch(/<ChatNavbar bind:drawerOpen=\{navigationOpen\}\s*\/>/);
+		expect(source).toMatch(
+			/<ChatNavbar bind:drawerOpen=\{navigationOpen\} bind:activityRailOpen\s*\/>/
+		);
 		for (const obsolete of [
 			'ChatFrameHeader',
 			'EndpointList',
@@ -55,7 +57,7 @@ describe('responsive chat frame source contract', () => {
 		expect(source).toMatch(/startListening\(\(transcript\) => \{[\s\S]*?draft =/);
 		expect(source).toMatch(/<ChatInput[\s\S]*?bind:draft/);
 		expect(
-			source.match(/aria-label=\{voiceActive \? 'Stop dictation' : 'Dictate'\}/g)
+			source.match(/aria-label=\{voiceActive \? 'Stop dictation' : 'Dictate message'\}/g)
 		).toHaveLength(1);
 		expect(source).toMatch(/class="s-dictate-btn"/);
 		expect(source).toMatch(/\.s-dictate-btn\s*\{[\s\S]*?right:[\s\S]*?bottom:/);
@@ -75,12 +77,13 @@ describe('responsive chat frame source contract', () => {
 		expect(source).not.toMatch(/@media \(min-width: (?:901|1024)px\)[\s\S]*?\.s-tool-rail/);
 	});
 
-	test('accounts for the visible 52px in-flow navbar', () => {
+	test('accounts for the responsive shared conversation navbar', () => {
 		const source = readFileSync(CHAT_PAGE, 'utf8');
 
 		expect(source).not.toMatch(/stillness-mode[\s\S]*?\.navbar/);
-		expect(source).toMatch(/\.s-scroll\s*\{[\s\S]*?height:\s*calc\(100dvh - 52px\)/);
-		expect(source).toMatch(/\.s-tool-rail\s*\{[\s\S]*?top:\s*52px/);
+		expect(source).toMatch(/\.s-scroll\s*\{[\s\S]*?height:\s*calc\(100dvh - 64px\)/);
+		expect(source).toMatch(/\.s-tool-rail\s*\{[\s\S]*?top:\s*64px/);
+		expect(source).toMatch(/@media \(max-width: 999px\)[\s\S]*?calc\(100dvh - 112px\)/);
 	});
 
 	test('honors assistant selection before session selection and canonicalizes both', () => {

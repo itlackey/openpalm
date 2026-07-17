@@ -99,7 +99,7 @@ describe('VoiceControl route safety', () => {
 		});
 		render(VoiceControl);
 
-		await page.getByRole('button', { name: 'Start recording' }).click();
+		await page.getByRole('button', { name: 'Speak and send' }).click();
 
 		expect(mocks.startListening).toHaveBeenCalledOnce();
 		expect(mocks.chatSend).toHaveBeenCalledWith('dictated message');
@@ -137,7 +137,7 @@ describe('VoiceControl accessibility', () => {
 		mocks.voiceState.ttsSupported = true;
 		const { container } = render(VoiceControl, { props: { showSpeaker: false } });
 
-		await expect.element(page.getByRole('button', { name: 'Start recording' })).toBeVisible();
+		await expect.element(page.getByRole('button', { name: 'Speak and send' })).toBeVisible();
 		expect(page.getByRole('button', { name: /spoken responses/i }).elements()).toHaveLength(0);
 		const buttons = container.querySelectorAll<HTMLButtonElement>('button');
 		expect(buttons).toHaveLength(1);

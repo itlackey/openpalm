@@ -19,11 +19,11 @@
   let { onChosen, hideNewBtn = false }: Props = $props();
 
   const SESSION_LIST_CAP = 50;
-  const SEARCH_THRESHOLD = 8;
   let showAll = $state(false);
   let query = $state('');
   let editingId = $state<string | null>(null);
   let deletingId = $state<string | null>(null);
+  let actionsId = $state<string | null>(null);
   let draftTitle = $state('');
   let workingId = $state<string | null>(null);
 
@@ -73,6 +73,7 @@
 
   function beginRename(id: string, title: string): void {
     deletingId = null;
+    actionsId = null;
     editingId = id;
     draftTitle = title;
   }
@@ -107,91 +108,119 @@
 </script>
 
 <div class="session-body">
+  <div class="panel-intro">
+    <p>Resume recent work or start with a clean conversation on {active?.label ?? 'this assistant'}.</p>
+  </div>
+
+  {#if !hideNewBtn}
+    <button type="button" class="new-btn" onclick={startNew} disabled={chat.sending}>
+      <span aria-hidden="true">+</span>
+      <span>New conversation</span>
+    </button>
+  {/if}
+
   {#if chat.sending}
-    <div class="notice">Wait for the current reply to finish before switching.</div>
+    <div class="notice">Wait for the current reply to finish before switching conversations.</div>
   {/if}
 
   {#if !endpointState || loading}
-    <div class="empty"><Spinner size={12} /><span>Loading conversations…</span></div>
+    <div class="state-card" role="status"><Spinner size={16} /><span>Loading conversations…</span></div>
   {:else if error}
-    <div class="list-error">
+    <div class="state-card error" role="alert">
+      <strong>Conversations could not be loaded.</strong>
       <span>{error}</span>
-      <button type="button" class="retry-btn" onclick={retry}>Retry</button>
+      <button type="button" class="secondary-btn" onclick={retry}>Retry</button>
     </div>
   {:else if sessions.length === 0}
-    <div class="empty">No conversations yet. Start the first one.</div>
+    <div class="state-card">
+      <strong>No conversations yet</strong>
+      <span>Start a conversation and it will appear here.</span>
+    </div>
   {:else}
-    {#if sessions.length >= SEARCH_THRESHOLD}
-      <label class="session-search sticky">
-        <span class="sr-only">Search conversations</span>
-        <input
-          type="search"
-          aria-label="Search conversations"
-          placeholder="Search conversations"
-          bind:value={query}
-        />
-      </label>
-    {/if}
+    <label class="session-search sticky">
+      <span>Search conversations</span>
+      <input type="search" placeholder="Type a title" bind:value={query} />
+    </label>
 
     {#if filteredSessions.length === 0}
-      <div class="empty">No conversations match your search.</div>
+      <div class="state-card">
+        <strong>No matching conversations</strong>
+        <span>Try another title or clear the search.</span>
+      </div>
     {:else}
       <div class="session-list" role="group" aria-label="Conversations">
         {#each visibleSessions as s (s.id)}
           {@const displayTitle = resolveSessionTitle(s.title)}
-          <div class="session-row" class:active={s.id === activeSessionId}>
+          {@const current = s.id === activeSessionId}
+          <div class="session-row" class:active={current}>
             <button
               type="button"
-              class="list-item session-item"
-              aria-label={displayTitle}
-              aria-current={s.id === activeSessionId ? 'true' : undefined}
+              class="session-item"
+              aria-label={`Resume conversation: ${displayTitle}, ${formatRelativeTime(s.updatedAt)}`}
+              aria-current={current ? 'true' : undefined}
               onclick={() => pick(s.id)}
               disabled={chat.sending || workingId !== null}
               title={formatDateTime(s.updatedAt)}
             >
               <span class="item-text">
-                <span class="item-label"><SessionTitle title={s.title} />{#if s.id === activeSessionId}<span class="sr-only"> (current)</span>{/if}</span>
-                <span class="item-meta">{formatRelativeTime(s.updatedAt)}</span>
+                <span class="item-label"><SessionTitle title={s.title} /></span>
+                <span class="item-meta">
+                  {#if current}<span class="current-badge">Current</span>{/if}
+                  <span>{formatRelativeTime(s.updatedAt)}</span>
+                </span>
               </span>
             </button>
             <div class="session-actions">
               <button
                 type="button"
-                class="action-btn"
-                aria-label="Rename {displayTitle}"
-                title="Rename"
-                disabled={chat.sending || workingId !== null}
-                onclick={() => beginRename(s.id, s.title)}
-              >Rename</button>
-              <button
-                type="button"
-                class="action-btn danger"
-                aria-label="Delete {displayTitle}"
-                title="Delete"
-                disabled={chat.sending || workingId !== null}
-                onclick={() => {
-                  editingId = null;
-                  deletingId = s.id;
-                }}
-              >Delete</button>
+                class="action-trigger"
+                aria-label={`More actions for ${displayTitle}`}
+                aria-expanded={actionsId === s.id}
+                title="More actions"
+                onclick={() => (actionsId = actionsId === s.id ? null : s.id)}
+              >•••</button>
+              {#if actionsId === s.id}
+                <div class="action-menu">
+                  <button
+                    type="button"
+                    disabled={chat.sending || workingId !== null}
+                    onclick={() => beginRename(s.id, s.title)}
+                  >Rename</button>
+                  <button
+                    type="button"
+                    class="danger"
+                    disabled={chat.sending || workingId !== null}
+                    onclick={() => {
+                      actionsId = null;
+                      editingId = null;
+                      deletingId = s.id;
+                    }}
+                  >Delete conversation</button>
+                </div>
+              {/if}
             </div>
 
             {#if editingId === s.id}
               <form class="inline-action" onsubmit={(event) => saveRename(event, s.id)}>
                 <label>
-                  <span class="sr-only">Conversation name</span>
-                  <input aria-label="Conversation name" maxlength="120" bind:value={draftTitle} />
+                  <span>Conversation name</span>
+                  <input maxlength="120" bind:value={draftTitle} />
                 </label>
-                <button type="submit" class="action-btn primary" disabled={!draftTitle.trim() || workingId !== null}>Save name</button>
-                <button type="button" class="action-btn" onclick={() => (editingId = null)}>Cancel</button>
+                <div class="inline-buttons">
+                  <button type="button" class="secondary-btn" onclick={() => (editingId = null)}>Cancel</button>
+                  <button type="submit" class="primary-btn" disabled={!draftTitle.trim() || workingId !== null}>Save name</button>
+                </div>
               </form>
             {/if}
 
             {#if deletingId === s.id}
-              <div class="inline-action confirmation" role="alertdialog" aria-label="Delete {displayTitle}?">
-                <span>Delete &quot;{displayTitle}&quot;? This cannot be undone.</span>
-                <button type="button" class="action-btn" onclick={() => (deletingId = null)}>Cancel</button>
-                <button type="button" class="action-btn danger" disabled={workingId !== null} onclick={() => confirmDelete(s.id)}>Delete conversation</button>
+              <div class="inline-action confirmation" role="alertdialog" aria-label={`Delete ${displayTitle}?`}>
+                <strong>Delete “{displayTitle}”?</strong>
+                <span>This removes the conversation from {active?.label ?? 'this assistant'}. This cannot be undone.</span>
+                <div class="inline-buttons">
+                  <button type="button" class="secondary-btn" onclick={() => (deletingId = null)}>Cancel</button>
+                  <button type="button" class="danger-btn" disabled={workingId !== null} onclick={() => confirmDelete(s.id)}>Delete conversation</button>
+                </div>
               </div>
             {/if}
           </div>
@@ -199,18 +228,10 @@
       </div>
       {#if !showAll && overflowCount > 0}
         <button type="button" class="show-all" onclick={() => (showAll = true)}>
-          Show all ({overflowCount} more)
+          Show {overflowCount} more conversations
         </button>
       {/if}
     {/if}
-  {/if}
-
-  {#if !hideNewBtn}
-    <div class="divider"></div>
-    <button type="button" class="list-item new-btn" onclick={startNew} disabled={chat.sending}>
-      <span class="check" aria-hidden="true">+</span>
-      <span class="item-text"><span class="item-label">New conversation</span></span>
-    </button>
   {/if}
 </div>
 
@@ -218,285 +239,281 @@
   .session-body {
     display: flex;
     flex-direction: column;
-    gap: 0;
+    gap: var(--s-sp-4);
     min-height: 0;
   }
-
+  .panel-intro p {
+    margin: 0;
+    color: var(--s-ink-2);
+    font-size: 0.875rem;
+    line-height: 1.55;
+  }
+  .new-btn,
+  .secondary-btn,
+  .primary-btn,
+  .danger-btn,
+  .show-all {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--s-sp-2);
+    min-width: 44px;
+    min-height: 44px;
+    padding: 0 var(--s-sp-3);
+    border: var(--s-hair) solid var(--s-line-soft);
+    border-radius: 8px;
+    background: transparent;
+    color: var(--s-ink);
+    font-family: var(--s-font-display);
+    font-size: 0.875rem;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .new-btn {
+    width: 100%;
+    background: var(--s-ink);
+    border-color: var(--s-ink);
+    color: var(--s-paper);
+  }
+  .new-btn span:first-child {
+    font-size: 1.25rem;
+    font-weight: 400;
+  }
+  .new-btn:hover:not(:disabled) {
+    opacity: 0.86;
+  }
+  button:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+  button:focus-visible,
+  .action-trigger:focus-visible,
+  input:focus-visible {
+    outline: 2px solid var(--s-seal);
+    outline-offset: 2px;
+  }
+  .notice {
+    padding: var(--s-sp-3);
+    border-radius: 8px;
+    background: var(--s-paper-deep);
+    color: var(--s-ink-2);
+    font-size: 0.875rem;
+  }
   .session-search {
-    display: block;
-    padding: var(--s-sp-2);
-    background: var(--s-paper);
-    border-bottom: var(--s-hair) solid var(--s-line-soft);
+    display: flex;
+    flex-direction: column;
+    gap: var(--s-sp-1);
+    color: var(--s-ink-2);
+    font-size: 0.875rem;
+    font-weight: 600;
   }
   .session-search.sticky {
     position: sticky;
-    top: 0;
+    top: calc(-1 * var(--s-sp-5));
     z-index: 2;
+    padding-block: var(--s-sp-2);
+    background: var(--s-paper);
   }
   .session-search input,
   .inline-action input {
     width: 100%;
-    min-height: 36px;
-    padding: var(--s-sp-2) var(--s-sp-3);
-    border: var(--s-hair) solid var(--s-line);
-    border-radius: 2px;
-    background: var(--s-paper);
-    color: var(--s-ink-2);
-    font: inherit;
-  }
-  .session-search input {
-    font-family: var(--s-font-mono);
-    font-size: var(--s-type-mark-sm);
-  }
-
-  .session-row {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    align-items: center;
-    width: 100%;
-    border-bottom: var(--s-hair) solid var(--s-line-soft);
-  }
-  .session-row.active {
-    border-left: 2px solid var(--s-seal);
-  }
-
-  .list-item {
-    display: flex;
-    align-items: flex-start;
-    gap: var(--s-sp-2);
-    width: 100%;
-    padding: var(--s-sp-2) var(--s-sp-3);
-    background: none;
-    border: 0;
-    border-bottom: var(--s-hair) solid var(--s-line-soft);
-    border-radius: 0;
-    cursor: pointer;
-    text-align: left;
-    font: inherit;
-    color: var(--s-ink-3);
-    transition: color 120ms ease;
-  }
-  .session-item {
-    width: 100%;
-    min-width: 0;
     min-height: 44px;
-    border-bottom: 0;
+    padding: 0 var(--s-sp-3);
+    border: var(--s-hair) solid var(--s-line);
+    border-radius: 8px;
+    background: var(--s-paper);
+    color: var(--s-ink);
+    font: inherit;
+    font-size: 0.875rem;
   }
-  .session-row.active .session-item {
-    padding-left: calc(var(--s-sp-3) - 2px);
-  }
-  .list-item:hover:not(:disabled),
-  .list-item:focus-visible {
-    color: var(--s-ink-2);
-  }
-  .list-item:focus-visible,
-  .action-btn:focus-visible,
-  .session-search input:focus-visible,
-  .inline-action input:focus-visible {
-    outline: var(--s-hair) solid var(--s-line);
-    outline-offset: -1px;
-  }
-  .list-item:disabled,
-  .action-btn:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
-
-  .session-actions {
-    display: flex;
-    align-items: center;
-    gap: 2px;
-    padding-right: var(--s-sp-2);
-  }
-  .action-btn {
-    min-height: 32px;
-    padding: 2px 7px;
-    border: var(--s-hair) solid transparent;
-    background: none;
-    color: var(--s-ink-3);
-    font-family: var(--s-font-mono);
-    font-size: var(--s-type-mark-sm);
-    cursor: pointer;
-  }
-  .action-btn:hover:not(:disabled) {
-    color: var(--s-ink-2);
-    border-color: var(--s-line-soft);
-  }
-  .action-btn.primary,
-  .action-btn.danger {
-    color: var(--s-seal);
-  }
-
-  .inline-action {
-    grid-column: 1 / -1;
-    display: flex;
-    align-items: center;
-    gap: var(--s-sp-2);
-    width: 100%;
-    padding: var(--s-sp-2) var(--s-sp-3);
-    border-top: var(--s-hair) solid var(--s-line-soft);
-    font-family: var(--s-font-mono);
-    font-size: var(--s-type-mark-sm);
-    color: var(--s-ink-3);
-  }
-  .inline-action label {
-    flex: 1;
-  }
-  .confirmation span {
-    flex: 1;
-  }
-
-  .new-btn {
-    background: none;
-    color: var(--s-ink-3);
-    border: var(--s-hair) solid var(--s-line-soft);
-    border-radius: 0;
-    justify-content: center;
-    margin: var(--s-sp-3) var(--s-sp-2);
-    font-family: var(--s-font-mono);
-    font-size: var(--s-type-mark);
-    letter-spacing: var(--s-track-label);
-    text-transform: uppercase;
-  }
-  .new-btn:hover:not(:disabled) {
-    color: var(--s-ink-2);
-    border-color: var(--s-line);
-  }
-  .new-btn:focus-visible {
-    outline-offset: 2px;
-  }
-  .new-btn .check,
-  .new-btn .item-label {
-    color: inherit;
-  }
-
-  .check {
-    flex-shrink: 0;
-    width: 14px;
-    text-align: center;
-  }
-
-  .sr-only {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    padding: 0;
-    margin: -1px;
-    overflow: hidden;
-    clip: rect(0, 0, 0, 0);
-    white-space: nowrap;
-    border: 0;
-  }
-
-  .item-text {
+  .session-list {
     display: flex;
     flex-direction: column;
-    overflow: hidden;
+    gap: var(--s-sp-2);
+    min-height: 0;
+  }
+  .session-row {
+    position: relative;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 44px;
+    align-items: center;
+    border: var(--s-hair) solid var(--s-line-soft);
+    border-radius: 10px;
+    background: color-mix(in srgb, var(--s-paper-deep) 48%, transparent);
+  }
+  .session-row.active {
+    border-color: var(--s-seal);
+    box-shadow: inset 3px 0 0 var(--s-seal);
+    background: var(--s-paper-deep);
+  }
+  .session-item {
+    display: flex;
+    align-items: center;
+    min-width: 0;
+    min-height: 64px;
+    padding: var(--s-sp-2) var(--s-sp-3);
+    border: 0;
+    border-radius: 10px;
+    background: transparent;
+    color: var(--s-ink);
+    text-align: left;
+    cursor: pointer;
+  }
+  .session-item:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--s-ink) 5%, transparent);
+  }
+  .item-text {
+    display: flex;
     flex: 1;
     min-width: 0;
+    flex-direction: column;
+    gap: var(--s-sp-1);
   }
   .item-label {
-    font-family: var(--s-font-display);
-    font-size: clamp(0.9rem, 2.2vw, 1.05rem);
-    font-weight: 400;
-    color: var(--s-ink-2);
     overflow: hidden;
+    color: var(--s-ink);
+    font-family: var(--s-font-display);
+    font-size: 0.9375rem;
+    font-weight: 600;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
   .item-meta {
-    font-family: var(--s-font-mono);
-    font-size: var(--s-type-mark-sm);
-    color: var(--s-ink-3);
-  }
-
-  .divider {
-    height: var(--s-hair);
-    margin: var(--s-sp-2) 0;
-    background: var(--s-line);
-  }
-  .session-list {
-    overflow-y: auto;
-    min-height: 0;
-  }
-  .empty,
-  .list-error {
     display: flex;
     align-items: center;
     gap: var(--s-sp-2);
-    padding: var(--s-sp-2) var(--s-sp-3);
-    font-family: var(--s-font-mono);
-    font-size: var(--s-type-mark-sm);
     color: var(--s-ink-3);
-  }
-  .list-error {
-    color: var(--s-seal);
-  }
-  .list-error span:first-child {
-    flex: 1;
-  }
-
-  .retry-btn {
-    padding: 2px 8px;
     font-family: var(--s-font-mono);
-    font-size: var(--s-type-mark-sm);
-    border: var(--s-hair) solid var(--s-seal);
-    border-radius: 2px;
-    background: none;
+    font-size: 0.75rem;
+  }
+  .current-badge {
+    padding: 1px var(--s-sp-2);
+    border-radius: 99px;
+    background: color-mix(in srgb, var(--s-seal) 14%, transparent);
     color: var(--s-seal);
-    cursor: pointer;
+    font-weight: 700;
   }
-  .retry-btn:hover {
-    background: var(--s-seal);
-    color: var(--s-paper);
+  .session-actions {
+    position: relative;
+    align-self: stretch;
   }
-
-  .notice {
-    margin: 0 0 var(--s-sp-2);
-    padding: var(--s-sp-2) var(--s-sp-3);
-    font-family: var(--s-font-mono);
-    font-size: var(--s-type-mark-sm);
-    color: var(--s-ink-3);
-    border-bottom: var(--s-hair) solid var(--s-line-soft);
-  }
-
-  .show-all {
-    width: 100%;
+  .action-trigger {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
     min-height: 44px;
-    padding: var(--s-sp-2) var(--s-sp-3);
-    background: none;
     border: 0;
-    color: var(--s-ink-3);
-    font-family: var(--s-font-mono);
-    font-size: var(--s-type-mark-sm);
-    letter-spacing: var(--s-track-label);
-    text-transform: uppercase;
+    background: transparent;
+    border-radius: 8px;
+    color: var(--s-ink-2);
+    cursor: pointer;
+    letter-spacing: 2px;
+  }
+  .action-trigger:hover {
+    background: color-mix(in srgb, var(--s-ink) 6%, transparent);
+    color: var(--s-ink);
+  }
+  .action-menu {
+    position: absolute;
+    top: calc(100% - 6px);
+    right: 6px;
+    z-index: 3;
+    display: flex;
+    width: 184px;
+    flex-direction: column;
+    padding: var(--s-sp-1);
+    border: var(--s-hair) solid var(--s-line);
+    border-radius: 8px;
+    background: var(--s-paper);
+    box-shadow: 0 8px 24px color-mix(in srgb, var(--s-ink) 18%, transparent);
+  }
+  .action-menu button {
+    min-height: 44px;
+    padding: 0 var(--s-sp-3);
+    border: 0;
+    border-radius: 5px;
+    background: transparent;
+    color: var(--s-ink);
     text-align: left;
     cursor: pointer;
-    transition: color 120ms ease;
   }
-  .show-all:hover {
+  .action-menu button:hover {
+    background: var(--s-paper-deep);
+  }
+  .action-menu .danger,
+  .danger-btn {
+    color: var(--s-error);
+  }
+  .inline-action {
+    grid-column: 1 / -1;
+    display: flex;
+    flex-direction: column;
+    gap: var(--s-sp-3);
+    padding: var(--s-sp-3);
+    border-top: var(--s-hair) solid var(--s-line-soft);
     color: var(--s-ink-2);
+    font-size: 0.875rem;
   }
-  .show-all:focus-visible {
-    outline: var(--s-hair) solid var(--s-line);
-    outline-offset: -1px;
+  .inline-action label {
+    display: flex;
+    flex-direction: column;
+    gap: var(--s-sp-1);
+    font-weight: 600;
+  }
+  .inline-buttons {
+    display: flex;
+    justify-content: flex-end;
+    gap: var(--s-sp-2);
+  }
+  .primary-btn {
+    background: transparent;
+    border-color: var(--s-line);
+    color: var(--s-ink);
+  }
+  .danger-btn {
+    border-color: var(--s-error);
+  }
+  .confirmation strong {
+    color: var(--s-ink);
+    font-size: 1rem;
+  }
+  .state-card {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--s-sp-2);
+    flex-direction: column;
+    padding: var(--s-sp-5);
+    border: var(--s-hair) dashed var(--s-line-soft);
+    border-radius: 10px;
+    color: var(--s-ink-2);
+    font-size: 0.875rem;
+  }
+  .state-card strong {
+    color: var(--s-ink);
+    font-size: 1rem;
+  }
+  .state-card.error {
+    border-color: var(--s-error);
+  }
+  .state-card.error strong {
+    color: var(--s-error);
+  }
+  .show-all {
+    width: 100%;
+  }
+  .show-all:hover,
+  .secondary-btn:hover,
+  .danger-btn:hover {
+    background: var(--s-paper-deep);
   }
 
-  @media (max-width: 520px) {
-    .session-actions {
-      grid-column: 1 / -1;
+  @media (max-width: 420px) {
+    .inline-buttons {
+      flex-direction: column-reverse;
+    }
+    .inline-buttons button {
       width: 100%;
-      justify-content: flex-end;
-      padding: 0 var(--s-sp-2) var(--s-sp-2);
-    }
-    .inline-action {
-      align-items: stretch;
-      flex-wrap: wrap;
-    }
-    .inline-action label,
-    .confirmation span {
-      flex-basis: 100%;
     }
   }
 </style>

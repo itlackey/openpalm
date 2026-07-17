@@ -24,11 +24,19 @@
     showUtilities?: boolean;
     /** Remove the navbar from interaction while a sibling dialog owns focus. */
     inactive?: boolean;
+    /** Use the taller responsive frame shared by Simple and OpenCode. */
+    conversation?: boolean;
     /** Surface-specific controls rendered after the theme toggle. */
     children?: Snippet;
   }
 
-  let { brandHref, showUtilities = true, inactive = false, children }: Props = $props();
+  let {
+    brandHref,
+    showUtilities = true,
+    inactive = false,
+    conversation = false,
+    children,
+  }: Props = $props();
 
   const chatRoute = $derived(runtimeContext.routes.chat ?? '/chat');
   const hostRoute = $derived(runtimeContext.routes.host);
@@ -39,7 +47,7 @@
   const resolvedBrandHref = $derived(brandHref ?? chatRoute);
 </script>
 
-<header class="navbar" inert={inactive}>
+<header class="navbar" class:conversation inert={inactive}>
   <div class="navbar-inner">
     <!-- Brand -->
     <!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- destination comes from runtimeContext.routes / a session-aware path, not a static route id -->
@@ -84,6 +92,11 @@
     background: var(--s-paper);
     border-bottom: var(--s-hair) solid var(--s-line-soft);
     height: 52px;
+  }
+
+  .navbar.conversation,
+  .navbar.conversation .navbar-inner {
+    height: 64px;
   }
 
   .navbar-inner {
@@ -147,8 +160,46 @@
     }
   }
 
+  @media (max-width: 999px) {
+    .navbar.conversation {
+      height: 112px;
+    }
+    .navbar.conversation .navbar-inner {
+      position: relative;
+      height: 112px;
+      padding: 0;
+      align-items: flex-start;
+    }
+    .navbar.conversation .navbar-brand {
+      position: absolute;
+      top: 6px;
+      left: var(--s-sp-2);
+      z-index: 1;
+    }
+    .navbar.conversation .navbar-actions {
+      width: 100%;
+      height: 112px;
+      margin-left: 0;
+      display: block;
+    }
+  }
+
+  @media (min-width: 721px) and (max-width: 999px) {
+    .navbar.conversation .brand-text {
+      display: inline;
+    }
+  }
+
+  @media (max-width: 479px) {
+    .navbar.conversation,
+    .navbar.conversation .navbar-inner,
+    .navbar.conversation .navbar-actions {
+      height: 144px;
+    }
+  }
+
   @media (max-width: 480px) {
-    .navbar-inner {
+    .navbar:not(.conversation) .navbar-inner {
       padding: 0 var(--s-sp-1);
     }
     .navbar-actions {

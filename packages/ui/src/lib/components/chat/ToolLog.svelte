@@ -30,9 +30,10 @@
 
   interface Props {
     items: ToolStripEntry[];
+    showHeading?: boolean;
   }
 
-  let { items }: Props = $props();
+  let { items, showHeading = true }: Props = $props();
 
   // Stable heading id for aria-labelledby (UX-05).
   uid += 1;
@@ -65,7 +66,7 @@
 
 {#if items.length > 0}
   <section class="tool-log" aria-labelledby={headingId}>
-    <h2 class="tool-log-heading" id={headingId}>activity</h2>
+    <h2 class="tool-log-heading" class:sr-only={!showHeading} id={headingId}>Activity</h2>
 
     <div
       class="tool-log-live"
@@ -251,7 +252,7 @@
 
   .tool-log-item.warning,
   .tool-log-item.uncertain {
-    border-left-color: var(--s-seal);
+    border-left-color: var(--s-warning);
   }
 
   .tool-log-item.uncertain {
@@ -260,7 +261,11 @@
 
   .tool-log-summary {
     box-sizing: border-box;
-    display: flex;
+    display: grid;
+    grid-template-columns: 20px minmax(0, 1fr) 16px;
+    grid-template-areas:
+      'icon main chevron'
+      'icon status chevron';
     align-items: center;
     gap: var(--s-sp-2);
     width: 100%;
@@ -297,6 +302,7 @@
     justify-content: center;
     color: var(--s-ink-2); /* lifted from ink-3 (UX-24) */
     flex-shrink: 0;
+    grid-area: icon;
   }
 
   .tool-log-item.running .tool-log-icon {
@@ -309,7 +315,7 @@
 
   .tool-log-item.warning .tool-log-icon,
   .tool-log-item.uncertain .tool-log-icon {
-    color: var(--s-seal);
+    color: var(--s-warning);
   }
 
   /* Subtle pulse on the running icon (UX-11). */
@@ -333,6 +339,7 @@
     display: flex;
     flex-direction: column;
     gap: 1px;
+    grid-area: main;
   }
 
   .tool-log-title {
@@ -360,10 +367,11 @@
   .tool-log-status {
     font-family: var(--s-font-mono);
     font-size: var(--s-type-mark-sm);
-    letter-spacing: var(--s-track-label);
-    text-transform: uppercase;
+    letter-spacing: 0;
     color: var(--s-ink-2);
-    flex-shrink: 0;
+    grid-area: status;
+    justify-self: start;
+    text-transform: capitalize;
   }
 
   .tool-log-item.running .tool-log-status {
@@ -376,7 +384,7 @@
 
   .tool-log-item.warning .tool-log-status,
   .tool-log-item.uncertain .tool-log-status {
-    color: var(--s-seal);
+    color: var(--s-warning);
   }
 
   /* Fixed-width trailing column so the chevron forms a clean vertical edge
@@ -388,6 +396,7 @@
     width: 16px;
     color: var(--s-ink-2); /* higher contrast affordance (UX-23) */
     flex-shrink: 0;
+    grid-area: chevron;
     transition: transform var(--s-t-quick) var(--s-ease);
   }
 
@@ -447,6 +456,19 @@
 
   .tool-log-error {
     color: var(--s-error);
+  }
+
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    clip-path: inset(50%);
+    white-space: nowrap;
+    border: 0;
   }
 
   /* Respect reduced-motion: disable chevron rotation + running pulse (UX-22). */

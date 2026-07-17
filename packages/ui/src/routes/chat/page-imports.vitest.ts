@@ -67,11 +67,11 @@ describe('chat page ↔ admin API barrel untangling (#555)', () => {
     expect(teardown?.[1]).toMatch(/stopListening\(\)/);
   });
 
-  test('prepares Electron microphone permission before either chat capture mode starts', () => {
+  test('prepares Electron microphone permission before editable dictation starts', () => {
     const source = readFileSync(CHAT_PAGE, 'utf-8');
     expect(source).toMatch(/requestMicPermission/);
-    expect(source.match(/await prepareMicrophoneAccess\(\)/g)).toHaveLength(2);
+    expect(source.match(/await prepareMicrophoneAccess\(\)/g)).toHaveLength(1);
     expect(source).toMatch(/if \(await prepareMicrophoneAccess\(\)\)[\s\S]*?startListening\(/);
-    expect(source).toMatch(/if \(await prepareMicrophoneAccess\(\)\)[\s\S]*?startConversation\(/);
+    expect(source).not.toMatch(/startConversation\(/);
   });
 });

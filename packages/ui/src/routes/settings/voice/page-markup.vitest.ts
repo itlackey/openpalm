@@ -12,7 +12,7 @@ describe('device Voice settings route', () => {
   test('owns the client Voice panel and states that settings span assistants', () => {
     const source = pageSource();
     expect(source).toMatch(/VoiceClientSettings/);
-    expect(source).toMatch(/<h1>Voice on this device<\/h1>/);
+    expect(source).toMatch(/<h1>Voice input &amp; playback<\/h1>/);
     expect(source).toMatch(/across (?:all )?assistants/i);
   });
 
@@ -39,7 +39,7 @@ describe('device Voice settings route', () => {
     const source = pageSource();
     expect(source).toMatch(/hasCapability\(\s*['"]host:stack:read['"]\s*\)/);
     expect(source).toMatch(/`\$\{resolve\(\s*['"]\/host['"]\s*\)\}\?tab=addons&addon=voice`/);
-    expect(source).toMatch(/Voice service on this host/);
+    expect(source).toMatch(/Manage host Voice/);
     expect(source).toMatch(
       /\{#if hasCapability\(\s*['"]host:stack:read['"]\s*\)\}[\s\S]*?href=\{hostSettingsHref\}/,
     );

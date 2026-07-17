@@ -37,8 +37,9 @@ describe('conversation navbar contract', () => {
   test('names the mode destination instead of presenting a permanent advanced-mode concept', () => {
     const source = readFileSync(MODE_SWITCH, 'utf8');
 
-    expect(source).toContain('Open in OpenCode');
-    expect(source).toContain('Switch to simple chat');
+    expect(source).toContain('Simple mode');
+    expect(source).toContain('OpenCode mode');
+    expect(source).toContain("page.url.searchParams.get('assistant')");
     expect(source).not.toContain('ariaLabel="Advanced mode"');
   });
 });

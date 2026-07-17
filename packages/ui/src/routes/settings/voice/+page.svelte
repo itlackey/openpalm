@@ -37,7 +37,7 @@
 </script>
 
 <svelte:head>
-  <title>Voice on this device - OpenPalm</title>
+  <title>Voice input &amp; playback - OpenPalm</title>
 </svelte:head>
 
 <Navbar brandHref={chatReturnHref} showUtilities={false} />
@@ -45,14 +45,14 @@
 
 <main class="page">
   <header class="page-header">
-    <h1>Voice on this device</h1>
+    <h1>Voice input &amp; playback</h1>
     <p class="lede">
       These browser-owned settings apply across all assistants you connect to from this device. They
       do not change an assistant or host configuration.
     </p>
     {#if hasCapability('host:stack:read')}
       <!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- return-aware host path starts from a resolved internal route -->
-      <a class="host-settings-link" href={hostSettingsHref}>Voice service on this host</a>
+      <a class="host-settings-link" href={hostSettingsHref}>Manage host Voice</a>
     {/if}
   </header>
 

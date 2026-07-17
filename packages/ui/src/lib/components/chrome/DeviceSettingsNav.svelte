@@ -15,7 +15,7 @@
 <nav class="device-settings-nav" aria-label="Device settings">
 	<div class="nav-inner">
 		<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- validated session-aware conversation path -->
-		<a class="nav-target back-link" href={chatReturnHref}>&larr; Back to conversation</a>
+		<a class="nav-target back-link" href={chatReturnHref}>&larr; Return to conversation</a>
 		<!-- eslint-disable svelte/no-navigation-without-resolve -- peer destinations are resolved before the validated return path is appended -->
 		<ul class="peer-tabs" aria-label="Device settings pages">
 			<li>
@@ -31,7 +31,7 @@
 					class="nav-target peer-link"
 					class:active={active === 'voice'}
 					href={buildReturnToPath(resolve('/settings/voice'), chatReturnHref)}
-					aria-current={active === 'voice' ? 'page' : undefined}>Voice on this device</a
+					aria-current={active === 'voice' ? 'page' : undefined}>Voice input &amp; playback</a
 				>
 			</li>
 		</ul>
@@ -122,13 +122,20 @@
 		}
 
 		.peer-tabs {
+			display: grid;
+			grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
 			width: 100%;
 			margin-left: 0;
-			overflow-x: auto;
+			overflow: visible;
 		}
 
 		.peer-link {
+			justify-content: center;
+			min-height: 56px;
 			padding: 0 var(--s-sp-2);
+			line-height: 1.3;
+			text-align: center;
+			white-space: normal;
 		}
 	}
 </style>

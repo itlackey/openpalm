@@ -48,6 +48,7 @@
 	const activeConnectionLabel = $derived(endpointsService.active?.label ?? 'No active connection');
 
 	let navigationOpen = $state(false);
+	let activityRailOpen = $state(true);
 	let reducedMotion = $state(false);
 
 	// ── Helpers ──────────────────────────────────────────────────────────
@@ -348,26 +349,32 @@
 <div class="s-moon"></div>
 <div class="s-grain"></div>
 
-<ChatNavbar bind:drawerOpen={navigationOpen} />
+<ChatNavbar bind:drawerOpen={navigationOpen} bind:activityRailOpen />
 
-{#if chat.toolLog.length > 0}
+{#if chat.toolLog.length > 0 && activityRailOpen}
 	<aside
 		class="s-tool-rail"
-		aria-label="Assistant activity"
+		id="conversation-activity-rail"
+		aria-label={`Activity for ${activeConversationTitle}`}
 		inert={navigationOpen}
 		transition:fly={{
 			x: reducedMotion ? 0 : -24,
 			duration: reducedMotion ? 0 : 220
 		}}
 	>
-		<ToolLog items={chat.toolLog} />
+		<div class="s-activity-context">
+			<span>Activity</span>
+			<strong>{activeConversationTitle}</strong>
+			<small>{activeConnectionLabel}</small>
+		</div>
+		<ToolLog items={chat.toolLog} showHeading={false} />
 	</aside>
 {/if}
 
 <!-- conversation thread -->
 <main
 	class="s-scroll"
-	class:has-activity={chat.toolLog.length > 0}
+	class:has-activity={chat.toolLog.length > 0 && activityRailOpen}
 	id="s-scroll"
 	aria-label="Chat history"
 	inert={navigationOpen}
@@ -462,7 +469,7 @@
 {/if}
 
 <!-- composer -->
-<div class="s-base" class:has-activity={chat.toolLog.length > 0} inert={navigationOpen}>
+<div class="s-base" class:has-activity={chat.toolLog.length > 0 && activityRailOpen} inert={navigationOpen}>
 	<VoiceStatusStrip thinking={chat.sending} />
 	<ChatInput
 		bind:draft
@@ -478,7 +485,7 @@
 	class:active={voiceActive}
 	class:transcribing={dictateStatus === 'Transcribing'}
 	type="button"
-	aria-label={voiceActive ? 'Stop dictation' : 'Dictate'}
+	aria-label={voiceActive ? 'Stop dictation' : 'Dictate message'}
 	aria-pressed={voiceActive}
 	disabled={!voiceEnabled}
 	inert={navigationOpen}
@@ -488,6 +495,7 @@
 		<span class="s-dictate-state" aria-live="polite">{dictateStatus}</span>
 	{:else}
 		<IconMic size={19} />
+		<span>Dictate</span>
 	{/if}
 </button>
 
@@ -555,7 +563,7 @@
 	.s-scroll {
 		position: relative;
 		z-index: 10;
-		height: calc(100dvh - 52px);
+		height: calc(100dvh - 64px);
 		overflow-y: auto;
 		overflow-x: hidden;
 		-webkit-overflow-scrolling: touch;
@@ -709,21 +717,22 @@
 		z-index: 70;
 		right: max(var(--s-sp-3), env(safe-area-inset-right));
 		bottom: max(var(--s-sp-3), env(safe-area-inset-bottom));
-		width: 44px;
+		min-width: 44px;
+		width: auto;
 		height: 44px;
-		padding: var(--s-sp-1);
+		padding: 0 var(--s-sp-3);
 		display: inline-flex;
-		flex-direction: column;
+		flex-direction: row;
 		align-items: center;
 		justify-content: center;
+		gap: var(--s-sp-2);
 		border: var(--s-hair) solid var(--s-line);
-		border-radius: 50%;
+		border-radius: 99px;
 		background: var(--s-paper);
 		color: var(--s-ink-3);
 		font-family: var(--s-font-mono);
-		font-size: var(--s-type-mark-sm);
-		letter-spacing: var(--s-track-label);
-		text-transform: uppercase;
+		font-size: 0.75rem;
+		font-weight: 600;
 		cursor: pointer;
 	}
 
@@ -748,11 +757,9 @@
 	}
 
 	.s-dictate-state {
-		max-width: 38px;
-		font-size: 0.48rem;
-		line-height: 1.05;
+		font-size: 0.75rem;
+		line-height: 1.2;
 		letter-spacing: 0;
-		overflow-wrap: anywhere;
 		text-align: center;
 	}
 
@@ -847,7 +854,7 @@
 		position: fixed;
 		z-index: 20;
 		left: 0;
-		top: 52px;
+		top: 64px;
 		bottom: 132px;
 		width: clamp(220px, 23vw, 300px);
 		box-sizing: border-box;
@@ -861,6 +868,31 @@
 
 	.s-tool-rail::-webkit-scrollbar {
 		display: none;
+	}
+
+	.s-activity-context {
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+		padding: var(--s-sp-4) 0;
+		border-bottom: var(--s-hair) solid var(--s-line-soft);
+		margin-bottom: var(--s-sp-3);
+	}
+	.s-activity-context span {
+		color: var(--s-ink-3);
+		font-family: var(--s-font-mono);
+		font-size: 0.75rem;
+	}
+	.s-activity-context strong {
+		overflow: hidden;
+		color: var(--s-ink);
+		font-size: 0.875rem;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+	.s-activity-context small {
+		color: var(--s-ink-3);
+		font-size: 0.75rem;
 	}
 
 	@media (min-width: 1101px) {
@@ -878,6 +910,18 @@
 		}
 	}
 
+	@media (max-width: 999px) {
+		.s-scroll {
+			height: calc(100dvh - 112px);
+		}
+	}
+
+	@media (max-width: 479px) {
+		.s-scroll {
+			height: calc(100dvh - 144px);
+		}
+	}
+
 	@media (max-width: 720px) {
 		.s-thread {
 			padding-top: 4rem;
@@ -891,7 +935,7 @@
 
 		.s-base {
 			padding-top: var(--s-sp-4);
-			padding-right: calc(max(var(--s-sp-3), env(safe-area-inset-right)) + 52px);
+			padding-right: calc(max(var(--s-sp-3), env(safe-area-inset-right)) + 104px);
 		}
 	}
 

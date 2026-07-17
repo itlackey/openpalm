@@ -97,7 +97,7 @@ describe('AKM profile drawer accessibility', () => {
 			props: { draft: agentDraft, oncancel: vi.fn(), onapply: vi.fn() }
 		});
 		const first = page.getByRole('textbox', { name: 'Profile Name' });
-		const close = page.getByRole('button', { name: 'Close' });
+		const close = page.getByRole('button', { name: /^Close/ });
 
 		await expect.element(first).toHaveFocus();
 		await userEvent.keyboard('{Shift>}{Tab}{/Shift}');

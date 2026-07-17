@@ -86,8 +86,11 @@ async function closeDrawerWithOutro(
 }
 
 async function login(page: Page): Promise<void> {
+	const password = process.env.RUN_DOCKER_STACK_TESTS === '1'
+		? process.env.OP_UI_LOGIN_PASSWORD
+		: 'e2e-mocked-password';
 	const response = await page.request.post('/api/auth/login', {
-		data: { password: process.env.OP_UI_LOGIN_PASSWORD ?? 'e2e-mocked-password' }
+		data: { password: password ?? '' }
 	});
 	expect(response.ok()).toBe(true);
 }
@@ -210,19 +213,20 @@ test('shared chat navbar and footer remain responsive from 320px through desktop
 	await expect(page).toHaveURL(new RegExp(`${CHAT_PATH.replaceAll('?', '\\?')}$`));
 
 	const navbar = page.locator('.navbar');
-	const assistant = navbar.getByRole('button', { name: 'Assistant', exact: true });
-	const conversation = navbar.getByRole('button', { name: 'Conversation', exact: true });
-	const activity = navbar.getByRole('button', { name: 'Activity', exact: true });
-	const settings = navbar.getByRole('button', { name: 'Settings', exact: true });
-	const mode = navbar.getByRole('button', { name: 'Open in OpenCode', exact: true });
+	const assistant = navbar.getByRole('button', { name: 'Assistant: Responsive assistant', exact: true });
+	const conversation = navbar.getByRole('button', { name: 'Conversation: Responsive frame work', exact: true });
+	const activity = navbar.getByRole('button', { name: 'Activity for Responsive frame work', exact: true });
+	const settings = navbar.getByRole('button', { name: 'Open settings', exact: true });
+	const simpleMode = navbar.getByRole('button', { name: 'Simple mode', exact: true });
+	const openCodeMode = navbar.getByRole('button', { name: 'OpenCode mode', exact: true });
 	const brand = navbar.getByRole('link', { name: 'OpenPalm - go to chat', exact: true });
-	const headerTargets = [brand, assistant, conversation, activity, mode, settings];
-	const dictate = page.getByRole('button', { name: 'Dictate', exact: true });
+	const headerTargets = [brand, assistant, conversation, simpleMode, openCodeMode, activity, settings];
+	const dictate = page.getByRole('button', { name: 'Dictate message', exact: true });
 	const composer = page.locator('.s-composer');
 	const input = page.getByRole('textbox', { name: 'Message input' });
 
 	await expect(navbar).toBeVisible();
-	await expect(navbar).toHaveCSS('height', '52px');
+	await expect(navbar).toHaveCSS('height', '144px');
 	await expect(activity).toBeVisible();
 	await expect(dictate).toBeVisible();
 	await input.fill('responsive target check');
@@ -238,8 +242,8 @@ test('shared chat navbar and footer remain responsive from 320px through desktop
 			rect(send)
 		]);
 
-		expect(navbarRect.bottom, `${width}px compact header`).toBe(52);
-		expect(scrollRect.top, `${width}px chat starts below header`).toBe(52);
+		expect(navbarRect.bottom, `${width}px contextual header`).toBe(144);
+		expect(scrollRect.top, `${width}px chat starts below header`).toBe(144);
 		expect(scrollRect.bottom, `${width}px chat fills remaining viewport`).toBe(700);
 		expect(intersects(navbarRect, composerRect), `${width}px header overlaps composer`).toBe(false);
 		expect(intersects(dictateRect, composerRect), `${width}px bottom mic overlaps composer`).toBe(false);
@@ -268,14 +272,13 @@ test('shared chat navbar and footer remain responsive from 320px through desktop
 	}
 
 	await assistant.click();
-	const assistantDialog = await expectOneDrawer(page, 'Assistant');
-	await expect(assistantDialog.getByRole('group', { name: 'Assistant endpoints' })).toBeVisible();
-	await expect(assistantDialog.getByRole('link')).toHaveCount(0);
-	await expect(assistantDialog.getByText(/Manage/)).toHaveCount(0);
+	const assistantDialog = await expectOneDrawer(page, 'Switch assistant');
+	await expect(assistantDialog.getByRole('group', { name: 'Assistants' })).toBeVisible();
+	await expect(assistantDialog.getByRole('link', { name: /Manage assistant connections/ })).toBeVisible();
 	await closeDrawerWithOutro(page, assistantDialog, assistant);
 
 	await conversation.click();
-	const conversationDialog = await expectOneDrawer(page, 'Conversation');
+	const conversationDialog = await expectOneDrawer(page, 'Conversations');
 	await expect(conversationDialog.getByRole('group', { name: 'Conversations' })).toBeVisible();
 	await expect(conversationDialog.getByRole('button', { name: 'New conversation' })).toBeVisible();
 	await expect(conversationDialog.getByRole('link')).toHaveCount(0);
@@ -288,22 +291,22 @@ test('shared chat navbar and footer remain responsive from 320px through desktop
 
 	await settings.click();
 	const settingsDialog = await expectOneDrawer(page, 'Settings');
-	for (const scope of ['Device', 'Host', 'Appearance']) {
+	for (const scope of ['This device', 'This host']) {
 		await expect(settingsDialog.getByRole('heading', { name: scope, exact: true })).toBeVisible();
 	}
 	await expect(settingsDialog.getByRole('link', { name: 'Assistant connections' })).toHaveAttribute(
 		'href',
 		`/connections?returnTo=${ENCODED_RETURN_TO}`
 	);
-	await expect(settingsDialog.getByRole('link', { name: 'Voice on this device' })).toHaveAttribute(
+	await expect(settingsDialog.getByRole('link', { name: /Voice input & playback/ })).toHaveAttribute(
 		'href',
 		`/settings/voice?returnTo=${ENCODED_RETURN_TO}`
 	);
-	await expect(settingsDialog.getByRole('link', { name: 'Host dashboard' })).toHaveAttribute(
+	await expect(settingsDialog.getByRole('link', { name: /Open host dashboard/ })).toHaveAttribute(
 		'href',
 		`/host?returnTo=${ENCODED_RETURN_TO}`
 	);
-	await expect(settingsDialog.getByRole('link', { name: 'Voice service on this host' })).toHaveAttribute(
+	await expect(settingsDialog.getByRole('link', { name: /Manage host Voice/ })).toHaveAttribute(
 		'href',
 		`/host?tab=addons&addon=voice&returnTo=${ENCODED_RETURN_TO}`
 	);

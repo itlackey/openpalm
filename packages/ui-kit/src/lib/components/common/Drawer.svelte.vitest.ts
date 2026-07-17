@@ -12,7 +12,7 @@ describe('Drawer', () => {
     await expect.element(dialog).toHaveAttribute('id', 'first-drawer');
     expect(document.querySelector('#first-drawer-title')).toHaveTextContent('First drawer');
     expect(
-      (page.getByRole('button', { name: 'Close' }).element() as HTMLElement)
+      (page.getByRole('button', { name: /^Close/ }).element() as HTMLElement)
         .getBoundingClientRect().height,
     ).toBeGreaterThanOrEqual(44);
   });
@@ -27,7 +27,7 @@ describe('Drawer', () => {
     await expect.element(first).toHaveFocus();
     last.element().focus();
     await userEvent.keyboard('{Tab}');
-    await expect.element(page.getByRole('button', { name: 'Close' })).toHaveFocus();
+    await expect.element(page.getByRole('button', { name: /^Close/ })).toHaveFocus();
 
     const dialog = document.getElementById('first-drawer');
     expect(dialog).not.toBeNull();

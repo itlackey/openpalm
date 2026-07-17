@@ -11,9 +11,12 @@ describe('Advanced fallback coherence', () => {
 	test('uses the shared chat header and makes the page inert while its drawer is open', () => {
 		const source = readFileSync(ADVANCED_PAGE, 'utf8');
 
-		expect(source).toMatch(/<ChatNavbar bind:drawerOpen=\{navigationOpen\}\s*\/>/);
+		expect(source).toMatch(
+			/<ChatNavbar bind:drawerOpen=\{navigationOpen\} bind:activityRailOpen\s*\/>/
+		);
 		expect(source).toMatch(/<div class="advanced-layout" inert=\{navigationOpen\}>/);
-		expect(source).toMatch(/height:\s*calc\(100dvh - 52px\)/);
+		expect(source).toMatch(/height:\s*calc\(100dvh - 64px\)/);
+		expect(source).toMatch(/height:\s*calc\(100dvh - 112px\)/);
 	});
 
 	test('keeps Activity available through the shared header at mobile widths', () => {
@@ -39,11 +42,13 @@ describe('Advanced fallback coherence', () => {
 		expect(source).toMatch(/buildAdvancedPath\(chat\.activeSessionId, assistantId\)/);
 	});
 
-	test('shows the current session tool activity in credentialed native mode', () => {
+	test('shows one shared desktop Activity rail for the parent conversation', () => {
 		const source = readFileSync(ADVANCED_PAGE, 'utf8');
 
 		expect(source).toMatch(/import ToolLog from ['"]\$lib\/components\/chat\/ToolLog\.svelte['"]/);
-		expect(source).toMatch(/mode === 'native'[\s\S]*?<ToolLog items=\{chat\.toolLog\}\s*\/>/);
+		expect(source.match(/<ToolLog\b/g)).toHaveLength(1);
+		expect(source).toMatch(/id="conversation-activity-rail"[\s\S]*?<ToolLog/);
+		expect(source).toMatch(/OpenCode navigation is independent/);
 	});
 
 	test('keeps credentials out of the iframe and uses the direct transport', () => {

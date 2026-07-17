@@ -49,7 +49,7 @@ describe('SessionPicker', () => {
   test('renders a controlled conversation trigger', async () => {
     const onToggle = vi.fn();
     render(SessionPicker, { open: false, controls: 'conversation-drawer', onToggle });
-    const trigger = page.getByRole('button', { name: 'Conversation' });
+		const trigger = page.getByRole('button', { name: 'Conversation: First session' });
 
     await expect.element(trigger).toBeVisible();
     await expect.element(trigger).toHaveAttribute('aria-haspopup', 'dialog');
@@ -67,7 +67,7 @@ describe('SessionPicker', () => {
       onToggle: vi.fn(),
     });
 
-    await expect.element(page.getByRole('button', { name: 'Conversation' })).toHaveAttribute(
+		await expect.element(page.getByRole('button', { name: 'Conversation: First session' })).toHaveAttribute(
       'aria-expanded',
       'true',
     );
