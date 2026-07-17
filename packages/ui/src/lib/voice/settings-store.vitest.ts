@@ -2,8 +2,13 @@
  * Client-owned voice settings persistence: round-trip, shape validation, and
  * graceful handling of missing/corrupt storage.
  */
-import { afterEach, beforeEach, describe, expect, test } from 'vitest';
-import { loadVoiceSettings, saveVoiceSettings, type VoiceClientSettings } from './settings-store.js';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import {
+  loadVoiceSettings,
+  saveVoiceSettings,
+  voiceSecretsEncryptedAtRest,
+  type VoiceClientSettings,
+} from './settings-store.js';
 
 const KEY = 'openpalm.voice.settings';
 
@@ -19,6 +24,7 @@ beforeEach(() => {
 
 afterEach(() => {
   delete (globalThis as { localStorage?: unknown }).localStorage;
+  vi.unstubAllGlobals();
 });
 
 describe('voice settings store', () => {
@@ -63,5 +69,10 @@ describe('voice settings store', () => {
       stt: { provider: 'browser' },
       tts: { provider: 'disabled' },
     });
+  });
+
+  test('reports plaintext-at-rest storage when SubtleCrypto is unavailable', () => {
+    vi.stubGlobal('crypto', {});
+    expect(voiceSecretsEncryptedAtRest()).toBe(false);
   });
 });

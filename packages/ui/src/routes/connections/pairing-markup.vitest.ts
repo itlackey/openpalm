@@ -65,19 +65,36 @@ describe('connections +page.svelte — host UX and pairing wiring', () => {
     expect(src).toMatch(/pairingQrSvg\s*=\s*\$state<string \| null>/);
   });
 
-  test('provides an explicit route back to chat plus a separate admin link when capable', () => {
+  test('resolves a reload-safe return context including the active assistant fallback', () => {
     const src = pageSource();
-    expect(src).toMatch(/hasCapability\(\s*['"`]host:stack:read['"`]\s*\)/);
-    expect(src).toMatch(/runtimeContext\.routes\.host/);
-    // The back link ALWAYS returns to the conversation (session-aware,
-    // honoring advanced mode) — users arrive here from chat's veil, and the
-    // way back must never be hijacked by an admin-first exit.
-    expect(src).toMatch(/aria-label="Back to Chat"/);
+    expect(src).toMatch(/page\.url\.searchParams\.get\(\s*['"`]returnTo['"`]\s*\)/);
+    expect(src).toMatch(/resolveReturnToPath/);
     expect(src).toMatch(/buildChatPath/);
     expect(src).toMatch(/buildAdvancedPath/);
-    // Admin is its own explicit link, shown only with the host capability.
-    expect(src).toMatch(/aria-label="Open Admin"/);
-    expect(src).not.toMatch(/Back to Admin/);
+    expect(src).toMatch(/connectionsService\.activeId/);
+  });
+
+  test('uses plain destination chrome and the shared device-settings subnav', () => {
+    const src = pageSource();
+    expect(src).toMatch(
+      /<Navbar brandHref=\{chatReturnHref\} showUtilities=\{false\} \/>[\s\S]*<DeviceSettingsNav active="connections" \{chatReturnHref\} \/>[\s\S]*<main/,
+    );
+    expect(src).not.toMatch(/ChatNavbar/);
+    expect(src).not.toMatch(/VoiceClientSettings/);
+    expect(src).not.toMatch(/#voice|focusVoiceSection|voiceSectionEl/);
+  });
+
+  test('does not expose generic Host or Admin navigation', () => {
+    const src = pageSource();
+    expect(src).not.toMatch(/runtimeContext\.routes\.host|hostRoute|Open Admin|Admin →/);
+    expect(src).not.toMatch(/hasCapability\(\s*['"`]host:stack:read['"`]\s*\)/);
+  });
+
+  test('retains new-connection and fragment pairing behavior alongside return context', () => {
+    const src = pageSource();
+    expect(src).toMatch(/page\.url\.searchParams\.get\(\s*['"`]new['"`]\s*\)\s*===\s*['"`]1['"`]/);
+    expect(src).toMatch(/new URL\(window\.location\.href\)/);
+    expect(src).toMatch(/url\.hash\s*=\s*['"]['"]/);
   });
 
   test('does not advertise installing the client app from host UI surfaces', () => {

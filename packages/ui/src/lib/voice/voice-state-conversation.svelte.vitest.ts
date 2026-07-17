@@ -8,6 +8,7 @@
  * network is touched.
  */
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import type { RecordingSession } from './media-recorder.js';
 
 // Captures the callbacks voice-state hands to the VAD so tests can drive
 // speech-start / speech-end directly.
@@ -54,10 +55,13 @@ vi.mock('./providers.js', () => ({
 }));
 
 import * as api from './providers.js';
+import * as recorderApi from './media-recorder.js';
 import {
+	setTtsAutoEnabled,
 	startConversation,
 	stopConversation,
 	startListening,
+	stopListening,
 	speakText,
 	voiceState,
 	refreshSttSupport,
@@ -113,6 +117,9 @@ describe('conversation mode — browser engine', () => {
 		originalSR = window.SpeechRecognition;
 		window.SpeechRecognition = FakeSpeechRecognition as unknown as SpeechRecognitionConstructor;
 		voiceState.sttEngine = 'browser';
+		voiceState.ttsEngine = 'browser';
+		voiceState.ttsSupported = true;
+		voiceState.ttsAutoEnabled = false;
 		voiceState.browserSttUnsupportedReason = '';
 		refreshSttSupport();
 		voiceState.status = 'idle';
@@ -126,6 +133,9 @@ describe('conversation mode — browser engine', () => {
 		if (originalSR) window.SpeechRecognition = originalSR;
 		else delete window.SpeechRecognition;
 		voiceState.sttEngine = 'disabled';
+		voiceState.ttsEngine = 'disabled';
+		voiceState.ttsSupported = false;
+		setTtsAutoEnabled(false);
 		voiceState.status = 'idle';
 		voiceState.errorMessage = '';
 	});
@@ -138,6 +148,24 @@ describe('conversation mode — browser engine', () => {
 		expect(rec.started).toBe(true);
 		expect(rec.continuous).toBe(true);
 		expect(rec.interimResults).toBe(true);
+	});
+
+	test('enables spoken replies when conversation mode starts', () => {
+		startConversation(vi.fn());
+
+		expect(voiceState.conversationActive).toBe(true);
+		expect(voiceState.ttsAutoEnabled).toBe(true);
+	});
+
+	test('refuses to start conversation mode without a usable TTS provider', () => {
+		voiceState.ttsEngine = 'disabled';
+		voiceState.ttsSupported = false;
+
+		startConversation(vi.fn());
+
+		expect(voiceState.conversationActive).toBe(false);
+		expect(voiceState.errorMessage).toMatch(/text-to-speech/i);
+		expect(FakeSpeechRecognition.instances).toHaveLength(0);
 	});
 
 	test('delivers an utterance after the silence window elapses', () => {
@@ -234,6 +262,24 @@ describe('conversation mode — browser engine', () => {
 		expect(FakeSpeechRecognition.instances.length).toBe(1);
 	});
 
+	test('stopConversation cancels playback as well as the microphone loop', () => {
+		const cancelSpy = vi.spyOn(window.speechSynthesis, 'cancel');
+		try {
+			startConversation(vi.fn());
+			voiceState.status = 'speaking';
+
+			stopConversation();
+
+			expect(cancelSpy).toHaveBeenCalled();
+			expect(voiceState.status).toBe('idle');
+			expect(voiceState.ttsAutoEnabled).toBe(false);
+			expect(window.localStorage.getItem('openpalm.tts.auto')).toBe('0');
+			expect(lastRecognition().stopped).toBe(true);
+		} finally {
+			cancelSpy.mockRestore();
+		}
+	});
+
 	test('startListening takes the mic from conversation mode', () => {
 		startConversation(vi.fn());
 		const conversationRec = lastRecognition();
@@ -280,7 +326,11 @@ describe('conversation mode — remote engine', () => {
 		vadCaptured.stop = vi.fn();
 		recorderCaptured.segments = [];
 		vi.mocked(api.transcribe).mockClear();
+		vi.mocked(recorderApi.startRecording).mockReset();
 		voiceState.sttEngine = 'remote';
+		voiceState.ttsEngine = 'browser';
+		voiceState.ttsSupported = true;
+		voiceState.ttsAutoEnabled = false;
 		refreshSttSupport();
 		voiceState.status = 'idle';
 		voiceState.errorMessage = '';
@@ -290,6 +340,9 @@ describe('conversation mode — remote engine', () => {
 		stopConversation();
 		vi.useRealTimers();
 		voiceState.sttEngine = 'disabled';
+		voiceState.ttsEngine = 'disabled';
+		voiceState.ttsSupported = false;
+		setTtsAutoEnabled(false);
 		voiceState.status = 'idle';
 		voiceState.errorMessage = '';
 	});
@@ -302,6 +355,31 @@ describe('conversation mode — remote engine', () => {
 		});
 		return onUtterance;
 	}
+
+	test('stopListening cancels a remote capture while microphone permission is still pending', async () => {
+		let resolveRecording: ((session: RecordingSession) => void) | undefined;
+		const cancel = vi.fn();
+		const pendingSession: RecordingSession = {
+			stop: vi.fn(async () => new Blob(['audio-bytes'], { type: 'audio/webm' })),
+			cancel,
+		};
+		vi.mocked(recorderApi.startRecording).mockReturnValueOnce(
+			new Promise((resolve) => {
+				resolveRecording = resolve;
+			}),
+		);
+		const onResult = vi.fn();
+		const onSettled = vi.fn();
+
+		startListening(onResult, onSettled);
+		stopListening();
+		resolveRecording?.(pendingSession);
+
+		await vi.waitFor(() => expect(cancel).toHaveBeenCalledOnce());
+		expect(onSettled).toHaveBeenCalledOnce();
+		expect(onResult).not.toHaveBeenCalled();
+		expect(voiceState.status).toBe('idle');
+	});
 
 	function getVadOpts(): CapturedVadOpts {
 		const opts = vadCaptured.opts;

@@ -34,14 +34,14 @@
 </script>
 
 <Drawer open={true} title="Add provider" onClose={onclose}>
-	<!-- svelte-ignore a11y_autofocus -->
+	<label class="form-label add-search-label" for="add-provider-search">Search providers</label>
 	<input
+		id="add-provider-search"
 		type="search"
 		class="form-input add-search"
 		placeholder="Search providers…"
 		bind:value={query}
 		autocomplete="off"
-		autofocus
 	/>
 	<div class="pick-list">
 		{#if filtered.length === 0 && query}
@@ -65,6 +65,11 @@
 </Drawer>
 
 <style>
+	.add-search-label {
+		display: block;
+		margin-bottom: var(--s-sp-1);
+	}
+
 	.add-search {
 		width: 100%;
 		margin-bottom: var(--s-sp-3);

@@ -45,6 +45,25 @@ export async function listSessions(): Promise<SessionSummary[]> {
   return summaries;
 }
 
+/** Rename a session through OpenCode's native session endpoint. */
+export async function renameSession(sessionId: string, title: string): Promise<void> {
+  const res = await getTransport().request(
+    'PATCH',
+    `/session/${encodeURIComponent(sessionId)}`,
+    { title }
+  );
+  await res.text().catch(() => '');
+}
+
+/** Delete a session and all of its data through OpenCode's native endpoint. */
+export async function deleteSession(sessionId: string): Promise<void> {
+  const res = await getTransport().request(
+    'DELETE',
+    `/session/${encodeURIComponent(sessionId)}`
+  );
+  await res.text().catch(() => '');
+}
+
 /**
  * Fetch the messages for a session and map them to UI `ChatEntry`s.
  *

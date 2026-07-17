@@ -308,7 +308,7 @@
               <button
                 class="attention-session mono"
                 type="button"
-                aria-label={item.sessionId}
+                aria-current={selectedSessionId === item.sessionId ? 'true' : undefined}
                 onclick={() => void selectSession(item.sessionId)}
               >
                 {sessionTitle || `Session ${item.sessionId.slice(0, 8)}…`}
@@ -343,7 +343,7 @@
               <button
                 class="attention-session mono"
                 type="button"
-                aria-label={event.sessionId}
+                aria-current={selectedSessionId === event.sessionId ? 'true' : undefined}
                 onclick={() => void selectSession(event.sessionId)}
               >
                 {sessionTitle || `Session ${event.sessionId.slice(0, 8)}…`}
@@ -364,7 +364,13 @@
           <div class="empty-card">No sessions found on the active assistant endpoint.</div>
         {/if}
         {#each sessions.slice(0, 12) as session (session.id)}
-          <button class:selected={selectedSessionId === session.id} class="session-row" onclick={() => void selectSession(session.id)}>
+          <button
+            class:selected={selectedSessionId === session.id}
+            class="session-row"
+            type="button"
+            aria-current={selectedSessionId === session.id ? 'true' : undefined}
+            onclick={() => void selectSession(session.id)}
+          >
             <div>
               <div class="session-title">{session.title || 'Untitled session'}</div>
               <div class="session-meta">Updated {fmtDateTime(session.updatedAt)}</div>

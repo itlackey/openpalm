@@ -1,0 +1,180 @@
+import { beforeEach, describe, expect, test, vi } from 'vitest';
+import { page } from 'vitest/browser';
+import { render } from 'vitest-browser-svelte';
+
+const mocks = vi.hoisted(() => {
+  const appPage = { url: new URL('http://localhost/advanced?session=session-1') };
+  const chat = {
+    activeSessionId: 'session-1' as string | null,
+    liveConnected: true,
+    sending: false,
+    toolLog: [] as unknown[],
+    byEndpoint: new Map([
+      ['assistant-1', {
+        sessions: [
+          { id: 'session-1', title: 'Current conversation', updatedAt: Date.now() },
+        ],
+        sessionsLoading: false,
+        sessionsLoaded: true,
+        sessionsError: '',
+        activeSessionId: 'session-1',
+      }],
+    ]),
+    loadSessions: vi.fn().mockResolvedValue(undefined),
+    openSession: vi.fn().mockResolvedValue(undefined),
+    startNewSession: vi.fn().mockResolvedValue('new-session'),
+    renameSession: vi.fn().mockResolvedValue(true),
+    deleteSession: vi.fn().mockResolvedValue(true),
+  };
+  const endpointsService = {
+    active: {
+      id: 'assistant-1',
+      label: 'Workshop assistant',
+      url: 'http://127.0.0.1:3800',
+      isDefault: true,
+    },
+    activeId: 'assistant-1',
+    endpoints: [
+      {
+        id: 'assistant-1',
+        label: 'Workshop assistant',
+        url: 'http://127.0.0.1:3800',
+        isDefault: true,
+      },
+    ],
+    loading: false,
+    error: '',
+    load: vi.fn().mockResolvedValue(undefined),
+    activate: vi.fn().mockResolvedValue(undefined),
+  };
+  const buildConversationPath = vi.fn(
+    (_pathname: string, sessionId: string | null, assistantId: string | null) =>
+      `/advanced?session=${sessionId}&assistant=${assistantId}`,
+  );
+  return { appPage, buildConversationPath, chat, endpointsService };
+});
+
+vi.mock('$app/state', () => ({ page: mocks.appPage }));
+vi.mock('$app/navigation', () => ({ goto: vi.fn().mockResolvedValue(undefined) }));
+vi.mock('$lib/chat/chat-state.svelte.js', () => ({ chat: mocks.chat }));
+vi.mock('$lib/endpoints-state.svelte.js', () => ({ endpointsService: mocks.endpointsService }));
+vi.mock('$lib/advanced-mode-state.svelte.js', () => ({
+  advancedModeService: {
+    enabled: true,
+    init: vi.fn(),
+    setEnabled: vi.fn(),
+  },
+}));
+vi.mock('$lib/theme-state.svelte.js', () => ({
+  themeService: {
+    preference: 'system',
+    setPreference: vi.fn(),
+  },
+}));
+vi.mock('$lib/runtime-context.svelte.js', () => ({
+  hasCapability: (capability: string) => capability === 'host:stack:read',
+  runtimeContext: {
+    routes: { chat: '/chat', host: '/host' },
+  },
+}));
+vi.mock('$lib/chat/navigation.js', () => ({
+  buildAdvancedPath: (sessionId: string | null) => `/advanced?session=${sessionId}`,
+  buildChatPath: (sessionId: string | null) => `/chat?session=${sessionId}`,
+  buildConversationPath: mocks.buildConversationPath,
+  buildReturnToPath: (destination: string, returnTo: string) =>
+    `${destination}${destination.includes('?') ? '&' : '?'}returnTo=${encodeURIComponent(returnTo)}`,
+  currentChatSessionId: () => mocks.chat.activeSessionId,
+}));
+
+import ChatNavbar from './ChatNavbar.svelte';
+
+async function closeDrawer(name: string): Promise<void> {
+  await expect.element(page.getByRole('dialog', { name })).toBeVisible();
+  await page.getByRole('button', { name: 'Close' }).click();
+  await vi.waitFor(() => expect(document.querySelector('[role="dialog"]')).toBeNull());
+}
+
+beforeEach(() => {
+  mocks.appPage.url = new URL('http://localhost/advanced?session=session-1');
+  mocks.chat.toolLog = [];
+  mocks.buildConversationPath.mockClear();
+});
+
+describe('ChatNavbar', () => {
+  test('uses the approved six-target DOM order with 44px targets', async () => {
+    const { container } = render(ChatNavbar);
+    const targets = Array.from(container.querySelectorAll<HTMLElement>('header a, header button'));
+
+    expect(targets.map((target) => target.getAttribute('aria-label'))).toEqual([
+      'OpenPalm - go to chat',
+      'Assistant',
+      'Conversation',
+      'Activity',
+      'Switch to simple chat',
+      'Settings',
+    ]);
+    for (const target of targets) {
+      const rect = target.getBoundingClientRect();
+      expect(rect.width).toBeGreaterThanOrEqual(44);
+      expect(rect.height).toBeGreaterThanOrEqual(44);
+    }
+  });
+
+  test('connects every drawer trigger to the one mutually exclusive dialog', async () => {
+    render(ChatNavbar);
+
+    for (const name of ['Assistant', 'Conversation', 'Activity', 'Settings']) {
+      const trigger = page.getByRole('button', { name });
+      await expect.element(trigger).toHaveAttribute('aria-haspopup', 'dialog');
+      await expect.element(trigger).toHaveAttribute('aria-controls', 'chat-navbar-drawer');
+      await expect.element(trigger).toHaveAttribute('aria-expanded', 'false');
+    }
+
+    await page.getByRole('button', { name: 'Assistant' }).click();
+    await expect.element(page.getByRole('dialog', { name: 'Assistant' })).toBeVisible();
+    expect(document.querySelectorAll('[role="dialog"]')).toHaveLength(1);
+    await closeDrawer('Assistant');
+
+    await page.getByRole('button', { name: 'Conversation' }).click();
+    await expect.element(page.getByRole('dialog', { name: 'Conversation' })).toBeVisible();
+    expect(document.querySelectorAll('[role="dialog"]')).toHaveLength(1);
+  });
+
+  test('shows an explicit empty activity state for the current conversation', async () => {
+    render(ChatNavbar);
+    await page.getByRole('button', { name: 'Activity' }).click();
+
+    await expect.element(page.getByText('No activity for this conversation yet.')).toBeVisible();
+  });
+
+  test('groups exact settings labels and preserves conversation return context', async () => {
+    render(ChatNavbar);
+    await page.getByRole('button', { name: 'Settings' }).click();
+
+    await expect.element(page.getByRole('heading', { name: 'Device' })).toBeVisible();
+    await expect.element(page.getByRole('heading', { name: 'Host' })).toBeVisible();
+    await expect.element(page.getByRole('heading', { name: 'Appearance' })).toBeVisible();
+    await expect.element(page.getByRole('link', { name: 'Assistant connections' })).toHaveAttribute(
+      'href',
+      '/connections?returnTo=%2Fadvanced%3Fsession%3Dsession-1%26assistant%3Dassistant-1',
+    );
+    await expect.element(page.getByRole('link', { name: 'Voice on this device' })).toHaveAttribute(
+      'href',
+      '/settings/voice?returnTo=%2Fadvanced%3Fsession%3Dsession-1%26assistant%3Dassistant-1',
+    );
+    await expect.element(page.getByRole('link', { name: 'Host dashboard' })).toHaveAttribute(
+      'href',
+      '/host?returnTo=%2Fadvanced%3Fsession%3Dsession-1%26assistant%3Dassistant-1',
+    );
+    await expect.element(page.getByRole('link', { name: 'Voice service on this host' })).toHaveAttribute(
+      'href',
+      '/host?tab=addons&addon=voice&returnTo=%2Fadvanced%3Fsession%3Dsession-1%26assistant%3Dassistant-1',
+    );
+    await expect.element(page.getByLabelText('Theme')).toBeVisible();
+    expect(mocks.buildConversationPath).toHaveBeenCalledWith(
+      '/advanced',
+      'session-1',
+      'assistant-1',
+    );
+  });
+});

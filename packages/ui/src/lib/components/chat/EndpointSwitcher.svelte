@@ -1,18 +1,17 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { endpointsService } from '$lib/endpoints-state.svelte.js';
-  import Drawer from '@openpalm/ui-kit/components/common/Drawer.svelte';
-  import EndpointList from '$lib/components/chat/EndpointList.svelte';
   import IconServer from '@openpalm/ui-kit/components/icons/IconServer.svelte';
 
-  // Navbar trigger that opens the assistant-endpoint chooser in a drawer.
-  // The list body itself lives in EndpointList, shared with the chat side panel.
-  let open = $state(false);
+  interface Props {
+    open: boolean;
+    controls: string;
+    onToggle: () => void;
+  }
+  let { open, controls, onToggle }: Props = $props();
 
   const active = $derived(endpointsService.active);
 
-  // Fire-and-forget one-shot load — onMount, not $effect (it's not state sync and
-  // has no reactive deps that should re-trigger it).
   onMount(() => {
     void endpointsService.load();
   });
@@ -21,22 +20,20 @@
 <button
   type="button"
   class="trigger"
-  onclick={() => (open = true)}
+  class:active={open}
+  onclick={onToggle}
   aria-haspopup="dialog"
   aria-expanded={open}
-  aria-label={active ? `Assistant endpoint: ${active.label}` : 'Assistant endpoints'}
+  aria-controls={controls}
+  aria-label="Assistant"
   title={active ? `Connected to: ${active.label} (${active.url})` : 'Assistant endpoints'}
   disabled={endpointsService.loading}
 >
-  <IconServer size={14} class="trigger-icon" />
+  <IconServer size={18} class="trigger-icon" />
   <span class="dot" aria-hidden="true"></span>
-  <span class="label">{active?.label ?? 'Endpoint…'}</span>
+  <span class="label">{active?.label ?? 'Assistant'}</span>
   <span class="caret" aria-hidden="true">▾</span>
 </button>
-
-<Drawer open={open} title="Assistant endpoint" onClose={() => (open = false)} width="26rem">
-  <EndpointList onChosen={() => (open = false)} />
-</Drawer>
 
 <style>
   .trigger {
@@ -44,7 +41,8 @@
     align-items: center;
     gap: var(--s-sp-2);
     padding: 0 var(--s-sp-3);
-    height: 32px;
+    min-width: 44px;
+    height: 44px;
     background: none;
     border: var(--s-hair) solid var(--s-line);
     border-radius: 2px;
@@ -69,6 +67,10 @@
   .trigger:disabled {
     opacity: 0.5;
     cursor: progress;
+  }
+  .trigger.active {
+    color: var(--s-seal);
+    border-color: var(--s-seal);
   }
 
   :global(.trigger-icon) {
@@ -95,5 +97,19 @@
   .caret {
     font-size: 9px;
     opacity: 0.5;
+  }
+
+  @media (max-width: 720px) {
+    .trigger {
+      width: 44px;
+      padding: 0;
+      justify-content: center;
+      border-color: transparent;
+    }
+    .label,
+    .dot,
+    .caret {
+      display: none;
+    }
   }
 </style>

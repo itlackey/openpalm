@@ -6,14 +6,17 @@
   import { buildAdvancedPath, buildChatPath, currentChatSessionId } from '$lib/chat/navigation.js';
   import IconAdvanced from '@openpalm/ui-kit/components/icons/IconAdvanced.svelte';
 
-  // Single "Advanced" toggle for the chat surface: off on /chat, on
-  // (selected) on /advanced. Clicking flips between the two. Rendering through
-  // ToggleButton keeps it aligned with the other chrome toggles.
+  // Route-aware chat-surface switch. Treat /advanced as selected even when it
+  // was opened directly and no stored preference has been initialized.
   const pathname = $derived(page.url?.pathname ?? '');
   const onAdmin = $derived(pathname === '/host' || pathname.startsWith('/host/'));
+  const onOpenCode = $derived(pathname === '/advanced' || pathname.startsWith('/advanced/'));
+  const openCodeSelected = $derived(onOpenCode || advancedModeService.enabled);
+  const actionLabel = $derived(openCodeSelected ? 'Switch to simple chat' : 'Open in OpenCode');
 
   function toggle(): void {
-    const enabled = advancedModeService.toggle();
+    const enabled = !openCodeSelected;
+    advancedModeService.setEnabled(enabled);
     if (onAdmin) return;
     // Advanced validates its requested session before updating the chat cursor.
     // On the return path that validated cursor is authoritative; blindly reusing
@@ -28,10 +31,10 @@
 </script>
 
 <ToggleButton
-  pressed={advancedModeService.enabled}
+  pressed={openCodeSelected}
   onToggle={toggle}
-  ariaLabel="Advanced mode"
-  title="Advanced mode (embedded OpenCode)"
+  ariaLabel={actionLabel}
+  title={actionLabel}
   icon={advancedIcon}
 />
 

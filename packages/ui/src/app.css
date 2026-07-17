@@ -125,7 +125,8 @@ body.chat-locked {
   justify-content: center;
   gap: 0.5rem;
   padding: 0.5rem 0.9rem;
-  min-height: 2rem;
+  min-width: 44px;
+  min-height: 44px;
   font-family: var(--s-font-mono);
   font-size: var(--s-type-mark);
   letter-spacing: var(--s-track-label);
@@ -147,12 +148,12 @@ body.chat-locked {
 
 .btn-primary {
   border-color: var(--s-seal);
-  color: var(--s-seal);
-  background: none;
+  color: var(--s-paper);
+  background: var(--s-seal);
 }
 
 .btn-primary:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--s-seal) 8%, transparent);
+  background: var(--s-seal);
   border-color: var(--s-seal);
 }
 
@@ -183,13 +184,14 @@ body.chat-locked {
 
 .btn-sm {
   padding: 0.3rem 0.7rem;
-  min-height: 1.6rem;
-  font-size: 0.58rem;
+  min-width: 44px;
+  min-height: 44px;
+  font-size: var(--s-type-mark);
 }
 
 .btn-lg {
   padding: 0.7rem 1.6rem;
-  min-height: 2.6rem;
+  min-height: 44px;
   font-size: var(--s-type-deed);
   border-radius: 2px;
 }
@@ -206,15 +208,22 @@ body.chat-locked {
 }
 
 .btn-danger {
-  border-color: color-mix(in srgb, var(--s-error) 50%, transparent);
+  border-color: var(--s-error);
   color: var(--s-error);
-  background: none;
-  opacity: 0.8;
+  background: transparent;
 }
 
 .btn-danger:hover:not(:disabled) {
-  opacity: 1;
+  color: var(--s-paper);
+  background: var(--s-error);
   border-color: var(--s-error);
+}
+
+.icon-btn,
+button.btn-icon.btn-icon,
+.btn-dismiss {
+  min-width: 44px;
+  min-height: 44px;
 }
 
 /* ── Shared Utility: Feedback Banners ──────────────────────────── */

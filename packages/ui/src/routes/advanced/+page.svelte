@@ -1,14 +1,16 @@
 <script lang="ts">
   import { page } from '$app/state';
-  import { afterNavigate } from '$app/navigation';
+  import { afterNavigate, goto } from '$app/navigation';
   import { resolve as resolvePath } from '$app/paths';
   import { onMount } from 'svelte';
   import ChatNavbar from '$lib/components/chrome/ChatNavbar.svelte';
   import ChatMessage from '$lib/components/chat/ChatMessage.svelte';
+  import ToolLog from '$lib/components/chat/ToolLog.svelte';
   import ChatInput from '$lib/components/chat/ChatInput.svelte';
+  import VoiceControl from '$lib/components/chat/VoiceControl.svelte';
   import PermissionCard from '$lib/components/chat/PermissionCard.svelte';
   import QuestionCard from '$lib/components/chat/QuestionCard.svelte';
-  import { buildAdvancedIframeUrl } from '$lib/chat/navigation.js';
+  import { buildAdvancedIframeUrl, buildAdvancedPath } from '$lib/chat/navigation.js';
   import { endpointsService } from '$lib/endpoints-state.svelte.js';
   import { chat } from '$lib/chat/chat-state.svelte.js';
   import { getTransport } from '$lib/connections/boot.js';
@@ -26,6 +28,7 @@
 
   const active = $derived(endpointsService.active);
   const requestedSessionId = $derived(page.url.searchParams.get('session'));
+  const requestedAssistantId = $derived(page.url.searchParams.get('assistant'));
 
   type Mode = 'checking' | 'iframe' | 'native' | 'dead';
   let mode = $state<Mode>('checking');
@@ -33,6 +36,7 @@
   let frameUrl = $state('');
   let reconnecting = $state(false);
   let reloadNonce = $state(0);
+  let navigationOpen = $state(false);
   let probeToken = 0; // discard stale async probe results
 
   /**
@@ -76,7 +80,7 @@
       // transport; make sure this connection's sessions are loaded.
       await chat.onEndpointChanged(conn.id);
       if (requestedSessionId) {
-        void chat.openSession(requestedSessionId);
+        await chat.openSession(requestedSessionId);
       }
       return;
     }
@@ -108,8 +112,9 @@
             : null;
         if (directory) {
           url = buildAdvancedIframeUrl(base, sessionId, directory);
-          chat.alignActiveEndpoint(connectionId);
-          chat.setActiveSessionId(sessionId, connectionId);
+          await chat.onEndpointChanged(connectionId);
+          if (!isCurrentProbe(token, connectionId)) return;
+          await chat.openSession(sessionId);
         }
       } catch {
         // non-ok / unreachable → leave url = base (no broken deep link)
@@ -121,12 +126,46 @@
     if (reloadFrame) reloadNonce++;
   }
 
+  async function resolveRoute(reloadFrame = false): Promise<void> {
+    const routeToken = ++probeToken;
+    mode = 'checking';
+    frameUrl = '';
+    await endpointsService.load(reloadFrame);
+    // ChatNavbar may already own the shared in-flight load. Wait for that load
+    // before matching the route's assistant instead of probing a stale active one.
+    while (!endpointsService.loaded && endpointsService.loading) {
+      await new Promise<void>((resolveLoad) => setTimeout(resolveLoad, 0));
+    }
+    if (routeToken !== probeToken) return;
+
+    const requestedAssistant = requestedAssistantId
+      ? endpointsService.endpoints.find((connection) => connection.id === requestedAssistantId)
+      : null;
+    if (requestedAssistantId && !requestedAssistant) {
+      mode = 'dead';
+      frameUrl = '';
+      return;
+    }
+    if (requestedAssistant && requestedAssistant.id !== endpointsService.activeId) {
+      await endpointsService.activate(requestedAssistant.id);
+    }
+    if (routeToken !== probeToken) return;
+    await resolve(reloadFrame);
+  }
+
+  async function followActivatedAssistant(assistantId: string): Promise<void> {
+    if (assistantId === requestedAssistantId) return;
+    const target = buildAdvancedPath(chat.activeSessionId, assistantId);
+    if (`${page.url.pathname}${page.url.search}` === target) return;
+    // eslint-disable-next-line svelte/no-navigation-without-resolve -- canonical assistant/session path built internally
+    await goto(target, { replaceState: true });
+  }
+
   async function reconnect(): Promise<void> {
     if (reconnecting) return;
     reconnecting = true;
     try {
-      await endpointsService.load(true);
-      await resolve(true);
+      await resolveRoute(true);
     } finally {
       reconnecting = false;
     }
@@ -153,7 +192,7 @@
   onMount(() => {
     document.documentElement.classList.add('chat-locked');
     document.body.classList.add('chat-locked');
-    const stopWatchingConnections = onConnectionActivated(() => resolve());
+    const stopWatchingConnections = onConnectionActivated(followActivatedAssistant);
     return () => {
       stopWatchingConnections();
       document.documentElement.classList.remove('chat-locked');
@@ -165,7 +204,7 @@
   // switching to a different session while staying on /advanced). This is the
   // correct SvelteKit hook for "run on every arrival at this route" — no $effect.
   afterNavigate(() => {
-    void endpointsService.load().then(() => resolve());
+    void resolveRoute();
   });
 </script>
 
@@ -173,13 +212,16 @@
   <title>Advanced Chat — OpenPalm</title>
 </svelte:head>
 
-<ChatNavbar />
+<ChatNavbar bind:drawerOpen={navigationOpen} />
 
-<div class="advanced-layout">
+<div class="advanced-layout" inert={navigationOpen}>
   {#if mode === 'iframe'}
     <!-- The Chat↔Advanced switch is in the global navbar; session management
          lives inside OpenCode itself, so the frame fills the whole area.
          {#key} forces a fresh load after a reconnect even if the URL is unchanged. -->
+    <!-- Parent Activity follows an explicit ?session= request. The frame may be
+         cross-origin, so internal iframe navigation cannot be observed or
+         synchronized back into parent state. -->
     {#key reloadNonce}
       <iframe
         class="opencode-frame"
@@ -192,49 +234,56 @@
     <!-- Credentialed / Guardian connection: OpenPalm keeps Basic auth out of
          iframe URLs, so the embedded OpenCode UI can't authenticate. Render the
          native chat surface (direct transport) instead of a dead-end. -->
-    <section class="native-chat" aria-label="Chat with {active?.label ?? 'your assistant'}">
-      <div class="native-scroll">
-        {#if chat.entriesLoading}
-          <p class="native-status" role="status">Loading conversation…</p>
-        {:else if chat.entries.length === 0}
-          <p class="native-status" role="status">
-            Start chatting with {active?.label ?? 'your assistant'} below.
-          </p>
-        {/if}
-        {#each chat.entries as entry (entry.id)}
-          <ChatMessage {entry} />
-        {/each}
-        {#if chat.pendingAssistantText}
-          <div class="native-pending">{chat.pendingAssistantText}</div>
-        {/if}
-        {#if chat.pendingPermission}
-          <PermissionCard
-            permission={chat.pendingPermission}
-            actionInFlight={permissionActionInFlight}
-            onReply={handlePermissionReply}
-          />
-        {/if}
-        {#if chat.pendingQuestion}
-          <QuestionCard
-            question={chat.pendingQuestion}
-            onOption={(answer) => void chat.answerQuestion(answer)}
-            onSelect={(index, label) => chat.setQuestionAnswer(index, label)}
-            onDraft={(index, value) => chat.setQuestionAnswer(index, value)}
-            onSubmit={() => void chat.answerQuestion()}
-            onReject={() => void chat.rejectQuestion()}
-          />
-        {/if}
-      </div>
-      {#if chat.error}
-        <div class="alert error" role="alert">{chat.error}</div>
+    <div class="native-shell">
+      {#if chat.toolLog.length > 0}
+        <aside class="native-activity" aria-label="Assistant activity">
+          <ToolLog items={chat.toolLog} />
+        </aside>
       {/if}
-      <ChatInput
-        sending={chat.sending}
-        questionPending={chat.pendingQuestion?.status === 'pending'}
-        onSend={handleSend}
-        onStop={() => void chat.stopTurn()}
-      />
-    </section>
+      <section class="native-chat" aria-label="Chat with {active?.label ?? 'your assistant'}">
+        <div class="native-scroll">
+          {#if chat.entriesLoading}
+            <p class="native-status" role="status">Loading conversation…</p>
+          {:else if chat.entries.length === 0}
+            <p class="native-status" role="status">
+              Start chatting with {active?.label ?? 'your assistant'} below.
+            </p>
+          {/if}
+          {#each chat.entries as entry (entry.id)}
+            <ChatMessage {entry} />
+          {/each}
+          {#if chat.pendingAssistantText}
+            <div class="native-pending">{chat.pendingAssistantText}</div>
+          {/if}
+          {#if chat.pendingPermission}
+            <PermissionCard
+              permission={chat.pendingPermission}
+              actionInFlight={permissionActionInFlight}
+              onReply={handlePermissionReply}
+            />
+          {/if}
+          {#if chat.pendingQuestion}
+            <QuestionCard
+              question={chat.pendingQuestion}
+              onOption={(answer) => void chat.answerQuestion(answer)}
+              onSelect={(index, label) => chat.setQuestionAnswer(index, label)}
+              onDraft={(index, value) => chat.setQuestionAnswer(index, value)}
+              onSubmit={() => void chat.answerQuestion()}
+              onReject={() => void chat.rejectQuestion()}
+            />
+          {/if}
+        </div>
+        {#if chat.error}
+          <div class="alert error" role="alert">{chat.error}</div>
+        {/if}
+        <ChatInput
+          sending={chat.sending}
+          questionPending={chat.pendingQuestion?.status === 'pending'}
+          onSend={handleSend}
+          onStop={() => void chat.stopTurn()}
+        />
+      </section>
+    </div>
   {:else}
     <div class="advanced-status" role={mode === 'dead' ? 'alert' : 'status'} aria-live="polite">
       {#if mode === 'checking'}
@@ -249,17 +298,29 @@
       {/if}
     </div>
   {/if}
+  <div class="advanced-voice">
+    <VoiceControl showSpeaker={false} />
+  </div>
 </div>
 
 <style>
   /* Fill the viewport below the sticky navbar with the embedded OpenCode UI.
      dvh accounts for Android Chrome's dynamic toolbar shrinkage. */
   .advanced-layout {
-    height: calc(100dvh - var(--nav-height));
+    height: calc(100dvh - 52px);
     width: 100%;
     background: var(--s-paper);
     display: flex;
     flex-direction: column;
+  }
+
+  .advanced-voice {
+    position: fixed;
+    right: max(var(--s-sp-4), env(safe-area-inset-right));
+    bottom: max(var(--s-sp-4), env(safe-area-inset-bottom));
+    z-index: 40;
+    background: var(--s-paper);
+    border: var(--s-hair) solid var(--s-line-soft);
   }
 
   .opencode-frame {
@@ -269,6 +330,18 @@
     border: none;
   }
 
+  .native-shell {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+  }
+  .native-activity {
+    flex: 0 0 clamp(14rem, 23vw, 19rem);
+    min-height: 0;
+    overflow-y: auto;
+    padding: var(--s-sp-4);
+    border-right: var(--s-hair) solid var(--s-line-soft);
+  }
   .native-chat {
     flex: 1;
     min-height: 0;
@@ -324,4 +397,17 @@
   .advanced-status p { margin: 0; max-width: 26rem; color: var(--s-ink-2); line-height: 1.55; }
   .advanced-status .status-line { color: var(--s-ink-2); }
   .advanced-status .btn { margin-top: var(--s-sp-3); text-decoration: none; }
+
+  @media (max-width: 900px) {
+    .native-shell {
+      flex-direction: column;
+    }
+    .native-activity {
+      flex-basis: auto;
+      width: 100%;
+      max-height: 35%;
+      border-right: 0;
+      border-bottom: var(--s-hair) solid var(--s-line-soft);
+    }
+  }
 </style>

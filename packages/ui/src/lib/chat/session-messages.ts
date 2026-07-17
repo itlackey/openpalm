@@ -29,7 +29,7 @@ export type SessionMessageRow = {
 export function flattenSessionMessages(rows: SessionMessageRow[]): ChatEntry[] {
   const messages: ChatEntry[] = [];
   for (const row of rows) {
-    const timestamp = row.info.time?.created ?? Date.now();
+    const timestamp = row.info.time?.created ?? 0;
     let textBuffer = '';
     let textIndex = 0;
     const pendingToolStates: ToolStripEntry[] = [];
@@ -72,7 +72,7 @@ export function flattenSessionMessages(rows: SessionMessageRow[]): ChatEntry[] {
         return;
       }
       if (part.type === 'tool' || part.state) {
-        const toolState = toolStripEntryFromSessionPart(part, `${row.info.id}:${index}`);
+        const toolState = toolStripEntryFromSessionPart(part, `${row.info.id}:${index}`, timestamp);
         if (!toolState) return;
         pendingToolStates.push(toolState);
       }

@@ -1,51 +1,35 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onMount, tick } from 'svelte';
+	import { fly } from 'svelte/transition';
 	import { page } from '$app/state';
-	import { goto } from '$app/navigation';
-	import { resolve } from '$app/paths';
+	import { goto, replaceState } from '$app/navigation';
 	import ChatMessage from '$lib/components/chat/ChatMessage.svelte';
 	import ChatInput from '$lib/components/chat/ChatInput.svelte';
+	import ChatNavbar from '$lib/components/chrome/ChatNavbar.svelte';
 	import VoiceStatusStrip from '$lib/components/chat/VoiceStatusStrip.svelte';
-	import SessionList from '$lib/components/chat/SessionList.svelte';
 	import ToolLog from '$lib/components/chat/ToolLog.svelte';
-	import Presence from '$lib/components/chat/Presence.svelte';
 	import PermissionCard from '$lib/components/chat/PermissionCard.svelte';
 	import QuestionCard from '$lib/components/chat/QuestionCard.svelte';
-	import { createFocusTrap, handleTrapKeydown } from '@openpalm/ui-kit/actions/focus-trap.js';
-	import { isLocalAssistantUrl } from '$lib/assistant-endpoint.js';
 	// Direct domain-client import (#555): the chat page
 	// must not import the $lib/api.js barrel, which re-exports every admin
 	// domain client and would drag them all into the chat chunk.
 	import { probeChatBackend } from '$lib/api/chat.js';
 	import { advancedModeService } from '$lib/advanced-mode-state.svelte.js';
-	import { hasCapability, runtimeContext } from '$lib/runtime-context.svelte.js';
-	import { buildAdvancedPath } from '$lib/chat/navigation.js';
+	import { buildAdvancedPath, buildChatPath } from '$lib/chat/navigation.js';
 	import { nextFollowState } from '$lib/chat/autoscroll.js';
 	import { chat } from '$lib/chat/chat-state.svelte.js';
 	import { renderMarkdown } from '$lib/markdown.js';
 	import { endpointsService } from '$lib/endpoints-state.svelte.js';
-	import { themeService } from '$lib/theme-state.svelte.js';
+	import { onConnectionActivated } from '$lib/connection-events.js';
+	import { resolveSessionTitle } from '$lib/session-title.js';
 	import {
 		voiceState,
-		setTtsAutoEnabled,
 		startListening,
 		stopListening,
-		startConversation,
 		stopConversation,
 		initVoice
 	} from '$lib/voice/voice-state.svelte.js';
-	import IconSoundOn from '@openpalm/ui-kit/components/icons/IconSoundOn.svelte';
-	import IconSoundOff from '@openpalm/ui-kit/components/icons/IconSoundOff.svelte';
 	import IconMic from '@openpalm/ui-kit/components/icons/IconMic.svelte';
-	import IconWaves from '@openpalm/ui-kit/components/icons/IconWaves.svelte';
-	import IconConversations from '@openpalm/ui-kit/components/icons/IconConversations.svelte';
-	import IconActivity from '@openpalm/ui-kit/components/icons/IconActivity.svelte';
-	import IconClose from '@openpalm/ui-kit/components/icons/IconClose.svelte';
-	import IconThemeSystem from '@openpalm/ui-kit/components/icons/IconThemeSystem.svelte';
-	import IconThemeLight from '@openpalm/ui-kit/components/icons/IconThemeLight.svelte';
-	import IconThemeDark from '@openpalm/ui-kit/components/icons/IconThemeDark.svelte';
-	import IconAdvanced from '@openpalm/ui-kit/components/icons/IconAdvanced.svelte';
-	import IconSettings from '@openpalm/ui-kit/components/icons/IconSettings.svelte';
 
 	let scrollAnchorEl = $state<HTMLDivElement | undefined>();
 
@@ -53,32 +37,18 @@
 	const sessionsLoading = $derived(
 		chat.byEndpoint.get(chat.activeEndpointId)?.sessionsLoading ?? false
 	);
+	const activeSession = $derived(
+		chat.byEndpoint
+			.get(chat.activeEndpointId)
+			?.sessions.find((session) => session.id === chat.activeSessionId) ?? null
+	);
+	const activeConversationTitle = $derived(
+		activeSession ? resolveSessionTitle(activeSession.title) : 'New conversation'
+	);
+	const activeConnectionLabel = $derived(endpointsService.active?.label ?? 'No active connection');
 
-	// ── Garden (session veil) ──────────────────────────────────────────
-	let gardenOpen = $state(false);
-
-	function openGarden(): void {
-		gardenOpen = true;
-	}
-	function closeGarden(): void {
-		gardenOpen = false;
-	}
-
-	// ── Tool activity sidebar (small screens) ──────────────────────────
-	// On wide screens the activity list is a persistent left rail. Below the
-	// breakpoint it collapses into this togglable drawer.
-	let toolDrawerOpen = $state(false);
-
-	function toggleToolDrawer(): void {
-		toolDrawerOpen = !toolDrawerOpen;
-	}
-	function closeToolDrawer(): void {
-		toolDrawerOpen = false;
-	}
-	function openActivityFromGarden(): void {
-		closeGarden();
-		toolDrawerOpen = true;
-	}
+	let navigationOpen = $state(false);
+	let reducedMotion = $state(false);
 
 	// ── Helpers ──────────────────────────────────────────────────────────
 
@@ -97,6 +67,12 @@
 
 	async function handleSend(text: string): Promise<void> {
 		await chat.send(text);
+		await tick();
+		const endpointState = chat.byEndpoint.get(endpointsService.activeId);
+		await syncSessionUrl(
+			endpointState?.activeSessionId ?? endpointState?.sessions[0]?.id ?? null,
+			true
+		);
 	}
 
 	let permissionActionInFlight = $state<'once' | 'always' | 'reject' | null>(null);
@@ -191,13 +167,7 @@
 		};
 	}
 
-	// ── Modal focus management ─────────────────────────────────────────────
-	// The drawer and Conversations veil are persistent in the DOM and toggle via
-	// an `open` boolean, so the trap runs only while open and restores focus on
-	// the next frame (the opener's corner cell un-hides on close). Tab-wrap and
-	// Escape are handled by the shared focus-trap primitives.
-
-	// ── Voice / TTS ───────────────────────────────────────────────────────
+	// ── Voice ─────────────────────────────────────────────────────────────
 
 	// Mic pulse tracks single-shot dictation only — conversation mode has
 	// its own toggle + strip and would otherwise light both buttons.
@@ -205,32 +175,44 @@
 		!voiceState.conversationActive &&
 			(voiceState.status === 'recording' || voiceState.status === 'transcribing')
 	);
-	const ttsEnabled = $derived(voiceState.ttsAutoEnabled);
-	const voiceEnabled = $derived(voiceState.sttEngine !== 'disabled' && voiceState.sttSupported);
-	const ttsAvailable = $derived(voiceState.ttsSupported);
-
-	// Admin is reachable straight from the chat chrome when this process
-	// grants host:* — previously it hid behind a per-endpoint link inside the
-	// conversations veil, which only rendered for local endpoint URLs.
-	const adminRoute = $derived(
-		hasCapability('host:stack:read') ? runtimeContext.routes.host : undefined
+	const dictateStatus = $derived(
+		!voiceState.conversationActive && voiceState.status === 'recording'
+			? 'Recording'
+			: !voiceState.conversationActive && voiceState.status === 'transcribing'
+				? 'Transcribing'
+				: null
 	);
-	// Voice settings live on the connections page (client-owned, per-device).
-	// Link straight to the section so voice is always configurable — and
-	// recoverable — from chat, even when no engine is currently usable.
-	const voiceSettingsHref = `${resolve('/connections')}#voice`;
+	const voiceEnabled = $derived(voiceState.sttEngine !== 'disabled' && voiceState.sttSupported);
+	type OpenPalmVoiceBridge = {
+		requestMicPermission?: () => Promise<string>;
+	};
 
 	// Composer draft — dictation inserts here instead of auto-sending, so
-	// the user reviews spoken text before it goes out. (The navbar
-	// VoiceControl keeps its auto-send behavior on other pages.)
+	// the user reviews spoken text before it goes out.
 	let draft = $state('');
 
-	function toggleVoice(): void {
+	async function prepareMicrophoneAccess(): Promise<boolean> {
+		const openpalm = (window as Window & { openpalm?: OpenPalmVoiceBridge }).openpalm;
+		const status = await openpalm?.requestMicPermission?.();
+		if (status === 'denied-no-prompt') {
+			voiceState.errorMessage =
+				'This OpenPalm build cannot request microphone access on macOS. Please update to the latest version of the desktop app.';
+			return false;
+		}
+		if (status === 'denied' || status === 'restricted') {
+			voiceState.errorMessage =
+				'Microphone access is turned off. In the System Settings window that just opened, enable OpenPalm under Microphone, then quit and reopen the app.';
+			return false;
+		}
+		return true;
+	}
+
+	async function toggleVoice(): Promise<void> {
 		// startListening takes the mic from conversation mode, so the dedicated
 		// record control always does what its accessible name promises.
 		if (voiceActive) {
 			stopListening();
-		} else {
+		} else if (await prepareMicrophoneAccess()) {
 			startListening((transcript) => {
 				const trimmed = transcript.trim();
 				if (!trimmed) return;
@@ -239,62 +221,31 @@
 		}
 	}
 
-	function toggleConversation(): void {
-		if (voiceState.conversationActive) {
-			stopConversation();
-		} else {
-			startConversation((text) => {
-				// Barge-in aware: stops an in-flight reply before sending so the
-				// utterance is never dropped by send()'s sending-guard.
-				void chat.sendUtterance(text);
-			});
-		}
-	}
-
-	function toggleSpeak(): void {
-		setTtsAutoEnabled(!voiceState.ttsAutoEnabled);
-	}
-
-	// ── New session ────────────────────────────────────────────────────────
-
-	async function beginNew(): Promise<void> {
-		await chat.startNewSession();
-		await goto(resolve('/chat'), { replaceState: true });
-		closeGarden();
-	}
-
-	// ── Endpoint switching ──────────────────────────────────────────────────
-
-	let endpointSwitching = $state(false);
-
-	async function activateEndpoint(id: string): Promise<void> {
-		if (endpointSwitching) return;
-		if (id === endpointsService.active?.id) {
-			closeGarden();
+	async function syncSessionUrl(sessionId: string | null, replace: boolean): Promise<void> {
+		const target = buildChatPath(sessionId, endpointsService.activeId);
+		if (`${page.url.pathname}${page.url.search}` === target) return;
+		if (replace) {
+			// eslint-disable-next-line svelte/no-navigation-without-resolve -- canonical session path built internally
+			replaceState(target, page.state);
 			return;
 		}
-		endpointSwitching = true;
-		try {
-			await endpointsService.activate(id);
-			closeGarden();
-		} catch {
-			/* error surfaced via endpointsService.error */
-		} finally {
-			endpointSwitching = false;
-		}
+		// eslint-disable-next-line svelte/no-navigation-without-resolve -- canonical session path built internally
+		await goto(target);
 	}
 
 	// ── Mount ─────────────────────────────────────────────────────────────
 	onMount(() => {
 		document.documentElement.classList.add('chat-locked');
-		document.body.classList.add('chat-locked', 'stillness-mode');
+		document.body.classList.add('chat-locked');
+		const motionPreference = window.matchMedia('(prefers-reduced-motion: reduce)');
+		const updateMotionPreference = (): void => {
+			reducedMotion = motionPreference.matches;
+		};
+		updateMotionPreference();
+		motionPreference.addEventListener('change', updateMotionPreference);
 
 		function onKey(e: KeyboardEvent): void {
-			if (e.key === 'Escape') {
-				stopConversation();
-				closeGarden();
-				closeToolDrawer();
-			}
+			if (e.key === 'Escape' && voiceState.conversationActive) stopConversation();
 		}
 		document.addEventListener('keydown', onKey);
 
@@ -311,6 +262,14 @@
 			})();
 		}
 		document.addEventListener('visibilitychange', handleVisibilityChange);
+		const unsubscribeSessionNavigation = onConnectionActivated(async (endpointId) => {
+			await tick();
+			const endpointState = chat.byEndpoint.get(endpointId);
+			await syncSessionUrl(
+				endpointState?.activeSessionId ?? endpointState?.sessions[0]?.id ?? null,
+				true
+			);
+		});
 
 		void initVoice();
 
@@ -318,25 +277,46 @@
 			try {
 				advancedModeService.init();
 				const requestedSessionId = page.url.searchParams.get('session');
+				const requestedAssistantId = page.url.searchParams.get('assistant');
+				const beginNewRequested = page.url.searchParams.get('new') === '1';
 				if (advancedModeService.enabled) {
 					// eslint-disable-next-line svelte/no-navigation-without-resolve -- dynamic session path built internally, not a static route id
-					await goto(buildAdvancedPath(requestedSessionId), { replaceState: true });
+					await goto(buildAdvancedPath(requestedSessionId, requestedAssistantId), {
+						replaceState: true
+					});
 					return;
 				}
 				await endpointsService.load();
-				await chat.onEndpointChanged(endpointsService.activeId);
+				// Another shell component can already own the in-flight load. load()
+				// returns early in that case, so wait for that shared request to settle.
+				while (!endpointsService.loaded && !endpointsService.error) {
+					await new Promise<void>((resolveLoad) => setTimeout(resolveLoad, 0));
+				}
+				let endpointId =
+					endpointsService.activeId || endpointsService.endpoints[0]?.id || 'default';
+				const requestedAssistantExists =
+					requestedAssistantId !== null &&
+					endpointsService.endpoints.some((endpoint) => endpoint.id === requestedAssistantId);
+				if (requestedAssistantExists && requestedAssistantId !== endpointsService.activeId) {
+					await endpointsService.activate(requestedAssistantId);
+					endpointId = requestedAssistantId;
+				} else {
+					await chat.onEndpointChanged(endpointId);
+				}
+				const endpointState = chat.byEndpoint.get(endpointId);
 				const requestedSessionExists =
-					requestedSessionId &&
-					chat.byEndpoint
-						.get(chat.activeEndpointId)
-						?.sessions.some((session) => session.id === requestedSessionId);
+					requestedSessionId !== null &&
+					Boolean(endpointState?.sessions.some((session) => session.id === requestedSessionId));
+				let canonicalSessionId: string | null = requestedSessionExists
+					? requestedSessionId
+					: (endpointState?.activeSessionId ?? endpointState?.sessions[0]?.id ?? null);
 				if (requestedSessionExists && requestedSessionId !== chat.activeSessionId) {
 					await chat.openSession(requestedSessionId);
 				}
-				if (page.url.searchParams.get('new') === '1') {
-					await chat.startNewSession();
-					await goto(resolve('/chat'), { replaceState: true });
+				if (beginNewRequested) {
+					canonicalSessionId = await chat.startNewSession();
 				}
+				await syncSessionUrl(canonicalSessionId, true);
 			} catch {
 				chat.error = 'Unable to reach the assistant.';
 			}
@@ -344,11 +324,13 @@
 
 		return () => {
 			visDestroyed = true;
-			// Leaving the page ends the hands-free loop — the mic must not
-			// stay hot on other routes.
+			// Neither capture mode may leave the mic hot on another route.
 			stopConversation();
+			stopListening();
 			document.documentElement.classList.remove('chat-locked');
-			document.body.classList.remove('chat-locked', 'stillness-mode');
+			document.body.classList.remove('chat-locked');
+			unsubscribeSessionNavigation();
+			motionPreference.removeEventListener('change', updateMotionPreference);
 			document.removeEventListener('keydown', onKey);
 			document.removeEventListener('visibilitychange', handleVisibilityChange);
 		};
@@ -356,7 +338,7 @@
 </script>
 
 <svelte:head>
-	<title>{endpointsService.active?.label ?? 'OpenPalm'}</title>
+	<title>{activeConversationTitle} - {activeConnectionLabel}</title>
 </svelte:head>
 
 <h1 class="sr-only">Chat</h1>
@@ -366,182 +348,29 @@
 <div class="s-moon"></div>
 <div class="s-grain"></div>
 
-<!-- corners: the only persistent chrome -->
-<!-- top-left: presence / logo -->
-<div class="s-corner s-corner-left">
-	<Presence
-		height={32}
-		voiceEnabled={false}
-		sending={chat.sending}
-		voiceStatus={voiceState.status}
-		onToggle={toggleVoice}
-	/>
-</div>
+<ChatNavbar bind:drawerOpen={navigationOpen} />
 
-<!-- top-right: admin (capability-gated) + advanced -->
-<div class="s-corner s-corner-right" class:drawer-hidden={toolDrawerOpen || gardenOpen}>
-	{#if adminRoute}
-		<div class="s-glyph-cell">
-			<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- destination comes from runtimeContext.routes, not a static route id -->
-			<a class="s-glyph-btn" href={adminRoute} aria-label="Admin — manage this host">
-				<IconSettings size={20} />
-			</a>
-			<span class="s-glyph-label">admin</span>
-		</div>
-	{/if}
-	<div class="s-glyph-cell">
-		<button
-			class="s-glyph-btn"
-			type="button"
-			aria-label="Advanced mode"
-			aria-pressed={advancedModeService.enabled}
-			onclick={() => {
-				advancedModeService.setEnabled(true);
-				// eslint-disable-next-line svelte/no-navigation-without-resolve -- dynamic session path built internally, not a static route id
-				void goto(buildAdvancedPath(chat.activeSessionId));
-			}}
-		>
-			<IconAdvanced size={20} />
-		</button>
-		<span class="s-glyph-label">advanced</span>
-	</div>
-</div>
-
-<!-- bottom-left: conversations first, then small-screen activity + theme -->
-<div class="s-corner s-corner-bottom-left" class:drawer-hidden={toolDrawerOpen}>
-	<div class="s-glyph-cell">
-		<span class="s-glyph-label">{gardenOpen ? 'close' : 'conversations'}</span>
-		<button
-			class="s-glyph-btn"
-			type="button"
-			aria-haspopup="dialog"
-			aria-expanded={gardenOpen}
-			aria-controls="s-garden-veil"
-			onclick={gardenOpen ? closeGarden : openGarden}
-			aria-label={gardenOpen ? 'Return to the conversation' : 'Conversations'}
-		>
-			{#if gardenOpen}
-				<IconClose size={20} />
-			{:else}
-				<IconConversations size={22} />
-			{/if}
-		</button>
-	</div>
-	<div class="s-glyph-cell s-tool-toggle-cell s-footer-extra" class:modal-hidden={gardenOpen}>
-		<span class="s-glyph-label">activity</span>
-		<button
-			class="s-glyph-btn"
-			type="button"
-			aria-haspopup="dialog"
-			aria-expanded={toolDrawerOpen}
-			aria-controls="s-tool-drawer"
-			aria-label="Activity"
-			onclick={toggleToolDrawer}
-		>
-			<IconActivity size={20} />
-		</button>
-	</div>
-	<div class="s-glyph-cell s-footer-extra" class:modal-hidden={gardenOpen}>
-		<span class="s-glyph-label">theme</span>
-		<button
-			class="s-glyph-btn s-orb-btn"
-			type="button"
-			onclick={() => themeService.toggle()}
-			aria-label={themeService.preference === 'system'
-				? 'Switch to light theme'
-				: themeService.preference === 'light'
-					? 'Switch to dark theme'
-					: 'Switch to system theme'}
-		>
-			{#if themeService.preference === 'light'}
-				<IconThemeLight size={20} />
-			{:else if themeService.preference === 'dark'}
-				<IconThemeDark size={20} />
-			{:else}
-				<IconThemeSystem size={20} />
-			{/if}
-		</button>
-	</div>
-</div>
-
-<!-- bottom-right: spoken responses, dictation, and hands-free conversation -->
-<!-- Hidden while the drawer is open: the drawer owns the top layer (its close X,
-     the scrim and Escape close it), so this cluster must not bleed through. -->
-<div
-	class="s-corner s-corner-bottom-right"
-	class:drawer-hidden={toolDrawerOpen || gardenOpen}
->
-	<!-- Always rendered — including when no speech engine is usable — so voice
-	     is configurable (and recoverable) from the place its controls live,
-	     instead of silently vanishing with no path to settings. -->
-	<div class="s-glyph-cell">
-		<span class="s-glyph-label">voice settings</span>
-		<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- resolve()d route + '#voice' fragment -->
-		<a class="s-glyph-btn" href={voiceSettingsHref} aria-label="Voice settings">
-			<IconSettings size={20} />
-		</a>
-	</div>
-	{#if ttsAvailable}
-		<div class="s-glyph-cell">
-			<span class="s-glyph-label">speaker</span>
-			<button
-				class="s-glyph-btn"
-				type="button"
-				aria-label={ttsEnabled ? 'Turn off spoken responses' : 'Turn on spoken responses'}
-				aria-pressed={ttsEnabled}
-				onclick={toggleSpeak}
-			>
-				{#if ttsEnabled}
-					<IconSoundOn size={20} />
-				{:else}
-					<IconSoundOff size={20} />
-				{/if}
-			</button>
-		</div>
-	{/if}
-	{#if voiceEnabled}
-		<div class="s-glyph-cell">
-			<span class="s-glyph-label">{voiceActive ? 'recording' : 'record'}</span>
-			<button
-				class="s-glyph-btn"
-				class:active={voiceActive}
-				type="button"
-				aria-label={voiceActive ? 'Stop recording' : 'Start recording'}
-				aria-pressed={voiceActive}
-				onclick={toggleVoice}
-			>
-				<IconMic size={20} />
-			</button>
-		</div>
-		<div class="s-glyph-cell">
-			<span class="s-glyph-label">{voiceState.conversationActive ? 'listening' : 'conversation'}</span>
-			<button
-				class="s-glyph-btn"
-				class:active={voiceState.conversationActive}
-				type="button"
-				aria-label={voiceState.conversationActive
-					? 'End conversation mode'
-					: 'Start conversation mode'}
-				aria-pressed={voiceState.conversationActive}
-				onclick={toggleConversation}
-			>
-				<IconWaves size={20} />
-			</button>
-		</div>
-	{/if}
-</div>
-
-<!-- left rail: running tool activity (wide screens) -->
-<aside class="s-tool-rail" class:has-items={chat.toolLog.length > 0} aria-label="Assistant activity">
-	<ToolLog items={chat.toolLog} />
-</aside>
+{#if chat.toolLog.length > 0}
+	<aside
+		class="s-tool-rail"
+		aria-label="Assistant activity"
+		inert={navigationOpen}
+		transition:fly={{
+			x: reducedMotion ? 0 : -24,
+			duration: reducedMotion ? 0 : 220
+		}}
+	>
+		<ToolLog items={chat.toolLog} />
+	</aside>
+{/if}
 
 <!-- conversation thread -->
 <main
 	class="s-scroll"
+	class:has-activity={chat.toolLog.length > 0}
 	id="s-scroll"
 	aria-label="Chat history"
-	inert={toolDrawerOpen || gardenOpen}
+	inert={navigationOpen}
 >
 	<div
 		class="s-thread"
@@ -600,7 +429,7 @@
 
 <!-- error banner -->
 {#if chat.error}
-	<div class="s-error-banner" role="alert">
+	<div class="s-error-banner" role="alert" inert={navigationOpen}>
 		<span class="s-error-msg">{chat.error}</span>
 		{#if chat.lastFailedText}
 			<button class="s-error-reconnect" type="button" onclick={retryFailedSend}>retry</button>
@@ -618,14 +447,14 @@
 {/if}
 
 <!-- jump-to-latest pill: shown when the user has scrolled away mid-stream.
-     Inert while the drawer or veil owns the top layer, like <main> and .s-base —
+     Inert while the side panel owns the top layer, like <main> and .s-base —
      the fixed pill must not stay clickable/focusable underneath them. -->
 {#if !followingLatest && chat.sending}
 	<button
 		class="s-jump-latest"
 		type="button"
 		aria-label="Jump to latest"
-		inert={toolDrawerOpen || gardenOpen}
+		inert={navigationOpen}
 		onclick={jumpToLatest}
 	>
 		↓ latest
@@ -633,7 +462,7 @@
 {/if}
 
 <!-- composer -->
-<div class="s-base" inert={toolDrawerOpen || gardenOpen}>
+<div class="s-base" class:has-activity={chat.toolLog.length > 0} inert={navigationOpen}>
 	<VoiceStatusStrip thinking={chat.sending} />
 	<ChatInput
 		bind:draft
@@ -644,199 +473,25 @@
 	/>
 </div>
 
-<!-- garden veil -->
-<div
-	id="s-garden-veil"
-	class="s-veil"
-	class:open={gardenOpen}
-	inert={!gardenOpen}
-	aria-hidden={!gardenOpen}
-	role="dialog"
-	aria-modal="true"
-	aria-label="Conversations and assistant"
-	onkeydown={(event) => handleTrapKeydown(event, closeGarden)}
-	{@attach createFocusTrap({ active: gardenOpen, deferRestore: true })}
+<button
+	class="s-dictate-btn"
+	class:active={voiceActive}
+	class:transcribing={dictateStatus === 'Transcribing'}
+	type="button"
+	aria-label={voiceActive ? 'Stop dictation' : 'Dictate'}
+	aria-pressed={voiceActive}
+	disabled={!voiceEnabled}
+	inert={navigationOpen}
+	onclick={toggleVoice}
 >
-	<div class="s-veil-head">
-		<div>
-			<div class="s-veil-title">Conversations</div>
-			{#if endpointsService.active}
-				<div class="s-veil-sub">{endpointsService.active.label}</div>
-			{/if}
-		</div>
-		<button
-			class="s-head-close"
-			type="button"
-			onclick={closeGarden}
-			aria-label="Close conversations"
-		>
-			<IconClose size={20} />
-		</button>
-	</div>
-
-	<div class="s-veil-body">
-		<section class="s-veil-section">
-			<div class="s-section-head">
-				<div class="s-veil-section-label">assistant</div>
-				<a class="s-new-convo" href={resolve('/connections')} onclick={closeGarden}>
-					<span class="s-new-mark" aria-hidden="true">
-						<svg width="11" height="11" viewBox="0 0 12 12" fill="none">
-							<circle cx="6" cy="6" r="2.4" stroke="currentColor" stroke-width="1.1" />
-							<line
-								x1="4.5"
-								y1="3.6"
-								x2="4.5"
-								y2="1.5"
-								stroke="currentColor"
-								stroke-width="1.1"
-								stroke-linecap="round"
-							/>
-							<line
-								x1="7.5"
-								y1="3.6"
-								x2="7.5"
-								y2="1.5"
-								stroke="currentColor"
-								stroke-width="1.1"
-								stroke-linecap="round"
-							/>
-							<line
-								x1="6"
-								y1="8.4"
-								x2="6"
-								y2="10.5"
-								stroke="currentColor"
-								stroke-width="1.1"
-								stroke-linecap="round"
-							/>
-						</svg>
-					</span>
-					manage connections
-				</a>
-			</div>
-			<div class="s-endpoint-list" role="group" aria-label="Assistant endpoints">
-				{#each endpointsService.endpoints as ep (ep.id)}
-					<div class="s-endpoint-item">
-						<button
-							type="button"
-							class="s-endpoint"
-							class:active={ep.id === endpointsService.active?.id}
-							aria-current={ep.id === endpointsService.active?.id ? 'true' : undefined}
-							onclick={() => void activateEndpoint(ep.id)}
-							disabled={endpointSwitching}
-						>
-							<div class="s-endpoint-label">{ep.label}</div>
-							<div class="s-endpoint-url">{ep.url}</div>
-						</button>
-						{#if ep.url && isLocalAssistantUrl(ep.url)}
-							<a class="s-endpoint-manage" href={resolve('/host')} onclick={closeGarden}
-								>manage this assistant</a
-							>
-						{/if}
-					</div>
-				{/each}
-			</div>
-		</section>
-
-		<section class="s-veil-section">
-			<div class="s-section-head">
-				<div class="s-veil-section-label">conversations</div>
-				<button class="s-new-convo" type="button" onclick={() => void beginNew()}>
-					<span class="s-new-mark" aria-hidden="true">+</span> begin anew
-				</button>
-			</div>
-			<SessionList onChosen={closeGarden} hideNewBtn={true} />
-		</section>
-
-		<section class="s-veil-section s-veil-utilities" aria-label="Chat display and activity">
-			<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- resolve()d route + '#voice' fragment -->
-			<a class="s-utility-btn" href={voiceSettingsHref} onclick={closeGarden}>
-				<IconMic size={18} />
-				<span>Voice settings</span>
-			</a>
-			{#if adminRoute}
-				<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- destination comes from runtimeContext.routes, not a static route id -->
-				<a class="s-utility-btn" href={adminRoute} onclick={closeGarden}>
-					<IconSettings size={18} />
-					<span>Admin</span>
-				</a>
-			{/if}
-			<button class="s-utility-btn" type="button" onclick={openActivityFromGarden}>
-				<IconActivity size={18} />
-				<span>Activity</span>
-			</button>
-			<button
-				class="s-utility-btn"
-				type="button"
-				onclick={() => themeService.toggle()}
-				aria-label={themeService.preference === 'system'
-					? 'Switch to light theme'
-					: themeService.preference === 'light'
-						? 'Switch to dark theme'
-						: 'Switch to system theme'}
-			>
-				{#if themeService.preference === 'light'}
-					<IconThemeLight size={18} />
-				{:else if themeService.preference === 'dark'}
-					<IconThemeDark size={18} />
-				{:else}
-					<IconThemeSystem size={18} />
-				{/if}
-				<span>Theme</span>
-			</button>
-		</section>
-	</div>
-</div>
-
-<!-- tool activity drawer (small screens) -->
-{#if toolDrawerOpen}
-	<button
-		class="s-tool-scrim"
-		type="button"
-		tabindex={-1}
-		aria-label="Close activity overlay"
-		onclick={closeToolDrawer}
-	></button>
-{/if}
-<div
-	id="s-tool-drawer"
-	class="s-tool-drawer"
-	class:open={toolDrawerOpen}
-	inert={!toolDrawerOpen}
-	aria-hidden={!toolDrawerOpen}
-	role="dialog"
-	aria-modal="true"
-	aria-label="Assistant activity"
-	onkeydown={(event) => handleTrapKeydown(event, closeToolDrawer)}
-	{@attach createFocusTrap({ active: toolDrawerOpen, deferRestore: true })}
->
-	<div class="s-tool-drawer-head">
-		<button
-			class="s-head-close"
-			type="button"
-			onclick={closeToolDrawer}
-			aria-label="Close activity"
-		>
-			<IconClose size={20} />
-		</button>
-	</div>
-	<div class="s-tool-drawer-body">
-		{#if chat.toolLog.length > 0}
-			<ToolLog items={chat.toolLog} />
-		{:else}
-			<p class="s-tool-drawer-empty">
-				Steps the assistant takes — searches, edits, commands — will show up here as it works.
-			</p>
-		{/if}
-	</div>
-</div>
+	{#if dictateStatus}
+		<span class="s-dictate-state" aria-live="polite">{dictateStatus}</span>
+	{:else}
+		<IconMic size={19} />
+	{/if}
+</button>
 
 <style>
-	/* Hide the global navbar on the Stillness chat page */
-	:global(body.stillness-mode .navbar) {
-		display: none !important;
-	}
-
 	/* Visually hidden but available to assistive tech (document outline / h1). */
 	.sr-only {
 		position: absolute;
@@ -895,207 +550,18 @@
 		background-image: url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0naHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmcnIHdpZHRoPScxNjAnIGhlaWdodD0nMTYwJz48ZmlsdGVyIGlkPSduJz48ZmVUdXJidWxlbmNlIHR5cGU9J2ZyYWN0YWxOb2lzZScgYmFzZUZyZXF1ZW5jeT0nMC45JyBudW1PY3RhdmVzPScyJyBzdGl0Y2hUaWxlcz0nc3RpdGNoJy8+PC9maWx0ZXI+PHJlY3Qgd2lkdGg9JzEwMCUnIGhlaWdodD0nMTAwJScgZmlsdGVyPSd1cmwoI24pJy8+PC9zdmc+');
 	}
 
-	/* ── Corners ──────────────────────────────────────────────────────── */
-
-	.s-corner {
-		position: fixed;
-		z-index: 70;
-		display: flex;
-		align-items: flex-end;
-		gap: 0.5rem;
-		padding: var(--s-chrome-pad);
-	}
-
-	.s-corner-left {
-		top: 0;
-		left: 0;
-		align-items: flex-start;
-		padding-top: max(var(--s-chrome-pad), env(safe-area-inset-top));
-		padding-left: max(var(--s-chrome-pad), env(safe-area-inset-left));
-	}
-	.s-corner-right {
-		top: 0;
-		right: 0;
-		align-items: flex-start;
-		padding-top: max(var(--s-chrome-pad), env(safe-area-inset-top));
-		padding-right: max(var(--s-chrome-pad), env(safe-area-inset-right));
-	}
-	.s-corner-bottom-left {
-		bottom: 0;
-		left: 0;
-		padding-bottom: max(var(--s-chrome-pad), env(safe-area-inset-bottom));
-		padding-left: max(var(--s-chrome-pad), env(safe-area-inset-left));
-	}
-	.s-corner-bottom-right {
-		bottom: 0;
-		right: 0;
-		padding-right: max(var(--s-chrome-pad), env(safe-area-inset-right));
-		padding-bottom: max(var(--s-chrome-pad), env(safe-area-inset-bottom));
-	}
-
-	/* Each icon + its label stacked vertically */
-	.s-glyph-cell {
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		gap: 0.2rem;
-	}
-	.s-corner-bottom-right .s-glyph-cell {
-		align-items: flex-end;
-	}
-	.s-glyph-btn {
-		position: relative;
-		appearance: none;
-		border: 0;
-		background: none;
-		cursor: pointer;
-		/* Renders as <button> or <a> (admin / voice-settings links). */
-		text-decoration: none;
-		color: var(--s-ink-2);
-		/* >= 44x44 hit area without enlarging the 20px icon and without the old
-		   negative margin that pushed the focus ring off the viewport edge. The
-		   surrounding --s-chrome-pad provides safe edge clearance. */
-		min-width: 44px;
-		min-height: 44px;
-		padding: 0.4rem;
-		margin: 0;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		border-radius: 50%;
-		transition:
-			color var(--s-t-quick) var(--s-ease),
-			transform 0.6s var(--s-ease);
-	}
-
-	.s-glyph-btn:hover {
-		color: var(--s-ink);
-	}
-	.s-glyph-btn:active {
-		transform: scale(0.94);
-	}
-	.s-glyph-btn :global(.s-icon) {
-		display: block;
-	}
-
-	.s-glyph-btn:focus-visible {
-		outline: none;
-		box-shadow:
-			0 0 0 1px var(--s-paper),
-			0 0 0 2px var(--s-ink-3);
-		border-radius: var(--s-radius-focus);
-	}
-
-	.s-glyph-label {
-		font-family: var(--s-font-mono);
-		font-size: var(--s-type-mark);
-		letter-spacing: var(--s-track-label);
-		text-transform: uppercase;
-		color: var(--s-ink-3);
-		opacity: 0;
-		transform: translateY(2px);
-		transition:
-			opacity var(--s-t-quick) var(--s-ease),
-			transform var(--s-t-quick) var(--s-ease);
-		white-space: nowrap;
-		pointer-events: none;
-	}
-
-	.s-glyph-cell:hover .s-glyph-label {
-		opacity: 1;
-		transform: none;
-	}
-
-	/* Touch devices have no hover — keep glyph labels persistently visible so the
-	   cryptic icons (e.g. the ">_" advanced glyph) are never unlabelled. */
-	@media (hover: none) {
-		.s-glyph-label {
-			opacity: 1;
-			transform: none;
-		}
-	}
-
-	.s-glyph-btn[aria-pressed='true'] {
-		color: var(--s-seal);
-	}
-
-	/* Recording and conversation remain visibly active when responsive rules
-	   hide their text labels. The inset ring does not depend on color alone. */
-	.s-corner-bottom-right .s-glyph-btn.active::after {
-		content: '';
-		position: absolute;
-		inset: 5px;
-		border: 1px solid currentColor;
-		border-radius: 50%;
-		pointer-events: none;
-	}
-
-	/* While the activity drawer owns the top layer, hide the corner clusters that
-	   would otherwise bleed over it (corners sit above the drawer otherwise). */
-	.s-corner.drawer-hidden {
-		display: none;
-	}
-
-	.s-glyph-cell.modal-hidden {
-		display: none;
-	}
-
-	.s-veil-utilities {
-		display: flex;
-		flex-wrap: wrap;
-		gap: var(--s-sp-2);
-	}
-
-	.s-utility-btn {
-		display: inline-flex;
-		align-items: center;
-		gap: var(--s-sp-2);
-		min-height: 44px;
-		padding: 0.5rem 0.75rem;
-		border: var(--s-hair) solid var(--s-line);
-		background: none;
-		color: var(--s-ink-2);
-		font: inherit;
-		cursor: pointer;
-		/* Renders as <button> or <a> (voice settings / admin links). */
-		text-decoration: none;
-	}
-
-	@media (prefers-reduced-motion: reduce) {
-		.s-glyph-btn {
-			transition: color var(--s-t-quick) var(--s-ease);
-		}
-		.s-glyph-btn:active {
-			transform: none;
-		}
-	}
-
 	/* ── Conversation ─────────────────────────────────────────────────── */
 
 	.s-scroll {
 		position: relative;
 		z-index: 10;
-		height: 100dvh;
+		height: calc(100dvh - 52px);
 		overflow-y: auto;
 		overflow-x: hidden;
 		-webkit-overflow-scrolling: touch;
 		scrollbar-width: none;
 		background: var(--s-paper);
 		transition: background var(--s-t-theme) var(--s-ease);
-		-webkit-mask-image: linear-gradient(
-			to bottom,
-			transparent 0,
-			var(--s-paper) 17%,
-			var(--s-paper) 84%,
-			transparent 100%
-		);
-		mask-image: linear-gradient(
-			to bottom,
-			transparent 0,
-			var(--s-paper) 17%,
-			var(--s-paper) 84%,
-			transparent 100%
-		);
 	}
 
 	.s-scroll::-webkit-scrollbar {
@@ -1105,7 +571,7 @@
 	.s-thread {
 		max-width: var(--s-measure);
 		margin: 0 auto;
-		padding: 34vh var(--s-frame) 40vh;
+		padding: clamp(3rem, 8vh, 5rem) var(--s-frame) clamp(9rem, 20vh, 12rem);
 		display: flex;
 		flex-direction: column;
 		gap: var(--s-breath);
@@ -1207,7 +673,7 @@
 		color: var(--s-ink-3);
 	}
 
-	/* ── Presence + composer ──────────────────────────────────────────── */
+	/* ── Composer dock ────────────────────────────────────────────────── */
 
 	.s-base {
 		position: fixed;
@@ -1218,16 +684,12 @@
 		display: flex;
 		flex-direction: column;
 		align-items: center;
-		/* The bottom-right voice cluster always owns a full footer row. Keep the
-		   composer above it at every width; horizontal separation alone is not
-		   reliable once labels or localized accessible chrome grow. */
-		padding: 0 var(--s-frame);
-		padding-bottom: calc(5.25rem + env(safe-area-inset-bottom));
+		padding: var(--s-sp-5) var(--s-frame) max(var(--s-sp-3), env(safe-area-inset-bottom));
 		background: linear-gradient(
 			to top,
 			var(--s-paper) 0%,
-			var(--s-paper) 46%,
-			color-mix(in srgb, var(--s-paper) 72%, transparent) 74%,
+			var(--s-paper) 56%,
+			color-mix(in srgb, var(--s-paper) 78%, transparent) 82%,
 			transparent 100%
 		);
 		transition: background var(--s-t-theme) var(--s-ease);
@@ -1238,23 +700,60 @@
 		pointer-events: auto;
 	}
 
-	.s-base::before {
-		content: '';
-		position: absolute;
-		left: 50%;
-		bottom: 0;
-		z-index: -1;
-		width: min(34rem, 90%);
-		height: 230px;
-		transform: translateX(-50%);
-		background: radial-gradient(
-			60% 70% at 50% 64%,
-			var(--s-paper) 0%,
-			var(--s-paper) 40%,
-			transparent 78%
-		);
-		pointer-events: none;
-		transition: background var(--s-t-theme) var(--s-ease);
+	.s-base :global(.s-send-btn) {
+		margin-block: 0;
+	}
+
+	.s-dictate-btn {
+		position: fixed;
+		z-index: 70;
+		right: max(var(--s-sp-3), env(safe-area-inset-right));
+		bottom: max(var(--s-sp-3), env(safe-area-inset-bottom));
+		width: 44px;
+		height: 44px;
+		padding: var(--s-sp-1);
+		display: inline-flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		border: var(--s-hair) solid var(--s-line);
+		border-radius: 50%;
+		background: var(--s-paper);
+		color: var(--s-ink-3);
+		font-family: var(--s-font-mono);
+		font-size: var(--s-type-mark-sm);
+		letter-spacing: var(--s-track-label);
+		text-transform: uppercase;
+		cursor: pointer;
+	}
+
+	.s-dictate-btn:hover,
+	.s-dictate-btn.active {
+		color: var(--s-seal);
+		border-color: currentColor;
+	}
+
+	.s-dictate-btn.transcribing {
+		border-style: dashed;
+	}
+
+	.s-dictate-btn:disabled {
+		opacity: 0.45;
+		cursor: not-allowed;
+	}
+
+	.s-dictate-btn:focus-visible {
+		outline: 2px solid var(--s-seal);
+		outline-offset: 1px;
+	}
+
+	.s-dictate-state {
+		max-width: 38px;
+		font-size: 0.48rem;
+		line-height: 1.05;
+		letter-spacing: 0;
+		overflow-wrap: anywhere;
+		text-align: center;
 	}
 
 	/* ── Error banner ─────────────────────────────────────────────────── */
@@ -1262,7 +761,7 @@
 	.s-error-banner {
 		position: fixed;
 		z-index: 50;
-		bottom: clamp(6rem, 22vh, 10rem);
+		bottom: 8rem;
 		left: 50%;
 		transform: translateX(-50%);
 		display: flex;
@@ -1314,7 +813,7 @@
 	.s-jump-latest {
 		position: fixed;
 		z-index: 40;
-		bottom: clamp(6.5rem, 18vh, 9rem);
+		bottom: 8.5rem;
 		left: 50%;
 		transform: translateX(-50%);
 		appearance: none;
@@ -1342,469 +841,64 @@
 			0 0 0 2px var(--s-ink-3);
 	}
 
-	/* ── Garden veil ──────────────────────────────────────────────────── */
-
-	.s-veil {
-		position: fixed;
-		inset: 0;
-		z-index: 60;
-		background: var(--s-paper);
-		opacity: 0;
-		pointer-events: none;
-		transition:
-			opacity 0.8s var(--s-ease),
-			background var(--s-t-theme) var(--s-ease);
-		display: flex;
-		flex-direction: column;
-		overflow: hidden;
-	}
-
-	.s-veil.open {
-		opacity: 1;
-		pointer-events: auto;
-	}
-
-	.s-veil-head {
-		padding: 20px 28px 14px;
-		display: flex;
-		align-items: baseline;
-		gap: 1rem;
-		max-width: var(--s-measure);
-		width: 100%;
-		margin: 0 auto;
-		flex-shrink: 0;
-		border-bottom: 1px solid var(--s-line-soft);
-	}
-
-	.s-veil-title {
-		font-family: var(--s-font-header);
-		font-weight: 400;
-		font-size: 1.55rem;
-		letter-spacing: 0.01em;
-		color: var(--s-ink);
-	}
-
-	.s-veil-sub {
-		font-family: var(--s-font-mono);
-		font-size: var(--s-type-mark);
-		letter-spacing: var(--s-track-label);
-		text-transform: uppercase;
-		color: var(--s-ink-3);
-		margin-top: 0.3rem;
-	}
-
-	.s-veil-body {
-		flex: 1;
-		overflow-y: auto;
-		scrollbar-width: none;
-		margin: 0 auto;
-		padding: 0.5rem clamp(1.4rem, 5vw, 3rem) clamp(2rem, 6vw, 3rem);
-		width: 100%;
-		max-width: var(--s-measure);
-		display: flex;
-		flex-direction: column;
-		gap: clamp(2rem, 5vh, 3.2rem);
-		min-height: 0;
-	}
-
-	.s-veil-body::-webkit-scrollbar {
-		display: none;
-	}
-
-	.s-veil-section {
-		display: flex;
-		flex-direction: column;
-	}
-
-	.s-veil-section-label {
-		font-family: var(--s-font-mono);
-		font-size: var(--s-type-mark-sm);
-		letter-spacing: 0.26em;
-		text-transform: uppercase;
-		color: var(--s-ink-3);
-		margin-bottom: 0.7rem;
-	}
-
-	.s-section-head {
-		display: flex;
-		align-items: baseline;
-		justify-content: space-between;
-		gap: 1rem;
-		margin-bottom: 0;
-	}
-
-	.s-section-head .s-veil-section-label {
-		margin-bottom: 0;
-	}
-
-	.s-new-convo {
-		appearance: none;
-		border: 0;
-		background: none;
-		cursor: pointer;
-		display: flex;
-		align-items: center;
-		gap: 0.4rem;
-		font-family: var(--s-font-mono);
-		font-size: var(--s-type-mark-sm);
-		letter-spacing: var(--s-track-label);
-		text-transform: uppercase;
-		color: var(--s-ink-3);
-		padding: 0;
-		text-decoration: none;
-		transition: color var(--s-t-quick) var(--s-ease);
-	}
-
-	.s-new-convo:hover {
-		color: var(--s-seal);
-	}
-
-	.s-new-mark {
-		color: var(--s-seal);
-		font-size: 0.9rem;
-		line-height: 1;
-	}
-
-	/* Endpoint list (inline Stillness style) */
-	.s-endpoint-list {
-		display: flex;
-		flex-direction: column;
-	}
-
-	.s-endpoint {
-		appearance: none;
-		border: 0;
-		background: none;
-		cursor: pointer;
-		text-align: left;
-		width: 100%;
-		position: relative;
-		padding: 0.85rem 0 0.85rem 1.1rem;
-		color: var(--s-ink);
-		transition: none;
-	}
-
-	.s-endpoint::before {
-		content: '';
-		position: absolute;
-		left: 0;
-		top: 0.7rem;
-		bottom: 0.7rem;
-		width: 2px;
-		background: var(--s-seal);
-		opacity: 0;
-		transform: scaleY(0.4);
-		transform-origin: center;
-		transition:
-			opacity 0.6s var(--s-ease),
-			transform 0.6s var(--s-ease-settle);
-	}
-
-	.s-endpoint.active::before {
-		opacity: 0.8;
-		transform: scaleY(1);
-	}
-
-	.s-endpoint-label {
-		font-family: var(--s-font-display);
-		font-weight: 400;
-		font-size: var(--s-type-whisper);
-		color: var(--s-ink-2);
-		transition: color var(--s-t-quick) var(--s-ease);
-	}
-
-	.s-endpoint.active .s-endpoint-label,
-	.s-endpoint:hover .s-endpoint-label {
-		color: var(--s-ink);
-	}
-
-	.s-endpoint-url {
-		font-family: var(--s-font-mono);
-		font-size: var(--s-type-mark-sm);
-		letter-spacing: 0.06em;
-		color: var(--s-ink-3);
-		margin-top: 0.25rem;
-	}
-
-	.s-endpoint-item {
-		display: flex;
-		flex-direction: column;
-	}
-
-	.s-endpoint-manage {
-		display: block;
-		padding: 0.1rem 0 0.6rem 1.1rem;
-		font-family: var(--s-font-mono);
-		font-size: var(--s-type-mark-sm);
-		letter-spacing: var(--s-track-label);
-		text-transform: uppercase;
-		color: var(--s-ink-3);
-		text-decoration: none;
-		transition: color var(--s-t-quick) var(--s-ease);
-	}
-
-	.s-endpoint-manage:hover {
-		color: var(--s-seal);
-	}
-
-	/* ── Tool activity: left rail (wide) + drawer (small) ─────────────── */
+	/* ── Contextual activity ───────────────────────────────────────────── */
 
 	.s-tool-rail {
 		position: fixed;
 		z-index: 20;
 		left: 0;
-		top: clamp(76px, 11vh, 120px);
-		bottom: clamp(96px, 13vh, 150px);
+		top: 52px;
+		bottom: 132px;
 		width: clamp(220px, 23vw, 300px);
 		box-sizing: border-box;
+		min-width: 0;
 		padding-left: var(--s-chrome-pad);
 		padding-right: var(--s-sp-4);
 		overflow-y: auto;
 		scrollbar-width: none;
-		opacity: 0;
-		pointer-events: none;
-		transition: opacity var(--s-t-theme) var(--s-ease);
-		/* Fade long lists at top/bottom to signal scrollability (mirrors .s-scroll). */
-		-webkit-mask-image: linear-gradient(
-			to bottom,
-			transparent 0,
-			var(--s-paper) 8%,
-			var(--s-paper) 92%,
-			transparent 100%
-		);
-		mask-image: linear-gradient(
-			to bottom,
-			transparent 0,
-			var(--s-paper) 8%,
-			var(--s-paper) 92%,
-			transparent 100%
-		);
+		border-right: var(--s-hair) solid var(--s-line-soft);
 	}
 
 	.s-tool-rail::-webkit-scrollbar {
 		display: none;
 	}
 
-	.s-tool-rail.has-items {
-		opacity: 1;
-		pointer-events: auto;
-		/* Faint separator so the rail reads as a distinct panel beside the thread. */
-		border-right: var(--s-hair) solid var(--s-line-soft);
-	}
-
-	.s-tool-toggle-cell {
-		display: none;
-	}
-
-	/* Drawer + scrim are small-screen only — re-enabled in the narrow media
-	   query below so they can never coexist with the persistent left rail. */
-	.s-tool-scrim {
-		position: fixed;
-		inset: 0;
-		z-index: 80;
-		display: none;
-		appearance: none;
-		border: 0;
-		padding: 0;
-		margin: 0;
-		background: color-mix(in srgb, var(--s-ink) 55%, transparent);
-		cursor: pointer;
-	}
-
-	.s-tool-drawer {
-		position: fixed;
-		z-index: 85;
-		top: 0;
-		right: 0;
-		bottom: 0;
-		width: clamp(260px, 82vw, 360px);
-		display: none;
-		flex-direction: column;
-		background: var(--s-paper);
-		border-left: var(--s-hair) solid var(--s-line);
-		transform: translateX(100%);
-		transition:
-			transform 0.4s var(--s-ease),
-			background var(--s-t-theme) var(--s-ease);
-	}
-
-	.s-tool-drawer.open {
-		transform: translateX(0);
-	}
-
-	.s-tool-drawer-head {
-		display: flex;
-		align-items: center;
-		justify-content: flex-end;
-		gap: 1rem;
-		padding: 18px 20px 14px;
-		border-bottom: var(--s-hair) solid var(--s-line-soft);
-		flex-shrink: 0;
-	}
-
-	/* Shared head close button (drawer + veil), styled like the glyph buttons. */
-	.s-head-close {
-		appearance: none;
-		border: 0;
-		background: none;
-		cursor: pointer;
-		color: var(--s-ink-2);
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		min-width: 44px;
-		min-height: 44px;
-		padding: 0.4rem;
-		border-radius: 50%;
-		transition: color var(--s-t-quick) var(--s-ease);
-	}
-
-	.s-head-close:hover {
-		color: var(--s-ink);
-	}
-
-	.s-head-close:focus-visible {
-		outline: none;
-		box-shadow:
-			0 0 0 1px var(--s-paper),
-			0 0 0 2px var(--s-ink-3);
-		border-radius: var(--s-radius-focus);
-	}
-
-	.s-veil-head {
-		justify-content: space-between;
-	}
-
-	.s-tool-drawer-body {
-		flex: 1;
-		min-height: 0;
-		overflow-y: auto;
-		scrollbar-width: none;
-		/* Generous bottom padding (plus safe-area inset) so the last rows never end
-		   flush against the bottom edge / floating chrome. */
-		padding: 1rem 16px calc(4rem + env(safe-area-inset-bottom));
-		/* Fade long lists at top/bottom to signal scrollability (mirrors .s-scroll). */
-		-webkit-mask-image: linear-gradient(
-			to bottom,
-			transparent 0,
-			var(--s-paper) 6%,
-			var(--s-paper) 90%,
-			transparent 100%
-		);
-		mask-image: linear-gradient(
-			to bottom,
-			transparent 0,
-			var(--s-paper) 6%,
-			var(--s-paper) 90%,
-			transparent 100%
-		);
-	}
-
-	.s-tool-drawer-body::-webkit-scrollbar {
-		display: none;
-	}
-
-	.s-tool-drawer-empty {
-		margin: 0;
-		font-family: var(--s-font-mono);
-		font-size: var(--s-type-mark-sm);
-		letter-spacing: var(--s-track-label);
-		text-transform: uppercase;
-		color: var(--s-ink-3);
-	}
-
-	/* Wide screens: reserve the rail's width so the centered thread lives in the
-	   REMAINING space and can never paint underneath the fixed rail. The reserved
-	   padding MUST match .s-tool-rail width exactly (same clamp). */
-	@media (min-width: 901px) {
-		.s-scroll {
+	@media (min-width: 1101px) {
+		.s-scroll.has-activity {
 			padding-left: clamp(220px, 23vw, 300px);
 		}
-		.s-base {
+		.s-base.has-activity {
 			left: clamp(220px, 23vw, 300px);
 		}
 	}
 
-	@media (max-width: 900px) {
+	@media (max-width: 1100px) {
 		.s-tool-rail {
 			display: none;
 		}
-		.s-tool-toggle-cell {
-			display: flex;
-		}
-		.s-tool-scrim {
-			display: block;
-		}
-		.s-tool-drawer {
-			display: flex;
-		}
 	}
 
-	@media (max-width: 520px) {
+	@media (max-width: 720px) {
 		.s-thread {
-			padding-top: 30vh;
-			padding-bottom: 44vh;
+			padding-top: 4rem;
+			padding-bottom: 10rem;
+		}
+
+		:global(.master-words),
+		:global(.you-words) {
+			max-width: 92%;
+		}
+
+		.s-base {
+			padding-top: var(--s-sp-4);
+			padding-right: calc(max(var(--s-sp-3), env(safe-area-inset-right)) + 52px);
 		}
 	}
 
-	/* A reduced dynamic viewport is the portable signal available when a soft
-	   keyboard is open. Preserve the 44px controls while shedding hover labels
-	   and excess vertical spacing. */
 	@media (max-height: 34rem) {
-		.s-corner-bottom-left .s-glyph-label,
-		.s-corner-bottom-right .s-glyph-label {
-			display: none;
-		}
 		.s-thread {
-			padding-top: 22vh;
-			padding-bottom: 52vh;
-		}
-	}
-
-	@media (max-width: 420px) {
-		.s-corner-bottom-left,
-		.s-corner-bottom-right {
-			gap: 0;
-		}
-		.s-corner-bottom-left .s-footer-extra {
-			display: none;
-		}
-	}
-
-	/* Narrow + hover-capable (small desktop windows): labels reappear on
-	   hover, so hiding them saves the space for the composer. */
-	@media (max-width: 420px) and (hover: hover) {
-		.s-corner-bottom-left .s-glyph-label,
-		.s-corner-bottom-right .s-glyph-label {
-			display: none;
-		}
-	}
-
-	/* Narrow + touch (phones): there is no hover, so these labels are the ONLY
-	   thing explaining the cryptic glyphs — keep them, just smaller and
-	   wrapping within the cell so the two fixed corner clusters can't collide
-	   across a 320–420px viewport. The old unconditional display:none here
-	   silently defeated the (hover: none) always-visible rule on every phone. */
-	@media (max-width: 420px) and (hover: none) {
-		.s-corner-bottom-left .s-glyph-label,
-		.s-corner-bottom-right .s-glyph-label {
-			font-size: var(--s-type-mark-sm);
-			letter-spacing: 0.04em;
-			white-space: normal;
-			/* Long single words ("conversations") must break too, or the two
-			   fixed corner clusters collide across a 320px viewport. */
-			overflow-wrap: anywhere;
-			hyphens: auto;
-			max-width: 52px;
-			text-align: center;
-			line-height: 1.2;
-		}
-	}
-
-	/* Very small screens: let the drawer span the full viewport width. */
-	@media (max-width: 360px) {
-		.s-tool-drawer {
-			width: 100vw;
+			padding-top: 3rem;
+			padding-bottom: 8.5rem;
 		}
 	}
 </style>

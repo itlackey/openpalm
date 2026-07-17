@@ -11,6 +11,7 @@
     type InstallLockStatusView,
   } from '$lib/api.js';
   import Spinner from '@openpalm/ui-kit/components/common/Spinner.svelte';
+  import { createFocusTrap, handleTrapKeydown } from '@openpalm/ui-kit/actions/focus-trap.js';
   import { formatBytes, formatDate } from '$lib/format-date.js';
   import { resource, runAction, type ActionHandle } from '$lib/actions.svelte.js';
 
@@ -21,6 +22,7 @@
   let backups = $derived(backupsRes.data);
   let prunePromptKeep = $state<number | null>(null);
   let pruning = $state<ActionHandle<unknown> | null>(null);
+  const managePruneFocus = createFocusTrap({ deferRestore: true });
 
   // #502 one-time secret-strip notice — fails soft to null (error unrendered).
   const secretNoticeRes = resource<{ keys: string[]; at: string } | null>(
@@ -78,7 +80,7 @@
 
 </script>
 
-<div class="panel" role="tabpanel">
+<div class="panel" role="tabpanel" inert={prunePromptKeep !== null}>
   <div class="panel-header">
     <div>
       <h2>Recovery</h2>
@@ -193,33 +195,42 @@
         </table>
       {/if}
 
-      {#if prunePromptKeep !== null}
-        <div class="prune-prompt" role="alertdialog" aria-label="Confirm prune backups">
-          <p class="prune-prompt-title">Delete older backups?</p>
-          <p>
-            Keep the newest
-            <input
-              class="prune-keep-input"
-              type="number"
-              min="0"
-              max={backups?.count ?? 0}
-              bind:value={prunePromptKeep}
-              aria-label="Number of newest backups to keep"
-            />
-            and permanently delete the rest. This cannot be undone.
-          </p>
-          <div class="prune-actions">
-            <button class="btn btn-sm btn-danger" onclick={confirmPrune} disabled={pruning?.loading ?? false}>
-              {#if pruning?.loading}<Spinner /> Deleting…{:else}Delete older backups{/if}
-            </button>
-            <button class="btn btn-sm btn-secondary" onclick={cancelPrune} disabled={pruning?.loading ?? false}>Cancel</button>
-          </div>
-        </div>
-      {/if}
     </section>
 
   </div>
 </div>
+
+{#if prunePromptKeep !== null}
+  <div
+    class="prune-prompt"
+    role="alertdialog"
+    aria-modal="true"
+    aria-label="Confirm prune backups"
+    tabindex="-1"
+    onkeydown={(event) => handleTrapKeydown(event, cancelPrune)}
+    {@attach managePruneFocus}
+  >
+    <p class="prune-prompt-title">Delete older backups?</p>
+    <p>
+      Keep the newest
+      <input
+        class="prune-keep-input"
+        type="number"
+        min="0"
+        max={backups?.count ?? 0}
+        bind:value={prunePromptKeep}
+        aria-label="Number of newest backups to keep"
+      />
+      and permanently delete the rest. This cannot be undone.
+    </p>
+    <div class="prune-actions">
+      <button class="btn btn-sm btn-danger" onclick={confirmPrune} disabled={pruning?.loading ?? false}>
+        {#if pruning?.loading}<Spinner /> Deleting…{:else}Delete older backups{/if}
+      </button>
+      <button class="btn btn-sm btn-secondary" onclick={cancelPrune} disabled={pruning?.loading ?? false}>Cancel</button>
+    </div>
+  </div>
+{/if}
 
 <style>
   /* #502 secret-strip notice */

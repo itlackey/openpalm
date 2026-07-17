@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { Snippet } from 'svelte';
+  import { fade, fly } from 'svelte/transition';
   import IconClose from '../icons/IconClose.svelte';
   // G3 (review 2026-07-10): kit-internal relative import — the module used to
   // be reached via an app-provided $lib alias contract; see
@@ -10,6 +11,8 @@
   // expand-in-place forms: edit flows open here instead of pushing page content
   // down and forcing the user to scroll.
   interface Props {
+    /** Stable relationship target for a trigger's aria-controls. */
+    id?: string;
     open: boolean;
     title: string;
     onClose: () => void;
@@ -20,13 +23,30 @@
     /** Drawer width (CSS length). */
     width?: string;
   }
-  let { open, title, onClose, children, footer, headerStart, width = '32rem' }: Props = $props();
+  const generatedId = $props.id();
+  let {
+    id = generatedId,
+    open,
+    title,
+    onClose,
+    children,
+    footer,
+    headerStart,
+    width = '32rem',
+  }: Props = $props();
+  const titleId = $derived(`${id}-title`);
 
   // Focus management for the modal dialog (WCAG 2.4.3 / APG dialog pattern) via
   // the shared focus-trap primitives: on mount move focus into the body (so the
   // user doesn't land on Close), on unmount restore it; Escape closes and Tab is
   // trapped within the panel.
   const manageFocus = createFocusTrap({ initialFocus: '.drawer-body' });
+
+  function transitionDuration(): number {
+    return typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches
+      ? 0
+      : 220;
+  }
 </script>
 
 {#if open}
@@ -34,22 +54,28 @@
        in the panel) and the header close button. -->
   <!-- svelte-ignore a11y_click_events_have_key_events -->
   <!-- svelte-ignore a11y_no_static_element_interactions -->
-  <div class="drawer-scrim" onclick={onClose}></div>
+  <div
+    class="drawer-scrim"
+    onclick={onClose}
+    transition:fade={{ duration: transitionDuration() }}
+  ></div>
 
   <div
+    {id}
     class="drawer"
     style="--drawer-width: {width}"
     role="dialog"
     aria-modal="true"
-    aria-label={title}
+    aria-labelledby={titleId}
     tabindex="-1"
     onkeydown={(e) => handleTrapKeydown(e, onClose)}
+    transition:fly={{ x: 48, duration: transitionDuration() }}
     {@attach manageFocus}
   >
     <header class="drawer-header">
       {#if headerStart}{@render headerStart()}{/if}
-      <h3 class="drawer-title">{title}</h3>
-      <button class="drawer-close" onclick={onClose} aria-label="Close">
+      <h3 class="drawer-title" id={titleId}>{title}</h3>
+      <button class="drawer-close" type="button" onclick={onClose} aria-label="Close" title="Close {title}">
         <IconClose size={18} />
       </button>
     </header>
@@ -84,14 +110,7 @@
     background: var(--s-paper);
     border-left: var(--s-hair) solid var(--s-line);
     z-index: 201;
-    animation: drawer-in var(--s-t-quick) var(--s-ease);
-  }
-  @keyframes drawer-in {
-    from { transform: translateX(100%); }
-    to { transform: translateX(0); }
-  }
-  @media (prefers-reduced-motion: reduce) {
-    .drawer { animation: none; }
+    will-change: transform;
   }
   .drawer-header {
     display: flex;
@@ -116,8 +135,8 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 36px;
-    height: 36px;
+    width: 44px;
+    height: 44px;
     padding: 0;
     background: none;
     border: none;

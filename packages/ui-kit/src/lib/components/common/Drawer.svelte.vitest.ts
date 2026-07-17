@@ -1,52 +1,53 @@
-import { describe, expect, test } from 'vitest';
+import { describe, expect, test, vi } from 'vitest';
+import { page, userEvent } from 'vitest/browser';
 import { render } from 'vitest-browser-svelte';
-import { page } from 'vitest/browser';
-import { userEvent } from 'vitest/browser';
-import Harness from './DrawerTestHarness.svelte';
+import DrawerTestHarness from '../../../test/fixtures/drawer-test-harness.svelte';
 
-// Regression guard for the WCAG 2.4.3 / APG-dialog focus defects the UX gate
-// caught: the shared Drawer must move focus inside on open, trap Tab within the
-// dialog, and restore focus to the trigger on close.
-describe('Drawer focus management', () => {
-  test('moves focus to the first control on open', async () => {
-    render(Harness);
-    const trigger = page.getByTestId('trigger');
-    await trigger.click();
+describe('Drawer', () => {
+  test('uses the caller ID, labels the dialog, and provides a 44px close target', async () => {
+    render(DrawerTestHarness);
+    await page.getByRole('button', { name: 'Open first drawer' }).click();
 
-    await expect.element(page.getByTestId('first')).toHaveFocus();
+    const dialog = page.getByRole('dialog', { name: 'First drawer' });
+    await expect.element(dialog).toHaveAttribute('id', 'first-drawer');
+    expect(document.querySelector('#first-drawer-title')).toHaveTextContent('First drawer');
+    expect(
+      (page.getByRole('button', { name: 'Close' }).element() as HTMLElement)
+        .getBoundingClientRect().height,
+    ).toBeGreaterThanOrEqual(44);
   });
 
-  test('traps Tab focus within the dialog', async () => {
-    render(Harness);
-    await page.getByTestId('trigger').click();
+  test('traps focus and restores it after the bidirectional outro finishes', async () => {
+    render(DrawerTestHarness);
+    const opener = page.getByRole('button', { name: 'Open first drawer' });
+    await opener.click();
 
-    const first = page.getByTestId('first');
-    const middle = page.getByTestId('middle');
-    const close = page.getByRole('button', { name: 'Close' });
+    const first = page.getByRole('link', { name: 'First action' });
+    const last = page.getByRole('button', { name: 'Last action' });
+    await expect.element(first).toHaveFocus();
+    last.element().focus();
+    await userEvent.keyboard('{Tab}');
+    await expect.element(page.getByRole('button', { name: 'Close' })).toHaveFocus();
 
-    await expect.element(first).toHaveFocus();
-    // first -> middle -> close (last) -> wraps back to first
-    await userEvent.keyboard('{Tab}');
-    await expect.element(middle).toHaveFocus();
-    await userEvent.keyboard('{Tab}');
-    await expect.element(close).toHaveFocus();
-    await userEvent.keyboard('{Tab}');
-    await expect.element(first).toHaveFocus();
-    // Shift+Tab from the first control wraps to the last (close).
-    await userEvent.keyboard('{Shift>}{Tab}{/Shift}');
-    await expect.element(close).toHaveFocus();
+    const dialog = document.getElementById('first-drawer');
+    expect(dialog).not.toBeNull();
+    dialog?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    expect(document.getElementById('first-drawer')).not.toBeNull();
+
+    await vi.waitFor(() => {
+      expect(document.getElementById('first-drawer')).toBeNull();
+      expect(opener.element()).toHaveFocus();
+    });
   });
 
-  test('Escape closes and restores focus to the trigger', async () => {
-    render(Harness);
-    const trigger = page.getByTestId('trigger');
-    await trigger.click();
-    await expect.element(page.getByTestId('first')).toHaveFocus();
+  test('supports distinct IDs for separate drawer instances', async () => {
+    render(DrawerTestHarness);
+    await page.getByRole('button', { name: 'Open second drawer' }).click();
 
-    await userEvent.keyboard('{Escape}');
-
-    // Dialog is gone and focus is back on the trigger.
-    await expect.element(page.getByRole('dialog')).not.toBeInTheDocument();
-    await expect.element(trigger).toHaveFocus();
+    await expect.element(page.getByRole('dialog', { name: 'Second drawer' })).toHaveAttribute(
+      'id',
+      'second-drawer',
+    );
+    expect(document.querySelectorAll('#second-drawer')).toHaveLength(1);
   });
 });

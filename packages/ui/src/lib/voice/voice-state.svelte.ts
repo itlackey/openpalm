@@ -21,7 +21,7 @@ import { refreshAdvertisedVoiceUrl, synthesize, transcribe } from './providers.j
 import { loadVoiceSettings, type VoiceProviderId } from './settings-store.js';
 import { AudioPlaybackController } from './audio-playback.js';
 
-export type VoiceStatus = 'idle' | 'recording' | 'transcribing' | 'speaking';
+export type VoiceStatus = 'idle' | 'recording' | 'transcribing' | 'preparing' | 'speaking';
 export type SttEngine = 'browser' | 'remote' | 'openpalm-voice' | 'disabled';
 export type TtsEngine = 'browser' | 'remote' | 'openpalm-voice' | 'disabled';
 
@@ -98,6 +98,9 @@ let activeRecording: RecordingSession | null = null;
 let activeRecognition: SpeechRecognitionInstance | null = null;
 let recordingTimeout: ReturnType<typeof setTimeout> | null = null;
 let activeOnResult: ((transcript: string) => void) | null = null;
+let activeOnSettled: (() => void) | null = null;
+let recordingRequestGeneration = 0;
+let pendingRecordingGeneration: number | null = null;
 
 // Conversation-mode handles (see startConversation). The single-shot
 // MAX_RECORDING_MS cap does not apply here — remote segments are bounded
@@ -108,6 +111,7 @@ let conversationSilenceTimer: ReturnType<typeof setTimeout> | null = null;
 let conversationVad: VadSession | null = null;
 let conversationSegment: RecordingSession | null = null;
 let conversationSegmentTimeout: ReturnType<typeof setTimeout> | null = null;
+let conversationEnabledTts = false;
 
 /** Silence after a final browser-STT result before the utterance is delivered. */
 const CONVERSATION_UTTERANCE_SILENCE_MS = 800;
@@ -147,6 +151,7 @@ export function setTtsAutoEnabled(value: boolean): void {
 		}
 	}
 	if (!value) {
+		if (voiceState.conversationActive) stopConversation();
 		// Stop any in-flight speech when the user turns the toggle off.
 		stopSpeaking();
 		return;
@@ -253,20 +258,6 @@ export async function initVoice(): Promise<void> {
 		voiceState.sttEngine = providerToEngine(settings.stt.provider);
 		voiceState.ttsEngine = providerToEngine(settings.tts.provider) as TtsEngine;
 		voiceState.sttLanguage = settings.stt.language ?? '';
-		// A saved openpalm-voice selection degrades when the host no longer
-		// advertises the endpoint (addon disabled, different host): fall back
-		// to the browser engine when available so the mic/speaker stay usable.
-		if (
-			(voiceState.sttEngine === 'openpalm-voice' || voiceState.ttsEngine === 'openpalm-voice') &&
-			!advertised
-		) {
-			if (voiceState.sttEngine === 'openpalm-voice') {
-				voiceState.sttEngine = browserSttOk ? 'browser' : 'disabled';
-			}
-			if (voiceState.ttsEngine === 'openpalm-voice') {
-				voiceState.ttsEngine = browserTts ? 'browser' : 'disabled';
-			}
-		}
 	} else {
 		// No saved settings — capability-based defaults. Prefer the host's
 		// voice container when advertised; otherwise the browser's own APIs.
@@ -293,29 +284,40 @@ export async function initVoice(): Promise<void> {
 	// 'disabled' is an explicit user choice — do NOT silently fall back to
 	// browser TTS in that case. The mic/speaker UI hides entirely.
 	voiceState.ttsSupported =
-		voiceState.ttsEngine === 'openpalm-voice' ||
+		(voiceState.ttsEngine === 'openpalm-voice' && Boolean(advertised)) ||
 		voiceState.ttsEngine === 'remote' ||
 		(voiceState.ttsEngine === 'browser' && browserTts);
 
-	voiceState.sttSupported = resolveEngineSupport(voiceState.sttEngine);
+	voiceState.sttSupported =
+		resolveEngineSupport(voiceState.sttEngine) &&
+		(voiceState.sttEngine !== 'openpalm-voice' || Boolean(advertised));
 }
 
 /**
  * Begin speech recognition. Transcript is delivered to `onResult`.
  * Calling while already listening is a no-op.
  */
-export function startListening(onResult: (transcript: string) => void): void {
+export function startListening(onResult: (transcript: string) => void, onSettled?: () => void): void {
 	// Mutual exclusion: a single-shot capture takes the mic from
 	// conversation mode (and vice versa — see startConversation).
 	if (voiceState.conversationActive) stopConversation();
-	if (voiceState.status === 'recording' || voiceState.status === 'transcribing') return;
+	if (
+		voiceState.status === 'recording' ||
+		voiceState.status === 'transcribing' ||
+		pendingRecordingGeneration !== null
+	) {
+		onSettled?.();
+		return;
+	}
 	if (!voiceState.sttSupported || voiceState.sttEngine === 'disabled') {
 		voiceState.errorMessage = 'Speech recognition is not available.';
+		onSettled?.();
 		return;
 	}
 
 	voiceState.errorMessage = '';
 	activeOnResult = onResult;
+	activeOnSettled = onSettled ?? null;
 
 	if (voiceState.sttEngine === 'browser') {
 		startBrowserRecognition(onResult);
@@ -323,13 +325,18 @@ export function startListening(onResult: (transcript: string) => void): void {
 	}
 
 	// remote / openpalm-voice → MediaRecorder + the provider transport
-	void startRemoteRecording();
+	const generation = ++recordingRequestGeneration;
+	pendingRecordingGeneration = generation;
+	void startRemoteRecording(generation);
 }
 
 function startBrowserRecognition(onResult: (transcript: string) => void): void {
 	const SR = getSpeechRecognitionCtor();
 	if (!SR) {
 		voiceState.errorMessage = 'Speech recognition is not supported in this browser.';
+		activeOnResult = null;
+		activeOnSettled?.();
+		activeOnSettled = null;
 		return;
 	}
 
@@ -371,6 +378,9 @@ function startBrowserRecognition(onResult: (transcript: string) => void): void {
 		voiceState.status = 'idle';
 		activeRecognition = null;
 		activeOnResult = null;
+		const onSettled = activeOnSettled;
+		activeOnSettled = null;
+		onSettled?.();
 	};
 
 	instance.onend = () => {
@@ -381,6 +391,9 @@ function startBrowserRecognition(onResult: (transcript: string) => void): void {
 		voiceState.status = 'idle';
 		activeRecognition = null;
 		activeOnResult = null;
+		const onSettled = activeOnSettled;
+		activeOnSettled = null;
+		onSettled?.();
 	};
 
 	try {
@@ -391,20 +404,33 @@ function startBrowserRecognition(onResult: (transcript: string) => void): void {
 		voiceState.status = 'idle';
 		activeRecognition = null;
 		activeOnResult = null;
+		const onSettled = activeOnSettled;
+		activeOnSettled = null;
+		onSettled?.();
 	}
 }
 
-async function startRemoteRecording(): Promise<void> {
+async function startRemoteRecording(generation: number): Promise<void> {
 	let session: RecordingSession;
 	try {
 		session = await startRecording();
 	} catch (err) {
+		if (pendingRecordingGeneration !== generation) return;
+		pendingRecordingGeneration = null;
 		voiceState.errorMessage = err instanceof Error ? err.message : 'Failed to start recording.';
 		voiceState.status = 'idle';
 		activeOnResult = null;
+		const onSettled = activeOnSettled;
+		activeOnSettled = null;
+		onSettled?.();
+		return;
+	}
+	if (pendingRecordingGeneration !== generation) {
+		session.cancel();
 		return;
 	}
 
+	pendingRecordingGeneration = null;
 	activeRecording = session;
 	voiceState.status = 'recording';
 
@@ -417,9 +443,11 @@ async function startRemoteRecording(): Promise<void> {
 async function finalizeRecording(): Promise<void> {
 	const session = activeRecording;
 	const onResult = activeOnResult;
+	const onSettled = activeOnSettled;
 	if (!session) return;
 	activeRecording = null;
 	activeOnResult = null;
+	activeOnSettled = null;
 	if (recordingTimeout) {
 		clearTimeout(recordingTimeout);
 		recordingTimeout = null;
@@ -433,11 +461,13 @@ async function finalizeRecording(): Promise<void> {
 	} catch (err) {
 		voiceState.errorMessage = err instanceof Error ? err.message : 'Recording failed.';
 		voiceState.status = 'idle';
+		onSettled?.();
 		return;
 	}
 
 	if (blob.size === 0) {
 		voiceState.status = 'idle';
+		onSettled?.();
 		return;
 	}
 
@@ -451,11 +481,21 @@ async function finalizeRecording(): Promise<void> {
 		voiceState.errorMessage = err instanceof Error ? err.message : 'Transcription failed.';
 	} finally {
 		voiceState.status = 'idle';
+		onSettled?.();
 	}
 }
 
 /** Stop the active recording session (whichever engine). */
 export function stopListening(): void {
+	if (pendingRecordingGeneration !== null) {
+		pendingRecordingGeneration = null;
+		activeOnResult = null;
+		const onSettled = activeOnSettled;
+		activeOnSettled = null;
+		voiceState.status = 'idle';
+		onSettled?.();
+		return;
+	}
 	if (activeRecognition) {
 		try {
 			activeRecognition.stop();
@@ -482,6 +522,7 @@ export function stopListening(): void {
  * (they guard on instance identity).
  */
 function cancelSingleShot(): void {
+	pendingRecordingGeneration = null;
 	if (recordingTimeout) {
 		clearTimeout(recordingTimeout);
 		recordingTimeout = null;
@@ -504,8 +545,11 @@ function cancelSingleShot(): void {
 		}
 	}
 	activeOnResult = null;
+	const onSettled = activeOnSettled;
+	activeOnSettled = null;
 	voiceState.interimTranscript = '';
 	if (voiceState.status === 'recording') voiceState.status = 'idle';
+	onSettled?.();
 }
 
 function clearConversationSilenceTimer(): void {
@@ -526,8 +570,14 @@ export function startConversation(onUtterance: (text: string) => void): void {
 		voiceState.errorMessage = 'Speech recognition is not available.';
 		return;
 	}
+	if (!voiceState.ttsSupported || voiceState.ttsEngine === 'disabled') {
+		voiceState.errorMessage = 'Text-to-speech is required for conversation mode.';
+		return;
+	}
 
 	cancelSingleShot();
+	conversationEnabledTts = !voiceState.ttsAutoEnabled;
+	setTtsAutoEnabled(true);
 	warmUpTts();
 	voiceState.errorMessage = '';
 	voiceState.conversationActive = true;
@@ -576,8 +626,17 @@ export function stopConversation(): void {
 		conversationVad = null;
 	}
 	voiceState.interimTranscript = '';
-	if (voiceState.status === 'recording' || voiceState.status === 'transcribing') {
-		voiceState.status = 'idle';
+	stopSpeaking();
+	if (conversationEnabledTts) {
+		conversationEnabledTts = false;
+		voiceState.ttsAutoEnabled = false;
+		if (typeof window !== 'undefined') {
+			try {
+				window.localStorage.setItem(TTS_AUTO_STORAGE_KEY, '0');
+			} catch {
+				/* storage disabled */
+			}
+		}
 	}
 }
 
@@ -689,8 +748,7 @@ async function startConversationVad(): Promise<void> {
 		});
 	} catch (err) {
 		voiceState.errorMessage = err instanceof Error ? err.message : 'Failed to start listening.';
-		voiceState.conversationActive = false;
-		conversationOnUtterance = null;
+		stopConversation();
 		return;
 	}
 	if (!voiceState.conversationActive) {
@@ -795,9 +853,8 @@ export function resumeAutoplay(): void {
 }
 
 /**
- * Read text aloud. Tries server-side TTS via the provider transport first (when the
- * configured engine is openpalm-voice or remote); falls back to browser
- * speech synthesis. Silent no-op if neither path is available.
+ * Read text aloud through the selected provider. Provider failures are
+ * surfaced without switching to another engine.
  *
  * If a previous utterance is still playing, queues this one (FIFO, cap 20)
  * instead of cutting it off mid-sentence.
@@ -824,6 +881,7 @@ export function stopSpeaking(): void {
  */
 export function destroyVoice(): void {
 	stopConversation();
+	pendingRecordingGeneration = null;
 	if (recordingTimeout) {
 		clearTimeout(recordingTimeout);
 		recordingTimeout = null;
@@ -845,8 +903,11 @@ export function destroyVoice(): void {
 		activeRecognition = null;
 	}
 	activeOnResult = null;
+	const onSettled = activeOnSettled;
+	activeOnSettled = null;
 	voiceState.interimTranscript = '';
 	voiceState.status = 'idle';
+	onSettled?.();
 }
 
 /**

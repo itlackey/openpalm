@@ -29,7 +29,7 @@ export type HealthProbeResult = {
 };
 
 export type DirectTransport = {
-  request(method: 'GET' | 'POST', path: string, body?: unknown): Promise<Response>;
+  request(method: 'GET' | 'POST' | 'PATCH' | 'DELETE', path: string, body?: unknown): Promise<Response>;
   /**
    * Open the connection's `/event` SSE stream and invoke `onFrame` for every
    * parsed OpenCode event. Resolves when the stream ends or `signal` aborts;

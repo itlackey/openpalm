@@ -8,12 +8,17 @@ export type ToolStripEntry = {
   output: string;
   error: string;
   updatedAt: number;
-  /**
-   * Optional grouping key set later by chat-state so the UI can group rows by
-   * assistant turn. Not populated by this module; consumers assign it.
-   */
+  /** Grouping key for the user turn that initiated this activity. */
   turnKey?: string;
 };
+
+export type ToolOutcome =
+  | 'succeeded'
+  | 'running'
+  | 'failed'
+  | 'warning'
+  | 'stopped'
+  | 'uncertain';
 
 export type SessionMessagePart = {
   type: string;
@@ -29,6 +34,10 @@ export type SessionMessagePart = {
     progress?: unknown;
     output?: unknown;
     error?: string;
+    time?: {
+      start?: number;
+      end?: number;
+    };
   };
 };
 
@@ -51,23 +60,87 @@ function firstText(...values: unknown[]): string {
   return '';
 }
 
+function hasSemanticFailure(value: unknown): boolean {
+  let candidate = value;
+  if (typeof candidate === 'string') {
+    try {
+      candidate = JSON.parse(candidate);
+    } catch {
+      return false;
+    }
+  }
+  return (
+    candidate !== null &&
+    typeof candidate === 'object' &&
+    !Array.isArray(candidate) &&
+    (candidate as { ok?: unknown }).ok === false
+  );
+}
+
+export function normalizeToolStatus(
+  status: string,
+  output?: unknown,
+  error?: string,
+): ToolOutcome {
+  const name = status.trim().toLowerCase().replace(/[\s_-]+/g, '');
+  if (error || name === 'error' || name === 'failed' || name === 'failure') return 'failed';
+  if (
+    name === 'stopped' ||
+    name === 'cancelled' ||
+    name === 'canceled' ||
+    name === 'aborted' ||
+    name === 'interrupted'
+  ) {
+    return 'stopped';
+  }
+  if (hasSemanticFailure(output) || name === 'warning' || name === 'completedwithwarning') {
+    return 'warning';
+  }
+  if (
+    name === 'completed' ||
+    name === 'complete' ||
+    name === 'done' ||
+    name === 'success' ||
+    name === 'succeeded'
+  ) {
+    return 'succeeded';
+  }
+  if (
+    !name ||
+    name === 'pending' ||
+    name === 'queued' ||
+    name === 'called' ||
+    name === 'running' ||
+    name === 'inprogress'
+  ) {
+    return 'running';
+  }
+  return 'uncertain';
+}
+
+export function toolOutcome(entry: ToolStripEntry): ToolOutcome {
+  return normalizeToolStatus(entry.status, entry.output, entry.error);
+}
+
 export function toolStripEntryFromSessionPart(
   part: SessionMessagePart,
   fallbackId: string,
+  fallbackTimestamp = 0,
 ): ToolStripEntry | null {
   if (part.type !== 'tool' && !part.state) return null;
 
-  const status = part.state?.status ?? 'running';
+  const output = valueToText(part.state?.output);
+  const error = part.state?.error ?? '';
   return {
     id: part.callID ?? part.id ?? fallbackId,
     kind: 'tool',
     tool: part.tool ?? 'tool',
-    status,
+    status: normalizeToolStatus(part.state?.status ?? 'running', part.state?.output, error),
     title: part.state?.title ?? part.tool ?? 'tool',
     detail: firstText(part.state?.input, part.state?.metadata, part.state?.progress, part.state?.output),
-    output: valueToText(part.state?.output),
-    error: part.state?.error ?? '',
-    updatedAt: Date.now(),
+    output,
+    error,
+    updatedAt: part.state?.time?.end ?? part.state?.time?.start ?? fallbackTimestamp,
   };
 }
 
@@ -125,13 +198,14 @@ export function prettyLabel(label: string): string {
 
 export function toolIconType(tool: string, status: string): ToolIconType {
   const name = tool.toLowerCase();
-  if (status === 'error' || status === 'failed') return 'alert';
-  if (name === 'step') return status === 'completed' ? 'done-circle' : 'refresh';
+  const outcome = normalizeToolStatus(status);
+  if (outcome === 'failed' || outcome === 'warning') return 'alert';
+  if (name === 'step') return outcome === 'succeeded' ? 'done-circle' : 'refresh';
   // More specific checks first so exact names like akm_remember / akm_help get
   // sensible icons before the generic substring heuristics below.
   if (name.includes('remember') || name.includes('memory')) return 'edit';
   if (name.includes('help') || name.includes('todo')) {
-    return status === 'completed' ? 'done' : 'agent';
+    return outcome === 'succeeded' ? 'done' : 'agent';
   }
   if (name.includes('bash') || name.includes('shell') || name.includes('command')) return 'terminal';
   if (name.includes('grep') || name.includes('search')) return 'search';
@@ -139,7 +213,7 @@ export function toolIconType(tool: string, status: string): ToolIconType {
   if (name.includes('edit') || name.includes('write') || name.includes('patch')) return 'edit';
   if (name.includes('web') || name.includes('http') || name.includes('fetch')) return 'link';
   if (name.includes('task') || name.includes('agent')) return 'agent';
-  return status === 'completed' ? 'done' : 'clock';
+  return outcome === 'succeeded' ? 'done' : 'clock';
 }
 
 export function timelineTitle(entry: ToolStripEntry): string {
@@ -150,29 +224,36 @@ export function toolKindLabel(entry: ToolStripEntry): string {
   return entry.kind === 'step' ? 'Step' : 'Tool';
 }
 
-export function toolStatusLabel(status: string): string {
-  switch (status) {
-    case 'completed':
-      return 'completed';
-    case 'error':
+export function toolStatusLabel(entryOrStatus: ToolStripEntry | string): string {
+  const outcome =
+    typeof entryOrStatus === 'string'
+      ? normalizeToolStatus(entryOrStatus)
+      : toolOutcome(entryOrStatus);
+  switch (outcome) {
+    case 'succeeded':
+      return 'succeeded';
     case 'failed':
       return 'failed';
-    case 'pending':
-      return 'queued';
-    default:
+    case 'warning':
+      return 'completed with warning';
+    case 'stopped':
+      return 'stopped';
+    case 'uncertain':
+      return 'outcome uncertain';
+    case 'running':
       return 'running';
   }
 }
 
 export function toolAriaLabel(entry: ToolStripEntry): string {
-  return `${toolKindLabel(entry)}: ${timelineTitle(entry)} (${toolStatusLabel(entry.status)})`;
+  return `${toolKindLabel(entry)}: ${timelineTitle(entry)} (${toolStatusLabel(entry)})`;
 }
 
 export function toolDetailRows(entry: ToolStripEntry): ToolDetailRow[] {
   const rows: ToolDetailRow[] = [
     { label: 'Type', value: toolKindLabel(entry) },
     { label: 'Name', value: timelineTitle(entry) },
-    { label: 'Status', value: prettyLabel(toolStatusLabel(entry.status)) },
+    { label: 'Status', value: prettyLabel(toolStatusLabel(entry)) },
   ];
 
   if (entry.kind !== 'step') {
@@ -331,8 +412,10 @@ export function relativeTimeLabel(updatedAt: number, now: number = Date.now()): 
  * out internal todo-writer bookkeeping but never hides a failure.
  */
 export function isUserFacingTool(entry: ToolStripEntry): boolean {
-  const status = entry.status;
-  if (status === 'error' || status === 'failed') return true;
+  const outcome = toolOutcome(entry);
+  if (outcome === 'failed' || outcome === 'warning' || outcome === 'stopped' || outcome === 'uncertain') {
+    return true;
+  }
 
   const name = (entry.tool || '').toLowerCase();
   if (name === 'todowrite' || name === 'todoread') return false;

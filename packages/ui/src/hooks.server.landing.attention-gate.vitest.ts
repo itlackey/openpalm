@@ -128,6 +128,13 @@ describe('hooks.server — a pending-migration landing (/attention) gates the us
     });
   });
 
+  test('GET /settings/voice redirects to /attention when the landing resolver says so', async () => {
+    resolveRequestLandingMock.mockResolvedValue('/attention');
+    await expect(handle({ event: makeEvent('/settings/voice', createSession()), resolve })).rejects.toMatchObject({
+      location: '/attention',
+    });
+  });
+
   test('CONTROL: GET /chat still passes through untouched when the landing is /chat itself', async () => {
     resolveRequestLandingMock.mockResolvedValue('/chat');
     const res = await handle({ event: makeEvent('/chat', createSession()), resolve });
@@ -139,6 +146,12 @@ describe('hooks.server — a pending-migration landing (/attention) gates the us
     // every landing except /attention specifically.
     resolveRequestLandingMock.mockResolvedValue('/host?tab=diagnostics');
     const res = await handle({ event: makeEvent('/connections', createSession()), resolve });
+    expect(res.status).toBe(200);
+  });
+
+  test('CONTROL: GET /settings/voice passes through for a non-blocking landing', async () => {
+    resolveRequestLandingMock.mockResolvedValue('/host?tab=diagnostics');
+    const res = await handle({ event: makeEvent('/settings/voice', createSession()), resolve });
     expect(res.status).toBe(200);
   });
 });

@@ -2,7 +2,8 @@
   import { onMount } from 'svelte';
   import { page } from '$app/state';
   import { replaceState } from '$app/navigation';
-  import ChatNavbar from '$lib/components/chrome/ChatNavbar.svelte';
+  import Navbar from '$lib/components/chrome/Navbar.svelte';
+  import DeviceSettingsNav from '$lib/components/chrome/DeviceSettingsNav.svelte';
   import IconLock from '@openpalm/ui-kit/components/icons/IconLock.svelte';
   import {
     endpointsService as connectionsService,
@@ -13,10 +14,14 @@
   import { newConnectionId } from '$lib/connections/store.js';
   import { isDiscoveryCandidateUrl, markLocalDiscoveryDismissed } from '$lib/connections/discovery.js';
   import { parsePairingCode, type PairingPayload } from '$lib/connections/pairing.js';
-  import { hasCapability, runtimeContext } from '$lib/runtime-context.svelte.js';
+  import { hasCapability } from '$lib/runtime-context.svelte.js';
   import { advancedModeService } from '$lib/advanced-mode-state.svelte.js';
-  import { buildAdvancedPath, buildChatPath, currentChatSessionId } from '$lib/chat/navigation.js';
-  import VoiceClientSettings from '$lib/components/voice/VoiceClientSettings.svelte';
+  import {
+    buildAdvancedPath,
+    buildChatPath,
+    currentChatSessionId,
+    resolveReturnToPath,
+  } from '$lib/chat/navigation.js';
 
   // Capability-guarded surface (#486):
   // this page replaces /admin/endpoints and works in every mode that
@@ -61,28 +66,20 @@
 
   const connections = $derived(connectionsService.endpoints);
   const active = $derived(connectionsService.active);
-  const hostRoute = $derived(
-    hasCapability('host:stack:read') ? runtimeContext.routes.host : undefined,
-  );
-  // Users arrive here from chat (the conversations veil's "manage
-  // connections") — the way back to the conversation must always be explicit,
-  // not just the unlabeled navbar brand. Session-aware, honoring advanced
-  // mode, mirroring ChatNavbar's brand destination. Admin gets its own link
-  // when the capability exists instead of hijacking the back link.
-  const chatReturnHref = $derived.by(() => {
+  const fallbackChatHref = $derived.by(() => {
     const sessionId = currentChatSessionId();
-    return advancedModeService.enabled ? buildAdvancedPath(sessionId) : buildChatPath(sessionId);
+    const assistantId = connectionsService.activeId || null;
+    return advancedModeService.enabled
+      ? buildAdvancedPath(sessionId, assistantId)
+      : buildChatPath(sessionId, assistantId);
   });
+  const chatReturnHref = $derived(
+    resolveReturnToPath(page.url.searchParams.get('returnTo'), fallbackChatHref),
+  );
 
   onMount(() => {
-    void connectionsService.load(true).finally(() => {
-      // Deep link to the voice section (chat's "voice settings" glyph uses
-      // /connections#voice). Re-scroll after the connections list above has
-      // rendered, so the async layout shift doesn't leave the anchor off.
-      if (window.location.hash === '#voice') {
-        document.getElementById('voice')?.scrollIntoView({ block: 'start' });
-      }
-    });
+    advancedModeService.init();
+    void connectionsService.load(true);
     // The /connections/new landing aliases here with
     // ?new=1 — open the add form so "no connections yet" starts at the form.
     if (page.url.searchParams.get('new') === '1') openAddForm();
@@ -317,7 +314,7 @@
 </script>
 
 <svelte:head>
-  <title>Connections — OpenPalm</title>
+  <title>Assistant connections — OpenPalm</title>
 </svelte:head>
 
 <!-- Fragment-only navigation to an already-open /connections tab never
@@ -325,19 +322,12 @@
      (and stripped) there too. -->
 <svelte:window onhashchange={consumePairDeepLink} />
 
-<ChatNavbar />
+<Navbar brandHref={chatReturnHref} showUtilities={false} />
+<DeviceSettingsNav active="connections" {chatReturnHref} />
 
 <main class="page">
     <header class="page-header">
-      <nav class="page-nav" aria-label="Connections page navigation">
-        <!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- session-aware chat path built internally, not a static route id -->
-        <a class="back-link" href={chatReturnHref} aria-label="Back to Chat">← Back to Chat</a>
-        {#if hostRoute}
-          <!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- destination comes from runtimeContext.routes, not a static route id -->
-          <a class="back-link" href={hostRoute} aria-label="Open Admin">Admin →</a>
-        {/if}
-      </nav>
-      <h1>Connections</h1>
+      <h1>Assistant connections</h1>
       <p class="lede">
         Connect to local or remote OpenPalm assistants. The <strong>Default</strong> entry comes
         from the environment (set by the launcher) and cannot be deleted. Add more connections to
@@ -613,14 +603,6 @@
       </section>
     {/if}
 
-    <!-- Client-owned voice settings: which TTS/STT provider THIS device uses.
-         Lives here (not under /host) because it is per-browser preference, not
-         host configuration — see docs/technical/voice-settings-architecture.
-         id="voice" is the deep-link target for chat's "voice settings" glyph
-         (/connections#voice). -->
-    <div id="voice" class="voice-anchor">
-      <VoiceClientSettings />
-    </div>
   </main>
 
 <style>
@@ -634,28 +616,6 @@
   }
   .page-header h1 {
     margin: 0 0 var(--s-sp-2);
-  }
-  .page-nav {
-    display: flex;
-    justify-content: space-between;
-    align-items: baseline;
-    gap: var(--s-sp-3);
-    margin-bottom: var(--s-sp-3);
-  }
-  .back-link {
-    display: inline-block;
-    color: var(--s-ink-3);
-    font-family: var(--s-font-mono);
-    font-size: var(--s-type-deed);
-    text-decoration: none;
-  }
-  .back-link:hover {
-    color: var(--s-ink);
-    text-decoration: underline;
-  }
-  /* Keep the deep-linked voice section clear of the sticky navbar. */
-  .voice-anchor {
-    scroll-margin-top: 64px;
   }
   .lede {
     color: var(--s-ink-3);

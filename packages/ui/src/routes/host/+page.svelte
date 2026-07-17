@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
   import { SvelteMap, SvelteSet } from 'svelte/reactivity';
-  import { goto } from '$app/navigation';
+  import { goto, pushState } from '$app/navigation';
   import { page } from '$app/state';
   import { formatTime } from '$lib/format-date.js';
   import Navbar from '$lib/components/chrome/Navbar.svelte';
@@ -20,6 +20,7 @@
   import ActivityTab from '$lib/components/admin/activity/ActivityTab.svelte';
   import AkmTab from '$lib/components/akm/AkmTab.svelte';
   import HostSharingSection from '$lib/components/akm/HostSharingSection.svelte';
+  import { hostReturnTo, hostTabFromUrl, hostUrlForTab } from './navigation.js';
 
   import {
     fetchHealth,
@@ -48,7 +49,12 @@
   let selectedContainerId: string | null = $state(null);
 
   // ── Tab ─────────────────────────────────────────────────────────────────────
-  let activeTab: TabId = $state('overview');
+  let currentHostUrl: URL = $state(page.url);
+  let activeTab: TabId = $state(hostTabFromUrl(page.url));
+  let chatReturnHref: string | undefined = $state(hostReturnTo(page.url));
+  let focusAddon: 'voice' | undefined = $state(
+    page.url.searchParams.get('addon') === 'voice' ? 'voice' : undefined
+  );
   let pullLoading = $state(false);
 
   // ── Container polling ──────────────────────────────────────────────────────
@@ -132,10 +138,11 @@
 
   // Called when an in-page API request returns 401 (session expired/invalid
   // mid-session). Server-side gating handles page navigations; here we bounce to
-  // the login route and return to /host after re-authenticating.
+  // the login route and return to the current host section after re-authenticating.
   function applyInvalidTokenState(): void {
+    const redirectTo = `${currentHostUrl.pathname}${currentHostUrl.search}${currentHostUrl.hash}`;
     // eslint-disable-next-line svelte/no-navigation-without-resolve -- internal login path with a query string, not a static route id
-    void goto(`/login?redirectTo=${encodeURIComponent('/host')}`);
+    void goto(`/login?redirectTo=${encodeURIComponent(redirectTo)}`);
   }
 
   // ── Data loaders ─────────────────────────────────────────────────────────────
@@ -246,8 +253,26 @@
     }
   }
 
-  function handleTabSelect(tab: typeof activeTab): void {
-    activeTab = tab;
+  function applyHostUrl(url: URL): void {
+    currentHostUrl = url;
+    activeTab = hostTabFromUrl(url);
+    chatReturnHref = hostReturnTo(url);
+    focusAddon = url.searchParams.get('addon') === 'voice' ? 'voice' : undefined;
+  }
+
+  function handleHistoryChange(): void {
+    applyHostUrl(new URL(window.location.href));
+  }
+
+  function handleTabSelect(tab: TabId): void {
+    if (currentHostUrl.searchParams.get('tab') !== tab) {
+      const nextUrl = hostUrlForTab(currentHostUrl, tab);
+      // eslint-disable-next-line svelte/no-navigation-without-resolve -- dynamic shallow URL preserves validated host-page query context
+      pushState(nextUrl, {});
+      applyHostUrl(nextUrl);
+    } else {
+      activeTab = tab;
+    }
     if (tab === 'containers' && !containerData) {
       void loadContainers();
     }
@@ -263,12 +288,6 @@
   // ── Mount ────────────────────────────────────────────────────────────────────
 
   onMount(() => {
-    // Landing deep-link: installed_broken
-    // lands on ?tab=diagnostics — the Systems tab is where unhealthy services
-    // and their state are listed.
-    if (page.url.searchParams.get('tab') === 'diagnostics') {
-      handleTabSelect('containers');
-    }
     startContainerPolling();
     // Auto-hydrate key data so tabs show meaningful state without manual refresh.
     void loadHealth();
@@ -277,11 +296,13 @@
   });
 </script>
 
+<svelte:window onpopstate={handleHistoryChange} />
+
 <svelte:head>
   <title>OpenPalm Console</title>
 </svelte:head>
 
-<Navbar>
+<Navbar brandHref={chatReturnHref}>
   <VoiceStopControl />
 </Navbar>
 
@@ -305,7 +326,12 @@
     {:else if activeTab === 'recovery'}
       <RecoveryTab />
     {:else if activeTab === 'addons'}
-      <AddonsTab onAuthError={handleComponentsAuthError} />
+      {#key focusAddon}
+        <AddonsTab
+          onAuthError={handleComponentsAuthError}
+          focusAddon={focusAddon}
+        />
+      {/key}
     {:else if activeTab === 'containers'}
       <ContainersTab
         {containerData}

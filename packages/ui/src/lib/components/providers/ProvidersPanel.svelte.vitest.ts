@@ -8,7 +8,7 @@
  */
 import { describe, expect, test, vi } from 'vitest';
 import { render } from 'vitest-browser-svelte';
-import { page } from 'vitest/browser';
+import { page, userEvent } from 'vitest/browser';
 import ProvidersPanel from './ProvidersPanel.svelte';
 
 const unavailableResponse = {
@@ -75,6 +75,35 @@ describe('ProvidersPanel — assistant available', () => {
     await expect.element(
       page.getByText(/The assistant \(OpenCode server\) is not reachable/i)
     ).not.toBeInTheDocument();
+  });
+
+  test('exposes the selected state of connection subtabs', async () => {
+    mockFetch(availableResponse);
+    render(ProvidersPanel);
+
+    const openCode = page.getByRole('button', { name: 'OpenCode' });
+    const codex = page.getByRole('button', { name: 'Codex' });
+    await expect.element(openCode).toHaveAttribute('aria-pressed', 'true');
+    await expect.element(codex).toHaveAttribute('aria-pressed', 'false');
+    await codex.click();
+    await expect.element(codex).toHaveAttribute('aria-pressed', 'true');
+    await expect.element(openCode).toHaveAttribute('aria-pressed', 'false');
+  });
+
+  test('keeps every connection subtab visible and touch-sized at small widths', async () => {
+    mockFetch(availableResponse);
+    const { container } = render(ProvidersPanel);
+    const subtabs = container.querySelector<HTMLElement>('.connections-subtabs');
+    expect(subtabs).not.toBeNull();
+    if (!subtabs) return;
+
+    subtabs.style.width = '320px';
+    const buttons = [...subtabs.querySelectorAll<HTMLButtonElement>('button')];
+    expect(buttons).toHaveLength(5);
+    expect(subtabs.scrollWidth).toBeLessThanOrEqual(subtabs.clientWidth);
+    for (const button of buttons) {
+      expect(button.getBoundingClientRect().height).toBeGreaterThanOrEqual(44);
+    }
   });
 });
 
@@ -147,5 +176,22 @@ describe('ProvidersPanel — disconnect confirmation', () => {
     await expect.element(
       page.getByText(/Stored credentials will be removed/i)
     ).not.toBeInTheDocument();
+  });
+
+  test('manages focus and makes the provider panel inert while confirming', async () => {
+    mockFetch(availableResponse);
+    const { container } = render(ProvidersPanel);
+    const trigger = page.getByRole('button', { name: 'Disconnect' });
+    await trigger.click();
+
+    const dialog = page.getByRole('alertdialog', { name: 'Confirm disconnect provider' });
+    await expect.element(dialog).toHaveAttribute('aria-modal', 'true');
+    await expect.element(dialog.getByRole('button', { name: 'Disconnect', exact: true })).toHaveFocus();
+    expect(container.querySelector('.panel')).toHaveAttribute('inert');
+
+    await userEvent.keyboard('{Escape}');
+
+    await expect.element(dialog).not.toBeInTheDocument();
+    await expect.element(trigger).toHaveFocus();
   });
 });

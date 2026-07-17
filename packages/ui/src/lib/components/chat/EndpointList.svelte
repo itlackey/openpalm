@@ -1,20 +1,13 @@
 <script lang="ts">
-  import { resolve } from '$app/paths';
-  import { isLocalAssistantUrl } from '$lib/assistant-endpoint.js';
   import { endpointsService } from '$lib/endpoints-state.svelte.js';
 
-  // The assistant-endpoint chooser body. Rendered both inside the navbar drawer
-  // (small screens) and inline in the chat side panel (large screens), so it is
-  // purely the list + manage link — no trigger, no positioning.
   interface Props {
-    /** Called after the active endpoint changes (e.g. to close the drawer). */
     onChosen?: () => void;
   }
   let { onChosen }: Props = $props();
 
   const active = $derived(endpointsService.active);
   const endpoints = $derived(endpointsService.endpoints);
-  const showManageAssistant = $derived(isLocalAssistantUrl(active?.url));
 
   let switching = $state(false);
 
@@ -58,18 +51,6 @@
       </button>
     {/each}
   </div>
-
-  <div class="divider"></div>
-
-  {#if showManageAssistant}
-    <a class="list-item link" href={resolve('/host')} onclick={() => onChosen?.()}>
-      Manage this assistant…
-    </a>
-  {/if}
-
-  <a class="list-item link" href={resolve('/connections')} onclick={() => onChosen?.()}>
-    Manage assistant connections…
-  </a>
 </div>
 
 <style>
@@ -88,10 +69,12 @@
   }
 
   .list-item {
+    box-sizing: border-box;
     display: flex;
     align-items: flex-start;
     gap: var(--s-sp-2);
     width: 100%;
+    min-height: 44px;
     padding: var(--s-sp-2) var(--s-sp-3);
     background: none;
     border: 0;
@@ -108,9 +91,9 @@
   .list-item:focus-visible {
     color: var(--s-ink-2);
   }
-  .list-item:focus-visible {
-    outline: var(--s-hair) solid var(--s-line);
-    outline-offset: -1px;
+  .list-item:focus {
+    outline: 2px solid var(--s-seal);
+    outline-offset: -2px;
   }
   .list-item:disabled {
     opacity: 0.5;
@@ -152,27 +135,10 @@
   .item-url {
     font-family: var(--s-font-mono);
     font-size: var(--s-type-mark-sm);
-    color: var(--s-ink-3);
+    color: var(--s-ink-2);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    opacity: 0.7;
-  }
-
-  .divider {
-    height: var(--s-hair);
-    margin: var(--s-sp-2) 0;
-    background: var(--s-line);
-  }
-
-  .list-item.link {
-    color: var(--s-ink-3);
-    text-decoration: none;
-  }
-  .list-item.link:hover,
-  .list-item.link:focus-visible {
-    color: var(--s-ink-2);
-    text-decoration: none;
   }
 
   .s-ep-section-label {

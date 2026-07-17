@@ -22,8 +22,10 @@ vi.mock('$lib/voice/earcon.js', () => ({
 vi.mock('$lib/api.js', () => ({
   abortChatTurn: vi.fn(),
   createSession: vi.fn(),
+  deleteSession: vi.fn(),
   getSessionMessages: vi.fn(),
   listSessions: vi.fn(),
+  renameSession: vi.fn(),
   sendChatMessage: vi.fn(),
   startChatMessageTurn: vi.fn(),
   replyChatPermission: vi.fn(),
@@ -57,8 +59,10 @@ import { chat } from './chat-state.svelte.js';
 const mocked = {
   abortChatTurn: vi.mocked(api.abortChatTurn),
   createSession: vi.mocked(api.createSession),
+  deleteSession: vi.mocked(api.deleteSession),
   getSessionMessages: vi.mocked(api.getSessionMessages),
   listSessions: vi.mocked(api.listSessions),
+  renameSession: vi.mocked(api.renameSession),
   sendChatMessage: vi.mocked(api.sendChatMessage),
   subscribeSessionEvents: vi.mocked(sse.subscribeSessionEvents),
 };
@@ -77,8 +81,10 @@ beforeEach(() => {
   chat.entriesLoading = false;
   mocked.abortChatTurn.mockReset();
   mocked.createSession.mockReset();
+  mocked.deleteSession.mockReset();
   mocked.getSessionMessages.mockReset();
   mocked.listSessions.mockReset();
+	mocked.renameSession.mockReset();
 	mocked.sendChatMessage.mockReset();
 	vi.mocked(voice.speakText).mockReset();
 	vi.mocked(earcon.playAck).mockReset();
@@ -237,6 +243,84 @@ describe('openSession', () => {
   });
 });
 
+describe('session management', () => {
+	it('renames only the requested connection session', async () => {
+		mocked.listSessions.mockResolvedValueOnce([session('alpha-1', 1000, 'Old title')]);
+		mocked.getSessionMessages.mockResolvedValueOnce([]);
+		await chat.onEndpointChanged('alpha');
+		chat.setActiveSessionId('beta-1', 'beta');
+		mocked.renameSession.mockResolvedValueOnce(undefined);
+
+		await expect(chat.renameSession('alpha-1', '  New title  ')).resolves.toBe(true);
+
+		expect(mocked.renameSession).toHaveBeenCalledWith('alpha-1', 'New title');
+		expect(chat.byEndpoint.get('alpha')?.sessions[0].title).toBe('New title');
+		expect(chat.byEndpoint.get('beta')?.activeSessionId).toBe('beta-1');
+	});
+
+	it('deletes an inactive session without changing the active conversation', async () => {
+		mocked.listSessions.mockResolvedValueOnce([
+			session('active', 2000),
+			session('inactive', 1000),
+		]);
+		mocked.getSessionMessages.mockResolvedValueOnce([
+			{ id: 'message-1', role: 'user', text: 'keep me', timestamp: 1 },
+		]);
+		await chat.onEndpointChanged('alpha');
+		mocked.deleteSession.mockResolvedValueOnce(undefined);
+
+		await expect(chat.deleteSession('inactive')).resolves.toBe(true);
+
+		expect(chat.activeSessionId).toBe('active');
+		expect(chat.byEndpoint.get('alpha')?.sessions.map((item) => item.id)).toEqual(['active']);
+		expect(chat.entries).toMatchObject([{ text: 'keep me' }]);
+	});
+
+	it('deleting the active session opens the newest remaining conversation', async () => {
+		mocked.listSessions.mockResolvedValueOnce([
+			session('active', 2000),
+			session('next', 1000),
+		]);
+		mocked.getSessionMessages.mockResolvedValueOnce([]);
+		await chat.onEndpointChanged('alpha');
+		mocked.deleteSession.mockResolvedValueOnce(undefined);
+		mocked.getSessionMessages.mockResolvedValueOnce([
+			{ id: 'next-message', role: 'assistant', text: 'next conversation', timestamp: 2 },
+		]);
+
+		await expect(chat.deleteSession('active')).resolves.toBe(true);
+
+		expect(chat.activeSessionId).toBe('next');
+		expect(mocked.getSessionMessages).toHaveBeenLastCalledWith('next');
+		expect(chat.entries).toMatchObject([{ text: 'next conversation' }]);
+	});
+
+	it('deleting the only active session clears the conversation', async () => {
+		mocked.listSessions.mockResolvedValueOnce([session('only', 1000)]);
+		mocked.getSessionMessages.mockResolvedValueOnce([
+			{ id: 'message-1', role: 'user', text: 'remove me', timestamp: 1 },
+		]);
+		await chat.onEndpointChanged('alpha');
+		mocked.deleteSession.mockResolvedValueOnce(undefined);
+
+		await expect(chat.deleteSession('only')).resolves.toBe(true);
+
+		expect(chat.activeSessionId).toBeNull();
+		expect(chat.entries).toEqual([]);
+	});
+
+	it('blocks rename and delete while a turn is running', async () => {
+		chat.sending = true;
+
+		await expect(chat.renameSession('session-1', 'New title')).resolves.toBe(false);
+		await expect(chat.deleteSession('session-1')).resolves.toBe(false);
+
+		expect(mocked.renameSession).not.toHaveBeenCalled();
+		expect(mocked.deleteSession).not.toHaveBeenCalled();
+		expect(chat.error).toContain('current reply');
+	});
+});
+
 describe('send', () => {
 	it('starts a new session when none is active before sending', async () => {
     // Endpoint with no sessions → activeSessionId stays null.
@@ -368,12 +452,14 @@ describe('send', () => {
     expect(mocked.sendChatMessage).not.toHaveBeenCalled();
   });
 
-	it('removes the optimistic user entry and records lastFailedText when the send fails', async () => {
+	it('removes the optimistic user entry and offers retry when the request is explicitly rejected', async () => {
 		mocked.listSessions.mockResolvedValueOnce([]);
 		await chat.onEndpointChanged('alpha');
 
 		mocked.createSession.mockResolvedValueOnce({ id: 'fresh' });
-		mocked.sendChatMessage.mockRejectedValueOnce(new Error('boom'));
+		mocked.sendChatMessage.mockRejectedValueOnce(
+			Object.assign(new Error('rejected'), { status: 400 })
+		);
 
 		await chat.send('will fail');
 
@@ -388,7 +474,9 @@ describe('send', () => {
 		await chat.onEndpointChanged('alpha');
 
 		mocked.createSession.mockResolvedValueOnce({ id: 'fresh' });
-		mocked.sendChatMessage.mockRejectedValueOnce(new Error('boom'));
+		mocked.sendChatMessage.mockRejectedValueOnce(
+			Object.assign(new Error('rejected'), { status: 400 })
+		);
 		await chat.send('will fail');
 		expect(chat.lastFailedText).toBe('will fail');
 
@@ -399,6 +487,55 @@ describe('send', () => {
 
 		expect(chat.lastFailedText).toBe('');
 		expect(chat.entries.length).toBe(2); // user + assistant, no leftover failed entry
+	});
+
+	it('preserves the initiating request and observed tool when the stream disconnects', async () => {
+		mocked.listSessions.mockResolvedValueOnce([session('sess1', 1000)]);
+		mocked.getSessionMessages.mockResolvedValueOnce([]);
+		await chat.onEndpointChanged('alpha');
+		sseCaptured.handlers?.onConnect?.();
+		vi.mocked(api.startChatMessageTurn).mockResolvedValueOnce(undefined);
+
+		const sendPromise = chat.send('publish the release');
+		await new Promise<void>((resolve) => setTimeout(resolve, 0));
+		sseCaptured.handlers?.onEvent?.({
+			type: 'session.next.tool.completed',
+			properties: { sessionID: 'sess1', callID: 'publish-1', tool: 'bash', output: 'published' },
+		});
+		sseCaptured.handlers?.onEvent?.({
+			type: 'session.next.tool.called',
+			properties: { sessionID: 'sess1', callID: 'verify-1', tool: 'read' },
+		});
+		sseCaptured.handlers?.onDisconnect?.(new Error('network lost'));
+		await sendPromise;
+
+		const userEntry = chat.entries.find(
+			(entry): entry is ChatMessage => !entry.type && entry.role === 'user'
+		);
+		const toolGroup = chat.entries.find((entry) => entry.type === 'tool-group');
+		expect(userEntry?.text).toBe('publish the release');
+		expect(toolGroup?.toolStates).toMatchObject([
+			{ id: 'publish-1', tool: 'bash', status: 'succeeded' },
+			{ id: 'verify-1', tool: 'read', status: 'uncertain' },
+		]);
+		expect(chat.lastFailedText).toBe('');
+		expect(chat.error).toContain('may have run');
+	});
+
+	it('preserves an ambiguously failed non-streaming request without offering blind retry', async () => {
+		mocked.listSessions.mockResolvedValueOnce([]);
+		await chat.onEndpointChanged('alpha');
+		mocked.createSession.mockResolvedValueOnce({ id: 'fresh' });
+		mocked.sendChatMessage.mockRejectedValueOnce(new TypeError('network lost'));
+
+		await chat.send('create the record');
+
+		const userEntry = chat.entries.find(
+			(entry): entry is ChatMessage => !entry.type && entry.role === 'user'
+		);
+		expect(userEntry?.text).toBe('create the record');
+		expect(chat.lastFailedText).toBe('');
+		expect(chat.error).toContain('may have run');
 	});
 
 	// finalizeTurn decision: an empty reply collapses to '(no response)' and
@@ -499,6 +636,29 @@ describe('stopTurn', () => {
 			| undefined;
 		expect(note?.label).toBe('Stopped');
 		expect(note?.text).toBe('Stopped.');
+	});
+
+	it('preserves observed tool activity as stopped when the user stops the turn', async () => {
+		mocked.listSessions.mockResolvedValueOnce([session('sess1', 1000)]);
+		mocked.getSessionMessages.mockResolvedValueOnce([]);
+		await chat.onEndpointChanged('alpha');
+		sseCaptured.handlers?.onConnect?.();
+		mocked.abortChatTurn.mockResolvedValueOnce(undefined);
+		vi.mocked(api.startChatMessageTurn).mockResolvedValueOnce(undefined);
+
+		const sendPromise = chat.send('start the operation');
+		await new Promise<void>((resolve) => setTimeout(resolve, 0));
+		sseCaptured.handlers?.onEvent?.({
+			type: 'session.next.tool.called',
+			properties: { sessionID: 'sess1', callID: 'operation-1', tool: 'bash' },
+		});
+		await chat.stopTurn();
+		await sendPromise;
+
+		const toolGroup = chat.entries.find((entry) => entry.type === 'tool-group');
+		expect(toolGroup?.toolStates).toMatchObject([
+			{ id: 'operation-1', status: 'stopped' },
+		]);
 	});
 
 	it('finishes locally even when the upstream abort call fails', async () => {
@@ -745,6 +905,13 @@ describe('tool grouping — finalized turn', () => {
     expect(assistantEntry.toolStates?.length).toBe(2);
     expect(assistantEntry.toolStates?.[0].id).toBe('c1');
     expect(assistantEntry.toolStates?.[1].id).toBe('c2');
+		const userEntry = chat.entries.find(
+			(entry): entry is ChatMessage => !entry.type && entry.role === 'user'
+		);
+		expect(chat.toolLog.map((tool) => tool.turnKey)).toEqual([
+			userEntry?.id,
+			userEntry?.id,
+		]);
 
     // No standalone tool-group entries in the transcript.
     const toolEntries = chat.entries.filter(

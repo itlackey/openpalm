@@ -186,14 +186,14 @@ export const handle: Handle = async ({ event, resolve }) => {
     const landing = await resolveRequestLanding(event);
     const [landingPath] = landing.split('?');
     const usageRoute = path.startsWith('/chat') || path.startsWith('/advanced')
-      || path.startsWith('/connections');
+      || path.startsWith('/connections') || path.startsWith('/settings/voice');
     // J3 (review 2026-07-10): usage routes are exempt from the landing
     // redirect EXCEPT when the resolved landing is BLOCKING (a migration in
     // progress). Nothing produces that status today ($lib/server/landing.ts's
     // migration.status is always 'none'), so this branch is inert until the
     // first real blocking migration exists — but it must be wired ahead of
     // that migration, not as a hotfix once one ships and finds
-    // chat/advanced/connections silently bypassing the blocking screen.
+    // chat/advanced/connections/device settings silently bypassing the blocking screen.
     //
     // K4 (review 2026-07-11): membership in BLOCKING_LANDINGS, not a literal
     // '/attention' string comparison — a future second blocking landing only

@@ -201,7 +201,7 @@
 
   .you-words {
     font-family: var(--s-font-header);
-    font-weight: 300;
+    font-weight: 400;
     font-size: var(--s-type-whisper);
     line-height: 1.5;
     color: var(--s-ink-2);
@@ -209,59 +209,53 @@
     text-wrap: pretty;
     border-width: 0 0 var(--s-hair);
     border-style: solid;
-    border-color: color-mix(in srgb, var(--s-ink) 10%, transparent);
+    border-color: var(--s-line);
     border-radius: 0 0 10px 0;
     padding: 0 var(--s-sp-4) var(--s-sp-2);
   }
 
   /* The agent — large, calm, unhurried */
   .turn.master {
-    gap: 0.9rem;
+    gap: 0;
   }
 
   .master-words {
     font-family: var(--s-font-header);
-    font-weight: 300;
-    font-size: 1.6rem;
-    line-height: 1.42;
+    font-weight: 400;
+    font-size: var(--s-type-whisper);
+    line-height: 1.65;
     letter-spacing: 0.002em;
     color: var(--s-ink);
     text-wrap: pretty;
-    max-width: 80%;
+    width: 100%;
+    max-width: var(--s-measure-whisper);
     opacity: 0;
-    filter: blur(7px);
-    transform: translateY(5px);
-    transition:
-      opacity var(--s-t-bloom) var(--s-ease),
-      filter var(--s-t-bloom) var(--s-ease),
-      transform var(--s-t-bloom) var(--s-ease);
+    transition: opacity var(--s-t-bloom) var(--s-ease);
     border-width: var(--s-hair) 0 3px;
     border-style: solid;
-    border-color: color-mix(in srgb, var(--s-ink) 9%, transparent);
+    border-color: var(--s-line);
     border-radius: 20px;
     padding: var(--s-sp-3) var(--s-sp-4) var(--s-sp-4);
   }
 
   .master-words.settled {
     opacity: 1;
-    filter: blur(0);
-    transform: none;
   }
 
   /* Markdown inside master-words */
   .master-words :global(p) {
-    margin: 0 0 0.6rem 0;
+    margin: 0 0 var(--s-sp-2) 0;
   }
   .master-words :global(p:last-child) {
     margin-bottom: 0;
   }
   .master-words :global(ul),
   .master-words :global(ol) {
-    margin: 0 0 0.6rem 0;
-    padding-left: 1.4rem;
+    margin: 0 0 var(--s-sp-2) 0;
+    padding-left: var(--s-sp-5);
   }
   .master-words :global(li) {
-    margin: 0.3rem 0;
+    margin: var(--s-sp-1) 0;
     font-size: var(--s-type-whisper);
     color: var(--s-ink-2);
   }
@@ -272,8 +266,8 @@
   }
   .master-words :global(pre) {
     position: relative;
-    margin: 0.7rem 0;
-    padding: 0.8rem 1rem;
+    margin: var(--s-sp-3) 0;
+    padding: var(--s-sp-3) calc(var(--s-sp-4) + 44px) var(--s-sp-3) var(--s-sp-4);
     border-left: var(--s-hair) solid var(--s-line);
     font-family: var(--s-font-mono);
     font-size: var(--s-type-deed);
@@ -292,8 +286,8 @@
     text-decoration-color: var(--s-line);
   }
   .master-words :global(blockquote) {
-    margin: 0.6rem 0;
-    padding-left: 1rem;
+    margin: var(--s-sp-2) 0;
+    padding-left: var(--s-sp-4);
     border-left: var(--s-hair) solid var(--s-seal);
     color: var(--s-ink-2);
   }
@@ -301,13 +295,13 @@
   .master-words :global(h2),
   .master-words :global(h3),
   .master-words :global(h4) {
-    margin: 0.8rem 0 0.4rem;
+    margin: var(--s-sp-3) 0 var(--s-sp-2);
     font-family: var(--s-font-header);
     font-weight: 400;
     color: var(--s-ink);
   }
   .master-words :global(hr) {
-    margin: 0.8rem 0;
+    margin: var(--s-sp-3) 0;
     border: 0;
     border-top: var(--s-hair) solid var(--s-line);
   }
@@ -329,7 +323,10 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    padding: 0.15rem;
+    min-width: 44px;
+    min-height: 44px;
+    margin-block: -0.5rem;
+    padding: 0;
     border: 0;
     background: none;
     color: var(--s-ink-3);
@@ -369,7 +366,9 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    padding: 0.25rem;
+    min-width: 44px;
+    min-height: 44px;
+    padding: 0;
     border: var(--s-hair) solid var(--s-line);
     border-radius: var(--s-radius-focus);
     background: var(--s-paper);
@@ -401,9 +400,7 @@
 
   @media (prefers-reduced-motion: reduce) {
     .master-words {
-      transition: opacity 0.4s var(--s-ease);
-      filter: none;
-      transform: none;
+      transition: none;
     }
   }
 </style>

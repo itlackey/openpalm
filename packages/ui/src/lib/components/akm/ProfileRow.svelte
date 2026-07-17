@@ -33,18 +33,41 @@
 
 <style>
 	.profile-row {
-		display: flex; align-items: center; gap: var(--s-sp-2);
+		display: flex; align-items: center; flex-wrap: wrap; gap: var(--s-sp-2);
 		padding: var(--s-sp-2) var(--s-sp-3);
 		border-bottom: var(--s-hair) solid var(--s-line-soft);
+		width: 100%; max-width: 100%; min-width: 0;
+		box-sizing: border-box;
 	}
 	.profile-row-name {
 		font-family: var(--s-font-display);
 		font-size: var(--s-type-deed);
 		color: var(--s-ink);
-		flex: 1; min-width: 0;
-		overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+		flex: 1 1 10rem; min-width: 0;
+		white-space: normal;
+		overflow-wrap: anywhere;
 	}
-	.profile-row-actions { display: flex; gap: var(--s-sp-2); flex-shrink: 0; }
+	.profile-row-actions {
+		display: flex;
+		flex: 0 1 auto;
+		flex-wrap: wrap;
+		justify-content: flex-end;
+		gap: var(--s-sp-2);
+		margin-left: auto;
+		max-width: 100%;
+		min-width: 0;
+	}
+	.profile-row-actions :global(.btn) {
+		min-height: 2.75rem;
+		max-width: 100%;
+	}
+	.profile-row-actions :global(.btn-danger) {
+		color: var(--s-error);
+		border-color: var(--s-error);
+		background: transparent;
+		opacity: 1;
+	}
+	.profile-row-actions :global(.btn-danger:disabled) { opacity: 0.38; }
 
 	.badge {
 		font-family: var(--s-font-mono);
@@ -58,6 +81,7 @@
 		border: var(--s-hair) solid var(--s-line-soft);
 		white-space: nowrap;
 		flex-shrink: 0;
+		max-width: 100%;
 	}
 	.badge--default {
 		color: var(--s-seal);

@@ -104,6 +104,9 @@
 		display: flex;
 		flex-direction: column;
 		gap: var(--s-sp-4);
+		min-width: 0;
+		max-width: 100%;
+		box-sizing: border-box;
 	}
 
 	.report-header {
@@ -112,6 +115,8 @@
 		align-items: flex-end;
 		gap: var(--s-sp-4);
 		flex-wrap: wrap;
+		min-width: 0;
+		max-width: 100%;
 	}
 
 	.report-header h3 {
@@ -127,12 +132,18 @@
 		align-items: end;
 		gap: var(--s-sp-3);
 		flex-wrap: wrap;
+		min-width: 0;
+		max-width: 100%;
 	}
+
+	.report-controls :global(.btn),
+	.report-error :global(.btn) { min-height: 2.75rem; }
 
 	.control-field {
 		display: grid;
 		gap: var(--s-sp-1);
-		min-width: 11rem;
+		min-width: min(100%, 11rem);
+		max-width: 100%;
 		font-family: var(--s-font-mono);
 		font-size: var(--s-type-mark-sm);
 		letter-spacing: var(--s-track-label);
@@ -149,6 +160,9 @@
 		color: var(--s-ink);
 		padding: 0.5rem 0;
 		width: 100%;
+		max-width: 100%;
+		min-width: 0;
+		box-sizing: border-box;
 	}
 
 	.control-input:focus { outline: none; border-bottom-color: var(--s-ink-2); }
@@ -160,6 +174,9 @@
 		border-radius: 2px;
 		overflow: hidden;
 		background: color-mix(in srgb, var(--s-ink) 2%, var(--s-paper));
+		min-width: 0;
+		max-width: 100%;
+		box-sizing: border-box;
 	}
 
 	.report-loading {

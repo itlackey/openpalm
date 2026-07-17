@@ -186,6 +186,7 @@
   .secret-name {
     flex: 1; display: flex; align-items: center; justify-content: space-between; gap: var(--s-sp-2);
     text-align: left; padding: var(--s-sp-2) var(--s-sp-3);
+    min-height: 44px;
     border: var(--s-hair) solid var(--s-line); border-radius: 2px;
     background: none; color: var(--s-ink); cursor: pointer;
     font-family: var(--s-font-mono); font-size: var(--s-type-mark);

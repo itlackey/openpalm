@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
+	import { page } from '$app/state';
 	import {
 		voiceState,
 		initVoice,
@@ -19,6 +20,12 @@
 	const MAX_INTERIM_CHARS = 48;
 	import { chat } from '$lib/chat/chat-state.svelte.js';
 
+	type Props = {
+		showSpeaker?: boolean;
+	};
+
+	let { showSpeaker = true }: Props = $props();
+
 	type OpenPalmBridge = {
 		setTrayMicRecording?: (recording: boolean) => Promise<void>;
 		onGlobalMicToggle?: (callback: () => void) => (() => void) | void;
@@ -27,6 +34,13 @@
 
 	let mounted = $state(false);
 	let removeGlobalMicToggle: (() => void) | null = null;
+	let pathname = $derived(page.url?.pathname ?? '');
+	let chatSurface = $derived(
+		pathname === '/chat' ||
+		pathname.startsWith('/chat/') ||
+		pathname === '/advanced' ||
+		pathname.startsWith('/advanced/'),
+	);
 
 	onMount(() => {
 		void initVoice().then(() => {
@@ -50,7 +64,7 @@
 	// Mic only renders when a usable STT engine is configured AND available
 	// in this browser. (e.g. don't render "browser" mic on Firefox.)
 	let supported = $derived(
-		mounted && voiceState.sttEngine !== 'disabled' && voiceState.sttSupported
+		mounted && chatSurface && voiceState.sttEngine !== 'disabled' && voiceState.sttSupported
 	);
 	let ttsAvailable = $derived(mounted && voiceState.ttsSupported);
 
@@ -61,6 +75,7 @@
 	//   idle — neutral
 	let isRecording = $derived(voiceState.status === 'recording');
 	let isTranscribing = $derived(voiceState.status === 'transcribing');
+	let isPreparing = $derived(voiceState.status === 'preparing');
 	let isProcessing = $derived(!isRecording && !isTranscribing && chat.sending);
 
 	// Speaker is "speaking" only when the auto-TTS is on AND an utterance is
@@ -68,13 +83,10 @@
 	// shouldn't be active.
 	let isSpeaking = $derived(voiceState.status === 'speaking');
 
-	/**
-	 * Mic: always captures. The transcript is submitted straight to the
-	 * global chat service, which posts to the currently selected OpenCode
-	 * backend. Works from any page because `chat` is a singleton and the
-	 * Navbar (containing this component) is mounted everywhere.
-	 */
+	/** The voice mic sends only from conversation surfaces. Settings and
+	 * admin surfaces leave it unavailable so background dictation cannot send. */
 	async function handleMicClick(): Promise<void> {
+		if (!chatSurface) return;
 		if (isProcessing) return;
 		if (isRecording) {
 			stopListening();
@@ -133,9 +145,8 @@
 	}
 </script>
 
-<!-- Always rendered so the mic (and speaker, when available) are visible on every
-     page. When STT is unavailable the mic shows a disabled mic-off icon rather
-     than vanishing. -->
+<!-- When mounted, keep the mic present even if STT is unavailable; the disabled
+     mic-off icon explains that state instead of making the control vanish. -->
 <div class="voice-control" role="toolbar" aria-label="Voice controls">
 		{#if isRecording && voiceState.interimTranscript}
 			<span class="voice-interim" aria-hidden="true" title={voiceState.interimTranscript}>
@@ -160,7 +171,7 @@
 				<span>Audio paused — click to resume</span>
 			</button>
 		{/if}
-		{#if ttsAvailable}
+		{#if showSpeaker && ttsAvailable}
 			<button
 				class="voice-btn"
 				class:voice-btn-on={voiceState.ttsAutoEnabled}
@@ -191,8 +202,10 @@
 			class:voice-btn-disabled={!supported}
 			disabled={!supported || isProcessing}
 			onclick={handleMicClick}
-			aria-label={!supported
-				? 'Voice input unavailable'
+			aria-label={!chatSurface
+				? 'Voice input unavailable outside chat'
+				: !supported
+					? 'Voice input unavailable'
 				: isRecording
 					? 'Stop recording'
 					: isTranscribing
@@ -201,8 +214,10 @@
 							? 'Sending message…'
 							: 'Start recording'}
 			aria-pressed={isRecording}
-			title={!supported
-				? 'Voice input is unavailable — no speech-to-text engine is configured for this browser'
+			title={!chatSurface
+				? 'Open chat to dictate an editable message or start a spoken conversation'
+				: !supported
+					? 'Voice input is unavailable — no speech-to-text engine is configured for this browser'
 				: isRecording
 					? 'Stop recording'
 					: isTranscribing
@@ -227,9 +242,8 @@
 			{/if}
 		</button>
 
-		<!-- Errors surface via the global <Toast> in the root layout. Keeping
-		     them out of the navbar prevents a long message from causing the
-		     navbar to overflow horizontally on narrow widths. -->
+		<!-- Errors surface via the global <Toast> in the root layout so a long
+		     message cannot distort this compact control. -->
 
 		<span class="sr-only" aria-live="polite">
 			{isRecording && voiceState.interimTranscript
@@ -242,6 +256,8 @@
 						? 'Sending message to assistant'
 						: isSpeaking
 							? 'Assistant is speaking'
+							: isPreparing
+								? 'Preparing speech'
 							: voiceState.ttsAutoEnabled
 								? 'Spoken responses on'
 								: ''}
@@ -278,7 +294,7 @@
 		align-items: center;
 		gap: var(--s-sp-2);
 		padding: 4px var(--s-sp-3);
-		height: 28px;
+		min-height: 44px;
 		background: none;
 		border: var(--s-hair) solid var(--s-line);
 		border-radius: 2px;
@@ -296,7 +312,7 @@
 		border-color: var(--s-line);
 	}
 	.voice-autoplay-banner:focus-visible {
-		outline: var(--s-hair) solid var(--s-line);
+		outline: 2px solid var(--s-ink);
 		outline-offset: 2px;
 	}
 
@@ -306,8 +322,8 @@
 		display: inline-flex;
 		align-items: center;
 		justify-content: center;
-		width: 36px;
-		height: 36px;
+		width: 44px;
+		height: 44px;
 		padding: 0;
 		background: none;
 		border: 0;
@@ -323,7 +339,7 @@
 	}
 
 	.voice-btn:focus-visible {
-		outline: var(--s-hair) solid var(--s-line);
+		outline: 2px solid var(--s-ink);
 		outline-offset: 2px;
 	}
 

@@ -17,8 +17,9 @@
  *   - 'disabled'           → no speech on this side
  *
  * API keys never live in this record — only a `secretRef` pointer into the
- * encrypted browser secret store (the same store that holds connection
- * passwords).
+ * browser secret store used for connection passwords. That store encrypts
+ * with WebCrypto when available and uses plaintext at rest on insecure HTTP
+ * origins where SubtleCrypto is unavailable.
  */
 
 export type VoiceProviderId = 'disabled' | 'browser' | 'openpalm-voice' | 'openai-compatible';
@@ -62,6 +63,10 @@ function safeLocalStorage(): Storage | null {
   } catch {
     return null;
   }
+}
+
+export function voiceSecretsEncryptedAtRest(): boolean {
+  return typeof globalThis.crypto !== 'undefined' && Boolean(globalThis.crypto.subtle);
 }
 
 function readSection<T extends VoiceSttSettings | VoiceTtsSettings>(raw: unknown): T | null {

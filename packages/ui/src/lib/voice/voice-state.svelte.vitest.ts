@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import {
+	initVoice,
 	setTtsAutoEnabled,
 	speakText,
 	stopSpeaking,
@@ -27,6 +28,17 @@ function clearVoiceSettings(): void {
 }
 
 describe('voice-state engine selection', () => {
+	const originalFetch = globalThis.fetch;
+
+	afterEach(() => {
+		globalThis.fetch = originalFetch;
+		clearVoiceSettings();
+		voiceState.sttEngine = 'disabled';
+		voiceState.ttsEngine = 'disabled';
+		voiceState.sttSupported = false;
+		voiceState.ttsSupported = false;
+	});
+
 	test('sttSupported reflects engine availability (browser path)', () => {
 		// Whether the test runner actually has the Web Speech API, the call
 		// must not throw and must produce a boolean.
@@ -46,6 +58,30 @@ describe('voice-state engine selection', () => {
 		refreshSttSupport();
 		const expected = typeof MediaRecorder !== 'undefined' && Boolean(navigator?.mediaDevices?.getUserMedia);
 		expect(voiceState.sttSupported).toBe(expected);
+	});
+
+	test('a saved OpenPalm provider remains selected when the host no longer advertises it', async () => {
+		window.localStorage.setItem(
+			SETTINGS_KEY,
+			JSON.stringify({
+				version: 1,
+				stt: { provider: 'openpalm-voice' },
+				tts: { provider: 'openpalm-voice' },
+			}),
+		);
+		globalThis.fetch = vi.fn(async () =>
+			new Response(JSON.stringify({}), {
+				status: 200,
+				headers: { 'content-type': 'application/json' },
+			}),
+		) as unknown as typeof fetch;
+
+		await initVoice();
+
+		expect(voiceState.sttEngine).toBe('openpalm-voice');
+		expect(voiceState.ttsEngine).toBe('openpalm-voice');
+		expect(voiceState.sttSupported).toBe(false);
+		expect(voiceState.ttsSupported).toBe(false);
 	});
 });
 
@@ -117,7 +153,7 @@ describe('voice-state speakText error surfacing', () => {
 		clearVoiceSettings();
 	});
 
-	test('503 voice_unavailable from the pass-through surfaces an error when no browser TTS fallback exists', async () => {
+	test('503 voice_unavailable from the pass-through surfaces an error', async () => {
 		seedRemoteProvider();
 		voiceState.ttsEngine = 'remote';
 		globalThis.fetch = vi.fn(async () =>
@@ -127,8 +163,7 @@ describe('voice-state speakText error surfacing', () => {
 			}),
 		) as unknown as typeof fetch;
 
-		// Temporarily hide speechSynthesis so the fallback path is closed
-		// off — this matches the issue-3 "keep the error visible" branch.
+		// Keep the browser speech API absent to exercise the server-only setup.
 		const ss = (window as unknown as { speechSynthesis?: SpeechSynthesis }).speechSynthesis;
 		try {
 			delete (window as unknown as { speechSynthesis?: unknown }).speechSynthesis;
@@ -141,7 +176,7 @@ describe('voice-state speakText error surfacing', () => {
 		}
 	});
 
-	test('502 from the provider yields a "warming up" message when no fallback exists', async () => {
+	test('502 from the provider yields a "warming up" message', async () => {
 		seedRemoteProvider();
 		voiceState.ttsEngine = 'remote';
 		globalThis.fetch = vi.fn(async () =>
@@ -160,6 +195,31 @@ describe('voice-state speakText error surfacing', () => {
 			if (ss !== undefined) {
 				(window as unknown as { speechSynthesis: SpeechSynthesis }).speechSynthesis = ss;
 			}
+		}
+	});
+
+	test('a selected server provider failure never falls back to browser speech', async () => {
+		seedRemoteProvider();
+		voiceState.ttsEngine = 'remote';
+		globalThis.fetch = vi.fn(async () =>
+			new Response(JSON.stringify({ error: 'voice_unreachable' }), {
+				status: 502,
+				headers: { 'content-type': 'application/json' },
+			}),
+		) as unknown as typeof fetch;
+		const speak = vi.fn();
+		const originalSynth = window.speechSynthesis;
+		(window as unknown as { speechSynthesis: unknown }).speechSynthesis = {
+			speak,
+			cancel: vi.fn(),
+		};
+
+		try {
+			await speakText('hello');
+			expect(speak).not.toHaveBeenCalled();
+			expect(voiceState.errorMessage).toMatch(/warming up/i);
+		} finally {
+			(window as unknown as { speechSynthesis: SpeechSynthesis }).speechSynthesis = originalSynth;
 		}
 	});
 
@@ -229,6 +289,17 @@ describe('voice-state queue', () => {
 		await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
 		await speakText('second streamed sentence');
 		expect(fetchMock).toHaveBeenCalledTimes(1);
+	});
+
+	test('reports preparing while the selected provider is synthesizing audio', async () => {
+		seedRemoteProvider();
+		voiceState.ttsEngine = 'remote';
+		const fetchMock = hangSynthesis();
+
+		void speakText('prepare this reply');
+
+		await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+		expect(voiceState.status).toBe('preparing');
 	});
 
 	test('stopSpeaking during an in-flight synthesis discards the result', async () => {

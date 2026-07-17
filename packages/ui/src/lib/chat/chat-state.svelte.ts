@@ -21,9 +21,11 @@
 import {
 	abortChatTurn,
 	createSession,
+	deleteSession as deleteSessionRequest,
 	getSessionMessages,
 	listSessions,
 	rejectChatQuestion,
+	renameSession as renameSessionRequest,
 	replyChatPermission,
 	replyChatQuestion,
 	sendChatMessage,
@@ -32,6 +34,7 @@ import {
 import type {
 	ChatEntry,
 	ChatMessage,
+	ChatToolGroup,
 	EndpointChatState,
 	SessionSummary,
 } from '$lib/types.js';
@@ -52,7 +55,7 @@ import {
 } from './oc-events.js';
 import { randomId } from '../random-id.js';
 import type { ToolStripEntry } from './tool-strip.js';
-import { isUserFacingTool } from './tool-strip.js';
+import { isUserFacingTool, normalizeToolStatus, toolOutcome } from './tool-strip.js';
 import { SvelteMap } from 'svelte/reactivity';
 import { subscribeSessionEvents, type OpenCodeSessionEventPayload } from './session-events.js';
 import { speakText, stopSpeaking, voiceState } from '$lib/voice/voice-state.svelte.js';
@@ -68,6 +71,35 @@ import {
 type EndpointId = string;
 type SessionId = string;
 const STREAM_TURN_TIMEOUT_MS = 150_000;
+
+type TurnFailure = Error & { turnMayHaveRun?: true };
+
+function isExplicitRejection(error: unknown): boolean {
+	const status = (error as { status?: unknown } | null)?.status;
+	return typeof status === 'number' && status >= 400 && status < 500 && status !== 408;
+}
+
+function eventTimestamp(event: RawEvent): number | undefined {
+	const props = event.properties ?? {};
+	const part = props.part as { state?: { time?: { start?: unknown; end?: unknown } } } | undefined;
+	const time = props.time as
+		| { created?: unknown; updated?: unknown; start?: unknown; end?: unknown }
+		| undefined;
+	const candidates = [
+		part?.state?.time?.end,
+		part?.state?.time?.start,
+		time?.end,
+		time?.updated,
+		time?.start,
+		time?.created,
+		props.time,
+		props.timestamp,
+	];
+	for (const value of candidates) {
+		if (typeof value === 'number' && Number.isFinite(value)) return value;
+	}
+	return undefined;
+}
 
 export type LiveToolState = ToolStripEntry;
 
@@ -123,10 +155,8 @@ class ChatService {
 	sending = $state(false);
 	error = $state('');
 	/**
-	 * Text of the most recent send() call that failed before reaching the
-	 * assistant. Cleared at the start of every send() (success or not) so it
-	 * only ever reflects the latest failure. Drives the error banner's retry
-	 * button.
+	 * Text of the most recent send() explicitly rejected before execution.
+	 * Ambiguous failures stay in the transcript and must not enable replay.
 	 */
 	lastFailedText = $state('');
 	pendingAssistantText = $state('');
@@ -154,13 +184,14 @@ class ChatService {
 
 	/**
 	 * Flattened running list of every tool/step in the rendered session — the
-	 * captured tool activity from each assistant turn followed by the live
+	 * captured tool activity from each conversation turn followed by the live
 	 * activity of the in-flight turn. Drives the chat-page tool accordion
 	 * (ToolLog). Deduped by id so a keyed `{#each}` never collides.
 	 */
 	toolLog: LiveToolState[] = $derived.by(() => {
 		const seen: Record<string, true> = {};
 		const out: LiveToolState[] = [];
+		let initiatingTurnKey: string | undefined;
 		const push = (states: LiveToolState[] | undefined, turnKey: string): void => {
 			if (!states) return;
 			for (const tool of states) {
@@ -171,9 +202,13 @@ class ChatService {
 			}
 		};
 		for (const entry of this.entries) {
-			push((entry as { toolStates?: LiveToolState[] }).toolStates, entry.id);
+			if (!entry.type && entry.role === 'user') initiatingTurnKey = entry.id;
+			push(
+				(entry as { toolStates?: LiveToolState[] }).toolStates,
+				initiatingTurnKey ?? entry.id
+			);
 		}
-		push(this.pendingToolStates, 'pending');
+		push(this.pendingToolStates, initiatingTurnKey ?? 'pending');
 		return out;
 	});
 
@@ -277,7 +312,10 @@ class ChatService {
 			onDisconnect: () => {
 				this.liveConnected = false;
 				if (this._pendingTurn) {
-					this._failPendingTurn(new Error('Assistant event stream disconnected.'));
+					this._failPendingTurn(
+						new Error('The assistant connection was interrupted. This request may have run; check activity before trying again.'),
+						true
+					);
 				}
 			},
 		});
@@ -290,20 +328,22 @@ class ChatService {
 		};
 	}
 
-	private _upsertPendingToolState(update: ToolUpdate): void {
+	private _upsertPendingToolState(update: ToolUpdate, updatedAt = Date.now()): void {
 		const id = update.callID || `${update.tool}:${this.pendingToolStates.length}`;
+		const existing = this.pendingToolStates.find((item) => item.id === id);
+		const output = update.output ?? existing?.output ?? '';
+		const error = update.error ?? existing?.error ?? '';
 		const next: LiveToolState = {
 			id,
 			kind: 'tool',
 			tool: update.tool,
-			status: update.status,
-			title: update.title ?? update.tool,
-			detail: update.detail ?? '',
-			output: update.output ?? '',
-			error: update.error ?? '',
-			updatedAt: Date.now(),
+			status: normalizeToolStatus(update.status, output, error),
+			title: update.title ?? existing?.title ?? update.tool,
+			detail: update.detail ?? existing?.detail ?? '',
+			output,
+			error,
+			updatedAt,
 		};
-		const existing = this.pendingToolStates.find((item) => item.id === id);
 		if (!existing) {
 			this.pendingToolStates = [...this.pendingToolStates, next];
 			return;
@@ -313,19 +353,19 @@ class ChatService {
 		);
 	}
 
-	private _upsertPendingStepState(update: StepUpdate): void {
+	private _upsertPendingStepState(update: StepUpdate, updatedAt = Date.now()): void {
+		const existing = this.pendingToolStates.find((item) => item.id === update.id);
 		const next: LiveToolState = {
 			id: update.id,
 			kind: 'step',
 			tool: 'step',
-			status: update.status,
+			status: normalizeToolStatus(update.status),
 			title: update.title,
-			detail: update.detail ?? '',
+			detail: update.detail ?? existing?.detail ?? '',
 			output: '',
 			error: '',
-			updatedAt: Date.now(),
+			updatedAt,
 		};
-		const existing = this.pendingToolStates.find((item) => item.id === update.id);
 		if (!existing) {
 			this.pendingToolStates = [...this.pendingToolStates, next];
 			return;
@@ -351,6 +391,35 @@ class ChatService {
 			...(toolStates && toolStates.length > 0 ? { toolStates: [...toolStates] } : {}),
 		};
 		this.entries = [...this.entries, assistantEntry];
+	}
+
+	private _appendToolGroup(toolStates: LiveToolState[]): void {
+		if (toolStates.length === 0) return;
+		const entry: ChatToolGroup = {
+			id: randomId(),
+			type: 'tool-group',
+			toolStates: [...toolStates],
+			timestamp: Math.max(...toolStates.map((tool) => tool.updatedAt)),
+		};
+		this.entries = [...this.entries, entry];
+	}
+
+	private _settlePendingTools(status: 'stopped' | 'uncertain'): void {
+		this.pendingToolStates = this.pendingToolStates.map((tool) =>
+			toolOutcome(tool) === 'running' ? { ...tool, status } : tool
+		);
+	}
+
+	private _preserveInterruptedTurn(status: 'stopped' | 'uncertain'): void {
+		this._settlePendingTools(status);
+		const toolStates = [...this.pendingToolStates];
+		const text = this.pendingAssistantText.trim();
+		if (text) {
+			this._appendAssistantReply(text, toolStates.length > 0 ? toolStates : undefined);
+		} else {
+			this._appendToolGroup(toolStates);
+		}
+		this._resetPendingRenderState();
 	}
 
 	private _clearPendingTurn(): PendingTurn | null {
@@ -388,6 +457,7 @@ class ChatService {
 	}): void {
 		const raw = args.replyText ?? this.pendingAssistantText;
 		const text = raw.trim() || '(no response)';
+		this._settlePendingTools('uncertain');
 
 		// Preserve answered-question acknowledgment as a transcript note so
 		// "Answer sent." isn't lost when pendingQuestion is cleared below.
@@ -429,10 +499,15 @@ class ChatService {
 		pending.resolve();
 	}
 
-	private _failPendingTurn(error: Error): void {
+	private _failPendingTurn(error: Error, turnMayHaveRun = false): void {
 		const pending = this._clearPendingTurn();
 		if (!pending) return;
-		this._resetPendingRenderState();
+		if (turnMayHaveRun) {
+			this._preserveInterruptedTurn('uncertain');
+			(error as TurnFailure).turnMayHaveRun = true;
+		} else {
+			this._resetPendingRenderState();
+		}
 		pending.reject(error);
 	}
 
@@ -479,12 +554,12 @@ class ChatService {
 
 		const toolUpdate = extractToolUpdate(raw, pending.sessionId);
 		if (toolUpdate) {
-			this._upsertPendingToolState(toolUpdate);
+			this._upsertPendingToolState(toolUpdate, eventTimestamp(raw));
 		}
 
 		const stepUpdate = extractStepUpdate(raw, pending.sessionId);
 		if (stepUpdate) {
-			this._upsertPendingStepState(stepUpdate);
+			this._upsertPendingStepState(stepUpdate, eventTimestamp(raw));
 		}
 
 		const permissionAsk = extractPermissionAsk(raw, pending.sessionId);
@@ -508,7 +583,10 @@ class ChatService {
 		}
 
 		if (isSessionError(raw, pending.sessionId)) {
-			this._failPendingTurn(new Error('Assistant session ended unexpectedly.'));
+			this._failPendingTurn(
+				new Error('The assistant session ended unexpectedly. This request may have run; check activity before trying again.'),
+				true
+			);
 			return;
 		}
 
@@ -577,8 +655,10 @@ class ChatService {
 	 * the active session, fall back to the newest remaining session (or
 	 * null) and reload its messages.
 	 */
-	private async _onSessionDeleted(sessionId: SessionId): Promise<void> {
-		const endpointId = this.activeEndpointId;
+	private async _removeSessionFromEndpoint(
+		endpointId: EndpointId,
+		sessionId: SessionId
+	): Promise<void> {
 		const prev = this.byEndpoint.get(endpointId);
 		if (!prev) return;
 		if (!prev.sessions.some((s) => s.id === sessionId)) return;
@@ -589,12 +669,16 @@ class ChatService {
 			sessions,
 			activeSessionId: nextActive,
 		});
-		if (wasActive) {
+		if (wasActive && this.activeEndpointId === endpointId) {
 			this.entries = [];
 			if (nextActive) {
 				await this.openSession(nextActive);
 			}
 		}
+	}
+
+	private async _onSessionDeleted(sessionId: SessionId): Promise<void> {
+		await this._removeSessionFromEndpoint(this.activeEndpointId, sessionId);
 	}
 
 	/**
@@ -662,6 +746,54 @@ class ChatService {
 		}
 	}
 
+	/** Rename a conversation on the active endpoint. */
+	async renameSession(sessionId: SessionId, title: string): Promise<boolean> {
+		if (this.sending) {
+			this.error = 'Wait for the current reply to finish before changing conversations.';
+			return false;
+		}
+		const trimmed = title.trim();
+		if (!trimmed) {
+			this.error = 'Enter a conversation name.';
+			return false;
+		}
+		const endpointId = this.activeEndpointId;
+		this.error = '';
+		try {
+			await renameSessionRequest(sessionId, trimmed);
+			const state = this.byEndpoint.get(endpointId);
+			if (state) {
+				this.setEndpointState(endpointId, {
+					sessions: state.sessions.map((session) =>
+						session.id === sessionId ? { ...session, title: trimmed } : session
+					),
+				});
+			}
+			return true;
+		} catch (e) {
+			this.error = mapAssistantError(e, { fallback: 'Failed to rename conversation.' });
+			return false;
+		}
+	}
+
+	/** Delete a conversation and select the newest remaining one when active. */
+	async deleteSession(sessionId: SessionId): Promise<boolean> {
+		if (this.sending) {
+			this.error = 'Wait for the current reply to finish before changing conversations.';
+			return false;
+		}
+		const endpointId = this.activeEndpointId;
+		this.error = '';
+		try {
+			await deleteSessionRequest(sessionId);
+			await this._removeSessionFromEndpoint(endpointId, sessionId);
+			return true;
+		} catch (e) {
+			this.error = mapAssistantError(e, { fallback: 'Failed to delete conversation.' });
+			return false;
+		}
+	}
+
 	/** Create a new session on the active endpoint and select it. */
 	async startNewSession(): Promise<SessionId | null> {
 		if (this.sending) {
@@ -685,7 +817,7 @@ class ChatService {
 			return id;
 		} catch (e) {
 			const err = e as { message?: string };
-			this.error = `Failed to start session: ${err.message ?? 'unknown error'}`;
+			this.error = `Failed to start conversation: ${err.message ?? 'unknown error'}`;
 			return null;
 		}
 	}
@@ -738,7 +870,10 @@ class ChatService {
 			if (this._unsubscribeEvents && this.liveConnected) {
 				await new Promise<void>((resolve, reject) => {
 					const timeout = setTimeout(() => {
-						this._failPendingTurn(new Error('Timed out waiting for the assistant response.'));
+						this._failPendingTurn(
+							new Error('The assistant response timed out. This request may have run; check activity before trying again.'),
+							true
+						);
 					}, STREAM_TURN_TIMEOUT_MS);
 					this._pendingTurn = {
 						endpointId: this.activeEndpointId,
@@ -750,7 +885,8 @@ class ChatService {
 						timeout,
 					};
 					void startChatMessageTurn(sessionId, trimmed).catch((error) => {
-						this._failPendingTurn(error instanceof Error ? error : new Error(String(error)));
+						const turnError = error instanceof Error ? error : new Error(String(error));
+						this._failPendingTurn(turnError, !isExplicitRejection(error));
 					});
 				});
 			} else {
@@ -762,20 +898,19 @@ class ChatService {
 				this.finalizeTurn({ sessionId, replyText });
 			}
 		} catch (e) {
-			this._resetPendingRenderState();
-			// The turn never reached the assistant — drop the optimistic user
-			// entry and remember the text so the error banner can offer retry.
-			this.entries = this.entries.filter((entry) => entry.id !== userEntry.id);
-			this.lastFailedText = trimmed;
-			const status = (e as { status?: number } | null)?.status;
-			if (status === 503 || status === 502) {
-				// Clear active session so a retry can re-establish.
-				this.setEndpointState(this.activeEndpointId, { activeSessionId: null });
+			const turnMayHaveRun = (e as TurnFailure | null)?.turnMayHaveRun === true || !isExplicitRejection(e);
+			if (!turnMayHaveRun) {
+				this._resetPendingRenderState();
+				this.entries = this.entries.filter((entry) => entry.id !== userEntry.id);
+				this.lastFailedText = trimmed;
 			}
-			this.error = mapAssistantError(e, {
+			const message = mapAssistantError(e, {
 				fallback: 'Message failed.',
 				reconnectHint: true,
 			});
+			this.error = turnMayHaveRun && !message.includes('may have run')
+				? `${message} The request may have run; check activity before trying again.`
+				: message;
 			notifyAssistantError();
 		} finally {
 			this.sending = false;
@@ -839,12 +974,14 @@ class ChatService {
 		}
 		stopSpeaking();
 		const pending = this._clearPendingTurn();
+		this._settlePendingTools('stopped');
 		if (this.pendingAssistantText) {
 			this.finalizeTurn({
 				sessionId: pending?.sessionId ?? sessionId ?? '',
 				suppressSpeech: true,
 			});
 		} else {
+			this._appendToolGroup(this.pendingToolStates);
 			this._resetPendingRenderState();
 			const stoppedNote = {
 				id: randomId(),

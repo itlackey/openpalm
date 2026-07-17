@@ -1,8 +1,7 @@
 /**
  * SessionPicker component tests.
  *
- * The trigger opens a Drawer (role="dialog") holding the SessionList. Mocks the
- * chat and endpoint singletons to provide controlled state.
+ * The trigger is controlled by ChatNavbar, which owns the one shared drawer.
  *
  * Tests use:
  *   - aria-expanded on the trigger as the canonical open/closed signal
@@ -12,7 +11,6 @@
 import { describe, expect, test, vi } from 'vitest';
 import { render } from 'vitest-browser-svelte';
 import { page } from 'vitest/browser';
-import { userEvent } from 'vitest/browser';
 
 vi.mock('$lib/chat/chat-state.svelte.js', () => ({
   chat: {
@@ -47,51 +45,31 @@ vi.mock('$lib/endpoints-state.svelte.js', () => ({
 
 import SessionPicker from './SessionPicker.svelte';
 
-describe('SessionPicker — renders', () => {
-  test('renders the Sessions trigger button', async () => {
-    render(SessionPicker);
-    await expect.element(page.getByRole('button', { name: 'Sessions' })).toBeVisible();
+describe('SessionPicker', () => {
+  test('renders a controlled conversation trigger', async () => {
+    const onToggle = vi.fn();
+    render(SessionPicker, { open: false, controls: 'conversation-drawer', onToggle });
+    const trigger = page.getByRole('button', { name: 'Conversation' });
+
+    await expect.element(trigger).toBeVisible();
+    await expect.element(trigger).toHaveAttribute('aria-haspopup', 'dialog');
+    await expect.element(trigger).toHaveAttribute('aria-controls', 'conversation-drawer');
+    await expect.element(trigger).toHaveAttribute('aria-expanded', 'false');
+    await trigger.click();
+
+    expect(onToggle).toHaveBeenCalledOnce();
   });
 
-  test('trigger opens a dialog (aria-haspopup="dialog")', async () => {
-    render(SessionPicker);
-    await expect.element(page.getByRole('button', { name: 'Sessions' })).toHaveAttribute('aria-haspopup', 'dialog');
-  });
+  test('reflects the shared drawer state', async () => {
+    render(SessionPicker, {
+      open: true,
+      controls: 'conversation-drawer',
+      onToggle: vi.fn(),
+    });
 
-  test('drawer is closed before the trigger is clicked', async () => {
-    render(SessionPicker);
-    await expect.element(page.getByRole('button', { name: 'Sessions' })).toHaveAttribute('aria-expanded', 'false');
-  });
-});
-
-describe('SessionPicker — open/close', () => {
-  test('clicking the trigger opens the drawer', async () => {
-    render(SessionPicker);
-    await page.getByRole('button', { name: 'Sessions' }).click();
-    await expect.element(page.getByRole('button', { name: 'Sessions' })).toHaveAttribute('aria-expanded', 'true');
-    await expect.element(page.getByRole('dialog', { name: /sessions on local assistant/i })).toBeVisible();
-  });
-
-  test('pressing Escape closes the drawer', async () => {
-    render(SessionPicker);
-    await page.getByRole('button', { name: 'Sessions' }).click();
-    await expect.element(page.getByRole('button', { name: 'Sessions' })).toHaveAttribute('aria-expanded', 'true');
-    await userEvent.keyboard('{Escape}');
-    await expect.element(page.getByRole('button', { name: 'Sessions' })).toHaveAttribute('aria-expanded', 'false');
-  });
-});
-
-describe('SessionPicker — session list', () => {
-  test('lists the existing sessions', async () => {
-    render(SessionPicker);
-    await page.getByRole('button', { name: 'Sessions' }).click();
-    await expect.element(page.getByRole('button', { name: /first session/i })).toBeVisible();
-    await expect.element(page.getByRole('button', { name: /second session/i })).toBeVisible();
-  });
-
-  test('"New session" action is present', async () => {
-    render(SessionPicker);
-    await page.getByRole('button', { name: 'Sessions' }).click();
-    await expect.element(page.getByRole('button', { name: /new session/i })).toBeVisible();
+    await expect.element(page.getByRole('button', { name: 'Conversation' })).toHaveAttribute(
+      'aria-expanded',
+      'true',
+    );
   });
 });
