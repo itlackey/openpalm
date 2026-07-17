@@ -218,7 +218,7 @@ test('shared chat navbar and footer remain responsive from 320px through desktop
 		name: 'Conversation: Responsive frame work',
 		exact: true
 	});
-	const newConversation = navbar.getByRole('button', {
+	const newConversation = page.getByRole('button', {
 		name: 'Start a new conversation',
 		exact: true
 	});
@@ -236,7 +236,6 @@ test('shared chat navbar and footer remain responsive from 320px through desktop
 		conversation,
 		simpleMode,
 		openCodeMode,
-		newConversation,
 		settings
 	];
 	const speaker = page.getByRole('button', { name: 'Turn on spoken responses', exact: true });
@@ -251,6 +250,8 @@ test('shared chat navbar and footer remain responsive from 320px through desktop
 	await expect(navbar).toBeVisible();
 	await expect(navbar).toHaveCSS('height', '144px');
 	await expect(activity).toBeVisible();
+	await expect(activity).toHaveText('');
+	await expect(settings).toHaveText('');
 	await expect(dictate).toBeVisible();
 	await input.fill('responsive target check');
 
@@ -290,7 +291,16 @@ test('shared chat navbar and footer remain responsive from 320px through desktop
 		});
 		expect(modeOverflow, `${width}px mode switch overflow`).toBe(false);
 
-		for (const control of [...headerTargets, activity, speaker, conversationMode, dictate, send]) {
+		const [newConversationRect, activityRect] = await Promise.all([
+			rect(newConversation),
+			rect(activity)
+		]);
+		expect(newConversationRect.right, `${width}px new conversation precedes Activity`).toBeLessThanOrEqual(
+			activityRect.left
+		);
+		expect(700 - newConversationRect.bottom, `${width}px new conversation bottom offset`).toBeLessThanOrEqual(16);
+
+		for (const control of [...headerTargets, newConversation, activity, speaker, conversationMode, dictate, send]) {
 			const controlRect = await rect(control);
 			expect(
 				controlRect.right - controlRect.left,

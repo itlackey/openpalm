@@ -72,7 +72,6 @@
   onclick={toggleActivity}
 >
   <IconActivity size={18} />
-  <span>Activity</span>
 </button>
 
 <Drawer
@@ -105,24 +104,16 @@
 
 <style>
   .activity-trigger {
-    position: fixed;
-    z-index: 70;
-    left: max(var(--s-sp-3), env(safe-area-inset-left));
-    bottom: max(var(--s-sp-3), env(safe-area-inset-bottom));
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    gap: var(--s-sp-2);
-    min-width: 44px;
+    width: 44px;
     height: 44px;
-    padding: 0 var(--s-sp-3);
+    padding: 0;
     border: var(--s-hair) solid var(--s-line);
     border-radius: 99px;
     background: var(--s-paper);
     color: var(--s-ink-3);
-    font-family: var(--s-font-mono);
-    font-size: 0.75rem;
-    font-weight: 600;
     cursor: pointer;
   }
   .activity-trigger:hover,
@@ -183,14 +174,5 @@
     border-radius: 8px;
     background: var(--s-paper-deep);
     color: var(--s-ink-2);
-  }
-  @media (max-width: 360px) {
-    .activity-trigger {
-      width: 44px;
-      padding: 0;
-    }
-    .activity-trigger span {
-      display: none;
-    }
   }
 </style>

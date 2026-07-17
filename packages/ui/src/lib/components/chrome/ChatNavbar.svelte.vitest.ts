@@ -93,7 +93,6 @@ beforeEach(() => {
   mocks.appPage.url = new URL('http://localhost/advanced?session=session-1');
   mocks.chat.toolLog = [];
   mocks.buildConversationPath.mockClear();
-  mocks.chat.startNewSession.mockClear();
   mocks.goto.mockClear();
 });
 
@@ -108,7 +107,6 @@ describe('ChatNavbar', () => {
       'Conversation: Current conversation',
       'Simple mode',
       'OpenCode mode',
-      'Start a new conversation',
       'Open settings',
     ]);
     for (const target of targets) {
@@ -152,22 +150,6 @@ describe('ChatNavbar', () => {
       '/advanced',
       'session-1',
       'assistant-1',
-    );
-  });
-
-  test('starts a new conversation in one click without changing modes', async () => {
-    render(ChatNavbar);
-
-    await page.getByRole('button', { name: 'Start a new conversation' }).click();
-
-    expect(mocks.chat.startNewSession).toHaveBeenCalledOnce();
-    expect(mocks.buildConversationPath).toHaveBeenCalledWith(
-      '/advanced',
-      'new-session',
-      'assistant-1',
-    );
-    expect(mocks.goto).toHaveBeenCalledWith(
-      '/advanced?session=new-session&assistant=assistant-1',
     );
   });
 });

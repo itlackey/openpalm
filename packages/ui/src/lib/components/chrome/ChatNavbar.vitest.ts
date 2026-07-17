@@ -13,7 +13,8 @@ describe('conversation navbar contract', () => {
     expect(source).toContain('drawerOpen = $bindable(false)');
     expect(source.match(/<Drawer\b/g)).toHaveLength(1);
     expect(source).toMatch(/<Navbar[^>]*inactive=\{drawerOpen\}[^>]*showUtilities=\{false\}/);
-    expect(source).toContain('<NewChatButton />');
+    expect(source).not.toContain('NewChatButton');
+    expect(source).not.toContain('<span>Settings</span>');
     expect(source).not.toContain('VoiceControl');
   });
 

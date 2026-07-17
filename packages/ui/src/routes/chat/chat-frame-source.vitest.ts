@@ -19,9 +19,16 @@ describe('responsive chat frame source contract', () => {
 			/import ChatNavbar from '\$lib\/components\/chrome\/ChatNavbar\.svelte'/
 		);
 		expect(source).toMatch(/<ChatNavbar bind:drawerOpen=\{navigationOpen\}\s*\/>/);
+		expect(source).toMatch(
+			/class="s-bottom-left-controls"[\s\S]*?class="s-new-conversation" inert=\{navigationOpen\}[\s\S]*?<NewChatButton \/>[\s\S]*?<ChatActivity/
+		);
 		expect(source).toMatch(/<ChatActivity[\s\S]*?bind:drawerOpen=\{navigationOpen\}/);
 		expect(activitySource).toMatch(
-			/\.activity-trigger\s*\{[\s\S]*?position:\s*fixed;[\s\S]*?left:[\s\S]*?bottom:/
+			/\.activity-trigger\s*\{[\s\S]*?width:\s*44px;[\s\S]*?height:\s*44px;/
+		);
+		expect(activitySource).not.toContain('<span>Activity</span>');
+		expect(source).toMatch(
+			/\.s-bottom-left-controls\s*\{[\s\S]*?position:\s*fixed;[\s\S]*?left:[\s\S]*?bottom:/
 		);
 		expect(activitySource).toMatch(/<Drawer[\s\S]*?side="left"/);
 		for (const obsolete of [
@@ -49,6 +56,7 @@ describe('responsive chat frame source contract', () => {
 			's-error-banner',
 			's-jump-latest',
 			's-base',
+			's-new-conversation',
 			's-voice-controls'
 		]) {
 			expect(source).toMatch(

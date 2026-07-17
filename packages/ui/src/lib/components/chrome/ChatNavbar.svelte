@@ -9,7 +9,6 @@
   import ModeSwitch from '$lib/components/chrome/ModeSwitch.svelte';
   import EndpointList from '$lib/components/chat/EndpointList.svelte';
   import EndpointSwitcher from '$lib/components/chat/EndpointSwitcher.svelte';
-  import NewChatButton from '$lib/components/chat/NewChatButton.svelte';
   import SessionList from '$lib/components/chat/SessionList.svelte';
   import SessionPicker from '$lib/components/chat/SessionPicker.svelte';
   import { advancedModeService } from '$lib/advanced-mode-state.svelte.js';
@@ -97,7 +96,6 @@
     </div>
     <div class="primary-nav">
       <ModeSwitch />
-      <NewChatButton />
       <!-- eslint-disable svelte/no-navigation-without-resolve -- resolve()d destination with encoded conversation return context -->
       <a
         class="drawer-trigger settings-trigger"
@@ -106,7 +104,6 @@
         href={settingsHref}
       >
         <IconSettings size={18} />
-        <span>Settings</span>
       </a>
       <!-- eslint-enable svelte/no-navigation-without-resolve -->
     </div>
@@ -178,6 +175,10 @@
     font-weight: 600;
     text-decoration: none;
     cursor: pointer;
+  }
+  .settings-trigger {
+    width: 44px;
+    padding: 0;
   }
   .drawer-trigger:hover {
     background: var(--s-paper-deep);
@@ -284,16 +285,6 @@
   @media (max-width: 480px) {
     .primary-nav {
       gap: 0;
-    }
-    .drawer-trigger {
-      padding: 0 var(--s-sp-2);
-    }
-    .settings-trigger {
-      width: 44px;
-      padding: 0;
-    }
-    .settings-trigger span {
-      display: none;
     }
   }
 

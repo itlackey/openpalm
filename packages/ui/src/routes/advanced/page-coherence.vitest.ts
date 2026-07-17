@@ -16,6 +16,7 @@ describe('Advanced fallback coherence', () => {
 		const source = readFileSync(ADVANCED_PAGE, 'utf8');
 
 		expect(source).toMatch(/<ChatNavbar bind:drawerOpen=\{navigationOpen\}\s*\/>/);
+		expect(source).toMatch(/class="advanced-new-conversation"[\s\S]*?<NewChatButton \/>/);
 		expect(source).toMatch(/<div class="advanced-layout" inert=\{navigationOpen\}>/);
 		expect(source).toMatch(/height:\s*calc\(100dvh - 64px\)/);
 		expect(source).toMatch(/height:\s*calc\(100dvh - 112px\)/);
@@ -27,10 +28,12 @@ describe('Advanced fallback coherence', () => {
 		const chatSource = readFileSync(CHAT_PAGE, 'utf8');
 
 		expect(navbarSource).not.toMatch(/Activity/);
-		expect(chatSource).toMatch(/<ChatActivity[\s\S]*?bind:drawerOpen=\{navigationOpen\}/);
+		expect(chatSource).toMatch(
+			/class="s-bottom-left-controls"[\s\S]*?class="s-new-conversation" inert=\{navigationOpen\}[\s\S]*?<NewChatButton \/>[\s\S]*?<ChatActivity/
+		);
 		expect(activitySource).toMatch(/<Drawer[\s\S]*?title="Activity"/);
 		expect(activitySource).toMatch(
-			/\.activity-trigger\s*\{[\s\S]*?position:\s*fixed;[\s\S]*?left:[\s\S]*?bottom:/
+			/\.activity-trigger\s*\{[\s\S]*?width:\s*44px;[\s\S]*?height:\s*44px;/
 		);
 		expect(activitySource).not.toMatch(/\.activity-trigger\s*\{[^}]*display:\s*none/i);
 		expect(activitySource).not.toMatch(/openCode|OpenCode/);

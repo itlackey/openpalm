@@ -3,6 +3,7 @@
   import { afterNavigate, goto } from '$app/navigation';
   import { resolve as resolvePath } from '$app/paths';
   import { onMount } from 'svelte';
+  import NewChatButton from '$lib/components/chat/NewChatButton.svelte';
   import ChatNavbar from '$lib/components/chrome/ChatNavbar.svelte';
   import ChatMessage from '$lib/components/chat/ChatMessage.svelte';
   import ChatInput from '$lib/components/chat/ChatInput.svelte';
@@ -241,6 +242,9 @@
 </svelte:head>
 
 <ChatNavbar bind:drawerOpen={navigationOpen} />
+<div class="advanced-new-conversation" inert={navigationOpen}>
+  <NewChatButton />
+</div>
 
 <div class="advanced-layout" inert={navigationOpen}>
   <div class="advanced-workspace">
@@ -350,6 +354,17 @@
     min-width: 0;
     min-height: 0;
     flex-direction: column;
+  }
+
+  .advanced-new-conversation {
+    position: fixed;
+    z-index: 40;
+    left: max(var(--s-sp-4), env(safe-area-inset-left));
+    bottom: max(var(--s-sp-4), env(safe-area-inset-bottom));
+  }
+  .advanced-new-conversation :global(.icon-btn) {
+    border: var(--s-hair) solid var(--s-line);
+    background: var(--s-paper);
   }
 
   .advanced-voice {

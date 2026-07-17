@@ -6,6 +6,7 @@
 	import ChatMessage from '$lib/components/chat/ChatMessage.svelte';
 	import ChatInput from '$lib/components/chat/ChatInput.svelte';
 	import ChatActivity from '$lib/components/chat/ChatActivity.svelte';
+	import NewChatButton from '$lib/components/chat/NewChatButton.svelte';
 	import ChatNavbar from '$lib/components/chrome/ChatNavbar.svelte';
 	import VoiceStatusStrip from '$lib/components/chat/VoiceStatusStrip.svelte';
 	import ToolLog from '$lib/components/chat/ToolLog.svelte';
@@ -367,12 +368,15 @@
 <div class="s-grain"></div>
 
 <ChatNavbar bind:drawerOpen={navigationOpen} />
-<ChatActivity
-	bind:drawerOpen={navigationOpen}
-	bind:railOpen={activityRailOpen}
-	conversationTitle={activeConversationTitle}
-	connectionLabel={activeConnectionLabel}
-/>
+<div class="s-bottom-left-controls">
+	<span class="s-new-conversation" inert={navigationOpen}><NewChatButton /></span>
+	<ChatActivity
+		bind:drawerOpen={navigationOpen}
+		bind:railOpen={activityRailOpen}
+		conversationTitle={activeConversationTitle}
+		connectionLabel={activeConnectionLabel}
+	/>
+</div>
 
 {#if chat.toolLog.length > 0 && activityRailOpen}
 	<aside
@@ -904,6 +908,25 @@
 			0 0 0 2px var(--s-ink-3);
 	}
 
+	.s-bottom-left-controls {
+		position: fixed;
+		z-index: 70;
+		left: max(var(--s-sp-3), env(safe-area-inset-left));
+		bottom: max(var(--s-sp-3), env(safe-area-inset-bottom));
+		display: flex;
+		align-items: center;
+		gap: var(--s-sp-1);
+	}
+
+	.s-bottom-left-controls :global(.icon-btn) {
+		border: var(--s-hair) solid var(--s-line);
+		background: var(--s-paper);
+	}
+
+	.s-new-conversation {
+		display: inline-flex;
+	}
+
 	/* ── Contextual activity ───────────────────────────────────────────── */
 
 	.s-tool-rail {
@@ -997,12 +1020,6 @@
 			padding-top: var(--s-sp-4);
 			padding-left: calc(max(var(--s-sp-3), env(safe-area-inset-left)) + 104px);
 			padding-right: calc(max(var(--s-sp-3), env(safe-area-inset-right)) + 52px);
-		}
-	}
-
-	@media (max-width: 360px) {
-		.s-base {
-			padding-left: calc(max(var(--s-sp-3), env(safe-area-inset-left)) + 52px);
 		}
 	}
 
