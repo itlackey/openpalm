@@ -52,11 +52,17 @@ const mocks = vi.hoisted(() => {
       `/advanced?session=${sessionId}&assistant=${assistantId}`,
   );
   const goto = vi.fn().mockResolvedValue(undefined);
-  return { appPage, buildConversationPath, chat, endpointsService, goto };
+  // Captures the component's afterNavigate callback so tests can simulate a
+  // navigation (the drawer must auto-close on navigation — #473).
+  const afterNavigateCallbacks: Array<() => void> = [];
+  const afterNavigate = vi.fn((cb: () => void) => {
+    afterNavigateCallbacks.push(cb);
+  });
+  return { appPage, buildConversationPath, chat, endpointsService, goto, afterNavigate, afterNavigateCallbacks };
 });
 
 vi.mock('$app/state', () => ({ page: mocks.appPage }));
-vi.mock('$app/navigation', () => ({ goto: mocks.goto }));
+vi.mock('$app/navigation', () => ({ goto: mocks.goto, afterNavigate: mocks.afterNavigate }));
 vi.mock('$lib/chat/chat-state.svelte.js', () => ({ chat: mocks.chat }));
 vi.mock('$lib/endpoints-state.svelte.js', () => ({ endpointsService: mocks.endpointsService }));
 vi.mock('$lib/advanced-mode-state.svelte.js', () => ({
@@ -151,5 +157,16 @@ describe('ChatNavbar', () => {
       'session-1',
       'assistant-1',
     );
+  });
+
+  test('closes an open drawer on navigation (#473 — no drawer lingering over the next page)', async () => {
+    render(ChatNavbar);
+
+    await page.getByRole('button', { name: 'Conversation: Current conversation' }).click();
+    await expect.element(page.getByRole('dialog', { name: 'Conversations' })).toBeVisible();
+
+    // Simulate a navigation firing the registered afterNavigate callback(s).
+    for (const cb of mocks.afterNavigateCallbacks) cb();
+    await expect.poll(() => document.querySelectorAll('[role="dialog"]').length).toBe(0);
   });
 });

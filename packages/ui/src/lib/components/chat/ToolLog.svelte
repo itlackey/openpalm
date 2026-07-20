@@ -57,12 +57,15 @@
     return current !== previous;
   }
 
-  // Announce only FAILED tools. The whole list re-read on every tool event
-  // (aria-atomic over every item) drowns a screen-reader user in minutes of
-  // repeated speech during a long turn; failures are the actionable signal.
+  // Announce only PROBLEM outcomes (failed / warning / uncertain). The whole
+  // list re-read on every tool event (aria-atomic over every item) drowns a
+  // screen-reader user in minutes of repeated speech during a long turn — the
+  // routine succeeded/running transitions are the spam; problems are the
+  // actionable signal.
+  const ANNOUNCED_OUTCOMES = new Set(['failed', 'warning', 'uncertain']);
   const statusAnnouncement = $derived(
     items
-      .filter((tool) => toolOutcome(tool) === 'failed')
+      .filter((tool) => ANNOUNCED_OUTCOMES.has(toolOutcome(tool)))
       .map((tool) => `${displayTitle(tool)}: ${toolStatusLabel(tool)}`)
       .join(', '),
   );
