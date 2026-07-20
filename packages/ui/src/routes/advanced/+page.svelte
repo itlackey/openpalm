@@ -148,12 +148,10 @@
     const routeToken = ++probeToken;
     mode = 'checking';
     frameUrl = '';
+    // load() shares one in-flight request across concurrent callers (ChatNavbar
+    // may already own it), so this awaits the actual settle before matching the
+    // route's assistant instead of probing a stale active one.
     await endpointsService.load(reloadFrame);
-    // ChatNavbar may already own the shared in-flight load. Wait for that load
-    // before matching the route's assistant instead of probing a stale active one.
-    while (!endpointsService.loaded && endpointsService.loading) {
-      await new Promise<void>((resolveLoad) => setTimeout(resolveLoad, 0));
-    }
     if (routeToken !== probeToken) return;
 
     const requestedAssistant = requestedAssistantId

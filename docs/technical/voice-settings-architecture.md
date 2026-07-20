@@ -33,10 +33,11 @@ The architecture is now split along that line.
 ## Client side — each browser owns its TTS/STT provider choice
 
 - Settings live in the browser (`packages/ui/src/lib/voice/settings-store.ts`,
-  localStorage), edited on the dedicated **Voice on this device** page at
-  `/settings/voice`. These settings apply across every assistant connection in
-  that browser. `/connections` only manages assistant connections and links to
-  the device Voice page.
+  localStorage), edited on the **General** tab of the device settings surface
+  at `/connections` (the page reached from chat's "Open settings"; its
+  `DeviceSettingsNav` splits it into a **General** tab — theme + voice — and a
+  **Connections** tab). These settings apply across every assistant connection
+  in that browser.
   Provider API keys use the IndexedDB secret store shared with connection
   passwords (`connections/secrets.ts`). They are AES-GCM encrypted at rest
   when WebCrypto is available; on an insecure plain-HTTP origin, WebCrypto is
@@ -115,8 +116,7 @@ advertisement defaults above.
   in `packages/lib/src/control-plane/addons.ts`). Client settings are not
   migrated from them: defaults auto-select the host's voice container when
   advertised; users of remote third-party TTS/STT re-enter that endpoint once
-  on `/settings/voice` (keys now stay in the browser, which is
+  on the `/connections` **General** tab (keys now stay in the browser, which is
   the point).
-- The admin Voice tab is gone; the Capabilities drawer (host) and the dedicated
-  `/settings/voice` page (client) replace it. The unmerged `/connections#voice`
-  deep link is not retained as a compatibility route.
+- The admin Voice tab is gone; the Capabilities drawer (host) and the client
+  voice settings on the `/connections` **General** tab replace it.

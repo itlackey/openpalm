@@ -57,8 +57,12 @@
     return current !== previous;
   }
 
+  // Announce only FAILED tools. The whole list re-read on every tool event
+  // (aria-atomic over every item) drowns a screen-reader user in minutes of
+  // repeated speech during a long turn; failures are the actionable signal.
   const statusAnnouncement = $derived(
     items
+      .filter((tool) => toolOutcome(tool) === 'failed')
       .map((tool) => `${displayTitle(tool)}: ${toolStatusLabel(tool)}`)
       .join(', '),
   );

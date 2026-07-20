@@ -13,9 +13,14 @@
   const openCodeSelected = $derived(onOpenCode || advancedModeService.enabled);
 
   function switchMode(enabled: boolean): void {
-    if (enabled === openCodeSelected) return;
+    // Always persist the preference — `openCodeSelected` ORs in the current
+    // route, so on a directly-opened /advanced page (stored pref still
+    // 'simple') clicking OpenCode looks like a no-op and never saved the
+    // choice. Navigation, not persistence, is what's conditional below.
     advancedModeService.setEnabled(enabled);
     if (onAdmin) return;
+    // Already on the surface for this mode → nothing to navigate.
+    if (onOpenCode === enabled) return;
     // Advanced validates its requested session before updating the chat cursor.
     // On the return path that validated cursor is authoritative; blindly reusing
     // the URL query would revive a deleted/session-on-another-endpoint id.

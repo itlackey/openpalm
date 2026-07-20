@@ -118,7 +118,23 @@ export function normalizeToolStatus(
   return 'uncertain';
 }
 
+const TOOL_OUTCOMES: ReadonlySet<string> = new Set<ToolOutcome>([
+  'succeeded',
+  'running',
+  'failed',
+  'warning',
+  'stopped',
+  'uncertain',
+]);
+
 export function toolOutcome(entry: ToolStripEntry): ToolOutcome {
+  // Every ingestion site (chat-state _upsertPendingToolState / _appendStep and
+  // toolStripEntryFromSessionPart) already stores a normalized ToolOutcome in
+  // `status`. Re-normalizing here re-ran hasSemanticFailure() — a JSON.parse of
+  // the (possibly large) tool output — on every derived recompute and 3-4× per
+  // ToolLog row per render. Return the stored outcome directly when it's
+  // already normalized; fall back only for a raw/legacy status.
+  if (TOOL_OUTCOMES.has(entry.status)) return entry.status as ToolOutcome;
   return normalizeToolStatus(entry.status, entry.output, entry.error);
 }
 

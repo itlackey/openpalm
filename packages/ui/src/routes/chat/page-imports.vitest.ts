@@ -72,6 +72,6 @@ describe('chat page ↔ admin API barrel untangling (#555)', () => {
     expect(source).toMatch(/requestMicPermission/);
     expect(source.match(/await prepareMicrophoneAccess\(\)/g)).toHaveLength(2);
     expect(source).toMatch(/if \(await prepareMicrophoneAccess\(\)\)[\s\S]*?startListening\(/);
-    expect(source).toMatch(/startConversation\(\(transcript\) => void handleSend\(transcript\)\)/);
+    expect(source).toMatch(/startConversation\(\(transcript\) => void chat\.sendUtterance\(transcript\)\)/);
   });
 });

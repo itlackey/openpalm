@@ -94,7 +94,10 @@ describe('responsive chat frame source contract', () => {
 		);
 		expect(source).toContain("'Turn on spoken responses'");
 		expect(source).toContain("'Turn off spoken responses'");
-		expect(source).toMatch(/startConversation\(\(transcript\) => void handleSend\(transcript\)\)/);
+		// Conversation utterances go through sendUtterance (barge-in: stops the
+		// in-flight turn first) — NOT chat.send()/handleSend(), which drops a
+		// spoken utterance on the sending-guard while a reply is streaming.
+		expect(source).toMatch(/startConversation\(\(transcript\) => void chat\.sendUtterance\(transcript\)\)/);
 		expect(source).toMatch(/setTtsAutoEnabled\(!voiceState\.ttsAutoEnabled\)/);
 	});
 

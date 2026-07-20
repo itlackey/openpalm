@@ -307,6 +307,13 @@ export class AudioPlaybackController {
         try {
           await audio.play();
         } catch {
+          // A stop() (or barge-in stopSpeaking(), which conversation mode fires
+          // on every confirmed utterance) landing between play() and its
+          // rejection is NOT an autoplay block — the element was already torn
+          // down and the queue dropped. Without this generation check the dead
+          // element (src='') gets stashed and a stale "click to resume" banner
+          // appears after the user already silenced audio.
+          if (gen !== this.generation) return;
           // Autoplay was blocked (Safari, Firefox autoplay off, fresh
           // Chrome profile with no prior gesture). Stash the audio
           // and surface a scoped "click to resume" banner via

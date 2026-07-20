@@ -140,10 +140,14 @@ function warmUpTts(): void {
 }
 
 /** Toggle the global auto-TTS flag and persist to localStorage. */
-export function setTtsAutoEnabled(value: boolean): void {
+export function setTtsAutoEnabled(value: boolean, opts?: { persist?: boolean }): void {
 	const wasEnabled = voiceState.ttsAutoEnabled;
 	voiceState.ttsAutoEnabled = value;
-	if (typeof window !== 'undefined') {
+	// `persist: false` flips only the in-memory flag — used by conversation mode,
+	// which force-enables spoken replies for the duration of the loop but must
+	// NOT overwrite the user's saved preference (a reload/crash before
+	// stopConversation would otherwise leave spoken responses permanently on).
+	if (typeof window !== 'undefined' && opts?.persist !== false) {
 		try {
 			window.localStorage.setItem(TTS_AUTO_STORAGE_KEY, value ? '1' : '0');
 		} catch {
@@ -577,7 +581,10 @@ export function startConversation(onUtterance: (text: string) => void): void {
 
 	cancelSingleShot();
 	conversationEnabledTts = !voiceState.ttsAutoEnabled;
-	setTtsAutoEnabled(true);
+	// Non-persistent: enable spoken replies for this conversation only, without
+	// clobbering the saved preference — stopConversation restores it, and a
+	// reload/crash mid-conversation leaves the user's real setting intact.
+	setTtsAutoEnabled(true, { persist: false });
 	warmUpTts();
 	voiceState.errorMessage = '';
 	voiceState.conversationActive = true;

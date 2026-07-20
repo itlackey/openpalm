@@ -2,7 +2,7 @@
 	import { onMount, tick } from 'svelte';
 	import { fly } from 'svelte/transition';
 	import { page } from '$app/state';
-	import { goto, replaceState } from '$app/navigation';
+	import { afterNavigate, goto, replaceState } from '$app/navigation';
 	import ChatMessage from '$lib/components/chat/ChatMessage.svelte';
 	import ChatInput from '$lib/components/chat/ChatInput.svelte';
 	import ChatActivity from '$lib/components/chat/ChatActivity.svelte';
@@ -233,7 +233,10 @@
 			return;
 		}
 		if (!(await prepareMicrophoneAccess())) return;
-		startConversation((transcript) => void handleSend(transcript));
+		// Barge-in aware: sendUtterance() stops any in-flight turn first, so a
+		// spoken utterance is never dropped by send()'s `if (this.sending) return`
+		// guard the way handleSend()/chat.send() would silently drop it.
+		startConversation((transcript) => void chat.sendUtterance(transcript));
 	}
 
 	function toggleSpokenResponses(): void {
@@ -252,6 +255,68 @@
 		await goto(target);
 	}
 
+	// Resolve the assistant + session named in the CURRENT URL and reconcile the
+	// chat store to it. Runs on initial arrival AND every same-route navigation
+	// via afterNavigate — including browser Back/Forward (popstate), which a
+	// query-only change does not remount for. Without this the URL/navbar and the
+	// rendered transcript desync after Back/Forward. It is idempotent: a session
+	// that's already active skips openSession, and syncSessionUrl no-ops when the
+	// URL already matches, so the redundant run after an in-app goto() is cheap.
+	async function resolveRoute(): Promise<void> {
+		try {
+			advancedModeService.init();
+			const requestedSessionId = page.url.searchParams.get('session');
+			const requestedAssistantId = page.url.searchParams.get('assistant');
+			const beginNewRequested = page.url.searchParams.get('new') === '1';
+			if (advancedModeService.enabled) {
+				// eslint-disable-next-line svelte/no-navigation-without-resolve -- dynamic session path built internally, not a static route id
+				await goto(buildAdvancedPath(requestedSessionId, requestedAssistantId), {
+					replaceState: true
+				});
+				return;
+			}
+			// load() shares one in-flight request across concurrent callers, so this
+			// awaits the actual settle even when another shell component already owns
+			// the load (no busy-wait on the reactive flags).
+			await endpointsService.load();
+			let endpointId =
+				endpointsService.activeId || endpointsService.endpoints[0]?.id || 'default';
+			const requestedAssistantExists =
+				requestedAssistantId !== null &&
+				endpointsService.endpoints.some((endpoint) => endpoint.id === requestedAssistantId);
+			if (requestedAssistantExists && requestedAssistantId !== endpointsService.activeId) {
+				await endpointsService.activate(requestedAssistantId);
+				endpointId = requestedAssistantId;
+			} else {
+				await chat.onEndpointChanged(endpointId);
+			}
+			const endpointState = chat.byEndpoint.get(endpointId);
+			const requestedSessionExists =
+				requestedSessionId !== null &&
+				Boolean(endpointState?.sessions.some((session) => session.id === requestedSessionId));
+			let canonicalSessionId: string | null = requestedSessionExists
+				? requestedSessionId
+				: (endpointState?.activeSessionId ?? endpointState?.sessions[0]?.id ?? null);
+			if (requestedSessionExists && requestedSessionId !== chat.activeSessionId) {
+				await chat.openSession(requestedSessionId);
+			}
+			if (beginNewRequested) {
+				canonicalSessionId = await chat.startNewSession();
+			}
+			await syncSessionUrl(canonicalSessionId, true);
+		} catch {
+			chat.error = 'Unable to reach the assistant.';
+		}
+	}
+
+	// Fires on initial arrival AND every same-route navigation, incl. browser
+	// Back/Forward (popstate) — which a query-only ?session/?assistant change
+	// does not remount for — so the store follows the URL. Shallow replaceState
+	// (syncSessionUrl) does not trigger this, so there is no feedback loop.
+	afterNavigate(() => {
+		void resolveRoute();
+	});
+
 	// ── Mount ─────────────────────────────────────────────────────────────
 	onMount(() => {
 		document.documentElement.classList.add('chat-locked');
@@ -264,7 +329,13 @@
 		motionPreference.addEventListener('change', updateMotionPreference);
 
 		function onKey(e: KeyboardEvent): void {
-			if (e.key === 'Escape' && voiceState.conversationActive) stopConversation();
+			// Only end conversation mode on Escape when no drawer is open — an
+			// open drawer owns Escape (its focus-trap closes it), and this
+			// listener must not also tear down the live conversation on the same
+			// keypress.
+			if (e.key === 'Escape' && voiceState.conversationActive && !navigationOpen) {
+				stopConversation();
+			}
 		}
 		document.addEventListener('keydown', onKey);
 
@@ -291,55 +362,9 @@
 		});
 
 		void initVoice();
-
-		void (async () => {
-			try {
-				advancedModeService.init();
-				const requestedSessionId = page.url.searchParams.get('session');
-				const requestedAssistantId = page.url.searchParams.get('assistant');
-				const beginNewRequested = page.url.searchParams.get('new') === '1';
-				if (advancedModeService.enabled) {
-					// eslint-disable-next-line svelte/no-navigation-without-resolve -- dynamic session path built internally, not a static route id
-					await goto(buildAdvancedPath(requestedSessionId, requestedAssistantId), {
-						replaceState: true
-					});
-					return;
-				}
-				await endpointsService.load();
-				// Another shell component can already own the in-flight load. load()
-				// returns early in that case, so wait for that shared request to settle.
-				while (!endpointsService.loaded && !endpointsService.error) {
-					await new Promise<void>((resolveLoad) => setTimeout(resolveLoad, 0));
-				}
-				let endpointId =
-					endpointsService.activeId || endpointsService.endpoints[0]?.id || 'default';
-				const requestedAssistantExists =
-					requestedAssistantId !== null &&
-					endpointsService.endpoints.some((endpoint) => endpoint.id === requestedAssistantId);
-				if (requestedAssistantExists && requestedAssistantId !== endpointsService.activeId) {
-					await endpointsService.activate(requestedAssistantId);
-					endpointId = requestedAssistantId;
-				} else {
-					await chat.onEndpointChanged(endpointId);
-				}
-				const endpointState = chat.byEndpoint.get(endpointId);
-				const requestedSessionExists =
-					requestedSessionId !== null &&
-					Boolean(endpointState?.sessions.some((session) => session.id === requestedSessionId));
-				let canonicalSessionId: string | null = requestedSessionExists
-					? requestedSessionId
-					: (endpointState?.activeSessionId ?? endpointState?.sessions[0]?.id ?? null);
-				if (requestedSessionExists && requestedSessionId !== chat.activeSessionId) {
-					await chat.openSession(requestedSessionId);
-				}
-				if (beginNewRequested) {
-					canonicalSessionId = await chat.startNewSession();
-				}
-				await syncSessionUrl(canonicalSessionId, true);
-			} catch {
-				chat.error = 'Unable to reach the assistant.';
-			}
-		})();
+		// Route resolution (assistant + session from the URL) runs via
+		// afterNavigate, which fires on this initial mount too — so it is
+		// deliberately NOT also invoked here.
 
 		return () => {
 			visDestroyed = true;

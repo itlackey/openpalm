@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import { afterNavigate } from '$app/navigation';
   import { resolve } from '$app/paths';
   import { page } from '$app/state';
   import Drawer from '@openpalm/ui-kit/components/common/Drawer.svelte';
@@ -78,6 +79,17 @@
     drawerOpen = false;
     activeDrawer = null;
   }
+
+  // Close the drawer on any navigation — including a same-route session/assistant
+  // change, which does not remount this component — so a modal drawer never
+  // lingers open with the background inert over the navigated-to page (#473).
+  afterNavigate(() => {
+    if (drawerOpen || drawerShowing) {
+      drawerShowing = false;
+      drawerOpen = false;
+      activeDrawer = null;
+    }
+  });
 </script>
 
 <Navbar brandHref={conversationPath} inactive={drawerOpen} showUtilities={false} conversation>

@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import { afterNavigate } from '$app/navigation';
   import Drawer from '@openpalm/ui-kit/components/common/Drawer.svelte';
   import IconActivity from '@openpalm/ui-kit/components/icons/IconActivity.svelte';
   import ToolLog from '$lib/components/chat/ToolLog.svelte';
@@ -57,6 +58,15 @@
   function finishDrawerClose(): void {
     drawerOpen = false;
   }
+
+  // Close the activity drawer on navigation so it never lingers modal over the
+  // navigated-to content (#473); a same-route session change does not remount.
+  afterNavigate(() => {
+    if (drawerOpen || drawerShowing) {
+      drawerShowing = false;
+      drawerOpen = false;
+    }
+  });
 </script>
 
 <button
@@ -67,7 +77,13 @@
   title={`Activity for ${conversationTitle}`}
   aria-haspopup={usesRail ? undefined : 'dialog'}
   aria-expanded={usesRail ? railOpen : drawerShowing}
-  aria-controls={usesRail ? RAIL_ID : DRAWER_ID}
+  aria-controls={usesRail
+    ? railOpen
+      ? RAIL_ID
+      : undefined
+    : drawerShowing
+      ? DRAWER_ID
+      : undefined}
   inert={drawerOpen}
   onclick={toggleActivity}
 >

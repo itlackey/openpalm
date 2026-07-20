@@ -280,6 +280,17 @@ describe('conversation mode — browser engine', () => {
 		}
 	});
 
+	test('starting conversation does NOT persist the spoken-responses preference', () => {
+		// The user has auto-TTS OFF (beforeEach). Conversation mode force-enables
+		// spoken replies in memory, but must NOT write '1' to localStorage — a
+		// reload/crash before stopConversation would otherwise leave spoken
+		// responses permanently on.
+		window.localStorage.setItem('openpalm.tts.auto', '0');
+		startConversation(vi.fn());
+		expect(voiceState.ttsAutoEnabled).toBe(true); // in-memory, for this conversation
+		expect(window.localStorage.getItem('openpalm.tts.auto')).toBe('0'); // saved preference untouched
+	});
+
 	test('startListening takes the mic from conversation mode', () => {
 		startConversation(vi.fn());
 		const conversationRec = lastRecognition();

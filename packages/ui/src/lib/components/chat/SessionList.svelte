@@ -63,10 +63,20 @@
     onChosen?.();
   }
 
+  // Rename/delete/new failures set chat.error, which renders in the chat page's
+  // error banner — but that banner is inert and z-index BELOW this drawer's
+  // scrim while the drawer is open, so it's invisible to the user acting here.
+  // Surface the failure inside the panel instead.
+  let actionError = $state('');
+
   async function startNew(): Promise<void> {
     if (chat.sending) return;
+    actionError = '';
     const id = await chat.startNewSession();
-    if (!id) return;
+    if (!id) {
+      actionError = chat.error;
+      return;
+    }
     await navigateToSession(id);
     onChosen?.();
   }
@@ -82,8 +92,10 @@
     event.preventDefault();
     if (workingId) return;
     workingId = id;
+    actionError = '';
     try {
       if (await chat.renameSession(id, draftTitle)) editingId = null;
+      else actionError = chat.error;
     } finally {
       workingId = null;
     }
@@ -93,8 +105,12 @@
     if (workingId) return;
     const wasActive = id === chat.activeSessionId;
     workingId = id;
+    actionError = '';
     try {
-      if (!(await chat.deleteSession(id))) return;
+      if (!(await chat.deleteSession(id))) {
+        actionError = chat.error;
+        return;
+      }
       deletingId = null;
       if (wasActive) await navigateToSession(chat.activeSessionId);
     } finally {
@@ -140,6 +156,10 @@
 
   {#if chat.sending}
     <div class="notice">Wait for the current reply to finish before switching conversations.</div>
+  {/if}
+
+  {#if actionError}
+    <div class="notice notice-error" role="alert">{actionError}</div>
   {/if}
 
   {#if !endpointState || loading}
@@ -317,6 +337,11 @@
     background: var(--s-paper-deep);
     color: var(--s-ink-2);
     font-size: 0.875rem;
+  }
+  .notice-error {
+    background: color-mix(in srgb, var(--s-seal) 8%, transparent);
+    color: var(--s-seal);
+    border: 1px solid color-mix(in srgb, var(--s-seal) 25%, transparent);
   }
   .session-search {
     display: flex;

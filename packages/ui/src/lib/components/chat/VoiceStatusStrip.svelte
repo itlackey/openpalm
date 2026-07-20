@@ -25,7 +25,12 @@
 				? 'preparing…'
 				: voiceState.status === 'transcribing'
 					? 'transcribing…'
-					: thinking
+					: // Only surface 'thinking…' in this VOICE strip when voice is
+						// actually part of the turn (hands-free conversation, or spoken
+						// replies on). For a plain typed send with voice off, the thread's
+						// own 's-thinking' placeholder is the indicator — showing it here
+						// too would double it.
+						thinking && (conversation || voiceState.ttsAutoEnabled)
 						? 'thinking…'
 						: voiceState.status === 'recording'
 							? 'listening…'
