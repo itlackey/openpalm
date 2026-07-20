@@ -796,7 +796,7 @@
 		width: 44px;
 		height: 44px;
 		padding: 0;
-		border: var(--s-hair) solid var(--s-line);
+		border: 0;
 		border-radius: 50%;
 		background: var(--s-paper);
 		color: var(--s-ink-3);
@@ -806,11 +806,6 @@
 	.s-voice-btn:hover,
 	.s-voice-btn.active {
 		color: var(--s-seal);
-		border-color: currentColor;
-	}
-
-	.s-dictate-btn.transcribing {
-		border-style: dashed;
 	}
 
 	.s-voice-btn:disabled {
@@ -916,11 +911,6 @@
 		display: flex;
 		align-items: center;
 		gap: var(--s-sp-1);
-	}
-
-	.s-bottom-left-controls :global(.icon-btn) {
-		border: var(--s-hair) solid var(--s-line);
-		background: var(--s-paper);
 	}
 
 	.s-new-conversation {

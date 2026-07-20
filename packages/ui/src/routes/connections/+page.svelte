@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import { SvelteURLSearchParams } from 'svelte/reactivity';
   import { resolve } from '$app/paths';
   import { page } from '$app/state';
   import { replaceState } from '$app/navigation';
@@ -28,6 +29,14 @@
   import type { ThemePreference } from '$lib/theme-state.svelte.js';
   import { themeService } from '$lib/theme-state.svelte.js';
 
+  type SettingsTab = 'general' | 'connections';
+
+  function initialSettingsTab(): SettingsTab {
+    const requested = page.url.searchParams.get('tab');
+    if (requested === 'general' || requested === 'connections') return requested;
+    return page.url.searchParams.get('new') === '1' ? 'connections' : 'general';
+  }
+
   // Capability-guarded surface (#486):
   // this page replaces /admin/endpoints and works in every mode that
   // advertises `connections:manage` — the API it talks to enforces the
@@ -50,6 +59,7 @@
 
   // ── Per-row state ───────────────────────────────────────────────────────
   let deletingId = $state<string | null>(null);
+  let activeTab = $state<SettingsTab>(initialSettingsTab());
 
   // ── Pairing panel state (#511 D3/D4/D6) ────────────────────────────────
   // The pairing panel mints a one-time QR/code that lets another device
@@ -110,6 +120,7 @@
   function consumePairDeepLink(): void {
     const pairCode = new URLSearchParams(window.location.hash.slice(1)).get('pair');
     if (!pairCode) return;
+    activeTab = 'connections';
     const result = parsePairingCode(pairCode);
     if (result.ok) {
       openAddForm();
@@ -118,9 +129,10 @@
       openAddForm();
       formError = result.error;
     }
-    const url = new URL(window.location.href);
-    url.hash = '';
-    replaceState(url, {});
+    const searchParams = new SvelteURLSearchParams(page.url.searchParams);
+    searchParams.set('tab', 'connections');
+    // eslint-disable-next-line svelte/no-navigation-without-resolve -- same-page settings state with the credential fragment removed
+    replaceState(`${page.url.pathname}?${searchParams}`, {});
   }
 
   /** Prefill the add form from a decoded pairing payload. The secret then flows
@@ -215,6 +227,14 @@
     formClearPassword = false;
     pairingPasteCode = '';
     formError = '';
+  }
+
+  function selectSettingsTab(tab: SettingsTab): void {
+    activeTab = tab;
+    const searchParams = new SvelteURLSearchParams(page.url.searchParams);
+    searchParams.set('tab', tab);
+    // eslint-disable-next-line svelte/no-navigation-without-resolve -- same-page settings state
+    replaceState(`${page.url.pathname}?${searchParams}${page.url.hash}`, {});
   }
 
   function openEditForm(c: ConnectionView): void {
@@ -334,7 +354,7 @@
 <svelte:window onhashchange={consumePairDeepLink} />
 
 <Navbar brandHref={chatReturnHref} showUtilities={false} />
-<DeviceSettingsNav {chatReturnHref} />
+<DeviceSettingsNav {chatReturnHref} {activeTab} onTabChange={selectSettingsTab} />
 
 <main class="page">
   <header class="page-header">
@@ -342,13 +362,15 @@
     <p class="lede">
       Manage the connections and preferences stored in this browser on this device.
     </p>
-    {#if hasCapability('host:stack:read')}
-      <!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- return-aware host path starts from a resolved internal route -->
-      <a class="host-settings-link" href={hostSettingsHref}>Manage host <span aria-hidden="true">→</span></a>
-    {/if}
   </header>
 
-  <section id="connections" class="settings-section" aria-labelledby="connections-heading">
+  {#if activeTab === 'connections'}
+    <div
+      id="settings-panel-connections"
+      class="settings-section tab-panel"
+      role="tabpanel"
+      aria-labelledby="settings-tab-connections"
+    >
     <header class="section-header">
       <h2 id="connections-heading">Connections</h2>
       <p class="lede">
@@ -625,34 +647,53 @@
         </div>
       </section>
     {/if}
-  </section>
-
-  <section id="voice" class="settings-section" aria-labelledby="voice-heading">
-    <header class="section-header">
-      <h2 id="voice-heading">Voice</h2>
-      <p class="lede">
-        Choose speech input, language, and spoken response behavior for this browser.
-      </p>
-    </header>
-    <VoiceClientSettings />
-  </section>
-
-  <section id="appearance" class="settings-section" aria-labelledby="appearance-heading">
-    <header class="section-header">
-      <h2 id="appearance-heading">Appearance</h2>
-      <p class="lede">Use your system theme or choose one for this device.</p>
-    </header>
-    <div class="theme-options" role="group" aria-label="Appearance">
-      {#each ['system', 'light', 'dark'] as preference (preference)}
-        <button
-          type="button"
-          class:active={themeService.preference === preference}
-          aria-pressed={themeService.preference === preference}
-          onclick={() => setTheme(preference as ThemePreference)}
-        >{preference[0].toUpperCase() + preference.slice(1)}</button>
-      {/each}
     </div>
-  </section>
+  {:else}
+    <div
+      id="settings-panel-general"
+      class="tab-panel"
+      role="tabpanel"
+      aria-labelledby="settings-tab-general"
+    >
+      <section id="appearance" class="settings-section" aria-labelledby="appearance-heading">
+        <header class="section-header">
+          <h2 id="appearance-heading">Appearance</h2>
+          <p class="lede">Use your system theme or choose one for this device.</p>
+        </header>
+        <div class="theme-options" role="group" aria-label="Appearance">
+          {#each ['system', 'light', 'dark'] as preference (preference)}
+            <button
+              type="button"
+              class:active={themeService.preference === preference}
+              aria-pressed={themeService.preference === preference}
+              onclick={() => setTheme(preference as ThemePreference)}
+            >{preference[0].toUpperCase() + preference.slice(1)}</button>
+          {/each}
+        </div>
+      </section>
+
+      <section id="voice" class="settings-section" aria-labelledby="voice-heading">
+        <header class="section-header">
+          <h2 id="voice-heading">Voice</h2>
+          <p class="lede">
+            Choose speech input, language, and spoken response behavior for this browser.
+          </p>
+        </header>
+        <VoiceClientSettings />
+      </section>
+
+      {#if hasCapability('host:stack:read')}
+        <section class="settings-section" aria-labelledby="host-heading">
+          <header class="section-header">
+            <h2 id="host-heading">Host</h2>
+            <p class="lede">Manage stack-wide services, updates, automations, and advanced settings.</p>
+          </header>
+          <!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- return-aware host path starts from a resolved internal route -->
+          <a class="host-settings-link" href={hostSettingsHref}>Manage host <span aria-hidden="true">→</span></a>
+        </section>
+      {/if}
+    </div>
+  {/if}
 </main>
 
 <style>
@@ -701,13 +742,12 @@
     display: flex;
     flex-direction: column;
     gap: var(--s-sp-4);
-    scroll-margin-top: 120px;
   }
 
-  @media (max-width: 640px) {
-    .settings-section {
-      scroll-margin-top: 168px;
-    }
+  .tab-panel {
+    display: flex;
+    flex-direction: column;
+    gap: var(--s-sp-5);
   }
   .settings-section + .settings-section {
     padding-top: var(--s-sp-6);

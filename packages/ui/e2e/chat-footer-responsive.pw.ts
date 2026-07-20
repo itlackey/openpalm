@@ -253,6 +253,9 @@ test('shared chat navbar and footer remain responsive from 320px through desktop
 	await expect(activity).toHaveText('');
 	await expect(settings).toHaveText('');
 	await expect(dictate).toBeVisible();
+	for (const control of [speaker, conversationMode, dictate]) {
+		await expect(control).toHaveCSS('border-top-width', '0px');
+	}
 	await input.fill('responsive target check');
 
 	for (const width of [320, 360, 375, 390, 420]) {

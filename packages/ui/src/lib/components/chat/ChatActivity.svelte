@@ -110,15 +110,14 @@
     width: 44px;
     height: 44px;
     padding: 0;
-    border: var(--s-hair) solid var(--s-line);
+    border: 0;
     border-radius: 99px;
-    background: var(--s-paper);
+    background: none;
     color: var(--s-ink-3);
     cursor: pointer;
   }
   .activity-trigger:hover,
   .activity-trigger.active {
-    border-color: currentColor;
     color: var(--s-seal);
   }
   .activity-trigger:focus-visible {

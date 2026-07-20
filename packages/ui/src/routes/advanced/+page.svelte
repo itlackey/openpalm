@@ -362,10 +362,6 @@
     left: max(var(--s-sp-4), env(safe-area-inset-left));
     bottom: max(var(--s-sp-4), env(safe-area-inset-bottom));
   }
-  .advanced-new-conversation :global(.icon-btn) {
-    border: var(--s-hair) solid var(--s-line);
-    background: var(--s-paper);
-  }
 
   .advanced-voice {
     position: fixed;

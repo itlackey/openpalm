@@ -74,30 +74,40 @@ describe('connections +page.svelte — host UX and pairing wiring', () => {
     expect(src).toMatch(/connectionsService\.activeId/);
   });
 
-  test('renders one settings page with the shared section navigation', () => {
+  test('splits settings into General and Connections tabs', () => {
     const src = pageSource();
     expect(src).toMatch(
-      /<Navbar brandHref=\{chatReturnHref\} showUtilities=\{false\} \/>[\s\S]*<DeviceSettingsNav \{chatReturnHref\} \/>[\s\S]*<main/,
+      /<Navbar brandHref=\{chatReturnHref\} showUtilities=\{false\} \/>[\s\S]*<DeviceSettingsNav \{chatReturnHref\} \{activeTab\} onTabChange=\{selectSettingsTab\} \/>[\s\S]*<main/,
     );
     expect(src).not.toMatch(/ChatNavbar/);
     expect(src).toMatch(/<h1>Settings<\/h1>/);
-    expect(src).toMatch(/id="connections"[\s\S]*id="voice"[\s\S]*id="appearance"/);
+    expect(src).toMatch(/id="settings-panel-connections"/);
+    expect(src).toMatch(/id="settings-panel-general"/);
+    expect(src).toMatch(/activeTab === 'connections'/);
     expect(src).toMatch(/<VoiceClientSettings \/>/);
     expect(src).toMatch(/themeService\.setPreference/);
+  });
+
+  test('opens connection deep links in the Connections tab', () => {
+    const src = pageSource();
+    expect(src).toMatch(/searchParams\.get\(\s*['"`]new['"`]\s*\)[\s\S]*?['"`]connections['"`]/);
+    expect(src).toMatch(/pairCode[\s\S]*activeTab\s*=\s*['"`]connections['"`]/);
   });
 
   test('links clearly to host management when host controls are available', () => {
     const src = pageSource();
     expect(src).toMatch(/hasCapability\(\s*['"`]host:stack:read['"`]\s*\)/);
     expect(src).toMatch(/buildReturnToPath\(resolve\(\s*['"`]\/host['"`]\s*\), chatReturnHref\)/);
-    expect(src).toMatch(/href=\{hostSettingsHref\}>Manage host/);
+    expect(src).toMatch(/href=\{hostSettingsHref\}[\s\S]*?>Manage host/);
   });
 
   test('retains new-connection and fragment pairing behavior alongside return context', () => {
     const src = pageSource();
     expect(src).toMatch(/page\.url\.searchParams\.get\(\s*['"`]new['"`]\s*\)\s*===\s*['"`]1['"`]/);
-    expect(src).toMatch(/new URL\(window\.location\.href\)/);
-    expect(src).toMatch(/url\.hash\s*=\s*['"]['"]/);
+    expect(src).toMatch(/new SvelteURLSearchParams\(page\.url\.searchParams\)/);
+    expect(src).toMatch(
+      /replaceState\(\s*`\$\{page\.url\.pathname\}\?\$\{searchParams\}`\s*,\s*\{\}\s*\)/,
+    );
   });
 
   test('does not advertise installing the client app from host UI surfaces', () => {
