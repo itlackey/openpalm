@@ -269,6 +269,7 @@
 				Import from host
 			</button>
 			<button
+				id="add-provider-trigger"
 				type="button"
 				class="btn btn-primary btn-sm"
 				onclick={() => { showAddSheet = true; }}
@@ -482,6 +483,7 @@
 		onselect={pickProvider}
 		oncustom={pickCustom}
 		onclose={() => { showAddSheet = false; }}
+		returnFocus={() => document.getElementById('add-provider-trigger')}
 	/>
 {/if}
 
@@ -490,6 +492,7 @@
 		provider={connectProvider}
 		onaction={handleAfterAction}
 		onclose={() => { connectProvider = null; }}
+		returnFocus={() => document.getElementById('add-provider-trigger')}
 	/>
 {/if}
 
@@ -497,6 +500,7 @@
 	<CustomProviderForm
 		onaction={handleAfterAction}
 		onclose={() => { showCustomForm = false; }}
+		returnFocus={() => document.getElementById('add-provider-trigger')}
 	/>
 {/if}
 

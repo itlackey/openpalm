@@ -24,6 +24,8 @@ describe('connections +page.svelte — host UX and pairing wiring', () => {
   test('renders the minted QR and one-time code with a shown-once warning', () => {
     const src = pageSource();
     expect(src).toMatch(/qrSvg/);
+    expect(src).toMatch(/data:image\/svg\+xml/);
+    expect(src).not.toMatch(/\{@html/);
     expect(src).toMatch(/pairingCode/);
     expect(src).toMatch(/shown only once|won't be shown again/i);
   });

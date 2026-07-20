@@ -12,12 +12,14 @@
 		providers,
 		onselect,
 		oncustom,
-		onclose
+		onclose,
+		returnFocus
 	}: {
 		providers: ProviderView[];
 		onselect: (p: ProviderView) => void;
 		oncustom: () => void;
 		onclose: () => void;
+		returnFocus?: () => HTMLElement | null;
 	} = $props();
 
 	let query = $state('');
@@ -33,7 +35,7 @@
 	});
 </script>
 
-<Drawer open={true} title="Add provider" onClose={onclose}>
+<Drawer open={true} title="Add provider" onClose={onclose} deferFocusRestore {returnFocus}>
 	<label class="form-label add-search-label" for="add-provider-search">Search providers</label>
 	<input
 		id="add-provider-search"

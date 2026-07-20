@@ -51,14 +51,9 @@ describe('parsePairingCode', () => {
   });
 
   test('rejects payloads missing url, username, or secret', () => {
-    const { url: _url, ...missingUrl } = PAYLOAD;
-    expect(parsePairingCode(localEncode(missingUrl)).ok).toBe(false);
-
-    const { username: _username, ...missingUsername } = PAYLOAD;
-    expect(parsePairingCode(localEncode(missingUsername)).ok).toBe(false);
-
-    const { secret: _secret, ...missingSecret } = PAYLOAD;
-    expect(parsePairingCode(localEncode(missingSecret)).ok).toBe(false);
+    expect(parsePairingCode(localEncode({ ...PAYLOAD, url: undefined })).ok).toBe(false);
+    expect(parsePairingCode(localEncode({ ...PAYLOAD, username: undefined })).ok).toBe(false);
+    expect(parsePairingCode(localEncode({ ...PAYLOAD, secret: undefined })).ok).toBe(false);
   });
 
   test('rejects a pairing URL carrying userinfo before it can prefill the form', () => {

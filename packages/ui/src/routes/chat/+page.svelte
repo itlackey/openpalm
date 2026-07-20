@@ -58,6 +58,7 @@
 	let navigationOpen = $state(false);
 	let activityRailOpen = $state(true);
 	let reducedMotion = $state(false);
+	let routeResolutionId = 0;
 
 	// ── Helpers ──────────────────────────────────────────────────────────
 
@@ -263,6 +264,7 @@
 	// that's already active skips openSession, and syncSessionUrl no-ops when the
 	// URL already matches, so the redundant run after an in-app goto() is cheap.
 	async function resolveRoute(): Promise<void> {
+		const resolutionId = ++routeResolutionId;
 		try {
 			advancedModeService.init();
 			const requestedSessionId = page.url.searchParams.get('session');
@@ -279,6 +281,7 @@
 			// awaits the actual settle even when another shell component already owns
 			// the load (no busy-wait on the reactive flags).
 			await endpointsService.load();
+			if (resolutionId !== routeResolutionId) return;
 			let endpointId =
 				endpointsService.activeId || endpointsService.endpoints[0]?.id || 'default';
 			const requestedAssistantExists =
@@ -286,9 +289,11 @@
 				endpointsService.endpoints.some((endpoint) => endpoint.id === requestedAssistantId);
 			if (requestedAssistantExists && requestedAssistantId !== endpointsService.activeId) {
 				await endpointsService.activate(requestedAssistantId);
+				if (resolutionId !== routeResolutionId) return;
 				endpointId = requestedAssistantId;
 			} else {
 				await chat.onEndpointChanged(endpointId);
+				if (resolutionId !== routeResolutionId) return;
 			}
 			const endpointState = chat.byEndpoint.get(endpointId);
 			const requestedSessionExists =
@@ -299,13 +304,17 @@
 				: (endpointState?.activeSessionId ?? endpointState?.sessions[0]?.id ?? null);
 			if (requestedSessionExists && requestedSessionId !== chat.activeSessionId) {
 				await chat.openSession(requestedSessionId);
+				if (resolutionId !== routeResolutionId) return;
 			}
 			if (beginNewRequested) {
 				canonicalSessionId = await chat.startNewSession();
+				if (resolutionId !== routeResolutionId) return;
 			}
 			await syncSessionUrl(canonicalSessionId, true);
 		} catch {
-			chat.error = 'Unable to reach the assistant.';
+			if (resolutionId === routeResolutionId) {
+				chat.error = 'Unable to reach the assistant.';
+			}
 		}
 	}
 

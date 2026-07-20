@@ -214,6 +214,8 @@
 	.section-strip {
 		display: flex;
 		gap: 0;
+		max-width: 100%;
+		overflow-x: auto;
 		/* Indent the full-width strip so the first tab aligns with the page
 		   content's left padding instead of jamming against the viewport edge. */
 		padding-inline: var(--s-sp-6);
@@ -272,6 +274,8 @@
 	.tabs {
 		display: flex;
 		gap: var(--s-sp-1);
+		max-width: 100%;
+		overflow-x: auto;
 		/* Align the subtab strip with the section strip + page content. */
 		padding-inline: var(--s-sp-6);
 		background: var(--s-paper-deep);

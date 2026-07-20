@@ -341,7 +341,7 @@ test('shared chat navbar and footer remain responsive from 320px through desktop
 		await expect(trigger).toHaveAttribute('aria-controls', 'chat-navbar-drawer');
 	}
 	await expect(activity).toHaveAttribute('aria-haspopup', 'dialog');
-	await expect(activity).toHaveAttribute('aria-controls', 'conversation-activity-drawer');
+	await expect(activity).not.toHaveAttribute('aria-controls', /.+/);
 	await expect(settings).toHaveAttribute('href', `/connections?returnTo=${ENCODED_RETURN_TO}`);
 
 	await assistant.click();
@@ -361,8 +361,10 @@ test('shared chat navbar and footer remain responsive from 320px through desktop
 
 	await activity.click();
 	const activityDialog = await expectOneDrawer(page, 'Activity', 'conversation-activity-drawer');
+	await expect(activity).toHaveAttribute('aria-controls', 'conversation-activity-drawer');
 	await expect(activityDialog.locator('.tool-log')).toBeVisible();
 	await closeDrawerWithOutro(page, activityDialog, activity);
+	await expect(activity).not.toHaveAttribute('aria-controls', /.+/);
 
 	await page.getByRole('button', { name: 'Send message' }).click();
 	const stop = page.getByRole('button', { name: 'Stop generating' });

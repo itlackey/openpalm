@@ -10,7 +10,7 @@ function luminance(color: string): number {
 				Number.parseInt(channel, 16),
 			)
 		: color.match(/[\d.]+/g)?.slice(0, 3).map(Number);
-	if (!channels || channels.length !== 3) throw new Error(`unsupported color: ${color}`);
+	if (channels?.length !== 3) throw new Error(`unsupported color: ${color}`);
 	const [red, green, blue] = channels.map((channel) => {
 		const value = channel / 255;
 		return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;

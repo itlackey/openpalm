@@ -605,7 +605,13 @@
         </p>
 
         {#if pairingQrSvg}
-          <div class="pairing-qr">{@html pairingQrSvg}</div>
+          <img
+            class="pairing-qr"
+            src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(pairingQrSvg)}`}
+            alt="QR code for pairing this device"
+            width="200"
+            height="200"
+          />
         {:else}
           <p class="alert" role="status">
             The QR image couldn't be generated on this stack — scan isn't available, but the
@@ -626,7 +632,7 @@
 
         {#if pairingWarnings.length > 0}
           <ul class="alert warn pairing-warnings">
-            {#each pairingWarnings as warning}
+            {#each pairingWarnings as warning (warning)}
               <li>{warning}</li>
             {/each}
           </ul>
@@ -815,7 +821,7 @@
     gap: var(--s-sp-2);
   }
 
-  .pairing-qr :global(svg) {
+  .pairing-qr {
     width: 200px;
     height: 200px;
     max-width: 100%;

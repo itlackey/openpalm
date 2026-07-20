@@ -105,6 +105,21 @@ describe('ProvidersPanel — assistant available', () => {
       expect(button.getBoundingClientRect().height).toBeGreaterThanOrEqual(44);
     }
   });
+
+  test('restores focus after moving from provider selection into the custom provider drawer', async () => {
+    mockFetch(availableResponse);
+    render(ProvidersPanel);
+    const trigger = page.getByRole('button', { name: 'Add provider' });
+
+    await trigger.click();
+    await page.getByRole('button', { name: 'Custom provider' }).click();
+    const customDrawer = page.getByRole('dialog', { name: 'Add custom provider' });
+    await expect.element(customDrawer).toBeVisible();
+    await customDrawer.getByRole('button', { name: 'Close Add custom provider panel' }).click();
+
+    await expect.element(customDrawer).not.toBeInTheDocument();
+    await expect.element(trigger).toHaveFocus();
+  });
 });
 
 describe('ProvidersPanel — OpenAI-compatible edge API key (S.1b)', () => {

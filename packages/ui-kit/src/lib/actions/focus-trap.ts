@@ -39,6 +39,8 @@ export interface FocusTrapOptions {
    * focus on a still-hidden element silently no-ops to `<body>`).
    */
   deferRestore?: boolean;
+  /** Resolve an explicit focus-return target instead of the element focused at mount. */
+  returnFocus?: () => HTMLElement | null;
 }
 
 /**
@@ -57,10 +59,11 @@ export function createFocusTrap(options: FocusTrapOptions = {}) {
     const target = (container && focusables(container)[0]) ?? focusables(node)[0] ?? node;
     target.focus();
     return () => {
+      const returnTarget = options.returnFocus?.() ?? previouslyFocused;
       if (options.deferRestore) {
-        requestAnimationFrame(() => previouslyFocused?.focus?.());
+        requestAnimationFrame(() => returnTarget?.focus?.());
       } else {
-        previouslyFocused?.focus?.();
+        returnTarget?.focus?.();
       }
     };
   };

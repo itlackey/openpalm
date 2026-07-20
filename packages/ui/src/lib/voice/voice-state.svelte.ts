@@ -25,6 +25,8 @@ export type VoiceStatus = 'idle' | 'recording' | 'transcribing' | 'preparing' | 
 export type SttEngine = 'browser' | 'remote' | 'openpalm-voice' | 'disabled';
 export type TtsEngine = 'browser' | 'remote' | 'openpalm-voice' | 'disabled';
 
+let voiceErrorListener: ((message: string) => void) | null = null;
+
 /** Wall-clock cap on a single recording, regardless of engine. */
 const MAX_RECORDING_MS = 60_000;
 
@@ -33,7 +35,15 @@ class VoiceState {
 	/** True when the configured STT engine is actually usable from this browser. */
 	sttSupported = $state(false);
 	ttsSupported = $state(false);
-	errorMessage = $state('');
+	private currentErrorMessage = $state('');
+	get errorMessage(): string {
+		return this.currentErrorMessage;
+	}
+	set errorMessage(message: string) {
+		const changed = message !== this.currentErrorMessage;
+		this.currentErrorMessage = message;
+		if (changed && message) voiceErrorListener?.(message);
+	}
 	/** Partial transcript text while browser STT is mid-utterance. Cleared on stop/error. */
 	interimTranscript = $state('');
 
@@ -73,6 +83,14 @@ class VoiceState {
 }
 
 export const voiceState = new VoiceState();
+
+/** Register the root UI's event-driven voice error surface. */
+export function onVoiceError(listener: (message: string) => void): () => void {
+	voiceErrorListener = listener;
+	return () => {
+		if (voiceErrorListener === listener) voiceErrorListener = null;
+	};
+}
 
 /**
  * The imperative TTS audio engine (speak queue, blob-URL lifecycle,

@@ -111,7 +111,7 @@ export const POST: RequestHandler = async (event) => {
     // limit, but never let a renderSVG failure escape as an uncaught 500 after
     // the principal is already minted — return the pairing code without a QR
     // rather than orphaning the (usable) principal (PR #564 r3566891768).
-    let qrSvg: string | null = null;
+    let qrSvg: string | null;
     try {
       qrSvg = renderSVG(result.code);
     } catch {

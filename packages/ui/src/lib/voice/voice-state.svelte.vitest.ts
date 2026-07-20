@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import {
 	initVoice,
+	onVoiceError,
 	setTtsAutoEnabled,
 	speakText,
 	stopSpeaking,
@@ -26,6 +27,33 @@ function seedRemoteProvider(baseURL = 'http://tts.example'): void {
 function clearVoiceSettings(): void {
 	window.localStorage.removeItem(SETTINGS_KEY);
 }
+
+class FakeSpeechSynthesisUtterance {
+	text: string;
+	onstart: (() => void) | null = null;
+	onend: (() => void) | null = null;
+	onerror: (() => void) | null = null;
+	constructor(text: string) {
+		this.text = text;
+	}
+}
+
+test('voice errors emit once per changed message and stop after unsubscribe', () => {
+	voiceState.errorMessage = '';
+	const listener = vi.fn();
+	const unsubscribe = onVoiceError(listener);
+
+	voiceState.errorMessage = 'Microphone failed.';
+	voiceState.errorMessage = 'Microphone failed.';
+	voiceState.errorMessage = '';
+	voiceState.errorMessage = 'Microphone failed.';
+
+	expect(listener).toHaveBeenCalledTimes(2);
+	unsubscribe();
+	voiceState.errorMessage = 'No listener.';
+	expect(listener).toHaveBeenCalledTimes(2);
+	voiceState.errorMessage = '';
+});
 
 describe('voice-state engine selection', () => {
 	const originalFetch = globalThis.fetch;
@@ -333,24 +361,15 @@ describe('voice-state queue', () => {
 		// ships neither, and the test needs to fire a captured utterance's
 		// handlers by hand (mirrors the speechSynthesis hide/restore pattern
 		// in the error-surfacing suite above).
-		class FakeUtterance {
-			text: string;
-			onstart: (() => void) | null = null;
-			onend: (() => void) | null = null;
-			onerror: (() => void) | null = null;
-			constructor(text: string) {
-				this.text = text;
-			}
-		}
-		const spoken: FakeUtterance[] = [];
+		const spoken: FakeSpeechSynthesisUtterance[] = [];
 		const fakeSynth = {
-			speak: vi.fn((u: FakeUtterance) => { spoken.push(u); }),
+			speak: vi.fn((utterance: FakeSpeechSynthesisUtterance) => { spoken.push(utterance); }),
 			cancel: vi.fn(),
 		};
 		const g = globalThis as unknown as Record<string, unknown>;
 		const originalUtterance = g.SpeechSynthesisUtterance;
 		const originalSynth = (window as unknown as { speechSynthesis?: unknown }).speechSynthesis;
-		g.SpeechSynthesisUtterance = FakeUtterance;
+		g.SpeechSynthesisUtterance = FakeSpeechSynthesisUtterance;
 		(window as unknown as { speechSynthesis: unknown }).speechSynthesis = fakeSynth;
 		try {
 			voiceState.ttsEngine = 'browser';

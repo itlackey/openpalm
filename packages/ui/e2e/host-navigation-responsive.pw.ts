@@ -78,4 +78,15 @@ test.describe('host navigation', () => {
     await activity.press('Enter');
     await expect(activity).toHaveAttribute('aria-selected', 'true');
   });
+
+  test('keeps desktop navigation within the viewport above the mobile breakpoint', async ({ page }) => {
+    for (const width of [641, 700, 720]) {
+      await page.setViewportSize({ width, height: 700 });
+      await page.goto('/host');
+
+      await expect(page.getByRole('tablist', { name: 'Sections' })).toBeVisible();
+      await expect(page.getByRole('tablist', { name: 'Health tabs' })).toBeVisible();
+      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
+    }
+  });
 });

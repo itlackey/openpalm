@@ -20,6 +20,8 @@
     onClosed?: () => void;
     /** Defer focus restoration until a parent can release background inertness. */
     deferFocusRestore?: boolean;
+    /** Resolve the focus-return target when a drawer is part of a chained flow. */
+    returnFocus?: () => HTMLElement | null;
     children: Snippet;
     footer?: Snippet;
     /** Optional content rendered at the start of the header (e.g. a back button). */
@@ -37,6 +39,7 @@
     onClose,
     onClosed,
     deferFocusRestore = false,
+    returnFocus,
     children,
     footer,
     headerStart,
@@ -53,6 +56,7 @@
     return createFocusTrap({
       initialFocus: '.drawer-body',
       deferRestore: deferFocusRestore,
+      returnFocus,
     })(node);
   }
 

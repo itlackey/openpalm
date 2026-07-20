@@ -68,17 +68,20 @@ function ensure(): void {
 
 export function getConnectionStore(): ConnectionStore {
   ensure();
-  return store!;
+  if (!store) throw new Error('Connection store failed to initialize.');
+  return store;
 }
 
 export function getSecretStore(): SecretStore {
   ensure();
-  return secrets!;
+  if (!secrets) throw new Error('Secret store failed to initialize.');
+  return secrets;
 }
 
 export function getTransport(): DirectTransport {
   ensure();
-  return transport!;
+  if (!transport) throw new Error('Direct transport failed to initialize.');
+  return transport;
 }
 
 /**

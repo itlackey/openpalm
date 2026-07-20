@@ -7,7 +7,7 @@
   import { detectClientDisplayMode } from '$lib/client-context.js';
   import { initializeRuntimeContext, initializeServerRuntimeContext } from '$lib/runtime-context.svelte.js';
   import { notifications } from '$lib/notifications.svelte.js';
-  import { voiceState } from '$lib/voice/voice-state.svelte.js';
+  import { onVoiceError } from '$lib/voice/voice-state.svelte.js';
 
   interface Props {
     data: import('./$types').LayoutData;
@@ -34,6 +34,9 @@
   // review: this store is process-global during SSR).
   untrack(() => initializeServerRuntimeContext(data.serverRuntimeContext));
 
+  // Consecutive errors reuse one toast instead of stacking.
+  let voiceErrorToastId: string | null = null;
+
   onMount(() => {
     themeService.init();
     // The client display mode genuinely needs the browser (matchMedia /
@@ -44,24 +47,15 @@
     initializeRuntimeContext(data.serverRuntimeContext, {
       displayMode: detectClientDisplayMode(),
     });
+    return onVoiceError((message) => {
+      voiceErrorToastId = notifications.push('error', message, {
+        replaceId: voiceErrorToastId ?? undefined,
+      });
+    });
   });
 
-  // Mirror voice errors into the toast queue so the voice subsystem's
-  // error surface renders through the single <Toast /> outlet below. This
-  // lives in APP code — not in ui-kit's Toast — because voice-state depends
-  // on app modules (client voice settings + provider transport), coupling
-  // ui-kit source must never carry (enforced by
-  // packages/ui-kit/tests/no-app-coupling.test.ts). Consecutive errors
-  // reuse the same toast id so they update in place instead of stacking.
-  let voiceErrorToastId: string | null = null;
-  $effect(() => {
-    const msg = voiceState.errorMessage;
-    if (!msg) return;
-    voiceErrorToastId = notifications.push('error', msg, {
-      replaceId: voiceErrorToastId ?? undefined,
-    });
-    voiceState.errorMessage = '';
-  });
+  // Voice errors route through the single <Toast /> outlet below. The listener
+  // stays in app code so ui-kit never depends on the app's voice modules.
 </script>
 
 <!-- ibrush filter: hand-drawn brush displacement used by all icon components -->
