@@ -54,15 +54,28 @@ const HOST_CAPABILITIES: readonly Capability[] = [
 ];
 
 /**
+ * True when this process actually has a loopback path to a local voice
+ * container. Voice is deliberately NOT gated on admin capability (using voice
+ * is not a privileged host operation, and a served non-admin `openpalm ui
+ * serve` / Electron host must still offer it) — but a UI co-process running
+ * INSIDE a container (the assistant container's served UI) reaches only its
+ * OWN 127.0.0.1, never the sibling voice container, and its `getState()`
+ * home can resolve into an assistant-writable mount. Such a process MUST fail
+ * closed: it sets `OP_UI_NO_LOCAL_VOICE=1` so it neither advertises nor
+ * proxies /voice, no matter what stack state it can read. Host launchers
+ * leave the flag unset.
+ */
+export function canServeLocalVoice(): boolean {
+  return process.env.OP_UI_NO_LOCAL_VOICE !== '1';
+}
+
+/**
  * Voice advertisement for the runtime handshake: the same-origin path of the
  * /voice pass-through, present when this process can actually serve it —
- * i.e. it can read the stack state and the voice addon is enabled. Every UI
- * server is a host process (`openpalm ui serve` / Electron) with a loopback
- * path to the voice container, so this is deliberately NOT gated on admin
- * capability: using voice is not a privileged host operation, and a served
- * non-admin process must still offer it. A process without readable stack
- * state (no OP_HOME) naturally advertises nothing. Same-origin, so no
- * host/port resolution and nothing request-derived.
+ * i.e. it has a loopback path to a voice container (see canServeLocalVoice),
+ * can read the stack state, and the voice addon is enabled. A process without
+ * readable stack state (no OP_HOME) naturally advertises nothing. Same-origin,
+ * so no host/port resolution and nothing request-derived.
  *
  * Deliberately NOT part of computeServerRuntimeContext(): that function runs
  * on requireCapability's per-request hot path, and this one reads the stack
@@ -70,6 +83,7 @@ const HOST_CAPABILITIES: readonly Capability[] = [
  * and GET /api/runtime) call it.
  */
 export function computeVoiceRuntime(): { url: string } | undefined {
+  if (!canServeLocalVoice()) return undefined;
   try {
     if (!listEnabledAddonIds(getState().homeDir).includes('voice')) return undefined;
     return { url: '/voice' };

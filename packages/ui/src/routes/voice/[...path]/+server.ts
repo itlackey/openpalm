@@ -26,15 +26,23 @@
 import type { RequestHandler } from './$types';
 import { listEnabledAddonIds } from '@openpalm/lib';
 import { getState } from '$lib/server/state.js';
+import { canServeLocalVoice } from '$lib/server/features.js';
 import { errorResponse, getRequestId, requireAdmin } from '$lib/server/helpers.js';
 import { VOICE_ADDON, voiceHostPort } from '$lib/server/voice/bring-up.js';
 
+// Bounds connection + response HEADERS, not the streamed body — see below.
 const UPSTREAM_TIMEOUT_MS = 60_000;
 
 /** The OpenAI-compatible surface the container serves — nothing else passes. */
 const ALLOWED_PATHS = new Set(['v1/audio/speech', 'v1/audio/transcriptions', 'v1/models', 'health']);
 
 function unavailable(requestId: string): Response | null {
+  // A UI process with no loopback path to a voice container (the assistant
+  // container's served co-process) must never claim to serve voice, even if
+  // it can read stack state — see canServeLocalVoice.
+  if (!canServeLocalVoice()) {
+    return errorResponse(503, 'voice_unavailable', 'This process has no local voice service.', {}, requestId);
+  }
   try {
     if (!listEnabledAddonIds(getState().homeDir).includes(VOICE_ADDON)) {
       return errorResponse(
@@ -67,21 +75,32 @@ const handle: RequestHandler = async (event) => {
   const upstreamUrl = `http://127.0.0.1:${voiceHostPort()}/${path}${event.url.search}`;
   // Buffer the body rather than streaming: the boundary-bearing content-type
   // header passes through untouched, so multipart uploads survive intact,
-  // and node's fetch needs no duplex plumbing.
-  const body = event.request.method === 'GET' ? undefined : await event.request.arrayBuffer();
+  // and node's fetch needs no duplex plumbing. GET and HEAD carry no body —
+  // undici rejects a body on either, and SvelteKit routes HEAD through the
+  // GET handler, so both must be treated as bodyless.
+  const method = event.request.method;
+  const body = method === 'GET' || method === 'HEAD' ? undefined : await event.request.arrayBuffer();
   const headers: Record<string, string> = {};
   const contentType = event.request.headers.get('content-type');
   if (contentType) headers['content-type'] = contentType;
 
+  // Time out the CONNECTION + headers only. Aborting the shared signal once the
+  // body is streaming would sever a long TTS synthesis (big text on a CPU
+  // kokoro profile streams audio past 60s) mid-transfer — the client already
+  // has a 200 and would get a truncated blob instead of a clean error. Clear
+  // the timer as soon as headers arrive and let the body stream to completion.
+  const controller = new AbortController();
+  const headerTimeout = setTimeout(() => controller.abort(), UPSTREAM_TIMEOUT_MS);
   let upstream: Response;
   try {
     upstream = await fetch(upstreamUrl, {
-      method: event.request.method,
+      method,
       headers,
       body,
-      signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
+      signal: controller.signal,
     });
   } catch {
+    clearTimeout(headerTimeout);
     return errorResponse(
       502,
       'voice_unreachable',
@@ -90,12 +109,16 @@ const handle: RequestHandler = async (event) => {
       requestId,
     );
   }
+  clearTimeout(headerTimeout);
 
   const responseHeaders = new Headers();
   const upstreamType = upstream.headers.get('content-type');
   if (upstreamType) responseHeaders.set('content-type', upstreamType);
-  const contentLength = upstream.headers.get('content-length');
-  if (contentLength) responseHeaders.set('content-length', contentLength);
+  // Deliberately NOT forwarding content-length: node's fetch transparently
+  // decompresses a gzip/br upstream while exposing the ORIGINAL (compressed)
+  // content-length, so forwarding it truncates the decompressed stream the
+  // browser actually receives. Letting the adapter chunk the body is correct
+  // for both buffered JSON and streamed audio.
   responseHeaders.set('x-request-id', requestId);
 
   return new Response(upstream.body, { status: upstream.status, headers: responseHeaders });

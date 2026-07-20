@@ -74,10 +74,17 @@ The architecture is now split along that line.
 
 The runtime handshake advertises the pass-through: `GET /api/runtime` (and
 the layout server data) carries `voice: { url: '/voice' }` when the process
-is admin-capable (the host process is the only one with a loopback path to
-the container — a served/in-container build is not, and never advertises)
-and the voice addon is enabled. The path is same-origin and env-derived —
-nothing request-dependent.
+can actually serve it — the voice addon is enabled in readable stack state
+AND the process has a loopback path to the voice container. Voice is **not**
+gated on admin capability: using voice is not a privileged host operation, so
+a served non-admin `openpalm ui serve` / Electron host advertises and proxies
+it too. The one process that must fail closed is the assistant container's
+in-container UI co-process — it reaches only its own `127.0.0.1`, never the
+sibling voice container, and its resolved home can sit in an
+assistant-writable mount — so it sets `OP_UI_NO_LOCAL_VOICE=1` and neither
+advertises nor proxies `/voice` regardless of stack state (see
+`canServeLocalVoice` in `packages/ui/src/lib/server/features.ts`). The path is
+same-origin and env-derived — nothing request-dependent.
 
 Client defaults when nothing has been saved: prefer `openpalm-voice` when
 advertised, else `browser` when the Web Speech API is usable (iOS Safari's

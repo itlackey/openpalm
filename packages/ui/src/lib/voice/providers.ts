@@ -280,20 +280,29 @@ export async function synthesize(
   });
 }
 
-/** Best-effort reachability probe of a speech endpoint (GET /v1/models). */
+/**
+ * Best-effort reachability probe of a speech endpoint (GET /v1/models).
+ *
+ * Only ever called against the advertised same-origin `/voice` pass-through
+ * (VoiceClientSettings), where a redirect means the app-level landing guard
+ * bounced the request — i.e. the endpoint is NOT here — so `redirect:'manual'`
+ * refuses to follow it (following it would land on an HTML 200 and report a
+ * dead endpoint as available). Should this ever probe a user-configured
+ * absolute-URL provider, note that a benign upstream redirect (http→https,
+ * trailing-slash normalization) would also read as unreachable here.
+ */
 export async function probeVoiceEndpoint(baseURL: string): Promise<boolean> {
   try {
-    // redirect: 'manual' — a redirect means the speech endpoint is NOT here
-    // (e.g. an app-level route guard bouncing to a landing page). Following
-    // it would land on an HTML 200 and report a dead endpoint as available.
     const res = await fetch(`${openaiApiBase(baseURL)}/models`, {
       method: 'GET',
       cache: 'no-store',
       redirect: 'manual',
       signal: AbortSignal.timeout(2_000),
     });
-    // Manual-mode redirects surface as opaqueredirect with status 0.
-    return res.status > 0 && res.status < 500 && !(res.status >= 300 && res.status < 400);
+    // Reachable = the server answered for itself: 2xx, or a 4xx (endpoint
+    // exists, just auth/not-found). A 3xx redirect, a 5xx, or a manual-mode
+    // opaqueredirect (status 0) all mean "not this endpoint".
+    return res.ok || (res.status >= 400 && res.status < 500);
   } catch {
     return false;
   }
