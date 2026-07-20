@@ -27,6 +27,7 @@
 	import IconLock from '@openpalm/ui-kit/components/icons/IconLock.svelte';
 	import CustomProviderForm from './CustomProviderForm.svelte';
 	import HostImportModal from './HostImportModal.svelte';
+	import { createFocusTrap, handleTrapKeydown } from '@openpalm/ui-kit/actions/focus-trap.js';
 
 	let pageState = $state<ProviderPageState>({
 		available: false,
@@ -101,6 +102,10 @@
 	// testable and consistent with the app's own dialog components, unlike the
 	// untestable native confirm()).
 	let pendingDisconnect = $state<ProviderView | null>(null);
+	const manageDisconnectFocus = createFocusTrap({
+		initialFocus: '.confirm-actions',
+		deferRestore: true,
+	});
 
 	const BADGE_LABEL: Record<NonNullable<ProviderView['credentialType']>, string> = {
 		env: 'env',
@@ -241,10 +246,14 @@
 	}
 </script>
 
-<div class="panel" role="tabpanel">
+<div
+	class="panel"
+	role="tabpanel"
+	inert={showAddSheet || connectProvider !== null || showCustomForm || pendingDisconnect !== null || showImportSheet}
+>
 	<div class="panel-header">
 		<div>
-			<h2>Connections</h2>
+			<h2>AI Providers</h2>
 			<p class="panel-subtitle">AI providers · model defaults</p>
 		</div>
 		<div class="panel-header-actions">
@@ -260,6 +269,7 @@
 				Import from host
 			</button>
 			<button
+				id="add-provider-trigger"
 				type="button"
 				class="btn btn-primary btn-sm"
 				onclick={() => { showAddSheet = true; }}
@@ -310,6 +320,7 @@
 			<button
 				type="button"
 				class:active={activeSubtab === 'opencode'}
+				aria-pressed={activeSubtab === 'opencode'}
 				onclick={() => { activeSubtab = 'opencode'; }}
 			>
 				OpenCode
@@ -318,6 +329,7 @@
 				<button
 					type="button"
 					class:active={activeSubtab === tab.id}
+					aria-pressed={activeSubtab === tab.id}
 					onclick={() => { activeSubtab = tab.id; }}
 				>
 					{tab.label}
@@ -471,6 +483,7 @@
 		onselect={pickProvider}
 		oncustom={pickCustom}
 		onclose={() => { showAddSheet = false; }}
+		returnFocus={() => document.getElementById('add-provider-trigger')}
 	/>
 {/if}
 
@@ -479,6 +492,7 @@
 		provider={connectProvider}
 		onaction={handleAfterAction}
 		onclose={() => { connectProvider = null; }}
+		returnFocus={() => document.getElementById('add-provider-trigger')}
 	/>
 {/if}
 
@@ -486,11 +500,20 @@
 	<CustomProviderForm
 		onaction={handleAfterAction}
 		onclose={() => { showCustomForm = false; }}
+		returnFocus={() => document.getElementById('add-provider-trigger')}
 	/>
 {/if}
 
 {#if pendingDisconnect}
-	<div class="confirm-prompt" role="alertdialog" aria-label="Confirm disconnect provider">
+	<div
+		class="confirm-prompt"
+		role="alertdialog"
+		aria-modal="true"
+		aria-label="Confirm disconnect provider"
+		tabindex="-1"
+		onkeydown={(event) => handleTrapKeydown(event, cancelDisconnect)}
+		{@attach manageDisconnectFocus}
+	>
 		<p class="confirm-prompt-title">Disconnect provider?</p>
 		<p>Disconnect {pendingDisconnect.name}? Stored credentials will be removed.</p>
 		<div class="confirm-actions">
@@ -573,10 +596,10 @@
 
 	.connections-subtabs {
 		display: flex;
+		flex-wrap: wrap;
 		gap: var(--s-sp-2);
 		padding: var(--s-sp-3) var(--s-sp-5);
 		border-bottom: var(--s-hair) solid var(--s-line);
-		overflow-x: auto;
 	}
 
 	.connections-subtabs button {
@@ -585,6 +608,7 @@
 		background: none;
 		color: var(--s-ink-3);
 		border-radius: 2px;
+		min-height: 44px;
 		padding: 0.3em 0.9em;
 		font-family: var(--s-font-mono);
 		font-size: var(--s-type-mark);

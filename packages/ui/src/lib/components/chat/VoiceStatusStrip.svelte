@@ -18,17 +18,25 @@
 	let showTranscribing = $derived(voiceState.status === 'transcribing');
 	let showAutoplayBlocked = $derived(voiceState.autoplayBlocked);
 	let conversation = $derived(voiceState.conversationActive);
-	// Priority: speaking > thinking > listening. `status` is the voice
-	// pipeline's own state; `thinking` covers the chat round-trip where the
-	// mic is armed but the assistant hasn't started speaking yet.
-	let conversationLabel = $derived(
+	let statusLabel = $derived(
 		voiceState.status === 'speaking'
 			? 'speaking…'
-			: voiceState.status === 'transcribing' || thinking
-				? 'thinking…'
-				: 'listening…'
+			: voiceState.status === 'preparing'
+				? 'preparing…'
+				: voiceState.status === 'transcribing'
+					? 'transcribing…'
+					: // Only surface 'thinking…' in this VOICE strip when voice is
+						// actually part of the turn (hands-free conversation, or spoken
+						// replies on). For a plain typed send with voice off, the thread's
+						// own 's-thinking' placeholder is the indicator — showing it here
+						// too would double it.
+						thinking && (conversation || voiceState.ttsAutoEnabled)
+						? 'thinking…'
+						: voiceState.status === 'recording'
+							? 'listening…'
+							: ''
 	);
-	let visible = $derived(conversation || showInterim || showTranscribing || showAutoplayBlocked);
+	let visible = $derived(Boolean(statusLabel) || showInterim || showTranscribing || showAutoplayBlocked);
 	// Autoplay recovery must never be shadowed by conversation mode: this
 	// strip is the only resume surface on /chat, and a blocked first
 	// utterance keeps the playback pipeline busy so every queued reply
@@ -36,11 +44,11 @@
 	let srMessage = $derived(
 		[
 			conversation
-				? `Conversation: ${voiceState.interimTranscript || conversationLabel}`
+				? `Conversation: ${voiceState.interimTranscript || statusLabel}`
 				: showInterim
 					? `Recording: ${voiceState.interimTranscript}`
-					: showTranscribing
-						? 'Transcribing'
+					: statusLabel
+						? statusLabel.replace('…', '')
 						: '',
 			showAutoplayBlocked ? 'Audio paused — click to resume' : ''
 		]
@@ -53,11 +61,11 @@
 {#if visible}
 	<div class="voice-status-strip">
 		{#if conversation}
-			<span class="voice-status-interim">{voiceState.interimTranscript || conversationLabel}</span>
+			<span class="voice-status-interim">{voiceState.interimTranscript || statusLabel}</span>
 		{:else if showInterim}
 			<span class="voice-status-interim">{voiceState.interimTranscript}</span>
-		{:else if showTranscribing}
-			<span class="voice-status-transcribing">transcribing…</span>
+		{:else if statusLabel}
+			<span class="voice-status-transcribing">{statusLabel}</span>
 		{/if}
 		<!-- Deliberately outside the branch chain above: the resume button
 		     must stay reachable while conversation mode is active. -->

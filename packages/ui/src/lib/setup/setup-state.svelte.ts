@@ -48,6 +48,7 @@ import type { VoiceAddonProfile } from '$lib/api.js';
 import type { SetupRecommendation } from '@openpalm/lib';
 import { addonProfileId } from '@openpalm/lib/provider-constants';
 import type { NetworkAccessPreset } from '@openpalm/lib/control-plane/network-preset.js';
+import { SvelteURLSearchParams } from 'svelte/reactivity';
 
 export type ModelMode = 'cloud' | 'local' | 'both';
 
@@ -607,12 +608,12 @@ export class SetupState {
     const providers: OpenCodeProvider[] = data.providers;
     const auth: Record<string, AuthMethod[]> = data.auth ?? {};
     // Providers that are either env-var detected OR have credentials in auth.json
-    const connected = new Set<string>(Array.isArray(data.connected) ? data.connected : []);
+    const connected = Array.isArray(data.connected) ? data.connected : [];
 
     // Ensure local providers are in the list
-    const existingIds = new Set(providers.map((p: OpenCodeProvider) => p.id));
+    const existingIds = providers.map((p: OpenCodeProvider) => p.id);
     for (const lp of LOCAL_PROVIDERS) {
-      if (!existingIds.has(lp.id)) providers.push(lp);
+      if (!existingIds.includes(lp.id)) providers.push(lp);
     }
 
     this.opencodeProviders = providers;
@@ -632,7 +633,7 @@ export class SetupState {
         newState[ocp.id].models = modelIds;
       }
       // Mark providers that are actually authenticated (env or auth.json credentials)
-      if (connected.has(ocp.id)) {
+      if (connected.includes(ocp.id)) {
         newState[ocp.id].verified = true;
       }
     }
@@ -1164,7 +1165,7 @@ export class SetupState {
     this.reset();
     this.initProviderState();
 
-    const params = new URLSearchParams(window.location.search);
+    const params = new SvelteURLSearchParams(window.location.search);
     this.isRerun = params.get('rerun') === '1';
 
     if (this.isRerun) {

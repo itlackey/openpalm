@@ -38,7 +38,7 @@ describe('VoiceStatusStrip — interim transcript', () => {
 		voiceState.status = 'recording';
 		voiceState.interimTranscript = '';
 		render(VoiceStatusStrip);
-		await expect.element(page.getByText('transcribing…')).not.toBeInTheDocument();
+		await expect.element(page.getByText('listening…')).toBeVisible();
 	});
 });
 
@@ -71,6 +71,22 @@ describe('VoiceStatusStrip — conversation mode', () => {
 		voiceState.status = 'recording';
 		render(VoiceStatusStrip, { thinking: true });
 		await expect.element(page.getByText('thinking…', { exact: true })).toBeVisible();
+	});
+
+	test('shows transcribing… rather than thinking… while audio is being transcribed', async () => {
+		voiceState.conversationActive = true;
+		voiceState.status = 'transcribing';
+		render(VoiceStatusStrip, { thinking: true });
+		await expect.element(page.getByText('transcribing…', { exact: true })).toBeVisible();
+		await expect.element(page.getByText('thinking…', { exact: true })).not.toBeInTheDocument();
+	});
+
+	test('shows preparing… while speech is being synthesized', async () => {
+		voiceState.conversationActive = true;
+		voiceState.status = 'preparing';
+		render(VoiceStatusStrip, { thinking: true });
+		await expect.element(page.getByText('preparing…', { exact: true })).toBeVisible();
+		await expect.element(page.getByText('thinking…', { exact: true })).not.toBeInTheDocument();
 	});
 
 	test('prefers the live interim transcript over the state label', async () => {

@@ -1,11 +1,11 @@
 <!--
-  VoiceClientSettings — the chat client's speech settings, rendered on the
-  /connections (manage connections) page.
+  VoiceClientSettings — the chat client's speech settings, rendered in the
+  Voice section of the user settings page.
 
   These are CLIENT-owned preferences persisted in this browser (settings in
-  localStorage, API keys in the encrypted IndexedDB secret store) — they never
-  touch the host's stack.env. The host side of voice (running the container,
-  hardware profile) lives under Admin → Capabilities; this panel only picks
+  localStorage, API keys in the browser secret store) — they never touch the
+  host's stack.env. The host side of voice (running the container,
+  hardware profile) lives under the host dashboard; this panel only picks
   which provider THIS device talks to:
 
     browser            — the browser's own Web Speech APIs
@@ -14,13 +14,14 @@
     disabled           — no speech on that side
 -->
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onDestroy, onMount } from 'svelte';
   import { notifications } from '$lib/notifications.svelte.js';
   import { getSecretStore } from '$lib/connections/boot.js';
   import { newConnectionId } from '$lib/connections/store.js';
   import {
     loadVoiceSettings,
     saveVoiceSettings,
+    voiceSecretsEncryptedAtRest,
     type VoiceClientSettings,
     type VoiceProviderId,
   } from '$lib/voice/settings-store.js';
@@ -28,9 +29,19 @@
     probeVoiceEndpoint,
     refreshAdvertisedVoiceUrl,
   } from '$lib/voice/providers.js';
-  import { initVoice, isIosSafari, speakText, setTtsAutoEnabled, voiceState } from '$lib/voice/voice-state.svelte.js';
+  import {
+    initVoice,
+    isIosSafari,
+    setTtsAutoEnabled,
+    speakText,
+    startListening,
+    stopListening,
+    stopSpeaking,
+    voiceState,
+  } from '$lib/voice/voice-state.svelte.js';
 
   type SectionKind = 'stt' | 'tts';
+  const MICROPHONE_TEST_MAX_MS = 10_000;
   type SectionForm = {
     provider: VoiceProviderId;
     baseURL: string;
@@ -52,13 +63,20 @@
 
   let openpalmUrl = $state<string | null>(null);
   let openpalmReachable = $state<boolean | null>(null);
+  let openpalmChecking = $state(true);
   let browserSttAvailable = $state(false);
   let browserSttReason = $state('');
   let browserTtsAvailable = $state(false);
 
   let saving = $state(false);
-  let testing = $state(false);
+  let speakerTesting = $state(false);
+  let microphoneTesting = $state(false);
+  let microphoneResult = $state('');
+  let microphoneMessage = $state('');
+  let speakerMessage = $state('');
+  let encryptedKeyStorage = $state(true);
   let error = $state('');
+  let microphoneTimer: ReturnType<typeof setTimeout> | null = null;
 
   onMount(() => {
     const settings = loadVoiceSettings();
@@ -93,6 +111,7 @@
       browserSttReason = sr ? '' : 'This browser has no Web Speech recognition';
     }
     browserTtsAvailable = 'speechSynthesis' in window;
+    encryptedKeyStorage = voiceSecretsEncryptedAtRest();
 
     void probeOpenpalm();
 
@@ -108,9 +127,22 @@
   });
 
   async function probeOpenpalm(): Promise<void> {
+    openpalmChecking = true;
     openpalmUrl = await refreshAdvertisedVoiceUrl();
     openpalmReachable = openpalmUrl ? await probeVoiceEndpoint(openpalmUrl) : null;
+    openpalmChecking = false;
   }
+
+  function clearMicrophoneTimer(): void {
+    if (!microphoneTimer) return;
+    clearTimeout(microphoneTimer);
+    microphoneTimer = null;
+  }
+
+  onDestroy(() => {
+    clearMicrophoneTimer();
+    if (microphoneTesting) stopListening();
+  });
 
   function sectionToSettings(form: SectionForm, kind: SectionKind) {
     const base: Record<string, string | undefined> = { provider: form.provider };
@@ -187,24 +219,62 @@
   }
 
   async function testSpeaker(): Promise<void> {
-    testing = true;
+    speakerTesting = true;
+    speakerMessage = '';
+    error = '';
     try {
       if (!(await save())) return;
+      stopSpeaking();
+      voiceState.errorMessage = '';
       await speakText('Hello! This is your OpenPalm assistant.');
+      if (voiceState.errorMessage) throw new Error(voiceState.errorMessage);
+      speakerMessage = 'Speaker test started with the selected provider.';
     } catch (e) {
       error = e instanceof Error ? e.message : 'Speaker test failed.';
     } finally {
-      testing = false;
+      speakerTesting = false;
     }
+  }
+
+  async function testMicrophone(): Promise<void> {
+    if (microphoneTesting) {
+      microphoneMessage = voiceState.status === 'transcribing' ? 'Transcribing…' : 'Transcribing test audio…';
+      stopListening();
+      return;
+    }
+
+    error = '';
+    microphoneResult = '';
+    microphoneMessage = '';
+    if (!(await save())) return;
+
+    stopSpeaking();
+    microphoneTesting = true;
+    microphoneMessage = 'Listening…';
+    microphoneTimer = setTimeout(() => {
+      microphoneMessage = 'Transcribing test audio…';
+      stopListening();
+    }, MICROPHONE_TEST_MAX_MS);
+
+    startListening(
+      (transcript) => {
+        microphoneResult = transcript;
+      },
+      () => {
+        clearMicrophoneTimer();
+        microphoneTesting = false;
+        microphoneMessage = microphoneResult
+          ? 'Microphone test complete.'
+          : voiceState.errorMessage || 'No speech detected.';
+      },
+    );
   }
 </script>
 
 <section class="voice-settings" aria-label="Voice settings">
-  <h2>Voice</h2>
+  <h3>Speech providers</h3>
   <p class="lede">
-    Speech settings for <strong>this device</strong> — each browser picks its own speech-to-text
-    and text-to-speech provider. To run the built-in OpenPalm Voice service, enable the
-    <em>Voice</em> capability on the host (Admin → Capabilities).
+    Choose the speech-to-text and text-to-speech providers used by this browser.
   </p>
 
   <div class="voice-grid">
@@ -214,7 +284,7 @@
     ] as section (section.kind)}
       {@const form = section.form}
       <div class="voice-card">
-        <h3>{section.title}</h3>
+        <h4>{section.title}</h4>
         <label class="field">
           <span>Provider</span>
           <select bind:value={form.provider}>
@@ -231,14 +301,21 @@
         </label>
 
         {#if form.provider === 'openpalm-voice'}
-          {#if openpalmUrl}
+          {#if openpalmChecking}
+            <p class="hint">Checking this host’s voice service…</p>
+          {:else if openpalmUrl && openpalmReachable === true}
             <p class="hint status-ok">
-              ● Available on this host{openpalmReachable === false ? ' (not responding yet — it may still be starting)' : ''}
+              Available on this host.
+            </p>
+          {:else if openpalmUrl}
+            <p class="hint status-warn">
+              Advertised by this host, but not reachable. It may still be starting.
+              <button type="button" class="linklike" onclick={() => void probeOpenpalm()}>Re-check</button>.
             </p>
           {:else}
             <p class="hint status-warn">
-              ○ This host is not offering a voice service. Enable the Voice capability in
-              Admin → Capabilities, then <button type="button" class="linklike" onclick={() => void probeOpenpalm()}>re-check</button>.
+              ○ This host is not offering a voice service. Enable the Voice add-on under
+              Manage host, then <button type="button" class="linklike" onclick={() => void probeOpenpalm()}>re-check</button>.
             </p>
           {/if}
         {/if}
@@ -262,7 +339,14 @@
           <label class="field">
             <span>API key {form.hasStoredKey ? '(stored — leave blank to keep)' : '(optional)'}</span>
             <input type="password" bind:value={form.apiKey} autocomplete="new-password" />
-            <small>Stored encrypted in this browser only, like connection passwords.</small>
+            {#if encryptedKeyStorage}
+              <small>Stored encrypted in this browser only, like connection passwords.</small>
+            {:else}
+              <small>
+                Stored in this browser without at-rest encryption because this page uses an insecure
+                HTTP origin. Use HTTPS or the local desktop app for encrypted storage.
+              </small>
+            {/if}
             {#if form.hasStoredKey}
               <button type="button" class="linklike" onclick={() => void clearStoredKey(form)}>
                 Clear stored key
@@ -286,27 +370,62 @@
     <span>Speak replies automatically</span>
   </label>
 
+  <div class="test-grid">
+    <div class="test-panel">
+      <strong>Microphone test</strong>
+      <p>Records for up to 10 seconds and transcribes with the selected provider. The transcript stays in this panel and is never sent to the assistant.</p>
+      <button
+        type="button"
+        class="btn btn-secondary"
+        onclick={() => void testMicrophone()}
+        disabled={saving || speakerTesting || stt.provider === 'disabled'}
+      >
+        {microphoneTesting
+          ? voiceState.status === 'transcribing'
+            ? 'Transcribing…'
+            : 'Stop and transcribe'
+          : 'Test microphone'}
+      </button>
+      {#if microphoneMessage}
+        <small aria-live="polite">{microphoneMessage}</small>
+      {/if}
+      {#if microphoneResult}
+        <output class="test-result" aria-label="Microphone test transcript">{microphoneResult}</output>
+      {/if}
+    </div>
+    <div class="test-panel">
+      <strong>Speaker test</strong>
+      <p>Uses only the selected text-to-speech provider and reports a provider failure without fallback.</p>
+      <button
+        type="button"
+        class="btn btn-secondary"
+        onclick={() => void testSpeaker()}
+        disabled={saving || speakerTesting || microphoneTesting || tts.provider === 'disabled'}
+      >
+        {speakerTesting ? 'Testing…' : 'Test speaker'}
+      </button>
+      {#if speakerMessage}
+        <small class="status-ok" aria-live="polite">{speakerMessage}</small>
+      {/if}
+    </div>
+  </div>
+
   {#if error}
     <div class="alert error" role="alert">{error}</div>
   {/if}
 
   <div class="form-actions">
-    <button type="button" class="btn btn-primary" onclick={() => void save()} disabled={saving || testing}>
+    <button type="button" class="btn btn-primary" onclick={() => void save()} disabled={saving || speakerTesting || microphoneTesting}>
       {saving ? 'Saving…' : 'Save voice settings'}
-    </button>
-    <button
-      type="button"
-      class="btn btn-secondary"
-      onclick={() => void testSpeaker()}
-      disabled={saving || testing || tts.provider === 'disabled'}
-    >
-      {testing ? 'Testing…' : 'Test speaker'}
     </button>
   </div>
 </section>
 
 <style>
   .voice-settings {
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
     display: flex;
     flex-direction: column;
     gap: var(--s-sp-3);
@@ -315,7 +434,7 @@
     border-radius: 2px;
     background: var(--s-paper);
   }
-  .voice-settings h2 {
+  .voice-settings h3 {
     margin: 0;
   }
   .lede {
@@ -324,12 +443,15 @@
   }
 
   .voice-grid {
+    width: 100%;
+    min-width: 0;
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
     gap: var(--s-sp-4);
   }
 
   .voice-card {
+    min-width: 0;
     display: flex;
     flex-direction: column;
     gap: var(--s-sp-3);
@@ -337,7 +459,7 @@
     border: var(--s-hair) solid var(--s-line-soft);
     border-radius: 2px;
   }
-  .voice-card h3 {
+  .voice-card h4 {
     margin: 0;
     font-family: var(--s-font-mono);
     font-size: var(--s-type-mark);
@@ -348,6 +470,7 @@
   }
 
   .field {
+    min-width: 0;
     display: flex;
     flex-direction: column;
     gap: var(--s-sp-1);
@@ -358,6 +481,9 @@
   }
   .field input,
   .field select {
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
     padding: var(--s-sp-2) var(--s-sp-3);
     border: var(--s-hair) solid var(--s-line);
     border-radius: 2px;
@@ -400,7 +526,50 @@
   .field-inline {
     display: flex;
     align-items: center;
+    min-height: 44px;
     gap: var(--s-sp-2);
+    cursor: pointer;
+  }
+  .field-inline input {
+    box-sizing: border-box;
+    width: 24px;
+    min-width: 24px;
+    height: 24px;
+    margin: 0;
+  }
+
+  .test-grid {
+    width: 100%;
+    min-width: 0;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr));
+    gap: var(--s-sp-3);
+  }
+  .test-panel {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--s-sp-2);
+    padding: var(--s-sp-3);
+    border: var(--s-hair) solid var(--s-line-soft);
+  }
+  .test-panel p {
+    margin: 0;
+    color: var(--s-ink-3);
+    font-size: var(--s-type-deed);
+  }
+  .test-panel small {
+    color: var(--s-ink-3);
+  }
+  .test-result {
+    box-sizing: border-box;
+    width: 100%;
+    padding: var(--s-sp-2);
+    border: var(--s-hair) solid var(--s-line-soft);
+    background: var(--s-paper-deep);
+    font-family: var(--s-font-mono);
+    font-size: var(--s-type-deed);
   }
 
   .alert.error {
@@ -414,5 +583,18 @@
   .form-actions {
     display: flex;
     gap: var(--s-sp-2);
+  }
+
+  button {
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  .field input:focus-visible,
+  .field select:focus-visible,
+  .field-inline input:focus-visible,
+  button:focus-visible {
+    outline: 2px solid var(--s-ink);
+    outline-offset: 2px;
   }
 </style>

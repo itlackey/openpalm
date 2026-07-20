@@ -1,7 +1,9 @@
 /**
- * /voice/* pass-through: session-authed, availability-gated (admin-capable
- * process + enabled addon), allowlisted to the container's OpenAI surface,
- * and transparent (method/path/query/body/content-type forwarded 1:1).
+ * /voice/* pass-through: session-authed, availability-gated (enabled addon in
+ * readable stack state — NOT admin capability; a served non-admin host
+ * process must still pass voice through), allowlisted to the container's
+ * OpenAI surface, and transparent (method/path/query/body/content-type
+ * forwarded 1:1).
  */
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
@@ -53,7 +55,11 @@ beforeEach(() => {
 
 afterEach(() => {
   delete process.env.OP_ENABLE_ADMIN;
-  process.env.OP_HOME = originalHome;
+  delete process.env.OP_UI_NO_LOCAL_VOICE;
+  // Assigning undefined coerces to the string "undefined" and leaks OP_HOME to
+  // later tests in the worker — restore by deleting when it started unset.
+  if (originalHome === undefined) delete process.env.OP_HOME;
+  else process.env.OP_HOME = originalHome;
   globalThis.fetch = originalFetch;
   cleanupTempDirs();
   rmSync(getState().homeDir, { recursive: true, force: true });
@@ -72,11 +78,56 @@ describe('/voice pass-through', () => {
     expect(await res.json()).toMatchObject({ error: 'voice_unavailable' });
   });
 
-  test('503 voice_unavailable in a non-admin-capable process', async () => {
+  test('passes through in a non-admin-capable process (voice is not a host:* privilege)', async () => {
     enableVoiceAddon(getState().homeDir);
     delete process.env.OP_ENABLE_ADMIN;
+    const fetchMock = vi.fn(async () =>
+      new Response('{"data":[]}', { status: 200, headers: { 'content-type': 'application/json' } })
+    );
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+    const res = await GET(makeEvent('v1/models'));
+    expect(res.status).toBe(200);
+    expect(fetchMock).toHaveBeenCalled();
+  });
+
+  test('still requires a session in a non-admin process (auth, not admin, is the boundary)', async () => {
+    enableVoiceAddon(getState().homeDir);
+    delete process.env.OP_ENABLE_ADMIN;
+    const res = await GET(makeEvent('v1/models', { token: 'bad-token' }));
+    expect(res.status).toBe(401);
+  });
+
+  test('503 voice_unavailable when the process cannot serve local voice (OP_UI_NO_LOCAL_VOICE=1)', async () => {
+    enableVoiceAddon(getState().homeDir);
+    process.env.OP_UI_NO_LOCAL_VOICE = '1';
+    const fetchMock = vi.fn();
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
     const res = await GET(makeEvent('v1/models'));
     expect(res.status).toBe(503);
+    expect(await res.json()).toMatchObject({ error: 'voice_unavailable' });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  test('HEAD carries no upstream body (SvelteKit routes HEAD through GET; undici rejects a body)', async () => {
+    enableVoiceAddon(getState().homeDir);
+    const fetchMock = vi.fn(async () => new Response(null, { status: 200 }));
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+    const res = await GET(makeEvent('v1/models', { method: 'HEAD' }));
+    expect(res.status).toBe(200);
+    const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect(init.body).toBeUndefined();
+  });
+
+  test('does not forward upstream content-length (undici decompresses transparently)', async () => {
+    enableVoiceAddon(getState().homeDir);
+    globalThis.fetch = vi.fn(async () =>
+      new Response('{"data":[]}', {
+        status: 200,
+        headers: { 'content-type': 'application/json', 'content-length': '999' },
+      })
+    ) as unknown as typeof fetch;
+    const res = await GET(makeEvent('v1/models'));
+    expect(res.headers.get('content-length')).toBeNull();
   });
 
   test('404 for a path outside the OpenAI surface', async () => {

@@ -1,5 +1,6 @@
 <script lang="ts">
 	import PasswordInput from '@openpalm/ui-kit/components/common/PasswordInput.svelte';
+	import Drawer from '@openpalm/ui-kit/components/common/Drawer.svelte';
 	import type { LlmProfile } from './profile-types';
 
 	// Slide-in editor for one LLM profile. The parent (AkmTab) owns the draft
@@ -13,15 +14,8 @@
 	let { draft = $bindable(), oncancel, onapply }: Props = $props();
 </script>
 
-<div class="drawer-scrim" role="presentation" onclick={oncancel}></div>
-
-<div class="drawer" role="dialog" aria-modal="true" aria-label="Edit profile">
-	<div class="drawer-header">
-		<h3 class="drawer-title">LLM Profile</h3>
-		<button class="drawer-close" onclick={oncancel} aria-label="Close">✕</button>
-	</div>
-
-	<div class="drawer-body">
+<Drawer open={true} title="LLM profile" onClose={oncancel} width="40rem">
+	<div class="profile-drawer-body">
 		<div class="controls controls--grid">
 			<div class="control-group">
 				<label class="control-label" for="d-llm-name">Profile Name</label>
@@ -90,11 +84,11 @@
 		</div>
 	</div>
 
-	<div class="drawer-footer">
+	{#snippet footer()}
 		<button class="btn btn-secondary" onclick={oncancel}>Cancel</button>
 		<button class="btn btn-primary" onclick={onapply}>Apply</button>
-	</div>
-</div>
+	{/snippet}
+</Drawer>
 
 <style>
 	.controls { display: flex; flex-direction: column; gap: var(--s-sp-4); }
@@ -110,6 +104,7 @@
 	.control-input--narrow { max-width: 8rem; }
 	.control-input:focus { outline: 2px solid var(--s-seal); outline-offset: 1px; }
 	.control-input:disabled { opacity: 0.5; cursor: not-allowed; }
+	.profile-drawer-body { display: flex; flex-direction: column; gap: var(--s-sp-5); }
 
 	.toggle-row { display: flex; align-items: center; gap: var(--s-sp-3); cursor: pointer; font-size: var(--s-type-deed); }
 	.toggle-row input[type="checkbox"] { width: 1rem; height: 1rem; flex-shrink: 0; }
@@ -117,37 +112,4 @@
 	.toggle-hint { color: var(--s-ink-2); font-size: var(--s-type-deed); }
 	.feat-hint { font-size: var(--s-type-deed); color: var(--s-ink-2); }
 
-	.drawer-scrim { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.35); z-index: 200; }
-	.drawer {
-		position: fixed; top: 0; right: 0; bottom: 0;
-		width: min(640px, 92vw);
-		background: var(--s-paper);
-		border-left: var(--s-hair) solid var(--s-line);
-		box-shadow: -4px 0 32px rgba(0, 0, 0, 0.2);
-		z-index: 201;
-		display: flex; flex-direction: column;
-		animation: drawer-in 200ms cubic-bezier(0.16, 1, 0.3, 1);
-	}
-	@keyframes drawer-in { from { transform: translateX(100%); } to { transform: translateX(0); } }
-	.drawer-header {
-		display: flex; align-items: center; justify-content: space-between;
-		padding: var(--s-sp-4) var(--s-sp-6);
-		border-bottom: var(--s-hair) solid var(--s-line);
-		flex-shrink: 0;
-	}
-	.drawer-title { font-size: var(--s-type-deed); font-weight: 400; color: var(--s-ink); margin: 0; }
-	.drawer-close {
-		width: 2rem; height: 2rem; border-radius: 2px;
-		background: transparent; border: var(--s-hair) solid var(--s-line);
-		color: var(--s-ink-2); cursor: pointer; font-size: var(--s-type-deed);
-		display: flex; align-items: center; justify-content: center;
-	}
-	.drawer-close:hover { background: var(--s-paper); color: var(--s-ink); }
-	.drawer-body { flex: 1; overflow-y: auto; padding: var(--s-sp-6); display: flex; flex-direction: column; gap: var(--s-sp-5); }
-	.drawer-footer {
-		display: flex; justify-content: flex-end; gap: var(--s-sp-3);
-		padding: var(--s-sp-4) var(--s-sp-6);
-		border-top: var(--s-hair) solid var(--s-line);
-		flex-shrink: 0;
-	}
 </style>

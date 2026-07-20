@@ -13,10 +13,12 @@
 
 	let {
 		onaction,
-		onclose
+		onclose,
+		returnFocus
 	}: {
 		onaction?: (result: ProviderActionResult) => void;
 		onclose?: () => void;
+		returnFocus?: () => HTMLElement | null;
 	} = $props();
 
 	let id = $state('');
@@ -57,7 +59,7 @@
 	}
 </script>
 
-<Drawer open={true} title="Add custom provider" onClose={() => onclose?.()}>
+<Drawer open={true} title="Add custom provider" onClose={() => onclose?.()} deferFocusRestore {returnFocus}>
 		<p class="field-hint">
 			Register an OpenAI-compatible provider by base URL. Models are auto-discovered on first connection.
 		</p>

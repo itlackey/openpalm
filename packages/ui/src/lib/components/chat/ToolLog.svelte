@@ -12,6 +12,7 @@
     relativeTimeLabel,
     toolIconType,
     toolAriaLabel,
+    toolOutcome,
     toolStatusLabel,
     toolDetailRows,
   } from '$lib/chat/tool-strip.js';
@@ -29,9 +30,10 @@
 
   interface Props {
     items: ToolStripEntry[];
+    showHeading?: boolean;
   }
 
-  let { items }: Props = $props();
+  let { items, showHeading = true }: Props = $props();
 
   // Stable heading id for aria-labelledby (UX-05).
   uid += 1;
@@ -45,15 +47,7 @@
     expanded = { ...expanded, [id]: !expanded[id] };
   }
 
-  function isRunning(status: string): boolean {
-    return status !== 'completed' && status !== 'error' && status !== 'failed';
-  }
-
-  function isFailed(status: string): boolean {
-    return status === 'error' || status === 'failed';
-  }
-
-  // True when this item begins a new assistant turn (different turnKey from the
+  // True when this item begins a new user turn (different turnKey from the
   // previous item). Graceful no-op when turnKeys are absent (UX-26).
   function startsNewTurn(index: number): boolean {
     if (index <= 0) return false;
@@ -63,40 +57,60 @@
     return current !== previous;
   }
 
-  // Terse live-region text announcing failures only (UX-29).
-  const failedAnnouncement = $derived(
+  // Announce only PROBLEM outcomes (failed / warning / uncertain). The whole
+  // list re-read on every tool event (aria-atomic over every item) drowns a
+  // screen-reader user in minutes of repeated speech during a long turn — the
+  // routine succeeded/running transitions are the spam; problems are the
+  // actionable signal.
+  const ANNOUNCED_OUTCOMES = new Set(['failed', 'warning', 'uncertain']);
+  const statusAnnouncement = $derived(
     items
-      .filter((t) => isFailed(t.status))
-      .map((t) => `${displayTitle(t)} failed`)
+      .filter((tool) => ANNOUNCED_OUTCOMES.has(toolOutcome(tool)))
+      .map((tool) => `${displayTitle(tool)}: ${toolStatusLabel(tool)}`)
       .join(', '),
   );
 </script>
 
 {#if items.length > 0}
   <section class="tool-log" aria-labelledby={headingId}>
-    <h2 class="tool-log-heading" id={headingId}>activity</h2>
+    <h2 class="tool-log-heading" class:sr-only={!showHeading} id={headingId}>Activity</h2>
 
-    <div class="tool-log-live" aria-live="polite" aria-atomic="true">
-      {failedAnnouncement}
+    <div
+      class="tool-log-live"
+      role="status"
+      aria-live="polite"
+      aria-atomic="true"
+      aria-relevant="text"
+    >
+      {statusAnnouncement}
     </div>
 
     <ul class="tool-log-list">
       {#each items as tool, i (tool.id)}
-        {@const iconType = toolIconType(tool.tool, tool.status)}
         {@const open = !!expanded[tool.id]}
-        {@const running = isRunning(tool.status)}
-        {@const failed = isFailed(tool.status)}
+        {@const outcome = toolOutcome(tool)}
+        {@const iconType = toolIconType(tool.tool, outcome)}
+        {@const running = outcome === 'running'}
+        {@const failed = outcome === 'failed'}
+        {@const warning = outcome === 'warning'}
+        {@const stopped = outcome === 'stopped'}
+        {@const uncertain = outcome === 'uncertain'}
         {@const when = relativeTimeLabel(tool.updatedAt)}
+        {@const detailsId = `${headingId}-details-${i}`}
         <li
           class="tool-log-item"
           class:running
           class:failed
+          class:warning
+          class:stopped
+          class:uncertain
           class:new-turn={startsNewTurn(i)}
         >
           <button
             class="tool-log-summary"
             type="button"
             aria-expanded={open}
+            aria-controls={detailsId}
             aria-label={toolAriaLabel(tool)}
             title={timelineTitle(tool)}
             onclick={() => toggle(tool.id)}
@@ -134,9 +148,7 @@
               {/if}
             </span>
 
-            {#if running || failed}
-              <span class="tool-log-status">{toolStatusLabel(tool.status)}</span>
-            {/if}
+            <span class="tool-log-status" aria-hidden="true">{toolStatusLabel(tool)}</span>
 
             <span class="tool-log-chevron" class:open aria-hidden="true">
               <svg width="11" height="11" viewBox="0 0 12 12" fill="none">
@@ -152,7 +164,7 @@
           </button>
 
           {#if open}
-            <div class="tool-log-details">
+            <div class="tool-log-details" id={detailsId} role="region" aria-label={toolAriaLabel(tool)}>
               {#each toolDetailRows(tool) as row (`${tool.id}:${row.label}`)}
                 <div class="tool-log-row">
                   <div class="tool-log-label">{row.label}</div>
@@ -175,6 +187,10 @@
 
 <style>
   .tool-log {
+    box-sizing: border-box;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
     display: flex;
     flex-direction: column;
     gap: var(--s-sp-3);
@@ -205,6 +221,10 @@
   }
 
   .tool-log-list {
+    box-sizing: border-box;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
     list-style: none;
     margin: 0;
     padding: 0;
@@ -213,6 +233,10 @@
   }
 
   .tool-log-item {
+    box-sizing: border-box;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
     border-left: var(--s-hair) solid var(--s-line-soft);
     transition: border-color var(--s-t-quick) var(--s-ease);
   }
@@ -233,12 +257,28 @@
     border-left-color: var(--s-error);
   }
 
+  .tool-log-item.warning,
+  .tool-log-item.uncertain {
+    border-left-color: var(--s-warning);
+  }
+
+  .tool-log-item.uncertain {
+    border-left-style: dashed;
+  }
+
   .tool-log-summary {
-    display: flex;
+    box-sizing: border-box;
+    display: grid;
+    grid-template-columns: 20px minmax(0, 1fr) 16px;
+    grid-template-areas:
+      'icon main chevron'
+      'icon status chevron';
     align-items: center;
     gap: var(--s-sp-2);
     width: 100%;
-    min-height: 44px; /* comfortable touch target (UX-21) */
+    max-width: 100%;
+    min-width: 0;
+    min-height: 48px;
     appearance: none;
     border: 0;
     background: none;
@@ -269,6 +309,7 @@
     justify-content: center;
     color: var(--s-ink-2); /* lifted from ink-3 (UX-24) */
     flex-shrink: 0;
+    grid-area: icon;
   }
 
   .tool-log-item.running .tool-log-icon {
@@ -277,6 +318,11 @@
 
   .tool-log-item.failed .tool-log-icon {
     color: var(--s-error);
+  }
+
+  .tool-log-item.warning .tool-log-icon,
+  .tool-log-item.uncertain .tool-log-icon {
+    color: var(--s-warning);
   }
 
   /* Subtle pulse on the running icon (UX-11). */
@@ -300,6 +346,7 @@
     display: flex;
     flex-direction: column;
     gap: 1px;
+    grid-area: main;
   }
 
   .tool-log-title {
@@ -327,10 +374,11 @@
   .tool-log-status {
     font-family: var(--s-font-mono);
     font-size: var(--s-type-mark-sm);
-    letter-spacing: var(--s-track-label);
-    text-transform: uppercase;
+    letter-spacing: 0;
     color: var(--s-ink-2);
-    flex-shrink: 0;
+    grid-area: status;
+    justify-self: start;
+    text-transform: capitalize;
   }
 
   .tool-log-item.running .tool-log-status {
@@ -339,6 +387,11 @@
 
   .tool-log-item.failed .tool-log-status {
     color: var(--s-error);
+  }
+
+  .tool-log-item.warning .tool-log-status,
+  .tool-log-item.uncertain .tool-log-status {
+    color: var(--s-warning);
   }
 
   /* Fixed-width trailing column so the chevron forms a clean vertical edge
@@ -350,6 +403,7 @@
     width: 16px;
     color: var(--s-ink-2); /* higher contrast affordance (UX-23) */
     flex-shrink: 0;
+    grid-area: chevron;
     transition: transform var(--s-t-quick) var(--s-ease);
   }
 
@@ -409,6 +463,19 @@
 
   .tool-log-error {
     color: var(--s-error);
+  }
+
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    clip-path: inset(50%);
+    white-space: nowrap;
+    border: 0;
   }
 
   /* Respect reduced-motion: disable chevron rotation + running pulse (UX-22). */

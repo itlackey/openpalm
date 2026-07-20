@@ -134,6 +134,9 @@
 		display: flex;
 		flex-direction: column;
 		gap: var(--s-sp-4);
+		min-width: 0;
+		max-width: 100%;
+		box-sizing: border-box;
 	}
 
 	.stats-header {
@@ -142,7 +145,12 @@
 		align-items: flex-end;
 		gap: var(--s-sp-4);
 		flex-wrap: wrap;
+		min-width: 0;
+		max-width: 100%;
 	}
+
+	.stats-header > div { min-width: 0; }
+	.stats-header :global(.btn) { min-height: 2.75rem; }
 
 	.stats-header h3 {
 		margin: 0 0 var(--s-sp-2);
@@ -206,8 +214,10 @@
 
 	.stats-cards {
 		display: grid;
-		grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+		grid-template-columns: repeat(auto-fit, minmax(min(100%, 160px), 1fr));
 		gap: var(--s-sp-4);
+		min-width: 0;
+		max-width: 100%;
 	}
 
 	.stats-card,
@@ -242,8 +252,10 @@
 
 	.stats-grid {
 		display: grid;
-		grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+		grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
 		gap: var(--s-sp-3) var(--s-sp-4);
+		min-width: 0;
+		max-width: 100%;
 	}
 
 	.stats-row {
@@ -255,7 +267,11 @@
 		font-family: var(--s-font-mono);
 		font-size: var(--s-type-mark-sm);
 		color: var(--s-ink-3);
+		min-width: 0;
 	}
+
+	.stats-row span,
+	.stats-row strong { min-width: 0; overflow-wrap: anywhere; }
 
 	.stats-row strong {
 		font-family: var(--s-font-display);

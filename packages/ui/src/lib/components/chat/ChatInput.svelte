@@ -1,4 +1,5 @@
 <script lang="ts">
+  import type { Snippet } from 'svelte';
   import IconSend from '@openpalm/ui-kit/components/icons/IconSend.svelte';
   import IconStop from '@openpalm/ui-kit/components/icons/IconStop.svelte';
 
@@ -9,6 +10,8 @@
     onStop?: () => void;
     /** Composer text — bindable so dictation can insert into the draft. */
     draft?: string;
+    /** Optional generic control rendered in the composer's footer. */
+    leadingAction?: Snippet;
   }
 
   let {
@@ -17,6 +20,7 @@
     onSend,
     onStop,
     draft = $bindable(''),
+    leadingAction,
   }: Props = $props();
 
   let textareaEl = $state<HTMLTextAreaElement | undefined>();
@@ -63,18 +67,24 @@
   class:sending
   onsubmit={(e) => { e.preventDefault(); submit(); }}
 >
-  <textarea
-    bind:this={textareaEl}
-    bind:value={draft}
-    onkeydown={handleKeydown}
-    oninput={handleInput}
-    placeholder="Write a message..."
-    rows="1"
-    aria-label="Message input"
-    autocomplete="off"
-    spellcheck="false"
-  ></textarea>
+  <label class="composer-field">
+    <span>Message</span>
+    <textarea
+      bind:this={textareaEl}
+      bind:value={draft}
+      onkeydown={handleKeydown}
+      oninput={handleInput}
+      placeholder="Write a message..."
+      rows="1"
+      aria-label="Message input"
+      autocomplete="off"
+      spellcheck="false"
+    ></textarea>
+  </label>
   <div class="s-footer">
+    {#if leadingAction}
+      {@render leadingAction()}
+    {/if}
     <div class="s-rule"></div>
     {#if showStop}
       <button
@@ -104,7 +114,22 @@
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 0.125rem;
+    gap: var(--s-sp-1);
+  }
+
+  .composer-field {
+    display: flex;
+    width: 100%;
+    flex-direction: column;
+    align-items: center;
+    gap: 0;
+  }
+  .composer-field > span {
+    align-self: flex-start;
+    color: var(--s-ink-3);
+    font-family: var(--s-font-mono);
+    font-size: 0.75rem;
+    line-height: 1.2;
   }
 
   /* UX-09: keep the composer (and its right-side send button) clear of the
@@ -112,7 +137,7 @@
      horizontal breathing room. Symmetric padding preserves the centered look. */
   @media (max-width: 32rem) {
     .s-composer {
-      padding-inline: clamp(1rem, 6vw, 2.5rem);
+      padding-inline: var(--s-sp-4);
     }
   }
 
@@ -130,8 +155,13 @@
     color: var(--s-ink);
     overflow: hidden;
     max-height: 30vh;
-    padding: 0.2rem 0;
-    transition: color var(--s-t-theme) var(--s-ease);
+    padding: var(--s-sp-1) 0;
+  }
+
+  .s-composer textarea:focus-visible {
+    outline: 2px solid var(--s-seal);
+    outline-offset: 2px;
+    border-radius: var(--s-radius-focus);
   }
 
   /* Footer row: rule line + send/stop button.
@@ -140,7 +170,7 @@
   .s-footer {
     display: flex;
     align-items: center;
-    gap: 0.4rem;
+    gap: var(--s-sp-2);
     width: 100%;
   }
 
@@ -156,7 +186,7 @@
        footer's vertical rhythm. */
     min-width: 44px;
     min-height: 44px;
-    margin-block: -0.6rem;
+    margin-block: -0.5rem;
     padding: 0.25rem;
     display: flex;
     align-items: center;

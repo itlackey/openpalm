@@ -20,11 +20,23 @@
   interface Props {
     /** Brand destination; defaults to the mode's chat route. */
     brandHref?: string;
+    /** Whether to show the built-in host/chat and theme utilities. */
+    showUtilities?: boolean;
+    /** Remove the navbar from interaction while a sibling dialog owns focus. */
+    inactive?: boolean;
+    /** Use the taller responsive frame shared by Simple and OpenCode. */
+    conversation?: boolean;
     /** Surface-specific controls rendered after the theme toggle. */
     children?: Snippet;
   }
 
-  let { brandHref, children }: Props = $props();
+  let {
+    brandHref,
+    showUtilities = true,
+    inactive = false,
+    conversation = false,
+    children,
+  }: Props = $props();
 
   const chatRoute = $derived(runtimeContext.routes.chat ?? '/chat');
   const hostRoute = $derived(runtimeContext.routes.host);
@@ -35,11 +47,11 @@
   const resolvedBrandHref = $derived(brandHref ?? chatRoute);
 </script>
 
-<header class="navbar">
+<header class="navbar" class:conversation inert={inactive}>
   <div class="navbar-inner">
     <!-- Brand -->
     <!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- destination comes from runtimeContext.routes / a session-aware path, not a static route id -->
-    <a class="navbar-brand" href={resolvedBrandHref} aria-label="OpenPalm — go to chat">
+    <a class="navbar-brand" href={resolvedBrandHref} aria-label="OpenPalm - go to chat">
       <span class="brand-icon" aria-hidden="true">
         <IconLogo size={28} />
       </span>
@@ -48,15 +60,19 @@
 
     <!-- Utility cluster, left→right: chat/host button · theme · surface
          controls (from children). -->
-    <div class="navbar-actions">
-      {#if onHostSurface}
-        <IconButton href={resolvedBrandHref} ariaLabel="Back to chat" title="Chat" icon={chatIcon} />
-      {:else if hostRoute !== undefined && hasCapability('host:stack:read')}
-        <IconButton href={hostRoute} ariaLabel="Manage assistant" title="Admin" icon={settingsIcon} />
-      {/if}
-      <ThemeToggle />
-      {@render children?.()}
-    </div>
+    {#if showUtilities || children}
+      <div class="navbar-actions">
+        {#if showUtilities}
+          {#if onHostSurface}
+            <IconButton href={resolvedBrandHref} ariaLabel="Back to chat" title="Chat" icon={chatIcon} />
+          {:else if hostRoute !== undefined && hasCapability('host:stack:read')}
+            <IconButton href={hostRoute} ariaLabel="Manage assistant" title="Admin" icon={settingsIcon} />
+          {/if}
+          <ThemeToggle />
+        {/if}
+        {@render children?.()}
+      </div>
+    {/if}
   </div>
 </header>
 
@@ -78,8 +94,14 @@
     height: 52px;
   }
 
+  .navbar.conversation,
+  .navbar.conversation .navbar-inner {
+    height: 64px;
+  }
+
   .navbar-inner {
     width: 100%;
+    box-sizing: border-box;
     padding: 0 var(--s-sp-5);
     height: 52px;
     display: flex;
@@ -91,7 +113,10 @@
   .navbar-brand {
     display: flex;
     align-items: center;
+    justify-content: center;
     gap: var(--s-sp-2);
+    min-width: 44px;
+    min-height: 44px;
     flex-shrink: 0;
     text-decoration: none;
   }
@@ -125,52 +150,60 @@
     margin-left: auto;
     min-width: 0;
   }
-  /* The assistant + session triggers (rendered by ChatNavbar's children) may
-     shrink (truncate label) but never disappear — at narrow widths they go
-     icon-only via the rule below. */
-  .navbar-actions :global(.switcher),
-  .navbar-actions :global(.trigger) {
-    min-width: 0;
-  }
-
-  /* ── Responsive: shed labels, keep every control visible. ── */
-  @media (max-width: 900px) {
-    /* Assistant + session collapse to icon + status dot + caret (their own
-       drawers stay) — visible at every width, just compact. */
-    .navbar-actions :global(.trigger .label) {
-      display: none;
-    }
-  }
-
-  @media (max-width: 480px) {
+  @media (max-width: 720px) {
     .brand-text {
       display: none;
     }
     .navbar-inner {
-      padding: 0 var(--s-sp-3);
-      gap: var(--s-sp-2);
-    }
-    /* Drop only the caret at narrow widths so the cluster fits a 320px viewport;
-       keep the status dot — it visually distinguishes the two picker triggers
-       from the plain utility icon buttons (settings/mic). */
-    .navbar-actions :global(.trigger .caret) {
-      display: none;
+      padding: 0 var(--s-sp-2);
+      gap: 0;
     }
   }
 
-  /* Narrow phones: the controls are now 40px tall; tighten the icon-only
-     switcher padding + gutters so the cluster still fits within 320px. */
-  @media (max-width: 400px) {
-    .navbar-inner {
-      padding: 0 var(--s-sp-2);
-      gap: var(--s-sp-1);
+  @media (max-width: 999px) {
+    .navbar.conversation {
+      height: 112px;
+    }
+    .navbar.conversation .navbar-inner {
+      position: relative;
+      height: 112px;
+      padding: 0;
+      align-items: flex-start;
+    }
+    .navbar.conversation .navbar-brand {
+      position: absolute;
+      top: 6px;
+      left: var(--s-sp-2);
+      z-index: 1;
+    }
+    .navbar.conversation .navbar-actions {
+      width: 100%;
+      height: 112px;
+      margin-left: 0;
+      display: block;
+    }
+  }
+
+  @media (min-width: 721px) and (max-width: 999px) {
+    .navbar.conversation .brand-text {
+      display: inline;
+    }
+  }
+
+  @media (max-width: 479px) {
+    .navbar.conversation,
+    .navbar.conversation .navbar-inner,
+    .navbar.conversation .navbar-actions {
+      height: 144px;
+    }
+  }
+
+  @media (max-width: 480px) {
+    .navbar:not(.conversation) .navbar-inner {
+      padding: 0 var(--s-sp-1);
     }
     .navbar-actions {
-      gap: var(--s-sp-1);
-    }
-    .navbar-actions :global(.trigger) {
-      padding-left: var(--s-sp-2);
-      padding-right: var(--s-sp-2);
+      gap: 0;
     }
   }
 </style>

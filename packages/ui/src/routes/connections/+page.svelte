@@ -1,8 +1,12 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import { SvelteURLSearchParams } from 'svelte/reactivity';
+  import { resolve } from '$app/paths';
   import { page } from '$app/state';
   import { replaceState } from '$app/navigation';
-  import ChatNavbar from '$lib/components/chrome/ChatNavbar.svelte';
+  import Navbar from '$lib/components/chrome/Navbar.svelte';
+  import DeviceSettingsNav from '$lib/components/chrome/DeviceSettingsNav.svelte';
+  import VoiceClientSettings from '$lib/components/voice/VoiceClientSettings.svelte';
   import IconLock from '@openpalm/ui-kit/components/icons/IconLock.svelte';
   import {
     endpointsService as connectionsService,
@@ -13,8 +17,25 @@
   import { newConnectionId } from '$lib/connections/store.js';
   import { isDiscoveryCandidateUrl, markLocalDiscoveryDismissed } from '$lib/connections/discovery.js';
   import { parsePairingCode, type PairingPayload } from '$lib/connections/pairing.js';
-  import { hasCapability, runtimeContext } from '$lib/runtime-context.svelte.js';
-  import VoiceClientSettings from '$lib/components/voice/VoiceClientSettings.svelte';
+  import { hasCapability } from '$lib/runtime-context.svelte.js';
+  import { advancedModeService } from '$lib/advanced-mode-state.svelte.js';
+  import {
+    buildAdvancedPath,
+    buildChatPath,
+    buildReturnToPath,
+    currentChatSessionId,
+    resolveReturnToPath,
+  } from '$lib/chat/navigation.js';
+  import type { ThemePreference } from '$lib/theme-state.svelte.js';
+  import { themeService } from '$lib/theme-state.svelte.js';
+
+  type SettingsTab = 'general' | 'connections';
+
+  function initialSettingsTab(): SettingsTab {
+    const requested = page.url.searchParams.get('tab');
+    if (requested === 'general' || requested === 'connections') return requested;
+    return page.url.searchParams.get('new') === '1' ? 'connections' : 'general';
+  }
 
   // Capability-guarded surface (#486):
   // this page replaces /admin/endpoints and works in every mode that
@@ -38,6 +59,7 @@
 
   // ── Per-row state ───────────────────────────────────────────────────────
   let deletingId = $state<string | null>(null);
+  let activeTab = $state<SettingsTab>(initialSettingsTab());
 
   // ── Pairing panel state (#511 D3/D4/D6) ────────────────────────────────
   // The pairing panel mints a one-time QR/code that lets another device
@@ -59,13 +81,22 @@
 
   const connections = $derived(connectionsService.endpoints);
   const active = $derived(connectionsService.active);
-  const hostRoute = $derived(
-    hasCapability('host:stack:read') ? runtimeContext.routes.host : undefined,
+  const fallbackChatHref = $derived.by(() => {
+    const sessionId = currentChatSessionId();
+    const assistantId = connectionsService.activeId || null;
+    return advancedModeService.enabled
+      ? buildAdvancedPath(sessionId, assistantId)
+      : buildChatPath(sessionId, assistantId);
+  });
+  const chatReturnHref = $derived(
+    resolveReturnToPath(page.url.searchParams.get('returnTo'), fallbackChatHref),
   );
-  const exitRoute = $derived(hostRoute ?? runtimeContext.routes.chat ?? '/chat');
-  const exitLabel = $derived(hostRoute ? 'Back to Admin' : 'Back to Chat');
+  const hostSettingsHref = $derived(
+    buildReturnToPath(resolve('/host'), chatReturnHref),
+  );
 
   onMount(() => {
+    advancedModeService.init();
     void connectionsService.load(true);
     // The /connections/new landing aliases here with
     // ?new=1 — open the add form so "no connections yet" starts at the form.
@@ -89,6 +120,7 @@
   function consumePairDeepLink(): void {
     const pairCode = new URLSearchParams(window.location.hash.slice(1)).get('pair');
     if (!pairCode) return;
+    activeTab = 'connections';
     const result = parsePairingCode(pairCode);
     if (result.ok) {
       openAddForm();
@@ -97,9 +129,10 @@
       openAddForm();
       formError = result.error;
     }
-    const url = new URL(window.location.href);
-    url.hash = '';
-    replaceState(url, {});
+    const searchParams = new SvelteURLSearchParams(page.url.searchParams);
+    searchParams.set('tab', 'connections');
+    // eslint-disable-next-line svelte/no-navigation-without-resolve -- same-page settings state with the credential fragment removed
+    replaceState(`${page.url.pathname}?${searchParams}`, {});
   }
 
   /** Prefill the add form from a decoded pairing payload. The secret then flows
@@ -194,6 +227,14 @@
     formClearPassword = false;
     pairingPasteCode = '';
     formError = '';
+  }
+
+  function selectSettingsTab(tab: SettingsTab): void {
+    activeTab = tab;
+    const searchParams = new SvelteURLSearchParams(page.url.searchParams);
+    searchParams.set('tab', tab);
+    // eslint-disable-next-line svelte/no-navigation-without-resolve -- same-page settings state
+    replaceState(`${page.url.pathname}?${searchParams}${page.url.hash}`, {});
   }
 
   function openEditForm(c: ConnectionView): void {
@@ -298,10 +339,13 @@
     }
   }
 
+  function setTheme(preference: ThemePreference): void {
+    themeService.setPreference(preference);
+  }
 </script>
 
 <svelte:head>
-  <title>Connections — OpenPalm</title>
+  <title>Settings — OpenPalm</title>
 </svelte:head>
 
 <!-- Fragment-only navigation to an already-open /connections tab never
@@ -309,13 +353,26 @@
      (and stripped) there too. -->
 <svelte:window onhashchange={consumePairDeepLink} />
 
-<ChatNavbar />
+<Navbar brandHref={chatReturnHref} showUtilities={false} />
+<DeviceSettingsNav {chatReturnHref} {activeTab} onTabChange={selectSettingsTab} />
 
 <main class="page">
-    <header class="page-header">
-      <!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- destination comes from runtimeContext.routes, not a static route id -->
-      <a class="back-link" href={exitRoute} aria-label={exitLabel}>← {exitLabel}</a>
-      <h1>Connections</h1>
+  <header class="page-header">
+    <h1>Settings</h1>
+    <p class="lede">
+      Manage the connections and preferences stored in this browser on this device.
+    </p>
+  </header>
+
+  {#if activeTab === 'connections'}
+    <div
+      id="settings-panel-connections"
+      class="settings-section tab-panel"
+      role="tabpanel"
+      aria-labelledby="settings-tab-connections"
+    >
+    <header class="section-header">
+      <h2 id="connections-heading">Connections</h2>
       <p class="lede">
         Connect to local or remote OpenPalm assistants. The <strong>Default</strong> entry comes
         from the environment (set by the launcher) and cannot be deleted. Add more connections to
@@ -548,7 +605,13 @@
         </p>
 
         {#if pairingQrSvg}
-          <div class="pairing-qr">{@html pairingQrSvg}</div>
+          <img
+            class="pairing-qr"
+            src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(pairingQrSvg)}`}
+            alt="QR code for pairing this device"
+            width="200"
+            height="200"
+          />
         {:else}
           <p class="alert" role="status">
             The QR image couldn't be generated on this stack — scan isn't available, but the
@@ -569,7 +632,7 @@
 
         {#if pairingWarnings.length > 0}
           <ul class="alert warn pairing-warnings">
-            {#each pairingWarnings as warning}
+            {#each pairingWarnings as warning (warning)}
               <li>{warning}</li>
             {/each}
           </ul>
@@ -590,12 +653,54 @@
         </div>
       </section>
     {/if}
+    </div>
+  {:else}
+    <div
+      id="settings-panel-general"
+      class="tab-panel"
+      role="tabpanel"
+      aria-labelledby="settings-tab-general"
+    >
+      <section id="appearance" class="settings-section" aria-labelledby="appearance-heading">
+        <header class="section-header">
+          <h2 id="appearance-heading">Appearance</h2>
+          <p class="lede">Use your system theme or choose one for this device.</p>
+        </header>
+        <div class="theme-options" role="group" aria-label="Appearance">
+          {#each ['system', 'light', 'dark'] as preference (preference)}
+            <button
+              type="button"
+              class:active={themeService.preference === preference}
+              aria-pressed={themeService.preference === preference}
+              onclick={() => setTheme(preference as ThemePreference)}
+            >{preference[0].toUpperCase() + preference.slice(1)}</button>
+          {/each}
+        </div>
+      </section>
 
-    <!-- Client-owned voice settings: which TTS/STT provider THIS device uses.
-         Lives here (not under /host) because it is per-browser preference, not
-         host configuration — see docs/technical/voice-settings-architecture. -->
-    <VoiceClientSettings />
-  </main>
+      <section id="voice" class="settings-section" aria-labelledby="voice-heading">
+        <header class="section-header">
+          <h2 id="voice-heading">Voice</h2>
+          <p class="lede">
+            Choose speech input, language, and spoken response behavior for this browser.
+          </p>
+        </header>
+        <VoiceClientSettings />
+      </section>
+
+      {#if hasCapability('host:stack:read')}
+        <section class="settings-section" aria-labelledby="host-heading">
+          <header class="section-header">
+            <h2 id="host-heading">Host</h2>
+            <p class="lede">Manage stack-wide services, updates, automations, and advanced settings.</p>
+          </header>
+          <!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- return-aware host path starts from a resolved internal route -->
+          <a class="host-settings-link" href={hostSettingsHref}>Manage host <span aria-hidden="true">→</span></a>
+        </section>
+      {/if}
+    </div>
+  {/if}
+</main>
 
 <style>
   .page {
@@ -609,21 +714,86 @@
   .page-header h1 {
     margin: 0 0 var(--s-sp-2);
   }
-  .back-link {
-    display: inline-block;
-    margin-bottom: var(--s-sp-3);
+  .page-header {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .host-settings-link {
+    box-sizing: border-box;
+    display: inline-flex;
+    align-items: center;
+    gap: var(--s-sp-2);
+    min-width: 44px;
+    min-height: 44px;
+    margin-top: var(--s-sp-3);
+    padding: var(--s-sp-2) var(--s-sp-3);
+    border: var(--s-hair) solid var(--s-line);
+    border-radius: 2px;
     color: var(--s-ink-3);
     font-family: var(--s-font-mono);
     font-size: var(--s-type-deed);
     text-decoration: none;
   }
-  .back-link:hover {
+  .host-settings-link:hover {
     color: var(--s-ink);
-    text-decoration: underline;
+    border-color: var(--s-ink-3);
+  }
+  .host-settings-link:focus-visible,
+  .theme-options button:focus-visible {
+    outline: 2px solid var(--s-ink);
+    outline-offset: 2px;
+  }
+  .settings-section {
+    display: flex;
+    flex-direction: column;
+    gap: var(--s-sp-4);
+  }
+
+  .tab-panel {
+    display: flex;
+    flex-direction: column;
+    gap: var(--s-sp-5);
+  }
+  .settings-section + .settings-section {
+    padding-top: var(--s-sp-6);
+    border-top: var(--s-hair) solid var(--s-line-soft);
+  }
+  .section-header h2 {
+    margin: 0 0 var(--s-sp-2);
   }
   .lede {
     color: var(--s-ink-3);
     margin: 0;
+  }
+
+  .theme-options {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: var(--s-sp-1);
+    width: 100%;
+    padding: var(--s-sp-1);
+    border-radius: 8px;
+    background: var(--s-paper-deep);
+  }
+  .theme-options button {
+    min-width: 44px;
+    min-height: 44px;
+    border: 0;
+    border-radius: 5px;
+    background: transparent;
+    color: var(--s-ink-2);
+    font: inherit;
+    cursor: pointer;
+  }
+  .theme-options button:hover {
+    color: var(--s-ink);
+  }
+  .theme-options button.active {
+    background: var(--s-paper);
+    color: var(--s-ink);
+    box-shadow: 0 1px 3px color-mix(in srgb, var(--s-ink) 15%, transparent);
+    font-weight: 700;
   }
 
   .alert.error {
@@ -651,7 +821,7 @@
     gap: var(--s-sp-2);
   }
 
-  .pairing-qr :global(svg) {
+  .pairing-qr {
     width: 200px;
     height: 200px;
     max-width: 100%;
@@ -826,5 +996,11 @@
   }
   .btn-danger:hover:not(:disabled) {
     background: color-mix(in srgb, var(--s-seal) 14%, transparent);
+  }
+
+  @media (max-width: 480px) {
+    .page {
+      padding: var(--s-sp-3);
+    }
   }
 </style>

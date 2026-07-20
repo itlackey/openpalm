@@ -1,32 +1,70 @@
 <script lang="ts">
   import type { Snippet } from 'svelte';
+  import { fade, fly } from 'svelte/transition';
   import IconClose from '../icons/IconClose.svelte';
   // G3 (review 2026-07-10): kit-internal relative import — the module used to
   // be reached via an app-provided $lib alias contract; see
   // ../../actions/focus-trap.ts for why that made Drawer unusable from the client.
   import { createFocusTrap, handleTrapKeydown } from '../../actions/focus-trap.js';
 
-  // Reusable slide-in drawer (right edge). The app-wide replacement for inline
+  // Reusable slide-in drawer. The app-wide replacement for inline
   // expand-in-place forms: edit flows open here instead of pushing page content
   // down and forcing the user to scroll.
   interface Props {
+    /** Stable relationship target for a trigger's aria-controls. */
+    id?: string;
     open: boolean;
     title: string;
     onClose: () => void;
+    /** Called after the panel's closing transition has fully completed. */
+    onClosed?: () => void;
+    /** Defer focus restoration until a parent can release background inertness. */
+    deferFocusRestore?: boolean;
+    /** Resolve the focus-return target when a drawer is part of a chained flow. */
+    returnFocus?: () => HTMLElement | null;
     children: Snippet;
     footer?: Snippet;
     /** Optional content rendered at the start of the header (e.g. a back button). */
     headerStart?: Snippet;
     /** Drawer width (CSS length). */
     width?: string;
+    /** Edge from which the drawer enters. */
+    side?: 'left' | 'right';
   }
-  let { open, title, onClose, children, footer, headerStart, width = '32rem' }: Props = $props();
+  const generatedId = $props.id();
+  let {
+    id = generatedId,
+    open,
+    title,
+    onClose,
+    onClosed,
+    deferFocusRestore = false,
+    returnFocus,
+    children,
+    footer,
+    headerStart,
+    width = '32rem',
+    side = 'right',
+  }: Props = $props();
+  const titleId = $derived(`${id}-title`);
 
   // Focus management for the modal dialog (WCAG 2.4.3 / APG dialog pattern) via
   // the shared focus-trap primitives: on mount move focus into the body (so the
   // user doesn't land on Close), on unmount restore it; Escape closes and Tab is
   // trapped within the panel.
-  const manageFocus = createFocusTrap({ initialFocus: '.drawer-body' });
+  function manageFocus(node: HTMLElement): (() => void) | undefined {
+    return createFocusTrap({
+      initialFocus: '.drawer-body',
+      deferRestore: deferFocusRestore,
+      returnFocus,
+    })(node);
+  }
+
+  function transitionDuration(): number {
+    return typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches
+      ? 0
+      : 220;
+  }
 </script>
 
 {#if open}
@@ -34,22 +72,36 @@
        in the panel) and the header close button. -->
   <!-- svelte-ignore a11y_click_events_have_key_events -->
   <!-- svelte-ignore a11y_no_static_element_interactions -->
-  <div class="drawer-scrim" onclick={onClose}></div>
+  <div
+    class="drawer-scrim"
+    onclick={onClose}
+    transition:fade={{ duration: transitionDuration() }}
+  ></div>
 
   <div
+    {id}
     class="drawer"
+    class:drawer-left={side === 'left'}
     style="--drawer-width: {width}"
     role="dialog"
     aria-modal="true"
-    aria-label={title}
+    aria-labelledby={titleId}
     tabindex="-1"
     onkeydown={(e) => handleTrapKeydown(e, onClose)}
+    transition:fly={{ x: side === 'left' ? -48 : 48, duration: transitionDuration() }}
+    onoutroend={onClosed}
     {@attach manageFocus}
   >
     <header class="drawer-header">
       {#if headerStart}{@render headerStart()}{/if}
-      <h3 class="drawer-title">{title}</h3>
-      <button class="drawer-close" onclick={onClose} aria-label="Close">
+      <h2 class="drawer-title" id={titleId}>{title}</h2>
+      <button
+        class="drawer-close"
+        type="button"
+        onclick={onClose}
+        aria-label="Close {title} panel"
+        title="Close {title}"
+      >
         <IconClose size={18} />
       </button>
     </header>
@@ -84,40 +136,38 @@
     background: var(--s-paper);
     border-left: var(--s-hair) solid var(--s-line);
     z-index: 201;
-    animation: drawer-in var(--s-t-quick) var(--s-ease);
+    will-change: transform;
   }
-  @keyframes drawer-in {
-    from { transform: translateX(100%); }
-    to { transform: translateX(0); }
-  }
-  @media (prefers-reduced-motion: reduce) {
-    .drawer { animation: none; }
+  .drawer-left {
+    right: auto;
+    left: 0;
+    border-right: var(--s-hair) solid var(--s-line);
+    border-left: 0;
   }
   .drawer-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: var(--s-sp-3);
-    padding: var(--s-sp-4) var(--s-sp-5);
+    min-height: 64px;
+    padding: var(--s-sp-2) var(--s-sp-5);
     border-bottom: var(--s-hair) solid var(--s-line-soft);
     flex-shrink: 0;
   }
   .drawer-title {
     flex: 1;
     min-width: 0;
-    font-family: var(--s-font-mono);
-    font-size: var(--s-type-mark);
-    font-weight: 400;
-    text-transform: uppercase;
-    letter-spacing: var(--s-track-label);
-    color: var(--s-ink-3);
+    font-family: var(--s-font-header);
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: var(--s-ink);
   }
   .drawer-close {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 36px;
-    height: 36px;
+    width: 44px;
+    height: 44px;
     padding: 0;
     background: none;
     border: none;
@@ -146,5 +196,11 @@
     gap: var(--s-sp-2);
     padding: var(--s-sp-4) var(--s-sp-5);
     border-top: var(--s-hair) solid var(--s-line-soft);
+  }
+
+  @media (max-width: 480px) {
+    .drawer-body {
+      padding: var(--s-sp-4);
+    }
   }
 </style>

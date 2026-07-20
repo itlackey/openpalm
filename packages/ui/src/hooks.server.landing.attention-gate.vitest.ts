@@ -141,6 +141,7 @@ describe('hooks.server — a pending-migration landing (/attention) gates the us
     const res = await handle({ event: makeEvent('/connections', createSession()), resolve });
     expect(res.status).toBe(200);
   });
+
 });
 
 describe('hooks.server — a SECOND blocking landing also gates the usage routes (review 2026-07-11 K4)', () => {

@@ -54,6 +54,44 @@ describe('flattenSessionMessages', () => {
     expect(msg.toolStates?.[0].id).toBe('c1');
   });
 
+  it('retains the historical tool completion timestamp', () => {
+    const out = flattenSessionMessages([
+      row({ id: 'historical', time: { created: 1000 } }, [
+        {
+          type: 'tool',
+          tool: 'bash',
+          callID: 'call-historical',
+          state: {
+            status: 'completed',
+            output: 'done',
+            time: { start: 1100, end: 1200 },
+          },
+        },
+      ]),
+    ]);
+
+    const group = out[0] as ChatToolGroup;
+    expect(group.timestamp).toBe(1000);
+    expect(group.toolStates[0].updatedAt).toBe(1200);
+  });
+
+  it('classifies completed semantic ok:false output as a warning', () => {
+    const out = flattenSessionMessages([
+      row({ id: 'semantic-failure', time: { created: 2000 } }, [
+        {
+          type: 'tool',
+          tool: 'deploy',
+          callID: 'call-semantic-failure',
+          state: { status: 'completed', output: { ok: false, error: 'deploy rejected' } },
+        },
+      ]),
+    ]);
+
+    const group = out[0] as ChatToolGroup;
+    expect(group.toolStates[0].status).toBe('warning');
+    expect(group.toolStates[0].updatedAt).toBe(2000);
+  });
+
   it('emits an orphan tool-group when tools have no following text', () => {
     const out = flattenSessionMessages([
       row({ id: 'm3', time: { created: 7 } }, [
@@ -99,13 +137,10 @@ describe('flattenSessionMessages', () => {
     expect((out[0] as ChatMessage).toolStates).toBeUndefined();
   });
 
-  it('falls back to Date.now() when a row carries no created timestamp', () => {
-    const before = Date.now();
+  it('uses an unknown timestamp instead of making an undated historical row look new', () => {
     const out = flattenSessionMessages([row({ id: 'm6' }, [{ type: 'text', text: 'x' }])]);
-    const after = Date.now();
     const msg = out[0] as ChatMessage;
-    expect(msg.timestamp).toBeGreaterThanOrEqual(before);
-    expect(msg.timestamp).toBeLessThanOrEqual(after);
+    expect(msg.timestamp).toBe(0);
   });
 
   it('processes multiple rows independently', () => {

@@ -13,13 +13,14 @@
   --s-paper:       #E5E1D5;
   --s-paper-deep:  #D9D5C8;
   --s-ink:         #26292B;
-  --s-ink-2:       #5A5E5C;
-  --s-ink-3:       #8C8F88;
-  --s-seal:        #CB782D;
-  --s-moss:        #6E7459;
-  --s-error:       #C5402B;
-  --s-line:        rgba(38, 41, 43, 0.14);
-  --s-line-soft:   rgba(38, 41, 43, 0.07);
+  --s-ink-2:       #575B59;
+  --s-ink-3:       #5D5C56;
+  --s-seal:        #98420A;
+  --s-moss:        #555C42;
+  --s-error:       #AB301F;
+  --s-warning:     #835D08;
+  --s-line:        #6F6D66;
+  --s-line-soft:   #79756C;
   --s-paper-grain: 0.05;
 }
 
@@ -29,12 +30,13 @@
   --s-paper-deep:  #0F1214;
   --s-ink:         #DAD6C9;
   --s-ink-2:       #989B91;
-  --s-ink-3:       #63665E;
+  --s-ink-3:       #85887F;
   --s-seal:        #DCC25C;
   --s-moss:        #8FA08C;
   --s-error:       #D95F4E;
-  --s-line:        rgba(218, 214, 201, 0.15);
-  --s-line-soft:   rgba(218, 214, 201, 0.07);
+  --s-warning:     #E0B85A;
+  --s-line:        #73766E;
+  --s-line-soft:   #666961;
   --s-paper-grain: 0.04;
 }
 
@@ -50,19 +52,19 @@
   --s-type-compose:    clamp(1rem, 2.8vw, 1.12rem);
   --s-type-title:      clamp(1.15rem, 3vw, 1.4rem);
   --s-type-title-lh:   1.3;
-  --s-type-mark:       0.6rem;
-  --s-type-mark-sm:    0.58rem;
-  --s-type-deed:       0.78rem;
+  --s-type-mark:       0.75rem;
+  --s-type-mark-sm:    0.75rem;
+  --s-type-deed:       0.875rem;
   --s-track-mark:      0.34em;
   --s-track-label:     0.22em;
 
-  --s-sp-1: 0.32rem;
+  --s-sp-1: 0.25rem;
   --s-sp-2: 0.5rem;
-  --s-sp-3: 0.7rem;
-  --s-sp-4: 0.9rem;
-  --s-sp-5: 1.1rem;
-  --s-sp-6: 1.6rem;
-  --s-sp-8: 2.4rem;
+  --s-sp-3: 0.75rem;
+  --s-sp-4: 1rem;
+  --s-sp-5: 1.25rem;
+  --s-sp-6: 1.5rem;
+  --s-sp-8: 2.5rem;
 
   --s-breath:          clamp(2.6rem, 7vh, 4.4rem);
   --s-frame:           clamp(1.6rem, 7vw, 3rem);
@@ -75,11 +77,11 @@
   --s-enso-size:       78px;
   --s-glyph-size:      30px;
 
-  --s-t-instant:   .25s;
-  --s-t-quick:     .5s;
-  --s-t-settle:    .7s;
-  --s-t-bloom:     1.15s;
-  --s-t-theme:     1.1s;
+  --s-t-instant:   .15s;
+  --s-t-quick:     .2s;
+  --s-t-settle:    .3s;
+  --s-t-bloom:     .3s;
+  --s-t-theme:     0s;
   --s-t-draw:      2.1s;
   --s-ease:        cubic-bezier(.4, 0, .2, 1);
   --s-ease-settle: cubic-bezier(.22, .61, .36, 1);
@@ -168,7 +170,7 @@
 }
 
 .wiz-tick-num {
-  font-size: 11px;
+  font-size: 12px;
   opacity: 0.75;
 }
 
@@ -198,7 +200,7 @@
 }
 
 .wiz-eyebrow {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
   color: var(--s-ink-3);
   text-transform: uppercase;
@@ -340,7 +342,7 @@
 
 /* Section label (used in step bodies) */
 .wiz-section-label {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
   color: var(--s-ink-3);
   text-transform: uppercase;

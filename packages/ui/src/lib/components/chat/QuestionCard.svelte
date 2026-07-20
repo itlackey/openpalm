@@ -41,6 +41,9 @@
         {/each}
       </div>
     {/if}
+    <button class="s-action-btn" type="button" onclick={() => onReject()} disabled={locked}>
+      can't answer
+    </button>
     <p class="s-action-hint">or write your answer below</p>
   {:else}
     <div class="s-multi-questions">
@@ -49,7 +52,10 @@
           {#if item.header}
             <div class="s-action-kicker">{item.header}</div>
           {/if}
-          <p class="s-action-question">{item.question}</p>
+          <label
+            class="s-action-question"
+            for={`question-${question.requestID}-${index}`}
+          >{item.question}</label>
           {#if item.options.length > 0}
             <div class="s-action-options">
               {#each item.options as option, optionIndex (`${question.requestID}:${index}:${optionIndex}`)}
@@ -57,6 +63,7 @@
                   class="s-action-btn"
                   class:selected={question.answers[index] === option.label}
                   type="button"
+                  aria-pressed={question.answers[index] === option.label}
                   onclick={() => onSelect(index, option.label)}
                   disabled={locked}
                 >
@@ -66,6 +73,7 @@
             </div>
           {/if}
           <input
+            id={`question-${question.requestID}-${index}`}
             class="s-question-input"
             type="text"
             value={question.answers[index]}

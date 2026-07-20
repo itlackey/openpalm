@@ -146,6 +146,16 @@ describe('ChatMessage — copy affordances', () => {
     expect(container.querySelector('.mark-row .msg-copy')).not.toBeNull();
   });
 
+  test('message copy button has at least a 44px touch target', async () => {
+    const { container } = await render(ChatMessage, { props: { entry: assistantMsg('copy me') } });
+    await expect.element(page.getByRole('button', { name: 'Copy message' })).toBeInTheDocument();
+    const button = container.querySelector('.msg-copy');
+    expect(button).toBeInstanceOf(HTMLButtonElement);
+    const bounds = button?.getBoundingClientRect();
+    expect(bounds?.width).toBeGreaterThanOrEqual(44);
+    expect(bounds?.height).toBeGreaterThanOrEqual(44);
+  });
+
   test('user message has no copy button', async () => {
     const { container } = await render(ChatMessage, { props: { entry: userMsg('mine') } });
     await expect.element(page.getByText('mine')).toBeVisible();
@@ -179,7 +189,11 @@ describe('ChatMessage — copy affordances', () => {
       const { container } = await render(ChatMessage, { props: { entry: assistantMsg(md) } });
       const btn = page.getByRole('button', { name: 'Copy code' });
       await expect.element(btn).toBeInTheDocument();
-      expect(container.querySelector('pre .code-copy')).not.toBeNull();
+      const button = container.querySelector('pre .code-copy');
+      expect(button).not.toBeNull();
+      const bounds = button?.getBoundingClientRect();
+      expect(bounds?.width).toBeGreaterThanOrEqual(44);
+      expect(bounds?.height).toBeGreaterThanOrEqual(44);
       await btn.click();
       await expect.element(page.getByRole('button', { name: 'Copied' })).toBeInTheDocument();
       expect(written).toEqual(['const a = 1;\n']);

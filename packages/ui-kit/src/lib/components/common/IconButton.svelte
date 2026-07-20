@@ -75,8 +75,8 @@
     align-items: center;
     justify-content: center;
     gap: var(--s-sp-2);
-    width: 40px;
-    height: 40px;
+    width: 44px;
+    height: 44px;
     padding: var(--s-sp-2);
     background: none;
     border: 0;
@@ -113,7 +113,7 @@
   }
 
   .icon-btn:focus-visible {
-    outline: var(--s-hair) solid var(--s-seal);
+    outline: 2px solid var(--s-ink);
     outline-offset: 2px;
   }
 

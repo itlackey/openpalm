@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Drawer from '@openpalm/ui-kit/components/common/Drawer.svelte';
 	import { PROCESS_KEYS, PROCESS_HINTS } from './improve-process-helpers';
 	import type { ImproveProfile } from './profile-types';
 
@@ -19,15 +20,8 @@
 	{#each llmProfileNames as name (name)}<option value={name}></option>{/each}
 </datalist>
 
-<div class="drawer-scrim" role="presentation" onclick={oncancel}></div>
-
-<div class="drawer" role="dialog" aria-modal="true" aria-label="Edit profile">
-	<div class="drawer-header">
-		<h3 class="drawer-title">Improve Profile</h3>
-		<button class="drawer-close" onclick={oncancel} aria-label="Close">✕</button>
-	</div>
-
-	<div class="drawer-body">
+<Drawer open={true} title="Improve profile" onClose={oncancel} width="40rem">
+	<div class="profile-drawer-body">
 		<div class="controls controls--grid">
 			<div class="control-group">
 				<label class="control-label" for="d-imp-name">Profile Name</label>
@@ -156,11 +150,11 @@
 		</div>
 	</div>
 
-	<div class="drawer-footer">
+	{#snippet footer()}
 		<button class="btn btn-secondary" onclick={oncancel}>Cancel</button>
 		<button class="btn btn-primary" onclick={onapply}>Apply</button>
-	</div>
-</div>
+	{/snippet}
+</Drawer>
 
 <style>
 	.controls { display: flex; flex-direction: column; gap: var(--s-sp-4); }
@@ -181,6 +175,7 @@
 	.control-input--narrow { max-width: 8rem; }
 	.control-input:focus { outline: none; border-bottom-color: var(--s-ink-2); }
 	.control-input:disabled { opacity: 0.4; cursor: not-allowed; }
+	.profile-drawer-body { display: flex; flex-direction: column; gap: var(--s-sp-5); }
 
 	/* Improve drawer process labels */
 	.feat-name {
@@ -242,51 +237,4 @@
 		margin-bottom: 2px;
 	}
 
-	.drawer-scrim { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.3); z-index: 200; }
-	.drawer {
-		position: fixed; top: 0; right: 0; bottom: 0;
-		width: min(640px, 92vw);
-		background: var(--s-paper);
-		border-left: var(--s-hair) solid var(--s-line);
-		z-index: 201;
-		display: flex; flex-direction: column;
-		animation: drawer-in 200ms cubic-bezier(0.16, 1, 0.3, 1);
-	}
-	@keyframes drawer-in { from { transform: translateX(100%); } to { transform: translateX(0); } }
-	.drawer-header {
-		display: flex; align-items: center; justify-content: space-between;
-		padding: var(--s-sp-4) var(--s-sp-6);
-		border-bottom: var(--s-hair) solid var(--s-line);
-		flex-shrink: 0;
-	}
-	.drawer-title {
-		font-family: var(--s-font-display);
-		font-size: var(--s-type-deed);
-		font-weight: 400;
-		color: var(--s-ink);
-		margin: 0;
-	}
-	.drawer-close {
-		appearance: none;
-		border: var(--s-hair) solid var(--s-line);
-		background: none;
-		font-family: var(--s-font-mono);
-		font-size: var(--s-type-mark);
-		letter-spacing: var(--s-track-label);
-		text-transform: uppercase;
-		color: var(--s-ink-3);
-		padding: 0.3em 0.9em;
-		border-radius: 2px;
-		cursor: pointer;
-		width: 2rem; height: 2rem;
-		display: flex; align-items: center; justify-content: center;
-	}
-	.drawer-close:hover { color: var(--s-ink); border-color: var(--s-ink-2); }
-	.drawer-body { flex: 1; overflow-y: auto; padding: var(--s-sp-6); display: flex; flex-direction: column; gap: var(--s-sp-5); }
-	.drawer-footer {
-		display: flex; justify-content: flex-end; gap: var(--s-sp-3);
-		padding: var(--s-sp-4) var(--s-sp-6);
-		border-top: var(--s-hair) solid var(--s-line);
-		flex-shrink: 0;
-	}
 </style>

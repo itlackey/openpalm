@@ -81,3 +81,13 @@ describe('SecretsTab — add file', () => {
     await vi.waitFor(() => expect(saveSecretFile).toHaveBeenCalledWith('my_secret', ''));
   });
 });
+
+describe('SecretsTab touch targets', () => {
+  test('renders secret-name buttons at least 44px tall', async () => {
+    render(SecretsTab, { props: {} });
+
+    const secretName = page.getByRole('button', { name: 'Edit auth.json' });
+    await expect.element(secretName, { timeout: 5000 }).toBeVisible();
+    expect(secretName.element().getBoundingClientRect().height).toBeGreaterThanOrEqual(44);
+  });
+});

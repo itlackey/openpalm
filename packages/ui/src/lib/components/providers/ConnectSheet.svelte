@@ -33,11 +33,13 @@
 	let {
 		provider,
 		onaction,
-		onclose
+		onclose,
+		returnFocus
 	}: {
 		provider: ProviderView;
 		onaction?: (result: ProviderActionResult) => void;
 		onclose?: () => void;
+		returnFocus?: () => HTMLElement | null;
 	} = $props();
 
 	type Step = 'method-picker' | 'api-form' | 'oauth-code' | 'oauth-auto' | 'success';
@@ -210,7 +212,7 @@
 	}
 </script>
 
-<Drawer open={true} {title} onClose={() => onclose?.()}>
+<Drawer open={true} {title} onClose={() => onclose?.()} deferFocusRestore {returnFocus}>
 	{#snippet headerStart()}
 		{#if canGoBack}
 			<button type="button" class="connect-back" onclick={goBack} aria-label="Back">←</button>

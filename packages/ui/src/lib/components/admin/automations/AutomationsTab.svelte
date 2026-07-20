@@ -3,6 +3,7 @@
   import Spinner from '@openpalm/ui-kit/components/common/Spinner.svelte';
   import EmptyState from '@openpalm/ui-kit/components/common/EmptyState.svelte';
   import Drawer from '@openpalm/ui-kit/components/common/Drawer.svelte';
+  import { createFocusTrap, handleTrapKeydown } from '@openpalm/ui-kit/actions/focus-trap.js';
   import TaskDrawer from './TaskDrawer.svelte';
   import { fetchTaskFile, saveTaskFile, deleteTaskFile, runAutomation, fetchAutomationLog } from '$lib/api.js';
   import { notifications } from '$lib/notifications.svelte.js';
@@ -37,6 +38,10 @@
   // testable and consistent with the app's own dialog components, unlike the
   // untestable native confirm()).
   let pendingDeleteFile = $state<string | null>(null);
+  const manageDeleteFocus = createFocusTrap({
+    initialFocus: '.confirm-actions',
+    deferRestore: true,
+  });
 
   let logDrawerOpen = $state(false);
   let logTaskName = $state('');
@@ -206,7 +211,7 @@
   }
 </script>
 
-<div class="panel" role="tabpanel">
+<div class="panel" role="tabpanel" inert={pendingDeleteFile !== null || drawerOpen || logDrawerOpen}>
   <div class="ph">
     <div>
       <h2 class="ph-title">Routines</h2>
@@ -224,19 +229,6 @@
   </div>
 
   <div class="panel-body">
-    {#if pendingDeleteFile !== null}
-      <div class="confirm-prompt" role="alertdialog" aria-label="Confirm delete task">
-        <p class="confirm-prompt-title">Delete task file?</p>
-        <p>Delete task file "{pendingDeleteFile}"? This cannot be undone.</p>
-        <div class="confirm-actions">
-          <button class="btn btn-sm btn-danger" onclick={() => void confirmRemoveTask()} disabled={drawerSaving}>
-            {#if drawerSaving}<Spinner /> Deleting…{:else}Delete task{/if}
-          </button>
-          <button class="btn btn-sm btn-secondary" onclick={cancelRemoveTask} disabled={drawerSaving}>Cancel</button>
-        </div>
-      </div>
-    {/if}
-
     {#if hasAutomations && data}
       <div class="automation-list">
         {#each data.automations as automation (automation.name)}
@@ -317,6 +309,27 @@
     {/if}
   </div>
 </div>
+
+{#if pendingDeleteFile !== null}
+  <div
+    class="confirm-prompt"
+    role="alertdialog"
+    aria-modal="true"
+    aria-label="Confirm delete task"
+    tabindex="-1"
+    onkeydown={(event) => handleTrapKeydown(event, cancelRemoveTask)}
+    {@attach manageDeleteFocus}
+  >
+    <p class="confirm-prompt-title">Delete task file?</p>
+    <p>Delete task file "{pendingDeleteFile}"? This cannot be undone.</p>
+    <div class="confirm-actions">
+      <button class="btn btn-sm btn-danger" onclick={() => void confirmRemoveTask()} disabled={drawerSaving}>
+        {#if drawerSaving}<Spinner /> Deleting…{:else}Delete task{/if}
+      </button>
+      <button class="btn btn-sm btn-secondary" onclick={cancelRemoveTask} disabled={drawerSaving}>Cancel</button>
+    </div>
+  </div>
+{/if}
 
 {#key drawerDraft?.fileName}
   <TaskDrawer

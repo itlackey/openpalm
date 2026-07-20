@@ -312,6 +312,13 @@ start_ui() {
   # 404s — the Phase-5 Electron/CLI-only admin boundary holds in the container.
   # No host OP_HOME is injected; the ONLY credential the child receives is the
   # UI login password resolved above (session auth — not a host:* capability).
+  #
+  # OP_UI_NO_LOCAL_VOICE=1: this in-container co-process reaches only its OWN
+  # 127.0.0.1, never the sibling voice container, so it must never advertise or
+  # proxy the /voice pass-through — voice was decoupled from admin capability,
+  # and getState() here can resolve into an assistant-writable mount, so a
+  # bare "addon enabled?" check is not a sufficient gate. This flag makes the
+  # co-process fail closed regardless of readable stack state.
   (
     local attempt=0
     local max_attempts=5
@@ -329,6 +336,7 @@ start_ui() {
       local exit_code
       if env -u OP_ENABLE_ADMIN -u OP_INSIDE_ELECTRON \
            HOST=0.0.0.0 PORT="$ui_port" HOST_HEADER=host PROTOCOL_HEADER=x-forwarded-proto \
+           OP_UI_NO_LOCAL_VOICE=1 \
            OP_UI_LOGIN_PASSWORD="$ui_login_password" \
            node "$ui_index"; then
         exit_code=0

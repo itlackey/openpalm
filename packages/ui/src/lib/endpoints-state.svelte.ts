@@ -58,13 +58,33 @@ class ConnectionsService {
   /** Runtime-config seed runs exactly once per browsing session. */
   private seeded = false;
 
+  /** The single in-flight load, shared by every concurrent caller. */
+  private inFlight: Promise<void> | null = null;
+
   active = $derived<ConnectionView | null>(
     this.endpoints.find((e) => e.id === this.activeId) ?? this.endpoints[0] ?? null
   );
 
+  /**
+   * Load connections. Concurrent callers (multiple shell components mounting
+   * together) share ONE request: instead of the second caller getting an
+   * early `undefined` and having to busy-wait on the reactive flags, it
+   * awaits the same in-flight promise. So `await endpointsService.load()`
+   * always resolves only once connections are actually loaded (or errored).
+   */
   async load(force = false): Promise<void> {
-    if (this.loading) return;
+    if (this.inFlight) return this.inFlight;
     if (this.loaded && !force) return;
+    const run = this._load();
+    this.inFlight = run;
+    try {
+      await run;
+    } finally {
+      this.inFlight = null;
+    }
+  }
+
+  private async _load(): Promise<void> {
     this.loading = true;
     this.error = '';
     try {

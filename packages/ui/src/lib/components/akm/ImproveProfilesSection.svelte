@@ -60,7 +60,7 @@
 </section>
 
 <style>
-	.config-section { display: flex; flex-direction: column; gap: var(--s-sp-4); }
+	.config-section { display: flex; flex-direction: column; gap: var(--s-sp-4); min-width: 0; max-width: 100%; box-sizing: border-box; }
 	.section-title {
 		font-family: var(--s-font-display);
 		font-size: var(--s-type-deed);
@@ -77,18 +77,20 @@
 		color: var(--s-ink-3);
 		margin-left: var(--s-sp-2);
 	}
-	.section-note { font-family: var(--s-font-display); font-size: var(--s-type-deed); color: var(--s-ink-3); margin: 0; }
+	.section-note { font-family: var(--s-font-display); font-size: var(--s-type-deed); color: var(--s-ink-3); margin: 0; overflow-wrap: anywhere; }
 	.empty-note { font-family: var(--s-font-display); font-size: var(--s-type-deed); color: var(--s-ink-3); margin: 0; }
 	.profile-empty { display: flex; flex-direction: column; align-items: flex-start; gap: var(--s-sp-2); margin-bottom: var(--s-sp-2); color: var(--s-ink-3); }
 	.profile-empty :global(.s-icon) { opacity: 0.35; }
-	.profile-list { display: flex; flex-direction: column; gap: 0; }
+	.profile-list { display: flex; flex-direction: column; gap: 0; min-width: 0; max-width: 100%; box-sizing: border-box; }
+	.config-section > :global(.btn) { min-height: 2.75rem; }
 	.profile-row-desc {
 		font-family: var(--s-font-mono);
 		font-size: var(--s-type-mark-sm);
 		color: var(--s-ink-3);
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-		max-width: 20rem;
+		flex: 1 1 12rem;
+		min-width: 0;
+		max-width: 100%;
+		white-space: normal;
+		overflow-wrap: anywhere;
 	}
 </style>

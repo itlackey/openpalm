@@ -24,6 +24,8 @@ describe('connections +page.svelte — host UX and pairing wiring', () => {
   test('renders the minted QR and one-time code with a shown-once warning', () => {
     const src = pageSource();
     expect(src).toMatch(/qrSvg/);
+    expect(src).toMatch(/data:image\/svg\+xml/);
+    expect(src).not.toMatch(/\{@html/);
     expect(src).toMatch(/pairingCode/);
     expect(src).toMatch(/shown only once|won't be shown again/i);
   });
@@ -65,14 +67,49 @@ describe('connections +page.svelte — host UX and pairing wiring', () => {
     expect(src).toMatch(/pairingQrSvg\s*=\s*\$state<string \| null>/);
   });
 
-  test('provides a visible route back to host admin with a chat fallback', () => {
+  test('resolves a reload-safe return context including the active assistant fallback', () => {
+    const src = pageSource();
+    expect(src).toMatch(/page\.url\.searchParams\.get\(\s*['"`]returnTo['"`]\s*\)/);
+    expect(src).toMatch(/resolveReturnToPath/);
+    expect(src).toMatch(/buildChatPath/);
+    expect(src).toMatch(/buildAdvancedPath/);
+    expect(src).toMatch(/connectionsService\.activeId/);
+  });
+
+  test('splits settings into General and Connections tabs', () => {
+    const src = pageSource();
+    expect(src).toMatch(
+      /<Navbar brandHref=\{chatReturnHref\} showUtilities=\{false\} \/>[\s\S]*<DeviceSettingsNav \{chatReturnHref\} \{activeTab\} onTabChange=\{selectSettingsTab\} \/>[\s\S]*<main/,
+    );
+    expect(src).not.toMatch(/ChatNavbar/);
+    expect(src).toMatch(/<h1>Settings<\/h1>/);
+    expect(src).toMatch(/id="settings-panel-connections"/);
+    expect(src).toMatch(/id="settings-panel-general"/);
+    expect(src).toMatch(/activeTab === 'connections'/);
+    expect(src).toMatch(/<VoiceClientSettings \/>/);
+    expect(src).toMatch(/themeService\.setPreference/);
+  });
+
+  test('opens connection deep links in the Connections tab', () => {
+    const src = pageSource();
+    expect(src).toMatch(/searchParams\.get\(\s*['"`]new['"`]\s*\)[\s\S]*?['"`]connections['"`]/);
+    expect(src).toMatch(/pairCode[\s\S]*activeTab\s*=\s*['"`]connections['"`]/);
+  });
+
+  test('links clearly to host management when host controls are available', () => {
     const src = pageSource();
     expect(src).toMatch(/hasCapability\(\s*['"`]host:stack:read['"`]\s*\)/);
-    expect(src).toMatch(/runtimeContext\.routes\.host/);
-    expect(src).toMatch(/runtimeContext\.routes\.chat/);
-    expect(src).toMatch(/aria-label=\{exitLabel\}>← \{exitLabel\}/);
-    expect(src).toMatch(/'Back to Admin'/);
-    expect(src).toMatch(/'Back to Chat'/);
+    expect(src).toMatch(/buildReturnToPath\(resolve\(\s*['"`]\/host['"`]\s*\), chatReturnHref\)/);
+    expect(src).toMatch(/href=\{hostSettingsHref\}[\s\S]*?>Manage host/);
+  });
+
+  test('retains new-connection and fragment pairing behavior alongside return context', () => {
+    const src = pageSource();
+    expect(src).toMatch(/page\.url\.searchParams\.get\(\s*['"`]new['"`]\s*\)\s*===\s*['"`]1['"`]/);
+    expect(src).toMatch(/new SvelteURLSearchParams\(page\.url\.searchParams\)/);
+    expect(src).toMatch(
+      /replaceState\(\s*`\$\{page\.url\.pathname\}\?\$\{searchParams\}`\s*,\s*\{\}\s*\)/,
+    );
   });
 
   test('does not advertise installing the client app from host UI surfaces', () => {

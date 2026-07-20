@@ -33,9 +33,15 @@ The architecture is now split along that line.
 ## Client side — each browser owns its TTS/STT provider choice
 
 - Settings live in the browser (`packages/ui/src/lib/voice/settings-store.ts`,
-  localStorage), edited in the **Voice section of the /connections page**.
-  Provider API keys live in the encrypted IndexedDB secret store — the same
-  store as connection passwords (`connections/secrets.ts`).
+  localStorage), edited on the **General** tab of the device settings surface
+  at `/connections` (the page reached from chat's "Open settings"; its
+  `DeviceSettingsNav` splits it into a **General** tab — theme + voice — and a
+  **Connections** tab). These settings apply across every assistant connection
+  in that browser.
+  Provider API keys use the IndexedDB secret store shared with connection
+  passwords (`connections/secrets.ts`). They are AES-GCM encrypted at rest
+  when WebCrypto is available; on an insecure plain-HTTP origin, WebCrypto is
+  unavailable and the store explicitly degrades to plaintext at rest.
 - Providers: `browser` (Web Speech API), `openpalm-voice` (the host's voice
   container), `openai-compatible` (any OpenAI-shaped `/v1/audio` endpoint),
   or `disabled` — independently for STT and TTS.
@@ -55,21 +61,37 @@ The architecture is now split along that line.
     it does for any browser caller of that provider).
 - There is no config-holding relay: the old `/api/speak` / `/api/transcribe`
   routes (which read host-global stack.env provider config) are gone.
+- Conversation mode requires both a usable STT provider and a usable TTS
+  provider. Starting it enables spoken replies for the conversation; stopping
+  tears down microphone/VAD ownership and cancels current and queued playback.
+- The settings panel can run a bounded ten-second microphone/transcription
+  test whose transcript stays in the panel, plus a speaker test that uses only
+  the selected provider. Neither test sends a message to the assistant.
+- The page always links back to Chat and Connections. In a host-capable runtime,
+  it also links to `/host?tab=addons`, where the operator manages the Voice
+  add-on. Non-host clients do not render that host-management link.
 
 ## Discovery — how a client finds "OpenPalm Voice"
 
 The runtime handshake advertises the pass-through: `GET /api/runtime` (and
 the layout server data) carries `voice: { url: '/voice' }` when the process
-is admin-capable (the host process is the only one with a loopback path to
-the container — a served/in-container build is not, and never advertises)
-and the voice addon is enabled. The path is same-origin and env-derived —
-nothing request-dependent.
+can actually serve it — the voice addon is enabled in readable stack state
+AND the process has a loopback path to the voice container. Voice is **not**
+gated on admin capability: using voice is not a privileged host operation, so
+a served non-admin `openpalm ui serve` / Electron host advertises and proxies
+it too. The one process that must fail closed is the assistant container's
+in-container UI co-process — it reaches only its own `127.0.0.1`, never the
+sibling voice container, and its resolved home can sit in an
+assistant-writable mount — so it sets `OP_UI_NO_LOCAL_VOICE=1` and neither
+advertises nor proxies `/voice` regardless of stack state (see
+`canServeLocalVoice` in `packages/ui/src/lib/server/features.ts`). The path is
+same-origin and env-derived — nothing request-dependent.
 
 Client defaults when nothing has been saved: prefer `openpalm-voice` when
 advertised, else `browser` when the Web Speech API is usable (iOS Safari's
-broken SpeechRecognition is detected and avoided), else `disabled`. A saved
-`openpalm-voice` selection degrades to the browser engine when the host stops
-advertising the endpoint.
+broken SpeechRecognition is detected and avoided), else `disabled`. Saved
+provider choices are strict: an unavailable provider is reported as
+unavailable and is never silently replaced with another provider.
 
 For a **remote** connection's voice container, the user configures it as an
 `openai-compatible` provider with an endpoint that host exposes — remote
@@ -94,7 +116,7 @@ advertisement defaults above.
   in `packages/lib/src/control-plane/addons.ts`). Client settings are not
   migrated from them: defaults auto-select the host's voice container when
   advertised; users of remote third-party TTS/STT re-enter that endpoint once
-  in the /connections Voice section (keys now stay in the browser, which is
+  on the `/connections` **General** tab (keys now stay in the browser, which is
   the point).
-- The admin Voice tab is gone; the Capabilities drawer (host) and the
-  /connections Voice section (client) replace it.
+- The admin Voice tab is gone; the Capabilities drawer (host) and the client
+  voice settings on the `/connections` **General** tab replace it.

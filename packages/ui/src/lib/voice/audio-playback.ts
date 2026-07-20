@@ -188,9 +188,8 @@ export class AudioPlaybackController {
   }
 
   /**
-   * Read text aloud. Tries server-side TTS via the provider transport first (when the
-   * configured engine is openpalm-voice or remote); falls back to browser
-   * speech synthesis. Silent no-op if neither path is available.
+   * Read text aloud using only the selected provider. A server-provider
+   * failure is surfaced rather than silently switching to browser speech.
    *
    * If a previous utterance is still synthesizing, playing, or stashed
    * behind an autoplay block, queues this one (FIFO, cap 20) instead of
@@ -248,7 +247,7 @@ export class AudioPlaybackController {
     const gen = this.generation;
 
     // Strip markdown once, up front, so neither the server request body nor
-    // the browser-TTS fallback ever speaks raw markdown syntax aloud. The
+    // browser TTS ever speaks raw markdown syntax aloud. The
     // server applies the same deterministic stripping defensively.
     const speakableText = toSpeakableText(text);
     if (!speakableText) {
@@ -267,14 +266,19 @@ export class AudioPlaybackController {
     const useServer = engine === 'openpalm-voice' || engine === 'remote';
 
     if (useServer) {
+      this.host.status = 'preparing';
       let res: Response | undefined | null;
       try {
         // Direct browser → provider call (the configured OpenAI-compatible
         // endpoint or the host's voice container). Null = no server target
-        // configured; falls through to browser TTS like a failure would.
+        // configured.
         res = await synthesize(speakableText);
       } catch {
-        // Network/CORS — fall through to browser TTS if available.
+        if (gen !== this.generation) return;
+        this.host.errorMessage = 'Could not reach the selected text-to-speech provider.';
+        this.host.status = 'idle';
+        this.drainNext();
+        return;
       }
       // stop() ran while the synthesis request was in flight — the
       // utterance is cancelled; stop() already dropped the queue and
@@ -303,6 +307,13 @@ export class AudioPlaybackController {
         try {
           await audio.play();
         } catch {
+          // A stop() (or barge-in stopSpeaking(), which conversation mode fires
+          // on every confirmed utterance) landing between play() and its
+          // rejection is NOT an autoplay block — the element was already torn
+          // down and the queue dropped. Without this generation check the dead
+          // element (src='') gets stashed and a stale "click to resume" banner
+          // appears after the user already silenced audio.
+          if (gen !== this.generation) return;
           // Autoplay was blocked (Safari, Firefox autoplay off, fresh
           // Chrome profile with no prior gesture). Stash the audio
           // and surface a scoped "click to resume" banner via
@@ -325,23 +336,23 @@ export class AudioPlaybackController {
         return;
       }
 
-      // Server-TTS path didn't yield audio — surface the reason before
-      // considering browser fallback.
       if (res && !res.ok) {
-        const errMsg = await this.extractSpeakError(res);
-        this.host.errorMessage = errMsg;
+        this.host.errorMessage = await this.extractSpeakError(res);
+      } else if (res) {
+        this.host.errorMessage = 'The selected text-to-speech provider returned no audio.';
+      } else {
+        this.host.errorMessage = 'The selected text-to-speech provider is unavailable.';
       }
-    }
-
-    if (!('speechSynthesis' in window)) {
-      // No browser TTS available — keep whatever errorMessage we already
-      // set so the user understands why nothing happened, but keep the
-      // pump moving so queued chunks don't strand behind a dead engine.
+      this.host.status = 'idle';
       this.drainNext();
       return;
     }
-    // Clear the error if we have a viable browser fallback.
-    if (useServer) this.host.errorMessage = '';
+
+    if (engine !== 'browser' || !('speechSynthesis' in window)) {
+      this.drainNext();
+      return;
+    }
+    this.host.status = 'preparing';
     const utterance = new SpeechSynthesisUtterance(speakableText);
     // speechSynthesis.cancel() (from stop() or a later playOne) still
     // delivers onend/onerror for the cancelled utterance asynchronously —

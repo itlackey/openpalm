@@ -202,7 +202,11 @@ describe('computeVoiceRuntime — voice-endpoint advertisement', () => {
   });
 
   afterEach(() => {
-    process.env.OP_HOME = savedHome;
+    // Assigning undefined coerces to the string "undefined" and leaks OP_HOME
+    // to later tests in the worker — restore by deleting when it started unset.
+    if (savedHome === undefined) delete process.env.OP_HOME;
+    else process.env.OP_HOME = savedHome;
+    delete process.env.OP_UI_NO_LOCAL_VOICE;
     rmSync(homeDir, { recursive: true, force: true });
     resetState();
   });
@@ -222,9 +226,15 @@ describe('computeVoiceRuntime — voice-endpoint advertisement', () => {
     expect(computeVoiceRuntime()).toEqual({ url: '/voice' });
   });
 
-  test('absent in a non-admin-capable process even with the addon enabled', () => {
+  test('advertised in a non-admin-capable process (voice is not a host:* privilege)', () => {
     enableVoice();
     delete process.env.OP_ENABLE_ADMIN;
+    expect(computeVoiceRuntime()).toEqual({ url: '/voice' });
+  });
+
+  test('absent when the process cannot serve local voice (OP_UI_NO_LOCAL_VOICE=1)', () => {
+    enableVoice();
+    process.env.OP_UI_NO_LOCAL_VOICE = '1';
     expect(computeVoiceRuntime()).toBeUndefined();
   });
 });

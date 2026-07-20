@@ -8,8 +8,8 @@
   ],
   "auth": {
     "passwordSelector": "input[autocomplete=\"current-password\"]",
-    "submitSelector": "form.auth-form button[type=\"submit\"]",
-    "readySelector": "header.navbar",
+    "submitSelector": "form.s-gate-form button[type=\"submit\"]",
+    "readySelector": ".chat-frame-header, header.navbar",
     "passwordEnv": "OP_UI_LOGIN_PASSWORD"
   },
   "states": [
@@ -18,36 +18,42 @@
       "path": "/chat",
       "waitFor": "header.navbar"
     },
+    {
+      "id": "chat-assistants",
+      "path": "/chat",
+      "waitFor": "#chat-navbar-drawer",
+      "setup": "(async () => { document.querySelector('button[aria-label^=\"Assistant:\"]')?.click(); await new Promise(r => setTimeout(r, 300)); })()"
+    },
+    {
+      "id": "chat-voice-controls",
+      "path": "/chat",
+      "waitFor": ".s-voice-controls"
+    },
     { "id": "admin-overview", "path": "/host", "waitFor": "header.navbar" },
     {
       "id": "admin-providers",
-      "path": "/host",
-      "waitFor": "header.navbar",
-      "setup": "(async () => { const f = (l) => Array.from(document.querySelectorAll('[role=\"tab\"]')).find(b => b.textContent.trim() === l); f('Mind')?.click(); await new Promise(r => setTimeout(r, 300)); })()"
+      "path": "/host?tab=connections",
+      "waitFor": "header.navbar"
     },
     {
       "id": "admin-knowledge",
-      "path": "/host",
-      "waitFor": "header.navbar",
-      "setup": "(async () => { const f = (l) => Array.from(document.querySelectorAll('[role=\"tab\"]')).find(b => b.textContent.trim() === l); f('Knowledge')?.click(); await new Promise(r => setTimeout(r, 300)); f('Memory')?.click(); await new Promise(r => setTimeout(r, 300)); })()"
+      "path": "/host?tab=akm",
+      "waitFor": "header.navbar"
     },
     {
-      "id": "connections-voice",
-      "path": "/connections",
-      "waitFor": ".voice-settings",
-      "setup": "(async () => { document.querySelector('.voice-settings')?.scrollIntoView(); await new Promise(r => setTimeout(r, 300)); })()"
+      "id": "device-voice",
+      "path": "/connections#voice",
+      "waitFor": ".voice-settings"
     },
     {
       "id": "admin-secrets",
-      "path": "/host",
-      "waitFor": "header.navbar",
-      "setup": "(async () => { const f = (l) => Array.from(document.querySelectorAll('[role=\"tab\"]')).find(b => b.textContent.trim() === l); f('Knowledge')?.click(); await new Promise(r => setTimeout(r, 300)); f('Secrets')?.click(); await new Promise(r => setTimeout(r, 300)); })()"
+      "path": "/host?tab=secrets",
+      "waitFor": "header.navbar"
     },
     {
       "id": "admin-addons",
-      "path": "/host",
-      "waitFor": "header.navbar",
-      "setup": "(async () => { const f = (l) => Array.from(document.querySelectorAll('[role=\"tab\"]')).find(b => b.textContent.trim() === l); f('Capabilities')?.click(); await new Promise(r => setTimeout(r, 300)); })()"
+      "path": "/host?tab=addons",
+      "waitFor": "header.navbar"
     }
   ],
   "axeWidths": [375, 1280],

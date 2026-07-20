@@ -98,6 +98,18 @@ describe('ChatInput — bindable draft', () => {
 });
 
 describe('ChatInput — focused composer controls', () => {
+  test('shows a two-pixel keyboard focus indicator on the textarea', async () => {
+    const { container } = render(ChatInput, { props: { sending: false, onSend: vi.fn() } });
+    const input = container.querySelector('textarea');
+    expect(input).toBeInstanceOf(HTMLTextAreaElement);
+    if (!(input instanceof HTMLTextAreaElement)) throw new Error('textarea not found');
+    input.style.setProperty('--s-seal', '#98420a');
+    input.focus();
+    const style = getComputedStyle(input);
+    expect(style.outlineStyle).not.toBe('none');
+    expect(Number.parseFloat(style.outlineWidth)).toBeGreaterThanOrEqual(2);
+  });
+
   test('keeps voice and conversation controls out of the composer', async () => {
     const { container } = render(ChatInput, { props: { sending: false, onSend: vi.fn() } });
     expect(container.querySelector('[aria-label="Start recording"]')).toBeNull();

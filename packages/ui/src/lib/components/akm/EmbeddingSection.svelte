@@ -101,9 +101,11 @@
 </section>
 
 <style>
-  .config-section { display: flex; flex-direction: column; gap: var(--s-sp-3); }
-  .section-header { display: flex; align-items: center; justify-content: space-between; gap: var(--s-sp-3); flex-wrap: wrap; }
+  .config-section { display: flex; flex-direction: column; gap: var(--s-sp-3); min-width: 0; max-width: 100%; box-sizing: border-box; }
+  .section-header { display: flex; align-items: center; justify-content: space-between; gap: var(--s-sp-3); flex-wrap: wrap; min-width: 0; max-width: 100%; }
   .section-actions { display: flex; gap: var(--s-sp-2); flex-wrap: wrap; }
+  .section-actions :global(.btn),
+  .config-section :global(.btn-icon) { min-height: 2.75rem; }
   .section-title {
     font-family: var(--s-font-mono);
     font-size: var(--s-type-mark);
@@ -115,7 +117,7 @@
     border-bottom: var(--s-hair) solid var(--s-line-soft);
   }
   .section-note { font-family: var(--s-font-display); font-size: var(--s-type-deed); color: var(--s-ink-3); margin: 0; max-width: 72ch; }
-  .controls--grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: var(--s-sp-4); }
+  .controls--grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); gap: var(--s-sp-4); min-width: 0; max-width: 100%; box-sizing: border-box; }
   .control-group { display: flex; flex-direction: column; gap: var(--s-sp-2); min-width: 0; }
   .control-group--wide { grid-column: 1 / -1; }
   .control-label { font-family: var(--s-font-mono); font-size: var(--s-type-mark-sm); letter-spacing: var(--s-track-label); text-transform: uppercase; color: var(--s-ink-3); }
@@ -128,6 +130,9 @@
     color: var(--s-ink);
     padding: 0.5rem 0;
     width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
   }
   .control-input--narrow { max-width: 8rem; }
   .control-input:focus { outline: none; border-bottom-color: var(--s-ink-2); }

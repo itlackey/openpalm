@@ -120,7 +120,8 @@ export function initializeRuntimeContext(
  * `initializeRuntimeContext` in `onMount`.
  */
 export function initializeServerRuntimeContext(serverCtx: ServerRuntimeContext): void {
-  const { publicBaseUrl: _requestDerived, ...envDerived } = serverCtx;
+  const envDerived: Partial<ServerRuntimeContext> = { ...serverCtx };
+  delete envDerived.publicBaseUrl;
   Object.assign(runtimeContext, envDerived);
   runtimeContext.effectiveCapabilities = resolveCapabilities(
     serverCtx.serverCapabilities,

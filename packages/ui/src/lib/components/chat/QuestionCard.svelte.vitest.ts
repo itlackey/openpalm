@@ -55,6 +55,15 @@ describe('QuestionCard — single question', () => {
     render(QuestionCard, { props: { question: question({ status: 'answered' }), ...handlers() } });
     await expect.element(page.getByRole('button', { name: 'Alice' })).toBeDisabled();
   });
+
+  test('offers a decline action for a single question', async () => {
+    const h = handlers();
+    render(QuestionCard, { props: { question: question(), ...h } });
+
+    await page.getByRole('button', { name: "can't answer" }).click();
+
+    expect(h.onReject).toHaveBeenCalledOnce();
+  });
 });
 
 describe('QuestionCard — multiple questions', () => {
@@ -92,6 +101,28 @@ describe('QuestionCard — multiple questions', () => {
     input.value = 'hello';
     input.dispatchEvent(new Event('input', { bubbles: true }));
     expect(h.onDraft).toHaveBeenCalledWith(1, 'hello');
+  });
+
+  test('uses each visible question as its text-field label', async () => {
+    render(QuestionCard, { props: { question: multi(), ...handlers() } });
+
+    await expect.element(page.getByRole('textbox', { name: 'First?' })).toBeVisible();
+    await expect.element(page.getByRole('textbox', { name: 'Second?' })).toBeVisible();
+  });
+
+  test('exposes the selected state of multi-question options', async () => {
+    render(QuestionCard, {
+      props: {
+        question: question({
+          questions: [q('First?', ['A', 'B']), q('Second?')],
+          answers: ['A', ''],
+        }),
+        ...handlers(),
+      },
+    });
+
+    await expect.element(page.getByRole('button', { name: 'A', pressed: true })).toBeVisible();
+    await expect.element(page.getByRole('button', { name: 'B', exact: true, pressed: false })).toBeVisible();
   });
 
   test('controls are disabled when submitting', async () => {

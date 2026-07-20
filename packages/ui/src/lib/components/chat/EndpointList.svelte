@@ -1,20 +1,13 @@
 <script lang="ts">
-  import { resolve } from '$app/paths';
-  import { isLocalAssistantUrl } from '$lib/assistant-endpoint.js';
   import { endpointsService } from '$lib/endpoints-state.svelte.js';
 
-  // The assistant-endpoint chooser body. Rendered both inside the navbar drawer
-  // (small screens) and inline in the chat side panel (large screens), so it is
-  // purely the list + manage link — no trigger, no positioning.
   interface Props {
-    /** Called after the active endpoint changes (e.g. to close the drawer). */
     onChosen?: () => void;
   }
   let { onChosen }: Props = $props();
 
   const active = $derived(endpointsService.active);
   const endpoints = $derived(endpointsService.endpoints);
-  const showManageAssistant = $derived(isLocalAssistantUrl(active?.url));
 
   let switching = $state(false);
 
@@ -38,150 +31,203 @@
 
 <div class="endpoint-list">
   {#if endpointsService.error}
-    <p class="list-error" role="alert">{endpointsService.error}</p>
+    <div class="list-error" role="alert">
+      <strong>Assistant list unavailable</strong>
+      <span>{endpointsService.error}</span>
+    </div>
   {/if}
-  <div class="s-ep-section-label">assistant</div>
-  <div class="group" role="group" aria-label="Assistant endpoints">
-    {#each endpoints as ep (ep.id)}
-      <button
-        type="button"
-        class="list-item"
-        class:active={ep.id === active?.id}
-        aria-current={ep.id === active?.id ? 'true' : undefined}
-        onclick={() => activate(ep.id)}
-        disabled={switching}
-      >
-        <span class="item-text">
-          <span class="item-label">{ep.label}{#if ep.id === active?.id}<span class="sr-only"> (current)</span>{/if}</span>
-          <span class="item-url">{ep.url}</span>
-        </span>
-      </button>
-    {/each}
+  <div class="panel-intro">
+    <p>Choose where this conversation runs. Each assistant keeps its own conversation history.</p>
   </div>
-
-  <div class="divider"></div>
-
-  {#if showManageAssistant}
-    <a class="list-item link" href={resolve('/host')} onclick={() => onChosen?.()}>
-      Manage this assistant…
-    </a>
+  {#if endpoints.length === 0}
+    <div class="empty-state">
+      <strong>No assistants connected</strong>
+      <span>Add a connection saved in this browser to start chatting.</span>
+    </div>
+  {:else}
+    <div class="group" role="group" aria-label="Assistants">
+      {#each endpoints as ep (ep.id)}
+        {@const current = ep.id === active?.id}
+        <button
+          type="button"
+          class="list-item"
+          class:active={current}
+          aria-current={current ? 'true' : undefined}
+          aria-label={`${ep.label}, ${current ? 'current assistant, connected' : 'connected'}`}
+          onclick={() => activate(ep.id)}
+          disabled={switching}
+        >
+          <span class="assistant-mark" aria-hidden="true">{current ? '✓' : ''}</span>
+          <span class="item-text">
+            <span class="item-label">{ep.label}</span>
+            <span class="item-url"><span>Address</span>{ep.url}</span>
+          </span>
+          <span class="status"><span class="status-dot" aria-hidden="true"></span>Connected</span>
+        </button>
+      {/each}
+    </div>
   {/if}
-
-  <a class="list-item link" href={resolve('/connections')} onclick={() => onChosen?.()}>
-    Manage assistant connections…
-  </a>
 </div>
 
 <style>
   .endpoint-list {
     display: flex;
     flex-direction: column;
-    gap: 0;
+    gap: var(--s-sp-4);
   }
 
   .list-error {
-    margin: 0 0 var(--s-sp-2);
-    padding: var(--s-sp-2) var(--s-sp-3);
-    font-family: var(--s-font-mono);
-    font-size: var(--s-type-mark-sm);
-    color: var(--s-seal);
+    display: flex;
+    flex-direction: column;
+    gap: var(--s-sp-1);
+    padding: var(--s-sp-3);
+    border: var(--s-hair) solid var(--s-error);
+    border-radius: 8px;
+    color: var(--s-error);
+    font-size: 0.875rem;
+  }
+
+  .panel-intro p {
+    margin: 0;
+    max-width: 36rem;
+    color: var(--s-ink-2);
+    font-size: 0.875rem;
+    line-height: 1.55;
+  }
+
+  .group {
+    display: flex;
+    flex-direction: column;
+    gap: var(--s-sp-2);
   }
 
   .list-item {
+    box-sizing: border-box;
     display: flex;
-    align-items: flex-start;
-    gap: var(--s-sp-2);
+    align-items: center;
+    gap: var(--s-sp-3);
     width: 100%;
-    padding: var(--s-sp-2) var(--s-sp-3);
-    background: none;
-    border: 0;
-    border-bottom: var(--s-hair) solid var(--s-line-soft);
-    border-radius: 0;
+    min-height: 76px;
+    padding: var(--s-sp-3);
+    background: color-mix(in srgb, var(--s-paper-deep) 55%, transparent);
+    border: var(--s-hair) solid var(--s-line-soft);
+    border-radius: 10px;
     cursor: pointer;
     text-align: left;
     font: inherit;
-    color: var(--s-ink-3);
-    font-family: var(--s-font-mono);
-    font-size: var(--s-type-mark);
+    color: var(--s-ink);
   }
   .list-item:hover:not(:disabled),
   .list-item:focus-visible {
-    color: var(--s-ink-2);
+    border-color: var(--s-ink-3);
+    background: var(--s-paper-deep);
   }
   .list-item:focus-visible {
-    outline: var(--s-hair) solid var(--s-line);
-    outline-offset: -1px;
+    outline: 2px solid var(--s-seal);
+    outline-offset: 2px;
   }
   .list-item:disabled {
     opacity: 0.5;
     cursor: progress;
   }
-  /* Active row: left hairline in seal accent */
   .list-item.active {
-    color: var(--s-ink-2);
-    border-left: 2px solid var(--s-seal);
-    padding-left: calc(var(--s-sp-3) - 2px);
+    border-color: var(--s-seal);
+    box-shadow: inset 3px 0 0 var(--s-seal);
+    background: var(--s-paper-deep);
+  }
+
+  .assistant-mark {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    flex-shrink: 0;
+    border: var(--s-hair) solid var(--s-line-soft);
+    border-radius: 50%;
+    color: var(--s-seal);
+    font-size: 0.875rem;
+  }
+  .active .assistant-mark {
+    border-color: var(--s-seal);
   }
 
   .item-text {
     display: flex;
     flex-direction: column;
+    gap: 2px;
     overflow: hidden;
-  }
-
-  .sr-only {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    padding: 0;
-    margin: -1px;
-    overflow: hidden;
-    clip: rect(0, 0, 0, 0);
-    white-space: nowrap;
-    border: 0;
+    flex: 1;
+    min-width: 0;
   }
 
   .item-label {
-    font-family: var(--s-font-mono);
-    font-size: var(--s-type-mark);
-    letter-spacing: var(--s-track-label);
-    text-transform: uppercase;
-    color: inherit;
+    font-family: var(--s-font-display);
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--s-ink);
   }
 
   .item-url {
+    display: flex;
+    gap: var(--s-sp-2);
     font-family: var(--s-font-mono);
-    font-size: var(--s-type-mark-sm);
+    font-size: 0.75rem;
     color: var(--s-ink-3);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    opacity: 0.7;
   }
-
-  .divider {
-    height: var(--s-hair);
-    margin: var(--s-sp-2) 0;
-    background: var(--s-line);
-  }
-
-  .list-item.link {
-    color: var(--s-ink-3);
-    text-decoration: none;
-  }
-  .list-item.link:hover,
-  .list-item.link:focus-visible {
+  .item-url span {
     color: var(--s-ink-2);
-    text-decoration: none;
+    font-weight: 600;
   }
 
-  .s-ep-section-label {
+  .status {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--s-sp-1);
+    flex-shrink: 0;
+    color: var(--s-ink-2);
     font-family: var(--s-font-mono);
-    font-size: var(--s-type-mark-sm);
-    letter-spacing: 0.26em;
-    text-transform: uppercase;
-    color: var(--s-ink-3);
-    margin-bottom: 0.7rem;
-    padding: var(--s-sp-2) var(--s-sp-3) 0;
+    font-size: 0.75rem;
+  }
+  .status-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--s-moss);
+  }
+
+  .empty-state {
+    display: flex;
+    flex-direction: column;
+    gap: var(--s-sp-1);
+    padding: var(--s-sp-5);
+    border: var(--s-hair) dashed var(--s-line-soft);
+    border-radius: 10px;
+    color: var(--s-ink-2);
+    font-size: 0.875rem;
+  }
+  .empty-state strong {
+    color: var(--s-ink);
+    font-size: 1rem;
+  }
+
+  @media (max-width: 420px) {
+    .list-item {
+      align-items: flex-start;
+      flex-wrap: wrap;
+    }
+    .status {
+      margin-left: 40px;
+    }
+    .item-text {
+      flex-basis: calc(100% - 40px);
+    }
+    .item-url {
+      white-space: normal;
+      overflow-wrap: anywhere;
+    }
   }
 </style>

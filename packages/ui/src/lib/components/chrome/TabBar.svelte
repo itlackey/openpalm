@@ -133,16 +133,34 @@
 		// Navigate to the first subtab of the clicked section.
 		onSelect(section.tabs[0].id);
 	}
+
+	function handleMobileSelect(e: Event): void {
+		onSelect((e.currentTarget as HTMLSelectElement).value as TabId);
+	}
 </script>
 
-<!-- Section strip (top level) -->
 <nav class="nav-shell" aria-label="Admin sections">
+	<label class="mobile-navigation">
+		<span>Admin page</span>
+		<select value={active} onchange={handleMobileSelect}>
+			{#each SECTIONS as section (section.id)}
+				<optgroup label={section.label}>
+					{#each section.tabs as tab (tab.id)}
+						<option value={tab.id}>{tab.label}</option>
+					{/each}
+				</optgroup>
+			{/each}
+		</select>
+	</label>
+
+	<!-- Section strip (top level) -->
 	<div class="section-strip" role="tablist" aria-label="Sections">
 		{#each SECTIONS as section (section.id)}
 			<button
 				class="section-tab"
 				role="tab"
 				aria-selected={activeSection.id === section.id}
+				tabindex={activeSection.id === section.id ? 0 : -1}
 				class:section-tab-active={activeSection.id === section.id}
 				onclick={() => handleSectionClick(section)}
 				onkeydown={handleSectionKeydown}
@@ -162,6 +180,7 @@
 					class="tab"
 					role="tab"
 					aria-selected={active === tab.id}
+					tabindex={active === tab.id ? 0 : -1}
 					class:tab-active={active === tab.id}
 					onclick={() => onSelect(tab.id)}
 					onkeydown={handleSubtabKeydown}
@@ -187,28 +206,27 @@
 		   admin <main> supplies the gap before content via its top padding. */
 	}
 
+	.mobile-navigation {
+		display: none;
+	}
+
 	/* ── Section strip (top level) ── */
 	.section-strip {
 		display: flex;
 		gap: 0;
+		max-width: 100%;
+		overflow-x: auto;
 		/* Indent the full-width strip so the first tab aligns with the page
 		   content's left padding instead of jamming against the viewport edge. */
 		padding-inline: var(--s-sp-6);
-		overflow-x: auto;
-		-webkit-overflow-scrolling: touch;
-		scrollbar-width: none;
 		border-bottom: var(--s-hair) solid var(--s-line-soft);
 		background: var(--s-paper);
-	}
-
-	.section-strip::-webkit-scrollbar {
-		display: none;
 	}
 
 	.section-tab {
 		display: inline-flex;
 		align-items: center;
-		min-height: 36px;
+		min-height: 44px;
 		padding: var(--s-sp-1) var(--s-sp-4);
 		font-family: var(--s-font-mono);
 		font-size: var(--s-type-mark);
@@ -256,17 +274,12 @@
 	.tabs {
 		display: flex;
 		gap: var(--s-sp-1);
+		max-width: 100%;
+		overflow-x: auto;
 		/* Align the subtab strip with the section strip + page content. */
 		padding-inline: var(--s-sp-6);
-		overflow-x: auto;
-		-webkit-overflow-scrolling: touch;
-		scrollbar-width: none;
 		background: var(--s-paper-deep);
 		/* No border-bottom here — the nav-shell bottom border serves as the baseline. */
-	}
-
-	.tabs::-webkit-scrollbar {
-		display: none;
 	}
 
 	.tab {
@@ -321,14 +334,43 @@
 		}
 	}
 
-	@media (max-width: 320px) {
-		.tab {
-			padding: var(--s-sp-1) var(--s-sp-2);
+	@media (max-width: 640px) {
+		.mobile-navigation {
+			display: grid;
+			grid-template-columns: auto minmax(0, 1fr);
+			align-items: center;
+			gap: var(--s-sp-3);
+			padding: var(--s-sp-2) var(--s-sp-4);
+			font-family: var(--s-font-mono);
 			font-size: var(--s-type-mark-sm);
+			text-transform: uppercase;
+			letter-spacing: var(--s-track-label);
+			color: var(--s-ink-3);
+			background: var(--s-paper);
 		}
-		.section-tab {
-			padding: var(--s-sp-1) var(--s-sp-2);
+
+		.mobile-navigation select {
+			min-width: 0;
+			width: 100%;
+			min-height: 44px;
+			padding: var(--s-sp-2) var(--s-sp-3);
+			font-family: var(--s-font-mono);
 			font-size: var(--s-type-mark-sm);
+			color: var(--s-ink);
+			background: var(--s-paper-deep);
+			border: var(--s-hair) solid var(--s-line);
+			border-radius: 2px;
+			cursor: pointer;
+		}
+
+		.mobile-navigation select:focus-visible {
+			outline: var(--s-hair) solid var(--s-seal);
+			outline-offset: 2px;
+		}
+
+		.section-strip,
+		.subtab-row {
+			display: none;
 		}
 	}
 </style>

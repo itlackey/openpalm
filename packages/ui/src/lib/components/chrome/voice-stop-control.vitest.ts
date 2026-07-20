@@ -40,6 +40,6 @@ describe('VoiceStopControl (review 2026-07-10 K1)', () => {
   test('/host/+page.svelte mounts VoiceStopControl inside Navbar', () => {
     const source = readFileSync(HOST_PAGE_PATH, 'utf-8');
     expect(source).toMatch(/import VoiceStopControl from ['"]\$lib\/components\/chrome\/VoiceStopControl\.svelte['"]/);
-    expect(source).toMatch(/<Navbar>[\s\S]*<VoiceStopControl\s*\/>[\s\S]*<\/Navbar>/);
+    expect(source).toMatch(/<Navbar(?:\s[^>]*)?>[\s\S]*<VoiceStopControl\s*\/>[\s\S]*<\/Navbar>/);
   });
 });

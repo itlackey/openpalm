@@ -1,18 +1,17 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { endpointsService } from '$lib/endpoints-state.svelte.js';
-  import Drawer from '@openpalm/ui-kit/components/common/Drawer.svelte';
-  import EndpointList from '$lib/components/chat/EndpointList.svelte';
   import IconServer from '@openpalm/ui-kit/components/icons/IconServer.svelte';
 
-  // Navbar trigger that opens the assistant-endpoint chooser in a drawer.
-  // The list body itself lives in EndpointList, shared with the chat side panel.
-  let open = $state(false);
+  interface Props {
+    open: boolean;
+    controls: string;
+    onToggle: () => void;
+  }
+  let { open, controls, onToggle }: Props = $props();
 
   const active = $derived(endpointsService.active);
 
-  // Fire-and-forget one-shot load — onMount, not $effect (it's not state sync and
-  // has no reactive deps that should re-trigger it).
   onMount(() => {
     void endpointsService.load();
   });
@@ -21,22 +20,22 @@
 <button
   type="button"
   class="trigger"
-  onclick={() => (open = true)}
+  class:active={open}
+  onclick={onToggle}
   aria-haspopup="dialog"
   aria-expanded={open}
-  aria-label={active ? `Assistant endpoint: ${active.label}` : 'Assistant endpoints'}
+  aria-controls={controls}
+  aria-label={active ? `Assistant: ${active.label}` : 'Choose assistant'}
   title={active ? `Connected to: ${active.label} (${active.url})` : 'Assistant endpoints'}
   disabled={endpointsService.loading}
 >
-  <IconServer size={14} class="trigger-icon" />
-  <span class="dot" aria-hidden="true"></span>
-  <span class="label">{active?.label ?? 'Endpoint…'}</span>
+  <span class="icon-wrap" aria-hidden="true"><IconServer size={18} class="trigger-icon" /></span>
+  <span class="context">
+    <span class="eyebrow">Assistant</span>
+    <span class="value"><span class="dot" aria-hidden="true"></span>{active?.label ?? 'Choose assistant'}</span>
+  </span>
   <span class="caret" aria-hidden="true">▾</span>
 </button>
-
-<Drawer open={open} title="Assistant endpoint" onClose={() => (open = false)} width="26rem">
-  <EndpointList onChosen={() => (open = false)} />
-</Drawer>
 
 <style>
   .trigger {
@@ -44,56 +43,105 @@
     align-items: center;
     gap: var(--s-sp-2);
     padding: 0 var(--s-sp-3);
-    height: 32px;
-    background: none;
-    border: var(--s-hair) solid var(--s-line);
-    border-radius: 2px;
-    font-family: var(--s-font-mono);
-    font-size: var(--s-type-mark);
-    letter-spacing: var(--s-track-label);
-    text-transform: uppercase;
+    min-width: 44px;
+    height: 52px;
+    background: color-mix(in srgb, var(--s-paper-deep) 52%, transparent);
+    border: var(--s-hair) solid transparent;
+    border-radius: 8px;
     color: var(--s-ink-3);
     cursor: pointer;
-    max-width: 240px;
+    width: clamp(180px, 17vw, 248px);
+    max-width: 248px;
     overflow: hidden;
-    transition: color 120ms ease, border-color 120ms ease;
+    transition: color 120ms ease, border-color 120ms ease, background 120ms ease;
   }
   .trigger:hover:not(:disabled) {
-    color: var(--s-ink-2);
-    border-color: var(--s-line);
+    color: var(--s-ink);
+    border-color: var(--s-line-soft);
+    background: var(--s-paper-deep);
   }
   .trigger:focus-visible {
-    outline: var(--s-hair) solid var(--s-line);
+    outline: 2px solid var(--s-seal);
     outline-offset: 2px;
   }
   .trigger:disabled {
     opacity: 0.5;
     cursor: progress;
   }
+  .trigger.active {
+    border-color: var(--s-seal);
+    background: var(--s-paper-deep);
+  }
 
+  .icon-wrap,
   :global(.trigger-icon) {
     flex-shrink: 0;
     color: var(--s-ink-3);
   }
+  .icon-wrap {
+    display: flex;
+  }
 
   /* Moss dot = connected/active */
   .dot {
-    width: 5px;
-    height: 5px;
+    width: 6px;
+    height: 6px;
     border-radius: 50%;
     background: var(--s-moss);
     flex-shrink: 0;
   }
 
-  .label {
+  .context {
+    display: flex;
+    flex: 1;
+    min-width: 0;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 1px;
+    text-align: left;
+  }
+  .eyebrow {
+    color: var(--s-ink-3);
+    font-family: var(--s-font-mono);
+    font-size: 0.75rem;
+    line-height: 1.2;
+  }
+  .value {
+    display: flex;
+    align-items: center;
+    gap: var(--s-sp-2);
+    width: 100%;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    max-width: 160px;
+    color: var(--s-ink);
+    font-family: var(--s-font-display);
+    font-size: 0.875rem;
+    font-weight: 600;
   }
 
   .caret {
-    font-size: 9px;
+    font-size: 0.75rem;
     opacity: 0.5;
+  }
+
+  @media (max-width: 999px) {
+    .trigger {
+      width: 100%;
+      max-width: none;
+      height: 56px;
+      border: 0;
+      border-top: var(--s-hair) solid var(--s-line-soft);
+      border-right: var(--s-hair) solid var(--s-line-soft);
+      border-radius: 0;
+      background: transparent;
+    }
+  }
+
+  @media (max-width: 479px) {
+    .trigger {
+      height: 44px;
+      min-height: 44px;
+    }
   }
 </style>

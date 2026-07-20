@@ -25,9 +25,10 @@
 
   interface Props {
     onAuthError: () => void;
+    focusAddon?: 'voice';
   }
 
-  let { onAuthError }: Props = $props();
+  let { onAuthError, focusAddon }: Props = $props();
 
   // Human-readable label for a raw addon identifier (the raw name stays as a
   // tooltip). Known acronyms keep their casing; everything else is Title Cased.
@@ -224,7 +225,13 @@
     }
   }
 
-  onMount(() => { void loadAddons(); });
+  onMount(() => {
+    void loadAddons().then(() => {
+      if (focusAddon && addons.some((addon) => addon.name === focusAddon)) {
+        void openCredentials(focusAddon);
+      }
+    });
+  });
 </script>
 
 <div class="panel" role="tabpanel">

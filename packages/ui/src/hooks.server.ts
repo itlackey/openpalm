@@ -182,7 +182,16 @@ export const handle: Handle = async ({ event, resolve }) => {
   // so `/` and stale `/splash` bookmarks never bounce through /login first.
   // The /splash ROUTE is gone (Phase 3 split it into /attention + the §6.5
   // landings); the /splash PATH keeps redirecting here for this release.
-  if (!isSetupPath) {
+  // Only DOCUMENT navigations land where resolveLanding() says. A fetch()
+  // surface (/api, /health, /voice, an SSE endpoint, any future proxy) sends
+  // `Accept: */*`, never text/html — redirecting it 302s the caller into an
+  // HTML page it then misparses (this is exactly what broke /voice speech
+  // calls). Gating on `wantsHtml` exempts every fetch route by construction
+  // instead of maintaining a hardcoded prefix list, and skips the
+  // resolveRequestLanding() cost (a docker `compose ps` + target probe on
+  // launch-cache miss) for the non-navigation traffic that can't be redirected
+  // anyway.
+  if (!isSetupPath && wantsHtml) {
     const landing = await resolveRequestLanding(event);
     const [landingPath] = landing.split('?');
     const usageRoute = path.startsWith('/chat') || path.startsWith('/advanced')
@@ -193,7 +202,7 @@ export const handle: Handle = async ({ event, resolve }) => {
     // migration.status is always 'none'), so this branch is inert until the
     // first real blocking migration exists — but it must be wired ahead of
     // that migration, not as a hotfix once one ships and finds
-    // chat/advanced/connections silently bypassing the blocking screen.
+    // chat/advanced/settings silently bypassing the blocking screen.
     //
     // K4 (review 2026-07-11): membership in BLOCKING_LANDINGS, not a literal
     // '/attention' string comparison — a future second blocking landing only
@@ -202,7 +211,10 @@ export const handle: Handle = async ({ event, resolve }) => {
     const usageExempt = usageRoute && !BLOCKING_LANDINGS.has(landingPath);
     // '/host' is the admin surface itself; '/admin' stays exempt so requests
     // into the dead namespace fall through to the router 404 instead of
-    // bouncing to the landing (no alias, no gate — plan Phase 4 step 1).
+    // bouncing to the landing (no alias, no gate — plan Phase 4 step 1). The
+    // fetch-only prefixes (/api, /health, /guardian/health) are already
+    // excluded by the wantsHtml gate above, but stay listed defensively in
+    // case a client sends Accept: text/html to one.
     const exempt = path.startsWith('/api/') || path.startsWith('/login')
       || path.startsWith('/health') || path.startsWith('/guardian/health') || path.startsWith('/host')
       || path.startsWith('/admin') || usageExempt;
