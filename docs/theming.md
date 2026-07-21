@@ -30,9 +30,14 @@ of its tints automatically.
   in `localStorage` under `openpalm.theme`.
 - A blocking pre-paint script in `app.html` stamps `data-theme="light"` or
   `data-theme="dark"` on `<html>` before first paint — no flash.
-- Token blocks are keyed to that attribute:
-  - light: `:root, :root[data-theme='light'], :root[data-theme='day']`
-  - dark: `:root[data-theme='dark'], :root[data-theme='night']`
+- Token blocks are currently keyed to that attribute (light:
+  `:root, :root[data-theme='light'], :root[data-theme='day']`; dark:
+  `:root[data-theme='dark'], :root[data-theme='night']`). Phase 1 of #426
+  collapses this duplication: the anchors become single
+  `light-dark(lightValue, darkValue)` declarations on `:root` inside a
+  cascade `@layer`, resolved by `color-scheme` (which the pre-paint script
+  already sets). The `data-theme` attribute remains for the few non-token
+  selectors that use it.
 
 ### The color anchors
 
@@ -73,67 +78,47 @@ Every install seeds an editable theme file:
 ~/.openpalm/config/ui/theme.css
 ```
 
-It is yours — lifecycle never overwrites it — and it loads after the built-in
-stylesheet on every page, so anything you set there wins. It ships with the
-full anchor list commented out, in the correct light/dark blocks. Applying a
-theme is: open the file, uncomment, change values, save, reload the browser.
+It is yours — lifecycle never overwrites it — and because the built-in
+tokens live in a cascade `@layer`, anything you set here wins, regardless of
+selector or ordering. Each anchor takes both modes in one line via
+`light-dark(lightValue, darkValue)`. Applying a theme is: open the file,
+uncomment, change values, save, reload the browser.
 
 ### The seeded template
 
 ```css
 /* OpenPalm UI theme — this file is yours; edit freely.
-   Uncomment a token to override it. Keep overrides inside these two
-   blocks so they apply in the right mode. Docs: docs/theming.md */
+   Uncomment a token to override it. light-dark(a, b) sets the light
+   and dark mode values in one line; a plain single value applies to
+   both modes. Docs: docs/theming.md */
 
-:root,
-:root[data-theme='light'],
-:root[data-theme='day'] {
-  /* --s-paper:      #E5E1D5; */
-  /* --s-paper-deep: #D9D5C8; */
-  /* --s-ink:        #26292B; */
-  /* --s-ink-2:      #575B59; */
-  /* --s-ink-3:      #5D5C56; */
-  /* --s-seal:       #98420A; */
-  /* --s-moss:       #555C42; */
-  /* --s-error:      #AB301F; */
-  /* --s-warning:    #835D08; */
-  /* --s-line:       #6F6D66; */
-  /* --s-line-soft:  #79756C; */
-}
-
-:root[data-theme='dark'],
-:root[data-theme='night'] {
-  /* --s-paper:      #15181B; */
-  /* --s-paper-deep: #0F1214; */
-  /* --s-ink:        #DAD6C9; */
-  /* --s-ink-2:      #989B91; */
-  /* --s-ink-3:      #85887F; */
-  /* --s-seal:       #DCC25C; */
-  /* --s-moss:       #8FA08C; */
-  /* --s-error:      #D95F4E; */
-  /* --s-warning:    #E0B85A; */
-  /* --s-line:       #73766E; */
-  /* --s-line-soft:  #666961; */
+:root {
+  /* --s-paper:      light-dark(#E5E1D5, #15181B); */
+  /* --s-paper-deep: light-dark(#D9D5C8, #0F1214); */
+  /* --s-ink:        light-dark(#26292B, #DAD6C9); */
+  /* --s-ink-2:      light-dark(#575B59, #989B91); */
+  /* --s-ink-3:      light-dark(#5D5C56, #85887F); */
+  /* --s-seal:       light-dark(#98420A, #DCC25C); */
+  /* --s-moss:       light-dark(#555C42, #8FA08C); */
+  /* --s-error:      light-dark(#AB301F, #D95F4E); */
+  /* --s-warning:    light-dark(#835D08, #E0B85A); */
+  /* --s-line:       light-dark(#6F6D66, #73766E); */
+  /* --s-line-soft:  light-dark(#79756C, #666961); */
 }
 ```
 
 ### Example: re-color the brand accent
 
 ```css
-:root,
-:root[data-theme='light'],
-:root[data-theme='day'] {
-  --s-seal: #1D5C8F;
-}
-
-:root[data-theme='dark'],
-:root[data-theme='night'] {
-  --s-seal: #7FB4DC;
+:root {
+  --s-seal: light-dark(#1D5C8F, #7FB4DC);
 }
 ```
 
 Save and reload. Buttons, active tabs, focus rings, the speaking waveform,
-and every accent wash re-tint — they all derive from `--s-seal`.
+and every accent wash re-tint in both modes — they all derive from
+`--s-seal`. Any CSS color syntax works (`oklch()`, named colors, …); use a
+single value instead of `light-dark()` to apply it to both modes.
 
 ### Beyond the anchors
 
@@ -166,8 +151,8 @@ only, ≤ 1 MB.
 | Symptom | Cause / fix |
 |---|---|
 | Nothing changed after editing | Hard-reload the browser; check the file is at `config/ui/theme.css` |
-| Works in light mode but not dark | The two blocks are independent — set the token in the dark block too |
-| Override ignored entirely | Values outside the two selector blocks (e.g. a bare `:root { }`) lose to the built-in mode blocks — keep overrides inside the seeded selectors |
+| Works in light mode but not dark | You set a single value where you wanted a pair — use `light-dark(lightValue, darkValue)` |
+| Colors broken everywhere | Very old browser: the console requires `light-dark()` support (Chrome/Edge 123+, Firefox 120+, Safari 17.5+, all mid-2024) |
 | Avatar not showing | Filename must be exactly `avatar.png`/`avatar.webp`/`avatar.gif` in `config/ui/assets/` |
 | UI broken after aggressive custom CSS | Delete or empty `theme.css` — the UI always renders correctly without it |
 
