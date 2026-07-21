@@ -1,6 +1,9 @@
 <script lang="ts">
   import { page } from '$app/state';
   import { goto } from '$app/navigation';
+  import ToggleButton from '@openpalm/ui-kit/components/common/ToggleButton.svelte';
+  import IconChat from '@openpalm/ui-kit/components/icons/IconChat.svelte';
+  import IconTerminal from '@openpalm/ui-kit/components/icons/IconTerminal.svelte';
   import { advancedModeService } from '$lib/advanced-mode-state.svelte.js';
   import { chat } from '$lib/chat/chat-state.svelte.js';
   import { buildAdvancedPath, buildChatPath, currentChatSessionId } from '$lib/chat/navigation.js';
@@ -11,6 +14,16 @@
   const onAdmin = $derived(pathname === '/host' || pathname.startsWith('/host/'));
   const onOpenCode = $derived(pathname === '/advanced' || pathname.startsWith('/advanced/'));
   const openCodeSelected = $derived(onOpenCode || advancedModeService.enabled);
+
+  function navigateTo(target: string): void {
+    if (typeof document !== 'undefined' && 'startViewTransition' in document) {
+      // eslint-disable-next-line svelte/no-navigation-without-resolve -- target is built by typed internal navigation helpers
+      document.startViewTransition(() => goto(target));
+      return;
+    }
+    // eslint-disable-next-line svelte/no-navigation-without-resolve -- target is built by typed internal navigation helpers
+    void goto(target);
+  }
 
   function switchMode(enabled: boolean): void {
     // Always persist the preference — `openCodeSelected` ORs in the current
@@ -31,76 +44,39 @@
     const target = enabled
       ? buildAdvancedPath(sessionId, assistantId)
       : buildChatPath(sessionId, assistantId);
-    // eslint-disable-next-line svelte/no-navigation-without-resolve -- dynamic session path built internally, not a static route id
-    void goto(target);
+    navigateTo(target);
   }
 </script>
 
 <div class="mode-switch" role="group" aria-label="Interface mode">
-  <button
-    type="button"
-    class:active={!openCodeSelected}
-    aria-pressed={!openCodeSelected}
-    aria-label="Simple mode"
-    onclick={() => switchMode(false)}
-  >Simple</button>
-  <button
-    type="button"
-    class:active={openCodeSelected}
-    aria-pressed={openCodeSelected}
-    aria-label="OpenCode mode"
-    onclick={() => switchMode(true)}
-  >OpenCode</button>
+  <ToggleButton
+    pressed={!openCodeSelected}
+    onToggle={() => switchMode(false)}
+    icon={simpleIcon}
+    ariaLabel="Simple mode"
+    title="Simple mode"
+  />
+  <ToggleButton
+    pressed={openCodeSelected}
+    onToggle={() => switchMode(true)}
+    icon={openCodeIcon}
+    ariaLabel="OpenCode mode"
+    title="OpenCode mode"
+  />
 </div>
+
+{#snippet simpleIcon()}
+  <IconChat size={18} />
+{/snippet}
+
+{#snippet openCodeIcon()}
+  <IconTerminal size={18} />
+{/snippet}
 
 <style>
   .mode-switch {
-    box-sizing: border-box;
-    display: inline-grid;
-    grid-template-columns: 1fr 1fr;
-    min-width: 168px;
-    height: 48px;
-    padding: 1px;
-    border: var(--s-hair) solid var(--s-line-soft);
-    border-radius: 8px;
-    background: var(--s-paper-deep);
-  }
-  button {
-    min-width: 76px;
-    min-height: 44px;
-    padding: 0 var(--s-sp-2);
-    overflow: hidden;
-    border: 0;
-    border-radius: 5px;
-    background: transparent;
-    color: var(--s-ink-3);
-    font-family: var(--s-font-mono);
-    font-size: 0.75rem;
-    font-weight: 500;
-    cursor: pointer;
-  }
-  button:hover {
-    color: var(--s-ink);
-    background: color-mix(in srgb, var(--s-ink) 6%, transparent);
-  }
-  button.active {
-    background: var(--s-paper);
-    color: var(--s-ink);
-    box-shadow: 0 1px 3px color-mix(in srgb, var(--s-ink) 15%, transparent);
-    font-weight: 700;
-  }
-  button:focus-visible {
-    outline: 2px solid var(--s-seal);
-    outline-offset: 1px;
-  }
-
-  @media (max-width: 400px) {
-    .mode-switch {
-      min-width: 140px;
-    }
-    button {
-      min-width: 62px;
-      padding: 0 var(--s-sp-1);
-    }
+    display: inline-flex;
+    align-items: center;
+    gap: var(--s-sp-1);
   }
 </style>

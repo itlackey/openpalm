@@ -1,4 +1,4 @@
-import { expect, test, type Locator, type Page } from '@playwright/test';
+import { expect, type Locator, type Page, test } from '@playwright/test';
 
 test.use({
 	hasTouch: true,
@@ -48,7 +48,12 @@ async function expectHitTarget(locator: Locator, description: string): Promise<v
 }
 
 async function expectChatInert(page: Page, expected: boolean): Promise<void> {
-	for (const selector of ['.s-scroll', '.s-base', '.s-tool-rail', '.s-voice-controls']) {
+	for (const selector of [
+		'.s-scroll',
+		'.s-tool-rail',
+		'.chat-footer-composer',
+		'.chat-footer-voice'
+	]) {
 		const locator = page.locator(selector);
 		if ((await locator.count()) === 0) continue;
 		expect(await locator.evaluate((element) => (element as HTMLElement).inert), selector).toBe(
@@ -230,20 +235,14 @@ test('shared chat navbar and footer remain responsive from 320px through desktop
 	const simpleMode = navbar.getByRole('button', { name: 'Simple mode', exact: true });
 	const openCodeMode = navbar.getByRole('button', { name: 'OpenCode mode', exact: true });
 	const brand = navbar.getByRole('link', { name: 'OpenPalm - go to chat', exact: true });
-	const headerTargets = [
-		brand,
-		assistant,
-		conversation,
-		simpleMode,
-		openCodeMode,
-		settings
-	];
+	const headerTargets = [brand, assistant, conversation, simpleMode, openCodeMode, settings];
 	const speaker = page.getByRole('button', { name: 'Turn on spoken responses', exact: true });
 	const conversationMode = page.getByRole('button', {
 		name: 'Start conversation mode',
 		exact: true
 	});
 	const dictate = page.getByRole('button', { name: 'Dictate message', exact: true });
+	const footer = page.locator('.chat-footer');
 	const composer = page.locator('.s-composer');
 	const input = page.getByRole('textbox', { name: 'Message input' });
 
@@ -252,6 +251,8 @@ test('shared chat navbar and footer remain responsive from 320px through desktop
 	await expect(activity).toBeVisible();
 	await expect(activity).toHaveText('');
 	await expect(settings).toHaveText('');
+	await expect(simpleMode).toHaveText('');
+	await expect(openCodeMode).toHaveText('');
 	await expect(dictate).toBeVisible();
 	for (const control of [speaker, conversationMode, dictate]) {
 		await expect(control).toHaveCSS('border-top-width', '0px');
@@ -261,24 +262,74 @@ test('shared chat navbar and footer remain responsive from 320px through desktop
 	for (const width of [320, 360, 375, 390, 420]) {
 		await page.setViewportSize({ width, height: 700 });
 		const send = page.getByRole('button', { name: 'Send message' });
-		const [navbarRect, scrollRect, composerRect, dictateRect, sendRect] = await Promise.all([
+		const [
+			navbarRect,
+			scrollRect,
+			composerRect,
+			inputRect,
+			sendRect,
+			newConversationRect,
+			activityRect,
+			speakerRect,
+			conversationModeRect,
+			dictateRect,
+			footerRect
+		] = await Promise.all([
 			rect(navbar),
 			rect(page.locator('.s-scroll')),
 			rect(composer),
+			rect(input),
+			rect(send),
+			rect(newConversation),
+			rect(activity),
+			rect(speaker),
+			rect(conversationMode),
 			rect(dictate),
-			rect(send)
+			rect(footer)
 		]);
 
 		expect(navbarRect.bottom, `${width}px contextual header`).toBe(144);
 		expect(scrollRect.top, `${width}px chat starts below header`).toBe(144);
-		expect(scrollRect.bottom, `${width}px chat fills remaining viewport`).toBe(700);
+		expect(scrollRect.bottom, `${width}px chat ends above footer`).toBe(footerRect.top);
+		expect(footerRect.bottom, `${width}px footer reaches viewport bottom`).toBe(700);
 		expect(intersects(navbarRect, composerRect), `${width}px header overlaps composer`).toBe(false);
+		expect(composerRect.top, `${width}px composer starts inside footer`).toBeGreaterThanOrEqual(
+			footerRect.top
+		);
+		expect(composerRect.bottom, `${width}px composer ends inside footer`).toBeLessThanOrEqual(
+			footerRect.bottom
+		);
+		expect(inputRect.right, `${width}px message field precedes Send`).toBeLessThanOrEqual(
+			sendRect.left
+		);
+		expect(
+			Math.min(inputRect.bottom, sendRect.bottom) - Math.max(inputRect.top, sendRect.top),
+			`${width}px message field and Send share the upper row`
+		).toBeGreaterThan(0);
 		expect(intersects(dictateRect, composerRect), `${width}px bottom mic overlaps composer`).toBe(
 			false
 		);
 		expect(intersects(dictateRect, sendRect), `${width}px bottom mic overlaps Send`).toBe(false);
 		expect(width - dictateRect.right, `${width}px mic right-corner offset`).toBeLessThanOrEqual(16);
 		expect(700 - dictateRect.bottom, `${width}px mic bottom-corner offset`).toBeLessThanOrEqual(16);
+		const bottomRow = [
+			newConversationRect,
+			activityRect,
+			speakerRect,
+			conversationModeRect,
+			dictateRect
+		];
+		expect(
+			Math.max(...bottomRow.map((control) => control.top)) -
+				Math.min(...bottomRow.map((control) => control.top)),
+			`${width}px bottom controls share one row`
+		).toBeLessThanOrEqual(1);
+		for (let index = 1; index < bottomRow.length; index++) {
+			expect(
+				bottomRow[index - 1].right,
+				`${width}px bottom control ${index} precedes control ${index + 1}`
+			).toBeLessThanOrEqual(bottomRow[index].left);
+		}
 
 		const modeOverflow = await navbar.locator('.mode-switch').evaluate((switcher) => {
 			const bounds = switcher.getBoundingClientRect();
@@ -294,16 +345,24 @@ test('shared chat navbar and footer remain responsive from 320px through desktop
 		});
 		expect(modeOverflow, `${width}px mode switch overflow`).toBe(false);
 
-		const [newConversationRect, activityRect] = await Promise.all([
-			rect(newConversation),
-			rect(activity)
-		]);
-		expect(newConversationRect.right, `${width}px new conversation precedes Activity`).toBeLessThanOrEqual(
-			activityRect.left
-		);
-		expect(700 - newConversationRect.bottom, `${width}px new conversation bottom offset`).toBeLessThanOrEqual(16);
+		expect(
+			newConversationRect.right,
+			`${width}px new conversation precedes Activity`
+		).toBeLessThanOrEqual(activityRect.left);
+		expect(
+			700 - newConversationRect.bottom,
+			`${width}px new conversation bottom offset`
+		).toBeLessThanOrEqual(16);
 
-		for (const control of [...headerTargets, newConversation, activity, speaker, conversationMode, dictate, send]) {
+		for (const control of [
+			...headerTargets,
+			newConversation,
+			activity,
+			speaker,
+			conversationMode,
+			dictate,
+			send
+		]) {
 			const controlRect = await rect(control);
 			expect(
 				controlRect.right - controlRect.left,
@@ -318,6 +377,47 @@ test('shared chat navbar and footer remain responsive from 320px through desktop
 			await expectHitTarget(control, `${width}px target is unobstructed`);
 		}
 	}
+
+	await page.setViewportSize({ width: 1280, height: 800 });
+	const [wideFooter, wideComposer, wideInput, wideSend, wideNewConversation, wideActivity, wideSpeaker, wideConversation, wideDictate] =
+		await Promise.all([
+			rect(footer),
+			rect(composer),
+			rect(input),
+			rect(page.getByRole('button', { name: 'Send message' })),
+			rect(newConversation),
+			rect(activity),
+			rect(speaker),
+			rect(conversationMode),
+			rect(dictate)
+		]);
+	expect(wideFooter.bottom - wideFooter.top, 'wide footer stays compact').toBeLessThanOrEqual(68);
+	expect(
+		Math.min(wideInput.bottom, wideSend.bottom) - Math.max(wideInput.top, wideSend.top),
+		'wide message input and Send share one row'
+	).toBeGreaterThan(0);
+	expect(wideNewConversation.right, 'wide conversation actions precede composer').toBeLessThanOrEqual(
+		wideComposer.left
+	);
+	expect(wideActivity.right, 'wide Activity precedes composer').toBeLessThanOrEqual(
+		wideComposer.left
+	);
+	expect(wideComposer.right, 'wide composer precedes voice controls').toBeLessThanOrEqual(
+		wideSpeaker.left
+	);
+	for (const [name, controlRect] of [
+		['new conversation', wideNewConversation],
+		['activity', wideActivity],
+		['speaker', wideSpeaker],
+		['conversation mode', wideConversation],
+		['dictation', wideDictate]
+	] as const) {
+		expect(
+			Math.min(wideComposer.bottom, controlRect.bottom) - Math.max(wideComposer.top, controlRect.top),
+			`wide ${name} control shares the composer row`
+		).toBeGreaterThan(0);
+	}
+	await page.setViewportSize({ width: 420, height: 700 });
 
 	await dictate.click();
 	await expect(page.getByRole('button', { name: 'Stop dictation' })).toBeVisible();
@@ -401,4 +501,35 @@ test('shared chat navbar and footer remain responsive from 320px through desktop
 			})
 		);
 	expect(clipped, '1101px contextual activity rail clipping').toEqual([]);
+
+	await page.setViewportSize({ width: 320, height: 700 });
+	await expect(navbar).toHaveCSS('height', '144px');
+	await openCodeMode.click();
+	await expect(page).toHaveURL(/\/advanced(?:\?|$)/);
+	await expect(navbar).toHaveCSS('height', '52px');
+	await expect(assistant).toHaveCount(0);
+	await expect(conversation).toHaveCount(0);
+	await expect(newConversation).toHaveCount(0);
+	const advancedFooter = page.locator('.chat-footer');
+	const advancedContent = page.locator(
+		'.opencode-shell:visible, .native-shell:visible, .advanced-status:visible'
+	);
+	const advancedSpeaker = page.getByRole('button', { name: 'Turn on spoken responses' });
+	const advancedConversation = page.getByRole('button', { name: 'Start conversation mode' });
+	const advancedDictate = page.getByRole('button', { name: 'Dictate message' });
+	await expect(advancedFooter).toBeVisible();
+	const [footerRect, contentRect] = await Promise.all([rect(advancedFooter), rect(advancedContent)]);
+	expect(contentRect.bottom, 'OpenCode content ends above its voice footer').toBeLessThanOrEqual(
+		footerRect.top
+	);
+	for (const control of [advancedSpeaker, advancedConversation, advancedDictate]) {
+		await expect(control).toBeVisible();
+		const controlRect = await rect(control);
+		expect(controlRect.top, 'advanced voice control stays inside footer').toBeGreaterThanOrEqual(
+			footerRect.top
+		);
+		expect(controlRect.bottom, 'advanced voice control stays inside footer').toBeLessThanOrEqual(
+			footerRect.bottom
+		);
+	}
 });

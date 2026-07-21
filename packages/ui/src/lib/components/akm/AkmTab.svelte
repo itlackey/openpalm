@@ -7,7 +7,7 @@
 		saveAkmConfig,
 		testAkmEmbedding,
 	} from '$lib/api.js';
-	import { hasCapability } from '$lib/runtime-context.svelte.js';
+	import { getRuntimeContext, hasCapability } from '$lib/runtime-context.svelte.js';
 	import { notifications } from '$lib/notifications.svelte.js';
 	import Spinner from '@openpalm/ui-kit/components/common/Spinner.svelte';
 	import AkmKnowledgeStatsSection from '$lib/components/akm/AkmKnowledgeStatsSection.svelte';
@@ -53,7 +53,8 @@
 	// changed) capabilities after this component was already mounted —
 	// latent staleness. `$derived` re-reads `hasCapability()` whenever
 	// `runtimeContext.effectiveCapabilities` changes.
-	const hostMaintenance = $derived(hasCapability('host:containers'));
+	const runtimeContext = getRuntimeContext();
+	const hostMaintenance = $derived(hasCapability(runtimeContext, 'host:containers'));
 
 	// ── LLM Profiles ─────────────────────────────────────────────────────────────
 	let llmProfiles = $state<LlmProfile[]>([]);

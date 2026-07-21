@@ -60,7 +60,7 @@
 <style>
 	.device-settings-nav {
 		position: sticky;
-		top: 52px;
+		top: var(--nav-height);
 		z-index: 40;
 		background: var(--s-paper-deep);
 		border-bottom: var(--s-hair) solid var(--s-line-soft);

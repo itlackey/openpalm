@@ -15,7 +15,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 const CONTROL_PATH = fileURLToPath(new URL('./VoiceStopControl.svelte', import.meta.url));
-const HOST_PAGE_PATH = fileURLToPath(new URL('../../../routes/host/+page.svelte', import.meta.url));
+const HOST_PAGE_PATH = fileURLToPath(new URL('../../../routes/(app)/host/+page.svelte', import.meta.url));
 
 describe('VoiceStopControl (review 2026-07-10 K1)', () => {
   test('the component exists', () => {

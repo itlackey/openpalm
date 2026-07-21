@@ -8,7 +8,7 @@
     saveHostStackSettings,
     type MdnsSurface,
   } from '$lib/api.js';
-  import { hasCapability } from '$lib/runtime-context.svelte.js';
+  import { getRuntimeContext, hasCapability } from '$lib/runtime-context.svelte.js';
   import { notifications } from '$lib/notifications.svelte.js';
   import { NETWORK_PRESET_LABELS, type NetworkAccessPreset } from '@openpalm/lib/control-plane/network-preset.js';
 
@@ -38,10 +38,11 @@
   // Snapshot of last-saved persona content for dirty detection.
   let savedPersonaContent = $state('');
 
-  const showStack = hasCapability('host:stack:read');
-  const canEditStack = hasCapability('host:stack:write');
-  const showPersona = hasCapability('assistant-settings:read');
-  const canEditPersona = hasCapability('assistant-settings:write');
+  const runtimeContext = getRuntimeContext();
+  const showStack = $derived(hasCapability(runtimeContext, 'host:stack:read'));
+  const canEditStack = $derived(hasCapability(runtimeContext, 'host:stack:write'));
+  const showPersona = $derived(hasCapability(runtimeContext, 'assistant-settings:read'));
+  const canEditPersona = $derived(hasCapability(runtimeContext, 'assistant-settings:write'));
 
   async function load(): Promise<void> {
     loading = true;

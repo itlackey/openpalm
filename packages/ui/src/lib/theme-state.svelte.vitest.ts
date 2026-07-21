@@ -7,7 +7,7 @@ describe('theme-state', () => {
   beforeEach(() => {
     window.localStorage.clear();
     document.head.innerHTML = `
-      <meta name="theme-color" content="#ffffff">
+      <meta name="theme-color" content="#E5E1D5">
       <meta name="color-scheme" content="light">
     `;
     Object.defineProperty(window, 'matchMedia', {
@@ -37,7 +37,7 @@ describe('theme-state', () => {
 
     expect(document.documentElement.getAttribute('data-theme')).toBe('dark');
     expect(document.documentElement.style.colorScheme).toBe('dark');
-    expect(document.querySelector('meta[name="theme-color"]')?.getAttribute('content')).toBe('#161c22');
+    expect(document.querySelector('meta[name="theme-color"]')?.getAttribute('content')).toBe('#15181B');
     expect(document.querySelector('meta[name="color-scheme"]')?.getAttribute('content')).toBe('dark');
   });
 

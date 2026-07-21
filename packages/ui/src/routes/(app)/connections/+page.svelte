@@ -17,7 +17,7 @@
   import { newConnectionId } from '$lib/connections/store.js';
   import { isDiscoveryCandidateUrl, markLocalDiscoveryDismissed } from '$lib/connections/discovery.js';
   import { parsePairingCode, type PairingPayload } from '$lib/connections/pairing.js';
-  import { hasCapability } from '$lib/runtime-context.svelte.js';
+  import { getRuntimeContext, hasCapability } from '$lib/runtime-context.svelte.js';
   import { advancedModeService } from '$lib/advanced-mode-state.svelte.js';
   import {
     buildAdvancedPath,
@@ -30,6 +30,7 @@
   import { themeService } from '$lib/theme-state.svelte.js';
 
   type SettingsTab = 'general' | 'connections';
+  const runtimeContext = getRuntimeContext();
 
   function initialSettingsTab(): SettingsTab {
     const requested = page.url.searchParams.get('tab');
@@ -425,7 +426,7 @@
         <button type="button" class="btn btn-primary" onclick={openAddForm}>
           + Add connection
         </button>
-        {#if hasCapability('host:stack:write')}
+        {#if hasCapability(runtimeContext, 'host:stack:write')}
           <button type="button" class="btn btn-secondary" onclick={openPairingForm}>
             Pair a device
           </button>
@@ -688,7 +689,7 @@
         <VoiceClientSettings />
       </section>
 
-      {#if hasCapability('host:stack:read')}
+      {#if hasCapability(runtimeContext, 'host:stack:read')}
         <section class="settings-section" aria-labelledby="host-heading">
           <header class="section-header">
             <h2 id="host-heading">Host</h2>

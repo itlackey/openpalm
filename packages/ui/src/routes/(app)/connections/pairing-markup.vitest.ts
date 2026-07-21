@@ -18,7 +18,7 @@ describe('connections +page.svelte — host UX and pairing wiring', () => {
   test('wires a Pair-a-device flow through the api helper', () => {
     const src = pageSource();
     expect(src).toMatch(/mintPairingCode\(/);
-    expect(src).toMatch(/hasCapability\(\s*['"`]host:stack:write['"`]\s*\)/);
+    expect(src).toMatch(/hasCapability\(\s*runtimeContext\s*,\s*['"`]host:stack:write['"`]\s*\)/);
   });
 
   test('renders the minted QR and one-time code with a shown-once warning', () => {
@@ -98,7 +98,7 @@ describe('connections +page.svelte — host UX and pairing wiring', () => {
 
   test('links clearly to host management when host controls are available', () => {
     const src = pageSource();
-    expect(src).toMatch(/hasCapability\(\s*['"`]host:stack:read['"`]\s*\)/);
+    expect(src).toMatch(/hasCapability\(\s*runtimeContext\s*,\s*['"`]host:stack:read['"`]\s*\)/);
     expect(src).toMatch(/buildReturnToPath\(resolve\(\s*['"`]\/host['"`]\s*\), chatReturnHref\)/);
     expect(src).toMatch(/href=\{hostSettingsHref\}[\s\S]*?>Manage host/);
   });

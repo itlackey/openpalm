@@ -3,12 +3,10 @@
 	import { fly } from 'svelte/transition';
 	import { page } from '$app/state';
 	import { afterNavigate, goto, replaceState } from '$app/navigation';
-	import ChatMessage from '$lib/components/chat/ChatMessage.svelte';
+	import ChatFooter from '$lib/components/chat/ChatFooter.svelte';
 	import ChatInput from '$lib/components/chat/ChatInput.svelte';
-	import ChatActivity from '$lib/components/chat/ChatActivity.svelte';
-	import NewChatButton from '$lib/components/chat/NewChatButton.svelte';
-	import ChatNavbar from '$lib/components/chrome/ChatNavbar.svelte';
-	import VoiceStatusStrip from '$lib/components/chat/VoiceStatusStrip.svelte';
+	import ChatMessage from '$lib/components/chat/ChatMessage.svelte';
+	import ConversationFrame from '$lib/components/chrome/ConversationFrame.svelte';
 	import ToolLog from '$lib/components/chat/ToolLog.svelte';
 	import PermissionCard from '$lib/components/chat/PermissionCard.svelte';
 	import QuestionCard from '$lib/components/chat/QuestionCard.svelte';
@@ -24,20 +22,7 @@
 	import { endpointsService } from '$lib/endpoints-state.svelte.js';
 	import { onConnectionActivated } from '$lib/connection-events.js';
 	import { resolveSessionTitle } from '$lib/session-title.js';
-	import {
-		voiceState,
-		setTtsAutoEnabled,
-		startConversation,
-		startListening,
-		stopListening,
-		stopConversation,
-		initVoice
-	} from '$lib/voice/voice-state.svelte.js';
-	import IconMic from '@openpalm/ui-kit/components/icons/IconMic.svelte';
-	import IconSoundOff from '@openpalm/ui-kit/components/icons/IconSoundOff.svelte';
-	import IconSoundOn from '@openpalm/ui-kit/components/icons/IconSoundOn.svelte';
-	import IconStop from '@openpalm/ui-kit/components/icons/IconStop.svelte';
-	import IconWaves from '@openpalm/ui-kit/components/icons/IconWaves.svelte';
+	import { stopConversation, voiceState } from '$lib/voice/voice-state.svelte.js';
 
 	let scrollAnchorEl = $state<HTMLDivElement | undefined>();
 
@@ -177,72 +162,9 @@
 		};
 	}
 
-	// ── Voice ─────────────────────────────────────────────────────────────
-
-	// Mic pulse tracks single-shot dictation only — conversation mode has
-	// its own toggle + strip and would otherwise light both buttons.
-	const voiceActive = $derived(
-		!voiceState.conversationActive &&
-			(voiceState.status === 'recording' || voiceState.status === 'transcribing')
-	);
-	const voiceEnabled = $derived(voiceState.sttEngine !== 'disabled' && voiceState.sttSupported);
-	const ttsEnabled = $derived(voiceState.ttsEngine !== 'disabled' && voiceState.ttsSupported);
-	const dictationTranscribing = $derived(
-		!voiceState.conversationActive && voiceState.status === 'transcribing'
-	);
-	type OpenPalmVoiceBridge = {
-		requestMicPermission?: () => Promise<string>;
-	};
-
 	// Composer draft — dictation inserts here instead of auto-sending, so
 	// the user reviews spoken text before it goes out.
 	let draft = $state('');
-
-	async function prepareMicrophoneAccess(): Promise<boolean> {
-		const openpalm = (window as Window & { openpalm?: OpenPalmVoiceBridge }).openpalm;
-		const status = await openpalm?.requestMicPermission?.();
-		if (status === 'denied-no-prompt') {
-			voiceState.errorMessage =
-				'This OpenPalm build cannot request microphone access on macOS. Please update to the latest version of the desktop app.';
-			return false;
-		}
-		if (status === 'denied' || status === 'restricted') {
-			voiceState.errorMessage =
-				'Microphone access is turned off. In the System Settings window that just opened, enable OpenPalm under Microphone, then quit and reopen the app.';
-			return false;
-		}
-		return true;
-	}
-
-	async function toggleVoice(): Promise<void> {
-		// startListening takes the mic from conversation mode, so the dedicated
-		// record control always does what its accessible name promises.
-		if (voiceActive) {
-			stopListening();
-		} else if (await prepareMicrophoneAccess()) {
-			startListening((transcript) => {
-				const trimmed = transcript.trim();
-				if (!trimmed) return;
-				draft = draft.trim().length > 0 ? `${draft.trimEnd()} ${trimmed}` : trimmed;
-			});
-		}
-	}
-
-	async function toggleConversation(): Promise<void> {
-		if (voiceState.conversationActive) {
-			stopConversation();
-			return;
-		}
-		if (!(await prepareMicrophoneAccess())) return;
-		// Barge-in aware: sendUtterance() stops any in-flight turn first, so a
-		// spoken utterance is never dropped by send()'s `if (this.sending) return`
-		// guard the way handleSend()/chat.send() would silently drop it.
-		startConversation((transcript) => void chat.sendUtterance(transcript));
-	}
-
-	function toggleSpokenResponses(): void {
-		setTtsAutoEnabled(!voiceState.ttsAutoEnabled);
-	}
 
 	async function syncSessionUrl(sessionId: string | null, replace: boolean): Promise<void> {
 		const target = buildChatPath(sessionId, endpointsService.activeId);
@@ -342,8 +264,6 @@
 
 	// ── Mount ─────────────────────────────────────────────────────────────
 	onMount(() => {
-		document.documentElement.classList.add('chat-locked');
-		document.body.classList.add('chat-locked');
 		const motionPreference = window.matchMedia('(prefers-reduced-motion: reduce)');
 		const updateMotionPreference = (): void => {
 			reducedMotion = motionPreference.matches;
@@ -384,18 +304,12 @@
 			);
 		});
 
-		void initVoice();
 		// Route resolution (assistant + session from the URL) runs via
 		// afterNavigate, which fires on this initial mount too — so it is
 		// deliberately NOT also invoked here.
 
 		return () => {
 			visDestroyed = true;
-			// Neither capture mode may leave the mic hot on another route.
-			stopConversation();
-			stopListening();
-			document.documentElement.classList.remove('chat-locked');
-			document.body.classList.remove('chat-locked');
 			unsubscribeSessionNavigation();
 			motionPreference.removeEventListener('change', updateMotionPreference);
 			document.removeEventListener('keydown', onKey);
@@ -415,17 +329,8 @@
 <div class="s-moon"></div>
 <div class="s-grain"></div>
 
-<ChatNavbar bind:drawerOpen={navigationOpen} />
-<div class="s-bottom-left-controls">
-	<span class="s-new-conversation" inert={navigationOpen}><NewChatButton /></span>
-	<ChatActivity
-		bind:drawerOpen={navigationOpen}
-		bind:railOpen={activityRailOpen}
-		conversationTitle={activeConversationTitle}
-		connectionLabel={activeConnectionLabel}
-	/>
-</div>
-
+<ConversationFrame bind:drawerOpen={navigationOpen}>
+<div class="s-chat-content">
 {#if chat.toolLog.length > 0 && activityRailOpen}
 	<aside
 		class="s-tool-rail"
@@ -445,7 +350,6 @@
 		<ToolLog items={chat.toolLog} showHeading={false} />
 	</aside>
 {/if}
-
 <!-- conversation thread -->
 <main
 	class="s-scroll"
@@ -508,110 +412,55 @@
 		<div bind:this={scrollAnchorEl} aria-hidden="true" style="height:1px"></div>
 	</div>
 </main>
+</div>
 
-<!-- error banner -->
-{#if chat.error}
-	<div class="s-error-banner" role="alert" inert={navigationOpen}>
-		<span class="s-error-msg">{chat.error}</span>
-		{#if chat.lastFailedText}
-			<button class="s-error-reconnect" type="button" onclick={retryFailedSend}>retry</button>
-		{/if}
-		<button class="s-error-reconnect" type="button" onclick={reconnect}>reconnect</button>
-		<button
-			class="s-error-dismiss"
-			type="button"
-			aria-label="Dismiss"
-			onclick={() => {
-				chat.error = '';
-			}}>×</button
-		>
-	</div>
-{/if}
-
-<!-- jump-to-latest pill: shown when the user has scrolled away mid-stream.
-     Inert while the side panel owns the top layer, like <main> and .s-base —
-     the fixed pill must not stay clickable/focusable underneath them. -->
-{#if !followingLatest && chat.sending}
-	<button
-		class="s-jump-latest"
-		type="button"
-		aria-label="Jump to latest"
-		inert={navigationOpen}
-		onclick={jumpToLatest}
-	>
-		↓ latest
-	</button>
-{/if}
-
-<!-- composer -->
-<div
-	class="s-base"
-	class:has-activity={chat.toolLog.length > 0 && activityRailOpen}
-	inert={navigationOpen}
+{#snippet footer()}
+<ChatFooter
+	bind:draft
+	bind:drawerOpen={navigationOpen}
+	bind:railOpen={activityRailOpen}
+	thinking={chat.sending}
+	showConversationActions
+	conversationTitle={activeConversationTitle}
+	connectionLabel={activeConnectionLabel}
+	dictationMode="draft"
 >
-	<VoiceStatusStrip thinking={chat.sending} />
-	<ChatInput
-		bind:draft
-		sending={chat.sending}
-		questionPending={!!chat.pendingQuestion && chat.pendingQuestion.questions.length === 1}
-		onSend={handleSend}
-		onStop={() => void chat.stopTurn()}
-	/>
-</div>
-
-<div class="s-voice-controls" role="toolbar" aria-label="Voice controls" inert={navigationOpen}>
-	<button
-		class="s-voice-btn"
-		class:active={voiceState.ttsAutoEnabled}
-		type="button"
-		aria-label={voiceState.ttsAutoEnabled
-			? 'Turn off spoken responses'
-			: 'Turn on spoken responses'}
-		title={voiceState.ttsAutoEnabled ? 'Spoken responses are on' : 'Spoken responses are off'}
-		aria-pressed={voiceState.ttsAutoEnabled}
-		disabled={!ttsEnabled}
-		onclick={toggleSpokenResponses}
-	>
-		{#if voiceState.ttsAutoEnabled}
-			<IconSoundOn size={18} />
-		{:else}
-			<IconSoundOff size={18} />
+	{#snippet notice()}
+		{#if chat.error}
+			<div class="s-error-banner" role="alert">
+				<span class="s-error-msg">{chat.error}</span>
+				{#if chat.lastFailedText}
+					<button class="s-error-reconnect" type="button" onclick={retryFailedSend}>retry</button>
+				{/if}
+				<button class="s-error-reconnect" type="button" onclick={reconnect}>reconnect</button>
+				<button
+					class="s-error-dismiss"
+					type="button"
+					aria-label="Dismiss"
+					onclick={() => {
+						chat.error = '';
+					}}>×</button
+				>
+			</div>
 		{/if}
-	</button>
-	<button
-		class="s-voice-btn"
-		class:active={voiceState.conversationActive}
-		type="button"
-		aria-label={voiceState.conversationActive
-			? 'Stop conversation mode'
-			: 'Start conversation mode'}
-		title={voiceState.conversationActive
-			? 'Stop hands-free conversation'
-			: 'Start hands-free conversation'}
-		aria-pressed={voiceState.conversationActive}
-		disabled={!voiceEnabled || !ttsEnabled}
-		onclick={toggleConversation}
-	>
-		<IconWaves size={19} />
-	</button>
-	<button
-		class="s-voice-btn s-dictate-btn"
-		class:active={voiceActive}
-		class:transcribing={dictationTranscribing}
-		type="button"
-		aria-label={voiceActive ? 'Stop dictation' : 'Dictate message'}
-		title={voiceActive ? 'Stop dictation' : 'Dictate message'}
-		aria-pressed={voiceActive}
-		disabled={!voiceEnabled}
-		onclick={toggleVoice}
-	>
-		{#if voiceActive && !dictationTranscribing}
-			<IconStop size={17} />
-		{:else}
-			<IconMic size={19} />
+		{#if !followingLatest && chat.sending}
+			<button class="s-jump-latest" type="button" aria-label="Jump to latest" onclick={jumpToLatest}>
+				↓ latest
+			</button>
 		{/if}
-	</button>
-</div>
+	{/snippet}
+	{#snippet composer()}
+		<ChatInput
+			bind:draft
+			sending={chat.sending}
+			questionPending={!!chat.pendingQuestion && chat.pendingQuestion.questions.length === 1}
+			onSend={handleSend}
+			onStop={() => void chat.stopTurn()}
+		/>
+	{/snippet}
+</ChatFooter>
+{/snippet}
+</ConversationFrame>
 
 <style>
 	/* Visually hidden but available to assistive tech (document outline / h1). */
@@ -673,11 +522,18 @@
 	}
 
 	/* ── Conversation ─────────────────────────────────────────────────── */
+	.s-chat-content {
+		position: relative;
+		display: flex;
+		min-height: 0;
+		flex: 1;
+	}
 
 	.s-scroll {
 		position: relative;
 		z-index: 10;
-		height: calc(100dvh - 64px);
+		flex: 1;
+		min-height: 0;
 		overflow-y: auto;
 		overflow-x: hidden;
 		-webkit-overflow-scrolling: touch;
@@ -693,7 +549,7 @@
 	.s-thread {
 		max-width: var(--s-measure);
 		margin: 0 auto;
-		padding: clamp(3rem, 8vh, 5rem) var(--s-frame) clamp(9rem, 20vh, 12rem);
+		padding: clamp(3rem, 8vh, 5rem) var(--s-frame);
 		display: flex;
 		flex-direction: column;
 		gap: var(--s-breath);
@@ -795,85 +651,9 @@
 		color: var(--s-ink-3);
 	}
 
-	/* ── Composer dock ────────────────────────────────────────────────── */
-
-	.s-base {
-		position: fixed;
-		z-index: 30;
-		left: 0;
-		right: 0;
-		bottom: 0;
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		padding: var(--s-sp-5) var(--s-frame) max(var(--s-sp-3), env(safe-area-inset-bottom));
-		background: linear-gradient(
-			to top,
-			var(--s-paper) 0%,
-			var(--s-paper) 56%,
-			color-mix(in srgb, var(--s-paper) 78%, transparent) 82%,
-			transparent 100%
-		);
-		transition: background var(--s-t-theme) var(--s-ease);
-		pointer-events: none;
-	}
-
-	.s-base > :global(*) {
-		pointer-events: auto;
-	}
-
-	.s-base :global(.s-send-btn) {
-		margin-block: 0;
-	}
-
-	.s-voice-controls {
-		position: fixed;
-		z-index: 70;
-		right: max(var(--s-sp-3), env(safe-area-inset-right));
-		bottom: max(var(--s-sp-3), env(safe-area-inset-bottom));
-		display: flex;
-		align-items: center;
-		gap: var(--s-sp-1);
-	}
-
-	.s-voice-btn {
-		position: relative;
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		width: 44px;
-		height: 44px;
-		padding: 0;
-		border: 0;
-		border-radius: 50%;
-		background: var(--s-paper);
-		color: var(--s-ink-3);
-		cursor: pointer;
-	}
-
-	.s-voice-btn:hover,
-	.s-voice-btn.active {
-		color: var(--s-seal);
-	}
-
-	.s-voice-btn:disabled {
-		opacity: 0.45;
-		cursor: not-allowed;
-	}
-
-	.s-voice-btn:focus-visible {
-		outline: 2px solid var(--s-seal);
-		outline-offset: 1px;
-	}
-
 	/* ── Error banner ─────────────────────────────────────────────────── */
 
 	.s-error-banner {
-		position: fixed;
-		z-index: 50;
-		bottom: 8rem;
-		left: 50%;
-		transform: translateX(-50%);
 		display: flex;
 		align-items: center;
 		gap: 0.75rem;
@@ -921,11 +701,6 @@
 	/* ── Jump-to-latest pill ──────────────────────────────────────────── */
 
 	.s-jump-latest {
-		position: fixed;
-		z-index: 40;
-		bottom: 8.5rem;
-		left: 50%;
-		transform: translateX(-50%);
 		appearance: none;
 		border: var(--s-hair) solid var(--s-line);
 		background: var(--s-paper);
@@ -951,28 +726,14 @@
 			0 0 0 2px var(--s-ink-3);
 	}
 
-	.s-bottom-left-controls {
-		position: fixed;
-		z-index: 70;
-		left: max(var(--s-sp-3), env(safe-area-inset-left));
-		bottom: max(var(--s-sp-3), env(safe-area-inset-bottom));
-		display: flex;
-		align-items: center;
-		gap: var(--s-sp-1);
-	}
-
-	.s-new-conversation {
-		display: inline-flex;
-	}
-
 	/* ── Contextual activity ───────────────────────────────────────────── */
 
 	.s-tool-rail {
-		position: fixed;
+		position: absolute;
 		z-index: 20;
 		left: 0;
-		top: 64px;
-		bottom: 132px;
+		top: 0;
+		bottom: 0;
 		width: clamp(220px, 23vw, 300px);
 		box-sizing: border-box;
 		min-width: 0;
@@ -1016,9 +777,6 @@
 		.s-scroll.has-activity {
 			padding-left: clamp(220px, 23vw, 300px);
 		}
-		.s-base.has-activity {
-			left: clamp(220px, 23vw, 300px);
-		}
 	}
 
 	@media (max-width: 1100px) {
@@ -1027,44 +785,22 @@
 		}
 	}
 
-	@media (max-width: 999px) {
-		.s-scroll {
-			height: calc(100dvh - 112px);
-		}
-	}
-
-	@media (max-width: 479px) {
-		.s-scroll {
-			height: calc(100dvh - 144px);
-		}
-	}
-
 	@media (max-width: 720px) {
-		.s-voice-controls {
-			flex-direction: column;
-		}
-
 		.s-thread {
 			padding-top: 4rem;
-			padding-bottom: 10rem;
+			padding-bottom: 4rem;
 		}
 
 		:global(.master-words),
 		:global(.you-words) {
 			max-width: 92%;
 		}
-
-		.s-base {
-			padding-top: var(--s-sp-4);
-			padding-left: calc(max(var(--s-sp-3), env(safe-area-inset-left)) + 104px);
-			padding-right: calc(max(var(--s-sp-3), env(safe-area-inset-right)) + 52px);
-		}
 	}
 
 	@media (max-height: 34rem) {
 		.s-thread {
 			padding-top: 3rem;
-			padding-bottom: 8.5rem;
+			padding-bottom: 3rem;
 		}
 	}
 </style>

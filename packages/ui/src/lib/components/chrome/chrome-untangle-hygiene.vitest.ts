@@ -28,6 +28,8 @@ const SRC_ROOT = fileURLToPath(new URL('../../../', import.meta.url));
 const ADMIN_SURFACE_CANDIDATES = [
   'routes/admin/+layout.svelte',
   'routes/admin/+page.svelte',
+  'routes/(app)/host/+layout.svelte',
+  'routes/(app)/host/+page.svelte',
   'routes/host/+layout.svelte',
   'routes/host/+page.svelte',
 ] as const;

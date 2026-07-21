@@ -1,9 +1,8 @@
 /**
  * VoiceStatusStrip component tests.
  *
- * This strip is the only place interim-transcript feedback and the
- * autoplay-resume banner are visible on /chat — VoiceControl (which also
- * renders them) lives in the Navbar, and the chat page hides the navbar.
+ * This strip keeps interim-transcript feedback and autoplay recovery separate
+ * from the compact three-button VoiceControl toolbar.
  */
 import { afterEach, describe, expect, test } from 'vitest';
 import { render } from 'vitest-browser-svelte';

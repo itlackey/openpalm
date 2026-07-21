@@ -6,6 +6,9 @@ import pkg from "./package.json" with { type: "json" };
 const config = {
   preprocess: vitePreprocess(),
   kit: {
+    // Keep a long-running dev server's route manifest isolated from `check`
+    // and `build`, which regenerate the default .svelte-kit directory.
+    outDir: process.env.OP_SVELTEKIT_OUT_DIR ?? ".svelte-kit",
     adapter: adapter({
       out: "build",
       envPrefix: "",

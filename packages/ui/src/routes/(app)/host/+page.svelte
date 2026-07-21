@@ -385,7 +385,6 @@
     color: var(--s-ink);
     font-family: var(--s-font-display);
     padding: var(--s-sp-6) var(--s-sp-6) var(--s-sp-8);
-    min-height: calc(100vh - 52px - 36px);
   }
 
   @media (max-width: 768px) {

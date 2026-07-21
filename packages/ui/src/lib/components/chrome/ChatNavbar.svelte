@@ -22,8 +22,12 @@
 
   interface Props {
     drawerOpen?: boolean;
+    showConversationControls?: boolean;
   }
-  let { drawerOpen = $bindable(false) }: Props = $props();
+  let {
+    drawerOpen = $bindable(false),
+    showConversationControls = true,
+  }: Props = $props();
 
   const DRAWER_ID = 'chat-navbar-drawer';
   let activeDrawer = $state<DrawerName | null>(null);
@@ -92,20 +96,27 @@
   });
 </script>
 
-<Navbar brandHref={conversationPath} inactive={drawerOpen} showUtilities={false} conversation>
-  <div class="chat-nav">
-    <div class="context-nav">
-      <EndpointSwitcher
-        open={drawerShowing && activeDrawer === 'assistant'}
-        controls={DRAWER_ID}
-        onToggle={() => toggleDrawer('assistant')}
-      />
-      <SessionPicker
-        open={drawerShowing && activeDrawer === 'conversation'}
-        controls={DRAWER_ID}
-        onToggle={() => toggleDrawer('conversation')}
-      />
-    </div>
+<Navbar
+  brandHref={conversationPath}
+  inactive={drawerOpen}
+  showUtilities={false}
+  conversation={showConversationControls}
+>
+  <div class="chat-nav" class:context-hidden={!showConversationControls}>
+    {#if showConversationControls}
+      <div class="context-nav">
+        <EndpointSwitcher
+          open={drawerShowing && activeDrawer === 'assistant'}
+          controls={DRAWER_ID}
+          onToggle={() => toggleDrawer('assistant')}
+        />
+        <SessionPicker
+          open={drawerShowing && activeDrawer === 'conversation'}
+          controls={DRAWER_ID}
+          onToggle={() => toggleDrawer('conversation')}
+        />
+      </div>
+    {/if}
     <div class="primary-nav">
       <ModeSwitch />
       <!-- eslint-disable svelte/no-navigation-without-resolve -- resolve()d destination with encoded conversation return context -->
@@ -122,38 +133,40 @@
   </div>
 </Navbar>
 
-<Drawer
-  id={DRAWER_ID}
-  open={drawerShowing}
-  title={drawerTitle}
-  onClose={closeDrawer}
-  onClosed={finishDrawerClose}
-  deferFocusRestore
-  width="27rem"
->
-  {#if activeDrawer === 'assistant'}
-    <div class="assistant-panel">
-      <div class="context-card">
-        <span class="context-label">Current conversation</span>
-        <strong>{activeConversationTitle}</strong>
-        <span>Switching assistants restores that assistant’s conversation history.</span>
+{#if showConversationControls}
+  <Drawer
+    id={DRAWER_ID}
+    open={drawerShowing}
+    title={drawerTitle}
+    onClose={closeDrawer}
+    onClosed={finishDrawerClose}
+    deferFocusRestore
+    width="27rem"
+  >
+    {#if activeDrawer === 'assistant'}
+      <div class="assistant-panel">
+        <div class="context-card">
+          <span class="context-label">Current conversation</span>
+          <strong>{activeConversationTitle}</strong>
+          <span>Switching assistants restores that assistant’s conversation history.</span>
+        </div>
+        <EndpointList onChosen={closeDrawer} />
+        <!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- resolve()d destination with encoded conversation return context -->
+        <a class="panel-route" href={settingsHref} onclick={closeDrawer}>
+          <span class="route-icon"><IconConnect size={20} /></span>
+          <span
+            ><strong>Manage assistant connections</strong><small
+              >Connections are stored in this browser on this device.</small
+            ></span
+          >
+          <span aria-hidden="true">→</span>
+        </a>
       </div>
-      <EndpointList onChosen={closeDrawer} />
-      <!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- resolve()d destination with encoded conversation return context -->
-      <a class="panel-route" href={settingsHref} onclick={closeDrawer}>
-        <span class="route-icon"><IconConnect size={20} /></span>
-        <span
-          ><strong>Manage assistant connections</strong><small
-            >Connections are stored in this browser on this device.</small
-          ></span
-        >
-        <span aria-hidden="true">→</span>
-      </a>
-    </div>
-  {:else if activeDrawer === 'conversation'}
-    <SessionList onChosen={closeDrawer} />
-  {/if}
-</Drawer>
+    {:else if activeDrawer === 'conversation'}
+      <SessionList onChosen={closeDrawer} />
+    {/if}
+  </Drawer>
+{/if}
 
 <style>
   .chat-nav,
@@ -166,6 +179,7 @@
   }
   .chat-nav {
     width: 100%;
+    transition: height 220ms var(--s-ease);
   }
   .primary-nav {
     margin-left: auto;
@@ -308,6 +322,26 @@
       display: flex;
       height: 88px;
       flex-direction: column;
+    }
+  }
+
+  @media (max-width: 999px) {
+    .chat-nav.context-hidden {
+      height: 52px;
+      flex-direction: row;
+    }
+    .context-hidden .primary-nav {
+      order: initial;
+      width: auto;
+      height: 52px;
+      padding-left: 0;
+      margin-left: auto;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .chat-nav {
+      transition: none;
     }
   }
 </style>

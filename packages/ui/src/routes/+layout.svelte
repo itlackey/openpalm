@@ -1,11 +1,14 @@
 <script lang="ts">
   import { onMount, untrack } from 'svelte';
   import "../app.css";
-  import UpdateBanner from '@openpalm/ui-kit/components/common/UpdateBanner.svelte';
   import Toast from '@openpalm/ui-kit/components/common/Toast.svelte';
   import { themeService } from '$lib/theme-state.svelte.js';
   import { detectClientDisplayMode } from '$lib/client-context.js';
-  import { initializeRuntimeContext, initializeServerRuntimeContext } from '$lib/runtime-context.svelte.js';
+  import {
+    createRuntimeContext,
+    initializeRuntimeContext,
+    provideRuntimeContext,
+  } from '$lib/runtime-context.svelte.js';
   import { notifications } from '$lib/notifications.svelte.js';
   import { onVoiceError } from '$lib/voice/voice-state.svelte.js';
 
@@ -16,23 +19,10 @@
 
   let { children, data }: Props = $props();
 
-  // Components read capabilities via hasCapability()/runtimeContext only
-  // — the legacy admin feature-flag alias survives solely in
-  // server code (hooks.server.ts / +layout.server.ts) pending Phase 4.
-
-  // Review 2026-07-10 K2: the server half of the runtime context is
-  // env-derived and constant at runtime (like the pre-migration
-  // `featuresService.init(data.features)` it replaces) — SAFE to run
-  // synchronously here in the script body, which executes during SSR too,
-  // unlike onMount. This is what makes host:* capabilities (e.g. the /host
-  // admin button) present in the FIRST server-rendered HTML instead of
-  // flashing in after client-side hydration. `untrack()` marks this as an
-  // intentional one-time read, not a reactive subscription — data.serverRuntimeContext
-  // is env-derived and doesn't change within a single navigation. The one
-  // request-derived field (publicBaseUrl) is excluded inside
-  // initializeServerRuntimeContext and only written in onMount (PR #562
-  // review: this store is process-global during SSR).
-  untrack(() => initializeServerRuntimeContext(data.serverRuntimeContext));
+  // The instance is created synchronously so SSR and hydration render the same
+  // capability-driven chrome, but it remains scoped to this layout tree.
+  const runtimeContext = untrack(() => createRuntimeContext(data.serverRuntimeContext));
+  provideRuntimeContext(runtimeContext);
 
   // Consecutive errors reuse one toast instead of stacking.
   let voiceErrorToastId: string | null = null;
@@ -44,7 +34,7 @@
     // here — re-deriving effectiveCapabilities for electron/standalone-pwa
     // displays that differ from the 'browser' default the server-half init
     // above already assumed.
-    initializeRuntimeContext(data.serverRuntimeContext, {
+    initializeRuntimeContext(runtimeContext, data.serverRuntimeContext, {
       displayMode: detectClientDisplayMode(),
     });
     return onVoiceError((message) => {
@@ -74,6 +64,5 @@
   </defs>
 </svg>
 
-<UpdateBanner />
 {@render children?.()}
 <Toast />

@@ -18,6 +18,19 @@ describe('conversation navbar contract', () => {
     expect(source).not.toContain('VoiceControl');
   });
 
+  test('hides conversation switchers in a compact, smoothly transitioned OpenCode frame', () => {
+    const source = readFileSync(CHAT_NAVBAR, 'utf8');
+
+    expect(source).toContain('showConversationControls = true');
+    expect(source).toMatch(/conversation=\{showConversationControls\}/);
+    expect(source).toMatch(/\{#if showConversationControls\}[\s\S]*?<EndpointSwitcher/);
+    expect(source).toMatch(/class:context-hidden=\{!showConversationControls\}/);
+    expect(source).toMatch(
+      /\.chat-nav\.context-hidden\s*\{[\s\S]*?height:\s*52px;[\s\S]*?flex-direction:\s*row/,
+    );
+    expect(source).toContain('transition: height 220ms var(--s-ease)');
+  });
+
   test('builds the settings destination from mode, session, and assistant context', () => {
     const source = readFileSync(CHAT_NAVBAR, 'utf8');
 
@@ -40,6 +53,11 @@ describe('conversation navbar contract', () => {
 
     expect(source).toContain('Simple mode');
     expect(source).toContain('OpenCode mode');
+    expect(source).toContain('ToggleButton');
+    expect(source).toContain('IconChat');
+    expect(source).toContain('IconTerminal');
+    expect(source).toContain("'startViewTransition' in document");
+    expect(source).not.toMatch(/>Simple<|>OpenCode</);
     expect(source).toContain("page.url.searchParams.get('assistant')");
     expect(source).not.toContain('ariaLabel="Advanced mode"');
   });

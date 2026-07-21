@@ -3,11 +3,10 @@
   import { afterNavigate, goto } from '$app/navigation';
   import { resolve as resolvePath } from '$app/paths';
   import { onMount } from 'svelte';
-  import NewChatButton from '$lib/components/chat/NewChatButton.svelte';
-  import ChatNavbar from '$lib/components/chrome/ChatNavbar.svelte';
+  import ConversationFrame from '$lib/components/chrome/ConversationFrame.svelte';
+  import ChatFooter from '$lib/components/chat/ChatFooter.svelte';
   import ChatMessage from '$lib/components/chat/ChatMessage.svelte';
   import ChatInput from '$lib/components/chat/ChatInput.svelte';
-  import VoiceControl from '$lib/components/chat/VoiceControl.svelte';
   import PermissionCard from '$lib/components/chat/PermissionCard.svelte';
   import QuestionCard from '$lib/components/chat/QuestionCard.svelte';
   import { buildAdvancedIframeUrl, buildAdvancedPath } from '$lib/chat/navigation.js';
@@ -216,14 +215,10 @@
   // Lock scroll on mount; restore on destroy. This is a CSS side-effect tied to
   // component lifetime, not navigation, so onMount is correct here.
   onMount(() => {
-    document.documentElement.classList.add('chat-locked');
-    document.body.classList.add('chat-locked');
     const stopWatchingConnections = onConnectionActivated(followActivatedAssistant);
     return () => {
       if (frameReadyTimer !== undefined) window.clearTimeout(frameReadyTimer);
       stopWatchingConnections();
-      document.documentElement.classList.remove('chat-locked');
-      document.body.classList.remove('chat-locked');
     };
   });
 
@@ -239,12 +234,8 @@
   <title>Advanced Chat — OpenPalm</title>
 </svelte:head>
 
-<ChatNavbar bind:drawerOpen={navigationOpen} />
-<div class="advanced-new-conversation" inert={navigationOpen}>
-  <NewChatButton />
-</div>
-
-<div class="advanced-layout" inert={navigationOpen}>
+<ConversationFrame bind:drawerOpen={navigationOpen} showConversationControls={false}>
+<main class="advanced-layout" inert={navigationOpen}>
   <div class="advanced-workspace">
     {#if mode === 'iframe'}
       <div class="opencode-shell">
@@ -328,17 +319,16 @@
         {/if}
       </div>
     {/if}
-    <div class="advanced-voice">
-      <VoiceControl showSpeaker={false} />
-    </div>
   </div>
-</div>
+</main>
+{#snippet footer()}
+  <ChatFooter thinking={chat.sending} />
+{/snippet}
+</ConversationFrame>
 
 <style>
-  /* Fill the viewport below the sticky navbar with the embedded OpenCode UI.
-     dvh accounts for Android Chrome's dynamic toolbar shrinkage. */
   .advanced-layout {
-    height: calc(100dvh - 64px);
+    height: 100%;
     width: 100%;
     background: var(--s-paper);
     display: flex;
@@ -352,25 +342,6 @@
     min-width: 0;
     min-height: 0;
     flex-direction: column;
-  }
-
-  .advanced-new-conversation {
-    position: fixed;
-    z-index: 40;
-    left: max(var(--s-sp-4), env(safe-area-inset-left));
-    bottom: max(var(--s-sp-4), env(safe-area-inset-bottom));
-  }
-
-  .advanced-voice {
-    position: fixed;
-    right: max(var(--s-sp-4), env(safe-area-inset-right));
-    bottom: max(var(--s-sp-4), env(safe-area-inset-bottom));
-    z-index: 40;
-    display: flex;
-    align-items: center;
-    background: var(--s-paper);
-    border: var(--s-hair) solid var(--s-line-soft);
-    border-radius: 99px;
   }
 
   .opencode-frame {
@@ -480,14 +451,6 @@
 
   @media (max-width: 900px) {
     .native-shell { flex-direction: column; }
-  }
-
-  @media (max-width: 999px) {
-    .advanced-layout { height: calc(100dvh - 112px); }
-  }
-
-  @media (max-width: 479px) {
-    .advanced-layout { height: calc(100dvh - 144px); }
   }
 
   @media (prefers-reduced-motion: reduce) {

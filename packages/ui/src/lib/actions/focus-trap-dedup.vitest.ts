@@ -25,9 +25,12 @@ import { describe, expect, test } from 'vitest';
 import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
-const CHAT_PAGE = fileURLToPath(new URL('../../routes/chat/+page.svelte', import.meta.url));
+const CHAT_PAGE = fileURLToPath(new URL('../../routes/(app)/chat/+page.svelte', import.meta.url));
 const CHAT_NAVBAR = fileURLToPath(
   new URL('../components/chrome/ChatNavbar.svelte', import.meta.url),
+);
+const CONVERSATION_FRAME = fileURLToPath(
+  new URL('../components/chrome/ConversationFrame.svelte', import.meta.url),
 );
 const CHAT_ACTIVITY = fileURLToPath(
   new URL('../components/chat/ChatActivity.svelte', import.meta.url),
@@ -49,10 +52,12 @@ describe('FOCUS-TRAP-DEDUP — packages/ui imports the shared ui-kit focus-trap 
 
   test('the chat route delegates focus ownership to the shared ui-kit Drawer', () => {
     const pageSource = readFileSync(CHAT_PAGE, 'utf-8');
+    const frameSource = readFileSync(CONVERSATION_FRAME, 'utf-8');
     const navbarSource = readFileSync(CHAT_NAVBAR, 'utf-8');
     const activitySource = readFileSync(CHAT_ACTIVITY, 'utf-8');
     expect(pageSource).not.toMatch(/actions\/focus-trap/);
-    expect(pageSource).toMatch(/components\/chrome\/ChatNavbar\.svelte/);
+    expect(pageSource).toMatch(/components\/chrome\/ConversationFrame\.svelte/);
+    expect(frameSource).toMatch(/\.\/ChatNavbar\.svelte/);
     expect(navbarSource).toMatch(/@openpalm\/ui-kit\/components\/common\/Drawer\.svelte/);
     expect(activitySource).toMatch(/@openpalm\/ui-kit\/components\/common\/Drawer\.svelte/);
   });

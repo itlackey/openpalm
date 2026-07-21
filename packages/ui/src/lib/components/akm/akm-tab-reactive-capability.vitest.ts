@@ -20,10 +20,14 @@ describe('AkmTab hostMaintenance is reactive (review 2026-07-10 K2)', () => {
   const source = readFileSync(AKM_TAB_PATH, 'utf-8');
 
   test("hostMaintenance is declared with $derived, not a plain const", () => {
-    expect(source).toMatch(/const hostMaintenance = \$derived\(hasCapability\('host:containers'\)\)/);
+    expect(source).toMatch(
+      /const hostMaintenance = \$derived\(hasCapability\(runtimeContext, 'host:containers'\)\)/,
+    );
   });
 
   test('the stale plain-const form is gone', () => {
-    expect(source).not.toMatch(/const hostMaintenance = hasCapability\('host:containers'\);/);
+    expect(source).not.toMatch(
+      /const hostMaintenance = hasCapability\(runtimeContext, 'host:containers'\);/,
+    );
   });
 });

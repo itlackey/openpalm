@@ -3,7 +3,7 @@
   import { page } from '$app/state';
   import IconButton from '@openpalm/ui-kit/components/common/IconButton.svelte';
   import ThemeToggle from '@openpalm/ui-kit/components/common/ThemeToggle.svelte';
-  import { hasCapability, runtimeContext } from '$lib/runtime-context.svelte.js';
+  import { getRuntimeContext, hasCapability } from '$lib/runtime-context.svelte.js';
   import IconChat from '@openpalm/ui-kit/components/icons/IconChat.svelte';
   import IconLogo from '@openpalm/ui-kit/components/icons/IconLogo.svelte';
   import IconSettings from '@openpalm/ui-kit/components/icons/IconSettings.svelte';
@@ -38,6 +38,7 @@
     children,
   }: Props = $props();
 
+  const runtimeContext = getRuntimeContext();
   const chatRoute = $derived(runtimeContext.routes.chat ?? '/chat');
   const hostRoute = $derived(runtimeContext.routes.host);
   const pathname = $derived(page.url?.pathname ?? '');
@@ -65,7 +66,7 @@
         {#if showUtilities}
           {#if onHostSurface}
             <IconButton href={resolvedBrandHref} ariaLabel="Back to chat" title="Chat" icon={chatIcon} />
-          {:else if hostRoute !== undefined && hasCapability('host:stack:read')}
+          {:else if hostRoute !== undefined && hasCapability(runtimeContext, 'host:stack:read')}
             <IconButton href={hostRoute} ariaLabel="Manage assistant" title="Admin" icon={settingsIcon} />
           {/if}
           <ThemeToggle />
@@ -91,7 +92,9 @@
     z-index: 50;
     background: var(--s-paper);
     border-bottom: var(--s-hair) solid var(--s-line-soft);
-    height: 52px;
+    height: var(--nav-height);
+    view-transition-name: chat-navbar;
+    transition: height 220ms var(--s-ease);
   }
 
   .navbar.conversation,
@@ -103,10 +106,11 @@
     width: 100%;
     box-sizing: border-box;
     padding: 0 var(--s-sp-5);
-    height: 52px;
+    height: var(--nav-height);
     display: flex;
     align-items: center;
     gap: var(--s-sp-3);
+    transition: height 220ms var(--s-ease);
   }
 
   /* ── Brand ── */
@@ -181,6 +185,7 @@
       height: 112px;
       margin-left: 0;
       display: block;
+      transition: height 220ms var(--s-ease);
     }
   }
 
@@ -204,6 +209,24 @@
     }
     .navbar-actions {
       gap: 0;
+    }
+  }
+
+  :global(::view-transition-group(chat-navbar)),
+  :global(::view-transition-group(chat-content)) {
+    animation-duration: 220ms;
+    animation-timing-function: var(--s-ease);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .navbar,
+    .navbar-inner,
+    .navbar-actions {
+      transition: none;
+    }
+    :global(::view-transition-group(chat-navbar)),
+    :global(::view-transition-group(chat-content)) {
+      animation-duration: 0.01ms;
     }
   }
 </style>

@@ -18,6 +18,12 @@ import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 const CHAT_PAGE = fileURLToPath(new URL('./+page.svelte', import.meta.url));
+const VOICE_CONTROL = fileURLToPath(
+  new URL('../../../lib/components/chat/VoiceControl.svelte', import.meta.url),
+);
+const VOICE_STATE = fileURLToPath(
+  new URL('../../../lib/voice/voice-state.svelte.ts', import.meta.url),
+);
 
 /** Collect every static, side-effect, re-export, and dynamic import specifier. */
 function importSpecifiers(source: string): string[] {
@@ -61,17 +67,28 @@ describe('chat page ↔ admin API barrel untangling (#555)', () => {
   });
 
   test('leaving chat stops conversation and single-shot microphone capture', () => {
-    const source = readFileSync(CHAT_PAGE, 'utf-8');
-    const teardown = source.match(/return \(\) => \{([\s\S]*?)\n\s*\};\n\s*\}\);/);
-    expect(teardown?.[1]).toMatch(/stopConversation\(\)/);
-    expect(teardown?.[1]).toMatch(/stopListening\(\)/);
+    const controlSource = readFileSync(VOICE_CONTROL, 'utf-8');
+    const stateSource = readFileSync(VOICE_STATE, 'utf-8');
+    const teardown = controlSource.match(/return \(\) => \{([\s\S]*?)\n\t\t\};/);
+    const destroyVoice = stateSource.match(
+      /export function destroyVoice\(\): void \{([\s\S]*?)\n\}/,
+    );
+
+    expect(teardown?.[1]).toMatch(/destroyVoice\(\)/);
+    expect(destroyVoice?.[1]).toMatch(/stopConversation\(\)/);
+    expect(destroyVoice?.[1]).toMatch(/activeRecording\.cancel\(\)/);
+    expect(destroyVoice?.[1]).toMatch(/activeRecognition\.stop\(\)/);
   });
 
   test('prepares Electron microphone permission before editable dictation starts', () => {
-    const source = readFileSync(CHAT_PAGE, 'utf-8');
+    const source = readFileSync(VOICE_CONTROL, 'utf-8');
     expect(source).toMatch(/requestMicPermission/);
     expect(source.match(/await prepareMicrophoneAccess\(\)/g)).toHaveLength(2);
-    expect(source).toMatch(/if \(await prepareMicrophoneAccess\(\)\)[\s\S]*?startListening\(/);
-    expect(source).toMatch(/startConversation\(\(transcript\) => void chat\.sendUtterance\(transcript\)\)/);
+    expect(source).toMatch(
+      /async function toggleDictation[\s\S]*?if \(!\(await prepareMicrophoneAccess\(\)\)\) return;[\s\S]*?startListening\(/,
+    );
+    expect(source).toMatch(
+      /startConversation\(\(transcript\) => \{[\s\S]*?chat\.sendUtterance\(transcript\)/,
+    );
   });
 });

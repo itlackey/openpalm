@@ -6,16 +6,18 @@
  * checks. `hasCapability()` is UX only; APIs enforce capabilities
  * server-side.
  *
- * The `runtimeContext` store is populated by +layout.svelte from the layout
- * server data (ServerRuntimeContext) plus the browser-detected ClientContext,
- * and `effectiveCapabilities` is re-derived on every change.
+ * Each root layout owns one context instance. This keeps SSR state scoped to
+ * the request/component tree instead of leaking through a module singleton.
  */
+import { getContext, setContext } from 'svelte';
 import type {
   Capability,
   ClientContext,
   RuntimeContext,
   ServerRuntimeContext,
 } from '$lib/types.js';
+
+const RUNTIME_CONTEXT_KEY = Symbol('openpalm.runtime-context');
 
 export function resolveCapabilities(
   serverCaps: Capability[],
@@ -48,83 +50,37 @@ export function resolveCapabilities(
   return caps;
 }
 
-/**
- * Reactive runtime context. Starts at the unprivileged non-admin baseline
- * with zero capabilities until +layout.svelte initializes it — capabilities
- * are opted INTO from server data, never defaulted on.
- */
-export const runtimeContext = $state<RuntimeContext>({
-  version: 2,
-  admin: false,
-  serverCapabilities: [],
-  publicBaseUrl: '',
-  uiVersion: '',
-  skeletonVersion: '',
-  routes: {},
-  security: {
-    hostAdminLoopbackOnly: true,
-    requiresHttpsForRemoteConnections: true,
-    csrfMode: 'same-site',
-  },
-  clientContext: { displayMode: 'browser' },
-  effectiveCapabilities: [],
-});
-
-export function hasCapability(cap: Capability): boolean {
-  return runtimeContext.effectiveCapabilities.includes(cap);
+export function createRuntimeContext(serverCtx: ServerRuntimeContext): RuntimeContext {
+  const clientContext: ClientContext = { displayMode: 'browser' };
+  const context = $state<RuntimeContext>({
+    ...serverCtx,
+    clientContext,
+    effectiveCapabilities: resolveCapabilities(serverCtx.serverCapabilities, clientContext),
+  });
+  return context;
 }
 
-/**
- * Populate the store from layout data + browser-detected client context and
- * re-derive `effectiveCapabilities`. Called from +layout.svelte (client-only).
- */
+export function provideRuntimeContext(context: RuntimeContext): void {
+  setContext(RUNTIME_CONTEXT_KEY, context);
+}
+
+export function getRuntimeContext(): RuntimeContext {
+  const context = getContext<RuntimeContext | undefined>(RUNTIME_CONTEXT_KEY);
+  if (!context) throw new Error('Runtime context is unavailable outside the root layout');
+  return context;
+}
+
+export function hasCapability(context: RuntimeContext, cap: Capability): boolean {
+  return context.effectiveCapabilities.includes(cap);
+}
+
 export function initializeRuntimeContext(
+  context: RuntimeContext,
   serverCtx: ServerRuntimeContext,
   clientCtx: ClientContext,
 ): void {
-  Object.assign(runtimeContext, serverCtx);
-  runtimeContext.clientContext = clientCtx;
-  runtimeContext.effectiveCapabilities = resolveCapabilities(
-    serverCtx.serverCapabilities,
-    clientCtx,
-  );
-}
-
-/**
- * Populate ONLY the server half of the store (everything ServerRuntimeContext
- * carries — capabilities, routes, admin, security, versions) and re-derive
- * `effectiveCapabilities` against whatever clientContext is already in the
- * store (the 'browser' baseline until the client half runs).
- *
- * Review 2026-07-10 K2: pre-migration, the equivalent `featuresService.init()`
- * ran directly in +layout.svelte's script body (an `untrack()`-wrapped call,
- * not inside `onMount`) — so it executed during SSR too, and the FIRST
- * server-rendered HTML already reflected the real capabilities (e.g. the
- * admin button was present in SSR output). At HEAD, `initializeRuntimeContext`
- * only ran in `onMount`, which never fires during SSR — every full/hard load
- * server-rendered with the store still at its all-capabilities-empty default,
- * producing a flash of missing chrome until client-side hydration ran.
- *
- * `detectClientDisplayMode()` (the other half) still genuinely needs the
- * browser (matchMedia / navigator), so it stays client-only in `onMount` —
- * only the server half moves earlier. The 'browser' clientContext default is
- * correct for the common case (regular browser tab), so capabilities
- * resolved here already match what `onMount` would (re)compute for that case;
- * `onMount` only changes the outcome for electron / standalone-pwa displays.
- *
- * `publicBaseUrl` is deliberately EXCLUDED: it is the one request-derived
- * field (`event.url.origin`), and during SSR this store is process-global
- * under adapter-node — writing it here would leak one request's Host-derived
- * origin to every later reader (PR #562 review). SSR chrome only needs
- * capabilities/admin/routes; the browser writes publicBaseUrl per-tab via
- * `initializeRuntimeContext` in `onMount`.
- */
-export function initializeServerRuntimeContext(serverCtx: ServerRuntimeContext): void {
-  const envDerived: Partial<ServerRuntimeContext> = { ...serverCtx };
-  delete envDerived.publicBaseUrl;
-  Object.assign(runtimeContext, envDerived);
-  runtimeContext.effectiveCapabilities = resolveCapabilities(
-    serverCtx.serverCapabilities,
-    runtimeContext.clientContext,
-  );
+  Object.assign(context, serverCtx, {
+    clientContext: clientCtx,
+    effectiveCapabilities: resolveCapabilities(serverCtx.serverCapabilities, clientCtx),
+  });
 }

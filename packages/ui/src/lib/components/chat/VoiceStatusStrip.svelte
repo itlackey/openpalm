@@ -9,9 +9,8 @@
 
 	let { thinking = false }: Props = $props();
 
-	// Chat page has no navbar (stillness mode hides it), so VoiceControl's
-	// interim-transcript chip and autoplay-resume banner never render there.
-	// This strip surfaces the same two states directly above the composer.
+	// Keep transient voice state separate from the compact three-button toolbar
+	// so status text cannot push the bottom controls out of alignment.
 	let showInterim = $derived(
 		voiceState.status === 'recording' && voiceState.interimTranscript.length > 0
 	);

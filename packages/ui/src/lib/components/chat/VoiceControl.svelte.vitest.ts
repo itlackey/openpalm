@@ -8,21 +8,26 @@ const mocks = vi.hoisted(() => {
 		sttSupported: true,
 		ttsSupported: false,
 		sttEngine: 'browser',
-		ttsEngine: 'disabled',
+		ttsEngine: 'browser',
 		ttsAutoEnabled: false,
 		autoplayBlocked: false,
 		interimTranscript: '',
 		errorMessage: '',
+		conversationActive: false
 	};
 	return {
 		voiceState,
 		initVoice: vi.fn(async () => {}),
 		startListening: vi.fn(),
 		stopListening: vi.fn(),
+		startConversation: vi.fn(),
+		stopConversation: vi.fn(),
 		stopSpeaking: vi.fn(),
 		destroyVoice: vi.fn(),
 		chatSend: vi.fn(async () => {}),
-		page: { url: new URL('http://localhost/connections') },
+		chatSendUtterance: vi.fn(async () => {}),
+		setTtsAutoEnabled: vi.fn(),
+		page: { url: new URL('http://localhost/connections') }
 	};
 });
 
@@ -34,31 +39,39 @@ vi.mock('$lib/voice/voice-state.svelte.js', () => ({
 	destroyVoice: mocks.destroyVoice,
 	startListening: mocks.startListening,
 	stopListening: mocks.stopListening,
+	startConversation: mocks.startConversation,
+	stopConversation: mocks.stopConversation,
 	stopSpeaking: mocks.stopSpeaking,
-	setTtsAutoEnabled: vi.fn(),
-	resumeAutoplay: vi.fn(),
+	setTtsAutoEnabled: mocks.setTtsAutoEnabled,
+	resumeAutoplay: vi.fn()
 }));
 
 vi.mock('$lib/chat/chat-state.svelte.js', () => ({
-	chat: { sending: false, send: mocks.chatSend },
+	chat: { sending: false, send: mocks.chatSend, sendUtterance: mocks.chatSendUtterance }
 }));
 
 import VoiceControl from './VoiceControl.svelte';
 
 type TestBridge = {
 	onGlobalMicToggle?: (callback: () => void) => () => void;
+	requestMicPermission?: () => Promise<string>;
 };
 
 beforeEach(() => {
 	mocks.initVoice.mockClear();
 	mocks.startListening.mockClear();
 	mocks.stopListening.mockClear();
+	mocks.startConversation.mockClear();
+	mocks.stopConversation.mockClear();
 	mocks.stopSpeaking.mockClear();
 	mocks.destroyVoice.mockClear();
 	mocks.chatSend.mockClear();
+	mocks.chatSendUtterance.mockClear();
+	mocks.setTtsAutoEnabled.mockClear();
 	mocks.voiceState.status = 'idle';
 	mocks.voiceState.ttsSupported = false;
 	mocks.voiceState.autoplayBlocked = false;
+	mocks.voiceState.conversationActive = false;
 	mocks.page.url = new URL('http://localhost/connections');
 });
 
@@ -70,9 +83,9 @@ describe('VoiceControl route safety', () => {
 	test('disables dictation on settings pages', async () => {
 		render(VoiceControl);
 
-		await expect.element(
-			page.getByRole('button', { name: 'Voice input unavailable outside chat' }),
-		).toBeDisabled();
+		await expect
+			.element(page.getByRole('button', { name: 'Voice input unavailable outside chat' }))
+			.toBeDisabled();
 	});
 
 	test('a global microphone toggle on settings pages never starts capture or sends', async () => {
@@ -81,7 +94,7 @@ describe('VoiceControl route safety', () => {
 			onGlobalMicToggle(callback) {
 				globalToggle = callback;
 				return () => {};
-			},
+			}
 		};
 		render(VoiceControl);
 		await vi.waitFor(() => expect(globalToggle).toBeTypeOf('function'));
@@ -99,20 +112,92 @@ describe('VoiceControl route safety', () => {
 		});
 		render(VoiceControl);
 
-		await page.getByRole('button', { name: 'Speak and send' }).click();
+		await page.getByRole('button', { name: 'Dictate message' }).click();
 
 		expect(mocks.startListening).toHaveBeenCalledOnce();
 		expect(mocks.chatSend).toHaveBeenCalledWith('dictated message');
+	});
+
+	test('ignores a transcript delivered after the control unmounts', async () => {
+		mocks.page.url = new URL('http://localhost/advanced');
+		let deliverTranscript: ((text: string) => void) | undefined;
+		mocks.startListening.mockImplementation((onResult: (text: string) => void) => {
+			deliverTranscript = onResult;
+		});
+		const { unmount } = render(VoiceControl);
+
+		await page.getByRole('button', { name: 'Dictate message' }).click();
+		unmount();
+		deliverTranscript?.('late transcript');
+
+		expect(mocks.chatSend).not.toHaveBeenCalled();
+	});
+
+	test('does not start capture when microphone permission resolves after unmount', async () => {
+		mocks.page.url = new URL('http://localhost/advanced');
+		let resolvePermission: ((status: string) => void) | undefined;
+		const requestMicPermission = vi.fn(
+			() =>
+				new Promise<string>((resolve) => {
+					resolvePermission = resolve;
+				})
+		);
+		(window as Window & { openpalm?: TestBridge }).openpalm = { requestMicPermission };
+		const { unmount } = render(VoiceControl);
+
+		await page.getByRole('button', { name: 'Dictate message' }).click();
+		await vi.waitFor(() => expect(requestMicPermission).toHaveBeenCalledOnce());
+		unmount();
+		resolvePermission?.('granted');
+		await vi.waitFor(() => expect(mocks.startListening).not.toHaveBeenCalled());
+	});
+
+	test('coalesces repeated microphone toggles while permission is pending', async () => {
+		mocks.page.url = new URL('http://localhost/advanced');
+		let globalToggle: (() => void) | undefined;
+		let resolvePermission: ((status: string) => void) | undefined;
+		const requestMicPermission = vi.fn(
+			() =>
+				new Promise<string>((resolve) => {
+					resolvePermission = resolve;
+				})
+		);
+		(window as Window & { openpalm?: TestBridge }).openpalm = {
+			requestMicPermission,
+			onGlobalMicToggle(callback) {
+				globalToggle = callback;
+				return () => {};
+			}
+		};
+		render(VoiceControl);
+		await expect.element(page.getByRole('button', { name: 'Dictate message' })).toBeEnabled();
+		await vi.waitFor(() => expect(globalToggle).toBeTypeOf('function'));
+
+		globalToggle?.();
+		globalToggle?.();
+		expect(requestMicPermission).toHaveBeenCalledOnce();
+		resolvePermission?.('granted');
+
+		await vi.waitFor(() => expect(mocks.startListening).toHaveBeenCalledOnce());
+	});
+
+	test('disables dictation while remote audio is being transcribed', async () => {
+		mocks.page.url = new URL('http://localhost/advanced');
+		mocks.voiceState.status = 'transcribing';
+		render(VoiceControl);
+
+		await expect.element(page.getByRole('button', { name: 'Transcribing message' })).toBeDisabled();
 	});
 });
 
 describe('VoiceControl accessibility', () => {
 	test('gives every voice target a 44px target and a two-pixel focus indicator', async () => {
 		mocks.voiceState.ttsSupported = true;
-		mocks.voiceState.autoplayBlocked = true;
 		const { container } = render(VoiceControl);
-		container.style.setProperty('--s-ink', '#26292b');
-		await expect.element(page.getByRole('button', { name: 'Resume paused audio' })).toBeVisible();
+		container.style.setProperty('--s-seal', '#b53a2d');
+		await expect
+			.element(page.getByRole('button', { name: 'Turn on spoken responses' }))
+			.toBeVisible();
 
 		const buttons = container.querySelectorAll<HTMLButtonElement>('button');
 		expect(buttons.length).toBe(3);
@@ -132,17 +217,19 @@ describe('VoiceControl accessibility', () => {
 		}
 	});
 
-	test('can expose only one 44px microphone target for a floating chat control', async () => {
+	test('exposes the same three controls on the advanced chat surface', async () => {
 		mocks.page.url = new URL('http://localhost/advanced');
 		mocks.voiceState.ttsSupported = true;
-		const { container } = render(VoiceControl, { props: { showSpeaker: false } });
+		const { container } = render(VoiceControl);
 
-		await expect.element(page.getByRole('button', { name: 'Speak and send' })).toBeVisible();
-		expect(page.getByRole('button', { name: /spoken responses/i }).elements()).toHaveLength(0);
+		await expect.element(page.getByRole('button', { name: 'Dictate message' })).toBeVisible();
+		await expect
+			.element(page.getByRole('button', { name: 'Start conversation mode' }))
+			.toBeVisible();
+		await expect
+			.element(page.getByRole('button', { name: 'Turn on spoken responses' }))
+			.toBeVisible();
 		const buttons = container.querySelectorAll<HTMLButtonElement>('button');
-		expect(buttons).toHaveLength(1);
-		const bounds = buttons[0].getBoundingClientRect();
-		expect(bounds.width).toBeGreaterThanOrEqual(44);
-		expect(bounds.height).toBeGreaterThanOrEqual(44);
+		expect(buttons).toHaveLength(3);
 	});
 });

@@ -73,10 +73,10 @@ vi.mock('$lib/advanced-mode-state.svelte.js', () => ({
   },
 }));
 vi.mock('$lib/runtime-context.svelte.js', () => ({
-  hasCapability: (capability: string) => capability === 'host:stack:read',
-  runtimeContext: {
+  getRuntimeContext: () => ({
     routes: { chat: '/chat', host: '/host' },
-  },
+  }),
+  hasCapability: (_context: unknown, capability: string) => capability === 'host:stack:read',
 }));
 vi.mock('$lib/chat/navigation.js', () => ({
   buildAdvancedPath: (sessionId: string | null) => `/advanced?session=${sessionId}`,

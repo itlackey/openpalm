@@ -4,8 +4,8 @@ export type ResolvedTheme = 'light' | 'dark';
 export const THEME_STORAGE_KEY = 'openpalm.theme';
 
 const THEME_ATTR = 'data-theme';
-const DARK_THEME_COLOR = '#161c22';
-const LIGHT_THEME_COLOR = '#f9fafb';
+const DARK_THEME_COLOR = '#15181B';
+const LIGHT_THEME_COLOR = '#E5E1D5';
 
 function isThemePreference(value: string | null): value is ThemePreference {
   return value === 'light' || value === 'dark' || value === 'system';

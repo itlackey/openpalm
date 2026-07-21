@@ -3,39 +3,11 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="theme-color" content="#ffffff" />
+    <meta name="theme-color" content="#E5E1D5" />
     <meta name="color-scheme" content="light" />
+    <link rel="icon" type="image/png" href="/logo-128.png" />
     <link rel="manifest" href="/manifest.webmanifest" />
-    <script>
-      (() => {
-        const storageKey = 'openpalm.theme';
-        const darkThemeColor = '#161c22';
-        const lightThemeColor = '#f9fafb';
-
-        try {
-          const stored = window.localStorage.getItem(storageKey);
-          const preference = stored === 'light' || stored === 'dark' || stored === 'system' ? stored : 'system';
-          const resolved = preference === 'system'
-            ? (window.matchMedia?.('(prefers-color-scheme: dark)')?.matches ? 'dark' : 'light')
-            : preference;
-          const root = document.documentElement;
-          root.setAttribute('data-theme', resolved);
-          root.style.colorScheme = resolved;
-
-          const themeColorMeta = document.querySelector('meta[name="theme-color"]');
-          if (themeColorMeta) {
-            themeColorMeta.setAttribute('content', resolved === 'dark' ? darkThemeColor : lightThemeColor);
-          }
-
-          const colorSchemeMeta = document.querySelector('meta[name="color-scheme"]');
-          if (colorSchemeMeta) {
-            colorSchemeMeta.setAttribute('content', resolved);
-          }
-        } catch {
-          // Keep the default light metadata if storage access is unavailable.
-        }
-      })();
-    </script>
+    <script src="/theme-bootstrap.js"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link

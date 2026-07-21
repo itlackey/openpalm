@@ -205,7 +205,7 @@ describe('route files — /admin moved to /host', () => {
   });
 
   test('the /host dashboard route exists', () => {
-    expect(existsSync(join(ROUTES_DIR, 'host', '+page.svelte'))).toBe(true);
+    expect(existsSync(join(ROUTES_DIR, '(app)', 'host', '+page.svelte'))).toBe(true);
   });
 });
 

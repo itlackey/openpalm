@@ -236,6 +236,87 @@
     animation: s-ripple 1s var(--s-ease);
   }
 
+  @media (max-width: 720px) {
+    .s-composer {
+      display: grid;
+      grid-template-areas:
+        "field action"
+        "rule rule";
+      grid-template-columns: minmax(0, 1fr) 44px;
+      column-gap: var(--s-sp-2);
+      padding-inline: 0;
+    }
+
+    .composer-field {
+      grid-area: field;
+      min-width: 0;
+      align-items: stretch;
+    }
+
+    .s-composer textarea {
+      text-align: left;
+    }
+
+    .s-footer {
+      display: contents;
+    }
+
+    .s-rule {
+      grid-area: rule;
+    }
+
+    .s-send-btn {
+      grid-area: action;
+      align-self: end;
+      margin-block: 0;
+    }
+  }
+
+  @media (min-width: 1000px) {
+    .s-composer {
+      display: grid;
+      grid-template-areas:
+        "field action"
+        "rule rule";
+      grid-template-columns: minmax(0, 1fr) 44px;
+      column-gap: var(--s-sp-2);
+    }
+
+    .composer-field {
+      grid-area: field;
+      min-width: 0;
+      align-items: stretch;
+    }
+
+    .composer-field > span {
+      display: none;
+    }
+
+    .s-composer textarea {
+      box-sizing: border-box;
+      height: 44px;
+      min-height: 44px;
+      max-height: 44px;
+      padding-block: 0;
+      overflow-y: auto;
+      text-align: left;
+    }
+
+    .s-footer {
+      display: contents;
+    }
+
+    .s-rule {
+      grid-area: rule;
+    }
+
+    .s-send-btn {
+      grid-area: action;
+      align-self: center;
+      margin-block: 0;
+    }
+  }
+
   /* UX-22: respect reduced-motion — no active-scale. */
   @media (prefers-reduced-motion: reduce) {
     .s-send-btn:active {

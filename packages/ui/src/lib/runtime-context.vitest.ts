@@ -2,8 +2,8 @@
  * Tests for lib/runtime-context.svelte.ts — RuntimeContext v2 (issue #509),
  * after the "One UI, delete the split" refactor. This module is
  * the ONLY place capability logic lives, exporting
- * `resolveCapabilities(serverCaps, clientCtx)`, `hasCapability(cap)` and the
- * reactive `runtimeContext` store.
+ * `resolveCapabilities(serverCaps, clientCtx)` and request-local reactive
+ * runtime contexts.
  *
  * Effective-capability rows (display-mode driven, no per-mode matrix):
  *   admin server + electron            → ALL server capabilities
@@ -18,12 +18,12 @@
  */
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import type { RequestEvent } from '@sveltejs/kit';
-import type { Capability, ClientContext } from '$lib/types.js';
+import type { Capability, ClientContext, ServerRuntimeContext } from '$lib/types.js';
 import {
+  createRuntimeContext,
   hasCapability,
-  initializeServerRuntimeContext,
+  initializeRuntimeContext,
   resolveCapabilities,
-  runtimeContext,
 } from './runtime-context.svelte.js';
 import { computeServerRuntimeContext } from '$lib/server/features.js';
 
@@ -64,6 +64,21 @@ const BASE_CAPS: Capability[] = [
 
 /** Server capabilities of an adminCapable process (base + host:*). */
 const ADMIN_SERVER_CAPS: Capability[] = [...BASE_CAPS, ...HOST_CAPS];
+
+const SERVER_CONTEXT: ServerRuntimeContext = {
+  version: 2,
+  admin: true,
+  serverCapabilities: ADMIN_SERVER_CAPS,
+  publicBaseUrl: 'http://127.0.0.1:3880',
+  uiVersion: '0.13.0-beta.1',
+  skeletonVersion: '0.13.0-beta.1',
+  routes: { chat: '/chat', host: '/host' },
+  security: {
+    hostAdminLoopbackOnly: true,
+    requiresHttpsForRemoteConnections: false,
+    csrfMode: 'loopback-origin',
+  },
+};
 
 // ── resolveCapabilities ─────────────────────────────────
 
@@ -146,123 +161,40 @@ describe('resolveCapabilities — non-admin (base) surface', () => {
   });
 });
 
-// ── hasCapability + runtimeContext store ─────────────────────────────────────
+// ── request-local runtime context ─────────────────────────────────────────────
 
-describe('hasCapability — reads the reactive runtimeContext store', () => {
-  let before: Capability[];
+describe('runtime context ownership', () => {
+  test('creates the SSR context with browser-baseline capabilities', () => {
+    const context = createRuntimeContext(SERVER_CONTEXT);
 
-  beforeEach(() => {
-    before = runtimeContext.effectiveCapabilities;
+    expect(context.routes.host).toBe('/host');
+    expect(context.publicBaseUrl).toBe('http://127.0.0.1:3880');
+    expect(hasCapability(context, 'host:stack:read')).toBe(true);
   });
 
-  afterEach(() => {
-    runtimeContext.effectiveCapabilities = before;
-  });
-
-  test('runtimeContext exposes an effectiveCapabilities array', () => {
-    expect(Array.isArray(runtimeContext.effectiveCapabilities)).toBe(true);
-  });
-
-  test('true for a capability present in effectiveCapabilities', () => {
-    runtimeContext.effectiveCapabilities = ['chat', 'connections:read'];
-    expect(hasCapability('chat')).toBe(true);
-    expect(hasCapability('connections:read')).toBe(true);
-  });
-
-  test('false for a capability absent from effectiveCapabilities', () => {
-    runtimeContext.effectiveCapabilities = ['chat'];
-    expect(hasCapability('host:setup')).toBe(false);
-    expect(hasCapability('connections:manage')).toBe(false);
-  });
-});
-
-// ── initializeServerRuntimeContext — review 2026-07-10 K2 ────────────────────
-// The server half must be callable synchronously (script-body time, not
-// onMount) and produce a correct effectiveCapabilities set against the
-// store's current clientContext WITHOUT requiring a ClientContext argument —
-// that's what lets it run during SSR, before the browser-only client half
-// (detectClientDisplayMode) has anything to contribute.
-
-describe('initializeServerRuntimeContext (review 2026-07-10 K2 — SSR-safe server-half init)', () => {
-  let savedContext: typeof runtimeContext.clientContext;
-  let savedEffective: Capability[];
-
-  beforeEach(() => {
-    savedContext = runtimeContext.clientContext;
-    savedEffective = runtimeContext.effectiveCapabilities;
-    runtimeContext.clientContext = { displayMode: 'browser' };
-  });
-
-  afterEach(() => {
-    runtimeContext.clientContext = savedContext;
-    runtimeContext.effectiveCapabilities = savedEffective;
-  });
-
-  test('populates serverCapabilities/admin/routes from the server context', () => {
-    initializeServerRuntimeContext({
-      version: 2,
-      admin: true,
-      serverCapabilities: ADMIN_SERVER_CAPS,
-      publicBaseUrl: 'http://127.0.0.1:3880',
-      uiVersion: '0.13.0-beta.1',
-      skeletonVersion: '0.13.0-beta.1',
-      routes: { chat: '/chat', host: '/host' },
-      security: {
-        hostAdminLoopbackOnly: true,
-        requiresHttpsForRemoteConnections: false,
-        csrfMode: 'loopback-origin',
-      },
+  test('keeps separate layout instances independent', () => {
+    const first = createRuntimeContext(SERVER_CONTEXT);
+    const second = createRuntimeContext({
+      ...SERVER_CONTEXT,
+      admin: false,
+      serverCapabilities: BASE_CAPS,
+      publicBaseUrl: 'http://remote.example',
+      routes: { chat: '/chat' },
     });
-    expect(runtimeContext.admin).toBe(true);
-    expect(runtimeContext.routes.host).toBe('/host');
+
+    first.routes.host = '/changed';
+    expect(second.routes.host).toBeUndefined();
+    expect(second.publicBaseUrl).toBe('http://remote.example');
+    expect(hasCapability(second, 'host:stack:read')).toBe(false);
   });
 
-  test('derives effectiveCapabilities against the CURRENT clientContext (no clientCtx argument needed)', () => {
-    runtimeContext.clientContext = { displayMode: 'browser' };
-    initializeServerRuntimeContext({
-      version: 2,
-      admin: true,
-      serverCapabilities: ADMIN_SERVER_CAPS,
-      publicBaseUrl: '',
-      uiVersion: '',
-      skeletonVersion: '',
-      routes: {},
-      security: {
-        hostAdminLoopbackOnly: true,
-        requiresHttpsForRemoteConnections: false,
-        csrfMode: 'loopback-origin',
-      },
-    });
-    // host:stack:read is in the fixture's ADMIN_SERVER_CAPS — this is exactly
-    // what SSR needs available for the admin-button check (hasCapability)
-    // to render true in the FIRST server-rendered HTML, before onMount runs.
-    expect(hasCapability('host:stack:read')).toBe(true);
-  });
+  test('recomputes capabilities from browser-only display context after mount', () => {
+    const context = createRuntimeContext(SERVER_CONTEXT);
+    initializeRuntimeContext(context, SERVER_CONTEXT, standalonePwa);
 
-  test('never writes the request-derived publicBaseUrl into the shared store (PR #562 review)', () => {
-    // publicBaseUrl comes from event.url.origin — the ONE per-request field in
-    // ServerRuntimeContext. During SSR this store is process-global under
-    // adapter-node, so writing it would leak one request's Host-derived origin
-    // into every later reader. SSR chrome needs capabilities/admin/routes
-    // only; the browser sets publicBaseUrl in onMount (per-tab store — safe).
-    const before = runtimeContext.publicBaseUrl;
-    initializeServerRuntimeContext({
-      version: 2,
-      admin: true,
-      serverCapabilities: ADMIN_SERVER_CAPS,
-      publicBaseUrl: 'http://attacker-controlled-host-header.example',
-      uiVersion: '',
-      skeletonVersion: '',
-      routes: {},
-      security: {
-        hostAdminLoopbackOnly: true,
-        requiresHttpsForRemoteConnections: false,
-        csrfMode: 'loopback-origin',
-      },
-    });
-    expect(runtimeContext.publicBaseUrl).toBe(before);
-    // The env-derived halves must still land (that's K2's whole point).
-    expect(runtimeContext.admin).toBe(true);
+    expect(context.clientContext.displayMode).toBe('standalone-pwa');
+    expect(hasCapability(context, 'chat')).toBe(true);
+    expect(hasCapability(context, 'host:stack:read')).toBe(false);
   });
 });
 
