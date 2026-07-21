@@ -17,6 +17,7 @@ Repo layout convention:
 | [manual-compose-runbook.md](operations/manual-compose-runbook.md) | Step-by-step manual host configuration (no scripts) |
 | [how-it-works.md](how-it-works.md) | Architecture overview and data flow |
 | [managing-openpalm.md](managing-openpalm.md) | Configuration, portals, secrets, access control, automations |
+| [theming.md](theming.md) | UI theming — Stillness tokens today; edit `config/ui/theme.css` to re-theme (0.14.0, #426) |
 | [discord-setup.md](portals/discord-setup.md) | Discord bot setup — create app, install portal addon, invite bot |
 | [slack-setup.md](portals/slack-setup.md) | Slack bot setup — create app, install portal addon, configure Socket Mode |
 
@@ -53,6 +54,7 @@ Repo layout convention:
 | [code-quality-principles.md](technical/code-quality-principles.md) | All code |
 | [bunjs-rules.md](technical/bunjs-rules.md) | Guardian and portal-side Bun services |
 | [sveltekit-rules.md](technical/sveltekit-rules.md) | Admin UI (`packages/ui/`) |
+| [ui-styling-unification.md](technical/ui-styling-unification.md) | UI styling — verified drift inventory + refactor plan to the unified token/component system (`packages/ui/`, `packages/ui-kit/`) |
 
 ## Release notes
 
