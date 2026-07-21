@@ -1,6 +1,6 @@
 {
   "name": "@openpalm/ui-kit",
-  "version": "0.13.0-beta.9",
+  "version": "0.13.0-beta.10",
   "description": "OpenPalm shared UI kit — presentational components, icons, and theme tokens consumed as raw Svelte/TS source by the ui app. NOT published; no build step.",
   "private": true,
   "license": "MPL-2.0",
