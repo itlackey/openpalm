@@ -61,16 +61,17 @@ smoke_seed_secrets() {
 # OP_HOME and set 0600. Callers append any script-specific keys (e.g.
 # OP_HOST_UI_PORT, OP_ENABLED_ADDONS) after this returns.
 # Usage: smoke_write_stack_env <home> <platform_version> \
-#          <assistant_port> <guardian_port> <guardian_admin_port> \
+#          <assistant_port> <ui_port> <guardian_port> <guardian_admin_port> \
 #          <chat_port> <api_port>
 smoke_write_stack_env() {
   local home="$1"
   local platform_version="$2"
   local assistant_port="$3"
-  local guardian_port="$4"
-  local guardian_admin_port="$5"
-  local chat_port="$6"
-  local api_port="$7"
+  local ui_port="$4"
+  local guardian_port="$5"
+  local guardian_admin_port="$6"
+  local chat_port="$7"
+  local api_port="$8"
 
   cat >"$home/knowledge/env/stack.env" <<EOF
 OP_HOME=${home}
@@ -83,6 +84,7 @@ OP_PORTAL_VERSION=dev
 OP_GUARDIAN_NPM_VERSION=${platform_version}
 OP_SKELETON_VERSION=${platform_version}
 OP_ASSISTANT_PORT=${assistant_port}
+OP_UI_PORT=${ui_port}
 OP_GUARDIAN_PORT=${guardian_port}
 OP_GUARDIAN_ADMIN_PORT=${guardian_admin_port}
 OP_CHAT_PORT=${chat_port}

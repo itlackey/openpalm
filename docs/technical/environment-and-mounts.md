@@ -94,9 +94,14 @@ Ports and networks:
 | Item | Value |
 |---|---|
 | Container port | `4096` (OpenCode), `3000` (@openpalm/ui co-process) |
-| Host bind | `${OP_ASSISTANT_BIND_ADDRESS:-127.0.0.1}:${OP_ASSISTANT_PORT:-3800}` (OpenCode) |
-| UI host bind | `${OP_UI_BIND_ADDRESS:-${OP_BIND_ADDRESS:-127.0.0.1}}:${OP_UI_PORT:-3810}:3000` (UI) |
+| Host bind | `${OP_ASSISTANT_BIND_ADDRESS:-127.0.0.1}:${OP_ASSISTANT_PORT:-3810}` (OpenCode) |
+| UI host bind | `${OP_UI_BIND_ADDRESS:-${OP_BIND_ADDRESS:-127.0.0.1}}:${OP_UI_PORT:-3800}:3000` (UI) |
 | Networks | `assistant_net` |
+
+Fresh and migrated installs explicitly write `OP_UI_PORT=3800` and
+`OP_ASSISTANT_PORT=3810` to `stack.env`. The Compose expressions retain the old
+non-colliding `3810`/`3800` pair only as a temporary no-env fallback for an older
+control plane that refreshed the skeleton before running the port migration.
 
 The UI co-process serves the single `@openpalm/ui` SvelteKit `adapter-node`
 build ("One UI, delete the split") — the SAME build Electron and the CLI serve.
@@ -107,7 +112,7 @@ honors the global `OP_BIND_ADDRESS` policy with a per-service
 `runtime-config.json` beside the build seeding the browser-owned connection
 store with one locked default connection — shape `{ id, label, baseUrl, auth }`
 — pointing the browser at the host-published OpenCode URL
-(`http://127.0.0.1:${OP_ASSISTANT_PORT:-3800}`, full-URL override via
+(`http://127.0.0.1:${OP_ASSISTANT_PORT:-3810}`, full-URL override via
 `OP_UI_DEFAULT_ASSISTANT_URL`). The browser talks to OpenCode **directly**
 (browser-owned transport, no host proxy), so OpenCode must CORS-allow the UI's
 browser origin — see the CORS note below.
@@ -128,19 +133,20 @@ Key env:
 | `OP_UID` / `OP_GID` | `stack.env` | Direct runtime uid/gid mapping |
 | `OP_UI_VERSION` | `stack.env` (empty = image `PLATFORM_VERSION`) | Exact-pin override for the `@openpalm/ui` artifact the entrypoint installs |
 | `OP_SKELETON_VERSION` | `stack.env` (empty = image `PLATFORM_VERSION`) | Exact-pin override for the `@openpalm/skeleton` artifact the assistant entrypoint installs |
-| `OP_ASSISTANT_PORT` | `stack.env` (default `3800`) | Host-published OpenCode port; used to build the UI's default connection URL |
+| `OP_ASSISTANT_PORT` | `stack.env` (default `3810`) | Host-published OpenCode port; used to build the UI's default connection URL |
+| `OP_UI_PORT` | `stack.env` (default `3800`) | Host-published assistant UI port |
 | `OP_UI_DEFAULT_ASSISTANT_URL` | `stack.env` (optional) | Full-URL override for the UI's locked default connection |
-| `OP_UI_HOST_PORT` | compose-passed from `OP_UI_PORT` (default `3810`) | Host-published UI port; the entrypoint builds OpenCode's CORS origin from it (distinct from the deliberately-unpassed `OP_UI_PORT`, which the healthcheck reads as the in-container `:3000` default) |
+| `OP_UI_HOST_PORT` | compose-passed from `OP_UI_PORT` (default `3800`) | Host-published UI port; the entrypoint builds OpenCode's CORS origin from it (distinct from the deliberately-unpassed `OP_UI_PORT`, which the healthcheck reads as the in-container `:3000` default) |
 | `OP_UI_CORS_ALLOWED_ORIGINS` | `stack.env` (optional) | Extra comma-separated exact origins passed to OpenCode `--cors` for LAN / reverse-proxy UI deployments |
-| `OP_BIND_ADDRESS` / `OP_ASSISTANT_BIND_ADDRESS` / `OP_UI_BIND_ADDRESS` | compose env interpolation | Govern loopback-first host exposure; the entrypoint's LAN-exposure gate reads the assistant bind to decide whether to publish the UI at all |
+| `OP_BIND_ADDRESS` / `OP_ASSISTANT_BIND_ADDRESS` / `OP_UI_BIND_ADDRESS` | compose env interpolation | Govern loopback-first host exposure; the entrypoint warns when OpenCode is exposed without authentication |
 
 Notes:
 
 - The assistant has no Docker socket mount.
 - The assistant reads user secrets via `akm env:user` — there is no `/etc/vault/` container mount.
 - Because the browser talks to OpenCode directly, the entrypoint grants the UI's browser origin CORS via OpenCode `--cors`: the loopback UI origins (`http://127.0.0.1:${OP_UI_HOST_PORT}` and `localhost`) by default, plus any exact comma-separated origins from `OP_UI_CORS_ALLOWED_ORIGINS` (a LAN host, a reverse proxy). Each candidate is validated as an exact `http(s)` origin. **The entrypoint never emits a wildcard `--cors "*"` grant, under any configuration** — a wildcard host bind (`0.0.0.0`/`::`) cannot be resolved to the one true browser Origin a LAN visitor's browser will send, so operators add exact origins via `OP_UI_CORS_ALLOWED_ORIGINS` instead.
-- **LAN-exposure safety gate:** when the assistant binds off loopback (`OP_ASSISTANT_BIND_ADDRESS`/`OP_BIND_ADDRESS`) AND `OPENCODE_AUTH` stays disabled (the default), the entrypoint logs a prominent warning naming both knobs and refuses to start the UI co-process — publishing an unauthenticated UI onto a network the assistant made reachable would let any web page a LAN visitor opens script the assistant cross-origin. This is a deliberate degrade (OpenCode itself keeps running); set `OPENCODE_AUTH=true` with real OpenCode credentials to serve the UI on a non-loopback bind.
-- The compose healthcheck for the assistant service probes both OpenCode (`:4096`) and the UI port, so a failed/skipped UI install is no longer reported as a healthy container. The exceptions are the safety-skip above, a missing/never-installed build, and a give-up-after-crash-loop: each leaves a marker file (`/tmp/openpalm-ui-skip`) so those deliberate or unavoidable skips do not themselves fail the healthcheck.
+- **LAN-exposure warning:** when the assistant binds off loopback (`OP_ASSISTANT_BIND_ADDRESS`/`OP_BIND_ADDRESS`) and `OPENCODE_AUTH` stays disabled, the entrypoint logs a prominent warning naming both knobs and continues starting the UI. Set `OPENCODE_AUTH=true` with real credentials unless open LAN access is intentional.
+- The compose healthcheck for the assistant service probes both OpenCode (`:4096`) and the UI port. A missing UI build or a give-up-after-crash-loop leaves `/tmp/openpalm-ui-skip`; only those unavailable-build conditions exempt the UI probe.
 - The entrypoint starts as root only long enough to normalize permissions and optional SSH setup, then drops privileges.
 
 ### Guardian
@@ -306,7 +312,7 @@ These variables are consumed by Compose and service env blocks.
 | `OP_IMAGE_NAMESPACE`, `OP_IMAGE_TAG` | Image selection |
 | `OP_HOST_UI_PORT` | Host UI port for `openpalm app`/`admin` and Electron (default `3880`); the same `@openpalm/ui` build runs as a host process, not a container. Admin capability is an Electron/CLI boundary, not a separate port |
 | `OP_ASSISTANT_BIND_ADDRESS`, `OP_ASSISTANT_PORT` | Assistant host bind |
-| `OP_UI_BIND_ADDRESS`, `OP_UI_PORT` | Assistant `@openpalm/ui` co-process host bind (default `127.0.0.1:3810`) |
+| `OP_UI_BIND_ADDRESS`, `OP_UI_PORT` | Assistant `@openpalm/ui` co-process host bind (default `127.0.0.1:3800`) |
 | `OP_UI_VERSION` | Exact-pin override for the `@openpalm/ui` artifact installed in the assistant container |
 | `OP_SKELETON_VERSION` | Exact-pin override for the `@openpalm/skeleton` artifact installed in the assistant container (and used by the guardian thin-host entrypoint when set) |
 | `OP_UI_DEFAULT_ASSISTANT_URL` | Full-URL override for the UI's locked default connection |

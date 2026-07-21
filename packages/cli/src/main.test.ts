@@ -351,12 +351,14 @@ describe('cli main', () => {
     const specFile = writeMinimalSetupSpec(base);
     const originalProject = process.env.OP_PROJECT_NAME;
     const originalAssistantPort = process.env.OP_ASSISTANT_PORT;
+    const originalUiPort = process.env.OP_UI_PORT;
     const originalHostUiPort = process.env.OP_HOST_UI_PORT;
 
     process.env.OP_HOME = base;
     process.env.OP_WORK_DIR = workDir;
     process.env.OP_PROJECT_NAME = 'openpalm-test-install';
     process.env.OP_ASSISTANT_PORT = '4802';
+    process.env.OP_UI_PORT = '4801';
     process.env.OP_HOST_UI_PORT = '9300';
 
     mockDockerCli();
@@ -377,12 +379,15 @@ describe('cli main', () => {
       const stackEnv = readFileSync(join(base, 'knowledge', 'env', 'stack.env'), 'utf-8');
       expect(stackEnv).toContain('OP_PROJECT_NAME=openpalm-test-install');
       expect(stackEnv).toContain('OP_ASSISTANT_PORT=4802');
+      expect(stackEnv).toContain('OP_UI_PORT=4801');
       expect(stackEnv).toContain('OP_HOST_UI_PORT=9300');
     } finally {
       if (originalProject === undefined) delete process.env.OP_PROJECT_NAME;
       else process.env.OP_PROJECT_NAME = originalProject;
       if (originalAssistantPort === undefined) delete process.env.OP_ASSISTANT_PORT;
       else process.env.OP_ASSISTANT_PORT = originalAssistantPort;
+      if (originalUiPort === undefined) delete process.env.OP_UI_PORT;
+      else process.env.OP_UI_PORT = originalUiPort;
       if (originalHostUiPort === undefined) delete process.env.OP_HOST_UI_PORT;
       else process.env.OP_HOST_UI_PORT = originalHostUiPort;
       rmSync(base, { recursive: true, force: true });

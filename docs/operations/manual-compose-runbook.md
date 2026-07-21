@@ -331,7 +331,7 @@ done
 # even when OPENCODE_AUTH stays off (the value is inert in that case).
 # op_ui_login_password: core.compose.yml grants it to the assistant so the
 # container-served UI co-process can mint login sessions — it must exist before
-# `compose up`, and its value is the password you log into the :3810 UI with.
+# `compose up`, and its value is the password you log into the :3840 UI with.
 ```
 
 ### 3. Write an isolated `stack.env`

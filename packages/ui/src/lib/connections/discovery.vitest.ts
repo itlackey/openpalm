@@ -52,10 +52,10 @@ describe('discoverLocalAssistant', () => {
     const store = freshStore();
     const added = await discoverLocalAssistant(
       store,
-      fetchRespondingTo({ 'http://127.0.0.1:3800': 200 })
+      fetchRespondingTo({ 'http://127.0.0.1:3810': 200 })
     );
     expect(added).not.toBeNull();
-    expect(added?.baseUrl).toBe('http://127.0.0.1:3800');
+    expect(added?.baseUrl).toBe('http://127.0.0.1:3810');
     expect(added?.label).toBe('Local assistant');
     expect(added?.locked).toBeUndefined();
     expect(await store.list()).toHaveLength(1);
@@ -74,7 +74,7 @@ describe('discoverLocalAssistant', () => {
     const store = freshStore();
     const added = await discoverLocalAssistant(
       store,
-      fetchRespondingTo({ 'http://127.0.0.1:3800': 404, 'http://127.0.0.1:3830/oc': 500 })
+      fetchRespondingTo({ 'http://127.0.0.1:3810': 404, 'http://127.0.0.1:3830/oc': 500 })
     );
     expect(added).toBeNull();
     expect(await store.list()).toHaveLength(0);
@@ -90,13 +90,13 @@ describe('discoverLocalAssistant', () => {
     const store = freshStore();
     await store.add({
       label: 'Seeded default',
-      baseUrl: 'http://localhost:3800',
+      baseUrl: 'http://localhost:3810',
       auth: { mode: 'none' },
       locked: true,
     });
     const added = await discoverLocalAssistant(
       store,
-      fetchRespondingTo({ 'http://127.0.0.1:3800': 200 })
+      fetchRespondingTo({ 'http://127.0.0.1:3810': 200 })
     );
     expect(added).toBeNull();
     expect(await store.list()).toHaveLength(1);
@@ -111,9 +111,9 @@ describe('discoverLocalAssistant', () => {
     });
     const added = await discoverLocalAssistant(
       store,
-      fetchRespondingTo({ 'http://127.0.0.1:3800': 200 })
+      fetchRespondingTo({ 'http://127.0.0.1:3810': 200 })
     );
-    expect(added?.baseUrl).toBe('http://127.0.0.1:3800');
+    expect(added?.baseUrl).toBe('http://127.0.0.1:3810');
   });
 
   test('respects the dismissal flag', async () => {
@@ -122,7 +122,7 @@ describe('discoverLocalAssistant', () => {
     const store = freshStore();
     const added = await discoverLocalAssistant(
       store,
-      fetchRespondingTo({ 'http://127.0.0.1:3800': 200 })
+      fetchRespondingTo({ 'http://127.0.0.1:3810': 200 })
     );
     expect(added).toBeNull();
   });
@@ -133,8 +133,8 @@ describe('isDiscoveryCandidateUrl', () => {
     for (const candidate of LOCAL_DISCOVERY_CANDIDATES) {
       expect(isDiscoveryCandidateUrl(candidate.baseUrl)).toBe(true);
     }
-    expect(isDiscoveryCandidateUrl('http://localhost:3800')).toBe(true);
-    expect(isDiscoveryCandidateUrl('http://127.0.0.1:3800/')).toBe(true);
+    expect(isDiscoveryCandidateUrl('http://localhost:3810')).toBe(true);
+    expect(isDiscoveryCandidateUrl('http://127.0.0.1:3810/')).toBe(true);
     expect(isDiscoveryCandidateUrl('http://127.0.0.1:3830/oc/')).toBe(true);
   });
 

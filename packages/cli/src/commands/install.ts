@@ -25,6 +25,7 @@ import {
   runDeploy,
   markSetupComplete,
   writeSystemEnv,
+  migrateLegacyDefaultPorts,
   patchSecretsEnvFile,
   collectNetworkExposureWarnings,
   type SetupSpec,
@@ -271,6 +272,7 @@ export async function prepareInstallFiles(
   // "v0.12.5"/"main") so this pre-wizard seed and applyHome's seed agree on the
   // stamp written into .skeleton-version.
   await applyHomeSeed(PLATFORM_VERSION, homeDir, configDir, dataDir);
+  migrateLegacyDefaultPorts(homeDir);
   // Install UI build to data/ui/ (local build if available, else the
   // @openpalm/ui npm bundle on this release stream's channel). @openpalm/ui is
   // independently versioned, so seed by dist-tag CHANNEL (latest/next) rather
@@ -351,6 +353,7 @@ async function runFileInstall(filePath: string, noStart: boolean, explicitImageT
     [
       'OP_PROJECT_NAME',
       'OP_ASSISTANT_PORT',
+      'OP_UI_PORT',
       'OP_HOST_UI_PORT',
     ].flatMap((key) => {
       const value = process.env[key]?.trim();

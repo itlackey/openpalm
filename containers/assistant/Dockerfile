@@ -229,11 +229,10 @@ COPY AGENTS.md /usr/local/share/openpalm/AGENTS.md
 
 EXPOSE 4096 3000
 
-# Probes OpenCode unconditionally, plus the UI co-process UNLESS the entrypoint's
-# LAN-exposure safety gate deliberately skipped starting it (marker file
-# /tmp/openpalm-ui-skip) — that security-motivated skip (and a legitimately
-# absent/permanently-dead UI, which writes the same marker) must not itself
-# register as a healthcheck failure. The UI probe hits the login/setup-exempt
+# Probes OpenCode unconditionally, plus the UI co-process unless its build is
+# absent or the supervisor exhausted its restart attempts. Those conditions
+# write /tmp/openpalm-ui-skip and must not themselves register as a healthcheck
+# failure. The UI probe hits the login/setup-exempt
 # /health route on the FIXED in-container UI port 3000 (OP_UI_PORT is the
 # host-facing knob and is deliberately NEVER passed into the container env, so
 # the container-side default 3000 is always the real listen port). Mirrors

@@ -57,7 +57,7 @@ interface DeployData {
   setupComplete?: boolean;
   deployStatus?: { service: string; status: string; label?: string }[];
   deployError?: string | null;
-  ports?: { admin?: number; assistant?: number };
+  ports?: { admin?: number; ui?: number; assistant?: number };
 }
 
 /**

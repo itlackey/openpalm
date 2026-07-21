@@ -42,11 +42,12 @@ Then log out and back in.
 
 Common defaults:
 
-- `3800` assistant
+- `3800` assistant chat UI
+- `3810` assistant OpenCode
 - `3880` admin
 - `3820` chat addon
 - `3821` API addon
-- `3810` voice addon
+- `8880` voice addon
 
 **Fix:** find the conflicting process:
 

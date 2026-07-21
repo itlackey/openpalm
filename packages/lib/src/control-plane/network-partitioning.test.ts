@@ -279,10 +279,12 @@ describe("#563 — the preset-managed cascade set matches compose reality (T31, 
     expect(assistantPorts.some((port) => String(port).includes("OP_CLIENT_PORT"))).toBe(false);
     // Phase 4 re-adds the UI co-process on the FIXED in-container port 3000,
     // published loopback-first: per-service OP_UI_BIND_ADDRESS nested over the
-    // global OP_BIND_ADDRESS cascade, host knob OP_UI_PORT (default 3810).
+    // global OP_BIND_ADDRESS cascade. The Compose fallback stays at the legacy
+    // 3810 until migration; fresh/migrated stack.env explicitly sets UI 3800.
     expect(assistantPorts).toContain(
       "${OP_UI_BIND_ADDRESS:-${OP_BIND_ADDRESS:-127.0.0.1}}:${OP_UI_PORT:-3810}:3000",
     );
+    expect(core.services?.assistant?.environment?.OP_UI_HOST_PORT).toBe("${OP_UI_PORT:-3810}");
   });
 
   test("chat/api port lines nest their per-service var then OP_BIND_ADDRESS (guardian-container, key-authenticated cascade)", () => {

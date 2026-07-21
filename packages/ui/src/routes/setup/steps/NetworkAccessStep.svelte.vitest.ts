@@ -60,6 +60,7 @@ describe('NetworkAccessStep — home-open risk warning + required acknowledgemen
     // the same phrases also appear in the always-visible option copy.
     await expect.element(page.getByRole('alert')).toBeVisible();
     expect(page.getByRole('alert').element().textContent).toMatch(/without a password/i);
+    expect(document.body.textContent).not.toMatch(/UI stays disabled/i);
 
     const ackCheckbox = page.getByRole('checkbox');
     await expect.element(ackCheckbox).not.toBeChecked();

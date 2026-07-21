@@ -29,6 +29,7 @@ import {
 } from "@openpalm/lib";
 import { resolveRequestLanding, getCachedLocalInstallState } from "$lib/server/landing.js";
 import { BLOCKING_LANDINGS } from "$lib/resolve-landing.js";
+import { reconcileSupervisedPortContract } from '$lib/server/port-contract.js';
 
 // Launch-fact collection + the 5s cache live in $lib/server/landing.ts; the
 // reset hook is re-exported here so tests keep one import site.
@@ -37,6 +38,16 @@ export { _resetLaunchCache } from "$lib/server/landing.js";
 const logger = createLogger("admin");
 
 let startupApplyDone = false;
+
+function reconcilePortContract(): void {
+  if (!process.env.OP_UI_SUPERVISOR) return;
+  try {
+    const state = getState();
+    reconcileSupervisedPortContract(state.homeDir, process.cwd(), process.env);
+  } catch (err) {
+    logger.error('default port migration failed', { error: String(err) });
+  }
+}
 
 // Load the process-level config the UI needs to serve, READ-ONLY w.r.t. OP_HOME.
 // install/update own every OP_HOME write (via applyHome), so merely serving
@@ -79,7 +90,9 @@ function loadProcessEnv(): void {
   }
 }
 
-// Run immediately on module load (server startup)
+// Run immediately on module load (server startup). The targeted migration runs
+// in this updatable control plane, never in the frozen Electron bootstrap.
+reconcilePortContract();
 loadProcessEnv();
 
 // Scheduler is now a dedicated sidecar — admin has zero background processes.

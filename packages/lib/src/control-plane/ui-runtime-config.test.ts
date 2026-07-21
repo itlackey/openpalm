@@ -61,7 +61,7 @@ describe('ui runtime config', () => {
         // empty homeDir + empty env → resolveAssistantEndpoint's derived default
         seedServedUiRuntimeConfig(dir, dir, {});
         const parsed = JSON.parse(readFileSync(join(dir, 'client', 'runtime-config.json'), 'utf8'));
-        expect(parsed).toEqual(buildLockedAssistantRuntimeConfig('http://127.0.0.1:3800'));
+        expect(parsed).toEqual(buildLockedAssistantRuntimeConfig('http://127.0.0.1:3810'));
       } finally {
         rmSync(dir, { recursive: true, force: true });
       }

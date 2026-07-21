@@ -145,7 +145,8 @@ ports so it never conflicts with a production instance on the same machine.
 | Service | Production defaults | Dev/test ports (`dev-setup.sh`) |
 |---|---|---|
 | Admin UI (host process) | `3880` | `9100` |
-| Assistant (OpenCode) | `3800` → container `4096` | `4800` → container `4096` |
+| Assistant chat UI | `3800` → container `3000` | `4810` → container `3000` |
+| Assistant (OpenCode) | `3810` → container `4096` | `4800` → container `4096` |
 | Guardian | network-only | network-only |
 
 `dev-setup.sh --seed-env` seeds `.dev/knowledge/env/stack.env` with the dev/test ports. `global-setup.ts` reads that file before tests run and auto-constructs `ADMIN_URL` and `ASSISTANT_URL`, so tests automatically target the correct stack with no extra env vars needed.
@@ -168,6 +169,7 @@ OP_DOCKER_SOCK=/var/run/docker.sock
 OP_IMAGE_NAMESPACE=openpalm
 OP_IMAGE_TAG=dev
 OP_ASSISTANT_PORT=4800
+OP_UI_PORT=4810
 OP_HOST_UI_PORT=9100
 OP_SETUP_COMPLETE=true
 EOF
@@ -187,6 +189,7 @@ contains only the user-owned `custom.compose.yml` overlay.
 bun run dev:build
 # or with test ports:
 OP_ASSISTANT_PORT=4800 \
+OP_UI_PORT=4810 \
 docker compose --project-directory . \
   -f .dev/system/stack/core.compose.yml \
   -f .dev/system/stack/services.compose.yml \

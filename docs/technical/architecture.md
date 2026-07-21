@@ -94,6 +94,5 @@ CLI admin path stays direct.
 | **CLI** (`openpalm admin` / `openpalm app`) | host process serves the build | admin only for `openpalm admin` |
 | **PWA** | added to home screen from the served origin (full install manifest deferred, see above) | inherits that origin (no admin) |
 
-The container co-process keeps the already-landed LAN-exposure safety gate:
-it refuses to publish an unauthenticated UI when OpenCode is bound off-loopback
-with `OPENCODE_AUTH` off.
+When OpenCode is bound off-loopback with `OPENCODE_AUTH` off, the container logs
+a prominent exposure warning and continues starting the UI.

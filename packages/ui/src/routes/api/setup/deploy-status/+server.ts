@@ -8,8 +8,9 @@ import type { RequestHandler } from "./$types";
 // Guardian is omitted: it has no host port mapping (network-only service).
 function resolvePorts() {
   return {
-    admin:     Number(process.env.OP_HOST_UI_PORT)        || 3880,
-    assistant: Number(process.env.OP_HOST_ASSISTANT_PORT) || 3800,
+    admin: Number(process.env.OP_HOST_UI_PORT) || 3880,
+    ui: Number(process.env.OP_UI_PORT) || 3800,
+    assistant: Number(process.env.OP_ASSISTANT_PORT) || 3810,
   };
 }
 

@@ -49,7 +49,8 @@ Important keys include:
 | `OP_HOME` | OpenPalm home directory |
 | `OP_UID` / `OP_GID` | Host user/group mapping |
 | `OP_IMAGE_NAMESPACE` / `OP_IMAGE_TAG` | Image source and tag |
-| `OP_ASSISTANT_PORT` | Assistant host port, default `3800` |
+| `OP_UI_PORT` | Assistant chat UI host port, default `3800` |
+| `OP_ASSISTANT_PORT` | Assistant OpenCode host port, default `3810` |
 | `OP_HOST_UI_PORT` | Admin UI host port, default `3880` |
 | `OP_CHAT_PORT` | Chat addon host port, default `3820` |
 | `OP_API_PORT` | API addon host port, default `3821` |

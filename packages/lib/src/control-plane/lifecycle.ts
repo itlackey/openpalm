@@ -17,6 +17,7 @@ import {
   writeRuntimeFiles,
   discoverStackOverlays,
   ensureComposeVolumeTargets,
+  migrateLegacyDefaultPorts,
 } from "./config-persistence.js";
 import { ensureOpenCodeSystemConfig } from "./core-assets.js";
 import { applyHomeSeed } from "./ui-assets.js";
@@ -145,6 +146,7 @@ async function applyHome(state: ControlPlaneState): Promise<void> {
   ensureHomeDirs();
   ensureSecrets(state);
   await applyHomeSeed(PLATFORM_VERSION, state.homeDir, state.configDir, state.dataDir);
+  migrateLegacyDefaultPorts(state.homeDir);
   migrateProfileOnlyAddonEnablement(state.homeDir);
   pruneRemovedAddonState(state.homeDir);
   ensureVersionDefaults(state);

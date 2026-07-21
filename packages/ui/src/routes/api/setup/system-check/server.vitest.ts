@@ -33,7 +33,7 @@ vi.mock('node:net', () => ({
     emitter.close = () => {};
     emitter.listen = (port: number) => {
       setTimeout(() => {
-        if (port === 3880 || port === 3800) {
+        if (port === 3880 || port === 3800 || port === 3810) {
           emitter.emit('error', new Error('in use'));
         } else {
           emitter.emit('listening');
@@ -60,13 +60,15 @@ describe('GET /api/setup/system-check', () => {
     });
     process.env.PORT = '5173';
     process.env.OP_HOST_UI_PORT = '3880';
-    process.env.OP_HOST_ASSISTANT_PORT = '3800';
+    process.env.OP_UI_PORT = '3800';
+    process.env.OP_ASSISTANT_PORT = '3810';
   });
 
   afterEach(() => {
     delete process.env.PORT;
     delete process.env.OP_HOST_UI_PORT;
-    delete process.env.OP_HOST_ASSISTANT_PORT;
+    delete process.env.OP_UI_PORT;
+    delete process.env.OP_ASSISTANT_PORT;
   });
 
   test('degrades port conflicts to non-blocking when docker ps is unreachable', async () => {
@@ -88,6 +90,12 @@ describe('GET /api/setup/system-check', () => {
     expect(body.portCheckReliable).toBe(false);
     expect(body.ports.find((port) => port.port === 3800)).toEqual({
       port: 3800,
+      service: 'ui',
+      available: false,
+      blocking: false,
+    });
+    expect(body.ports.find((port) => port.port === 3810)).toEqual({
+      port: 3810,
       service: 'assistant',
       available: false,
       blocking: false,
@@ -102,7 +110,7 @@ describe('GET /api/setup/system-check', () => {
       _opts: unknown,
       cb: (error: Error | null, stdout: string, stderr: string) => void,
     ) => {
-      cb(null, 'openpalm-assistant-1\t0.0.0.0:3800->4096/tcp\n', '');
+      cb(null, 'openpalm-assistant-1\t127.0.0.1:3800->3000/tcp, 0.0.0.0:3810->4096/tcp\n', '');
     });
 
     const mod = await import('./+server.js');
@@ -115,6 +123,12 @@ describe('GET /api/setup/system-check', () => {
     expect(body.portCheckReliable).toBe(true);
     expect(body.ports.find((port) => port.port === 3800)).toEqual({
       port: 3800,
+      service: 'ui',
+      available: true,
+      blocking: true,
+    });
+    expect(body.ports.find((port) => port.port === 3810)).toEqual({
+      port: 3810,
       service: 'assistant',
       available: true,
       blocking: true,

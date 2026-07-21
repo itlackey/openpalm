@@ -6,7 +6,7 @@
  *   - env (process.env) wins over the persisted stack.env/state env
  *   - wildcard bind hosts (0.0.0.0 / :: / [::]) are ALWAYS normalized to
  *     127.0.0.1 in the returned URL — this is the browser-breaking
- *     http://0.0.0.0:3800 seed bug the finding calls out.
+ *     wildcard-host seed bug the finding calls out.
  */
 import { describe, it, expect, beforeEach } from 'bun:test';
 import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
@@ -33,7 +33,7 @@ beforeEach(() => {
 
 describe('resolveAssistantEndpoint', () => {
   it('falls back to http://127.0.0.1:<default port> with no env/stack.env at all', () => {
-    expect(resolveAssistantEndpoint(home, {})).toBe('http://127.0.0.1:3800');
+    expect(resolveAssistantEndpoint(home, {})).toBe('http://127.0.0.1:3810');
   });
 
   it('uses OP_ASSISTANT_PORT from the persisted stack env for the fallback URL', () => {
@@ -127,8 +127,8 @@ describe('resolveAssistantEndpoint', () => {
     ).toBe('http://example.test:9999');
   });
 
-  it('an unset or loopback OP_ASSISTANT_BIND_ADDRESS falls back to 127.0.0.1 as before', () => {
-    expect(resolveAssistantEndpoint(home, {})).toBe('http://127.0.0.1:3800');
+  it('uses the default port when unset and honors an explicit loopback port', () => {
+    expect(resolveAssistantEndpoint(home, {})).toBe('http://127.0.0.1:3810');
     writeStackEnv(home, 'OP_ASSISTANT_BIND_ADDRESS=127.0.0.1\nOP_ASSISTANT_PORT=3800\n');
     expect(resolveAssistantEndpoint(home, {})).toBe('http://127.0.0.1:3800');
   });

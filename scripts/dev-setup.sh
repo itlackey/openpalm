@@ -220,12 +220,13 @@ OP_IMAGE_TAG=dev
 OP_PROJECT_NAME=openpalm-dev
 
 # Host-side port bindings for the compose stack.
-# These are intentionally offset from the production defaults (3800/8100)
+# These are intentionally offset from the production defaults (3800/3810/3880)
 # so a dev/test stack never conflicts with a production instance running on the
 # same machine. Playwright e2e test defaults match these ports so that
 # global-setup.ts auto-builds the correct ADMIN_URL/ASSISTANT_URL from stack.env.
 # Guardian has no host port mapping (network-only service).
 OP_ASSISTANT_PORT=4800
+OP_UI_PORT=4810
 OP_HOST_UI_PORT=9100
 
 # Skip the first-boot setup wizard — the dev password above is already
@@ -255,6 +256,9 @@ if ! grep -q '^OP_HOME=' "$STASH_DIR/env/stack.env"; then
 fi
 if ! grep -q '^OP_PROJECT_NAME=' "$STASH_DIR/env/stack.env"; then
 	printf 'OP_PROJECT_NAME=openpalm-dev\n' >>"$STASH_DIR/env/stack.env"
+fi
+if ! grep -q '^OP_UI_PORT=' "$STASH_DIR/env/stack.env"; then
+	printf 'OP_UI_PORT=4810\n' >>"$STASH_DIR/env/stack.env"
 fi
 # Migrate legacy OP_ADMIN_PORT → OP_HOST_UI_PORT (idempotent).
 # If only the old name exists, add the canonical name so consumers see it.

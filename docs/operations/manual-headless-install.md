@@ -224,6 +224,7 @@ project and port layout automatically:
 
 - `OP_PROJECT_NAME`
 - `OP_ASSISTANT_PORT`
+- `OP_UI_PORT`
 - `OP_HOST_UI_PORT`
 
 Example:
@@ -232,6 +233,7 @@ Example:
 OP_HOME="$PWD/.tmp-openpalm-install/home" \
 OP_PROJECT_NAME=openpalm-test-install \
 OP_ASSISTANT_PORT=4802 \
+OP_UI_PORT=4801 \
 OP_HOST_UI_PORT=9302 \
 openpalm install --file ./setup-spec.yaml --no-start
 

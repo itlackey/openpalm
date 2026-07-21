@@ -30,7 +30,7 @@ export type DiscoveryCandidate = { baseUrl: string; label: string };
 /** Probed in order; the first reachable candidate is added. Ports are the
  * stack defaults (`STACK_DEFAULTS.ports.assistant`, guardian direct port). */
 export const LOCAL_DISCOVERY_CANDIDATES: readonly DiscoveryCandidate[] = [
-  { baseUrl: 'http://127.0.0.1:3800', label: 'Local assistant' },
+  { baseUrl: 'http://127.0.0.1:3810', label: 'Local assistant' },
   { baseUrl: 'http://127.0.0.1:3830/oc', label: 'Local assistant (guardian)' },
 ];
 

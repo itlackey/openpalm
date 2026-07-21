@@ -15,7 +15,7 @@ interface BareRunOpts {
 
 /**
  * Probe the assistant container's healthcheck to decide whether the stack
- * is already up. We hit the assistant's published host port (default 3800,
+ * is already up. We hit the assistant's published host port (default 3810,
  * overridable via OP_ASSISTANT_PORT) rather than introspect Docker so this
  * works without docker socket access and respects whatever overrides are
  * active.

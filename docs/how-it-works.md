@@ -14,13 +14,13 @@ The **stack** is what the harness runs. At its core: an OpenCode assistant in Do
 You (browser / CLI / API client)
         |
         v
-Admin :3880                  Addon edge (e.g. chat :3820, api :3821)
+Admin :3880 / Assistant UI :3800    Addon edge (e.g. chat :3820, api :3821)
                                     |
                                     v
                              Guardian :8080 (internal)   <- validates every addon message
                                     |
                                     v
-                             Assistant :3800 host / :4096 internal
+                             Assistant OpenCode :3810 host / :4096 internal
                                     |
                                     v
                              Admin API                   <- host/admin process only
@@ -70,7 +70,7 @@ For every inbound request it:
 
 A message that fails an overlay check never reaches the assistant.
 
-### Assistant (OpenCode runtime, host port 3800)
+### Assistant (OpenCode runtime, host port 3810; chat UI port 3800)
 The AI. Runs OpenCode. Has no Docker socket.
 
 The assistant does not manage the stack directly. Stack operations remain host-side

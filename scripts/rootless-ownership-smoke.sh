@@ -31,12 +31,14 @@ PLATFORM_VERSION="$(smoke_platform_version)"
 # `stack` and `portal-discord` smoke projects collide on 3896 when run
 # concurrently (every other port already has a per-target default).
 assistant_port_default=3896
+assistant_ui_port_default=3897
 guardian_port_default=3930
 guardian_admin_port_default=3931
 chat_port_default=3920
 api_port_default=3921
 if [[ "$TARGET" == "portal-discord" ]]; then
   assistant_port_default=3996
+  assistant_ui_port_default=3997
   guardian_port_default=3940
   guardian_admin_port_default=3941
   chat_port_default=3942
@@ -124,6 +126,7 @@ docker run --rm -v "$(dirname "$SMOKE_HOME"):/smoke-parent" alpine sh -c 'rm -rf
 smoke_copy_skeleton "$SMOKE_HOME"
 smoke_write_stack_env "$SMOKE_HOME" "$PLATFORM_VERSION" \
   "${OP_ROOTLESS_SMOKE_ASSISTANT_PORT:-${assistant_port_default}}" \
+  "${OP_ROOTLESS_SMOKE_CONTAINER_UI_PORT:-${assistant_ui_port_default}}" \
   "${OP_ROOTLESS_SMOKE_GUARDIAN_PORT:-${guardian_port_default}}" \
   "${OP_ROOTLESS_SMOKE_GUARDIAN_ADMIN_PORT:-${guardian_admin_port_default}}" \
   "${OP_ROOTLESS_SMOKE_CHAT_PORT:-${chat_port_default}}" \

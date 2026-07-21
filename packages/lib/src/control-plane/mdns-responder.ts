@@ -29,7 +29,7 @@ const MDNS_PORT = 5353;
 const TTL = 120;
 const HTTP_SERVICE = "_http._tcp.local";
 const DEFAULT_GUARDIAN_PORT = 3830;
-const DEFAULT_ASSISTANT_PORT = 3800;
+const DEFAULT_ASSISTANT_PORT = 3810;
 
 // ── Pure: name derivation ─────────────────────────────────────────────────
 

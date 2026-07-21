@@ -86,7 +86,7 @@ intended publisher of these names).
 | Name | Gate | Host port |
 |---|---|---|
 | `<base>-guardian.local` | `OP_BIND_ADDRESS` set and non-loopback | `OP_GUARDIAN_PORT` (default 3830) |
-| `<base>.local` | `OP_ASSISTANT_BIND_ADDRESS` set and non-loopback (no `OP_BIND_ADDRESS` fallback — mirrors `core.compose.yml`'s assistant port line) | `OP_ASSISTANT_PORT` (default 3800) |
+| `<base>.local` | `OP_ASSISTANT_BIND_ADDRESS` set and non-loopback (no `OP_BIND_ADDRESS` fallback — mirrors `core.compose.yml`'s assistant port line) | `OP_ASSISTANT_PORT` (default 3810) |
 
 The gate does **not** check whether a guardian-ingress addon is actually
 enabled (the guardian is profile-gated) — checking addon/profile state would

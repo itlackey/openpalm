@@ -68,18 +68,16 @@ tr -d '\n' < .dev/knowledge/secrets/op_ui_login_password
 ```
 
 **Assistant URL**: by default `.dev/knowledge/env/stack.env` sets
-`OP_ASSISTANT_PORT=3800` — so the proxy reaches **your existing prod
-assistant container** (no second stack required for UI iteration).
+`OP_ASSISTANT_PORT=4800` for the isolated dev assistant.
 If you want full isolation, spin up the dev compose stack alongside:
 
 ```bash
 bun run dev:stack
 ```
 
-That brings up a separate assistant/guardian on the dev ports
-(8100/3800/8180 mapped to the dev project) and the UI's proxy still
-hits `localhost:3800` — same URL, isolated containers via Docker
-project name.
+That brings up a separate assistant/guardian on the dev ports, including the
+assistant chat UI on `4810` and OpenCode on `4800`, isolated by Docker project
+name.
 
 ### Why isolated?
 
@@ -156,6 +154,6 @@ environment seeded by the dev setup helpers.
 |---|---|
 | `OP_HOME` | OpenPalm root. Prod: `~/.openpalm`. Dev: `$(pwd)/.dev` via `ui:dev:isolated`. |
 | `OP_UI_LOGIN_PASSWORD` | Operator-facing admin password. Stored in `${OP_HOME}/knowledge/secrets/op_ui_login_password` and promoted into the admin process environment. |
-| `OP_OPENCODE_URL` / `OP_ASSISTANT_PORT` | Where the proxy forwards `/proxy/assistant/*`. Default `http://localhost:3800`. |
+| `OP_OPENCODE_URL` / `OP_ASSISTANT_PORT` | OpenCode endpoint. Production default `http://localhost:3810`; isolated dev uses `http://localhost:4800`. |
 | `OP_OPENCODE_PASSWORD` | Basic-auth password for OpenCode endpoints. Empty in dev (matches the `OPENCODE_AUTH=false` default). |
 | `DOCKER_HOST` | Docker Socket Proxy URL inside the addon network. |

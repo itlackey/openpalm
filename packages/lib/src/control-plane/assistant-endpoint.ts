@@ -6,7 +6,7 @@
  *   - Electron derived it from the persisted stack.env's
  *     OP_ASSISTANT_BIND_ADDRESS + OP_ASSISTANT_PORT, which bakes a wildcard
  *     bind address (e.g. 0.0.0.0, set by the admin LAN-exposure toggle)
- *     directly into a browser-facing URL — http://0.0.0.0:3800 cannot be
+ *     directly into a browser-facing URL — a wildcard host cannot be fetched
  *     fetched from a browser.
  *   - Each surface honored a different override name and ignored the others.
  *   - The container entrypoint had its own inline precedence.
@@ -38,7 +38,7 @@ const WILDCARD_BIND_HOST = /^(0\.0\.0\.0|\[::\]|::)$/i;
  *   1. OP_UI_DEFAULT_ASSISTANT_URL
  *   2. OP_OPENCODE_URL
  *   3. OP_ASSISTANT_URL
- *   4. `http://${host}:${OP_ASSISTANT_PORT ?? 3800}`, where `host` is:
+ *   4. `http://${host}:${OP_ASSISTANT_PORT ?? 3810}`, where `host` is:
  *      - `127.0.0.1` when OP_ASSISTANT_BIND_ADDRESS is unset, loopback, or a
  *        wildcard (0.0.0.0 / :: / [::]) — a wildcard bind still gets
  *        collapsed to loopback below by {@link normalizeLoopbackUrl}, but a

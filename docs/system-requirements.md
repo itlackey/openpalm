@@ -113,7 +113,8 @@ unless you intentionally change bind addresses in `knowledge/env/stack.env`.
 
 | Host port | Service | Variable |
 |---|---|---|
-| `3800` | Assistant | `OP_ASSISTANT_PORT` |
+| `3800` | Assistant chat UI | `OP_UI_PORT` |
+| `3810` | Assistant OpenCode | `OP_ASSISTANT_PORT` |
 | `8880` | Voice addon | `OP_VOICE_PORT_HOST` |
 | `3820` | Chat addon | `OP_CHAT_PORT` |
 | `3821` | Guardian OpenAI API addon | `OP_API_PORT` |

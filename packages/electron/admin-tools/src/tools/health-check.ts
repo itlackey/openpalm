@@ -15,7 +15,7 @@ import { promisify } from "node:util";
 const execFileAsync = promisify(execFile);
 
 const HTTP_TARGETS: Record<string, string> = {
-  assistant: process.env.OP_OPENCODE_URL || process.env.OP_ASSISTANT_URL || "http://127.0.0.1:3800",
+  assistant: process.env.OP_OPENCODE_URL || process.env.OP_ASSISTANT_URL || "http://127.0.0.1:3810",
   ui: process.env.OP_HOST_UI_URL || "http://127.0.0.1:3880",
 };
 

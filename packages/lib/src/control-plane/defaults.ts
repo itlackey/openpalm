@@ -5,7 +5,8 @@
  */
 export const STACK_DEFAULTS = {
   ports: {
-    assistant: 3800,
+    ui: 3800,
+    assistant: 3810,
     hostUi: 3880,
   },
   image: {

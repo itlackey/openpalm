@@ -68,7 +68,7 @@ That exact CLI skeleton pin matters because npm-installed CLI builds resolve the
 
 - Installed into `/opt/openpalm/ui`
 - Served as a supervised co-process from its adapter-node build (`node build/index.js`)
-- Published on `${OP_UI_PORT:-3810}` externally and port `3000` internally
+- Published on `${OP_UI_PORT:-3800}` externally and port `3000` internally
 - Seeded with `runtime-config.json` containing one locked default connection
 
 ### Hosted PWA

@@ -54,6 +54,48 @@ export function buildEnvFiles(state: ControlPlaneState): string[] {
 }
 
 /**
+ * Swap the retired default port pair before the refreshed Compose file is
+ * validated. Existing fallback-generated stack.env files persisted assistant
+ * port 3800 while the UI implicitly used 3810; leaving that value in place
+ * would collide with the corrected UI default on 3800.
+ *
+ * Custom combinations retain their old effective values. If only one custom
+ * port was persisted, the other old implicit default is materialized so the
+ * corrected defaults do not silently move it.
+ */
+export function migrateLegacyDefaultPorts(homeDir: string): boolean {
+  const path = legacyStackEnvFile(homeDir);
+  if (!existsSync(path)) return false;
+
+  const content = readFileSync(path, "utf-8");
+  const parsed = parseEnvContent(content);
+  const hasAssistantPort = Object.hasOwn(parsed, "OP_ASSISTANT_PORT");
+  const hasUiPort = Object.hasOwn(parsed, "OP_UI_PORT");
+
+  const assistantPort = parsed.OP_ASSISTANT_PORT?.trim();
+  const uiPort = parsed.OP_UI_PORT?.trim();
+  const oldEffectiveAssistantPort = assistantPort || "3800";
+  const oldEffectiveUiPort = uiPort || "3810";
+  const updates: Record<string, string> = {};
+
+  if ((!hasAssistantPort && !hasUiPort) || (oldEffectiveAssistantPort === "3800" && oldEffectiveUiPort === "3810")) {
+    updates.OP_ASSISTANT_PORT = String(STACK_DEFAULTS.ports.assistant);
+    updates.OP_UI_PORT = String(STACK_DEFAULTS.ports.ui);
+  } else {
+    if (!assistantPort) updates.OP_ASSISTANT_PORT = oldEffectiveAssistantPort;
+    if (!uiPort) updates.OP_UI_PORT = oldEffectiveUiPort;
+  }
+  if (Object.keys(updates).length === 0) return false;
+
+  writeFileAtomic(path, mergeEnvContent(content, updates), 0o600);
+  logger.warn("Migrated default host port assignments", {
+    assistant: updates.OP_ASSISTANT_PORT,
+    ui: updates.OP_UI_PORT,
+  });
+  return true;
+}
+
+/**
  * Write system-managed values to knowledge/env/stack.env.
  *
  * Secret-like keys are NOT written here — they belong in knowledge/secrets/.
@@ -241,6 +283,7 @@ function generateFallbackSystemEnv(state: ControlPlaneState): string {
     "# ── Ports (38XX range) ──────────────────────────────────────────────",
     "# Guardian is network-only (no host port) — portals reach it via",
     "# http://guardian:8080 over the portal_net Docker network.",
+    `OP_UI_PORT=${STACK_DEFAULTS.ports.ui}`,
     `OP_ASSISTANT_PORT=${STACK_DEFAULTS.ports.assistant}`,
     `OP_HOST_UI_PORT=${STACK_DEFAULTS.ports.hostUi}`,
     ""

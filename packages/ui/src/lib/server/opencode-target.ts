@@ -92,7 +92,7 @@ function defaultTarget(): HostOpencodeTarget {
   const url =
     process.env.OP_OPENCODE_URL ??
     process.env.OP_ASSISTANT_URL ??
-    `http://127.0.0.1:${process.env.OP_ASSISTANT_PORT ?? persisted.OP_ASSISTANT_PORT ?? '3800'}`;
+    `http://127.0.0.1:${process.env.OP_ASSISTANT_PORT ?? persisted.OP_ASSISTANT_PORT ?? '3810'}`;
   // OpenCode's server default username — the shipped assistant compose never
   // overrides OPENCODE_SERVER_USERNAME, and the guardian's upstream auth sends
   // 'opencode:<password>', so default here or a correct password 401s.

@@ -65,7 +65,7 @@ secrets.
 Examples of what belongs here:
 
 - `OP_HOME`, `OP_UID`, `OP_GID`
-- `OP_ASSISTANT_PORT`, `OP_HOST_UI_PORT`, `OP_CHAT_PORT`
+- `OP_UI_PORT`, `OP_ASSISTANT_PORT`, `OP_HOST_UI_PORT`, `OP_CHAT_PORT`
 - `OPENAI_BASE_URL` (base URL only, not the key)
 
 **Secrets go elsewhere:**

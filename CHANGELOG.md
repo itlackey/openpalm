@@ -28,7 +28,7 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 - **Local assistant auto-discovery for the connections list.** After the
   browser-owned connection list loads, the UI probes the well-known local
-  endpoints (direct assistant `127.0.0.1:3800`, guardian front door
+  endpoints (direct assistant `127.0.0.1:3810`, guardian front door
   `127.0.0.1:3830/oc`) once per browsing session and adds the first reachable
   one as an ordinary connection when no loopback entry exists yet. Removing a
   discovered entry records a per-browser dismissal so it is not re-offered.
@@ -41,6 +41,12 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   binding even for LAN clients.
 
 ### Changed
+
+- **Corrected assistant host ports and UI startup behavior.** The container-served
+  OpenPalm chat UI now uses `127.0.0.1:3800 -> 3000`, while OpenCode uses
+  `127.0.0.1:3810 -> 4096`. Upgrades migrate only the retired default pair;
+  custom port combinations remain unchanged. Unauthenticated non-loopback
+  OpenCode exposure now logs a warning without suppressing the UI co-process.
 
 - **Voice settings split into client vs. host halves**
   (`docs/technical/voice-settings-architecture.md`). The voice CONTAINER

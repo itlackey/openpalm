@@ -469,13 +469,13 @@
           <input
             type="url"
             bind:value={formUrl}
-            placeholder="http://10.0.0.5:3800"
+            placeholder="http://10.0.0.5:3810"
             required
             autocomplete="off"
           />
           <small>
             The full base URL of the OpenCode API — a direct assistant (e.g.
-            <code>http://10.0.0.5:3800</code>) or a guardian front door including its
+            <code>http://10.0.0.5:3810</code>) or a guardian front door including its
             <code>/oc</code> path. OpenPalm speaks native OpenCode against either.
           </small>
         </label>

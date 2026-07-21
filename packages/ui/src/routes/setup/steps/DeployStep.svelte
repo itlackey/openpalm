@@ -23,7 +23,7 @@
     /** Non-fatal: install used cached images because the registry pull failed. */
     imageWarning?: string | null;
     phase?: DeployPhase;
-    ports?: { admin?: number; assistant?: number };
+    ports?: { admin?: number; ui?: number; assistant?: number };
   }
 
   interface Props {
@@ -48,10 +48,11 @@
   const windowPort = typeof window !== 'undefined' ? Number(window.location.port) || 3880 : 3880;
 
   const adminPort = $derived(deployData.ports?.admin ?? windowPort);
-  const assistantPort = $derived(deployData.ports?.assistant ?? 3800);
+  const uiPort = $derived(deployData.ports?.ui ?? 3800);
+  const assistantPort = $derived(deployData.ports?.assistant ?? 3810);
 
   const serviceLinks = $derived<Record<string, { port: number; label: string; path: string }>>({
-    assistant: { port: assistantPort, label: 'Assistant (OpenCode)', path: '' },
+    assistant: { port: uiPort, label: 'Assistant Chat', path: '' },
     admin: { port: adminPort, label: 'Admin Dashboard', path: '/host' },
   });
 

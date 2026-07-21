@@ -40,7 +40,7 @@ portal-style addon profiles such as `addon.chat` or `addon.api`.
 
 | Service | Activation | Host port | Purpose |
 |---------|------------|-----------|---------|
-| `assistant` | Always on | `3800 -> 4096` | OpenCode runtime without Docker socket; also hosts the automation scheduler co-process (no port) |
+| `assistant` | Always on | `3800 -> 3000` (chat UI), `3810 -> 4096` (OpenCode) | OpenCode runtime without Docker socket; also hosts the UI and automation scheduler co-processes |
 | `guardian` | Portal/addon profiles | `3830 -> 3830` and `3831 -> 3831` (localhost by default) | Principal-authenticated ingress, direct listener, and admin listener |
 
 ## Addons

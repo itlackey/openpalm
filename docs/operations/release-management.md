@@ -176,7 +176,7 @@ These non-secret `stack.env` vars control the exact npm artifacts the running pl
 | `OP_UI_VERSION` | Host UI updater / seeding path **and** the assistant container entrypoint | Host: `OP_UI_VERSION` -> channel/default logic in the host control plane. Container: `OP_UI_VERSION` -> image `PLATFORM_VERSION` -> hard error | Exact-pins the single `@openpalm/ui` build served everywhere (host process, Electron, container co-process); no `latest` fallback in the container |
 | `OP_SKELETON_VERSION` | Assistant + guardian entrypoints | Assistant: `OP_SKELETON_VERSION` -> image `PLATFORM_VERSION` -> hard error. Guardian: `OP_SKELETON_VERSION` -> guardian package version. | Exact-pins `@openpalm/skeleton`; keep equal to the platform version in normal releases |
 
-`OP_UI_PORT` and `OP_UI_BIND_ADDRESS` control the assistant container's published `@openpalm/ui` co-process listener (`127.0.0.1:3810` by default), separate from the host-local UI/dev origin (`OP_HOST_UI_PORT`, default `3880`).
+`OP_UI_PORT` and `OP_UI_BIND_ADDRESS` control the assistant container's published `@openpalm/ui` co-process listener (`127.0.0.1:3800` by default), separate from OpenCode (`OP_ASSISTANT_PORT`, default `3810`) and the host-local UI/dev origin (`OP_HOST_UI_PORT`, default `3880`).
 
 ## Release Smoke Checklist
 

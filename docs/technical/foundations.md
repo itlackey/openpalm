@@ -98,8 +98,8 @@ Mounts:
 
 Ports and network:
 
-- host: `${OP_ASSISTANT_BIND_ADDRESS:-127.0.0.1}:${OP_ASSISTANT_PORT:-3800}`
-- container: `4096`
+- UI: `${OP_UI_BIND_ADDRESS:-${OP_BIND_ADDRESS:-127.0.0.1}}:${OP_UI_PORT:-3800} -> 3000`
+- OpenCode: `${OP_ASSISTANT_BIND_ADDRESS:-127.0.0.1}:${OP_ASSISTANT_PORT:-3810} -> 4096`
 - network: `assistant_net`
 
 Security — provider secrets:
@@ -275,7 +275,7 @@ Default host binds for shipped HTTP-ish edges:
 
 - `chat`: `127.0.0.1:3820 -> 8182`
 - `api`: `127.0.0.1:3821 -> 8182`
-- `voice`: `127.0.0.1:3810 -> 8186`
+- `voice`: `127.0.0.1:8880 -> 8880`
 
 `discord` and `slack` do not expose host ports in the shipped overlays.
 

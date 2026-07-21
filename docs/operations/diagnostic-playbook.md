@@ -130,8 +130,8 @@ Important details:
 Useful checks:
 
 ```bash
-curl -sS http://localhost:3800/provider | jq
-curl -sS http://localhost:3800/provider/auth | jq
+curl -sS http://localhost:3810/provider | jq
+curl -sS http://localhost:3810/provider/auth | jq
 curl -sS -b cookies.txt http://localhost:3880/admin/providers/host-status | jq
 ```
 

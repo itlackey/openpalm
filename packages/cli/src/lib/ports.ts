@@ -8,7 +8,7 @@
 export const DEFAULT_UI_PORT = 3880;
 
 /** Default published host port for the assistant (override via OP_ASSISTANT_PORT). */
-export const DEFAULT_ASSISTANT_PORT = 3800;
+export const DEFAULT_ASSISTANT_PORT = 3810;
 
 /**
  * Merge-and-resolve `OP_HOST_UI_PORT`: a persisted-env record (e.g. headless

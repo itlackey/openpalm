@@ -254,7 +254,8 @@ Host-exposed OpenPalm services default to a small localhost-friendly port set. C
 
 | Service | Internal Port | Default Host Bind | Purpose |
 |---------|--------------|-------------------|---------|
-| **Assistant** (OpenCode) | 4096 | `127.0.0.1:3800` | OpenCode web UI + API |
+| **Assistant UI** | 3000 | `127.0.0.1:3800` | `@openpalm/ui` chat interface |
+| **Assistant** (OpenCode) | 4096 | `127.0.0.1:3810` | OpenCode web UI + API |
 | **Voice addon** | 8880 | `127.0.0.1:8880` (`OP_VOICE_BIND_ADDRESS`) | Voice interface (TTS/STT) |
 | **Admin** | n/a — host process, not a container | `127.0.0.1:3880` | Admin UI + API (`openpalm ui serve`) |
 | **Guardian gateway** | 8080 | (internal only — no `ports:` publication) | Principal auth, `/oc/*` proxy, rate limiting, content validation |

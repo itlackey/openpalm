@@ -68,11 +68,9 @@ async function checkPortAvailable(port: number, timeoutMs = 1000): Promise<boole
 // portals reach it via Docker DNS (http://guardian:8080) and the host
 // admin-tools health-check uses `docker container inspect` instead of HTTP.
 //
-// Env-name resolution prefers the canonical OP_HOST_* names. The UI port reads
-// only OP_HOST_UI_PORT (the legacy OP_ADMIN_PORT has been removed — existing
-// installs must re-run setup to migrate). The assistant port still honors the
-// historic OP_ASSISTANT_PORT for existing dev installs. Falls back to the
-// stock default when unset.
+// The host admin UI, container-served UI, and OpenCode listener are distinct
+// required ports. Each reads its canonical env name and falls back to the stock
+// default when unset.
 function pickPort(...envNames: string[]): number | null {
   for (const name of envNames) {
     const raw = process.env[name];
@@ -85,8 +83,9 @@ function pickPort(...envNames: string[]): number | null {
 
 function resolvePortsToCheck(): { port: number; service: string; blocking: boolean }[] {
   return [
-    { port: pickPort("OP_HOST_UI_PORT")                             ?? 3880, service: "admin",     blocking: true },
-    { port: pickPort("OP_HOST_ASSISTANT_PORT", "OP_ASSISTANT_PORT") ?? 3800, service: "assistant", blocking: true },
+    { port: pickPort("OP_HOST_UI_PORT")  ?? 3880, service: "admin", blocking: true },
+    { port: pickPort("OP_UI_PORT")       ?? 3800, service: "ui", blocking: true },
+    { port: pickPort("OP_ASSISTANT_PORT") ?? 3810, service: "assistant", blocking: true },
   ];
 }
 

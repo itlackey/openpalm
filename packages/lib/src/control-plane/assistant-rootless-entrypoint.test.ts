@@ -55,6 +55,20 @@ describe('assistant rootless entrypoint regressions', () => {
     expect(assistantEntrypoint).toContain('NSS_WRAPPER_PASSWD');
   });
 
+  test('unauthenticated non-loopback exposure warns without suppressing the UI', () => {
+    const startUi = assistantEntrypoint.match(/start_ui\(\) \{[\s\S]*?\n\}/)?.[0] ?? '';
+    const warningSection = startUi.split('local ui_pkg=')[0] ?? '';
+
+    expect(warningSection).toContain('OP_ASSISTANT_BIND_ADDRESS/OP_BIND_ADDRESS');
+    expect(warningSection).toContain('OPENCODE_AUTH');
+    expect(warningSection).toContain('the UI will still start');
+    expect(warningSection).not.toContain('refusing to start');
+    expect(warningSection).not.toContain(': > /tmp/openpalm-ui-skip');
+    expect(warningSection).not.toContain('return 0');
+    expect(startUi).toContain('entrypoint: starting UI co-process');
+    expect(assistantEntrypoint.match(/: > \/tmp\/openpalm-ui-skip/g)).toHaveLength(2);
+  });
+
   test('nss_wrapper lookup globs fixed multiarch paths, not an unbounded recursive find', () => {
     // Walking the whole library tree on every boot is wasteful; resolve via the
     // known Debian multiarch glob instead.

@@ -136,11 +136,11 @@ install_runtime_artifacts() {
 }
 
 # ── LAN-exposure helper ──────────────────────────────────────────────────────
-# Used by start_ui's safety gate: refuse to publish an UNAUTHENTICATED UI when
-# OpenCode is bound off-loopback with auth disabled (see start_ui below).
+# Used by start_ui's exposure warning when OpenCode is bound off-loopback with
+# auth disabled (see start_ui below).
 is_loopback_address() {
   case "$1" in
-    127.0.0.1|localhost) return 0 ;;
+    127.0.0.1|localhost|::1) return 0 ;;
     *) return 1 ;;
   esac
 }
@@ -199,21 +199,14 @@ start_ui() {
   # host-published assistant URL (seeded as the one locked connection in
   # runtime-config.json below); this co-process only serves the UI app.
 
-  # ── LAN-exposure safety gate ─────────────────────────────────────────────
-  # Never publish an UNAUTHENTICATED UI onto a network the assistant itself made
-  # reachable. When OpenCode is bound off loopback (OP_ASSISTANT_BIND_ADDRESS /
-  # OP_BIND_ADDRESS) AND OpenCode auth is disabled (OPENCODE_AUTH, default
-  # "false"), a LAN visitor's browser could drive the assistant through the
-  # seeded connection. Warn loudly, naming the exact knobs, and refuse to start
-  # the UI surface — a deliberate degrade (OpenCode itself keeps running), never
-  # a hard container failure.
+  # ── LAN-exposure warning ─────────────────────────────────────────────────
+  # When OpenCode is bound off loopback and auth is disabled, warn loudly but
+  # keep the UI available. Exposure policy is an operator decision; silently
+  # removing the configured UI is not an acceptable substitute for that warning.
   local assistant_bind_address="${OP_ASSISTANT_BIND_ADDRESS:-${OP_BIND_ADDRESS:-127.0.0.1}}"
   rm -f /tmp/openpalm-ui-skip
   if ! is_loopback_address "$assistant_bind_address" && ! opencode_auth_enabled; then
-    echo "WARNING: OP_ASSISTANT_BIND_ADDRESS/OP_BIND_ADDRESS=${assistant_bind_address} exposes OpenCode beyond loopback while OPENCODE_AUTH=${OPENCODE_AUTH:-false} leaves it unauthenticated." >&2
-    echo "WARNING: refusing to start the unauthenticated UI co-process — set OPENCODE_AUTH=true (with real OpenCode credentials) before exposing this stack beyond loopback." >&2
-    : > /tmp/openpalm-ui-skip
-    return 0
+    echo "WARNING: OP_ASSISTANT_BIND_ADDRESS/OP_BIND_ADDRESS=${assistant_bind_address} exposes OpenCode beyond loopback while OPENCODE_AUTH=${OPENCODE_AUTH:-false} leaves it unauthenticated; the UI will still start. Set OPENCODE_AUTH=true with real credentials unless open LAN access is intentional." >&2
   fi
 
   local ui_pkg="/opt/openpalm/ui/node_modules/@openpalm/ui"
@@ -236,14 +229,14 @@ start_ui() {
   # /runtime-config.json (packages/ui connections/store.ts loadRuntimeConfig)
   # resolves here. It seeds the connection store with ONE locked default
   # connection: the assistant's OpenCode as published on the HOST — compose maps
-  # ${OP_ASSISTANT_PORT:-3800} -> in-container 4096, and the in-container :4096
+  # ${OP_ASSISTANT_PORT:-3810} -> in-container 4096, and the in-container :4096
   # is unreachable from a browser. Non-default topologies override the full URL
   # via OP_UI_DEFAULT_ASSISTANT_URL. JSON is emitted via node (present in the
   # base image) so an unusual URL value can never produce a malformed file. The
   # record shape MUST match the ui store: { id, label, baseUrl, auth }, and
   # id/label MUST equal packages/lib ui-runtime-config.ts's
   # ASSISTANT_LOCKED_CONNECTION_ID / _LABEL.
-  local assistant_url="${OP_UI_DEFAULT_ASSISTANT_URL:-http://127.0.0.1:${OP_ASSISTANT_PORT:-3800}}"
+  local assistant_url="${OP_UI_DEFAULT_ASSISTANT_URL:-http://127.0.0.1:${OP_ASSISTANT_PORT:-3810}}"
   mkdir -p "$ui_client_dir"
   node -e '
     const fs = require("fs");
@@ -580,7 +573,7 @@ start_opencode() {
   # preflight. Ship the loopback UI origins by default; operators add exact
   # comma-separated origins (a LAN host, a reverse proxy) via
   # OP_UI_CORS_ALLOWED_ORIGINS. EXPLICIT ORIGINS ONLY — never a wildcard.
-  local ui_host_port="${OP_UI_HOST_PORT:-${OP_UI_PORT:-3810}}"
+  local ui_host_port="${OP_UI_HOST_PORT:-${OP_UI_PORT:-3800}}"
   local cors_origins=(
     "http://127.0.0.1:${ui_host_port}"
     "http://localhost:${ui_host_port}"

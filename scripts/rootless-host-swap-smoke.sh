@@ -58,7 +58,7 @@ PLATFORM_VERSION="$(smoke_platform_version)"
 
 smoke_copy_skeleton "$SWAP_HOME"
 smoke_write_stack_env "$SWAP_HOME" "$PLATFORM_VERSION" \
-  3996 3990 3991 3992 3993
+  3996 3997 3990 3991 3992 3993
 printf 'OP_ENABLED_ADDONS=%s\n' 'chat' >> "$SWAP_HOME/state/stack.state.env"
 smoke_seed_secrets "$SWAP_HOME" 'swap-smoke-password'
 

@@ -36,7 +36,7 @@ function assertDefined<T>(value: T | undefined | null): asserts value is T {
 }
 
 function makeAssistantAdvert(): MdnsAdvertisement {
-  return { service: "assistant", name: "openpalm.local", port: 3800, addresses: ["192.168.1.20"] };
+  return { service: "assistant", name: "openpalm.local", port: 3810, addresses: ["192.168.1.20"] };
 }
 function makeGuardianAdvert(): MdnsAdvertisement {
   return { service: "guardian", name: "openpalm-guardian.local", port: 3830, addresses: ["192.168.1.20"] };
@@ -180,7 +180,7 @@ describe("resolveMdnsAdvertisements", () => {
   test("OP_ASSISTANT_BIND_ADDRESS=0.0.0.0 advertises the assistant name only", () => {
     const adverts = resolveMdnsAdvertisements({ OP_ASSISTANT_BIND_ADDRESS: "0.0.0.0" }, HOST_IPV4);
     expect(adverts).toEqual([
-      { service: "assistant", name: "openpalm.local", port: 3800, addresses: HOST_IPV4 },
+      { service: "assistant", name: "openpalm.local", port: 3810, addresses: HOST_IPV4 },
     ]);
   });
 
@@ -239,7 +239,7 @@ describe("resolveMdnsAdvertisements", () => {
   test("a specific IPv4 bind is advertised with that exact address", () => {
     const adverts = resolveMdnsAdvertisements({ OP_ASSISTANT_BIND_ADDRESS: "192.168.1.7" }, HOST_IPV4);
     expect(adverts).toEqual([
-      { service: "assistant", name: "openpalm.local", port: 3800, addresses: ["192.168.1.7"] },
+      { service: "assistant", name: "openpalm.local", port: 3810, addresses: ["192.168.1.7"] },
     ]);
   });
 
@@ -249,7 +249,7 @@ describe("resolveMdnsAdvertisements", () => {
       ["192.168.1.20", "fe80::1", "not-an-ip"],
     );
     expect(adverts).toEqual([
-      { service: "assistant", name: "openpalm.local", port: 3800, addresses: ["192.168.1.20"] },
+      { service: "assistant", name: "openpalm.local", port: 3810, addresses: ["192.168.1.20"] },
     ]);
   });
 });
@@ -258,7 +258,7 @@ describe("resolveMdnsStatus", () => {
   test("reports names/ports with advertised flags", () => {
     const status = resolveMdnsStatus({});
     expect(status).toEqual({
-      assistant: { name: "openpalm.local", port: 3800, advertised: false },
+      assistant: { name: "openpalm.local", port: 3810, advertised: false },
       guardian: { name: "openpalm-guardian.local", port: 3830, advertised: false },
     });
   });

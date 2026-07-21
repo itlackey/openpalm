@@ -113,7 +113,7 @@ export const POST: RequestHandler = async () => {
   const configuredUrl =
     process.env.OP_OPENCODE_URL ??
     process.env.OP_ASSISTANT_URL ??
-    `http://127.0.0.1:${process.env.OP_ASSISTANT_PORT ?? '3800'}`;
+    `http://127.0.0.1:${process.env.OP_ASSISTANT_PORT ?? '3810'}`;
 
   if (await checkReachable(configuredUrl)) {
     return json({ ok: true, url: configuredUrl, started: false });

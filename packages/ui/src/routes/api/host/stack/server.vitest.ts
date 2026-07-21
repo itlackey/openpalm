@@ -222,7 +222,7 @@ describe('GET/PUT /api/host/stack — mdns surface (#488)', () => {
     expect(res.status).toBe(200);
     const body = (await res.json()) as Record<string, unknown>;
     expect(body.mdns).toEqual({
-      assistant: { name: 'openpalm.local', port: 3800, advertised: false },
+      assistant: { name: 'openpalm.local', port: 3810, advertised: false },
       guardian: { name: 'openpalm-guardian.local', port: 3830, advertised: false },
     });
   });
@@ -234,7 +234,7 @@ describe('GET/PUT /api/host/stack — mdns surface (#488)', () => {
     expect(putRes.status).toBe(200);
     const putBody = (await putRes.json()) as Record<string, unknown>;
     expect(putBody.mdns).toEqual({
-      assistant: { name: 'openpalm.local', port: 3800, advertised: true },
+      assistant: { name: 'openpalm.local', port: 3810, advertised: true },
       guardian: { name: 'openpalm-guardian.local', port: 3830, advertised: false },
     });
 
