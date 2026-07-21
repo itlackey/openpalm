@@ -324,10 +324,13 @@ A12's invisible hover washes on light paper).
    the hygiene test's ratchet.
 6. **Phase 5 — Track D** (L, incremental): component consolidation, one
    pattern at a time; each extraction is its own reviewable change. The
-   normal-mode slice of this track (wizard RadioRow/toggle adoption, the
-   connections restyle, chat empty state) is owned by **#506** (rev 2),
-   which folds each file's Track A fixes into the same pass — don't
-   double-schedule those surfaces here.
+   *design* dimension of this track is owned by **#506** (rev 3: unify the
+   entire UI on a single chat-first Stillness language): for each pattern
+   it picks the winning design (chat-first, best-of-breed absorbed from
+   wizard/host/settings), refines it once in ui-kit, adopts it across all
+   surfaces, and deletes the losers — folding each file's Track A fixes
+   into the same pass. This plan stays the mechanical-correctness layer;
+   don't double-schedule the same surfaces here.
 7. **Phase 6 — D6** (L): move the shared utility layer into ui-kit;
    Panel/FormField/SecretSelect become self-contained; enable H4.
 

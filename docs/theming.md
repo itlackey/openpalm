@@ -167,6 +167,10 @@ only, ≤ 1 MB.
 
 ## For contributors
 
+- The UI is converging on a single chat-first Stillness design language
+  (#506): per-pattern design decisions (which implementation won, what was
+  absorbed from other surfaces, what was deleted) are logged in this
+  section as they're made.
 - Token changes land in `packages/ui-kit`; keep `theme-tokens.test.ts` and
   `svelte-check` green.
 - Consume `var(--s-*)` anchors or `color-mix()` tints — never hardcode a
