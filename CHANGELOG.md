@@ -16,7 +16,15 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   navigations are never intercepted. The manifest, worker, and icons are
   reachable before login/setup (same exemption as `/health`) so install
   prompts work pre-auth. Connection management and settings at
-  `/connections` work client-side in the installed app unchanged.
+  `/connections` work client-side in the installed app unchanged. In a
+  client-only deployment (non-admin process, no local install, no login
+  password configured — e.g. a hosted PWA origin) the usage routes are
+  served without the login wall, which would otherwise dead-end the app
+  (login 503s with no password); every other lane keeps the wall, and all
+  `/api` routes keep their own auth. A fresh install launching at `/chat`
+  with an empty browser connection store lands on `/connections/new` (after
+  local auto-discovery gets its chance) instead of a synthetic unreachable
+  default connection.
 
 - **Local assistant auto-discovery for the connections list.** After the
   browser-owned connection list loads, the UI probes the well-known local

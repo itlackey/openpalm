@@ -266,7 +266,23 @@ export const handle: Handle = async ({ event, resolve }) => {
     }
   }
 
-  if (wantsHtml && !event.locals.role && !isSetupPath && !isAuthPath && !isPwaAssetPath) {
+  // ── Client-only public lane (PR #571 review P1, #511): a non-admin process
+  // with no local install and no login password configured — e.g. a hosted
+  // PWA origin serving the browser-owned client — has nothing behind the
+  // login wall: connections and their credentials live in the browser,
+  // host:* capabilities don't exist in this process, and every /api/host/*
+  // and /api/assistant/* route enforces its own auth. Redirecting would
+  // dead-end the installed app, because /login POSTs 503 when no password
+  // exists. The usage routes stay public in exactly this lane; every other
+  // lane (admin-capable, any local install present, or a password
+  // configured) keeps the wall unchanged.
+  const clientOnlyPublicUsage =
+    !runtimeContext.admin &&
+    localInstallState === 'not_installed' &&
+    !process.env.OP_UI_LOGIN_PASSWORD &&
+    (path.startsWith('/chat') || path.startsWith('/advanced') || path.startsWith('/connections'));
+
+  if (wantsHtml && !event.locals.role && !isSetupPath && !isAuthPath && !isPwaAssetPath && !clientOnlyPublicUsage) {
     const redirectTo = path + event.url.search;
     redirect(302, `/login?redirectTo=${encodeURIComponent(redirectTo)}`);
   }
