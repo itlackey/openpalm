@@ -37,7 +37,7 @@ const fakeStore = {
 };
 
 let releaseDiscovery: (() => void) | null = null;
-const discoverLocalAssistant = vi.fn(async (_store: unknown) => {
+const discoverLocalAssistant = vi.fn(async () => {
   await new Promise<void>((res) => {
     releaseDiscovery = res;
   });
@@ -53,7 +53,9 @@ vi.mock('./connections/store.js', () => ({
   loadRuntimeConfig: vi.fn(async () => null),
 }));
 vi.mock('./connections/discovery.js', () => ({
-  discoverLocalAssistant: (store: unknown) => discoverLocalAssistant(store),
+  // The real signature takes the store; the stub ignores it, so the wrapper
+  // drops the argument to keep the typed vi.fn zero-arg.
+  discoverLocalAssistant: () => discoverLocalAssistant(),
 }));
 vi.mock('./connection-events.js', () => ({
   activationBlockReason: () => null,
