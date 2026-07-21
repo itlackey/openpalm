@@ -67,14 +67,14 @@ natural checkpoint boundaries.
 
 ### Phase 2 — Guardian transport & LAN identity (M+M)
 
-3. **#435 — mTLS adapter transport identity.** Builds on #433's migrations.
-   Design note first (Bun.serve peer-cert constraint: handshake-level identity
-   vs cert-fingerprint→principal mapping), then `GUARDIAN_TLS_CERT_FILE` /
-   `GUARDIAN_TLS_KEY_FILE` / `GUARDIAN_MTLS_CA_FILE` config (fail-closed
-   parsing, default entirely off), wired to the direct listener only; compose
-   secret mounts; subprocess integration tests with a throwaway CA; posture-doc
-   updates (`security-posture-doc-drift.test.ts` must stay green). Seams
-   (AuthStrategy/PolicyProvider) already shipped — verify-and-close.
+3. **#435 — mTLS adapter transport identity.** _DE-SCOPED 2026-07-21 —
+   issue closed as not planned._ The mTLS passthrough built for this task was
+   removed after the PR #564 review (`d105fa7`); TLS/mTLS is delegated to
+   operator infrastructure per `docs/remote-access-tls.md`. The
+   PolicyProvider seam was removed as unwired dead code (`904db50`). Only the
+   Basic-auth `authenticate() → Principal` seam ships. The `assessments/435.md`
+   and `specs/435.md` briefs (and review-564 c5/c6 findings) described the
+   pre-revert state and have been deleted.
 4. **#488 — mDNS self-advertisement.** New `packages/lib/src/control-plane/mdns-responder.ts`
    (node:dgram, pure encode/decode functions unit-tested without sockets),
    hosted in the HOST control-plane process (the guardian container cannot
