@@ -323,7 +323,11 @@ A12's invisible hover washes on light paper).
 5. **Phase 4 — Tracks E + F + G** (M): mechanical tokenization sweeps behind
    the hygiene test's ratchet.
 6. **Phase 5 — Track D** (L, incremental): component consolidation, one
-   pattern at a time; each extraction is its own reviewable change.
+   pattern at a time; each extraction is its own reviewable change. The
+   normal-mode slice of this track (wizard RadioRow/toggle adoption, the
+   connections restyle, chat empty state) is owned by **#506** (rev 2),
+   which folds each file's Track A fixes into the same pass — don't
+   double-schedule those surfaces here.
 7. **Phase 6 — D6** (L): move the shared utility layer into ui-kit;
    Panel/FormField/SecretSelect become self-contained; enable H4.
 
