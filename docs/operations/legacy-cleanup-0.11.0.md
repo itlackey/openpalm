@@ -1,5 +1,9 @@
 # Legacy Cleanup Tracking — pre-0.11.0 Artifacts
 
+> HISTORICAL: shipped in 0.12.0; kept as a design record. Current behavior is
+> authoritative in
+> [`core-principles.md`](../technical/core-principles.md).
+
 **Status:** Findings captured 2026-06-02. No fixes applied yet — this is a tracking checklist.
 **Method:** Four parallel read-only review agents (app source, compose/infra, docs, scripts/CI), findings cross-corroborated and spot-verified against the working tree.
 **Scope:** Residue from the pre-0.11.0 Docker-based "admin container" architecture and other pre-0.11.0 concepts (capabilities, vault, mem0, registry catalog).

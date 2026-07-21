@@ -105,8 +105,11 @@ class ConnectionsService {
       if (!this.discoveryStarted) {
         this.discoveryStarted = true;
         // Fire-and-forget: the probe can take up to its timeout when nothing
-        // is listening, and boot must not wait on it.
-        void this.discoverLocal();
+        // is listening, and boot must not wait on it. The settled promise is
+        // kept so localDiscoverySettled() callers CAN wait when they need
+        // the final "no connections at all" verdict (discoverLocal never
+        // rejects — failures are swallowed inside it).
+        this.discoverySettled = this.discoverLocal();
       }
     } catch (e) {
       const err = e as { message?: string; status?: number };
@@ -118,6 +121,19 @@ class ConnectionsService {
 
   /** Localhost auto-discovery runs at most once per browsing session. */
   private discoveryStarted = false;
+
+  /** The once-per-session discovery run, kept for localDiscoverySettled(). */
+  private discoverySettled: Promise<void> | null = null;
+
+  /**
+   * Settles when the once-per-session local discovery has finished; resolves
+   * immediately when it never started (or load() hasn't run). Lets the chat
+   * landing (PR #571 review P2, #511) declare "no connections at all" only
+   * after discovery had its chance to add a reachable local assistant.
+   */
+  async localDiscoverySettled(): Promise<void> {
+    await this.discoverySettled;
+  }
 
   /**
    * Probe the well-known local assistant endpoints and, when one is

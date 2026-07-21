@@ -1,5 +1,8 @@
 # Implementation Plan: Host ↔ Assistant AKM Integration
 
+> HISTORICAL: shipped in 0.12.0; kept as a design record. Current behavior is
+> authoritative in [`core-principles.md`](./core-principles.md).
+
 **Status:** Ready to build
 **Date:** 2026-06-03
 **Companion design doc:** [`akm-host-assistant-integration-proposal.md`](./akm-host-assistant-integration-proposal.md)

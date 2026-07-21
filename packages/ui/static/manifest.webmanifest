@@ -1,0 +1,28 @@
+{
+  "name": "OpenPalm",
+  "short_name": "OpenPalm",
+  "description": "OpenPalm — chat with your assistant and manage connections, installed as an app.",
+  "start_url": "/chat",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#E5E1D5",
+  "theme_color": "#E5E1D5",
+  "icons": [
+    {
+      "src": "/pwa-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/pwa-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    },
+    {
+      "src": "/maskable-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}

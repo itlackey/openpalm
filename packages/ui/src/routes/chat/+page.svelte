@@ -282,6 +282,20 @@
 			// the load (no busy-wait on the reactive flags).
 			await endpointsService.load();
 			if (resolutionId !== routeResolutionId) return;
+			if (endpointsService.endpoints.length === 0) {
+				// PR #571 review P2 (#511): a fresh install launching at /chat (the
+				// PWA start_url) with an empty browser connection store must land on
+				// the add-connection flow, not on the synthetic unreachable 'default'
+				// below. Local discovery gets its chance first, so a machine with a
+				// healthy local assistant still lands in chat.
+				await endpointsService.localDiscoverySettled();
+				if (resolutionId !== routeResolutionId) return;
+				if (endpointsService.endpoints.length === 0) {
+					// eslint-disable-next-line svelte/no-navigation-without-resolve -- static internal route
+					await goto('/connections/new', { replaceState: true });
+					return;
+				}
+			}
 			let endpointId =
 				endpointsService.activeId || endpointsService.endpoints[0]?.id || 'default';
 			const requestedAssistantExists =

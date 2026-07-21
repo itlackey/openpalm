@@ -1,10 +1,23 @@
-import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { tmpdir } from 'node:os';
+import type { AddonProfile } from '@openpalm/lib';
 import { resetState, trackDir, cleanupTempDirs } from '$lib/server/test-helpers.js';
 import { getState } from '$lib/server/state.js';
+
+// This suite exercises addon listing/toggling, not host capability probing:
+// annotateAddonProfileAvailability shells out to docker per profile (image
+// inspect, runtime detection), which is absent in some test environments and
+// has blown the 5s test budget on cold CI runners where docker exists but is
+// slow to first-invoke. Everything else in @openpalm/lib stays real.
+vi.mock('@openpalm/lib', async (orig) => ({
+  ...(await orig<typeof import('@openpalm/lib')>()),
+  annotateAddonProfileAvailability: async (profiles: AddonProfile[]) =>
+    profiles.map((p) => ({ ...p, available: true })),
+}));
+
 import { GET, POST } from './+server.js';
 
 function makeTempDir(): string {

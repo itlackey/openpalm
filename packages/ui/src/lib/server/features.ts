@@ -36,6 +36,9 @@ const BASE_CAPABILITIES: readonly Capability[] = [
   'connections:switch',
   'assistant-settings:read',
   'assistant-settings:write',
+  // #511: backed for real now — every build ships static/manifest.webmanifest
+  // + icons (linked from app.html) and src/service-worker.ts, so this claim
+  // is no longer advertised ahead of the assets that make it true.
   'pwa:install',
 ];
 

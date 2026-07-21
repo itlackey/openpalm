@@ -1,5 +1,8 @@
 # Proposal: Host ↔ Assistant AKM Stash Integration
 
+> HISTORICAL: shipped in 0.12.0; kept as a design record. Current behavior is
+> authoritative in [`core-principles.md`](./core-principles.md).
+
 **Status:** Draft for review
 **Date:** 2026-06-03
 **Scope:** How the host machine's `akm` instance and the assistant container's `akm`

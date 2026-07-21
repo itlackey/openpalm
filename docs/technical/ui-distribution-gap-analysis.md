@@ -1,5 +1,9 @@
 # UI Distribution & Auto-Update — Gap Analysis
 
+> HISTORICAL: shipped in 0.12.0; kept as a design record. Written against the
+> pre-One-UI Electron-shell + SvelteKit split; current behavior is
+> authoritative in [`architecture.md`](./architecture.md).
+
 **Date:** 2026-06-04
 **Scope:** OpenPalm's Electron-shell + SvelteKit (`adapter-node`) UI distribution and update path, measured against the "Simplified SvelteKit Node Updater Plan."
 

@@ -1,5 +1,10 @@
 # Independently Versioning the SvelteKit UI from the Electron Harness
 
+> HISTORICAL: shipped in 0.12.0; kept as a design record. Current behavior is
+> authoritative in [`release-architecture.md`](./release-architecture.md) (the
+> `platform` vs `electron` release units) and
+> [`architecture.md`](./architecture.md) for the post-One-UI app model.
+
 **Date:** 2026-06-04
 **Question:** (1) How can the SvelteKit UI carry its own version line, decoupled from the Electron app/platform version? (2) Is distributing the UI build as an **npm package** a good pattern?
 
