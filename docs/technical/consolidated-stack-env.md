@@ -1,5 +1,9 @@
 # Design: consolidate stack composition + versions into `stack.env`; drop `stack.yml`
 
+> HISTORICAL: shipped in 0.12.0; kept as a design record. Current behavior is
+> authoritative in
+> [`environment-and-mounts.md`](./environment-and-mounts.md).
+
 **Status:** IMPLEMENTED in 0.11.0 (#441) — `stack.yml` removed; addon enablement
 is `OP_ENABLED_ADDONS` in `stack.env`; the 0.10→0.11 migration harness converts
 legacy `addons[]`. Image-baked tool versions remain a follow-up (see Out of scope).

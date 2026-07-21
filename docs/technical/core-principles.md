@@ -244,7 +244,7 @@ The Electron desktop app is a **thin native harness**, not a copy of the control
 - **Self-update-vs-redownload gate.** A published `@openpalm/ui` build declares `minHarnessContract`. The harness self-updates only when `minHarnessContract ≤ HARNESS_CONTRACT_VERSION`; otherwise it refuses the pull and prompts a re-download (running newer-UI-on-older-harness fails at runtime).
 - **Harness-contract discipline.** When you change anything in the §5.1 surface (see `harness-contract.ts`), bump `HARNESS_CONTRACT_VERSION` **and** update the `HARNESS_CONTRACT` description in the same change. A snapshot test fails CI until the bump is intentional — it enforces that a change was *noticed*, not that the bump is semantically right; that judgement is the contributor's.
 
-Full rationale and the file-level history live in [`electron-thin-harness-design.md`](./electron-thin-harness-design.md) and the deployment/upgrade UX findings in [`deployment-upgrade-ux-review.md`](./deployment-upgrade-ux-review.md).
+Full rationale and the file-level history live in [`electron-thin-harness-design.md`](./electron-thin-harness-design.md) (historical design record — the hard rules above are the current authority) and the deployment/upgrade UX findings in [`deployment-upgrade-ux-review.md`](./deployment-upgrade-ux-review.md) (historical; current install/update behavior is authoritative in [`install-update-constitution.md`](./install-update-constitution.md)).
 
 ---
 

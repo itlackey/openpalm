@@ -1,5 +1,8 @@
 # Proposals: Simplify AKM Host Sharing, Skeleton Reseed, and UI/AppImage Delivery
 
+> HISTORICAL: shipped in 0.12.0; kept as a design record. Current behavior is
+> authoritative in [`core-principles.md`](./core-principles.md).
+
 **Status:** APPROVED — implementing (D1 agreed, D5 agreed-for-now with forward-compat)
 **Date:** 2026-06-03
 

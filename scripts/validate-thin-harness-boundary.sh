@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # validate-thin-harness-boundary.sh — CI guard for the Electron thin-harness boundary.
 #
-# Enforces the architectural invariant from
-# docs/technical/electron-thin-harness-design.md (§6.1, §6.6):
+# Enforces the architectural invariant that the Electron desktop app is a thin,
+# frozen native harness and never a copy of the mutating control plane:
 #
 #   (a) packages/electron/dist/main.js (the frozen asar harness) contains ZERO
 #       trace of the mutating control-plane lifecycle engine. The harness is
@@ -31,6 +31,10 @@
 # Paths are overridable via THBOUNDARY_* env vars so the check logic can be
 # exercised against fixtures in scripts/validate-thin-harness-boundary.test.ts
 # without a full build round-trip.
+#
+# Historical design record (shipped in 0.12.0, not a live spec — this script's
+# comments are the current, self-contained source of truth for the invariant):
+# docs/technical/electron-thin-harness-design.md.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -43,12 +47,17 @@ ELECTRON_SRC_DIR="${THBOUNDARY_ELECTRON_SRC_DIR:-packages/electron/src}"
 # The stack-update sentinel for the frozen harness bundle (see (a) above).
 MUTATION_SENTINEL="performUpgrade"
 
-# The ONLY @openpalm/lib symbols packages/electron/src may import (design §2.1
-# bootstrap allowlist, extended in 0.12.0 with PLATFORM_VERSION + the Docker
-# preflight probes §6.5/§5, in Phase 4 with checkAndUpdateSkeleton for skeleton
-# self-update bootstrap, and covering update-check.ts's pure version-compare
-# helpers now that the scan is repo-wide instead of main.ts-only).
-# waitForReady + restoreUiBackup are the shared UI-supervisor primitives (§6.2/§6.3):
+# The ONLY @openpalm/lib symbols packages/electron/src may import — the bootstrap
+# allowlist. The harness may resolve paths, seed on-disk assets (UI build,
+# skeleton), check/download an updated UI build or skeleton, parse env files,
+# report the platform version, and probe Docker availability. It may NEVER
+# import a symbol that mutates control-plane state or runs a migration — that
+# code must live only in the updatable data/ui control plane. This list grew
+# over time (PLATFORM_VERSION + the Docker preflight probes checkDocker/
+# checkDockerCompose, checkAndUpdateSkeleton for skeleton self-update bootstrap,
+# and update-check.ts's pure version-compare helpers, now that the scan is
+# repo-wide instead of main.ts-only).
+# waitForReady + restoreUiBackup are the shared UI-supervisor primitives:
 # waiting on the spawned UI's /health, and rolling back a failed checkAndUpdateUiBuild
 # swap. Both are bootstrap/ui-build-lifecycle only — neither runs an upgrade/migration.
 ALLOWED_IMPORTS=(
@@ -65,7 +74,7 @@ ALLOWED_IMPORTS=(
   PLATFORM_VERSION
   checkDocker
   checkDockerCompose
-  # UI-server supervisor family (design §6.2 / §4.4): bootstrap-only lifecycle
+  # UI-server supervisor family: bootstrap-only lifecycle
   # helpers for the UI child — poll /health, restore the prior data/ui backup on
   # a failed restart, and the shared UiSupervisor state machine (spawn → ready,
   # SIGUSR2/IPC restart → kill/respawn/restore). They run the UI child; they do

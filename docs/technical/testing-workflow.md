@@ -133,6 +133,75 @@ Same as T5 but additionally enables LLM tests and enforces no-skip policy. Every
 
 ---
 
+## Stack-in-Isolation (Manual Setup)
+
+`test:t5`/`test:t6` drive the stack for you. When you need finer control — e.g.
+reproducing a stack-test failure by hand, or running against a hand-built
+`.dev-test/` tree instead of `.dev/` — start the stack manually on isolated
+ports so it never conflicts with a production instance on the same machine.
+
+**Port Isolation:**
+
+| Service | Production defaults | Dev/test ports (`dev-setup.sh`) |
+|---|---|---|
+| Admin UI (host process) | `3880` | `9100` |
+| Assistant (OpenCode) | `3800` → container `4096` | `4800` → container `4096` |
+| Guardian | network-only | network-only |
+
+`dev-setup.sh --seed-env` seeds `.dev/knowledge/env/stack.env` with the dev/test ports. `global-setup.ts` reads that file before tests run and auto-constructs `ADMIN_URL` and `ASSISTANT_URL`, so tests automatically target the correct stack with no extra env vars needed.
+
+Tests read port configuration in this priority order:
+1. Explicit env vars (`ADMIN_URL`, `ASSISTANT_URL`)
+2. `STACK_ENV_PATH` — path to a `stack.env`; `global-setup.ts` builds `ADMIN_URL`/`ASSISTANT_URL` from `OP_HOST_UI_PORT`/`OP_ASSISTANT_PORT` found there
+3. Hardcoded test defaults: 9100 / 4800 (match dev-setup.sh)
+
+**Seed a test `.dev-test/` directory:**
+
+```bash
+mkdir -p .dev-test/config/stack
+mkdir -m 700 -p .dev-test/knowledge/secrets
+cat > .dev-test/knowledge/env/stack.env <<'EOF'
+OP_HOME=.dev-test
+OP_UID=$(id -u)
+OP_GID=$(id -g)
+OP_DOCKER_SOCK=/var/run/docker.sock
+OP_IMAGE_NAMESPACE=openpalm
+OP_IMAGE_TAG=dev
+OP_ASSISTANT_PORT=4800
+OP_HOST_UI_PORT=9100
+OP_SETUP_COMPLETE=true
+EOF
+chmod 600 .dev-test/knowledge/env/stack.env
+printf '%s\n' 'dev-admin-token' > .dev-test/knowledge/secrets/op_ui_login_password
+chmod 600 .dev-test/knowledge/secrets/op_ui_login_password
+```
+
+Or use the dev-setup script (which seeds `.dev/` with dev ports) and manually adjust ports, or start the compose stack with explicit port env vars.
+
+**Start the Docker stack (assistant + guardian):**
+
+Managed compose files live under `.dev/system/stack/`; `.dev/config/stack/`
+contains only the user-owned `custom.compose.yml` overlay.
+
+```bash
+bun run dev:build
+# or with test ports:
+OP_ASSISTANT_PORT=4800 \
+docker compose --project-directory . \
+  -f .dev/system/stack/core.compose.yml \
+  -f .dev/system/stack/services.compose.yml \
+  -f .dev/system/stack/portals.compose.yml \
+  -f .dev/config/stack/custom.compose.yml \
+  -f compose.dev.yml \
+  --env-file .dev/knowledge/env/stack.env \
+  --project-name openpalm-test \
+  up -d
+```
+
+Verify: `docker ps | grep openpalm-test` should show assistant (healthy) and guardian. From there, start the admin UI host process (`OP_HOME=.dev-test PORT=9100 npm run preview` from `packages/ui`) and point `ADMIN_URL`/`ASSISTANT_URL` at the ports above.
+
+---
+
 ## Quick Reference
 
 | Tier | Time | Command | Coverage |

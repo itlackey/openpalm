@@ -1,5 +1,9 @@
 # Electron Thin-Harness Design
 
+> HISTORICAL: shipped in 0.12.0; kept as a design record. Current behavior is
+> authoritative in [`core-principles.md`](./core-principles.md) (§ Thin-harness
+> boundary (Electron) and harness-contract discipline).
+
 > Tracking issue: [#495](https://github.com/itlackey/openpalm/issues/495)
 > Status: **implemented in 0.12.0** (§6.1–§6.7 landed; CI guard
 > `scripts/validate-thin-harness-boundary.sh` pins the boundary). Companion
@@ -15,9 +19,9 @@
 > `@openpalm/lib` into the prod UI build; and `cli/src/lib/ui-server.ts` indeed never calls
 > `checkAndUpdateUiBuild` (§6.3). One correction applied (Risk #6): upgrades **already** refresh compose/stack
 > assets remotely by version via `refreshCoreAssets` — see the inline correction there.
-> Companion review: [`deployment-upgrade-ux-review.md`](./deployment-upgrade-ux-review.md) — read that for the
-> upgrade/migration UX findings (P0 host-vs-target guard #492, desktop Docker gap, channel semantics). This
-> document does not duplicate those findings; it references them where the harness interacts.
+> Companion review (also historical): [`deployment-upgrade-ux-review.md`](./deployment-upgrade-ux-review.md) —
+> read that for the upgrade/migration UX findings (P0 host-vs-target guard #492, desktop Docker gap, channel
+> semantics). This document does not duplicate those findings; it references them where the harness interacts.
 > Authority: [`core-principles.md`](./core-principles.md) governs (never overwrite/delete user files;
 > migrations are copy-only; control-plane logic lives only in `@openpalm/lib`).
 

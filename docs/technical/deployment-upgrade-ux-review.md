@@ -1,5 +1,9 @@
 # Deployment / Upgrade / Migration UX Review
 
+> HISTORICAL: shipped in 0.12.0; kept as a design record. Current behavior is
+> authoritative in
+> [`install-update-constitution.md`](./install-update-constitution.md).
+
 **Scope:** install · update · migrate · version-management across all four host surfaces —
 Electron desktop app, web/admin UI, CLI, and the shared `@openpalm/lib` control plane.
 **Branch:** `release/0.12.0` · **Version of record:** `0.12.0-rc.1` (all four packages pinned, verified
