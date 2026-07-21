@@ -87,6 +87,19 @@ loadProcessEnv();
 // Paths exempt from the setup guard (setup UI itself + health probes)
 const SETUP_PATHS = ["/setup", "/api/setup", "/health", "/guardian/health"];
 
+// Static PWA assets (#511) — must be servable pre-auth and regardless of
+// setup state so a browser can discover installability (fetch the
+// manifest + icons), and so the service worker can register, before the
+// user has ever logged in or finished setup. Same treatment as /health:
+// never redirected to /setup, the resolved landing, or /login.
+const PWA_ASSET_PATHS = [
+  "/manifest.webmanifest",
+  "/service-worker.js",
+  "/pwa-192x192.png",
+  "/pwa-512x512.png",
+  "/maskable-512x512.png",
+];
+
 // ── SEC-3: Security headers (XSS / clickjacking / MIME-sniffing) ─────────
 // The main CSP is emitted by SvelteKit itself via `kit.csp` in
 // svelte.config.js — `mode: 'hash'` auto-hashes the inline hydration scripts
@@ -126,6 +139,7 @@ export const handle: Handle = async ({ event, resolve }) => {
 
   const path = event.url.pathname;
   const isAuthPath = path === "/login" || path.startsWith("/login/");
+  const isPwaAssetPath = PWA_ASSET_PATHS.includes(path);
   const wantsHtml =
     event.request.method === "GET" &&
     (event.request.headers.get("accept") ?? "").includes("text/html");
@@ -159,6 +173,7 @@ export const handle: Handle = async ({ event, resolve }) => {
     localInstallState !== 'not_installed' &&
     !isSetupPath &&
     !isAuthPath &&
+    !isPwaAssetPath &&
     !path.startsWith('/admin')
   ) {
     redirect(302, '/setup');
@@ -191,7 +206,7 @@ export const handle: Handle = async ({ event, resolve }) => {
   // resolveRequestLanding() cost (a docker `compose ps` + target probe on
   // launch-cache miss) for the non-navigation traffic that can't be redirected
   // anyway.
-  if (!isSetupPath && wantsHtml) {
+  if (!isSetupPath && !isPwaAssetPath && wantsHtml) {
     const landing = await resolveRequestLanding(event);
     const [landingPath] = landing.split('?');
     const usageRoute = path.startsWith('/chat') || path.startsWith('/advanced')
@@ -251,7 +266,7 @@ export const handle: Handle = async ({ event, resolve }) => {
     }
   }
 
-  if (wantsHtml && !event.locals.role && !isSetupPath && !isAuthPath) {
+  if (wantsHtml && !event.locals.role && !isSetupPath && !isAuthPath && !isPwaAssetPath) {
     const redirectTo = path + event.url.search;
     redirect(302, `/login?redirectTo=${encodeURIComponent(redirectTo)}`);
   }

@@ -21,9 +21,16 @@ everywhere it runs and is only ever *more* capable when launched as an admin
 process (below).
 
 > **PWA install status:** the origin-portable build is what makes a PWA install
-> possible, and mobile "Add to Home Screen" already works. A full installable
-> PWA (a shipped `manifest.webmanifest` with square/maskable icons, and any
-> offline service worker) is a deliberately-deferred enhancement — not yet wired.
+> possible. A basic installable PWA now ships (#511): a `manifest.webmanifest`
+> with square + maskable icons (`packages/ui/static/`) is linked from
+> `app.html`, and a SvelteKit-native service worker
+> (`packages/ui/src/service-worker.ts`) precaches the build output and static
+> assets. Offline support is intentionally minimal — a static-shell cache for
+> the app chrome/assets, not full offline: every `/api/*` route (including SSE
+> streams), `/login`, `/voice/*`, and every page navigation stay network-only
+> so auth and streaming are never served stale from the cache. Richer offline
+> behavior (queued actions, offline chat history) remains a deferred
+> enhancement.
 
 ## The UI is a self-contained browser app
 
