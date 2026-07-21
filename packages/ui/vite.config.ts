@@ -3,7 +3,7 @@
 // avoids a known Bun-workspaces issue where vitest installs with different
 // optional peer deps in different workspaces produce incompatible type
 // universes for `defineConfig`'s `Vitest` generic.
-import { defineConfig, loadEnv } from "vite";
+import { defineConfig, loadEnv, type Plugin } from "vite";
 import { playwright } from "@vitest/browser-playwright";
 import devtoolsJson from "vite-plugin-devtools-json";
 import { sveltekit } from "@sveltejs/kit/vite";
@@ -16,6 +16,26 @@ const PATH_KEYS = new Set([
   "OP_HOME",
   "OP_WORK_DIR"
 ]);
+
+/**
+ * Backport vitest-dev/vitest#10355 while stable Vitest 4 still applies its
+ * browser-only dynamic-import wrapper to Vite's SSR environment. Restricting
+ * that plugin to `client` is the upstream fix; it keeps SvelteKit's lazy server
+ * hook import intact instead of calling an undefined browser runner in Node.
+ */
+export function isolateVitestBrowserDynamicImports(): Plugin {
+  return {
+    name: "openpalm:vitest-browser-client-imports",
+    configResolved(config) {
+      const plugin = config.plugins.find(
+        (candidate) => candidate.name === "vitest:browser:esm-injector"
+      );
+      if (plugin && !plugin.applyToEnvironment) {
+        plugin.applyToEnvironment = (environment) => environment.name === "client";
+      }
+    }
+  };
+}
 
 export default defineConfig(({ mode }) => {
   // Load .env from repo root and populate process.env for server-side code.
@@ -37,7 +57,7 @@ export default defineConfig(({ mode }) => {
   // config eval has no Bun shim and shouldn't read secrets.
 
   return {
-    plugins: [sveltekit(), devtoolsJson()],
+    plugins: [sveltekit(), isolateVitestBrowserDynamicImports(), devtoolsJson()],
     envDir: rootDir,
     ssr: {
       // LOAD-BEARING for the npm publish: @openpalm/ui ships `files:["build"]`

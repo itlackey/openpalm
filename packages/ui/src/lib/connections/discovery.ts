@@ -23,7 +23,7 @@
  */
 
 import type { Connection, ConnectionStore } from './store.js';
-import { isLoopbackHost } from './url-policy.js';
+import { hasSameLoopbackPort, isLoopbackHost } from './url-policy.js';
 
 export type DiscoveryCandidate = { baseUrl: string; label: string };
 
@@ -102,9 +102,9 @@ async function probe(baseUrl: string, fetchImpl: typeof globalThis.fetch): Promi
 
 /**
  * Probe the well-known local endpoints and add the first reachable one to
- * `store` as an unlocked connection — unless the list already contains a
- * local (loopback) connection, or the user previously removed a discovered
- * entry. Returns the added connection, or null when nothing was added.
+ * `store` as an unlocked connection — unless the list already contains that
+ * loopback port under any host spelling, or the user previously removed a
+ * discovered entry. Returns the added connection, or null when nothing was added.
  * Never throws: discovery is strictly best-effort.
  */
 export async function discoverLocalAssistant(
@@ -115,22 +115,16 @@ export async function discoverLocalAssistant(
     if (typeof fetchImpl !== 'function') return null;
     if (isLocalDiscoveryDismissed()) return null;
 
-    const hasLocal = async (): Promise<boolean> =>
-      (await store.list()).some((c) => {
-        try {
-          return isLoopbackHost(new URL(c.baseUrl).hostname);
-        } catch {
-          return false;
-        }
-      });
-    if (await hasLocal()) return null;
+    const hasCandidate = async (baseUrl: string): Promise<boolean> =>
+      (await store.list()).some((connection) => hasSameLoopbackPort(connection.baseUrl, baseUrl));
 
     for (const candidate of LOCAL_DISCOVERY_CANDIDATES) {
+      if (await hasCandidate(candidate.baseUrl)) return null;
       if (!(await probe(candidate.baseUrl, fetchImpl))) continue;
       // Re-check right before adding: the probe can take seconds, and the
-      // user may have added a loopback connection (form or pairing code) in
-      // the meantime — don't create a duplicate.
-      if (await hasLocal()) return null;
+      // user may have added this loopback port (form or pairing code) in the
+      // meantime under another host spelling — don't create a duplicate.
+      if (await hasCandidate(candidate.baseUrl)) return null;
       return await store.add({
         label: candidate.label,
         baseUrl: candidate.baseUrl,

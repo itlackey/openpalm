@@ -86,7 +86,7 @@ describe('discoverLocalAssistant', () => {
     expect(await store.list()).toHaveLength(0);
   });
 
-  test('skips discovery when a loopback connection already exists (any spelling)', async () => {
+  test('skips discovery when the same loopback port already exists under another spelling', async () => {
     const store = freshStore();
     await store.add({
       label: 'Seeded default',
@@ -100,6 +100,21 @@ describe('discoverLocalAssistant', () => {
     );
     expect(added).toBeNull();
     expect(await store.list()).toHaveLength(1);
+  });
+
+  test('does not let a connection on another loopback port suppress discovery', async () => {
+    const store = freshStore();
+    await store.add({
+      label: 'Another local service',
+      baseUrl: 'http://localhost:4900',
+      auth: { mode: 'none' },
+    });
+    const added = await discoverLocalAssistant(
+      store,
+      fetchRespondingTo({ 'http://127.0.0.1:3810': 200 })
+    );
+    expect(added?.baseUrl).toBe('http://127.0.0.1:3810');
+    expect(await store.list()).toHaveLength(2);
   });
 
   test('does not skip for remote-only connections', async () => {

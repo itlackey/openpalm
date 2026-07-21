@@ -8,7 +8,26 @@
  * transparent OpenCode proxy now, so there is no path inference to test.
  */
 import { describe, expect, test } from 'vitest';
-import { redactUrlUserinfo, TLS_GUIDE_URL, validateConnectionUrl } from './url-policy.js';
+import {
+  hasSameLoopbackPort,
+  redactUrlUserinfo,
+  TLS_GUIDE_URL,
+  validateConnectionUrl,
+} from './url-policy.js';
+
+describe('hasSameLoopbackPort', () => {
+  test('treats localhost, IPv4, and IPv6 loopback aliases on the same port as equivalent', () => {
+    expect(hasSameLoopbackPort('http://localhost:3810', 'http://127.0.0.1:3810/')).toBe(true);
+    expect(hasSameLoopbackPort('http://[::1]:3810/oc', 'http://localhost:3810')).toBe(true);
+  });
+
+  test('requires matching effective ports and two loopback hosts', () => {
+    expect(hasSameLoopbackPort('http://localhost:3810', 'http://127.0.0.1:3830')).toBe(false);
+    expect(hasSameLoopbackPort('http://localhost', 'http://127.0.0.1:80')).toBe(true);
+    expect(hasSameLoopbackPort('http://localhost:3810', 'http://192.168.1.10:3810')).toBe(false);
+    expect(hasSameLoopbackPort('not a url', 'http://localhost:3810')).toBe(false);
+  });
+});
 
 describe('validateConnectionUrl', () => {
   test('allows an https target from any origin', () => {

@@ -122,6 +122,8 @@ services:
       # *_PASSWORD compose env keys); the entrypoint resolves it for the UI
       # child only. Setup fail-closes before deploy if no password exists.
       OP_UI_LOGIN_PASSWORD_FILE: /run/secrets/ui_login_password
+      # Used only to label the browser's automatically seeded local connection.
+      OP_PROJECT_NAME: ${OP_PROJECT_NAME:-openpalm}
       # Loopback-first bind knobs for the entrypoint's LAN-exposure warning when
       # OpenCode is bound off loopback without authentication. The warning does
       # not suppress the UI co-process.

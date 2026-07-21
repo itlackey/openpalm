@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -16,7 +16,7 @@ describe('ui runtime config', () => {
       connections: [
         {
           id: 'openpalm-assistant-opencode',
-          label: 'This assistant',
+          label: 'Local assistant',
           baseUrl: 'http://127.0.0.1:3800',
           auth: { mode: 'none' },
           isDefault: true,
@@ -26,12 +26,18 @@ describe('ui runtime config', () => {
     });
   });
 
+  test('uses the detected project name as the connection label', () => {
+    expect(buildLockedAssistantRuntimeConfig('http://127.0.0.1:3810', 'splinter').connections[0]?.label).toBe(
+      'splinter',
+    );
+  });
+
   // The lib writer and the container entrypoint's inline JS writer must agree on
   // the locked-connection id/label. Exporting them as named constants lets the
   // container lane pin entrypoint.sh's literal against this value.
   test('exports the locked connection id/label as named constants matching the built connection', () => {
     expect(ASSISTANT_LOCKED_CONNECTION_ID).toBe('openpalm-assistant-opencode');
-    expect(ASSISTANT_LOCKED_CONNECTION_LABEL).toBe('This assistant');
+    expect(ASSISTANT_LOCKED_CONNECTION_LABEL).toBe('Local assistant');
     const built = buildLockedAssistantRuntimeConfig('http://127.0.0.1:3800').connections[0];
     expect(built.id).toBe(ASSISTANT_LOCKED_CONNECTION_ID);
     expect(built.label).toBe(ASSISTANT_LOCKED_CONNECTION_LABEL);
@@ -73,6 +79,22 @@ describe('ui runtime config', () => {
         seedServedUiRuntimeConfig(dir, dir, { OP_UI_DEFAULT_ASSISTANT_URL: 'https://assistant.example' });
         const parsed = JSON.parse(readFileSync(join(dir, 'client', 'runtime-config.json'), 'utf8'));
         expect(parsed.connections[0].baseUrl).toBe('https://assistant.example');
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    });
+
+    test('uses OP_PROJECT_NAME from persisted stack config as the connection label', () => {
+      const dir = mkdtempSync(join(tmpdir(), 'seed-ui-runtime-'));
+      try {
+        const envDir = join(dir, 'knowledge', 'env');
+        mkdirSync(envDir, { recursive: true });
+        writeFileSync(join(envDir, 'stack.env'), 'OP_PROJECT_NAME=splinter\n');
+
+        seedServedUiRuntimeConfig(dir, dir, {});
+
+        const parsed = JSON.parse(readFileSync(join(dir, 'client', 'runtime-config.json'), 'utf8'));
+        expect(parsed.connections[0].label).toBe('splinter');
       } finally {
         rmSync(dir, { recursive: true, force: true });
       }

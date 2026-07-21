@@ -285,6 +285,7 @@ describe("#563 — the preset-managed cascade set matches compose reality (T31, 
       "${OP_UI_BIND_ADDRESS:-${OP_BIND_ADDRESS:-127.0.0.1}}:${OP_UI_PORT:-3810}:3000",
     );
     expect(core.services?.assistant?.environment?.OP_UI_HOST_PORT).toBe("${OP_UI_PORT:-3810}");
+    expect(core.services?.assistant?.environment?.OP_PROJECT_NAME).toBe("${OP_PROJECT_NAME:-openpalm}");
   });
 
   test("chat/api port lines nest their per-service var then OP_BIND_ADDRESS (guardian-container, key-authenticated cascade)", () => {

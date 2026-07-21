@@ -81,7 +81,7 @@ async function withLocationHost<T>(hostname: string, run: () => Promise<T>): Pro
 function seededEntry(overrides: Partial<Connection> = {}): Connection {
   return {
     id: 'seed-local-opencode',
-    label: 'This assistant',
+    label: 'Local assistant',
     baseUrl: 'http://127.0.0.1:4096',
     auth: { mode: 'none' },
     isDefault: true,
@@ -434,6 +434,56 @@ describe('seedFromRuntimeConfig (locked default)', () => {
     await store.seedFromRuntimeConfig({ connections: [seededEntry()] });
     expect(await store.get('conn-user')).toEqual(mine);
     expect((await store.list()).length).toBe(2);
+  });
+
+  test('does not seed a duplicate for an existing loopback alias on the same port', async () => {
+    const { store } = freshStore();
+    const existing = await store.add({
+      id: 'existing-local',
+      label: 'My assistant',
+      baseUrl: 'http://localhost:4096/oc',
+      auth: { mode: 'basic', username: 'carol', secretRef: 'sec_local' },
+    });
+
+    await store.seedFromRuntimeConfig({
+      connections: [seededEntry({ label: 'splinter' })],
+    });
+
+    expect(await store.list()).toEqual([existing]);
+    expect(await store.getActiveId()).toBe(existing.id);
+  });
+
+  test('keeps connections to different loopback ports distinct', async () => {
+    const { store } = freshStore();
+    const existing = await store.add({
+      id: 'other-local',
+      label: 'Other local service',
+      baseUrl: 'http://localhost:4900',
+      auth: { mode: 'none' },
+    });
+
+    await store.seedFromRuntimeConfig({ connections: [seededEntry()] });
+
+    expect(await store.list()).toEqual([existing, seededEntry()]);
+  });
+
+  test('cleans up a persisted locked duplicate and migrates a legacy discovered label', async () => {
+    const { storage, store } = freshStore();
+    const discovered = await store.add({
+      id: 'discovered-local',
+      label: 'Local assistant',
+      baseUrl: 'http://127.0.0.1:4096',
+      auth: { mode: 'basic', username: 'carol', secretRef: 'sec_local' },
+    });
+    await storage.put(seededEntry({ baseUrl: 'http://localhost:4096' }));
+    await store.setActive('seed-local-opencode');
+
+    await store.seedFromRuntimeConfig({
+      connections: [seededEntry({ label: 'splinter', baseUrl: 'http://localhost:4096' })],
+    });
+
+    expect(await store.list()).toEqual([{ ...discovered, label: 'splinter' }]);
+    expect(await store.getActiveId()).toBe(discovered.id);
   });
 
   test('re-seeding prunes locked entries that disappeared from runtime-config.json', async () => {

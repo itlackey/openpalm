@@ -234,13 +234,15 @@ start_ui() {
   # via OP_UI_DEFAULT_ASSISTANT_URL. JSON is emitted via node (present in the
   # base image) so an unusual URL value can never produce a malformed file. The
   # record shape MUST match the ui store: { id, label, baseUrl, auth }, and
-  # id/label MUST equal packages/lib ui-runtime-config.ts's
-  # ASSISTANT_LOCKED_CONNECTION_ID / _LABEL.
+  # id/fallback label MUST equal packages/lib ui-runtime-config.ts's
+  # ASSISTANT_LOCKED_CONNECTION_ID / _LABEL. OP_PROJECT_NAME supplies the
+  # connection's detected local assistant name when available.
   local assistant_url="${OP_UI_DEFAULT_ASSISTANT_URL:-http://127.0.0.1:${OP_ASSISTANT_PORT:-3810}}"
+  local assistant_name="${OP_PROJECT_NAME:-}"
   mkdir -p "$ui_client_dir"
   node -e '
     const fs = require("fs");
-    const [file, url] = process.argv.slice(1);
+    const [file, url, assistantName] = process.argv.slice(1);
     // Never let a wildcard bind host leak into a browser-facing URL — an
     // operator override may itself be derived from a bind-address setting
     // upstream. Mirrors packages/lib/src/control-plane/url-normalize.ts
@@ -250,7 +252,7 @@ start_ui() {
       connections: [
         {
           id: "openpalm-assistant-opencode",
-          label: "This assistant",
+          label: assistantName.trim() || "Local assistant",
           baseUrl: normalizedUrl,
           auth: { mode: "none" },
           isDefault: true,
@@ -259,7 +261,7 @@ start_ui() {
       ],
     };
     fs.writeFileSync(file, JSON.stringify(config, null, 2) + "\n");
-  ' "${ui_client_dir}/runtime-config.json" "$assistant_url" \
+  ' "${ui_client_dir}/runtime-config.json" "$assistant_url" "$assistant_name" \
     || echo "warning: could not write runtime-config.json; UI starts with no default connection" >&2
 
   local ui_port="${OP_UI_PORT:-3000}"

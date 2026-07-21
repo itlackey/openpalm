@@ -30,6 +30,28 @@ export function isLoopbackHost(hostname: string): boolean {
   return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1' || hostname === '[::1]';
 }
 
+function effectivePort(url: URL): string {
+  if (url.port) return url.port;
+  if (url.protocol === 'http:') return '80';
+  if (url.protocol === 'https:') return '443';
+  return '';
+}
+
+/** Loopback host spellings identify the same local listener when their ports match. */
+export function hasSameLoopbackPort(first: string, second: string): boolean {
+  try {
+    const firstUrl = new URL(first);
+    const secondUrl = new URL(second);
+    return (
+      isLoopbackHost(firstUrl.hostname) &&
+      isLoopbackHost(secondUrl.hostname) &&
+      effectivePort(firstUrl) === effectivePort(secondUrl)
+    );
+  } catch {
+    return false;
+  }
+}
+
 export type ConnectionUrlVerdict =
   | { ok: true }
   | { ok: false; reason: 'invalid-url'; message: string }

@@ -16,7 +16,7 @@
  */
 
 import { randomId } from '../random-id.js';
-import { isLoopbackHost, redactUrlUserinfo } from './url-policy.js';
+import { hasSameLoopbackPort, isLoopbackHost, redactUrlUserinfo } from './url-policy.js';
 
 /**
  * Credential reference on a connection. The username is stored inline (so the
@@ -127,6 +127,8 @@ export type ConnectionStore = {
   clearActive(): Promise<void>;
   /**
    * Upsert the config's (locked/default) entries by id. null config = no-op.
+   * A loopback entry is not seeded when that port is already represented under
+   * another loopback host spelling.
    * A seeded isDefault entry becomes active when nothing is active yet, but
    * never steals an explicit user selection. Config wins for locked entries
    * (label/baseUrl updates apply on re-seed); user-added entries are
@@ -145,6 +147,7 @@ export type ConnectionStore = {
 };
 
 const ACTIVE_ID_KEY = 'activeId';
+const LEGACY_DISCOVERY_LABELS = new Set(['Local assistant', 'Local assistant (guardian)']);
 
 function clone<T>(value: T): T {
   return structuredClone(value);
@@ -401,18 +404,38 @@ export function createConnectionStore(options: { storage: ConnectionStorage }): 
 
     async seedFromRuntimeConfig(config) {
       if (!config) return;
-      const activeId = await storage.getMeta(ACTIVE_ID_KEY);
+      let activeId = await storage.getMeta(ACTIVE_ID_KEY);
       const configIds = new Set(config.connections.map((entry) => entry.id));
       for (const existing of await storage.getAll()) {
         if (!existing.locked || configIds.has(existing.id)) continue;
         await storage.delete(existing.id);
         if (activeId === existing.id) {
           await storage.setMeta(ACTIVE_ID_KEY, null);
+          activeId = null;
         }
       }
+      const configAliases = new Map<string, string>();
       for (const entry of config.connections) {
         const seededEntry = redactEntryUrl(entry);
         const existing = await readEntry(entry.id);
+        const equivalent = (await storage.getAll()).find(
+          (candidate) =>
+            candidate.id !== entry.id && hasSameLoopbackPort(candidate.baseUrl, seededEntry.baseUrl)
+        );
+        if (equivalent) {
+          configAliases.set(entry.id, equivalent.id);
+          if (existing?.locked) await storage.delete(existing.id);
+          if (activeId === entry.id) {
+            await storage.setMeta(ACTIVE_ID_KEY, equivalent.id);
+            activeId = equivalent.id;
+          }
+          // Migrate entries created by older auto-discovery without changing a
+          // label the user chose for the same local assistant.
+          if (!equivalent.locked && LEGACY_DISCOVERY_LABELS.has(equivalent.label)) {
+            await storage.put({ ...equivalent, label: seededEntry.label });
+          }
+          continue;
+        }
         // Config wins for the entries it owns (locked), including on re-seed; a
         // same-id entry the user somehow owns is left alone.
         if (!existing) {
@@ -431,8 +454,9 @@ export function createConnectionStore(options: { storage: ConnectionStorage }): 
       }
       if ((await storage.getMeta(ACTIVE_ID_KEY)) !== null) return;
       const fallback = config.connections.find((entry) => entry.isDefault);
-      if (fallback && (await storage.get(fallback.id))) {
-        await storage.setMeta(ACTIVE_ID_KEY, fallback.id);
+      const fallbackId = fallback ? (configAliases.get(fallback.id) ?? fallback.id) : null;
+      if (fallbackId && (await storage.get(fallbackId))) {
+        await storage.setMeta(ACTIVE_ID_KEY, fallbackId);
       }
     },
   };

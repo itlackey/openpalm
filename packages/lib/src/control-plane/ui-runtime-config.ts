@@ -1,16 +1,18 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { resolveAssistantEndpoint } from './assistant-endpoint.js';
+import { readStackEnv } from './secrets.js';
 
 /**
- * Locked default connection id/label. The assistant container entrypoint
- * (containers/assistant/entrypoint.sh `start_ui`) writes runtime-config.json via
- * its own inline JS and must use the SAME id/label as this writer — exporting
- * them as named constants lets that lane pin its literal against this value so
- * the two copies can't drift. Do not change without also updating the entrypoint.
+ * Locked default connection id and fallback label. The assistant container
+ * entrypoint (containers/assistant/entrypoint.sh `start_ui`) writes
+ * runtime-config.json via its own inline JS and must use the SAME id/fallback
+ * label as this writer — exporting them as named constants lets that lane pin
+ * its literal against this value so the two copies can't drift. Do not change
+ * without also updating the entrypoint.
  */
 export const ASSISTANT_LOCKED_CONNECTION_ID = 'openpalm-assistant-opencode';
-export const ASSISTANT_LOCKED_CONNECTION_LABEL = 'This assistant';
+export const ASSISTANT_LOCKED_CONNECTION_LABEL = 'Local assistant';
 
 /**
  * One connection record as seeded into the browser-owned connection store
@@ -31,12 +33,15 @@ export type UiRuntimeConfig = {
   connections: UiRuntimeConnection[];
 };
 
-export function buildLockedAssistantRuntimeConfig(baseUrl: string): UiRuntimeConfig {
+export function buildLockedAssistantRuntimeConfig(
+  baseUrl: string,
+  label = ASSISTANT_LOCKED_CONNECTION_LABEL,
+): UiRuntimeConfig {
   return {
     connections: [
       {
         id: ASSISTANT_LOCKED_CONNECTION_ID,
-        label: ASSISTANT_LOCKED_CONNECTION_LABEL,
+        label: label.trim() || ASSISTANT_LOCKED_CONNECTION_LABEL,
         baseUrl,
         auth: { mode: 'none' },
         isDefault: true,
@@ -47,12 +52,16 @@ export function buildLockedAssistantRuntimeConfig(baseUrl: string): UiRuntimeCon
 }
 
 /**
- * Write `runtime-config.json` (the browser connection store's seed) with the one
- * locked "This assistant" default connection pointing at `assistantUrl`.
+ * Write `runtime-config.json` (the browser connection store's seed) with one
+ * locked, automatically named default connection pointing at `assistantUrl`.
  */
-export function writeUiRuntimeConfig(path: string, assistantUrl: string): void {
+export function writeUiRuntimeConfig(
+  path: string,
+  assistantUrl: string,
+  label = ASSISTANT_LOCKED_CONNECTION_LABEL,
+): void {
   mkdirSync(dirname(path), { recursive: true });
-  const config = buildLockedAssistantRuntimeConfig(assistantUrl);
+  const config = buildLockedAssistantRuntimeConfig(assistantUrl, label);
   writeFileSync(path, `${JSON.stringify(config, null, 2)}\n`);
 }
 
@@ -65,7 +74,7 @@ export function writeUiRuntimeConfig(path: string, assistantUrl: string): void {
  * serves the build's `client/` directory at the app root, so the file must land
  * at `<uiBuildDir>/client/runtime-config.json`. Without this, an Electron/CLI
  * launch opens the UI with an empty connection list instead of the locked
- * "This assistant" default.
+ * local assistant default.
  *
  * The connection URL comes from the ONE shared {@link resolveAssistantEndpoint}
  * precedence (so `OP_UI_DEFAULT_ASSISTANT_URL`/`OP_OPENCODE_URL`/… win), exactly
@@ -78,8 +87,10 @@ export function seedServedUiRuntimeConfig(
   homeDir: string,
   env: Record<string, string | undefined> = process.env,
 ): void {
+  const merged = { ...readStackEnv(homeDir), ...env };
   writeUiRuntimeConfig(
     join(uiBuildDir, 'client', 'runtime-config.json'),
     resolveAssistantEndpoint(homeDir, env),
+    merged.OP_PROJECT_NAME,
   );
 }

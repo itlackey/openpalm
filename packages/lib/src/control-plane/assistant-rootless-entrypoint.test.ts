@@ -69,6 +69,12 @@ describe('assistant rootless entrypoint regressions', () => {
     expect(assistantEntrypoint.match(/: > \/tmp\/openpalm-ui-skip/g)).toHaveLength(2);
   });
 
+  test('runtime config labels the local connection with the project name', () => {
+    expect(assistantEntrypoint).toContain('local assistant_name="${OP_PROJECT_NAME:-}"');
+    expect(assistantEntrypoint).toContain('label: assistantName.trim() || "Local assistant"');
+    expect(assistantEntrypoint).toContain('"$assistant_url" "$assistant_name"');
+  });
+
   test('nss_wrapper lookup globs fixed multiarch paths, not an unbounded recursive find', () => {
     // Walking the whole library tree on every boot is wasteful; resolve via the
     // known Debian multiarch glob instead.

@@ -188,7 +188,7 @@ async function spawnUiChild(
   }
 
   // Seed the served build's runtime-config.json so the browser store gets the
-  // locked "This assistant" default connection — the SAME seed the assistant
+  // locked, project-named default connection — the SAME seed the assistant
   // container entrypoint writes. adapter-node serves the build's client/ dir at
   // the app origin, where the browser's loadRuntimeConfig() fetches it. Best-
   // effort and re-run on every (re)spawn; a write failure degrades to an empty
