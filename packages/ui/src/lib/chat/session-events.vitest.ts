@@ -130,15 +130,20 @@ describe('subscribeSessionEvents', () => {
   });
 
   it('reconnects after the stream ends cleanly', async () => {
+		const onDisconnect = vi.fn();
     const unsub = subscribeSessionEvents({
       onCreated: vi.fn(),
       onUpdated: vi.fn(),
       onDeleted: vi.fn(),
+			onDisconnect,
     });
 
     await waitFor(() => transport.calls.length === 1);
+		transport.calls[0].onFrame({ type: 'server.connected' });
     // Server closed the stream — the consumer must reopen after a short delay.
     transport.calls[0].resolve();
+		await waitFor(() => onDisconnect.mock.calls.length === 1);
+		expect(onDisconnect.mock.calls[0][0]).toBeInstanceOf(Error);
     await waitFor(() => transport.subscribeEvents.mock.calls.length === 2);
     expect(transport.calls.length).toBe(2);
     unsub();

@@ -8,9 +8,9 @@
  * username inline on the entry). Uses createMemoryStorage() — no real IndexedDB
  * needed.
  */
-import { describe, expect, test } from 'vitest';
+import { describe, expect, test, vi } from 'vitest';
 import { createMemoryStorage, type Connection, type ConnectionStorage } from './store.js';
-import { createSecretStore } from './secrets.js';
+import { connectionSecretsEncryptedAtRest, createSecretStore } from './secrets.js';
 
 function basicEntry(overrides: Partial<Connection> = {}): Connection {
   return {
@@ -23,6 +23,19 @@ function basicEntry(overrides: Partial<Connection> = {}): Connection {
 }
 
 describe('createSecretStore encryption', () => {
+  test('uses the same SubtleCrypto predicate exposed to onboarding disclosure', () => {
+    expect(connectionSecretsEncryptedAtRest()).toBe(true);
+  });
+
+  test('reports plaintext-at-rest credential storage when SubtleCrypto is unavailable', () => {
+    vi.stubGlobal('crypto', {});
+    try {
+      expect(connectionSecretsEncryptedAtRest()).toBe(false);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   test('set()/resolveAuth() round-trips Basic username+password', async () => {
     const store = createSecretStore(createMemoryStorage());
     await store.set('sec_1', { username: 'carol', password: 'hunter2' });

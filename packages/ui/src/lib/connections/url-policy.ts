@@ -56,6 +56,7 @@ export type ConnectionUrlVerdict =
   | { ok: true }
   | { ok: false; reason: 'invalid-url'; message: string }
   | { ok: false; reason: 'userinfo-not-allowed'; message: string }
+  | { ok: false; reason: 'query-or-fragment-not-allowed'; message: string }
   | { ok: false; reason: 'insecure-remote'; message: string; guideUrl: string };
 
 export type BrowserOrigin = { protocol: string; hostname: string };
@@ -99,6 +100,13 @@ export function validateConnectionUrl(
       ok: false,
       reason: 'userinfo-not-allowed',
       message: 'Do not put credentials in the URL. Use the Authentication fields instead.',
+    };
+  }
+  if (url.search || url.hash) {
+    return {
+      ok: false,
+      reason: 'query-or-fragment-not-allowed',
+      message: 'The connection address cannot include a query string or fragment.',
     };
   }
   if (url.protocol === 'https:') return { ok: true };

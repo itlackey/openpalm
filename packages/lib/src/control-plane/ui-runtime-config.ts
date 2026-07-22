@@ -1,6 +1,8 @@
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { resolveAssistantEndpoint } from './assistant-endpoint.js';
+import { stackDirFor } from './home.js';
+import { classifyLocalInstall } from './launch-status.js';
 import { readStackEnv } from './secrets.js';
 import { serializeUiRuntimeConfig, type UiRuntimeConfig } from './ui-runtime-config-schema.js';
 
@@ -55,6 +57,9 @@ export function buildServedUiRuntimeConfig(
   homeDir: string,
   env: Record<string, string | undefined> = process.env,
 ): UiRuntimeConfig {
+  if (classifyLocalInstall(stackDirFor(homeDir), homeDir) === 'not_installed') {
+    return buildEmptyUiRuntimeConfig();
+  }
   const merged = { ...readStackEnv(homeDir), ...env };
   try {
     return buildLockedAssistantRuntimeConfig(

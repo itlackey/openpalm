@@ -29,14 +29,19 @@ launchState)` (`src/lib/resolve-landing.ts`):
 | Condition (in precedence order) | Landing |
 |---|---|
 | `host:setup` capability + migration pending | `/attention` |
-| `host:setup` + local `not_installed` (no accessible connection) | `/setup` |
-| `host:setup` + local `not_installed` (accessible connection exists, #440) | `/chat` |
+| local `not_installed` (any surface) | `/start` |
 | `host:setup` + local `setup_incomplete` | `/setup` |
 | `host:setup` + local `installed_offline` | `/host` |
 | `host:setup` + local `installed_broken` | `/host?tab=diagnostics` |
 | `host:setup` + local `running` | `/chat` |
 | no `host:setup`, 0 connections | `/connections/new` |
 | no `host:setup`, ≥1 connection | `/chat` |
+
+`/start` finishes the decision in the browser, where the IndexedDB connection
+list is authoritative. A saved connection goes directly to Chat without a
+reachability probe. An empty host-capable browser shows the local-setup versus
+existing-OpenPalm choice; an empty client-only browser or standalone PWA goes
+directly to `/connections/new?onboarding=1`.
 
 The launch-routing guard fires **before** the auth guard, so `/` and stale
 `/splash` bookmarks never bounce through `/login` first. `/splash` no longer
@@ -60,9 +65,10 @@ release only.
   `src/routes/api/host/guard-hygiene.vitest.ts`), as does every
   `/api/assistant/*` endpoint — a valid admin session in a mode without the
   capability is still refused with 403 `capability_not_available`.
-- **setup localhost** — SEC-4: `/setup` + `/api/setup/*` are unauthenticated
-  before first-run completes but restricted to a loopback browser origin;
-  after completion, re-runs require admin auth.
+- **setup localhost + capability** — SEC-4: `/setup` + mutating
+  `/api/setup/*` require `host:setup`. They are unauthenticated before first-run
+  completes but restricted to a loopback browser origin; after completion,
+  re-runs require admin auth. `/api/setup/status` remains public.
 - **host/origin** — SEC-1/SEC-2 Host-header allowlist + Origin check apply to
   every request; host admin stays loopback-only.
 
@@ -75,13 +81,14 @@ router, which 404s because the route tree is deleted.
 |---|---|---|---|
 | `/` | Entry | launch-routing (pre-auth) | Never renders: hooks (document nav) + `+page.server.ts` (client-side nav) redirect to the resolved landing |
 | `/splash` | Entry | launch-routing (pre-auth) | **Route removed** in Phase 3; the path 302s to the resolved landing for this release |
+| `/start` | Entry | narrow pre-auth first-run lane | Browser-aware bootstrap: restores the active connection or presents the host-capable local/remote choice; client-only/PWA surfaces continue directly to remote onboarding |
 | `/attention` | Entry | auth | Migration/blocking surface split out of `/splash`; landing when `migration.status === 'pending'` (no producer yet) |
 | `/login` | Entry | public | Password login; posts to `/api/auth/login`, which issues the `op_session` cookie |
 | `/setup` | Host | setup localhost | First-run wizard; `?rerun=1` after completion requires admin auth |
 | `/chat` | Assistant | auth | Stillness chat; own corner chrome (hides the navbar); imports domain clients directly, never the `$lib/api.js` barrel (#555) |
 | `/advanced` | Assistant | auth | Embedded OpenCode web UI; mounts `ChatNavbar` (chat chrome composition) |
-| `/connections` | Connection | auth (page); `connections:manage` UX-gates the manager | Connection manager over the browser-owned (IndexedDB) list; mounts `ChatNavbar`; `?new=1` opens the add form |
-| `/connections/new` | Connection | auth | non-admin "no connections yet" landing; 302 alias to `/connections?new=1` |
+| `/connections` | Connection | auth (page); `connections:manage` UX-gates the manager | Connection manager over the browser-owned (IndexedDB) list; Add and pairing deep links continue to `/connections/new` |
+| `/connections/new` | Connection | narrow pre-auth first-run lane | Pairing-first remote onboarding wizard. It verifies the candidate before browser persistence, stores it as active, and continues to Chat; manual address entry is the secondary path |
 | `/host` | Host | host capability gate + auth | Dashboard (tabbed); mounts the chat-free `Navbar` shell (#555); honors `?tab=diagnostics` (Systems tab) |
 | `/admin`, `/admin/*` | — | none | **404.** Dead namespace since Phase 4 (the Phase 2 `/admin/endpoints` → `/connections` alias is gone too) |
 
@@ -94,7 +101,7 @@ router, which 404s because the route tree is deleted.
 | `/health` | Entry | public | Liveness probe |
 | `/guardian/health` | Entry | public | Guardian reachability probe |
 | `/api/auth/{login,logout,session}` | Entry | public (login) / session | Session lifecycle. Deliberately **outside** `/api/host` — a capability guard on login would lock a served (non-admin) deployment out before it could authenticate |
-| `/api/setup/*` | Host | setup localhost | 19 endpoints: `status`, `system-check`, `recommend`, `detect-providers`, `current-config`, `complete`, `deploy-status`, `retry-deploy`, `host-status`, `import-host`, `models/[provider]`, `ollama-profiles`, `voice-profiles`, `opencode/{ensure,status,providers,auth/[provider],provider/[provider]/oauth/{authorize,callback}}` |
+| `/api/setup/*` | Host | `host:setup` + setup localhost; admin session after completion | 19 endpoints: `status`, `system-check`, `recommend`, `detect-providers`, `current-config`, `complete`, `deploy-status`, `retry-deploy`, `host-status`, `import-host`, `models/[provider]`, `ollama-profiles`, `voice-profiles`, `opencode/{ensure,status,providers,auth/[provider],provider/[provider]/oauth/{authorize,callback}}` |
 | `/api/connections/pairing` | Connection | requireAdmin + `requireCapability('host:stack:write')` | POST-only: host-mints a one-time QR/pairing code against the LOCAL guardian (#511). Another device uses an external camera/QR app or pastes the code; the UI has no embedded camera scanner. The connection LIST itself is browser-owned (IndexedDB) — there is no server-side connection CRUD |
 | `/api/assistant/*` | Assistant | requireAdmin + `requireCapability('assistant-settings:read'/'write')` | Assistant-owned settings — editable from a non-admin served build: `persona` (config/assistant/persona.md), `akm` (config/akm/config.json), `model` (OpenCode default/small model) |
 | `/api/host/*` | Host | requireAdmin + `requireCapability('host:…')` per endpoint | Privileged host control plane (see below); 403 `capability_not_available` in a non-admin process even with a valid session |

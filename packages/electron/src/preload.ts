@@ -104,20 +104,4 @@ contextBridge.exposeInMainWorld('openpalm', {
       ipcRenderer.removeListener('global-mic-toggle', listener);
     };
   },
-
-  // ── Harness-internal screens (NOT part of the §5.1 control-plane contract) ──
-  // These are used only by the harness's own Docker-missing splash screen (a
-  // data: URL rendered before the control-plane UI exists). The SvelteKit UI
-  // never calls them, so adding them does NOT change the harness↔control-plane
-  // contract surface and does NOT bump HARNESS_CONTRACT_VERSION.
-
-  /** Open the official Docker install page in the system browser. */
-  openDockerInstall(): void {
-    ipcRenderer.send('open-docker-install');
-  },
-
-  /** Re-run the Docker preflight after the user installs/starts Docker. */
-  retryDockerPreflight(): void {
-    ipcRenderer.send('retry-docker-preflight');
-  },
 });

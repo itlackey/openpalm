@@ -12,7 +12,8 @@
  * OP_ALLOW_REMOTE_SETUP is ignored and neutralized in the child env (plan
  * §8.3: host admin is never reachable remotely). No new auth mechanism: the
  * UI's existing op_session password auth applies. On a machine with no
- * install, the UI's existing setup guard lands on /setup.
+ * install, the UI opens at root so its browser-aware bootstrap can offer local
+ * setup or a connection to an existing OpenPalm.
  */
 import { defineCommand } from 'citty';
 import { startUIServer } from '../lib/ui-server.ts';

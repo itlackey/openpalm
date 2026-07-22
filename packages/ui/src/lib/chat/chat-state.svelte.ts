@@ -5,9 +5,9 @@
  * multi-endpoint refactor (docs/technical/multi-endpoint-session-ux.md)
  * replaces that with `byEndpoint: Map<EndpointId, EndpointChatState>`.
  * Switching endpoints fetches that endpoint's sessions from OpenCode,
- * restores the previously-open session if still present (else newest),
- * and loads its messages. Nothing persists to localStorage — OpenCode is
- * the source of truth.
+ * restores the browser-owned last-session cursor if still present (else
+ * newest), and loads its messages. Only connection/session identifiers are
+ * persisted; OpenCode remains the source of truth for transcripts.
  *
  * Hoisted out of `routes/chat/+page.svelte` so the mic in the Navbar
  * (VoiceControl) can submit utterances from any page, and so auto-TTS
@@ -64,9 +64,11 @@ import { extractSpeakableChunks } from '$lib/voice/sentence-stream.js';
 import { notifyAssistantError, notifyAssistantReply } from '$lib/desktop-notifications.js';
 import { mapAssistantError } from './assistant-error.js';
 import {
+	connectionActivationInProgress,
 	onConnectionActivated,
 	registerActivationGuard,
 } from '$lib/connection-events.js';
+import { getConnectionStore } from '$lib/connections/boot.js';
 
 type EndpointId = string;
 type SessionId = string;
@@ -177,6 +179,13 @@ class ChatService {
 	 */
 	private _unsubscribeEvents: (() => void) | null = null;
 	private _pendingTurn: PendingTurn | null = null;
+	private endpointGeneration = 0;
+	private sessionGeneration = 0;
+	private sessionsGeneration = 0;
+	private sessionRevisions = new Map<EndpointId, number>();
+	private cursorWrites: Promise<void> = Promise.resolve();
+	private sendGate: Promise<void> = Promise.resolve();
+	private queuedSends = 0;
 
 	activeSessionId: SessionId | null = $derived(
 		this.byEndpoint.get(this.activeEndpointId)?.activeSessionId ?? null
@@ -227,25 +236,76 @@ class ChatService {
 		return next;
 	}
 
+	private isEndpointCurrent(endpointId: EndpointId, generation: number): boolean {
+		return this.activeEndpointId === endpointId && this.endpointGeneration === generation;
+	}
+
+	private sessionRevision(endpointId: EndpointId): number {
+		return this.sessionRevisions.get(endpointId) ?? 0;
+	}
+
+	private bumpSessionRevision(endpointId: EndpointId): void {
+		this.sessionRevisions.set(endpointId, this.sessionRevision(endpointId) + 1);
+	}
+
+	connectionActivationBlockReason(): string | null {
+		return this.sending || this.queuedSends > 0
+			? 'Wait for the current reply to finish before switching.'
+			: null;
+	}
+
+	private isSessionCurrent(
+		endpointId: EndpointId,
+		endpointGeneration: number,
+		sessionId: SessionId | null,
+		sessionGeneration: number
+	): boolean {
+		return (
+			this.isEndpointCurrent(endpointId, endpointGeneration) &&
+			this.sessionGeneration === sessionGeneration &&
+			this.byEndpoint.get(endpointId)?.activeSessionId === sessionId
+		);
+	}
+
+	private async persistLastSession(
+		endpointId: EndpointId,
+		endpointGeneration: number,
+		sessionId: SessionId | null,
+		sessionGeneration: number
+	): Promise<void> {
+		const write = this.cursorWrites.then(async () => {
+			if (!this.isSessionCurrent(endpointId, endpointGeneration, sessionId, sessionGeneration)) {
+				return;
+			}
+			await getConnectionStore().setLastSessionId(endpointId, sessionId);
+		});
+		this.cursorWrites = write.catch(() => {});
+		await write.catch(() => {});
+	}
+
 	/**
 	 * Handle an endpoint switch: load sessions, restore prior or pick
 	 * newest, fetch messages. Mid-generation switches are blocked.
 	 */
-	async onEndpointChanged(id: EndpointId): Promise<void> {
-		if (this.sending) {
+	async onEndpointChanged(id: EndpointId): Promise<boolean> {
+		if (this.connectionActivationBlockReason()) {
 			// A route round trip is not an endpoint switch. Preserve the in-flight
 			// turn and its render state; only repair the stream if it went away while
 			// Advanced was mounted.
 			if (id === this.activeEndpointId) {
 				this.error = '';
 				if (!this.liveConnected) this._resubscribeEvents();
-				return;
+				return true;
 			}
 			this.error = 'Wait for the current reply to finish before switching.';
-			return;
+			return false;
 		}
+		const endpointGeneration = ++this.endpointGeneration;
+		this.sessionGeneration++;
+		const sameEndpoint = this.activeEndpointId === id;
 		this.activeEndpointId = id;
-		this.entries = [];
+		if (!sameEndpoint) this.entries = [];
+		this.entriesLoading = false;
 		this.error = '';
 
 		// Route transitions can leave the prior fetch-backed SSE stream stale even
@@ -256,26 +316,8 @@ class ChatService {
 		// Always re-fetch sessions on endpoint activation. The cache guard
 		// (`sessionsLoaded`) caused stale lists when returning to a previously-
 		// visited endpoint or when sessions were created externally while away.
-		await this.loadSessions();
-
-		const state = this.byEndpoint.get(id) ?? emptyEndpointState();
-		const sessions = state.sessions ?? [];
-		const previous = state.activeSessionId;
-		let nextSessionId: SessionId | null = null;
-		if (previous && sessions.some((s) => s.id === previous)) {
-			nextSessionId = previous;
-		} else if (sessions.length > 0) {
-			nextSessionId = sessions[0].id;
-		}
-
-		if (nextSessionId !== state.activeSessionId) {
-			this.setEndpointState(id, { activeSessionId: nextSessionId });
-		}
-
-		if (nextSessionId) {
-			await this.openSession(nextSessionId);
-		}
-
+		const listed = await this.loadSessions(true);
+		return listed && this.isEndpointCurrent(id, endpointGeneration);
 	}
 
 	/**
@@ -293,23 +335,35 @@ class ChatService {
 			this._unsubscribeEvents = null;
 		}
 		this.liveConnected = false;
+		const endpointId = this.activeEndpointId;
+		const endpointGeneration = this.endpointGeneration;
+		const isCurrent = (): boolean => this.isEndpointCurrent(endpointId, endpointGeneration);
 		this._unsubscribeEvents = subscribeSessionEvents({
 			onCreated: (id) => {
+				if (!isCurrent()) return;
+				this.bumpSessionRevision(endpointId);
 				this._onSessionCreated(id);
 			},
 			onUpdated: (id, info) => {
+				if (!isCurrent()) return;
+				this.bumpSessionRevision(endpointId);
 				this._onSessionUpdated(id, info);
 			},
 			onDeleted: (id) => {
+				if (!isCurrent()) return;
+				this.bumpSessionRevision(endpointId);
 				void this._onSessionDeleted(id);
 			},
 			onEvent: (event) => {
+				if (!isCurrent()) return;
 				this._onLiveEvent(event);
 			},
 			onConnect: () => {
+				if (!isCurrent()) return;
 				this.liveConnected = true;
 			},
 			onDisconnect: () => {
+				if (!isCurrent()) return;
 				this.liveConnected = false;
 				if (this._pendingTurn) {
 					this._failPendingTurn(
@@ -673,6 +727,15 @@ class ChatService {
 			this.entries = [];
 			if (nextActive) {
 				await this.openSession(nextActive);
+			} else {
+				const endpointGeneration = this.endpointGeneration;
+				const sessionGeneration = ++this.sessionGeneration;
+				await this.persistLastSession(
+					endpointId,
+					endpointGeneration,
+					null,
+					sessionGeneration
+				);
 			}
 		}
 	}
@@ -696,23 +759,73 @@ class ChatService {
 	}
 
 	/** Fetch the session list for the active endpoint. */
-	async loadSessions(): Promise<void> {
+	async loadSessions(reopenCurrent = false): Promise<boolean> {
 		const id = this.activeEndpointId;
-		this.setEndpointState(id, { sessionsLoading: true, sessionsError: '' });
-		try {
-			const sessions = await listSessions();
-			this.setEndpointState(id, {
-				sessions,
-				sessionsLoaded: true,
-				sessionsLoading: false,
-				sessionsError: '',
-			});
-		} catch (e) {
-			this.setEndpointState(id, {
-				sessionsLoading: false,
-				sessionsError: mapAssistantError(e, { fallback: 'Failed to load sessions.' }),
-			});
+		const endpointGeneration = this.endpointGeneration;
+		const sessionsGeneration = ++this.sessionsGeneration;
+		const requestIsCurrent = (): boolean =>
+			this.isEndpointCurrent(id, endpointGeneration) &&
+			this.sessionsGeneration === sessionsGeneration;
+
+		while (requestIsCurrent()) {
+			const revision = this.sessionRevision(id);
+			this.setEndpointState(id, { sessionsLoading: true, sessionsError: '' });
+			try {
+				const sessions = await listSessions();
+				if (!requestIsCurrent()) return false;
+				if (this.sessionRevision(id) !== revision) continue;
+
+				this.setEndpointState(id, {
+					sessions,
+					sessionsLoaded: true,
+					sessionsLoading: false,
+					sessionsError: '',
+				});
+				if (sessions.length === 0) {
+					const sessionGeneration = ++this.sessionGeneration;
+					this.setEndpointState(id, { activeSessionId: null });
+					this.entries = [];
+					this.entriesLoading = false;
+					this._resetPendingRenderState();
+					await this.persistLastSession(id, endpointGeneration, null, sessionGeneration);
+					if (!requestIsCurrent()) return false;
+					if (this.sessionRevision(id) !== revision) continue;
+				} else {
+					const current = this.byEndpoint.get(id)?.activeSessionId ?? null;
+					if (current && sessions.some((session) => session.id === current)) {
+						if (reopenCurrent) {
+							await this.openSession(current);
+							if (!requestIsCurrent()) return false;
+							if (this.sessionRevision(id) !== revision) continue;
+						}
+					} else {
+						const selectionGeneration = ++this.sessionGeneration;
+						const persisted = await getConnectionStore().getLastSessionId(id).catch(() => null);
+						if (!requestIsCurrent()) return false;
+						if (this.sessionRevision(id) !== revision) continue;
+						if (this.sessionGeneration !== selectionGeneration) return false;
+						const nextSessionId =
+							persisted && sessions.some((session) => session.id === persisted)
+								? persisted
+								: sessions[0].id;
+						this.setEndpointState(id, { activeSessionId: nextSessionId });
+						await this.openSession(nextSessionId);
+						if (!requestIsCurrent()) return false;
+						if (this.sessionRevision(id) !== revision) continue;
+					}
+				}
+				return true;
+			} catch (e) {
+				if (!requestIsCurrent()) return false;
+				if (this.sessionRevision(id) !== revision) continue;
+				this.setEndpointState(id, {
+					sessionsLoading: false,
+					sessionsError: mapAssistantError(e, { fallback: 'Failed to load sessions.' }),
+				});
+				return false;
+			}
 		}
+		return false;
 	}
 
 	/** Select a session and render its messages. */
@@ -722,6 +835,8 @@ class ChatService {
 			return;
 		}
 		const endpointId = this.activeEndpointId;
+		const endpointGeneration = this.endpointGeneration;
+		const sessionGeneration = ++this.sessionGeneration;
 		this.setEndpointState(endpointId, { activeSessionId: sessionId });
 		this.entries = [];
 		this._resetPendingRenderState();
@@ -729,20 +844,26 @@ class ChatService {
 		this.error = '';
 		try {
 			const messages = await getSessionMessages(sessionId);
-			// Only render if the user hasn't navigated away to another session.
-			if (
-				this.activeEndpointId === endpointId &&
-				this.byEndpoint.get(endpointId)?.activeSessionId === sessionId
-			) {
+			if (this.isSessionCurrent(endpointId, endpointGeneration, sessionId, sessionGeneration)) {
 				this.entries = messages;
+				await this.persistLastSession(
+					endpointId,
+					endpointGeneration,
+					sessionId,
+					sessionGeneration
+				);
 			}
 		} catch (e) {
-			this.error = mapAssistantError(e, {
-				fallback: 'Failed to load messages.',
-				reconnectHint: true,
-			});
+			if (this.isSessionCurrent(endpointId, endpointGeneration, sessionId, sessionGeneration)) {
+				this.error = mapAssistantError(e, {
+					fallback: 'Failed to load messages.',
+					reconnectHint: true,
+				});
+			}
 		} finally {
-			this.entriesLoading = false;
+			if (this.isSessionCurrent(endpointId, endpointGeneration, sessionId, sessionGeneration)) {
+				this.entriesLoading = false;
+			}
 		}
 	}
 
@@ -801,9 +922,13 @@ class ChatService {
 			return null;
 		}
 		const endpointId = this.activeEndpointId;
+		const endpointGeneration = this.endpointGeneration;
+		const sessionGeneration = ++this.sessionGeneration;
 		this.error = '';
 		try {
 			const { id } = await createSession();
+			if (!this.isEndpointCurrent(endpointId, endpointGeneration)) return null;
+			if (this.sessionGeneration !== sessionGeneration) return null;
 			const now = Date.now();
 			const summary = { id, title: '', createdAt: now, updatedAt: now };
 			const prev = this.byEndpoint.get(endpointId) ?? emptyEndpointState();
@@ -814,8 +939,16 @@ class ChatService {
 			});
 			this.entries = [];
 			this._resetPendingRenderState();
+			await this.persistLastSession(
+				endpointId,
+				endpointGeneration,
+				id,
+				sessionGeneration
+			);
 			return id;
 		} catch (e) {
+			if (!this.isEndpointCurrent(endpointId, endpointGeneration)) return null;
+			if (this.sessionGeneration !== sessionGeneration) return null;
 			const err = e as { message?: string };
 			this.error = `Failed to start conversation: ${err.message ?? 'unknown error'}`;
 			return null;
@@ -829,6 +962,11 @@ class ChatService {
 	async send(text: string): Promise<void> {
 		const trimmed = text.trim();
 		if (!trimmed) return;
+		if (connectionActivationInProgress()) {
+			this.lastFailedText = trimmed;
+			this.error = 'Wait for the connection switch to finish before sending.';
+			return;
+		}
 		this.lastFailedText = '';
 		if (this.pendingQuestion && this.pendingQuestion.questions.length === 1 && this.sending) {
 			await this.answerQuestion(trimmed);
@@ -843,7 +981,24 @@ class ChatService {
 			return;
 		}
 		if (this.sending) return;
+		const previous = this.sendGate;
+		let release!: () => void;
+		this.sendGate = new Promise<void>((resolve) => {
+			release = resolve;
+		});
+		this.queuedSends++;
+		try {
+			await previous;
+			if (this.sending) return;
+			await this.sendNow(trimmed);
+		} finally {
+			release();
+			this.queuedSends = Math.max(0, this.queuedSends - 1);
+		}
+	}
 
+	private async sendNow(trimmed: string): Promise<void> {
+		this.lastFailedText = '';
 		let sessionId = this.activeSessionId;
 		if (!sessionId) {
 			sessionId = await this.startNewSession();
@@ -1103,7 +1258,14 @@ class ChatService {
 	reset(): void {
 		stopSpeaking();
 		this._clearPendingTurn();
+		this.endpointGeneration++;
+		this.sessionGeneration++;
+		this.sessionsGeneration++;
+		this.sessionRevisions.clear();
+		this.sendGate = Promise.resolve();
+		this.queuedSends = 0;
 		this.entries = [];
+		this.entriesLoading = false;
 		this.error = '';
 		this.lastFailedText = '';
 		this._resetPendingRenderState();
@@ -1129,6 +1291,6 @@ export const chat = new ChatService();
 // never imports chat modules. The guard preserves the pre-Phase-2 behavior:
 // mid-generation switches are refused with the same user-facing message.
 registerActivationGuard(() =>
-	chat.sending ? 'Wait for the current reply to finish before switching.' : null
+	chat.connectionActivationBlockReason()
 );
 onConnectionActivated((id) => chat.onEndpointChanged(id));

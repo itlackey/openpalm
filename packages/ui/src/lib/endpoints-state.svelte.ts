@@ -21,9 +21,17 @@
  * subscribes (and registers its "not while sending" guard) from its own side.
  */
 import { getConnectionStore, setActiveConnection } from './connections/boot.js';
-import { loadRuntimeConfig, type Connection } from './connections/store.js';
+import {
+  loadRuntimeConfig,
+  type Connection,
+  type ConnectionStore,
+} from './connections/store.js';
 import { discoverLocalAssistant } from './connections/discovery.js';
-import { activationBlockReason, emitConnectionActivated } from './connection-events.js';
+import {
+  activationBlockReason,
+  beginConnectionActivation,
+  emitConnectionActivated,
+} from './connection-events.js';
 
 /**
  * The connection shape existing consumers (switcher, ActivityTab, /connections)
@@ -61,6 +69,36 @@ class ConnectionsService {
   /** The single in-flight load, shared by every concurrent caller. */
   private inFlight: Promise<void> | null = null;
 
+	/** One forced refresh may trail each currently running load. */
+  private trailingForce: Promise<void> | null = null;
+
+  /** Serialize IndexedDB active-id writes in activation request order. */
+  private activeWrites: Promise<void> = Promise.resolve();
+
+  /** Last connection published to memory, transport, and activation listeners. */
+  private publishedActiveId = '';
+  private publishedConnection: Connection | null = null;
+	private pendingActivation: {
+		id: string;
+		expectedActiveId: string | undefined;
+		promise: Promise<void>;
+	} | null = null;
+
+  private async restoreActiveId(
+    store: ConnectionStore,
+    connections: Connection[],
+    storedActiveId: string | null
+  ): Promise<string | null> {
+    const activeExists = connections.some((connection) => connection.id === storedActiveId);
+    const restoredActiveId = activeExists ? storedActiveId : (connections[0]?.id ?? null);
+    if (restoredActiveId !== storedActiveId) {
+      await this.queueActiveWrite(() =>
+        restoredActiveId ? store.setActive(restoredActiveId) : store.clearActive()
+      );
+    }
+    return restoredActiveId;
+  }
+
   active = $derived<ConnectionView | null>(
     this.endpoints.find((e) => e.id === this.activeId) ?? this.endpoints[0] ?? null
   );
@@ -72,19 +110,37 @@ class ConnectionsService {
    * awaits the same in-flight promise. So `await endpointsService.load()`
    * always resolves only once connections are actually loaded (or errored).
    */
-  async load(force = false): Promise<void> {
-    if (this.inFlight) return this.inFlight;
-    if (this.loaded && !force) return;
-    const run = this._load();
-    this.inFlight = run;
-    try {
-      await run;
-    } finally {
-      this.inFlight = null;
+  load(force = false): Promise<void> {
+    if (this.inFlight) {
+      if (!force) return this.inFlight;
+      if (!this.trailingForce) {
+        const current = this.inFlight;
+        const trailing = current
+          .then(() => {
+            if (this.trailingForce === trailing) this.trailingForce = null;
+            return this.startLoad();
+          })
+          .finally(() => {
+            if (this.trailingForce === trailing) this.trailingForce = null;
+          });
+        this.trailingForce = trailing;
+      }
+      return this.trailingForce;
     }
+    if (this.loaded && !force) return Promise.resolve();
+    return this.startLoad();
+  }
+
+  private startLoad(): Promise<void> {
+    const run = this._load().finally(() => {
+      if (this.inFlight === run) this.inFlight = null;
+    });
+    this.inFlight = run;
+    return run;
   }
 
   private async _load(): Promise<void> {
+    const activationSeq = this.activationSeq;
     this.loading = true;
     this.error = '';
     try {
@@ -97,10 +153,16 @@ class ConnectionsService {
         store.list(),
         store.getActiveId(),
       ]);
+      if (activationSeq !== this.activationSeq) return;
+      const restoredActiveId = await this.restoreActiveId(store, connections, storedActiveId);
+      if (activationSeq !== this.activationSeq) return;
       this.endpoints = connections.map(toView);
-      this.activeId = storedActiveId ?? this.endpoints[0]?.id ?? '';
+      this.activeId = restoredActiveId ?? '';
       // Keep the transport's active connection in sync (no $effect).
-      setActiveConnection(connections.find((c) => c.id === this.activeId) ?? null);
+      const activeConnection = connections.find((c) => c.id === this.activeId) ?? null;
+      setActiveConnection(activeConnection);
+      this.publishedActiveId = this.activeId;
+      this.publishedConnection = activeConnection;
       this.loaded = true;
       if (!this.discoveryStarted) {
         this.discoveryStarted = true;
@@ -142,6 +204,7 @@ class ConnectionsService {
    */
   private async discoverLocal(): Promise<void> {
     try {
+      const activationSeq = this.activationSeq;
       const store = getConnectionStore();
       const added = await discoverLocalAssistant(store);
       if (!added) return;
@@ -149,9 +212,16 @@ class ConnectionsService {
         store.list(),
         store.getActiveId(),
       ]);
+      if (activationSeq !== this.activationSeq) {
+        this.endpoints = connections.map(toView);
+        return;
+      }
+      const restoredActiveId = await this.restoreActiveId(store, connections, storedActiveId);
+      if (activationSeq !== this.activationSeq) return;
       this.endpoints = connections.map(toView);
-      this.activeId = storedActiveId ?? this.endpoints[0]?.id ?? '';
-      setActiveConnection(connections.find((c) => c.id === this.activeId) ?? null);
+      this.activeId = restoredActiveId ?? '';
+      const activeConnection = connections.find((c) => c.id === this.activeId) ?? null;
+      setActiveConnection(activeConnection);
       // When the discovered entry just became the effective active connection
       // (a previously empty list), complete the activation handoff so the
       // chat store loads its sessions instead of staying on "not reachable"
@@ -159,6 +229,8 @@ class ConnectionsService {
       if (this.activeId === added.id && !activationBlockReason()) {
         await emitConnectionActivated(added.id);
       }
+      this.publishedActiveId = this.activeId;
+      this.publishedConnection = activeConnection;
     } catch {
       // best-effort only
     }
@@ -169,53 +241,123 @@ class ConnectionsService {
    *  would clobber the selection a later, successful switch just persisted). */
   private activationSeq = 0;
 
-  async activate(id: string): Promise<void> {
-    if (id === this.activeId) return;
+	private queueActiveWrite<T>(write: () => Promise<T>): Promise<T> {
+    const queued = this.activeWrites.then(write, write);
+		this.activeWrites = queued.then(
+			() => {},
+			() => {}
+		);
+    return queued;
+  }
+
+	activate(id: string, expectedActiveId?: string): Promise<void> {
+		if (
+			this.pendingActivation?.id === id &&
+			this.pendingActivation.expectedActiveId === expectedActiveId
+		) {
+			return this.pendingActivation.promise;
+		}
+		if (
+			id === this.publishedActiveId &&
+			expectedActiveId === undefined &&
+			!this.pendingActivation
+		) {
+			return Promise.resolve();
+		}
     // A subscriber may veto the switch (the chat side blocks mid-generation
     // switches); surface the refusal here so the switcher doesn't silently
     // flip the activeId.
     const blocked = activationBlockReason();
     if (blocked) {
       this.error = blocked;
-      throw new Error(blocked);
+			return Promise.reject(new Error(blocked));
     }
+		const releaseActivation = beginConnectionActivation();
+		const promise = this.activateConnection(id, expectedActiveId).finally(releaseActivation);
+		const pending = { id, expectedActiveId, promise };
+		this.pendingActivation = pending;
+		void promise.then(
+			() => {
+				if (this.pendingActivation === pending) this.pendingActivation = null;
+			},
+			() => {
+				if (this.pendingActivation === pending) this.pendingActivation = null;
+			}
+		);
+		return promise;
+	}
+
+	private async adoptPersistedActive(seq: number, store: ConnectionStore): Promise<void> {
+		const persistedActiveId = await store.getActiveId();
+		if (seq !== this.activationSeq) return;
+		const connection = persistedActiveId ? await store.get(persistedActiveId) : null;
+		if (seq !== this.activationSeq) return;
+		this.activeId = connection?.id ?? '';
+		setActiveConnection(connection);
+		if (connection) {
+			await emitConnectionActivated(connection.id);
+			if (seq !== this.activationSeq) return;
+		}
+		this.publishedActiveId = connection?.id ?? '';
+		this.publishedConnection = connection;
+	}
+
+	private async activateConnection(id: string, expectedActiveId?: string): Promise<void> {
     const seq = ++this.activationSeq;
-    const previous = this.activeId;
-    // Capture the previous connection NOW, from memory: on rollback it may
-    // already be gone from the store (removed in another tab), and the store
-    // round-trip is redundant when we already hold the object.
-    const previousConnection = this.endpoints.find((e) => e.id === previous) ?? null;
+    this.error = '';
     this.activeId = id;
     const store = getConnectionStore();
+		let activeChanged = false;
     try {
-      await store.setActive(id);
-      setActiveConnection((await store.get(id)) ?? null);
+			activeChanged = await this.queueActiveWrite(async () => {
+				if (expectedActiveId !== undefined) {
+					return store.compareAndSetActive(expectedActiveId, id);
+				}
+				await store.setActive(id);
+				return true;
+			});
+      if (seq !== this.activationSeq) return;
+			if (!activeChanged) {
+				await this.adoptPersistedActive(seq, store);
+				return;
+			}
+      const connection = await store.get(id);
+      if (seq !== this.activationSeq) return;
+      if (!connection) throw new Error(`Unknown connection: ${id}`);
+      setActiveConnection(connection);
       // Hand off to subscribers (the chat store loads this connection's
       // sessions, restores the previously-open one, and fetches messages —
       // see docs/technical/multi-endpoint-session-ux.md). Awaited so a
       // failed handoff rolls the switch back.
       await emitConnectionActivated(id);
+      if (seq !== this.activationSeq) return;
+      this.publishedActiveId = id;
+      this.publishedConnection = connection;
     } catch (e) {
       // Only the LATEST activation may roll back — a stale failure must not
       // overwrite state a newer activate() has since established.
-      if (seq === this.activationSeq) {
-        this.activeId = previous;
-        if (previousConnection) {
-          // setActive(id) above may have persisted the failed selection; roll
-          // the PERSISTED id back too, or a reload would land on the
-          // connection whose handoff just failed.
-          await store.setActive(previous).catch(() => {});
-          setActiveConnection(previousConnection);
-        } else {
-          // No usable previous ('' on first activation, or since-removed):
-          // CLEAR the persisted selection — setActive('') would reject and
-          // leave the failed id persisted, resurrecting it on reload.
-          await store.clearActive().catch(() => {});
-          setActiveConnection(null);
-        }
+			if (seq === this.activationSeq && activeChanged) {
+        const rollbackId = this.publishedActiveId;
+        const rollbackConnection = this.publishedConnection;
+				const rolledBack = await this.queueActiveWrite(() =>
+					store.compareAndSetActive(id, rollbackConnection && rollbackId ? rollbackId : null)
+				).catch(() => false);
+        if (seq !== this.activationSeq) throw e;
+				if (rolledBack) {
+					this.activeId = rollbackId;
+					setActiveConnection(rollbackConnection);
+					if (rollbackId) await emitConnectionActivated(rollbackId).catch(() => {});
+				} else {
+					await this.adoptPersistedActive(seq, store);
+				}
+			} else if (seq === this.activationSeq) {
+				this.activeId = this.publishedActiveId;
+				setActiveConnection(this.publishedConnection);
       }
-      const err = e as { message?: string };
-      this.error = err.message ?? 'Failed to switch connection';
+      if (seq === this.activationSeq) {
+        const err = e as { message?: string };
+        this.error = err.message ?? 'Failed to switch connection';
+      }
       throw e;
     }
   }

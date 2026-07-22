@@ -9,6 +9,9 @@ const config = {
     // Keep a long-running dev server's route manifest isolated from `check`
     // and `build`, which regenerate the default .svelte-kit directory.
     outDir: process.env.OP_SVELTEKIT_OUT_DIR ?? ".svelte-kit",
+    // This app is always served from the origin root. Root-relative assets keep
+    // SvelteKit's generated service-worker registration correct on nested URLs.
+    paths: { relative: false },
     adapter: adapter({
       out: "build",
       envPrefix: "",

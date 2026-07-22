@@ -1,14 +1,8 @@
 /**
- * Pairing code codec + guardian principal minting (#511 D3/D4).
+ * Guardian principal minting (#511 D3/D4).
  *
- * Portable control-plane logic: encoding/decoding the one-time pairing code
- * and orchestrating the guardian admin-API mint both live here so a future
- * `openpalm pair` CLI command never has to duplicate them (core-principles
- * §Shared control-plane library). `packages/ui`'s pairing route is a thin
- * transport wrapper over `mintDirectPrincipalPairingCode`, and its browser
- * decoder (`connections/pairing.ts` `parsePairingCode`) is a hand-maintained
- * twin of `decodePairingCode` here — the browser bundle never imports
- * `@openpalm/lib`.
+ * The browser-safe codec and URL normalization live in `../pairing.ts`; this
+ * module adds only host-side secret access and Guardian admin API calls.
  *
  * The pairing code itself is a self-contained, signed-nothing payload (D3):
  * `openpalm-pair:` + base64url(JSON). It is never persisted host-side — the
@@ -17,24 +11,21 @@
  * `packages/guardian/src/admin.ts`).
  */
 import { readSecret } from './secrets-files.js';
-
-export const PAIRING_CODE_PREFIX = 'openpalm-pair:';
-
-export type PairingPayloadV1 = {
-  v: 1;
-  kind: 'openpalm-connection';
-  /** Operator-entered guardian base URL. */
-  url: string;
-  label?: string;
-  /** Minted principal id. */
-  username: string;
-  /** Minted principal token. */
-  secret: string;
-};
-
-export type DecodePairingResult =
-  | { ok: true; payload: PairingPayloadV1 }
-  | { ok: false; error: string };
+import {
+  encodePairingCode,
+  normalizeGuardianPairingUrl,
+} from '../pairing.js';
+export {
+  decodePairingCode,
+  encodePairingCode,
+  normalizeGuardianPairingUrl,
+  PAIRING_CODE_PREFIX,
+} from '../pairing.js';
+export type {
+  DecodePairingResult,
+  GuardianPairingUrlResult,
+  PairingPayloadV1,
+} from '../pairing.js';
 
 export type MintPairingResult =
   | { ok: true; code: string; principalId: string }
@@ -44,75 +35,6 @@ const DEFAULT_GUARDIAN_ADMIN_URL = 'http://127.0.0.1:3831';
 /** Bound on the guardian admin mint call (PR #564 second retest) — a listener
  *  that accepts but never responds must not hang the mint. */
 const PAIRING_ADMIN_TIMEOUT_MS = 5000;
-
-/** Encode a pairing payload as `openpalm-pair:` + base64url(JSON). */
-export function encodePairingCode(payload: PairingPayloadV1): string {
-  const json = JSON.stringify(payload);
-  const encoded = Buffer.from(json, 'utf-8').toString('base64url');
-  return `${PAIRING_CODE_PREFIX}${encoded}`;
-}
-
-/**
- * Decode + strictly validate a pairing code. The `openpalm-pair:` prefix is
- * optional (a QR reader may hand back the bare payload) and surrounding
- * whitespace is tolerated. Never throws — malformed input is always a
- * structured `{ ok: false }`, never an exception.
- */
-export function decodePairingCode(code: string): DecodePairingResult {
-  const trimmed = code.trim();
-  const withoutPrefix = trimmed.startsWith(PAIRING_CODE_PREFIX)
-    ? trimmed.slice(PAIRING_CODE_PREFIX.length)
-    : trimmed;
-  if (!withoutPrefix) return { ok: false, error: 'Pairing code is empty.' };
-
-  let json: string;
-  try {
-    json = Buffer.from(withoutPrefix, 'base64url').toString('utf-8');
-  } catch {
-    return { ok: false, error: 'Pairing code is not valid base64url.' };
-  }
-
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(json);
-  } catch {
-    return { ok: false, error: 'Pairing code payload is not valid JSON.' };
-  }
-
-  if (typeof parsed !== 'object' || parsed === null) {
-    return { ok: false, error: 'Pairing code payload must be an object.' };
-  }
-  const value = parsed as Record<string, unknown>;
-
-  if (value.v !== 1) {
-    return { ok: false, error: 'Pairing code has an unsupported version.' };
-  }
-  if (value.kind !== 'openpalm-connection') {
-    return { ok: false, error: 'Pairing code has an unsupported kind.' };
-  }
-  if (typeof value.url !== 'string' || !value.url) {
-    return { ok: false, error: 'Pairing code is missing a url.' };
-  }
-  if (typeof value.username !== 'string' || !value.username) {
-    return { ok: false, error: 'Pairing code is missing a username.' };
-  }
-  if (typeof value.secret !== 'string' || !value.secret) {
-    return { ok: false, error: 'Pairing code is missing a secret.' };
-  }
-  if (value.label !== undefined && typeof value.label !== 'string') {
-    return { ok: false, error: 'Pairing code has an invalid label.' };
-  }
-
-  const payload: PairingPayloadV1 = {
-    v: 1,
-    kind: 'openpalm-connection',
-    url: value.url,
-    username: value.username,
-    secret: value.secret,
-    ...(value.label !== undefined ? { label: value.label as string } : {}),
-  };
-  return { ok: true, payload };
-}
 
 /** `slug(label) + '-' + 4 hex chars` — never the bare slug, so a mint never
  *  clobbers an existing principal via a bare-label upsert. */
@@ -154,15 +76,8 @@ export async function mintDirectPrincipalPairingCode(options: {
     fetchImpl = fetch,
   } = options;
 
-  let parsedUrl: URL;
-  try {
-    parsedUrl = new URL(url);
-  } catch {
-    return { ok: false, error: 'Pairing target url must be a valid http(s) URL.' };
-  }
-  if (parsedUrl.protocol !== 'http:' && parsedUrl.protocol !== 'https:') {
-    return { ok: false, error: 'Pairing target url must be a valid http(s) URL.' };
-  }
+  const normalizedUrl = normalizeGuardianPairingUrl(url);
+  if (!normalizedUrl.ok) return normalizedUrl;
 
   const rawToken = readSecret(homeDir, 'op_guardian_admin_token');
   if (!rawToken) {
@@ -196,6 +111,18 @@ export async function mintDirectPrincipalPairingCode(options: {
       signal: AbortSignal.timeout(PAIRING_ADMIN_TIMEOUT_MS),
     });
   } catch {
+    try {
+      await fetchImpl(
+        `${guardianAdminUrl}/admin${`/principals/${encodeURIComponent(principalId)}`}`,
+        {
+          method: 'DELETE',
+          headers: { authorization: `Bearer ${adminToken}` },
+          signal: AbortSignal.timeout(PAIRING_ADMIN_TIMEOUT_MS),
+        },
+      );
+    } catch {
+      // The create response was ambiguous; cleanup is best-effort and bounded.
+    }
     return {
       ok: false,
       error: 'guardian admin listener unreachable — is the stack running with a guardian-ingress addon enabled?',
@@ -211,7 +138,7 @@ export async function mintDirectPrincipalPairingCode(options: {
   const code = encodePairingCode({
     v: 1,
     kind: 'openpalm-connection',
-    url,
+    url: normalizedUrl.url,
     label,
     username: principalId,
     secret: principalToken,

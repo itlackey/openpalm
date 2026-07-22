@@ -46,6 +46,32 @@ describe('encodePairingCode / decodePairingCode', () => {
     expect(decoded).toEqual({ ok: true, payload: SAMPLE_PAYLOAD });
   });
 
+  it('normalizes guardian roots to /oc and keeps /oc stable while decoding', () => {
+    const root = encodePairingCode({ ...SAMPLE_PAYLOAD, url: 'https://gw.example.ts.net' });
+    expect(decodePairingCode(root)).toEqual({
+      ok: true,
+      payload: { ...SAMPLE_PAYLOAD, url: 'https://gw.example.ts.net/oc' },
+    });
+
+    const oc = encodePairingCode({ ...SAMPLE_PAYLOAD, url: 'https://gw.example.ts.net/oc/' });
+    expect(decodePairingCode(oc)).toEqual({
+      ok: true,
+      payload: { ...SAMPLE_PAYLOAD, url: 'https://gw.example.ts.net/oc' },
+    });
+  });
+
+  it('rejects pairing URLs with arbitrary paths, query, fragment, or userinfo', () => {
+    for (const url of [
+      'https://gw.example.ts.net/api',
+      'https://gw.example.ts.net/oc/extra',
+      'https://gw.example.ts.net?tenant=home',
+      'https://gw.example.ts.net/oc#secret',
+      'https://user:password@gw.example.ts.net/oc',
+    ]) {
+      expect(decodePairingCode(encodePairingCode({ ...SAMPLE_PAYLOAD, url })).ok, url).toBe(false);
+    }
+  });
+
   it('accepts the bare payload without the prefix and tolerates surrounding whitespace', () => {
     const code = encodePairingCode(SAMPLE_PAYLOAD);
     const bare = code.slice(PAIRING_CODE_PREFIX.length);
@@ -98,6 +124,48 @@ describe('encodePairingCode / decodePairingCode', () => {
 });
 
 describe('mintDirectPrincipalPairingCode', () => {
+  it('normalizes a guardian root to /oc before minting and encoding', async () => {
+    const homeDir = tempHomeDir();
+    writeSecret(homeDir, 'op_guardian_admin_token', 'f'.repeat(48));
+    const fetchImpl = mock(async () => new Response('{}', { status: 201 }));
+
+    const result = await mintDirectPrincipalPairingCode({
+      homeDir,
+      label: 'My Device',
+      url: 'https://gw.example.ts.net',
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error('expected pairing result');
+    const decoded = decodePairingCode(result.code);
+    expect(decoded.ok).toBe(true);
+    if (!decoded.ok) throw new Error('expected decodable code');
+    expect(decoded.payload.url).toBe('https://gw.example.ts.net/oc');
+  });
+
+  it('rejects non-/oc guardian paths before principal minting', async () => {
+    const homeDir = tempHomeDir();
+    writeSecret(homeDir, 'op_guardian_admin_token', 'f'.repeat(48));
+    const fetchImpl = mock(async () => new Response('{}', { status: 201 }));
+
+    for (const url of [
+      'https://gw.example.ts.net/api',
+      'https://gw.example.ts.net/oc/extra',
+      'https://gw.example.ts.net/oc?tenant=home',
+      'https://user:password@gw.example.ts.net/oc',
+    ]) {
+      const result = await mintDirectPrincipalPairingCode({
+        homeDir,
+        label: 'My Device',
+        url,
+        fetchImpl: fetchImpl as unknown as typeof fetch,
+      });
+      expect(result.ok, url).toBe(false);
+    }
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
   it('posts a direct principal to the guardian admin API and returns a decodable code', async () => {
     const homeDir = tempHomeDir();
     const adminToken = 'f'.repeat(48);
@@ -229,5 +297,37 @@ describe('mintDirectPrincipalPairingCode', () => {
       fetchImpl: unauthorized as unknown as typeof fetch,
     });
     expect(badAuth.ok).toBe(false);
+  });
+
+  it('best-effort deletes a principal when creation may have committed before the response was lost', async () => {
+    const homeDir = tempHomeDir();
+    const adminToken = 'f'.repeat(48);
+    writeSecret(homeDir, 'op_guardian_admin_token', adminToken);
+    let createdId = '';
+    const calls: Array<{ url: string; init?: RequestInit }> = [];
+    const fetchImpl = mock(async (input: RequestInfo | URL, init?: RequestInit) => {
+      calls.push({ url: String(input), init });
+      if (init?.method === 'POST') {
+        createdId = (JSON.parse(String(init.body)) as { id: string }).id;
+        throw new TypeError('response lost after commit');
+      }
+      return new Response('{}', { status: 200 });
+    });
+
+    const result = await mintDirectPrincipalPairingCode({
+      homeDir,
+      label: 'Ambiguous Device',
+      url: 'https://gw.example.ts.net/oc',
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+    });
+
+    expect(result.ok).toBe(false);
+    expect(calls).toHaveLength(2);
+    expect(calls[1].url).toBe(
+      `http://127.0.0.1:3831/admin${`/principals/${encodeURIComponent(createdId)}`}`,
+    );
+    expect(calls[1].init?.method).toBe('DELETE');
+    expect(new Headers(calls[1].init?.headers).get('authorization')).toBe(`Bearer ${adminToken}`);
+    expect(calls[1].init?.body).toBeUndefined();
   });
 });

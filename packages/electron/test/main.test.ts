@@ -2,6 +2,18 @@
 // and cannot honor vi.mock() hoisting. Use: bun run --cwd packages/electron test
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
+const startupHarness = vi.hoisted(() => {
+  let releaseReady = (): void => {};
+  const ready = new Promise<void>((resolve) => {
+    releaseReady = resolve;
+  });
+  return {
+    ready,
+    releaseReady: () => releaseReady(),
+    coreComposeExists: false,
+  };
+});
+
 // ── Mock node:fs before any imports ─────────────────────────────────────────
 // Return true for the UI build index.js check so startUIServer skips seeding
 // and the spawn path is reached. We mock spawn separately via node:child_process.
@@ -10,6 +22,9 @@ vi.mock('node:fs', async (importOriginal) => {
   return {
     ...actual,
     existsSync: vi.fn((p: string) => {
+      if (String(p).endsWith('system/stack/core.compose.yml')) {
+        return startupHarness.coreComposeExists;
+      }
       // Make the UI build appear present so seedUiBuild is never called
       if (String(p).endsWith('index.js')) return true;
       // Icon file does not exist — skip tray creation
@@ -67,7 +82,7 @@ vi.mock('electron', () => ({
     quit: vi.fn(),
     exit: vi.fn(),
     isQuitting: false,
-    whenReady: vi.fn(() => Promise.resolve()),
+    whenReady: vi.fn(() => startupHarness.ready),
     on: vi.fn(),
     getAppPath: vi.fn(() => '/mock/app'),
     // main.ts resolves a log path at import time via app.getPath('logs');
@@ -145,7 +160,13 @@ vi.mock('@openpalm/lib', () => ({
   seedUiBuild: vi.fn(() => Promise.resolve()),
   seedLegacyServedUiRuntimeConfig: vi.fn(),
   ensureHomeDirs: vi.fn(),
-  checkAndUpdateUiBuild: vi.fn(() => Promise.resolve({ updated: false, latestVersion: '0.11.0' })),
+  hasMaterializedLocalInstall: vi.fn(() => startupHarness.coreComposeExists),
+  checkDocker: vi.fn(),
+  checkDockerCompose: vi.fn(),
+  checkAndUpdateUiBuild: vi.fn(() => {
+    startupHarness.coreComposeExists = true;
+    return Promise.resolve({ updated: false, latestVersion: '0.11.0' });
+  }),
   checkAndUpdateSkeleton: vi.fn(() => Promise.resolve({ updated: false, latestVersion: '0.11.0' })),
   uiUpdateChannel: vi.fn((v: string) => (v.includes('-') ? 'next' : 'latest')),
   parseEnvFile: vi.fn(() => ({})),
@@ -154,8 +175,6 @@ vi.mock('@openpalm/lib', () => ({
   // instead of re-deriving the OP_ASSISTANT_BIND_ADDRESS/PORT precedence
   // chain locally (which is how the http://0.0.0.0:3800 seed bug happened).
   resolveAssistantEndpoint: vi.fn(() => 'http://127.0.0.1:3800'),
-  checkDocker: vi.fn(() => Promise.resolve({ ok: true, stdout: '', stderr: '', code: 0 })),
-  checkDockerCompose: vi.fn(() => Promise.resolve({ ok: true, stdout: '', stderr: '', code: 0 })),
   // Faithful reimplementation of lib's waitForReady (poll /health; 200 or 401 ==
   // ready) so the harness wrapper still exercises the real ready-poll contract
   // under the test's stubbed global fetch + fake timers.
@@ -232,6 +251,11 @@ vi.mock('@openpalm/lib', () => ({
   },
 }));
 
+vi.mock('../src/update-check.js', () => ({
+  checkForElectronUpdate: vi.fn(async () => ({ updateAvailable: false })),
+  getCachedUpdateInfo: vi.fn(() => null),
+}));
+
 vi.mock('../src/local-opencode.js', () => ({
   startLocalOpenCode: vi.fn(() => Promise.resolve(null)),
   killProcessTree: vi.fn(),
@@ -239,7 +263,6 @@ vi.mock('../src/local-opencode.js', () => ({
 
 import {
   buildUIServerEnv,
-  ensureDockerReady,
   getLaunchOnLoginStatus,
   handleWindowOpen,
   isAllowedInAppWindowUrl,
@@ -681,8 +704,43 @@ describe('launch-on-login helpers', () => {
 });
 
 describe('desktop bootstrap', () => {
-  it('sets the App User Model ID on startup', async () => {
-    await Promise.resolve();
+  it('starts at /start when an updater materializes compose after the fresh-home snapshot', async () => {
+    const { spawn } = await import('node:child_process');
+    vi.mocked(spawn).mockClear();
+    vi.mocked(lib.waitForReady).mockResolvedValue(true);
+    vi.mocked(lib.hasMaterializedLocalInstall).mockClear();
+    vi.mocked(lib.checkAndUpdateUiBuild).mockClear();
+    vi.mocked(lib.checkAndUpdateSkeleton).mockClear();
+    vi.mocked(app.quit).mockClear();
+    mockBrowserWindow.loadURL.mockClear();
+    vi.stubGlobal('fetch', vi.fn(async (input: string | URL | Request) => {
+      const url = String(input);
+      if (url.endsWith('/api/runtime/landing')) {
+        return new Response(JSON.stringify({ landing: '/start' }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      return new Response(null, { status: 200 });
+    }));
+
+    expect(startupHarness.coreComposeExists).toBe(false);
+    startupHarness.releaseReady();
+
+    await vi.waitFor(() => {
+      expect(mockBrowserWindow.loadURL).toHaveBeenCalledWith('http://127.0.0.1:3880/start');
+    });
+    expect(lib.hasMaterializedLocalInstall).toHaveBeenCalledWith('/home/user/.openpalm');
+    expect(vi.mocked(lib.hasMaterializedLocalInstall).mock.results[0]?.value).toBe(false);
+    expect(vi.mocked(lib.hasMaterializedLocalInstall).mock.invocationCallOrder[0]).toBeLessThan(
+      vi.mocked(lib.checkAndUpdateUiBuild).mock.invocationCallOrder[0],
+    );
+    expect(startupHarness.coreComposeExists).toBe(true);
+    expect(lib.checkAndUpdateSkeleton).not.toHaveBeenCalled();
+    expect(spawn).toHaveBeenCalled();
+    expect(lib.checkDocker).not.toHaveBeenCalled();
+    expect(lib.checkDockerCompose).not.toHaveBeenCalled();
+    expect(app.quit).not.toHaveBeenCalled();
     expect(mockSetAppUserModelId).toHaveBeenCalledWith('com.openpalm.app');
   });
 });
@@ -703,66 +761,6 @@ describe('lib integration', () => {
     const homeDir = lib.resolveOpenPalmHome();
     const env = buildUIServerEnv(homeDir, 3880);
     expect(env.OP_HOME).toBe('/home/user/.openpalm');
-  });
-});
-
-// ── Docker preflight (deployment-review P0 #493) ────────────────────────────
-// The harness must fail early and legibly when Docker isn't running, reusing
-// lib's checkDocker / checkDockerCompose (the CLI's requireDocker probes) rather
-// than duplicating the logic. ensureDockerReady() returns immediately when
-// Docker is available and otherwise blocks on the install/retry screen.
-
-describe('Docker preflight', () => {
-  beforeEach(() => {
-    vi.mocked(lib.checkDocker).mockReset();
-    vi.mocked(lib.checkDockerCompose).mockReset();
-  });
-
-  it('reuses lib.checkDocker / lib.checkDockerCompose (no duplicated logic)', () => {
-    expect(vi.isMockFunction(lib.checkDocker)).toBe(true);
-    expect(vi.isMockFunction(lib.checkDockerCompose)).toBe(true);
-  });
-
-  it('resolves immediately when Docker and Compose v2 are available', async () => {
-    vi.mocked(lib.checkDocker).mockResolvedValue({ ok: true, stdout: '', stderr: '', code: 0 });
-    vi.mocked(lib.checkDockerCompose).mockResolvedValue({ ok: true, stdout: '', stderr: '', code: 0 });
-
-    await expect(ensureDockerReady()).resolves.toBeUndefined();
-    expect(lib.checkDocker).toHaveBeenCalledTimes(1);
-    expect(lib.checkDockerCompose).toHaveBeenCalledTimes(1);
-  });
-
-  it('blocks on the install/retry screen until Docker becomes available', async () => {
-    // First probe: Docker down. After the user clicks retry, Docker is up.
-    vi.mocked(lib.checkDocker)
-      .mockResolvedValueOnce({ ok: false, stdout: '', stderr: '', code: 1 })
-      .mockResolvedValue({ ok: true, stdout: '', stderr: '', code: 0 });
-    vi.mocked(lib.checkDockerCompose).mockResolvedValue({ ok: true, stdout: '', stderr: '', code: 0 });
-
-    let resolved = false;
-    const pending = ensureDockerReady().then(() => { resolved = true; });
-
-    // Let the first (failing) preflight + screen render settle.
-    await new Promise((r) => setTimeout(r, 20));
-    expect(resolved).toBe(false);
-
-    // Simulate the renderer's "I've installed it — retry" click.
-    const retry = ipcMainOnHandlers.get('retry-docker-preflight');
-    expect(retry, 'retry-docker-preflight handler must be registered').toBeDefined();
-    retry?.();
-
-    await pending;
-    expect(resolved).toBe(true);
-    // checkDocker ran twice (initial failure + post-retry success).
-    expect(vi.mocked(lib.checkDocker).mock.calls.length).toBeGreaterThanOrEqual(2);
-  });
-
-  it('registers an open-docker-install handler that opens the install page', () => {
-    const open = ipcMainOnHandlers.get('open-docker-install');
-    expect(open, 'open-docker-install handler must be registered').toBeDefined();
-    vi.mocked(shell.openExternal).mockClear();
-    open?.();
-    expect(shell.openExternal).toHaveBeenCalledWith('https://docs.docker.com/get-docker/');
   });
 });
 

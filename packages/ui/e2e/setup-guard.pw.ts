@@ -1,48 +1,53 @@
 /**
- * Setup guard + wizard handoff — self-contained Playwright contract test
- * (mocked-lib subset, 3.4).
- *
- * Runs against the isolated, throwaway OP_HOME configured in
- * playwright.config.ts (no OP_SETUP_COMPLETE marker exists there, so
- * hooks.server.ts's launch-routing guard always treats this as a fresh
- * instance). This must stay independent of the running *host's* network
- * state: hooks.server.ts's recommendedRoute also depends on whether a
- * configured "default" remote endpoint happens to be reachable, which is
- * outside OP_HOME's control — so the redirect target here is asserted
- * loosely (any of the guard's known landing pages), not an exact path.
- *
- * The wizard-handoff assertion deliberately stops at "the /setup page loads"
- * — the wizard's first visible step only renders once a real Docker daemon
- * passes its check (SystemCheckStep.svelte auto-advances on
- * `docker.ok && compose.ok`, see runChecks()), which the mocked subset must
- * not depend on. That deeper walk-through is covered by
- * install-flow.stack.ts against a live stack.
+ * Completed-setup guard contract against playwright.config.ts's isolated,
+ * setup-complete OP_HOME. Genuine pre-setup browser coverage remains in
+ * setup-wizard-browser.stack.ts, whose fixture deliberately clears and restores
+ * the setup marker around its tests.
  */
-import { test, expect } from '@playwright/test';
+import { expect, test } from './fixtures.js';
 
-test.describe('Setup guard — fresh instance (mocked-lib)', () => {
-  test('GET / never serves raw admin/chat content unauthenticated', async ({ page }) => {
-    const res = await page.goto('/');
-    expect(res?.status()).toBeLessThan(400);
-    // Whatever landing resolveLanding() picks (setup, attention,
-    // connections, or a bounce through chat/admin straight to the login
-    // gate), it must be one of these — never a bare admin page rendered with
-    // no session.
-    await expect(page).toHaveURL(/\/(setup|attention|connections|login)/);
+const PASSWORD = 'e2e-mocked-password';
+
+test.describe('Setup guard after setup is complete (mocked-lib)', () => {
+  test('unauthenticated setup rerun redirects to login with its destination intact', async ({ page }) => {
+    await page.goto('/setup?rerun=1');
+    await expect(page).toHaveURL('/login?redirectTo=%2Fsetup%3Frerun%3D1');
+    await expect(page).toHaveTitle(/Sign in/);
   });
 
-  test('GET /setup is directly reachable, unauthenticated, from localhost', async ({ page }) => {
-    const res = await page.goto('/setup');
-    expect(res?.status()).toBeLessThan(400);
-    await expect(page).toHaveURL(/\/setup/);
-  });
-});
+  test('authenticated setup rerun loads the real wizard', async ({ page }) => {
+    const login = await page.request.post('/api/auth/login', { data: { password: PASSWORD } });
+    expect(login.status()).toBe(200);
 
-test.describe('Wizard handoff (mocked-lib)', () => {
-  test('setup wizard page loads (does not error, does not bounce away)', async ({ page }) => {
-    const res = await page.goto('/setup');
-    expect(res?.status()).toBeLessThan(400);
-    await expect(page).toHaveURL(/\/setup/);
+    await page.route('**/api/setup/system-check', (route) =>
+      route.fulfill({
+        json: {
+          ok: true,
+          docker: { ok: false, error: 'docker unavailable in mocked E2E' },
+          compose: { ok: false, error: 'compose unavailable in mocked E2E' },
+          portCheckReliable: false,
+          ports: [],
+          platform: 'linux',
+        },
+      }),
+    );
+    await page.goto('/setup?rerun=1');
+
+    await expect(page).toHaveURL('/setup?rerun=1');
     await expect(page).toHaveTitle('OpenPalm Setup');
+    await expect(page.getByText('Updating existing installation')).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'System Check' })).toBeVisible();
+  });
+
+  test('completed setup protects setup APIs with a JSON 401', async ({ request }) => {
+    const response = await request.get('/api/setup/system-check');
+    expect(response.status()).toBe(401);
+    expect(await response.json()).toMatchObject({ error: 'unauthorized' });
+  });
+
+  test('setup status stays public and reports the completed fixture', async ({ request }) => {
+    const response = await request.get('/api/setup/status');
+    expect(response.status()).toBe(200);
+    expect(await response.json()).toEqual({ ok: true, setupComplete: true });
   });
 });

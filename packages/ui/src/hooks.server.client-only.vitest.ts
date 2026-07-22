@@ -21,10 +21,6 @@ import { join } from 'node:path';
 import type { RequestEvent } from '@sveltejs/kit';
 import { resetState } from '$lib/server/test-helpers.js';
 
-vi.mock('$lib/server/opencode-target.js', async (orig) => ({
-  ...(await orig<typeof import('$lib/server/opencode-target.js')>()),
-  listRemoteStatuses: vi.fn(async () => []),
-}));
 vi.mock('@openpalm/lib', async (orig) => ({
   ...(await orig<typeof import('@openpalm/lib')>()),
   composePs: vi.fn(async () => ({ ok: false, stdout: '', stderr: '', code: 1 })),
@@ -33,7 +29,7 @@ vi.mock('@openpalm/lib', async (orig) => ({
 
 import { handle, _resetLaunchCache } from './hooks.server.js';
 
-const USAGE_ROUTES = ['/chat', '/connections', '/connections/new', '/advanced'];
+const USAGE_ROUTES = ['/start', '/chat', '/connections', '/connections/new', '/advanced'];
 
 function makeEvent(path: string, accept = 'text/html'): RequestEvent {
   const url = new URL(`http://localhost:3880${path}`);
@@ -96,9 +92,9 @@ describe('hooks.server — client-only public lane (non-admin, not_installed, no
     expect((outcome as Response).status).toBe(200);
   });
 
-  test('/ still lands on /connections/new (landing resolver, non-admin, zero connections)', async () => {
+  test('/ lands on /start so browser-owned connections decide the next route', async () => {
     await expect(handleOutcome(makeEvent('/'))).resolves.toMatchObject({
-      location: '/connections/new',
+      location: '/start',
     });
   });
 
@@ -113,11 +109,18 @@ describe('hooks.server — client-only public lane (non-admin, not_installed, no
     expect((outcome as { location: string }).location).toMatch(/^\/login\?/);
   });
 
-  test('an admin-capable process keeps the login wall even with no password', async () => {
+  test('an admin-capable Electron/admin process gets the same narrow first-run client lane', async () => {
     process.env.OP_ENABLE_ADMIN = '1';
-    const outcome = await handleOutcome(makeEvent('/chat'));
-    expect(outcome).toMatchObject({ status: 302 });
-    expect((outcome as { location: string }).location).toMatch(/^\/login\?/);
+    for (const path of USAGE_ROUTES) {
+      const outcome = await handleOutcome(makeEvent(path));
+      expect(outcome, `${path} must remain usable before a password exists`).toBeInstanceOf(Response);
+      expect((outcome as Response).status).toBe(200);
+    }
+  });
+
+  test('direct host navigation before install is server-redirected to local setup', async () => {
+    process.env.OP_ENABLE_ADMIN = '1';
+    await expect(handleOutcome(makeEvent('/host'))).resolves.toMatchObject({ location: '/setup' });
   });
 
   test('a materialized local install keeps its guards (setup redirect), no public lane', async () => {

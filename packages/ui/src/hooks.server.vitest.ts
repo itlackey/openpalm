@@ -19,10 +19,6 @@ import { SESSION_COOKIE_NAME } from '$lib/server/session-cookie.js';
 // (a reachable assistant on :3800 used to flip the not_installed case to /chat).
 // Everything else from these modules stays real (secret/config
 // startup, the pure routing derivations).
-vi.mock('$lib/server/opencode-target.js', async (orig) => ({
-  ...(await orig<typeof import('$lib/server/opencode-target.js')>()),
-  listRemoteStatuses: vi.fn(async () => []),
-}));
 vi.mock('@openpalm/lib', async (orig) => ({
   ...(await orig<typeof import('@openpalm/lib')>()),
   composePs: vi.fn(async () => ({ ok: false, stdout: '', stderr: '' })),
@@ -30,7 +26,6 @@ vi.mock('@openpalm/lib', async (orig) => ({
 }));
 
 import { handle, _resetLaunchCache } from './hooks.server.js';
-import { listRemoteStatuses } from '$lib/server/opencode-target.js';
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -79,7 +74,6 @@ describe('hooks.server — sliding renewal', () => {
     home = mkdtempSync(join(tmpdir(), 'op-hooks-'));
     process.env.OP_HOME = home;
     _resetLaunchCache(); // the 5s launch cache is module-level — resolve fresh per test
-    vi.mocked(listRemoteStatuses).mockResolvedValue([]);
     const state = resetState('test-admin-pw');
     seedSetupComplete(state.stackDir);
   });
@@ -119,7 +113,7 @@ describe('hooks.server — sliding renewal', () => {
     expect(setCookie).not.toContain(`${SESSION_COOKIE_NAME}=`);
   });
 
-  test('first-run document navigation routes to /setup (resolveLanding)', async () => {
+  test('first-run document navigation routes to /start (resolveLanding)', async () => {
     // Pre-Phase-3 this pinned '/' → /splash; the Phase 3 landing matrix sends
     // not_installed straight to /setup (same scenario is also pinned in
     // hooks.server.landing.vitest.ts).
@@ -130,21 +124,15 @@ describe('hooks.server — sliding renewal', () => {
 
     const event = makeEvent('/', null, 'text/html');
 
-    await expect(handle({ event, resolve })).rejects.toMatchObject({ location: '/setup' });
+    await expect(handle({ event, resolve })).rejects.toMatchObject({ location: '/start' });
   });
 
-  test('not_installed + an accessible remote skips splash → /chat', async () => {
-    // Fresh home, nothing installed, but a reachable remote assistant is configured:
-    // the user should land in chat, not on the splash.
+  test('not_installed ignores server-visible reachability and routes through /start', async () => {
     const state = resetState('test-admin-pw');
     const kvDir = join(state.stackDir, '..', '..', 'knowledge', 'env');
     mkdirSync(kvDir, { recursive: true });
     writeFileSync(join(kvDir, 'stack.env'), 'OP_SETUP_COMPLETE=false\n');
-    vi.mocked(listRemoteStatuses).mockResolvedValue([
-      { id: 'r1', name: 'Remote', url: 'http://example/', state: 'accessible' },
-    ]);
-
     const event = makeEvent('/', null, 'text/html');
-    await expect(handle({ event, resolve })).rejects.toMatchObject({ location: '/chat' });
+    await expect(handle({ event, resolve })).rejects.toMatchObject({ location: '/start' });
   });
 });

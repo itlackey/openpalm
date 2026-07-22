@@ -114,11 +114,12 @@ export function subscribeSessionEvents(handlers: SessionEventHandlers): () => vo
       );
     });
 
-  async function readStream(): Promise<void> {
+  async function readStream(onEstablished: () => void): Promise<void> {
     let connected = false;
     await getTransport().subscribeEvents((event: RawEvent) => {
       if (!connected) {
         connected = true;
+        onEstablished();
         handlers.onConnect?.();
       }
       // A RawEvent is the parsed `/event` frame JSON — the same object shape as
@@ -132,13 +133,21 @@ export function subscribeSessionEvents(handlers: SessionEventHandlers): () => vo
   void (async () => {
     let attempt = 0;
     while (!stopped) {
+      let established = false;
       try {
         attempt++;
-        await readStream();
+        await readStream(() => {
+          established = true;
+        });
         // Stream ended cleanly (server closed). Reconnect with a tiny
         // delay so we don't tight-loop if the server hangs up immediately.
         attempt = 0;
-        if (!stopped) await sleep(500);
+        if (!stopped) {
+          if (established) {
+            handlers.onDisconnect?.(new Error('The assistant event stream closed.'));
+          }
+          await sleep(500);
+        }
       } catch (err) {
         if (stopped) return;
         const error = err instanceof Error ? err : new Error(String(err));
@@ -146,6 +155,8 @@ export function subscribeSessionEvents(handlers: SessionEventHandlers): () => vo
         // expected.
         if (error.name !== 'AbortError') {
           console.warn('[session-events] SSE error, reconnecting', error);
+        }
+        if (established || error.name !== 'AbortError') {
           handlers.onDisconnect?.(error);
         }
         const backoff = Math.min(

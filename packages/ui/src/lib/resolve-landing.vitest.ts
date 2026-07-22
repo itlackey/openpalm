@@ -19,14 +19,15 @@
  *  Landing matrix:
  *    host:setup capability present (admin process):
  *      migration pending          → /attention
- *      local not_installed        → /setup
+ *      local not_installed        → /start
  *      local setup_incomplete     → /setup
  *      local installed_offline    → host admin landing
  *      local installed_broken     → host admin landing + ?tab=diagnostics
  *      otherwise (running)        → /chat
  *    no host:setup capability (non-admin process):
- *      0 connections              → /connections/new
- *      ≥1 connection              → /chat
+ *      local not_installed        → /start
+ *      otherwise, 0 connections   → /connections/new
+ *      otherwise, ≥1 connection   → /chat
  *
  * Phase 4 moved the host admin landing from /admin to /host; the
  * HOST_ADMIN_LANDING constant below flipped with it (and nothing else in
@@ -180,10 +181,19 @@ describe('resolveLanding — host:setup capability present', () => {
     expect(resolveLanding(hostCtx, state)).toBe('/attention');
   });
 
-  test('not_installed lands on /setup', async () => {
+  test('not_installed lands on /start with no server-visible connection', async () => {
     const resolveLanding = await loadResolveLanding();
     const state = makeLaunchState({ local: { state: 'not_installed' }, connections: [] });
-    expect(resolveLanding(hostCtx, state)).toBe('/setup');
+    expect(resolveLanding(hostCtx, state)).toBe('/start');
+  });
+
+  test('not_installed still lands on /start with a server-visible connection', async () => {
+    const resolveLanding = await loadResolveLanding();
+    const state = makeLaunchState({
+      local: { state: 'not_installed' },
+      connections: [{ id: 'reachable-local-placeholder' }],
+    });
+    expect(resolveLanding(hostCtx, state)).toBe('/start');
   });
 
   test('setup_incomplete lands on /setup', async () => {
@@ -230,9 +240,15 @@ describe('resolveLanding — host:setup capability present', () => {
 describe('resolveLanding — non-admin process', () => {
   const ctx = makeCtx(false, BASE_EFFECTIVE);
 
+  test('not_installed lands on /start so the browser can inspect IndexedDB', async () => {
+    const resolveLanding = await loadResolveLanding();
+    const state = makeLaunchState({ local: { state: 'not_installed' }, connections: [] });
+    expect(resolveLanding(ctx, state)).toBe('/start');
+  });
+
   test('zero connections lands on /connections/new', async () => {
     const resolveLanding = await loadResolveLanding();
-    const state = makeLaunchState({ connections: [] });
+    const state = makeLaunchState({ local: { state: 'running' }, connections: [] });
     expect(resolveLanding(ctx, state)).toBe('/connections/new');
   });
 
@@ -244,7 +260,11 @@ describe('resolveLanding — non-admin process', () => {
 
   test('a pending migration does not divert it (no host:setup → gate skipped)', async () => {
     const resolveLanding = await loadResolveLanding();
-    const state = makeLaunchState({ migration: { status: 'pending' }, connections: [] });
+    const state = makeLaunchState({
+      migration: { status: 'pending' },
+      local: { state: 'running' },
+      connections: [],
+    });
     expect(resolveLanding(ctx, state)).toBe('/connections/new');
   });
 });

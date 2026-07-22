@@ -203,6 +203,7 @@ export {
 export {
   deriveLaunchStatus,
   classifyLocalInstall,
+  hasMaterializedLocalInstall,
   deriveLocalStackState,
   detectRuntime,
 } from "./control-plane/launch-status.js";

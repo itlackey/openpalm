@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import { page } from '$app/state';
   import { resolve } from '$app/paths';
   import { LOCAL_PROVIDER_IDS, friendlyProviderName } from '$lib/client/constants.js';
   import { setupState } from '$lib/setup/setup-state.svelte.js';
@@ -16,6 +17,7 @@
   // the store and renders from `setupState.*`. The step components read the
   // store directly (Screen1ModelsStep, ReviewStep) or via callbacks below.
   const s = setupState;
+  const fromStart = $derived(page.url.searchParams.get('from') === 'start');
 
   onMount(() => {
     s.init();
@@ -36,13 +38,20 @@
       <span>Updating existing installation</span>
       <a href={resolve('/')} class="rerun-back-link">← Back to Admin</a>
     </div>
+  {:else if fromStart}
+    <a class="remote-onboarding-link" href={resolve('/start')}>
+      Back to welcome choices
+    </a>
+  {:else}
+    <a class="remote-onboarding-link" href={resolve('/connections/new?onboarding=1')}>
+      Connect to an existing OpenPalm instead
+    </a>
   {/if}
 
-  <!-- SystemCheck: hidden step 0, mounted but invisible -->
+  <!-- SystemCheck is the visible prerequisite step for local installation. -->
   {#if s.currentStep === 0 && !s.showDeploy}
-    <div style="display:none" aria-hidden="true">
-      <section class="step-content step-content--hidden" id="step-0" data-testid="step-system-check">
-        <!-- SystemCheckStep reads the setup-state store directly. -->
+    <div class="system-check-stage">
+      <section class="step-content" id="step-0" data-testid="step-system-check">
         <SystemCheckStep />
       </section>
     </div>
@@ -316,3 +325,39 @@
   {/if}
 
 </main>
+
+<style>
+  .remote-onboarding-link {
+    position: fixed;
+    z-index: 2;
+    top: 20px;
+    right: 24px;
+    color: var(--s-ink-2);
+    font-size: var(--s-type-deed);
+    font-weight: 600;
+  }
+
+  .system-check-stage {
+    width: min(680px, calc(100% - 32px));
+    margin: auto;
+    padding: 40px;
+    border: var(--s-hair) solid var(--s-line);
+    border-radius: 16px;
+    background: var(--s-paper);
+  }
+
+  @media (max-width: 640px) {
+    .remote-onboarding-link {
+      position: static;
+      align-self: flex-end;
+      margin: 16px;
+    }
+
+    .system-check-stage {
+      width: 100%;
+      padding: 24px 18px;
+      border: 0;
+      border-radius: 0;
+    }
+  }
+</style>

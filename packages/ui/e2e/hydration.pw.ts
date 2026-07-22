@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from './fixtures.js';
 
 const HYDRATION_FAILURE = /hydration_mismatch|Failed to hydrate|HierarchyRequestError/i;
 

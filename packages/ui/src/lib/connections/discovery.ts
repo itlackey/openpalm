@@ -35,6 +35,7 @@ export const LOCAL_DISCOVERY_CANDIDATES: readonly DiscoveryCandidate[] = [
 ];
 
 const DISMISSED_STORAGE_KEY = 'openpalm.connections.local-discovery-dismissed';
+const DISCOVERED_CONNECTION_ID = 'discovered-local-assistant';
 const PROBE_TIMEOUT_MS = 1500;
 
 function safeLocalStorage(): Storage | null {
@@ -126,6 +127,7 @@ export async function discoverLocalAssistant(
       // meantime under another host spelling — don't create a duplicate.
       if (await hasCandidate(candidate.baseUrl)) return null;
       return await store.add({
+        id: DISCOVERED_CONNECTION_ID,
         label: candidate.label,
         baseUrl: candidate.baseUrl,
         auth: { mode: 'none' },

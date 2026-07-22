@@ -33,6 +33,19 @@ vi.mock('$lib/api.js', () => ({
   rejectChatQuestion: vi.fn(),
 }));
 
+const persistedSessions = new Map<string, string>();
+const cursorStore = {
+  getLastSessionId: vi.fn(async (connectionId: string) => persistedSessions.get(connectionId) ?? null),
+  setLastSessionId: vi.fn(async (connectionId: string, sessionId: string | null) => {
+    if (sessionId === null) persistedSessions.delete(connectionId);
+    else persistedSessions.set(connectionId, sessionId);
+  }),
+};
+
+vi.mock('$lib/connections/boot.js', () => ({
+  getConnectionStore: () => cursorStore,
+}));
+
 // Mock the SSE consumer so chat-state tests don't open network sockets.
 // `subscribeSessionEvents` is the only export we care about here — the real
 // behavior is exercised in session-events.vitest.ts.
@@ -41,9 +54,11 @@ const sseCaptured: { handlers: CapturedHandlers | null; unsub: ReturnType<typeof
   handlers: null,
   unsub: vi.fn(),
 };
+const sseSubscriptions: CapturedHandlers[] = [];
 vi.mock('./session-events.js', () => ({
   subscribeSessionEvents: vi.fn((handlers: CapturedHandlers) => {
     sseCaptured.handlers = handlers;
+    sseSubscriptions.push(handlers);
     return sseCaptured.unsub;
   }),
 }));
@@ -54,6 +69,11 @@ import * as earcon from '$lib/voice/earcon.js';
 import * as sse from './session-events.js';
 import type { SessionSummary, ChatMessage } from '$lib/types.js';
 import type { ToolStripEntry } from '$lib/chat/tool-strip.js';
+import {
+	activationBlockReason,
+	beginConnectionActivation,
+	emitConnectionActivated
+} from '$lib/connection-events.js';
 import { chat } from './chat-state.svelte.js';
 
 const mocked = {
@@ -91,8 +111,12 @@ beforeEach(() => {
 	voice.voiceState.ttsSupported = false;
 	voice.voiceState.ttsAutoEnabled = false;
 	sseCaptured.handlers = null;
+	sseSubscriptions.length = 0;
 	sseCaptured.unsub.mockReset();
-	mocked.subscribeSessionEvents.mockClear();
+  mocked.subscribeSessionEvents.mockClear();
+	persistedSessions.clear();
+	cursorStore.getLastSessionId.mockClear();
+	cursorStore.setLastSessionId.mockClear();
 });
 
 afterEach(() => {
@@ -155,6 +179,13 @@ describe('onEndpointChanged', () => {
     expect(chat.activeEndpointId).toBe('default');
   });
 
+	it('propagates a refused chat handoff as an activation failure', async () => {
+		mocked.listSessions.mockRejectedValueOnce(new Error('offline'));
+
+		await expect(emitConnectionActivated('alpha')).rejects.toThrow(/refused/i);
+		expect(chat.activeEndpointId).toBe('alpha');
+	});
+
 	it('repairs a disconnected stream without treating same-endpoint route re-entry as a switch', async () => {
 		mocked.listSessions.mockResolvedValueOnce([session('s1', 1000)]);
 		mocked.getSessionMessages.mockResolvedValueOnce([]);
@@ -175,11 +206,127 @@ describe('onEndpointChanged', () => {
 	});
 
   it('leaves activeSessionId null when the endpoint has zero sessions', async () => {
+		persistedSessions.set('empty', 'deleted-session');
     mocked.listSessions.mockResolvedValueOnce([]);
     await chat.onEndpointChanged('empty');
     expect(chat.activeSessionId).toBeNull();
     expect(mocked.getSessionMessages).not.toHaveBeenCalled();
+		expect(persistedSessions.has('empty')).toBe(false);
   });
+
+	it('restores a persisted session only when the successful list contains it', async () => {
+		persistedSessions.set('alpha', 'remembered');
+		mocked.listSessions.mockResolvedValueOnce([
+			session('newest', 2000),
+			session('remembered', 1000),
+		]);
+		mocked.getSessionMessages.mockResolvedValueOnce([
+			{ id: 'm1', role: 'assistant', text: 'remembered reply', timestamp: 1 },
+		]);
+
+		await chat.onEndpointChanged('alpha');
+
+		expect(chat.activeSessionId).toBe('remembered');
+		expect(mocked.getSessionMessages).toHaveBeenCalledWith('remembered');
+		expect(chat.entries).toMatchObject([{ text: 'remembered reply' }]);
+	});
+
+	it('prefers a valid current in-memory session over the persisted cursor', async () => {
+		chat.setActiveSessionId('current', 'alpha');
+		persistedSessions.set('alpha', 'remembered');
+		mocked.listSessions.mockResolvedValueOnce([
+			session('remembered', 2000),
+			session('current', 1000),
+		]);
+		mocked.getSessionMessages.mockResolvedValueOnce([]);
+
+		await chat.onEndpointChanged('alpha');
+
+		expect(chat.activeSessionId).toBe('current');
+		expect(mocked.getSessionMessages).toHaveBeenCalledWith('current');
+		expect(persistedSessions.get('alpha')).toBe('current');
+	});
+
+	it('falls back from a stale cursor to newest and repairs it after messages load', async () => {
+		persistedSessions.set('alpha', 'deleted');
+		mocked.listSessions.mockResolvedValueOnce([session('newest', 2000)]);
+		mocked.getSessionMessages.mockResolvedValueOnce([]);
+
+		await chat.onEndpointChanged('alpha');
+
+		expect(chat.activeSessionId).toBe('newest');
+		expect(persistedSessions.get('alpha')).toBe('newest');
+		expect(cursorStore.setLastSessionId).toHaveBeenCalledWith('alpha', 'newest');
+	});
+
+	it('preserves the prior cursor when listing sessions fails', async () => {
+		persistedSessions.set('alpha', 'remembered');
+		mocked.listSessions.mockRejectedValueOnce(new Error('offline'));
+
+		await chat.onEndpointChanged('alpha');
+
+		expect(persistedSessions.get('alpha')).toBe('remembered');
+		expect(cursorStore.setLastSessionId).not.toHaveBeenCalled();
+		expect(mocked.getSessionMessages).not.toHaveBeenCalled();
+		expect(chat.byEndpoint.get('alpha')?.sessionsLoaded).toBe(false);
+	});
+
+	it('preserves the rendered transcript and cursor when the active endpoint becomes unreachable', async () => {
+		mocked.listSessions.mockResolvedValueOnce([session('remembered', 1000)]);
+		mocked.getSessionMessages.mockResolvedValueOnce([
+			{ id: 'message-1', role: 'assistant', text: 'keep this visible', timestamp: 1 },
+		]);
+		await chat.onEndpointChanged('alpha');
+		mocked.listSessions.mockRejectedValueOnce(new Error('offline'));
+
+		await chat.onEndpointChanged('alpha');
+
+		expect(chat.activeSessionId).toBe('remembered');
+		expect(chat.entries).toMatchObject([{ text: 'keep this visible' }]);
+		expect(persistedSessions.get('alpha')).toBe('remembered');
+	});
+
+	it('does not let a late endpoint load replace the newer endpoint state or cursor', async () => {
+		let releaseAlpha: ((sessions: SessionSummary[]) => void) | undefined;
+		mocked.listSessions
+			.mockImplementationOnce(() => new Promise<SessionSummary[]>((resolve) => {
+				releaseAlpha = resolve;
+			}))
+			.mockResolvedValueOnce([session('beta-session', 2000)]);
+		mocked.getSessionMessages.mockImplementation(async (id) => [{
+			id: `${id}-message`,
+			role: 'assistant',
+			text: id,
+			timestamp: 1,
+		}]);
+
+		const alpha = chat.onEndpointChanged('alpha');
+		await Promise.resolve();
+		await chat.onEndpointChanged('beta');
+		releaseAlpha?.([session('alpha-session', 1000)]);
+		await alpha;
+
+		expect(chat.activeEndpointId).toBe('beta');
+		expect(chat.activeSessionId).toBe('beta-session');
+		expect(chat.entries).toMatchObject([{ text: 'beta-session' }]);
+		expect(persistedSessions.get('beta')).toBe('beta-session');
+		expect(persistedSessions.has('alpha')).toBe(false);
+		expect(mocked.getSessionMessages).not.toHaveBeenCalledWith('alpha-session');
+	});
+
+	it('a successful refresh falls back when the current and persisted session are stale', async () => {
+		chat.activeEndpointId = 'alpha';
+		chat.setActiveSessionId('deleted', 'alpha');
+		persistedSessions.set('alpha', 'deleted');
+		mocked.listSessions.mockResolvedValueOnce([session('newest', 2000)]);
+		mocked.getSessionMessages.mockResolvedValueOnce([]);
+
+		await chat.loadSessions();
+
+		expect(chat.activeSessionId).toBe('newest');
+		expect(mocked.getSessionMessages).toHaveBeenCalledWith('newest');
+		expect(persistedSessions.get('alpha')).toBe('newest');
+	});
 });
 
 describe('startNewSession', () => {
@@ -200,7 +347,34 @@ describe('startNewSession', () => {
     expect(chat.entries).toEqual([]);
     // New session should be prepended.
     expect(chat.byEndpoint.get('alpha')?.sessions[0].id).toBe('new-1');
+		expect(persistedSessions.get('alpha')).toBe('new-1');
   });
+
+	it('does not publish a late creation after a newer endpoint wins', async () => {
+		mocked.listSessions.mockResolvedValueOnce([session('alpha-session', 1000)]);
+		mocked.getSessionMessages.mockResolvedValueOnce([]);
+		await chat.onEndpointChanged('alpha');
+
+		let releaseCreate: ((value: { id: string }) => void) | undefined;
+		mocked.createSession.mockImplementationOnce(() => new Promise((resolve) => {
+			releaseCreate = resolve;
+		}));
+		const creating = chat.startNewSession();
+
+		mocked.listSessions.mockResolvedValueOnce([session('beta-session', 2000)]);
+		mocked.getSessionMessages.mockResolvedValueOnce([
+			{ id: 'beta-message', role: 'assistant', text: 'beta', timestamp: 2 },
+		]);
+		await chat.onEndpointChanged('beta');
+		releaseCreate?.({ id: 'late-new' });
+		await creating;
+
+		expect(chat.activeEndpointId).toBe('beta');
+		expect(chat.activeSessionId).toBe('beta-session');
+		expect(chat.entries).toMatchObject([{ text: 'beta' }]);
+		expect(persistedSessions.get('beta')).toBe('beta-session');
+		expect(persistedSessions.get('alpha')).toBe('alpha-session');
+	});
 });
 
 describe('setActiveSessionId', () => {
@@ -240,7 +414,57 @@ describe('openSession', () => {
 
     expect(chat.activeSessionId).toBe('s1');
     expect(chat.entries).toEqual(msgs);
+		expect(persistedSessions.get('alpha')).toBe('s1');
   });
+
+	it('counts an empty successful message list as an opened session', async () => {
+		persistedSessions.set('alpha', 'prior');
+		chat.activeEndpointId = 'alpha';
+		mocked.getSessionMessages.mockResolvedValueOnce([]);
+
+		await chat.openSession('empty-session');
+
+		expect(chat.entries).toEqual([]);
+		expect(persistedSessions.get('alpha')).toBe('empty-session');
+	});
+
+	it('preserves the prior cursor when messages fail to load', async () => {
+		persistedSessions.set('alpha', 'prior');
+		chat.activeEndpointId = 'alpha';
+		mocked.getSessionMessages.mockRejectedValueOnce(new Error('offline'));
+
+		await chat.openSession('requested');
+
+		expect(persistedSessions.get('alpha')).toBe('prior');
+		expect(cursorStore.setLastSessionId).not.toHaveBeenCalled();
+	});
+
+	it('keeps loading and cursor owned by the newest overlapping session open', async () => {
+		persistedSessions.set('alpha', 'prior');
+		chat.activeEndpointId = 'alpha';
+		let releaseSlow: ((messages: ChatMessage[]) => void) | undefined;
+		let releaseFast: ((messages: ChatMessage[]) => void) | undefined;
+		mocked.getSessionMessages.mockImplementation((id) => new Promise((resolve) => {
+			if (id === 'slow') releaseSlow = resolve;
+			else releaseFast = resolve;
+		}));
+
+		const slow = chat.openSession('slow');
+		const fast = chat.openSession('fast');
+		releaseSlow?.([{ id: 'slow-message', role: 'assistant', text: 'slow', timestamp: 1 }]);
+		await slow;
+
+		expect(chat.entriesLoading).toBe(true);
+		expect(persistedSessions.get('alpha')).toBe('prior');
+
+		releaseFast?.([{ id: 'fast-message', role: 'assistant', text: 'fast', timestamp: 2 }]);
+		await fast;
+
+		expect(chat.entriesLoading).toBe(false);
+		expect(chat.activeSessionId).toBe('fast');
+		expect(chat.entries).toMatchObject([{ text: 'fast' }]);
+		expect(persistedSessions.get('alpha')).toBe('fast');
+	});
 });
 
 describe('session management', () => {
@@ -307,6 +531,7 @@ describe('session management', () => {
 
 		expect(chat.activeSessionId).toBeNull();
 		expect(chat.entries).toEqual([]);
+		expect(persistedSessions.has('alpha')).toBe(false);
 	});
 
 	it('blocks rename and delete while a turn is running', async () => {
@@ -345,6 +570,78 @@ describe('send', () => {
     }
     expect(first.text).toBe('ping');
 		expect(second.text).toBe('pong');
+	});
+
+	it('serializes immediate sends on an empty endpoint through one created session', async () => {
+		mocked.listSessions.mockResolvedValueOnce([]);
+		await chat.onEndpointChanged('empty');
+		mocked.createSession.mockResolvedValue({ id: 'fresh' });
+		mocked.sendChatMessage
+			.mockResolvedValueOnce({ parts: [{ type: 'text', text: 'first reply' }] })
+			.mockResolvedValueOnce({ parts: [{ type: 'text', text: 'second reply' }] });
+
+		await Promise.all([chat.send('first'), chat.send('second')]);
+
+		expect(mocked.createSession).toHaveBeenCalledTimes(1);
+		expect(mocked.sendChatMessage.mock.calls).toEqual([
+			['fresh', 'first'],
+			['fresh', 'second'],
+		]);
+		expect(chat.entries.filter((entry): entry is ChatMessage => !entry.type).map((entry) => entry.text)).toEqual([
+			'first',
+			'first reply',
+			'second',
+			'second reply',
+		]);
+	});
+
+	it('blocks an endpoint switch while the first send creates its session', async () => {
+		mocked.listSessions.mockResolvedValueOnce([]);
+		await chat.onEndpointChanged('alpha');
+		let releaseCreate: ((value: { id: string }) => void) | undefined;
+		mocked.createSession.mockImplementationOnce(() => new Promise((resolve) => {
+			releaseCreate = resolve;
+		}));
+		mocked.sendChatMessage.mockResolvedValueOnce({
+			parts: [{ type: 'text', text: 'alpha reply' }],
+		});
+
+		const sending = chat.send('stay on alpha');
+		while (!releaseCreate) await Promise.resolve();
+		expect(chat.connectionActivationBlockReason()).toMatch(/current reply/i);
+		expect(activationBlockReason()).toMatch(/current reply/i);
+		await expect(chat.onEndpointChanged('beta')).resolves.toBe(false);
+		expect(chat.activeEndpointId).toBe('alpha');
+
+		releaseCreate({ id: 'alpha-session' });
+		await sending;
+
+		expect(mocked.createSession).toHaveBeenCalledTimes(1);
+		expect(mocked.sendChatMessage).toHaveBeenCalledTimes(1);
+		expect(mocked.sendChatMessage).toHaveBeenCalledWith('alpha-session', 'stay on alpha');
+		expect(chat.activeEndpointId).toBe('alpha');
+		expect(chat.connectionActivationBlockReason()).toBeNull();
+	});
+
+	it('rejects a send synchronously once activation has started', async () => {
+		mocked.listSessions.mockResolvedValueOnce([session('alpha-session', 1000)]);
+		mocked.getSessionMessages.mockResolvedValueOnce([]);
+		await chat.onEndpointChanged('alpha');
+		const releaseActivation = beginConnectionActivation();
+
+		try {
+			const attempted = chat.send('must not reach the old assistant');
+			expect(mocked.sendChatMessage).not.toHaveBeenCalled();
+			expect(chat.activeEndpointId).toBe('alpha');
+			expect(chat.activeSessionId).toBe('alpha-session');
+			expect(chat.entries).toEqual([]);
+			expect(chat.error).toMatch(/connection.*switch/i);
+			expect(chat.lastFailedText).toBe('must not reach the old assistant');
+			await attempted;
+			expect(mocked.sendChatMessage).not.toHaveBeenCalled();
+		} finally {
+			releaseActivation();
+		}
 	});
 
 	it('plays the ack earcon and speaks the full reply on the non-streaming path when auto-TTS is enabled', async () => {
@@ -998,6 +1295,23 @@ describe('live SSE updates', () => {
     expect(mocked.subscribeSessionEvents).toHaveBeenCalledTimes(2);
   });
 
+	it('ignores events from an endpoint subscription replaced by a newer switch', async () => {
+		mocked.listSessions.mockResolvedValueOnce([session('alpha-session', 1000)]);
+		mocked.getSessionMessages.mockResolvedValueOnce([]);
+		await chat.onEndpointChanged('alpha');
+		const alphaHandlers = sseSubscriptions[0];
+
+		mocked.listSessions.mockResolvedValueOnce([session('beta-session', 2000)]);
+		mocked.getSessionMessages.mockResolvedValueOnce([]);
+		await chat.onEndpointChanged('beta');
+		alphaHandlers.onCreated('late-alpha-session');
+
+		expect(chat.activeEndpointId).toBe('beta');
+		expect(chat.byEndpoint.get('beta')?.sessions.map((item) => item.id)).toEqual([
+			'beta-session',
+		]);
+	});
+
   it('reset() tears down the subscription and clears liveConnected', async () => {
     mocked.listSessions.mockResolvedValueOnce([]);
     await chat.onEndpointChanged('alpha');
@@ -1045,6 +1359,87 @@ describe('live SSE updates', () => {
     expect(sessions[0].title).toBe('Renamed');
     expect(sessions[0].updatedAt).toBe(9999);
   });
+
+	it('does not let a stale list erase a created event or resurrect a deleted session', async () => {
+		mocked.listSessions.mockResolvedValueOnce([session('old', 1000)]);
+		mocked.getSessionMessages.mockResolvedValueOnce([]);
+		await chat.onEndpointChanged('alpha');
+		expect(persistedSessions.get('alpha')).toBe('old');
+
+		let releaseList: ((sessions: SessionSummary[]) => void) | undefined;
+		mocked.listSessions.mockImplementationOnce(() => new Promise((resolve) => {
+			releaseList = resolve;
+		}));
+		mocked.listSessions.mockResolvedValueOnce([session('new', 2000)]);
+		const refresh = chat.loadSessions();
+		await Promise.resolve();
+		sseCaptured.handlers?.onCreated('new');
+		mocked.getSessionMessages.mockResolvedValueOnce([
+			{ id: 'new-message', role: 'assistant', text: 'new transcript', timestamp: 2 },
+		]);
+		sseCaptured.handlers?.onDeleted('old');
+		await new Promise<void>((resolve) => setTimeout(resolve, 0));
+		releaseList?.([session('old', 1000)]);
+		await refresh;
+
+		expect(chat.byEndpoint.get('alpha')?.sessions.map((item) => item.id)).toEqual(['new']);
+		expect(chat.activeSessionId).toBe('new');
+		expect(chat.entries).toMatchObject([{ text: 'new transcript' }]);
+		expect(persistedSessions.get('alpha')).toBe('new');
+		expect(mocked.getSessionMessages).toHaveBeenCalledTimes(2);
+	});
+
+	it('retries session resolution when deletion arrives while reading the persisted cursor', async () => {
+		persistedSessions.set('alpha', 'old');
+		mocked.listSessions
+			.mockResolvedValueOnce([session('old', 2000), session('new', 1000)])
+			.mockResolvedValueOnce([session('new', 1000)]);
+		let releaseCursor: ((value: string | null) => void) | undefined;
+		cursorStore.getLastSessionId.mockImplementationOnce(() => new Promise((resolve) => {
+			releaseCursor = resolve;
+		}));
+		mocked.getSessionMessages.mockResolvedValueOnce([
+			{ id: 'new-message', role: 'assistant', text: 'new transcript', timestamp: 2 },
+		]);
+
+		const loading = chat.onEndpointChanged('alpha');
+		while (!releaseCursor) await Promise.resolve();
+		sseCaptured.handlers?.onDeleted('old');
+		releaseCursor('old');
+		await loading;
+
+		expect(mocked.listSessions).toHaveBeenCalledTimes(2);
+		expect(mocked.getSessionMessages).toHaveBeenCalledWith('new');
+		expect(chat.activeSessionId).toBe('new');
+		expect(chat.entries).toMatchObject([{ text: 'new transcript' }]);
+		expect(persistedSessions.get('alpha')).toBe('new');
+	});
+
+	it('retries an empty list when a created event arrives while clearing its cursor', async () => {
+		mocked.listSessions
+			.mockResolvedValueOnce([])
+			.mockResolvedValueOnce([session('new', 1000)]);
+		let releaseCursorWrite: (() => void) | undefined;
+		cursorStore.setLastSessionId.mockImplementationOnce(async () => {
+			await new Promise<void>((resolve) => {
+				releaseCursorWrite = resolve;
+			});
+		});
+		mocked.getSessionMessages.mockResolvedValueOnce([
+			{ id: 'new-message', role: 'assistant', text: 'created transcript', timestamp: 2 },
+		]);
+
+		const loading = chat.onEndpointChanged('alpha');
+		while (!releaseCursorWrite) await Promise.resolve();
+		sseCaptured.handlers?.onCreated('new');
+		releaseCursorWrite();
+		await loading;
+
+		expect(mocked.listSessions).toHaveBeenCalledTimes(2);
+		expect(chat.activeSessionId).toBe('new');
+		expect(chat.entries).toMatchObject([{ text: 'created transcript' }]);
+		expect(persistedSessions.get('alpha')).toBe('new');
+	});
 
   it('session.deleted of an inactive session just removes it', async () => {
     mocked.listSessions.mockResolvedValueOnce([

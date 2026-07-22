@@ -23,7 +23,22 @@ describe("DeployStep's admin-dashboard affordances point at /host (review 2026-0
   });
 
   test('the done-state "Admin Dashboard" button resolves /host, not /', () => {
-    expect(SOURCE).toMatch(/resolve\('\/host'\)\}\s*class="btn btn-secondary">Admin Dashboard</);
+    expect(SOURCE).toMatch(/resolve\('\/host'\)\}[^>]*>Admin Dashboard</);
+  });
+
+  test('every same-origin post-deployment exit performs a full page load', () => {
+    const doneLinks = SOURCE.slice(
+      SOURCE.indexOf('<div class="done-links">'),
+      SOURCE.indexOf('</div>', SOURCE.indexOf('<div class="done-links">')),
+    );
+    const sameOriginExits = [...doneLinks.matchAll(
+      /<a\s+([^>]*href=\{resolve\('\/(?:chat|host)'\)\}[^>]*)>/g,
+    )].map((match) => match[1]);
+
+    expect(sameOriginExits).toHaveLength(2);
+    for (const attributes of sameOriginExits) {
+      expect(attributes).toContain('data-sveltekit-reload');
+    }
   });
 
   test("neither affordance still resolves the bare app root ('/') for admin", () => {

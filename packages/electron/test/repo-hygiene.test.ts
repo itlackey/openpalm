@@ -10,7 +10,7 @@
 // Run via vitest (Node): bun run --cwd packages/electron test
 import { describe, it, expect } from 'vitest';
 import { execFileSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -45,5 +45,46 @@ describe('Electron chat surface', () => {
     expect(mainSource).not.toContain('startClientAppServer');
     expect(mainSource).not.toContain('stopClientAppServer');
     expect(mainSource).not.toContain('OP_HOST_CLIENT_PORT');
+  });
+});
+
+describe('Electron starts independently of Docker', () => {
+  const mainSource = readFileSync(resolve(REPO_ROOT, 'packages/electron/src/main.ts'), 'utf-8');
+  const preloadSource = readFileSync(resolve(REPO_ROOT, 'packages/electron/src/preload.ts'), 'utf-8');
+  const boundarySource = readFileSync(resolve(REPO_ROOT, 'scripts/validate-thin-harness-boundary.sh'), 'utf-8');
+
+  it('has no startup Docker probe or wait', () => {
+    expect(mainSource).not.toContain('ensureDockerReady');
+    expect(mainSource).not.toContain('DockerPreflight');
+    expect(mainSource).not.toContain('checkDocker');
+  });
+
+  it('removes the dead preflight IPC and assets', () => {
+    expect(mainSource).not.toContain('retry-docker-preflight');
+    expect(preloadSource).not.toContain('retryDockerPreflight');
+    expect(preloadSource).not.toContain('openDockerInstall');
+    expect(existsSync(resolve(REPO_ROOT, 'packages/electron/src/docker-preflight.ts'))).toBe(false);
+    expect(existsSync(resolve(REPO_ROOT, 'packages/electron/assets/docker-error.html'))).toBe(false);
+  });
+
+  it('removes Docker probes from the thin-harness source allowlist', () => {
+    expect(boundarySource).not.toContain('checkDocker');
+    expect(boundarySource).not.toContain('checkDockerCompose');
+  });
+
+  it('snapshots install materialization before any skeleton refresh', () => {
+    const snapshot = mainSource.indexOf('hasMaterializedLocalInstall(homeDir)');
+    const refresh = mainSource.indexOf('checkAndUpdateSkeleton(');
+    expect(snapshot).toBeGreaterThan(-1);
+    expect(refresh).toBeGreaterThan(snapshot);
+    expect(mainSource).toMatch(/if \(localInstallWasMaterialized\)[\s\S]*checkAndUpdateSkeleton\(/);
+  });
+
+  it('uses the authoritative lib predicate instead of a harness-local classifier', () => {
+    expect(existsSync(resolve(REPO_ROOT, 'packages/electron/src/install-snapshot.ts'))).toBe(false);
+    expect(mainSource).toMatch(
+      /import\s*\{[\s\S]*hasMaterializedLocalInstall[\s\S]*\}\s*from\s*'@openpalm\/lib'/,
+    );
+    expect(mainSource).not.toContain("from './install-snapshot.js'");
   });
 });

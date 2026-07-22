@@ -12,7 +12,17 @@ import { session, shell, systemPreferences } from 'electron';
 //      not at app startup. We therefore expose this as an IPC call so the renderer
 //      can request it precisely when the user first clicks the mic.
 function isTrustedLocalOrigin(url: string): boolean {
-  return url.startsWith('http://127.0.0.1') || url.startsWith('http://localhost');
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return false;
+  }
+  if (parsed.protocol !== 'http:' || parsed.username || parsed.password) return false;
+  if (parsed.hostname !== '127.0.0.1' && parsed.hostname !== 'localhost') return false;
+  const expectedPort = Number(process.env.OP_HOST_UI_PORT) || 3880;
+  const actualPort = parsed.port ? Number(parsed.port) : 80;
+  return actualPort === expectedPort;
 }
 
 /**

@@ -50,7 +50,7 @@ vi.mock('electron', () => ({
     getVersion: vi.fn(() => '0.12.0'),
     quit: vi.fn(),
     exit: vi.fn(),
-    whenReady: vi.fn(() => Promise.resolve()),
+    whenReady: vi.fn(() => new Promise(() => {})),
     on: vi.fn(),
     getAppPath: vi.fn(() => '/mock/app'),
     getPath: vi.fn(() => join(tmpdir(), 'openpalm-initial-url-test-logs')),
@@ -96,10 +96,8 @@ vi.mock('electron', () => ({
 }));
 
 // ── Mock @openpalm/lib ────────────────────────────────────────────────────────
-// checkDocker HANGS deliberately: the module-scope `app.whenReady().then(...)`
-// boot flow awaits ensureDockerReady() forever, so no background UI-server
-// start/health-poll loop can interfere with the per-test fetch stubs below.
-// resolveInitialUrl is a pure exported helper — it needs none of the boot flow.
+// Keep app.whenReady pending above so the module-scope boot flow cannot interfere
+// with the pure resolveInitialUrl tests below.
 vi.mock('@openpalm/lib', () => ({
   resolveOpenPalmHome: vi.fn(() => '/home/user/.openpalm'),
   resolveDataDir: vi.fn(() => '/home/user/.openpalm/data'),
@@ -113,8 +111,6 @@ vi.mock('@openpalm/lib', () => ({
   parseEnvFile: vi.fn(() => ({})),
   PLATFORM_VERSION: 'v0.12.0',
   resolveAssistantEndpoint: vi.fn(() => 'http://127.0.0.1:3800'),
-  checkDocker: vi.fn(() => new Promise(() => { /* hang: freeze the boot flow */ })),
-  checkDockerCompose: vi.fn(() => Promise.resolve({ ok: true, stdout: '', stderr: '', code: 0 })),
   // Faithful reimplementation of lib's waitForReady for the UI bootstrap path.
   waitForReady: vi.fn(async (port: number, timeoutMs = 60_000): Promise<boolean> => {
     const deadline = Date.now() + timeoutMs;
@@ -223,6 +219,11 @@ describe('resolveInitialUrl', () => {
   it('loads the canonical UI chat', async () => {
     stubFetch('/chat');
     await expect(callResolveInitialUrl()).resolves.toBe('http://127.0.0.1:3880/chat');
+  });
+
+  it('loads the client-aware bootstrap page when the landing resolver says /start', async () => {
+    stubFetch('/start');
+    await expect(callResolveInitialUrl()).resolves.toBe('http://127.0.0.1:3880/start');
   });
 
   it('ignores a legacy preferClientChat setting and cannot select port 3890', async () => {

@@ -246,9 +246,9 @@
              exact host they loaded the UI from (127.0.0.1 in the desktop app).
              Navigating to a different host alias (localhost vs 127.0.0.1) would
              drop the session cookie, which is scoped per-host. -->
-        <a href={resolve('/chat')} class="btn btn-primary">Open Chat</a>
+        <a href={resolve('/chat')} data-sveltekit-reload class="btn btn-primary">Open Chat</a>
         <a href="http://127.0.0.1:{assistantPort}" target="_blank" rel="noopener" class="btn btn-secondary">OpenCode UI</a>
-        <a href={resolve('/host')} class="btn btn-secondary">Admin Dashboard</a>
+        <a href={resolve('/host')} data-sveltekit-reload class="btn btn-secondary">Admin Dashboard</a>
       </div>
     {/if}
   </div>

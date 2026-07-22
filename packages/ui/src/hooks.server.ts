@@ -12,7 +12,7 @@
 import type { Handle } from "@sveltejs/kit";
 import { redirect } from "@sveltejs/kit";
 import { getState } from "$lib/server/state.js";
-import { checkHostHeader, checkOriginHeader, getRequestId, identifyCallerByToken } from "$lib/server/helpers.js";
+import { checkHostHeader, checkOriginHeader, getRequestId, identifyCallerByToken, requireAdmin, requireCapability } from "$lib/server/helpers.js";
 import { touchSession } from "$lib/server/session-store.js";
 import { sessionCookieHeader, SESSION_COOKIE_NAME } from "$lib/server/session-cookie.js";
 import { computeServerRuntimeContext } from '$lib/server/features.js';
@@ -156,9 +156,17 @@ export const handle: Handle = async ({ event, resolve }) => {
   const path = event.url.pathname;
   const isAuthPath = path === "/login" || path.startsWith("/login/");
   const isPwaAssetPath = PWA_ASSET_PATHS.includes(path);
+  const isSetupPage = path === '/setup' || path.startsWith('/setup/');
+  const isSetupApi = path === '/api/setup' || path.startsWith('/api/setup/');
+  const isPublicSetupApi = path === '/api/setup/status';
   const wantsHtml =
     event.request.method === "GET" &&
     (event.request.headers.get("accept") ?? "").includes("text/html");
+
+  if (isSetupPage || (isSetupApi && !isPublicSetupApi)) {
+    const capabilityError = requireCapability(event, 'host:setup', requestId);
+    if (capabilityError) return capabilityError;
+  }
 
   // Capability gate: the /host control plane only renders where the server
   // advertises the host:* capability set (the old
@@ -182,6 +190,7 @@ export const handle: Handle = async ({ event, resolve }) => {
   const homeDir = resolveOpenPalmHome();
   const setupComplete = isSetupComplete(homeDir);
   const localInstallState = getCachedLocalInstallState(stackDirFor(homeDir), homeDir);
+  const publicFirstRunSetup = isSetupPath && !setupComplete;
 
   if (
     wantsHtml &&
@@ -206,6 +215,14 @@ export const handle: Handle = async ({ event, resolve }) => {
         { status: 403, headers: { "content-type": "application/json" } },
       );
     }
+  }
+
+  if (
+    wantsHtml
+    && localInstallState === 'not_installed'
+    && (path === '/host' || path.startsWith('/host/'))
+  ) {
+    redirect(302, '/setup');
   }
 
   // ── Launch routing: document navigations land where resolveLanding() says.
@@ -266,6 +283,15 @@ export const handle: Handle = async ({ event, resolve }) => {
   // it never matches here).
   event.locals.role = identifyCallerByToken(event);
 
+  if (
+    setupComplete
+    && isSetupApi
+    && !isPublicSetupApi
+  ) {
+    const authError = requireAdmin(event, requestId);
+    if (authError) return authError;
+  }
+
   // ── Sliding renewal: a valid cookie was just resolved to a role, so push its
   // expiry back to a full TTL (in the in-memory store) and re-issue the cookie
   // with a fresh Max-Age. This keeps active operators signed in indefinitely
@@ -282,7 +308,7 @@ export const handle: Handle = async ({ event, resolve }) => {
     }
   }
 
-  // ── Client-only public lane (PR #571 review P1, #511): a non-admin process
+  // ── Client-only public lane (PR #571 review P1, #511): a process
   // with no local install and no login password configured — e.g. a hosted
   // PWA origin serving the browser-owned client — has nothing behind the
   // login wall: connections and their credentials live in the browser,
@@ -290,15 +316,14 @@ export const handle: Handle = async ({ event, resolve }) => {
   // and /api/assistant/* route enforces its own auth. Redirecting would
   // dead-end the installed app, because /login POSTs 503 when no password
   // exists. The usage routes stay public in exactly this lane; every other
-  // lane (admin-capable, any local install present, or a password
+  // lane (any local install present, or a password
   // configured) keeps the wall unchanged.
   const clientOnlyPublicUsage =
-    !runtimeContext.admin &&
     localInstallState === 'not_installed' &&
     !process.env.OP_UI_LOGIN_PASSWORD &&
-    (path.startsWith('/chat') || path.startsWith('/advanced') || path.startsWith('/connections'));
+    (path === '/start' || path.startsWith('/chat') || path.startsWith('/advanced') || path.startsWith('/connections'));
 
-  if (wantsHtml && !event.locals.role && !isSetupPath && !isAuthPath && !isPwaAssetPath && !clientOnlyPublicUsage) {
+  if (wantsHtml && !event.locals.role && !publicFirstRunSetup && !isAuthPath && !isPwaAssetPath && !clientOnlyPublicUsage) {
     const redirectTo = path + event.url.search;
     redirect(302, `/login?redirectTo=${encodeURIComponent(redirectTo)}`);
   }

@@ -14,6 +14,10 @@ afterEach(() => {
 function fixture(stackEnv: string): string {
   const homeDir = mkdtempSync(join(tmpdir(), 'openpalm-port-contract-'));
   homes.push(homeDir);
+  mkdirSync(join(homeDir, 'system', 'stack'), { recursive: true });
+  writeFileSync(join(homeDir, 'system', 'stack', 'core.compose.yml'), 'services: {}\n');
+  mkdirSync(join(homeDir, 'state'), { recursive: true });
+  writeFileSync(join(homeDir, 'state', 'stack.state.env'), 'OP_SETUP_COMPLETE=true\n');
   mkdirSync(join(homeDir, 'knowledge', 'env'), { recursive: true });
   writeFileSync(join(homeDir, 'knowledge', 'env', 'stack.env'), stackEnv);
   return homeDir;

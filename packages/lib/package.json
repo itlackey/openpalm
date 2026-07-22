@@ -13,6 +13,8 @@
   "types": "./src/index.ts",
   "exports": {
     ".": "./src/index.ts",
+    "./pairing": "./src/pairing.ts",
+    "./pairing.js": "./src/pairing.ts",
     "./provider-constants": "./src/provider-constants.ts",
     "./shared/logger": "./src/logger.ts",
     "./control-plane/*.js": "./src/control-plane/*.ts",

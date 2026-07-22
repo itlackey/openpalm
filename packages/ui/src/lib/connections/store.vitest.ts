@@ -135,6 +135,24 @@ describe('connection store CRUD', () => {
     expect(await store.get(added.id)).toEqual(updated);
   });
 
+  test('updateWithPrevious() atomically returns the durable record it replaced', async () => {
+    const storage = createMemoryStorage();
+    const staleTab = createConnectionStore({ storage });
+    const currentTab = createConnectionStore({ storage });
+    const stale = await staleTab.add(guardianInput({ id: 'shared', auth: { mode: 'basic', username: 'a', secretRef: 'secret-a' } }));
+    const current = await currentTab.update(stale.id, {
+      auth: { mode: 'basic', username: 'b', secretRef: 'secret-b' },
+    });
+
+    const result = await staleTab.updateWithPrevious(stale.id, {
+      auth: { mode: 'basic', username: 'c', secretRef: 'secret-c' },
+    });
+
+    expect(result.previous).toEqual(current);
+    expect(result.updated.auth).toEqual({ mode: 'basic', username: 'c', secretRef: 'secret-c' });
+    expect(await currentTab.get(stale.id)).toEqual(result.updated);
+  });
+
   test('add and update reject URL userinfo before writing a connection record', async () => {
     const { store, storage } = freshStore();
     await expect(
@@ -177,9 +195,26 @@ describe('connection store CRUD', () => {
   test('remove() deletes the entry', async () => {
     const { store } = freshStore();
     const added = await store.add(guardianInput());
-    await store.remove(added.id);
+		await store.setActive(added.id);
+		await store.setLastSessionId(added.id, 'session-1');
+    await expect(store.remove(added.id)).resolves.toEqual(added);
     expect(await store.get(added.id)).toBeNull();
     expect(await store.list()).toEqual([]);
+		expect(await store.getActiveId()).toBeNull();
+		expect(await store.getLastSessionId(added.id)).toBeNull();
+  });
+
+  test('remove() atomically returns the durable record removed after a stale read', async () => {
+    const storage = createMemoryStorage();
+    const staleTab = createConnectionStore({ storage });
+    const currentTab = createConnectionStore({ storage });
+    const stale = await staleTab.add(guardianInput({ id: 'shared', auth: { mode: 'basic', username: 'a', secretRef: 'secret-a' } }));
+    const current = await currentTab.update(stale.id, {
+      auth: { mode: 'basic', username: 'b', secretRef: 'secret-b' },
+    });
+
+    await expect(staleTab.remove(stale.id)).resolves.toEqual(current);
+    expect(await currentTab.get(stale.id)).toBeNull();
   });
 
   test('remove() rejects for an unknown id', async () => {
@@ -272,6 +307,44 @@ describe('active connection selection', () => {
     expect(await store.getActiveId()).toBe(a.id);
   });
 
+	test('compareAndSetActive() changes only the exact expected selection', async () => {
+		const { store } = freshStore();
+		const a = await store.add(guardianInput({ label: 'A' }));
+		const b = await store.add(guardianInput({ label: 'B' }));
+		await store.setActive(a.id);
+
+		await expect(store.compareAndSetActive('someone-else', b.id)).resolves.toBe(false);
+		expect(await store.getActiveId()).toBe(a.id);
+		await expect(store.compareAndSetActive(a.id, b.id)).resolves.toBe(true);
+		expect(await store.getActiveId()).toBe(b.id);
+		await expect(store.compareAndSetActive(b.id, null)).resolves.toBe(true);
+		expect(await store.getActiveId()).toBeNull();
+	});
+
+	test('compareAndSetActive() rejects a missing target without changing the selection', async () => {
+		const { store } = freshStore();
+		const active = await store.add(guardianInput({ id: 'active' }));
+		await store.setActive(active.id);
+
+		await expect(store.compareAndSetActive(active.id, 'missing')).rejects.toThrow(
+			/Unknown connection/
+		);
+		expect(await store.getActiveId()).toBe(active.id);
+	});
+
+	test('removal started before activation cannot leave a dangling active id', async () => {
+		const { store } = freshStore();
+		const target = await store.add(guardianInput({ id: 'race-target' }));
+
+		const removal = store.remove(target.id);
+		const activation = store.setActive(target.id);
+		await Promise.allSettled([removal, activation]);
+
+		expect(await store.get(target.id)).toBeNull();
+		expect(await store.getActiveId()).toBeNull();
+		expect(await store.getActive()).toBeNull();
+	});
+
   test('removing the active entry clears the selection (no dangling active id)', async () => {
     const { store } = freshStore();
     const a = await store.add(guardianInput());
@@ -291,6 +364,55 @@ describe('active connection selection', () => {
     expect(await second.list()).toEqual([added]);
     expect(await second.getActiveId()).toBe('conn-persist');
     expect(await second.getActive()).toEqual(added);
+  });
+});
+
+describe('last session cursor', () => {
+  test('persists only browser-owned session ids in the existing meta storage', async () => {
+    const storage = createMemoryStorage();
+    const first = createConnectionStore({ storage });
+    await first.add(guardianInput({ id: 'conn-persist' }));
+
+    expect(await first.getLastSessionId('conn-persist')).toBeNull();
+    await first.setLastSessionId('conn-persist', 'session-1');
+
+    const second = createConnectionStore({ storage });
+    expect(await second.getLastSessionId('conn-persist')).toBe('session-1');
+    expect(await storage.getMeta('lastSession:conn-persist')).toBe('session-1');
+
+    await second.setLastSessionId('conn-persist', null);
+    expect(await second.getLastSessionId('conn-persist')).toBeNull();
+  });
+
+  test('rejects a non-null cursor for an unknown connection without writing meta', async () => {
+    const { storage, store } = freshStore();
+
+    await expect(store.setLastSessionId('missing', 'session-1')).rejects.toThrow(
+      /Unknown connection/
+    );
+    expect(await storage.getMeta('lastSession:missing')).toBeNull();
+    await expect(store.setLastSessionId('missing', null)).resolves.toBeUndefined();
+  });
+
+  test('removing a connection clears its last-session cursor', async () => {
+    const { store } = freshStore();
+    const added = await store.add(guardianInput({ id: 'conn-remove' }));
+    await store.setLastSessionId(added.id, 'session-1');
+
+    await store.remove(added.id);
+
+    expect(await store.getLastSessionId(added.id)).toBeNull();
+  });
+
+  test('runtime-config pruning clears the removed connection cursor', async () => {
+    const { store } = freshStore();
+    const removed = seededEntry({ id: 'seed-removed', isDefault: false });
+    await store.seedFromRuntimeConfig({ connections: [removed] });
+    await store.setLastSessionId(removed.id, 'session-1');
+
+    await store.seedFromRuntimeConfig({ connections: [] });
+
+    expect(await store.getLastSessionId(removed.id)).toBeNull();
   });
 });
 

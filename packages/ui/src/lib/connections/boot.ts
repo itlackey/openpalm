@@ -31,6 +31,9 @@ import { authorizationHeader, createDirectTransport, type DirectTransport } from
 let store: ConnectionStore | null = null;
 let secrets: SecretStore | null = null;
 let transport: DirectTransport | null = null;
+let storage: ConnectionStorage | null = null;
+export type ConnectionStorageMode = 'persistent' | 'session-only';
+let storageMode: ConnectionStorageMode | 'checking' = 'checking';
 /** Synchronous snapshot of the active connection for the transport. */
 let activeConnection: Connection | null = null;
 
@@ -40,17 +43,53 @@ let activeConnection: Connection | null = null;
  * client's pickStorage).
  */
 function pickStorage(): ConnectionStorage {
+  const memory = createMemoryStorage();
   try {
-    if (typeof indexedDB !== 'undefined') return createIndexedDbStorage();
+    if (typeof indexedDB === 'undefined') {
+      storageMode = 'session-only';
+      return memory;
+    }
   } catch {
-    // fall through to memory
+    storageMode = 'session-only';
+    return memory;
   }
-  return createMemoryStorage();
+
+  const persistent = createIndexedDbStorage();
+  let selected: Promise<ConnectionStorage> | null = null;
+  const select = (): Promise<ConnectionStorage> => {
+    selected ??= persistent.getAll().then(
+      () => {
+        storageMode = 'persistent';
+        return persistent;
+      },
+      () => {
+        storageMode = 'session-only';
+        return memory;
+      }
+    );
+    return selected;
+  };
+
+  return {
+    getAll: async () => (await select()).getAll(),
+    get: async (id) => (await select()).get(id),
+    put: async (entry) => (await select()).put(entry),
+    updateConnection: async (id, update) => (await select()).updateConnection(id, update),
+    removeConnectionState: async (id, allowLocked) =>
+      (await select()).removeConnectionState(id, allowLocked),
+    getMeta: async (key) => (await select()).getMeta(key),
+    setMeta: async (key, value) => (await select()).setMeta(key, value),
+		setActive: async (id) => (await select()).setActive(id),
+		compareAndSetActive: async (expected, id) =>
+			(await select()).compareAndSetActive(expected, id),
+    getCryptoKey: async () => (await select()).getCryptoKey(),
+    setCryptoKey: async (key) => (await select()).setCryptoKey(key),
+  };
 }
 
 function ensure(): void {
   if (store && secrets && transport) return;
-  const storage = pickStorage();
+  storage = pickStorage();
   const connectionStore = createConnectionStore({ storage });
   const secretStore = createSecretStore(storage);
   const directTransport = createDirectTransport(
@@ -82,6 +121,14 @@ export function getTransport(): DirectTransport {
   ensure();
   if (!transport) throw new Error('Direct transport failed to initialize.');
   return transport;
+}
+
+/** Resolve whether this browsing session can persist connection state. */
+export async function getConnectionStorageMode(): Promise<ConnectionStorageMode> {
+  ensure();
+  if (!storage) throw new Error('Connection storage failed to initialize.');
+  await storage.getAll();
+  return storageMode === 'persistent' ? 'persistent' : 'session-only';
 }
 
 /**

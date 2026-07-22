@@ -19,10 +19,6 @@ import { tmpdir } from 'node:os';
 import type { RequestEvent } from '@sveltejs/kit';
 import { resetState } from '$lib/server/test-helpers.js';
 
-vi.mock('$lib/server/opencode-target.js', async (orig) => ({
-  ...(await orig<typeof import('$lib/server/opencode-target.js')>()),
-  listRemoteStatuses: vi.fn(async () => []),
-}));
 vi.mock('@openpalm/lib', async (orig) => ({
   ...(await orig<typeof import('@openpalm/lib')>()),
   composePs: vi.fn(async () => ({ ok: false, stdout: '', stderr: '', code: 1 })),

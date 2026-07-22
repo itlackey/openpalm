@@ -1,6 +1,6 @@
 # Multi-Endpoint Session UX
 
-Status: Design proposal. No code changes have landed for this work.
+Status: Design proposal. Per-connection session cursor persistence is implemented; later UX phases remain proposed.
 Owner: chat UI / endpoint switcher.
 Branch context: `release/0.11.0` — written after the auth/proxy refactor and the endpoint switcher landed.
 
@@ -29,7 +29,7 @@ Source: `node_modules/.bun/@opencode-ai+sdk@1.15.13/node_modules/@opencode-ai/sd
 
 ## 3. Proposed data model
 
-The chat singleton becomes an endpoint-keyed map. Sessions cached per endpoint; messages cached only for the **currently rendered** session (the rest are refetched on selection). Nothing about this is persisted across UI reloads — OpenCode is the source of truth, we just re-fetch on mount.
+The chat singleton becomes an endpoint-keyed map. Sessions are cached per endpoint; messages are cached only for the **currently rendered** session (the rest are refetched on selection). OpenCode remains the source of truth. The browser persists only connection and session identifiers needed to restore navigation.
 
 ```ts
 // packages/ui/src/lib/chat/chat-state.svelte.ts (proposed)
@@ -73,9 +73,23 @@ class ChatService {
 }
 ```
 
-Why a `Map` keyed by endpoint id, not nested in the endpoint entry itself: endpoints come from a server-side store, sessions are client-side ephemeral. Keeping them separate matches the existing layering.
+Why a `Map` keyed by endpoint id, not nested in the endpoint entry itself: browser-owned connection records and the in-memory session cache have different lifecycles. Keeping them separate matches the existing layering.
 
-**Persistence question.** We do *not* persist `activeSessionId` per endpoint to localStorage. OpenCode already has the data, the round trip is one request, and persistence creates a stale-state class of bugs (session deleted out-of-band, wrong session resumed in a new tab). The Electron "OpenPalm Admin" case is the same — the random per-launch password lives in `runtime.json`, but sessions on disk under `${OP_HOME}/data/admin-opencode/` are auth-agnostic and survive relaunch. They're just data that OpenCode itself indexes.
+**Persistence contract.** The existing browser-owned connection store persists one cursor in its IndexedDB `meta` store as `lastSession:<connectionId> = <sessionId>`. This uses the existing schema and store; there is no conversation store and no schema migration.
+
+- A cursor is restored only after a successful authoritative session list confirms that the session still exists on that connection.
+- Selection precedence is a valid current in-memory session, a valid persisted cursor, the newest listed session, then no session.
+- A cursor is written only after that session's messages load successfully (an empty message list is successful), or after a new session is created successfully.
+- A failed list, failed message load, or unreachable connection preserves the prior cursor. A successful empty session list clears it.
+- Re-entering an unreachable active connection preserves its currently rendered in-memory transcript; switching to a different connection still clears the old render so messages are never shown under the wrong assistant.
+- Removing or runtime-config-pruning a connection clears its record, active id (when selected), and cursor in one IndexedDB transaction. A stale/deleted session falls back to the newest listed session, and the cursor is repaired only after that fallback opens successfully.
+- Session-list requests capture the endpoint's event revision and recheck it after every awaited resolution step, including cursor reads and message loads. A created, updated, or deleted SSE event retries authoritative resolution so an older result cannot erase or resurrect newer session state or alter its final cursor.
+- Only identifiers are persisted. Transcripts, messages, session summaries, and server state are never stored in browser persistence; OpenCode remains authoritative.
+- Tabs share IndexedDB and normally use last-writer-wins behavior. Compensating onboarding rollback uses an atomic active-id compare-and-set so it cannot overwrite a newer selection from another tab; no broader cross-tab coordination or transcript synchronization is added.
+- Browser storage chooses IndexedDB or the session-only memory fallback once through one shared initialization promise. The decision never flips back during that browsing session, and IndexedDB mutations are considered successful only when their transactions complete. Connection removal commits its record and owned metadata as one transaction.
+- Overlapping activation calls for the same connection share one pending persistence and handoff operation through success or rollback.
+
+The Electron "OpenPalm Admin" case needs no special handling: the random per-launch password lives in `runtime.json`, while sessions on disk under `${OP_HOME}/data/admin-opencode/` are auth-agnostic and survive relaunch.
 
 ---
 
@@ -178,8 +192,9 @@ Alternatives considered: (a) inline under each endpoint in the switcher dropdown
 
 - **Zero sessions on switch** — render empty chat, input enabled; first send triggers `ensureSession()`. No special UI.
 - **List fetch fails** — single-line error inside the picker ("Couldn't load sessions — Retry"); chat still works, lazily creating a session on send.
-- **Switch mid-message (`sending=true`)** — block the switch with a toast ("Wait for the current reply"). `POST /session/{id}/abort` is available for a future Stop button.
-- **Two tabs** — each tab tracks its own active session (tab-local); the active endpoint is shared via the server-side store. Matches chat-app expectations; no cross-tab sync needed. Electron has one window today.
+- **Switch mid-message** — block the switch from the moment a send is accepted, including while an empty assistant creates its first session, through reply completion. `POST /session/{id}/abort` is available for a future Stop button.
+- **Two tabs** — active connection and last-session identifiers share browser IndexedDB with last-writer-wins semantics. In-memory transcripts remain tab-local and are always refetched from OpenCode. Electron has one window today.
+- **Concurrent local discovery** — every tab writes the reserved `discovered-local-assistant` connection id, so IndexedDB key identity converges to one record without a new index or schema. If tabs observe different reachable local candidates, the existing last-writer-wins rule chooses that record's URL.
 - **OpenPalm Admin sessions across Electron relaunches** — sessions persist on disk; only the wire password rotates. `endpoints.json` still points to `local-electron`, `runtime.json` carries the new password, the picker re-fetches the unchanged session list. No special handling.
 - **Session created with a different model than the current default** — each user/assistant message carries its own `model` (`types.gen.d.ts:52–55, 108–109`); OpenCode resumes accordingly. New prompts can override via `POST /session/{id}/message`'s optional `model` (`types.gen.d.ts:2244–2289`); v1 lets OpenCode use its default. Per-session model selection is v2.
 
@@ -187,7 +202,7 @@ Alternatives considered: (a) inline under each endpoint in the switcher dropdown
 
 ## 7. Backward compatibility / migration
 
-- The current `chat` singleton state is in-memory only — no localStorage, no IndexedDB. Nothing to migrate; the new model replaces the old struct.
+- Existing installs need no schema migration. Session cursors use new keys in the existing IndexedDB `meta` store.
 - `localStorage` keys today are user preferences (e.g. `openpalm.tts.auto`) — none are session-keyed. Safe.
 - No "stale local state" prompt needed.
 - API: the proxy is generic (`/proxy/assistant/[...path]`), so all the new OpenCode endpoints work without server-side changes.

@@ -16,7 +16,7 @@
  *   - a mutating /api/host/containers/* endpoint enforces the same auth gate
  *     (no auth / wrong cookie → 401), without ever touching Docker
  */
-import { test, expect } from '@playwright/test';
+import { test, expect } from './fixtures.js';
 
 const PASSWORD = process.env.OP_UI_LOGIN_PASSWORD ?? 'e2e-mocked-password';
 

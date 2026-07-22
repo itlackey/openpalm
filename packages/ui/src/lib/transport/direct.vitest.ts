@@ -10,7 +10,12 @@
 import { describe, expect, test } from 'vitest';
 import type { RawEvent } from '../chat/oc-events.js';
 import type { Connection } from '../connections/store.js';
-import { authorizationHeader, createDirectTransport, type ResolvedAuth } from './direct.js';
+import {
+  authorizationHeader,
+  createDirectTransport,
+  type ResolvedAuth,
+  verifyDirectCandidate,
+} from './direct.js';
 
 type RecordedRequest = {
   url: string;
@@ -18,6 +23,7 @@ type RecordedRequest = {
   headers: Headers;
   credentials: RequestCredentials | undefined;
   cache: RequestCache | undefined;
+  signal: AbortSignal | null | undefined;
   body: string | null;
 };
 
@@ -34,6 +40,7 @@ function recordingFetch(respond: () => Response | Promise<Response>): {
       headers: new Headers(init?.headers),
       credentials: init?.credentials,
       cache: init?.cache,
+      signal: init?.signal,
       body: typeof rawBody === 'string' ? rawBody : rawBody == null ? null : String(rawBody),
     });
     return respond();
@@ -207,6 +214,7 @@ describe('probeHealth', () => {
     expect(calls[0].url).toBe('http://gw.example:8443/');
     expect(calls[0].credentials).toBe('omit');
     expect(calls[0].cache).toBe('no-store');
+    expect(calls[0].signal).toBeInstanceOf(AbortSignal);
   });
 
   test('401/403 is unauthorized', async () => {
@@ -259,6 +267,83 @@ describe('probeHealth', () => {
       );
       expect(await transport.probeHealth()).toEqual({ status: 'accessible' });
       expect(calls.length).toBe(1);
+    });
+  });
+});
+
+describe('verifyDirectCandidate', () => {
+  test('probes /session with explicit auth, omitted credentials, timeout, and no-store', async () => {
+    const { fetch, calls } = recordingFetch(
+      () => new Response(JSON.stringify([{ id: 'session-1' }]), { status: 200 })
+    );
+
+    await expect(
+      verifyDirectCandidate(
+        'https://guardian.example/oc',
+        { mode: 'basic', username: 'phone', password: 'pair-secret' },
+        fetch
+      )
+    ).resolves.toEqual({ status: 'verified' });
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0].url).toBe('https://guardian.example/oc/session');
+    expect(calls[0].method).toBe('GET');
+    expect(calls[0].credentials).toBe('omit');
+    expect(calls[0].cache).toBe('no-store');
+    expect(calls[0].signal).toBeInstanceOf(AbortSignal);
+    expect(calls[0].headers.get('authorization')).toBe(
+      authorizationHeader({ mode: 'basic', username: 'phone', password: 'pair-secret' })
+    );
+  });
+
+  test('accepts an empty session list but rejects a successful non-OpenCode response shape', async () => {
+    const empty = recordingFetch(() => new Response('[]', { status: 200 }));
+    await expect(
+      verifyDirectCandidate('https://assistant.example', { mode: 'none' }, empty.fetch)
+    ).resolves.toEqual({ status: 'verified' });
+
+    for (const body of ['{"ok":true}', '[{"title":"missing id"}]', '<html>login</html>']) {
+      const wrong = recordingFetch(() => new Response(body, { status: 200 }));
+      await expect(
+        verifyDirectCandidate('https://assistant.example', { mode: 'none' }, wrong.fetch)
+      ).resolves.toEqual({ status: 'wrong-endpoint' });
+    }
+  });
+
+  test.each([
+    [401, 'credentials-rejected'],
+    [403, 'credentials-rejected'],
+    [404, 'wrong-endpoint'],
+    [429, 'rate-limited'],
+    [502, 'target-not-ready'],
+    [503, 'target-not-ready'],
+  ] as const)('classifies HTTP %i as %s', async (status, expected) => {
+    const { fetch } = recordingFetch(() => new Response('', { status }));
+    await expect(
+      verifyDirectCandidate('https://assistant.example', { mode: 'none' }, fetch)
+    ).resolves.toEqual({ status: expected });
+  });
+
+  test('keeps network, CORS, firewall, and timeout failures deliberately uncertain', async () => {
+    const fetch = (async () => {
+      throw new TypeError('candidate-and-secret-must-not-leak');
+    }) as unknown as typeof globalThis.fetch;
+    await expect(
+      verifyDirectCandidate(
+        'https://private-address.example',
+        { mode: 'basic', password: 'private-password' },
+        fetch
+      )
+    ).resolves.toEqual({ status: 'network-uncertain' });
+  });
+
+  test('short-circuits browser mixed content without fetching', async () => {
+    await withLocation('https:', 'app.openpalm.dev', async () => {
+      const { fetch, calls } = recordingFetch(() => new Response('[]', { status: 200 }));
+      await expect(
+        verifyDirectCandidate('http://guardian.lan/oc', { mode: 'none' }, fetch)
+      ).resolves.toEqual({ status: 'mixed-content' });
+      expect(calls).toHaveLength(0);
     });
   });
 });

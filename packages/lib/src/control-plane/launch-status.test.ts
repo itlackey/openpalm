@@ -8,6 +8,7 @@ import { tmpdir } from "node:os";
 import {
   deriveLaunchStatus,
   classifyLocalInstall,
+  hasMaterializedLocalInstall,
   deriveLocalStackState,
   detectRuntimeName,
   type LocalStackState,
@@ -134,6 +135,19 @@ describe("classifyLocalInstall (disk markers)", () => {
     mkdirSync(secretsDir, { recursive: true });
     writeFileSync(join(secretsDir, "op_guardian_admin_token"), "deadbeef\n");
     expect(classifyLocalInstall(sd, dir)).toBe("setup_incomplete");
+  });
+
+  it("exposes one authoritative read-only materialization predicate", () => {
+    expect(hasMaterializedLocalInstall(dir)).toBe(false);
+
+    const sd = join(dir, "system", "stack");
+    mkdirSync(sd, { recursive: true });
+    writeFileSync(join(sd, "core.compose.yml"), "services: {}");
+    expect(hasMaterializedLocalInstall(dir)).toBe(true);
+
+    rmSync(sd, { recursive: true, force: true });
+    writeStackEnv("OP_SETUP_COMPLETE=true\n");
+    expect(hasMaterializedLocalInstall(dir)).toBe(true);
   });
 });
 

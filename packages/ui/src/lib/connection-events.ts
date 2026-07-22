@@ -7,18 +7,36 @@
  * keeps the module graph acyclic so the Phase 5 client extraction is file
  * relocation, not surgery.
  *
- * Two hooks:
+ * Three hooks:
  *  - activation guards: a subscriber may veto a switch before it starts
  *    (chat registers "not while a reply is streaming");
+ *  - activation state: send admission can synchronously refuse work after a
+ *    switch starts and before its transport/chat handoff completes;
  *  - activation listeners: awaited after the server accepted the switch
  *    (chat loads the new connection's sessions).
  */
 
-type ActivationListener = (connectionId: string) => void | Promise<void>;
+type ActivationListener = (connectionId: string) => unknown | Promise<unknown>;
 type ActivationGuard = () => string | null;
 
 const listeners = new Set<ActivationListener>();
 const guards = new Set<ActivationGuard>();
+let activationsInProgress = 0;
+
+/** Mark activation work active until the returned idempotent release runs. */
+export function beginConnectionActivation(): () => void {
+  activationsInProgress++;
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    activationsInProgress--;
+  };
+}
+
+export function connectionActivationInProgress(): boolean {
+  return activationsInProgress > 0;
+}
 
 /** Subscribe to connection activation. Returns an unsubscribe function. */
 export function onConnectionActivated(listener: ActivationListener): () => void {
@@ -55,6 +73,8 @@ export function activationBlockReason(): string | null {
  */
 export async function emitConnectionActivated(connectionId: string): Promise<void> {
   for (const listener of listeners) {
-    await listener(connectionId);
+    if ((await listener(connectionId)) === false) {
+      throw new Error('Connection activation was refused by a listener.');
+    }
   }
 }
