@@ -25,8 +25,14 @@ export function ownershipRepairPaths(state: ControlPlaneState): string[] {
   const deduped = [...new Set(discovered)];
   const base = [
     `${state.homeDir}/state`,
+    state.configDir,
     `${state.homeDir}/knowledge`,
     state.workspaceDir,
+    `${state.dataDir}/assistant`,
+    `${state.dataDir}/guardian`,
+    `${state.dataDir}/portal`,
+    `${state.dataDir}/akm`,
+    `${state.dataDir}/logs`,
   ];
   return [...new Set([...base, ...deduped])];
 }

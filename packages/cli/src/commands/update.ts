@@ -1,10 +1,13 @@
 import { defineCommand } from 'citty';
+import { join } from 'node:path';
 import {
   PLATFORM_VERSION,
   performUpgrade,
   checkAndUpdateUiBuild,
+  classifyLocalInstall,
+  createState,
+  type ControlPlaneState,
 } from '@openpalm/lib';
-import { ensureValidState } from '../lib/cli-state.ts';
 import { defineAction } from '../lib/action.ts';
 
 export default defineCommand({
@@ -24,7 +27,7 @@ export default defineCommand({
 });
 
 export async function runUpgradeAction(): Promise<void> {
-  const state = ensureValidState();
+  const state = resolveUpgradeState();
 
   console.log('Updating stack...');
   await performUpgrade(state);
@@ -45,4 +48,15 @@ export async function runUpgradeAction(): Promise<void> {
   }
 
   console.log('Update complete.');
+}
+
+export function resolveUpgradeState(): ControlPlaneState {
+  const state = createState();
+  const currentInstall = classifyLocalInstall(state.stackDir, state.homeDir);
+  const legacyStackDir = join(state.homeDir, 'config', 'stack');
+  const legacyInstall = classifyLocalInstall(legacyStackDir, state.homeDir);
+  if (currentInstall === 'not_installed' && legacyInstall === 'not_installed') {
+    throw new Error('OpenPalm is not installed in this OP_HOME yet. Run `openpalm install` first.');
+  }
+  return state;
 }

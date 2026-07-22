@@ -64,8 +64,14 @@ describe('ownership canary paths', () => {
     expect(paths).toEqual([
       join(homeDir, 'state', 'stack.state.env'),
       join(homeDir, 'state'),
+      join(homeDir, 'config'),
       join(homeDir, 'knowledge'),
       join(homeDir, 'workspace'),
+      join(homeDir, 'data', 'assistant'),
+      join(homeDir, 'data', 'guardian'),
+      join(homeDir, 'data', 'portal'),
+      join(homeDir, 'data', 'akm'),
+      join(homeDir, 'data', 'logs'),
     ]);
   });
 
@@ -74,6 +80,9 @@ describe('ownership canary paths', () => {
     expect(ownershipRepairPaths(state)).toContain(join(homeDir, 'knowledge'));
     expect(ownershipRepairPaths(state)).toContain(join(homeDir, 'state'));
     expect(ownershipRepairPaths(state)).toContain(join(homeDir, 'workspace'));
+    expect(ownershipRepairPaths(state)).toContain(join(homeDir, 'data', 'assistant'));
+    expect(ownershipRepairPaths(state)).toContain(join(homeDir, 'data', 'guardian'));
+    expect(ownershipRepairPaths(state)).toContain(join(homeDir, 'data', 'akm'));
   });
 });
 

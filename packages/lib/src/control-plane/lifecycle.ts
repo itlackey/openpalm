@@ -268,8 +268,8 @@ export async function performUpgrade(state: ControlPlaneState, opts?: LockedLife
   let containersMutated = false;
   try {
     await runWithSnapshotRollback(state, async () => {
-      await applyManagedFiles(state, true);
       await reconcileHostOwnership(state, { services: await buildManagedServices(state) });
+      await applyManagedFiles(state, true);
 
       const renameTeardown = await teardownRenamedProject(state);
       if (renameTeardown.warning) lifecycleLogger.warn(renameTeardown.warning);
