@@ -89,7 +89,9 @@ export function resolveUiNetworkEnv(
   port: number,
   adminHostUi: boolean,
   env: Record<string, string | undefined> = process.env,
-  localInstallState: ReturnType<typeof classifyLocalInstall> = 'installed',
+  // Fail closed: an omitted install state must never widen the bind to 0.0.0.0.
+  // Only an explicit 'installed' (below) unlocks the remote-setup wildcard bind.
+  localInstallState: ReturnType<typeof classifyLocalInstall> = 'not_installed',
 ): Record<'HOST' | 'PORT' | 'ORIGIN' | 'HOST_HEADER' | 'PROTOCOL_HEADER', string | undefined> {
   const effectiveAdmin = resolveExpectedAdmin(adminHostUi, env);
   if (!effectiveAdmin && localInstallState === 'installed' && isRemoteSetupAllowed(env)) {
