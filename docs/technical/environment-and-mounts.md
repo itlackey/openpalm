@@ -222,11 +222,11 @@ Notes:
 
 ---
 
-## Admin (host process)
+## Host UI Process
 
-Admin is a host-only Bun.serve server started by `openpalm`. It has no container, no Docker socket mount, and no `$OP_HOME` volume bind — it accesses everything directly as a host process.
+The UI is an adapter-node host process started by `openpalm`. It has no container or `$OP_HOME` volume bind; admin-capable launches access host resources directly.
 
-Bind address: `127.0.0.1:${OP_HOST_UI_PORT:-3880}` (loopback only — never reachable from containers or LAN). Reach it remotely over an SSH tunnel (`ssh -L 3880:localhost:3880 host`) or a reverse proxy. To bind all interfaces for genuine LAN access (including the first-run setup wizard), set `OP_ALLOW_REMOTE_SETUP=1` — this relaxes the Host/Origin allowlist and the setup-localhost-only gate, so only enable it on a trusted network behind a firewall.
+Normal non-admin launches bind internally to `127.0.0.1` and use `http://localhost:${OP_HOST_UI_PORT:-3880}` as the browser/install origin. Electron and `openpalm admin` preserve their internal `127.0.0.1` origin and never honor remote bind configuration. After completing initial setup locally, set `OP_ALLOW_REMOTE_SETUP=1` to bind a **non-admin** UI process to all interfaces for operator-managed HTTPS proxying. This relaxes the Host allowlist and permits same-origin remote requests, but first-run setup remains restricted to a loopback browser origin. Admin-capable processes remain loopback-only.
 
 Key env (host process, not container):
 
@@ -235,7 +235,7 @@ Key env (host process, not container):
 | `PORT` | `OP_HOST_UI_PORT` or `3880` | Host UI HTTP listen port (admin capability is an Electron/CLI boundary, not a separate port) |
 | `OP_HOME` | resolved from host env | OpenPalm home directory |
 | `OP_UI_LOGIN_PASSWORD` | `$OP_HOME/knowledge/secrets/op_ui_login_password` | Operator admin password promoted into the host admin process environment |
-| `OP_ALLOW_REMOTE_SETUP` | unset (`0`) | When `1`/`true`/`yes`: bind `0.0.0.0`, allow any Host/same-origin, and permit remote access to the setup wizard. Off by default (loopback-only). |
+| `OP_ALLOW_REMOTE_SETUP` | unset (`0`) | For non-admin UI processes only, `1`/`true`/`yes` binds `0.0.0.0` and allows any Host/same-origin after local setup. First-run setup still requires a loopback browser origin. Electron and `openpalm admin` ignore/neutralize it. |
 
 ---
 

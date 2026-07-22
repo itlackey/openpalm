@@ -1,6 +1,8 @@
 # Complete OpenPalm Testing Workflow
 
-Testing is organized into 6 tiers, from fastest/simplest to most thorough. Run them in order — each builds on the confidence established by the previous tier.
+Testing is organized into 6 tiers, from fastest/simplest to most thorough, plus
+a production-build PWA browser lane. Run the tiers in order; run the PWA lane
+for PWA/service-worker changes and release candidates.
 
 ---
 
@@ -16,11 +18,12 @@ Before running any stack tests (Tiers 5+), ensure:
 
 ```bash
 bun run test:t1   # Type check (svelte-check + SDK)
-bun run test:t2   # Non-admin unit tests
-bun run test:t3   # Admin unit tests (vitest)
+bun run test:t2   # Non-UI unit tests
+bun run test:t3   # UI unit tests (Vitest)
 bun run test:t4   # Mocked browser E2E (Playwright)
 bun run test:t5   # Integration E2E (rebuilds stack)
 bun run test:t6   # Full stack E2E + LLM pipeline (rebuilds stack, no-skip enforced)
+bun run ui:test:pwa  # Production PWA/CDP lane (no stack)
 ```
 
 ### T5 vs T6
@@ -31,16 +34,17 @@ bun run test:t6   # Full stack E2E + LLM pipeline (rebuilds stack, no-skip enfor
 | `RUN_DOCKER_STACK_TESTS` | Yes | Yes |
 | `RUN_LLM_TESTS` | No | Yes |
 | `PW_ENFORCE_NO_SKIP` | No (LLM tests skip gracefully) | Yes (all tests must run) |
-| Script | `bun run admin:test:stack` | `bun run admin:test:llm` |
+| Script | `bun run ui:test:stack` | `bun run ui:test:llm` |
 
-### Standalone E2E commands
+### Standalone browser commands
 
 | Command | `STACK` | `LLM` | `NO_SKIP` | Use case |
 |---|---|---|---|---|
-| `bun run admin:test:stack` | 1 | - | - | Stack integration only (LLM tests skip) |
-| `bun run admin:test:llm` | 1 | 1 | 1 | Full suite, no skips |
-| `bun run admin:test:e2e` | 1 | 1 | 1 | Alias — same as llm |
-| `bun run admin:test:e2e:mocked` | - | - | - | Browser contract tests only |
+| `bun run ui:test:stack` | 1 | - | - | Stack integration only (LLM tests skip) |
+| `bun run ui:test:llm` | 1 | 1 | 1 | Full suite, no skips |
+| `bun run ui:test:e2e` | 1 | 1 | 1 | Full suite, no skips |
+| `bun run ui:test:e2e:mocked` | - | - | - | Browser contract tests only |
+| `bun run ui:test:pwa` | - | - | - | Production PWA installability, app mode, persistence, and cache boundaries |
 
 ### Why T5/T6 always rebuild containers
 
@@ -56,11 +60,11 @@ Docker `restart` does NOT re-read compose config changes (env_file paths, mount 
 bun run check    # svelte-check + TypeScript
 ```
 
-Validates type correctness across all SvelteKit admin code.
+Validates type correctness across the SvelteKit UI and UI kit.
 
 ---
 
-## Tier 2: Non-Admin Unit Tests
+## Tier 2: Non-UI Unit Tests
 
 **Time:** ~25s | **Prerequisites:** None
 
@@ -68,31 +72,52 @@ Validates type correctness across all SvelteKit admin code.
 bun run test
 ```
 
-Runs all non-admin unit tests: lib, cli, guardian, portal adapters, scheduler-related helpers, and admin-tools.
+Runs the root Bun suite: lib, CLI, guardian, portal adapters, UI kit,
+Electron admin-tools, and supporting scripts.
 
 ---
 
-## Tier 3: Admin Unit Tests
+## Tier 3: UI Unit Tests
 
 **Time:** ~5s | **Prerequisites:** None
 
 ```bash
-bun run admin:test:unit
+bun run ui:test:unit
 ```
 
-Runs Vitest server + browser component tests for the admin SvelteKit app.
+Runs Vitest server and browser component tests for `@openpalm/ui`.
 
 ---
 
 ## Tier 4: Mocked Browser E2E
 
-**Time:** ~2min | **Prerequisites:** Admin build (`bun run admin:build`)
+**Time:** ~2min | **Prerequisites:** Playwright Chromium
 
 ```bash
-bun run admin:test:e2e:mocked
+bun run ui:test:e2e:mocked
 ```
 
-Runs Playwright against a built admin app with mocked API endpoints. Tests setup wizard UI and browser contracts without live backend services.
+Runs Playwright against the UI with mocked API endpoints. Tests setup wizard UI
+and browser contracts without live backend services.
+
+---
+
+## PWA Browser Lane
+
+**Prerequisites:** Playwright Chromium (`bun run --cwd packages/ui test:browsers`)
+
+```bash
+bun run ui:test:pwa
+```
+
+Builds the production adapter-node UI and runs the isolated PWA Playwright
+suite without Docker. The lane uses Chromium DevTools Protocol
+`Page.getAppManifest` and `Page.getInstallabilityErrors` to require a valid
+emitted manifest and zero installability errors, waits for service-worker
+control, then reopens the same profile with Chromium `--app` and verifies real
+standalone display mode, persisted IndexedDB state, chat, and the asset-only
+cache boundary. It does not click an operating-system browser install menu;
+that remains one manual release smoke.
 
 ---
 
@@ -210,27 +235,31 @@ Verify: `docker ps | grep openpalm-test` should show assistant (healthy) and gua
 | Tier | Time | Command | Coverage |
 |------|------|---------|----------|
 | T1 | ~10s | `bun run test:t1` | Types + SDK |
-| T2 | ~25s | `bun run test:t2` | All non-admin unit tests |
-| T3 | ~5s | `bun run test:t3` | Admin unit tests |
+| T2 | ~25s | `bun run test:t2` | All non-UI unit tests |
+| T3 | ~5s | `bun run test:t3` | UI unit tests |
 | T4 | ~2min | `bun run test:t4` | Mocked browser E2E |
 | T5 | ~5min | `bun run test:t5` | Integration E2E (stack rebuild) |
 | T6 | ~5min | `bun run test:t6` | Full E2E + LLM (no skips) |
+| PWA | browser | `bun run ui:test:pwa` | Production manifest/CDP installability, standalone app mode, persistence, cache boundary |
 
 ## Recommended Local Workflow
 
 ```bash
 # 1. Quick validation (always before committing)
-bun run check && bun run test && bun run admin:test:unit
+bun run check && bun run test && bun run ui:test:unit
 
 # 2. Mocked browser contracts (before pushing UI changes)
-bun run admin:test:e2e:mocked
+bun run ui:test:e2e:mocked
 
-# 3. Stack integration (before pushing stack/compose changes)
+# 3. Production PWA contract (for PWA changes and release candidates)
+bun run ui:test:pwa
+
+# 4. Stack integration (before pushing stack/compose changes)
 bun run test:t5
 
-# 4. Full validation (before releases or LLM-touching changes)
+# 5. Full validation (before releases or LLM-touching changes)
 bun run test:t6
 
-# 5. Clean-slate validation (before releases)
+# 6. Clean-slate validation (before releases)
 ./scripts/dev-e2e-test.sh
 ```

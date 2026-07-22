@@ -7,14 +7,15 @@
  * async) and keeps NO state in store-instance fields — a page reload
  * constructs a new store over the same backend and must see identical state.
  *
- * Locked/default entries are seeded from a runtime-config.json fetched from
- * the app's own origin at boot. Absent file = no default connection.
+ * Locked/default entries are seeded from process or static runtime config
+ * fetched from the app's own origin at boot. Absent config = no default.
  *
  * The Connection shape is `{ id, label, baseUrl, auth }` with auth narrowed to
  * none | basic (Guardian is a transparent OpenCode proxy — Basic is the only
  * connection credential model).
  */
 
+import { parseUiRuntimeConfig } from '@openpalm/lib/control-plane/ui-runtime-config-schema.js';
 import { randomId } from '../random-id.js';
 import { hasSameLoopbackPort, isLoopbackHost, redactUrlUserinfo } from './url-policy.js';
 
@@ -38,7 +39,7 @@ export type Connection = {
 
 export type NewConnectionInput = Omit<Connection, 'id'> & { id?: string };
 
-/** Shape of the runtime-config.json written beside the static build. */
+/** Shape shared by the process endpoint and static assistant fallback. */
 export type RuntimeConfig = {
   connections: Connection[];
 };
@@ -62,6 +63,16 @@ function redactEntryUrl(entry: Connection): Connection {
   return baseUrl === entry.baseUrl ? entry : { ...entry, baseUrl };
 }
 
+function isMixedContentTarget(rawUrl: string): boolean {
+  if (globalThis.location?.protocol !== 'https:') return false;
+  try {
+    const url = new URL(rawUrl);
+    return url.protocol === 'http:' && !isLoopbackHost(url.hostname);
+  } catch {
+    return false;
+  }
+}
+
 function assertUrlHasNoUserinfo(rawUrl: string): void {
   let url: URL;
   try {
@@ -76,12 +87,13 @@ function assertUrlHasNoUserinfo(rawUrl: string): void {
 
 function adaptRuntimeConfigForBrowser(config: RuntimeConfig): RuntimeConfig {
   return {
-    connections: config.connections.map((entry) => ({
-      ...redactEntryUrl(entry),
-      baseUrl: entry.locked
+    connections: config.connections.flatMap((entry) => {
+      const baseUrl = entry.locked
         ? rewriteLoopbackUrlForBrowserHost(entry.baseUrl)
-        : redactUrlUserinfo(entry.baseUrl),
-    })),
+        : redactUrlUserinfo(entry.baseUrl);
+      if (isMixedContentTarget(baseUrl)) return [];
+      return [{ ...redactEntryUrl(entry), baseUrl }];
+    }),
   };
 }
 
@@ -467,25 +479,43 @@ export function createConnectionStore(options: { storage: ConnectionStorage }): 
 // ── Runtime config ───────────────────────────────────────────────────────
 
 /**
- * Fetch '/runtime-config.json' from the app's OWN origin (relative URL — the
- * static server ships the file beside the build; the app holds no other
- * trusted origin at boot). Absent (404), unreachable (offline), or malformed
- * -> null; never throws, so an offline PWA boot still reaches the stored
- * connection list.
+ * Prefer the host process's per-launch config endpoint. A 404 (or an endpoint
+ * unavailable on an older/static server) falls back to the assistant
+ * container's `/runtime-config.json`. A present but invalid process config
+ * fails closed instead of reviving a stale static locked connection.
  */
 export async function loadRuntimeConfig(
   fetchImpl: typeof globalThis.fetch = globalThis.fetch
 ): Promise<RuntimeConfig | null> {
+  const requestInit: RequestInit = {
+    method: 'GET',
+    headers: { accept: 'application/json' },
+    credentials: 'omit',
+    cache: 'no-store',
+  };
+
+  let processResponse: Response | null = null;
   try {
-    const response = await fetchImpl('/runtime-config.json', {
-      method: 'GET',
-      headers: { accept: 'application/json' },
-      credentials: 'omit',
-    });
+    processResponse = await fetchImpl('/api/runtime-config', requestInit);
+  } catch {
+    // Static-only servers have no process endpoint.
+  }
+
+  if (processResponse && processResponse.status !== 404) {
+    if (!processResponse.ok) return null;
+    try {
+      const config = parseUiRuntimeConfig(await processResponse.json());
+      return config ? adaptRuntimeConfigForBrowser(config) : null;
+    } catch {
+      return null;
+    }
+  }
+
+  try {
+    const response = await fetchImpl('/runtime-config.json', requestInit);
     if (!response.ok) return null;
-    const parsed = (await response.json()) as { connections?: unknown } | null;
-    if (!parsed || typeof parsed !== 'object' || !Array.isArray(parsed.connections)) return null;
-    return adaptRuntimeConfigForBrowser(parsed as RuntimeConfig);
+    const config = parseUiRuntimeConfig(await response.json());
+    return config ? adaptRuntimeConfigForBrowser(config) : null;
   } catch {
     return null;
   }

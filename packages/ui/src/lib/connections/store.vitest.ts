@@ -36,9 +36,10 @@ type RecordedRequest = {
   url: string;
   method: string;
   credentials: RequestCredentials | undefined;
+  cache: RequestCache | undefined;
 };
 
-function recordingFetch(respond: () => Response): {
+function recordingFetch(respond: (url: string) => Response | Promise<Response>): {
   fetch: typeof globalThis.fetch;
   calls: RecordedRequest[];
 } {
@@ -48,8 +49,9 @@ function recordingFetch(respond: () => Response): {
       url: String(input),
       method: (init?.method ?? 'GET').toUpperCase(),
       credentials: init?.credentials,
+      cache: init?.cache,
     });
-    return respond();
+    return respond(String(input));
   };
   return { fetch: impl as typeof globalThis.fetch, calls };
 }
@@ -67,9 +69,9 @@ function rejectingFetch(message = 'offline'): typeof globalThis.fetch {
   }) as unknown as typeof globalThis.fetch;
 }
 
-async function withLocationHost<T>(hostname: string, run: () => Promise<T>): Promise<T> {
+async function withLocationHost<T>(hostname: string, run: () => Promise<T>, protocol = 'http:'): Promise<T> {
   const original = Object.getOwnPropertyDescriptor(globalThis, 'location');
-  Object.defineProperty(globalThis, 'location', { configurable: true, value: { hostname } });
+  Object.defineProperty(globalThis, 'location', { configurable: true, value: { hostname, protocol } });
   try {
     return await run();
   } finally {
@@ -293,34 +295,55 @@ describe('active connection selection', () => {
 });
 
 describe('loadRuntimeConfig', () => {
-  test("GETs '/runtime-config.json' from the app's own origin and parses it", async () => {
+  test("prefers the process-scoped '/api/runtime-config' endpoint", async () => {
     const config: RuntimeConfig = { connections: [seededEntry()] };
     const { fetch, calls } = recordingFetch(() => jsonResponse(config));
     const loaded = await loadRuntimeConfig(fetch);
     expect(calls.length).toBe(1);
-    expect(calls[0].url).toBe('/runtime-config.json');
+    expect(calls[0].url).toBe('/api/runtime-config');
     expect(calls[0].method).toBe('GET');
     expect(calls[0].credentials).toBe('omit');
+    expect(calls[0].cache).toBe('no-store');
     expect(loaded).toEqual(config);
   });
 
-  test('absent file (404) means no default: resolves null, does not throw', async () => {
-    const { fetch } = recordingFetch(() => new Response('not found', { status: 404 }));
+  test('falls back to the static assistant config only when the process endpoint is absent', async () => {
+    const config: RuntimeConfig = { connections: [seededEntry()] };
+    const { fetch, calls } = recordingFetch((url) => (
+      url === '/api/runtime-config'
+        ? new Response('not found', { status: 404 })
+        : jsonResponse(config)
+    ));
+    expect(await loadRuntimeConfig(fetch)).toEqual(config);
+    expect(calls.map((call) => call.url)).toEqual(['/api/runtime-config', '/runtime-config.json']);
+  });
+
+  test('absent process and static config means no default', async () => {
+    const { fetch, calls } = recordingFetch(() => new Response('not found', { status: 404 }));
     expect(await loadRuntimeConfig(fetch)).toBeNull();
+    expect(calls.map((call) => call.url)).toEqual(['/api/runtime-config', '/runtime-config.json']);
   });
 
   test('offline (fetch rejects) resolves null, does not throw', async () => {
     expect(await loadRuntimeConfig(rejectingFetch('offline'))).toBeNull();
   });
 
-  test('malformed JSON resolves null', async () => {
-    const { fetch } = recordingFetch(() => new Response('<html>SPA fallback</html>', { status: 200 }));
+  test('malformed process JSON resolves null without consulting the static file', async () => {
+    const { fetch, calls } = recordingFetch(() => new Response('<html>SPA fallback</html>', { status: 200 }));
     expect(await loadRuntimeConfig(fetch)).toBeNull();
+    expect(calls).toHaveLength(1);
   });
 
-  test('valid JSON without a connections array is malformed: resolves null', async () => {
-    const { fetch } = recordingFetch(() => jsonResponse({ unexpected: true }));
+  test('present process JSON with an invalid shape fails closed without static fallback', async () => {
+    const { fetch, calls } = recordingFetch(() => jsonResponse({ unexpected: true }));
     expect(await loadRuntimeConfig(fetch)).toBeNull();
+    expect(calls).toHaveLength(1);
+  });
+
+  test('a process endpoint error does not revive a stale static connection', async () => {
+    const { fetch, calls } = recordingFetch(() => jsonResponse({ error: 'invalid_runtime_config' }, 500));
+    expect(await loadRuntimeConfig(fetch)).toBeNull();
+    expect(calls).toHaveLength(1);
   });
 
   test('rewrites locked loopback default URLs to the current LAN browser host', async () => {
@@ -347,18 +370,40 @@ describe('loadRuntimeConfig', () => {
     expect(loaded?.connections[0]?.baseUrl).toBe('http://127.0.0.1:3800');
   });
 
-  test('redacts legacy userinfo from runtime connection URLs', async () => {
+  test('drops HTTP runtime defaults on a remote HTTPS PWA origin', async () => {
+    const config: RuntimeConfig = {
+      connections: [
+        seededEntry({ baseUrl: 'http://127.0.0.1:3800' }),
+        seededEntry({ id: 'secure', baseUrl: 'https://assistant.example' }),
+      ],
+    };
+    const { fetch } = recordingFetch(() => jsonResponse(config));
+
+    const loaded = await withLocationHost('pwa.example', () => loadRuntimeConfig(fetch), 'https:');
+
+    expect(loaded?.connections).toEqual([
+      expect.objectContaining({ id: 'secure', baseUrl: 'https://assistant.example' }),
+    ]);
+  });
+
+  test('keeps a trustworthy loopback HTTP default on an HTTPS localhost origin', async () => {
+    const config: RuntimeConfig = {
+      connections: [seededEntry({ baseUrl: 'http://127.0.0.1:3800' })],
+    };
+    const { fetch } = recordingFetch(() => jsonResponse(config));
+
+    const loaded = await withLocationHost('localhost', () => loadRuntimeConfig(fetch), 'https:');
+
+    expect(loaded?.connections[0]?.baseUrl).toBe('http://127.0.0.1:3800');
+  });
+
+  test('rejects runtime connection URLs containing userinfo', async () => {
     const config: RuntimeConfig = {
       connections: [seededEntry({ baseUrl: 'http://legacy-user:legacy-password@127.0.0.1:3800' })],
     };
     const { fetch } = recordingFetch(() => jsonResponse(config));
 
-    const loaded = await loadRuntimeConfig(fetch);
-    const serialized = JSON.stringify(loaded);
-
-    expect(loaded?.connections[0]?.baseUrl).toBe('http://127.0.0.1:3800');
-    expect(serialized).not.toContain('legacy-user');
-    expect(serialized).not.toContain('legacy-password');
+    expect(await loadRuntimeConfig(fetch)).toBeNull();
   });
 });
 

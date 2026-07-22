@@ -84,6 +84,16 @@ describe("waitForReady", () => {
     await waitForReady(4321, 5000, { fetchFn, sleep: noSleep });
     expect(urls[0]).toBe("http://127.0.0.1:4321/health");
   });
+
+  test("accepts localhost for the CLI app readiness path", async () => {
+    const urls: string[] = [];
+    const fetchFn = ((url: string) => {
+      urls.push(url);
+      return Promise.resolve({ ok: true, status: 200 } as Response);
+    }) as unknown as typeof fetch;
+    await waitForReady(4321, 5000, { host: "localhost", fetchFn, sleep: noSleep });
+    expect(urls[0]).toBe("http://localhost:4321/health");
+  });
 });
 
 // ── restoreUiBackup ──────────────────────────────────────────────────────────

@@ -6,6 +6,7 @@
   import { replaceState } from '$app/navigation';
   import Navbar from '$lib/components/chrome/Navbar.svelte';
   import DeviceSettingsNav from '$lib/components/chrome/DeviceSettingsNav.svelte';
+  import PwaInstall from '$lib/components/settings/PwaInstall.svelte';
   import VoiceClientSettings from '$lib/components/voice/VoiceClientSettings.svelte';
   import IconLock from '@openpalm/ui-kit/components/icons/IconLock.svelte';
   import {
@@ -17,6 +18,7 @@
   import { newConnectionId } from '$lib/connections/store.js';
   import { isDiscoveryCandidateUrl, markLocalDiscoveryDismissed } from '$lib/connections/discovery.js';
   import { parsePairingCode, type PairingPayload } from '$lib/connections/pairing.js';
+  import { validateConnectionUrl } from '$lib/connections/url-policy.js';
   import { getRuntimeContext, hasCapability } from '$lib/runtime-context.svelte.js';
   import { advancedModeService } from '$lib/advanced-mode-state.svelte.js';
   import {
@@ -53,6 +55,7 @@
   let formClearPassword = $state(false);
   let formSubmitting = $state(false);
   let formError = $state('');
+  let formGuideUrl = $state<string | null>(null);
   // #511 D3/D4: "Have a pairing code?" paste field, shown at the top of the
   // add form. Applying a code prefills the same fields a manual entry uses; the
   // secret then flows through the existing secret-store path below.
@@ -146,6 +149,7 @@
     formPassword = payload.secret;
     pairingPasteCode = '';
     formError = '';
+    formGuideUrl = null;
   }
 
   function applyPairingPaste(): void {
@@ -154,6 +158,7 @@
     const result = parsePairingCode(code);
     if (!result.ok) {
       formError = result.error;
+      formGuideUrl = null;
       return;
     }
     applyPairingPayload(result.payload);
@@ -228,6 +233,7 @@
     formClearPassword = false;
     pairingPasteCode = '';
     formError = '';
+    formGuideUrl = null;
   }
 
   function selectSettingsTab(tab: SettingsTab): void {
@@ -250,11 +256,13 @@
     formClearPassword = false;
     pairingPasteCode = '';
     formError = '';
+    formGuideUrl = null;
   }
 
   function cancelForm(): void {
     formMode = 'idle';
     formError = '';
+    formGuideUrl = null;
   }
 
   async function submitForm(ev: Event): Promise<void> {
@@ -264,12 +272,20 @@
     const url = formUrl.trim();
     if (!label || !url) {
       formError = 'Label and URL are required.';
+      formGuideUrl = null;
+      return;
+    }
+    const urlVerdict = validateConnectionUrl(url);
+    if (!urlVerdict.ok) {
+      formError = urlVerdict.message;
+      formGuideUrl = urlVerdict.reason === 'insecure-remote' ? urlVerdict.guideUrl : null;
       return;
     }
     const username = formUsername.trim() || 'opencode';
 
     formSubmitting = true;
     formError = '';
+    formGuideUrl = null;
     try {
       const store = getConnectionStore();
       const secrets = getSecretStore();
@@ -433,7 +449,7 @@
         {/if}
       </div>
     {:else if formMode !== 'idle'}
-      <form class="connection-form" onsubmit={submitForm}>
+      <form class="connection-form" novalidate onsubmit={submitForm}>
         <h2>{formMode === 'add' ? 'Add connection' : 'Edit connection'}</h2>
 
         {#if formMode === 'add'}
@@ -530,7 +546,13 @@
         {/if}
 
         {#if formError}
-          <div class="alert error" role="alert">{formError}</div>
+          <div class="alert error" role="alert">
+            <span>{formError}</span>
+            {#if formGuideUrl}
+              <!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- external URL supplied by the connection policy -->
+              <a href={formGuideUrl} target="_blank" rel="noopener noreferrer">Open the TLS setup guide</a>
+            {/if}
+          </div>
         {/if}
 
         <div class="form-actions">
@@ -679,6 +701,16 @@
         </div>
       </section>
 
+      {#if hasCapability(runtimeContext, 'pwa:install') && !hasCapability(runtimeContext, 'host:stack:read')}
+        <section id="app-install" class="settings-section" aria-labelledby="app-install-heading">
+          <header class="section-header">
+            <h2 id="app-install-heading">App</h2>
+            <p class="lede">Install OpenPalm for a focused, app-like window on this device.</p>
+          </header>
+          <PwaInstall />
+        </section>
+      {/if}
+
       <section id="voice" class="settings-section" aria-labelledby="voice-heading">
         <header class="section-header">
           <h2 id="voice-heading">Voice</h2>
@@ -803,6 +835,12 @@
     background: color-mix(in srgb, var(--s-seal) 8%, transparent);
     color: var(--s-seal);
     border: 1px solid color-mix(in srgb, var(--s-seal) 25%, transparent);
+  }
+  .alert.error a {
+    display: inline-block;
+    margin-top: var(--s-sp-2);
+    color: inherit;
+    font-weight: 700;
   }
 
   .alert.warn {

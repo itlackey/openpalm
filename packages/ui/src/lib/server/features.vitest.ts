@@ -4,8 +4,8 @@
  * env self-grant are gone. Admin capability is a single boolean —
  * an Electron-or-CLI-only security boundary:
  *   OP_INSIDE_ELECTRON=1 OR OP_ENABLE_ADMIN=1 → adminCapable
- * Every process gets the base capability set; only an adminCapable process
- * additionally gets host:*.
+ * Host-served processes get the base capability set; the assistant-container
+ * co-process omits PWA installation, and only adminCapable processes add host:*.
  */
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
@@ -47,7 +47,7 @@ const HOST_CAPS: Capability[] = [
   'host:akm-sharing',
 ];
 
-/** The base capability set granted to EVERY process. */
+/** The base capability set granted to host-served processes. */
 const BASE_CAPS: Capability[] = [
   'chat',
   'connections:read',
@@ -58,7 +58,7 @@ const BASE_CAPS: Capability[] = [
   'pwa:install',
 ];
 
-const MODE_ENV_KEYS = ['OP_INSIDE_ELECTRON', 'OP_ENABLE_ADMIN'] as const;
+const MODE_ENV_KEYS = ['OP_INSIDE_ELECTRON', 'OP_ENABLE_ADMIN', 'OP_UI_NO_LOCAL_VOICE'] as const;
 let savedEnv: Record<string, string | undefined> = {};
 
 beforeEach(() => {
@@ -108,6 +108,13 @@ describe('computeServerRuntimeContext — admin flag reflects the env', () => {
   test('admin=true when OP_ENABLE_ADMIN=1', () => {
     process.env.OP_ENABLE_ADMIN = '1';
     expect(computeServerRuntimeContext(makeEvent()).admin).toBe(true);
+  });
+});
+
+describe('computeServerRuntimeContext — PWA install origin', () => {
+  test('does not advertise installation from the assistant container UI', () => {
+    process.env.OP_UI_NO_LOCAL_VOICE = '1';
+    expect(computeServerRuntimeContext(makeEvent()).serverCapabilities).not.toContain('pwa:install');
   });
 });
 

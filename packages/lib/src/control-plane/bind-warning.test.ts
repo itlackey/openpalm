@@ -115,6 +115,10 @@ describe("isRemoteSetupAllowed", () => {
     expect(isRemoteSetupAllowed({ OP_ALLOW_REMOTE_SETUP: "0" })).toBe(false);
     expect(isRemoteSetupAllowed({ OP_ALLOW_REMOTE_SETUP: "off" })).toBe(false);
   });
+  test('false for every admin-capable process', () => {
+    expect(isRemoteSetupAllowed({ OP_ALLOW_REMOTE_SETUP: '1', OP_ENABLE_ADMIN: '1' })).toBe(false);
+    expect(isRemoteSetupAllowed({ OP_ALLOW_REMOTE_SETUP: '1', OP_INSIDE_ELECTRON: '1' })).toBe(false);
+  });
 });
 
 // #488 — isLoopback must be exported so mdns-responder.ts can reuse it for

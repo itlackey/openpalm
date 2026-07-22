@@ -58,6 +58,8 @@ export function consumePendingUiBackup(dataDir: string): string | null {
 
 /** Injectable dependencies for {@link waitForReady} (defaults to real timers/fetch). */
 export interface WaitForReadyDeps {
+  /** Hostname used by the health probe (defaults to IPv4 loopback). */
+  host?: string;
   /** Fetch implementation (defaults to the global `fetch`). */
   fetchFn?: typeof fetch;
   /** Sleep between polls (defaults to a real setTimeout-backed delay). */
@@ -71,7 +73,7 @@ export interface WaitForReadyDeps {
 }
 
 /**
- * Poll `http://127.0.0.1:<port>/health` until the UI server answers or the
+ * Poll the selected loopback host's `/health` until the UI server answers or the
  * timeout elapses. A 200 OR a 401 both count as ready: 401 means the server is
  * up but behind the login wall, which is still "started".
  *
@@ -83,6 +85,7 @@ export async function waitForReady(
   deps: WaitForReadyDeps = {},
 ): Promise<boolean> {
   const {
+    host = '127.0.0.1',
     fetchFn = fetch,
     sleep = (ms: number) => new Promise((r) => setTimeout(r, ms)),
     pollIntervalMs = 300,
@@ -92,7 +95,7 @@ export async function waitForReady(
   const deadline = now() + timeoutMs;
   while (now() < deadline) {
     try {
-      const res = await fetchFn(`http://127.0.0.1:${port}/health`, {
+      const res = await fetchFn(`http://${host}:${port}/health`, {
         signal: AbortSignal.timeout(requestTimeoutMs),
       });
       if (res.ok || res.status === 401) return true;

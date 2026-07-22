@@ -1,7 +1,9 @@
 import {
+  buildServedUiRuntimeConfig,
   migrateLegacyDefaultPorts,
   readStackRuntimeEnv,
-  seedServedUiRuntimeConfig,
+  serializeUiRuntimeConfig,
+  UI_RUNTIME_CONFIG_ENV,
 } from '@openpalm/lib';
 
 function isRetiredGeneratedAssistantUrl(
@@ -24,13 +26,12 @@ function isRetiredGeneratedAssistantUrl(
 }
 
 /**
- * Reconcile the corrected port contract in the updatable UI control plane.
- * Older supervisors can seed runtime-config.json before this newer build starts,
- * so a successful migration also rewrites that generated browser connection.
+ * Reconcile the corrected port contract in the updatable UI control plane. A
+ * successful migration refreshes the process-scoped browser connection without
+ * mutating the shared UI build artifact.
  */
 export function reconcileSupervisedPortContract(
   homeDir: string,
-  uiBuildDir: string,
   env: Record<string, string | undefined> = process.env,
 ): boolean {
   if (!env.OP_UI_SUPERVISOR || !migrateLegacyDefaultPorts(homeDir)) return false;
@@ -50,6 +51,6 @@ export function reconcileSupervisedPortContract(
     delete env.OP_OPENCODE_URL;
   }
 
-  seedServedUiRuntimeConfig(uiBuildDir, homeDir, env);
+  env[UI_RUNTIME_CONFIG_ENV] = serializeUiRuntimeConfig(buildServedUiRuntimeConfig(homeDir, env));
   return true;
 }

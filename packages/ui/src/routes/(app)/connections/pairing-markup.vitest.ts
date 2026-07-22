@@ -8,10 +8,17 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 const PAGE_PATH = fileURLToPath(new URL('./+page.svelte', import.meta.url));
-const HOST_PAGE_PATH = fileURLToPath(new URL('../host/+page.svelte', import.meta.url));
 
 function pageSource(): string {
   return readFileSync(PAGE_PATH, 'utf-8');
+}
+
+function submitFormSource(src: string): string {
+  const start = src.indexOf('async function submitForm');
+  const end = src.indexOf('\n  async function activate', start);
+  expect(start).toBeGreaterThan(-1);
+  expect(end).toBeGreaterThan(start);
+  return src.slice(start, end);
 }
 
 describe('connections +page.svelte — host UX and pairing wiring', () => {
@@ -96,11 +103,55 @@ describe('connections +page.svelte — host UX and pairing wiring', () => {
     expect(src).toMatch(/pairCode[\s\S]*activeTab\s*=\s*['"`]connections['"`]/);
   });
 
+  test('validates the current form URL before any secret or connection mutation', () => {
+    const body = submitFormSource(pageSource());
+    const validationIndex = body.indexOf('validateConnectionUrl(url)');
+    expect(validationIndex).toBeGreaterThan(-1);
+    for (const mutation of [
+      'getConnectionStore()',
+      'getSecretStore()',
+      'secrets.set(',
+      'secrets.delete(',
+      'secrets.updateUsername(',
+      'store.add(',
+      'store.update(',
+    ]) {
+      expect(body.indexOf(mutation), mutation).toBeGreaterThan(validationIndex);
+    }
+  });
+
+  test('surfaces policy errors and renders the insecure-remote TLS guide link', () => {
+    const src = pageSource();
+    const body = submitFormSource(src);
+    expect(src).toMatch(/<form class="connection-form" novalidate onsubmit=\{submitForm\}>/);
+    expect(body).toMatch(
+      /if\s*\(!urlVerdict\.ok\)\s*\{[\s\S]*formError\s*=\s*urlVerdict\.message[\s\S]*return;\s*\}/,
+    );
+    expect(body).toMatch(/urlVerdict\.reason\s*===\s*['"]insecure-remote['"]/);
+    expect(body).toMatch(/urlVerdict\.guideUrl/);
+    expect(src).toMatch(/href=\{formGuideUrl\}[\s\S]*Open the TLS setup guide/);
+  });
+
+  test('submits pair-prefilled URLs through the same policy validation', () => {
+    const src = pageSource();
+    expect(src).toMatch(/applyPairingPayload[\s\S]*formUrl\s*=\s*payload\.url/);
+    expect(submitFormSource(src)).toMatch(
+      /const url\s*=\s*formUrl\.trim\(\)[\s\S]*validateConnectionUrl\(url\)/,
+    );
+  });
+
   test('links clearly to host management when host controls are available', () => {
     const src = pageSource();
     expect(src).toMatch(/hasCapability\(\s*runtimeContext\s*,\s*['"`]host:stack:read['"`]\s*\)/);
     expect(src).toMatch(/buildReturnToPath\(resolve\(\s*['"`]\/host['"`]\s*\), chatReturnHref\)/);
     expect(src).toMatch(/href=\{hostSettingsHref\}[\s\S]*?>Manage host/);
+  });
+
+  test('offers PWA installation only on non-admin client surfaces', () => {
+    const src = pageSource();
+    expect(src).toMatch(
+      /hasCapability\(runtimeContext, 'pwa:install'\)\s*&&\s*!hasCapability\(runtimeContext, 'host:stack:read'\)/,
+    );
   });
 
   test('retains new-connection and fragment pairing behavior alongside return context', () => {
@@ -110,14 +161,6 @@ describe('connections +page.svelte — host UX and pairing wiring', () => {
     expect(src).toMatch(
       /replaceState\(\s*`\$\{page\.url\.pathname\}\?\$\{searchParams\}`\s*,\s*\{\}\s*\)/,
     );
-  });
-
-  test('does not advertise installing the client app from host UI surfaces', () => {
-    const sources = [pageSource(), readFileSync(HOST_PAGE_PATH, 'utf-8')];
-    for (const src of sources) {
-      expect(src).not.toMatch(/Install OpenPalm app/);
-      expect(src).not.toMatch(/app-install-banner|class="install-app"/);
-    }
   });
 
   test('pairing panel copy names the ingress/CORS prerequisites', () => {

@@ -20,17 +20,14 @@ There is no second app and no "runtime modes" matrix: the UI behaves the same
 everywhere it runs and is only ever *more* capable when launched as an admin
 process (below).
 
-> **PWA install status:** the origin-portable build is what makes a PWA install
-> possible. A basic installable PWA now ships (#511): a `manifest.webmanifest`
+> **PWA install status:** a basic installable PWA ships in 0.13.0 (#511): a
+> `manifest.webmanifest`
 > with square + maskable icons (`packages/ui/static/`) is linked from
 > `app.html`, and a SvelteKit-native service worker
-> (`packages/ui/src/service-worker.ts`) precaches the build output and static
-> assets. Offline support is intentionally minimal — a static-shell cache for
-> the app chrome/assets, not full offline: every `/api/*` route (including SSE
-> streams), `/login`, `/voice/*`, and every page navigation stay network-only
-> so auth and streaming are never served stale from the cache. Richer offline
-> behavior (queued actions, offline chat history) remains a deferred
-> enhancement.
+> (`packages/ui/src/service-worker.ts`) caches only hashed build assets and
+> static assets. Every page navigation, `/api/*` route (including auth and SSE),
+> `/login`, and `/voice/*` stays network-only so no page, credentialed response,
+> or stream is served stale. Offline queueing and offline chat are not shipped.
 
 ## The UI is a self-contained browser app
 
@@ -38,8 +35,9 @@ The browser owns its own state:
 
 - **Connections live in the browser.** A connection is exactly
   `{ id, label, baseUrl, auth }` — no connection "kinds", no `/oc` inference.
-  The list is persisted in **IndexedDB** (`$lib/connections/store.ts`), seeded
-  once from a `runtime-config.json` served next to the build.
+  The list is persisted in **IndexedDB** (`$lib/connections/store.ts`). Host
+  processes seed it through process-scoped `/api/runtime-config`; the assistant
+  container retains a static `/runtime-config.json` fallback.
 - **Credentials live in the browser, encrypted.** Basic passwords are wrapped
   with **WebCrypto AES-GCM** under a non-extractable per-storage key
   (`$lib/connections/secrets.ts`); the connection entry carries only a
@@ -91,8 +89,20 @@ CLI admin path stays direct.
 |---|---|---|
 | **Assistant container** | supervised adapter-node co-process, loopback-first bind, rootless, no docker socket, no host `OP_HOME`/creds | no (`OP_ENABLE_ADMIN` unset) |
 | **Electron** | thin native harness spawns the build; carries the admin boundary | yes |
-| **CLI** (`openpalm admin` / `openpalm app`) | host process serves the build | admin only for `openpalm admin` |
-| **PWA** | added to home screen from the served origin (full install manifest deferred, see above) | inherits that origin (no admin) |
+| **CLI** (`openpalm admin`) | host process serves the build with the admin boundary | yes |
+| **CLI** (`openpalm app`) | stack-less local client entry; serves the build without requiring or starting a local stack | no |
+| **PWA** | installed from the canonical local origin `http://localhost:${OP_HOST_UI_PORT:-3880}` or an operator-provided HTTPS origin | inherits that origin (no admin) |
+
+The user-facing local PWA URL uses `localhost`; the host process may still bind
+and probe `127.0.0.1` internally. Remote HTTPS origins are operator-provided and
+must be added exactly to Guardian's CORS allowlist. TLS terminates in external
+infrastructure such as Tailscale or Caddy. OpenPalm does not deploy
+`app.openpalm.dev` or grant it CORS access by default in 0.13.0.
+
+Electron's embedded window preserves its existing exact
+`http://127.0.0.1:<port>` origin so upgrades retain origin-scoped IndexedDB and
+WebCrypto state. That internal compatibility surface does not define a second
+PWA origin and is not a user-facing install URL.
 
 When OpenCode is bound off-loopback with `OPENCODE_AUTH` off, the container logs
 a prominent exposure warning and continues starting the UI.

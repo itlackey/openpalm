@@ -247,18 +247,28 @@ start_ui() {
     // operator override may itself be derived from a bind-address setting
     // upstream. Mirrors packages/lib/src/control-plane/url-normalize.ts
     // normalizeLoopbackUrl.
-    const normalizedUrl = url.replace(/^(https?:\/\/)(0\.0\.0\.0|\[::\]|::)(?=[:/]|$)/i, "$1127.0.0.1");
+    let normalizedUrl = url.replace(/^(https?:\/\/)(0\.0\.0\.0|\[::\]|::)(?=[:/]|$)/i, "$1127.0.0.1");
+    let connection = null;
+    try {
+      const parsedUrl = new URL(normalizedUrl);
+      if (parsedUrl.protocol !== "http:" && parsedUrl.protocol !== "https:") throw new Error("invalid protocol");
+      const hadUserinfo = Boolean(parsedUrl.username || parsedUrl.password);
+      parsedUrl.username = "";
+      parsedUrl.password = "";
+      if (hadUserinfo) normalizedUrl = parsedUrl.toString();
+      connection = {
+        id: "openpalm-assistant-opencode",
+        label: assistantName.trim() || "Local assistant",
+        baseUrl: normalizedUrl,
+        auth: { mode: "none" },
+        isDefault: true,
+        locked: true,
+      };
+    } catch {
+      console.error("warning: invalid assistant URL; UI starts with no default connection");
+    }
     const config = {
-      connections: [
-        {
-          id: "openpalm-assistant-opencode",
-          label: assistantName.trim() || "Local assistant",
-          baseUrl: normalizedUrl,
-          auth: { mode: "none" },
-          isDefault: true,
-          locked: true,
-        },
-      ],
+      connections: connection ? [connection] : [],
     };
     fs.writeFileSync(file, JSON.stringify(config, null, 2) + "\n");
   ' "${ui_client_dir}/runtime-config.json" "$assistant_url" "$assistant_name" \

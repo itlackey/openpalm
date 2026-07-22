@@ -335,8 +335,8 @@ jobs:
       - name: Run UI unit tests
         run: bun run ui:test:unit
 
-      - name: Build UI (catch Vite/SSR failures before release)
-        run: bun run ui:build
+      - name: Run client-only PWA acceptance tests (production build + Chromium)
+        run: bun run ui:test:pwa
 
       - name: Bundle Electron harness (refresh dist/main.js from source)
         run: bun run --cwd packages/electron bundle

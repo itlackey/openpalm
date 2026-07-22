@@ -1,6 +1,6 @@
 # Artifact Delivery Pattern
 
-> **As built 2026-07-07**. This documents the current runtime delivery model used by OpenPalm artifacts.
+> **As built 2026-07-21 for the 0.13.0 RC.** This documents the current runtime delivery model used by OpenPalm artifacts.
 
 ## Rule
 
@@ -61,8 +61,8 @@ That exact CLI skeleton pin matters because npm-installed CLI builds resolve the
 
 - Resolved into `OP_HOME/data/ui`
 - Updated by the host control plane
-- Served on the host-local origin `http://127.0.0.1:${OP_HOST_UI_PORT:-3880}`, opened by `openpalm app` and preferred by Electron when healthy
-- Supervised by Electron or `openpalm admin`
+- Served by `openpalm app` at the user-facing local origin `http://localhost:${OP_HOST_UI_PORT:-3880}`; the process binds and probes `127.0.0.1` internally
+- Electron and `openpalm admin` preserve their exact `http://127.0.0.1:<port>` admin origin and are not PWA install surfaces
 
 ### Assistant Container UI Co-process
 
@@ -71,11 +71,13 @@ That exact CLI skeleton pin matters because npm-installed CLI builds resolve the
 - Published on `${OP_UI_PORT:-3800}` externally and port `3000` internally
 - Seeded with `runtime-config.json` containing one locked default connection
 
-### Hosted PWA
+### PWA Origins
 
-- Same `@openpalm/ui` build
-- Served from the hosted origin used by current tests/docs: `https://app.openpalm.dev`
-- Requires guardian TLS + CORS for remote instance connections
+- Uses the same `@openpalm/ui` adapter-node build and ships its basic manifest and service worker in that artifact
+- Canonical local install origin: `http://localhost:${OP_HOST_UI_PORT:-3880}` via `openpalm app`
+- Operator-provided HTTPS origins use an explicitly remote-enabled, non-admin `openpalm app` process behind external Tailscale/Caddy TLS; this binds port 3880 to all interfaces, so the host firewall must block direct access (see [`../remote-access-tls.md`](../remote-access-tls.md))
+- There is no official `app.openpalm.dev` deployment or default CORS grant in 0.13.0
+- Offline caching is limited to hashed build assets and static assets; navigation, API, auth, and SSE traffic stays network-only
 
 ## Failure Policy
 

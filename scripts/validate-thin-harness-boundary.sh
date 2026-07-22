@@ -83,15 +83,14 @@ ALLOWED_IMPORTS=(
   restoreUiBackup
   consumePendingUiBackup
   UiSupervisor
-  # One-UI served-build runtime-config seed (Electron/CLI): writes the browser's
-  # locked default connection beside the @openpalm/ui build (internally via
-  # writeUiRuntimeConfig + resolveAssistantEndpoint). Bootstrap seed only — no
-  # control-plane/lifecycle mutation, no migration.
-  seedServedUiRuntimeConfig
+  # Compatibility-only bootstrap seed: current UI builds use process-scoped
+  # /api/runtime-config; an older build retained after a nonfatal update failure
+  # still needs its static runtime-config.json contract.
+  seedLegacyServedUiRuntimeConfig
   # Pure assistant-endpoint resolver (E1, review 2026-07-10): reads persisted
   # stack.env merged under process.env and normalizes wildcard bind hosts to
-  # 127.0.0.1 for the browser-facing seeded connection URL. Read-only — no
-  # state mutation, no migrations; bootstrap needs it to write runtime-config.
+  # 127.0.0.1 for the browser-facing connection URL. Read-only — no state
+  # mutation or migration.
   resolveAssistantEndpoint
   # Pure regex helper (E4, review 2026-07-11): rewrites a wildcard bind host
   # (0.0.0.0/[::]/:: ) at the front of a URL to 127.0.0.1. Read-only string

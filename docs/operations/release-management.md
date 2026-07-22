@@ -1,6 +1,6 @@
 # Release Management
 
-> **Last updated 2026-07-07** against the live codebase at 0.12.52. This supersedes the pre-0.12 `platform-release.yml` documentation.
+> **Last updated 2026-07-21** for the 0.13.0 release candidate. This supersedes the pre-0.12 `platform-release.yml` documentation.
 
 ---
 
@@ -189,11 +189,13 @@ artifact verification.
 For the ordered execution procedure that drives that checklist, use the
 [RC release runbook](release-rc-runbook.md).
 
-- [ ] `Electron (admin)`: launch Electron against a seeded install; verify the window lands on the UI chat at `http://127.0.0.1:${OP_HOST_UI_PORT:-3880}/chat`, and host routes remain available.
+- [ ] `Electron (admin)`: launch Electron against a seeded install; verify the embedded window lands on the UI chat at its preserved internal `http://127.0.0.1:${OP_HOST_UI_PORT:-3880}/chat` origin, and host routes remain available.
 - [ ] `openpalm admin (browser)`: run `openpalm admin`; verify the browser opens on the loopback host UI and `/host`, `/connections`, and `/chat` all load.
 - [ ] `assistant-container`: boot the assistant with `OP_UI_VERSION` and `OP_SKELETON_VERSION` overrides; verify the container installs those exact versions, serves `@openpalm/ui` on the assistant's published UI port, and chat reaches the locked default assistant connection.
-- [ ] `localhost PWA install`: from the host-served UI origin `http://127.0.0.1:${OP_HOST_UI_PORT:-3880}`, verify installability and that the installed app reopens on the same origin.
-- [ ] `hosted PWA install`: from the hosted UI origin (currently `https://app.openpalm.dev` in tests/docs), verify installability, `/api/runtime` compatibility, and that remote connections require HTTPS guardians plus the expected guardian CORS allowlist.
+- [ ] `stack-less local client`: stop the local stack, run `openpalm app`, and verify `/connections` and `/chat` work from `http://localhost:${OP_HOST_UI_PORT:-3880}` without host capabilities.
+- [ ] `automated PWA evidence`: run `bun run ui:test:pwa`; require its CDP manifest/installability checks and Chromium `--app` standalone-mode relaunch, persistence, and cache-boundary checks to pass.
+- [ ] `manual PWA smoke`: on one supported OS/browser, use the browser install menu once, close the installed app, and relaunch it on the same localhost origin; keep this evidence explicitly manual.
+- [ ] `operator HTTPS origin` (when configured): verify installation from that exact origin, exact-origin Guardian CORS, and external Tailscale/Caddy TLS. Do not require `app.openpalm.dev`; 0.13.0 has no official deployment or default CORS grant for it.
 
 ---
 

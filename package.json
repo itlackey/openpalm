@@ -30,6 +30,7 @@
     "ui:test:unit": "cd packages/ui && npm run test:unit -- --run",
     "ui:test:e2e": "source scripts/load-test-env.sh && cd packages/ui && RUN_DOCKER_STACK_TESTS=1 RUN_LLM_TESTS=1 PW_ENFORCE_NO_SKIP=1 npm run test:e2e",
     "ui:test:e2e:mocked": "cd packages/ui && npm run test:e2e",
+    "ui:test:pwa": "bun run --cwd packages/ui test:pwa",
     "ui:test:stack": "source scripts/load-test-env.sh && cd packages/ui && RUN_DOCKER_STACK_TESTS=1 npm run test:e2e",
     "ui:test:llm": "source scripts/load-test-env.sh && cd packages/ui && RUN_DOCKER_STACK_TESTS=1 RUN_LLM_TESTS=1 PW_ENFORCE_NO_SKIP=1 npm run test:e2e",
     "guardian:dev": "bun run packages/guardian/src/server.ts",

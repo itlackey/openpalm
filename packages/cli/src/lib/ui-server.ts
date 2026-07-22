@@ -12,7 +12,10 @@ import {
   resolveOpenPalmHome, resolveUiBuildDir, createLogger, readSecret, readStackEnv,
   checkAndUpdateUiBuild, checkAndUpdateSkeleton, PLATFORM_VERSION,
   consumePendingUiBackup, isRemoteSetupAllowed, restoreUiBackup, UiSupervisor, waitForReady,
-  seedServedUiRuntimeConfig,
+  buildEmptyUiRuntimeConfig, buildServedUiRuntimeConfig, classifyLocalInstall,
+  serializeUiRuntimeConfig, uiBuildSupportsProcessRuntimeConfig,
+  writeLegacyServedUiRuntimeConfig, UI_RUNTIME_CONFIG_ENV,
+  type ControlPlaneState, type UiRuntimeConfig,
 } from '@openpalm/lib';
 import { ensureValidState, resolveServeState } from './cli-state.ts';
 import { openBrowser } from './browser.ts';
@@ -76,6 +79,35 @@ export function resolveExpectedAdmin(adminHostUi: boolean, env: NodeJS.ProcessEn
   return env.OP_INSIDE_ELECTRON === '1' || env.OP_ENABLE_ADMIN === '1';
 }
 
+export function resolveUiLoopbackHost(adminHostUi: boolean): '127.0.0.1' | 'localhost' {
+  return adminHostUi ? '127.0.0.1' : 'localhost';
+}
+
+export function resolveUiNetworkEnv(
+  port: number,
+  adminHostUi: boolean,
+  env: Record<string, string | undefined> = process.env,
+): Record<'HOST' | 'PORT' | 'ORIGIN' | 'HOST_HEADER' | 'PROTOCOL_HEADER', string | undefined> {
+  const effectiveAdmin = resolveExpectedAdmin(adminHostUi, env);
+  if (!effectiveAdmin && isRemoteSetupAllowed(env)) {
+    return {
+      HOST: '0.0.0.0',
+      PORT: String(port),
+      HOST_HEADER: 'host',
+      PROTOCOL_HEADER: 'x-forwarded-proto',
+      ORIGIN: undefined,
+    };
+  }
+  const host = resolveUiLoopbackHost(effectiveAdmin);
+  return {
+    HOST: '127.0.0.1',
+    PORT: String(port),
+    ORIGIN: `http://${host}:${port}`,
+    HOST_HEADER: undefined,
+    PROTOCOL_HEADER: undefined,
+  };
+}
+
 export interface UIServerOptions {
   port?: number;
   open?: boolean;
@@ -130,14 +162,28 @@ export type UiInstanceCheck =
 export async function checkExistingUiInstance(
   port: number,
   expectedAdmin: boolean,
-  deps: { fetchFn?: typeof fetch; timeoutMs?: number } = {},
+  deps: { fetchFn?: typeof fetch; host?: string; timeoutMs?: number } = {},
 ): Promise<UiInstanceCheck> {
   const fetchFn = deps.fetchFn ?? fetch;
+  const host = deps.host ?? '127.0.0.1';
   const timeoutMs = deps.timeoutMs ?? PROBE_TIMEOUT_MS;
-  const body = await probeJson<{ admin?: boolean }>(fetchFn, `http://127.0.0.1:${port}/api/runtime`, timeoutMs);
+  const body = await probeJson<{ admin?: boolean }>(fetchFn, `http://${host}:${port}/api/runtime`, timeoutMs);
   if (body === null) return { status: 'absent' };
   const admin = body.admin === true;
   return admin === expectedAdmin ? { status: 'match', admin } : { status: 'mismatch', admin };
+}
+
+export function resolveUiChildLaunch(
+  state: Pick<ControlPlaneState, 'homeDir' | 'stackDir'>,
+  appMode: boolean,
+  env: Record<string, string | undefined> = process.env,
+): { config: UiRuntimeConfig; runtimeConfigJson: string; stacklessApp: boolean } {
+  const stacklessApp = appMode
+    && classifyLocalInstall(state.stackDir, state.homeDir) === 'not_installed';
+  const config = stacklessApp
+    ? buildEmptyUiRuntimeConfig()
+    : buildServedUiRuntimeConfig(state.homeDir, env);
+  return { config, runtimeConfigJson: serializeUiRuntimeConfig(config), stacklessApp };
 }
 
 /**
@@ -156,14 +202,21 @@ async function spawnUiChild(
   homeDir: string,
   state: ReturnType<typeof ensureValidState>,
   adminHostUi = false,
+  appMode = false,
 ): Promise<{ proc: Bun.Subprocess; uiBackupDir: string | undefined }> {
-  // Hot-swap the skeleton (managed system/ tree) before spawning.
-  console.log('Checking for skeleton update...');
-  const skelResult = await checkAndUpdateSkeleton(PLATFORM_VERSION, homeDir, state.dataDir);
-  if (skelResult.updated) {
-    console.log(`Skeleton updated to v${skelResult.latestVersion}.`);
-  } else if (skelResult.error) {
-    console.warn(`Warning: skeleton update skipped — ${skelResult.error}. Existing skeleton still active.`);
+  // Installation may complete while this long-lived supervisor is running.
+  // Re-read it for every initial spawn and restart rather than freezing it in
+  // startUIServer.
+  const { config, runtimeConfigJson, stacklessApp } = resolveUiChildLaunch(state, appMode);
+  if (!stacklessApp) {
+    // Hot-swap the skeleton (managed system/ tree) before spawning.
+    console.log('Checking for skeleton update...');
+    const skelResult = await checkAndUpdateSkeleton(PLATFORM_VERSION, homeDir, state.dataDir);
+    if (skelResult.updated) {
+      console.log(`Skeleton updated to v${skelResult.latestVersion}.`);
+    } else if (skelResult.error) {
+      console.warn(`Warning: skeleton update skipped — ${skelResult.error}. Existing skeleton still active.`);
+    }
   }
 
   // Self-update the control plane BEFORE spawning, matching the Electron harness
@@ -187,17 +240,13 @@ async function spawnUiChild(
     process.exit(1);
   }
 
-  // Seed the served build's runtime-config.json so the browser store gets the
-  // locked, project-named default connection — the SAME seed the assistant
-  // container entrypoint writes. adapter-node serves the build's client/ dir at
-  // the app origin, where the browser's loadRuntimeConfig() fetches it. Best-
-  // effort and re-run on every (re)spawn; a write failure degrades to an empty
-  // connection list, never a failed serve.
-  try {
-    seedServedUiRuntimeConfig(uiBuildDir, homeDir);
-  } catch (err) {
-    console.warn(`Could not seed UI runtime-config.json: ${err instanceof Error ? err.message : String(err)}`);
+  // New builds read process-scoped config from /api/runtime-config. If a
+  // nonfatal update left us on an older build, preserve that build's static
+  // runtime-config contract instead of reviving a stale local connection.
+  if (!uiBuildSupportsProcessRuntimeConfig(uiBuildDir)) {
+    writeLegacyServedUiRuntimeConfig(uiBuildDir, config);
   }
+
   // OP_UI_LOGIN_PASSWORD is unset during first-run install — the SvelteKit
   // hooks detect that and redirect /* to /setup, where the wizard sets
   // it. Don't short-circuit here, or the install wizard can never come up.
@@ -216,20 +265,13 @@ async function spawnUiChild(
   const execName = basename(process.execPath).toLowerCase();
   const runningAsBun = execName === 'bun' || execName === 'bun.exe';
   const childArgs = runningAsBun ? [Bun.main, 'ui'] : ['ui'];
-  // Default: bind loopback with a pinned ORIGIN. With OP_ALLOW_REMOTE_SETUP the
-  // server binds all interfaces and lets adapter-node derive the origin from the
-  // request Host header (HOST_HEADER), so it works under whatever LAN host/IP the
-  // operator reaches it by. Admin mode is loopback ALWAYS: the
-  // remote-setup escape hatch never applies to the host admin surface (§8.3).
-  const remote = !adminHostUi && isRemoteSetupAllowed();
-  const networkEnv = remote
-    ? { HOST: '0.0.0.0', PORT: String(port), HOST_HEADER: 'host', PROTOCOL_HEADER: 'x-forwarded-proto' }
-    : { HOST: '127.0.0.1', PORT: String(port), ORIGIN: `http://127.0.0.1:${port}` };
+  const effectiveAdmin = resolveExpectedAdmin(adminHostUi);
+  const networkEnv = resolveUiNetworkEnv(port, effectiveAdmin);
   // Admin mode: enable the admin capability in the UI child and neutralize
   // OP_ALLOW_REMOTE_SETUP (spread in from process.env below) so neither the
   // respawned `openpalm ui` child nor the UI server's own remote-setup
   // relaxations (Host/Origin allowlist, setup gate) can re-derive a remote bind.
-  const adminEnv = adminHostUi
+  const adminEnv = effectiveAdmin
     ? { OP_ENABLE_ADMIN: '1', OP_ALLOW_REMOTE_SETUP: '0' }
     : {};
   const proc = Bun.spawn(
@@ -245,6 +287,7 @@ async function spawnUiChild(
         ...networkEnv,
         ...adminEnv,
         OP_UI_LOGIN_PASSWORD:   uiLoginPassword,
+        [UI_RUNTIME_CONFIG_ENV]: runtimeConfigJson,
         // Tell the UI child it has a supervisor that can respawn it on demand
         // (design §6.2). The admin "install UI version" route signals SIGUSR2 to
         // its parent (this process) after seeding a newer data/ui.
@@ -275,15 +318,10 @@ export async function runUiBuild(opts: { port?: number } = {}): Promise<void> {
   }
   const port = opts.port
     ?? (process.env.PORT ? Number(process.env.PORT) : resolveUiServePort(undefined, resolveOpenPalmHome()));
-  process.env.PORT = String(port);
-  if (isRemoteSetupAllowed()) {
-    // Bind all interfaces; let adapter-node derive the origin from the request
-    // Host header rather than pinning it to loopback (do NOT set ORIGIN).
-    process.env.HOST ??= '0.0.0.0';
-    process.env.HOST_HEADER ??= 'host';
-  } else {
-    process.env.HOST ??= '127.0.0.1';
-    process.env.ORIGIN ??= `http://127.0.0.1:${port}`;
+  const networkEnv = resolveUiNetworkEnv(port, resolveExpectedAdmin(false), process.env);
+  for (const [key, value] of Object.entries(networkEnv)) {
+    if (value === undefined) delete process.env[key];
+    else process.env[key] = value;
   }
   process.chdir(uiBuildDir);
   await import(indexPath);
@@ -296,6 +334,8 @@ export type CliChildProc = Pick<Bun.Subprocess, 'kill' | 'exited' | 'killed'>;
 export interface CliUiSupervisorDeps {
   /** UI-server port the readiness poll targets. */
   port: number;
+  /** Hostname the readiness poll targets (defaults to IPv4 loopback). */
+  host?: string;
   /** Spawn the UI child (self-updates data/ui, returns handle + backup path). */
   spawnChild: () => Promise<{ proc: Bun.Subprocess; uiBackupDir: string | undefined }>;
   /** Readiness poll (defaults to the shared lib waitForReady). */
@@ -330,7 +370,8 @@ export function createCliUiSupervisor(deps: CliUiSupervisorDeps): {
   stop: (proc: CliChildProc) => Promise<void>;
 } {
   const { port, spawnChild, restoreBackup } = deps;
-  const baseWaitForReady = deps.waitForReadyFn ?? ((p: number) => waitForReady(p));
+  const baseWaitForReady = deps.waitForReadyFn
+    ?? ((p: number) => waitForReady(p, undefined, { host: deps.host }));
   const exit = deps.exit ?? ((code: number) => process.exit(code));
   const logRestartError = deps.logRestartError
     ?? ((err: unknown) => logger.error('Error restarting UI server', { error: String(err) }));
@@ -423,15 +464,18 @@ export async function startUIServer(opts: UIServerOptions = {}): Promise<void> {
   const state = (opts.adminHostUi === true || opts.allowUninstalled === true)
     ? resolveServeState()
     : ensureValidState();
-  const uiUrl = `http://localhost:${port}`;
+  const appMode = opts.allowUninstalled === true;
+  const expectedAdmin = resolveExpectedAdmin(opts.adminHostUi === true);
+  const browserHost = resolveUiLoopbackHost(expectedAdmin);
+  const probeHost = '127.0.0.1';
+  const uiUrl = `http://${browserHost}:${port}`;
 
   // D1: pre-spawn instance-identity probe. A bare port poll has no way to
   // tell an already-running OpenPalm instance of a DIFFERENT capability level
   // (e.g. a bare `openpalm` already on this port when `openpalm admin` runs)
   // apart from a match — reuse only on a genuine match, refuse with a clear
   // error otherwise, and never silently attach to the wrong capability level.
-  const expectedAdmin = resolveExpectedAdmin(opts.adminHostUi === true);
-  const existing = await checkExistingUiInstance(port, expectedAdmin);
+  const existing = await checkExistingUiInstance(port, expectedAdmin, { host: probeHost });
   if (existing.status === 'mismatch') {
     console.error(
       `A different OpenPalm UI instance (admin=${existing.admin}) is already listening ` +
@@ -461,7 +505,8 @@ export async function startUIServer(opts: UIServerOptions = {}): Promise<void> {
 
   const { supervisor, stop: stopUiProc } = createCliUiSupervisor({
     port,
-    spawnChild: () => spawnUiChild(port, homeDir, state, opts.adminHostUi === true),
+    host: probeHost,
+    spawnChild: () => spawnUiChild(port, homeDir, state, opts.adminHostUi === true, appMode),
     restoreBackup: (backupDir) => restoreUiBackup(state.dataDir, backupDir),
     consumePendingBackup: () => consumePendingUiBackup(state.dataDir),
   });

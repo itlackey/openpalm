@@ -27,6 +27,8 @@
     "preview": "vite preview",
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
     "test:e2e": "playwright test",
+    "test:pwa": "npm run build && npm run test:pwa:run",
+    "test:pwa:run": "playwright test --config playwright.pwa.config.ts",
     "test": "npm run test:unit -- --run && npm run test:e2e",
     "test:unit": "vitest",
     "test:browsers": "playwright install --with-deps chromium",

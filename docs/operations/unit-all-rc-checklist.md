@@ -43,7 +43,7 @@ If a step is skipped, record the reason explicitly.
 Set shared variables once:
 
 ```bash
-export RC_VERSION="0.12.53-rc.1"
+export RC_VERSION="0.13.0-rc.1"
 export REPO="$PWD"
 export VERIFY_ROOT="$REPO/.tmp-openpalm-rc"
 export VERIFY_HOME="$VERIFY_ROOT/home"
@@ -216,7 +216,7 @@ Pass criteria:
 - [ ] assistant health returns 200
 - [ ] UI `HEAD /` succeeds
 - [ ] SPA fallback serves the app shell
-- [ ] `runtime-config.json` is `cache-control: no-store`
+- [ ] the browser requests `runtime-config.json` with `cache: no-store`
 - [ ] the locked default connection points at the host-published assistant URL
 
 ---
@@ -297,19 +297,34 @@ Evidence:
 
 ## 10. PWA Smoke
 
-- [ ] Test localhost PWA installability from the host-served UI origin.
-- [ ] Test hosted PWA installability if applicable to this RC.
+- [ ] Stop the local stack and run `openpalm app`.
+- [ ] Run `bun run ui:test:pwa` and retain its Playwright output.
+- [ ] Require the automated CDP `Page.getAppManifest` and
+  `Page.getInstallabilityErrors` checks, plus the Chromium `--app` relaunch
+  proving native standalone display mode with the persisted profile.
+- [ ] Manual smoke on one supported OS/browser: install from
+  `http://localhost:${OP_HOST_UI_PORT:-3880}` through the browser's install
+  menu, close it, and relaunch it once. Record this as manual evidence, not an
+  automated assertion.
+- [ ] Test an operator-provided HTTPS origin only if one is configured for this
+  RC; there is no required `app.openpalm.dev` deployment.
 
 Pass criteria:
 
-- [ ] installability is present on localhost
-- [ ] installed localhost app reopens on the same origin and still works
-- [ ] hosted origin works with expected runtime config behavior
-- [ ] remote connection behavior matches HTTPS and guardian CORS requirements
+- [ ] the automated PWA lane passes against the single production adapter-node UI build on the canonical localhost origin
+- [ ] CDP reports a valid manifest and no installability errors
+- [ ] the automated Chromium app-mode relaunch reports `display-mode: standalone` and retains IndexedDB state
+- [ ] the one manual browser-menu install closes and relaunches successfully on the same localhost origin
+- [ ] `/connections` and `/chat` load without a local stack, while `/host` and `/api/host/*` remain unavailable
+- [ ] the service worker caches only hashed build/static assets
+- [ ] page navigation, API, auth, and SSE requests remain network-only; no offline queue or offline chat is implied
+- [ ] any operator HTTPS origin uses its exact Guardian CORS entry and external Tailscale/Caddy TLS
+- [ ] no default Guardian CORS grant exists for `app.openpalm.dev`
 
 Evidence:
 
-- screenshots of install prompt or installed app
+- `bun run ui:test:pwa` output covering CDP installability and Chromium app mode
+- one screenshot and pass/fail note for the manual browser-menu install/relaunch
 
 ---
 
@@ -487,6 +502,7 @@ Pass criteria:
 
 - [ ] every expected package exists at the exact RC version
 - [ ] dist-tags match prerelease expectations
+- [ ] the published `@openpalm/ui` package contains the same manifest/service-worker-enabled adapter-node build used by the local app and other UI surfaces
 
 ---
 

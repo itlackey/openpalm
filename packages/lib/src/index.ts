@@ -571,14 +571,25 @@ export {
 } from "./control-plane/ui-assets.js";
 
 export {
+  buildEmptyUiRuntimeConfig,
   buildLockedAssistantRuntimeConfig,
-  writeUiRuntimeConfig,
-  seedServedUiRuntimeConfig,
+  buildServedUiRuntimeConfig,
+  uiBuildSupportsProcessRuntimeConfig,
+  writeLegacyServedUiRuntimeConfig,
+  seedLegacyServedUiRuntimeConfig,
   ASSISTANT_LOCKED_CONNECTION_ID,
   ASSISTANT_LOCKED_CONNECTION_LABEL,
+  UI_RUNTIME_CONFIG_ENDPOINT_MARKER,
   type UiRuntimeConfig,
   type UiRuntimeConnection,
 } from './control-plane/ui-runtime-config.js';
+export {
+  parseUiRuntimeConfig,
+  parseUiRuntimeConfigJson,
+  serializeUiRuntimeConfig,
+  UI_RUNTIME_CONFIG_ENV,
+  type UiRuntimeConfigJsonResult,
+} from './control-plane/ui-runtime-config-schema.js';
 
 // ── Shared assistant endpoint resolution (E1) — one precedence chain for ────
 // Electron / CLI / container writers instead of three divergent ones. ───────

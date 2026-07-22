@@ -25,7 +25,7 @@ describe('/host/+page.svelte (host dashboard)', () => {
 
 	it('should render without console errors', async () => {
 		const responses: Record<string, unknown> = {
-			'/runtime-config.json': { connections: [] },
+			'/api/runtime-config': { connections: [] },
 			'/health': { status: 'ok', service: 'admin' },
 			'/guardian/health': { status: 'ok', service: 'guardian' },
 			'/api/host/containers/list': {

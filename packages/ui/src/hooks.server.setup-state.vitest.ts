@@ -46,9 +46,9 @@ function seedStackEnv(stackDir: string, setupComplete: boolean): void {
   writeFileSync(join(kvDir, 'stack.env'), `OP_SETUP_COMPLETE=${setupComplete}\n`);
 }
 
-function makeEvent(path: string): RequestEvent {
-  const url = new URL(`http://localhost:3880${path}`);
-  const headers: Record<string, string> = { host: 'localhost:3880', accept: 'application/json' };
+function makeEvent(path: string, host = 'localhost:3880', clientAddress = '127.0.0.1'): RequestEvent {
+  const url = new URL(`http://${host}${path}`);
+  const headers: Record<string, string> = { host, accept: 'application/json' };
   return {
     url,
     request: new Request(url.toString(), { headers }),
@@ -56,7 +56,7 @@ function makeEvent(path: string): RequestEvent {
     locals: {} as App.Locals,
     route: { id: path },
     platform: undefined,
-    getClientAddress: () => '127.0.0.1',
+    getClientAddress: () => clientAddress,
     isDataRequest: false,
     isSubRequest: false,
   } as unknown as RequestEvent;
@@ -82,6 +82,7 @@ describe('hooks.server — setup-state freshness + launch-cache reuse', () => {
   afterEach(() => {
     delete process.env.PORT;
     delete process.env.OP_ENABLE_ADMIN;
+    delete process.env.OP_ALLOW_REMOTE_SETUP;
     if (prevHome === undefined) delete process.env.OP_HOME;
     else process.env.OP_HOME = prevHome;
     rmSync(home, { recursive: true, force: true });
@@ -124,5 +125,20 @@ describe('hooks.server — setup-state freshness + launch-cache reuse', () => {
     _resetLaunchCache();
     await handle({ event: makeEvent('/api/host/health'), resolve });
     expect(classifyLocalInstallCalls).toBeGreaterThan(afterFirst);
+  });
+
+  test('first-run setup stays loopback-only when remote UI access is enabled', async () => {
+    const state = resetState('test-admin-pw');
+    seedStackEnv(state.stackDir, false);
+    delete process.env.OP_ENABLE_ADMIN;
+    process.env.OP_ALLOW_REMOTE_SETUP = '1';
+
+    const response = await handle({
+      event: makeEvent('/api/setup/complete', 'pwa.example', '127.0.0.1'),
+      resolve,
+    });
+
+    expect(response.status).toBe(403);
+    expect(await response.json()).toMatchObject({ error: 'setup_localhost_only' });
   });
 });

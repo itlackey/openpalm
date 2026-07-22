@@ -143,6 +143,7 @@ vi.mock('@openpalm/lib', () => ({
   resolveConfigDir: vi.fn(() => '/home/user/.openpalm/config'),
   resolveUiBuildDir: vi.fn(() => '/home/user/.openpalm/data/ui'),
   seedUiBuild: vi.fn(() => Promise.resolve()),
+  seedLegacyServedUiRuntimeConfig: vi.fn(),
   ensureHomeDirs: vi.fn(),
   checkAndUpdateUiBuild: vi.fn(() => Promise.resolve({ updated: false, latestVersion: '0.11.0' })),
   checkAndUpdateSkeleton: vi.fn(() => Promise.resolve({ updated: false, latestVersion: '0.11.0' })),
@@ -274,6 +275,17 @@ describe('buildUIServerEnv', () => {
   it('ORIGIN matches HOST and PORT', () => {
     const env = buildUIServerEnv('/x', 4000);
     expect(env.ORIGIN).toBe(`http://127.0.0.1:${env.PORT}`);
+  });
+
+  it('neutralizes inherited remote-access configuration', () => {
+    const previous = process.env.OP_ALLOW_REMOTE_SETUP;
+    process.env.OP_ALLOW_REMOTE_SETUP = '1';
+    try {
+      expect(buildUIServerEnv('/x', 4000).OP_ALLOW_REMOTE_SETUP).toBe('0');
+    } finally {
+      if (previous === undefined) delete process.env.OP_ALLOW_REMOTE_SETUP;
+      else process.env.OP_ALLOW_REMOTE_SETUP = previous;
+    }
   });
 
   it('sets OP_OPENCODE_URL so the UI proxy can reach the assistant', () => {

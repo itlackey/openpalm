@@ -20,7 +20,7 @@ import {
   restoreUiBackup,
   UiSupervisor,
   resolveAssistantEndpoint,
-  seedServedUiRuntimeConfig,
+  seedLegacyServedUiRuntimeConfig,
 } from '@openpalm/lib';
 import { HARNESS_CONTRACT_VERSION } from './harness-contract.js';
 import { checkForElectronUpdate, getCachedUpdateInfo, type UpdateInfo } from './update-check.js';
@@ -225,6 +225,7 @@ export function buildUIServerEnv(homeDir: string, port: number, update?: UpdateI
     HOST: '127.0.0.1',
     PORT: String(port),
     ORIGIN: `http://127.0.0.1:${port}`,
+    OP_ALLOW_REMOTE_SETUP: '0',
     OP_INSIDE_ELECTRON: '1',
     OP_ELECTRON_VERSION: app.getVersion?.() ?? '',
     // The native contract version this harness provides. The control plane
@@ -417,17 +418,7 @@ function spawnUIServer(
   uiPidFile: string,
   appUpdate?: UpdateInfo | null,
 ): void {
-  // Seed the served build's runtime-config.json so the browser store gets the
-  // locked, project-named default connection — the SAME seed the assistant
-  // container entrypoint writes. adapter-node serves the build's client/ dir at
-  // the app origin, where the browser's loadRuntimeConfig() fetches it. Best-
-  // effort and re-run on every (re)spawn: a write failure degrades to an empty
-  // connection list, never a failed launch.
-  try {
-    seedServedUiRuntimeConfig(uiBuildDir, homeDir);
-  } catch (err) {
-    console.warn('Could not seed UI runtime-config.json:', err instanceof Error ? err.message : String(err));
-  }
+  seedLegacyServedUiRuntimeConfig(uiBuildDir, homeDir);
 
   // Spawn the UI Node server with Electron's OWN bundled Node (process.execPath
   // + ELECTRON_RUN_AS_NODE) rather than a bare `node` on PATH. Finder-launched

@@ -6,8 +6,8 @@ import { getState } from '$lib/server/state.js';
 
 /**
  * Server runtime context — RuntimeContext v2 (issue #509). Computed server-side on every request via
- * +layout.server.ts and served publicly at GET /api/runtime (the
- * contract-version handshake for remote/hosted clients).
+ * +layout.server.ts and served publicly at GET /api/runtime for the current
+ * UI process. It is not a remote OpenPalm compatibility handshake.
  *
  * Admin capability is an Electron-or-CLI-only security boundary — there is no
  * per-mode capability matrix and no env self-grant footgun (a served/container
@@ -27,8 +27,9 @@ export function isAdminCapable(): boolean {
   return process.env.OP_INSIDE_ELECTRON === '1' || process.env.OP_ENABLE_ADMIN === '1';
 }
 
-/** Base capabilities granted to EVERY process. The browser owns
- *  connections uniformly — multiple assistants + switching work everywhere. */
+/** Base capabilities for host-served UI processes. The browser owns
+ * connections uniformly; the assistant-container co-process omits only the
+ * canonical-host PWA install affordance below. */
 const BASE_CAPABILITIES: readonly Capability[] = [
   'chat',
   'connections:read',
@@ -98,9 +99,12 @@ export function computeVoiceRuntime(): { url: string } | undefined {
 
 export function computeServerRuntimeContext(event: RequestEvent): ServerRuntimeContext {
   const admin = isAdminCapable();
-  const serverCapabilities: Capability[] = admin
-    ? [...BASE_CAPABILITIES, ...HOST_CAPABILITIES]
+  const baseCapabilities = process.env.OP_UI_NO_LOCAL_VOICE === '1'
+    ? BASE_CAPABILITIES.filter((capability) => capability !== 'pwa:install')
     : [...BASE_CAPABILITIES];
+  const serverCapabilities: Capability[] = admin
+    ? [...baseCapabilities, ...HOST_CAPABILITIES]
+    : baseCapabilities;
   return {
     version: 2,
     admin,

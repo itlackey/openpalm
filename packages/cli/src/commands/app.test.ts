@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, mock } from 'bun:test';
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -43,6 +43,7 @@ const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../../..')
 
 interface CapturedSpawn {
   argv: string[];
+  cwd?: string;
   env: Record<string, string | undefined> | undefined;
 }
 
@@ -62,6 +63,7 @@ const SAVED_ENV_KEYS = [
 const savedEnv2: Record<string, string | undefined> = {};
 for (const key of SAVED_ENV_KEYS) savedEnv2[key] = process.env[key];
 const tmpDirs2: string[] = [];
+const fetchedUrls: string[] = [];
 
 afterEach(() => {
   mock.restore();
@@ -70,6 +72,7 @@ afterEach(() => {
   globalThis.fetch = originalFetch;
   console.log = originalLog;
   console.warn = originalWarn;
+  fetchedUrls.length = 0;
   for (const key of SAVED_ENV_KEYS) {
     if (savedEnv2[key] === undefined) delete process.env[key];
     else process.env[key] = savedEnv2[key];
@@ -125,9 +128,9 @@ function captureSpawns(): CapturedSpawn[] {
   const calls: CapturedSpawn[] = [];
   Bun.spawn = ((
     argv: readonly string[],
-    opts?: { env?: Record<string, string | undefined> }
+    opts?: { cwd?: string; env?: Record<string, string | undefined> }
   ) => {
-    calls.push({ argv: [...argv], env: opts?.env });
+    calls.push({ argv: [...argv], cwd: opts?.cwd, env: opts?.env });
     return {
       pid: 0,
       exited: new Promise<number>(() => {}), // stays "alive"
@@ -160,16 +163,28 @@ function captureLogs(): string[] {
 }
 
 /**
- * Seed a temp OP_HOME the REAL lib accepts, `installed: false` (only
- * `data/ui/index.js` — never executed, Bun.spawn is captured), so
- * classifyLocalInstall() reports not_installed. Mocks fetch to answer
- * /health only.
+ * Seed a temp OP_HOME the real lib accepts. The default has only a runnable UI
+ * artifact, so classifyLocalInstall() reports not_installed; installed=true
+ * adds the minimum completed-stack markers. Mocks fetch to answer /health only.
  */
-function seedServeHome(): string {
+function seedServeHome(installed = false): string {
   const home = mkdtempSync(join(tmpdir(), 'openpalm-app-red-'));
   tmpDirs2.push(home);
   mkdirSync(join(home, 'data', 'ui'), { recursive: true });
   writeFileSync(join(home, 'data', 'ui', 'index.js'), '// stub adapter-node entry\n');
+  writeFileSync(join(home, 'data', 'ui', '.openpalm-ui-version'), '999999.0.0\n');
+  writeFileSync(join(home, 'data', 'ui', realLib.UI_RUNTIME_CONFIG_ENDPOINT_MARKER), '1\n');
+  mkdirSync(join(home, 'data', 'ui', 'client'), { recursive: true });
+  writeFileSync(
+    join(home, 'data', 'ui', 'client', 'runtime-config.json'),
+    '{"connections":[{"id":"stale-local-assistant"}]}\n',
+  );
+  if (installed) {
+    mkdirSync(join(home, 'system', 'stack'), { recursive: true });
+    writeFileSync(join(home, 'system', 'stack', 'core.compose.yml'), 'services: {}\n');
+    mkdirSync(join(home, 'state'), { recursive: true });
+    writeFileSync(join(home, 'state', 'stack.state.env'), 'OP_SETUP_COMPLETE=true\n');
+  }
   process.env.OP_HOME = home;
   delete process.env.OP_ENABLE_ADMIN;
   delete process.env.OP_ALLOW_REMOTE_SETUP;
@@ -178,6 +193,7 @@ function seedServeHome(): string {
   process.env.OPENPALM_REPO_ROOT = repoRoot;
   globalThis.fetch = (async (input: string | URL | Request) => {
     const url = String(input instanceof Request ? input.url : input);
+    fetchedUrls.push(url);
     if (url.endsWith('/health')) return new Response('ok', { status: 200 });
     throw new TypeError('fetch failed');
   }) as unknown as typeof fetch;
@@ -208,6 +224,10 @@ function uiChildSpawn(calls: CapturedSpawn[], port: number): CapturedSpawn | und
   return calls.find((c) => c.env?.PORT === String(port));
 }
 
+function browserSpawn(calls: CapturedSpawn[], port: number): CapturedSpawn | undefined {
+  return calls.find((c) => c.env === undefined && c.argv.includes(`http://localhost:${port}`));
+}
+
 /**
  * Import src/commands/app.ts and run it through citty without awaiting — the
  * serve mode runs in the foreground until SIGINT/SIGTERM, so the returned
@@ -225,7 +245,7 @@ async function runApp(): Promise<{ error?: unknown }> {
 
 describe('openpalm app on a not-installed OP_HOME (#486 stack-less app entry)', () => {
   it(
-    'serves the UI child instead of throwing',
+    'serves an empty client UI on canonical localhost without changing its loopback bind',
     async () => {
       seedServeHome();
       process.env.OP_HOST_UI_PORT = '4711';
@@ -241,7 +261,26 @@ describe('openpalm app on a not-installed OP_HOME (#486 stack-less app entry)', 
       );
       expect(child.env?.PORT).toBe('4711');
       expect(child.env?.HOST).toBe('127.0.0.1');
+      expect(child.env?.ORIGIN).toBe('http://localhost:4711');
       expect(child.env?.OP_ENABLE_ADMIN).toBeUndefined();
+      expect(child.cwd).toBeDefined();
+      const processConfig = realLib.parseUiRuntimeConfigJson(
+        child.env?.[realLib.UI_RUNTIME_CONFIG_ENV],
+      );
+      expect(processConfig).toEqual({ status: 'valid', config: { connections: [] } });
+      expect(
+        JSON.parse(readFileSync(join(child.cwd as string, 'client', 'runtime-config.json'), 'utf8')),
+      ).toEqual({ connections: [{ id: 'stale-local-assistant' }] });
+
+      const browser = await waitFor(
+        () => browserSpawn(calls, 4711),
+        'canonical localhost browser open',
+        () => run.error,
+      );
+      expect(browser.argv).toContain('http://localhost:4711');
+      expect(browser.argv.some((arg) => arg.includes('127.0.0.1:4711'))).toBe(false);
+      expect(fetchedUrls).toContain('http://127.0.0.1:4711/api/runtime');
+      expect(fetchedUrls).toContain('http://127.0.0.1:4711/health');
       // The command promise must not have rejected — it stays running as a
       // foreground supervisor, same as `openpalm admin`/bare serve.
       expect(run.error).toBeUndefined();
@@ -250,12 +289,12 @@ describe('openpalm app on a not-installed OP_HOME (#486 stack-less app entry)', 
   );
 
   it(
-    'does not attempt stack bring-up',
+    'does not update or materialize the managed skeleton, but keeps the UI update check',
     async () => {
-      seedServeHome();
+      const home = seedServeHome();
       process.env.OP_HOST_UI_PORT = '4712';
       const calls = captureSpawns();
-      captureLogs();
+      const logs = captureLogs();
 
       const run = await runApp();
 
@@ -265,8 +304,76 @@ describe('openpalm app on a not-installed OP_HOME (#486 stack-less app entry)', 
         () => run.error
       );
       expect(calls.some((c) => c.argv.some((a) => a.includes('docker')))).toBe(false);
+      expect(existsSync(join(home, 'system'))).toBe(false);
+      expect(existsSync(join(home, '.skeleton-version'))).toBe(false);
+      expect(logs.some((line) => line.includes('Checking for skeleton update'))).toBe(false);
+      expect(
+        fetchedUrls.some((url) => url.includes('@openpalm/skeleton') || url.includes('%40openpalm%2Fskeleton')),
+      ).toBe(false);
+      expect(
+        fetchedUrls.some((url) => url.includes('@openpalm/ui') || url.includes('%40openpalm%2Fui')),
+      ).toBe(true);
     },
     15000
+  );
+
+  it(
+    'writes an empty static config when a nonfatal update leaves a legacy UI build active',
+    async () => {
+      const home = seedServeHome();
+      rmSync(join(home, 'data', 'ui', realLib.UI_RUNTIME_CONFIG_ENDPOINT_MARKER));
+      process.env.OP_HOST_UI_PORT = '4716';
+      const calls = captureSpawns();
+      captureLogs();
+
+      const run = await runApp();
+      const child = await waitFor(
+        () => uiChildSpawn(calls, 4716),
+        'legacy stack-less app UI child spawn',
+        () => run.error,
+      );
+      expect(child.cwd).toBeDefined();
+      expect(
+        JSON.parse(readFileSync(join(child.cwd as string, 'client', 'runtime-config.json'), 'utf8')),
+      ).toEqual({ connections: [] });
+    },
+    15000,
+  );
+});
+
+describe('openpalm app on an installed OP_HOME', () => {
+  it(
+    'retains skeleton updates and the locked local assistant seed',
+    async () => {
+      seedServeHome(true);
+      process.env.OP_HOST_UI_PORT = '4714';
+      const calls = captureSpawns();
+      const logs = captureLogs();
+
+      const run = await runApp();
+      const child = await waitFor(
+        () => uiChildSpawn(calls, 4714),
+        'installed app UI child spawn',
+        () => run.error,
+      );
+
+      expect(logs.some((line) => line.includes('Checking for skeleton update'))).toBe(true);
+      expect(
+        fetchedUrls.some((url) => url.includes('@openpalm/skeleton') || url.includes('%40openpalm%2Fskeleton')),
+      ).toBe(true);
+      expect(child.cwd).toBeDefined();
+      const runtimeConfig = realLib.parseUiRuntimeConfigJson(
+        child.env?.[realLib.UI_RUNTIME_CONFIG_ENV],
+      );
+      expect(runtimeConfig.status).toBe('valid');
+      expect(runtimeConfig.status === 'valid' ? runtimeConfig.config.connections : []).toEqual([
+        expect.objectContaining({ id: realLib.ASSISTANT_LOCKED_CONNECTION_ID, locked: true }),
+      ]);
+      expect(
+        JSON.parse(readFileSync(join(child.cwd as string, 'client', 'runtime-config.json'), 'utf8')),
+      ).toEqual({ connections: [{ id: 'stale-local-assistant' }] });
+    },
+    15000,
   );
 });
 

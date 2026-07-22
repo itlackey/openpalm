@@ -1,4 +1,5 @@
-// Writes the package version into the UI build root as `.openpalm-ui-version`.
+// Writes the package version and process-runtime-config capability marker into
+// the UI build root.
 // This stamp travels with the build wherever it goes — bundled into the Electron
 // AppImage (extraResources) and copied/extracted into OP_HOME/data/ui by
 // seedUiBuild — so resolveUiBuildDir() can pick the NEWER of the two channels
@@ -15,4 +16,5 @@ if (!existsSync(buildDir)) {
 }
 const { version } = JSON.parse(readFileSync(join(pkgRoot, 'package.json'), 'utf-8'));
 writeFileSync(join(buildDir, '.openpalm-ui-version'), `${version}\n`);
+writeFileSync(join(buildDir, '.openpalm-runtime-config-endpoint-v1'), '1\n');
 console.log(`[stamp-version] stamped UI build as ${version}`);

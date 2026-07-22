@@ -10,6 +10,7 @@
     provideRuntimeContext,
   } from '$lib/runtime-context.svelte.js';
   import { notifications } from '$lib/notifications.svelte.js';
+  import { pwaInstallService } from '$lib/pwa-install-state.svelte.js';
   import { onVoiceError } from '$lib/voice/voice-state.svelte.js';
 
   interface Props {
@@ -28,6 +29,7 @@
   let voiceErrorToastId: string | null = null;
 
   onMount(() => {
+    pwaInstallService.init();
     themeService.init();
     // The client display mode genuinely needs the browser (matchMedia /
     // navigator) and can't be known during SSR, so ONLY that half still runs
@@ -37,11 +39,15 @@
     initializeRuntimeContext(runtimeContext, data.serverRuntimeContext, {
       displayMode: detectClientDisplayMode(),
     });
-    return onVoiceError((message) => {
+    const stopVoiceErrors = onVoiceError((message) => {
       voiceErrorToastId = notifications.push('error', message, {
         replaceId: voiceErrorToastId ?? undefined,
       });
     });
+    return () => {
+      stopVoiceErrors();
+      pwaInstallService.dispose();
+    };
   });
 
   // Voice errors route through the single <Toast /> outlet below. The listener

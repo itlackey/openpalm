@@ -43,4 +43,11 @@ describe('+layout.svelte runtime context ownership', () => {
     expect(onMountBlock).toContain('detectClientDisplayMode()');
     expect(onMountBlock).toContain('initializeRuntimeContext(runtimeContext');
   });
+
+  test('owns PWA install event capture for the root layout lifetime', () => {
+    const onMountBlock = source.slice(source.indexOf('onMount(() => {'));
+    expect(source).toContain("import { pwaInstallService } from '$lib/pwa-install-state.svelte.js'");
+    expect(onMountBlock).toContain('pwaInstallService.init()');
+    expect(onMountBlock).toContain('pwaInstallService.dispose()');
+  });
 });

@@ -1,7 +1,8 @@
 # Remote access over TLS
 
-This guide covers exposing the guardian's **direct listener** to a phone or
-any client that isn't on the same machine, over a real HTTPS connection.
+This guide covers two separate operator-managed HTTPS fronts: the non-admin UI
+host process on port 3880 and Guardian's direct listener on port 3830. Guardian
+does not serve the UI.
 
 ## Why TLS is unavoidable for phones/remote clients
 
@@ -14,13 +15,37 @@ remote access:
   `http://` URL — the browser blocks the request before it ever leaves,
   regardless of what the server would have answered.
 
-Because the hosted/PWA-installed OpenPalm client runs on an https origin,
-any remote (non-loopback) connection it talks to must also be https, or the
-request never leaves the browser. The desktop/localhost path needs none of
-this: a `127.0.0.1` origin talking to a `127.0.0.1` target is a secure
-context with no mixed-content restriction, so it stays zero-TLS by default.
+An OpenPalm PWA on a phone must be served from an operator-provided HTTPS
+origin. Any remote (non-loopback) connection it talks to must also be HTTPS, or
+the request never leaves the browser. There is no official OpenPalm-hosted PWA
+origin in 0.13.0. The local path needs none of this: `openpalm app` serves
+`http://localhost:${OP_HOST_UI_PORT:-3880}`, which is a secure loopback context.
+The process may still bind and probe `127.0.0.1` internally.
 
-## What you are exposing
+## Two separate HTTPS fronts
+
+### UI host process (port 3880)
+
+Complete initial setup from the canonical localhost origin first. The optional
+remote PWA origin then proxies a non-admin `openpalm app` process. The current
+supported external-origin path requires the explicit remote-access opt-in:
+
+```bash
+env -u OP_ENABLE_ADMIN -u OP_INSIDE_ELECTRON \
+  OP_ALLOW_REMOTE_SETUP=1 openpalm app
+```
+
+Do not proxy `openpalm admin` or Electron. The command above keeps admin
+capability disabled, but `OP_ALLOW_REMOTE_SETUP=1` also binds port 3880 to
+`0.0.0.0` and accepts same-origin requests through the HTTPS proxy. First-run
+setup stays restricted to a loopback browser origin even with this flag. Block
+direct LAN/WAN access to port 3880 with the host firewall and expose it only
+through the chosen HTTPS proxy. There is currently no supported switch that
+both keeps 3880 loopback-only and accepts a non-loopback browser origin; if that
+firewall boundary is not available, keep using the canonical localhost PWA
+instead.
+
+### Guardian direct listener (port 3830)
 
 The thing you are fronting with TLS is the guardian's **direct listener**
 (port 3830 internally, published on `${OP_BIND_ADDRESS:-127.0.0.1}:${OP_GUARDIAN_PORT:-3830}`
@@ -30,10 +55,10 @@ by default — loopback-only). That listener 404s every request until you set
 GUARDIAN_DIRECT_INGRESS=true
 ```
 
-in `knowledge/env/stack.env`. Turning on TLS fronting does **not** change
-this default: both routes below tunnel to `127.0.0.1:3830` rather than
-binding the guardian itself to a LAN/WAN address, so the loopback-default
-posture is unchanged.
+in `knowledge/env/stack.env`. Turning on TLS fronting does **not** change this
+default: the Guardian examples below tunnel to `127.0.0.1:3830` rather than
+binding Guardian itself to a LAN/WAN address, so its loopback-default posture
+is unchanged.
 
 ## Tailscale (recommended)
 
@@ -53,10 +78,10 @@ management on your part and nothing is reachable outside your tailnet.
    tailnet (`tailscale cert` / the Tailscale admin console — required once
    per tailnet).
 
-3. Serve the guardian's direct listener over HTTPS:
+3. Serve the guardian's direct listener over HTTPS on the default HTTPS port:
 
    ```
-   tailscale serve --bg 127.0.0.1:3830
+   tailscale serve --bg --https=443 http://127.0.0.1:3830
    ```
 
    This publishes `https://<machine>.<tailnet>.ts.net` with an automatic,
@@ -64,23 +89,35 @@ management on your part and nothing is reachable outside your tailnet.
    no port forwarding, and the address is reachable only from inside your
    tailnet.
 
-4. Add the browser app's origin to the guardian's CORS allowlist (see
+4. To host the PWA on the same Tailscale machine, first start the non-admin UI
+   process as described in [UI host process](#ui-host-process-port-3880), then
+   give it a distinct HTTPS port:
+
+   ```
+   tailscale serve --bg --https=8443 http://127.0.0.1:3880
+   ```
+
+   The browser UI origin is now
+   `https://<machine>.<tailnet>.ts.net:8443`. This is separate from the Guardian
+   origin on port 443.
+
+5. Add that exact browser origin to Guardian's CORS allowlist (see
    [CORS origin note](#cors-origin-note) below) and apply it:
 
    ```
    # knowledge/env/stack.env
-   GUARDIAN_CORS_ALLOWED_ORIGINS=https://app.openpalm.dev
+   GUARDIAN_CORS_ALLOWED_ORIGINS=https://<machine>.<tailnet>.ts.net:8443
    ```
 
    ```
    docker compose up -d guardian
    ```
 
-   (or use the admin UI's apply flow — either restarts the guardian with the
-   new allowlist.)
+   If the browser remains on the canonical local app instead, use
+   `http://localhost:3880`. The admin UI's apply flow is equivalent.
 
-Point the OpenPalm client's connection URL at
-`https://<machine>.<tailnet>.ts.net`.
+Open the PWA at `https://<machine>.<tailnet>.ts.net:8443` and set its Guardian
+connection URL to `https://<machine>.<tailnet>.ts.net/oc`.
 
 ### Container-only hosts (advanced)
 
@@ -111,9 +148,10 @@ secrets:
     file: ./knowledge/secrets/tailscale_authkey
 ```
 
-This is marked advanced because it needs a tailnet auth key and its own
-state volume; `tailscale serve` on the host (above) is simpler whenever the
-host itself can run Tailscale.
+This is marked advanced because it needs a tailnet auth key and its own state
+volume. It fronts Guardian only: because it shares Guardian's network namespace,
+its `127.0.0.1` is not the host UI process. Use host-level `tailscale serve`
+above when the same machine must also host the PWA.
 
 ## Caddy with your own domain
 
@@ -170,16 +208,42 @@ for building a custom image). This extra step is exactly why Tailscale is
 the recommended default and Caddy is the alternative for users who already
 own a domain and DNS provider account.
 
+### Host-level Caddy for both origins
+
+The sidecar above fronts Guardian only. To proxy both loopback services on the
+same machine, run Caddy on the host instead, start the non-admin UI process as
+described in [UI host process](#ui-host-process-port-3880), and use distinct
+hostnames:
+
+```caddyfile
+ui.example.com {
+  reverse_proxy 127.0.0.1:3880
+}
+
+gw.example.com {
+  reverse_proxy 127.0.0.1:3830
+}
+```
+
+Apply the same certificate strategy described above to both hostnames. Keep
+direct ports 3880 and 3830 blocked by the host firewall. Then configure:
+
+```env
+GUARDIAN_CORS_ALLOWED_ORIGINS=https://ui.example.com
+```
+
+Open `https://ui.example.com` and use `https://gw.example.com/oc` as the
+Guardian connection URL. Caddy forwards UI traffic to port 3880 and Guardian
+traffic to port 3830; neither service impersonates the other.
+
 ## CORS origin note
 
 Whatever you put in `GUARDIAN_CORS_ALLOWED_ORIGINS` must be the **browser
 app's origin** — where the OpenPalm client itself is served from (e.g. the
-hosted client origin, or the `https://….ts.net`/domain origin if you serve
-the client build through the same TLS front) — **not** the guardian's own
-address. Origins must be exact (comma-separated for more than one); the
-guardian rejects a literal `*`. The exact-origin matcher normalizes via
-`URL.origin` and supports https origins fine — the guardian's own CORS test
-suite's allowed origin is literally `https://app.openpalm.dev`.
+canonical `http://localhost:3880`, or your operator-provided
+`https://ui.example.com`) — **not** the guardian's own address. Origins must be
+exact (comma-separated for more than one); the guardian rejects a literal `*`.
+The exact-origin matcher normalizes via `URL.origin` and supports HTTPS origins.
 
 ## Client behavior
 
@@ -213,6 +277,8 @@ those default paths.
 
 ## Non-goals
 
+- **No official hosted PWA or default hosted-origin CORS grant.** Operators may
+  serve the UI from their own HTTPS origin and allow that exact origin.
 - **No private CA installs on phones, ever.** Neither route above asks a
   user to trust a self-signed or private CA on iOS/Android (the mkcert-style
   pattern) — both Tailscale and the Caddy/DNS-challenge path issue real,

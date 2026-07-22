@@ -5,10 +5,15 @@ import { join } from 'node:path';
 import {
   ASSISTANT_LOCKED_CONNECTION_ID,
   ASSISTANT_LOCKED_CONNECTION_LABEL,
+  buildEmptyUiRuntimeConfig,
   buildLockedAssistantRuntimeConfig,
-  writeUiRuntimeConfig,
-  seedServedUiRuntimeConfig,
+  buildServedUiRuntimeConfig,
+  seedLegacyServedUiRuntimeConfig,
+  uiBuildSupportsProcessRuntimeConfig,
+  UI_RUNTIME_CONFIG_ENDPOINT_MARKER,
+  writeLegacyServedUiRuntimeConfig,
 } from './ui-runtime-config.js';
+import { parseUiRuntimeConfigJson, serializeUiRuntimeConfig } from './ui-runtime-config-schema.js';
 
 describe('ui runtime config', () => {
   test('builds one locked default connection in the UI store shape (baseUrl, no kind)', () => {
@@ -32,6 +37,29 @@ describe('ui runtime config', () => {
     );
   });
 
+  test('strips URL userinfo before a runtime connection can be served', () => {
+    const config = buildLockedAssistantRuntimeConfig('https://user:password@assistant.example');
+    expect(config.connections[0]?.baseUrl).toBe('https://assistant.example/');
+    expect(JSON.stringify(config)).not.toContain('password');
+  });
+
+  test('builds an explicit empty config for a stack-less client process', () => {
+    expect(buildEmptyUiRuntimeConfig()).toEqual({ connections: [] });
+  });
+
+  test('builds the served config from shared assistant endpoint resolution', () => {
+    expect(buildServedUiRuntimeConfig('/missing', {
+      OP_UI_DEFAULT_ASSISTANT_URL: 'https://assistant.example',
+      OP_PROJECT_NAME: 'splinter',
+    })).toEqual(buildLockedAssistantRuntimeConfig('https://assistant.example', 'splinter'));
+  });
+
+  test('degrades an invalid assistant URL to no default connection', () => {
+    expect(buildServedUiRuntimeConfig('/missing', {
+      OP_UI_DEFAULT_ASSISTANT_URL: 'not a URL',
+    })).toEqual({ connections: [] });
+  });
+
   // The lib writer and the container entrypoint's inline JS writer must agree on
   // the locked-connection id/label. Exporting them as named constants lets the
   // container lane pin entrypoint.sh's literal against this value.
@@ -43,61 +71,78 @@ describe('ui runtime config', () => {
     expect(built.label).toBe(ASSISTANT_LOCKED_CONNECTION_LABEL);
   });
 
-  test('writes the runtime config JSON file', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'ui-runtime-config-'));
+  describe('process runtime config JSON', () => {
+    test('serializes and validates a typed config', () => {
+      const config = buildLockedAssistantRuntimeConfig('http://127.0.0.1:3810');
+      expect(parseUiRuntimeConfigJson(serializeUiRuntimeConfig(config))).toEqual({
+        status: 'valid',
+        config,
+      });
+    });
+
+    test('distinguishes an absent value from malformed or unsafe values', () => {
+      expect(parseUiRuntimeConfigJson(undefined)).toEqual({ status: 'absent' });
+      expect(parseUiRuntimeConfigJson('{')).toEqual({ status: 'invalid' });
+      expect(parseUiRuntimeConfigJson('{"connections":[{"id":7}]}')).toEqual({ status: 'invalid' });
+      expect(parseUiRuntimeConfigJson(JSON.stringify({
+        connections: [
+          { id: 'unsafe', label: 'Unsafe', baseUrl: 'javascript:alert(1)', auth: { mode: 'none' } },
+        ],
+      }))).toEqual({ status: 'invalid' });
+      expect(parseUiRuntimeConfigJson(JSON.stringify({
+        connections: [
+          { id: 'secret', label: 'Secret', baseUrl: 'https://user:password@example.test', auth: { mode: 'none' } },
+        ],
+      }))).toEqual({ status: 'invalid' });
+      expect(parseUiRuntimeConfigJson(JSON.stringify({
+        connections: [
+          { id: 'same', label: 'One', baseUrl: 'http://localhost:1', auth: { mode: 'none' } },
+          { id: 'same', label: 'Two', baseUrl: 'http://localhost:2', auth: { mode: 'none' } },
+        ],
+      }))).toEqual({ status: 'invalid' });
+    });
+  });
+
+  test('writes static config only for legacy UI artifacts without the endpoint marker', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'ui-runtime-config-capability-'));
     try {
-      const path = join(dir, 'nested', 'runtime-config.json');
-      writeUiRuntimeConfig(path, 'https://assistant.example');
-      expect(JSON.parse(readFileSync(path, 'utf8'))).toEqual(
-        buildLockedAssistantRuntimeConfig('https://assistant.example')
+      expect(uiBuildSupportsProcessRuntimeConfig(dir)).toBe(false);
+      seedLegacyServedUiRuntimeConfig(dir, dir, {
+        OP_UI_DEFAULT_ASSISTANT_URL: 'https://assistant.example',
+      });
+      expect(JSON.parse(readFileSync(join(dir, 'client', 'runtime-config.json'), 'utf8'))).toEqual(
+        buildLockedAssistantRuntimeConfig('https://assistant.example'),
       );
+
+      writeFileSync(join(dir, UI_RUNTIME_CONFIG_ENDPOINT_MARKER), '1\n');
+      mkdirSync(join(dir, 'client'), { recursive: true });
+      writeFileSync(join(dir, 'client', 'runtime-config.json'), '{"sentinel":true}\n');
+      expect(uiBuildSupportsProcessRuntimeConfig(dir)).toBe(true);
+      seedLegacyServedUiRuntimeConfig(dir, dir, {
+        OP_UI_DEFAULT_ASSISTANT_URL: 'https://changed.example',
+      });
+      expect(JSON.parse(readFileSync(join(dir, 'client', 'runtime-config.json'), 'utf8'))).toEqual({ sentinel: true });
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
   });
 
-  // The host serve path (Electron/CLI spawnUiChild) uses this to seed the same
-  // locked default connection the container entrypoint writes — into the served
-  // build's client/ static dir, where the browser store fetches
-  // /runtime-config.json from the app origin.
-  describe('seedServedUiRuntimeConfig', () => {
-    test('writes <uiBuildDir>/client/runtime-config.json with the derived default connection', () => {
-      const dir = mkdtempSync(join(tmpdir(), 'seed-ui-runtime-'));
-      try {
-        // empty homeDir + empty env → resolveAssistantEndpoint's derived default
-        seedServedUiRuntimeConfig(dir, dir, {});
-        const parsed = JSON.parse(readFileSync(join(dir, 'client', 'runtime-config.json'), 'utf8'));
-        expect(parsed).toEqual(buildLockedAssistantRuntimeConfig('http://127.0.0.1:3810'));
-      } finally {
-        rmSync(dir, { recursive: true, force: true });
-      }
-    });
+  test('legacy compatibility seeding is best-effort', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'ui-runtime-config-readonly-'));
+    try {
+      writeFileSync(join(dir, 'client'), 'not a directory');
+      expect(() => writeLegacyServedUiRuntimeConfig(dir, buildEmptyUiRuntimeConfig())).not.toThrow();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
 
-    test('honors the OP_UI_DEFAULT_ASSISTANT_URL override from env', () => {
-      const dir = mkdtempSync(join(tmpdir(), 'seed-ui-runtime-'));
-      try {
-        seedServedUiRuntimeConfig(dir, dir, { OP_UI_DEFAULT_ASSISTANT_URL: 'https://assistant.example' });
-        const parsed = JSON.parse(readFileSync(join(dir, 'client', 'runtime-config.json'), 'utf8'));
-        expect(parsed.connections[0].baseUrl).toBe('https://assistant.example');
-      } finally {
-        rmSync(dir, { recursive: true, force: true });
-      }
-    });
-
-    test('uses OP_PROJECT_NAME from persisted stack config as the connection label', () => {
-      const dir = mkdtempSync(join(tmpdir(), 'seed-ui-runtime-'));
-      try {
-        const envDir = join(dir, 'knowledge', 'env');
-        mkdirSync(envDir, { recursive: true });
-        writeFileSync(join(envDir, 'stack.env'), 'OP_PROJECT_NAME=splinter\n');
-
-        seedServedUiRuntimeConfig(dir, dir, {});
-
-        const parsed = JSON.parse(readFileSync(join(dir, 'client', 'runtime-config.json'), 'utf8'));
-        expect(parsed.connections[0].label).toBe('splinter');
-      } finally {
-        rmSync(dir, { recursive: true, force: true });
-      }
-    });
+  test('the assistant static fallback strips URL userinfo before writing public config', () => {
+    const entrypoint = readFileSync(
+      new URL('../../../../containers/assistant/entrypoint.sh', import.meta.url),
+      'utf8',
+    );
+    expect(entrypoint).toContain('parsedUrl.username = ""');
+    expect(entrypoint).toContain('parsedUrl.password = ""');
   });
 });

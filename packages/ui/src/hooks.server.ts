@@ -23,7 +23,6 @@ import {
   readStackRuntimeEnv,
   readSecret,
   collectNetworkExposureWarnings,
-  isRemoteSetupAllowed,
   stackDirFor,
   reconcileMdnsResponder,
 } from "@openpalm/lib";
@@ -43,7 +42,7 @@ function reconcilePortContract(): void {
   if (!process.env.OP_UI_SUPERVISOR) return;
   try {
     const state = getState();
-    reconcileSupervisedPortContract(state.homeDir, process.cwd(), process.env);
+    reconcileSupervisedPortContract(state.homeDir, process.env);
   } catch (err) {
     logger.error('default port migration failed', { error: String(err) });
   }
@@ -140,6 +139,10 @@ function isLocalhostAddress(ip: string): boolean {
   return ip === "127.0.0.1" || ip === "::1" || ip === "::ffff:127.0.0.1";
 }
 
+function isLocalhostName(hostname: string): boolean {
+  return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '[::1]' || hostname === '::1';
+}
+
 export const handle: Handle = async ({ event, resolve }) => {
   const runtimeContext = computeServerRuntimeContext(event);
   // PR #564 second retest: thread requestId so the global Host/Origin rejections
@@ -192,9 +195,9 @@ export const handle: Handle = async ({ event, resolve }) => {
     redirect(302, '/setup');
   }
 
-  if (isSetupPath && !setupComplete && !isRemoteSetupAllowed()) {
+  if (isSetupPath && !setupComplete) {
     const clientIp = event.getClientAddress();
-    if (!isLocalhostAddress(clientIp)) {
+    if (!isLocalhostAddress(clientIp) || !isLocalhostName(event.url.hostname)) {
       return new Response(
         JSON.stringify({
           error: "setup_localhost_only",

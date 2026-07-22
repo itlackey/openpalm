@@ -13,6 +13,13 @@ privileged ops), **Assistant** = chat against the active connection +
 assistant-owned settings, **Connection** = connection management, **Entry** =
 landing/auth/first-run plumbing shared by all surfaces.
 
+The **client-only lane** is the same `@openpalm/ui` build served by stack-less
+`openpalm app` or installed as a PWA. It exposes Entry, Assistant, and Connection
+routes, but has no `host:*` capabilities: `/host` redirects away and
+`/api/host/*` returns 403. Its canonical local origin is
+`http://localhost:${OP_HOST_UI_PORT:-3880}`. There is no separate client package
+or client-only runtime mode.
+
 ## Landing resolution
 
 Every document navigation to `/` (and the legacy `/splash` path) is redirected
@@ -54,8 +61,8 @@ release only.
   `/api/assistant/*` endpoint — a valid admin session in a mode without the
   capability is still refused with 403 `capability_not_available`.
 - **setup localhost** — SEC-4: `/setup` + `/api/setup/*` are unauthenticated
-  before first-run completes but restricted to loopback clients (unless
-  `OP_ALLOW_REMOTE_SETUP`); after completion, re-runs require admin auth.
+  before first-run completes but restricted to a loopback browser origin;
+  after completion, re-runs require admin auth.
 - **host/origin** — SEC-1/SEC-2 Host-header allowlist + Origin check apply to
   every request; host admin stays loopback-only.
 
@@ -82,12 +89,13 @@ router, which 404s because the route tree is deleted.
 
 | Namespace | Surface | Guard | Endpoints |
 |---|---|---|---|
-| `/api/runtime` | Entry | **public** | GET server runtime context — the contract-version handshake |
+| `/api/runtime` | Entry | **public** | GET context for the process serving this UI; not a remote-OpenPalm handshake |
+| `/api/runtime-config` | Entry | **public**, `no-store` | GET the launcher-scoped, credential-free connection seed; 404 selects the assistant container's static `/runtime-config.json` fallback |
 | `/health` | Entry | public | Liveness probe |
 | `/guardian/health` | Entry | public | Guardian reachability probe |
 | `/api/auth/{login,logout,session}` | Entry | public (login) / session | Session lifecycle. Deliberately **outside** `/api/host` — a capability guard on login would lock a served (non-admin) deployment out before it could authenticate |
 | `/api/setup/*` | Host | setup localhost | 19 endpoints: `status`, `system-check`, `recommend`, `detect-providers`, `current-config`, `complete`, `deploy-status`, `retry-deploy`, `host-status`, `import-host`, `models/[provider]`, `ollama-profiles`, `voice-profiles`, `opencode/{ensure,status,providers,auth/[provider],provider/[provider]/oauth/{authorize,callback}}` |
-| `/api/connections/pairing` | Connection | requireAdmin + `requireCapability('host:stack:write')` | POST-only: host-mints a one-time QR/pairing code against the LOCAL guardian (#511). The connection LIST itself is browser-owned (IndexedDB) — there is no server-side connection CRUD |
+| `/api/connections/pairing` | Connection | requireAdmin + `requireCapability('host:stack:write')` | POST-only: host-mints a one-time QR/pairing code against the LOCAL guardian (#511). Another device uses an external camera/QR app or pastes the code; the UI has no embedded camera scanner. The connection LIST itself is browser-owned (IndexedDB) — there is no server-side connection CRUD |
 | `/api/assistant/*` | Assistant | requireAdmin + `requireCapability('assistant-settings:read'/'write')` | Assistant-owned settings — editable from a non-admin served build: `persona` (config/assistant/persona.md), `akm` (config/akm/config.json), `model` (OpenCode default/small model) |
 | `/api/host/*` | Host | requireAdmin + `requireCapability('host:…')` per endpoint | Privileged host control plane (see below); 403 `capability_not_available` in a non-admin process even with a valid session |
 | `/api/electron/update-status` | Host | (Electron harness) | Control-plane self-update status |

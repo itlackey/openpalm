@@ -12,10 +12,10 @@
  *   - The container entrypoint had its own inline precedence.
  *
  * `resolveAssistantEndpoint` is the ONE place this precedence is decided for
- * the host-process surfaces. Electron main.ts resolves through it to seed the
- * browser's locked default connection (the container entrypoint, being a shell
- * script, mirrors the same precedence inline — both honor the same
- * OP_UI_DEFAULT_ASSISTANT_URL override so an operator override is consistent).
+ * the host-process surfaces. The process runtime-config endpoint resolves
+ * through it for the browser's locked default connection. The container
+ * entrypoint, being a shell script, mirrors the same precedence inline; both
+ * honor the same OP_UI_DEFAULT_ASSISTANT_URL override.
  */
 import { readStackEnv } from './secrets.js';
 import { STACK_DEFAULTS } from './defaults.js';

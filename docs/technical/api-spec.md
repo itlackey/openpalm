@@ -37,6 +37,13 @@ Most protected routes return structured errors via:
 
 ## Public Endpoints
 
+### `GET /api/runtime-config`
+
+Returns the credential-free connection seed for the current UI process with
+`Cache-Control: no-store`. A `404` means the browser should consult the
+assistant container's static `/runtime-config.json` fallback. Malformed or
+unsafe process configuration fails closed with `500 invalid_runtime_config`.
+
 ### `GET /health`
 
 Returns admin health:

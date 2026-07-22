@@ -1,5 +1,10 @@
 # 0.13.0 Implementation Plan — Open Milestone Issues
 
+> **HISTORICAL:** Pre-RC planning snapshot, not current architecture or release
+> authority. Its `packages/client`, runtime-mode, port 3890, hosted-origin,
+> remote-handshake, and expanded-offline assumptions were superseded. Use
+> `docs/technical/architecture.md` and the 0.13.0 RC checklists.
+
 _Prepared 2026-07-12 against `0.13.0-beta.3`. Ten issues remain open in the milestone:
 #433 #435 #486 #488 #490 #491 #506 #511 #557 #563._
 

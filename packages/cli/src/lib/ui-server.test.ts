@@ -1,8 +1,12 @@
 import { describe, expect, it } from 'bun:test';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { parseUiRuntimeConfigJson } from '@openpalm/lib';
 import {
   createCliUiSupervisor, type CliChildProc,
   resolveAdminUrl, resolveExpectedAdmin, checkExistingUiInstance,
-  resolveUiServePort,
+  resolveUiChildLaunch, resolveUiLoopbackHost, resolveUiNetworkEnv, resolveUiServePort,
 } from './ui-server.ts';
 
 // Behavioral coverage for the CLI's thin UiSupervisor adapter, driven through
@@ -158,11 +162,11 @@ describe('createCliUiSupervisor exit policy', () => {
 
 describe('resolveAdminUrl', () => {
   it('points at /host when admin mode is active', () => {
-    expect(resolveAdminUrl('http://localhost:3880', true)).toBe('http://localhost:3880/host');
+    expect(resolveAdminUrl('http://127.0.0.1:3880', true)).toBe('http://127.0.0.1:3880/host');
   });
 
   it('leaves the root URL alone otherwise', () => {
-    expect(resolveAdminUrl('http://localhost:3880', false)).toBe('http://localhost:3880');
+    expect(resolveAdminUrl('http://127.0.0.1:3880', false)).toBe('http://127.0.0.1:3880');
   });
 });
 
@@ -170,6 +174,58 @@ describe('resolveExpectedAdmin', () => {
   it('is true for admin mode, false otherwise (mirrors spawnUiChild adminEnv)', () => {
     expect(resolveExpectedAdmin(true)).toBe(true);
     expect(resolveExpectedAdmin(false)).toBe(false);
+  });
+});
+
+describe('resolveUiLoopbackHost', () => {
+  it('uses localhost for normal user-facing UI and IPv4 loopback for admin', () => {
+    expect(resolveUiLoopbackHost(false)).toBe('localhost');
+    expect(resolveUiLoopbackHost(true)).toBe('127.0.0.1');
+  });
+});
+
+describe('resolveUiNetworkEnv', () => {
+  it('uses canonical localhost by default for non-admin UI processes', () => {
+    expect(resolveUiNetworkEnv(3880, false, {})).toEqual({
+      HOST: '127.0.0.1',
+      PORT: '3880',
+      ORIGIN: 'http://localhost:3880',
+      HOST_HEADER: undefined,
+      PROTOCOL_HEADER: undefined,
+    });
+  });
+
+  it('keeps admin on IPv4 loopback and refuses the remote opt-in', () => {
+    expect(resolveUiNetworkEnv(3880, true, { OP_ALLOW_REMOTE_SETUP: '1' })).toEqual({
+      HOST: '127.0.0.1',
+      PORT: '3880',
+      ORIGIN: 'http://127.0.0.1:3880',
+      HOST_HEADER: undefined,
+      PROTOCOL_HEADER: undefined,
+    });
+  });
+
+  it('restores wildcard bind and forwarded headers only for explicit non-admin opt-in', () => {
+    expect(resolveUiNetworkEnv(3880, false, { OP_ALLOW_REMOTE_SETUP: '1' })).toEqual({
+      HOST: '0.0.0.0',
+      PORT: '3880',
+      ORIGIN: undefined,
+      HOST_HEADER: 'host',
+      PROTOCOL_HEADER: 'x-forwarded-proto',
+    });
+  });
+
+  it('keeps inherited admin capability on IPv4 loopback despite the remote opt-in', () => {
+    expect(resolveUiNetworkEnv(3880, false, {
+      OP_ENABLE_ADMIN: '1',
+      OP_ALLOW_REMOTE_SETUP: '1',
+    })).toEqual({
+      HOST: '127.0.0.1',
+      PORT: '3880',
+      ORIGIN: 'http://127.0.0.1:3880',
+      HOST_HEADER: undefined,
+      PROTOCOL_HEADER: undefined,
+    });
   });
 });
 
@@ -232,6 +288,44 @@ describe('checkExistingUiInstance', () => {
       fetchFn: routedFetch({ 'http://127.0.0.1:3880/api/runtime': { admin: false } }),
     });
     expect(result).toEqual({ status: 'mismatch', admin: false });
+  });
+
+  it('targets localhost when selected for the openpalm app identity check', async () => {
+    const result = await checkExistingUiInstance(3880, false, {
+      host: 'localhost',
+      fetchFn: routedFetch({ 'http://localhost:3880/api/runtime': { admin: false } }),
+    });
+    expect(result).toEqual({ status: 'match', admin: false });
+  });
+});
+
+describe('resolveUiChildLaunch', () => {
+  it('recomputes a not-installed to installed transition for each spawn', () => {
+    const homeDir = mkdtempSync(join(tmpdir(), 'openpalm-ui-child-launch-'));
+    const stackDir = join(homeDir, 'system', 'stack');
+    try {
+      const before = resolveUiChildLaunch({ homeDir, stackDir }, true, {});
+      expect(before.stacklessApp).toBe(true);
+      expect(parseUiRuntimeConfigJson(before.runtimeConfigJson)).toEqual({
+        status: 'valid',
+        config: { connections: [] },
+      });
+
+      mkdirSync(stackDir, { recursive: true });
+      writeFileSync(join(stackDir, 'core.compose.yml'), 'services: {}\n');
+      mkdirSync(join(homeDir, 'state'), { recursive: true });
+      writeFileSync(join(homeDir, 'state', 'stack.state.env'), 'OP_SETUP_COMPLETE=true\n');
+
+      const after = resolveUiChildLaunch({ homeDir, stackDir }, true, {});
+      expect(after.stacklessApp).toBe(false);
+      const parsed = parseUiRuntimeConfigJson(after.runtimeConfigJson);
+      expect(parsed.status).toBe('valid');
+      expect(parsed.status === 'valid' ? parsed.config.connections : []).toEqual([
+        expect.objectContaining({ id: 'openpalm-assistant-opencode', locked: true }),
+      ]);
+    } finally {
+      rmSync(homeDir, { recursive: true, force: true });
+    }
   });
 });
 

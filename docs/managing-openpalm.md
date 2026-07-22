@@ -372,18 +372,43 @@ openpalm backups prune --keep 3
 
 ---
 
+## Local App and PWA
+
+Run `openpalm app` to start the stack-less local client. It serves the same
+`@openpalm/ui` adapter-node build used everywhere else, without requiring or
+starting a local stack, at the canonical user-facing origin:
+
+```
+http://localhost:${OP_HOST_UI_PORT:-3880}
+```
+
+Install the PWA from that origin using the browser's install action. The basic
+manifest and service worker ship with the UI. Offline caching covers only hashed
+build assets and static assets; page navigation, API calls, auth, and SSE remain
+network-only. Full offline chat and an offline action queue are not included.
+
+Operators may also proxy a non-admin `openpalm app` process from their own HTTPS
+origin. The current supported path requires `OP_ALLOW_REMOTE_SETUP=1`, which
+binds port 3880 to all interfaces, so direct access to that port must be blocked
+by the host firewall. Never proxy `openpalm admin` or Electron. See
+[`remote-access-tls.md`](remote-access-tls.md) for separate Tailscale/Caddy UI
+and Guardian fronts plus the exact-origin CORS setting. OpenPalm does not
+provide an official `app.openpalm.dev` deployment or default CORS grant.
+
 ## Admin UI & Ports
 
 | URL | Service |
 |---|---|
-| `http://localhost:3880/` | Admin UI and API |
+| `http://localhost:3880/` | Canonical local `openpalm app` and PWA origin |
+| `http://127.0.0.1:3880/host` | Admin UI/API when launched by `openpalm admin` or Electron |
 | `http://localhost:3800/` | OpenPalm assistant chat UI |
 | `http://localhost:3810/` | OpenCode assistant UI and API |
 | `http://localhost:3820/` | Chat addon |
 | `http://localhost:3821/` | API addon |
 | `http://localhost:8880/` | Voice addon (`OP_VOICE_PORT_HOST`) |
 
-All ports are `127.0.0.1`-bound by default.
+All local processes remain `127.0.0.1`-bound by default; `localhost` is the
+stable browser/install identity for the non-admin PWA.
 
 ---
 
@@ -469,7 +494,9 @@ this is an explicit, per-connection operator opt-in.
    UI runs on (no wildcard) to `GUARDIAN_CORS_ALLOWED_ORIGINS` in
    `knowledge/env/stack.env`. This is empty by default, so every origin that
    will reach the guardian directly — including the local UI origin — must be
-   listed explicitly.
+   listed explicitly. Use `http://localhost:3880` for the default local app, or
+   the exact operator-provided HTTPS origin. There is no default grant for an
+   OpenPalm-hosted origin.
 
 3. **Apply the env changes:**
 
@@ -488,9 +515,10 @@ this is an explicit, per-connection operator opt-in.
    guardian URL AS REACHABLE BY THE OTHER DEVICE (the LAN address or
    Tailscale/`ts.net` hostname — not `127.0.0.1`), and mint. The page shows
    a QR code and a copyable `openpalm-pair:` code **once** — scan it with
-   any camera/QR app, or copy it. On the other device's OpenPalm UI
+   any external camera/QR app, or copy it; the OpenPalm UI does not embed a
+   camera scanner. On the other device's OpenPalm UI
    `/connections` page, paste the code into "Have a pairing code?" (or open
-   the `#pair=` link, if a hosted UI origin exists) and apply — it
+   the `#pair=` link, if an operator-provided HTTPS UI origin exists) and apply — it
    prefills the add form (label, base URL, Basic auth username/password) with
    nothing left to type by hand. The deep link carries the code in the URL
    **fragment** (`#pair=`, not `?pair=`); browsers never send the fragment to

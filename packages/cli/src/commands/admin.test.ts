@@ -27,9 +27,8 @@
  * explicitly restored before dynamic imports because other aggregate CLI tests
  * use mock.module('@openpalm/lib') and Bun module mocks can leak across files.
  *
- * The two "parity" tests at the bottom are CHARACTERIZATION tests: they pass
- * before the Phase 1.5 change and pin the existing bare-serve spawn env so
- * loopback-always is scoped to admin mode only.
+ * The two policy tests at the bottom pin canonical localhost by default and
+ * the explicit remote-setup wildcard opt-in, both separate from admin mode.
  */
 import { afterEach, describe, expect, it, mock } from 'bun:test';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
@@ -302,11 +301,12 @@ describe('openpalm admin serve mode (#556)', () => {
         logs.some((l) => /UI server running at http:\/\/(localhost|127\.0\.0\.1):4611\/host\b/.test(l))
       ).toBe(true);
       // …and opens the browser by default (existing open-browser helper).
-      await waitFor(
+      const browser = await waitFor(
         () => browserSpawn(calls, 4611),
         'browser opener spawn',
         () => run.error
       );
+      expect(browser.argv).toContain('http://127.0.0.1:4611/host');
     },
     15000
   );
@@ -340,16 +340,17 @@ describe('openpalm admin serve mode (#556)', () => {
         () => run.error
       );
       const reuseLine = logs.find((l) => l.startsWith('Reusing already-running UI server at'));
-      expect(reuseLine).toContain('http://localhost:4616/host');
+      expect(reuseLine).toContain('http://127.0.0.1:4616/host');
 
       // Reuse means no second UI child is spawned for this port.
       expect(uiChildSpawn(calls, 4616)).toBeUndefined();
 
-      await waitFor(
+      const browser = await waitFor(
         () => browserSpawn(calls, 4616),
         'browser opener spawn (reuse path)',
         () => run.error
       );
+      expect(browser.argv).toContain('http://127.0.0.1:4616/host');
     },
     15000
   );
@@ -414,19 +415,23 @@ describe('openpalm admin serve mode (#556)', () => {
       expect(child.env?.OP_ENABLE_ADMIN).toBe('1');
       expect(child.env?.HOST).toBe('127.0.0.1');
       expect(child.env?.ORIGIN).toBe('http://127.0.0.1:4613');
+      const runtimeConfig = realLib.parseUiRuntimeConfigJson(
+        child.env?.[realLib.UI_RUNTIME_CONFIG_ENV],
+      );
+      expect(runtimeConfig.status).toBe('valid');
+      expect(runtimeConfig.status === 'valid' ? runtimeConfig.config.connections : []).toEqual([
+        expect.objectContaining({ id: realLib.ASSISTANT_LOCKED_CONNECTION_ID, locked: true }),
+      ]);
     },
     15000
   );
 });
 
-// ── Spawn-env parity for the existing bare serve path ────────────────────────
-// CHARACTERIZATION: these pass BEFORE the Phase 1.5 change and must stay
-// green after it — loopback-always and the admin env are scoped to the admin
-// command; the bare `openpalm` serve path keeps its current behavior.
+// ── Spawn-env policy for the bare normal serve path ──────────────────────────
 
-describe('bare serve path spawn env (characterization — green pre-change)', () => {
+describe('bare serve path spawn env', () => {
   it(
-    'binds loopback with a pinned ORIGIN and does NOT enable admin',
+    'binds IPv4 loopback with a canonical localhost ORIGIN and does NOT enable admin',
     async () => {
       seedServeHome({ installed: true });
       const calls = captureSpawns();
@@ -449,7 +454,7 @@ describe('bare serve path spawn env (characterization — green pre-change)', ()
         () => failure.error
       );
       expect(child.env?.HOST).toBe('127.0.0.1');
-      expect(child.env?.ORIGIN).toBe('http://127.0.0.1:4614');
+      expect(child.env?.ORIGIN).toBe('http://localhost:4614');
       expect(child.env?.HOST_HEADER).toBeUndefined();
       // Bare serve is NOT the admin surface: no admin env is introduced.
       expect(child.env?.OP_ENABLE_ADMIN).toBeUndefined();
@@ -458,7 +463,7 @@ describe('bare serve path spawn env (characterization — green pre-change)', ()
   );
 
   it(
-    'still honors OP_ALLOW_REMOTE_SETUP (the remote bind is refused only in admin mode)',
+    'restores the explicit remote-setup bind while the parent URL stays localhost',
     async () => {
       seedServeHome({ installed: true });
       process.env.OP_ALLOW_REMOTE_SETUP = '1';
@@ -470,7 +475,7 @@ describe('bare serve path spawn env (characterization — green pre-change)', ()
       const { startUIServer } = await import(`${uiServerModuleUrl}?t=${Math.random()}`) as {
         startUIServer: (opts?: UIServerOptions) => Promise<void>;
       };
-      void startUIServer({ port: 4615, open: false } satisfies UIServerOptions).catch(
+      void startUIServer({ port: 4615, open: true } satisfies UIServerOptions).catch(
         (e: unknown) => {
           failure.error = e ?? new Error('startUIServer rejected');
         }
@@ -485,6 +490,12 @@ describe('bare serve path spawn env (characterization — green pre-change)', ()
       expect(child.env?.HOST_HEADER).toBe('host');
       expect(child.env?.PROTOCOL_HEADER).toBe('x-forwarded-proto');
       expect(child.env?.ORIGIN).toBeUndefined();
+      const browser = await waitFor(
+        () => browserSpawn(calls, 4615),
+        'remote-setup parent browser open',
+        () => failure.error,
+      );
+      expect(browser.argv).toContain('http://localhost:4615');
     },
     15000
   );
