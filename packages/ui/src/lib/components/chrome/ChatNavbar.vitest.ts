@@ -4,7 +4,7 @@ import { describe, expect, test } from 'vitest';
 
 const CHAT_NAVBAR = fileURLToPath(new URL('./ChatNavbar.svelte', import.meta.url));
 const NAVBAR = fileURLToPath(new URL('./Navbar.svelte', import.meta.url));
-const MODE_SWITCH = fileURLToPath(new URL('./ModeSwitch.svelte', import.meta.url));
+const CONVERSATION_NAV = fileURLToPath(new URL('./ConversationNav.svelte', import.meta.url));
 
 describe('conversation navbar contract', () => {
   test('owns one drawer and exposes its open state to route content', () => {
@@ -49,16 +49,18 @@ describe('conversation navbar contract', () => {
   });
 
   test('names the mode destination instead of presenting a permanent advanced-mode concept', () => {
-    const source = readFileSync(MODE_SWITCH, 'utf8');
+    const source = readFileSync(CONVERSATION_NAV, 'utf8');
 
-    expect(source).toContain('Simple mode');
-    expect(source).toContain('OpenCode mode');
-    expect(source).toContain('ToggleButton');
+    expect(source).toContain('ariaLabel="Chat"');
+    expect(source).toContain('ariaLabel="Advanced"');
+    expect(source).toContain('IconButton');
     expect(source).toContain('IconChat');
     expect(source).toContain('IconTerminal');
     expect(source).toContain("'startViewTransition' in document");
-    expect(source).not.toMatch(/>Simple<|>OpenCode</);
+    expect(source).not.toMatch(/>Chat<|>Advanced</);
     expect(source).toContain("page.url.searchParams.get('assistant')");
+    expect(source).toContain("ariaCurrent={onChat ? 'page' : undefined}");
+    expect(source).toContain("ariaCurrent={onAdvanced ? 'page' : undefined}");
     expect(source).not.toContain('ariaLabel="Advanced mode"');
   });
 });

@@ -23,6 +23,8 @@
     tone?: 'primary' | 'danger';
     /** Mirrors the toggle state for assistive tech (set by ToggleButton). */
     ariaPressed?: boolean;
+    /** Marks an anchor as the current navigation destination. */
+    ariaCurrent?: 'page';
   }
 
   let {
@@ -37,6 +39,7 @@
     selected = false,
     tone = 'primary',
     ariaPressed,
+    ariaCurrent,
   }: Props = $props();
 </script>
 
@@ -46,6 +49,7 @@
     title={title ?? ariaLabel ?? label}
     aria-label={ariaLabel ?? label}
     aria-disabled={disabled || undefined}
+    aria-current={ariaCurrent}
     {onclick}
   >
     {@render icon()}

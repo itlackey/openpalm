@@ -1,13 +1,11 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
   import { afterNavigate } from '$app/navigation';
   import { resolve } from '$app/paths';
   import { page } from '$app/state';
   import Drawer from '@openpalm/ui-kit/components/common/Drawer.svelte';
   import IconConnect from '@openpalm/ui-kit/components/icons/IconConnect.svelte';
-  import IconSettings from '@openpalm/ui-kit/components/icons/IconSettings.svelte';
   import Navbar from '$lib/components/chrome/Navbar.svelte';
-  import ModeSwitch from '$lib/components/chrome/ModeSwitch.svelte';
+  import SurfaceToolbar from '$lib/components/chrome/SurfaceToolbar.svelte';
   import EndpointList from '$lib/components/chat/EndpointList.svelte';
   import EndpointSwitcher from '$lib/components/chat/EndpointSwitcher.svelte';
   import SessionList from '$lib/components/chat/SessionList.svelte';
@@ -16,6 +14,7 @@
   import { chat } from '$lib/chat/chat-state.svelte.js';
   import { buildConversationPath, buildReturnToPath } from '$lib/chat/navigation.js';
   import { endpointsService } from '$lib/endpoints-state.svelte.js';
+  import { getRuntimeContext, hasCapability } from '$lib/runtime-context.svelte.js';
   import { resolveSessionTitle } from '$lib/session-title.js';
 
   type DrawerName = 'assistant' | 'conversation';
@@ -30,6 +29,7 @@
   }: Props = $props();
 
   const DRAWER_ID = 'chat-navbar-drawer';
+  const runtimeContext = getRuntimeContext();
   let activeDrawer = $state<DrawerName | null>(null);
   let drawerShowing = $state(false);
 
@@ -58,11 +58,12 @@
     buildConversationPath(conversationModePathname, activeSessionId, activeAssistant?.id)
   );
   const settingsHref = $derived(buildReturnToPath(resolve('/connections'), conversationPath));
+  const hostHref = $derived(
+    runtimeContext.routes.host !== undefined && hasCapability(runtimeContext, 'host:stack:read')
+      ? buildReturnToPath(runtimeContext.routes.host, conversationPath)
+      : null
+  );
   const drawerTitle = $derived(activeDrawer === 'assistant' ? 'Switch assistant' : 'Conversations');
-
-  onMount(() => {
-    advancedModeService.init();
-  });
 
   function toggleDrawer(name: DrawerName): void {
     if (drawerShowing && activeDrawer === name) {
@@ -117,19 +118,13 @@
         />
       </div>
     {/if}
-    <div class="primary-nav">
-      <ModeSwitch />
-      <!-- eslint-disable svelte/no-navigation-without-resolve -- resolve()d destination with encoded conversation return context -->
-      <a
-        class="drawer-trigger settings-trigger"
-        aria-label="Open settings"
-        title="Settings"
-        href={settingsHref}
-      >
-        <IconSettings size={18} />
-      </a>
-      <!-- eslint-enable svelte/no-navigation-without-resolve -->
-    </div>
+    <SurfaceToolbar
+      {settingsHref}
+      {hostHref}
+      compact={!showConversationControls}
+      modeSessionId={chat.activeSessionId}
+      modeAssistantId={chat.activeEndpointId}
+    />
   </div>
 </Navbar>
 
@@ -170,8 +165,7 @@
 
 <style>
   .chat-nav,
-  .context-nav,
-  .primary-nav {
+  .context-nav {
     display: flex;
     align-items: center;
     gap: var(--s-sp-2);
@@ -180,39 +174,6 @@
   .chat-nav {
     width: 100%;
     transition: height 220ms var(--s-ease);
-  }
-  .primary-nav {
-    margin-left: auto;
-  }
-  .drawer-trigger {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: var(--s-sp-2);
-    min-width: 44px;
-    height: 44px;
-    padding: 0 var(--s-sp-3);
-    border: var(--s-hair) solid transparent;
-    border-radius: 8px;
-    background: transparent;
-    color: var(--s-ink-2);
-    font-family: var(--s-font-display);
-    font-size: 0.8125rem;
-    font-weight: 600;
-    text-decoration: none;
-    cursor: pointer;
-  }
-  .settings-trigger {
-    width: 44px;
-    padding: 0;
-  }
-  .drawer-trigger:hover {
-    background: var(--s-paper-deep);
-    color: var(--s-ink);
-  }
-  .drawer-trigger:focus-visible {
-    outline: 2px solid var(--s-seal);
-    outline-offset: 2px;
   }
   .assistant-panel {
     display: flex;
@@ -290,26 +251,12 @@
       flex-direction: column;
       gap: 0;
     }
-    .primary-nav {
-      order: 1;
-      width: 100%;
-      height: 56px;
-      padding-left: 52px;
-      justify-content: flex-end;
-      gap: var(--s-sp-1);
-    }
     .context-nav {
       order: 2;
       display: grid;
       grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
       width: 100%;
       height: 56px;
-      gap: 0;
-    }
-  }
-
-  @media (max-width: 480px) {
-    .primary-nav {
       gap: 0;
     }
   }
@@ -329,13 +276,6 @@
     .chat-nav.context-hidden {
       height: 52px;
       flex-direction: row;
-    }
-    .context-hidden .primary-nav {
-      order: initial;
-      width: auto;
-      height: 52px;
-      padding-left: 0;
-      margin-left: auto;
     }
   }
 

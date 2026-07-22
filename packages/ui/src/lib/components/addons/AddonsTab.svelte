@@ -53,6 +53,7 @@
   // poll so the row badge tracks pulling → starting → healthy/error.
   let voiceInfo = $state<VoiceAddonInfo | null>(null);
   let voiceProfile = $state('');
+  let voiceProfileDirty = $state(false);
   let voicePollTimer: ReturnType<typeof setTimeout> | null = null;
 
   const voiceJobRunning = $derived(
@@ -78,6 +79,7 @@
     actionLoading = 'voice';
     try {
       const result = await saveVoiceProfile(voiceProfile);
+      voiceProfileDirty = false;
       if (result.status === 202) {
         notifications.push('success', 'Voice image is downloading in the background.');
         scheduleVoicePoll();
@@ -127,7 +129,7 @@
       const list = await fetchAddons();
       addons = list.addons;
       voiceInfo = list.voice ?? null;
-      if (!voiceProfile && voiceInfo?.selectedProfile) voiceProfile = voiceInfo.selectedProfile;
+      if (!voiceProfileDirty) voiceProfile = voiceInfo?.selectedProfile ?? '';
       if (voiceJobRunning) scheduleVoicePoll();
     } catch (err) {
       if (isAuthError(err)) { onAuthError(); return; }
@@ -155,6 +157,7 @@
       // runtime advertisement — drop its cache so the toggle takes effect
       // without a reload.
       if (name === 'voice') void refreshAdvertisedVoiceUrl();
+      if (name === 'voice') voiceProfileDirty = false;
       await loadAddons();
     } catch (err) {
       if (isAuthError(err)) { onAuthError(); return; }
@@ -332,7 +335,7 @@
           <VoiceProfileSelector
             profiles={voiceInfo.profiles}
             selectedProfile={voiceProfile}
-            onchange={(id) => { voiceProfile = id; }}
+            onchange={(id) => { voiceProfile = id; voiceProfileDirty = true; }}
           />
           <div class="voice-profile-actions">
             <button

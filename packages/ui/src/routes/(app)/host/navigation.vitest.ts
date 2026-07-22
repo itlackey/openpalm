@@ -99,7 +99,8 @@ describe('host page history wiring', () => {
     const source = readFileSync(HOST_PAGE_PATH, 'utf-8');
 
     expect(source).toMatch(/\$state\(hostReturnTo\(page\.url\)\)/);
-    expect(source).toMatch(/<Navbar brandHref=\{chatReturnHref\}>/);
+    expect(source).toMatch(/<Navbar brandHref=\{resolvedChatReturnHref\} showUtilities=\{false\}>/);
+    expect(source).toMatch(/conversationHref=\{resolvedChatReturnHref\}/);
     expect(source).toMatch(/focusAddon=\{focusAddon\}/);
   });
 });

@@ -6,6 +6,7 @@
   import { replaceState } from '$app/navigation';
   import Navbar from '$lib/components/chrome/Navbar.svelte';
   import DeviceSettingsNav from '$lib/components/chrome/DeviceSettingsNav.svelte';
+  import SurfaceToolbar from '$lib/components/chrome/SurfaceToolbar.svelte';
   import PwaInstall from '$lib/components/settings/PwaInstall.svelte';
   import VoiceClientSettings from '$lib/components/voice/VoiceClientSettings.svelte';
   import IconLock from '@openpalm/ui-kit/components/icons/IconLock.svelte';
@@ -94,6 +95,9 @@
   });
   const chatReturnHref = $derived(
     resolveReturnToPath(page.url.searchParams.get('returnTo'), fallbackChatHref),
+  );
+  const settingsHref = $derived(
+    buildReturnToPath(resolve('/connections'), chatReturnHref),
   );
   const hostSettingsHref = $derived(
     buildReturnToPath(resolve('/host'), chatReturnHref),
@@ -370,11 +374,20 @@
      (and stripped) there too. -->
 <svelte:window onhashchange={consumePairDeepLink} />
 
-<Navbar brandHref={chatReturnHref} showUtilities={false} />
-<DeviceSettingsNav {chatReturnHref} {activeTab} onTabChange={selectSettingsTab} />
+<Navbar brandHref={chatReturnHref} showUtilities={false}>
+  <SurfaceToolbar
+    {settingsHref}
+    hostHref={hasCapability(runtimeContext, 'host:stack:read') ? hostSettingsHref : undefined}
+    conversationHref={chatReturnHref}
+    settingsCurrent
+    compact
+  />
+</Navbar>
+<DeviceSettingsNav {activeTab} onTabChange={selectSettingsTab} />
 
 <main class="page">
   <header class="page-header">
+    <span class="page-kicker">This device</span>
     <h1>Settings</h1>
     <p class="lede">
       Manage the connections and preferences stored in this browser on this device.
@@ -680,7 +693,7 @@
   {:else}
     <div
       id="settings-panel-general"
-      class="tab-panel"
+      class="tab-panel settings-grid"
       role="tabpanel"
       aria-labelledby="settings-tab-general"
     >
@@ -711,7 +724,7 @@
         </section>
       {/if}
 
-      <section id="voice" class="settings-section" aria-labelledby="voice-heading">
+      <section id="voice" class="settings-section voice-section" aria-labelledby="voice-heading">
         <header class="section-header">
           <h2 id="voice-heading">Voice</h2>
           <p class="lede">
@@ -721,23 +734,13 @@
         <VoiceClientSettings />
       </section>
 
-      {#if hasCapability(runtimeContext, 'host:stack:read')}
-        <section class="settings-section" aria-labelledby="host-heading">
-          <header class="section-header">
-            <h2 id="host-heading">Host</h2>
-            <p class="lede">Manage stack-wide services, updates, automations, and advanced settings.</p>
-          </header>
-          <!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- return-aware host path starts from a resolved internal route -->
-          <a class="host-settings-link" href={hostSettingsHref}>Manage host <span aria-hidden="true">→</span></a>
-        </section>
-      {/if}
     </div>
   {/if}
 </main>
 
 <style>
   .page {
-    max-width: 760px;
+    max-width: 960px;
     margin: 0 auto;
     padding: var(--s-sp-6);
     display: flex;
@@ -745,34 +748,21 @@
     gap: var(--s-sp-5);
   }
   .page-header h1 {
-    margin: 0 0 var(--s-sp-2);
+    margin: var(--s-sp-1) 0 var(--s-sp-2);
   }
   .page-header {
     display: flex;
     flex-direction: column;
     align-items: flex-start;
   }
-  .host-settings-link {
-    box-sizing: border-box;
-    display: inline-flex;
-    align-items: center;
-    gap: var(--s-sp-2);
-    min-width: 44px;
-    min-height: 44px;
-    margin-top: var(--s-sp-3);
-    padding: var(--s-sp-2) var(--s-sp-3);
-    border: var(--s-hair) solid var(--s-line);
-    border-radius: 2px;
-    color: var(--s-ink-3);
+  .page-kicker {
+    color: var(--s-seal);
     font-family: var(--s-font-mono);
     font-size: var(--s-type-deed);
-    text-decoration: none;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
   }
-  .host-settings-link:hover {
-    color: var(--s-ink);
-    border-color: var(--s-ink-3);
-  }
-  .host-settings-link:focus-visible,
   .theme-options button:focus-visible {
     outline: 2px solid var(--s-ink);
     outline-offset: 2px;
@@ -788,9 +778,13 @@
     flex-direction: column;
     gap: var(--s-sp-5);
   }
-  .settings-section + .settings-section {
-    padding-top: var(--s-sp-6);
-    border-top: var(--s-hair) solid var(--s-line-soft);
+  .settings-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: start;
+  }
+  .voice-section {
+    grid-column: 1 / -1;
   }
   .section-header h2 {
     margin: 0 0 var(--s-sp-2);
@@ -1040,6 +1034,15 @@
   @media (max-width: 480px) {
     .page {
       padding: var(--s-sp-3);
+    }
+  }
+
+  @media (max-width: 760px) {
+    .settings-grid {
+      grid-template-columns: minmax(0, 1fr);
+    }
+    .voice-section {
+      grid-column: auto;
     }
   }
 </style>

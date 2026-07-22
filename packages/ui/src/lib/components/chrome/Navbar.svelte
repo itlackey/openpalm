@@ -57,6 +57,7 @@
         <IconLogo size={28} />
       </span>
       <span class="brand-text">OpenPalm</span>
+      <span class="brand-version" title={`UI build ${runtimeContext.uiVersion}`}>v{runtimeContext.uiVersion}</span>
     </a>
 
     <!-- Utility cluster, left→right: chat/host button · theme · surface
@@ -95,11 +96,6 @@
     height: var(--nav-height);
     view-transition-name: chat-navbar;
     transition: height 220ms var(--s-ease);
-  }
-
-  .navbar.conversation,
-  .navbar.conversation .navbar-inner {
-    height: 64px;
   }
 
   .navbar-inner {
@@ -143,6 +139,14 @@
   .brand-text {
     font-family: var(--s-font-header);
     color: var(--s-ink-3);
+    white-space: nowrap;
+  }
+  .brand-version {
+    color: var(--s-ink-3);
+    font-family: var(--s-font-mono);
+    font-size: 0.625rem;
+    font-weight: 600;
+    line-height: 1.4;
     white-space: nowrap;
   }
 
@@ -209,6 +213,12 @@
     }
     .navbar-actions {
       gap: 0;
+    }
+  }
+
+  @media (max-width: 360px) {
+    .brand-version {
+      font-size: 0.5625rem;
     }
   }
 

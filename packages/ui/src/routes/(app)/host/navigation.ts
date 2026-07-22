@@ -32,12 +32,12 @@ export function hostUrlForTab(url: URL, tab: TabId): URL {
   return next;
 }
 
-// Conversation surfaces the /host "back" affordances may return to. Mirrors
+// Conversation surfaces the /host header controls may return to. Mirrors
 // lib/chat/navigation.ts internalConversationPath's allowlist — kept as an
 // independent copy (not a shared import) because the admin surface must stay
 // free of chat-state imports (#555). Any returnTo outside this set is
 // attacker-supplied (legitimate producers only ever emit /chat or /advanced),
-// so the brand logo / "Back to chat" links must never honor an arbitrary
+// so the brand logo and mode controls must never honor an arbitrary
 // same-origin path (e.g. /login?redirectTo=… or a state-changing GET route).
 const RETURN_TO_PATHS = new Set(['/chat', '/advanced']);
 

@@ -38,4 +38,11 @@ describe('IconButton', () => {
     render(IconButton, { icon, ariaLabel: 'Home', href: '/chat' });
     await expect.element(page.getByRole('link', { name: 'Home' })).toHaveAttribute('href', '/chat');
   });
+
+  test('uses the shared selected style for the current navigation destination', async () => {
+    render(IconButton, { icon, ariaLabel: 'Home', href: '/chat', selected: true, ariaCurrent: 'page' });
+    const link = page.getByRole('link', { name: 'Home' });
+    await expect.element(link).toHaveAttribute('aria-current', 'page');
+    await expect.element(link).toHaveClass(/selected/);
+  });
 });

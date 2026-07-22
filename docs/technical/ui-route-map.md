@@ -131,9 +131,9 @@ router, which 404s because the route tree is deleted.
 
 | Module | Used by | Imports chat modules? |
 |---|---|---|
-| `lib/components/chrome/Navbar.svelte` | `/host` | **No** — brand + capability-driven chat/host buttons (`runtimeContext.routes` + `hasCapability()`) + theme toggle |
-| `lib/components/chrome/ChatNavbar.svelte` | `/advanced`, `/connections` | Yes — composes the shell with `EndpointSwitcher`, `SessionPicker`, `VoiceControl`, `ModeSwitch` |
-| `/chat` corner chrome | `/chat` | Chat page renders its own minimal corner chrome and hides the navbar |
+| `lib/components/chrome/Navbar.svelte` | `/chat`, `/advanced`, `/connections`, `/host` | **No** — shared brand and surface-control shell |
+| `lib/components/chrome/SurfaceToolbar.svelte` | `/chat`, `/advanced`, `/connections`, `/host` | **No** — four route-exclusive `IconButton` destinations: Chat, Advanced, Settings, Host |
+| `lib/components/chrome/ChatNavbar.svelte` | `/chat`, `/advanced` | Yes — composes the shell with `EndpointSwitcher` and `SessionPicker` where conversation context is shown |
 
 Hygiene is enforced by unit tests:
 `src/lib/features-admin-hygiene.vitest.ts` (no component reads the legacy

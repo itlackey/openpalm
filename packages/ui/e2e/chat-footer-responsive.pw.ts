@@ -232,8 +232,9 @@ test('shared chat navbar and footer remain responsive from 320px through desktop
 		exact: true
 	});
 	const settings = navbar.getByRole('link', { name: 'Open settings', exact: true });
-	const simpleMode = navbar.getByRole('button', { name: 'Simple mode', exact: true });
-	const openCodeMode = navbar.getByRole('button', { name: 'OpenCode mode', exact: true });
+	const simpleMode = navbar.getByRole('link', { name: 'Chat', exact: true });
+	const openCodeMode = navbar.getByRole('link', { name: 'Advanced', exact: true });
+	const surfaceToolbar = navbar.locator('.surface-toolbar');
 	const brand = navbar.getByRole('link', { name: 'OpenPalm - go to chat', exact: true });
 	const headerTargets = [brand, assistant, conversation, simpleMode, openCodeMode, settings];
 	const speaker = page.getByRole('button', { name: 'Turn on spoken responses', exact: true });
@@ -261,6 +262,8 @@ test('shared chat navbar and footer remain responsive from 320px through desktop
 
 	for (const width of [320, 360, 375, 390, 420]) {
 		await page.setViewportSize({ width, height: 700 });
+		await expect(surfaceToolbar).toHaveCSS('height', '52px');
+		const toolbarLastAction = surfaceToolbar.locator('a, button').last();
 		const send = page.getByRole('button', { name: 'Send message' });
 		const [
 			navbarRect,
@@ -289,6 +292,7 @@ test('shared chat navbar and footer remain responsive from 320px through desktop
 		]);
 
 		expect(navbarRect.bottom, `${width}px contextual header`).toBe(144);
+		expect((await rect(toolbarLastAction)).right, `${width}px toolbar right inset`).toBe(width - 4);
 		expect(scrollRect.top, `${width}px chat starts below header`).toBe(144);
 		expect(scrollRect.bottom, `${width}px chat ends above footer`).toBe(footerRect.top);
 		expect(footerRect.bottom, `${width}px footer reaches viewport bottom`).toBe(700);
@@ -331,7 +335,7 @@ test('shared chat navbar and footer remain responsive from 320px through desktop
 			).toBeLessThanOrEqual(bottomRow[index].left);
 		}
 
-		const modeOverflow = await navbar.locator('.mode-switch').evaluate((switcher) => {
+		const modeOverflow = await navbar.locator('.conversation-nav').evaluate((switcher) => {
 			const bounds = switcher.getBoundingClientRect();
 			return Array.from(switcher.querySelectorAll('button')).some((button) => {
 				const buttonBounds = button.getBoundingClientRect();
@@ -379,6 +383,11 @@ test('shared chat navbar and footer remain responsive from 320px through desktop
 	}
 
 	await page.setViewportSize({ width: 1280, height: 800 });
+	await expect(surfaceToolbar).toHaveCSS('height', '52px');
+	await expect(navbar).toHaveCSS('height', '52px');
+	const [wideToolbar, wideNavbar] = await Promise.all([rect(surfaceToolbar), rect(navbar)]);
+	expect(wideToolbar.top, 'wide toolbar stays at the shared header origin').toBe(wideNavbar.top);
+	expect(wideToolbar.right, 'wide toolbar keeps the shared header inset').toBe(wideNavbar.right - 20);
 	const [wideFooter, wideComposer, wideInput, wideSend, wideNewConversation, wideActivity, wideSpeaker, wideConversation, wideDictate] =
 		await Promise.all([
 			rect(footer),
@@ -506,6 +515,7 @@ test('shared chat navbar and footer remain responsive from 320px through desktop
 	await expect(navbar).toHaveCSS('height', '144px');
 	await openCodeMode.click();
 	await expect(page).toHaveURL(/\/advanced(?:\?|$)/);
+	await expect(surfaceToolbar).toHaveCSS('height', '52px');
 	await expect(navbar).toHaveCSS('height', '52px');
 	await expect(assistant).toHaveCount(0);
 	await expect(conversation).toHaveCount(0);

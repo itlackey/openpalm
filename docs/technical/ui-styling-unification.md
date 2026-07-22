@@ -188,7 +188,7 @@ New/extended ui-kit components (each replaces 2+ verified hand-rolled copies):
 | Component | Replaces |
 |---|---|
 | `RadioRow` (extend: icon slot, multi-line sub, detail panel, unavailable state) | `Screen1ModelsStep` `.s1-choice-row` (402-474), `NetworkAccessStep` `.network-option-row` (149-197 — an exact recipe match) |
-| `SegmentedControl` (pill toggle) | `connections` `.theme-options` (764-791), `ModeSwitch` (52-86 — identical recipe); DeviceSettingsNav's underline tabs stay a distinct pattern |
+| `SegmentedControl` (pill toggle) | `connections` `.theme-options` (764-791); conversation destinations now use the shared `IconButton` navigation pattern, while Host and Settings share `SectionTabs` |
 | `NavTrigger` (icon + eyebrow/value + dot + caret) | `EndpointSwitcher` (41-146), `SessionPicker` (49-155) |
 | `ContextCard` | byte-identical copies in `ChatActivity` (132-151) and `ChatNavbar` (196-215) |
 | `ActionCard`/`ActionButton` | `PermissionCard` (64-144) and `QuestionCard` (103-218) `s-action-*` families |
@@ -236,7 +236,7 @@ With D4/D5 tokens in place, mechanical sweeps (all sites verified):
 - **Type tokens**: `0.75rem`→`--s-type-mark-sm`, `0.875rem`→`--s-type-deed`
   across `SessionList` (×8), `EndpointList` (×6), `ChatNavbar:214,248`,
   `EndpointSwitcher:106,124`, `SessionPicker:116,134`, `ChatActivity:150`,
-  `chat/+page.svelte:953-964`, `ModeSwitch:73`, `app.css:938,1666`;
+  `chat/+page.svelte:953-964`, `ConversationNav`, `app.css:938,1666`;
   `TaskDrawer:530`'s `10px` (under the 12px floor) → `--s-type-mark`. Odd
   sizes to reconcile: `ChatNavbar:174` (`0.8125rem`), `Toast:114` (`18px`),
   `UpdateBanner:101` (`1.1rem`), `Drawer:157` (`1.25rem`).

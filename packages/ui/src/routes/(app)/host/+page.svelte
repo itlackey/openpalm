@@ -2,9 +2,11 @@
   import { onMount, onDestroy } from 'svelte';
   import { SvelteMap, SvelteSet } from 'svelte/reactivity';
   import { goto, pushState } from '$app/navigation';
+  import { resolve } from '$app/paths';
   import { page } from '$app/state';
   import { formatTime } from '$lib/format-date.js';
   import Navbar from '$lib/components/chrome/Navbar.svelte';
+  import SurfaceToolbar from '$lib/components/chrome/SurfaceToolbar.svelte';
   import VoiceStopControl from '$lib/components/chrome/VoiceStopControl.svelte';
   import TabBar, { type TabId } from '$lib/components/chrome/TabBar.svelte';
   import OverviewTab from '$lib/components/admin/overview/OverviewTab.svelte';
@@ -20,6 +22,7 @@
   import ActivityTab from '$lib/components/admin/activity/ActivityTab.svelte';
   import AkmTab from '$lib/components/akm/AkmTab.svelte';
   import HostSharingSection from '$lib/components/akm/HostSharingSection.svelte';
+  import { getRuntimeContext } from '$lib/runtime-context.svelte.js';
   import { hostReturnTo, hostTabFromUrl, hostUrlForTab } from './navigation.js';
 
   import {
@@ -34,6 +37,7 @@
   // Auth is enforced server-side in hooks.server.ts; this page only renders for
   // an authenticated admin. A session that expires mid-operation surfaces as a
   // 401 on an in-page API call, handled by redirecting to /login.
+  const runtimeContext = getRuntimeContext();
 
   // ── Loading flags ───────────────────────────────────────────────────────────
   let healthLoading = $state(false);
@@ -56,6 +60,14 @@
     page.url.searchParams.get('addon') === 'voice' ? 'voice' : undefined
   );
   let pullLoading = $state(false);
+
+  const resolvedChatReturnHref = $derived(chatReturnHref ?? runtimeContext.routes.chat ?? resolve('/chat'));
+  const settingsHref = $derived(
+    `${resolve('/connections')}?returnTo=${encodeURIComponent(resolvedChatReturnHref)}`
+  );
+  const currentHostHref = $derived(
+    `${currentHostUrl.pathname}${currentHostUrl.search}${currentHostUrl.hash}`
+  );
 
   // ── Container polling ──────────────────────────────────────────────────────
   const POLL_INTERVAL_MS = 10_000;
@@ -302,8 +314,17 @@
   <title>OpenPalm Console</title>
 </svelte:head>
 
-<Navbar brandHref={chatReturnHref}>
-  <VoiceStopControl />
+<Navbar brandHref={resolvedChatReturnHref} showUtilities={false}>
+  <div class="host-toolbar">
+    <VoiceStopControl />
+    <SurfaceToolbar
+      {settingsHref}
+      hostHref={currentHostHref}
+      conversationHref={resolvedChatReturnHref}
+      hostCurrent
+      compact
+    />
+  </div>
 </Navbar>
 
 <TabBar active={activeTab} onSelect={handleTabSelect} />
@@ -377,6 +398,12 @@
   </main>
 
 <style>
+  .host-toolbar {
+    display: flex;
+    align-items: center;
+    gap: var(--s-sp-2);
+  }
+
   /* Full-width admin: the content spans the viewport so the tab bar (rendered
      above, outside this container) reads edge-to-edge and flush under the
      navbar. Horizontal padding keeps panels off the screen edges. */

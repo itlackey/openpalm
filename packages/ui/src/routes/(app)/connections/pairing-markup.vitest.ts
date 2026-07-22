@@ -86,7 +86,7 @@ describe('connections +page.svelte — host UX and pairing wiring', () => {
   test('splits settings into General and Connections tabs', () => {
     const src = pageSource();
     expect(src).toMatch(
-      /<Navbar brandHref=\{chatReturnHref\} showUtilities=\{false\} \/>[\s\S]*<DeviceSettingsNav \{chatReturnHref\} \{activeTab\} onTabChange=\{selectSettingsTab\} \/>[\s\S]*<main/,
+      /<Navbar brandHref=\{chatReturnHref\} showUtilities=\{false\}>[\s\S]*<SurfaceToolbar[\s\S]*conversationHref=\{chatReturnHref\}[\s\S]*settingsCurrent[\s\S]*<DeviceSettingsNav \{activeTab\} onTabChange=\{selectSettingsTab\} \/>[\s\S]*<main/,
     );
     expect(src).not.toMatch(/ChatNavbar/);
     expect(src).toMatch(/<h1>Settings<\/h1>/);
@@ -144,7 +144,9 @@ describe('connections +page.svelte — host UX and pairing wiring', () => {
     const src = pageSource();
     expect(src).toMatch(/hasCapability\(\s*runtimeContext\s*,\s*['"`]host:stack:read['"`]\s*\)/);
     expect(src).toMatch(/buildReturnToPath\(resolve\(\s*['"`]\/host['"`]\s*\), chatReturnHref\)/);
-    expect(src).toMatch(/href=\{hostSettingsHref\}[\s\S]*?>Manage host/);
+    expect(src).toMatch(/hostHref=\{hasCapability\(runtimeContext, 'host:stack:read'\) \? hostSettingsHref : undefined\}/);
+    expect(src).not.toMatch(/Return to conversation/);
+    expect(src).not.toMatch(/>Manage host/);
   });
 
   test('offers PWA installation only on non-admin client surfaces', () => {

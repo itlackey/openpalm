@@ -140,8 +140,8 @@
       width: 100%;
       max-width: none;
       height: 56px;
-      border: 0;
-      border-top: var(--s-hair) solid var(--s-line-soft);
+      border: var(--s-hair) solid transparent;
+      border-top-color: var(--s-line-soft);
       border-radius: 0;
       background: transparent;
     }

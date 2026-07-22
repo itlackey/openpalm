@@ -1,50 +1,48 @@
 import { describe, expect, test, vi } from 'vitest';
 import { render } from 'vitest-browser-svelte';
-import { page, userEvent } from 'vitest/browser';
+import { page } from 'vitest/browser';
 import DeviceSettingsNav from './DeviceSettingsNav.svelte';
 
 describe('DeviceSettingsNav', () => {
-	test('puts the conversation return before the two settings tabs', async () => {
+	test('renders only the two shared-style device settings tabs', () => {
 		const onTabChange = vi.fn();
 		const { container } = render(DeviceSettingsNav, {
-			chatReturnHref: '/advanced?session=session/one&assistant=assistant&one',
 			activeTab: 'general',
 			onTabChange
 		});
 
-		const links = Array.from(container.querySelectorAll<HTMLAnchorElement>('a'));
-		expect(links.map((link) => link.textContent?.trim())).toEqual(['← Return to conversation']);
-		expect(links[0]?.href).toContain('/advanced?session=session/one&assistant=assistant&one');
-		await expect.element(page.getByRole('tab', { name: 'General' })).toHaveAttribute('aria-selected', 'true');
-		await expect.element(page.getByRole('tab', { name: 'Connections' })).toHaveAttribute('aria-selected', 'false');
-		await page.getByRole('tab', { name: 'Connections' }).click();
+		expect(container.querySelectorAll('a')).toHaveLength(0);
+		const tabs = Array.from(
+			container.querySelectorAll<HTMLButtonElement>('[aria-label="Settings tabs"] [role="tab"]')
+		);
+		expect(container.querySelector('[aria-label="Sections"]')).toBeNull();
+		expect(tabs.map((tab) => tab.textContent?.trim())).toEqual(['General', 'Connections']);
+		expect(tabs[0]?.getAttribute('aria-selected')).toBe('true');
+		expect(tabs[1]?.getAttribute('aria-selected')).toBe('false');
+		tabs[1]?.click();
 		expect(onTabChange).toHaveBeenCalledWith('connections');
 	});
 
-	test('keeps every subnav target at least 44px in both dimensions', () => {
-		const { container } = render(DeviceSettingsNav, {
-			chatReturnHref: '/chat',
+	test('uses the same mobile selector as host navigation', async () => {
+		render(DeviceSettingsNav, {
 			activeTab: 'connections',
 			onTabChange: vi.fn()
 		});
 
-		for (const target of container.querySelectorAll('.nav-target')) {
-			const style = getComputedStyle(target);
-			expect(Number.parseFloat(style.minWidth)).toBeGreaterThanOrEqual(44);
-			expect(Number.parseFloat(style.minHeight)).toBeGreaterThanOrEqual(44);
-		}
+		const select = page.getByLabelText('Settings page');
+		await expect.element(select).toBeVisible();
+		await expect.element(select).toHaveValue('connections');
+		expect(Number.parseFloat(getComputedStyle(select.element()).minHeight)).toBeGreaterThanOrEqual(44);
 	});
 
-	test('supports arrow-key movement between tabs', async () => {
+	test('selects a settings destination from the shared mobile navigator', async () => {
 		const onTabChange = vi.fn();
 		render(DeviceSettingsNav, {
-			chatReturnHref: '/chat',
 			activeTab: 'general',
 			onTabChange
 		});
 
-		await page.getByRole('tab', { name: 'General' }).click();
-		await userEvent.keyboard('{ArrowRight}');
+		await page.getByLabelText('Settings page').selectOptions('connections');
 		expect(onTabChange).toHaveBeenCalledWith('connections');
 	});
 });

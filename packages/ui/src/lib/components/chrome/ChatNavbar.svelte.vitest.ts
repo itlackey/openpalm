@@ -75,6 +75,7 @@ vi.mock('$lib/advanced-mode-state.svelte.js', () => ({
 vi.mock('$lib/runtime-context.svelte.js', () => ({
   getRuntimeContext: () => ({
     routes: { chat: '/chat', host: '/host' },
+    uiVersion: '0.13.0-beta.10',
   }),
   hasCapability: (_context: unknown, capability: string) => capability === 'host:stack:read',
 }));
@@ -111,10 +112,12 @@ describe('ChatNavbar', () => {
       'OpenPalm - go to chat',
       'Assistant: Workshop assistant',
       'Conversation: Current conversation',
-      'Simple mode',
-      'OpenCode mode',
+      'Chat',
+      'Advanced',
       'Open settings',
+      'Open host console',
     ]);
+    expect(container.querySelector('.brand-version')?.textContent).toBe('v0.13.0-beta.10');
     for (const target of targets) {
       const rect = target.getBoundingClientRect();
       expect(rect.width).toBeGreaterThanOrEqual(44);
@@ -151,6 +154,10 @@ describe('ChatNavbar', () => {
     await expect.element(page.getByRole('link', { name: 'Open settings' })).toHaveAttribute(
       'href',
       '/connections?returnTo=%2Fadvanced%3Fsession%3Dsession-1%26assistant%3Dassistant-1',
+    );
+    await expect.element(page.getByRole('link', { name: 'Open host console' })).toHaveAttribute(
+      'href',
+      '/host?returnTo=%2Fadvanced%3Fsession%3Dsession-1%26assistant%3Dassistant-1',
     );
     expect(mocks.buildConversationPath).toHaveBeenCalledWith(
       '/advanced',

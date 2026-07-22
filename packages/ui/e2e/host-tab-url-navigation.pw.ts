@@ -21,10 +21,24 @@ test.describe('host tab URL navigation', () => {
       'aria-selected',
       'true',
     );
-    await expect(page.getByRole('link', { name: 'Back to chat' })).toHaveAttribute(
-      'href',
-      '/chat?session=session-1',
+    const toolbar = page.locator('.surface-toolbar');
+    await expect(toolbar.locator('a, button')).toHaveCount(4);
+    await expect(toolbar).toHaveCSS('height', '52px');
+    await expect(page.getByRole('link', { name: 'Back to chat' })).toHaveCount(0);
+    const currentHost = toolbar.getByRole('link', { name: 'Open host console' });
+    await expect(currentHost).toHaveAttribute('aria-current', 'page');
+    await expect(currentHost).toHaveClass(/selected/);
+    await expect(toolbar.getByRole('link', { name: 'Chat' })).not.toHaveAttribute('aria-current', 'page');
+    await expect(toolbar.getByRole('link', { name: 'Advanced' })).not.toHaveAttribute('aria-current', 'page');
+    await toolbar.getByRole('link', { name: 'Chat' }).click();
+    await expect(page).toHaveURL(/\/chat\?session=session-1$/);
+
+    await page.goto(
+      `/host?tab=overview&returnTo=${encodeURIComponent('/advanced?session=session-2')}`,
     );
+    await expect(page.getByRole('link', { name: 'Advanced' })).not.toHaveAttribute('aria-current', 'page');
+    await page.getByRole('link', { name: 'Advanced' }).click();
+    await expect(page).toHaveURL(/\/advanced\?session=session-2$/);
 
     await page.goto('/host?tab=diagnostics');
     await expect(page.getByRole('tab', { name: 'Systems' })).toHaveAttribute(
@@ -35,7 +49,32 @@ test.describe('host tab URL navigation', () => {
     await page.goto(
       `/host?tab=overview&returnTo=${encodeURIComponent('https://evil.example/chat')}`,
     );
-    await expect(page.getByRole('link', { name: 'Back to chat' })).toHaveAttribute('href', '/chat');
+    await expect(page.getByRole('link', { name: 'Open host console' })).toHaveAttribute('aria-current', 'page');
+  });
+
+  test('uses the same four-action toolbar on device settings', async ({ page }) => {
+    await page.goto(
+      `/connections?returnTo=${encodeURIComponent('/advanced?session=session-3')}`,
+    );
+
+    const toolbar = page.locator('.surface-toolbar');
+    await expect(toolbar.locator('a, button')).toHaveCount(4);
+    await expect(toolbar).toHaveCSS('height', '52px');
+    await expect(toolbar.getByRole('link', { name: 'Advanced' })).not.toHaveAttribute('aria-current', 'page');
+    const currentSettings = toolbar.getByRole('link', { name: 'Open settings' });
+    await expect(currentSettings).toHaveAttribute('aria-current', 'page');
+    await expect(currentSettings).toHaveClass(/selected/);
+    await expect(page.getByRole('link', { name: 'Return to conversation' })).toHaveCount(0);
+    await expect(page.getByRole('navigation', { name: 'Settings sections' }).getByRole('link')).toHaveCount(0);
+    await expect(page.getByRole('tab', { name: 'Settings' })).toHaveCount(0);
+    await expect(page.getByRole('tab', { name: 'General' })).toBeVisible();
+    expect((await page.getByRole('tab', { name: 'General' }).boundingBox())?.x).toBe(24);
+
+    await page.setViewportSize({ width: 375, height: 700 });
+    await expect(page.getByLabel('Settings page')).toBeVisible();
+
+    await toolbar.getByRole('link', { name: 'Chat' }).click();
+    await expect(page).toHaveURL(/\/chat\?session=session-3$/);
   });
 
   test('updates tabs without reload and restores them with Back and Forward', async ({ page }) => {
