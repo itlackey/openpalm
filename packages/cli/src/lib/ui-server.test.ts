@@ -168,6 +168,12 @@ describe('resolveAdminUrl', () => {
   it('leaves the root URL alone otherwise', () => {
     expect(resolveAdminUrl('http://127.0.0.1:3880', false)).toBe('http://127.0.0.1:3880');
   });
+
+  it('leaves a fresh admin home on root so the bootstrap resolver runs', () => {
+    expect(resolveAdminUrl('http://127.0.0.1:3880', true, 'not_installed')).toBe(
+      'http://127.0.0.1:3880',
+    );
+  });
 });
 
 describe('resolveExpectedAdmin', () => {
@@ -206,12 +212,32 @@ describe('resolveUiNetworkEnv', () => {
   });
 
   it('restores wildcard bind and forwarded headers only for explicit non-admin opt-in', () => {
-    expect(resolveUiNetworkEnv(3880, false, { OP_ALLOW_REMOTE_SETUP: '1' })).toEqual({
+    expect(resolveUiNetworkEnv(3880, false, { OP_ALLOW_REMOTE_SETUP: '1' }, 'installed')).toEqual({
       HOST: '0.0.0.0',
       PORT: '3880',
       ORIGIN: undefined,
       HOST_HEADER: 'host',
       PROTOCOL_HEADER: 'x-forwarded-proto',
+    });
+  });
+
+  it('keeps an uninstalled app on loopback despite the remote opt-in', () => {
+    expect(resolveUiNetworkEnv(3880, false, { OP_ALLOW_REMOTE_SETUP: '1' }, 'not_installed')).toEqual({
+      HOST: '127.0.0.1',
+      PORT: '3880',
+      ORIGIN: 'http://localhost:3880',
+      HOST_HEADER: undefined,
+      PROTOCOL_HEADER: undefined,
+    });
+  });
+
+  it('keeps setup-incomplete app on loopback despite the remote opt-in', () => {
+    expect(resolveUiNetworkEnv(3880, false, { OP_ALLOW_REMOTE_SETUP: '1' }, 'setup_incomplete')).toEqual({
+      HOST: '127.0.0.1',
+      PORT: '3880',
+      ORIGIN: 'http://localhost:3880',
+      HOST_HEADER: undefined,
+      PROTOCOL_HEADER: undefined,
     });
   });
 
@@ -323,6 +349,41 @@ describe('resolveUiChildLaunch', () => {
       expect(parsed.status === 'valid' ? parsed.config.connections : []).toEqual([
         expect.objectContaining({ id: 'openpalm-assistant-opencode', locked: true }),
       ]);
+    } finally {
+      rmSync(homeDir, { recursive: true, force: true });
+    }
+  });
+
+  it('seeds no locked local connection for an uninstalled admin launch', () => {
+    const homeDir = mkdtempSync(join(tmpdir(), 'openpalm-ui-admin-launch-'));
+    const stackDir = join(homeDir, 'system', 'stack');
+    try {
+      const launch = resolveUiChildLaunch({ homeDir, stackDir }, false, {
+        OP_UI_DEFAULT_ASSISTANT_URL: 'http://127.0.0.1:3810',
+      });
+      expect(launch.stacklessApp).toBe(true);
+      expect(parseUiRuntimeConfigJson(launch.runtimeConfigJson)).toEqual({
+        status: 'valid',
+        config: { connections: [] },
+      });
+    } finally {
+      rmSync(homeDir, { recursive: true, force: true });
+    }
+  });
+
+  it('preserves true setup-incomplete and hand-built install detection', () => {
+    const homeDir = mkdtempSync(join(tmpdir(), 'openpalm-ui-existing-launch-'));
+    const stackDir = join(homeDir, 'system', 'stack');
+    try {
+      mkdirSync(stackDir, { recursive: true });
+      writeFileSync(join(stackDir, 'core.compose.yml'), 'services: {}\n');
+
+      expect(resolveUiChildLaunch({ homeDir, stackDir }, false, {}).stacklessApp).toBe(false);
+
+      mkdirSync(join(homeDir, 'knowledge', 'secrets'), { recursive: true });
+      writeFileSync(join(homeDir, 'knowledge', 'secrets', 'op_guardian_admin_token'), 'admin\n');
+      writeFileSync(join(homeDir, 'knowledge', 'secrets', 'op_guardian_mcp_token'), 'mcp\n');
+      expect(resolveUiChildLaunch({ homeDir, stackDir }, false, {}).stacklessApp).toBe(false);
     } finally {
       rmSync(homeDir, { recursive: true, force: true });
     }

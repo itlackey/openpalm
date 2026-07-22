@@ -10,6 +10,7 @@ import {
   type DeployEntry,
   type DeployPhase,
 } from '@openpalm/lib';
+import { clearLaunchRoutingCache } from '$lib/server/landing.js';
 
 export type { DeployEntry, DeployPhase };
 
@@ -89,6 +90,7 @@ export function startDeploy(state: ControlPlaneState): void {
       },
       markSetupComplete() {
         markSetupComplete(state);
+        clearLaunchRoutingCache();
       },
     });
   })().finally(() => {

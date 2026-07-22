@@ -69,7 +69,7 @@ type EncryptedRecord = { v: typeof ENCRYPTED_MARKER; iv: string; ciphertext: str
  * which `readMaterial` already reads — rather than throwing and blocking the
  * user from saving a credential at all.
  */
-function subtleAvailable(): boolean {
+export function connectionSecretsEncryptedAtRest(): boolean {
   return typeof crypto !== 'undefined' && !!crypto.subtle;
 }
 
@@ -152,7 +152,7 @@ async function decryptRecord(key: CryptoKey, record: EncryptedRecord): Promise<S
 }
 
 async function writeMaterial(storage: ConnectionStorage, ref: string, material: SecretMaterial): Promise<void> {
-  if (!subtleAvailable()) {
+  if (!connectionSecretsEncryptedAtRest()) {
     // Insecure context (plain-http LAN origin): no SubtleCrypto, so store the
     // legacy plaintext record shape rather than throwing. There is no at-rest
     // encryption to be had on such an origin either way.
@@ -193,7 +193,7 @@ async function readMaterial(storage: ConnectionStorage, ref: string): Promise<Se
   // is unavailable (insecure origin): writeMaterial would just re-store the
   // identical plaintext — a wasted IndexedDB write on EVERY read, forever.
   const material = parsed as SecretMaterial;
-  if (subtleAvailable()) {
+  if (connectionSecretsEncryptedAtRest()) {
     try {
       await writeMaterial(storage, ref, material);
     } catch {

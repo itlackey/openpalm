@@ -28,6 +28,17 @@ export type HealthProbeResult = {
   status: 'accessible' | 'unauthorized' | 'unreachable' | 'insecure';
 };
 
+export type CandidateVerificationResult = {
+  status:
+    | 'verified'
+    | 'credentials-rejected'
+    | 'wrong-endpoint'
+    | 'rate-limited'
+    | 'target-not-ready'
+    | 'mixed-content'
+    | 'network-uncertain';
+};
+
 export type DirectTransport = {
   request(method: 'GET' | 'POST' | 'PATCH' | 'DELETE', path: string, body?: unknown): Promise<Response>;
   /**
@@ -64,6 +75,61 @@ export function authorizationHeader(auth: ResolvedAuth): string | null {
     return `Basic ${base64Utf8(`${username}:${auth.password}`)}`;
   }
   return null;
+}
+
+function isSessionList(value: unknown): boolean {
+  return (
+    Array.isArray(value) &&
+    value.every(
+      (session) =>
+        typeof session === 'object' &&
+        session !== null &&
+        typeof (session as { id?: unknown }).id === 'string' &&
+        (session as { id: string }).id.length > 0
+    )
+  );
+}
+
+/** Verify an ephemeral candidate without making it the active connection. */
+export async function verifyDirectCandidate(
+  baseUrl: string,
+  auth: ResolvedAuth,
+  fetchImpl: typeof globalThis.fetch = globalThis.fetch
+): Promise<CandidateVerificationResult> {
+  const verdict = validateConnectionUrl(baseUrl);
+  if (!verdict.ok) {
+    return { status: verdict.reason === 'insecure-remote' ? 'mixed-content' : 'wrong-endpoint' };
+  }
+
+  const authorization = authorizationHeader(auth);
+  try {
+    const response = await fetchImpl(`${baseUrl.replace(/\/+$/, '')}/session`, {
+      method: 'GET',
+      headers: {
+        accept: 'application/json',
+        ...(authorization ? { authorization } : {}),
+      },
+      credentials: 'omit',
+      cache: 'no-store',
+      signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
+    });
+    if (response.status === 401 || response.status === 403) {
+      return { status: 'credentials-rejected' };
+    }
+    if (response.status === 429) return { status: 'rate-limited' };
+    if (response.status >= 500) return { status: 'target-not-ready' };
+    if (!response.ok) return { status: 'wrong-endpoint' };
+
+    try {
+      return isSessionList(await response.json())
+        ? { status: 'verified' }
+        : { status: 'wrong-endpoint' };
+    } catch {
+      return { status: 'wrong-endpoint' };
+    }
+  } catch {
+    return { status: 'network-uncertain' };
+  }
 }
 
 export function createDirectTransport(

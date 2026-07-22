@@ -15,10 +15,10 @@ function pageSource(): string {
 
 function submitFormSource(src: string): string {
   const start = src.indexOf('async function submitForm');
-  const end = src.indexOf('\n  async function activate', start);
   expect(start).toBeGreaterThan(-1);
-  expect(end).toBeGreaterThan(start);
-  return src.slice(start, end);
+  const end = src.slice(start).search(/\n\s+async function activate/);
+  expect(end).toBeGreaterThan(0);
+  return src.slice(start, start + end);
 }
 
 describe('connections +page.svelte — host UX and pairing wiring', () => {
@@ -37,20 +37,13 @@ describe('connections +page.svelte — host UX and pairing wiring', () => {
     expect(src).toMatch(/shown only once|won't be shown again/i);
   });
 
-  // PR #564 P1-7: the pairing deep link must ride in the URL FRAGMENT, not the
-  // query string. The browser never sends the fragment to the UI's static
-  // host, so the durable credential stays out of access logs, reverse proxies,
-  // and Referer headers. Consumption still strips it from history.
-  test('consumes the pairing code from the URL fragment, never the query string', () => {
+  test('routes fragment pairing to the verified onboarding wizard without parsing or saving locally', () => {
     const src = pageSource();
-    // Reads the code from the hash and advertises the #pair= fragment form.
     expect(src).toMatch(/window\.location\.hash/);
-    expect(src).toMatch(/#pair=/);
-    // Still strips the credential from history after consuming it.
-    expect(src).toMatch(/replaceState\(/);
-    // No longer reads or advertises the credential-leaking ?pair= query param.
+    expect(src).toMatch(/const fragment = includeFragment \? window\.location\.hash : ['"]{2}/);
+    expect(src).toMatch(/goto\([\s\S]*\/connections\/new[\s\S]*replaceState:\s*true/);
+    expect(src).not.toMatch(/parsePairingCode|applyPairingPayload|applyPairingPaste/);
     expect(src).not.toMatch(/searchParams\.get\(\s*['"`]pair['"`]\s*\)/);
-    expect(src).not.toMatch(/searchParams\.delete\(\s*['"`]pair['"`]\s*\)/);
     expect(src).not.toMatch(/\?pair=/);
   });
 
@@ -58,9 +51,9 @@ describe('connections +page.svelte — host UX and pairing wiring', () => {
   // same-document navigation — onMount never re-runs — so consumption must
   // ALSO be wired to window hashchange, or a #pair= link opened into a live
   // tab is silently ignored and the credential lingers in the URL bar.
-  test('consumes #pair= on hashchange, not only on mount', () => {
+  test('routes #pair= on hashchange, not only on mount', () => {
     const src = pageSource();
-    expect(src).toMatch(/<svelte:window[^>]*onhashchange=\{consumePairDeepLink\}/);
+    expect(src).toMatch(/<svelte:window[^>]*onhashchange=\{routePairDeepLink\}/);
   });
 
   // PR #564 retest P3-3: qrSvg is string|null; the panel must fall back to the
@@ -97,10 +90,18 @@ describe('connections +page.svelte — host UX and pairing wiring', () => {
     expect(src).toMatch(/themeService\.setPreference/);
   });
 
-  test('opens connection deep links in the Connections tab', () => {
+  test('routes legacy ?new=1 entry to the dedicated wizard', () => {
     const src = pageSource();
-    expect(src).toMatch(/searchParams\.get\(\s*['"`]new['"`]\s*\)[\s\S]*?['"`]connections['"`]/);
-    expect(src).toMatch(/pairCode[\s\S]*activeTab\s*=\s*['"`]connections['"`]/);
+    expect(src).toMatch(/searchParams\.get\(\s*['"`]new['"`]\s*\)\s*===\s*['"`]1['"`][\s\S]*routeNewConnection/);
+    expect(src).toMatch(/href=\{resolve\(\s*['"`]\/connections\/new['"`]\s*\)\}[\s\S]*Add connection/);
+  });
+
+  test('prioritizes a pairing fragment over ?new=1 so the code is not dropped', () => {
+    const src = pageSource();
+    const mount = src.slice(src.indexOf('onMount(() => {'), src.indexOf('\n  function routeNewConnection'));
+    expect(mount.indexOf('routePairDeepLink()')).toBeLessThan(
+      mount.indexOf("page.url.searchParams.get('new')"),
+    );
   });
 
   test('validates the current form URL before any secret or connection mutation', () => {
@@ -110,11 +111,7 @@ describe('connections +page.svelte — host UX and pairing wiring', () => {
     for (const mutation of [
       'getConnectionStore()',
       'getSecretStore()',
-      'secrets.set(',
-      'secrets.delete(',
-      'secrets.updateUsername(',
-      'store.add(',
-      'store.update(',
+      'updateManagedConnection(',
     ]) {
       expect(body.indexOf(mutation), mutation).toBeGreaterThan(validationIndex);
     }
@@ -132,12 +129,30 @@ describe('connections +page.svelte — host UX and pairing wiring', () => {
     expect(src).toMatch(/href=\{formGuideUrl\}[\s\S]*Open the TLS setup guide/);
   });
 
-  test('submits pair-prefilled URLs through the same policy validation', () => {
+  test('keeps edit management but has no direct new-connection persistence path', () => {
     const src = pageSource();
-    expect(src).toMatch(/applyPairingPayload[\s\S]*formUrl\s*=\s*payload\.url/);
-    expect(submitFormSource(src)).toMatch(
-      /const url\s*=\s*formUrl\.trim\(\)[\s\S]*validateConnectionUrl\(url\)/,
-    );
+    expect(src).toMatch(/openEditForm/);
+    expect(submitFormSource(src)).toMatch(/updateManagedConnection\(/);
+    expect(submitFormSource(src)).not.toMatch(/store\.update\(/);
+    expect(submitFormSource(src)).not.toMatch(/store\.add\(/);
+    expect(src).not.toMatch(/formMode\s*===\s*['"]add['"]|openAddForm|pairingPasteCode/);
+  });
+
+  test('requires storage disclosure before writing a new password during edit', () => {
+    const src = pageSource();
+    expect(src).toMatch(/getConnectionStorageMode/);
+    expect(src).toMatch(/connectionSecretsEncryptedAtRest/);
+    expect(src).toMatch(/formDisclosurePending/);
+    expect(src).toMatch(/cannot protect saved passwords/i);
+    expect(src).toMatch(/updateManagedConnection/);
+  });
+
+  test('delegates removal to connection-first transactional management', () => {
+    const src = pageSource();
+    expect(src).toMatch(/removeManagedConnection\(/);
+    const removeBody = src.slice(src.indexOf('async function remove('), src.indexOf('\n  function setTheme'));
+    expect(removeBody).not.toMatch(/getSecretStore\(\)\.delete/);
+    expect(removeBody).not.toMatch(/store\.remove/);
   });
 
   test('links clearly to host management when host controls are available', () => {
@@ -156,18 +171,22 @@ describe('connections +page.svelte — host UX and pairing wiring', () => {
     );
   });
 
-  test('retains new-connection and fragment pairing behavior alongside return context', () => {
+  test('preserves return context while routing legacy new-connection entry', () => {
     const src = pageSource();
     expect(src).toMatch(/page\.url\.searchParams\.get\(\s*['"`]new['"`]\s*\)\s*===\s*['"`]1['"`]/);
     expect(src).toMatch(/new SvelteURLSearchParams\(page\.url\.searchParams\)/);
-    expect(src).toMatch(
-      /replaceState\(\s*`\$\{page\.url\.pathname\}\?\$\{searchParams\}`\s*,\s*\{\}\s*\)/,
-    );
+    expect(src).toMatch(/searchParams\.delete\(\s*['"]new['"]\s*\)/);
   });
 
   test('pairing panel copy names the ingress/CORS prerequisites', () => {
     const src = pageSource();
     expect(src).toMatch(/GUARDIAN_CORS_ALLOWED_ORIGINS/);
     expect(src).toMatch(/remote-access-tls\.md|managing-openpalm\.md/);
+  });
+
+  test('directs receiving devices to the dedicated connection wizard', () => {
+    const src = pageSource();
+    expect(src).toMatch(/On the other device, open Connect to OpenPalm and paste this code/);
+    expect(src).not.toMatch(/open the connections page and paste this code/i);
   });
 });

@@ -59,6 +59,7 @@ vi.mock('./connections/discovery.js', () => ({
 }));
 vi.mock('./connection-events.js', () => ({
   activationBlockReason: () => null,
+  beginConnectionActivation: () => () => {},
   emitConnectionActivated: vi.fn(async () => {}),
 }));
 
@@ -91,6 +92,7 @@ describe('endpointsService.localDiscoverySettled()', () => {
     releaseDiscovery?.();
     await wait;
     expect(endpointsService.endpoints.map((e) => e.id)).toEqual(['local-assistant']);
+    expect(fakeStore.setActive).toHaveBeenCalledWith('local-assistant');
   });
 
   test('a second load(force) does not restart discovery (once per session)', async () => {

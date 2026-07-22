@@ -28,11 +28,11 @@ gracefully when docker/compose files are absent.
 | File | What it covers |
 |------|---------------|
 | `auth-flow.pw.ts` | login → protected read → logout → protected read is 401 again; wrong password rejected; a mutating `/api/host/containers/*` endpoint's auth gate (no-auth / forged-cookie → 401) |
-| `setup-guard.pw.ts` | `GET /` redirects a fresh not-yet-installed instance away from raw admin content; `/setup` is reachable unauthenticated from localhost; the wizard renders its System Check step |
+| `setup-guard.pw.ts` | Completed setup reruns redirect unauthenticated users to login, load for an authenticated admin, protect setup APIs with JSON 401, and keep setup status public |
 
-These do NOT progress past System Check or exercise a real container
-mutation — that needs a live Docker daemon and is covered by
-`install-flow.stack.ts` / `auth-boundary.stack.ts` below.
+The mocked suite does not exercise a genuine first setup or container mutation.
+That separate proof uses a live Docker fixture in
+`setup-wizard-browser.stack.ts` / `install-flow.stack.ts`.
 
 ### `*.stack.ts` — stack integration tests (isolated environment)
 

@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { expect, test } from '@playwright/test';
+import { expect, test } from './fixtures.js';
 
 test('production HTML CSP permits HTTP(S) OpenCode frames and retains its other restrictions', async ({
   request,

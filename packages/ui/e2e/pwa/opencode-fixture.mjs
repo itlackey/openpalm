@@ -18,12 +18,15 @@ async function readJson(request) {
   return body ? JSON.parse(body) : {};
 }
 
-export async function startOpenCodeFixture({ port, allowedOrigin }) {
+export async function startOpenCodeFixture({ port, allowedOrigins }) {
+  const allowedOriginSet = new Set(allowedOrigins);
   const sessions = [];
   const messages = new Map();
   const eventClients = new Set();
   let generation = 0;
   let stats = emptyStats();
+  let verificationPaused = false;
+  let releaseVerification = null;
 
   function emptyStats() {
     return {
@@ -32,10 +35,19 @@ export async function startOpenCodeFixture({ port, allowedOrigin }) {
       eventConnections: 0,
       eventClosed: 0,
       messagePosts: 0,
+      sessionListRequests: 0,
+      pendingVerificationRequests: 0,
     };
   }
 
+  function releasePausedVerification() {
+    verificationPaused = false;
+    releaseVerification?.();
+    releaseVerification = null;
+  }
+
   function reset() {
+    releasePausedVerification();
     generation += 1;
     for (const client of eventClients) client.response.end();
     eventClients.clear();
@@ -50,7 +62,21 @@ export async function startOpenCodeFixture({ port, allowedOrigin }) {
       activeEventStreams: eventClients.size,
       sessions: sessions.length,
       messages: [...messages.values()].reduce((count, rows) => count + rows.length, 0),
+      sessionIds: sessions.map((session) => session.id),
     };
+  }
+
+  function seedSessions(entries) {
+    sessions.splice(0);
+    messages.clear();
+    for (const entry of entries) {
+      sessions.push({
+        id: entry.id,
+        title: entry.title,
+        time: entry.time,
+      });
+      messages.set(entry.id, Array.isArray(entry.messages) ? entry.messages : []);
+    }
   }
 
   function requireAuth(request, response, headers) {
@@ -76,8 +102,9 @@ export async function startOpenCodeFixture({ port, allowedOrigin }) {
   }
 
   const server = createServer(async (request, response) => {
+    const requestOrigin = request.headers.origin;
     const corsHeaders = {
-      'access-control-allow-origin': allowedOrigin,
+      'access-control-allow-origin': allowedOriginSet.has(requestOrigin) ? requestOrigin : allowedOrigins[0],
       'access-control-allow-methods': 'GET, POST, PATCH, DELETE, OPTIONS',
       'access-control-allow-headers': 'authorization, content-type',
       vary: 'Origin',
@@ -98,11 +125,43 @@ export async function startOpenCodeFixture({ port, allowedOrigin }) {
       json(response, 200, state(), corsHeaders);
       return;
     }
+    if (request.method === 'POST' && url.pathname === '/__test/sessions') {
+      const body = await readJson(request);
+      if (!Array.isArray(body.sessions)) {
+        json(response, 400, { error: 'sessions_required' }, corsHeaders);
+        return;
+      }
+      seedSessions(body.sessions);
+      json(response, 200, state(), corsHeaders);
+      return;
+    }
+    const fixtureSessionMatch = url.pathname.match(/^\/__test\/session\/([^/]+)$/);
+    if (request.method === 'DELETE' && fixtureSessionMatch) {
+      const id = decodeURIComponent(fixtureSessionMatch[1]);
+      const index = sessions.findIndex((session) => session.id === id);
+      if (index >= 0) sessions.splice(index, 1);
+      messages.delete(id);
+      json(response, 200, state(), corsHeaders);
+      return;
+    }
+    if (request.method === 'POST' && url.pathname === '/__test/verification/pause') {
+      releasePausedVerification();
+      verificationPaused = true;
+      json(response, 200, state(), corsHeaders);
+      return;
+    }
+    if (request.method === 'POST' && url.pathname === '/__test/verification/release') {
+      releasePausedVerification();
+      json(response, 200, state(), corsHeaders);
+      return;
+    }
 
     if (!requireAuth(request, response, corsHeaders)) return;
-    const apiPath = url.pathname.startsWith('/secondary')
+    let apiPath = url.pathname.startsWith('/secondary')
       ? url.pathname.slice('/secondary'.length) || '/'
       : url.pathname;
+    if (apiPath === '/oc') apiPath = '/';
+    else if (apiPath.startsWith('/oc/')) apiPath = apiPath.slice('/oc'.length);
     if (request.method === 'GET' && apiPath === '/') {
       json(response, 200, { fixture: 'openpalm-pwa-opencode' }, corsHeaders);
       return;
@@ -126,6 +185,15 @@ export async function startOpenCodeFixture({ port, allowedOrigin }) {
       return;
     }
     if (request.method === 'GET' && apiPath === '/session') {
+      stats.sessionListRequests += 1;
+      if (verificationPaused) {
+        const requestStats = stats;
+        requestStats.pendingVerificationRequests += 1;
+        await new Promise((resolve) => {
+          releaseVerification = resolve;
+        });
+        requestStats.pendingVerificationRequests -= 1;
+      }
       json(response, 200, sessions, corsHeaders);
       return;
     }

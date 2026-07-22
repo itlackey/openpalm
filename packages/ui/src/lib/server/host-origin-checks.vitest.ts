@@ -1,11 +1,14 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import { checkHostHeader, checkOriginHeader, UI_PORT } from './helpers.js';
 
-function req(host: string, init: { origin?: string; method?: string; authorization?: string } = {}): Request {
+function req(
+  host: string,
+  init: { origin?: string; method?: string; authorization?: string; protocol?: 'http' | 'https' } = {},
+): Request {
   const headers: Record<string, string> = { host };
   if (init.origin) headers.origin = init.origin;
   if (init.authorization) headers.authorization = init.authorization;
-  return new Request('http://internal/admin/x', { method: init.method ?? 'GET', headers });
+  return new Request(`${init.protocol ?? 'http'}://internal/admin/x`, { method: init.method ?? 'GET', headers });
 }
 
 afterEach(() => {
@@ -48,10 +51,33 @@ describe('checkOriginHeader', () => {
     expect(checkOriginHeader(req('192.168.1.10:3880', { method: 'GET' }))).toBeNull();
   });
 
+  it('allows a non-browser mutation with no Origin header', () => {
+    expect(checkOriginHeader(req('localhost:3880', { method: 'POST' }))).toBeNull();
+  });
+
   it('loopback-origin mode allows loopback origin on any port (tunnel)', () => {
     expect(
       checkOriginHeader(req('localhost:5880', { method: 'POST', origin: 'http://localhost:5880' }), 'loopback-origin'),
     ).toBeNull();
+  });
+
+  it('rejects a loopback origin on a different port', () => {
+    const res = checkOriginHeader(
+      req('localhost:3880', { method: 'POST', origin: 'http://localhost:5880' }),
+      'loopback-origin',
+    );
+    expect(res?.status).toBe(403);
+  });
+
+  it('rejects a loopback origin with a different hostname or scheme', () => {
+    expect(checkOriginHeader(
+      req('127.0.0.1:3880', { method: 'POST', origin: 'http://localhost:3880' }),
+      'loopback-origin',
+    )?.status).toBe(403);
+    expect(checkOriginHeader(
+      req('localhost:3880', { method: 'POST', origin: 'https://localhost:3880' }),
+      'loopback-origin',
+    )?.status).toBe(403);
   });
 
   // PR #564 second retest: the rejection body must carry requestId (API contract).
@@ -87,6 +113,14 @@ describe('checkOriginHeader', () => {
   it('same-site mode rejects mismatched host origin', () => {
     const res = checkOriginHeader(
       req('192.168.1.10:3880', { method: 'POST', origin: 'http://evil.example:3880' }),
+      'same-site',
+    );
+    expect(res?.status).toBe(403);
+  });
+
+  it('same-site mode rejects the same hostname on another port', () => {
+    const res = checkOriginHeader(
+      req('192.168.1.10:3880', { method: 'POST', origin: 'http://192.168.1.10:5880' }),
       'same-site',
     );
     expect(res?.status).toBe(403);

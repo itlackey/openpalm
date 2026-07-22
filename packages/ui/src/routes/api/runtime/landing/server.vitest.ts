@@ -16,12 +16,12 @@
  * needed here later.
  *
  * Contract (cross-lane — the CLI lane codes against this in parallel):
- *   GET /api/runtime/landing → 200 JSON {"landing": "/chat" | "/setup" |
+ *   GET /api/runtime/landing → 200 JSON {"landing": "/chat" | "/start" | "/setup" |
  *   "/host" | "/host?tab=diagnostics" | "/attention" | ...}, unauthenticated,
  *   Cache-Control: no-store.
  *
- * Deterministic like hooks.server.landing.vitest.ts: the host probes
- * (composePs, detectRuntime, listRemoteStatuses) are stubbed.
+ * Deterministic like hooks.server.landing.vitest.ts: the Compose health probe
+ * is stubbed.
  */
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
@@ -29,10 +29,6 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { resetState } from '$lib/server/test-helpers.js';
 
-vi.mock('$lib/server/opencode-target.js', async (orig) => ({
-  ...(await orig<typeof import('$lib/server/opencode-target.js')>()),
-  listRemoteStatuses: vi.fn(async () => []),
-}));
 vi.mock('@openpalm/lib', async (orig) => ({
   ...(await orig<typeof import('@openpalm/lib')>()),
   composePs: vi.fn(async () => ({ ok: false, stdout: '', stderr: '', code: 1 })),
@@ -124,12 +120,12 @@ describe('GET /api/runtime/landing — public landing-resolver endpoint (J2/J3)'
     expect(body.landing).toBe('/chat');
   });
 
-  test('nothing installed resolves to /setup (J2 — an interrupted install)', async () => {
+  test('nothing installed resolves to /start for browser-owned bootstrap', async () => {
     const state = resetState('test-admin-pw');
     seedStackEnv(state.stackDir, false);
     const res = await GET(makeEvent());
     const body = (await res.json()) as { landing: string };
-    expect(body.landing).toBe('/setup');
+    expect(body.landing).toBe('/start');
   });
 
   test('an installed-but-offline stack resolves to /host (J2 — stopped/crashed at launch)', async () => {

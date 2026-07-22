@@ -10,8 +10,14 @@ import type { RequestHandler } from './$types';
 const NO_STORE = { 'cache-control': 'no-store' };
 
 export const GET: RequestHandler = () => {
+  const homeDir = resolveOpenPalmHome();
   const parsed = parseUiRuntimeConfigJson(process.env[UI_RUNTIME_CONFIG_ENV]);
-  if (parsed.status === 'valid') return json(parsed.config, { headers: NO_STORE });
+  if (parsed.status === 'valid') {
+    const config = parsed.config.connections.length === 0
+      ? buildServedUiRuntimeConfig(homeDir)
+      : parsed.config;
+    return json(config, { headers: NO_STORE });
+  }
   if (parsed.status === 'invalid') {
     return json({ error: 'invalid_runtime_config' }, { status: 500, headers: NO_STORE });
   }
@@ -20,7 +26,7 @@ export const GET: RequestHandler = () => {
   // connection from the existing harness env without changing that origin-
   // sensitive compatibility surface.
   if (process.env.OP_INSIDE_ELECTRON === '1') {
-    return json(buildServedUiRuntimeConfig(resolveOpenPalmHome()), { headers: NO_STORE });
+    return json(buildServedUiRuntimeConfig(homeDir), { headers: NO_STORE });
   }
 
   // The assistant container owns the static runtime-config.json writer. A 404

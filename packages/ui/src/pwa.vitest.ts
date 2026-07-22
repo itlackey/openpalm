@@ -18,6 +18,7 @@ import { fileURLToPath } from 'node:url';
 const APP_HTML_PATH = fileURLToPath(new URL('./app.html', import.meta.url));
 const MANIFEST_PATH = fileURLToPath(new URL('../static/manifest.webmanifest', import.meta.url));
 const SERVICE_WORKER_PATH = fileURLToPath(new URL('./service-worker.ts', import.meta.url));
+const SVELTE_CONFIG_PATH = fileURLToPath(new URL('../svelte.config.js', import.meta.url));
 
 function appHtmlSource(): string {
   return readFileSync(APP_HTML_PATH, 'utf-8');
@@ -93,6 +94,11 @@ describe('static/manifest.webmanifest', () => {
 });
 
 describe('src/service-worker.ts — precache + network-only guard', () => {
+  test('registers the generated worker from the origin root on nested routes', () => {
+    const config = readFileSync(SVELTE_CONFIG_PATH, 'utf-8');
+    expect(config).toMatch(/paths:\s*\{\s*relative:\s*false\s*\}/);
+  });
+
   test('sources build/files/version from the native $service-worker module (zero extra deps)', () => {
     const src = serviceWorkerSource();
     expect(src).toMatch(/from\s+['"]\$service-worker['"]/);

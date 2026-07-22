@@ -255,11 +255,16 @@ function isLoopbackHost(hostHeader: string): boolean {
   return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1";
 }
 
-function isSameSite(request: Request, origin: URL): boolean {
-  const host = request.headers.get("host") ?? "";
-  const requestHost = hostNameFromHeader(host);
-  if (!requestHost) return false;
-  return requestHost === origin.hostname.toLowerCase();
+function effectiveRequestOrigin(request: Request): string | null {
+  const host = request.headers.get("host")?.trim();
+  if (!host) return null;
+  try {
+    const protocol = new URL(request.url).protocol;
+    if (protocol !== 'http:' && protocol !== 'https:') return null;
+    return new URL(`${protocol}//${host}`).origin;
+  } catch {
+    return null;
+  }
 }
 
 export function checkHostHeader(request: Request, requestId?: string): Response | null {
@@ -281,9 +286,9 @@ export function checkHostHeader(request: Request, requestId?: string): Response 
 
 // ── SEC-2: Origin check for state-mutating requests ──────────────────────
 /**
- * Reject POST/PUT/DELETE requests whose Origin header does not match
- * localhost or 127.0.0.1. Requests with no Origin (non-browser clients)
- * are always allowed.
+ * Reject state-changing browser requests unless Origin exactly matches the
+ * effective request scheme, host, and port. Requests with no Origin
+ * (non-browser clients) are allowed by the existing CLI contract.
  *
  * @param request  Incoming Request
  * @returns        A 403 Response if the origin is rejected; null if allowed
@@ -297,17 +302,17 @@ export function checkOriginHeader(request: Request, csrfMode: CsrfMode = 'loopba
 
   try {
     const u = new URL(origin);
+    const sameOrigin = u.origin === effectiveRequestOrigin(request);
     switch (csrfMode) {
       case 'loopback-origin': {
-        // Loopback origin on any port (e.g. via SSH tunnel) is always allowed.
-        if (isLoopbackHost(u.host)) return null;
-        // With remote access opted in, accept same-origin requests — the Origin's
-        // host matches the Host the request was served on (standard CSRF defense).
-        if (isRemoteSetupAllowed() && u.host === (request.headers.get("host") ?? "").trim()) return null;
+        // Loopback and SSH-tunnel requests are accepted only when the browser's
+        // exact origin matches the effective request scheme, host, and port.
+        if (sameOrigin && isLoopbackHost(u.host)) return null;
+        if (sameOrigin && isRemoteSetupAllowed()) return null;
         break;
       }
       case 'same-site':
-        if (isSameSite(request, u)) return null;
+        if (sameOrigin) return null;
         break;
     }
   } catch {

@@ -21,7 +21,7 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { execFile } from "node:child_process";
 import { parseEnvFile } from "./env.js";
-import { legacyStackEnvFile, secretsDir, stateEnvFile } from "./home.js";
+import { legacyStackEnvFile, secretsDir, stackDirFor, stateEnvFile } from "./home.js";
 import { checkDocker, checkDockerCompose } from "./docker.js";
 
 export type LocalStackState =
@@ -189,6 +189,11 @@ export function classifyLocalInstall(stackDir: string, homeDir: string): "not_in
     existsSync(join(secrets, "op_guardian_admin_token")) && existsSync(join(secrets, "op_guardian_mcp_token"));
   if (hasCompose && hasGuardianTokens) return "installed";
   return "setup_incomplete";
+}
+
+/** Whether installation state existed before a launcher performs any release refresh. */
+export function hasMaterializedLocalInstall(homeDir: string): boolean {
+  return classifyLocalInstall(stackDirFor(homeDir), homeDir) !== "not_installed";
 }
 
 export function deriveLocalStackState(

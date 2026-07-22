@@ -105,6 +105,20 @@ describe('validateConnectionUrl', () => {
     expect(redactUrlUserinfo(raw)).toBe('https://assistant.example:4096');
   });
 
+  test('rejects query strings and fragments before callers append API paths', () => {
+    for (const raw of [
+      'https://assistant.example?tenant=home',
+      'https://assistant.example/#credential',
+    ]) {
+      const verdict = validateConnectionUrl(raw, null);
+      expect(verdict.ok, raw).toBe(false);
+      if (verdict.ok) throw new Error('expected refusal');
+      expect(verdict.reason).toBe('query-or-fragment-not-allowed');
+      expect(verdict.message).not.toContain('tenant=home');
+      expect(verdict.message).not.toContain('credential');
+    }
+  });
+
   test('TLS_GUIDE_URL deep-links docs/remote-access-tls.md on GitHub', () => {
     expect(TLS_GUIDE_URL).toMatch(
       /^https:\/\/github\.com\/itlackey\/openpalm\/blob\/main\/docs\/remote-access-tls\.md$/

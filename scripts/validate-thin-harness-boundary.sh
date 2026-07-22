@@ -19,8 +19,8 @@
 #   (c) EVERY `.ts` file under packages/electron/src/ (not just main.ts) imports
 #       from @openpalm/lib ONLY the bootstrap allowlist (path resolvers + seed +
 #       ui-build/skeleton download + parseEnvFile + uiUpdateChannel +
-#       ensureHomeDirs + PLATFORM_VERSION + checkDocker/checkDockerCompose +
-#       version-compare helpers). Any mutating control-plane symbol imported
+#       ensureHomeDirs + PLATFORM_VERSION + version-compare helpers). Any
+#       mutating control-plane symbol imported
 #       from @openpalm/lib anywhere in packages/electron/src fails CI — as does
 #       a namespace import (`import * as x from '@openpalm/lib'`), a dynamic
 #       `import('@openpalm/lib')`, or a `require('@openpalm/lib')`, all of
@@ -50,13 +50,12 @@ MUTATION_SENTINEL="performUpgrade"
 # The ONLY @openpalm/lib symbols packages/electron/src may import — the bootstrap
 # allowlist. The harness may resolve paths, seed on-disk assets (UI build,
 # skeleton), check/download an updated UI build or skeleton, parse env files,
-# report the platform version, and probe Docker availability. It may NEVER
+# and report the platform version. It may NEVER
 # import a symbol that mutates control-plane state or runs a migration — that
 # code must live only in the updatable data/ui control plane. This list grew
-# over time (PLATFORM_VERSION + the Docker preflight probes checkDocker/
-# checkDockerCompose, checkAndUpdateSkeleton for skeleton self-update bootstrap,
-# and update-check.ts's pure version-compare helpers, now that the scan is
-# repo-wide instead of main.ts-only).
+# over time (PLATFORM_VERSION, checkAndUpdateSkeleton for skeleton self-update
+# bootstrap, and update-check.ts's pure version-compare helpers, now that the
+# scan is repo-wide instead of main.ts-only).
 # waitForReady + restoreUiBackup are the shared UI-supervisor primitives:
 # waiting on the spawned UI's /health, and rolling back a failed checkAndUpdateUiBuild
 # swap. Both are bootstrap/ui-build-lifecycle only — neither runs an upgrade/migration.
@@ -72,8 +71,9 @@ ALLOWED_IMPORTS=(
   uiUpdateChannel
   parseEnvFile
   PLATFORM_VERSION
-  checkDocker
-  checkDockerCompose
+  # Read-only install-state snapshot taken before release refresh. The shared
+  # classifier remains the sole authority; the harness must not duplicate it.
+  hasMaterializedLocalInstall
   # UI-server supervisor family: bootstrap-only lifecycle
   # helpers for the UI child — poll /health, restore the prior data/ui backup on
   # a failed restart, and the shared UiSupervisor state machine (spawn → ready,

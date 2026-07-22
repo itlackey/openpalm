@@ -1,8 +1,7 @@
 /**
  * Server-side landing resolution.
  *
- * Collects the launch facts (local install state, container health, remote
- * reachability — the probes that used to feed the /splash page) and runs them
+ * Collects the launch facts (local install state and container health) and runs them
  * through the pure `resolveLanding()`. Used by hooks.server.ts for document
  * navigations to `/` and `/splash`, and by routes/+page.server.ts for
  * client-side navigations to `/`.
@@ -20,11 +19,9 @@ import {
   composePs,
   deriveLaunchStatus,
   deriveLocalStackState,
-  detectRuntime,
   type ComposeServiceStatus,
 } from '@openpalm/lib';
 import { getState } from '$lib/server/state.js';
-import { listRemoteStatuses } from '$lib/server/opencode-target.js';
 import { computeServerRuntimeContext } from '$lib/server/features.js';
 import { resolveCapabilities } from '$lib/runtime-context.svelte.js';
 import { resolveLanding, type LaunchState } from '$lib/resolve-landing.js';
@@ -45,10 +42,15 @@ let launchRoutingCache: { expiresAt: number; value: LaunchRouting } | null = nul
 // cache rather than calling classifyLocalInstall a second, uncached time.
 let installStateCache: { expiresAt: number; value: ReturnType<typeof classifyLocalInstall> } | null = null;
 
-/** Test-only: clear the 5s launch-routing cache so each test resolves fresh. */
-export function _resetLaunchCache(): void {
+/** Clear cached launch facts after setup or another local-state transition. */
+export function clearLaunchRoutingCache(): void {
   launchRoutingCache = null;
   installStateCache = null;
+}
+
+/** Test-only alias retained as the shared reset seam for launch-routing tests. */
+export function _resetLaunchCache(): void {
+  clearLaunchRoutingCache();
 }
 
 /**
@@ -93,16 +95,26 @@ async function resolveLaunchRouting(): Promise<LaunchRouting> {
   }
   const state = getState();
   const installState = getCachedLocalInstallState(state.stackDir, state.homeDir);
+  if (installState === 'not_installed') {
+    const value = {
+      installState,
+      launch: deriveLaunchStatus({
+        local: { state: 'not_installed', detail: { installState } },
+        remotes: [],
+      }),
+    };
+    launchRoutingCache = { value, expiresAt: Date.now() + 5_000 };
+    return value;
+  }
   const composeResult = await composePs(buildComposeOptions(state));
   const services = composeResult.ok ? parseComposePsServices(composeResult.stdout) : [];
   const localState = deriveLocalStackState(installState, services);
   const launch = deriveLaunchStatus({
     local: {
       state: localState,
-      runtime: installState === 'not_installed' ? await detectRuntime() : undefined,
       detail: { installState },
     },
-    remotes: await listRemoteStatuses(),
+    remotes: [],
   });
   const value = { installState, launch };
   launchRoutingCache = { value, expiresAt: Date.now() + 5_000 };
@@ -131,13 +143,7 @@ export async function resolveRequestLanding(event: RequestEvent): Promise<string
     installState === 'setup_incomplete' && launch.local.state === 'running'
       ? 'setup_incomplete'
       : launch.local.state;
-  // Connections usable right now: accessible remotes, plus the local
-  // assistant when it is healthy. Only reachable connections count — a dead
-  // remote must not satisfy the "has somewhere to chat" checks (#440).
-  const connections: LaunchState['connections'] = [
-    ...(launch.hasHealthyLocal ? [{ id: 'default' }] : []),
-    ...launch.remotes.filter((r) => r.state === 'accessible'),
-  ];
+  const connections: LaunchState['connections'] = launch.hasHealthyLocal ? [{ id: 'default' }] : [];
   const launchState: LaunchState = {
     // No blocking migration exists yet — the gate (and /attention) is wired
     // ahead of the first one.

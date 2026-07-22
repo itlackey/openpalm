@@ -63,8 +63,10 @@
 	async function handleSend(text: string): Promise<void> {
 		await chat.send(text);
 		await tick();
-		const endpointState = chat.byEndpoint.get(endpointsService.activeId);
+		const endpointId = endpointsService.activeId;
+		const endpointState = chat.byEndpoint.get(endpointId);
 		await syncSessionUrl(
+			endpointId,
 			endpointState?.activeSessionId ?? endpointState?.sessions[0]?.id ?? null,
 			true
 		);
@@ -166,8 +168,12 @@
 	// the user reviews spoken text before it goes out.
 	let draft = $state('');
 
-	async function syncSessionUrl(sessionId: string | null, replace: boolean): Promise<void> {
-		const target = buildChatPath(sessionId, endpointsService.activeId);
+	async function syncSessionUrl(
+		endpointId: string,
+		sessionId: string | null,
+		replace: boolean
+	): Promise<void> {
+		const target = buildChatPath(sessionId, endpointId);
 		if (`${page.url.pathname}${page.url.search}` === target) return;
 		if (replace) {
 			// eslint-disable-next-line svelte/no-navigation-without-resolve -- canonical session path built internally
@@ -214,7 +220,7 @@
 				if (resolutionId !== routeResolutionId) return;
 				if (endpointsService.endpoints.length === 0) {
 					// eslint-disable-next-line svelte/no-navigation-without-resolve -- static internal route
-					await goto('/connections/new', { replaceState: true });
+					await goto('/connections/new?onboarding=1', { replaceState: true });
 					return;
 				}
 			}
@@ -231,22 +237,39 @@
 				await chat.onEndpointChanged(endpointId);
 				if (resolutionId !== routeResolutionId) return;
 			}
-			const endpointState = chat.byEndpoint.get(endpointId);
+			const resolvedEndpointId = endpointsService.activeId;
+			if (resolvedEndpointId !== endpointId || chat.activeEndpointId !== resolvedEndpointId) return;
+			const endpointState = chat.byEndpoint.get(resolvedEndpointId);
+			const requestedAssistantMatchesResolved =
+				requestedAssistantId === null || requestedAssistantId === resolvedEndpointId;
+			const sessionsAuthoritative = Boolean(
+				endpointState?.sessionsLoaded && !endpointState.sessionsError
+			);
 			const requestedSessionExists =
+				sessionsAuthoritative &&
+				requestedAssistantMatchesResolved &&
 				requestedSessionId !== null &&
 				Boolean(endpointState?.sessions.some((session) => session.id === requestedSessionId));
-			let canonicalSessionId: string | null = requestedSessionExists
-				? requestedSessionId
-				: (endpointState?.activeSessionId ?? endpointState?.sessions[0]?.id ?? null);
+			let canonicalSessionId: string | null = sessionsAuthoritative
+				? requestedSessionExists
+					? requestedSessionId
+					: (endpointState?.activeSessionId ?? endpointState?.sessions[0]?.id ?? null)
+				: requestedAssistantMatchesResolved
+					? (requestedSessionId ?? endpointState?.activeSessionId ?? null)
+					: (endpointState?.activeSessionId ?? null);
 			if (requestedSessionExists && requestedSessionId !== chat.activeSessionId) {
 				await chat.openSession(requestedSessionId);
 				if (resolutionId !== routeResolutionId) return;
 			}
 			if (beginNewRequested) {
-				canonicalSessionId = await chat.startNewSession();
+				canonicalSessionId = (await chat.startNewSession()) ?? canonicalSessionId;
 				if (resolutionId !== routeResolutionId) return;
 			}
-			await syncSessionUrl(canonicalSessionId, true);
+			if (
+				endpointsService.activeId !== resolvedEndpointId ||
+				chat.activeEndpointId !== resolvedEndpointId
+			) return;
+			await syncSessionUrl(resolvedEndpointId, canonicalSessionId, true);
 		} catch {
 			if (resolutionId === routeResolutionId) {
 				chat.error = 'Unable to reach the assistant.';
@@ -297,8 +320,10 @@
 		document.addEventListener('visibilitychange', handleVisibilityChange);
 		const unsubscribeSessionNavigation = onConnectionActivated(async (endpointId) => {
 			await tick();
+			if (endpointsService.activeId !== endpointId || chat.activeEndpointId !== endpointId) return;
 			const endpointState = chat.byEndpoint.get(endpointId);
 			await syncSessionUrl(
+				endpointId,
 				endpointState?.activeSessionId ?? endpointState?.sessions[0]?.id ?? null,
 				true
 			);

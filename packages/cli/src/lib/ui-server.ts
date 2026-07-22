@@ -48,13 +48,15 @@ export function resolveUiServePort(
 }
 
 /**
- * `openpalm admin` opens/prints the root URL, which the UI's own landing
- * guard resolves to `/chat` on a healthy install — not the admin dashboard
- * (review finding A3). When admin mode is active, both the printed and opened
- * URL should point at `/host` instead.
+ * Installed admin launches open the host dashboard directly. A fresh admin
+ * home stays at root so the UI's browser-aware `/start` bootstrap can run.
  */
-export function resolveAdminUrl(uiUrl: string, adminHostUi: boolean): string {
-  return adminHostUi ? `${uiUrl}/host` : uiUrl;
+export function resolveAdminUrl(
+  uiUrl: string,
+  adminHostUi: boolean,
+  localInstallState: ReturnType<typeof classifyLocalInstall> = 'installed',
+): string {
+  return adminHostUi && localInstallState !== 'not_installed' ? `${uiUrl}/host` : uiUrl;
 }
 
 /**
@@ -87,9 +89,10 @@ export function resolveUiNetworkEnv(
   port: number,
   adminHostUi: boolean,
   env: Record<string, string | undefined> = process.env,
+  localInstallState: ReturnType<typeof classifyLocalInstall> = 'installed',
 ): Record<'HOST' | 'PORT' | 'ORIGIN' | 'HOST_HEADER' | 'PROTOCOL_HEADER', string | undefined> {
   const effectiveAdmin = resolveExpectedAdmin(adminHostUi, env);
-  if (!effectiveAdmin && isRemoteSetupAllowed(env)) {
+  if (!effectiveAdmin && localInstallState === 'installed' && isRemoteSetupAllowed(env)) {
     return {
       HOST: '0.0.0.0',
       PORT: String(port),
@@ -175,15 +178,20 @@ export async function checkExistingUiInstance(
 
 export function resolveUiChildLaunch(
   state: Pick<ControlPlaneState, 'homeDir' | 'stackDir'>,
-  appMode: boolean,
+  _appMode: boolean,
   env: Record<string, string | undefined> = process.env,
-): { config: UiRuntimeConfig; runtimeConfigJson: string; stacklessApp: boolean } {
-  const stacklessApp = appMode
-    && classifyLocalInstall(state.stackDir, state.homeDir) === 'not_installed';
+): {
+  config: UiRuntimeConfig;
+  runtimeConfigJson: string;
+  stacklessApp: boolean;
+  installState: ReturnType<typeof classifyLocalInstall>;
+} {
+  const installState = classifyLocalInstall(state.stackDir, state.homeDir);
+  const stacklessApp = installState === 'not_installed';
   const config = stacklessApp
     ? buildEmptyUiRuntimeConfig()
     : buildServedUiRuntimeConfig(state.homeDir, env);
-  return { config, runtimeConfigJson: serializeUiRuntimeConfig(config), stacklessApp };
+  return { config, runtimeConfigJson: serializeUiRuntimeConfig(config), stacklessApp, installState };
 }
 
 /**
@@ -207,7 +215,7 @@ async function spawnUiChild(
   // Installation may complete while this long-lived supervisor is running.
   // Re-read it for every initial spawn and restart rather than freezing it in
   // startUIServer.
-  const { config, runtimeConfigJson, stacklessApp } = resolveUiChildLaunch(state, appMode);
+  const { config, runtimeConfigJson, stacklessApp, installState } = resolveUiChildLaunch(state, appMode);
   if (!stacklessApp) {
     // Hot-swap the skeleton (managed system/ tree) before spawning.
     console.log('Checking for skeleton update...');
@@ -266,7 +274,7 @@ async function spawnUiChild(
   const runningAsBun = execName === 'bun' || execName === 'bun.exe';
   const childArgs = runningAsBun ? [Bun.main, 'ui'] : ['ui'];
   const effectiveAdmin = resolveExpectedAdmin(adminHostUi);
-  const networkEnv = resolveUiNetworkEnv(port, effectiveAdmin);
+  const networkEnv = resolveUiNetworkEnv(port, effectiveAdmin, process.env, installState);
   // Admin mode: enable the admin capability in the UI child and neutralize
   // OP_ALLOW_REMOTE_SETUP (spread in from process.env below) so neither the
   // respawned `openpalm ui` child nor the UI server's own remote-setup
@@ -318,7 +326,9 @@ export async function runUiBuild(opts: { port?: number } = {}): Promise<void> {
   }
   const port = opts.port
     ?? (process.env.PORT ? Number(process.env.PORT) : resolveUiServePort(undefined, resolveOpenPalmHome()));
-  const networkEnv = resolveUiNetworkEnv(port, resolveExpectedAdmin(false), process.env);
+  const homeDir = resolveOpenPalmHome();
+  const installState = classifyLocalInstall(join(homeDir, 'system', 'stack'), homeDir);
+  const networkEnv = resolveUiNetworkEnv(port, resolveExpectedAdmin(false), process.env, installState);
   for (const [key, value] of Object.entries(networkEnv)) {
     if (value === undefined) delete process.env[key];
     else process.env[key] = value;
@@ -464,6 +474,7 @@ export async function startUIServer(opts: UIServerOptions = {}): Promise<void> {
   const state = (opts.adminHostUi === true || opts.allowUninstalled === true)
     ? resolveServeState()
     : ensureValidState();
+  const localInstallState = classifyLocalInstall(state.stackDir, state.homeDir);
   const appMode = opts.allowUninstalled === true;
   const expectedAdmin = resolveExpectedAdmin(opts.adminHostUi === true);
   const browserHost = resolveUiLoopbackHost(expectedAdmin);
@@ -494,11 +505,11 @@ export async function startUIServer(opts: UIServerOptions = {}): Promise<void> {
     // (not just the browser-open call below) — mirrors the fix at the
     // non-reuse "UI server running at" log further down.
     console.log(
-      `Reusing already-running UI server at ${resolveAdminUrl(uiUrl, opts.adminHostUi === true)} ` +
+      `Reusing already-running UI server at ${resolveAdminUrl(uiUrl, opts.adminHostUi === true, localInstallState)} ` +
       `(admin=${existing.admin}).`
     );
     if (opts.open !== false) {
-      await openBrowser(resolveAdminUrl(uiUrl, opts.adminHostUi === true));
+      await openBrowser(resolveAdminUrl(uiUrl, opts.adminHostUi === true, localInstallState));
     }
     return;
   }
@@ -517,12 +528,12 @@ export async function startUIServer(opts: UIServerOptions = {}): Promise<void> {
   // only the browser-open call below (via resolveAdminUrl) honored
   // opts.adminHostUi; this log line still printed the root URL, which the
   // UI's own landing guard resolves to `/chat` on a healthy install.
-  console.log(`UI server running at ${resolveAdminUrl(uiUrl, opts.adminHostUi === true)}`);
+  console.log(`UI server running at ${resolveAdminUrl(uiUrl, opts.adminHostUi === true, localInstallState)}`);
 
   if (opts.open !== false) {
     // `openpalm admin` opens `/host`; every other entry uses the full UI's
     // own landing resolver from the root URL.
-    await openBrowser(resolveAdminUrl(uiUrl, opts.adminHostUi === true));
+    await openBrowser(resolveAdminUrl(uiUrl, opts.adminHostUi === true, localInstallState));
   }
 
   // Supervisor restart (§4.4): the UI child (admin "install UI version" route)

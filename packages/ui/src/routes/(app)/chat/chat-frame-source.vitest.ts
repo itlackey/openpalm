@@ -186,11 +186,19 @@ describe('responsive chat frame source contract', () => {
 	test('honors assistant selection before session selection and canonicalizes both', () => {
 		const source = readFileSync(CHAT_PAGE, 'utf8');
 
-		expect(source).toMatch(/buildChatPath\(sessionId, endpointsService\.activeId\)/);
+		expect(source).toMatch(/async function syncSessionUrl\(\s*endpointId: string,/);
+		expect(source).toMatch(/buildChatPath\(sessionId, endpointId\)/);
 		expect(source).toMatch(/page\.url\.searchParams\.get\('assistant'\)/);
 		expect(source).toMatch(
 			/await endpointsService\.load\(\);[\s\S]*?await endpointsService\.activate\(requestedAssistantId\)[\s\S]*?requestedSessionExists/
 		);
+		expect(source).toMatch(/const resolvedEndpointId = endpointsService\.activeId/);
+		expect(source).toMatch(/requestedAssistantMatchesResolved/);
+		expect(source).toMatch(/sessionsAuthoritative/);
+		expect(source).toMatch(
+			/requestedAssistantMatchesResolved[\s\S]*?requestedSessionId \?\? endpointState\?\.activeSessionId/
+		);
+		expect(source).toMatch(/syncSessionUrl\(resolvedEndpointId, canonicalSessionId, true\)/);
 		expect(source).toMatch(/syncSessionUrl/);
 	});
 

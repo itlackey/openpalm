@@ -1,4 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { UI_RUNTIME_CONFIG_ENV } from '@openpalm/lib';
 import { GET } from './+server.js';
 
@@ -9,6 +12,19 @@ const ENV_KEYS = [
   'OP_OPENCODE_URL',
 ] as const;
 let savedEnv: Record<string, string | undefined>;
+const tempDirs: string[] = [];
+
+function createHome(installed: boolean): string {
+  const home = mkdtempSync(join(tmpdir(), 'openpalm-runtime-config-route-'));
+  tempDirs.push(home);
+  if (installed) {
+    mkdirSync(join(home, 'system', 'stack'), { recursive: true });
+    writeFileSync(join(home, 'system', 'stack', 'core.compose.yml'), 'services: {}\n');
+    mkdirSync(join(home, 'state'), { recursive: true });
+    writeFileSync(join(home, 'state', 'stack.state.env'), 'OP_SETUP_COMPLETE=true\n');
+  }
+  return home;
+}
 
 beforeEach(() => {
   savedEnv = {};
@@ -24,10 +40,12 @@ afterEach(() => {
     if (value === undefined) delete process.env[key];
     else process.env[key] = value;
   }
+  for (const dir of tempDirs.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
 
 describe('GET /api/runtime-config', () => {
   test('serves a valid process-scoped empty config without caching it', async () => {
+    process.env.OP_HOME = createHome(false);
     process.env[UI_RUNTIME_CONFIG_ENV] = '{"connections":[]}';
     const response = await GET({} as never);
     expect(response.status).toBe(200);
@@ -47,8 +65,8 @@ describe('GET /api/runtime-config', () => {
     expect(response.status).toBe(404);
   });
 
-  test('derives Electron config from its existing compatibility env', async () => {
-    process.env.OP_HOME = '/tmp/openpalm-runtime-config-route';
+  test('derives Electron config from its existing compatibility env after installation', async () => {
+    process.env.OP_HOME = createHome(true);
     process.env.OP_INSIDE_ELECTRON = '1';
     process.env.OP_OPENCODE_URL = 'http://127.0.0.1:3810';
     const response = await GET({} as never);
@@ -60,7 +78,7 @@ describe('GET /api/runtime-config', () => {
   });
 
   test('never exposes URL-embedded Electron credentials', async () => {
-    process.env.OP_HOME = '/tmp/openpalm-runtime-config-route';
+    process.env.OP_HOME = createHome(true);
     process.env.OP_INSIDE_ELECTRON = '1';
     process.env.OP_OPENCODE_URL = 'http://user:password@127.0.0.1:3810';
 
@@ -70,5 +88,39 @@ describe('GET /api/runtime-config', () => {
     expect(response.status).toBe(200);
     expect(serialized).not.toContain('user');
     expect(serialized).not.toContain('password');
+  });
+
+  test('returns an empty Electron seed before a local stack is installed', async () => {
+    process.env.OP_HOME = createHome(false);
+    process.env.OP_INSIDE_ELECTRON = '1';
+    process.env.OP_OPENCODE_URL = 'http://127.0.0.1:3810';
+    const response = await GET({} as Parameters<typeof GET>[0]);
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ connections: [] });
+  });
+
+  test('materializes local config after setup completes in the same process', async () => {
+    const homeDir = createHome(false);
+    process.env.OP_HOME = homeDir;
+    process.env.OP_INSIDE_ELECTRON = '1';
+    process.env.OP_OPENCODE_URL = 'http://127.0.0.1:3810';
+    process.env[UI_RUNTIME_CONFIG_ENV] = '{"connections":[]}';
+
+    const before = await GET({} as never);
+    expect(await before.json()).toEqual({ connections: [] });
+
+    mkdirSync(join(homeDir, 'system', 'stack'), { recursive: true });
+    writeFileSync(join(homeDir, 'system', 'stack', 'core.compose.yml'), 'services: {}\n');
+    mkdirSync(join(homeDir, 'state'), { recursive: true });
+    writeFileSync(join(homeDir, 'state', 'stack.state.env'), 'OP_SETUP_COMPLETE=true\n');
+
+    const after = await GET({} as never);
+    expect(await after.json()).toEqual({
+      connections: [expect.objectContaining({
+        id: 'openpalm-assistant-opencode',
+        baseUrl: 'http://127.0.0.1:3810',
+        locked: true,
+      })],
+    });
   });
 });

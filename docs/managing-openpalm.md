@@ -516,11 +516,12 @@ this is an explicit, per-connection operator opt-in.
    Tailscale/`ts.net` hostname — not `127.0.0.1`), and mint. The page shows
    a QR code and a copyable `openpalm-pair:` code **once** — scan it with
    any external camera/QR app, or copy it; the OpenPalm UI does not embed a
-   camera scanner. On the other device's OpenPalm UI
-   `/connections` page, paste the code into "Have a pairing code?" (or open
-   the `#pair=` link, if an operator-provided HTTPS UI origin exists) and apply — it
-   prefills the add form (label, base URL, Basic auth username/password) with
-   nothing left to type by hand. The deep link carries the code in the URL
+   camera scanner. On the other device, open `/connections/new` and paste the
+   code (or open the `#pair=` link, if an operator-provided HTTPS UI origin
+   exists). The onboarding wizard verifies the address and credential before
+   saving them, makes the connection active, and continues directly to Chat.
+   A bare Guardian origin is normalized to its `/oc` path; another non-`/oc`
+   path is rejected rather than guessed. The deep link carries the code in the URL
    **fragment** (`#pair=`, not `?pair=`); browsers never send the fragment to
    the server, so the credential stays out of the UI host's access logs,
    reverse proxies, and `Referer` headers. The code is never persisted
@@ -537,11 +538,11 @@ this is an explicit, per-connection operator opt-in.
      -d '{"id":"my-phone","kind":"direct","token":"'"$(openssl rand -hex 24)"'","label":"My phone"}'
    ```
 
-   Then in the client's `/connections`, add the connection by hand: URL = the
+   Then in the client's `/connections/new`, choose manual address entry: URL = the
    guardian's direct-ingress base URL **including the `/oc` path** (e.g.
-   `https://your-host/oc`) — there is no connection "kind" selector and `/oc`
-   is not appended for you — auth **Basic** with username = the **principal
-   id** you minted (e.g. `my-phone`, not `openpalm`) and password = the
+   `https://your-host/oc`) — there is no connection "kind" selector — auth
+   **Basic** with username = the **principal id** you minted (e.g. `my-phone`,
+   not `openpalm`) and password = the
    token.
 
    Rotate/disable/delete the same principal either way (the pairing UI's

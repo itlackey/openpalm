@@ -1,4 +1,5 @@
-import { expect, test, type Page } from '@playwright/test';
+import type { Page } from '@playwright/test';
+import { expect, test } from './fixtures.js';
 
 async function login(page: Page): Promise<void> {
   const response = await page.request.post('/api/auth/login', {

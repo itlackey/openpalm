@@ -3,7 +3,7 @@
   import { SvelteURLSearchParams } from 'svelte/reactivity';
   import { resolve } from '$app/paths';
   import { page } from '$app/state';
-  import { replaceState } from '$app/navigation';
+  import { goto, replaceState } from '$app/navigation';
   import Navbar from '$lib/components/chrome/Navbar.svelte';
   import DeviceSettingsNav from '$lib/components/chrome/DeviceSettingsNav.svelte';
   import SurfaceToolbar from '$lib/components/chrome/SurfaceToolbar.svelte';
@@ -15,10 +15,10 @@
     type ConnectionView,
   } from '$lib/endpoints-state.svelte.js';
   import { mintPairingCode } from '$lib/api.js';
-  import { getConnectionStore, getSecretStore } from '$lib/connections/boot.js';
+  import { getConnectionStorageMode, getConnectionStore, getSecretStore } from '$lib/connections/boot.js';
+  import { connectionSecretsEncryptedAtRest } from '$lib/connections/secrets.js';
   import { newConnectionId } from '$lib/connections/store.js';
   import { isDiscoveryCandidateUrl, markLocalDiscoveryDismissed } from '$lib/connections/discovery.js';
-  import { parsePairingCode, type PairingPayload } from '$lib/connections/pairing.js';
   import { validateConnectionUrl } from '$lib/connections/url-policy.js';
   import { getRuntimeContext, hasCapability } from '$lib/runtime-context.svelte.js';
   import { advancedModeService } from '$lib/advanced-mode-state.svelte.js';
@@ -31,6 +31,7 @@
   } from '$lib/chat/navigation.js';
   import type { ThemePreference } from '$lib/theme-state.svelte.js';
   import { themeService } from '$lib/theme-state.svelte.js';
+  import { removeManagedConnection, updateManagedConnection } from './management.js';
 
   type SettingsTab = 'general' | 'connections';
   const runtimeContext = getRuntimeContext();
@@ -47,7 +48,7 @@
   // capability server-side; auth is enforced in hooks.server.ts.
 
   // ── Form state ─────────────────────────────────────────────────────────
-  let formMode = $state<'idle' | 'add' | 'edit'>('idle');
+  let formMode = $state<'idle' | 'edit'>('idle');
   let formId = $state<string | null>(null);
   let formLabel = $state('');
   let formUrl = $state('');
@@ -57,11 +58,7 @@
   let formSubmitting = $state(false);
   let formError = $state('');
   let formGuideUrl = $state<string | null>(null);
-  // #511 D3/D4: "Have a pairing code?" paste field, shown at the top of the
-  // add form. Applying a code prefills the same fields a manual entry uses; the
-  // secret then flows through the existing secret-store path below.
-  let pairingPasteCode = $state('');
-
+  let formDisclosurePending = $state(false);
   // ── Per-row state ───────────────────────────────────────────────────────
   let deletingId = $state<string | null>(null);
   let activeTab = $state<SettingsTab>(initialSettingsTab());
@@ -105,67 +102,30 @@
 
   onMount(() => {
     advancedModeService.init();
-    void connectionsService.load(true);
-    // The /connections/new landing aliases here with
-    // ?new=1 — open the add form so "no connections yet" starts at the form.
-    if (page.url.searchParams.get('new') === '1') openAddForm();
-    consumePairDeepLink();
-  });
-
-  /**
-   * #511 D3/D4 · PR #564 P1-7: consume a `#pair=` deep link — parse, open the
-   * add form prefilled, then strip the credential-bearing fragment from
-   * history so the code doesn't linger in the URL bar. The pairing code rides
-   * in the URL FRAGMENT, never the query string: the browser never sends the
-   * fragment to the UI's static host, so the durable credential stays out of
-   * access logs, reverse proxies, and Referer headers.
-   *
-   * Wired to BOTH mount and window `hashchange`: a fragment-only URL change
-   * on a tab already showing /connections is a same-document navigation — no
-   * remount, no load — so without the hashchange hook the code would be
-   * silently ignored AND left sitting in the URL bar/history.
-   */
-  function consumePairDeepLink(): void {
-    const pairCode = new URLSearchParams(window.location.hash.slice(1)).get('pair');
-    if (!pairCode) return;
-    activeTab = 'connections';
-    const result = parsePairingCode(pairCode);
-    if (result.ok) {
-      openAddForm();
-      applyPairingPayload(result.payload);
-    } else {
-      openAddForm();
-      formError = result.error;
-    }
-    const searchParams = new SvelteURLSearchParams(page.url.searchParams);
-    searchParams.set('tab', 'connections');
-    // eslint-disable-next-line svelte/no-navigation-without-resolve -- same-page settings state with the credential fragment removed
-    replaceState(`${page.url.pathname}?${searchParams}`, {});
-  }
-
-  /** Prefill the add form from a decoded pairing payload. The secret then flows
-   *  through the existing secret-store path on submit — the stored connection
-   *  carries only auth.secretRef, never the raw secret. */
-  function applyPairingPayload(payload: PairingPayload): void {
-    formLabel = payload.label ?? formLabel;
-    formUrl = payload.url;
-    formUsername = payload.username;
-    formPassword = payload.secret;
-    pairingPasteCode = '';
-    formError = '';
-    formGuideUrl = null;
-  }
-
-  function applyPairingPaste(): void {
-    const code = pairingPasteCode.trim();
-    if (!code) return;
-    const result = parsePairingCode(code);
-    if (!result.ok) {
-      formError = result.error;
-      formGuideUrl = null;
+    if (routePairDeepLink()) return;
+    if (page.url.searchParams.get('new') === '1') {
+      routeNewConnection(false);
       return;
     }
-    applyPairingPayload(result.payload);
+    void connectionsService.load(true);
+  });
+
+  function routeNewConnection(includeFragment: boolean): void {
+    const searchParams = new SvelteURLSearchParams(page.url.searchParams);
+    searchParams.delete('new');
+    searchParams.delete('tab');
+    const query = searchParams.toString();
+    const fragment = includeFragment ? window.location.hash : '';
+    // eslint-disable-next-line svelte/no-navigation-without-resolve -- target starts with the resolved wizard route and retains browser-only query/fragment state
+    void goto(`${resolve('/connections/new')}${query ? `?${query}` : ''}${fragment}`, {
+      replaceState: true,
+    });
+  }
+
+  function routePairDeepLink(): boolean {
+    if (!new URLSearchParams(window.location.hash.slice(1)).has('pair')) return false;
+    routeNewConnection(true);
+    return true;
   }
 
   function openPairingForm(): void {
@@ -227,19 +187,6 @@
     pairingCopied = false;
   }
 
-  function openAddForm(): void {
-    formMode = 'add';
-    formId = null;
-    formLabel = '';
-    formUrl = '';
-    formUsername = '';
-    formPassword = '';
-    formClearPassword = false;
-    pairingPasteCode = '';
-    formError = '';
-    formGuideUrl = null;
-  }
-
   function selectSettingsTab(tab: SettingsTab): void {
     activeTab = tab;
     const searchParams = new SvelteURLSearchParams(page.url.searchParams);
@@ -258,19 +205,24 @@
     formUsername = c.auth.mode === 'basic' ? c.auth.username : '';
     formPassword = '';
     formClearPassword = false;
-    pairingPasteCode = '';
     formError = '';
     formGuideUrl = null;
+    formDisclosurePending = false;
   }
 
   function cancelForm(): void {
     formMode = 'idle';
     formError = '';
     formGuideUrl = null;
+    formDisclosurePending = false;
   }
 
   async function submitForm(ev: Event): Promise<void> {
     ev.preventDefault();
+    await saveEdit(false);
+  }
+
+  async function saveEdit(storageDisclosureAccepted: boolean): Promise<void> {
     if (formSubmitting) return;
     const label = formLabel.trim();
     const url = formUrl.trim();
@@ -293,42 +245,48 @@
     try {
       const store = getConnectionStore();
       const secrets = getSecretStore();
-      if (formMode === 'add') {
-        if (formPassword) {
-          // newConnectionId, not bare crypto.randomUUID(): randomUUID is
-          // secure-context-only and would throw on the plain-http LAN tier.
-          const secretRef = newConnectionId();
-          await secrets.set(secretRef, { username, password: formPassword });
-          await store.add({ label, baseUrl: url, auth: { mode: 'basic', username, secretRef } });
-        } else {
-          await store.add({ label, baseUrl: url, auth: { mode: 'none' } });
+      if (formMode !== 'edit' || !formId) return;
+      if (formPassword && !storageDisclosureAccepted) {
+        const storageMode = await getConnectionStorageMode();
+        if (storageMode === 'persistent' && !connectionSecretsEncryptedAtRest()) {
+          formDisclosurePending = true;
+          return;
         }
-      } else if (formMode === 'edit' && formId) {
-        const existing = await store.get(formId);
-        const currentRef = existing?.auth.mode === 'basic' ? existing.auth.secretRef : null;
-        if (formClearPassword) {
-          if (currentRef) await secrets.delete(currentRef);
-          await store.update(formId, { label, baseUrl: url, auth: { mode: 'none' } });
-        } else if (formPassword) {
-          const secretRef = currentRef ?? newConnectionId();
-          await secrets.set(secretRef, { username, password: formPassword });
-          await store.update(formId, { label, baseUrl: url, auth: { mode: 'basic', username, secretRef } });
-        } else if (currentRef) {
-          // Keep the stored password; the username may still have changed.
-          await secrets.updateUsername(currentRef, username);
-          await store.update(formId, { label, baseUrl: url, auth: { mode: 'basic', username, secretRef: currentRef } });
-        } else {
-          await store.update(formId, { label, baseUrl: url, auth: { mode: 'none' } });
-        }
+      }
+      formDisclosurePending = false;
+      const result = await updateManagedConnection(
+        {
+          connectionId: formId,
+          label,
+          baseUrl: url,
+          username,
+          password: formPassword,
+          clearPassword: formClearPassword,
+        },
+        { store, secrets, createId: newConnectionId },
+      );
+      if (!result.ok) {
+        formError = result.error;
+        return;
       }
       await connectionsService.load(true);
       formMode = 'idle';
+      formDisclosurePending = false;
+      if (result.warning) connectionsService.error = result.warning;
     } catch (e) {
       const err = e as { message?: string };
       formError = err.message ?? 'Save failed.';
     } finally {
       formSubmitting = false;
     }
+  }
+
+  async function continueEditWithUnprotectedStorage(): Promise<void> {
+    await saveEdit(true);
+  }
+
+  function cancelEditDisclosure(): void {
+    formDisclosurePending = false;
   }
 
   async function activate(id: string): Promise<void> {
@@ -345,13 +303,17 @@
     deletingId = c.id;
     try {
       const store = getConnectionStore();
-      if (c.auth.mode === 'basic') await getSecretStore().delete(c.auth.secretRef);
-      await store.remove(c.id);
+      const result = await removeManagedConnection(c.id, { store, secrets: getSecretStore() });
+      if (!result.ok) {
+        connectionsService.error = result.error;
+        return;
+      }
       // Removing an auto-discovered local entry is a "stop offering this"
       // signal — record it so discovery doesn't resurrect the card on the
       // next load.
       if (isDiscoveryCandidateUrl(c.url)) markLocalDiscoveryDismissed();
       await connectionsService.load(true);
+      if (result.warning) connectionsService.error = result.warning;
     } catch (err) {
       const e2 = err as { message?: string };
       connectionsService.error = e2.message ?? 'Delete failed.';
@@ -369,10 +331,8 @@
   <title>Settings — OpenPalm</title>
 </svelte:head>
 
-<!-- Fragment-only navigation to an already-open /connections tab never
-     remounts the page; the hashchange hook keeps #pair= deep links working
-     (and stripped) there too. -->
-<svelte:window onhashchange={consumePairDeepLink} />
+<!-- A fragment-only pairing link can target an already-open Settings tab. -->
+<svelte:window onhashchange={routePairDeepLink} />
 
 <Navbar brandHref={chatReturnHref} showUtilities={false}>
   <SurfaceToolbar
@@ -452,9 +412,9 @@
 
     {#if formMode === 'idle' && pairingMode === 'idle'}
       <div class="toolbar-row">
-        <button type="button" class="btn btn-primary" onclick={openAddForm}>
+        <a class="btn btn-primary" href={resolve('/connections/new')}>
           + Add connection
-        </button>
+        </a>
         {#if hasCapability(runtimeContext, 'host:stack:write')}
           <button type="button" class="btn btn-secondary" onclick={openPairingForm}>
             Pair a device
@@ -463,25 +423,7 @@
       </div>
     {:else if formMode !== 'idle'}
       <form class="connection-form" novalidate onsubmit={submitForm}>
-        <h2>{formMode === 'add' ? 'Add connection' : 'Edit connection'}</h2>
-
-        {#if formMode === 'add'}
-          <label class="field">
-            <span>Have a pairing code?</span>
-            <div class="paste-row">
-              <input
-                type="text"
-                bind:value={pairingPasteCode}
-                placeholder="openpalm-pair:…"
-                autocomplete="off"
-              />
-              <button type="button" class="btn btn-secondary btn-sm" onclick={applyPairingPaste}>
-                Apply
-              </button>
-            </div>
-            <small>Paste a code from another stack's “Pair a device” panel to prefill this form.</small>
-          </label>
-        {/if}
+        <h2>Edit connection</h2>
 
         <label class="field">
           <span>Label</span>
@@ -526,14 +468,13 @@
           <input
             type="password"
             bind:value={formPassword}
-            placeholder={formMode === 'edit' ? 'Leave blank to keep current' : ''}
+            placeholder="Leave blank to keep current"
             autocomplete="new-password"
           />
           <small>
             Forwarded as HTTP Basic auth. Only required for a remote assistant running the
             <strong>Home network, with password</strong> network access preset (<code>OPENCODE_AUTH=true</code>).
           </small>
-          {#if formMode === 'edit'}
             <small class="rotate-hint">
               <strong>Rotating this password?</strong>
               The password lives as the file secret <code>knowledge/secrets/op_opencode_password</code> on the
@@ -548,14 +489,21 @@
                 <li>Paste the new value here and save.</li>
               </ol>
             </small>
-          {/if}
         </label>
 
-        {#if formMode === 'edit'}
           <label class="field-inline">
             <input type="checkbox" bind:checked={formClearPassword} />
             <span>Clear stored password</span>
           </label>
+
+        {#if formDisclosurePending}
+          <div class="alert warn" role="alert" aria-labelledby="edit-storage-warning-title">
+            <strong id="edit-storage-warning-title">This browser cannot protect saved passwords</strong>
+            <p>
+              If you continue, this connection password will be saved on this device without encryption.
+              Continue only on a device you trust.
+            </p>
+          </div>
         {/if}
 
         {#if formError}
@@ -568,6 +516,26 @@
           </div>
         {/if}
 
+        {#if formDisclosurePending}
+          <div class="form-actions">
+            <button
+              type="button"
+              class="btn btn-primary"
+              onclick={continueEditWithUnprotectedStorage}
+              disabled={formSubmitting}
+            >
+              {formSubmitting ? 'Saving…' : 'Save anyway'}
+            </button>
+            <button
+              type="button"
+              class="btn btn-secondary"
+              onclick={cancelEditDisclosure}
+              disabled={formSubmitting}
+            >
+              Back
+            </button>
+          </div>
+        {:else}
         <div class="form-actions">
           <button type="submit" class="btn btn-primary" disabled={formSubmitting}>
             {formSubmitting ? 'Saving…' : 'Save'}
@@ -576,6 +544,7 @@
             Cancel
           </button>
         </div>
+        {/if}
       </form>
     {:else if pairingMode === 'form'}
       <form class="connection-form" onsubmit={submitPairing}>
@@ -675,7 +644,7 @@
         {/if}
 
         <p class="lede">
-          On the other device, open the connections page and paste this code (or scan the QR with
+          On the other device, open Connect to OpenPalm and paste this code (or scan the QR with
           any camera/QR app), or use it as the <code>#pair=</code> URL-fragment link if this stack
           has a hosted client origin — the fragment keeps the credential out of server logs.
           Non-local client origins also need
@@ -1002,19 +971,6 @@
     display: flex;
     align-items: center;
     gap: var(--s-sp-2);
-  }
-
-  .paste-row {
-    display: flex;
-    gap: var(--s-sp-2);
-  }
-  .paste-row input {
-    flex: 1;
-    min-width: 0;
-    padding: var(--s-sp-2) var(--s-sp-3);
-    border: var(--s-hair) solid var(--s-line);
-    border-radius: 2px;
-    font: inherit;
   }
 
   .form-actions {

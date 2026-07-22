@@ -24,7 +24,7 @@
  *    decision for the implementation — deliberately not asserted here.)
  *
  * RED until Phase 4 lands. Deterministic like hooks.server.landing.vitest.ts:
- * the host probes (composePs, detectRuntime, listRemoteStatuses) are stubbed.
+ * the Compose health probe is stubbed.
  */
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -36,10 +36,6 @@ import { resetState } from '$lib/server/test-helpers.js';
 import { HOST_ADMIN_LANDING } from '$lib/resolve-landing.js';
 import { computeServerRuntimeContext } from '$lib/server/features.js';
 
-vi.mock('$lib/server/opencode-target.js', async (orig) => ({
-  ...(await orig<typeof import('$lib/server/opencode-target.js')>()),
-  listRemoteStatuses: vi.fn(async () => []),
-}));
 vi.mock('@openpalm/lib', async (orig) => ({
   ...(await orig<typeof import('@openpalm/lib')>()),
   composePs: vi.fn(async () => ({ ok: false, stdout: '', stderr: '', code: 1 })),

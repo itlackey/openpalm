@@ -21,6 +21,7 @@ import {
   UiSupervisor,
   resolveAssistantEndpoint,
   seedLegacyServedUiRuntimeConfig,
+  hasMaterializedLocalInstall,
 } from '@openpalm/lib';
 import { HARNESS_CONTRACT_VERSION } from './harness-contract.js';
 import { checkForElectronUpdate, getCachedUpdateInfo, type UpdateInfo } from './update-check.js';
@@ -28,7 +29,6 @@ import { loadSettings, saveSettings } from './settings.js';
 import { startLocalOpenCode, killProcessTree, type LocalOpencodeHandle } from './local-opencode.js';
 import { resolveAssetPath } from './assets.js';
 import { SplashWindow } from './splash.js';
-import { DockerPreflight } from './docker-preflight.js';
 import { TrayController } from './tray.js';
 import { configureMediaPermissions, requestMicrophoneAccess } from './permissions.js';
 import {
@@ -149,11 +149,8 @@ let checkPrereleaseUpdates = false;
 // state — replacing the prior `(app as any).isQuitting` cast that stuffed this
 // onto the shared Electron app object.
 let isQuitting = false;
-// Owned handles for the extracted UI concerns. The splash window is shared with
-// the Docker preflight screen (which reuses it); the tray owns its own icon +
-// animation state.
+// Owned handles for the extracted UI concerns.
 const splash = new SplashWindow();
-const dockerPreflight = new DockerPreflight(splash);
 const trayController = new TrayController();
 
 // ── Stderr ring buffer (200 lines) ────────────────────────────────────────────
@@ -291,6 +288,7 @@ export function waitForReady(port: number, timeoutMs = READY_TIMEOUT_MS): Promis
 async function startUIServer(): Promise<void> {
   const homeDir = resolveOpenPalmHome();
   const dataDir = resolveDataDir();
+  const localInstallWasMaterialized = hasMaterializedLocalInstall(homeDir);
 
   // Ensure the runtime dir tree exists so the harness can write its pid file and
   // the UI child can boot. The harness does NOT seed or apply OP_HOME — that is
@@ -324,14 +322,15 @@ async function startUIServer(): Promise<void> {
     console.log(`App update check skipped: ${appUpdate.error}`);
   }
 
-  // Hot-swap the skeleton (managed system/ tree) from npm before starting.
-  // Non-fatal: any network/registry error leaves the existing skeleton in place.
-  const homeDir0 = resolveOpenPalmHome();
-  const skeletonResult = await checkAndUpdateSkeleton(platformVersion, homeDir0, dataDir);
-  if (skeletonResult.updated) {
-    console.log(`Skeleton updated to v${skeletonResult.latestVersion}`);
-  } else if (skeletonResult.error) {
-    console.log(`Skeleton update check skipped: ${skeletonResult.error}`);
+  // A release refresh must not materialize core.compose.yml into an empty home:
+  // that file means setup was user-started. Existing installs still refresh.
+  if (localInstallWasMaterialized) {
+    const skeletonResult = await checkAndUpdateSkeleton(platformVersion, homeDir, dataDir);
+    if (skeletonResult.updated) {
+      console.log(`Skeleton updated to v${skeletonResult.latestVersion}`);
+    } else if (skeletonResult.error) {
+      console.log(`Skeleton update check skipped: ${skeletonResult.error}`);
+    }
   }
 
   // Check for a newer UI build on npm before starting. Non-fatal: if the check
@@ -747,13 +746,6 @@ export async function openLocalApp(): Promise<void> {
   void shell.openExternal(`http://127.0.0.1:${UI_PORT}/chat`);
 }
 
-// ── Docker preflight (deployment-review P0 #493) ──────────────────────────────
-// Thin wrapper around the extracted DockerPreflight so existing importers/tests
-// keep calling `ensureDockerReady()` from main.ts.
-export function ensureDockerReady(): Promise<void> {
-  return dockerPreflight.ensureReady();
-}
-
 // ── Global mic shortcut ───────────────────────────────────────────────────────
 
 function triggerGlobalMicToggle(): void {
@@ -858,10 +850,6 @@ app.whenReady().then(async () => {
   app.setAppUserModelId?.(APP_USER_MODEL_ID);
   console.log(`OpenPalm starting (v${app.getVersion?.() ?? '?'}); logs at ${logFilePath()}`);
   splash.showStartup();
-  // Fail early and legibly if Docker isn't running (deployment-review P0 #493).
-  // Blocks (showing a friendly install/retry screen) until Docker + Compose v2
-  // are available, so the user never hits the opaque 60s `503 docker_unavailable`.
-  await ensureDockerReady();
   try {
     await startUIServer();
   } catch (err) {
@@ -922,17 +910,6 @@ ipcMain.handle('open-local-app', async (): Promise<void> => {
 // after seeding a newer data/ui. Same effect as the IPC path: respawn the UI
 // server child so the new lib loads (design §6.2).
 process.on('SIGUSR2', () => { void restartUIServer(); });
-
-// Open the official Docker install page (Docker-missing preflight screen).
-ipcMain.on('open-docker-install', () => {
-  dockerPreflight.openInstallPage();
-});
-
-// The Docker-missing screen's "retry" button resolves the pending preflight
-// promise so ensureDockerReady() re-runs checkDocker/checkDockerCompose.
-ipcMain.on('retry-docker-preflight', () => {
-  dockerPreflight.retry();
-});
 
 ipcMain.handle('launch-on-login-status', (): LaunchOnLoginStatus => {
   return getLaunchOnLoginStatus();

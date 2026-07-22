@@ -61,6 +61,20 @@ describe('discoverLocalAssistant', () => {
     expect(await store.list()).toHaveLength(1);
   });
 
+	test('concurrent discovery attempts converge on one deterministic connection record', async () => {
+		const store = freshStore();
+		const fetch = fetchRespondingTo({ 'http://127.0.0.1:3810': 200 });
+
+		await Promise.all([
+			discoverLocalAssistant(store, fetch),
+			discoverLocalAssistant(store, fetch),
+		]);
+
+		const connections = await store.list();
+		expect(connections).toHaveLength(1);
+		expect(connections[0].id).toBe('discovered-local-assistant');
+	});
+
   test('falls back to the guardian front door and treats 401 as present', async () => {
     const store = freshStore();
     const added = await discoverLocalAssistant(

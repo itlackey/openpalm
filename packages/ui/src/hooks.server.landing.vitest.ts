@@ -19,9 +19,8 @@
  * CHARACTERIZATION (healthy stack → /chat), which passes today and must
  * keep passing.
  *
- * Deterministic like hooks.server.vitest.ts: the host probes (composePs,
- * detectRuntime, listRemoteStatuses) are stubbed so results don't depend on
- * what happens to be running on the dev machine.
+ * Deterministic like hooks.server.vitest.ts: the Compose health probe is
+ * stubbed so results don't depend on what happens to be running locally.
  */
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
@@ -31,10 +30,6 @@ import { fileURLToPath } from 'node:url';
 import type { RequestEvent } from '@sveltejs/kit';
 import { resetState } from '$lib/server/test-helpers.js';
 
-vi.mock('$lib/server/opencode-target.js', async (orig) => ({
-  ...(await orig<typeof import('$lib/server/opencode-target.js')>()),
-  listRemoteStatuses: vi.fn(async () => []),
-}));
 vi.mock('@openpalm/lib', async (orig) => ({
   ...(await orig<typeof import('@openpalm/lib')>()),
   composePs: vi.fn(async () => ({ ok: false, stdout: '', stderr: '', code: 1 })),
@@ -129,12 +124,12 @@ describe('hooks.server — landing routing through resolveLanding', () => {
     });
   });
 
-  test('/ with nothing installed redirects to /setup (was /splash)', async () => {
+  test('/ with nothing installed redirects to /start', async () => {
     const state = resetState('test-admin-pw');
     seedStackEnv(state.stackDir, false); // no core.compose.yml → not_installed
 
     await expect(handle({ event: makeEvent('/'), resolve })).rejects.toMatchObject({
-      location: '/setup',
+      location: '/start',
     });
   });
 
@@ -168,12 +163,12 @@ describe('hooks.server — landing routing through resolveLanding', () => {
     });
   });
 
-  test('/splash with nothing installed redirects to /setup', async () => {
+  test('/splash with nothing installed redirects to /start', async () => {
     const state = resetState('test-admin-pw');
     seedStackEnv(state.stackDir, false);
 
     await expect(handle({ event: makeEvent('/splash'), resolve })).rejects.toMatchObject({
-      location: '/setup',
+      location: '/start',
     });
   });
 

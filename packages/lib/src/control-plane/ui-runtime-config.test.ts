@@ -47,11 +47,31 @@ describe('ui runtime config', () => {
     expect(buildEmptyUiRuntimeConfig()).toEqual({ connections: [] });
   });
 
-  test('builds the served config from shared assistant endpoint resolution', () => {
-    expect(buildServedUiRuntimeConfig('/missing', {
-      OP_UI_DEFAULT_ASSISTANT_URL: 'https://assistant.example',
-      OP_PROJECT_NAME: 'splinter',
-    })).toEqual(buildLockedAssistantRuntimeConfig('https://assistant.example', 'splinter'));
+  test('builds the served config from shared assistant endpoint resolution for an installed home', () => {
+    const home = mkdtempSync(join(tmpdir(), 'ui-runtime-config-installed-'));
+    try {
+      mkdirSync(join(home, 'system', 'stack'), { recursive: true });
+      writeFileSync(join(home, 'system', 'stack', 'core.compose.yml'), 'services: {}\n');
+      mkdirSync(join(home, 'state'), { recursive: true });
+      writeFileSync(join(home, 'state', 'stack.state.env'), 'OP_SETUP_COMPLETE=true\n');
+      expect(buildServedUiRuntimeConfig(home, {
+        OP_UI_DEFAULT_ASSISTANT_URL: 'https://assistant.example',
+        OP_PROJECT_NAME: 'splinter',
+      })).toEqual(buildLockedAssistantRuntimeConfig('https://assistant.example', 'splinter'));
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  test('does not seed a fake locked local connection for an uninstalled home', () => {
+    const home = mkdtempSync(join(tmpdir(), 'ui-runtime-config-uninstalled-'));
+    try {
+      expect(buildServedUiRuntimeConfig(home, {
+        OP_UI_DEFAULT_ASSISTANT_URL: 'http://127.0.0.1:3810',
+      })).toEqual({ connections: [] });
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
   });
 
   test('degrades an invalid assistant URL to no default connection', () => {
@@ -106,6 +126,10 @@ describe('ui runtime config', () => {
   test('writes static config only for legacy UI artifacts without the endpoint marker', () => {
     const dir = mkdtempSync(join(tmpdir(), 'ui-runtime-config-capability-'));
     try {
+      mkdirSync(join(dir, 'system', 'stack'), { recursive: true });
+      writeFileSync(join(dir, 'system', 'stack', 'core.compose.yml'), 'services: {}\n');
+      mkdirSync(join(dir, 'state'), { recursive: true });
+      writeFileSync(join(dir, 'state', 'stack.state.env'), 'OP_SETUP_COMPLETE=true\n');
       expect(uiBuildSupportsProcessRuntimeConfig(dir)).toBe(false);
       seedLegacyServedUiRuntimeConfig(dir, dir, {
         OP_UI_DEFAULT_ASSISTANT_URL: 'https://assistant.example',
@@ -124,6 +148,22 @@ describe('ui runtime config', () => {
       expect(JSON.parse(readFileSync(join(dir, 'client', 'runtime-config.json'), 'utf8'))).toEqual({ sentinel: true });
     } finally {
       rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('legacy compatibility seeding stays empty before local installation', () => {
+    const home = mkdtempSync(join(tmpdir(), 'ui-runtime-config-legacy-uninstalled-'));
+    const uiDir = mkdtempSync(join(tmpdir(), 'ui-runtime-config-legacy-build-'));
+    try {
+      seedLegacyServedUiRuntimeConfig(uiDir, home, {
+        OP_UI_DEFAULT_ASSISTANT_URL: 'http://127.0.0.1:3810',
+      });
+      expect(JSON.parse(readFileSync(join(uiDir, 'client', 'runtime-config.json'), 'utf8'))).toEqual({
+        connections: [],
+      });
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+      rmSync(uiDir, { recursive: true, force: true });
     }
   });
 

@@ -11,15 +11,13 @@
  * Landing matrix:
  *   host:setup capability present:
  *     migration pending          → /attention (precedence over local state)
- *     local not_installed        → /setup — unless an accessible connection
- *                                  exists, then /chat (the authoritative #440
- *                                  remote-only rule: nothing local to set up
- *                                  is no reason to block a working remote)
+ *     local not_installed        → /start
  *     local setup_incomplete     → /setup
  *     local installed_offline    → HOST_ADMIN_LANDING
  *     local installed_broken     → HOST_ADMIN_LANDING?tab=diagnostics
  *     otherwise (running)        → /chat
  *   no host:setup capability (non-admin process):
+ *     local not_installed        → /start
  *     0 connections              → /connections/new
  *     ≥1 connection              → /chat
  *     anything else              → /chat
@@ -79,14 +77,13 @@ export type LaunchState = {
 export function resolveLanding(ctx: RuntimeContext, state: LaunchState): string {
   if (ctx.effectiveCapabilities.includes('host:setup')) {
     if (state.migration.status === 'pending') return HOST_ATTENTION_LANDING;
-    if (state.local.state === 'not_installed') {
-      return state.connections.length === 0 ? '/setup' : '/chat';
-    }
+    if (state.local.state === 'not_installed') return '/start';
     if (state.local.state === 'setup_incomplete') return '/setup';
     if (state.local.state === 'installed_offline') return HOST_ADMIN_LANDING;
     if (state.local.state === 'installed_broken') return `${HOST_ADMIN_LANDING}?tab=diagnostics`;
     return '/chat';
   }
+  if (state.local.state === 'not_installed') return '/start';
   // Non-admin process (no host:setup): the browser owns connections — land on
   // the add-connection surface when there is nowhere to chat yet, else /chat.
   return state.connections.length === 0 ? '/connections/new' : '/chat';

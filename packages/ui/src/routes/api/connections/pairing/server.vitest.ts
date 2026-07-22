@@ -168,6 +168,30 @@ describe('POST /api/connections/pairing — mint (#511 D3/D4)', () => {
     expect(sentBody.kind).toBe('direct');
   });
 
+  test('normalizes a guardian root to /oc in the minted pairing code', async () => {
+    writeSecret(getState().homeDir, 'op_guardian_admin_token', 'f'.repeat(48));
+    stubGuardianAdmin(200);
+
+    const { POST } = await loadRoute();
+    const res = await POST(makePairingPostEvent({ label: 'My Phone', url: 'https://gw.example.ts.net' }));
+    expect(res.status).toBe(201);
+    const body = (await res.json()) as { code: string };
+    const decoded = decodePairingCode(body.code);
+    expect(decoded.ok).toBe(true);
+    if (!decoded.ok) throw new Error('expected decodable code');
+    expect(decoded.payload.url).toBe('https://gw.example.ts.net/oc');
+  });
+
+  test('rejects an arbitrary guardian path before minting a principal', async () => {
+    writeSecret(getState().homeDir, 'op_guardian_admin_token', 'f'.repeat(48));
+    const fetchStub = stubGuardianAdmin(200);
+
+    const { POST } = await loadRoute();
+    const res = await POST(makePairingPostEvent({ label: 'My Phone', url: 'https://gw.example.ts.net/api' }));
+    expect(res.status).toBe(400);
+    expect(fetchStub).not.toHaveBeenCalled();
+  });
+
   test('403 in a non-admin process without host:stack:write', async () => {
     delete process.env.OP_ENABLE_ADMIN;
     writeSecret(getState().homeDir, 'op_guardian_admin_token', 'f'.repeat(48));

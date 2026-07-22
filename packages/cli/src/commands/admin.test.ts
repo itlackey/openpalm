@@ -396,14 +396,14 @@ describe('openpalm admin serve mode (#556)', () => {
   );
 
   it(
-    'serves without an install — the UI setup guard lands on /setup, no wizard logic in the CLI',
+    'serves without an install through root/bootstrap with no fake local connection',
     async () => {
       // Empty OP_HOME: classifyLocalInstall() → not_installed. The command must
       // still bring the UI up (admin-enabled, loopback) instead of demanding
       // `openpalm install` — the UI's existing guard redirects to /setup.
       seedServeHome({ installed: false });
       const calls = captureSpawns();
-      captureLogs();
+      const logs = captureLogs();
 
       const run = await runAdmin(['--port', '4613', '--no-open']);
 
@@ -419,9 +419,14 @@ describe('openpalm admin serve mode (#556)', () => {
         child.env?.[realLib.UI_RUNTIME_CONFIG_ENV],
       );
       expect(runtimeConfig.status).toBe('valid');
-      expect(runtimeConfig.status === 'valid' ? runtimeConfig.config.connections : []).toEqual([
-        expect.objectContaining({ id: realLib.ASSISTANT_LOCKED_CONNECTION_ID, locked: true }),
-      ]);
+      expect(runtimeConfig.status === 'valid' ? runtimeConfig.config.connections : []).toEqual([]);
+      expect(logs.some((line) => line === 'Checking for skeleton update...')).toBe(false);
+
+      await waitFor(
+        () => (logs.some((l) => /UI server running at http:\/\/127\.0\.0\.1:4613\/?$/.test(l)) ? true : undefined),
+        'fresh admin root URL printed',
+        () => run.error,
+      );
     },
     15000
   );

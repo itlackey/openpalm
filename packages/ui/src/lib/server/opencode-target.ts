@@ -15,8 +15,8 @@
  */
 import { existsSync, readFileSync } from 'node:fs';
 import { getState } from './state.js';
-import { readSecret, readStackEnv, type RemoteStatus } from '@openpalm/lib';
-import { basicAuthHeader, DEFAULT_OPENCODE_USERNAME, stripTrailingNewlines } from './basic-auth.js';
+import { readSecret, readStackEnv } from '@openpalm/lib';
+import { DEFAULT_OPENCODE_USERNAME, stripTrailingNewlines } from './basic-auth.js';
 
 export type HostOpencodeTarget = {
   id: string;
@@ -167,56 +167,4 @@ export function validateConnectionUrl(input: string): ConnectionUrlValidation {
     return { ok: false, reason: 'unexpected_query_or_fragment' };
   }
   return { ok: true, url: u.toString().replace(/\/$/, '') };
-}
-
-// ── Reachability probe (host-admin landing) ──────────────────────────────────
-
-let remoteStatusCache: { expiresAt: number; value: RemoteStatus[] } | null = null;
-
-async function probeTarget(target: HostOpencodeTarget): Promise<RemoteStatus> {
-  const headers = new Headers();
-  if (target.password) {
-    headers.set('authorization', basicAuthHeader(target.username ?? DEFAULT_OPENCODE_USERNAME, target.password));
-  }
-  // The guardian is a transparent 1:1 OpenCode proxy, so `${url}/session` is a
-  // valid liveness check for a raw OpenCode server and a guardian `/oc` base
-  // alike (a guardian's bare root `GET /oc/` is not an allowlisted route).
-  const probeUrl = `${target.url}/session`;
-  try {
-    const response = await fetch(probeUrl, {
-      method: 'GET',
-      headers,
-      redirect: 'manual',
-      signal: AbortSignal.timeout(2_000),
-    });
-    if (response.status === 401 || response.status === 403) {
-      return { id: target.id, name: target.label, url: target.url, state: 'unauthorized', detail: `HTTP ${response.status}` };
-    }
-    if (response.ok || (response.status >= 300 && response.status < 400)) {
-      return { id: target.id, name: target.label, url: target.url, state: 'accessible' };
-    }
-    return { id: target.id, name: target.label, url: target.url, state: 'unreachable', detail: `HTTP ${response.status}` };
-  } catch (error) {
-    return {
-      id: target.id,
-      name: target.label,
-      url: target.url,
-      state: 'unreachable',
-      detail: error instanceof Error ? error.message : String(error),
-    };
-  }
-}
-
-/**
- * Probe the host's own OpenCode target, cached in-memory for 5s. Feeds the
- * host-admin landing's reachability signal (`deriveLaunchStatus`). Never
- * written to disk.
- */
-export async function listRemoteStatuses(): Promise<RemoteStatus[]> {
-  if (remoteStatusCache && remoteStatusCache.expiresAt > Date.now()) {
-    return remoteStatusCache.value.map((status) => ({ ...status }));
-  }
-  const statuses = [await probeTarget(getHostOpencodeTarget())];
-  remoteStatusCache = { value: statuses, expiresAt: Date.now() + 5_000 };
-  return statuses.map((status) => ({ ...status }));
 }

@@ -15,9 +15,13 @@
  * The minted secret is returned exactly once, inside `code`; it is never
  * logged and never written to disk by this route.
  */
-import type { RequestHandler } from './$types';
+import {
+  isLoopback,
+  mintDirectPrincipalPairingCode,
+  readStackRuntimeEnv,
+} from '@openpalm/lib';
+import { normalizeGuardianPairingUrl } from '@openpalm/lib/pairing.js';
 import { renderSVG } from 'uqr';
-import { mintDirectPrincipalPairingCode, readStackRuntimeEnv, isLoopback } from '@openpalm/lib';
 import {
   errorResponse,
   getRequestId,
@@ -27,6 +31,7 @@ import {
 } from '$lib/server/helpers.js';
 import { validateConnectionUrl } from '$lib/server/opencode-target.js';
 import { getState } from '$lib/server/state.js';
+import type { RequestHandler } from './$types';
 
 /** Max device-label length (PR #564 r3566891768). Keeps the pairing code well
  *  under a QR code's byte capacity so renderSVG cannot throw after minting. */
@@ -85,6 +90,10 @@ export const POST: RequestHandler = async (event) => {
     if (!urlCheck.ok) {
       return errorResponse(400, 'invalid_connection', 'URL must be a valid http(s) URL', {}, requestId);
     }
+    const guardianUrl = normalizeGuardianPairingUrl(urlCheck.url);
+    if (!guardianUrl.ok) {
+      return errorResponse(400, 'invalid_connection', guardianUrl.error, {}, requestId);
+    }
 
     const homeDir = getState().homeDir;
     // process.env cast follows the established pattern (hooks.server.ts:60) —
@@ -95,7 +104,7 @@ export const POST: RequestHandler = async (event) => {
     const result = await mintDirectPrincipalPairingCode({
       homeDir,
       label,
-      url: urlCheck.url,
+      url: guardianUrl.url,
       guardianAdminUrl,
     });
 
@@ -106,7 +115,7 @@ export const POST: RequestHandler = async (event) => {
       return errorResponse(502, 'pairing_mint_failed', result.error, {}, requestId);
     }
 
-    const warnings = computeWarnings(mergedEnv, urlCheck.url);
+    const warnings = computeWarnings(mergedEnv, guardianUrl.url);
     // Defensive: the label cap above keeps the code well under the QR byte
     // limit, but never let a renderSVG failure escape as an uncaught 500 after
     // the principal is already minted — return the pairing code without a QR
