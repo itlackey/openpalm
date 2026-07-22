@@ -592,13 +592,23 @@ jobs:
   # which the entrypoint uses for `npm install @openpalm/skeleton@$PLATFORM_VERSION`
   # at every container boot — a 404 there bricks the stack silently (I1, review
   # 2026-07-10). npm-skeleton ordering + the preflight below close that gap.
+  #
+  # The image also bakes @openpalm/ui@$PLATFORM_VERSION (the offline UI floor,
+  # Dockerfile ~L191). So this job MUST also wait for npm-ui: on a platform/all
+  # cut, @openpalm/ui@$PLATFORM_VERSION is published by npm-ui *within this same
+  # run*, and the assistant smoke/build's `npm install @openpalm/ui@$PLATFORM_VERSION`
+  # 404s (ETARGET) if it races ahead of that publish (C, run 29955888007:
+  # docker-assistant depended only on npm-skeleton and started while npm-ui was
+  # still queued). npm-ui is `skipped` for unit=assistant/images (not published
+  # in-run), so gate on `!= 'failure'` — the preflight below covers those units.
   docker-assistant:
     name: Docker openpalm/assistant
-    needs: [compute-version, bump, npm-skeleton]
+    needs: [compute-version, bump, npm-skeleton, npm-ui]
     if: |
       always() &&
       needs.bump.result == 'success' &&
       needs.npm-skeleton.result != 'failure' &&
+      needs.npm-ui.result != 'failure' &&
       (inputs.unit == 'assistant' || inputs.unit == 'images' || inputs.unit == 'all' || (inputs.unit == 'platform' && inputs.include_images))
     runs-on: ubuntu-latest
     timeout-minutes: 60
@@ -646,16 +656,20 @@ jobs:
             V="${ANCHOR_VERSION}"
           fi
           echo "platform_version=${V}" >> "$GITHUB_OUTPUT"
-      - name: Preflight — baked skeleton must exist on npm (I1)
+      - name: Preflight — baked skeleton + ui must exist on npm (I1)
         if: ${{ !inputs.dry_run }}
         run: |
           V="${{ steps.platform_version.outputs.platform_version }}"
           fail=0
-          for PKG in @openpalm/skeleton; do
+          # The assistant image bakes BOTH packages at PLATFORM_VERSION: skeleton
+          # (installed at every container boot) and ui (the offline UI floor,
+          # Dockerfile ~L191). Both must be published or the smoke/build's
+          # `npm install @openpalm/<pkg>@$PLATFORM_VERSION` 404s (ETARGET).
+          for PKG in @openpalm/skeleton @openpalm/ui; do
             if npm view "${PKG}@${V}" version >/dev/null 2>&1; then
               echo "OK: ${PKG}@${V} is published"
             else
-              echo "::error::${PKG}@${V} is not published on npm — building this image would bake a PLATFORM_VERSION with no installable skeleton on boot (I1). Publish it first (unit=platform/all) or pass an explicit --version matching a published release." >&2
+              echo "::error::${PKG}@${V} is not published on npm — building this image would bake a PLATFORM_VERSION with no installable ${PKG} (I1). Publish it first (unit=platform/all) or pass an explicit --version matching a published release." >&2
               fail=1
             fi
           done
