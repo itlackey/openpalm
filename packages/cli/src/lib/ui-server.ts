@@ -12,7 +12,7 @@ import {
   resolveOpenPalmHome, resolveUiBuildDir, createLogger, readSecret, readStackEnv,
   checkAndUpdateUiBuild, checkAndUpdateSkeleton, PLATFORM_VERSION,
   consumePendingUiBackup, isRemoteSetupAllowed, restoreUiBackup, UiSupervisor, waitForReady,
-  buildEmptyUiRuntimeConfig, buildServedUiRuntimeConfig, classifyLocalInstall,
+  buildEmptyUiRuntimeConfig, buildServedUiRuntimeConfig, classifyLocalInstall, stackDirFor,
   serializeUiRuntimeConfig, uiBuildSupportsProcessRuntimeConfig,
   writeLegacyServedUiRuntimeConfig, UI_RUNTIME_CONFIG_ENV,
   type ControlPlaneState, type UiRuntimeConfig,
@@ -327,7 +327,7 @@ export async function runUiBuild(opts: { port?: number } = {}): Promise<void> {
   const port = opts.port
     ?? (process.env.PORT ? Number(process.env.PORT) : resolveUiServePort(undefined, resolveOpenPalmHome()));
   const homeDir = resolveOpenPalmHome();
-  const installState = classifyLocalInstall(join(homeDir, 'system', 'stack'), homeDir);
+  const installState = classifyLocalInstall(stackDirFor(homeDir), homeDir);
   const networkEnv = resolveUiNetworkEnv(port, resolveExpectedAdmin(false), process.env, installState);
   for (const [key, value] of Object.entries(networkEnv)) {
     if (value === undefined) delete process.env[key];
