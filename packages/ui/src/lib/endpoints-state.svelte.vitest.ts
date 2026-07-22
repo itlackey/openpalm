@@ -365,6 +365,53 @@ describe('overlapping activation', () => {
 		expect(setActiveConnection).toHaveBeenLastCalledWith(records[1]);
 	});
 
+	test('a same-id reload during an in-flight activation refreshes the connection record', async () => {
+		storedActiveId = 'alpha';
+		const service = await freshService();
+		await service.load(true);
+
+		// Put an activation in flight and hold it on its handoff so activeId and
+		// storedActiveId are already 'beta' while it awaits — the window in which
+		// the user can edit the connection being activated.
+		let releaseHandoff: (() => void) | undefined;
+		emitConnectionActivated.mockImplementationOnce(
+			() =>
+				new Promise<void>((resolve) => {
+					releaseHandoff = resolve;
+				})
+		);
+		const activation = service.activate('beta');
+		while (!releaseHandoff) await Promise.resolve();
+		expect(service.activeId).toBe('beta');
+		expect(storedActiveId).toBe('beta');
+		setActiveConnection.mockClear();
+
+		// The active connection (beta) is edited; the settings save path reloads.
+		const editedBeta: Connection = {
+			...connection('beta'),
+			baseUrl: 'https://beta-edited.example'
+		};
+		fakeStore.list.mockResolvedValueOnce([records[0], editedBeta, records[2]]);
+		await service.load(true);
+
+		// Capture before releasing so a regression fails on a clean assertion
+		// rather than hanging on the still-parked activation.
+		const transportAfterReload = setActiveConnection.mock.calls.at(-1)?.[0];
+		const activeIdAfterReload = service.activeId;
+		const betaUrlAfterReload = service.endpoints.find((endpoint) => endpoint.id === 'beta')?.url;
+
+		releaseHandoff();
+		await activation;
+
+		// A same-id reload must not change the selection, but MUST refresh the
+		// transport snapshot so direct requests pick up the edited record.
+		expect(activeIdAfterReload).toBe('beta');
+		expect(transportAfterReload).toEqual(editedBeta);
+		expect(betaUrlAfterReload).toBe('https://beta-edited.example');
+		expect(service.activeId).toBe('beta');
+		expect(storedActiveId).toBe('beta');
+	});
+
 	test('a failing superseding activation rolls back to the last published connection', async () => {
 		storedActiveId = 'alpha';
 		const service = await freshService();

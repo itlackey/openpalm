@@ -84,13 +84,23 @@ class ConnectionsService {
 		promise: Promise<void>;
 	} | null = null;
 
+  /**
+   * The active id a load should resolve to: the stored one when it still names
+   * a listed connection, otherwise the first connection (or null when the list
+   * is empty). Pure — no persistence — so a caller can decide whether a
+   * concurrent activation would be disturbed BEFORE any self-heal write runs.
+   */
+  private intendedActiveId(connections: Connection[], storedActiveId: string | null): string | null {
+    const activeExists = connections.some((connection) => connection.id === storedActiveId);
+    return activeExists ? storedActiveId : (connections[0]?.id ?? null);
+  }
+
   private async restoreActiveId(
     store: ConnectionStore,
     connections: Connection[],
     storedActiveId: string | null
   ): Promise<string | null> {
-    const activeExists = connections.some((connection) => connection.id === storedActiveId);
-    const restoredActiveId = activeExists ? storedActiveId : (connections[0]?.id ?? null);
+    const restoredActiveId = this.intendedActiveId(connections, storedActiveId);
     if (restoredActiveId !== storedActiveId) {
       await this.queueActiveWrite(() =>
         restoredActiveId ? store.setActive(restoredActiveId) : store.clearActive()
@@ -168,28 +178,40 @@ class ConnectionsService {
         // rejects — failures are swallowed inside it).
         this.discoverySettled = this.discoverLocal();
       }
-      // #576: an in-flight activation is the sole authority on the active
-      // selection. The activationSeq guard above only catches an activation
-      // that bumped the seq DURING this load; an activation already in flight
-      // when we captured the seq performed its single bump earlier, so the seq
-      // is unchanged and both seq checks pass. pendingActivation — set the
-      // instant an activation starts — is the signal the seq guard is blind to.
-      // Gating BEFORE restoreActiveId also suppresses its self-heal store write,
-      // which would otherwise race the activation's own write on the shared
-      // activeWrites queue.
-      if (this.pendingActivation) return;
-      const restoredActiveId = await this.restoreActiveId(store, connections, storedActiveId);
+      // #576: an in-flight activation is the sole authority on WHICH connection
+      // is selected. The activationSeq guard above only catches an activation
+      // that bumped the seq DURING this load; one already in flight when we
+      // captured the seq bumped it earlier, so the seq is unchanged and both
+      // seq checks pass. pendingActivation — set the instant an activation
+      // starts — is the signal the seq guard is blind to.
+      //
+      // Suppress the load ONLY when it would switch the selection to a DIFFERENT
+      // id than the activation is establishing (the clobber), and with it
+      // restoreActiveId's self-heal write, which would otherwise race the
+      // activation's own write on the shared activeWrites queue. A load that
+      // resolves to the SAME id is not a selection change: it still refreshes
+      // the transport snapshot below, so an edit to the active connection
+      // reaches direct requests without waiting for the next reload.
+      const restoredActiveId = this.intendedActiveId(connections, storedActiveId);
+      if (this.pendingActivation && this.pendingActivation.id !== restoredActiveId) return;
+      await this.restoreActiveId(store, connections, storedActiveId);
       if (activationSeq !== this.activationSeq) return;
-      // Re-check immediately before the synchronous publish, with NO await
-      // between this gate and the writes, so an activation that started during
-      // the restoreActiveId await above still wins.
-      if (this.pendingActivation) return;
-      this.activeId = restoredActiveId ?? '';
-      // Keep the transport's active connection in sync (no $effect).
-      const activeConnection = connections.find((c) => c.id === this.activeId) ?? null;
+      // Re-check immediately before the synchronous writes, with NO await
+      // between the gate and the writes, so an activation that started (or
+      // retargeted) during the restoreActiveId await above still wins.
+      if (this.pendingActivation && this.pendingActivation.id !== restoredActiveId) return;
+      // Keep the transport's active connection in sync (no $effect). This runs
+      // even under a same-id activation so record edits are picked up.
+      const activeConnection = connections.find((c) => c.id === restoredActiveId) ?? null;
       setActiveConnection(activeConnection);
-      this.publishedActiveId = this.activeId;
-      this.publishedConnection = activeConnection;
+      if (!this.pendingActivation) {
+        // Only take ownership of the selection + rollback anchor when no
+        // activation is in flight; otherwise the activation owns activeId and
+        // the publishedActiveId/publishedConnection it would roll back to.
+        this.activeId = restoredActiveId ?? '';
+        this.publishedActiveId = this.activeId;
+        this.publishedConnection = activeConnection;
+      }
     } catch (e) {
       const err = e as { message?: string; status?: number };
       this.error = err.message ?? 'Failed to load connections';
@@ -233,17 +255,24 @@ class ConnectionsService {
       // surface even when a concurrent activation owns the active selection.
       this.endpoints = connections.map(toView);
       if (activationSeq !== this.activationSeq) return;
-      // #576: same reasoning as _load — an in-flight activation is the sole
-      // authority on the active selection, and pendingActivation catches the
-      // already-in-flight case the seq guard cannot. Gating before
+      // #576: same reasoning as _load — suppress only when this discovery would
+      // change the in-flight activation's selection; a same-id refresh may still
+      // update the transport snapshot. pendingActivation catches the
+      // already-in-flight case the seq guard cannot, and gating before
       // restoreActiveId also suppresses its self-heal store write.
-      if (this.pendingActivation) return;
-      const restoredActiveId = await this.restoreActiveId(store, connections, storedActiveId);
+      const restoredActiveId = this.intendedActiveId(connections, storedActiveId);
+      if (this.pendingActivation && this.pendingActivation.id !== restoredActiveId) return;
+      await this.restoreActiveId(store, connections, storedActiveId);
       if (activationSeq !== this.activationSeq) return;
-      if (this.pendingActivation) return;
-      this.activeId = restoredActiveId ?? '';
-      const activeConnection = connections.find((c) => c.id === this.activeId) ?? null;
+      if (this.pendingActivation && this.pendingActivation.id !== restoredActiveId) return;
+      const activeConnection = connections.find((c) => c.id === restoredActiveId) ?? null;
       setActiveConnection(activeConnection);
+      if (this.pendingActivation) {
+        // A same-id activation owns the selection and its own handoff; the
+        // transport snapshot is refreshed, so leave the rest to it.
+        return;
+      }
+      this.activeId = restoredActiveId ?? '';
       // When the discovered entry just became the effective active connection
       // (a previously empty list), complete the activation handoff so the
       // chat store loads its sessions instead of staying on "not reachable"
