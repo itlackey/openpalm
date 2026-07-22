@@ -154,15 +154,10 @@ class ConnectionsService {
         store.getActiveId(),
       ]);
       if (activationSeq !== this.activationSeq) return;
-      const restoredActiveId = await this.restoreActiveId(store, connections, storedActiveId);
-      if (activationSeq !== this.activationSeq) return;
+      // Refreshing the endpoint list, marking loaded, and kicking discovery are
+      // always safe under a concurrent activation and must run unconditionally
+      // so a reload still surfaces added/removed connections.
       this.endpoints = connections.map(toView);
-      this.activeId = restoredActiveId ?? '';
-      // Keep the transport's active connection in sync (no $effect).
-      const activeConnection = connections.find((c) => c.id === this.activeId) ?? null;
-      setActiveConnection(activeConnection);
-      this.publishedActiveId = this.activeId;
-      this.publishedConnection = activeConnection;
       this.loaded = true;
       if (!this.discoveryStarted) {
         this.discoveryStarted = true;
@@ -173,6 +168,28 @@ class ConnectionsService {
         // rejects — failures are swallowed inside it).
         this.discoverySettled = this.discoverLocal();
       }
+      // #576: an in-flight activation is the sole authority on the active
+      // selection. The activationSeq guard above only catches an activation
+      // that bumped the seq DURING this load; an activation already in flight
+      // when we captured the seq performed its single bump earlier, so the seq
+      // is unchanged and both seq checks pass. pendingActivation — set the
+      // instant an activation starts — is the signal the seq guard is blind to.
+      // Gating BEFORE restoreActiveId also suppresses its self-heal store write,
+      // which would otherwise race the activation's own write on the shared
+      // activeWrites queue.
+      if (this.pendingActivation) return;
+      const restoredActiveId = await this.restoreActiveId(store, connections, storedActiveId);
+      if (activationSeq !== this.activationSeq) return;
+      // Re-check immediately before the synchronous publish, with NO await
+      // between this gate and the writes, so an activation that started during
+      // the restoreActiveId await above still wins.
+      if (this.pendingActivation) return;
+      this.activeId = restoredActiveId ?? '';
+      // Keep the transport's active connection in sync (no $effect).
+      const activeConnection = connections.find((c) => c.id === this.activeId) ?? null;
+      setActiveConnection(activeConnection);
+      this.publishedActiveId = this.activeId;
+      this.publishedConnection = activeConnection;
     } catch (e) {
       const err = e as { message?: string; status?: number };
       this.error = err.message ?? 'Failed to load connections';
@@ -212,13 +229,18 @@ class ConnectionsService {
         store.list(),
         store.getActiveId(),
       ]);
-      if (activationSeq !== this.activationSeq) {
-        this.endpoints = connections.map(toView);
-        return;
-      }
+      // Always refresh the endpoint list — a newly discovered connection must
+      // surface even when a concurrent activation owns the active selection.
+      this.endpoints = connections.map(toView);
+      if (activationSeq !== this.activationSeq) return;
+      // #576: same reasoning as _load — an in-flight activation is the sole
+      // authority on the active selection, and pendingActivation catches the
+      // already-in-flight case the seq guard cannot. Gating before
+      // restoreActiveId also suppresses its self-heal store write.
+      if (this.pendingActivation) return;
       const restoredActiveId = await this.restoreActiveId(store, connections, storedActiveId);
       if (activationSeq !== this.activationSeq) return;
-      this.endpoints = connections.map(toView);
+      if (this.pendingActivation) return;
       this.activeId = restoredActiveId ?? '';
       const activeConnection = connections.find((c) => c.id === this.activeId) ?? null;
       setActiveConnection(activeConnection);
@@ -228,6 +250,11 @@ class ConnectionsService {
       // until a manual switch. Same veto guard as activate().
       if (this.activeId === added.id && !activationBlockReason()) {
         await emitConnectionActivated(added.id);
+        // The handoff await split the active-state sequence: re-check both
+        // guards before the trailing publish so an activation that started
+        // during the emit still wins.
+        if (activationSeq !== this.activationSeq) return;
+        if (this.pendingActivation) return;
       }
       this.publishedActiveId = this.activeId;
       this.publishedConnection = activeConnection;

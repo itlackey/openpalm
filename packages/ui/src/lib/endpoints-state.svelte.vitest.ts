@@ -305,6 +305,66 @@ describe('overlapping activation', () => {
 		expect(setActiveConnection).toHaveBeenLastCalledWith(records[1]);
 	});
 
+	test('a concurrent forced reload cannot clobber an already in-flight activation', async () => {
+		storedActiveId = 'alpha';
+		const service = await freshService();
+		await service.load(true);
+		expect(service.activeId).toBe('alpha');
+		setActiveConnection.mockClear();
+
+		let releaseActivate: (() => void) | undefined;
+		fakeStore.setActive.mockImplementationOnce(
+			(id: string) =>
+				new Promise<void>((resolve) => {
+					releaseActivate = () => {
+						storedActiveId = id;
+						resolve();
+					};
+				})
+		);
+
+		// Start the activation FIRST and park it on its held setActive write.
+		// This bumps activationSeq -> 1, sets activeId='beta', sets
+		// pendingActivation, and enqueues the held setActive('beta').
+		const activation = service.activate('beta');
+		while (!releaseActivate) await Promise.resolve();
+
+		// The activation owns the selection in memory, but its store write is
+		// still parked, so storage still reads the stale 'alpha'.
+		expect(service.activeId).toBe('beta');
+		expect(storedActiveId).toBe('alpha');
+
+		// A forced reload races in while the activation is STILL parked. It sees
+		// the stale stored 'alpha' and captures seq=1 (the activation already did
+		// its single ++ before this load captured it), so both seq re-checks pass
+		// 1===1. Without the pendingActivation gate it republishes the stale
+		// 'alpha', clobbering the in-flight activation. Do NOT release/await the
+		// activation first — that would clear pendingActivation and mask the bug.
+		await service.load(true);
+
+		// Capture the discriminators WHILE the activation is still in flight, but
+		// do not assert yet: releasing/awaiting the activation below must run
+		// unconditionally so a red (unfixed) run fails on a clean assertion
+		// instead of hanging on the still-parked activation promise.
+		const activeIdDuringActivation = service.activeId;
+		const endpointsAfterReload = service.endpoints.map((endpoint) => endpoint.id);
+
+		releaseActivate();
+		await activation;
+
+		// The fix-vs-unfixed discriminator: the in-flight activation must remain
+		// the sole authority on active selection. RED without the fix (the reload
+		// republishes the stale 'alpha' over the just-activated 'beta').
+		expect(activeIdDuringActivation).toBe('beta');
+		// The reload must still refresh the endpoint list unconditionally, even
+		// while its active-state publish is suppressed by the gate.
+		expect(endpointsAfterReload).toEqual(['alpha', 'beta', 'gamma']);
+		// Memory, transport, and storage all agree on the activated connection.
+		expect(service.activeId).toBe('beta');
+		expect(storedActiveId).toBe('beta');
+		expect(setActiveConnection).toHaveBeenLastCalledWith(records[1]);
+	});
+
 	test('a failing superseding activation rolls back to the last published connection', async () => {
 		storedActiveId = 'alpha';
 		const service = await freshService();
