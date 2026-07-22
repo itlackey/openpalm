@@ -12,7 +12,7 @@ import {
   resolveOpenPalmHome, resolveUiBuildDir, createLogger, readSecret, readStackEnv,
   checkAndUpdateUiBuild, checkAndUpdateSkeleton, PLATFORM_VERSION,
   consumePendingUiBackup, isRemoteSetupAllowed, restoreUiBackup, UiSupervisor, waitForReady,
-  buildEmptyUiRuntimeConfig, buildServedUiRuntimeConfig, classifyLocalInstall,
+  buildEmptyUiRuntimeConfig, buildServedUiRuntimeConfig, classifyLocalInstall, stackDirFor,
   serializeUiRuntimeConfig, uiBuildSupportsProcessRuntimeConfig,
   writeLegacyServedUiRuntimeConfig, UI_RUNTIME_CONFIG_ENV,
   type ControlPlaneState, type UiRuntimeConfig,
@@ -89,7 +89,9 @@ export function resolveUiNetworkEnv(
   port: number,
   adminHostUi: boolean,
   env: Record<string, string | undefined> = process.env,
-  localInstallState: ReturnType<typeof classifyLocalInstall> = 'installed',
+  // Fail closed: an omitted install state must never widen the bind to 0.0.0.0.
+  // Only an explicit 'installed' (below) unlocks the remote-setup wildcard bind.
+  localInstallState: ReturnType<typeof classifyLocalInstall> = 'not_installed',
 ): Record<'HOST' | 'PORT' | 'ORIGIN' | 'HOST_HEADER' | 'PROTOCOL_HEADER', string | undefined> {
   const effectiveAdmin = resolveExpectedAdmin(adminHostUi, env);
   if (!effectiveAdmin && localInstallState === 'installed' && isRemoteSetupAllowed(env)) {
@@ -327,7 +329,7 @@ export async function runUiBuild(opts: { port?: number } = {}): Promise<void> {
   const port = opts.port
     ?? (process.env.PORT ? Number(process.env.PORT) : resolveUiServePort(undefined, resolveOpenPalmHome()));
   const homeDir = resolveOpenPalmHome();
-  const installState = classifyLocalInstall(join(homeDir, 'system', 'stack'), homeDir);
+  const installState = classifyLocalInstall(stackDirFor(homeDir), homeDir);
   const networkEnv = resolveUiNetworkEnv(port, resolveExpectedAdmin(false), process.env, installState);
   for (const [key, value] of Object.entries(networkEnv)) {
     if (value === undefined) delete process.env[key];
