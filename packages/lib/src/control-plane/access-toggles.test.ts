@@ -12,9 +12,11 @@ import {
   type AccessToggles,
   coerceAccessToggles,
   describeAccessExposure,
+  migrateLegacyAccessEnv,
   readAccessToggles,
   requiresAssistantKey,
   resolveAccessEnv,
+  RETIRED_BIND_KEYS,
 } from "./access-toggles.js";
 
 const ALL_OFF = ACCESS_TOGGLE_DEFAULTS;
@@ -146,6 +148,58 @@ describe("readAccessToggles", () => {
       // Both chat and api published the guardian's single :8182 listener.
       expect(readAccessToggles({ OP_CHAT_BIND_ADDRESS: "0.0.0.0" }).guardianOpenaiApi).toBe(true);
     });
+
+    test("an explicit loopback beats a LAN cascade root — the cascade's own precedence", () => {
+      // The shared-guardian row: everything published EXCEPT the UI, which was
+      // pinned to loopback on purpose. Reading this with a plain OR reports
+      // networkAccess: true, and the next deploy writes 0.0.0.0 back — turning
+      // a rerun into a silent exposure of a door the operator closed.
+      const legacy = {
+        OP_BIND_ADDRESS: "0.0.0.0",
+        OP_UI_BIND_ADDRESS: "127.0.0.1",
+      };
+      expect(readAccessToggles(legacy)).toEqual({
+        networkAccess: false,
+        assistantDirect: false,
+        guardianNetwork: true,
+        guardianOpenaiApi: true,
+      });
+      expect(migrateLegacyAccessEnv(legacy).OP_UI_BIND_ADDRESS).toBe("127.0.0.1");
+    });
+  });
+});
+
+describe("migrateLegacyAccessEnv", () => {
+  test("materializes the flat row the retired cascade would have produced", () => {
+    expect(migrateLegacyAccessEnv({ OP_BIND_ADDRESS: "0.0.0.0" })).toEqual({
+      OP_UI_BIND_ADDRESS: "0.0.0.0",
+      OP_ASSISTANT_BIND_ADDRESS: "127.0.0.1",
+      OP_GUARDIAN_BIND_ADDRESS: "0.0.0.0",
+      OP_API_BIND_ADDRESS: "0.0.0.0",
+      OPENCODE_AUTH: "false",
+      GUARDIAN_DIRECT_INGRESS: "true",
+    });
+  });
+
+  test("GUARDIAN_DIRECT_INGRESS is materialized, so a migrated port does not 404", () => {
+    // The legacy row never carried this key — the guardian defaulted its direct
+    // listener off. Migrating a published guardian without setting it would
+    // leave the operator's own paired devices talking to a 404.
+    expect(migrateLegacyAccessEnv({ OP_GUARDIAN_BIND_ADDRESS: "0.0.0.0" }).GUARDIAN_DIRECT_INGRESS)
+      .toBe("true");
+  });
+
+  test("an already-flat row survives a re-migration unchanged", () => {
+    const flat = resolveAccessEnv(on({ networkAccess: true, guardianOpenaiApi: true }));
+    expect(migrateLegacyAccessEnv(flat)).toEqual(flat);
+  });
+
+  test("names every key the flat model retires", () => {
+    expect([...RETIRED_BIND_KEYS]).toEqual([
+      "OP_BIND_ADDRESS",
+      "OP_CHAT_BIND_ADDRESS",
+      "OP_VOICE_BIND_ADDRESS",
+    ]);
   });
 });
 

@@ -191,10 +191,12 @@
 
         {#if mdns}
           <div class="path-chip mdns-chip">
+            <!-- The advertised port follows the front door: the UI when network
+                 access is on, the OpenCode API when only that is published. -->
             {#if mdns.assistant.advertised}
-              <span>Assistant API (OpenCode): <a href={`http://${mdns.assistant.name}:${mdns.assistant.port}`}>http://{mdns.assistant.name}:{mdns.assistant.port}</a></span>
+              <span>Assistant: <a href={`http://${mdns.assistant.name}:${mdns.assistant.port}`}>http://{mdns.assistant.name}:{mdns.assistant.port}</a></span>
             {:else}
-              <span class="mdns-muted">Assistant API (OpenCode): {mdns.assistant.name}:{mdns.assistant.port} (not published)</span>
+              <span class="mdns-muted">Assistant: {mdns.assistant.name}:{mdns.assistant.port} (not published)</span>
             {/if}
             {#if mdns.guardian.advertised}
               <span>Guardian: <a href={`http://${mdns.guardian.name}:${mdns.guardian.port}`}>http://{mdns.guardian.name}:{mdns.guardian.port}</a></span>

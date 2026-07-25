@@ -25,6 +25,7 @@ import {
   runDeploy,
   markSetupComplete,
   writeSystemEnv,
+  migrateLegacyBindAddresses,
   migrateLegacyDefaultPorts,
   patchSecretsEnvFile,
   describeAccessExposure,
@@ -274,6 +275,7 @@ export async function prepareInstallFiles(
   // stamp written into .skeleton-version.
   await applyHomeSeed(PLATFORM_VERSION, homeDir, configDir, dataDir);
   migrateLegacyDefaultPorts(homeDir);
+  migrateLegacyBindAddresses(homeDir);
   // Install UI build to data/ui/ (local build if available, else the
   // @openpalm/ui npm bundle on this release stream's channel). @openpalm/ui is
   // independently versioned, so seed by dist-tag CHANNEL (latest/next) rather

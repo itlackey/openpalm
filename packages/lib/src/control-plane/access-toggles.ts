@@ -150,9 +150,39 @@ export function requiresAssistantKey(toggles: AccessToggles): boolean {
 
 // ── Reading current state ────────────────────────────────────────────────
 
-function isOn(value: string | undefined): boolean {
-  const raw = value?.trim();
-  return !!raw && !isLoopback(raw);
+/**
+ * Resolve the EFFECTIVE bind for one listener, mirroring the retired compose
+ * cascade's precedence exactly: an explicitly-set service key always wins, and
+ * a legacy root is consulted only when the specific key is absent.
+ *
+ * The precedence matters for safety, not tidiness. The old shared-guardian row
+ * was `OP_BIND_ADDRESS=0.0.0.0` with `OP_UI_BIND_ADDRESS=127.0.0.1` written
+ * explicitly — compose's `${OP_UI_BIND_ADDRESS:-${OP_BIND_ADDRESS:-...}}` used
+ * the specific value, so the UI stayed loopback. Reading that row with a plain
+ * OR would report `networkAccess: true`, and the next rerun or host-stack save
+ * would write `0.0.0.0` back — publishing a surface the operator had
+ * deliberately kept private.
+ */
+function effectiveBind(
+  env: Record<string, string | undefined>,
+  specificKey: string,
+  legacyKeys: readonly string[] = [],
+): string {
+  const specific = env[specificKey]?.trim();
+  if (specific) return specific;
+  for (const key of legacyKeys) {
+    const legacy = env[key]?.trim();
+    if (legacy) return legacy;
+  }
+  return LOOPBACK;
+}
+
+function isOpen(
+  env: Record<string, string | undefined>,
+  specificKey: string,
+  legacyKeys: readonly string[] = [],
+): boolean {
+  return !isLoopback(effectiveBind(env, specificKey, legacyKeys));
 }
 
 /**
@@ -161,23 +191,38 @@ function isOn(value: string | undefined): boolean {
  * an env that matches no combination cannot exist, because every combination
  * is representable.
  *
- * Legacy rows are mapped rather than rejected. `OP_BIND_ADDRESS` was the
- * cascade root and governed the guardian's published port, so a non-loopback
- * value reads as `guardianNetwork`; `OP_CHAT_BIND_ADDRESS` was the second host
- * port onto the guardian's single OpenAI-compatible listener and reads as
- * `guardianOpenaiApi`.
+ * Legacy rows are mapped rather than rejected, using the cascade's own
+ * precedence (see {@link effectiveBind}). `OP_BIND_ADDRESS` was the cascade
+ * root for the UI, guardian and API listeners; `OP_CHAT_BIND_ADDRESS` was the
+ * second host port onto the guardian's single OpenAI-compatible listener.
+ * `OP_ASSISTANT_BIND_ADDRESS` never cascaded — its compose line defaulted
+ * straight to loopback — so it has no legacy fallback here.
  */
 export function readAccessToggles(env: Record<string, string | undefined>): AccessToggles {
   return {
-    networkAccess: isOn(env.OP_UI_BIND_ADDRESS) || isOn(env.OP_BIND_ADDRESS),
-    assistantDirect: isOn(env.OP_ASSISTANT_BIND_ADDRESS),
-    guardianNetwork: isOn(env.OP_GUARDIAN_BIND_ADDRESS) || isOn(env.OP_BIND_ADDRESS),
-    guardianOpenaiApi:
-      isOn(env.OP_API_BIND_ADDRESS)
-      || isOn(env.OP_CHAT_BIND_ADDRESS)
-      || isOn(env.OP_BIND_ADDRESS),
+    networkAccess: isOpen(env, "OP_UI_BIND_ADDRESS", ["OP_BIND_ADDRESS"]),
+    assistantDirect: isOpen(env, "OP_ASSISTANT_BIND_ADDRESS"),
+    guardianNetwork: isOpen(env, "OP_GUARDIAN_BIND_ADDRESS", ["OP_BIND_ADDRESS"]),
+    guardianOpenaiApi: isOpen(env, "OP_API_BIND_ADDRESS", ["OP_CHAT_BIND_ADDRESS", "OP_BIND_ADDRESS"]),
   };
 }
+
+/**
+ * Materialize the flat generated row from a legacy env, for the one-time
+ * upgrade migration. Returns the complete {@link AccessEnv} the retired
+ * cascade would have produced, so an existing install keeps exactly the
+ * exposure it had.
+ */
+export function migrateLegacyAccessEnv(env: Record<string, string | undefined>): AccessEnv {
+  return resolveAccessEnv(readAccessToggles(env));
+}
+
+/** Env keys the flat model retires. Removed by the upgrade migration. */
+export const RETIRED_BIND_KEYS = [
+  "OP_BIND_ADDRESS",
+  "OP_CHAT_BIND_ADDRESS",
+  "OP_VOICE_BIND_ADDRESS",
+] as const;
 
 /** Narrow arbitrary JSON to a complete toggle record, defaulting anything absent. */
 export function coerceAccessToggles(value: unknown): AccessToggles {

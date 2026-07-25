@@ -177,10 +177,31 @@ describe("resolveMdnsAdvertisements", () => {
     ).toBe(true);
   });
 
-  test("OP_ASSISTANT_BIND_ADDRESS=0.0.0.0 advertises the assistant name only", () => {
+  // The DEFAULT home install: network access on, everything else closed. This
+  // is the whole reason the name exists — "find the assistant from any device"
+  // — and gating it on the assistant bind meant it advertised nothing at all.
+  test("OP_UI_BIND_ADDRESS=0.0.0.0 advertises the front door on the UI port", () => {
+    const adverts = resolveMdnsAdvertisements({ OP_UI_BIND_ADDRESS: "0.0.0.0" }, HOST_IPV4);
+    expect(adverts).toEqual([
+      { service: "assistant", name: "openpalm.local", port: 3800, addresses: HOST_IPV4 },
+    ]);
+  });
+
+  test("OP_ASSISTANT_BIND_ADDRESS=0.0.0.0 alone still advertises, on the assistant port", () => {
+    // A headless install publishing only the OpenCode API keeps its name.
     const adverts = resolveMdnsAdvertisements({ OP_ASSISTANT_BIND_ADDRESS: "0.0.0.0" }, HOST_IPV4);
     expect(adverts).toEqual([
       { service: "assistant", name: "openpalm.local", port: 3810, addresses: HOST_IPV4 },
+    ]);
+  });
+
+  test("the UI wins when both are published — one name, one SRV port", () => {
+    const adverts = resolveMdnsAdvertisements(
+      { OP_UI_BIND_ADDRESS: "0.0.0.0", OP_ASSISTANT_BIND_ADDRESS: "0.0.0.0" },
+      HOST_IPV4,
+    );
+    expect(adverts).toEqual([
+      { service: "assistant", name: "openpalm.local", port: 3800, addresses: HOST_IPV4 },
     ]);
   });
 
@@ -215,7 +236,12 @@ describe("resolveMdnsAdvertisements", () => {
   test('OP_MDNS=off disables everything even with non-loopback binds', () => {
     for (const off of ["off", "0", "false"]) {
       const adverts = resolveMdnsAdvertisements(
-        { OP_GUARDIAN_BIND_ADDRESS: "0.0.0.0", OP_ASSISTANT_BIND_ADDRESS: "0.0.0.0", OP_MDNS: off },
+        {
+          OP_GUARDIAN_BIND_ADDRESS: "0.0.0.0",
+          OP_ASSISTANT_BIND_ADDRESS: "0.0.0.0",
+          OP_UI_BIND_ADDRESS: "0.0.0.0",
+          OP_MDNS: off,
+        },
         HOST_IPV4,
       );
       expect(adverts).toEqual([]);
@@ -256,11 +282,19 @@ describe("resolveMdnsAdvertisements", () => {
 
 describe("resolveMdnsStatus", () => {
   test("reports names/ports with advertised flags", () => {
+    // A closed install shows the port it WOULD get: the UI's front door.
     const status = resolveMdnsStatus({});
     expect(status).toEqual({
-      assistant: { name: "openpalm.local", port: 3810, advertised: false },
+      assistant: { name: "openpalm.local", port: 3800, advertised: false },
       guardian: { name: "openpalm-guardian.local", port: 3830, advertised: false },
     });
+  });
+
+  test("reports the front door actually published", () => {
+    expect(resolveMdnsStatus({ OP_UI_BIND_ADDRESS: "0.0.0.0" }).assistant)
+      .toEqual({ name: "openpalm.local", port: 3800, advertised: true });
+    expect(resolveMdnsStatus({ OP_ASSISTANT_BIND_ADDRESS: "0.0.0.0" }).assistant)
+      .toEqual({ name: "openpalm.local", port: 3810, advertised: true });
   });
 });
 

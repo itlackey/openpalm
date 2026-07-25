@@ -221,9 +221,27 @@ describe('GET/PUT /api/host/stack — mdns surface (#488)', () => {
     const res = await GET(makeGetEvent());
     expect(res.status).toBe(200);
     const body = (await res.json()) as Record<string, unknown>;
+    // The port shown when nothing is published is the one it WOULD get: the
+    // UI's front door, which is what `networkAccess` publishes.
     expect(body.mdns).toEqual({
-      assistant: { name: 'openpalm.local', port: 3810, advertised: false },
+      assistant: { name: 'openpalm.local', port: 3800, advertised: false },
       guardian: { name: 'openpalm-guardian.local', port: 3830, advertised: false },
+    });
+  });
+
+  // The default home install. Advertising `<project>.local` used to be gated on
+  // publishing OpenCode, so this exact configuration — the common one — named
+  // nothing on the network at all.
+  test('PUT networkAccess:true advertises the UI front door', async () => {
+    process.env.OP_ENABLE_ADMIN = '1';
+    const { PUT } = await loadRoute();
+    const putRes = await PUT(makePutEvent({ projectName: 'openpalm', access: { networkAccess: true, assistantDirect: false, guardianNetwork: false, guardianOpenaiApi: false } }));
+    expect(putRes.status).toBe(200);
+    const putBody = (await putRes.json()) as Record<string, unknown>;
+    expect((putBody.mdns as { assistant: unknown }).assistant).toEqual({
+      name: 'openpalm.local',
+      port: 3800,
+      advertised: true,
     });
   });
 

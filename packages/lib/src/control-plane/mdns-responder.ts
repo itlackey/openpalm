@@ -30,6 +30,7 @@ const TTL = 120;
 const HTTP_SERVICE = "_http._tcp.local";
 const DEFAULT_GUARDIAN_PORT = 3830;
 const DEFAULT_ASSISTANT_PORT = 3810;
+const DEFAULT_UI_PORT = 3800;
 
 // ── Pure: name derivation ─────────────────────────────────────────────────
 
@@ -73,7 +74,7 @@ export type MdnsAdvertisement = {
   service: "assistant" | "guardian";
   /** lowercase FQDN, e.g. "openpalm-guardian.local" */
   name: string;
-  /** host TCP port (OP_GUARDIAN_PORT / OP_ASSISTANT_PORT defaults) */
+  /** host TCP port (OP_UI_PORT / OP_ASSISTANT_PORT / OP_GUARDIAN_PORT defaults) */
   port: number;
   /** IPv4 addresses for A answers */
   addresses: string[];
@@ -98,16 +99,50 @@ function isGuardianGated(env: Record<string, string | undefined>): boolean {
   // literal 'true'. Both values are generated together from the
   // `guardianNetwork` toggle, so they can no longer disagree.
   if (env.GUARDIAN_DIRECT_INGRESS !== "true") return false;
-  const bind = env.OP_GUARDIAN_BIND_ADDRESS;
+  return isOpen(env.OP_GUARDIAN_BIND_ADDRESS);
+}
+
+function isOpen(bind: string | undefined): boolean {
+  // Flat, like every other bind now: generated explicitly, so unset means
+  // loopback rather than "inherit from somewhere else".
   return !!bind && !isLoopback(bind);
 }
 
-function isAssistantGated(env: Record<string, string | undefined>): boolean {
-  if (isMdnsOffToken(env.OP_MDNS)) return false;
-  // Flat, like every other bind now: generated explicitly, so unset means
-  // loopback rather than "inherit from somewhere else".
-  const bind = env.OP_ASSISTANT_BIND_ADDRESS;
-  return !!bind && !isLoopback(bind);
+/**
+ * The listener `<project>.local` should point at, or null when nothing is
+ * published under that name.
+ *
+ * `<project>.local` is the name a PERSON types into a browser, so it follows
+ * the FRONT DOOR — the OpenPalm UI on `OP_UI_PORT`. That is what
+ * `networkAccess` publishes, and OpenCode deliberately stays on loopback
+ * behind the UI's `/oc` proxy in that configuration. Gating this name on
+ * `OP_ASSISTANT_BIND_ADDRESS` (as it was when publishing OpenCode WAS how you
+ * reached the assistant) means the default home install — network access on,
+ * nothing else — advertises no `.local` name at all, which is precisely the
+ * "find the assistant from any device" case the name exists for.
+ *
+ * The assistant API is the fallback, not the primary: a headless install that
+ * publishes only OpenCode (`assistantDirect` alone) still gets its name. When
+ * both are open the UI wins, because both live at the same host address and
+ * only one SRV port can be advertised for one name.
+ */
+function resolveFrontDoor(
+  env: Record<string, string | undefined>,
+): { bind: string; port: number } | null {
+  if (isMdnsOffToken(env.OP_MDNS)) return null;
+  if (isOpen(env.OP_UI_BIND_ADDRESS)) {
+    return {
+      bind: env.OP_UI_BIND_ADDRESS as string,
+      port: parsePort(env.OP_UI_PORT, DEFAULT_UI_PORT),
+    };
+  }
+  if (isOpen(env.OP_ASSISTANT_BIND_ADDRESS)) {
+    return {
+      bind: env.OP_ASSISTANT_BIND_ADDRESS as string,
+      port: parsePort(env.OP_ASSISTANT_PORT, DEFAULT_ASSISTANT_PORT),
+    };
+  }
+  return null;
 }
 
 function parsePort(value: string | undefined, fallback: number): number {
@@ -155,9 +190,9 @@ function resolveAdvertAddresses(bind: string, hostIpv4: string[]): string[] {
  * Resolve which names should be advertised right now, given non-secret env
  * (typically `readStackEnv(homeDir)`). Disabled entirely when `OP_MDNS`
  * trims/lowercases to "0"/"false"/"off"/"no". Guardian advert iff
- * `OP_GUARDIAN_BIND_ADDRESS` is set and non-loopback; assistant advert iff
- * `OP_ASSISTANT_BIND_ADDRESS` is set and non-loopback. An advert with zero
- * resolved addresses is dropped.
+ * `OP_GUARDIAN_BIND_ADDRESS` is set and non-loopback with direct ingress on;
+ * assistant advert iff something is published at the front door (see
+ * {@link resolveFrontDoor}). An advert with zero resolved addresses is dropped.
  */
 export function resolveMdnsAdvertisements(
   env: Record<string, string | undefined>,
@@ -179,14 +214,14 @@ export function resolveMdnsAdvertisements(
     }
   }
 
-  if (isAssistantGated(env)) {
-    const bind = env.OP_ASSISTANT_BIND_ADDRESS as string;
-    const addresses = resolveAdvertAddresses(bind, hostIpv4);
+  const frontDoor = resolveFrontDoor(env);
+  if (frontDoor) {
+    const addresses = resolveAdvertAddresses(frontDoor.bind, hostIpv4);
     if (addresses.length > 0) {
       adverts.push({
         service: "assistant",
         name: names.assistantName,
-        port: parsePort(env.OP_ASSISTANT_PORT, DEFAULT_ASSISTANT_PORT),
+        port: frontDoor.port,
         addresses,
       });
     }
@@ -200,14 +235,20 @@ export function resolveMdnsAdvertisements(
  * host IPv4 address can actually be resolved right now — `advertised`
  * reflects the bind-address gate only (D6: gating is bind-address-only), so
  * this never needs a `hostIpv4` param.
+ *
+ * `assistant.port` is the port that WOULD be advertised, so an unpublished
+ * install still shows the name and port it would get. It reads the front door
+ * the same way the advert does, which is why the closed case falls back to the
+ * UI port rather than the assistant's.
  */
 export function resolveMdnsStatus(env: Record<string, string | undefined>): MdnsStatus {
   const names = deriveMdnsNames(env);
+  const frontDoor = resolveFrontDoor(env);
   return {
     assistant: {
       name: names.assistantName,
-      port: parsePort(env.OP_ASSISTANT_PORT, DEFAULT_ASSISTANT_PORT),
-      advertised: isAssistantGated(env),
+      port: frontDoor?.port ?? parsePort(env.OP_UI_PORT, DEFAULT_UI_PORT),
+      advertised: frontDoor !== null,
     },
     guardian: {
       name: names.guardianName,

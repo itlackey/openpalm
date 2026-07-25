@@ -10,6 +10,7 @@ const ENV_KEYS = [
   'OP_HOME',
   'OP_INSIDE_ELECTRON',
   'OP_OPENCODE_URL',
+  'OP_UI_DEFAULT_ASSISTANT_URL',
 ] as const;
 let savedEnv: Record<string, string | undefined>;
 const tempDirs: string[] = [];
@@ -65,7 +66,10 @@ describe('GET /api/runtime-config', () => {
     expect(response.status).toBe(404);
   });
 
-  test('derives Electron config from its existing compatibility env after installation', async () => {
+  test('seeds Electron the same-origin proxy path, not its server-side upstream', async () => {
+    // OP_OPENCODE_URL is where THIS process finds OpenCode. Handing it to the
+    // browser was the old behavior and is now a leak of an address only the
+    // server can reach — /oc resolves it per-request instead.
     process.env.OP_HOME = createHome(true);
     process.env.OP_INSIDE_ELECTRON = '1';
     process.env.OP_OPENCODE_URL = 'http://127.0.0.1:3810';
@@ -73,19 +77,20 @@ describe('GET /api/runtime-config', () => {
     const body = await response.json() as { connections: Array<{ baseUrl: string; locked: boolean }> };
     expect(response.status).toBe(200);
     expect(body.connections[0]).toEqual(
-      expect.objectContaining({ baseUrl: 'http://127.0.0.1:3810', locked: true }),
+      expect.objectContaining({ baseUrl: '/oc', locked: true }),
     );
   });
 
-  test('never exposes URL-embedded Electron credentials', async () => {
+  test('never exposes URL-embedded credentials from the browser-facing override', async () => {
     process.env.OP_HOME = createHome(true);
     process.env.OP_INSIDE_ELECTRON = '1';
-    process.env.OP_OPENCODE_URL = 'http://user:password@127.0.0.1:3810';
+    process.env.OP_UI_DEFAULT_ASSISTANT_URL = 'http://user:password@assistant.example';
 
     const response = await GET({} as never);
     const serialized = JSON.stringify(await response.json());
 
     expect(response.status).toBe(200);
+    expect(serialized).toContain('assistant.example');
     expect(serialized).not.toContain('user');
     expect(serialized).not.toContain('password');
   });
@@ -118,7 +123,7 @@ describe('GET /api/runtime-config', () => {
     expect(await after.json()).toEqual({
       connections: [expect.objectContaining({
         id: 'openpalm-assistant-opencode',
-        baseUrl: 'http://127.0.0.1:3810',
+        baseUrl: '/oc',
         locked: true,
       })],
     });
