@@ -24,8 +24,11 @@
  * "forget my cookie", not "kill every credential ever issued". A real
  * kill-switch is changing the login password, which invalidates everything.
  */
-import { createHmac, timingSafeEqual } from 'node:crypto';
-import { readSecret, resolveOpenPalmHome } from '@openpalm/lib';
+import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
+import { ensureSecret, readSecret, resolveOpenPalmHome } from '@openpalm/lib';
+
+/** File secret holding the server-side session signing key. */
+const SESSION_KEY_SECRET = 'op_session_signing_key';
 
 /** Session lifetime for both the token expiry and the cookie Max-Age. 14 days. */
 export const SESSION_TTL_MS = 1_209_600_000;
@@ -52,11 +55,50 @@ export function getUiLoginPassword(): string {
   return readSecret(resolveOpenPalmHome(), 'op_ui_login_password')?.trimEnd() ?? "";
 }
 
-/** Sign `expiresAt` with the login password. Returns null when no password is configured. */
+/**
+ * Resolve the HMAC key for session signing.
+ *
+ * The key is `HMAC(serverKey, sha256(loginPassword))`, where `serverKey` is a
+ * 256-bit random value generated once and stored beside the other file
+ * secrets. It is deliberately NOT the login password itself.
+ *
+ * Signing directly with the plaintext password (the previous behaviour) made
+ * every cookie an offline oracle for it: the token is
+ * `<expiresAt>.<HMAC(expiresAt, password)>`, so the signed message ships in
+ * cleartext alongside its own signature — a known-plaintext pair crackable at
+ * one HMAC-SHA256 per guess, with no KDF and no salt. Anyone who captured a
+ * cookie could recover the password offline, and the password is the master
+ * credential for the whole stack. Mixing in a server-side key means an
+ * attacker holding a cookie has nothing to brute-force against.
+ *
+ * Hashing the password into the key preserves the original, deliberate
+ * property that changing the password invalidates every existing session.
+ *
+ * Returns null when no password is configured, or when the secret store is
+ * unreachable — minting and validation both fail closed rather than falling
+ * back to a weaker key.
+ */
+function sessionSigningKey(): Buffer | null {
+  const password = getUiLoginPassword();
+  if (!password) return null;
+  let serverKey: string;
+  try {
+    serverKey = ensureSecret(resolveOpenPalmHome(), SESSION_KEY_SECRET, () =>
+      `${randomBytes(32).toString('hex')}\n`,
+    ).trim();
+  } catch {
+    return null;
+  }
+  if (!serverKey) return null;
+  const passwordDigest = createHash('sha256').update(password).digest();
+  return createHmac('sha256', serverKey).update(passwordDigest).digest();
+}
+
+/** Sign `expiresAt`. Returns null when no signing key can be resolved. */
 function signToken(expiresAt: number): string | null {
-  const secret = getUiLoginPassword();
-  if (!secret) return null;
-  return createHmac('sha256', secret).update(String(expiresAt)).digest('hex');
+  const key = sessionSigningKey();
+  if (!key) return null;
+  return createHmac('sha256', key).update(String(expiresAt)).digest('hex');
 }
 
 /**
