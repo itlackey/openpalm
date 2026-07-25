@@ -8,7 +8,7 @@
  *
  * Contract under test — the AssistantTab split:
  *  - Project name (OP_PROJECT_NAME) and assistant bind address
- *    (OP_ASSISTANT_BIND_ADDRESS, surfaced as lanExposureEnabled) are HOST
+ *    (OP_ASSISTANT_BIND_ADDRESS, generated from the access toggles) are HOST
  *    STACK settings → they live at GET/PUT /api/host/stack, guarded by the
  *    host:* capability set (host:stack:write for writes) + requireAdmin.
  *  - Persona is NOT part of this payload anymore — it is assistant-owned and
@@ -147,7 +147,7 @@ describe('GET /api/host/stack — host stack settings', () => {
     expect(res.status).toBe(200);
     const body = (await res.json()) as Record<string, unknown>;
     expect(body.projectName).toBe('openpalm');
-    expect(body.lanExposureEnabled).toBe(false);
+    expect((body.access as Record<string, boolean>).assistantDirect).toBe(false);
     // Persona is assistant-owned now — it must not leak into the host payload.
     expect(body).not.toHaveProperty('personaContent');
   });
@@ -174,7 +174,7 @@ describe('GET /api/host/stack — host stack settings', () => {
     const { PUT } = await loadRoute();
 
     try {
-      const res = await PUT(makePutEvent({ projectName: 'blocked-name', lanExposureEnabled: true }));
+      const res = await PUT(makePutEvent({ projectName: 'blocked-name', access: { networkAccess: false, assistantDirect: true, guardianNetwork: false, guardianOpenaiApi: false } }));
       expect(res.status).toBe(409);
       expect(await res.json()).toMatchObject({ error: 'install_in_progress' });
       expect(readStackEnvIfAny()).not.toContain('blocked-name');
@@ -188,7 +188,7 @@ describe('PUT /api/host/stack — host:stack:write guard (Phase 4 acceptance)', 
   test('updates project name and bind address in admin mode — persona no longer required', async () => {
     process.env.OP_ENABLE_ADMIN = '1';
     const { PUT } = await loadRoute();
-    const res = await PUT(makePutEvent({ projectName: 'openpalm-dev', lanExposureEnabled: true }));
+    const res = await PUT(makePutEvent({ projectName: 'openpalm-dev', access: { networkAccess: false, assistantDirect: true, guardianNetwork: false, guardianOpenaiApi: false } }));
     expect(res.status).toBe(200);
 
     const stackEnv = readFileSync(stackEnvFor(homeDir), 'utf-8');
@@ -199,7 +199,7 @@ describe('PUT /api/host/stack — host:stack:write guard (Phase 4 acceptance)', 
   test('non-admin cannot edit project name or bind address: 403 with a valid session', async () => {
     delete process.env.OP_ENABLE_ADMIN;
     const { PUT } = await loadRoute();
-    const res = await PUT(makePutEvent({ projectName: 'intruder', lanExposureEnabled: true }));
+    const res = await PUT(makePutEvent({ projectName: 'intruder', access: { networkAccess: false, assistantDirect: true, guardianNetwork: false, guardianOpenaiApi: false } }));
     expect(res.status).toBe(403);
     // The write must have been refused before touching the stack env.
     expect(readStackEnvIfAny()).not.toContain('intruder');
@@ -208,7 +208,7 @@ describe('PUT /api/host/stack — host:stack:write guard (Phase 4 acceptance)', 
   test('401 in admin mode without a session cookie', async () => {
     process.env.OP_ENABLE_ADMIN = '1';
     const { PUT } = await loadRoute();
-    const res = await PUT(makePutEvent({ projectName: 'openpalm', lanExposureEnabled: false }, ''));
+    const res = await PUT(makePutEvent({ projectName: 'openpalm', access: { networkAccess: false, assistantDirect: false, guardianNetwork: false, guardianOpenaiApi: false } }, ''));
     expect(res.status).toBe(401);
   });
 });
@@ -227,10 +227,10 @@ describe('GET/PUT /api/host/stack — mdns surface (#488)', () => {
     });
   });
 
-  test('PUT lanExposureEnabled:true flips assistant advertised on (guardian stays off)', async () => {
+  test('PUT assistantDirect:true flips assistant advertised on (guardian stays off)', async () => {
     process.env.OP_ENABLE_ADMIN = '1';
     const { GET, PUT } = await loadRoute();
-    const putRes = await PUT(makePutEvent({ projectName: 'openpalm', lanExposureEnabled: true }));
+    const putRes = await PUT(makePutEvent({ projectName: 'openpalm', access: { networkAccess: false, assistantDirect: true, guardianNetwork: false, guardianOpenaiApi: false } }));
     expect(putRes.status).toBe(200);
     const putBody = (await putRes.json()) as Record<string, unknown>;
     expect(putBody.mdns).toEqual({
@@ -246,7 +246,7 @@ describe('GET/PUT /api/host/stack — mdns surface (#488)', () => {
   test('derived names follow a sanitized project name', async () => {
     process.env.OP_ENABLE_ADMIN = '1';
     const { GET, PUT } = await loadRoute();
-    const putRes = await PUT(makePutEvent({ projectName: 'my_lab', lanExposureEnabled: false }));
+    const putRes = await PUT(makePutEvent({ projectName: 'my_lab', access: { networkAccess: false, assistantDirect: false, guardianNetwork: false, guardianOpenaiApi: false } }));
     expect(putRes.status).toBe(200);
 
     const res = await GET(makeGetEvent());
@@ -256,11 +256,11 @@ describe('GET/PUT /api/host/stack — mdns surface (#488)', () => {
     expect(mdns.guardian.name).toBe('my-lab-guardian.local');
   });
 
-  test('OP_BIND_ADDRESS + GUARDIAN_DIRECT_INGRESS in stack.env marks the guardian name advertised', async () => {
+  test('OP_GUARDIAN_BIND_ADDRESS + GUARDIAN_DIRECT_INGRESS marks the guardian name advertised', async () => {
     // PR #564 P2-1: guardian mDNS is gated on direct ingress being enabled, so
     // the advertised front door is never a listener that 404s.
     process.env.OP_ENABLE_ADMIN = '1';
-    seedSecretsEnv(homeDir, 'OP_BIND_ADDRESS=0.0.0.0\nGUARDIAN_DIRECT_INGRESS=true\n');
+    seedSecretsEnv(homeDir, 'OP_GUARDIAN_BIND_ADDRESS=0.0.0.0\nGUARDIAN_DIRECT_INGRESS=true\n');
     const { GET } = await loadRoute();
     const res = await GET(makeGetEvent());
     const body = (await res.json()) as Record<string, unknown>;
@@ -268,9 +268,9 @@ describe('GET/PUT /api/host/stack — mdns surface (#488)', () => {
     expect(mdns.guardian.advertised).toBe(true);
   });
 
-  test('OP_BIND_ADDRESS without GUARDIAN_DIRECT_INGRESS leaves the guardian un-advertised (P2-1)', async () => {
+  test('a guardian bind without GUARDIAN_DIRECT_INGRESS leaves it un-advertised (P2-1)', async () => {
     process.env.OP_ENABLE_ADMIN = '1';
-    seedSecretsEnv(homeDir, 'OP_BIND_ADDRESS=0.0.0.0\n');
+    seedSecretsEnv(homeDir, 'OP_GUARDIAN_BIND_ADDRESS=0.0.0.0\n');
     const { GET } = await loadRoute();
     const res = await GET(makeGetEvent());
     const body = (await res.json()) as Record<string, unknown>;
@@ -291,62 +291,37 @@ describe('GET/PUT /api/host/stack — mdns surface (#488)', () => {
 });
 
 // #563 — networkPreset surfaced on GET/PUT /api/host/stack (D8, T58-T60).
-describe('GET/PUT /api/host/stack — networkPreset surface (#563 D8)', () => {
-  test('T58: GET reports networkPreset "this-pc" on a fresh env', async () => {
+describe('GET /api/host/stack — the access surface is a read, not an inference', () => {
+  test('a fresh env reports everything closed', async () => {
     process.env.OP_ENABLE_ADMIN = '1';
     const { GET } = await loadRoute();
-    const res = await GET(makeGetEvent());
-    expect(res.status).toBe(200);
-    const body = (await res.json()) as Record<string, unknown>;
-    expect(body.networkPreset).toBe('this-pc');
+    const body = (await (await GET(makeGetEvent())).json()) as Record<string, unknown>;
+    expect(body.access).toEqual({
+      networkAccess: false,
+      assistantDirect: false,
+      guardianNetwork: false,
+      guardianOpenaiApi: false,
+    });
   });
 
-  test('T59: GET detects a seeded home-password row', async () => {
+  test('reads a seeded row back verbatim', async () => {
     process.env.OP_ENABLE_ADMIN = '1';
     seedSecretsEnv(
       homeDir,
-      [
-        'OP_BIND_ADDRESS=127.0.0.1',
-        'OP_ASSISTANT_BIND_ADDRESS=0.0.0.0',
-        'OP_UI_BIND_ADDRESS=127.0.0.1',
-        'OP_VOICE_BIND_ADDRESS=127.0.0.1',
-        'OPENCODE_AUTH=true',
-        '',
-      ].join('\n'),
+      'OP_UI_BIND_ADDRESS=0.0.0.0\nOP_ASSISTANT_BIND_ADDRESS=127.0.0.1\nOP_GUARDIAN_BIND_ADDRESS=0.0.0.0\n',
     );
     const { GET } = await loadRoute();
-    const res = await GET(makeGetEvent());
-    const body = (await res.json()) as Record<string, unknown>;
-    expect(body.networkPreset).toBe('home-password');
+    const body = (await (await GET(makeGetEvent())).json()) as Record<string, unknown>;
+    expect(body.access).toMatchObject({ networkAccess: true, assistantDirect: false, guardianNetwork: true });
   });
 
-  test('T59: a drifted env reports networkPreset null', async () => {
+  test('a hand-edited env can never report "custom" — every combination is representable', async () => {
+    // The retired preset detection returned null for any row it did not name,
+    // which surfaced as drift the operator could not act on.
     process.env.OP_ENABLE_ADMIN = '1';
-    seedSecretsEnv(
-      homeDir,
-      [
-        'OP_BIND_ADDRESS=0.0.0.0',
-        'OP_ASSISTANT_BIND_ADDRESS=0.0.0.0',
-        'OPENCODE_AUTH=true',
-        '',
-      ].join('\n'),
-    );
+    seedSecretsEnv(homeDir, 'OP_UI_BIND_ADDRESS=192.168.1.50\nOP_ASSISTANT_BIND_ADDRESS=0.0.0.0\n');
     const { GET } = await loadRoute();
-    const res = await GET(makeGetEvent());
-    const body = (await res.json()) as Record<string, unknown>;
-    expect(body.networkPreset).toBeNull();
-  });
-
-  test('T60: PUT lanExposureEnabled:true reports networkPreset "home-open" in its response and on the follow-up GET', async () => {
-    process.env.OP_ENABLE_ADMIN = '1';
-    const { GET, PUT } = await loadRoute();
-    const putRes = await PUT(makePutEvent({ projectName: 'openpalm', lanExposureEnabled: true }));
-    expect(putRes.status).toBe(200);
-    const putBody = (await putRes.json()) as Record<string, unknown>;
-    expect(putBody.networkPreset).toBe('home-open');
-
-    const getRes = await GET(makeGetEvent());
-    const getBody = (await getRes.json()) as Record<string, unknown>;
-    expect(getBody.networkPreset).toBe('home-open');
+    const body = (await (await GET(makeGetEvent())).json()) as Record<string, unknown>;
+    expect(body.access).toMatchObject({ networkAccess: true, assistantDirect: true });
   });
 });

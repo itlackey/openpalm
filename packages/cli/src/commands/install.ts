@@ -27,7 +27,8 @@ import {
   writeSystemEnv,
   migrateLegacyDefaultPorts,
   patchSecretsEnvFile,
-  collectNetworkExposureWarnings,
+  describeAccessExposure,
+  readAccessToggles,
   type SetupSpec,
 } from '@openpalm/lib';
 import { detectHostInfo } from '../lib/host-info.ts';
@@ -155,7 +156,7 @@ export async function bootstrapInstall(options: InstallOptions): Promise<void> {
   // before services start. #563 — preset-aware: a matched network access
   // preset collapses to one informational line; unexplained exposure stays
   // loud (D9).
-  for (const line of collectNetworkExposureWarnings(process.env as Record<string, string>)) {
+  for (const line of describeAccessExposure(readAccessToggles(process.env as Record<string, string>))) {
     logger.warn(line);
   }
 

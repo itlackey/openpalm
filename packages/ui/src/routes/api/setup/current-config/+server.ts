@@ -1,5 +1,5 @@
 import { json } from "@sveltejs/kit";
-import { readStackEnv, readStackSecretEnv, listEnabledAddonIds, getAddonProfiles, annotateAddonProfileAvailability, getAddonProfileSelection, detectNetworkPreset } from "@openpalm/lib";
+import { readStackEnv, readStackSecretEnv, listEnabledAddonIds, getAddonProfiles, annotateAddonProfileAvailability, getAddonProfileSelection, readAccessToggles } from "@openpalm/lib";
 import { readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { getState } from "$lib/server/state.js";
@@ -149,9 +149,10 @@ export const GET: RequestHandler = async (event) => {
     enabledAddons: listEnabledAddonIds(state.homeDir),
     portalCredentials,
     importedModelPreferences: importedModelPreferences ?? null,
-    // #563 — detected network access preset for wizard rerun pre-fill
+    // Current access toggles, for wizard rerun pre-fill. A direct read of the
+    // generated binds — not an inference, so it can never report "custom".
     // (D7/D8); null means custom/hand-tuned, never a secret value (S3).
-    network: { preset: detectNetworkPreset(env) },
+    access: readAccessToggles(env),
     hasOpencodePassword: Boolean(secretEnv.OP_OPENCODE_PASSWORD),
   });
 };

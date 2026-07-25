@@ -10,7 +10,13 @@
   } from '$lib/api.js';
   import { getRuntimeContext, hasCapability } from '$lib/runtime-context.svelte.js';
   import { notifications } from '$lib/notifications.svelte.js';
-  import { NETWORK_PRESET_LABELS, type NetworkAccessPreset } from '@openpalm/lib/control-plane/network-preset.js';
+  import {
+    ACCESS_TOGGLE_DEFAULTS,
+    ACCESS_TOGGLE_DESCRIPTIONS,
+    ACCESS_TOGGLE_KEYS,
+    ACCESS_TOGGLE_LABELS,
+    type AccessToggles,
+  } from '@openpalm/lib/control-plane/access-toggles.js';
 
   // Phase 4 split: host
   // STACK settings (project name, bind address → /api/host/stack) are a
@@ -24,12 +30,13 @@
   // ── Host stack settings (host:stack:write) ─────────────────────────────────
   let stackSaving = $state(false);
   let projectName = $state('openpalm');
-  let lanExposureEnabled = $state(false);
+  let access: AccessToggles = $state({ ...ACCESS_TOGGLE_DEFAULTS });
   let stackEnvPath = $state('knowledge/env/stack.env');
   let mdns: MdnsSurface | null = $state(null);
-  // #563 — read-only preset surfacing (D8); null = custom/hand-tuned.
-  let networkPreset: NetworkAccessPreset | null = $state(null);
-  const networkPresetLabel = $derived(networkPreset ? NETWORK_PRESET_LABELS[networkPreset] : 'Custom (hand-configured)');
+  // Progressive disclosure: guardian toggles only mean something once a
+  // guardian-backed integration is enabled, and direct assistant exposure is
+  // an advanced choice most installs never make.
+  let showAdvancedAccess = $state(false);
 
   // ── Assistant persona (assistant-settings:write) ───────────────────────────
   let personaSaving = $state(false);
@@ -51,10 +58,9 @@
       if (showStack) {
         const stack = await fetchHostStackSettings();
         projectName = stack.projectName;
-        lanExposureEnabled = stack.lanExposureEnabled;
+        access = { ...stack.access };
         stackEnvPath = stack.stackEnvPath;
         mdns = stack.mdns;
-        networkPreset = stack.networkPreset;
       }
       if (showPersona) {
         const persona = await fetchAssistantPersona();
@@ -73,11 +79,10 @@
     stackSaving = true;
     error = '';
     try {
-      const data = await saveHostStackSettings({ projectName, lanExposureEnabled });
+      const data = await saveHostStackSettings({ projectName, access });
       projectName = data.projectName;
-      lanExposureEnabled = data.lanExposureEnabled;
+      access = { ...data.access };
       mdns = data.mdns;
-      networkPreset = data.networkPreset;
       notifications.push(
         'success',
         data.projectRenamed
@@ -145,21 +150,51 @@
       </section>
 
       <section class="settings-card">
-        <h3>LAN Exposure</h3>
-        <p class="section-note">This writes <code>OP_ASSISTANT_BIND_ADDRESS</code> in <code>{stackEnvPath}</code>.</p>
-        <div class="path-chip">Network access preset: {networkPresetLabel}</div>
-        <p class="field-hint">Presets (This PC only / Home network / Shared network) are chosen in Setup — rerun the wizard from the dashboard to switch. The checkbox below is the advanced raw <code>OP_ASSISTANT_BIND_ADDRESS</code> override.</p>
-        <label class="field-inline" for="assistant-lan-exposure">
-          <input id="assistant-lan-exposure" type="checkbox" bind:checked={lanExposureEnabled} disabled={loading || saving || !canEditStack} />
-          <span>Expose the assistant OpenCode server on the host LAN</span>
+        <h3>Network access</h3>
+        <p class="section-note">Generated into <code>{stackEnvPath}</code>. Each switch opens exactly one door — nothing cascades.</p>
+
+        <label class="field-inline" for="access-networkAccess">
+          <input
+            id="access-networkAccess"
+            type="checkbox"
+            checked={access.networkAccess}
+            onchange={(e) => (access = { ...access, networkAccess: e.currentTarget.checked })}
+            disabled={loading || saving || !canEditStack}
+          />
+          <span>{ACCESS_TOGGLE_LABELS.networkAccess}</span>
         </label>
-        <p class="field-hint">Off keeps the host bind on <code>127.0.0.1</code>. On switches it to <code>0.0.0.0</code> so other devices on your LAN can reach the host port.</p>
+        <p class="field-hint">{ACCESS_TOGGLE_DESCRIPTIONS.networkAccess}</p>
+
+        <button
+          type="button"
+          class="access-advanced-toggle"
+          onclick={() => (showAdvancedAccess = !showAdvancedAccess)}
+        >
+          {showAdvancedAccess ? 'Hide' : 'Show'} advanced access options
+        </button>
+
+        {#if showAdvancedAccess}
+          {#each ACCESS_TOGGLE_KEYS.filter((k) => k !== 'networkAccess') as key (key)}
+            <label class="field-inline" for={`access-${key}`}>
+              <input
+                id={`access-${key}`}
+                type="checkbox"
+                checked={access[key]}
+                onchange={(e) => (access = { ...access, [key]: e.currentTarget.checked })}
+                disabled={loading || saving || !canEditStack}
+              />
+              <span>{ACCESS_TOGGLE_LABELS[key]}</span>
+            </label>
+            <p class="field-hint">{ACCESS_TOGGLE_DESCRIPTIONS[key]}</p>
+          {/each}
+        {/if}
+
         {#if mdns}
           <div class="path-chip mdns-chip">
             {#if mdns.assistant.advertised}
               <span>Assistant API (OpenCode): <a href={`http://${mdns.assistant.name}:${mdns.assistant.port}`}>http://{mdns.assistant.name}:{mdns.assistant.port}</a></span>
             {:else}
-              <span class="mdns-muted">Assistant API (OpenCode): {mdns.assistant.name}:{mdns.assistant.port} (off — enable LAN exposure)</span>
+              <span class="mdns-muted">Assistant API (OpenCode): {mdns.assistant.name}:{mdns.assistant.port} (not published)</span>
             {/if}
             {#if mdns.guardian.advertised}
               <span>Guardian: <a href={`http://${mdns.guardian.name}:${mdns.guardian.port}`}>http://{mdns.guardian.name}:{mdns.guardian.port}</a></span>
@@ -207,6 +242,7 @@
   .settings-card h3 { margin: 0 0 var(--s-sp-2); font-family: var(--s-font-mono); font-size: var(--s-type-deed); letter-spacing: var(--s-track-label); text-transform: uppercase; color: var(--s-ink-3); }
   .section-note { margin: 0 0 var(--s-sp-3); font-family: var(--s-font-display); font-size: var(--s-type-deed); color: var(--s-ink-2); }
   .field { display: grid; gap: var(--s-sp-1); font-family: var(--s-font-display); font-size: var(--s-type-deed); color: var(--s-ink-2); }
+  .access-advanced-toggle { align-self: flex-start; background: none; border: none; padding: 0; color: var(--s-ink-2); font-family: var(--s-font-display); font-size: var(--s-type-deed); text-decoration: underline; cursor: pointer; }
   .field-inline { display: flex; align-items: center; gap: var(--s-sp-2); font-family: var(--s-font-display); font-size: var(--s-type-deed); color: var(--s-ink); }
   .control-input { font-family: var(--s-font-display); font-size: var(--s-type-deed); color: var(--s-ink); background: none; border: 0; border-bottom: var(--s-hair) solid var(--s-line); border-radius: 0; padding: 0.5rem 0; width: 100%; }
   .control-input:focus { outline: none; border-bottom-color: var(--s-ink-2); }

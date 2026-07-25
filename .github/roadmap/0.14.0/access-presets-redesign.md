@@ -246,24 +246,17 @@ Each step is independently shippable.
 | 2 | **Login rate limiting + session-key separation.** Gates everything below. | **done** |
 | 3 | **Scope the Host allowlist** to the host process. Without this, nothing on the network can load the UI at all. | **done** |
 | 4 | **Same-origin `/oc` proxy**, modelled on the voice route. | **done** |
-| 5 | **Toggles replace presets**, with the generated state row. | open |
+| 5 | **Toggles replace presets**, with a generated bind row. | **done** |
 
-Steps 2–4 are what make LAN access work, and all three have landed. Step 5 is
-the configuration cleanup; it carries the migration risk and delivers the least
-direct user value, so it goes last.
+Steps 2–4 made LAN access work; step 5 removed the configuration surface that
+made it hard to reason about. The CORS grant and the entrypoint's `--cors`
+assembly went with step 5, since nothing browser-direct points at the local
+OpenCode any more.
 
-Two clean-ups are deliberately deferred to step 5 rather than done alongside
-step 4, because both are only safe once nothing browser-direct points at the
-local OpenCode:
-
-- **The OpenCode CORS grant** (`OP_UI_CORS_ALLOWED_ORIGINS` and the
-  entrypoint's `--cors` assembly). Dead once the built-in client is
-  same-origin, but an install whose IndexedDB still holds an absolute
-  `host:3810` connection keeps using it until its container restarts and
-  reseeds. Marked scheduled-for-removal in both places.
-- **`rewriteLoopbackUrlForBrowserHost`'s successor branch** in
-  `resolveLockedBaseUrl`, which exists purely to keep a pre-proxy
-  `runtime-config.json` working across the upgrade.
+One compatibility branch survives on purpose: `resolveLockedBaseUrl` still
+rewrites an absolute loopback seed to the visited host, so an install whose
+`runtime-config.json` predates the proxy keeps working until its container
+restarts and reseeds `/oc`. It can go one release later.
 
 ## 7. Verification
 

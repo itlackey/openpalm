@@ -22,7 +22,8 @@ import {
   resolveOpenPalmHome,
   readStackRuntimeEnv,
   readSecret,
-  collectNetworkExposureWarnings,
+  describeAccessExposure,
+  readAccessToggles,
   stackDirFor,
   reconcileMdnsResponder,
 } from "@openpalm/lib";
@@ -55,10 +56,10 @@ function loadProcessEnv(): void {
   if (startupApplyDone) return;
   startupApplyDone = true;
 
-  // Warn early if any bind address is non-loopback. #563 — preset-aware: a
-  // matched network access preset collapses to one informational line;
+  // Report what the operator deliberately opened. Exposure is now read from
+  // the access toggles rather than diagnosed from bind addresses:
   // unexplained exposure stays loud (D9).
-  for (const line of collectNetworkExposureWarnings(process.env as Record<string, string>)) {
+  for (const line of describeAccessExposure(readAccessToggles(process.env as Record<string, string>))) {
     logger.warn(line);
   }
 

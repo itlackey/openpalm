@@ -1,6 +1,6 @@
 import type { ModelSelection, PortalState, Provider, ProviderState } from '../client/types.js';
 import { buildPortalsConfig } from '../client/helpers.js';
-import { isNetworkAccessPreset, type NetworkAccessPreset } from '@openpalm/lib/control-plane/network-preset.js';
+import { coerceAccessToggles, type AccessToggles } from '@openpalm/lib/control-plane/access-toggles.js';
 
 // ── Install payload contract (POST /api/setup/complete) ──────────────────────
 // The pure builder + inverse parser for the setup install contract. Extracted
@@ -36,8 +36,8 @@ export interface SetupPayload {
   portalCredentials?: Record<string, Record<string, string>>;
   imageTag?: string;
   hostAkm?: boolean;
-  /** #563 — network access preset. Omitted entirely on a rerun the operator didn't touch (D7). */
-  network?: { preset: NetworkAccessPreset; opencodePassword?: string };
+  /** Network access toggles. Omitted entirely on a rerun the operator didn't touch. */
+  access?: AccessToggles;
 }
 
 /** Everything buildSetupPayload needs — the resolved wizard state at install time. */
@@ -59,10 +59,8 @@ export interface SetupPayloadInput {
   keepExistingUiLoginPassword?: boolean;
   imageTag: string;
   hostAkmEnabled: boolean;
-  /** #563 — chosen network access preset; null means "don't touch network config" (rerun over a custom/undetected env, D7). */
-  networkPreset: NetworkAccessPreset | null;
-  /** Password for the home-password preset; ignored (never sent) by every other preset. */
-  opencodePassword: string;
+  /** Chosen access toggles; null means "don't touch network config" on a rerun the operator didn't change. */
+  access: AccessToggles | null;
 }
 
 /**
@@ -78,7 +76,7 @@ export function buildSetupPayload(input: SetupPayloadInput): SetupPayload {
   const {
     modelSelection, verifiedProviders, providerState, ollamaEnabled, hostLocalLlmRunning,
     voiceEnabled, selectedVoiceProfile, selectedOllamaProfile,
-    portalSelection, uiLoginPassword, keepExistingUiLoginPassword, imageTag, hostAkmEnabled, networkPreset, opencodePassword,
+    portalSelection, uiLoginPassword, keepExistingUiLoginPassword, imageTag, hostAkmEnabled, access,
   } = input;
 
   const llm = modelSelection.llm;
@@ -164,14 +162,9 @@ export function buildSetupPayload(input: SetupPayloadInput): SetupPayload {
   if (imageTag.trim()) result.imageTag = imageTag.trim();
   if (hostAkmEnabled) result.hostAkm = true;
 
-  // #563 — network access preset. null (rerun over a custom/undetected env
-  // the operator hasn't touched) omits the field entirely (D7); only
-  // home-password carries a password (D5/D7 — the other presets REJECT one).
-  if (networkPreset !== null) {
-    result.network = networkPreset === 'home-password'
-      ? { preset: networkPreset, opencodePassword }
-      : { preset: networkPreset };
-  }
+  // null (a rerun the operator did not touch) omits the field entirely, so
+  // performSetup leaves their exposure exactly as it is.
+  if (access !== null) result.access = access;
 
   return result;
 }
@@ -188,8 +181,8 @@ export interface RawSetupConfig {
   enabledAddons?: unknown;
   ollama?: { selectedProfile?: unknown } | null;
   portalCredentials?: Record<string, Record<string, unknown>> | null;
-  /** #563 — the detected network access preset (null = custom/hand-tuned). */
-  network?: { preset?: string | null } | null;
+  /** Current access toggles, read from the generated binds. */
+  access?: Record<string, unknown> | null;
   /** PR #564 r3566887969 — whether the install already has an OpenCode password
    *  secret. The secret value itself is never returned; this flag lets a rerun
    *  distinguish "keep the existing password" from "set a new one". */
@@ -217,11 +210,10 @@ export interface PartialSetupState {
   /** Raw per-portal credential metadata, applied onto the portal selection as-is. */
   portalCredentials: Record<string, Record<string, unknown>>;
   /**
-   * #563 — the detected network access preset for rerun pre-fill. Unset when
-   * the response has no `network` field at all; `null` when present but the
-   * preset is absent/unrecognized (custom/hand-tuned env, D7/D8).
+   * Current access toggles for rerun pre-fill. Unset when the response has no
+   * `access` field at all.
    */
-  networkPreset?: NetworkAccessPreset | null;
+  access?: AccessToggles | null;
   /** PR #564 r3566887969 — the install already has an OpenCode password. */
   hasOpencodePassword?: boolean;
 }
@@ -288,12 +280,11 @@ export function parseSetupConfig(data: RawSetupConfig): PartialSetupState {
   }
   result.portalCredentials = cleanedPortalCreds;
 
-  // #563 — network access preset (D7/D8). Only set the field when the
-  // response carries a `network` key at all; an unrecognized/absent preset
-  // inside it maps to null (custom/hand-tuned env), never a garbage passthrough.
-  if (data.network !== undefined && data.network !== null) {
-    const preset = data.network.preset;
-    result.networkPreset = isNetworkAccessPreset(preset) ? preset : null;
+  // Only set the field when the response carries `access` at all. Unlike the
+  // retired preset detection there is no "unrecognized" case: every toggle
+  // combination is representable, so anything present coerces cleanly.
+  if (data.access !== undefined && data.access !== null) {
+    result.access = coerceAccessToggles(data.access);
   }
   // PR #564 r3566887969 — surface whether a password already exists so a rerun
   // keep-as-is over home-password doesn't mint (rotate) a new one.

@@ -74,7 +74,7 @@ describe('GET /api/host/stack', () => {
     expect(res.status).toBe(200);
     const body = await res.json() as Record<string, unknown>;
     expect(body.projectName).toBe('openpalm');
-    expect(body.lanExposureEnabled).toBe(false);
+    expect((body.access as Record<string, boolean>).assistantDirect).toBe(false);
     expect(body.stackEnvPath).toBe('knowledge/env/stack.env');
   });
 
@@ -85,23 +85,23 @@ describe('GET /api/host/stack', () => {
     expect(res.status).toBe(200);
 
     const body = await res.json() as Record<string, unknown>;
-    expect(body.lanExposureEnabled).toBe(true);
+    expect((body.access as Record<string, boolean>).assistantDirect).toBe(true);
   });
 });
 
 describe('PUT /api/host/stack', () => {
   test('rejects invalid project name', async () => {
-    const res = await PUT(makePutEvent({ projectName: 'Open Palm', lanExposureEnabled: false }));
+    const res = await PUT(makePutEvent({ projectName: 'Open Palm', access: { networkAccess: false, assistantDirect: false, guardianNetwork: false, guardianOpenaiApi: false } }));
     expect(res.status).toBe(400);
   });
 
-  test('rejects invalid LAN exposure toggle values', async () => {
-    const res = await PUT(makePutEvent({ projectName: 'openpalm', lanExposureEnabled: 'yes' }));
+  test('rejects a non-object access payload', async () => {
+    const res = await PUT(makePutEvent({ projectName: 'openpalm', access: 'yes' }));
     expect(res.status).toBe(400);
   });
 
   test('records a project rename so the next apply can tear down the old project (#540)', async () => {
-    const res = await PUT(makePutEvent({ projectName: 'my-agent', lanExposureEnabled: false }));
+    const res = await PUT(makePutEvent({ projectName: 'my-agent', access: { networkAccess: false, assistantDirect: false, guardianNetwork: false, guardianOpenaiApi: false } }));
     expect(res.status).toBe(200);
     const body = await res.json() as Record<string, unknown>;
     expect(body.projectRenamed).toBe(true);
@@ -111,7 +111,7 @@ describe('PUT /api/host/stack', () => {
   });
 
   test('does not record a rename when the project name is unchanged', async () => {
-    const res = await PUT(makePutEvent({ projectName: 'openpalm', lanExposureEnabled: false }));
+    const res = await PUT(makePutEvent({ projectName: 'openpalm', access: { networkAccess: false, assistantDirect: false, guardianNetwork: false, guardianOpenaiApi: false } }));
     expect(res.status).toBe(200);
     const body = await res.json() as Record<string, unknown>;
     expect(body.projectRenamed).toBe(false);
@@ -119,8 +119,8 @@ describe('PUT /api/host/stack', () => {
   });
 
   test('renaming back to the still-running project clears the recorded marker (#540)', async () => {
-    await PUT(makePutEvent({ projectName: 'my-agent', lanExposureEnabled: false }));
-    await PUT(makePutEvent({ projectName: 'openpalm', lanExposureEnabled: false }));
+    await PUT(makePutEvent({ projectName: 'my-agent', access: { networkAccess: false, assistantDirect: false, guardianNetwork: false, guardianOpenaiApi: false } }));
+    await PUT(makePutEvent({ projectName: 'openpalm', access: { networkAccess: false, assistantDirect: false, guardianNetwork: false, guardianOpenaiApi: false } }));
 
     const stateEnv = readFileSync(join(rootDir, 'state', 'stack.state.env'), 'utf-8');
     expect(stateEnv).toContain('OP_PREVIOUS_PROJECT_NAME=\n');
@@ -129,7 +129,7 @@ describe('PUT /api/host/stack', () => {
   test('disables LAN exposure by restoring loopback bind address', async () => {
     writeFileSync(stackEnvFor(rootDir), 'OP_ASSISTANT_BIND_ADDRESS=0.0.0.0\n');
 
-    const res = await PUT(makePutEvent({ projectName: 'openpalm', lanExposureEnabled: false }));
+    const res = await PUT(makePutEvent({ projectName: 'openpalm', access: { networkAccess: false, assistantDirect: false, guardianNetwork: false, guardianOpenaiApi: false } }));
     expect(res.status).toBe(200);
 
     const stackEnv = readFileSync(stackEnvFor(rootDir), 'utf-8');
