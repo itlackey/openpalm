@@ -585,6 +585,9 @@ start_opencode() {
   # preflight. Ship the loopback UI origins by default; operators add exact
   # comma-separated origins (a LAN host, a reverse proxy) via
   # OP_UI_CORS_ALLOWED_ORIGINS. EXPLICIT ORIGINS ONLY — never a wildcard.
+  # Fallback pair matches core.compose.yml and packages/lib STACK_DEFAULTS:
+  # UI 3800, OpenCode 3810. Compose always passes OP_UI_HOST_PORT explicitly;
+  # the nested defaults only cover a bare `docker run` of this image.
   local ui_host_port="${OP_UI_HOST_PORT:-${OP_UI_PORT:-3800}}"
   local cors_origins=(
     "http://127.0.0.1:${ui_host_port}"

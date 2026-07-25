@@ -279,12 +279,13 @@ describe("#563 — the preset-managed cascade set matches compose reality (T31, 
     expect(assistantPorts.some((port) => String(port).includes("OP_CLIENT_PORT"))).toBe(false);
     // Phase 4 re-adds the UI co-process on the FIXED in-container port 3000,
     // published loopback-first: per-service OP_UI_BIND_ADDRESS nested over the
-    // global OP_BIND_ADDRESS cascade. The Compose fallback stays at the legacy
-    // 3810 until migration; fresh/migrated stack.env explicitly sets UI 3800.
+    // global OP_BIND_ADDRESS cascade. The Compose fallback is the SHIPPED UI
+    // port 3800 — it used to be the retired 3810, which silently inverted the
+    // UI/OpenCode layout on the manual `docker compose` path.
     expect(assistantPorts).toContain(
-      "${OP_UI_BIND_ADDRESS:-${OP_BIND_ADDRESS:-127.0.0.1}}:${OP_UI_PORT:-3810}:3000",
+      "${OP_UI_BIND_ADDRESS:-${OP_BIND_ADDRESS:-127.0.0.1}}:${OP_UI_PORT:-3800}:3000",
     );
-    expect(core.services?.assistant?.environment?.OP_UI_HOST_PORT).toBe("${OP_UI_PORT:-3810}");
+    expect(core.services?.assistant?.environment?.OP_UI_HOST_PORT).toBe("${OP_UI_PORT:-3800}");
     expect(core.services?.assistant?.environment?.OP_PROJECT_NAME).toBe("${OP_PROJECT_NAME:-openpalm}");
   });
 
@@ -324,8 +325,9 @@ describe("#488 — host mDNS responder gate vars match compose reality (pin)", (
 
   test("assistant host port gates on OP_ASSISTANT_BIND_ADDRESS with loopback default", () => {
     const assistantPorts = allServices.assistant?.ports ?? [];
+    // Fallback is the shipped OpenCode port 3810 (was the retired 3800).
     const hasAssistantPort = assistantPorts.some(
-      (p) => p === "${OP_ASSISTANT_BIND_ADDRESS:-127.0.0.1}:${OP_ASSISTANT_PORT:-3800}:4096",
+      (p) => p === "${OP_ASSISTANT_BIND_ADDRESS:-127.0.0.1}:${OP_ASSISTANT_PORT:-3810}:4096",
     );
     expect(hasAssistantPort).toBe(true);
   });

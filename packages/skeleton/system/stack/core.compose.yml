@@ -89,11 +89,17 @@ services:
       # below, NOT the in-container :4096 (unreachable from a browser).
       # OP_UI_DEFAULT_ASSISTANT_URL overrides the full URL for non-default
       # topologies (e.g. a reverse proxy in front of the stack).
-      # Legacy-safe interpolation fallback: fresh and migrated stack.env files
-      # explicitly materialize the corrected OpenCode port (3810). Keeping 3800
-      # only as the no-env fallback prevents an older control plane that has not
-      # run the port migration yet from colliding with the UI on 3800.
-      OP_ASSISTANT_PORT: ${OP_ASSISTANT_PORT:-3800}
+      # Interpolation fallback matches the SHIPPED contract: OpenCode 3810, UI
+      # 3800. Fresh and migrated stack.env files materialize both explicitly,
+      # and every deploy path runs migrateLegacyDefaultPorts() before compose
+      # (lifecycle.applyHome, cli-compose.runComposeWithPreflight,
+      # install.ts, the UI supervisor hook), so a pre-migration stack.env can
+      # no longer reach this line. These fallbacks therefore only serve the
+      # manual `docker compose` path documented in
+      # docs/operations/manual-compose-runbook.md — where the RETIRED pair
+      # (assistant 3800 / UI 3810) silently inverted the layout every doc,
+      # the CLI, the setup system-check, and the wizard's own links describe.
+      OP_ASSISTANT_PORT: ${OP_ASSISTANT_PORT:-3810}
       OP_UI_DEFAULT_ASSISTANT_URL: ${OP_UI_DEFAULT_ASSISTANT_URL:-}
       # The served UI's browser calls OpenCode DIRECTLY (browser-owned transport,
       # no host proxy), so OpenCode must CORS-allow the UI's browser origin. The
@@ -103,9 +109,14 @@ services:
       # default; passing OP_UI_PORT into the container would break that probe).
       # Operators serving the UI on a LAN host / reverse proxy add exact
       # comma-separated origins via OP_UI_CORS_ALLOWED_ORIGINS (never a wildcard).
-      # Same compatibility rule as OP_ASSISTANT_PORT above: installed state
-      # explicitly sets 3800; 3810 is only the pre-migration fallback.
-      OP_UI_HOST_PORT: ${OP_UI_PORT:-3810}
+      #
+      # NOTE: this whole grant is scheduled for removal. Once the UI serves
+      # OpenCode same-origin at /oc (the pattern /voice already uses), the
+      # browser makes no cross-origin request and there is nothing to allow.
+      # See .github/roadmap/0.14.0/access-presets-redesign.md.
+      # Same contract as OP_ASSISTANT_PORT above — the fallback is the shipped
+      # UI port, 3800.
+      OP_UI_HOST_PORT: ${OP_UI_PORT:-3800}
       # The HOST-served UI (Electron / `openpalm ui serve` / `openpalm admin`,
       # default port 3880) is a SECOND browser origin whose transport also
       # talks to OpenCode directly at the published assistant port — so
@@ -134,13 +145,13 @@ services:
       # wizard both call OpenCode's PUT /auth/{providerID}; ai-sdk picks
       # the key up via OpenCode at call time.
     ports:
-      - "${OP_ASSISTANT_BIND_ADDRESS:-127.0.0.1}:${OP_ASSISTANT_PORT:-3800}:4096"
+      - "${OP_ASSISTANT_BIND_ADDRESS:-127.0.0.1}:${OP_ASSISTANT_PORT:-3810}:4096"
       # UI co-process (@openpalm/ui adapter-node, in-container port 3000).
       # Loopback by default; honors the global OP_BIND_ADDRESS policy with a
       # per-service OP_UI_BIND_ADDRESS override, same as the assistant listener.
       # OP_UI_PORT is the HOST-facing port only; it is deliberately NOT passed
       # into the container env (the UI always serves on 3000 in-container).
-      - "${OP_UI_BIND_ADDRESS:-${OP_BIND_ADDRESS:-127.0.0.1}}:${OP_UI_PORT:-3810}:3000"
+      - "${OP_UI_BIND_ADDRESS:-${OP_BIND_ADDRESS:-127.0.0.1}}:${OP_UI_PORT:-3800}:3000"
     volumes:
       # data/assistant is HOME (runtime). config/assistant is the power-user's
       # OpenCode GLOBAL config, mounted at ~/.config/opencode (nested over HOME).

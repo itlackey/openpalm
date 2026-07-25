@@ -229,7 +229,7 @@ export async function withAdminBody(
  * on the configured admin port.
  *
  * @param request  Incoming Request (or SvelteKit RequestEvent.request)
- * @param port     The port this server is bound to (e.g. 3880 or 8100)
+ * @param port     The port this server is bound to (e.g. 3880, the host UI default)
  * @returns        A 400 Response if the host is rejected; null if allowed
  */
 /**

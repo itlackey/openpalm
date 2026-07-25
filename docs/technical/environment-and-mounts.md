@@ -99,9 +99,13 @@ Ports and networks:
 | Networks | `assistant_net` |
 
 Fresh and migrated installs explicitly write `OP_UI_PORT=3800` and
-`OP_ASSISTANT_PORT=3810` to `stack.env`. The Compose expressions retain the old
-non-colliding `3810`/`3800` pair only as a temporary no-env fallback for an older
-control plane that refreshed the skeleton before running the port migration.
+`OP_ASSISTANT_PORT=3810` to `stack.env`, and the Compose interpolation
+fallbacks now carry that same pair. They previously carried the RETIRED pair
+(assistant `3800` / UI `3810`) as a guard for a pre-migration control plane —
+but `migrateLegacyDefaultPorts()` runs before Compose on every deploy path
+(`lifecycle.applyHome`, `cli-compose.runComposeWithPreflight`,
+`install.ts`, the UI supervisor hook), so that guard was unreachable in
+practice and only inverted the layout for the manual `docker compose` path.
 
 The UI co-process serves the single `@openpalm/ui` SvelteKit `adapter-node`
 build ("One UI, delete the split") — the SAME build Electron and the CLI serve.
@@ -137,7 +141,7 @@ Key env:
 | `OP_UI_PORT` | `stack.env` (default `3800`) | Host-published assistant UI port |
 | `OP_UI_DEFAULT_ASSISTANT_URL` | `stack.env` (optional) | Full-URL override for the UI's locked default connection |
 | `OP_UI_HOST_PORT` | compose-passed from `OP_UI_PORT` (default `3800`) | Host-published UI port; the entrypoint builds OpenCode's CORS origin from it (distinct from the deliberately-unpassed `OP_UI_PORT`, which the healthcheck reads as the in-container `:3000` default) |
-| `OP_UI_CORS_ALLOWED_ORIGINS` | `stack.env` (optional) | Extra comma-separated exact origins passed to OpenCode `--cors` for LAN / reverse-proxy UI deployments |
+| `OP_UI_CORS_ALLOWED_ORIGINS` | `stack.env` (optional) | Extra comma-separated exact origins passed to OpenCode `--cors` for LAN / reverse-proxy UI deployments. Scheduled for removal: once the UI serves OpenCode same-origin at `/oc` (the pattern `/voice` already uses) the browser makes no cross-origin request and there is nothing to grant |
 | `OP_BIND_ADDRESS` / `OP_ASSISTANT_BIND_ADDRESS` / `OP_UI_BIND_ADDRESS` | compose env interpolation | Govern loopback-first host exposure; the entrypoint warns when OpenCode is exposed without authentication |
 
 Notes:
