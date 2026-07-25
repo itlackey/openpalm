@@ -32,7 +32,13 @@ import type { ControlPlaneState } from "./types.js";
 import { validateSetupSpec } from "./setup-validation.js";
 import { getRegistryAutomation, listEnabledAddonIds, setAddonEnabled, setAddonProfileSelection } from "./addons.js";
 import { GUARDIAN_INGRESS_ADDON_IDS } from "./addon-ids.js";
-import { resolveNetworkPreset, validateNetworkPresetEnv, type NetworkAccessPreset } from "./network-preset.js";
+import {
+  coerceAccessToggles,
+  requiresAssistantKey,
+  resolveAccessEnv,
+  type AccessToggles,
+} from "./access-toggles.js";
+import { randomHex } from "./crypto.js";
 export { validateSetupSpec } from "./setup-validation.js";
 
 const logger = createLogger("setup");
@@ -69,8 +75,11 @@ export type SetupSpec = {
   ollamaProfile?: string;
   imageTag?: string;
   hostAkm?: boolean;
-  /** Network access preset (issue #563). Absent = leave network config untouched. */
-  network?: { preset: NetworkAccessPreset; opencodePassword?: string };
+  /**
+   * Network access toggles. Absent = leave network config untouched, so a
+   * rerun the operator did not touch never rewrites their exposure.
+   */
+  access?: Partial<AccessToggles>;
 };
 
 // ── Secrets Builder ──────────────────────────────────────────────────────
@@ -300,17 +309,7 @@ export async function performSetup(
   const validation = validateSetupSpec(input);
   if (!validation.valid) return { ok: false, error: validation.errors.join("; ") };
 
-  // #563 D7 — fail closed BEFORE any write when the target preset conflicts
-  // with the HOST PROCESS env (not stack.env): compose gives process env
-  // precedence over --env-file, so a leftover OP_ASSISTANT_BIND_ADDRESS=0.0.0.0
-  // in the host process would silently defeat the shared-guardian hard-pin
-  // this resolver is about to write to stack.env.
-  if (input.network) {
-    const envCheck = validateNetworkPresetEnv(input.network.preset, process.env);
-    if (!envCheck.valid) return { ok: false, error: envCheck.errors.join("; ") };
-  }
-
-  const { llm, embedding, security, owner, connections, portalCredentials, addons, voiceProfile, ollamaProfile, imageTag, hostAkm, network } = input;
+  const { llm, embedding, security, owner, connections, portalCredentials, addons, voiceProfile, ollamaProfile, imageTag, hostAkm, access } = input;
   const state = opts?.state ?? createState();
   initializeStateSecrets(state);
 
@@ -348,18 +347,26 @@ export async function performSetup(
       } else if (!readSecret(state.homeDir, "op_ui_login_password")?.trim()) {
         throw new Error("security.uiLoginPassword is required — no existing UI login password to preserve.");
       }
-      // #563 — network access preset. Absent `network` means "leave whatever
-      // is already in stack.env untouched" (D7): a rerun over a hand-tuned
-      // env, or over a previous preset choice, never silently rewrites it
-      // unless the operator actively picked a preset this run.
-      if (network) {
-        const resolution = resolveNetworkPreset(network.preset, {
-          opencodePassword: network.opencodePassword,
-        });
-        patchSecretsEnvFile(state.homeDir, {
-          ...resolution.env,
-          ...(resolution.opencodePassword ? { OP_OPENCODE_PASSWORD: resolution.opencodePassword } : {}),
-        });
+      // Network access toggles. Absent `access` means "leave whatever is in
+      // stack.env untouched": a rerun over a hand-tuned env, or over a
+      // previous choice, never silently rewrites it unless the operator
+      // actively set toggles this run.
+      if (access) {
+        const toggles = coerceAccessToggles(access);
+        const patches: Record<string, string> = { ...resolveAccessEnv(toggles) };
+        // Publishing the assistant API always turns auth on, with a key the
+        // system GENERATES. The operator is never asked to invent one: the
+        // human-facing credential is the UI login password in every
+        // configuration, and this key is copy-pasted into another app.
+        // Preserved across reruns — rotating it would break every client that
+        // already holds it.
+        if (
+          requiresAssistantKey(toggles)
+          && !readSecret(state.homeDir, "op_opencode_password")?.trim()
+        ) {
+          patches.OP_OPENCODE_PASSWORD = randomHex(24);
+        }
+        patchSecretsEnvFile(state.homeDir, patches);
       }
       // Provider API keys land in OpenCode's auth.json (bind-mounted into
       // the assistant container) — never in stack.env.
@@ -422,20 +429,37 @@ export async function performSetup(
         }
       }
 
-      // #563 (PR #564 review) — the guardian service is profile-gated behind
-      // guardian-ingress addons, so bind addresses alone deploy no guardian.
-      // The shared-guardian preset promises a protected front door + pairing;
-      // when nothing else provides guardian ingress, enable the built-in chat
-      // portal (the only credential-less guardian-ingress addon).
-      if (network?.preset === "shared-guardian") {
+      // The guardian service is profile-gated behind guardian-ingress addons,
+      // so a bind address alone deploys no guardian at all. Publishing a front
+      // door promises something reachable, so make it so.
+      //
+      // `guardianOpenaiApi` publishes the OpenAI-compatible edge specifically,
+      // which is the `api` addon — publishing it without enabling it would map
+      // a host port onto a container that was never deployed. The `api` portal
+      // is an ordinary capability toggle now (it used to be pinned enabled,
+      // which is why this only ever needed the generic fallback below).
+      if (access?.guardianOpenaiApi) {
+        const apiEnabled = addons?.api === true
+          || (addons?.api !== false && listEnabledAddonIds(state.homeDir).includes("api"));
+        if (!apiEnabled) {
+          setAddonEnabled(state.homeDir, "api", true, state);
+          logger.info("auto-enabled the api portal for a published OpenAI-compatible edge", {
+            reason: "the published port has nothing behind it otherwise",
+          });
+        }
+      }
+      // Any other guardian ingress will do for the guardian's own front door;
+      // when nothing provides one, enable the built-in chat portal (the only
+      // credential-less guardian-ingress addon).
+      if (access?.guardianNetwork) {
         const hasGuardianIngress = [
           ...Object.entries(addons ?? {}).filter(([, on]) => on).map(([name]) => name),
           ...listEnabledAddonIds(state.homeDir),
         ].some((a) => GUARDIAN_INGRESS_ADDON_IDS.includes(a));
         if (!hasGuardianIngress) {
           setAddonEnabled(state.homeDir, "chat", true, state);
-          logger.info("shared-guardian preset auto-enabled the chat portal", {
-            reason: "guardian ingress required for the protected front door",
+          logger.info("auto-enabled the chat portal for a published guardian", {
+            reason: "guardian ingress required for the front door to exist",
           });
         }
       }

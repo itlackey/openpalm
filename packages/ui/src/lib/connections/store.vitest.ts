@@ -71,7 +71,12 @@ function rejectingFetch(message = 'offline'): typeof globalThis.fetch {
 
 async function withLocationHost<T>(hostname: string, run: () => Promise<T>, protocol = 'http:'): Promise<T> {
   const original = Object.getOwnPropertyDescriptor(globalThis, 'location');
-  Object.defineProperty(globalThis, 'location', { configurable: true, value: { hostname, protocol } });
+  // Include `origin` — a real Location always has one, and the same-origin
+  // `/oc` seed resolves against it.
+  Object.defineProperty(globalThis, 'location', {
+    configurable: true,
+    value: { hostname, protocol, origin: `${protocol}//${hostname}` },
+  });
   try {
     return await run();
   } finally {
@@ -708,5 +713,58 @@ describe('offline read path', () => {
     expect(list).toContainEqual(seededEntry());
     expect(list).toContainEqual(mine);
     expect(await offline.getActiveId()).toBe('seed-local-opencode');
+  });
+});
+
+describe('locked baseUrl resolution — the same-origin /oc seed', () => {
+  function runtimeConfigFetch(baseUrl: string): typeof globalThis.fetch {
+    return (async () =>
+      new Response(
+        JSON.stringify({
+          connections: [
+            {
+              id: 'openpalm-assistant-opencode',
+              label: 'Local assistant',
+              baseUrl,
+              auth: { mode: 'none' },
+              isDefault: true,
+              locked: true,
+            },
+          ],
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      )) as unknown as typeof globalThis.fetch;
+  }
+
+  test('resolves a root-relative seed against whatever origin the browser loaded', async () => {
+    // The container writes "/oc" at startup and cannot know the origin a phone
+    // will later visit — this is the whole reason the seed is relative.
+    const loaded = await withLocationHost('openpalm.local', () =>
+      loadRuntimeConfig(runtimeConfigFetch('/oc')),
+    );
+    expect(loaded?.connections[0]?.baseUrl).toBe('http://openpalm.local/oc');
+  });
+
+  test('resolves the same seed to loopback when opened on the desktop', async () => {
+    const loaded = await withLocationHost('localhost', () =>
+      loadRuntimeConfig(runtimeConfigFetch('/oc')),
+    );
+    expect(loaded?.connections[0]?.baseUrl).toBe('http://localhost/oc');
+  });
+
+  test('carries the scheme through, so an HTTPS origin yields an HTTPS target', async () => {
+    const loaded = await withLocationHost(
+      'palm.example.com',
+      () => loadRuntimeConfig(runtimeConfigFetch('/oc')),
+      'https:',
+    );
+    expect(loaded?.connections[0]?.baseUrl).toBe('https://palm.example.com/oc');
+  });
+
+  test('still rewrites a legacy absolute loopback seed, so a pre-proxy install keeps working', async () => {
+    const loaded = await withLocationHost('192.168.1.10', () =>
+      loadRuntimeConfig(runtimeConfigFetch('http://127.0.0.1:3810')),
+    );
+    expect(loaded?.connections[0]?.baseUrl).toBe('http://192.168.1.10:3810/');
   });
 });

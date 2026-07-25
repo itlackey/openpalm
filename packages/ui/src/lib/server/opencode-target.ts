@@ -98,18 +98,18 @@ function defaultTarget(): HostOpencodeTarget {
   // 'opencode:<password>', so default here or a correct password 401s.
   const username = process.env.OPENCODE_SERVER_USERNAME || DEFAULT_OPENCODE_USERNAME;
   // An explicit host OPENCODE_SERVER_PASSWORD always wins. Otherwise fall back
-  // to the network-preset-managed OpenCode password, but ONLY when
+  // to the toggle-managed generated OpenCode key, but ONLY when
   // OPENCODE_AUTH is truthy (the secret file is always materialized). Read auth
   // from the same fresh sources as the URL, not frozen process.env.
   const authEnabled = /^(true|1|yes)$/i.test(
     (persisted.OPENCODE_AUTH ?? process.env.OPENCODE_AUTH ?? '').trim()
   );
-  let presetPassword: string | undefined;
+  let generatedKey: string | undefined;
   if (authEnabled) {
     const raw = readSecret(getState().homeDir, 'op_opencode_password');
-    presetPassword = (raw ? stripTrailingNewlines(raw) : undefined) || process.env.OP_OPENCODE_PASSWORD;
+    generatedKey = (raw ? stripTrailingNewlines(raw) : undefined) || process.env.OP_OPENCODE_PASSWORD;
   }
-  const password = process.env.OPENCODE_SERVER_PASSWORD || presetPassword || undefined;
+  const password = process.env.OPENCODE_SERVER_PASSWORD || generatedKey || undefined;
   return {
     id: DEFAULT_ID,
     label: 'Local Assistant',

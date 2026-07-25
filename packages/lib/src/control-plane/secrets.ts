@@ -7,7 +7,15 @@ import type { ControlPlaneState } from "./types.js";
 import { resolveConfigDir, legacyStackEnvFile, stateEnvFile } from "./home.js";
 import { authJsonPath as resolveAuthJsonPath, stackEnvPath } from "./paths.js";
 import { dirname, join } from "node:path";
-import { ensureSecret, listSecretNames, readSecret, resolveSecretsDir, writeSecret } from './secrets-files.js';
+import {
+  ensurePortalSecret,
+  ensureSecret,
+  listSecretNames,
+  readSecret,
+  resolveSecretsDir,
+  writeSecret,
+} from './secrets-files.js';
+import { PORTAL_SECRET_ADDON_IDS } from './addon-ids.js';
 import { writeFileAtomic } from './fs-atomic.js';
 
 const OPENCODE_STARTER_CONFIG = `${JSON.stringify({ $schema: "https://opencode.ai/config.json" }, null, 2)}\n`;
@@ -150,14 +158,24 @@ export function ensureSecrets(state: ControlPlaneState): void {
   // The API key end users paste into OpenAI-compatible clients (guardian edge,
   // OPENAI_COMPAT_API_KEY_FILE). Without it the shipped edge fails closed (401).
   ensureSecret(state.homeDir, 'op_api_key', () => crypto.randomUUID().replace(/-/g, ''));
-  // #563 — the OpenCode server password. Always materialized because BOTH the
-  // assistant's and guardian's compose `secrets:` grants reference this file
+  // The OpenCode server key. Always materialized because BOTH the assistant's
+  // and guardian's compose `secrets:` grants reference this file
   // unconditionally (core.compose.yml / portals.compose.yml); the random seed
-  // is inert while OPENCODE_AUTH=false (the default), and a home-password
-  // network access preset overwrites it with the operator's chosen password.
+  // is inert while OPENCODE_AUTH=false (the default), which is every
+  // configuration except the one that publishes the assistant API. That
+  // configuration keeps this generated value rather than replacing it — the
+  // operator is never asked to invent a second password.
   // ensureSecret also re-seeds a torn/0-byte file (scripts/dev-setup.sh seeds
   // an empty one).
   ensureSecret(state.homeDir, 'op_opencode_password', () => crypto.randomUUID().replace(/-/g, ''));
+  // Portal principal secrets, for the same reason as the OpenCode key above:
+  // portals.compose.yml declares all four as top-level file secrets, so the
+  // files must exist whether or not the addon that consumes one is enabled.
+  // This used to be provisioned only when some portal-secret addon was already
+  // on, which was safe only because the `api` portal was pinned enabled — the
+  // condition could not fail. It is a capability toggle now, so a real install
+  // can have zero portals and this must not depend on any of them.
+  for (const portal of PORTAL_SECRET_ADDON_IDS) ensurePortalSecret(state.homeDir, portal);
 }
 
 function ensureAuthJson(state: ControlPlaneState): void {

@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import {
   ASSISTANT_LOCKED_CONNECTION_ID,
   ASSISTANT_LOCKED_CONNECTION_LABEL,
+  ASSISTANT_SAME_ORIGIN_PATH,
   buildEmptyUiRuntimeConfig,
   buildLockedAssistantRuntimeConfig,
   buildServedUiRuntimeConfig,
@@ -47,13 +48,42 @@ describe('ui runtime config', () => {
     expect(buildEmptyUiRuntimeConfig()).toEqual({ connections: [] });
   });
 
-  test('builds the served config from shared assistant endpoint resolution for an installed home', () => {
+  test('accepts the root-relative same-origin path as a baseUrl', () => {
+    expect(buildLockedAssistantRuntimeConfig(ASSISTANT_SAME_ORIGIN_PATH).connections[0]?.baseUrl)
+      .toBe('/oc');
+  });
+
+  test('rejects a path that could resolve off this origin', () => {
+    // A protocol-relative "//host" is an ORIGIN, not a path, and a path
+    // carrying userinfo/query/fragment can redirect the concatenated API calls.
+    for (const bad of ['//evil.example/oc', '/oc?to=evil', '/oc#x', '/u@evil.example']) {
+      expect(() => buildLockedAssistantRuntimeConfig(bad)).toThrow();
+    }
+  });
+
+  test('seeds the same-origin proxy path for an installed home, not an absolute URL', () => {
+    // The host-served UI (openpalm ui serve / admin / Electron) runs the same
+    // /oc route as the container. An absolute URL here would keep those
+    // clients calling OpenCode cross-origin, which grants no CORS origin.
     const home = mkdtempSync(join(tmpdir(), 'ui-runtime-config-installed-'));
     try {
       mkdirSync(join(home, 'system', 'stack'), { recursive: true });
       writeFileSync(join(home, 'system', 'stack', 'core.compose.yml'), 'services: {}\n');
       mkdirSync(join(home, 'state'), { recursive: true });
       writeFileSync(join(home, 'state', 'stack.state.env'), 'OP_SETUP_COMPLETE=true\n');
+
+      expect(buildServedUiRuntimeConfig(home, { OP_PROJECT_NAME: 'splinter' }))
+        .toEqual(buildLockedAssistantRuntimeConfig('/oc', 'splinter'));
+
+      // The server-side upstream must NOT leak into the browser's seed — it
+      // names an address only this process can reach.
+      expect(buildServedUiRuntimeConfig(home, {
+        OP_OPENCODE_URL: 'http://localhost:4096',
+        OP_ASSISTANT_PORT: '3810',
+      }).connections[0]?.baseUrl).toBe('/oc');
+
+      // OP_UI_DEFAULT_ASSISTANT_URL is the one browser-facing override, and
+      // still wins — same precedence as the container entrypoint.
       expect(buildServedUiRuntimeConfig(home, {
         OP_UI_DEFAULT_ASSISTANT_URL: 'https://assistant.example',
         OP_PROJECT_NAME: 'splinter',
@@ -184,5 +214,13 @@ describe('ui runtime config', () => {
     );
     expect(entrypoint).toContain('parsedUrl.username = ""');
     expect(entrypoint).toContain('parsedUrl.password = ""');
+  });
+
+  test('the container entrypoint seeds the SAME same-origin path as this writer', () => {
+    const entrypoint = readFileSync(
+      new URL('../../../../containers/assistant/entrypoint.sh', import.meta.url),
+      'utf8',
+    );
+    expect(entrypoint).toContain(`\${OP_UI_DEFAULT_ASSISTANT_URL:-${ASSISTANT_SAME_ORIGIN_PATH}}`);
   });
 });

@@ -308,7 +308,7 @@ Each stage ships independently; the buffered path is the safe default throughout
 - `packages/guardian/src/{server,proxy,rate-limit,session-target}.ts` — current pipeline and guardian-local runtime state pattern (the old `forward.ts` was deleted; session targeting now lives in `session-target.ts`).
 - `packages/guardian/src/crypto.ts` — signing/verification primitives (kept guardian-local, not in a shared `portal-sdk` package).
 - `.openpalm/config/assistant/opencode.jsonc` — assistant permission config (§1.2).
-- Live OpenCode OpenAPI: `curl http://127.0.0.1:3800/doc` (assistant on :3800 → OpenCode :4096).
+- Live OpenCode OpenAPI: `curl http://127.0.0.1:3810/doc` (assistant OpenCode published on `:3810` → container `:4096`; `:3800` is the OpenPalm UI).
 
 ## 11. Review incorporated (changelog)
 

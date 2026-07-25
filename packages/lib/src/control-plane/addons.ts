@@ -20,7 +20,7 @@ import { parseEnabledAddons, removeEnvKey } from './env.js';
 import type { ControlPlaneState } from './types.js';
 import { resolveStashDir, composeFilePath, customComposeFilePath, stateEnvFile, legacyStackEnvFile } from './home.js';
 import { BUILTIN_ADDON_ENV_SCHEMAS } from './addon-env-schemas.js';
-import { BUILTIN_ADDON_IDS, PORTAL_SECRET_ADDON_IDS } from './addon-ids.js';
+import { BUILTIN_ADDON_IDS, GUARDIAN_INGRESS_ADDON_IDS, PORTAL_SECRET_ADDON_IDS } from './addon-ids.js';
 
 const VALID_NAME_RE = /^[a-z0-9][a-z0-9-]{0,62}$/;
 const logger = createLogger('registry');
@@ -481,10 +481,13 @@ export function setAddonEnabled(homeDir: string, name: string, enabled: boolean,
   if (!mutation.ok) return mutation;
 
   if (enabled) {
-    if (PORTAL_SECRET_ADDON_IDS.includes(name)) {
-      for (const portal of PORTAL_SECRET_ADDON_IDS) {
-        ensurePortalSecret(homeDir, portal);
-      }
+    // Seed EVERY portal principal secret, not just this addon's: enabling any
+    // guardian-ingress addon deploys the guardian, and portals.compose.yml
+    // grants it all four as file secrets, so all four files must exist. (This
+    // is also seeded unconditionally by `ensureSecrets` on every deploy; the
+    // call here covers enabling an addon between deploys.)
+    if (GUARDIAN_INGRESS_ADDON_IDS.includes(name)) {
+      for (const portal of PORTAL_SECRET_ADDON_IDS) ensurePortalSecret(homeDir, portal);
     }
 
     // Pre-create (and chown) any host-side bind-mount targets the newly

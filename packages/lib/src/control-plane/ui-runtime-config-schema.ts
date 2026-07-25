@@ -37,15 +37,25 @@ function parseConnection(value: unknown): UiRuntimeConnection | null {
     return null;
   }
 
-  try {
-    const url = new URL(entry.baseUrl);
-    if (
-      (url.protocol !== 'http:' && url.protocol !== 'https:')
-      || url.username
-      || url.password
-    ) return null;
-  } catch {
-    return null;
+  // A ROOT-RELATIVE baseUrl (`/oc`) is the same-origin proxy this app serves.
+  // It is accepted without URL parsing on purpose: the process writing this
+  // file cannot know the origin a browser will later visit, so the browser
+  // resolves it against its own origin at load time. Reject anything that
+  // could resolve somewhere unexpected — a protocol-relative `//host`, or a
+  // path carrying userinfo/query/fragment.
+  if (entry.baseUrl.startsWith('/')) {
+    if (entry.baseUrl.startsWith('//') || /[?#@]/.test(entry.baseUrl)) return null;
+  } else {
+    try {
+      const url = new URL(entry.baseUrl);
+      if (
+        (url.protocol !== 'http:' && url.protocol !== 'https:')
+        || url.username
+        || url.password
+      ) return null;
+    } catch {
+      return null;
+    }
   }
 
   return {

@@ -77,7 +77,7 @@ export const WIZARD_EXCLUDED_PROVIDERS = new Set(['anthropic']);
 export const MAX_VISIBLE_MODELS = 6;
 
 export const PORTALS: Portal[] = [
-  { id: 'api', name: 'API', icon: '🔌', desc: 'OpenAI-compatible REST API endpoint', locked: true },
+  { id: 'api', name: 'OpenAI-compatible API', icon: '🔌', desc: 'Let apps that expect an OpenAI-style API talk to your assistant' },
   {
     id: 'discord', name: 'Discord', icon: '🎮', desc: 'Connect to a Discord server',
     credentials: [

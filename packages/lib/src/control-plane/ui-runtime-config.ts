@@ -1,6 +1,5 @@
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { resolveAssistantEndpoint } from './assistant-endpoint.js';
 import { stackDirFor } from './home.js';
 import { classifyLocalInstall } from './launch-status.js';
 import { readStackEnv } from './secrets.js';
@@ -20,7 +19,34 @@ export const ASSISTANT_LOCKED_CONNECTION_ID = 'openpalm-assistant-opencode';
 export const ASSISTANT_LOCKED_CONNECTION_LABEL = 'Local assistant';
 export const UI_RUNTIME_CONFIG_ENDPOINT_MARKER = '.openpalm-runtime-config-endpoint-v1';
 
+/**
+ * The same-origin path every OpenPalm UI process serves OpenCode on
+ * (`packages/ui src/routes/oc/[...path]/+server.ts`). This is the seeded
+ * baseUrl for the locked connection, in place of an absolute URL.
+ *
+ * A process writing this config cannot know the origin a browser will later
+ * visit — localhost, a LAN IP, an mDNS `.local` name, a reverse-proxied HTTPS
+ * origin — so it must not name one. The browser resolves `/oc` against the
+ * origin it actually loaded, and the proxy makes the local hop with the
+ * upstream credential attached server-side.
+ *
+ * The container entrypoint (`containers/assistant/entrypoint.sh start_ui`)
+ * seeds the same literal through its own inline writer; the test in this
+ * module's suite pins the two together.
+ */
+export const ASSISTANT_SAME_ORIGIN_PATH = '/oc';
+
 function credentialFreeHttpUrl(baseUrl: string): string {
+  // A root-relative path is the same-origin proxy: there is no origin to parse
+  // and no userinfo to strip. Reject only what could resolve somewhere
+  // unexpected — a protocol-relative `//host`, or userinfo/query/fragment.
+  // Mirrors the accepting side in ui-runtime-config-schema.ts.
+  if (baseUrl.startsWith('/')) {
+    if (baseUrl.startsWith('//') || /[?#@]/.test(baseUrl)) {
+      throw new Error('Assistant path must be a plain root-relative path.');
+    }
+    return baseUrl;
+  }
   const url = new URL(baseUrl);
   if (url.protocol !== 'http:' && url.protocol !== 'https:') {
     throw new Error('Assistant URL must use http or https.');
@@ -53,6 +79,22 @@ export function buildEmptyUiRuntimeConfig(): UiRuntimeConfig {
   return { connections: [] };
 }
 
+/**
+ * The browser-facing seed for a HOST-served UI (`openpalm ui serve`, the admin
+ * app, Electron) — the counterpart to the container entrypoint's writer.
+ *
+ * Seeds {@link ASSISTANT_SAME_ORIGIN_PATH}, not an absolute URL. Host-served
+ * clients run the same `/oc` route as the container, so pointing them at an
+ * absolute `127.0.0.1:${OP_ASSISTANT_PORT}` would keep them making
+ * cross-origin calls to OpenCode — which no longer grants any CORS origin, and
+ * which needs a credential the browser must never hold.
+ *
+ * Note the narrowed override: only `OP_UI_DEFAULT_ASSISTANT_URL`, the one
+ * variable that means "point the BROWSER somewhere else", is honored here. The
+ * server-side upstream (`OP_OPENCODE_URL` / `OP_ASSISTANT_URL`, resolved by
+ * `resolveAssistantEndpoint`) stays where it belongs — behind the proxy — and
+ * seeding it to a browser would hand out an in-container address.
+ */
 export function buildServedUiRuntimeConfig(
   homeDir: string,
   env: Record<string, string | undefined> = process.env,
@@ -63,7 +105,7 @@ export function buildServedUiRuntimeConfig(
   const merged = { ...readStackEnv(homeDir), ...env };
   try {
     return buildLockedAssistantRuntimeConfig(
-      resolveAssistantEndpoint(homeDir, env),
+      merged.OP_UI_DEFAULT_ASSISTANT_URL?.trim() || ASSISTANT_SAME_ORIGIN_PATH,
       merged.OP_PROJECT_NAME,
     );
   } catch {

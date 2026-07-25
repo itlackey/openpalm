@@ -10,12 +10,11 @@ import { errMessage } from './errors.js';
 import { dirname, resolve as resolvePath } from "node:path";
 import { composeConfigJsonSync, type ComposeConfigJsonResult } from "./docker.js";
 import { createLogger } from "../logger.js";
-import { parseEnvContent, parseEnvFile, mergeEnvContent } from './env.js';
+import { parseEnvContent, parseEnvFile, mergeEnvContent, removeEnvKey } from './env.js';
+import { ACCESS_ENV_KEYS, migrateLegacyAccessEnv, RETIRED_BIND_KEYS } from './access-toggles.js';
 import { assertNoSecretLikeStackEnvKeys, isSecretLikeStackEnvKey } from './secrets.js';
-import { ensureSecret, writeSecret } from './secrets-files.js';
+import { writeSecret } from './secrets-files.js';
 import type { ControlPlaneState, ArtifactMeta } from "./types.js";
-import { listEnabledAddonIds } from "./addons.js";
-import { PORTAL_SECRET_ADDON_IDS } from "./addon-ids.js";
 import { legacyStackEnvFile, stateEnvFile, composeFilePath, customComposeFilePath } from "./home.js";
 import { stackEnvPath } from "./paths.js";
 import { writeFileAtomic } from "./fs-atomic.js";
@@ -29,7 +28,7 @@ import {
   readBundledCustomCompose,
 } from "./core-assets.js";
 export { sha256, randomHex } from "./crypto.js";
-import { sha256, randomHex } from "./crypto.js";
+import { sha256 } from "./crypto.js";
 
 const logger = createLogger("config-persistence");
 
@@ -91,6 +90,51 @@ export function migrateLegacyDefaultPorts(homeDir: string): boolean {
   logger.warn("Migrated default host port assignments", {
     assistant: updates.OP_ASSISTANT_PORT,
     ui: updates.OP_UI_PORT,
+  });
+  return true;
+}
+
+/**
+ * Materialize the flat bind row for an install written under the retired
+ * compose cascade, and drop the keys that cascade used.
+ *
+ * The cascade was `${OP_UI_BIND_ADDRESS:-${OP_BIND_ADDRESS:-127.0.0.1}}` and
+ * friends: a listener could be published purely by the ROOT variable, with no
+ * per-service key in stack.env at all. The flat compose lines default straight
+ * to loopback, so without this an upgraded shared-guardian install would come
+ * back reachable only from the machine it runs on — the operator's paired
+ * devices would simply stop connecting, with nothing in the config to explain
+ * why. Runs on every deploy path beside {@link migrateLegacyDefaultPorts}.
+ *
+ * Exposure is preserved exactly, using the cascade's own precedence (an
+ * explicit per-service key beats the root — see `readAccessToggles`). Two
+ * values are DERIVED rather than copied, because the flat model makes them
+ * consequences of a toggle rather than independent settings:
+ *   - `GUARDIAN_DIRECT_INGRESS`, which the legacy row usually omitted, leaving
+ *     a published guardian port answering 404 to everything;
+ *   - `OPENCODE_AUTH`, which now tracks "is OpenCode published" exactly. A
+ *     legacy row with auth on but OpenCode on loopback is relaxed to no auth
+ *     on a listener nothing off-box can reach.
+ */
+export function migrateLegacyBindAddresses(homeDir: string): boolean {
+  const path = legacyStackEnvFile(homeDir);
+  if (!existsSync(path)) return false;
+
+  const content = readFileSync(path, "utf-8");
+  const parsed = parseEnvContent(content);
+  const retired = RETIRED_BIND_KEYS.filter((key) => Object.hasOwn(parsed, key));
+  const incomplete = ACCESS_ENV_KEYS.some((key) => !parsed[key]?.trim());
+  if (retired.length === 0 && !incomplete) return false;
+
+  const migrated = migrateLegacyAccessEnv(parsed);
+  let next = mergeEnvContent(content, migrated);
+  for (const key of retired) next = removeEnvKey(next, key);
+  if (next === content) return false;
+
+  writeFileAtomic(path, next, 0o600);
+  logger.warn("Migrated bind addresses to the flat access model", {
+    retired,
+    ...migrated,
   });
   return true;
 }
@@ -344,14 +388,10 @@ export function buildRuntimeFileMeta(artifacts: {
 }
 
 // ── Portal Secrets ────────────────────────────────────────────────────
+// Defined in secrets-files.ts (so ensureSecrets can seed them without an
+// import cycle); re-exported here, their long-standing public home.
 
-export function portalSecretName(addon: string): string {
-  return `portal_${addon.replace(/-/g, '_')}_secret`;
-}
-
-export function ensurePortalSecret(homeDir: string, addon: string): string {
-  return ensureSecret(homeDir, portalSecretName(addon), () => randomHex(16));
-}
+export { ensurePortalSecret, portalSecretName } from './secrets-files.js';
 
 // ── Volume Mount Targets ───────────────────────────────────────────────
 
@@ -496,15 +536,6 @@ export function writeRuntimeFiles(
   if (!existsSync(customComposePath)) {
     mkdirSync(dirname(customComposePath), { recursive: true });
     writeFileSync(customComposePath, readBundledCustomCompose());
-  }
-
-  for (const addon of listEnabledAddonIds(state.homeDir)) {
-    if (PORTAL_SECRET_ADDON_IDS.includes(addon)) {
-      for (const portal of PORTAL_SECRET_ADDON_IDS) {
-        ensurePortalSecret(state.homeDir, portal);
-      }
-      break;
-    }
   }
 
   // Write stack.env (no secrets — those live in knowledge/secrets/)

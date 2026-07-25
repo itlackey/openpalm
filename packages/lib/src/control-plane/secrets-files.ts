@@ -1,6 +1,7 @@
 import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { secretsDir as secretsDirPath } from './home.js';
+import { randomHex } from './crypto.js';
 
 const SECRET_NAME_RE = /^[a-z0-9][a-z0-9_]{0,80}$/;
 const SECRETS_DIR_MODE = 0o700;
@@ -114,4 +115,23 @@ export function writeSecretFile(homeDir: string, name: string, value: string): v
 export function removeSecretFile(homeDir: string, name: string): void {
   assertSafeSecretFilename(name);
   rmSync(join(resolveSecretsDir(homeDir), name), { force: true });
+}
+
+// ── Portal principal secrets ─────────────────────────────────────────────────
+
+/** `discord` -> `portal_discord_secret`. */
+export function portalSecretName(addon: string): string {
+  return `portal_${addon.replace(/-/g, '_')}_secret`;
+}
+
+/**
+ * Seed a portal's principal secret if absent, returning the value either way.
+ *
+ * Lives here rather than in config-persistence.ts so `ensureSecrets` can call
+ * it without an import cycle: portals.compose.yml declares all four portal
+ * secrets as top-level file secrets, so the files must exist on every install
+ * regardless of which portals are enabled.
+ */
+export function ensurePortalSecret(homeDir: string, addon: string): string {
+  return ensureSecret(homeDir, portalSecretName(addon), () => randomHex(16));
 }

@@ -7,7 +7,7 @@
   import FriendlyError from '@openpalm/ui-kit/components/common/FriendlyError.svelte';
   import { friendlyError } from '$lib/client/error-messages.js';
   import { setupState } from '$lib/setup/setup-state.svelte.js';
-  import { NETWORK_PRESET_LABELS } from '@openpalm/lib/control-plane/network-preset.js';
+  import { ACCESS_TOGGLE_KEYS, ACCESS_TOGGLE_LABELS } from '@openpalm/lib/control-plane/access-toggles.js';
   import NetworkAccessStep from './NetworkAccessStep.svelte';
 
   // Takes NO props: this step reads the setup-state store directly. Local
@@ -28,9 +28,11 @@
   const systemCheckPassed = $derived(s.systemCheckPassed);
   const oneditmodels = (): void => s.goToStep(1);
   const oneditextras = (): void => s.goToStep(2);
-  const networkPreset = $derived(s.networkPreset);
-  const networkPresetLabel = $derived(
-    networkPreset ? NETWORK_PRESET_LABELS[networkPreset] : 'Custom (kept as-is)',
+  // Summarise what is OPEN. Nothing open is the default and the common case,
+  // so it gets a plain sentence rather than a list of four "off"s.
+  const accessSummary = $derived(
+    ACCESS_TOGGLE_KEYS.filter((k) => s.access[k]).map((k) => ACCESS_TOGGLE_LABELS[k]).join('; ')
+      || 'This computer only',
   );
   // "Change" stays on the Finish step (D5: the network step is a section of
   // it, not a separate screen) and just scrolls/focuses that section.
@@ -38,8 +40,8 @@
     document.getElementById('network-access-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
 
-  function isPortalEnabled(chId: string, locked?: boolean): boolean {
-    return _isPortalEnabled(portalSelection, chId, locked);
+  function isPortalEnabled(chId: string): boolean {
+    return _isPortalEnabled(portalSelection, chId);
   }
 
   // Friendly AI label: resolved from the chat model's provider connId
@@ -52,9 +54,9 @@
   // Voice = the bundled voice addon toggle.
   const voiceActive = $derived(s.voiceEnabled);
 
-  // Active non-locked portals
+  // Active portals
   const activePortals = $derived(
-    PORTALS.filter((ch) => !ch.locked && isPortalEnabled(ch.id, ch.locked))
+    PORTALS.filter((ch) => isPortalEnabled(ch.id))
   );
 
   // Password reveal/copy state
@@ -246,7 +248,7 @@
     <span class="summary-icon" aria-hidden="true"><IconLock size={16} /></span>
     <div class="summary-body">
       <div class="summary-key">Network access</div>
-      <div class="summary-val">{networkPresetLabel}</div>
+      <div class="summary-val">{accessSummary}</div>
     </div>
     <button type="button" class="btn-change" onclick={oneditnetwork}>Change</button>
   </div>

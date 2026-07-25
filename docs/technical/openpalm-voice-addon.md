@@ -86,10 +86,13 @@ already exists and is functional, but for a **different purpose** than this
 proposal:
 
 - `compose.yml` — Defines the `voice` service using the `openpalm/voice`
-  image. It runs the built-in voice runtime/static interface stack,
-  file host that serves the browser voice UI on `:3810` (`8186` inside the
-  container). It does NOT do TTS or STT itself; it serves the HTML/JS that
-  calls TTS/STT URLs from the browser.
+  image. It serves an **OpenAI-compatible API** on port `8880` — nothing else.
+  The surface is `v1/audio/speech`, `v1/audio/transcriptions`, `v1/models`,
+  and `health`; there is no UI and no HTML. It is reached through the UI
+  process's same-origin `/voice` pass-through
+  (`packages/ui/src/routes/voice/[...path]/+server.ts`), so the container's
+  loopback-only binding is sufficient and **no host port needs to be opened
+  for voice**.
 - `.env.schema` — declares `STT_*` / `TTS_*` vars. These are written by
   `writeVoiceVars` and consumed by the voice runtime via
   `GET /config/defaults`.

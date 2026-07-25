@@ -3,11 +3,16 @@
    * Screen2ExtrasStep — "Optional extras"
    *
    * Flat hairline-row layout (spec: /tmp/wiz/extras-finish-redesign.html).
-   * Three rows with inline accordion expansion (no modal, no bordered cards,
+   * Four rows with inline accordion expansion (no modal, no bordered cards,
    * no sub-section headings):
    *   1. Voice  — bundled openpalm-voice; the toggle enables the addon (capability)
-   *   2. Discord — botToken + applicationId credential fields
-   *   3. Slack  — slackBotToken + slackAppToken credential fields
+   *   2. OpenAI-compatible API — no credentials; the toggle enables the addon
+   *   3. Discord — botToken + applicationId credential fields
+   *   4. Slack  — slackBotToken + slackAppToken credential fields
+   *
+   * The API row used to be absent: its portal was pinned enabled, so every
+   * install deployed a guardian to serve it whether or not anyone wanted one.
+   * It is a capability the operator picks, exactly like Discord and Slack.
    *
    * Takes NO props: this step reads the setup-state store
    * ($lib/setup/setup-state.svelte.ts) directly for voiceEnabled /
@@ -37,20 +42,19 @@
     s.handleEnableVoiceChange(!voiceEnabled);
   }
 
-  function isPortalEnabled(chId: string, locked?: boolean): boolean {
-    return _isPortalEnabled(portalSelection, chId, locked);
+  function isPortalEnabled(chId: string): boolean {
+    return _isPortalEnabled(portalSelection, chId);
   }
 
   function getCredValue(chId: string, key: string): string {
     return _getCredValue(portalSelection, chId, key);
   }
 
-  // Non-API, non-locked portals only
-  const configurablePortals = $derived(PORTALS.filter((ch) => !ch.locked));
-
-  // Discord and Slack portal definitions (looked up from PORTALS constant)
-  const discordCh = $derived(configurablePortals.find((ch) => ch.id === 'discord'));
-  const slackCh = $derived(configurablePortals.find((ch) => ch.id === 'slack'));
+  // Portal definitions (looked up from the PORTALS constant)
+  const apiCh = $derived(PORTALS.find((ch) => ch.id === 'api'));
+  const discordCh = $derived(PORTALS.find((ch) => ch.id === 'discord'));
+  const slackCh = $derived(PORTALS.find((ch) => ch.id === 'slack'));
+  const apiOn = $derived(isPortalEnabled('api'));
   const discordOn = $derived(isPortalEnabled('discord'));
   const slackOn = $derived(isPortalEnabled('slack'));
 </script>
@@ -95,6 +99,40 @@
       </div>
     </div>
   </div>
+
+  <!-- ── OpenAI-compatible API ──────────────────────────────────────── -->
+  {#if apiCh}
+    <div class="addon-row" role="listitem">
+      <div class="addon-row-header">
+        <div class="addon-icon api-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="#8b5cf6" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12h4M16 12h4"/><rect x="8" y="8" width="8" height="8" rx="2"/><path d="M12 4v4M12 16v4"/></svg>
+        </div>
+        <div class="addon-body">
+          <div class="addon-title">{apiCh.name}</div>
+          <div class="addon-sub">{apiCh.desc}</div>
+        </div>
+        <div class="toggle-wrap">
+          <label class="toggle" aria-label="Enable OpenAI-compatible API">
+            <input
+              type="checkbox"
+              checked={apiOn}
+              onchange={() => onportaltoggle('api')}
+            />
+            <div class="toggle-track"></div>
+            <div class="toggle-thumb"></div>
+          </label>
+        </div>
+      </div>
+      <div class="addon-panel" class:open={apiOn} aria-live="polite">
+        <div class="addon-panel-inner">
+          <p class="panel-question">
+            Runs on this computer only. Your API key appears in the dashboard after install; turn on
+            &ldquo;Enable the OpenAI-compatible API&rdquo; under network access to reach it from other devices.
+          </p>
+        </div>
+      </div>
+    </div>
+  {/if}
 
   <!-- ── Discord ────────────────────────────────────────────────────── -->
   {#if discordCh}
@@ -253,6 +291,8 @@
   .addon-row {
     border-top: var(--s-hair) solid var(--s-line);
   }
+
+  .api-icon { background: rgba(139, 92, 246, 0.12); }
 
   .addon-row:last-child {
     border-bottom: var(--s-hair) solid var(--s-line);

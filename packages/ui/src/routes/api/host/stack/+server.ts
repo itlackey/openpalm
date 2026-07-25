@@ -2,9 +2,13 @@
  * GET/PUT /api/host/stack — host stack settings.
  *
  * The HOST-SCOPED half of the old /admin/assistant endpoint: compose project
- * name (OP_PROJECT_NAME) and assistant bind address (OP_ASSISTANT_BIND_ADDRESS,
- * surfaced as `lanExposureEnabled`). Persona is assistant-owned and lives at
- * /api/assistant/persona — it is deliberately absent from this payload.
+ * name (OP_PROJECT_NAME) and the network access toggles. Persona is
+ * assistant-owned and lives at /api/assistant/persona — deliberately absent.
+ *
+ * The toggles replace a raw `lanExposureEnabled` boolean that wrote
+ * OP_ASSISTANT_BIND_ADDRESS directly. That knob published OpenCode while
+ * leaving the UI — the thing a person actually opens — on loopback, so the
+ * one switch labelled "LAN exposure" did not expose the front door.
  *
  * Guarded by the host:stack capabilities in addition to requireAdmin (plan
  * §8.5): a valid admin session in a non-admin process (host:* absent) is
@@ -17,7 +21,9 @@ import {
   recordProjectRename,
   reconcileMdnsResponder,
   resolveMdnsStatus,
-  detectNetworkPreset,
+  coerceAccessToggles,
+  readAccessToggles,
+  resolveAccessEnv,
 } from '@openpalm/lib';
 import { getState } from '$lib/server/state.js';
 import { withAdminUpdateLock } from '$lib/server/admin-update-lock.js';
@@ -31,8 +37,6 @@ import {
 } from '$lib/server/helpers.js';
 
 const DEFAULT_PROJECT_NAME = 'openpalm';
-const DEFAULT_ASSISTANT_BIND_ADDRESS = '127.0.0.1';
-const LAN_ASSISTANT_BIND_ADDRESS = '0.0.0.0';
 const PROJECT_NAME_RE = /^[a-z0-9][a-z0-9_-]*$/;
 
 function normalizeProjectName(raw: unknown): string | null {
@@ -56,13 +60,11 @@ export const GET: RequestHandler = async (event) => {
     200,
     {
       projectName: env.OP_PROJECT_NAME?.trim() || DEFAULT_PROJECT_NAME,
-      lanExposureEnabled: (env.OP_ASSISTANT_BIND_ADDRESS?.trim() || DEFAULT_ASSISTANT_BIND_ADDRESS) === LAN_ASSISTANT_BIND_ADDRESS,
       stackEnvPath: 'knowledge/env/stack.env',
       mdns: resolveMdnsStatus(env),
-      // #563 — read-only surfacing of the active network access preset (D8);
-      // null means custom/hand-tuned. Preset SWITCHING stays in the wizard
-      // (Setup → rerun) — this tab is drift detection only.
-      networkPreset: detectNetworkPreset(env),
+      // A direct read of the generated binds. Unlike preset detection this can
+      // never report "custom": every combination is representable.
+      access: readAccessToggles(env),
     },
     requestId,
   );
@@ -85,8 +87,8 @@ export const PUT: RequestHandler = async (event) => {
       );
     }
 
-    if (typeof body.lanExposureEnabled !== 'boolean') {
-      return errorResponse(400, 'bad_request', 'lanExposureEnabled must be a boolean', {}, requestId);
+    if (body.access !== undefined && (typeof body.access !== 'object' || body.access === null)) {
+      return errorResponse(400, 'bad_request', 'access must be an object if provided', {}, requestId);
     }
 
     const state = getState();
@@ -95,10 +97,14 @@ export const PUT: RequestHandler = async (event) => {
       // rename must be recorded so the next locked apply (deploy/update/start)
       // tears the old compose project down instead of leaving it running
       // unaddressed beside the new one (#540).
-      const previousProjectName = readStackEnv(state.homeDir).OP_PROJECT_NAME?.trim() || DEFAULT_PROJECT_NAME;
+      const currentEnv = readStackEnv(state.homeDir);
+      const previousProjectName = currentEnv.OP_PROJECT_NAME?.trim() || DEFAULT_PROJECT_NAME;
+      // Omitted `access` leaves exposure exactly as it is — renaming the
+      // project must never move a bind as a side effect.
+      const toggles = coerceAccessToggles(body.access ?? readAccessToggles(currentEnv));
       patchSecretsEnvFile(state.homeDir, {
         OP_PROJECT_NAME: projectName,
-        OP_ASSISTANT_BIND_ADDRESS: body.lanExposureEnabled ? LAN_ASSISTANT_BIND_ADDRESS : DEFAULT_ASSISTANT_BIND_ADDRESS,
+        ...resolveAccessEnv(toggles),
       });
       const projectRenamed = previousProjectName !== projectName;
       if (projectRenamed) {
@@ -108,10 +114,8 @@ export const PUT: RequestHandler = async (event) => {
       // Synchronous, non-throwing, and gated — with LAN exposure just enabled
       // this starts advertising immediately (no restart of the host process).
       const mdns = reconcileMdnsResponder(state.homeDir);
-      // #563 — recompute AFTER the patch so the response reflects reality;
-      // enabling the raw LAN-exposure toggle truthfully detects as home-open
-      // (that IS the exposure it creates, D8).
-      const networkPreset = detectNetworkPreset(readStackEnv(state.homeDir));
+      // Read back AFTER the patch so the response reflects what was written.
+      const access = readAccessToggles(readStackEnv(state.homeDir));
 
       return jsonResponse(
         200,
@@ -119,10 +123,9 @@ export const PUT: RequestHandler = async (event) => {
           ok: true,
           projectName,
           projectRenamed,
-          lanExposureEnabled: body.lanExposureEnabled,
           stackEnvPath: 'knowledge/env/stack.env',
           mdns,
-          networkPreset,
+          access,
         },
         requestId,
       );

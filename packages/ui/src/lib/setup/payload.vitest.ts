@@ -37,8 +37,7 @@ function baseInput(overrides: Partial<SetupPayloadInput> = {}): SetupPayloadInpu
     hostAkmEnabled: false,
     // #563 — network access preset. Default matches the wizard default
     // (D5/D7): 'this-pc' on every first run.
-    networkPreset: 'this-pc',
-    opencodePassword: '',
+    access: { networkAccess: false, assistantDirect: false, guardianNetwork: false, guardianOpenaiApi: false },
     ...overrides,
   };
 }
@@ -46,19 +45,24 @@ function baseInput(overrides: Partial<SetupPayloadInput> = {}): SetupPayloadInpu
 // ── buildSetupPayload ────────────────────────────────────────────────────────
 
 describe('buildSetupPayload', () => {
-  test('minimal payload has version/security/connections and the always-on API portal', () => {
+  test('minimal payload has version/security/connections and no portals', () => {
     const p = buildSetupPayload(baseInput({ uiLoginPassword: 'secret' }));
     expect(p).toEqual({
       version: 2,
-      // Locked API portal is always enabled; voice is always explicit so a
-      // rerun can disable it.
-      addons: { api: true, voice: false },
+      // Voice is always explicit so a rerun can disable it. No portal is
+      // enabled by default — `api` used to be, which deployed a guardian on
+      // every install.
+      addons: { voice: false },
       security: { uiLoginPassword: 'secret' },
       connections: [],
-      // #563 — the default networkPreset ('this-pc') always emits a network
-      // block with no password (D7: the wizard sends `network` on every
-      // first run).
-      network: { preset: 'this-pc' },
+      // A first run always emits the toggles, closed by default — the wizard
+      // sends `access` on every first run so the server writes an explicit row.
+      access: {
+        networkAccess: false,
+        assistantDirect: false,
+        guardianNetwork: false,
+        guardianOpenaiApi: false,
+      },
     });
   });
 
@@ -137,10 +141,11 @@ describe('buildSetupPayload', () => {
     expect(p.portalCredentials).toEqual({ discord: { botToken: 'tok', applicationId: 'app' } });
   });
 
-  test('locked API portal is always enabled with no credentials', () => {
-    const p = buildSetupPayload(baseInput());
-    expect(p.addons.api).toBe(true);
-    expect(p.portalCredentials).toBeUndefined();
+  test('the API portal is off unless the operator picks it', () => {
+    expect(buildSetupPayload(baseInput()).addons.api).toBeUndefined();
+    const picked = buildSetupPayload(baseInput({ portalSelection: { api: true } }));
+    expect(picked.addons.api).toBe(true);
+    expect(picked.portalCredentials).toBeUndefined();
   });
 
   test('imageTag trimmed and hostAkm flag passed through', () => {
@@ -155,66 +160,71 @@ describe('buildSetupPayload', () => {
   });
 });
 
-// ── #563 network access preset (T44-T48) ─────────────────────────────────────
+// ── Network access toggles ───────────────────────────────────────────────────
 
-describe('buildSetupPayload — network access preset (#563)', () => {
-  test('T44: default input emits network {preset:"this-pc"} with no password', () => {
-    const p = buildSetupPayload(baseInput());
-    expect(p.network).toEqual({ preset: 'this-pc' });
+describe('buildSetupPayload — network access toggles', () => {
+  const ALL_OFF = {
+    networkAccess: false,
+    assistantDirect: false,
+    guardianNetwork: false,
+    guardianOpenaiApi: false,
+  };
+
+  test('a first run emits the closed default rather than omitting the field', () => {
+    const p = buildSetupPayload(baseInput({ access: ALL_OFF }));
+    expect(p.access).toEqual(ALL_OFF);
   });
 
-  test('T45: home-password emits the password', () => {
-    const p = buildSetupPayload(baseInput({ networkPreset: 'home-password', opencodePassword: 'lan-secret-123' }));
-    expect(p.network).toEqual({ preset: 'home-password', opencodePassword: 'lan-secret-123' });
+  test('emits the toggles verbatim — no preset name in between', () => {
+    const access = { ...ALL_OFF, networkAccess: true, guardianNetwork: true };
+    expect(buildSetupPayload(baseInput({ access })).access).toEqual(access);
   });
 
-  test('T45: home-open does not emit a password', () => {
-    const p = buildSetupPayload(baseInput({ networkPreset: 'home-open', opencodePassword: 'ignored' }));
-    expect(p.network).toEqual({ preset: 'home-open' });
-  });
-
-  test('T45: shared-guardian does not emit a password', () => {
-    const p = buildSetupPayload(baseInput({ networkPreset: 'shared-guardian', opencodePassword: 'ignored' }));
-    expect(p.network).toEqual({ preset: 'shared-guardian' });
-  });
-
-  test('T46: networkPreset null (rerun over a custom env) omits the network field entirely', () => {
-    const p = buildSetupPayload(baseInput({ networkPreset: null }));
-    expect(p.network).toBeUndefined();
+  test('null (a rerun the operator did not touch) omits the field entirely', () => {
+    // performSetup treats an absent `access` as keep-as-is, so an untouched
+    // rerun can never silently rewrite someone's exposure.
+    expect(buildSetupPayload(baseInput({ access: null })).access).toBeUndefined();
   });
 });
 
-describe('parseSetupConfig — network access preset (#563)', () => {
-  test('T47: maps network.preset onto PartialSetupState.networkPreset', () => {
-    const r = parseSetupConfig({ network: { preset: 'home-password' } } as RawSetupConfig);
-    expect(r.networkPreset).toBe('home-password');
+describe('parseSetupConfig — network access toggles', () => {
+  test('maps the response toggles onto PartialSetupState.access', () => {
+    const r = parseSetupConfig({
+      access: { networkAccess: true, guardianNetwork: true },
+    } as RawSetupConfig);
+    expect(r.access).toEqual({
+      networkAccess: true,
+      assistantDirect: false,
+      guardianNetwork: true,
+      guardianOpenaiApi: false,
+    });
   });
 
-  test('T47: maps network.preset === null onto PartialSetupState.networkPreset === null', () => {
-    const r = parseSetupConfig({ network: { preset: null } } as RawSetupConfig);
-    expect(r.networkPreset).toBeNull();
+  test('coerces junk to closed rather than passing it through', () => {
+    const r = parseSetupConfig({ access: { networkAccess: 'yes' } } as RawSetupConfig);
+    expect(r.access?.networkAccess).toBe(false);
   });
 
-  test('T47: an unknown preset string maps to null (never a garbage passthrough)', () => {
-    const r = parseSetupConfig({ network: { preset: 'not-a-real-preset' } } as RawSetupConfig);
-    expect(r.networkPreset).toBeNull();
-  });
-
-  test('T47: a missing network field leaves networkPreset unset', () => {
-    const r = parseSetupConfig({});
-    expect(r.networkPreset).toBeUndefined();
+  test('an absent access field leaves the state field unset (keep-as-is)', () => {
+    expect(parseSetupConfig({} as RawSetupConfig).access).toBeUndefined();
   });
 });
 
-describe('network access preset round-trip: build → parse (T48)', () => {
-  test.each(['this-pc', 'home-password', 'home-open', 'shared-guardian'] as const)(
-    'T48: %s round-trips through the install payload back to the same preset',
-    (preset) => {
-      const built = buildSetupPayload(
-        baseInput({ networkPreset: preset, opencodePassword: preset === 'home-password' ? 'lan-secret-123' : '' }),
-      );
-      const parsed = parseSetupConfig({ network: built.network ?? { preset: null } } as RawSetupConfig);
-      expect(parsed.networkPreset).toBe(preset);
+describe('network access round-trip: build → parse', () => {
+  // 16 combinations, all representable. The preset model could round-trip only
+  // the four rows it named; anything else came back as null ("custom").
+  test.each([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15])(
+    'combination %i round-trips through the install payload unchanged',
+    (mask) => {
+      const access = {
+        networkAccess: Boolean(mask & 1),
+        assistantDirect: Boolean(mask & 2),
+        guardianNetwork: Boolean(mask & 4),
+        guardianOpenaiApi: Boolean(mask & 8),
+      };
+      const built = buildSetupPayload(baseInput({ access }));
+      const parsed = parseSetupConfig({ access: built.access } as RawSetupConfig);
+      expect(parsed.access).toEqual(access);
     },
   );
 });
@@ -332,7 +342,8 @@ describe('build → parse round-trip', () => {
     expect(parsed.ollamaEnabled).toBe(true);
     expect(parsed.selectedOllamaProfile).toBe('ollama-cpu');
     // Portals + hostAkm
-    expect(parsed.enabledAddons).toEqual(expect.arrayContaining(['discord', 'ollama', 'voice', 'api']));
+    expect(parsed.enabledAddons).toEqual(expect.arrayContaining(['discord', 'ollama', 'voice']));
+    expect(parsed.enabledAddons).not.toContain('api');
     expect(parsed.portalCredentials.discord).toEqual({ botToken: 'tok', applicationId: 'app' });
     expect(parsed.hostAkmEnabled).toBe(true);
   });

@@ -145,16 +145,6 @@ is_loopback_address() {
   esac
 }
 
-# Validate an OP_UI_CORS_ALLOWED_ORIGINS entry before start_opencode appends it
-# to OpenCode's --cors — operator input is otherwise forwarded verbatim, so
-# OP_UI_CORS_ALLOWED_ORIGINS=* would silently reintroduce a wildcard CORS grant.
-# Mirrors guardian's normalizeExactOrigin: an EXACT http(s) origin only — no
-# wildcard, no userinfo, no path/query/fragment beyond an optional trailing slash.
-is_allowed_cors_origin() {
-  local origin="$1"
-  [[ "$origin" =~ ^https?://[^/@?#[:space:]]+/?$ ]]
-}
-
 opencode_auth_enabled() {
   case "${OPENCODE_AUTH:-false}" in
     true|TRUE|True|1|yes|YES) return 0 ;;
@@ -193,20 +183,21 @@ resolve_opencode_server_password() {
 }
 
 start_ui() {
-  # Served OpenPalm UI (@openpalm/ui, "One UI, delete the split" Phase 4). The
-  # assistant container serves the SvelteKit adapter-node build as a supervised
-  # co-process ALONGSIDE OpenCode. The BROWSER talks to OpenCode directly at the
-  # host-published assistant URL (seeded as the one locked connection in
-  # runtime-config.json below); this co-process only serves the UI app.
+  # Served OpenPalm UI (@openpalm/ui). The assistant container serves the
+  # SvelteKit adapter-node build as a supervised co-process ALONGSIDE OpenCode,
+  # and the browser reaches OpenCode through this process's own same-origin
+  # /oc proxy — seeded as the one locked connection in runtime-config.json
+  # below. This is THE listener a home install publishes.
 
   # ── LAN-exposure warning ─────────────────────────────────────────────────
   # When OpenCode is bound off loopback and auth is disabled, warn loudly but
   # keep the UI available. Exposure policy is an operator decision; silently
   # removing the configured UI is not an acceptable substitute for that warning.
-  local assistant_bind_address="${OP_ASSISTANT_BIND_ADDRESS:-${OP_BIND_ADDRESS:-127.0.0.1}}"
+  # Flat: generated explicitly by the access toggles, so unset means loopback.
+  local assistant_bind_address="${OP_ASSISTANT_BIND_ADDRESS:-127.0.0.1}"
   rm -f /tmp/openpalm-ui-skip
   if ! is_loopback_address "$assistant_bind_address" && ! opencode_auth_enabled; then
-    echo "WARNING: OP_ASSISTANT_BIND_ADDRESS/OP_BIND_ADDRESS=${assistant_bind_address} exposes OpenCode beyond loopback while OPENCODE_AUTH=${OPENCODE_AUTH:-false} leaves it unauthenticated; the UI will still start. Set OPENCODE_AUTH=true with real credentials unless open LAN access is intentional." >&2
+    echo "WARNING: OP_ASSISTANT_BIND_ADDRESS=${assistant_bind_address} exposes OpenCode beyond loopback while OPENCODE_AUTH=${OPENCODE_AUTH:-false} leaves it unauthenticated; the UI will still start. Publishing the assistant API is expected to generate a key — this combination means something wrote the bind by hand." >&2
   fi
 
   local ui_pkg="/opt/openpalm/ui/node_modules/@openpalm/ui"
@@ -237,7 +228,14 @@ start_ui() {
   # id/fallback label MUST equal packages/lib ui-runtime-config.ts's
   # ASSISTANT_LOCKED_CONNECTION_ID / _LABEL. OP_PROJECT_NAME supplies the
   # connection's detected local assistant name when available.
-  local assistant_url="${OP_UI_DEFAULT_ASSISTANT_URL:-http://127.0.0.1:${OP_ASSISTANT_PORT:-3810}}"
+  # Seed the SAME-ORIGIN proxy path, not an absolute URL. The browser resolves
+  # `/oc` against whatever origin it actually loaded — localhost, a LAN IP, an
+  # mDNS `.local` name, or a reverse-proxied HTTPS origin — which is precisely
+  # what this process cannot know when it writes the file at startup. That
+  # removes the old absolute `127.0.0.1:${OP_ASSISTANT_PORT}` seed and the
+  # client-side host rewrite that existed to patch it up for remote browsers.
+  # OP_UI_DEFAULT_ASSISTANT_URL still overrides for non-default topologies.
+  local assistant_url="${OP_UI_DEFAULT_ASSISTANT_URL:-/oc}"
   local assistant_name="${OP_PROJECT_NAME:-}"
   mkdir -p "$ui_client_dir"
   node -e '
@@ -250,12 +248,20 @@ start_ui() {
     let normalizedUrl = url.replace(/^(https?:\/\/)(0\.0\.0\.0|\[::\]|::)(?=[:/]|$)/i, "$1127.0.0.1");
     let connection = null;
     try {
-      const parsedUrl = new URL(normalizedUrl);
-      if (parsedUrl.protocol !== "http:" && parsedUrl.protocol !== "https:") throw new Error("invalid protocol");
-      const hadUserinfo = Boolean(parsedUrl.username || parsedUrl.password);
-      parsedUrl.username = "";
-      parsedUrl.password = "";
-      if (hadUserinfo) normalizedUrl = parsedUrl.toString();
+      // A root-relative seed ("/oc") is the same-origin proxy — the browser
+      // resolves it against the origin it loaded, which is exactly what this
+      // process cannot know. Reject a protocol-relative "//host" or a path
+      // carrying userinfo/query/fragment, which could resolve elsewhere.
+      if (normalizedUrl.startsWith("/")) {
+        if (normalizedUrl.startsWith("//") || /[?#@]/.test(normalizedUrl)) throw new Error("invalid path");
+      } else {
+        const parsedUrl = new URL(normalizedUrl);
+        if (parsedUrl.protocol !== "http:" && parsedUrl.protocol !== "https:") throw new Error("invalid protocol");
+        const hadUserinfo = Boolean(parsedUrl.username || parsedUrl.password);
+        parsedUrl.username = "";
+        parsedUrl.password = "";
+        if (hadUserinfo) normalizedUrl = parsedUrl.toString();
+      }
       connection = {
         id: "openpalm-assistant-opencode",
         label: assistantName.trim() || "Local assistant",
@@ -342,6 +348,8 @@ start_ui() {
       if env -u OP_ENABLE_ADMIN -u OP_INSIDE_ELECTRON \
            HOST=0.0.0.0 PORT="$ui_port" HOST_HEADER=host PROTOCOL_HEADER=x-forwarded-proto \
            OP_UI_NO_LOCAL_VOICE=1 \
+           OP_UI_SERVED_IN_CONTAINER=1 \
+           OP_OPENCODE_URL=http://localhost:4096 \
            OP_UI_LOGIN_PASSWORD="$ui_login_password" \
            node "$ui_index"; then
         exit_code=0
@@ -579,47 +587,12 @@ start_opencode() {
   # --log-level sets verbosity (override via OPENCODE_LOG_LEVEL).
   local cmd=(opencode web --hostname 0.0.0.0 --port "$PORT" --print-logs --log-level "${OPENCODE_LOG_LEVEL:-INFO}")
 
-  # The @openpalm/ui build is served from a separate loopback origin (OP_UI_PORT)
-  # and its browser talks to OpenCode DIRECTLY (browser-owned transport, no host
-  # proxy), so OpenCode must grant that origin CORS or the browser's calls fail
-  # preflight. Ship the loopback UI origins by default; operators add exact
-  # comma-separated origins (a LAN host, a reverse proxy) via
-  # OP_UI_CORS_ALLOWED_ORIGINS. EXPLICIT ORIGINS ONLY — never a wildcard.
-  local ui_host_port="${OP_UI_HOST_PORT:-${OP_UI_PORT:-3800}}"
-  local cors_origins=(
-    "http://127.0.0.1:${ui_host_port}"
-    "http://localhost:${ui_host_port}"
-  )
-  # The HOST-served UI (Electron / `openpalm ui serve` / `openpalm admin`,
-  # OP_HOST_UI_PORT, default 3880) is a second loopback browser origin whose
-  # transport also calls OpenCode directly at the published assistant port —
-  # grant it too, or chat from the host-served UI fails preflight by default.
-  local host_ui_port="${OP_HOST_UI_PORT:-3880}"
-  if [ "$host_ui_port" != "$ui_host_port" ]; then
-    cors_origins+=(
-      "http://127.0.0.1:${host_ui_port}"
-      "http://localhost:${host_ui_port}"
-    )
-  fi
-  if [ -n "${OP_UI_CORS_ALLOWED_ORIGINS:-}" ]; then
-    local prev_ifs="$IFS"
-    IFS=','
-    local extra_origin
-    for extra_origin in $OP_UI_CORS_ALLOWED_ORIGINS; do
-      extra_origin="${extra_origin//[[:space:]]/}"
-      [ -z "$extra_origin" ] && continue
-      if is_allowed_cors_origin "$extra_origin"; then
-        cors_origins+=("$extra_origin")
-      else
-        echo "warning: rejecting invalid OP_UI_CORS_ALLOWED_ORIGINS entry (must be an exact http(s) origin — no wildcard, userinfo, path, query, or fragment): $extra_origin" >&2
-      fi
-    done
-    IFS="$prev_ifs"
-  fi
-  local cors_origin
-  for cors_origin in "${cors_origins[@]}"; do
-    cmd+=(--cors "$cors_origin")
-  done
+  # No --cors grant. The browser reaches OpenCode through the UI's OWN
+  # same-origin /oc proxy (packages/ui routes/oc), so it never makes a
+  # cross-origin request here and there is no origin to allow. This replaced an
+  # allowlist the container could not compute: only the HOST can enumerate its
+  # LAN addresses, so the correct origins had to be resolved host-side and
+  # injected — and getting them wrong surfaced as a bare network error.
 
   exec "${cmd[@]}"
 }

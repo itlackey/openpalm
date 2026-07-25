@@ -1,10 +1,10 @@
 /**
- * #563 D5 — NetworkAccessStep.svelte: the wizard's network-access preset
- * selector, rendered as a section of the Finish step (ReviewStep).
+ * NetworkAccessStep.svelte — the wizard's access toggles, rendered as a
+ * section of the Finish step (ReviewStep).
  *
- * Red reason: `./NetworkAccessStep.svelte` does not exist yet — the import
- * fails. Mirrors `Screen1ModelsStep.svelte.vitest.ts` (vitest-browser-svelte,
- * store-driven — the component takes no props, per D5/ReviewStep pattern).
+ * The behaviour under test is progressive disclosure: a home user is asked ONE
+ * question, and the switches that would be meaningless in their configuration
+ * are not shown at all.
  */
 import { describe, expect, test, afterEach } from 'vitest';
 import { render } from 'vitest-browser-svelte';
@@ -16,70 +16,84 @@ afterEach(() => {
   setupState.reset();
 });
 
-describe('NetworkAccessStep — preset selector (#563 T54)', () => {
-  test('T54: renders all four presets with "This PC only" selected by default', async () => {
+describe('NetworkAccessStep — the always-visible question', () => {
+  test('shows exactly one toggle by default, unchecked', async () => {
     render(NetworkAccessStep);
 
-    await expect.element(page.getByText('This PC only')).toBeVisible();
-    await expect.element(page.getByText('Home network, with password')).toBeVisible();
-    await expect.element(page.getByText('Home network, open access')).toBeVisible();
-    await expect.element(page.getByText('Shared network, guardian protected')).toBeVisible();
+    const networkAccess = page.getByRole('checkbox');
+    await expect.element(networkAccess).toBeInTheDocument();
+    expect(await networkAccess.elements()).toHaveLength(1);
+    await expect.element(networkAccess).not.toBeChecked();
+  });
 
-    const defaultRadio = page.getByRole('radio', { name: /This PC only/i });
-    await expect.element(defaultRadio).toBeChecked();
+  test('a fresh install opens nothing — the default needs no interaction', () => {
+    expect(setupState.access).toEqual({
+      networkAccess: false,
+      assistantDirect: false,
+      guardianNetwork: false,
+      guardianOpenaiApi: false,
+    });
+  });
+
+  test('checking it flips only that toggle, and marks the step touched', async () => {
+    render(NetworkAccessStep);
+
+    await page.getByRole('checkbox').click();
+
+    expect(setupState.access.networkAccess).toBe(true);
+    // Nothing cascades — this was the defect the preset model had.
+    expect(setupState.access.assistantDirect).toBe(false);
+    expect(setupState.access.guardianNetwork).toBe(false);
+    expect(setupState.access.guardianOpenaiApi).toBe(false);
+    expect(setupState.networkDirty).toBe(true);
   });
 });
 
-describe('NetworkAccessStep — home-password reveals an editable, pre-filled password (#563 T55)', () => {
-  test('T55: selecting "Home network, with password" reveals an editable, pre-filled password input', async () => {
+describe('NetworkAccessStep — progressive disclosure', () => {
+  test('everything except the one question is behind Advanced', async () => {
     render(NetworkAccessStep);
 
-    await page.getByRole('radio', { name: /Home network, with password/i }).click();
-
-    const passwordInput = page.getByLabelText(/password/i);
-    await expect.element(passwordInput).toBeVisible();
-    // Svelte renders `value={...}` as the DOM property, not the attribute, so
-    // read the live input value rather than getAttribute('value').
-    const value = (passwordInput.element() as HTMLInputElement).value;
-    expect(value, 'expected the password field to be pre-filled, not blank').toBeTruthy();
-
-    // The user CAN type over it — this is not a read-only/locked field.
-    await passwordInput.fill('my-own-password');
-    await expect.element(passwordInput).toHaveValue('my-own-password');
+    for (const label of [
+      'Let other devices reach the guardian',
+      'Enable the OpenAI-compatible API',
+      'Allow direct connections to the assistant API',
+    ]) {
+      await expect.element(page.getByText(label)).not.toBeInTheDocument();
+    }
   });
-});
 
-describe('NetworkAccessStep — home-open risk warning + required acknowledgement (#563 T56)', () => {
-  test('T56: selecting "Home network, open access" reveals the risk warning and requires the acknowledgement checkbox', async () => {
+  test('Advanced reveals the guardian and direct-assistant toggles', async () => {
+    // These are NOT gated on "a guardian integration is enabled": publishing a
+    // front door is the statement of intent, and performSetup enables the
+    // addon that makes it true.
     render(NetworkAccessStep);
 
-    await page.getByRole('radio', { name: /Home network, open access/i }).click();
+    await page.getByRole('button', { name: /advanced/i }).click();
 
-    // Explicit risk warning is visible (D5: "explicit risk-acknowledgement
-    // checkbox before Install enables"). Target the role="alert" warning —
-    // the same phrases also appear in the always-visible option copy.
-    await expect.element(page.getByRole('alert')).toBeVisible();
-    expect(page.getByRole('alert').element().textContent).toMatch(/without a password/i);
-    expect(document.body.textContent).not.toMatch(/UI stays disabled/i);
-
-    const ackCheckbox = page.getByRole('checkbox');
-    await expect.element(ackCheckbox).not.toBeChecked();
-    expect(setupState.networkChoiceValid).toBe(false);
-
-    await ackCheckbox.click();
-    await expect.element(ackCheckbox).toBeChecked();
-    expect(setupState.networkChoiceValid).toBe(true);
+    await expect.element(page.getByText('Let other devices reach the guardian')).toBeInTheDocument();
+    await expect.element(page.getByText('Enable the OpenAI-compatible API')).toBeInTheDocument();
+    await expect.element(
+      page.getByText('Allow direct connections to the assistant API'),
+    ).toBeInTheDocument();
   });
-});
 
-describe('NetworkAccessStep — shared-guardian copy (#563 T57)', () => {
-  test('T57: shared-guardian copy states the assistant stays private on this PC', async () => {
+  test('an advanced toggle flips only itself', async () => {
     render(NetworkAccessStep);
+    await page.getByRole('button', { name: /advanced/i }).click();
+    await page.getByRole('checkbox', { name: /reach the guardian/i }).click();
 
-    await page.getByRole('radio', { name: /Shared network, guardian protected/i }).click();
+    expect(setupState.access.guardianNetwork).toBe(true);
+    expect(setupState.access.networkAccess).toBe(false);
+    expect(setupState.access.guardianOpenaiApi).toBe(false);
+    expect(setupState.access.assistantDirect).toBe(false);
+  });
 
-    await expect
-      .element(page.getByText(/assistant.*(stays|remains).*(private|loopback|this (pc|computer))/i))
-      .toBeVisible();
+  test('enabling direct exposure names the plain-HTTP risk rather than burying it', async () => {
+    render(NetworkAccessStep);
+    await page.getByRole('button', { name: /advanced/i }).click();
+    await page.getByRole('checkbox', { name: /direct connections/i }).click();
+
+    await expect.element(page.getByRole('alert')).toBeInTheDocument();
+    expect(setupState.access.assistantDirect).toBe(true);
   });
 });

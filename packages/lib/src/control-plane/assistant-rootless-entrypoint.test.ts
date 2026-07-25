@@ -59,7 +59,7 @@ describe('assistant rootless entrypoint regressions', () => {
     const startUi = assistantEntrypoint.match(/start_ui\(\) \{[\s\S]*?\n\}/)?.[0] ?? '';
     const warningSection = startUi.split('local ui_pkg=')[0] ?? '';
 
-    expect(warningSection).toContain('OP_ASSISTANT_BIND_ADDRESS/OP_BIND_ADDRESS');
+    expect(warningSection).toContain('OP_ASSISTANT_BIND_ADDRESS');
     expect(warningSection).toContain('OPENCODE_AUTH');
     expect(warningSection).toContain('the UI will still start');
     expect(warningSection).not.toContain('refusing to start');

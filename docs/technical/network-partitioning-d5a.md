@@ -85,15 +85,27 @@ intended publisher of these names).
 
 | Name | Gate | Host port |
 |---|---|---|
-| `<base>-guardian.local` | `OP_BIND_ADDRESS` set and non-loopback | `OP_GUARDIAN_PORT` (default 3830) |
-| `<base>.local` | `OP_ASSISTANT_BIND_ADDRESS` set and non-loopback (no `OP_BIND_ADDRESS` fallback — mirrors `core.compose.yml`'s assistant port line) | `OP_ASSISTANT_PORT` (default 3810) |
+| `<base>-guardian.local` | `OP_GUARDIAN_BIND_ADDRESS` non-loopback **and** `GUARDIAN_DIRECT_INGRESS=true` | `OP_GUARDIAN_PORT` (default 3830) |
+| `<base>.local` | `OP_UI_BIND_ADDRESS` non-loopback, else `OP_ASSISTANT_BIND_ADDRESS` non-loopback | `OP_UI_PORT` (3800) or `OP_ASSISTANT_PORT` (3810), matching whichever gate fired |
 
-The gate does **not** check whether a guardian-ingress addon is actually
-enabled (the guardian is profile-gated) — checking addon/profile state would
-couple the responder to compose state parsing for a purely cosmetic gain (a
-name that resolves to a closed port). The loopback default (both vars unset)
-starts **no socket at all** — the fail-closed guarantee is enforced before
-the socket factory is even consulted.
+`<base>.local` is the name a **person** types into a browser, so it follows the
+front door — the OpenPalm UI, which is what the `networkAccess` toggle
+publishes. OpenCode stays on loopback behind the UI's same-origin `/oc` proxy
+in that configuration, so gating this name on `OP_ASSISTANT_BIND_ADDRESS`
+alone (as it was when publishing OpenCode *was* how you reached the assistant)
+left the default home install advertising nothing at all. The assistant bind
+remains the fallback so a headless install publishing only the OpenCode API
+still gets a name; when both are open the UI wins, because one name carries
+one SRV port.
+
+The guardian gate additionally requires direct ingress: the guardian 404s its
+whole direct listener otherwise, and an advertised name pointing at a listener
+that refuses everything is worse than no name. It does **not** check whether a
+guardian-ingress addon is enabled (the guardian is profile-gated) — that would
+couple the responder to compose state parsing for a purely cosmetic gain.
+
+The loopback default (every bind unset) starts **no socket at all** — the
+fail-closed guarantee is enforced before the socket factory is even consulted.
 
 **Name derivation (D2):** `<base>` = `sanitizeDnsLabel(OP_PROJECT_NAME ??
 "openpalm")` — there is no structured "assistant name" (persona is free-text
@@ -128,26 +140,22 @@ The native in-container responder documented below **remains unchanged**
 `opencode.jsonc`) and is **not** file-assembled to the derived host-responder
 name — the host responder is the primary (and only LAN-reachable)
 advertisement mechanism, and the native path is inert on bridge networks
-regardless (and entirely inert on macOS). #563 (network access presets)
-**ratified this as final, not a placeholder**: presets drive the HOST
-responder exclusively, by writing bind vars (`OP_ASSISTANT_BIND_ADDRESS` /
-`OP_BIND_ADDRESS`) to `stack.env` — there is no per-preset `opencode.jsonc`
-file-assembly step and none is planned. `network-preset.ts` exposes
-`assistantMdns`/`guardianMdns` intent flags whose equivalence to
-`resolveMdnsStatus()` (this responder) is pinned by test, so the two
-mechanisms can never silently diverge. Only the comment blocks in
-`core.compose.yml` and `opencode.jsonc` were updated to point at the host
-responder as primary; the native `"mdns": false` block stays the permanent
-manual/advanced path for operators who bind-mount their own `opencode.jsonc`.
+regardless (and entirely inert on macOS). This is **final, not a
+placeholder**: the access toggles drive the HOST responder exclusively, by
+writing bind vars to `stack.env` — there is no per-toggle `opencode.jsonc`
+file-assembly step and none is planned. Only the comment blocks in
+`core.compose.yml` and `opencode.jsonc` point at the host responder as
+primary; the native `"mdns": false` block stays the permanent manual/advanced
+path for operators who bind-mount their own `opencode.jsonc`.
 
-**Preset → mDNS mapping (#563):**
+**Toggle → mDNS mapping:**
 
-| Preset | `<name>.local` (assistant) | `<name>-guardian.local` (guardian) |
+| Toggle | `<name>.local` | `<name>-guardian.local` |
 |---|---|---|
-| This PC only | off | off |
-| Home network, with password | **on** | off |
-| Home network, open access | **on** | off |
-| Shared network, guardian protected | off | **on** |
+| (nothing on) | off | off |
+| `networkAccess` | **on**, port 3800 (the UI) | off |
+| `assistantDirect` only | **on**, port 3810 (the OpenCode API) | off |
+| `guardianNetwork` | unchanged | **on** |
 
 ### How native OpenCode mDNS works
 

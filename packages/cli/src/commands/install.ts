@@ -25,9 +25,11 @@ import {
   runDeploy,
   markSetupComplete,
   writeSystemEnv,
+  migrateLegacyBindAddresses,
   migrateLegacyDefaultPorts,
   patchSecretsEnvFile,
-  collectNetworkExposureWarnings,
+  describeAccessExposure,
+  readAccessToggles,
   type SetupSpec,
 } from '@openpalm/lib';
 import { detectHostInfo } from '../lib/host-info.ts';
@@ -155,7 +157,7 @@ export async function bootstrapInstall(options: InstallOptions): Promise<void> {
   // before services start. #563 — preset-aware: a matched network access
   // preset collapses to one informational line; unexplained exposure stays
   // loud (D9).
-  for (const line of collectNetworkExposureWarnings(process.env as Record<string, string>)) {
+  for (const line of describeAccessExposure(readAccessToggles(process.env as Record<string, string>))) {
     logger.warn(line);
   }
 
@@ -273,6 +275,7 @@ export async function prepareInstallFiles(
   // stamp written into .skeleton-version.
   await applyHomeSeed(PLATFORM_VERSION, homeDir, configDir, dataDir);
   migrateLegacyDefaultPorts(homeDir);
+  migrateLegacyBindAddresses(homeDir);
   // Install UI build to data/ui/ (local build if available, else the
   // @openpalm/ui npm bundle on this release stream's channel). @openpalm/ui is
   // independently versioned, so seed by dist-tag CHANNEL (latest/next) rather

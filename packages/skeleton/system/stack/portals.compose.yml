@@ -147,10 +147,14 @@ services:
       # independently. No key configured ⇒ the edge fails closed (401).
       OPENAI_COMPAT_API_KEY_FILE: /run/secrets/op_api_key
     ports:
-      - "${OP_BIND_ADDRESS:-127.0.0.1}:${OP_GUARDIAN_PORT:-3830}:3830"
+      # Generated from the access toggles; flat, never a cascade.
+      - "${OP_GUARDIAN_BIND_ADDRESS:-127.0.0.1}:${OP_GUARDIAN_PORT:-3830}:3830"
+      # The admin listener is loopback-only, permanently — it mints principals.
       - "127.0.0.1:${OP_GUARDIAN_ADMIN_PORT:-3831}:3831"
-      - "${OP_CHAT_BIND_ADDRESS:-${OP_BIND_ADDRESS:-127.0.0.1}}:${OP_CHAT_PORT:-3820}:8182"
-      - "${OP_API_BIND_ADDRESS:-${OP_BIND_ADDRESS:-127.0.0.1}}:${OP_API_PORT:-3821}:8182"
+      # ONE host port onto the OpenAI-compatible listener. This used to be two
+      # separate chat/api host ports mapping to the same container port 8182 —
+      # two knobs, two bind addresses and two firewall holes for one service.
+      - "${OP_API_BIND_ADDRESS:-127.0.0.1}:${OP_API_PORT:-3821}:8182"
     volumes:
       - guardian-cache:/opt/openpalm
       # Tool packages managed via package.json. Edit OP_HOME/data/guardian/tools/package.json

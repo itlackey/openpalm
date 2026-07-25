@@ -196,78 +196,52 @@ describe("validateSetupSpec", () => {
     expect(result.errors.some((e) => e.includes("owner.name"))).toBe(true);
   });
 
-  // ── #563 T19-T22: network preset validation ─────────────────────────────
+  // ── Network access toggle validation ────────────────────────────────────
 
-  it("T19 (pin): accepts a spec without network (backward compatible)", () => {
+  it("accepts a spec with no access field — a rerun must not rewrite exposure", () => {
     const input = makeValidSpec();
-    delete (input as Record<string, unknown>).network;
+    delete (input as Record<string, unknown>).access;
     const result = validateSetupSpec(input);
     expect(result.valid).toBe(true);
     expect(result.errors).toHaveLength(0);
   });
 
-  it("T20: accepts network {preset:'this-pc'}", () => {
-    const input = makeValidSpec({ network: { preset: "this-pc" } });
-    const result = validateSetupSpec(input);
-    expect(result.valid).toBe(true);
+  it("accepts a complete toggle record", () => {
+    const input = makeValidSpec({
+      access: {
+        networkAccess: true,
+        assistantDirect: false,
+        guardianNetwork: false,
+        guardianOpenaiApi: false,
+      },
+    });
+    expect(validateSetupSpec(input).valid).toBe(true);
   });
 
-  it("T20: rejects an unknown preset", () => {
-    const input = makeValidSpec();
-    (input as Record<string, unknown>).network = { preset: "bogus-preset" };
-    const result = validateSetupSpec(input);
+  it("accepts a PARTIAL record — anything absent is closed, so there is nothing to reject", () => {
+    expect(validateSetupSpec(makeValidSpec({ access: { networkAccess: true } })).valid).toBe(true);
+    expect(validateSetupSpec(makeValidSpec({ access: {} })).valid).toBe(true);
+  });
+
+  it("rejects a non-object access", () => {
+    const result = validateSetupSpec(makeValidSpec({ access: "home" }));
     expect(result.valid).toBe(false);
-    expect(result.errors.some((e) => e.includes("network"))).toBe(true);
+    expect(result.errors.join(" ")).toContain("access must be an object");
   });
 
-  it("T20: rejects a non-object network", () => {
-    const input = makeValidSpec();
-    (input as Record<string, unknown>).network = "this-pc";
-    const result = validateSetupSpec(input);
+  it("rejects a non-boolean toggle", () => {
+    const result = validateSetupSpec(makeValidSpec({ access: { networkAccess: "yes" } }));
     expect(result.valid).toBe(false);
-    expect(result.errors.some((e) => e.includes("network"))).toBe(true);
+    expect(result.errors.join(" ")).toContain("access.networkAccess must be a boolean");
   });
 
-  it("T21: home-password requires opencodePassword (min 8 chars) — missing", () => {
-    const input = makeValidSpec();
-    (input as Record<string, unknown>).network = { preset: "home-password" };
-    const result = validateSetupSpec(input);
+  it("rejects an unknown toggle rather than silently ignoring it", () => {
+    // A typo must not read as "closed" — that would silently under-expose.
+    const result = validateSetupSpec(makeValidSpec({ access: { netwrokAccess: true } }));
     expect(result.valid).toBe(false);
-    expect(result.errors.some((e) => e.includes("network.opencodePassword"))).toBe(true);
+    expect(result.errors.join(" ")).toContain("netwrokAccess");
   });
 
-  it("T21: home-password requires opencodePassword (min 8 chars) — empty", () => {
-    const input = makeValidSpec();
-    (input as Record<string, unknown>).network = { preset: "home-password", opencodePassword: "" };
-    const result = validateSetupSpec(input);
-    expect(result.valid).toBe(false);
-    expect(result.errors.some((e) => e.includes("network.opencodePassword"))).toBe(true);
-  });
-
-  it("T21: home-password requires opencodePassword (min 8 chars) — 7-char", () => {
-    const input = makeValidSpec();
-    (input as Record<string, unknown>).network = { preset: "home-password", opencodePassword: "1234567" };
-    const result = validateSetupSpec(input);
-    expect(result.valid).toBe(false);
-    expect(result.errors.some((e) => e.includes("network.opencodePassword"))).toBe(true);
-  });
-
-  it("T21: an 8-char opencodePassword on home-password is valid", () => {
-    const input = makeValidSpec();
-    (input as Record<string, unknown>).network = { preset: "home-password", opencodePassword: "12345678" };
-    const result = validateSetupSpec(input);
-    expect(result.valid).toBe(true);
-  });
-
-  it("T22: rejects opencodePassword on non-password presets, naming the preset", () => {
-    for (const preset of ["this-pc", "home-open", "shared-guardian"]) {
-      const input = makeValidSpec();
-      (input as Record<string, unknown>).network = { preset, opencodePassword: "12345678" };
-      const result = validateSetupSpec(input);
-      expect(result.valid).toBe(false);
-      expect(result.errors.some((e) => e.includes(preset))).toBe(true);
-    }
-  });
 });
 
 // ── Tests: buildOwnerEnvFromSetup ─────────────────────────────────────────
@@ -935,70 +909,100 @@ describe("performSetup", () => {
 
   const secretPathFor = (name: string) => join(homeDir, "knowledge", "secrets", name);
 
-  it("T23: home-password writes the full managed row to stack.env and the password to the secret file", async () => {
-    const result = await performSetup(
-      makeValidSpec({ network: { preset: "home-password", opencodePassword: "lan-secret-123" } }),
-    );
+  it("networkAccess publishes ONLY the UI — OpenCode stays loopback", async () => {
+    const result = await performSetup(makeValidSpec({ access: { networkAccess: true } }));
+    expect(result.ok).toBe(true);
+
+    const stackEnv = readFileSync(join(homeDir, "knowledge", "env", "stack.env"), "utf-8");
+    expect(stackEnv).toMatch(/^OP_UI_BIND_ADDRESS=0\.0\.0\.0$/m);
+    expect(stackEnv).toMatch(/^OP_ASSISTANT_BIND_ADDRESS=127\.0\.0\.1$/m);
+    expect(stackEnv).toMatch(/^OPENCODE_AUTH=false$/m);
+  });
+
+  it("assistantDirect turns auth on and GENERATES the key — never asks for one", async () => {
+    const result = await performSetup(makeValidSpec({ access: { assistantDirect: true } }));
     expect(result.ok).toBe(true);
 
     const stackEnv = readFileSync(join(homeDir, "knowledge", "env", "stack.env"), "utf-8");
     expect(stackEnv).toMatch(/^OP_ASSISTANT_BIND_ADDRESS=0\.0\.0\.0$/m);
     expect(stackEnv).toMatch(/^OPENCODE_AUTH=true$/m);
-    expect(stackEnv).toMatch(/^OP_BIND_ADDRESS=127\.0\.0\.1$/m);
-    expect(stackEnv).toMatch(/^OP_UI_BIND_ADDRESS=127\.0\.0\.1$/m);
-    expect(stackEnv).toMatch(/^OP_VOICE_BIND_ADDRESS=127\.0\.0\.1$/m);
-    expect(stackEnv).not.toContain("lan-secret-123");
 
-    expect(readSecret(homeDir, "op_opencode_password")).toBe("lan-secret-123\n");
+    const key = readSecret(homeDir, "op_opencode_password")?.trim();
+    expect(key).toBeTruthy();
+    expect((key ?? "").length).toBeGreaterThanOrEqual(32);
+    // The generated key never lands in the non-secret env file.
+    expect(stackEnv).not.toContain(key ?? "unreachable");
   });
 
-  it("T24: shared-guardian writes the guardian row with the assistant hard-pin", async () => {
-    const result = await performSetup(makeValidSpec({ network: { preset: "shared-guardian" } }));
-    expect(result.ok).toBe(true);
+  it("preserves an existing assistant key across a rerun — rotating it would break every client", async () => {
+    expect((await performSetup(makeValidSpec({ access: { assistantDirect: true } }))).ok).toBe(true);
+    const first = readSecret(homeDir, "op_opencode_password");
+    expect((await performSetup(makeValidSpec({ access: { assistantDirect: true } }))).ok).toBe(true);
+    expect(readSecret(homeDir, "op_opencode_password")).toBe(first);
+  });
+
+  it("writes every managed bind explicitly, so switching combinations always converges", async () => {
+    expect((await performSetup(makeValidSpec({ access: { networkAccess: true, guardianNetwork: true } }))).ok).toBe(true);
+    // Now turn everything back off — the previously-open binds must close.
+    expect((await performSetup(makeValidSpec({ access: {} }))).ok).toBe(true);
 
     const stackEnv = readFileSync(join(homeDir, "knowledge", "env", "stack.env"), "utf-8");
-    expect(stackEnv).toMatch(/^OP_BIND_ADDRESS=0\.0\.0\.0$/m);
-    expect(stackEnv).toMatch(/^OP_ASSISTANT_BIND_ADDRESS=127\.0\.0\.1$/m);
-    expect(stackEnv).toMatch(/^OP_UI_BIND_ADDRESS=127\.0\.0\.1$/m);
-    expect(stackEnv).toMatch(/^OP_VOICE_BIND_ADDRESS=127\.0\.0\.1$/m);
-    expect(stackEnv).toMatch(/^OPENCODE_AUTH=false$/m);
+    for (const key of ["OP_UI_BIND_ADDRESS", "OP_ASSISTANT_BIND_ADDRESS", "OP_GUARDIAN_BIND_ADDRESS", "OP_API_BIND_ADDRESS"]) {
+      expect(stackEnv).toMatch(new RegExp(`^${key}=127\\.0\\.0\\.1$`, "m"));
+    }
   });
 
-  it("T24b: shared-guardian auto-enables the chat portal so a guardian actually deploys (PR #564 review)", async () => {
-    // The guardian service is profile-gated behind guardian-ingress addons;
-    // binds alone deploy no guardian. The preset's promise ("guardian
-    // protected front door", pairing) requires one, so a shared-guardian
-    // setup with no guardian-ingress addon enables the built-in chat portal.
-    const result = await performSetup(makeValidSpec({ network: { preset: "shared-guardian" } }));
+  it("publishing the guardian auto-enables the chat portal, so the front door actually exists", async () => {
+    // The guardian is profile-gated behind ingress addons; a bind alone
+    // deploys nothing for the published port to reach.
+    const result = await performSetup(makeValidSpec({ access: { guardianNetwork: true } }));
     expect(result.ok).toBe(true);
 
-    const stateEnv = readFileSync(join(homeDir, "state", "stack.state.env"), "utf-8");
+    const stateEnv = readFileSync(stateEnvPath(), "utf-8");
     expect(stateEnv).toMatch(/^OP_ENABLED_ADDONS=.*\bchat\b/m);
   });
 
-  it("T24c: shared-guardian does NOT add chat when another guardian-ingress addon is already requested", async () => {
+  it("does NOT add chat when another guardian-ingress addon is already requested", async () => {
     const result = await performSetup(
-      makeValidSpec({ network: { preset: "shared-guardian" }, addons: { discord: true } }),
+      makeValidSpec({ access: { guardianNetwork: true }, addons: { discord: true } }),
     );
     expect(result.ok).toBe(true);
 
-    const stateEnv = readFileSync(join(homeDir, "state", "stack.state.env"), "utf-8");
-    expect(stateEnv).toMatch(/^OP_ENABLED_ADDONS=.*\bdiscord\b/m);
+    const stateEnv = readFileSync(stateEnvPath(), "utf-8");
     expect(stateEnv).not.toMatch(/^OP_ENABLED_ADDONS=.*\bchat\b/m);
   });
 
-  it("T24d: non-guardian presets do not auto-enable any addon", async () => {
-    const result = await performSetup(makeValidSpec({ network: { preset: "home-open" } }));
+  it("publishing the OpenAI edge enables the api portal that serves it", async () => {
+    // `guardianOpenaiApi` publishes :8182 specifically, which only exists when
+    // the `api` addon is on. The api portal used to be pinned enabled, so this
+    // could never be wrong; it is an ordinary capability toggle now.
+    const result = await performSetup(makeValidSpec({ access: { guardianOpenaiApi: true } }));
     expect(result.ok).toBe(true);
 
-    const stateEnvPath = join(homeDir, "state", "stack.state.env");
-    const stateEnv = existsSync(stateEnvPath) ? readFileSync(stateEnvPath, "utf-8") : "";
+    const stateEnv = readFileSync(stateEnvPath(), "utf-8");
+    expect(stateEnv).toMatch(/^OP_ENABLED_ADDONS=.*\bapi\b/m);
+    // The generic guardian fallback must not ALSO fire — `api` is ingress.
     expect(stateEnv).not.toMatch(/^OP_ENABLED_ADDONS=.*\bchat\b/m);
   });
 
-  it("T25: a spec without network leaves pre-seeded bind values untouched", async () => {
-    // Seed a pre-existing OP_ASSISTANT_BIND_ADDRESS before running a
-    // network-less setup — it must survive (D7: absent network = don't touch).
+  it("does not resurrect an api portal the same run explicitly turned off", async () => {
+    const result = await performSetup(
+      makeValidSpec({ access: { guardianOpenaiApi: true }, addons: { api: true } }),
+    );
+    expect(result.ok).toBe(true);
+    expect(readFileSync(stateEnvPath(), "utf-8")).toMatch(/^OP_ENABLED_ADDONS=.*\bapi\b/m);
+  });
+
+  it("a UI-only toggle does not auto-enable any addon", async () => {
+    const result = await performSetup(makeValidSpec({ access: { networkAccess: true } }));
+    expect(result.ok).toBe(true);
+
+    const stateEnv = existsSync(stateEnvPath()) ? readFileSync(stateEnvPath(), "utf-8") : "";
+    expect(stateEnv).not.toMatch(/^OP_ENABLED_ADDONS=.*\bchat\b/m);
+    expect(stateEnv).not.toMatch(/^OP_ENABLED_ADDONS=.*\bapi\b/m);
+  });
+
+  it("a spec without access leaves pre-seeded bind values untouched", async () => {
     const stackEnvPath = join(homeDir, "knowledge", "env", "stack.env");
     writeFileSync(
       stackEnvPath,
@@ -1006,30 +1010,10 @@ describe("performSetup", () => {
     );
 
     const input = makeValidSpec();
-    delete (input as Record<string, unknown>).network;
-    const result = await performSetup(input);
-    expect(result.ok).toBe(true);
+    delete (input as Record<string, unknown>).access;
+    expect((await performSetup(input)).ok).toBe(true);
 
-    const stackEnv = readFileSync(stackEnvPath, "utf-8");
-    expect(stackEnv).toMatch(/^OP_ASSISTANT_BIND_ADDRESS=10\.0\.0\.5$/m);
-  });
-
-  it("T26: shared-guardian fails closed when process.env exposes the assistant", async () => {
-    const saved = process.env.OP_ASSISTANT_BIND_ADDRESS;
-    process.env.OP_ASSISTANT_BIND_ADDRESS = "0.0.0.0";
-    try {
-      const result = await performSetup(makeValidSpec({ network: { preset: "shared-guardian" } }));
-      expect(result.ok).toBe(false);
-      expect(result.error).toBeDefined();
-      expect(result.error ?? "").toContain("OP_ASSISTANT_BIND_ADDRESS");
-
-      // Never wrote the shared-guardian row over the fail-closed rejection.
-      const stackEnv = readFileSync(join(homeDir, "knowledge", "env", "stack.env"), "utf-8");
-      expect(stackEnv).not.toMatch(/^OP_BIND_ADDRESS=0\.0\.0\.0$/m);
-    } finally {
-      if (saved === undefined) delete process.env.OP_ASSISTANT_BIND_ADDRESS;
-      else process.env.OP_ASSISTANT_BIND_ADDRESS = saved;
-    }
+    expect(readFileSync(stackEnvPath, "utf-8")).toMatch(/^OP_ASSISTANT_BIND_ADDRESS=10\.0\.0\.5$/m);
   });
 
   it("T27: every setup materializes the op_opencode_password secret file", async () => {

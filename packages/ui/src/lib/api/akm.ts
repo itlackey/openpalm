@@ -1,5 +1,5 @@
 import { request, requireOk } from './core.js';
-import type { NetworkAccessPreset } from '@openpalm/lib/control-plane/network-preset.js';
+import type { AccessToggles } from '@openpalm/lib/control-plane/access-toggles.js';
 
 // ── AKM Config ────────────────────────────────────────────────────────────────
 
@@ -60,11 +60,9 @@ export type MdnsSurface = {
 
 export type HostStackSettings = {
   projectName: string;
-  lanExposureEnabled: boolean;
+  access: AccessToggles;
   stackEnvPath: string;
   mdns: MdnsSurface;
-  /** #563 — active network access preset; null means custom/hand-tuned. */
-  networkPreset: NetworkAccessPreset | null;
 };
 
 export async function fetchHostStackSettings(): Promise<HostStackSettings> {
@@ -74,25 +72,23 @@ export async function fetchHostStackSettings(): Promise<HostStackSettings> {
 
 export async function saveHostStackSettings(input: {
   projectName: string;
-  lanExposureEnabled: boolean;
+  access: AccessToggles;
 }): Promise<{
   ok: boolean;
   projectName: string;
   projectRenamed: boolean;
-  lanExposureEnabled: boolean;
+  access: AccessToggles;
   stackEnvPath: string;
   mdns: MdnsSurface;
-  networkPreset: NetworkAccessPreset | null;
 }> {
   const res = await requireOk(await request('PUT', '/api/host/stack', input));
   return (await res.json()) as {
     ok: boolean;
     projectName: string;
     projectRenamed: boolean;
-    lanExposureEnabled: boolean;
+    access: AccessToggles;
     stackEnvPath: string;
     mdns: MdnsSurface;
-    networkPreset: NetworkAccessPreset | null;
   };
 }
 
