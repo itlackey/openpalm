@@ -7,11 +7,15 @@
    * dedicated screen would add a click for every user to serve a minority.
    *
    * Progressive disclosure. ONE question is always visible — can other devices
-   * on your network use the assistant. The guardian toggles appear only once a
-   * guardian-backed integration is selected, because publishing a front door
-   * to a service that is not deployed does nothing. Direct assistant exposure
-   * sits under Advanced: the built-in client never uses it, so it exists for a
-   * second desktop app or a third-party OpenCode client.
+   * on your network use the assistant. That is the entire surface for a home
+   * install; everything else is behind Advanced.
+   *
+   * The guardian toggles are NOT gated on "a guardian integration is enabled".
+   * The `api` portal is `locked: true` in PORTALS, so a guardian-ingress addon
+   * is always enabled and the guardian is always deployed — a gate on that
+   * condition could never fire, and would have been disclosure theatre.
+   * Publishing its front door is a deliberate choice either way, which is what
+   * Advanced is for.
    *
    * Self-contained (ReviewStep pattern): takes NO props, reads and writes the
    * setup-state store directly.
@@ -21,26 +25,19 @@
     ACCESS_TOGGLE_LABELS,
     type AccessToggles,
   } from '@openpalm/lib/control-plane/access-toggles.js';
-  import { GUARDIAN_INGRESS_ADDON_IDS } from '@openpalm/lib/control-plane/addon-ids.js';
   import { setupState } from '$lib/setup/setup-state.svelte.js';
 
   const s = setupState;
   const access = $derived(s.access);
 
-  // The guardian is profile-gated behind ingress addons, so its toggles are
-  // meaningless until one is selected — publishing a port to a service that
-  // will not be deployed is exactly the kind of dead switch this redesign
-  // removes.
-  const guardianSelected = $derived(
-    GUARDIAN_INGRESS_ADDON_IDS.some((id) => {
-      const selection = s.portalSelection[id];
-      return typeof selection === 'object' && selection !== null && selection.enabled === true;
-    }),
-  );
-
   let showAdvanced = $state(false);
 
-  const GUARDIAN_KEYS: (keyof AccessToggles)[] = ['guardianNetwork', 'guardianOpenaiApi'];
+  /** Everything except the one always-visible question. */
+  const ADVANCED_KEYS: (keyof AccessToggles)[] = [
+    'guardianNetwork',
+    'guardianOpenaiApi',
+    'assistantDirect',
+  ];
 
   function set(key: keyof AccessToggles, value: boolean): void {
     s.setAccessToggle(key, value);
@@ -63,8 +60,12 @@
     </span>
   </label>
 
-  {#if guardianSelected}
-    {#each GUARDIAN_KEYS as key (key)}
+  <button type="button" class="access-advanced" onclick={() => (showAdvanced = !showAdvanced)}>
+    {showAdvanced ? 'Hide' : 'Show'} advanced
+  </button>
+
+  {#if showAdvanced}
+    {#each ADVANCED_KEYS as key (key)}
       <label class="access-row" for={`access-${key}`}>
         <input
           id={`access-${key}`}
@@ -78,25 +79,6 @@
         </span>
       </label>
     {/each}
-  {/if}
-
-  <button type="button" class="access-advanced" onclick={() => (showAdvanced = !showAdvanced)}>
-    {showAdvanced ? 'Hide' : 'Show'} advanced
-  </button>
-
-  {#if showAdvanced}
-    <label class="access-row" for="access-assistantDirect">
-      <input
-        id="access-assistantDirect"
-        type="checkbox"
-        checked={access.assistantDirect}
-        onchange={(e) => set('assistantDirect', e.currentTarget.checked)}
-      />
-      <span class="access-body">
-        <span class="access-title">{ACCESS_TOGGLE_LABELS.assistantDirect}</span>
-        <span class="access-sub">{ACCESS_TOGGLE_DESCRIPTIONS.assistantDirect}</span>
-      </span>
-    </label>
     {#if access.assistantDirect}
       <p class="network-risk-warning" role="alert">
         The assistant API is protected by a generated key sent over plain HTTP, which anything already on

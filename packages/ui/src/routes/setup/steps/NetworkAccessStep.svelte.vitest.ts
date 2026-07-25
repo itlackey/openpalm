@@ -50,33 +50,42 @@ describe('NetworkAccessStep — the always-visible question', () => {
 });
 
 describe('NetworkAccessStep — progressive disclosure', () => {
-  test('guardian toggles stay hidden until a guardian-backed integration is selected', async () => {
+  test('everything except the one question is behind Advanced', async () => {
     render(NetworkAccessStep);
-    await expect.element(page.getByText('Let other devices reach the guardian')).not.toBeInTheDocument();
+
+    for (const label of [
+      'Let other devices reach the guardian',
+      'Enable the OpenAI-compatible API',
+      'Allow direct connections to the assistant API',
+    ]) {
+      await expect.element(page.getByText(label)).not.toBeInTheDocument();
+    }
   });
 
-  test('selecting a guardian integration reveals its toggles', async () => {
-    const chat = setupState.portalSelection.chat;
-    if (typeof chat === 'object' && chat !== null) chat.enabled = true;
-
+  test('Advanced reveals the guardian and direct-assistant toggles', async () => {
+    // These are NOT gated on "a guardian integration is enabled": the `api`
+    // portal is locked:true, so a guardian is always deployed and such a gate
+    // could never fire.
     render(NetworkAccessStep);
-
-    await expect.element(page.getByText('Let other devices reach the guardian')).toBeInTheDocument();
-    await expect.element(page.getByText('Enable the OpenAI-compatible API')).toBeInTheDocument();
-  });
-
-  test('direct assistant exposure is behind Advanced — the built-in client never uses it', async () => {
-    render(NetworkAccessStep);
-
-    await expect.element(
-      page.getByText('Allow direct connections to the assistant API'),
-    ).not.toBeInTheDocument();
 
     await page.getByRole('button', { name: /advanced/i }).click();
 
+    await expect.element(page.getByText('Let other devices reach the guardian')).toBeInTheDocument();
+    await expect.element(page.getByText('Enable the OpenAI-compatible API')).toBeInTheDocument();
     await expect.element(
       page.getByText('Allow direct connections to the assistant API'),
     ).toBeInTheDocument();
+  });
+
+  test('an advanced toggle flips only itself', async () => {
+    render(NetworkAccessStep);
+    await page.getByRole('button', { name: /advanced/i }).click();
+    await page.getByRole('checkbox', { name: /reach the guardian/i }).click();
+
+    expect(setupState.access.guardianNetwork).toBe(true);
+    expect(setupState.access.networkAccess).toBe(false);
+    expect(setupState.access.guardianOpenaiApi).toBe(false);
+    expect(setupState.access.assistantDirect).toBe(false);
   });
 
   test('enabling direct exposure names the plain-HTTP risk rather than burying it', async () => {
