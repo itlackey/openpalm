@@ -342,6 +342,7 @@ start_ui() {
       if env -u OP_ENABLE_ADMIN -u OP_INSIDE_ELECTRON \
            HOST=0.0.0.0 PORT="$ui_port" HOST_HEADER=host PROTOCOL_HEADER=x-forwarded-proto \
            OP_UI_NO_LOCAL_VOICE=1 \
+           OP_UI_SERVED_IN_CONTAINER=1 \
            OP_UI_LOGIN_PASSWORD="$ui_login_password" \
            node "$ui_index"; then
         exit_code=0

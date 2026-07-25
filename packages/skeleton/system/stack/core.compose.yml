@@ -140,6 +140,14 @@ services:
       # not suppress the UI co-process.
       OP_BIND_ADDRESS: ${OP_BIND_ADDRESS:-127.0.0.1}
       OP_ASSISTANT_BIND_ADDRESS: ${OP_ASSISTANT_BIND_ADDRESS:-${OP_BIND_ADDRESS:-127.0.0.1}}
+      # The EFFECTIVE host bind for the UI co-process, mirroring the port line
+      # below exactly. The container cannot otherwise know it: the UI child is
+      # always started with HOST=0.0.0.0 (Docker requires binding all
+      # interfaces INSIDE the container), so its own listener says nothing
+      # about whether the port is published to the LAN or only to loopback.
+      # The UI's Host-header allowlist reads this to decide whether it is
+      # allowed to be reached by a name other than localhost.
+      OP_UI_BIND_ADDRESS: ${OP_UI_BIND_ADDRESS:-${OP_BIND_ADDRESS:-127.0.0.1}}
       # Provider credentials live in OpenCode's auth.json (bind-mounted
       # below) — NOT in this env block. The Connections tab and the setup
       # wizard both call OpenCode's PUT /auth/{providerID}; ai-sdk picks

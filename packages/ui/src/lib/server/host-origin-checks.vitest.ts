@@ -13,6 +13,8 @@ function req(
 
 afterEach(() => {
   delete process.env.OP_ALLOW_REMOTE_SETUP;
+  delete process.env.OP_UI_SERVED_IN_CONTAINER;
+  delete process.env.OP_UI_BIND_ADDRESS;
 });
 
 describe('checkHostHeader', () => {
@@ -34,6 +36,35 @@ describe('checkHostHeader', () => {
   it('allows any host when OP_ALLOW_REMOTE_SETUP is set', () => {
     process.env.OP_ALLOW_REMOTE_SETUP = '1';
     expect(checkHostHeader(req('192.168.1.10:3880'))).toBeNull();
+  });
+
+  describe('the published container UI', () => {
+    it('allows a LAN host when the container UI is published beyond loopback', () => {
+      // The whole point of publishing it: a phone reaches it by name or IP.
+      process.env.OP_UI_SERVED_IN_CONTAINER = '1';
+      process.env.OP_UI_BIND_ADDRESS = '0.0.0.0';
+      expect(checkHostHeader(req('openpalm.local:3800'))).toBeNull();
+      expect(checkHostHeader(req('192.168.1.50:3800'))).toBeNull();
+    });
+
+    it('still rejects when the container UI is bound to loopback', () => {
+      process.env.OP_UI_SERVED_IN_CONTAINER = '1';
+      process.env.OP_UI_BIND_ADDRESS = '127.0.0.1';
+      expect(checkHostHeader(req('openpalm.local:3800'))?.status).toBe(400);
+    });
+
+    it('does NOT relax for the host process, even with a stray bind address in its env', () => {
+      // DNS rebinding targets loopback-bound services, so a bind address
+      // leaking into a host operator's shell must never weaken the admin-
+      // capable host UI. The container marker is required, not inferred.
+      process.env.OP_UI_BIND_ADDRESS = '0.0.0.0';
+      expect(checkHostHeader(req('192.168.1.50:3880'))?.status).toBe(400);
+    });
+
+    it('does NOT relax on the container marker alone', () => {
+      process.env.OP_UI_SERVED_IN_CONTAINER = '1';
+      expect(checkHostHeader(req('192.168.1.50:3800'))?.status).toBe(400);
+    });
   });
 
   // PR #564 second retest: the rejection body must carry requestId (API contract).

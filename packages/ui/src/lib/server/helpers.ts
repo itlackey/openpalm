@@ -267,11 +267,43 @@ function effectiveRequestOrigin(request: Request): string | null {
   }
 }
 
+/**
+ * True when this process is the assistant container's UI co-process AND its
+ * host port is published beyond loopback.
+ *
+ * The Host allowlist asserts "this service is loopback-only". That assertion
+ * is permanently true for the HOST process (`openpalm app` / `admin` /
+ * Electron), which is admin-capable and never published — so the check stays
+ * on there and costs nothing.
+ *
+ * It is false for the container UI whenever the operator has published it: a
+ * service deliberately bound to the LAN, advertised over mDNS, and opened from
+ * another device. Enforcing loopback-only on it is not defence in depth, it is
+ * a false assertion that surfaces as a 400 on every request from a phone.
+ *
+ * BOTH conditions are required, deliberately. Relaxing on bind address alone
+ * would be unsafe: DNS rebinding specifically targets loopback-bound services
+ * (the attacker rebinds their domain to 127.0.0.1 and drives the victim's own
+ * browser), so a stray `OP_UI_BIND_ADDRESS` in a host operator's shell must
+ * never weaken the host process. `OP_UI_SERVED_IN_CONTAINER` is set only by
+ * the assistant entrypoint (containers/assistant/entrypoint.sh) and cannot be
+ * reached by inference; `OP_UI_BIND_ADDRESS` is passed by core.compose.yml
+ * mirroring the UI port line, because the container's own `HOST=0.0.0.0`
+ * listener says nothing about whether the port is published to the LAN.
+ */
+function isPublishedContainerUi(): boolean {
+  if (process.env.OP_UI_SERVED_IN_CONTAINER !== "1") return false;
+  const bind = process.env.OP_UI_BIND_ADDRESS?.trim();
+  if (!bind) return false;
+  return !isLoopbackHost(bind);
+}
+
 export function checkHostHeader(request: Request, requestId?: string): Response | null {
   const host = request.headers.get("host") ?? "";
-  // Allow any loopback host (any port, e.g. via SSH tunnel), or any host when
-  // the operator has explicitly opted into remote access.
-  if (isLoopbackHost(host) || isRemoteSetupAllowed()) return null;
+  // Allow any loopback host (any port, e.g. via SSH tunnel); any host when the
+  // operator has explicitly opted into remote access; and any host when this
+  // is the container UI published beyond loopback on purpose.
+  if (isLoopbackHost(host) || isRemoteSetupAllowed() || isPublishedContainerUi()) return null;
   return new Response(
     JSON.stringify({
       error: "invalid_host",
