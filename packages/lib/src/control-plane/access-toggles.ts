@@ -13,9 +13,13 @@
  * the toggle.
  *
  * Progressive disclosure (the UI's concern, recorded here so the model is
- * legible): only `networkAccess` is always visible. The guardian toggles
- * surface once a guardian-backed integration is enabled, and `assistantDirect`
- * lives under Advanced.
+ * legible): only `networkAccess` is always visible — that is the entire
+ * surface for a home install. The other three live under Advanced.
+ *
+ * The guardian toggles are deliberately NOT gated on "a guardian-backed
+ * integration is enabled". The `api` portal is `locked: true` in the wizard's
+ * PORTALS list, so a guardian-ingress addon is always enabled and the guardian
+ * is always deployed — a gate on that condition could never fire.
  *
  * Browser-safe: no `node:*` imports. The wizard imports this directly via the
  * `@openpalm/lib/control-plane/access-toggles.js` subpath.

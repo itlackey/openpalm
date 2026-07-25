@@ -140,6 +140,12 @@ const handle: RequestHandler = async (event) => {
   }
   clearTimeout(headerTimeout);
 
+  // The abort listener is deliberately NOT removed here. It must stay attached
+  // for the life of the streamed body — that is the whole point of forwarding
+  // it. Detaching once headers arrive would leave `/oc/event` unable to tear
+  // down its upstream when the browser goes away, which is the leak this
+  // guards against. The listener rides on the per-request signal and is
+  // collected with it.
   const responseHeaders = new Headers();
   for (const [key, value] of upstream.headers) {
     if (!STRIPPED_RESPONSE_HEADERS.has(key.toLowerCase())) responseHeaders.set(key, value);
@@ -154,4 +160,6 @@ export const POST = handle;
 export const PUT = handle;
 export const PATCH = handle;
 export const DELETE = handle;
-export const OPTIONS = handle;
+// No OPTIONS handler: this route is same-origin by construction, and browsers
+// never preflight a same-origin request. Exporting one would add an
+// unreachable authenticated surface.

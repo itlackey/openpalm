@@ -150,11 +150,13 @@ export function ensureSecrets(state: ControlPlaneState): void {
   // The API key end users paste into OpenAI-compatible clients (guardian edge,
   // OPENAI_COMPAT_API_KEY_FILE). Without it the shipped edge fails closed (401).
   ensureSecret(state.homeDir, 'op_api_key', () => crypto.randomUUID().replace(/-/g, ''));
-  // #563 — the OpenCode server password. Always materialized because BOTH the
-  // assistant's and guardian's compose `secrets:` grants reference this file
+  // The OpenCode server key. Always materialized because BOTH the assistant's
+  // and guardian's compose `secrets:` grants reference this file
   // unconditionally (core.compose.yml / portals.compose.yml); the random seed
-  // is inert while OPENCODE_AUTH=false (the default), and a home-password
-  // network access preset overwrites it with the operator's chosen password.
+  // is inert while OPENCODE_AUTH=false (the default), which is every
+  // configuration except the one that publishes the assistant API. That
+  // configuration keeps this generated value rather than replacing it — the
+  // operator is never asked to invent a second password.
   // ensureSecret also re-seeds a torn/0-byte file (scripts/dev-setup.sh seeds
   // an empty one).
   ensureSecret(state.homeDir, 'op_opencode_password', () => crypto.randomUUID().replace(/-/g, ''));
