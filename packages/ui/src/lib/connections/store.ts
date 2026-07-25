@@ -50,9 +50,28 @@ export type RuntimeConfig = {
 
 export type ActiveWriteResult = 'updated' | 'mismatch' | 'target-missing';
 
-function rewriteLoopbackUrlForBrowserHost(rawUrl: string): string {
+/**
+ * Resolve a locked connection's `baseUrl` for this browser.
+ *
+ * A ROOT-RELATIVE value (`/oc`) is the same-origin proxy this app serves — it
+ * resolves against whatever origin the page was actually loaded from, so it is
+ * correct for `localhost`, a LAN hostname, an mDNS `.local` name, or a
+ * reverse-proxied HTTPS origin without anything server-side knowing which.
+ * That is the whole reason the seeded value is relative: the container writes
+ * `runtime-config.json` at startup and cannot know the origin a browser will
+ * later visit.
+ *
+ * An ABSOLUTE loopback URL is the legacy seeded shape (`127.0.0.1:3810`, the
+ * browser-direct era). Rewriting its host to the visited one is kept so an
+ * install whose `runtime-config.json` predates the proxy keeps working until
+ * the container restarts and reseeds.
+ */
+function resolveLockedBaseUrl(rawUrl: string): string {
   const locationLike = globalThis.location;
   const redactedUrl = redactUrlUserinfo(rawUrl);
+  if (redactedUrl.startsWith('/')) {
+    return locationLike ? new URL(redactedUrl, locationLike.origin).toString().replace(/\/$/, '') : redactedUrl;
+  }
   if (!locationLike || isLoopbackHost(locationLike.hostname)) return redactedUrl;
   try {
     const url = new URL(redactedUrl);
@@ -95,7 +114,7 @@ function adaptRuntimeConfigForBrowser(config: RuntimeConfig): RuntimeConfig {
   return {
     connections: config.connections.flatMap((entry) => {
       const baseUrl = entry.locked
-        ? rewriteLoopbackUrlForBrowserHost(entry.baseUrl)
+        ? resolveLockedBaseUrl(entry.baseUrl)
         : redactUrlUserinfo(entry.baseUrl);
       if (isMixedContentTarget(baseUrl)) return [];
       return [{ ...redactEntryUrl(entry), baseUrl }];

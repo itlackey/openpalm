@@ -237,7 +237,14 @@ start_ui() {
   # id/fallback label MUST equal packages/lib ui-runtime-config.ts's
   # ASSISTANT_LOCKED_CONNECTION_ID / _LABEL. OP_PROJECT_NAME supplies the
   # connection's detected local assistant name when available.
-  local assistant_url="${OP_UI_DEFAULT_ASSISTANT_URL:-http://127.0.0.1:${OP_ASSISTANT_PORT:-3810}}"
+  # Seed the SAME-ORIGIN proxy path, not an absolute URL. The browser resolves
+  # `/oc` against whatever origin it actually loaded — localhost, a LAN IP, an
+  # mDNS `.local` name, or a reverse-proxied HTTPS origin — which is precisely
+  # what this process cannot know when it writes the file at startup. That
+  # removes the old absolute `127.0.0.1:${OP_ASSISTANT_PORT}` seed and the
+  # client-side host rewrite that existed to patch it up for remote browsers.
+  # OP_UI_DEFAULT_ASSISTANT_URL still overrides for non-default topologies.
+  local assistant_url="${OP_UI_DEFAULT_ASSISTANT_URL:-/oc}"
   local assistant_name="${OP_PROJECT_NAME:-}"
   mkdir -p "$ui_client_dir"
   node -e '
@@ -250,12 +257,20 @@ start_ui() {
     let normalizedUrl = url.replace(/^(https?:\/\/)(0\.0\.0\.0|\[::\]|::)(?=[:/]|$)/i, "$1127.0.0.1");
     let connection = null;
     try {
-      const parsedUrl = new URL(normalizedUrl);
-      if (parsedUrl.protocol !== "http:" && parsedUrl.protocol !== "https:") throw new Error("invalid protocol");
-      const hadUserinfo = Boolean(parsedUrl.username || parsedUrl.password);
-      parsedUrl.username = "";
-      parsedUrl.password = "";
-      if (hadUserinfo) normalizedUrl = parsedUrl.toString();
+      // A root-relative seed ("/oc") is the same-origin proxy — the browser
+      // resolves it against the origin it loaded, which is exactly what this
+      // process cannot know. Reject a protocol-relative "//host" or a path
+      // carrying userinfo/query/fragment, which could resolve elsewhere.
+      if (normalizedUrl.startsWith("/")) {
+        if (normalizedUrl.startsWith("//") || /[?#@]/.test(normalizedUrl)) throw new Error("invalid path");
+      } else {
+        const parsedUrl = new URL(normalizedUrl);
+        if (parsedUrl.protocol !== "http:" && parsedUrl.protocol !== "https:") throw new Error("invalid protocol");
+        const hadUserinfo = Boolean(parsedUrl.username || parsedUrl.password);
+        parsedUrl.username = "";
+        parsedUrl.password = "";
+        if (hadUserinfo) normalizedUrl = parsedUrl.toString();
+      }
       connection = {
         id: "openpalm-assistant-opencode",
         label: assistantName.trim() || "Local assistant",
@@ -343,6 +358,7 @@ start_ui() {
            HOST=0.0.0.0 PORT="$ui_port" HOST_HEADER=host PROTOCOL_HEADER=x-forwarded-proto \
            OP_UI_NO_LOCAL_VOICE=1 \
            OP_UI_SERVED_IN_CONTAINER=1 \
+           OP_OPENCODE_URL=http://localhost:4096 \
            OP_UI_LOGIN_PASSWORD="$ui_login_password" \
            node "$ui_index"; then
         exit_code=0

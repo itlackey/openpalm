@@ -3,7 +3,9 @@
  * split").
  *
  * Talks to a connection's OpenCode/Guardian base URL directly from the
- * browser — no proxy, NO COOKIES (`credentials: 'omit'`). This is deliberately
+ * browser — no proxy, and no cookies for cross-origin targets. Same-origin
+ * targets (this app's own `/oc` proxy) DO send the session cookie, because
+ * there the session is the credential. This is deliberately
  * small: it exposes only the calls the ui chat layer needs and REUSES ui's
  * existing SSE frame parser (`$lib/chat/session-events.ts` `parseFrame`) and
  * event envelope type (`$lib/chat/oc-events.ts` `RawEvent`) rather than
@@ -38,6 +40,28 @@ export type CandidateVerificationResult = {
     | 'mixed-content'
     | 'network-uncertain';
 };
+
+/**
+ * Cookie policy for a request to `baseUrl`.
+ *
+ * Cross-origin targets stay `'omit'`: a third-party assistant must never
+ * receive this app's session cookie, and its own credential travels in the
+ * Authorization header.
+ *
+ * A SAME-ORIGIN target is this process's own `/oc` proxy, where the session
+ * cookie IS the credential — omitting it would 401 every request. Resolved
+ * per-call rather than baked into the transport because one store holds both
+ * kinds of connection.
+ */
+function credentialsFor(baseUrl: string): RequestCredentials {
+  const origin = globalThis.location?.origin;
+  if (!origin) return 'omit';
+  try {
+    return new URL(baseUrl, origin).origin === origin ? 'same-origin' : 'omit';
+  } catch {
+    return 'omit';
+  }
+}
 
 export type DirectTransport = {
   request(method: 'GET' | 'POST' | 'PATCH' | 'DELETE', path: string, body?: unknown): Promise<Response>;
@@ -109,7 +133,7 @@ export async function verifyDirectCandidate(
         accept: 'application/json',
         ...(authorization ? { authorization } : {}),
       },
-      credentials: 'omit',
+      credentials: credentialsFor(baseUrl),
       cache: 'no-store',
       signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
     });
@@ -160,7 +184,7 @@ export function createDirectTransport(
         ...(body === undefined ? {} : { 'content-type': 'application/json' }),
         ...(await authHeaders(connection)),
       };
-      const init: RequestInit = { method, headers, credentials: 'omit' };
+      const init: RequestInit = { method, headers, credentials: credentialsFor(connection.baseUrl) };
       if (body !== undefined) init.body = JSON.stringify(body);
       const response = await fetchImpl(`${baseFor(connection)}${path}`, init);
       if (!response.ok) {
@@ -174,7 +198,7 @@ export function createDirectTransport(
       const response = await fetchImpl(`${baseFor(connection)}/event`, {
         method: 'GET',
         headers: { accept: 'text/event-stream', ...(await authHeaders(connection)) },
-        credentials: 'omit',
+        credentials: credentialsFor(connection.baseUrl),
         signal,
       });
       if (!response.ok || !response.body) {
@@ -229,7 +253,7 @@ export function createDirectTransport(
         const response = await fetchImpl(`${base}/`, {
           method: 'GET',
           headers: await authHeaders(connection),
-          credentials: 'omit',
+          credentials: credentialsFor(base),
           // 'no-store' never enters Cache Storage — a service worker's runtime
           // cache must not serve a stale probe through a real outage.
           cache: 'no-store',
