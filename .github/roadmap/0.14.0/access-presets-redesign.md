@@ -238,8 +238,8 @@ has no network-reachable surface at all, so there is nothing to authenticate.
   a connection key from your dashboard. Best for phones, tablets, and a second
   computer at home.
 - **My network, screened** — Same browser access, but every message is checked
-  and logged by the guardian before it reaches the assistant, and nothing can
-  bypass it. Use this when other people share your network.
+  and logged by the guardian before it reaches the assistant, and nothing *on
+  your network* can bypass it. Use this when other people share your network.
 - **Locked down** — One guarded door. The assistant is invisible to the
   network; everything reaches it through the guardian, which screens, logs and
   rate-limits. Browser access is from this computer or a managed app, not from
@@ -277,6 +277,53 @@ uses the UI locally. You are trusting the *network* not at all.
 Rule of thumb: choose `screened` when you want people to browse to it and you
 want a log. Choose `locked` when every client should be something you issued a
 credential to.
+
+### 3.8.1 The UI server under `screened`, and what it does *not* cover
+
+Mechanically, almost nothing changes. The UI is served by the same
+`@openpalm/ui` adapter-node co-process inside the assistant container
+(in-container `:3000`, published at `OP_UI_BIND:3800`) under every preset. The
+preset flips exactly one value:
+
+```
+OP_ASSISTANT_UPSTREAM:  http://localhost:4096  →  http://guardian:8080/oc
+```
+
+The `/oc` proxy route dials the guardian instead of loopback OpenCode,
+presenting a container-side guardian principal. The browser sees an identical
+same-origin `/oc` — same paths, same SSE, no new credential, no CORS. A user
+cannot tell which upstream is in force, which is the point. No new network
+wiring is needed either: the guardian already joins `assistant_net`, so
+`guardian:8080` resolves from the assistant container today.
+
+Three honest limits, none of which the wizard copy should paper over:
+
+1. **The UI server is not itself behind the guardian.** It is a LAN-reachable
+   HTTP service with its own login wall, and its login form, session handling
+   and API routes are exposed surface. The guardian screens what reaches the
+   *assistant*, not what reaches the *web server*. Routing static assets
+   through it would add a hop and no protection — which is exactly why it does
+   not serve the UI.
+2. **Console access is not screened.** `OP_ASSISTANT_BIND` stays `127.0.0.1` in
+   `screened` so the host UI and Electron can work, which means anyone at the
+   desktop can reach OpenCode directly on `:3810`, unscreened. That is the same
+   trust boundary as "you are logged into this machine," but the claim is
+   *network* traffic is screened, not *all* traffic.
+3. **The audit log cannot attribute per person.** The UI authenticates to the
+   guardian as ONE principal, and the UI itself has a single shared login
+   password with no user accounts (`api/auth/login`, `getUiLoginPassword` —
+   one secret, `role: "admin"`, no identity). In the shared-house scenario the
+   log records *that the UI asked something*, not *that Alice asked it*.
+   Per-person accountability needs UI user accounts plus a forwarded identity
+   header — a real feature, out of scope here, recorded so the scenario is not
+   oversold.
+
+**Startup ordering wrinkle.** `guardian` declares `depends_on: assistant:
+service_healthy`, and the assistant's healthcheck probes the UI co-process. The
+UI's `/health` is exempt from the login wall and must NOT probe its upstream,
+or the two deadlock. The consequence is a window where the UI is up and
+serving but `/oc` has no guardian yet; the proxy should surface a
+"connecting…" state rather than a hard error during it.
 
 ### 3.9 Discovery: finding it from a phone
 
