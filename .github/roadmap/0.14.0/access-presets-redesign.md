@@ -240,17 +240,30 @@ instructs users to edit `stack.env` by hand and restart the guardian).
 
 Each step is independently shippable.
 
-1. **QR code + reachability check.** Days of work, no architecture change,
-   works against the current stack.
-2. **Login rate limiting + session-key separation.** Gates everything below.
-3. **Scope the Host allowlist** to the host process. Without this, nothing on
-   the network can load the UI at all.
-4. **Same-origin `/oc` proxy**, modelled on the voice route. Deletes the CORS
-   module, the loopback rewrite, and the seeding block.
-5. **Toggles replace presets**, with the generated state row.
+| | Step | Status |
+|---|---|---|
+| 1 | **QR code + reachability check.** Days of work, no architecture change, works against the current stack. | open |
+| 2 | **Login rate limiting + session-key separation.** Gates everything below. | **done** |
+| 3 | **Scope the Host allowlist** to the host process. Without this, nothing on the network can load the UI at all. | **done** |
+| 4 | **Same-origin `/oc` proxy**, modelled on the voice route. | **done** |
+| 5 | **Toggles replace presets**, with the generated state row. | open |
 
-Steps 2–4 are what make LAN access work. Step 5 is the configuration cleanup
-and carries the migration risk, so it goes last.
+Steps 2–4 are what make LAN access work, and all three have landed. Step 5 is
+the configuration cleanup; it carries the migration risk and delivers the least
+direct user value, so it goes last.
+
+Two clean-ups are deliberately deferred to step 5 rather than done alongside
+step 4, because both are only safe once nothing browser-direct points at the
+local OpenCode:
+
+- **The OpenCode CORS grant** (`OP_UI_CORS_ALLOWED_ORIGINS` and the
+  entrypoint's `--cors` assembly). Dead once the built-in client is
+  same-origin, but an install whose IndexedDB still holds an absolute
+  `host:3810` connection keeps using it until its container restarts and
+  reseeds. Marked scheduled-for-removal in both places.
+- **`rewriteLoopbackUrlForBrowserHost`'s successor branch** in
+  `resolveLockedBaseUrl`, which exists purely to keep a pre-proxy
+  `runtime-config.json` working across the upgrade.
 
 ## 7. Verification
 
