@@ -112,15 +112,21 @@ Nothing is configured *off*. Doors are added deliberately.
 ### 3.4 Derivation
 
 ```
-OP_UI_BIND              = network_access      ? 0.0.0.0 : 127.0.0.1
-OP_ASSISTANT_BIND       = assistant_direct    ? 0.0.0.0 : 127.0.0.1
-OPENCODE_AUTH           = assistant_direct                      (+ generated key)
-OP_GUARDIAN_BIND        = guardian_network    ? 0.0.0.0 : 127.0.0.1
-GUARDIAN_DIRECT_INGRESS = guardian_network
-OP_API_BIND             = guardian_openai_api ? 0.0.0.0 : 127.0.0.1
-voice bind              = 127.0.0.1                             (literal)
-UI /oc upstream         = http://localhost:4096                 (constant)
+OP_UI_BIND_ADDRESS        = networkAccess      ? 0.0.0.0 : 127.0.0.1
+OP_ASSISTANT_BIND_ADDRESS = assistantDirect    ? 0.0.0.0 : 127.0.0.1
+OPENCODE_AUTH             = assistantDirect                      (+ generated key)
+OP_GUARDIAN_BIND_ADDRESS  = guardianNetwork    ? 0.0.0.0 : 127.0.0.1
+GUARDIAN_DIRECT_INGRESS   = guardianNetwork
+OP_API_BIND_ADDRESS       = guardianOpenaiApi  ? 0.0.0.0 : 127.0.0.1
+voice bind                = 127.0.0.1                            (literal)
+UI /oc upstream           = http://localhost:4096                (constant)
 ```
+
+The existing `*_BIND_ADDRESS` names are kept rather than shortened. The
+substance was never the name — it was that the values are flat and always
+generated — and renaming would have added a migration for no behavioural gain.
+`OP_BIND_ADDRESS` (the cascade root) and `OP_CHAT_*` are retired; a legacy
+value in either is read as the exposure it used to produce.
 
 One line per toggle. No cascade, no inheritance, no "unset means different
 things." Toggles are persisted intent in `knowledge/env/stack.env`; the derived
