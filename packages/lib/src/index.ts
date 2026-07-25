@@ -525,21 +525,23 @@ export type { AkmStats } from './control-plane/akm-stats.js';
 export { getAkmStats, parseAkmStats } from './control-plane/akm-stats.js';
 
 // ── Bind Address Startup Warning ─────────────────────────────────────────────
-export { collectBindAddressWarnings, isRemoteSetupAllowed, isLoopback } from "./control-plane/bind-warning.js";
+export { isRemoteSetupAllowed, isLoopback, isUiLanExposed } from "./control-plane/bind-warning.js";
 
-// ── Network access presets (#563) ────────────────────────────────────────────
+// ── Network access toggles ───────────────────────────────────────────────────
 export {
-  NETWORK_ACCESS_PRESETS,
-  NETWORK_PRESET_LABELS,
-  isNetworkAccessPreset,
-  resolveNetworkPreset,
-  detectNetworkPreset,
-  validateNetworkPresetEnv,
-  collectNetworkExposureWarnings,
-  type NetworkAccessPreset,
-  type NetworkPresetEnv,
-  type NetworkPresetResolution,
-} from "./control-plane/network-preset.js";
+  ACCESS_TOGGLE_DEFAULTS,
+  ACCESS_TOGGLE_KEYS,
+  ACCESS_TOGGLE_LABELS,
+  ACCESS_TOGGLE_DESCRIPTIONS,
+  ACCESS_ENV_KEYS,
+  resolveAccessEnv,
+  readAccessToggles,
+  coerceAccessToggles,
+  requiresAssistantKey,
+  describeAccessExposure,
+  type AccessToggles,
+  type AccessEnv,
+} from "./control-plane/access-toggles.js";
 
 // ── mDNS host self-advertisement (#488) ──────────────────────────────────────
 // Pure helpers (sanitizeDnsLabel, resolveMdnsAdvertisements, etc.) stay

@@ -48,14 +48,16 @@ services:
       # assistant over assistant_net without credentials in that default
       # posture, and the scheduler runs as a co-process inside this container
       # so it reaches OpenCode via http://localhost:4096.
-      # The supported way to turn OPENCODE_AUTH on is a network access preset
-      # (#563, wizard "Network access" step / `openpalm install --file`): the
-      # home-password preset sets OPENCODE_AUTH=true and writes the operator's
-      # password to the op_opencode_password secret, which BOTH this service
-      # (serves Basic auth) and the guardian (attaches it upstream, see
-      # portals.compose.yml) read. See docs/technical/environment-and-mounts.md.
+      #
+      # Generated: auth is on iff the assistant API is PUBLISHED (the
+      # "assistantDirect" access toggle). When it is not published there is no
+      # network-reachable surface to authenticate, and the UI's /oc proxy and
+      # the guardian both reach it over loopback / assistant_net. The key is
+      # system-generated into the op_opencode_password secret, which BOTH this
+      # service (serves Basic auth) and the guardian (attaches it upstream, see
+      # portals.compose.yml) read. Never a password the operator invents.
       OPENCODE_AUTH: ${OPENCODE_AUTH:-false}
-      # #563 — the OpenCode server password, read from the compose secret
+      # The OpenCode server password, read from the compose secret
       # below. Never a raw OPENCODE_SERVER_PASSWORD env value (secret-audit.ts
       # forbids *_PASSWORD-suffixed compose environment keys).
       OPENCODE_SERVER_PASSWORD_FILE: /run/secrets/opencode_server_password
@@ -84,11 +86,10 @@ services:
       # The assistant entrypoint installs @openpalm/skeleton using this
       # exact-pin override, falling back to the image's PLATFORM_VERSION.
       OP_SKELETON_VERSION: ${OP_SKELETON_VERSION:-}
-      # The entrypoint writes the UI's runtime-config.json pointing the BROWSER
-      # at the host-published OpenCode URL — that is the assistant port mapping
-      # below, NOT the in-container :4096 (unreachable from a browser).
-      # OP_UI_DEFAULT_ASSISTANT_URL overrides the full URL for non-default
-      # topologies (e.g. a reverse proxy in front of the stack).
+      # The entrypoint writes the UI's runtime-config.json seeding the browser's
+      # locked connection with the ROOT-RELATIVE "/oc" path — the UI's own
+      # same-origin proxy. The browser resolves it against whatever origin it
+      # loaded, which is exactly what this process cannot know at startup.
       # Interpolation fallback matches the SHIPPED contract: OpenCode 3810, UI
       # 3800. Fresh and migrated stack.env files materialize both explicitly,
       # and every deploy path runs migrateLegacyDefaultPorts() before compose
@@ -100,30 +101,11 @@ services:
       # (assistant 3800 / UI 3810) silently inverted the layout every doc,
       # the CLI, the setup system-check, and the wizard's own links describe.
       OP_ASSISTANT_PORT: ${OP_ASSISTANT_PORT:-3810}
-      OP_UI_DEFAULT_ASSISTANT_URL: ${OP_UI_DEFAULT_ASSISTANT_URL:-}
-      # The served UI's browser calls OpenCode DIRECTLY (browser-owned transport,
-      # no host proxy), so OpenCode must CORS-allow the UI's browser origin. The
-      # entrypoint's start_opencode builds that origin from OP_UI_HOST_PORT — the
-      # HOST-published UI port (the port mapping below), DISTINCT from the
-      # deliberately-unpassed OP_UI_PORT (the healthcheck's in-container :3000
-      # default; passing OP_UI_PORT into the container would break that probe).
-      # Operators serving the UI on a LAN host / reverse proxy add exact
-      # comma-separated origins via OP_UI_CORS_ALLOWED_ORIGINS (never a wildcard).
-      #
-      # NOTE: this whole grant is scheduled for removal. Once the UI serves
-      # OpenCode same-origin at /oc (the pattern /voice already uses), the
-      # browser makes no cross-origin request and there is nothing to allow.
-      # See .github/roadmap/0.14.0/access-presets-redesign.md.
-      # Same contract as OP_ASSISTANT_PORT above — the fallback is the shipped
-      # UI port, 3800.
-      OP_UI_HOST_PORT: ${OP_UI_PORT:-3800}
-      # The HOST-served UI (Electron / `openpalm ui serve` / `openpalm admin`,
-      # default port 3880) is a SECOND browser origin whose transport also
-      # talks to OpenCode directly at the published assistant port — so
-      # start_opencode must CORS-allow its loopback origins too, or chat from
-      # the host-served UI fails preflight out of the box.
-      OP_HOST_UI_PORT: ${OP_HOST_UI_PORT:-3880}
-      OP_UI_CORS_ALLOWED_ORIGINS: ${OP_UI_CORS_ALLOWED_ORIGINS:-}
+      # NOTE: OP_UI_HOST_PORT and OP_HOST_UI_PORT are deliberately NOT passed.
+      # They existed solely so the entrypoint could assemble OpenCode's --cors
+      # origin list. The browser now reaches OpenCode through the UI's own
+      # same-origin /oc proxy, so there is no cross-origin request and no
+      # origin to allow.
       # The served UI's session login uses the SAME UI login password as the
       # host UI (route contract: /api/auth is deliberately outside /api/host so
       # a served non-admin deployment can authenticate). Without this secret
@@ -135,11 +117,12 @@ services:
       OP_UI_LOGIN_PASSWORD_FILE: /run/secrets/ui_login_password
       # Used only to label the browser's automatically seeded local connection.
       OP_PROJECT_NAME: ${OP_PROJECT_NAME:-openpalm}
-      # Loopback-first bind knobs for the entrypoint's LAN-exposure warning when
-      # OpenCode is bound off loopback without authentication. The warning does
-      # not suppress the UI co-process.
-      OP_BIND_ADDRESS: ${OP_BIND_ADDRESS:-127.0.0.1}
-      OP_ASSISTANT_BIND_ADDRESS: ${OP_ASSISTANT_BIND_ADDRESS:-${OP_BIND_ADDRESS:-127.0.0.1}}
+      # Generated from the access toggles (packages/lib access-toggles.ts) and
+      # written explicitly to stack.env on every deploy. FLAT: there is no
+      # cascade, so an absent value means loopback and nothing else. The
+      # previous nesting meant "unset" inherited a global bind for four
+      # listeners and meant loopback for one, in this same file.
+      OP_ASSISTANT_BIND_ADDRESS: ${OP_ASSISTANT_BIND_ADDRESS:-127.0.0.1}
       # The EFFECTIVE host bind for the UI co-process, mirroring the port line
       # below exactly. The container cannot otherwise know it: the UI child is
       # always started with HOST=0.0.0.0 (Docker requires binding all
@@ -147,7 +130,7 @@ services:
       # about whether the port is published to the LAN or only to loopback.
       # The UI's Host-header allowlist reads this to decide whether it is
       # allowed to be reached by a name other than localhost.
-      OP_UI_BIND_ADDRESS: ${OP_UI_BIND_ADDRESS:-${OP_BIND_ADDRESS:-127.0.0.1}}
+      OP_UI_BIND_ADDRESS: ${OP_UI_BIND_ADDRESS:-127.0.0.1}
       # Provider credentials live in OpenCode's auth.json (bind-mounted
       # below) — NOT in this env block. The Connections tab and the setup
       # wizard both call OpenCode's PUT /auth/{providerID}; ai-sdk picks
@@ -155,11 +138,11 @@ services:
     ports:
       - "${OP_ASSISTANT_BIND_ADDRESS:-127.0.0.1}:${OP_ASSISTANT_PORT:-3810}:4096"
       # UI co-process (@openpalm/ui adapter-node, in-container port 3000).
-      # Loopback by default; honors the global OP_BIND_ADDRESS policy with a
-      # per-service OP_UI_BIND_ADDRESS override, same as the assistant listener.
+      # THE one listener a home install publishes: OpenCode and voice are
+      # reached through this process, not directly.
       # OP_UI_PORT is the HOST-facing port only; it is deliberately NOT passed
       # into the container env (the UI always serves on 3000 in-container).
-      - "${OP_UI_BIND_ADDRESS:-${OP_BIND_ADDRESS:-127.0.0.1}}:${OP_UI_PORT:-3800}:3000"
+      - "${OP_UI_BIND_ADDRESS:-127.0.0.1}:${OP_UI_PORT:-3800}:3000"
     volumes:
       # data/assistant is HOME (runtime). config/assistant is the power-user's
       # OpenCode GLOBAL config, mounted at ~/.config/opencode (nested over HOME).
@@ -217,7 +200,7 @@ services:
     # route is exempt from the login/setup wall (packages/ui hooks.server.ts).
     # #564 P1-1: the /health probe authenticates iff the container-side
     # OPENCODE_AUTH is truthy. OpenCode enables Basic auth whenever the
-    # home-password preset is active, and an unauthenticated `curl -f` then
+    # assistant API is published, and an unauthenticated `curl -f` then
     # 401s forever — guardian's `depends_on: assistant: condition:
     # service_healthy` blocks on that and the whole stack never deploys. The
     # gate mirrors the entrypoint's opencode_auth_enabled truthy set exactly
@@ -252,8 +235,8 @@ services:
   # mDNS is no longer published by avahi sidecars. The PRIMARY LAN advertiser
   # (#488) is the HOST control-plane responder (packages/lib mdns-responder.ts,
   # started from the host UI process) — it actually reaches the LAN, gated by
-  # OP_BIND_ADDRESS (guardian, <name>-guardian.local) / OP_ASSISTANT_BIND_ADDRESS
-  # (assistant, <name>.local); loopback defaults open no socket at all;
+  # OP_GUARDIAN_BIND_ADDRESS (guardian, <name>-guardian.local) /
+  # OP_UI_BIND_ADDRESS (the UI front door, <name>.local); loopback opens no socket;
   # OP_MDNS=off disables it. OpenCode's native in-process mDNS responder
   # (server.mdns / server.mdnsDomain in the assistant + guardian opencode.jsonc
   # files) remains a manual/advanced in-container path — bridge-network
@@ -271,7 +254,7 @@ networks:
   # LLM provider) are granted assistant_net PER SERVICE, not by default membership.
   addon_net:
 
-# #563 — the OpenCode server password. Each managed compose file stands alone
+# The OpenCode server password. Each managed compose file stands alone
 # for `docker compose config`, so this same top-level secret is also declared
 # in portals.compose.yml (the guardian's grant).
 secrets:

@@ -92,19 +92,20 @@ function isMdnsOffToken(value: string | undefined): boolean {
 
 function isGuardianGated(env: Record<string, string | undefined>): boolean {
   if (isMdnsOffToken(env.OP_MDNS)) return false;
-  // PR #564 P2-1: the advertised `<name>-guardian.local:3830` is the direct
-  // ingress front door. Never advertise it while direct ingress is disabled —
-  // otherwise the LAN is pointed at a listener that 404s (the shared-guardian
-  // preset leaves ingress off). Matches guardian server.ts: only literal 'true'.
+  // The advertised `<name>-guardian.local:3830` is the direct ingress front
+  // door. Never advertise it while direct ingress is disabled — otherwise the
+  // LAN is pointed at a listener that 404s. Matches guardian server.ts: only
+  // literal 'true'. Both values are generated together from the
+  // `guardianNetwork` toggle, so they can no longer disagree.
   if (env.GUARDIAN_DIRECT_INGRESS !== "true") return false;
-  const bind = env.OP_BIND_ADDRESS;
+  const bind = env.OP_GUARDIAN_BIND_ADDRESS;
   return !!bind && !isLoopback(bind);
 }
 
 function isAssistantGated(env: Record<string, string | undefined>): boolean {
   if (isMdnsOffToken(env.OP_MDNS)) return false;
-  // No OP_BIND_ADDRESS fallback here — mirrors core.compose.yml:98, where the
-  // assistant host port line does NOT nest OP_BIND_ADDRESS.
+  // Flat, like every other bind now: generated explicitly, so unset means
+  // loopback rather than "inherit from somewhere else".
   const bind = env.OP_ASSISTANT_BIND_ADDRESS;
   return !!bind && !isLoopback(bind);
 }
@@ -154,7 +155,7 @@ function resolveAdvertAddresses(bind: string, hostIpv4: string[]): string[] {
  * Resolve which names should be advertised right now, given non-secret env
  * (typically `readStackEnv(homeDir)`). Disabled entirely when `OP_MDNS`
  * trims/lowercases to "0"/"false"/"off"/"no". Guardian advert iff
- * `OP_BIND_ADDRESS` is set and non-loopback; assistant advert iff
+ * `OP_GUARDIAN_BIND_ADDRESS` is set and non-loopback; assistant advert iff
  * `OP_ASSISTANT_BIND_ADDRESS` is set and non-loopback. An advert with zero
  * resolved addresses is dropped.
  */
@@ -166,7 +167,7 @@ export function resolveMdnsAdvertisements(
   const adverts: MdnsAdvertisement[] = [];
 
   if (isGuardianGated(env)) {
-    const bind = env.OP_BIND_ADDRESS as string;
+    const bind = env.OP_GUARDIAN_BIND_ADDRESS as string;
     const addresses = resolveAdvertAddresses(bind, hostIpv4);
     if (addresses.length > 0) {
       adverts.push({

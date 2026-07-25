@@ -132,16 +132,40 @@ describe("skeleton: config/ structure", () => {
     expect(matches.length).toBe(3);
   });
 
-  test('host-published optional listeners use OP_BIND_ADDRESS nested defaults', () => {
+  test('every host-published listener uses a FLAT bind — no cascade', () => {
+    // The retired `${OP_X_BIND:-${OP_BIND_ADDRESS:-127.0.0.1}}` nesting meant
+    // "unset" inherited for four listeners and meant loopback for one, in the
+    // same file. Every bind is now generated explicitly by the access toggles.
     const channelsCompose = readFileSync(join(SKELETON_DIR, 'system', 'stack', 'portals.compose.yml'), 'utf-8');
     const servicesCompose = readFileSync(join(SKELETON_DIR, 'system', 'stack', 'services.compose.yml'), 'utf-8');
     const coreCompose = readFileSync(join(SKELETON_DIR, 'system', 'stack', 'core.compose.yml'), 'utf-8');
 
-    expect(channelsCompose).toContain('${OP_CHAT_BIND_ADDRESS:-${OP_BIND_ADDRESS:-127.0.0.1}}:${OP_CHAT_PORT:-3820}:8182');
-    expect(channelsCompose).toContain('${OP_API_BIND_ADDRESS:-${OP_BIND_ADDRESS:-127.0.0.1}}:${OP_API_PORT:-3821}:8182');
-    expect(servicesCompose).toContain('${OP_VOICE_BIND_ADDRESS:-${OP_BIND_ADDRESS:-127.0.0.1}}:${OP_VOICE_PORT_HOST:-8880}:8880');
+    for (const compose of [channelsCompose, servicesCompose, coreCompose]) {
+      expect(compose).not.toContain(':-${OP_BIND_ADDRESS');
+    }
+
+    expect(coreCompose).toContain('${OP_UI_BIND_ADDRESS:-127.0.0.1}:${OP_UI_PORT:-3800}:3000');
+    expect(coreCompose).toContain('${OP_ASSISTANT_BIND_ADDRESS:-127.0.0.1}:${OP_ASSISTANT_PORT:-3810}:4096');
+    expect(channelsCompose).toContain('${OP_GUARDIAN_BIND_ADDRESS:-127.0.0.1}:${OP_GUARDIAN_PORT:-3830}:3830');
+    expect(channelsCompose).toContain('${OP_API_BIND_ADDRESS:-127.0.0.1}:${OP_API_PORT:-3821}:8182');
+
+    // Voice serves an API reached through the UI's /voice proxy — it never
+    // needs a host port, so its bind is a literal, not a knob.
+    expect(servicesCompose).toContain('"127.0.0.1:${OP_VOICE_PORT_HOST:-8880}:8880"');
+    expect(servicesCompose).not.toContain('OP_VOICE_BIND_ADDRESS');
+
+    // One host port onto the guardian's OpenAI-compatible listener, not two.
+    expect(channelsCompose).not.toContain('OP_CHAT_PORT');
+    expect(channelsCompose).not.toContain('OP_CHAT_BIND_ADDRESS');
+
     expect(coreCompose).not.toContain('OP_ASSISTANT_SSH_PORT');
     expect(coreCompose).not.toContain('OP_ASSISTANT_SSH_BIND_ADDRESS');
+  });
+
+  test('no CORS grant survives — the browser reaches OpenCode same-origin', () => {
+    const coreCompose = readFileSync(join(SKELETON_DIR, 'system', 'stack', 'core.compose.yml'), 'utf-8');
+    expect(coreCompose).not.toContain('OP_UI_CORS_ALLOWED_ORIGINS');
+    expect(coreCompose).not.toContain('OP_UI_DEFAULT_ASSISTANT_URL');
   });
 
   test('compose assets keep only consumed openpalm.profile labels', () => {

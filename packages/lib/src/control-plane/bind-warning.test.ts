@@ -1,158 +1,50 @@
-import { describe, test, expect } from "bun:test";
-import { collectBindAddressWarnings, isLoopback, isRemoteSetupAllowed } from "./bind-warning.js";
+import { describe, expect, test } from "bun:test";
+import { isLoopback, isRemoteSetupAllowed, isUiLanExposed } from "./bind-warning.js";
 
-describe("collectBindAddressWarnings", () => {
-  test("returns [] when env is empty (compose default is 127.0.0.1)", () => {
-    expect(collectBindAddressWarnings({})).toEqual([]);
+describe("isLoopback", () => {
+  test("recognises every loopback spelling", () => {
+    for (const value of ["127.0.0.1", "localhost", "::1", "  127.0.0.1  "]) {
+      expect(isLoopback(value)).toBe(true);
+    }
   });
 
-  test("returns [] when OP_BIND_ADDRESS is 127.0.0.1", () => {
-    expect(collectBindAddressWarnings({ OP_BIND_ADDRESS: "127.0.0.1" })).toEqual([]);
+  test("a wildcard or concrete LAN address is not loopback", () => {
+    for (const value of ["0.0.0.0", "::", "192.168.1.50", "10.0.0.7"]) {
+      expect(isLoopback(value)).toBe(false);
+    }
+  });
+});
+
+describe("isUiLanExposed", () => {
+  test("an absent bind means loopback — every bind is generated, so unset is not inherit", () => {
+    expect(isUiLanExposed({})).toBe(false);
+    expect(isUiLanExposed({ OP_UI_BIND_ADDRESS: "127.0.0.1" })).toBe(false);
   });
 
-  test("returns [] when OP_BIND_ADDRESS is localhost", () => {
-    expect(collectBindAddressWarnings({ OP_BIND_ADDRESS: "localhost" })).toEqual([]);
+  test("a wildcard or concrete LAN bind is exposed", () => {
+    expect(isUiLanExposed({ OP_UI_BIND_ADDRESS: "0.0.0.0" })).toBe(true);
+    expect(isUiLanExposed({ OP_UI_BIND_ADDRESS: "192.168.1.50" })).toBe(true);
   });
 
-  test("returns [] when OP_BIND_ADDRESS is ::1", () => {
-    expect(collectBindAddressWarnings({ OP_BIND_ADDRESS: "::1" })).toEqual([]);
-  });
-
-  test("returns a warning when OP_BIND_ADDRESS is 0.0.0.0", () => {
-    const warnings = collectBindAddressWarnings({ OP_BIND_ADDRESS: "0.0.0.0" });
-    expect(warnings).toHaveLength(1);
-    expect(warnings[0]).toContain("OP_BIND_ADDRESS");
-    expect(warnings[0]).toContain("0.0.0.0");
-    expect(warnings[0]).toContain("host network interface");
-  });
-
-  test("returns a warning when OP_BIND_ADDRESS is a LAN IP", () => {
-    const warnings = collectBindAddressWarnings({ OP_BIND_ADDRESS: "192.168.1.10" });
-    expect(warnings).toHaveLength(1);
-    expect(warnings[0]).toContain("192.168.1.10");
-  });
-
-  // PR #564 r3566893095: the "guardian protected" framing is only truthful when
-  // a guardian-ingress addon is actually enabled. With OP_BIND_ADDRESS exposed
-  // but no guardian ingress, the services are exposed UNPROTECTED.
-  test("OP_BIND_ADDRESS exposed with NO guardian-ingress addon warns UNPROTECTED, not 'guardian protected'", () => {
-    const warnings = collectBindAddressWarnings({ OP_BIND_ADDRESS: "0.0.0.0" });
-    expect(warnings).toHaveLength(1);
-    expect(warnings[0].toLowerCase()).toContain("unprotected");
-    expect(warnings[0]).not.toContain("guardian protected");
-  });
-
-  test("OP_BIND_ADDRESS exposed WITH a guardian-ingress addon uses the 'guardian protected' framing", () => {
-    const warnings = collectBindAddressWarnings({
-      OP_BIND_ADDRESS: "0.0.0.0",
-      OP_ENABLED_ADDONS: "chat",
-    });
-    expect(warnings).toHaveLength(1);
-    expect(warnings[0]).toContain("guardian protected");
-  });
-
-  test("returns individual warnings for non-loopback per-service overrides", () => {
-    const warnings = collectBindAddressWarnings({
-      OP_CHAT_BIND_ADDRESS: "0.0.0.0",
-      OP_VOICE_BIND_ADDRESS: "192.168.1.5",
-    });
-    expect(warnings).toHaveLength(2);
-    const joined = warnings.join("\n");
-    expect(joined).toContain("OP_CHAT_BIND_ADDRESS");
-    expect(joined).toContain("OP_VOICE_BIND_ADDRESS");
-  });
-
-  test("does not warn about per-service overrides that are loopback", () => {
-    const warnings = collectBindAddressWarnings({
-      OP_BIND_ADDRESS: "0.0.0.0",
-      OP_CHAT_BIND_ADDRESS: "127.0.0.1",
-    });
-    // Only the global OP_BIND_ADDRESS warning; OP_CHAT_BIND_ADDRESS is loopback
-    expect(warnings).toHaveLength(1);
-    expect(warnings[0]).toContain("OP_BIND_ADDRESS");
-    expect(warnings[0]).not.toContain("OP_CHAT_BIND_ADDRESS");
-  });
-
-  test("returns warnings for both global and per-service non-loopback values", () => {
-    const warnings = collectBindAddressWarnings({
-      OP_BIND_ADDRESS: "0.0.0.0",
-      OP_ASSISTANT_BIND_ADDRESS: "10.0.0.1",
-    });
-    expect(warnings).toHaveLength(2);
-    const joined = warnings.join("\n");
-    expect(joined).toContain("OP_BIND_ADDRESS");
-    expect(joined).toContain("OP_ASSISTANT_BIND_ADDRESS");
-  });
-
-  test("all known per-service vars are checked", () => {
-    const env: Record<string, string> = {
-      OP_ASSISTANT_BIND_ADDRESS: "0.0.0.0",
-      OP_CHAT_BIND_ADDRESS: "0.0.0.0",
-      OP_API_BIND_ADDRESS: "0.0.0.0",
-      OP_VOICE_BIND_ADDRESS: "0.0.0.0",
-    };
-    const warnings = collectBindAddressWarnings(env);
-    expect(warnings).toHaveLength(4);
-  });
-
-  test("warns when OP_ALLOW_REMOTE_SETUP is enabled", () => {
-    const warnings = collectBindAddressWarnings({ OP_ALLOW_REMOTE_SETUP: "1" });
-    expect(warnings).toHaveLength(1);
-    expect(warnings[0]).toContain("OP_ALLOW_REMOTE_SETUP");
+  test("no longer inherits from the retired OP_BIND_ADDRESS cascade", () => {
+    // The cascade is gone: OP_BIND_ADDRESS cannot silently expose the UI.
+    expect(isUiLanExposed({ OP_BIND_ADDRESS: "0.0.0.0" })).toBe(false);
   });
 });
 
 describe("isRemoteSetupAllowed", () => {
-  test("false when unset", () => {
+  test("off by default", () => {
     expect(isRemoteSetupAllowed({})).toBe(false);
   });
-  test("true for 1 / true / yes (case-insensitive)", () => {
-    expect(isRemoteSetupAllowed({ OP_ALLOW_REMOTE_SETUP: "1" })).toBe(true);
-    expect(isRemoteSetupAllowed({ OP_ALLOW_REMOTE_SETUP: "true" })).toBe(true);
-    expect(isRemoteSetupAllowed({ OP_ALLOW_REMOTE_SETUP: "YES" })).toBe(true);
-  });
-  test("false for other values", () => {
-    expect(isRemoteSetupAllowed({ OP_ALLOW_REMOTE_SETUP: "0" })).toBe(false);
-    expect(isRemoteSetupAllowed({ OP_ALLOW_REMOTE_SETUP: "off" })).toBe(false);
-  });
-  test('false for every admin-capable process', () => {
-    expect(isRemoteSetupAllowed({ OP_ALLOW_REMOTE_SETUP: '1', OP_ENABLE_ADMIN: '1' })).toBe(false);
-    expect(isRemoteSetupAllowed({ OP_ALLOW_REMOTE_SETUP: '1', OP_INSIDE_ELECTRON: '1' })).toBe(false);
-  });
-});
 
-// #488 — isLoopback must be exported so mdns-responder.ts can reuse it for
-// bind-gating instead of duplicating the loopback check.
-describe("isLoopback", () => {
-  test("recognises 127.0.0.1 / localhost / ::1 and rejects 0.0.0.0 and LAN IPs", () => {
-    expect(isLoopback("127.0.0.1")).toBe(true);
-    expect(isLoopback("localhost")).toBe(true);
-    expect(isLoopback("::1")).toBe(true);
-    expect(isLoopback("0.0.0.0")).toBe(false);
-    expect(isLoopback("192.168.1.10")).toBe(false);
-  });
-});
-
-// #563 — T18: per-var warning wording names the preset that configures that
-// exposure deliberately (D9). Red reason: today's strings are raw env-var
-// wording only, with no preset framing. The existing cases above (counts,
-// env-name containment, the "host network interface" phrase, loopback
-// []-cases) are preserved unchanged by the rewording contract — this test
-// only adds the NEW preset-framing assertion on top of the existing shape.
-describe("collectBindAddressWarnings — preset framing (#563 D9, T18)", () => {
-  test("OP_ASSISTANT_BIND_ADDRESS warning names the Home network preset framing", () => {
-    const warnings = collectBindAddressWarnings({ OP_ASSISTANT_BIND_ADDRESS: "0.0.0.0" });
-    expect(warnings).toHaveLength(1);
-    expect(warnings[0]).toContain("Home network");
-    expect(warnings[0]).toContain("OP_ASSISTANT_BIND_ADDRESS");
+  test("honours the documented truthy spellings", () => {
+    for (const value of ["1", "true", "yes", "TRUE", " Yes "]) {
+      expect(isRemoteSetupAllowed({ OP_ALLOW_REMOTE_SETUP: value })).toBe(true);
+    }
   });
 
-  test("OP_BIND_ADDRESS warning names the Shared network preset framing (guardian ingress enabled)", () => {
-    // PR #564 r3566893095: the "Shared network, guardian protected" framing is
-    // only used when a guardian-ingress addon is actually enabled.
-    const warnings = collectBindAddressWarnings({ OP_BIND_ADDRESS: "0.0.0.0", OP_ENABLED_ADDONS: "chat" });
-    expect(warnings).toHaveLength(1);
-    expect(warnings[0]).toContain("Shared network");
-    expect(warnings[0]).toContain("OP_BIND_ADDRESS");
+  test("admin capability always wins, so inherited env cannot weaken the host-only boundary", () => {
+    expect(isRemoteSetupAllowed({ OP_ALLOW_REMOTE_SETUP: "1", OP_ENABLE_ADMIN: "1" })).toBe(false);
+    expect(isRemoteSetupAllowed({ OP_ALLOW_REMOTE_SETUP: "1", OP_INSIDE_ELECTRON: "1" })).toBe(false);
   });
 });

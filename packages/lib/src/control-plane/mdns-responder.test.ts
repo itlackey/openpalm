@@ -140,15 +140,15 @@ describe("resolveMdnsAdvertisements", () => {
   test("explicit loopback values advertise nothing", () => {
     expect(
       resolveMdnsAdvertisements(
-        { OP_BIND_ADDRESS: "127.0.0.1", OP_ASSISTANT_BIND_ADDRESS: "localhost" },
+        { OP_GUARDIAN_BIND_ADDRESS: "127.0.0.1", OP_ASSISTANT_BIND_ADDRESS: "localhost" },
         HOST_IPV4,
       ),
     ).toEqual([]);
   });
 
-  test("OP_BIND_ADDRESS=0.0.0.0 advertises the guardian name only (direct ingress on)", () => {
+  test("OP_GUARDIAN_BIND_ADDRESS=0.0.0.0 advertises the guardian name only (direct ingress on)", () => {
     const adverts = resolveMdnsAdvertisements(
-      { OP_BIND_ADDRESS: "0.0.0.0", GUARDIAN_DIRECT_INGRESS: "true" },
+      { OP_GUARDIAN_BIND_ADDRESS: "0.0.0.0", GUARDIAN_DIRECT_INGRESS: "true" },
       HOST_IPV4,
     );
     expect(adverts).toEqual([
@@ -159,21 +159,21 @@ describe("resolveMdnsAdvertisements", () => {
   // PR #564 P2-1: a LAN-visible guardian bind must NOT be advertised while the
   // direct-ingress listener is disabled — else mDNS points the LAN at a 3830
   // listener that 404s (the shared-guardian preset leaves ingress off).
-  test("OP_BIND_ADDRESS=0.0.0.0 advertises NOTHING when GUARDIAN_DIRECT_INGRESS is off/absent", () => {
-    expect(resolveMdnsAdvertisements({ OP_BIND_ADDRESS: "0.0.0.0" }, HOST_IPV4)).toEqual([]);
+  test("OP_GUARDIAN_BIND_ADDRESS=0.0.0.0 advertises NOTHING when GUARDIAN_DIRECT_INGRESS is off/absent", () => {
+    expect(resolveMdnsAdvertisements({ OP_GUARDIAN_BIND_ADDRESS: "0.0.0.0" }, HOST_IPV4)).toEqual([]);
     expect(
-      resolveMdnsAdvertisements({ OP_BIND_ADDRESS: "0.0.0.0", GUARDIAN_DIRECT_INGRESS: "false" }, HOST_IPV4),
+      resolveMdnsAdvertisements({ OP_GUARDIAN_BIND_ADDRESS: "0.0.0.0", GUARDIAN_DIRECT_INGRESS: "false" }, HOST_IPV4),
     ).toEqual([]);
     // Only a literal 'true' opens ingress (mirrors guardian server.ts).
     expect(
-      resolveMdnsAdvertisements({ OP_BIND_ADDRESS: "0.0.0.0", GUARDIAN_DIRECT_INGRESS: "1" }, HOST_IPV4),
+      resolveMdnsAdvertisements({ OP_GUARDIAN_BIND_ADDRESS: "0.0.0.0", GUARDIAN_DIRECT_INGRESS: "1" }, HOST_IPV4),
     ).toEqual([]);
   });
 
   test("resolveMdnsStatus reports guardian advertised:false when a LAN bind has ingress off", () => {
-    expect(resolveMdnsStatus({ OP_BIND_ADDRESS: "0.0.0.0" }).guardian.advertised).toBe(false);
+    expect(resolveMdnsStatus({ OP_GUARDIAN_BIND_ADDRESS: "0.0.0.0" }).guardian.advertised).toBe(false);
     expect(
-      resolveMdnsStatus({ OP_BIND_ADDRESS: "0.0.0.0", GUARDIAN_DIRECT_INGRESS: "true" }).guardian.advertised,
+      resolveMdnsStatus({ OP_GUARDIAN_BIND_ADDRESS: "0.0.0.0", GUARDIAN_DIRECT_INGRESS: "true" }).guardian.advertised,
     ).toBe(true);
   });
 
@@ -187,7 +187,7 @@ describe("resolveMdnsAdvertisements", () => {
   test("both non-loopback advertises both; custom ports respected", () => {
     const adverts = resolveMdnsAdvertisements(
       {
-        OP_BIND_ADDRESS: "0.0.0.0",
+        OP_GUARDIAN_BIND_ADDRESS: "0.0.0.0",
         OP_ASSISTANT_BIND_ADDRESS: "0.0.0.0",
         GUARDIAN_DIRECT_INGRESS: "true",
         OP_GUARDIAN_PORT: "4830",
@@ -204,7 +204,7 @@ describe("resolveMdnsAdvertisements", () => {
 
   test("a specific bind IP narrows the A-record addresses to that IP", () => {
     const adverts = resolveMdnsAdvertisements(
-      { OP_BIND_ADDRESS: "192.168.1.5", GUARDIAN_DIRECT_INGRESS: "true" },
+      { OP_GUARDIAN_BIND_ADDRESS: "192.168.1.5", GUARDIAN_DIRECT_INGRESS: "true" },
       HOST_IPV4,
     );
     expect(adverts).toEqual([
@@ -215,7 +215,7 @@ describe("resolveMdnsAdvertisements", () => {
   test('OP_MDNS=off disables everything even with non-loopback binds', () => {
     for (const off of ["off", "0", "false"]) {
       const adverts = resolveMdnsAdvertisements(
-        { OP_BIND_ADDRESS: "0.0.0.0", OP_ASSISTANT_BIND_ADDRESS: "0.0.0.0", OP_MDNS: off },
+        { OP_GUARDIAN_BIND_ADDRESS: "0.0.0.0", OP_ASSISTANT_BIND_ADDRESS: "0.0.0.0", OP_MDNS: off },
         HOST_IPV4,
       );
       expect(adverts).toEqual([]);
@@ -226,7 +226,7 @@ describe("resolveMdnsAdvertisements", () => {
   // must not be encoded into an A record — skip it instead.
   test("a specific IPv6 bind is skipped (no malformed A record)", () => {
     expect(
-      resolveMdnsAdvertisements({ OP_BIND_ADDRESS: "fd00::5", GUARDIAN_DIRECT_INGRESS: "true" }, HOST_IPV4),
+      resolveMdnsAdvertisements({ OP_GUARDIAN_BIND_ADDRESS: "fd00::5", GUARDIAN_DIRECT_INGRESS: "true" }, HOST_IPV4),
     ).toEqual([]);
   });
 

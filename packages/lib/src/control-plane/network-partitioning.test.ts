@@ -272,38 +272,42 @@ describe("#563 — OPENCODE_AUTH + opencode_server_password compose plumbing", (
   });
 });
 
-describe("#563 — the preset-managed cascade set matches compose reality (T31, pin)", () => {
+describe("access toggles — the generated bind set matches compose reality (pin)", () => {
   test("assistant publishes the @openpalm/ui co-process port (loopback-first), not the removed OP_CLIENT_PORT", () => {
     const assistantPorts = allServices.assistant?.ports ?? [];
     // The removed @openpalm/client knob must stay gone ("One UI, delete the split").
     expect(assistantPorts.some((port) => String(port).includes("OP_CLIENT_PORT"))).toBe(false);
-    // Phase 4 re-adds the UI co-process on the FIXED in-container port 3000,
-    // published loopback-first: per-service OP_UI_BIND_ADDRESS nested over the
-    // global OP_BIND_ADDRESS cascade. The Compose fallback is the SHIPPED UI
-    // port 3800 — it used to be the retired 3810, which silently inverted the
-    // UI/OpenCode layout on the manual `docker compose` path.
+    // The UI co-process on the FIXED in-container port 3000, published from a
+    // FLAT generated bind. The Compose fallback is the shipped UI port 3800.
     expect(assistantPorts).toContain(
-      "${OP_UI_BIND_ADDRESS:-${OP_BIND_ADDRESS:-127.0.0.1}}:${OP_UI_PORT:-3800}:3000",
+      "${OP_UI_BIND_ADDRESS:-127.0.0.1}:${OP_UI_PORT:-3800}:3000",
     );
-    expect(core.services?.assistant?.environment?.OP_UI_HOST_PORT).toBe("${OP_UI_PORT:-3800}");
+    // OP_UI_HOST_PORT existed only to assemble OpenCode's --cors origins.
+    expect(core.services?.assistant?.environment?.OP_UI_HOST_PORT).toBeUndefined();
     expect(core.services?.assistant?.environment?.OP_PROJECT_NAME).toBe("${OP_PROJECT_NAME:-openpalm}");
   });
 
-  test("chat/api port lines nest their per-service var then OP_BIND_ADDRESS (guardian-container, key-authenticated cascade)", () => {
+  test("ONE flat host port onto the guardian's OpenAI-compatible listener", () => {
     const guardianPorts = allServices.guardian?.ports ?? [];
-    expect(guardianPorts).toContain(
-      "${OP_CHAT_BIND_ADDRESS:-${OP_BIND_ADDRESS:-127.0.0.1}}:${OP_CHAT_PORT:-3820}:8182",
-    );
-    expect(guardianPorts).toContain(
-      "${OP_API_BIND_ADDRESS:-${OP_BIND_ADDRESS:-127.0.0.1}}:${OP_API_PORT:-3821}:8182",
-    );
+    expect(guardianPorts).toContain("${OP_API_BIND_ADDRESS:-127.0.0.1}:${OP_API_PORT:-3821}:8182");
+    // The duplicate chat host port onto the same :8182 listener is retired.
+    expect(guardianPorts.filter((p) => String(p).endsWith(":8182"))).toHaveLength(1);
   });
 
-  test("every voice variant's port line nests OP_VOICE_BIND_ADDRESS then OP_BIND_ADDRESS", () => {
+  test("the guardian's own front door binds flat, and its admin listener is a literal", () => {
+    const guardianPorts = allServices.guardian?.ports ?? [];
+    expect(guardianPorts).toContain(
+      "${OP_GUARDIAN_BIND_ADDRESS:-127.0.0.1}:${OP_GUARDIAN_PORT:-3830}:3830",
+    );
+    // Principal minting is never reachable off-box, under any toggle.
+    expect(guardianPorts).toContain("127.0.0.1:${OP_GUARDIAN_ADMIN_PORT:-3831}:3831");
+  });
+
+  test("every voice variant publishes on a loopback LITERAL — voice is never exposed", () => {
     for (const name of ["voice", "voice-cuda", "voice-rocm"]) {
       const ports = allServices[name]?.ports ?? [];
       expect(ports).toContain(
-        "${OP_VOICE_BIND_ADDRESS:-${OP_BIND_ADDRESS:-127.0.0.1}}:${OP_VOICE_PORT_HOST:-8880}:8880",
+        "127.0.0.1:${OP_VOICE_PORT_HOST:-8880}:8880",
       );
     }
   });
@@ -315,10 +319,10 @@ describe("#488 — host mDNS responder gate vars match compose reality (pin)", (
   // rename of the compose bind-address vars can't silently decouple the
   // gate from what is actually published on the host network interface.
 
-  test("guardian direct-listener host port defaults to loopback via OP_BIND_ADDRESS", () => {
+  test("guardian direct-listener host port defaults to loopback via OP_GUARDIAN_BIND_ADDRESS", () => {
     const guardianPorts = allServices.guardian?.ports ?? [];
     const hasGuardianDirectPort = guardianPorts.some(
-      (p) => p === "${OP_BIND_ADDRESS:-127.0.0.1}:${OP_GUARDIAN_PORT:-3830}:3830",
+      (p) => p === "${OP_GUARDIAN_BIND_ADDRESS:-127.0.0.1}:${OP_GUARDIAN_PORT:-3830}:3830",
     );
     expect(hasGuardianDirectPort).toBe(true);
   });
