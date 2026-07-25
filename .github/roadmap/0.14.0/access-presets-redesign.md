@@ -247,17 +247,36 @@ has no network-reachable surface at all, so there is nothing to authenticate.
 
 No port numbers. No bind addresses. No mention of OpenCode.
 
-### 3.8 Where the strict presets leave a browser user
+### 3.8 `screened` vs `locked` — the one difference
 
-`locked` deliberately has no browse-from-any-device path: the UI is loopback,
-so a remote person uses the desktop app or a hosted client pointed at the
-guardian. That is the intended posture — on a network where you want one
-audited door, you also want a managed client rather than an arbitrary browser.
-It should be stated in the preset copy, not discovered.
+Both route **all** assistant traffic through the guardian; in both, the
+assistant itself is invisible to the network. They differ in exactly one thing:
 
-If that proves too strict in practice, the fix is a `locked` variant that
-publishes the UI while keeping the assistant guardian-only — i.e. `screened`.
-The two are one bind value apart, which is a sign the axis is factored right.
+> **`screened` publishes the chat UI on the network. `locked` does not.**
+
+That is one bind value (`OP_UI_BIND`). Everything else in the two rows is
+identical — which is the point: the axis is factored so the strictest step is
+"stop publishing the browser front door," not a different architecture.
+
+**`screened` — the shared house / small team.** Three people share the Wi-Fi.
+Any of them opens `openpalm.local:3800` on a phone, signs in, and chats. Every
+prompt passes the guardian's moderation and lands in the audit log, and nothing
+on the network can reach the assistant without going through it. The guest
+laptop and the IoT devices on the same LAN can see a login page and nothing
+else. You are trusting the *humans* on the network reasonably far, and you want
+a record of what the assistant was asked.
+
+**`locked` — the business network.** OpenPalm runs on a server in a small
+company. Nothing on the corporate LAN can open a chat page; there is no HTML to
+stumble onto and no login form to spray. Access is per-client and explicit: the
+Slack bot has its own guardian principal, an internal tool uses an API key, a
+developer's laptop runs the desktop app pointed at the guardian. Each of those
+is individually revocable, rate-limited, and audited. The admin at the console
+uses the UI locally. You are trusting the *network* not at all.
+
+Rule of thumb: choose `screened` when you want people to browse to it and you
+want a log. Choose `locked` when every client should be something you issued a
+credential to.
 
 ### 3.9 Discovery: finding it from a phone
 
@@ -364,3 +383,108 @@ complexity. Steps 3–4 deliver the user-facing simplification.
 
 Dropping guardian-serves-UI removed the only genuinely new subsystem from the
 plan: what remains is a proxy route, a variable, and deletions.
+
+## 7. HTTPS on the `home` preset
+
+### 7.1 Why this is not optional polish
+
+Two shipped features are silently broken on the LAN today, and both are
+browser-platform consequences of plain HTTP rather than security preferences:
+
+| Feature | Requires | Status on `http://openpalm.local:3800` |
+|---|---|---|
+| Voice (`getUserMedia`) — `lib/voice/vad.ts`, `media-recorder.ts` | secure context | **unavailable** |
+| PWA install / service worker — `hooks.server.ts` PWA asset allowlist | secure context | **unavailable** |
+
+Browsers grant secure-context status to `http://localhost` but **not** to
+`http://192.168.1.50` or `http://openpalm.local`. So the desktop user gets
+voice and "install to home screen"; the phone user — the entire point of the
+`home` preset — does not. This is a functionality gap, not just a padlock.
+
+### 7.2 The hard constraint
+
+**No public CA will ever issue a certificate for `openpalm.local`.** `.local`
+is reserved for mDNS (RFC 6762) and is on the CA/Browser Forum's prohibited
+list, as are RFC1918 IP addresses. There is no future in which the zero-config
+mDNS name and a publicly-trusted certificate coexist.
+
+So the choice is structural:
+
+- keep `.local`, stay on HTTP, accept no voice/PWA from other devices; **or**
+- introduce a real DNS name that resolves to the LAN IP, and get a real
+  certificate for it.
+
+The constraint in the question — free certs, no root CA pushed to devices —
+rules out the private-CA route entirely (that is precisely what "install this
+root cert on every phone" means). What remains is: get a genuine Let's Encrypt
+certificate for a name you control, and point that name at a private IP. A
+public DNS `A` record pointing to `192.168.1.50` is legal, common, and works.
+
+### 7.3 The options, by cost
+
+**Tier 0 — Tailscale.** Already documented (`docs/remote-access-tls.md`).
+`machine.tailnet.ts.net` with an auto-renewing Let's Encrypt cert, zero
+certificate handling, no inbound ports. **Engineering cost: none, it exists.**
+Cost to the user: a client install on every device, which is a real barrier for
+"any device on my network" but simultaneously solves remote access. Best
+answer for anyone willing to install one app.
+
+**Tier 1 — ACME DNS-01 with a free dynamic-DNS provider.** The actual answer to
+the question as asked. DNS-01 validates by writing a TXT record through the
+provider's API — **entirely outbound**, so it works behind NAT with no port
+forwarding and no public reachability. Providers like DuckDNS give a free
+subdomain plus an API token; the user pastes one token and gets
+`myhome.duckdns.org` with a real certificate.
+
+Work involved:
+
+1. Bundle **`lego`** — a single static Go binary with ~150 DNS providers built
+   in. (Deliberately *not* Caddy's DNS plugins, which require an `xcaddy`
+   rebuild per provider — a packaging cost that never ends.)
+2. A wizard step: choose provider, paste token → stored as a file secret.
+3. Renewal on the **existing scheduler co-process** in the assistant container,
+   60-day cadence.
+4. Serve TLS by mounting adapter-node's `handler.js` in a custom
+   `https.createServer` — no reverse-proxy sidecar needed.
+5. Keep the `A` record pointed at the current LAN IP (DHCP reservation, or a
+   small updater loop).
+
+**Estimate: roughly a week**, with a long tail of provider-specific support.
+The bugs live in steps 3 and 5, not in issuance.
+
+**Tier 2 — bring your own domain.** Falls out of Tier 1 for free: same
+machinery, the user supplies the zone and provider credentials.
+
+### 7.4 The shortcut, stated honestly
+
+Services such as `traefik.me` publish a wildcard certificate for a
+wildcard-DNS domain **together with its private key**. Point at
+`192-168-1-50.traefik.me`, get an instantly-valid certificate, zero signup.
+
+This does unlock voice and PWA. It provides **no confidentiality against anyone
+on the LAN** — the private key is public, so the traffic is trivially
+decryptable and the connection is trivially impersonated. It is encryption
+theatre that happens to satisfy the browser.
+
+It should not be the default. It is defensible as a clearly-labelled "unlock
+voice on my home network" toggle, and indefensible as anything presented as
+security. Naming it here so the trade-off is a decision rather than a
+discovery.
+
+### 7.5 Recommendation
+
+Run **both listeners** in `home`: plain HTTP on `openpalm.local:3800` and, when
+TLS is configured, HTTPS on the real name. Reasons:
+
+- An expired or failed-renewal certificate degrades to "voice stopped working,"
+  not "nobody can reach the assistant." Cert automation's worst failure mode is
+  total lockout; a second listener removes it.
+- Discovery is unaffected. **The QR code makes the hostname invisible** — a
+  phone scanning `https://myhome.duckdns.org:3800` is exactly as easy as
+  scanning the `.local` URL, so the loss of a pretty name costs nothing on the
+  primary flow.
+
+TLS is therefore an **orthogonal opt-in**, not a fifth preset. `OP_ACCESS`
+answers *who may reach the assistant*; a separate `OP_TLS` answers *is the
+connection encrypted*. Folding them together would reintroduce exactly the kind
+of conflated axis this document exists to remove.
