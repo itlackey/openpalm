@@ -40,8 +40,8 @@
     document.getElementById('network-access-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
 
-  function isPortalEnabled(chId: string, locked?: boolean): boolean {
-    return _isPortalEnabled(portalSelection, chId, locked);
+  function isPortalEnabled(chId: string): boolean {
+    return _isPortalEnabled(portalSelection, chId);
   }
 
   // Friendly AI label: resolved from the chat model's provider connId
@@ -54,9 +54,9 @@
   // Voice = the bundled voice addon toggle.
   const voiceActive = $derived(s.voiceEnabled);
 
-  // Active non-locked portals
+  // Active portals
   const activePortals = $derived(
-    PORTALS.filter((ch) => !ch.locked && isPortalEnabled(ch.id, ch.locked))
+    PORTALS.filter((ch) => isPortalEnabled(ch.id))
   );
 
   // Password reveal/copy state

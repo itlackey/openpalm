@@ -58,7 +58,6 @@ export interface Portal {
   name: string;
   icon: string;
   desc: string;
-  locked?: boolean;
   credentials?: PortalCredential[];
 }
 

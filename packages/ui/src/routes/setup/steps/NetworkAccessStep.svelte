@@ -11,11 +11,10 @@
    * install; everything else is behind Advanced.
    *
    * The guardian toggles are NOT gated on "a guardian integration is enabled".
-   * The `api` portal is `locked: true` in PORTALS, so a guardian-ingress addon
-   * is always enabled and the guardian is always deployed — a gate on that
-   * condition could never fire, and would have been disclosure theatre.
-   * Publishing its front door is a deliberate choice either way, which is what
-   * Advanced is for.
+   * Publishing a front door is the statement of intent; `performSetup` enables
+   * the addon that makes it true (the `api` portal for the OpenAI-compatible
+   * edge, the credential-less `chat` portal otherwise). Gating them would make
+   * the operator guess which Extras row to tick first.
    *
    * Self-contained (ReviewStep pattern): takes NO props, reads and writes the
    * setup-state store directly.

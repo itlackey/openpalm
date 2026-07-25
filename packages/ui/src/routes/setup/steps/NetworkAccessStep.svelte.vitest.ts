@@ -63,9 +63,9 @@ describe('NetworkAccessStep — progressive disclosure', () => {
   });
 
   test('Advanced reveals the guardian and direct-assistant toggles', async () => {
-    // These are NOT gated on "a guardian integration is enabled": the `api`
-    // portal is locked:true, so a guardian is always deployed and such a gate
-    // could never fire.
+    // These are NOT gated on "a guardian integration is enabled": publishing a
+    // front door is the statement of intent, and performSetup enables the
+    // addon that makes it true.
     render(NetworkAccessStep);
 
     await page.getByRole('button', { name: /advanced/i }).click();

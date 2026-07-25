@@ -972,12 +972,34 @@ describe("performSetup", () => {
     expect(stateEnv).not.toMatch(/^OP_ENABLED_ADDONS=.*\bchat\b/m);
   });
 
+  it("publishing the OpenAI edge enables the api portal that serves it", async () => {
+    // `guardianOpenaiApi` publishes :8182 specifically, which only exists when
+    // the `api` addon is on. The api portal used to be pinned enabled, so this
+    // could never be wrong; it is an ordinary capability toggle now.
+    const result = await performSetup(makeValidSpec({ access: { guardianOpenaiApi: true } }));
+    expect(result.ok).toBe(true);
+
+    const stateEnv = readFileSync(stateEnvPath(), "utf-8");
+    expect(stateEnv).toMatch(/^OP_ENABLED_ADDONS=.*\bapi\b/m);
+    // The generic guardian fallback must not ALSO fire — `api` is ingress.
+    expect(stateEnv).not.toMatch(/^OP_ENABLED_ADDONS=.*\bchat\b/m);
+  });
+
+  it("does not resurrect an api portal the same run explicitly turned off", async () => {
+    const result = await performSetup(
+      makeValidSpec({ access: { guardianOpenaiApi: true }, addons: { api: true } }),
+    );
+    expect(result.ok).toBe(true);
+    expect(readFileSync(stateEnvPath(), "utf-8")).toMatch(/^OP_ENABLED_ADDONS=.*\bapi\b/m);
+  });
+
   it("a UI-only toggle does not auto-enable any addon", async () => {
     const result = await performSetup(makeValidSpec({ access: { networkAccess: true } }));
     expect(result.ok).toBe(true);
 
     const stateEnv = existsSync(stateEnvPath()) ? readFileSync(stateEnvPath(), "utf-8") : "";
     expect(stateEnv).not.toMatch(/^OP_ENABLED_ADDONS=.*\bchat\b/m);
+    expect(stateEnv).not.toMatch(/^OP_ENABLED_ADDONS=.*\bapi\b/m);
   });
 
   it("a spec without access leaves pre-seeded bind values untouched", async () => {

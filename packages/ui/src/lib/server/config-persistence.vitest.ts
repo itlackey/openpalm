@@ -18,6 +18,7 @@ import {
   discoverStackOverlays,
   buildEnvFiles,
   writeRuntimeFiles,
+  ensureSecrets,
   readSecret,
   writeSecret,
   secretPath,
@@ -245,18 +246,26 @@ describe("writeRuntimeFiles", () => {
     expect(readFileSync(join(userStackDir, 'custom.compose.yml'), 'utf-8')).toContain('mine');
   });
 
-  test("generates file-based portal secrets for discovered portals", () => {
+  test("keeps portal secrets out of stack.env and writes no guardian.env", () => {
+    // Provisioning them is ensureSecrets' job (portals.compose.yml grants all
+    // four as file secrets whether or not their addons are on); writeRuntimeFiles
+    // only has to keep the VALUES out of the plain-config file.
     writeStackCompose(state.homeDir, "portals.compose.yml", "services:\n  chat:\n    environment:\n      PORTAL_NAME: Chat\n");
     enableAddons(state.homeDir, "chat");
 
     writeRuntimeFiles(state);
 
     expect(existsSync(join(state.stackDir, "guardian.env"))).toBe(false);
-    expect(readSecret(state.homeDir, "portal_chat_secret")).toBeTruthy();
-
-    // Portal secrets must NOT be in stack.env
     const stackContent = readFileSync(stackEnvFor(state.homeDir), "utf-8");
     expect(stackContent).not.toContain("PORTAL_CHAT_SECRET=");
+  });
+
+  test("ensureSecrets materializes every portal secret, with no addon enabled", () => {
+    ensureSecrets(state);
+
+    for (const portal of ["chat", "api", "discord", "slack"]) {
+      expect(readSecret(state.homeDir, `portal_${portal}_secret`)).toBeTruthy();
+    }
   });
 
   test("writes stack.env with runtime configuration", () => {

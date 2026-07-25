@@ -13,10 +13,8 @@ import { createLogger } from "../logger.js";
 import { parseEnvContent, parseEnvFile, mergeEnvContent, removeEnvKey } from './env.js';
 import { ACCESS_ENV_KEYS, migrateLegacyAccessEnv, RETIRED_BIND_KEYS } from './access-toggles.js';
 import { assertNoSecretLikeStackEnvKeys, isSecretLikeStackEnvKey } from './secrets.js';
-import { ensureSecret, writeSecret } from './secrets-files.js';
+import { writeSecret } from './secrets-files.js';
 import type { ControlPlaneState, ArtifactMeta } from "./types.js";
-import { listEnabledAddonIds } from "./addons.js";
-import { PORTAL_SECRET_ADDON_IDS } from "./addon-ids.js";
 import { legacyStackEnvFile, stateEnvFile, composeFilePath, customComposeFilePath } from "./home.js";
 import { stackEnvPath } from "./paths.js";
 import { writeFileAtomic } from "./fs-atomic.js";
@@ -30,7 +28,7 @@ import {
   readBundledCustomCompose,
 } from "./core-assets.js";
 export { sha256, randomHex } from "./crypto.js";
-import { sha256, randomHex } from "./crypto.js";
+import { sha256 } from "./crypto.js";
 
 const logger = createLogger("config-persistence");
 
@@ -390,14 +388,10 @@ export function buildRuntimeFileMeta(artifacts: {
 }
 
 // ── Portal Secrets ────────────────────────────────────────────────────
+// Defined in secrets-files.ts (so ensureSecrets can seed them without an
+// import cycle); re-exported here, their long-standing public home.
 
-export function portalSecretName(addon: string): string {
-  return `portal_${addon.replace(/-/g, '_')}_secret`;
-}
-
-export function ensurePortalSecret(homeDir: string, addon: string): string {
-  return ensureSecret(homeDir, portalSecretName(addon), () => randomHex(16));
-}
+export { ensurePortalSecret, portalSecretName } from './secrets-files.js';
 
 // ── Volume Mount Targets ───────────────────────────────────────────────
 
@@ -542,15 +536,6 @@ export function writeRuntimeFiles(
   if (!existsSync(customComposePath)) {
     mkdirSync(dirname(customComposePath), { recursive: true });
     writeFileSync(customComposePath, readBundledCustomCompose());
-  }
-
-  for (const addon of listEnabledAddonIds(state.homeDir)) {
-    if (PORTAL_SECRET_ADDON_IDS.includes(addon)) {
-      for (const portal of PORTAL_SECRET_ADDON_IDS) {
-        ensurePortalSecret(state.homeDir, portal);
-      }
-      break;
-    }
   }
 
   // Write stack.env (no secrets — those live in knowledge/secrets/)

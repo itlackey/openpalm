@@ -28,14 +28,19 @@ describe('generatePassword', () => {
 // ── buildPortalsConfig ───────────────────────────────────────────────────────
 
 describe('buildPortalsConfig', () => {
-  test('locked API portal is always true; disabled portals omitted', () => {
+  test('every portal is opt-in — nothing is pinned on', () => {
+    // `api` used to be forced true here, which enabled a guardian-ingress
+    // addon on every install and deployed a guardian container nobody chose.
     const cfg = buildPortalsConfig({
       discord: { enabled: false, botToken: '', applicationId: '' },
       slack: { enabled: false, slackBotToken: '', slackAppToken: '' },
     });
-    expect(cfg.api).toBe(true);
-    expect(cfg.discord).toBeUndefined();
-    expect(cfg.slack).toBeUndefined();
+    expect(cfg).toEqual({});
+  });
+
+  test('the API portal is a plain boolean capability, like any other', () => {
+    expect(buildPortalsConfig({ api: true }).api).toBe(true);
+    expect(buildPortalsConfig({ api: false }).api).toBeUndefined();
   });
 
   test('enabled portal keeps only non-empty declared credentials', () => {

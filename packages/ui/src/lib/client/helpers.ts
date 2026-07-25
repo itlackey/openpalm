@@ -123,8 +123,7 @@ export function buildModelOptions(
 }
 
 
-export function isPortalEnabled(portalSelection: Record<string, boolean | PortalState>, chId: string, locked?: boolean): boolean {
-  if (locked) return true;
+export function isPortalEnabled(portalSelection: Record<string, boolean | PortalState>, chId: string): boolean {
   const sel = portalSelection[chId];
   if (typeof sel === 'object' && sel !== null) return sel.enabled;
   return !!sel;
@@ -147,9 +146,14 @@ export function generatePassword(): string {
 // ── Portals config assembly ──────────────────────────────────────────────────
 /**
  * Collapse the wizard's `portalSelection` state into the enabled-portals config
- * consumed by the install payload. Locked portals (e.g. the API endpoint) are
- * always `true`; toggled portals with credentials become `{ enabled, ...creds }`;
- * a plain-boolean selection becomes `true`. Disabled portals are omitted.
+ * consumed by the install payload. Toggled portals with credentials become
+ * `{ enabled, ...creds }`; a plain-boolean selection becomes `true`. Disabled
+ * portals are omitted.
+ *
+ * Every portal is a capability the operator chooses. `api` used to be pinned
+ * `true` here, which quietly enabled a guardian-ingress addon on every install
+ * — so every home install deployed a guardian container (and the LLM moderator
+ * inside it) to serve an OpenAI-compatible API nobody asked for.
  */
 export function buildPortalsConfig(
   portalSelection: Record<string, boolean | PortalState>,
@@ -157,9 +161,7 @@ export function buildPortalsConfig(
   const result: Record<string, boolean | Record<string, string | boolean>> = {};
   for (const ch of PORTALS) {
     const sel = portalSelection[ch.id];
-    if (ch.locked) {
-      result[ch.id] = true;
-    } else if (typeof sel === 'object' && sel !== null) {
+    if (typeof sel === 'object' && sel !== null) {
       if (sel.enabled) {
         const entry: Record<string, string | boolean> = { enabled: true };
         if (ch.credentials) {

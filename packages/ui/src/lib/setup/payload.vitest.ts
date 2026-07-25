@@ -45,13 +45,14 @@ function baseInput(overrides: Partial<SetupPayloadInput> = {}): SetupPayloadInpu
 // ── buildSetupPayload ────────────────────────────────────────────────────────
 
 describe('buildSetupPayload', () => {
-  test('minimal payload has version/security/connections and the always-on API portal', () => {
+  test('minimal payload has version/security/connections and no portals', () => {
     const p = buildSetupPayload(baseInput({ uiLoginPassword: 'secret' }));
     expect(p).toEqual({
       version: 2,
-      // Locked API portal is always enabled; voice is always explicit so a
-      // rerun can disable it.
-      addons: { api: true, voice: false },
+      // Voice is always explicit so a rerun can disable it. No portal is
+      // enabled by default — `api` used to be, which deployed a guardian on
+      // every install.
+      addons: { voice: false },
       security: { uiLoginPassword: 'secret' },
       connections: [],
       // A first run always emits the toggles, closed by default — the wizard
@@ -140,10 +141,11 @@ describe('buildSetupPayload', () => {
     expect(p.portalCredentials).toEqual({ discord: { botToken: 'tok', applicationId: 'app' } });
   });
 
-  test('locked API portal is always enabled with no credentials', () => {
-    const p = buildSetupPayload(baseInput());
-    expect(p.addons.api).toBe(true);
-    expect(p.portalCredentials).toBeUndefined();
+  test('the API portal is off unless the operator picks it', () => {
+    expect(buildSetupPayload(baseInput()).addons.api).toBeUndefined();
+    const picked = buildSetupPayload(baseInput({ portalSelection: { api: true } }));
+    expect(picked.addons.api).toBe(true);
+    expect(picked.portalCredentials).toBeUndefined();
   });
 
   test('imageTag trimmed and hostAkm flag passed through', () => {
@@ -340,7 +342,8 @@ describe('build → parse round-trip', () => {
     expect(parsed.ollamaEnabled).toBe(true);
     expect(parsed.selectedOllamaProfile).toBe('ollama-cpu');
     // Portals + hostAkm
-    expect(parsed.enabledAddons).toEqual(expect.arrayContaining(['discord', 'ollama', 'voice', 'api']));
+    expect(parsed.enabledAddons).toEqual(expect.arrayContaining(['discord', 'ollama', 'voice']));
+    expect(parsed.enabledAddons).not.toContain('api');
     expect(parsed.portalCredentials.discord).toEqual({ botToken: 'tok', applicationId: 'app' });
     expect(parsed.hostAkmEnabled).toBe(true);
   });

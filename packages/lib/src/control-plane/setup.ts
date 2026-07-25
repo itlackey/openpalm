@@ -430,11 +430,28 @@ export async function performSetup(
       }
 
       // The guardian service is profile-gated behind guardian-ingress addons,
-      // so a bind address alone deploys no guardian at all. Publishing its
-      // front door promises something reachable; when nothing else provides
-      // guardian ingress, enable the built-in chat portal (the only
+      // so a bind address alone deploys no guardian at all. Publishing a front
+      // door promises something reachable, so make it so.
+      //
+      // `guardianOpenaiApi` publishes the OpenAI-compatible edge specifically,
+      // which is the `api` addon — publishing it without enabling it would map
+      // a host port onto a container that was never deployed. The `api` portal
+      // is an ordinary capability toggle now (it used to be pinned enabled,
+      // which is why this only ever needed the generic fallback below).
+      if (access?.guardianOpenaiApi) {
+        const apiEnabled = addons?.api === true
+          || (addons?.api !== false && listEnabledAddonIds(state.homeDir).includes("api"));
+        if (!apiEnabled) {
+          setAddonEnabled(state.homeDir, "api", true, state);
+          logger.info("auto-enabled the api portal for a published OpenAI-compatible edge", {
+            reason: "the published port has nothing behind it otherwise",
+          });
+        }
+      }
+      // Any other guardian ingress will do for the guardian's own front door;
+      // when nothing provides one, enable the built-in chat portal (the only
       // credential-less guardian-ingress addon).
-      if (access?.guardianNetwork || access?.guardianOpenaiApi) {
+      if (access?.guardianNetwork) {
         const hasGuardianIngress = [
           ...Object.entries(addons ?? {}).filter(([, on]) => on).map(([name]) => name),
           ...listEnabledAddonIds(state.homeDir),

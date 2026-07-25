@@ -17,9 +17,13 @@
  * surface for a home install. The other three live under Advanced.
  *
  * The guardian toggles are deliberately NOT gated on "a guardian-backed
- * integration is enabled". The `api` portal is `locked: true` in the wizard's
- * PORTALS list, so a guardian-ingress addon is always enabled and the guardian
- * is always deployed — a gate on that condition could never fire.
+ * integration is enabled". Publishing a front door is a statement of intent,
+ * and `performSetup` makes it true: `guardianOpenaiApi` enables the `api`
+ * addon that serves the edge it publishes, and `guardianNetwork` falls back to
+ * the credential-less `chat` portal when nothing else provides guardian
+ * ingress. Gating the toggles instead would mean an operator who wants a
+ * guardian front door has to guess which unrelated integration to enable
+ * first.
  *
  * Browser-safe: no `node:*` imports. The wizard imports this directly via the
  * `@openpalm/lib/control-plane/access-toggles.js` subpath.
