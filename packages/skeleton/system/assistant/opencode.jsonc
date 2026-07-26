@@ -89,7 +89,12 @@
       "/work/*": "allow",
       "/stash/*": "allow",
       "/host-stash/*": "allow",
-      "/etc/akm/*": "allow"
+      "/etc/akm/*": "allow",
+      // The assistant's own OpenCode config dir. It maintains user-profile.md
+      // there, and the session dir is /work, so every write to it would
+      // otherwise raise an external_directory prompt — one nobody can answer
+      // on a chat channel.
+      "/home/opencode/.config/opencode/*": "allow"
     }
   }
 }
