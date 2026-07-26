@@ -93,6 +93,18 @@ OP_API_PORT=${api_port}
 EOF
   printf 'OP_SETUP_COMPLETE=true\n' >> "$home/state/stack.env"
   chmod 600 "$home/state/stack.env"
+
+  # This fixture builds a home already in the CURRENT layout, so record that.
+  # Without the stamp every command would re-attempt the one-shot migration —
+  # harmless on a writable home, but these smokes deliberately chown the tree to
+  # another uid, and a write attempt there is not what they are testing.
+  printf '%s\n' "$(smoke_home_schema_version)" > "$home/state/schema-version"
+}
+
+# The current OP_HOME layout schema version, read from the one place that
+# defines it so this fixture cannot drift from the code under test.
+smoke_home_schema_version() {
+  bun -e "import { HOME_SCHEMA_VERSION } from './packages/lib/src/control-plane/home.ts'; console.log(HOME_SCHEMA_VERSION);"
 }
 
 # Create the runtime directory layout via the lib helper (identical in both
