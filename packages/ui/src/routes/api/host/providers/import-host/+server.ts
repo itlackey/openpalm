@@ -18,7 +18,7 @@
  * Body (optional JSON):
  *   { overwriteConflicts?: boolean }   — default false
  *
- * Auth: admin token required.
+ * Auth: admin session cookie required (there is no admin token).
  */
 import { existsSync, readFileSync } from 'node:fs';
 import type { RequestHandler } from './$types';

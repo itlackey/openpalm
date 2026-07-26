@@ -4,7 +4,7 @@
  * Detects whether the host has an existing OpenCode installation and returns
  * provider + credential counts. Never returns credential values.
  *
- * Auth: admin token required.
+ * Auth: admin session cookie required (there is no admin token).
  */
 import type { RequestHandler } from './$types';
 import { requireAdmin, requireCapability, jsonResponse, getRequestId } from '$lib/server/helpers.js';

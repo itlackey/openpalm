@@ -6,7 +6,7 @@
  *   "toggle"    — enable or disable the provider for model selection
  *   "register"  — register a local-detected or custom OpenAI-compatible provider
  *
- * Auth: admin token required.
+ * Auth: admin session cookie required (there is no admin token).
  * OAuth credential saves go to /api/host/opencode/providers/:id/auth (unchanged).
  */
 import type { RequestHandler } from './$types';

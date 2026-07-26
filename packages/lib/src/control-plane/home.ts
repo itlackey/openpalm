@@ -122,11 +122,15 @@ export function resolveRollbackDir(): string {
 // ── Directory Setup ──────────────────────────────────────────────────
 
 /**
- * Create the full ~/.openpalm/ directory tree.
+ * Create the full OP_HOME directory tree.
+ *
+ * `home` defaults to the resolved OP_HOME; the CLI install flow passes its
+ * already-resolved home explicitly. This is the ONLY definition of the tree —
+ * the CLI used to keep a second, drifting copy that had silently fallen behind
+ * (no `system/`, no `state/`, no `config/guardian`, none of the per-service
+ * dot-directories under `data/`).
  */
-export function ensureHomeDirs(): void {
-  const home = resolveOpenPalmHome();
-
+export function ensureHomeDirs(home: string = resolveOpenPalmHome()): void {
   for (const dir of [
     // config/ — user-editable config + system config files
     `${home}/config`,
@@ -153,6 +157,7 @@ export function ensureHomeDirs(): void {
     `${home}/data/akm/data`,       // akm durable data
     `${home}/data/akm/empty-host-stash`, // always-present /host-stash fallback when host AKM is absent
     `${home}/data/logs`,           // service logs and audit files
+    `${home}/data/ui`,             // @openpalm/ui build seeded from npm
     `${home}/data/backups`,        // lifecycle backup snapshots
     `${home}/data/rollback`,       // deploy rollback snapshots
     // knowledge/ — akm knowledge (skills, env, secrets, agents); knowledge/tasks/ for scheduled automations

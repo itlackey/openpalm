@@ -1,13 +1,13 @@
 import { defineCommand } from 'citty';
 import { join } from 'node:path';
+import { mkdir } from 'node:fs/promises';
 import cliPkg from '../../package.json' with { type: 'json' };
 import { defaultWorkDir } from '../lib/paths.ts';
 import { defineAction } from '../lib/action.ts';
 import { promptYesNo } from '../lib/prompt.ts';
 import { resolveLatestReleaseTag } from '../lib/github.ts';
 import { DEFAULT_UI_PORT } from '../lib/ports.ts';
-import { resolveOpenPalmHome, resolveConfigDir } from '@openpalm/lib';
-import { ensureDirectoryTree } from '../lib/io.ts';
+import { resolveOpenPalmHome, resolveConfigDir, ensureHomeDirs } from '@openpalm/lib';
 import { applyHomeSeed, seedUiBuild, uiUpdateChannel } from '@openpalm/lib';
 import {
   backupOpenPalmHome,
@@ -252,7 +252,10 @@ export async function prepareInstallFiles(
   homeDir: string, configDir: string, dataDir: string, workDir: string, version: string,
 ): Promise<void> {
   console.log('Preparing directories...');
-  await ensureDirectoryTree(homeDir, workDir);
+  // The tree itself is owned by @openpalm/lib (single definition). workDir is
+  // separate because OP_WORK_DIR can point it outside OP_HOME.
+  ensureHomeDirs(homeDir);
+  await mkdir(workDir, { recursive: true });
 
   try { await Bun.write(join(dataDir, 'host.json'), `${JSON.stringify(await detectHostInfo(), null, 2)}\n`); }
   catch (err) { logger.debug('failed to write host.json', { error: String(err) }); }
