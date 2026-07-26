@@ -24,8 +24,8 @@ for (const service of ['assistant', 'guardian']) {
         // Map container paths back to their skeleton source.
         const file = entry.startsWith('/etc/opencode/')
           ? join(SKELETON, 'system', service, entry.slice('/etc/opencode/'.length))
-          : entry.startsWith('/stash/')
-            ? join(SKELETON, 'knowledge', entry.slice('/stash/'.length))
+          : entry.startsWith('~/.config/opencode/')
+            ? join(SKELETON, 'config', service, entry.slice('~/.config/opencode/'.length))
             : null;
         if (!file) continue;
         expect(existsSync(file), `${entry} does not exist`).toBe(true);

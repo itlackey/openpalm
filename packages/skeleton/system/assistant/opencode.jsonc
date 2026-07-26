@@ -6,10 +6,10 @@
     "/etc/opencode/instructions/core.md",
     "/etc/opencode/instructions/conversation.md",
     "/etc/opencode/instructions/system.md",
-    // What the assistant has learned about the user. In the stash so the
-    // assistant can update it itself; contents are re-read every model call,
-    // so an update applies to the next message.
-    "/stash/profile/user-profile.md",
+    // What the assistant has learned about the user. USER-owned, alongside
+    // persona.md; contents are re-read every model call, so an update applies
+    // to the next message.
+    "~/.config/opencode/user-profile.md",
     // USER-owned persona (config/assistant → ~/.config/opencode).
     "~/.config/opencode/persona.md"
   ],
