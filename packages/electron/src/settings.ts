@@ -1,7 +1,7 @@
 // Harness-local desktop settings (NOT part of the harness contract surface, NOT
 // operator stack config). A tiny JSON file under OP_HOME/data so a user's
 // desktop-only preferences survive restarts. Kept deliberately separate from
-// knowledge/env/stack.env (operator-managed control-plane config) and from
+// state/stack.env (operator-managed control-plane config) and from
 // Electron's login-item API (OS-managed): this is purely the native shell's own
 // notify behaviour. It currently holds whether the app's GitHub update check
 // should surface PRERELEASE versions (#504, notify-only — it changes what the

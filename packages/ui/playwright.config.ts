@@ -24,7 +24,7 @@ const MOCKED_OP_HOME = STACK_TESTS ? undefined : mkdtempSync(join(tmpdir(), 'ope
 if (MOCKED_OP_HOME) {
   mkdirSync(join(MOCKED_OP_HOME, 'state'), { recursive: true });
   mkdirSync(join(MOCKED_OP_HOME, 'knowledge', 'env'), { recursive: true });
-  writeFileSync(join(MOCKED_OP_HOME, 'state', 'stack.state.env'), 'OP_SETUP_COMPLETE=true\n');
+  writeFileSync(join(MOCKED_OP_HOME, 'state', 'stack.env'), 'OP_SETUP_COMPLETE=true\n');
   writeFileSync(join(MOCKED_OP_HOME, 'knowledge', 'env', 'stack.env'), 'OP_SETUP_COMPLETE=true\n');
 }
 const MOCKED_ENV = STACK_TESTS

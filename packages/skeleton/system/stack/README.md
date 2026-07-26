@@ -11,7 +11,7 @@ from the fixed managed file set here plus the user-owned overlay at
 OP_HOME="${OP_HOME:-$HOME/.openpalm}"
 docker compose \
   --project-name openpalm \
-  --env-file "$OP_HOME/knowledge/env/stack.env" \
+  --env-file "$OP_HOME/state/stack.env" \
   -f "$OP_HOME/system/stack/core.compose.yml" \
   -f "$OP_HOME/system/stack/services.compose.yml" \
   -f "$OP_HOME/system/stack/portals.compose.yml" \
@@ -21,7 +21,7 @@ docker compose \
 # Enable built-in optional services with profiles
 docker compose \
   --project-name openpalm \
-  --env-file "$OP_HOME/knowledge/env/stack.env" \
+  --env-file "$OP_HOME/state/stack.env" \
   -f "$OP_HOME/system/stack/core.compose.yml" \
   -f "$OP_HOME/system/stack/services.compose.yml" \
   -f "$OP_HOME/system/stack/portals.compose.yml" \
@@ -81,7 +81,7 @@ and no user-owned overlays**.
 ## Env files
 
 Compose receives **only one env file**, from outside this directory:
-- `$OP_HOME/knowledge/env/stack.env` (akm `env:stack`) — Non-secret runtime configuration only
+- `$OP_HOME/state/stack.env` (akm `env:stack`) — Non-secret runtime configuration only
 
 Secrets live in `knowledge/secrets/` (including OpenCode `auth.json`) and are
 granted to services through Compose `secrets:` entries or direct bind mounts. Do

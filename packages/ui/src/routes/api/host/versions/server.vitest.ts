@@ -72,7 +72,7 @@ describe('PATCH /api/host/versions', () => {
 		);
 
 		expect(response.status).toBe(200);
-		const content = readFileSync(join(getState().homeDir, 'state', 'stack.state.env'), 'utf-8');
+		const content = readFileSync(join(getState().homeDir, 'state', 'stack.env'), 'utf-8');
 		expect(content).toContain('OP_ASSISTANT_VERSION=0.13.1');
 		expect(content).toContain('OP_PORTAL_VERSION=latest');
 		expect(content).toContain('OP_UI_CHANNEL=next');

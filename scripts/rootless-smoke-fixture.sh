@@ -73,7 +73,8 @@ smoke_write_stack_env() {
   local chat_port="$7"
   local api_port="$8"
 
-  cat >"$home/knowledge/env/stack.env" <<EOF
+  mkdir -p "$home/state"
+  cat >"$home/state/stack.env" <<EOF
 OP_HOME=${home}
 OP_UID=$(id -u)
 OP_GID=$(id -g)
@@ -90,10 +91,8 @@ OP_GUARDIAN_ADMIN_PORT=${guardian_admin_port}
 OP_CHAT_PORT=${chat_port}
 OP_API_PORT=${api_port}
 EOF
-  chmod 600 "$home/knowledge/env/stack.env"
-  mkdir -p "$home/state"
-  printf 'OP_SETUP_COMPLETE=true\n' > "$home/state/stack.state.env"
-  chmod 600 "$home/state/stack.state.env"
+  printf 'OP_SETUP_COMPLETE=true\n' >> "$home/state/stack.env"
+  chmod 600 "$home/state/stack.env"
 }
 
 # Create the runtime directory layout via the lib helper (identical in both

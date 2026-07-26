@@ -444,7 +444,7 @@ OpenCode resolves `akm-opencode@latest` to a concrete version **once**, pins it 
    OP_IMAGE_TAG=<new>-local docker compose -p openpalm \
      --project-directory $OP_HOME/config/stack \
      -f core.compose.yml -f services.compose.yml -f portals.compose.yml -f custom.compose.yml \
-     --env-file $OP_HOME/knowledge/env/stack.env \
+     --env-file $OP_HOME/state/stack.env \
      up -d --force-recreate --no-deps assistant
    ```
 2. **Clear the stale plugin cache** so OpenCode re-resolves `@latest`. It's gitignored, regenerable user data — **get per-path approval, then use the OS trash, never `rm`:**

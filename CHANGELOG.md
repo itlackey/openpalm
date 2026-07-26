@@ -7,6 +7,23 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- **One stack env file** — `knowledge/env/stack.env` and `state/stack.state.env`
+  are consolidated into a single `state/stack.env`, the only non-secret Compose
+  `--env-file`. The split was a transition artifact: both files were passed to
+  Compose with the state one last so it won, and eight call sites hand-rolled
+  that same precedence to read a value the way the running stack saw it. One of
+  them read the wrong file, so an enabled addon never activated its Compose
+  profile. `openpalm` migrates existing homes automatically on first run
+  (OP_HOME schema version 2), preserving operator comments and the effective
+  value of every key. Service version keys carried in the old operator file are
+  dropped rather than promoted — on older installs those recorded the release
+  last applied, not a deliberate pin, and promoting them would have frozen the
+  install at its current images. Real pins are kept. The file also moves out of
+  `knowledge/`, which is bind-mounted into the assistant at `/stash`, so host
+  ports, image tags and the setup flag are no longer visible to the agent.
+
 ### Added
 
 - **Basic PWA support** (#511): the UI now ships an installable

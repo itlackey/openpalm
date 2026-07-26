@@ -22,7 +22,7 @@ const REQUIRED_SECRET_KEYS = ["OP_UI_LOGIN_PASSWORD"] as const;
  * Validate the live configuration files.
  *
  * Checks:
- * 1. knowledge/env/stack.env exists and carries every required key with a
+ * 1. state/stack.env exists and carries every required key with a
  *    non-empty value.
  * 2. Every secret env key in STATIC_CORE_MAPPINGS is present (key only
  *    — blank values are warned about, never erred on, because operators

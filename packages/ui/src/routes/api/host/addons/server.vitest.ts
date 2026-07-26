@@ -65,7 +65,7 @@ function enableAddon(homeDir: string, name: string): void {
 
 function readEnabledAddonsEnv(homeDir: string): string {
   // OP_ENABLED_ADDONS is app-written addon state → state/ (constitution §1).
-  const p = join(homeDir, 'state', 'stack.state.env');
+  const p = join(homeDir, 'state', 'stack.env');
   return existsSync(p) ? readFileSync(p, 'utf-8') : '';
 }
 

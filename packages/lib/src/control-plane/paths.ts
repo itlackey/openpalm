@@ -9,11 +9,13 @@
  *   config/stack/  — USER custom.compose.yml overlay ONLY (seeded once, never overwritten)
  *   system/stack/  — MANAGED fixed compose files (core/services/portals), overwritten on reconcile
  *   data/          — persistent service data, logs, backups, rollback
- *   knowledge/     — akm knowledge (skills, env, secrets, agents); stack.env, secrets, auth.json live here
+ *   knowledge/     — akm knowledge (skills, user env, secrets, agents); secrets + auth.json live here
+ *   state/         — app-written records: the stack env file, pins, host identity, schema version
  *   workspace/     — shared work area
  */
 
 import type { ControlPlaneState } from "./types.js";
+import { stackEnvFile } from "./home.js";
 
 /**
  * Guard every root segment before interpolating it.
@@ -52,13 +54,14 @@ export const guardianConfigDir     = (s: ControlPlaneState): string => `${req(s.
 // ── Config/stack directory — compose runtime + stack config ─────────────────
 
 /**
- * System env: non-secret runtime configuration (the Compose `--env-file`).
- * Lives under knowledge/env/ alongside the user env file (akm `env:stack`).
+ * The single non-secret Compose `--env-file`. Lives in the app-written state/
+ * tree — see home.ts `stackEnvFile`, which this delegates to so the location is
+ * defined exactly once.
  */
-export const stackEnvPath          = (s: ControlPlaneState): string => `${req(s.stashDir, "stashDir")}/env/stack.env`;
+export const stackEnvPath          = (s: ControlPlaneState): string => stackEnvFile(req(s.homeDir, "homeDir"));
 // (Removed homeFromStackDir + stackEnvPathFromStackDir — the path-reverse-engineering
 //  twin of resolveHomeDirFromStackDir. Callers now take homeDir and use
-//  home.ts `legacyStackEnvFile(homeDir)` directly.)
+//  home.ts `stackEnvFile(homeDir)` directly.)
 
 // ── Operational state directories ───────────────────────────────────────────
 

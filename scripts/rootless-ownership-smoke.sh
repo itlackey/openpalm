@@ -81,7 +81,7 @@ dev_compose() {
     -f "${SMOKE_HOME}/system/stack/portals.compose.yml" \
     -f "${SMOKE_HOME}/rootless-smoke.override.yml" \
     -f compose.dev.yml \
-    --env-file "${SMOKE_HOME}/knowledge/env/stack.env" \
+    --env-file "${SMOKE_HOME}/state/stack.env" \
     --project-name "$COMPOSE_PROJECT_NAME" "$@"
 }
 
@@ -94,7 +94,7 @@ dev_compose() {
 # prior `--keep` run's guardian/portal containers leaked into the next run and
 # were left dangling once its fixture dir was rm -rf'd).
 smoke_teardown_stack() {
-  if [[ -f "$SMOKE_HOME/knowledge/env/stack.env" ]]; then
+  if [[ -f "$SMOKE_HOME/state/stack.env" ]]; then
     dev_compose --profile addon.discord --profile addon.chat down --remove-orphans --volumes >/dev/null 2>&1 || true
   fi
   docker ps -aq --filter "label=com.docker.compose.project=${COMPOSE_PROJECT_NAME}" 2>/dev/null | xargs -r docker rm -f >/dev/null 2>&1 || true
@@ -131,7 +131,7 @@ smoke_write_stack_env "$SMOKE_HOME" "$PLATFORM_VERSION" \
   "${OP_ROOTLESS_SMOKE_GUARDIAN_ADMIN_PORT:-${guardian_admin_port_default}}" \
   "${OP_ROOTLESS_SMOKE_CHAT_PORT:-${chat_port_default}}" \
   "${OP_ROOTLESS_SMOKE_API_PORT:-${api_port_default}}"
-printf 'OP_HOST_UI_PORT=%s\n' "$UI_PORT" >> "$SMOKE_HOME/knowledge/env/stack.env"
+printf 'OP_HOST_UI_PORT=%s\n' "$UI_PORT" >> "$SMOKE_HOME/state/stack.env"
 smoke_seed_secrets "$SMOKE_HOME" 'rootless-smoke-password'
 
 if [[ "$TARGET" == "portal-discord" && ! -f "$SMOKE_HOME/data/portal/tools/package.json" ]]; then
@@ -143,7 +143,7 @@ smoke_ensure_home_dirs "$SMOKE_HOME"
 smoke_write_version_override "$SMOKE_HOME/rootless-smoke.override.yml" "$PLATFORM_VERSION"
 
 if [[ "$TARGET" == "portal-discord" ]]; then
-  printf 'OP_ENABLED_ADDONS=discord\n' >> "$SMOKE_HOME/state/stack.state.env"
+  printf 'OP_ENABLED_ADDONS=discord\n' >> "$SMOKE_HOME/state/stack.env"
 fi
 
 # Build (or, under OP_ROOTLESS_SMOKE_SKIP_BUILD=1 in CI, reuse) the dev images.

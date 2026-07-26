@@ -4,10 +4,10 @@ import { fileURLToPath } from "node:url";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(HERE, "../../..");
-const STACK_ENV = process.env.STACK_ENV_PATH ?? resolve(REPO_ROOT, ".dev/knowledge/env/stack.env");
+const STACK_ENV = process.env.STACK_ENV_PATH ?? resolve(REPO_ROOT, ".dev/state/stack.env");
 const BACKUP = `${STACK_ENV}.e2e-backup`;
 const OP_HOME_DIR = process.env.OP_HOME ?? resolve(REPO_ROOT, ".dev");
-const STATE_ENV = resolve(OP_HOME_DIR, "state/stack.state.env");
+const STATE_ENV = resolve(OP_HOME_DIR, "state/stack.env");
 const STATE_BACKUP = `${STATE_ENV}.e2e-backup`;
 
 /**

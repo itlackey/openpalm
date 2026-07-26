@@ -1,7 +1,16 @@
-import { writeFileSync, renameSync, copyFileSync, rmSync, chmodSync } from "node:fs";
+import { writeFileSync, renameSync, copyFileSync, mkdirSync, rmSync, chmodSync } from "node:fs";
+import { dirname } from "node:path";
 
-/** Write atomically: tmp file + rename. `mode` is applied on creation. */
+/**
+ * Write atomically: tmp file + rename. `mode` is applied on creation.
+ *
+ * The parent directory is created if absent. Every caller otherwise has to
+ * remember to pre-create it, and a missing parent is never the intent — it just
+ * surfaces as ENOENT on the temp file, pointing at a path the caller never
+ * named.
+ */
 export function writeFileAtomic(path: string, content: string | Uint8Array, mode?: number): void {
+  mkdirSync(dirname(path), { recursive: true });
   const tmp = `${path}.tmp`;
   writeFileSync(tmp, content, mode !== undefined ? { mode } : {});
   renameSync(tmp, path);

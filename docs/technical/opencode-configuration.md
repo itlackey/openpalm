@@ -15,7 +15,7 @@ Primary runtime sources:
 - The running assistant is defined by `.openpalm/config/stack/core.compose.yml`.
 - The optional admin-side OpenCode runtime is started by `openpalm` as a host subprocess on a random loopback port.
 - `~/.openpalm/config/assistant/` is the user-editable OpenCode extension surface.
-- `~/.openpalm/knowledge/env/stack.env` provides non-secret runtime and resolved capability env values.
+- `~/.openpalm/state/stack.env` provides non-secret runtime and resolved capability env values.
 - `~/.openpalm/knowledge/secrets/` stores file-based service secrets; provider keys are stored in OpenCode auth state or narrow secret files.
 - `~/.openpalm/knowledge/env/user.env` is the AKM user env backing file, not a Compose env file.
 - Project-local OpenCode config inside `/work` still works per normal OpenCode behavior, but OpenPalm's container wiring is controlled by Compose.
@@ -103,6 +103,6 @@ Compose remains the source of truth for that contract.
 ## Day-To-Day Changes
 
 - Add tools, plugins, commands, or skills under `~/.openpalm/config/assistant/`.
-- Update provider keys through OpenCode auth state or file-based secret management; keep model-related non-secret env in `~/.openpalm/knowledge/env/stack.env`.
+- Update provider keys through OpenCode auth state or file-based secret management; keep model-related non-secret env in `~/.openpalm/state/stack.env`.
 - Change service wiring by editing the compose file set in `~/.openpalm/config/stack/`.
 - Verify the exact runtime by reading `~/.openpalm/config/stack/core.compose.yml` and any addon overlays used for startup.

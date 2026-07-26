@@ -11,7 +11,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { DockerResult, ExistingProject } from './docker.js';
 import { parseEnvFile } from './env.js';
-import { stateEnvFile } from './home.js';
+import { stackEnvFile } from './home.js';
 import {
 	clearRecordedProjectRename,
 	PREVIOUS_PROJECT_NAME_KEY,
@@ -38,11 +38,11 @@ function makeState(): ControlPlaneState {
 }
 
 function writeStackEnv(content: string): void {
-	writeFileSync(join(home, 'knowledge', 'env', 'stack.env'), content);
+	writeFileSync(join(home, 'state', 'stack.env'), content);
 }
 
 function recordedMarker(): string {
-	return parseEnvFile(stateEnvFile(home))[PREVIOUS_PROJECT_NAME_KEY] ?? '';
+	return parseEnvFile(stackEnvFile(home))[PREVIOUS_PROJECT_NAME_KEY] ?? '';
 }
 
 function makeDeps(overrides: { existing?: ExistingProject; downResult?: DockerResult }): {
@@ -71,6 +71,7 @@ function makeDeps(overrides: { existing?: ExistingProject; downResult?: DockerRe
 beforeEach(() => {
 	home = mkdtempSync(join(tmpdir(), 'openpalm-rename-'));
 	mkdirSync(join(home, 'knowledge', 'env'), { recursive: true });
+	mkdirSync(join(home, 'state'), { recursive: true });
 	mkdirSync(join(home, 'state'), { recursive: true });
 	savedOpHome = process.env.OP_HOME;
 	process.env.OP_HOME = home;
@@ -197,7 +198,7 @@ describe('teardownRenamedProject', () => {
 	it('treats a marker equal to the current name as a reverted rename (clears, no docker calls)', async () => {
 		writeStackEnv('OP_PROJECT_NAME=openpalm\n');
 		// Simulate a stale marker equal to the current name (e.g. legacy state).
-		writeFileSync(stateEnvFile(home), `${PREVIOUS_PROJECT_NAME_KEY}=openpalm\n`);
+		writeFileSync(stackEnvFile(home), `${PREVIOUS_PROJECT_NAME_KEY}=openpalm\n`);
 		const { deps, calls } = makeDeps({});
 		const result = await teardownRenamedProject(makeState(), deps);
 		expect(result).toEqual({ downed: null, warning: null, blocked: false });

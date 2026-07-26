@@ -171,7 +171,7 @@ function seedServeHome(opts: { installed: boolean }): string {
     mkdirSync(join(home, 'system', 'stack'), { recursive: true });
     writeFileSync(join(home, 'system', 'stack', 'core.compose.yml'), 'services: {}\n');
     mkdirSync(join(home, 'state'), { recursive: true });
-    writeFileSync(join(home, 'state', 'stack.state.env'), 'OP_SETUP_COMPLETE=true\n');
+    writeFileSync(join(home, 'state', 'stack.env'), 'OP_SETUP_COMPLETE=true\n');
   }
   process.env.OP_HOME = home;
   // Make sure nothing ambient can fake an admin-mode pass (spawnUiChild

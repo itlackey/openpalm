@@ -37,9 +37,9 @@ function makeState(): ControlPlaneState {
 }
 
 function seedStackEnv(enabledAddons: string): void {
-  const envDir = join(tempDir, "knowledge", "env");
-  mkdirSync(envDir, { recursive: true });
-  writeFileSync(join(envDir, "stack.env"), `OP_ENABLED_ADDONS=${enabledAddons}\n`);
+  const stateDir = join(tempDir, "state");
+  mkdirSync(stateDir, { recursive: true });
+  writeFileSync(join(stateDir, "stack.env"), `OP_ENABLED_ADDONS=${enabledAddons}\n`);
 }
 
 function seedChannelsCompose(): void {

@@ -4,7 +4,7 @@ import { errMessage } from './errors.js';
 import { createLogger } from "../logger.js";
 import { parseEnvFile, mergeEnvContent } from './env.js';
 import type { ControlPlaneState } from "./types.js";
-import { resolveConfigDir, legacyStackEnvFile, stateEnvFile } from "./home.js";
+import { resolveConfigDir, stackEnvFile } from "./home.js";
 import { authJsonPath as resolveAuthJsonPath, stackEnvPath } from "./paths.js";
 import { dirname, join } from "node:path";
 import {
@@ -301,21 +301,14 @@ export function writeAuthJsonProviderKeys(
   writeAuthVaultFile(authJsonPath, `${JSON.stringify(current, null, 2)}\n`);
 }
 
-/** Read and parse knowledge/env/stack.env. Returns {} if the file does not exist. */
 /**
- * The effective non-secret stack config, merging the app-written `state/` tree
- * OVER the legacy `knowledge/env/stack.env`. This matches the compose `--env-file`
- * precedence (buildEnvFiles passes legacy then state, so state wins) — so host
- * code reads the SAME effective values the running stack does. Without this merge,
- * a pin/addon recorded in state/ but stale in legacy would make the host report a
- * different value than the containers actually use (the "current ≠ running" trap).
+ * The effective non-secret stack config: the single Compose `--env-file`, minus
+ * anything secret-shaped. One file, so host code and the containers cannot
+ * disagree about a value.
  */
 export function readStackEnv(homeDir: string): Record<string, string> {
-  const legacy = parseEnvFile(legacyStackEnvFile(homeDir));
-  const state = existsSync(stateEnvFile(homeDir)) ? parseEnvFile(stateEnvFile(homeDir)) : {};
-  const merged = { ...legacy, ...state };
   const nonSecret: Record<string, string> = {};
-  for (const [key, value] of Object.entries(merged)) {
+  for (const [key, value] of Object.entries(parseEnvFile(stackEnvFile(homeDir)))) {
     if (!isSecretLikeStackEnvKey(key)) nonSecret[key] = value;
   }
   return nonSecret;
@@ -349,7 +342,7 @@ export function patchSecretsEnvFile(
   if (Object.keys(stackPatches).length === 0) return;
   assertNoSecretLikeStackEnvKeys(stackPatches);
 
-  const stackEnvPath = legacyStackEnvFile(homeDir);
+  const stackEnvPath = stackEnvFile(homeDir);
   enforceVaultDirMode(dirname(stackEnvPath));
 
   let existingContent = "";
@@ -367,11 +360,11 @@ export function patchSecretsEnvFile(
 }
 
 /**
- * Patch app-written records into OP_HOME/state/stack.state.env.
+ * Patch app-written records into OP_HOME/state/stack.env.
  *
  * Constitution §1: state/ is the app-written tree (setup record, enabled add-ons,
  * version pins, channel). readStackEnv / buildEnvFiles merge this OVER the legacy
- * knowledge/env/stack.env, so values written here win. This is the symmetric
+ * the same single stack.env, so values written here win. This is the symmetric
  * counterpart to patchSecretsEnvFile: use it for records the app owns, so the app
  * never writes into the operator-facing stack.env. Non-secret keys only.
  */
@@ -379,7 +372,7 @@ export function patchStateEnvFile(homeDir: string, patches: Record<string, strin
   if (Object.keys(patches).length === 0) return;
   assertNoSecretLikeStackEnvKeys(patches);
 
-  const path = stateEnvFile(homeDir);
+  const path = stackEnvFile(homeDir);
   mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
 
   let existing = "";

@@ -50,7 +50,7 @@ describe('POST /api/host/addons/:name/credentials', () => {
 
 		expect(response.status).toBe(409);
 		expect(await response.json()).toMatchObject({ error: 'install_in_progress' });
-		const stackEnvPath = join(homeDir, 'knowledge', 'env', 'stack.env');
+		const stackEnvPath = join(homeDir, 'state', 'stack.env');
 		expect(existsSync(stackEnvPath) ? readFileSync(stackEnvPath, 'utf-8') : '').not.toContain(
 			'guild-1'
 		);

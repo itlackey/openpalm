@@ -57,7 +57,7 @@ On first install, the CLI spawns `openpalm` which serves the setup wizard via th
 
 ## How It Works
 
-1. **Bootstrap** (first install) -- creates the `~/.openpalm/` tree, downloads core assets from GitHub, seeds `knowledge/env/user.env` and `knowledge/env/stack.env`, serves the setup wizard, writes fixed stack compose files, enables requested addons via `OP_ENABLED_ADDONS` in `knowledge/env/stack.env`, and starts core services via `docker compose up`
+1. **Bootstrap** (first install) -- creates the `~/.openpalm/` tree, downloads core assets from GitHub, seeds `knowledge/env/user.env` and `state/stack.env`, serves the setup wizard, writes fixed stack compose files, enables requested addons via `OP_ENABLED_ADDONS` in `state/stack.env`, and starts core services via `docker compose up`
 2. **Running stack** -- commands refresh files in `~/.openpalm/` when needed, then execute Docker Compose directly.
 3. **Admin absent** -- all commands work identically. Admin is never required for any operation.
 

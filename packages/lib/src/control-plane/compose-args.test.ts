@@ -85,8 +85,8 @@ describe("buildComposeOptions", () => {
 
   it("activates the profile when OP_ENABLED_ADDONS is in state/ (not legacy stack.env)", () => {
     // Regression: `openpalm addon enable` writes OP_ENABLED_ADDONS to
-    // state/stack.state.env, but resolveActiveProfiles used to read only
-    // knowledge/env/stack.env — so the addon's compose profile never activated
+    // state/stack.env, but resolveActiveProfiles used to read only
+    // state/stack.env — so the addon's compose profile never activated
     // and its service was never started. resolveActiveProfiles must read the
     // SAME merged source (state over legacy) as listEnabledAddonIds.
     seedCoreCompose();
@@ -97,7 +97,7 @@ describe("buildComposeOptions", () => {
     );
     const stateDir = join(tempDir, "state");
     mkdirSync(stateDir, { recursive: true });
-    writeFileSync(join(stateDir, "stack.state.env"), "OP_ENABLED_ADDONS=discord\n");
+    writeFileSync(join(stateDir, "stack.env"), "OP_ENABLED_ADDONS=discord\n");
     // legacy stack.env intentionally absent / without the addon
 
     const opts = buildComposeOptions(makeState());
@@ -118,7 +118,7 @@ describe("buildComposeOptions", () => {
   });
 
   it("returns env files in correct order", () => {
-    // The runtime --env-file list is knowledge/env/stack.env only. The user env
+    // The runtime --env-file list is state/stack.env only. The user env
     // (knowledge/env/user.env) is sourced by the assistant entrypoint, not a
     // compose env_file.
     seedEnvFiles({ stack: true });
@@ -150,7 +150,8 @@ describe("buildComposeCliArgs", () => {
   it("uses OP_PROJECT_NAME from stack.env", () => {
     seedCoreCompose();
     seedEnvFiles({ stack: true });
-    writeFileSync(join(tempDir, "knowledge", "env", "stack.env"), "OP_PROJECT_NAME=openpalm-test\n");
+    mkdirSync(join(tempDir, "state"), { recursive: true });
+    writeFileSync(join(tempDir, "state", "stack.env"), "OP_PROJECT_NAME=openpalm-test\n");
     const state = makeState();
     const args = buildComposeCliArgs(state);
     expect(args[0]).toBe("--project-name");
@@ -160,7 +161,8 @@ describe("buildComposeCliArgs", () => {
   it("uses canonical voice and ollama profile ids", () => {
     seedCoreCompose();
     seedEnvFiles({ stack: true });
-    writeFileSync(join(tempDir, "knowledge", "env", "stack.env"), "OP_VOICE_PROFILE=addon.voice.cuda\nOP_OLLAMA_PROFILE=addon.ollama.cpu\n");
+    mkdirSync(join(tempDir, "state"), { recursive: true });
+    writeFileSync(join(tempDir, "state", "stack.env"), "OP_VOICE_PROFILE=addon.voice.cuda\nOP_OLLAMA_PROFILE=addon.ollama.cpu\n");
     const state = makeState();
     const args = buildComposeCliArgs(state);
     expect(args).toContain("addon.voice.cuda");
@@ -183,7 +185,8 @@ describe("buildComposeCliArgs", () => {
   it("ignores non-canonical addon profile ids", () => {
     seedCoreCompose();
     seedEnvFiles({ stack: true });
-    writeFileSync(join(tempDir, "knowledge", "env", "stack.env"), "OP_VOICE_PROFILE=not-canonical\nOP_OLLAMA_PROFILE=also-not-canonical\n");
+    mkdirSync(join(tempDir, "state"), { recursive: true });
+    writeFileSync(join(tempDir, "state", "stack.env"), "OP_VOICE_PROFILE=not-canonical\nOP_OLLAMA_PROFILE=also-not-canonical\n");
     const state = makeState();
     const args = buildComposeCliArgs(state);
     expect(args).not.toContain("not-canonical");
@@ -195,7 +198,8 @@ describe("buildComposeCliArgs", () => {
   it('does not synthesize profiles from COMPOSE_PROFILES', () => {
     seedCoreCompose();
     seedEnvFiles({ stack: true });
-    writeFileSync(join(tempDir, 'knowledge', 'env', 'stack.env'), 'COMPOSE_PROFILES=addon.chat\n');
+    mkdirSync(join(tempDir, 'state'), { recursive: true });
+    writeFileSync(join(tempDir, 'state', 'stack.env'), 'COMPOSE_PROFILES=addon.chat\n');
     const state = makeState();
     const args = buildComposeCliArgs(state);
     expect(args).not.toContain('addon.chat');
@@ -211,7 +215,7 @@ describe("buildComposeCliArgs", () => {
   });
 
   it("includes --env-file flags for env files that exist", () => {
-    // Only knowledge/env/stack.env is passed via --env-file.
+    // Only state/stack.env is passed via --env-file.
     seedCoreCompose();
     seedEnvFiles({ stack: true });
     const state = makeState();

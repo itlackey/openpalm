@@ -174,7 +174,7 @@ export function handleAddonToggleRequest(
     }
     if (requestedProfile && !isEnabled) {
       // Disabled addon: remember the choice for the next enable, no compose.
-      // Still taken under the admin lock — it writes state/stack.state.env,
+      // Still taken under the admin lock — it writes state/stack.env,
       // which a concurrent install/update also mutates.
       const known = getAddonProfiles(state.homeDir, VOICE_ADDON).some((p) => p.id === requestedProfile);
       if (!known) {

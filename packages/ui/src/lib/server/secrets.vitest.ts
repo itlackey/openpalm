@@ -81,7 +81,7 @@ describe("ensureSecrets", () => {
     ensureSecrets(state);
 
     // ensureSecrets enforces the stackDir mode (creates it) and writes the
-    // env file under the stash (knowledge/env/stack.env).
+    // env file under the stash (state/stack.env).
     expect(existsSync(nestedDir)).toBe(true);
     expect(existsSync(join(stashDir, "env", "stack.env"))).toBe(true);
   });

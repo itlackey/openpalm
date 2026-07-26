@@ -28,7 +28,7 @@ chmod 700 ~/.openpalm/knowledge/secrets
 chmod 600 ~/.openpalm/knowledge/secrets/discord_bot_token
 ```
 
-Add non-secret Discord settings to `~/.openpalm/knowledge/env/stack.env`:
+Add non-secret Discord settings to `~/.openpalm/state/stack.env`:
 
 ```dotenv
 DISCORD_APPLICATION_ID=your-application-id
@@ -52,7 +52,7 @@ Manual-first path:
 cd "$HOME/.openpalm/config/stack"
 docker compose \
   --project-name openpalm \
-  --env-file ../../knowledge/env/stack.env \
+  --env-file ../../state/stack.env \
   -f core.compose.yml \
   -f portals.compose.yml \
   --profile addon.discord \

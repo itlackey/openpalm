@@ -41,7 +41,7 @@ beforeEach(() => {
   checkAndUpdateUiBuildMock.mockReset();
   recordPendingUiBackupMock.mockReset();
   mkdirSync(join(getState().homeDir, 'state'), { recursive: true });
-  writeFileSync(join(getState().homeDir, 'state', 'stack.state.env'), 'OP_UI_CHANNEL=next\n');
+  writeFileSync(join(getState().homeDir, 'state', 'stack.env'), 'OP_UI_CHANNEL=next\n');
 });
 
 afterEach(() => {

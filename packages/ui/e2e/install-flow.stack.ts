@@ -4,7 +4,7 @@
  * Collected by Playwright when RUN_DOCKER_STACK_TESTS=1 (*.stack.ts pattern).
  * Run via: ./scripts/dev-e2e-test.sh --skip-build --playwright
  *
- * Temporarily resets state/stack.state.env so the wizard guard redirects / to /setup,
+ * Temporarily resets state/stack.env so the wizard guard redirects / to /setup,
  * then walks every step to the Review page and verifies the Install button
  * is present and enabled. Does NOT click Install — the deploy API contract
  * is exercised by setup-wizard-api.stack.ts; rerunning a real compose up

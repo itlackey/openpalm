@@ -41,7 +41,7 @@ See [`docs/technical/core-principles.md`](docs/technical/core-principles.md) for
 - **Scheduler** — OS cron daemon (`crond`) started by the assistant container entrypoint. No network port. Automations are AKM YAML task files (`*.yml`) in `knowledge/tasks/`; `akm tasks sync` registers them with cron at container startup and re-syncs every 60 s to pick up new files.
 - **Portal runtime** (`containers/portal/`) — Unified `portal` image build for baked first-party adapters.
 - **Portal adapters** (`portals/discord/`, `portals/slack/`) — Translate external protocols into guardian `/oc/*` traffic. The OpenAI-compatible API now runs from the guardian image.
-- **Stack** (`packages/skeleton/`) — Repo-shipped skeleton that seeds `OP_HOME` on install/update. Managed compose files (`core.compose.yml`, `services.compose.yml`, `portals.compose.yml`) ship in `packages/skeleton/system/stack/` and materialize to `~/.openpalm/system/stack/` (overwritten on reconcile); the user overlay ships as `packages/skeleton/config/stack/custom.compose.yml` and materializes to `~/.openpalm/config/stack/` (seeded once). Enabled first-party addons are tracked in the app-written record `~/.openpalm/state/stack.state.env` via `OP_ENABLED_ADDONS` and resolved to Compose `--profile addon.<name>` arguments; custom services go in `custom.compose.yml`.
+- **Stack** (`packages/skeleton/`) — Repo-shipped skeleton that seeds `OP_HOME` on install/update. Managed compose files (`core.compose.yml`, `services.compose.yml`, `portals.compose.yml`) ship in `packages/skeleton/system/stack/` and materialize to `~/.openpalm/system/stack/` (overwritten on reconcile); the user overlay ships as `packages/skeleton/config/stack/custom.compose.yml` and materializes to `~/.openpalm/config/stack/` (seeded once). Enabled first-party addons are tracked in the app-written record `~/.openpalm/state/stack.env` via `OP_ENABLED_ADDONS` and resolved to Compose `--profile addon.<name>` arguments; custom services go in `custom.compose.yml`.
 
 ---
 
@@ -133,7 +133,7 @@ docker compose --project-name openpalm-dev --project-directory . \
   -f .dev/system/stack/portals.compose.yml \
   -f .dev/config/stack/custom.compose.yml \
   -f compose.dev.yml \
-  --env-file .dev/knowledge/env/stack.env \
+  --env-file .dev/state/stack.env \
   up --build -d
 ```
 
@@ -236,13 +236,13 @@ Full detail in [`docs/technical/core-principles.md`](docs/technical/core-princip
 
 - **File assembly, not rendering.** Write whole files; no string interpolation or template generation.
 - **`config/` is user-owned.** Automatic lifecycle operations are non-destructive for existing user files and only seed missing defaults. Allowed writers: user direct edits and explicit UI/API config actions. The assistant is not an allowed writer — it has no admin credential and no default network path to the admin process (Security invariant 3).
-- **Secret boundary.** `knowledge/env/stack.env` is non-secret runtime configuration only. Secret values live as files under `knowledge/secrets/` and are granted per service through Compose `secrets:`. `knowledge/env/user.env` is AKM env backing state, not a Compose env file.
+- **Secret boundary.** `state/stack.env` is non-secret runtime configuration only. Secret values live as files under `knowledge/secrets/` and are granted per service through Compose `secrets:`. `knowledge/env/user.env` is AKM env backing state, not a Compose env file.
 - **Host CLI or UI is the orchestrator.** CLI manages Docker Compose directly on the host. UI provides a web UI as a host process (no container, no docker-socket-proxy).
 - **Shared control-plane library (`@openpalm/lib`) is the single source of truth.** All portable control-plane logic lives in `packages/lib/`. CLI and UI both import from this package. Never duplicate control-plane logic in a consumer.
 - **Guardian-only ingress.** All portal traffic must enter through the guardian (`/oc/*` proxy, ownership checks, rate limiting).
 - **Assistant isolation.** Assistant has no Docker socket and no admin network path. When UI is absent, only the akm-backed memory/knowledge tools are available.
 - **LAN-first by default.** Nothing is publicly exposed without explicit user opt-in.
-- **Add a portal** by enabling its first-party addon name in the app-written record `~/.openpalm/state/stack.state.env` (`OP_ENABLED_ADDONS`) or adding a service block to `config/stack/custom.compose.yml` (for custom portals) — no code changes.
+- **Add a portal** by enabling its first-party addon name in the app-written record `~/.openpalm/state/stack.env` (`OP_ENABLED_ADDONS`) or adding a service block to `config/stack/custom.compose.yml` (for custom portals) — no code changes.
 - **No shell interpolation.** Docker commands use `execFile` with argument arrays, never shell strings.
 - **Docker dependency resolution pattern.** Guardian and portal Dockerfiles install each service's own deps directly. UI is a host binary — no Docker build needed.
 
@@ -258,8 +258,8 @@ The layout is split into trees by **ownership** so lifecycle sync can overwrite 
 |-----------|-------|---------|
 | `config/` | User | Non-secret config: assistant + guardian OpenCode config (`config/assistant/`, `config/guardian/`); the `custom.compose.yml` overlay lives under `config/stack/` |
 | `system/` | Managed | Release-shipped assets overwritten wholesale on reconcile: managed compose files (`system/stack/`) + managed OpenCode config (`system/assistant/`, `system/guardian/`) |
-| `state/` | App | App-written records: version pins, enabled add-ons, channel, setup completion (`state/stack.state.env`, `state/host-identity.json`) |
-| `knowledge/` | User/Services | AKM knowledge (skills, env, secrets, agents); `knowledge/env/user.env` holds user-managed secrets; `knowledge/env/stack.env` is non-secret base config; `knowledge/tasks/` holds scheduled automation task files |
+| `state/` | App | App-written records: version pins, enabled add-ons, channel, setup completion (`state/stack.env`, `state/host-identity.json`) |
+| `knowledge/` | User/Services | AKM knowledge (skills, env, secrets, agents); `knowledge/env/user.env` holds user-managed secrets; `knowledge/tasks/` holds scheduled automation task files. Stack config is NOT here — it is `state/stack.env`, kept out of this tree because `knowledge/` is bind-mounted into the assistant at `/stash` |
 | `data/` | Services/System | Persistent data: assistant, guardian, akm (`data/akm/cache/`, `data/akm/data/`), logs, backups, rollback |
 | `workspace/` | User | Shared assistant work area (bind-mounted at `/work`) |
 | `~/.cache/openpalm/` | System | Ephemeral cache (outside `OP_HOME`) |
@@ -305,5 +305,5 @@ Before submitting any change:
 | `packages/guardian/src/server.ts` | Guardian request pipeline: HTTP Basic auth + sha256 token compare (`auth.ts`), then transparent OpenCode passthrough (`proxy.ts`) with SQLite-persisted ownership (`ownership.ts` + `state-db.ts`), rate limiting, and content validation overlays (`@openpalm/guardian`; `containers/guardian/` holds only the Dockerfile + entrypoint, no `src/`) |
 | `packages/guardian/src/logger.ts` | Guardian-local logger (createLogger factory) |
 | `packages/skeleton/system/stack/core.compose.yml` | Repo-shipped core service definition — assistant only; the guardian is profile-gated in `portals.compose.yml`, not a core service. Materializes to `~/.openpalm/system/stack/` on install/update |
-| `packages/skeleton/system/stack/` | Repo-shipped managed compose files (core/services/portals). The user overlay is `packages/skeleton/config/stack/custom.compose.yml`; enabled add-ons/pins live in the runtime `state/stack.state.env` |
+| `packages/skeleton/system/stack/` | Repo-shipped managed compose files (core/services/portals). The user overlay is `packages/skeleton/config/stack/custom.compose.yml`; enabled add-ons/pins live in the runtime `state/stack.env` |
 | `.opencode/opencode.json` | OpenCode project configuration |

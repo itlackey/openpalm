@@ -560,8 +560,9 @@ describe("performSetup", () => {
     }
 
     // Create stub stack.env so isSetupComplete doesn't crash
+    mkdirSync(join(homeDir, "state"), { recursive: true });
     writeFileSync(
-      join(homeDir, "knowledge", "env", "stack.env"),
+      join(homeDir, "state", "stack.env"),
       [
         "OP_SETUP_COMPLETE=false",
         "OPENAI_BASE_URL=",
@@ -593,16 +594,13 @@ describe("performSetup", () => {
   });
 
   // ── Per-image version reconcile (A1: stop preserving a stale pinned tag) ──
-  // state/stack.state.env is the SOLE pin location (1.4): setup must never write
-  // OP_*_VERSION into the legacy knowledge/env/stack.env, only into state/.
-  const legacyStackEnvPath = () => join(homeDir, "knowledge", "env", "stack.env");
-  const stateEnvPath = () => join(homeDir, "state", "stack.state.env");
+  // state/stack.env is the one env file, and the sole pin location.
+  const stateEnvPath = () => join(homeDir, "state", "stack.env");
 
   it("blank imageTag RESETS stale per-image version pins to the moving default (latest)", async () => {
-    // Simulate an old OP_HOME whose legacy stack.env pinned now-stale per-image
-    // versions (pre-1.4 installs wrote pins there).
+    // Simulate an OP_HOME carrying now-stale per-image version pins.
     writeFileSync(
-      legacyStackEnvPath(),
+      stateEnvPath(),
       [
         "OP_SETUP_COMPLETE=false",
         "OP_ASSISTANT_VERSION=v0.11.1",
@@ -644,11 +642,13 @@ describe("performSetup", () => {
     expect(env).toMatch(/^OP_ASSISTANT_VERSION=latest$/m);
   });
 
-  it("never writes OP_*_VERSION into the legacy knowledge/env/stack.env (state/ is the sole pin authority)", async () => {
+  it("records an explicit imageTag as a pin on every per-image key", async () => {
     const result = await performSetup(makeValidSpec({ imageTag: "v0.11.1" }));
     expect(result.ok).toBe(true);
-    const legacy = readFileSync(legacyStackEnvPath(), 'utf-8');
-    expect(legacy).not.toMatch(/OP_(ASSISTANT|GUARDIAN|PORTAL|VOICE)_VERSION=/);
+    const env = readFileSync(stateEnvPath(), 'utf-8');
+    for (const key of ["ASSISTANT", "GUARDIAN", "PORTAL", "VOICE"]) {
+      expect(env).toMatch(new RegExp(`^OP_${key}_VERSION=v0\\.11\\.1$`, 'm'));
+    }
   });
 
   it("writes the UI login password to knowledge/secrets", async () => {
@@ -785,7 +785,7 @@ describe("performSetup", () => {
       // NO conditional overlay file is produced any more.
       expect(existsSync(join(stackDir, "host-akm.compose.yml"))).toBe(false);
       // OP_HOST_AKM_STASH points at the host stash (mount is always in core.compose.yml).
-      expect(readFileSync(join(homeDir, "knowledge", "env", "stack.env"), "utf-8")).toContain(
+      expect(readFileSync(join(homeDir, "state", "stack.env"), "utf-8")).toContain(
         `OP_HOST_AKM_STASH=${join(fakeHome, "akm")}`,
       );
       // Assistant-side source entry present.
@@ -812,7 +812,7 @@ describe("performSetup", () => {
       const opCfg = JSON.parse(readFileSync(join(homeDir, "config", "akm", "config.json"), "utf-8"));
       expect((opCfg.sources ?? []).some((s: { name?: string }) => s.name === "host-akm")).toBe(true);
       // OP_HOST_AKM_STASH set (compose mount active; falls back to empty dir since ~/akm absent).
-      expect(readFileSync(join(homeDir, "knowledge", "env", "stack.env"), "utf-8")).toContain("OP_HOST_AKM_STASH=");
+      expect(readFileSync(join(homeDir, "state", "stack.env"), "utf-8")).toContain("OP_HOST_AKM_STASH=");
     } finally {
       if (savedHome !== undefined) process.env.HOME = savedHome;
       else delete process.env.HOME;
@@ -837,7 +837,7 @@ describe("performSetup", () => {
     const result = await performSetup(input);
     expect(result.ok).toBe(true);
 
-    const stackEnv = readFileSync(join(homeDir, "knowledge", "env", "stack.env"), 'utf-8');
+    const stackEnv = readFileSync(join(homeDir, "state", "stack.env"), 'utf-8');
     expect(stackEnv).not.toContain('OPENAI_API_KEY=');
     expect(readSecret(homeDir, 'openai_api_key')).toBeNull();
 
@@ -860,7 +860,7 @@ describe("performSetup", () => {
 
     expect(readSecret(homeDir, 'discord_bot_token')).toBe("discord-bot-token-xyz\n");
     expect(readSecret(homeDir, 'discord_application_id')).toBeNull();
-    const stackEnv = readFileSync(join(homeDir, "knowledge", "env", "stack.env"), 'utf-8');
+    const stackEnv = readFileSync(join(homeDir, "state", "stack.env"), 'utf-8');
     expect(stackEnv).toContain('DISCORD_APPLICATION_ID=discord-app-id-123');
     expect(stackEnv).not.toContain('DISCORD_BOT_TOKEN=');
   });
@@ -869,7 +869,7 @@ describe("performSetup", () => {
   // addon — the old `if (enabled)` loop skipped false, leaving it enabled.
   it("disables an existing addon when the rerun spec sets it false", async () => {
     const enabledAddonsLine = (): string =>
-      readFileSync(join(homeDir, "state", "stack.state.env"), 'utf-8')
+      readFileSync(join(homeDir, "state", "stack.env"), 'utf-8')
         .split('\n')
         .find((l) => l.startsWith('OP_ENABLED_ADDONS=')) ?? '';
 
@@ -913,7 +913,7 @@ describe("performSetup", () => {
     const result = await performSetup(makeValidSpec({ access: { networkAccess: true } }));
     expect(result.ok).toBe(true);
 
-    const stackEnv = readFileSync(join(homeDir, "knowledge", "env", "stack.env"), "utf-8");
+    const stackEnv = readFileSync(join(homeDir, "state", "stack.env"), "utf-8");
     expect(stackEnv).toMatch(/^OP_UI_BIND_ADDRESS=0\.0\.0\.0$/m);
     expect(stackEnv).toMatch(/^OP_ASSISTANT_BIND_ADDRESS=127\.0\.0\.1$/m);
     expect(stackEnv).toMatch(/^OPENCODE_AUTH=false$/m);
@@ -923,7 +923,7 @@ describe("performSetup", () => {
     const result = await performSetup(makeValidSpec({ access: { assistantDirect: true } }));
     expect(result.ok).toBe(true);
 
-    const stackEnv = readFileSync(join(homeDir, "knowledge", "env", "stack.env"), "utf-8");
+    const stackEnv = readFileSync(join(homeDir, "state", "stack.env"), "utf-8");
     expect(stackEnv).toMatch(/^OP_ASSISTANT_BIND_ADDRESS=0\.0\.0\.0$/m);
     expect(stackEnv).toMatch(/^OPENCODE_AUTH=true$/m);
 
@@ -946,7 +946,7 @@ describe("performSetup", () => {
     // Now turn everything back off — the previously-open binds must close.
     expect((await performSetup(makeValidSpec({ access: {} }))).ok).toBe(true);
 
-    const stackEnv = readFileSync(join(homeDir, "knowledge", "env", "stack.env"), "utf-8");
+    const stackEnv = readFileSync(join(homeDir, "state", "stack.env"), "utf-8");
     for (const key of ["OP_UI_BIND_ADDRESS", "OP_ASSISTANT_BIND_ADDRESS", "OP_GUARDIAN_BIND_ADDRESS", "OP_API_BIND_ADDRESS"]) {
       expect(stackEnv).toMatch(new RegExp(`^${key}=127\\.0\\.0\\.1$`, "m"));
     }
@@ -1003,7 +1003,7 @@ describe("performSetup", () => {
   });
 
   it("a spec without access leaves pre-seeded bind values untouched", async () => {
-    const stackEnvPath = join(homeDir, "knowledge", "env", "stack.env");
+    const stackEnvPath = join(homeDir, "state", "stack.env");
     writeFileSync(
       stackEnvPath,
       `${readFileSync(stackEnvPath, "utf-8")}\nOP_ASSISTANT_BIND_ADDRESS=10.0.0.5\n`,

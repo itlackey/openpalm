@@ -24,7 +24,8 @@ function makeHome(): string {
   const dir = mkdtempSync(join(tmpdir(), 'openpalm-discover-'));
   mkdirSync(join(dir, 'system', 'stack'), { recursive: true });
   mkdirSync(join(dir, 'knowledge', 'env'), { recursive: true });
-  writeFileSync(join(dir, 'knowledge', 'env', 'stack.env'), `OP_HOME=${dir}\n`);
+  mkdirSync(join(dir, 'state'), { recursive: true });
+  writeFileSync(join(dir, 'state', 'stack.env'), `OP_HOME=${dir}\n`);
   // discoverStackOverlays only looks for existing files; content is irrelevant
   // because the resolver is faked, but at least one compose file must exist.
   writeFileSync(join(dir, 'system', 'stack', 'core.compose.yml'), 'services: {}\n');

@@ -72,7 +72,7 @@ For full control without any harness:
 ```bash
 git clone https://github.com/itlackey/openpalm.git
 cp -R openpalm/packages/skeleton "$HOME/.openpalm"
-$EDITOR "$HOME/.openpalm/knowledge/env/stack.env"
+$EDITOR "$HOME/.openpalm/state/stack.env"
 $EDITOR "$HOME/.openpalm/knowledge/env/user.env"
 ```
 
@@ -86,7 +86,7 @@ The running deployment is always the exact compose file list you pass to Docker 
 
 - `~/.openpalm/config/stack/` is the only deployment foundation.
 - Base services come from `~/.openpalm/config/stack/core.compose.yml`.
-- First-party addons are defined in `services.compose.yml` and `portals.compose.yml`, then enabled by name through `OP_ENABLED_ADDONS` in `~/.openpalm/knowledge/env/stack.env`.
+- First-party addons are defined in `services.compose.yml` and `portals.compose.yml`, then enabled by name through `OP_ENABLED_ADDONS` in `~/.openpalm/state/stack.env`.
 - Custom services and overlays live in `~/.openpalm/config/stack/custom.compose.yml`.
 - OpenPalm resolves enabled addon names to Compose profiles; the fixed compose files remain deployment truth.
 
@@ -115,7 +115,7 @@ op logs -f      # follow all logs
 
 Repo setup scripts can still help bootstrap files on a fresh machine, but they should be understood as convenience tooling that prepares the same `~/.openpalm/` layout. They do not replace the compose-first model.
 
-If you use helper tooling around addon activation, treat `OP_ENABLED_ADDONS` in `knowledge/env/stack.env` as the live OpenPalm addon state - not any extra Compose file.
+If you use helper tooling around addon activation, treat `OP_ENABLED_ADDONS` in `state/stack.env` as the live OpenPalm addon state - not any extra Compose file.
 
 ---
 
@@ -125,7 +125,7 @@ For all common compose operations (start, stop, status, pull, logs, restart), se
 
 **Change model keys**
 
-Edit `~/.openpalm/knowledge/env/stack.env`, then recreate services that need the new values.
+Edit `~/.openpalm/state/stack.env`, then recreate services that need the new values.
 
 ---
 
@@ -136,7 +136,7 @@ The copied bundle gives you a predictable host layout:
 | Path | Purpose |
 |---|---|
 | `~/.openpalm/config/stack/` | Compose files |
-| `~/.openpalm/knowledge/env/stack.env` | Stack-level env values |
+| `~/.openpalm/state/stack.env` | Stack-level env values |
 | `~/.openpalm/knowledge/env/user.env` | Optional user extensions |
 | `~/.openpalm/config/` | User-managed config |
 | `~/.openpalm/data/` | Persistent container data |

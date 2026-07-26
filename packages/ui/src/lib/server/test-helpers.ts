@@ -8,7 +8,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { rmSync } from "node:fs";
 import type { ControlPlaneState } from "@openpalm/lib";
-import { createState, initializeStateSecrets, legacyStackEnvFile } from "@openpalm/lib";
+import { createState, initializeStateSecrets, stackEnvFile } from "@openpalm/lib";
 import { dirname } from "node:path";
 import { _replaceState } from "./state.js";
 import { _seedSession, _clearSessions } from "./session-store.js";
@@ -21,17 +21,17 @@ export function makeTempDir(): string {
   return dir;
 }
 
-/** Resolve the stack.env path (knowledge/env/stack.env) from an OP_HOME root. */
+/** Resolve the stack.env path (state/stack.env) from an OP_HOME root. */
 export function stackEnvFor(homeDir: string): string {
-  return legacyStackEnvFile(homeDir);
+  return stackEnvFile(homeDir);
 }
 
 /**
  * Seed the stack.env file. Callers pass the `stackDir` (`<home>/config/stack`);
- * the file is written to `<home>/knowledge/env/stack.env`.
+ * the file is written to `<home>/state/stack.env`.
  */
 export function seedSecretsEnv(homeDir: string, content: string): void {
-  const path = legacyStackEnvFile(homeDir);
+  const path = stackEnvFile(homeDir);
   mkdirSync(dirname(path), { recursive: true });
   writeFileSync(path, content);
 }

@@ -53,12 +53,12 @@ mounted at `/stash` for the assistant). There is no separate memory service.
 Docker Compose is invoked with the non-secret stack env file (see [Manual Compose Runbook](../operations/manual-compose-runbook.md)):
 
 ```bash
---env-file "$OP_HOME/knowledge/env/stack.env"
+--env-file "$OP_HOME/state/stack.env"
 ```
 
 That means the effective env model is:
 
-- `knowledge/env/stack.env` - system-managed non-secret runtime env (paths, UID/GID, image tags, bind ports, profiles, feature flags, owner identity)
+- `state/stack.env` - system-managed non-secret runtime env (paths, UID/GID, image tags, bind ports, profiles, feature flags, owner identity)
 - `knowledge/secrets/` - system-managed secret files, directory mode `0700`, file mode `0600`; granted to containers with Compose `secrets:` and exposed as `*_FILE` variables
 - `knowledge/env/user.env` - AKM env backing file for user-managed secrets; never a Compose env-file
 

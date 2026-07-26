@@ -10,7 +10,7 @@
 #     -f .dev/system/stack/portals.compose.yml \
 #     -f .dev/config/stack/custom.compose.yml \
 #     -f compose.dev.yml \
-#     --env-file .dev/knowledge/env/stack.env \
+#     --env-file .dev/state/stack.env \
 #     up --build -d
 #
 # The --project-directory . flag is REQUIRED when the managed compose files live

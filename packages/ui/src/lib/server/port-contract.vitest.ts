@@ -17,9 +17,10 @@ function fixture(stackEnv: string): string {
   mkdirSync(join(homeDir, 'system', 'stack'), { recursive: true });
   writeFileSync(join(homeDir, 'system', 'stack', 'core.compose.yml'), 'services: {}\n');
   mkdirSync(join(homeDir, 'state'), { recursive: true });
-  writeFileSync(join(homeDir, 'state', 'stack.state.env'), 'OP_SETUP_COMPLETE=true\n');
+  writeFileSync(join(homeDir, 'state', 'stack.env'), 'OP_SETUP_COMPLETE=true\n');
   mkdirSync(join(homeDir, 'knowledge', 'env'), { recursive: true });
-  writeFileSync(join(homeDir, 'knowledge', 'env', 'stack.env'), stackEnv);
+  mkdirSync(join(homeDir, 'state'), { recursive: true });
+  writeFileSync(join(homeDir, 'state', 'stack.env'), stackEnv);
   return homeDir;
 }
 

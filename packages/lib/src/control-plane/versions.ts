@@ -16,7 +16,7 @@
  */
 import { existsSync, readFileSync, writeFileSync, mkdirSync, renameSync } from "node:fs";
 import { parseEnvFile, mergeEnvContent } from "./env.js";
-import { stateEnvFile, legacyStackEnvFile } from "./home.js";
+import { stackEnvFile } from "./home.js";
 import type { ControlPlaneState } from "./types.js";
 import { distTagForVersion, PLATFORM_VERSION } from "./versioning.js";
 
@@ -62,9 +62,7 @@ export function isChannelPreference(value: string): value is ChannelPreference {
  * are configured directly through the version keys above.
  */
 export function readChannelPreference(state: ControlPlaneState): ChannelPreference {
-  const fromState = existsSync(stateEnvFile(state.homeDir)) ? parseEnvFile(stateEnvFile(state.homeDir)) : {};
-  const fromLegacy = existsSync(legacyStackEnvFile(state.homeDir)) ? parseEnvFile(legacyStackEnvFile(state.homeDir)) : {};
-  const raw = (fromState.OP_UI_CHANNEL ?? fromLegacy.OP_UI_CHANNEL ?? "").trim().toLowerCase();
+  const raw = (parseEnvFile(stackEnvFile(state.homeDir)).OP_UI_CHANNEL ?? "").trim().toLowerCase();
   return VALID_CHANNELS.has(raw) ? (raw as ChannelPreference) : distTagForVersion(PLATFORM_VERSION);
 }
 
@@ -77,7 +75,7 @@ export function writeChannelPreference(state: ControlPlaneState, channel: string
   if (!VALID_CHANNELS.has(normalized)) {
     throw new Error(`Invalid channel preference: ${JSON.stringify(channel)}. Must be "latest" or "next".`);
   }
-  const path = stateEnvFile(state.homeDir);
+  const path = stackEnvFile(state.homeDir);
   mkdirSync(`${state.homeDir}/state`, { recursive: true, mode: 0o700 });
   const current = existsSync(path) ? readFileSync(path, "utf-8") : "";
   const tmp = `${path}.tmp`;
@@ -93,7 +91,7 @@ export function writeChannelPreference(state: ControlPlaneState, channel: string
  * deliberate pin, so treating them as pins would freeze updates.
  */
 export function readVersions(state: ControlPlaneState): Record<string, string> {
-  const fromState = existsSync(stateEnvFile(state.homeDir)) ? parseEnvFile(stateEnvFile(state.homeDir)) : {};
+  const fromState = parseEnvFile(stackEnvFile(state.homeDir));
   const out: Record<string, string> = {};
   for (const key of SERVICE_VERSION_KEYS) {
     out[key] = fromState[key] ?? VERSION_DEFAULTS[key];
@@ -103,7 +101,7 @@ export function readVersions(state: ControlPlaneState): Record<string, string> {
 
 /** Ensure every image has an explicit state value that overrides legacy env files. */
 export function ensureVersionDefaults(state: ControlPlaneState): void {
-  const path = stateEnvFile(state.homeDir);
+  const path = stackEnvFile(state.homeDir);
   const current = existsSync(path) ? parseEnvFile(path) : {};
   const missing: Record<string, string> = {};
   for (const key of SERVICE_VERSION_KEYS) {
@@ -129,7 +127,7 @@ export function writeVersions(state: ControlPlaneState, updates: Record<string, 
   }
   if (Object.keys(accepted).length === 0) return;
 
-  const path = stateEnvFile(state.homeDir);
+  const path = stackEnvFile(state.homeDir);
   mkdirSync(`${state.homeDir}/state`, { recursive: true, mode: 0o700 });
   const current = existsSync(path) ? readFileSync(path, "utf-8") : "";
   const tmp = `${path}.tmp`;

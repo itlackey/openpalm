@@ -6,12 +6,10 @@
  *   config/stack/ — USER: the custom.compose.yml overlay ONLY (seeded once, never overwritten)
  *   system/stack/ — MANAGED: fixed compose files (core/services/portals), overwritten on reconcile
  *   data/      — RUNTIME: persistent service data, logs, backups, rollback (never written by install/update)
- *   knowledge/ — USER/services: akm knowledge (env, secrets, tasks); env/stack.env holds
- *                non-secret base Compose configuration only
+ *   knowledge/ — USER/services: akm knowledge (user env, secrets, tasks)
  *   workspace/ — USER: shared assistant work area
- *   state/     — app-written records (version pins, enabled add-ons, channel, setup);
- *                stack.state.env is merged OVER legacy stack.env at compose time, so
- *                pins/channel/add-ons live here, not in knowledge/env/stack.env
+ *   state/     — app-written records: stack.env (THE non-secret Compose --env-file),
+ *                host identity, schema version
  */
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
@@ -85,8 +83,25 @@ export function composeFilePath(home: string, name: string): string {
 export function customComposeFilePath(home: string): string {
   return `${home}/config/stack/custom.compose.yml`;
 }
-/** Pins/add-ons/channel state (constitution §1) — OP_HOME/state. */
-export function stateEnvFile(home: string): string {
+/**
+ * THE non-secret stack env file — the single Compose `--env-file`.
+ *
+ * Lives in `state/` because the control plane writes it (constitution §1), and
+ * deliberately NOT in `knowledge/`, which is bind-mounted into the assistant at
+ * `/stash`: host ports, image tags and the setup flag are not the agent's
+ * business. Operators may still edit it directly; it is app-owned, not
+ * app-exclusive.
+ */
+export function stackEnvFile(home: string): string {
+  return `${home}/state/stack.env`;
+}
+
+// ── Superseded env files — migration inputs only ─────────────────────────────
+// Read by the schema-2 migration in home-schema.ts, which merges them into
+// stackEnvFile() and deletes them. Nothing else may reference these.
+
+/** Pre-split app-written record (pins/add-ons/channel/setup). */
+export function legacyStateEnvFile(home: string): string {
   return `${home}/state/stack.state.env`;
 }
 export function hostIdentityFile(home: string): string {
@@ -104,7 +119,7 @@ export function homeSchemaVersionFile(home: string): string {
  * it is pure layout — putting it in `home-schema.ts` would make this module
  * depend on `config-persistence`/`addons`, which depend back on this one.
  */
-export const HOME_SCHEMA_VERSION = 1;
+export const HOME_SCHEMA_VERSION = 2;
 
 /** The recorded schema version, or 0 when nothing is recorded (pre-record home). */
 export function readHomeSchemaVersion(home: string): number {
@@ -122,19 +137,20 @@ export function writeHomeSchemaVersion(home: string, version: number): void {
 /**
  * Stamp a brand-new home as already current, so it runs no legacy migrations.
  *
- * "Brand new" is the absence of `knowledge/env/stack.env`. This runs from
- * {@link ensureHomeDirs}, which every install path calls BEFORE seeding — the
- * only moment that question is still answerable. A home that somehow reaches
- * migration time unstamped falls back to version 0 and runs the migrations
- * once, which is the safe direction.
+ * "Brand new" is the absence of every stack env file this layout has ever used.
+ * This runs from {@link ensureHomeDirs}, which every install path calls BEFORE
+ * seeding — the only moment that question is still answerable. A home that
+ * somehow reaches migration time unstamped falls back to version 0 and runs the
+ * migrations once, which is the safe direction.
  */
 export function initHomeSchema(home: string): void {
   if (existsSync(homeSchemaVersionFile(home))) return;
-  if (existsSync(legacyStackEnvFile(home))) return;
+  const anyStackEnv = [stackEnvFile(home), legacyStateEnvFile(home), legacyKnowledgeStackEnvFile(home)];
+  if (anyStackEnv.some(existsSync)) return;
   writeHomeSchemaVersion(home, HOME_SCHEMA_VERSION);
 }
-/** Pre-split system env; read only as a transition fallback, then deleted. */
-export function legacyStackEnvFile(home: string): string {
+/** Pre-split operator env, from when stack config lived in the knowledge tree. */
+export function legacyKnowledgeStackEnvFile(home: string): string {
   return `${home}/knowledge/env/stack.env`;
 }
 /** User env (entrypoint-sourced — never a compose --env-file; secret boundary). */

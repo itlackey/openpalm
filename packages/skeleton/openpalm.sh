@@ -43,10 +43,10 @@ for name in services portals; do
 done
 [ -f "$USER_STACK_DIR/custom.compose.yml" ] && files+=(-f "$USER_STACK_DIR/custom.compose.yml")
 
-# stack.env (knowledge/env/stack.env) feeds both compose variable substitution
+# stack.env (state/stack.env) feeds both compose variable substitution
 # (--env-file) and the process environment (so COMPOSE_PROFILES and friends
 # activate addons).
-STACK_ENV="$OP_HOME/knowledge/env/stack.env"
+STACK_ENV="$OP_HOME/state/stack.env"
 env_args=()
 if [ -f "$STACK_ENV" ]; then
   env_args=(--env-file "$STACK_ENV")

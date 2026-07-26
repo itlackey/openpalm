@@ -7,7 +7,7 @@ import { defineAction } from '../lib/action.ts';
 import { promptYesNo } from '../lib/prompt.ts';
 import { resolveLatestReleaseTag } from '../lib/github.ts';
 import { DEFAULT_UI_PORT } from '../lib/ports.ts';
-import { resolveOpenPalmHome, resolveConfigDir, ensureHomeDirs, runHomeMigrations } from '@openpalm/lib';
+import { resolveOpenPalmHome, resolveConfigDir, ensureHomeDirs, runHomeMigrations, stackEnvFile } from '@openpalm/lib';
 import { applyHomeSeed, seedUiBuild, uiUpdateChannel } from '@openpalm/lib';
 import {
   backupOpenPalmHome,
@@ -164,9 +164,9 @@ export async function bootstrapInstall(options: InstallOptions): Promise<void> {
   const dataDir = `${homeDir}/data`;
   const workDir = defaultWorkDir();
 
-  // Use knowledge/env/stack.env (always present after a successful install) as the
+  // Use state/stack.env (always present after a successful install) as the
   // canonical "already installed" indicator.
-  const alreadyInstalled = await Bun.file(join(homeDir, 'knowledge', 'env', 'stack.env')).exists();
+  const alreadyInstalled = await Bun.file(stackEnvFile(homeDir)).exists();
   if (alreadyInstalled && !options.force) {
     throw new Error('OpenPalm appears to already be installed. Re-run install with --force to continue.');
   }

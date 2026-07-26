@@ -1,5 +1,11 @@
 # Secrets & Env Layout Migration (manual)
 
+> **Later change:** the `knowledge/env/stack.env` this guide moves you to has since been
+> consolidated into a single `state/stack.env`. `openpalm` performs that move automatically
+> on first run against an older home (OP_HOME schema version 2) — follow this guide as
+> written, then let the tool migrate the result.
+
+
 OpenPalm reorganized where env files and secrets live under `OP_HOME`
 (`~/.openpalm` by default) to align with the akm `env` + `secret` asset model
 and to keep **`config/stack/` free of secrets and env files**. There is **no

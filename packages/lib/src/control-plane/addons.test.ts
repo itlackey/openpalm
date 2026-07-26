@@ -57,7 +57,7 @@ describe('builtin addon metadata', () => {
     const slack = getRegistryAddonConfig('slack');
     const ollama = getRegistryAddonConfig('ollama');
 
-    expect(discord.userEnvPath).toBe('knowledge/env/stack.env');
+    expect(discord.userEnvPath).toBe('state/stack.env');
     expect(discord.envSchema).toContain('DISCORD_BOT_TOKEN');
     expect(discord.envSchema).not.toContain('DISCORD_CUSTOM_COMMANDS');
     expect(slack.envSchema).not.toContain('SLACK_THREAD_TTL_HOURS');
@@ -73,9 +73,8 @@ describe('builtin addon metadata', () => {
 
 describe('addon runtime state', () => {
   it('ignores COMPOSE_PROFILES when resolving enabled addons', () => {
-    const envDir = join(homeDir, 'knowledge', 'env');
-    mkdirSync(envDir, { recursive: true });
-    writeFileSync(join(envDir, 'stack.env'), 'COMPOSE_PROFILES=addon.chat\n');
+    mkdirSync(join(homeDir, 'state'), { recursive: true });
+    writeFileSync(join(homeDir, 'state', 'stack.env'), 'COMPOSE_PROFILES=addon.chat\n');
 
     expect(listEnabledAddonIds(homeDir)).toEqual([]);
   });
@@ -84,9 +83,8 @@ describe('addon runtime state', () => {
     // Plan 2.2: OP_ENABLED_ADDONS is the SOLE source of enablement. A profile
     // var (OP_VOICE_PROFILE) no longer implies enablement at READ time — the
     // one-time migrateProfileOnlyAddonEnablement persists it instead.
-    const envDir = join(homeDir, 'knowledge', 'env');
-    mkdirSync(envDir, { recursive: true });
-    writeFileSync(join(envDir, 'stack.env'), 'OP_VOICE_PROFILE=addon.voice.cuda\n');
+    mkdirSync(join(homeDir, 'state'), { recursive: true });
+    writeFileSync(join(homeDir, 'state', 'stack.env'), 'OP_VOICE_PROFILE=addon.voice.cuda\n');
 
     expect(listEnabledAddonIds(homeDir)).toEqual([]);
   });
@@ -149,26 +147,26 @@ describe('addon runtime state', () => {
     ]);
   });
 
-  it('round-trips addon profile selection, written to state/ not stack.env (constitution §1)', () => {
+  it('round-trips addon profile selection through state/stack.env (constitution §1)', () => {
     const stackDir = join(homeDir, 'system', 'stack');
-    const stackEnv = join(homeDir, 'knowledge', 'env', 'stack.env');
-    const stateEnv = join(homeDir, 'state', 'stack.state.env');
+    const stackEnv = join(homeDir, 'state', 'stack.env');
+    const stateEnv = join(homeDir, 'state', 'stack.env');
     mkdirSync(stackDir, { recursive: true });
     mkdirSync(join(homeDir, 'knowledge', 'env'), { recursive: true });
+    mkdirSync(join(homeDir, 'state'), { recursive: true });
     writeFileSync(stackEnv, '');
 
     expect(getAddonProfileSelection(homeDir, 'voice')).toBeNull();
     setAddonProfileSelection(homeDir, 'voice', 'addon.voice.cuda');
     expect(getAddonProfileSelection(homeDir, 'voice')).toBe('addon.voice.cuda');
-    // App-written addon state lands in state/, and never in the operator-facing stack.env.
+    // App-written addon state lands in the single state/stack.env.
     expect(readFileSync(stateEnv, 'utf-8')).toContain('OP_VOICE_PROFILE=addon.voice.cuda');
-    expect(readFileSync(stackEnv, 'utf-8')).not.toContain('OP_VOICE_PROFILE');
   });
 });
 
 describe('removed-addon state cleanup (R8: stale ssh)', () => {
   function seedStateEnv(contents: string): string {
-    const stateEnv = join(homeDir, 'state', 'stack.state.env');
+    const stateEnv = join(homeDir, 'state', 'stack.env');
     mkdirSync(join(homeDir, 'state'), { recursive: true });
     writeFileSync(stateEnv, contents);
     return stateEnv;
@@ -193,13 +191,10 @@ describe('removed-addon state cleanup (R8: stale ssh)', () => {
     expect(after).not.toContain('OPENCODE_ENABLE_SSH');
   });
 
-  it('strips retired OP_TTS_*/OP_STT_* host voice-config keys from the legacy stack.env', () => {
-    seedStateEnv('OP_ENABLED_ADDONS=voice\n');
-    const legacyEnv = join(homeDir, 'knowledge', 'env', 'stack.env');
-    mkdirSync(join(homeDir, 'knowledge', 'env'), { recursive: true });
-    writeFileSync(
-      legacyEnv,
-      'OP_ASSISTANT_PORT=3800\n\n' +
+  it('strips retired OP_TTS_*/OP_STT_* host voice-config keys from stack.env', () => {
+    const legacyEnv = seedStateEnv(
+      'OP_ENABLED_ADDONS=voice\n' +
+        'OP_ASSISTANT_PORT=3800\n\n' +
         '# ── Voice Channel (TTS/STT) ──────────────────────────────────────────\n' +
         'OP_TTS_ENGINE=openpalm-voice\nOP_TTS_BASE_URL=http://127.0.0.1:8880\nOP_TTS_MODEL=kokoro\nOP_TTS_VOICE=bf_isabella\n' +
         'OP_STT_ENGINE=openpalm-voice\nOP_STT_BASE_URL=http://127.0.0.1:8880\nOP_STT_MODEL=whisper-1\nOP_STT_LANGUAGE=en\n'
@@ -225,7 +220,7 @@ describe('removed-addon state cleanup (R8: stale ssh)', () => {
     seedStateEnv('OP_ENABLED_ADDONS=ssh\nOPENCODE_ENABLE_SSH=1\n');
     expect(pruneRemovedAddonState(homeDir).changed).toBe(true);
 
-    const stateEnv = join(homeDir, 'state', 'stack.state.env');
+    const stateEnv = join(homeDir, 'state', 'stack.env');
     const contentAfterFirst = readFileSync(stateEnv, 'utf-8');
     const second = pruneRemovedAddonState(homeDir);
     expect(second.changed).toBe(false);
@@ -280,9 +275,8 @@ describe('profile-only addon enablement migration (2.2 R2-R8 upgrade guard)', ()
     // never written. With the READ-time reverse-parse now deleted (plan 2.2),
     // such an install would silently LOSE voice on upgrade — until the
     // migration persists the derived id into OP_ENABLED_ADDONS.
-    const envDir = join(homeDir, 'knowledge', 'env');
-    mkdirSync(envDir, { recursive: true });
-    writeFileSync(join(envDir, 'stack.env'), 'OP_VOICE_PROFILE=addon.voice.cuda\n');
+    mkdirSync(join(homeDir, 'state'), { recursive: true });
+    writeFileSync(join(homeDir, 'state', 'stack.env'), 'OP_VOICE_PROFILE=addon.voice.cuda\n');
 
     // Before the migration the addon is NOT enabled (the upgrade hazard).
     expect(listEnabledAddonIds(homeDir)).toEqual([]);
@@ -294,30 +288,28 @@ describe('profile-only addon enablement migration (2.2 R2-R8 upgrade guard)', ()
     // The addon id must now be durably recorded in OP_ENABLED_ADDONS (state/),
     // NOT only derivable via the reverse-parse — so it survives even after the
     // reverse-parse is eventually deleted.
-    const stateEnv = join(homeDir, 'state', 'stack.state.env');
+    const stateEnv = join(homeDir, 'state', 'stack.env');
     expect(readFileSync(stateEnv, 'utf-8')).toContain('OP_ENABLED_ADDONS=voice');
     expect(listEnabledAddonIds(homeDir)).toEqual(['voice']);
   });
 
   it('migrates OP_OLLAMA_PROFILE the same way', () => {
-    const envDir = join(homeDir, 'knowledge', 'env');
-    mkdirSync(envDir, { recursive: true });
-    writeFileSync(join(envDir, 'stack.env'), 'OP_OLLAMA_PROFILE=addon.ollama.cpu\n');
+    mkdirSync(join(homeDir, 'state'), { recursive: true });
+    writeFileSync(join(homeDir, 'state', 'stack.env'), 'OP_OLLAMA_PROFILE=addon.ollama.cpu\n');
 
     const result = migrateProfileOnlyAddonEnablement(homeDir);
     expect(result.changed).toBe(true);
     expect(result.migratedAddons).toEqual(['ollama']);
-    const stateEnv = join(homeDir, 'state', 'stack.state.env');
+    const stateEnv = join(homeDir, 'state', 'stack.env');
     expect(readFileSync(stateEnv, 'utf-8')).toContain('OP_ENABLED_ADDONS=ollama');
   });
 
   it('is idempotent — a second migration pass is a no-op that writes nothing', () => {
-    const envDir = join(homeDir, 'knowledge', 'env');
-    mkdirSync(envDir, { recursive: true });
-    writeFileSync(join(envDir, 'stack.env'), 'OP_VOICE_PROFILE=addon.voice.cpu\n');
+    mkdirSync(join(homeDir, 'state'), { recursive: true });
+    writeFileSync(join(homeDir, 'state', 'stack.env'), 'OP_VOICE_PROFILE=addon.voice.cpu\n');
 
     expect(migrateProfileOnlyAddonEnablement(homeDir).changed).toBe(true);
-    const stateEnv = join(homeDir, 'state', 'stack.state.env');
+    const stateEnv = join(homeDir, 'state', 'stack.env');
     const contentAfterFirst = readFileSync(stateEnv, 'utf-8');
 
     const second = migrateProfileOnlyAddonEnablement(homeDir);
@@ -327,10 +319,9 @@ describe('profile-only addon enablement migration (2.2 R2-R8 upgrade guard)', ()
   });
 
   it('is a no-op when OP_ENABLED_ADDONS already lists the addon', () => {
-    const envDir = join(homeDir, 'knowledge', 'env');
-    mkdirSync(envDir, { recursive: true });
-    writeFileSync(join(envDir, 'stack.env'), 'OP_VOICE_PROFILE=addon.voice.cuda\n');
-    const stateEnv = join(homeDir, 'state', 'stack.state.env');
+    mkdirSync(join(homeDir, 'state'), { recursive: true });
+    writeFileSync(join(homeDir, 'state', 'stack.env'), 'OP_VOICE_PROFILE=addon.voice.cuda\n');
+    const stateEnv = join(homeDir, 'state', 'stack.env');
     mkdirSync(join(homeDir, 'state'), { recursive: true });
     writeFileSync(stateEnv, 'OP_ENABLED_ADDONS=voice\n');
     const before = readFileSync(stateEnv, 'utf-8');

@@ -12,7 +12,7 @@ import {
 import { randomBytes } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { readSecret, updateSecretsEnv, legacyStackEnvFile as stackEnvFor, type ControlPlaneState } from '@openpalm/lib';
+import { readSecret, updateSecretsEnv, stackEnvFile as stackEnvFor, type ControlPlaneState } from '@openpalm/lib';
 import { dirname } from "node:path";
 
 // ── Test helpers ────────────────────────────────────────────────────────

@@ -257,9 +257,9 @@ describe('cli main', () => {
 
     try {
       await main(['install', '--no-start', '--file', specFile]);
-      // state/stack.state.env is the sole pin location (never the legacy
-      // knowledge/env/stack.env).
-      const stateEnv = readFileSync(join(base, 'state', 'stack.state.env'), 'utf-8');
+      // state/stack.env is the sole pin location (never the legacy
+      // state/stack.env).
+      const stateEnv = readFileSync(join(base, 'state', 'stack.env'), 'utf-8');
       expect(stateEnv).toMatch(/^OP_ASSISTANT_VERSION=latest$/m);
       expect(stateEnv).toMatch(/^OP_GUARDIAN_VERSION=latest$/m);
       expect(stateEnv).toMatch(/^OP_PORTAL_VERSION=latest$/m);
@@ -285,9 +285,9 @@ describe('cli main', () => {
       // An explicit --version is honored verbatim. A legacy `v`-prefixed pin is
       // preserved (not stripped) so a pre-0.12.41 `v`-tagged image stays pullable.
       await main(['install', '--no-start', '--version', 'v0.11.0', '--file', specFile]);
-      // state/stack.state.env is the sole pin location (never the legacy
-      // knowledge/env/stack.env).
-      const stateEnv = readFileSync(join(base, 'state', 'stack.state.env'), 'utf-8');
+      // state/stack.env is the sole pin location (never the legacy
+      // state/stack.env).
+      const stateEnv = readFileSync(join(base, 'state', 'stack.env'), 'utf-8');
       expect(stateEnv).toMatch(/^OP_ASSISTANT_VERSION=v0\.11\.0$/m);
       expect(stateEnv).toMatch(/^OP_GUARDIAN_VERSION=v0\.11\.0$/m);
       expect(stateEnv).toMatch(/^OP_PORTAL_VERSION=v0\.11\.0$/m);
@@ -303,14 +303,15 @@ describe('cli main', () => {
     const stackConfig = join(base, 'config', 'stack.yml');
     const specFile = writeMinimalSetupSpec(base);
 
-    // The canonical "already installed" marker is knowledge/env/stack.env.
+    // The canonical "already installed" marker is state/stack.env.
     // Seed it so the backup path triggers AND we can prove the backup
     // carries forward existing content.
     mkdirSync(join(base, 'data'), { recursive: true });
     mkdirSync(join(base, 'system', 'stack'), { recursive: true });
     mkdirSync(join(base, 'config'), { recursive: true });
     mkdirSync(join(base, 'knowledge', 'env'), { recursive: true });
-    writeFileSync(join(base, 'knowledge', 'env', 'stack.env'), 'OP_OWNER_NAME=existing-owner\n');
+    mkdirSync(join(base, 'state'), { recursive: true });
+    writeFileSync(join(base, 'state', 'stack.env'), 'OP_OWNER_NAME=existing-owner\n');
     writeFileSync(stackConfig, 'llm: old\n');
 
     process.env.OP_HOME = base;
@@ -339,7 +340,7 @@ describe('cli main', () => {
       const backups = readdirSync(backupsDir).filter((name) => name !== '.gitkeep');
       expect(backups.length).toBeGreaterThan(0);
       expect(readFileSync(join(backupsDir, backups[0], 'config', 'stack.yml'), 'utf8')).toContain('llm: old');
-      expect(readFileSync(join(backupsDir, backups[0], 'knowledge', 'env', 'stack.env'), 'utf8')).toContain('OP_OWNER_NAME=existing-owner');
+      expect(readFileSync(join(backupsDir, backups[0], 'state', 'stack.env'), 'utf8')).toContain('OP_OWNER_NAME=existing-owner');
     } finally {
       rmSync(base, { recursive: true, force: true });
     }
@@ -376,7 +377,7 @@ describe('cli main', () => {
 
     try {
       await main(['install', '--no-start', '--file', specFile]);
-      const stackEnv = readFileSync(join(base, 'knowledge', 'env', 'stack.env'), 'utf-8');
+      const stackEnv = readFileSync(join(base, 'state', 'stack.env'), 'utf-8');
       expect(stackEnv).toContain('OP_PROJECT_NAME=openpalm-test-install');
       expect(stackEnv).toContain('OP_ASSISTANT_PORT=4802');
       expect(stackEnv).toContain('OP_UI_PORT=4801');
@@ -451,7 +452,7 @@ describe('cli main', () => {
 
     try {
       // OP_ENABLED_ADDONS is app-written addon state → state/ (constitution §1).
-      const stateEnv = () => readFileSync(join(base, 'state', 'stack.state.env'), 'utf-8');
+      const stateEnv = () => readFileSync(join(base, 'state', 'stack.env'), 'utf-8');
       await main(['addon', 'enable', 'discord']);
       expect(stateEnv()).toContain('OP_ENABLED_ADDONS=discord');
       expect(readSecret(base, 'portal_discord_secret')).toBeTruthy();
@@ -546,12 +547,12 @@ describe('validate command', () => {
   it('is a recognized command and exits 0 when file-based required secrets exist', async () => {
     const tempHome = mkdtempSync(join(tmpdir(), 'openpalm-test-'));
     const stackDir = join(tempHome, 'system', 'stack');
-    const envDir = join(tempHome, 'knowledge', 'env');
+    const stateDir = join(tempHome, 'state');
     const secretDir = join(tempHome, 'knowledge', 'secrets');
     mkdirSync(stackDir, { recursive: true });
-    mkdirSync(envDir, { recursive: true });
+    mkdirSync(stateDir, { recursive: true });
     mkdirSync(secretDir, { recursive: true, mode: 0o700 });
-    writeFileSync(join(envDir, 'stack.env'), 'OP_SETUP_COMPLETE=true\n');
+    writeFileSync(join(stateDir, 'stack.env'), 'OP_SETUP_COMPLETE=true\n');
     writeFileSync(join(secretDir, 'op_ui_login_password'), 'abc\n', { mode: 0o600 });
 
     const originalHome = process.env.OP_HOME;

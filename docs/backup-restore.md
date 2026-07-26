@@ -40,7 +40,7 @@ docker compose \
   -f core.compose.yml \
   -f portals.compose.yml \
   --profile addon.chat \
-  --env-file ../../knowledge/env/stack.env \
+  --env-file ../../state/stack.env \
   down
 ```
 
@@ -86,7 +86,7 @@ docker compose \
   -f core.compose.yml \
   -f portals.compose.yml \
   --profile addon.chat \
-  --env-file ../../knowledge/env/stack.env \
+  --env-file ../../state/stack.env \
   up -d
 ```
 
@@ -116,7 +116,7 @@ the current model.
 | File or directory | Purpose |
 |---|---|
 | `~/.openpalm/knowledge/env/user.env` | AKM env backing file for user-managed secrets |
-| `~/.openpalm/knowledge/env/stack.env` | Non-secret ports, paths, image tags, hardware profile selections |
+| `~/.openpalm/state/stack.env` | Non-secret ports, paths, image tags, hardware profile selections |
 | `~/.openpalm/knowledge/secrets/` | System-managed service secret files |
 | `~/.openpalm/config/stack/core.compose.yml` | Base stack definition |
 | `~/.openpalm/config/stack/services.compose.yml` | First-party optional services |

@@ -54,7 +54,7 @@ function seedEnabledAddons(homeDir: string, csv: string): void {
 
 function readStackEnvFile(homeDir: string): string {
   // OP_ENABLED_ADDONS is app-written addon state → state/ (constitution §1).
-  const p = join(homeDir, 'state', 'stack.state.env');
+  const p = join(homeDir, 'state', 'stack.env');
   return existsSync(p) ? readFileSync(p, 'utf-8') : '';
 }
 
@@ -98,7 +98,7 @@ describe('/api/host/addons/:name route', () => {
     expect(body.name).toBe('discord');
     expect(body.enabled).toBe(true);
     expect(body.config.schemaPath).toBe(''); // built-in (in-code) schema, no materialized file
-    expect(body.config.userEnvPath).toBe('knowledge/env/stack.env');
+    expect(body.config.userEnvPath).toBe('state/stack.env');
     expect(body.config.envSchema).toContain('DISCORD_BOT_TOKEN');
   });
 

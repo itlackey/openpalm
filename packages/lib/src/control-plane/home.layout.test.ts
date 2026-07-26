@@ -12,9 +12,9 @@ import {
   resolveSystemDir,
   resolveStateDir,
   composeFilePath,
-  stateEnvFile,
+  stackEnvFile,
   hostIdentityFile,
-  legacyStackEnvFile,
+  stackEnvFile,
   userEnvFile,
   secretsDir,
   authJsonFile,
@@ -25,9 +25,9 @@ const H = "/op/home";
 
 describe("OP_HOME layout (single source of truth)", () => {
   test("well-known files derive from the home root, defined once", () => {
-    expect(stateEnvFile(H)).toBe("/op/home/state/stack.state.env");
+    expect(stackEnvFile(H)).toBe("/op/home/state/stack.env");
     expect(hostIdentityFile(H)).toBe("/op/home/state/host-identity.json");
-    expect(legacyStackEnvFile(H)).toBe("/op/home/knowledge/env/stack.env");
+    expect(stackEnvFile(H)).toBe("/op/home/state/stack.env");
     expect(userEnvFile(H)).toBe("/op/home/knowledge/env/user.env");
     expect(secretsDir(H)).toBe("/op/home/knowledge/secrets");
     expect(authJsonFile(H)).toBe("/op/home/knowledge/secrets/auth.json");

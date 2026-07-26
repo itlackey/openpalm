@@ -389,8 +389,8 @@ export async function performSetup(
       // to an old release kept deploying a months-old image. Each image now has
       // its own OP_*_VERSION var (no single OP_IMAGE_TAG cascade); the Advanced
       // field pins all four to the same tag.
-      // state/stack.state.env is the SOLE pin location (never the legacy
-      // knowledge/env/stack.env) — writeVersions() writes there exclusively.
+      // state/stack.env is the SOLE pin location (never the legacy
+      // — writeVersions() writes there exclusively.
       const akmUpdates: Record<string, string> = {};
       const requestedTag = imageTag?.trim() ? imageTag.trim() : "latest";
       for (const key of SERVICE_VERSION_KEYS) {

@@ -70,7 +70,7 @@ describe('ui runtime config', () => {
       mkdirSync(join(home, 'system', 'stack'), { recursive: true });
       writeFileSync(join(home, 'system', 'stack', 'core.compose.yml'), 'services: {}\n');
       mkdirSync(join(home, 'state'), { recursive: true });
-      writeFileSync(join(home, 'state', 'stack.state.env'), 'OP_SETUP_COMPLETE=true\n');
+      writeFileSync(join(home, 'state', 'stack.env'), 'OP_SETUP_COMPLETE=true\n');
 
       expect(buildServedUiRuntimeConfig(home, { OP_PROJECT_NAME: 'splinter' }))
         .toEqual(buildLockedAssistantRuntimeConfig('/oc', 'splinter'));
@@ -159,7 +159,7 @@ describe('ui runtime config', () => {
       mkdirSync(join(dir, 'system', 'stack'), { recursive: true });
       writeFileSync(join(dir, 'system', 'stack', 'core.compose.yml'), 'services: {}\n');
       mkdirSync(join(dir, 'state'), { recursive: true });
-      writeFileSync(join(dir, 'state', 'stack.state.env'), 'OP_SETUP_COMPLETE=true\n');
+      writeFileSync(join(dir, 'state', 'stack.env'), 'OP_SETUP_COMPLETE=true\n');
       expect(uiBuildSupportsProcessRuntimeConfig(dir)).toBe(false);
       seedLegacyServedUiRuntimeConfig(dir, dir, {
         OP_UI_DEFAULT_ASSISTANT_URL: 'https://assistant.example',

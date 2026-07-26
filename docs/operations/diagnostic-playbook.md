@@ -141,7 +141,7 @@ confusing cases, check the admin (host) process environment or logs:
 ```bash
 # Look for the openpalm process and its config
 ps aux | grep "openpalm"
-cat ~/.openpalm/knowledge/env/stack.env | grep -E "OP_OPENCODE|OPENCODE_PORT"
+cat ~/.openpalm/state/stack.env | grep -E "OP_OPENCODE|OPENCODE_PORT"
 ```
 
 Read these files if the behavior does not match the docs:

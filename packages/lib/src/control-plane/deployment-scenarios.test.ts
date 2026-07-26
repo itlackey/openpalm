@@ -64,8 +64,10 @@ function buildOpHome(opts: OpHomeOptions = {}): OpHome {
   const configDir = join(homeDir, "config");
   const stackDir = join(homeDir, "system", "stack"); // managed compose tree (was config/stack)
   const envDir = join(homeDir, "knowledge", "env");
+  const stateDir = join(homeDir, "state");
   mkdirSync(stackDir, { recursive: true });
   mkdirSync(envDir, { recursive: true });
+  mkdirSync(stateDir, { recursive: true });
   mkdirSync(join(homeDir, "data"), { recursive: true });
 
   if (opts.legacy010) {
@@ -83,14 +85,14 @@ function buildOpHome(opts: OpHomeOptions = {}): OpHome {
     writeFileSync(join(stackDir, "core.compose.yml"), opts.staleCoreCompose);
   }
 
-  // stack.env (the 0.11 location).
+  // The single stack env file.
   const lines: string[] = [];
   if (opts.setupComplete) lines.push("OP_SETUP_COMPLETE=true");
   if (opts.imageTag) lines.push(`OP_ASSISTANT_VERSION=${opts.imageTag}`);
   if (opts.enabledAddons) lines.push(`OP_ENABLED_ADDONS=${opts.enabledAddons}`);
   for (const [k, v] of Object.entries(opts.extraStackEnv ?? {})) lines.push(`${k}=${v}`);
   if (lines.length > 0 || !opts.legacy010) {
-    writeFileSync(join(envDir, "stack.env"), lines.join("\n") + (lines.length ? "\n" : ""));
+    writeFileSync(join(stateDir, "stack.env"), lines.join("\n") + (lines.length ? "\n" : ""));
   }
 
   const state: ControlPlaneState = {
@@ -131,7 +133,7 @@ afterEach(() => {
 describe("scenario: stale OP_ASSISTANT_VERSION pin", () => {
   it("reconciles a stale pin (v0.10.9) to the requested tag, dropping the old deploy", () => {
     active = buildOpHome({ setupComplete: true, imageTag: "v0.10.9" });
-    const envPath = join(active.homeDir, "knowledge", "env", "stack.env");
+    const envPath = join(active.homeDir, "state", "stack.env");
     const reconciled = upsertEnvValue(readFileSync(envPath, "utf-8"), "OP_ASSISTANT_VERSION", "latest");
     expect(reconciled).toContain("OP_ASSISTANT_VERSION=latest");
     expect(reconciled).not.toContain("OP_ASSISTANT_VERSION=v0.10.9");

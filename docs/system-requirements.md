@@ -109,7 +109,7 @@ Approximate storage use:
 ### Default inbound ports
 
 OpenPalm is localhost/LAN-first by default. Most services bind to `127.0.0.1`
-unless you intentionally change bind addresses in `knowledge/env/stack.env`.
+unless you intentionally change bind addresses in `state/stack.env`.
 
 | Host port | Service | Variable |
 |---|---|---|
@@ -128,5 +128,5 @@ unless you intentionally change bind addresses in `knowledge/env/stack.env`.
 
 The compose file set under `~/.openpalm/config/stack/` is the live deployment truth.
 OpenPalm derives first-party addon profiles from `OP_ENABLED_ADDONS` in
-`~/.openpalm/knowledge/env/stack.env`, but Docker itself still only sees the
+`~/.openpalm/state/stack.env`, but Docker itself still only sees the
 compose files and explicit `--profile` arguments.

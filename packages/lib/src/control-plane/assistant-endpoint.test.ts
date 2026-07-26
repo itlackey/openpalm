@@ -18,11 +18,12 @@ function makeHome(): string {
   const home = mkdtempSync(join(tmpdir(), 'openpalm-assistant-endpoint-'));
   mkdirSync(join(home, 'knowledge', 'env'), { recursive: true });
   mkdirSync(join(home, 'state'), { recursive: true });
+  mkdirSync(join(home, 'state'), { recursive: true });
   return home;
 }
 
 function writeStackEnv(home: string, content: string): void {
-  writeFileSync(join(home, 'knowledge', 'env', 'stack.env'), content);
+  writeFileSync(join(home, 'state', 'stack.env'), content);
 }
 
 let home: string;

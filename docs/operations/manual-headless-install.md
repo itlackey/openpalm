@@ -95,7 +95,7 @@ treated the same as `{}`.
 
 ### 3. The `OP_SETUP_COMPLETE` stamp
 
-`markSetupComplete()` writes one line to `state/stack.state.env`:
+`markSetupComplete()` writes one line to `state/stack.env`:
 
 ```
 OP_SETUP_COMPLETE=true
@@ -219,7 +219,7 @@ Docker daemon to bring services up.
 
 When scripting an isolated install, set runtime overrides in the install shell.
 The CLI now persists the following non-secret overrides into
-`knowledge/env/stack.env` so a later `openpalm start` reuses the same isolated
+`state/stack.env` so a later `openpalm start` reuses the same isolated
 project and port layout automatically:
 
 - `OP_PROJECT_NAME`

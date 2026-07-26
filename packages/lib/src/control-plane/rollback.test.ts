@@ -43,13 +43,15 @@ describe("rollback snapshot/restore (0.3 — state env + non-destructive restore
     process.env.OP_HOME = home;
 
     mkdirSync(join(home, "knowledge", "env"), { recursive: true });
+
+    mkdirSync(join(home, "state"), { recursive: true });
     mkdirSync(join(home, "knowledge", "secrets"), { recursive: true });
     mkdirSync(join(home, "state"), { recursive: true });
     mkdirSync(join(home, "config", "stack"), { recursive: true });
     mkdirSync(join(home, "system", "stack"), { recursive: true });
 
-    writeFileSync(join(home, "knowledge", "env", "stack.env"), "OP_IMAGE_NAMESPACE=openpalm\n");
-    writeFileSync(join(home, "state", "stack.state.env"), "OP_ENABLED_ADDONS=discord\n");
+    writeFileSync(join(home, "state", "stack.env"), "OP_IMAGE_NAMESPACE=openpalm\n");
+    writeFileSync(join(home, "state", "stack.env"), "OP_ENABLED_ADDONS=discord\n");
     writeFileSync(join(home, "config", "stack", "custom.compose.yml"), "services: {}\n");
     writeFileSync(join(home, "system", "stack", "services.compose.yml"), "services: {core: {}}\n");
     writeFileSync(join(home, "system", "stack", "portals.compose.yml"), "services: {}\n");
@@ -65,21 +67,21 @@ describe("rollback snapshot/restore (0.3 — state env + non-destructive restore
     else process.env.OP_HOME = previousOpHome;
   });
 
-  test("snapshotCurrentState captures state/stack.state.env (the file that wins the compose merge)", () => {
+  test("snapshotCurrentState captures state/stack.env (the file that wins the compose merge)", () => {
     snapshotCurrentState(state);
     const rollbackDir = join(home, "data", "rollback");
-    const snapshotted = join(rollbackDir, "state", "stack.state.env");
+    const snapshotted = join(rollbackDir, "state", "stack.env");
     expect(existsSync(snapshotted)).toBe(true);
     expect(readFileSync(snapshotted, "utf-8")).toContain("discord");
   });
 
-  test("restoreSnapshot restores state/stack.state.env", () => {
+  test("restoreSnapshot restores state/stack.env", () => {
     snapshotCurrentState(state);
-    writeFileSync(join(home, "state", "stack.state.env"), "OP_ENABLED_ADDONS=slack\n");
+    writeFileSync(join(home, "state", "stack.env"), "OP_ENABLED_ADDONS=slack\n");
 
     restoreSnapshot(state);
 
-    expect(readFileSync(join(home, "state", "stack.state.env"), "utf-8")).toContain("discord");
+    expect(readFileSync(join(home, "state", "stack.env"), "utf-8")).toContain("discord");
   });
 
   test("restoreSnapshot does NOT restore auth.json (drop it from restore; keep the live copy)", () => {
@@ -93,8 +95,7 @@ describe("rollback snapshot/restore (0.3 — state env + non-destructive restore
 
   test("restoreSnapshot backs up the live files it is about to overwrite before touching them", () => {
     snapshotCurrentState(state);
-    writeFileSync(join(home, "state", "stack.state.env"), "OP_ENABLED_ADDONS=slack\n");
-    writeFileSync(join(home, "knowledge", "env", "stack.env"), "OP_IMAGE_NAMESPACE=custom\n");
+    writeFileSync(join(home, "state", "stack.env"), "OP_ENABLED_ADDONS=slack\nOP_IMAGE_NAMESPACE=custom\n");
 
     restoreSnapshot(state);
 
@@ -105,8 +106,8 @@ describe("rollback snapshot/restore (0.3 — state env + non-destructive restore
     expect(preRollbackDirs.length).toBe(1);
 
     const backupDir = join(backupsDir, preRollbackDirs.at(0) ?? "");
-    expect(readFileSync(join(backupDir, "state", "stack.state.env"), "utf-8")).toContain("slack");
-    expect(readFileSync(join(backupDir, "knowledge", "env", "stack.env"), "utf-8")).toContain("custom");
+    expect(readFileSync(join(backupDir, "state", "stack.env"), "utf-8")).toContain("slack");
+    expect(readFileSync(join(backupDir, "state", "stack.env"), "utf-8")).toContain("custom");
   });
 
   test("a torn (interrupted) snapshot reads as absent rather than a stale, inconsistent snapshot", () => {

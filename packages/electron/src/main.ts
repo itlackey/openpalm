@@ -192,7 +192,7 @@ export function resolveAssistantUrl(homeDir: string): string {
  * Exported as a pure function so tests can verify it without spawning anything.
  */
 export function buildUIServerEnv(homeDir: string, port: number, update?: UpdateInfo | null): NodeJS.ProcessEnv {
-  // Operator-managed stack config (knowledge/env/stack.env) holds settings the
+  // Operator-managed stack config (state/stack.env) holds settings the
   // host UI server's own routes read from process.env — e.g. OP_VOICE_PORT_HOST,
   // which the /voice pass-through and the voice bring-up use to find the local
   // voice container. Merge stack.env BUT skip the per-unit

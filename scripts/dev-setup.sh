@@ -9,10 +9,10 @@ Creates local .dev directories and seeds dev config files.
 
 Options:
   --seed-env          Seed .dev/knowledge/env/user.env for akm env:user, generate
-                      .dev/knowledge/env/stack.env with auto-detected values, and
+                      .dev/state/stack.env with auto-detected values, and
                       write system secrets under .dev/knowledge/secrets/.
   --force             Overwrite seeded files even if they already exist.
-  --enable-addon <n>  Add <n> to OP_ENABLED_ADDONS in knowledge/env/stack.env. Repeat to enable multiple dev addons.
+  --enable-addon <n>  Add <n> to OP_ENABLED_ADDONS in state/stack.env. Repeat to enable multiple dev addons.
   --rebuild-voice     Force a rebuild of openpalm/voice:dev-cpu (~5-15 min cold,
                       seconds on a warm cache). Default: build only when missing.
   --skip-voice-build  Skip the openpalm/voice:dev-cpu build entirely. Enabling
@@ -133,7 +133,7 @@ rsync "${rsync_flags[@]}" \
 	--exclude=/package.json \
 	--exclude=/tools.json \
 	--exclude=/README.md \
-	--exclude=knowledge/env/stack.env \
+	--exclude=state/stack.env \
 	--exclude=knowledge/secrets \
 	--exclude=knowledge/secrets/auth.json \
 	--exclude=knowledge/env/user.env \

@@ -357,7 +357,7 @@
       {:else if (credFields[aid]?.length ?? 0) === 0}
         <p class="creds-empty">This addon has no configurable env vars (compose overlay only).</p>
       {:else}
-        <p class="creds-hint">Values are written to <code>knowledge/env/stack.env</code> and read by the addon container on next recreate.</p>
+        <p class="creds-hint">Values are written to <code>state/stack.env</code> and read by the addon container on next recreate.</p>
         {#each credFields[aid] ?? [] as field (field.key)}
           <div class="creds-row">
             <label class="creds-label" for="cred-{aid}-{field.key}">

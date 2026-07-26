@@ -37,7 +37,7 @@ Lifecycle backups live under `~/.openpalm/data/backups/`; rollback snapshots liv
 
 The standard startup path uses:
 
-- `knowledge/env/stack.env` — non-secret Compose substitution values: paths, ports, image tags, profiles, feature flags
+- `state/stack.env` — non-secret Compose substitution values: paths, ports, image tags, profiles, feature flags
 - `knowledge/secrets/` — system-managed secret files granted to services through Compose `secrets:` and exposed as `*_FILE` variables
 - `knowledge/env/user.env` — AKM env backing file for user-managed secrets; not a Compose env file
 
@@ -291,7 +291,7 @@ Addon compose files use `openpalm.*` Docker labels for discovery and UI metadata
 - `openpalm.category` (optional) — `messaging`, `ai`, `integration`, `management`
 - `openpalm.healthcheck` (optional) — internal health check URL
 
-The admin UI reads first-party addon metadata from the fixed compose files under `config/stack/` and active first-party state from `knowledge/env/stack.env` (`OP_ENABLED_ADDONS`); runtime Compose uses those fixed files plus profiles derived from addon state, not Docker labels alone.
+The admin UI reads first-party addon metadata from the fixed compose files under `config/stack/` and active first-party state from `state/stack.env` (`OP_ENABLED_ADDONS`); runtime Compose uses those fixed files plus profiles derived from addon state, not Docker labels alone.
 
 ---
 

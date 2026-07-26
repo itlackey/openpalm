@@ -132,8 +132,9 @@ function createFullDirTree(): void {
 function seedMinimalEnvFiles(): void {
   mkdirSync(stackDir, { recursive: true });
 
+  mkdirSync(join(homeDir, "state"), { recursive: true });
   writeFileSync(
-    join(homeDir, "knowledge", "env", "stack.env"),
+    join(homeDir, "state", "stack.env"),
     [
       "# OpenPalm — Stack Configuration",
       "OPENAI_BASE_URL=",
@@ -179,7 +180,7 @@ describe("Fresh Install", () => {
     ensureSecrets(state);
 
     // stack.env only carries non-secret setup/config keys.
-    const stackContent = readFileSync(join(homeDir, "knowledge", "env", "stack.env"), "utf-8");
+    const stackContent = readFileSync(join(homeDir, "state", "stack.env"), "utf-8");
     expect(stackContent).not.toContain("OPENAI_API_KEY=");
     expect(stackContent).toContain("OP_SETUP_COMPLETE=false");
     expect(readSecret(homeDir, 'op_ui_login_password')).toBeNull();
@@ -188,8 +189,9 @@ describe("Fresh Install", () => {
   // Scenario 2: isSetupComplete returns false before setup
   it("isSetupComplete returns false when stack.env has OP_SETUP_COMPLETE=false", () => {
     mkdirSync(dataDir, { recursive: true });
+    mkdirSync(join(homeDir, "state"), { recursive: true });
     writeFileSync(
-      join(homeDir, "knowledge", "env", "stack.env"),
+      join(homeDir, "state", "stack.env"),
       "OP_SETUP_COMPLETE=false\n"
     );
 
@@ -218,27 +220,29 @@ describe("Fresh Install", () => {
 
     await performSetup(makeValidSpec());
 
-    const stackEnv = readFileSync(join(homeDir, "knowledge", "env", "stack.env"), "utf-8");
+    const stackEnv = readFileSync(join(homeDir, "state", "stack.env"), "utf-8");
     const parsed = parseEnvContent(stackEnv);
     // Either entirely absent, or still the seeded "false" — never "true".
     expect(parsed.OP_SETUP_COMPLETE === undefined || parsed.OP_SETUP_COMPLETE === "false").toBe(true);
   });
 
   // Scenario 5: markSetupComplete writes the flag to state/ (constitution §1),
-  // never into the operator-facing knowledge/env/stack.env, and isSetupComplete
+  // never into the operator-facing state/stack.env, and isSetupComplete
   // reads it back via the state-over-legacy merge.
-  it("markSetupComplete writes OP_SETUP_COMPLETE to state/, not stack.env", () => {
+  it("markSetupComplete records OP_SETUP_COMPLETE in state/stack.env", () => {
     mkdirSync(dataDir, { recursive: true });
-    writeFileSync(join(homeDir, "knowledge", "env", "stack.env"), "OP_SETUP_COMPLETE=false\n");
+    mkdirSync(join(homeDir, "state"), { recursive: true });
+    writeFileSync(join(homeDir, "state", "stack.env"), "OP_SETUP_COMPLETE=false\n");
     expect(isSetupComplete(homeDir)).toBe(false);
 
     markSetupComplete({ homeDir } as unknown as ControlPlaneState);
 
     expect(isSetupComplete(homeDir)).toBe(true);
-    const stateEnv = readFileSync(join(homeDir, "state", "stack.state.env"), "utf-8");
+    const stateEnv = readFileSync(join(homeDir, "state", "stack.env"), "utf-8");
     expect(stateEnv).toContain("OP_SETUP_COMPLETE=true");
-    // The operator-facing stack.env keeps its seeded "false" — state wins on read.
-    expect(readFileSync(join(homeDir, "knowledge", "env", "stack.env"), "utf-8")).toContain("OP_SETUP_COMPLETE=false");
+    // Updated in place — the seeded "false" is replaced, not shadowed by a
+    // second file whose precedence every reader had to reproduce.
+    expect(stateEnv).not.toContain("OP_SETUP_COMPLETE=false");
   });
 });
 
@@ -261,7 +265,8 @@ describe("Existing Install", () => {
   // Scenario 5: ensureSecrets creates file-based secrets without stack.env tokens
   it("ensureSecrets creates file-based system secrets", () => {
     mkdirSync(dataDir, { recursive: true });
-    writeFileSync(join(homeDir, "knowledge", "env", "stack.env"), "OP_SETUP_COMPLETE=false\n");
+    mkdirSync(join(homeDir, "state"), { recursive: true });
+    writeFileSync(join(homeDir, "state", "stack.env"), "OP_SETUP_COMPLETE=false\n");
 
     const state: ControlPlaneState = {
       homeDir,
@@ -277,7 +282,7 @@ describe("Existing Install", () => {
 
     ensureSecrets(state);
 
-    const afterContent = readFileSync(join(homeDir, "knowledge", "env", "stack.env"), "utf-8");
+    const afterContent = readFileSync(join(homeDir, "state", "stack.env"), "utf-8");
     expect(afterContent).not.toContain("OP_UI_LOGIN_PASSWORD=");
     expect(readSecret(homeDir, 'op_ui_login_password')).toBeNull();
   });
@@ -287,7 +292,8 @@ describe("Existing Install", () => {
   // admin/mcp tokens) so the shipped edge is authenticated, not fail-closed-empty.
   it("ensureSecrets seeds a non-empty op_api_key for the OpenAI-compatible edge", () => {
     mkdirSync(dataDir, { recursive: true });
-    writeFileSync(join(homeDir, "knowledge", "env", "stack.env"), "OP_SETUP_COMPLETE=false\n");
+    mkdirSync(join(homeDir, "state"), { recursive: true });
+    writeFileSync(join(homeDir, "state", "stack.env"), "OP_SETUP_COMPLETE=false\n");
 
     const state: ControlPlaneState = {
       homeDir,
@@ -329,7 +335,7 @@ describe("Existing Install", () => {
     await performSetup(makeValidSpec());
 
     const stackEnv = readFileSync(
-      join(homeDir, "knowledge", "env", "stack.env"),
+      join(homeDir, "state", "stack.env"),
       "utf-8"
     );
     const parsed = parseEnvContent(stackEnv);
@@ -381,7 +387,8 @@ describe("Broken/Corrupt State", () => {
   // Scenario 9: ensureSecrets is idempotent on repeated calls
   it("ensureSecrets is idempotent — second call does not overwrite existing stack.env", () => {
     mkdirSync(dataDir, { recursive: true });
-    writeFileSync(join(homeDir, "knowledge", "env", "stack.env"), "OP_SETUP_COMPLETE=false\n");
+    mkdirSync(join(homeDir, "state"), { recursive: true });
+    writeFileSync(join(homeDir, "state", "stack.env"), "OP_SETUP_COMPLETE=false\n");
 
     const state: ControlPlaneState = {
       homeDir,
@@ -398,7 +405,7 @@ describe("Broken/Corrupt State", () => {
     ensureSecrets(state);
 
     // Existing non-secret stack config must be preserved.
-    const content = readFileSync(join(homeDir, "knowledge", "env", "stack.env"), "utf-8");
+    const content = readFileSync(join(homeDir, "state", "stack.env"), "utf-8");
     expect(content).toContain("OP_SETUP_COMPLETE=false");
     expect(content).not.toContain("OP_UI_LOGIN_PASSWORD=");
   });
@@ -430,8 +437,9 @@ describe("Broken/Corrupt State", () => {
   it("isSetupComplete falls back to token check when OP_SETUP_COMPLETE missing", () => {
     // stack.env without OP_SETUP_COMPLETE
     mkdirSync(dataDir, { recursive: true });
+    mkdirSync(join(homeDir, "state"), { recursive: true });
     writeFileSync(
-      join(homeDir, "knowledge", "env", "stack.env"),
+      join(homeDir, "state", "stack.env"),
       "OP_IMAGE_TAG=latest\n"
     );
 
@@ -440,8 +448,9 @@ describe("Broken/Corrupt State", () => {
 
   it("isSetupComplete returns false when OP_UI_LOGIN_PASSWORD is set but OP_SETUP_COMPLETE is missing", () => {
     mkdirSync(dataDir, { recursive: true });
+    mkdirSync(join(homeDir, "state"), { recursive: true });
     writeFileSync(
-      join(homeDir, "knowledge", "env", "stack.env"),
+      join(homeDir, "state", "stack.env"),
       "OP_IMAGE_TAG=latest\nexport OP_UI_LOGIN_PASSWORD=my-real-password\n"
     );
 
@@ -557,8 +566,9 @@ describe("Environment Edge Cases", () => {
   // Scenario 16: isSetupComplete requires explicit OP_SETUP_COMPLETE=true
   it("isSetupComplete returns false when only OP_UI_LOGIN_PASSWORD is set", () => {
     mkdirSync(dataDir, { recursive: true });
+    mkdirSync(join(homeDir, "state"), { recursive: true });
     writeFileSync(
-      join(homeDir, "knowledge", "env", "stack.env"),
+      join(homeDir, "state", "stack.env"),
       "SOME_OTHER_KEY=value\nexport OP_UI_LOGIN_PASSWORD=real-password-here\n"
     );
 
