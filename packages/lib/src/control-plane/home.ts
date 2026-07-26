@@ -113,6 +113,19 @@ export function homeSchemaVersionFile(home: string): string {
 }
 
 /**
+ * Does this home carry a stack env file in ANY layout this project has used?
+ *
+ * The one predicate for "there is something here already": the migration gate
+ * uses it to tell an unmigrated install from an absent one, and `openpalm
+ * install` uses it so a pre-consolidation home is never mistaken for a fresh
+ * machine (which would skip the --force backup confirmation). Keeping it here
+ * means consumers never need the superseded path helpers.
+ */
+export function hasAnyStackEnvFile(home: string): boolean {
+  return [stackEnvFile(home), legacyStateEnvFile(home), legacyKnowledgeStackEnvFile(home)].some(existsSync);
+}
+
+/**
  * Current OP_HOME layout schema version.
  *
  * The version record lives here rather than beside the migration list because
@@ -145,8 +158,7 @@ export function writeHomeSchemaVersion(home: string, version: number): void {
  */
 export function initHomeSchema(home: string): void {
   if (existsSync(homeSchemaVersionFile(home))) return;
-  const anyStackEnv = [stackEnvFile(home), legacyStateEnvFile(home), legacyKnowledgeStackEnvFile(home)];
-  if (anyStackEnv.some(existsSync)) return;
+  if (hasAnyStackEnvFile(home)) return;
   writeHomeSchemaVersion(home, HOME_SCHEMA_VERSION);
 }
 /** Pre-split operator env, from when stack config lived in the knowledge tree. */

@@ -94,6 +94,7 @@ export {
   resolveLogsDir,
   ensureHomeDirs,
   homeSchemaVersionFile,
+  hasAnyStackEnvFile,
   HOME_SCHEMA_VERSION,
   readHomeSchemaVersion,
   initHomeSchema,

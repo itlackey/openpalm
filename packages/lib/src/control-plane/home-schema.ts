@@ -22,6 +22,7 @@
 import { existsSync, readFileSync, rmSync } from 'node:fs';
 import {
   HOME_SCHEMA_VERSION,
+  hasAnyStackEnvFile,
   legacyKnowledgeStackEnvFile,
   legacyStateEnvFile,
   readHomeSchemaVersion,
@@ -122,6 +123,12 @@ const MIGRATIONS: { since: number; run: (homeDir: string) => boolean }[] = [
 export function runHomeMigrations(homeDir: string): boolean {
   const recorded = readHomeSchemaVersion(homeDir);
   if (recorded >= HOME_SCHEMA_VERSION) return false;
+
+  // Nothing recorded and no stack env in any location this layout has used:
+  // that is an absent install, not an unmigrated one. Stamping it here would
+  // materialize state/ under a home the operator never created — `ensureHomeDirs`
+  // stamps it if and when it is genuinely created.
+  if (!hasAnyStackEnvFile(homeDir)) return false;
 
   let changed = false;
   for (const migration of MIGRATIONS) {

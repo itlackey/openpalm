@@ -42,8 +42,13 @@ export default tool({
   async execute(args) {
     const home = opHome();
     const files: Record<string, string> = {
-      // Non-secret system env lives under knowledge/env/ (NOT config/stack/).
-      stack: join(home, "knowledge", "env", "stack.env"),
+      // Non-secret stack env: OP_HOME/state/stack.env, the single Compose
+      // --env-file. Deliberately duplicated rather than imported from
+      // @openpalm/lib `stackEnvFile`: this plugin is bundled standalone
+      // (`bun build --bundle`) with only @opencode-ai/plugin, so importing the
+      // resolver would inline the whole control plane into the plugin. Keep in
+      // step with home.ts if the location moves again.
+      stack: join(home, "state", "stack.env"),
     };
     const targets = args.file === "all" ? ["stack", "secrets"] : [args.file];
     const result: Record<string, { exists: boolean; keys: string[] }> = {};

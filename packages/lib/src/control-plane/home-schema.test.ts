@@ -51,6 +51,16 @@ describe('a fresh home runs no legacy migrations', () => {
   });
 });
 
+describe('an absent install is left alone', () => {
+  test('a home with no stack env in any location is not migrated and not stamped', () => {
+    // Read-only commands migrate before reading state, so this runs against
+    // machines that have no install at all. It must not materialize state/.
+    expect(runHomeMigrations(homeDir)).toBe(false);
+    expect(existsSync(homeSchemaVersionFile(homeDir))).toBe(false);
+    expect(existsSync(stackEnvFile(homeDir))).toBe(false);
+  });
+});
+
 describe('an existing home migrates exactly once', () => {
   test('an unstamped legacy home is migrated, then recorded as current', () => {
     seedLegacyHome();
