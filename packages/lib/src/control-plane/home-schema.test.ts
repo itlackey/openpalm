@@ -118,6 +118,29 @@ describe('an existing home migrates exactly once', () => {
     expect(merged).toContain('OP_GUARDIAN_VERSION=0.13.0');
   });
 
+  test('a bootstrap stub at the target never overrides the operator real state', () => {
+    // ensureSystemSecrets writes state/stack.env with OP_SETUP_COMPLETE=false
+    // whenever the file is absent — which, on a pre-consolidation home, is
+    // every time. If that stub wins the merge, a fully-installed operator is
+    // told setup never completed and gets sent back to the wizard.
+    mkdirSync(join(homeDir, 'knowledge', 'env'), { recursive: true });
+    mkdirSync(join(homeDir, 'state'), { recursive: true });
+    writeFileSync(legacyKnowledgeStackEnvFile(homeDir), 'OP_OWNER_NAME=alice\n');
+    writeFileSync(legacyStateEnvFile(homeDir), 'OP_SETUP_COMPLETE=true\nOP_ENABLED_ADDONS=slack\n');
+    writeFileSync(stackEnvFile(homeDir), '# OpenPalm — Stack Configuration\nOP_SETUP_COMPLETE=false\nOP_ONLY_IN_STUB=keep\n');
+    writeHomeSchemaVersion(homeDir, 1);
+
+    runHomeMigrations(homeDir);
+
+    const merged = readFileSync(stackEnvFile(homeDir), 'utf-8');
+    expect(merged).toContain('OP_SETUP_COMPLETE=true');
+    expect(merged).not.toContain('OP_SETUP_COMPLETE=false');
+    expect(merged).toContain('OP_ENABLED_ADDONS=slack');
+    expect(merged).toContain('OP_OWNER_NAME=alice');
+    // A key only the stub defined is still carried over — nothing is lost.
+    expect(merged).toContain('OP_ONLY_IN_STUB=keep');
+  });
+
   test('an unreadable version record is treated as pre-record, not as current', () => {
     seedLegacyHome();
     ensureHomeDirs(homeDir);

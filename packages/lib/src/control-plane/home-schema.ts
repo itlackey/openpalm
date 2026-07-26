@@ -69,10 +69,23 @@ function migrateToSingleStackEnv(homeDir: string): boolean {
   let base = existsSync(knowledge) ? readFileSync(knowledge, 'utf-8') : '';
   for (const key of SERVICE_VERSION_KEYS) base = removeEnvKey(base, key);
   const overrides = existsSync(state) ? parseEnvContent(readFileSync(state, 'utf-8')) : {};
-  const existingTarget = existsSync(target) ? readFileSync(target, 'utf-8') : '';
 
   let merged = mergeEnvContent(base, overrides);
-  if (existingTarget) merged = mergeEnvContent(merged, parseEnvContent(existingTarget));
+
+  // A target that exists while the legacy files are still here was written
+  // BEFORE this migration ran — `ensureSystemSecrets` bootstraps one with
+  // `OP_SETUP_COMPLETE=false` whenever the file is absent. Letting it override
+  // would tell a fully-installed operator their setup never completed and send
+  // them back to the wizard. It contributes only keys the real sources do not
+  // define, so nothing is lost and nothing is clobbered.
+  if (existsSync(target)) {
+    const defined = parseEnvContent(merged);
+    const targetOnly: Record<string, string> = {};
+    for (const [key, value] of Object.entries(parseEnvContent(readFileSync(target, 'utf-8')))) {
+      if (!(key in defined)) targetOnly[key] = value;
+    }
+    if (Object.keys(targetOnly).length > 0) merged = mergeEnvContent(merged, targetOnly);
+  }
   if (!merged.endsWith('\n')) merged += '\n';
 
   writeFileAtomic(target, merged, 0o600);
