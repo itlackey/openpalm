@@ -182,35 +182,48 @@ test for 14,067 lines of source.
 obvious to a behavior test. The convention optimises for the wrong thing. Stop
 extending it; delete instances as they are touched.
 
-## 7. A hand-rolled npm client on the host — ~1,020 lines
+## 7. A hand-rolled npm client on the host — RETIRED: I was wrong
 
-`ui-assets.ts` (777) + `npm-bundle-updater.ts` (243) resolve a dist-tag, fetch a
-registry manifest, download a tarball, verify sha512, extract, stage, back up,
-swap, write a version stamp, compare stamps for staleness, and restore on
-failure. That is `npm install <pkg>@<version> --prefix <dir>` — which the
-assistant's entrypoint does in one line.
+**Original claim:** `ui-assets.ts` (777) + `npm-bundle-updater.ts` (243) are
+~1,020 lines reimplementing `npm install`, and could be deleted by embedding the
+skeleton and UI in the `bun build --compile` binary, since all three are
+co-released.
 
-**Why it exists (checked):** the CLI is `bun build --compile`'d to a standalone
-binary (`packages/cli/package.json:25`), so the host has no npm and no
-`node_modules`. Not laziness.
+**The co-release half is right.** All six platform packages (`root`, `skeleton`,
+`lib`, `cli`, `ui`, `electron`) sit in the `platform` unit of
+`.github/release-package-groups.json` and are on the same version. (While
+checking this I found `core-principles.md` claimed the opposite, citing
+`independentNpmPackages` / `platformManifests` keys that exist nowhere in the
+repo — now corrected.)
 
-**Why it can still go:** `bun build --compile` embeds files. The skeleton and UI
-build are co-released with the CLI — one `PLATFORM_VERSION` drives all three.
-Embed them and the fetch/verify/stage/swap half disappears; "update" becomes
-"install the new binary", which is already how the CLI updates.
+**The conclusion is wrong, and backwards.** Embedding is not the alternative to
+this code — it is *already done*, and this code is what beats it.
+`electron-builder.yml:15-21` already ships the UI build and the skeleton as
+`extraResources`. The npm client exists to fetch something **newer** than that
+embedded copy at launch (`main.ts:341` → `checkAndUpdateUiBuild`). That is the
+entire thin-harness promise: a UI or control-plane fix reaches users over npm
+with **no app re-download**, and only a change to the native harness surface
+forces one.
 
-**Cost:** `OP_UI_VERSION` / `OP_SKELETON_VERSION` pin overrides need another
-mechanism or go away. This changes release shape, so it needs a decision rather
-than just deletion — the only item here that does.
+Deleting it would make every UI fix require a re-download of the desktop app —
+trading ~1,020 lines for a materially worse product. The line count is real;
+the code is load-bearing. If it shrinks, it shrinks as a refactor of
+fetch/verify/stage/swap, not as a deletion.
 
-## 8. Version stamp files — a symptom of §7
+## 8. Version stamp files — RETIRED with §7
 
-`.skeleton-version` and `.openpalm-ui-version` are hand-rolled version tracking
-for npm packages. npm already writes `package.json` into every installed
-package; embedded assets know their version at build time. These files exist
-only because the custom client in §7 has nowhere else to record what it
-installed — and one of this week's bugs was precisely that a fresh install
-forgot to write one. Delete with §7.
+**Original claim:** `.skeleton-version` and `.openpalm-ui-version` duplicate the
+`package.json` npm already writes into every installed package.
+
+**True only for the npm path.** `data/ui` is also seeded from a local
+`packages/ui/build/` directory, which is SvelteKit build output — it has no
+`package.json` at all. The stamp is written by `stamp-version.mjs` and is the
+one mechanism that works for both sources; `ui-assets.ts:496` warns loudly when
+a local build arrives unstamped, precisely because the update comparison depends
+on it.
+
+The specific bug I cited (a fresh install never being stamped) was a real bug,
+and it is fixed. It was not evidence that the stamp should not exist.
 
 ---
 
@@ -254,10 +267,11 @@ Nothing retires them. There is no schema version on the home directory, so each
 one must run forever on the chance the install predates it. A fresh install
 created today still pays for all four, permanently.
 
-**Fix:** put a schema version in `state/` (it is already the app-written record
-directory), run migrations once when the recorded version is behind, and delete
-migrations older than the supported upgrade floor. Then a fresh install runs
-none of them.
+**DONE.** `state/schema-version` now records the layout version. `ensureHomeDirs`
+stamps a brand-new home as current, so a fresh install runs none of them; an
+existing home migrates once and is then recorded. Migrations became deletable —
+drop one from `MIGRATIONS` once the supported upgrade floor passes it. Covered by
+five behavior tests in `home-schema.test.ts`.
 
 This also removes a real footgun: `migrateLegacyDefaultPorts` silently rewrites
 port values, which is why `core.compose.yml`'s interpolation fallbacks were able
@@ -356,24 +370,32 @@ what was inventoried when the deletions were dispatched.
 
 ## Where to start
 
-Ordered by (lines removed) ÷ (risk), highest first.
+Status after working the list.
 
-| # | item | lines | risk |
-|---|---|---|---|
-| 1 | Shipped roadmap dirs `0.10/0.11/0.12` | 14,655 | none — `git rm` |
-| 3 | `docs/reviews/` | 1,469 | none — `git rm` |
-| 2 | Plans/proposals out of `docs/technical/` | ~11,760 | none — move or delete |
-| 4 | 17 text-assertion test files | 1,932 | low — they test nothing |
-| 5 | Bundle-grep shell validators | ~720 | low — replace with a lint rule |
-| 11 | Dead + over-exported symbols | 22 symbols | low — compiler catches mistakes |
-| 9 | Migrations → schema version in `state/` | ~200 net | medium — needs the version record first |
-| 7 | Embed skeleton + UI in the binary | ~1,020 | **decision** — changes release shape |
-| 6 | Stop writing guardrail tests | — | convention change |
-| 10 | Fix `core-principles.md` §28 and §32 | — | convention change |
+| # | item | outcome |
+|---|---|---|
+| 1 | Shipped roadmap dirs `0.10/0.11/0.12` | **done** — 14,655 lines |
+| 2 | Plans/proposals out of `docs/technical/` | **done** — 6,573 lines |
+| 3 | `docs/reviews/` | **done** — 1,469 lines |
+| 4 | 17 text-assertion test files | **done** — 1,932 lines, 2 real assertions rescued |
+| 5 | Bundle-grep shell validators | **partly done** — 1 of 4 was real bullshit; corrected above |
+| 6 | Stop writing guardrail tests | convention — stands |
+| 7 | Embed skeleton + UI in the binary | **retired** — the claim was backwards |
+| 8 | Version stamp files | **retired** — with §7 |
+| 9 | Migrations → schema version | **done** — `state/schema-version` |
+| 10 | Fix `core-principles.md` | **done** — 6 false claims corrected, rule 28 reframed |
+| 11 | Dead + over-exported symbols | **done** — 3 deleted, 7 unexported |
+| 12 | `legacy-cleanup-0.11.0.md` | **done** — 44 of 47 items already stale, 3 fixed, file deleted |
 
-**~30,500 lines** of the ~119,000 in this repo, and the first four rows —
-**~29,800 lines** — are pure deletion with no behavior change at all.
+**~24,900 lines removed**, no behavior change: the set of failing tests was
+byte-identical before and after the deletion pass.
 
-The two convention items (§6, §10) matter more than any line count. They are why
-the pile keeps growing: the rules reward adding a string-matching test and
-forbid regenerating a file, so every fix accretes and none simplify.
+Two findings did not survive checking (§7, §8) and one was mostly wrong (§5).
+That is the useful part of the exercise. A line count is not evidence, and
+"this looks like a reimplementation of X" is a hypothesis, not a finding — three
+times here it was load-bearing code whose reason was one file away.
+
+The convention item (§6) is what still matters most. It is why the pile grew:
+the house style rewards adding a string-matching test after every regression,
+which is how `lib` ended up with more test lines than source while none of the
+four real defects found that week were caught by any of them.
