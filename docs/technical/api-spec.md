@@ -16,7 +16,7 @@ This document describes the Admin API routes currently implemented in
 - Protected endpoints require the `op_session` cookie (HttpOnly, SameSite=Strict).
   The browser obtains the cookie via `POST /api/auth/login` (password in body).
   The legacy `x-admin-token` / `Authorization: Bearer` header fallbacks were
-  removed in Phase 2 of `docs/technical/auth-and-proxy-refactor-plan.md`.
+  removed in Phase 2 of the auth/proxy refactor.
   `OP_UI_LOGIN_PASSWORD` is supplied to the admin process from
   `knowledge/secrets/op_ui_login_password`.
 - Optional caller attribution: `x-requested-by: assistant|cli|ui|system|test`
@@ -451,7 +451,7 @@ Response:
   "enabled": true,
   "config": {
     "schemaPath": "",
-    "userEnvPath": "knowledge/env/stack.env",
+    "userEnvPath": "state/stack.env",
     "envSchema": ""
   }
 }
@@ -572,7 +572,7 @@ Response:
 ### `GET /api/host/config/validate`
 
 Run the in-house key-presence and secret-audit checks against non-secret
-`knowledge/env/stack.env`, resolved Compose config, and `knowledge/secrets/`.
+`state/stack.env`, resolved Compose config, and `knowledge/secrets/`.
 The validator confirms secret-like values use file grants and that required
 secret files are present — no varlock binary, no schema file. Always
 returns 200; validation failures are non-fatal and are logged to the audit

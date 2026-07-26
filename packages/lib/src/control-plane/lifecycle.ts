@@ -12,13 +12,12 @@ import {
   ensureHomeDirs,
 } from "./home.js";
 import { ensureSecrets, ensureOpenCodeConfig } from "./secrets.js";
+import { runHomeMigrations } from "./home-schema.js";
 import {
   resolveRuntimeFiles,
   writeRuntimeFiles,
   discoverStackOverlays,
   ensureComposeVolumeTargets,
-  migrateLegacyBindAddresses,
-  migrateLegacyDefaultPorts,
 } from "./config-persistence.js";
 import { ensureOpenCodeSystemConfig } from "./core-assets.js";
 import { applyHomeSeed } from "./ui-assets.js";
@@ -34,7 +33,6 @@ import type { InstallLockHandle } from "./install-lock.js";
 import {
   getAddonServiceNames,
   listEnabledAddonIds,
-  migrateProfileOnlyAddonEnablement,
   pruneRemovedAddonState,
 } from "./addons.js";
 import { GUARDIAN_INGRESS_ADDON_IDS } from "./addon-ids.js";
@@ -145,11 +143,14 @@ async function reconcileCore(
  */
 async function applyHome(state: ControlPlaneState): Promise<void> {
   ensureHomeDirs();
+  // Migrations run FIRST, before anything else reads or writes the layout.
+  // ensureSecrets bootstraps state/stack.env with OP_SETUP_COMPLETE=false when
+  // the file is absent, which on a pre-consolidation home is every time — so
+  // running it first left the migration merging a stub over the operator's real
+  // state and reporting a completed install as unconfigured.
+  runHomeMigrations(state.homeDir);
   ensureSecrets(state);
   await applyHomeSeed(PLATFORM_VERSION, state.homeDir, state.configDir, state.dataDir);
-  migrateLegacyDefaultPorts(state.homeDir);
-  migrateLegacyBindAddresses(state.homeDir);
-  migrateProfileOnlyAddonEnablement(state.homeDir);
   pruneRemovedAddonState(state.homeDir);
   ensureVersionDefaults(state);
   ensureOpenCodeConfig();
@@ -176,6 +177,12 @@ async function applyManagedFiles(
   if (overlayCheck.blockError) throw new Error(overlayCheck.blockError);
   if (overlayCheck.warning) lifecycleLogger.warn(overlayCheck.warning);
 
+  // Migrate BEFORE snapshotting: on a pre-consolidation home the snapshot
+  // list's state/stack.env does not exist yet, so snapshotting first would
+  // capture no stack env at all and a failed deploy could not roll back env
+  // mutations. The migration is value-preserving, so the snapshot still
+  // records the pre-update values — just in the canonical location.
+  runHomeMigrations(state.homeDir);
   snapshotCurrentState(state);
   await applyHome(state);
   await reconcileCore(state, { activateServices });

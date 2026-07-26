@@ -5,7 +5,8 @@ import {
   auditFileBasedSecrets,
   createState,
   discoverStackOverlays,
-  resolveSecretsDir,
+  secretsDir,
+  stackEnvFile,
   type SecretAuditIssue,
 } from '@openpalm/lib';
 import { parseOutputFormat } from '../lib/output-format.ts';
@@ -31,11 +32,15 @@ export default defineCommand({
 
     const state = createState();
     const issues: SecretAuditIssue[] = [];
-    const stackEnvPath = `${state.stackDir}/stack.env`;
+    const stackEnvPath = stackEnvFile(state.homeDir);
 
+    // Pure path resolvers only: resolveSecretsDir() mkdirs the directory and
+    // chmods it and its files to the exact modes auditSecretFilesystem checks
+    // for, so auditing through it would repair the violations instead of
+    // reporting them.
     issues.push(...auditFileBasedSecrets({
       stackEnvPath: existsSync(stackEnvPath) ? stackEnvPath : undefined,
-      secretsDir: resolveSecretsDir(state.stackDir),
+      secretsDir: secretsDir(state.homeDir),
     }).issues);
 
     for (const file of discoverStackOverlays(state.homeDir)) {

@@ -43,6 +43,7 @@ function makeState() {
   const workspaceDir = join(homeDir, 'workspace');
   mkdirSync(join(homeDir, 'state'), { recursive: true });
   mkdirSync(join(homeDir, 'knowledge', 'env'), { recursive: true });
+  mkdirSync(join(homeDir, 'state'), { recursive: true });
   mkdirSync(workspaceDir, { recursive: true });
   return {
     homeDir,
@@ -62,7 +63,7 @@ describe('ownership canary paths', () => {
     const state = makeState();
     const paths = ownershipCanaryPaths(state);
     expect(paths).toEqual([
-      join(homeDir, 'state', 'stack.state.env'),
+      join(homeDir, 'state', 'stack.env'),
       join(homeDir, 'state'),
       join(homeDir, 'config'),
       join(homeDir, 'knowledge'),
@@ -89,7 +90,7 @@ describe('ownership canary paths', () => {
 describe('canary owner detection', () => {
   test('returns all existing canary owners in priority order', () => {
     const state = makeState();
-    const stateEnv = join(homeDir, 'state', 'stack.state.env');
+    const stateEnv = join(homeDir, 'state', 'stack.env');
     const userEnv = join(homeDir, 'knowledge', 'env', 'user.env');
     writeFileSync(stateEnv, 'OP_SETUP_COMPLETE=true\n');
     writeFileSync(userEnv, '');
@@ -200,7 +201,7 @@ describe('reconcileHostOwnership swap block + fast path (R2/R4)', () => {
   test('throws HostSwapBlockedError on an un-adopted host swap (before any repair)', async () => {
     if (process.platform === 'win32') return;
     const state = makeState();
-    writeFileSync(join(state.homeDir, 'state', 'stack.state.env'), 'OP_SETUP_COMPLETE=true\n');
+    writeFileSync(join(state.homeDir, 'state', 'stack.env'), 'OP_SETUP_COMPLETE=true\n');
     writeHostIdentity(hostIdentityFile(state.homeDir), { kind: 'linux', host: 'old-host', uid: 1234, gid: 1234 });
     // Live session is a uid that does NOT own the canaries → swap. The block
     // throws before any docker chown, so this needs no docker.

@@ -55,7 +55,7 @@ by default — loopback-only). That listener 404s every request until you set
 GUARDIAN_DIRECT_INGRESS=true
 ```
 
-in `knowledge/env/stack.env`. Turning on TLS fronting does **not** change this
+in `state/stack.env`. Turning on TLS fronting does **not** change this
 default: the Guardian examples below tunnel to `127.0.0.1:3830` rather than
 binding Guardian itself to a LAN/WAN address, so its loopback-default posture
 is unchanged.
@@ -70,7 +70,7 @@ management on your part and nothing is reachable outside your tailnet.
 1. Enable the direct listener:
 
    ```
-   # knowledge/env/stack.env
+   # state/stack.env
    GUARDIAN_DIRECT_INGRESS=true
    ```
 
@@ -105,7 +105,7 @@ management on your part and nothing is reachable outside your tailnet.
    [CORS origin note](#cors-origin-note) below) and apply it:
 
    ```
-   # knowledge/env/stack.env
+   # state/stack.env
    GUARDIAN_CORS_ALLOWED_ORIGINS=https://<machine>.<tailnet>.ts.net:8443
    ```
 

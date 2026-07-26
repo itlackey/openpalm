@@ -70,7 +70,7 @@ Manual-first path:
 cd "$HOME/.openpalm/config/stack"
 docker compose \
   --project-name openpalm \
-  --env-file ../../knowledge/env/stack.env \
+  --env-file ../../state/stack.env \
   -f core.compose.yml \
   -f portals.compose.yml \
   --profile addon.slack \

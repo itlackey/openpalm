@@ -54,11 +54,11 @@ foreach ($name in 'services', 'portals') {
 $customOverlay = Join-Path $UserStackDir 'custom.compose.yml'
 if (Test-Path $customOverlay) { $files += @('-f', $customOverlay) }
 
-# stack.env (knowledge/env/stack.env) feeds both compose variable substitution
+# stack.env (state/stack.env) feeds both compose variable substitution
 # (--env-file) and the process environment (so COMPOSE_PROFILES and friends
 # activate addons).
 $envArgs = @()
-$stackEnv = Join-Path $OpHome 'knowledge/env/stack.env'
+$stackEnv = Join-Path $OpHome 'state/stack.env'
 if (Test-Path $stackEnv) {
   $envArgs = @('--env-file', $stackEnv)
   foreach ($line in Get-Content $stackEnv) {

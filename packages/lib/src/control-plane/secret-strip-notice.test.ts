@@ -19,6 +19,7 @@ beforeEach(() => {
   savedHome = process.env.OP_HOME;
   process.env.OP_HOME = homeDir;
   mkdirSync(join(homeDir, 'knowledge', 'env'), { recursive: true });
+  mkdirSync(join(homeDir, 'state'), { recursive: true });
 });
 
 afterEach(() => {
@@ -31,7 +32,7 @@ describe('#502 secret-strip notice', () => {
   it('records a one-time notice when secret-like keys are stripped from stack.env', () => {
     const state = createState();
     writeFileSync(
-      join(homeDir, 'knowledge', 'env', 'stack.env'),
+      join(homeDir, 'state', 'stack.env'),
       `OP_HOME=${homeDir}\nOPENAI_API_KEY=sk-leak\nDISCORD_BOT_TOKEN=tok\nOP_LOG_LEVEL=info\n`,
     );
 
@@ -48,7 +49,7 @@ describe('#502 secret-strip notice', () => {
   it('does not create a notice when there are no secret-like keys', () => {
     const state = createState();
     writeFileSync(
-      join(homeDir, 'knowledge', 'env', 'stack.env'),
+      join(homeDir, 'state', 'stack.env'),
       `OP_HOME=${homeDir}\nOP_LOG_LEVEL=info\n`,
     );
 
@@ -61,12 +62,12 @@ describe('#502 secret-strip notice', () => {
   it('accumulates keys across writes and dismisses cleanly', () => {
     const state = createState();
     writeFileSync(
-      join(homeDir, 'knowledge', 'env', 'stack.env'),
+      join(homeDir, 'state', 'stack.env'),
       'OPENAI_API_KEY=sk-a\n',
     );
     writeSystemEnv(state);
     writeFileSync(
-      join(homeDir, 'knowledge', 'env', 'stack.env'),
+      join(homeDir, 'state', 'stack.env'),
       'GROQ_API_KEY=gsk-b\n',
     );
     writeSystemEnv(state);
@@ -83,7 +84,7 @@ describe('#502 secret-strip notice', () => {
   it('relocates a stripped secret value to knowledge/secrets/<key> instead of destroying it (0.1)', () => {
     const state = createState();
     writeFileSync(
-      join(homeDir, 'knowledge', 'env', 'stack.env'),
+      join(homeDir, 'state', 'stack.env'),
       `OP_HOME=${homeDir}\nOPENAI_API_KEY=sk-leaked-value\nOP_LOG_LEVEL=info\n`,
     );
 

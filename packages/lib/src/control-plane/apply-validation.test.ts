@@ -44,7 +44,8 @@ function seedHome(): { state: ControlPlaneState; home: string } {
 
   // validateProposedState needs the stack env file present and OP_UI_LOGIN_PASSWORD set.
   mkdirSync(join(home, 'knowledge', 'env'), { recursive: true });
-  writeFileSync(join(home, 'knowledge', 'env', 'stack.env'), 'OP_IMAGE_TAG=v0.12.0\n');
+  mkdirSync(join(home, 'state'), { recursive: true });
+  writeFileSync(join(home, 'state', 'stack.env'), 'OP_IMAGE_TAG=v0.12.0\n');
   const secretsDir = join(home, 'knowledge', 'secrets');
   mkdirSync(secretsDir, { recursive: true, mode: 0o700 });
   writeFileSync(join(secretsDir, 'op_ui_login_password'), 'test-password\n', { mode: 0o600 });

@@ -40,7 +40,7 @@
  * The default ADMIN_URL is 127.0.0.1:9100 (matches the test-isolated dev
  * stack). For a production stack on the default ports use 8100.
  *
- * NOTE: these tests mutate state/stack.state.env (OP_ENABLED_ADDONS,
+ * NOTE: these tests mutate state/stack.env (OP_ENABLED_ADDONS,
  * OP_VOICE_PROFILE) and stop/start the openpalm-voice-* containers. Run only
  * against a dev stack you don't mind reconfiguring.
  */

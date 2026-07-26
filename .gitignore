@@ -27,7 +27,7 @@ package-lock.json
 packages/channel-voice/test-results/.last-run.json
 
 # .openpalm/ template — track everything except runtime-written files
-.openpalm/knowledge/env/stack.env
+.openpalm/state/stack.env
 .openpalm/knowledge/secrets/auth.json
 .openpalm/config/stack/guardian.env
 .openpalm/knowledge/env/user.env

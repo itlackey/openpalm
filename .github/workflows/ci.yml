@@ -199,14 +199,11 @@ jobs:
           done
           echo "Deleted script assertion passed"
 
-      - name: Validate shipped addon catalog and automations
+      - name: Validate shipped catalog automations
         run: |
           set -euo pipefail
 
-          # Full addon validation (compose.yml + .env.schema + conventions)
-          ./scripts/validate-registry.sh
-
-          # Also validate catalog automation YAML files are well-formed
+          # Catalog automation YAML files are well-formed
           pip install --quiet PyYAML
           errors=0
           for f in packages/skeleton/knowledge/tasks/*.yml; do
@@ -338,14 +335,11 @@ jobs:
       - name: Run client-only PWA acceptance tests (production build + Chromium)
         run: bun run ui:test:pwa
 
-      - name: Bundle Electron harness (refresh dist/main.js from source)
-        run: bun run --cwd packages/electron bundle
-
       - name: Validate thin-harness boundary (design §6.1/§6.6)
-        # Asserts dist/main.js carries ZERO migration symbols, the UI build DOES,
-        # and main.ts imports only the @openpalm/lib bootstrap allowlist. The UI
-        # build is already present from the step above; dist/main.js was just
-        # rebundled from source.
+        # Asserts every packages/electron/src/*.ts file imports only the
+        # @openpalm/lib bootstrap allowlist — a source-level import check, not
+        # a grep of the built dist/main.js bundle (removed; see
+        # bullshit-claude-wrote.md §5). No build step needed first.
         run: ./scripts/validate-thin-harness-boundary.sh
 
   electron-tests:

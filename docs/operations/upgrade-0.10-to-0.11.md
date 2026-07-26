@@ -1,5 +1,11 @@
 # Upgrade guide: 0.10.x → 0.11.0
 
+> **Later change:** the `knowledge/env/stack.env` this guide moves you to has since been
+> consolidated into a single `state/stack.env`. `openpalm` performs that move automatically
+> on first run against an older home (OP_HOME schema version 2) — follow this guide as
+> written, then let the tool migrate the result.
+
+
 OpenPalm 0.11.0 is a large architectural release that also changes the on-disk
 layout for env files and secrets. **`openpalm update` migrates that layout
 automatically** — it detects a 0.10.x home, takes a full backup first, then

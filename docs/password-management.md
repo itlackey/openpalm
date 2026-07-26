@@ -18,9 +18,9 @@ is non-secret runtime configuration only.
 ```
 
 - `knowledge/env/user.env` is the AKM env backing file for user-managed secrets.
-- `knowledge/env/stack.env` is system-managed non-secret runtime env.
+- `state/stack.env` is system-managed non-secret runtime env.
 - `knowledge/secrets/` holds system-managed secret files; directory mode is `0700`, files are `0600`.
-- Compose is run with `--env-file ../../knowledge/env/stack.env` from `config/stack/` for non-secret substitution only.
+- Compose is run with `--env-file ../../state/stack.env` from `config/stack/` for non-secret substitution only.
 
 ---
 
@@ -37,7 +37,7 @@ Behavior:
 
 ---
 
-## `knowledge/env/stack.env`
+## `state/stack.env`
 
 This file is for host paths, ports, image tags, profiles, and other non-secret
 runtime settings used by Compose.
@@ -114,7 +114,7 @@ source of truth.
 
 ## Practical guidance
 
-- Edit `~/.openpalm/knowledge/env/stack.env` for **non-secret** settings only —
+- Edit `~/.openpalm/state/stack.env` for **non-secret** settings only —
   ports, host paths, image tags. Provider **API keys** go in
   `~/.openpalm/knowledge/secrets/auth.json` (via the Connections tab), and the
   UI login password in `~/.openpalm/knowledge/secrets/op_ui_login_password` —

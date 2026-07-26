@@ -48,7 +48,7 @@ see the `PORTAL_SESSION_REUSE` row below for why.
 ## Deployment model (shipped stack)
 
 - Shipped service definition: `.openpalm/config/stack/portals.compose.yml`, profile `addon.slack`
-- Non-secret values: `~/.openpalm/knowledge/env/stack.env`
+- Non-secret values: `~/.openpalm/state/stack.env`
 - Secret values: files under `~/.openpalm/knowledge/secrets/`
 
 Manual start example:
@@ -57,7 +57,7 @@ Manual start example:
 cd "$HOME/.openpalm/config/stack"
 docker compose \
   --project-name openpalm \
-  --env-file ../../knowledge/env/stack.env \
+  --env-file ../../state/stack.env \
   -f core.compose.yml \
   -f services.compose.yml \
   -f portals.compose.yml \

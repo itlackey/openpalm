@@ -6,20 +6,19 @@
  *   config/stack/ — USER: the custom.compose.yml overlay ONLY (seeded once, never overwritten)
  *   system/stack/ — MANAGED: fixed compose files (core/services/portals), overwritten on reconcile
  *   data/      — RUNTIME: persistent service data, logs, backups, rollback (never written by install/update)
- *   knowledge/ — USER/services: akm knowledge (env, secrets, tasks); env/stack.env holds
- *                non-secret base Compose configuration only
+ *   knowledge/ — USER/services: akm knowledge (user env, secrets, tasks)
  *   workspace/ — USER: shared assistant work area
- *   state/     — app-written records (version pins, enabled add-ons, channel, setup);
- *                stack.state.env is merged OVER legacy stack.env at compose time, so
- *                pins/channel/add-ons live here, not in knowledge/env/stack.env
+ *   state/     — app-written records: stack.env (THE non-secret Compose --env-file),
+ *                host identity, schema version
  */
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { writeFileAtomic } from "./fs-atomic.js";
 import { homedir, tmpdir } from "node:os";
 import { resolve as resolvePath } from "node:path";
 
 // ── Path Resolution ──────────────────────────────────────────────────
 
-export function resolveHome(): string {
+function resolveHome(): string {
   const home = homedir();
   if (home) return home;
 
@@ -85,15 +84,87 @@ export function composeFilePath(home: string, name: string): string {
 export function customComposeFilePath(home: string): string {
   return `${home}/config/stack/custom.compose.yml`;
 }
-/** Pins/add-ons/channel state (constitution §1) — OP_HOME/state. */
-export function stateEnvFile(home: string): string {
+/**
+ * THE non-secret stack env file — the single Compose `--env-file`.
+ *
+ * Lives in `state/` because the control plane writes it (constitution §1), and
+ * deliberately NOT in `knowledge/`, which is bind-mounted into the assistant at
+ * `/stash`: host ports, image tags and the setup flag are not the agent's
+ * business. Operators may still edit it directly; it is app-owned, not
+ * app-exclusive.
+ */
+export function stackEnvFile(home: string): string {
+  return `${home}/state/stack.env`;
+}
+
+// ── Superseded env files — migration inputs only ─────────────────────────────
+// Read by the schema-2 migration in home-schema.ts, which merges them into
+// stackEnvFile() and deletes them. Nothing else may reference these.
+
+/** Pre-split app-written record (pins/add-ons/channel/setup). */
+export function legacyStateEnvFile(home: string): string {
   return `${home}/state/stack.state.env`;
 }
 export function hostIdentityFile(home: string): string {
   return `${home}/state/host-identity.json`;
 }
-/** Pre-split system env; read only as a transition fallback, then deleted. */
-export function legacyStackEnvFile(home: string): string {
+/** OP_HOME layout schema version — gates the one-shot legacy migrations. */
+export function homeSchemaVersionFile(home: string): string {
+  return `${home}/state/schema-version`;
+}
+
+/**
+ * Does this home carry a stack env file in ANY layout this project has used?
+ *
+ * The one predicate for "there is something here already": the migration gate
+ * uses it to tell an unmigrated install from an absent one, and `openpalm
+ * install` uses it so a pre-consolidation home is never mistaken for a fresh
+ * machine (which would skip the --force backup confirmation). Keeping it here
+ * means consumers never need the superseded path helpers.
+ */
+export function hasAnyStackEnvFile(home: string): boolean {
+  return [stackEnvFile(home), legacyStateEnvFile(home), legacyKnowledgeStackEnvFile(home)].some(existsSync);
+}
+
+/**
+ * Current OP_HOME layout schema version.
+ *
+ * The version record lives here rather than beside the migration list because
+ * it is pure layout — putting it in `home-schema.ts` would make this module
+ * depend on `config-persistence`/`addons`, which depend back on this one.
+ */
+export const HOME_SCHEMA_VERSION = 2;
+
+/** The recorded schema version, or 0 when nothing is recorded (pre-record home). */
+export function readHomeSchemaVersion(home: string): number {
+  const path = homeSchemaVersionFile(home);
+  if (!existsSync(path)) return 0;
+  const parsed = Number.parseInt(readFileSync(path, "utf-8").trim(), 10);
+  return Number.isInteger(parsed) && parsed >= 0 ? parsed : 0;
+}
+
+export function writeHomeSchemaVersion(home: string, version: number): void {
+  // Atomic: a torn plain write would leave a file that parses as version 0
+  // and silently re-runs every one-shot migration on the next command.
+  writeFileAtomic(homeSchemaVersionFile(home), `${version}\n`, 0o644);
+}
+
+/**
+ * Stamp a brand-new home as already current, so it runs no legacy migrations.
+ *
+ * "Brand new" is the absence of every stack env file this layout has ever used.
+ * This runs from {@link ensureHomeDirs}, which every install path calls BEFORE
+ * seeding — the only moment that question is still answerable. A home that
+ * somehow reaches migration time unstamped falls back to version 0 and runs the
+ * migrations once, which is the safe direction.
+ */
+export function initHomeSchema(home: string): void {
+  if (existsSync(homeSchemaVersionFile(home))) return;
+  if (hasAnyStackEnvFile(home)) return;
+  writeHomeSchemaVersion(home, HOME_SCHEMA_VERSION);
+}
+/** Pre-split operator env, from when stack config lived in the knowledge tree. */
+export function legacyKnowledgeStackEnvFile(home: string): string {
   return `${home}/knowledge/env/stack.env`;
 }
 /** User env (entrypoint-sourced — never a compose --env-file; secret boundary). */
@@ -122,11 +193,15 @@ export function resolveRollbackDir(): string {
 // ── Directory Setup ──────────────────────────────────────────────────
 
 /**
- * Create the full ~/.openpalm/ directory tree.
+ * Create the full OP_HOME directory tree.
+ *
+ * `home` defaults to the resolved OP_HOME; the CLI install flow passes its
+ * already-resolved home explicitly. This is the ONLY definition of the tree —
+ * the CLI used to keep a second, drifting copy that had silently fallen behind
+ * (no `system/`, no `state/`, no `config/guardian`, none of the per-service
+ * dot-directories under `data/`).
  */
-export function ensureHomeDirs(): void {
-  const home = resolveOpenPalmHome();
-
+export function ensureHomeDirs(home: string = resolveOpenPalmHome()): void {
   for (const dir of [
     // config/ — user-editable config + system config files
     `${home}/config`,
@@ -153,6 +228,7 @@ export function ensureHomeDirs(): void {
     `${home}/data/akm/data`,       // akm durable data
     `${home}/data/akm/empty-host-stash`, // always-present /host-stash fallback when host AKM is absent
     `${home}/data/logs`,           // service logs and audit files
+    `${home}/data/ui`,             // @openpalm/ui build seeded from npm
     `${home}/data/backups`,        // lifecycle backup snapshots
     `${home}/data/rollback`,       // deploy rollback snapshots
     // knowledge/ — akm knowledge (skills, env, secrets, agents); knowledge/tasks/ for scheduled automations
@@ -172,6 +248,11 @@ export function ensureHomeDirs(): void {
   ]) {
     mkdirSync(dir, { recursive: true });
   }
+
+  // Stamp a brand-new home as schema-current so it runs no legacy migrations.
+  // Must happen here: every install path calls this BEFORE seeding, which is
+  // the only moment "is this home new?" is still answerable.
+  initHomeSchema(home);
 
   for (const file of [
     `${home}/data/assistant/.local/share/opencode/auth.json`,

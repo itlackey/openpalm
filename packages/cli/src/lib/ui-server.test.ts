@@ -340,7 +340,7 @@ describe('resolveUiChildLaunch', () => {
       mkdirSync(stackDir, { recursive: true });
       writeFileSync(join(stackDir, 'core.compose.yml'), 'services: {}\n');
       mkdirSync(join(homeDir, 'state'), { recursive: true });
-      writeFileSync(join(homeDir, 'state', 'stack.state.env'), 'OP_SETUP_COMPLETE=true\n');
+      writeFileSync(join(homeDir, 'state', 'stack.env'), 'OP_SETUP_COMPLETE=true\n');
 
       const after = resolveUiChildLaunch({ homeDir, stackDir }, true, {});
       expect(after.stacklessApp).toBe(false);

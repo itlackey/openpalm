@@ -1,7 +1,7 @@
 /**
  * GET /api/host/config/validate — Run environment validation.
  *
- * Checks knowledge/env/stack.env and knowledge/secrets for required runtime
+ * Checks state/stack.env and knowledge/secrets for required runtime
  * configuration and non-empty required tokens. No varlock — the in-house
  * validator in @openpalm/lib does the key-presence check.
  * Always returns 200; validation failures are logged to the audit trail.

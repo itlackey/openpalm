@@ -16,10 +16,13 @@ function fixture(stackEnv: string): string {
   homes.push(homeDir);
   mkdirSync(join(homeDir, 'system', 'stack'), { recursive: true });
   writeFileSync(join(homeDir, 'system', 'stack', 'core.compose.yml'), 'services: {}\n');
-  mkdirSync(join(homeDir, 'state'), { recursive: true });
-  writeFileSync(join(homeDir, 'state', 'stack.state.env'), 'OP_SETUP_COMPLETE=true\n');
+  // A pre-consolidation home with no schema stamp: this is exactly the shape
+  // the supervised repair exists for, and what runHomeMigrations upgrades.
   mkdirSync(join(homeDir, 'knowledge', 'env'), { recursive: true });
-  writeFileSync(join(homeDir, 'knowledge', 'env', 'stack.env'), stackEnv);
+  writeFileSync(
+    join(homeDir, 'knowledge', 'env', 'stack.env'),
+    `OP_SETUP_COMPLETE=true\n${stackEnv}`,
+  );
   return homeDir;
 }
 

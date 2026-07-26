@@ -39,7 +39,7 @@ Secrets are accessed via `akm secret` — the akm secret store backed by `knowle
 
 ### What lives where
 
-Assistant config is **seeded from the repo and bind-mounted at runtime**. `OPENCODE_CONFIG_DIR=/etc/opencode` is the single source of truth inside the container.
+Assistant config is **seeded from the repo and bind-mounted at runtime**. `OPENCODE_CONFIG_DIR=/etc/opencode` carries the *managed* config, but it is **not** the single source of truth — OpenCode merges roughly eight config sources additively, and `/etc/opencode` is merged **twice** (once as `OPENCODE_CONFIG_DIR`, once as the Linux `systemManagedConfigDir`). The user's own global config at `~/.config/opencode` (from `OP_HOME/config/assistant`) is merged as well, and `instructions` entries are set-unioned across all sources.
 
 | Repo location | OP_HOME location | Container mount | Purpose |
 |---|---|---|---|

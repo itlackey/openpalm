@@ -4,8 +4,8 @@
  * Performs an idempotent auto-apply: ensures home dirs exist, seeds
  * secrets and OpenCode config, and resolves runtime files. Outcomes are
  * surfaced via the application logger; OpenCode session logs + the
- * guardian's own guardian-audit.log are the audit trail (D6a in
- * docs/technical/auth-and-proxy-refactor-plan.md).
+ * guardian's own guardian-audit.log are the audit trail (D6a of the
+ * auth/proxy refactor).
  *
  * Also enforces SEC-1: Host header allowlist to prevent DNS rebinding attacks.
  */

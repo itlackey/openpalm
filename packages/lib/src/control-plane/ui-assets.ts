@@ -122,6 +122,33 @@ export function resolveLocalOpenpalmDir(): string | null {
  */
 export const SKELETON_VERSION_STAMP = '.skeleton-version';
 
+/** The one writer of the skeleton version stamp — readSkeletonVersion's counterpart. */
+function writeSkeletonVersionStamp(homeDir: string, version: string): void {
+  writeFileSync(join(homeDir, SKELETON_VERSION_STAMP), `${version}\n`);
+}
+
+/**
+ * Record which skeleton version was seeded. Without it checkAndUpdateSkeleton
+ * treats a fresh install as stale and re-swaps system/ on a live stack.
+ * Fails open: an undeterminable version leaves the home unstamped, as before.
+ */
+function stampSeededSkeletonVersion(sourceDir: string, homeDir: string): void {
+  try {
+    const raw = readFileSync(join(sourceDir, 'package.json'), 'utf-8');
+    const version = normalizeVersion(JSON.parse(raw)?.version);
+    if (!version) {
+      logger.debug('skeleton package.json has no version — leaving home unstamped');
+      return;
+    }
+    writeSkeletonVersionStamp(homeDir, version);
+    logger.debug('stamped seeded skeleton version', { version });
+  } catch (err) {
+    logger.debug('could not stamp skeleton version — leaving home unstamped', {
+      err: errMessage(err),
+    });
+  }
+}
+
 /**
  * Seed the bundled `.openpalm/` skeleton into OP_HOME.
  *
@@ -170,6 +197,7 @@ export async function applyHomeSeed(
     // user edits, removed files, and service-generated data are never touched.
     logger.debug('seeding .openpalm from skeleton source', { src: local, repoRef });
     copyTree(local, homeDir, { skipExisting: true });
+    stampSeededSkeletonVersion(local, homeDir);
     return { updated, backupDir };
   } finally {
     // Clean up the staged download (no-op when seeding from a local checkout).
@@ -387,7 +415,7 @@ async function fetchNpmUiManifest(versionOrTag: string): Promise<NpmUiManifest> 
  * resolver (which lists tags and picks the newest on-channel), take max(dist-tags)
  * = the true bleeding edge (latest beta/rc/stable, whichever is newest).
  */
-export async function resolveChannelRef(pkg: string, channel: UiUpdateChannel): Promise<string> {
+async function resolveChannelRef(pkg: string, channel: UiUpdateChannel): Promise<string> {
   if (channel === 'latest') return 'latest';
   const res = await fetchWithRetry(`${NPM_REGISTRY}/-/package/${encodeURIComponent(pkg)}/dist-tags`);
   if (!res.ok) throw new Error(`npm registry returned HTTP ${res.status} for ${pkg} dist-tags`);
@@ -741,7 +769,7 @@ export async function checkAndUpdateSkeleton(
     install: (manifest) => downloadNpmSkeletonBundle(manifest, homeDir, dataDir),
     // Stamp the exact npm version (bare, no `v`) so future checks compare correctly.
     afterInstall: (manifest) => {
-      writeFileSync(join(homeDir, SKELETON_VERSION_STAMP), `${normalizeVersion(manifest.version)}\n`);
+      writeSkeletonVersionStamp(homeDir, normalizeVersion(manifest.version));
     },
     // The skeleton restores its own backup on failure so OP_HOME/system/ is left
     // in its previous working state (§6) — there is no supervisor to hand it to.

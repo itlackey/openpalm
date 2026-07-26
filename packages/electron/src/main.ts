@@ -14,6 +14,7 @@ import {
   checkAndUpdateSkeleton,
   uiUpdateChannel,
   parseEnvFile,
+  stackEnvFile,
   PLATFORM_VERSION,
   waitForReady as libWaitForReady,
   consumePendingUiBackup,
@@ -192,14 +193,14 @@ export function resolveAssistantUrl(homeDir: string): string {
  * Exported as a pure function so tests can verify it without spawning anything.
  */
 export function buildUIServerEnv(homeDir: string, port: number, update?: UpdateInfo | null): NodeJS.ProcessEnv {
-  // Operator-managed stack config (knowledge/env/stack.env) holds settings the
+  // Operator-managed stack config (state/stack.env) holds settings the
   // host UI server's own routes read from process.env — e.g. OP_VOICE_PORT_HOST,
   // which the /voice pass-through and the voice bring-up use to find the local
   // voice container. Merge stack.env BUT skip the per-unit
   // version vars: the docker-compose deploy path reads them via --env-file and
   // shell-env takes precedence over --env-file, so injecting them here would
   // override the authoritative versions (see the version-var note below).
-  const stackEnv = parseEnvFile(join(homeDir, 'knowledge', 'env', 'stack.env'));
+  const stackEnv = parseEnvFile(stackEnvFile(homeDir));
   const stackForUi: NodeJS.ProcessEnv = {};
   // Per-unit version keys: shell-env beats --env-file in docker compose, so
   // leaking them here would override the authoritative versions in stack.env

@@ -174,7 +174,7 @@ ports so it never conflicts with a production instance on the same machine.
 | Assistant (OpenCode) | `3810` → container `4096` | `4800` → container `4096` |
 | Guardian | network-only | network-only |
 
-`dev-setup.sh --seed-env` seeds `.dev/knowledge/env/stack.env` with the dev/test ports. `global-setup.ts` reads that file before tests run and auto-constructs `ADMIN_URL` and `ASSISTANT_URL`, so tests automatically target the correct stack with no extra env vars needed.
+`dev-setup.sh --seed-env` seeds `.dev/state/stack.env` with the dev/test ports. `global-setup.ts` reads that file before tests run and auto-constructs `ADMIN_URL` and `ASSISTANT_URL`, so tests automatically target the correct stack with no extra env vars needed.
 
 Tests read port configuration in this priority order:
 1. Explicit env vars (`ADMIN_URL`, `ASSISTANT_URL`)
@@ -186,7 +186,7 @@ Tests read port configuration in this priority order:
 ```bash
 mkdir -p .dev-test/config/stack
 mkdir -m 700 -p .dev-test/knowledge/secrets
-cat > .dev-test/knowledge/env/stack.env <<'EOF'
+cat > .dev-test/state/stack.env <<'EOF'
 OP_HOME=.dev-test
 OP_UID=$(id -u)
 OP_GID=$(id -g)
@@ -198,7 +198,7 @@ OP_UI_PORT=4810
 OP_HOST_UI_PORT=9100
 OP_SETUP_COMPLETE=true
 EOF
-chmod 600 .dev-test/knowledge/env/stack.env
+chmod 600 .dev-test/state/stack.env
 printf '%s\n' 'dev-admin-token' > .dev-test/knowledge/secrets/op_ui_login_password
 chmod 600 .dev-test/knowledge/secrets/op_ui_login_password
 ```
@@ -221,7 +221,7 @@ docker compose --project-directory . \
   -f .dev/system/stack/portals.compose.yml \
   -f .dev/config/stack/custom.compose.yml \
   -f compose.dev.yml \
-  --env-file .dev/knowledge/env/stack.env \
+  --env-file .dev/state/stack.env \
   --project-name openpalm-test \
   up -d
 ```

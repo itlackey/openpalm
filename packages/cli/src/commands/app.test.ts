@@ -82,7 +82,7 @@ afterEach(() => {
 
 /**
  * A not-installed OP_HOME (this file's fixtures) has no
- * `system/stack/core.compose.yml` and no `state/stack.state.env` — checking
+ * `system/stack/core.compose.yml` and no `state/stack.env` — checking
  * compose-file existence directly (real node:fs, never mockable via
  * `mock.module('@openpalm/lib', ...)`) reproduces exactly the same verdict as
  * `classifyLocalInstall()`'s `not_installed` branch for these fixtures,
@@ -183,7 +183,7 @@ function seedServeHome(installed = false): string {
     mkdirSync(join(home, 'system', 'stack'), { recursive: true });
     writeFileSync(join(home, 'system', 'stack', 'core.compose.yml'), 'services: {}\n');
     mkdirSync(join(home, 'state'), { recursive: true });
-    writeFileSync(join(home, 'state', 'stack.state.env'), 'OP_SETUP_COMPLETE=true\n');
+    writeFileSync(join(home, 'state', 'stack.env'), 'OP_SETUP_COMPLETE=true\n');
   }
   process.env.OP_HOME = home;
   delete process.env.OP_ENABLE_ADMIN;

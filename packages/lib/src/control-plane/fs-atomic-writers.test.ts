@@ -29,6 +29,7 @@ beforeEach(() => {
   savedHome = process.env.OP_HOME;
   process.env.OP_HOME = homeDir;
   mkdirSync(join(homeDir, 'knowledge', 'env'), { recursive: true });
+  mkdirSync(join(homeDir, 'state'), { recursive: true });
 });
 
 afterEach(() => {
@@ -40,7 +41,7 @@ afterEach(() => {
 describe('0.1 atomic writes — torn-write protection', () => {
   it('writeSystemEnv leaves stack.env fully intact when the atomic rename fails', () => {
     const state = createState();
-    const path = join(homeDir, 'knowledge', 'env', 'stack.env');
+    const path = join(homeDir, 'state', 'stack.env');
     writeFileSync(path, `OP_HOME=${homeDir}\nOP_SETUP_COMPLETE=true\nOP_LOG_LEVEL=info\n`);
 
     const spy = spyOn(nodeFs, 'renameSync').mockImplementation(() => {
@@ -59,7 +60,7 @@ describe('0.1 atomic writes — torn-write protection', () => {
   });
 
   it('writeVaultFile (via patchSecretsEnvFile) leaves stack.env fully intact when the atomic rename fails', () => {
-    const path = join(homeDir, 'knowledge', 'env', 'stack.env');
+    const path = join(homeDir, 'state', 'stack.env');
     writeFileSync(path, 'OP_SETUP_COMPLETE=false\nOP_LOG_LEVEL=debug\n');
 
     const spy = spyOn(nodeFs, 'renameSync').mockImplementation(() => {

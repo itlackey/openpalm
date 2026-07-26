@@ -26,7 +26,7 @@ import {
 import { makeTempDir, makeTestState, trackDir, registerCleanup , stackEnvFor} from "./test-helpers.js";
 
 function enableAddons(homeDir: string, csv: string): void {
-  const envDir = join(homeDir, "knowledge", "env");
+  const envDir = join(homeDir, "state");
   mkdirSync(envDir, { recursive: true });
   writeFileSync(join(envDir, "stack.env"), `OP_ENABLED_ADDONS=${csv}\n`);
 }
@@ -168,7 +168,7 @@ describe("buildEnvFiles", () => {
     const state = makeTestState();
     trackDir(state.homeDir);
 
-    mkdirSync(join(state.stashDir, "env"), { recursive: true });
+    mkdirSync(join(state.homeDir, "state"), { recursive: true });
     writeFileSync(stackEnvFor(state.homeDir), "KEY=val");
     // user.env may still exist on disk during migration but must NOT be
     // surfaced as a compose env_file (compose would shadow akm-sourced values).
@@ -184,7 +184,7 @@ describe("buildEnvFiles", () => {
     const state = makeTestState();
     trackDir(state.homeDir);
 
-    mkdirSync(join(state.stashDir, "env"), { recursive: true });
+    mkdirSync(join(state.homeDir, "state"), { recursive: true });
     writeFileSync(stackEnvFor(state.homeDir), "KEY=val");
 
     const files = buildEnvFiles(state);

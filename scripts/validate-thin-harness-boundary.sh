@@ -4,48 +4,35 @@
 # Enforces the architectural invariant that the Electron desktop app is a thin,
 # frozen native harness and never a copy of the mutating control plane:
 #
-#   (a) packages/electron/dist/main.js (the frozen asar harness) contains ZERO
-#       trace of the mutating control-plane lifecycle engine. The harness is
-#       bootstrap-only; every state-mutating op runs in the updatable data/ui
-#       control plane. Checked with a SINGLE categorical sentinel rather than a
-#       current stack-update entry point: `performUpgrade`. Source imports are
-#       independently restricted by the bootstrap allowlist below.
-#   (b) packages/ui/build/server/chunks/* (the updatable control plane) DOES
-#       contain performUpgrade — proving the upgrade/control-plane code travels
-#       with the npm-published @openpalm/ui build, not the frozen harness.
-#       (ensureReleaseMigrated and RELEASE_MIGRATIONS were removed in Phase 2
-#       of the install/update rebuild; performUpgrade is the surviving upgrade
-#       entry point that the updatable plane must carry.)
-#   (c) EVERY `.ts` file under packages/electron/src/ (not just main.ts) imports
-#       from @openpalm/lib ONLY the bootstrap allowlist (path resolvers + seed +
-#       ui-build/skeleton download + parseEnvFile + uiUpdateChannel +
-#       ensureHomeDirs + PLATFORM_VERSION + version-compare helpers). Any
-#       mutating control-plane symbol imported
-#       from @openpalm/lib anywhere in packages/electron/src fails CI — as does
-#       a namespace import (`import * as x from '@openpalm/lib'`), a dynamic
-#       `import('@openpalm/lib')`, or a `require('@openpalm/lib')`, all of
-#       which would bypass the brace-import allowlist check entirely.
+#   EVERY `.ts` file under packages/electron/src/ (not just main.ts) imports
+#   from @openpalm/lib ONLY the bootstrap allowlist (path resolvers + seed +
+#   ui-build/skeleton download + parseEnvFile + uiUpdateChannel +
+#   ensureHomeDirs + PLATFORM_VERSION + version-compare helpers). Any
+#   mutating control-plane symbol imported from @openpalm/lib anywhere in
+#   packages/electron/src fails CI — as does a namespace import
+#   (`import * as x from '@openpalm/lib'`), a dynamic `import('@openpalm/lib')`,
+#   or a `require('@openpalm/lib')`, all of which would bypass the brace-import
+#   allowlist check entirely.
+#
+# This is a source-level import-boundary check (parses the actual `import { … }
+# from '@openpalm/lib'` statements, not a text grep), so it survives renaming,
+# minification, and bundler changes. It intentionally does NOT grep
+# packages/electron/dist/main.js or packages/ui/build/server/chunks/* for a
+# sentinel symbol name — a symbol name in a build artifact is not a boundary,
+# it is a string that renames away for free. See bullshit-claude-wrote.md §5
+# for why that half of this script was removed.
 #
 # Run locally: ./scripts/validate-thin-harness-boundary.sh
 #
-# Paths are overridable via THBOUNDARY_* env vars so the check logic can be
-# exercised against fixtures in scripts/validate-thin-harness-boundary.test.ts
-# without a full build round-trip.
-#
-# Historical design record (shipped in 0.12.0, not a live spec — this script's
-# comments are the current, self-contained source of truth for the invariant):
-# docs/technical/electron-thin-harness-design.md.
+# ELECTRON_SRC_DIR is overridable via THBOUNDARY_ELECTRON_SRC_DIR so the check
+# logic can be exercised against a fixture tree without touching the real
+# packages/electron/src.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
-MAIN_BUNDLE="${THBOUNDARY_MAIN_BUNDLE:-packages/electron/dist/main.js}"
-UI_CHUNKS_DIR="${THBOUNDARY_UI_CHUNKS_DIR:-packages/ui/build/server/chunks}"
 ELECTRON_SRC_DIR="${THBOUNDARY_ELECTRON_SRC_DIR:-packages/electron/src}"
-
-# The stack-update sentinel for the frozen harness bundle (see (a) above).
-MUTATION_SENTINEL="performUpgrade"
 
 # The ONLY @openpalm/lib symbols packages/electron/src may import — the bootstrap
 # allowlist. The harness may resolve paths, seed on-disk assets (UI build,
@@ -70,6 +57,9 @@ ALLOWED_IMPORTS=(
   checkAndUpdateSkeleton
   uiUpdateChannel
   parseEnvFile
+  # Pure path resolver for the single stack env file (state/stack.env) — the
+  # same family as resolveOpenPalmHome/resolveDataDir. Read-only.
+  stackEnvFile
   PLATFORM_VERSION
   # Read-only install-state snapshot taken before release refresh. The shared
   # classifier remains the sole authority; the harness must not duplicate it.
@@ -111,35 +101,8 @@ ALLOWED_IMPORTS=(
 
 errors=0
 
-# ── (a) frozen harness bundle carries no trace of the mutation engine ─────────
-if [ ! -f "$MAIN_BUNDLE" ]; then
-  echo "::error file=$MAIN_BUNDLE::missing — run 'bun run --cwd packages/electron bundle'"
-  exit 1
-fi
-count=$(grep -c "$MUTATION_SENTINEL" "$MAIN_BUNDLE" || true)
-if [ "$count" != "0" ]; then
-  echo "::error file=$MAIN_BUNDLE::thin-harness boundary violated — mutation-engine sentinel '$MUTATION_SENTINEL' appears $count time(s) in the frozen harness bundle (must be 0; every op that reaches it belongs in data/ui, not the harness)"
-  errors=$((errors + 1))
-fi
-
-# ── (b) updatable control plane (UI build) DOES carry the upgrade entry point ──
-# Build the UI first if the server build is absent so the guard is meaningful.
-if [ ! -d "$UI_CHUNKS_DIR" ]; then
-  echo "UI server build absent; building (npm run build) so the boundary can be verified…"
-  (cd packages/ui && npm run build >/dev/null 2>&1) || {
-    echo "::error::failed to build packages/ui to verify the control-plane boundary"
-    exit 1
-  }
-fi
-for sym in performUpgrade; do
-  if ! grep -rq "$sym" "$UI_CHUNKS_DIR"; then
-    echo "::error::'$sym' NOT found in $UI_CHUNKS_DIR — the upgrade/control-plane code must travel with the @openpalm/ui build"
-    errors=$((errors + 1))
-  fi
-done
-
-# ── (c) every file under packages/electron/src imports ONLY the bootstrap ─────
-#        allowlist from @openpalm/lib (or none at all) ────────────────────────
+# ── every file under packages/electron/src imports ONLY the bootstrap ─────────
+#    allowlist from @openpalm/lib (or none at all) ─────────────────────────────
 if [ ! -d "$ELECTRON_SRC_DIR" ]; then
   echo "::error file=$ELECTRON_SRC_DIR::missing"
   exit 1
@@ -158,6 +121,15 @@ while IFS= read -r -d '' file; do
   fi
   if grep -Eq "require\s*\(\s*['\"]@openpalm/lib['\"]" "$file"; then
     echo "::error file=$file::require('@openpalm/lib') bypasses the thin-harness bootstrap allowlist — use a static named brace import instead."
+    errors=$((errors + 1))
+  fi
+  # A deep-path specifier ('@openpalm/lib/control-plane/…') resolves via the
+  # package's subpath exports and would ship any symbol past the allowlist
+  # below, which only parses imports of the bare '@openpalm/lib' barrel. The
+  # harness has no legitimate use for one — every allowed symbol is exported
+  # from the barrel.
+  if grep -Eq "['\"]@openpalm/lib/" "$file"; then
+    echo "::error file=$file::deep-path import of '@openpalm/lib/…' bypasses the thin-harness bootstrap allowlist — import the symbol from the '@openpalm/lib' barrel instead."
     errors=$((errors + 1))
   fi
 
@@ -197,4 +169,4 @@ if [ "$errors" -gt 0 ]; then
   exit 1
 fi
 
-echo "Thin-harness boundary intact: frozen harness carries no mutation-engine sentinel, the UI build carries performUpgrade, and every packages/electron/src file imports only the bootstrap allowlist from @openpalm/lib."
+echo "Thin-harness boundary intact: every packages/electron/src file imports only the bootstrap allowlist from @openpalm/lib."

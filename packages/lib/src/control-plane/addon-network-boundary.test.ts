@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { parse as yamlParse } from 'yaml';
 
-// S.6b — addon-network trust boundary (fable-security-remediation-plan.md S.6, D3(b)).
+// S.6b — addon-network trust boundary.
 //
 // Third-party addon images must not sit inside the assistant's trust network with
 // credential-free reach to the OpenCode API (:4096). The structural fix is a dedicated

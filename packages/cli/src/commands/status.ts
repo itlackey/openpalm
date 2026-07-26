@@ -1,6 +1,7 @@
 import { defineCommand } from 'citty';
-import { classifyLocalInstall, composePs, buildComposeOptions, createState, deriveLaunchStatus, deriveLocalStackState, detectRuntime } from '@openpalm/lib';
+import { classifyLocalInstall, composePs, buildComposeOptions, deriveLaunchStatus, deriveLocalStackState, detectRuntime } from '@openpalm/lib';
 import { defineAction } from '../lib/action.ts';
+import { resolveServeState } from '../lib/cli-state.ts';
 
 function parseComposePsServices(stdout: string) {
   return stdout
@@ -27,7 +28,10 @@ export default defineCommand({
     description: 'Show container status',
   },
   run: defineAction(async () => {
-    const state = createState();
+    // resolveServeState migrates the home layout (best-effort) before the
+    // reads below — a bare createState() on a pre-consolidation home would
+    // resolve Compose with no env at all (no profiles, default project name).
+    const state = resolveServeState();
     const installState = classifyLocalInstall(state.stackDir, state.homeDir);
     const ps = await composePs(buildComposeOptions(state));
     const launchStatus = deriveLaunchStatus({

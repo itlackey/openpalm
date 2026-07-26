@@ -73,7 +73,8 @@ smoke_write_stack_env() {
   local chat_port="$7"
   local api_port="$8"
 
-  cat >"$home/knowledge/env/stack.env" <<EOF
+  mkdir -p "$home/state"
+  cat >"$home/state/stack.env" <<EOF
 OP_HOME=${home}
 OP_UID=$(id -u)
 OP_GID=$(id -g)
@@ -90,10 +91,20 @@ OP_GUARDIAN_ADMIN_PORT=${guardian_admin_port}
 OP_CHAT_PORT=${chat_port}
 OP_API_PORT=${api_port}
 EOF
-  chmod 600 "$home/knowledge/env/stack.env"
-  mkdir -p "$home/state"
-  printf 'OP_SETUP_COMPLETE=true\n' > "$home/state/stack.state.env"
-  chmod 600 "$home/state/stack.state.env"
+  printf 'OP_SETUP_COMPLETE=true\n' >> "$home/state/stack.env"
+  chmod 600 "$home/state/stack.env"
+
+  # This fixture builds a home already in the CURRENT layout, so record that.
+  # Without the stamp every command would re-attempt the one-shot migration —
+  # harmless on a writable home, but these smokes deliberately chown the tree to
+  # another uid, and a write attempt there is not what they are testing.
+  printf '%s\n' "$(smoke_home_schema_version)" > "$home/state/schema-version"
+}
+
+# The current OP_HOME layout schema version, read from the one place that
+# defines it so this fixture cannot drift from the code under test.
+smoke_home_schema_version() {
+  bun -e "import { HOME_SCHEMA_VERSION } from './packages/lib/src/control-plane/home.ts'; console.log(HOME_SCHEMA_VERSION);"
 }
 
 # Create the runtime directory layout via the lib helper (identical in both

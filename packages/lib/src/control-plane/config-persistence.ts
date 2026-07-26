@@ -15,7 +15,7 @@ import { ACCESS_ENV_KEYS, migrateLegacyAccessEnv, RETIRED_BIND_KEYS } from './ac
 import { assertNoSecretLikeStackEnvKeys, isSecretLikeStackEnvKey } from './secrets.js';
 import { writeSecret } from './secrets-files.js';
 import type { ControlPlaneState, ArtifactMeta } from "./types.js";
-import { legacyStackEnvFile, stateEnvFile, composeFilePath, customComposeFilePath } from "./home.js";
+import { stackEnvFile, legacyKnowledgeStackEnvFile, composeFilePath, customComposeFilePath } from "./home.js";
 import { stackEnvPath } from "./paths.js";
 import { writeFileAtomic } from "./fs-atomic.js";
 import { resolveOperatorIds, hasUsableOperatorId, type OperatorIds } from "./operator-ids.js";
@@ -37,19 +37,15 @@ const logger = createLogger("config-persistence");
 /**
  * Return the env files used for docker compose --env-file args.
  *
- * Only `knowledge/env/stack.env` (non-secret system config). Secret values
+ * Only `state/stack.env` (non-secret system config). Secret values
  * live in `knowledge/secrets/<ENV_KEY>` and are granted to services as Compose
  * file secrets. The user env (`knowledge/env/user.env`) is NOT a compose
  * env_file — it is sourced by the assistant entrypoint at container startup.
  */
 export function buildEnvFiles(state: ControlPlaneState): string[] {
-  // Order matters: compose applies later --env-files last, so STATE (pins,
-  // enabled add-ons — OP_HOME/state) overrides the legacy/default stack.env.
-  // user.env is intentionally NOT here (entrypoint-sourced; secret boundary).
-  return [
-    legacyStackEnvFile(state.homeDir),
-    stateEnvFile(state.homeDir),
-  ].filter(existsSync);
+  // One file. user.env is intentionally NOT here (entrypoint-sourced; secret
+  // boundary).
+  return [stackEnvFile(state.homeDir)].filter(existsSync);
 }
 
 /**
@@ -63,7 +59,7 @@ export function buildEnvFiles(state: ControlPlaneState): string[] {
  * corrected defaults do not silently move it.
  */
 export function migrateLegacyDefaultPorts(homeDir: string): boolean {
-  const path = legacyStackEnvFile(homeDir);
+  const path = legacyKnowledgeStackEnvFile(homeDir);
   if (!existsSync(path)) return false;
 
   const content = readFileSync(path, "utf-8");
@@ -117,7 +113,7 @@ export function migrateLegacyDefaultPorts(homeDir: string): boolean {
  *     on a listener nothing off-box can reach.
  */
 export function migrateLegacyBindAddresses(homeDir: string): boolean {
-  const path = legacyStackEnvFile(homeDir);
+  const path = legacyKnowledgeStackEnvFile(homeDir);
   if (!existsSync(path)) return false;
 
   const content = readFileSync(path, "utf-8");
@@ -140,7 +136,7 @@ export function migrateLegacyBindAddresses(homeDir: string): boolean {
 }
 
 /**
- * Write system-managed values to knowledge/env/stack.env.
+ * Write system-managed values to state/stack.env.
  *
  * Secret-like keys are NOT written here — they belong in knowledge/secrets/.
  * Use ensurePortalSecret() for portal secrets.

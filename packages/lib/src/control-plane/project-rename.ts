@@ -12,7 +12,7 @@
  * The fix is two-phase:
  *   1. When the rename is SAVED (admin assistant settings), record the
  *      outgoing name as OP_PREVIOUS_PROJECT_NAME in the app-written
- *      state/stack.state.env via {@link recordProjectRename}. No compose
+ *      state/stack.env via {@link recordProjectRename}. No compose
  *      runs at save time — the save path holds no install lock.
  *   2. When the stack is next APPLIED under the install lock (deploy,
  *      upgrade, CLI start/restart), {@link teardownRenamedProject} downs the

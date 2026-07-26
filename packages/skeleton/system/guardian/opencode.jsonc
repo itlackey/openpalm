@@ -7,8 +7,8 @@
   // shared knowledge/secrets/auth.json mount.
   "$schema": "https://opencode.ai/config.json",
 
-  // Moderation taxonomy + output contract (loaded as global context).
-  "instructions": ["./instructions/moderation.md"],
+  // Moderation taxonomy. Absolute path — a relative entry loads nothing.
+  "instructions": ["/etc/opencode/instructions/moderation.md"],
 
   // Loopback server — the moderator binds 127.0.0.1:4097, reached only from
   // inside the guardian container. mDNS off (loopback). Managed so it cannot be
@@ -24,10 +24,9 @@
   "permission": {
     "bash": "deny",
     "edit": "deny",
-    "webfetch": "deny",
-    "read": {
-      "/opt/openpalm/guardian/.local/share/opencode/auth.json": "deny",
-      "/opt/openpalm/guardian/.local/share/opencode/mcp-auth.json": "deny"
-    }
+    "webfetch": "deny"
+    // The read denies that were here named absolute container paths, but the
+    // read permission resource is relative to the worktree, so they matched
+    // nothing. The tool denies above are scalars and do work.
   }
 }

@@ -25,12 +25,12 @@ dev_compose() {
     -f "${SWAP_HOME}/system/stack/portals.compose.yml" \
     -f "${SWAP_HOME}/config/stack/custom.compose.yml" \
     -f compose.dev.yml \
-    --env-file "${SWAP_HOME}/knowledge/env/stack.env" \
+    --env-file "${SWAP_HOME}/state/stack.env" \
     --project-name "$COMPOSE_PROJECT_NAME" "$@"
 }
 
 cleanup() {
-  if [[ -f "$SWAP_HOME/knowledge/env/stack.env" ]]; then
+  if [[ -f "$SWAP_HOME/state/stack.env" ]]; then
     dev_compose --profile addon.chat --profile addon.discord down --remove-orphans --volumes >/dev/null 2>&1 || true
   fi
   docker ps -aq --filter "label=com.docker.compose.project=${COMPOSE_PROJECT_NAME}" 2>/dev/null | xargs -r docker rm -f >/dev/null 2>&1 || true
@@ -59,7 +59,7 @@ PLATFORM_VERSION="$(smoke_platform_version)"
 smoke_copy_skeleton "$SWAP_HOME"
 smoke_write_stack_env "$SWAP_HOME" "$PLATFORM_VERSION" \
   3996 3997 3990 3991 3992 3993
-printf 'OP_ENABLED_ADDONS=%s\n' 'chat' >> "$SWAP_HOME/state/stack.state.env"
+printf 'OP_ENABLED_ADDONS=%s\n' 'chat' >> "$SWAP_HOME/state/stack.env"
 smoke_seed_secrets "$SWAP_HOME" 'swap-smoke-password'
 
 smoke_ensure_home_dirs "$SWAP_HOME"

@@ -22,7 +22,7 @@ function createHome(installed: boolean): string {
     mkdirSync(join(home, 'system', 'stack'), { recursive: true });
     writeFileSync(join(home, 'system', 'stack', 'core.compose.yml'), 'services: {}\n');
     mkdirSync(join(home, 'state'), { recursive: true });
-    writeFileSync(join(home, 'state', 'stack.state.env'), 'OP_SETUP_COMPLETE=true\n');
+    writeFileSync(join(home, 'state', 'stack.env'), 'OP_SETUP_COMPLETE=true\n');
   }
   return home;
 }
@@ -117,7 +117,7 @@ describe('GET /api/runtime-config', () => {
     mkdirSync(join(homeDir, 'system', 'stack'), { recursive: true });
     writeFileSync(join(homeDir, 'system', 'stack', 'core.compose.yml'), 'services: {}\n');
     mkdirSync(join(homeDir, 'state'), { recursive: true });
-    writeFileSync(join(homeDir, 'state', 'stack.state.env'), 'OP_SETUP_COMPLETE=true\n');
+    writeFileSync(join(homeDir, 'state', 'stack.env'), 'OP_SETUP_COMPLETE=true\n');
 
     const after = await GET({} as never);
     expect(await after.json()).toEqual({

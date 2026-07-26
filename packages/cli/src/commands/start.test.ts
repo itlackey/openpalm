@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, mock, test } from 'bun:test';
-import * as realLib from '@openpalm/lib';
+import * as realLib from '../../../lib/src/index.ts';
 import * as realCliState from '../lib/cli-state.ts';
 import * as realCliCompose from '../lib/cli-compose.ts';
 

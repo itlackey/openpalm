@@ -67,7 +67,7 @@ every request.
 tr -d '\n' < .dev/knowledge/secrets/op_ui_login_password
 ```
 
-**Assistant URL**: by default `.dev/knowledge/env/stack.env` sets
+**Assistant URL**: by default `.dev/state/stack.env` sets
 `OP_ASSISTANT_PORT=4800` for the isolated dev assistant.
 If you want full isolation, spin up the dev compose stack alongside:
 
@@ -141,7 +141,7 @@ The build step also stamps the UI version into `.openpalm-ui-version` so OpenPal
 Protected endpoints require an `op_session` cookie. The browser obtains the
 cookie by POSTing the operator password to `/admin/auth/login`. The legacy
 `x-admin-token` / `Authorization: Bearer` header fallbacks were removed in
-Phase 2 of `docs/technical/auth-and-proxy-refactor-plan.md`.
+Phase 2 of the auth/proxy refactor.
 
 In a normal install the source of truth for the password is
 `~/.openpalm/knowledge/secrets/op_ui_login_password`. Local dev with

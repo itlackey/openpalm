@@ -431,12 +431,13 @@ describe("reconcileMdnsResponder", () => {
   function makeHome(): string {
     const home = mkdtempSync(join(tmpdir(), "openpalm-mdns-"));
     mkdirSync(join(home, "knowledge", "env"), { recursive: true });
+    mkdirSync(join(home, "state"), { recursive: true });
     homes.push(home);
     return home;
   }
 
   function writeStackEnv(home: string, content: string): void {
-    writeFileSync(join(home, "knowledge", "env", "stack.env"), content);
+    writeFileSync(join(home, "state", "stack.env"), content);
   }
 
   beforeEach(() => {

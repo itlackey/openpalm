@@ -196,9 +196,8 @@ async function refreshDeployStatus(
 }
 
 export function markSetupComplete(state: ControlPlaneState): void {
-  // OP_SETUP_COMPLETE is an app-written record → state/ (constitution §1), not the
-  // operator-facing knowledge/env/stack.env. isSetupComplete/classifyLocalInstall
-  // merge state over legacy, so installs that recorded it in stack.env still read complete.
+  // OP_SETUP_COMPLETE is an app-written record → the single state/stack.env
+  // (constitution §1).
   patchStateEnvFile(state.homeDir, { OP_SETUP_COMPLETE: 'true' });
 }
 
@@ -208,7 +207,7 @@ export function backupSetupInputs(state: ControlPlaneState): string | null {
   if (!existsSync(stackEnvFile) && !existsSync(secretsDir)) return null;
   const backupDir = join(resolveBackupsDir(), `${new Date().toISOString().replace(/[:.]/g, '-')}-setup`);
   if (existsSync(stackEnvFile)) {
-    const dest = join(backupDir, 'knowledge/env/stack.env');
+    const dest = join(backupDir, 'state/stack.env');
     mkdirSync(dirname(dest), { recursive: true });
     copyFileSync(stackEnvFile, dest);
   }

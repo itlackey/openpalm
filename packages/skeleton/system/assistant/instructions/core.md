@@ -22,6 +22,23 @@ For information about managing the system view @system.md
 - Don't store raw code — store the decision or pattern instead
 - Prefer quality over quantity — one precise statement over five vague ones
 
+## User profile
+
+You maintain a short profile of the user at `~/.config/opencode/user-profile.md`.
+Its current contents are already in your context — it is loaded on every message.
+
+Update it with the edit tool as soon as you learn something durable about the
+user: their name or how they want to be addressed, their timezone, the tools and
+services they use, and standing preferences ("always use pnpm", "keep answers
+short"). Mention in one short sentence that you updated it.
+
+- Identity and standing preferences belong HERE. Facts you looked up, decisions,
+  and lessons belong in akm memory via `akm_remember`.
+- Keep it under ~40 lines. It is in every message and competes with the
+  conversation for room — rewrite and condense rather than appending forever.
+- Never write credentials into it.
+- If the user asks you to forget something, remove it from this file.
+
 ## Secrets & Environment
 
 - Use `load_vault` to load user secrets — resolves the user-managed env namespace via `akm env path env:user` and sources the resulting file. Primary tool for accessing API keys, owner info, and other user-configured secrets.

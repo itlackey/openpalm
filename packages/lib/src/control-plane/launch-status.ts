@@ -21,7 +21,7 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { execFile } from "node:child_process";
 import { parseEnvFile } from "./env.js";
-import { legacyStackEnvFile, secretsDir, stackDirFor, stateEnvFile } from "./home.js";
+import { secretsDir, stackDirFor, stackEnvFile } from "./home.js";
 import { checkDocker, checkDockerCompose } from "./docker.js";
 
 export type LocalStackState =
@@ -156,8 +156,7 @@ export function deriveLaunchStatus(input: { local: LocalStatus; remotes?: Remote
  *   - setup_incomplete: stack present but OP_SETUP_COMPLETE !== 'true' and no
  *                       other observable evidence of a completed install
  *   - installed:        OP_SETUP_COMPLETE === 'true', OR (cheap observable
- *                       fallback, docs/reviews/fable-remediation-plan.md §1.5)
- *                       core.compose.yml is present AND both guardian tokens
+ *                       fallback) core.compose.yml is present AND both guardian tokens
  *                       performSetup mints exist. Caller maps "installed" to
  *                       running/offline/broken via a container-health probe.
  *
@@ -179,9 +178,7 @@ export function classifyLocalInstall(stackDir: string, homeDir: string): "not_in
   const hasCompose = existsSync(join(stackDir, "core.compose.yml"));
   // OP_SETUP_COMPLETE lives in state/ (constitution §1); merge state OVER legacy so
   // installs that recorded it in the legacy stack.env still classify as installed.
-  const legacy = parseEnvFile(legacyStackEnvFile(homeDir));
-  const state = existsSync(stateEnvFile(homeDir)) ? parseEnvFile(stateEnvFile(homeDir)) : {};
-  const env = { ...legacy, ...state };
+  const env = parseEnvFile(stackEnvFile(homeDir));
   if (!hasCompose && env.OP_SETUP_COMPLETE !== "true") return "not_installed";
   if (env.OP_SETUP_COMPLETE === "true") return "installed";
   const secrets = secretsDir(homeDir);

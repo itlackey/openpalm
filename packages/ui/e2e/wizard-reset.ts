@@ -5,8 +5,8 @@
  * hooks.server.ts returns false and the wizard re-runs end-to-end:
  *   - backs up stack.env (caller restores after the test via
  *     restoreWizardState)
- *   - rewrites state/stack.state.env with OP_SETUP_COMPLETE=false so state
- *     overrides any legacy true value still present in knowledge/env/stack.env
+ *   - rewrites state/stack.env with OP_SETUP_COMPLETE=false so state
+ *     overrides any legacy true value still present in state/stack.env
  *   - removes any persisted voice profile selection so the wizard
  *     starts from a known blank state
  *
@@ -31,11 +31,11 @@ export function resolveOpHome(): string {
 }
 
 function stateEnvPath(homeDir: string): string {
-	return resolve(homeDir, 'state/stack.state.env');
+	return resolve(homeDir, 'state/stack.env');
 }
 
 function backupPath(homeDir: string): string {
-	return resolve(homeDir, 'state/stack.state.env.wizard-test-backup');
+	return resolve(homeDir, 'state/stack.env.wizard-test-backup');
 }
 
 function assertSafeHome(homeDir: string): void {

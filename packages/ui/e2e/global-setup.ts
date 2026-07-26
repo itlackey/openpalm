@@ -8,12 +8,12 @@ import { readSecret } from "@openpalm/lib/control-plane/secrets-files";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(HERE, "../../..");
-// STACK_ENV_PATH allows pointing at a test-isolated stack (e.g. .dev-test/knowledge/env/stack.env)
+// STACK_ENV_PATH allows pointing at a test-isolated stack (e.g. .dev-test/state/stack.env)
 // so Playwright tests don't accidentally target a developer's running dev stack.
-const STACK_ENV = process.env.STACK_ENV_PATH ?? resolve(REPO_ROOT, ".dev/knowledge/env/stack.env");
+const STACK_ENV = process.env.STACK_ENV_PATH ?? resolve(REPO_ROOT, ".dev/state/stack.env");
 const OP_HOME_DIR = process.env.OP_HOME ?? resolve(REPO_ROOT, ".dev");
 const BACKUP = `${STACK_ENV}.e2e-backup`;
-const STATE_ENV = resolve(OP_HOME_DIR, "state/stack.state.env");
+const STATE_ENV = resolve(OP_HOME_DIR, "state/stack.env");
 const STATE_BACKUP = `${STATE_ENV}.e2e-backup`;
 
 function patchEnvContent(content: string, key: string, value: string): string {

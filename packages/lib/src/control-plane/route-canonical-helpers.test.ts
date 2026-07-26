@@ -3,6 +3,7 @@ import { chmodSync, existsSync, mkdtempSync, rmSync, writeFileSync } from "node:
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { stackEnvPath } from "./paths.js";
+import { stackEnvFile } from "./home.js";
 import {
   buildComposeCommandArgs,
   buildComposePreflightError,
@@ -13,17 +14,18 @@ import type { ControlPlaneState } from "./types.js";
 
 // Regression locks for the DRY-onto-canonical-helpers refactor. These assert the
 // equivalences that make the routing behavior-preserving: the canonical
-// `stackEnvPath(state)` must reproduce the old inline `${stashDir}/env/stack.env`
-// literal, `buildComposeCommandArgs` must reproduce the -f/--env-file/--profile
+// `stackEnvPath(state)` must agree with home.ts `stackEnvFile`,
+// `buildComposeCommandArgs` must reproduce the -f/--env-file/--profile
 // arg-building rules (env files filtered by existsSync) that deploy.ts's
 // deleted (§2.1) missingServiceImages helper used to hand-build,
 // and the run()-routed docker probes keep their ok/stdout/stderr/code semantics.
 
-describe("stackEnvPath is the canonical stashDir-based stack.env path", () => {
-  it("equals the previously-inlined `${stashDir}/env/stack.env` literal", () => {
-    const state = { stashDir: "/op/home/knowledge" } as ControlPlaneState;
-    expect(stackEnvPath(state)).toBe(`${state.stashDir}/env/stack.env`);
-    expect(stackEnvPath(state)).toBe("/op/home/knowledge/env/stack.env");
+describe("stackEnvPath is the canonical stack.env path", () => {
+  it("resolves to the single app-owned env file under state/", () => {
+    const state = { homeDir: "/op/home" } as ControlPlaneState;
+    expect(stackEnvPath(state)).toBe(stackEnvFile(state.homeDir));
+    expect(stackEnvPath(state)).toBe("/op/home/state/stack.env");
+    expect(stackEnvPath(state)).toBe("/op/home/state/stack.env");
   });
 });
 

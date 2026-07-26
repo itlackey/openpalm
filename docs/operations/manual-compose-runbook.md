@@ -31,7 +31,7 @@ variable). The relevant files for running the stack are:
 | `~/.openpalm/system/stack/services.compose.yml` | First-party optional services, profile-gated |
 | `~/.openpalm/system/stack/portals.compose.yml` | First-party optional portals, profile-gated |
 | `~/.openpalm/config/stack/custom.compose.yml` | User custom services and overlays |
-| `~/.openpalm/knowledge/env/stack.env` | System-managed non-secret values: ports, UID/GID, image tags, paths, hardware profile selections |
+| `~/.openpalm/state/stack.env` | System-managed non-secret values: ports, UID/GID, image tags, paths, hardware profile selections |
 | `~/.openpalm/knowledge/secrets/` | System-managed secret files; directory mode `0700`, file mode `0600` |
 
 The project name defaults to `openpalm` and can be overridden with the
@@ -40,7 +40,7 @@ The project name defaults to `openpalm` and can be overridden with the
 To see which first-party addons are enabled:
 
 ```bash
-grep '^OP_ENABLED_ADDONS=' ~/.openpalm/knowledge/env/stack.env
+grep '^OP_ENABLED_ADDONS=' ~/.openpalm/state/stack.env
 ```
 
 ---
@@ -61,16 +61,16 @@ op() {
   local OP_HOME="${OP_HOME:-$HOME/.openpalm}"
   local PROJECT_NAME="${OP_PROJECT_NAME:-openpalm}"
 
-  if [ -f "$OP_HOME/knowledge/env/stack.env" ]; then
+  if [ -f "$OP_HOME/state/stack.env" ]; then
     set -a
     # shellcheck disable=SC1090
-    source "$OP_HOME/knowledge/env/stack.env"
+    source "$OP_HOME/state/stack.env"
     set +a
   fi
 
   docker compose \
     --project-name "$PROJECT_NAME" \
-    --env-file "$OP_HOME/knowledge/env/stack.env" \
+    --env-file "$OP_HOME/state/stack.env" \
     -f "$OP_HOME/system/stack/core.compose.yml" \
     -f "$OP_HOME/system/stack/services.compose.yml" \
     -f "$OP_HOME/system/stack/portals.compose.yml" \
@@ -96,7 +96,7 @@ PROJECT_NAME="${OP_PROJECT_NAME:-openpalm}"
 
 docker compose \
   --project-name "$PROJECT_NAME" \
-  --env-file "$OP_HOME/knowledge/env/stack.env" \
+  --env-file "$OP_HOME/state/stack.env" \
   -f "$OP_HOME/system/stack/core.compose.yml" \
   -f "$OP_HOME/system/stack/services.compose.yml" \
   -f "$OP_HOME/system/stack/portals.compose.yml" \
@@ -118,7 +118,7 @@ misconfiguration early — before containers are affected.
 # Validate compose merge and variable substitution (exits non-zero on error)
 docker compose \
   --project-name "$PROJECT_NAME" \
-  --env-file "$OP_HOME/knowledge/env/stack.env" \
+  --env-file "$OP_HOME/state/stack.env" \
   -f "$OP_HOME/system/stack/core.compose.yml" \
   -f "$OP_HOME/system/stack/services.compose.yml" \
   -f "$OP_HOME/system/stack/portals.compose.yml" \
@@ -129,7 +129,7 @@ docker compose \
 # List resolved service names
 docker compose \
   --project-name "$PROJECT_NAME" \
-  --env-file "$OP_HOME/knowledge/env/stack.env" \
+  --env-file "$OP_HOME/state/stack.env" \
   -f "$OP_HOME/system/stack/core.compose.yml" \
   -f "$OP_HOME/system/stack/services.compose.yml" \
   -f "$OP_HOME/system/stack/portals.compose.yml" \
@@ -144,7 +144,7 @@ docker compose \
 ```bash
 docker compose \
   --project-name "$PROJECT_NAME" \
-  --env-file "$OP_HOME/knowledge/env/stack.env" \
+  --env-file "$OP_HOME/state/stack.env" \
   -f "$OP_HOME/system/stack/core.compose.yml" \
   -f "$OP_HOME/system/stack/services.compose.yml" \
   -f "$OP_HOME/system/stack/portals.compose.yml" \
@@ -337,7 +337,7 @@ done
 ### 3. Write an isolated `stack.env`
 
 ```bash
-cat > "$VERIFY_HOME/knowledge/env/stack.env" <<EOF
+cat > "$VERIFY_HOME/state/stack.env" <<EOF
 OP_HOME=$VERIFY_HOME
 OP_UID=$(id -u)
 OP_GID=$(id -g)
@@ -362,7 +362,7 @@ COMPOSE_PROFILES=addon.chat
 GUARDIAN_DIRECT_INGRESS=true
 GUARDIAN_CORS_ALLOWED_ORIGINS=http://127.0.0.1:3840
 EOF
-chmod 600 "$VERIFY_HOME/knowledge/env/stack.env"
+chmod 600 "$VERIFY_HOME/state/stack.env"
 ```
 
 Common user error: setting `OP_UI_VERSION=$VERIFY_VERSION` before the `@openpalm/ui`
@@ -387,7 +387,7 @@ compose_verify() {
     -f "$VERIFY_HOME/system/stack/portals.compose.yml" \
     -f "$VERIFY_HOME/config/stack/custom.compose.yml" \
     -f "$REPO/compose.dev.yml" \
-    --env-file "$VERIFY_HOME/knowledge/env/stack.env" \
+    --env-file "$VERIFY_HOME/state/stack.env" \
     "$@"
 }
 

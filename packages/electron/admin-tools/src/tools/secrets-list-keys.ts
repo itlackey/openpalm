@@ -42,8 +42,14 @@ export default tool({
   async execute(args) {
     const home = opHome();
     const files: Record<string, string> = {
-      // Non-secret system env lives under knowledge/env/ (NOT config/stack/).
-      stack: join(home, "knowledge", "env", "stack.env"),
+      // Non-secret stack env: OP_HOME/state/stack.env, the single Compose
+      // --env-file. Deliberately duplicated rather than imported from
+      // @openpalm/lib `stackEnvFile`: this plugin is published standalone and
+      // declares no dependency on the workspace lib (a subpath import of
+      // home.ts would bundle fine, but only by adding that dependency to a
+      // package that ships pre-bundled). Keep in step with home.ts if the
+      // location moves again.
+      stack: join(home, "state", "stack.env"),
     };
     const targets = args.file === "all" ? ["stack", "secrets"] : [args.file];
     const result: Record<string, { exists: boolean; keys: string[] }> = {};

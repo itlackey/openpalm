@@ -56,7 +56,7 @@ lsof -i :3880
 ```
 
 Then either stop that process or change the matching `OP_*_PORT` value in
-`~/.openpalm/knowledge/env/stack.env`, then recreate the stack with the same
+`~/.openpalm/state/stack.env`, then recreate the stack with the same
 compose file set.
 
 ---
@@ -97,11 +97,11 @@ docker compose \
   -f core.compose.yml \
   -f portals.compose.yml \
   --profile addon.chat \
-  --env-file ../../knowledge/env/stack.env \
+  --env-file ../../state/stack.env \
   up -d
 ```
 
-The enabled addon names in `OP_ENABLED_ADDONS` inside `~/.openpalm/knowledge/env/stack.env` are used by OpenPalm
+The enabled addon names in `OP_ENABLED_ADDONS` inside `~/.openpalm/state/stack.env` are used by OpenPalm
 tooling to build the `--profile` arguments. Manual invocations must pass them
 explicitly.
 
@@ -121,14 +121,14 @@ Useful checks:
 
 ```bash
 ls ~/.openpalm/knowledge/secrets
-grep -E 'BASE_URL' ~/.openpalm/knowledge/env/stack.env
+grep -E 'BASE_URL' ~/.openpalm/state/stack.env
 ```
 
 ```bash
 cd "$HOME/.openpalm/config/stack"
 docker compose \
   -f core.compose.yml \
-  --env-file ../../knowledge/env/stack.env \
+  --env-file ../../state/stack.env \
   logs assistant
 ```
 
@@ -161,7 +161,7 @@ Then recreate any services that depend on that value.
 - recreate the affected portal and guardian services after changing secrets
 
 There is no separate staging/artifacts file to inspect in the current model; the
-live non-secret values come straight from `knowledge/env/stack.env`; service secrets come from `knowledge/secrets/`.
+live non-secret values come straight from `state/stack.env`; service secrets come from `knowledge/secrets/`.
 
 ---
 
@@ -171,10 +171,10 @@ live non-secret values come straight from `knowledge/env/stack.env`; service sec
 the wrong user.
 
 **Fix:** verify ownership and the UID/GID values in
-`~/.openpalm/knowledge/env/stack.env`:
+`~/.openpalm/state/stack.env`:
 
 ```bash
-grep -E 'OP_UID|OP_GID' ~/.openpalm/knowledge/env/stack.env
+grep -E 'OP_UID|OP_GID' ~/.openpalm/state/stack.env
 id -u
 id -g
 sudo chown -R $(id -u):$(id -g) ~/.openpalm
@@ -191,7 +191,7 @@ restart-loop.
 
 **Fix:**
 
-- compare your current `~/.openpalm/knowledge/env/stack.env` with the newer schema
+- compare your current `~/.openpalm/state/stack.env` with the newer schema
 - make sure any newly required variables are present
 - rerun `docker compose pull` and then `docker compose up -d` with the same file set
 
@@ -210,7 +210,7 @@ docker compose \
   -f core.compose.yml \
   -f portals.compose.yml \
   --profile addon.chat \
-  --env-file ../../knowledge/env/stack.env \
+  --env-file ../../state/stack.env \
   down -v
 
 rm -rf "$HOME/.openpalm"

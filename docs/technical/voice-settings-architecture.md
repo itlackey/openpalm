@@ -1,7 +1,7 @@
 # Voice Settings Architecture — Client vs. Host
 
-> Status: **current truth** (2026-07). Supersedes the voice-settings halves of
-> [`openpalm-voice-addon.md`](./openpalm-voice-addon.md) and
+> Status: **current truth** (2026-07). Supersedes the voice-settings half of
+> an earlier addon proposal and the settings material in
 > [`voice-container-build.md`](./voice-container-build.md) — the container
 > build described there still applies; the settings/enable flow does not.
 
@@ -10,7 +10,7 @@ one form, one endpoint, and one storage location: **client UI settings**
 (which TTS/STT provider a given browser uses) and **host capability settings**
 (whether the voice container runs, and on which hardware profile). The old
 admin Voice tab saved both through `PUT /api/host/voice` into
-`knowledge/env/stack.env`, and the chat client consumed them through
+`state/stack.env`, and the chat client consumed them through
 admin-only relays (`/api/speak`, `/api/transcribe`) that only worked against
 the local host.
 
@@ -26,7 +26,7 @@ The architecture is now split along that line.
   port pre-flight, background image-pull jobs (202 + polling via
   `GET /api/host/addons` → `voice.activeJob`), CDI/rootless overlay selection.
 - Persistence is unchanged: `OP_ENABLED_ADDONS` and `OP_VOICE_PROFILE` in
-  `state/stack.state.env`, resolved to compose `--profile addon.voice.<variant>`.
+  `state/stack.env`, resolved to compose `--profile addon.voice.<variant>`.
 - Container-level knobs (`OP_VOICE_WHISPER_MODEL`, `OP_VOICE_KOKORO_VOICE`,
   `OP_VOICE_LOG_LEVEL`) stay in the addon env schema / credentials drawer.
 
@@ -110,7 +110,7 @@ advertisement defaults above.
 
 ## Migration notes
 
-- `OP_TTS_*` / `OP_STT_*` keys left in `knowledge/env/stack.env` by older
+- `OP_TTS_*` / `OP_STT_*` keys left in `state/stack.env` by older
   releases are **removed automatically** on the next reconcile (the same
   retired-key prune that strips removed-addon state — see `RETIRED_ENV_KEYS`
   in `packages/lib/src/control-plane/addons.ts`). Client settings are not

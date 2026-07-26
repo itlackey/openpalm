@@ -30,7 +30,7 @@ import { handle, _resetLaunchCache } from './hooks.server.js';
 // ── helpers ──────────────────────────────────────────────────────────────────
 
 function seedSetupComplete(stackDir: string): void {
-  const kvDir = join(stackDir, '..', '..', 'knowledge', 'env');
+  const kvDir = join(stackDir, '..', '..', 'state');
   mkdirSync(kvDir, { recursive: true });
   writeFileSync(join(kvDir, 'stack.env'), 'OP_SETUP_COMPLETE=true\n');
 }
@@ -118,7 +118,7 @@ describe('hooks.server — sliding renewal', () => {
     // not_installed straight to /setup (same scenario is also pinned in
     // hooks.server.landing.vitest.ts).
     const state = resetState('test-admin-pw');
-    const kvDir = join(state.stackDir, '..', '..', 'knowledge', 'env');
+    const kvDir = join(state.stackDir, '..', '..', 'state');
     mkdirSync(kvDir, { recursive: true });
     writeFileSync(join(kvDir, 'stack.env'), 'OP_SETUP_COMPLETE=false\n');
 
@@ -129,7 +129,7 @@ describe('hooks.server — sliding renewal', () => {
 
   test('not_installed ignores server-visible reachability and routes through /start', async () => {
     const state = resetState('test-admin-pw');
-    const kvDir = join(state.stackDir, '..', '..', 'knowledge', 'env');
+    const kvDir = join(state.stackDir, '..', '..', 'state');
     mkdirSync(kvDir, { recursive: true });
     writeFileSync(join(kvDir, 'stack.env'), 'OP_SETUP_COMPLETE=false\n');
     const event = makeEvent('/', null, 'text/html');

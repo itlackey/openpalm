@@ -17,8 +17,7 @@ import { timestampDirName } from "./backup.js";
  *
  *  auth.json is backed up but not restored automatically (see RESTORE_FILES). */
 const SNAPSHOT_FILES = [
-  "knowledge/env/stack.env",
-  "state/stack.state.env",
+  "state/stack.env",
   "system/stack/services.compose.yml",
   "system/stack/portals.compose.yml",
   "config/stack/custom.compose.yml",

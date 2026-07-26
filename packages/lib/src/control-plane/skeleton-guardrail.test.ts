@@ -119,7 +119,7 @@ describe("skeleton: config/ structure", () => {
   });
 
   test('third-party addon images (ollama) are pinned by exact version + digest, never :latest', () => {
-    // rev4-F1 (docs/reviews/fable-security-remediation-plan.md S.6): ollama sits
+    // rev4-F1: ollama sits
     // inside the trust boundary (assistant_net) with no upstream auth. An
     // unpinned :latest tag means a registry-side publish is a same-day
     // code-execution path into the assistant's network — pin by tag@digest.

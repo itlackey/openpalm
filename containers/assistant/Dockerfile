@@ -221,8 +221,10 @@ ENV PATH="/opt/persistent/bin:/opt/openpalm/tools/node_modules/.bin:/home/openco
 RUN printf 'export PATH="/opt/persistent/bin:/opt/openpalm/tools/node_modules/.bin:/home/opencode/.local/bin:/home/opencode/.bun/bin:/opt/assistant-tools/bin:/opt/google-cloud-sdk/bin:$PATH"\n' \
       > /etc/profile.d/openpalm-tools.sh
 
-# OpenCode config (opencode.jsonc, openpalm.md, system.md) lives in
-# OP_HOME/config/assistant/ and is bind-mounted at OPENCODE_CONFIG_DIR.
+# The MANAGED OpenCode config (opencode.jsonc, instructions/) lives in
+# OP_HOME/system/assistant/ and is bind-mounted at OPENCODE_CONFIG_DIR
+# (/etc/opencode). OP_HOME/config/assistant/ is a DIFFERENT tree — the user's
+# OpenCode global config, mounted at ~/.config/opencode.
 # AGENTS.md is baked here as a default; the entrypoint seeds it into
 # OPENCODE_CONFIG_DIR only if the operator has not placed their own copy there.
 COPY AGENTS.md /usr/local/share/openpalm/AGENTS.md

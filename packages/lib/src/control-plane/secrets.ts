@@ -1,10 +1,10 @@
 /** Secrets and capability key management. */
-import { mkdirSync, writeFileSync, readFileSync, existsSync, chmodSync, lstatSync, rmSync, renameSync } from "node:fs";
+import { mkdirSync, writeFileSync, readFileSync, existsSync, chmodSync, lstatSync, rmSync, renameSync, copyFileSync } from "node:fs";
 import { errMessage } from './errors.js';
 import { createLogger } from "../logger.js";
 import { parseEnvFile, mergeEnvContent } from './env.js';
 import type { ControlPlaneState } from "./types.js";
-import { resolveConfigDir, legacyStackEnvFile, stateEnvFile } from "./home.js";
+import { resolveConfigDir, stackEnvFile } from "./home.js";
 import { authJsonPath as resolveAuthJsonPath, stackEnvPath } from "./paths.js";
 import { dirname, join } from "node:path";
 import {
@@ -16,7 +16,7 @@ import {
   writeSecret,
 } from './secrets-files.js';
 import { PORTAL_SECRET_ADDON_IDS } from './addon-ids.js';
-import { writeFileAtomic } from './fs-atomic.js';
+import { writeFileAtomic, writeFileInPlace } from './fs-atomic.js';
 
 const OPENCODE_STARTER_CONFIG = `${JSON.stringify({ $schema: "https://opencode.ai/config.json" }, null, 2)}\n`;
 const logger = createLogger("secrets");
@@ -107,15 +107,6 @@ export function writeStackSecretEnv(state: ControlPlaneState, updates: Record<st
     if (!/^[A-Z0-9_]+$/.test(envKey)) throw new Error(`Invalid secret env key: ${envKey}`);
     writeSecret(state.homeDir, envKey.toLowerCase(), value.endsWith('\n') ? value : `${value}\n`);
   }
-}
-
-function mergeVaultEnvFile(path: string, updates: Record<string, string>, uncomment = false): void {
-  if (Object.keys(updates).length === 0) return;
-  assertNoSecretLikeStackEnvKeys(updates);
-  const raw = existsSync(path) ? readFileSync(path, "utf-8") : "";
-  let merged = mergeEnvContent(raw, updates, { uncomment });
-  if (!merged.endsWith("\n")) merged += "\n";
-  writeVaultFile(path, merged);
 }
 
 function ensureSystemSecrets(state: ControlPlaneState): void {
@@ -221,7 +212,8 @@ function ensureAuthJson(state: ControlPlaneState): void {
     }
   }
 
-  writeVaultFile(authJsonPath, "{}\n");
+  // auth.json is a single-file bind mount; the write must keep its inode.
+  writeFileInPlace(authJsonPath, "{}\n", VAULT_FILE_MODE);
 }
 
 export function updateSecretsEnv(
@@ -265,19 +257,21 @@ export function writeAuthJsonProviderKeys(
       const raw = readFileSync(authJsonPath, "utf-8").trim();
       if (raw && raw !== "{}") current = JSON.parse(raw) as Record<string, unknown>;
     } catch {
-      // Corrupt auth.json — rename it so the operator can recover, then start fresh.
+      // Copy aside, never rename — a rename would strand both containers on
+      // the old inode.
       const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
       const corruptPath = `${authJsonPath}.corrupt-${timestamp}`;
       try {
-        renameSync(authJsonPath, corruptPath);
-        logger.warn("corrupt auth.json renamed for recovery", {
+        copyFileSync(authJsonPath, corruptPath);
+        chmodSync(corruptPath, VAULT_FILE_MODE);
+        logger.warn("corrupt auth.json copied aside for recovery", {
           original: authJsonPath,
-          renamed: corruptPath,
+          copy: corruptPath,
         });
-      } catch (renameErr) {
-        logger.warn("could not rename corrupt auth.json; starting fresh", {
+      } catch (copyErr) {
+        logger.warn("could not copy corrupt auth.json aside; starting fresh", {
           path: authJsonPath,
-          error: errMessage(renameErr),
+          error: errMessage(copyErr),
         });
       }
       current = {};
@@ -292,24 +286,18 @@ export function writeAuthJsonProviderKeys(
     }
   }
 
-  writeVaultFile(authJsonPath, `${JSON.stringify(current, null, 2)}\n`);
+  // auth.json is a single-file bind mount; the write must keep its inode.
+  writeFileInPlace(authJsonPath, `${JSON.stringify(current, null, 2)}\n`, VAULT_FILE_MODE);
 }
 
-/** Read and parse knowledge/env/stack.env. Returns {} if the file does not exist. */
 /**
- * The effective non-secret stack config, merging the app-written `state/` tree
- * OVER the legacy `knowledge/env/stack.env`. This matches the compose `--env-file`
- * precedence (buildEnvFiles passes legacy then state, so state wins) — so host
- * code reads the SAME effective values the running stack does. Without this merge,
- * a pin/addon recorded in state/ but stale in legacy would make the host report a
- * different value than the containers actually use (the "current ≠ running" trap).
+ * The effective non-secret stack config: the single Compose `--env-file`, minus
+ * anything secret-shaped. One file, so host code and the containers cannot
+ * disagree about a value.
  */
 export function readStackEnv(homeDir: string): Record<string, string> {
-  const legacy = parseEnvFile(legacyStackEnvFile(homeDir));
-  const state = existsSync(stateEnvFile(homeDir)) ? parseEnvFile(stateEnvFile(homeDir)) : {};
-  const merged = { ...legacy, ...state };
   const nonSecret: Record<string, string> = {};
-  for (const [key, value] of Object.entries(merged)) {
+  for (const [key, value] of Object.entries(parseEnvFile(stackEnvFile(homeDir)))) {
     if (!isSecretLikeStackEnvKey(key)) nonSecret[key] = value;
   }
   return nonSecret;
@@ -317,18 +305,6 @@ export function readStackEnv(homeDir: string): Record<string, string> {
 
 export function readStackRuntimeEnv(homeDir: string): Record<string, string> {
   return { ...readStackEnv(homeDir), ...readStackSecretEnv(homeDir) };
-}
-
-export function updateSystemSecretsEnv(
-  state: ControlPlaneState,
-  updates: Record<string, string>
-): void {
-  const systemEnvPath = stackEnvPath(state);
-  enforceVaultDirMode(state.stackDir);
-  if (!existsSync(systemEnvPath)) {
-    ensureSystemSecrets(state);
-  }
-  mergeVaultEnvFile(systemEnvPath, updates, true);
 }
 
 export function patchSecretsEnvFile(
@@ -353,9 +329,14 @@ export function patchSecretsEnvFile(
     }
   }
   if (Object.keys(stackPatches).length === 0) return;
-  assertNoSecretLikeStackEnvKeys(stackPatches);
+  patchStackEnv(homeDir, stackPatches);
+}
 
-  const stackEnvPath = legacyStackEnvFile(homeDir);
+/** Merge non-secret patches into the single stack env file (state/stack.env). */
+function patchStackEnv(homeDir: string, patches: Record<string, string>): void {
+  assertNoSecretLikeStackEnvKeys(patches);
+
+  const stackEnvPath = stackEnvFile(homeDir);
   enforceVaultDirMode(dirname(stackEnvPath));
 
   let existingContent = "";
@@ -367,39 +348,20 @@ export function patchSecretsEnvFile(
     // start fresh
   }
 
-  let result = mergeEnvContent(existingContent, stackPatches);
+  let result = mergeEnvContent(existingContent, patches);
   if (!result.endsWith("\n")) result += "\n";
   writeVaultFile(stackEnvPath, result);
 }
 
 /**
- * Patch app-written records into OP_HOME/state/stack.state.env.
- *
- * Constitution §1: state/ is the app-written tree (setup record, enabled add-ons,
- * version pins, channel). readStackEnv / buildEnvFiles merge this OVER the legacy
- * knowledge/env/stack.env, so values written here win. This is the symmetric
- * counterpart to patchSecretsEnvFile: use it for records the app owns, so the app
- * never writes into the operator-facing stack.env. Non-secret keys only.
+ * Patch app-written records (setup record, enabled add-ons, version pins,
+ * channel) into the single stack env file. Same file as patchSecretsEnvFile's
+ * non-secret half since the consolidation; this variant refuses secret-shaped
+ * keys instead of routing them to file-based secrets. Non-secret keys only.
  */
 export function patchStateEnvFile(homeDir: string, patches: Record<string, string>): void {
   if (Object.keys(patches).length === 0) return;
-  assertNoSecretLikeStackEnvKeys(patches);
-
-  const path = stateEnvFile(homeDir);
-  mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
-
-  let existing = "";
-  try {
-    if (existsSync(path)) existing = readFileSync(path, "utf-8");
-  } catch {
-    // start fresh
-  }
-
-  let result = mergeEnvContent(existing, patches);
-  if (!result.endsWith("\n")) result += "\n";
-  const tmp = `${path}.tmp`;
-  writeFileSync(tmp, result, { mode: 0o600 });
-  renameSync(tmp, path);
+  patchStackEnv(homeDir, patches);
 }
 
 export function maskSecretValue(key: string, value: string): string {

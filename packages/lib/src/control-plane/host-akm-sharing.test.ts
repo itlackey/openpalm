@@ -37,7 +37,7 @@ beforeEach(() => {
   mkdirSync(join(configDir, "akm"), { recursive: true });
   mkdirSync(join(stashDir, "env"), { recursive: true });
   state = { configDir, stashDir, dataDir: join(root, "data"), homeDir: root } as ControlPlaneState;
-  stackEnv = join(stashDir, "env", "stack.env");
+  stackEnv = join(root, "state", "stack.env");
   opConfig = join(configDir, "akm", "config.json");
 });
 

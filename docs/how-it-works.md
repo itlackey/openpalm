@@ -47,10 +47,10 @@ Three ways to reach the admin surface (all loopback-only — host admin is never
 - **Dev only: `OP_ENABLE_ADMIN=1`** — set on a locally run UI server (e.g. the dev server) to enable the admin capability without a harness. Never set this in production.
 
 Responsibilities:
-- Writes runtime configuration directly to `~/.openpalm/config/stack/`, `~/.openpalm/knowledge/env/stack.env`, and `~/.openpalm/config/akm/`
+- Writes runtime configuration directly to `~/.openpalm/config/stack/`, `~/.openpalm/state/stack.env`, and `~/.openpalm/config/akm/`
 - Runs `docker compose` for all lifecycle operations (install, update, up, down, restart)
 - Exposes an authenticated API used by the browser UI and the assistant
-- Manages first-party addon activation in `~/.openpalm/knowledge/env/stack.env` via `OP_ENABLED_ADDONS`, resolves enabled addons to Compose profiles, and supports custom services in `custom.compose.yml`
+- Manages first-party addon activation in `~/.openpalm/state/stack.env` via `OP_ENABLED_ADDONS`, resolves enabled addons to Compose profiles, and supports custom services in `custom.compose.yml`
 - Writes the audit log
 
 ### Guardian (Bun server, port 8080)
@@ -176,14 +176,14 @@ OpenPalm doesn't generate config by filling in templates. It copies whole files.
 ~/.openpalm/config/stack/services.compose.yml -> first-party optional services
 ~/.openpalm/config/stack/portals.compose.yml -> first-party optional portals and guardian
 ~/.openpalm/config/stack/custom.compose.yml   -> custom services and overlays
-~/.openpalm/knowledge/env/stack.env            -> non-secret values passed via --env-file
+~/.openpalm/state/stack.env            -> non-secret values passed via --env-file
 ~/.openpalm/knowledge/secrets/             -> system-managed Compose secret files
 ~/.openpalm/knowledge/env/user.env             -> user-managed secrets (akm env:user)
 ```
 
 Docker reads compose files, the non-secret env file, and secret files directly from their final locations.
 There is no intermediate staging step. The standard wrapper includes
-`knowledge/env/stack.env`; Compose `secrets:` grants files from `knowledge/secrets/`.
+`state/stack.env`; Compose `secrets:` grants files from `knowledge/secrets/`.
 
 ---
 
@@ -218,7 +218,7 @@ Anything not on the list is rejected with `400 invalid_service` or
 ## Adding a Portal (the whole process)
 
 **First-party portal (chat, api, discord, slack):**
-1. Add the addon name to `OP_ENABLED_ADDONS` in `~/.openpalm/knowledge/env/stack.env` through the CLI or admin UI.
+1. Add the addon name to `OP_ENABLED_ADDONS` in `~/.openpalm/state/stack.env` through the CLI or admin UI.
 2. OpenPalm resolves the name to a `--profile addon.<name>` argument against `portals.compose.yml`.
 3. Rerun the OpenPalm compose command (or use the admin UI restart action).
 4. If admin tooling is involved, it may also ensure/generate the required principal secret files first.

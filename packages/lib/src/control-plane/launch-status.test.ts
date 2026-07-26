@@ -97,9 +97,9 @@ describe("classifyLocalInstall (disk markers)", () => {
     return sd;
   }
   function writeStackEnv(content: string): void {
-    const envDir = join(dir, "knowledge", "env");
-    mkdirSync(envDir, { recursive: true });
-    writeFileSync(join(envDir, "stack.env"), content);
+    const stateDir = join(dir, "state");
+    mkdirSync(stateDir, { recursive: true });
+    writeFileSync(join(stateDir, "stack.env"), content);
   }
 
   it("not_installed when no compose and not complete", () => {

@@ -30,11 +30,10 @@ export type ComposeOptions = {
  */
 export function resolveActiveProfiles(state: ControlPlaneState): string[] {
   const profiles: string[] = [];
-  // Read the EFFECTIVE stack env (state/stack.state.env merged OVER the legacy
-  // knowledge/env/stack.env) — the same source listEnabledAddonIds uses. The app
-  // writes OP_ENABLED_ADDONS to state/ via `openpalm addon enable`; reading only
-  // the legacy file here missed it, so an enabled addon never activated its
-  // compose profile and its service was never started.
+  // The same single stack env listEnabledAddonIds reads. When this was two
+  // files, reading only one of them missed OP_ENABLED_ADDONS written by
+  // `openpalm addon enable`, so an enabled addon never activated its compose
+  // profile and its service was never started.
   const env = readStackEnv(state.homeDir);
   const voiceProfile = canonicalAddonProfileSelection('voice', env.OP_VOICE_PROFILE ?? '');
   if (voiceProfile) profiles.push(voiceProfile);

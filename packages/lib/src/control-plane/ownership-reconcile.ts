@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, statSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import type { ControlPlaneState } from './types.js';
-import { stateEnvFile, hostIdentityFile } from './home.js';
+import { stackEnvFile, hostIdentityFile } from './home.js';
 import type { HostIdentity, OwnershipDecision } from './host-identity.js';
 import { detectHostIdentity, describeHostRuntime, readHostIdentity, writeHostIdentity } from './host-identity.js';
 import { discoverHomeBindMountSources } from './config-persistence.js';
@@ -39,7 +39,7 @@ export function ownershipRepairPaths(state: ControlPlaneState): string[] {
 
 export function ownershipCanaryPaths(state: ControlPlaneState): string[] {
   return [
-    stateEnvFile(state.homeDir),
+    stackEnvFile(state.homeDir),
     ...ownershipRepairPaths(state),
   ];
 }

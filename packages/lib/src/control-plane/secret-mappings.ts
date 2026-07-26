@@ -6,7 +6,7 @@
  * runtime env). Everything else that used to live in this file — hashed
  * env-key generation, the plaintext-secret-index CRUD, and the key
  * classifiers for component/custom secrets — had zero consumers and was
- * removed (fable-remediation-plan 3.5).
+ * removed.
  */
 export type SecretScope = 'user' | 'system';
 

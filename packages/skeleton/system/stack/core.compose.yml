@@ -5,7 +5,7 @@
 # Compose profiles. User customizations live in custom.compose.yml.
 #
 # Docker Compose reads variable values via --env-file for stack config:
-#   knowledge/env/stack.env   — system config (ports, image tags), akm `env:stack`
+#   state/stack.env   — system config (ports, image tags), akm `env:stack`
 # Portal and bot secrets are mounted per service via Compose secrets in
 # addon overlays and exposed to containers as *_FILE variables.
 #

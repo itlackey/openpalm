@@ -75,7 +75,7 @@ describe('GET /api/host/stack', () => {
     const body = await res.json() as Record<string, unknown>;
     expect(body.projectName).toBe('openpalm');
     expect((body.access as Record<string, boolean>).assistantDirect).toBe(false);
-    expect(body.stackEnvPath).toBe('knowledge/env/stack.env');
+    expect(body.stackEnvPath).toBe('state/stack.env');
   });
 
   test('returns enabled LAN exposure when stack.env binds assistant to all interfaces', async () => {
@@ -106,7 +106,7 @@ describe('PUT /api/host/stack', () => {
     const body = await res.json() as Record<string, unknown>;
     expect(body.projectRenamed).toBe(true);
 
-    const stateEnv = readFileSync(join(rootDir, 'state', 'stack.state.env'), 'utf-8');
+    const stateEnv = readFileSync(join(rootDir, 'state', 'stack.env'), 'utf-8');
     expect(stateEnv).toContain('OP_PREVIOUS_PROJECT_NAME=openpalm');
   });
 
@@ -115,14 +115,19 @@ describe('PUT /api/host/stack', () => {
     expect(res.status).toBe(200);
     const body = await res.json() as Record<string, unknown>;
     expect(body.projectRenamed).toBe(false);
-    expect(existsSync(join(rootDir, 'state', 'stack.state.env'))).toBe(false);
+    // stack.env is the one env file now, so its existence proves nothing —
+    // what must not happen is the previous-name key being recorded.
+    const stateEnvPath = join(rootDir, 'state', 'stack.env');
+    if (existsSync(stateEnvPath)) {
+      expect(readFileSync(stateEnvPath, 'utf-8')).not.toContain('OP_PREVIOUS_PROJECT_NAME');
+    }
   });
 
   test('renaming back to the still-running project clears the recorded marker (#540)', async () => {
     await PUT(makePutEvent({ projectName: 'my-agent', access: { networkAccess: false, assistantDirect: false, guardianNetwork: false, guardianOpenaiApi: false } }));
     await PUT(makePutEvent({ projectName: 'openpalm', access: { networkAccess: false, assistantDirect: false, guardianNetwork: false, guardianOpenaiApi: false } }));
 
-    const stateEnv = readFileSync(join(rootDir, 'state', 'stack.state.env'), 'utf-8');
+    const stateEnv = readFileSync(join(rootDir, 'state', 'stack.env'), 'utf-8');
     expect(stateEnv).toContain('OP_PREVIOUS_PROJECT_NAME=\n');
   });
 

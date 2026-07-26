@@ -25,9 +25,9 @@ Updates platform package versions without touching independently versioned npm p
 
 Creates a local `.dev/` OpenPalm home for development.
 
-- Seeds `.dev/knowledge/env/user.env` and `.dev/knowledge/env/stack.env` when `--seed-env` is used
+- Seeds `.dev/knowledge/env/user.env` and `.dev/state/stack.env` when `--seed-env` is used
 - Copies the repo registry catalog into `.dev/registry/`
-- Updates `.dev/knowledge/env/stack.env` `OP_ENABLED_ADDONS` when `--enable-addon <name>` is used
+- Updates `.dev/state/stack.env` `OP_ENABLED_ADDONS` when `--enable-addon <name>` is used
 - Seeds a local OpenCode config and memory `default_config.json`
 
 Examples:
@@ -41,11 +41,10 @@ Examples:
 Notes:
 
 - This is a dev-only compatibility layout, not the recommended user-facing manual setup flow
-- Enabled addons live in `.dev/knowledge/env/stack.env` as `OP_ENABLED_ADDONS`
+- Enabled addons live in `.dev/state/stack.env` as `OP_ENABLED_ADDONS`
 
 ## Test and misc helpers
 
 - `dev-e2e-test.sh` - local dev-stack test flow
 - `release-e2e-test.sh` - release validation flow
-- `validate-registry.sh` - registry validation
 - `install-hooks.sh` - git hook setup

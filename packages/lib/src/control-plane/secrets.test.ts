@@ -25,6 +25,7 @@ function makeHome(): { home: string; stackDir: string } {
   const sd = join(h, 'config', 'stack');
   mkdirSync(sd, { recursive: true });
   mkdirSync(join(h, 'knowledge', 'env'), { recursive: true });
+  mkdirSync(join(h, 'state'), { recursive: true });
   mkdirSync(join(h, 'knowledge', 'secrets'), { recursive: true });
   return { home: h, stackDir: sd };
 }
@@ -57,21 +58,21 @@ describe('assertNoSecretLikeStackEnvKeys hygiene guard', () => {
 
 describe('patchSecretsEnvFile sensitivity routing', () => {
   it('writes non-sensitive keys to stack.env', () => {
-    writeFileSync(join(home, 'knowledge', 'env', 'stack.env'), '# config\n');
+    writeFileSync(join(home, 'state', 'stack.env'), '# config\n');
 
     patchSecretsEnvFile(home, { DISCORD_ALLOWED_GUILDS: '12345' });
 
-    const content = readFileSync(join(home, 'knowledge', 'env', 'stack.env'), 'utf-8');
+    const content = readFileSync(join(home, 'state', 'stack.env'), 'utf-8');
     expect(content).toContain('DISCORD_ALLOWED_GUILDS=12345');
   });
 
   it('routes sensitive keys to secret files, not stack.env', () => {
-    writeFileSync(join(home, 'knowledge', 'env', 'stack.env'), '# config\n');
+    writeFileSync(join(home, 'state', 'stack.env'), '# config\n');
 
     // patchSecretsEnvFile splits by SECRET_ENV_KEY_RE (token/secret/password/api_key)
     patchSecretsEnvFile(home, { OP_UI_LOGIN_PASSWORD: 'hunter2' });
 
-    const stackContent = readFileSync(join(home, 'knowledge', 'env', 'stack.env'), 'utf-8');
+    const stackContent = readFileSync(join(home, 'state', 'stack.env'), 'utf-8');
     expect(stackContent).not.toContain('hunter2');
     expect(stackContent).not.toContain('OP_UI_LOGIN_PASSWORD');
 
@@ -80,7 +81,7 @@ describe('patchSecretsEnvFile sensitivity routing', () => {
   });
 
   it('merges multiple non-sensitive keys into stack.env without duplicating', () => {
-    writeFileSync(join(home, 'knowledge', 'env', 'stack.env'),
+    writeFileSync(join(home, 'state', 'stack.env'),
       'DISCORD_ALLOWED_GUILDS=old\n');
 
     patchSecretsEnvFile(home, {
@@ -88,7 +89,7 @@ describe('patchSecretsEnvFile sensitivity routing', () => {
       OP_VOICE_WHISPER_MODEL: 'large',
     });
 
-    const content = readFileSync(join(home, 'knowledge', 'env', 'stack.env'), 'utf-8');
+    const content = readFileSync(join(home, 'state', 'stack.env'), 'utf-8');
     expect(content).toContain('DISCORD_ALLOWED_GUILDS=new');
     expect(content).toContain('OP_VOICE_WHISPER_MODEL=large');
     const count = (content.match(/^DISCORD_ALLOWED_GUILDS=/mg) ?? []).length;
@@ -98,7 +99,7 @@ describe('patchSecretsEnvFile sensitivity routing', () => {
 
 describe('readStackEnv excludes secret-like keys', () => {
   it('returns non-sensitive keys from stack.env', () => {
-    writeFileSync(join(home, 'knowledge', 'env', 'stack.env'),
+    writeFileSync(join(home, 'state', 'stack.env'),
       'DISCORD_ALLOWED_GUILDS=123\nOP_SETUP_COMPLETE=true\n');
 
     const env = readStackEnv(home);
@@ -107,7 +108,7 @@ describe('readStackEnv excludes secret-like keys', () => {
   });
 
   it('strips secret-like keys even if they somehow appear in stack.env', () => {
-    writeFileSync(join(home, 'knowledge', 'env', 'stack.env'),
+    writeFileSync(join(home, 'state', 'stack.env'),
       'DISCORD_BOT_TOKEN=secret-leak\nDISCORD_ALLOWED_GUILDS=ok\n');
 
     const env = readStackEnv(home);
@@ -115,22 +116,20 @@ describe('readStackEnv excludes secret-like keys', () => {
     expect(env.DISCORD_ALLOWED_GUILDS).toBe('ok');
   });
 
-  it('merges the state/ tree OVER legacy stack.env (matches compose --env-file precedence)', () => {
-    // The app-written state/ tree wins — so host reads see the SAME effective
-    // value the running stack uses, never a stale legacy pin (current ≠ running).
-    writeFileSync(join(home, 'knowledge', 'env', 'stack.env'),
-      'OP_ASSISTANT_VERSION=0.12.0\nOP_OWNER_NAME=alice\n');
+  it('reads the single stack env file — host reads cannot diverge from the stack', () => {
+    // This replaced a merge of two files whose precedence every caller had to
+    // re-implement. One file, so there is no stale-copy case left to test.
     mkdirSync(join(home, 'state'), { recursive: true });
-    writeFileSync(join(home, 'state', 'stack.state.env'),
-      'OP_ASSISTANT_VERSION=0.13.0\n');
+    writeFileSync(join(home, 'state', 'stack.env'),
+      'OP_ASSISTANT_VERSION=0.13.0\nOP_OWNER_NAME=alice\n');
 
     const env = readStackEnv(home);
-    expect(env.OP_ASSISTANT_VERSION).toBe('0.13.0'); // state wins
-    expect(env.OP_OWNER_NAME).toBe('alice');          // legacy-only key preserved
+    expect(env.OP_ASSISTANT_VERSION).toBe('0.13.0');
+    expect(env.OP_OWNER_NAME).toBe('alice');
   });
 
   it('falls back to legacy when no state/ file exists', () => {
-    writeFileSync(join(home, 'knowledge', 'env', 'stack.env'), 'OP_ENABLED_ADDONS=discord\n');
+    writeFileSync(join(home, 'state', 'stack.env'), 'OP_ENABLED_ADDONS=discord\n');
     const env = readStackEnv(home);
     expect(env.OP_ENABLED_ADDONS).toBe('discord');
   });

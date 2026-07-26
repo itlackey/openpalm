@@ -1,6 +1,6 @@
 /**
  * Ephemeral local OpenCode server for Electron (Phase 3 of the auth/proxy
- * refactor — see docs/technical/auth-and-proxy-refactor-plan.md).
+ * refactor).
  *
  * Lifecycle:
  *   - Stage a controlled $HOME at ${dataDir}/admin-opencode-home/ with an

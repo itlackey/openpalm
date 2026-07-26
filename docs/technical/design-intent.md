@@ -17,7 +17,7 @@ It captures why the system is shaped the way it is and what must remain true as 
 - OpenPalm is a file-assembly control plane over Docker Compose, not a template-rendering engine.
 - Runtime behavior is composed from:
   - compose files (`config/stack/` core + addon overlays),
-  - non-secret environment file (`knowledge/env/stack.env`) and file-based service secrets (`knowledge/secrets/`),
+  - non-secret environment file (`state/stack.env`) and file-based service secrets (`knowledge/secrets/`),
   - service configuration files (`config/assistant/`, `config/akm/`).
 - `stack.yml` is a version marker only (`{ version: 2 }`), not a replacement for Compose or env files.
 - All control-plane logic is implemented once in `@openpalm/lib`; CLI, admin, and the scheduler co-process are thin consumers.
@@ -53,8 +53,11 @@ Portal-style ingress addons are a specialized addon class that use the portal ru
 
 - The assistant is an OpenCode runtime for user-facing interaction and workflows.
 - It can read and write only within its defined mounted boundaries (data/assistant, data/akm/cache, data/akm/data, knowledge/, workspace/, config/assistant, and config/akm/).
-- User extensions are mounted from `config/assistant/`.
-- Core OpenCode assets are baked into the image under `/etc/opencode` and provide the default baseline behavior.
+- The user's OpenCode global config is mounted from `config/assistant/` at `~/.config/opencode`.
+- The managed OpenCode config — plugins, permissions, instructions — is mounted from
+  `system/assistant/` at `/etc/opencode` (`OPENCODE_CONFIG_DIR`) and is overwritten on update.
+  **Nothing is baked into the image at `/etc/opencode`** except the fallback `AGENTS.md` the
+  entrypoint seeds there at boot.
 
 ## Operational intent
 

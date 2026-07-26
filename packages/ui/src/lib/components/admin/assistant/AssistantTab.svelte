@@ -31,7 +31,7 @@
   let stackSaving = $state(false);
   let projectName = $state('openpalm');
   let access: AccessToggles = $state({ ...ACCESS_TOGGLE_DEFAULTS });
-  let stackEnvPath = $state('knowledge/env/stack.env');
+  let stackEnvPath = $state('state/stack.env');
   let mdns: MdnsSurface | null = $state(null);
   // Progressive disclosure: guardian toggles only mean something once a
   // guardian-backed integration is enabled, and direct assistant exposure is

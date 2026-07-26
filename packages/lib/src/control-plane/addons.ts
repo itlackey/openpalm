@@ -18,7 +18,7 @@ import { canonicalAddonProfileSelection } from './profile-ids.js';
 import { getAddonProfileAvailability } from './addon-availability.js';
 import { parseEnabledAddons, removeEnvKey } from './env.js';
 import type { ControlPlaneState } from './types.js';
-import { resolveStashDir, composeFilePath, customComposeFilePath, stateEnvFile, legacyStackEnvFile } from './home.js';
+import { resolveStashDir, composeFilePath, customComposeFilePath, stackEnvFile } from './home.js';
 import { BUILTIN_ADDON_ENV_SCHEMAS } from './addon-env-schemas.js';
 import { BUILTIN_ADDON_IDS, GUARDIAN_INGRESS_ADDON_IDS, PORTAL_SECRET_ADDON_IDS } from './addon-ids.js';
 
@@ -56,7 +56,7 @@ export function getRegistryAddonConfig(name: string): RegistryAddonConfig {
   }
   return {
     schemaPath: '',
-    userEnvPath: 'knowledge/env/stack.env',
+    userEnvPath: 'state/stack.env',
     envSchema: BUILTIN_ADDON_ENV_SCHEMAS[name] ?? '',
   };
 }
@@ -289,9 +289,7 @@ function disableAddonByName(homeDir: string, name: string): MutationResult {
     // re-enabling the addon the operator just disabled.
     const profileKey = profileEnvKey(name);
     if ((PROFILE_ONLY_ENV_KEYS as readonly string[]).includes(profileKey)) {
-      for (const path of [stateEnvFile(homeDir), legacyStackEnvFile(homeDir)]) {
-        removeEnvKeyFromFile(path, profileKey);
-      }
+      removeEnvKeyFromFile(stackEnvFile(homeDir), profileKey);
     }
     return { ok: true };
   } catch (error) {
@@ -356,16 +354,15 @@ function removeEnvCommentLineFromFile(path: string, commentLine: string): boolea
   return true;
 }
 
-/** Strip every retired env key (and orphaned section header) from both env files. Returns the keys removed. */
+/** Strip every retired env key (and orphaned section header) from the stack env. Returns the keys removed. */
 function removeRetiredEnvKeys(homeDir: string): string[] {
   const removed = new Set<string>();
-  for (const path of [stateEnvFile(homeDir), legacyStackEnvFile(homeDir)]) {
-    for (const key of RETIRED_ENV_KEYS) {
-      if (removeEnvKeyFromFile(path, key)) removed.add(key);
-    }
-    for (const header of RETIRED_ENV_SECTION_HEADERS) {
-      removeEnvCommentLineFromFile(path, header);
-    }
+  const path = stackEnvFile(homeDir);
+  for (const key of RETIRED_ENV_KEYS) {
+    if (removeEnvKeyFromFile(path, key)) removed.add(key);
+  }
+  for (const header of RETIRED_ENV_SECTION_HEADERS) {
+    removeEnvCommentLineFromFile(path, header);
   }
   return [...removed];
 }

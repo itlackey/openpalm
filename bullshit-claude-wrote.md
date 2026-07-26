@@ -1,0 +1,401 @@
+# bullshit-claude-wrote.md
+
+Inventory of code, config, docs, tests, and *conventions* that should be deleted
+or replaced with something simpler. Everything measured, not guessed.
+
+**Repo totals at `0.13.0-beta.13`:**
+
+| | lines |
+|---|---|
+| `packages/lib` source | 14,067 |
+| `packages/lib` tests | **14,237** |
+| `packages/ui` source | 47,413 |
+| `packages/ui` tests | 30,879 |
+| `packages/cli` source | 2,862 |
+| `scripts/` | 4,292 |
+| `docs/` | 19,992 (74 files) |
+| `.github/roadmap/` | 22,333 (78 files) |
+
+**42,325 lines of prose — three times the entire control plane.** Tests in `lib`
+outnumber the code they test.
+
+Running total of what this inventory says to delete: **~19,900 lines.**
+
+---
+
+## 1. Roadmap docs for versions that already shipped — 14,655 lines
+
+| dir | lines | files | status |
+|---|---|---|---|
+| `0.10.0/` | 10,979 | 33 | shipped |
+| `0.11.0/` | 2,971 | 7 | shipped |
+| `0.12.0/` | 705 | 2 | shipped |
+| `0.13.0/` | 7,156 | 33 | in progress — keep |
+| `0.14.0/` | 522 | 3 | future — keep |
+
+**Delete the first three.** Git history has them and nobody will look.
+
+Beyond disk: they are full-text searchable and read as authoritative. Anyone —
+human or agent — grepping for how something works finds a plan for how it was
+*going* to work three versions ago.
+
+## 2. `docs/technical/` is finished plans wearing a documentation costume — ~11,760 lines
+
+44 files, 12,701 lines. **Exactly three declare themselves authoritative**
+(`core-principles.md`, `design-intent.md`, `foundations.md` — 941 lines).
+
+The rest are plans, proposals and reviews sitting in the same directory with the
+same apparent weight:
+
+| file | lines | what it is |
+|---|---|---|
+| `auth-and-proxy-refactor-plan.md` | 702 | a plan |
+| `akm-host-assistant-integration-proposal.md` | 698 | a proposal |
+| `rootless-containers-migration-plan.md` | 675 | a migration plan |
+| `akm-integration-implementation-plan.md` | 503 | a plan |
+| `runtime-npm-container-design.md` | 496 | a design |
+| `install-update-rebuild-plan.md` | 418 | a plan |
+| `local-ai-unified-container-plan.md` | 400 | a plan |
+| `deployment-upgrade-ux-review.md` | 352 | a review |
+| `akm-and-build-simplification-proposals.md` | 204 | proposals |
+
+**This caused real damage.** These read as current and get built on.
+`rootless-containers-migration-plan.md` is being used as a *decision record* — it
+holds a signed-off decision about sudo that a later decision contradicts, with
+nothing marking which one won.
+
+**Fix:** keep the three authoritative docs and the genuine references
+(`environment-and-mounts.md`, `api-spec.md`). Move plans and proposals to
+`.github/roadmap/<version>/` where the path states their status, or delete them.
+A document describing intent is not documentation of the system.
+
+## 3. `docs/reviews/` — 1,469 lines of completed review cycles
+
+`fable-remediation-plan.md` (631), `fable-security-remediation-plan.md` (390),
+`fable-review-prompts.md` (158), `fable-3.3-proposed-release-yml-diff.md` (159),
+`upgrade-migration-review-2026-07-06.md` (131).
+
+Same problem as §2, and worse: these are *proposed diffs* and *prompts*. They
+describe changes that either landed (making the doc redundant) or did not
+(making it misleading). Delete the directory.
+
+## 4. Tests that assert on file *text* instead of behavior — 1,932 lines minimum
+
+`readFileSync` a source file, assert it contains a string. Seventeen files exist
+for no other reason:
+
+| file | lines | text asserts |
+|---|---|---|
+| `lib/control-plane/cleanup-guardrails.test.ts` | 355 | 15 |
+| `ui/routes/(app)/chat/chat-frame-source.vitest.ts` | 209 | 67 |
+| `ui/routes/(app)/connections/pairing-markup.vitest.ts` | 192 | 63 |
+| `scripts/security-posture-doc-drift.test.ts` | 135 | 28 |
+| `lib/control-plane/assistant-rootless-entrypoint.test.ts` | 127 | 47 |
+| `ui/routes/(app)/advanced/page-coherence.vitest.ts` | 118 | 34 |
+| `lib/control-plane/dead-surface-cleanup.test.ts` | 109 | 8 |
+| `lib/control-plane/rootless-guardrail-script.test.ts` | 104 | 33 |
+| `ui/routes/(app)/chat/page-imports.vitest.ts` | 94 | 7 |
+| `ui/routes/(app)/connections/new/onboarding-source.vitest.ts` | 84 | 41 |
+| `ui/lib/design-foundation.vitest.ts` | 75 | 18 |
+| `lib/control-plane/guardian-rootless-entrypoint.test.ts` | 70 | 6 |
+| `ui/lib/components/chrome/ChatNavbar.vitest.ts` | 66 | 29 |
+| `lib/control-plane/moderation-doc-contract.test.ts` | 61 | 9 |
+| `ui/lib/components/akm/akm-presentation.vitest.ts` | 52 | 16 |
+| `lib/control-plane/assistant-rootless.test.ts` | 50 | 10 |
+| `ui/lib/components/voice/VoiceClientSettings.source.vitest.ts` | 31 | 8 |
+
+Counting every test file that *mixes in* this style, **10,307 lines** are
+affected. The 1,932 above is the subset with no other purpose.
+
+**Worse than no test:**
+
+- **Fail on rewording.** `assistant-rootless-entrypoint.test.ts` asserts the
+  shell script contains `'cp "$src" "$dest"'`. Rename a variable → red build,
+  behavior unchanged.
+- **Pass while broken.** `moderation-doc-contract.test.ts` asserted a docstring's
+  strings while that docstring said something factually false about OpenCode.
+  Green throughout.
+- **Regex over prose.** `security-posture-doc-drift.test.ts` asserts `AGENTS.md`
+  does not match `/HMAC-signed/` and `core-principles.md` matches `/3830/`. It
+  cannot detect a wrong port, only a missing word.
+- **Tombstones.** `dead-surface-cleanup.test.ts` asserts deleted exports are
+  still deleted and a removed file is still removed. It can only fail if someone
+  deliberately re-adds them.
+
+**Fix:** delete all seventeen. Where one guards something real, replace it with a
+behavior test — parse the config and check the resolved value, call the function
+and check the result. If the behavior cannot be tested, the guardrail was never
+real.
+
+## 5. Shell scripts grepping build artifacts — ~140 lines (CORRECTED: I was wrong about 3 of 4)
+
+**Original claim:** four scripts (~720 lines) all grep build output to fake an
+architectural check. **Verified: only one and a half of them did.**
+
+- **`validate-thin-harness-boundary.sh` (200) — half bullshit, half the honest
+  thing §5 asked for.** It bundled two unrelated checks. The bogus half grepped
+  `packages/electron/dist/main.js` and `packages/ui/build/server/chunks/*` for the
+  literal string `performUpgrade`. The real half parses every `.ts` under
+  `packages/electron/src`, extracts the brace groups of
+  `import { … } from '@openpalm/lib'`, and checks each name against an allowlist,
+  banning namespace imports, dynamic `import()` and `require()`. That is a
+  dependency-boundary check on *source*, i.e. exactly the replacement this
+  section demanded — it was already there, wrapped around the fake one.
+  **Trimmed to 160 lines, real half kept.** Verified: no active artifact grep
+  remains, it still runs, and it passes.
+- **`validate-registry.sh` (138) — deleted.** Pure grep of config text, and
+  already a guaranteed no-op: its own guard exits 0 when
+  `packages/skeleton/data/registry/addons` is missing, and that directory does
+  not exist in this repo. Every CI run of it was dead weight. Verified gone with
+  no remaining references.
+- **`rootless-ownership-smoke.sh` (227) — KEEP. My classification was wrong.** It
+  builds and boots a real Compose stack, polls real `docker inspect` health, then
+  asserts a real filesystem invariant (`find` for files not owned by the expected
+  uid/gid) to catch root-owned files leaking onto host bind mounts. That is a
+  behavior test of a genuine rootless-Docker regression.
+- **`rootless-smoke-fixture.sh` (157) — KEEP. Wrong again.** Not a validator at
+  all; a `source`d fixture library shared by the two real smoke tests so their
+  setup cannot drift.
+
+**Lesson for the rest of this document:** the inventory is a hypothesis. Three of
+these four entries were wrong because I classified by filename and line count
+instead of reading the file. Anything acted on from this list must be read first.
+
+## 6. The "guardrail test" convention itself — the root cause of §4 and §5
+
+The pattern is a house style, visible in the filenames: `*-guardrail*.test.ts`,
+`*-doc-contract.test.ts`, `*-drift.test.ts`, `*-coherence.vitest.ts`,
+`*-source.vitest.ts`, `*-markup.vitest.ts`, `validate-*.sh`.
+
+The convention says: when something regresses, add a test that greps for the
+string that would have caught it. That is how `lib` ends up with 14,237 lines of
+test for 14,067 lines of source.
+
+**It does not work.** The four real defects found this week —
+
+- instruction files never loading (relative paths resolved from the wrong dir)
+- permission rules matching nothing (`"sudo"` compiling to `^sudo$`)
+- `auth.json` losing its inode on every host write
+- fresh installs never being stamped, so the first launch re-swapped `system/`
+
+— were caught by **none** of them. Every one is invisible to a string search and
+obvious to a behavior test. The convention optimises for the wrong thing. Stop
+extending it; delete instances as they are touched.
+
+## 7. A hand-rolled npm client on the host — RETIRED: I was wrong
+
+**Original claim:** `ui-assets.ts` (777) + `npm-bundle-updater.ts` (243) are
+~1,020 lines reimplementing `npm install`, and could be deleted by embedding the
+skeleton and UI in the `bun build --compile` binary, since all three are
+co-released.
+
+**The co-release half is right.** All six platform packages (`root`, `skeleton`,
+`lib`, `cli`, `ui`, `electron`) sit in the `platform` unit of
+`.github/release-package-groups.json` and are on the same version. (While
+checking this I found `core-principles.md` claimed the opposite, citing
+`independentNpmPackages` / `platformManifests` keys that exist nowhere in the
+repo — now corrected.)
+
+**The conclusion is wrong, and backwards.** Embedding is not the alternative to
+this code — it is *already done*, and this code is what beats it.
+`electron-builder.yml:15-21` already ships the UI build and the skeleton as
+`extraResources`. The npm client exists to fetch something **newer** than that
+embedded copy at launch (`main.ts:341` → `checkAndUpdateUiBuild`). That is the
+entire thin-harness promise: a UI or control-plane fix reaches users over npm
+with **no app re-download**, and only a change to the native harness surface
+forces one.
+
+Deleting it would make every UI fix require a re-download of the desktop app —
+trading ~1,020 lines for a materially worse product. The line count is real;
+the code is load-bearing. If it shrinks, it shrinks as a refactor of
+fetch/verify/stage/swap, not as a deletion.
+
+## 8. Version stamp files — RETIRED with §7
+
+**Original claim:** `.skeleton-version` and `.openpalm-ui-version` duplicate the
+`package.json` npm already writes into every installed package.
+
+**True only for the npm path.** `data/ui` is also seeded from a local
+`packages/ui/build/` directory, which is SvelteKit build output — it has no
+`package.json` at all. The stamp is written by `stamp-version.mjs` and is the
+one mechanism that works for both sources; `ui-assets.ts:496` warns loudly when
+a local build arrives unstamped, precisely because the update comparison depends
+on it.
+
+The specific bug I cited (a fresh install never being stamped) was a real bug,
+and it is fixed. It was not evidence that the stamp should not exist.
+
+---
+
+## Checked, keeping
+
+So nobody re-opens them.
+
+- **`mdns-responder.ts` (537)** — looks like a reimplementation of OpenCode's
+  native mDNS. It is not. OpenCode broadcasts from inside the container's network
+  namespace; on a bridge network that multicast never reaches the LAN. The
+  host-side responder is the only thing that works.
+- **`install-lock.ts` (256)** — oversized for a lock, but it also backs the
+  `openpalm unlock` command with inspect / force / stale-PID handling.
+- **The two-env-file split** (`knowledge/env/stack.env` +
+  `state/stack.state.env`) — looks like a hand-rolled merge. It is not: both are
+  passed to Compose as `--env-file` flags and Compose does the merging, later
+  file winning. Correct use of the tool. The only wart is that the function is
+  named `legacyStackEnvFile` while still being the primary file — an unfinished
+  rename, not a design problem.
+- **`ui/lib/server/docker.ts` (81)** — looks like a duplicate of the control
+  plane's `docker.ts` (947). It is a thin re-export that adds preflight
+  enforcement.
+
+## 9. Migrations that run on every deploy, forever
+
+Four "migrate legacy X" functions, each invoked on **every deploy path** rather
+than once against a recorded schema version:
+
+| function | file |
+|---|---|
+| `migrateLegacyDefaultPorts` | `config-persistence.ts:65` |
+| `migrateLegacyBindAddresses` | `config-persistence.ts:119` |
+| `migrateLegacyAccessEnv` | `access-toggles.ts:220` |
+| `migrateProfileOnlyAddonEnablement` | `addons.ts:425` |
+
+Call sites include `cli-compose.ts:47-48`, `install.ts:277-278`, and
+`port-contract.ts:37` — so every `openpalm` command that touches Compose reads
+and rewrites the env files to fix a shape that was retired versions ago.
+
+Nothing retires them. There is no schema version on the home directory, so each
+one must run forever on the chance the install predates it. A fresh install
+created today still pays for all four, permanently.
+
+**DONE.** `state/schema-version` now records the layout version. `ensureHomeDirs`
+stamps a brand-new home as current, so a fresh install runs none of them; an
+existing home migrates once and is then recorded. Migrations became deletable —
+drop one from `MIGRATIONS` once the supported upgrade floor passes it. Covered by
+five behavior tests in `home-schema.test.ts`.
+
+This also removes a real footgun: `migrateLegacyDefaultPorts` silently rewrites
+port values, which is why `core.compose.yml`'s interpolation fallbacks were able
+to sit inverted for so long — the migration hid the inconsistency on every
+supported path, and only the manual `docker compose` path saw the truth.
+
+## 10. Conventions in `core-principles.md` that manufacture work
+
+The rules are treated as inviolable (`> Authoritative document. Do not edit
+without a specific request`), and two of them cost more than they return.
+
+**"No template rendering — manage configuration by copying whole files and
+editing existing configuration files, not by string interpolation or code
+generation."** (`core-principles.md:28`)
+
+The intent is sound: a user should be able to read and hand-edit the real files.
+But "edit existing files in place" is exactly what forces §9 — every value
+change becomes a parse-mutate-rewrite migration instead of regenerating a file
+from known inputs. `config-persistence.ts` is 548 lines of that. A generated file
+with a "generated, do not edit" header and the inputs recorded next to it is
+still readable and hand-editable, and needs no migration when its shape changes.
+
+**"Core assistant extensions are baked into the assistant container and loaded
+from a fixed OpenCode config directory."** (`core-principles.md:32`)
+
+Not true, and the drift is load-bearing. Nothing is baked into the image at
+`/etc/opencode`; it is a bind mount from `system/assistant`, and the one thing
+that *was* baked (the repo-root `AGENTS.md`) was the contributor guide being
+served to users as their assistant's global instruction file. The rule describes
+a design that was abandoned, and the doc's authoritative framing kept it from
+being questioned.
+
+**Line 32 is now fixed.** Verified against `core.compose.yml:153` —
+`${OP_HOME}/system/assistant` is bind-mounted at `/etc/opencode`; nothing is
+baked into the image. The rule now says that, and says the tree is managed
+(install/update overwrite it) with user assets in `config/assistant/`.
+
+**Line 28 is left alone deliberately.** Unlike line 32 it is not a false
+statement about the system, it is a design rule with a real cost (§9). Changing
+it is a call for the owner of the design, not a cleanup edit.
+
+**The wider problem:** `foundations.md`, `design-intent.md` and
+`core-principles.md` all open with "Authoritative document. Do not edit without
+a specific request to do so, or direct approval." Combined with §2 — 11,760
+lines of stale plans in the same directory — the result is that the wrong
+documents are hard to change and the misleading ones are indistinguishable from
+the right ones.
+
+## 11. Dead and over-exported code in the control plane — 22 symbols
+
+Exported from `packages/lib/src/control-plane/` with **no consumer anywhere**
+outside tests:
+
+`resetAvailabilityCache`, `nonSensitiveAddonEnvKeys`, `toDockerResult`,
+`isProjectOurs`, `meetsComposeWaitFloor`, `collectComposeEnvOverrides`,
+`resolveHome`, `detectRuntimeName`, `parseMarkdownTask`, `startMdnsResponder`,
+`parseOllamaHostEnv`, `verifyNpmIntegrity`, `scanComposeForChannelLan`,
+`validateSecretName`, `updateSystemSecretsEnv`, `buildOwnerEnvFromSetup`,
+`buildAuthJsonFromSetup`, `persistAkmConfig`, `persistPortalCredentials`,
+`seedDefaultAutomation`, `readUiBuildVersion`, `resolveChannelRef`.
+
+Two distinct problems:
+
+- **Genuinely dead, kept alive by a test.** `startMdnsResponder` has zero
+  internal references and zero callers — its only remaining reason to exist is
+  the test that imports it. Deleting the test deletes the function.
+- **Over-exported internals.** `verifyNpmIntegrity`, `resolveChannelRef`,
+  `parseMarkdownTask` are used only inside their own module. `export` was added
+  so a test could reach them. That turns every private helper into public API
+  and makes any refactor a breaking change.
+
+**Fix:** delete the dead ones; drop `export` from the internal ones and test them
+through the function that actually calls them. Where that is genuinely hard, it
+usually means the calling function is doing too much — which is the real finding.
+
+## 12. `docs/operations/legacy-cleanup-0.11.0.md` — 122 lines, 47 unchecked boxes, zero ever done
+
+Found while sweeping for references to the files §1–§3 deleted. Dated
+2026-06-02, self-labelled `HISTORICAL: shipped in 0.12.0`, and it opens with
+"No fixes applied yet — this is a tracking checklist." Nearly two months later
+**every single box is still unchecked** — and several now point at files that no
+longer exist (`scripts/validate-registry.sh:59`,
+`auth-and-proxy-refactor-plan.md`, `openpalm-voice-addon.md:228`).
+
+Same failure mode as §2, one directory over: a document that looks like tracked
+work, is cited by nothing, and drifts out of correspondence with the code while
+still reading as authoritative.
+
+**Not deleted.** A handful of its items may still be live (`docs/README.md`
+broken links, `ADMIN_PORT` defaulting to the legacy `8100`). Those are either
+real work or they are not; either way the answer is to check them and fix them,
+not to keep the checklist. Flagged rather than removed because it is outside
+what was inventoried when the deletions were dispatched.
+
+---
+
+## Where to start
+
+Status after working the list.
+
+| # | item | outcome |
+|---|---|---|
+| 1 | Shipped roadmap dirs `0.10/0.11/0.12` | **done** — 14,655 lines |
+| 2 | Plans/proposals out of `docs/technical/` | **done** — 6,573 lines |
+| 3 | `docs/reviews/` | **done** — 1,469 lines |
+| 4 | 17 text-assertion test files | **done** — 1,932 lines, 2 real assertions rescued |
+| 5 | Bundle-grep shell validators | **partly done** — 1 of 4 was real bullshit; corrected above |
+| 6 | Stop writing guardrail tests | convention — stands |
+| 7 | Embed skeleton + UI in the binary | **retired** — the claim was backwards |
+| 8 | Version stamp files | **retired** — with §7 |
+| 9 | Migrations → schema version | **done** — `state/schema-version` |
+| 10 | Fix `core-principles.md` | **done** — 6 false claims corrected, rule 28 reframed |
+| 11 | Dead + over-exported symbols | **done** — 3 deleted, 7 unexported |
+| 12 | `legacy-cleanup-0.11.0.md` | **done** — 44 of 47 items already stale, 3 fixed, file deleted |
+
+**~24,900 lines removed**, no behavior change: the set of failing tests was
+byte-identical before and after the deletion pass.
+
+Two findings did not survive checking (§7, §8) and one was mostly wrong (§5).
+That is the useful part of the exercise. A line count is not evidence, and
+"this looks like a reimplementation of X" is a hypothesis, not a finding — three
+times here it was load-bearing code whose reason was one file away.
+
+The convention item (§6) is what still matters most. It is why the pile grew:
+the house style rewards adding a string-matching test after every regression,
+which is how `lib` ended up with more test lines than source while none of the
+four real defects found that week were caught by any of them.

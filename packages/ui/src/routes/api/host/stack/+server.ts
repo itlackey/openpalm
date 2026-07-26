@@ -60,7 +60,7 @@ export const GET: RequestHandler = async (event) => {
     200,
     {
       projectName: env.OP_PROJECT_NAME?.trim() || DEFAULT_PROJECT_NAME,
-      stackEnvPath: 'knowledge/env/stack.env',
+      stackEnvPath: 'state/stack.env',
       mdns: resolveMdnsStatus(env),
       // A direct read of the generated binds. Unlike preset detection this can
       // never report "custom": every combination is representable.
@@ -123,7 +123,7 @@ export const PUT: RequestHandler = async (event) => {
           ok: true,
           projectName,
           projectRenamed,
-          stackEnvPath: 'knowledge/env/stack.env',
+          stackEnvPath: 'state/stack.env',
           mdns,
           access,
         },

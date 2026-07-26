@@ -68,7 +68,7 @@ dev_compose() {
 	docker compose --project-directory . \
 		-f "${OP_E2E_HOME}/system/stack/core.compose.yml" \
 		-f compose.dev.yml \
-		--env-file "${OP_E2E_HOME}/knowledge/env/stack.env" \
+		--env-file "${OP_E2E_HOME}/state/stack.env" \
 		--project-name "$COMPOSE_PROJECT_NAME" "$@"
 }
 
@@ -110,9 +110,9 @@ mkdir -p "${OP_E2E_HOME}"
 cp -r packages/skeleton/. "${OP_E2E_HOME}/"
 
 # Seed stack.env with isolated non-secret values
-mkdir -p "${OP_E2E_HOME}/knowledge/secrets" "${OP_E2E_HOME}/knowledge/env"
+mkdir -p "${OP_E2E_HOME}/knowledge/secrets" "${OP_E2E_HOME}/knowledge/env" "${OP_E2E_HOME}/state"
 docker_sock="/var/run/docker.sock"
-cat > "${OP_E2E_HOME}/knowledge/env/stack.env" <<EOF
+cat > "${OP_E2E_HOME}/state/stack.env" <<EOF
 OP_HOME=${OP_E2E_HOME}
 OP_UID=$(id -u)
 OP_GID=$(id -g)
@@ -128,7 +128,7 @@ OP_VOICE_PORT_HOST=${OP_E2E_VOICE_PORT:-8187}
 OP_HOST_UI_PORT=${OP_E2E_UI_PORT}
 OP_SETUP_COMPLETE=true
 EOF
-chmod 600 "${OP_E2E_HOME}/knowledge/env/stack.env"
+chmod 600 "${OP_E2E_HOME}/state/stack.env"
 
 printf '%s\n' "e2e-test-password-$(date +%s)" > "${OP_E2E_HOME}/knowledge/secrets/op_ui_login_password"
 openssl rand -hex 16 > "${OP_E2E_HOME}/knowledge/secrets/portal_chat_secret"
@@ -293,7 +293,7 @@ if [[ $RUN_PLAYWRIGHT -eq 1 ]]; then
 	echo "=== Step 9: Playwright stack tests ==="
 	OP_E2E_ASSISTANT_PORT="${OP_E2E_ASSISTANT_PORT:-3891}"
 	PW_EXIT=0
-	STACK_ENV_PATH="${OP_E2E_HOME}/knowledge/env/stack.env" \
+	STACK_ENV_PATH="${OP_E2E_HOME}/state/stack.env" \
 	OP_HOME="${OP_E2E_HOME}" \
 	RUN_DOCKER_STACK_TESTS=1 \
 	ADMIN_URL="${UI_URL}" \

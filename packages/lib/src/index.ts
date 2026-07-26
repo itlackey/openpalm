@@ -93,12 +93,16 @@ export {
   resolveStateDir,
   resolveLogsDir,
   ensureHomeDirs,
+  homeSchemaVersionFile,
+  hasAnyStackEnvFile,
+  HOME_SCHEMA_VERSION,
+  readHomeSchemaVersion,
+  initHomeSchema,
   stackDirFor,
   composeFilePath,
   customComposeFilePath,
-  stateEnvFile,
+  stackEnvFile,
   hostIdentityFile,
-  legacyStackEnvFile,
   userEnvFile,
   secretsDir,
   authJsonFile,
@@ -286,8 +290,6 @@ export {
   randomHex,
   buildEnvFiles,
   writeSystemEnv,
-  migrateLegacyBindAddresses,
-  migrateLegacyDefaultPorts,
   discoverStackOverlays,
   discoverHomeBindMountSources,
   resolveRuntimeFiles,
@@ -631,3 +633,5 @@ export {
   isPrerelease,
   distTagForVersion,
 } from "./control-plane/versioning.js";
+
+export { runHomeMigrations } from './control-plane/home-schema.js';

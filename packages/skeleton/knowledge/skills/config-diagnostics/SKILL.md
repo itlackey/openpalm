@@ -27,7 +27,7 @@ and guide them — without ever exposing actual secret values.
 
 2. **Interpret validation errors** using the variable name and documented
    filesystem contract:
-   - Non-secret stack configuration belongs in `knowledge/env/stack.env`
+   - Non-secret stack configuration belongs in `state/stack.env`
    - Stack/runtime secrets belong in `knowledge/secrets/<lowercase_name>`
    - User AKM env config belongs in `knowledge/env/user.env`
 
@@ -35,7 +35,7 @@ and guide them — without ever exposing actual secret values.
    - The admin UI for secret variables when available
    - Direct creation of `~/.openpalm/knowledge/secrets/<name>` with mode 0600 for stack/runtime secrets
    - Direct editing of `~/.openpalm/knowledge/env/user.env` for AKM user env values
-   - The admin UI or direct edits to `knowledge/env/stack.env` for non-secret stack configuration
+   - The admin UI or direct edits to `state/stack.env` for non-secret stack configuration
 
 ## Critical Rules
 

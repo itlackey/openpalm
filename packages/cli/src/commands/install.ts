@@ -1,13 +1,13 @@
 import { defineCommand } from 'citty';
 import { join } from 'node:path';
+import { mkdir } from 'node:fs/promises';
 import cliPkg from '../../package.json' with { type: 'json' };
 import { defaultWorkDir } from '../lib/paths.ts';
 import { defineAction } from '../lib/action.ts';
 import { promptYesNo } from '../lib/prompt.ts';
 import { resolveLatestReleaseTag } from '../lib/github.ts';
 import { DEFAULT_UI_PORT } from '../lib/ports.ts';
-import { resolveOpenPalmHome, resolveConfigDir } from '@openpalm/lib';
-import { ensureDirectoryTree } from '../lib/io.ts';
+import { resolveOpenPalmHome, resolveConfigDir, ensureHomeDirs, runHomeMigrations, hasMaterializedLocalInstall, hasAnyStackEnvFile } from '@openpalm/lib';
 import { applyHomeSeed, seedUiBuild, uiUpdateChannel } from '@openpalm/lib';
 import {
   backupOpenPalmHome,
@@ -25,8 +25,6 @@ import {
   runDeploy,
   markSetupComplete,
   writeSystemEnv,
-  migrateLegacyBindAddresses,
-  migrateLegacyDefaultPorts,
   patchSecretsEnvFile,
   describeAccessExposure,
   readAccessToggles,
@@ -166,9 +164,15 @@ export async function bootstrapInstall(options: InstallOptions): Promise<void> {
   const dataDir = `${homeDir}/data`;
   const workDir = defaultWorkDir();
 
-  // Use knowledge/env/stack.env (always present after a successful install) as the
-  // canonical "already installed" indicator.
-  const alreadyInstalled = await Bun.file(join(homeDir, 'knowledge', 'env', 'stack.env')).exists();
+  // Ask the authoritative predicate rather than probing one file. A home still
+  // on the pre-consolidation layout has no state/stack.env yet, so a bare
+  // existence check on the new path would call a live install "fresh" — running
+  // install without --force and skipping the backup confirmation before managed
+  // files are refreshed. hasMaterializedLocalInstall also recognizes a
+  // materialized stack (compose + guardian tokens), so it is right before OR
+  // after migration.
+  const alreadyInstalled = hasAnyStackEnvFile(homeDir)
+    || hasMaterializedLocalInstall(homeDir);
   if (alreadyInstalled && !options.force) {
     throw new Error('OpenPalm appears to already be installed. Re-run install with --force to continue.');
   }
@@ -252,7 +256,10 @@ export async function prepareInstallFiles(
   homeDir: string, configDir: string, dataDir: string, workDir: string, version: string,
 ): Promise<void> {
   console.log('Preparing directories...');
-  await ensureDirectoryTree(homeDir, workDir);
+  // The tree itself is owned by @openpalm/lib (single definition). workDir is
+  // separate because OP_WORK_DIR can point it outside OP_HOME.
+  ensureHomeDirs(homeDir);
+  await mkdir(workDir, { recursive: true });
 
   try { await Bun.write(join(dataDir, 'host.json'), `${JSON.stringify(await detectHostInfo(), null, 2)}\n`); }
   catch (err) { logger.debug('failed to write host.json', { error: String(err) }); }
@@ -274,8 +281,7 @@ export async function prepareInstallFiles(
   // "v0.12.5"/"main") so this pre-wizard seed and applyHome's seed agree on the
   // stamp written into .skeleton-version.
   await applyHomeSeed(PLATFORM_VERSION, homeDir, configDir, dataDir);
-  migrateLegacyDefaultPorts(homeDir);
-  migrateLegacyBindAddresses(homeDir);
+  runHomeMigrations(homeDir);
   // Install UI build to data/ui/ (local build if available, else the
   // @openpalm/ui npm bundle on this release stream's channel). @openpalm/ui is
   // independently versioned, so seed by dist-tag CHANNEL (latest/next) rather
