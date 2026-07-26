@@ -5,7 +5,7 @@
  * ~/.openpalm/ root layout (config, knowledge, data, logs), then runs the
  * actual library functions against it. No mocks of code under test.
  */
-import { describe, expect, it, beforeEach, afterEach, spyOn } from "bun:test";
+import { describe, expect, it, beforeAll, afterAll, beforeEach, afterEach, spyOn } from "bun:test";
 import {
   mkdirSync,
   mkdtempSync,
@@ -15,6 +15,7 @@ import {
   readdirSync,
   existsSync,
   statSync,
+  chmodSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -30,6 +31,42 @@ import { markSetupComplete } from "./deploy.js";
 import type { SetupSpec, SetupConnection } from "./setup.js";
 import type { ControlPlaneState } from "./types.js";
 import { readSecret } from './secrets-files.js';
+
+// E1: every performSetup() call in this file uses a blank imageTag, which
+// now probes `dockerManifestExists` (setup.ts) before defaulting to `latest`.
+// Point OP_DOCKER_BIN at a fake docker for the whole file so that probe never
+// hits a real registry — FAKE_DOCKER_EXISTS_REFS is left unset throughout, so
+// "manifest not found" -> `latest`, matching every assertion below (none of
+// them exercise the PLATFORM_VERSION pin path; see setup.test.ts for that).
+let fakeDockerBinDir: string;
+let savedDockerBin: string | undefined;
+beforeAll(() => {
+  fakeDockerBinDir = mkdtempSync(join(tmpdir(), "openpalm-fake-docker-"));
+  const scriptPath = join(fakeDockerBinDir, "fake-docker.sh");
+  writeFileSync(
+    scriptPath,
+    [
+      "#!/bin/sh",
+      'if [ "$1" = "manifest" ] && [ "$2" = "inspect" ]; then',
+      '  case ":${FAKE_DOCKER_EXISTS_REFS}:" in',
+      '    *":$3:"*) exit 0 ;;',
+      "    *) exit 1 ;;",
+      "  esac",
+      "fi",
+      "exit 1",
+      "",
+    ].join("\n"),
+  );
+  chmodSync(scriptPath, 0o755);
+  savedDockerBin = process.env.OP_DOCKER_BIN;
+  process.env.OP_DOCKER_BIN = scriptPath;
+});
+
+afterAll(() => {
+  if (savedDockerBin === undefined) delete process.env.OP_DOCKER_BIN;
+  else process.env.OP_DOCKER_BIN = savedDockerBin;
+  rmSync(fakeDockerBinDir, { recursive: true, force: true });
+});
 
 // ── Helpers ──────────────────────────────────────────────────────────────
 

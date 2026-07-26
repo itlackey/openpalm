@@ -88,7 +88,7 @@ function voiceImageRef(variant: 'cpu' | 'cu121' | 'rocm6'): string {
  * transient registry hiccups. Timeout is short because the manifest blob
  * is a few KB.
  */
-async function dockerManifestExists(imageRef: string): Promise<boolean> {
+export async function dockerManifestExists(imageRef: string): Promise<boolean> {
   for (let attempt = 0; attempt < 2; attempt++) {
     const res = await execFileNoThrow(
       dockerBin(),

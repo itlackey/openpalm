@@ -241,6 +241,12 @@ export async function applyInstall(state: ControlPlaneState, opts?: LockedLifecy
   if (!lock) throw new Error("Another install is already in progress");
   try {
     await runWithSnapshotRollback(state, async () => {
+      // F1: run the rootless ownership reconcile BEFORE the first managed
+      // write, mirroring performUpgrade below. Without this, a fresh rootless
+      // install's first `up` could hit unwritable operator-owned bind dirs
+      // before any chown ever ran — the chown pass was wired into
+      // start/upgrade/up but not this, the actual install path.
+      await reconcileHostOwnership(state, { services: await buildManagedServices(state) });
       await applyManagedFiles(state, true);
       ensureComposeVolumeTargets(state);
     });
