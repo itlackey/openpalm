@@ -9,6 +9,7 @@
  * static voice.compose.rootless.yml / voice.compose.cdi.yml overlays.
  */
 import { execFileNoThrow } from "./addon-availability.js";
+import { dockerBin } from "./docker.js";
 
 /**
  * Detect rootless Docker. The compose `user: "${OP_UID:-1000}:${OP_GID:-1000}"`
@@ -26,7 +27,7 @@ import { execFileNoThrow } from "./addon-availability.js";
  */
 export async function detectRootlessDocker(): Promise<boolean> {
   const res = await execFileNoThrow(
-    'docker',
+    dockerBin(),
     ['info', '--format', '{{json .}}'],
     5_000,
   );
@@ -58,7 +59,7 @@ export async function detectRootlessDocker(): Promise<boolean> {
  */
 export async function dockerHasNvidiaRuntime(): Promise<boolean> {
   const res = await execFileNoThrow(
-    'docker',
+    dockerBin(),
     ['info', '--format', '{{json .Runtimes}}'],
     2_000,
   );

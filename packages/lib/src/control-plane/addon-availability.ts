@@ -9,6 +9,7 @@
 import { existsSync } from 'node:fs';
 import { errMessage } from './errors.js';
 import { execFile } from 'node:child_process';
+import { dockerBin } from './docker.js';
 import { resolveHardwareProfileVariant } from './profile-ids.js';
 import type { AddonProfile } from './addons.js';
 
@@ -90,7 +91,7 @@ function voiceImageRef(variant: 'cpu' | 'cu121' | 'rocm6'): string {
 async function dockerManifestExists(imageRef: string): Promise<boolean> {
   for (let attempt = 0; attempt < 2; attempt++) {
     const res = await execFileNoThrow(
-      'docker',
+      dockerBin(),
       ['manifest', 'inspect', imageRef],
       5_000,
     );
@@ -115,7 +116,7 @@ async function probeCuda(): Promise<AddonProfileAvailability> {
   }
 
   const result = await execFileNoThrow(
-    'docker',
+    dockerBin(),
     ['info', '--format', '{{json .Runtimes}}'],
     HOST_PROBE_TIMEOUT_MS,
   );

@@ -22,7 +22,7 @@ import { join } from "node:path";
 import { execFile } from "node:child_process";
 import { parseEnvFile } from "./env.js";
 import { secretsDir, stackDirFor, stackEnvFile } from "./home.js";
-import { checkDocker, checkDockerCompose } from "./docker.js";
+import { checkDocker, checkDockerCompose, dockerBin } from "./docker.js";
 
 export type LocalStackState =
   | "not_installed"     // nothing installed — offer install / add remote
@@ -53,7 +53,7 @@ export function detectRuntimeName(versionOutput: string): RuntimeInfo["runtimeNa
 
 async function readRuntimeIdentity(): Promise<string> {
   return new Promise((resolve) => {
-    execFile("docker", ["version"], { timeout: 10_000 }, (error, stdout, stderr) => {
+    execFile(dockerBin(), ["version"], { timeout: 10_000 }, (error, stdout, stderr) => {
       if (error && !stdout && !stderr) return resolve("");
       resolve(`${stdout?.toString() ?? ""}\n${stderr?.toString() ?? ""}`.trim());
     });

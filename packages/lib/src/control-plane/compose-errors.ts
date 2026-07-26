@@ -55,8 +55,39 @@ export function summarizeComposeStderr(stderr: string, maxLen = 500): string {
   return first.length > maxLen ? `${first.slice(0, maxLen - 1)}…` : first;
 }
 
+/**
+ * D1: the docker binary itself is missing/unresolvable — `command not found`
+ * (shell), `executable file not found` (execFile PATH lookup), an explicit
+ * "not installed", or a bare `ENOENT` (Node's spawn errno, which callers may
+ * synthesize into stderr text — e.g. `spawn docker ENOENT` — since the real
+ * spawn failure carries no stderr at all). Reuses the `docker_unavailable`
+ * code (callers read only `.message`) with distinct, actionable copy.
+ */
+const NOT_INSTALLED_RE = /docker: (command )?not found|executable file not found|not installed|\bENOENT\b/i;
+
+/**
+ * D1: the daemon socket exists but the current user lacks permission to
+ * reach it (typically: not in the `docker` group). Distinct remedy from a
+ * genuinely stopped/unreachable daemon, so it gets its own message.
+ */
+const PERMISSION_DENIED_RE = /permission denied while trying to connect to the docker daemon|dial unix.*permission denied|got permission denied.*docker/i;
+
 export function mapDockerError(stderr: string): DockerErrorMapping {
   const summary = summarizeComposeStderr(stderr) || "Docker reported an unknown error.";
+
+  if (NOT_INSTALLED_RE.test(stderr)) {
+    return {
+      code: "docker_unavailable",
+      message: "Docker is not installed or not on your PATH. Install Docker (or set OP_DOCKER_BIN to a compatible binary), then retry.",
+    };
+  }
+
+  if (PERMISSION_DENIED_RE.test(stderr)) {
+    return {
+      code: "docker_unavailable",
+      message: "Docker daemon connection was denied by permissions. Add your user to the docker group (or run with sufficient privileges), then retry.",
+    };
+  }
 
   if (/cannot connect to the docker daemon|docker daemon is not running|error during connect|is the docker daemon running|connection refused/i.test(stderr)) {
     return {

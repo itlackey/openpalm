@@ -350,6 +350,8 @@ export type { DockerResult, ExistingProject, ComposePsRow, ApplyStackScope, Appl
 export {
   checkDocker,
   checkDockerCompose,
+  ensureDockerReady,
+  dockerBin,
   detectExistingProject,
   resolveComposeProjectName,
   composePreflight,

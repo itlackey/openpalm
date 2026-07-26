@@ -1,7 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import {
   buildComposePreflightError,
+  checkDocker,
   detectExistingProject,
+  dockerBin,
+  ensureDockerReady,
   isProjectOurs,
   meetsComposeWaitFloor,
   parseComposePsRows,
@@ -187,6 +190,66 @@ describe("meetsComposeWaitFloor (§2.1 precondition: Compose version floor for -
   it("fails OPEN (treats as new enough) when the version string is unparsable", () => {
     expect(meetsComposeWaitFloor("")).toBe(true);
     expect(meetsComposeWaitFloor("some unexpected output")).toBe(true);
+  });
+});
+
+describe("checkDocker (errorCode propagation, D1)", () => {
+  const savedPath = process.env.PATH;
+  afterEach(() => {
+    process.env.PATH = savedPath;
+  });
+
+  it("propagates errorCode ENOENT when the docker binary cannot be found", async () => {
+    process.env.PATH = "/nonexistent-bin-dir-for-check-docker-test";
+    const result = await checkDocker();
+    expect(result.ok).toBe(false);
+    expect(result.errorCode).toBe("ENOENT");
+  });
+});
+
+describe("dockerBin (F2)", () => {
+  const saved = process.env.OP_DOCKER_BIN;
+  afterEach(() => {
+    if (saved === undefined) delete process.env.OP_DOCKER_BIN;
+    else process.env.OP_DOCKER_BIN = saved;
+  });
+
+  it("defaults to 'docker' when OP_DOCKER_BIN is unset", () => {
+    delete process.env.OP_DOCKER_BIN;
+    expect(dockerBin()).toBe("docker");
+  });
+
+  it("honors OP_DOCKER_BIN when set (e.g. to a podman shim)", () => {
+    process.env.OP_DOCKER_BIN = "podman";
+    expect(dockerBin()).toBe("podman");
+  });
+
+  it("trims whitespace and falls back to 'docker' for a blank override", () => {
+    process.env.OP_DOCKER_BIN = "   ";
+    expect(dockerBin()).toBe("docker");
+    process.env.OP_DOCKER_BIN = "  /usr/local/bin/podman  ";
+    expect(dockerBin()).toBe("/usr/local/bin/podman");
+  });
+});
+
+describe("ensureDockerReady (D1)", () => {
+  const savedPath = process.env.PATH;
+  afterEach(() => {
+    process.env.PATH = savedPath;
+  });
+
+  it("maps a missing docker binary to a non-blank, friendly not-installed message", async () => {
+    // No directory on this PATH contains a `docker` executable, so the
+    // underlying execFile spawn fails with ENOENT and empty stderr — this is
+    // the "empty-stderr ENOENT case" ensureDockerReady must still map through
+    // mapDockerError's friendly not-installed branch (D1), not surface blank.
+    process.env.PATH = "/nonexistent-bin-dir-for-ensure-docker-ready-test";
+    const result = await ensureDockerReady();
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.message.length).toBeGreaterThan(0);
+      expect(result.message.toLowerCase()).toContain("not installed");
+    }
   });
 });
 
