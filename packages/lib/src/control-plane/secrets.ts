@@ -1,5 +1,5 @@
 /** Secrets and capability key management. */
-import { mkdirSync, writeFileSync, readFileSync, existsSync, chmodSync, lstatSync, rmSync, renameSync } from "node:fs";
+import { mkdirSync, writeFileSync, readFileSync, existsSync, chmodSync, lstatSync, rmSync, renameSync, copyFileSync } from "node:fs";
 import { errMessage } from './errors.js';
 import { createLogger } from "../logger.js";
 import { parseEnvFile, mergeEnvContent } from './env.js';
@@ -16,7 +16,7 @@ import {
   writeSecret,
 } from './secrets-files.js';
 import { PORTAL_SECRET_ADDON_IDS } from './addon-ids.js';
-import { writeFileAtomic } from './fs-atomic.js';
+import { writeFileAtomic, writeFileInPlace } from './fs-atomic.js';
 
 const OPENCODE_STARTER_CONFIG = `${JSON.stringify({ $schema: "https://opencode.ai/config.json" }, null, 2)}\n`;
 const logger = createLogger("secrets");
@@ -81,6 +81,19 @@ function writeVaultFile(path: string, content: string): void {
     chmodSync(path, VAULT_FILE_MODE);
   } catch (error) {
     logger.warn("failed to enforce vault file permissions", {
+      path,
+      error: errMessage(error),
+    });
+  }
+}
+
+/** auth.json is a single-file bind mount; writes must keep its inode. */
+function writeAuthVaultFile(path: string, content: string): void {
+  writeFileInPlace(path, content, VAULT_FILE_MODE);
+  try {
+    chmodSync(path, VAULT_FILE_MODE);
+  } catch (error) {
+    logger.warn("failed to enforce auth.json permissions", {
       path,
       error: errMessage(error),
     });
@@ -221,7 +234,7 @@ function ensureAuthJson(state: ControlPlaneState): void {
     }
   }
 
-  writeVaultFile(authJsonPath, "{}\n");
+  writeAuthVaultFile(authJsonPath, "{}\n");
 }
 
 export function updateSecretsEnv(
@@ -265,19 +278,21 @@ export function writeAuthJsonProviderKeys(
       const raw = readFileSync(authJsonPath, "utf-8").trim();
       if (raw && raw !== "{}") current = JSON.parse(raw) as Record<string, unknown>;
     } catch {
-      // Corrupt auth.json — rename it so the operator can recover, then start fresh.
+      // Copy aside, never rename — a rename would strand both containers on
+      // the old inode.
       const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
       const corruptPath = `${authJsonPath}.corrupt-${timestamp}`;
       try {
-        renameSync(authJsonPath, corruptPath);
-        logger.warn("corrupt auth.json renamed for recovery", {
+        copyFileSync(authJsonPath, corruptPath);
+        chmodSync(corruptPath, VAULT_FILE_MODE);
+        logger.warn("corrupt auth.json copied aside for recovery", {
           original: authJsonPath,
-          renamed: corruptPath,
+          copy: corruptPath,
         });
-      } catch (renameErr) {
-        logger.warn("could not rename corrupt auth.json; starting fresh", {
+      } catch (copyErr) {
+        logger.warn("could not copy corrupt auth.json aside; starting fresh", {
           path: authJsonPath,
-          error: errMessage(renameErr),
+          error: errMessage(copyErr),
         });
       }
       current = {};
@@ -292,7 +307,7 @@ export function writeAuthJsonProviderKeys(
     }
   }
 
-  writeVaultFile(authJsonPath, `${JSON.stringify(current, null, 2)}\n`);
+  writeAuthVaultFile(authJsonPath, `${JSON.stringify(current, null, 2)}\n`);
 }
 
 /** Read and parse knowledge/env/stack.env. Returns {} if the file does not exist. */
