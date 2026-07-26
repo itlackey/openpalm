@@ -28,7 +28,9 @@ Primary runtime sources:
 
 | Host path | Container path | Purpose |
 |---|---|---|
-| `~/.openpalm/config/assistant/` | `/etc/opencode` | OpenCode config, tools, plugins, skills, commands |
+| `~/.openpalm/system/assistant/` | `/etc/opencode` | **Managed** OpenCode config (`OPENCODE_CONFIG_DIR`) — plugins, permissions, instructions; overwritten on update |
+| `~/.openpalm/config/assistant/` | `/home/opencode/.config/opencode` | **User** OpenCode global config — `persona.md`, model/provider choices |
+| `~/.openpalm/data/assistant/` | `/home/opencode` | Container `HOME` (runtime state) |
 | `~/.openpalm/config/akm/` | `/etc/akm` | AKM config |
 | `~/.openpalm/knowledge/secrets/auth.json` | `/home/opencode/.local/share/opencode/auth.json` | Host-managed OpenCode auth copy |
 | `~/.openpalm/knowledge/` | `/stash` | AKM stash (memory, skills, env, secrets; read via akm) |

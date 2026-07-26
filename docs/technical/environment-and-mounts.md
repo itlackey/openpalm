@@ -79,7 +79,8 @@ Mounts:
 
 | Host path | Container path | Mode | Purpose |
 |---|---|---|---|
-| `$OP_HOME/config/assistant` | `/etc/opencode` | rw | OpenCode config and assistant extensions |
+| `$OP_HOME/system/assistant` | `/etc/opencode` | rw | **Managed** OpenCode config (`OPENCODE_CONFIG_DIR`) — plugins, permissions, instructions; overwritten on update |
+| `$OP_HOME/config/assistant` | `/home/opencode/.config/opencode` | rw | **User** OpenCode global config — `persona.md`, model/provider choices |
 | `$OP_HOME/knowledge/secrets/auth.json` | `/home/opencode/.local/share/opencode/auth.json` | rw | Host-managed OpenCode auth copy |
 | `$OP_HOME/config/akm` | `/etc/akm` | rw | AKM config |
 | `$OP_HOME/data/assistant` | `/home/opencode` | rw | Assistant persistent home |

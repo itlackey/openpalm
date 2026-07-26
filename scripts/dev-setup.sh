@@ -118,8 +118,8 @@ LOGS_DIR="$DEV_ROOT/data/logs"
 # (per CLAUDE.md and packages/lib/src/control-plane/ui-assets.ts). Mirror
 # the whole tree into .dev/ so any new file/dir the team adds there shows
 # up automatically — no per-file copy lines to keep in sync. The skeleton
-# package's own metadata (package.json, manifest.json, README.md) is NOT
-# a seedable OP_HOME asset and is excluded. Generated files (env/stack.env,
+# package's own metadata (package.json, README.md) is NOT a seedable
+# OP_HOME asset and is excluded. Generated files (env/stack.env,
 # knowledge/secrets/auth.json, knowledge/secrets/, env/user.env) are excluded
 # because they're seeded with dev-specific values further down.
 rsync_flags=(-a)
@@ -131,7 +131,6 @@ rsync_flags=(-a)
 
 rsync "${rsync_flags[@]}" \
 	--exclude=/package.json \
-	--exclude=/manifest.json \
 	--exclude=/tools.json \
 	--exclude=/README.md \
 	--exclude=knowledge/env/stack.env \

@@ -85,7 +85,7 @@ All OpenPalm state lives under a single root: **`~/.openpalm/`** (configurable v
 
 Subtrees:
 
-- `assistant/` — user OpenCode extensions for the assistant (tools, plugins, skills); mounted at the assistant's `/etc/opencode`
+- `assistant/` — the power-user's OpenCode **global** config for the assistant (`persona.md`, model/provider choices); mounted at the assistant's `~/.config/opencode` (nested over `HOME=/home/opencode`). The **managed** config — plugins, permissions, instructions — is a different tree, `system/assistant`, mounted at `/etc/opencode` (`OPENCODE_CONFIG_DIR`)
 - `guardian/` — the operator-tunable moderation **model** setting (`opencode.json`); mounted at the guardian's `~/.config/opencode` (`HOME=/opt/openpalm/guardian`)
 - `akm/` — AKM configuration (LLM, embedding, and related settings in `config.json`)
 - (No host-owned connection list.) The UI is a self-contained browser app that owns its connection list and encrypted credentials in the browser (IndexedDB + WebCrypto AES-GCM; on a non-secure http origin — the plain-HTTP LAN tier — SubtleCrypto is unavailable by platform rule, so credentials degrade to plaintext-at-rest there rather than refusing to save) and talks to each connection's OpenCode/Guardian instance directly — see [`architecture.md`](./architecture.md). The host admin process derives its own single local OpenCode target from the environment / Electron runtime (`$lib/server/opencode-target.ts`), not from a config file.

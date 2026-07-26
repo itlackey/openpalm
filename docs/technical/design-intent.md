@@ -53,8 +53,11 @@ Portal-style ingress addons are a specialized addon class that use the portal ru
 
 - The assistant is an OpenCode runtime for user-facing interaction and workflows.
 - It can read and write only within its defined mounted boundaries (data/assistant, data/akm/cache, data/akm/data, knowledge/, workspace/, config/assistant, and config/akm/).
-- User extensions are mounted from `config/assistant/`.
-- Core OpenCode assets are baked into the image under `/etc/opencode` and provide the default baseline behavior.
+- The user's OpenCode global config is mounted from `config/assistant/` at `~/.config/opencode`.
+- The managed OpenCode config — plugins, permissions, instructions — is mounted from
+  `system/assistant/` at `/etc/opencode` (`OPENCODE_CONFIG_DIR`) and is overwritten on update.
+  **Nothing is baked into the image at `/etc/opencode`** except the fallback `AGENTS.md` the
+  entrypoint seeds there at boot.
 
 ## Operational intent
 

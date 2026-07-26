@@ -37,7 +37,7 @@ install/update may do to it:
 |---|---|---|---|
 | `config/` (except `config/stack`), `knowledge/`, `workspace/`, **built-in skills/tasks, tool manifests** | **User / seeds** | the user | **Seeded once** on first install (create-if-missing), then **never touched** — never overwritten, merged, or drift-checked. Built-in skills (`knowledge/skills`), tasks (`knowledge/tasks`), and tool manifests (`data/<svc>/tools/package.json`) are seed defaults the operator may then customize. |
 | `system/` (was `config/stack`) — compose stack + system OpenCode config (plugins/permissions/instructions), shipped defaults | **Managed** | OpenPalm | **Overwritten wholesale** every install/update — it *is* the skeleton |
-| `data/` — service runtime: dbs, logs, caches, the OpenCode HOME + **plugin installs** | **Runtime** | services | **Never written** by install/update (directories are ensured to exist; contents are service-generated) |
+| `data/` — service runtime: dbs, logs, caches, the OpenCode HOME | **Runtime** | services | Directories are ensured to exist; contents are service-generated. **Caveat:** "never written" is not literally true — `copyTree` seeds `data/<svc>/tools/package.json` and the `.gitkeep`s. Plugin installs do **not** land here; they land in the two config dirs (§ above). |
 | `state/` — pins, enabled add-ons, channel, setup record | **State** | the app | App actions only; **never** overwritten by the file copy |
 
 Rules that follow:
@@ -90,13 +90,19 @@ cope with managed and user content tangled in the same directory.
 > OpenCode follows XDG (separate config / data / cache dirs) and **merges multiple
 > config sources**, but it installs plugin `node_modules` *into the config dir* —
 > which is why `config/assistant` is polluted today. The split that honors the
-> ownership rule, confirmed by spike:
+> ownership rule. **⚠ Two clauses below were never true — corrected inline; see
+> [`architecture-root-cause-review.md`](./architecture-root-cause-review.md) §0.4:**
 > - **System config → `system/` (managed):** the project config dir
->   (`OPENCODE_CONFIG_DIR`) holds the plugin list + permissions; plugin installs
->   land under `data/` (the XDG data/config dir under the container HOME).
-> - **User config → `config/assistant/opencode.json` (user):** loaded as a single
->   file via `OPENCODE_CONFIG`, which merges as an override **without** installing
->   `node_modules` next to it — so `config/assistant` stays clean and editable.
+>   (`OPENCODE_CONFIG_DIR`) holds the plugin list + permissions. ~~plugin installs
+>   land under `data/`~~ — **false.** OpenCode runs `ensureGitignore` + `npm install
+>   @opencode-ai/plugin` in **every** directory in `ConfigPaths.directories()`, which is
+>   both `/etc/opencode` (`system/assistant`) **and** `~/.config/opencode`
+>   (`config/assistant`). Roughly 63 MB of `node_modules` lands in each.
+> - **User config → `config/assistant/` (user):** ~~loaded as a single file via
+>   `OPENCODE_CONFIG`~~ — **this wiring was never built.** `OPENCODE_CONFIG` is set
+>   nowhere in the repo; only `OPENCODE_CONFIG_DIR` is. `config/assistant` is mounted as
+>   a **directory** at `~/.config/opencode`, so it *is* in the npm-install write set and
+>   does **not** stay clean — and being a seed-once tree, nothing ever cleans it.
 > - Disjoint by design (system = plugins/permissions, user = model/provider), so
 >   both apply; the same wiring serves the guardian's OpenCode.
 5. **The control plane** — the UI build + the skeleton + the CLI / desktop shell

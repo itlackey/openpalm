@@ -87,10 +87,11 @@ Key env:
 
 Mounts:
 
-- `$OP_HOME/config/assistant -> /etc/opencode`
+- `$OP_HOME/system/assistant -> /etc/opencode` (MANAGED config, `OPENCODE_CONFIG_DIR` — plugins, permissions, instructions; overwritten on update)
+- `$OP_HOME/config/assistant -> /home/opencode/.config/opencode` (USER OpenCode global config — `persona.md`, model/provider choices; nested over `HOME`)
 - `$OP_HOME/config/akm -> /etc/akm`
 - `$OP_HOME/knowledge/secrets/auth.json -> /home/opencode/.local/share/opencode/auth.json`
-- `$OP_HOME/data/assistant -> /home/opencode`
+- `$OP_HOME/data/assistant -> /home/opencode` (`HOME`)
 - `$OP_HOME/knowledge -> /stash` (shared akm stash)
 - `$OP_HOME/data/akm/cache -> /opt/akm/cache` and `$OP_HOME/data/akm/data -> /opt/akm/data`
 - `$OP_HOME/workspace -> /work`
@@ -138,7 +139,8 @@ Key env:
 Mounts:
 
 - `$OP_HOME/data/guardian -> /opt/openpalm/guardian`
-- `$OP_HOME/config/guardian -> /etc/opencode` (guardian OpenCode global config, `OPENCODE_CONFIG_DIR`)
+- `$OP_HOME/system/guardian -> /etc/opencode` (MANAGED guardian config, `OPENCODE_CONFIG_DIR` — moderation instructions, server, permissions)
+- `$OP_HOME/config/guardian -> /opt/openpalm/guardian/.config/opencode` (USER guardian config — the operator-tunable moderation model; `HOME=/opt/openpalm/guardian`)
 - `$OP_HOME/knowledge/secrets/auth.json -> /opt/openpalm/guardian/.local/share/opencode/auth.json` (ro; shared OpenCode provider credentials, same file the assistant mounts)
 - `$OP_HOME/data/logs -> /opt/openpalm/logs`
 - Compose secret mounts under `/run/secrets/<name>` for guardian principal seeding and portal authentication
@@ -219,7 +221,7 @@ Env sources (inherits the assistant container's environment):
 
 Mounts (provided by the assistant service):
 
-- `$OP_HOME/config/assistant -> /etc/opencode` and `$OP_HOME/config/akm -> /etc/akm`
+- `$OP_HOME/system/assistant -> /etc/opencode` (managed) and `$OP_HOME/config/akm -> /etc/akm`
 - `$OP_HOME/knowledge/tasks -> /knowledge/tasks` (rw, AKM YAML task files)
 - `$OP_HOME/data/akm/cache -> /opt/akm/cache` and `$OP_HOME/data/akm/data -> /opt/akm/data` (rw, akm cache, task logs, databases, and durable data)
 
