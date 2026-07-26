@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, mock, test } from 'bun:test';
-import * as realLib from '@openpalm/lib';
+import * as realLib from '../../../lib/src/index.ts';
 import * as realCliState from '../lib/cli-state.ts';
 import * as realCliCompose from '../lib/cli-compose.ts';
 import * as realPrompt from '../lib/prompt.ts';
@@ -24,10 +24,9 @@ afterEach(() => {
 describe('runRollbackAction (0.3 — non-destructive rollback confirmation)', () => {
   test('restores the snapshot when the user confirms', async () => {
     let restoreCalled = false;
-    mock.module('@openpalm/lib', () => ({
+    mock.module('@openpalm/lib', () => ({ ...realLib,
       hasSnapshot: () => true,
       snapshotTimestamp: () => '2026-01-01T00:00:00.000Z',
-      createState: () => ({ homeDir: '/tmp/home', dataDir: '/tmp/home/data' }),
       restoreSnapshot: () => { restoreCalled = true; },
       buildManagedServices: async () => ['assistant'],
       acquireInstallLock: () => ({ path: '/tmp/home/data/.install.lock' }),
@@ -51,10 +50,9 @@ describe('runRollbackAction (0.3 — non-destructive rollback confirmation)', ()
 
   test('aborts without restoring when the user declines confirmation', async () => {
     let restoreCalled = false;
-    mock.module('@openpalm/lib', () => ({
+    mock.module('@openpalm/lib', () => ({ ...realLib,
       hasSnapshot: () => true,
       snapshotTimestamp: () => '2026-01-01T00:00:00.000Z',
-      createState: () => ({ homeDir: '/tmp/home', dataDir: '/tmp/home/data' }),
       restoreSnapshot: () => { restoreCalled = true; },
       buildManagedServices: async () => ['assistant'],
       acquireInstallLock: () => ({ path: '/tmp/home/data/.install.lock' }),
@@ -79,10 +77,9 @@ describe('runRollbackAction (0.3 — non-destructive rollback confirmation)', ()
   test('--yes skips the confirmation prompt entirely', async () => {
     let restoreCalled = false;
     let promptCalled = false;
-    mock.module('@openpalm/lib', () => ({
+    mock.module('@openpalm/lib', () => ({ ...realLib,
       hasSnapshot: () => true,
       snapshotTimestamp: () => '2026-01-01T00:00:00.000Z',
-      createState: () => ({ homeDir: '/tmp/home', dataDir: '/tmp/home/data' }),
       restoreSnapshot: () => { restoreCalled = true; },
       buildManagedServices: async () => ['assistant'],
       acquireInstallLock: () => ({ path: '/tmp/home/data/.install.lock' }),
@@ -108,10 +105,9 @@ describe('runRollbackAction (0.3 — non-destructive rollback confirmation)', ()
   test('refuses with install_in_progress when the install lock is held (no restore, no compose up)', async () => {
     let restoreCalled = false;
     let composed = false;
-    mock.module('@openpalm/lib', () => ({
+    mock.module('@openpalm/lib', () => ({ ...realLib,
       hasSnapshot: () => true,
       snapshotTimestamp: () => '2026-01-01T00:00:00.000Z',
-      createState: () => ({ homeDir: '/tmp/home', dataDir: '/tmp/home/data' }),
       restoreSnapshot: () => { restoreCalled = true; },
       buildManagedServices: async () => ['assistant'],
       // Lock held by a concurrent install/update — acquire returns null.
