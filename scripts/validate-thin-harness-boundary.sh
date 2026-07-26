@@ -57,6 +57,9 @@ ALLOWED_IMPORTS=(
   checkAndUpdateSkeleton
   uiUpdateChannel
   parseEnvFile
+  # Pure path resolver for the single stack env file (state/stack.env) — the
+  # same family as resolveOpenPalmHome/resolveDataDir. Read-only.
+  stackEnvFile
   PLATFORM_VERSION
   # Read-only install-state snapshot taken before release refresh. The shared
   # classifier remains the sole authority; the harness must not duplicate it.
@@ -118,6 +121,15 @@ while IFS= read -r -d '' file; do
   fi
   if grep -Eq "require\s*\(\s*['\"]@openpalm/lib['\"]" "$file"; then
     echo "::error file=$file::require('@openpalm/lib') bypasses the thin-harness bootstrap allowlist — use a static named brace import instead."
+    errors=$((errors + 1))
+  fi
+  # A deep-path specifier ('@openpalm/lib/control-plane/…') resolves via the
+  # package's subpath exports and would ship any symbol past the allowlist
+  # below, which only parses imports of the bare '@openpalm/lib' barrel. The
+  # harness has no legitimate use for one — every allowed symbol is exported
+  # from the barrel.
+  if grep -Eq "['\"]@openpalm/lib/" "$file"; then
+    echo "::error file=$file::deep-path import of '@openpalm/lib/…' bypasses the thin-harness bootstrap allowlist — import the symbol from the '@openpalm/lib' barrel instead."
     errors=$((errors + 1))
   fi
 

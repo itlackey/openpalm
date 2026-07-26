@@ -170,6 +170,7 @@ vi.mock('@openpalm/lib', () => ({
   checkAndUpdateSkeleton: vi.fn(() => Promise.resolve({ updated: false, latestVersion: '0.11.0' })),
   uiUpdateChannel: vi.fn((v: string) => (v.includes('-') ? 'next' : 'latest')),
   parseEnvFile: vi.fn(() => ({})),
+  stackEnvFile: vi.fn((home: string) => `${home}/state/stack.env`),
   PLATFORM_VERSION: 'v0.11.0',
   // E1: the shared assistant-endpoint resolver main.ts now delegates to
   // instead of re-deriving the OP_ASSISTANT_BIND_ADDRESS/PORT precedence

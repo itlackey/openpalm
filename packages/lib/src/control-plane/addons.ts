@@ -357,14 +357,12 @@ function removeEnvCommentLineFromFile(path: string, commentLine: string): boolea
 /** Strip every retired env key (and orphaned section header) from the stack env. Returns the keys removed. */
 function removeRetiredEnvKeys(homeDir: string): string[] {
   const removed = new Set<string>();
-  {
-    const path = stackEnvFile(homeDir);
-    for (const key of RETIRED_ENV_KEYS) {
-      if (removeEnvKeyFromFile(path, key)) removed.add(key);
-    }
-    for (const header of RETIRED_ENV_SECTION_HEADERS) {
-      removeEnvCommentLineFromFile(path, header);
-    }
+  const path = stackEnvFile(homeDir);
+  for (const key of RETIRED_ENV_KEYS) {
+    if (removeEnvKeyFromFile(path, key)) removed.add(key);
+  }
+  for (const header of RETIRED_ENV_SECTION_HEADERS) {
+    removeEnvCommentLineFromFile(path, header);
   }
   return [...removed];
 }

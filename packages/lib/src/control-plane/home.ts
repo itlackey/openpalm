@@ -12,6 +12,7 @@
  *                host identity, schema version
  */
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { writeFileAtomic } from "./fs-atomic.js";
 import { homedir, tmpdir } from "node:os";
 import { resolve as resolvePath } from "node:path";
 
@@ -143,8 +144,9 @@ export function readHomeSchemaVersion(home: string): number {
 }
 
 export function writeHomeSchemaVersion(home: string, version: number): void {
-  mkdirSync(`${home}/state`, { recursive: true });
-  writeFileSync(homeSchemaVersionFile(home), `${version}\n`, { mode: 0o644 });
+  // Atomic: a torn plain write would leave a file that parses as version 0
+  // and silently re-runs every one-shot migration on the next command.
+  writeFileAtomic(homeSchemaVersionFile(home), `${version}\n`, 0o644);
 }
 
 /**

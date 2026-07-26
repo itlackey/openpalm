@@ -110,6 +110,7 @@ fi
 DEV_ROOT="$ROOT_DIR/.dev"
 CONFIG_DIR="$DEV_ROOT/config"
 STASH_DIR="$DEV_ROOT/knowledge"
+STACK_ENV="$DEV_ROOT/state/stack.env"
 DATA_DIR="$DEV_ROOT/data"
 LOGS_DIR="$DEV_ROOT/data/logs"
 
@@ -119,7 +120,7 @@ LOGS_DIR="$DEV_ROOT/data/logs"
 # the whole tree into .dev/ so any new file/dir the team adds there shows
 # up automatically — no per-file copy lines to keep in sync. The skeleton
 # package's own metadata (package.json, README.md) is NOT a seedable
-# OP_HOME asset and is excluded. Generated files (env/stack.env,
+# OP_HOME asset and is excluded. Generated files (state/stack.env,
 # knowledge/secrets/auth.json, knowledge/secrets/, env/user.env) are excluded
 # because they're seeded with dev-specific values further down.
 rsync_flags=(-a)
@@ -148,7 +149,7 @@ rsync "${rsync_flags[@]}" \
 mkdir -p \
 	"$CONFIG_DIR/assistant/tools" "$CONFIG_DIR/assistant/plugins" "$CONFIG_DIR/assistant/skills" \
 	"$CONFIG_DIR/automations" \
-	"$STASH_DIR/env" "$STASH_DIR/secrets" \
+	"$STASH_DIR/env" "$STASH_DIR/secrets" "$DEV_ROOT/state" \
 	"$DATA_DIR" "$DATA_DIR/assistant" "$DATA_DIR/assistant/.cache" \
 	"$DATA_DIR/assistant/.local/bin" "$DATA_DIR/assistant/.local/share/opencode" \
 	"$DATA_DIR/assistant/.local/state/opencode" "$DATA_DIR/guardian" \
@@ -187,7 +188,7 @@ if [[ $seed_env -eq 1 ]]; then
 USEREOF
 	fi
 
-	system_env="$STASH_DIR/env/stack.env"
+	system_env="$STACK_ENV"
 	if [[ ! -f "$system_env" || $force -eq 1 ]]; then
 		# Detect Docker socket from active context (supports OrbStack, Colima, etc.)
 		docker_sock="/var/run/docker.sock"
@@ -249,22 +250,22 @@ EOF
 fi
 
 # Ensure non-secret stack env, user env, and file-secret directory exist.
-touch "$STASH_DIR/env/user.env" "$STASH_DIR/env/stack.env"
-if ! grep -q '^OP_HOME=' "$STASH_DIR/env/stack.env"; then
-	printf '\nOP_HOME=%s\n' "$DEV_ROOT" >>"$STASH_DIR/env/stack.env"
+touch "$STASH_DIR/env/user.env" "$STACK_ENV"
+if ! grep -q '^OP_HOME=' "$STACK_ENV"; then
+	printf '\nOP_HOME=%s\n' "$DEV_ROOT" >>"$STACK_ENV"
 fi
-if ! grep -q '^OP_PROJECT_NAME=' "$STASH_DIR/env/stack.env"; then
-	printf 'OP_PROJECT_NAME=openpalm-dev\n' >>"$STASH_DIR/env/stack.env"
+if ! grep -q '^OP_PROJECT_NAME=' "$STACK_ENV"; then
+	printf 'OP_PROJECT_NAME=openpalm-dev\n' >>"$STACK_ENV"
 fi
-if ! grep -q '^OP_UI_PORT=' "$STASH_DIR/env/stack.env"; then
-	printf 'OP_UI_PORT=4810\n' >>"$STASH_DIR/env/stack.env"
+if ! grep -q '^OP_UI_PORT=' "$STACK_ENV"; then
+	printf 'OP_UI_PORT=4810\n' >>"$STACK_ENV"
 fi
 # Migrate legacy OP_ADMIN_PORT → OP_HOST_UI_PORT (idempotent).
 # If only the old name exists, add the canonical name so consumers see it.
-if grep -q '^OP_ADMIN_PORT=' "$STASH_DIR/env/stack.env" \
-	&& ! grep -q '^OP_HOST_UI_PORT=' "$STASH_DIR/env/stack.env"; then
-	_old_port="$(grep '^OP_ADMIN_PORT=' "$STASH_DIR/env/stack.env" | head -1 | cut -d= -f2-)"
-	printf 'OP_HOST_UI_PORT=%s\n' "$_old_port" >>"$STASH_DIR/env/stack.env"
+if grep -q '^OP_ADMIN_PORT=' "$STACK_ENV" \
+	&& ! grep -q '^OP_HOST_UI_PORT=' "$STACK_ENV"; then
+	_old_port="$(grep '^OP_ADMIN_PORT=' "$STACK_ENV" | head -1 | cut -d= -f2-)"
+	printf 'OP_HOST_UI_PORT=%s\n' "$_old_port" >>"$STACK_ENV"
 fi
 # Enable requested addons via OP_ENABLED_ADDONS (comma-separated) in stack.env,
 # and seed the matching COMPOSE_PROFILES. The production `up` path computes
@@ -276,10 +277,10 @@ fi
 # .cpu variant, everything else is addon.<name>.
 if [[ ${#enabled_addons[@]} -gt 0 ]]; then
 	_csv="$(IFS=,; echo "${enabled_addons[*]}")"
-	if grep -q '^OP_ENABLED_ADDONS=' "$STASH_DIR/env/stack.env"; then
-		sed -i "s/^OP_ENABLED_ADDONS=.*/OP_ENABLED_ADDONS=${_csv}/" "$STASH_DIR/env/stack.env"
+	if grep -q '^OP_ENABLED_ADDONS=' "$STACK_ENV"; then
+		sed -i "s/^OP_ENABLED_ADDONS=.*/OP_ENABLED_ADDONS=${_csv}/" "$STACK_ENV"
 	else
-		printf 'OP_ENABLED_ADDONS=%s\n' "$_csv" >>"$STASH_DIR/env/stack.env"
+		printf 'OP_ENABLED_ADDONS=%s\n' "$_csv" >>"$STACK_ENV"
 	fi
 
 	_profiles=()
@@ -291,10 +292,10 @@ if [[ ${#enabled_addons[@]} -gt 0 ]]; then
 		esac
 	done
 	_pcsv="$(IFS=,; echo "${_profiles[*]}")"
-	if grep -q '^COMPOSE_PROFILES=' "$STASH_DIR/env/stack.env"; then
-		sed -i "s/^COMPOSE_PROFILES=.*/COMPOSE_PROFILES=${_pcsv}/" "$STASH_DIR/env/stack.env"
+	if grep -q '^COMPOSE_PROFILES=' "$STACK_ENV"; then
+		sed -i "s/^COMPOSE_PROFILES=.*/COMPOSE_PROFILES=${_pcsv}/" "$STACK_ENV"
 	else
-		printf 'COMPOSE_PROFILES=%s\n' "$_pcsv" >>"$STASH_DIR/env/stack.env"
+		printf 'COMPOSE_PROFILES=%s\n' "$_pcsv" >>"$STACK_ENV"
 	fi
 fi
 

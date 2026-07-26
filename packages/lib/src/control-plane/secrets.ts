@@ -87,19 +87,6 @@ function writeVaultFile(path: string, content: string): void {
   }
 }
 
-/** auth.json is a single-file bind mount; writes must keep its inode. */
-function writeAuthVaultFile(path: string, content: string): void {
-  writeFileInPlace(path, content, VAULT_FILE_MODE);
-  try {
-    chmodSync(path, VAULT_FILE_MODE);
-  } catch (error) {
-    logger.warn("failed to enforce auth.json permissions", {
-      path,
-      error: errMessage(error),
-    });
-  }
-}
-
 export function readStackSecretEnv(homeDir: string): Record<string, string> {
   const out: Record<string, string> = {};
   for (const name of listSecretNames(homeDir)) {
@@ -225,7 +212,8 @@ function ensureAuthJson(state: ControlPlaneState): void {
     }
   }
 
-  writeAuthVaultFile(authJsonPath, "{}\n");
+  // auth.json is a single-file bind mount; the write must keep its inode.
+  writeFileInPlace(authJsonPath, "{}\n", VAULT_FILE_MODE);
 }
 
 export function updateSecretsEnv(
@@ -298,7 +286,8 @@ export function writeAuthJsonProviderKeys(
     }
   }
 
-  writeAuthVaultFile(authJsonPath, `${JSON.stringify(current, null, 2)}\n`);
+  // auth.json is a single-file bind mount; the write must keep its inode.
+  writeFileInPlace(authJsonPath, `${JSON.stringify(current, null, 2)}\n`, VAULT_FILE_MODE);
 }
 
 /**
@@ -340,7 +329,12 @@ export function patchSecretsEnvFile(
     }
   }
   if (Object.keys(stackPatches).length === 0) return;
-  assertNoSecretLikeStackEnvKeys(stackPatches);
+  patchStackEnv(homeDir, stackPatches);
+}
+
+/** Merge non-secret patches into the single stack env file (state/stack.env). */
+function patchStackEnv(homeDir: string, patches: Record<string, string>): void {
+  assertNoSecretLikeStackEnvKeys(patches);
 
   const stackEnvPath = stackEnvFile(homeDir);
   enforceVaultDirMode(dirname(stackEnvPath));
@@ -354,39 +348,20 @@ export function patchSecretsEnvFile(
     // start fresh
   }
 
-  let result = mergeEnvContent(existingContent, stackPatches);
+  let result = mergeEnvContent(existingContent, patches);
   if (!result.endsWith("\n")) result += "\n";
   writeVaultFile(stackEnvPath, result);
 }
 
 /**
- * Patch app-written records into OP_HOME/state/stack.env.
- *
- * Constitution §1: state/ is the app-written tree (setup record, enabled add-ons,
- * version pins, channel). readStackEnv / buildEnvFiles merge this OVER the legacy
- * the same single stack.env, so values written here win. This is the symmetric
- * counterpart to patchSecretsEnvFile: use it for records the app owns, so the app
- * never writes into the operator-facing stack.env. Non-secret keys only.
+ * Patch app-written records (setup record, enabled add-ons, version pins,
+ * channel) into the single stack env file. Same file as patchSecretsEnvFile's
+ * non-secret half since the consolidation; this variant refuses secret-shaped
+ * keys instead of routing them to file-based secrets. Non-secret keys only.
  */
 export function patchStateEnvFile(homeDir: string, patches: Record<string, string>): void {
   if (Object.keys(patches).length === 0) return;
-  assertNoSecretLikeStackEnvKeys(patches);
-
-  const path = stackEnvFile(homeDir);
-  mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
-
-  let existing = "";
-  try {
-    if (existsSync(path)) existing = readFileSync(path, "utf-8");
-  } catch {
-    // start fresh
-  }
-
-  let result = mergeEnvContent(existing, patches);
-  if (!result.endsWith("\n")) result += "\n";
-  const tmp = `${path}.tmp`;
-  writeFileSync(tmp, result, { mode: 0o600 });
-  renameSync(tmp, path);
+  patchStackEnv(homeDir, patches);
 }
 
 export function maskSecretValue(key: string, value: string): string {

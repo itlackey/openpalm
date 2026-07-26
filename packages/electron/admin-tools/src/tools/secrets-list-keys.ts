@@ -44,10 +44,11 @@ export default tool({
     const files: Record<string, string> = {
       // Non-secret stack env: OP_HOME/state/stack.env, the single Compose
       // --env-file. Deliberately duplicated rather than imported from
-      // @openpalm/lib `stackEnvFile`: this plugin is bundled standalone
-      // (`bun build --bundle`) with only @opencode-ai/plugin, so importing the
-      // resolver would inline the whole control plane into the plugin. Keep in
-      // step with home.ts if the location moves again.
+      // @openpalm/lib `stackEnvFile`: this plugin is published standalone and
+      // declares no dependency on the workspace lib (a subpath import of
+      // home.ts would bundle fine, but only by adding that dependency to a
+      // package that ships pre-bundled). Keep in step with home.ts if the
+      // location moves again.
       stack: join(home, "state", "stack.env"),
     };
     const targets = args.file === "all" ? ["stack", "secrets"] : [args.file];

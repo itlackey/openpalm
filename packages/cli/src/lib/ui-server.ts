@@ -17,7 +17,7 @@ import {
   writeLegacyServedUiRuntimeConfig, UI_RUNTIME_CONFIG_ENV,
   type ControlPlaneState, type UiRuntimeConfig,
 } from '@openpalm/lib';
-import { ensureValidState, resolveServeState } from './cli-state.ts';
+import { ensureValidState, migrateBestEffort, resolveServeState } from './cli-state.ts';
 import { openBrowser } from './browser.ts';
 import { resolveHostUiPortFromEnv } from './ports.ts';
 
@@ -326,9 +326,14 @@ export async function runUiBuild(opts: { port?: number } = {}): Promise<void> {
     console.error('Run: bun run ui:build');
     process.exit(1);
   }
-  const port = opts.port
-    ?? (process.env.PORT ? Number(process.env.PORT) : resolveUiServePort(undefined, resolveOpenPalmHome()));
   const homeDir = resolveOpenPalmHome();
+  // Standalone `openpalm ui` is a state-reading entry point of its own: without
+  // this, a pre-consolidation home serves with no stack env (wrong port, setup
+  // guard redirecting an installed system to /setup). No-op once stamped, so
+  // the supervised child path pays one small file read.
+  migrateBestEffort(homeDir);
+  const port = opts.port
+    ?? (process.env.PORT ? Number(process.env.PORT) : resolveUiServePort(undefined, homeDir));
   const installState = classifyLocalInstall(stackDirFor(homeDir), homeDir);
   const networkEnv = resolveUiNetworkEnv(port, resolveExpectedAdmin(false), process.env, installState);
   for (const [key, value] of Object.entries(networkEnv)) {

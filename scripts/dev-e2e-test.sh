@@ -110,7 +110,7 @@ mkdir -p "${OP_E2E_HOME}"
 cp -r packages/skeleton/. "${OP_E2E_HOME}/"
 
 # Seed stack.env with isolated non-secret values
-mkdir -p "${OP_E2E_HOME}/knowledge/secrets" "${OP_E2E_HOME}/knowledge/env"
+mkdir -p "${OP_E2E_HOME}/knowledge/secrets" "${OP_E2E_HOME}/knowledge/env" "${OP_E2E_HOME}/state"
 docker_sock="/var/run/docker.sock"
 cat > "${OP_E2E_HOME}/state/stack.env" <<EOF
 OP_HOME=${OP_E2E_HOME}

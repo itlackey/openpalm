@@ -14,6 +14,7 @@ import {
   checkAndUpdateSkeleton,
   uiUpdateChannel,
   parseEnvFile,
+  stackEnvFile,
   PLATFORM_VERSION,
   waitForReady as libWaitForReady,
   consumePendingUiBackup,
@@ -199,7 +200,7 @@ export function buildUIServerEnv(homeDir: string, port: number, update?: UpdateI
   // version vars: the docker-compose deploy path reads them via --env-file and
   // shell-env takes precedence over --env-file, so injecting them here would
   // override the authoritative versions (see the version-var note below).
-  const stackEnv = parseEnvFile(join(homeDir, 'knowledge', 'env', 'stack.env'));
+  const stackEnv = parseEnvFile(stackEnvFile(homeDir));
   const stackForUi: NodeJS.ProcessEnv = {};
   // Per-unit version keys: shell-env beats --env-file in docker compose, so
   // leaking them here would override the authoritative versions in stack.env

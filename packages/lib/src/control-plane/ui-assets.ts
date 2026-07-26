@@ -122,6 +122,11 @@ export function resolveLocalOpenpalmDir(): string | null {
  */
 export const SKELETON_VERSION_STAMP = '.skeleton-version';
 
+/** The one writer of the skeleton version stamp — readSkeletonVersion's counterpart. */
+function writeSkeletonVersionStamp(homeDir: string, version: string): void {
+  writeFileSync(join(homeDir, SKELETON_VERSION_STAMP), `${version}\n`);
+}
+
 /**
  * Record which skeleton version was seeded. Without it checkAndUpdateSkeleton
  * treats a fresh install as stale and re-swaps system/ on a live stack.
@@ -135,7 +140,7 @@ function stampSeededSkeletonVersion(sourceDir: string, homeDir: string): void {
       logger.debug('skeleton package.json has no version — leaving home unstamped');
       return;
     }
-    writeFileSync(join(homeDir, SKELETON_VERSION_STAMP), `${version}\n`);
+    writeSkeletonVersionStamp(homeDir, version);
     logger.debug('stamped seeded skeleton version', { version });
   } catch (err) {
     logger.debug('could not stamp skeleton version — leaving home unstamped', {
@@ -764,7 +769,7 @@ export async function checkAndUpdateSkeleton(
     install: (manifest) => downloadNpmSkeletonBundle(manifest, homeDir, dataDir),
     // Stamp the exact npm version (bare, no `v`) so future checks compare correctly.
     afterInstall: (manifest) => {
-      writeFileSync(join(homeDir, SKELETON_VERSION_STAMP), `${normalizeVersion(manifest.version)}\n`);
+      writeSkeletonVersionStamp(homeDir, normalizeVersion(manifest.version));
     },
     // The skeleton restores its own backup on failure so OP_HOME/system/ is left
     // in its previous working state (§6) — there is no supervisor to hand it to.

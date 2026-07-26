@@ -71,6 +71,11 @@ function migrateToSingleStackEnv(homeDir: string): boolean {
   for (const key of SERVICE_VERSION_KEYS) base = removeEnvKey(base, key);
   const overrides = existsSync(state) ? parseEnvContent(readFileSync(state, 'utf-8')) : {};
 
+  // Strip every occurrence of an overridden key first: env parsing is
+  // last-occurrence-wins, but mergeEnvContent rewrites only the first, so a
+  // stale duplicate later in the operator file would silently beat the state
+  // value the running stack was actually using.
+  for (const key of Object.keys(overrides)) base = removeEnvKey(base, key);
   let merged = mergeEnvContent(base, overrides);
 
   // A target that exists while the legacy files are still here was written

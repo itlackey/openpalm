@@ -28,7 +28,7 @@ const logger = createLogger('cli:state');
  * Consumers that are about to WRITE (compose preflight, install, applyHome)
  * call runHomeMigrations directly and keep the strict behavior.
  */
-function migrateBestEffort(homeDir: string): void {
+export function migrateBestEffort(homeDir: string): void {
   try {
     runHomeMigrations(homeDir);
   } catch (error) {

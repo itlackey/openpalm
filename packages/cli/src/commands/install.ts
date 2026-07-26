@@ -7,7 +7,7 @@ import { defineAction } from '../lib/action.ts';
 import { promptYesNo } from '../lib/prompt.ts';
 import { resolveLatestReleaseTag } from '../lib/github.ts';
 import { DEFAULT_UI_PORT } from '../lib/ports.ts';
-import { resolveOpenPalmHome, resolveConfigDir, ensureHomeDirs, runHomeMigrations, classifyLocalInstall, stackDirFor, hasAnyStackEnvFile } from '@openpalm/lib';
+import { resolveOpenPalmHome, resolveConfigDir, ensureHomeDirs, runHomeMigrations, hasMaterializedLocalInstall, hasAnyStackEnvFile } from '@openpalm/lib';
 import { applyHomeSeed, seedUiBuild, uiUpdateChannel } from '@openpalm/lib';
 import {
   backupOpenPalmHome,
@@ -168,10 +168,11 @@ export async function bootstrapInstall(options: InstallOptions): Promise<void> {
   // on the pre-consolidation layout has no state/stack.env yet, so a bare
   // existence check on the new path would call a live install "fresh" — running
   // install without --force and skipping the backup confirmation before managed
-  // files are refreshed. classifyLocalInstall also recognizes a materialized
-  // stack (compose + guardian tokens), so it is right before OR after migration.
+  // files are refreshed. hasMaterializedLocalInstall also recognizes a
+  // materialized stack (compose + guardian tokens), so it is right before OR
+  // after migration.
   const alreadyInstalled = hasAnyStackEnvFile(homeDir)
-    || classifyLocalInstall(stackDirFor(homeDir), homeDir) !== 'not_installed';
+    || hasMaterializedLocalInstall(homeDir);
   if (alreadyInstalled && !options.force) {
     throw new Error('OpenPalm appears to already be installed. Re-run install with --force to continue.');
   }

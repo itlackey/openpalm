@@ -110,6 +110,7 @@ function restoreOpenPalmLib(): void {
       state.artifacts = realLib.resolveRuntimeFiles();
       return state;
     },
+    migrateBestEffort: () => {},
   }));
 }
 

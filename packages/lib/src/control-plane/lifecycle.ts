@@ -177,6 +177,12 @@ async function applyManagedFiles(
   if (overlayCheck.blockError) throw new Error(overlayCheck.blockError);
   if (overlayCheck.warning) lifecycleLogger.warn(overlayCheck.warning);
 
+  // Migrate BEFORE snapshotting: on a pre-consolidation home the snapshot
+  // list's state/stack.env does not exist yet, so snapshotting first would
+  // capture no stack env at all and a failed deploy could not roll back env
+  // mutations. The migration is value-preserving, so the snapshot still
+  // records the pre-update values — just in the canonical location.
+  runHomeMigrations(state.homeDir);
   snapshotCurrentState(state);
   await applyHome(state);
   await reconcileCore(state, { activateServices });
