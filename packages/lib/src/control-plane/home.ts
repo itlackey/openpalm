@@ -182,8 +182,24 @@ export function resolveLogsDir(): string {
   return `${resolveDataDir()}/logs`;
 }
 
+/**
+ * Resolve the backup destination for a given OP_HOME root.
+ *
+ * Defaults to `${home}/data/backups` (the historical, same-filesystem
+ * location). `OP_BACKUP_DIR`, when set, overrides it and may point anywhere
+ * else — e.g. a separate volume/filesystem with more headroom than OP_HOME's.
+ * Every backup producer (safety snapshots in backup.ts, the host-side UI/
+ * skeleton hot-swap in npm-bundle-updater.ts) resolves through here so the
+ * destination is configured in exactly one place (S5).
+ */
+export function resolveBackupsDirFor(home: string): string {
+  const override = process.env.OP_BACKUP_DIR;
+  if (override) return resolvePath(override);
+  return `${home}/data/backups`;
+}
+
 export function resolveBackupsDir(): string {
-  return `${resolveDataDir()}/backups`;
+  return resolveBackupsDirFor(resolveOpenPalmHome());
 }
 
 export function resolveRollbackDir(): string {
