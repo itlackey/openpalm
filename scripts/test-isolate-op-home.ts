@@ -6,10 +6,11 @@
  *
  * Guarantees:
  *   1. OP_HOME is pointed at a fresh mkdtemp dir, unconditionally overriding
- *      any ambient shell value, .env leakage, or .dev residue.
+ *      any ambient shell value, .env leakage, or .dev residue — at module top
+ *      level, so even code that runs before hooks never sees the ambient value.
  *   2. A tripwire throws if OP_HOME is re-pointed at a real or dev dir during
  *      the test process lifetime (catches tests that forget to restore OP_HOME).
- *   3. The temp dir is cleaned up after all tests finish.
+ *   3. The temp dirs are cleaned up after all tests finish.
  */
 import { beforeAll, afterAll, beforeEach } from "bun:test";
 import { mkdtempSync, rmSync, realpathSync, existsSync } from "node:fs";
@@ -72,11 +73,25 @@ if (!originalOpenpalmRepoRoot) {
   process.env.OPENPALM_REPO_ROOT = REPO_ROOT;
 }
 
+// ── Process-level neutralization ────────────────────────────────────────────
+// Bun auto-loads the repo-root `.env` before this preload runs, and a developer
+// .env legitimately sets OP_HOME=.dev for the dev-stack workflows. Overriding
+// only in beforeAll is too late: test modules evaluate before hooks fire, so a
+// file that captures process.env.OP_HOME at module scope (to restore it later)
+// captures the poisoned value and re-exposes it mid-run — which is exactly what
+// the tripwire below then catches. Override here, at top level, before any test
+// module is evaluated, so no test can ever observe the ambient value.
+
+const processTempDir = mkdtempSync(join(tmpdir(), "op-test-"));
+process.env.OP_HOME = processTempDir;
+process.env.OP_WORK_DIR = join(processTempDir, "workspace");
+process.on("exit", () => {
+  rmSync(processTempDir, { recursive: true, force: true });
+});
+
 // ── Suite-level temp dir ────────────────────────────────────────────────────
 
 let suiteTempDir: string | undefined;
-const originalOpHome: string | undefined = process.env.OP_HOME;
-const originalOpWorkDir: string | undefined = process.env.OP_WORK_DIR;
 
 beforeAll(() => {
   // Unconditionally override — this is the isolation guarantee.
@@ -86,16 +101,11 @@ beforeAll(() => {
 });
 
 afterAll(() => {
-  if (originalOpHome !== undefined) {
-    process.env.OP_HOME = originalOpHome;
-  } else {
-    delete process.env.OP_HOME;
-  }
-  if (originalOpWorkDir !== undefined) {
-    process.env.OP_WORK_DIR = originalOpWorkDir;
-  } else {
-    delete process.env.OP_WORK_DIR;
-  }
+  // Restore to the process-level safe dir, NOT the pre-process original: the
+  // original may be the developer's .env value (.dev), and putting it back
+  // while the process is still running would re-poison later suites.
+  process.env.OP_HOME = processTempDir;
+  process.env.OP_WORK_DIR = join(processTempDir, "workspace");
   if (originalOpenpalmRepoRoot !== undefined) {
     process.env.OPENPALM_REPO_ROOT = originalOpenpalmRepoRoot;
   } else {
