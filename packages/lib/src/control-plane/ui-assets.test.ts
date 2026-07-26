@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach, spyOn } from "bun:test";
+import { describe, it, test, expect, beforeEach, afterEach, spyOn } from "bun:test";
 import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -145,6 +145,32 @@ describe("resolveUiBuildDir — de-route visibility (§6.1 / Risk #1)", () => {
     } finally {
       errSpy.mockRestore();
     }
+  });
+});
+
+describe("applyHomeSeed — skeleton version stamp", () => {
+  const skelDir = () => join(repoRoot, "packages", "skeleton");
+  const stamp = () => join(opHome, SKELETON_VERSION_STAMP);
+
+  function seedSource(pkgJson: string | null) {
+    mkdirSync(join(skelDir(), "system", "stack"), { recursive: true });
+    for (const f of ["core.compose.yml", "services.compose.yml", "portals.compose.yml"]) {
+      writeFileSync(join(skelDir(), "system", "stack", f), "services: {}\n");
+    }
+    if (pkgJson !== null) writeFileSync(join(skelDir(), "package.json"), pkgJson);
+    mkdirSync(opHome, { recursive: true });
+  }
+
+  test("stamps the seeded version", async () => {
+    seedSource('{ "version": "0.13.0" }\n');
+    await applyHomeSeed("v1", opHome, join(opHome, "config"), join(opHome, "data"));
+    expect(readFileSync(stamp(), "utf-8").trim()).toBe("0.13.0");
+  });
+
+  test("leaves the home unstamped rather than guessing a version", async () => {
+    seedSource(null);
+    await applyHomeSeed("v1", opHome, join(opHome, "config"), join(opHome, "data"));
+    expect(existsSync(stamp())).toBe(false);
   });
 });
 

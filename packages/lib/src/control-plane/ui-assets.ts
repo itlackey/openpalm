@@ -123,6 +123,28 @@ export function resolveLocalOpenpalmDir(): string | null {
 export const SKELETON_VERSION_STAMP = '.skeleton-version';
 
 /**
+ * Record which skeleton version was seeded. Without it checkAndUpdateSkeleton
+ * treats a fresh install as stale and re-swaps system/ on a live stack.
+ * Fails open: an undeterminable version leaves the home unstamped, as before.
+ */
+function stampSeededSkeletonVersion(sourceDir: string, homeDir: string): void {
+  try {
+    const raw = readFileSync(join(sourceDir, 'package.json'), 'utf-8');
+    const version = normalizeVersion(JSON.parse(raw)?.version);
+    if (!version) {
+      logger.debug('skeleton package.json has no version — leaving home unstamped');
+      return;
+    }
+    writeFileSync(join(homeDir, SKELETON_VERSION_STAMP), `${version}\n`);
+    logger.debug('stamped seeded skeleton version', { version });
+  } catch (err) {
+    logger.debug('could not stamp skeleton version — leaving home unstamped', {
+      err: errMessage(err),
+    });
+  }
+}
+
+/**
  * Seed the bundled `.openpalm/` skeleton into OP_HOME.
  *
  * Called on every install/update. Per constitution §1 and §8:
@@ -170,6 +192,7 @@ export async function applyHomeSeed(
     // user edits, removed files, and service-generated data are never touched.
     logger.debug('seeding .openpalm from skeleton source', { src: local, repoRef });
     copyTree(local, homeDir, { skipExisting: true });
+    stampSeededSkeletonVersion(local, homeDir);
     return { updated, backupDir };
   } finally {
     // Clean up the staged download (no-op when seeding from a local checkout).
