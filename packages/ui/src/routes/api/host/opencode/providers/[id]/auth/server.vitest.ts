@@ -503,7 +503,7 @@ describe('/api/host/opencode/providers/[id]/auth route', () => {
   });
 
   // Phase 6 removed OpenPalm-side appendAudit. OpenCode logs every
-  // /auth DELETE natively (D6a in docs/technical/auth-and-proxy-refactor-plan.md),
+  // /auth DELETE natively (D6a of the auth/proxy refactor),
   // so this contract test now just verifies the DELETE succeeds.
   test('DELETE succeeds for a valid provider', async () => {
     proxy.mockResolvedValueOnce({ ok: true, data: null });

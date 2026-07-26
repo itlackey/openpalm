@@ -16,7 +16,7 @@ This document describes the Admin API routes currently implemented in
 - Protected endpoints require the `op_session` cookie (HttpOnly, SameSite=Strict).
   The browser obtains the cookie via `POST /api/auth/login` (password in body).
   The legacy `x-admin-token` / `Authorization: Bearer` header fallbacks were
-  removed in Phase 2 of `docs/technical/auth-and-proxy-refactor-plan.md`.
+  removed in Phase 2 of the auth/proxy refactor.
   `OP_UI_LOGIN_PASSWORD` is supplied to the admin process from
   `knowledge/secrets/op_ui_login_password`.
 - Optional caller attribution: `x-requested-by: assistant|cli|ui|system|test`

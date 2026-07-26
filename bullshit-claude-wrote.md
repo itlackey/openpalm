@@ -127,20 +127,39 @@ behavior test — parse the config and check the resolved value, call the functi
 and check the result. If the behavior cannot be tested, the guardrail was never
 real.
 
-## 5. Shell scripts doing the same thing to build artifacts — ~720 lines
+## 5. Shell scripts grepping build artifacts — ~140 lines (CORRECTED: I was wrong about 3 of 4)
 
-`scripts/validate-thin-harness-boundary.sh` (200) greps
-`packages/electron/dist/main.js` for the string `performUpgrade` to "prove" an
-architectural boundary, and greps `packages/ui/build/server/chunks/*` to prove
-the symbol is present there instead. A symbol name in minified output is not a
-boundary; it is a string.
+**Original claim:** four scripts (~720 lines) all grep build output to fake an
+architectural check. **Verified: only one and a half of them did.**
 
-Same family: `validate-registry.sh` (138), `rootless-ownership-smoke.sh` (227),
-`rootless-smoke-fixture.sh` (157).
+- **`validate-thin-harness-boundary.sh` (200) — half bullshit, half the honest
+  thing §5 asked for.** It bundled two unrelated checks. The bogus half grepped
+  `packages/electron/dist/main.js` and `packages/ui/build/server/chunks/*` for the
+  literal string `performUpgrade`. The real half parses every `.ts` under
+  `packages/electron/src`, extracts the brace groups of
+  `import { … } from '@openpalm/lib'`, and checks each name against an allowlist,
+  banning namespace imports, dynamic `import()` and `require()`. That is a
+  dependency-boundary check on *source*, i.e. exactly the replacement this
+  section demanded — it was already there, wrapped around the fake one.
+  **Trimmed to 160 lines, real half kept.** Verified: no active artifact grep
+  remains, it still runs, and it passes.
+- **`validate-registry.sh` (138) — deleted.** Pure grep of config text, and
+  already a guaranteed no-op: its own guard exits 0 when
+  `packages/skeleton/data/registry/addons` is missing, and that directory does
+  not exist in this repo. Every CI run of it was dead weight. Verified gone with
+  no remaining references.
+- **`rootless-ownership-smoke.sh` (227) — KEEP. My classification was wrong.** It
+  builds and boots a real Compose stack, polls real `docker inspect` health, then
+  asserts a real filesystem invariant (`find` for files not owned by the expected
+  uid/gid) to catch root-owned files leaking onto host bind mounts. That is a
+  behavior test of a genuine rootless-Docker regression.
+- **`rootless-smoke-fixture.sh` (157) — KEEP. Wrong again.** Not a validator at
+  all; a `source`d fixture library shared by the two real smoke tests so their
+  setup cannot drift.
 
-If the invariant is "the harness cannot mutate state", enforce it where it is
-real — the harness should not import the module, which is a lint rule or a
-dependency-graph check, not a grep of a bundle.
+**Lesson for the rest of this document:** the inventory is a hypothesis. Three of
+these four entries were wrong because I classified by filename and line count
+instead of reading the file. Anything acted on from this list must be read first.
 
 ## 6. The "guardrail test" convention itself — the root cause of §4 and §5
 
@@ -271,6 +290,15 @@ served to users as their assistant's global instruction file. The rule describes
 a design that was abandoned, and the doc's authoritative framing kept it from
 being questioned.
 
+**Line 32 is now fixed.** Verified against `core.compose.yml:153` —
+`${OP_HOME}/system/assistant` is bind-mounted at `/etc/opencode`; nothing is
+baked into the image. The rule now says that, and says the tree is managed
+(install/update overwrite it) with user assets in `config/assistant/`.
+
+**Line 28 is left alone deliberately.** Unlike line 32 it is not a false
+statement about the system, it is a design rule with a real cost (§9). Changing
+it is a call for the owner of the design, not a cleanup edit.
+
 **The wider problem:** `foundations.md`, `design-intent.md` and
 `core-principles.md` all open with "Authoritative document. Do not edit without
 a specific request to do so, or direct approval." Combined with §2 — 11,760
@@ -304,6 +332,25 @@ Two distinct problems:
 **Fix:** delete the dead ones; drop `export` from the internal ones and test them
 through the function that actually calls them. Where that is genuinely hard, it
 usually means the calling function is doing too much — which is the real finding.
+
+## 12. `docs/operations/legacy-cleanup-0.11.0.md` — 122 lines, 47 unchecked boxes, zero ever done
+
+Found while sweeping for references to the files §1–§3 deleted. Dated
+2026-06-02, self-labelled `HISTORICAL: shipped in 0.12.0`, and it opens with
+"No fixes applied yet — this is a tracking checklist." Nearly two months later
+**every single box is still unchecked** — and several now point at files that no
+longer exist (`scripts/validate-registry.sh:59`,
+`auth-and-proxy-refactor-plan.md`, `openpalm-voice-addon.md:228`).
+
+Same failure mode as §2, one directory over: a document that looks like tracked
+work, is cited by nothing, and drifts out of correspondence with the code while
+still reading as authoritative.
+
+**Not deleted.** A handful of its items may still be live (`docs/README.md`
+broken links, `ADMIN_PORT` defaulting to the legacy `8100`). Those are either
+real work or they are not; either way the answer is to check them and fix them,
+not to keep the checklist. Flagged rather than removed because it is outside
+what was inventoried when the deletions were dispatched.
 
 ---
 

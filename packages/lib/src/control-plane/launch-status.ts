@@ -156,8 +156,7 @@ export function deriveLaunchStatus(input: { local: LocalStatus; remotes?: Remote
  *   - setup_incomplete: stack present but OP_SETUP_COMPLETE !== 'true' and no
  *                       other observable evidence of a completed install
  *   - installed:        OP_SETUP_COMPLETE === 'true', OR (cheap observable
- *                       fallback, docs/reviews/fable-remediation-plan.md §1.5)
- *                       core.compose.yml is present AND both guardian tokens
+ *                       fallback) core.compose.yml is present AND both guardian tokens
  *                       performSetup mints exist. Caller maps "installed" to
  *                       running/offline/broken via a container-health probe.
  *

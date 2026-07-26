@@ -57,7 +57,7 @@ export async function fetchWithRetry(url: string, retries = 3): Promise<Response
  * omits the hash entirely (legacy metadata) is logged and allowed — modern npm
  * always provides one, so this only affects pathological registry responses.
  */
-export function verifyNpmIntegrity(data: Uint8Array, integrity: string): void {
+function verifyNpmIntegrity(data: Uint8Array, integrity: string): void {
   const entries = integrity.trim().split(/\s+/);
   const entry = entries.find(e => e.startsWith('sha512-')) ?? entries.find(e => e.startsWith('sha256-'));
   if (!entry) throw new Error(`unrecognized integrity format: ${integrity}`);

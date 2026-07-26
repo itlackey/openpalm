@@ -47,5 +47,4 @@ Notes:
 
 - `dev-e2e-test.sh` - local dev-stack test flow
 - `release-e2e-test.sh` - release validation flow
-- `validate-registry.sh` - registry validation
 - `install-hooks.sh` - git hook setup

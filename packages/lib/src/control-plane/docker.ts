@@ -246,7 +246,7 @@ export async function checkDockerCompose(): Promise<DockerResult> {
 }
 
 /** Merge all env files into a single overrides object for process env. */
-export function collectComposeEnvOverrides(envFiles?: string[]): Record<string, string> {
+function collectComposeEnvOverrides(envFiles?: string[]): Record<string, string> {
   const overrides: Record<string, string> = {};
   for (const ef of envFiles ?? []) Object.assign(overrides, parseEnvFile(ef));
   return overrides;

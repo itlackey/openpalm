@@ -1,7 +1,7 @@
 # Voice Settings Architecture — Client vs. Host
 
-> Status: **current truth** (2026-07). Supersedes the voice-settings halves of
-> [`openpalm-voice-addon.md`](./openpalm-voice-addon.md) and
+> Status: **current truth** (2026-07). Supersedes the voice-settings half of
+> an earlier addon proposal and the settings material in
 > [`voice-container-build.md`](./voice-container-build.md) — the container
 > build described there still applies; the settings/enable flow does not.
 

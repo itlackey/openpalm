@@ -146,8 +146,7 @@ Hygiene is enforced by unit tests:
 `src/lib/features-admin-hygiene.vitest.ts` (no component reads the legacy
 admin flag), `src/lib/components/chrome/chrome-untangle-hygiene.vitest.ts`
 (the chrome the admin surface mounts imports no chat modules),
-`src/routes/chat/page-imports.vitest.ts` (chat page never imports the
-`$lib/api.js` barrel), `src/routes/api/host/guard-hygiene.vitest.ts` (every
+`src/routes/api/host/guard-hygiene.vitest.ts` (every
 `/api/host/*` endpoint calls `requireCapability`), and
 `src/lib/api/admin-paths-hygiene.vitest.ts` (no client code calls or links a
 dead `/admin` path).

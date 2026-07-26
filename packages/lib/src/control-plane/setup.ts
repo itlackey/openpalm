@@ -268,7 +268,7 @@ export function persistAkmConfig(
  * preserve it. Omitting a credential now leaves the persisted secret untouched
  * — updateSecretsEnv only writes the keys explicitly supplied.
  */
-export function persistPortalCredentials(
+function persistPortalCredentials(
   state: ControlPlaneState,
   portalCredentials?: Record<string, Record<string, string>>,
 ): void {

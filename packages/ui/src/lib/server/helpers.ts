@@ -76,8 +76,8 @@ export { getUiLoginPassword };
 /**
  * Extract raw session token from the `op_session` cookie.
  *
- * Phase 2 of the auth/proxy refactor (docs/technical/auth-and-proxy-refactor-plan.md)
- * removed the legacy `x-admin-token` / `Authorization: Bearer` header fallbacks.
+ * Phase 2 of the auth/proxy refactor removed the legacy `x-admin-token` /
+ * `Authorization: Bearer` header fallbacks.
  * The cookie is HttpOnly + SameSite=Lax and is the ONLY credential the browser
  * holds; XSS cannot read it and out-of-process callers must obtain a session via
  * `POST /api/auth/login` (or `/session`) and present the cookie on subsequent

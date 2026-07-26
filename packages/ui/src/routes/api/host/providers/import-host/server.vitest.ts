@@ -152,7 +152,7 @@ describe('POST /api/host/providers/import-host', () => {
 
 	// Phase 6 removed OpenPalm-side appendAudit; success/failure now show
 	// up only in stderr via createLogger + the upstream OpenCode session
-	// logs (D6a in docs/technical/auth-and-proxy-refactor-plan.md).
+	// logs (D6a of the auth/proxy refactor).
 
 	test('live push: calls opencodeFetch twice and reports livePushed:2', async () => {
 		// Write the merged imported auth.json that importHostOpenCode would create.

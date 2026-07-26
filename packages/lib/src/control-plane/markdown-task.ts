@@ -34,7 +34,7 @@ export type MarkdownTaskTarget =
 
 // ── Parser ────────────────────────────────────────────────────────────────
 
-export function parseMarkdownTask(filePath: string): MarkdownTask | null {
+function parseMarkdownTask(filePath: string): MarkdownTask | null {
   const fileName = basename(filePath);
   const id = fileName.replace(/\.(?:ya?ml|md)$/, "");
   let raw: string;

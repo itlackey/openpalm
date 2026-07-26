@@ -29,7 +29,7 @@ Golden rules:
 - **Never overwrite existing user-modified files in `~/.openpalm/config/` during automatic lifecycle operations** (install/update/startup apply/setup reruns/upgrades); only seed missing defaults or do controlled updates upon user request.
 - **All persistent container data lives on the host** for backup/restore.
 - **All host-stored container files are user-accessible** (ownership/permissions contract - not owned by root).
-- **Core assistant extensions are baked into the assistant container** and loaded from a fixed OpenCode config directory to ensure core extensions take precedence.
+- **Core assistant extensions ship in the skeleton at `system/assistant`**, bind-mounted into the container at the fixed `OPENCODE_CONFIG_DIR` (`/etc/opencode`) so core extensions take precedence. The tree is managed: install/update overwrite it, and the assistant does not edit it. User-owned OpenCode assets live in `config/assistant/` instead.
 
 For (9), OpenCode supports a custom config directory via `OPENCODE_CONFIG_DIR`; it is searched like a standard `.opencode` directory for agents/commands/tools/skills/plugins. ([OpenCode][1])
 
@@ -161,7 +161,7 @@ OpenCode session and tool-invocation logs under
 `data/assistant/.local/state/opencode/` and `data/admin-opencode/log/`.
 
 The OpenPalm-side `admin-audit.jsonl` writer was removed in v0.11.0
-(Phase 6 of `auth-and-proxy-refactor-plan.md` / D6a). OpenCode session
+(Phase 6 of the auth/proxy refactor / D6a). OpenCode session
 logs are the audit trail for chat + tool activity. UI/admin actions
 (login, config writes) log to application stderr via
 `createLogger('admin.*')`.
@@ -243,8 +243,6 @@ The Electron desktop app is a **thin native harness**, not a copy of the control
 - **Two independent version lines.** `PLATFORM_VERSION` (in `@openpalm/lib`, travels with `data/ui`) bumps on every control-plane/migration/UI release and **never** forces a re-download. `HARNESS_CONTRACT_VERSION` (a single integer in `packages/electron/src/harness-contract.ts`) bumps **only** when the §5.1 contract surface — renderer IPC bridge, spawn-env keys, or FS/spawn conventions — changes name/argument/return/required-key, and **does** force a re-download. Never feed `app.getVersion()` into control-plane inputs.
 - **Self-update-vs-redownload gate.** A published `@openpalm/ui` build declares `minHarnessContract`. The harness self-updates only when `minHarnessContract ≤ HARNESS_CONTRACT_VERSION`; otherwise it refuses the pull and prompts a re-download (running newer-UI-on-older-harness fails at runtime).
 - **Harness-contract discipline.** When you change anything in the §5.1 surface (see `harness-contract.ts`), bump `HARNESS_CONTRACT_VERSION` **and** update the `HARNESS_CONTRACT` description in the same change. A snapshot test fails CI until the bump is intentional — it enforces that a change was *noticed*, not that the bump is semantically right; that judgement is the contributor's.
-
-Full rationale and the file-level history live in [`electron-thin-harness-design.md`](./electron-thin-harness-design.md) (historical design record — the hard rules above are the current authority) and the deployment/upgrade UX findings in [`deployment-upgrade-ux-review.md`](./deployment-upgrade-ux-review.md) (historical; current install/update behavior is authoritative in [`install-update-constitution.md`](./install-update-constitution.md)).
 
 ---
 

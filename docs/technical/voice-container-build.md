@@ -1,8 +1,7 @@
 # Voice Container Build — `openpalm/voice`
 
 > Status: **DESIGN** (largely implemented in `containers/voice/`). Supersedes
-> the "two containers" recommendation in
-> [`openpalm-voice-addon.md`](./openpalm-voice-addon.md) — this design bundles
+> an earlier two-container proposal — this design bundles
 > Kokoro TTS + Whisper STT into one image.
 >
 > **2026-07 update:** the enable-flow/VoiceTab/presets material referenced from
@@ -354,8 +353,8 @@ services:
 This is a strict **overlay**: enabling `openpalm-voice-gpu` only works when
 `openpalm-voice` is also enabled (the base service definition lives there).
 A future detection step in the install/enable flow can auto-enable the GPU
-overlay when `nvidia-smi` is present (per the §7 stretch goal in
-`openpalm-voice-addon.md`).
+overlay when `nvidia-smi` is present (a stretch goal noted in the original
+addon proposal).
 
 The bare addon stays GPU-free so the same compose file works on hosts
 without `nvidia-docker`. Two separate overlays is cleaner than conditional

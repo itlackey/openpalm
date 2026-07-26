@@ -1,6 +1,5 @@
 /**
- * Basic PWA support (#511) — source-pin + JSON-shape tests. Idiom: routes/
- * connections/pairing-markup.vitest.ts (readFileSync + regex scan), and
+ * Basic PWA support (#511) — source-pin + JSON-shape tests. Idiom:
  * hooks.server.landing.vitest.ts (handle() integration for the auth/landing
  * gates).
  *

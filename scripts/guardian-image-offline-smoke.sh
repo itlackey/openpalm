@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # guardian-image-offline-smoke.sh — proves the guardian image boots with
-# ZERO registry access (S.4, docs/reviews/fable-security-remediation-plan.md).
+# ZERO registry access (S.4).
 #
 # The guardian is the trust boundary. Before S.4 it fetched its own code
 # (@openpalm/guardian, @openpalm/skeleton) from npm at first boot via

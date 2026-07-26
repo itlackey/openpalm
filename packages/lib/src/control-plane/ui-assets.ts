@@ -410,7 +410,7 @@ async function fetchNpmUiManifest(versionOrTag: string): Promise<NpmUiManifest> 
  * resolver (which lists tags and picks the newest on-channel), take max(dist-tags)
  * = the true bleeding edge (latest beta/rc/stable, whichever is newest).
  */
-export async function resolveChannelRef(pkg: string, channel: UiUpdateChannel): Promise<string> {
+async function resolveChannelRef(pkg: string, channel: UiUpdateChannel): Promise<string> {
   if (channel === 'latest') return 'latest';
   const res = await fetchWithRetry(`${NPM_REGISTRY}/-/package/${encodeURIComponent(pkg)}/dist-tags`);
   if (!res.ok) throw new Error(`npm registry returned HTTP ${res.status} for ${pkg} dist-tags`);

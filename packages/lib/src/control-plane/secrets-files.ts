@@ -7,7 +7,7 @@ const SECRET_NAME_RE = /^[a-z0-9][a-z0-9_]{0,80}$/;
 const SECRETS_DIR_MODE = 0o700;
 const SECRET_FILE_MODE = 0o600;
 
-export function validateSecretName(name: string): void {
+function validateSecretName(name: string): void {
   if (!SECRET_NAME_RE.test(name)) throw new Error(`Invalid secret name: ${name}`);
 }
 

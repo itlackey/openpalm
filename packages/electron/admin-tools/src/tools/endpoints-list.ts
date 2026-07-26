@@ -1,7 +1,7 @@
 /**
  * endpoints.list — return the known OpenCode endpoints from
  * ${OP_HOME}/config/endpoints.json (Phase 5 / D4 of the auth/proxy
- * refactor — see docs/technical/auth-and-proxy-refactor-plan.md).
+ * refactor).
  *
  * Returns ids, labels, urls — NEVER passwords. The agent has no reason to
  * see endpoint credentials.

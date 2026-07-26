@@ -19,7 +19,7 @@ import { resolve as resolvePath } from "node:path";
 
 // ── Path Resolution ──────────────────────────────────────────────────
 
-export function resolveHome(): string {
+function resolveHome(): string {
   const home = homedir();
   if (home) return home;
 

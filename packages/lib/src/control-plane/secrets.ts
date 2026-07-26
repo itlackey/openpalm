@@ -122,15 +122,6 @@ export function writeStackSecretEnv(state: ControlPlaneState, updates: Record<st
   }
 }
 
-function mergeVaultEnvFile(path: string, updates: Record<string, string>, uncomment = false): void {
-  if (Object.keys(updates).length === 0) return;
-  assertNoSecretLikeStackEnvKeys(updates);
-  const raw = existsSync(path) ? readFileSync(path, "utf-8") : "";
-  let merged = mergeEnvContent(raw, updates, { uncomment });
-  if (!merged.endsWith("\n")) merged += "\n";
-  writeVaultFile(path, merged);
-}
-
 function ensureSystemSecrets(state: ControlPlaneState): void {
   const systemEnvPath = stackEnvPath(state);
   enforceVaultDirMode(dirname(systemEnvPath));
@@ -332,18 +323,6 @@ export function readStackEnv(homeDir: string): Record<string, string> {
 
 export function readStackRuntimeEnv(homeDir: string): Record<string, string> {
   return { ...readStackEnv(homeDir), ...readStackSecretEnv(homeDir) };
-}
-
-export function updateSystemSecretsEnv(
-  state: ControlPlaneState,
-  updates: Record<string, string>
-): void {
-  const systemEnvPath = stackEnvPath(state);
-  enforceVaultDirMode(state.stackDir);
-  if (!existsSync(systemEnvPath)) {
-    ensureSystemSecrets(state);
-  }
-  mergeVaultEnvFile(systemEnvPath, updates, true);
 }
 
 export function patchSecretsEnvFile(
