@@ -8,14 +8,18 @@ export function timestampDirName(now = new Date()): string {
 
 /**
  * Recursively sum the apparent size (in bytes) of every file under `path`,
- * excluding the existing backups directory (we never back up backups).
+ * excluding the entire top-level `data/` directory — mirroring
+ * {@link backupOpenPalmHome}'s own copy scope, which skips the whole `data`
+ * entry (not just `data/backups`) because it is large, regenerable runtime
+ * state that is never copied into a safety snapshot. Estimating more than
+ * that would make the space guard refuse legitimate backups whenever `data/`
+ * happens to be large, even though that size is never actually written.
  *
  * Cheap enough for a pre-backup estimate; errors on individual entries are
  * skipped (a transient unreadable file should not block the safety copy).
  */
 export function estimateHomeBackupBytes(homeDir: string): number {
   if (!existsSync(homeDir)) return 0;
-  const backupsDir = resolveBackupsDirFor(homeDir);
   let total = 0;
   const walk = (dir: string): void => {
     let entries: Dirent[];
@@ -26,7 +30,7 @@ export function estimateHomeBackupBytes(homeDir: string): number {
     }
     for (const entry of entries) {
       const full = join(dir, entry.name);
-      if (full === backupsDir) continue;
+      if (dir === homeDir && entry.name === "data") continue;
       if (entry.isDirectory()) {
         walk(full);
       } else if (entry.isFile()) {
