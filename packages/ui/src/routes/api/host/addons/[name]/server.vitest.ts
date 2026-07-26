@@ -47,7 +47,7 @@ function seedFixedAddon(homeDir: string, name: string): void {
 }
 
 function seedEnabledAddons(homeDir: string, csv: string): void {
-  const envDir = join(homeDir, 'knowledge', 'env');
+  const envDir = join(homeDir, 'state');
   mkdirSync(envDir, { recursive: true });
   writeFileSync(join(envDir, 'stack.env'), `OP_ENABLED_ADDONS=${csv}\n`);
 }

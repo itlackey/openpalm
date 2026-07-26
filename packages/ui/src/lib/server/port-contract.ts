@@ -1,6 +1,6 @@
 import {
   buildServedUiRuntimeConfig,
-  migrateLegacyDefaultPorts,
+  runHomeMigrations,
   readStackRuntimeEnv,
   serializeUiRuntimeConfig,
   UI_RUNTIME_CONFIG_ENV,
@@ -29,12 +29,18 @@ function isRetiredGeneratedAssistantUrl(
  * Reconcile the corrected port contract in the updatable UI control plane. A
  * successful migration refreshes the process-scoped browser connection without
  * mutating the shared UI build artifact.
+ *
+ * Goes through `runHomeMigrations` rather than calling the port migration
+ * directly: the migrations are gated on the recorded OP_HOME schema version, so
+ * an already-migrated home does nothing here, and a home that still needs the
+ * env-file consolidation gets that too — calling the port migration alone would
+ * target a file the consolidation has since removed.
  */
 export function reconcileSupervisedPortContract(
   homeDir: string,
   env: Record<string, string | undefined> = process.env,
 ): boolean {
-  if (!env.OP_UI_SUPERVISOR || !migrateLegacyDefaultPorts(homeDir)) return false;
+  if (!env.OP_UI_SUPERVISOR || !runHomeMigrations(homeDir)) return false;
 
   const migrated = readStackRuntimeEnv(homeDir);
   if (!env.OP_ASSISTANT_PORT || env.OP_ASSISTANT_PORT === '3800') {

@@ -68,9 +68,9 @@ afterEach(() => {
 describe('POST /api/setup/retry-deploy', () => {
   test('refuses once setup is complete', async () => {
     const state = resetState('pw');
-    const envDir = join(state.stackDir, '..', '..', 'knowledge', 'env');
-    mkdirSync(envDir, { recursive: true });
-    writeFileSync(join(envDir, 'stack.env'), 'OP_SETUP_COMPLETE=true\n');
+    const stateDir = join(state.homeDir, 'state');
+    mkdirSync(stateDir, { recursive: true });
+    writeFileSync(join(stateDir, 'stack.env'), 'OP_SETUP_COMPLETE=true\n');
 
     const response = await POST({} as never);
     const payload = await response.json();

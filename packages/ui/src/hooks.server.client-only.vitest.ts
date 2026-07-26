@@ -131,7 +131,7 @@ describe('hooks.server — client-only public lane (non-admin, not_installed, no
     home = state.homeDir;
     delete process.env.OP_UI_LOGIN_PASSWORD;
     writeFileSync(join(state.stackDir, 'core.compose.yml'), 'services: {}\n');
-    const kvDir = join(state.stackDir, '..', '..', 'knowledge', 'env');
+    const kvDir = join(state.stackDir, '..', '..', 'state');
     mkdirSync(kvDir, { recursive: true });
     writeFileSync(join(kvDir, 'stack.env'), 'OP_SETUP_COMPLETE=false\n');
     _resetLaunchCache();

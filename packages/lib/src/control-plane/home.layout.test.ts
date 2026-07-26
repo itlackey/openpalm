@@ -14,7 +14,6 @@ import {
   composeFilePath,
   stackEnvFile,
   hostIdentityFile,
-  stackEnvFile,
   userEnvFile,
   secretsDir,
   authJsonFile,

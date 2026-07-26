@@ -1,4 +1,3 @@
-import { existsSync } from 'node:fs';
 import { parseEnvFile } from './env.js';
 import { stackEnvFile } from './home.js';
 

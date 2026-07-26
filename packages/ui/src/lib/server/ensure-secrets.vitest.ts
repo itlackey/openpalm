@@ -27,6 +27,7 @@ describe("ensureSecrets", () => {
     mkdirSync(stackDir, { recursive: true });
 
     const state = {
+      homeDir: rootDir,
       configDir: join(rootDir, "config"),
       stashDir: join(rootDir, "knowledge"),
       stackDir,
@@ -44,6 +45,7 @@ describe("ensureSecrets", () => {
   test("applies strict permissions to state files", () => {
     const stackDir = join(rootDir, "config", "stack");
     const state = {
+      homeDir: rootDir,
       configDir: join(rootDir, "config"),
       stashDir: join(rootDir, "knowledge"),
       stackDir,

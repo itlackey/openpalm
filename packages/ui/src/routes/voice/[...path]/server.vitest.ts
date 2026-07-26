@@ -38,7 +38,7 @@ function makeEvent(
 }
 
 function enableVoiceAddon(homeDir: string): void {
-  const envDir = join(homeDir, 'knowledge', 'env');
+  const envDir = join(homeDir, 'state');
   mkdirSync(envDir, { recursive: true });
   writeFileSync(join(envDir, 'stack.env'), 'OP_ENABLED_ADDONS=voice\n');
 }

@@ -99,7 +99,7 @@ describe('hooks.server — static PWA assets are exempt from every document-navi
       // makes the FIRST hooks.server.ts guard redirect document navigations
       // to /setup.
       writeFileSync(join(state.stackDir, 'core.compose.yml'), 'services: {}\n');
-      const kvDir = join(state.stackDir, '..', '..', 'knowledge', 'env');
+      const kvDir = join(state.stackDir, '..', '..', 'state');
       mkdirSync(kvDir, { recursive: true });
       writeFileSync(join(kvDir, 'stack.env'), 'OP_SETUP_COMPLETE=false\n');
     });
@@ -120,7 +120,7 @@ describe('hooks.server — static PWA assets are exempt from every document-navi
   describe('landing + login guards (setup complete, healthy running stack, unauthenticated)', () => {
     beforeEach(() => {
       const state = resetState('test-admin-pw');
-      const kvDir = join(state.stackDir, '..', '..', 'knowledge', 'env');
+      const kvDir = join(state.stackDir, '..', '..', 'state');
       mkdirSync(kvDir, { recursive: true });
       writeFileSync(join(kvDir, 'stack.env'), 'OP_SETUP_COMPLETE=true\n');
       vi.mocked(composePs).mockResolvedValue({ ok: true, stdout: RUNNING_PS, stderr: '', code: 0 });

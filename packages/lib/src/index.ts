@@ -289,8 +289,6 @@ export {
   randomHex,
   buildEnvFiles,
   writeSystemEnv,
-  migrateLegacyBindAddresses,
-  migrateLegacyDefaultPorts,
   discoverStackOverlays,
   discoverHomeBindMountSources,
   resolveRuntimeFiles,

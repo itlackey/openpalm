@@ -115,7 +115,12 @@ describe('PUT /api/host/stack', () => {
     expect(res.status).toBe(200);
     const body = await res.json() as Record<string, unknown>;
     expect(body.projectRenamed).toBe(false);
-    expect(existsSync(join(rootDir, 'state', 'stack.env'))).toBe(false);
+    // stack.env is the one env file now, so its existence proves nothing —
+    // what must not happen is the previous-name key being recorded.
+    const stateEnvPath = join(rootDir, 'state', 'stack.env');
+    if (existsSync(stateEnvPath)) {
+      expect(readFileSync(stateEnvPath, 'utf-8')).not.toContain('OP_PREVIOUS_PROJECT_NAME');
+    }
   });
 
   test('renaming back to the still-running project clears the recorded marker (#540)', async () => {

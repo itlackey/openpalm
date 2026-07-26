@@ -45,7 +45,7 @@ const HOST_ADMIN_LANDING = '/host';
 // ── helpers (same conventions as hooks.server.vitest.ts) ─────────────────────
 
 function seedStackEnv(stackDir: string, setupComplete: boolean): void {
-  const kvDir = join(stackDir, '..', '..', 'knowledge', 'env');
+  const kvDir = join(stackDir, '..', '..', 'state');
   mkdirSync(kvDir, { recursive: true });
   writeFileSync(join(kvDir, 'stack.env'), `OP_SETUP_COMPLETE=${setupComplete}\n`);
 }

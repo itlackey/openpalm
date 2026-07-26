@@ -37,9 +37,9 @@ function seedCoreCompose(): void {
 
 function seedEnvFiles(files: { stack?: boolean } = {}): void {
   if (files.stack) {
-    const envDir = join(tempDir, "knowledge", "env");
-    mkdirSync(envDir, { recursive: true });
-    writeFileSync(join(envDir, "stack.env"), "KEY=val");
+    const stateDir = join(tempDir, "state");
+    mkdirSync(stateDir, { recursive: true });
+    writeFileSync(join(stateDir, "stack.env"), "KEY=val");
   }
 }
 
@@ -47,9 +47,9 @@ function seedAddon(name: string): void {
   const stackDir = join(tempDir, "system", "stack");
   mkdirSync(stackDir, { recursive: true });
   writeFileSync(join(stackDir, "portals.compose.yml"), `services:\n  ${name}:\n    profiles: ["addon.${name}"]\n    image: test\n`);
-  const envDir = join(tempDir, "knowledge", "env");
-  mkdirSync(envDir, { recursive: true });
-  writeFileSync(join(envDir, "stack.env"), `OP_ENABLED_ADDONS=${name}\n`);
+  const stateDir = join(tempDir, "state");
+  mkdirSync(stateDir, { recursive: true });
+  writeFileSync(join(stateDir, "stack.env"), `OP_ENABLED_ADDONS=${name}\n`);
 }
 
 beforeEach(() => {
@@ -174,7 +174,7 @@ describe("buildComposeCliArgs", () => {
     // must resolve the canonical CPU profile so setup-deploy does NOT need a
     // separate (non-atomic) post-install write.
     seedCoreCompose();
-    const envDir = join(tempDir, "knowledge", "env");
+    const envDir = join(tempDir, "state");
     mkdirSync(envDir, { recursive: true });
     writeFileSync(join(envDir, "stack.env"), "OP_ENABLED_ADDONS=ollama\n");
     const state = makeState();
