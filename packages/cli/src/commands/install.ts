@@ -7,7 +7,7 @@ import { defineAction } from '../lib/action.ts';
 import { promptYesNo } from '../lib/prompt.ts';
 import { resolveLatestReleaseTag } from '../lib/github.ts';
 import { DEFAULT_UI_PORT } from '../lib/ports.ts';
-import { resolveOpenPalmHome, resolveConfigDir, ensureHomeDirs } from '@openpalm/lib';
+import { resolveOpenPalmHome, resolveConfigDir, ensureHomeDirs, runHomeMigrations } from '@openpalm/lib';
 import { applyHomeSeed, seedUiBuild, uiUpdateChannel } from '@openpalm/lib';
 import {
   backupOpenPalmHome,
@@ -25,8 +25,6 @@ import {
   runDeploy,
   markSetupComplete,
   writeSystemEnv,
-  migrateLegacyBindAddresses,
-  migrateLegacyDefaultPorts,
   patchSecretsEnvFile,
   describeAccessExposure,
   readAccessToggles,
@@ -277,8 +275,7 @@ export async function prepareInstallFiles(
   // "v0.12.5"/"main") so this pre-wizard seed and applyHome's seed agree on the
   // stamp written into .skeleton-version.
   await applyHomeSeed(PLATFORM_VERSION, homeDir, configDir, dataDir);
-  migrateLegacyDefaultPorts(homeDir);
-  migrateLegacyBindAddresses(homeDir);
+  runHomeMigrations(homeDir);
   // Install UI build to data/ui/ (local build if available, else the
   // @openpalm/ui npm bundle on this release stream's channel). @openpalm/ui is
   // independently versioned, so seed by dist-tag CHANNEL (latest/next) rather

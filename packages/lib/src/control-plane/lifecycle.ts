@@ -12,13 +12,12 @@ import {
   ensureHomeDirs,
 } from "./home.js";
 import { ensureSecrets, ensureOpenCodeConfig } from "./secrets.js";
+import { runHomeMigrations } from "./home-schema.js";
 import {
   resolveRuntimeFiles,
   writeRuntimeFiles,
   discoverStackOverlays,
   ensureComposeVolumeTargets,
-  migrateLegacyBindAddresses,
-  migrateLegacyDefaultPorts,
 } from "./config-persistence.js";
 import { ensureOpenCodeSystemConfig } from "./core-assets.js";
 import { applyHomeSeed } from "./ui-assets.js";
@@ -34,7 +33,6 @@ import type { InstallLockHandle } from "./install-lock.js";
 import {
   getAddonServiceNames,
   listEnabledAddonIds,
-  migrateProfileOnlyAddonEnablement,
   pruneRemovedAddonState,
 } from "./addons.js";
 import { GUARDIAN_INGRESS_ADDON_IDS } from "./addon-ids.js";
@@ -147,9 +145,7 @@ async function applyHome(state: ControlPlaneState): Promise<void> {
   ensureHomeDirs();
   ensureSecrets(state);
   await applyHomeSeed(PLATFORM_VERSION, state.homeDir, state.configDir, state.dataDir);
-  migrateLegacyDefaultPorts(state.homeDir);
-  migrateLegacyBindAddresses(state.homeDir);
-  migrateProfileOnlyAddonEnablement(state.homeDir);
+  runHomeMigrations(state.homeDir);
   pruneRemovedAddonState(state.homeDir);
   ensureVersionDefaults(state);
   ensureOpenCodeConfig();

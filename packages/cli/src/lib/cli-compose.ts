@@ -12,9 +12,8 @@ import {
   buildComposePreflightError,
   composePreflight,
   composeUpTimeoutMs,
-  migrateLegacyBindAddresses,
-  migrateLegacyDefaultPorts,
   runComposeStreaming,
+  runHomeMigrations,
 } from '@openpalm/lib';
 import type { ControlPlaneState } from '@openpalm/lib';
 
@@ -44,8 +43,7 @@ export async function runComposeWithPreflight(
   state: ControlPlaneState,
   composeSubArgs: string[],
 ): Promise<void> {
-  migrateLegacyDefaultPorts(state.homeDir);
-  migrateLegacyBindAddresses(state.homeDir);
+  runHomeMigrations(state.homeDir);
   const options = buildComposeOptions(state);
 
   // Preflight: validate compose merge before mutation. Pass the FULL options

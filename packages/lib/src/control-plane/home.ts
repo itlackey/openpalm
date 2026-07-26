@@ -13,7 +13,7 @@
  *                stack.state.env is merged OVER legacy stack.env at compose time, so
  *                pins/channel/add-ons live here, not in knowledge/env/stack.env
  */
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { resolve as resolvePath } from "node:path";
 
@@ -91,6 +91,47 @@ export function stateEnvFile(home: string): string {
 }
 export function hostIdentityFile(home: string): string {
   return `${home}/state/host-identity.json`;
+}
+/** OP_HOME layout schema version — gates the one-shot legacy migrations. */
+export function homeSchemaVersionFile(home: string): string {
+  return `${home}/state/schema-version`;
+}
+
+/**
+ * Current OP_HOME layout schema version.
+ *
+ * The version record lives here rather than beside the migration list because
+ * it is pure layout — putting it in `home-schema.ts` would make this module
+ * depend on `config-persistence`/`addons`, which depend back on this one.
+ */
+export const HOME_SCHEMA_VERSION = 1;
+
+/** The recorded schema version, or 0 when nothing is recorded (pre-record home). */
+export function readHomeSchemaVersion(home: string): number {
+  const path = homeSchemaVersionFile(home);
+  if (!existsSync(path)) return 0;
+  const parsed = Number.parseInt(readFileSync(path, "utf-8").trim(), 10);
+  return Number.isInteger(parsed) && parsed >= 0 ? parsed : 0;
+}
+
+export function writeHomeSchemaVersion(home: string, version: number): void {
+  mkdirSync(`${home}/state`, { recursive: true });
+  writeFileSync(homeSchemaVersionFile(home), `${version}\n`, { mode: 0o644 });
+}
+
+/**
+ * Stamp a brand-new home as already current, so it runs no legacy migrations.
+ *
+ * "Brand new" is the absence of `knowledge/env/stack.env`. This runs from
+ * {@link ensureHomeDirs}, which every install path calls BEFORE seeding — the
+ * only moment that question is still answerable. A home that somehow reaches
+ * migration time unstamped falls back to version 0 and runs the migrations
+ * once, which is the safe direction.
+ */
+export function initHomeSchema(home: string): void {
+  if (existsSync(homeSchemaVersionFile(home))) return;
+  if (existsSync(legacyStackEnvFile(home))) return;
+  writeHomeSchemaVersion(home, HOME_SCHEMA_VERSION);
 }
 /** Pre-split system env; read only as a transition fallback, then deleted. */
 export function legacyStackEnvFile(home: string): string {
@@ -177,6 +218,11 @@ export function ensureHomeDirs(home: string = resolveOpenPalmHome()): void {
   ]) {
     mkdirSync(dir, { recursive: true });
   }
+
+  // Stamp a brand-new home as schema-current so it runs no legacy migrations.
+  // Must happen here: every install path calls this BEFORE seeding, which is
+  // the only moment "is this home new?" is still answerable.
+  initHomeSchema(home);
 
   for (const file of [
     `${home}/data/assistant/.local/share/opencode/auth.json`,

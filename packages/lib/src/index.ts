@@ -93,6 +93,10 @@ export {
   resolveStateDir,
   resolveLogsDir,
   ensureHomeDirs,
+  homeSchemaVersionFile,
+  HOME_SCHEMA_VERSION,
+  readHomeSchemaVersion,
+  initHomeSchema,
   stackDirFor,
   composeFilePath,
   customComposeFilePath,
@@ -631,3 +635,5 @@ export {
   isPrerelease,
   distTagForVersion,
 } from "./control-plane/versioning.js";
+
+export { runHomeMigrations } from './control-plane/home-schema.js';
