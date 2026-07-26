@@ -1,10 +1,16 @@
 {
   "$schema": "https://opencode.ai/config.json",
+  // Absolute paths only — a relative entry resolves from the session dir and
+  // silently loads nothing.
   "instructions": [
-    "./instructions/core.md",
-    "./instructions/conversation.md",
-    // The persona is USER-owned (config/assistant/persona.md → ~/.config/opencode);
-    // referenced by absolute ~ path so the managed config always loads it.
+    "/etc/opencode/instructions/core.md",
+    "/etc/opencode/instructions/conversation.md",
+    "/etc/opencode/instructions/system.md",
+    // What the assistant has learned about the user. In the stash so the
+    // assistant can update it itself; contents are re-read every model call,
+    // so an update applies to the next message.
+    "/stash/profile/user-profile.md",
+    // USER-owned persona (config/assistant → ~/.config/opencode).
     "~/.config/opencode/persona.md"
   ],
   "plugin": [
@@ -55,26 +61,35 @@
     "mdns": false,
     "mdnsDomain": "openpalm.local"
   },
+  // Guardrails against accidents, not against a determined agent. Bash rules
+  // match per parsed command; LAST match wins, so broad asks come before the
+  // narrow denies that override them.
+  //
+  // Every rule here was verified to actually match. The previous set did not:
+  // "sudo" compiled to ^sudo$ (only bare `sudo`), bare "/stash" never matched
+  // the "/stash/foo/*" resource external_directory actually asserts, and the
+  // absolute read denies never matched a worktree-relative resource.
   "permission": {
     "bash": {
       "*": "allow",
-      "rm -rf /": "ask",
-      "sudo": "ask"
+      "rm -r *": "ask",
+      "rm -rf *": "ask",
+      "rm -fr *": "ask",
+      "sudo *": "ask",
+      "rm -rf /": "deny",
+      "rm -fr /": "deny"
     },
     "edit": "allow",
     "task": "allow",
-    "read": {
-      "*": "allow",
-      ".env": "deny",
-      "/home/opencode/.local/share/opencode/auth.json": "deny",
-      "/home/opencode/.local/share/opencode/mcp-auth.json": "deny"
-    },
+    // No "read" block: OpenCode's built-in default is broader than anything we
+    // had here (*.env and *.env.* ask, *.env.example allow). The old
+    // read {"*": "allow"} overrode it and REMOVED that protection.
     "external_directory": {
-      "/tmp": "allow",
-      "/work": "allow",
-      "/stash": "allow",
-      "/host-stash": "allow",
-      "/etc/akm": "allow"
+      "/tmp/*": "allow",
+      "/work/*": "allow",
+      "/stash/*": "allow",
+      "/host-stash/*": "allow",
+      "/etc/akm/*": "allow"
     }
   }
 }
