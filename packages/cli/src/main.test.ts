@@ -504,7 +504,7 @@ describe('self-update helpers', () => {
 });
 
 describe('npm bin launcher', () => {
-  it('points the published bin to a Bun launcher script instead of a TypeScript source file', () => {
+  it('publishes a pure-node bootstrapper bin, not a Bun/TypeScript launcher (A1)', () => {
     const cliPkg = JSON.parse(
       readFileSync(new URL('../package.json', import.meta.url), 'utf8'),
     ) as {
@@ -515,27 +515,31 @@ describe('npm bin launcher', () => {
 
     const launcher = readFileSync(new URL('../bin/openpalm.js', import.meta.url), 'utf8');
 
-    expect(launcher.startsWith('#!/usr/bin/env bun\n')).toBe(true);
+    // A1: the published bin is a first-run bootstrapper that runs under plain
+    // `node` and downloads the platform binary. It must NOT require a Bun
+    // runtime, and must never import the un-shipped TypeScript source — the
+    // exact defect that made `npm install -g openpalm` crash.
+    expect(launcher.startsWith('#!/usr/bin/env node\n')).toBe(true);
+    expect(launcher).not.toContain('../src/main.ts');
   });
 
-  it('packs a real semver range for @openpalm/lib so published installs can resolve the latest compatible lib', async () => {
+  it('publishes a dependency-free package so a global install pulls no workspace/bun packages (A1)', async () => {
     const cliPkg = JSON.parse(
       readFileSync(new URL('../package.json', import.meta.url), 'utf8'),
     ) as {
       dependencies?: Record<string, string>;
+      devDependencies?: Record<string, string>;
+      files?: string[];
     };
-    const libPkg = JSON.parse(
-      readFileSync(new URL('../../lib/package.json', import.meta.url), 'utf8'),
-    ) as {
-      version: string;
-    };
-    const versionMatch = libPkg.version.match(/^(\d+)\.\d+\.\d+(?:-.+)?$/);
-    if (!versionMatch) throw new Error(`Unexpected lib version format: ${libPkg.version}`);
-    const libMajor = Number.parseInt(versionMatch[1], 10);
 
-    const expectedRange = `>=${libPkg.version} <${libMajor + 1}.0.0`;
-
-    expect(cliPkg.dependencies?.['@openpalm/lib']).toBe(expectedRange);
+    // A1: the bootstrapper has ZERO runtime deps; the bun-program's deps
+    // (including @openpalm/lib) move to devDependencies so the compiled-binary
+    // build still resolves them without the published package trying to pull
+    // them at install time.
+    expect(cliPkg.dependencies ?? {}).toEqual({});
+    expect(cliPkg.devDependencies?.['@openpalm/lib']).toBeDefined();
+    expect(cliPkg.files).not.toContain('src');
+    expect(cliPkg.files).not.toContain('dist');
 
     const packageDir = fileURLToPath(new URL('../', import.meta.url));
     const packDir = mkdtempSync(join(tmpdir(), 'openpalm-cli-pack-'));
@@ -557,7 +561,8 @@ describe('npm bin launcher', () => {
 
       const packedPkg = await readPackedPackageJson(join(packDir, tarball));
 
-      expect(packedPkg.dependencies?.['@openpalm/lib']).toBe(expectedRange);
+      // The PUBLISHED tarball must carry no runtime dependencies.
+      expect(packedPkg.dependencies ?? {}).toEqual({});
     } finally {
       rmSync(packDir, { recursive: true, force: true });
     }
