@@ -406,9 +406,12 @@ export type {
   ReportImagesAndVolumesOptions,
   CleanupImagesAndVolumesResult,
   CleanupImagesAndVolumesOptions,
+  ReapRetiredVolumesResult,
+  ReapRetiredVolumesOptions,
 } from "./control-plane/image-volume-retention.js";
 export {
   OPENPALM_VOLUME_SUFFIXES,
+  RETIRED_VOLUME_NAMES,
   parseDockerImagesOutput,
   parseDockerVolumeLsOutput,
   findSupersededImages,
@@ -416,6 +419,7 @@ export {
   findOrphanVolumes,
   reportImagesAndVolumes,
   cleanupImagesAndVolumes,
+  reapRetiredVolumes,
 } from "./control-plane/image-volume-retention.js";
 
 // ── Storage diagnostics + cache cleanup (S8/S1 — #581 findings #1, #12) ──

@@ -6,7 +6,9 @@ import {
   findSupersededImages,
   parseDockerImagesOutput,
   parseDockerVolumeLsOutput,
+  reapRetiredVolumes,
   reportImagesAndVolumes,
+  RETIRED_VOLUME_NAMES,
   type DockerImageInfo,
   type DockerVolumeInfo,
   type ImageVolumeReport,
@@ -208,5 +210,94 @@ describe('cleanupImagesAndVolumes (S7 — confirm-gated)', () => {
     expect(result.errors[0]).toContain('image is in use');
     // Volume removal still proceeds independently of the image failure.
     expect(result.removedVolumes).toEqual(['oldname_assistant-artifacts']);
+  });
+});
+
+describe('reapRetiredVolumes (#585 decision 585-B — auto-reap on upgrade)', () => {
+  it('has a closed list of exactly the three retired /opt/openpalm volumes, and never assistant-persistent', () => {
+    expect(RETIRED_VOLUME_NAMES).toEqual(['assistant-artifacts', 'guardian-cache', 'portal-cache']);
+    expect(RETIRED_VOLUME_NAMES).not.toContain('assistant-persistent');
+  });
+
+  it('attempts removal of only the closed list, scoped to the given project, nothing else', async () => {
+    const rmCalls: string[] = [];
+    const client: DockerClient = {
+      run: async (args: string[]) => {
+        if (args[0] === 'volume' && args[1] === 'rm') {
+          rmCalls.push(args[2] ?? '');
+          return okResult('');
+        }
+        throw new Error(`unexpected: ${args.join(' ')}`);
+      },
+    };
+
+    const result = await reapRetiredVolumes('openpalm', { client });
+
+    expect(rmCalls.sort()).toEqual([
+      'openpalm_assistant-artifacts',
+      'openpalm_guardian-cache',
+      'openpalm_portal-cache',
+    ]);
+    expect(result.reclaimed.sort()).toEqual(rmCalls.sort());
+    expect(result.errors).toEqual([]);
+  });
+
+  it('treats "no such volume" as a silent skip — not reclaimed, not an error', async () => {
+    const client: DockerClient = {
+      run: async () => failResult('Error: no such volume'),
+    };
+    const result = await reapRetiredVolumes('openpalm', { client });
+    expect(result.reclaimed).toEqual([]);
+    expect(result.errors).toEqual([]);
+  });
+
+  it('collects a real removal failure as an error but keeps trying the rest (never throws)', async () => {
+    const client: DockerClient = {
+      run: async (args: string[]) => {
+        const name = args[2] ?? '';
+        if (name === 'openpalm_guardian-cache') return failResult('volume is in use');
+        return okResult('');
+      },
+    };
+    const result = await reapRetiredVolumes('openpalm', { client });
+    expect(result.reclaimed.sort()).toEqual(['openpalm_assistant-artifacts', 'openpalm_portal-cache']);
+    expect(result.errors).toHaveLength(1);
+    expect(result.errors[0]).toContain('guardian-cache');
+    expect(result.errors[0]).toContain('volume is in use');
+  });
+
+  it('NEGATIVE PIN: no project name can make the reaper target assistant-persistent or anything outside the closed list', async () => {
+    const trickyProjectNames = [
+      'openpalm',
+      '',
+      'assistant-persistent',
+      'assistant',
+      'openpalm_assistant',
+      '_',
+    ];
+    for (const projectName of trickyProjectNames) {
+      const rmCalls: string[] = [];
+      const client: DockerClient = {
+        run: async (args: string[]) => {
+          if (args[0] === 'volume' && args[1] === 'rm') {
+            rmCalls.push(args[2] ?? '');
+            return okResult('');
+          }
+          throw new Error(`unexpected: ${args.join(' ')}`);
+        },
+      };
+      await reapRetiredVolumes(projectName, { client });
+      for (const name of rmCalls) {
+        // The only two shapes that would ever address the REAL protected
+        // volume: the bare name, or `<project>_assistant-persistent`. Neither
+        // can occur — RETIRED_VOLUME_NAMES never contains "assistant-persistent".
+        expect(name).not.toBe('assistant-persistent');
+        expect(name.endsWith('_assistant-persistent')).toBe(false);
+      }
+      // Exactly the three closed-list volumes, scoped by this project name, every time.
+      expect(rmCalls.sort()).toEqual(
+        RETIRED_VOLUME_NAMES.map((n) => `${projectName}_${n}`).sort(),
+      );
+    }
   });
 });

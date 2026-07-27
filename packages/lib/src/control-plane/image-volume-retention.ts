@@ -223,3 +223,57 @@ export async function cleanupImagesAndVolumes(
 
   return { removedImages, removedVolumes, errors };
 }
+
+/**
+ * Named volumes retired by #585 — the three mounts over `/opt/openpalm`
+ * (`assistant-artifacts`, `guardian-cache`, `portal-cache`) that held only
+ * image-baked content or npm-artifact caches, nothing durable. Deliberately a
+ * closed literal list, NOT derived from {@link OPENPALM_VOLUME_SUFFIXES} or
+ * any pattern/prefix match: an explicit list is what keeps
+ * `assistant-persistent` (genuine user content, still mounted at
+ * `/opt/persistent`) permanently impossible to match, by construction rather
+ * than by filtering.
+ */
+export const RETIRED_VOLUME_NAMES = ["assistant-artifacts", "guardian-cache", "portal-cache"] as const;
+
+export interface ReapRetiredVolumesResult {
+  reclaimed: string[];
+  errors: string[];
+}
+
+export interface ReapRetiredVolumesOptions {
+  client?: DockerClient;
+}
+
+/**
+ * Remove whichever of the retired #585 volumes still exist for the CURRENT
+ * compose project (decision 585-B). Every name attempted is
+ * `${projectName}_${retiredName}` — never a bare/unscoped name, never another
+ * project's volume, and never anything outside {@link RETIRED_VOLUME_NAMES}.
+ *
+ * Intended to run once per upgrade, AFTER the new stack is confirmed up, so a
+ * removal failure here can never strand a deploy: failures are collected and
+ * returned for the caller to log, never thrown. A volume that no longer
+ * exists ("no such volume") is a silent no-op, not an error — this makes
+ * repeated upgrades cheap once the volumes are gone.
+ */
+export async function reapRetiredVolumes(
+  projectName: string,
+  opts: ReapRetiredVolumesOptions = {},
+): Promise<ReapRetiredVolumesResult> {
+  const client = opts.client ?? realDockerClient;
+  const reclaimed: string[] = [];
+  const errors: string[] = [];
+
+  for (const name of RETIRED_VOLUME_NAMES) {
+    const qualified = `${projectName}_${name}`;
+    const result = await client.run(["volume", "rm", qualified]);
+    if (result.ok) {
+      reclaimed.push(qualified);
+    } else if (!/no such volume/i.test(result.stderr)) {
+      errors.push(`volume ${qualified}: ${result.stderr || "removal failed"}`);
+    }
+  }
+
+  return { reclaimed, errors };
+}
