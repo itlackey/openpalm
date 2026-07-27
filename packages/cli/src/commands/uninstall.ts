@@ -8,6 +8,8 @@ import {
   resolveConfigDir,
   resolveDataDir,
   resolveStashDir,
+  resolveStateDir,
+  resolveSystemDir,
   resolveWorkspaceDir,
 } from '@openpalm/lib';
 import { defineAction } from '../lib/action.ts';
@@ -30,18 +32,37 @@ export default defineCommand({
     },
   },
   run: defineAction(async ({ args }) => {
-    const state = ensureValidState();
-    const lock = acquireInstallLock(state.dataDir);
-    if (!lock) throw new Error('install_in_progress: Another lifecycle operation is already running.');
-    let purgeRemovedLock = false;
-    try {
+    await runUninstallAction({ volumes: !!args.volumes, purge: !!args.purge });
+  }),
+});
+
+export async function runUninstallAction(
+  args: { volumes?: boolean; purge?: boolean } = {},
+): Promise<void> {
+  const state = ensureValidState();
+  const lock = acquireInstallLock(state.dataDir);
+  if (!lock) throw new Error('install_in_progress: Another lifecycle operation is already running.');
+  let purgeRemovedLock = false;
+  try {
     const downArgs = args.volumes || args.purge ? ['down', '-v'] : ['down'];
     await runComposeWithPreflight(state, downArgs);
 
     if (args.purge) {
-      // dataDir owns the lifecycle lock, so remove it only after every other
-      // destructive purge step has completed.
-      const dirs = [resolveConfigDir(), resolveStashDir(), resolveWorkspaceDir(), resolveDataDir()];
+      // C1: state/ and system/ must be purged too — otherwise a survivor
+      // state/stack.env (OP_SETUP_COMPLETE) or system/stack/core.compose.yml
+      // trips classifyLocalInstall and blocks the next plain `install`,
+      // contradicting the purge's own "all data removed" message.
+      // dataDir owns the lifecycle lock, so it is removed LAST, only after
+      // every other destructive purge step has completed — state/ and
+      // system/ hold no lock or in-use handle so they are safe to go first.
+      const dirs = [
+        resolveStateDir(),
+        resolveSystemDir(),
+        resolveConfigDir(),
+        resolveStashDir(),
+        resolveWorkspaceDir(),
+        resolveDataDir(),
+      ];
       for (const dir of dirs) {
         console.log(`Removing ${dir}`);
         rmSync(dir, { recursive: true, force: true });
@@ -54,8 +75,7 @@ export default defineCommand({
         console.log('Config and data directories are preserved. Use --purge to remove everything.');
       }
     }
-    } finally {
-      if (!purgeRemovedLock) releaseInstallLock(lock);
-    }
-  }),
-});
+  } finally {
+    if (!purgeRemovedLock) releaseInstallLock(lock);
+  }
+}

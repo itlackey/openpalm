@@ -111,6 +111,7 @@ const subCommands = {
   rollback: () => import('./commands/rollback.ts').then((m) => m.default),
   automations: () => import('./commands/automations.ts').then((m) => m.default),
   unlock: () => import('./commands/unlock.ts').then((m) => m.default),
+  'reset-password': () => import('./commands/reset-password.ts').then((m) => m.default),
   ui: () => import('./commands/ui.ts').then((m) => m.default),
 };
 

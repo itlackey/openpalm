@@ -12,6 +12,9 @@ import {
   buildComposePreflightError,
   composePreflight,
   composeUpTimeoutMs,
+  dockerBin,
+  ensureDockerReady,
+  mapDockerError,
   runComposeStreaming,
   runHomeMigrations,
 } from '@openpalm/lib';
@@ -46,6 +49,19 @@ export async function runComposeWithPreflight(
   runHomeMigrations(state.homeDir);
   const options = buildComposeOptions(state);
 
+  // D1: a single "is Docker actually usable right now" readiness check ahead
+  // of every day-2 lifecycle mutation (start/stop/restart/rollback/addon
+  // enable/…). Catches the missing-binary and stopped-daemon cases with a
+  // friendly, non-blank message BEFORE they can surface as the raw (sometimes
+  // literally blank) `docker compose config --quiet` preflight error below —
+  // `docker compose config` never contacts the daemon, so a stopped daemon
+  // would otherwise sail through it. Gated on the same OP_SKIP_COMPOSE_PREFLIGHT
+  // env used below so tests that fully mock this function stay green.
+  if (!process.env.OP_SKIP_COMPOSE_PREFLIGHT) {
+    const ready = await ensureDockerReady();
+    if (!ready.ok) throw new Error(ready.message);
+  }
+
   // Preflight: validate compose merge before mutation. Pass the FULL options
   // (files, env files, AND profiles) — matching lib's own runPreflight — so
   // profile-gated services are validated and the error message reports the same
@@ -53,9 +69,22 @@ export async function runComposeWithPreflight(
   if (options.files.length > 0 && !process.env.OP_SKIP_COMPOSE_PREFLIGHT) {
     const preflight = await composePreflight(options);
     if (!preflight.ok) {
-      // Single source of truth for the message (lib) — includes the resolved
-      // command with --profile args AND the missing-secret repair guidance.
-      throw new Error(buildComposePreflightError(options, preflight.stderr ?? ''));
+      // Belt-and-suspenders: ensureDockerReady() above should already have
+      // caught a missing/stopped Docker, but if Docker vanishes between the
+      // two checks (or a future caller skips the preamble), this preflight's
+      // stderr can still be EMPTY — a bare spawn-level ENOENT carries no
+      // stderr at all (docker.ts's toDockerResult). Route the raw stderr
+      // (synthesizing a short errno-bearing string from `errorCode` when both
+      // are absent) through mapDockerError so the message is NEVER blank.
+      const rawStderr = preflight.stderr && preflight.stderr.length > 0
+        ? preflight.stderr
+        : preflight.errorCode
+          ? `spawn ${dockerBin()} ${preflight.errorCode}`
+          : '';
+      // Single source of truth for the message shape (lib) — includes the
+      // resolved command with --profile args AND the missing-secret repair
+      // guidance, wrapped around the friendly, never-blank mapped stderr.
+      throw new Error(buildComposePreflightError(options, mapDockerError(rawStderr).message));
     }
   }
 

@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { resolveOpenPalmHome } from '@openpalm/lib';
 import { defineAction } from '../lib/action.ts';
 
-async function automationsCheck(): Promise<void> {
+export async function automationsCheck(): Promise<void> {
   const home = resolveOpenPalmHome();
   const tasksDir = join(home, 'knowledge', 'tasks');
 
@@ -23,6 +23,14 @@ async function automationsCheck(): Promise<void> {
   console.log(`Found ${taskFiles.length} automation task(s):`);
   for (const file of taskFiles) {
     console.log(`  - ${file.replace('.yml', '')}`);
+  }
+
+  // B5: `crontab` doesn't exist on Windows — execFile would ENOENT and print
+  // the misleading "No crontab found — assistant not started?" message.
+  // Guard on the platform instead, before the execFile shell-out.
+  if (process.platform === 'win32') {
+    console.log('Automation task registration check is not available on Windows (no crontab).');
+    return;
   }
 
   // Check crontab for registered tasks
