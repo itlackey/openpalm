@@ -151,4 +151,45 @@ describe("createOpenCodeClient", () => {
     const client = createOpenCodeClient({ baseUrl: `http://127.0.0.1:${serverPort}` });
     expect(await client.getConfig()).toBeNull();
   });
+
+  test("listSessions returns the array from GET /session", async () => {
+    startMockServer((req) => {
+      expect(new URL(req.url).pathname).toBe("/session");
+      return new Response(JSON.stringify([
+        { id: "ses_a", time: { created: 1, updated: 2 } },
+        { id: "ses_b", parentID: "ses_a", time: { created: 3, updated: 4 } },
+      ]), { headers: { "Content-Type": "application/json" } });
+    });
+
+    const client = createOpenCodeClient({ baseUrl: `http://127.0.0.1:${serverPort}` });
+    const sessions = await client.listSessions();
+    expect(sessions).toHaveLength(2);
+    expect(sessions[1].parentID).toBe("ses_a");
+  });
+
+  test("listSessions returns [] on error instead of throwing", async () => {
+    startMockServer(() => new Response("error", { status: 500 }));
+
+    const client = createOpenCodeClient({ baseUrl: `http://127.0.0.1:${serverPort}` });
+    expect(await client.listSessions()).toEqual([]);
+  });
+
+  test("deleteSession sends DELETE to the encoded session path", async () => {
+    let receivedMethod = "";
+    let receivedPath = "";
+    startMockServer((req) => {
+      receivedMethod = req.method;
+      receivedPath = new URL(req.url).pathname;
+      return new Response(JSON.stringify({ ok: true }), {
+        headers: { "Content-Type": "application/json" },
+      });
+    });
+
+    const client = createOpenCodeClient({ baseUrl: `http://127.0.0.1:${serverPort}` });
+    const result = await client.deleteSession("ses a/b");
+
+    expect(result.ok).toBe(true);
+    expect(receivedMethod).toBe("DELETE");
+    expect(receivedPath).toBe("/session/ses%20a%2Fb");
+  });
 });

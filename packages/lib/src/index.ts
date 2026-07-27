@@ -135,7 +135,7 @@ export {
 
 // ── OpenCode Client ─────────────────────────────────────────────────────
 export { createOpenCodeClient } from "./control-plane/opencode-client.js";
-export type { ProxyResult, OpenCodeProvider } from "./control-plane/opencode-client.js";
+export type { ProxyResult, OpenCodeProvider, OpenCodeSession } from "./control-plane/opencode-client.js";
 
 // ── Secrets ─────────────────────────────────────────────────────────────
 export {
@@ -428,6 +428,33 @@ export {
   formatStorageReport,
   cleanCaches,
 } from "./control-plane/storage-report.js";
+
+// ── OpenCode DB maintenance (S3 — #581 finding #5) ───────────────────────────
+export type {
+  SessionRecord,
+  RetentionOptions,
+  RetentionPlan,
+  SessionVisibilityRow,
+  SessionVisibilityPage,
+  SessionVisibilityOptions,
+  DbSizeInfo,
+  WalCheckpointMode,
+  VacuumThresholds,
+  SessionDeletionClient,
+  RunMaintenanceOptions,
+  RunMaintenanceResult,
+} from "./control-plane/opencode-db-maintenance.js";
+export {
+  toSessionRecord,
+  computeRetentionPlan,
+  listSessionsPaged,
+  getDbSizeInfo,
+  checkpointWal,
+  vacuumDb,
+  shouldVacuum,
+  runOpenCodeDbMaintenance,
+  resolveOpenCodeDbPath,
+} from "./control-plane/opencode-db-maintenance.js";
 
 // ── Shared byte formatting ──────────────────────────────────────────────────
 export { formatBytes } from "./control-plane/format-bytes.js";
