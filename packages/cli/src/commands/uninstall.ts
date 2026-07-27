@@ -7,6 +7,7 @@ import {
   releaseInstallLock,
   resolveConfigDir,
   resolveDataDir,
+  resolvePrivateDir,
   resolveStashDir,
   resolveStateDir,
   resolveSystemDir,
@@ -52,6 +53,12 @@ export async function runUninstallAction(
       // state/stack.env (OP_SETUP_COMPLETE) or system/stack/core.compose.yml
       // trips classifyLocalInstall and blocks the next plain `install`,
       // contradicting the purge's own "all data removed" message.
+      // §G1: private/ holds the delegated secrets (UI login password,
+      // guardian/API tokens, portal principals, bot credentials) that were
+      // moved OUT of the agent-reachable knowledge/ tree. It is a sibling of
+      // knowledge/, so resolveStashDir() does not reach it — purge it
+      // explicitly or `--purge` reports "all data removed" while leaving every
+      // live credential on disk (Codex #5).
       // dataDir owns the lifecycle lock, so it is removed LAST, only after
       // every other destructive purge step has completed — state/ and
       // system/ hold no lock or in-use handle so they are safe to go first.
@@ -60,6 +67,7 @@ export async function runUninstallAction(
         resolveSystemDir(),
         resolveConfigDir(),
         resolveStashDir(),
+        resolvePrivateDir(),
         resolveWorkspaceDir(),
         resolveDataDir(),
       ];

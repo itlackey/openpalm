@@ -706,8 +706,14 @@ describe("performSetup", () => {
   // ── E1: blank imageTag pins to PLATFORM_VERSION when the image is
   // actually published, guarded by dockerManifestExists, excluding voice. ──
 
-  it("blank imageTag pins assistant/guardian/portal to PLATFORM_VERSION when the image exists (voice excluded)", async () => {
-    process.env.FAKE_DOCKER_EXISTS_REFS = `openpalm/assistant:${PLATFORM_VERSION}`;
+  it("blank imageTag pins assistant/guardian/portal to PLATFORM_VERSION when all images exist (voice excluded)", async () => {
+    // Each service image is probed independently, so ALL three refs must be
+    // published for all three to pin (Codex #2).
+    process.env.FAKE_DOCKER_EXISTS_REFS = [
+      `openpalm/assistant:${PLATFORM_VERSION}`,
+      `openpalm/guardian:${PLATFORM_VERSION}`,
+      `openpalm/portal:${PLATFORM_VERSION}`,
+    ].join(":");
     const result = await performSetup(makeValidSpec()); // no imageTag => blank
     expect(result.ok).toBe(true);
     const env = readFileSync(stateEnvPath(), "utf-8");
@@ -715,6 +721,21 @@ describe("performSetup", () => {
     expect(env).toMatch(new RegExp(`^OP_GUARDIAN_VERSION=${reEscape(PLATFORM_VERSION)}$`, "m"));
     expect(env).toMatch(new RegExp(`^OP_PORTAL_VERSION=${reEscape(PLATFORM_VERSION)}$`, "m"));
     // Voice tags are latest-cpu/vX.Y.Z-cu121, not platform semver — never pinned by this path.
+    expect(env).toMatch(/^OP_VOICE_VERSION=latest$/m);
+  });
+
+  it("blank imageTag probes each service image independently: a lagging image stays on latest (Codex #2)", async () => {
+    // Only the assistant image is published at PLATFORM_VERSION; guardian and
+    // portal lag behind (a common per-image release-timing skew). Probing off a
+    // single assistant check would strand guardian/portal on a 404 first pull —
+    // each must fall back to `latest` on its own probe.
+    process.env.FAKE_DOCKER_EXISTS_REFS = `openpalm/assistant:${PLATFORM_VERSION}`;
+    const result = await performSetup(makeValidSpec());
+    expect(result.ok).toBe(true);
+    const env = readFileSync(stateEnvPath(), "utf-8");
+    expect(env).toMatch(new RegExp(`^OP_ASSISTANT_VERSION=${reEscape(PLATFORM_VERSION)}$`, "m"));
+    expect(env).toMatch(/^OP_GUARDIAN_VERSION=latest$/m);
+    expect(env).toMatch(/^OP_PORTAL_VERSION=latest$/m);
     expect(env).toMatch(/^OP_VOICE_VERSION=latest$/m);
   });
 

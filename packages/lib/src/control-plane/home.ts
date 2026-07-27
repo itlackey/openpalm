@@ -61,6 +61,15 @@ export function resolveStateDir(): string {
   return `${resolveOpenPalmHome()}/state`;
 }
 
+/**
+ * Private tree (§G1): delegated secrets consumed only by the guardian/portals,
+ * relocated out of the assistant-reachable `knowledge/` stash. Must be included
+ * in every destructive lifecycle path (purge, ownership) like the other trees.
+ */
+export function resolvePrivateDir(): string {
+  return privateDir(resolveOpenPalmHome());
+}
+
 // ── Well-known files — THE single source of truth ────────────────────────────
 // Every well-known path is defined HERE, once, derived from an explicit `home`.
 // Moving a file/dir is a one-line edit in this section — never a grep-and-replace

@@ -412,4 +412,41 @@ describe("runOpenCodeDbMaintenance", () => {
     expect(result.sizeBefore).toBeUndefined();
     expect(result.sizeAfter).toBeUndefined();
   });
+
+  // ── File-only reclamation (client === null) — the doctor --reclaim-db path ──
+
+  test("null client reclaims disk (checkpoint + vacuum) without listing or deleting any session", async () => {
+    // No live OpenCode server: the doctor path passes client: null and just
+    // reclaims disk from the on-disk DB file (the S3 "1.4 GB → 16 MB" case).
+    const sizeBeforeRaw = statSync(dbPath).size;
+
+    const result = await runOpenCodeDbMaintenance(null, dbPath, {
+      confirm: true,
+      vacuumThresholds: { minDbBytes: 0, minFreeRatio: 0, minFreeBytes: 0 }, // force vacuum
+    });
+
+    expect(result.plan.totalSessions).toBe(0);
+    expect(result.plan.deleteSessionIds).toEqual([]);
+    expect(result.deleted).toEqual([]);
+    expect(result.deleteFailures).toEqual([]);
+    expect(result.checkpointed).toBe(true);
+    expect(result.vacuumed).toBe(true);
+    expect(result.sizeAfter?.freelistCount).toBe(0);
+
+    const sizeAfterRaw = statSync(dbPath).size;
+    expect(sizeAfterRaw).toBeLessThan(sizeBeforeRaw);
+  });
+
+  test("null client still honors confirm: true", async () => {
+    await expect(
+      runOpenCodeDbMaintenance(null, dbPath, { confirm: false } as RunMaintenanceOptions),
+    ).rejects.toThrow(/confirm/);
+  });
+
+  test("a live client without a retention window is rejected (must choose a window)", async () => {
+    const client = makeClient(baseSessions);
+    await expect(
+      runOpenCodeDbMaintenance(client, dbPath, { confirm: true } as RunMaintenanceOptions),
+    ).rejects.toThrow(/retention/);
+  });
 });

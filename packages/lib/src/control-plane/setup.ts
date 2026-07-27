@@ -45,6 +45,18 @@ export { validateSetupSpec } from "./setup-validation.js";
 
 const logger = createLogger("setup");
 
+/**
+ * Map each service version key to the Docker image name it tags. Used to probe
+ * each image independently before pinning it to PLATFORM_VERSION (E1 / Codex
+ * #2). OP_VOICE_VERSION is intentionally absent — voice is never pinned to a
+ * bare semver tag (its tags are GPU-variant suffixed).
+ */
+const SERVICE_IMAGE_FOR_VERSION_KEY: Record<string, string> = {
+  OP_ASSISTANT_VERSION: "assistant",
+  OP_GUARDIAN_VERSION: "guardian",
+  OP_PORTAL_VERSION: "portal",
+};
+
 // ── Types ────────────────────────────────────────────────────────────────
 
 export type SetupConnection = {
@@ -418,14 +430,28 @@ export async function performSetup(
         // when compose preflight is skipped (tests / offline) — the same "no
         // docker I/O" signal used elsewhere — and fall back to the moving
         // `latest` tag rather than doing real registry I/O that can hang.
-        let defaultTag = "latest";
-        if (!process.env.OP_SKIP_COMPOSE_PREFLIGHT) {
-          const pinnedRef = `${namespace}/assistant:${PLATFORM_VERSION}`;
-          const pinPublished = await dockerManifestExists(pinnedRef);
-          defaultTag = pinPublished ? PLATFORM_VERSION : "latest";
-        }
+        const probePins = !process.env.OP_SKIP_COMPOSE_PREFLIGHT;
         for (const key of SERVICE_VERSION_KEYS) {
-          akmUpdates[key] = key === "OP_VOICE_VERSION" ? "latest" : defaultTag;
+          // Voice is excluded from the semver pin (see block comment above): its
+          // tags are GPU-variant suffixed, not platform semver.
+          if (key === "OP_VOICE_VERSION") {
+            akmUpdates[key] = "latest";
+            continue;
+          }
+          // Probe EACH service image independently (Codex #2). Service images
+          // are built and published per-image, so a given PLATFORM_VERSION tag
+          // may exist for `assistant` but not yet for `guardian`/`portal` (or a
+          // host-only release publishes none of them). Pinning every service
+          // off a single `assistant` probe would strand whichever images lag
+          // behind on a 404 at first pull. Fall back to `latest` per image.
+          if (!probePins) {
+            akmUpdates[key] = "latest";
+            continue;
+          }
+          const image = SERVICE_IMAGE_FOR_VERSION_KEY[key];
+          const pinnedRef = `${namespace}/${image}:${PLATFORM_VERSION}`;
+          const pinPublished = await dockerManifestExists(pinnedRef);
+          akmUpdates[key] = pinPublished ? PLATFORM_VERSION : "latest";
         }
       }
       // NOTE: host-akm sharing no longer repoints the container's primary stash

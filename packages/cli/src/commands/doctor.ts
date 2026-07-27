@@ -19,6 +19,7 @@
  * file from ever touching global module state.
  */
 import { defineCommand } from 'citty';
+import { existsSync, statSync } from 'node:fs';
 import {
   checkDiskHeadroom,
   checkDocker,
@@ -35,6 +36,8 @@ import {
   readStackEnv,
   reportImagesAndVolumes,
   resolveComposeProjectName,
+  resolveOpenCodeDbPath,
+  runOpenCodeDbMaintenance,
   type DockerResult,
   type GpuInfo,
   type ImageVolumeReport,
@@ -46,6 +49,9 @@ import {
 import { defineAction } from '../lib/action.ts';
 import { resolveServeState } from '../lib/cli-state.ts';
 import { promptYesNo } from '../lib/prompt.ts';
+
+/** OpenCode DBs the reclaim action can VACUUM — the assistant and guardian stores (storage-report.ts). */
+const RECLAIM_DB_ROLES = ['assistant', 'guardian'] as const;
 
 export default defineCommand({
   meta: {
@@ -63,10 +69,15 @@ export default defineCommand({
       description: 'Remove superseded OpenPalm images and orphan project-scoped volumes (confirm-gated)',
       default: false,
     },
+    'reclaim-db': {
+      type: 'boolean',
+      description: 'Checkpoint + VACUUM the OpenCode session DBs to reclaim disk (stop the stack first; confirm-gated)',
+      default: false,
+    },
     yes: {
       type: 'boolean',
       alias: 'y',
-      description: 'Skip the confirmation prompt for --clean-caches/--clean-docker',
+      description: 'Skip the confirmation prompt for --clean-caches/--clean-docker/--reclaim-db',
       default: false,
     },
     json: {
@@ -79,6 +90,7 @@ export default defineCommand({
     await runDoctorAction({
       cleanCaches: !!args['clean-caches'],
       cleanDocker: !!args['clean-docker'],
+      reclaimDb: !!args['reclaim-db'],
       yes: !!args.yes,
       json: !!args.json,
     });
@@ -97,11 +109,28 @@ export interface DoctorReport {
   dockerArtifacts: ImageVolumeReport;
   cleanCachesResult?: { removed: string[]; freedBytes: number; dryRun: boolean; skipped?: boolean };
   cleanDockerResult?: { removedImages: string[]; removedVolumes: string[]; errors: string[]; skipped?: boolean };
+  reclaimDbResult?: ReclaimDbResult;
+}
+
+/** Per-database outcome of `--reclaim-db`. */
+export interface ReclaimDbEntry {
+  role: (typeof RECLAIM_DB_ROLES)[number];
+  path: string;
+  present: boolean;
+  vacuumed: boolean;
+  freedBytes: number;
+  error?: string;
+}
+
+export interface ReclaimDbResult {
+  databases: ReclaimDbEntry[];
+  skipped?: boolean;
 }
 
 export interface DoctorActionOptions {
   cleanCaches?: boolean;
   cleanDocker?: boolean;
+  reclaimDb?: boolean;
   yes?: boolean;
   json?: boolean;
 }
@@ -124,6 +153,8 @@ export interface DoctorDeps {
   readStackEnv: typeof readStackEnv;
   cleanCaches: typeof cleanCaches;
   cleanupImagesAndVolumes: typeof cleanupImagesAndVolumes;
+  resolveOpenCodeDbPath: typeof resolveOpenCodeDbPath;
+  runOpenCodeDbMaintenance: typeof runOpenCodeDbMaintenance;
   promptYesNo: typeof promptYesNo;
 }
 
@@ -144,6 +175,8 @@ export const defaultDoctorDeps: DoctorDeps = {
   readStackEnv,
   cleanCaches,
   cleanupImagesAndVolumes,
+  resolveOpenCodeDbPath,
+  runOpenCodeDbMaintenance,
   promptYesNo,
 };
 
@@ -183,6 +216,9 @@ export async function runDoctorAction(
   }
   if (opts.cleanDocker) {
     report.cleanDockerResult = await performCleanDocker(dockerArtifacts, deps, opts.yes);
+  }
+  if (opts.reclaimDb) {
+    report.reclaimDbResult = await performReclaimDb(homeDir, deps, opts.yes);
   }
 
   if (opts.json) {
@@ -248,6 +284,80 @@ async function performCleanDocker(
   );
   if (result.errors.length > 0) console.warn(`Some removals failed: ${result.errors.join('; ')}`);
   return result;
+}
+
+async function performReclaimDb(
+  homeDir: string,
+  deps: DoctorDeps,
+  yes?: boolean,
+): Promise<ReclaimDbResult> {
+  // Discover which OpenCode DBs actually exist on disk (a chat-only install has
+  // no guardian DB; a fresh install may have neither).
+  const present = RECLAIM_DB_ROLES
+    .map((role) => ({ role, path: deps.resolveOpenCodeDbPath(homeDir, role) }))
+    .filter((d) => existsSync(d.path));
+
+  if (present.length === 0) {
+    console.log('No OpenCode session databases found — nothing to reclaim.');
+    return { databases: [] };
+  }
+
+  if (!yes) {
+    const ok = await deps.promptYesNo(
+      `Checkpoint + VACUUM ${present.map((d) => d.role).join(', ')} OpenCode DB(s) to reclaim disk? ` +
+        'The stack should be stopped first so the assistant is not writing to the DB. [y/N]',
+    );
+    if (!ok) {
+      console.log('DB reclamation skipped. Stop the stack (openpalm stop) and re-run with --yes to skip this prompt.');
+      return { databases: [], skipped: true };
+    }
+  }
+
+  const databases: ReclaimDbEntry[] = [];
+  for (const { role, path } of present) {
+    const before = safeFileSize(path);
+    try {
+      // client: null → file-only reclamation (checkpoint + conditional VACUUM),
+      // never a live REST session-delete. VACUUM needs the assistant stopped;
+      // a live server would hold a lock, so we never try to reach one here.
+      const result = await deps.runOpenCodeDbMaintenance(null, path, { confirm: true });
+      const after = safeFileSize(path);
+      databases.push({
+        role,
+        path,
+        present: true,
+        vacuumed: result.vacuumed,
+        freedBytes: Math.max(0, before - after),
+      });
+    } catch (err) {
+      // A locked DB (assistant still running) fails cleanly here — sqlite never
+      // corrupts a busy VACUUM, it just refuses. Surface it as actionable.
+      const message = err instanceof Error ? err.message : String(err);
+      databases.push({ role, path, present: true, vacuumed: false, freedBytes: 0, error: message });
+    }
+  }
+
+  for (const d of databases) {
+    if (d.error) {
+      console.warn(
+        `  ${d.role}: could not reclaim (${d.error}). Is the stack running? Stop it with \`openpalm stop\` and retry.`,
+      );
+    } else if (d.vacuumed) {
+      console.log(`  ${d.role}: reclaimed approximately ${d.freedBytes} bytes.`);
+    } else {
+      console.log(`  ${d.role}: already compact — no VACUUM needed.`);
+    }
+  }
+  return { databases };
+}
+
+/** Best-effort file size (0 if the file is gone or unreadable) — used to bracket the VACUUM. */
+function safeFileSize(path: string): number {
+  try {
+    return statSync(path).size;
+  } catch {
+    return 0;
+  }
 }
 
 function printDoctorReport(report: DoctorReport): void {

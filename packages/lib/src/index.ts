@@ -91,6 +91,7 @@ export {
   resolveStackDir,
   resolveSystemDir,
   resolveStateDir,
+  resolvePrivateDir,
   resolveLogsDir,
   ensureHomeDirs,
   homeSchemaVersionFile,

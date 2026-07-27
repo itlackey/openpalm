@@ -16,7 +16,12 @@ import { describe, expect, test, beforeEach, afterEach } from "bun:test";
 import { mkdtempSync, writeFileSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { stampPortalToolsSeedRanges, PORTAL_TOOLS_SEED_FILE } from "./bump-unit.mjs";
+import {
+	stampPortalToolsSeedRanges,
+	PORTAL_TOOLS_SEED_FILE,
+	stampPortalBakedManifest,
+	PORTAL_TOOLS_BAKED_FILE,
+} from "./bump-unit.mjs";
 
 const ROOT = join(import.meta.dir, "..");
 
@@ -91,5 +96,59 @@ describe("C1 — the seed range advance is wired into the portals unit's stamp",
 		const src = readFileSync(join(ROOT, "scripts/bump-unit.mjs"), "utf-8");
 		const portalsBlockMatch = src.match(/portals:\s*\{[\s\S]*?\n {2}\},/);
 		expect(portalsBlockMatch?.[0] ?? "").toContain("packages/portal-sdk/package.json");
+	});
+});
+
+describe("Codex #3 — stampPortalBakedManifest pins the baked image manifest to the exact version", () => {
+	test("rewrites both adapter pins to the EXACT version (no caret), preserving everything else", () => {
+		const f = join(dir, "package.json");
+		const original = readFileSync(join(ROOT, PORTAL_TOOLS_BAKED_FILE), "utf-8");
+		writeFileSync(f, original);
+
+		stampPortalBakedManifest("0.13.5", f);
+
+		const updated = JSON.parse(readFileSync(f, "utf-8")) as {
+			name?: string;
+			private?: boolean;
+			dependencies?: Record<string, string>;
+		};
+		// Exact pins — a reproducible baked image must not float on rebuild.
+		expect(updated.dependencies?.["@openpalm/discord-portal"]).toBe("0.13.5");
+		expect(updated.dependencies?.["@openpalm/slack-portal"]).toBe("0.13.5");
+		expect(updated.name).toBe("@openpalm/portal-tools");
+		expect(updated.private).toBe(true);
+	});
+
+	test("replaces a prior exact pin, not just a caret range (the baked file uses exact pins)", () => {
+		const f = join(dir, "package.json");
+		writeFileSync(
+			f,
+			JSON.stringify(
+				{
+					name: "@openpalm/portal-tools",
+					private: true,
+					dependencies: {
+						"@openpalm/discord-portal": "0.12.44",
+						"@openpalm/slack-portal": "0.12.44",
+					},
+				},
+				null,
+				2,
+			),
+		);
+		stampPortalBakedManifest("0.13.0", f);
+		const updated = JSON.parse(readFileSync(f, "utf-8")) as { dependencies: Record<string, string> };
+		expect(updated.dependencies["@openpalm/discord-portal"]).toBe("0.13.0");
+		expect(updated.dependencies["@openpalm/slack-portal"]).toBe("0.13.0");
+	});
+
+	test("throws on a missing file (fail-loud contract)", () => {
+		expect(() => stampPortalBakedManifest("0.13.5", join(dir, "does-not-exist.json"))).toThrow();
+	});
+
+	test("scripts/bump-unit.mjs calls stampPortalBakedManifest(...) inside UNITS.portals.stamp", () => {
+		const src = readFileSync(join(ROOT, "scripts/bump-unit.mjs"), "utf-8");
+		const portalsBlockMatch = src.match(/portals:\s*\{[\s\S]*?\n {2}\},/);
+		expect(portalsBlockMatch?.[0] ?? "").toContain("stampPortalBakedManifest(");
 	});
 });

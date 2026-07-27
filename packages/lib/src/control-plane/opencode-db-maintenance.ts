@@ -443,10 +443,21 @@ export interface RunMaintenanceOptions {
   confirm: boolean;
   /** Report what would happen without calling DELETE, checkpoint, or VACUUM. */
   dryRun?: boolean;
-  retention: RetentionOptions;
+  /**
+   * Session-retention window. Required whenever a live `client` is supplied
+   * (the caller must consciously choose which child sessions are stale).
+   * Ignored — and may be omitted — for the file-only reclamation path
+   * (`client === null`), where no sessions are listed or deleted.
+   */
+  retention?: RetentionOptions;
   vacuumThresholds?: VacuumThresholds;
   /** Skip the WAL-checkpoint/size/VACUUM stage entirely (e.g. caller only wants session pruning). */
   skipVacuumStage?: boolean;
+}
+
+/** An empty retention plan — used for the file-only reclamation path where no sessions are listed. */
+function emptyRetentionPlan(): RetentionPlan {
+  return { totalSessions: 0, rootCount: 0, preservedRootIds: [], deleteSessionIds: [], preservedChildIds: [] };
 }
 
 export interface RunMaintenanceResult {
@@ -472,9 +483,17 @@ export interface RunMaintenanceResult {
  * assistant/guardian OpenCode instance as unverified until an image-build +
  * live-stack pass confirms `listSessions`/`deleteSession` behave as this
  * module assumes.
+ *
+ * `client` may be `null` for the **file-only reclamation** path: skip the
+ * session-listing/deletion stage entirely and go straight to
+ * checkpoint/measure/`VACUUM`. This is the path `openpalm doctor --reclaim-db`
+ * uses, because the two stages have opposite preconditions — a live REST
+ * session-delete needs the assistant *running*, but a safe `VACUUM` needs it
+ * *stopped* (no concurrent writer). Disk reclamation on the on-disk DB is the
+ * part that actually addresses the S3 "1.4 GB → 16 MB after VACUUM" incident.
  */
 export async function runOpenCodeDbMaintenance(
-  client: SessionDeletionClient,
+  client: SessionDeletionClient | null,
   dbPath: string,
   options: RunMaintenanceOptions,
 ): Promise<RunMaintenanceResult> {
@@ -483,20 +502,28 @@ export async function runOpenCodeDbMaintenance(
   }
   const dryRun = !!options.dryRun;
 
-  const sessions = (await client.listSessions()).map(toSessionRecord);
-  const plan = computeRetentionPlan(sessions, options.retention);
-
+  let plan: RetentionPlan;
   const deleted: string[] = [];
   const deleteFailures: Array<{ id: string; message: string }> = [];
-  if (!dryRun) {
-    for (const id of plan.deleteSessionIds) {
-      const result = await client.deleteSession(id);
-      if (result.ok) {
-        deleted.push(id);
-      } else {
-        deleteFailures.push({ id, message: result.message ?? "delete failed" });
+  if (client) {
+    if (!options.retention) {
+      throw new Error("runOpenCodeDbMaintenance requires a retention window when a client is supplied.");
+    }
+    const sessions = (await client.listSessions()).map(toSessionRecord);
+    plan = computeRetentionPlan(sessions, options.retention);
+    if (!dryRun) {
+      for (const id of plan.deleteSessionIds) {
+        const result = await client.deleteSession(id);
+        if (result.ok) {
+          deleted.push(id);
+        } else {
+          deleteFailures.push({ id, message: result.message ?? "delete failed" });
+        }
       }
     }
+  } else {
+    // File-only reclamation: no live server to list/delete sessions against.
+    plan = emptyRetentionPlan();
   }
 
   if (options.skipVacuumStage) {

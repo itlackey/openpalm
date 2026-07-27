@@ -1,4 +1,7 @@
 import { describe, expect, test } from 'bun:test';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join } from 'node:path';
 import type { ControlPlaneState } from '@openpalm/lib';
 import { runDoctorAction, type DoctorDeps } from './doctor.ts';
 
@@ -54,6 +57,16 @@ function baseDeps(overrides: Partial<DoctorDeps> = {}): DoctorDeps {
     readStackEnv: () => ({}),
     cleanCaches: () => ({ removed: [], freedBytes: 0, dryRun: false }),
     cleanupImagesAndVolumes: async () => ({ removedImages: [], removedVolumes: [], errors: [] }),
+    resolveOpenCodeDbPath: (homeDir: string, role: string) =>
+      `${homeDir}/data/${role}/.local/share/opencode/opencode.db`,
+    runOpenCodeDbMaintenance: async () => ({
+      dryRun: false,
+      plan: { totalSessions: 0, rootCount: 0, preservedRootIds: [], deleteSessionIds: [], preservedChildIds: [] },
+      deleted: [],
+      deleteFailures: [],
+      checkpointed: true,
+      vacuumed: true,
+    }),
     promptYesNo: async () => false,
     ...overrides,
   } as DoctorDeps;
@@ -204,6 +217,142 @@ describe('openpalm doctor — composes checks without throwing', () => {
       expect(report.cleanDockerResult?.removedImages).toEqual(['abc']);
     } finally {
       console.log = originalLog;
+    }
+  });
+});
+
+describe('openpalm doctor — --reclaim-db (S3 / Codex #7)', () => {
+  // performReclaimDb() calls existsSync/statSync on the resolved DB paths
+  // directly (not via deps), so these tests seed real temp files and point
+  // resolveOpenCodeDbPath at them.
+  function seedDbHome(): { home: string; assistantDb: string; guardianDb: string; cleanup: () => void } {
+    const home = mkdtempSync(join(tmpdir(), 'openpalm-doctor-reclaim-'));
+    const assistantDb = join(home, 'data', 'assistant', '.local', 'share', 'opencode', 'opencode.db');
+    const guardianDb = join(home, 'data', 'guardian', '.local', 'share', 'opencode', 'opencode.db');
+    for (const p of [assistantDb, guardianDb]) {
+      mkdirSync(dirname(p), { recursive: true });
+      writeFileSync(p, 'x'.repeat(4096));
+    }
+    return { home, assistantDb, guardianDb, cleanup: () => rmSync(home, { recursive: true, force: true }) };
+  }
+
+  function reclaimDeps(home: string, overrides: Partial<DoctorDeps> = {}): DoctorDeps {
+    return baseDeps({
+      resolveServeState: () => ({ homeDir: home } as unknown as ControlPlaneState),
+      resolveOpenCodeDbPath: (h: string, role: string) =>
+        join(h, 'data', role, '.local', 'share', 'opencode', 'opencode.db'),
+      ...overrides,
+    });
+  }
+
+  test('with --yes, VACUUMs every present OpenCode DB via runOpenCodeDbMaintenance(null, ...)', async () => {
+    const { home, assistantDb, cleanup } = seedDbHome();
+    const originalLog = console.log;
+    console.log = silentConsole.log;
+    try {
+      const calls: Array<{ client: unknown; path: string; opts: unknown }> = [];
+      const deps = reclaimDeps(home, {
+        runOpenCodeDbMaintenance: async (client: unknown, path: string, opts: unknown) => {
+          calls.push({ client, path, opts });
+          // Simulate the VACUUM shrinking the file so freedBytes > 0.
+          writeFileSync(path, 'x'.repeat(1024));
+          return {
+            dryRun: false,
+            plan: { totalSessions: 0, rootCount: 0, preservedRootIds: [], deleteSessionIds: [], preservedChildIds: [] },
+            deleted: [], deleteFailures: [], checkpointed: true, vacuumed: true,
+          };
+        },
+      });
+
+      const report = await runDoctorAction({ reclaimDb: true, yes: true }, deps);
+
+      // Both DBs processed; the null client (file-only path) is always used.
+      expect(calls).toHaveLength(2);
+      expect(calls.every((c) => c.client === null)).toBe(true);
+      expect(calls.every((c) => (c.opts as { confirm?: boolean }).confirm === true)).toBe(true);
+      expect(report.reclaimDbResult?.databases).toHaveLength(2);
+      const assistant = report.reclaimDbResult?.databases.find((d) => d.role === 'assistant');
+      expect(assistant?.path).toBe(assistantDb);
+      expect(assistant?.vacuumed).toBe(true);
+      expect(assistant?.freedBytes).toBe(4096 - 1024);
+    } finally {
+      console.log = originalLog;
+      cleanup();
+    }
+  });
+
+  test('a declined confirmation prompt skips reclamation entirely', async () => {
+    const { home, cleanup } = seedDbHome();
+    const originalLog = console.log;
+    console.log = silentConsole.log;
+    try {
+      let maintenanceCalled = false;
+      const deps = reclaimDeps(home, {
+        promptYesNo: async () => false,
+        runOpenCodeDbMaintenance: async () => {
+          maintenanceCalled = true;
+          throw new Error('should not be called');
+        },
+      });
+
+      const report = await runDoctorAction({ reclaimDb: true, yes: false }, deps);
+
+      expect(maintenanceCalled).toBe(false);
+      expect(report.reclaimDbResult?.skipped).toBe(true);
+      expect(report.reclaimDbResult?.databases).toEqual([]);
+    } finally {
+      console.log = originalLog;
+      cleanup();
+    }
+  });
+
+  test('a locked DB (maintenance throws) is surfaced as an error, not a crash', async () => {
+    const { home, cleanup } = seedDbHome();
+    const originalLog = console.log;
+    const originalWarn = console.warn;
+    console.log = silentConsole.log;
+    console.warn = silentConsole.warn;
+    try {
+      const deps = reclaimDeps(home, {
+        runOpenCodeDbMaintenance: async () => {
+          throw new Error('database is locked');
+        },
+      });
+
+      const report = await runDoctorAction({ reclaimDb: true, yes: true }, deps);
+
+      expect(report.reclaimDbResult?.databases).toHaveLength(2);
+      for (const d of report.reclaimDbResult?.databases ?? []) {
+        expect(d.vacuumed).toBe(false);
+        expect(d.error).toContain('database is locked');
+      }
+    } finally {
+      console.log = originalLog;
+      console.warn = originalWarn;
+      cleanup();
+    }
+  });
+
+  test('reports nothing to reclaim when no OpenCode DB exists', async () => {
+    const home = mkdtempSync(join(tmpdir(), 'openpalm-doctor-reclaim-empty-'));
+    const originalLog = console.log;
+    console.log = silentConsole.log;
+    try {
+      let maintenanceCalled = false;
+      const deps = reclaimDeps(home, {
+        runOpenCodeDbMaintenance: async () => {
+          maintenanceCalled = true;
+          throw new Error('should not be called');
+        },
+      });
+
+      const report = await runDoctorAction({ reclaimDb: true, yes: true }, deps);
+
+      expect(maintenanceCalled).toBe(false);
+      expect(report.reclaimDbResult?.databases).toEqual([]);
+    } finally {
+      console.log = originalLog;
+      rmSync(home, { recursive: true, force: true });
     }
   });
 });

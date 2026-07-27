@@ -90,6 +90,11 @@ function seedInstalledHome(home: string): void {
 	mkdirSync(join(home, 'knowledge'), { recursive: true });
 	mkdirSync(join(home, 'workspace'), { recursive: true });
 	mkdirSync(join(home, 'data'), { recursive: true });
+	// §G1: delegated secrets live under private/secrets (outside the
+	// agent-reachable knowledge/ tree). Seed a live credential so the purge
+	// test can prove it is not left on disk (Codex #5).
+	mkdirSync(join(home, 'private', 'secrets'), { recursive: true });
+	writeFileSync(join(home, 'private', 'secrets', 'op_ui_login_password'), 'hunter2\n');
 }
 
 describe('runUninstallAction --purge (C1)', () => {
@@ -106,6 +111,8 @@ describe('runUninstallAction --purge (C1)', () => {
 		expect(existsSync(join(tempHome, 'knowledge'))).toBe(false);
 		expect(existsSync(join(tempHome, 'workspace'))).toBe(false);
 		expect(existsSync(join(tempHome, 'data'))).toBe(false);
+		// §G1/Codex #5: the delegated secrets tree must not survive --purge.
+		expect(existsSync(join(tempHome, 'private'))).toBe(false);
 
 		// The next plain `install` must not see this as an existing install.
 		expect(realLib.classifyLocalInstall(join(tempHome, 'system', 'stack'), tempHome)).toBe(
