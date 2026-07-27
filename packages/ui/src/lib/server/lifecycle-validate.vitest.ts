@@ -22,7 +22,9 @@ function seedStack(homeDir: string, env: string): void {
 }
 
 function seedLoginSecret(homeDir: string, value: string): void {
-  const secretDir = join(homeDir, 'knowledge', 'secrets');
+  // op_ui_login_password is a delegated secret — G1 relocates it to
+  // private/secrets, which is where validateProposedState now looks for it.
+  const secretDir = join(homeDir, 'private', 'secrets');
   mkdirSync(secretDir, { recursive: true, mode: 0o700 });
   writeFileSync(join(secretDir, 'op_ui_login_password'), value, { mode: 0o600 });
 }

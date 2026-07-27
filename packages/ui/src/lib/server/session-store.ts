@@ -28,8 +28,7 @@
  */
 import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 import { statSync } from 'node:fs';
-import { join } from 'node:path';
-import { ensureSecret, readSecret, resolveOpenPalmHome, secretsDir } from '@openpalm/lib';
+import { ensureSecret, readSecret, resolveOpenPalmHome, secretPath } from '@openpalm/lib';
 
 /** File secret holding the server-side session signing key. */
 const SESSION_KEY_SECRET = 'op_session_signing_key';
@@ -40,15 +39,17 @@ const LOGIN_PASSWORD_SECRET = 'op_ui_login_password';
  * mtime/size-cached read of the login password secret file, so a live read
  * of the authoritative source doesn't cost a disk hit on every request while
  * still picking up a change (reset-password, hand edit) on the very next
- * call. `secretsDir` is a pure path join (no I/O), so the cheap `statSync`
+ * call. `secretPath` is a pure path join (no I/O), so the cheap `statSync`
  * below is the only per-request disk touch on the cache-hit path; the fuller
  * `readSecret` (which also hardens directory/file permissions) only runs
- * when the file has actually changed.
+ * when the file has actually changed. `secretPath` name-routes delegated
+ * secrets (op_ui_login_password among them) to `private/secrets` (G1), so the
+ * stat and the read below always agree on the location.
  */
 let passwordFileCache: { mtimeMs: number; size: number; value: string } | undefined;
 
 function readLivePasswordFile(): string {
-  const path = join(secretsDir(resolveOpenPalmHome()), LOGIN_PASSWORD_SECRET);
+  const path = secretPath(resolveOpenPalmHome(), LOGIN_PASSWORD_SECRET);
   let stat: ReturnType<typeof statSync>;
   try {
     stat = statSync(path);
@@ -81,7 +82,8 @@ const _testOverrides = new Set<string>();
 
 /**
  * Read the operator UI login password from the file-based stack secret
- * (`knowledge/secrets/op_ui_login_password`), falling back to
+ * (`private/secrets/op_ui_login_password` — a delegated secret, relocated out
+ * of the assistant-reachable stash by G1), falling back to
  * `process.env.OP_UI_LOGIN_PASSWORD` only when no secret file exists yet.
  *
  * The file is authoritative (C3): it is bind-mounted live and read fresh on
