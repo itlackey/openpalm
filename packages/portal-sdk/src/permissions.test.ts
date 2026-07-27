@@ -42,14 +42,76 @@ describe("checkPermissions engine", () => {
     expect(result.reason).toBeUndefined();
   });
 
-  it("treats an empty allow set as unrestricted (empty-allowlist semantics)", () => {
+  // G3: portals are default-deny now. When EVERY rule's allowedSet is empty,
+  // there is no allowlist configured at all, so the caller is denied rather
+  // than silently let through — the prior "empty allow-list semantics" (open
+  // by default) was the confirmed vulnerability.
+  it("denies with 'no_allowlist_configured' when every rule's allow set is empty", () => {
     const result = checkPermissions(
       ruleSet({
         rules: [{ allowedSet: new Set(), actualValues: [""], reason: "user_not_allowed" }],
       }),
       { userId: "" },
     );
+    expect(result.allowed).toBe(false);
+    expect(result.reason).toBe("no_allowlist_configured");
+  });
+
+  it("denies with 'no_allowlist_configured' when multiple rules are all empty", () => {
+    const result = checkPermissions(
+      ruleSet({
+        rules: [
+          { allowedSet: new Set(), actualValues: ["u1"], reason: "user_not_allowed" },
+          { allowedSet: new Set(), actualValues: ["g1"], reason: "guild_not_allowed" },
+          { allowedSet: new Set(), actualValues: [], reason: "role_not_allowed" },
+        ],
+      }),
+      { userId: "u1" },
+    );
+    expect(result.allowed).toBe(false);
+    expect(result.reason).toBe("no_allowlist_configured");
+  });
+
+  it("is not denied by 'no_allowlist_configured' when at least one scope is configured (channels-only allowlist is not misclassified)", () => {
+    // Mirrors a Slack config with only SLACK_ALLOWED_CHANNELS set: the
+    // users scope is empty (unrestricted-for-that-scope) but the channels
+    // scope is non-empty and must still be enforced normally, not treated as
+    // "nothing configured".
+    const result = checkPermissions(
+      ruleSet({
+        rules: [
+          { allowedSet: new Set(), actualValues: ["u1"], reason: "user_not_allowed" },
+          { allowedSet: new Set(["c1"]), actualValues: ["c2"], reason: "channel_not_allowed" },
+        ],
+      }),
+      { userId: "u1" },
+    );
+    expect(result.allowed).toBe(false);
+    expect(result.reason).toBe("channel_not_allowed");
+  });
+
+  it("treats a scope whose allow set contains '*' as an explicit unrestricted opt-in", () => {
+    const result = checkPermissions(
+      ruleSet({
+        rules: [{ allowedSet: new Set(["*"]), actualValues: ["anyone"], reason: "user_not_allowed" }],
+      }),
+      { userId: "anyone" },
+    );
     expect(result.allowed).toBe(true);
+  });
+
+  it("'*' opt-in on one scope does not bypass a genuinely non-matching, non-wildcard scope", () => {
+    const result = checkPermissions(
+      ruleSet({
+        rules: [
+          { allowedSet: new Set(["*"]), actualValues: ["anyone"], reason: "user_not_allowed" },
+          { allowedSet: new Set(["g1"]), actualValues: ["g2"], reason: "guild_not_allowed" },
+        ],
+      }),
+      { userId: "anyone" },
+    );
+    expect(result.allowed).toBe(false);
+    expect(result.reason).toBe("guild_not_allowed");
   });
 
   it("denies when the only actual value is empty against a non-empty allow set", () => {

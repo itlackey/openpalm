@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, mock } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
 import { MessageFlags } from "discord.js";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -92,6 +92,16 @@ function createInteraction(overrides: Partial<TestInteraction> = {}): TestIntera
 
 beforeEach(() => {
   Bun.env.DISCORD_CUSTOM_COMMANDS = undefined;
+  // G3: portals are default-deny when no DISCORD_ALLOWED_* is configured.
+  // Functional tests below exercise behavior *past* the permission gate (the
+  // gate itself is covered by the "checkPermissions"/"loadPermissionConfig"
+  // describe blocks), so default every DiscordChannel() built here to the
+  // explicit "*" opt-in unless a test overrides `permissions` itself.
+  Bun.env.DISCORD_ALLOWED_USERS = "*";
+});
+
+afterEach(() => {
+  delete Bun.env.DISCORD_ALLOWED_USERS;
 });
 
 // ── Health Endpoint ─────────────────────────────────────────────────────────
@@ -184,11 +194,14 @@ describe("parseIdList", () => {
 // ── Permissions: checkPermissions ───────────────────────────────────────────
 
 describe("checkPermissions", () => {
-  it("allows all when no restrictions configured", () => {
+  // G3: portals are default-deny now — an unconfigured allowlist denies
+  // everyone rather than silently allowing everyone (the confirmed
+  // vulnerability). See permissions.test.ts for the "*" opt-in.
+  it("denies all when no restrictions configured (default-deny, G3)", () => {
     const config = emptyPermissions();
     const result = checkPermissions(config, testUser());
-    expect(result.allowed).toBe(true);
-    expect(result.reason).toBeUndefined();
+    expect(result.allowed).toBe(false);
+    expect(result.reason).toBe("no_allowlist_configured");
   });
 
   it("blocks blocked users", () => {
