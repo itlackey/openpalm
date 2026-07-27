@@ -169,6 +169,29 @@ export function stampPortalToolsSeedRanges(version, file = PORTAL_TOOLS_SEED_FIL
   console.log(`  ${file} → ^${version} (discord/slack-portal ranges)`);
 }
 
+// E2/§S2 (Codex #2/#3 review): the portal adapters are now baked into the
+// portal image at BUILD time from containers/portal/tools/package.json — no
+// runtime install, no bind mount. That manifest is the ONLY thing the built
+// image resolves adapter versions from (containers/portal/Dockerfile:
+// `COPY containers/portal/tools/package.json ...; RUN bun install`), so a
+// portals release that advances only the (now inert) OP_HOME seed above would
+// rebuild the image against the STALE previously-baked version. Stamp the
+// baked manifest to the EXACT just-published version — exact, not a caret,
+// because the image is built once and must be reproducible (a floating range
+// would resolve differently on each rebuild). Regex-replaces in place to keep
+// the file's hand-aligned columns.
+export const PORTAL_TOOLS_BAKED_FILE = 'containers/portal/tools/package.json';
+
+export function stampPortalBakedManifest(version, file = PORTAL_TOOLS_BAKED_FILE) {
+  if (!existsSync(file)) throw new Error(`Cannot stamp: file not found: ${file}`);
+  const content = readFileSync(file, 'utf8');
+  const updated = content
+    .replace(/("@openpalm\/discord-portal":\s*")[^"]*(")/, `$1${version}$2`)
+    .replace(/("@openpalm\/slack-portal":\s*")[^"]*(")/, `$1${version}$2`);
+  writeFileSync(file, updated);
+  console.log(`  ${file} → ${version} (baked discord/slack-portal pins)`);
+}
+
 // Unit definitions: anchor file (for reading current version) and files to stamp.
 //
 // IMPORTANT — version anchor semantics:
@@ -211,6 +234,11 @@ const UNITS = {
       // adapters themselves (C1) — otherwise the seed's `^0.12.0` caret range
       // never reaches a 0.13.x+ adapter for any existing OP_HOME install.
       stampPortalToolsSeedRanges(version);
+      // Pin the BAKED image manifest to the exact just-published adapter
+      // version (Codex #3) — this is what the rebuilt portal image actually
+      // installs (E2/§S2 image-baked-only). Without it, a portals release
+      // publishes new adapters but rebuilds the image against the stale pin.
+      stampPortalBakedManifest(version);
     },
   },
   assistant: {

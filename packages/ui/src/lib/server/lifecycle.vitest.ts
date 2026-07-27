@@ -200,10 +200,15 @@ describe("CORE_SERVICES", () => {
 describe("applyInstall", () => {
   beforeEach(() => {
     process.env.OP_SKIP_COMPOSE_PREFLIGHT = '1';
+    // F1 wired reconcileHostOwnership (which shells out to docker) into
+    // applyInstall/performUpgrade; skip it here so these unit tests don't do
+    // real docker I/O and time out.
+    process.env.OP_SKIP_OWNERSHIP_RECONCILE = '1';
   });
 
   afterEach(() => {
     delete process.env.OP_SKIP_COMPOSE_PREFLIGHT;
+    delete process.env.OP_SKIP_OWNERSHIP_RECONCILE;
   });
 
   test("marks the assistant running on install (guardian gated to channels)", async () => {
@@ -225,16 +230,24 @@ describe("applyInstall", () => {
     expect(state.services.assistant).toBe("running");
     // No channel addon → reconcileCore must NOT force-activate guardian.
     expect(state.services.guardian).toBeUndefined();
-  });
+    // applyInstall does a full home seed (overwrites the whole skeleton system/
+    // tree, generates secrets) — real, cold-cache-heavy file I/O that can exceed
+    // vitest's aggressive 5s default on a loaded CI runner. Give it headroom.
+  }, 30_000);
 });
 
 describe("applyUpdate", () => {
   beforeEach(() => {
     process.env.OP_SKIP_COMPOSE_PREFLIGHT = '1';
+    // F1 wired reconcileHostOwnership (which shells out to docker) into
+    // applyInstall/performUpgrade; skip it here so these unit tests don't do
+    // real docker I/O and time out.
+    process.env.OP_SKIP_OWNERSHIP_RECONCILE = '1';
   });
 
   afterEach(() => {
     delete process.env.OP_SKIP_COMPOSE_PREFLIGHT;
+    delete process.env.OP_SKIP_OWNERSHIP_RECONCILE;
   });
 
   test("preserves prior service state", async () => {
@@ -259,10 +272,15 @@ describe("applyUpdate", () => {
 describe("applyUninstall", () => {
   beforeEach(() => {
     process.env.OP_SKIP_COMPOSE_PREFLIGHT = '1';
+    // F1 wired reconcileHostOwnership (which shells out to docker) into
+    // applyInstall/performUpgrade; skip it here so these unit tests don't do
+    // real docker I/O and time out.
+    process.env.OP_SKIP_OWNERSHIP_RECONCILE = '1';
   });
 
   afterEach(() => {
     delete process.env.OP_SKIP_COMPOSE_PREFLIGHT;
+    delete process.env.OP_SKIP_OWNERSHIP_RECONCILE;
   });
 
   test("stops all services", async () => {

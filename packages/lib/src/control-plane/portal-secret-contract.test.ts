@@ -75,13 +75,14 @@ describe("portal verification-secret contract (compose ↔ portalSecretName ↔ 
         expect(svc.secrets ?? []).toContain(expectedSecret);
       });
 
-      it(`declares ${expectedSecret} at the top level, file-backed under knowledge/secrets/`, () => {
+      it(`declares ${expectedSecret} at the top level, file-backed under private/secrets/ (§G1 — delegated, never assistant-reachable)`, () => {
         const decl = topLevelSecrets[expectedSecret];
         expect(decl, `top-level secrets: must declare ${expectedSecret}`).toBeDefined();
         // The container reads the file the migration/seeder writes — the basename
-        // MUST equal the secret name, under knowledge/secrets/.
+        // MUST equal the secret name, under private/secrets/ (NOT knowledge/secrets/,
+        // which is bind-mounted wholesale into the assistant — see docs/public-seams-review.md §G1).
         expect(basename(decl?.file ?? "")).toBe(expectedSecret);
-        expect(decl?.file).toContain("/knowledge/secrets/");
+        expect(decl?.file).toContain("/private/secrets/");
       });
     });
   }
@@ -112,11 +113,11 @@ describe("portal verification-secret contract (compose ↔ portalSecretName ↔ 
       expect(guardian?.secrets ?? []).toContain("op_api_key");
     });
 
-    it("declares op_api_key at the top level, file-backed under knowledge/secrets/", () => {
+    it("declares op_api_key at the top level, file-backed under private/secrets/ (§G1 — delegated)", () => {
       const decl = topLevelSecrets.op_api_key;
       expect(decl, "top-level secrets: must declare op_api_key").toBeDefined();
       expect(basename(decl?.file ?? "")).toBe("op_api_key");
-      expect(decl?.file).toContain("/knowledge/secrets/");
+      expect(decl?.file).toContain("/private/secrets/");
     });
   });
 

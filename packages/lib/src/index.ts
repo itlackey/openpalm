@@ -91,6 +91,7 @@ export {
   resolveStackDir,
   resolveSystemDir,
   resolveStateDir,
+  resolvePrivateDir,
   resolveLogsDir,
   ensureHomeDirs,
   homeSchemaVersionFile,
@@ -106,6 +107,8 @@ export {
   userEnvFile,
   secretsDir,
   authJsonFile,
+  privateDir,
+  privateSecretsDir,
 } from "./control-plane/home.js";
 
 // ── Path Resolution ─────────────────────────────────────────────────────
@@ -133,7 +136,7 @@ export {
 
 // ── OpenCode Client ─────────────────────────────────────────────────────
 export { createOpenCodeClient } from "./control-plane/opencode-client.js";
-export type { ProxyResult, OpenCodeProvider } from "./control-plane/opencode-client.js";
+export type { ProxyResult, OpenCodeProvider, OpenCodeSession } from "./control-plane/opencode-client.js";
 
 // ── Secrets ─────────────────────────────────────────────────────────────
 export {
@@ -153,6 +156,7 @@ export {
 } from "./control-plane/secrets.js";
 export {
   resolveSecretsDir,
+  resolvePrivateSecretsDir,
   secretPath,
   readSecret,
   writeSecret,
@@ -164,8 +168,12 @@ export {
   readSecretFile,
   writeSecretFile,
   removeSecretFile,
+  DELEGATED_SECRET_NAMES,
+  isDelegatedSecretName,
 } from './control-plane/secrets-files.js';
 export type { SecretFileInfo } from './control-plane/secrets-files.js';
+export { migrateDelegatedSecretsToPrivateDir } from './control-plane/secrets-migration.js';
+export type { DelegatedSecretMigrationResult } from './control-plane/secrets-migration.js';
 export {
   PAIRING_CODE_PREFIX,
   encodePairingCode,
@@ -350,6 +358,8 @@ export type { DockerResult, ExistingProject, ComposePsRow, ApplyStackScope, Appl
 export {
   checkDocker,
   checkDockerCompose,
+  ensureDockerReady,
+  dockerBin,
   detectExistingProject,
   resolveComposeProjectName,
   composePreflight,
@@ -371,6 +381,84 @@ export {
   getDockerEvents,
   applyStack,
 } from "./control-plane/docker.js";
+export type { DockerClient, DockerRunOptions } from "./control-plane/docker.js";
+
+// ── Disk-headroom preflight (S6 — #581 finding #10) ───────────────────────
+export type { DiskHeadroomStatus, DiskHeadroomResult, DiskHeadroomOptions, StatfsLike } from "./control-plane/disk-headroom.js";
+export {
+  checkDiskHeadroom,
+  describeDiskHeadroom,
+  shouldBlockOnDiskHeadroom,
+  DEFAULT_LOW_THRESHOLD_BYTES,
+  DEFAULT_CRITICAL_THRESHOLD_BYTES,
+} from "./control-plane/disk-headroom.js";
+
+// ── Install-port probing (C2) ──────────────────────────────────────────────
+export type { PortOwnership, InstallPortTarget, InstallPortStatus, ProbeInstallPortsOptions } from "./control-plane/port-probe.js";
+export { checkPortAvailable, portHeldByOurContainer, resolveInstallPortTargets, probeInstallPorts } from "./control-plane/port-probe.js";
+
+// ── Docker image/volume retention (S7 — #581 finding #11) ────────────────
+export type {
+  DockerImageInfo,
+  DockerVolumeInfo,
+  ImageVolumeReport,
+  VolumeOwnership,
+  ReportImagesAndVolumesOptions,
+  CleanupImagesAndVolumesResult,
+  CleanupImagesAndVolumesOptions,
+} from "./control-plane/image-volume-retention.js";
+export {
+  OPENPALM_VOLUME_SUFFIXES,
+  parseDockerImagesOutput,
+  parseDockerVolumeLsOutput,
+  findSupersededImages,
+  classifyOpenPalmVolume,
+  findOrphanVolumes,
+  reportImagesAndVolumes,
+  cleanupImagesAndVolumes,
+} from "./control-plane/image-volume-retention.js";
+
+// ── Storage diagnostics + cache cleanup (S8/S1 — #581 findings #1, #12) ──
+export type { SizedPath, FilesystemCapacity, StorageReport, BuildStorageReportOptions, CleanCachesResult, CleanCachesOptions } from "./control-plane/storage-report.js";
+export {
+  CACHE_RELATIVE_PATHS,
+  TOOL_TREE_RELATIVE_PATHS,
+  OPENCODE_STORE_RELATIVE_PATHS,
+  pathSizeBytes,
+  buildStorageReport,
+  formatStorageReport,
+  cleanCaches,
+} from "./control-plane/storage-report.js";
+
+// ── OpenCode DB maintenance (S3 — #581 finding #5) ───────────────────────────
+export type {
+  SessionRecord,
+  RetentionOptions,
+  RetentionPlan,
+  SessionVisibilityRow,
+  SessionVisibilityPage,
+  SessionVisibilityOptions,
+  DbSizeInfo,
+  WalCheckpointMode,
+  VacuumThresholds,
+  SessionDeletionClient,
+  RunMaintenanceOptions,
+  RunMaintenanceResult,
+} from "./control-plane/opencode-db-maintenance.js";
+export {
+  toSessionRecord,
+  computeRetentionPlan,
+  listSessionsPaged,
+  getDbSizeInfo,
+  checkpointWal,
+  vacuumDb,
+  shouldVacuum,
+  runOpenCodeDbMaintenance,
+  resolveOpenCodeDbPath,
+} from "./control-plane/opencode-db-maintenance.js";
+
+// ── Shared byte formatting ──────────────────────────────────────────────────
+export { formatBytes } from "./control-plane/format-bytes.js";
 
 // ── Compose project rename (#540) ────────────────────────────────────────
 export {

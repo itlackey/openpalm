@@ -3,11 +3,12 @@
 # and tools. Config, plugins, and persona are mounted at runtime — not baked
 # into the image.
 #
-# Tool packages (opencode-ai, akm-cli, etc.) are managed via the standard
-# package.json pattern: baked defaults live at /opt/openpalm/tools/package.json
-# and are updated within their semver ranges on every container start via
-# `bun update`. Operators may pin different versions by editing
-# OP_HOME/data/assistant/tools/package.json (bind-mounted at runtime).
+# Tool packages (opencode-ai, akm-cli, claude-code, codex, copilot, pi) are
+# exact-pinned in containers/assistant/tools/package.json and baked into the
+# image at /opt/openpalm/tools by the toolbuild stage below. There is no
+# runtime install or update — no bind mount overlays this path anymore (E2/S2:
+# docs/public-seams-review.md). Bumping a tool version means editing the
+# manifest and cutting a new image.
 # ──────────────────────────────────────────────────────────────────────────────
 
 # ── embedder model bundle ──
@@ -28,7 +29,8 @@ ARG ASSISTANT_MODELS_IMAGE=openpalm/assistant-models:v1
 FROM --platform=$BUILDPLATFORM ${ASSISTANT_MODELS_IMAGE} AS modelfetch
 
 # ── Tool builder stage ────────────────────────────────────────────────────────
-# Install the agent CLIs from the single operator-editable manifest, then
+# Install the agent CLIs from the single exact-pinned manifest (edit + rebuild
+# the image to change a version — no runtime override, E2/S2), then
 # PARTITION node_modules into balanced groups. A single `npm install` produces
 # one ~3.5GB layer (~1.75GB compressed) that Docker Hub's CDN rejects on push
 # (HTTP 400 on the oversized blob). The final stage COPYs each group as its own
@@ -48,8 +50,8 @@ RUN npm install --omit=dev --no-fund --no-audit \
 FROM node:22-trixie-slim
 
 ARG BUN_VERSION=bun-v1.3.10
-# Platform version — drives the OP_SKELETON_VERSION default in the entrypoint
-# when no per-component env var override is set.
+# Platform version — the exact pin baked into the @openpalm/ui and
+# @openpalm/skeleton bakes below (E2: build-time only, no runtime override).
 ARG PLATFORM_VERSION
 
 # Re-export for runtime introspection.
@@ -85,9 +87,10 @@ ENV BUN_INSTALL=
 # Bake default tool packages at /opt/openpalm/tools, assembled from the toolbuild
 # stage as THREE COPY layers (g1, g2, and the remainder) so no single blob is the
 # ~1.75GB monolith Docker Hub rejects on push. --chown sets opencode (UID 1000)
-# ownership in-layer (no copy-up). At runtime, OP_HOME/data/assistant/tools is
-# bind-mounted over this path; operators edit package.json + `bun update` keeps
-# it current. The package.json is the single source of truth for the tool set.
+# ownership in-layer (no copy-up). This baked tree IS what runs — no bind mount
+# overlays it anymore (E2/S2), so the image alone is the source of truth for
+# the tool set; bump containers/assistant/tools/package.json and rebuild to
+# change a version.
 COPY --from=toolbuild --chown=1000:1000 /opt/openpalm/tools/node_modules /opt/openpalm/tools/node_modules
 COPY --from=toolbuild --chown=1000:1000 /split/g2/ /opt/openpalm/tools/node_modules/
 COPY --from=toolbuild --chown=1000:1000 /split/g1/ /opt/openpalm/tools/node_modules/
@@ -167,27 +170,27 @@ RUN set -e; \
 # excluding /opt/openpalm/tools, whose baked node_modules + @huggingface model
 # cache is a multi-hundred-MB tree split across COPY layers (Docker Hub rejects
 # giant blobs); a recursive chmod over it would materialize a duplicate overlay
-# layer. The tools tree is bind-mounted (host-owned) at runtime, so its baked
-# mode is moot. Secrets (knowledge/secrets, 0600) are a separate bind-mount tree.
+# layer. E2/S2: the tools tree is no longer bind-mounted (image-baked only, no
+# runtime install/update), and the toolbuild stage already leaves it world-
+# readable+executable (`find ... -exec chmod a+rX`), so an arbitrary-uid
+# container only ever READS it — no write access needed here. Secrets
+# (knowledge/secrets, 0600) are a separate bind-mount tree.
 RUN mkdir -p /home/opencode/.cache /home/opencode/.local/bin /work /stash /opt/akm/cache /opt/akm/data /opt/persistent/bin \
     && mkdir -p /opt/openpalm/ui /opt/openpalm/skeleton /opt/openpalm/tools \
     && chown -R node:node /home/opencode /work /stash /opt/akm /opt/persistent /opt/openpalm/ui /opt/openpalm/skeleton \
     && chmod -R a+rwX /home/opencode /work /stash /opt/akm /opt/persistent /opt/openpalm/ui /opt/openpalm/skeleton
 
-# ── Fallback @openpalm/ui bake ──────────────────────────────────────────────
+# ── @openpalm/ui bake ────────────────────────────────────────────────────────
 # Same approach as containers/guardian/Dockerfile's baked guardian/skeleton
 # install: put a real @openpalm/ui build at its runtime path INSIDE the image,
-# so an offline/air-gapped/npm-outage first boot still has a UI to serve on the
-# UI co-process port instead of silently publishing an empty port (the
-# entrypoint's boot-time `npm install` in install_runtime_artifacts then
-# upgrades this in place on every boot that CAN reach the registry — this bake
-# is only the floor, not the steady-state install path). This works because
-# assistant-artifacts (the named volume compose mounts at /opt/openpalm) is
-# seeded from this image path the FIRST time the volume is created — unlike a
-# bind mount, it does not shadow the baked content with an empty host directory.
-# Skipped when PLATFORM_VERSION is unset (local/dev builds with no resolvable
-# exact pin) so the image still builds without one; every versioned release
-# build gets the fallback.
+# so the image is complete offline with no boot-time npm dependency at all
+# (E2: there is no runtime `npm install` anymore — this bake IS the steady
+# state, not just an air-gap floor). This works because assistant-artifacts
+# (the named volume compose mounts at /opt/openpalm) is seeded from this image
+# path the FIRST time the volume is created — unlike a bind mount, it does not
+# shadow the baked content with an empty host directory. Skipped when
+# PLATFORM_VERSION is unset (local/dev builds with no resolvable exact pin) so
+# the image still builds without one; every versioned release build gets it.
 RUN if [ -n "$PLATFORM_VERSION" ]; then \
       npm install --prefix /opt/openpalm/ui "@openpalm/ui@${PLATFORM_VERSION}" \
         --omit=dev --no-fund --no-audit \
@@ -196,18 +199,42 @@ RUN if [ -n "$PLATFORM_VERSION" ]; then \
       echo "WARN: PLATFORM_VERSION unset at build time — no fallback @openpalm/ui baked (dev/local build only)" >&2; \
     fi
 
+# ── @openpalm/skeleton bake ──────────────────────────────────────────────────
+# Mirrors the @openpalm/ui bake immediately above (and containers/guardian's
+# own baked skeleton install) — the assistant previously baked NO skeleton
+# floor at all, so an air-gapped first boot had nothing to fall back to (the
+# original E2 gap). Now that the runtime `npm install @openpalm/skeleton` is
+# gone from entrypoint.sh, this bake is the ONLY source: no fallback floor,
+# the real thing. Same PLATFORM_VERSION gate and same assistant-artifacts
+# seed-on-first-creation behavior as the UI bake.
+RUN if [ -n "$PLATFORM_VERSION" ]; then \
+      npm install --prefix /opt/openpalm/skeleton "@openpalm/skeleton@${PLATFORM_VERSION}" \
+        --omit=dev --no-fund --no-audit \
+      && chmod -R a+rwX /opt/openpalm/skeleton; \
+    else \
+      echo "WARN: PLATFORM_VERSION unset at build time — no fallback @openpalm/skeleton baked (dev/local build only)" >&2; \
+    fi
+
 COPY containers/assistant/entrypoint.sh /usr/local/bin/opencode-entrypoint.sh
 RUN chmod +x /usr/local/bin/opencode-entrypoint.sh
 
 WORKDIR /work
 
-# Point Bun's user-writable paths at the opencode user's home.
+# Point Bun's user-writable paths at the opencode user's home, under
+# /home/opencode/.cache (a stable, operator-owned location on the HOME bind).
+# NPM_CONFIG_CACHE does the same for any ad hoc `npm install` an agent runs
+# on-session (the entrypoint itself no longer installs anything at boot).
+# NOTE: S1 (relocating /home/opencode/.cache into a separate purgeable named
+# volume) is deferred — nesting a named volume inside the HOME bind makes
+# Docker create a root-owned mountpoint that fails the rootless smoke test.
+# See docs/public-seams-review.md §S1.
 ENV BUN_INSTALL=/home/opencode/.bun
 ENV BUN_INSTALL_CACHE_DIR=/home/opencode/.cache/bun/install
+ENV NPM_CONFIG_CACHE=/home/opencode/.cache/npm
 
 # PATH precedence (highest first):
 #   /opt/persistent/bin        — prefix-style global installs (escape hatch)
-#   /opt/openpalm/tools/node_modules/.bin — managed tool packages (bun update)
+#   /opt/openpalm/tools/node_modules/.bin — image-baked tool packages (exact-pinned, E2/S2)
 #   /home/opencode/.local/bin  — per-user installs in the persistent home bind mount
 #   /home/opencode/.bun/bin    — bun install -g (BUN_INSTALL points here)
 #   /usr/local/bin             — image-baked system tools

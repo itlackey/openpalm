@@ -176,6 +176,40 @@ describe('guardian openai api auth', () => {
     const resp = await handler(new Request('http://api/v1/messages', { method: 'POST', body: JSON.stringify({ model: 'claude-3', max_tokens: 1024, messages: [{ role: 'user', content: 'hello' }] }) }));
     expect(resp.status).toBe(401);
   });
+
+  // G7: OPENAI_COMPAT_API_KEY_FILE set but pointing at an EMPTY (present, not
+  // missing) file must fail closed as a clean 401 like every other
+  // unconfigured-key case, not surface as an uncaught SecretFileError /
+  // opaque 500. This exercises the real `apiKey` getter -> readCachedSecretFile
+  // path (unlike the tests above, which stub `apiKey` directly), so it is the
+  // only test here that would have thrown before the fix.
+  it('fails closed with 401 (not a thrown error) when the API key file exists but is empty', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'openpalm-g7-empty-key-'));
+    const keyFile = join(dir, 'api-key');
+    writeFileSync(keyFile, '');
+    const savedKeyFile = Bun.env.OPENAI_COMPAT_API_KEY_FILE;
+    const savedSecretFile = Bun.env.PRINCIPAL_SECRET_FILE;
+    Bun.env.OPENAI_COMPAT_API_KEY_FILE = keyFile;
+    delete Bun.env.PRINCIPAL_SECRET_FILE;
+    try {
+      const api = new GuardianOpenAiApi();
+      const handler = api.createFetch(ocFetchStub() as typeof fetch);
+      const resp = await handler(
+        new Request('http://api/v1/chat/completions', {
+          method: 'POST',
+          headers: { authorization: 'Bearer whatever-the-caller-sends' },
+          body: JSON.stringify({ model: 'gpt-4', messages: [{ role: 'user', content: 'hello' }] }),
+        }),
+      );
+      expect(resp.status).toBe(401);
+    } finally {
+      if (savedKeyFile === undefined) delete Bun.env.OPENAI_COMPAT_API_KEY_FILE;
+      else Bun.env.OPENAI_COMPAT_API_KEY_FILE = savedKeyFile;
+      if (savedSecretFile === undefined) delete Bun.env.PRINCIPAL_SECRET_FILE;
+      else Bun.env.PRINCIPAL_SECRET_FILE = savedSecretFile;
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
 });
 
 // --- CHARACTERIZATION: non-streaming path is a pure text accumulator ----------

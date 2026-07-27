@@ -48,92 +48,43 @@ ensure_home_layout() {
 
 }
 
-maybe_source_akm_user_env() {
-  # Source the akm env:user file (knowledge/env/user.env) so user-managed
-  local env_path="${AKM_STASH_DIR:-}/env/user.env"
-  if [ -z "${AKM_STASH_DIR:-}" ] || [ ! -f "$env_path" ]; then return 0; fi
+# ── G1: env:user is NOT sourced into this process ───────────────────────────
+# This entrypoint used to `set -a; . "$AKM_STASH_DIR/env/user.env"` here and
+# then `exec opencode` from the SAME shell, which put every env:user value
+# (API keys, owner info, anything the operator configured) into the OpenCode
+# server's own process environment — and therefore into every bash-tool
+# subprocess the agent runs, retrievable with a single `env`/`printenv` call
+# with no file path involved at all (docs/public-seams-review.md §G1, finding
+# #3). Nothing between here and `start_opencode` needs env:user's arbitrary
+# keys: `run_akm_schema_migration`/`persist_akm_stash_dir_fallback` only need
+# HOME/AKM_STASH_DIR (already in the container's own environment), and
+# `start_cron_and_sync_tasks` forwards its own small, explicit allowlist of
+# vars into the crontab preamble rather than the whole file. The sanctioned,
+# on-demand path for the AGENT to use a user secret is still available and
+# unaffected by this change: the `load_vault` OpenCode tool (akm-cli) resolves
+# `akm env path env:user` and sources it inside its OWN tool-call subprocess
+# for that one turn — never the server's top-level environment — matching the
+# skeleton instructions (system/assistant/instructions/core.md).
 
-  # `|| true` so a malformed line in the user-edited env file cannot abort the
-  # entrypoint under `set -euo pipefail` and trap the assistant in a restart loop.
-  set -a
-  # shellcheck disable=SC1090
-  . "$env_path" || echo "warning: failed to source $env_path (malformed line?); continuing" >&2
-  set +a
-}
-
-install_runtime_artifacts() {
-  # ── Exact-pinned npm artifacts ──────────────────────────────────────────────
-  # The UI and skeleton versions come from their env overrides, then fall back
-  # to PLATFORM_VERSION (set at image build time via ARG). No 'latest' fallback
-  # for these exact-pinned components.
-  local ui_version="${OP_UI_VERSION:-${PLATFORM_VERSION:-}}"
-  local skeleton_version="${OP_SKELETON_VERSION:-${PLATFORM_VERSION:-}}"
-
-  # The skeleton (managed OpenCode config/plugins) is REQUIRED — hard error if no
-  # version resolves. The UI is a SECONDARY co-process: when no version resolves
-  # (e.g. an image built without PLATFORM_VERSION), skip its install and let
-  # start_ui's absent-build path write the skip marker so the assistant stays
-  # healthy on OpenCode alone rather than wedging the whole stack.
-  if [ -z "$skeleton_version" ]; then
-    echo "ERROR: set OP_SKELETON_VERSION or PLATFORM_VERSION to install @openpalm/skeleton" >&2
-    exit 1
-  fi
-
-  # Cache under the persistent bind-mounted HOME (/home/opencode is
-  # OP_HOME/data/assistant) so warm restarts reuse downloaded packages and
-  # --prefer-offline actually hits a cache instead of re-fetching from the
-  # registry. The bun path matches the Dockerfile's BUN_INSTALL_CACHE_DIR ENV.
-  local npm_cache_dir="/home/opencode/.cache/openpalm-npm"
-  local bun_cache_dir="/home/opencode/.cache/bun/install"
-
-  # Existing assistant-artifacts named volumes shadow Dockerfile-created paths.
-  # Older images only created /opt/openpalm/skeleton; create the ui prefix here
-  # too so upgrades can install @openpalm/ui as the node user into an old volume.
-  mkdir -p /opt/openpalm/ui /opt/openpalm/skeleton
-
-  # `grep -v` exits 1 when npm produced only warnings (or nothing), so the
-  # pipeline's own exit code can't distinguish "npm failed" from "no output".
-  # Capture npm's exit via PIPESTATUS and surface real failures — a silent
-  # EACCES here would leave the stack serving a stale ui/skeleton forever.
-  local npm_rc
-  if [ -n "$ui_version" ]; then
-    echo "entrypoint: installing @openpalm/ui@${ui_version}..." >&2
-    npm_rc=0
-    npm_config_cache="$npm_cache_dir" npm install --prefix /opt/openpalm/ui "@openpalm/ui@${ui_version}" \
-      --omit=dev --prefer-offline --no-fund --no-audit 2>&1 | grep -v "^npm warn" || npm_rc="${PIPESTATUS[0]}"
-    if [ "$npm_rc" != "0" ]; then
-      echo "ERROR: @openpalm/ui@${ui_version} install failed (exit ${npm_rc}); continuing with the existing artifact if present" >&2
-    fi
-  else
-    echo "warning: no OP_UI_VERSION/PLATFORM_VERSION set — skipping @openpalm/ui install; the UI co-process is skipped when no build is present" >&2
-  fi
-
-  echo "entrypoint: installing @openpalm/skeleton@${skeleton_version}..." >&2
-  npm_rc=0
-  npm_config_cache="$npm_cache_dir" npm install --prefix /opt/openpalm/skeleton "@openpalm/skeleton@${skeleton_version}" \
-    --omit=dev --prefer-offline --no-fund --no-audit 2>&1 | grep -v "^npm warn" || npm_rc="${PIPESTATUS[0]}"
-  if [ "$npm_rc" != "0" ]; then
-    echo "ERROR: @openpalm/skeleton@${skeleton_version} install failed (exit ${npm_rc}); continuing with the existing artifact if present" >&2
-  fi
-
-  # ── Range-versioned tools via bun update ────────────────────────────────────
-  # /opt/openpalm/tools/package.json declares tool semver ranges (baked as
-  # image defaults; bind-mounted from OP_HOME/data/assistant/tools in compose).
-  # bun update installs missing packages and advances within declared ranges.
-  # npm is used for the claude-code install hook (requires node, present in base).
-  local tools_dir="/opt/openpalm/tools"
-  if [ -f "${tools_dir}/package.json" ]; then
-    echo "entrypoint: updating tools in ${tools_dir}..." >&2
-    BUN_INSTALL_CACHE_DIR="$bun_cache_dir" bun update --cwd "${tools_dir}" --production \
-      || echo "warning: tool update had errors; check logs above" >&2
-    # @anthropic-ai/claude-code ships a node install script that must be run
-    # after install/update to set up the native binary.
-    local claude_install="${tools_dir}/node_modules/@anthropic-ai/claude-code/install.cjs"
-    if [ -f "$claude_install" ]; then
-      node "$claude_install" 2>/dev/null || true
-    fi
-  fi
-}
+# ── E2/S2: no boot-time package installs ────────────────────────────────────
+# @openpalm/ui, @openpalm/skeleton, and the tool tree (opencode-ai, akm-cli,
+# claude-code, codex, copilot, pi) are all exact-pinned and baked into the
+# image by the Dockerfile (toolbuild stage + the PLATFORM_VERSION-gated ui/
+# skeleton bakes) — there is no runtime `npm install` of ui/skeleton nor `bun
+# update` of /opt/openpalm/tools anymore. The image is the sole source of
+# truth; updating a version means editing containers/assistant/tools/
+# package.json (or bumping PLATFORM_VERSION) and shipping a new image, not
+# waiting for the next container boot to re-resolve a semver range. This also
+# removes the old boot-time dependency on registry reachability (npm/bun),
+# closing the air-gapped-first-boot gap by construction rather than by adding
+# a fallback floor. See docs/public-seams-review.md §E2/§S2.
+#
+# The previous hard error here ("no OP_SKELETON_VERSION/PLATFORM_VERSION
+# resolved") guarded a runtime install that no longer exists — the equivalent
+# build-time guard now lives in the Dockerfile's own skeleton bake (it WARNs,
+# rather than fails, when PLATFORM_VERSION is unset at build time, matching
+# the pre-existing @openpalm/ui bake — a dev/local build with no exact pin is
+# expected, not a misconfiguration). Nothing to check at container boot.
 
 # ── LAN-exposure helper ──────────────────────────────────────────────────────
 # Used by start_ui's exposure warning when OpenCode is bound off-loopback with
@@ -599,8 +550,6 @@ start_opencode() {
 
 ensure_home_layout
 maybe_prepare_nss_wrapper
-maybe_source_akm_user_env
-install_runtime_artifacts
 seed_default_agents_md
 run_akm_schema_migration
 persist_akm_stash_dir_fallback

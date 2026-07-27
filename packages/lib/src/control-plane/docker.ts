@@ -75,6 +75,18 @@ export const defaultStackDeps: StackDeps = {
 };
 
 /**
+ * Resolve the container-engine binary name/path to exec (F2). Defaults to
+ * `"docker"`; set `OP_DOCKER_BIN` to point at a Docker-compatible engine
+ * (e.g. a `podman` binary or shim) instead. Every exec site in this module
+ * (and the sibling host-probe modules) routes through this instead of
+ * hardcoding `"docker"`, so switching engines is a single env var — argv is
+ * already array-based, so only the program name changes.
+ */
+export function dockerBin(): string {
+  return process.env.OP_DOCKER_BIN?.trim() || "docker";
+}
+
+/**
  * Execute docker with an argument array — no shell interpolation.
  *
  * Exported (package-internal — not surfaced through the barrel) so the
@@ -89,7 +101,7 @@ export function run(
 ): Promise<DockerResult> {
   return new Promise((resolve) => {
     execFile(
-      "docker",
+      dockerBin(),
       args,
       { cwd, timeout: timeoutMs, env: { ...process.env, ...envOverrides } },
       (error, stdout, stderr) => {
@@ -200,7 +212,9 @@ export async function checkDocker(): Promise<DockerResult> {
   // (e.g. "No swap limit support") even though it is fully functional.
   // Treat Docker as available when stdout contains a version string.
   const available = stdout.length > 0 || result.ok;
-  return { ok: available, stdout, stderr: result.stderr, code: result.code };
+  const mapped: DockerResult = { ok: available, stdout, stderr: result.stderr, code: result.code };
+  if (result.errorCode !== undefined) mapped.errorCode = result.errorCode;
+  return mapped;
 }
 
 /**
@@ -243,6 +257,43 @@ export async function checkDockerCompose(): Promise<DockerResult> {
     };
   }
   return result;
+}
+
+/**
+ * Build stderr text for a {@link mapDockerError} call from a failed
+ * {@link DockerResult}. A genuine daemon/compose failure already has
+ * descriptive stderr, but a spawn-level failure (the binary itself missing)
+ * carries an `errorCode` errno with EMPTY stderr — synthesize a short line
+ * that still carries the errno so `mapDockerError`'s not-installed branch
+ * (which matches `\bENOENT\b`, among other patterns) recognizes it instead
+ * of falling through to the "unknown error" fallback.
+ */
+function dockerFailureText(result: DockerResult): string {
+  if (result.stderr) return result.stderr;
+  if (result.errorCode) return `spawn ${dockerBin()} ${result.errorCode}`;
+  return "";
+}
+
+/**
+ * D1: a single "is Docker actually usable right now" readiness check, for
+ * lifecycle callers (day-2 start/stop/restart/rollback/addon enable) that
+ * currently only discover Docker is missing/stopped via a raw, sometimes
+ * BLANK compose preflight error. Runs {@link checkDocker} then
+ * {@link checkDockerCompose} and maps either failure through
+ * {@link mapDockerError} for a friendly, non-blank message — including the
+ * empty-stderr ENOENT case (missing binary) that raw compose stderr never
+ * surfaces.
+ */
+export async function ensureDockerReady(): Promise<{ ok: true } | { ok: false; message: string }> {
+  const docker = await checkDocker();
+  if (!docker.ok) {
+    return { ok: false, message: mapDockerError(dockerFailureText(docker)).message };
+  }
+  const compose = await checkDockerCompose();
+  if (!compose.ok) {
+    return { ok: false, message: mapDockerError(dockerFailureText(compose)).message };
+  }
+  return { ok: true };
 }
 
 /** Merge all env files into a single overrides object for process env. */
@@ -416,7 +467,7 @@ export function composeConfigJsonSync(
   const args = buildComposeArgs(options);
   args.push("config", "--format", "json");
   try {
-    const stdout = execFileSync("docker", args, {
+    const stdout = execFileSync(dockerBin(), args, {
       timeout: 30_000,
       encoding: "utf-8",
       env: { ...process.env, ...collectComposeEnvOverrides(options.envFiles) },
@@ -481,7 +532,7 @@ export function runComposeStreaming(
   opts: { timeoutMs?: number } = {},
 ): Promise<void> {
   return new Promise((resolve, reject) => {
-    const child = spawn("docker", ["compose", ...args], { stdio: "inherit" });
+    const child = spawn(dockerBin(), ["compose", ...args], { stdio: "inherit" });
     let timer: ReturnType<typeof setTimeout> | undefined;
     if (opts.timeoutMs && opts.timeoutMs > 0) {
       timer = setTimeout(() => { child.kill("SIGTERM"); }, opts.timeoutMs);

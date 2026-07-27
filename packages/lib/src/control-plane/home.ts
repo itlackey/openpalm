@@ -61,6 +61,15 @@ export function resolveStateDir(): string {
   return `${resolveOpenPalmHome()}/state`;
 }
 
+/**
+ * Private tree (§G1): delegated secrets consumed only by the guardian/portals,
+ * relocated out of the assistant-reachable `knowledge/` stash. Must be included
+ * in every destructive lifecycle path (purge, ownership) like the other trees.
+ */
+export function resolvePrivateDir(): string {
+  return privateDir(resolveOpenPalmHome());
+}
+
 // ── Well-known files — THE single source of truth ────────────────────────────
 // Every well-known path is defined HERE, once, derived from an explicit `home`.
 // Moving a file/dir is a one-line edit in this section — never a grep-and-replace
@@ -133,7 +142,7 @@ export function hasAnyStackEnvFile(home: string): boolean {
  * it is pure layout — putting it in `home-schema.ts` would make this module
  * depend on `config-persistence`/`addons`, which depend back on this one.
  */
-export const HOME_SCHEMA_VERSION = 2;
+export const HOME_SCHEMA_VERSION = 3;
 
 /** The recorded schema version, or 0 when nothing is recorded (pre-record home). */
 export function readHomeSchemaVersion(home: string): number {
@@ -178,12 +187,55 @@ export function authJsonFile(home: string): string {
   return `${secretsDir(home)}/auth.json`;
 }
 
+/**
+ * Root of the private (non-stash) tree: app-owned material the assistant
+ * agent must never reach, distinct from every tree `home.ts` documents at the
+ * top of this file. `knowledge/` (including `knowledge/secrets/`) is
+ * bind-mounted wholesale into the assistant at `/stash` (core.compose.yml) and
+ * is `external_directory "/stash/*":"allow"`-reachable by the agent's own bash
+ * tool — see docs/public-seams-review.md §G1. Anything under `private/` is
+ * mounted ONLY via Compose `secrets:` entries into the specific
+ * guardian/portal containers that consume it, never bind-mounted into the
+ * assistant.
+ */
+export function privateDir(home: string): string {
+  return `${home}/private`;
+}
+
+/**
+ * Delegated secrets — consumed only by the guardian/portals, never by the
+ * assistant agent (docs/public-seams-review.md §G1). This is the ONE
+ * relocation target for those secrets: `ensureSecrets`/`secrets-files.ts`
+ * write them here, the migration in `secrets-migration.ts` moves pre-existing
+ * installs' copies here from `secretsDir()`, and every Compose `secrets:
+ * file:` entry that grants one of them points here. 0700, like `secretsDir`.
+ */
+export function privateSecretsDir(home: string): string {
+  return `${privateDir(home)}/secrets`;
+}
+
 export function resolveLogsDir(): string {
   return `${resolveDataDir()}/logs`;
 }
 
+/**
+ * Resolve the backup destination for a given OP_HOME root.
+ *
+ * Defaults to `${home}/data/backups` (the historical, same-filesystem
+ * location). `OP_BACKUP_DIR`, when set, overrides it and may point anywhere
+ * else — e.g. a separate volume/filesystem with more headroom than OP_HOME's.
+ * Every backup producer (safety snapshots in backup.ts, the host-side UI/
+ * skeleton hot-swap in npm-bundle-updater.ts) resolves through here so the
+ * destination is configured in exactly one place (S5).
+ */
+export function resolveBackupsDirFor(home: string): string {
+  const override = process.env.OP_BACKUP_DIR;
+  if (override) return resolvePath(override);
+  return `${home}/data/backups`;
+}
+
 export function resolveBackupsDir(): string {
-  return `${resolveDataDir()}/backups`;
+  return resolveBackupsDirFor(resolveOpenPalmHome());
 }
 
 export function resolveRollbackDir(): string {
@@ -236,6 +288,10 @@ export function ensureHomeDirs(home: string = resolveOpenPalmHome()): void {
     `${home}/knowledge/env`,
     `${home}/knowledge/secrets`,
     `${home}/knowledge/tasks`,
+
+    // private/ — delegated secrets (guardian/portal-only, never assistant-reachable; §G1)
+    `${home}/private`,
+    `${home}/private/secrets`,
 
     // workspace/ — shared assistant work area
     `${home}/workspace`,

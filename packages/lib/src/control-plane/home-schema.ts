@@ -35,6 +35,7 @@ import { createLogger } from '../logger.js';
 import { migrateLegacyBindAddresses, migrateLegacyDefaultPorts } from './config-persistence.js';
 import { migrateProfileOnlyAddonEnablement } from './addons.js';
 import { SERVICE_VERSION_KEYS } from './versions.js';
+import { migrateDelegatedSecretsToPrivateDir } from './secrets-migration.js';
 
 const logger = createLogger('home-schema');
 
@@ -117,6 +118,14 @@ const MIGRATIONS: { since: number; run: (homeDir: string) => boolean }[] = [
   { since: 0, run: migrateLegacyBindAddresses },
   { since: 1, run: migrateToSingleStackEnv },
   { since: 0, run: (homeDir) => migrateProfileOnlyAddonEnablement(homeDir).changed },
+  // G1: relocate delegated secrets (guardian/portal-only) out of the
+  // assistant-reachable knowledge/secrets into private/secrets. Idempotent and
+  // safe on every state a pre-existing home could be in (see
+  // secrets-migration.ts/secrets-migration.test.ts); `since: 2` runs it for
+  // every home below the new HOME_SCHEMA_VERSION (3), including ones that
+  // never recorded a version at all (recorded 0 here still satisfies `2 >= 0`
+  // since the loop condition is `migration.since >= recorded`).
+  { since: 2, run: (homeDir) => migrateDelegatedSecretsToPrivateDir(homeDir).migrated.length > 0 },
 ];
 
 /**

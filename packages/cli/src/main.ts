@@ -98,6 +98,7 @@ const subCommands = {
   update: () => import('./commands/update.ts').then((m) => m.default),
   'self-update': () => import('./commands/self-update.ts').then((m) => m.default),
   addon: () => import('./commands/addon.ts').then((m) => m.default),
+  doctor: () => import('./commands/doctor.ts').then((m) => m.default),
   start: () => import('./commands/start.ts').then((m) => m.default),
   'repair-ownership': () => import('./commands/repair-ownership.ts').then((m) => m.default),
   stop: () => import('./commands/stop.ts').then((m) => m.default),
@@ -111,6 +112,7 @@ const subCommands = {
   rollback: () => import('./commands/rollback.ts').then((m) => m.default),
   automations: () => import('./commands/automations.ts').then((m) => m.default),
   unlock: () => import('./commands/unlock.ts').then((m) => m.default),
+  'reset-password': () => import('./commands/reset-password.ts').then((m) => m.default),
   ui: () => import('./commands/ui.ts').then((m) => m.default),
 };
 

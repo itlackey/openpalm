@@ -149,6 +149,11 @@ services:
       # system/assistant is the MANAGED config (OPENCODE_CONFIG_DIR) — plugins,
       # permissions, instructions; overwritten on update.
       - ${OP_HOME}/data/assistant:/home/opencode
+      # NOTE: S1 (relocating /home/opencode/.cache into its own purgeable named
+      # volume) is deferred. Nesting a named volume inside the HOME bind mount
+      # makes Docker create the mountpoint root-owned on the host bind, which
+      # fails the rootless-ownership smoke test. Caches stay under the HOME bind
+      # (operator-owned) until a rootless-aware relocation lands. See §S1.
       - ${OP_HOME}/config/assistant:/home/opencode/.config/opencode
       - ${OP_HOME}/system/assistant:/etc/opencode
       - ${OP_HOME}/knowledge/secrets/auth.json:/home/opencode/.local/share/opencode/auth.json
@@ -170,13 +175,17 @@ services:
       # under $HOME. Prefer $HOME/.local when possible; use /opt/persistent for
       # tools that require an explicit non-home prefix.
       - assistant-persistent:/opt/persistent
-      # Platform artifact cache — persists @openpalm/ui and @openpalm/skeleton
-      # across restarts so warm starts don't re-download.
+      # E2/S2: image-baked @openpalm/ui, @openpalm/skeleton, AND the tool tree
+      # (opencode-ai/akm-cli/claude-code/codex/copilot/pi) all live under this
+      # ONE named volume now — no bind mount overlays any of /opt/openpalm
+      # anymore. The volume exists only so a fresh install's first container
+      # start seeds it (Docker copies the image's /opt/openpalm content into a
+      # brand-new named volume) and so rootless ownership repair has a stable
+      # target (see volume-ownership.ts SERVICE_NAMED_VOLUMES); there is no
+      # runtime install/update path writing into it. Pin a different tool
+      # version by editing containers/assistant/tools/package.json and
+      # shipping a new image, not by editing anything under OP_HOME.
       - assistant-artifacts:/opt/openpalm
-      # Tool packages managed via package.json. Edit OP_HOME/data/assistant/tools/package.json
-      # to pin or update individual tool versions; bun update applies changes on next start.
-      # Declared after the named volume so the bind-mount wins on all platforms.
-      - ${OP_HOME}/data/assistant/tools:/opt/openpalm/tools
     secrets:
       - opencode_server_password
       - ui_login_password
@@ -257,18 +266,26 @@ networks:
 # The OpenCode server password. Each managed compose file stands alone
 # for `docker compose config`, so this same top-level secret is also declared
 # in portals.compose.yml (the guardian's grant).
+#
+# G1: op_opencode_password and op_ui_login_password are DELEGATED secrets —
+# consumed only by the guardian/portals and this service's own server process,
+# never by the assistant agent — so they live under private/secrets/, NOT
+# knowledge/secrets/ (which is bind-mounted wholesale into the assistant at
+# /stash and is agent-reachable). See docs/public-seams-review.md §G1 and
+# packages/lib/src/control-plane/secrets-files.ts DELEGATED_SECRET_NAMES.
 secrets:
   opencode_server_password:
-    file: ${OP_HOME}/knowledge/secrets/op_opencode_password
+    file: ${OP_HOME}/private/secrets/op_opencode_password
   # UI login password for the container-served @openpalm/ui co-process.
   # Guaranteed present before any shipped deploy: setup fail-closes without it
   # (setup.ts security.uiLoginPassword), and the dev/smoke fixtures seed it.
   # Manual-compose users: see docs/operations/manual-compose-runbook.md.
   ui_login_password:
-    file: ${OP_HOME}/knowledge/secrets/op_ui_login_password
+    file: ${OP_HOME}/private/secrets/op_ui_login_password
 
 volumes:
   assistant-persistent:
-  # Named volume for @openpalm/ui and @openpalm/skeleton artifacts.
-  # The tools subpath (/opt/openpalm/tools) is overlaid by the bind-mount above.
+  # Named volume for the image-baked @openpalm/ui, @openpalm/skeleton, and
+  # tool-tree artifacts under /opt/openpalm (E2/S2 — no bind mount overlays
+  # any subpath of it anymore).
   assistant-artifacts:

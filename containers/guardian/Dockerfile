@@ -35,15 +35,24 @@ ENV HOME=/opt/openpalm/guardian \
     OPENCODE_CONFIG_DIR=/etc/opencode \
     PATH="/opt/openpalm/tools/node_modules/.bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 
+# Point Bun's install-tarball cache at $HOME/.cache/bun/install (a stable,
+# operator-owned location under the guardian HOME bind) rather than Bun's own
+# default ($HOME/.bun/install/cache). NOTE: S1 (relocating $HOME/.cache into a
+# separate purgeable named volume) is deferred — nesting a named volume inside
+# the HOME bind makes Docker create a root-owned mountpoint that fails the
+# rootless-ownership smoke test. See docs/public-seams-review.md §S1.
+ENV BUN_INSTALL_CACHE_DIR=/opt/openpalm/guardian/.cache/bun/install
+
 # Optional dry-run/smoke path: copy the local guardian/skeleton workspaces into
 # the build context so callers can bake unpublished source at the target version
 # without needing it to exist on npm yet.
 COPY packages/guardian /opt/openpalm/local-src/guardian
 COPY packages/skeleton /opt/openpalm/local-src/skeleton
 
-# Bake default tool packages at /opt/openpalm/tools. In compose,
-# OP_HOME/data/guardian/tools is bind-mounted over this path so operators
-# can edit package.json directly.
+# Bake default tool packages (opencode-ai) at /opt/openpalm/tools. E2/S2: no
+# bind mount overlays this path anymore (image-baked-only model) — bump this
+# manifest and rebuild the image to change a version, not by editing anything
+# under OP_HOME. See docs/public-seams-review.md §E2/§S2.
 COPY containers/guardian/tools/package.json /opt/openpalm/tools/package.json
 # Make the app trees world-writable so a container entered with
 # `--user ${OP_UID}:${OP_GID}` can populate them on first boot. The container
@@ -66,7 +75,7 @@ RUN test -n "$GUARDIAN_VERSION" \
          (cd /opt/openpalm/local-src/skeleton && bun pm pack --destination /opt/openpalm/local-artifacts --quiet); \
          skeleton_spec="$(find /opt/openpalm/local-artifacts -maxdepth 1 -name 'openpalm-skeleton-*.tgz' | head -n 1)"; \
        fi \
-    && mkdir -p /opt/openpalm /opt/openpalm/guardian/.local/share/opencode /opt/openpalm/guardian/.local/state/opencode /opt/openpalm/guardian-pkg /opt/openpalm/skeleton \
+    && mkdir -p /opt/openpalm /opt/openpalm/guardian/.local/share/opencode /opt/openpalm/guardian/.local/state/opencode /opt/openpalm/guardian/.cache/bun/install /opt/openpalm/guardian-pkg /opt/openpalm/skeleton \
     && (cd /opt/openpalm/guardian-pkg && bun add "$guardian_spec" --production) \
     && (cd /opt/openpalm/skeleton && bun add "$skeleton_spec" --production) \
     && bun install --cwd /opt/openpalm/tools --production \

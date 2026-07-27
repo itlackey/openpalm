@@ -134,10 +134,6 @@ smoke_write_stack_env "$SMOKE_HOME" "$PLATFORM_VERSION" \
 printf 'OP_HOST_UI_PORT=%s\n' "$UI_PORT" >> "$SMOKE_HOME/state/stack.env"
 smoke_seed_secrets "$SMOKE_HOME" 'rootless-smoke-password'
 
-if [[ "$TARGET" == "portal-discord" && ! -f "$SMOKE_HOME/data/portal/tools/package.json" ]]; then
-  docker run --rm -v "$(dirname "$SMOKE_HOME"):/smoke-parent" -v "${ROOT_DIR}:/rootdir" alpine sh -c 'mkdir -p "/smoke-parent/$1/data/portal/tools" && cp /rootdir/containers/portal/tools/package.json "/smoke-parent/$1/data/portal/tools/package.json" && chown "$2:$3" "/smoke-parent/$1/data/portal/tools/package.json"' _ "$(basename "$SMOKE_HOME")" "$(id -u)" "$(id -g)"
-fi
-
 smoke_ensure_home_dirs "$SMOKE_HOME"
 
 smoke_write_version_override "$SMOKE_HOME/rootless-smoke.override.yml" "$PLATFORM_VERSION"
@@ -198,21 +194,12 @@ fi
 echo "Checking for root-owned files under ${SMOKE_HOME}..."
 expected_uid="$(id -u)"
 expected_gid="$(id -g)"
-if [[ "$TARGET" == "portal-discord" ]]; then
-  for _ in $(seq 1 30); do
-    if [[ -d "$SMOKE_HOME/data/portal/tools/node_modules" ]]; then
-      break
-    fi
-    sleep 1
-  done
-  if [[ ! -d "$SMOKE_HOME/data/portal/tools/node_modules" ]]; then
-    echo "Portal smoke expected host bind-mount writes under data/portal/tools/node_modules, but none were created." >&2
-    exit 1
-  fi
-  root_files=$(find "$SMOKE_HOME/data/portal" \( ! -uid "$expected_uid" -o ! -gid "$expected_gid" \) 2>/dev/null || true)
-else
-  root_files=$(find "$SMOKE_HOME" \( ! -uid "$expected_uid" -o ! -gid "$expected_gid" \) 2>/dev/null || true)
-fi
+# E2/S2: portal adapters are image-baked — the discord/slack services mount
+# only the portal-cache named volume, with no host bind mount under
+# data/portal, so the portal no longer writes node_modules to a host bind. The
+# meaningful rootless guarantee for every target is simply that booting the
+# stack left no root-owned files anywhere under OP_HOME.
+root_files=$(find "$SMOKE_HOME" \( ! -uid "$expected_uid" -o ! -gid "$expected_gid" \) 2>/dev/null || true)
 if [[ -n "$root_files" ]]; then
   echo "Root-owned files found:" >&2
   printf '%s\n' "$root_files" | sed -n '1,20p' >&2

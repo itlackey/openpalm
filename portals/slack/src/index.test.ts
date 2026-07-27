@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, mock } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -95,6 +95,16 @@ function createMockSay(): MockSay {
 beforeEach(() => {
   delete Bun.env.SLACK_FORWARD_TIMEOUT_MS;
   delete Bun.env.SLACK_BOT_NAME;
+  // G3: portals are default-deny when no SLACK_ALLOWED_* is configured.
+  // Functional tests below exercise behavior *past* the permission gate (the
+  // gate itself is covered by the "checkPermissions"/"loadPermissionConfig"
+  // describe blocks), so default every SlackChannel() built here to the
+  // explicit "*" opt-in unless a test overrides `permissions` itself.
+  Bun.env.SLACK_ALLOWED_USERS = "*";
+});
+
+afterEach(() => {
+  delete Bun.env.SLACK_ALLOWED_USERS;
 });
 
 // ── Forward timeout parsing ──────────────────────────────────────────────────
@@ -172,10 +182,14 @@ describe("parseIdList", () => {
 // ── checkPermissions ────────────────────────────────────────────────────────
 
 describe("checkPermissions", () => {
-  it("allows when all lists are empty", () => {
+  // G3: portals are default-deny now — an unconfigured allowlist denies
+  // everyone rather than silently allowing everyone (the confirmed
+  // vulnerability). See permission-sdk's permissions.test.ts for the "*"
+  // opt-in.
+  it("denies when all lists are empty (default-deny, G3)", () => {
     const result = checkPermissions(emptyPermissions(), testUser());
-    expect(result.allowed).toBe(true);
-    expect(result.reason).toBeUndefined();
+    expect(result.allowed).toBe(false);
+    expect(result.reason).toBe("no_allowlist_configured");
   });
 
   it("blocks a blocked user", () => {
@@ -222,8 +236,12 @@ describe("checkPermissions", () => {
     expect(result.reason).toBe("channel_not_allowed");
   });
 
-  it("allows when no channel provided and channels unrestricted", () => {
-    const result = checkPermissions(emptyPermissions(), testUser({ channelId: "" }));
+  it("allows when no channel provided and channels are unrestricted (only users configured)", () => {
+    // A per-scope empty allowedChannels is still "unrestricted for that
+    // scope" as long as at least one other scope is configured — otherwise
+    // this would hit the whole-config "no_allowlist_configured" deny (G3).
+    const config = { ...emptyPermissions(), allowedUsers: new Set(["U12345"]) };
+    const result = checkPermissions(config, testUser({ channelId: "" }));
     expect(result.allowed).toBe(true);
   });
 

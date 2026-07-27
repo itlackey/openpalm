@@ -64,6 +64,7 @@ import { extractSpeakableChunks } from '$lib/voice/sentence-stream.js';
 import { notifyAssistantError, notifyAssistantReply } from '$lib/desktop-notifications.js';
 import { mapAssistantError } from './assistant-error.js';
 import {
+	ACTIVATION_VETO,
 	connectionActivationInProgress,
 	onConnectionActivated,
 	registerActivationGuard,
@@ -1293,4 +1294,8 @@ export const chat = new ChatService();
 registerActivationGuard(() =>
 	chat.connectionActivationBlockReason()
 );
-onConnectionActivated((id) => chat.onEndpointChanged(id));
+// onEndpointChanged's `boolean` return is chat's own success/failure signal;
+// translate its `false` into the explicit veto sentinel (#577, U1) rather
+// than letting a bare `false` propagate — the activation channel's veto
+// contract must stay opt-in, never "whatever a listener happens to return".
+onConnectionActivated(async (id) => ((await chat.onEndpointChanged(id)) ? undefined : ACTIVATION_VETO));

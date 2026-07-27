@@ -17,14 +17,22 @@ const INJECTION_PATTERNS: Array<[number, RegExp]> = [
   [3, /\bignore\s+(?:all\s+|the\s+)?(?:previous|prior|above|earlier)\s+(?:instructions?|prompts?|messages?|context)\b/i],
   [3, /\bdisregard\s+(?:all\s+|the\s+|your\s+)?(?:previous|prior|above|system|earlier)\b/i],
   [3, /\b(?:forget|override|bypass)\s+(?:all\s+|your\s+|the\s+)?(?:previous\s+)?(?:instructions?|rules?|guidelines?|system\s+prompt)\b/i],
-  [2, /\byou\s+are\s+now\b/i],
+  // G6: these four are unambiguous single-phrase jailbreak markers — raised
+  // to 3 so a LONE occurrence alone reaches ESCALATE_THRESHOLD (3 by default
+  // in moderation.ts) instead of sliding through as sub-threshold "allow".
+  // Validated against the shipped DISCORD_SESSION_PREAMBLE (see
+  // content-screen.test.ts) so first-turn preambles are not blocked.
+  [3, /\byou\s+are\s+now\b/i],
   [2, /\bnew\s+instructions?\s*:/i],
+  // Left at 2: genuinely ambiguous (e.g. "the system prompt for cooking
+  // rice...") — raising it risks false positives on ordinary text.
   [2, /\bsystem\s+prompt\b/i],
-  [2, /\b(?:enable|enter|activate)\s+(?:developer|debug|god|dan)\s+mode\b/i],
+  [3, /\b(?:enable|enter|activate)\s+(?:developer|debug|god|dan)\s+mode\b/i],
   [3, /\bjailbreak\b/i],
-  [2, /\bpretend\s+(?:to\s+be|you(?:'| a)re|that\s+you)\b/i],
+  [3, /\bpretend\s+(?:to\s+be|you(?:'| a)re|that\s+you)\b/i],
+  // Left at 2: genuinely ambiguous (e.g. "act as a sounding board").
   [2, /\bact\s+as\s+(?:if\s+you|an?\s+)/i],
-  [2, /\bdo\s+anything\s+now\b/i],
+  [3, /\bdo\s+anything\s+now\b/i],
 ];
 
 const EXFILTRATION_PATTERNS: Array<[number, RegExp]> = [

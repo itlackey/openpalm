@@ -19,6 +19,20 @@ export function loadPermissionConfig(env: Record<string, string | undefined> = B
     blockedUsers: config.blockedUsers.size || "none",
   });
 
+  // G3: portals are default-deny now. If NOTHING is configured across every
+  // allow-scope, every caller will be denied — loudly say so at startup so an
+  // operator relying on the old open-by-default posture notices immediately,
+  // instead of silently locking everyone out.
+  if (config.allowedGuilds.size === 0 && config.allowedRoles.size === 0 && config.allowedUsers.size === 0) {
+    log.warn(
+      "no_allowlist_configured",
+      {
+        message:
+          'No DISCORD_ALLOWED_USERS/DISCORD_ALLOWED_GUILDS/DISCORD_ALLOWED_ROLES configured — this portal will DENY every user by default. Set one of them, or DISCORD_ALLOWED_USERS="*" to explicitly allow everyone.',
+      },
+    );
+  }
+
   return config;
 }
 

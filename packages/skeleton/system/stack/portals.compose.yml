@@ -31,11 +31,12 @@ services:
       DISCORD_FORWARD_TIMEOUT_MS: ${DISCORD_FORWARD_TIMEOUT_MS:-}
     secrets: [portal_discord_secret, discord_bot_token]
     volumes:
+      # E2/S2: image-baked adapter packages under /opt/openpalm/tools — no
+      # bind mount overlays any subpath anymore (image-baked-only model,
+      # docs/public-seams-review.md §E2/§S2). Pin a different adapter version
+      # by editing containers/portal/tools/package.json and shipping a new
+      # image, not by editing anything under OP_HOME.
       - portal-cache:/opt/openpalm
-      # Tool packages managed via package.json. Edit OP_HOME/data/portal/tools/package.json
-      # to pin or update portal adapter versions; bun install/update applies changes on next start.
-      # Declared after the named volume so the bind-mount wins at /opt/openpalm/tools.
-      - ${OP_HOME}/data/portal/tools:/opt/openpalm/tools
     networks: [portal_net]
     depends_on:
       guardian:
@@ -68,8 +69,9 @@ services:
       SLACK_BLOCKED_USERS: ${SLACK_BLOCKED_USERS:-}
     secrets: [portal_slack_secret, slack_bot_token, slack_app_token]
     volumes:
+      # E2/S2: see the discord service's volumes comment above — same
+      # image-baked-only /opt/openpalm/tools, no bind mount.
       - portal-cache:/opt/openpalm
-      - ${OP_HOME}/data/portal/tools:/opt/openpalm/tools
     networks: [portal_net]
     depends_on:
       guardian:
@@ -146,6 +148,13 @@ services:
       # secret (not the principal secret) so the two are rotated and audited
       # independently. No key configured ⇒ the edge fails closed (401).
       OPENAI_COMPAT_API_KEY_FILE: /run/secrets/op_api_key
+      # G1: shared OpenCode provider credentials via a compose secret (NOT a
+      # knowledge/ bind mount — see the `secrets:` block below and the
+      # removed volumes entry). Compose secrets always land at
+      # /run/secrets/<name>, never at an arbitrary path, so the entrypoint
+      # copies this into place at $HOME/.local/share/opencode/auth.json
+      # (HOME=/opt/openpalm/guardian) before OpenCode starts.
+      GUARDIAN_AUTH_JSON_FILE: /run/secrets/guardian_auth_json
     ports:
       # Generated from the access toggles; flat, never a cascade.
       - "${OP_GUARDIAN_BIND_ADDRESS:-127.0.0.1}:${OP_GUARDIAN_PORT:-3830}:3830"
@@ -156,23 +165,30 @@ services:
       # two knobs, two bind addresses and two firewall holes for one service.
       - "${OP_API_BIND_ADDRESS:-127.0.0.1}:${OP_API_PORT:-3821}:8182"
     volumes:
+      # E2/S2: image-baked opencode-ai tool tree + guardian/skeleton packages
+      # under /opt/openpalm — no bind mount overlays /opt/openpalm/tools
+      # anymore (image-baked-only model, docs/public-seams-review.md
+      # §E2/§S2). Pin a different tool version by editing
+      # containers/guardian/tools/package.json and shipping a new image.
       - guardian-cache:/opt/openpalm
-      # Tool packages managed via package.json. Edit OP_HOME/data/guardian/tools/package.json
-      # to pin or update individual tool versions; bun update applies changes on next start.
-      # This bind-mount overlays the guardian-cache named volume at /opt/openpalm/tools.
-      - ${OP_HOME}/data/guardian/tools:/opt/openpalm/tools
       - ${OP_HOME}/data/guardian:/opt/openpalm/guardian
+      # NOTE: S1 (relocating $HOME/.cache into its own purgeable named volume)
+      # is deferred — nesting a named volume inside the HOME bind mount makes
+      # Docker create the mountpoint root-owned on the host bind, which fails the
+      # rootless-ownership smoke test. The cache stays under the HOME bind
+      # (operator-owned) until a rootless-aware relocation lands. See §S1.
       - ${OP_HOME}/data/logs:/opt/openpalm/logs
       # MANAGED guardian config (moderation instructions/server/permission) →
       # OPENCODE_CONFIG_DIR. USER config (moderation model) → the operator's
       # OpenCode global config at ~/.config/opencode (HOME=/opt/openpalm/guardian).
       - ${OP_HOME}/system/guardian:/etc/opencode
       - ${OP_HOME}/config/guardian:/opt/openpalm/guardian/.config/opencode
-      # Shared OpenCode provider credentials (read-only). Same file the
-      # assistant mounts, so any OpenCode instance in the guardian uses the
-      # same provider configuration. HOME=/opt/openpalm/guardian, so OpenCode
-      # resolves auth.json under $HOME/.local/share/opencode/.
-      - ${OP_HOME}/knowledge/secrets/auth.json:/opt/openpalm/guardian/.local/share/opencode/auth.json:ro
+      # G1: NO bind mount from knowledge/ — the guardian mounts nothing from
+      # that tree. Shared OpenCode provider credentials (same file the
+      # assistant mounts, so any OpenCode instance uses the same provider
+      # configuration) arrive via the `guardian_auth_json` compose secret
+      # below instead; the entrypoint copies it to
+      # $HOME/.local/share/opencode/auth.json (HOME=/opt/openpalm/guardian).
     secrets:
       - portal_chat_secret
       - portal_api_secret
@@ -182,6 +198,7 @@ services:
       - op_guardian_mcp_token
       - op_api_key
       - opencode_server_password
+      - guardian_auth_json
     networks: [portal_net, assistant_net]
     depends_on:
       assistant:
@@ -194,31 +211,46 @@ services:
       start_period: 180s
 
 secrets:
+  # G1: every secret below except `guardian_auth_json` is a DELEGATED secret —
+  # consumed only by the guardian/portals, never by the assistant agent — so
+  # it lives under private/secrets/, NOT knowledge/secrets/ (bind-mounted
+  # wholesale into the assistant at /stash and agent-reachable). See
+  # docs/public-seams-review.md §G1 and packages/lib/src/control-plane/
+  # secrets-files.ts DELEGATED_SECRET_NAMES.
   portal_chat_secret:
-    file: ${OP_HOME}/knowledge/secrets/portal_chat_secret
+    file: ${OP_HOME}/private/secrets/portal_chat_secret
   portal_api_secret:
-    file: ${OP_HOME}/knowledge/secrets/portal_api_secret
+    file: ${OP_HOME}/private/secrets/portal_api_secret
   portal_discord_secret:
-    file: ${OP_HOME}/knowledge/secrets/portal_discord_secret
+    file: ${OP_HOME}/private/secrets/portal_discord_secret
   discord_bot_token:
-    file: ${OP_HOME}/knowledge/secrets/discord_bot_token
+    file: ${OP_HOME}/private/secrets/discord_bot_token
   portal_slack_secret:
-    file: ${OP_HOME}/knowledge/secrets/portal_slack_secret
+    file: ${OP_HOME}/private/secrets/portal_slack_secret
   slack_bot_token:
-    file: ${OP_HOME}/knowledge/secrets/slack_bot_token
+    file: ${OP_HOME}/private/secrets/slack_bot_token
   slack_app_token:
-    file: ${OP_HOME}/knowledge/secrets/slack_app_token
+    file: ${OP_HOME}/private/secrets/slack_app_token
   op_guardian_admin_token:
-    file: ${OP_HOME}/knowledge/secrets/op_guardian_admin_token
+    file: ${OP_HOME}/private/secrets/op_guardian_admin_token
   op_guardian_mcp_token:
-    file: ${OP_HOME}/knowledge/secrets/op_guardian_mcp_token
+    file: ${OP_HOME}/private/secrets/op_guardian_mcp_token
   op_api_key:
-    file: ${OP_HOME}/knowledge/secrets/op_api_key
+    file: ${OP_HOME}/private/secrets/op_api_key
   # #563 — declared here too (not only in core.compose.yml) so this file
   # stands alone for `docker compose config` when portals.compose.yml is the
   # only file naming the secret in a given invocation.
   opencode_server_password:
-    file: ${OP_HOME}/knowledge/secrets/op_opencode_password
+    file: ${OP_HOME}/private/secrets/op_opencode_password
+  # G1: the guardian's shared OpenCode provider credentials, delivered as a
+  # compose secret instead of a knowledge/ bind mount so the guardian mounts
+  # NOTHING from knowledge/ (see the guardian service's volumes above and
+  # containers/guardian/entrypoint.sh, which copies this into place). This
+  # file is NOT delegated/relocated — it stays at knowledge/secrets/auth.json,
+  # the same file the assistant bind-mounts (read-write) for its own OpenCode
+  # process; only the DELIVERY mechanism to the guardian changes.
+  guardian_auth_json:
+    file: ${OP_HOME}/knowledge/secrets/auth.json
 
 volumes:
   # Named volumes for npm artifact caches (/opt/openpalm).

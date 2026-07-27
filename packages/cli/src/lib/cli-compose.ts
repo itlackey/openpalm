@@ -10,10 +10,16 @@ import {
   buildComposeCliArgs,
   buildComposeOptions,
   buildComposePreflightError,
+  checkDiskHeadroom,
   composePreflight,
   composeUpTimeoutMs,
+  describeDiskHeadroom,
+  dockerBin,
+  ensureDockerReady,
+  mapDockerError,
   runComposeStreaming,
   runHomeMigrations,
+  shouldBlockOnDiskHeadroom,
 } from '@openpalm/lib';
 import type { ControlPlaneState } from '@openpalm/lib';
 
@@ -46,6 +52,35 @@ export async function runComposeWithPreflight(
   runHomeMigrations(state.homeDir);
   const options = buildComposeOptions(state);
 
+  // D1: a single "is Docker actually usable right now" readiness check ahead
+  // of every day-2 lifecycle mutation (start/stop/restart/rollback/addon
+  // enable/…). Catches the missing-binary and stopped-daemon cases with a
+  // friendly, non-blank message BEFORE they can surface as the raw (sometimes
+  // literally blank) `docker compose config --quiet` preflight error below —
+  // `docker compose config` never contacts the daemon, so a stopped daemon
+  // would otherwise sail through it. Gated on the same OP_SKIP_COMPOSE_PREFLIGHT
+  // env used below so tests that fully mock this function stay green.
+  if (!process.env.OP_SKIP_COMPOSE_PREFLIGHT) {
+    const ready = await ensureDockerReady();
+    if (!ready.ok) throw new Error(ready.message);
+
+    // S6: the disk-headroom half of the SAME lifecycle preamble (one
+    // preflight, two checks — not a second bolted-on gate) — fails a
+    // restart/install/update/backup closed BEFORE it can regenerate GBs of
+    // cache into an already-full filesystem (#581 finding #10). Non-fatal by
+    // default: only warns unless OP_DISK_HARD_BLOCK=1 is set AND the reading
+    // is "critical" (S6: "make the hard-block threshold configurable/
+    // off-by-default", to avoid refusing legitimate installs).
+    const headroom = checkDiskHeadroom(state.homeDir);
+    const headroomWarning = describeDiskHeadroom(headroom);
+    if (headroomWarning) {
+      if (shouldBlockOnDiskHeadroom(headroom)) {
+        throw new Error(headroomWarning);
+      }
+      console.warn(`Warning: ${headroomWarning}`);
+    }
+  }
+
   // Preflight: validate compose merge before mutation. Pass the FULL options
   // (files, env files, AND profiles) — matching lib's own runPreflight — so
   // profile-gated services are validated and the error message reports the same
@@ -53,9 +88,22 @@ export async function runComposeWithPreflight(
   if (options.files.length > 0 && !process.env.OP_SKIP_COMPOSE_PREFLIGHT) {
     const preflight = await composePreflight(options);
     if (!preflight.ok) {
-      // Single source of truth for the message (lib) — includes the resolved
-      // command with --profile args AND the missing-secret repair guidance.
-      throw new Error(buildComposePreflightError(options, preflight.stderr ?? ''));
+      // Belt-and-suspenders: ensureDockerReady() above should already have
+      // caught a missing/stopped Docker, but if Docker vanishes between the
+      // two checks (or a future caller skips the preamble), this preflight's
+      // stderr can still be EMPTY — a bare spawn-level ENOENT carries no
+      // stderr at all (docker.ts's toDockerResult). Route the raw stderr
+      // (synthesizing a short errno-bearing string from `errorCode` when both
+      // are absent) through mapDockerError so the message is NEVER blank.
+      const rawStderr = preflight.stderr && preflight.stderr.length > 0
+        ? preflight.stderr
+        : preflight.errorCode
+          ? `spawn ${dockerBin()} ${preflight.errorCode}`
+          : '';
+      // Single source of truth for the message shape (lib) — includes the
+      // resolved command with --profile args AND the missing-secret repair
+      // guidance, wrapped around the friendly, never-blank mapped stderr.
+      throw new Error(buildComposePreflightError(options, mapDockerError(rawStderr).message));
     }
   }
 

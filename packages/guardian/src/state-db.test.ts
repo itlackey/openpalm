@@ -17,7 +17,12 @@ import { join } from 'node:path';
 
 import {
   _clampOwnershipMaxRows,
+  _clampEvictionLogMaxRows,
   configureStateDatabase,
+  countPendingEvictedSessions,
+  listPendingEvictedSessions,
+  markSessionReconciled,
+  recordSessionOwnerRow,
   STATE_DB_SCHEMA_VERSION,
 } from './state-db.ts';
 
@@ -224,6 +229,62 @@ describe('state-db — configureStateDatabase', () => {
     rmSync(tmpDir, { recursive: true, force: true });
   });
 
+  it('creates the session_eviction_log table (S4, #581 finding #7) on a fresh DB', () => {
+    const database = new Database(dbPath, { create: true });
+    configureStateDatabase(database);
+    const tables = database
+      .query<{ name: string }, []>("SELECT name FROM sqlite_master WHERE type='table'")
+      .all()
+      .map((r) => r.name);
+    expect(tables).toContain('session_eviction_log');
+    expect(userVersion(database)).toBe(STATE_DB_SCHEMA_VERSION);
+    database.close();
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('migrates a v2 ownership-only DB up to the eviction-log schema without data loss', () => {
+    // A pre-eviction-log v2 DB: ownership tables present, stamped user_version = 2.
+    const seed = new Database(dbPath, { create: true });
+    seed.exec(`
+      CREATE TABLE principals (
+        id TEXT PRIMARY KEY,
+        kind TEXT NOT NULL CHECK(kind IN ('portal', 'direct')),
+        label TEXT NOT NULL,
+        token_hash TEXT NOT NULL,
+        enabled INTEGER NOT NULL,
+        created_at INTEGER NOT NULL
+      );
+      CREATE TABLE session_owners (
+        session_id TEXT PRIMARY KEY,
+        principal_key TEXT NOT NULL,
+        created_at INTEGER NOT NULL
+      );
+      CREATE TABLE permission_owners (
+        request_id TEXT PRIMARY KEY,
+        principal_key TEXT NOT NULL,
+        created_at INTEGER NOT NULL
+      );
+      INSERT INTO session_owners (session_id, principal_key, created_at) VALUES ('ses_v2', 'p1', 5);
+      PRAGMA user_version = 2;
+    `);
+    seed.close();
+
+    const database = new Database(dbPath);
+    configureStateDatabase(database);
+    const tables = database
+      .query<{ name: string }, []>("SELECT name FROM sqlite_master WHERE type='table'")
+      .all()
+      .map((r) => r.name);
+    expect(tables).toContain('session_eviction_log');
+    expect(userVersion(database)).toBe(STATE_DB_SCHEMA_VERSION);
+    // Pre-existing ownership data survives the migration.
+    expect(database.query('SELECT principal_key FROM session_owners WHERE session_id = ?').get('ses_v2')).toEqual({
+      principal_key: 'p1',
+    });
+    database.close();
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
   it('migrates a v1 principals-only DB up to the ownership schema without data loss', () => {
     // A pre-ownership v1 DB: principals present, stamped user_version = 1, no owner tables.
     const seed = new Database(dbPath, { create: true });
@@ -293,9 +354,159 @@ describe('state-db — configureStateDatabase', () => {
   // proxy-direct.test.ts (DELETE /admin/principals/:id).
 });
 
+/**
+ * S4 (#581 finding #7) — orphan reconciliation.
+ *
+ * recordSessionOwnerRow / listPendingEvictedSessions / markSessionReconciled /
+ * countPendingEvictedSessions all accept an explicit `database` (and, for
+ * recordSessionOwnerRow, `maxRows`) argument defaulting to the module
+ * singleton — the SAME test seam configureStateDatabase already uses, so
+ * these tests drive a raw temp-file Database directly rather than the
+ * env-bound singleton (unsafe to exercise across test files, see above).
+ *
+ * Before this fix, evicting a session_owners row past the bounded cap simply
+ * deleted it: the underlying OpenCode session stayed durable upstream with NO
+ * owner, GET /session (filtered to owned rows) could never show it again to
+ * any principal, and DELETE /session/{id} would 403 forbidden_session — a
+ * permanent, undeletable orphan. Eviction must now persist a
+ * session_eviction_log row for every evicted session_id so an async sweep
+ * (reconciliation.ts) can still delete/archive it upstream.
+ */
+describe('session_owners eviction persists a reconciliation record (S4, #581 finding #7)', () => {
+  let tmpDir: string;
+  let dbPath: string;
+  let database: Database;
+
+  beforeEach(() => {
+    tmpDir = mkdtempSync(join(tmpdir(), 'guardian-eviction-test-'));
+    dbPath = join(tmpDir, 'state.db');
+    database = new Database(dbPath, { create: true });
+    configureStateDatabase(database);
+  });
+
+  function sessionOwnerIds(): string[] {
+    return (database.query('SELECT session_id FROM session_owners ORDER BY session_id').all() as { session_id: string }[]).map(
+      (r) => r.session_id,
+    );
+  }
+
+  it('recording rows at or under the cap evicts nothing and logs nothing', () => {
+    for (let i = 0; i < 3; i++) {
+      recordSessionOwnerRow(`ses_${i}`, 'p1', i, database, /* maxRows */ 3);
+    }
+    expect(sessionOwnerIds()).toEqual(['ses_0', 'ses_1', 'ses_2']);
+    expect(listPendingEvictedSessions(100, database)).toEqual([]);
+    expect(countPendingEvictedSessions(database)).toBe(0);
+  });
+
+  it('recording a row past the cap evicts the OLDEST owner row and records it as a pending reconciliation', () => {
+    for (let i = 0; i < 4; i++) {
+      recordSessionOwnerRow(`ses_${i}`, 'p1', i, database, /* maxRows */ 3);
+    }
+    // ses_0 (oldest by created_at) was evicted from session_owners...
+    expect(sessionOwnerIds()).toEqual(['ses_1', 'ses_2', 'ses_3']);
+    // ...but NOT silently dropped: a pending reconciliation record survives it.
+    const pending = listPendingEvictedSessions(100, database);
+    expect(pending).toHaveLength(1);
+    expect(pending[0]?.sessionId).toBe('ses_0');
+    expect(pending[0]?.principalKey).toBe('p1');
+    expect(typeof pending[0]?.evictedAt).toBe('number');
+    expect(countPendingEvictedSessions(database)).toBe(1);
+  });
+
+  it('evicting multiple rows in one insert (cap dropped) logs every evicted session, oldest first', () => {
+    for (let i = 0; i < 3; i++) {
+      recordSessionOwnerRow(`ses_${i}`, 'p1', i, database, /* maxRows */ 3);
+    }
+    // Now retroactively shrink the cap to 1 on the next insert: 3 rows must evict.
+    recordSessionOwnerRow('ses_3', 'p1', 3, database, /* maxRows */ 1);
+    expect(sessionOwnerIds()).toEqual(['ses_3']);
+    const pending = listPendingEvictedSessions(100, database).map((r) => r.sessionId);
+    expect(pending).toEqual(['ses_0', 'ses_1', 'ses_2']);
+  });
+
+  it('markSessionReconciled clears a row from the pending list without deleting the log row', () => {
+    for (let i = 0; i < 4; i++) {
+      recordSessionOwnerRow(`ses_${i}`, 'p1', i, database, /* maxRows */ 3);
+    }
+    expect(countPendingEvictedSessions(database)).toBe(1);
+
+    markSessionReconciled('ses_0', database);
+
+    expect(listPendingEvictedSessions(100, database)).toEqual([]);
+    expect(countPendingEvictedSessions(database)).toBe(0);
+    // The row itself still exists (reconciled_at set), not deleted outright —
+    // an audit trail of what was reconciled, not just what is still pending.
+    const row = database.query('SELECT reconciled_at FROM session_eviction_log WHERE session_id = ?').get('ses_0') as
+      | { reconciled_at: number | null }
+      | null;
+    expect(row).not.toBeNull();
+    expect(row?.reconciled_at).not.toBeNull();
+  });
+
+  it('re-evicting a session_id already pending in the log refreshes it rather than erroring (ON CONFLICT)', () => {
+    for (let i = 0; i < 4; i++) {
+      recordSessionOwnerRow(`ses_${i}`, 'p1', i, database, /* maxRows */ 3);
+    }
+    markSessionReconciled('ses_0', database);
+    // ses_0 is now reconciled and gone from session_owners. If a session id
+    // were ever reused (should not happen with OpenCode ids, but a defensive
+    // re-eviction must not throw) and immediately evicted again — created_at
+    // -1 makes it the oldest row so this single insert evicts it right back
+    // out — the log row must flip back to PENDING under the new owner,
+    // rather than silently staying "reconciled" forever (which would let the
+    // async sweep skip a session that needs deleting again).
+    recordSessionOwnerRow('ses_0', 'p2', -1, database, /* maxRows */ 3);
+    const pending = listPendingEvictedSessions(100, database);
+    expect(pending.some((r) => r.sessionId === 'ses_0' && r.principalKey === 'p2')).toBe(true);
+  });
+
+  it('the eviction log itself is bounded: reconciled rows are pruned before unreconciled ones', () => {
+    // Evict 5 sessions (cap 1 keeps only the newest owner row); reconcile 3 of
+    // them, then force the eviction-log cap down to 2 via a further eviction.
+    for (let i = 0; i < 6; i++) {
+      recordSessionOwnerRow(`ses_${i}`, 'p1', i, database, /* maxRows */ 1);
+    }
+    const evicted = listPendingEvictedSessions(100, database).map((r) => r.sessionId);
+    expect(evicted).toEqual(['ses_0', 'ses_1', 'ses_2', 'ses_3', 'ses_4']);
+    markSessionReconciled('ses_0', database);
+    markSessionReconciled('ses_1', database);
+    markSessionReconciled('ses_2', database);
+
+    // One more eviction, with the eviction-log cap constrained to 2 rows:
+    // prune must drop the 3 already-reconciled rows first, never an
+    // unreconciled one.
+    recordSessionOwnerRow('ses_6', 'p1', 6, database, /* maxRows */ 1, /* evictionLogMaxRows */ 2);
+
+    const allLogRows = database
+      .query('SELECT session_id, reconciled_at FROM session_eviction_log')
+      .all() as { session_id: string; reconciled_at: number | null }[];
+    expect(allLogRows).toHaveLength(2);
+    // The still-pending rows (ses_3, ses_4, and the just-evicted ses_5) must
+    // never be pruned while reconciled rows remain available to drop instead.
+    for (const row of allLogRows) {
+      expect(row.reconciled_at).toBeNull();
+    }
+  });
+});
+
+describe('_clampEvictionLogMaxRows — malformed GUARDIAN_EVICTION_LOG_MAX_ROWS overrides', () => {
+  it('accepts a plain positive integer', () => {
+    expect(_clampEvictionLogMaxRows('50')).toBe(50);
+  });
+
+  it('rejects zero, negatives, and non-numeric strings, defaulting to 10000', () => {
+    expect(_clampEvictionLogMaxRows('0')).toBe(10_000);
+    expect(_clampEvictionLogMaxRows('-5')).toBe(10_000);
+    expect(_clampEvictionLogMaxRows('all')).toBe(10_000);
+    expect(_clampEvictionLogMaxRows(undefined)).toBe(10_000);
+  });
+});
+
 describe('_clampOwnershipMaxRows — malformed GUARDIAN_OWNERSHIP_MAX_ROWS overrides', () => {
   // A bad value here is catastrophic: NaN binds to SQLite as NULL and turns
-  // evictOldest's `LIMIT MAX(0, count - ?)` unbounded; a clamp result of 0
+  // evictOldestSessionOwners/evictOldestPermissionOwners' `LIMIT MAX(0, count - ?)`
+  // unbounded; a clamp result of 0
   // makes the limit `count - 0` — either way the ENTIRE ownership table is
   // deleted on the next insert. The clamp must reject every such shape.
   it('accepts a plain positive integer', () => {

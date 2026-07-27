@@ -17,6 +17,20 @@ export function loadPermissionConfig(env: Record<string, string | undefined> = B
     blockedUsers: config.blockedUsers.size || "none",
   });
 
+  // G3: portals are default-deny now. If NOTHING is configured across every
+  // allow-scope, every caller will be denied — loudly say so at startup so an
+  // operator relying on the old open-by-default posture notices immediately,
+  // instead of silently locking everyone out.
+  if (config.allowedChannels.size === 0 && config.allowedUsers.size === 0) {
+    log.warn(
+      "no_allowlist_configured",
+      {
+        message:
+          'No SLACK_ALLOWED_USERS/SLACK_ALLOWED_CHANNELS configured — this portal will DENY every user by default. Set one of them, or SLACK_ALLOWED_USERS="*" to explicitly allow everyone.',
+      },
+    );
+  }
+
   return config;
 }
 

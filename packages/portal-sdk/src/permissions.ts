@@ -51,9 +51,21 @@ export type PermissionRuleSet = {
 };
 
 /**
- * Evaluate a caller against a rule set. Blocklist wins first, then each
- * non-empty allow-scope must match; the first failing scope's reason is
- * returned. Behaviour is identical to the per-portal checks it replaces.
+ * Evaluate a caller against a rule set. Blocklist wins first; then, unless
+ * every allow-scope is empty (see below), each non-empty scope must match —
+ * the first failing scope's reason is returned.
+ *
+ * (G3) Default-deny: if EVERY rule's `allowedSet` is empty, there is no
+ * allowlist configured at all, and the caller is denied with
+ * `no_allowlist_configured` rather than silently let through. This is
+ * evaluated across the whole rule set (not by naming individual scopes) so a
+ * portal with only one scope configured — e.g. a Slack channels-only
+ * allowlist — is never misclassified as "nothing configured".
+ *
+ * (G3) Explicit allow-all opt-in: a scope whose `allowedSet` contains the
+ * sentinel `"*"` is treated as unrestricted for that scope (skipped), the
+ * same as an empty scope would have been under the old behaviour — but now
+ * it must be asked for explicitly rather than defaulted into.
  */
 export function checkPermissions(ruleSet: PermissionRuleSet, user: UserInfo): PermissionResult {
   const { userId, username } = user;
@@ -63,8 +75,13 @@ export function checkPermissions(ruleSet: PermissionRuleSet, user: UserInfo): Pe
     return { allowed: false, reason: 'user_blocked' };
   }
 
+  if (ruleSet.rules.every((rule) => rule.allowedSet.size === 0)) {
+    log.warn('permission_denied', { userId, username, reason: 'no_allowlist_configured' });
+    return { allowed: false, reason: 'no_allowlist_configured' };
+  }
+
   for (const { allowedSet, actualValues, reason } of ruleSet.rules) {
-    if (allowedSet.size === 0) continue;
+    if (allowedSet.size === 0 || allowedSet.has('*')) continue;
     const matched = actualValues.some((v) => Boolean(v) && allowedSet.has(v as string));
     if (!matched) return { allowed: false, reason };
   }

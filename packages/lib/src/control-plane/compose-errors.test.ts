@@ -67,6 +67,29 @@ describe("mapDockerError", () => {
       message: "first useful line",
     });
   });
+
+  // ── D1: friendly not-installed / permission-denied branches ──────────────
+  it("maps a missing docker binary (spawn ENOENT) as not-installed", () => {
+    const mapped = mapDockerError("spawn docker ENOENT");
+    expect(mapped.code).toBe("docker_unavailable");
+    expect(mapped.message.toLowerCase()).toContain("not installed");
+  });
+
+  it("maps a shell 'command not found' as not-installed", () => {
+    const mapped = mapDockerError("/bin/sh: 1: docker: not found");
+    expect(mapped.code).toBe("docker_unavailable");
+    expect(mapped.message.toLowerCase()).toContain("not installed");
+  });
+
+  it("maps the typical socket permission-denied wording as docker_unavailable with a distinct message", () => {
+    const mapped = mapDockerError(
+      "Got permission denied while trying to connect to the Docker daemon socket at unix:///var/run/docker.sock",
+    );
+    expect(mapped.code).toBe("docker_unavailable");
+    expect(mapped.message.toLowerCase()).toContain("permission");
+    // Distinct copy from the plain "stopped or unreachable" daemon-down message.
+    expect(mapped.message).not.toBe("Docker appears to be stopped or unreachable. Start Docker, then retry.");
+  });
 });
 
 describe("mapDockerError — table of representative stderr fixtures", () => {
@@ -102,21 +125,24 @@ describe("mapDockerError — table of representative stderr fixtures", () => {
       expectedCode: "port_in_use",
       expectedMessageContains: "Port 8080",
     },
-    // ── §2.1 shrink: these four used to be their own classes (missing_file,
-    //    permission_denied, platform_mismatch ×2) — now raw-stderr-passthrough
-    //    fallback (docker_error). The remedy copy is gone; the specific stderr
-    //    line is still surfaced via `summary`.
+    // ── §2.1 shrink: these used to be their own classes (missing_file,
+    //    permission_denied, platform_mismatch ×2) — collapsed to
+    //    raw-stderr-passthrough fallback (docker_error). The remedy copy is
+    //    gone; the specific stderr line is still surfaced via `summary`.
     {
       name: "fallback — missing file (no such file or directory)",
       stderr: "open /home/user/.openpalm/config/stack/core.compose.yml: no such file or directory",
       expectedCode: "docker_error",
       expectedMessageContains: "no such file or directory",
     },
+    // D1: permission-denied wording is now its OWN docker_unavailable branch
+    // (reusing the code, distinct message) — no longer the docker_error
+    // raw-passthrough fallback.
     {
-      name: "fallback — permission denied (EACCES)",
+      name: "docker_unavailable — permission denied connecting to the daemon socket",
       stderr: "Error response from daemon: permission denied while trying to connect to the Docker daemon socket",
-      expectedCode: "docker_error",
-      expectedMessageContains: "permission denied",
+      expectedCode: "docker_unavailable",
+      expectedMessageContains: "permission",
     },
     {
       name: "fallback — platform mismatch (no matching manifest)",

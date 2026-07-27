@@ -1,5 +1,5 @@
 import { describe, expect, it, beforeEach, afterEach } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync, readFileSync, existsSync, statSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync, readFileSync, existsSync, statSync, chmodSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -12,7 +12,42 @@ import {
 } from "./setup.js";
 import type { SetupSpec, SetupConnection } from "./setup.js";
 import type { ControlPlaneState } from "./types.js";
-import { readSecret } from './secrets-files.js';
+import { readSecret, secretPath } from './secrets-files.js';
+import { PLATFORM_VERSION } from './versioning.js';
+
+/** Escape regex metacharacters (PLATFORM_VERSION contains `.` and `-`). */
+function reEscape(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/**
+ * E1: a fake `docker` binary (wired via OP_DOCKER_BIN, same knob docker.ts's
+ * dockerBin() reads) so `dockerManifestExists` never hits a real registry.
+ * `docker manifest inspect <ref>` "succeeds" (exit 0) only for refs listed in
+ * FAKE_DOCKER_EXISTS_REFS (colon-separated) — unset/empty means "nothing is
+ * published", matching the pre-E1 test fixtures' expectation that a blank
+ * imageTag resolves to `latest` unless a test opts a ref in.
+ */
+function writeFakeDockerBin(dir: string): string {
+  const scriptPath = join(dir, "fake-docker.sh");
+  writeFileSync(
+    scriptPath,
+    [
+      "#!/bin/sh",
+      'if [ "$1" = "manifest" ] && [ "$2" = "inspect" ]; then',
+      '  ref="$3"',
+      '  case ":${FAKE_DOCKER_EXISTS_REFS}:" in',
+      '    *":$ref:"*) exit 0 ;;',
+      "    *) exit 1 ;;",
+      "  esac",
+      "fi",
+      "exit 1",
+      "",
+    ].join("\n"),
+  );
+  chmodSync(scriptPath, 0o755);
+  return scriptPath;
+}
 
 // ── Helpers ──────────────────────────────────────────────────────────────
 
@@ -578,10 +613,27 @@ describe("performSetup", () => {
     // Override env vars for test isolation
     savedEnv.OP_HOME = process.env.OP_HOME;
     process.env.OP_HOME = homeDir;
+
+    // E1: point OP_DOCKER_BIN at a fake docker so the blank-imageTag pin's
+    // `dockerManifestExists` probe never hits a real registry. Unset
+    // FAKE_DOCKER_EXISTS_REFS (the default) means "nothing published" — the
+    // pre-E1 behavior every existing test below still expects.
+    savedEnv.OP_DOCKER_BIN = process.env.OP_DOCKER_BIN;
+    savedEnv.OP_IMAGE_NAMESPACE = process.env.OP_IMAGE_NAMESPACE;
+    savedEnv.FAKE_DOCKER_EXISTS_REFS = process.env.FAKE_DOCKER_EXISTS_REFS;
+    delete process.env.OP_IMAGE_NAMESPACE;
+    delete process.env.FAKE_DOCKER_EXISTS_REFS;
+    process.env.OP_DOCKER_BIN = writeFakeDockerBin(homeDir);
   });
 
   afterEach(() => {
     process.env.OP_HOME = savedEnv.OP_HOME;
+    if (savedEnv.OP_DOCKER_BIN === undefined) delete process.env.OP_DOCKER_BIN;
+    else process.env.OP_DOCKER_BIN = savedEnv.OP_DOCKER_BIN;
+    if (savedEnv.OP_IMAGE_NAMESPACE === undefined) delete process.env.OP_IMAGE_NAMESPACE;
+    else process.env.OP_IMAGE_NAMESPACE = savedEnv.OP_IMAGE_NAMESPACE;
+    if (savedEnv.FAKE_DOCKER_EXISTS_REFS === undefined) delete process.env.FAKE_DOCKER_EXISTS_REFS;
+    else process.env.FAKE_DOCKER_EXISTS_REFS = savedEnv.FAKE_DOCKER_EXISTS_REFS;
     rmSync(homeDir, { recursive: true, force: true });
   });
 
@@ -651,7 +703,66 @@ describe("performSetup", () => {
     }
   });
 
-  it("writes the UI login password to knowledge/secrets", async () => {
+  // ── E1: blank imageTag pins to PLATFORM_VERSION when the image is
+  // actually published, guarded by dockerManifestExists, excluding voice. ──
+
+  it("blank imageTag pins assistant/guardian/portal to PLATFORM_VERSION when all images exist (voice excluded)", async () => {
+    // Each service image is probed independently, so ALL three refs must be
+    // published for all three to pin (Codex #2).
+    process.env.FAKE_DOCKER_EXISTS_REFS = [
+      `openpalm/assistant:${PLATFORM_VERSION}`,
+      `openpalm/guardian:${PLATFORM_VERSION}`,
+      `openpalm/portal:${PLATFORM_VERSION}`,
+    ].join(":");
+    const result = await performSetup(makeValidSpec()); // no imageTag => blank
+    expect(result.ok).toBe(true);
+    const env = readFileSync(stateEnvPath(), "utf-8");
+    expect(env).toMatch(new RegExp(`^OP_ASSISTANT_VERSION=${reEscape(PLATFORM_VERSION)}$`, "m"));
+    expect(env).toMatch(new RegExp(`^OP_GUARDIAN_VERSION=${reEscape(PLATFORM_VERSION)}$`, "m"));
+    expect(env).toMatch(new RegExp(`^OP_PORTAL_VERSION=${reEscape(PLATFORM_VERSION)}$`, "m"));
+    // Voice tags are latest-cpu/vX.Y.Z-cu121, not platform semver — never pinned by this path.
+    expect(env).toMatch(/^OP_VOICE_VERSION=latest$/m);
+  });
+
+  it("blank imageTag probes each service image independently: a lagging image stays on latest (Codex #2)", async () => {
+    // Only the assistant image is published at PLATFORM_VERSION; guardian and
+    // portal lag behind (a common per-image release-timing skew). Probing off a
+    // single assistant check would strand guardian/portal on a 404 first pull —
+    // each must fall back to `latest` on its own probe.
+    process.env.FAKE_DOCKER_EXISTS_REFS = `openpalm/assistant:${PLATFORM_VERSION}`;
+    const result = await performSetup(makeValidSpec());
+    expect(result.ok).toBe(true);
+    const env = readFileSync(stateEnvPath(), "utf-8");
+    expect(env).toMatch(new RegExp(`^OP_ASSISTANT_VERSION=${reEscape(PLATFORM_VERSION)}$`, "m"));
+    expect(env).toMatch(/^OP_GUARDIAN_VERSION=latest$/m);
+    expect(env).toMatch(/^OP_PORTAL_VERSION=latest$/m);
+    expect(env).toMatch(/^OP_VOICE_VERSION=latest$/m);
+  });
+
+  it("blank imageTag falls back to latest when dockerManifestExists reports the image absent", async () => {
+    // FAKE_DOCKER_EXISTS_REFS left unset by beforeEach => manifest never found
+    // (e.g. a host-only "unit=platform" release with no matching image tag).
+    const result = await performSetup(makeValidSpec());
+    expect(result.ok).toBe(true);
+    const env = readFileSync(stateEnvPath(), "utf-8");
+    expect(env).toMatch(/^OP_ASSISTANT_VERSION=latest$/m);
+    expect(env).toMatch(/^OP_GUARDIAN_VERSION=latest$/m);
+    expect(env).toMatch(/^OP_PORTAL_VERSION=latest$/m);
+    expect(env).toMatch(/^OP_VOICE_VERSION=latest$/m);
+  });
+
+  it("blank imageTag pin check honors OP_IMAGE_NAMESPACE (does not hardcode openpalm/)", async () => {
+    process.env.OP_IMAGE_NAMESPACE = "customns";
+    // Only the customns-namespaced ref "exists" — if the check hardcoded
+    // "openpalm/" it would miss this and wrongly fall back to latest.
+    process.env.FAKE_DOCKER_EXISTS_REFS = `customns/assistant:${PLATFORM_VERSION}`;
+    const result = await performSetup(makeValidSpec());
+    expect(result.ok).toBe(true);
+    const env = readFileSync(stateEnvPath(), "utf-8");
+    expect(env).toMatch(new RegExp(`^OP_ASSISTANT_VERSION=${reEscape(PLATFORM_VERSION)}$`, "m"));
+  });
+
+  it("writes the UI login password to its secret file (private/secrets — §G1 delegated)", async () => {
     const result = await performSetup(makeValidSpec());
     expect(result.ok).toBe(true);
 
@@ -907,7 +1018,9 @@ describe("performSetup", () => {
 
   // ── #563 T23-T27: network preset plumbing through performSetup ───────────
 
-  const secretPathFor = (name: string) => join(homeDir, "knowledge", "secrets", name);
+  // §G1: op_opencode_password is a delegated secret — secretPath() routes it
+  // (and every other delegated name) to private/secrets/, not knowledge/secrets/.
+  const secretPathFor = (name: string) => secretPath(homeDir, name);
 
   it("networkAccess publishes ONLY the UI — OpenCode stays loopback", async () => {
     const result = await performSetup(makeValidSpec({ access: { networkAccess: true } }));

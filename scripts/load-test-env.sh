@@ -6,7 +6,7 @@
 #   source scripts/load-test-env.sh
 #
 # Exports:
-#   OP_UI_LOGIN_PASSWORD — read directly from .dev/knowledge/secrets/op_ui_login_password.
+#   OP_UI_LOGIN_PASSWORD — read directly from .dev/private/secrets/op_ui_login_password.
 #     Exported for Playwright tests that authenticate against the host UI.
 
 # Guard: this script must be sourced, not executed. Direct execution would
@@ -20,7 +20,10 @@ fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-LOGIN_PASSWORD_SECRET="$ROOT_DIR/.dev/knowledge/secrets/op_ui_login_password"
+# op_ui_login_password is a DELEGATED secret (docs/public-seams-review.md
+# §G1) — consumed only by the guardian/portals, never the assistant agent —
+# so it lives under private/secrets/, not knowledge/secrets/.
+LOGIN_PASSWORD_SECRET="$ROOT_DIR/.dev/private/secrets/op_ui_login_password"
 
 if [[ -f "$LOGIN_PASSWORD_SECRET" ]]; then
   export OP_UI_LOGIN_PASSWORD

@@ -17,6 +17,8 @@ import {
 } from "../provider-constants.js";
 import { buildAkmEndpoint } from './akm-endpoints.js';
 import { SERVICE_VERSION_KEYS, writeVersions } from "./versions.js";
+import { PLATFORM_VERSION } from "./versioning.js";
+import { dockerManifestExists } from "./addon-availability.js";
 import { ensureHomeDirs } from "./home.js";
 import { acquireInstallLock, releaseInstallLock, type InstallLockHandle } from "./install-lock.js";
 import {
@@ -42,6 +44,18 @@ import { randomHex } from "./crypto.js";
 export { validateSetupSpec } from "./setup-validation.js";
 
 const logger = createLogger("setup");
+
+/**
+ * Map each service version key to the Docker image name it tags. Used to probe
+ * each image independently before pinning it to PLATFORM_VERSION (E1 / Codex
+ * #2). OP_VOICE_VERSION is intentionally absent — voice is never pinned to a
+ * bare semver tag (its tags are GPU-variant suffixed).
+ */
+const SERVICE_IMAGE_FOR_VERSION_KEY: Record<string, string> = {
+  OP_ASSISTANT_VERSION: "assistant",
+  OP_GUARDIAN_VERSION: "guardian",
+  OP_PORTAL_VERSION: "portal",
+};
 
 // ── Types ────────────────────────────────────────────────────────────────
 
@@ -382,19 +396,63 @@ export async function performSetup(
     // clean error rather than leaving a broken half-installed ~/.openpalm/.
     try {
       // Reconcile the per-image version pins on EVERY setup run. A non-empty
-      // wizard value pins every service image to that exact tag deliberately; a
-      // BLANK field means "track the moving default", so write `latest` rather
-      // than silently preserving a stale pin left over from a previous run.
-      // Without this, re-running setup over an OP_HOME whose versions were pinned
-      // to an old release kept deploying a months-old image. Each image now has
-      // its own OP_*_VERSION var (no single OP_IMAGE_TAG cascade); the Advanced
-      // field pins all four to the same tag.
+      // wizard value pins every service image to that exact tag deliberately —
+      // kept verbatim, "latest" included, as an explicit opt-in.
       // state/stack.env is the SOLE pin location (never the legacy
       // — writeVersions() writes there exclusively.
+      //
+      // A BLANK Advanced field means "track this CLI's own default", which is
+      // now PLATFORM_VERSION (E1) rather than the moving `latest` tag — two
+      // installs from the same CLI build should run the SAME recorded image,
+      // not whatever `latest` happens to resolve to on their respective boot
+      // days. Guarded by dockerManifestExists: a host-only ("unit=platform")
+      // release publishes no matching service image tag, so pinning blindly
+      // would strand that install on a 404 on first pull — fall back to
+      // `latest` when the pinned tag isn't actually published. Honor
+      // OP_IMAGE_NAMESPACE rather than hardcoding "openpalm/", matching every
+      // other image-ref computation in the control plane (see
+      // addon-availability.ts's voiceImageRef).
+      //
+      // Voice is EXCLUDED from the pin: its tags are `latest-cpu` /
+      // `vX.Y.Z-cu121` (GPU-variant suffixed), not platform semver, so a bare
+      // PLATFORM_VERSION pin would resolve to a nonexistent
+      // `openpalm/voice:0.13.0`. It keeps tracking `latest` until explicitly
+      // pinned by the operator.
       const akmUpdates: Record<string, string> = {};
-      const requestedTag = imageTag?.trim() ? imageTag.trim() : "latest";
-      for (const key of SERVICE_VERSION_KEYS) {
-        akmUpdates[key] = requestedTag;
+      const trimmedTag = imageTag?.trim();
+      if (trimmedTag) {
+        for (const key of SERVICE_VERSION_KEYS) {
+          akmUpdates[key] = trimmedTag;
+        }
+      } else {
+        const namespace = process.env.OP_IMAGE_NAMESPACE?.trim() || "openpalm";
+        // The pin guard does a `docker manifest inspect` network probe. Skip it
+        // when compose preflight is skipped (tests / offline) — the same "no
+        // docker I/O" signal used elsewhere — and fall back to the moving
+        // `latest` tag rather than doing real registry I/O that can hang.
+        const probePins = !process.env.OP_SKIP_COMPOSE_PREFLIGHT;
+        for (const key of SERVICE_VERSION_KEYS) {
+          // Voice is excluded from the semver pin (see block comment above): its
+          // tags are GPU-variant suffixed, not platform semver.
+          if (key === "OP_VOICE_VERSION") {
+            akmUpdates[key] = "latest";
+            continue;
+          }
+          // Probe EACH service image independently (Codex #2). Service images
+          // are built and published per-image, so a given PLATFORM_VERSION tag
+          // may exist for `assistant` but not yet for `guardian`/`portal` (or a
+          // host-only release publishes none of them). Pinning every service
+          // off a single `assistant` probe would strand whichever images lag
+          // behind on a 404 at first pull. Fall back to `latest` per image.
+          if (!probePins) {
+            akmUpdates[key] = "latest";
+            continue;
+          }
+          const image = SERVICE_IMAGE_FOR_VERSION_KEY[key];
+          const pinnedRef = `${namespace}/${image}:${PLATFORM_VERSION}`;
+          const pinPublished = await dockerManifestExists(pinnedRef);
+          akmUpdates[key] = pinPublished ? PLATFORM_VERSION : "latest";
+        }
       }
       // NOTE: host-akm sharing no longer repoints the container's primary stash
       // (the old OP_AKM_STASH/OP_AKM_CONFIG split-brain). The personal ~/akm is

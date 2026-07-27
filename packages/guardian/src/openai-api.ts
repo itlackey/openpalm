@@ -3,7 +3,7 @@ import { constantTimeEqual } from './crypto.ts';
 import { runTurn } from './openai-api-oc-events.ts';
 import { OcClient } from './openai-api-oc-client.ts';
 import { loadPermissionPolicy, type PermissionPolicy } from './openai-api-permissions.ts';
-import { readOptionalSecretFile } from './openai-api-secret-file.ts';
+import { readOptionalSecretFile, SecretFileError } from './openai-api-secret-file.ts';
 import { streamTurn, openAiChatFramer, openAiLegacyFramer, anthropicFramer, type SseFramer } from './openai-api-stream.ts';
 import { extractChatText } from './openai-api-utils.ts';
 import { asRecord, json } from './http-util.ts';
@@ -89,11 +89,25 @@ const log = createLogger('guardian:openai-api');
 // forward/stream paths don't hit the filesystem on every request (mirrors
 // admin.ts's readAdminToken caching). A changed env path re-reads.
 const secretFileCache = new Map<string, string>();
+// (G7) readOptionalSecretFile still THROWS SecretFileError when the env var is
+// set but the file is present-and-empty (or unreadable) — only "unset" is
+// silently optional. Left uncaught, that throw happens inside the auth-check
+// path (checkOpenAIAuth -> apiKey/secret getters), which runs OUTSIDE
+// handleTurn's try/catch, so it would surface as an opaque, uncaught error
+// instead of the documented fail-closed 401. Collapse every broken-secret
+// case to '' here so it flows into constantTimeEqual(token, '') -> false ->
+// a clean 401, the same as "unset" and "missing file".
 function readCachedSecretFile(envKey: string): string {
   const path = Bun.env[envKey]?.trim() ?? '';
   const cached = secretFileCache.get(path);
   if (cached !== undefined) return cached;
-  const value = readOptionalSecretFile(envKey);
+  let value = '';
+  try {
+    value = readOptionalSecretFile(envKey);
+  } catch (err) {
+    if (!(err instanceof SecretFileError)) throw err;
+    log.warn('secret_file_error', { envKey, reason: err.message });
+  }
   secretFileCache.set(path, value);
   return value;
 }

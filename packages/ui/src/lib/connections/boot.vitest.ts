@@ -118,6 +118,30 @@ describe('connection storage initialization', () => {
 		expect(memory.setMeta).toHaveBeenCalledWith('activeId', null);
 	});
 
+	test('the first storage access reuses the probe getAll() instead of querying twice (U2)', async () => {
+		const persistent = fakeStorage({
+			getAll: vi.fn(async () => [
+				{
+					id: 'seeded',
+					label: 'Seeded connection',
+					baseUrl: 'https://assistant.example',
+					auth: { mode: 'none' } as const
+				}
+			])
+		});
+		const memory = fakeStorage();
+		await installStorageDoubles(persistent, memory);
+		vi.stubGlobal('indexedDB', {});
+
+		const { getConnectionStorageMode } = await import('./boot.js');
+		await expect(getConnectionStorageMode()).resolves.toBe('persistent');
+
+		// pickStorage's availability probe already ran a getAll(); the first
+		// real storage access must reuse that result rather than discarding
+		// it and issuing a second read.
+		expect(persistent.getAll).toHaveBeenCalledTimes(1);
+	});
+
 	test('a write error after persistent selection is surfaced without memory fallback', async () => {
 		const writeError = new Error('transaction aborted');
 		const persistent = fakeStorage({

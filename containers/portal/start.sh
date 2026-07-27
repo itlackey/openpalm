@@ -10,25 +10,17 @@ export HOME="/tmp/openpalm-portal"
 mkdir -p "$HOME"
 export BUN_INSTALL_CACHE_DIR="${BUN_INSTALL_CACHE_DIR:-$HOME/.cache/bun/install}"
 
-# Install adapter packages from the operator-managed package.json (bind-mounted
-# at /opt/openpalm/tools from OP_HOME/data/portal/tools). Versions are pinned
-# exactly, not ranges: semver advance now happens by bumping the pinned version
-# at release time, where it is reviewed and tested, not silently via a
-# boot-time `bun update`. Cold start (node_modules absent) hard-fails if the
-# install fails — the adapter cannot run at all. A warm restart retries the
-# same idempotent install (a no-op when it already matches) and only warns on
-# failure, so a transient registry blip doesn't take down an already-working
-# portal.
-if [ ! -f "/opt/openpalm/tools/package.json" ]; then
-	echo "ERROR: /opt/openpalm/tools/package.json not found — seed OP_HOME/data/portal/tools/package.json" >&2
-	exit 1
-fi
+# E2/S2: adapter packages (@openpalm/discord-portal, @openpalm/slack-portal)
+# are exact-pinned in containers/portal/tools/package.json and baked into
+# /opt/openpalm/tools at image build time. No bind mount overlays that path
+# anymore (image-baked-only model, docs/public-seams-review.md §E2/§S2) — the
+# baked tree IS what runs; there is no boot-time install or update. Keep only
+# a fast presence check so a broken/incomplete image build fails loudly here
+# instead of surfacing as an obscure "module not found" once the adapter
+# entrypoint tries to import it.
 if [ ! -d "/opt/openpalm/tools/node_modules" ]; then
-	bun install --cwd /opt/openpalm/tools --production \
-		|| { echo "ERROR: tool install failed; check logs above" >&2; exit 1; }
-else
-	bun install --cwd /opt/openpalm/tools --production \
-		|| echo "WARN: tool install had errors; check logs above" >&2
+	echo "ERROR: /opt/openpalm/tools/node_modules not found — the image was not built with the adapter tools baked in" >&2
+	exit 1
 fi
 
 # Run the portal entrypoint. varlock-based runtime redaction was retired

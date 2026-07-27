@@ -1,7 +1,9 @@
 # ── Portal Runner ─────────────────────────────────────────────────────────────
-# Thin host container for portal adapters. Adapters are installed from npm at
-# build time via tools/package.json; bun update at boot keeps them current
-# within the declared semver ranges.
+# Thin host container for portal adapters. Adapters are exact-pinned and
+# installed from npm at BUILD time only (containers/portal/tools/package.json)
+# — no bind mount overlays /opt/openpalm/tools and there is no boot-time
+# install or update (image-baked-only model, docs/public-seams-review.md
+# §E2/§S2). Bump the manifest and rebuild the image to change a version.
 # ──────────────────────────────────────────────────────────────────────────────
 
 FROM oven/bun:1.3-slim

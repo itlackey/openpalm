@@ -28,33 +28,39 @@ smoke_copy_skeleton() {
 # Seed the full secrets tree and user env backing file with correct modes.
 # Includes discord_bot_token unconditionally so the two scripts stay identical
 # (host-swap previously omitted it and drifted).
+#
+# Per docs/public-seams-review.md §G1: everything below except auth.json is a
+# DELEGATED secret (consumed only by the guardian/portals, never the assistant
+# agent) and lives under private/secrets/, NOT knowledge/secrets/ (which is
+# bind-mounted wholesale into the assistant at /stash). auth.json stays under
+# knowledge/secrets/ — it is shared with the assistant's own OpenCode process.
 # Usage: smoke_seed_secrets <home> [ui_login_password]
 smoke_seed_secrets() {
   local home="$1"
   local ui_password="${2:-rootless-smoke-password}"
-  mkdir -p "$home/knowledge/secrets" "$home/knowledge/env"
+  mkdir -p "$home/knowledge/secrets" "$home/knowledge/env" "$home/private/secrets"
 
-  printf '%s\n' "$ui_password" > "$home/knowledge/secrets/op_ui_login_password"
+  printf '%s\n' "$ui_password" > "$home/private/secrets/op_ui_login_password"
   printf '%s\n' '{}' > "$home/knowledge/secrets/auth.json"
-  openssl rand -hex 16 > "$home/knowledge/secrets/op_guardian_admin_token"
-  openssl rand -hex 16 > "$home/knowledge/secrets/op_guardian_mcp_token"
-  openssl rand -hex 16 > "$home/knowledge/secrets/portal_chat_secret"
-  openssl rand -hex 16 > "$home/knowledge/secrets/portal_api_secret"
+  openssl rand -hex 16 > "$home/private/secrets/op_guardian_admin_token"
+  openssl rand -hex 16 > "$home/private/secrets/op_guardian_mcp_token"
+  openssl rand -hex 16 > "$home/private/secrets/portal_chat_secret"
+  openssl rand -hex 16 > "$home/private/secrets/portal_api_secret"
   # op_api_key: the OpenAI-compat edge key (S.1b). Seeded on real installs by
   # ensureSecrets(); the guardian container bind-mounts it, so the fixture must
   # provide it too or the container fails to start.
-  openssl rand -hex 16 > "$home/knowledge/secrets/op_api_key"
-  openssl rand -hex 16 > "$home/knowledge/secrets/portal_discord_secret"
-  openssl rand -hex 16 > "$home/knowledge/secrets/portal_slack_secret"
+  openssl rand -hex 16 > "$home/private/secrets/op_api_key"
+  openssl rand -hex 16 > "$home/private/secrets/portal_discord_secret"
+  openssl rand -hex 16 > "$home/private/secrets/portal_slack_secret"
   # op_opencode_password: always materialized by performSetup since #563 — the
   # compose files grant it as a file-backed secret to assistant+guardian, so
   # boot fails if it is absent. Empty file = OPENCODE_AUTH off (smoke posture).
-  : > "$home/knowledge/secrets/op_opencode_password"
-  printf '%s\n' 'discord-smoke-token' > "$home/knowledge/secrets/discord_bot_token"
+  : > "$home/private/secrets/op_opencode_password"
+  printf '%s\n' 'discord-smoke-token' > "$home/private/secrets/discord_bot_token"
 
   touch "$home/knowledge/env/user.env"
-  chmod 700 "$home/knowledge/secrets"
-  chmod 600 "$home/knowledge/secrets/"* "$home/knowledge/env/user.env"
+  chmod 700 "$home/knowledge/secrets" "$home/private/secrets"
+  chmod 600 "$home/knowledge/secrets/"* "$home/private/secrets/"* "$home/knowledge/env/user.env"
 }
 
 # Write the common stack.env block (non-secret compose config) to the isolated

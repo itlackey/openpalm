@@ -32,8 +32,11 @@ name: Release
 #                 electron installers (mac/linux/win) + CLI native binaries
 #                 per-unit tags + bare X.Y.Z summary tag + GitHub release.
 #               Accepts any bump type (patch/minor/major) or an explicit version override.
-#               THE ONLY thing `all` does NOT build is the voice image — voice ships
-#               from publish-voice.yml on its own cadence (GPU cpu/cu121 variants).
+#               Voice still ships primarily from publish-voice.yml on its own cadence
+#               (GPU cpu/cu121 variants) — pass include_voice=true to ALSO stamp a
+#               matching openpalm/voice:<version>-<variant> from this run (opt-in;
+#               voice images are heavy and cu121 is amd64-only). Without that flag,
+#               `all` still does NOT touch voice.
 #               Prefer `all` for a real release; reach for a partial unit only for a
 #               deliberate, isolated hotfix to one slice.
 #
@@ -84,6 +87,11 @@ on:
         default: false
       include_images:
         description: 'Also rebuild Docker images (guardian/platform only; images and all always build images)'
+        required: false
+        type: boolean
+        default: false
+      include_voice:
+        description: 'Also stamp openpalm/voice:<version>-<variant> from this run (opt-in; voice normally ships out-of-band from publish-voice.yml). Ignored on dry_run — publish-voice.yml has no dry-run mode, so this is skipped entirely rather than pushing for real.'
         required: false
         type: boolean
         default: false
@@ -505,6 +513,7 @@ jobs:
             type=raw,value=latest,enable=${{ needs.compute-version.outputs.prerelease == 'false' }}
             type=raw,value=${{ needs.compute-version.outputs.new_version }}
       - name: Build and push
+        id: build
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -519,6 +528,24 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha,scope=openpalm/portal
           cache-to: type=gha,scope=openpalm/portal,mode=max
+      - name: Install cosign
+        if: ${{ !inputs.dry_run }}
+        uses: sigstore/cosign-installer@v4.1.2
+      - name: Sign image (cosign keyless)
+        if: ${{ !inputs.dry_run }}
+        # Sign by immutable digest (not by tag) so the signature binds to the
+        # exact pushed manifest even as `latest` moves. Keyless: uses the
+        # job's GitHub OIDC token (id-token: write, set at workflow level) to
+        # get a short-lived Fulcio cert; the signature + cert are recorded in
+        # the public Rekor transparency log. No secret key involved.
+        run: cosign sign --yes openpalm/portal@${{ steps.build.outputs.digest }}
+      - name: Verify image signature (fail loudly on a broken signer)
+        if: ${{ !inputs.dry_run }}
+        run: |
+          cosign verify \
+            --certificate-identity-regexp "^https://github.com/${{ github.repository }}/.github/workflows/release.yml@refs/.*$" \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+            openpalm/portal@${{ steps.build.outputs.digest }}
 
   docker-guardian:
     name: Docker openpalm/guardian
@@ -565,6 +592,7 @@ jobs:
             type=raw,value=latest,enable=${{ needs.compute-version.outputs.prerelease == 'false' }}
             type=raw,value=${{ needs.compute-version.outputs.new_version }}
       - name: Build and push
+        id: build
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -583,6 +611,24 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha,scope=openpalm/guardian
           cache-to: type=gha,scope=openpalm/guardian,mode=max
+      - name: Install cosign
+        if: ${{ !inputs.dry_run }}
+        uses: sigstore/cosign-installer@v4.1.2
+      - name: Sign image (cosign keyless)
+        if: ${{ !inputs.dry_run }}
+        # Sign by immutable digest (not by tag) so the signature binds to the
+        # exact pushed manifest even as `latest` moves. Keyless: uses the
+        # job's GitHub OIDC token (id-token: write, set at workflow level) to
+        # get a short-lived Fulcio cert; the signature + cert are recorded in
+        # the public Rekor transparency log. No secret key involved.
+        run: cosign sign --yes openpalm/guardian@${{ steps.build.outputs.digest }}
+      - name: Verify image signature (fail loudly on a broken signer)
+        if: ${{ !inputs.dry_run }}
+        run: |
+          cosign verify \
+            --certificate-identity-regexp "^https://github.com/${{ github.repository }}/.github/workflows/release.yml@refs/.*$" \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+            openpalm/guardian@${{ steps.build.outputs.digest }}
 
   # unit=assistant is IMAGE-ONLY: its compute-version anchor is
   # containers/assistant/VERSION, a version scheme entirely independent of the
@@ -690,6 +736,7 @@ jobs:
           docker run --rm --entrypoint bash openpalm-assistant-smoke:${{ github.run_id }} \
             -lc 'codex --version && claude --version && pi --version && copilot --version'
       - name: Build and push
+        id: build
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -706,6 +753,43 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha,scope=openpalm/assistant
           cache-to: type=gha,scope=openpalm/assistant,mode=max
+      - name: Install cosign
+        if: ${{ !inputs.dry_run }}
+        uses: sigstore/cosign-installer@v4.1.2
+      - name: Sign image (cosign keyless)
+        if: ${{ !inputs.dry_run }}
+        # Sign by immutable digest (not by tag) so the signature binds to the
+        # exact pushed manifest even as `latest` moves. Keyless: uses the
+        # job's GitHub OIDC token (id-token: write, set at workflow level) to
+        # get a short-lived Fulcio cert; the signature + cert are recorded in
+        # the public Rekor transparency log. No secret key involved.
+        run: cosign sign --yes openpalm/assistant@${{ steps.build.outputs.digest }}
+      - name: Verify image signature (fail loudly on a broken signer)
+        if: ${{ !inputs.dry_run }}
+        run: |
+          cosign verify \
+            --certificate-identity-regexp "^https://github.com/${{ github.repository }}/.github/workflows/release.yml@refs/.*$" \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+            openpalm/assistant@${{ steps.build.outputs.digest }}
+
+  # ── Voice images (opt-in tie-in to a platform release, E3) ───────────────────
+  # Voice ships out-of-band on its own cadence via publish-voice.yml
+  # (workflow_dispatch). This job is a thin, explicit opt-in so a release run
+  # CAN also stamp a matching openpalm/voice:<version>-<variant> alongside
+  # whatever unit is being released, instead of always drifting on `latest-*`.
+  # Kept deliberately minimal per the review: no runtime compat assertion
+  # between voice and the platform version — just an immutable version tag.
+  # Skipped on dry_run: publish-voice.yml has no dry-run mode of its own (it
+  # always pushes), so honoring dry_run here means skipping the job entirely
+  # rather than letting it push real images during a "validate only" run.
+  docker-voice:
+    name: Docker openpalm/voice (opt-in)
+    needs: [compute-version, bump]
+    if: always() && needs.bump.result == 'success' && inputs.include_voice == true && !inputs.dry_run
+    uses: ./.github/workflows/publish-voice.yml
+    secrets: inherit
+    with:
+      version: ${{ needs.compute-version.outputs.new_version }}
 
   # ── CLI native binaries (platform + all) ─────────────────────────────────────
   cli:
@@ -714,6 +798,13 @@ jobs:
     if: always() && needs.bump.result == 'success' && needs.npm-skeleton.result == 'success' && needs.npm-lib.result == 'success' && needs.npm-cli.result == 'success' && (inputs.unit == 'platform' || inputs.unit == 'all')
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
+    # B4: windows-arm64 is marked experimental below — Bun's ability to
+    # --compile a bun-windows-arm64 target is unverified in this era (the
+    # build script exists, but cross-compiling this target has not been
+    # confirmed to succeed in CI). continue-on-error scoped to just that
+    # matrix leg means a real Bun limitation there fails visibly in the run
+    # summary without blocking the rest of the platform release.
+    continue-on-error: ${{ matrix.experimental == true }}
     strategy:
       fail-fast: false
       matrix:
@@ -733,6 +824,10 @@ jobs:
           - os: windows-latest
             script: build:windows-x64
             artifact: openpalm-cli-windows-x64.exe
+          - os: windows-latest
+            script: build:windows-arm64
+            artifact: openpalm-cli-windows-arm64.exe
+            experimental: true
     steps:
       - uses: actions/checkout@v6
         with:
@@ -832,6 +927,7 @@ jobs:
       - docker-portal
       - docker-guardian
       - docker-assistant
+      - docker-voice
       - cli
       - electron
     if: |

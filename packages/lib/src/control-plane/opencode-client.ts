@@ -20,6 +20,24 @@ export type OpenCodeProvider = {
   [key: string]: unknown;
 };
 
+/**
+ * Shape of `GET /session` rows, per the `@opencode-ai/sdk` generated types
+ * (`Session`) and confirmed against `packages/ui/src/lib/api/chat.ts`
+ * (`listSessions`/`deleteSession`, same REST contract). Only the fields the
+ * DB-maintenance retention logic needs are declared here — the real payload
+ * has many more (title, cost, tokens, ...).
+ */
+export type OpenCodeSession = {
+  id: string;
+  parentID?: string;
+  title?: string;
+  time: {
+    created: number;
+    updated: number;
+    archived?: number;
+  };
+};
+
 export function createOpenCodeClient(opts: OpenCodeClientOpts) {
   const { baseUrl } = opts;
 
@@ -100,6 +118,28 @@ export function createOpenCodeClient(opts: OpenCodeClientOpts) {
     return result.ok;
   }
 
+  /**
+   * List every session OpenCode knows about (`GET /session`, no built-in
+   * pagination or ordering — see `chat.ts:listSessions`). Returns `[]` on any
+   * error so callers (DB-maintenance retention, doctor) degrade to "nothing to
+   * do" rather than throwing.
+   */
+  async function listSessions(): Promise<OpenCodeSession[]> {
+    const result = await proxy('/session');
+    if (!result.ok) return [];
+    return Array.isArray(result.data) ? (result.data as OpenCodeSession[]) : [];
+  }
+
+  /**
+   * Delete one session (and, per OpenCode's documented behaviour, its stored
+   * messages/parts) via the supported `DELETE /session/{id}` endpoint — this
+   * is the ONLY sanctioned way to remove session data; never delete session
+   * rows via raw SQL against a live DB.
+   */
+  async function deleteSession(sessionId: string): Promise<ProxyResult> {
+    return proxy(`/session/${encodeURIComponent(sessionId)}`, { method: 'DELETE' });
+  }
+
   return {
     proxy,
     getProviders,
@@ -109,5 +149,7 @@ export function createOpenCodeClient(opts: OpenCodeClientOpts) {
     completeProviderOAuth,
     getConfig,
     isAvailable,
+    listSessions,
+    deleteSession,
   };
 }
