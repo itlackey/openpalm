@@ -70,8 +70,11 @@ if [ -z "${VERSION}" ]; then
   if [ "${SCRIPT_VERSION}" != "main" ]; then
     VERSION="$(normalize_version "${SCRIPT_VERSION}")"
   else
-    VERSION="$(curl -sI "https://github.com/itlackey/openpalm/releases/latest" | grep -i '^location:' | sed 's|.*/tag/\([^ ]*\).*|\1|' | tr -d '\r')"
-    [ -n "${VERSION}" ] || die "Could not determine latest release version"
+    LATEST_RELEASE_JSON="$(curl -fsSL "https://api.github.com/repos/itlackey/openpalm/releases/latest")" \
+      || die "Could not determine latest release version"
+    RAW_VERSION="$(printf '%s\n' "${LATEST_RELEASE_JSON}" | grep '"tag_name"' | sed -E 's/.*"tag_name": *"([^"]+)".*/\1/')"
+    [ -n "${RAW_VERSION}" ] || die "Could not determine latest release version"
+    VERSION="$(normalize_version "${RAW_VERSION}")"
   fi
 fi
 

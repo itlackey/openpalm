@@ -14,7 +14,6 @@
   },
   "files": [
     "bin",
-    "dist",
     "README.md"
   ],
   "scripts": {
@@ -31,16 +30,14 @@
     "build:windows-arm64": "bun build src/main.ts --compile --target=bun-windows-arm64 --outfile dist/openpalm-cli-windows-arm64.exe"
   },
   "engines": {
-    "bun": ">=1.0.0"
-  },
-  "dependencies": {
-    "@openpalm/lib": ">=0.13.0-beta.13 <1.0.0",
-    "@openpalm/skeleton": "0.13.0-beta.13",
-    "citty": "^0.2.1",
-    "yaml": "^2.8.0"
+    "node": ">=18.0.0"
   },
   "devDependencies": {
+    "@openpalm/lib": ">=0.13.0-beta.13 <1.0.0",
+    "@openpalm/skeleton": "0.13.0-beta.13",
     "@types/node": "^25.9.1",
-    "typescript": "^6.0.3"
+    "citty": "^0.2.1",
+    "typescript": "^6.0.3",
+    "yaml": "^2.8.0"
   }
 }
