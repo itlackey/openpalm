@@ -35,9 +35,24 @@
  * stale subagent/child trees the incident report calls out, without
  * restricting subagent use going forward.
  */
-import { Database } from "bun:sqlite";
+import { createRequire } from "node:module";
 import { join } from "node:path";
+import type { Database } from "bun:sqlite";
 import type { OpenCodeSession } from "./opencode-client.js";
+
+// `bun:sqlite` is a Bun built-in and this module only ever runs under the Bun
+// CLI. But it is re-exported from the @openpalm/lib barrel, which Node/Vitest
+// consumers (ui, electron) import — a static value import of `bun:sqlite` would
+// make the whole barrel unloadable under Node (ERR_MODULE_NOT_FOUND). Keep the
+// type import (erased at runtime) and resolve the constructor lazily, so
+// importing this module under Node never touches `bun:sqlite`; only actually
+// calling one of the DB functions (which happens under Bun) resolves it.
+const requireBun = createRequire(import.meta.url);
+let cachedDatabaseCtor: typeof Database | undefined;
+function loadDatabase(): typeof Database {
+  cachedDatabaseCtor ??= (requireBun("bun:sqlite") as typeof import("bun:sqlite")).Database;
+  return cachedDatabaseCtor;
+}
 
 // ── Session retention (pure — no I/O) ───────────────────────────────────────
 
@@ -333,7 +348,7 @@ function pragmaNumber(db: Database, pragma: string, column: string): number {
 
 /** Read page/freelist accounting from a sqlite file without locking it for writes. */
 export function getDbSizeInfo(dbPath: string): DbSizeInfo {
-  const db = new Database(dbPath, { readonly: true });
+  const db = new (loadDatabase())(dbPath, { readonly: true });
   try {
     const pageCount = pragmaNumber(db, "page_count", "page_count");
     const pageSize = pragmaNumber(db, "page_size", "page_size");
@@ -362,7 +377,7 @@ export type WalCheckpointMode = "PASSIVE" | "FULL" | "RESTART" | "TRUNCATE";
  * as "the DB isn't the problem."
  */
 export function checkpointWal(dbPath: string, mode: WalCheckpointMode = "TRUNCATE"): void {
-  const db = new Database(dbPath);
+  const db = new (loadDatabase())(dbPath);
   try {
     db.exec(`PRAGMA wal_checkpoint(${mode});`);
   } finally {
@@ -384,7 +399,7 @@ export function checkpointWal(dbPath: string, mode: WalCheckpointMode = "TRUNCAT
  * immediately after vacuuming, in the same connection/transaction scope.
  */
 export function vacuumDb(dbPath: string): void {
-  const db = new Database(dbPath);
+  const db = new (loadDatabase())(dbPath);
   try {
     db.exec("VACUUM;");
     db.exec("PRAGMA wal_checkpoint(TRUNCATE);");
