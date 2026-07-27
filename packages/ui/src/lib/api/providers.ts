@@ -1,7 +1,6 @@
 import { request, requireOk, requireJsonBody } from './core.js';
 import type {
   ProviderPageState,
-  AssistantCliToolStatus,
   ProviderActionResult,
 } from '../types/providers.js';
 
@@ -34,13 +33,6 @@ export async function fetchProviders(): Promise<ProviderPageState> {
   return (await res.json()) as ProviderPageState;
 }
 
-/** GET /api/host/providers/assistant-clis — assistant CLI tool statuses. */
-export async function fetchAssistantCliTools(): Promise<AssistantCliToolStatus[]> {
-  const res = await requireOk(await request('GET', '/api/host/providers/assistant-clis'));
-  const body = (await res.json()) as { tools?: AssistantCliToolStatus[] };
-  return body.tools ?? [];
-}
-
 /** POST /api/assistant/model — set the default `model` or `small_model`. */
 export async function saveOpencodeModel(
   target: 'model' | 'small_model',
@@ -60,20 +52,6 @@ export async function disconnectProvider(providerId: string): Promise<void> {
 export async function fetchHostStatus(): Promise<ProviderHostStatus> {
   const res = await requireOk(await request('GET', '/api/host/providers/host-status'));
   return (await res.json()) as ProviderHostStatus;
-}
-
-/** POST /api/host/providers/assistant-clis/{toolId}/use-provider — seed a CLI's creds. */
-export async function useAssistantCliProvider(
-  toolId: AssistantCliToolStatus['id'],
-  providerId: string
-): Promise<void> {
-  await requireOk(
-    await request(
-      'POST',
-      `/api/host/providers/assistant-clis/${encodeURIComponent(toolId)}/use-provider`,
-      { providerId }
-    )
-  );
 }
 
 /** POST /api/host/providers/oauth/start — begin an OAuth flow; body branches on result. */

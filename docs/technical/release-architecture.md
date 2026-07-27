@@ -125,7 +125,7 @@ Builds: `openpalm/portal` Docker image (bakes discord + slack adapters; no npm p
 
 Stamps: `containers/assistant/VERSION`.
 
-Builds: `openpalm/assistant` Docker image + smoke test (`codex --version && claude --version`).
+Builds: `openpalm/assistant` Docker image + smoke test (`opencode --version && akm --version && gh --version && jq --version && sqlite3 --version && uv --version`).
 
 ### `guardian`
 

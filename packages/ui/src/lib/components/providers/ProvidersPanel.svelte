@@ -11,16 +11,14 @@
 	import EmptyState from '@openpalm/ui-kit/components/common/EmptyState.svelte';
 	import {
 		fetchProviders,
-		fetchAssistantCliTools,
 		saveOpencodeModel,
 		disconnectProvider,
 		fetchHostStatus,
-		useAssistantCliProvider,
 		type ProviderHostStatus,
 	} from '$lib/api/providers.js';
 	import { fetchSecretFile } from '$lib/api/secrets.js';
 	import { toMessage } from '$lib/api/errors.js';
-	import type { AssistantCliToolStatus, ProviderPageState, ProviderView } from '$lib/types/providers.js';
+	import type { ProviderPageState, ProviderView } from '$lib/types/providers.js';
 	import AddProviderSheet from './AddProviderSheet.svelte';
 	import ConnectSheet from './ConnectSheet.svelte';
 	import IconServer from '@openpalm/ui-kit/components/icons/IconServer.svelte';
@@ -39,10 +37,6 @@
 	});
 	let loading = $state(true);
 	let actionError = $state<string | null>(null);
-	let activeSubtab = $state<'opencode' | 'codex' | 'claude' | 'copilot' | 'pi'>('opencode');
-	let assistantCliTools = $state<AssistantCliToolStatus[]>([]);
-	let assistantCliLoading = $state(true);
-	let assistantCliWriting = $state<string | null>(null);
 
 	async function load(): Promise<void> {
 		loading = true;
@@ -61,17 +55,6 @@
 	}
 
 	onMount(() => { void load(); });
-
-	async function loadAssistantCliTools(): Promise<void> {
-		assistantCliLoading = true;
-		try {
-			assistantCliTools = await fetchAssistantCliTools();
-		} catch {
-			assistantCliTools = [];
-		} finally {
-			assistantCliLoading = false;
-		}
-	}
 
 	const connected = $derived(pageState.providers.filter((p) => p.connected));
 	const unconnected = $derived(pageState.providers.filter((p) => !p.connected));
@@ -132,7 +115,6 @@
 		connectProvider = null;
 		showCustomForm = false;
 		void load();
-		void loadAssistantCliTools();
 	}
 
 	function requestDisconnect(p: ProviderView) {
@@ -153,7 +135,6 @@
 			await disconnectProvider(p.id);
 			pendingDisconnect = null;
 			void load();
-			void loadAssistantCliTools();
 		} catch (err) {
 			actionError = toMessage(err, 'Request failed.');
 		} finally {
@@ -174,25 +155,12 @@
 	}
 
 	onMount(() => { void loadHostStatus(); });
-	onMount(() => { void loadAssistantCliTools(); });
 
 	function handleImportDone() {
 		showImportSheet = false;
 		void load();
 		void loadHostStatus();
-		void loadAssistantCliTools();
 	}
-
-	const assistantCliTabs = [
-		{ id: 'codex', label: 'Codex' },
-		{ id: 'claude', label: 'Claude Code' },
-		{ id: 'copilot', label: 'Copilot' },
-		{ id: 'pi', label: 'Pi' },
-	] as const;
-
-	const activeAssistantCliTool = $derived(
-		assistantCliTools.find((tool) => tool.id === activeSubtab)
-	);
 
 	// ── OpenAI-compatible edge API key (op_api_key) ─────────────────────────
 	// The credential end users paste into OpenAI-compatible clients to reach the
@@ -230,20 +198,6 @@
 			apiKeyError = 'Copy failed — select the value and copy manually.';
 		}
 	}
-
-	async function useExistingProvider(toolId: AssistantCliToolStatus['id'], providerId: string): Promise<void> {
-		if (assistantCliWriting) return;
-		assistantCliWriting = `${toolId}:${providerId}`;
-		actionError = null;
-		try {
-			await useAssistantCliProvider(toolId, providerId);
-			await loadAssistantCliTools();
-		} catch (err) {
-			actionError = toMessage(err, 'Request failed.');
-		} finally {
-			assistantCliWriting = null;
-		}
-	}
 </script>
 
 <div
@@ -276,7 +230,7 @@
 			>
 				Add provider
 			</button>
-			<button class="btn btn-secondary btn-sm" onclick={() => { void load(); void loadAssistantCliTools(); }} disabled={loading || assistantCliLoading}>
+			<button class="btn btn-secondary btn-sm" onclick={() => { void load(); }} disabled={loading}>
 				{#if loading}<Spinner />{/if}
 				Refresh
 			</button>
@@ -316,28 +270,6 @@
 			{#if apiKeyError}<p class="api-edge-error">{apiKeyError}</p>{/if}
 		</section>
 
-		<div class="connections-subtabs">
-			<button
-				type="button"
-				class:active={activeSubtab === 'opencode'}
-				aria-pressed={activeSubtab === 'opencode'}
-				onclick={() => { activeSubtab = 'opencode'; }}
-			>
-				OpenCode
-			</button>
-			{#each assistantCliTabs as tab (tab.id)}
-				<button
-					type="button"
-					class:active={activeSubtab === tab.id}
-					aria-pressed={activeSubtab === tab.id}
-					onclick={() => { activeSubtab = tab.id; }}
-				>
-					{tab.label}
-				</button>
-			{/each}
-		</div>
-
-		{#if activeSubtab === 'opencode'}
 		{#if !pageState.available && !loading}
 			<EmptyState>
 				{#snippet icon()}
@@ -424,54 +356,6 @@
 						</button>
 					</div>
 				{/each}
-			</div>
-		{/if}
-		{:else if assistantCliLoading}
-			<div class="loading-state cli-loading-state">
-				<Spinner />
-				<span>Loading assistant CLI status…</span>
-			</div>
-		{:else if activeAssistantCliTool}
-			<div class="assistant-cli-panel">
-				<div class="assistant-cli-header">
-					<div>
-						<h3>{activeAssistantCliTool.name}</h3>
-						<p>
-							{activeAssistantCliTool.configured ? 'Detected existing config under the assistant home bind mount.' : 'No config file detected under the assistant home bind mount yet.'}
-						</p>
-					</div>
-					<span class:configured={activeAssistantCliTool.configured} class="assistant-cli-status">
-						{activeAssistantCliTool.configured ? 'Configured' : 'Not configured'}
-					</span>
-				</div>
-
-				<div class="assistant-cli-paths">
-					{#each activeAssistantCliTool.configPaths as path (path)}
-						<code>{path}</code>
-					{/each}
-				</div>
-
-				{#if activeAssistantCliTool.availableProviderMappings.length > 0}
-					<p class="assistant-cli-copy">
-						Use an existing OpenCode provider key to seed this CLI's local credential file.
-					</p>
-					<div class="assistant-cli-actions">
-						{#each activeAssistantCliTool.availableProviderMappings as mapping (mapping.providerId)}
-							<button
-								type="button"
-								class="btn btn-secondary btn-sm"
-								disabled={assistantCliWriting !== null}
-								onclick={() => void useExistingProvider(activeAssistantCliTool.id, mapping.providerId)}
-							>
-								{assistantCliWriting === `${activeAssistantCliTool.id}:${mapping.providerId}` ? 'Writing…' : `Use existing ${mapping.label}`}
-							</button>
-						{/each}
-					</div>
-				{:else}
-					<p class="assistant-cli-copy assistant-cli-copy-muted">
-						No direct OpenCode-provider file mapping is available for this tool yet.
-					</p>
-				{/if}
 			</div>
 		{/if}
 	</div>
@@ -592,101 +476,6 @@
 		font-family: var(--s-font-mono);
 		font-size: var(--s-type-mark);
 		color: var(--s-seal);
-	}
-
-	.connections-subtabs {
-		display: flex;
-		flex-wrap: wrap;
-		gap: var(--s-sp-2);
-		padding: var(--s-sp-3) var(--s-sp-5);
-		border-bottom: var(--s-hair) solid var(--s-line);
-	}
-
-	.connections-subtabs button {
-		appearance: none;
-		border: var(--s-hair) solid var(--s-line);
-		background: none;
-		color: var(--s-ink-3);
-		border-radius: 2px;
-		min-height: 44px;
-		padding: 0.3em 0.9em;
-		font-family: var(--s-font-mono);
-		font-size: var(--s-type-mark);
-		letter-spacing: var(--s-track-label);
-		text-transform: uppercase;
-		cursor: pointer;
-		white-space: nowrap;
-	}
-
-	.connections-subtabs button.active {
-		border-color: var(--s-seal);
-		color: var(--s-seal);
-	}
-
-	.cli-loading-state {
-		padding: var(--s-sp-5);
-	}
-
-	.assistant-cli-panel {
-		padding: var(--s-sp-5);
-		display: grid;
-		gap: var(--s-sp-4);
-	}
-
-	.assistant-cli-header {
-		display: flex;
-		justify-content: space-between;
-		align-items: flex-start;
-		gap: var(--s-sp-3);
-	}
-
-	.assistant-cli-header h3,
-	.assistant-cli-header p,
-	.assistant-cli-copy {
-		margin: 0;
-	}
-
-	.assistant-cli-status {
-		border-radius: 2px;
-		padding: 0.2em 0.6em;
-		border: var(--s-hair) solid var(--s-line);
-		background: none;
-		color: var(--s-ink-3);
-		font-family: var(--s-font-mono);
-		font-size: var(--s-type-mark);
-		letter-spacing: var(--s-track-label);
-		text-transform: uppercase;
-	}
-
-	.assistant-cli-status.configured {
-		color: var(--s-moss);
-		border-color: var(--s-moss);
-	}
-
-	.assistant-cli-paths {
-		display: grid;
-		gap: var(--s-sp-2);
-	}
-
-	.assistant-cli-paths code {
-		display: block;
-		padding: var(--s-sp-2) var(--s-sp-3);
-		border-radius: 2px;
-		background: var(--s-paper-deep);
-		font-family: var(--s-font-mono);
-		font-size: var(--s-type-mark);
-		color: var(--s-ink-2);
-		overflow-wrap: anywhere;
-	}
-
-	.assistant-cli-actions {
-		display: flex;
-		flex-wrap: wrap;
-		gap: var(--s-sp-2);
-	}
-
-	.assistant-cli-copy-muted {
-		color: var(--s-ink-3);
 	}
 
 	.providers-container {
@@ -818,8 +607,7 @@
 	}
 
 	@media (max-width: 720px) {
-		.model-defaults,
-		.assistant-cli-header {
+		.model-defaults {
 			grid-template-columns: 1fr;
 			display: grid;
 		}

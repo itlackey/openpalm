@@ -1,0 +1,35 @@
+{
+  "codex": {
+    "label": "Codex CLI",
+    "kind": "npm",
+    "package": "@openai/codex",
+    "version": "0.142.5",
+    "bin": "codex"
+  },
+  "claude": {
+    "label": "Claude Code",
+    "kind": "npm",
+    "package": "@anthropic-ai/claude-code",
+    "version": "2.1.220",
+    "bin": "claude"
+  },
+  "copilot": {
+    "label": "GitHub Copilot CLI",
+    "kind": "npm",
+    "package": "@github/copilot",
+    "version": "1.0.75",
+    "bin": "copilot"
+  },
+  "pi": {
+    "label": "Pi Coding Agent",
+    "kind": "npm",
+    "package": "@mariozechner/pi-coding-agent",
+    "version": "0.73.1",
+    "bin": "pi"
+  },
+  "gcloud": {
+    "label": "Google Cloud CLI",
+    "kind": "gcloud-sdk",
+    "bin": "gcloud"
+  }
+}

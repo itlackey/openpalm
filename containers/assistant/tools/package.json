@@ -2,11 +2,7 @@
   "name": "@openpalm/assistant-tools",
   "private": true,
   "dependencies": {
-    "opencode-ai":                "1.17.13",
-    "akm-cli":                   "0.8.14",
-    "@anthropic-ai/claude-code": "2.1.220",
-    "@openai/codex":             "0.142.5",
-    "@github/copilot":           "1.0.75",
-    "@mariozechner/pi-coding-agent": "0.73.1"
+    "opencode-ai": "1.17.13",
+    "akm-cli":     "0.8.14"
   }
 }

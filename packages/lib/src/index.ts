@@ -124,16 +124,6 @@ export {
   resolveRequestedImageTag,
   RELEASE_TAG_REGEX,
 } from "./control-plane/env.js";
-export type {
-  AssistantCliToolId,
-  AssistantCliProviderMapping,
-  AssistantCliToolStatus,
-} from './control-plane/assistant-cli-tools.js';
-export {
-  listAssistantCliTools,
-  useExistingProviderForAssistantCli,
-} from './control-plane/assistant-cli-tools.js';
-
 // ── OpenCode Client ─────────────────────────────────────────────────────
 export { createOpenCodeClient } from "./control-plane/opencode-client.js";
 export type { ProxyResult, OpenCodeProvider, OpenCodeSession } from "./control-plane/opencode-client.js";

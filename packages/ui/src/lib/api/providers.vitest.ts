@@ -1,11 +1,9 @@
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import {
   fetchProviders,
-  fetchAssistantCliTools,
   saveOpencodeModel,
   disconnectProvider,
   fetchHostStatus,
-  useAssistantCliProvider,
   startProviderOauth,
   oauthCallback,
   submitProviderApiKey,
@@ -53,13 +51,6 @@ describe('providers client — request shaping', () => {
     expect(state.available).toBe(true);
   });
 
-  test('fetchAssistantCliTools returns tools array (defaulting to [])', async () => {
-    const calls = mockFetch(200, {});
-    expect(await fetchAssistantCliTools()).toEqual([]);
-    expect(calls[0].url).toBe('/api/host/providers/assistant-clis');
-    expect(calls[0].init?.method).toBe('GET');
-  });
-
   test('saveOpencodeModel POSTs the target field, coercing empty to null', async () => {
     const calls = mockFetch(200, { ok: true });
     await saveOpencodeModel('model', 'openai/gpt-4o');
@@ -85,14 +76,6 @@ describe('providers client — request shaping', () => {
     const status = await fetchHostStatus();
     expect(calls[0].url).toBe('/api/host/providers/host-status');
     expect(status.providerCount).toBe(3);
-  });
-
-  test('useAssistantCliProvider POSTs providerId to the encoded tool endpoint', async () => {
-    const calls = mockFetch(200, { ok: true });
-    await useAssistantCliProvider('codex', 'openai');
-    expect(calls[0].url).toBe('/api/host/providers/assistant-clis/codex/use-provider');
-    expect(calls[0].init?.method).toBe('POST');
-    expect(JSON.parse(calls[0].init?.body as string)).toEqual({ providerId: 'openai' });
   });
 
   test('startProviderOauth POSTs providerId + stringified methodIndex, returns body', async () => {

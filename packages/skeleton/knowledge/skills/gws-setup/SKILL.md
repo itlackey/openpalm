@@ -74,7 +74,10 @@ Ask the user which installation method they prefer:
 
 After install, verify: `gws --version`
 
-The OpenPalm assistant Docker image already includes `gws` and `gcloud`. No installation needed inside the container.
+The OpenPalm assistant Docker image already includes `gws`. `gcloud` (needed
+only by the Interactive Setup method below) is installed on first use via
+the `install-optional-tool` skill — `scripts/gws-setup.sh` does this
+automatically when you pick that method.
 
 ## Step 2: Choose an Authentication Method
 

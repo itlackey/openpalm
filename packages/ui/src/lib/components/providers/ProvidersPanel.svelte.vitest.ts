@@ -77,32 +77,13 @@ describe('ProvidersPanel — assistant available', () => {
     ).not.toBeInTheDocument();
   });
 
-  test('exposes the selected state of connection subtabs', async () => {
+  test('does not render the retired assistant-CLI subtabs (IMG-1: CLIs removed)', async () => {
     mockFetch(availableResponse);
     render(ProvidersPanel);
 
-    const openCode = page.getByRole('button', { name: 'OpenCode' });
-    const codex = page.getByRole('button', { name: 'Codex' });
-    await expect.element(openCode).toHaveAttribute('aria-pressed', 'true');
-    await expect.element(codex).toHaveAttribute('aria-pressed', 'false');
-    await codex.click();
-    await expect.element(codex).toHaveAttribute('aria-pressed', 'true');
-    await expect.element(openCode).toHaveAttribute('aria-pressed', 'false');
-  });
-
-  test('keeps every connection subtab visible and touch-sized at small widths', async () => {
-    mockFetch(availableResponse);
-    const { container } = render(ProvidersPanel);
-    const subtabs = container.querySelector<HTMLElement>('.connections-subtabs');
-    expect(subtabs).not.toBeNull();
-    if (!subtabs) return;
-
-    subtabs.style.width = '320px';
-    const buttons = [...subtabs.querySelectorAll<HTMLButtonElement>('button')];
-    expect(buttons).toHaveLength(5);
-    expect(subtabs.scrollWidth).toBeLessThanOrEqual(subtabs.clientWidth);
-    for (const button of buttons) {
-      expect(button.getBoundingClientRect().height).toBeGreaterThanOrEqual(44);
+    await expect.element(page.getByText('OpenAI', { exact: true }), { timeout: 5000 }).toBeVisible();
+    for (const name of ['Codex', 'Claude Code', 'Copilot', 'Pi']) {
+      await expect.element(page.getByRole('button', { name, exact: true })).not.toBeInTheDocument();
     }
   });
 

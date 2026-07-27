@@ -3,12 +3,21 @@
 # and tools. Config, plugins, and persona are mounted at runtime — not baked
 # into the image.
 #
-# Tool packages (opencode-ai, akm-cli, claude-code, codex, copilot, pi) are
-# exact-pinned in containers/assistant/tools/package.json and baked into the
-# image at /opt/openpalm/tools by the toolbuild stage below. There is no
-# runtime install or update — no bind mount overlays this path anymore (E2/S2:
+# Tool packages (opencode-ai, akm-cli) are exact-pinned in
+# containers/assistant/tools/package.json and baked into the image at
+# /opt/openpalm/tools by the toolbuild stage below. There is no runtime
+# install or update — no bind mount overlays this path anymore (E2/S2:
 # docs/public-seams-review.md). Bumping a tool version means editing the
 # manifest and cutting a new image.
+#
+# The four AI coding CLIs (claude-code, codex, copilot, pi) and the Google
+# Cloud SDK (gcloud) used to be baked here too (~1.4 GB combined). Nothing
+# shipped in this image invokes them — OpenCode is the runtime the assistant
+# actually drives — so they were dropped (IMG-1/IMG-3, 0.13.0). Either is
+# available on request via the `install-optional-tool` akm skill
+# (packages/skeleton/knowledge/skills/install-optional-tool/), which installs
+# into the `assistant-persistent` volume at /opt/persistent so the install
+# survives container recreation.
 # ──────────────────────────────────────────────────────────────────────────────
 
 # ── embedder model bundle ──
@@ -29,23 +38,51 @@ ARG ASSISTANT_MODELS_IMAGE=openpalm/assistant-models:v1
 FROM --platform=$BUILDPLATFORM ${ASSISTANT_MODELS_IMAGE} AS modelfetch
 
 # ── Tool builder stage ────────────────────────────────────────────────────────
-# Install the agent CLIs from the single exact-pinned manifest (edit + rebuild
-# the image to change a version — no runtime override, E2/S2), then
-# PARTITION node_modules into balanced groups. A single `npm install` produces
-# one ~3.5GB layer (~1.75GB compressed) that Docker Hub's CDN rejects on push
-# (HTTP 400 on the oversized blob). The final stage COPYs each group as its own
-# layer (each < ~1GB) so every blob is comfortably pushable. NOT --platform
-# pinned: native deps (onnxruntime, opencode/codex/copilot binaries) must match
-# the TARGET arch.
+# Install the tool packages from the single exact-pinned manifest (edit +
+# rebuild the image to change a version — no runtime override, E2/S2), prune
+# the content IMG-1/onnxruntime pruning below removed, then PARTITION the
+# remaining node_modules into balanced groups. A single `npm install` used to
+# produce one ~3.5GB layer (~1.75GB compressed) that Docker Hub's CDN rejects
+# on push (HTTP 400 on the oversized blob) — the split keeps every COPY layer
+# comfortably under that ceiling even though the tree is far smaller now.
+# NOT --platform pinned: native deps (onnxruntime, the opencode binary) must
+# match the TARGET arch.
 FROM node:22-trixie-slim AS toolbuild
 WORKDIR /opt/openpalm/tools
 COPY containers/assistant/tools/package.json ./package.json
-RUN npm install --omit=dev --no-fund --no-audit \
-    && find node_modules/@anthropic-ai/claude-code -name "install.cjs" -exec node {} \; 2>/dev/null || true \
+# ONNXRUNTIME_NODE_INSTALL=skip stops onnxruntime-node's postinstall from
+# downloading the CUDA/TensorRT execution provider (~301 MB, fetched from
+# NuGet on every install) — nothing in this stack maps a GPU device into any
+# container, so that provider can never run. The base linux/x64 (or
+# linux/arm64) binding still ships pre-bundled in the npm package itself, so
+# this does not touch the CPU codepath akm's local embedder actually uses.
+#
+# opencode-ai ships one npm package per platform/libc/microarch combination as
+# optionalDependencies; `npm install` filters by os/cpu but not by the
+# "baseline" (pre-AVX2) vs. modern split, and this image's glibc base can
+# never run the musl builds at all. Prune everything except the modern glibc
+# build for the arch being built (docs/system-requirements.md documents the
+# resulting AVX2-era CPU floor).
+#
+# @huggingface/transformers (akm's local embedder) depends on both
+# onnxruntime-node (the Node/native backend it actually uses here) and
+# onnxruntime-web (browser/WASM — unreachable in this Node runtime, ~130 MB).
+# onnxruntime-node itself pre-bundles win32/darwin binaries and the
+# non-target linux arch, none of which this container can ever load.
+RUN ONNXRUNTIME_NODE_INSTALL=skip npm install --omit=dev --no-fund --no-audit \
     && find node_modules ! -perm -o+r -exec chmod a+rX {} + \
+    && rm -rf node_modules/opencode-linux-x64-musl \
+              node_modules/opencode-linux-x64-baseline \
+              node_modules/opencode-linux-x64-baseline-musl \
+              node_modules/opencode-linux-arm64-musl \
+    && OTHER_ARCH="$([ "$(dpkg --print-architecture)" = "arm64" ] && echo x64 || echo arm64)" \
+    && rm -rf node_modules/onnxruntime-node/bin/napi-v6/win32 \
+              node_modules/onnxruntime-node/bin/napi-v6/darwin \
+              "node_modules/onnxruntime-node/bin/napi-v6/linux/${OTHER_ARCH}" \
+              node_modules/onnxruntime-web \
     && mkdir -p /split/g1 /split/g2 \
-    && mv node_modules/@github node_modules/@huggingface /split/g1/ \
-    && mv node_modules/onnxruntime-node node_modules/@openai node_modules/@anthropic-ai /split/g2/
+    && mv node_modules/@huggingface /split/g1/ \
+    && mv node_modules/onnxruntime-node /split/g2/
 
 FROM node:22-trixie-slim
 
@@ -58,17 +95,19 @@ ARG PLATFORM_VERSION
 ENV BUN_VERSION=${BUN_VERSION} \
     PLATFORM_VERSION=${PLATFORM_VERSION}
 
-# Combined OS packages: base tools (tini) + assistant-specific
-# (busybox crond/crontab tooling, python3, jq, gh) + DB clients (sqlite3,
-# postgresql-client) so agents can query SQLite and Postgres directly.
+# Combined OS packages: base tools (tini) + assistant-specific (busybox
+# crond/crontab tooling, python3, jq, gh) + sqlite3 so agents can query
+# SQLite directly. The Postgres client package and the unused GLib runtime
+# library were dropped (IMG-5, 0.13.0): nothing links the latter, and
+# nothing in this image talks to Postgres — its client is one
+# `apt-get install` away on-session for anyone who needs it.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         tini curl git ca-certificates bash unzip \
-        libglib2.0-0 \
         libnss-wrapper \
         busybox \
         python3 jq \
-        sqlite3 postgresql-client \
+        sqlite3 \
     && curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
         -o /usr/share/keyrings/githubcli-archive-keyring.gpg \
     && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
@@ -137,19 +176,17 @@ RUN uv venv /opt/assistant-tools \
     && uv pip install --python /opt/assistant-tools/bin/python apprise
 ENV PATH="/opt/assistant-tools/bin:$PATH"
 ENV APPRISE_NOTIFY_CONFIG="/stash/env/apprise.conf"
-ENV CLOUDSDK_CONFIG="/etc/openpalm/gcloud"
 # GOOGLE_APPLICATION_CREDENTIALS is NOT set here — it must be supplied at
 # runtime via stack.env or user.env if Google Cloud tools are needed.
 # Baking a path here causes OpenCode to detect google-vertex-anthropic as
 # connected on every install, even when the credentials file does not exist.
 
-# gcloud CLI — required by the `gws-setup` skill for OAuth credential bootstrap.
-RUN curl -fsSL https://dl.google.com/dl/cloudsdk/channels/rapid/downloads/google-cloud-cli-linux-$(uname -m | sed 's/aarch64/arm/' | sed 's/x86_64/x86_64/').tar.gz \
-      -o /tmp/gcloud.tar.gz \
-    && tar xzf /tmp/gcloud.tar.gz -C /opt/ \
-    && /opt/google-cloud-sdk/install.sh --quiet --usage-reporting false --path-update false \
-    && rm /tmp/gcloud.tar.gz
-ENV PATH="/opt/google-cloud-sdk/bin:$PATH"
+# gcloud CLI is NOT baked here (IMG-3, 0.13.0: ~550 MB, and its only in-image
+# consumer was the `gws-setup` skill's OAuth bootstrap). The
+# `install-optional-tool` akm skill installs it on request into
+# /opt/persistent, which is already on PATH below; gcloud then defaults its
+# own config dir to $HOME/.config/gcloud, which persists via the assistant
+# home bind mount without needing a CLOUDSDK_CONFIG override here.
 
 # Google Workspace CLI — used by the `gws-setup` skill (gws-verify.sh + drive operations).
 ARG GWS_VERSION=0.22.3
@@ -258,9 +295,10 @@ ENV PATH="/opt/persistent/bin:/opt/openpalm/tools/node_modules/.bin:/home/openco
 # A login shell (`bash -l`, e.g. the release smoke test and interactive ssh)
 # re-runs /etc/profile, which on Debian overwrites PATH with the system default
 # and drops the managed tool dirs from the ENV PATH above. Re-prepend them via
-# profile.d so agent CLIs (opencode/akm/claude/codex/copilot/pi) resolve in
-# login shells too.
-RUN printf 'export PATH="/opt/persistent/bin:/opt/openpalm/tools/node_modules/.bin:/home/opencode/.local/bin:/home/opencode/.bun/bin:/opt/assistant-tools/bin:/opt/google-cloud-sdk/bin:$PATH"\n' \
+# profile.d so opencode/akm and any on-demand-installed tools
+# (install-optional-tool skill, /opt/persistent/bin) resolve in login shells
+# too.
+RUN printf 'export PATH="/opt/persistent/bin:/opt/openpalm/tools/node_modules/.bin:/home/opencode/.local/bin:/home/opencode/.bun/bin:/opt/assistant-tools/bin:$PATH"\n' \
       > /etc/profile.d/openpalm-tools.sh
 
 # The MANAGED OpenCode config (opencode.jsonc, instructions/) lives in

@@ -54,6 +54,13 @@ COPY packages/skeleton /opt/openpalm/local-src/skeleton
 # bind mount overlays this path anymore (image-baked-only model) — bump this
 # manifest and rebuild the image to change a version, not by editing anything
 # under OP_HOME. See docs/public-seams-review.md §E2/§S2.
+#
+# `bun install` (below) does not apply npm's os/cpu/libc optionalDependencies
+# filtering the way `npm install` does, so all four opencode-ai
+# linux-x64/arm64 platform variants (modern + baseline glibc, modern +
+# baseline musl) land here even though only one can ever run on this glibc
+# base for this arch. Pruned post-install (IMG-4, 0.13.0; ~482 MB) —
+# docs/system-requirements.md documents the resulting AVX2-era CPU floor.
 COPY containers/guardian/tools/package.json /opt/openpalm/tools/package.json
 # Make the app trees world-writable so a container entered with
 # `--user ${OP_UID}:${OP_GID}` can populate them on first boot. The container
@@ -79,6 +86,10 @@ RUN test -n "$GUARDIAN_VERSION" \
     && (cd /opt/openpalm/guardian-pkg && bun add "$guardian_spec" --production) \
     && (cd /opt/openpalm/skeleton && bun add "$skeleton_spec" --production) \
     && bun install --cwd /opt/openpalm/tools --production \
+    && rm -rf /opt/openpalm/tools/node_modules/opencode-linux-x64-musl \
+              /opt/openpalm/tools/node_modules/opencode-linux-x64-baseline \
+              /opt/openpalm/tools/node_modules/opencode-linux-x64-baseline-musl \
+              /opt/openpalm/tools/node_modules/opencode-linux-arm64-musl \
     && rm -rf /opt/openpalm/local-src /opt/openpalm/local-artifacts \
     && chmod -R a+rwX /opt/openpalm /opt/openpalm/guardian /opt/openpalm/guardian-pkg /opt/openpalm/skeleton /opt/openpalm/tools
 

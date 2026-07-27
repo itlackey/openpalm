@@ -439,9 +439,10 @@ jobs:
       exact-version: true
       dry-run: ${{ inputs.dry_run }}
 
-  # Portal adapters: the portal image bun-installs these from npm at runtime
-  # (data/portal/tools/package.json + bun update), so a published patch reaches
-  # running portals without an image rebuild. Published as `src` only (no build).
+  # Portal adapters: baked into the portal image at build time from
+  # containers/portal/tools/package.json (image-baked-only, E2/§S2) — a
+  # published patch reaches running portals via an image rebuild + stack
+  # update, not a runtime install. Published as `src` only (no build).
   npm-discord-portal:
     name: npm @openpalm/discord-portal
     needs: [compute-version, bump, npm-portal-sdk]
@@ -734,7 +735,7 @@ jobs:
             --build-arg PLATFORM_VERSION=${{ !inputs.dry_run && steps.platform_version.outputs.platform_version || '' }} \
             -t openpalm-assistant-smoke:${{ github.run_id }} .
           docker run --rm --entrypoint bash openpalm-assistant-smoke:${{ github.run_id }} \
-            -lc 'codex --version && claude --version && pi --version && copilot --version'
+            -lc 'opencode --version && akm --version && gh --version && jq --version && sqlite3 --version && uv --version'
       - name: Build and push
         id: build
         uses: docker/build-push-action@v6

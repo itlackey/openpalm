@@ -14,6 +14,17 @@ OpenPalm stack.
 | `git` | any | Needed if you clone the repo to copy `packages/skeleton/` |
 | `curl` | any | Only needed for optional installer scripts |
 
+### CPU architecture (`x86_64` hosts)
+
+The `assistant` and `guardian` images bake only the modern (AVX2-era, roughly
+2013+) glibc build of the OpenCode binary — the pre-AVX2 "baseline" and musl
+variants are pruned from the image to save space, since this stack's base
+images are glibc and target current-generation hardware. This only matters
+for `x86_64`; `arm64` hosts (Apple Silicon, Raspberry Pi 4+, AWS Graviton)
+are unaffected. If you're deploying to unusually old `x86_64` server
+hardware, verify AVX2 support with `grep avx2 /proc/cpuinfo` on the Docker
+host before installing.
+
 ### Supported operating systems
 
 | OS | Runtime | Notes |
