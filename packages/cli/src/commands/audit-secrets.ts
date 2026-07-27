@@ -3,8 +3,10 @@ import { existsSync, readFileSync } from 'node:fs';
 import {
   auditComposeSecrets,
   auditFileBasedSecrets,
+  auditSecretFilesystem,
   createState,
   discoverStackOverlays,
+  privateSecretsDir,
   secretsDir,
   stackEnvFile,
   type SecretAuditIssue,
@@ -34,14 +36,22 @@ export default defineCommand({
     const issues: SecretAuditIssue[] = [];
     const stackEnvPath = stackEnvFile(state.homeDir);
 
-    // Pure path resolvers only: resolveSecretsDir() mkdirs the directory and
-    // chmods it and its files to the exact modes auditSecretFilesystem checks
-    // for, so auditing through it would repair the violations instead of
-    // reporting them.
+    // Pure path resolvers only: resolveSecretsDir()/resolvePrivateSecretsDir()
+    // mkdir the directory and chmod it and its files to the exact modes
+    // auditSecretFilesystem checks for, so auditing through them would repair
+    // the violations instead of reporting them.
     issues.push(...auditFileBasedSecrets({
       stackEnvPath: existsSync(stackEnvPath) ? stackEnvPath : undefined,
       secretsDir: secretsDir(state.homeDir),
     }).issues);
+
+    // G1: delegated secrets (guardian/portal-only) live under private/secrets/,
+    // not knowledge/secrets/ — audit that tree too so a permission regression
+    // there (e.g. a world-readable op_guardian_admin_token) is not silently
+    // missed just because it moved out of the stash.
+    if (existsSync(privateSecretsDir(state.homeDir))) {
+      issues.push(...auditSecretFilesystem(privateSecretsDir(state.homeDir)));
+    }
 
     for (const file of discoverStackOverlays(state.homeDir)) {
       issues.push(...auditComposeSecrets(readFileSync(file, 'utf-8')).map((issue) => ({

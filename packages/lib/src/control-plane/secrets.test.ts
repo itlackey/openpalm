@@ -14,7 +14,7 @@ import {
   readStackEnv,
   readStackSecretEnv,
 } from './secrets.js';
-import { readSecret } from './secrets-files.js';
+import { readSecret, writeSecret } from './secrets-files.js';
 
 // Each test gets a fresh temp dir shaped like an OP_HOME config/stack directory.
 // The secrets functions take the OP_HOME root directly (knowledge/secrets is derived from it).
@@ -137,7 +137,10 @@ describe('readStackEnv excludes secret-like keys', () => {
 
 describe('readStackSecretEnv reads from secret files', () => {
   it('reads back a written secret', () => {
-    writeFileSync(join(home, 'knowledge', 'secrets', 'discord_bot_token'), 'tok-abc\n');
+    // discord_bot_token is a delegated secret (§G1) — routed to private/secrets
+    // by writeSecret's name-based resolution, not the raw knowledge/secrets path.
+    // readStackSecretEnv must still find it via listSecretNames scanning both dirs.
+    writeSecret(home, 'discord_bot_token', 'tok-abc\n');
 
     const env = readStackSecretEnv(home);
     expect(env.DISCORD_BOT_TOKEN).toBe('tok-abc');

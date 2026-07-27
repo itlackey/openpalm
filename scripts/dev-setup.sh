@@ -236,16 +236,21 @@ OP_SETUP_COMPLETE=true
 EOF
 	fi
 
-	secrets_dir="$STASH_DIR/secrets"
-	mkdir -p "$secrets_dir"
-	chmod 700 "$secrets_dir"
-	if [[ ! -f "$secrets_dir/op_ui_login_password" || $force -eq 1 ]]; then
-		printf '%s\n' 'dev-admin-token' >"$secrets_dir/op_ui_login_password"
-		chmod 600 "$secrets_dir/op_ui_login_password"
+	# G1: op_ui_login_password / op_opencode_password are DELEGATED secrets
+	# (consumed only by the guardian/portals and this service's own server
+	# process, never by the assistant agent) — seeded under private/secrets/,
+	# NOT knowledge/secrets/ (bind-mounted wholesale into the assistant at
+	# /stash). See docs/public-seams-review.md §G1.
+	private_secrets_dir="$DEV_ROOT/private/secrets"
+	mkdir -p "$private_secrets_dir"
+	chmod 700 "$private_secrets_dir"
+	if [[ ! -f "$private_secrets_dir/op_ui_login_password" || $force -eq 1 ]]; then
+		printf '%s\n' 'dev-admin-token' >"$private_secrets_dir/op_ui_login_password"
+		chmod 600 "$private_secrets_dir/op_ui_login_password"
 	fi
-	if [[ ! -f "$secrets_dir/op_opencode_password" || $force -eq 1 ]]; then
-		: >"$secrets_dir/op_opencode_password"
-		chmod 600 "$secrets_dir/op_opencode_password"
+	if [[ ! -f "$private_secrets_dir/op_opencode_password" || $force -eq 1 ]]; then
+		: >"$private_secrets_dir/op_opencode_password"
+		chmod 600 "$private_secrets_dir/op_opencode_password"
 	fi
 fi
 
@@ -299,13 +304,15 @@ if [[ ${#enabled_addons[@]} -gt 0 ]]; then
 	fi
 fi
 
-secrets_dir="$STASH_DIR/secrets"
-mkdir -p "$secrets_dir"
-chmod 700 "$secrets_dir"
+# G1: all of these are DELEGATED secrets (guardian/portal-only) — seeded
+# under private/secrets/, not knowledge/secrets/. See docs/public-seams-review.md §G1.
+private_secrets_dir="$DEV_ROOT/private/secrets"
+mkdir -p "$private_secrets_dir"
+chmod 700 "$private_secrets_dir"
 for secret_name in portal_chat_secret portal_api_secret op_api_key portal_discord_secret portal_slack_secret; do
-	if [[ ! -f "$secrets_dir/$secret_name" || $force -eq 1 ]]; then
-		openssl rand -hex 16 >"$secrets_dir/$secret_name"
-		chmod 600 "$secrets_dir/$secret_name"
+	if [[ ! -f "$private_secrets_dir/$secret_name" || $force -eq 1 ]]; then
+		openssl rand -hex 16 >"$private_secrets_dir/$secret_name"
+		chmod 600 "$private_secrets_dir/$secret_name"
 	fi
 done
 

@@ -48,18 +48,23 @@ ensure_home_layout() {
 
 }
 
-maybe_source_akm_user_env() {
-  # Source the akm env:user file (knowledge/env/user.env) so user-managed
-  local env_path="${AKM_STASH_DIR:-}/env/user.env"
-  if [ -z "${AKM_STASH_DIR:-}" ] || [ ! -f "$env_path" ]; then return 0; fi
-
-  # `|| true` so a malformed line in the user-edited env file cannot abort the
-  # entrypoint under `set -euo pipefail` and trap the assistant in a restart loop.
-  set -a
-  # shellcheck disable=SC1090
-  . "$env_path" || echo "warning: failed to source $env_path (malformed line?); continuing" >&2
-  set +a
-}
+# ── G1: env:user is NOT sourced into this process ───────────────────────────
+# This entrypoint used to `set -a; . "$AKM_STASH_DIR/env/user.env"` here and
+# then `exec opencode` from the SAME shell, which put every env:user value
+# (API keys, owner info, anything the operator configured) into the OpenCode
+# server's own process environment — and therefore into every bash-tool
+# subprocess the agent runs, retrievable with a single `env`/`printenv` call
+# with no file path involved at all (docs/public-seams-review.md §G1, finding
+# #3). Nothing between here and `start_opencode` needs env:user's arbitrary
+# keys: `run_akm_schema_migration`/`persist_akm_stash_dir_fallback` only need
+# HOME/AKM_STASH_DIR (already in the container's own environment), and
+# `start_cron_and_sync_tasks` forwards its own small, explicit allowlist of
+# vars into the crontab preamble rather than the whole file. The sanctioned,
+# on-demand path for the AGENT to use a user secret is still available and
+# unaffected by this change: the `load_vault` OpenCode tool (akm-cli) resolves
+# `akm env path env:user` and sources it inside its OWN tool-call subprocess
+# for that one turn — never the server's top-level environment — matching the
+# skeleton instructions (system/assistant/instructions/core.md).
 
 # ── E2/S2: no boot-time package installs ────────────────────────────────────
 # @openpalm/ui, @openpalm/skeleton, and the tool tree (opencode-ai, akm-cli,
@@ -545,7 +550,6 @@ start_opencode() {
 
 ensure_home_layout
 maybe_prepare_nss_wrapper
-maybe_source_akm_user_env
 seed_default_agents_md
 run_akm_schema_migration
 persist_akm_stash_dir_fallback

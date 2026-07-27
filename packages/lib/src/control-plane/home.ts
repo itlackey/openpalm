@@ -133,7 +133,7 @@ export function hasAnyStackEnvFile(home: string): boolean {
  * it is pure layout — putting it in `home-schema.ts` would make this module
  * depend on `config-persistence`/`addons`, which depend back on this one.
  */
-export const HOME_SCHEMA_VERSION = 2;
+export const HOME_SCHEMA_VERSION = 3;
 
 /** The recorded schema version, or 0 when nothing is recorded (pre-record home). */
 export function readHomeSchemaVersion(home: string): number {
@@ -176,6 +176,33 @@ export function secretsDir(home: string): string {
 }
 export function authJsonFile(home: string): string {
   return `${secretsDir(home)}/auth.json`;
+}
+
+/**
+ * Root of the private (non-stash) tree: app-owned material the assistant
+ * agent must never reach, distinct from every tree `home.ts` documents at the
+ * top of this file. `knowledge/` (including `knowledge/secrets/`) is
+ * bind-mounted wholesale into the assistant at `/stash` (core.compose.yml) and
+ * is `external_directory "/stash/*":"allow"`-reachable by the agent's own bash
+ * tool — see docs/public-seams-review.md §G1. Anything under `private/` is
+ * mounted ONLY via Compose `secrets:` entries into the specific
+ * guardian/portal containers that consume it, never bind-mounted into the
+ * assistant.
+ */
+export function privateDir(home: string): string {
+  return `${home}/private`;
+}
+
+/**
+ * Delegated secrets — consumed only by the guardian/portals, never by the
+ * assistant agent (docs/public-seams-review.md §G1). This is the ONE
+ * relocation target for those secrets: `ensureSecrets`/`secrets-files.ts`
+ * write them here, the migration in `secrets-migration.ts` moves pre-existing
+ * installs' copies here from `secretsDir()`, and every Compose `secrets:
+ * file:` entry that grants one of them points here. 0700, like `secretsDir`.
+ */
+export function privateSecretsDir(home: string): string {
+  return `${privateDir(home)}/secrets`;
 }
 
 export function resolveLogsDir(): string {
@@ -252,6 +279,10 @@ export function ensureHomeDirs(home: string = resolveOpenPalmHome()): void {
     `${home}/knowledge/env`,
     `${home}/knowledge/secrets`,
     `${home}/knowledge/tasks`,
+
+    // private/ — delegated secrets (guardian/portal-only, never assistant-reachable; §G1)
+    `${home}/private`,
+    `${home}/private/secrets`,
 
     // workspace/ — shared assistant work area
     `${home}/workspace`,

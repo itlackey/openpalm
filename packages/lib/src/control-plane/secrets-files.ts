@@ -1,7 +1,8 @@
 import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { secretsDir as secretsDirPath } from './home.js';
+import { secretsDir as secretsDirPath, privateSecretsDir as privateSecretsDirPath } from './home.js';
 import { randomHex } from './crypto.js';
+import { PORTAL_SECRET_ADDON_IDS } from './addon-ids.js';
 
 const SECRET_NAME_RE = /^[a-z0-9][a-z0-9_]{0,80}$/;
 const SECRETS_DIR_MODE = 0o700;
@@ -9,6 +10,50 @@ const SECRET_FILE_MODE = 0o600;
 
 function validateSecretName(name: string): void {
   if (!SECRET_NAME_RE.test(name)) throw new Error(`Invalid secret name: ${name}`);
+}
+
+/**
+ * Delegated secrets — consumed only by the guardian/portals, never by the
+ * assistant agent, per docs/public-seams-review.md §G1. These are written to
+ * (and read from) `privateSecretsDir()` instead of the stash-visible
+ * `secretsDir()`; every other secret name keeps living in `secretsDir()`
+ * (notably `auth.json`, shared with the assistant's own OpenCode process).
+ *
+ * The portal principal secrets (`portal_<id>_secret`) are derived from
+ * `PORTAL_SECRET_ADDON_IDS` — the same single source of truth
+ * `ensurePortalSecret` uses — so this list can never drift from the set of
+ * portal secrets actually provisioned.
+ */
+export const DELEGATED_SECRET_NAMES: ReadonlySet<string> = new Set([
+  'op_guardian_admin_token',
+  'op_guardian_mcp_token',
+  'op_api_key',
+  'discord_bot_token',
+  'slack_bot_token',
+  'slack_app_token',
+  'op_opencode_password',
+  'op_ui_login_password',
+  ...PORTAL_SECRET_ADDON_IDS.map(portalSecretName),
+]);
+
+export function isDelegatedSecretName(name: string): boolean {
+  return DELEGATED_SECRET_NAMES.has(name);
+}
+
+/**
+ * Resolve (and harden) the delegated-secrets dir for an OP_HOME —
+ * `${home}/private/secrets` (home.ts `privateSecretsDir`). Never bind-mounted
+ * into the assistant; granted to the guardian/portal containers ONLY via
+ * Compose `secrets: file:` entries. Same hardening as `resolveSecretsDir`.
+ */
+export function resolvePrivateSecretsDir(homeDir: string): string {
+  const dir = privateSecretsDirPath(homeDir);
+  mkdirSync(dir, { recursive: true, mode: SECRETS_DIR_MODE });
+  chmodSync(dir, SECRETS_DIR_MODE);
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    if (entry.isFile()) chmodSync(join(dir, entry.name), SECRET_FILE_MODE);
+  }
+  return dir;
 }
 
 /**
@@ -27,9 +72,23 @@ export function resolveSecretsDir(homeDir: string): string {
   return dir;
 }
 
+/**
+ * The effective secrets dir for a given secret/file NAME — the routing point
+ * that makes every generic call site (readSecret/writeSecret/ensureSecret/
+ * patchSecretsEnvFile/readSecretFile/writeSecretFile/removeSecretFile, all of
+ * which take a name and never a directory) resolve to the correct location
+ * automatically, delegated or not, with no call-site changes required. See
+ * DELEGATED_SECRET_NAMES. Shared by both the strict SECRET_NAME_RE API
+ * (secretPath) and the looser basename API (the admin Secrets-tab file
+ * browser) — neither validates the name here, callers do that first.
+ */
+function resolveSecretsDirForName(homeDir: string, name: string): string {
+  return isDelegatedSecretName(name) ? resolvePrivateSecretsDir(homeDir) : resolveSecretsDir(homeDir);
+}
+
 export function secretPath(homeDir: string, name: string): string {
   validateSecretName(name);
-  return join(resolveSecretsDir(homeDir), name);
+  return join(resolveSecretsDirForName(homeDir, name), name);
 }
 
 export function readSecret(homeDir: string, name: string): string | null {
@@ -62,12 +121,20 @@ export function removeSecret(homeDir: string, name: string): void {
   rmSync(secretPath(homeDir, name), { force: true });
 }
 
+/**
+ * Every secret NAME across both dirs (`secretsDir()` and the delegated
+ * `privateSecretsDir()`), merged into one alphabetically-sorted list. Callers
+ * never need to know which physical directory a given name lives in —
+ * `readSecret`/`writeSecret`/etc. route by name via `secretPath`.
+ */
 export function listSecretNames(homeDir: string): string[] {
-  const dir = resolveSecretsDir(homeDir);
-  return readdirSync(dir, { withFileTypes: true })
-    .filter((entry) => entry.isFile() && SECRET_NAME_RE.test(entry.name))
-    .map((entry) => entry.name)
-    .sort();
+  const names = new Set<string>();
+  for (const dir of [resolveSecretsDir(homeDir), resolvePrivateSecretsDir(homeDir)]) {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      if (entry.isFile() && SECRET_NAME_RE.test(entry.name)) names.add(entry.name);
+    }
+  }
+  return [...names].sort();
 }
 
 // ── Raw file access for the Secrets admin tab ──────────────────────────────
@@ -85,19 +152,27 @@ export function assertSafeSecretFilename(name: string): void {
 
 export type SecretFileInfo = { name: string; size: number };
 
-/** List every regular file in the secrets dir (incl. auth.json), with byte size. */
+/**
+ * List every regular file across both secrets dirs (incl. auth.json), with
+ * byte size. Delegated names are looked up in `privateSecretsDir()`; a stray
+ * same-named leftover in `secretsDir()` (an interrupted migration) is
+ * shadowed by the private entry rather than duplicated in the listing.
+ */
 export function listSecretFiles(homeDir: string): SecretFileInfo[] {
-  const dir = resolveSecretsDir(homeDir);
-  return readdirSync(dir, { withFileTypes: true })
-    .filter((entry) => entry.isFile() && SECRET_FILENAME_RE.test(entry.name) && !entry.name.includes('..'))
-    .map((entry) => ({ name: entry.name, size: statSync(join(dir, entry.name)).size }))
-    .sort((a, b) => a.name.localeCompare(b.name));
+  const files = new Map<string, SecretFileInfo>();
+  for (const dir of [resolveSecretsDir(homeDir), resolvePrivateSecretsDir(homeDir)]) {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      if (!entry.isFile() || !SECRET_FILENAME_RE.test(entry.name) || entry.name.includes('..')) continue;
+      files.set(entry.name, { name: entry.name, size: statSync(join(dir, entry.name)).size });
+    }
+  }
+  return [...files.values()].sort((a, b) => a.name.localeCompare(b.name));
 }
 
 /** Read a secrets-dir file by basename (raw contents), or null if absent. */
 export function readSecretFile(homeDir: string, name: string): string | null {
   assertSafeSecretFilename(name);
-  const path = join(resolveSecretsDir(homeDir), name);
+  const path = join(resolveSecretsDirForName(homeDir, name), name);
   if (!existsSync(path)) return null;
   chmodSync(path, SECRET_FILE_MODE);
   return readFileSync(path, 'utf-8');
@@ -106,7 +181,7 @@ export function readSecretFile(homeDir: string, name: string): string | null {
 /** Write a secrets-dir file by basename (0600). */
 export function writeSecretFile(homeDir: string, name: string, value: string): void {
   assertSafeSecretFilename(name);
-  const path = join(resolveSecretsDir(homeDir), name);
+  const path = join(resolveSecretsDirForName(homeDir, name), name);
   writeFileSync(path, value, { mode: SECRET_FILE_MODE });
   chmodSync(path, SECRET_FILE_MODE);
 }
@@ -114,7 +189,7 @@ export function writeSecretFile(homeDir: string, name: string, value: string): v
 /** Delete a secrets-dir file by basename. */
 export function removeSecretFile(homeDir: string, name: string): void {
   assertSafeSecretFilename(name);
-  rmSync(join(resolveSecretsDir(homeDir), name), { force: true });
+  rmSync(join(resolveSecretsDirForName(homeDir, name), name), { force: true });
 }
 
 // ── Portal principal secrets ─────────────────────────────────────────────────

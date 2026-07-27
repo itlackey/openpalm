@@ -35,7 +35,7 @@ opencode.jsonc
   → Tools, plugins, skills registered via each plugin's entry point
 ```
 
-Secrets are accessed via `akm secret` — the akm secret store backed by `knowledge/secrets/` and granted to the container via Compose `secrets:` entries. User env is available via `akm env path env:user` (sourced by the entrypoint at startup).
+Secrets are accessed via `akm secret` — the akm secret store backed by `knowledge/secrets/` and granted to the container via Compose `secrets:` entries. User env is available via `akm env path env:user`, resolved and sourced ON DEMAND by the agent's own `load_vault` tool call (never by the entrypoint into the server's own process — see docs/public-seams-review.md §G1).
 
 ### What lives where
 

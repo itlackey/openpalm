@@ -46,9 +46,11 @@ function seedHome(): { state: ControlPlaneState; home: string } {
   mkdirSync(join(home, 'knowledge', 'env'), { recursive: true });
   mkdirSync(join(home, 'state'), { recursive: true });
   writeFileSync(join(home, 'state', 'stack.env'), 'OP_IMAGE_TAG=v0.12.0\n');
-  const secretsDir = join(home, 'knowledge', 'secrets');
-  mkdirSync(secretsDir, { recursive: true, mode: 0o700 });
-  writeFileSync(join(secretsDir, 'op_ui_login_password'), 'test-password\n', { mode: 0o600 });
+  // §G1: op_ui_login_password is a delegated secret — private/secrets/, not
+  // knowledge/secrets/ (which is bind-mounted wholesale into the assistant).
+  const privateSecretsDir = join(home, 'private', 'secrets');
+  mkdirSync(privateSecretsDir, { recursive: true, mode: 0o700 });
+  writeFileSync(join(privateSecretsDir, 'op_ui_login_password'), 'test-password\n', { mode: 0o600 });
 
   const state = {
     homeDir: home,

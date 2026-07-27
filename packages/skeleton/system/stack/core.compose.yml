@@ -270,15 +270,22 @@ networks:
 # The OpenCode server password. Each managed compose file stands alone
 # for `docker compose config`, so this same top-level secret is also declared
 # in portals.compose.yml (the guardian's grant).
+#
+# G1: op_opencode_password and op_ui_login_password are DELEGATED secrets —
+# consumed only by the guardian/portals and this service's own server process,
+# never by the assistant agent — so they live under private/secrets/, NOT
+# knowledge/secrets/ (which is bind-mounted wholesale into the assistant at
+# /stash and is agent-reachable). See docs/public-seams-review.md §G1 and
+# packages/lib/src/control-plane/secrets-files.ts DELEGATED_SECRET_NAMES.
 secrets:
   opencode_server_password:
-    file: ${OP_HOME}/knowledge/secrets/op_opencode_password
+    file: ${OP_HOME}/private/secrets/op_opencode_password
   # UI login password for the container-served @openpalm/ui co-process.
   # Guaranteed present before any shipped deploy: setup fail-closes without it
   # (setup.ts security.uiLoginPassword), and the dev/smoke fixtures seed it.
   # Manual-compose users: see docs/operations/manual-compose-runbook.md.
   ui_login_password:
-    file: ${OP_HOME}/knowledge/secrets/op_ui_login_password
+    file: ${OP_HOME}/private/secrets/op_ui_login_password
 
 volumes:
   assistant-persistent:

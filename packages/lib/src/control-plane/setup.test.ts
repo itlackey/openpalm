@@ -12,7 +12,7 @@ import {
 } from "./setup.js";
 import type { SetupSpec, SetupConnection } from "./setup.js";
 import type { ControlPlaneState } from "./types.js";
-import { readSecret } from './secrets-files.js';
+import { readSecret, secretPath } from './secrets-files.js';
 import { PLATFORM_VERSION } from './versioning.js';
 
 /** Escape regex metacharacters (PLATFORM_VERSION contains `.` and `-`). */
@@ -741,7 +741,7 @@ describe("performSetup", () => {
     expect(env).toMatch(new RegExp(`^OP_ASSISTANT_VERSION=${reEscape(PLATFORM_VERSION)}$`, "m"));
   });
 
-  it("writes the UI login password to knowledge/secrets", async () => {
+  it("writes the UI login password to its secret file (private/secrets — §G1 delegated)", async () => {
     const result = await performSetup(makeValidSpec());
     expect(result.ok).toBe(true);
 
@@ -997,7 +997,9 @@ describe("performSetup", () => {
 
   // ── #563 T23-T27: network preset plumbing through performSetup ───────────
 
-  const secretPathFor = (name: string) => join(homeDir, "knowledge", "secrets", name);
+  // §G1: op_opencode_password is a delegated secret — secretPath() routes it
+  // (and every other delegated name) to private/secrets/, not knowledge/secrets/.
+  const secretPathFor = (name: string) => secretPath(homeDir, name);
 
   it("networkAccess publishes ONLY the UI — OpenCode stays loopback", async () => {
     const result = await performSetup(makeValidSpec({ access: { networkAccess: true } }));

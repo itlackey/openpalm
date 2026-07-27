@@ -25,6 +25,22 @@ mkdir -p /opt/openpalm/skeleton /opt/openpalm/guardian /opt/openpalm/guardian-pk
 
 export PATH="/opt/openpalm/tools/node_modules/.bin:$PATH"
 
+# ── Shared OpenCode provider credentials (G1) ─────────────────────────────────
+# Delivered as a Compose secret (GUARDIAN_AUTH_JSON_FILE, always
+# /run/secrets/guardian_auth_json in the shipped compose) rather than a
+# knowledge/ bind mount, so the guardian mounts NOTHING from knowledge/ (see
+# docs/public-seams-review.md §G1). Compose secrets always land at a fixed
+# /run/secrets/<name> path, never at the arbitrary path OpenCode actually
+# reads (HOME/.local/share/opencode/auth.json) — copy it into place before
+# anything that starts OpenCode (the moderator below, or opencode-based tools)
+# runs. Re-copied on every boot so a rotated auth.json takes effect on restart;
+# non-fatal (`|| true`) so a boot with no credentials configured yet still
+# starts (the guardian degrades to "no provider auth" rather than crash-looping).
+if [ -n "${GUARDIAN_AUTH_JSON_FILE:-}" ] && [ -f "${GUARDIAN_AUTH_JSON_FILE}" ]; then
+  install -m 600 "${GUARDIAN_AUTH_JSON_FILE}" "${HOME:-/opt/openpalm/guardian}/.local/share/opencode/auth.json" \
+    || echo "warning: failed to install guardian auth.json from \$GUARDIAN_AUTH_JSON_FILE; continuing" >&2
+fi
+
 # ── Optional private-registry auth ────────────────────────────────────────────
 # To install OP_GUARDIAN_PACKAGE from a private registry, supply an .npmrc. Bun
 # reads $HOME/.npmrc for registry + auth. Prefer a mounted secret file

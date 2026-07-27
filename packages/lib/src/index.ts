@@ -106,6 +106,8 @@ export {
   userEnvFile,
   secretsDir,
   authJsonFile,
+  privateDir,
+  privateSecretsDir,
 } from "./control-plane/home.js";
 
 // ── Path Resolution ─────────────────────────────────────────────────────
@@ -153,6 +155,7 @@ export {
 } from "./control-plane/secrets.js";
 export {
   resolveSecretsDir,
+  resolvePrivateSecretsDir,
   secretPath,
   readSecret,
   writeSecret,
@@ -164,8 +167,12 @@ export {
   readSecretFile,
   writeSecretFile,
   removeSecretFile,
+  DELEGATED_SECRET_NAMES,
+  isDelegatedSecretName,
 } from './control-plane/secrets-files.js';
 export type { SecretFileInfo } from './control-plane/secrets-files.js';
+export { migrateDelegatedSecretsToPrivateDir } from './control-plane/secrets-migration.js';
+export type { DelegatedSecretMigrationResult } from './control-plane/secrets-migration.js';
 export {
   PAIRING_CODE_PREFIX,
   encodePairingCode,
