@@ -414,9 +414,16 @@ export async function performSetup(
         }
       } else {
         const namespace = process.env.OP_IMAGE_NAMESPACE?.trim() || "openpalm";
-        const pinnedRef = `${namespace}/assistant:${PLATFORM_VERSION}`;
-        const pinPublished = await dockerManifestExists(pinnedRef);
-        const defaultTag = pinPublished ? PLATFORM_VERSION : "latest";
+        // The pin guard does a `docker manifest inspect` network probe. Skip it
+        // when compose preflight is skipped (tests / offline) — the same "no
+        // docker I/O" signal used elsewhere — and fall back to the moving
+        // `latest` tag rather than doing real registry I/O that can hang.
+        let defaultTag = "latest";
+        if (!process.env.OP_SKIP_COMPOSE_PREFLIGHT) {
+          const pinnedRef = `${namespace}/assistant:${PLATFORM_VERSION}`;
+          const pinPublished = await dockerManifestExists(pinnedRef);
+          defaultTag = pinPublished ? PLATFORM_VERSION : "latest";
+        }
         for (const key of SERVICE_VERSION_KEYS) {
           akmUpdates[key] = key === "OP_VOICE_VERSION" ? "latest" : defaultTag;
         }

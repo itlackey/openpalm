@@ -230,7 +230,10 @@ describe("applyInstall", () => {
     expect(state.services.assistant).toBe("running");
     // No channel addon → reconcileCore must NOT force-activate guardian.
     expect(state.services.guardian).toBeUndefined();
-  });
+    // applyInstall does a full home seed (overwrites the whole skeleton system/
+    // tree, generates secrets) — real, cold-cache-heavy file I/O that can exceed
+    // vitest's aggressive 5s default on a loaded CI runner. Give it headroom.
+  }, 30_000);
 });
 
 describe("applyUpdate", () => {
