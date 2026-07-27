@@ -4,6 +4,8 @@ import { ensureValidState } from '../lib/cli-state.ts';
 import { runComposeWithPreflight } from '../lib/cli-compose.ts';
 import {
   acquireInstallLock,
+  createLogger,
+  reapAndLogRetiredVolumes,
   releaseInstallLock,
   resolveConfigDir,
   resolveDataDir,
@@ -14,6 +16,8 @@ import {
   resolveWorkspaceDir,
 } from '@openpalm/lib';
 import { defineAction } from '../lib/action.ts';
+
+const logger = createLogger('cli:uninstall');
 
 export default defineCommand({
   meta: {
@@ -47,6 +51,17 @@ export async function runUninstallAction(
   try {
     const downArgs = args.volumes || args.purge ? ['down', '-v'] : ['down'];
     await runComposeWithPreflight(state, downArgs);
+
+    if (args.volumes || args.purge) {
+      // `down -v` only removes volumes the compose files still DECLARE — on a
+      // pre-#585 home the retired volumes' declarations are already gone (or
+      // about to be, on --purge), so this is the one lifecycle path (besides
+      // install/upgrade) that can strand them with no remaining reclamation
+      // route. Runs before --purge's own directory removal below; harmless
+      // either order since the reaper only ever touches Docker volumes, never
+      // OP_HOME paths.
+      await reapAndLogRetiredVolumes(state.homeDir, logger);
+    }
 
     if (args.purge) {
       // C1: state/ and system/ must be purged too — otherwise a survivor

@@ -121,19 +121,25 @@ describe('classifyOpenPalmVolume / findOrphanVolumes', () => {
     expect(orphans.map((v) => v.name)).toEqual(['oldname_assistant-artifacts']);
   });
 
-  // Reviewer concern (round 2): reapRetiredVolumes only ever targets the
-  // CURRENT project name, so a retired volume stranded under an OLD project
-  // prefix (from a project rename, before the volume was retired) can only
-  // be reclaimed via findOrphanVolumes/doctor's orphan detector — which
-  // requires guardian-cache/portal-cache to also be in OPENPALM_VOLUME_SUFFIXES.
-  it('flags a renamed-project-scoped retired volume (guardian-cache, portal-cache) as orphan too', () => {
+  // Round-3 reviewer concern: `guardian-cache`/`portal-cache` are GENERIC
+  // names that can collide with an unrelated Docker project on the same
+  // host. The plan's coordination note (final-four-plan.md:109-116)
+  // explicitly retired the idea of widening OPENPALM_VOLUME_SUFFIXES with
+  // them — "with the volumes deleted, what it needs instead is the
+  // retired-volume list" (reapRetiredVolumes/RETIRED_VOLUME_NAMES, which is
+  // prefix-scoped to the CURRENT project only and therefore safe). Pins that
+  // a differently-prefixed guardian-cache/portal-cache is never classified
+  // as OpenPalm-owned, so `doctor --clean-docker` can never offer to delete
+  // a volume belonging to some other project.
+  it('does NOT match guardian-cache or portal-cache under a different project prefix (generic names, retired suffix idea)', () => {
     const volumes: DockerVolumeInfo[] = [
       { name: 'oldname_guardian-cache', driver: 'local' },
       { name: 'oldname_portal-cache', driver: 'local' },
-      { name: 'openpalm_guardian-cache', driver: 'local' }, // current project — never orphan
+      { name: 'someunrelatedproject_guardian-cache', driver: 'local' },
     ];
-    const orphans = findOrphanVolumes(volumes, 'openpalm');
-    expect(orphans.map((v) => v.name).sort()).toEqual(['oldname_guardian-cache', 'oldname_portal-cache']);
+    expect(classifyOpenPalmVolume('oldname_guardian-cache').matches).toBe(false);
+    expect(classifyOpenPalmVolume('oldname_portal-cache').matches).toBe(false);
+    expect(findOrphanVolumes(volumes, 'openpalm')).toEqual([]);
   });
 });
 

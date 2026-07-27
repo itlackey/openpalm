@@ -164,13 +164,22 @@ RUN set -e; \
 # runs as the host operator's ARBITRARY uid:gid (not 1000), and this build never
 # knows that id, so a fixed owner/group (the g=u "arbitrary uid" convention
 # needs gid 0, which OpenPalm does not use) can never match it; world-writable
-# is the only image-side mode that works. This matters two ways: for
-# `/opt/persistent` (still a real named volume) Docker seeds it from this image
-# path WITH this ownership the first time the volume is created — unlike a bind
-# mount, it does not shadow the baked content with an empty host directory. For
-# the rest of these paths (no volume at all — #585 deleted the other two named
-# volumes over /opt/openpalm) the same world-writable mode is needed simply
-# because the arbitrary runtime uid must still be able to write into them.
+# is the only image-side mode that works. These paths fall into three
+# different cases, not one:
+#   - `/opt/persistent` is a real named volume (still mounted — #585 kept it).
+#     Docker seeds a fresh volume from this image path WITH this ownership the
+#     first time the volume is created, so this chmod is what the arbitrary
+#     uid actually inherits.
+#   - `/opt/openpalm/ui` and `/opt/openpalm/skeleton` have no mount over them
+#     at all (#585 deleted the named volume that used to cover /opt/openpalm),
+#     so the image layer is served straight through, unshadowed — this chmod
+#     is likewise what the arbitrary uid sees at runtime.
+#   - `/home/opencode`, `/work`, `/stash`, `/opt/akm` are core.compose.yml BIND
+#     mount targets: at runtime the host directory's ownership wins and this
+#     chmod is shadowed. It still matters at the mountPOINT level — it is what
+#     stops Docker from creating an as-yet-nonexistent bind-mount destination
+#     root-owned inside the image layer before the host directory is mounted
+#     over it.
 # Scope the chmod to these freshly created seed dirs ONLY — deliberately
 # excluding /opt/openpalm/tools, whose baked node_modules + @huggingface model
 # cache is a multi-hundred-MB tree split across COPY layers (Docker Hub rejects

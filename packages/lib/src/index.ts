@@ -420,6 +420,7 @@ export {
   reportImagesAndVolumes,
   cleanupImagesAndVolumes,
   reapRetiredVolumes,
+  reapAndLogRetiredVolumes,
 } from "./control-plane/image-volume-retention.js";
 
 // ── Storage diagnostics + cache cleanup (S8/S1 — #581 findings #1, #12) ──
