@@ -4,14 +4,22 @@
  * config; the string-grep assertions around them were dropped.
  */
 import { describe, expect, test } from 'bun:test';
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { parse as yamlParse } from 'yaml';
 import { resolveComposeProjectName } from './docker.js';
 
 const REPO_ROOT = resolve(import.meta.dir, '../../../..');
-const CORE_COMPOSE_PATH = join(REPO_ROOT, 'packages/skeleton/system/stack/core.compose.yml');
-const PORTALS_COMPOSE_PATH = join(REPO_ROOT, 'packages/skeleton/system/stack/portals.compose.yml');
+const STACK_DIR = join(REPO_ROOT, 'packages/skeleton/system/stack');
+const CORE_COMPOSE_PATH = join(STACK_DIR, 'core.compose.yml');
+const PORTALS_COMPOSE_PATH = join(STACK_DIR, 'portals.compose.yml');
+
+/** Every shipped stack compose file (core, portals, services, voice overlays) — excludes README.md. */
+function allStackComposeFiles(): string[] {
+  return readdirSync(STACK_DIR)
+    .filter((name) => /\.compose(\.\w+)?\.yml$/.test(name))
+    .map((name) => join(STACK_DIR, name));
+}
 
 describe('assistant runs as the operator, not root', () => {
   test('core.compose.yml pins the assistant to OP_UID:OP_GID', () => {
@@ -45,8 +53,19 @@ function assertNoOpenPalmVolumeMounts(files: ReadonlyArray<readonly [string, Com
   for (const [label, compose] of files) {
     for (const [serviceName, service] of Object.entries(compose.services ?? {})) {
       for (const vol of service.volumes ?? []) {
-        if (typeof vol !== 'string') continue; // long-form entries aren't used in these files today
-        const [source, target] = vol.split(':');
+        let source: string | undefined;
+        let target: string | undefined;
+        if (typeof vol === 'string') {
+          [source, target] = vol.split(':');
+        } else {
+          // Long-form entry (`{ type, source, target }`). An explicit
+          // non-'volume' type (bind, tmpfs) is never a named-volume mount
+          // regardless of what `source` says; `type` omitted defaults to
+          // 'volume' for a source that names a top-level volume.
+          if (vol.type !== undefined && vol.type !== 'volume') continue;
+          source = vol.source;
+          target = vol.target;
+        }
         // Subpath check catches a re-introduced mount like
         // guardian-cache:/opt/openpalm/tools, not just the exact bare path.
         if (target !== '/opt/openpalm' && !target?.startsWith('/opt/openpalm/')) continue;
@@ -64,13 +83,17 @@ describe('#585 — no service mounts a named volume at /opt/openpalm', () => {
   // to feed the ownership-repair machinery that existed because they existed.
   // `assistant-persistent` at /opt/persistent is a DIFFERENT, deliberately kept
   // volume (genuine user content) and must never be flagged here.
-  test("no service in core.compose.yml or portals.compose.yml mounts a named volume at /opt/openpalm or any subpath", () => {
-    const files = [
-      ['core.compose.yml', CORE_COMPOSE_PATH],
-      ['portals.compose.yml', PORTALS_COMPOSE_PATH],
-    ] as const;
+  // Covers EVERY shipped stack compose file (core, portals, services, the
+  // voice.compose.cdi.yml/voice.compose.rootless.yml overlays), not just
+  // core+portals — services.compose.yml and the voice overlays are also
+  // applied at runtime (bring-up.ts) and are just as capable of
+  // reintroducing a named-volume mount as the two files this test used to
+  // check alone.
+  test("no service in any packages/skeleton/system/stack/*.compose*.yml file mounts a named volume at /opt/openpalm or any subpath", () => {
+    const files = allStackComposeFiles();
+    expect(files.length).toBeGreaterThanOrEqual(5); // core, portals, services, voice.cdi, voice.rootless
     const parsed = files.map(
-      ([label, path]) => [label, yamlParse(readFileSync(path, 'utf8')) as ComposeFile] as const,
+      (path) => [path.slice(STACK_DIR.length + 1), yamlParse(readFileSync(path, 'utf8')) as ComposeFile] as const,
     );
     assertNoOpenPalmVolumeMounts(parsed);
   });
@@ -111,6 +134,38 @@ describe('#585 — no service mounts a named volume at /opt/openpalm', () => {
       },
     };
     expect(() => assertNoOpenPalmVolumeMounts([['a.yml', fileA], ['b.yml', fileB]])).not.toThrow();
+  });
+
+  // Round-3 reviewer blocker: a LONG-FORM volumes entry (`{ type, source,
+  // target }`) is valid compose YAML — `docker compose config` accepts it and
+  // materializes the exact same named-volume mount as the short-form
+  // "name:target" string — but the old check did `if (typeof vol !== 'string')
+  // continue`, so any long-form entry walked straight through unchecked. This
+  // proves the fix catches it.
+  test('catches a LONG-FORM named-volume mount at /opt/openpalm (short-form-only bypass)', () => {
+    const file: ComposeFile = {
+      volumes: { 'assistant-artifacts': {} },
+      services: {
+        assistant: {
+          volumes: [{ type: 'volume', source: 'assistant-artifacts', target: '/opt/openpalm' }],
+        },
+      },
+    };
+    expect(() => assertNoOpenPalmVolumeMounts([['core.compose.yml', file]])).toThrow();
+  });
+
+  // A long-form entry with an explicit `type: bind` (or `type: tmpfs`) is
+  // never a named-volume mount, even if `source` happens to collide with a
+  // top-level volume name — must not false-positive.
+  test('does not false-positive on a long-form bind mount at /opt/openpalm', () => {
+    const file: ComposeFile = {
+      services: {
+        assistant: {
+          volumes: [{ type: 'bind', source: '/host/openpalm', target: '/opt/openpalm' }],
+        },
+      },
+    };
+    expect(() => assertNoOpenPalmVolumeMounts([['core.compose.yml', file]])).not.toThrow();
   });
 });
 
