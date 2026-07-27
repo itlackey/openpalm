@@ -61,7 +61,8 @@ RUN mkdir -p /opt/openpalm/guardian/.cache/bun/install \
     && rm -rf /opt/openpalm/tools/node_modules/opencode-linux-x64-musl \
               /opt/openpalm/tools/node_modules/opencode-linux-x64-baseline \
               /opt/openpalm/tools/node_modules/opencode-linux-x64-baseline-musl \
-              /opt/openpalm/tools/node_modules/opencode-linux-arm64-musl
+              /opt/openpalm/tools/node_modules/opencode-linux-arm64-musl \
+    && chmod -R a+rwX /opt/openpalm /opt/openpalm/tools
 
 # Release version — everything below this line is cache-invalidated on every
 # release, so keep it below the heavy tools layer above (IMG-6).
@@ -100,7 +101,11 @@ RUN test -n "$GUARDIAN_VERSION" \
     && (cd /opt/openpalm/guardian-pkg && bun add "$guardian_spec" --production) \
     && (cd /opt/openpalm/skeleton && bun add "$skeleton_spec" --production) \
     && rm -rf /opt/openpalm/local-src /opt/openpalm/local-artifacts \
-    && chmod -R a+rwX /opt/openpalm /opt/openpalm/guardian /opt/openpalm/guardian-pkg /opt/openpalm/skeleton /opt/openpalm/tools
+    # Scope this chmod to ONLY the trees this layer creates. A recursive chmod
+    # over /opt/openpalm would touch every file in the cached tools layer above
+    # and copy the whole ~700 MB tree up into this layer (measured: +790 MB on
+    # the image). /opt/openpalm and tools/ are already chmod'ed in that layer.
+    && chmod -R a+rwX /opt/openpalm/guardian /opt/openpalm/guardian-pkg /opt/openpalm/skeleton
 
 EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=5s --start-period=120s --retries=3 \
