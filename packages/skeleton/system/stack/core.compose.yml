@@ -30,6 +30,13 @@ services:
   assistant:
     image: ${OP_IMAGE_NAMESPACE:-openpalm}/assistant:${OP_ASSISTANT_VERSION:-latest}
     restart: unless-stopped
+    # IMG-7: cap json-file logs (30 MB/service ceiling). Docker's default
+    # driver is unbounded, which contributed to the production disk incident.
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     user: "${OP_UID:-1000}:${OP_GID:-1000}"
     extra_hosts:
       - "host.docker.internal:host-gateway"

@@ -87,13 +87,9 @@ RUN ONNXRUNTIME_NODE_INSTALL=skip npm install --omit=dev --no-fund --no-audit \
 FROM node:22-trixie-slim
 
 ARG BUN_VERSION=bun-v1.3.10
-# Platform version — the exact pin baked into the @openpalm/ui and
-# @openpalm/skeleton bakes below (E2: build-time only, no runtime override).
-ARG PLATFORM_VERSION
 
 # Re-export for runtime introspection.
-ENV BUN_VERSION=${BUN_VERSION} \
-    PLATFORM_VERSION=${PLATFORM_VERSION}
+ENV BUN_VERSION=${BUN_VERSION}
 
 # Combined OS packages: base tools (tini) + assistant-specific (busybox
 # crond/crontab tooling, python3, jq, gh) + sqlite3 so agents can query
@@ -230,6 +226,18 @@ RUN mkdir -p /home/opencode/.cache /home/opencode/.local/bin /work /stash /opt/a
     && mkdir -p /opt/openpalm/ui /opt/openpalm/skeleton /opt/openpalm/tools \
     && chown -R node:node /home/opencode /work /stash /opt/akm /opt/persistent /opt/openpalm/ui /opt/openpalm/skeleton \
     && chmod -R a+rwX /home/opencode /work /stash /opt/akm /opt/persistent /opt/openpalm/ui /opt/openpalm/skeleton
+
+# Platform version — the exact pin baked into the @openpalm/ui and
+# @openpalm/skeleton bakes below (E2: build-time only, no runtime override).
+#
+# IMG-6: this MUST stay below every heavy layer. It changes on every release,
+# so anything under it is cache-invalidated and re-pushed/re-pulled each time.
+# Above the tool COPYs it cost ~3.3 GB of "new" layers per upgrade to deliver
+# ~25 MB of actual change, and forced old+new images to coexist on disk with
+# nothing shared. Nothing between the base image and here reads it.
+ARG PLATFORM_VERSION
+# Re-export for runtime introspection.
+ENV PLATFORM_VERSION=${PLATFORM_VERSION}
 
 # ── @openpalm/ui bake ────────────────────────────────────────────────────────
 # Same approach as containers/guardian/Dockerfile's baked guardian/skeleton
