@@ -65,8 +65,12 @@ describe('assistant permission patterns are live, not decorative', () => {
     const decide = (cmd: string) =>
       Object.entries(perm.bash).filter(([p]) => matches(p, cmd)).pop()?.[1];
     expect(decide('sudo apt install jq')).toBe('ask');  // "sudo" alone was ^sudo$ — dead
+    expect(decide('sudo')).toBe('ask'); // bare, argument-less form must still match
+    expect(decide('rm -r /stash/tmp')).toBe('ask');
     expect(decide('rm -rf /stash/tmp')).toBe('ask');
+    expect(decide('rm -fr /stash/tmp')).toBe('ask');
     expect(decide('rm -rf /')).toBe('deny');
+    expect(decide('rm -fr /')).toBe('deny'); // the other literal root-wipe spelling
     expect(decide('ls -la')).toBe('allow');
   });
 });
