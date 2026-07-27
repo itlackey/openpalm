@@ -149,6 +149,15 @@ services:
       # system/assistant is the MANAGED config (OPENCODE_CONFIG_DIR) — plugins,
       # permissions, instructions; overwritten on update.
       - ${OP_HOME}/data/assistant:/home/opencode
+      # S1: regenerable npm/bun/OpenCode/Playwright caches under
+      # /home/opencode/.cache get their OWN independently purgeable named
+      # volume, nested inside the HOME bind mount above (declared after it so
+      # it wins on all platforms — same ordering trick the old tools bind
+      # mount used). This keeps them OUT of durable data/assistant (they no
+      # longer count against backups or the durable-storage footprint) without
+      # touching the session DB (.local/share/opencode), credentials, or
+      # knowledge, none of which live under .cache. See docs/public-seams-review.md §S1.
+      - assistant-cache:/home/opencode/.cache
       - ${OP_HOME}/config/assistant:/home/opencode/.config/opencode
       - ${OP_HOME}/system/assistant:/etc/opencode
       - ${OP_HOME}/knowledge/secrets/auth.json:/home/opencode/.local/share/opencode/auth.json
@@ -170,13 +179,17 @@ services:
       # under $HOME. Prefer $HOME/.local when possible; use /opt/persistent for
       # tools that require an explicit non-home prefix.
       - assistant-persistent:/opt/persistent
-      # Platform artifact cache — persists @openpalm/ui and @openpalm/skeleton
-      # across restarts so warm starts don't re-download.
+      # E2/S2: image-baked @openpalm/ui, @openpalm/skeleton, AND the tool tree
+      # (opencode-ai/akm-cli/claude-code/codex/copilot/pi) all live under this
+      # ONE named volume now — no bind mount overlays any of /opt/openpalm
+      # anymore. The volume exists only so a fresh install's first container
+      # start seeds it (Docker copies the image's /opt/openpalm content into a
+      # brand-new named volume) and so rootless ownership repair has a stable
+      # target (see volume-ownership.ts SERVICE_NAMED_VOLUMES); there is no
+      # runtime install/update path writing into it. Pin a different tool
+      # version by editing containers/assistant/tools/package.json and
+      # shipping a new image, not by editing anything under OP_HOME.
       - assistant-artifacts:/opt/openpalm
-      # Tool packages managed via package.json. Edit OP_HOME/data/assistant/tools/package.json
-      # to pin or update individual tool versions; bun update applies changes on next start.
-      # Declared after the named volume so the bind-mount wins on all platforms.
-      - ${OP_HOME}/data/assistant/tools:/opt/openpalm/tools
     secrets:
       - opencode_server_password
       - ui_login_password
@@ -269,6 +282,12 @@ secrets:
 
 volumes:
   assistant-persistent:
-  # Named volume for @openpalm/ui and @openpalm/skeleton artifacts.
-  # The tools subpath (/opt/openpalm/tools) is overlaid by the bind-mount above.
+  # Named volume for the image-baked @openpalm/ui, @openpalm/skeleton, and
+  # tool-tree artifacts under /opt/openpalm (E2/S2 — no bind mount overlays
+  # any subpath of it anymore).
   assistant-artifacts:
+  # S1: regenerable npm/bun/OpenCode/Playwright caches (/home/opencode/.cache),
+  # split out of the durable data/assistant bind mount so they can be pruned
+  # independently (e.g. a future `openpalm doctor --clean-caches`) without
+  # touching the OpenCode session DB, credentials, or knowledge.
+  assistant-cache:
