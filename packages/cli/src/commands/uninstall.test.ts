@@ -16,6 +16,8 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import * as realLib from '../../../lib/src/index.ts';
+import * as realCliCompose from '../lib/cli-compose.ts';
+import * as realCliState from '../lib/cli-state.ts';
 
 const moduleUrls = {
 	cliState: new URL('../lib/cli-state.ts', import.meta.url).href,
@@ -42,6 +44,7 @@ function resetMocks(): void {
 		releaseInstallLock: () => {}
 	}));
 	mock.module(moduleUrls.cliState, () => ({
+		...realCliState,
 		ensureValidState: () => {
 			const state = realLib.createState();
 			if (realLib.classifyLocalInstall(state.stackDir, state.homeDir) === 'not_installed') {
@@ -54,6 +57,7 @@ function resetMocks(): void {
 		}
 	}));
 	mock.module(moduleUrls.cliCompose, () => ({
+		...realCliCompose,
 		runComposeWithPreflight: async (_state: unknown, subArgs: string[]) => {
 			composeCalls.push(subArgs);
 		}
@@ -69,6 +73,8 @@ beforeEach(() => {
 afterEach(() => {
 	mock.restore();
 	mock.module('@openpalm/lib', () => ({ ...realLib }));
+	mock.module(moduleUrls.cliState, () => ({ ...realCliState }));
+	mock.module(moduleUrls.cliCompose, () => ({ ...realCliCompose }));
 	if (originalHome === undefined) delete process.env.OP_HOME;
 	else process.env.OP_HOME = originalHome;
 	rmSync(tempHome, { recursive: true, force: true });
@@ -118,5 +124,40 @@ describe('runUninstallAction --purge (C1)', () => {
 		expect(existsSync(join(tempHome, 'state'))).toBe(true);
 		expect(existsSync(join(tempHome, 'system'))).toBe(true);
 		expect(existsSync(join(tempHome, 'data'))).toBe(true);
+	});
+});
+
+describe('module mock hygiene (regression guard)', () => {
+	// Batch-introduced regression: this file's resetMocks() narrows
+	// '../lib/cli-state.ts' down to { ensureValidState } and
+	// '../lib/cli-compose.ts' down to { runComposeWithPreflight }, with no
+	// spread of the real module and no restoration of those two module URLs in
+	// afterEach. mock.module registrations are keyed by resolved file path
+	// (not query string) and persist in the shared module registry once
+	// registered — a later file's plain `import { migrateBestEffort } from
+	// './cli-state.ts'` (ui-server.ts:20) then throws "SyntaxError: Export
+	// named migrateBestEffort not found" because the registry entry never got
+	// its other exports back. This test exercises the narrow mock and then
+	// relies on the real afterEach hook above (not a duplicate here) to prove
+	// the registry is restored before the next test runs.
+	test('exercises the narrow cli-state/cli-compose mocks', () => {
+		seedInstalledHome(tempHome);
+		resetMocks();
+	});
+
+	test('a later import of ui-server.ts (static `migrateBestEffort` import) still resolves', async () => {
+		// No resetMocks() here: this test relies solely on the afterEach hook
+		// having restored the real cli-state.ts/cli-compose.ts modules after
+		// the previous test's narrow mock.
+		const uiServerModuleUrl = new URL('../lib/ui-server.ts', import.meta.url).href;
+		const uiServer = await import(`${uiServerModuleUrl}?t=${Math.random()}`);
+		expect(typeof uiServer.startUIServer).toBe('function');
+
+		const cliState = await import(`${moduleUrls.cliState}?t=${Math.random()}`);
+		expect(typeof cliState.migrateBestEffort).toBe('function');
+		expect(typeof cliState.resolveServeState).toBe('function');
+		const cliCompose = await import(`${moduleUrls.cliCompose}?t=${Math.random()}`);
+		expect(typeof cliCompose.runComposeWithPreflight).toBe('function');
+		expect(typeof cliCompose.runComposeReadOnly).toBe('function');
 	});
 });
