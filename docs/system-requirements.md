@@ -43,14 +43,33 @@ For the core compose stack using a remote LLM provider:
 
 | Resource | Minimum |
 |---|---|
-| CPU | 2 cores |
+| CPU | 2 cores, AVX2 or newer (any x86-64 CPU from ~2013 on; all arm64) |
 | RAM | 4 GB |
-| Disk | 10 GB free |
+| Disk | 4 GB free |
 
-The core compose file includes these always-on services:
+Disk depends on what you enable, so the figures below are per configuration
+rather than one number. Image sizes are measured with `docker images` on
+amd64; add roughly 1 GB of working room for OpenPalm's own state, logs and a
+backup or two.
+
+| Configuration | Images | Suggested free disk |
+|---|---|---|
+| Assistant only (default install) | 1.45 GB | 4 GB |
+| Plus guardian and a portal (LAN, Discord/Slack, API) | 3.26 GB | 6 GB |
+| Plus voice or a local model server | + model weights, 2–8 GB per model | 16 GB+ |
+
+An upgrade needs very little extra headroom: releases change only the small
+top layers of each image, so a new version shares almost all of its content
+with the one it replaces. `openpalm doctor --clean-docker` reclaims superseded
+images and any retired volumes.
+
+A default install runs one always-on service:
 
 - `assistant` (also runs the automation scheduler as a co-process)
-- `guardian`
+
+`guardian` starts alongside it as soon as you enable any addon that accepts
+outside traffic — chat, the API endpoint, Discord, Slack or the gateway — since
+all of that traffic must pass through it.
 
 Run `openpalm` to start the admin UI as a host process (no container required).
 
@@ -62,7 +81,7 @@ For the core stack plus admin, one or two addons, and local model usage:
 |---|---|
 | CPU | 4+ cores |
 | RAM | 16 GB |
-| Disk | 25 GB+ free |
+| Disk | 16 GB+ free (model weights dominate — budget per model) |
 | GPU | Optional but helpful for local models |
 
 If you run Ollama or another local model server, model weights usually dominate
@@ -99,8 +118,9 @@ Approximate storage use:
 
 | Category | Approximate size | Notes |
 |---|---|---|
-| Docker images (core) | ~2-3 GB | Depends on pulled tags |
-| Docker images (per addon) | ~100-200 MB | Many share layers |
+| Docker image: assistant | 1.45 GB | The only always-on image |
+| Docker image: guardian | 1.42 GB | Only when a portal/LAN addon is enabled |
+| Docker image: portal | 393 MB | Shared by the Discord and Slack adapters |
 | `~/.openpalm/config/` + `~/.openpalm/knowledge/` | small | Usually measured in MB |
 | `~/.openpalm/data/` | variable | Assistant homes, service data, logs, backups, and models can grow |
 | local model weights | 2-8+ GB per model | If using Ollama or similar |
