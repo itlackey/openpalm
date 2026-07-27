@@ -43,4 +43,18 @@ describe('connection activation coordination', () => {
 			unsubscribe();
 		}
 	});
+
+	test('a boolean-returning listener is a type error (U1 type-regression pin)', () => {
+		// The runtime test above casts a `false` return through `unknown` to
+		// satisfy `ActivationListener`, so it would keep passing even if the
+		// return type were ever widened back (e.g. to `unknown`) and the
+		// compile-time protection silently vanished. This case registers a
+		// plain boolean-returning listener with NO cast: it must fail to
+		// compile (TS2322) today. If this `@ts-expect-error` ever goes
+		// unused, that failure IS the regression signal.
+		// @ts-expect-error — ActivationListener may only return ACTIVATION_VETO or void, never a plain boolean.
+		const unsubscribe = onConnectionActivated((_id) => false);
+		expect(typeof unsubscribe).toBe('function');
+		unsubscribe();
+	});
 });

@@ -60,7 +60,15 @@ function pickStorage(): ConnectionStorage {
   // Cache that result so the wrapper's first real `getAll()` call can reuse
   // it instead of discarding it and issuing a second IndexedDB read
   // (issue #577, U2). Consumed exactly once, then cleared — every
-  // subsequent `getAll()` call performs a normal live read.
+  // subsequent `getAll()` call performs a normal live read. Also cleared by
+  // any of the three connection-mutating methods (`put`,
+  // `updateConnection`, `removeConnectionState`) so a mutation landing
+  // before the first `getAll()` can't serve back a snapshot that predates
+  // it (issue #577, follow-up hardening). `getMeta`/`setMeta`/`setActive`/
+  // `compareAndSetActive`/`getCryptoKey`/`setCryptoKey` don't touch this
+  // cache: they can't affect `getAll()`'s result, and clearing on `getMeta`
+  // would defeat the optimization above — `seedFromRuntimeConfig` reads meta
+  // before the list.
   let probedEntries: Connection[] | undefined;
   const select = (): Promise<ConnectionStorage> => {
     selected ??= persistent.getAll().then(
@@ -88,10 +96,21 @@ function pickStorage(): ConnectionStorage {
       return backend.getAll();
     },
     get: async (id) => (await select()).get(id),
-    put: async (entry) => (await select()).put(entry),
-    updateConnection: async (id, update) => (await select()).updateConnection(id, update),
-    removeConnectionState: async (id, allowLocked) =>
-      (await select()).removeConnectionState(id, allowLocked),
+    put: async (entry) => {
+      const backend = await select();
+      probedEntries = undefined;
+      return backend.put(entry);
+    },
+    updateConnection: async (id, update) => {
+      const backend = await select();
+      probedEntries = undefined;
+      return backend.updateConnection(id, update);
+    },
+    removeConnectionState: async (id, allowLocked) => {
+      const backend = await select();
+      probedEntries = undefined;
+      return backend.removeConnectionState(id, allowLocked);
+    },
     getMeta: async (key) => (await select()).getMeta(key),
     setMeta: async (key, value) => (await select()).setMeta(key, value),
 		setActive: async (id) => (await select()).setActive(id),

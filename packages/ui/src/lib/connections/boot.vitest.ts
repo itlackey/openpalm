@@ -142,6 +142,40 @@ describe('connection storage initialization', () => {
 		expect(persistent.getAll).toHaveBeenCalledTimes(1);
 	});
 
+	test('a wrapper mutation before the first getAll() invalidates the stale probe snapshot (#577 U2 hardening)', async () => {
+		const seeded = {
+			id: 'seeded',
+			label: 'Seeded connection',
+			baseUrl: 'https://assistant.example',
+			auth: { mode: 'none' } as const
+		};
+		const added = {
+			id: 'added',
+			label: 'Added connection',
+			baseUrl: 'https://added.example',
+			auth: { mode: 'none' } as const
+		};
+		const persistent = fakeStorage({
+			getAll: vi.fn().mockResolvedValueOnce([seeded]).mockResolvedValue([seeded, added])
+		});
+		const memory = fakeStorage();
+		await installStorageDoubles(persistent, memory);
+		vi.stubGlobal('indexedDB', {});
+
+		const { getConnectionStore } = await import('./boot.js');
+		const store = getConnectionStore();
+
+		// A wrapper mutation (store.add -> storage.put) as the FIRST operation
+		// triggers the availability probe (persistent.getAll()) via `select()`
+		// before the mutation lands, so the cached probe snapshot must not be
+		// served back to the following getAll()/list() call.
+		await store.add(added);
+
+		const entries = await store.list();
+		expect(entries.map((entry) => entry.id).sort()).toEqual(['added', 'seeded']);
+		expect(persistent.getAll).toHaveBeenCalledTimes(2);
+	});
+
 	test('a write error after persistent selection is surfaced without memory fallback', async () => {
 		const writeError = new Error('transaction aborted');
 		const persistent = fakeStorage({
