@@ -131,6 +131,27 @@ function mockDockerCli(): void {
   mock.module('node:child_process', () => ({
     ...nodeChildProcess,
     spawn: mock(() => makeFakeChildProcess(0)),
+    // E1 added a `docker manifest inspect` probe to performSetup's image-pin
+    // logic. Keep it off the network in tests: report the pinned tag as "not
+    // published" so setup falls back to `latest` (the behavior these install
+    // tests assert) instead of making a real registry round-trip that would
+    // hang against the sandbox network and time the test out.
+    execFile: ((cmd: unknown, args: unknown, opts: unknown, cb: unknown) => {
+      const callback = (typeof opts === 'function' ? opts : cb) as
+        | ((err: unknown, stdout: string, stderr: string) => void)
+        | undefined;
+      const argv = Array.isArray(args) ? (args as string[]) : [];
+      if (argv[0] === 'manifest' && argv[1] === 'inspect') {
+        const err = Object.assign(new Error('no such manifest'), { code: 1 });
+        queueMicrotask(() => callback?.(err, '', 'no such manifest'));
+        return makeFakeChildProcess(1);
+      }
+      return (
+        nodeChildProcess as unknown as {
+          execFile: (...a: unknown[]) => unknown;
+        }
+      ).execFile(cmd, args, opts, callback);
+    }) as unknown as typeof nodeChildProcess.execFile,
   }));
 }
 
