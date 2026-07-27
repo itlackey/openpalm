@@ -6,7 +6,7 @@ import { writeFileAtomic } from './fs-atomic.js';
 import { buildComposeOptions } from './compose-args.js';
 import { applyInstall, buildManagedServices, restoreSnapshotAndApplyStack } from './lifecycle.js';
 import { applyStack, composePs, detectExistingProject, parseComposePsRows, resolveComposeProjectName } from './docker.js';
-import { reapRetiredVolumes } from './image-volume-retention.js';
+import { reapAndLogRetiredVolumes } from './image-volume-retention.js';
 import { parseEnvFile } from './env.js';
 import { patchStateEnvFile, readStackEnv } from './secrets.js';
 import { acquireInstallLock, releaseInstallLock, isProcessAlive } from './install-lock.js';
@@ -360,6 +360,11 @@ export async function runDeploy(state: ControlPlaneState, options: RunDeployOpti
       // Only OPTIONAL (non-core) services failed — setup completes anyway
       // (§2.1: markSetupComplete gates on CORE_SERVICES only, never the full
       // managed set, so an addon/portal hiccup can't wedge a fresh install).
+      // The #585 retired volumes (guardian-cache, portal-cache) belong
+      // exclusively to optional services, so this is the most likely branch
+      // to strand them — reap here too, not just on the full-success path
+      // below.
+      await reapAndLogRetiredVolumes(state.homeDir, deployLogger);
       progress.imageWarning = `The following optional service(s) did not start correctly and were skipped: ${failedOptional.join(', ')}. ${buildLogHint(state, failedOptional)}`;
       options.markSetupComplete?.();
       progress.deploying = false;
@@ -381,13 +386,7 @@ export async function runDeploy(state: ControlPlaneState, options: RunDeployOpti
     // (uninstall --volumes can't see them once their declarations are gone,
     // and doctor --clean-docker's orphan detector only flags a DIFFERENT
     // project's volumes).
-    const reap = await reapRetiredVolumes(resolveComposeProjectName(readStackEnv(state.homeDir)));
-    if (reap.reclaimed.length > 0) {
-      deployLogger.info(`Reclaimed retired volumes: ${reap.reclaimed.join(', ')}`);
-    }
-    for (const err of reap.errors) {
-      deployLogger.warn(`Could not reclaim a retired volume: ${err}`);
-    }
+    await reapAndLogRetiredVolumes(state.homeDir, deployLogger);
 
     await refreshDeployStatus(state, progress, false);
     options.markSetupComplete?.();

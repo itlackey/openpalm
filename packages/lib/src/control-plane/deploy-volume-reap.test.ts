@@ -23,7 +23,7 @@
  * lifecycle-volume-reap.test.ts / lifecycle-install-ownership.test.ts.
  */
 import { afterEach, describe, expect, mock, test } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import * as realDocker from "./docker.js";
@@ -188,6 +188,67 @@ describe("runDeploy reclaims retired volumes after the new stack is up (#585 dec
 
         expect(result.deployError).not.toBeNull();
         expect(reapMock).toHaveBeenCalledTimes(0);
+      });
+    } finally {
+      rmSync(homeDir, { recursive: true, force: true });
+    }
+  });
+
+  // Reviewer concern (round 2): the reap is skipped on the "only OPTIONAL
+  // services failed" early return (deploy.ts ~360-370) — that branch marks
+  // setup complete and returns BEFORE the success-path reap. The retired
+  // volumes belong exclusively to optional services (guardian, discord,
+  // slack), i.e. exactly the services whose failure takes this branch, so a
+  // user re-running `openpalm install` over an existing home where an addon
+  // fails to start would get a "completed" deploy with the volumes stranded.
+  test("still reaps when only an OPTIONAL service fails to start (core-only setup-complete branch)", async () => {
+    const homeDir = mkdtempSync(join(tmpdir(), "openpalm-deploy-reap-optional-fail-"));
+    try {
+      // Enable the "discord" addon so buildManagedServices' static-inference
+      // fallback (OP_SKIP_COMPOSE_PREFLIGHT=1) includes a non-core service
+      // (CORE_SERVICES is only ["assistant", "guardian"]) that can fail
+      // without failing the deploy as a whole.
+      mkdirSync(join(homeDir, "state"), { recursive: true });
+      writeFileSync(join(homeDir, "state", "stack.env"), "OP_ENABLED_ADDONS=discord\n");
+
+      await withDeployEnv(homeDir, async () => {
+        const applyStackMock = mock(async () => ({ ok: false }));
+        // assistant + guardian (CORE_SERVICES) report healthy; discord is
+        // absent from `compose ps` output entirely ("Did not start").
+        const composePsMock = mock(async () => ({
+          ok: true,
+          stdout: JSON.stringify([
+            { Service: "assistant", State: "running", Health: "" },
+            { Service: "guardian", State: "running", Health: "" },
+          ]),
+        }));
+        const detectExistingProjectMock = mock(async () => ({ exists: false }));
+        const reapMock = mock(async () => ({ reclaimed: [], errors: [] }));
+
+        mock.module("./docker.js", () => ({
+          ...realDocker,
+          applyStack: applyStackMock,
+          composePs: composePsMock,
+          detectExistingProject: detectExistingProjectMock,
+        }));
+        mock.module("./image-volume-retention.js", () => ({
+          ...realImageVolumeRetention,
+          reapRetiredVolumes: reapMock,
+        }));
+
+        const { runDeploy } = await import(`./deploy.js?deploy-reap-optional-fail-test=${Math.random()}`);
+        const { createState } = await import(`./lifecycle.js?deploy-reap-optional-fail-test-state=${Math.random()}`);
+        const state = createState();
+
+        const result = await runDeploy(state);
+
+        // Only an optional service failed — setup still completes.
+        expect(result.deployError).toBeNull();
+        expect(result.setupComplete).toBe(true);
+        expect(result.imageWarning).toContain("discord");
+        // The retired volumes must still be reclaimed on this branch.
+        expect(reapMock).toHaveBeenCalledTimes(1);
+        expect(reapMock.mock.calls[0]?.[0]).toBe(realDocker.resolveComposeProjectName(readStackEnv(homeDir)));
       });
     } finally {
       rmSync(homeDir, { recursive: true, force: true });

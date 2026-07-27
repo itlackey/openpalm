@@ -11,7 +11,7 @@ import {
   resolveStackDir,
   ensureHomeDirs,
 } from "./home.js";
-import { ensureSecrets, ensureOpenCodeConfig, readStackEnv } from "./secrets.js";
+import { ensureSecrets, ensureOpenCodeConfig } from "./secrets.js";
 import { runHomeMigrations } from "./home-schema.js";
 import {
   resolveRuntimeFiles,
@@ -22,8 +22,8 @@ import {
 import { ensureOpenCodeSystemConfig } from "./core-assets.js";
 import { applyHomeSeed } from "./ui-assets.js";
 import { restoreSnapshot, snapshotCurrentState } from "./rollback.js";
-import { checkDocker, composePreflight, applyStack, composeConfigServices, buildComposePreflightError, resolveComposeProjectName } from "./docker.js";
-import { reapRetiredVolumes } from "./image-volume-retention.js";
+import { checkDocker, composePreflight, applyStack, composeConfigServices, buildComposePreflightError } from "./docker.js";
+import { reapAndLogRetiredVolumes } from "./image-volume-retention.js";
 import { reconcileHostOwnership } from "./ownership-reconcile.js";
 import { buildComposeOptions } from "./compose-args.js";
 import { teardownRenamedProject } from "./project-rename.js";
@@ -316,13 +316,7 @@ export async function performUpgrade(state: ControlPlaneState, opts?: LockedLife
       // content only, nothing durable. Runs AFTER the new stack is confirmed
       // up, so a reclaim failure can never strand this upgrade; failures are
       // logged, never thrown.
-      const reap = await reapRetiredVolumes(resolveComposeProjectName(readStackEnv(state.homeDir)));
-      if (reap.reclaimed.length > 0) {
-        lifecycleLogger.info(`Reclaimed retired volumes: ${reap.reclaimed.join(", ")}`);
-      }
-      for (const err of reap.errors) {
-        lifecycleLogger.warn(`Could not reclaim a retired volume: ${err}`);
-      }
+      await reapAndLogRetiredVolumes(state.homeDir, lifecycleLogger);
     }, () => containersMutated);
   } finally {
     releaseLifecycleLock(lock, opts);

@@ -27,6 +27,36 @@ type ComposeFile = {
   volumes?: Record<string, unknown> | null;
 };
 
+/**
+ * Fails (via `expect`) if any service across ANY of `files` mounts a named
+ * volume at `/opt/openpalm` or a subpath of it. `files` are checked against
+ * the UNION of top-level volume declarations across all of them — core.compose.yml
+ * and portals.compose.yml are always merged at runtime (see CLAUDE.md's Stack
+ * section), so a volume declared top-level in ONE file and mounted by a
+ * service in the OTHER is still a real named-volume mount. Checking each
+ * file only against its own top-level declarations would miss that case.
+ */
+function assertNoOpenPalmVolumeMounts(files: ReadonlyArray<readonly [string, ComposeFile]>): void {
+  const topLevelVolumeNames = new Set<string>();
+  for (const [, compose] of files) {
+    for (const name of Object.keys(compose.volumes ?? {})) topLevelVolumeNames.add(name);
+  }
+
+  for (const [label, compose] of files) {
+    for (const [serviceName, service] of Object.entries(compose.services ?? {})) {
+      for (const vol of service.volumes ?? []) {
+        if (typeof vol !== 'string') continue; // long-form entries aren't used in these files today
+        const [source, target] = vol.split(':');
+        // Subpath check catches a re-introduced mount like
+        // guardian-cache:/opt/openpalm/tools, not just the exact bare path.
+        if (target !== '/opt/openpalm' && !target?.startsWith('/opt/openpalm/')) continue;
+        const isNamedVolume = source !== undefined && topLevelVolumeNames.has(source);
+        expect(isNamedVolume, `${label} service "${serviceName}" mounts named volume "${source}" at ${target}`).toBe(false);
+      }
+    }
+  }
+}
+
 describe('#585 — no service mounts a named volume at /opt/openpalm', () => {
   // #585: the three named volumes over /opt/openpalm (assistant-artifacts,
   // guardian-cache, portal-cache) are retired — nothing under /opt/openpalm
@@ -34,33 +64,58 @@ describe('#585 — no service mounts a named volume at /opt/openpalm', () => {
   // to feed the ownership-repair machinery that existed because they existed.
   // `assistant-persistent` at /opt/persistent is a DIFFERENT, deliberately kept
   // volume (genuine user content) and must never be flagged here.
-  for (const [label, path] of [
-    ['core.compose.yml', CORE_COMPOSE_PATH],
-    ['portals.compose.yml', PORTALS_COMPOSE_PATH],
-  ] as const) {
-    test(`${label}: no service's volumes list a named volume targeting /opt/openpalm or any subpath`, () => {
-      const compose = yamlParse(readFileSync(path, 'utf8')) as ComposeFile;
-      const topLevelVolumeNames = new Set(Object.keys(compose.volumes ?? {}));
+  test("no service in core.compose.yml or portals.compose.yml mounts a named volume at /opt/openpalm or any subpath", () => {
+    const files = [
+      ['core.compose.yml', CORE_COMPOSE_PATH],
+      ['portals.compose.yml', PORTALS_COMPOSE_PATH],
+    ] as const;
+    const parsed = files.map(
+      ([label, path]) => [label, yamlParse(readFileSync(path, 'utf8')) as ComposeFile] as const,
+    );
+    assertNoOpenPalmVolumeMounts(parsed);
+  });
 
-      for (const [serviceName, service] of Object.entries(compose.services ?? {})) {
-        for (const vol of service.volumes ?? []) {
-          if (typeof vol !== 'string') continue; // long-form entries aren't used in these files today
-          const [source, target] = vol.split(':');
-          // Subpath check catches a re-introduced mount like
-          // guardian-cache:/opt/openpalm/tools, not just the exact bare path.
-          if (target !== '/opt/openpalm' && !target?.startsWith('/opt/openpalm/')) continue;
-          const isNamedVolume = source !== undefined && topLevelVolumeNames.has(source);
-          expect(isNamedVolume, `${label} service "${serviceName}" mounts named volume "${source}" at ${target}`).toBe(false);
-        }
-      }
-    });
-  }
+  // Reviewer concern (round 2): a per-file-only check (each file's services
+  // matched only against THAT file's own top-level `volumes:` map) would pass
+  // even if a volume is declared top-level in one file and mounted by a
+  // service in the OTHER — because the two files are always merged at
+  // runtime, that split-declaration case is still a real named-volume mount.
+  // Proves assertNoOpenPalmVolumeMounts's cross-file union catches it.
+  test('catches a volume declared top-level in one file and mounted at /opt/openpalm by a service in the OTHER file', () => {
+    const declaringFile: ComposeFile = {
+      volumes: { 'shared-cache': {} },
+    };
+    const mountingFile: ComposeFile = {
+      services: { someservice: { volumes: ['shared-cache:/opt/openpalm/tools'] } },
+    };
+    expect(() =>
+      assertNoOpenPalmVolumeMounts([
+        ['declaring.yml', declaringFile],
+        ['mounting.yml', mountingFile],
+      ]),
+    ).toThrow();
+  });
+
+  test('does not false-positive on a bind mount or an unrelated named volume', () => {
+    const fileA: ComposeFile = {
+      volumes: { 'assistant-persistent': {} },
+    };
+    const fileB: ComposeFile = {
+      services: {
+        assistant: {
+          volumes: [
+            '/host/path:/opt/openpalm/tools', // bind mount, not a named volume — must not match
+            'assistant-persistent:/opt/persistent', // real kept volume, different target — must not match
+          ],
+        },
+      },
+    };
+    expect(() => assertNoOpenPalmVolumeMounts([['a.yml', fileA], ['b.yml', fileB]])).not.toThrow();
+  });
 });
 
 describe('#585 — docker compose config parses both files (requires Docker)', () => {
-  const skipDockerAssertions = process.env.CI === 'true';
-
-  test.skipIf(skipDockerAssertions)('core.compose.yml + portals.compose.yml merge cleanly', async () => {
+  test('core.compose.yml + portals.compose.yml merge cleanly', async () => {
     const { checkDocker, composePreflight } = await import('./docker.js');
     const dockerCheck = await checkDocker();
     if (!dockerCheck.ok) {

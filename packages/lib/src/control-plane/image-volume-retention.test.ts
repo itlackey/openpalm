@@ -120,6 +120,21 @@ describe('classifyOpenPalmVolume / findOrphanVolumes', () => {
     const orphans = findOrphanVolumes(volumes, 'openpalm');
     expect(orphans.map((v) => v.name)).toEqual(['oldname_assistant-artifacts']);
   });
+
+  // Reviewer concern (round 2): reapRetiredVolumes only ever targets the
+  // CURRENT project name, so a retired volume stranded under an OLD project
+  // prefix (from a project rename, before the volume was retired) can only
+  // be reclaimed via findOrphanVolumes/doctor's orphan detector — which
+  // requires guardian-cache/portal-cache to also be in OPENPALM_VOLUME_SUFFIXES.
+  it('flags a renamed-project-scoped retired volume (guardian-cache, portal-cache) as orphan too', () => {
+    const volumes: DockerVolumeInfo[] = [
+      { name: 'oldname_guardian-cache', driver: 'local' },
+      { name: 'oldname_portal-cache', driver: 'local' },
+      { name: 'openpalm_guardian-cache', driver: 'local' }, // current project — never orphan
+    ];
+    const orphans = findOrphanVolumes(volumes, 'openpalm');
+    expect(orphans.map((v) => v.name).sort()).toEqual(['oldname_guardian-cache', 'oldname_portal-cache']);
+  });
 });
 
 describe('reportImagesAndVolumes', () => {

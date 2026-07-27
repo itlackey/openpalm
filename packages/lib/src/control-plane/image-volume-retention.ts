@@ -19,6 +19,7 @@
  */
 import type { DockerClient } from "./docker.js";
 import { realDockerClient, resolveComposeProjectName } from "./docker.js";
+import { readStackEnv } from "./secrets.js";
 
 export interface DockerImageInfo {
   repository: string;
@@ -102,12 +103,27 @@ export function findSupersededImages(images: DockerImageInfo[]): DockerImageInfo
 }
 
 /**
- * Top-level named volumes declared by OpenPalm's shipped compose files
- * (`system/stack/core.compose.yml`). Docker Compose names a project volume
+ * Volume-name suffixes {@link classifyOpenPalmVolume} / {@link findOrphanVolumes}
+ * treat as OpenPalm-owned. Docker Compose names a project volume
  * `<projectName>_<volumeName>`; a bare (unscoped) name is also matched for
  * the `external: true` / no-project case.
+ *
+ * Includes both the one named volume the shipped compose still declares
+ * (`assistant-persistent`, `system/stack/core.compose.yml`) AND the #585
+ * retired names (`assistant-artifacts`, `guardian-cache`, `portal-cache`).
+ * The retired names are `reapRetiredVolumes`' target list too, but that
+ * reaper only ever targets the CURRENT compose project name — a volume
+ * stranded under an OLD project prefix by a rename that happened before
+ * #585 is invisible to it. Listing the retired names here as well is what
+ * lets `findOrphanVolumes` (doctor's orphan detector) still find and offer
+ * to remove that stranded volume.
  */
-export const OPENPALM_VOLUME_SUFFIXES = ["assistant-persistent", "assistant-artifacts"] as const;
+export const OPENPALM_VOLUME_SUFFIXES = [
+  "assistant-persistent",
+  "assistant-artifacts",
+  "guardian-cache",
+  "portal-cache",
+] as const;
 
 export interface VolumeOwnership {
   matches: boolean;
@@ -276,4 +292,27 @@ export async function reapRetiredVolumes(
   }
 
   return { reclaimed, errors };
+}
+
+/**
+ * Convenience wrapper shared by every {@link reapRetiredVolumes} call site
+ * (install path in deploy.ts, upgrade path in lifecycle.ts): resolve the
+ * current compose project name from `homeDir`, reap, then info-log any
+ * reclaimed volumes and warn-log any per-volume error. Never throws — same
+ * contract as {@link reapRetiredVolumes} itself. Pulled out to avoid
+ * duplicating this five-line sequence at each call site.
+ */
+export async function reapAndLogRetiredVolumes(
+  homeDir: string,
+  logger: { info: (msg: string) => void; warn: (msg: string) => void },
+  opts: ReapRetiredVolumesOptions = {},
+): Promise<ReapRetiredVolumesResult> {
+  const reap = await reapRetiredVolumes(resolveComposeProjectName(readStackEnv(homeDir)), opts);
+  if (reap.reclaimed.length > 0) {
+    logger.info(`Reclaimed retired volumes: ${reap.reclaimed.join(", ")}`);
+  }
+  for (const err of reap.errors) {
+    logger.warn(`Could not reclaim a retired volume: ${err}`);
+  }
+  return reap;
 }
