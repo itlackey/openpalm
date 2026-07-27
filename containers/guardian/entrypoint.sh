@@ -19,8 +19,9 @@ fi
 OP_GUARDIAN_PACKAGE="${OP_GUARDIAN_PACKAGE:-@openpalm/guardian}"
 OP_GUARDIAN_ENTRY="${OP_GUARDIAN_ENTRY:-src/server.ts}"
 
-mkdir -p /opt/openpalm/tools /opt/openpalm/skeleton /opt/openpalm/guardian /opt/openpalm/guardian-pkg \
-         /opt/openpalm/guardian/.local/share/opencode /opt/openpalm/guardian/.local/state/opencode 2>/dev/null || true
+mkdir -p /opt/openpalm/skeleton /opt/openpalm/guardian /opt/openpalm/guardian-pkg \
+         /opt/openpalm/guardian/.local/share/opencode /opt/openpalm/guardian/.local/state/opencode \
+         /opt/openpalm/guardian/.cache/bun/install 2>/dev/null || true
 
 export PATH="/opt/openpalm/tools/node_modules/.bin:$PATH"
 
@@ -50,9 +51,20 @@ install_artifact() {
   local pkg="$1" version="$2" prefix="$3"
   local manifest="${prefix}/node_modules/${pkg}/package.json"
 
-  if [ -f "$manifest" ] && \
-     [ "$(bun -e "try{console.log(require('$manifest').version)}catch{console.log('')}" 2>/dev/null)" = "$version" ]; then
-    echo "  ${pkg}@${version} already installed, skipping"
+  # `version` may be an exact pin (the common case) OR a semver RANGE — e.g.
+  # OP_GUARDIAN_NPM_VERSION documents "semver ranges are supported here" for
+  # downstream distributions overriding OP_GUARDIAN_PACKAGE. The skip check
+  # used to compare the installed concrete version to `version` with plain
+  # string equality, which can never match a range (`0.8.14` !== `^0.8.0`),
+  # so a range-pinned override silently re-installed on every single boot
+  # (docs/public-seams-review.md §E2 finding #4). Use Bun's built-in semver
+  # matcher so an exact pin still matches itself and a range is checked for
+  # satisfaction instead of literal equality.
+  local installed_version
+  installed_version="$(bun -e "try{console.log(require('$manifest').version)}catch{console.log('')}" 2>/dev/null)"
+  if [ -n "$installed_version" ] && \
+     bun -e "process.exit(Bun.semver.satisfies('$installed_version', '$version') ? 0 : 1)" 2>/dev/null; then
+    echo "  ${pkg}@${version} already installed (${installed_version} satisfies ${version}), skipping"
     return 0
   fi
 
@@ -80,19 +92,15 @@ install_artifact() {
 install_artifact "$OP_GUARDIAN_PACKAGE" "$VERSION" /opt/openpalm/guardian-pkg
 install_artifact "@openpalm/skeleton" "${OP_SKELETON_VERSION:-$VERSION}" /opt/openpalm/skeleton
 
-# ── Exact-pinned tools ──────────────────────────────────────────────────────
-# /opt/openpalm/tools/package.json declares exact tool versions (baked as
-# image defaults; bind-mounted from OP_HOME/data/guardian/tools in compose so
-# operators can edit package.json directly — bun install picks up the edit on
-# next boot). Versions are pinned exactly, not ranges: semver advance now
-# happens by bumping the pinned version at release time, where it is reviewed
-# and tested, not silently via a boot-time `bun update`.
-if [ -f "/opt/openpalm/tools/package.json" ]; then
-  bun install --cwd /opt/openpalm/tools --production \
-    || echo "WARN: tool install had errors; check logs above" >&2
-else
-  echo "WARN: /opt/openpalm/tools/package.json not found — skipping tool install" >&2
-fi
+# ── E2/S2: no boot-time tools install ──────────────────────────────────────
+# /opt/openpalm/tools/package.json declares exact tool versions (opencode-ai —
+# the guardian's moderator has no use for any agent CLI, so akm-cli was
+# dropped from this manifest) and is baked into the guardian-cache named
+# volume by the Dockerfile at build time. No bind mount overlays it anymore
+# (image-baked-only model), so there is nothing to install or update here —
+# the content-validation check below already verifies `opencode` resolved
+# from the baked tree before anything that needs it starts. See
+# docs/public-seams-review.md §E2/§S2.
 
 # ── Hard-fail when content validation is enabled but opencode is missing ───────
 enabled=0
@@ -100,7 +108,7 @@ case "${GUARDIAN_CONTENT_VALIDATION:-0}" in
   1 | true | TRUE | yes | on) enabled=1 ;;
 esac
 if [ "$enabled" = "1" ] && ! command -v opencode >/dev/null 2>&1; then
-  echo "ERROR: GUARDIAN_CONTENT_VALIDATION=1 but opencode is not on PATH after tool install. Cannot start." >&2
+  echo "ERROR: GUARDIAN_CONTENT_VALIDATION=1 but opencode is not on PATH from the image-baked tools tree. Cannot start." >&2
   exit 1
 fi
 

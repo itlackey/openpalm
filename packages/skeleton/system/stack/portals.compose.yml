@@ -31,11 +31,12 @@ services:
       DISCORD_FORWARD_TIMEOUT_MS: ${DISCORD_FORWARD_TIMEOUT_MS:-}
     secrets: [portal_discord_secret, discord_bot_token]
     volumes:
+      # E2/S2: image-baked adapter packages under /opt/openpalm/tools — no
+      # bind mount overlays any subpath anymore (image-baked-only model,
+      # docs/public-seams-review.md §E2/§S2). Pin a different adapter version
+      # by editing containers/portal/tools/package.json and shipping a new
+      # image, not by editing anything under OP_HOME.
       - portal-cache:/opt/openpalm
-      # Tool packages managed via package.json. Edit OP_HOME/data/portal/tools/package.json
-      # to pin or update portal adapter versions; bun install/update applies changes on next start.
-      # Declared after the named volume so the bind-mount wins at /opt/openpalm/tools.
-      - ${OP_HOME}/data/portal/tools:/opt/openpalm/tools
     networks: [portal_net]
     depends_on:
       guardian:
@@ -68,8 +69,9 @@ services:
       SLACK_BLOCKED_USERS: ${SLACK_BLOCKED_USERS:-}
     secrets: [portal_slack_secret, slack_bot_token, slack_app_token]
     volumes:
+      # E2/S2: see the discord service's volumes comment above — same
+      # image-baked-only /opt/openpalm/tools, no bind mount.
       - portal-cache:/opt/openpalm
-      - ${OP_HOME}/data/portal/tools:/opt/openpalm/tools
     networks: [portal_net]
     depends_on:
       guardian:
@@ -156,12 +158,23 @@ services:
       # two knobs, two bind addresses and two firewall holes for one service.
       - "${OP_API_BIND_ADDRESS:-127.0.0.1}:${OP_API_PORT:-3821}:8182"
     volumes:
+      # E2/S2: image-baked opencode-ai tool tree + guardian/skeleton packages
+      # under /opt/openpalm — no bind mount overlays /opt/openpalm/tools
+      # anymore (image-baked-only model, docs/public-seams-review.md
+      # §E2/§S2). Pin a different tool version by editing
+      # containers/guardian/tools/package.json and shipping a new image.
       - guardian-cache:/opt/openpalm
-      # Tool packages managed via package.json. Edit OP_HOME/data/guardian/tools/package.json
-      # to pin or update individual tool versions; bun update applies changes on next start.
-      # This bind-mount overlays the guardian-cache named volume at /opt/openpalm/tools.
-      - ${OP_HOME}/data/guardian/tools:/opt/openpalm/tools
       - ${OP_HOME}/data/guardian:/opt/openpalm/guardian
+      # S1: regenerable caches under $HOME/.cache (currently just OpenCode's
+      # moderator cache + the guardian/skeleton bun install cache) get their
+      # OWN independently purgeable named volume, nested inside the guardian
+      # HOME bind mount above (declared after it so it wins) — the same
+      # treatment as assistant-cache in core.compose.yml. Keeps them OUT of
+      # durable data/guardian (no longer counted in backups or the durable
+      # footprint) without touching runtime state (nonce/rate-limit store,
+      # OpenCode auth.json/config) that lives alongside it under data/guardian.
+      # See docs/public-seams-review.md §S1.
+      - guardian-home-cache:/opt/openpalm/guardian/.cache
       - ${OP_HOME}/data/logs:/opt/openpalm/logs
       # MANAGED guardian config (moderation instructions/server/permission) →
       # OPENCODE_CONFIG_DIR. USER config (moderation model) → the operator's
@@ -227,3 +240,9 @@ volumes:
   # docker compose down --volumes will clean these up explicitly.
   guardian-cache: {}
   portal-cache: {}
+  # S1: regenerable $HOME/.cache tree for the guardian (OpenCode moderator
+  # cache, guardian/skeleton bun install cache), split out of the durable
+  # data/guardian bind mount so it can be pruned independently (e.g. a future
+  # `openpalm doctor --clean-caches`) without touching runtime state, secrets,
+  # or the OpenCode config under data/guardian.
+  guardian-home-cache: {}

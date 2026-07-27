@@ -35,15 +35,24 @@ ENV HOME=/opt/openpalm/guardian \
     OPENCODE_CONFIG_DIR=/etc/opencode \
     PATH="/opt/openpalm/tools/node_modules/.bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 
+# S1: point Bun's install-tarball cache at $HOME/.cache/bun/install rather
+# than Bun's own default ($HOME/.bun/install/cache) so the guardian-pkg/
+# skeleton `bun add` calls in entrypoint.sh (install_artifact) write into the
+# guardian-home-cache named volume compose nests at $HOME/.cache — NOT into
+# the durable data/guardian bind mount that $HOME otherwise resolves to.
+# See docs/public-seams-review.md §S1.
+ENV BUN_INSTALL_CACHE_DIR=/opt/openpalm/guardian/.cache/bun/install
+
 # Optional dry-run/smoke path: copy the local guardian/skeleton workspaces into
 # the build context so callers can bake unpublished source at the target version
 # without needing it to exist on npm yet.
 COPY packages/guardian /opt/openpalm/local-src/guardian
 COPY packages/skeleton /opt/openpalm/local-src/skeleton
 
-# Bake default tool packages at /opt/openpalm/tools. In compose,
-# OP_HOME/data/guardian/tools is bind-mounted over this path so operators
-# can edit package.json directly.
+# Bake default tool packages (opencode-ai) at /opt/openpalm/tools. E2/S2: no
+# bind mount overlays this path anymore (image-baked-only model) — bump this
+# manifest and rebuild the image to change a version, not by editing anything
+# under OP_HOME. See docs/public-seams-review.md §E2/§S2.
 COPY containers/guardian/tools/package.json /opt/openpalm/tools/package.json
 # Make the app trees world-writable so a container entered with
 # `--user ${OP_UID}:${OP_GID}` can populate them on first boot. The container
