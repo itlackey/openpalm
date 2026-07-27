@@ -20,8 +20,14 @@ name: Publish openpalm/voice images
 on:
   # Auto-publish-on-merge removed (0.11.0): voice images are out-of-band and are
   # published explicitly (workflow_dispatch), or by the platform-release
-  # orchestrator when include_voice is set for a stable cut.
+  # orchestrator (release.yml docker-voice job, E3) when include_voice is set.
   workflow_dispatch:
+    inputs:
+      version:
+        description: 'Optional immutable version pin (e.g. 1.0.0). Empty = publish moving latest-* tags only.'
+        required: false
+        type: string
+  workflow_call:
     inputs:
       version:
         description: 'Optional immutable version pin (e.g. 1.0.0). Empty = publish moving latest-* tags only.'
@@ -30,6 +36,7 @@ on:
 
 permissions:
   contents: read
+  id-token: write
 
 concurrency:
   group: publish-voice-${{ github.ref }}
@@ -82,6 +89,7 @@ jobs:
             type=raw,value=${{ inputs.version }}-${{ matrix.tag_suffix }},enable=${{ inputs.version != '' }}
 
       - name: Build and push image
+        id: build
         uses: docker/build-push-action@v6
         with:
           context: containers/voice
@@ -96,3 +104,19 @@ jobs:
           # other's wheel layers (different torch/onnxruntime builds).
           cache-from: type=gha,scope=openpalm/voice-${{ matrix.variant }}
           cache-to: type=gha,scope=openpalm/voice-${{ matrix.variant }},mode=max
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v4.1.2
+
+      - name: Sign image (cosign keyless)
+        # This job always pushes (no dry-run mode here), so sign unconditionally.
+        # Sign by immutable digest, not by tag, so the signature binds to the
+        # exact pushed manifest even as latest-<variant> moves.
+        run: cosign sign --yes openpalm/voice@${{ steps.build.outputs.digest }}
+
+      - name: Verify image signature (fail loudly on a broken signer)
+        run: |
+          cosign verify \
+            --certificate-identity-regexp "^https://github.com/${{ github.repository }}/.github/workflows/publish-voice.yml@refs/.*$" \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+            openpalm/voice@${{ steps.build.outputs.digest }}

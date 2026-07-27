@@ -29,6 +29,7 @@ on:
 
 permissions:
   contents: read
+  id-token: write
 
 concurrency:
   group: publish-assistant-models
@@ -63,6 +64,7 @@ jobs:
             type=raw,value=latest
 
       - name: Build and push
+        id: build
         uses: docker/build-push-action@v6
         with:
           context: containers/assistant
@@ -81,3 +83,19 @@ jobs:
             hf_token=${{ secrets.HF_TOKEN }}
           cache-from: type=gha,scope=openpalm/assistant-models
           cache-to: type=gha,scope=openpalm/assistant-models,mode=max
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v4.1.2
+
+      - name: Sign image (cosign keyless)
+        # This job always pushes (no dry-run mode here), so sign unconditionally.
+        # Sign by immutable digest, not by tag, so the signature binds to the
+        # exact pushed manifest even as `latest` moves.
+        run: cosign sign --yes openpalm/assistant-models@${{ steps.build.outputs.digest }}
+
+      - name: Verify image signature (fail loudly on a broken signer)
+        run: |
+          cosign verify \
+            --certificate-identity-regexp "^https://github.com/${{ github.repository }}/.github/workflows/publish-assistant-models.yml@refs/.*$" \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+            openpalm/assistant-models@${{ steps.build.outputs.digest }}
