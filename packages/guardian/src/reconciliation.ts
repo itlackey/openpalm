@@ -167,8 +167,11 @@ export async function drainEvictedSessions(
  *   - 200 with a RECENT `time.updated` (within `activeGraceMs`) ⇒ 'active' —
  *     the caller restores the ownership row rather than deleting anything.
  *   - 200, stale ⇒ safe to delete; issue the DELETE and report its outcome.
- *   - any other status, network error, or unparsable body ⇒ 'failed'
- *     (fail-safe: never destroy on uncertainty).
+ *   - any other status, network error, unparsable body, OR a 200 body whose
+ *     `time.updated` is missing/non-numeric (`Number(...)` not finite) ⇒
+ *     'failed' (fail-safe: never destroy on uncertainty — this is exactly the
+ *     schema-coupling risk called out below: if OpenCode ever renames/retypes
+ *     `time.updated`, every pending row must defer, never delete).
  *
  * This is roughly the FOURTH OpenCode schema-coupling point in this package
  * (after proxy.ts's request-body parsing, forwardSessionCreate/
@@ -206,7 +209,8 @@ export async function verifyThenDeleteUpstreamSession(
   }
 
   const updatedAt = Number((session as { time?: { updated?: unknown } } | null)?.time?.updated);
-  if (Number.isFinite(updatedAt) && Date.now() - updatedAt <= activeGraceMs) {
+  if (!Number.isFinite(updatedAt)) return 'failed'; // unparsable/missing time.updated — fail-safe defer, never delete on uncertainty
+  if (Date.now() - updatedAt <= activeGraceMs) {
     return 'active';
   }
 

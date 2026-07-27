@@ -28,7 +28,10 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   periodic sweep now drains its full backlog in one pass instead of a single
   batch. New operator knobs `GUARDIAN_SESSION_ACTIVE_GRACE_MS` and
   `GUARDIAN_RECONCILE_INTERVAL_MS` are plumbed into the guardian's compose env
-  block; the two row-count caps remain compile-time internals.
+  block; the two row-count caps remain compile-time internals. The state DB
+  schema moves to `user_version` 4; this migration is **one-way** — a guardian
+  image rolled back to a pre-0.13.0 build refuses to open a v4 database and
+  fails to boot, so roll back the image before the data volume, never after.
 
 ### Changed
 

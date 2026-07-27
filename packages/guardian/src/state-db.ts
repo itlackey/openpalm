@@ -363,6 +363,12 @@ function evictOldestPermissionOwners(database: Database, maxRows: number = OWNER
 // (idle→over-cap, or below-cap→idle-again) rather than on every hot-path
 // insert while the condition persists — both fire from recordSessionOwnerRow,
 // which runs on every session-scoped write.
+// Module-global (per-PROCESS), not per-database — correct for the real
+// single-guardian deployment (one process, one database), but note for
+// anyone later writing a warn-assertion test: within bun:test's shared
+// module cache, an over-cap warn from one test file's throwaway temp DB can
+// suppress the "first crossing" warn for a different test file's unrelated
+// temp DB opened later in the same process.
 let evictionLogOverCapWarned = false;
 let sessionOwnersSoftCapWarned = false;
 

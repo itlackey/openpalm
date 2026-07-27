@@ -75,6 +75,13 @@ describe('handleProxy session-scoped requests touch session_owners.last_used_at 
     dbPath = join(tmpDir, 'state.db');
     const secretFile = join(tmpDir, 'api-secret');
     writeFileSync(secretFile, 'topsecret');
+    // A second, distinct portal principal — used to pin that the ownsSession
+    // gate (proxy.ts) runs BEFORE touchSessionOwner, so a non-owning
+    // authenticated principal is denied AND never refreshes last_used_at
+    // (would otherwise let one principal keep another's session alive, and
+    // confirm the session id exists by side effect).
+    const otherSecretFile = join(tmpDir, 'other-secret');
+    writeFileSync(otherSecretFile, 'othersecret');
 
     // Stub assistant: only the two endpoints this harness exercises.
     stub = Bun.serve({
@@ -106,6 +113,7 @@ describe('handleProxy session-scoped requests touch session_owners.last_used_at 
         GUARDIAN_AUDIT_PATH: join(tmpDir, 'audit.log'),
         OP_ASSISTANT_URL: `http://127.0.0.1:${stub.port}`,
         PORTAL_API_SECRET_FILE: secretFile,
+        PORTAL_OTHER_SECRET_FILE: otherSecretFile,
         // Disable the periodic sweep — irrelevant to this harness and would
         // otherwise fire against the stub on an unrelated timer.
         GUARDIAN_RECONCILE_INTERVAL_MS: '0',
@@ -175,6 +183,21 @@ describe('handleProxy session-scoped requests touch session_owners.last_used_at 
       headers: { authorization: authHeader('nobody', 'wrong') },
     });
     expect(resp.status).toBe(401);
+
+    expect(lastUsedAt('ses_abc')).toBe(before);
+  }, 15_000);
+
+  it('a request from an authenticated but non-owning principal is denied (403) and does NOT touch the session', async () => {
+    const before = lastUsedAt('ses_abc');
+    await new Promise((r) => setTimeout(r, 20));
+
+    // 'other' is a real, seeded principal (unlike the unknown-principal 401
+    // case above) — it authenticates fine but never created/owns ses_abc.
+    const resp = await fetch(`${guardianBaseUrl}/oc/session/ses_abc`, {
+      method: 'GET',
+      headers: { authorization: authHeader('other', 'othersecret') },
+    });
+    expect(resp.status).toBe(403);
 
     expect(lastUsedAt('ses_abc')).toBe(before);
   }, 15_000);

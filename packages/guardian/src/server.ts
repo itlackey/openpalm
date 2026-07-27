@@ -277,10 +277,21 @@ export function startGuardian(options: StartGuardianOptions = {}): GuardianServe
   // catching up on rows evicted just before the previous shutdown.
   let reconcileTimer: ReturnType<typeof setInterval> | null = null;
   if (RECONCILE_INTERVAL_MS > 0) {
+    // A drain can now run past RECONCILE_INTERVAL_MS on a large backlog
+    // (#586 fix round 1): guard against a second concurrent sweep starting
+    // over the SAME pending rows (duplicate GET+DELETE pairs upstream, and a
+    // race where one drain deletes a row while another restores it).
+    let sweeping = false;
     const sweep = () => {
-      drainEvictedSessions(deleteUpstreamSessionViaAssistant).catch((err) => {
-        logger.error('session_reconcile_sweep_failed', { error: String(err) });
-      });
+      if (sweeping) return;
+      sweeping = true;
+      drainEvictedSessions(deleteUpstreamSessionViaAssistant)
+        .catch((err) => {
+          logger.error('session_reconcile_sweep_failed', { error: String(err) });
+        })
+        .finally(() => {
+          sweeping = false;
+        });
     };
     sweep();
     reconcileTimer = setInterval(sweep, RECONCILE_INTERVAL_MS);
