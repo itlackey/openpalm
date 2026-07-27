@@ -16,7 +16,25 @@
  *    (chat loads the new connection's sessions).
  */
 
-type ActivationListener = (connectionId: string) => unknown | Promise<unknown>;
+/**
+ * Explicit veto sentinel for `ActivationListener` (issue #577, U1). The
+ * previous contract overloaded a bare `=== false` return as "refuse this
+ * activation" against a listener return type of `unknown` — so any future
+ * predicate-style listener that happened to resolve to `false` would
+ * silently abort activation with no type-level signal. Returning this
+ * symbol is now the only way to veto; every other return value (including
+ * `false`) proceeds.
+ */
+export const ACTIVATION_VETO = Symbol('connection-activation-veto');
+
+// `void` (not `undefined`) is required so listeners with no explicit return
+// (e.g. `async (id) => { ...; }`, inferred as `Promise<void>`) type-check
+// without every subscriber having to write `return undefined`.
+// biome-ignore lint/suspicious/noConfusingVoidType: see comment above.
+type ActivationListenerResult = typeof ACTIVATION_VETO | void;
+type ActivationListener = (
+	connectionId: string
+) => ActivationListenerResult | Promise<ActivationListenerResult>;
 type ActivationGuard = () => string | null;
 
 const listeners = new Set<ActivationListener>();
@@ -73,7 +91,7 @@ export function activationBlockReason(): string | null {
  */
 export async function emitConnectionActivated(connectionId: string): Promise<void> {
   for (const listener of listeners) {
-    if ((await listener(connectionId)) === false) {
+    if ((await listener(connectionId)) === ACTIVATION_VETO) {
       throw new Error('Connection activation was refused by a listener.');
     }
   }

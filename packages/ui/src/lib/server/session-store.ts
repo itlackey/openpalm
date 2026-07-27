@@ -10,12 +10,14 @@
  * a password change invalidates all existing sessions — correct behaviour.
  *
  * The signing secret is resolved exactly like login verification
- * (`getUiLoginPassword`): `process.env.OP_UI_LOGIN_PASSWORD` first, then the
- * on-disk stack secret. When NEITHER exists, minting throws and validation
- * fails closed — there is deliberately no fallback secret, because a constant
- * key would let anyone forge an admin token. Reading the file per call also
- * means tokens minted right after the setup wizard writes the password are
- * signed with the real secret, without waiting for a process restart.
+ * (`getUiLoginPassword`): the on-disk stack secret first, live (mtime/size
+ * cached), then `process.env.OP_UI_LOGIN_PASSWORD` as a fallback for when no
+ * file exists yet. When NEITHER exists, minting throws and validation fails
+ * closed — there is deliberately no fallback secret, because a constant key
+ * would let anyone forge an admin token. Reading the file live (not just at
+ * process spawn) also means a password change — whether from the setup
+ * wizard, `openpalm reset-password`, or a hand edit — takes effect on the
+ * very next request, without waiting for a process/container restart.
  *
  * Logout semantics (known trade-off of stateless tokens): logout revokes the
  * single token the browser presented (in-memory list, cleared on restart) and
@@ -25,10 +27,47 @@
  * kill-switch is changing the login password, which invalidates everything.
  */
 import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
-import { ensureSecret, readSecret, resolveOpenPalmHome } from '@openpalm/lib';
+import { statSync } from 'node:fs';
+import { join } from 'node:path';
+import { ensureSecret, readSecret, resolveOpenPalmHome, secretsDir } from '@openpalm/lib';
 
 /** File secret holding the server-side session signing key. */
 const SESSION_KEY_SECRET = 'op_session_signing_key';
+/** File secret holding the UI login password (C3: the authoritative source). */
+const LOGIN_PASSWORD_SECRET = 'op_ui_login_password';
+
+/**
+ * mtime/size-cached read of the login password secret file, so a live read
+ * of the authoritative source doesn't cost a disk hit on every request while
+ * still picking up a change (reset-password, hand edit) on the very next
+ * call. `secretsDir` is a pure path join (no I/O), so the cheap `statSync`
+ * below is the only per-request disk touch on the cache-hit path; the fuller
+ * `readSecret` (which also hardens directory/file permissions) only runs
+ * when the file has actually changed.
+ */
+let passwordFileCache: { mtimeMs: number; size: number; value: string } | undefined;
+
+function readLivePasswordFile(): string {
+  const path = join(secretsDir(resolveOpenPalmHome()), LOGIN_PASSWORD_SECRET);
+  let stat: ReturnType<typeof statSync>;
+  try {
+    stat = statSync(path);
+  } catch {
+    // File absent (or dir absent) — nothing cached to serve.
+    passwordFileCache = undefined;
+    return '';
+  }
+  if (
+    passwordFileCache &&
+    passwordFileCache.mtimeMs === stat.mtimeMs &&
+    passwordFileCache.size === stat.size
+  ) {
+    return passwordFileCache.value;
+  }
+  const value = readSecret(resolveOpenPalmHome(), LOGIN_PASSWORD_SECRET)?.trimEnd() ?? '';
+  passwordFileCache = { mtimeMs: stat.mtimeMs, size: stat.size, value };
+  return value;
+}
 
 /** Session lifetime for both the token expiry and the cookie Max-Age. 14 days. */
 export const SESSION_TTL_MS = 1_209_600_000;
@@ -41,8 +80,15 @@ const _revoked = new Set<string>();
 const _testOverrides = new Set<string>();
 
 /**
- * Read the operator UI login password from the host environment or the
- * file-based stack secret (`knowledge/secrets/op_ui_login_password`).
+ * Read the operator UI login password from the file-based stack secret
+ * (`knowledge/secrets/op_ui_login_password`), falling back to
+ * `process.env.OP_UI_LOGIN_PASSWORD` only when no secret file exists yet.
+ *
+ * The file is authoritative (C3): it is bind-mounted live and read fresh on
+ * every call (mtime/size-cached — see `readLivePasswordFile`), so a password
+ * change takes effect on the very next request with no process/container
+ * restart. The env var exists only as a bootstrap fallback for the narrow
+ * window before the file has ever been written.
  *
  * This is the single source of truth for the password — login verification
  * (helpers.ts) and token signing below both use it, so they can never
@@ -50,9 +96,9 @@ const _testOverrides = new Set<string>();
  * has a value (first boot, before the wizard runs).
  */
 export function getUiLoginPassword(): string {
-  const envValue = process.env.OP_UI_LOGIN_PASSWORD;
-  if (envValue) return envValue;
-  return readSecret(resolveOpenPalmHome(), 'op_ui_login_password')?.trimEnd() ?? "";
+  const fileValue = readLivePasswordFile();
+  if (fileValue) return fileValue;
+  return process.env.OP_UI_LOGIN_PASSWORD ?? "";
 }
 
 /**

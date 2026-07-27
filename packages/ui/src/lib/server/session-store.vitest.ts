@@ -10,6 +10,7 @@ import {
   validateSession,
   touchSession,
   invalidateSession,
+  getUiLoginPassword,
   _seedSession,
   _clearSessions,
   SESSION_TTL_MS,
@@ -81,6 +82,37 @@ describe("secret resolution (the forgeable-token regression)", () => {
       // a configured password into suites that assert the unconfigured state.
       rmSync(secretPath(resolveOpenPalmHome(), "op_ui_login_password"), { force: true });
     }
+  });
+});
+
+describe("getUiLoginPassword (C3 — the file is the live source of truth)", () => {
+  afterEach(() => {
+    rmSync(secretPath(resolveOpenPalmHome(), "op_ui_login_password"), { force: true });
+  });
+
+  test("a change to the secret file is reflected on the very next call, with no re-spawn", () => {
+    delete process.env.OP_UI_LOGIN_PASSWORD;
+    writeSecret(resolveOpenPalmHome(), "op_ui_login_password", "first-password-value");
+    expect(getUiLoginPassword()).toBe("first-password-value");
+
+    // Same process, same module instance (no re-import / re-spawn) — just the
+    // underlying file changing, as `openpalm reset-password` or a hand edit
+    // would do.
+    writeSecret(resolveOpenPalmHome(), "op_ui_login_password", "second-password-value-longer");
+    expect(getUiLoginPassword()).toBe("second-password-value-longer");
+  });
+
+  test("the file is authoritative — it wins over a stale env var, not the other way round", () => {
+    process.env.OP_UI_LOGIN_PASSWORD = "stale-env-password";
+    writeSecret(resolveOpenPalmHome(), "op_ui_login_password", "current-file-password");
+    expect(getUiLoginPassword()).toBe("current-file-password");
+  });
+
+  test("the env var is used only as a fallback when no secret file exists", () => {
+    delete process.env.OP_UI_LOGIN_PASSWORD;
+    rmSync(secretPath(resolveOpenPalmHome(), "op_ui_login_password"), { force: true });
+    process.env.OP_UI_LOGIN_PASSWORD = "env-only-password";
+    expect(getUiLoginPassword()).toBe("env-only-password");
   });
 });
 

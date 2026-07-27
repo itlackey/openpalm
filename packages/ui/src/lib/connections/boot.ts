@@ -56,10 +56,17 @@ function pickStorage(): ConnectionStorage {
 
   const persistent = createIndexedDbStorage();
   let selected: Promise<ConnectionStorage> | null = null;
+  // The availability probe below already reads every entry via `getAll()`.
+  // Cache that result so the wrapper's first real `getAll()` call can reuse
+  // it instead of discarding it and issuing a second IndexedDB read
+  // (issue #577, U2). Consumed exactly once, then cleared — every
+  // subsequent `getAll()` call performs a normal live read.
+  let probedEntries: Connection[] | undefined;
   const select = (): Promise<ConnectionStorage> => {
     selected ??= persistent.getAll().then(
-      () => {
+      (entries) => {
         storageMode = 'persistent';
+        probedEntries = entries;
         return persistent;
       },
       () => {
@@ -71,7 +78,15 @@ function pickStorage(): ConnectionStorage {
   };
 
   return {
-    getAll: async () => (await select()).getAll(),
+    getAll: async () => {
+      const backend = await select();
+      if (probedEntries !== undefined) {
+        const entries = probedEntries;
+        probedEntries = undefined;
+        return entries;
+      }
+      return backend.getAll();
+    },
     get: async (id) => (await select()).get(id),
     put: async (entry) => (await select()).put(entry),
     updateConnection: async (id, update) => (await select()).updateConnection(id, update),
