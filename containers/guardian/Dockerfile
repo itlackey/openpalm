@@ -75,7 +75,7 @@ RUN test -n "$GUARDIAN_VERSION" \
          (cd /opt/openpalm/local-src/skeleton && bun pm pack --destination /opt/openpalm/local-artifacts --quiet); \
          skeleton_spec="$(find /opt/openpalm/local-artifacts -maxdepth 1 -name 'openpalm-skeleton-*.tgz' | head -n 1)"; \
        fi \
-    && mkdir -p /opt/openpalm /opt/openpalm/guardian/.local/share/opencode /opt/openpalm/guardian/.local/state/opencode /opt/openpalm/guardian-pkg /opt/openpalm/skeleton \
+    && mkdir -p /opt/openpalm /opt/openpalm/guardian/.local/share/opencode /opt/openpalm/guardian/.local/state/opencode /opt/openpalm/guardian/.cache/bun/install /opt/openpalm/guardian-pkg /opt/openpalm/skeleton \
     && (cd /opt/openpalm/guardian-pkg && bun add "$guardian_spec" --production) \
     && (cd /opt/openpalm/skeleton && bun add "$skeleton_spec" --production) \
     && bun install --cwd /opt/openpalm/tools --production \
