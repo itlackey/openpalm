@@ -122,6 +122,16 @@ services:
       # their exact origin when direct ingress is enabled.
       GUARDIAN_CORS_ALLOWED_ORIGINS: ${GUARDIAN_CORS_ALLOWED_ORIGINS:-}
       GUARDIAN_MCP: ${GUARDIAN_MCP:-false}
+      # S4 lifecycle-aware session eviction (#586). The two row-count caps
+      # (GUARDIAN_OWNERSHIP_MAX_ROWS, GUARDIAN_EVICTION_LOG_MAX_ROWS) stay
+      # compile-time internals — only the activity grace window and the sweep
+      # cadence are operator-tunable. GUARDIAN_SESSION_ACTIVE_GRACE_MS is how
+      # recently a session must have been used (through the guardian, or
+      # verified upstream by the sweep) to be exempt from eviction; default
+      # 24h. GUARDIAN_RECONCILE_INTERVAL_MS is the sweep interval that
+      # deletes/archives evicted sessions upstream; '0' disables it.
+      GUARDIAN_SESSION_ACTIVE_GRACE_MS: ${GUARDIAN_SESSION_ACTIVE_GRACE_MS:-86400000}
+      GUARDIAN_RECONCILE_INTERVAL_MS: ${GUARDIAN_RECONCILE_INTERVAL_MS:-300000}
       # #563 — upstream credential for assistant_net calls to the assistant
       # when a home-password network access preset turns assistant auth on.
       # The moderator's own loopback OpenCode spawn pins OPENCODE_AUTH=false

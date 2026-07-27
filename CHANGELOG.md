@@ -7,6 +7,29 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Guardian session eviction is lifecycle-aware (schema v4)** (#586): the
+  bounded `session_owners` table used to evict its oldest row by `created_at`,
+  which never refreshed — a long-lived active conversation (e.g. reused via
+  the OpenCode web UI, or simply idle-but-alive) could be evicted and its
+  upstream session destroyed mid-use. Eviction now orders by `last_used_at`,
+  refreshed on every authorized `/oc` session-scoped request, and skips any
+  session used within `GUARDIAN_SESSION_ACTIVE_GRACE_MS` (default 24h) — a
+  soft cap that lets the table temporarily exceed
+  `GUARDIAN_OWNERSHIP_MAX_ROWS` rather than delete an active session. The
+  async reconciliation sweep now verifies upstream activity before deleting
+  (`GET /session/{id}` first) and, if the session turns out to still be
+  active, **restores** the ownership row instead of deleting it. Separately,
+  the eviction-log prune (`GUARDIAN_EVICTION_LOG_MAX_ROWS`) used to fall
+  through to dropping a still-pending row once reconciled rows ran out —
+  pending rows are now structurally unreachable by that prune, so a large
+  reconciliation backlog can never lose an orphaned session's record. The
+  periodic sweep now drains its full backlog in one pass instead of a single
+  batch. New operator knobs `GUARDIAN_SESSION_ACTIVE_GRACE_MS` and
+  `GUARDIAN_RECONCILE_INTERVAL_MS` are plumbed into the guardian's compose env
+  block; the two row-count caps remain compile-time internals.
+
 ### Changed
 
 - **One stack env file** — `knowledge/env/stack.env` and `state/stack.state.env`

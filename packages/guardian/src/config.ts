@@ -47,6 +47,17 @@ export function readPositiveIntEnv(name: string, fallback: number): number {
 /** Guardian direct-ingress port. Read once at module load. */
 export const DIRECT_PORT = readPositiveIntEnv("GUARDIAN_DIRECT_PORT", 3830);
 
+/**
+ * A session is considered "still active" if used within this window — the
+ * grace period the S4 lifecycle-aware eviction redesign (#586) uses in TWO
+ * places that must share exactly one definition of "active": the ownership
+ * table's soft-cap eviction filter (state-db.ts) and the reconciliation
+ * sweep's upstream activity check (reconciliation.ts). Recommended default
+ * 24h (decision 586-2). Read once at module load; both call sites also
+ * accept an explicit override for tests.
+ */
+export const SESSION_ACTIVE_GRACE_MS = readPositiveIntEnv("GUARDIAN_SESSION_ACTIVE_GRACE_MS", 24 * 60 * 60 * 1000);
+
 function normalizeExactOrigin(value: string): string {
   if (value === '*') throw new Error('GUARDIAN_CORS_ALLOWED_ORIGINS must not contain wildcard origins');
   const url = new URL(value);

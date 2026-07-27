@@ -31,6 +31,7 @@ import {
   getPermissionOwnerKey,
   countPermissionOwners,
   countPendingEvictedSessions,
+  touchSessionOwnerRow,
   clearOwnershipTables,
 } from './state-db.ts';
 
@@ -81,6 +82,17 @@ export function sessionOwnedByOther(sessionId: string, principal: Principal): bo
 /** Forget a session's ownership (called after a successful DELETE /session/{id}). */
 export function forgetSession(sessionId: string): void {
   deleteSessionOwnerRow(sessionId);
+}
+
+/**
+ * Refresh a session's `last_used_at` (S4 Fix A, #586). Called from proxy.ts
+ * immediately after the `ownsSession` gate passes on a session-scoped
+ * request — the single choke point covering message/prompt_async/abort/
+ * history/DELETE — so a session actually in use is never selected as an idle
+ * eviction candidate. Not re-exported from index.ts: no external consumer.
+ */
+export function touchSessionOwner(sessionId: string): void {
+  touchSessionOwnerRow(sessionId);
 }
 
 /** Returns the set of sessionIds owned by `principal` (for GET /session filtering). */

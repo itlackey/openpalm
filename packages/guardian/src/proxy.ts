@@ -36,6 +36,7 @@ import {
 	recordSessionOwner,
 	forgetSession,
 	ownedSessionIds,
+	touchSessionOwner,
 } from './ownership';
 import { canOpenEventStream, openEventStream } from './event-fanout';
 import { audit } from './audit';
@@ -302,6 +303,13 @@ async function routeRequest(
 					sessionId: route.sessionId,
 				});
 			}
+			// S4 Fix A (#586): refresh last_used_at on every authorized
+			// session-scoped request (message/prompt_async/abort/history/DELETE)
+			// so a session actually in use is never picked as an idle eviction
+			// candidate. Deliberately NOT called in event-fanout.ts (per-frame hot
+			// path; frames only flow for sessions already driven by a touched
+			// request here).
+			touchSessionOwner(route.sessionId);
 
 			if (route.moderatedWrite) {
 				// Gate 6: content moderation — WRITE-PATH ONLY (§3.5). Screen the prompt,

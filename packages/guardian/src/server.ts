@@ -10,7 +10,7 @@ import { eventSubscriberCount } from './event-fanout';
 import { handleMcpRequest, seedMcpPrincipalFromToken } from './mcp';
 import { sessionOwnerCount, permissionOwnerCount, pendingEvictedSessionCount } from './ownership';
 import { handleProxy, OC_PREFIX } from './proxy';
-import { reconcileEvictedSessions, deleteUpstreamSessionViaAssistant } from './reconciliation';
+import { drainEvictedSessions, deleteUpstreamSessionViaAssistant } from './reconciliation';
 import {
   activeRateLimiters,
   PORTAL_RATE_LIMIT,
@@ -270,14 +270,15 @@ export function startGuardian(options: StartGuardianOptions = {}): GuardianServe
   // S4 (#581 finding #7): periodic orphan-reconciliation sweep. Decoupled from
   // the hot session-create request path (which only WRITES the pending log
   // row, synchronously, in state-db.ts) — this walks that log out-of-band and
-  // actually deletes/archives each session upstream. `.unref()` so a lone
-  // pending timer never blocks a graceful shutdown; runs once immediately so
-  // a restart doesn't wait a full interval before catching up on rows evicted
-  // just before the previous shutdown.
+  // verifies/deletes-or-archives each session upstream (#586: drainEvictedSessions
+  // loops across the full backlog in one pass rather than a single batch).
+  // `.unref()` so a lone pending timer never blocks a graceful shutdown; runs
+  // once immediately so a restart doesn't wait a full interval before
+  // catching up on rows evicted just before the previous shutdown.
   let reconcileTimer: ReturnType<typeof setInterval> | null = null;
   if (RECONCILE_INTERVAL_MS > 0) {
     const sweep = () => {
-      reconcileEvictedSessions(deleteUpstreamSessionViaAssistant).catch((err) => {
+      drainEvictedSessions(deleteUpstreamSessionViaAssistant).catch((err) => {
         logger.error('session_reconcile_sweep_failed', { error: String(err) });
       });
     };

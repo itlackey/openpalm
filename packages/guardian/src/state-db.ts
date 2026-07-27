@@ -2,7 +2,10 @@ import { Database } from 'bun:sqlite';
 import { createHash } from 'node:crypto';
 import { chmodSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { clampPositiveInt } from './config.ts';
+import { clampPositiveInt, SESSION_ACTIVE_GRACE_MS } from './config.ts';
+import { createLogger } from './logger.ts';
+
+const logger = createLogger('guardian:state-db');
 
 export type PrincipalKind = 'portal' | 'direct';
 
@@ -86,9 +89,11 @@ function createOwnershipTables(database: Database): void {
     CREATE TABLE IF NOT EXISTS session_owners (
       session_id TEXT PRIMARY KEY,
       principal_key TEXT NOT NULL,
-      created_at INTEGER NOT NULL
+      created_at INTEGER NOT NULL,
+      last_used_at INTEGER NOT NULL DEFAULT 0
     );
     CREATE INDEX IF NOT EXISTS session_owners_principal ON session_owners(principal_key);
+    CREATE INDEX IF NOT EXISTS session_owners_last_used ON session_owners(last_used_at);
     CREATE TABLE IF NOT EXISTS permission_owners (
       request_id TEXT PRIMARY KEY,
       principal_key TEXT NOT NULL,
@@ -125,11 +130,40 @@ function createEvictionLogTable(database: Database): void {
   `);
 }
 
+/**
+ * Migration v3 → v4: add session_owners.last_used_at for lifecycle-aware
+ * eviction (S4 Fix A, #586) — eviction candidates used to be ordered by
+ * created_at and never refreshed, so a long-lived active session with a
+ * stale created_at could be evicted (and its upstream OpenCode session
+ * destroyed) mid-conversation. Backfills the new column from created_at so
+ * existing rows keep their current relative eviction order until touched.
+ *
+ * `createOwnershipTables` is reused as BOTH the v1→v2 migration step AND the
+ * unconditional configure-time CREATE below (`:184-188`-era comment) — so on
+ * a FRESH database this step and that one share one pass through the
+ * migration loop, and by the time THIS step runs, `session_owners` was
+ * already created two steps earlier WITH `last_used_at` (the DDL above is
+ * shared). Sniff `PRAGMA table_info` and no-op if the column already exists
+ * — same precedent as `migrateKindConstraintIfNeeded`'s sqlite_master sniff.
+ */
+function migrateSessionOwnersLastUsedIfNeeded(database: Database): void {
+  type ColumnInfo = { name: string };
+  const columns = database.query<ColumnInfo, []>('PRAGMA table_info(session_owners)').all();
+  if (columns.some((c) => c.name === 'last_used_at')) return; // fresh-DB convergence — already present
+
+  database.exec(`
+    ALTER TABLE session_owners ADD COLUMN last_used_at INTEGER NOT NULL DEFAULT 0;
+    UPDATE session_owners SET last_used_at = created_at;
+    CREATE INDEX IF NOT EXISTS session_owners_last_used ON session_owners(last_used_at);
+  `);
+}
+
 // Ordered migrations: MIGRATIONS[n] takes user_version n → n+1.
 const MIGRATIONS: ReadonlyArray<(database: Database) => void> = [
   migrateKindConstraintIfNeeded, // v0 → v1
   createOwnershipTables, // v1 → v2
   createEvictionLogTable, // v2 → v3
+  migrateSessionOwnersLastUsedIfNeeded, // v3 → v4
 ];
 
 /**
@@ -138,7 +172,7 @@ const MIGRATIONS: ReadonlyArray<(database: Database) => void> = [
  * cert_fingerprint are added by ALTER TABLE under a new user_version step
  * ONLY when their consumer ships — never speculatively.
  */
-export const STATE_DB_SCHEMA_VERSION = 3;
+export const STATE_DB_SCHEMA_VERSION = 4;
 
 function readUserVersion(database: Database): number {
   return (database.query('PRAGMA user_version').get() as { user_version: number }).user_version;
@@ -279,8 +313,13 @@ export function seedPortalPrincipalsFromEnv(): PrincipalRecord[] {
 // ── /oc proxy ownership (session + permission), persisted so a guardian restart
 // does not orphan the sessions/permission requests its principals own. ──────────
 //
-// Bounded oldest-first (created_at) so authenticated input cannot grow the DB
-// without limit — the same size-cap discipline the previous in-memory Maps used.
+// Bounded oldest-idle-first (last_used_at, S4 Fix A #586 — was created_at,
+// never refreshed) so authenticated input cannot grow the DB without limit —
+// the same size-cap discipline the previous in-memory Maps used. A session
+// touched (proxy.ts, on every authorized session-scoped request) or restored
+// by the reconciliation sweep (decision 586-1) is never selected as an idle
+// candidate while within GUARDIAN_SESSION_ACTIVE_GRACE_MS of its last use —
+// see evictOldestSessionOwners' soft cap below.
 /**
  * Clamp a GUARDIAN_OWNERSHIP_MAX_ROWS override to a usable positive integer.
  * A non-numeric override yields NaN, which binds to SQLite as NULL and turns
@@ -320,27 +359,52 @@ function evictOldestPermissionOwners(database: Database, maxRows: number = OWNER
     .run(maxRows);
 }
 
+// Rate-limit the two state-transition warns below to ONE line per crossing
+// (idle→over-cap, or below-cap→idle-again) rather than on every hot-path
+// insert while the condition persists — both fire from recordSessionOwnerRow,
+// which runs on every session-scoped write.
+let evictionLogOverCapWarned = false;
+let sessionOwnersSoftCapWarned = false;
+
 /**
  * Bound `session_eviction_log` itself so a reconciliation sweep that is
- * disabled/behind never lets it grow forever either. Reconciled rows (their
- * job is done — an audit trail, not a queue) are pruned FIRST; an unreconciled
- * row is only dropped once every reconciled row is already gone, so a
- * pending-but-not-yet-swept orphan is never silently forgotten while there is
- * a cheaper row available to reclaim instead.
+ * disabled/behind never lets it grow forever either. Fix B (#586): the
+ * candidate set for deletion is reconciled rows ONLY (`reconciled_at IS NOT
+ * NULL`) — a pending (never-reconciled) row is structurally unreachable by
+ * this prune, no matter how far over `maxRows` the table grows. This used to
+ * prefer reconciled rows first but still fall through to the oldest pending
+ * row once reconciled rows ran out, silently dropping an orphan's only
+ * record; never-delete-user-data outranks eviction-log hygiene, so a
+ * structural guarantee replaces the preference. When pending rows alone
+ * exceed `maxRows`, that's surfaced via a rate-limited structured warn
+ * instead of a silent drop.
  */
 function pruneEvictionLog(database: Database, maxRows: number = EVICTION_LOG_MAX_ROWS): void {
   database
     .query(
       `DELETE FROM session_eviction_log WHERE session_id IN (
          SELECT session_id FROM session_eviction_log
-         ORDER BY (reconciled_at IS NULL) ASC, evicted_at ASC, session_id ASC
+         WHERE reconciled_at IS NOT NULL
+         ORDER BY evicted_at ASC, session_id ASC
          LIMIT MAX(0, (SELECT COUNT(*) FROM session_eviction_log) - ?))`,
     )
     .run(maxRows);
+
+  const { n: pendingCount } = database
+    .query('SELECT COUNT(*) AS n FROM session_eviction_log WHERE reconciled_at IS NULL')
+    .get() as { n: number };
+  if (pendingCount > maxRows) {
+    if (!evictionLogOverCapWarned) {
+      logger.warn('eviction_log_pending_over_cap', { pendingCount, maxRows });
+      evictionLogOverCapWarned = true;
+    }
+  } else {
+    evictionLogOverCapWarned = false;
+  }
 }
 
 /**
- * Evict `session_owners`' oldest rows past `maxRows` — but, unlike
+ * Evict `session_owners`' oldest-IDLE rows past `maxRows` — but, unlike
  * permission_owners, each evicted row maps 1:1 to a DURABLE upstream OpenCode
  * session (S4, #581 finding #7). Deleting the ownership row without a trace
  * would make that session an undeletable orphan: no principal can list it
@@ -350,22 +414,52 @@ function pruneEvictionLog(database: Database, maxRows: number = EVICTION_LOG_MAX
  * CONFLICT so a rare re-eviction of a reused id flips back to pending rather
  * than silently staying "reconciled") — the async sweep in reconciliation.ts
  * is what actually deletes/archives it upstream.
+ *
+ * Fix A (#586, defect A): candidates are no longer every row oldest-by-
+ * created_at — only rows whose `last_used_at` is OLDER than `activeGraceMs`
+ * qualify (ordered oldest-idle-first). This is the SOFT CAP: when fewer idle
+ * candidates exist than the overflow, only the idle ones are evicted and a
+ * rate-limited structured warn is emitted — the table may temporarily exceed
+ * `maxRows` rather than destroy an active conversation. Never-delete-user-
+ * data outranks table hygiene.
  */
 function evictOldestSessionOwners(
   database: Database,
   maxRows: number = OWNERSHIP_MAX_ROWS,
   evictionLogMaxRows: number = EVICTION_LOG_MAX_ROWS,
+  activeGraceMs: number = SESSION_ACTIVE_GRACE_MS,
+  now: number = Date.now(),
 ): void {
   const { n: count } = database.query('SELECT COUNT(*) AS n FROM session_owners').get() as { n: number };
   const overflow = count - maxRows;
-  if (overflow <= 0) return;
+  if (overflow <= 0) {
+    sessionOwnersSoftCapWarned = false;
+    return;
+  }
 
+  const cutoff = now - activeGraceMs;
   const toEvict = database
-    .query('SELECT session_id, principal_key FROM session_owners ORDER BY created_at ASC, session_id ASC LIMIT ?')
-    .all(overflow) as { session_id: string; principal_key: string }[];
+    .query(
+      'SELECT session_id, principal_key FROM session_owners WHERE last_used_at <= ? ORDER BY last_used_at ASC, session_id ASC LIMIT ?',
+    )
+    .all(cutoff, overflow) as { session_id: string; principal_key: string }[];
+
+  if (toEvict.length < overflow) {
+    if (!sessionOwnersSoftCapWarned) {
+      logger.warn('session_owners_soft_cap_active_sessions_retained', {
+        count,
+        maxRows,
+        overflow,
+        idleCandidates: toEvict.length,
+        activeGraceMs,
+      });
+      sessionOwnersSoftCapWarned = true;
+    }
+  } else {
+    sessionOwnersSoftCapWarned = false;
+  }
   if (toEvict.length === 0) return;
 
-  const now = Date.now();
   const insertLog = database.query(
     `INSERT INTO session_eviction_log (session_id, principal_key, evicted_at, reconciled_at)
      VALUES (?, ?, ?, NULL)
@@ -382,6 +476,14 @@ function evictOldestSessionOwners(
   pruneEvictionLog(database, evictionLogMaxRows);
 }
 
+/**
+ * Record that `principalKey` owns `sessionId`, refreshing `last_used_at` to
+ * `createdAt` (S4 Fix A, #586 — the initial "use" is the create itself), then
+ * evict past the cap. The only public entry to the eviction path, so
+ * `activeGraceMs`/`now` are threaded through here too (defaulting to the real
+ * grace/clock) — tests cannot drive evictOldestSessionOwners' soft cap
+ * deterministically without them.
+ */
 export function recordSessionOwnerRow(
   sessionId: string,
   principalKey: string,
@@ -389,15 +491,63 @@ export function recordSessionOwnerRow(
   database: Database = openDatabase(),
   maxRows: number = OWNERSHIP_MAX_ROWS,
   evictionLogMaxRows: number = EVICTION_LOG_MAX_ROWS,
+  activeGraceMs: number = SESSION_ACTIVE_GRACE_MS,
+  now: number = Date.now(),
 ): void {
   database
     .query(
-      `INSERT INTO session_owners (session_id, principal_key, created_at)
-       VALUES (?, ?, ?)
-       ON CONFLICT(session_id) DO UPDATE SET principal_key = excluded.principal_key`,
+      `INSERT INTO session_owners (session_id, principal_key, created_at, last_used_at)
+       VALUES (?, ?, ?, ?)
+       ON CONFLICT(session_id) DO UPDATE SET
+         principal_key = excluded.principal_key,
+         last_used_at = excluded.last_used_at`,
     )
-    .run(sessionId, principalKey, createdAt);
-  evictOldestSessionOwners(database, maxRows, evictionLogMaxRows);
+    .run(sessionId, principalKey, createdAt, createdAt);
+  evictOldestSessionOwners(database, maxRows, evictionLogMaxRows, activeGraceMs, now);
+}
+
+/**
+ * Refresh `sessionId`'s `last_used_at` without touching `principal_key` or
+ * `created_at` — called from proxy.ts immediately after every authorized
+ * session-scoped request (the single choke point covering message/
+ * prompt_async/abort/history/DELETE, per the #586 design). A no-op if the
+ * session isn't owned (0 rows affected). Keeps the row out of
+ * evictOldestSessionOwners' idle-candidate set while genuinely in use.
+ */
+export function touchSessionOwnerRow(
+  sessionId: string,
+  now: number = Date.now(),
+  database: Database = openDatabase(),
+): void {
+  database.query('UPDATE session_owners SET last_used_at = ? WHERE session_id = ?').run(now, sessionId);
+}
+
+/**
+ * Restore (un-evict) an ownership row the reconciliation sweep found still
+ * active upstream (decision 586-1) — re-insert `session_owners` with a fresh
+ * `last_used_at` under the retained `principal_key` (the eviction log keeps
+ * it, `:118-125`-era comment) and mark the log row reconciled: the incident
+ * is resolved (the session survived), not left pending for a retry. Without
+ * restoration the principal stays locked out (every `/oc` call 403s
+ * forbidden_session) until the session eventually goes idle and is deleted
+ * anyway — only restoring actually satisfies "never evict an active session".
+ */
+export function restoreSessionOwnerRow(
+  sessionId: string,
+  principalKey: string,
+  now: number = Date.now(),
+  database: Database = openDatabase(),
+): void {
+  database
+    .query(
+      `INSERT INTO session_owners (session_id, principal_key, created_at, last_used_at)
+       VALUES (?, ?, ?, ?)
+       ON CONFLICT(session_id) DO UPDATE SET
+         principal_key = excluded.principal_key,
+         last_used_at = excluded.last_used_at`,
+    )
+    .run(sessionId, principalKey, now, now);
+  markSessionReconciled(sessionId, database);
 }
 
 export function getSessionOwnerKey(sessionId: string): string | null {
