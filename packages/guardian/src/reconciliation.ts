@@ -168,10 +168,16 @@ export async function drainEvictedSessions(
  *     the caller restores the ownership row rather than deleting anything.
  *   - 200, stale ⇒ safe to delete; issue the DELETE and report its outcome.
  *   - any other status, network error, unparsable body, OR a 200 body whose
- *     `time.updated` is missing/non-numeric (`Number(...)` not finite) ⇒
- *     'failed' (fail-safe: never destroy on uncertainty — this is exactly the
- *     schema-coupling risk called out below: if OpenCode ever renames/retypes
- *     `time.updated`, every pending row must defer, never delete).
+ *     `time.updated` is not a finite positive `number` (missing, `null`,
+ *     `""`, a string, or `<= 0`) ⇒ 'failed' (fail-safe: never destroy on
+ *     uncertainty — this is exactly the schema-coupling risk called out
+ *     below: if OpenCode ever renames/retypes `time.updated`, every pending
+ *     row must defer, never delete). The check is a `typeof` guard, not a
+ *     `Number(...)` coercion — `Number(null)`/`Number('')` both coerce to
+ *     `0`, which is finite and would otherwise slip past an `isFinite`-only
+ *     check and compute `Date.now() - 0`, a timestamp always outside any
+ *     realistic grace window, falling through to delete on the exact
+ *     uncertainty this guard exists to catch.
  *
  * This is roughly the FOURTH OpenCode schema-coupling point in this package
  * (after proxy.ts's request-body parsing, forwardSessionCreate/
@@ -208,8 +214,9 @@ export async function verifyThenDeleteUpstreamSession(
     return 'failed'; // unparsable body — fail-safe defer
   }
 
-  const updatedAt = Number((session as { time?: { updated?: unknown } } | null)?.time?.updated);
-  if (!Number.isFinite(updatedAt)) return 'failed'; // unparsable/missing time.updated — fail-safe defer, never delete on uncertainty
+  const rawUpdated = (session as { time?: { updated?: unknown } } | null)?.time?.updated;
+  const updatedAt = typeof rawUpdated === 'number' ? rawUpdated : Number.NaN;
+  if (!Number.isFinite(updatedAt) || updatedAt <= 0) return 'failed'; // missing/non-numeric/zero-sentinel time.updated — fail-safe defer, never delete on uncertainty
   if (Date.now() - updatedAt <= activeGraceMs) {
     return 'active';
   }

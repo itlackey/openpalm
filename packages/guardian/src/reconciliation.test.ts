@@ -364,6 +364,20 @@ describe('verifyThenDeleteUpstreamSession (Fix A step 4, #586)', () => {
     expect(deleteCalls).toEqual([]);
   });
 
+  it('a 200 body with time.updated as null ⇒ failed (fail-safe defer), no DELETE issued (#586 fix-round-2)', async () => {
+    getResponder = () => Response.json({ id: 'ses_null', time: { updated: null } });
+    const outcome = await verifyThenDeleteUpstreamSession(baseUrl(), 'ses_null', 60_000);
+    expect(outcome).toBe('failed');
+    expect(deleteCalls).toEqual([]);
+  });
+
+  it('a 200 body with time.updated as an empty string ⇒ failed (fail-safe defer), no DELETE issued (#586 fix-round-2)', async () => {
+    getResponder = () => Response.json({ id: 'ses_empty', time: { updated: '' } });
+    const outcome = await verifyThenDeleteUpstreamSession(baseUrl(), 'ses_empty', 60_000);
+    expect(outcome).toBe('failed');
+    expect(deleteCalls).toEqual([]);
+  });
+
   it('a network error reaching the assistant ⇒ failed (fail-safe defer)', async () => {
     // Point at a closed port (stub not listening there) to force a connection error.
     const outcome = await verifyThenDeleteUpstreamSession('http://127.0.0.1:1', 'ses_unreachable', 60_000);
