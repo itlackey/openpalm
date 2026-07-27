@@ -4,7 +4,8 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { buildEnvFiles } from './config-persistence.js';
 import { assertNoSecretLikeStackEnvKeys, patchSecretsEnvFile } from './secrets.js';
-import { listSecretNames, readSecret, resolveSecretsDir, secretPath, writeSecret, ensureSecret, listSecretFiles, readSecretFile, writeSecretFile, removeSecretFile, assertSafeSecretFilename } from './secrets-files.js';
+import { listSecretNames, readSecret, resolveSecretsDir, secretPath, writeSecret, ensureSecret, listSecretFiles, readSecretFile, writeSecretFile, removeSecretFile, assertSafeSecretFilename, DELEGATED_SECRET_NAMES } from './secrets-files.js';
+import { privateSecretsDir, secretsDir } from './home.js';
 import type { ControlPlaneState } from './types.js';
 
 function tempStackDir(): string {
@@ -56,6 +57,43 @@ describe('file-based control-plane secrets', () => {
 
     expect(readSecret(stackDir, 'op_ui_login_password')).toBe('pw\n');
     expect(listSecretNames(stackDir)).toContain('op_ui_login_password');
+  });
+
+  // G1 (docs/public-seams-review.md): delegated secrets — consumed only by
+  // the guardian/portals, never the assistant agent — must resolve UNDER
+  // private/secrets/, never under knowledge/secrets/ (bind-mounted wholesale
+  // into the assistant at /stash). This is the discriminating property the
+  // relocation exists for: a round-trip-only test (write then read the same
+  // name back) would stay green even if delegated routing were disabled
+  // entirely, because both directories are readable/writable the same way.
+  // Only asserting the PHYSICAL PATH catches that regression.
+  it('routes every delegated secret name under privateSecretsDir, never secretsDir', () => {
+    const homeDir = tempStackDir();
+
+    for (const name of DELEGATED_SECRET_NAMES) {
+      const path = secretPath(homeDir, name);
+      expect(path).toBe(join(privateSecretsDir(homeDir), name));
+      expect(path.startsWith(secretsDir(homeDir))).toBe(false);
+
+      writeSecret(homeDir, name, `value-for-${name}`);
+      expect(readSecret(homeDir, name)).toBe(`value-for-${name}`);
+      // The value must actually land on disk under private/secrets/, not
+      // merely resolve there in-memory.
+      expect(statSync(join(privateSecretsDir(homeDir), name)).isFile()).toBe(true);
+    }
+  });
+
+  it('routes a non-delegated secret name (e.g. auth.json-adjacent) under secretsDir, never privateSecretsDir', () => {
+    const homeDir = tempStackDir();
+    const name = 'portal_owner_secret'; // not in DELEGATED_SECRET_NAMES
+
+    expect(DELEGATED_SECRET_NAMES.has(name)).toBe(false);
+    const path = secretPath(homeDir, name);
+    expect(path).toBe(join(secretsDir(homeDir), name));
+    expect(path.startsWith(privateSecretsDir(homeDir))).toBe(false);
+
+    writeSecret(homeDir, name, 'non-delegated-value');
+    expect(statSync(join(secretsDir(homeDir), name)).isFile()).toBe(true);
   });
 
   it('treats a zero-byte (torn) secret file as missing and re-seeds it (0.1)', () => {

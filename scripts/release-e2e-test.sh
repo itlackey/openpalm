@@ -537,9 +537,13 @@ if [ "$SKIP_INSTALL" -eq 0 ]; then
     pass "stack.env contains non-secret runtime configuration only"
   fi
 
-  password_secret="$STASH_HOME/secrets/op_ui_login_password"
+  # op_ui_login_password is a DELEGATED secret (docs/public-seams-review.md
+  # §G1) — consumed only by the guardian/portals, never the assistant agent —
+  # so it lives under private/secrets/, not knowledge/secrets/ (bind-mounted
+  # wholesale into the assistant at /stash).
+  password_secret="$OP_HOME/private/secrets/op_ui_login_password"
   if [ -f "$password_secret" ] && [ "$(tr -d '\n' < "$password_secret")" = "$OP_UI_LOGIN_PASSWORD" ]; then
-    pass "UI login password is stored in knowledge/secrets/op_ui_login_password"
+    pass "UI login password is stored in private/secrets/op_ui_login_password"
   else
     fail "UI login password secret file missing or incorrect"
   fi

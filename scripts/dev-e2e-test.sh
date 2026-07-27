@@ -111,6 +111,7 @@ cp -r packages/skeleton/. "${OP_E2E_HOME}/"
 
 # Seed stack.env with isolated non-secret values
 mkdir -p "${OP_E2E_HOME}/knowledge/secrets" "${OP_E2E_HOME}/knowledge/env" "${OP_E2E_HOME}/state"
+mkdir -p "${OP_E2E_HOME}/private/secrets"
 docker_sock="/var/run/docker.sock"
 cat > "${OP_E2E_HOME}/state/stack.env" <<EOF
 OP_HOME=${OP_E2E_HOME}
@@ -130,14 +131,18 @@ OP_SETUP_COMPLETE=true
 EOF
 chmod 600 "${OP_E2E_HOME}/state/stack.env"
 
-printf '%s\n' "e2e-test-password-$(date +%s)" > "${OP_E2E_HOME}/knowledge/secrets/op_ui_login_password"
-openssl rand -hex 16 > "${OP_E2E_HOME}/knowledge/secrets/portal_chat_secret"
-openssl rand -hex 16 > "${OP_E2E_HOME}/knowledge/secrets/portal_api_secret"
-openssl rand -hex 16 > "${OP_E2E_HOME}/knowledge/secrets/op_api_key"
-openssl rand -hex 16 > "${OP_E2E_HOME}/knowledge/secrets/portal_discord_secret"
-openssl rand -hex 16 > "${OP_E2E_HOME}/knowledge/secrets/portal_slack_secret"
-chmod 700 "${OP_E2E_HOME}/knowledge/secrets"
-chmod 600 "${OP_E2E_HOME}/knowledge/secrets/"*
+# These are all DELEGATED secrets (docs/public-seams-review.md §G1) —
+# consumed only by the guardian/portals, never the assistant agent — so they
+# are seeded under private/secrets/, not knowledge/secrets/ (bind-mounted
+# wholesale into the assistant at /stash).
+printf '%s\n' "e2e-test-password-$(date +%s)" > "${OP_E2E_HOME}/private/secrets/op_ui_login_password"
+openssl rand -hex 16 > "${OP_E2E_HOME}/private/secrets/portal_chat_secret"
+openssl rand -hex 16 > "${OP_E2E_HOME}/private/secrets/portal_api_secret"
+openssl rand -hex 16 > "${OP_E2E_HOME}/private/secrets/op_api_key"
+openssl rand -hex 16 > "${OP_E2E_HOME}/private/secrets/portal_discord_secret"
+openssl rand -hex 16 > "${OP_E2E_HOME}/private/secrets/portal_slack_secret"
+chmod 700 "${OP_E2E_HOME}/private/secrets"
+chmod 600 "${OP_E2E_HOME}/private/secrets/"*
 
 # Empty user.env (akm env:user is the source of truth at runtime)
 mkdir -p "${OP_E2E_HOME}/knowledge/env"
@@ -231,7 +236,7 @@ fi
 # ── Step 7: Verify UI endpoints ───────────────────────────────────
 echo ""
 echo "=== Step 7: Verify UI endpoints ==="
-UI_PASSWORD=$(tr -d '\n' < "${OP_E2E_HOME}/knowledge/secrets/op_ui_login_password")
+UI_PASSWORD=$(tr -d '\n' < "${OP_E2E_HOME}/private/secrets/op_ui_login_password")
 
 # Cookie jar for authenticated requests (reused across all authenticated calls).
 # Auth: POST /admin/auth/login with JSON password → server sets op_session cookie.
