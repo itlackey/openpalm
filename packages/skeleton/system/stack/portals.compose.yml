@@ -172,16 +172,11 @@ services:
       # containers/guardian/tools/package.json and shipping a new image.
       - guardian-cache:/opt/openpalm
       - ${OP_HOME}/data/guardian:/opt/openpalm/guardian
-      # S1: regenerable caches under $HOME/.cache (currently just OpenCode's
-      # moderator cache + the guardian/skeleton bun install cache) get their
-      # OWN independently purgeable named volume, nested inside the guardian
-      # HOME bind mount above (declared after it so it wins) — the same
-      # treatment as assistant-cache in core.compose.yml. Keeps them OUT of
-      # durable data/guardian (no longer counted in backups or the durable
-      # footprint) without touching runtime state (nonce/rate-limit store,
-      # OpenCode auth.json/config) that lives alongside it under data/guardian.
-      # See docs/public-seams-review.md §S1.
-      - guardian-home-cache:/opt/openpalm/guardian/.cache
+      # NOTE: S1 (relocating $HOME/.cache into its own purgeable named volume)
+      # is deferred — nesting a named volume inside the HOME bind mount makes
+      # Docker create the mountpoint root-owned on the host bind, which fails the
+      # rootless-ownership smoke test. The cache stays under the HOME bind
+      # (operator-owned) until a rootless-aware relocation lands. See §S1.
       - ${OP_HOME}/data/logs:/opt/openpalm/logs
       # MANAGED guardian config (moderation instructions/server/permission) →
       # OPENCODE_CONFIG_DIR. USER config (moderation model) → the operator's
@@ -264,9 +259,3 @@ volumes:
   # docker compose down --volumes will clean these up explicitly.
   guardian-cache: {}
   portal-cache: {}
-  # S1: regenerable $HOME/.cache tree for the guardian (OpenCode moderator
-  # cache, guardian/skeleton bun install cache), split out of the durable
-  # data/guardian bind mount so it can be pruned independently (e.g. a future
-  # `openpalm doctor --clean-caches`) without touching runtime state, secrets,
-  # or the OpenCode config under data/guardian.
-  guardian-home-cache: {}

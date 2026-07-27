@@ -149,15 +149,11 @@ services:
       # system/assistant is the MANAGED config (OPENCODE_CONFIG_DIR) — plugins,
       # permissions, instructions; overwritten on update.
       - ${OP_HOME}/data/assistant:/home/opencode
-      # S1: regenerable npm/bun/OpenCode/Playwright caches under
-      # /home/opencode/.cache get their OWN independently purgeable named
-      # volume, nested inside the HOME bind mount above (declared after it so
-      # it wins on all platforms — same ordering trick the old tools bind
-      # mount used). This keeps them OUT of durable data/assistant (they no
-      # longer count against backups or the durable-storage footprint) without
-      # touching the session DB (.local/share/opencode), credentials, or
-      # knowledge, none of which live under .cache. See docs/public-seams-review.md §S1.
-      - assistant-cache:/home/opencode/.cache
+      # NOTE: S1 (relocating /home/opencode/.cache into its own purgeable named
+      # volume) is deferred. Nesting a named volume inside the HOME bind mount
+      # makes Docker create the mountpoint root-owned on the host bind, which
+      # fails the rootless-ownership smoke test. Caches stay under the HOME bind
+      # (operator-owned) until a rootless-aware relocation lands. See §S1.
       - ${OP_HOME}/config/assistant:/home/opencode/.config/opencode
       - ${OP_HOME}/system/assistant:/etc/opencode
       - ${OP_HOME}/knowledge/secrets/auth.json:/home/opencode/.local/share/opencode/auth.json
@@ -293,8 +289,3 @@ volumes:
   # tool-tree artifacts under /opt/openpalm (E2/S2 — no bind mount overlays
   # any subpath of it anymore).
   assistant-artifacts:
-  # S1: regenerable npm/bun/OpenCode/Playwright caches (/home/opencode/.cache),
-  # split out of the durable data/assistant bind mount so they can be pruned
-  # independently (e.g. a future `openpalm doctor --clean-caches`) without
-  # touching the OpenCode session DB, credentials, or knowledge.
-  assistant-cache:

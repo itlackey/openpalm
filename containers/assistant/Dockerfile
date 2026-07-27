@@ -220,13 +220,14 @@ RUN chmod +x /usr/local/bin/opencode-entrypoint.sh
 
 WORKDIR /work
 
-# Point Bun's user-writable paths at the opencode user's home. S1: this cache
-# dir lives under /home/opencode/.cache, which compose mounts as its own
-# independently purgeable named volume (assistant-cache) nested inside the
-# HOME bind mount — NOT inside durable data/assistant — so it can be pruned
-# without touching session DBs, credentials, or knowledge. NPM_CONFIG_CACHE
-# mirrors the same treatment for any ad hoc `npm install` an agent runs
+# Point Bun's user-writable paths at the opencode user's home, under
+# /home/opencode/.cache (a stable, operator-owned location on the HOME bind).
+# NPM_CONFIG_CACHE does the same for any ad hoc `npm install` an agent runs
 # on-session (the entrypoint itself no longer installs anything at boot).
+# NOTE: S1 (relocating /home/opencode/.cache into a separate purgeable named
+# volume) is deferred — nesting a named volume inside the HOME bind makes
+# Docker create a root-owned mountpoint that fails the rootless smoke test.
+# See docs/public-seams-review.md §S1.
 ENV BUN_INSTALL=/home/opencode/.bun
 ENV BUN_INSTALL_CACHE_DIR=/home/opencode/.cache/bun/install
 ENV NPM_CONFIG_CACHE=/home/opencode/.cache/npm

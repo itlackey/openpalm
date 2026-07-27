@@ -35,12 +35,12 @@ ENV HOME=/opt/openpalm/guardian \
     OPENCODE_CONFIG_DIR=/etc/opencode \
     PATH="/opt/openpalm/tools/node_modules/.bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 
-# S1: point Bun's install-tarball cache at $HOME/.cache/bun/install rather
-# than Bun's own default ($HOME/.bun/install/cache) so the guardian-pkg/
-# skeleton `bun add` calls in entrypoint.sh (install_artifact) write into the
-# guardian-home-cache named volume compose nests at $HOME/.cache — NOT into
-# the durable data/guardian bind mount that $HOME otherwise resolves to.
-# See docs/public-seams-review.md §S1.
+# Point Bun's install-tarball cache at $HOME/.cache/bun/install (a stable,
+# operator-owned location under the guardian HOME bind) rather than Bun's own
+# default ($HOME/.bun/install/cache). NOTE: S1 (relocating $HOME/.cache into a
+# separate purgeable named volume) is deferred — nesting a named volume inside
+# the HOME bind makes Docker create a root-owned mountpoint that fails the
+# rootless-ownership smoke test. See docs/public-seams-review.md §S1.
 ENV BUN_INSTALL_CACHE_DIR=/opt/openpalm/guardian/.cache/bun/install
 
 # Optional dry-run/smoke path: copy the local guardian/skeleton workspaces into
