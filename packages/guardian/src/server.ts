@@ -8,8 +8,9 @@ import { audit } from './audit';
 import { basicTokenAuthStrategy, getAuthStrategy } from './auth.ts';
 import { eventSubscriberCount } from './event-fanout';
 import { handleMcpRequest, seedMcpPrincipalFromToken } from './mcp';
-import { sessionOwnerCount, permissionOwnerCount } from './ownership';
+import { sessionOwnerCount, permissionOwnerCount, pendingEvictedSessionCount } from './ownership';
 import { handleProxy, OC_PREFIX } from './proxy';
+import { reconcileEvictedSessions, deleteUpstreamSessionViaAssistant } from './reconciliation';
 import {
   activeRateLimiters,
   PORTAL_RATE_LIMIT,
@@ -35,6 +36,13 @@ const INTERNAL_HOST = Bun.env.GUARDIAN_INTERNAL_HOST || undefined;
 const ADMIN_PORT = readPositiveIntEnv('GUARDIAN_ADMIN_PORT', 3831);
 const DIRECT_INGRESS_ENABLED = Bun.env.GUARDIAN_DIRECT_INGRESS === 'true';
 const MCP_ENABLED = Bun.env.GUARDIAN_MCP === 'true';
+// S4 (#581 finding #7): periodic orphan-reconciliation sweep interval. '0'
+// disables the sweep outright (e.g. for a test/short-lived process); any
+// other malformed value falls back to the 5-minute default via
+// readPositiveIntEnv's clamp, same discipline as every other numeric env var
+// here (config.ts's clampPositiveInt doc explains why a NaN/zero must never
+// silently become "unbounded" instead of a safe fallback).
+const RECONCILE_INTERVAL_MS = Bun.env.GUARDIAN_RECONCILE_INTERVAL_MS === '0' ? 0 : readPositiveIntEnv('GUARDIAN_RECONCILE_INTERVAL_MS', 300_000);
 
 const startTime = Date.now();
 const requestCounters = {
@@ -124,6 +132,10 @@ function statsResponse(): Response {
       session_owners: sessionOwnerCount(),
       permission_owners: permissionOwnerCount(),
       event_subscribers: eventSubscriberCount(),
+      // S4 (#581 finding #7): evicted-but-not-yet-reconciled sessions. A
+      // sustained non-zero value means the reconciliation sweep is behind or
+      // disabled — see reconciliation.ts.
+      pending_evicted_sessions: pendingEvictedSessionCount(),
     },
     requests: {
       total: requestCounters.total,
@@ -255,6 +267,25 @@ export function startGuardian(options: StartGuardianOptions = {}): GuardianServe
 
   const admin = Bun.serve({ port: ADMIN_PORT, idleTimeout: 0, fetch: handleAdminListenerRequest });
 
+  // S4 (#581 finding #7): periodic orphan-reconciliation sweep. Decoupled from
+  // the hot session-create request path (which only WRITES the pending log
+  // row, synchronously, in state-db.ts) — this walks that log out-of-band and
+  // actually deletes/archives each session upstream. `.unref()` so a lone
+  // pending timer never blocks a graceful shutdown; runs once immediately so
+  // a restart doesn't wait a full interval before catching up on rows evicted
+  // just before the previous shutdown.
+  let reconcileTimer: ReturnType<typeof setInterval> | null = null;
+  if (RECONCILE_INTERVAL_MS > 0) {
+    const sweep = () => {
+      reconcileEvictedSessions(deleteUpstreamSessionViaAssistant).catch((err) => {
+        logger.error('session_reconcile_sweep_failed', { error: String(err) });
+      });
+    };
+    sweep();
+    reconcileTimer = setInterval(sweep, RECONCILE_INTERVAL_MS);
+    reconcileTimer.unref?.();
+  }
+
   audit({
     requestId: crypto.randomUUID(),
     action: 'guardian_boot',
@@ -276,6 +307,7 @@ export function startGuardian(options: StartGuardianOptions = {}): GuardianServe
     adminPort: ADMIN_PORT,
     directIngressEnabled: DIRECT_INGRESS_ENABLED,
     seededPrincipals: listPrincipals().length,
+    reconcileIntervalMs: RECONCILE_INTERVAL_MS,
   });
 
   return {
@@ -283,6 +315,7 @@ export function startGuardian(options: StartGuardianOptions = {}): GuardianServe
     direct,
     admin,
     stop() {
+      if (reconcileTimer) clearInterval(reconcileTimer);
       internal.stop();
       direct.stop();
       admin.stop();

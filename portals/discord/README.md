@@ -35,14 +35,14 @@ Minimal environment:
 
 ```bash
 OPENCODE_BASE_URL=http://localhost:4096
-PORTAL_SESSION_REUSE=client
 PRINCIPAL_ID=my-discord-bot        # any free-form username
 OPENCODE_PASSWORD=...              # the OpenCode server password, if OPENCODE_AUTH is set
 DISCORD_BOT_TOKEN=...
 ```
 
-`PORTAL_SESSION_REUSE=client` is required against a plain OpenCode server —
-see the `PORTAL_SESSION_REUSE` row below for why.
+Client-side session reuse (`PORTAL_SESSION_REUSE=client`) is the **default** —
+you do not need to set it against a plain OpenCode server. See the
+`PORTAL_SESSION_REUSE` row below for why, and when you'd ever opt out.
 
 ## Deployment model (shipped stack)
 
@@ -82,7 +82,7 @@ there's no secret mount).
 | `PRINCIPAL_ID` | yes | Basic-auth username — the guardian principal id in the shipped stack, or any free-form username against a plain OpenCode server |
 | `PRINCIPAL_SECRET` / `PRINCIPAL_SECRET_FILE` | yes (one of these, or `OPENCODE_PASSWORD`) | Basic-auth password |
 | `OPENCODE_PASSWORD` / `OPENCODE_PASSWORD_FILE` | standalone fallback | Same Basic-auth password slot as `PRINCIPAL_SECRET`, under the natural standalone name — against a plain OpenCode server this IS the OpenCode server password (`OPENCODE_AUTH`) |
-| `PORTAL_SESSION_REUSE` | no | `server` (default) or `client`. The shipped guardian stack owns session reuse server-side — leave this unset/`server`. Set `client` when running standalone against a plain OpenCode server: that server ignores the guardian's session-reuse hint header, so without client-side reuse every turn would start a brand-new session and multi-turn conversations would break. |
+| `PORTAL_SESSION_REUSE` | no | `client` (default) or `server`. The client-side cache keys a session by `(userId, sessionKey)` so a stable thread reuses one session — works standalone AND behind the shipped guardian, which has no server-side reuse cache of its own (a plain OpenCode server also ignores the guardian's session-reuse hint header). Set `server` ONLY if your deployment has built its own server-side reuse authority; leaving both sides unset (the old default) meant NEITHER side reused sessions, and every turn silently minted a new one. |
 | `PORTAL_SESSION_TTL_MS` | no | Client-mode session cache TTL in ms, default `900000` (15 min). Only relevant when `PORTAL_SESSION_REUSE=client`. |
 | `DISCORD_APPLICATION_ID` | yes for command registration | Discord application ID |
 | `DISCORD_BOT_TOKEN` / `DISCORD_BOT_TOKEN_FILE` | yes | Bot token |
@@ -101,9 +101,9 @@ receives `DISCORD_BOT_TOKEN_FILE`, not the raw token.
 The shipped Compose overlay exposes per-portal overrides through
 `DISCORD_OPENCODE_BASE_URL`, `DISCORD_PRINCIPAL_ID`, and
 `DISCORD_PRINCIPAL_SECRET_FILE`; each defaults to the guardian-backed
-first-party wiring. `PORTAL_SESSION_REUSE` is deliberately not set by the
-shipped Compose overlay — the guardian stays authoritative for session reuse
-there.
+first-party wiring. `PORTAL_SESSION_REUSE` is not set by the shipped Compose
+overlay, so it resolves to the `client` default there too — the guardian
+proxies `POST /session` transparently and has no reuse cache of its own.
 
 ## Interactive prompts compatibility
 

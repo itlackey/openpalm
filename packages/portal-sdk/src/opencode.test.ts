@@ -181,7 +181,7 @@ function makeReuseTransport() {
   };
 }
 
-describe('client-side session reuse (PORTAL_SESSION_REUSE=client)', () => {
+describe('client-side session reuse (S4, #581 finding #6: client is now the default)', () => {
   it('reuses one sessionId across createSession calls with the same (userId, sessionKey)', async () => {
     Bun.env.PORTAL_SESSION_REUSE = 'client';
     const transport = makeReuseTransport();
@@ -245,9 +245,13 @@ describe('client-side session reuse (PORTAL_SESSION_REUSE=client)', () => {
     expect(transport.createCount).toBe(2);
   });
 
-  it('server mode (the default) posts /session on every createSession call', async () => {
-    // env unset — this is the guardian-mode regression pin: the client map
-    // must be inert by default (D2's authoritative-side rule).
+  it('server mode (opt-in via PORTAL_SESSION_REUSE=server) posts /session on every createSession call', async () => {
+    // S4 (#581 finding #6): 'server' used to be the silent default, naming the
+    // guardian the reuse authority — but the guardian has no server-side reuse
+    // cache and strips the session-key hint, so every portal turn leaked a new
+    // root. 'server' is now an explicit opt-in for a deployment that HAS built
+    // its own guardian-side reuse cache; it must still disable the client map.
+    Bun.env.PORTAL_SESSION_REUSE = 'server';
     const transport = makeReuseTransport();
     const client = new OcClient({ principalId: 'p', secret: 's', baseUrl: 'http://oc.example', fetch: transport.fetchFn });
 
@@ -255,6 +259,33 @@ describe('client-side session reuse (PORTAL_SESSION_REUSE=client)', () => {
     await client.createSession('u1', 'thread-a');
 
     expect(transport.createCount).toBe(2);
+  });
+
+  it('client mode is now the default (env unset): a stable thread key reuses one session', async () => {
+    // The dead-contract fix (S4): rather than implement the promised-but-missing
+    // guardian-side reuse cache, the client-side reuse map (already implemented
+    // and tested above) becomes the default so a stable (userId, sessionKey)
+    // reuses one session with NO guardian involvement required.
+    const transport = makeReuseTransport();
+    const client = new OcClient({ principalId: 'p', secret: 's', baseUrl: 'http://oc.example', fetch: transport.fetchFn });
+
+    const first = await client.createSession('u1', 'thread-a');
+    const second = await client.createSession('u1', 'thread-a');
+
+    expect(first.id).toBe('s1');
+    expect(second.id).toBe('s1');
+    expect(transport.createCount).toBe(1);
+  });
+
+  it('any value other than "server" (e.g. a typo) resolves to the fail-safe client default', async () => {
+    Bun.env.PORTAL_SESSION_REUSE = 'clientt';
+    const transport = makeReuseTransport();
+    const client = new OcClient({ principalId: 'p', secret: 's', baseUrl: 'http://oc.example', fetch: transport.fetchFn });
+
+    await client.createSession('u1', 'thread-a');
+    await client.createSession('u1', 'thread-a');
+
+    expect(transport.createCount).toBe(1);
   });
 
   it('falls back to userId as the reuse key when no sessionKey is given', async () => {

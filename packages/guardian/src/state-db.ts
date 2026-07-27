@@ -97,10 +97,39 @@ function createOwnershipTables(database: Database): void {
   `);
 }
 
+/**
+ * Migration v2 → v3: add the session-eviction reconciliation log (S4, #581
+ * finding #7).
+ *
+ * `session_owners` is bounded (evicts its oldest row past
+ * GUARDIAN_OWNERSHIP_MAX_ROWS, see evictOldestSessionOwners below) — but
+ * deleting the ownership row alone does NOT delete the underlying OpenCode
+ * session. Before this table existed, an evicted session became a permanent,
+ * undeletable orphan: no principal could list it (GET /session is filtered to
+ * owned rows) or delete it (DELETE /session/{id} would 403 forbidden_session
+ * with no owner on record), yet it stayed durable on disk forever. Every
+ * eviction now persists a row here FIRST, in the same eviction step, so an
+ * async sweep (reconciliation.ts) can still delete/archive the session
+ * upstream and mark it reconciled. Idempotent CREATE IF NOT EXISTS so a fresh
+ * DB and an existing v2 DB converge on the same schema.
+ */
+function createEvictionLogTable(database: Database): void {
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS session_eviction_log (
+      session_id TEXT PRIMARY KEY,
+      principal_key TEXT NOT NULL,
+      evicted_at INTEGER NOT NULL,
+      reconciled_at INTEGER
+    );
+    CREATE INDEX IF NOT EXISTS session_eviction_log_pending ON session_eviction_log(reconciled_at);
+  `);
+}
+
 // Ordered migrations: MIGRATIONS[n] takes user_version n → n+1.
 const MIGRATIONS: ReadonlyArray<(database: Database) => void> = [
   migrateKindConstraintIfNeeded, // v0 → v1
   createOwnershipTables, // v1 → v2
+  createEvictionLogTable, // v2 → v3
 ];
 
 /**
@@ -109,7 +138,7 @@ const MIGRATIONS: ReadonlyArray<(database: Database) => void> = [
  * cert_fingerprint are added by ALTER TABLE under a new user_version step
  * ONLY when their consumer ships — never speculatively.
  */
-export const STATE_DB_SCHEMA_VERSION = 2;
+export const STATE_DB_SCHEMA_VERSION = 3;
 
 function readUserVersion(database: Database): number {
   return (database.query('PRAGMA user_version').get() as { user_version: number }).user_version;
@@ -155,6 +184,8 @@ export function configureStateDatabase(database: Database): void {
   // Ownership tables share their DDL with the v1 → v2 migration so a fresh DB
   // and an upgraded one can never drift.
   createOwnershipTables(database);
+  // Same convergence guarantee for the v2 → v3 eviction log.
+  createEvictionLogTable(database);
 
   // 0600 discipline: DB file + any WAL sidecars that already exist. Sidecars
   // SQLite creates later inherit the DB file's mode (unix VFS derives
@@ -264,21 +295,101 @@ export function _clampOwnershipMaxRows(raw: string | undefined): number {
 
 const OWNERSHIP_MAX_ROWS = _clampOwnershipMaxRows(Bun.env.GUARDIAN_OWNERSHIP_MAX_ROWS);
 
-// `table` is a compile-time constant (never user input) so the interpolation
-// below cannot be injected — this is the one safe use of a table name in SQL text.
-function evictOldest(database: Database, table: 'session_owners' | 'permission_owners', keyCol: string): void {
-  database
-    .query(
-      `DELETE FROM ${table} WHERE ${keyCol} IN (
-         SELECT ${keyCol} FROM ${table}
-         ORDER BY created_at ASC, ${keyCol} ASC
-         LIMIT MAX(0, (SELECT COUNT(*) FROM ${table}) - ?))`,
-    )
-    .run(OWNERSHIP_MAX_ROWS);
+/**
+ * Clamp a GUARDIAN_EVICTION_LOG_MAX_ROWS override the same way as
+ * {@link _clampOwnershipMaxRows} — a malformed value must never resolve to an
+ * unbounded (or zero) prune limit. Exported for tests.
+ */
+export function _clampEvictionLogMaxRows(raw: string | undefined): number {
+  return clampPositiveInt(raw, 10_000);
 }
 
-export function recordSessionOwnerRow(sessionId: string, principalKey: string, createdAt: number): void {
-  const database = openDatabase();
+const EVICTION_LOG_MAX_ROWS = _clampEvictionLogMaxRows(Bun.env.GUARDIAN_EVICTION_LOG_MAX_ROWS);
+
+/** Evicts permission_owners' oldest rows past the cap. (permission requests
+ *  have no durable upstream counterpart to reconcile — unlike session_owners,
+ *  see evictOldestSessionOwners — so a plain bounded delete is sufficient.) */
+function evictOldestPermissionOwners(database: Database, maxRows: number = OWNERSHIP_MAX_ROWS): void {
+  database
+    .query(
+      `DELETE FROM permission_owners WHERE request_id IN (
+         SELECT request_id FROM permission_owners
+         ORDER BY created_at ASC, request_id ASC
+         LIMIT MAX(0, (SELECT COUNT(*) FROM permission_owners) - ?))`,
+    )
+    .run(maxRows);
+}
+
+/**
+ * Bound `session_eviction_log` itself so a reconciliation sweep that is
+ * disabled/behind never lets it grow forever either. Reconciled rows (their
+ * job is done — an audit trail, not a queue) are pruned FIRST; an unreconciled
+ * row is only dropped once every reconciled row is already gone, so a
+ * pending-but-not-yet-swept orphan is never silently forgotten while there is
+ * a cheaper row available to reclaim instead.
+ */
+function pruneEvictionLog(database: Database, maxRows: number = EVICTION_LOG_MAX_ROWS): void {
+  database
+    .query(
+      `DELETE FROM session_eviction_log WHERE session_id IN (
+         SELECT session_id FROM session_eviction_log
+         ORDER BY (reconciled_at IS NULL) ASC, evicted_at ASC, session_id ASC
+         LIMIT MAX(0, (SELECT COUNT(*) FROM session_eviction_log) - ?))`,
+    )
+    .run(maxRows);
+}
+
+/**
+ * Evict `session_owners`' oldest rows past `maxRows` — but, unlike
+ * permission_owners, each evicted row maps 1:1 to a DURABLE upstream OpenCode
+ * session (S4, #581 finding #7). Deleting the ownership row without a trace
+ * would make that session an undeletable orphan: no principal can list it
+ * (GET /session filters to owned rows) or DELETE it (403 forbidden_session,
+ * no owner on record) ever again, yet it stays on disk. So every evicted
+ * session_id is logged into session_eviction_log FIRST (same call, ON
+ * CONFLICT so a rare re-eviction of a reused id flips back to pending rather
+ * than silently staying "reconciled") — the async sweep in reconciliation.ts
+ * is what actually deletes/archives it upstream.
+ */
+function evictOldestSessionOwners(
+  database: Database,
+  maxRows: number = OWNERSHIP_MAX_ROWS,
+  evictionLogMaxRows: number = EVICTION_LOG_MAX_ROWS,
+): void {
+  const { n: count } = database.query('SELECT COUNT(*) AS n FROM session_owners').get() as { n: number };
+  const overflow = count - maxRows;
+  if (overflow <= 0) return;
+
+  const toEvict = database
+    .query('SELECT session_id, principal_key FROM session_owners ORDER BY created_at ASC, session_id ASC LIMIT ?')
+    .all(overflow) as { session_id: string; principal_key: string }[];
+  if (toEvict.length === 0) return;
+
+  const now = Date.now();
+  const insertLog = database.query(
+    `INSERT INTO session_eviction_log (session_id, principal_key, evicted_at, reconciled_at)
+     VALUES (?, ?, ?, NULL)
+     ON CONFLICT(session_id) DO UPDATE SET
+       principal_key = excluded.principal_key,
+       evicted_at = excluded.evicted_at,
+       reconciled_at = NULL`,
+  );
+  const deleteOwner = database.query('DELETE FROM session_owners WHERE session_id = ?');
+  for (const row of toEvict) {
+    insertLog.run(row.session_id, row.principal_key, now);
+    deleteOwner.run(row.session_id);
+  }
+  pruneEvictionLog(database, evictionLogMaxRows);
+}
+
+export function recordSessionOwnerRow(
+  sessionId: string,
+  principalKey: string,
+  createdAt: number,
+  database: Database = openDatabase(),
+  maxRows: number = OWNERSHIP_MAX_ROWS,
+  evictionLogMaxRows: number = EVICTION_LOG_MAX_ROWS,
+): void {
   database
     .query(
       `INSERT INTO session_owners (session_id, principal_key, created_at)
@@ -286,7 +397,7 @@ export function recordSessionOwnerRow(sessionId: string, principalKey: string, c
        ON CONFLICT(session_id) DO UPDATE SET principal_key = excluded.principal_key`,
     )
     .run(sessionId, principalKey, createdAt);
-  evictOldest(database, 'session_owners', 'session_id');
+  evictOldestSessionOwners(database, maxRows, evictionLogMaxRows);
 }
 
 export function getSessionOwnerKey(sessionId: string): string | null {
@@ -320,7 +431,7 @@ export function recordPermissionOwnerRow(requestId: string, principalKey: string
        ON CONFLICT(request_id) DO UPDATE SET principal_key = excluded.principal_key`,
     )
     .run(requestId, principalKey, createdAt);
-  evictOldest(database, 'permission_owners', 'request_id');
+  evictOldestPermissionOwners(database);
 }
 
 export function getPermissionOwnerKey(requestId: string): string | null {
@@ -334,9 +445,45 @@ export function countPermissionOwners(): number {
   return (openDatabase().query('SELECT COUNT(*) AS n FROM permission_owners').get() as { n: number }).n;
 }
 
-/** Test-only: clear both ownership tables between cases. */
+// ── Session eviction reconciliation log (S4, #581 finding #7) ──────────────
+// Populated by evictOldestSessionOwners above; consumed by the async sweep in
+// reconciliation.ts, which deletes/archives each pending session upstream and
+// then calls markSessionReconciled — decoupled from the hot session-create
+// request path that recordSessionOwnerRow runs on.
+
+export type PendingEvictedSession = { sessionId: string; principalKey: string; evictedAt: number };
+
+/** Oldest-first pending (never-reconciled) evicted sessions, up to `limit`. */
+export function listPendingEvictedSessions(
+  limit = 100,
+  database: Database = openDatabase(),
+): PendingEvictedSession[] {
+  const rows = database
+    .query(
+      'SELECT session_id, principal_key, evicted_at FROM session_eviction_log WHERE reconciled_at IS NULL ORDER BY evicted_at ASC, session_id ASC LIMIT ?',
+    )
+    .all(limit) as { session_id: string; principal_key: string; evicted_at: number }[];
+  return rows.map((row) => ({ sessionId: row.session_id, principalKey: row.principal_key, evictedAt: row.evicted_at }));
+}
+
+/** Mark a pending evicted session as reconciled (its upstream session was
+ *  confirmed deleted/archived) — stamps reconciled_at rather than deleting
+ *  the row outright, keeping an audit trail of what the sweep has handled. */
+export function markSessionReconciled(sessionId: string, database: Database = openDatabase()): void {
+  database.query('UPDATE session_eviction_log SET reconciled_at = ? WHERE session_id = ?').run(Date.now(), sessionId);
+}
+
+/** Pending (unreconciled) evicted-session count for the /stats endpoint. */
+export function countPendingEvictedSessions(database: Database = openDatabase()): number {
+  return (
+    database.query('SELECT COUNT(*) AS n FROM session_eviction_log WHERE reconciled_at IS NULL').get() as { n: number }
+  ).n;
+}
+
+/** Test-only: clear ownership + eviction-log tables between cases. */
 export function clearOwnershipTables(): void {
   const database = openDatabase();
   database.query('DELETE FROM session_owners').run();
   database.query('DELETE FROM permission_owners').run();
+  database.query('DELETE FROM session_eviction_log').run();
 }

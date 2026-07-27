@@ -30,6 +30,7 @@ import {
   recordPermissionOwnerRow,
   getPermissionOwnerKey,
   countPermissionOwners,
+  countPendingEvictedSessions,
   clearOwnershipTables,
 } from './state-db.ts';
 
@@ -120,6 +121,19 @@ export function sessionOwnerCount(): number {
 /** Active owned-permission-request count for the /stats endpoint. */
 export function permissionOwnerCount(): number {
   return countPermissionOwners();
+}
+
+/**
+ * Pending (not-yet-reconciled) evicted-session count for the /stats endpoint
+ * (S4, #581 finding #7) — sessions whose ownership row was evicted from the
+ * bounded session_owners table but whose upstream OpenCode session has not
+ * yet been confirmed deleted/archived by the reconciliation sweep
+ * (reconciliation.ts). A sustained non-zero value means the sweep is behind
+ * or disabled, not that anything is silently lost — every one of these still
+ * has a durable record naming exactly which session needs cleaning up.
+ */
+export function pendingEvictedSessionCount(): number {
+  return countPendingEvictedSessions();
 }
 
 /** Test-only: clear both ownership tables between cases. */

@@ -14,13 +14,18 @@ export interface OcClientOptions {
   baseUrl?: string;
   fetch?: typeof fetch;
   /**
-   * Session-reuse mode (D2, #491). `'server'` (default) is the guardian-mode
-   * regression pin: the client-side map is never constructed or consulted, so
-   * the guardian's own server-side reuse cache stays sole authority.
-   * `'client'` is for standalone use against a plain OpenCode server (which
-   * ignores the `x-openpalm-session-key` hint header) — falls back to
-   * `Bun.env.PORTAL_SESSION_REUSE` when not passed explicitly; any value other
-   * than `'client'` resolves to the fail-safe `'server'` default.
+   * Session-reuse mode (D2, #491; flipped to client-default by S4/#581 finding
+   * #6). `'client'` (default) keeps the reuse cache implemented right here —
+   * a stable (userId, sessionKey) reuses one session with no server-side
+   * involvement required. `'server'` is an opt-in for a deployment that has
+   * its OWN server-side reuse cache (e.g. a guardian build that implements
+   * one) and wants this client-side map disabled so the two never run
+   * concurrently or disagree (D2's one-authority rule). Falls back to
+   * `Bun.env.PORTAL_SESSION_REUSE` when not passed explicitly; any value
+   * other than the literal `'server'` resolves to the fail-safe `'client'`
+   * default — the previous `'server'`-default silently disabled reuse
+   * end-to-end (the guardian has no reuse cache and strips the session-key
+   * hint), so every portal turn leaked a new retained root.
    */
   sessionReuse?: 'client' | 'server';
   /** Client-mode session-map TTL in ms. Falls back to `Bun.env.PORTAL_SESSION_TTL_MS`, default 900000 (15 min). */
@@ -47,7 +52,7 @@ export class OcClient {
     this.base = opts.baseUrl ?? Bun.env.OPENCODE_BASE_URL ?? DEFAULT_OPENCODE_BASE_URL;
     this.fetchFn = opts.fetch ?? globalThis.fetch;
     this.client = createOpencodeClient({ baseUrl: this.base, fetch: this.fetchFn });
-    this.sessionReuse = opts.sessionReuse ?? (Bun.env.PORTAL_SESSION_REUSE === 'client' ? 'client' : 'server');
+    this.sessionReuse = opts.sessionReuse ?? (Bun.env.PORTAL_SESSION_REUSE === 'server' ? 'server' : 'client');
     const configuredTtlMs = opts.sessionTtlMs ?? Number(Bun.env.PORTAL_SESSION_TTL_MS);
     const sessionTtlMs = configuredTtlMs > 0 ? configuredTtlMs : DEFAULT_SESSION_TTL_MS;
     this.sessionMap = this.sessionReuse === 'client' ? new SessionReuseMap({ ttlMs: sessionTtlMs, maxSize: SESSION_MAP_MAX_SIZE }) : null;
