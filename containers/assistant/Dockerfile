@@ -161,11 +161,16 @@ RUN set -e; \
 
 # Seed the runtime dirs and make them group-writable so a container entered with
 # `--user ${OP_UID}:${OP_GID}` can populate them on first boot. The container
-# runs as the host operator's ARBITRARY uid:gid (not 1000), and Docker seeds a
-# fresh `assistant-artifacts`/`assistant-persistent` named volume from these
-# image paths WITH their ownership — so a fixed owner/group (the g=u "arbitrary
-# uid" convention needs gid 0, which OpenPalm does not use) is not guaranteed to
-# match the runtime ids; world-writable is the only image-side mode that works.
+# runs as the host operator's ARBITRARY uid:gid (not 1000), and this build never
+# knows that id, so a fixed owner/group (the g=u "arbitrary uid" convention
+# needs gid 0, which OpenPalm does not use) can never match it; world-writable
+# is the only image-side mode that works. This matters two ways: for
+# `/opt/persistent` (still a real named volume) Docker seeds it from this image
+# path WITH this ownership the first time the volume is created — unlike a bind
+# mount, it does not shadow the baked content with an empty host directory. For
+# the rest of these paths (no volume at all — #585 deleted the other two named
+# volumes over /opt/openpalm) the same world-writable mode is needed simply
+# because the arbitrary runtime uid must still be able to write into them.
 # Scope the chmod to these freshly created seed dirs ONLY — deliberately
 # excluding /opt/openpalm/tools, whose baked node_modules + @huggingface model
 # cache is a multi-hundred-MB tree split across COPY layers (Docker Hub rejects
@@ -185,12 +190,13 @@ RUN mkdir -p /home/opencode/.cache /home/opencode/.local/bin /work /stash /opt/a
 # install: put a real @openpalm/ui build at its runtime path INSIDE the image,
 # so the image is complete offline with no boot-time npm dependency at all
 # (E2: there is no runtime `npm install` anymore — this bake IS the steady
-# state, not just an air-gap floor). This works because assistant-artifacts
-# (the named volume compose mounts at /opt/openpalm) is seeded from this image
-# path the FIRST time the volume is created — unlike a bind mount, it does not
-# shadow the baked content with an empty host directory. Skipped when
-# PLATFORM_VERSION is unset (local/dev builds with no resolvable exact pin) so
-# the image still builds without one; every versioned release build gets it.
+# state, not just an air-gap floor). #585 deleted the named volume that used to
+# mount over /opt/openpalm, so this works even more directly now: nothing
+# mounts anything over this path at all — the baked content is served straight
+# from the image's own layer, unshadowed, for the life of the container.
+# Skipped when PLATFORM_VERSION is unset (local/dev builds with no resolvable
+# exact pin) so the image still builds without one; every versioned release
+# build gets it.
 RUN if [ -n "$PLATFORM_VERSION" ]; then \
       npm install --prefix /opt/openpalm/ui "@openpalm/ui@${PLATFORM_VERSION}" \
         --omit=dev --no-fund --no-audit \
@@ -205,8 +211,8 @@ RUN if [ -n "$PLATFORM_VERSION" ]; then \
 # floor at all, so an air-gapped first boot had nothing to fall back to (the
 # original E2 gap). Now that the runtime `npm install @openpalm/skeleton` is
 # gone from entrypoint.sh, this bake is the ONLY source: no fallback floor,
-# the real thing. Same PLATFORM_VERSION gate and same assistant-artifacts
-# seed-on-first-creation behavior as the UI bake.
+# the real thing. Same PLATFORM_VERSION gate and same unshadowed-image-layer
+# reasoning (#585) as the UI bake immediately above.
 RUN if [ -n "$PLATFORM_VERSION" ]; then \
       npm install --prefix /opt/openpalm/skeleton "@openpalm/skeleton@${PLATFORM_VERSION}" \
         --omit=dev --no-fund --no-audit \

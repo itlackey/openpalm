@@ -38,7 +38,7 @@ describe('#585 — no service mounts a named volume at /opt/openpalm', () => {
     ['core.compose.yml', CORE_COMPOSE_PATH],
     ['portals.compose.yml', PORTALS_COMPOSE_PATH],
   ] as const) {
-    test(`${label}: no service's volumes list a named volume targeting /opt/openpalm`, () => {
+    test(`${label}: no service's volumes list a named volume targeting /opt/openpalm or any subpath`, () => {
       const compose = yamlParse(readFileSync(path, 'utf8')) as ComposeFile;
       const topLevelVolumeNames = new Set(Object.keys(compose.volumes ?? {}));
 
@@ -46,9 +46,11 @@ describe('#585 — no service mounts a named volume at /opt/openpalm', () => {
         for (const vol of service.volumes ?? []) {
           if (typeof vol !== 'string') continue; // long-form entries aren't used in these files today
           const [source, target] = vol.split(':');
-          if (target !== '/opt/openpalm') continue;
+          // Subpath check catches a re-introduced mount like
+          // guardian-cache:/opt/openpalm/tools, not just the exact bare path.
+          if (target !== '/opt/openpalm' && !target?.startsWith('/opt/openpalm/')) continue;
           const isNamedVolume = source !== undefined && topLevelVolumeNames.has(source);
-          expect(isNamedVolume, `${label} service "${serviceName}" mounts named volume "${source}" at /opt/openpalm`).toBe(false);
+          expect(isNamedVolume, `${label} service "${serviceName}" mounts named volume "${source}" at ${target}`).toBe(false);
         }
       }
     });

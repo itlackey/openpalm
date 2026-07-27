@@ -194,11 +194,11 @@ fi
 echo "Checking for root-owned files under ${SMOKE_HOME}..."
 expected_uid="$(id -u)"
 expected_gid="$(id -g)"
-# E2/S2: portal adapters are image-baked — the discord/slack services mount
-# only the portal-cache named volume, with no host bind mount under
-# data/portal, so the portal no longer writes node_modules to a host bind. The
-# meaningful rootless guarantee for every target is simply that booting the
-# stack left no root-owned files anywhere under OP_HOME.
+# E2/S2/#585: portal adapters are image-baked — the discord/slack services
+# mount nothing over /opt/openpalm at all (no named volume, no host bind under
+# data/portal), so the portal no longer writes node_modules to a host bind.
+# The meaningful rootless guarantee for every target is simply that booting
+# the stack left no root-owned files anywhere under OP_HOME.
 root_files=$(find "$SMOKE_HOME" \( ! -uid "$expected_uid" -o ! -gid "$expected_gid" \) 2>/dev/null || true)
 if [[ -n "$root_files" ]]; then
   echo "Root-owned files found:" >&2
