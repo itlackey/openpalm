@@ -54,7 +54,10 @@ describe('connection activation coordination', () => {
 		// unused, that failure IS the regression signal.
 		// @ts-expect-error — ActivationListener may only return ACTIVATION_VETO or void, never a plain boolean.
 		const unsubscribe = onConnectionActivated((_id) => false);
-		expect(typeof unsubscribe).toBe('function');
-		unsubscribe();
+		try {
+			expect(typeof unsubscribe).toBe('function');
+		} finally {
+			unsubscribe();
+		}
 	});
 });
