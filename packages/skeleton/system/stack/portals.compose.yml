@@ -30,13 +30,6 @@ services:
       DISCORD_THREAD_TTL_HOURS: ${DISCORD_THREAD_TTL_HOURS:-}
       DISCORD_FORWARD_TIMEOUT_MS: ${DISCORD_FORWARD_TIMEOUT_MS:-}
     secrets: [portal_discord_secret, discord_bot_token]
-    volumes:
-      # E2/S2: image-baked adapter packages under /opt/openpalm/tools — no
-      # bind mount overlays any subpath anymore (image-baked-only model,
-      # docs/public-seams-review.md §E2/§S2). Pin a different adapter version
-      # by editing containers/portal/tools/package.json and shipping a new
-      # image, not by editing anything under OP_HOME.
-      - portal-cache:/opt/openpalm
     networks: [portal_net]
     depends_on:
       guardian:
@@ -68,10 +61,6 @@ services:
       SLACK_ALLOWED_USERS: ${SLACK_ALLOWED_USERS:-}
       SLACK_BLOCKED_USERS: ${SLACK_BLOCKED_USERS:-}
     secrets: [portal_slack_secret, slack_bot_token, slack_app_token]
-    volumes:
-      # E2/S2: see the discord service's volumes comment above — same
-      # image-baked-only /opt/openpalm/tools, no bind mount.
-      - portal-cache:/opt/openpalm
     networks: [portal_net]
     depends_on:
       guardian:
@@ -175,12 +164,6 @@ services:
       # two knobs, two bind addresses and two firewall holes for one service.
       - "${OP_API_BIND_ADDRESS:-127.0.0.1}:${OP_API_PORT:-3821}:8182"
     volumes:
-      # E2/S2: image-baked opencode-ai tool tree + guardian/skeleton packages
-      # under /opt/openpalm — no bind mount overlays /opt/openpalm/tools
-      # anymore (image-baked-only model, docs/public-seams-review.md
-      # §E2/§S2). Pin a different tool version by editing
-      # containers/guardian/tools/package.json and shipping a new image.
-      - guardian-cache:/opt/openpalm
       - ${OP_HOME}/data/guardian:/opt/openpalm/guardian
       # NOTE: S1 (relocating $HOME/.cache into its own purgeable named volume)
       # is deferred — nesting a named volume inside the HOME bind mount makes
@@ -261,11 +244,3 @@ secrets:
   # process; only the DELIVERY mechanism to the guardian changes.
   guardian_auth_json:
     file: ${OP_HOME}/knowledge/secrets/auth.json
-
-volumes:
-  # Named volumes for npm artifact caches (/opt/openpalm).
-  # Replaces anonymous volumes that Dockerfiles previously declared via
-  # VOLUME ["/opt/openpalm"], which accumulated orphan volumes on every deploy.
-  # docker compose down --volumes will clean these up explicitly.
-  guardian-cache: {}
-  portal-cache: {}

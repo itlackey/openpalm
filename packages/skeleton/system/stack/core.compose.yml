@@ -175,17 +175,6 @@ services:
       # under $HOME. Prefer $HOME/.local when possible; use /opt/persistent for
       # tools that require an explicit non-home prefix.
       - assistant-persistent:/opt/persistent
-      # E2/S2: image-baked @openpalm/ui, @openpalm/skeleton, AND the tool tree
-      # (opencode-ai/akm-cli/claude-code/codex/copilot/pi) all live under this
-      # ONE named volume now — no bind mount overlays any of /opt/openpalm
-      # anymore. The volume exists only so a fresh install's first container
-      # start seeds it (Docker copies the image's /opt/openpalm content into a
-      # brand-new named volume) and so rootless ownership repair has a stable
-      # target (see volume-ownership.ts SERVICE_NAMED_VOLUMES); there is no
-      # runtime install/update path writing into it. Pin a different tool
-      # version by editing containers/assistant/tools/package.json and
-      # shipping a new image, not by editing anything under OP_HOME.
-      - assistant-artifacts:/opt/openpalm
     secrets:
       - opencode_server_password
       - ui_login_password
@@ -285,7 +274,3 @@ secrets:
 
 volumes:
   assistant-persistent:
-  # Named volume for the image-baked @openpalm/ui, @openpalm/skeleton, and
-  # tool-tree artifacts under /opt/openpalm (E2/S2 — no bind mount overlays
-  # any subpath of it anymore).
-  assistant-artifacts:

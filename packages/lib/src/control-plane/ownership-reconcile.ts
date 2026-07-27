@@ -201,8 +201,10 @@ export async function reconcileHostOwnership(
     // a host-side chown could target the wrong uid. Skip host-swap detection and
     // the bind-mount adopt entirely. Named-volume repair still runs — it executes
     // inside the VM's own uid namespace (docker run … chown) and IS authoritative
-    // there (e.g. a root-era guardian-cache still gets fixed). Per the migration
-    // plan these stay lower-confidence ownership environments (§2.11).
+    // there (e.g. a root-era assistant-persistent still gets fixed — #585
+    // retired the other named volumes, so this is the only one left to repair).
+    // Per the migration plan these stay lower-confidence ownership environments
+    // (§2.11).
     if (sessionIds && services && services.length > 0) {
       await repairManagedNamedVolumes(homeDir, services, { strict: adoptHost });
     }
