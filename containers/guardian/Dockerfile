@@ -22,9 +22,10 @@ RUN chmod +x /entrypoint.sh
 # OpenCode auth.json/config) — an empty host bind-mount unconditionally
 # shadows whatever the image baked at that path, so baking the package there
 # would make it re-fetch from npm on every real deployment despite passing a
-# bare `docker run` smoke test. /opt/openpalm/guardian-pkg has no bind-mount
-# in the shipped compose (only guardian-cache, the named volume, backs it),
-# so the baked install actually survives under the real stack.
+# bare `docker run` smoke test. /opt/openpalm/guardian-pkg has no mount over
+# it at all in the shipped compose (#585 deleted the guardian-cache named
+# volume), so the image-baked install is served straight from the image
+# layer, unshadowed.
 ARG GUARDIAN_VERSION
 ENV GUARDIAN_VERSION=${GUARDIAN_VERSION}
 ARG GUARDIAN_USE_LOCAL_SOURCE=false
@@ -56,13 +57,12 @@ COPY packages/skeleton /opt/openpalm/local-src/skeleton
 COPY containers/guardian/tools/package.json /opt/openpalm/tools/package.json
 # Make the app trees world-writable so a container entered with
 # `--user ${OP_UID}:${OP_GID}` can populate them on first boot. The container
-# runs as the host operator's ARBITRARY uid:gid (not 1000), and Docker seeds a
-# fresh `guardian-cache` named volume from this image path WITH its ownership —
-# so neither the owner nor a fixed group (the g=u "arbitrary uid" convention
-# needs gid 0, which OpenPalm does not use) is guaranteed to match the runtime
-# ids. World-writable is the only image-side mode that works for an arbitrary
-# uid. This applies ONLY to these app/cache trees; the secret tree
-# (knowledge/secrets, 0600) is a bind mount and is never touched here.
+# runs as the host operator's ARBITRARY uid:gid (not 1000), and this build
+# never knows that id, so a fixed owner/group (the g=u "arbitrary uid"
+# convention needs gid 0, which OpenPalm does not use) can never match it —
+# world-writable is the only image-side mode that lets an arbitrary uid write
+# into these trees. This applies ONLY to these app/cache trees; the secret
+# tree (knowledge/secrets, 0600) is a bind mount and is never touched here.
 RUN test -n "$GUARDIAN_VERSION" \
     && guardian_spec="@openpalm/guardian@${GUARDIAN_VERSION}" \
     && skeleton_spec="@openpalm/skeleton@${GUARDIAN_VERSION}" \
