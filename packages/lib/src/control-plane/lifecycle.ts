@@ -246,7 +246,11 @@ export async function applyInstall(state: ControlPlaneState, opts?: LockedLifecy
       // install's first `up` could hit unwritable operator-owned bind dirs
       // before any chown ever ran — the chown pass was wired into
       // start/upgrade/up but not this, the actual install path.
-      await reconcileHostOwnership(state, { services: await buildManagedServices(state) });
+      // Skippable (like OP_SKIP_COMPOSE_PREFLIGHT) for tests and environments
+      // that manage ownership externally, since it shells out to docker.
+      if (!process.env.OP_SKIP_OWNERSHIP_RECONCILE) {
+        await reconcileHostOwnership(state, { services: await buildManagedServices(state) });
+      }
       await applyManagedFiles(state, true);
       ensureComposeVolumeTargets(state);
     });
@@ -283,7 +287,9 @@ export async function performUpgrade(state: ControlPlaneState, opts?: LockedLife
   let containersMutated = false;
   try {
     await runWithSnapshotRollback(state, async () => {
-      await reconcileHostOwnership(state, { services: await buildManagedServices(state) });
+      if (!process.env.OP_SKIP_OWNERSHIP_RECONCILE) {
+        await reconcileHostOwnership(state, { services: await buildManagedServices(state) });
+      }
       await applyManagedFiles(state, true);
 
       const renameTeardown = await teardownRenamedProject(state);
