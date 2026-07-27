@@ -373,6 +373,57 @@ export {
   getDockerEvents,
   applyStack,
 } from "./control-plane/docker.js";
+export type { DockerClient, DockerRunOptions } from "./control-plane/docker.js";
+
+// ── Disk-headroom preflight (S6 — #581 finding #10) ───────────────────────
+export type { DiskHeadroomStatus, DiskHeadroomResult, DiskHeadroomOptions, StatfsLike } from "./control-plane/disk-headroom.js";
+export {
+  checkDiskHeadroom,
+  describeDiskHeadroom,
+  shouldBlockOnDiskHeadroom,
+  DEFAULT_LOW_THRESHOLD_BYTES,
+  DEFAULT_CRITICAL_THRESHOLD_BYTES,
+} from "./control-plane/disk-headroom.js";
+
+// ── Install-port probing (C2) ──────────────────────────────────────────────
+export type { PortOwnership, InstallPortTarget, InstallPortStatus, ProbeInstallPortsOptions } from "./control-plane/port-probe.js";
+export { checkPortAvailable, portHeldByOurContainer, resolveInstallPortTargets, probeInstallPorts } from "./control-plane/port-probe.js";
+
+// ── Docker image/volume retention (S7 — #581 finding #11) ────────────────
+export type {
+  DockerImageInfo,
+  DockerVolumeInfo,
+  ImageVolumeReport,
+  VolumeOwnership,
+  ReportImagesAndVolumesOptions,
+  CleanupImagesAndVolumesResult,
+  CleanupImagesAndVolumesOptions,
+} from "./control-plane/image-volume-retention.js";
+export {
+  OPENPALM_VOLUME_SUFFIXES,
+  parseDockerImagesOutput,
+  parseDockerVolumeLsOutput,
+  findSupersededImages,
+  classifyOpenPalmVolume,
+  findOrphanVolumes,
+  reportImagesAndVolumes,
+  cleanupImagesAndVolumes,
+} from "./control-plane/image-volume-retention.js";
+
+// ── Storage diagnostics + cache cleanup (S8/S1 — #581 findings #1, #12) ──
+export type { SizedPath, FilesystemCapacity, StorageReport, BuildStorageReportOptions, CleanCachesResult, CleanCachesOptions } from "./control-plane/storage-report.js";
+export {
+  CACHE_RELATIVE_PATHS,
+  TOOL_TREE_RELATIVE_PATHS,
+  OPENCODE_STORE_RELATIVE_PATHS,
+  pathSizeBytes,
+  buildStorageReport,
+  formatStorageReport,
+  cleanCaches,
+} from "./control-plane/storage-report.js";
+
+// ── Shared byte formatting ──────────────────────────────────────────────────
+export { formatBytes } from "./control-plane/format-bytes.js";
 
 // ── Compose project rename (#540) ────────────────────────────────────────
 export {

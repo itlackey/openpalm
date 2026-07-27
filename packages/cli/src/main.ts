@@ -98,6 +98,7 @@ const subCommands = {
   update: () => import('./commands/update.ts').then((m) => m.default),
   'self-update': () => import('./commands/self-update.ts').then((m) => m.default),
   addon: () => import('./commands/addon.ts').then((m) => m.default),
+  doctor: () => import('./commands/doctor.ts').then((m) => m.default),
   start: () => import('./commands/start.ts').then((m) => m.default),
   'repair-ownership': () => import('./commands/repair-ownership.ts').then((m) => m.default),
   stop: () => import('./commands/stop.ts').then((m) => m.default),

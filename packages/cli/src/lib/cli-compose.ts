@@ -10,13 +10,16 @@ import {
   buildComposeCliArgs,
   buildComposeOptions,
   buildComposePreflightError,
+  checkDiskHeadroom,
   composePreflight,
   composeUpTimeoutMs,
+  describeDiskHeadroom,
   dockerBin,
   ensureDockerReady,
   mapDockerError,
   runComposeStreaming,
   runHomeMigrations,
+  shouldBlockOnDiskHeadroom,
 } from '@openpalm/lib';
 import type { ControlPlaneState } from '@openpalm/lib';
 
@@ -60,6 +63,22 @@ export async function runComposeWithPreflight(
   if (!process.env.OP_SKIP_COMPOSE_PREFLIGHT) {
     const ready = await ensureDockerReady();
     if (!ready.ok) throw new Error(ready.message);
+
+    // S6: the disk-headroom half of the SAME lifecycle preamble (one
+    // preflight, two checks — not a second bolted-on gate) — fails a
+    // restart/install/update/backup closed BEFORE it can regenerate GBs of
+    // cache into an already-full filesystem (#581 finding #10). Non-fatal by
+    // default: only warns unless OP_DISK_HARD_BLOCK=1 is set AND the reading
+    // is "critical" (S6: "make the hard-block threshold configurable/
+    // off-by-default", to avoid refusing legitimate installs).
+    const headroom = checkDiskHeadroom(state.homeDir);
+    const headroomWarning = describeDiskHeadroom(headroom);
+    if (headroomWarning) {
+      if (shouldBlockOnDiskHeadroom(headroom)) {
+        throw new Error(headroomWarning);
+      }
+      console.warn(`Warning: ${headroomWarning}`);
+    }
   }
 
   // Preflight: validate compose merge before mutation. Pass the FULL options
