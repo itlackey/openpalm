@@ -574,7 +574,11 @@ describe('validate command', () => {
     const tempHome = mkdtempSync(join(tmpdir(), 'openpalm-test-'));
     const stackDir = join(tempHome, 'system', 'stack');
     const stateDir = join(tempHome, 'state');
-    const secretDir = join(tempHome, 'knowledge', 'secrets');
+    // op_ui_login_password is a DELEGATED secret (guardian/portal/UI-consumed),
+    // so G1 relocates it out of the assistant-reachable knowledge/secrets stash
+    // into private/secrets/. Seed it where the name-routed secretPath() now
+    // resolves it.
+    const secretDir = join(tempHome, 'private', 'secrets');
     mkdirSync(stackDir, { recursive: true });
     mkdirSync(stateDir, { recursive: true });
     mkdirSync(secretDir, { recursive: true, mode: 0o700 });
