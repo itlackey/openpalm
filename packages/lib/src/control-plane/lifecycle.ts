@@ -23,7 +23,7 @@ import { ensureOpenCodeSystemConfig } from "./core-assets.js";
 import { applyHomeSeed } from "./ui-assets.js";
 import { restoreSnapshot, snapshotCurrentState } from "./rollback.js";
 import { checkDocker, composePreflight, applyStack, composeConfigServices, buildComposePreflightError } from "./docker.js";
-import { checkDiskHeadroom, describeDiskHeadroom, shouldBlockOnDiskHeadroom } from "./disk-headroom.js";
+import { checkLifecycleDiskHeadroom, describeLifecycleDiskHeadroom, shouldBlockOnDiskHeadroom } from "./disk-headroom.js";
 import { reapAndLogRetiredVolumes } from "./image-volume-retention.js";
 import { reconcileHostOwnership } from "./ownership-reconcile.js";
 import { buildComposeOptions } from "./compose-args.js";
@@ -115,10 +115,14 @@ async function reconcileCore(
     // function and otherwise had no disk guard at all — the exact restart/
     // install feedback loop that filled the disk in the #581 incident.
     // Non-fatal by default: warns unless OP_DISK_HARD_BLOCK=1 AND critical.
-    const headroom = checkDiskHeadroom(state.homeDir);
-    const headroomWarning = describeDiskHeadroom(headroom);
+    // #588: measures Docker's data root too when that is a separate filesystem
+    // — image pulls land there, not in OP_HOME, so an "ok" OP_HOME alone was
+    // never evidence the pull would fit. Reports whichever is more severe;
+    // falls back to the OP_HOME reading alone if Docker can't be asked.
+    const headroom = await checkLifecycleDiskHeadroom(state.homeDir);
+    const headroomWarning = describeLifecycleDiskHeadroom(headroom);
     if (headroomWarning) {
-      if (shouldBlockOnDiskHeadroom(headroom)) throw new Error(headroomWarning);
+      if (shouldBlockOnDiskHeadroom(headroom.worst)) throw new Error(headroomWarning);
       lifecycleLogger.warn(headroomWarning);
     }
 

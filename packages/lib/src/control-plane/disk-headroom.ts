@@ -14,7 +14,8 @@
  * refusing to run install/update/backup/restart by default would strand
  * otherwise-legitimate operations on a threshold guess.
  */
-import { statfsSync } from "node:fs";
+import { existsSync, statSync, statfsSync } from "node:fs";
+import { run } from "./docker.js";
 import { formatBytes } from "./format-bytes.js";
 
 export type DiskHeadroomStatus = "ok" | "low" | "critical";
@@ -117,4 +118,186 @@ export function shouldBlockOnDiskHeadroom(
   hardBlockEnabled: boolean = process.env.OP_DISK_HARD_BLOCK === "1",
 ): boolean {
   return hardBlockEnabled && result.status === "critical";
+}
+
+/* ── #588: Docker's data root is a second filesystem ────────────────────────
+ *
+ * Measuring OP_HOME alone leaves the guard blind to where image pulls
+ * actually land. `docker info` reports `DockerRootDir`, and on a great many
+ * installs that is a different device than OP_HOME — a dedicated
+ * /var/lib/docker partition, a small / beside a large /home, or Docker
+ * Desktop's VM disk. The dangerous direction is a roomy OP_HOME with a
+ * nearly-full Docker root: today that sails through the preflight and the
+ * pull then hits ENOSPC, which is the exact #581 failure this guard exists to
+ * prevent.
+ *
+ * Three properties this must hold to, in priority order:
+ *   1. FAIL SOFT. If `docker info` is missing, erroring, or slow, the OP_HOME
+ *      reading still stands. This must never become a new reason an install
+ *      cannot start.
+ *   2. DON'T DOUBLE-REPORT. On a single-disk install both paths are the same
+ *      filesystem; compare DEVICE IDENTITY (st_dev), not path prefixes —
+ *      OP_HOME under /home and a Docker root under /var say nothing about
+ *      whether they share a device.
+ *   3. DON'T REPORT A NUMBER THAT ISN'T REAL. Docker Desktop's DockerRootDir
+ *      names a path inside the VM; a host statfs on it measures the wrong
+ *      disk, or a same-named host directory that has nothing to do with
+ *      Docker. Skip it and say so rather than warning about fiction. The same
+ *      applies to a remote DOCKER_HOST.
+ *
+ * Blocking semantics are deliberately UNCHANGED: warn-only by default, and a
+ * critical reading blocks only under the existing OP_DISK_HARD_BLOCK=1 —
+ * whichever filesystem it came from. No second knob.
+ */
+
+/** Why the Docker-root reading is absent from a {@link LifecycleDiskHeadroom}. */
+export type DockerRootSkipReason =
+  /** Same device as OP_HOME — deliberately reported once, not twice. */
+  | "same-filesystem"
+  /** `docker info` unavailable, errored, timed out, or reported no root dir. */
+  | "unresolved"
+  /**
+   * The reported path is not this host's filesystem, so a host statfs on it
+   * would be fiction. Docker Desktop is the common case (DockerRootDir names a
+   * path inside the VM); a remote DOCKER_HOST or a VM-hosted rootless daemon
+   * lands here too.
+   */
+  | "not-host-filesystem";
+
+/** What {@link resolveDockerRoot} learns about Docker's data root. */
+export interface DockerRootProbe {
+  /** Absolute path Docker reports, or null when it could not be resolved. */
+  path: string | null;
+  /** True only when `path` is a real directory on THIS host, so statfs means something. */
+  measurableOnHost: boolean;
+}
+
+export type DockerRootProbeFn = () => Promise<DockerRootProbe>;
+
+export interface LifecycleDiskHeadroom {
+  /** The OP_HOME reading — always present, whatever Docker does. */
+  home: DiskHeadroomResult;
+  /** Docker's data root, or null when {@link dockerRootSkipped} says why not. */
+  dockerRoot: DiskHeadroomResult | null;
+  dockerRootSkipped: DockerRootSkipReason | null;
+  /** The more severe of the readings — what callers warn and block on. */
+  worst: DiskHeadroomResult;
+}
+
+export interface LifecycleDiskHeadroomOptions extends DiskHeadroomOptions {
+  /** Injectable `st_dev` lookup — tests fake two devices without two disks. */
+  deviceIdFn?: (path: string) => number | bigint;
+  /** Injectable Docker-root probe — tests avoid spawning `docker`. */
+  probeDockerRootFn?: DockerRootProbeFn;
+}
+
+/**
+ * Bounded on purpose. `checkDocker()` runs `docker info` unbounded, which is
+ * tolerable for a readiness check that the operator is already waiting on; a
+ * preflight that can hang forever before an install is not. On timeout the
+ * probe resolves unresolved and the OP_HOME reading carries the check.
+ */
+const DOCKER_INFO_TIMEOUT_MS = 5_000;
+
+/**
+ * Ask Docker where its data root is. Never throws: every failure mode
+ * (no binary, dead daemon, timeout, unparsable output) resolves to
+ * `{ path: null }`.
+ */
+export async function resolveDockerRoot(): Promise<DockerRootProbe> {
+  let raw = "";
+  try {
+    const result = await run(
+      ["info", "--format", "{{.DockerRootDir}}|{{.OperatingSystem}}"],
+      undefined,
+      DOCKER_INFO_TIMEOUT_MS,
+    );
+    raw = result.stdout.trim();
+  } catch {
+    return { path: null, measurableOnHost: false };
+  }
+  if (!raw) return { path: null, measurableOnHost: false };
+
+  const [rootDir = "", operatingSystem = ""] = raw.split("|");
+  const path = rootDir.trim();
+  if (!path) return { path: null, measurableOnHost: false };
+
+  // Docker Desktop announces itself in OperatingSystem. The existence check
+  // beside it catches the same class generically — a remote DOCKER_HOST, or a
+  // rootless daemon in a VM — where the reported path simply is not ours. Both
+  // are the same answer to the only question that matters here: can this host
+  // measure that path?
+  const measurableOnHost = !/docker desktop/i.test(operatingSystem) && existsSync(path);
+  return { path, measurableOnHost };
+}
+
+const SEVERITY: Record<DiskHeadroomStatus, number> = { ok: 0, low: 1, critical: 2 };
+
+/**
+ * The lifecycle preamble's disk check: OP_HOME plus Docker's data root when
+ * that is a separate, host-measurable filesystem. Callers act on `worst` —
+ * see {@link describeLifecycleDiskHeadroom} and {@link shouldBlockOnDiskHeadroom}.
+ */
+export async function checkLifecycleDiskHeadroom(
+  homePath: string,
+  opts: LifecycleDiskHeadroomOptions = {},
+): Promise<LifecycleDiskHeadroom> {
+  const { deviceIdFn = (p: string) => statSync(p).dev, probeDockerRootFn = resolveDockerRoot, ...headroomOpts } = opts;
+  const home = checkDiskHeadroom(homePath, headroomOpts);
+
+  let probe: DockerRootProbe;
+  try {
+    probe = await probeDockerRootFn();
+  } catch {
+    // Property 1: a probe that rejects costs us the Docker reading, nothing more.
+    probe = { path: null, measurableOnHost: false };
+  }
+
+  const skip = (reason: DockerRootSkipReason): LifecycleDiskHeadroom => ({
+    home,
+    dockerRoot: null,
+    dockerRootSkipped: reason,
+    worst: home,
+  });
+
+  if (!probe.path) return skip("unresolved");
+  if (!probe.measurableOnHost) return skip("not-host-filesystem");
+
+  // Property 2: device identity, not path prefixes. A comparison we cannot
+  // make is treated as "different" — reporting a second filesystem that turns
+  // out to be the first is a cosmetic wart; suppressing a genuinely separate,
+  // nearly-full Docker root is the bug this whole change is about.
+  try {
+    if (deviceIdFn(homePath) === deviceIdFn(probe.path)) return skip("same-filesystem");
+  } catch {
+    /* fall through and report both */
+  }
+
+  const dockerRoot = checkDiskHeadroom(probe.path, headroomOpts);
+  // checkDiskHeadroom deliberately fails an unmeasurable path to "low" rather
+  // than "ok" — right for OP_HOME, which we KNOW we need. For this secondary
+  // path it would turn every quirky Docker root into a warning on every day-2
+  // command, with no evidence anything is actually short. Skip it instead:
+  // this guard earns nothing by crying wolf about a disk it could not read.
+  if (dockerRoot.measurementFailed) return skip("not-host-filesystem");
+
+  const worst = SEVERITY[dockerRoot.status] > SEVERITY[home.status] ? dockerRoot : home;
+  return { home, dockerRoot, dockerRootSkipped: null, worst };
+}
+
+/**
+ * Human-readable warning for the more severe reading, naming the filesystem
+ * it came from; null when there is nothing to warn about. Exactly one message
+ * — an operator with one disk should not read about it twice.
+ */
+export function describeLifecycleDiskHeadroom(headroom: LifecycleDiskHeadroom): string | null {
+  const base = describeDiskHeadroom(headroom.worst);
+  if (!base) return null;
+  if (headroom.dockerRoot && headroom.worst === headroom.dockerRoot) {
+    return (
+      `Docker's data root (${headroom.dockerRoot.path}) is on a different filesystem than ` +
+      `OP_HOME (${headroom.home.path}), and it is the one that is short — image pulls land there. ${base}`
+    );
+  }
+  return base;
 }
