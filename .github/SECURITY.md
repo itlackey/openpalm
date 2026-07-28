@@ -1,64 +1,64 @@
 # Security Policy
 
-## Reporting a Vulnerability
+## Reporting A Vulnerability
 
-If you discover a security vulnerability in OpenPalm, **please report it privately** rather than opening a public issue.
+Report vulnerabilities privately through GitHub's private vulnerability
+reporting feature for this repository. Do not open a public issue containing an
+exploit, credential, or undisclosed weakness.
 
-**Email:** Send details to the maintainers via GitHub's private vulnerability reporting feature on this repository, or reach out directly at the contact listed on the [@itlackey](https://github.com/itlackey) GitHub profile.
+Include:
 
-**What to include:**
+- affected component and version
+- reproduction steps
+- expected impact
+- relevant logs with all credentials removed
+- a suggested mitigation, if available
 
-- Description of the vulnerability
-- Steps to reproduce
-- Affected component(s) (admin, guardian, assistant, memory, channels, installer)
-- Potential impact
-- Suggested fix (if you have one)
-
-**What to expect:**
-
-- Acknowledgment within 48 hours
-- An initial assessment within 1 week
-- A fix or mitigation plan before any public disclosure
-
-We follow coordinated disclosure — we'll work with you on timing before any details are made public.
+Maintainers aim to acknowledge a report within 48 hours and provide an initial
+assessment within one week. Disclosure timing is coordinated with the reporter.
 
 ## Supported Versions
 
-| Version | Supported |
-|---------|-----------|
-| 0.11.x (current) | ✅ Active development |
-| < 0.11.0 | ❌ No backports |
+| Version | Status |
+|---|---|
+| Latest `0.13.x` prerelease/release | Active development |
+| Earlier `0.x` versions | No routine backports |
 
-Once v1.0.0 ships, this table will be updated with a formal support window.
+## Security Boundaries
 
-## Security Architecture
+The authoritative security invariants are in
+[`docs/technical/core-principles.md`](../docs/technical/core-principles.md).
+Key boundaries include:
 
-OpenPalm uses defense-in-depth with multiple independent layers. For the full breakdown, see [docs/core-principles.md](../docs/technical/core-principles.md) and the "How It Works" section of the [README](../README.md).
+- The host CLI or admin-capable host UI is the only Docker orchestrator.
+- The assistant has no Docker socket, admin credential, or default network path
+  to the host admin process.
+- Portal traffic reaches Assistant only through Guardian.
+- Guardian authenticates principals with HTTP Basic credentials, persists
+  ownership, rate-limits traffic, filters events, and validates content by
+  default.
+- Host listeners default to loopback. Broader exposure is explicit and
+  service-specific.
+- Provider `auth.json` is assistant-readable by design. Delegated UI, Guardian,
+  API, portal, and bot credentials live under `private/secrets/` and are granted
+  to containers as named files.
+- Admin browser sessions use an HttpOnly, SameSite=Lax HMAC-signed cookie;
+  host routes also require a server-side capability.
 
-Key boundaries:
+## In Scope
 
-- **Network isolation** — Admin and assistant services bind to localhost by default; all inter-service traffic stays on private Docker networks.
-- **Signed messages** — Every channel message is HMAC-SHA256 signed and verified by the guardian before reaching the assistant.
-- **Rate limiting** — Per-user (120 req/min) and per-channel (200 req/min) throttling with replay detection.
-- **Assistant isolation** — The assistant container has no Docker socket access. All stack operations go through the authenticated admin API.
-- **Host-only admin** — The admin process runs on the host and accesses Docker directly; containers cannot reach it via the network.
-- **Secret protection** — Secrets are never stored in memory. The admin token is required for all non-health API endpoints after setup completes.
+- Authentication, authorization, ownership, or capability bypasses
+- Guardian principal or content-validation bypasses
+- Secret exposure through files, mounts, logs, bundles, or API responses
+- Assistant escape into host control-plane capabilities
+- Container privilege escalation or unsafe default network publication
+- Cross-site scripting or CSRF bypasses in authenticated UI actions
+- Supply-chain or installer flaws in shipped release artifacts
 
-## Scope
+## Out Of Scope
 
-The following are **in scope** for security reports:
-
-- Authentication or authorization bypasses in the admin API
-- HMAC signature verification flaws in the guardian
-- Secret leakage (API keys, admin tokens) through logs, memory, or API responses
-- Container escape or privilege escalation
-- Prompt injection that bypasses the assistant's security boundaries
-- Cross-site scripting (XSS) in the admin UI
-- Vulnerabilities in the install scripts (`setup.sh`, `setup.ps1`)
-
-The following are **out of scope:**
-
-- Vulnerabilities in upstream dependencies (report these to the upstream project)
-- Denial of service against a locally-hosted instance (the threat model assumes a trusted LAN)
-- Social engineering attacks
-- Issues requiring physical access to the host machine
+- Upstream dependency vulnerabilities with no OpenPalm-specific exploit
+- Social engineering
+- Issues requiring physical host access without crossing an OpenPalm boundary
+- Resource exhaustion against an intentionally local service unless it crosses
+  an authentication or isolation boundary

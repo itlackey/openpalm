@@ -1,116 +1,151 @@
-# e2e directory
+# UI E2E Tests
 
-## TL;DR
+## Quick Commands
 
-**On-demand full-stack e2e** — spin up an isolated stack and run all browser tests in one command:
-
-```bash
-./scripts/dev-e2e-test.sh --skip-build --playwright
-```
-
-Unit/integration coverage (~1130 tests, no Docker required):
-- `packages/ui/src/**/*.vitest.ts` — SvelteKit routes + server modules (mocked lib)
-- `packages/lib/src/**/*.test.ts` — control-plane logic
-- `packages/cli/src/*.test.ts`, `containers/guardian/src/*.test.ts`
-
-## File conventions
-
-### `*.pw.ts` — self-contained Playwright tests (mocked-lib subset)
-
-Collected by `testMatch: '*.pw.ts'`. Run via `bun run ui:test:e2e:mocked`.
-Must pass with no live stack and no host-side env vars — `playwright.config.ts`
-points the preview webServer at a throwaway `mkdtemp` OP_HOME with a fixed
-`OP_UI_LOGIN_PASSWORD` and `OP_ENABLE_ADMIN=1` so `/host` + `/api/host/*` and the auth
-routes are reachable without Docker or a real install. Routes under test
-either never reach the docker layer (auth checks run first) or degrade
-gracefully when docker/compose files are absent.
-
-| File | What it covers |
-|------|---------------|
-| `auth-flow.pw.ts` | login → protected read → logout → protected read is 401 again; wrong password rejected; a mutating `/api/host/containers/*` endpoint's auth gate (no-auth / forged-cookie → 401) |
-| `setup-guard.pw.ts` | Completed setup reruns redirect unauthenticated users to login, load for an authenticated admin, protect setup APIs with JSON 401, and keep setup status public |
-
-The mocked suite does not exercise a genuine first setup or container mutation.
-That separate proof uses a live Docker fixture in
-`setup-wizard-browser.stack.ts` / `install-flow.stack.ts`.
-
-### `*.stack.ts` — stack integration tests (isolated environment)
-
-Collected by Playwright **only** when `RUN_DOCKER_STACK_TESTS=1`. Require a
-running isolated stack (managed by `dev-e2e-test.sh --playwright`). Each file
-guards itself with `test.skip(!process.env.RUN_DOCKER_STACK_TESTS, ...)`.
-
-Current stack tests:
-
-| File | What it covers |
-|------|---------------|
-| `admin-health.stack.ts` | `/api/host/health` auth + `/api/host/providers` with live assistant + guardian liveness via proxy |
-| `opencode-ui.stack.ts` | OpenCode web UI reachability on assistant port |
-| `setup-wizard-api.stack.ts` | Full wizard API contract: reset → system-check → POST /complete → deploy poll |
-| `setup-wizard-browser.stack.ts` | Wizard browser rendering: System Check step loads, Continue works |
-| `chat-ui.stack.ts` | Chat page renders, message input accepts text, send button enabled |
-| `install-flow.stack.ts` | Wizard walk-through to Review step; Install button present and enabled |
-| `auth-boundary.stack.ts` | All critical admin endpoints: 401 without auth, 401 wrong cookie, 200 valid cookie |
-| `secrets.stack.ts` | Vault CRUD: POST key → GET confirms in list → DELETE → GET confirms gone; input validation |
-| `admin-panel-browser.stack.ts` | Browser smoke: Overview containers, Logs tab, Connections tab, Secrets tab; no raw error text |
-
-Run all stack tests via the composite script:
+From the repository root:
 
 ```bash
-# First time (builds UI + images from source, ~5 min):
+# Self-contained browser contracts, no Docker
+bun run ui:test:e2e:mocked
+
+# Production PWA browser lane, no Docker
+bun run ui:test:pwa
+
+# Clean isolated stack plus HTTP smoke and stack Playwright
 ./scripts/dev-e2e-test.sh --playwright
 
-# Subsequent runs (reuses built images, ~60s):
+# Reuse already-built dev images and UI output
 ./scripts/dev-e2e-test.sh --skip-build --playwright
 ```
 
-Or run a single file against an already-running isolated stack:
+Install the configured Chromium build first when needed:
 
 ```bash
-RUN_DOCKER_STACK_TESTS=1 \
-  ADMIN_URL=http://127.0.0.1:3890 \
-  OP_HOME=.dev-e2e \
-  OP_UI_LOGIN_PASSWORD=<token> \
-  npm --prefix packages/ui run test:e2e -- e2e/chat-ui.stack.ts
+bun run --cwd packages/ui test:browsers
 ```
 
-### `*.manual.ts` — human-operated smoke checks
+## File Conventions
 
-NOT collected by Playwright (neither `*.pw.ts` nor `*.stack.ts`). Scripts that
-require special operator setup beyond the isolated stack (real voice hardware,
-channel credentials, AKM stash configuration, etc.).
+### `*.pw.ts`: Self-Contained Browser Contracts
 
-Current manual-only files: `voice.manual.ts`, `scheduler.manual.ts`,
-`akm-config.manual.ts`.
+Collected when no stack flag is set. `playwright.config.ts` builds the UI and
+starts its preview server against a throwaway setup-complete home with a fixed
+login password and admin capability. Docker and a real install are not needed.
 
-## Wizard UX gate capture
+Current coverage includes:
 
-The setup wizard has a dedicated UX audit config for the three-judge gate:
+| File | Coverage |
+|---|---|
+| `auth-flow.pw.ts` | Login, logout, wrong-password, and protected-route auth contracts |
+| `setup-guard.pw.ts` | Setup-complete navigation and setup API auth boundaries |
+| `hydration.pw.ts` | Browser hydration regressions |
+| `security-headers.pw.ts` | Browser-facing security headers |
+| `host-tab-url-navigation.pw.ts` | Host tab URL/navigation state |
+| `host-navigation-responsive.pw.ts` | Responsive host navigation |
+| `chat-history-navigation.pw.ts` | Chat history navigation |
+| `chat-footer-responsive.pw.ts` | Responsive chat/footer layout contracts |
+
+Run them with:
 
 ```bash
-cd packages/ui
-npm run ux:audit:wizard
+bun run ui:test:e2e:mocked
 ```
 
-It captures the full wizard sweep needed for review evidence: System Check,
-Get Started, Providers (recommended + manual card-expanded), Models, Voice,
-Options, and the real Review screen.
+### `*.stack.ts`: Isolated Stack Integration
 
-Repo-local guard coverage for this config lives in
-`e2e/ux-audit.wizard.config.vitest.ts`, which now runs as part of
-`npm run test:unit` / `bun run ui:test:unit` so config regressions fail fast
-without needing the external audit runner.
+Collected when `RUN_DOCKER_STACK_TESTS=1`. The canonical launcher is
+`scripts/dev-e2e-test.sh --playwright`; each file also guards itself when the
+stack flag is absent. Stack mode additionally reuses `auth-flow.pw.ts`.
 
-The capture command itself still depends on the external AKM `web-ux`
-`ux-dom-audit` skill at `${AKM_HOME:-$HOME/akm}/skills/web-ux/...`; if that
-runner or its downstream judging/evidence pipeline is unavailable, that is an
-external blocker rather than a missing repo-local wiring issue.
+Current stack files are:
 
-## Isolation guarantees
+| File | Coverage |
+|---|---|
+| `admin-health.stack.ts` | Host health/provider auth and Guardian liveness through the host proxy |
+| `opencode-ui.stack.ts` | Assistant OpenCode health, UI, configuration, and session creation without model inference |
+| `setup-wizard-api.stack.ts` | Current setup status/system-check API and non-deploying setup dry run |
+| `setup-wizard-browser.stack.ts` | Browser setup redirect and Connect-step rendering |
+| `chat-ui.stack.ts` | Auth gate and interactive chat controls without sending a real message |
+| `install-flow.stack.ts` | Wizard navigation through Review without clicking Install |
+| `auth-boundary.stack.ts` | Current `/api/host/*` read/write auth boundaries |
+| `secrets.stack.ts` | `env:user` key CRUD, redaction, and input validation |
+| `admin-panel-browser.stack.ts` | Browser smoke for host status, systems, journal, connections, and secrets views |
 
-`dev-e2e-test.sh` creates a completely isolated environment:
+## Tier 5 Launcher Contract
 
-- `COMPOSE_PROJECT_NAME=openpalm-e2e` — never touches user's running stack
-- `OP_E2E_HOME=.dev-e2e` — never touches `.dev/` or `~/.openpalm/`
-- Ports: UI=3890, assistant=3891, voice=8187 — offset from dev (9100/4800/9180)
-- Cleanup trap removes containers + `.dev-e2e/` on exit (unless `--keep`)
+`scripts/dev-e2e-test.sh` creates and owns a current-layout test installation:
+
+- Compose project: `openpalm-e2e`
+- Home: `.dev-e2e/`, never `.dev/` or `~/.openpalm/`
+- Managed compose: `.dev-e2e/system/stack/*.compose.yml`
+- User overlay: `.dev-e2e/config/stack/custom.compose.yml`
+- Runtime record: `.dev-e2e/state/stack.env`
+- Delegated service secrets: `.dev-e2e/private/secrets/`
+- Shared provider-auth exception: `.dev-e2e/knowledge/secrets/auth.json`
+
+It enables the `api` addon and `addon.api` profile so the profile-gated Guardian
+runs without Discord, Slack, or other external credentials. It builds the UI and
+assistant/Guardian images, starts the stack and loopback host admin, then checks:
+
+- assistant, container UI, and API health
+- disabled Guardian direct ingress fails closed
+- `/api/auth/login`
+- unauthenticated and authenticated `/api/host/containers/list`
+- authenticated `/api/host/health`
+- no Docker socket or delegated `private/` tree mounted into the assistant
+- all selected stack Playwright files
+
+The launcher does not test the voice service, voice hardware, model-backed chat,
+or real external credentials.
+
+Default isolated ports are:
+
+| Surface | Port |
+|---|---|
+| Host admin | `3890` |
+| Assistant OpenCode | `3891` |
+| Assistant-container UI | `3892` |
+| Guardian direct listener | `3893` |
+| Guardian admin listener | `3894` |
+| API edge | `3895` |
+| Chat edge reservation (profile not enabled) | `3896` |
+
+The default cleanup trap removes containers, volumes, and `.dev-e2e/`. Use
+`--keep` only when retaining the stack/home for inspection is intentional.
+
+## PWA Suite
+
+PWA files live under `e2e/pwa/` and are selected by
+`playwright.pwa.config.ts`, not the normal `*.pw.ts`/`*.stack.ts` configuration.
+
+```bash
+bun run ui:test:pwa
+```
+
+This lane builds the production UI and checks the manifest, Chromium
+installability, service-worker control, standalone app mode, persisted browser
+state, and network-only boundaries for navigation/API/auth/SSE traffic.
+
+## Manual File
+
+`navbar-visual.manual.ts` is the only current `*.manual.ts` file. It is not
+collected by either automated configuration and is run by a human against the
+direct UI development server on port `5173`.
+
+`voice.manual.ts`, `scheduler.manual.ts`, and `akm-config.manual.ts` were removed
+because they were stale and never collected. Their old requirements are not
+part of the automated stack launcher.
+
+## Wizard UX Capture
+
+The separate wizard visual-audit command remains:
+
+```bash
+bun run --cwd packages/ui ux:audit:wizard
+```
+
+Its repository-local configuration test runs with `bun run ui:test:unit`; the
+external audit/judging runner is not part of Playwright collection.
+
+See [Testing Workflow](../../../docs/technical/testing-workflow.md) for the full
+five-tier command map.

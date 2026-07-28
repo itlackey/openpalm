@@ -18,6 +18,12 @@
 # Without it, Docker Compose resolves build contexts relative to the first -f
 # file's directory, which breaks builds.
 
+x-portal-dev: &portal-dev
+  build:
+    context: .
+    dockerfile: containers/portal/Dockerfile
+  image: ${OP_IMAGE_NAMESPACE:-openpalm}/portal:dev
+
 services:
   guardian:
     build:
@@ -31,6 +37,7 @@ services:
         # GUARDIAN_VERSION; a bare `bun run dev:build` falls back to the latest
         # published guardian, which keeps the guard satisfied.
         GUARDIAN_VERSION: ${GUARDIAN_VERSION:-latest}
+        SKELETON_VERSION: ${SKELETON_VERSION:-latest}
         GUARDIAN_USE_LOCAL_SOURCE: ${GUARDIAN_USE_LOCAL_SOURCE:-false}
         SKELETON_USE_LOCAL_SOURCE: ${SKELETON_USE_LOCAL_SOURCE:-false}
     image: ${OP_IMAGE_NAMESPACE:-openpalm}/guardian:dev
@@ -43,10 +50,14 @@ services:
     build:
       context: .
       dockerfile: containers/assistant/Dockerfile
+      args:
+        # A deliberately empty value lets source-smoke callers build the base
+        # without fetching UI/skeleton from npm before applying local tarballs.
+        PLATFORM_VERSION: ${PLATFORM_VERSION-latest}
     image: ${OP_IMAGE_NAMESPACE:-openpalm}/assistant:dev
 
-  portal:
-    build:
-      context: .
-      dockerfile: containers/portal/Dockerfile
-    image: ${OP_IMAGE_NAMESPACE:-openpalm}/portal:dev
+  discord:
+    <<: *portal-dev
+
+  slack:
+    <<: *portal-dev

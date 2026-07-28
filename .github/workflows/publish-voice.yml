@@ -4,34 +4,25 @@ name: Publish openpalm/voice images
 # This mirrors the portal-adapter / @openpalm/ui model: the voice images are
 # versioned and published on their own cadence.
 #
-# Tags pushed:
-#   - openpalm/voice:latest-{cpu,cu121}     (moving — always; the stack default)
-#   - openpalm/voice:<version>-{cpu,cu121} (immutable pin — only when `version`
-#                                            is supplied via workflow_dispatch)
+# Each matrix leg first pushes and signs one immutable
+# openpalm/voice:<version>-{cpu,cu121} tag. Only after both legs succeed does a
+# final job promotes latest-{cpu,cu121} for stable versions. Prereleases never
+# move mutable aliases.
 #
 # The runtime stack resolves the voice image as
-#   ${OP_VOICE_IMAGE_TAG:-latest-<variant>}
-# (see packages/lib/src/control-plane/registry.ts voiceImageRef + the addon
-# compose), so a fresh build is picked up automatically; operators pin a specific
-# build by setting OP_VOICE_IMAGE_TAG.
+#   ${OP_VOICE_VERSION:-latest}-<variant>
+# so operators pin a build by setting the base OP_VOICE_VERSION.
 #
 # NOTE: workflow_dispatch only works when this file exists on the DEFAULT branch
 # (main). Dispatching with --ref <branch> runs that branch's copy.
 on:
-  # Auto-publish-on-merge removed (0.11.0): voice images are out-of-band and are
-  # published explicitly (workflow_dispatch), or by the platform-release
-  # orchestrator (release.yml docker-voice job, E3) when include_voice is set.
+  # Auto-publish-on-merge was removed in 0.11.0. Voice is released explicitly
+  # and independently from the platform orchestrator.
   workflow_dispatch:
     inputs:
       version:
-        description: 'Optional immutable version pin (e.g. 1.0.0). Empty = publish moving latest-* tags only.'
-        required: false
-        type: string
-  workflow_call:
-    inputs:
-      version:
-        description: 'Optional immutable version pin (e.g. 1.0.0). Empty = publish moving latest-* tags only.'
-        required: false
+        description: 'Required immutable base version (e.g. 1.0.0).'
+        required: true
         type: string
 
 permissions:
@@ -39,12 +30,46 @@ permissions:
   id-token: write
 
 concurrency:
-  group: publish-voice-${{ github.ref }}
+  group: publish-voice
   cancel-in-progress: false
 
 jobs:
+  validate-version:
+    name: Validate immutable Voice version
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      prerelease: ${{ steps.validate.outputs.prerelease }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+      - name: Validate target version
+        id: validate
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          node --input-type=module <<'NODE'
+          import { appendFileSync } from 'node:fs';
+          import { parseSemver } from './scripts/set-version.mjs';
+
+          const version = process.env.VERSION ?? '';
+          const parsed = parseSemver(version);
+          if (!parsed) {
+            console.error(`::error::Invalid Voice release target version: ${version}`);
+            process.exit(1);
+          }
+          appendFileSync(process.env.GITHUB_OUTPUT, `prerelease=${parsed.pre !== null}\n`);
+          NODE
+          for suffix in cpu cu121; do
+            IMAGE=openpalm/voice TARGET_VERSION="${VERSION}" TAG_SUFFIX="${suffix}" \
+              node scripts/assert-docker-tag-monotonic.mjs
+          done
+
   push-voice-images:
     name: Build and push voice images
+    needs: validate-version
     runs-on: ubuntu-latest
     timeout-minutes: 90
     strategy:
@@ -78,6 +103,20 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
+      - name: Guard immutable image tag
+        env:
+          VERSION: ${{ inputs.version }}
+          TAG_SUFFIX: ${{ matrix.tag_suffix }}
+        run: |
+          REF="openpalm/voice:${VERSION}-${TAG_SUFFIX}"
+          if output=$(docker manifest inspect "${REF}" 2>&1); then
+            echo "::error::${REF} already exists"
+            exit 1
+          elif ! grep -qiE 'manifest unknown|no such manifest' <<<"${output}"; then
+            echo "::error::Could not verify ${REF}: ${output}"
+            exit 1
+          fi
+
       - name: Docker metadata
         id: meta
         uses: docker/metadata-action@v5
@@ -85,8 +124,9 @@ jobs:
           context: git
           images: openpalm/voice
           tags: |
-            type=raw,value=latest-${{ matrix.tag_suffix }}
-            type=raw,value=${{ inputs.version }}-${{ matrix.tag_suffix }},enable=${{ inputs.version != '' }}
+            type=raw,value=${{ inputs.version }}-${{ matrix.tag_suffix }}
+          labels: |
+            org.opencontainers.image.revision=${{ github.sha }}
 
       - name: Build and push image
         id: build
@@ -120,3 +160,50 @@ jobs:
             --certificate-identity-regexp "^https://github.com/${{ github.repository }}/.github/workflows/publish-voice.yml@refs/.*$" \
             --certificate-oidc-issuer https://token.actions.githubusercontent.com \
             openpalm/voice@${{ steps.build.outputs.digest }}
+
+      - name: Record signed image digest
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+          TAG_SUFFIX: ${{ matrix.tag_suffix }}
+        run: |
+          mkdir -p "${RUNNER_TEMP}/voice-digests"
+          printf '%s\n' "${DIGEST}" > "${RUNNER_TEMP}/voice-digests/${TAG_SUFFIX}.digest"
+
+      - name: Upload signed image digest
+        uses: actions/upload-artifact@v7
+        with:
+          name: voice-digest-${{ matrix.tag_suffix }}
+          path: ${{ runner.temp }}/voice-digests/${{ matrix.tag_suffix }}.digest
+          if-no-files-found: error
+
+  promote-latest:
+    name: Promote voice latest tags
+    needs: [validate-version, push-voice-images]
+    if: needs.validate-version.outputs.prerelease == 'false'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: voice-digest-*
+          path: .voice-digests
+          merge-multiple: true
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - name: Promote signed immutable variants
+        run: |
+          set -euo pipefail
+          for suffix in cpu cu121; do
+            digest=$(cat ".voice-digests/${suffix}.digest")
+            if [[ ! "${digest}" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+              echo "::error::Missing or invalid signed digest for ${suffix}: ${digest}"
+              exit 1
+            fi
+            docker buildx imagetools create \
+              --tag "openpalm/voice:latest-${suffix}" \
+              "openpalm/voice@${digest}"
+            docker buildx imagetools inspect "openpalm/voice:latest-${suffix}" >/dev/null
+          done

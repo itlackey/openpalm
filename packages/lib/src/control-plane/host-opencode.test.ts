@@ -190,6 +190,7 @@ describe("importHostOpenCode", () => {
       expect(result.imported.providers).toBe(2);
       expect(result.imported.credentials).toBe(1);
       expect(result.conflicts).toHaveLength(0);
+      expect(result.changed).toEqual({ config: true, auth: true });
     });
 
     // Verify opencode.json was written and plugin key was stripped
@@ -359,6 +360,22 @@ describe("importHostOpenCode", () => {
       expect(result.imported.providers).toBe(0);
       expect(result.imported.credentials).toBe(0);
       expect(result.conflicts).toHaveLength(0);
+      expect(result.changed).toEqual({ config: false, auth: false });
+    });
+  });
+
+  it("reports no durable change when an import is repeated", () => {
+    const hostConfigDir = join(xdgRoot, "config", "opencode");
+    const hostDataDir = join(xdgRoot, "data", "opencode");
+    mkdirSync(hostConfigDir, { recursive: true });
+    mkdirSync(hostDataDir, { recursive: true });
+    writeFileSync(join(hostConfigDir, "opencode.json"), JSON.stringify({ provider: { openai: {} } }));
+    writeFileSync(join(hostDataDir, "auth.json"), JSON.stringify({ openai: { token: "sk-openai" } }));
+    const state = makeState(opHome);
+
+    withXdgEnv(`${xdgRoot}/config`, `${xdgRoot}/data`, () => {
+      expect(importHostOpenCode(state).changed).toEqual({ config: true, auth: true });
+      expect(importHostOpenCode(state).changed).toEqual({ config: false, auth: false });
     });
   });
 

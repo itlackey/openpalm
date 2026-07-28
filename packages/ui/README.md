@@ -1,159 +1,136 @@
 # @openpalm/ui
 
-`@openpalm/ui` is the published OpenPalm web UI package.
+`@openpalm/ui` is the SvelteKit browser UI used by OpenPalm's assistant image,
+host CLI, and Electron harness.
 
-It provides the browser UI and authenticated admin API used to manage an OpenPalm installation: chat access, stack status, connections, addons, automations, and operator workflows.
+It provides chat and connection experiences everywhere. Host stack management
+is exposed only when the server process has the host-admin capability.
 
-This package is part of the OpenPalm monorepo, but it is versioned and published as its own npm package.
+## Route Contract
 
-## What It Is
+| Route | Purpose |
+|---|---|
+| `/chat`, `/connections`, `/advanced` | User-facing application |
+| `/host` | Host dashboard in an admin-capable CLI/Electron process |
+| `/api/auth/*` | Login, logout, and session |
+| `/api/host/*` | Host control plane, capability-gated server-side |
+| `/api/assistant/*` | Assistant-owned model, persona, and AKM settings |
+| `/oc/*` | Same-origin OpenCode proxy |
 
-- A SvelteKit app for the OpenPalm operator experience
-- The authenticated `/admin/*` API used by the UI and related tools
-- A thin control-plane consumer built on `@openpalm/lib`
-- The web UI that can be bundled into Electron or run as a host-served Node app
+`/admin/*` is intentionally unimplemented and returns `404`; there is no alias
+for old pages or APIs. Guardian's separate `:3831/admin/principals` listener is
+not a UI route.
 
-## What It Is Not
+## Runtime Modes
 
-- It is not a standalone replacement for the rest of OpenPalm
-- It is not the source of truth for stack orchestration logic
-- It does not replace the compose-first, file-based operating model
+### Assistant Image
 
-OpenPalm remains manual-first and compose-first. This package adds a user-facing management surface on top of that model.
+The production assistant image bakes the matching UI package at build time and
+serves it as a supervised non-admin co-process on container port `3000` (host
+default `3800`). It also bakes the matching skeleton package. Startup does not
+install or resolve a runtime UI tarball.
 
-## Features
+### Host CLI and Electron
 
-- Operator chat UI and embedded Advanced OpenCode view
-- Admin pages for status, versions, providers, endpoints, logs, addons, and automations
-- Authenticated admin API routes for the browser UI
-- Shared theme/token system used by the OpenPalm web experience
+Host processes can serve the package from their bundled build or from the
+host-managed `OP_HOME/data/ui` build. `openpalm admin` enables host capabilities
+and remains loopback-only. Bare `openpalm` and `openpalm app` are non-admin.
 
-## Package Layout
+The UI is a consumer of `@openpalm/lib`; portable Compose/lifecycle logic stays
+in the shared library.
+
+## Source Layout
 
 ```text
 src/
-├── app.css                 # global tokens and shared UI styles
-├── lib/components/         # Svelte UI components
-├── lib/server/             # server-side wrappers around @openpalm/lib + admin helpers
-├── routes/admin/           # admin API endpoints and admin-facing pages
-└── routes/                 # user-facing app routes
+├── lib/components/          Svelte components
+├── lib/api/                 Browser API clients
+├── lib/server/              Server-only auth, capability, and control-plane adapters
+└── routes/
+    ├── (app)/               Chat, connections, advanced, and host pages
+    ├── api/auth/            Session routes
+    ├── api/host/            Host control-plane routes
+    ├── api/assistant/       Assistant-owned settings routes
+    ├── api/setup/           Host setup routes
+    └── oc/                  Same-origin OpenCode proxy
 ```
 
-## Running It In This Repo
+## Development
 
-The recommended local-dev loop uses Vite HMR pointed at an isolated
-`.dev/` `OP_HOME` so your real install at `~/.openpalm/` is never touched.
-
-### Quick start: `ui:dev:isolated` against `.dev/`
+Package-local Vite development uses port `5173` by default:
 
 ```bash
-# Once, from repo root — seeds .dev/ with stack.env, dev login password,
-# and offset ports. Idempotent; safe to re-run after stack.env changes.
-bun run dev:setup
+cd packages/ui
+npm install
+npm run dev
+```
 
-# Iterate:
+From the repository root, the isolated script uses `.dev/` and port `3880`:
+
+```bash
+bun run dev:setup
 bun run ui:dev:isolated
 ```
 
-This is `OP_HOME=$(pwd)/.dev vite dev --port 8100` under the hood. Vite
-binds to **`http://localhost:8100/`** — the port matches the host
-allowlist (`helpers.ts:checkHostHeader` accepts only the configured
-`ADMIN_PORT`, default `8100`); using Vite's default 5173 would 400 on
-every request.
+Open <http://localhost:3880/> for the isolated root script. Its login password
+is stored at:
 
-**Login**: the password lives in `.dev/knowledge/secrets/op_ui_login_password`:
-
-```bash
-tr -d '\n' < .dev/knowledge/secrets/op_ui_login_password
+```text
+.dev/private/secrets/op_ui_login_password
 ```
 
-**Assistant URL**: by default `.dev/state/stack.env` sets
-`OP_ASSISTANT_PORT=4800` for the isolated dev assistant.
-If you want full isolation, spin up the dev compose stack alongside:
+Read it on Unix without printing an extra newline:
+
+```bash
+tr -d '\n' < .dev/private/secrets/op_ui_login_password
+```
+
+The isolated `OP_HOME` keeps generated config, state, private credentials,
+knowledge, data, cache, and workspace writes out of the user's real
+`~/.openpalm/` installation.
+
+Start the isolated Compose stack when UI work needs live OpenCode/Guardian
+services:
 
 ```bash
 bun run dev:stack
 ```
 
-That brings up a separate assistant/guardian on the dev ports, including the
-assistant chat UI on `4810` and OpenCode on `4800`, isolated by Docker project
-name.
-
-### Why isolated?
-
-`OP_HOME=$(pwd)/.dev` keeps **every** filesystem write the dev server
-might make (`config/`, `data/`, `knowledge/`, `workspace/`) inside the gitignored
-`.dev/` tree. `~/.openpalm/` is your production install and the
-[heightened-caution paths in CLAUDE.md](../../CLAUDE.md) forbid touching
-it during dev work.
-
-### Iteration tips
-
-- **HMR works**: edit `.svelte` / `.ts` → page reloads in <1s.
-- **Mic works**: Vite serves a real browser context, so the Web Speech
-  API isn't gated behind Electron's bundled Chromium. The MediaRecorder
-  fallback in `voice-state.svelte.ts` exercises the same provider transport
-  (the `/voice/*` pass-through for OpenPalm Voice) the Electron app uses —
-  useful for verifying STT end-to-end.
-- **Switching to the prod build**: `bun run ui:build` produces
-  `packages/ui/build/` which can be swapped into `~/.openpalm/data/ui/`
-  for live testing in the Electron app.
-
-### Other variants
+## Checks
 
 ```bash
-# Vite HMR with no .dev (default OP_HOME = ~/.openpalm — touches prod, AVOID):
-bun run ui:dev
-
-# Run the Electron app in dev mode (no HMR; rebuilds UI + bundles main.ts):
-bun run electron:dev
-```
-
-### Type / unit / build checks
-
-```bash
-bun run ui:check     # svelte-check + tsc
-bun run ui:test:unit # vitest
-bun run ui:build     # production SvelteKit build
-```
-
-## Building And Publishing
-
-This package is published from the monorepo as `@openpalm/ui`.
-
-The production build is the SvelteKit `adapter-node` output in `build/`:
-
-```bash
+bun run ui:check
+bun run ui:test:unit
 bun run ui:build
 ```
 
-The build step also stamps the UI version into `.openpalm-ui-version` so OpenPalm can tell which UI build is newer when multiple UI channels exist.
+Use `bun run ui:test:e2e` from the repository root for Playwright integration
+tests.
 
-## Runtime Notes
+## Authentication
 
-- The current runtime model is direct write + Docker Compose over `~/.openpalm/`
-- Some module names still use historical terms like `staging`
-- `registry/` is the shipped catalog source; `stack/addons/` are active runtime addon overlays; `knowledge/tasks/` holds active AKM task files
-- Compose overlays under `stack/addons/` are deployment truth; the admin UI does not replace that model
+Post the operator password to `/api/auth/login`. Successful authentication
+issues the `op_session` cookie with `HttpOnly`, `SameSite=Lax`, path `/`, and
+`Secure` on HTTPS.
 
-## API auth
+The production password file is:
 
-Protected endpoints require an `op_session` cookie. The browser obtains the
-cookie by POSTing the operator password to `/admin/auth/login`. The legacy
-`x-admin-token` / `Authorization: Bearer` header fallbacks were removed in
-Phase 2 of the auth/proxy refactor.
+```text
+${OP_HOME}/private/secrets/op_ui_login_password
+```
 
-In a normal install the source of truth for the password is
-`~/.openpalm/knowledge/secrets/op_ui_login_password`. Local dev with
-`bun run ui:dev:isolated` reads `OP_UI_LOGIN_PASSWORD` from the process
-environment seeded by the dev setup helpers.
+There is no browser bearer-token fallback and no `localStorage` admin token.
 
-## Key environment variables
+## Key Environment Variables
 
 | Variable | Purpose |
 |---|---|
-| `OP_HOME` | OpenPalm root. Prod: `~/.openpalm`. Dev: `$(pwd)/.dev` via `ui:dev:isolated`. |
-| `OP_UI_LOGIN_PASSWORD` | Operator-facing admin password. Stored in `${OP_HOME}/knowledge/secrets/op_ui_login_password` and promoted into the admin process environment. |
-| `OP_OPENCODE_URL` / `OP_ASSISTANT_PORT` | OpenCode endpoint. Production default `http://localhost:3810`; isolated dev uses `http://localhost:4800`. |
-| `OP_OPENCODE_PASSWORD` | Basic-auth password for OpenCode endpoints. Empty in dev (matches the `OPENCODE_AUTH=false` default). |
-| `DOCKER_HOST` | Docker Socket Proxy URL inside the addon network. |
+| `OP_HOME` | OpenPalm home used by host-capable processes |
+| `PORT` | UI server port; package dev defaults to `5173`, OpenPalm host serving to `3880` |
+| `OP_UI_LOGIN_PASSWORD` | Password injected into the serving process from the private secret file |
+| `OP_OPENCODE_URL` | Server-side OpenCode target for the same-origin proxy |
+| `OP_ASSISTANT_PORT` | Host assistant port fallback, normally `3810` |
+| `OP_ENABLE_ADMIN` | Internal host-harness capability flag; do not set on remote/container serving |
+
+The host admin process accesses Docker directly on the host. No container or
+Docker socket proxy is part of the UI runtime.

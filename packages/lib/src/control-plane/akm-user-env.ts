@@ -7,16 +7,16 @@
  * owner info, and any other user-set values). It maps to the akm `env` asset
  * type (ref `env:user`): a whole `.env` file that akm loads wholesale via
  * `akm env run env:user` / `akm env path env:user`. The assistant entrypoint
- * sources this file directly at startup.
+ * deliberately does not source it into the OpenCode server environment.
  *
  * akm (>= 0.8.0) no longer manages individual env entries — the file owner edits
  * it and akm loads it as a unit. OpenPalm therefore owns the file directly:
  * writes/deletes are plain atomic .env edits (mode 0600), no akm subprocess.
- * Values are shell-quoted on write so the entrypoint can `source` the file
- * safely; `parseEnvFile` (dotenv) unquotes them on read.
+ * Values use dotenv quoting because AKM and OpenPalm parse this as a `.env`
+ * asset. Agent tools load it only in their own scoped subprocesses.
  *
- * `stack.env` and `knowledge/secrets/` are operator-managed and NOT part of
- * this file; service secrets are granted as Compose secret files.
+ * `stack.env`, provider `auth.json`, and delegated `private/secrets/` files are
+ * outside this file. Service credentials are granted as named Compose secrets.
  *
  * Layout:
  *   knowledge/     — AKM_STASH_DIR: asset content (skills, env, secrets, agents)
@@ -24,29 +24,8 @@
  */
 import { existsSync, readFileSync, writeFileSync, mkdirSync, chmodSync } from "node:fs";
 import { dirname } from "node:path";
-import { parseEnvFile, upsertEnvValue, removeEnvKey } from "./env.js";
+import { parseEnvFile, quoteEnvValue, upsertEnvValue, removeEnvKey } from "./env.js";
 import type { ControlPlaneState } from "./types.js";
-
-/**
- * Quote a value so the written line is interpreted IDENTICALLY by a POSIX shell
- * `source` (the assistant entrypoint does `set -a; . user.env`) and by dotenv
- * (akm `env run` / OpenPalm's `parseEnvFile`).
- *
- * The shared `quoteEnvValue` (env.ts) is tuned for dotenv/compose only: it
- * leaves values with internal spaces bare (`OWNER=Ada Lovelace`) and uses
- * double-quote+backslash escaping — both of which a shell `source` mis-parses
- * (word-splitting, `&`/`$` interpretation). POSIX single-quoting is the one
- * encoding both agree on: everything inside `'...'` is literal in shell AND in
- * dotenv. Simple token-shaped values are written bare for readability; anything
- * else is single-quoted, with embedded single quotes closed/escaped/reopened
- * the POSIX way (`'\''`).
- */
-function quoteForUserEnv(value: string): string {
-  if (value === "") return "";
-  // Bare-safe: characters that need no quoting in either shell or dotenv.
-  if (/^[A-Za-z0-9_./:@%+,=-]+$/.test(value)) return value;
-  return `'${value.replace(/'/g, `'\\''`)}'`;
-}
 
 /** akm ref for the user-managed environment file. */
 export const AKM_USER_ENV_REF = "env:user";
@@ -128,14 +107,12 @@ export function ensureAkmUserEnv(state: ControlPlaneState): string {
 /**
  * Write a single key/value into the user env file (`env:user`).
  *
- * The value is shell-quoted before it is written so the assistant entrypoint
- * can `source` the file without word-splitting on spaces or special
- * characters. `ensureAkmUserEnv` guarantees the file exists; `chmodSync`
- * keeps it 0600. Throws on filesystem errors so callers can surface the error.
+ * `ensureAkmUserEnv` guarantees the file exists; `chmodSync` keeps it 0600.
+ * Throws on filesystem errors so callers can surface the error.
  */
 export function writeUserEnvKey(state: ControlPlaneState, key: string, value: string): void {
   const path = ensureAkmUserEnv(state);
-  writeFileSync(path, upsertEnvValue(readFileSync(path, "utf-8"), key, quoteForUserEnv(value)));
+  writeFileSync(path, upsertEnvValue(readFileSync(path, "utf-8"), key, quoteEnvValue(value)));
   chmodSync(path, ENV_FILE_MODE);
 }
 

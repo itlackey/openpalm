@@ -28,11 +28,10 @@
     "ui-kit:check": "bun run --cwd packages/ui-kit check",
     "ui:test": "cd packages/ui && npm test",
     "ui:test:unit": "cd packages/ui && npm run test:unit -- --run",
-    "ui:test:e2e": "source scripts/load-test-env.sh && cd packages/ui && RUN_DOCKER_STACK_TESTS=1 RUN_LLM_TESTS=1 PW_ENFORCE_NO_SKIP=1 npm run test:e2e",
+    "ui:test:e2e": "source scripts/load-test-env.sh && cd packages/ui && RUN_DOCKER_STACK_TESTS=1 PW_ENFORCE_NO_SKIP=1 npm run test:e2e",
     "ui:test:e2e:mocked": "cd packages/ui && npm run test:e2e",
     "ui:test:pwa": "bun run --cwd packages/ui test:pwa",
     "ui:test:stack": "source scripts/load-test-env.sh && cd packages/ui && RUN_DOCKER_STACK_TESTS=1 npm run test:e2e",
-    "ui:test:llm": "source scripts/load-test-env.sh && cd packages/ui && RUN_DOCKER_STACK_TESTS=1 RUN_LLM_TESTS=1 PW_ENFORCE_NO_SKIP=1 npm run test:e2e",
     "guardian:dev": "bun run packages/guardian/src/server.ts",
     "guardian:api:dev": "bun run packages/guardian/src/openai-api-server.ts",
     "guardian:test": "bun test --no-orphans --cwd packages/guardian",
@@ -64,8 +63,7 @@
     "test:t2": "./scripts/test-tier.sh 2",
     "test:t3": "./scripts/test-tier.sh 3",
     "test:t4": "./scripts/test-tier.sh 4",
-    "test:t5": "./scripts/test-tier.sh 5",
-    "test:t6": "./scripts/test-tier.sh 6"
+    "test:t5": "./scripts/test-tier.sh 5"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.2"

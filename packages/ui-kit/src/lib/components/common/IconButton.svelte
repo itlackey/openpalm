@@ -4,7 +4,7 @@
   // The standard app button. Every icon button in the chrome (navbar gear/chat,
   // new-chat, theme, voice, drawer triggers) renders through this so they share
   // one size, border, radius, hover, and focus treatment. Supports an optional
-  // visible text label and an optional "selected" (on) look used by ToggleButton.
+  // visible text label and an optional selected/active look.
   interface Props {
     /** Icon contents (an inline <svg> or spinner). */
     icon: Snippet;
@@ -17,11 +17,11 @@
     href?: string;
     onclick?: (e: MouseEvent) => void;
     type?: 'button' | 'submit';
-    /** "On"/active look (used by ToggleButton and active states). */
+    /** "On"/active look. */
     selected?: boolean;
     /** Colour of the selected state. */
     tone?: 'primary' | 'danger';
-    /** Mirrors the toggle state for assistive tech (set by ToggleButton). */
+    /** Mirrors a toggle state for assistive tech. */
     ariaPressed?: boolean;
     /** Marks an anchor as the current navigation destination. */
     ariaCurrent?: 'page';

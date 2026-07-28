@@ -8,8 +8,8 @@
  * function never shells out and never reads schemas.
  */
 import { existsSync } from "node:fs";
-import { readStackRuntimeEnv } from "./secrets.js";
-import { STATIC_CORE_MAPPINGS } from "./secret-mappings.js";
+import { privateSecretsDir } from "./home.js";
+import { readSecret } from "./secrets-files.js";
 import { stackEnvPath } from "./paths.js";
 import type { ControlPlaneState } from "./types.js";
 
@@ -22,11 +22,8 @@ const REQUIRED_SECRET_KEYS = ["OP_UI_LOGIN_PASSWORD"] as const;
  * Validate the live configuration files.
  *
  * Checks:
- * 1. state/stack.env exists and carries every required key with a
- *    non-empty value.
- * 2. Every secret env key in STATIC_CORE_MAPPINGS is present (key only
- *    — blank values are warned about, never erred on, because operators
- *    may opt out of providers they don't use).
+ * 1. state/stack.env exists.
+ * 2. Every required file secret carries a non-empty value.
  *
  * Errors fail the result. Warnings do not. The function never reads
  * schema files and never spawns subprocesses.
@@ -46,24 +43,11 @@ export async function validateProposedState(state: ControlPlaneState): Promise<{
     return { ok: false, errors, warnings };
   }
 
-  const runtimeEnv = readStackRuntimeEnv(state.homeDir);
-
   for (const key of REQUIRED_SECRET_KEYS) {
-    const value = runtimeEnv[key];
+    const name = key.toLowerCase();
+    const value = readSecret(state.homeDir, name);
     if (!value || value.trim().length === 0) {
-      errors.push(`ERROR: required secret ${key} is missing or empty in knowledge/secrets/${key.toLowerCase()}`);
-    }
-  }
-
-  // Every canonical secret should at least appear as a key somewhere in
-  // the env files so the operator sees the slot. Missing slots warn (not
-  // error) since not every provider is in use on every install.
-  for (const mapping of STATIC_CORE_MAPPINGS) {
-    const inRuntime = Object.hasOwn(runtimeEnv, mapping.envKey);
-    if (!inRuntime) {
-      warnings.push(
-        `WARN: ${mapping.envKey} (akm ${mapping.secretKey}) is not declared in knowledge/secrets/${mapping.envKey.toLowerCase()}`,
-      );
+      errors.push(`ERROR: required secret ${key} is missing or empty in ${privateSecretsDir(state.homeDir)}/${name}`);
     }
   }
 

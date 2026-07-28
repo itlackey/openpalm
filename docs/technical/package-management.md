@@ -1,54 +1,94 @@
 # Package Management
 
-## Single Lock File Policy
+## Single Lock File
 
-This repo uses **one lock file**: the root `bun.lock`. All other lock files (`package-lock.json`, nested `bun.lock` files) are either gitignored or deleted.
+The repository has one dependency lock file: root `bun.lock`. Nested Bun locks
+and `package-lock.json` files are not committed.
 
-### Why one lock file
+Rules:
 
-- Bun workspaces resolve all workspace packages from the root `bun.lock`. Nested lock files conflict with this and cause drift.
-- `package-lock.json` was a leftover from the v0.5.0 migration. No CI workflow or Dockerfile ever referenced it.
-- Multiple lock files cause CI failures (`--frozen-lockfile`) when they drift, confusing diffs, and cognitive overhead.
-
-### Rules
-
-1. **`bun install` at repo root** is the only install command that modifies the lock file.
-2. **`--frozen-lockfile`** is used in CI to catch forgotten installs after dependency changes.
-3. **`.npmrc`** at repo root contains `package-lock=false` to prevent npm from generating `package-lock.json` when `npm install` runs inside `packages/ui/`.
-4. **`package-lock.json`** is in `.gitignore` as a safety net.
-
-### Adding or updating a dependency
+1. Run dependency-changing installs from the repository root.
+2. CI uses `--frozen-lockfile` to detect package manifest changes that were not
+   reflected in `bun.lock`.
+3. Root `.npmrc` sets `package-lock=false`; `.gitignore` is a second guard.
+4. Do not introduce a package-local lock to make one workspace behave as a
+   separate repository.
 
 ```bash
-# From repo root:
-bun add <package>                        # root dependency
-bun add <package> --cwd packages/foo     # workspace package dependency
-
-# Then verify:
-bun install --frozen-lockfile            # should pass — lock file is already updated
+bun add <package>
+bun add <package> --cwd packages/<workspace>
+bun install --frozen-lockfile
 ```
 
-## Cross-Package References
+## Internal Workspace References
 
-All `@openpalm/*` cross-references in `dependencies`, `devDependencies`, and `peerDependencies` use **real semver ranges** (e.g. `"^0.7.0-rc1"`), not `workspace:*`.
+Internal `@openpalm/*` references intentionally use `workspace:*` when a
+workspace package should resolve to its local peer during development. Bun's
+pack step is part of the publish contract:
 
-### Why real ranges, not `workspace:*`
+```bash
+bun pm pack
+```
 
-- Bun workspaces resolve dependencies by **package name**. When a dependency matches a workspace package, Bun uses the local copy regardless of the version range. A real range like `"^0.7.0-rc1"` works identically to `"workspace:*"` during local development.
-- `workspace:*` is a Bun/pnpm-specific protocol. npm cannot resolve it, so published packages would ship the literal string `workspace:*` — breaking consumers.
-- Docker builds that `bun install --production` after copying SDK source also resolve by name, so real ranges work there too.
+`bun pm pack` replaces `workspace:*` with the concrete on-disk workspace
+version in the tarball. Published consumers therefore receive normal semver,
+not the workspace protocol.
 
-### Keeping ranges in sync
+Keep intentional published-version contracts as semver when the dependency has
+a distinct runtime policy. Current examples are the CLI's `@openpalm/lib` floor
+range and exact `@openpalm/skeleton` pin. `scripts/set-version.mjs` maintains
+those release-time values.
 
-Platform packages (root, `packages/lib`, `containers/guardian`, `packages/cli`, `packages/electron`, `packages/electron/admin-tools`) share a coordinated version (`.github/release-package-groups.json` → `platformManifests`). The full coordinated set — platform + the independents — is `coordinatedManifests`, stamped by `scripts/set-version.mjs` (`scripts/bump-platform.sh` wraps it for the platform-only subset). **All npm publishing flows through a single workflow, `.github/workflows/release.yml`** (the npm trusted publisher for every package — npm allows only one per package and validates the *calling* workflow, so there is one entry point). A coordinated release publishes the npm-bearing platform artifacts plus the Docker images; `@openpalm/ui` remains independently versioned and published through that same workflow entry point. Cross-references between groups use real semver ranges, updated manually when a dependency's API changes — except the CLI's internal `@openpalm/lib` floor range, which `set-version.mjs` keeps in lockstep automatically.
+## Release Units
 
-See [`docs/operations/release-management.md`](../operations/release-management.md) for the full release process.
+Platform manifests are stamped in lockstep for a platform release:
 
-### Why Docker builds don't use lock files
+- root
+- `@openpalm/skeleton`
+- `@openpalm/lib`
+- CLI `openpalm`
+- `@openpalm/ui`
+- `@openpalm/ui-kit`
 
-Docker builds install dependencies without `--frozen-lockfile`:
+Guardian is its own one-manifest unit. Electron and Electron admin tools form a
+separate harness unit. No manifest belongs to more than one canonical owner.
 
-- **Guardian** and **portal** Dockerfiles use `bun install --production` after copying only the source files they need. They don't mount the root lock file because they only install a small subset of workspace dependencies.
-- **UI** is a host process (no Docker build). The SvelteKit app is built on the host via `bun run ui:build`; the `openpalm ui serve` command serves it.
+The portal SDK and adapters are one portal unit:
 
-This is intentional. The lock file guards the development workflow (ensuring reproducible local installs and CI checks). Docker builds produce immutable images and are tested by CI's `docker compose config` validation.
+- `@openpalm/portal-sdk`
+- `@openpalm/discord-portal`
+- `@openpalm/slack-portal`
+
+The publish DAG releases the SDK before either adapter. `all` composes the
+disjoint platform, portal, Guardian, Electron, and Assistant stamp sets at one
+version. All packages are packed through the shared exact-candidate npm workflow
+so workspace references are resolved the same way.
+
+## Docker Builds
+
+Docker builds do not consume the monorepo's hoisted `node_modules` or root lock
+as if they were runtime volumes. Each image installs from the explicit manifest
+copied into its build context:
+
+- Assistant tools use `containers/assistant/tools/package.json`.
+- Guardian tools use `containers/guardian/tools/package.json`.
+- Portal adapters use `containers/portal/tools/package.json`.
+- Guardian and portal package source/dependencies are installed during image
+  build, after the required package files are copied.
+
+The resulting images are immutable and image-baked. Assistant and portal
+entrypoints do not update these dependency trees at boot. Guardian retains only
+its documented explicit thin-host package override.
+
+## Verification
+
+After dependency or version changes, run the narrow package tests plus:
+
+```bash
+bun install --frozen-lockfile
+bun run lint
+bun run test
+```
+
+See [`../operations/release-management.md`](../operations/release-management.md)
+for release execution.

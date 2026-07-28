@@ -1,51 +1,8 @@
 name: Publish npm package
-# Reusable workflow for independently versioned npm packages
-# (@openpalm/ui and other independently versioned npm packages).
-# Platform-coupled packages ship via release.yml.
 
+# Exact-candidate npm publisher. Version computation, stamping, testing, and
+# source publication belong exclusively to release.yml.
 on:
-  workflow_dispatch:
-    inputs:
-      package-dir:
-        description: 'Package directory (e.g. packages/ui)'
-        required: true
-        type: string
-        default: 'packages/ui'
-      package-name:
-        description: 'npm package name (e.g. @openpalm/ui)'
-        required: true
-        type: string
-        default: '@openpalm/ui'
-      needs-build:
-        description: 'Run bun run build before packing'
-        required: false
-        type: boolean
-        default: false
-      version:
-        description: 'Explicit version or bump keyword (e.g. 0.12.14-rc.1, patch, prerelease). Empty = auto patch bump.'
-        required: false
-        type: string
-        default: ''
-      ref:
-        description: 'Branch/ref to publish from. Empty = triggering ref.'
-        required: false
-        type: string
-        default: ''
-      exact-version:
-        description: 'Publish exactly `version` with NO bump and NO commit-back.'
-        required: false
-        type: boolean
-        default: false
-      dry-run:
-        description: 'Pack + validate but do NOT npm publish or commit.'
-        required: false
-        type: boolean
-        default: true
-      allow-existing:
-        description: 'When true, treat an already-published version as a warning instead of an error.'
-        required: false
-        type: boolean
-        default: false
   workflow_call:
     inputs:
       package-dir:
@@ -59,33 +16,34 @@ on:
         type: boolean
         default: false
       version:
-        description: 'Explicit version or bump keyword (e.g. 1.2.0, minor, prerelease). Empty = auto patch bump.'
+        description: 'Exact version already stamped into the tested candidate.'
+        required: true
+        type: string
+      base-sha:
+        description: 'Base SHA used to restore the orchestrated candidate bundle.'
+        required: true
+        type: string
+      candidate-sha:
+        description: 'Exact tested candidate commit to pack and publish.'
+        required: true
+        type: string
+      source-artifact:
+        description: 'Artifact containing the incremental candidate git bundle.'
+        required: true
+        type: string
+      pack-artifact:
+        description: 'Optional artifact name for a dry-run package tarball.'
         required: false
         type: string
         default: ''
-      ref:
-        description: 'Branch/ref to publish from (checkout + push target). Empty = the triggering ref. Set by the platform-release orchestrator.'
-        required: false
-        type: string
-        default: ''
-      exact-version:
-        description: 'Publish exactly `version` with NO bump and NO commit-back (the orchestrator already bumped + committed on `ref`).'
-        required: false
-        type: boolean
-        default: false
       dry-run:
-        description: 'Pack + validate but do NOT npm publish or commit.'
-        required: false
-        type: boolean
-        default: false
-      allow-existing:
-        description: 'When true, treat an already-published version as a warning instead of an error. Default false — accidental re-publishes fail loudly.'
+        description: 'Pack and validate without publishing.'
         required: false
         type: boolean
         default: false
 
 permissions:
-  contents: write
+  contents: read
   id-token: write
 
 jobs:
@@ -95,8 +53,16 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          ref: ${{ inputs.ref || github.ref }}
+          ref: ${{ inputs.base-sha }}
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: ${{ inputs.source-artifact }}
+          path: .git/release-source
+
+      - name: Restore orchestrated candidate
+        shell: bash
+        run: bash scripts/restore-release-candidate.sh .git/release-source/release-candidate.bundle '${{ inputs.candidate-sha }}' '${{ inputs.base-sha }}'
 
       - uses: actions/setup-node@v6
         with:
@@ -111,88 +77,15 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
-      - name: Resolve version
+      - name: Verify exact candidate version
         working-directory: ${{ inputs.package-dir }}
         env:
-          EXPLICIT_VERSION: ${{ inputs.version }}
-          EXACT: ${{ inputs.exact-version }}
+          EXPECTED_VERSION: ${{ inputs.version }}
         run: |
           CURRENT=$(node -p "require('./package.json').version")
-
-          set_version() {
-            node -e "
-              const fs = require('fs');
-              const pkg = JSON.parse(fs.readFileSync('./package.json', 'utf8'));
-              pkg.version = process.argv[1];
-              fs.writeFileSync('./package.json', JSON.stringify(pkg, null, 2) + '\n');
-            " "$1"
-          }
-
-          # Compute semver increment using node (avoids npm version which
-          # chokes on workspace: protocol refs in the monorepo lockfile)
-          bump_version() {
-            node -e "
-              const cur = process.argv[1], type = process.argv[2];
-              const m = cur.match(/^(\d+)\.(\d+)\.(\d+)(?:-(.+))?$/);
-              if (!m) { console.error('Cannot parse version: ' + cur); process.exit(1); }
-              let [, ma, mi, pa, pre] = m;
-              ma = +ma; mi = +mi; pa = +pa;
-              switch (type) {
-                case 'major':      console.log(ma+1+'.0.0'); break;
-                case 'minor':      console.log(ma+'.'+(mi+1)+'.0'); break;
-                case 'patch':      console.log(pre ? ma+'.'+mi+'.'+pa : ma+'.'+mi+'.'+(pa+1)); break;
-                case 'prerelease': {
-                  if (pre) {
-                    const parts = pre.split('.');
-                    const last = parseInt(parts[parts.length-1]);
-                    if (!isNaN(last)) { parts[parts.length-1] = String(last+1); }
-                    else { parts.push('0'); }
-                    console.log(ma+'.'+mi+'.'+pa+'-'+parts.join('.'));
-                  } else {
-                    console.log(ma+'.'+mi+'.'+(pa+1)+'-0');
-                  }
-                  break;
-                }
-                default: console.error('Unknown bump type: '+type); process.exit(1);
-              }
-            " "$1" "$2"
-          }
-
-          if [ "${EXACT}" = 'true' ]; then
-            # Exact mode (orchestrated coordinated release): the version was already
-            # bumped + committed on `ref`. Stamp it (idempotent on the bumped ref),
-            # and do NOT set BUMPED — so the commit-back step is skipped.
-            if [ -z "${EXPLICIT_VERSION}" ]; then
-              echo "::error::exact-version requires an explicit version input"; exit 1
-            fi
-            set_version "${EXPLICIT_VERSION}"
-            echo "Exact mode: ${{ inputs.package-name }} pinned to ${EXPLICIT_VERSION} (no bump, no commit)"
-          elif [ -n "${EXPLICIT_VERSION}" ]; then
-            case "${EXPLICIT_VERSION}" in
-              major|minor|patch|prerelease)
-                NEW=$(bump_version "${CURRENT}" "${EXPLICIT_VERSION}")
-                ;;
-              *)
-                NEW="${EXPLICIT_VERSION}"
-                ;;
-            esac
-            set_version "${NEW}"
-            echo "Set ${{ inputs.package-name }} from ${CURRENT} to ${NEW}"
-            echo "BUMPED=true" >> "$GITHUB_ENV"
-          elif npm view "${{ inputs.package-name }}@${CURRENT}" version 2>/dev/null; then
-            NEW=$(bump_version "${CURRENT}" "patch")
-            set_version "${NEW}"
-            echo "Bumped ${{ inputs.package-name }} from ${CURRENT} to ${NEW}"
-            echo "BUMPED=true" >> "$GITHUB_ENV"
-          fi
-
-      - name: Refresh Bun lockfile workspace metadata
-        run: |
-          bun update --lockfile-only
-          if git diff --quiet -- bun.lock; then
-            echo "LOCKFILE_CHANGED=false" >> "$GITHUB_ENV"
-          else
-            echo "LOCKFILE_CHANGED=true" >> "$GITHUB_ENV"
+          if [ "${CURRENT}" != "${EXPECTED_VERSION}" ]; then
+            echo "::error::Candidate has ${{ inputs.package-name }}@${CURRENT}, expected ${EXPECTED_VERSION}"
+            exit 1
           fi
 
       - name: Build
@@ -201,75 +94,65 @@ jobs:
         run: bun run build
 
       - name: Pack with Bun
+        id: pack
         working-directory: ${{ inputs.package-dir }}
         shell: bash
         run: |
           PACK_DIR="$(mktemp -d)"
+          STAGED_LICENSE=0
+          if [ ! -e LICENSE ]; then
+            cp "${GITHUB_WORKSPACE}/LICENSE" LICENSE
+            STAGED_LICENSE=1
+          fi
+          cleanup_license() {
+            if [ "${STAGED_LICENSE}" = '1' ]; then rm -f LICENSE; fi
+          }
+          trap cleanup_license EXIT
           bun pm pack --destination "${PACK_DIR}" --quiet
+          cleanup_license
+          trap - EXIT
           mapfile -t TARBALLS < <(find "${PACK_DIR}" -maxdepth 1 -name '*.tgz')
           if [ "${#TARBALLS[@]}" -ne 1 ]; then
             echo "::error::Expected exactly one tarball in ${PACK_DIR}, found ${#TARBALLS[@]}"
             exit 1
           fi
-          TARBALL_PATH="${TARBALLS[0]}"
-          echo "TARBALL=${TARBALL_PATH}" >> "$GITHUB_ENV"
-          echo "Packed: ${TARBALL_PATH}"
+          echo "tarball=${TARBALLS[0]}" >> "$GITHUB_OUTPUT"
+          echo "Packed: ${TARBALLS[0]}"
+
+      - name: Upload dry-run package
+        if: inputs.dry-run && inputs.pack-artifact != ''
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ inputs.pack-artifact }}
+          path: ${{ steps.pack.outputs.tarball }}
+          if-no-files-found: error
+          overwrite: true
+          retention-days: 7
 
       - name: Publish with npm
-        working-directory: ${{ inputs.package-dir }}
+        if: inputs.dry-run != true
         env:
-          DRY_RUN: ${{ inputs.dry-run }}
-          ALLOW_EXISTING: ${{ inputs.allow-existing }}
+          CANDIDATE_SHA: ${{ inputs.candidate-sha }}
+          VERSION: ${{ inputs.version }}
+          TARBALL: ${{ steps.pack.outputs.tarball }}
         run: |
-          VERSION=$(node -p "require('./package.json').version")
-          if [ "${DRY_RUN}" = 'true' ]; then
-            echo "::notice::dry-run — would publish ${{ inputs.package-name }}@${VERSION} (packed: ${TARBALL}); skipping npm publish"
-            exit 0
+          HEAD_SHA=$(git rev-parse HEAD)
+          if [ "${HEAD_SHA}" != "${CANDIDATE_SHA}" ]; then
+            echo "::error::Publishing checkout is ${HEAD_SHA}, expected candidate ${CANDIDATE_SHA}"
+            exit 1
           fi
-          TAG_ARGS=""
-          if echo "${VERSION}" | grep -qE -- '-rc\.'; then
-            TAG_ARGS="--tag rc"
-          elif echo "${VERSION}" | grep -qE -- '-beta\.'; then
-            TAG_ARGS="--tag beta"
-          elif echo "${VERSION}" | grep -qE -- '-'; then
-            TAG_ARGS="--tag next"
+          if ! git diff --quiet || ! git diff --cached --quiet; then
+            echo "::error::Candidate source was modified after checkout"
+            git status --short
+            exit 1
           fi
-          npm publish "${TARBALL}" --provenance --access public ${TAG_ARGS} || {
-            EXIT_CODE=$?
-            # Check if the version is already published
-            if npm view "${{ inputs.package-name }}@${VERSION}" version 2>/dev/null; then
-              if [ "${ALLOW_EXISTING}" = 'true' ]; then
-                echo "::warning::Version ${VERSION} already published — skipping (allow-existing=true)"
-              else
-                echo "::error::Version ${VERSION} is already published on npm. Set allow-existing=true to treat this as a warning instead of an error."
-                exit 1
-              fi
-            else
-              exit $EXIT_CODE
-            fi
-          }
 
-      - name: Commit version bump
-        if: (env.BUMPED == 'true' || env.LOCKFILE_CHANGED == 'true') && inputs.dry-run != true && inputs.exact-version != true
-        env:
-          PUSH_REF: ${{ inputs.ref || github.ref_name }}
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          VERSION="$(node -p "require('./${{ inputs.package-dir }}/package.json').version")"
-          if [ "${BUMPED:-false}" = 'true' ] && [ "${LOCKFILE_CHANGED}" = 'true' ]; then
-            COMMIT_MESSAGE="chore(${{ inputs.package-name }}): bump to ${VERSION} and sync lockfile"
-          elif [ "${BUMPED:-false}" = 'true' ]; then
-            COMMIT_MESSAGE="chore(${{ inputs.package-name }}): bump to ${VERSION}"
-          else
-            COMMIT_MESSAGE="chore(${{ inputs.package-name }}): sync lockfile for ${VERSION}"
+          TAG_ARGS=()
+          if [[ "${VERSION}" == *-rc.* ]]; then
+            TAG_ARGS=(--tag rc)
+          elif [[ "${VERSION}" == *-beta.* ]]; then
+            TAG_ARGS=(--tag beta)
+          elif [[ "${VERSION}" == *-* ]]; then
+            TAG_ARGS=(--tag next)
           fi
-          git add "${{ inputs.package-dir }}/package.json" bun.lock
-          git commit -m "${COMMIT_MESSAGE}"
-          # Retry with rebase to handle concurrent publish workflows
-          for i in 1 2 3 4 5; do
-            git pull --rebase origin "${PUSH_REF}" && git push origin "HEAD:${PUSH_REF}" && exit 0
-            echo "Push attempt $i failed, retrying in $((i * 2))s..."
-            sleep $((i * 2))
-          done
-          echo "::warning::Version bump commit failed after 5 attempts (package was published successfully)"
+          GITHUB_SHA="${HEAD_SHA}" npm publish "${TARBALL}" --provenance --access public "${TAG_ARGS[@]}"

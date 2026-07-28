@@ -45,7 +45,6 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         build-essential \
         ca-certificates \
-        curl \
     && rm -rf /var/lib/apt/lists/*
 
 RUN python -m venv /opt/venv
@@ -57,9 +56,10 @@ RUN pip install --upgrade pip setuptools wheel
 WORKDIR /build
 COPY requirements.txt /build/requirements.txt
 
-# Branch on VARIANT to pick the right torch + onnxruntime wheels. Same
-# requirements.txt feeds both; only torch (cpu vs cu121 index) and the
-# onnxruntime package name differ.
+# Branch on VARIANT to pick the right torch wheel. Install requirements before
+# selecting ONNX Runtime: faster-whisper declares the CPU `onnxruntime`
+# distribution, which would otherwise overwrite an already-installed GPU wheel.
+# The final reinstall leaves exactly the requested implementation on disk.
 #
 # The rocm6 branch is an explicit guard: ROCm support has not been
 # implemented yet, but compose overlays / docs still reference a `rocm6`
@@ -73,16 +73,21 @@ RUN set -eux; \
     elif [ "$VARIANT" = "cu121" ]; then \
         pip install --extra-index-url https://download.pytorch.org/whl/cu121 \
             "torch==2.5.1+cu121" ; \
-        pip install "onnxruntime-gpu==1.20.1" ; \
     else \
         # NB: the cpu index publishes 2.5.x as plain "2.5.1" (no +cpu local
         # tag); the +cpu suffix only exists from 2.6.0 onward. --index-url
         # already pins this to the CPU build, so do NOT add "+cpu" here.
         pip install --index-url https://download.pytorch.org/whl/cpu \
             "torch==2.5.1" ; \
-        pip install "onnxruntime==1.20.1" ; \
     fi ; \
-    pip install -r /build/requirements.txt
+    pip install -r /build/requirements.txt ; \
+    if [ "$VARIANT" = "cu121" ]; then \
+        pip uninstall -y onnxruntime ; \
+        pip install --no-deps "onnxruntime-gpu==1.20.1" ; \
+    else \
+        pip install --no-deps --force-reinstall "onnxruntime==1.20.1" ; \
+    fi ; \
+    VOICE_BUILD_VARIANT="$VARIANT" python -c 'import importlib.metadata as m, os, onnxruntime as ort; variant = os.environ["VOICE_BUILD_VARIANT"]; distribution = "onnxruntime-gpu" if variant == "cu121" else "onnxruntime"; expected_provider = "CUDAExecutionProvider" if variant == "cu121" else "CPUExecutionProvider"; assert m.version(distribution) == "1.20.1"; providers = ort.get_available_providers(); assert expected_provider in providers, f"{expected_provider} missing from {providers}"; print(f"voice {variant} ONNX runtime verified: {providers}")'
 
 # ── runtime ──
 FROM python:3.11-slim-bookworm AS runtime

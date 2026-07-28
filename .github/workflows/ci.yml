@@ -353,8 +353,7 @@ jobs:
       - name: Validate thin-harness boundary (design §6.1/§6.6)
         # Asserts every packages/electron/src/*.ts file imports only the
         # @openpalm/lib bootstrap allowlist — a source-level import check, not
-        # a grep of the built dist/main.js bundle (removed; see
-        # bullshit-claude-wrote.md §5). No build step needed first.
+        # a grep of the built dist/main.js bundle. No build step is needed first.
         run: ./scripts/validate-thin-harness-boundary.sh
 
   electron-tests:

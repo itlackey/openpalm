@@ -10,9 +10,13 @@ vi.mock('@openpalm/lib', async (importOriginal) => {
   const original = await importOriginal<typeof import('@openpalm/lib')>();
   return {
     ...original,
-    importHostOpenCode: vi.fn(() => ({ imported: { providers: 1, credentials: 1 }, conflicts: [] })),
+    importHostOpenCode: vi.fn(() => ({
+      imported: { providers: 1, credentials: 1 },
+      conflicts: [],
+      changed: { config: true, auth: true },
+    })),
     detectHostOpenCode: vi.fn(() => ({ providerCount: 1, credentialCount: 1, authPath: '/tmp/host-auth-unused.json' })),
-    checkDocker: vi.fn(async () => ({ ok: true, stdout: '', stderr: '', code: 0 })),
+    restartProviderConsumers: vi.fn(async () => ({ restarted: ['assistant'], failed: [] })),
   };
 });
 
@@ -20,12 +24,8 @@ vi.mock('$lib/server/opencode/http.js', () => ({
   opencodeFetch: vi.fn(async () => undefined),
 }));
 
-vi.mock('$lib/server/docker.js', () => ({
-  composeRestart: vi.fn(async () => ({ ok: true, stdout: '', stderr: '', code: 0 })),
-}));
-
+import { restartProviderConsumers } from '@openpalm/lib';
 import { opencodeFetch } from '$lib/server/opencode/http.js';
-import { composeRestart } from '$lib/server/docker.js';
 
 let rootDir = '';
 let originalHome: string | undefined;
@@ -38,6 +38,7 @@ beforeEach(() => {
   process.env.OP_HOME = rootDir;
   resetState('admin-token');
   vi.clearAllMocks();
+  vi.mocked(restartProviderConsumers).mockResolvedValue({ restarted: ['assistant'], failed: [] });
 });
 
 afterEach(() => {
@@ -59,7 +60,10 @@ describe('POST /api/setup/import-host', () => {
     expect(body.livePushed).toBe(1);
     expect(body.restarted).toEqual(['assistant']);
     expect(vi.mocked(opencodeFetch)).toHaveBeenCalledWith('/auth/groq', expect.objectContaining({ method: 'PUT' }));
-    expect(vi.mocked(composeRestart)).toHaveBeenCalledTimes(1);
-    expect(vi.mocked(composeRestart)).toHaveBeenCalledWith(['assistant'], expect.any(Object));
+    expect(vi.mocked(restartProviderConsumers)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(restartProviderConsumers)).toHaveBeenCalledWith(
+      expect.objectContaining({ homeDir: rootDir }),
+      { config: true, auth: true },
+    );
   });
 });

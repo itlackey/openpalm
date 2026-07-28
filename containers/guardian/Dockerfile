@@ -68,6 +68,8 @@ RUN mkdir -p /opt/openpalm/guardian/.cache/bun/install \
 # release, so keep it below the heavy tools layer above (IMG-6).
 ARG GUARDIAN_VERSION
 ENV GUARDIAN_VERSION=${GUARDIAN_VERSION}
+ARG SKELETON_VERSION
+ENV SKELETON_VERSION=${SKELETON_VERSION}
 ARG GUARDIAN_USE_LOCAL_SOURCE=false
 ARG SKELETON_USE_LOCAL_SOURCE=false
 
@@ -85,9 +87,9 @@ COPY packages/skeleton /opt/openpalm/local-src/skeleton
 # world-writable is the only image-side mode that lets an arbitrary uid write
 # into these trees. This applies ONLY to these app/cache trees; the secret
 # tree (knowledge/secrets, 0600) is a bind mount and is never touched here.
-RUN test -n "$GUARDIAN_VERSION" \
+RUN test -n "$GUARDIAN_VERSION" && test -n "$SKELETON_VERSION" \
     && guardian_spec="@openpalm/guardian@${GUARDIAN_VERSION}" \
-    && skeleton_spec="@openpalm/skeleton@${GUARDIAN_VERSION}" \
+    && skeleton_spec="@openpalm/skeleton@${SKELETON_VERSION}" \
     && mkdir -p /opt/openpalm/local-artifacts \
     && if [ "$GUARDIAN_USE_LOCAL_SOURCE" = "true" ]; then \
          (cd /opt/openpalm/local-src/guardian && bun pm pack --destination /opt/openpalm/local-artifacts --quiet); \

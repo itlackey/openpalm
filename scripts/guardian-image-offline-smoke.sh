@@ -32,6 +32,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
 GUARDIAN_VERSION="$(node -p "require('./packages/guardian/package.json').version")"
+SKELETON_VERSION="$(node -p "require('./packages/skeleton/package.json').version")"
 IMAGE="openpalm-guardian-offline-smoke:test"
 CONTAINER="guardian-offline-smoke-$$"
 # NEVER use a /tmp source for a docker bind-mount here: when dockerd runs
@@ -63,8 +64,11 @@ cleanup() {
 }
 trap cleanup EXIT
 
-echo "Building guardian image (registry access permitted at build time) GUARDIAN_VERSION=${GUARDIAN_VERSION}..."
-docker build -f containers/guardian/Dockerfile --build-arg GUARDIAN_VERSION="${GUARDIAN_VERSION}" -t "$IMAGE" .
+echo "Building guardian image (registry access permitted at build time) GUARDIAN_VERSION=${GUARDIAN_VERSION}, SKELETON_VERSION=${SKELETON_VERSION}..."
+docker build -f containers/guardian/Dockerfile \
+  --build-arg GUARDIAN_VERSION="${GUARDIAN_VERSION}" \
+  --build-arg SKELETON_VERSION="${SKELETON_VERSION}" \
+  -t "$IMAGE" .
 
 echo "Booting with --network none (no DNS, no registry, no assistant reachability)"
 echo "and an empty host bind-mount at /opt/openpalm/guardian (production mount topology)..."
@@ -109,7 +113,7 @@ if ! docker logs "$CONTAINER" 2>&1 | grep -q "@openpalm/guardian@${GUARDIAN_VERS
   docker logs "$CONTAINER" >&2 || true
   exit 1
 fi
-if ! docker logs "$CONTAINER" 2>&1 | grep -q "@openpalm/skeleton@${GUARDIAN_VERSION} already installed.*skipping"; then
+if ! docker logs "$CONTAINER" 2>&1 | grep -q "@openpalm/skeleton@${SKELETON_VERSION} already installed.*skipping"; then
   echo "FAIL: entrypoint did not skip the skeleton install (baked package was re-fetched or missing)" >&2
   docker logs "$CONTAINER" >&2 || true
   exit 1

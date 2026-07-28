@@ -99,9 +99,9 @@ smoke_copy_skeleton() {
 # Includes discord_bot_token unconditionally so the two scripts stay identical
 # (host-swap previously omitted it and drifted).
 #
-# Per docs/public-seams-review.md §G1: everything below except auth.json is a
-# DELEGATED secret (consumed only by the guardian/portals, never the assistant
-# agent) and lives under private/secrets/, NOT knowledge/secrets/ (which is
+# Everything below except auth.json is a delegated service secret. It is never
+# exposed through the Assistant stash and lives under private/secrets/, not
+# knowledge/secrets/ (which is
 # bind-mounted wholesale into the assistant at /stash). auth.json stays under
 # knowledge/secrets/ — it is shared with the assistant's own OpenCode process.
 # Usage: smoke_seed_secrets <home> [ui_login_password]
@@ -216,6 +216,8 @@ EOF
 # Standalone runs (no flag) build here as before. Image tags come from
 # compose.dev.yml (hardcoded `:dev`), so a single build serves every smoke target.
 # Usage: smoke_build_images <targets...>   e.g. smoke_build_images assistant guardian [portal]
+# `portal` is the shared image name; compose.dev.yml attaches its build to the
+# real profiled adapter services, so map that convenience target to `discord`.
 smoke_build_images() {
   if [ "${OP_ROOTLESS_SMOKE_SKIP_BUILD:-0}" = "1" ]; then
     echo "Reusing prebuilt openpalm/*:dev images (OP_ROOTLESS_SMOKE_SKIP_BUILD=1)." >&2
@@ -227,18 +229,49 @@ smoke_build_images() {
   # build time and fails if it is unset (see compose.dev.yml guardian args).
   # Bake the repo's exact version so the smoke image matches the source tree.
   GUARDIAN_VERSION="$(node -p "require('./packages/guardian/package.json').version")"
+  PLATFORM_VERSION="$(smoke_platform_version)"
+  SKELETON_VERSION="$PLATFORM_VERSION"
   GUARDIAN_USE_LOCAL_SOURCE=true
   SKELETON_USE_LOCAL_SOURCE=true
   export GUARDIAN_VERSION
+  export PLATFORM_VERSION
+  export SKELETON_VERSION
   export GUARDIAN_USE_LOCAL_SOURCE
   export SKELETON_USE_LOCAL_SOURCE
-  echo "Building images: $* (GUARDIAN_VERSION=${GUARDIAN_VERSION}) ..." >&2
+  local targets=()
+  local target
+  local overlay_assistant=0
+  for target in "$@"; do
+    if [ "$target" = "portal" ]; then
+      targets+=(discord)
+    else
+      targets+=("$target")
+    fi
+    if [ "$target" = "assistant" ]; then overlay_assistant=1; fi
+  done
+  echo "Building images: ${targets[*]} (PLATFORM_VERSION=${PLATFORM_VERSION}, GUARDIAN_VERSION=${GUARDIAN_VERSION}) ..." >&2
+  local compose_platform_version="$PLATFORM_VERSION"
+  if [ "$overlay_assistant" = "1" ]; then compose_platform_version=""; fi
   # --profile addon.chat makes the profiled guardian visible; addon.discord makes
   # the portal build target visible. compose.dev.yml supplies the build contexts.
-  docker compose --project-directory . \
+  PLATFORM_VERSION="$compose_platform_version" docker compose --project-directory . \
     -f packages/skeleton/system/stack/core.compose.yml \
     -f packages/skeleton/system/stack/portals.compose.yml \
     -f compose.dev.yml \
     --profile addon.chat --profile addon.discord \
-    build "$@" >/dev/null
+    build "${targets[@]}" >/dev/null
+
+  if [ "$overlay_assistant" = "1" ]; then
+    local package_context
+    package_context="$(mktemp -d)"
+    (cd packages/ui && bun pm pack --destination "$package_context" --quiet)
+    (cd packages/skeleton && bun pm pack --destination "$package_context" --quiet)
+    docker build \
+      --file containers/assistant/Dockerfile.local-packages \
+      --build-arg "BASE_IMAGE=${OP_IMAGE_NAMESPACE:-openpalm}/assistant:dev" \
+      --build-arg "PLATFORM_VERSION=${PLATFORM_VERSION}" \
+      --tag "${OP_IMAGE_NAMESPACE:-openpalm}/assistant:dev" \
+      "$package_context" >/dev/null
+    rm -rf "$package_context"
+  fi
 }

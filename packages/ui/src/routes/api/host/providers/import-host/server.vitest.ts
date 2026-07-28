@@ -6,9 +6,8 @@ import { tmpdir } from 'node:os';
 import { resetState } from '$lib/server/test-helpers.js';
 import { POST } from './+server.js';
 
-// Mock importHostOpenCode + detectHostOpenCode so tests don't depend on the host filesystem.
-// Also mock checkDocker — without this, the post-import restart hook would talk to a
-// real docker daemon (flaky depending on the dev machine).
+// Mock host discovery/import and the portable restart operation so route tests
+// do not depend on the host filesystem or Docker daemon.
 vi.mock('@openpalm/lib', async (importOriginal) => {
 	const original = await importOriginal<typeof import('@openpalm/lib')>();
 	return {
@@ -16,9 +15,10 @@ vi.mock('@openpalm/lib', async (importOriginal) => {
 		importHostOpenCode: vi.fn(() => ({
 			imported: { providers: 2, credentials: 1 },
 			conflicts: [],
+			changed: { config: true, auth: true },
 		})),
 		detectHostOpenCode: vi.fn(() => ({ providerCount: 0, credentialCount: 0 })),
-		checkDocker: vi.fn(async () => ({ ok: true, stdout: '', stderr: '', code: 0 })),
+		restartProviderConsumers: vi.fn(async () => ({ restarted: ['assistant'], failed: [] })),
 	};
 });
 
@@ -26,14 +26,8 @@ vi.mock('$lib/server/opencode/http.js', () => ({
 	opencodeFetch: vi.fn(async () => undefined),
 }));
 
-// Mock the docker wrapper so composeRestart doesn't actually bounce real containers.
-vi.mock('$lib/server/docker.js', () => ({
-	composeRestart: vi.fn(async () => ({ ok: true, stdout: '', stderr: '', code: 0 })),
-}));
-
-import { importHostOpenCode, detectHostOpenCode, checkDocker } from '@openpalm/lib';
+import { importHostOpenCode, detectHostOpenCode, restartProviderConsumers } from '@openpalm/lib';
 import { opencodeFetch } from '$lib/server/opencode/http.js';
-import { composeRestart } from '$lib/server/docker.js';
 
 let rootDir = '';
 let originalHome: string | undefined;
@@ -73,12 +67,12 @@ beforeEach(() => {
 	vi.mocked(importHostOpenCode).mockReturnValue({
 		imported: { providers: 2, credentials: 1 },
 		conflicts: [],
+		changed: { config: true, auth: true },
 	});
 	// Default: no host OpenCode found — prevents isolation leak from real XDG paths
 	vi.mocked(detectHostOpenCode).mockReturnValue({ providerCount: 0, credentialCount: 0 });
 	vi.mocked(opencodeFetch).mockResolvedValue(undefined);
-	vi.mocked(checkDocker).mockResolvedValue({ ok: true, stdout: '', stderr: '', code: 0 });
-	vi.mocked(composeRestart).mockResolvedValue({ ok: true, stdout: '', stderr: '', code: 0 });
+	vi.mocked(restartProviderConsumers).mockResolvedValue({ restarted: ['assistant'], failed: [] });
 });
 
 function writeImportedAuth(auth: Record<string, unknown>): string {
@@ -131,6 +125,7 @@ describe('POST /api/host/providers/import-host', () => {
 		vi.mocked(importHostOpenCode).mockReturnValue({
 			imported: { providers: 1, credentials: 0 },
 			conflicts: ['anthropic', 'openai'],
+			changed: { config: true, auth: false },
 		});
 
 		const res = await POST(makeEvent());
@@ -183,23 +178,40 @@ describe('POST /api/host/providers/import-host', () => {
 		const body = (await res.json()) as { restarted: string[]; restartFailed: { service: string }[] };
 		expect(body.restarted).toEqual(['assistant']);
 		expect(body.restartFailed).toHaveLength(0);
-		expect(vi.mocked(composeRestart)).toHaveBeenCalledTimes(1);
-		expect(vi.mocked(composeRestart)).toHaveBeenCalledWith(['assistant'], expect.any(Object));
+		expect(vi.mocked(restartProviderConsumers)).toHaveBeenCalledTimes(1);
+		expect(vi.mocked(restartProviderConsumers)).toHaveBeenCalledWith(
+			expect.objectContaining({ homeDir: rootDir }),
+			{ config: true, auth: true },
+		);
+	});
+
+	test('returns the portable restart result when guardian was also restarted', async () => {
+		vi.mocked(restartProviderConsumers).mockResolvedValue({ restarted: ['assistant', 'guardian'], failed: [] });
+
+		const res = await POST(makeEvent());
+		expect(res.status).toBe(200);
+		const body = (await res.json()) as { restarted: string[] };
+		expect(body.restarted).toEqual(['assistant', 'guardian']);
 	});
 
 	test('reports restartFailed without failing the import when docker is down', async () => {
-		vi.mocked(checkDocker).mockResolvedValue({ ok: false, stdout: '', stderr: 'no daemon', code: 1 });
+		vi.mocked(restartProviderConsumers).mockResolvedValue({
+			restarted: [],
+			failed: [{ service: 'assistant', error: 'docker unavailable' }],
+		});
 		const res = await POST(makeEvent());
 		expect(res.status).toBe(200);
 		const body = (await res.json()) as { ok: boolean; restarted: string[]; restartFailed: { service: string; error: string }[] };
 		expect(body.ok).toBe(true);
 		expect(body.restarted).toHaveLength(0);
 		expect(body.restartFailed.map((f) => f.service)).toEqual(['assistant']);
-		expect(vi.mocked(composeRestart)).not.toHaveBeenCalled();
 	});
 
 	test('reports assistant restart failure without failing the import', async () => {
-		vi.mocked(composeRestart).mockResolvedValueOnce({ ok: false, stdout: '', stderr: 'no such service', code: 1 });
+		vi.mocked(restartProviderConsumers).mockResolvedValue({
+			restarted: [],
+			failed: [{ service: 'assistant', error: 'no such service' }],
+		});
 		const res = await POST(makeEvent());
 		expect(res.status).toBe(200);
 		const body = (await res.json()) as { restarted: string[]; restartFailed: { service: string; error: string }[] };
@@ -207,7 +219,7 @@ describe('POST /api/host/providers/import-host', () => {
 		expect(body.restartFailed).toEqual([{ service: 'assistant', error: 'no such service' }]);
 	});
 
-	test('live push: one provider fails → livePushFailed includes that provider ID and livePushed:1', async () => {
+	test('live push never sends a preserved Anthropic credential to the assistant', async () => {
 		const authPath = writeImportedAuth({
 			openai: { type: 'api', key: 'sk-test' },
 			anthropic: { type: 'api', key: 'sk-ant' },
@@ -219,15 +231,35 @@ describe('POST /api/host/providers/import-host', () => {
 			authPath,
 		});
 
-		// First call (openai) succeeds; second (anthropic) fails
-		vi.mocked(opencodeFetch)
-			.mockResolvedValueOnce(undefined)
-			.mockRejectedValueOnce(new Error('opencode down'));
-
 		const res = await POST(makeEvent());
 		expect(res.status).toBe(200);
 		const body = (await res.json()) as { livePushed: number; livePushFailed: string[] };
 		expect(body.livePushed).toBe(1);
-		expect(body.livePushFailed).toContain('anthropic');
+		expect(body.livePushFailed).toEqual([]);
+		expect(vi.mocked(opencodeFetch)).toHaveBeenCalledTimes(1);
+		expect(vi.mocked(opencodeFetch)).toHaveBeenCalledWith('/auth/openai', expect.any(Object));
+		expect(vi.mocked(opencodeFetch)).not.toHaveBeenCalledWith('/auth/anthropic', expect.any(Object));
+	});
+
+	test('reports a per-provider live push failure without failing the import', async () => {
+		const authPath = writeImportedAuth({
+			openai: { type: 'api', key: 'sk-test' },
+			groq: { type: 'api', key: 'gsk-test' },
+		});
+		vi.mocked(detectHostOpenCode).mockReturnValue({
+			providerCount: 2,
+			credentialCount: 2,
+			authPath,
+		});
+		vi.mocked(opencodeFetch)
+			.mockResolvedValueOnce(undefined)
+			.mockRejectedValueOnce(new Error('upstream rejected credential'));
+
+		const res = await POST(makeEvent());
+		expect(res.status).toBe(200);
+		const body = (await res.json()) as { ok: boolean; livePushed: number; livePushFailed: string[] };
+		expect(body.ok).toBe(true);
+		expect(body.livePushed).toBe(1);
+		expect(body.livePushFailed).toEqual(['groq']);
 	});
 });

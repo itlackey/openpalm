@@ -1,7 +1,7 @@
 /** Lifecycle helpers — state factory, apply transitions, compose file list. */
 import { mkdirSync } from "node:fs";
 import type { ControlPlaneState, CallerType } from "./types.js";
-import { CORE_SERVICES } from "./types.js";
+import { MANAGED_SERVICES } from "./types.js";
 import {
   resolveOpenPalmHome,
   resolveConfigDir,
@@ -37,7 +37,7 @@ import {
   listEnabledAddonIds,
   pruneRemovedAddonState,
 } from "./addons.js";
-import { GUARDIAN_INGRESS_ADDON_IDS } from "./addon-ids.js";
+import { hasGuardianIngressAddon } from "./addon-ids.js";
 import { PLATFORM_VERSION } from "./versioning.js";
 import { ensureVersionDefaults } from "./versions.js";
 
@@ -50,12 +50,11 @@ export function createState(): ControlPlaneState {
   const dataDir = resolveDataDir();
   const stackDir = resolveStackDir();
 
-  const withGuardian = hasEnabledPortal(listEnabledAddonIds(homeDir));
+  const withGuardian = hasGuardianIngressAddon(listEnabledAddonIds(homeDir));
   const services: Record<string, "running" | "stopped"> = {};
-  for (const name of CORE_SERVICES) {
-    // Guardian is only an expected service when a portal addon is enabled —
-    // matches its deploy gating, so a no-portal install does not report it as
-    // a perpetually-stopped service in the Overview/Containers status.
+  for (const name of MANAGED_SERVICES) {
+    // Guardian is only expected when a guardian-ingress addon is enabled, so
+    // an Assistant-only install does not report it as perpetually stopped.
     if (name === "guardian" && !withGuardian) continue;
     services[name] = "stopped";
   }
@@ -84,8 +83,8 @@ async function reconcileCore(
   opts: { activateServices?: boolean; deactivateServices?: boolean },
 ): Promise<string[]> {
   if (opts.activateServices) {
-    const withGuardian = hasEnabledPortal(listEnabledAddonIds(state.homeDir));
-    for (const s of CORE_SERVICES) {
+    const withGuardian = hasGuardianIngressAddon(listEnabledAddonIds(state.homeDir));
+    for (const s of MANAGED_SERVICES) {
       if (s === "guardian" && !withGuardian) continue;
       state.services[s] = "running";
     }
@@ -347,49 +346,36 @@ export function buildComposeFileList(state: ControlPlaneState): string[] {
 
 // Guardian is shared ingress for these addons, not an addon service of its own
 // (getAddonServiceNames deliberately excludes it). The id set lives in
-// addon-ids.ts (GUARDIAN_INGRESS_ADDON_IDS) and mirrors the profile gate on the
+// addon-ids.ts (hasGuardianIngressAddon) and mirrors the profile gate on the
 // guardian service in portals.compose.yml.
 //
 // Deploy dependency contract (one place to read it):
 //   • assistant — ALWAYS deployed; depends on nothing.
-//   • guardian  — portal ingress; deployed ONLY when ≥1 portal addon is
-//                 enabled; depends on assistant.
+//   • guardian  — shared ingress; deployed ONLY when ≥1 guardian-ingress addon
+//                 is enabled; depends on assistant.
 //   • portals  — each depends on guardian (compose `depends_on`), so they are
 //                 never deployed without it.
-// A zero-portal install therefore deploys assistant alone and must NOT
-// include or health-wait on guardian. The integration test in
+// An install without guardian ingress therefore deploys assistant alone and
+// must NOT include or health-wait on guardian. The integration test in
 // guardian-gating.test.ts pins this.
-
-/**
- * Guardian is portal ingress: it is both DEPLOYED and treated as an EXPECTED
- * service only when ≥1 portal addon is enabled. Single predicate so the deploy
- * set (buildManagedServices), the expected-service seed (createState), and the
- * activation loop (reconcileCore) all gate guardian identically — otherwise the
- * Overview/Containers status reports "Guardian not running" forever on a
- * no-portal install (it is never deployed). Takes the resolved addon list so
- * callers that already have it don't re-read stack.env.
- */
-function hasEnabledPortal(enabledAddons: string[]): boolean {
-  return enabledAddons.some((a) => GUARDIAN_INGRESS_ADDON_IDS.includes(a));
-}
 
 export async function buildManagedServices(state: ControlPlaneState): Promise<string[]> {
   const composeOpts = buildComposeOptions(state);
 
-  // The assistant is the only ALWAYS-on core service. The guardian is portal
-  // ingress — profile-gated to the portal addons in portals.compose.yml, so
-  // with zero portals enabled it is never deployed. Seeding it unconditionally
+  // The assistant is the only ALWAYS-on core service. Guardian is profile-gated
+  // to guardian-ingress addons in portals.compose.yml, so without one it is
+  // never deployed. Seeding it unconditionally
   // made the installer health-wait on a guardian that never starts (a ~5-minute
-  // hang when no portal is selected). Add it back ONLY when a portal is
+  // hang when no ingress is selected). Add it back ONLY when ingress is
   // enabled; that also preserves the #450 need to force-recreate guardian on
-  // upgrade when portal profiles ARE active (it is excluded from
+  // upgrade when ingress profiles ARE active (it is excluded from
   // getAddonServiceNames, so the fallback below would otherwise drop it).
   const enabledAddons = listEnabledAddonIds(state.homeDir);
   const services = new Set<string>(["assistant"]);
-  if (hasEnabledPortal(enabledAddons)) services.add("guardian");
+  if (hasGuardianIngressAddon(enabledAddons)) services.add("guardian");
 
   // Prefer compose-derived service list when Docker is available. Resolved with
-  // the active profiles, this already includes guardian iff a portal profile
+  // the active profiles, this already includes guardian iff an ingress profile
   // is active — the explicit add above just guarantees it for the fallback.
   if (composeOpts.files.length > 0 && !process.env.OP_SKIP_COMPOSE_PREFLIGHT) {
     const result = await composeConfigServices(composeOpts);
@@ -399,7 +385,7 @@ export async function buildManagedServices(state: ControlPlaneState): Promise<st
     }
   }
 
-  // Fallback: static inference from assistant (+ guardian when portals) +
+  // Fallback: static inference from assistant (+ guardian when ingress is enabled) +
   // active addon overlays.
   for (const addon of enabledAddons) {
     for (const s of getAddonServiceNames(state.homeDir, addon)) services.add(s);

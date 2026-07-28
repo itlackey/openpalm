@@ -12,10 +12,9 @@ import { join, dirname } from 'node:path';
 
 export interface DesktopSettings {
   /**
-   * When true, the GitHub update check polls the full releases list and surfaces
-   * the newest matching the user's channel (including prereleases). When false
-   * (default), it polls `/releases/latest`, which GitHub excludes prereleases
-   * from. Notify-only either way.
+   * When true, the GitHub update check includes prereleases that match the
+   * user's channel. When false, it considers stable releases only. Both modes
+   * scan paginated releases for installer assets. Notify-only either way.
    */
   checkPrerelease: boolean;
 }

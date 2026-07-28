@@ -81,10 +81,10 @@ fi
 # ── Download ──────────────────────────────────────────────────────────
 INSTALL_DIR="${OP_INSTALL_DIR:-${HOME}/.local/bin}"
 DEST="${INSTALL_DIR}/openpalm"
+mkdir -p "${INSTALL_DIR}"
 TMP_DEST="$(mktemp "${DEST}.tmp.XXXXXX")"
 
 info "Downloading openpalm ${VERSION} for ${OS}/${ARCH}..."
-mkdir -p "${INSTALL_DIR}"
 trap 'rm -f "${TMP_DEST}"' EXIT
 curl -fsSL --retry 5 --retry-delay 5 --retry-all-errors "https://github.com/itlackey/openpalm/releases/download/${VERSION}/${BINARY}" -o "${TMP_DEST}"
 

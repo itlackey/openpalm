@@ -80,8 +80,8 @@ export function buildEmptyUiRuntimeConfig(): UiRuntimeConfig {
 }
 
 /**
- * The browser-facing seed for a HOST-served UI (`openpalm ui serve`, the admin
- * app, Electron) — the counterpart to the container entrypoint's writer.
+ * The browser-facing seed for a host-served UI (CLI app/admin or Electron) —
+ * the counterpart to the container entrypoint's writer.
  *
  * Seeds {@link ASSISTANT_SAME_ORIGIN_PATH}, not an absolute URL. Host-served
  * clients run the same `/oc` route as the container, so pointing them at an

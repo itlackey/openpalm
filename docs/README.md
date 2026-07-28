@@ -66,7 +66,7 @@ Repo layout convention:
 
 | Document | Description |
 |---|---|
-| [api-spec.md](technical/api-spec.md) | Admin API endpoint contract |
+| [api-spec.md](technical/api-spec.md) | Admin API conventions, security gates, and route-map pointer |
 | [backup-restore.md](backup-restore.md) | Backup, restore, and migration procedures |
 | [environment-and-mounts.md](technical/environment-and-mounts.md) | All env vars and volume mounts |
 | [opencode-configuration.md](technical/opencode-configuration.md) | OpenCode runtime integration |

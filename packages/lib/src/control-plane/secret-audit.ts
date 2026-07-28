@@ -145,7 +145,7 @@ export function auditStackEnv(env: Record<string, string>, label = 'stack.env'):
     if (isSecretLikeKey(key)) {
       issues.push(issue(
         'stack-env-secret-key',
-        `${label} must not contain secret-like key ${key}; store it as a file under knowledge/secrets and expose ${key}_FILE instead.`,
+        `${label} must not contain secret-like key ${key}; store it as a narrowly granted file secret and expose ${key}_FILE instead.`,
         `${label}:${key}`,
       ));
     }

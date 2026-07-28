@@ -1,170 +1,86 @@
 # RC Release Runbook
 
-Repeatable operator runbook for cutting an OpenPalm release candidate with the
-single orchestrator at `.github/workflows/release.yml`.
+Repeatable procedure for a coordinated release candidate through
+`.github/workflows/release.yml`.
 
-Use this alongside:
+Use this with [Release Management](release-management.md) and the
+[`unit=all` checklist](unit-all-rc-checklist.md).
 
-- [Release Management](release-management.md)
-- [Unit=All RC Checklist](unit-all-rc-checklist.md)
-
-This runbook focuses on **how** to execute the checklist in a repeatable way:
-ordered steps, exact commands, evidence to capture, and go/no-go gates.
-
----
-
-## Audience
-
-This is for the maintainer or operator preparing a coordinated release such as
-`0.13.0-rc.1`.
-
----
-
-## Scope
-
-This runbook assumes a coordinated `unit=all` RC release and covers:
-
-- merge readiness
-- npm trusted-publisher readiness
-- workflow dry run
-- local/runtime validation
-- post-publish verification
-
-It does not replace the checklist; it tells you how to drive it.
-
----
-
-## Release Variables
-
-Set these once in your shell before running the procedure.
+## Variables
 
 ```bash
-export RELEASE_REF="main"
-export RC_VERSION="0.13.0-rc.1"
-export RC_UNIT="all"
-export REPO="$PWD"
-export RC_EVIDENCE_DIR="$REPO/.release-evidence/$RC_VERSION"
-mkdir -p "$RC_EVIDENCE_DIR"
+export RELEASE_REF=main
+export RC_VERSION=0.13.0-rc.1
+export RC_UNIT=all
 ```
 
-Recommended convention:
+`RELEASE_REF` selects the remote branch used as both the immutable dispatch base
+and the candidate push target. Artifact jobs use the bundled candidate SHA, not
+the later state of this branch.
 
-- `RELEASE_REF` should be the branch that actually contains the release workflow
-  changes you intend to use
-- for the final RC cut, that should normally be `main` after merge
+## 1. Confirm Registry Readiness
 
----
-
-## Go / No-Go Gates
-
-Do not merge and do not cut `0.13.0-rc.1` until every gate here is green.
-
-### Merge gates
-
-- [ ] release workflow changes required for the RC are merged
-- [ ] `git status --short` is clean on the merge target
-- [ ] all local blocker fixes are committed and pushed
-
-### RC cut gates
-
-- [ ] branch-correct `release.yml` dry run passes for `unit=all`
-- [ ] checklist items marked required in `unit-all-rc-checklist.md` pass
-- [ ] no unresolved security-boundary regressions remain
-- [ ] no unresolved rootless/ownership regressions remain
-- [ ] no unresolved guardian/UI/skeleton artifact drift remains
-
----
-
-## Step 1: Confirm Registry And Publisher Readiness
-
-### 1.1 Check which packages already exist
+Confirm that every coordinated npm package is visible to the registry:
 
 ```bash
-npm view @openpalm/guardian versions --json
-npm view @openpalm/skeleton versions --json
-npm view @openpalm/ui versions --json
-npm view openpalm versions --json
+for package in \
+  '@openpalm/lib' \
+  'openpalm' \
+  '@openpalm/ui' \
+  '@openpalm/skeleton' \
+  '@openpalm/guardian' \
+  '@openpalm/portal-sdk' \
+  '@openpalm/discord-portal' \
+  '@openpalm/slack-portal'
+do
+  npm view "$package" versions --json >/dev/null
+done
 ```
 
-Expected at time of writing:
-
-- `@openpalm/guardian`, `@openpalm/skeleton`, `@openpalm/ui`, and `openpalm`
-  should already exist
-
-Record:
-
-- command output
-
-### 1.2 Confirm npm trusted publisher configuration
-
-Required packages:
-
-- `@openpalm/lib`
-- `openpalm`
-- `@openpalm/ui`
-- `@openpalm/skeleton`
-- `@openpalm/guardian`
-
-Required trusted publisher values:
+At npmjs.com, each package must have this trusted publisher:
 
 - Repository: `itlackey/openpalm`
 - Workflow: `release.yml`
 - Environment: none
 
-Pass criteria:
+Stop if any package or trusted-publisher entry is missing.
 
-- [ ] every required package has a matching trusted publisher entry
+## 2. Confirm The Remote Base
 
----
-
-## Step 2: Confirm Merge Target Is Ready
-
-Run this on the branch you intend to merge.
+All release changes must be committed and pushed before dispatch:
 
 ```bash
-git status --short
-git log --oneline -10
+git fetch origin "$RELEASE_REF"
+export BASE_SHA="$(git rev-parse "origin/$RELEASE_REF")"
+git show --stat --oneline "$BASE_SHA"
 ```
 
-Pass criteria:
+Review that SHA. A live run will create one stamped candidate directly on top
+of it. Do not update the target branch between live dispatch and the source
+gate; the base-SHA lease intentionally rejects a moved branch.
 
-- [ ] no uncommitted changes
-- [ ] intended release fixes are present
-
-If the release workflow or release-critical Docker/runtime fixes are not yet on
-the merge target, stop here and merge first.
-
----
-
-## Step 3: Merge The Release Fixes
-
-Example sequence from a feature branch:
+## 3. Run Local Automated Gates
 
 ```bash
-git checkout main
-git pull origin main
-git merge --ff-only <release-fix-branch>
-git push origin main
+bun install --frozen-lockfile
+bun run --cwd packages/ui test:browsers
+bun run test:t1
+bun run test:t2
+bun run test:t3
+bun run test:t4
+bun run test:t5
+bun run ui:test:pwa
 ```
 
-If fast-forward is not possible, use your normal reviewed merge process.
+Tier 5 runs `scripts/dev-e2e-test.sh --playwright`: it creates an isolated
+current-layout home, enables the API addon so Guardian runs, checks current host
+API and isolation boundaries, and runs the stack Playwright files. It does not
+exercise model inference, voice, or real external credentials.
 
-Pass criteria:
+These local gates supplement the workflow. The workflow preflight remains the
+authoritative test of the fully stamped candidate and its lockfile.
 
-- [ ] merge target now contains the release workflow fixes
-- [ ] remote `main` is updated
-
-Important:
-
-- if you dispatch `gh workflow run release.yml` without `--ref`, GitHub uses the
-  workflow definition on the default branch
-- for final RC validation, this is desirable only after merge
-
----
-
-## Step 4: Run The Coordinated Dry Run
-
-Dispatch the dry run from the merge target:
+## 4. Dispatch The Coordinated Dry Run
 
 ```bash
 gh workflow run release.yml \
@@ -174,119 +90,34 @@ gh workflow run release.yml \
   -f dry_run=true
 ```
 
-Then inspect the latest run:
+Find and monitor the run:
 
 ```bash
 gh run list --workflow release.yml --branch "$RELEASE_REF" --limit 5
+gh run watch <run-id> --exit-status
 gh run view <run-id> --json status,conclusion,url,jobs
 ```
 
-What to look for:
+Require all of the following:
 
-- `Compute version (all)` success
-- `Preflight (test gate)` success
-- `Stamp <version>` success
-- `Docker openpalm/portal` success
-- `Docker openpalm/assistant` success
-- `Docker openpalm/guardian` success
-- npm dry-run jobs success
-- CLI binary jobs success
-- Electron jobs success
+- `Prepare candidate` stamps the complete `all` set, refreshes `bun.lock`,
+  commits once, and uploads the verified git bundle
+- `Preflight candidate` restores and tests the reported candidate SHA with
+  `bun install --frozen-lockfile`
+- `Release source gate` restores the same SHA and does not push in dry-run mode
+- every npm, Docker, CLI, and Electron job restores that candidate bundle
+- all eight npm jobs pack candidate tarballs without publishing
+- the assistant smoke image overlays the candidate UI and skeleton tarballs
+- portal SDK completes before both adapter jobs, and the portal image waits for
+  all three before building from their candidate tarballs
+- assistant, guardian, and portal local image builds pass
+- source push, npm publish, Docker push, tags, and releases are skipped
 
-Pass criteria:
+Capture the run URL, base SHA, candidate SHA, computed version, and any waiver.
 
-- [ ] entire dry run succeeds
-- [ ] no guardian Docker dry-run failure
-- [ ] no regression guard failure
+## 5. Dispatch The Live Release
 
-If a single job fails:
-
-```bash
-gh run view <run-id> --job <job-id> --log-failed
-```
-
-Capture the failing step and exact command/output.
-
----
-
-## Step 5: Run Local Preflight Parity
-
-```bash
-bun install --frozen-lockfile
-bun run ui:build
-bun run test
-bun run ui:check
-bun run ui-kit:check
-bun run --cwd packages/ui test:browsers
-bun run ui:test:unit
-bun run electron:test
-bun run guardian:test
-bun run cli:test
-```
-
-Guidance:
-
-- if `packages/ui test:browsers` fails only because Playwright tries to install
-  system packages with `sudo`, record it as an environment blocker rather than a
-  product regression
-- any real test failure in product code is a no-go
-
-Pass criteria:
-
-- [ ] all product tests/checks pass
-- [ ] any env-only limitation is understood and documented
-
----
-
-## Step 6: Run Runtime Validation
-
-Use the dedicated checklist for exact items.
-
-Minimum required runtime validations before RC publish:
-
-- [ ] isolated assistant/UI runtime
-- [ ] guardian direct-ingress/CORS/auth
-- [ ] browser-backed stack test
-- [ ] rootless ownership stack smoke
-- [ ] rootless portal-discord smoke
-- [ ] rootless host-swap smoke
-- [ ] fresh install smoke
-- [ ] upgrade smoke
-
-Reference commands and detailed pass criteria live in:
-
-- [Unit=All RC Checklist](unit-all-rc-checklist.md)
-- [Manual Compose Runbook](manual-compose-runbook.md)
-
-Guidance:
-
-- use unique ports/project names for every isolated stack run
-- collect guardian logs whenever a direct-ingress or auth path fails
-- when validating guardian behavior, prefer the actual built image/runtime over
-  source-only reasoning
-
----
-
-## Step 7: Make The Merge Decision
-
-### Merge if all of these are true
-
-- [ ] workflow dry run is green on the merge target
-- [ ] no unresolved release blockers remain
-- [ ] any waivers are explicit and low risk
-
-### Do not merge if any of these are true
-
-- [ ] guardian Docker dry run still fails
-- [ ] rootless ownership is still red
-- [ ] guardian direct-ingress behavior differs between source and built artifact
-- [ ] upgrade/rollback behavior has not been validated
-
----
-
-## Step 8: Cut `0.13.0-rc.1`
-
-Only after merge and dry-run success:
+After the dry run and local gates pass:
 
 ```bash
 gh workflow run release.yml \
@@ -296,112 +127,91 @@ gh workflow run release.yml \
   -f dry_run=false
 ```
 
-Then monitor:
+The live source gate restores the tested candidate, verifies the remote branch
+is still at `BASE_SHA`, and pushes with an exact base lease. It does not retry by
+rebasing onto newer branch content.
 
-```bash
-gh run list --workflow release.yml --branch "$RELEASE_REF" --limit 5
-gh run view <run-id> --json status,conclusion,url,jobs
-```
+## 6. Handle Failures
 
-If the live release fails partway through:
+If the base lease fails, artifact publication has not started. Review the new
+branch head and dispatch a replacement run from the intended source.
 
-```bash
-gh run rerun <run-id> --failed
-```
+If a later artifact job fails, first determine whether any npm version or
+immutable Docker image was created. Do not rerun or redispatch the same version
+after registry publication; correct the cause and cut a new version. A failed-job
+rerun is safe only when no immutable registry artifact was created.
 
-Do not start a fresh release for the same version unless you have a specific,
-reviewed reason.
-
----
-
-## Step 9: Post-Publish Verification
-
-Immediately verify the real artifacts.
+## 7. Verify Published Artifacts
 
 ### npm
 
 ```bash
-npm view @openpalm/lib@"$RC_VERSION" version
-npm view openpalm@"$RC_VERSION" version
-npm view @openpalm/ui@"$RC_VERSION" version
-npm view @openpalm/guardian@"$RC_VERSION" version
-npm view @openpalm/skeleton@"$RC_VERSION" version
-npm view @openpalm/discord-portal@"$RC_VERSION" version
-npm view @openpalm/slack-portal@"$RC_VERSION" version
+for package in \
+  '@openpalm/lib' \
+  'openpalm' \
+  '@openpalm/ui' \
+  '@openpalm/skeleton' \
+  '@openpalm/guardian' \
+  '@openpalm/portal-sdk' \
+  '@openpalm/discord-portal' \
+  '@openpalm/slack-portal'
+do
+  npm view "${package}@${RC_VERSION}" version
+  npm view "$package" dist-tags --json
+done
 ```
 
-### dist-tags
-
-```bash
-npm view @openpalm/guardian dist-tags --json
-npm view @openpalm/skeleton dist-tags --json
-```
+For an RC, each package should resolve the exact version and the `rc` dist-tag
+should point to it. Beta releases use `beta`, other prereleases use `next`, and
+stable releases use `latest`.
 
 ### Docker
 
 ```bash
-docker buildx imagetools inspect openpalm/assistant:"$RC_VERSION"
-docker buildx imagetools inspect openpalm/guardian:"$RC_VERSION"
-docker buildx imagetools inspect openpalm/portal:"$RC_VERSION"
+docker buildx imagetools inspect "openpalm/assistant:$RC_VERSION"
+docker buildx imagetools inspect "openpalm/guardian:$RC_VERSION"
+docker buildx imagetools inspect "openpalm/portal:$RC_VERSION"
 ```
 
-### GitHub release and tags
+Prereleases must not move the standard Docker `latest` tags. For a stable
+release, each `latest` alias must match the corresponding immutable manifest.
 
-Verify:
+### Tags And GitHub Releases
 
-- `platform-$RC_VERSION`
-- `portals-$RC_VERSION`
-- `assistant-$RC_VERSION`
-- `guardian-$RC_VERSION`
-- `electron-$RC_VERSION`
-- `$RC_VERSION`
+For `unit=all`, verify these tags/releases:
 
-Pass criteria:
-
-- [ ] all expected npm versions resolve
-- [ ] all expected Docker tags resolve
-- [ ] all expected tags/releases exist
-
----
-
-## Step 10: Final RC Signoff
-
-Create a release note or signoff comment that includes:
-
-- RC version
-- release run URL
-- checklist status
-- any waivers
-- known issues still accepted into RC
-
-Recommended signoff template:
-
-```text
-OpenPalm 0.13.0-rc.1 signoff
-
-- Merge target: main
-- Release workflow run: <url>
-- Checklist: pass / fail / waived items listed below
-- npm verification: pass
-- Docker verification: pass
-- GitHub tags/release verification: pass
-- Known accepted RC limitations: <none or list>
+```bash
+for tag in \
+  "platform-$RC_VERSION" \
+  "portals-$RC_VERSION" \
+  "assistant-$RC_VERSION" \
+  "guardian-$RC_VERSION" \
+  "electron-$RC_VERSION" \
+  "$RC_VERSION"
+do
+  gh release view "$tag" --json tagName,isPrerelease,assets,url
+done
 ```
 
----
+All tags must point to the candidate SHA. Every expected release asset must be
+downloadable. A retry updates existing assets with `--clobber`; a failed create
+or upload command fails the workflow rather than being ignored.
 
-## Maintainer Notes
+## 8. Sign Off
 
-- Prefer `--ref "$RELEASE_REF"` for all release workflow dispatches so the
-  intended workflow definition is used
-- Keep the checklist and this runbook updated together; the checklist is the
-  gate list, this runbook is the operating procedure
+Record:
 
----
+- version and release unit
+- workflow URL
+- base and candidate SHAs
+- local and dry-run gate status
+- npm, Docker, tag, release, and asset verification
+- reviewed waivers or known issues
 
 ## Related Docs
 
 - [Release Management](release-management.md)
 - [Unit=All RC Checklist](unit-all-rc-checklist.md)
-- [Manual Compose Runbook](manual-compose-runbook.md)
+- [Testing Workflow](../technical/testing-workflow.md)
+- [Release Architecture](../technical/release-architecture.md)
 - [Core Principles](../technical/core-principles.md)

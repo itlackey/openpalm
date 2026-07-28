@@ -24,6 +24,16 @@ describe('selectInstallableReleases', () => {
     expect(releases[0]?.hasElectronBuild).toBe(true);
   });
 
+  test('returns standalone electron-* releases with installer assets', () => {
+    const releases = selectInstallableReleases([
+      raw('electron-0.12.6', [ELECTRON_ASSET]),
+      raw('guardian-0.12.7', [ELECTRON_ASSET]),
+    ]);
+
+    expect(releases.map((r) => r.tag)).toEqual(['0.12.6']);
+    expect(releases[0]?.hasElectronBuild).toBe(true);
+  });
+
   test('skips platform releases without Electron assets', () => {
     const releases = selectInstallableReleases([
       raw('platform-0.12.4'),
@@ -37,6 +47,16 @@ describe('selectInstallableReleases', () => {
     const releases = selectInstallableReleases([
       raw('platform-0.12.5', [ELECTRON_ASSET]),
       raw('v0.12.5', [ELECTRON_ASSET]),
+    ]);
+
+    expect(releases).toHaveLength(1);
+    expect(releases[0]?.tag).toBe('0.12.5');
+  });
+
+  test('deduplicates platform-* and electron-* tags for coordinated releases', () => {
+    const releases = selectInstallableReleases([
+      raw('platform-0.12.5', [ELECTRON_ASSET]),
+      raw('electron-0.12.5', [ELECTRON_ASSET]),
     ]);
 
     expect(releases).toHaveLength(1);

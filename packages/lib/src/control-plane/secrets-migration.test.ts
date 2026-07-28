@@ -5,7 +5,6 @@
  * private/secrets/ (never mounted into the assistant). Must be non-destructive
  * and idempotent against a fixture OP_HOME in every state an existing install
  * could be in: fresh, unmigrated, partially migrated, and already migrated.
- * See docs/public-seams-review.md §G1.
  */
 import { describe, expect, it } from 'bun:test';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, statSync, writeFileSync } from 'node:fs';

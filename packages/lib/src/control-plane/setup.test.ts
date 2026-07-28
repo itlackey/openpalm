@@ -669,14 +669,14 @@ describe("performSetup", () => {
     expect(env).not.toMatch(/_VERSION=v0\.11\.1/);
   });
 
-  it("a non-empty imageTag pins every per-image version deliberately (kept verbatim)", async () => {
+  it("a non-empty imageTag pins platform images but leaves voice on its variant-aware channel", async () => {
     const result = await performSetup(makeValidSpec({ imageTag: "v0.11.1" }));
     expect(result.ok).toBe(true);
     const env = readFileSync(stateEnvPath(), 'utf-8');
     expect(env).toMatch(/^OP_ASSISTANT_VERSION=v0\.11\.1$/m);
     expect(env).toMatch(/^OP_GUARDIAN_VERSION=v0\.11\.1$/m);
     expect(env).toMatch(/^OP_PORTAL_VERSION=v0\.11\.1$/m);
-    expect(env).toMatch(/^OP_VOICE_VERSION=v0\.11\.1$/m);
+    expect(env).toMatch(/^OP_VOICE_VERSION=latest$/m);
   });
 
   it("imageTag is trimmed before writing", async () => {
@@ -694,13 +694,14 @@ describe("performSetup", () => {
     expect(env).toMatch(/^OP_ASSISTANT_VERSION=latest$/m);
   });
 
-  it("records an explicit imageTag as a pin on every per-image key", async () => {
+  it("records an explicit imageTag for assistant, guardian, and portal only", async () => {
     const result = await performSetup(makeValidSpec({ imageTag: "v0.11.1" }));
     expect(result.ok).toBe(true);
     const env = readFileSync(stateEnvPath(), 'utf-8');
-    for (const key of ["ASSISTANT", "GUARDIAN", "PORTAL", "VOICE"]) {
+    for (const key of ["ASSISTANT", "GUARDIAN", "PORTAL"]) {
       expect(env).toMatch(new RegExp(`^OP_${key}_VERSION=v0\\.11\\.1$`, 'm'));
     }
+    expect(env).toMatch(/^OP_VOICE_VERSION=latest$/m);
   });
 
   // ── E1: blank imageTag pins to PLATFORM_VERSION when the image is

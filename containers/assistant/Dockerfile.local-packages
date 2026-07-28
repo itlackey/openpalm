@@ -1,0 +1,19 @@
+ARG BASE_IMAGE=openpalm/assistant:dev
+FROM ${BASE_IMAGE}
+
+USER root
+
+ARG PLATFORM_VERSION
+
+COPY openpalm-ui-*.tgz /tmp/openpalm-ui.tgz
+COPY openpalm-skeleton-*.tgz /tmp/openpalm-skeleton.tgz
+
+RUN rm -rf /opt/openpalm/ui /opt/openpalm/skeleton \
+    && npm install --prefix /opt/openpalm/ui /tmp/openpalm-ui.tgz --omit=dev --no-fund --no-audit \
+    && npm install --prefix /opt/openpalm/skeleton /tmp/openpalm-skeleton.tgz --omit=dev --no-fund --no-audit \
+    && rm -f /tmp/openpalm-ui.tgz /tmp/openpalm-skeleton.tgz \
+    && chmod -R a+rwX /opt/openpalm/ui /opt/openpalm/skeleton
+
+ENV PLATFORM_VERSION=${PLATFORM_VERSION}
+
+USER node

@@ -2,8 +2,8 @@
  * Built-in addon/profile discovery helpers.
  *
  * Runtime addon enablement is recorded as OP_ENABLED_ADDONS in stack.env and
- * resolved to Compose profiles. The fixed compose files under config/stack are
- * the runtime source of truth.
+ * resolved to Compose profiles. Managed files under system/stack plus the user
+ * config/stack/custom.compose.yml overlay are the runtime source of truth.
  */
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { errMessage } from './errors.js';

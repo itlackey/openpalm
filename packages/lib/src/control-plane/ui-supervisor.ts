@@ -1,7 +1,7 @@
 /**
  * Shared UI-server supervisor primitives.
  *
- * The CLI (`openpalm ui serve`) and the Electron desktop shell both run a
+ * The CLI UI commands and the Electron desktop shell both run a
  * long-lived supervisor around the SvelteKit adapter-node UI child: they spawn
  * it, wait for it to become ready, and — on a SIGUSR2-triggered UI-build
  * update — kill/respawn it and, on failure, restore the previous data/ui backup.
@@ -167,7 +167,7 @@ export function restoreUiBackup(
 }
 
 // ── UiSupervisor state machine ────────────────────────────────────────────────
-// The CLI (`openpalm ui serve`) and the Electron desktop shell run the SAME
+// The CLI UI commands and the Electron desktop shell run the same
 // supervisor STATE MACHINE around the UI child — spawn → wait-for-ready, and, on
 // a SIGUSR2/IPC restart trigger, kill → respawn → wait-for-ready → (on failure)
 // restore-backup — but they differ in every harness-scoped DETAIL:

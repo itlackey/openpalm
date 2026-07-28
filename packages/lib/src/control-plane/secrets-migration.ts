@@ -3,8 +3,8 @@
  * (bind-mounted wholesale into the assistant at `/stash`, and
  * `external_directory "/stash/*":"allow"`-reachable by the agent's own bash
  * tool) into `private/secrets/` (never mounted into the assistant; granted to
- * the guardian/portal containers ONLY via Compose `secrets: file:` entries).
- * See docs/public-seams-review.md §G1.
+ * container consumers through named Compose secrets; host consumers read the
+ * private files directly).
  *
  * Non-destructive and idempotent by construction, independent of the
  * one-shot schema-version gate that also calls it (home-schema.ts): every

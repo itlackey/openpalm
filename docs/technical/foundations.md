@@ -1,300 +1,173 @@
 # Foundations
 
-> Authoritative document. Do not edit without a specific request to do so, or direct approval.
+> Authoritative document. Do not edit without a specific request or direct approval.
 
-This is the stripped-down runtime contract for OpenPalm.
+This is the compact 0.13.0 runtime contract. The full architectural rules live
+in [`core-principles.md`](core-principles.md).
 
-It focuses on three things only:
+## Ownership Layout
 
-- environment sources
-- filesystem and mount boundaries
-- Docker network boundaries
-
-For the full architectural rule set, see `docs/technical/core-principles.md`. The security boundaries listed here are a summary; `core-principles.md` defines additional invariants (e.g., "host only by default") not repeated here.
-
----
-
-## Global Rules
-
-### Host root
-
-All persistent runtime state lives under `OP_HOME`, which defaults to `~/.openpalm`.
+All runtime state lives under `OP_HOME`, defaulting to `~/.openpalm`:
 
 ```text
 ~/.openpalm/
-├── config/          user-editable config (assistant/, akm/, guardian/)
-│   └── stack/       live compose assembly (core.compose.yml, services.compose.yml, portals.compose.yml, custom.compose.yml) — no secrets, no env
-├── knowledge/           AKM knowledge base (env/, secrets/, tasks/, skills/)
-│   ├── env/         user.env (env:user) + stack.env (env:stack, Compose --env-file)
-│   └── secrets/     system-managed service secrets + auth.json (akm secret — Compose grants)
-├── data/            durable service data, logs, backups, rollback, akm/cache, akm/data
-└── workspace/       shared work area
+|-- config/       user-owned non-secret config and config/stack/custom.compose.yml
+|-- system/       managed release assets and system/stack/*.compose.yml
+|-- state/        app-written records, including the one state/stack.env
+|-- knowledge/    AKM stash, env/user.env, tasks, and provider secrets/auth.json
+|-- data/         durable service state, logs, backups, and rollback
+|-- workspace/    shared assistant work area
+|-- private/      delegated credentials, never part of assistant /stash
+`-- cache/        regenerable container caches
 ```
 
-Lifecycle backups live under `~/.openpalm/data/backups/`; rollback snapshots live under `~/.openpalm/data/rollback/`.
+Ownership is a security boundary, not just organization:
 
-### Compose env sources
+- Automatic lifecycle sync overwrites `system/`, writes `state/`, and preserves
+  existing user files in `config/`, `knowledge/`, and `workspace/`.
+- Managed Compose lives only in `system/stack/`. The only stack file under
+  `config/` is `config/stack/custom.compose.yml`.
+- `state/stack.env` is the single non-secret Compose env file.
+- Lifecycle backups include `private/` and omit `data/` and regenerable
+  `cache/`. Purge removes every tree. Ownership repair includes durable and
+  private state but excludes regenerable caches.
 
-The standard startup path uses:
+## Credential Boundary
 
-- `state/stack.env` — non-secret Compose substitution values: paths, ports, image tags, profiles, feature flags
-- `knowledge/secrets/` — system-managed secret files granted to services through Compose `secrets:` and exposed as `*_FILE` variables
-- `knowledge/env/user.env` — AKM env backing file for user-managed secrets; not a Compose env file
+- `knowledge/secrets/auth.json` is the provider credential store used by
+  OpenCode. It stays in the assistant-readable knowledge tree.
+- `private/secrets/` holds delegated UI, OpenCode server, Guardian, API, portal,
+  Discord, and Slack credentials. It is never bind-mounted into `/stash`.
+- Compose grants delegated credentials as individual files under
+  `/run/secrets/` only to the services that need them.
+- `knowledge/env/user.env` backs AKM `env:user`. It is neither a Compose env file
+  nor sourced by the assistant entrypoint. Scoped tools load it on demand.
+- No service receives a broad secret env file, and `state/stack.env` must remain
+  non-secret.
 
-### Security boundaries
+## Security Boundaries
 
-- The host CLI and host admin process access the Docker socket directly on the host. No container mounts the Docker socket.
-- The host admin process reads and writes `$OP_HOME` directly as a host process. No container mounts the full `$OP_HOME`.
-- `assistant` has no `/etc/vault/` mount — user secrets are read via `akm env:user` from the `knowledge/` bind mount.
-- `guardian` is the only path from portal ingress networks to the assistant.
+- The host CLI and admin-capable host UI are the only Docker Compose
+  orchestrators. They use the host Docker socket directly.
+- There is no admin container and no Docker socket or socket proxy mounted into
+  any container.
+- The assistant has bounded mounts, no admin credential, and no network path to
+  the loopback-only admin process. It cannot perform stack operations.
+- Portal traffic reaches the assistant only through Guardian.
+- All host publications default to loopback. Broader access requires explicit
+  flat setup toggles.
 
----
+## Access Model
 
-## Core Networks
+Setup schema version 2 has an optional flat `access` object:
 
-| Network | Purpose | Core members |
+- `networkAccess`
+- `assistantDirect`
+- `guardianNetwork`
+- `guardianOpenaiApi`
+
+The toggles generate explicit service-specific bind/auth values; no listener
+inherits from a global bind. Configurable bind names are `OP_UI_BIND_ADDRESS`,
+`OP_ASSISTANT_BIND_ADDRESS`, `OP_GUARDIAN_BIND_ADDRESS`, and
+`OP_API_BIND_ADDRESS`. Voice is fixed to loopback.
+
+## Networks
+
+| Network | Members | Purpose |
 |---|---|---|
-| `assistant_net` | Core internal mesh | `assistant` (which also hosts the scheduler co-process), `guardian` |
-| `portal_net` | Default portal ingress network | `guardian` and compatible user overlays |
-| `portal_public` | Reserved for internet-facing portal ingress | `guardian` and public-facing portal-style overlays. Access semantics and membership rules are under design. |
+| `assistant_net` | Assistant, Guardian, Ollama variants | Protected assistant/provider path |
+| `portal_net` | Guardian and portal adapters | External protocol ingress |
+| `addon_net` | Voice and addons that need no assistant access | Segmented addon traffic |
 
----
+Guardian is the only service on both the assistant and portal networks.
 
-## Core Containers
+## Assistant
 
-### Assistant
+The assistant is the one always-on core container. It provides:
 
-Role:
+- OpenCode on container port `4096`
+- the image-baked non-admin `@openpalm/ui` on container port `3000`
+- AKM memory, skills, lessons, and knowledge through `/stash`
+- scheduled automation through BusyBox `crond` and `akm tasks sync`
 
-- OpenCode runtime
-- user-facing AI interaction
-- memory, skills, and knowledge access via the akm CLI (shared akm stash)
-- no admin API path; stack operations remain host-only
+Principal mounts:
 
-Env sources:
-
-- direct compose `environment:` block
-- selected values from `stack.env` (via compose `${VAR}` substitution)
-- explicit secret file grants via Compose `secrets:` when needed
-
-Key env:
-
-- `OPENCODE_CONFIG_DIR=/etc/opencode`
-- `OPENCODE_PORT=4096`
-- `OPENCODE_AUTH=false` (safe because host bind defaults to 127.0.0.1; see § Security invariants #4 in core-principles.md)
-- `AKM_STASH_DIR=/stash`, `AKM_CONFIG_DIR=/etc/akm`, `AKM_CACHE_DIR=/opt/akm/cache`, and `AKM_DATA_DIR=/opt/akm/data`
-- `OP_UID`, `OP_GID`
-
-Mounts:
-
-- `$OP_HOME/system/assistant -> /etc/opencode` (MANAGED config, `OPENCODE_CONFIG_DIR` — plugins, permissions, instructions; overwritten on update)
-- `$OP_HOME/config/assistant -> /home/opencode/.config/opencode` (USER OpenCode global config — `persona.md`, model/provider choices; nested over `HOME`)
-- `$OP_HOME/config/akm -> /etc/akm`
+- `$OP_HOME/system/assistant -> /etc/opencode`
+- `$OP_HOME/config/assistant -> /home/opencode/.config/opencode`
+- `$OP_HOME/data/assistant -> /home/opencode`
+- `$OP_HOME/cache/assistant -> /home/opencode/.cache`
 - `$OP_HOME/knowledge/secrets/auth.json -> /home/opencode/.local/share/opencode/auth.json`
-- `$OP_HOME/data/assistant -> /home/opencode` (`HOME`)
-- `$OP_HOME/knowledge -> /stash` (shared akm stash)
-- `$OP_HOME/data/akm/cache -> /opt/akm/cache` and `$OP_HOME/data/akm/data -> /opt/akm/data`
+- `$OP_HOME/knowledge -> /stash`
+- `$OP_HOME/config/akm -> /etc/akm`
+- `$OP_HOME/data/akm/cache -> /opt/akm/cache`
+- `$OP_HOME/data/akm/data -> /opt/akm/data`
 - `$OP_HOME/workspace -> /work`
-- `assistant-persistent -> /opt/persistent` (global-prefix escape hatch)
+- `assistant-persistent -> /opt/persistent`
 
-Ports and network:
+Default host publications:
 
-- UI: `${OP_UI_BIND_ADDRESS:-${OP_BIND_ADDRESS:-127.0.0.1}}:${OP_UI_PORT:-3800} -> 3000`
+- UI: `${OP_UI_BIND_ADDRESS:-127.0.0.1}:${OP_UI_PORT:-3800} -> 3000`
 - OpenCode: `${OP_ASSISTANT_BIND_ADDRESS:-127.0.0.1}:${OP_ASSISTANT_PORT:-3810} -> 4096`
-- network: `assistant_net`
 
-Security — provider secrets:
+The local browser connection uses the UI's authenticated same-origin `/oc`
+pass-through. Remote user-added OpenCode/Guardian connections may still be
+browser-direct.
 
-Provider keys are not stored in `stack.env`. They are stored as file-based secrets or OpenCode auth state and exposed to services through narrow grants. Secret-like environment variables must be `*_FILE` paths.
+## Guardian
 
-Secret redaction (in-process logger):
+Guardian is profile-gated in `portals.compose.yml`, not a core container. When
+deployed it is a transparent native OpenCode reverse proxy with policy overlays:
 
-- The shared logger in `@openpalm/lib` (`createLogger`) walks every structured `extra` payload and replaces values whose keys match the sensitive-key pattern (`(^|_)(TOKEN|SECRET|KEY|PASSWORD|HMAC)(_|$)`, case-insensitive) with `***REDACTED***` before the line is written to stdout/stderr. This applies to all services that use the shared logger (admin, guardian, portals, scheduler, CLI).
-- Operators who want stronger guarantees should keep cloud secrets out of the assistant container by setting only the keys their selected provider needs; the assistant entrypoint already strips unused provider keys based on `SYSTEM_LLM_PROVIDER`.
+- HTTP Basic principal authentication
+- persisted session and permission ownership
+- rate limiting and resource limits
+- tenant-filtered events
+- content validation before prompt-bearing writes are forwarded
 
-### Guardian
+Guardian mounts its own data, cache, logs, managed config, and user model config.
+It mounts no `knowledge/` tree. Provider `auth.json` arrives as one Compose
+secret and is copied into Guardian's home at boot; delegated credentials arrive
+from `private/secrets/` as narrow Compose grants.
 
-Role:
+Guardian listeners:
 
-- principal authentication
-- ownership enforcement
-- rate and resource limiting
-- portal/direct-to-assistant ingress gateway
+| Listener | Port | Host publication |
+|---|---:|---|
+| Internal `/oc` gateway | `8080` | None |
+| Direct `/oc` ingress | `3830` | `127.0.0.1:3830` by default |
+| Principal admin API | `3831` | Always loopback |
+| OpenAI/Anthropic-compatible API | `8182` | `127.0.0.1:3821` by default |
+| OpenCode moderator | `4097` | Container loopback only |
 
-Env sources:
+There is one compatible API listener, not separate chat and API listeners.
 
-- direct compose `environment:` block (non-secret config via ${VAR} substitution)
-- principal secret files granted through Compose `secrets:` from `knowledge/secrets/`
+### Content Validation
 
-Key env:
+`GUARDIAN_CONTENT_VALIDATION` is on in both the package fallback and shipped
+Compose. Only explicit `0`, `false`, `no`, or `off` values disable it.
 
-- `PORT=8080`
-- `OP_ASSISTANT_URL=http://assistant:4096`
-- `OPENCODE_TIMEOUT_MS=0`
-- `GUARDIAN_AUDIT_PATH=/opt/openpalm/logs/guardian-audit.log`
-- `PORTAL_<n>_SECRET_FILE`
-- `OPENCODE_CONFIG_DIR=/etc/opencode` (moderator config from `config/guardian`)
-- `GUARDIAN_CONTENT_VALIDATION` (off by default), `GUARDIAN_MODERATION_URL`, `GUARDIAN_MODERATION_PORT`, `GUARDIAN_MODERATION_THRESHOLD`, `GUARDIAN_MODERATION_TIMEOUT_MS` — opt-in content validation (see § Content validation)
+The deterministic screen permits below-threshold traffic without a model and
+escalates suspicious input to the local moderator. An escalated request is
+blocked if the moderator times out, fails, returns malformed output, or cannot
+produce an allow/flag/block verdict.
 
-Mounts:
+## Scheduler
 
-- `$OP_HOME/data/guardian -> /opt/openpalm/guardian`
-- `$OP_HOME/system/guardian -> /etc/opencode` (MANAGED guardian config, `OPENCODE_CONFIG_DIR` — moderation instructions, server, permissions)
-- `$OP_HOME/config/guardian -> /opt/openpalm/guardian/.config/opencode` (USER guardian config — the operator-tunable moderation model; `HOME=/opt/openpalm/guardian`)
-- `$OP_HOME/knowledge/secrets/auth.json -> /opt/openpalm/guardian/.local/share/opencode/auth.json` (ro; shared OpenCode provider credentials, same file the assistant mounts)
-- `$OP_HOME/data/logs -> /opt/openpalm/logs`
-- Compose secret mounts under `/run/secrets/<name>` for guardian principal seeding and portal authentication
+The assistant entrypoint starts BusyBox `crond`, runs `akm tasks sync` at boot,
+and repeats the sync every 60 seconds. Task files live in
+`knowledge/tasks/*.yml`; supported targets are `command`, `prompt`, and
+`workflow`.
 
-Ports and network:
+It has no separate service, network port, Docker socket, admin token, or admin
+API role. Cron gets only a managed allowlist of AKM/OpenCode environment values.
 
-- host: `${OP_BIND_ADDRESS:-127.0.0.1}:${OP_GUARDIAN_PORT:-3830}` and `127.0.0.1:${OP_GUARDIAN_ADMIN_PORT:-3831}`
-- container: `8080`
-- networks: `portal_net`, `assistant_net`
+## Admin Host Process
 
-Portal request metadata fields:
+The same `@openpalm/ui` adapter-node build runs under Electron, `openpalm app`,
+or `openpalm admin`. Admin capability exists only in Electron and
+`openpalm admin`; those host processes read `OP_HOME` and invoke Docker Compose
+through the host socket. Containers receive no corresponding path or
+credential.
 
-- `x-openpalm-session-key` -- When present on the inbound request, overrides the default per-user session grouping key and allows portals to maintain multiple independent sessions per user.
-
-Rate limits (fixed-window):
-
-- Per-user: 120 requests/minute
-- Per-portal: 200 requests/minute
-
-Payload limits:
-
-- Request body: 100 KB max (checked via both `Content-Length` header and raw body length)
-- `channel`: 64 chars max
-- `userId`: 256 chars max
-- `nonce`: 128 chars max
-- `text`: 10,000 chars max
-
-Field length validation is enforced by the active guardian and portal runtime request validators.
-
-Content validation (opt-in, off by default):
-
-- The limits above are *structural* — they confirm a message is well-formed and signed, not that it is safe. When `GUARDIAN_CONTENT_VALIDATION` is enabled, the guardian adds a semantic stage before forwarding (`packages/guardian/src/moderation.ts`).
-- A deterministic heuristic pre-screen (`packages/guardian/src/content-screen.ts`) scores prompt-injection / jailbreak / exfiltration / obfuscation signals. Clean traffic (score 0) forwards without touching a model.
-- Messages over `GUARDIAN_MODERATION_THRESHOLD` escalate to the guardian's local OpenCode moderator (loopback `:4097`, started by the guardian entrypoint, small model pinned in `config/guardian/opencode.jsonc`, shared `auth.json` provider creds), which returns an allow/flag/block JSON verdict.
-- **Fail-closed:** an escalated message the moderator cannot classify (down, timeout, unparseable) is blocked (`403 content_blocked`). The taxonomy + output contract live in `config/guardian/instructions/moderation.md`.
-
-HTTP error responses (`{ error: "<code>", requestId: "<uuid>" }`):
-
-| Code | HTTP | Cause |
-|---|---|---|
-| `invalid_json` | 400 | Body is not parseable JSON |
-| `invalid_payload` | 400 | Missing/wrong-type field or out-of-bounds length |
-| `payload_too_large` | 413 | Body exceeds 100 KB |
-| `unauthorized` | 401 | Principal auth failed or secret mismatch |
-| `forbidden_endpoint` | 403 | Principal is not allowed to call the requested route |
-| `rate_limited` | 429 | Per-user or per-principal limit exceeded |
-| `content_blocked` | 403 | Blocked by content-validation stage (opt-in, fail-closed) |
-| `assistant_unavailable` | 502 | Could not reach or get a response from the assistant |
-| `not_found` | 404 | Unrecognised endpoint |
-
-Notes:
-
-- Guardian exposes only localhost-bound direct/admin listeners by default.
-- It is the only bridge between portal ingress networks and `assistant_net`.
-
-### Scheduler co-process
-
-Role:
-
-- scheduled automation execution
-- admin API caller (via the assistant token)
-- assistant client (calls the co-resident OpenCode runtime over `localhost`)
-
-The scheduler is a Bun co-process that runs **inside the assistant
-container** (started by `containers/assistant/entrypoint.sh`). It has no
-network port and no Docker socket.
-
-Control plane:
-
-- Definitions: `${OP_HOME}/knowledge/tasks/*.yml` (AKM YAML task files; `akm tasks sync` registers with OS cron)
-- Manual triggers: `POST /api/host/automations/<name>/run` spawns `akm tasks run <name>` directly
-- Per-run logs: `${OP_HOME}/data/akm/cache/tasks/logs/<name>/` (written by akm)
-- Sync output is emitted to container stdout/stderr.
-
-Env sources (inherits the assistant container's environment):
-
-- `OPENCODE_API_URL=http://localhost:4096` (co-resident OpenCode; auth disabled on this interface)
-
-Mounts (provided by the assistant service):
-
-- `$OP_HOME/system/assistant -> /etc/opencode` (managed) and `$OP_HOME/config/akm -> /etc/akm`
-- `$OP_HOME/knowledge/tasks -> /knowledge/tasks` (rw, AKM YAML task files)
-- `$OP_HOME/data/akm/cache -> /opt/akm/cache` and `$OP_HOME/data/akm/data -> /opt/akm/data` (rw, akm cache, task logs, databases, and durable data)
-
-Design note — scheduler scope: The scheduler runs as part of the
-assistant container, so it shares the assistant's identity and trust
-posture. Because it has no network listener, no separate admin↔scheduler
-token is required.
-
-Ports and network:
-
-- host: none
-- container: none (in-process; uses `localhost` for assistant API calls)
-- network: shares the assistant's network membership
-
----
-
-## Admin (host process)
-
-Admin is a Bun.serve HTTP server started by `openpalm`. It serves the `@openpalm/ui` SvelteKit build (resolved from `OP_HOME/data/ui` by `resolveUiBuildDir()`, seeded on install/update by fetching the `@openpalm/ui` npm registry tarball and verifying its sha512 integrity fail-closed) and manages Docker Compose directly on the host via the host Docker socket. There is no admin container.
-
-Role:
-
-- web UI and API (SvelteKit, served as a static build)
-- lifecycle orchestration via host Docker socket (`/var/run/docker.sock` or `$DOCKER_HOST`)
-- control-plane file management under `$OP_HOME` (direct host filesystem access)
-
-Key env:
-
-- `PORT` — listen port (default: `3880`)
-- `OP_HOME` — resolved from the host environment
-- `OP_UI_LOGIN_PASSWORD` — read from `$OP_HOME/knowledge/secrets/op_ui_login_password`; used to verify the admin login form
-
-Bind address:
-
-- `127.0.0.1:${OP_HOST_UI_PORT:-3880}` (loopback only — never exposed to Docker networks or LAN)
-
-UI-first principle: the admin UI is the primary operator interface. CLI commands are the fallback for scripted workflows and headless environments.
-
----
-
-## Addon Edge Pattern
-
-Shipped portal-style addons follow the same basic pattern:
-
-- receive their principal secret via a Compose secret file grant from `knowledge/secrets/` and a matching `PRINCIPAL_SECRET_FILE` environment variable
-- join `portal_net` by default
-- depend on `guardian`
-- send Basic-authenticated traffic to guardian, not directly to assistant
-
-Principal secret distribution: when a portal-style addon is installed, a shared principal secret is generated as a `0600` file under `knowledge/secrets/`. Compose grants that file only to the matching portal service and the guardian. The portal adapter uses this secret for Basic auth; the guardian uses the matching secret to seed and authenticate the principal.
-
-Default host binds for shipped HTTP-ish edges:
-
-- `chat`: `127.0.0.1:3820 -> 8182`
-- `api`: `127.0.0.1:3821 -> 8182`
-- `voice`: `127.0.0.1:8880 -> 8880`
-
-`discord` and `slack` do not expose host ports in the shipped overlays.
-
-Addon metadata labels:
-
-Addon compose files use `openpalm.*` Docker labels for discovery and UI metadata:
-
-- `openpalm.name` (required) — human-readable display name
-- `openpalm.description` (required) — short description
-- `openpalm.icon` (optional) — Lucide icon name
-- `openpalm.category` (optional) — `messaging`, `ai`, `integration`, `management`
-- `openpalm.healthcheck` (optional) — internal health check URL
-
-The admin UI reads first-party addon metadata from the fixed compose files under `config/stack/` and active first-party state from `state/stack.env` (`OP_ENABLED_ADDONS`); runtime Compose uses those fixed files plus profiles derived from addon state, not Docker labels alone.
-
----
-
-## CLI Install
-
-The setup wizard runs on `127.0.0.1:8190` by default. The port is configurable via the `OP_SETUP_PORT` environment variable.
+The host UI defaults to `127.0.0.1:3880`. Package UI development defaults to
+`5173`; the root isolated non-admin UI/API script sets `3880` explicitly.

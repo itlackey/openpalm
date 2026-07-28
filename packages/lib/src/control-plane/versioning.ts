@@ -9,9 +9,8 @@ const SEMVER_RE = /^v?\d+\.\d+\.\d+(?:[-+].*)?$/;
  * asks "does this GitHub release actually ship an installer" — the UI's
  * `selectInstallableReleases` (packages/ui) and the desktop app's notify-only
  * update check (packages/electron). A release whose assets fail this pattern is
- * NOT an installable app update, no matter how new its tag is (a platform patch
- * published with include_electron=false ships a newer bare X.Y.Z release with
- * CLI/deploy assets only).
+ * NOT an installable app update, no matter how new its tag is. Platform releases
+ * ship CLI/deploy assets without Electron installers.
  */
 export const ELECTRON_ASSET_PATTERN = /^OpenPalm-.*\.(dmg|AppImage|zip|deb|rpm|pkg)$/i;
 
@@ -132,4 +131,3 @@ export function isPrerelease(version: string | null | undefined): boolean {
 export function distTagForVersion(version: string | null | undefined): 'latest' | 'next' {
   return isPrerelease(version) ? 'next' : 'latest';
 }
-

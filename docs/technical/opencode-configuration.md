@@ -1,108 +1,125 @@
 # OpenCode Configuration Integration
 
-This document covers how OpenPalm wires OpenCode into the assistant and admin
-containers today.
+This document describes the two containerized OpenCode runtimes in 0.13.0: the
+assistant and Guardian's local moderator. Admin is a host process, not an
+OpenCode container or Docker-socket path.
 
-Primary runtime sources:
+Primary sources:
 
-- `.openpalm/config/stack/core.compose.yml`
+- `packages/skeleton/system/stack/core.compose.yml`
+- `packages/skeleton/system/stack/portals.compose.yml`
 - `containers/assistant/entrypoint.sh`
+- `containers/guardian/entrypoint.sh`
 
----
+## Assistant Runtime
 
-## What Is Authoritative
+### Configuration Layers
 
-- The running assistant is defined by `.openpalm/config/stack/core.compose.yml`.
-- The optional admin-side OpenCode runtime is started by `openpalm` as a host subprocess on a random loopback port.
-- `~/.openpalm/config/assistant/` is the user-editable OpenCode extension surface.
-- `~/.openpalm/state/stack.env` provides non-secret runtime and resolved capability env values.
-- `~/.openpalm/knowledge/secrets/` stores file-based service secrets; provider keys are stored in OpenCode auth state or narrow secret files.
-- `~/.openpalm/knowledge/env/user.env` is the AKM user env backing file, not a Compose env file.
-- Project-local OpenCode config inside `/work` still works per normal OpenCode behavior, but OpenPalm's container wiring is controlled by Compose.
+OpenCode can see three practical layers:
 
----
+1. `/etc/opencode`, mounted from managed `system/assistant/`, contains shipped
+   plugins, permissions, and instructions. `OPENCODE_CONFIG_DIR` points here.
+2. `/home/opencode/.config/opencode`, mounted from user-owned
+   `config/assistant/`, is the user's global OpenCode config.
+3. Project-local OpenCode files under `/work` follow normal OpenCode behavior.
 
-## Assistant Runtime Wiring
+Managed files are replaced on reconcile. Durable user customizations belong in
+`config/assistant/`, not `system/assistant/`.
 
 ### Mounts
 
 | Host path | Container path | Purpose |
 |---|---|---|
-| `~/.openpalm/system/assistant/` | `/etc/opencode` | **Managed** OpenCode config (`OPENCODE_CONFIG_DIR`) — plugins, permissions, instructions; overwritten on update |
-| `~/.openpalm/config/assistant/` | `/home/opencode/.config/opencode` | **User** OpenCode global config — `persona.md`, model/provider choices |
-| `~/.openpalm/data/assistant/` | `/home/opencode` | Container `HOME` (runtime state) |
-| `~/.openpalm/config/akm/` | `/etc/akm` | AKM config |
-| `~/.openpalm/knowledge/secrets/auth.json` | `/home/opencode/.local/share/opencode/auth.json` | Host-managed OpenCode auth copy |
-| `~/.openpalm/knowledge/` | `/stash` | AKM stash (memory, skills, env, secrets; read via akm) |
-| `~/.openpalm/data/assistant/` | `/home/opencode` | Assistant home |
-| `~/.openpalm/data/akm/cache/` | `/opt/akm/cache` | AKM cache and task logs |
-| `~/.openpalm/data/akm/data/` | `/opt/akm/data` | AKM databases and durable data |
-| `~/.openpalm/workspace/` | `/work` | Shared workspace |
+| `system/assistant/` | `/etc/opencode` | Managed `OPENCODE_CONFIG_DIR` |
+| `config/assistant/` | `/home/opencode/.config/opencode` | User global config |
+| `data/assistant/` | `/home/opencode` | Persistent runtime home |
+| `cache/assistant/` | `/home/opencode/.cache` | Regenerable runtime cache |
+| `knowledge/secrets/auth.json` | `/home/opencode/.local/share/opencode/auth.json` | Provider auth state |
+| `knowledge/` | `/stash` | AKM stash, user env, tasks, skills, and knowledge |
+| `config/akm/` | `/etc/akm` | AKM config |
+| `data/akm/cache/` | `/opt/akm/cache` | AKM cache and task logs |
+| `data/akm/data/` | `/opt/akm/data` | AKM durable data |
+| `workspace/` | `/work` | Shared workspace |
 
-### Key environment variables
+The image also exposes the `assistant-persistent` named volume at
+`/opt/persistent` for optional tools.
 
-| Variable | Value | Purpose |
+### Environment
+
+| Variable | Value/default | Purpose |
 |---|---|---|
-| `OPENCODE_CONFIG_DIR` | `/etc/opencode` | OpenPalm-managed OpenCode config root |
-| `OPENCODE_PORT` | `4096` | Assistant OpenCode HTTP port |
-| `OPENCODE_AUTH` | `false` | Disabled by default because host exposure is loopback-only |
+| `OPENCODE_CONFIG_DIR` | `/etc/opencode` | Managed config root |
+| `OPENCODE_PORT` | `4096` | OpenCode HTTP listener |
+| `OPENCODE_AUTH` | Generated, default `false` | Direct API Basic-auth posture |
+| `OPENCODE_SERVER_PASSWORD_FILE` | `/run/secrets/opencode_server_password` | Generated direct API password |
 | `HOME` | `/home/opencode` | Runtime home |
-| `AKM_STASH_DIR` | `/stash` | Shared akm stash bind-mounted from `${OP_HOME}/knowledge` (memory + skills) |
-| `AKM_CONFIG_DIR` | `/etc/akm` | AKM config directory |
-| `AKM_CACHE_DIR` | `/opt/akm/cache` | AKM cache directory |
-| `AKM_DATA_DIR` | `/opt/akm/data` | AKM durable data directory |
+| `AKM_STASH_DIR` | `/stash` | Primary AKM stash |
+| `AKM_CONFIG_DIR` | `/etc/akm` | AKM config |
+| `AKM_CACHE_DIR` | `/opt/akm/cache` | AKM cache |
+| `AKM_DATA_DIR` | `/opt/akm/data` | AKM durable data |
 
-### Operational notes
+The entrypoint does not source `knowledge/env/user.env`. Scoped OpenCode tools
+and AKM commands resolve `env:user` only for the operation that needs it, so the
+OpenCode server and arbitrary tool subprocesses do not inherit every user
+secret.
 
-- The assistant starts in `/work`.
-- The assistant has no Docker socket mount.
-- Memory + skills are served via the bind-mounted akm stash; there is no separate memory service.
-- The assistant now runs directly as `OP_UID:OP_GID` with no in-container privilege drop path.
-- Scheduled task execution uses a rootless BusyBox `crond` path instead of a root-owned cron setup.
-- The assistant can consume external MCP servers via the top-level `mcp` block in `config/assistant/opencode.jsonc`; this is consume-only. OpenCode does not expose its own MCP server.
-- Treat MCP config edits like any other OpenCode startup config change: restart the assistant container after changing `opencode.jsonc` so the new server list is loaded.
+The assistant starts in `/work`, has no Docker socket or admin credential, and
+cannot initiate stack operations. BusyBox `crond` is started alongside OpenCode.
 
-## Guardian Runtime Wiring
+## Local UI Pass-Through
 
-The guardian image also ships OpenCode (same `OPENCODE_VERSION` as the assistant) for its opt-in **content-validation** moderator.
+The assistant image bakes the same `@openpalm/ui` adapter-node build used by host
+surfaces. The entrypoint supervises it on container port `3000` and sets
+`OP_OPENCODE_URL=http://localhost:4096` for the UI child.
 
-| Host path | Container path | Purpose |
+The default browser connection is the root-relative `/oc` path. The UI server
+authenticates the browser session, transparently forwards native OpenCode
+traffic to the local server, and attaches an upstream OpenCode credential when
+direct-assistant auth is enabled. The browser does not need the generated
+OpenCode password for this local path.
+
+The assistant entrypoint performs no runtime install of `@openpalm/ui` or
+`@openpalm/skeleton`; both are image-baked at `PLATFORM_VERSION` during a
+versioned build.
+
+## Guardian Moderator
+
+Guardian's OpenCode runtime is a loopback-only classifier used by content
+validation.
+
+| Host/source | Container path | Purpose |
 |---|---|---|
-| `~/.openpalm/config/guardian/` | `/etc/opencode` | Moderator OpenCode config (`opencode.jsonc`, `instructions/moderation.md`) |
-| `~/.openpalm/knowledge/secrets/auth.json` | `/opt/openpalm/guardian/.local/share/opencode/auth.json` (ro) | Shared provider credentials (same file the assistant uses) |
+| `system/guardian/` | `/etc/opencode` | Managed moderator instructions and permissions |
+| `config/guardian/` | `/opt/openpalm/guardian/.config/opencode` | User-selectable moderation model |
+| `knowledge/secrets/auth.json` via Compose secret | `/run/secrets/guardian_auth_json` | Provider auth input copied into Guardian home |
 
-- Started on loopback `127.0.0.1:4097` by the guardian entrypoint only when `GUARDIAN_CONTENT_VALIDATION` is enabled.
-- Pins a small model in `config/guardian/opencode.jsonc`; reuses the assistant's provider via the shared `auth.json`.
-- Tools are denied (`bash`/`edit`/`webfetch`) — it is a classifier, not an agent.
+Guardian mounts no `knowledge/` directory. Its entrypoint copies the provider
+auth file to `/opt/openpalm/guardian/.local/share/opencode/auth.json` before
+starting OpenCode.
 
----
+The moderator listens on `127.0.0.1:4097`, denies agent tools, and starts when
+content validation is enabled. `GUARDIAN_CONTENT_VALIDATION` is on by default in
+both code and shipped Compose; explicit `0`, `false`, `no`, or `off` disables
+the stage. Failed classification of an escalated message blocks the message.
 
----
+## Secret Boundary
 
-## Configuration Layers
+- Provider `auth.json` is the only service credential retained under
+  `knowledge/secrets/` for assistant access.
+- UI, OpenCode server, Guardian, API, portal, and bot credentials live under
+  `private/secrets/`.
+- The private tree is never mounted into `/stash`. Compose exposes only named
+  secret files to consuming service processes.
+- `state/stack.env` contains non-secret runtime configuration only.
 
-There are three practical layers to remember:
+## Day-to-Day Changes
 
-1. `/etc/opencode` - OpenPalm-managed runtime config mounted from `config/assistant/`
-2. Project-local OpenCode config inside `/work` - optional per-project overrides managed by normal OpenCode behavior
-
-OpenPalm's filesystem and mount contract decides what is available to each layer;
-Compose remains the source of truth for that contract.
-
----
-
-## Security Boundary
-
-- The assistant has no Docker socket.
-- The assistant mounts `knowledge/` at `/stash` for the shared AKM stash (memory, skills, env, secrets). User secrets are accessed via the akm CLI, not a separate `/etc/vault/` mount.
-- Stack-level secrets live as files under `knowledge/secrets/` and are granted only to services that need them. `stack.env` is non-secret Compose/runtime configuration.
-- Admin is a host process. It accesses the Docker socket directly on the host — no container is involved in admin operations.
-
----
-
-## Day-To-Day Changes
-
-- Add tools, plugins, commands, or skills under `~/.openpalm/config/assistant/`.
-- Update provider keys through OpenCode auth state or file-based secret management; keep model-related non-secret env in `~/.openpalm/state/stack.env`.
-- Change service wiring by editing the compose file set in `~/.openpalm/config/stack/`.
-- Verify the exact runtime by reading `~/.openpalm/config/stack/core.compose.yml` and any addon overlays used for startup.
+- Put user tools, plugins, commands, skills, persona, and provider/model config
+  under `~/.openpalm/config/assistant/`.
+- Update provider credentials through OpenCode auth state at
+  `~/.openpalm/knowledge/secrets/auth.json`.
+- Edit only `~/.openpalm/config/stack/custom.compose.yml` for user stack
+  overrides. Managed Compose is read from `~/.openpalm/system/stack/` and will be
+  overwritten on reconcile.
+- Restart the relevant container after startup configuration or credential
+  changes.

@@ -10,24 +10,22 @@
     },
     "packages/cli": {
       "name": "openpalm",
-      "version": "0.13.0-beta.6",
+      "version": "0.13.0-beta.13",
       "bin": {
         "openpalm": "./bin/openpalm.js",
       },
-      "dependencies": {
-        "@openpalm/lib": ">=0.13.0-beta.3 <1.0.0",
-        "@openpalm/skeleton": "0.13.0-beta.3",
-        "citty": "^0.2.1",
-        "yaml": "^2.8.0",
-      },
       "devDependencies": {
+        "@openpalm/lib": ">=0.13.0-beta.13 <1.0.0",
+        "@openpalm/skeleton": "0.13.0-beta.13",
         "@types/node": "^25.9.1",
+        "citty": "^0.2.1",
         "typescript": "^6.0.3",
+        "yaml": "^2.8.0",
       },
     },
     "packages/electron": {
       "name": "@openpalm/electron",
-      "version": "0.13.0-beta.6",
+      "version": "0.13.0-beta.13",
       "devDependencies": {
         "@openpalm/lib": "workspace:*",
         "@types/node": "^25.9.1",
@@ -39,20 +37,19 @@
     },
     "packages/electron/admin-tools": {
       "name": "@openpalm/admin-tools-plugin",
-      "version": "0.13.0-beta.6",
+      "version": "0.13.0-beta.13",
       "dependencies": {
         "@opencode-ai/plugin": "^1.17.7",
       },
     },
     "packages/guardian": {
       "name": "@openpalm/guardian",
-      "version": "0.13.0-beta.6",
+      "version": "0.13.0-beta.13",
       "bin": {
         "openpalm-guardian": "./src/server.ts",
       },
       "dependencies": {
         "@modelcontextprotocol/sdk": "^1.29.0",
-        "dotenv": "^17.4.2",
       },
       "devDependencies": {
         "bun-types": "^1.3.14",
@@ -60,7 +57,7 @@
     },
     "packages/lib": {
       "name": "@openpalm/lib",
-      "version": "0.13.0-beta.6",
+      "version": "0.13.0-beta.13",
       "dependencies": {
         "dotenv": "^17.4.2",
         "multicast-dns": "^7.2.5",
@@ -69,13 +66,12 @@
       },
       "devDependencies": {
         "@types/multicast-dns": "^7.2.4",
-        "@types/tar": "^7.0.87",
         "bun-types": "^1.3.14",
       },
     },
     "packages/portal-sdk": {
       "name": "@openpalm/portal-sdk",
-      "version": "0.13.0-beta.6",
+      "version": "0.13.0-beta.13",
       "dependencies": {
         "@opencode-ai/sdk": "1.17.7",
       },
@@ -85,11 +81,11 @@
     },
     "packages/skeleton": {
       "name": "@openpalm/skeleton",
-      "version": "0.13.0-beta.6",
+      "version": "0.13.0-beta.13",
     },
     "packages/ui": {
       "name": "@openpalm/ui",
-      "version": "0.13.0-beta.6",
+      "version": "0.13.0-beta.13",
       "devDependencies": {
         "@axe-core/playwright": "^4.11.3",
         "@eslint/compat": "^2.0.2",
@@ -104,7 +100,6 @@
         "@types/node": "^25.9.1",
         "@vitest/browser-playwright": "^4.0.18",
         "@vitest/coverage-v8": "^4.0.18",
-        "croner": "^10.0.1",
         "dotenv": "^17.4.2",
         "eslint": "^10.4.0",
         "eslint-config-prettier": "^10.1.8",
@@ -128,7 +123,7 @@
     },
     "packages/ui-kit": {
       "name": "@openpalm/ui-kit",
-      "version": "0.13.0-beta.6",
+      "version": "0.13.0-beta.13",
       "devDependencies": {
         "svelte": "^5.53.5",
         "svelte-check": "^4.1.1",
@@ -142,7 +137,7 @@
     },
     "portals/discord": {
       "name": "@openpalm/discord-portal",
-      "version": "0.13.0-beta.6",
+      "version": "0.13.0-beta.13",
       "dependencies": {
         "@openpalm/portal-sdk": "workspace:*",
         "discord.js": "^14.16.3",
@@ -150,7 +145,7 @@
     },
     "portals/slack": {
       "name": "@openpalm/slack-portal",
-      "version": "0.13.0-beta.6",
+      "version": "0.13.0-beta.13",
       "dependencies": {
         "@openpalm/portal-sdk": "workspace:*",
         "@slack/bolt": "^4.1.0",
@@ -514,8 +509,6 @@
 
     "@types/serve-static": ["@types/serve-static@2.2.0", "", { "dependencies": { "@types/http-errors": "*", "@types/node": "*" } }, "sha512-8mam4H1NHLtu7nmtalF7eyBH14QyOASmcxHhSfEoRyr0nP/YdoesEtU+uSRvMe96TW/HPTtkoKqQLl53N7UXMQ=="],
 
-    "@types/tar": ["@types/tar@7.0.87", "", { "dependencies": { "tar": "*" } }, "sha512-3IxNBV8LeY5oi2ZFpvAhOtW1+mHswkzM7BuisVrwJgPv67GBO2rkLPQlEKtzfHuLdhDDczhkCZeT+RuizMay4A=="],
-
     "@types/trusted-types": ["@types/trusted-types@2.0.7", "", {}, "sha512-ScaPdn1dQczgbl0QFTeTOmVHFULt394XJgOQNoyVhZ6r2vLnMLJfBPd53SB52T/3G36VI1/g2MZaX0cwDuXsfw=="],
 
     "@types/verror": ["@types/verror@1.10.11", "", {}, "sha512-RlDm9K7+o5stv0Co8i8ZRGxDbrTxhJtgjqjFyVh/tXQyl/rYtTKlnTvZ88oSTeYREWurwx20Js4kTuKCsFkUtg=="],
@@ -703,8 +696,6 @@
     "cors": ["cors@2.8.6", "", { "dependencies": { "object-assign": "^4", "vary": "^1" } }, "sha512-tJtZBBHA6vjIAaF6EnIaq6laBBP9aq/Y3ouVJjEfoHbRBcHBAHYcMh/w8LDrk2PvIMMq8gmopa5D4V8RmbrxGw=="],
 
     "crc": ["crc@3.8.0", "", { "dependencies": { "buffer": "^5.1.0" } }, "sha512-iX3mfgcTMIq3ZKLIsVFAbv7+Mc10kxabAGQb8HvjA1o3T1PIYprbakQ65d3I+2HGHt6nSKkM9PYjgoJO2KcFBQ=="],
-
-    "croner": ["croner@10.0.1", "", {}, "sha512-ixNtAJndqh173VQ4KodSdJEI6nuioBWI0V1ITNKhZZsO0pEMoDxz539T4FTTbSZ/xIOSuDnzxLVRqBVSvPNE2g=="],
 
     "cross-dirname": ["cross-dirname@0.1.0", "", {}, "sha512-+R08/oI0nl3vfPcqftZRpytksBXDzOUveBq/NBVx0sUp1axwzPQrKinNx5yd5sxPu8j1wIy8AfnVQ+5eFdha6Q=="],
 

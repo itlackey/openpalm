@@ -21,8 +21,7 @@
     "./control-plane/*": "./src/control-plane/*.ts"
   },
   "files": [
-    "src",
-    "assets"
+    "src"
   ],
   "repository": {
     "type": "git",
@@ -37,7 +36,6 @@
   },
   "devDependencies": {
     "@types/multicast-dns": "^7.2.4",
-    "@types/tar": "^7.0.87",
     "bun-types": "^1.3.14"
   }
 }

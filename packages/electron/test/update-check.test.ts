@@ -5,10 +5,14 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
   isNewerVersion,
+  normalizeElectronReleaseVersion,
   selectPrereleaseCandidate,
+  selectStableCandidate,
   checkForElectronUpdate,
   _resetUpdateCheckCacheForTests,
 } from '../src/update-check.js';
+
+const INSTALLER = { name: 'OpenPalm-0.12.0.AppImage' };
 
 describe('isNewerVersion', () => {
   it('compares via canonical semver (handles v-prefix, prereleases)', () => {
@@ -29,16 +33,16 @@ describe('isNewerVersion', () => {
 
 describe('selectPrereleaseCandidate', () => {
   const releases = [
-    { tag_name: 'v0.12.0-rc.2', html_url: 'u-rc2', prerelease: true },
-    { tag_name: 'v0.12.0-rc.1', html_url: 'u-rc1', prerelease: true },
-    { tag_name: 'v0.11.5', html_url: 'u-stable', prerelease: false },
+    { tag_name: 'electron-0.12.0-rc.2', html_url: 'u-rc2', prerelease: true, assets: [INSTALLER] },
+    { tag_name: 'v0.12.0-rc.1', html_url: 'u-rc1', prerelease: true, assets: [INSTALLER] },
+    { tag_name: 'electron-0.11.5', html_url: 'u-stable', prerelease: false, assets: [INSTALLER] },
     { tag_name: 'draft', html_url: 'u-draft', draft: true },
     { tag_name: 'nightly', html_url: 'u-bad' },
   ];
 
   it('offers a stable user only newer STABLE releases (no rc down-channel)', () => {
     expect(selectPrereleaseCandidate('0.11.4', releases)).toEqual({
-      tag: 'v0.11.5',
+      tag: 'electron-0.11.5',
       url: 'u-stable',
       prerelease: false,
     });
@@ -50,7 +54,7 @@ describe('selectPrereleaseCandidate', () => {
 
   it('offers an rc user the newest prerelease', () => {
     expect(selectPrereleaseCandidate('0.12.0-rc.1', releases)).toEqual({
-      tag: 'v0.12.0-rc.2',
+      tag: 'electron-0.12.0-rc.2',
       url: 'u-rc2',
       prerelease: true,
     });
@@ -65,6 +69,35 @@ describe('selectPrereleaseCandidate', () => {
   });
 });
 
+describe('standalone Electron release tags', () => {
+  it('normalizes electron-* and legacy/bare release tags', () => {
+    expect(normalizeElectronReleaseVersion('electron-0.12.6')).toBe('0.12.6');
+    expect(normalizeElectronReleaseVersion('v0.12.6')).toBe('0.12.6');
+    expect(normalizeElectronReleaseVersion('guardian-0.12.6')).toBeNull();
+  });
+
+  it('selects a stable standalone Electron release with an installer', () => {
+    expect(
+      selectStableCandidate('0.12.5', [
+        {
+          tag_name: 'electron-0.12.6',
+          html_url: 'electron-release',
+          assets: [{ name: 'OpenPalm-0.12.6.AppImage' }],
+        },
+        {
+          tag_name: 'guardian-0.13.0',
+          html_url: 'guardian-release',
+          assets: [{ name: 'OpenPalm-0.13.0.AppImage' }],
+        },
+      ]),
+    ).toEqual({
+      tag: 'electron-0.12.6',
+      url: 'electron-release',
+      prerelease: false,
+    });
+  });
+});
+
 describe('checkForElectronUpdate', () => {
   beforeEach(() => {
     _resetUpdateCheckCacheForTests();
@@ -74,16 +107,24 @@ describe('checkForElectronUpdate', () => {
     _resetUpdateCheckCacheForTests();
   });
 
-  it('stable mode polls /releases/latest and never reports a prerelease', async () => {
+  it('stable mode polls the release list and never reports a prerelease', async () => {
     const fetchMock = vi.fn(async (url: string) => {
-      expect(url).toContain('/releases/latest');
+      expect(url).toContain('/releases?');
       return {
         ok: true,
-        json: async () => ({
-          tag_name: 'v0.11.6',
-          html_url: 'u',
-          assets: [{ name: 'OpenPalm-0.11.6.AppImage' }],
-        }),
+        json: async () => [
+          {
+            tag_name: 'electron-0.12.0-rc.1',
+            html_url: 'u-rc',
+            prerelease: true,
+            assets: [{ name: 'OpenPalm-0.12.0-rc.1.AppImage' }],
+          },
+          {
+            tag_name: 'electron-0.11.6',
+            html_url: 'u',
+            assets: [{ name: 'OpenPalm-0.11.6.AppImage' }],
+          },
+        ],
       } as unknown as Response;
     });
     vi.stubGlobal('fetch', fetchMock);
@@ -95,14 +136,14 @@ describe('checkForElectronUpdate', () => {
 
   it('stable mode treats a release WITH a matching installer asset as updateAvailable', async () => {
     const fetchMock = vi.fn(async (url: string) => {
-      expect(url).toContain('/releases/latest');
+      expect(url).toContain('/releases?');
       return {
         ok: true,
-        json: async () => ({
-          tag_name: 'v0.11.6',
+        json: async () => [{
+          tag_name: 'electron-0.11.6',
           html_url: 'u',
           assets: [{ name: 'OpenPalm-0.11.6.dmg' }, { name: 'openpalm-cli-linux' }],
-        }),
+        }],
       } as unknown as Response;
     });
     vi.stubGlobal('fetch', fetchMock);
@@ -111,19 +152,55 @@ describe('checkForElectronUpdate', () => {
     expect(info.latestVersion).toBe('0.11.6');
   });
 
-  it('stable mode does NOT report an update for a bare release with NO installer assets', async () => {
-    // A platform patch published with include_electron=false creates a newer
-    // bare X.Y.Z release carrying only CLI/deploy assets — never an installer.
-    // The desktop app must not advertise an update it cannot download (plan 3.3).
-    const fetchMock = vi.fn(async (url: string) => {
-      expect(url).toContain('/releases/latest');
+  it('follows release pagination to find an Electron installer', async () => {
+    let request = 0;
+    const fetchMock = vi.fn(async () => {
+      request += 1;
+      if (request === 1) {
+        return {
+          ok: true,
+          headers: {
+            get: (name: string) => name.toLowerCase() === 'link'
+              ? '<https://api.github.com/repos/itlackey/openpalm/releases?per_page=100&page=2>; rel="next"'
+              : null,
+          },
+          json: async () => Array.from({ length: 100 }, (_, index) => ({
+            tag_name: `guardian-0.11.${index}`,
+            assets: [],
+          })),
+        } as unknown as Response;
+      }
       return {
         ok: true,
-        json: async () => ({
-          tag_name: 'v0.11.6',
+        headers: { get: () => null },
+        json: async () => [{
+          tag_name: 'electron-0.11.6',
+          html_url: 'u-page-2',
+          assets: [{ name: 'OpenPalm-0.11.6.AppImage' }],
+        }],
+      } as unknown as Response;
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const info = await checkForElectronUpdate('0.11.5', false);
+    expect(info.updateAvailable).toBe(true);
+    expect(info.latestVersion).toBe('0.11.6');
+    expect(info.latestUrl).toBe('u-page-2');
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('stable mode does NOT report an update for a bare release with NO installer assets', async () => {
+    // A platform release carrying only CLI/deploy assets is never an installer.
+    // The desktop app must not advertise an update it cannot download (plan 3.3).
+    const fetchMock = vi.fn(async (url: string) => {
+      expect(url).toContain('/releases?');
+      return {
+        ok: true,
+        json: async () => [{
+          tag_name: 'electron-0.11.6',
           html_url: 'u',
           assets: [{ name: 'openpalm-cli-linux' }, { name: 'deploy-bundle.tar.gz' }],
-        }),
+        }],
       } as unknown as Response;
     });
     vi.stubGlobal('fetch', fetchMock);
@@ -133,10 +210,10 @@ describe('checkForElectronUpdate', () => {
 
   it('stable mode does NOT report an update when the release has no assets array at all', async () => {
     const fetchMock = vi.fn(async (url: string) => {
-      expect(url).toContain('/releases/latest');
+      expect(url).toContain('/releases?');
       return {
         ok: true,
-        json: async () => ({ tag_name: 'v0.11.6', html_url: 'u' }),
+        json: async () => [{ tag_name: 'electron-0.11.6', html_url: 'u' }],
       } as unknown as Response;
     });
     vi.stubGlobal('fetch', fetchMock);
@@ -150,8 +227,18 @@ describe('checkForElectronUpdate', () => {
       return {
         ok: true,
         json: async () => [
-          { tag_name: 'v0.12.0-rc.1', html_url: 'u-rc', prerelease: true },
-          { tag_name: 'v0.11.5', html_url: 'u-stable', prerelease: false },
+          {
+            tag_name: 'electron-0.12.0-rc.1',
+            html_url: 'u-rc',
+            prerelease: true,
+            assets: [{ name: 'OpenPalm-0.12.0-rc.1.AppImage' }],
+          },
+          {
+            tag_name: 'electron-0.11.5',
+            html_url: 'u-stable',
+            prerelease: false,
+            assets: [{ name: 'OpenPalm-0.11.5.AppImage' }],
+          },
         ],
       } as unknown as Response;
     });
@@ -163,13 +250,27 @@ describe('checkForElectronUpdate', () => {
   });
 
   it('caches per-mode so enabling prereleases does not reuse the stable answer', async () => {
+    let request = 0;
     const fetchMock = vi.fn(async (url: string) => {
-      if (String(url).includes('/releases/latest')) {
-        return { ok: true, json: async () => ({ tag_name: 'v0.11.5' }) } as unknown as Response;
+      expect(url).toContain('/releases?');
+      request += 1;
+      if (request === 1) {
+        return {
+          ok: true,
+          json: async () => [{
+            tag_name: 'electron-0.11.5',
+            assets: [{ name: 'OpenPalm-0.11.5.AppImage' }],
+          }],
+        } as unknown as Response;
       }
       return {
         ok: true,
-        json: async () => [{ tag_name: 'v0.12.0-rc.1', html_url: 'u', prerelease: true }],
+        json: async () => [{
+          tag_name: 'electron-0.12.0-rc.1',
+          html_url: 'u',
+          prerelease: true,
+          assets: [{ name: 'OpenPalm-0.12.0-rc.1.AppImage' }],
+        }],
       } as unknown as Response;
     });
     vi.stubGlobal('fetch', fetchMock);

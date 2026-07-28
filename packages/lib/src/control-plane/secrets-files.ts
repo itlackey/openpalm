@@ -13,9 +13,9 @@ function validateSecretName(name: string): void {
 }
 
 /**
- * Delegated secrets — consumed only by the guardian/portals, never by the
- * assistant agent, per docs/public-seams-review.md §G1. These are written to
- * (and read from) `privateSecretsDir()` instead of the stash-visible
+ * Delegated service credentials are consumed by their UI, OpenCode server,
+ * Guardian, API, portal, or bot process, never through the Assistant stash.
+ * These are written to (and read from) `privateSecretsDir()` instead of the stash-visible
  * `secretsDir()`; every other secret name keeps living in `secretsDir()`
  * (notably `auth.json`, shared with the assistant's own OpenCode process).
  *
@@ -43,8 +43,9 @@ export function isDelegatedSecretName(name: string): boolean {
 /**
  * Resolve (and harden) the delegated-secrets dir for an OP_HOME —
  * `${home}/private/secrets` (home.ts `privateSecretsDir`). Never bind-mounted
- * into the assistant; granted to the guardian/portal containers ONLY via
- * Compose `secrets: file:` entries. Same hardening as `resolveSecretsDir`.
+ * into the Assistant stash. Container consumers receive named Compose secret
+ * files; host consumers read the same private files directly. Same hardening
+ * as `resolveSecretsDir`.
  */
 export function resolvePrivateSecretsDir(homeDir: string): string {
   const dir = privateSecretsDirPath(homeDir);

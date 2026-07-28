@@ -1,19 +1,23 @@
 # config/
 
-User-editable, non-secret configuration. Files here are safe to inspect,
-version-control, and share. The CLI and admin seed defaults but never
-overwrite existing user files.
+User-owned, non-secret configuration. Install and update seed missing defaults
+but do not overwrite existing user files automatically.
 
-## Subdirectories
+| Directory | Runtime purpose |
+|---|---|
+| `assistant/` | Assistant OpenCode user global config, mounted at `/home/opencode/.config/opencode` |
+| `guardian/` | Guardian OpenCode user global/model config, mounted under Guardian's home |
+| `akm/` | AKM configuration mounted at `/etc/akm` in the assistant |
+| `stack/` | Contains only the user-owned `custom.compose.yml` overlay |
 
-| Directory | Purpose |
-|-----------|---------|
-| `assistant/` | OpenCode project/user config. Mounted into the assistant container at `/etc/opencode`. |
-| `stack/` | Compose runtime files: non-secret `stack.env`, fixed compose files, and user custom compose. |
-| `akm/` | AKM config directory shared with the assistant container. |
-| `guardian/` | Guardian-specific configuration. |
+Managed assistant and Guardian OpenCode configuration lives separately under
+`system/assistant/` and `system/guardian/`, each mounted at `/etc/opencode`.
+Managed Compose files live under `system/stack/`.
 
-Select built-in optional services with Compose profiles such as `addon.chat`.
-Add custom containers or overlays directly in `config/stack/custom.compose.yml`.
-See the [Manual Compose Runbook](../../docs/operations/manual-compose-runbook.md)
-for the full command reference.
+`state/stack.env`, not `config/stack/`, is the sole Compose env file. Secrets
+live in `private/secrets/`, except assistant-readable provider auth at
+`knowledge/secrets/auth.json`.
+
+Add custom services or overrides only to `config/stack/custom.compose.yml`.
+See the
+[Manual Compose Runbook](../../../docs/operations/manual-compose-runbook.md).

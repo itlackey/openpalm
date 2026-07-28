@@ -1,9 +1,9 @@
 /**
  * POST /api/host/providers/import-host
  *
- * Copies host OpenCode config + auth into OP_HOME, then pushes each
- * imported credential to the running OpenCode server so the providers
- * appear connected immediately (no restart required).
+ * Copies host OpenCode config + auth into OP_HOME, pushes each imported
+ * credential to the running OpenCode server, and restarts consumers so
+ * imported provider configuration is loaded.
  *
  * - opencode.json: stripped of plugin/mcp/permission keys, merged with
  *   existing OP_HOME config. Provider conflicts preserved by default.
@@ -20,7 +20,7 @@
  *
  * Auth: admin session cookie required (there is no admin token).
  */
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import type { RequestHandler } from './$types';
 import {
 	requireAdmin,
@@ -33,74 +33,12 @@ import {
 import {
 	importHostOpenCode,
 	detectHostOpenCode,
-	buildComposeOptions,
-	checkDocker,
 	authJsonPath,
+	restartProviderConsumers,
 } from '@openpalm/lib';
-import { composeRestart } from '$lib/server/docker.js';
 import { getState } from '$lib/server/state.js';
-import { opencodeFetch } from '$lib/server/opencode/http.js';
+import { pushImportedAuth } from '$lib/server/provider-import.js';
 import { withSerialQueue } from '$lib/server/serial-queue.js';
-
-/**
- * Restart services that hold provider state in startup config.
- * Best-effort: the file-level import is the durable part; this is the polish
- * that makes the change visible without the user having to bounce things by hand.
- * OpenCode caches opencode.json provider blocks at startup, so imported
- * provider config needs a fresh assistant process.
- */
-async function restartProviderConsumers(): Promise<{
-	restarted: string[];
-	failed: { service: string; error: string }[];
-}> {
-	const services = ['assistant'];
-	const docker = await checkDocker();
-	if (!docker.ok) {
-		return { restarted: [], failed: services.map((s) => ({ service: s, error: 'docker unavailable' })) };
-	}
-	const state = getState();
-	const opts = buildComposeOptions(state);
-	const restarted: string[] = [];
-	const failed: { service: string; error: string }[] = [];
-	for (const service of services) {
-		try {
-			const r = await composeRestart([service], opts);
-			if (r.ok) restarted.push(service);
-			else failed.push({ service, error: r.stderr || `exit ${r.code}` });
-		} catch (err) {
-			failed.push({ service, error: err instanceof Error ? err.message : String(err) });
-		}
-	}
-	return { restarted, failed };
-}
-
-/** Push each auth.json entry to OpenCode's /auth/{id} so the running process sees them. */
-async function pushAuthToOpenCode(authPath: string): Promise<{ pushed: number; failed: string[] }> {
-	let raw: unknown;
-	try {
-		raw = JSON.parse(readFileSync(authPath, 'utf-8'));
-	} catch {
-		return { pushed: 0, failed: [] };
-	}
-	if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
-		return { pushed: 0, failed: [] };
-	}
-
-	let pushed = 0;
-	const failed: string[] = [];
-	for (const [providerId, value] of Object.entries(raw as Record<string, unknown>)) {
-		try {
-			await opencodeFetch(`/auth/${encodeURIComponent(providerId)}`, {
-				method: 'PUT',
-				body: JSON.stringify(value),
-			});
-			pushed++;
-		} catch {
-			failed.push(providerId);
-		}
-	}
-	return { pushed, failed };
-}
 
 export const POST: RequestHandler = async (event) => {
 	const requestId = getRequestId(event);
@@ -134,17 +72,17 @@ export const POST: RequestHandler = async (event) => {
 		// conflict-preserving imports may intentionally leave existing credentials
 		// untouched in OP_HOME/knowledge/secrets/auth.json.
 		const hostStatus = detectHostOpenCode();
-		let livePush: { pushed: number; failed: string[] } = { pushed: 0, failed: [] };
+		let livePush = { pushed: [] as string[], errors: [] as { provider: string; error: string }[] };
 		const importedAuthPath = authJsonPath(state);
 		if (existsSync(importedAuthPath)) {
-			livePush = await pushAuthToOpenCode(importedAuthPath);
+			livePush = await pushImportedAuth(importedAuthPath);
 		} else if (hostStatus.authPath) {
-			livePush = await pushAuthToOpenCode(hostStatus.authPath);
+			livePush = await pushImportedAuth(hostStatus.authPath);
 		}
 
 		// Live push handles the OpenCode auth store at runtime, but opencode.json
 		// provider blocks are only loaded at assistant process start.
-		const restart = await restartProviderConsumers();
+		const restart = await restartProviderConsumers(state, result.changed);
 
 		return jsonResponse(
 			200,
@@ -152,8 +90,8 @@ export const POST: RequestHandler = async (event) => {
 				ok: true,
 				imported: result.imported,
 				conflicts: result.conflicts,
-				livePushed: livePush.pushed,
-				livePushFailed: livePush.failed,
+				livePushed: livePush.pushed.length,
+				livePushFailed: livePush.errors.map(({ provider }) => provider),
 				restarted: restart.restarted,
 				restartFailed: restart.failed,
 			},

@@ -23,6 +23,7 @@ type Manifest = {
 	publishConfig?: { access?: string };
 	files?: string[];
 	scripts?: Record<string, string>;
+	dependencies?: Record<string, string>;
 };
 
 function readJson(relPath: string): Manifest {
@@ -75,11 +76,43 @@ describe("C4 — packages/ui-kit belongs to a release unit (RED until C4 fix)", 
 
 	test("scripts/bump-unit.mjs stamps packages/ui-kit/package.json with the platform unit", () => {
 		const bumpUnit = readFileSync(join(ROOT, "scripts/bump-unit.mjs"), "utf-8");
-		expect(bumpUnit).toContain("packages/ui-kit/package.json");
+		expect(bumpUnit).toContain("RELEASE_PACKAGE_GROUPS.platform");
 	});
 
 	test("packages/ui-kit stays private (this fix wires the unit membership only — it does not publish ui-kit)", () => {
 		const uiKit = readJson("packages/ui-kit/package.json");
 		expect(uiKit.private).toBe(true);
 	});
+});
+
+describe("release package ownership is disjoint", () => {
+  const groups = JSON.parse(
+    readFileSync(join(ROOT, ".github/release-package-groups.json"), "utf-8"),
+  ) as { units: Record<string, string[]> };
+
+  test("each manifest has exactly one canonical owner", () => {
+    const manifests = Object.values(groups.units).flat();
+    expect(new Set(manifests).size).toBe(manifests.length);
+  });
+
+  test("guardian and electron have independent owner groups", () => {
+    expect(groups.units.guardian).toEqual(["packages/guardian/package.json"]);
+    expect(groups.units.electron).toEqual([
+      "packages/electron/package.json",
+      "packages/electron/admin-tools/package.json",
+    ]);
+    expect(groups.units.platform).toContain("packages/skeleton/package.json");
+  });
+});
+
+describe("portal image pins match the portal release unit", () => {
+  test("baked Discord and Slack versions equal their source manifests", () => {
+    const tools = readJson("containers/portal/tools/package.json");
+    expect(tools.dependencies?.["@openpalm/discord-portal"]).toBe(
+      readJson("portals/discord/package.json").version,
+    );
+    expect(tools.dependencies?.["@openpalm/slack-portal"]).toBe(
+      readJson("portals/slack/package.json").version,
+    );
+  });
 });

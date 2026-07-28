@@ -716,17 +716,16 @@ async function downloadNpmSkeletonBundle(manifest: NpmSkeletonManifest, homeDir:
 }
 
 /**
- * Seed-path remote fallback for applyHomeSeed: resolve the skeleton on the
- * platform's release channel, download it, and stage the FULL tree, returning
- * that path. Mirrors seedUiBuild's local-or-download model so a packaged binary
- * never asks the user to `npm install @openpalm/skeleton` by hand. The caller
- * owns cleanup of the returned staging dir.
+ * Seed-path remote fallback for applyHomeSeed: download the skeleton matching
+ * this exact platform release and stage the FULL tree. Channel resolution is
+ * reserved for the explicit updater; a cold start must never pair an old CLI
+ * with a newer control-plane skeleton.
  */
 async function fetchRemoteSkeleton(repoRef: string, dataDir: string): Promise<string> {
-  const channel  = uiUpdateChannel(repoRef);
-  const ref      = await resolveChannelRef(SKELETON_PACKAGE, channel);
+  const ref = normalizeVersion(repoRef);
+  if (!ref) throw new Error('cannot resolve an exact skeleton version from an empty platform ref');
   const manifest = await fetchNpmSkeletonManifest(ref);
-  logger.debug('fetching @openpalm/skeleton from npm for cold-start seed', { version: manifest.version, channel });
+  logger.debug('fetching exact @openpalm/skeleton from npm for cold-start seed', { version: manifest.version });
   return stageSkeletonDownload(manifest, dataDir);
 }
 

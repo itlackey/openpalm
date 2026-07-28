@@ -136,7 +136,6 @@ All verified at the cited lines.
 | A8 | `chat/+page.svelte:606-615` | `.s-moon` branches on `[data-theme='dark'/'night']` with hand-picked rgba glows → per-mode token (`light-dark()`), component stays mode-agnostic |
 | A9 | `chat/ToolLog.svelte:282,291` | `var(--s-radius-sm, 4px)` / `var(--s-bg-hover, rgba(127,127,127,.08))` — neither token exists; always resolves to the literal → real tokens (D4) or direct `color-mix` |
 | A10 | `chat/ToolStrip.svelte:196`; `ui-kit Drawer.svelte:119`; `tokens.css:96` | Two hand-rolled scrims (one duplicating `--overlay-bg`'s value, one inlining light-ink rgba) + a dead raw-rgba token → one `light-dark()`-aware `--overlay-bg`, consumed by both (D4 scrim note) |
-| A11 | `admin/overview/OperationOutput.svelte:61-62` | Permanently dark terminal (`#e4e8f0`/`#1e2330`) → LogsTab's token recipe (`color-mix(in srgb, var(--s-ink) 3%, var(--s-paper))` + `var(--s-ink-2)`) |
 | A12 | `app.css:807,955,1668` | White/grey-alpha hover washes assume a dark surface → `color-mix(in srgb, var(--s-ink) N%, transparent)` |
 | A13 | `app.css:1472,1478` | `.deploy-bar-fill` `.ready`/`.stopped` hardcode `#ffb020`/`#d97706` beside token-correct siblings → `var(--s-warning)` / `var(--s-error)` (D2) |
 | A14 | `connections/+page.svelte:849-852` | Leftover blue `rgba(37,99,235,.08)` focus glow beside a seal border → `color-mix(in srgb, var(--s-seal) 8%, transparent)` |

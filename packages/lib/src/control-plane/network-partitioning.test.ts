@@ -6,7 +6,7 @@
  *
  * Invariants checked:
  * 1. assistant_net contains only authorised services (guardian + assistant + internal AI).
- * 2. No portal adapter (discord, slack, guardian-api) is on assistant_net.
+ * 2. No portal adapter or Guardian-compatible API edge is on assistant_net.
  * 3. mDNS is published in-process by OpenCode (native server.mdns/mdnsDomain),
  *    NOT by avahi sidecars — the mdns-guardian/mdns-assistant services are gone.
  * 4. The assistant ships mDNS OFF by default (LAN-first); the guardian moderator

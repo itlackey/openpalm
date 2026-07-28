@@ -435,7 +435,7 @@ export interface ResolvedComposeVolume {
 
 /** Docker's resolved project view (subset consumed by the control plane). */
 export interface ResolvedComposeProject {
-  services?: Record<string, { volumes?: ResolvedComposeVolume[] } | null>;
+  services?: Record<string, { user?: string; volumes?: ResolvedComposeVolume[] } | null>;
 }
 
 export type ComposeConfigJsonResult = {
@@ -722,6 +722,12 @@ export function parseComposePsRows(stdout: string): ComposePsRow[] {
   return rows;
 }
 
+export function isComposePsRowHealthy(row: ComposePsRow | undefined): boolean {
+  if (row?.state.toLowerCase() !== 'running') return false;
+  const health = row.health.toLowerCase();
+  return health === '' || health === 'healthy';
+}
+
 /**
  * Get logs for specific services or all services.
  */
@@ -972,7 +978,7 @@ export async function applyStack(
     const failed: { service: string; reason: string }[] = [];
     for (const svc of targetServices) {
       const row = rows.find((r) => r.service === svc);
-      if (row && row.state === "running" && row.health !== "unhealthy") {
+      if (isComposePsRowHealthy(row)) {
         started.push(svc);
         continue;
       }

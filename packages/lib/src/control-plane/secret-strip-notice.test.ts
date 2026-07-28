@@ -81,7 +81,7 @@ describe('#502 secret-strip notice', () => {
     expect(readSecretStripNotice(state)).toBeNull();
   });
 
-  it('relocates a stripped secret value to knowledge/secrets/<key> instead of destroying it (0.1)', () => {
+  it('relocates a stripped secret value to its canonical file-secret tree instead of destroying it (0.1)', () => {
     const state = createState();
     writeFileSync(
       join(homeDir, 'state', 'stack.env'),

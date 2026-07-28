@@ -1,222 +1,198 @@
 # Troubleshooting
 
-Common problems and their fixes for the current compose-first OpenPalm model.
+Start with the host control plane rather than reconstructing a Compose command:
 
-When in doubt, inspect the exact compose file set you started from
-`~/.openpalm/config/stack/` and rerun that same file set explicitly.
+```bash
+openpalm doctor
+openpalm status
+openpalm validate
+```
 
-> **Upgrading from 0.10.x?** Many post-upgrade issues (missing secrets, wrong UI
-> port, stale addon state, wrong env paths) come from the changed file layout. See the
-> [0.10.x → 0.11.0 upgrade guide](operations/upgrade-0.10-to-0.11.md).
+If you operate Docker Compose directly, inspect the three managed files under
+`system/stack/`, the user overlay, the sole env file, and the exact active
+profiles. See the [Manual Compose Runbook](operations/manual-compose-runbook.md).
 
----
+> Existing 0.10.x installation? Use the historical
+> [0.10.x to 0.11.0 upgrade guide](operations/upgrade-0.10-to-0.11.md) for that
+> layout transition.
 
-## 1. Docker not found or daemon unavailable
+## Docker Is Unavailable
 
-**Symptoms:** `docker: command not found`, `Cannot connect to the Docker daemon`,
-or Compose commands fail immediately.
-
-**Fix:**
+Symptoms include `docker: command not found`, daemon connection failures, or a
+missing Compose plugin.
 
 ```bash
 docker info
+docker compose version
 ```
 
-If that fails:
+Install/start Docker and ensure the current host user can access it. On Linux,
+group membership changes normally require logging out and back in.
 
-- install Docker Engine or Docker Desktop
-- start the Docker daemon/Desktop app
-- on Linux, add your user to the `docker` group if needed
+## Port Conflict
+
+Common defaults are:
+
+| Port | Service |
+|---|---|
+| `3800` | Assistant UI |
+| `3810` | Assistant OpenCode |
+| `3821` | Guardian-compatible API |
+| `3830` | Guardian direct ingress |
+| `3831` | Guardian principal admin |
+| `3880` | Host UI/admin process |
+| `8880` | Voice API |
+
+There is no separate chat port. For a container listener, change the matching
+`OP_*_PORT` value in `state/stack.env` and reapply the stack. For host UI port
+`3880`, change `OP_HOST_UI_PORT` and restart the host UI process.
 
 ```bash
-sudo usermod -aG docker $USER
+lsof -i :3800
 ```
 
-Then log out and back in.
+## Assistant UI Does Not Load
 
----
-
-## 2. Port conflicts
-
-**Symptoms:** Compose reports `address already in use`.
-
-Common defaults:
-
-- `3800` assistant chat UI
-- `3810` assistant OpenCode
-- `3880` admin
-- `3820` chat addon
-- `3821` API addon
-- `8880` voice addon
-
-**Fix:** find the conflicting process:
+The normal UI is served by the assistant container at
+<http://localhost:3800/>. Check both the UI and OpenCode probes:
 
 ```bash
-lsof -i :3880
+curl -fsS http://127.0.0.1:3800/health
+curl -fsS http://127.0.0.1:3810/health
+openpalm logs assistant
 ```
 
-Then either stop that process or change the matching `OP_*_PORT` value in
-`~/.openpalm/state/stack.env`, then recreate the stack with the same
-compose file set.
+The UI and skeleton are baked into the assistant image. Do not place an npm UI
+tarball in the knowledge stash. Pull/recreate the assistant image with
+`openpalm update`.
 
----
+## Host Admin UI Does Not Load
 
-## 3. Admin UI will not load
-
-**Symptoms:** `http://localhost:3880/` refuses the connection.
-
-**Common causes:**
-
-- the `openpalm` host process is not running
-- `OP_HOST_UI_PORT` was changed in `stack.env`
-
-**Fix:**
+The admin-capable UI is a host process, not a container:
 
 ```bash
-# Check if the host admin process is running
-lsof -i :3880 || ss -tlnp | grep 3880
-
-# Restart the admin process
-openpalm
+openpalm admin
 ```
 
----
+It opens at <http://127.0.0.1:3880/host> by default. If port `3880` changed,
+check `OP_HOST_UI_PORT` in `state/stack.env`.
 
-## 4. Wrong services started
+Requests to `/admin/*` correctly return `404`. Current UI API routes use
+`/api/auth/*`, `/api/host/*`, and `/api/assistant/*`.
 
-**Symptoms:** an expected addon is missing, or an unexpected stack shape is
-running.
+## Addon Is Missing
 
-**Cause:** Docker Compose only deploys the files you pass with `-f`.
-
-**Fix:** rerun the stack with the correct profile set. Example:
+OpenPalm translates `OP_ENABLED_ADDONS` into Compose profiles only when an
+OpenPalm control-plane command runs. A raw Compose invocation must include the
+profiles explicitly.
 
 ```bash
-cd "$HOME/.openpalm/config/stack"
+OP_HOME="${OP_HOME:-$HOME/.openpalm}"
 docker compose \
-  -f core.compose.yml \
-  -f portals.compose.yml \
-  --profile addon.chat \
-  --env-file ../../state/stack.env \
+  --project-name openpalm \
+  --env-file "$OP_HOME/state/stack.env" \
+  -f "$OP_HOME/system/stack/core.compose.yml" \
+  -f "$OP_HOME/system/stack/services.compose.yml" \
+  -f "$OP_HOME/system/stack/portals.compose.yml" \
+  -f "$OP_HOME/config/stack/custom.compose.yml" \
+  --profile addon.discord \
   up -d
 ```
 
-The enabled addon names in `OP_ENABLED_ADDONS` inside `~/.openpalm/state/stack.env` are used by OpenPalm
-tooling to build the `--profile` arguments. Manual invocations must pass them
-explicitly.
-
----
-
-## 5. Assistant not responding
-
-**Symptoms:** portals accept requests, but no reply comes back.
-
-**Fix:**
-
-1. check the assistant container status and logs
-2. verify at least one provider is configured in OpenCode auth state or `~/.openpalm/knowledge/secrets/`
-3. confirm the provider endpoint is reachable from Docker if you use a local model server
-
-Useful checks:
+Alternatively, let the control plane resolve profiles:
 
 ```bash
-ls ~/.openpalm/knowledge/secrets
-grep -E 'BASE_URL' ~/.openpalm/state/stack.env
+openpalm addon enable discord
+openpalm start
 ```
+
+## Assistant Does Not Answer
+
+1. Check `openpalm status` and `openpalm logs assistant`.
+2. Confirm `knowledge/secrets/auth.json` contains valid OpenCode provider auth.
+3. Confirm the configured provider/model is reachable from the container.
+4. Recreate the assistant after changing cached auth or model configuration.
+
+For a host model server, a container cannot use the host's `localhost`. Use
+`host.docker.internal` where supported, for example:
+
+```text
+http://host.docker.internal:11434/v1
+```
+
+## Portal Authentication Fails
+
+For `401` or `403` responses:
+
+- Confirm the portal and Guardian are running under the same active profile set.
+- Confirm the relevant `portal_<id>_secret` exists in `private/secrets/`.
+- Confirm bot credentials also live in `private/secrets/`.
+- Recreate Guardian and the portal after rotating startup-only secrets.
+- Check `openpalm logs guardian` and `openpalm logs <portal>`.
+
+Delegated credentials do not belong under `knowledge/secrets/`. That directory
+retains only assistant-readable provider `auth.json`.
+
+## Content Is Blocked or Moderation Is Unavailable
+
+Guardian content validation is on by default in code and Compose. Suspicious
+messages are escalated to its local moderator and fail closed when a verdict
+cannot be obtained.
 
 ```bash
-cd "$HOME/.openpalm/config/stack"
-docker compose \
-  -f core.compose.yml \
-  --env-file ../../state/stack.env \
-  logs assistant
+openpalm logs guardian
 ```
 
----
+Check provider auth in `knowledge/secrets/auth.json`, the model configured in
+`config/guardian/opencode.json`, and Guardian readiness. Explicitly setting
+`GUARDIAN_CONTENT_VALIDATION=0` opts out; an unset value remains on.
 
-## 6. Ollama or another local model endpoint is not reachable
+## Voice Does Not Start
 
-**Symptoms:** the host service works locally, but containers cannot reach it.
-
-**Cause:** containers cannot use the host's `localhost`.
-
-**Fix:** use `host.docker.internal` from inside containers. Example:
-
-```env
-OPENAI_BASE_URL=http://host.docker.internal:11434/v1
-```
-
-Then recreate any services that depend on that value.
-
----
-
-## 7. Portal auth or guardian ingress errors
-
-**Symptoms:** portal containers return `401`, `403`, or guardian authorization errors.
-
-**Fix:**
-
-- verify the portal addon is part of the compose file set you started
-- check `~/.openpalm/knowledge/secrets/` for the relevant principal secret file and verify the service has a matching `PRINCIPAL_SECRET_FILE` grant
-- recreate the affected portal and guardian services after changing secrets
-
-There is no separate staging/artifacts file to inspect in the current model; the
-live non-secret values come straight from `state/stack.env`; service secrets come from `knowledge/secrets/`.
-
----
-
-## 8. Permission denied on mounted files
-
-**Symptoms:** containers cannot write to `~/.openpalm/`, or files end up owned by
-the wrong user.
-
-**Fix:** verify ownership and the UID/GID values in
-`~/.openpalm/state/stack.env`:
+Voice is defined in `system/stack/services.compose.yml`, uses an
+`addon.voice.*` profile, joins `addon_net`, and publishes only
+`127.0.0.1:8880` by default.
 
 ```bash
-grep -E 'OP_UID|OP_GID' ~/.openpalm/state/stack.env
-id -u
-id -g
-sudo chown -R $(id -u):$(id -g) ~/.openpalm
+openpalm addon enable voice
+openpalm logs voice
+curl -fsS http://127.0.0.1:8880/health
 ```
 
-Then recreate containers.
+The default models are image-baked. Hardware selection uses managed voice
+profiles and control-plane host checks, which may select managed CDI/rootless
+fallbacks without an operator-authored GPU overlay.
 
----
-
-## 9. Services will not start after updating bundle files
-
-**Symptoms:** after copying newer `.openpalm/` files, Compose fails or services
-restart-loop.
-
-**Fix:**
-
-- compare your current `~/.openpalm/state/stack.env` with the newer schema
-- make sure any newly required variables are present
-- rerun `docker compose pull` and then `docker compose up -d` with the same file set
-
-There is no XDG staging or artifacts directory to clear. The live deployment is
-the compose files under `~/.openpalm/config/stack/`, non-secret `stack.env`, and file-based secrets under `knowledge/secrets/`.
-
----
-
-## 10. Factory reset
-
-**Warning:** destructive.
+## Permission Denied on Mounted Paths
 
 ```bash
-cd "$HOME/.openpalm/config/stack"
-docker compose \
-  -f core.compose.yml \
-  -f portals.compose.yml \
-  --profile addon.chat \
-  --env-file ../../state/stack.env \
-  down -v
-
-rm -rf "$HOME/.openpalm"
+openpalm repair-ownership
 ```
 
-Then copy a fresh `.openpalm/` bundle and start again.
+Also compare `OP_UID` and `OP_GID` in `state/stack.env` with `id -u` and
+`id -g`. Avoid running normal lifecycle commands with `sudo`, which can create
+root-owned host files.
 
-If you are not sure which addons were running, prefer backing up `~/.openpalm/`
-first and then removing it. See [backup-restore.md](backup-restore.md).
+## Update Left the Stack Unhealthy
+
+Use the managed update path rather than copying a new skeleton over the home:
+
+```bash
+openpalm update
+openpalm status
+openpalm rollback
+```
+
+Raw copying is incomplete because install/update also generates state, private
+secrets, caches, and runtime files.
+
+## Factory Reset
+
+Back up first. Then remove the stack and all OpenPalm-owned trees:
+
+```bash
+openpalm uninstall --purge
+```
+
+Reinstall with `setup.sh`, `setup.ps1`, or `openpalm install --file`. Do not
+replace this with a copy of `packages/skeleton/`.

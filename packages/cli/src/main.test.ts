@@ -294,8 +294,7 @@ describe('cli main', () => {
 
     try {
       await main(['install', '--no-start', '--file', specFile]);
-      // state/stack.env is the sole pin location (never the legacy
-      // state/stack.env).
+      // state/stack.env is the sole pin location.
       const stateEnv = readFileSync(join(base, 'state', 'stack.env'), 'utf-8');
       expect(stateEnv).toMatch(/^OP_ASSISTANT_VERSION=latest$/m);
       expect(stateEnv).toMatch(/^OP_GUARDIAN_VERSION=latest$/m);
@@ -306,7 +305,7 @@ describe('cli main', () => {
     }
   });
 
-  it('an explicit --version pins every per-image version to that version', async () => {
+  it('an explicit --version pins platform images while Voice stays independent', async () => {
     const base = mkdtempSync(join(tmpdir(), 'openpalm-install-pin-'));
     const workDir = join(base, 'work');
     const specFile = writeMinimalSetupSpec(base);
@@ -322,13 +321,13 @@ describe('cli main', () => {
       // An explicit --version is honored verbatim. A legacy `v`-prefixed pin is
       // preserved (not stripped) so a pre-0.12.41 `v`-tagged image stays pullable.
       await main(['install', '--no-start', '--version', 'v0.11.0', '--file', specFile]);
-      // state/stack.env is the sole pin location (never the legacy
-      // state/stack.env).
+      // Platform images honor the explicit pin. Voice has an independent
+      // variant-suffixed release stream and continues tracking latest.
       const stateEnv = readFileSync(join(base, 'state', 'stack.env'), 'utf-8');
       expect(stateEnv).toMatch(/^OP_ASSISTANT_VERSION=v0\.11\.0$/m);
       expect(stateEnv).toMatch(/^OP_GUARDIAN_VERSION=v0\.11\.0$/m);
       expect(stateEnv).toMatch(/^OP_PORTAL_VERSION=v0\.11\.0$/m);
-      expect(stateEnv).toMatch(/^OP_VOICE_VERSION=v0\.11\.0$/m);
+      expect(stateEnv).toMatch(/^OP_VOICE_VERSION=latest$/m);
     } finally {
       rmSync(base, { recursive: true, force: true });
     }
@@ -688,10 +687,9 @@ describe('audit-secrets command', () => {
   });
 });
 
-// PR #564 retest P3-4: the bare-command health probe sends no Basic auth, so a
-// home-password stack answers /health with 401. That 401 proves the assistant
-// is up — it must read as "healthy" so the bare command doesn't run
-// `docker compose up -d` and needlessly recreate a running container.
+// The bare-command health probe sends no Basic auth. When direct Assistant
+// access enables authentication, a 401 still proves the service is reachable,
+// so the command must not needlessly recreate a running container.
 describe('isAssistantHealthy — auth-posture-aware reachability (P3-4)', () => {
   const originalFetch = globalThis.fetch;
   afterEach(() => {

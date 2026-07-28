@@ -2,10 +2,12 @@ import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync } from '
 import { dirname, join } from 'node:path';
 import type { ControlPlaneState } from './types.js';
 import { CORE_SERVICES } from './types.js';
+import { hasGuardianIngressAddon } from './addon-ids.js';
+import { listEnabledAddonIds } from './addons.js';
 import { writeFileAtomic } from './fs-atomic.js';
 import { buildComposeOptions } from './compose-args.js';
 import { applyInstall, buildManagedServices, restoreSnapshotAndApplyStack } from './lifecycle.js';
-import { applyStack, composePs, detectExistingProject, parseComposePsRows, resolveComposeProjectName } from './docker.js';
+import { applyStack, composePs, detectExistingProject, isComposePsRowHealthy, parseComposePsRows, resolveComposeProjectName } from './docker.js';
 import { reapAndLogRetiredVolumes } from './image-volume-retention.js';
 import { parseEnvFile } from './env.js';
 import { patchStateEnvFile, readStackEnv } from './secrets.js';
@@ -166,34 +168,39 @@ function buildLogHint(state: ControlPlaneState, services: string[]): string {
  * service is healthy, so every entry is marked running regardless of what
  * this best-effort ps call sees. On a failed `up`, the same single call NAMES
  * which services didn't come up (§2.1's "one compose ps --format json call
- * names the failed services"), split into CORE_SERVICES vs everything else —
- * runDeploy gates setup-completion on core only.
+ * names the failed services"), split into required vs optional services.
  */
 async function refreshDeployStatus(
   state: ControlPlaneState,
   progress: DeployProgress,
   upFailed: boolean,
-): Promise<{ failedCore: string[]; failedOptional: string[] }> {
+  requiredServices: ReadonlySet<string>,
+): Promise<{ failedRequired: string[]; failedOptional: string[] }> {
   const composeOpts = buildComposeOptions(state);
   const psResult = await composePs(composeOpts);
   const rows = psResult.ok ? parseComposePsRows(psResult.stdout) : [];
-  const coreServices: string[] = CORE_SERVICES;
 
-  const failedCore: string[] = [];
+  const failedRequired: string[] = [];
   const failedOptional: string[] = [];
 
   progress.deployStatus = progress.deployStatus.map((entry) => {
     const row = rows.find((r) => r.service === entry.service);
-    const healthy = row?.state === 'running' && row.health !== 'unhealthy';
+    const healthy = isComposePsRowHealthy(row);
     if (healthy || !upFailed) {
       return { ...entry, status: 'running', label: 'Running' };
     }
-    (coreServices.includes(entry.service) ? failedCore : failedOptional).push(entry.service);
-    const label = !row ? 'Did not start' : row.health === 'unhealthy' ? 'Unhealthy' : `Exited (${row.state || 'unknown'})`;
+    (requiredServices.has(entry.service) ? failedRequired : failedOptional).push(entry.service);
+    const label = !row
+      ? 'Did not start'
+      : row.health.toLowerCase() === 'unhealthy'
+        ? 'Unhealthy'
+        : row.health.toLowerCase() === 'starting'
+          ? 'Starting'
+          : `Exited (${row.state || 'unknown'})`;
     return { ...entry, status: 'error', label };
   });
 
-  return { failedCore, failedOptional };
+  return { failedRequired, failedOptional };
 }
 
 export function markSetupComplete(state: ControlPlaneState): void {
@@ -302,6 +309,10 @@ export async function runDeploy(state: ControlPlaneState, options: RunDeployOpti
     }
 
     const services = await buildManagedServices(state);
+    const requiredServices = new Set<string>(CORE_SERVICES);
+    if (hasGuardianIngressAddon(listEnabledAddonIds(state.homeDir))) {
+      requiredServices.add('guardian');
+    }
     progress.deployStatus = services.map((service) => ({ service, status: 'pending', label: 'Waiting...' }));
     emitProgress(options, progress);
 
@@ -339,14 +350,14 @@ export async function runDeploy(state: ControlPlaneState, options: RunDeployOpti
 
     if (!stackResult.ok) {
       // ONE `compose ps` refreshes the per-service display labels and splits the
-      // failures into CORE vs OPTIONAL — setup-completion gates on core only, so
-      // an addon/portal hiccup can't wedge a fresh install (§2.1). `upFailed`
-      // means nothing came up at all, always a hard failure.
-      const { failedCore, failedOptional } = await refreshDeployStatus(state, progress, true);
-      if (stackResult.pullFailed || failedCore.length > 0 || stackResult.upFailed) {
+      // failures into required vs optional. Guardian is required whenever an
+      // ingress addon enables it; adapter failures remain warnings. `upFailed`
+      // means nothing came up at all and is always a hard failure.
+      const { failedRequired, failedOptional } = await refreshDeployStatus(state, progress, true, requiredServices);
+      if (stackResult.pullFailed || failedRequired.length > 0 || stackResult.upFailed) {
         if (stackResult.pullFailed && !renameTeardown.downed) restoreDeployFiles(state);
         else await restoreDeployStack(state);
-        const allFailed = [...failedCore, ...failedOptional];
+        const allFailed = [...failedRequired, ...failedOptional];
         const failureDetail = allFailed.length > 0
           ? allFailed.join(', ')
           : stackResult.error ?? 'stack update';
@@ -357,13 +368,10 @@ export async function runDeploy(state: ControlPlaneState, options: RunDeployOpti
         emitProgress(options, progress);
         return progress;
       }
-      // Only OPTIONAL (non-core) services failed — setup completes anyway
-      // (§2.1: markSetupComplete gates on CORE_SERVICES only, never the full
-      // managed set, so an addon/portal hiccup can't wedge a fresh install).
-      // The #585 retired volumes (guardian-cache, portal-cache) belong
-      // exclusively to optional services, so this is the most likely branch
-      // to strand them — reap here too, not just on the full-success path
-      // below.
+      // Only optional adapter/services failed, so setup completes with a
+      // warning rather than wedging a fresh install.
+      // This early return would otherwise skip the success-path retired-volume
+      // reap below, so reclaim before returning the warning.
       await reapAndLogRetiredVolumes(state.homeDir, deployLogger);
       progress.imageWarning = `The following optional service(s) did not start correctly and were skipped: ${failedOptional.join(', ')}. ${buildLogHint(state, failedOptional)}`;
       options.markSetupComplete?.();
@@ -388,7 +396,7 @@ export async function runDeploy(state: ControlPlaneState, options: RunDeployOpti
     // project's volumes).
     await reapAndLogRetiredVolumes(state.homeDir, deployLogger);
 
-    await refreshDeployStatus(state, progress, false);
+    await refreshDeployStatus(state, progress, false, requiredServices);
     options.markSetupComplete?.();
     progress.deploying = false;
     progress.setupComplete = true;

@@ -1,24 +1,84 @@
 # system/stack/
 
-This directory contains the managed runtime stack composition. OpenPalm runs
-from the fixed managed file set here plus the user-owned overlay at
+This directory contains OpenPalm's managed Compose assembly. Lifecycle
+reconcile may replace these files. User services and overrides belong only in
 `$OP_HOME/config/stack/custom.compose.yml`.
 
-## Quick start
+## Files
+
+| File | Purpose |
+|---|---|
+| `core.compose.yml` | Always-on assistant service and shared networks |
+| `services.compose.yml` | Profile-gated services such as Voice and Ollama |
+| `portals.compose.yml` | Profile-gated Guardian, compatible API, Discord, and Slack |
+| `voice.compose.cdi.yml` | Managed Voice CUDA fallback for hosts using NVIDIA CDI |
+| `voice.compose.rootless.yml` | Managed Voice user override for rootless Docker |
+
+The complete normal file list also includes the user overlay:
+
+```text
+$OP_HOME/config/stack/custom.compose.yml
+```
+
+## Core and Addons
+
+The assistant is the only always-on container. It runs OpenCode, the image-baked
+OpenPalm UI, and BusyBox cron for AKM tasks.
+
+Guardian is not core. It is deployed by a Guardian-ingress profile such as
+`addon.chat`, `addon.api`, `addon.discord`, `addon.slack`, or `addon.gateway`.
+
+| Runtime | Activation | Default host publication |
+|---|---|---|
+| `assistant` OpenCode | Always | `127.0.0.1:3810 -> 4096` |
+| Assistant UI | Always | `127.0.0.1:3800 -> 3000` |
+| Guardian direct ingress | Guardian profile | `127.0.0.1:3830 -> 3830` |
+| Guardian principal admin | Guardian profile | `127.0.0.1:3831 -> 3831` |
+| Compatible API | Guardian profile | `127.0.0.1:3821 -> 8182` |
+| Discord / Slack | Matching profile | No host port; outbound bot connections |
+| Voice | `addon.voice.*` | `127.0.0.1:8880 -> 8880` |
+| Ollama | `addon.ollama.*` | Internal model service |
+
+There is one Guardian-hosted compatible API listener. The chat profile does not
+create a second host port.
+
+Voice is defined in `services.compose.yml`, joins `addon_net`, and defaults its
+host port to loopback. Default TTS/STT models are baked into the Voice image.
+Hardware variants use managed profiles. OpenPalm may select its managed CDI or
+rootless fallback file during bring-up; operators do not maintain a generic GPU
+overlay.
+
+## Networks
+
+| Network | Purpose |
+|---|---|
+| `assistant_net` | Assistant and explicitly trusted dependencies, including Guardian |
+| `portal_net` | Portal adapters to Guardian |
+| `addon_net` | Optional services that do not need assistant reachability, including Voice |
+
+## Env and Secrets
+
+Compose receives one env file:
+
+```text
+$OP_HOME/state/stack.env
+```
+
+It contains non-secret values and `OP_ENABLED_ADDONS`. OpenPalm control-plane
+commands translate enabled IDs to profiles. Raw Docker Compose requires active
+`--profile` arguments or an explicit `COMPOSE_PROFILES` value.
+
+Delegated UI, Guardian, API, portal, bot, and OpenCode-server credentials come
+from `$OP_HOME/private/secrets/`. Provider auth remains at
+`$OP_HOME/knowledge/secrets/auth.json` because the assistant's OpenCode runtime
+must read it.
+
+Do not add another `--env-file` or broad service-level `env_file` grant.
+
+## Raw Start
 
 ```bash
-# Run the core stack by hand
 OP_HOME="${OP_HOME:-$HOME/.openpalm}"
-docker compose \
-  --project-name openpalm \
-  --env-file "$OP_HOME/state/stack.env" \
-  -f "$OP_HOME/system/stack/core.compose.yml" \
-  -f "$OP_HOME/system/stack/services.compose.yml" \
-  -f "$OP_HOME/system/stack/portals.compose.yml" \
-  -f "$OP_HOME/config/stack/custom.compose.yml" \
-  up -d
-
-# Enable built-in optional services with profiles
 docker compose \
   --project-name openpalm \
   --env-file "$OP_HOME/state/stack.env" \
@@ -30,59 +90,6 @@ docker compose \
   up -d
 ```
 
-See the [Manual Compose Runbook](../../../../docs/operations/manual-compose-runbook.md) for preflight,
-status, logs, and all other operations.
-
-## Common services
-
-The assistant is the only always-on core container. The guardian is enabled by
-portal-style addon profiles such as `addon.chat` or `addon.api`.
-
-| Service | Activation | Host port | Purpose |
-|---------|------------|-----------|---------|
-| `assistant` | Always on | `3800 -> 3000` (chat UI), `3810 -> 4096` (OpenCode) | OpenCode runtime without Docker socket; also hosts the UI and automation scheduler co-processes |
-| `guardian` | Portal/addon profiles | `3830 -> 3830` and `3831 -> 3831` (localhost by default) | Principal-authenticated ingress, direct listener, and admin listener |
-
-## Addons
-
-Built-in optional services are defined in `services.compose.yml` and
-`portals.compose.yml`, then enabled with `addon.*` Compose profiles.
-`custom.compose.yml` is the operator-owned place for extra containers or manual
-overlays.
-
-| Addon | Host port | Purpose |
-|-------|-----------|---------|
-| `api` | `3821 -> 8182` | Guardian-hosted OpenAI/Anthropic-compatible API facade |
-| `chat` | `3820 -> 8182` | Guardian-hosted OpenAI-compatible chat edge |
-| `discord` | none | Discord bot adapter |
-| `ollama` | `11434` | Local LLM inference server |
-| `slack` | none | Slack bot adapter |
-| `voice` | `${OP_VOICE_PORT_HOST:-8880}:8880` | AI voice (TTS + STT) |
-
-## Networks
-
-| Network | Purpose |
-|---------|---------|
-| `portal_net` | First-party portal adapter network |
-| `assistant_net` | Internal core-service communication |
-
-## Files in this directory
-
-| File | Purpose | Owner |
-|------|---------|-------|
-| `core.compose.yml` | Core service definition (always used) | System (managed via CLI/admin) |
-| `services.compose.yml` | Optional first-party services | System (managed via CLI/admin) |
-| `portals.compose.yml` | Optional first-party portals | System (managed via CLI/admin) |
-| `$OP_HOME/config/stack/custom.compose.yml` | User custom services and overlays | User |
-
-This directory holds managed compose assembly only — **no secrets, no env files,
-and no user-owned overlays**.
-
-## Env files
-
-Compose receives **only one env file**, from outside this directory:
-- `$OP_HOME/state/stack.env` (akm `env:stack`) — Non-secret runtime configuration only
-
-Secrets live in `knowledge/secrets/` (including OpenCode `auth.json`) and are
-granted to services through Compose `secrets:` entries or direct bind mounts. Do
-not add other `--env-file` arguments to the compose command.
+See the
+[Manual Compose Runbook](../../../../docs/operations/manual-compose-runbook.md)
+for profile handling, validation, and operations.

@@ -89,7 +89,7 @@ test.describe('Admin panel browser smoke', () => {
     await expect(page.locator('text=fetch failed')).not.toBeVisible({ timeout: 5_000 });
     await expect(page.locator('text=[object Object]')).not.toBeVisible();
 
-    await expect(page.getByRole('heading', { name: /connections/i })).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByRole('heading', { name: /AI providers/i })).toBeVisible({ timeout: 15_000 });
     await expect(page.getByRole('button', { name: /add provider/i })).toBeVisible();
   });
 

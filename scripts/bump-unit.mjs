@@ -16,71 +16,47 @@
 // Preview locally: UNIT=platform BUMP=patch STAMP=false node scripts/bump-unit.mjs
 
 import { readFileSync, writeFileSync, appendFileSync, existsSync, realpathSync } from 'node:fs';
-import { execSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { setVersion } from './set-version.mjs';
+import { compareSemver, parseSemver, setVersion } from './set-version.mjs';
 
-// Parse a semver into comparable parts (prerelease-aware).
-function parseSemver(v) {
-  const m = String(v).match(/^(\d+)\.(\d+)\.(\d+)(?:-(.+))?$/);
-  return m ? { ma: +m[1], mi: +m[2], pa: +m[3], pre: m[4] || null } : null;
-}
+const RELEASE_PACKAGE_GROUPS = JSON.parse(
+  readFileSync('.github/release-package-groups.json', 'utf8'),
+).units;
 
-function cmpPre(a, b) {
-  if (a === b) return 0;
-  if (a === null) return 1; // no prerelease > prerelease
-  if (b === null) return -1;
-  const ai = a.split('.'), bi = b.split('.');
-  for (let i = 0; i < Math.max(ai.length, bi.length); i++) {
-    if (ai[i] === undefined) return -1;
-    if (bi[i] === undefined) return 1;
-    const an = /^[0-9]+$/.test(ai[i]), bn = /^[0-9]+$/.test(bi[i]);
-    if (an && bn) { if (+ai[i] !== +bi[i]) return +ai[i] > +bi[i] ? 1 : -1; }
-    else if (ai[i] !== bi[i]) return ai[i] > bi[i] ? 1 : -1;
-  }
-  return 0;
-}
-
-function cmpSemver(a, b) {
-  const x = parseSemver(a), y = parseSemver(b);
-  if (!x || !y) return null;
-  for (const k of ['ma', 'mi', 'pa']) { if (x[k] !== y[k]) return x[k] > y[k] ? 1 : -1; }
-  return cmpPre(x.pre, y.pre);
-}
-
-// Highest version published on npm for a package name (null if unpublished/unknown).
+// Highest version published on npm for a package name (null only when the
+// package has never been published). Registry/network errors fail closed.
 function maxPublished(name) {
   let vs;
   try {
     vs = JSON.parse(
-      execSync(`npm view ${name} versions --json`, { stdio: ['ignore', 'pipe', 'ignore'] }).toString(),
+      execFileSync('npm', ['view', name, 'versions', '--json'], { stdio: ['ignore', 'pipe', 'pipe'] }).toString(),
     );
-  } catch {
-    return null;
+  } catch (error) {
+    const stderr = error && typeof error === 'object' && 'stderr' in error
+      ? String(error.stderr)
+      : String(error);
+    if (/E404|not found/i.test(stderr)) return null;
+    throw new Error(`Could not query npm versions for ${name}: ${stderr.trim() || 'unknown registry error'}`);
   }
   if (!Array.isArray(vs)) vs = vs ? [vs] : [];
   let mx = null;
-  for (const v of vs) { if (mx === null || cmpSemver(v, mx) > 0) mx = v; }
+  for (const v of vs) { if (mx === null || compareSemver(v, mx) > 0) mx = v; }
   return mx;
 }
 
 // Compute the platform anchor as the highest of the on-disk root version and the
-// highest version published across ALL npm packages the platform unit publishes
-// (lib, cli, ui, AND the dual-owned skeleton + guardian). skeleton/guardian are
-// also published by the independent `guardian` unit, so they can be ahead of the
-// root package.json on disk. Anchoring on the max prevents the platform release
-// from computing a next version that collides with an already-published
-// skeleton/guardian (the "cannot publish over previously published" failure).
-const PLATFORM_NPM_PACKAGES = ['@openpalm/lib', 'openpalm', '@openpalm/ui', '@openpalm/skeleton', '@openpalm/guardian'];
+// highest version published across all npm packages owned by the platform unit.
+const PLATFORM_NPM_PACKAGES = ['@openpalm/lib', 'openpalm', '@openpalm/ui', '@openpalm/skeleton'];
 
 // Bump a disk-version anchor up to the highest version published across the
-// given npm package names. npm failures return null and are ignored, so this
-// degrades gracefully to the on-disk value in offline/test contexts.
+// given npm package names. Registry failures throw; only an npm 404 is treated
+// as an unpublished package.
 function anchorFromPublished(diskVersion, npmPackages) {
   let anchor = diskVersion;
   for (const name of npmPackages) {
     const published = maxPublished(name);
-    if (published && cmpSemver(published, anchor) > 0) anchor = published;
+    if (published && compareSemver(published, anchor) > 0) anchor = published;
   }
   return anchor;
 }
@@ -89,21 +65,23 @@ function platformAnchor() {
   return anchorFromPublished(readJsonVersion('package.json'), PLATFORM_NPM_PACKAGES);
 }
 
-// The guardian unit publishes @openpalm/guardian + @openpalm/skeleton (thin-host
-// needs both). Both are dual-owned with the platform unit, so the on-disk guardian
-// package.json can lag behind what's already on npm. Anchor on the max-published to
-// avoid computing a colliding next version.
-const GUARDIAN_NPM_PACKAGES = ['@openpalm/guardian', '@openpalm/skeleton'];
+const GUARDIAN_NPM_PACKAGES = ['@openpalm/guardian'];
+const ALL_NPM_PACKAGES = [
+  ...PLATFORM_NPM_PACKAGES,
+  ...GUARDIAN_NPM_PACKAGES,
+  '@openpalm/portal-sdk',
+  '@openpalm/discord-portal',
+  '@openpalm/slack-portal',
+];
 
 function guardianAnchor() {
   return anchorFromPublished(readJsonVersion('packages/guardian/package.json'), GUARDIAN_NPM_PACKAGES);
 }
 
 function bumpVersion(current, type) {
-  const m = current.match(/^(\d+)\.(\d+)\.(\d+)(?:-(.+))?$/);
-  if (!m) throw new Error(`Cannot parse version: ${current}`);
-  let [, ma, mi, pa] = m;
-  ma = +ma; mi = +mi; pa = +pa;
+  const parsed = parseSemver(current);
+  if (!parsed) throw new Error(`Cannot parse version: ${current}`);
+  const { ma, mi, pa } = parsed;
   switch (type) {
     case 'major': return `${ma + 1}.0.0`;
     case 'minor': return `${ma}.${mi + 1}.0`;
@@ -118,6 +96,41 @@ function readJsonVersion(file) {
 
 function readFileVersion(file) {
   return readFileSync(file, 'utf8').trim();
+}
+
+export function localUnitAnchorVersions() {
+  return {
+    platform: readJsonVersion(RELEASE_PACKAGE_GROUPS.platform[0]),
+    portals: readJsonVersion(RELEASE_PACKAGE_GROUPS.portals[0]),
+    guardian: readJsonVersion(RELEASE_PACKAGE_GROUPS.guardian[0]),
+    assistant: readFileVersion('containers/assistant/VERSION'),
+    electron: readJsonVersion(RELEASE_PACKAGE_GROUPS.electron[0]),
+  };
+}
+
+export function highestVersion(versions) {
+  let highest = null;
+  for (const version of versions) {
+    if (!parseSemver(version)) throw new Error(`Cannot parse version: ${version}`);
+    if (highest === null || compareSemver(version, highest) > 0) highest = version;
+  }
+  if (highest === null) throw new Error('At least one version anchor is required');
+  return highest;
+}
+
+export function assertVersionExceedsAnchors(target, anchors) {
+  if (!parseSemver(target)) throw new Error(`Cannot parse target version: ${target}`);
+  for (const [unit, current] of Object.entries(anchors)) {
+    if (!parseSemver(current)) throw new Error(`Cannot parse ${unit} anchor version: ${current}`);
+    if (compareSemver(target, current) <= 0) {
+      throw new Error(`Target ${target} must be greater than ${unit} anchor ${current}`);
+    }
+  }
+}
+
+function allAnchor() {
+  const localAnchor = highestVersion(Object.values(localUnitAnchorVersions()));
+  return anchorFromPublished(localAnchor, ALL_NPM_PACKAGES);
 }
 
 function stampJsonFiles(files, version) {
@@ -178,35 +191,22 @@ export function stampPortalBakedManifest(version, file = PORTAL_TOOLS_BAKED_FILE
 // when those units have not had an independent release since the last platform cut.
 // DO NOT stamp assistant/guardian/portals anchors during platform CI runs — that
 // would couple independent units and generate noisy no-op commits.
-// Docker push tags in release.yml come from OP_IMAGE_TAG / v${PLATFORM_VERSION},
-// not from these anchors. Anchors are only read here to compute the NEXT version
-// for an independent unit release.
+// Docker push tags in release.yml come from the computed release target, not
+// these package anchors. Anchors only compute an independent unit's next version.
 const UNITS = {
   platform: {
+    diskAnchorFn: () => readJsonVersion('package.json'),
     anchorFn: () => platformAnchor(),
     stamp(version) {
-      stampJsonFiles([
-        'package.json',
-        'packages/skeleton/package.json',
-        'packages/lib/package.json',
-        'packages/guardian/package.json',
-        'packages/cli/package.json',
-        'packages/ui/package.json',
-        'packages/ui-kit/package.json',
-        'packages/electron/package.json',
-        'packages/electron/admin-tools/package.json',
-      ], version);
+      stampJsonFiles(RELEASE_PACKAGE_GROUPS.platform, version);
       stampSetupScripts(version);
     },
   },
   portals: {
+    diskAnchorFn: () => readJsonVersion('portals/discord/package.json'),
     anchorFn: () => readJsonVersion('portals/discord/package.json'),
     stamp(version) {
-      stampJsonFiles([
-        'packages/portal-sdk/package.json',
-        'portals/discord/package.json',
-        'portals/slack/package.json',
-      ], version);
+      stampJsonFiles(RELEASE_PACKAGE_GROUPS.portals, version);
       // Pin the BAKED image manifest to the exact just-published adapter
       // version (Codex #3) — this is what the rebuilt portal image actually
       // installs (E2/§S2 image-baked-only). Without it, a portals release
@@ -215,31 +215,32 @@ const UNITS = {
     },
   },
   assistant: {
+    diskAnchorFn: () => readFileVersion('containers/assistant/VERSION'),
     anchorFn: () => readFileVersion('containers/assistant/VERSION'),
     stamp(version) {
       stampVersionFile('containers/assistant/VERSION', version);
     },
   },
   guardian: {
+    diskAnchorFn: () => readJsonVersion('packages/guardian/package.json'),
     anchorFn: () => guardianAnchor(),
     stamp(version) {
-      stampJsonFiles(['packages/guardian/package.json'], version);
+      stampJsonFiles(RELEASE_PACKAGE_GROUPS.guardian, version);
     },
   },
   // Images-only unit: rebuilds Docker images at the current platform version without
   // publishing npm. No files are stamped; no version bump is applied by default.
   // Provide an explicit --version override to tag images at a new version.
   images: {
+    diskAnchorFn: () => readJsonVersion('package.json'),
     anchorFn: () => readJsonVersion('package.json'),
     stamp(_version) { /* no files to stamp for images-only release */ },
   },
   electron: {
+    diskAnchorFn: () => readJsonVersion('packages/electron/package.json'),
     anchorFn: () => readJsonVersion('packages/electron/package.json'),
     stamp(version) {
-      stampJsonFiles([
-        'packages/electron/package.json',
-        'packages/electron/admin-tools/package.json',
-      ], version);
+      stampJsonFiles(RELEASE_PACKAGE_GROUPS.electron, version);
     },
   },
 };
@@ -298,7 +299,16 @@ function runCli() {
     // All-units release: stamp every unit to the same version using the specified bump type.
     // Unlike the old 'major' unit, 'all' accepts any bump type (patch/minor/major) and
     // accepts an explicit version override for coordinated point releases.
-    currentVersion = UNITS.platform.anchorFn();
+    const localAnchors = localUnitAnchorVersions();
+    if (versionOverride) {
+      try {
+        assertVersionExceedsAnchors(versionOverride, localAnchors);
+      } catch (error) {
+        console.error(`Error: ${error instanceof Error ? error.message : String(error)}`);
+        process.exit(1);
+      }
+    }
+    currentVersion = versionOverride ? highestVersion(Object.values(localAnchors)) : allAnchor();
     newVersion = versionOverride ?? bumpVersion(currentVersion, bump);
     console.log(
       `All-units release: ${currentVersion} → ${newVersion} (${versionOverride ? 'explicit version' : `${bump} bump`})`,
@@ -312,7 +322,7 @@ function runCli() {
     } else {
       console.log('  (STAMP=false — preview only)');
       for (const name of Object.keys(UNITS)) {
-        const cur = UNITS[name].anchorFn();
+        const cur = versionOverride ? UNITS[name].diskAnchorFn() : UNITS[name].anchorFn();
         console.log(`  ${name}: ${cur} → ${newVersion}`);
       }
     }
@@ -332,7 +342,7 @@ function runCli() {
       console.error(`Error: Unknown unit '${unit}'. Must be platform|portals|assistant|guardian|images|electron|all`);
       process.exit(1);
     }
-    currentVersion = cfg.anchorFn();
+    currentVersion = versionOverride ? cfg.diskAnchorFn() : cfg.anchorFn();
     newVersion = versionOverride ?? bumpVersion(currentVersion, bump);
     console.log(
       `${unit}: ${currentVersion} → ${newVersion} (${versionOverride ? 'explicit version' : `${bump} bump`})`,

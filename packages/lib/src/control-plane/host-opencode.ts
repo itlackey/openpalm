@@ -8,8 +8,8 @@
  * extend behind the same API contract in a follow-up.
  *
  * Security:
- *   - auth.json is copied byte-for-byte and chmodded 0o600. Its contents
- *     are never parsed, logged, or returned to callers.
+ *   - auth.json is parsed to omit unsupported Anthropic credentials, merged,
+ *     and chmodded 0o600. Its contents are never logged or returned to callers.
  *   - opencode.json is parsed to strip plugin/mcp/permission keys before
  *     writing; provider definitions are always kept, and top-level model
  *     defaults are imported only when OP_HOME does not already define them.
@@ -44,6 +44,10 @@ export type HostImportResult = {
   };
   /** Provider IDs that already existed in OP_HOME and were NOT overwritten */
   conflicts: string[];
+  changed: {
+    config: boolean;
+    auth: boolean;
+  };
 };
 
 // ── XDG path resolution ──────────────────────────────────────────────────────
@@ -76,6 +80,13 @@ function readJsonFileSafe(path: string): OpenCodeJson | null {
   } catch {
     return null;
   }
+}
+
+function writeJsonIfChanged(path: string, value: OpenCodeJson): boolean {
+  const content = `${JSON.stringify(value, null, 2)}\n`;
+  if (existsSync(path) && readFileSync(path, 'utf-8') === content) return false;
+  writeFileSync(path, content);
+  return true;
 }
 
 function stripDisallowedKeys(obj: OpenCodeJson): OpenCodeJson {
@@ -173,6 +184,8 @@ export function importHostOpenCode(
 
   let importedProviders = 0;
   let importedCredentials = 0;
+  let configChanged = false;
+  let authChanged = false;
   const conflicts: string[] = [];
 
   // ── opencode.json ──────────────────────────────────────────────────────
@@ -214,7 +227,7 @@ export function importHostOpenCode(
          }
        }
 
-       writeFileSync(destPath, `${JSON.stringify(merged, null, 2)}\n`);
+       configChanged = writeJsonIfChanged(destPath, merged);
      }
   }
 
@@ -236,7 +249,7 @@ export function importHostOpenCode(
           importedCredentials++;
         }
       }
-      writeFileSync(destPath, `${JSON.stringify(merged, null, 2)}\n`);
+      authChanged = writeJsonIfChanged(destPath, merged);
     } else {
       // No existing file or overwrite requested — parse, filter, then write.
       // Belt-and-suspenders: never write anthropic credentials into OP_HOME.
@@ -247,7 +260,7 @@ export function importHostOpenCode(
         filtered[id] = value;
         importedCredentials++;
       }
-      writeFileSync(destPath, `${JSON.stringify(filtered, null, 2)}\n`);
+      authChanged = writeJsonIfChanged(destPath, filtered);
     }
 
     try {
@@ -260,5 +273,6 @@ export function importHostOpenCode(
   return {
     imported: { providers: importedProviders, credentials: importedCredentials },
     conflicts,
+    changed: { config: configChanged, auth: authChanged },
   };
 }

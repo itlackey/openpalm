@@ -1,97 +1,110 @@
 # Artifact Delivery Pattern
 
-> **As built 2026-07-21 for the 0.13.0 RC.** This documents the current runtime delivery model used by OpenPalm artifacts.
+> As built for the 0.13.0 release line.
 
 ## Rule
 
-OpenPalm delivers updatable runtime content as npm artifacts with explicit version resolution. Runtime installs never fall back to `latest` in production.
+Release images are complete at build time. Container startup must not depend on
+installing ordinary runtime content from npm. The one retained runtime package
+installer is Guardian's explicit thin-host override path.
 
-There are two strategies:
+## Delivery Paths
 
-| Strategy | Use when | Resolution |
-|---|---|---|
-| Exact pin | API/data compatibility or seeded-file hashes must stay in lockstep | `OP_*_VERSION` override -> `PLATFORM_VERSION`/paired image version -> hard error |
-| Reviewed package manifest | Tooling that can advance independently within a managed package.json | Pinned or ranged dependency in the baked `package.json`, applied by `bun install`/`bun update` |
-
-## Current Exact-Pin Artifacts
-
-| Artifact | Package | Installed by | Resolution chain |
+| Artifact | Delivery | Version source | Runtime behavior |
 |---|---|---|---|
-| Host UI build | `@openpalm/ui` | Host control plane seeding/updater | Host-side UI logic; not a container entrypoint artifact |
-| Container UI co-process | `@openpalm/ui` | Assistant container entrypoint | `OP_UI_VERSION` -> `PLATFORM_VERSION` -> hard error |
-| Skeleton seed | `@openpalm/skeleton` | Assistant + guardian entrypoints; CLI local dep for repo/npm installs | `OP_SKELETON_VERSION` -> `PLATFORM_VERSION` or guardian package version -> hard error/paired default |
-| Guardian package | `@openpalm/guardian` | Guardian thin-host entrypoint | `OP_GUARDIAN_NPM_VERSION` -> `GUARDIAN_VERSION` -> hard error |
+| Host UI `@openpalm/ui` | npm tarball into `OP_HOME/data/ui` | Platform release metadata/channel resolution | Integrity-verified and atomically swapped by the host control plane |
+| Assistant UI | Baked into `/opt/openpalm/ui` during image build | `PLATFORM_VERSION` build arg | Entrypoint supervises the baked build; no runtime install or version override |
+| Assistant skeleton | Baked into `/opt/openpalm/skeleton` during image build | `PLATFORM_VERSION` build arg | No assistant-side runtime install or version override |
+| Assistant tools | Baked from `containers/assistant/tools/package.json` | Exact manifest pins | No boot-time update |
+| Guardian package | Baked into `/opt/openpalm/guardian-pkg` | `GUARDIAN_VERSION` build arg | Existing-version check is normally a no-op; `OP_GUARDIAN_NPM_VERSION` enables an explicit override install |
+| Guardian skeleton | Baked into `/opt/openpalm/skeleton` | Independent `SKELETON_VERSION` build arg | `OP_SKELETON_VERSION` remains an explicit Guardian thin-host override |
+| Guardian tools | Baked from `containers/guardian/tools/package.json` | Exact manifest pins | No boot-time update |
+| Portal adapters | Exact published packages installed at image build from `containers/portal/tools/package.json` | Exact adapter pins | No source copy or runtime adapter install |
 
-## Current Reviewed Tool Package Pattern
+Changing either baked assistant artifact requires a new assistant image.
 
-| Runtime | Source | Install action |
-|---|---|---|
-| Assistant tools | `/opt/openpalm/tools/package.json` with host bind overlay | `bun update --cwd /opt/openpalm/tools --production` |
-| Guardian tools | `/opt/openpalm/tools/package.json` with host bind overlay | `bun install --cwd /opt/openpalm/tools --production` |
+## Host Skeleton Resolution
 
-This is deliberately different from the exact-pin artifacts. Tools are governed by an editable package manifest, not by one env var per tool.
+Host install/update code resolves skeleton source in this order:
 
-## Skeleton Resolution Chain
+1. `OPENPALM_REPO_ROOT` for a source checkout
+2. `OPENPALM_SKELETON_DIR` for Electron bundled resources
+3. the installed `@openpalm/skeleton` package
+4. the source-relative repository fallback
+5. an integrity-checked npm download when no local source is available
 
-The shipped skeleton source resolution chain is:
+The Electron bundle keeps an offline skeleton seed for a fresh desktop install.
 
-1. `OPENPALM_REPO_ROOT` -> repo `packages/skeleton/`
-2. `OPENPALM_SKELETON_DIR` -> Electron bundled extraResources skeleton
-3. `require.resolve('@openpalm/skeleton/package.json')` -> installed package dir
-4. source-relative repo fallback when running from source
-5. npm download path when no local source exists
+## Guardian Thin Host
 
-The Electron bundled skeleton remains intentional so a fresh desktop install can seed offline.
+The Guardian image bakes `@openpalm/guardian` and `@openpalm/skeleton`, so the
+default boot is offline. Its entrypoint still supports downstream distributions:
+
+- `OP_GUARDIAN_NPM_VERSION` overrides the Guardian npm version or semver range.
+- `OP_GUARDIAN_PACKAGE` can select a compatible composition package.
+- `OP_SKELETON_VERSION` overrides the Guardian-side skeleton version.
+
+These are Guardian-only override paths. They do not restore runtime package
+installation to the assistant.
 
 ## Release Contract
 
-The release workflow stamps versioned manifests through `scripts/set-version.mjs` and `scripts/bump-unit.mjs`.
+The platform release stamps root, skeleton, lib, CLI, UI, and UI kit in
+lockstep. Guardian is an independent package unit; Electron and admin tools are
+an independent harness unit. A coordinated `all` release composes the disjoint
+owners at one version.
 
-For the platform unit this means:
+The portal SDK and the Discord/Slack adapters form the `portals` release unit.
+They are stamped and published together, with `@openpalm/portal-sdk` published
+before the adapters. The live portal image then installs those published adapter
+versions from exact pins in `containers/portal/tools/package.json`; coordinated
+dry runs use the candidate tarballs because that version is not published.
 
-- root, lib, skeleton, guardian, cli, ui, electron, and admin-tools package versions are stamped together
-- `packages/cli/package.json` keeps an exact `@openpalm/skeleton` pin equal to the platform version
-- the npm regression guard treats `@openpalm/skeleton` and `@openpalm/guardian` as dual-owned packages
+Internal workspace references intentionally use `workspace:*` where local
+workspace coupling is desired. `bun pm pack` resolves those references to the
+on-disk package version in the published tarball.
 
-That exact CLI skeleton pin matters because npm-installed CLI builds resolve the seeding skeleton through their own dependency tree.
-
-## Runtime-Specific Delivery Paths
+## Runtime Surfaces
 
 ### Host UI
 
-- Resolved into `OP_HOME/data/ui`
-- Updated by the host control plane
-- Served by `openpalm app` at the user-facing local origin `http://localhost:${OP_HOST_UI_PORT:-3880}`; the process binds and probes `127.0.0.1` internally
-- Electron and `openpalm admin` preserve their exact `http://127.0.0.1:<port>` admin origin and are not PWA install surfaces
+- Installed under `OP_HOME/data/ui`
+- Served by `openpalm app`, `openpalm admin`, or Electron
+- Defaults to host port `3880`
+- Updated by the host control plane with registry integrity verification
 
-### Assistant Container UI Co-process
+### Assistant UI
 
-- Installed into `/opt/openpalm/ui`
-- Served as a supervised co-process from its adapter-node build (`node build/index.js`)
-- Published on `${OP_UI_PORT:-3800}` externally and port `3000` internally
-- Seeded with `runtime-config.json` containing one locked default connection
+- Served from the image-baked `/opt/openpalm/ui/node_modules/@openpalm/ui/build`
+- Runs as a supervised adapter-node child on container port `3000`
+- Published on host port `3800` by default
+- Seeds one locked local connection to the same-origin `/oc` path
 
-### PWA Origins
+### PWA
 
-- Uses the same `@openpalm/ui` adapter-node build and ships its basic manifest and service worker in that artifact
-- Canonical local install origin: `http://localhost:${OP_HOST_UI_PORT:-3880}` via `openpalm app`
-- Operator-provided HTTPS origins use an explicitly remote-enabled, non-admin `openpalm app` process behind external Tailscale/Caddy TLS; this binds port 3880 to all interfaces, so the host firewall must block direct access (see [`../remote-access-tls.md`](../remote-access-tls.md))
-- There is no official `app.openpalm.dev` deployment or default CORS grant in 0.13.0
-- Offline caching is limited to hashed build assets and static assets; navigation, API, auth, and SSE traffic stays network-only
+- Uses the same `@openpalm/ui` build
+- Caches only hashed/static assets; navigation, API, auth, and SSE stay network-only
+- Installs from the local `openpalm app` origin or an operator-provided HTTPS origin
 
 ## Failure Policy
 
-- Version resolution failure is loud: missing version source is an error.
-- Install failure after version resolution is tolerant only where the entrypoint already has an on-disk artifact to keep using.
-- No runtime path silently substitutes `latest`.
+- A release build without the version needed to bake an artifact must fail or
+  be explicitly identified as an unversioned local/dev build.
+- Host package downloads verify registry integrity before activation.
+- Guardian override installation failure is fatal after bounded retries.
+- No production runtime silently substitutes `latest` for a missing exact
+  artifact version.
 
 ## Related Files
 
 | File | Role |
 |---|---|
-| `scripts/set-version.mjs` | Shared manifest-stamping helper |
-| `scripts/bump-unit.mjs` | Release-unit version computation and stamping |
-| `.github/workflows/release.yml` | Release DAG |
-| `packages/lib/src/control-plane/ui-assets.ts` | Host UI artifact delivery |
-| `containers/assistant/entrypoint.sh` | Assistant-container runtime install path |
-| `containers/guardian/entrypoint.sh` | Guardian thin-host runtime install path |
+| `containers/assistant/Dockerfile` | Bakes assistant UI, skeleton, and tools |
+| `containers/assistant/entrypoint.sh` | Supervises baked assistant artifacts |
+| `containers/guardian/Dockerfile` | Bakes Guardian, skeleton, and tools |
+| `containers/guardian/entrypoint.sh` | Guardian thin-host override path |
+| `containers/portal/tools/package.json` | Exact portal adapter image pins |
+| `packages/lib/src/control-plane/ui-assets.ts` | Host UI and skeleton delivery |
+| `scripts/set-version.mjs` | Shared manifest version stamping |
+| `scripts/bump-unit.mjs` | Release-unit stamping |
+| `.github/workflows/release.yml` | Publish/build DAG |

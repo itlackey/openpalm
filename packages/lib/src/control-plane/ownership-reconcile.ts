@@ -1,5 +1,5 @@
 import { existsSync, mkdirSync, readFileSync, statSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { dirname, join, resolve, sep } from 'node:path';
 import type { ControlPlaneState } from './types.js';
 import { stackEnvFile, hostIdentityFile } from './home.js';
 import type { HostIdentity, OwnershipDecision } from './host-identity.js';
@@ -20,13 +20,29 @@ export type ReconcileDecision = {
   currentIdentity: HostIdentity;
 };
 
-export function ownershipRepairPaths(state: ControlPlaneState): string[] {
-  const discovered = discoverHomeBindMountSources(state).map((mount) => mount.isFile ? dirname(mount.path) : mount.path);
+type HomeBindMountSource = { path: string; isFile: boolean };
+
+function overlapsRegenerableCachePath(homeDir: string, candidate: string): boolean {
+  const cacheRoot = resolve(homeDir, 'cache');
+  const resolved = resolve(candidate);
+  return resolved === cacheRoot
+    || resolved.startsWith(`${cacheRoot}${sep}`)
+    || cacheRoot.startsWith(`${resolved}${sep}`);
+}
+
+export function ownershipRepairPaths(
+  state: ControlPlaneState,
+  discoveredMounts: HomeBindMountSource[] = discoverHomeBindMountSources(state),
+): string[] {
+  const discovered = discoveredMounts
+    .map((mount) => mount.path)
+    .filter((path) => !overlapsRegenerableCachePath(state.homeDir, path));
   const deduped = [...new Set(discovered)];
   const base = [
     `${state.homeDir}/state`,
     state.configDir,
     `${state.homeDir}/knowledge`,
+    `${state.homeDir}/private`,
     state.workspaceDir,
     `${state.dataDir}/assistant`,
     `${state.dataDir}/guardian`,
@@ -37,10 +53,13 @@ export function ownershipRepairPaths(state: ControlPlaneState): string[] {
   return [...new Set([...base, ...deduped])];
 }
 
-export function ownershipCanaryPaths(state: ControlPlaneState): string[] {
+export function ownershipCanaryPaths(
+  state: ControlPlaneState,
+  discoveredMounts?: HomeBindMountSource[],
+): string[] {
   return [
     stackEnvFile(state.homeDir),
-    ...ownershipRepairPaths(state),
+    ...ownershipRepairPaths(state, discoveredMounts),
   ];
 }
 

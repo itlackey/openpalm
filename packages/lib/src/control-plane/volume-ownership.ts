@@ -17,6 +17,19 @@ import { readStackEnv } from "./secrets.js";
 import { run, resolveComposeProjectName } from "./docker.js";
 
 const logger = createLogger("lib:volume-ownership");
+export const OWNERSHIP_REPAIR_IMAGE = 'alpine:3.22.1@sha256:4bcff63911fcb4448bd4fdacec207030997caf25e9bea4045fa6c8c44de311d1';
+
+const OWNERSHIP_REPAIR_SANDBOX_ARGS = [
+  'run', '--rm',
+  '--network', 'none',
+  '--read-only',
+  '--cap-drop', 'ALL',
+  '--cap-add', 'CHOWN',
+  '--cap-add', 'DAC_OVERRIDE',
+  '--cap-add', 'FOWNER',
+  '--security-opt', 'no-new-privileges:true',
+  '--pids-limit', '64',
+];
 
 /**
  * Fix root-owned bind-mount directories under OP_HOME by running a temporary
@@ -71,9 +84,9 @@ export async function repairRootOwnedBindMounts(homeDir: string, candidates?: st
 
   logger.info(`Repairing mismatched bind mounts: ${mismatched.map(d => d.split('/').slice(-2).join('/')).join(', ')}`);
   const result = await run([
-    'run', '--rm',
+    ...OWNERSHIP_REPAIR_SANDBOX_ARGS,
     ...volumeArgs,
-    'alpine',
+    OWNERSHIP_REPAIR_IMAGE,
     'chown', '-R', `${ids.uid}:${ids.gid}`, ...targets,
   ], undefined, 30_000);
 
@@ -111,9 +124,9 @@ export async function repairNamedVolumeOwnership(volumeName: string, ids: { uid:
   }
 
   const result = await run([
-    'run', '--rm',
+    ...OWNERSHIP_REPAIR_SANDBOX_ARGS,
     '-v', `${volumeName}:/repair_target`,
-    'alpine',
+    OWNERSHIP_REPAIR_IMAGE,
     'chown', '-R', `${ids.uid}:${ids.gid}`, '/repair_target',
   ], undefined, 30_000);
 

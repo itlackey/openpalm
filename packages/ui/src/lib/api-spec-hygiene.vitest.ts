@@ -1,12 +1,9 @@
 /**
- * Review 2026-07-10 F2 — docs/technical/api-spec.md documented 14+ endpoints
- * that don't exist at HEAD (a textual Phase 4 `/admin` → `/api/host` rename
- * applied without verifying existence) plus a materially wrong description
- * of the secrets write API. Those were pruned/corrected by hand; this test
- * guards against the same drift recurring: every `### \`METHOD /path\``
- * heading in api-spec.md must resolve to a real `+server.ts` route file
- * exporting that method (mirroring the walker convention in
- * routes/api/host/guard-hygiene.vitest.ts).
+ * docs/technical/api-spec.md owns cross-route conventions and delegates the
+ * route inventory to ui-route-map.md. This avoids maintaining the same large
+ * endpoint list in two documents. If api-spec.md adds a detailed
+ * `### \`METHOD /path\`` section, it must still resolve to a real `+server.ts`
+ * route exporting that method.
  *
  * Two endpoints are documented but deliberately excluded from the route
  * check (see EXTERNAL_NON_UI_ENDPOINTS below): they are real, but are not
@@ -65,12 +62,13 @@ function resolveRouteDir(path: string): string | null {
   return dir;
 }
 
-describe('every endpoint documented in api-spec.md exists at HEAD (review 2026-07-10 F2)', () => {
+describe('api-spec.md owns conventions without duplicating the route inventory', () => {
   const source = readFileSync(API_SPEC_PATH, 'utf-8');
   const endpoints = parseEndpoints(source);
 
-  test('the doc scan sees endpoints (sanity)', () => {
-    expect(endpoints.length).toBeGreaterThan(30);
+  test('delegates the complete route list to ui-route-map.md', () => {
+    expect(source).toContain('[`ui-route-map.md`](ui-route-map.md#api-routes)');
+    expect(endpoints).toHaveLength(0);
   });
 
   test.each(endpoints)('$method $path (api-spec.md:$line) is a real route', ({ method, path }) => {

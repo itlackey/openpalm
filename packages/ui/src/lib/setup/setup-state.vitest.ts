@@ -94,8 +94,8 @@ describe('SetupState — UI login password rerun keep-as-is (PR #564 P1-1)', () 
 
 describe('SetupState — the assistant key is generated, never typed', () => {
   it('no toggle asks the operator for a credential', () => {
-    // The retired home-password preset made the operator hold a second
-    // password. Publishing the assistant API now mints its own key
+    // Older access setup made the operator hold a second password. Publishing
+    // the Assistant API now mints its own key
     // server-side, so the human-facing credential stays the UI login password
     // in every configuration.
     const s = new SetupState();
@@ -319,19 +319,6 @@ describe('SetupState — setAccessToggle', () => {
     s.setAccessToggle('networkAccess', true);
     s.setAccessToggle('networkAccess', false);
     expect(s.access.networkAccess).toBe(false);
-  });
-});
-
-describe('SetupState — every combination installs', () => {
-  it('networkChoiceValid is unconditionally true', () => {
-    // The retired presets needed a gate because two of the four demanded extra
-    // input (a password, a risk acknowledgement) that an untouched rerun could
-    // not supply without rotating an existing secret. Toggles are independent
-    // capabilities with closed defaults, so there is nothing to require.
-    const s = new SetupState();
-    expect(s.networkChoiceValid).toBe(true);
-    s.setAccessToggle('assistantDirect', true);
-    expect(s.networkChoiceValid).toBe(true);
   });
 });
 

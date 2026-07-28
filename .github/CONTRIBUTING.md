@@ -1,183 +1,200 @@
 # Contributing to OpenPalm
 
-Quick-start cheatsheet for getting a dev environment running and submitting changes.
+Quick reference for local development, testing, and release-sensitive changes.
 
-Repo layout convention:
-- `packages/*` = app/package source workspaces
-- `containers/*` = container/runtime assembly assets and image build contexts
+Repository layout:
+
+- `packages/*`: application and package workspaces
+- `containers/*`: image assembly and container entrypoints
+- `portals/*`: first-party protocol adapters
 
 ## Prerequisites
 
-| Tool | Version | Why |
-|------|---------|-----|
-| [Docker](https://docs.docker.com/get-docker/) | 24+ (Compose V2) | Runs the full stack |
-| [Bun](https://bun.sh/) | 1.1+ | Workspace manager, guardian/portal runtime, test runner |
-| [Node](https://nodejs.org/) | 22+ | Admin (SvelteKit) build and dev server |
+| Tool | Version | Purpose |
+|---|---|---|
+| [Docker](https://docs.docker.com/get-docker/) | 24+ with Compose V2 | Live stack and Tier 5 |
+| [Bun](https://bun.sh/) | 1.1+ | Workspace install, scripts, services, and tests |
+| [Node.js](https://nodejs.org/) | 22+ | SvelteKit/Vite and packaging tooling |
 
 ## Quick Start
 
-```bash
-./scripts/dev-setup.sh --seed-env
-
-cd packages/ui
-npm install
-npm run dev
-```
-
-Admin UI + API runs on `http://localhost:8100`.
-
-From the repo root, convenience scripts are available:
+For the repository-isolated UI and API on port `3880`:
 
 ```bash
-bun run ui:dev     # packages/ui dev server
-bun run ui:check   # svelte-check + TypeScript
-bun run guardian:dev     # containers/guardian server
-bun run guardian:test    # guardian tests
-bun run cli:test         # packages/cli tests
-bun run guardian:api:dev    # guardian OpenAI-compatible API server (also serves the chat addon profile)
-bun run portal:discord:dev # discord portal dev server
-bun run dev:setup        # seed .dev/ dirs and configs
-bun run dev:stack        # start dev stack (pull images)
-bun run dev:build        # start dev stack (build from source)
-bun run test             # all non-UI tests (guardian, portals, cli)
-bun run check            # ui:check
+bun install
+bun run dev:setup
+bun run ui:dev:isolated
 ```
 
-`dev:stack` pulls pre-built images from the configured container registries — use it for quick starts and testing admin apply flows. `dev:build` compiles all images from local source using `compose.dev.yml` — use it when developing services or testing Dockerfile changes.
+`ui:dev:isolated` sets `OP_HOME=$PWD/.dev` and starts at
+`http://localhost:3880`.
 
-`dev-setup.sh --seed-env` seeds `.dev/knowledge/env/user.env` and `.dev/state/stack.env` and sets the `OP_*_HOME` variables to absolute `.dev/` paths. The UI dev server picks these up automatically — no additional environment setup needed.
-
-## 1. Clone and bootstrap
+For direct Vite development on its standard port `5173`:
 
 ```bash
-git clone https://github.com/itlackey/openpalm.git
-cd openpalm
-bun install            # Installs all workspace dependencies
-bun run dev:setup      # Creates .dev/ dirs, seeds vault env files
+bun run ui:dev
+
+# Equivalent package command
+cd packages/ui && npm run dev
 ```
 
-`dev:setup` runs [`scripts/dev-setup.sh --seed-env`](../scripts/dev-setup.sh), which:
+Direct development does not force the isolated root command's port or
+`OP_HOME`; choose the command that matches the surface being tested.
 
-- Creates the `.dev/config`, `.dev/knowledge`, `.dev/state`, and `.dev/logs` directories
-- Seeds `.dev/knowledge/env/user.env` and `.dev/state/stack.env` with dev-safe defaults
+## Development Home
 
-After setup, edit `.dev/knowledge/env/user.env` to add your LLM provider keys.
-
-## 2. Run the UI (no Docker needed)
+Seed the current development layout with:
 
 ```bash
-cd packages/ui && npm install && npm run dev
+bun run dev:setup
 ```
 
-UI + API starts on `http://localhost:8100`. The dev server reads `.env` and the seeded `.dev/` paths automatically.
+Important paths are:
 
-## 3. Start the full stack
-
-Two options depending on what you're working on:
-
-| Script | What it does |
-|--------|--------------|
-| `bun run dev:stack` | Pulls pre-built images from the configured container registries. Fast start for testing admin workflows. |
-| `bun run dev:build` | Builds all images from local source via [`compose.dev.yml`](../compose.dev.yml). Use when developing services or testing Dockerfile changes. |
-
-Both scripts read env files from `.dev/config/stack/` and `.dev/knowledge/env/`.
-
-## 4. Run tests and checks
-
-```bash
-# Type check the UI
-bun run ui:check
-
-# Non-UI tests (guardian, portals, cli)
-bun run test
-
-# Both of the above
-bun run check
-
-# Individual test suites
-bun run guardian:test        # Guardian security tests
-bun run cli:test             # CLI tests
-bun run ui:test:unit      # UI Vitest (unit + browser components)
-bun run ui:test:e2e       # UI Playwright integration tests (no-skip enforced locally)
-```
-
-> UI uses Vitest and Playwright, not Bun's test runner. Use `bun run test` (not bare `bun test`) from the repo root — the script filters to non-UI directories.
-
-## 5. Run individual services
-
-```bash
-bun run ui:dev         # UI SvelteKit dev server (:8100)
-bun run guardian:dev         # Guardian Bun server
-bun run guardian:api:dev     # Guardian-hosted OpenAI-compatible API service
-bun run portal:discord:dev  # Discord portal
-```
-
-## Convenience scripts (full list)
-
-All scripts are defined in the root [`package.json`](../package.json):
-
-| Script | Description |
-|--------|-------------|
-| `bun run ui:dev` | UI dev server (packages/ui) |
-| `bun run ui:build` | UI production build |
-| `bun run ui:check` | svelte-check + TypeScript |
-| `bun run ui:test` | Vitest + Playwright (requires build) |
-| `bun run ui:test:unit` | Vitest only (CI-friendly) |
-| `bun run ui:test:e2e` | Playwright integration only (no browser route mocks) |
-| `bun run guardian:dev` | Guardian server |
-| `bun run guardian:test` | Guardian tests |
-| `bun run guardian:api:dev` | Guardian-hosted OpenAI-compatible API service |
-| `bun run portal:discord:dev` | Discord portal dev server |
-| `bun run cli:test` | CLI tests |
-| `bun run dev:setup` | Seed `.dev/` dirs and configs |
-| `bun run dev:stack` | Start dev stack (pull images) |
-| `bun run dev:build` | Start dev stack (build from source) |
-| `bun run test` | All non-UI tests |
-| `bun run check` | ui:check |
-
-## Dev directory layout
-
-Dev mode mirrors the production [filesystem contract](../docs/technical/foundations.md) under `.dev/`:
-
-```
+```text
 .dev/
-├── config/          # User-editable, non-secret configuration
-├── knowledge/           # AKM knowledge (skills, vaults, agents)
-├── state/           # Service-managed persistent data
-└── logs/            # Consolidated audit/debug output
+|-- system/stack/                 managed core/services/portals compose files
+|-- config/stack/custom.compose.yml
+|                                  user-owned compose overlay
+|-- state/stack.env               non-secret runtime record and enabled addons
+|-- private/secrets/              delegated Guardian/portal/admin secret files
+|-- knowledge/secrets/auth.json   shared OpenCode provider-auth exception
+|-- knowledge/env/user.env        user-managed AKM env data
+|-- data/                          service data, logs, backups, and rollback
+`-- workspace/                     shared assistant work area
 ```
 
-See [docs/technical/foundations.md](../docs/technical/foundations.md) for the full filesystem contract.
+Do not put delegated service credentials in `knowledge/secrets/`: that tree is
+assistant-reachable through `/stash`. Delegated secrets belong in
+`private/secrets/`; `knowledge/secrets/auth.json` is the deliberate shared
+provider-auth exception. Compose configuration comes from `state/stack.env`,
+not `knowledge/env/user.env`.
 
-## Before submitting a PR
+## Full Development Stack
 
-1. **Read the rules.** [docs/technical/core-principles.md](../docs/technical/core-principles.md) is the authoritative source for architectural and security invariants. All changes must comply.
-2. **Run the delivery checklist:**
+```bash
+# Pull configured images
+bun run dev:stack
 
-   ```bash
-   bun run check                   # Type check + SDK tests
-   bun run guardian:test            # Guardian security tests
-   ```
+# Build service images from the current source tree
+bun run dev:build
+```
 
-3. **Docker builds** — Guardian and portal Dockerfiles must install each service's own deps directly (no symlink-based node_modules). UI is a host binary — no Docker build. The assistant and guardian images ship the OpenCode binary; keep `OPENCODE_VERSION` in lockstep between `containers/assistant/Dockerfile` and `containers/guardian/Dockerfile`.
-4. **No secrets** in client bundles or logs.
-5. **No new dependencies** that duplicate a built-in Bun or platform capability.
+Both commands assemble:
 
-## npm Package Releases
+- `.dev/system/stack/core.compose.yml`
+- `.dev/system/stack/services.compose.yml`
+- `.dev/system/stack/portals.compose.yml`
+- `.dev/config/stack/custom.compose.yml`
+- `.dev/state/stack.env` as Compose's `--env-file`
 
-OpenPalm has two release tracks (see [docs/operations/release-management.md](../docs/operations/release-management.md) for the full guide):
+`dev:build` additionally applies `compose.dev.yml`. Use it for Dockerfile,
+Guardian, assistant, or portal changes; use `dev:stack` for quicker host-control
+plane work against pulled images.
 
-- **Platform release (single coordinated version)** — guardian, portal image, baked portal adapters, CLI binaries, Electron installers, and other platform manifests ship together through `.github/workflows/release.yml`.
-- **UI release (independent npm)** — `packages/ui` remains independently published to npm.
+## Common Development Commands
 
-## Key docs for contributors
+```bash
+bun run ui:dev                 # Direct UI dev server on :5173
+bun run ui:dev:isolated        # Root isolated UI/API on :3880
+bun run ui:build               # Production UI build
+bun run ui:check               # UI Svelte/TypeScript checks
+bun run ui-kit:check           # UI kit checks
+bun run guardian:dev           # Guardian Bun server
+bun run guardian:api:dev       # Guardian OpenAI-compatible edge
+bun run portal:discord:dev     # Discord adapter
+bun run portal:slack:dev       # Slack adapter
+bun run dev:setup              # Seed .dev/
+bun run dev:stack              # Pull and start the dev stack
+bun run dev:build              # Build and start the dev stack
+```
 
-| Document | What you'll find |
-|----------|-----------------|
-| [docs/technical/core-principles.md](../docs/technical/core-principles.md) | **Must-read.** Security invariants, filesystem contract, architectural rules |
-| [docs/technical/code-quality-principles.md](../docs/technical/code-quality-principles.md) | TypeScript strictness, module design, error handling |
-| [docs/technical/api-spec.md](../docs/technical/api-spec.md) | API endpoint contract |
-| [docs/technical/bunjs-rules.md](../docs/technical/bunjs-rules.md) | Bun-specific patterns (guardian, channels, SDK) |
-| [docs/technical/sveltekit-rules.md](../docs/technical/sveltekit-rules.md) | SvelteKit patterns (UI) |
-| [docs/channels/community-channels.md](../docs/channels/community-channels.md) | Community portal adapter notes |
-| [docs/technical/environment-and-mounts.md](../docs/technical/environment-and-mounts.md) | All environment variables and volume mounts |
+## Test Tiers
+
+OpenPalm has five test tiers. Run the smallest relevant set while iterating and
+the complete set for release-sensitive changes.
+
+| Tier | Command | Scope |
+|---|---|---|
+| 1 | `bun run test:t1` | UI/UI-kit type checks |
+| 2 | `bun run test:t2` | Non-UI Bun tests |
+| 3 | `bun run test:t3` | UI Vitest unit/component tests |
+| 4 | `bun run test:t4` | Self-contained Playwright browser tests |
+| 5 | `bun run test:t5` | Isolated current-layout Docker stack plus Playwright |
+
+Additional browser lanes remain available:
+
+```bash
+bun run ui:test:e2e:mocked     # Tier 4 directly
+bun run ui:test:pwa            # Production PWA/CDP checks, no stack
+bun run ui:test:stack          # Stack tests against an existing seeded .dev stack
+bun run ui:test:e2e            # Existing-stack Playwright with no-skip enforcement
+```
+
+Install the repository's Chromium build with:
+
+```bash
+bun run --cwd packages/ui test:browsers
+```
+
+Tier 5 delegates to `scripts/dev-e2e-test.sh --playwright`; it owns an isolated
+`.dev-e2e` stack, enables the API profile so Guardian runs, checks current host
+API/isolation boundaries, and runs `*.stack.ts`. It does not require model
+inference, voice, or real external credentials.
+
+See [Testing Workflow](../docs/technical/testing-workflow.md) and the
+[UI E2E README](../packages/ui/e2e/README.md).
+
+## Before Submitting A PR
+
+1. Read [Core Principles](../docs/technical/core-principles.md), the authoritative
+   architecture, security, and filesystem contract.
+2. Run the relevant test tiers and `bun run lint`.
+3. Run `bun run guardian:test` for Guardian security changes.
+4. Run Tier 5 for compose, filesystem, auth-boundary, or live UI changes.
+5. Run `bun run ui:test:pwa` for manifest, service-worker, cache, or PWA changes.
+6. Confirm no secret value can enter client bundles, logs, `state/stack.env`, or
+   broad container environment variables.
+7. Prefer Bun/Web Platform capabilities over new dependencies.
+
+Guardian and portal Dockerfiles must install their runtime dependencies inside
+the image. The Assistant and Guardian OpenCode pins are the exact `opencode-ai`
+dependencies in `containers/assistant/tools/package.json` and
+`containers/guardian/tools/package.json`; keep them in lockstep. There is no
+standalone UI image, but the Assistant image bakes the released UI and skeleton
+packages.
+
+## Release Packaging
+
+All supported releases use `.github/workflows/release.yml`; see
+[Release Management](../docs/operations/release-management.md).
+
+The coordinated npm inventory is:
+
+- `@openpalm/lib`
+- `openpalm`
+- `@openpalm/ui`
+- `@openpalm/skeleton`
+- `@openpalm/guardian`
+- `@openpalm/portal-sdk`
+- `@openpalm/discord-portal`
+- `@openpalm/slack-portal`
+
+`@openpalm/ui` is a lockstep platform package, not an independently versioned
+release. Portal SDK, Discord, and Slack likewise move together in the portals
+unit. Source dependencies using `"workspace:*"` are intentional; the release
+candidate stamps every participating manifest and `bun pm pack` resolves the
+workspace protocol to those packed versions.
+
+Voice releases independently through `.github/workflows/publish-voice.yml`.
+
+## Key Documentation
+
+| Document | Scope |
+|---|---|
+| [Core Principles](../docs/technical/core-principles.md) | Security invariants, architecture, and filesystem contract |
+| [Code Quality Principles](../docs/technical/code-quality-principles.md) | Engineering invariants and TypeScript quality |
+| [Bun Rules](../docs/technical/bunjs-rules.md) | Bun/platform API preferences |
+| [SvelteKit Rules](../docs/technical/sveltekit-rules.md) | Server/client boundaries and routing |
+| [API Conventions](../docs/technical/api-spec.md) | Admin API security and route conventions |
+| [Release Architecture](../docs/technical/release-architecture.md) | Candidate source and artifact DAG |

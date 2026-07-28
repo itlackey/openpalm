@@ -87,7 +87,7 @@ describe("GET /api/host/config/validate", () => {
   test("returns 200 with { ok: false } when validation finds errors", async () => {
     vi.mocked(validateProposedState).mockResolvedValue({
       ok: false,
-      errors: ["ERROR: required secret OP_UI_LOGIN_PASSWORD is missing or empty in knowledge/secrets/op_ui_login_password"],
+      errors: ["ERROR: required secret OP_UI_LOGIN_PASSWORD is missing or empty in private/secrets/op_ui_login_password"],
       warnings: []
     });
 

@@ -1,13 +1,12 @@
 /**
- * Behavioral assertions rescued from deleted text-assertion test files
- * (see bullshit-claude-wrote.md §4). These call real functions and parse real
- * config; the string-grep assertions around them were dropped.
+ * Behavioral assertions rescued from deleted text-assertion tests. These call
+ * real functions and parse real config; string-grep assertions were dropped.
  */
 import { describe, expect, test } from 'bun:test';
 import { readdirSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { parse as yamlParse } from 'yaml';
-import { resolveComposeProjectName } from './docker.js';
+import { checkDocker, composeConfigJsonSync, resolveComposeProjectName } from './docker.js';
 
 const REPO_ROOT = resolve(import.meta.dir, '../../../..');
 const STACK_DIR = join(REPO_ROOT, 'packages/skeleton/system/stack');
@@ -169,7 +168,7 @@ describe('#585 — no service mounts a named volume at /opt/openpalm', () => {
   });
 });
 
-describe('#585 — docker compose config parses both files (requires Docker)', () => {
+describe('#585 — docker compose config parses managed files (requires Docker)', () => {
   test('core.compose.yml + portals.compose.yml merge cleanly', async () => {
     const { checkDocker, composePreflight } = await import('./docker.js');
     const dockerCheck = await checkDocker();
@@ -180,6 +179,41 @@ describe('#585 — docker compose config parses both files (requires Docker)', (
 
     const result = await composePreflight({ files: [CORE_COMPOSE_PATH, PORTALS_COMPOSE_PATH] });
     expect(result.ok, result.stderr).toBe(true);
+  });
+
+  test('all managed compose files and host overlays merge cleanly', async () => {
+    const { checkDocker, composePreflight } = await import('./docker.js');
+    const dockerCheck = await checkDocker();
+    if (!dockerCheck.ok) {
+      console.log('  [skip] Docker not available — compose config overlay test skipped');
+      return;
+    }
+
+    const result = await composePreflight({ files: allStackComposeFiles() });
+    expect(result.ok, result.stderr).toBe(true);
+  });
+
+  test('rootless Voice overlay restores each image default user', async () => {
+    const dockerCheck = await checkDocker();
+    if (!dockerCheck.ok) {
+      console.log('  [skip] Docker not available — rootless Voice overlay test skipped');
+      return;
+    }
+
+    const result = composeConfigJsonSync({
+      files: [
+        CORE_COMPOSE_PATH,
+        join(STACK_DIR, 'services.compose.yml'),
+        join(STACK_DIR, 'voice.compose.rootless.yml'),
+      ],
+      profiles: ['addon.voice.cpu', 'addon.voice.cuda', 'addon.voice.rocm'],
+    });
+    expect(result.ok, result.stderr).toBe(true);
+    for (const service of ['voice', 'voice-cuda', 'voice-rocm']) {
+      const resolved = result.config?.services?.[service];
+      expect(resolved, `resolved Compose config omitted ${service}`).toBeTruthy();
+      expect(resolved?.user ?? '').toBe('');
+    }
   });
 });
 

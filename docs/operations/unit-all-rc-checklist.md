@@ -1,579 +1,145 @@
 # Unit=All RC Checklist
 
-Operator worksheet for a coordinated `unit=all` release candidate. Use this when
-the release contains foundational churn across packaging, deployment,
-permissions, runtime artifact resolution, and install/upgrade behavior.
+Concise gate list for a coordinated `unit=all` release candidate. Use the
+[RC runbook](release-rc-runbook.md) for commands and evidence capture.
 
-This checklist is intentionally stricter than the workflow preflight. The goal
-is to prove that the release works as shipped across the major runtime surfaces,
-not just that the source tree is green.
+## Shipped Inventory
 
----
+The standard coordinated release contains:
 
-## Scope
+- npm: `@openpalm/lib`, `openpalm`, `@openpalm/ui`,
+  `@openpalm/skeleton`, `@openpalm/guardian`, `@openpalm/portal-sdk`,
+  `@openpalm/discord-portal`, and `@openpalm/slack-portal`
+- Docker: `openpalm/assistant`, `openpalm/guardian`, and `openpalm/portal`
+- CLI binaries and macOS/Linux/Windows Electron installers
+- platform, portals, assistant, guardian, Electron, and summary tags/releases
 
-`unit=all` publishes all coordinated release artifacts at one version:
+Voice is released independently and is not part of `unit=all`.
 
-- npm: `@openpalm/{lib,ui,guardian,skeleton}`, `openpalm`, `@openpalm/{discord,slack}-portal`
-- Docker: `openpalm/{assistant,guardian,portal}`
-- Electron installers
-- CLI binaries
-- Git tags and GitHub release metadata
+## Source And Publisher Readiness
 
-It does **not** build the voice image.
+- [ ] All intended changes are committed and pushed to the dispatch branch.
+- [ ] The exact remote base SHA has been reviewed and recorded.
+- [ ] The branch will remain at that SHA until the live source gate completes.
+- [ ] All eight npm packages have a trusted publisher for
+      `itlackey/openpalm`, workflow `release.yml`, with no environment.
+- [ ] The target version is greater than every relevant published version.
+- [ ] No unresolved security, rootless-ownership, or packaging blocker remains.
 
----
-
-## Evidence
-
-For every checklist item, capture:
-
-- command run
-- exit code
-- key output or log excerpt
-- screenshot for browser/Electron/installability checks
-- pass/fail note and any follow-up issue
-
-If a step is skipped, record the reason explicitly.
-
----
-
-## Setup
-
-Set shared variables once:
-
-```bash
-export RC_VERSION="0.13.0-rc.1"
-export REPO="$PWD"
-export VERIFY_ROOT="$REPO/.tmp-openpalm-rc"
-export VERIFY_HOME="$VERIFY_ROOT/home"
-export VERIFY_PROJECT="openpalm-rc"
-```
-
-Important artifact note:
-
-- pre-publish checks validate source, local builds, and release orchestration
-- post-publish checks validate the actual published npm packages, container images, installers, and tags
-- if there is no private staging registry, the public RC is the first true shipped-artifact test for guardian, skeleton, UI, CLI, and images
-
----
-
-## Exit Criteria
-
-Do not publish or announce the RC unless every required item below is marked
-pass or has an explicit, reviewed waiver.
-
-- [ ] `unit=all` workflow dry run passed for the exact RC version
-- [ ] local preflight parity passed
-- [ ] fresh install passed
-- [ ] upgrade test passed
-- [ ] failure/rollback test passed
-- [ ] assistant/UI isolated runtime test passed
-- [ ] guardian direct-ingress/auth/CORS test passed
-- [ ] browser-backed live stack test passed
-- [ ] host UI smoke passed
-- [ ] PWA smoke passed
-- [ ] at least one real credentialed ingress path passed
-- [ ] security-boundary verification passed
-- [ ] rootless/ownership verification passed
-- [ ] CLI binary smoke passed
-- [ ] Electron installer smoke passed
-- [ ] post-publish npm verification passed
-- [ ] post-publish Docker verification passed
-- [ ] post-publish GitHub tag/release verification passed
-- [ ] post-publish shipped-artifact boot test passed
-
----
-
-## 1. Release Orchestrator Dry Run
-
-- [ ] Run the real release workflow for the exact RC version.
-
-```bash
-gh workflow run release.yml -f unit=all -f version="$RC_VERSION" -f dry_run=true
-```
-
-Pass criteria:
-
-- [ ] the run starts successfully
-- [ ] the computed version matches `RC_VERSION`
-- [ ] no npm regression guard failure appears
-- [ ] expected `unit=all` jobs are present: platform npm, portal npm, assistant image, guardian image, portal image, Electron, CLI binaries, tags/release staging
-- [ ] no unexpected job skip appears
-
-Evidence:
-
-- workflow URL
-- screenshots or copied logs for compute-version, regression guard, preflight, and dry-run preview
-
----
-
-## 2. Local Preflight Parity
-
-- [ ] Run the local equivalent of the release preflight.
+## Automated Local Gates
 
 ```bash
 bun install --frozen-lockfile
-bun run ui:build
-bun run test
-bun run ui:check
-bun run ui-kit:check
 bun run --cwd packages/ui test:browsers
-bun run ui:test:unit
-bun run electron:test
-bun run guardian:test
-bun run cli:test
+bun run test:t1
+bun run test:t2
+bun run test:t3
+bun run test:t4
+bun run test:t5
+bun run ui:test:pwa
 ```
 
-Pass criteria:
+- [ ] All five tiers pass.
+- [ ] The mocked browser suite passes.
+- [ ] The production PWA lane passes.
+- [ ] Tier 5 creates an isolated current-layout home using
+      `system/stack/*.compose.yml`, `config/stack/custom.compose.yml`, and
+      `state/stack.env`.
+- [ ] Tier 5 places delegated service secrets under `private/secrets/`, while
+      the shared OpenCode provider file remains the
+      `knowledge/secrets/auth.json` exception.
+- [ ] Tier 5 enables the API addon, starts profile-gated Guardian, validates
+      current `/api/auth/*` and `/api/host/*` routes, checks assistant isolation,
+      and runs the `*.stack.ts` Playwright suite.
 
-- [ ] every command exits 0
-- [ ] any warning is understood and non-blocking
-- [ ] no test was skipped unexpectedly
+Tier 5 is not evidence for model inference, voice, or real external channel
+credentials; those are not coordinated-release gates.
 
----
-
-## 3. Fresh Install From Empty OP_HOME
-
-- [ ] Test the supported install path against a brand-new `OP_HOME`.
-- [ ] Use isolated ports and project name.
-
-Pass criteria:
-
-- [ ] install seeds `system/stack/{core,services,portals}.compose.yml`
-- [ ] install seeds `config/stack/custom.compose.yml`
-- [ ] install creates expected `knowledge/`, `data/`, and `workspace/` trees
-- [ ] assistant boots successfully
-- [ ] host UI is reachable
-- [ ] no manual repair is needed
-
-Evidence:
-
-- resulting directory tree summary
-- health output
-- screenshot of first successful UI load
-
----
-
-## 4. Upgrade Existing OP_HOME
-
-- [ ] Test against a realistic pre-existing install.
-- [ ] Prefer a real preserved fixture over a synthetic minimal tree.
-
-Pass criteria:
-
-- [ ] existing user-owned files in `config/` survive untouched unless explicitly intended
-- [ ] managed `system/` files update correctly
-- [ ] addon activation state still resolves correctly
-- [ ] `knowledge/secrets/auth.json`, tasks, AKM data, and workspace remain intact
-- [ ] upgraded stack boots cleanly
-
-Evidence:
-
-- before/after file diff summary for `config/`, `system/`, and `state/`
-- health output after upgrade
-
----
-
-## 5. Failure And Rollback Test
-
-- [ ] Induce a controlled deployment failure.
-- [ ] Good options: missing required secret, bad image tag, invalid compose substitution.
-
-Pass criteria:
-
-- [ ] apply fails closed
-- [ ] previous known-good configuration remains recoverable
-- [ ] rollback snapshot behavior matches the documented contract
-- [ ] no user-owned config is clobbered during the failed attempt
-
-Evidence:
-
-- failing command
-- failure output
-- rollback snapshot path
-- post-failure stack status
-
----
-
-## 6. Assistant And UI Isolated Runtime Test
-
-- [ ] Run the isolated compose flow from `manual-compose-runbook.md`.
-- [ ] Build and pack a local `@openpalm/ui` tarball.
-- [ ] Boot assistant with `OP_UI_VERSION=file:/stash/...`.
-
-Verify:
+## Exact-Candidate Dry Run
 
 ```bash
-curl -fsS http://127.0.0.1:4820/health
-curl -sS -o /dev/null -D - -X HEAD http://127.0.0.1:3840/
-curl -fsS http://127.0.0.1:3840/connections/new | grep '<!doctype html>'
-curl -fsS -D - http://127.0.0.1:3840/runtime-config.json
+gh workflow run release.yml \
+  --ref main \
+  -f unit=all \
+  -f version="$RC_VERSION" \
+  -f dry_run=true
 ```
 
-Pass criteria:
+- [ ] One candidate commit is created directly atop the recorded base.
+- [ ] The candidate includes every unit stamp and the refreshed `bun.lock`.
+- [ ] The candidate bundle verifies and reports the expected candidate SHA.
+- [ ] Preflight restores and tests that SHA with the frozen lockfile.
+- [ ] Every artifact job restores the same candidate, rather than checking out a
+      moving branch.
+- [ ] Every coordinated npm package packs at the exact candidate version.
+- [ ] Assistant dry-run smoke overlays the candidate UI and skeleton tarballs
+      into the local image; no boot-time package install is assumed.
+- [ ] Portal SDK completes before Discord and Slack, and the portal image waits
+      for all three candidate package jobs.
+- [ ] Assistant, guardian, and portal local Docker builds pass.
+- [ ] No branch, registry, tag, GitHub release, or voice artifact is changed.
 
-- [ ] assistant health returns 200
-- [ ] UI `HEAD /` succeeds
-- [ ] SPA fallback serves the app shell
-- [ ] the browser requests `runtime-config.json` with `cache: no-store`
-- [ ] the locked default connection points at the host-published assistant URL
-
----
-
-## 7. Guardian Direct Ingress, Auth, And CORS
-
-- [ ] Boot guardian in the isolated stack with direct ingress enabled.
-
-Verify:
+## Live Release
 
 ```bash
-curl -fsS http://127.0.0.1:9190/health
-curl -i -sS -X OPTIONS http://127.0.0.1:9190/oc/session \
-  -H 'Origin: http://127.0.0.1:3840' \
-  -H 'Access-Control-Request-Method: POST' \
-  -H 'Access-Control-Request-Headers: authorization, content-type, x-openpalm-user'
+gh workflow run release.yml \
+  --ref main \
+  -f unit=all \
+  -f version="$RC_VERSION" \
+  -f dry_run=false
 ```
 
-- [ ] Re-run with `GUARDIAN_DIRECT_INGRESS=false`.
+- [ ] The source gate pushes only after preflight.
+- [ ] The push uses the recorded base-SHA lease and the remote branch resolves
+      to the tested candidate afterward.
+- [ ] All required npm, Docker, CLI, and Electron jobs pass.
+- [ ] Tags and GitHub releases run last.
 
-Pass criteria:
-
-- [ ] guardian health returns 200
-- [ ] allowed-origin preflight returns `204` with expected CORS headers
-- [ ] disabled direct ingress returns `404 not_found`
-- [ ] unauthenticated direct `/oc/*` traffic is rejected explicitly
-- [ ] behavior matches current source expectations, not stale published package behavior
-
-Evidence:
-
-- guardian logs
-- preflight response headers
-
----
-
-## 8. Browser-Backed Live Stack Test
-
-- [ ] Run stack-backed UI tests.
+## Post-Publish Verification
 
 ```bash
-bun run ui:test:stack
+for package in \
+  '@openpalm/lib' \
+  'openpalm' \
+  '@openpalm/ui' \
+  '@openpalm/skeleton' \
+  '@openpalm/guardian' \
+  '@openpalm/portal-sdk' \
+  '@openpalm/discord-portal' \
+  '@openpalm/slack-portal'
+do
+  npm view "${package}@${RC_VERSION}" version
+  npm view "$package" dist-tags --json
+done
+
+docker buildx imagetools inspect "openpalm/assistant:$RC_VERSION"
+docker buildx imagetools inspect "openpalm/guardian:$RC_VERSION"
+docker buildx imagetools inspect "openpalm/portal:$RC_VERSION"
 ```
 
-- [ ] If the RC is meant to represent the full browser experience, also run:
-
-```bash
-bun run ui:test:e2e
-```
-
-Pass criteria:
-
-- [ ] login succeeds
-- [ ] connections UI works
-- [ ] chat UI works
-- [ ] runtime-config-driven routing works
-- [ ] no assistant/UI artifact mismatch appears
-
----
-
-## 9. Host UI Smoke
-
-- [ ] Launch the host-served UI the way users actually do.
-
-Pass criteria:
-
-- [ ] `/host` loads
-- [ ] `/connections` loads
-- [ ] `/chat` loads
-- [ ] admin login succeeds
-- [ ] provider/auth state looks correct
-- [ ] the host UI and the assistant-container UI co-process do not conflict or drift
-
-Evidence:
-
-- screenshots of `/host`, `/connections`, `/chat`
-
----
-
-## 10. PWA Smoke
-
-- [ ] Stop the local stack and run `openpalm app`.
-- [ ] Run `bun run ui:test:pwa` and retain its Playwright output.
-- [ ] Require the automated CDP `Page.getAppManifest` and
-  `Page.getInstallabilityErrors` checks, plus the Chromium `--app` relaunch
-  proving native standalone display mode with the persisted profile.
-- [ ] Manual smoke on one supported OS/browser: install from
-  `http://localhost:${OP_HOST_UI_PORT:-3880}` through the browser's install
-  menu, close it, and relaunch it once. Record this as manual evidence, not an
-  automated assertion.
-- [ ] Test an operator-provided HTTPS origin only if one is configured for this
-  RC; there is no required `app.openpalm.dev` deployment.
-
-Pass criteria:
-
-- [ ] the automated PWA lane passes against the single production adapter-node UI build on the canonical localhost origin
-- [ ] CDP reports a valid manifest and no installability errors
-- [ ] the automated Chromium app-mode relaunch reports `display-mode: standalone` and retains IndexedDB state
-- [ ] the one manual browser-menu install closes and relaunches successfully on the same localhost origin
-- [ ] `/connections` and `/chat` load without a local stack, while `/host` and `/api/host/*` remain unavailable
-- [ ] the service worker caches only hashed build/static assets
-- [ ] page navigation, API, auth, and SSE requests remain network-only; no offline queue or offline chat is implied
-- [ ] any operator HTTPS origin uses its exact Guardian CORS entry and external Tailscale/Caddy TLS
-- [ ] no default Guardian CORS grant exists for `app.openpalm.dev`
-
-Evidence:
-
-- `bun run ui:test:pwa` output covering CDP installability and Chromium app mode
-- one screenshot and pass/fail note for the manual browser-menu install/relaunch
-
----
-
-## 11. Real Credentialed Ingress Path
-
-- [ ] Test at least one real credentialed ingress path.
-- [ ] Minimum acceptable: guardian-hosted `chat` or `api`.
-- [ ] Better: one baked portal adapter as well.
-
-Pass criteria:
-
-- [ ] authenticated request reaches guardian
-- [ ] session is created successfully
-- [ ] message flow completes successfully
-- [ ] audit logging is present
-- [ ] unauthenticated request is rejected correctly
-
----
-
-## 12. Security Boundary Verification
-
-- [ ] Inspect effective compose config and running containers.
-
-Suggested checks:
-
-```bash
-docker inspect <assistant-container>
-docker inspect <guardian-container>
-docker compose ... config
-```
-
-Pass criteria:
-
-- [ ] assistant has no Docker socket mount
-- [ ] assistant has no default path to the host admin process
-- [ ] guardian remains the only intended ingress bridge
-- [ ] admin remains loopback-only by default
-- [ ] no raw secret env values appear in inspect output
-- [ ] secrets are granted as files, not broad env files
-
----
-
-## 13. Rootless, Ownership, And Host Accessibility
-
-- [ ] Run the guardrails already used in CI.
-
-```bash
-./scripts/validate-rootless-guardrails.sh
-source scripts/rootless-smoke-fixture.sh && smoke_build_images assistant guardian portal
-OP_ROOTLESS_SMOKE_SKIP_BUILD=1 ./scripts/rootless-ownership-smoke.sh stack
-OP_ROOTLESS_SMOKE_SKIP_BUILD=1 ./scripts/rootless-ownership-smoke.sh portal-discord
-OP_ROOTLESS_SMOKE_SKIP_BUILD=1 ./scripts/rootless-host-swap-smoke.sh
-```
-
-Pass criteria:
-
-- [ ] no root-owned files appear under bind-mounted `OP_HOME`
-- [ ] host user can still read and write expected files after boot
-- [ ] secrets keep strict file modes
-- [ ] no ownership-repair surprise appears during host swap
-
----
-
-## 14. Cross-Environment Manual Checks
-
-- [ ] Validate on native Linux.
-- [ ] Validate on at least one Docker Desktop-style environment if that platform is supported.
-
-Pass criteria:
-
-- [ ] install/start/upgrade works without ownership or mount surprises
-- [ ] any unsupported environment is explicitly waived with noted risk
-
-Evidence:
-
-- platform tested
-- filesystem/runtime notes
-- any deviations or waivers
-
----
-
-## 15. Addon And Overlay Scenario Matrix
-
-- [ ] Test no addons enabled.
-- [ ] Test `chat` only.
-- [ ] Test `api` only.
-- [ ] Test a representative `custom.compose.yml` overlay.
-- [ ] Test addon enable and disable round trip.
-
-Pass criteria:
-
-- [ ] compose profile resolution matches enabled addon state
-- [ ] expected services appear and unexpected services do not
-- [ ] no stale service lingers after disable
-- [ ] user overlay still composes cleanly with the managed file set
-
----
-
-## 16. CLI Binary Smoke
-
-- [ ] Test at least one produced CLI binary artifact.
-
-Verify:
-
-```bash
-openpalm --version
-openpalm ui serve --help
-openpalm install --help
-```
-
-Pass criteria:
-
-- [ ] reported version matches `RC_VERSION`
-- [ ] binary starts and prints expected help/version text
-- [ ] install/start flow works from the built artifact, not just repo source
-
----
-
-## 17. Electron Installer Smoke
-
-- [ ] Install and launch the Electron build that `unit=all` will ship.
-
-Pass criteria:
-
-- [ ] app launches successfully
-- [ ] packaged skeleton resolution works
-- [ ] expected container-served and host UI routing works
-- [ ] no packaged/runtime asset mismatch appears
-- [ ] no repo checkout is required for normal operation
-
-Evidence:
-
-- installer artifact name
-- screenshots of first successful launch
-
----
-
-## 18. Auth, Permissions, And Policy Paths
-
-- [ ] Verify admin auth success and failure.
-- [ ] Verify guardian auth success and failure.
-- [ ] Verify denied-origin and allowed-origin direct-ingress behavior.
-- [ ] Verify content-validation fail-closed behavior if this release touched it materially.
-
-Pass criteria:
-
-- [ ] every failure path is explicit and safe
-- [ ] no bypassable permission/auth path is found
-- [ ] no unexpected leniency appears on direct ingress or browser-facing surfaces
-
----
-
-## 19. Post-Publish npm Verification
-
-- [ ] Verify each published npm artifact from the registry.
-
-```bash
-npm view @openpalm/lib@"$RC_VERSION" version
-npm view openpalm@"$RC_VERSION" version
-npm view @openpalm/ui@"$RC_VERSION" version
-npm view @openpalm/guardian@"$RC_VERSION" version
-npm view @openpalm/skeleton@"$RC_VERSION" version
-npm view @openpalm/discord-portal@"$RC_VERSION" version
-npm view @openpalm/slack-portal@"$RC_VERSION" version
-```
-
-- [ ] Record dist-tags for key artifacts.
-
-```bash
-npm view @openpalm/guardian dist-tags --json
-npm view @openpalm/skeleton dist-tags --json
-```
-
-Pass criteria:
-
-- [ ] every expected package exists at the exact RC version
-- [ ] dist-tags match prerelease expectations
-- [ ] the published `@openpalm/ui` package contains the same manifest/service-worker-enabled adapter-node build used by the local app and other UI surfaces
-
----
-
-## 20. Post-Publish Docker Verification
-
-- [ ] Verify each image tag from the registry.
-
-```bash
-docker buildx imagetools inspect openpalm/assistant:"$RC_VERSION"
-docker buildx imagetools inspect openpalm/guardian:"$RC_VERSION"
-docker buildx imagetools inspect openpalm/portal:"$RC_VERSION"
-```
-
-Pass criteria:
-
-- [ ] each tag resolves successfully
-- [ ] manifest metadata looks correct
-- [ ] no `latest` tag was created for the prerelease
-
----
-
-## 21. Post-Publish GitHub Tag And Release Verification
-
-- [ ] Verify expected tags exist.
-- [ ] For `unit=all`, verify:
-  - `platform-$RC_VERSION`
-  - `portals-$RC_VERSION`
-  - `assistant-$RC_VERSION`
-  - `guardian-$RC_VERSION`
-  - `electron-$RC_VERSION`
-  - `$RC_VERSION`
-- [ ] Verify the GitHub release exists and expected assets are attached.
-
-Pass criteria:
-
-- [ ] every expected tag exists
-- [ ] tags point at the intended commit
-- [ ] release assets are present and downloadable
-
----
-
-## 22. Post-Publish Shipped-Artifact Boot Test
-
-- [ ] Re-run the isolated stack against the actual published RC artifacts.
-- [ ] Use the published npm packages and published images, not local source.
-
-Pass criteria:
-
-- [ ] runtime behavior matches pre-publish expectations
-- [ ] no guardian/skeleton/UI artifact drift appears
-- [ ] health, UI serving, auth, and direct-ingress checks still pass
-
----
-
-## Risk Focus
-
-If time is limited, prioritize these in order:
-
-1. shipped guardian/skeleton/UI artifact behavior
-2. upgrade plus rollback behavior
-3. rootless ownership and host accessibility
-4. browser-backed live stack flow
-5. real ingress auth/CORS/permission behavior
-6. Electron and CLI packaged artifact sanity
-
----
+- [ ] All eight npm versions resolve.
+- [ ] Dist-tags are correct: `rc`, `beta`, `next` for other prereleases, or
+      `latest` for stable.
+- [ ] All three standard image tags resolve; prereleases did not move Docker
+       `latest`.
+- [ ] Stable Docker `latest` aliases match the immutable tags and were promoted
+      only by the final release job.
+- [ ] All six expected `unit=all` tags point to the tested candidate SHA.
+- [ ] Every GitHub release exists with downloadable assets and checksums.
+- [ ] A retry refreshed existing assets rather than duplicating or silently
+      skipping them.
+- [ ] Any GitHub release create/upload error failed visibly.
+
+## Signoff
+
+- [ ] Workflow URL, base SHA, candidate SHA, version, and unit are recorded.
+- [ ] Local, dry-run, and post-publish evidence is attached.
+- [ ] Any reviewed waivers are explicit.
 
 ## Related Documents
 
 - [Release Management](release-management.md)
-- [Manual Compose Runbook](manual-compose-runbook.md)
-- [Core Principles](../technical/core-principles.md)
-- [Environment Variables, Mounts, and Network Wiring](../technical/environment-and-mounts.md)
+- [RC Release Runbook](release-rc-runbook.md)
+- [Testing Workflow](../technical/testing-workflow.md)
 - [Release Architecture](../technical/release-architecture.md)
+- [Core Principles](../technical/core-principles.md)

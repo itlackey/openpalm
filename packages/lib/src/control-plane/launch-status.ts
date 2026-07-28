@@ -21,7 +21,7 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { execFile } from "node:child_process";
 import { parseEnvFile } from "./env.js";
-import { secretsDir, stackDirFor, stackEnvFile } from "./home.js";
+import { privateSecretsDir, stackDirFor, stackEnvFile } from "./home.js";
 import { checkDocker, checkDockerCompose, dockerBin } from "./docker.js";
 
 export type LocalStackState =
@@ -181,7 +181,7 @@ export function classifyLocalInstall(stackDir: string, homeDir: string): "not_in
   const env = parseEnvFile(stackEnvFile(homeDir));
   if (!hasCompose && env.OP_SETUP_COMPLETE !== "true") return "not_installed";
   if (env.OP_SETUP_COMPLETE === "true") return "installed";
-  const secrets = secretsDir(homeDir);
+  const secrets = privateSecretsDir(homeDir);
   const hasGuardianTokens =
     existsSync(join(secrets, "op_guardian_admin_token")) && existsSync(join(secrets, "op_guardian_mcp_token"));
   if (hasCompose && hasGuardianTokens) return "installed";

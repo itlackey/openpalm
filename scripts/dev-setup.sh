@@ -240,7 +240,7 @@ EOF
 	# (consumed only by the guardian/portals and this service's own server
 	# process, never by the assistant agent) — seeded under private/secrets/,
 	# NOT knowledge/secrets/ (bind-mounted wholesale into the assistant at
-	# /stash). See docs/public-seams-review.md §G1.
+	# /stash).
 	private_secrets_dir="$DEV_ROOT/private/secrets"
 	mkdir -p "$private_secrets_dir"
 	chmod 700 "$private_secrets_dir"
@@ -305,7 +305,7 @@ if [[ ${#enabled_addons[@]} -gt 0 ]]; then
 fi
 
 # G1: all of these are DELEGATED secrets (guardian/portal-only) — seeded
-# under private/secrets/, not knowledge/secrets/. See docs/public-seams-review.md §G1.
+# under private/secrets/, not knowledge/secrets/.
 private_secrets_dir="$DEV_ROOT/private/secrets"
 mkdir -p "$private_secrets_dir"
 chmod 700 "$private_secrets_dir"

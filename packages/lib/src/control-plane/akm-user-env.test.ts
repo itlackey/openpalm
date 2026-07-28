@@ -70,25 +70,28 @@ describe("akm user-env helpers", () => {
     expect(lines.length).toBe(1);
   });
 
-  it("writeUserEnvKey single-quotes values with spaces/special chars (shell-source-safe, dotenv round-trips)", () => {
+  it("writeUserEnvKey uses dotenv-safe quoting and round-trips special values", () => {
     writeUserEnvKey(state, "TOKEN", "sk-simple123");
     writeUserEnvKey(state, "OWNER", "Ada Lovelace");
     writeUserEnvKey(state, "URL", "https://x.example/p?a=1&b=2");
     writeUserEnvKey(state, "NOTE", "a#b$c");
+    writeUserEnvKey(state, "CONTACT", "O'Brien");
+    writeUserEnvKey(state, "MULTILINE", "line one\nline two");
 
     // dotenv round-trip (what akm env run / the admin endpoint parse).
     const parsed = readUserEnvSync(state);
     expect(parsed.OWNER).toBe("Ada Lovelace");
     expect(parsed.URL).toBe("https://x.example/p?a=1&b=2");
     expect(parsed.NOTE).toBe("a#b$c");
+    expect(parsed.CONTACT).toBe("O'Brien");
+    expect(parsed.MULTILINE).toBe("line one\nline two");
 
-    // Raw lines: simple tokens stay bare; anything with spaces/shell-meta is
-    // POSIX single-quoted so the entrypoint's `set -a; . user.env` is safe
-    // (no word-splitting, no `&`/`$` interpretation, no injection).
+    // Raw lines stay readable while values with dotenv metacharacters are quoted.
     const raw = readFileSync(userEnvPathSync(state), "utf-8");
     expect(raw).toContain("TOKEN=sk-simple123\n");
-    expect(raw).toContain("OWNER='Ada Lovelace'\n");
-    expect(raw).toContain("URL='https://x.example/p?a=1&b=2'\n");
+    expect(raw).toContain("OWNER=Ada Lovelace\n");
+    expect(raw).toContain("URL=https://x.example/p?a=1&b=2\n");
+    expect(raw).toContain('CONTACT="O\'Brien"\n');
   });
 
   it("deleteUserEnvKey removes only the named key", () => {

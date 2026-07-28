@@ -11,7 +11,7 @@
 
 OpenPalm is a self-hosted personal AI platform built on Docker Compose and OpenCode. It manages a stack of containers orchestrated by the host CLI or an optional admin web UI.
 
-One always-on core container: **assistant** (OpenCode runtime — also hosts the scheduler co-process and uses the akm CLI for memory/skills/lessons via a shared akm stash). The **guardian** (principal-authenticated ingress + content validation, ON by default in the shipped compose) is not a core container — it is profile-gated in `portals.compose.yml` and is deployed only when a guardian-ingress addon (`chat`, `api`, `discord`, `slack`, or `gateway`) is enabled. Portal-style ingress addons and services (Ollama, etc.) are added as compose overlays.
+One always-on core container: **assistant** (OpenCode runtime, image-baked non-admin UI, BusyBox `crond`, and akm CLI memory/skills/lessons over the shared stash). The **guardian** (principal-authenticated ingress + content validation, ON by default in code and shipped Compose) is not a core container; it is profile-gated in `portals.compose.yml` and deployed only when a guardian-ingress addon (`chat`, `api`, `discord`, `slack`, or `gateway`) is enabled. Portal-style ingress addons and services such as Ollama are added through Compose.
 
 Repo layout convention:
 - `packages/*` — app/package source workspaces
@@ -33,12 +33,12 @@ See [`docs/technical/core-principles.md`](docs/technical/core-principles.md) for
 
 ## Architecture
 
-- **Lib** (`packages/lib/`) — Shared control-plane library (`@openpalm/lib`). All portable lifecycle, staging, secrets, portal discovery, connections, scheduler logic. Both CLI and UI import from this package.
+- **Lib** (`packages/lib/`) — Shared control-plane library (`@openpalm/lib`). All portable lifecycle, staging, secrets, portal discovery, connections, access-toggle, and task-file logic. Both CLI and UI import from this package.
 - **CLI** (`packages/cli/`) — Host-side orchestrator. Manages Docker Compose directly. Serves setup wizard during install. Self-sufficient without UI.
-- **UI** (`packages/ui/`) — SvelteKit app: operator web UI + API. Served as a host process by `openpalm ui serve` (no container). Accesses Docker socket directly on the host.
-- **Guardian** (`packages/guardian/`, `@openpalm/guardian`; image build assets in `containers/guardian/`) — Bun HTTP server: a **transparent 1:1 OpenCode reverse proxy** (`/oc/*` forwards native OpenCode — method/path/query/body/SSE — untouched) with fail-closed policy overlays: principal auth (HTTP Basic + constant-time sha256 token compare, `auth.ts`), SQLite-persisted session/permission ownership, rate limiting, and content validation of inbound messages. `GUARDIAN_CONTENT_VALIDATION` ships **ON by default** in `portals.compose.yml` (`${GUARDIAN_CONTENT_VALIDATION:-1}`); the guardian package's own fallback when the var is fully unset is off, but every shipped install sets it, so the stage is on unless an operator explicitly opts out.
-- **Assistant** (`containers/assistant/`) — OpenCode runtime with tools/skills. No Docker socket and no admin network path. When UI is absent, only the akm-backed memory/knowledge tools are available. Memory/skills/lessons are served by the akm CLI (akm-opencode plugin) via a shared akm stash bind-mounted from `~/.openpalm/knowledge/`.
-- **Scheduler** — OS cron daemon (`crond`) started by the assistant container entrypoint. No network port. Automations are AKM YAML task files (`*.yml`) in `knowledge/tasks/`; `akm tasks sync` registers them with cron at container startup and re-syncs every 60 s to pick up new files.
+- **UI** (`packages/ui/`) — One SvelteKit adapter-node app. Electron and CLI host launches can carry admin capability and use the host Docker socket; the assistant image runs the same build as a non-admin child with no socket or host-control capability.
+- **Guardian** (`packages/guardian/`, `@openpalm/guardian`; image build assets in `containers/guardian/`) — Bun HTTP server: a **transparent 1:1 OpenCode reverse proxy** (`/oc/*` forwards native OpenCode method/path/query/body/SSE) with fail-closed policy overlays for principal auth, SQLite-persisted ownership, rate limiting, event filtering, and content validation. `GUARDIAN_CONTENT_VALIDATION` defaults ON in package code and shipped Compose; only explicit `0`, `false`, `no`, or `off` disables it. Escalated moderator failure blocks the message.
+- **Assistant** (`containers/assistant/`) — OpenCode runtime with tools/skills and the local UI child. No Docker socket, admin credential, or admin network path. Memory/skills/lessons use the akm-opencode plugin and the shared `knowledge/` stash. The entrypoint does not source `knowledge/env/user.env`; scoped tools load it on demand.
+- **Scheduler** — OS cron daemon (`crond`) started by the assistant container entrypoint. No network port. Automations are AKM YAML task files (`*.yml`) in `knowledge/tasks/`; `akm tasks sync` registers them at startup and every 60 s. Supported targets are `command`, `prompt`, and `workflow`.
 - **Portal runtime** (`containers/portal/`) — Unified `portal` image build for baked first-party adapters.
 - **Portal adapters** (`portals/discord/`, `portals/slack/`) — Translate external protocols into guardian `/oc/*` traffic. The OpenAI-compatible API now runs from the guardian image.
 - **Stack** (`packages/skeleton/`) — Repo-shipped skeleton that seeds `OP_HOME` on install/update. Managed compose files (`core.compose.yml`, `services.compose.yml`, `portals.compose.yml`) ship in `packages/skeleton/system/stack/` and materialize to `~/.openpalm/system/stack/` (overwritten on reconcile); the user overlay ships as `packages/skeleton/config/stack/custom.compose.yml` and materializes to `~/.openpalm/config/stack/` (seeded once). Enabled first-party addons are tracked in the app-written record `~/.openpalm/state/stack.env` via `OP_ENABLED_ADDONS` and resolved to Compose `--profile addon.<name>` arguments; custom services go in `custom.compose.yml`.
@@ -51,7 +51,7 @@ See [`docs/technical/core-principles.md`](docs/technical/core-principles.md) for
 
 ```bash
 # UI (SvelteKit UI + API)
-cd packages/ui && npm install && npm run dev     # Dev server on :8100
+cd packages/ui && npm install && npm run dev     # Dev server on :5173
 npm run build                                       # Production build
 npm run check                                       # svelte-check + TypeScript
 
@@ -60,6 +60,7 @@ cd packages/guardian && bun install && bun run src/server.ts
 
 # Root shortcuts
 bun run ui:dev     # Runs UI dev from root
+bun run ui:dev:isolated # Isolated non-admin UI/API process on :3880
 bun run ui:build   # Builds UI from root
 bun run ui:check   # svelte-check + TypeScript for UI
 bun run guardian:dev     # Runs guardian server
@@ -95,7 +96,6 @@ The project has ~100 test files across all packages using Bun test, Vitest, and 
 | Playwright (UI integration) | `bun run ui:test:e2e` | packages/ui integration tests (no browser route mocks) |
 | Both UI | `bun run ui:test` | Vitest then Playwright (requires running build) |
 | Playwright (stack) | `bun run ui:test:stack` | Stack-dependent integration tests (needs running stack + `OP_UI_LOGIN_PASSWORD`) |
-| Playwright (LLM) | `bun run ui:test:llm` | LLM-dependent pipeline tests (needs stack + `OP_UI_LOGIN_PASSWORD` + API keys) |
 
 ```bash
 # Run guardian tests
@@ -149,7 +149,7 @@ Read these before making significant changes. They are the authoritative sources
 | [`docs/technical/code-quality-principles.md`](docs/technical/code-quality-principles.md) | Engineering invariants, quality contracts |
 | [`docs/technical/bunjs-rules.md`](docs/technical/bunjs-rules.md) | Bun-specific implementation rules, built-in API preference list |
 | [`docs/technical/sveltekit-rules.md`](docs/technical/sveltekit-rules.md) | SvelteKit-specific rules, server/client boundaries, routing |
-| [`docs/technical/api-spec.md`](docs/technical/api-spec.md) | Full Admin API spec, endpoint contracts, error shapes |
+| [`docs/technical/api-spec.md`](docs/technical/api-spec.md) | Admin API conventions, security gates, and route-map pointer |
 | [`docs/technical/environment-and-mounts.md`](docs/technical/environment-and-mounts.md) | Every env var and mount point per service |
 | [`docs/technical/opencode-configuration.md`](docs/technical/opencode-configuration.md) | OpenCode integration, tools, plugins, startup flow |
 | [`docs/technical/package-management.md`](docs/technical/package-management.md) | Single lock file policy and dependency workflow |
@@ -161,7 +161,7 @@ Read these before making significant changes. They are the authoritative sources
 ### Language & Runtime
 
 - **TypeScript** everywhere (`"strict": true`, no `any` for untrusted data)
-- **Bun** for guardian, portals, and the scheduler co-process; **Node/Vite** for admin (SvelteKit + `adapter-node`)
+- **Bun** for guardian and portals; **BusyBox `crond`** for scheduled tasks; **Node/Vite** for the SvelteKit `adapter-node` UI
 - All packages use `"type": "module"` (ES modules only)
 
 ### Imports
@@ -236,7 +236,7 @@ Full detail in [`docs/technical/core-principles.md`](docs/technical/core-princip
 
 - **File assembly, not rendering.** Write whole files; no string interpolation or template generation.
 - **`config/` is user-owned.** Automatic lifecycle operations are non-destructive for existing user files and only seed missing defaults. Allowed writers: user direct edits, explicit UI/API config actions, and — for exactly one file — the assistant itself. The assistant maintains its own `config/assistant/user-profile.md` (what it has learned about the operator) and writes nothing else in the tree. It still holds no admin credential and has no default network path to the admin process (Security invariant 3), so this is a file write inside its own mounted config dir, not a control-plane action.
-- **Secret boundary.** `state/stack.env` is non-secret runtime configuration only. Secret values live as files under `knowledge/secrets/` and are granted per service through Compose `secrets:`. `knowledge/env/user.env` is AKM env backing state, not a Compose env file.
+- **Secret boundary.** `state/stack.env` is non-secret runtime configuration only. Provider `knowledge/secrets/auth.json` remains assistant-readable. Delegated UI/OpenCode-server/Guardian/API/portal/bot credentials live under `private/secrets/`, never in assistant `/stash`, and are granted as named Compose secret files. `knowledge/env/user.env` is AKM env backing state loaded on demand, not a Compose env file or entrypoint source.
 - **Host CLI or UI is the orchestrator.** CLI manages Docker Compose directly on the host. UI provides a web UI as a host process (no container, no docker-socket-proxy).
 - **Shared control-plane library (`@openpalm/lib`) is the single source of truth.** All portable control-plane logic lives in `packages/lib/`. CLI and UI both import from this package. Never duplicate control-plane logic in a consumer.
 - **Guardian-only ingress.** All portal traffic must enter through the guardian (`/oc/*` proxy, ownership checks, rate limiting).
@@ -244,7 +244,8 @@ Full detail in [`docs/technical/core-principles.md`](docs/technical/core-princip
 - **LAN-first by default.** Nothing is publicly exposed without explicit user opt-in.
 - **Add a portal** by enabling its first-party addon name in the app-written record `~/.openpalm/state/stack.env` (`OP_ENABLED_ADDONS`) or adding a service block to `config/stack/custom.compose.yml` (for custom portals) — no code changes.
 - **No shell interpolation.** Docker commands use `execFile` with argument arrays, never shell strings.
-- **Docker dependency resolution pattern.** Guardian and portal Dockerfiles install each service's own deps directly. UI is a host binary — no Docker build needed.
+- **Docker dependency resolution pattern.** Assistant, Guardian, and portal images bake their runtime artifacts and dependencies. The UI has no standalone container image; the assistant image bakes its package build.
+- **Package versions.** Internal workspace references may use `workspace:*`; `bun pm pack` resolves them. Platform manifests are stamped in lockstep, while portal SDK and adapters form the portal release unit.
 
 ---
 
@@ -259,9 +260,11 @@ The layout is split into trees by **ownership** so lifecycle sync can overwrite 
 | `config/` | User | Non-secret config: assistant + guardian OpenCode config (`config/assistant/`, `config/guardian/`); the `custom.compose.yml` overlay lives under `config/stack/` |
 | `system/` | Managed | Release-shipped assets overwritten wholesale on reconcile: managed compose files (`system/stack/`) + managed OpenCode config (`system/assistant/`, `system/guardian/`) |
 | `state/` | App | App-written records: version pins, enabled add-ons, channel, setup completion (`state/stack.env`, `state/host-identity.json`) |
-| `knowledge/` | User/Services | AKM knowledge (skills, env, secrets, agents); `knowledge/env/user.env` holds user-managed secrets; `knowledge/tasks/` holds scheduled automation task files. Stack config is NOT here — it is `state/stack.env`, kept out of this tree because `knowledge/` is bind-mounted into the assistant at `/stash` |
+| `knowledge/` | User/Services | AKM knowledge (skills, env, tasks, agents) plus provider `knowledge/secrets/auth.json`; `knowledge/env/user.env` is loaded by scoped tools on demand. Stack config is NOT here because this tree is bind-mounted into the assistant at `/stash` |
 | `data/` | Services/System | Persistent data: assistant, guardian, akm (`data/akm/cache/`, `data/akm/data/`), logs, backups, rollback |
 | `workspace/` | User | Shared assistant work area (bind-mounted at `/work`) |
+| `private/` | App | Delegated credentials outside assistant `/stash`; included in backup/purge/ownership scope |
+| `cache/` | System | Regenerable assistant/guardian caches; excluded from backups and ownership repair |
 | `~/.cache/openpalm/` | System | Ephemeral cache (outside `OP_HOME`) |
 
 Dev mode uses `.dev/` with the same subdirectory structure.
@@ -298,7 +301,6 @@ Before submitting any change:
 | `packages/ui/src/lib/server/docker.ts` | Docker compose wrapper (re-exports lib with preflight enforcement) |
 | `packages/ui/src/lib/server/helpers.ts` | Shared request/response utilities |
 | `packages/ui/src/lib/types.ts` | Shared TypeScript types |
-| `packages/ui/src/lib/auth.ts` | Auth utilities |
 | `packages/ui/src/lib/api.ts` | Barrel re-exporting the per-domain admin API clients in `packages/ui/src/lib/api/*` (`core`, `chat`, `voice`, `versions`, `akm`, …) |
 | `packages/cli/src/lib/cli-state.ts` | CLI state helpers (ensureValidState) |
 | `packages/cli/src/commands/install.ts` | CLI install (setup wizard + compose up) |

@@ -19,8 +19,7 @@
 # minification, and bundler changes. It intentionally does NOT grep
 # packages/electron/dist/main.js or packages/ui/build/server/chunks/* for a
 # sentinel symbol name — a symbol name in a build artifact is not a boundary,
-# it is a string that renames away for free. See bullshit-claude-wrote.md §5
-# for why that half of this script was removed.
+# it is a string that renames away for free.
 #
 # Run locally: ./scripts/validate-thin-harness-boundary.sh
 #

@@ -21,6 +21,8 @@ extraResources:
   - from: ../../packages/skeleton
     to: openpalm-skeleton
     filter: "**/*"
+  - from: ../../LICENSE
+    to: LICENSE
 
 # NOTE: OpenPalm desktop builds are UNSIGNED (no Apple/Windows code-signing certs).
 # To keep install as frictionless as possible we ship plain archives, not OS

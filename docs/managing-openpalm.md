@@ -1,623 +1,269 @@
-# Managing OpenPalm — TLDR
+# Managing OpenPalm
 
-This document covers day-to-day administration: configuration, portals, secrets,
-access control, and extensions. For architecture rationale see
-[core-principles.md](./technical/core-principles.md).
+OpenPalm stores its installation under one `OP_HOME` directory, normally
+`~/.openpalm/`. The host CLI and host admin UI manage Docker Compose; the
+assistant container cannot manage the stack.
 
----
+## Ownership Map
 
-## One Rule to Remember
-
-**`~/.openpalm/` (`OP_HOME`) is your persistent home directory.**
-
-You can manage config files in whichever way is most convenient:
-- Edit files directly
-- Use explicit config actions in the admin UI/API
-- Ask the assistant to run authenticated, allowlisted admin API config actions on your behalf
-
-All three paths are valid ways to write files in `~/.openpalm/config/`. In
-normal operation you do not edit `data/` directly, and stack runtime files live
-under `~/.openpalm/config/stack/`.
-
-Keep this split in mind:
-- `~/.openpalm/config/stack/services.compose.yml` contains first-party optional services
-- `~/.openpalm/config/stack/portals.compose.yml` contains first-party optional portals and the portal-scoped guardian
-- `~/.openpalm/config/stack/custom.compose.yml` contains user custom services and overlays
-- `~/.openpalm/state/stack.env` contains non-secret runtime config, including `OP_ENABLED_ADDONS`
-- `~/.openpalm/knowledge/tasks/` contains AKM automation task files
-
----
-
-## Directory Map
-
-```
-~/.openpalm/                          ← YOUR OPENPALM HOME
-├── config/
-│   ├── stack/
-│   │   ├── core.compose.yml          # Base compose file for the runtime stack
-│   │   ├── services.compose.yml      # First-party optional services, profile-gated
-│   │   ├── portals.compose.yml       # First-party optional portals, profile-gated
-│   │   ├── custom.compose.yml        # User custom services and overlays
-│   ├── assistant/
-│   │   ├── opencode.json             # OpenCode config (LLM provider, settings)
-│   │   ├── tools/                    # Drop custom tools here
-│   │   ├── plugins/                  # Drop custom plugins here
-│   │   └── skills/                   # Drop custom skills here
-│   └── akm/
-│       └── config.json               # AKM config (LLM, embedding settings)
-│
+```text
+~/.openpalm/
+├── config/                         # user-owned, non-secret
+│   ├── assistant/                  # assistant OpenCode global config
+│   ├── guardian/                   # Guardian OpenCode global/model config
+│   ├── akm/                        # AKM config
+│   └── stack/custom.compose.yml    # only user-owned Compose overlay
+├── system/                         # managed; refreshed by lifecycle operations
+│   ├── assistant/                  # managed assistant config -> /etc/opencode
+│   ├── guardian/                   # managed Guardian config -> /etc/opencode
+│   └── stack/
+│       ├── core.compose.yml
+│       ├── services.compose.yml
+│       └── portals.compose.yml
+├── state/stack.env                 # sole non-secret Compose env file
+├── private/secrets/                # delegated service credentials
 ├── knowledge/
-│   ├── env/
-│   │   ├── user.env                  # AKM env backing file (env:user) for user-managed config
-│   │   └── stack.env                 # System-managed non-secret Compose --env-file (env:stack)
-│   ├── secrets/                      # System-managed service secrets + auth.json (0700 dir, 0600 files)
-│   └── tasks/                        # AKM automation task files
-│
-├── data/                             ← DURABLE SERVICE DATA
-│   ├── assistant/
-│   ├── guardian/
-│   ├── akm/
-│   │   ├── cache/                     # AKM cache and per-run task logs
-│   │   └── data/                      # AKM databases and durable data
-│   ├── logs/                         # Audit and debug logs
-│   ├── backups/                      # Lifecycle backup snapshots
-│   └── rollback/                     # Config rollback snapshots
-│
-└── workspace/                        # Shared work area
+│   ├── secrets/auth.json           # assistant-readable provider auth
+│   ├── env/user.env                # AKM env, loaded on demand
+│   └── tasks/                      # AKM task files
+├── data/                           # durable service data and backups
+├── cache/                          # regenerable container caches
+└── workspace/                      # assistant /work mount
 ```
 
----
+Automatic install/update operations may replace `system/` and update
+app-owned `state/`. Existing files in `config/` remain user-owned.
+
+## Common Lifecycle Commands
+
+```bash
+openpalm status
+openpalm start
+openpalm stop
+openpalm restart
+openpalm logs assistant
+openpalm update
+openpalm validate
+openpalm doctor
+```
+
+Run `openpalm admin` for the loopback-only host management UI. Bare `openpalm`
+starts the normal host UI supervisor and ensures an installed stack is running.
+
+## Addons
+
+First-party addons are declared in managed `services.compose.yml` and
+`portals.compose.yml`. Their enabled IDs are stored in `OP_ENABLED_ADDONS` in
+`state/stack.env`.
+
+```bash
+openpalm addon list
+openpalm addon enable discord
+openpalm addon disable discord
+```
+
+OpenPalm commands translate enabled IDs to profiles such as `addon.discord`.
+Raw Docker Compose does not translate `OP_ENABLED_ADDONS`; pass every active
+profile explicitly or set `COMPOSE_PROFILES` yourself.
+
+Custom services and overrides belong only in:
+
+```text
+~/.openpalm/config/stack/custom.compose.yml
+```
+
+See the [Manual Compose Runbook](operations/manual-compose-runbook.md) before
+operating the stack without the control plane.
 
 ## Secrets
 
-Secrets are split by ownership and grant boundary:
+The two runtime secret areas have different trust boundaries:
 
-- **`~/.openpalm/knowledge/env/user.env`** -- AKM env backing file for user-managed secrets; never passed to Docker Compose.
-- **`~/.openpalm/knowledge/secrets/`** -- System-managed service secret files granted through Compose `secrets:` and exposed as `*_FILE` variables.
-- **`~/.openpalm/state/stack.env`** -- System-managed non-secret runtime env: ports, paths, image tags, hardware profile selections, and other infrastructure values.
+| Path | Access |
+|---|---|
+| `private/secrets/` | UI, Guardian, compatible API, portals, bots, and OpenCode server only, through narrow grants |
+| `knowledge/secrets/auth.json` | Assistant OpenCode provider credentials; Guardian gets a narrow copy through Compose secrets |
 
-```env
-# ~/.openpalm/state/stack.env
-OP_HOME=/home/me/.openpalm
-OP_IMAGE_TAG=latest
-OP_UI_PORT=3800
-OP_ASSISTANT_PORT=3810
-```
+`knowledge/env/user.env` is available through `akm env:user` on demand. The
+assistant entrypoint does not source it, so arbitrary user-env values do not
+enter the OpenCode server or every tool subprocess.
 
-System-managed secret files are generated by setup/admin tooling under
-`knowledge/secrets/` with narrow service grants. `stack.env` must not contain
-secret-like keys such as tokens, passwords, API keys, or portal HMAC secrets.
+`state/stack.env` is non-secret. Never put passwords, tokens, API keys, or
+credential JSON there. See [Password & Secret Management](password-management.md).
 
-**After editing** -- rerun the same compose command or restart the services that
-consume the changed values. The standard wrapper includes `state/stack.env`
-for non-secret Compose substitution automatically.
+## Access Controls
 
-LLM and embedding configuration lives in `config/akm/config.json` and is managed
-via the AKM tab in the admin UI -- no manual file editing required.
+Setup uses four independent booleans:
 
----
+| Setup field | Purpose |
+|---|---|
+| `access.networkAccess` | Publish the assistant UI to the local network |
+| `access.assistantDirect` | Publish OpenCode directly with generated authentication |
+| `access.guardianNetwork` | Publish Guardian direct ingress |
+| `access.guardianOpenaiApi` | Publish the Guardian-hosted compatible API |
 
-## Addons (Portals, Services, Integrations)
-
-An addon has two states:
-- available as a built-in service in `services.compose.yml` or `portals.compose.yml`
-- enabled at runtime via `OP_ENABLED_ADDONS` in `~/.openpalm/state/stack.env`
-
-OpenPalm resolves enabled first-party addon names to Compose profiles. Custom or multi-instance services belong in `config/stack/custom.compose.yml`.
-
-Portals, services, and integrations are all addons.
-
-Current shipped network model:
-
-- first-party portals join `portal_net` by default; `portal_net` is the primary ingress network for portal adapters
-- guardian bridges addon ingress to `assistant_net`
-- public exposure only happens when you change the host bind policy (e.g. a non-loopback `OP_BIND_ADDRESS`) or a user overlay publishes ports beyond loopback
-
-### Enable/disable an addon
-
-Addons are managed via `/api/host/addons` routes. Example:
-
-```bash
-# Authenticate first to obtain an op_session cookie (Phase 2+).
-curl -c cookies.txt -X POST http://localhost:3880/api/auth/login \
-  -H "Content-Type: application/json" \
-  -d "{\"password\":\"$OP_UI_LOGIN_PASSWORD\"}"
-
-curl -b cookies.txt -X POST http://localhost:3880/api/host/addons/chat \
-  -H "Content-Type: application/json" \
-  -d '{"enabled":true}'
-```
-
-This updates `OP_ENABLED_ADDONS` in `state/stack.env`; runtime Compose uses the fixed compose files plus the derived profiles.
-
-### Configure an addon
-
-- Put secret values in `~/.openpalm/knowledge/secrets/` and non-secret settings in `~/.openpalm/state/stack.env`
-- Rerun your compose command or restart affected services
-
-Addon config is schema-driven and file-based. There is no addon config block separate from Compose plus `stack.env`.
-
-### Add an addon manually
-
-1. Enable first-party addons with `openpalm addon enable <name>` or the admin UI.
-2. Author custom or multi-instance services in `~/.openpalm/config/stack/custom.compose.yml`.
-3. Run preflight to confirm the merge is clean, then rerun `docker compose`.
-
-### Uninstall an addon
-
-Disable first-party addons with `openpalm addon disable <name>` or the admin UI. Remove custom services from `custom.compose.yml`, then rerun `docker compose` without them.
-
----
+The resulting listener settings are flat service-specific bind variables. There
+is no global cascade, SSH listener, or separate chat port. Voice stays
+loopback-only on port `8880`.
 
 ## Automations
 
-You can schedule recurring tasks — like backups, cleanup scripts, or health checks —
-using AKM task files in `~/.openpalm/knowledge/tasks/`.
+Assistant automations are AKM YAML task files under
+`knowledge/tasks/`. The assistant entrypoint starts BusyBox `crond`, runs
+`akm tasks sync` at boot, and re-syncs every 60 seconds.
 
-Automations are YAML files (`*.yml`). The assistant container starts
-`crond` at boot and calls `akm tasks sync` to register tasks with the OS scheduler.
-New task files written by admin are picked up within 60 seconds.
+Task targets are limited to `command`, `prompt`, or `workflow`.
 
-### How to add an automation
-
-1. Install one from the Registry tab in the admin console, or
-2. Create a `.yml` file in `~/.openpalm/knowledge/tasks/` directly
-
-**Example** — pull the latest container images every Sunday at 3 AM:
+### Prompt Task
 
 ```yaml
-schedule: "0 3 * * 0"
+schedule: "0 9 * * *"
 enabled: true
-description: Pull latest images and recreate containers weekly
-tags: [openpalm, containers]
-timeoutMs: 300000
-command: ["sh", "-c", "openpalm update"]
+description: Daily briefing
+prompt: Summarize my priorities for today.
 ```
 
-OpenPalm ships several ready-to-use automations in `~/.openpalm/knowledge/tasks/` — install them
-from the Registry tab in the admin console:
-
-| File | What it does |
-|---|---|
-| `health-check.yml` | Check admin health every 5 minutes |
-| `prompt-assistant.yml` | Send a daily prompt to the assistant via the chat portal |
-| `cleanup-logs.yml` | Weekly trim audit logs to prevent unbounded disk growth |
-| `update-containers.yml` | Weekly pull latest images and recreate containers |
-
-### Automation YAML format
+### Command Task
 
 ```yaml
-schedule: "0 9 * * *"       # standard cron expression (required)
-enabled: true                # optional, default true
-description: What it does    # optional
-tags: [openpalm]             # optional
-timeoutMs: 30000             # optional, milliseconds
-command: ["sh","-c","..."]  # shell command (mutually exclusive with prompt:)
+schedule: "0 4 * * 0"
+enabled: true
+description: Check the AKM store
+command: ["akm", "health"]
 ```
 
-### Action types
+### Workflow Task
 
-| Type | Purpose | Key fields |
-|---|---|---|
-| `api` | Admin API call — runs with an authenticated admin session and `x-requested-by: automation` | `method`, `path`, `body?`, `headers?` |
-| `http` | Any HTTP endpoint — no auto-auth | `method`, `url`, `body?`, `headers?` |
-| `shell` | Run a command via `execFile` (argument array, no shell interpolation) | `command` (string array) |
-
-### Schedule presets
-
-You can use a human-readable preset name instead of a cron expression:
-
-| Preset | Cron |
-|---|---|
-| `every-minute` | `* * * * *` |
-| `every-5-minutes` | `*/5 * * * *` |
-| `every-15-minutes` | `*/15 * * * *` |
-| `every-hour` | `0 * * * *` |
-| `daily` | `0 0 * * *` |
-| `daily-8am` | `0 8 * * *` |
-| `weekly` | `0 0 * * 0` |
-| `weekly-sunday-3am` | `0 3 * * 0` |
-| `weekly-sunday-4am` | `0 4 * * 0` |
-
-Or use standard cron syntax directly (e.g., `"0 2 * * *"` for daily at 2 AM).
-
-### Rules
-
-- **Filenames** must use `.yml` extension (e.g., `backup.yml`, `weekly-cleanup.yml`)
-- Filenames must be lowercase letters, numbers, and hyphens only (before the `.yml` extension)
-- Automations are AKM task files in `~/.openpalm/knowledge/tasks/`, registered with OS cron by `akm tasks sync`
-- `command` arrays use `Bun.spawn` argument form — no shell interpolation; use `["sh","-c","..."]` explicitly when needed
-
-### When do changes take effect?
-
-New task files in `knowledge/tasks/` are picked up by the assistant container's background
-sync loop within 60 seconds. To force immediate registration:
-
-```bash
-docker exec openpalm-assistant akm tasks sync
+```yaml
+schedule: "0 8 * * 1"
+enabled: true
+description: Weekly review
+workflow: workflow:weekly-review
+params:
+  audience: owner
 ```
 
-### Overriding system automations
+Task commands execute inside the assistant container. They cannot run host
+lifecycle commands such as `openpalm update`, `openpalm status`, or
+`openpalm validate`; the container has neither the CLI control-plane authority
+nor a Docker socket.
 
-Shipped examples live in `~/.openpalm/knowledge/tasks/`. Install them from the
-Registry tab in the admin console — they are written to `~/.openpalm/knowledge/tasks/`.
+### Host Lifecycle Schedules
 
----
+Use the host operating system's scheduler for lifecycle work. For example, on a
+Linux host run `crontab -e` and add:
 
-## OpenCode / Assistant Extensions
-
-The assistant runs OpenCode. Core extensions are baked into the container
-image, and user extensions mount from `~/.openpalm/config/assistant/` into
-`/etc/opencode` — no rebuild needed.
-
-**To add a tool/plugin/skill:**
-
-```bash
-# Drop files into the matching subdirectory:
-~/.openpalm/config/assistant/tools/my-tool.ts
-~/.openpalm/config/assistant/plugins/my-plugin.ts
-~/.openpalm/config/assistant/skills/my-skill/SKILL.md
+```cron
+0 3 * * 0 /home/me/.local/bin/openpalm update >> /home/me/.openpalm/data/logs/host-update.log 2>&1
 ```
 
-OpenCode picks them up on next restart of the assistant container.
+Use an absolute path to the host CLI and adjust the home path. On Windows, use
+Task Scheduler. These jobs run outside the assistant container.
 
-**To configure OpenCode (LLM provider, models, etc.):**
-
-Edit `~/.openpalm/config/assistant/opencode.json` directly. If you use explicit
-admin UI/API config actions (including assistant-triggered admin actions), they
-write to the same config files.
-
----
-
-## Updating OpenPalm (two version lines)
-
-OpenPalm separates **the app you installed** from **the control plane that runs your stack**, so most updates need no reinstall.
-
-- **Control plane / platform** (`PLATFORM_VERSION`) — the admin UI build, the migration/lifecycle engine, and the Docker stack images. This **self-updates in place**:
-  - **Desktop app:** updates `data/ui` from npm at launch and on demand; use **Update OpenPalm stack** in the admin UI to refresh managed files and run the configured Compose stack. No app re-download.
-  - **`openpalm ui serve`:** self-updates `data/ui` before serving, same as the desktop app.
-  - **`openpalm update`:** refreshes stack assets, pulls the configured images, and recreates containers.
-- **Native app / CLI binary** — the macOS/Linux/Windows desktop shell and the compiled `openpalm` binary. These change rarely:
-  - The **desktop app** only needs a re-download when its native surface changes (a `HARNESS_CONTRACT_VERSION` bump); the admin UI tells you when. Otherwise the platform updates underneath it automatically.
-  - The **CLI binary** carries its own copy of the migration engine for its own `update`/`migrate` commands; refresh it with `openpalm self-update`. The UI it *serves* still floats with `data/ui`, so a CLI user gets platform updates for the served admin UI without re-downloading the binary.
-
-> Container updates use the image tags already configured in Compose. The normal default is `latest`; exact tags remain available under Advanced image tags.
-
-**Knowing an update exists.** `openpalm status` ends with a one-line advisory
-(on stderr, so the JSON on stdout stays script-clean) when a newer release is
-published on your channel — e.g. *"An update is available: OpenPalm 0.12.0
-(you're on 0.11.5). Run `openpalm update`."* The admin UI shows the same signal
-as a persistent banner ("An update is ready — review it") that jumps to the
-**Updates** tab. The desktop app's **"Check for prerelease versions"** tray
-toggle (off by default) makes the desktop notify on newer rc/beta builds for
-users piloting a prerelease.
-
-**Previewing what an update will change.** Before committing, you can see the
-exact copy-only file operations an upgrade would run:
+To force an immediate in-container task resync:
 
 ```bash
-# Preview the release migrations for the newest published tag (current major)
-openpalm migrate --dry-run --to latest
-
-# Preview a specific target version
-openpalm migrate --dry-run --to 0.12.0
+docker exec openpalm-assistant-1 akm tasks sync
 ```
 
-`--to` requires `--dry-run` — it never applies anything. The admin UI's
-**Advanced options** has the same **"Preview changes"** button. Migrations are
-copy-only, backup-first, and idempotent; nothing is deleted.
+Use `docker ps --format '{{.Names}}'` if your Compose-generated container name
+differs.
 
-OpenPalm does not add version-ordering policy on top of Docker Compose. If you
-configure an older exact image tag, the next update pulls and runs that tag.
+## Assistant Extensions
 
-**If an operation seems stuck.** Install/update hold a short-lived lock that
-auto-heals after 30 minutes. If you're certain nothing is running, clear a
-**stale** lock with:
+Managed assistant behavior ships in `system/assistant/` and mounts at
+`/etc/opencode`. It is refreshed on update. Durable user configuration belongs
+in `config/assistant/`, mounted as OpenCode's user global config at
+`/home/opencode/.config/opencode`.
 
-```bash
-openpalm unlock
+```text
+config/assistant/opencode.json
+config/assistant/persona.md
+config/assistant/tools/my-tool.ts
+config/assistant/plugins/my-plugin.ts
+config/assistant/skills/my-skill/SKILL.md
 ```
 
-`openpalm unlock` validates staleness (a dead process, or a lock older than 30
-minutes) before clearing and **refuses to clear a live lock**. The admin UI
-shows an "An operation seems stuck — clear it?" action only when a stale lock is
-detected. Whenever an install/update/migrate aborts, the message points at the
-backup it just took and `openpalm rollback`.
+Guardian uses the same split: managed instructions and permissions from
+`system/guardian/`, user model configuration from `config/guardian/`.
 
----
+The assistant image contains its UI, skeleton package, and default tool tree at
+build time. There is no runtime UI-tarball install path. Update those assets by
+updating the assistant image.
 
-## Compose-driven updates
-
-The running stack is whatever compose file set you launch. To change it:
-
-1. Edit files under `~/.openpalm/config/`, `~/.openpalm/knowledge/env/`, or `~/.openpalm/config/stack/`
-2. Rerun compose: `op up -d` (or the full `docker compose` command)
-
-The generated `run.sh` records the active first-party addon state and custom overlays used by the control plane.
-For the full compose command reference and helper setup, see the
-[Manual Compose Runbook](operations/manual-compose-runbook.md).
-
-Lifecycle operations remain non-destructive for existing user files in `config/`.
-
----
-
-## Checking on your install
-
-`openpalm doctor` is the one place to look when something seems off or disk is
-getting tight. On its own it reports what OpenPalm found — Docker availability,
-ports, and where your storage is actually going (image sizes, caches, the
-assistant's session database, backups) — and changes nothing.
-
-Each cleanup action is a separate flag, and every one asks before deleting:
+## Updates and Recovery
 
 ```bash
-openpalm doctor                 # report only, changes nothing
-openpalm doctor --clean-caches  # remove regenerable package/model caches
-openpalm doctor --clean-docker  # remove superseded images and retired volumes
-openpalm doctor --reclaim-db    # compact the assistant's session database
-```
-
-`--reclaim-db` needs the stack stopped, since compacting takes an exclusive
-lock on the database. The others are safe while it runs.
-
-## Backup & Restore
-
-```bash
-# Backup: archive the entire openpalm home directory
-tar czf openpalm-backup.tar.gz ~/.openpalm
-
-# Restore: extract, then rerun the same compose command you normally use
-tar xzf openpalm-backup.tar.gz -C /
-```
-
-That archives everything, including regenerable caches that can be several GB.
-To skip them (they rebuild on the next container start):
-
-```bash
-tar czf openpalm-backup.tar.gz \
-  --exclude='.cache' --exclude='data/akm/cache' \
-  ~/.openpalm
-```
-
-OpenPalm's own lifecycle snapshots already exclude `data/` entirely — see
-[Lifecycle backups](#lifecycle-backups) below.
-
-After restoring, start the stack using the compose commands in the [Manual Compose Runbook](operations/manual-compose-runbook.md).
-
-### Lifecycle backups
-
-Every layout migration (run automatically on upgrade) first copies your home
-into `~/.openpalm/data/backups/<timestamp>/` and arms `openpalm rollback`. Before
-that copy runs, OpenPalm checks free disk space on the backup destination and
-**stops with a plain message if the backup would exceed a safe fraction (~80%)
-of free space** rather than silently filling the disk — it never deletes
-anything to make room. Set `OP_BACKUP_DIR` to keep backups somewhere else,
-including another filesystem; everything that writes a backup honors it.
-
-The admin UI's **Updates** tab surfaces your backups (count, total size, last
-time, per-backup list) plus restore guidance. Most snapshots stay until you
-remove them, with two exceptions that bound their own space:
-
-- `install --force` keeps the newest 3 after taking its safety copy.
-- The host-side UI/skeleton updater keeps the newest 3 of its own `ui-*` and
-  `skeleton-*` snapshots.
-
-Recovery snapshots (`*-pre-rollback`, `*-pre-update`) are never pruned by
-anything. To reclaim space yourself, use the confirm-gated command (or the
-matching "Prune…" button in the UI), which keeps the newest *N* of each kind
-and shows you exactly what it will delete first:
-
-```bash
+openpalm update
+openpalm rollback
 openpalm backups prune --keep 3
 ```
 
----
+`openpalm update` refreshes managed assets and reapplies the configured stack.
+The host UI build under `data/ui/` can update independently for CLI/Electron
+serving, while the assistant-served UI is part of the assistant image.
 
-## Local App and PWA
+If an operation appears abandoned, `openpalm unlock` removes only a verified
+stale lifecycle lock and refuses to clear a live one.
 
-Run `openpalm app` to start the stack-less local client. It serves the same
-`@openpalm/ui` adapter-node build used everywhere else, without requiring or
-starting a local stack, at the canonical user-facing origin:
+Use `openpalm doctor` for a read-only report. Cleanup remains explicit:
 
+```bash
+openpalm doctor --clean-caches
+openpalm doctor --clean-docker
+openpalm doctor --reclaim-db
 ```
-http://localhost:${OP_HOST_UI_PORT:-3880}
-```
 
-Install the PWA from that origin using the browser's install action. The basic
-manifest and service worker ship with the UI. Offline caching covers only hashed
-build assets and static assets; page navigation, API calls, auth, and SSE remain
-network-only. Full offline chat and an offline action queue are not included.
+## API Routes
 
-Operators may also proxy a non-admin `openpalm app` process from their own HTTPS
-origin. The current supported path requires `OP_ALLOW_REMOTE_SETUP=1`, which
-binds port 3880 to all interfaces, so direct access to that port must be blocked
-by the host firewall. Never proxy `openpalm admin` or Electron. See
-[`remote-access-tls.md`](remote-access-tls.md) for separate Tailscale/Caddy UI
-and Guardian fronts plus the exact-origin CORS setting. OpenPalm does not
-provide an official `app.openpalm.dev` deployment or default CORS grant.
+The UI server uses these namespaces:
 
-## Admin UI & Ports
-
-| URL | Service |
+| Namespace | Purpose |
 |---|---|
-| `http://localhost:3880/` | Canonical local `openpalm app` and PWA origin |
-| `http://127.0.0.1:3880/host` | Admin UI/API when launched by `openpalm admin` or Electron |
-| `http://localhost:3800/` | OpenPalm assistant chat UI |
-| `http://localhost:3810/` | OpenCode assistant UI and API |
-| `http://localhost:3820/` | Chat addon |
-| `http://localhost:3821/` | API addon |
-| `http://localhost:8880/` | Voice addon (`OP_VOICE_PORT_HOST`) |
+| `/api/auth/*` | Login, logout, and session handling |
+| `/api/host/*` | Host control-plane operations; host capability required |
+| `/api/assistant/*` | Assistant-owned settings |
 
-All local processes remain `127.0.0.1`-bound by default; `localhost` is the
-stable browser/install identity for the non-admin PWA.
+`/admin/*` is intentionally unimplemented and returns `404`. This does not
+apply to Guardian's separate loopback listener at
+`http://127.0.0.1:3831/admin/principals`, which is a different server and uses
+the Guardian admin bearer token.
 
----
+## Ports
 
-## Common Tasks
+| Default | Service |
+|---|---|
+| `3800` | Assistant-served UI |
+| `3810` | Assistant OpenCode API/UI |
+| `3821` | Guardian-hosted compatible API |
+| `3830` | Guardian direct ingress |
+| `3831` | Guardian principal admin, permanently loopback-only |
+| `3880` | Optional host UI/admin process |
+| `8880` | Voice API, loopback-only |
 
-**Change an LLM API key:**
-1. Update OpenCode auth state through the admin provider flow or write the provider secret file under `~/.openpalm/knowledge/secrets/`
-2. Recreate the services that use it (OpenCode caches model/auth at process start, so a plain `restart` does not reliably re-read): `docker compose ... up -d --force-recreate assistant`
+All binds default to loopback. Use setup access controls rather than a global
+bind variable.
 
-**Add a new LLM provider:**
-1. Add the API key through the admin provider flow or a file-based provider secret under `~/.openpalm/knowledge/secrets/`
-2. Edit `~/.openpalm/config/assistant/opencode.json` to configure the provider
-3. Recreate assistant (not just restart): `docker compose ... up -d --force-recreate assistant`
+## Remote Clients
 
-**Rotate the admin login password (`OP_UI_LOGIN_PASSWORD`):**
-1. Update `~/.openpalm/knowledge/secrets/op_ui_login_password`
-2. Restart the host UI process (`openpalm ui serve` or relaunch Electron)
-   so the new value is picked up at startup
-3. Sign out and sign in again with the new password
+Use [Remote Access over TLS](remote-access-tls.md) for browser and Guardian
+fronting. To manage Guardian principals headlessly, call its loopback-only admin
+listener with the token from `private/secrets/`:
 
-**Add an automation:**
-1. Install from the Registry tab in admin, or create `~/.openpalm/knowledge/tasks/my-job.yml` with YAML fields like `schedule` and `command`/`prompt`
-2. The assistant container picks it up within 60 s via the background `akm tasks sync` loop.
-
-**View audit / activity logs:**
 ```bash
-# Portal/direct ingress decisions (auth, ownership, rate limit) — guardian's structured audit
-tail -f ~/.openpalm/data/logs/guardian-audit.log
-
-# Chat + tool activity (the audit trail since v0.11.0)
-ls ~/.openpalm/data/assistant/.local/state/opencode/ # in-container OpenCode
-ls ~/.openpalm/data/admin-opencode/log/              # Electron-spawned OpenCode
-
-# Admin operations (config writes, login events): the admin UI is a HOST
-# process (openpalm ui serve), not a compose service — read its stderr from the
-# terminal/service that runs `openpalm`, e.g.:
-#   journalctl --user -u openpalm   # if run under systemd
-# then filter for: admin.(auth|config|secrets|endpoints)
+token="$(openssl rand -hex 24)"
+curl -X POST http://127.0.0.1:3831/admin/principals \
+  -H "authorization: Bearer $(cat ~/.openpalm/private/secrets/op_guardian_admin_token)" \
+  -H 'content-type: application/json' \
+  -d '{"id":"my-phone","kind":"direct","token":"'"$token"'","label":"My phone"}'
+printf 'Principal token: %s\n' "$token"
 ```
 
-**Check container status:**
-```bash
-docker compose ps
-# Or via API (requires op_session cookie from /api/auth/login):
-curl -b cookies.txt http://localhost:3880/api/host/containers/list
-```
+Do not expose port `3831` through a reverse proxy.
 
-**Pull latest images and recreate containers:**
-```bash
-curl -b cookies.txt -X POST http://localhost:3880/api/host/containers/pull
-```
+## Backup
 
-This runs `docker compose pull` followed by `docker compose up` to recreate
-containers with the updated images. Equivalent to a manual
-`docker compose pull && docker compose up -d`.
-
-**Docker socket GID** is auto-detected from `/var/run/docker.sock` by the admin at startup
-and written to `state/stack.env`. You do not need to set it manually.
-If the admin fails to reach Docker, check that the socket exists and is readable.
-
-**Connect a remote client (another computer or phone)** (#486, #511):
-
-The OpenPalm UI (`@openpalm/ui`, opened in a browser or installed as a PWA)
-can attach to a guardian on a different machine over its direct-ingress
-listener. Nothing about the loopback/fail-closed default posture changes —
-this is an explicit, per-connection operator opt-in.
-
-1. **Enable the guardian's direct listener.** Add to
-   `state/stack.env`:
-
-   ```
-   GUARDIAN_DIRECT_INGRESS=true
-   ```
-
-   This publishes the guardian's direct listener on
-   `${OP_BIND_ADDRESS:-127.0.0.1}:${OP_GUARDIAN_PORT:-3830}` — the loopback
-   default is unchanged; reaching it from another machine still needs
-   either the TLS front from [`remote-access-tls.md`](remote-access-tls.md)
-   (recommended, and required for a phone's browser mixed-content rules) or
-   an explicit non-loopback `OP_BIND_ADDRESS` on a trusted LAN.
-
-2. **Allow the UI's origin through CORS.** Add the exact origin the OpenPalm
-   UI runs on (no wildcard) to `GUARDIAN_CORS_ALLOWED_ORIGINS` in
-   `state/stack.env`. This is empty by default, so every origin that
-   will reach the guardian directly — including the local UI origin — must be
-   listed explicitly. Use `http://localhost:3880` for the default local app, or
-   the exact operator-provided HTTPS origin. There is no default grant for an
-   OpenPalm-hosted origin.
-
-3. **Apply the env changes:**
-
-   ```bash
-   docker compose ... up -d guardian
-   ```
-
-   (or the admin UI's apply flow — either restarts the guardian with the
-   new ingress/CORS settings.)
-
-4. **Mint and hand off a credential to the other device.** Two equivalent
-   ways to mint a `direct` principal — pick whichever fits:
-
-   **Primary path — pairing UI (#511):** on the host admin UI's
-   `/connections` page, click **Pair a device**, give it a label and the
-   guardian URL AS REACHABLE BY THE OTHER DEVICE (the LAN address or
-   Tailscale/`ts.net` hostname — not `127.0.0.1`), and mint. The page shows
-   a QR code and a copyable `openpalm-pair:` code **once** — scan it with
-   any external camera/QR app, or copy it; the OpenPalm UI does not embed a
-   camera scanner. On the other device, open `/connections/new` and paste the
-   code (or open the `#pair=` link, if an operator-provided HTTPS UI origin
-   exists). The onboarding wizard verifies the address and credential before
-   saving them, makes the connection active, and continues directly to Chat.
-   A bare Guardian origin is normalized to its `/oc` path; another non-`/oc`
-   path is rejected rather than guessed. The deep link carries the code in the URL
-   **fragment** (`#pair=`, not `?pair=`); browsers never send the fragment to
-   the server, so the credential stays out of the UI host's access logs,
-   reverse proxies, and `Referer` headers. The code is never persisted
-   host-side or logged; the durable artifact is the minted guardian principal.
-
-   **Advanced / headless path — manual `curl`:** mint directly against the
-   guardian's loopback-only admin listener (port 3831, Bearer-token gated),
-   useful for scripting or when no browser is available on the host:
-
-   ```bash
-   curl -X POST http://127.0.0.1:3831/admin/principals \
-     -H "authorization: Bearer $(cat ~/.openpalm/knowledge/secrets/op_guardian_admin_token)" \
-     -H 'content-type: application/json' \
-     -d '{"id":"my-phone","kind":"direct","token":"'"$(openssl rand -hex 24)"'","label":"My phone"}'
-   ```
-
-   Then in the client's `/connections/new`, choose manual address entry: URL = the
-   guardian's direct-ingress base URL **including the `/oc` path** (e.g.
-   `https://your-host/oc`) — there is no connection "kind" selector — auth
-   **Basic** with username = the **principal id** you minted (e.g. `my-phone`,
-   not `openpalm`) and password = the
-   token.
-
-   Rotate/disable/delete the same principal either way (the pairing UI's
-   "Pair a device" simply re-mints under a fresh id/token; to manage an
-   existing id directly):
-
-   ```bash
-   # Rotate: set a new token for an EXISTING id. The collection endpoint
-   # (POST /admin/principals) is create-only and returns 409 for a known id —
-   # use the dedicated rotate endpoint instead.
-   curl -X POST http://127.0.0.1:3831/admin/principals/my-phone/rotate \
-     -H "authorization: Bearer $(cat ~/.openpalm/knowledge/secrets/op_guardian_admin_token)" \
-     -H 'content-type: application/json' \
-     -d '{"token":"'"$(openssl rand -hex 24)"'"}'
-
-   # Delete
-   curl -X DELETE http://127.0.0.1:3831/admin/principals/my-phone \
-     -H "authorization: Bearer $(cat ~/.openpalm/knowledge/secrets/op_guardian_admin_token)"
-   ```
-
-**Troubleshooting:**
-
-| Symptom | Cause | Fix |
-|---|---|---|
-| Connection health shows `unreachable` `HTTP 404` | `GUARDIAN_DIRECT_INGRESS` is off | Set it to `true` and restart the guardian (step 1) |
-| Connection health shows `blocked (CORS)` | The client's origin is missing from the allowlist | Add it to `GUARDIAN_CORS_ALLOWED_ORIGINS` (step 2) |
-| Connection health shows `auth failed` | Principal id/token mismatch | Re-check the username is the principal **id**, not `openpalm`; re-mint the token if needed (step 4) |
-| Pairing panel shows a `GUARDIAN_DIRECT_INGRESS` or HTTPS warning | Prerequisite from step 1/2 not yet set for the target URL | Follow the warning text — it names the exact env key |
-
-Security framing: fail-closed defaults are untouched by this flow — content
-validation still screens direct-tier prompts when enabled, and the minted
-token never enters `state/stack.env` (non-secret) or any log; it
-lives only in the guardian's state DB and the client's own encrypted
-credential store. The pairing code (QR or copyable string) contains that
-same credential and is shown exactly once by the host UI — it is never
-persisted or logged host-side; only the guardian principal it minted
-persists, individually revocable via the `curl -X DELETE` above.
+Full-home archives include `private/` naturally. Exclude `cache/` when you do
+not need regenerable package/model caches. See
+[Backup & Restore](backup-restore.md) for consistent stop, archive, and restore
+steps.

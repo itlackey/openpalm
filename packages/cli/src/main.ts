@@ -20,8 +20,8 @@ interface BareRunOpts {
  * works without docker socket access and respects whatever overrides are
  * active.
  *
- * PR #564 retest P3-4: the probe sends NO Basic auth, so under the
- * `home-password` network preset (OPENCODE_AUTH=true) the assistant answers
+ * The probe sends no Basic auth, so when direct Assistant access enables
+ * OpenCode auth (`OPENCODE_AUTH=true`) the Assistant answers
  * `/health` with 401 — which is proof the container is up and listening, not a
  * reason to run `docker compose up -d` and needlessly recreate a healthy stack.
  * Treat a 401/403 (auth-gated but reachable) exactly like a 2xx. Only a thrown

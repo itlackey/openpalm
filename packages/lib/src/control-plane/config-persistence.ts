@@ -37,14 +37,14 @@ const logger = createLogger("config-persistence");
 /**
  * Return the env files used for docker compose --env-file args.
  *
- * Only `state/stack.env` (non-secret system config). Secret values
- * live in `knowledge/secrets/<ENV_KEY>` and are granted to services as Compose
- * file secrets. The user env (`knowledge/env/user.env`) is NOT a compose
- * env_file — it is sourced by the assistant entrypoint at container startup.
+ * Only `state/stack.env` (non-secret system config). Secret values live in the
+ * name-routed file-secret stores and are granted to services as individual
+ * Compose secrets. The user env (`knowledge/env/user.env`) is NOT a Compose env
+ * file and is loaded only by scoped tools on demand.
  */
 export function buildEnvFiles(state: ControlPlaneState): string[] {
-  // One file. user.env is intentionally NOT here (entrypoint-sourced; secret
-  // boundary).
+  // One file. user.env is intentionally NOT here; scoped tools load it on
+  // demand and the assistant entrypoint never sources it.
   return [stackEnvFile(state.homeDir)].filter(existsSync);
 }
 
@@ -179,9 +179,9 @@ export function writeSystemEnv(state: ControlPlaneState): void {
   const { content: strippedBase, removed } = stripSecretLikeEnvKeys(base);
   base = strippedBase;
   if (removed.length > 0) {
-    // Correct per the secret-boundary contract (secrets belong in
-    // knowledge/secrets/, not stack.env) — but never do it silently, and
-    // never destroy the value: relocate it to knowledge/secrets/<key> (the
+    // Correct per the secret-boundary contract (secrets belong in the
+    // name-routed file-secret stores, not stack.env) — but never do it silently, and
+    // never destroy the value: relocate it to the canonical file-secret tree (the
     // same place ensurePortalSecret/writeStackSecretEnv write to) before
     // dropping the line, then log + drop a one-time notice so the user knows
     // where it went.
@@ -189,7 +189,7 @@ export function writeSystemEnv(state: ControlPlaneState): void {
       writeSecret(state.homeDir, key.toLowerCase(), value.endsWith("\n") ? value : `${value}\n`);
     }
     const removedKeys = removed.map((r) => r.key);
-    logger.warn("Removed secret-looking keys from stack.env; relocated values to knowledge/secrets/", {
+    logger.warn("Removed secret-looking keys from stack.env; relocated values to canonical file-secret storage", {
       removedKeys,
       stackEnvPath: systemEnvPath,
     });

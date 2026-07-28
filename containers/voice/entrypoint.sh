@@ -25,6 +25,7 @@ PORT="${OP_VOICE_PORT:-8880}"
 ARCH="$(uname -m)"
 AVX_CHECK_FILE="${AVX_CHECK_FILE:-/proc/cpuinfo}"
 if [ "$VARIANT" = "cu121" ]; then
+    export ONNX_PROVIDER="${ONNX_PROVIDER:-CUDAExecutionProvider}"
     echo "[voice] AVX probe skipped — GPU variant (cu121) runs ONNX on CUDA; CPU AVX2 not required"
 else
     case "$ARCH" in

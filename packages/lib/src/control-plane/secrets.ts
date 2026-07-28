@@ -128,7 +128,7 @@ function ensureSystemSecrets(state: ControlPlaneState): void {
   if (!existsSync(systemEnvPath)) {
       const header = [
         "# OpenPalm — Stack Configuration",
-        "# Non-secret stack configuration only. File-based secrets live in knowledge/secrets/.",
+        "# Non-secret stack configuration only. Credentials live in name-routed file-secret storage.",
         "",
         "# ── Authentication ──────────────────────────────────────────────────",
         "OP_SETUP_COMPLETE=false",
@@ -235,9 +235,8 @@ export function updateSecretsEnv(
  * `${stackDir}/auth.json` (knowledge/secrets/auth.json). Each entry uses
  * OpenCode's schema for api-key auth: `{ <providerId>: { type: "api", key } }`.
  *
- * This file is bind-mounted into both the assistant and guardian containers
- * so every OpenCode instance picks up new credentials on its next restart —
- * see core.compose.yml (assistant) and portals.compose.yml (guardian).
+ * This file is bind-mounted into Assistant and granted to Guardian as a named
+ * Compose secret. Guardian copies it into its OpenCode home at boot.
  *
  * Existing entries (OAuth tokens, other providers) are preserved.
  * Empty values DELETE the corresponding entry.
@@ -319,8 +318,8 @@ export function patchSecretsEnvFile(
     if (SECRET_ENV_KEY_RE.test(key)) secretPatches[key] = value;
     else stackPatches[key] = value;
   }
-  // Write secret patches as file-based secrets (knowledge/secrets/<key>). Inlined
-  // here so no fake ControlPlaneState is needed (the de-coupling: secrets key on homeDir).
+  // Route secret patches to their canonical file-secret tree by name. Inlined
+  // here so no fake ControlPlaneState is needed.
   if (Object.keys(secretPatches).length > 0) {
     resolveSecretsDir(homeDir);
     for (const [envKey, value] of Object.entries(secretPatches)) {

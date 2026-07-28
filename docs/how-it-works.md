@@ -1,230 +1,182 @@
-# How OpenPalm Works — TLDR
+# How OpenPalm Works
 
-OpenPalm is two things: a **harness** and a **stack**.
+OpenPalm is a host control plane around a Docker Compose stack.
 
-The **harness** (CLI or Electron app) runs on your host machine. Its only job is to manage the files in `~/.openpalm/` — Docker Compose files, env files, OpenCode configuration, AKM configuration — and then start `docker compose up`. No harness, no problem: a technical user can do the same thing by hand.
+The host CLI or optional host admin UI owns lifecycle operations. The stack's
+only always-on core container is the assistant. Guardian and other services are
+profile-gated addons.
 
-The **stack** is what the harness runs. At its core: an OpenCode assistant in Docker (with persistent memory and skills via AKM), a Guardian that enforces principal-authenticated ingress on every inbound portal/direct request, and optional portal containers that translate external protocols into guardian `/oc/*` traffic.
+## Big Picture
 
----
+```text
+Browser -> Assistant UI :3800 -> same-origin /oc proxy -> Assistant :4096
 
-## The Big Picture
+Discord / Slack / compatible API / direct client
+                    |
+                    v
+            Guardian :8080 internal
+              auth, ownership,
+              limits, validation
+                    |
+                    v
+             Assistant :4096
 
-```
-You (browser / CLI / API client)
-        |
-        v
-Admin :3880 / Assistant UI :3800    Addon edge (e.g. chat :3820, api :3821)
-                                    |
-                                    v
-                             Guardian :8080 (internal)   <- validates every addon message
-                                    |
-                                    v
-                             Assistant OpenCode :3810 host / :4096 internal
-                                    |
-                                    v
-                             Admin API                   <- host/admin process only
+Host CLI / host admin UI -> Docker Compose + OP_HOME
 ```
 
-> **Port note:** Guardian listens on port 8080 inside its container and exposes
-> localhost-only direct/admin listeners by default; it is not publicly exposed.
+Three invariants define the design:
 
-Three hard rules define the whole design:
-1. **The host CLI or the admin may orchestrate Docker.**
-2. **Every portal or direct-ingress request goes through Guardian.** No exceptions.
-3. **Assistant has no Docker socket or admin network path.** Host/admin processes do stack operations.
+1. Only a host process orchestrates Docker Compose.
+2. Portal and direct-ingress traffic reaches the assistant through Guardian.
+3. The assistant has no Docker socket, host admin credential, or admin network path.
 
----
+## Host Control Plane
 
-## Components
+The `openpalm` CLI and the admin-capable UI process run on the host. They can
+read `OP_HOME`, validate configuration, and invoke Docker Compose directly.
 
-### Harness UI (SvelteKit app, host port 3880)
-The web face of the harness. Runs as a host process — no container. Accesses Docker and `~/.openpalm/` directly on the host.
+The host API is grouped under `/api/host/*`. Authentication lives under
+`/api/auth/*`, and assistant-owned settings live under `/api/assistant/*`.
+`/admin/*` is deliberately a dead namespace and returns `404`.
 
-Three ways to reach the admin surface (all loopback-only — host admin is never reachable remotely):
-- **Electron app** — the desktop harness supervises the UI process and opens it with the admin capability enabled.
-- **`openpalm admin`** — the CLI serves the same UI with the admin capability enabled, prints the URL, and opens your browser. This mode refuses non-loopback bind config: `OP_ALLOW_REMOTE_SETUP` is ignored and neutralized. On a machine with no install it lands on the `/setup` wizard.
-- **Dev only: `OP_ENABLE_ADMIN=1`** — set on a locally run UI server (e.g. the dev server) to enable the admin capability without a harness. Never set this in production.
+Guardian's `:3831/admin/principals` endpoint is unrelated to the UI route
+namespace. It is a separate, loopback-only Guardian listener protected by its
+own bearer-token file.
 
-Responsibilities:
-- Writes runtime configuration directly to `~/.openpalm/config/stack/`, `~/.openpalm/state/stack.env`, and `~/.openpalm/config/akm/`
-- Runs `docker compose` for all lifecycle operations (install, update, up, down, restart)
-- Exposes an authenticated API used by the browser UI and the assistant
-- Manages first-party addon activation in `~/.openpalm/state/stack.env` via `OP_ENABLED_ADDONS`, resolves enabled addons to Compose profiles, and supports custom services in `custom.compose.yml`
-- Writes the audit log
+## Assistant
 
-### Guardian (Bun server, port 8080)
-The security checkpoint for all inbound portal traffic. Guardian is a
-**transparent 1:1 reverse proxy** in front of the assistant's OpenCode server —
-it forwards every method/path/query/body and streams responses (including SSE)
-untouched, with fail-closed policy overlays on the handful of tenant-scoped
-paths (never an allowlist, never a second protocol). The image also ships the
-OpenCode binary so it can run optional content validation (below).
+The assistant container runs:
 
-For every inbound request it:
-1. Canonicalizes the request path (percent-decode + `..` traversal refusal), then classifies the tenant-scoped route
-2. Authenticates the principal with Basic auth using `PRINCIPAL_ID` and `PRINCIPAL_SECRET_FILE` (the principal id is the Basic username)
-3. Enforces session/permission ownership (persisted in Guardian's SQLite state DB, so a restart no longer orphans live sessions) and rate/resource limits
-4. **Optional content validation** (`GUARDIAN_CONTENT_VALIDATION`, off by default): a heuristic pre-screen escalates suspicious prompt-bearing writes to a local OpenCode moderator that returns allow/flag/block. Fail-closed — an unclassifiable suspicious request is blocked (`403 content_blocked`).
-5. Forwards the request to the assistant's OpenCode, injecting upstream credentials server-side and stripping the inbound Guardian credentials + hop-by-hop headers
+- OpenCode on container port `4096` (host default `3810`)
+- the image-baked OpenPalm UI on container port `3000` (host default `3800`)
+- BusyBox `crond` for AKM task schedules
+- `akm tasks sync` at startup and every 60 seconds
 
-A message that fails an overlay check never reaches the assistant.
+The UI reaches OpenCode through its own same-origin `/oc` proxy. The assistant
+image also contains the shipped skeleton and default tool packages; startup does
+not download or resolve a runtime UI tarball.
 
-### Assistant (OpenCode runtime, host port 3810; chat UI port 3800)
-The AI. Runs OpenCode. Has no Docker socket.
+Managed OpenCode config comes from `system/assistant/` at `/etc/opencode`.
+User OpenCode global config comes separately from `config/assistant/` at
+`/home/opencode/.config/opencode`.
 
-The assistant does not manage the stack directly. Stack operations remain host-side
-through the CLI or admin UI process.
+Persistent mounts include the assistant home, purgeable cache, AKM config and
+data, the knowledge stash, and the shared workspace. The assistant can read
+`knowledge/secrets/auth.json` for provider auth but has no tree mount of
+`private/`; only the named UI/OpenCode server secret files needed by its server
+processes are granted.
 
-The assistant uses OpenCode config from `/etc/opencode`, mounts
-`~/.openpalm/knowledge/secrets/auth.json` for host-managed OpenCode auth state, mounts AKM
-config at `/etc/akm`, mounts the full AKM stash from `~/.openpalm/knowledge/` at
-`/stash`, and stores AKM cache/data under `/opt/akm/cache` and `/opt/akm/data`.
-Provider API keys are stored in OpenCode's auth.json via the Connections tab.
-Its durable home is `~/.openpalm/data/assistant/`, and its shared workspace is
-`~/.openpalm/workspace/` mounted at `/work`.
+## Guardian
 
-### Addon edge services (e.g. `chat`, host port 3820)
-Translate external protocols into Guardian `/oc/*` requests. The `chat` addon is
-the lighter conversational edge, while `api` is the broader compatibility
-facade. Discord and Slack addons speak their native protocols; the voice addon
-is not a portal at all — it serves OpenAI-compatible TTS/STT on host loopback,
-reached by chat clients through the admin UI's same-origin `/voice/*`
-pass-through. Portal adapters authenticate with Basic auth and call Guardian.
+Guardian is deployed only when a Guardian-ingress profile is active, such as
+`addon.chat`, `addon.api`, `addon.discord`, `addon.slack`, or `addon.gateway`.
+It joins both `portal_net` and `assistant_net`; portals never join
+`assistant_net` directly.
 
-The runtime image for registry-backed adapters is the unified
-`portal`, built from `containers/portal/Dockerfile`.
+Guardian is a transparent native OpenCode proxy. For an authenticated `/oc/*`
+request it:
 
-### Supporting services
-- **Scheduler** -- OS cron daemon (`crond`) started by the assistant container entrypoint. Automations are AKM YAML task files (`*.yml`) in `~/.openpalm/knowledge/tasks/`; `akm tasks sync` registers them with cron at boot and re-syncs every 60 s to pick up new files written by admin.
-- **AKM stash** -- persistent memory and knowledge live in the shared akm stash at `~/.openpalm/knowledge/`, mounted at `/stash` in the assistant. Skills, commands, memories, and knowledge files all live here. There is no separate memory service.
+1. Canonicalizes the path and rejects traversal.
+2. Authenticates the principal with HTTP Basic credentials.
+3. Enforces persisted session, permission, and question ownership.
+4. Applies rate and resource limits.
+5. Runs content validation for prompt-bearing traffic.
+6. Proxies method, path, query, body, and streaming responses to OpenCode.
 
----
+Content validation defaults **on in both code and shipped Compose**. A cheap
+heuristic screen escalates suspicious content to Guardian's local OpenCode
+moderator. If an escalated message cannot be classified, Guardian fails closed
+and blocks it. An operator must explicitly set
+`GUARDIAN_CONTENT_VALIDATION=0` to opt out.
 
-## Message Flow (end to end)
+Managed moderation instructions come from `system/guardian/` at
+`/etc/opencode`; user model selection is separate in `config/guardian/`.
+Guardian receives provider `auth.json` through a narrow Compose secret and does
+not mount the full `knowledge/` tree.
 
-```
-User sends a message (Discord / Slack / OpenAI-compatible API)
-        |
-        v
-portal adapter (:3820 host -> :8182 container for chat/api)
-  Reads PRINCIPAL_SECRET_FILE
-  Calls guardian:8080/oc/* with Basic auth
-  Streams /event frames for the owned session
-        |
-        v
-Guardian validates:
-  + Principal credentials match a seeded token
-  + Request path is canonical (percent-decoded, no `..` traversal)
-  + Session/permission ownership matches the principal
-  + Rate limit and resource bounds allow the call
-  + Content validation (optional, fail-closed): heuristic screen -> local moderator
-        |
-        v
-Guardian proxies native OpenCode traffic to assistant:4096
-        |
-        v
-Assistant (OpenCode) processes the message
-  Calls tools, reads memory, generates response
-        |
-        v
-Response and event frames flow back through Guardian -> portal adapter -> user
+## Portal and Service Addons
+
+Discord and Slack adapters run from the unified `openpalm/portal` image. They
+translate their native protocols into authenticated Guardian `/oc/*` calls.
+
+The OpenAI/Anthropic-compatible edge runs inside Guardian and is published on
+host port `3821` when configured. There is one compatible listener, not separate
+chat and API ports.
+
+Voice is a service addon rather than a portal. It is defined in
+`system/stack/services.compose.yml`, joins `addon_net`, and publishes its API
+only on `127.0.0.1:8880`. Its default speech models are baked into the image.
+
+## Message Flow
+
+```text
+User message
+  -> portal adapter or direct client
+  -> Guardian principal authentication
+  -> ownership and resource checks
+  -> content validation (on by default, fail-closed on escalation failure)
+  -> native OpenCode request to assistant:4096
+  -> tools / AKM / model
+  -> streamed response through Guardian to the caller
 ```
 
-If a user needs a stack operation during a session, that remains a host-side admin
-or CLI action, not an assistant-container network path.
+No request in this flow gives the assistant control-plane authority. Host stack
+operations remain host CLI or admin UI actions.
 
----
+## Filesystem Model
 
-## Lifecycle (install / update)
-
-```
-openpalm install   ->   writes files into ~/.openpalm/
-                              |
-                              v
-                    Install seeds the base compose files and stack.env
-                               |
-                               v
-                    You / CLI enable addons via OP_ENABLED_ADDONS:
-                        core.compose.yml (always)
-                        + portals.compose.yml / services.compose.yml
-                        + --profile addon.<name> per enabled addon
-                        + custom.compose.yml for custom services
-                              |
-                              v
-                    docker compose -f <files> --profile <addons> up -d
+```text
+~/.openpalm/
+  system/stack/
+    core.compose.yml
+    services.compose.yml
+    portals.compose.yml
+  config/stack/custom.compose.yml
+  state/stack.env
+  private/secrets/
+  knowledge/secrets/auth.json
+  knowledge/env/user.env
 ```
 
-Automatic lifecycle operations (install/update/startup/apply/setup reruns/upgrades)
-are non-destructive for existing user config files in `config/`; they only seed
-missing defaults.
+The three managed Compose files are overwritten on lifecycle reconcile. The
+single user overlay is seeded once. `state/stack.env` is the sole non-secret
+Compose env file.
 
----
+Delegated UI, Guardian, API, portal, bot, and OpenCode-server secrets live in
+`private/secrets/`. Only provider `auth.json` remains under
+`knowledge/secrets/`, where the assistant can use it.
 
-## File Assembly Model
+Docker Compose performs normal `${VAR}` substitution from `state/stack.env`.
+OpenPalm writes complete files; it does not leave templates for a custom
+renderer.
 
-OpenPalm doesn't generate config by filling in templates. It copies whole files.
+## Addon Activation
 
-`config/` is user-owned and persistent. Allowed writers are:
-- You, by editing files directly
-- The admin via explicit UI/API config actions
-- The assistant, only when you request it and it uses authenticated,
-  allowlisted admin API actions
+OpenPalm records enabled first-party addon IDs in `OP_ENABLED_ADDONS` and turns
+them into `--profile addon.<id>` arguments whenever its control plane invokes
+Compose.
 
-```
-~/.openpalm/config/stack/core.compose.yml     -> core assistant runtime compose definition
-~/.openpalm/config/stack/services.compose.yml -> first-party optional services
-~/.openpalm/config/stack/portals.compose.yml -> first-party optional portals and guardian
-~/.openpalm/config/stack/custom.compose.yml   -> custom services and overlays
-~/.openpalm/state/stack.env            -> non-secret values passed via --env-file
-~/.openpalm/knowledge/secrets/             -> system-managed Compose secret files
-~/.openpalm/knowledge/env/user.env             -> user-managed secrets (akm env:user)
-```
+Raw Docker Compose knows nothing about `OP_ENABLED_ADDONS`. A manual invocation
+must pass active profiles itself or set `COMPOSE_PROFILES` explicitly.
 
-Docker reads compose files, the non-secret env file, and secret files directly from their final locations.
-There is no intermediate staging step. The standard wrapper includes
-`state/stack.env`; Compose `secrets:` grants files from `knowledge/secrets/`.
+## Scheduling
 
----
+AKM task files support `command`, `prompt`, and `workflow` targets. They execute
+inside the assistant container under BusyBox cron. Because that environment has
+no Docker socket or host CLI authority, host lifecycle schedules must use the
+host OS scheduler and call the host `openpalm` binary.
 
-## Security Model
+## Default Ports
 
-| Invariant | Enforcement |
-|-----------|-------------|
-| Host CLI or admin is the orchestrator | CLI manages Docker Compose directly on host; admin (optional) runs as a host process with direct Docker access |
-| Guardian-only ingress | Portal adapters call Guardian `/oc/*` only; Guardian authenticates principals and enforces ownership on every request |
-| Assistant isolation | `assistant` has no Docker socket and no admin network path |
-| LAN-first by default | Host-exposed ports bind to `127.0.0.1`; nothing public without opt-in |
+| Host port | Runtime |
+|---|---|
+| `3800` | Assistant-served OpenPalm UI |
+| `3810` | Assistant OpenCode |
+| `3821` | Guardian-hosted compatible API |
+| `3830` | Guardian direct ingress |
+| `3831` | Guardian principal admin, loopback-only |
+| `3880` | Optional host UI/admin process |
+| `8880` | Voice API, loopback-only |
 
-### Principal authentication
-
-Each portal has its own principal secret file. The portal adapter reads the path
-from `PRINCIPAL_SECRET_FILE`, authenticates to Guardian with Basic auth, and
-Guardian enforces per-call auth, session/permission ownership, and its
-fail-closed policy overlays before transparently proxying `/oc/*`.
-
-### Admin action allowlist
-
-The admin API (host control plane) keeps an explicit allowlist of:
-- **Legal service names** -- core services + any installed addon service such as `chat`, `api`, or `voice`
-- **Legal actions** -- lifecycle/config endpoints, `containers.*`, `addons.*`,
-  `registry.*` (automations), `artifacts.*`, and `audit.*` routes implemented by admin
-
-Anything not on the list is rejected with `400 invalid_service` or
-`400 invalid_action`.
-
----
-
-## Adding a Portal (the whole process)
-
-**First-party portal (chat, api, discord, slack):**
-1. Add the addon name to `OP_ENABLED_ADDONS` in `~/.openpalm/state/stack.env` through the CLI or admin UI.
-2. OpenPalm resolves the name to a `--profile addon.<name>` argument against `portals.compose.yml`.
-3. Rerun the OpenPalm compose command (or use the admin UI restart action).
-4. If admin tooling is involved, it may also ensure/generate the required principal secret files first.
-
-**Custom portal:**
-1. Add a service definition to `~/.openpalm/config/stack/custom.compose.yml`.
-2. Rerun the compose command — `custom.compose.yml` is always included.
-
-No code changes. No image rebuild. The portal is live.
+All published listeners default to loopback. Setup uses independent access
+booleans and flat per-service bind values; there is no global bind cascade.

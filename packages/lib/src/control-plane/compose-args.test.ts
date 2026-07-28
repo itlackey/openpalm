@@ -118,9 +118,8 @@ describe("buildComposeOptions", () => {
   });
 
   it("returns env files in correct order", () => {
-    // The runtime --env-file list is state/stack.env only. The user env
-    // (knowledge/env/user.env) is sourced by the assistant entrypoint, not a
-    // compose env_file.
+    // The runtime --env-file list is state/stack.env only. Scoped tools load
+    // knowledge/env/user.env; Compose and the assistant entrypoint do not.
     seedEnvFiles({ stack: true });
     const state = makeState();
     const opts = buildComposeOptions(state);

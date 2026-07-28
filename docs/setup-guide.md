@@ -1,186 +1,147 @@
 # Setup Guide
 
-OpenPalm has three setup paths, in order of recommendation:
+OpenPalm has two recommended setup paths:
 
-1. **Desktop app** (most users) — download, unzip, run, follow the wizard. Recommended.
-2. **CLI install script** — for servers and headless environments. Same wizard, in your browser.
-3. **Manual compose** — copy `packages/skeleton/` by hand and run `docker compose` yourself.
+1. Run `setup.sh` or `setup.ps1` and complete the browser wizard.
+2. Run `openpalm install --file` with a version 2 setup spec for an unattended install.
 
-All three install the same stack from the same compose files. Pick whichever fits.
-
----
+Both paths create the complete runtime layout. Copying `packages/skeleton/`
+alone is not a complete install because state, private secrets, cache paths, and
+other runtime files are generated during installation.
 
 ## Prerequisites
 
-You need Docker with Compose V2.
+Install Docker with Compose V2 and ensure the daemon is running:
 
-| Your computer | What to install | Link |
-|---|---|---|
-| **Mac** | Docker Desktop or OrbStack | [docker.com/products/docker-desktop](https://www.docker.com/products/docker-desktop/) / [orbstack.dev](https://orbstack.dev/download) |
-| **Windows** | Docker Desktop | [docker.com/products/docker-desktop](https://www.docker.com/products/docker-desktop/) |
-| **Linux** | Docker Engine | Run `curl -fsSL https://get.docker.com | sh` |
+```bash
+docker info
+docker compose version
+```
 
-The wizard's first screen verifies Docker is installed and running before any configuration happens, so don't worry about getting Docker right ahead of time — you'll be told if anything is missing.
+See [System Requirements](system-requirements.md) for platform details.
 
----
+## Interactive Setup
 
-## 1. Desktop app (recommended)
-
-Download the archive for your platform from the [releases page](https://github.com/itlackey/openpalm/releases/latest) — no installer, just extract and run:
-
-| Platform | Artifact | Run |
-|---|---|---|
-| Mac (Apple Silicon) | `OpenPalm-<version>-arm64-mac.zip` | Unzip → move `OpenPalm.app` to Applications |
-| Mac (Intel) | `OpenPalm-<version>-x64-mac.zip` | Unzip → move `OpenPalm.app` to Applications |
-| Windows | `OpenPalm-<version>-win.zip` | Unzip → run `OpenPalm.exe` (portable, no install) |
-| Linux | `OpenPalm-<version>.AppImage` | `chmod +x` → run |
-
-Open the app. The setup wizard will:
-
-1. **System Check** — verify Docker and Compose are available; offer install links if not.
-2. **Welcome** — a secure admin password is auto-generated and displayed for you to copy.
-3. **Providers** — choose your AI provider (OpenAI, Anthropic, Ollama, LM Studio, etc.).
-4. **Models** — pick chat, embedding, and (optional) small model.
-5. **Voice** — enable the built-in voice service (optional; each device picks its own speech settings later from the chat UI's Connections page).
-6. **Options** — portals (Discord, Slack), addons, image tag.
-7. **Review & Install** — confirm and deploy.
-
-When the install completes, the same window navigates to the chat page. That's it.
-
-> **First launch on macOS/Windows**: builds aren't code-signed, so there's a one-time security prompt. On macOS, **right-click `OpenPalm.app` → Open** the first time (or run `xattr -dr com.apple.quarantine OpenPalm.app`); on Windows, click **More info → Run anyway** on the SmartScreen prompt. Subsequent launches are unrestricted. (The desktop app does not auto-update — re-download to get a newer version.)
-
----
-
-## 2. Headless install (CLI)
-
-For servers or anyone who prefers a terminal:
+### Linux and macOS
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/itlackey/openpalm/main/scripts/setup.sh | bash
 ```
 
-This downloads the CLI binary, seeds `~/.openpalm/`, opens the wizard in your default browser at `http://localhost:3880/setup`, and starts the stack on completion. The wizard is identical to the desktop version.
+### Windows
 
-To re-run the wizard later (e.g. to add a portal or change providers), run `openpalm` and click **Update Settings** in the admin overview, or open `http://localhost:3880/setup?rerun=1`.
-
----
-
-## 3. Manual compose (power users)
-
-For full control without any harness:
-
-```bash
-git clone https://github.com/itlackey/openpalm.git
-cp -R openpalm/packages/skeleton "$HOME/.openpalm"
-$EDITOR "$HOME/.openpalm/state/stack.env"
-$EDITOR "$HOME/.openpalm/knowledge/env/user.env"
+```powershell
+irm https://raw.githubusercontent.com/itlackey/openpalm/main/scripts/setup.ps1 | iex
 ```
 
-Then start the stack using the compose commands in the [Manual Compose Runbook](operations/manual-compose-runbook.md).
+The installer downloads and verifies the CLI, runs `openpalm install`, and
+opens the setup wizard on the loopback-only host UI. The wizard configures:
 
-The running deployment is always the exact compose file list you pass to Docker Compose — there's no hidden orchestration layer.
+- the UI login password
+- OpenCode provider credentials and models
+- AKM LLM and embedding settings
+- optional first-party addons
+- flat access controls for the UI, assistant API, Guardian, and compatible API
 
----
+The normal home-install control is `access.networkAccess`. Advanced controls
+are `access.assistantDirect`, `access.guardianNetwork`, and
+`access.guardianOpenaiApi`. These are independent booleans, not presets.
 
-## Deployment truth
+## Headless Setup
 
-- `~/.openpalm/config/stack/` is the only deployment foundation.
-- Base services come from `~/.openpalm/config/stack/core.compose.yml`.
-- First-party addons are defined in `services.compose.yml` and `portals.compose.yml`, then enabled by name through `OP_ENABLED_ADDONS` in `~/.openpalm/state/stack.env`.
-- Custom services and overlays live in `~/.openpalm/config/stack/custom.compose.yml`.
-- OpenPalm resolves enabled addon names to Compose profiles; the fixed compose files remain deployment truth.
-
-This keeps the live system understandable: if a compose file is not in the command, it is not part of the stack.
-
----
-
-## Convenience options
-
-The primary workflow is always raw `docker compose` as shown above. The options
-below are typing shortcuts only.
-
-### `op` helper function
-
-The [Manual Compose Runbook](operations/manual-compose-runbook.md) documents the
-generated `run.sh` and an optional `op` shell helper for custom compose work.
-After adding it to your shell profile:
+Create a version 2 YAML or JSON setup spec and run:
 
 ```bash
-op up -d        # start the stack
-op ps           # list containers
-op logs -f      # follow all logs
+openpalm install --file ./setup-spec.yaml
 ```
 
-### Setup scripts
+A minimal fresh-install spec is:
 
-Repo setup scripts can still help bootstrap files on a fresh machine, but they should be understood as convenience tooling that prepares the same `~/.openpalm/` layout. They do not replace the compose-first model.
+```yaml
+version: 2
+security:
+  uiLoginPassword: change-me-please
+connections: []
+access:
+  networkAccess: false
+  assistantDirect: false
+  guardianNetwork: false
+  guardianOpenaiApi: false
+```
 
-If you use helper tooling around addon activation, treat `OP_ENABLED_ADDONS` in `state/stack.env` as the live OpenPalm addon state - not any extra Compose file.
+Provider, model, owner, addon, and portal credential fields are optional. See
+[Manual and Headless Install](operations/manual-headless-install.md) for a full
+example and validation rules.
 
----
+Use `--no-start` when another process will run Compose later:
 
-## Common tasks
+```bash
+openpalm install --file ./setup-spec.yaml --no-start
+```
 
-For all common compose operations (start, stop, status, pull, logs, restart), see the [Manual Compose Runbook](operations/manual-compose-runbook.md).
+## Deployment Truth
 
-**Change model keys**
+The installed stack has three ownership layers:
 
-Edit `~/.openpalm/state/stack.env`, then recreate services that need the new values.
+- Managed Compose files: `~/.openpalm/system/stack/core.compose.yml`,
+  `services.compose.yml`, and `portals.compose.yml`
+- User overlay: `~/.openpalm/config/stack/custom.compose.yml`
+- App-owned runtime record and sole Compose env file:
+  `~/.openpalm/state/stack.env`
 
----
+First-party addon IDs are recorded in `OP_ENABLED_ADDONS`. OpenPalm commands
+translate them to Compose profiles. Raw Docker Compose does not, so manual
+commands must include matching `--profile addon.<id>` arguments or an explicit
+`COMPOSE_PROFILES` value.
 
-## After setup
+## Access Settings
 
-The copied bundle gives you a predictable host layout:
+Setup writes flat bind settings rather than a shared bind cascade:
 
-| Path | Purpose |
+- `OP_UI_BIND_ADDRESS`
+- `OP_ASSISTANT_BIND_ADDRESS`
+- `OP_GUARDIAN_BIND_ADDRESS`
+- `OP_API_BIND_ADDRESS`
+
+There is no global bind inheritance, SSH listener, or separate chat listener.
+Voice remains loopback-only, and the Guardian-hosted compatible
+API uses `OP_API_PORT` (default `3821`).
+
+## After Setup
+
+```bash
+openpalm status
+openpalm logs assistant
+```
+
+Default URLs:
+
+| URL | Purpose |
 |---|---|
-| `~/.openpalm/config/stack/` | Compose files |
-| `~/.openpalm/state/stack.env` | Stack-level env values |
-| `~/.openpalm/knowledge/env/user.env` | Optional user extensions |
-| `~/.openpalm/config/` | User-managed config |
-| `~/.openpalm/data/` | Persistent container data |
-| `~/.openpalm/data/logs/` | Logs |
+| <http://localhost:3800/> | Assistant UI served by the assistant container |
+| <http://localhost:3810/> | Assistant OpenCode server |
+| <http://127.0.0.1:3880/host> | Host admin UI after `openpalm admin` |
+| <http://localhost:3821/> | Guardian-hosted compatible API when enabled |
+| <http://localhost:8880/> | Voice API when enabled |
 
-The admin UI runs as a host process (`openpalm ui serve`) on `OP_HOST_UI_PORT` (default `3880`).
+## Power-User Compose
 
----
+Generate the installation first, preferably with `openpalm install --file
+... --no-start`, then use the fixed file list in the
+[Manual Compose Runbook](operations/manual-compose-runbook.md). This preserves
+the same on-disk contract as CLI-managed installs without requiring the CLI for
+day-to-day Compose commands.
 
-## Troubleshooting
+## Existing 0.10.x Installs
 
-### Docker not found
+The historical [0.10.x to 0.11.0 upgrade guide](operations/upgrade-0.10-to-0.11.md)
+remains the reference for that migration. It is not a fresh-install procedure.
 
-Verify Docker is installed and running:
+## Next Steps
 
-```bash
-docker info
-```
-
-### Wrong services started
-
-Re-check the exact compose file list in your command. Docker Compose only deploys the files you pass.
-
-### `OP_ENABLED_ADDONS` had no effect
-
-`OP_ENABLED_ADDONS` is OpenPalm addon state. Regenerate or rerun the OpenPalm compose command so the selected addon names become `--profile` arguments.
-
-### An addon fails to start
-
-Inspect `~/.openpalm/config/stack/services.compose.yml`, `portals.compose.yml`, and logs (see [Manual Compose Runbook](operations/manual-compose-runbook.md) for log commands).
-
-### Start over
-
-Stop the stack, remove `~/.openpalm/` if you truly want a clean reset, then copy the bundle again and rerun your compose command.
-
----
-
-## Next steps
-
-| Guide | What's inside |
+| Guide | Purpose |
 |---|---|
-| [operations/upgrade-0.10-to-0.11.md](operations/upgrade-0.10-to-0.11.md) | Upgrading an existing 0.10.x install |
-| [operations/manual-compose-runbook.md](operations/manual-compose-runbook.md) | Fully explicit compose workflow |
-| [managing-openpalm.md](managing-openpalm.md) | Day-to-day operations |
-| [how-it-works.md](how-it-works.md) | Architecture overview |
-| [technical/foundations.md](technical/foundations.md) | Host paths, mounts, and runtime contract |
-| [technical/core-principles.md](technical/core-principles.md) | Security and architecture rules |
+| [Managing OpenPalm](managing-openpalm.md) | Day-to-day operations |
+| [Manual Compose Runbook](operations/manual-compose-runbook.md) | Raw Compose commands and profile handling |
+| [How It Works](how-it-works.md) | Runtime and security model |
+| [Core Principles](technical/core-principles.md) | Architectural invariants |

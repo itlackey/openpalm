@@ -16,8 +16,7 @@ targets only the true deltas.
 
 ## Execution model (test-first + gated)
 
-Every task runs the same six-stage pipeline, orchestrated by
-[`.claude/workflows/implement-0-13-0.js`](../../../.claude/workflows/implement-0-13-0.js):
+Every task used the same six-stage pipeline:
 
 | Stage | Actor | Output | Gate |
 |---|---|---|---|

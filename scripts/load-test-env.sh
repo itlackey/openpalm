@@ -20,9 +20,8 @@ fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-# op_ui_login_password is a DELEGATED secret (docs/public-seams-review.md
-# §G1) — consumed only by the guardian/portals, never the assistant agent —
-# so it lives under private/secrets/, not knowledge/secrets/.
+# op_ui_login_password is consumed by the UI process, never the Assistant
+# agent, so it lives under private/secrets/, not knowledge/secrets/.
 LOGIN_PASSWORD_SECRET="$ROOT_DIR/.dev/private/secrets/op_ui_login_password"
 
 if [[ -f "$LOGIN_PASSWORD_SECRET" ]]; then

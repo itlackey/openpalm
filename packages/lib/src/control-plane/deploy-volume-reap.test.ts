@@ -29,6 +29,7 @@ import { join } from "node:path";
 import * as realDocker from "./docker.js";
 import * as realImageVolumeRetention from "./image-volume-retention.js";
 import { readStackEnv } from "./secrets.js";
+import { CORE_SERVICES } from "./types.js";
 
 const realApplyStack = realDocker.applyStack;
 const realComposePs = realDocker.composePs;
@@ -194,27 +195,111 @@ describe("runDeploy reclaims retired volumes after the new stack is up (#585 dec
     }
   });
 
-  // Reviewer concern (round 2): the reap is skipped on the "only OPTIONAL
-  // services failed" early return (deploy.ts ~360-370) — that branch marks
-  // setup complete and returns BEFORE the success-path reap. The retired
-  // volumes belong exclusively to optional services (guardian, discord,
-  // slack), i.e. exactly the services whose failure takes this branch, so a
-  // user re-running `openpalm install` over an existing home where an addon
-  // fails to start would get a "completed" deploy with the volumes stranded.
-  test("still reaps when only an OPTIONAL service fails to start (core-only setup-complete branch)", async () => {
+  test("an enabled guardian is required even though it is not a core service", async () => {
+    const homeDir = mkdtempSync(join(tmpdir(), "openpalm-deploy-guardian-fail-"));
+    try {
+      expect(CORE_SERVICES).toEqual(["assistant"]);
+      mkdirSync(join(homeDir, "state"), { recursive: true });
+      writeFileSync(join(homeDir, "state", "stack.env"), "OP_ENABLED_ADDONS=discord\n");
+
+      await withDeployEnv(homeDir, async () => {
+        let applyCalls = 0;
+        const applyStackMock = mock(async () => {
+          applyCalls++;
+          return applyCalls === 1 ? { ok: false } : { ok: true };
+        });
+        const composePsMock = mock(async () => ({
+          ok: true,
+          stdout: JSON.stringify([
+            { Service: "assistant", State: "running", Health: "" },
+            { Service: "discord", State: "running", Health: "" },
+          ]),
+        }));
+        const detectExistingProjectMock = mock(async () => ({ exists: false }));
+        const reapMock = mock(async () => ({ reclaimed: [], errors: [] }));
+
+        mock.module("./docker.js", () => ({
+          ...realDocker,
+          applyStack: applyStackMock,
+          composePs: composePsMock,
+          detectExistingProject: detectExistingProjectMock,
+        }));
+        mock.module("./image-volume-retention.js", () => ({
+          ...realImageVolumeRetention,
+          reapRetiredVolumes: reapMock,
+        }));
+
+        const { runDeploy } = await import(`./deploy.js?deploy-guardian-fail-test=${Math.random()}`);
+        const { createState } = await import(`./lifecycle.js?deploy-guardian-fail-test-state=${Math.random()}`);
+        const result = await runDeploy(createState());
+
+        expect(result.setupComplete).toBe(false);
+        expect(result.deployError).toContain("guardian");
+        expect(result.imageWarning).toBeNull();
+        expect(reapMock).not.toHaveBeenCalled();
+      });
+    } finally {
+      rmSync(homeDir, { recursive: true, force: true });
+    }
+  });
+
+  test("a required service still in health-starting state cannot complete setup", async () => {
+    const homeDir = mkdtempSync(join(tmpdir(), "openpalm-deploy-health-starting-"));
+    try {
+      await withDeployEnv(homeDir, async () => {
+        let applyCalls = 0;
+        const applyStackMock = mock(async () => {
+          applyCalls++;
+          return applyCalls === 1 ? { ok: false, upFailed: false } : { ok: true };
+        });
+        const composePsMock = mock(async () => ({
+          ok: true,
+          stdout: JSON.stringify([
+            { Service: "assistant", State: "running", Health: "starting" },
+          ]),
+        }));
+        const detectExistingProjectMock = mock(async () => ({ exists: false }));
+        const reapMock = mock(async () => ({ reclaimed: [], errors: [] }));
+
+        mock.module("./docker.js", () => ({
+          ...realDocker,
+          applyStack: applyStackMock,
+          composePs: composePsMock,
+          detectExistingProject: detectExistingProjectMock,
+        }));
+        mock.module("./image-volume-retention.js", () => ({
+          ...realImageVolumeRetention,
+          reapRetiredVolumes: reapMock,
+        }));
+
+        const { runDeploy } = await import(`./deploy.js?deploy-health-starting-test=${Math.random()}`);
+        const { createState } = await import(`./lifecycle.js?deploy-health-starting-state=${Math.random()}`);
+        const result = await runDeploy(createState());
+
+        expect(result.setupComplete).toBe(false);
+        expect(result.deployError).toContain("assistant");
+        expect(result.deployStatus).toContainEqual({ service: "assistant", status: "error", label: "Starting" });
+        expect(reapMock).not.toHaveBeenCalled();
+      });
+    } finally {
+      rmSync(homeDir, { recursive: true, force: true });
+    }
+  });
+
+  // Optional adapter failures still complete setup, and the retired-volume
+  // reaper must run before this early return.
+  test("still reaps when only an optional adapter fails to start", async () => {
     const homeDir = mkdtempSync(join(tmpdir(), "openpalm-deploy-reap-optional-fail-"));
     try {
-      // Enable the "discord" addon so buildManagedServices' static-inference
-      // fallback (OP_SKIP_COMPOSE_PREFLIGHT=1) includes a non-core service
-      // (CORE_SERVICES is only ["assistant", "guardian"]) that can fail
-      // without failing the deploy as a whole.
+      // Enable Discord so static inference includes required Guardian and the
+      // optional adapter itself.
       mkdirSync(join(homeDir, "state"), { recursive: true });
       writeFileSync(join(homeDir, "state", "stack.env"), "OP_ENABLED_ADDONS=discord\n");
 
       await withDeployEnv(homeDir, async () => {
         const applyStackMock = mock(async () => ({ ok: false }));
-        // assistant + guardian (CORE_SERVICES) report healthy; discord is
-        // absent from `compose ps` output entirely ("Did not start").
+        // Required Assistant + Guardian report healthy; Discord is absent from
+        // `compose ps` output entirely ("Did not start").
         const composePsMock = mock(async () => ({
           ok: true,
           stdout: JSON.stringify([
@@ -242,7 +327,7 @@ describe("runDeploy reclaims retired volumes after the new stack is up (#585 dec
 
         const result = await runDeploy(state);
 
-        // Only an optional service failed — setup still completes.
+        // Only an optional adapter failed, so setup still completes.
         expect(result.deployError).toBeNull();
         expect(result.setupComplete).toBe(true);
         expect(result.imageWarning).toContain("discord");

@@ -22,13 +22,14 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Image tag to publish (e.g. v1). Also tagged `latest`.'
+        description: 'New immutable model bundle tag (vN, e.g. v2).'
         required: false
         default: 'v1'
         type: string
 
 permissions:
   contents: read
+  id-token: write
 
 concurrency:
   group: publish-voice-models
@@ -42,6 +43,17 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+
+      - name: Validate monotonic immutable model tag
+        env:
+          IMAGE: openpalm/voice-models
+          TARGET_VERSION: ${{ inputs.tag || 'v1' }}
+          TAG_MODE: model
+        run: node scripts/assert-docker-tag-monotonic.mjs
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -60,9 +72,9 @@ jobs:
           images: openpalm/voice-models
           tags: |
             type=raw,value=${{ inputs.tag || 'v1' }}
-            type=raw,value=latest
 
       - name: Build and push
+        id: build
         uses: docker/build-push-action@v6
         with:
           context: containers/voice
@@ -81,3 +93,29 @@ jobs:
             hf_token=${{ secrets.HF_TOKEN }}
           cache-from: type=gha,scope=openpalm/voice-models
           cache-to: type=gha,scope=openpalm/voice-models,mode=max
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v4.1.2
+
+      - name: Sign image (cosign keyless)
+        run: cosign sign --yes openpalm/voice-models@${{ steps.build.outputs.digest }}
+
+      - name: Verify image signature
+        run: |
+          cosign verify \
+            --certificate-identity-regexp "^https://github.com/${{ github.repository }}/.github/workflows/publish-voice-models.yml@refs/.*$" \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+            openpalm/voice-models@${{ steps.build.outputs.digest }}
+
+      - name: Promote verified model bundle
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          if [[ ! "${DIGEST}" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+            echo "::error::Missing or invalid model bundle digest: ${DIGEST}"
+            exit 1
+          fi
+          docker buildx imagetools create \
+            --tag openpalm/voice-models:latest \
+            "openpalm/voice-models@${DIGEST}"
+          docker buildx imagetools inspect openpalm/voice-models:latest >/dev/null

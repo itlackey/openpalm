@@ -71,7 +71,9 @@ A default install runs one always-on service:
 outside traffic — chat, the API endpoint, Discord, Slack or the gateway — since
 all of that traffic must pass through it.
 
-Run `openpalm` to start the admin UI as a host process (no container required).
+Bare `openpalm` ensures the stack is running and serves the normal non-admin host
+UI. Use `openpalm admin` (or Electron) for the loopback-only admin-capable host
+UI; neither mode requires an admin container.
 
 ### Recommended
 
@@ -97,8 +99,9 @@ These are rough expectations, not hard limits:
 |---|---|---|
 | `assistant` | ~240 MB | OpenCode runtime + scheduler co-process |
 | `guardian` | ~30 MB | Request verification and routing |
-| Admin (host process) | minimal | SvelteKit UI/API served by `openpalm` |
-| each portal addon | ~30-60 MB | Chat/API/voice/Discord/Slack edge |
+| Host UI process | minimal | Same SvelteKit UI; admin capability only through Electron or `openpalm admin` |
+| each portal adapter | ~30-60 MB | Discord or Slack edge |
+| voice addon | model-dependent | Local TTS/STT; model and framework memory dominate |
 
 ---
 
@@ -108,9 +111,12 @@ OpenPalm uses one host home directory: `~/.openpalm/`.
 
 | Path | Purpose |
 |---|---|
-| `~/.openpalm/config/stack/` | Live compose files and enabled addon overlays |
-| `~/.openpalm/knowledge/env/` | User-managed secret env files |
-| `~/.openpalm/config/` | User-editable config |
+| `~/.openpalm/system/stack/` | Release-managed Compose files |
+| `~/.openpalm/config/stack/custom.compose.yml` | User Compose overlay |
+| `~/.openpalm/state/stack.env` | Non-secret pins and addon state |
+| `~/.openpalm/knowledge/env/` | AKM user env loaded by scoped tools |
+| `~/.openpalm/private/secrets/` | Delegated service credentials |
+| `~/.openpalm/config/` | Other user-editable config |
 | `~/.openpalm/data/` | Durable service data |
 | `~/.openpalm/data/logs/` | Logs and audit files |
 
@@ -146,10 +152,11 @@ unless you intentionally change bind addresses in `state/stack.env`.
 |---|---|---|
 | `3800` | Assistant chat UI | `OP_UI_PORT` |
 | `3810` | Assistant OpenCode | `OP_ASSISTANT_PORT` |
+| `3830` | Guardian direct listener | `OP_GUARDIAN_PORT` |
+| `3831` | Guardian principal admin (fixed loopback) | `OP_GUARDIAN_ADMIN_PORT` |
 | `8880` | Voice addon | `OP_VOICE_PORT_HOST` |
-| `3820` | Chat addon | `OP_CHAT_PORT` |
-| `3821` | Guardian OpenAI API addon | `OP_API_PORT` |
-| `3880` | Admin UI (host process) | `OP_HOST_UI_PORT` |
+| `3821` | Guardian compatible API | `OP_API_PORT` |
+| `3880` | Host UI process; admin-capable only in Electron or `openpalm admin` | `OP_HOST_UI_PORT` |
 
 `guardian` exposes only localhost-bound direct/admin listeners by default.
 
@@ -157,7 +164,8 @@ unless you intentionally change bind addresses in `state/stack.env`.
 
 ## Operational note
 
-The compose file set under `~/.openpalm/config/stack/` is the live deployment truth.
+The managed Compose file set under `~/.openpalm/system/stack/`, plus the user
+overlay under `~/.openpalm/config/stack/`, is the live deployment truth.
 OpenPalm derives first-party addon profiles from `OP_ENABLED_ADDONS` in
 `~/.openpalm/state/stack.env`, but Docker itself still only sees the
 compose files and explicit `--profile` arguments.

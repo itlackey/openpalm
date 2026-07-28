@@ -6,37 +6,31 @@ name: Release
 # its own slice. A partial unit will silently leave the other units behind (e.g.
 # `platform` does NOT touch the portal image or the discord/slack npm adapters).
 # For a complete, coordinated release of the whole platform, use `all`.
-#   platform  — @openpalm/lib + openpalm (CLI) + @openpalm/ui (npm) +
-#               admin-tools + CLI native binaries + optional Electron + git tag + GitHub release
-#               + guardian + assistant images (include_images defaults to TRUE).
+#   platform  — @openpalm/skeleton + @openpalm/lib + openpalm (CLI) +
+#               @openpalm/ui (npm) + CLI native binaries + git tag + GitHub release
+#               + assistant image (include_images defaults to TRUE).
 #               PARTIAL: no portal image, no portal npm, no voice.
-#   portals   — @openpalm/discord-portal + @openpalm/slack-portal npm packages
-#               (the portal image bun-installs these at runtime, so they update via
-#               `bun update` without an image rebuild) + the portal image
+#   portals   — @openpalm/portal-sdk + @openpalm/discord-portal and
+#               @openpalm/slack-portal npm packages, baked into the portal image
+#               at build time, plus that portal image
 #               (include_images defaults to TRUE) + git tag + GitHub release. PARTIAL.
 #   assistant — openpalm/assistant image + git tag + GitHub release. PARTIAL.
-#   guardian  — @openpalm/guardian + @openpalm/skeleton npm packages only
+#   guardian  — @openpalm/guardian npm package
 #               + the guardian Docker image (include_images defaults to TRUE). PARTIAL.
-#   images    — Docker-only: rebuilds guardian + assistant + portal images at the
-#               current (or explicitly overridden) platform version. No npm publish.
+#   images    — Docker-only: rebuilds guardian + assistant + portal images under a
+#               required explicit image version. No npm publish.
 #               Use to roll out container-level changes (system deps, OpenCode version)
 #               without touching npm packages. PARTIAL.
-#   electron  — Electron installers only (mac/linux/win). No npm publish. Use when
-#               only the desktop harness has changed and other units are already published.
-#               Always pass version explicitly (the version the existing npm packages are at). PARTIAL.
+#   electron  — Electron manifests + installers only (mac/linux/win). No npm publish. PARTIAL.
 #   all       — COMPLETE coordinated release. Publishes EVERY unit at one version,
-#               flag-free (no include_images / include_electron needed):
-#                 npm: @openpalm/{lib,ui,guardian,skeleton} + openpalm (CLI)
-#                      + @openpalm/{discord,slack}-portal
+#               flag-free:
+#                 npm: @openpalm/{lib,ui,guardian,skeleton,portal-sdk} + openpalm
+#                      (CLI) + @openpalm/{discord,slack}-portal
 #                 images: openpalm/{assistant,guardian,portal}  (+ :latest when stable)
 #                 electron installers (mac/linux/win) + CLI native binaries
 #                 per-unit tags + bare X.Y.Z summary tag + GitHub release.
 #               Accepts any bump type (patch/minor/major) or an explicit version override.
-#               Voice still ships primarily from publish-voice.yml on its own cadence
-#               (GPU cpu/cu121 variants) — pass include_voice=true to ALSO stamp a
-#               matching openpalm/voice:<version>-<variant> from this run (opt-in;
-#               voice images are heavy and cu121 is amd64-only). Without that flag,
-#               `all` still does NOT touch voice.
+#               Voice ships independently from publish-voice.yml on its own cadence.
 #               Prefer `all` for a real release; reach for a partial unit only for a
 #               deliberate, isolated hotfix to one slice.
 #
@@ -58,11 +52,11 @@ name: Release
 #
 # npm OIDC: all npm publishes go through publish-npm-package.yml (single top-level caller).
 # Docker-only units (assistant/images) skip npm jobs entirely; portals publishes the
-# discord/slack adapter npm packages (its image is opt-in via include_images).
-# unit=guardian publishes @openpalm/guardian + @openpalm/skeleton (thin-host needs both at runtime).
+# SDK and discord/slack adapter npm packages (its image is on by default).
+# Each package manifest has exactly one release owner; `all` composes those disjoint units.
 #
 # TAG-LAST: the git tag + GitHub release are created LAST ("tag exists = fully published").
-# Always run with dry_run=true first to validate the plan without committing.
+# Always run with dry_run=true first to validate the candidate without pushing it.
 
 on:
   workflow_dispatch:
@@ -83,23 +77,13 @@ on:
         required: false
         type: string
         default: ''
-      include_electron:
-        description: 'Build and publish Electron installer alongside platform release (use unit=electron for standalone)'
-        required: false
-        type: boolean
-        default: false
       include_images:
         description: 'Rebuild Docker images alongside the npm publish (guardian/platform/portals; images and all always build images). ON by default — untick ONLY for a deliberate npm-only thin-host patch.'
         required: false
         type: boolean
         default: true
-      include_voice:
-        description: 'Also stamp openpalm/voice:<version>-<variant> from this run (opt-in; voice normally ships out-of-band from publish-voice.yml). Ignored on dry_run — publish-voice.yml has no dry-run mode, so this is skipped entirely rather than pushing for real.'
-        required: false
-        type: boolean
-        default: false
       dry_run:
-        description: 'Validate and build without publishing, committing, or tagging'
+        description: 'Validate and build the candidate without publishing, pushing, or tagging'
         required: false
         type: boolean
         default: true
@@ -110,7 +94,7 @@ permissions:
   packages: write
 
 concurrency:
-  group: release-${{ inputs.unit }}-${{ github.ref_name }}
+  group: release
   cancel-in-progress: false
 
 jobs:
@@ -127,6 +111,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
+          ref: ${{ github.sha }}
           fetch-depth: 0
 
       - uses: actions/setup-node@v6
@@ -142,71 +127,60 @@ jobs:
           VERSION_OVERRIDE: ${{ inputs.version }}
         run: node scripts/bump-unit.mjs
 
-      - name: Resolve prerelease flag
+      - name: Validate target version and resolve metadata
         id: meta
+        env:
+          VERSION: ${{ steps.bump.outputs.new_version }}
         run: |
-          V="${{ steps.bump.outputs.new_version }}"
-          if echo "${V}" | grep -q -- '-'; then
-            echo "prerelease=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "prerelease=false" >> "$GITHUB_OUTPUT"
-          fi
+          node --input-type=module <<'NODE'
+          import { appendFileSync } from 'node:fs';
+          import { parseSemver } from './scripts/set-version.mjs';
+
+          const version = process.env.VERSION ?? '';
+          const parsed = parseSemver(version);
+          if (!parsed) {
+            console.error(`::error::Invalid release target version: ${version}`);
+            process.exit(1);
+          }
+          appendFileSync(process.env.GITHUB_OUTPUT, `prerelease=${parsed.pre !== null}\n`);
+          NODE
 
       - name: Regression guard (npm packages)
         env:
           VERSION: ${{ steps.bump.outputs.new_version }}
           UNIT: ${{ inputs.unit }}
         run: |
-          node -e "
-            const { execSync } = require('node:child_process');
+          node --input-type=module <<'NODE'
+            import { execFileSync } from 'node:child_process';
+            import { compareSemver } from './scripts/set-version.mjs';
+
             const target = process.env.VERSION;
             const unit = process.env.UNIT;
 
             // Only npm-published units need a regression guard
-            if (!['platform', 'all', 'guardian'].includes(unit)) {
+            if (!['platform', 'portals', 'all', 'guardian'].includes(unit)) {
               console.log('Non-npm unit (' + unit + ') — skipping npm regression guard.');
               process.exit(0);
             }
 
-            // skeleton + guardian are dual-owned: published by BOTH the platform
-            // unit (the CLI hard-pins skeleton to the platform version) AND the
-            // independent guardian unit. They MUST be in the platform guard so a
-            // platform release can never compute a next version at or below an
-            // already-published skeleton/guardian, which npm rejects.
             const npmPackages = {
-              platform: ['@openpalm/lib', 'openpalm', '@openpalm/ui', '@openpalm/skeleton', '@openpalm/guardian'],
-              all: ['@openpalm/lib', 'openpalm', '@openpalm/ui', '@openpalm/skeleton', '@openpalm/guardian'],
-              guardian: ['@openpalm/guardian', '@openpalm/skeleton'],
+              platform: ['@openpalm/lib', 'openpalm', '@openpalm/ui', '@openpalm/skeleton'],
+              portals: ['@openpalm/portal-sdk', '@openpalm/discord-portal', '@openpalm/slack-portal'],
+              guardian: ['@openpalm/guardian'],
+              all: ['@openpalm/lib', 'openpalm', '@openpalm/ui', '@openpalm/skeleton', '@openpalm/guardian', '@openpalm/portal-sdk', '@openpalm/discord-portal', '@openpalm/slack-portal'],
             };
             const packages = npmPackages[unit] || [];
 
-            function parse(v) {
-              const m = String(v).match(/^(\d+)\.(\d+)\.(\d+)(?:-(.+))?\$/);
-              return m ? { ma: +m[1], mi: +m[2], pa: +m[3], pre: m[4] || null } : null;
-            }
-            function cmpPre(a, b) {
-              if (a === b) return 0; if (a === null) return 1; if (b === null) return -1;
-              const ai = a.split('.'), bi = b.split('.');
-              for (let i = 0; i < Math.max(ai.length, bi.length); i++) {
-                if (ai[i] === undefined) return -1; if (bi[i] === undefined) return 1;
-                const an = /^[0-9]+\$/.test(ai[i]), bn = /^[0-9]+\$/.test(bi[i]);
-                if (an && bn) { if (+ai[i] !== +bi[i]) return +ai[i] > +bi[i] ? 1 : -1; }
-                else if (ai[i] !== bi[i]) return ai[i] > bi[i] ? 1 : -1;
-              }
-              return 0;
-            }
-            function cmp(a, b) {
-              const x = parse(a), y = parse(b); if (!x || !y) return null;
-              for (const k of ['ma', 'mi', 'pa']) { if (x[k] !== y[k]) return x[k] > y[k] ? 1 : -1; }
-              return cmpPre(x.pre, y.pre);
-            }
             function maxPublished(name) {
               let vs;
-              try { vs = JSON.parse(execSync('npm view ' + name + ' versions --json', { stdio: ['ignore', 'pipe', 'ignore'] }).toString()); }
-              catch { return null; }
+              try { vs = JSON.parse(execFileSync('npm', ['view', name, 'versions', '--json'], { stdio: ['ignore', 'pipe', 'ignore'] }).toString()); }
+              catch (error) {
+                console.error('::error::Could not query npm versions for ' + name + ': ' + error.message);
+                process.exit(1);
+              }
               if (!Array.isArray(vs)) vs = vs ? [vs] : [];
               let mx = null;
-              for (const v of vs) { if (mx === null || cmp(v, mx) > 0) mx = v; }
+              for (const v of vs) { if (mx === null || compareSemver(v, mx) > 0) mx = v; }
               return mx;
             }
 
@@ -215,29 +189,173 @@ jobs:
               const published = maxPublished(name);
               let status = 'ok';
               if (published !== null) {
-                const c = cmp(target, published);
-                if (c !== null && c <= 0) { status = 'REGRESSION (target <= ' + published + ')'; regressed = true; }
+                const comparison = compareSemver(target, published);
+                if (comparison <= 0) { status = 'REGRESSION (target <= ' + published + ')'; regressed = true; }
                 else status = 'ok (published: ' + published + ')';
-              } else {
-                status = 'ok (not yet published)';
-              }
+              } else status = 'ok (not yet published)';
               console.log(name.padEnd(28) + target.padEnd(14) + status);
             }
             if (regressed) {
               console.error('::error::One or more packages would regress. The computed next version is <= already-published.');
               process.exit(1);
             }
-          "
+          NODE
 
-  # ── Preflight gate (platform + all + guardian + electron) ───────────────────
-  preflight:
-    name: Preflight (test gate)
+      - name: Preflight immutable Git and Docker targets
+        env:
+          VERSION: ${{ steps.bump.outputs.new_version }}
+          UNIT: ${{ inputs.unit }}
+          VERSION_INPUT: ${{ inputs.version }}
+          INCLUDE_IMAGES: ${{ inputs.include_images }}
+        run: |
+          set -euo pipefail
+
+          if [ "${UNIT}" = 'images' ] && [ -z "${VERSION_INPUT}" ]; then
+            echo "::error::unit=images requires an explicit version because image tags are immutable"
+            exit 1
+          fi
+
+          tags=()
+          case "${UNIT}" in
+            all)
+              for prefix in platform portals assistant guardian electron; do tags+=("${prefix}-${VERSION}"); done
+              tags+=("${VERSION}")
+              ;;
+            platform) tags+=("platform-${VERSION}" "${VERSION}") ;;
+            images) tags+=("images-${VERSION}") ;;
+            *) tags+=("${UNIT}-${VERSION}") ;;
+          esac
+          for tag in "${tags[@]}"; do
+            if git rev-parse -q --verify "refs/tags/${tag}" >/dev/null; then
+              echo "::error::Git tag ${tag} already exists"
+              exit 1
+            fi
+          done
+
+          images=()
+          if [ "${UNIT}" = 'images' ] || [ "${UNIT}" = 'all' ] || { [ "${UNIT}" = 'portals' ] && [ "${INCLUDE_IMAGES}" = 'true' ]; }; then
+            images+=(portal)
+          fi
+          if [ "${UNIT}" = 'images' ] || [ "${UNIT}" = 'all' ] || { [ "${UNIT}" = 'guardian' ] && [ "${INCLUDE_IMAGES}" = 'true' ]; }; then
+            images+=(guardian)
+          fi
+          if [ "${UNIT}" = 'assistant' ] || [ "${UNIT}" = 'images' ] || [ "${UNIT}" = 'all' ] || { [ "${UNIT}" = 'platform' ] && [ "${INCLUDE_IMAGES}" = 'true' ]; }; then
+            images+=(assistant)
+          fi
+          for image in "${images[@]}"; do
+            ref="openpalm/${image}:${VERSION}"
+            IMAGE="openpalm/${image}" TARGET_VERSION="${VERSION}" \
+              node scripts/assert-docker-tag-monotonic.mjs
+            if output=$(docker manifest inspect "${ref}" 2>&1); then
+              echo "::error::Docker image ${ref} already exists"
+              exit 1
+            elif ! grep -qiE 'manifest unknown|no such manifest' <<<"${output}"; then
+              echo "::error::Could not verify Docker target ${ref}: ${output}"
+              exit 1
+            fi
+          done
+
+  # ── Prepare one stamped candidate commit without pushing it ────────────────────
+  bump:
+    name: Prepare candidate ${{ needs.compute-version.outputs.new_version }}
     needs: compute-version
-    if: inputs.unit == 'platform' || inputs.unit == 'all' || inputs.unit == 'guardian' || inputs.unit == 'electron'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    outputs:
+      base_sha: ${{ steps.base.outputs.base_sha }}
+      candidate_sha: ${{ steps.candidate.outputs.candidate_sha }}
+      source_artifact: ${{ steps.candidate.outputs.source_artifact }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+
+      - uses: oven-sh/setup-bun@v2
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+
+      - name: Capture release base
+        id: base
+        env:
+          DISPATCH_SHA: ${{ github.sha }}
+        run: |
+          BASE_SHA=$(git rev-parse HEAD)
+          if [ "${BASE_SHA}" != "${DISPATCH_SHA}" ]; then
+            echo "::error::Checked out ${BASE_SHA}, expected dispatch SHA ${DISPATCH_SHA}"
+            exit 1
+          fi
+          echo "base_sha=${BASE_SHA}" >> "$GITHUB_OUTPUT"
+
+      - name: Stamp unit files
+        env:
+          UNIT: ${{ inputs.unit }}
+          BUMP: ${{ inputs.bump }}
+          STAMP: 'true'
+          VERSION_OVERRIDE: ${{ needs.compute-version.outputs.new_version }}
+        run: |
+          node scripts/bump-unit.mjs
+          bun install --lockfile-only
+
+      - name: Commit and bundle candidate
+        id: candidate
+        env:
+          VERSION: ${{ needs.compute-version.outputs.new_version }}
+          UNIT: ${{ inputs.unit }}
+          BASE_SHA: ${{ steps.base.outputs.base_sha }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git switch -c release-candidate
+          git add -A
+          git commit --allow-empty -m "chore(release): stamp ${UNIT} to ${VERSION}"
+
+          CANDIDATE_SHA=$(git rev-parse HEAD)
+          if [ "$(git rev-parse HEAD^)" != "${BASE_SHA}" ]; then
+            echo "::error::Candidate is not directly atop recorded base ${BASE_SHA}"
+            exit 1
+          fi
+          git diff --check "${BASE_SHA}" "${CANDIDATE_SHA}"
+          if [ -n "$(git status --porcelain)" ]; then
+            echo "::error::Candidate commit left tracked or untracked release changes behind"
+            git status --short
+            exit 1
+          fi
+
+          SOURCE_ARTIFACT="release-candidate-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          git bundle create "${RUNNER_TEMP}/release-candidate.bundle" release-candidate "^${BASE_SHA}"
+          git bundle verify "${RUNNER_TEMP}/release-candidate.bundle"
+          echo "candidate_sha=${CANDIDATE_SHA}" >> "$GITHUB_OUTPUT"
+          echo "source_artifact=${SOURCE_ARTIFACT}" >> "$GITHUB_OUTPUT"
+          echo "Prepared ${CANDIDATE_SHA} atop ${BASE_SHA}"
+
+      - name: Upload candidate source
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ steps.candidate.outputs.source_artifact }}
+          path: ${{ runner.temp }}/release-candidate.bundle
+          compression-level: 0
+          retention-days: 7
+
+  # ── Preflight the exact prepared candidate ────────────────────────────────────
+  preflight:
+    name: Preflight candidate (test gate)
+    needs: [compute-version, bump]
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.bump.outputs.base_sha }}
+      - uses: actions/download-artifact@v8
+        with:
+          name: ${{ needs.bump.outputs.source_artifact }}
+          path: .git/release-source
+      - name: Restore candidate source
+        shell: bash
+        run: bash scripts/restore-release-candidate.sh .git/release-source/release-candidate.bundle '${{ needs.bump.outputs.candidate_sha }}' '${{ needs.bump.outputs.base_sha }}'
       - uses: oven-sh/setup-bun@v2
       - uses: actions/setup-node@v6
         with:
@@ -246,15 +364,17 @@ jobs:
       - name: Working tree must be clean
         run: |
           if [ -n "$(git status --porcelain)" ]; then
-            echo "::error::Working tree is not clean. Commit or stash changes before releasing."
+            echo "::error::Candidate working tree is not clean."
             git status --porcelain
             exit 1
           fi
 
-      - name: Install + test (platform / all)
+      - name: Install candidate dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Test (platform / all)
         if: inputs.unit == 'platform' || inputs.unit == 'all'
         run: |
-          bun install --frozen-lockfile
           bun run test
           bun run ui:check
           bun run ui-kit:check
@@ -262,152 +382,144 @@ jobs:
           bun run ui:test:unit
           bun run electron:test
 
-      - name: Install + test (electron)
+      - name: Test (electron)
         if: inputs.unit == 'electron'
-        run: |
-          bun install --frozen-lockfile
-          bun run electron:test
+        run: bun run electron:test
 
-      - name: Install + test (guardian)
+      - name: Test (guardian)
         if: inputs.unit == 'guardian'
-        run: |
-          bun install --frozen-lockfile
-          bun test packages/guardian
+        run: bun test packages/guardian
 
-  # ── Stamp + commit + push the new version ─────────────────────────────────────
-  bump:
-    name: Stamp ${{ needs.compute-version.outputs.new_version }}
-    needs: [compute-version, preflight]
-    if: always() && needs.compute-version.result == 'success' && (needs.preflight.result == 'success' || needs.preflight.result == 'skipped')
+      - name: Test (portals)
+        if: inputs.unit == 'portals'
+        run: bun test --isolate --no-orphans packages/portal-sdk portals/discord portals/slack
+
+  # ── Publish only the tested candidate to the target branch ────────────────────
+  release-source:
+    name: Release source gate
+    needs: [bump, preflight]
+    if: always() && needs.bump.result == 'success' && needs.preflight.result == 'success'
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 10
+    outputs:
+      base_sha: ${{ needs.bump.outputs.base_sha }}
+      candidate_sha: ${{ needs.bump.outputs.candidate_sha }}
+      source_artifact: ${{ needs.bump.outputs.source_artifact }}
     steps:
       - uses: actions/checkout@v6
         with:
-          fetch-depth: 0
+          ref: ${{ needs.bump.outputs.base_sha }}
           token: ${{ secrets.GITHUB_TOKEN }}
-
-      - uses: oven-sh/setup-bun@v2
-
-      - uses: actions/setup-node@v6
+      - uses: actions/download-artifact@v8
         with:
-          node-version: '24'
+          name: ${{ needs.bump.outputs.source_artifact }}
+          path: .git/release-source
+      - name: Restore tested candidate
+        shell: bash
+        run: bash scripts/restore-release-candidate.sh .git/release-source/release-candidate.bundle '${{ needs.bump.outputs.candidate_sha }}' '${{ needs.bump.outputs.base_sha }}'
 
-      - name: Stamp unit files
-        env:
-          UNIT: ${{ inputs.unit }}
-          BUMP: ${{ inputs.bump }}
-          STAMP: 'true'
-          VERSION_OVERRIDE: ${{ inputs.version }}
-        run: |
-          node scripts/bump-unit.mjs
-          bun install
-
-      - name: Preview (dry-run — no commit)
+      - name: Dry-run source notice
         if: inputs.dry_run
-        run: |
-          echo "::notice::dry-run — planned changes (not committed):"
-          git --no-pager diff --stat || true
-          git checkout -- . 2>/dev/null || true
+        run: echo "::notice::dry-run uses candidate ${{ needs.bump.outputs.candidate_sha }} without pushing it"
 
-      - name: Commit + push
+      - name: Push tested candidate with base lease
         if: ${{ !inputs.dry_run }}
         env:
-          VERSION: ${{ needs.compute-version.outputs.new_version }}
-          UNIT: ${{ inputs.unit }}
+          BASE_SHA: ${{ needs.bump.outputs.base_sha }}
+          CANDIDATE_SHA: ${{ needs.bump.outputs.candidate_sha }}
+          TARGET_BRANCH: ${{ github.ref_name }}
+          REF_TYPE: ${{ github.ref_type }}
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git remote set-url origin "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${GITHUB_REPOSITORY}.git"
-          if git diff --quiet; then
-            echo "Already at ${VERSION}; nothing to commit."
-            exit 0
+          if [ "${REF_TYPE}" != 'branch' ]; then
+            echo "::error::Release must be dispatched from a branch, got ${REF_TYPE}"
+            exit 1
           fi
-          git add -A
-          git commit -m "chore(release): stamp ${UNIT} to ${VERSION}"
-          # Retry with rebase to handle concurrent pushes to the same branch
-          for i in 1 2 3 4 5; do
-            git pull --rebase origin "${{ github.ref_name }}" && \
-              git push origin "HEAD:${{ github.ref_name }}" && exit 0
-            echo "Push attempt $i failed, retrying in $((i * 2))s..."
-            sleep $((i * 2))
-          done
-          echo "::error::Failed to push after 5 attempts"
-          exit 1
+
+          REMOTE_LINE=$(git ls-remote --exit-code origin "refs/heads/${TARGET_BRANCH}")
+          REMOTE_SHA=${REMOTE_LINE%%[[:space:]]*}
+          if [ "${REMOTE_SHA}" != "${BASE_SHA}" ]; then
+            echo "::error::Target branch moved from ${BASE_SHA} to ${REMOTE_SHA}; refusing to push an untested rebase"
+            exit 1
+          fi
+
+          git push --force-with-lease="refs/heads/${TARGET_BRANCH}:${BASE_SHA}" \
+            origin "${CANDIDATE_SHA}:refs/heads/${TARGET_BRANCH}"
+
+          PUSHED_LINE=$(git ls-remote --exit-code origin "refs/heads/${TARGET_BRANCH}")
+          PUSHED_SHA=${PUSHED_LINE%%[[:space:]]*}
+          if [ "${PUSHED_SHA}" != "${CANDIDATE_SHA}" ]; then
+            echo "::error::Target branch resolved to ${PUSHED_SHA}, expected candidate ${CANDIDATE_SHA}"
+            exit 1
+          fi
 
   # ── npm layer ─────────────────────────────────────────────────────────────────
-  # skeleton + guardian: published for unit=guardian (thin-host needs both at runtime)
-  #                      and unit=platform + unit=all (full coordinated release)
-  # lib + cli + ui: platform + all only (guardian npm pkg has no lib dep)
-  # NOTE: guardian and skeleton are published independently of lib to avoid
-  # blocking the platform regression guard. lib is platform-managed.
+  # skeleton + lib + cli + ui: platform + all
+  # guardian: guardian + all
   npm-skeleton:
     name: npm @openpalm/skeleton
-    needs: [compute-version, bump]
-    if: always() && needs.bump.result == 'success' && (inputs.unit == 'platform' || inputs.unit == 'guardian' || inputs.unit == 'all')
+    needs: [compute-version, release-source]
+    if: always() && needs.release-source.result == 'success' && (inputs.unit == 'platform' || inputs.unit == 'all')
     uses: ./.github/workflows/publish-npm-package.yml
     secrets: inherit
     with:
       package-dir: packages/skeleton
       package-name: '@openpalm/skeleton'
       version: ${{ needs.compute-version.outputs.new_version }}
-      ref: ${{ github.ref_name }}
-      exact-version: true
-      # skeleton is dual-owned (platform + guardian units). If the guardian unit
-      # already published this exact version in a coordinated cut, tolerate it
-      # instead of failing the whole platform release.
-      allow-existing: true
+      base-sha: ${{ needs.release-source.outputs.base_sha }}
+      candidate-sha: ${{ needs.release-source.outputs.candidate_sha }}
+      source-artifact: ${{ needs.release-source.outputs.source_artifact }}
+      pack-artifact: npm-skeleton-${{ github.run_id }}
       dry-run: ${{ inputs.dry_run }}
 
   npm-lib:
     name: npm @openpalm/lib
-    needs: [compute-version, bump, npm-skeleton]
-    if: always() && needs.bump.result == 'success' && needs.npm-skeleton.result == 'success' && (inputs.unit == 'platform' || inputs.unit == 'all')
+    needs: [compute-version, release-source, npm-skeleton]
+    if: always() && needs.release-source.result == 'success' && needs.npm-skeleton.result == 'success' && (inputs.unit == 'platform' || inputs.unit == 'all')
     uses: ./.github/workflows/publish-npm-package.yml
     secrets: inherit
     with:
       package-dir: packages/lib
       package-name: '@openpalm/lib'
       version: ${{ needs.compute-version.outputs.new_version }}
-      ref: ${{ github.ref_name }}
-      exact-version: true
+      base-sha: ${{ needs.release-source.outputs.base_sha }}
+      candidate-sha: ${{ needs.release-source.outputs.candidate_sha }}
+      source-artifact: ${{ needs.release-source.outputs.source_artifact }}
       dry-run: ${{ inputs.dry_run }}
 
   npm-guardian:
     name: npm @openpalm/guardian
-    needs: [compute-version, bump, npm-skeleton]
-    if: always() && needs.bump.result == 'success' && needs.npm-skeleton.result == 'success' && (inputs.unit == 'platform' || inputs.unit == 'guardian' || inputs.unit == 'all')
+    needs: [compute-version, release-source]
+    if: always() && needs.release-source.result == 'success' && (inputs.unit == 'guardian' || inputs.unit == 'all')
     uses: ./.github/workflows/publish-npm-package.yml
     secrets: inherit
     with:
       package-dir: packages/guardian
       package-name: '@openpalm/guardian'
       version: ${{ needs.compute-version.outputs.new_version }}
-      ref: ${{ github.ref_name }}
-      exact-version: true
-      # guardian npm pkg is dual-owned (platform + guardian units). Tolerate an
-      # already-published exact version from a coordinated guardian cut.
-      allow-existing: true
+      base-sha: ${{ needs.release-source.outputs.base_sha }}
+      candidate-sha: ${{ needs.release-source.outputs.candidate_sha }}
+      source-artifact: ${{ needs.release-source.outputs.source_artifact }}
       dry-run: ${{ inputs.dry_run }}
 
   npm-cli:
     name: npm openpalm (CLI)
-    needs: [compute-version, bump, npm-lib]
-    if: always() && needs.bump.result == 'success' && needs.npm-lib.result == 'success' && (inputs.unit == 'platform' || inputs.unit == 'all')
+    needs: [compute-version, release-source, npm-lib]
+    if: always() && needs.release-source.result == 'success' && needs.npm-lib.result == 'success' && (inputs.unit == 'platform' || inputs.unit == 'all')
     uses: ./.github/workflows/publish-npm-package.yml
     secrets: inherit
     with:
       package-dir: packages/cli
       package-name: openpalm
       version: ${{ needs.compute-version.outputs.new_version }}
-      ref: ${{ github.ref_name }}
-      exact-version: true
+      base-sha: ${{ needs.release-source.outputs.base_sha }}
+      candidate-sha: ${{ needs.release-source.outputs.candidate_sha }}
+      source-artifact: ${{ needs.release-source.outputs.source_artifact }}
       dry-run: ${{ inputs.dry_run }}
 
   npm-ui:
     name: npm @openpalm/ui
-    needs: [compute-version, bump, npm-lib]
-    if: always() && needs.bump.result == 'success' && needs.npm-lib.result == 'success' && (inputs.unit == 'platform' || inputs.unit == 'all')
+    needs: [compute-version, release-source, npm-lib]
+    if: always() && needs.release-source.result == 'success' && needs.npm-lib.result == 'success' && (inputs.unit == 'platform' || inputs.unit == 'all')
     uses: ./.github/workflows/publish-npm-package.yml
     secrets: inherit
     with:
@@ -415,8 +527,10 @@ jobs:
       package-name: '@openpalm/ui'
       needs-build: true
       version: ${{ needs.compute-version.outputs.new_version }}
-      ref: ${{ github.ref_name }}
-      exact-version: true
+      base-sha: ${{ needs.release-source.outputs.base_sha }}
+      candidate-sha: ${{ needs.release-source.outputs.candidate_sha }}
+      source-artifact: ${{ needs.release-source.outputs.source_artifact }}
+      pack-artifact: npm-ui-${{ github.run_id }}
       dry-run: ${{ inputs.dry_run }}
 
   # Portal SDK: shared base class + OpenCode client the discord/slack adapters
@@ -430,16 +544,18 @@ jobs:
   # @openpalm/portal-sdk@0.12.52 — uninstallable).
   npm-portal-sdk:
     name: npm @openpalm/portal-sdk
-    needs: [compute-version, bump]
-    if: always() && needs.bump.result == 'success' && (inputs.unit == 'portals' || inputs.unit == 'all')
+    needs: [compute-version, release-source]
+    if: always() && needs.release-source.result == 'success' && (inputs.unit == 'portals' || inputs.unit == 'all')
     uses: ./.github/workflows/publish-npm-package.yml
     secrets: inherit
     with:
       package-dir: packages/portal-sdk
       package-name: '@openpalm/portal-sdk'
       version: ${{ needs.compute-version.outputs.new_version }}
-      ref: ${{ github.ref_name }}
-      exact-version: true
+      base-sha: ${{ needs.release-source.outputs.base_sha }}
+      candidate-sha: ${{ needs.release-source.outputs.candidate_sha }}
+      source-artifact: ${{ needs.release-source.outputs.source_artifact }}
+      pack-artifact: npm-portal-sdk-${{ github.run_id }}
       dry-run: ${{ inputs.dry_run }}
 
   # Portal adapters: baked into the portal image at build time from
@@ -448,51 +564,124 @@ jobs:
   # update, not a runtime install. Published as `src` only (no build).
   npm-discord-portal:
     name: npm @openpalm/discord-portal
-    needs: [compute-version, bump, npm-portal-sdk]
-    if: always() && needs.bump.result == 'success' && needs.npm-portal-sdk.result == 'success' && (inputs.unit == 'portals' || inputs.unit == 'all')
+    needs: [compute-version, release-source, npm-portal-sdk]
+    if: always() && needs.release-source.result == 'success' && needs.npm-portal-sdk.result == 'success' && (inputs.unit == 'portals' || inputs.unit == 'all')
     uses: ./.github/workflows/publish-npm-package.yml
     secrets: inherit
     with:
       package-dir: portals/discord
       package-name: '@openpalm/discord-portal'
       version: ${{ needs.compute-version.outputs.new_version }}
-      ref: ${{ github.ref_name }}
-      exact-version: true
+      base-sha: ${{ needs.release-source.outputs.base_sha }}
+      candidate-sha: ${{ needs.release-source.outputs.candidate_sha }}
+      source-artifact: ${{ needs.release-source.outputs.source_artifact }}
+      pack-artifact: npm-discord-portal-${{ github.run_id }}
       dry-run: ${{ inputs.dry_run }}
 
   npm-slack-portal:
     name: npm @openpalm/slack-portal
-    needs: [compute-version, bump, npm-portal-sdk]
-    if: always() && needs.bump.result == 'success' && needs.npm-portal-sdk.result == 'success' && (inputs.unit == 'portals' || inputs.unit == 'all')
+    needs: [compute-version, release-source, npm-portal-sdk]
+    if: always() && needs.release-source.result == 'success' && needs.npm-portal-sdk.result == 'success' && (inputs.unit == 'portals' || inputs.unit == 'all')
     uses: ./.github/workflows/publish-npm-package.yml
     secrets: inherit
     with:
       package-dir: portals/slack
       package-name: '@openpalm/slack-portal'
       version: ${{ needs.compute-version.outputs.new_version }}
-      ref: ${{ github.ref_name }}
-      exact-version: true
+      base-sha: ${{ needs.release-source.outputs.base_sha }}
+      candidate-sha: ${{ needs.release-source.outputs.candidate_sha }}
+      source-artifact: ${{ needs.release-source.outputs.source_artifact }}
+      pack-artifact: npm-slack-portal-${{ github.run_id }}
       dry-run: ${{ inputs.dry_run }}
 
   # ── Docker images ─────────────────────────────────────────────────────────────
   # portal:    images | all | portals+include_images
-  # guardian:  images | all | guardian+include_images | platform+include_images
+  # guardian:  images | all | guardian+include_images
   # assistant: assistant | images | all | platform+include_images
   docker-portal:
     name: Docker openpalm/portal
-    needs: [compute-version, bump]
-    if: always() && needs.bump.result == 'success' && (inputs.unit == 'images' || inputs.unit == 'all' || (inputs.unit == 'portals' && inputs.include_images))
+    needs: [compute-version, release-source, npm-portal-sdk, npm-discord-portal, npm-slack-portal]
+    if: |
+      always() &&
+      needs.release-source.result == 'success' &&
+      (inputs.unit == 'images' || inputs.unit == 'all' || (inputs.unit == 'portals' && inputs.include_images)) &&
+      (inputs.unit == 'images' ||
+       (needs.npm-portal-sdk.result == 'success' &&
+        needs.npm-discord-portal.result == 'success' &&
+        needs.npm-slack-portal.result == 'success'))
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    outputs:
+      digest: ${{ steps.build.outputs.digest }}
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: ${{ github.ref_name }}
-      - name: Stamp local guardian/skeleton sources for dry-run image build
-        if: ${{ inputs.dry_run }}
+          ref: ${{ needs.release-source.outputs.base_sha }}
+      - uses: actions/download-artifact@v8
+        with:
+          name: ${{ needs.release-source.outputs.source_artifact }}
+          path: .git/release-source
+      - name: Restore tested candidate
+        shell: bash
+        run: bash scripts/restore-release-candidate.sh .git/release-source/release-candidate.bundle '${{ needs.release-source.outputs.candidate_sha }}' '${{ needs.release-source.outputs.base_sha }}'
+      - name: Download portal SDK dry-run package
+        if: inputs.dry_run && inputs.unit != 'images'
+        uses: actions/download-artifact@v8
+        with:
+          name: npm-portal-sdk-${{ github.run_id }}
+          path: .release-packages
+      - name: Download Discord dry-run package
+        if: inputs.dry_run && inputs.unit != 'images'
+        uses: actions/download-artifact@v8
+        with:
+          name: npm-discord-portal-${{ github.run_id }}
+          path: .release-packages
+      - name: Download Slack dry-run package
+        if: inputs.dry_run && inputs.unit != 'images'
+        uses: actions/download-artifact@v8
+        with:
+          name: npm-slack-portal-${{ github.run_id }}
+          path: .release-packages
+      - name: Prepare portal dry-run Dockerfile
+        if: inputs.dry_run && inputs.unit != 'images'
         run: |
-          node scripts/set-version.mjs packages/guardian/package.json "${{ needs.compute-version.outputs.new_version }}"
-          node scripts/set-version.mjs packages/skeleton/package.json "${{ needs.compute-version.outputs.new_version }}"
+          cat > .release-packages/portal.Dockerfile <<'DOCKERFILE'
+          FROM oven/bun:1.3-slim
+          WORKDIR /app
+          RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*
+          COPY .release-packages/*.tgz /tmp/openpalm-packages/
+          RUN mkdir -p /opt/openpalm/tools \
+              && bun add --cwd /opt/openpalm/tools /tmp/openpalm-packages/*.tgz --production \
+              && rm -rf /tmp/openpalm-packages \
+              && chmod -R a+rwX /opt/openpalm/tools
+          COPY containers/portal/portal-entrypoint.ts /app/portal-entrypoint.ts
+          COPY containers/portal/start.sh /app/start.sh
+          RUN chmod +x /app/start.sh \
+              && mkdir -p /home/bun \
+              && chown -R bun:bun /app /home/bun /opt/openpalm/tools
+          ENV HOME=/home/bun
+          ENV PORT=8080
+          ENV PATH="/opt/openpalm/tools/node_modules/.bin:$PATH"
+          EXPOSE 8080
+          HEALTHCHECK --interval=10s --timeout=3s --start-period=15s --retries=3 \
+            CMD curl -sf "http://localhost:${PORT}/health" || exit 1
+          USER bun
+          CMD ["/app/start.sh"]
+          DOCKERFILE
+      - name: Validate existing exact portal pins (image-only release)
+        if: inputs.unit == 'images'
+        run: |
+          node <<'NODE'
+          const { execFileSync } = require('node:child_process');
+          const { readFileSync } = require('node:fs');
+          const { dependencies } = JSON.parse(readFileSync('containers/portal/tools/package.json', 'utf8'));
+          for (const [name, version] of Object.entries(dependencies)) {
+            if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(version)) {
+              throw new Error(`${name} must use an exact published pin, got ${version}`);
+            }
+            execFileSync('npm', ['view', `${name}@${version}`, 'version'], { stdio: 'inherit' });
+          }
+          NODE
       - uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@v3
       - name: Login to Docker Hub
@@ -503,9 +692,15 @@ jobs:
           password: ${{ secrets.DOCKERHUB_TOKEN }}
       - name: Guard — fail if image tag already exists
         if: ${{ !inputs.dry_run }}
+        env:
+          IMAGE_REF: openpalm/portal:${{ needs.compute-version.outputs.new_version }}
         run: |
-          if docker manifest inspect openpalm/portal:${{ needs.compute-version.outputs.new_version }} > /dev/null 2>&1; then
-            echo "ERROR: openpalm/portal:${{ needs.compute-version.outputs.new_version }} already exists on Docker Hub. Refusing to overwrite." >&2
+          set -euo pipefail
+          if output=$(docker manifest inspect "${IMAGE_REF}" 2>&1); then
+            echo "::error::${IMAGE_REF} already exists on Docker Hub. Refusing to overwrite."
+            exit 1
+          elif ! grep -qiE 'manifest unknown|no such manifest' <<<"${output}"; then
+            echo "::error::Could not verify Docker target ${IMAGE_REF}: ${output}"
             exit 1
           fi
       - name: Docker metadata
@@ -514,14 +709,15 @@ jobs:
         with:
           images: openpalm/portal
           tags: |
-            type=raw,value=latest,enable=${{ needs.compute-version.outputs.prerelease == 'false' }}
             type=raw,value=${{ needs.compute-version.outputs.new_version }}
+          labels: |
+            org.opencontainers.image.revision=${{ needs.release-source.outputs.candidate_sha }}
       - name: Build and push
         id: build
         uses: docker/build-push-action@v6
         with:
           context: .
-          file: containers/portal/Dockerfile
+          file: ${{ inputs.dry_run && inputs.unit != 'images' && '.release-packages/portal.Dockerfile' || 'containers/portal/Dockerfile' }}
           platforms: ${{ inputs.dry_run && 'linux/amd64' || 'linux/amd64,linux/arm64' }}
           push: ${{ !inputs.dry_run }}
           # Provenance/SBOM attestations add extra manifests + blobs that make
@@ -553,25 +749,61 @@ jobs:
 
   docker-guardian:
     name: Docker openpalm/guardian
-    needs: [compute-version, bump, npm-guardian, npm-skeleton]
+    needs: [compute-version, release-source, npm-guardian, npm-skeleton]
     if: |
       always() &&
-      needs.bump.result == 'success' &&
-      (inputs.unit == 'images' || inputs.unit == 'all' ||
-       ((inputs.unit == 'guardian' || inputs.unit == 'platform') && inputs.include_images)) &&
-      needs.npm-guardian.result != 'failure' &&
-      needs.npm-skeleton.result != 'failure'
+      needs.release-source.result == 'success' &&
+      (inputs.unit == 'images' ||
+       ((inputs.unit == 'all' ||
+          (inputs.unit == 'guardian' && inputs.include_images)) &&
+         needs.npm-guardian.result == 'success' &&
+         (inputs.unit != 'all' || needs.npm-skeleton.result == 'success')))
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    outputs:
+      digest: ${{ steps.build.outputs.digest }}
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: ${{ github.ref_name }}
-      - name: Stamp local guardian/skeleton sources for dry-run image build
-        if: ${{ inputs.dry_run }}
+          ref: ${{ needs.release-source.outputs.base_sha }}
+      - uses: actions/download-artifact@v8
+        with:
+          name: ${{ needs.release-source.outputs.source_artifact }}
+          path: .git/release-source
+      - name: Restore tested candidate
+        shell: bash
+        run: bash scripts/restore-release-candidate.sh .git/release-source/release-candidate.bundle '${{ needs.release-source.outputs.candidate_sha }}' '${{ needs.release-source.outputs.base_sha }}'
+      - name: Resolve Guardian and skeleton package versions
+        id: package_versions
+        env:
+          UNIT: ${{ inputs.unit }}
+          TARGET_VERSION: ${{ needs.compute-version.outputs.new_version }}
         run: |
-          node scripts/set-version.mjs packages/guardian/package.json "${{ needs.compute-version.outputs.new_version }}"
-          node scripts/set-version.mjs packages/skeleton/package.json "${{ needs.compute-version.outputs.new_version }}"
+          if [ "${UNIT}" = 'guardian' ] || [ "${UNIT}" = 'all' ]; then
+            GUARDIAN_VERSION="${TARGET_VERSION}"
+          else
+            GUARDIAN_VERSION=$(node -p "require('./packages/guardian/package.json').version")
+          fi
+          if [ "${UNIT}" = 'all' ]; then
+            SKELETON_VERSION="${TARGET_VERSION}"
+          else
+            SKELETON_VERSION=$(node -p "require('./packages/skeleton/package.json').version")
+          fi
+          echo "guardian_version=${GUARDIAN_VERSION}" >> "$GITHUB_OUTPUT"
+          echo "skeleton_version=${SKELETON_VERSION}" >> "$GITHUB_OUTPUT"
+      - name: Preflight registry-backed Guardian packages
+        env:
+          UNIT: ${{ inputs.unit }}
+          DRY_RUN: ${{ inputs.dry_run }}
+          GUARDIAN_VERSION: ${{ steps.package_versions.outputs.guardian_version }}
+          SKELETON_VERSION: ${{ steps.package_versions.outputs.skeleton_version }}
+        run: |
+          if ! { [ "${DRY_RUN}" = 'true' ] && { [ "${UNIT}" = 'guardian' ] || [ "${UNIT}" = 'all' ]; }; }; then
+            npm view "@openpalm/guardian@${GUARDIAN_VERSION}" version >/dev/null
+          fi
+          if ! { [ "${DRY_RUN}" = 'true' ] && [ "${UNIT}" = 'all' ]; }; then
+            npm view "@openpalm/skeleton@${SKELETON_VERSION}" version >/dev/null
+          fi
       - uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@v3
       - name: Login to Docker Hub
@@ -582,9 +814,15 @@ jobs:
           password: ${{ secrets.DOCKERHUB_TOKEN }}
       - name: Guard — fail if image tag already exists
         if: ${{ !inputs.dry_run }}
+        env:
+          IMAGE_REF: openpalm/guardian:${{ needs.compute-version.outputs.new_version }}
         run: |
-          if docker manifest inspect openpalm/guardian:${{ needs.compute-version.outputs.new_version }} > /dev/null 2>&1; then
-            echo "ERROR: openpalm/guardian:${{ needs.compute-version.outputs.new_version }} already exists on Docker Hub. Refusing to overwrite." >&2
+          set -euo pipefail
+          if output=$(docker manifest inspect "${IMAGE_REF}" 2>&1); then
+            echo "::error::${IMAGE_REF} already exists on Docker Hub. Refusing to overwrite."
+            exit 1
+          elif ! grep -qiE 'manifest unknown|no such manifest' <<<"${output}"; then
+            echo "::error::Could not verify Docker target ${IMAGE_REF}: ${output}"
             exit 1
           fi
       - name: Docker metadata
@@ -593,8 +831,9 @@ jobs:
         with:
           images: openpalm/guardian
           tags: |
-            type=raw,value=latest,enable=${{ needs.compute-version.outputs.prerelease == 'false' }}
             type=raw,value=${{ needs.compute-version.outputs.new_version }}
+          labels: |
+            org.opencontainers.image.revision=${{ needs.release-source.outputs.candidate_sha }}
       - name: Build and push
         id: build
         uses: docker/build-push-action@v6
@@ -602,9 +841,10 @@ jobs:
           context: .
           file: containers/guardian/Dockerfile
           build-args: |
-            GUARDIAN_VERSION=${{ needs.compute-version.outputs.new_version }}
-            GUARDIAN_USE_LOCAL_SOURCE=${{ inputs.dry_run && 'true' || 'false' }}
-            SKELETON_USE_LOCAL_SOURCE=${{ inputs.dry_run && 'true' || 'false' }}
+            GUARDIAN_VERSION=${{ steps.package_versions.outputs.guardian_version }}
+            SKELETON_VERSION=${{ steps.package_versions.outputs.skeleton_version }}
+            GUARDIAN_USE_LOCAL_SOURCE=${{ inputs.dry_run && (inputs.unit == 'guardian' || inputs.unit == 'all') && 'true' || 'false' }}
+            SKELETON_USE_LOCAL_SOURCE=${{ inputs.dry_run && inputs.unit == 'all' && 'true' || 'false' }}
           platforms: ${{ inputs.dry_run && 'linux/amd64' || 'linux/amd64,linux/arm64' }}
           push: ${{ !inputs.dry_run }}
           # Provenance/SBOM attestations add extra manifests + blobs that make
@@ -650,22 +890,44 @@ jobs:
   # 404s (ETARGET) if it races ahead of that publish (C, run 29955888007:
   # docker-assistant depended only on npm-skeleton and started while npm-ui was
   # still queued). npm-ui is `skipped` for unit=assistant/images (not published
-  # in-run), so gate on `!= 'failure'` — the preflight below covers those units.
+  # in-run), where the registry preflight below covers the existing platform pin.
   docker-assistant:
     name: Docker openpalm/assistant
-    needs: [compute-version, bump, npm-skeleton, npm-ui]
+    needs: [compute-version, release-source, npm-skeleton, npm-ui]
     if: |
       always() &&
-      needs.bump.result == 'success' &&
-      needs.npm-skeleton.result != 'failure' &&
-      needs.npm-ui.result != 'failure' &&
-      (inputs.unit == 'assistant' || inputs.unit == 'images' || inputs.unit == 'all' || (inputs.unit == 'platform' && inputs.include_images))
+      needs.release-source.result == 'success' &&
+      ((inputs.unit == 'assistant' || inputs.unit == 'images') ||
+       ((inputs.unit == 'all' || (inputs.unit == 'platform' && inputs.include_images)) &&
+        needs.npm-skeleton.result == 'success' &&
+        needs.npm-ui.result == 'success'))
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    outputs:
+      digest: ${{ steps.build.outputs.digest }}
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: ${{ github.ref_name }}
+          ref: ${{ needs.release-source.outputs.base_sha }}
+      - uses: actions/download-artifact@v8
+        with:
+          name: ${{ needs.release-source.outputs.source_artifact }}
+          path: .git/release-source
+      - name: Restore tested candidate
+        shell: bash
+        run: bash scripts/restore-release-candidate.sh .git/release-source/release-candidate.bundle '${{ needs.release-source.outputs.candidate_sha }}' '${{ needs.release-source.outputs.base_sha }}'
+      - name: Download skeleton dry-run package
+        if: inputs.dry_run && (inputs.unit == 'platform' || inputs.unit == 'all')
+        uses: actions/download-artifact@v8
+        with:
+          name: npm-skeleton-${{ github.run_id }}
+          path: .release-packages
+      - name: Download UI dry-run package
+        if: inputs.dry_run && (inputs.unit == 'platform' || inputs.unit == 'all')
+        uses: actions/download-artifact@v8
+        with:
+          name: npm-ui-${{ github.run_id }}
+          path: .release-packages
       - uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@v3
       - name: Login to Docker Hub
@@ -676,9 +938,15 @@ jobs:
           password: ${{ secrets.DOCKERHUB_TOKEN }}
       - name: Guard — fail if image tag already exists
         if: ${{ !inputs.dry_run }}
+        env:
+          IMAGE_REF: openpalm/assistant:${{ needs.compute-version.outputs.new_version }}
         run: |
-          if docker manifest inspect openpalm/assistant:${{ needs.compute-version.outputs.new_version }} > /dev/null 2>&1; then
-            echo "ERROR: openpalm/assistant:${{ needs.compute-version.outputs.new_version }} already exists on Docker Hub. Refusing to overwrite." >&2
+          set -euo pipefail
+          if output=$(docker manifest inspect "${IMAGE_REF}" 2>&1); then
+            echo "::error::${IMAGE_REF} already exists on Docker Hub. Refusing to overwrite."
+            exit 1
+          elif ! grep -qiE 'manifest unknown|no such manifest' <<<"${output}"; then
+            echo "::error::Could not verify Docker target ${IMAGE_REF}: ${output}"
             exit 1
           fi
       - name: Docker metadata
@@ -687,29 +955,31 @@ jobs:
         with:
           images: openpalm/assistant
           tags: |
-            type=raw,value=latest,enable=${{ needs.compute-version.outputs.prerelease == 'false' }}
             type=raw,value=${{ needs.compute-version.outputs.new_version }}
+          labels: |
+            org.opencontainers.image.revision=${{ needs.release-source.outputs.candidate_sha }}
       - name: Resolve platform version for baked skeleton (I1)
         id: platform_version
         env:
           UNIT: ${{ inputs.unit }}
           ANCHOR_VERSION: ${{ needs.compute-version.outputs.new_version }}
         run: |
-          if [ "${UNIT}" = 'assistant' ]; then
-            # unit=assistant's own anchor (containers/assistant/VERSION) has no
-            # relationship to the platform npm version — resolve the actual
-            # last-stamped platform version from the root manifest instead
-            # (platform releases stamp + publish package.json in lockstep).
+          if [ "${UNIT}" = 'assistant' ] || [ "${UNIT}" = 'images' ]; then
+            # Image-only version tags have no relationship to the platform npm
+            # version. Resolve the exact UI/skeleton version baked into the
+            # Assistant from the root manifest instead.
             V=$(node -p "require('./package.json').version")
-            echo "unit=assistant: PLATFORM_VERSION resolved from root package.json (${V}), NOT the assistant unit anchor (${ANCHOR_VERSION})"
+            echo "unit=${UNIT}: PLATFORM_VERSION resolved from root package.json (${V}), not image target ${ANCHOR_VERSION}"
           else
             V="${ANCHOR_VERSION}"
           fi
           echo "platform_version=${V}" >> "$GITHUB_OUTPUT"
       - name: Preflight — baked skeleton + ui must exist on npm (I1)
-        if: ${{ !inputs.dry_run }}
+        if: ${{ !inputs.dry_run || inputs.unit == 'assistant' || inputs.unit == 'images' }}
+        env:
+          PLATFORM_VERSION: ${{ steps.platform_version.outputs.platform_version }}
         run: |
-          V="${{ steps.platform_version.outputs.platform_version }}"
+          V="${PLATFORM_VERSION}"
           fail=0
           # The assistant image bakes BOTH packages at PLATFORM_VERSION: skeleton
           # (installed at every container boot) and ui (the offline UI floor,
@@ -726,12 +996,6 @@ jobs:
           if [ "${fail}" -ne 0 ]; then
             exit 1
           fi
-      # PLATFORM_VERSION is empty on dry-run (rather than the freshly-bumped,
-      # never-published-yet version): the preflight above is skipped in
-      # dry-run too, so baking the raw version here would still hit the
-      # assistant entrypoint's `npm install @openpalm/skeleton@$PLATFORM_VERSION`
-      # and fail with an opaque E404 (F13 follow-up, review 2026-07-11). An unset
-      # PLATFORM_VERSION is a documented no-op for that entrypoint step.
       # IMG-6: build the amd64 smoke image on the SAME buildx builder and gha
       # cache scope as "Build and push" below, so the release builds this image
       # once instead of twice — the push step then restores these layers from
@@ -743,7 +1007,7 @@ jobs:
           context: .
           file: containers/assistant/Dockerfile
           build-args: |
-            PLATFORM_VERSION=${{ !inputs.dry_run && steps.platform_version.outputs.platform_version || '' }}
+            PLATFORM_VERSION=${{ (!inputs.dry_run || inputs.unit == 'assistant' || inputs.unit == 'images') && steps.platform_version.outputs.platform_version || '' }}
           platforms: linux/amd64
           load: true
           push: false
@@ -752,20 +1016,32 @@ jobs:
           tags: openpalm-assistant-smoke:${{ github.run_id }}
           cache-from: type=gha,scope=openpalm/assistant
           cache-to: type=gha,scope=openpalm/assistant,mode=max
-      - name: Assistant image smoke — baked tools present
+      - name: Bake candidate npm packages into dry-run image
+        if: inputs.dry_run && (inputs.unit == 'platform' || inputs.unit == 'all')
+        env:
+          PLATFORM_VERSION: ${{ steps.platform_version.outputs.platform_version }}
+        run: |
+          docker build \
+            --file containers/assistant/Dockerfile.local-packages \
+            --build-arg "BASE_IMAGE=openpalm-assistant-smoke:${GITHUB_RUN_ID}" \
+            --build-arg "PLATFORM_VERSION=${PLATFORM_VERSION}" \
+            --tag "openpalm-assistant-smoke:${GITHUB_RUN_ID}" \
+            .release-packages
+      - name: Assistant image smoke — baked packages and tools present
         run: |
           docker run --rm --entrypoint bash openpalm-assistant-smoke:${{ github.run_id }} \
-            -lc 'opencode --version && akm --version && gh --version && jq --version && sqlite3 --version && uv --version'
+            -lc 'test -f /opt/openpalm/ui/node_modules/@openpalm/ui/package.json && test -f /opt/openpalm/skeleton/node_modules/@openpalm/skeleton/package.json && opencode --version && akm --version && gh --version && jq --version && sqlite3 --version && uv --version'
       - name: Build and push
         id: build
+        if: ${{ !inputs.dry_run }}
         uses: docker/build-push-action@v6
         with:
           context: .
           file: containers/assistant/Dockerfile
           build-args: |
-            PLATFORM_VERSION=${{ !inputs.dry_run && steps.platform_version.outputs.platform_version || '' }}
-          platforms: ${{ inputs.dry_run && 'linux/amd64' || 'linux/amd64,linux/arm64' }}
-          push: ${{ !inputs.dry_run }}
+            PLATFORM_VERSION=${{ steps.platform_version.outputs.platform_version }}
+          platforms: linux/amd64,linux/arm64
+          push: true
           # Provenance/SBOM attestations add extra manifests + blobs that make
           # Docker Hub's CDN intermittently 400 on large multi-blob pushes.
           provenance: false
@@ -793,30 +1069,11 @@ jobs:
             --certificate-oidc-issuer https://token.actions.githubusercontent.com \
             openpalm/assistant@${{ steps.build.outputs.digest }}
 
-  # ── Voice images (opt-in tie-in to a platform release, E3) ───────────────────
-  # Voice ships out-of-band on its own cadence via publish-voice.yml
-  # (workflow_dispatch). This job is a thin, explicit opt-in so a release run
-  # CAN also stamp a matching openpalm/voice:<version>-<variant> alongside
-  # whatever unit is being released, instead of always drifting on `latest-*`.
-  # Kept deliberately minimal per the review: no runtime compat assertion
-  # between voice and the platform version — just an immutable version tag.
-  # Skipped on dry_run: publish-voice.yml has no dry-run mode of its own (it
-  # always pushes), so honoring dry_run here means skipping the job entirely
-  # rather than letting it push real images during a "validate only" run.
-  docker-voice:
-    name: Docker openpalm/voice (opt-in)
-    needs: [compute-version, bump]
-    if: always() && needs.bump.result == 'success' && inputs.include_voice == true && !inputs.dry_run
-    uses: ./.github/workflows/publish-voice.yml
-    secrets: inherit
-    with:
-      version: ${{ needs.compute-version.outputs.new_version }}
-
   # ── CLI native binaries (platform + all) ─────────────────────────────────────
   cli:
     name: CLI binary (${{ matrix.artifact }})
-    needs: [compute-version, bump, npm-skeleton, npm-lib, npm-cli]
-    if: always() && needs.bump.result == 'success' && needs.npm-skeleton.result == 'success' && needs.npm-lib.result == 'success' && needs.npm-cli.result == 'success' && (inputs.unit == 'platform' || inputs.unit == 'all')
+    needs: [compute-version, release-source, npm-skeleton, npm-lib, npm-cli]
+    if: always() && needs.release-source.result == 'success' && needs.npm-skeleton.result == 'success' && needs.npm-lib.result == 'success' && needs.npm-cli.result == 'success' && (inputs.unit == 'platform' || inputs.unit == 'all')
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
     # B4: windows-arm64 is marked experimental below — Bun's ability to
@@ -852,7 +1109,14 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: ${{ github.ref_name }}
+          ref: ${{ needs.release-source.outputs.base_sha }}
+      - uses: actions/download-artifact@v8
+        with:
+          name: ${{ needs.release-source.outputs.source_artifact }}
+          path: .git/release-source
+      - name: Restore tested candidate
+        shell: bash
+        run: bash scripts/restore-release-candidate.sh .git/release-source/release-candidate.bundle '${{ needs.release-source.outputs.candidate_sha }}' '${{ needs.release-source.outputs.base_sha }}'
       - uses: oven-sh/setup-bun@v2
       - name: Install dependencies
         run: bun install --frozen-lockfile
@@ -868,15 +1132,14 @@ jobs:
           path: packages/cli/dist/${{ matrix.artifact }}
 
   # ── Electron installer ────────────────────────────────────────────────────────
-  # Standalone: unit=electron (npm jobs are skipped — condition gates on unit instead)
-  # Bundled:    unit=platform with include_electron=true or non-patch bump
-  # Always:     unit=all
+  # Standalone: unit=electron (npm jobs are skipped)
+  # Coordinated: unit=all
   electron:
     name: Electron (${{ matrix.platform }})
-    needs: [compute-version, bump, npm-skeleton, npm-lib, npm-cli, npm-ui, npm-guardian]
+    needs: [compute-version, release-source, npm-skeleton, npm-lib, npm-cli, npm-ui, npm-guardian]
     if: |
       always() &&
-      needs.bump.result == 'success' &&
+      needs.release-source.result == 'success' &&
       (
         inputs.unit == 'electron' ||
         (
@@ -885,7 +1148,7 @@ jobs:
           needs.npm-cli.result == 'success' &&
           needs.npm-ui.result == 'success' &&
           needs.npm-guardian.result == 'success' &&
-          (inputs.unit == 'all' || (inputs.unit == 'platform' && (inputs.include_electron == true || inputs.bump != 'patch')))
+          inputs.unit == 'all'
         )
       )
     runs-on: ${{ matrix.os }}
@@ -906,7 +1169,14 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: ${{ github.ref_name }}
+          ref: ${{ needs.release-source.outputs.base_sha }}
+      - uses: actions/download-artifact@v8
+        with:
+          name: ${{ needs.release-source.outputs.source_artifact }}
+          path: .git/release-source
+      - name: Restore tested candidate
+        shell: bash
+        run: bash scripts/restore-release-candidate.sh .git/release-source/release-candidate.bundle '${{ needs.release-source.outputs.candidate_sha }}' '${{ needs.release-source.outputs.base_sha }}'
       - uses: actions/setup-node@v6
         with:
           node-version: '22'
@@ -936,7 +1206,7 @@ jobs:
     name: Tag + GitHub release (LAST)
     needs:
       - compute-version
-      - bump
+      - release-source
       - npm-skeleton
       - npm-lib
       - npm-guardian
@@ -948,13 +1218,12 @@ jobs:
       - docker-portal
       - docker-guardian
       - docker-assistant
-      - docker-voice
       - cli
       - electron
     if: |
       always() &&
       !inputs.dry_run &&
-      needs.bump.result == 'success' &&
+      needs.release-source.result == 'success' &&
       !contains(needs.*.result, 'failure') &&
       !contains(needs.*.result, 'cancelled')
     runs-on: ubuntu-latest
@@ -962,31 +1231,99 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: ${{ github.ref_name }}
+          ref: ${{ needs.release-source.outputs.base_sha }}
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/download-artifact@v8
+        with:
+          name: ${{ needs.release-source.outputs.source_artifact }}
+          path: .git/release-source
+      - name: Restore tested candidate
+        shell: bash
+        run: bash scripts/restore-release-candidate.sh .git/release-source/release-candidate.bundle '${{ needs.release-source.outputs.candidate_sha }}' '${{ needs.release-source.outputs.base_sha }}'
 
       # TAG-LAST means "tag exists = fully published". The job-level `if:` above
       # only rejects 'failure'/'cancelled' — a SKIPPED docker job sails through
       # it, which is how 0.12.43 and 0.12.45–0.12.52 got tags and GitHub
       # releases with no images. Fail here, LOUDLY, before any tag is created;
       # a job-level condition would skip tag-release and stay green instead.
-      - name: Verify expected Docker images were built
+      - name: Verify expected release jobs succeeded
         env:
           UNIT: ${{ inputs.unit }}
           INCLUDE_IMAGES: ${{ inputs.include_images }}
+          RESULT_NPM_SKELETON: ${{ needs.npm-skeleton.result }}
+          RESULT_NPM_LIB: ${{ needs.npm-lib.result }}
+          RESULT_NPM_GUARDIAN: ${{ needs.npm-guardian.result }}
+          RESULT_NPM_CLI: ${{ needs.npm-cli.result }}
+          RESULT_NPM_UI: ${{ needs.npm-ui.result }}
+          RESULT_NPM_PORTAL_SDK: ${{ needs.npm-portal-sdk.result }}
+          RESULT_NPM_DISCORD_PORTAL: ${{ needs.npm-discord-portal.result }}
+          RESULT_NPM_SLACK_PORTAL: ${{ needs.npm-slack-portal.result }}
           RESULT_DOCKER_PORTAL: ${{ needs.docker-portal.result }}
           RESULT_DOCKER_GUARDIAN: ${{ needs.docker-guardian.result }}
           RESULT_DOCKER_ASSISTANT: ${{ needs.docker-assistant.result }}
+          RESULT_CLI: ${{ needs.cli.result }}
+          RESULT_ELECTRON: ${{ needs.electron.result }}
         run: node scripts/verify-release-images.mjs
 
-      - name: Build deploy bundle
+      - uses: docker/setup-buildx-action@v3
+        if: |
+          needs.compute-version.outputs.prerelease == 'false' &&
+          (inputs.unit == 'assistant' || inputs.unit == 'images' || inputs.unit == 'all' ||
+           ((inputs.unit == 'platform' || inputs.unit == 'guardian' || inputs.unit == 'portals') && inputs.include_images))
+
+      - name: Login to Docker Hub for stable promotion
+        if: |
+          needs.compute-version.outputs.prerelease == 'false' &&
+          (inputs.unit == 'assistant' || inputs.unit == 'images' || inputs.unit == 'all' ||
+           ((inputs.unit == 'platform' || inputs.unit == 'guardian' || inputs.unit == 'portals') && inputs.include_images))
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Promote stable Docker tags
+        if: needs.compute-version.outputs.prerelease == 'false'
+        env:
+          VERSION: ${{ needs.compute-version.outputs.new_version }}
+          UNIT: ${{ inputs.unit }}
+          INCLUDE_IMAGES: ${{ inputs.include_images }}
+          PORTAL_DIGEST: ${{ needs.docker-portal.outputs.digest }}
+          GUARDIAN_DIGEST: ${{ needs.docker-guardian.outputs.digest }}
+          ASSISTANT_DIGEST: ${{ needs.docker-assistant.outputs.digest }}
         run: |
-          VERSION="${{ needs.compute-version.outputs.new_version }}"
-          UNIT="${{ inputs.unit }}"
+          set -euo pipefail
+          promote() {
+            local image="$1"
+            local digest="$2"
+            if [[ ! "${digest}" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+              echo "::error::Missing or invalid build digest for openpalm/${image}: ${digest}"
+              exit 1
+            fi
+            docker buildx imagetools create \
+              --tag "openpalm/${image}:latest" \
+              "openpalm/${image}@${digest}"
+            docker buildx imagetools inspect "openpalm/${image}:latest" >/dev/null
+          }
+
+          if [ "${UNIT}" = 'images' ] || [ "${UNIT}" = 'all' ] || { [ "${UNIT}" = 'portals' ] && [ "${INCLUDE_IMAGES}" = 'true' ]; }; then
+            promote portal "${PORTAL_DIGEST}"
+          fi
+          if [ "${UNIT}" = 'images' ] || [ "${UNIT}" = 'all' ] || { [ "${UNIT}" = 'guardian' ] && [ "${INCLUDE_IMAGES}" = 'true' ]; }; then
+            promote guardian "${GUARDIAN_DIGEST}"
+          fi
+          if [ "${UNIT}" = 'assistant' ] || [ "${UNIT}" = 'images' ] || [ "${UNIT}" = 'all' ] || { [ "${UNIT}" = 'platform' ] && [ "${INCLUDE_IMAGES}" = 'true' ]; }; then
+            promote assistant "${ASSISTANT_DIGEST}"
+          fi
+
+      - name: Build deploy bundle
+        env:
+          VERSION: ${{ needs.compute-version.outputs.new_version }}
+          UNIT: ${{ inputs.unit }}
+        run: |
           mkdir -p dist
           tar -czf "dist/openpalm-${UNIT}-${VERSION}-deploy-bundle.tar.gz" \
-            containers packages portals scripts README.md
+            containers packages portals scripts LICENSE README.md
 
       - name: Download CLI artifacts
         if: inputs.unit == 'platform' || inputs.unit == 'all'
@@ -997,7 +1334,7 @@ jobs:
           merge-multiple: true
 
       - name: Download Electron artifacts
-        if: inputs.unit == 'platform' || inputs.unit == 'all' || inputs.unit == 'electron'
+        if: inputs.unit == 'all' || inputs.unit == 'electron'
         uses: actions/download-artifact@v8
         with:
           pattern: electron-*
@@ -1007,7 +1344,7 @@ jobs:
       - name: Generate checksums
         run: |
           if ls dist/* >/dev/null 2>&1; then
-            cd dist && sha256sum * > checksums-sha256.txt
+            cd dist && sha256sum -- * > checksums-sha256.txt
           fi
 
       - name: Create + push tags
@@ -1067,30 +1404,42 @@ jobs:
           create_release() {
             local TAG="$1"
             local TITLE="$2"
-            # Delete existing draft/release at this tag to allow clean republish
-            if gh release view "${TAG}" >/dev/null 2>&1; then
-              gh release delete "${TAG}" --yes
+            local MAKE_LATEST="$3"
+            local PRERELEASE_ARGS=()
+            local LATEST_ARGS=(--latest=false)
+            if [ "${PRERELEASE}" = 'true' ]; then
+              PRERELEASE_ARGS+=(--prerelease)
+            elif [ "${MAKE_LATEST}" = 'true' ]; then
+              LATEST_ARGS=(--latest)
             fi
-            gh release create "${TAG}" \
-              --title "${TITLE}" \
-              --generate-notes \
-              $( [ "${PRERELEASE}" = 'true' ] && echo '--prerelease' ) \
-              dist/* 2>/dev/null || true
-            echo "Created GitHub release: ${TAG}"
+
+            if gh release view "${TAG}" >/dev/null 2>&1; then
+              gh release upload "${TAG}" dist/* --clobber
+              gh release edit "${TAG}" "${LATEST_ARGS[@]}"
+              echo "Updated existing GitHub release: ${TAG}"
+            else
+              gh release create "${TAG}" \
+                --title "${TITLE}" \
+                --generate-notes \
+                "${PRERELEASE_ARGS[@]}" \
+                "${LATEST_ARGS[@]}" \
+                dist/*
+              echo "Created GitHub release: ${TAG}"
+            fi
           }
 
           if [ "${UNIT}" = 'all' ]; then
             for PREFIX in platform portals assistant guardian electron; do
-              create_release "${PREFIX}-${VERSION}" "OpenPalm ${PREFIX} ${VERSION}"
+              create_release "${PREFIX}-${VERSION}" "OpenPalm ${PREFIX} ${VERSION}" false
             done
-            create_release "${VERSION}" "OpenPalm ${VERSION} (all units)"
+            create_release "${VERSION}" "OpenPalm ${VERSION} (all units)" true
           elif [ "${UNIT}" = 'platform' ]; then
             # Mirror the tag step: platform also publishes the bare X.Y.Z release —
             # setup.sh / setup.ps1 download CLI assets from the bare-tag release.
-            create_release "platform-${VERSION}" "OpenPalm platform ${VERSION}"
-            create_release "${VERSION}" "OpenPalm platform ${VERSION}"
+            create_release "platform-${VERSION}" "OpenPalm platform ${VERSION}" false
+            create_release "${VERSION}" "OpenPalm platform ${VERSION}" true
           elif [ "${UNIT}" = 'images' ]; then
-            create_release "images-${VERSION}" "OpenPalm images ${VERSION}"
+            create_release "images-${VERSION}" "OpenPalm images ${VERSION}" false
           else
-            create_release "${UNIT}-${VERSION}" "OpenPalm ${UNIT} ${VERSION}"
+            create_release "${UNIT}-${VERSION}" "OpenPalm ${UNIT} ${VERSION}" false
           fi

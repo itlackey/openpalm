@@ -250,8 +250,8 @@ describe('hooks.server — setup-state freshness + launch-cache reuse', () => {
     delete process.env.OP_ENABLE_ADMIN;
 
     expect((await handle({ event: makeEvent('/api/setup/status'), resolve })).status).toBe(200);
-    expect((await handle({ event: makeEvent('/health'), resolve })).status).toBe(200);
-    expect((await handle({ event: makeEvent('/guardian/health'), resolve })).status).toBe(200);
+    expect((await handle({ event: makeEvent('/health', 'localhost:3880', '172.18.0.1'), resolve })).status).toBe(200);
+    expect((await handle({ event: makeEvent('/guardian/health', 'localhost:3880', '172.18.0.1'), resolve })).status).toBe(200);
   });
 
   test('completed setup reruns redirect unauthenticated document requests to login', async () => {

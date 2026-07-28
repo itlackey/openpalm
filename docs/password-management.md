@@ -1,125 +1,135 @@
 # Password & Secret Management
 
-OpenPalm keeps user-managed env config under `~/.openpalm/knowledge/env/` and
-system-managed service secrets under `~/.openpalm/knowledge/secrets/`. `stack.env`
-is non-secret runtime configuration only.
+OpenPalm separates assistant-readable provider auth from credentials delegated
+to host, Guardian, API, portal, and bot processes.
 
----
-
-## Secret layout
+## Secret Layout
 
 ```text
 ~/.openpalm/
-  knowledge/env/
-    stack.env        # system-managed, non-secret (Compose --env-file)
-    user.env         # user-managed env
-  knowledge/secrets/ # system-managed secret files (auth.json, op_ui_login_password, …)
-  config/stack/      # compose assembly only (no secrets/env)
+  state/
+    stack.env                 # sole Compose env file; non-secret
+  private/
+    secrets/                  # delegated service secrets; never mounted as a tree
+  knowledge/
+    secrets/
+      auth.json               # assistant-readable OpenCode provider auth only
+    env/
+      user.env                # AKM user env, loaded on demand
 ```
 
-- `knowledge/env/user.env` is the AKM env backing file for user-managed secrets.
-- `state/stack.env` is system-managed non-secret runtime env.
-- `knowledge/secrets/` holds system-managed secret files; directory mode is `0700`, files are `0600`.
-- Compose is run with `--env-file ../../state/stack.env` from `config/stack/` for non-secret substitution only.
+Directories are created with mode `0700` and secret files with mode `0600`.
 
----
+## Delegated Secrets
+
+`private/secrets/` contains credentials that the assistant must not read:
+
+- `op_ui_login_password`
+- `op_opencode_password`
+- `op_guardian_admin_token`
+- `op_guardian_mcp_token`
+- `op_api_key`
+- `portal_<id>_secret`
+- Discord and Slack bot/app tokens
+
+Compose grants each service only its required files and exposes their paths
+through `*_FILE` variables. The assistant does not receive a bind mount of
+`private/`.
+
+`knowledge/secrets/auth.json` is the exception because the assistant's OpenCode
+runtime needs provider credentials. Guardian receives the same file through a
+narrow Compose secret grant rather than a `knowledge/` tree mount.
 
 ## `knowledge/env/user.env`
 
-This file is for the AKM user env. It starts empty and is never overwritten by normal lifecycle operations.
-
-Behavior:
+This is the AKM user env backing file. It is:
 
 - safe to edit directly on the host
-- available to the assistant through the `/stash` mount and `akm env:user`
-- never passed as container environment via Compose
-- not overwritten by normal lifecycle operations
-
----
+- available to assistant tools through `akm env:user`
+- loaded only on demand in the tool subprocess that needs it
+- not sourced by the assistant entrypoint
+- never passed to Docker Compose or inherited by the OpenCode server process
+- preserved by normal lifecycle operations
 
 ## `state/stack.env`
 
-This file is for host paths, ports, image tags, profiles, and other non-secret
-runtime settings used by Compose.
+`state/stack.env` is the sole Compose `--env-file`. It contains only
+non-secret runtime values and app records, including:
 
-Important keys include:
+- `OP_HOME`, `OP_UID`, `OP_GID`, and `OP_PROJECT_NAME`
+- image version pins
+- host ports
+- flat listener bind addresses
+- `OP_ENABLED_ADDONS` and hardware profile selections
+- `OP_SETUP_COMPLETE`
 
-| Key | Notes |
-|---|---|
-| `OP_HOME` | OpenPalm home directory |
-| `OP_UID` / `OP_GID` | Host user/group mapping |
-| `OP_IMAGE_NAMESPACE` / `OP_IMAGE_TAG` | Image source and tag |
-| `OP_UI_PORT` | Assistant chat UI host port, default `3800` |
-| `OP_ASSISTANT_PORT` | Assistant OpenCode host port, default `3810` |
-| `OP_HOST_UI_PORT` | Admin UI host port, default `3880` |
-| `OP_CHAT_PORT` | Chat addon host port, default `3820` |
-| `OP_API_PORT` | API addon host port, default `3821` |
-| `OP_VOICE_PORT_HOST` | Voice addon host port, default `8880` |
-| `OPENAI_BASE_URL` | Alternate OpenAI-compatible endpoint |
+Do not place passwords, tokens, API keys, or credential JSON in this file.
 
-> **Note:** LLM and embedding configuration lives in `config/akm/config.json`, not in `stack.env`.
+## UI Authentication
 
-Behavior:
+The UI login password is stored at:
 
-- read directly by Docker Compose for non-secret substitution
-- normally written by CLI/admin tooling
-- changes usually require recreating containers to take effect
+```text
+~/.openpalm/private/secrets/op_ui_login_password
+```
 
----
+Browser login uses `POST /api/auth/login`. A successful login issues the
+`op_session` cookie with `HttpOnly` and `SameSite=Lax`; browser sessions do not
+use a bearer token or `localStorage` credential.
 
-## Container access rules
+Reset a lost password from the host:
 
-| Component | Secret access | Notes |
-|---|---|---|
-| Admin UI (host process) | direct host filesystem access | Runs on the host as `openpalm ui serve`; no container or bind mount needed |
-| `assistant` | `knowledge/` (`/stash`) only | Stash mount plus `akm env:user` injection |
-| `guardian` | no secret-dir mount | Reads needed values from Compose secrets |
+```bash
+openpalm reset-password
+# or
+openpalm reset-password --password 'a-new-password'
+```
 
-The scheduler is not a separate container — it runs as a co-process inside the
-assistant container and inherits the assistant's environment and mounts.
+The assistant has no admin credential and no network path to the host admin
+process. It does not authenticate to or call the host API on the operator's
+behalf.
 
-The assistant does not mount the full `config/stack/` directory and does not get broad
-access to stack secrets by filesystem path.
+## Provider Credentials
 
----
+Use the provider flow in the UI, or maintain OpenCode's auth file directly:
 
-## Authentication
+```text
+~/.openpalm/knowledge/secrets/auth.json
+```
 
-### `OP_UI_LOGIN_PASSWORD`
+Its shape is owned by OpenCode. A basic API-key entry looks like:
 
-- single password for the admin UI
-- set during setup; a secure value is auto-generated if you do not supply one
-- used to log in at the admin UI; the session is maintained via a cookie
+```json
+{
+  "openai": {
+    "type": "api",
+    "key": "sk-..."
+  }
+}
+```
 
-The admin UI does not use token headers for browser sessions. The assistant
-communicates with the admin API internally and does not require a separate
-user-facing credential.
+Recreate OpenCode processes after changing provider auth if they have already
+cached the old credentials.
 
----
+## Rotation
 
-## Optional encrypted backend
+Use OpenPalm's setup/admin flows where available. For a delegated file under
+`private/secrets/`, a manual rotation should:
 
-The default backend stores values in the two env files above. OpenPalm also has
-an optional `pass` backend for encrypted storage.
+1. Write a temporary replacement with mode `0600`, then atomically rename it over the old file.
+2. Recreate every service that reads that secret at startup.
+3. For a portal principal, replace its one shared host file and recreate both Guardian and that portal.
 
-When enabled, related metadata lives under `~/.openpalm/data/secrets/`, such as:
+`docker compose restart` does not recreate secret mounts. Use the same full
+Compose file/profile set with `up -d --force-recreate` when a startup-only
+secret changes.
 
-- `~/.openpalm/data/secrets/provider.json`
-- `~/.openpalm/data/secrets/pass-store/`
+`knowledge/secrets/auth.json` is a bind-mounted file. Prefer the provider UI;
+if editing it directly, update the file in place and then recreate OpenCode
+processes so a bind mount is not left on a replaced inode.
 
-If you are not explicitly using `pass`, assume the env files are the active
-source of truth.
+## Backups
 
----
-
-## Practical guidance
-
-- Edit `~/.openpalm/state/stack.env` for **non-secret** settings only —
-  ports, host paths, image tags. Provider **API keys** go in
-  `~/.openpalm/knowledge/secrets/auth.json` (via the Connections tab), and the
-  UI login password in `~/.openpalm/knowledge/secrets/op_ui_login_password` —
-  never in `stack.env`.
-- Edit `~/.openpalm/knowledge/env/user.env` for optional user-managed extension
-  settings and custom preferences.
-- Back up the whole `~/.openpalm/knowledge/env/`, `~/.openpalm/knowledge/secrets/`, and `~/.openpalm/config/stack/` trees.
-- Never commit real env values from either file.
+Back up `private/`, `knowledge/`, `config/`, `system/`, and `state/` together.
+A full `OP_HOME` archive naturally includes both secret trees. See
+[Backup & Restore](backup-restore.md).

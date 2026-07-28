@@ -183,10 +183,6 @@ export interface RawSetupConfig {
   portalCredentials?: Record<string, Record<string, unknown>> | null;
   /** Current access toggles, read from the generated binds. */
   access?: Record<string, unknown> | null;
-  /** PR #564 r3566887969 — whether the install already has an OpenCode password
-   *  secret. The secret value itself is never returned; this flag lets a rerun
-   *  distinguish "keep the existing password" from "set a new one". */
-  hasOpencodePassword?: boolean;
 }
 
 /**
@@ -214,8 +210,6 @@ export interface PartialSetupState {
    * `access` field at all.
    */
   access?: AccessToggles | null;
-  /** PR #564 r3566887969 — the install already has an OpenCode password. */
-  hasOpencodePassword?: boolean;
 }
 
 /**
@@ -286,11 +280,5 @@ export function parseSetupConfig(data: RawSetupConfig): PartialSetupState {
   if (data.access !== undefined && data.access !== null) {
     result.access = coerceAccessToggles(data.access);
   }
-  // PR #564 r3566887969 — surface whether a password already exists so a rerun
-  // keep-as-is over home-password doesn't mint (rotate) a new one.
-  if (typeof data.hasOpencodePassword === 'boolean') {
-    result.hasOpencodePassword = data.hasOpencodePassword;
-  }
-
   return result;
 }

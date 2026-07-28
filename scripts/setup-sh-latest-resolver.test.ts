@@ -2,8 +2,8 @@ import { describe, expect, it } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-// Structural test for A2 (docs/public-seams-review.md): setup.sh's "main"
-// (latest) version resolver. setup.sh is a bash script with no test harness
+// Structural test for setup.sh's "main" (latest) version resolver. setup.sh
+// is a bash script with no test harness
 // of its own, so this test extracts the *actual* extraction pipeline and
 // normalize_version() function bodies out of the shipped file and runs them
 // for real via bash — no fabricated stand-in copy that could silently drift

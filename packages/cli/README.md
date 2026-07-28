@@ -1,74 +1,118 @@
-# @openpalm/cli
+# OpenPalm CLI
 
-Bun CLI for bootstrapping and managing an OpenPalm installation. The CLI is the primary orchestrator — all commands operate directly against Docker Compose. Use `openpalm` to start the UI host process.
+The `openpalm` CLI installs and manages OpenPalm directly on the host. It owns
+the complete runtime layout and invokes Docker Compose without a containerized
+admin service or Docker socket proxy.
 
-## Self-Sufficient Mode
+## Install
 
-The CLI operates directly against Docker Compose:
+Linux and macOS:
 
-- **Install** -- creates the `~/.openpalm/` home layout, downloads assets, spawns the setup wizard via the admin UI, writes files to their final locations, and starts core services
-- **All lifecycle commands** -- refresh files in `~/.openpalm/` when needed, then run Docker Compose directly
-- **Admin UI** -- start the host admin server with `openpalm` (no container required)
+```bash
+curl -fsSL https://raw.githubusercontent.com/itlackey/openpalm/main/scripts/setup.sh | bash
+```
+
+Windows PowerShell:
+
+```powershell
+irm https://raw.githubusercontent.com/itlackey/openpalm/main/scripts/setup.ps1 | iex
+```
+
+The scripts download and verify the platform binary, then run
+`openpalm install`. Use `--cli-only` when you only want to install or refresh
+the binary.
+
+Copying `packages/skeleton/` is not an equivalent install; the CLI generates
+state, private secrets, cache paths, and runtime files in addition to seeding
+release assets.
 
 ## Commands
 
-| Command | Description |
+| Command | Purpose |
 |---|---|
-| `openpalm install` | Bootstrap `~/.openpalm/`, download assets, run setup wizard, start core services |
-| `openpalm uninstall` | Stop and remove the stack (preserves config and data) |
-| `openpalm update` | Pull latest images and recreate containers |
-| `openpalm self-update` | Replace the installed CLI binary with the latest release build |
-| `openpalm addon <enable|disable|list>` | Manage registry addons directly from the CLI |
-| `openpalm start [svc...]` | Start all or named services |
-| `openpalm` | Start the UI host process server |
-| `openpalm stop [svc...]` | Stop all or named services |
-| `openpalm restart [svc...]` | Restart all or named services |
-| `openpalm logs [svc...]` | Tail last 100 log lines |
-| `openpalm status` | Show container status |
-| `openpalm service <sub> [svc...]` | Alias -- subcommands: `start`, `stop`, `restart`, `logs`, `status`, `update` |
-| `openpalm validate` | Validate vault env files against their schemas (requires prior install) |
-| `openpalm scan` | Scan for leaked secrets in config files |
+| `openpalm` | Smart default: install if absent, start if stopped, then serve the normal host UI |
+| `openpalm admin` | Serve the loopback-only admin-capable UI at `/host` |
+| `openpalm app` | Serve the non-admin app without requiring a local stack |
+| `openpalm install` | Generate the home, run the browser wizard, and deploy |
+| `openpalm install --file <spec>` | Unattended JSON/YAML version 2 setup |
+| `openpalm start [service...]` | Start the stack or named services |
+| `openpalm stop [service...]` | Stop the stack or named services |
+| `openpalm restart [service...]` | Restart the stack or named services |
+| `openpalm logs [service...]` | Show service logs |
+| `openpalm status` | Show current container status |
+| `openpalm update` | Refresh managed assets and safely reapply containers |
+| `openpalm addon enable\|disable\|list` | Manage first-party addon state and profiles |
+| `openpalm validate` | Validate current environment/configuration |
+| `openpalm audit-secrets` | Validate Compose secret grants |
+| `openpalm scan` | Inventory discovered sensitive keys and secret files as set or empty without printing values |
+| `openpalm doctor` | Report Docker, port, storage, and cache state |
+| `openpalm backups prune --keep <n>` | Prune lifecycle backups with confirmation |
+| `openpalm rollback` | Restore the latest lifecycle snapshot |
+| `openpalm reset-password` | Reset the UI login password |
+| `openpalm uninstall` | Remove containers while preserving host state by default |
+| `openpalm self-update` | Replace the host CLI binary |
 
-### Install options
+Run `openpalm <command> --help` for command-specific options.
 
-`--force` skip "already installed" check and create a backup of the current `OP_HOME`, `--version TAG` install a specific ref (default: current CLI version), `--no-start` prepare files only, `--no-open` skip browser launch.
-
-### Admin commands
+## Install Options
 
 ```bash
-openpalm            # Start the UI host process (binds to 127.0.0.1:3880)
-openpalm addon enable chat      # Enable a registry addon and start its services
-openpalm addon disable chat     # Stop and disable a registry addon
-openpalm addon list             # Show available addons and whether they are enabled
+openpalm install --file ./setup-spec.yaml
+openpalm install --file ./setup-spec.yaml --no-start
+openpalm install --force --yes
+openpalm install --version 0.13.0
 ```
 
-## Setup Wizard
+`--file` skips the wizard. `--no-start` writes the complete installation but
+does not deploy. `--force` backs up an existing home before reconciling it.
 
-On first install, the CLI spawns `openpalm` which serves the setup wizard via the SvelteKit admin UI at `http://localhost:3880/setup`. The wizard runs entirely in the browser and calls `performSetup()` from `@openpalm/lib` to write secrets, connection profiles, memory config, and other files to their final locations.
+## Filesystem Behavior
 
-## Environment Variables
+The CLI creates and manages:
+
+```text
+system/stack/{core,services,portals}.compose.yml
+config/stack/custom.compose.yml
+state/stack.env
+private/secrets/
+knowledge/secrets/auth.json
+knowledge/env/user.env
+data/
+cache/
+workspace/
+```
+
+`state/stack.env` is the sole Compose env file and contains no secrets.
+Delegated UI, Guardian, API, portal, bot, and OpenCode-server secrets live in
+`private/secrets/`. Provider auth remains in `knowledge/secrets/auth.json`.
+
+The CLI translates `OP_ENABLED_ADDONS` to active Compose profiles. This is a
+control-plane behavior, not something raw Docker Compose does automatically.
+
+## UI Modes
+
+| Mode | Capability | Default URL |
+|---|---|---|
+| Assistant container UI | Non-admin | `http://localhost:3800/` |
+| Bare `openpalm` / `openpalm app` | Non-admin host UI | `http://localhost:3880/` |
+| `openpalm admin` | Host admin, loopback-only | `http://127.0.0.1:3880/host` |
+
+Current UI APIs use `/api/auth/*`, `/api/host/*`, and `/api/assistant/*`.
+`/admin/*` intentionally returns `404`.
+
+## Environment
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `OP_HOME` | `~/.openpalm` | Root of all OpenPalm state |
-| `OP_WORK_DIR` | `~/openpalm` | Assistant working directory |
-| `OP_HOST_UI_PORT` | `3880` | Port for the host admin server (`openpalm`) |
-| `OP_UI_LOGIN_PASSWORD` | (from `knowledge/secrets/op_ui_login_password`) | Admin UI login password (cookie session auth) |
+| `OP_HOME` | `~/.openpalm` | Root of OpenPalm state |
+| `OP_HOST_UI_PORT` | `3880` | Host UI process port |
+| `OP_UI_PORT` | `3800` | Assistant-served UI host port |
+| `OP_ASSISTANT_PORT` | `3810` | Assistant OpenCode host port |
+| `OP_PROJECT_NAME` | `openpalm` | Compose project name |
 
-## How It Works
-
-1. **Bootstrap** (first install) -- creates the `~/.openpalm/` tree, downloads core assets from GitHub, seeds `knowledge/env/user.env` and `state/stack.env`, serves the setup wizard, writes fixed stack compose files, enables requested addons via `OP_ENABLED_ADDONS` in `state/stack.env`, and starts core services via `docker compose up`
-2. **Running stack** -- commands refresh files in `~/.openpalm/` when needed, then execute Docker Compose directly.
-3. **Admin absent** -- all commands work identically. Admin is never required for any operation.
-
-Follows the file-assembly principle: copies whole files, never renders templates. See [`core-principles.md`](../../docs/technical/core-principles.md).
-
-## Building
-
-```bash
-bun run build                  # Current platform -> dist/openpalm-cli
-bun run build:linux-x64        # Cross-compile (also: linux-arm64, darwin-x64, darwin-arm64, windows-x64, windows-arm64)
-```
+The UI password source is
+`${OP_HOME}/private/secrets/op_ui_login_password`. Browser auth uses an
+`HttpOnly`, `SameSite=Lax` session cookie.
 
 ## Development
 
@@ -76,6 +120,10 @@ bun run build:linux-x64        # Cross-compile (also: linux-arm64, darwin-x64, d
 cd packages/cli
 bun run start -- install --no-start
 bun test
+bun run build
 ```
 
-See also: [`scripts/setup.sh`](../../scripts/setup.sh) and [`scripts/setup.ps1`](../../scripts/setup.ps1). Both installers support `--cli-only` when you only want to install or refresh the CLI binary without touching the stack or `OP_HOME`.
+Cross-platform build scripts are declared in `packages/cli/package.json`.
+
+See [Core Principles](../../docs/technical/core-principles.md) for the
+filesystem and security contract.

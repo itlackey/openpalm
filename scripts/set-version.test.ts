@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from "bun:test";
 import { mkdtempSync, writeFileSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { setVersion, SEMVER_RE } from "./set-version.mjs";
+import { compareSemver, parseSemver, setVersion, SEMVER_RE } from "./set-version.mjs";
 
 let dir: string;
 beforeEach(() => { dir = mkdtempSync(join(tmpdir(), "op-setver-")); });
@@ -17,13 +17,14 @@ type Pkg = {
   version: string;
   dependencies: Record<string, string>;
   peerDependencies: Record<string, string>;
+  devDependencies: Record<string, string>;
 };
 function read(f: string): Pkg {
   // Normalize missing maps to {} so the return value actually matches Pkg at
-  // runtime (a package.json may omit dependencies/peerDependencies); keeps the
+  // runtime (a package.json may omit dependency maps); keeps the
   // type sound for tests that read those keys.
   const raw = JSON.parse(readFileSync(f, "utf-8")) as Pkg;
-  return { dependencies: {}, peerDependencies: {}, ...raw };
+  return { dependencies: {}, peerDependencies: {}, devDependencies: {}, ...raw };
 }
 
 describe("set-version", () => {
@@ -89,6 +90,23 @@ describe("set-version", () => {
     expect(read(f).dependencies["@openpalm/skeleton"]).toBe("0.11.0");
   });
 
+  it("rewrites CLI-style internal pins in devDependencies", () => {
+    const f = write({
+      name: "openpalm",
+      version: "0.10.0",
+      devDependencies: {
+        "@openpalm/lib": ">=0.10.0 <1.0.0",
+        "@openpalm/skeleton": "0.10.0",
+        typescript: "^6.0.0",
+      },
+    });
+    setVersion(f, "0.11.0");
+    const pkg = read(f);
+    expect(pkg.devDependencies["@openpalm/lib"]).toBe(">=0.11.0 <1.0.0");
+    expect(pkg.devDependencies["@openpalm/skeleton"]).toBe("0.11.0");
+    expect(pkg.devDependencies.typescript).toBe("^6.0.0");
+  });
+
   it("leaves workspace @openpalm/skeleton refs untouched", () => {
     const f = write({
       name: "x",
@@ -103,5 +121,26 @@ describe("set-version", () => {
     expect(SEMVER_RE.test("0.11.0")).toBe(true);
     expect(SEMVER_RE.test("0.11.0-rc.17")).toBe(true);
     expect(SEMVER_RE.test("0.11")).toBe(false);
+  });
+
+  it("rejects shell-bearing and non-canonical release targets", () => {
+    for (const version of [
+      "1.2.3-$(id)",
+      "1.2.3-`id`",
+      "1.2.3-foo/bar",
+      "1.2.3-foo..bar",
+      "01.2.3",
+      "1.02.3",
+      "1.2.03",
+      "1.2.3-01",
+    ]) {
+      expect(parseSemver(version)).toBeNull();
+    }
+  });
+
+  it("compares numeric and lexical prerelease identifiers by SemVer rules", () => {
+    expect(compareSemver("1.2.3-1", "1.2.3-alpha")).toBe(-1);
+    expect(compareSemver("1.2.3-rc.10", "1.2.3-rc.2")).toBe(1);
+    expect(compareSemver("1.2.3", "1.2.3-rc.10")).toBe(1);
   });
 });

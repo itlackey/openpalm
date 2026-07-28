@@ -1,187 +1,71 @@
 # Manual and Headless Install
 
-Two ways to get an OpenPalm home directory (`OP_HOME`, default `~/.openpalm/`)
-into existence without walking through the interactive setup wizard:
-
-1. **Hand-build it** — copy the skeleton, create the files `performSetup`
-   would have created, and run `docker compose up -d` yourself.
-2. **Headless CLI install** — run `openpalm install --file <spec>` with a
-   config file that answers every wizard question up front. This is the
-   supported, tested path for scripted/CI installs.
-
-Both are legitimate. This page documents what OpenPalm actually checks for on
-disk so a hand-built install is recognized, and the `--file` config shape for
-a scripted install.
-
----
-
-## What "installed" means on disk
-
-`ensureHomeDirs()` (`packages/lib/src/control-plane/home.ts`) is the complete
-list of directories a fresh `OP_HOME` needs:
-
-```
-config/{assistant,guardian,akm,stack}
-data/assistant/{.cache,.config/opencode,.local/bin,.local/share/opencode,.local/state/opencode,tools}
-data/guardian/{.config/opencode,.local/share/opencode,.local/state/opencode,tools}
-data/{akm/cache,akm/data,akm/empty-host-stash,logs,backups,rollback}
-knowledge/{env,secrets,tasks}
-workspace/
-system/{stack,assistant,guardian}
-state/
-```
-
-It also touches two empty `auth.json` placeholders (below) if they don't
-already exist:
-
-```
-data/assistant/.local/share/opencode/auth.json
-data/guardian/.local/share/opencode/auth.json
-```
-
-Copying `packages/skeleton/` to `OP_HOME` (see [installation.md](../installation.md))
-gives you this tree plus the shipped compose files under `system/stack/` and an
-empty `config/stack/custom.compose.yml` overlay. From there, a hand-built
-install needs three more things before `docker compose up -d` produces a stack
-OpenPalm's own tooling (CLI/UI) recognizes as installed:
-
-### 1. The two guardian tokens
-
-`ensureSecrets()` (`packages/lib/src/control-plane/secrets.ts`) mints two
-random tokens the guardian container and its clients (UI admin proxy, MCP
-clients) must share:
-
-| File (under `knowledge/secrets/`, mode `0600`) | Used by |
-|---|---|
-| `op_guardian_admin_token` | Guardian's `/admin/*` principal-management endpoints (`GUARDIAN_ADMIN_TOKEN_FILE`) |
-| `op_guardian_mcp_token` | Guardian's MCP endpoint (`GUARDIAN_MCP_TOKEN_FILE`) |
-
-Each is a 32-character lowercase hex string — `ensureSecrets` generates them
-with `crypto.randomUUID().replace(/-/g, '')`, which is equivalent to:
+The supported non-interactive install path is:
 
 ```bash
-mkdir -p ~/.openpalm/knowledge/secrets
-chmod 700 ~/.openpalm/knowledge/secrets
-openssl rand -hex 16 > ~/.openpalm/knowledge/secrets/op_guardian_admin_token
-openssl rand -hex 16 > ~/.openpalm/knowledge/secrets/op_guardian_mcp_token
-chmod 600 ~/.openpalm/knowledge/secrets/op_guardian_admin_token \
-          ~/.openpalm/knowledge/secrets/op_guardian_mcp_token
+openpalm install --file <setup-spec.yaml>
 ```
 
-Both files are consumed by the guardian container as Compose `secrets:`
-mounts (`portals.compose.yml`) — not as plain env vars.
+This uses the same setup implementation as the browser wizard and creates the
+full runtime contract. Use `--no-start` when you intend to operate the generated
+stack with raw Docker Compose.
 
-### 2. `auth.json`
+## Install the CLI
 
-`knowledge/secrets/auth.json` holds OpenCode provider credentials, bind-mounted
-read/write into both the assistant and guardian containers. A fresh install
-starts with an empty object:
+Linux and macOS:
 
-```json
-{}
+```bash
+curl -fsSL https://raw.githubusercontent.com/itlackey/openpalm/main/scripts/setup.sh \
+  | bash -s -- --cli-only
 ```
 
-Adding a provider key merges an entry keyed by provider ID, using OpenCode's
-own api-key auth schema:
+Windows PowerShell:
 
-```json
-{
-  "openai": { "type": "api", "key": "sk-..." }
-}
+```powershell
+irm https://raw.githubusercontent.com/itlackey/openpalm/main/scripts/setup.ps1 -OutFile setup.ps1
+./setup.ps1 --cli-only
 ```
 
-Multiple providers add multiple top-level keys. An empty/missing file is
-treated the same as `{}`.
+Then run the file install below.
 
-### 3. The `OP_SETUP_COMPLETE` stamp
+## Minimal Setup Spec
 
-`markSetupComplete()` writes one line to `state/stack.env`:
-
-```
-OP_SETUP_COMPLETE=true
-```
-
-(`state/` is an app-owned record tree — see
-[core-principles.md](../technical/core-principles.md) — not something you're
-expected to hand-edit routinely, but for a manual install this is the whole
-contract: one file, one line.)
-
----
-
-## What happens if you skip the stamp
-
-If you build the tree above (including both guardian tokens) and run
-`docker compose up -d` **without** writing the `OP_SETUP_COMPLETE` line,
-OpenPalm still recognizes the install:
-
-- **Runtime health is never stamp-gated.** `deriveLocalStackState()`
-  (`packages/lib/src/control-plane/launch-status.ts`) rescues a
-  `setup_incomplete` classification to `running` the moment Compose reports a
-  running or starting service — a hand-built stack that is actually up is
-  never stuck behind the stamp at the health layer.
-- **Installedness itself is also derived, not stamp-only.**
-  `classifyLocalInstall()` treats `system/stack/core.compose.yml` present
-  **and** both guardian token files present as sufficient evidence of a real
-  install, even with no stamp. This is a cheap, existsSync-only check — no
-  Docker call — so it costs nothing on every status check.
-
-Writing the stamp is still the simplest and most explicit option (one line,
-matches exactly what `performSetup` does), but omitting it no longer strands a
-correctly hand-built, running stack in the setup wizard.
-
-If `core.compose.yml` is missing, or only one of the two guardian tokens
-exists, the install still classifies as `setup_incomplete` and routes to the
-splash/wizard screen — a half-assembled tree is deliberately NOT treated as
-installed.
-
----
-
-## Headless CLI install: `openpalm install --file`
-
-`openpalm install --file <path>` (`packages/cli/src/commands/install.ts`) is
-the supported way to script an install with no interactive prompts. It reads
-a JSON or YAML `SetupSpec` and runs the exact same `performSetup` path the
-wizard drives.
-
-### Minimal `SetupSpec`
+A fresh installation requires a version 2 object, a `security` object with a UI
+password, and a `connections` array. Provider/model selection is optional.
 
 ```yaml
 version: 2
-llm:
-  provider: openai
-  model: gpt-4o
-  baseUrl: https://api.openai.com/v1
-embedding:
-  provider: openai
-  model: text-embedding-3-small
-  dims: 1536
-  baseUrl: https://api.openai.com/v1
 security:
-  uiLoginPassword: change-me-please # min 8 characters
-connections:
-  - id: openai
-    name: OpenAI
-    provider: openai
-    baseUrl: https://api.openai.com/v1
-    apiKey: sk-...
+  uiLoginPassword: change-me-please
+connections: []
+access:
+  networkAccess: false
+  assistantDirect: false
+  guardianNetwork: false
+  guardianOpenaiApi: false
 ```
 
-Everything else is optional:
+`uiLoginPassword` must be at least eight characters. A setup rerun may omit it
+to preserve an existing password, but a fresh install fails closed without one.
+
+## Provider Example
 
 ```yaml
 version: 2
-llm:
-  provider: openai
-  model: gpt-4o
-embedding:
-  provider: openai
-  model: text-embedding-3-small
-  dims: 1536
 security:
   uiLoginPassword: change-me-please
 owner:
   name: Jane Operator
   email: jane@example.com
+llm:
+  provider: openai
+  model: gpt-4o
+  baseUrl: https://api.openai.com/v1
+embedding:
+  provider: openai
+  model: text-embedding-3-small
+  dims: 1536
+  baseUrl: https://api.openai.com/v1
 connections:
   - id: openai
     name: OpenAI
@@ -190,79 +74,106 @@ connections:
     apiKey: sk-...
 addons:
   chat: true
-# #563 — network access preset. Absent means "leave network config
-# untouched" (backward compatible with every spec above). One of the four
-# literals: this-pc | home-password | home-open | shared-guardian.
-# opencodePassword (min 8 chars) is REQUIRED for home-password and REJECTED
-# for every other preset.
-network:
-  preset: home-password
-  opencodePassword: change-me-too-please
+  voice: true
+voiceProfile: addon.voice.cpu
+access:
+  networkAccess: false
+  assistantDirect: false
+  guardianNetwork: false
+  guardianOpenaiApi: false
 ```
 
-The full field set and validation rules live in
-`packages/lib/src/control-plane/setup.ts` (`SetupSpec` type) and
-`packages/lib/src/control-plane/setup-validation.ts` (`validateSetupSpec`).
+Portal bot credentials can be supplied through `portalCredentials`; setup
+writes sensitive values to `private/secrets/` and non-secret portal settings to
+`state/stack.env`.
 
-### Running it
+The access object contains independent booleans. There is no nested network
+object, preset, operator-supplied OpenCode password, or SSH option.
+
+## Run the Install
 
 ```bash
-openpalm install --file ./setup-spec.yaml --no-start   # write config, don't start the stack
-openpalm install --file ./setup-spec.yaml               # write config and start core services
+openpalm install --file ./setup-spec.yaml
 ```
 
-`--no-start` is the option to reach for in CI or any scripted context where
-you want to assert the config was assembled correctly without needing a
-Docker daemon to bring services up.
+To create files without starting Docker:
 
-### Persisting isolated runtime overrides
+```bash
+openpalm install --file ./setup-spec.yaml --no-start
+```
 
-When scripting an isolated install, set runtime overrides in the install shell.
-The CLI now persists the following non-secret overrides into
-`state/stack.env` so a later `openpalm start` reuses the same isolated
-project and port layout automatically:
+The normal install records `OP_SETUP_COMPLETE=true` only after a successful
+deploy. A `--no-start` install leaves setup incomplete until an OpenPalm deploy
+succeeds. Prefer `openpalm start` once before switching entirely to raw Compose
+if the host UI should treat setup as complete.
+
+## Isolated Runtime Overrides
+
+The file-install path persists these non-secret shell overrides into
+`state/stack.env`:
 
 - `OP_PROJECT_NAME`
 - `OP_ASSISTANT_PORT`
 - `OP_UI_PORT`
 - `OP_HOST_UI_PORT`
 
-Example:
-
 ```bash
-OP_HOME="$PWD/.tmp-openpalm-install/home" \
-OP_PROJECT_NAME=openpalm-test-install \
-OP_ASSISTANT_PORT=4802 \
-OP_UI_PORT=4801 \
-OP_HOST_UI_PORT=9302 \
+OP_HOME="$PWD/.tmp/openpalm/home" \
+OP_PROJECT_NAME=openpalm-test \
+OP_ASSISTANT_PORT=4810 \
+OP_UI_PORT=4800 \
+OP_HOST_UI_PORT=4880 \
 openpalm install --file ./setup-spec.yaml --no-start
-
-# Later, the same install can be started without re-specifying those overrides:
-OP_HOME="$PWD/.tmp-openpalm-install/home" openpalm start
 ```
 
-Without those persisted overrides, a later `openpalm start` falls back to the
-default project name and default ports, which can collide with a live local
-stack.
+## What the Installer Generates
 
-### Test coverage (the CI exercise)
+`packages/skeleton/` is only a release asset bundle. A complete runtime also
+needs generated directories and files, including:
 
-`packages/cli/src/main.test.ts` exercises `install --no-start --file <spec>`
-on every run of `bun run test` (root `package.json`), which CI's
-`quality-gates` job (`.github/workflows/ci.yml`, "Test (sdk + guardian +
-portals)" step) runs on every PR and push to `main`/`release/**`. Coverage
-includes:
+```text
+config/{assistant,guardian,akm,stack}/
+system/{assistant,guardian,stack}/
+state/
+private/secrets/
+knowledge/{env,secrets,tasks}/
+data/{assistant,guardian,akm,logs,ui,backups,rollback}/
+cache/{assistant,guardian}/
+workspace/
+```
 
-- a real subprocess run (`Bun.spawn(['bun', mainPath, 'install', ...])`) that
-  exercises the `import.meta.main` entrypoint path in-process tests can't
-  reach, asserting the process actually produces output;
-- in-process runs asserting the expected directories/files land under a
-  temporary `OP_HOME` (`system/stack/services.compose.yml`,
-  `config/stack/custom.compose.yml`, `knowledge/tasks/akm-improve.yml`, …);
-- `--version` / no-`--version` pin behavior (`OP_*_VERSION` tracks `latest`
-  unless a version is explicit);
-- the `--force` backup path, proving pre-existing config is snapshotted
-  before being overwritten.
+The managed Compose files are placed in `system/stack/`; only
+`config/stack/custom.compose.yml` is user-owned. `state/stack.env` is the sole
+Compose env file.
 
-No separate CI job is needed for this — it is already a required, running
-check on every PR.
+Baseline generated secret material includes:
+
+```text
+knowledge/secrets/auth.json
+private/secrets/op_ui_login_password
+private/secrets/op_opencode_password
+private/secrets/op_guardian_admin_token
+private/secrets/op_guardian_mcp_token
+private/secrets/op_api_key
+private/secrets/portal_chat_secret
+private/secrets/portal_api_secret
+private/secrets/portal_discord_secret
+private/secrets/portal_slack_secret
+```
+
+Enabling Discord additionally requires `private/secrets/discord_bot_token`.
+Enabling Slack requires `private/secrets/slack_bot_token` and
+`private/secrets/slack_app_token`. Secret directories use mode `0700`; files
+use `0600`.
+
+Raw copying omits generated state and can leave required secrets or bind-source
+directories absent. This guide intentionally does not provide a partial
+copy-and-fill recipe.
+
+## Raw Compose After Generation
+
+After a generated install, use all three managed files, the user overlay, the
+sole env file, and explicit active profiles. `OP_ENABLED_ADDONS` is translated
+only by OpenPalm control-plane commands.
+
+Continue with the [Manual Compose Runbook](manual-compose-runbook.md).

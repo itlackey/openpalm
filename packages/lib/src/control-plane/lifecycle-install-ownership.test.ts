@@ -1,6 +1,6 @@
 /**
- * Regression test for F1 (docs/public-seams-review.md §7 "Rootless chown pass
- * skipped on install"): `reconcileHostOwnership` is wired into `start`,
+ * Regression test for the rootless ownership pass skipped on install:
+ * `reconcileHostOwnership` is wired into `start`,
  * `upgrade`, and `up`, but was missing from `applyInstall` — so a one-shot
  * fresh rootless install's first `up` could hit unwritable operator-owned
  * bind dirs before any chown ever ran.

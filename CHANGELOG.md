@@ -9,6 +9,42 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **Release publication uses one immutable tested candidate.** The release
+  orchestrator stamps and bundles one candidate commit, tests it with the frozen
+  lockfile, pushes it with a base-SHA lease, and restores that exact bundle in
+  every package/image/artifact job. Package manifests now have disjoint platform,
+  portal, Guardian, and Electron owners; the npm reusable workflow no longer has
+  an independent bump/commit mode. Immutable Git and Docker targets are checked
+  before source publication, Docker targets must advance their image history,
+  and stable `latest` aliases are promoted from verified build digests only in
+  the final release job. Voice and model-bundle workflows use the same immutable,
+  sign-before-promotion discipline; prerelease Voice builds do not move aliases.
+- **Provider imports reload only changed consumers.** Imported non-Anthropic
+  credentials are pushed to Assistant best-effort. Assistant restarts when its
+  config or auth changed, while an enabled Guardian restarts only when the shared
+  auth file changed; no-op imports do not touch Docker.
+- **Ownership repair is least-privilege.** The one-shot helper image is pinned by
+  digest and runs without networking, with a read-only root filesystem and only
+  the capabilities needed to repair ownership. Regenerable cache paths and any
+  recursive ancestor that would include them are excluded.
+- **Compose wait timeouts fail closed.** A container still reporting health
+  `starting` after `docker compose up --wait` fails is no longer treated as ready,
+  so setup cannot be marked complete before Assistant or enabled Guardian health.
+- **Desktop release discovery follows paginated GitHub results.** Standalone
+  `electron-*` releases remain discoverable even after partial-unit releases push
+  installers beyond the first API page.
+- **Container UI health remains public before setup.** Docker-published health
+  probes are no longer rejected as remote setup requests, and smoke builds now
+  overlay locally packed UI and skeleton artifacts so they exercise the checkout
+  under test rather than the previously published npm packages.
+- **CUDA Voice keeps its GPU ONNX runtime.** The build now replaces the CPU
+  `onnxruntime` transitively installed by faster-whisper with the pinned GPU wheel,
+  verifies `CUDAExecutionProvider` at build time, and explicitly selects it for
+  Kokoro at runtime. The CDI fallback overlay also declares the required GPU
+  capability and now passes Docker Compose schema validation.
+- **Rootless Voice uses the image user.** The rootless overlay now overrides the
+  fixed host UID/GID with an empty Compose `user` value; the previous YAML null
+  was ignored during merge and left the incompatible host identity in place.
 - **Guardian session eviction is lifecycle-aware (schema v4)** (#586): the
   bounded `session_owners` table used to evict its oldest row by `created_at`,
   which never refreshed — a long-lived active conversation (e.g. reused via
@@ -35,7 +71,7 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
-- **One stack env file** — `knowledge/env/stack.env` and `state/stack.state.env`
+- **One stack env file** — `knowledge/env/stack.env` and the transitional state env
   are consolidated into a single `state/stack.env`, the only non-secret Compose
   `--env-file`. The split was a transition artifact: both files were passed to
   Compose with the state one last so it won, and eight call sites hand-rolled
@@ -113,6 +149,14 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   capability-only (a plain toggle → addon + hardware profile); the wizard's
   entire tts/stt engine plumbing (payload blocks, engine tables,
   `VoiceEngineValue`, `resolveVoiceSide`) is deleted with it.
+- **Impossible host-lifecycle automations and unused surfaces.** Removed the
+  shipped `update-containers`, `health-check`, and `validate-config` assistant
+  tasks because the isolated assistant cannot orchestrate Docker or call the
+  host admin API. Unreferenced Electron wrappers, UI components/helpers, manual
+  files that no runner collected, old static artwork, and obsolete release
+  scripts were also deleted.
+
+### Added
 
 - **Device pairing for remote connections** (#511). Host admin `/connections`
   gains a "Pair a device" panel (`host:stack:write`-gated): it mints a
@@ -132,32 +176,15 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `app.openpalm.dev` (and the matching guardian CORS default) remains
   explicitly deferred pending a hosting provider — everything else is
   origin-agnostic and unblocked by that.
-- **Network access presets: bundle binding + auth + mDNS into one wizard
-  choice** (#563). A single "Network access" step in the setup wizard (and
-  the equivalent `network` block in a headless `SetupSpec`) replaces
-  independently-tuned bind vars with four presets — "This PC only" (default),
-  "Home network, with password", "Home network, open access", and "Shared
-  network, guardian protected" — resolved by a new pure `network-preset.ts`
-  in `@openpalm/lib`. The home-password preset turns on OpenCode's own Basic
-  auth (`OPENCODE_AUTH` + a password stored as the `op_opencode_password`
-  file secret, always materialized but inert until a preset enables it); the
-  guardian now attaches the same credential to every upstream assistant call
-  (proxy, event-fanout, drift-check) so portal traffic keeps working once
-  auth is on. Per-preset `.local` mDNS advertisement is delivered entirely by
-  the existing host mDNS responder (#488) via the bind vars each preset
-  writes — no new file-assembly step. `collectBindAddressWarnings` and the
-  new `collectNetworkExposureWarnings` reword startup warnings to name the
-  preset that deliberately configures an exposure, collapsing the noise for
-  a matched preset while keeping unexplained exposure loud. The admin
-  Assistant tab now shows the detected active preset (read-only; switching
-  stays in the wizard via rerun) and the default OpenCode connection picks
-  up the preset's password automatically when auth is on. Security defaults
-  are unchanged — every knob stays off/loopback unless an operator picks a
-  non-default preset.
+- **Flat independent access controls** (#563). Setup schema v2 exposes
+  `networkAccess`, `assistantDirect`, `guardianNetwork`, and
+  `guardianOpenaiApi`. Each toggle writes only its service-specific bind/auth
+  consequences; there is no preset mode or global bind cascade. Voice and the
+  Guardian principal-admin listener remain fixed to loopback.
 - **Stack-less (remote-only) operation** (#486). `openpalm app` now tolerates
   a machine with no local stack: it serves the UI and lands on
-  `/connections/new` instead of throwing an install-required error (bare
-  `openpalm ui serve` still requires an install). The connection list is
+  `/connections/new` instead of throwing an install-required error (direct
+  `openpalm ui` still requires an installed UI build). The connection list is
   browser-owned, so a session with no local assistant can add a remote
   OpenCode/guardian endpoint and chat against it directly — a connection is
   just `{ id, label, baseUrl, auth }`, with no server-side connection store
@@ -189,25 +216,12 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   HTTPS` badge instead of a misleading "unreachable" for an existing
   connection that becomes insecure. Loopback targets, the loopback-origin
   desktop default, and the LAN-served plain-HTTP client tier are unaffected.
-- **Host control-plane LAN mDNS self-advertisement for the guardian and
-  assistant** (#488). A `multicast-dns` responder in `@openpalm/lib`
-  runs inside the long-lived host UI process (started from
-  `hooks.server.ts`; every supervisor — `openpalm ui serve`, `openpalm`,
-  Electron — spawns it) and advertises `<name>-guardian.local` /
-  `<name>.local` (`<name>` derived from `OP_PROJECT_NAME`, default
-  `openpalm`) whenever the corresponding bind address
-  (`OP_BIND_ADDRESS` / `OP_ASSISTANT_BIND_ADDRESS`) is set non-loopback. The
-  loopback-only default opens no socket at all. A new `OP_MDNS=0|false|off`
-  knob in `stack.env` force-disables the responder (e.g. to avoid conflicting
-  with an operator's existing avahi/Bonjour setup). The admin UI's LAN
-  Exposure card (Assistant tab) now shows the derived `.local` name(s) and
-  whether each is currently advertised. This replaces the guardian container
-  as the advertisement locus documented in the original issue — container
-  mDNS on the default Docker bridge network never reaches the physical LAN
-  (see `docs/technical/network-partitioning-d5a.md`); the guardian
-  container/image is unchanged by this work. OpenCode's native in-container
-  mDNS responder (`server.mdns`/`server.mdnsDomain` in the assistant/guardian
-  `opencode.jsonc`) remains as a manual/advanced fallback.
+- **Host control-plane LAN mDNS self-advertisement for Guardian and the UI**
+  (#488). The host UI process advertises `<name>.local` for a non-loopback UI
+  bind (or direct-Assistant fallback) and `<name>-guardian.local` only for a
+  non-loopback Guardian bind with direct ingress enabled. The loopback default
+  opens no socket; `OP_MDNS=0|false|no|off` disables it. Native in-container
+  OpenCode mDNS remains off because bridge multicast cannot reach the LAN.
 - The guardian thin-host entrypoint can now install and boot a configurable
   guardian composition package via `OP_GUARDIAN_PACKAGE` (default
   `@openpalm/guardian`) with an overridable boot entry `OP_GUARDIAN_ENTRY`
@@ -389,8 +403,8 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   clean for the `stack` and `portal-discord` targets.
 
 - **Bare `openpalm` health probe respects the auth posture** (PR #564 retest
-  P3-4): the assistant reachability probe sends no Basic auth, so under the
-  `home-password` preset (`OPENCODE_AUTH=true`) `/health` answers `401` — which
+  P3-4): the assistant reachability probe sends no Basic auth, so when direct
+  Assistant auth is enabled (`OPENCODE_AUTH=true`) `/health` answers `401` — which
   proves the container is up. The probe now treats a `401`/`403` as reachable
   (like a `2xx`), so the bare command no longer runs `docker compose up -d` and
   needlessly recreates a healthy stack. A `5xx` or a connection error still reads
@@ -431,7 +445,7 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   (3896 / 3996) so they can run concurrently, and cleanup enables the addon
   profiles on `down` (plus project-label container/network/volume backstops) so
   a successful run no longer leaks Docker resources. Fixture setup/addon state
-  now lives in `state/stack.state.env`, matching the filesystem contract.
+  now lives in `state/stack.env`, matching the filesystem contract.
 
 - **Guardian ingress resource controls are enforced and bounded**: fixed-window
   source-IP, principal, and per-user request budgets return `429`; ownership,
@@ -449,9 +463,9 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   entrypoint now reads `Date.now()` from its required Node runtime instead of
   relying on GNU-specific `date +%s%3N` output.
 
-- **Re-running setup over a home-password install no longer rotates the
-  password** (PR #564 r3566887969): re-selecting the already-active
-  home-password preset on a rerun (empty box because the secret is never
+- **Re-running setup over a direct-auth install no longer rotates the
+  password** (PR #564 r3566887969): keeping the already-active direct Assistant
+  toggle on a rerun (empty box because the secret is never
   returned) now keeps the existing OpenCode password instead of minting a new
   one, so already-paired devices are not silently 401'd. Typing a new password
   still rotates it as intended.
@@ -469,8 +483,8 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   username to OpenCode's server default `opencode` instead of `openpalm`, so a
   correct password no longer 401s a user-added remote-OpenCode connection; and
   the synthesized Local Assistant endpoint reads `OPENCODE_AUTH` and the
-  password fresh from stack.env / the secret file, so completing the
-  home-password wizard takes effect without restarting the host UI.
+  password fresh from stack.env / the secret file, so enabling direct Assistant
+  auth takes effect without restarting the host UI.
 
 - **Pairing principal IDs are collision-resistant and oversized labels are
   rejected** (PR #564 r3566891355, r3566891768): the device-principal id suffix
@@ -494,21 +508,18 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   update deliberately — see that entry for the final per-kind split, now
   pinned by `lifecycle-overlay-guard.test.ts`.)
 - **Bind-address warning no longer claims "guardian protected" without a
-  guardian** (PR #564 r3566893095): a non-loopback `OP_BIND_ADDRESS` with no
+  guardian** (PR #564 r3566893095): a non-loopback `OP_GUARDIAN_BIND_ADDRESS` with no
   guardian-ingress addon enabled now warns that services are exposed
   UNPROTECTED, instead of falsely asserting guardian protection.
 
-- **`this-pc` network preset now fails closed against host-env bind overrides**
-  (PR #564 r3566887693): `validateNetworkPresetEnv` rejects a setup when the
-  host process env exposes `OP_ASSISTANT_BIND_ADDRESS` or `OP_BIND_ADDRESS`
-  under the "This PC only" preset, instead of silently writing a loopback row
-  that Compose's process-env precedence would override — which could publish an
-  unauthenticated OpenCode/guardian on the LAN despite the operator's choice.
+- **Flat access validation fails closed against conflicting host-env bind
+  overrides** (PR #564 r3566887693). Setup rejects ambient process values that
+  would override the selected service-specific access posture.
 
 - **Guardian mDNS no longer advertises an unreachable front door** (PR #564
   P2-1): the `<name>-guardian.local` advertisement is now gated on
   `GUARDIAN_DIRECT_INGRESS` being enabled, so a LAN-visible guardian bind with
-  direct ingress off (e.g. the shared-guardian preset default) stops pointing
+  direct ingress off stops pointing
   the LAN at a `:3830` listener that returns 404.
 
 - **`OPENCODE_BASE_URL` was ignored by the portal adapters** (#491).
@@ -519,13 +530,15 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   value, so first-party installs see no behavior change; custom-compose users
   who set `DISCORD_OPENCODE_BASE_URL`/`SLACK_OPENCODE_BASE_URL` now get the
   documented behavior.
-- **`packages/skeleton/tools.json` now installs the real `opencode-ai` npm
-  package.** It referenced `opencode`, which does not exist on npm (404), so the
-  tool install never produced the `opencode` binary. With
+- **The Guardian tools manifest installs the real `opencode-ai` npm
+  package.** `containers/guardian/tools/package.json` referenced `opencode`,
+  which does not exist on npm (404), so the tool install never produced the
+  `opencode` binary. With
   `GUARDIAN_CONTENT_VALIDATION` enabled, the guardian entrypoint's
   `command -v opencode` check then hard-failed the boot. `opencode-ai`
-  (the official OpenCode package) ships the `opencode` bin and resolves the same
-  `^1.17.0` range. (#524)
+  (the official OpenCode package) ships the `opencode` bin. The exact Assistant
+  and Guardian runtime pins now live in their respective
+  `containers/*/tools/package.json` manifests and remain in lockstep. (#524)
 - **Guardian thin-host container boots again.** The entrypoint installed the
   exact-pinned `@openpalm/guardian` / `@openpalm/skeleton` artifacts with
   `npm`, but the image is `FROM oven/bun:1.3-slim`, which ships no node/npm —
@@ -534,10 +547,9 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   version pin and the `$prefix/node_modules/@openpalm/...` layout the final
   `bun run` depends on. (#518)
 - **The assistant's `/health` probe and its password export are now
-  consistent with `OPENCODE_AUTH`.** Under the home-password network preset
-  (or any real install/update, since `ensureSecrets` always materializes a
-  non-empty `opencode_server_password` secret file), the assistant enabled
-  OpenCode Basic auth while its own healthcheck probed `/health`
+  consistent with `OPENCODE_AUTH`.** When direct Assistant auth is enabled
+  with the materialized `opencode_server_password` secret, the assistant enables
+  OpenCode Basic auth while its own healthcheck previously probed `/health`
   unauthenticated — the probe always 401'd, the assistant never reported
   healthy, and guardian's `depends_on: service_healthy` then blocked the
   whole stack from deploying. The assistant entrypoint now only resolves and

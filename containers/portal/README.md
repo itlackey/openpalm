@@ -1,8 +1,8 @@
 # containers/portal — Unified Portal Image
 
 A single Docker image used by every first-party portal adapter (`discord`,
-`slack`). The image bakes the first-party adapter packages from the workspace at
-build time.
+`slack`). At build time, the production Dockerfile installs exact-pinned
+published adapter packages from `containers/portal/tools/package.json`.
 
 ## How it works
 
@@ -26,15 +26,15 @@ There is no runtime `bun add` and no adapter npm install at boot.
 Adapter-specific secrets follow the same `*_FILE` pattern, for example
 `DISCORD_BOT_TOKEN_FILE` or `SLACK_BOT_TOKEN_FILE`.
 
-OpenAI-compatible chat/completions endpoints are now served by the guardian image
-itself via the optional `guardian-api` service, not by the portal image.
+OpenAI/Anthropic-compatible endpoints are served by the profile-gated Guardian
+service itself, not by the portal image or a separate API service.
 
 ## Example
 
 ```yaml
 services:
   discord:
-    image: ${OP_IMAGE_NAMESPACE:-openpalm}/portal:${OP_PORTAL_IMAGE_TAG:-${OP_IMAGE_TAG:-latest}}
+    image: ${OP_IMAGE_NAMESPACE:-openpalm}/portal:${OP_PORTAL_VERSION:-latest}
     environment:
       PORTAL_PACKAGE: "@openpalm/discord-portal"
       PRINCIPAL_ID: discord
@@ -45,6 +45,8 @@ services:
 
 ## Building
 
-The portal image is built from the monorepo. The first-party adapter packages are
-copied into the image during the Docker build, so the adapters stay version-locked
-to the image tag.
+The production Dockerfile copies only the tools manifest, then runs `bun install`
+to resolve its exact published package versions. It does not copy adapter source
+from the workspace. Coordinated release dry runs may substitute candidate
+tarballs before publication; the resulting local image still contains installed
+packages and performs no boot-time install.

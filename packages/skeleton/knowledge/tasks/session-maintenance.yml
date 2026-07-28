@@ -27,8 +27,8 @@ command:
     set -eu
     CUTOFF=$(( $(date +%s) - 30*24*60*60 ))
 
-    # Match the assistant healthcheck's auth handling (core.compose.yml): with
-    # the home-password preset, OPENCODE_AUTH=true and an unauthenticated
+# Match the Assistant healthcheck's auth handling (core.compose.yml): when
+# direct Assistant auth is enabled, an unauthenticated
     # request gets a 401 — under `curl -f` that exits non-zero and the task
     # silently deletes nothing forever.
     AUTH=""

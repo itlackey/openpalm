@@ -79,8 +79,8 @@ describe("portal verification-secret contract (compose ↔ portalSecretName ↔ 
         const decl = topLevelSecrets[expectedSecret];
         expect(decl, `top-level secrets: must declare ${expectedSecret}`).toBeDefined();
         // The container reads the file the migration/seeder writes — the basename
-        // MUST equal the secret name, under private/secrets/ (NOT knowledge/secrets/,
-        // which is bind-mounted wholesale into the assistant — see docs/public-seams-review.md §G1).
+        // MUST equal the secret name under private/secrets/, not knowledge/secrets/,
+        // which is bind-mounted wholesale into the Assistant.
         expect(basename(decl?.file ?? "")).toBe(expectedSecret);
         expect(decl?.file).toContain("/private/secrets/");
       });

@@ -28,6 +28,13 @@ export const GUARDIAN_INGRESS_ADDON_IDS: ReadonlyArray<string> = [
   'api', 'chat', 'discord', 'gateway', 'slack',
 ] as const;
 
+export function hasGuardianIngressAddon(enabledAddons: Iterable<string>): boolean {
+  for (const addon of enabledAddons) {
+    if (GUARDIAN_INGRESS_ADDON_IDS.includes(addon)) return true;
+  }
+  return false;
+}
+
 /**
  * First-party portals that own a dedicated `portal_<id>_secret`.
  *

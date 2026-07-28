@@ -54,8 +54,8 @@ ensure_home_layout() {
 # (API keys, owner info, anything the operator configured) into the OpenCode
 # server's own process environment — and therefore into every bash-tool
 # subprocess the agent runs, retrievable with a single `env`/`printenv` call
-# with no file path involved at all (docs/public-seams-review.md §G1, finding
-# #3). Nothing between here and `start_opencode` needs env:user's arbitrary
+# with no file path involved at all. Nothing between here and `start_opencode`
+# needs env:user's arbitrary
 # keys: `run_akm_schema_migration`/`persist_akm_stash_dir_fallback` only need
 # HOME/AKM_STASH_DIR (already in the container's own environment), and
 # `start_cron_and_sync_tasks` forwards its own small, explicit allowlist of
@@ -77,7 +77,7 @@ ensure_home_layout() {
 # waiting for the next container boot to re-resolve a semver range. This also
 # removes the old boot-time dependency on registry reachability (npm/bun),
 # closing the air-gapped-first-boot gap by construction rather than by adding
-# a fallback floor. See docs/public-seams-review.md §E2/§S2.
+# a fallback floor.
 #
 # The previous hard error here ("no OP_SKELETON_VERSION/PLATFORM_VERSION
 # resolved") guarded a runtime install that no longer exists — the equivalent
@@ -106,7 +106,7 @@ opencode_auth_enabled() {
 # #563/#564 P1-2: resolve OpenCode's Basic-auth password from the compose
 # secret file, gated on opencode_auth_enabled. The secret file is ALWAYS
 # materialized non-empty by ensureSecrets (random seed on first install, or a
-# stale password left behind by a preset switch away from home-password) and
+# retained password after direct Assistant auth is disabled) and
 # must stay inert while OPENCODE_AUTH is off — otherwise reading it here would
 # turn on OpenCode Basic auth against an unauthenticated healthcheck probe and
 # wedge the stack unhealthy. Decision D1: an explicit OPENCODE_SERVER_PASSWORD
@@ -246,7 +246,7 @@ start_ui() {
     ui_login_password="$(cat "${OP_UI_LOGIN_PASSWORD_FILE}")"
   fi
   if [ -z "$ui_login_password" ]; then
-    echo "WARNING: no UI login password available (OP_UI_LOGIN_PASSWORD_FILE missing or empty) — the served UI will redirect to /login but no session can be minted. Run setup (or seed knowledge/secrets/op_ui_login_password) to fix." >&2
+    echo "WARNING: no UI login password available (OP_UI_LOGIN_PASSWORD_FILE missing or empty) — the served UI will redirect to /login but no session can be minted. Run setup (or seed private/secrets/op_ui_login_password) to fix." >&2
   fi
 
   echo "entrypoint: starting UI co-process on port ${ui_port}..." >&2

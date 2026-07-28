@@ -1,7 +1,7 @@
 /**
  * Home directory layout for the OpenPalm control plane (v0.11.0+).
  *
- * Single ~/.openpalm/ root (four-tree ownership — constitution §1):
+ * Single ~/.openpalm/ root, split by ownership (constitution §1):
  *   config/    — USER: editable config + system config files (akm/)
  *   config/stack/ — USER: the custom.compose.yml overlay ONLY (seeded once, never overwritten)
  *   system/stack/ — MANAGED: fixed compose files (core/services/portals), overwritten on reconcile
@@ -10,6 +10,8 @@
  *   workspace/ — USER: shared assistant work area
  *   state/     — app-written records: stack.env (THE non-secret Compose --env-file),
  *                host identity, schema version
+ *   private/   — APP: delegated service credentials never mounted into the assistant
+ *   cache/     — SYSTEM: regenerable container caches
  */
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { writeFileAtomic } from "./fs-atomic.js";
@@ -186,7 +188,7 @@ export function initHomeSchema(home: string): void {
 export function legacyKnowledgeStackEnvFile(home: string): string {
   return `${home}/knowledge/env/stack.env`;
 }
-/** User env (entrypoint-sourced — never a compose --env-file; secret boundary). */
+/** User env (AKM-loaded on demand — never a Compose --env-file). */
 export function userEnvFile(home: string): string {
   return `${home}/knowledge/env/user.env`;
 }
@@ -203,22 +205,20 @@ export function authJsonFile(home: string): string {
  * top of this file. `knowledge/` (including `knowledge/secrets/`) is
  * bind-mounted wholesale into the assistant at `/stash` (core.compose.yml) and
  * is `external_directory "/stash/*":"allow"`-reachable by the agent's own bash
- * tool — see docs/public-seams-review.md §G1. Anything under `private/` is
- * mounted ONLY via Compose `secrets:` entries into the specific
- * guardian/portal containers that consume it, never bind-mounted into the
- * assistant.
+ * tool. Anything under `private/` stays outside `/stash`; host consumers read
+ * files directly and container consumers receive only named Compose secrets.
  */
 export function privateDir(home: string): string {
   return `${home}/private`;
 }
 
 /**
- * Delegated secrets — consumed only by the guardian/portals, never by the
- * assistant agent (docs/public-seams-review.md §G1). This is the ONE
- * relocation target for those secrets: `ensureSecrets`/`secrets-files.ts`
+ * Delegated service credentials are never exposed through the Assistant stash.
+ * This is the one relocation target for those secrets:
+ * `ensureSecrets`/`secrets-files.ts`
  * write them here, the migration in `secrets-migration.ts` moves pre-existing
- * installs' copies here from `secretsDir()`, and every Compose `secrets:
- * file:` entry that grants one of them points here. 0700, like `secretsDir`.
+ * installs' copies here from `secretsDir()`, and every container grant points
+ * here. 0700, like `secretsDir`.
  */
 export function privateSecretsDir(home: string): string {
   return `${privateDir(home)}/secrets`;

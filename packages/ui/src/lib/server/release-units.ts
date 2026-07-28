@@ -31,6 +31,7 @@ export type RawGitHubRelease = {
 };
 
 const PLATFORM_TAG_PATTERN = /^platform-(\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]*)?)$/;
+const ELECTRON_TAG_PATTERN = /^electron-(\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]*)?)$/;
 const LEGACY_V_TAG_PATTERN = /^v(\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]*)?)$/;
 
 /**
@@ -55,10 +56,10 @@ export function selectInstallableReleases(raw: RawGitHubRelease[]): ReleaseEntry
     const hasElectronBuild = r.assets.some((a) => ELECTRON_ASSET_PATTERN.test(a.name));
     if (!hasElectronBuild) continue;
 
-    // New-style platform-X.Y.Z — prefer these over legacy vX.Y.Z for the same semver.
-    const platformMatch = r.tag_name.match(PLATFORM_TAG_PATTERN);
-    if (platformMatch) {
-      const tag = platformMatch[1];
+    // Platform and standalone native-harness releases both carry installers.
+    const unitMatch = r.tag_name.match(PLATFORM_TAG_PATTERN) ?? r.tag_name.match(ELECTRON_TAG_PATTERN);
+    if (unitMatch) {
+      const tag = unitMatch[1];
       if (!seen.has(tag)) {
         seen.add(tag);
         releases.push({ tag, prerelease: r.prerelease, publishedAt: r.published_at, hasElectronBuild });
@@ -75,7 +76,7 @@ export function selectInstallableReleases(raw: RawGitHubRelease[]): ReleaseEntry
         releases.push({ tag, prerelease: r.prerelease, publishedAt: r.published_at, hasElectronBuild });
       }
     }
-    // Per-unit tags (assistant-*, guardian-*, portals-*) and non-matching tags — skip.
+    // Non-installer unit tags (assistant-*, guardian-*, portals-*) and non-matching tags — skip.
   }
   return releases;
 }

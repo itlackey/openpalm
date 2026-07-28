@@ -19,6 +19,7 @@ import { fileURLToPath } from "node:url";
 import {
   BUILTIN_ADDON_IDS,
   GUARDIAN_INGRESS_ADDON_IDS,
+  hasGuardianIngressAddon,
   PORTAL_SECRET_ADDON_IDS,
 } from "./addon-ids.js";
 
@@ -39,6 +40,14 @@ describe("guardian ingress addon ids", () => {
 
   it("includes gateway (guardian-served, no portal container of its own)", () => {
     expect(GUARDIAN_INGRESS_ADDON_IDS).toContain("gateway");
+  });
+
+  it("requires guardian for every ingress addon and no unrelated addon", () => {
+    for (const id of GUARDIAN_INGRESS_ADDON_IDS) {
+      expect(hasGuardianIngressAddon([id])).toBe(true);
+    }
+    expect(hasGuardianIngressAddon([])).toBe(false);
+    expect(hasGuardianIngressAddon(["ollama", "voice"])).toBe(false);
   });
 
   it("mirrors the guardian service profile gate in portals.compose.yml", () => {

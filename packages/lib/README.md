@@ -1,45 +1,74 @@
 # @openpalm/lib
 
-Shared control-plane library for OpenPalm.
-CLI, admin, and scheduler use this package so stack behavior stays consistent.
+Shared OpenPalm control-plane library. The CLI and host UI import this package
+so lifecycle, Compose, filesystem, addon, secret, and validation behavior has
+one implementation.
 
-> **Bun required.** This package ships TypeScript source and relies on Bun's native TS execution. It does not compile to JavaScript and is not compatible with Node.js.
+The package ships TypeScript source and requires Bun.
 
-The current model is direct-write over `~/.openpalm/` plus native Docker Compose.
-Compose files in `stack/` and env files in `vault/` are the live runtime inputs.
+## Runtime Contract
 
-## What lives here
+`@openpalm/lib` operates on the current `OP_HOME` layout:
 
-- OpenPalm home/path helpers
-- Env parsing and secret management
-- Addon install/uninstall and registry helpers
-- Compose lifecycle wrappers
-- Memory and connection profile helpers
-- Automation parsing used by the scheduler
-- Shared structured logging
+- managed Compose files in `system/stack/`
+- one user overlay at `config/stack/custom.compose.yml`
+- one non-secret Compose env file at `state/stack.env`
+- delegated service credentials in `private/secrets/`
+- assistant-readable provider auth at `knowledge/secrets/auth.json`
+- AKM user env and tasks under `knowledge/`
+- durable service data under `data/`
+- regenerable caches under `cache/`
 
-## Important context
+OpenPalm records first-party addons in `OP_ENABLED_ADDONS` and resolves them to
+Compose profiles in the control plane. Raw Docker Compose must pass profiles
+itself.
 
-- Some filenames still use legacy names like `staging`; those modules now support the direct-write compose model
-- `config/` is user-owned, `state/stack.env` is system-managed, `registry/` is catalog-only, and `stack/addons/` contains enabled runtime overlays
-- New reusable control-plane logic belongs here, not duplicated in consumers
+## Responsibilities
 
-## Main module areas
+- Resolve and create the complete OpenPalm home layout
+- Seed user assets and reconcile managed release assets
+- Build canonical Compose file, env-file, and profile arguments
+- Validate Compose and secret-grant boundaries before mutation
+- Install, update, rollback, backup, and recovery workflows
+- Enable/disable first-party addons and select hardware profiles
+- Route delegated secrets to `private/secrets/`
+- Manage OpenCode provider `auth.json`
+- Parse AKM task files and expose automation state to host consumers
+- Provide host UI asset, supervisor, endpoint, and release helpers
+- Emit structured control-plane logs
 
-| Module area | Purpose |
+## Main Areas
+
+| Module | Purpose |
 |---|---|
-| `control-plane/home` and `control-plane/paths` | Resolve the OpenPalm home layout |
-| `control-plane/env` and `control-plane/secrets` | Read, merge, and patch env files |
-| `control-plane/lifecycle` and `control-plane/docker` | Compose operations and stack lifecycle helpers |
-| `control-plane/portals` and `control-plane/components` | Addon discovery and install/uninstall logic |
-| `control-plane/provider-models` | Provider model discovery helpers |
-| `control-plane/scheduler` | Automation parsing and scheduler helpers |
-| `logger` | Shared structured logger |
+| `control-plane/home` and `paths` | Filesystem contract and path resolution |
+| `control-plane/lifecycle` and `deploy` | Install/update/apply/rollback orchestration |
+| `control-plane/docker` and `compose-args` | Shell-free Docker Compose invocation and profile resolution |
+| `control-plane/secrets*` | Non-secret env, private delegated secrets, and provider auth |
+| `control-plane/addons` | Built-in addon activation and hardware profiles |
+| `control-plane/setup*` | Version 2 setup spec validation and persistence |
+| `control-plane/markdown-task` and `scheduler` | AKM task parsing and host-facing automation adapters |
+| `control-plane/ui-*` | Host UI assets, runtime config, and supervision |
+| `logger` | Structured logging |
 
-## Consumer model
+## Consumer Boundaries
 
-- CLI: direct host-side orchestrator
-- Admin: optional UI/API wrapper
-- Scheduler: automation runner without Docker socket access
+| Consumer | Authority |
+|---|---|
+| CLI | Host-side Compose orchestrator |
+| Host admin UI/API | Host-side control-plane surface using the same library |
+| Assistant scheduler | In-container AKM task execution only; no Docker or host lifecycle authority |
 
-See `docs/technical/core-principles.md` for the authoritative filesystem contract and security rules.
+Portable control-plane behavior belongs here, not duplicated in CLI or UI
+routes. The assistant cannot call this package to gain host authority simply
+because task parsing types are shared.
+
+## Development
+
+```bash
+cd packages/lib
+bun test
+```
+
+See [Core Principles](../../docs/technical/core-principles.md) for the
+authoritative architecture and security invariants.

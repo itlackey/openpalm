@@ -1,236 +1,141 @@
 # Release Management
 
-> **Last updated 2026-07-21** for the 0.13.0 release candidate. This supersedes the pre-0.12 `platform-release.yml` documentation.
+All platform releases are manually dispatched through
+`.github/workflows/release.yml`. Read
+[`release-architecture.md`](../technical/release-architecture.md) before using a
+partial unit.
 
----
+## Preconditions
 
-## Release system overview
+1. Commit and push every intended source change.
+2. Record the exact target-branch SHA and keep the branch unchanged until the
+   live source gate completes.
+3. Run the full local verification matrix.
+4. Confirm all eight npm packages authorize trusted publisher workflow
+   `release.yml` for repository `itlackey/openpalm`.
+5. Confirm the target npm versions, Docker tags, and Git tags are unused.
 
-All releases run through `.github/workflows/release.yml` (manual `workflow_dispatch` only). Version computation and file stamping are handled by `scripts/bump-unit.mjs`. npm publishing flows through the reusable `.github/workflows/publish-npm-package.yml` (OIDC provenance, single trusted publisher).
-
-For an operator-grade, repeatable RC procedure with merge gates, exact commands,
-evidence capture, and post-publish verification, use the
-[RC release runbook](release-rc-runbook.md).
-
-**TAG-LAST:** The git tag and GitHub release are created as the very last step. "Tag exists = fully published." This makes releases safe to retry — re-running a failed release replays only the failed jobs.
-
-**Always dry-run first:** `dry_run=true` (the default) validates the entire plan, builds every artifact, and runs the test gate without publishing, committing, or tagging.
-
----
+The workflow repeats registry and tag checks and fails closed on query errors.
 
 ## Units
 
-| Unit | What it publishes | Version anchor |
-|---|---|---|
-| `platform` | @openpalm/lib, openpalm (CLI), @openpalm/ui, @openpalm/skeleton, @openpalm/guardian (all npm) + CLI binaries + optional Electron | root `package.json` |
-| `portals` | `openpalm/portal` Docker image | `portals/discord/package.json` |
-| `assistant` | `openpalm/assistant` Docker image | `containers/assistant/VERSION` |
-| `guardian` | @openpalm/guardian + @openpalm/skeleton (npm) + optional Docker image | `packages/guardian/package.json` |
-| `images` | All Docker images (no npm, no stamp) | root `package.json` (current, no bump) |
-| `electron` | Electron installers (mac/linux/win). No npm. | `packages/electron/package.json` |
-| `all` | Every unit simultaneously | root `package.json` |
+| Unit | Use |
+|---|---|
+| `all` | Normal coordinated release |
+| `platform` | Skeleton/lib/CLI/UI plus CLI binaries and assistant image |
+| `portals` | Portal SDK/adapters plus portal image |
+| `guardian` | Guardian package plus Guardian image |
+| `assistant` | Assistant image-only change |
+| `electron` | Native harness/installers only |
+| `images` | Rebuild all standard images at a required explicit version |
 
-See `docs/technical/release-architecture.md` for detailed per-unit job structure.
+`include_images` defaults to true for platform, portals, and Guardian. Untick it
+only for a deliberate npm-only partial release. Voice is always independent.
 
----
+## Coordinated Dry Run
 
-## Cutting a release
-
-### Step 1 — dry run
+Use the exact version intended for the live release:
 
 ```bash
 gh workflow run release.yml \
-  -f unit=<unit> \
-  -f bump=patch \
+  --ref main \
+  -f unit=all \
+  -f version=0.13.0 \
   -f dry_run=true
 ```
 
-Or with an explicit version:
+Record the run URL, base SHA, candidate SHA, and computed version. Require:
+
+- one candidate commit directly atop the base
+- frozen-lockfile preflight on that candidate
+- all eight npm package packs
+- candidate-backed Assistant, Guardian, and portal image builds
+- CLI binaries and Electron installers
+- no source, registry, tag, or release mutation
+
+## Coordinated Live Release
+
+After the dry run succeeds and the branch still points at the recorded base:
 
 ```bash
 gh workflow run release.yml \
-  -f unit=platform \
-  -f version=0.12.23-rc.1 \
-  -f dry_run=true
-```
-
-Review the workflow output. Verify the computed version, the files that will be stamped, and the npm regression guard output. For `platform` and `all`, confirm the stamp includes `packages/cli/package.json` and rewrites its exact `@openpalm/skeleton` pin to the release version.
-
-### Step 2 — real release
-
-Change `dry_run=false`. Everything else is the same.
-
-```bash
-gh workflow run release.yml \
-  -f unit=platform \
-  -f bump=patch \
+  --ref main \
+  -f unit=all \
+  -f version=0.13.0 \
   -f dry_run=false
 ```
 
-### Recovery
+The source gate refuses a moved branch rather than rebasing. Standard Docker
+images publish immutable tags first; stable `latest` aliases move only in the
+final job after every required artifact succeeds, using the signed build digests
+rather than mutable version-tag lookups.
 
-If a release fails partway through, re-run only the failed jobs:
+## Voice Release
 
-```bash
-gh run rerun <run-id> --failed
-```
-
-This preserves passed jobs (including preflight and npm publishes that succeeded) and re-runs only the failed legs. Do NOT dispatch a fresh release for the same version — npm `allow-existing` makes re-runs safe, but a fresh dispatch creates a second bump commit.
-
----
-
-## Common release scenarios
-
-### Routine platform patch (npm + CLI binaries)
+Voice is released separately and requires an immutable base version:
 
 ```bash
-gh workflow run release.yml -f unit=platform -f bump=patch -f dry_run=false
+gh workflow run publish-voice.yml \
+  --ref main \
+  -f version=0.13.0
 ```
 
-### Platform with Electron bundled
+Both CPU and CUDA variants must succeed and verify signatures before a stable
+release moves `latest-cpu` or `latest-cu121` from their recorded digests.
+Prerelease Voice versions do not move either alias.
+
+## Failure Recovery
+
+If the base lease fails, no artifact publication has started. Review the new
+branch head and dispatch a new dry run/live pair from the intended source.
+
+If a job fails after any npm package or immutable Docker image was published,
+do not dispatch or rerun publication for the same version. Immutable image
+guards and npm's immutable versions intentionally reject reuse. Record what
+published, correct the cause, and cut a new version.
+
+`gh run rerun <run-id> --failed` is safe only when evidence shows no immutable
+registry artifact was created. GitHub release asset retries are idempotent, but
+that does not make npm or Docker publication transactional.
+
+## Post-Publish Verification
 
 ```bash
-gh workflow run release.yml -f unit=platform -f bump=minor -f include_electron=true -f dry_run=false
+for package in \
+  '@openpalm/lib' \
+  'openpalm' \
+  '@openpalm/ui' \
+  '@openpalm/skeleton' \
+  '@openpalm/guardian' \
+  '@openpalm/portal-sdk' \
+  '@openpalm/discord-portal' \
+  '@openpalm/slack-portal'
+do
+  npm view "${package}@0.13.0" version
+  npm view "$package" dist-tags --json
+done
+
+docker buildx imagetools inspect openpalm/assistant:0.13.0
+docker buildx imagetools inspect openpalm/guardian:0.13.0
+docker buildx imagetools inspect openpalm/portal:0.13.0
 ```
 
-### Electron-only release (installers only, no npm republish)
+For stable releases, verify each standard `latest` alias resolves to the same
+manifest as its immutable tag. For prereleases, verify no Docker `latest` alias
+moved. Confirm all expected Git tags point to the tested candidate and every
+GitHub release exposes checksums and expected assets.
 
-Use this when only `packages/electron/` changed (harness contract, IPC fixes, etc.) and the npm packages are already published at the right version.
+## Local Baseline
 
 ```bash
-gh workflow run release.yml -f unit=electron -f version=0.12.22 -f dry_run=false
+bun install --frozen-lockfile
+bun run test:t1
+bun run test:t2
+bun run test:t3
+bun run test:t4
+bun run test:t5
+bun run ui:test:pwa
 ```
 
-### Guardian npm packages (thin-host update without a platform cut)
-
-```bash
-gh workflow run release.yml -f unit=guardian -f bump=patch -f dry_run=false
-```
-
-This publishes @openpalm/guardian and @openpalm/skeleton. The thin-host guardian container downloads these at startup via `npm install`.
-
-### Docker images only (no npm)
-
-```bash
-# Rebuild all images at the current version
-gh workflow run release.yml -f unit=images -f dry_run=false
-
-# Rebuild images at a new version
-gh workflow run release.yml -f unit=images -f version=0.12.23 -f dry_run=false
-
-# Assistant image only (e.g. OpenCode version bump)
-gh workflow run release.yml -f unit=assistant -f bump=patch -f dry_run=false
-```
-
-### All units simultaneously (coordinated release)
-
-Replaces the old `unit=major`. Accepts any bump type or an explicit version.
-
-```bash
-# Major version bump
-gh workflow run release.yml -f unit=all -f bump=major -f dry_run=false
-
-# Specific version (coordinated point release)
-gh workflow run release.yml -f unit=all -f version=1.0.0 -f dry_run=false
-```
-
----
-
-## Dist-tag rules
-
-| Version kind | Detection | npm dist-tag | Docker `latest` |
-|---|---|---|---|
-| Prerelease (`0.12.0-rc.1`) | version contains `-` | `next` | NOT created |
-| Stable (`0.12.22`) | no `-` | `latest` | created |
-
----
-
-## npm OIDC trusted publishing
-
-All npm publishes flow through `publish-npm-package.yml` as the single OIDC trusted publisher. npm validates the **calling workflow** (not the reusable child), so every package's trusted publisher must be configured at npmjs.com as:
-
-- Repository: `itlackey/openpalm`
-- Workflow: `release.yml`
-- Environment: (none)
-
-Set this for: `@openpalm/lib`, `openpalm`, `@openpalm/ui`, `@openpalm/skeleton`, `@openpalm/guardian`.
-
----
-
-## Beta → stable cutover checklist
-
-When promoting a `0.X.Y-rc.N` or `0.X.Y-beta.N` line to stable `0.X.Y`:
-
-- [ ] Cut the stable platform release (no `-` suffix) — publishes npm under `latest`, creates Docker `latest` tags
-- [ ] Verify `@openpalm/ui@latest` resolves to the current UI (it ships with `platform`)
-- [ ] Verify guardian and skeleton `latest` dist-tags are current
-- [ ] Confirm Docker `latest` tags exist for all images (first ever `latest` for a new major line)
-- [ ] Update `CHANGELOG.md`
-
-## Runtime artifact env pins
-
-These non-secret `stack.env` vars control the exact npm artifacts the running platform installs or serves:
-
-| Variable | Used by | Resolution | Notes |
-|---|---|---|---|
-| `OP_UI_VERSION` | Host UI updater / seeding path **and** the assistant container entrypoint | Host: `OP_UI_VERSION` -> channel/default logic in the host control plane. Container: `OP_UI_VERSION` -> image `PLATFORM_VERSION` -> hard error | Exact-pins the single `@openpalm/ui` build served everywhere (host process, Electron, container co-process); no `latest` fallback in the container |
-| `OP_SKELETON_VERSION` | Assistant + guardian entrypoints | Assistant: `OP_SKELETON_VERSION` -> image `PLATFORM_VERSION` -> hard error. Guardian: `OP_SKELETON_VERSION` -> guardian package version. | Exact-pins `@openpalm/skeleton`; keep equal to the platform version in normal releases |
-
-`OP_UI_PORT` and `OP_UI_BIND_ADDRESS` control the assistant container's published `@openpalm/ui` co-process listener (`127.0.0.1:3800` by default), separate from OpenCode (`OP_ASSISTANT_PORT`, default `3810`) and the host-local UI/dev origin (`OP_HOST_UI_PORT`, default `3880`).
-
-## Release Smoke Checklist
-
-For a full coordinated release candidate, use the dedicated
-[`unit=all` RC checklist](unit-all-rc-checklist.md). It expands this smoke list
-into a pre-publish and post-publish worksheet covering packaging, deployment,
-permissions, upgrade, rootless ownership, browser-backed flows, and shipped
-artifact verification.
-
-For the ordered execution procedure that drives that checklist, use the
-[RC release runbook](release-rc-runbook.md).
-
-- [ ] `Electron (admin)`: launch Electron against a seeded install; verify the embedded window lands on the UI chat at its preserved internal `http://127.0.0.1:${OP_HOST_UI_PORT:-3880}/chat` origin, and host routes remain available.
-- [ ] `openpalm admin (browser)`: run `openpalm admin`; verify the browser opens on the loopback host UI and `/host`, `/connections`, and `/chat` all load.
-- [ ] `assistant-container`: boot the assistant with `OP_UI_VERSION` and `OP_SKELETON_VERSION` overrides; verify the container installs those exact versions, serves `@openpalm/ui` on the assistant's published UI port, and chat reaches the locked default assistant connection.
-- [ ] `stack-less local client`: stop the local stack, run `openpalm app`, and verify `/connections` and `/chat` work from `http://localhost:${OP_HOST_UI_PORT:-3880}` without host capabilities.
-- [ ] `automated PWA evidence`: run `bun run ui:test:pwa`; require its CDP manifest/installability checks and Chromium `--app` standalone-mode relaunch, persistence, and cache-boundary checks to pass.
-- [ ] `manual PWA smoke`: on one supported OS/browser, use the browser install menu once, close the installed app, and relaunch it on the same localhost origin; keep this evidence explicitly manual.
-- [ ] `operator HTTPS origin` (when configured): verify installation from that exact origin, exact-origin Guardian CORS, and external Tailscale/Caddy TLS. Do not require `app.openpalm.dev`; 0.13.0 has no official deployment or default CORS grant for it.
-
----
-
-## Skeleton seeding
-
-`packages/skeleton/` is the template that seeds OP_HOME on install/upgrade. Published as `@openpalm/skeleton`. Seeded by `seedOpenPalmDir()` — once per version (`.skeleton-version` stamp guards re-seeding). Existing user files are never overwritten.
-
-Resolution order at runtime:
-1. `OPENPALM_REPO_ROOT` env (dev override)
-2. `OPENPALM_SKELETON_DIR` env (set by Electron from `process.resourcesPath/openpalm-skeleton`)
-3. `require.resolve('@openpalm/skeleton/package.json')` (CLI dep)
-4. Source-relative fallback (`packages/skeleton/` relative to lib source)
-
----
-
-## Migrations
-
-Two systems in `packages/lib/src/control-plane/migrations.ts`:
-
-**Layout migrations** — numbered integer steps that restructure OP_HOME on-disk layout. Run at install and upgrade.
-
-**Release migrations** — version-gated operations. Each is pinned to the rc of the release that introduces it. Fires once for any user upgrading past that version. Added by appending to `RELEASE_MIGRATIONS`.
-
-Version pin rule: pin to the rc of the upcoming release, not the prior stable. `v0.12.19-rc.1` was chosen instead of `v0.12.18-rc.1` because v0.12.18 stable was already published before the migration landed — stable > rc in semver, so users on stable would have skipped a rc-pinned migration.
-
----
-
-## Related files
-
-| File | Role |
-|---|---|
-| `.github/workflows/release.yml` | Single release orchestrator |
-| `.github/workflows/publish-npm-package.yml` | Reusable OIDC npm publish child |
-| `scripts/bump-unit.mjs` | Version computation + file stamping |
-| `scripts/set-version.mjs` | Stamps a single package.json to a given version |
-| `packages/skeleton/` | OP_HOME template, published as @openpalm/skeleton |
-| `packages/lib/src/control-plane/migrations.ts` | Layout + release migration harness |
-| `docs/technical/release-architecture.md` | Full per-unit job structure and design |
+Use the [RC runbook](release-rc-runbook.md) and
+[`unit=all` checklist](unit-all-rc-checklist.md) for evidence capture.

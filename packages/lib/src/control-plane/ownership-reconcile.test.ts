@@ -65,9 +65,10 @@ describe('ownership canary paths', () => {
     expect(paths).toEqual([
       join(homeDir, 'state', 'stack.env'),
       join(homeDir, 'state'),
-      join(homeDir, 'config'),
-      join(homeDir, 'knowledge'),
-      join(homeDir, 'workspace'),
+       join(homeDir, 'config'),
+       join(homeDir, 'knowledge'),
+       join(homeDir, 'private'),
+       join(homeDir, 'workspace'),
       join(homeDir, 'data', 'assistant'),
       join(homeDir, 'data', 'guardian'),
       join(homeDir, 'data', 'portal'),
@@ -79,11 +80,38 @@ describe('ownership canary paths', () => {
   test('repair paths cover the user-owned bind-mount roots', () => {
     const state = makeState();
     expect(ownershipRepairPaths(state)).toContain(join(homeDir, 'knowledge'));
+    expect(ownershipRepairPaths(state)).toContain(join(homeDir, 'private'));
     expect(ownershipRepairPaths(state)).toContain(join(homeDir, 'state'));
     expect(ownershipRepairPaths(state)).toContain(join(homeDir, 'workspace'));
     expect(ownershipRepairPaths(state)).toContain(join(homeDir, 'data', 'assistant'));
     expect(ownershipRepairPaths(state)).toContain(join(homeDir, 'data', 'guardian'));
     expect(ownershipRepairPaths(state)).toContain(join(homeDir, 'data', 'akm'));
+  });
+
+  test('excludes the regenerable cache tree from repair and canary recursion', () => {
+    const state = makeState();
+    const cacheRoot = join(homeDir, 'cache');
+    const cacheBackup = join(homeDir, 'cache-backup');
+    const durableBind = join(homeDir, 'data', 'custom');
+    const discoveredMounts = [
+      { path: join(cacheRoot, 'assistant'), isFile: false },
+      { path: join(cacheRoot, 'guardian', 'index.db'), isFile: true },
+      { path: join(homeDir, 'root-secret'), isFile: true },
+      { path: homeDir, isFile: false },
+      { path: cacheBackup, isFile: false },
+      { path: durableBind, isFile: false },
+    ];
+
+    const repairPaths = ownershipRepairPaths(state, discoveredMounts);
+    const canaryPaths = ownershipCanaryPaths(state, discoveredMounts);
+    for (const paths of [repairPaths, canaryPaths]) {
+      expect(paths).not.toContain(join(cacheRoot, 'assistant'));
+      expect(paths).not.toContain(join(cacheRoot, 'guardian'));
+      expect(paths).toContain(cacheBackup);
+      expect(paths).toContain(durableBind);
+      expect(paths).toContain(join(homeDir, 'root-secret'));
+      expect(paths).not.toContain(homeDir);
+    }
   });
 });
 

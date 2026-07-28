@@ -65,20 +65,19 @@ export function execFileNoThrow(
 
 /**
  * Compute the openpalm/voice image ref for a given GPU variant, matching
- * the substitution chain in the addon compose file:
- *   ${OP_IMAGE_NAMESPACE:-openpalm}/voice:${OP_VOICE_VERSION:-latest-<variant>}
+ * the substitution in the addon compose file:
+ *   ${OP_IMAGE_NAMESPACE:-openpalm}/voice:${OP_VOICE_VERSION:-latest}-<variant>
  *
  * Voice images are published OUT OF BAND (publish-voice.yml), decoupled from the
  * other service images — they are heavy and rarely change. So the default is the
  * moving `latest-<variant>` voice tag; operators pin a specific build by setting
- * OP_VOICE_VERSION (e.g. `v1.0.0-cpu`). A bare `latest` (the seeded default) is
- * treated as "unset" so the GPU-variant default still applies.
+ * the base `OP_VOICE_VERSION` (for example `1.0.0`), and Compose appends the
+ * selected hardware suffix.
  */
-function voiceImageRef(variant: 'cpu' | 'cu121' | 'rocm6'): string {
+export function voiceImageRef(variant: 'cpu' | 'cu121' | 'rocm6'): string {
   const namespace = process.env.OP_IMAGE_NAMESPACE?.trim() || 'openpalm';
-  const explicit = process.env.OP_VOICE_VERSION?.trim();
-  if (explicit && explicit !== 'latest') return `${namespace}/voice:${explicit}`;
-  return `${namespace}/voice:latest-${variant}`;
+  const version = process.env.OP_VOICE_VERSION?.trim() || 'latest';
+  return `${namespace}/voice:${version}-${variant}`;
 }
 
 /**

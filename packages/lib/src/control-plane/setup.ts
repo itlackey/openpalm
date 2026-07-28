@@ -396,7 +396,7 @@ export async function performSetup(
     // clean error rather than leaving a broken half-installed ~/.openpalm/.
     try {
       // Reconcile the per-image version pins on EVERY setup run. A non-empty
-      // wizard value pins every service image to that exact tag deliberately —
+      // wizard value pins each platform service image to that exact tag —
       // kept verbatim, "latest" included, as an explicit opt-in.
       // state/stack.env is the SOLE pin location (never the legacy
       // — writeVersions() writes there exclusively.
@@ -422,7 +422,7 @@ export async function performSetup(
       const trimmedTag = imageTag?.trim();
       if (trimmedTag) {
         for (const key of SERVICE_VERSION_KEYS) {
-          akmUpdates[key] = trimmedTag;
+          akmUpdates[key] = key === "OP_VOICE_VERSION" ? "latest" : trimmedTag;
         }
       } else {
         const namespace = process.env.OP_IMAGE_NAMESPACE?.trim() || "openpalm";

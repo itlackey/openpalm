@@ -28,8 +28,8 @@ export PATH="/opt/openpalm/tools/node_modules/.bin:$PATH"
 # ── Shared OpenCode provider credentials (G1) ─────────────────────────────────
 # Delivered as a Compose secret (GUARDIAN_AUTH_JSON_FILE, always
 # /run/secrets/guardian_auth_json in the shipped compose) rather than a
-# knowledge/ bind mount, so the guardian mounts NOTHING from knowledge/ (see
-# docs/public-seams-review.md §G1). Compose secrets always land at a fixed
+# knowledge/ bind mount, so the guardian mounts nothing from knowledge/.
+# Compose secrets always land at a fixed
 # /run/secrets/<name> path, never at the arbitrary path OpenCode actually
 # reads (HOME/.local/share/opencode/auth.json) — copy it into place before
 # anything that starts OpenCode (the moderator below, or opencode-based tools)
@@ -72,8 +72,8 @@ install_artifact() {
   # downstream distributions overriding OP_GUARDIAN_PACKAGE. The skip check
   # used to compare the installed concrete version to `version` with plain
   # string equality, which can never match a range (`0.8.14` !== `^0.8.0`),
-  # so a range-pinned override silently re-installed on every single boot
-  # (docs/public-seams-review.md §E2 finding #4). Use Bun's built-in semver
+  # so a range-pinned override silently re-installed on every single boot.
+  # Use Bun's built-in semver
   # matcher so an exact pin still matches itself and a range is checked for
   # satisfaction instead of literal equality.
   local installed_version
@@ -95,8 +95,8 @@ install_artifact() {
   exit 1
 }
 
-# Guardian and skeleton are co-released, so the skeleton follows the same
-# version by default; OP_SKELETON_VERSION overrides if they ever diverge.
+# Guardian and skeleton have independent release owners. The image records both
+# exact package versions; downstream distributions may override either one.
 #
 # The guardian PACKAGE installs into /opt/openpalm/guardian-pkg, NOT
 # /opt/openpalm/guardian. The latter is $HOME, bind-mounted from
@@ -112,7 +112,7 @@ install_artifact() {
 # is on the host bind, portals.compose.yml) on every recreation, not just
 # restart/reboot. Accepted regression, documented in the #585 plan.
 install_artifact "$OP_GUARDIAN_PACKAGE" "$VERSION" /opt/openpalm/guardian-pkg
-install_artifact "@openpalm/skeleton" "${OP_SKELETON_VERSION:-$VERSION}" /opt/openpalm/skeleton
+install_artifact "@openpalm/skeleton" "${OP_SKELETON_VERSION:-${SKELETON_VERSION:-}}" /opt/openpalm/skeleton
 
 # ── E2/S2: no boot-time tools install ──────────────────────────────────────
 # /opt/openpalm/tools/package.json declares exact tool versions (opencode-ai —
@@ -122,13 +122,12 @@ install_artifact "@openpalm/skeleton" "${OP_SKELETON_VERSION:-$VERSION}" /opt/op
 # anymore). No mount overlays it (image-baked-only model), so there is nothing
 # to install or update here —
 # the content-validation check below already verifies `opencode` resolved
-# from the baked tree before anything that needs it starts. See
-# docs/public-seams-review.md §E2/§S2.
+# from the baked tree before anything that needs it starts.
 
 # ── Hard-fail when content validation is enabled but opencode is missing ───────
-enabled=0
-case "${GUARDIAN_CONTENT_VALIDATION:-0}" in
-  1 | true | TRUE | yes | on) enabled=1 ;;
+enabled=1
+case "${GUARDIAN_CONTENT_VALIDATION:-1}" in
+  0 | false | FALSE | False | no | NO | No | off | OFF | Off) enabled=0 ;;
 esac
 if [ "$enabled" = "1" ] && ! command -v opencode >/dev/null 2>&1; then
   echo "ERROR: GUARDIAN_CONTENT_VALIDATION=1 but opencode is not on PATH from the image-baked tools tree. Cannot start." >&2

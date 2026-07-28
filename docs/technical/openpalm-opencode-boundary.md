@@ -10,10 +10,10 @@ relevant tabs **must not bleed into each other**:
 | **Connections** | OpenCode's provider config + credentials | `OP_HOME/config/assistant/opencode.json` (`.provider`, `.model`, `.small_model`, `.disabled_providers`), `OP_HOME/knowledge/secrets/auth.json` | `PATCH /api/host/providers/[id]`, `POST /api/assistant/model`, `POST/DELETE /api/host/opencode/providers/[id]/auth`, `POST /api/host/providers/import-host` |
 | **Voice** | Voice addon (container + hardware profile); TTS/STT provider choice is client-owned in the browser | `state/stack.env` (`OP_ENABLED_ADDONS`, `OP_VOICE_PROFILE`) | `POST /api/host/addons(/voice)` |
 
-> `knowledge/secrets/auth.json` is the single OpenCode credential store. It is mounted
-> into the assistant (read-write) and the guardian (read-only), so credentials
-> set via the Connections tab are also what the guardian's content-validation
-> moderator uses — there is no separate guardian credential store.
+> `knowledge/secrets/auth.json` is the single OpenCode credential store. It is
+> bind-mounted read-write into Assistant and granted to Guardian as the named
+> read-only `guardian_auth_json` Compose secret. Guardian copies that file into
+> its private OpenCode home at boot; there is no second operator-managed store.
 
 ## What the AKM tab is for
 
@@ -39,9 +39,10 @@ UI. It writes the files OpenCode itself reads:
   `opencode.json` (via `setMainModel` / `unsetMainModel`).
 - **Custom provider** → adds a `provider.{id}` entry to `opencode.json`
   with the OpenAI-compatible adapter (`@ai-sdk/openai-compatible`).
-- **Import from host** → copies `~/.config/opencode/opencode.json` and
-  `~/.local/share/opencode/auth.json` into `OP_HOME`, then pushes
-  credentials live via `PUT /auth/{id}` for each entry.
+- **Import from host** → merges host OpenCode configuration and auth into
+  `OP_HOME` while preserving conflicts by default, pushes non-Anthropic
+  credentials live best-effort, then restarts Assistant and an enabled Guardian
+  so both reload disk state.
 
 ## What the boundary forbids
 
@@ -56,12 +57,9 @@ UI. It writes the files OpenCode itself reads:
 
 ## Operational gotchas
 
-- **Restart required after model change.** OpenCode reads `model` /
-  `small_model` from `opencode.json` once at process startup and caches
-  them. `PATCH /config` returns `200` with the patched fields but the
-  running process keeps using the cached value. The Connections tab's
-  model picker writes the file; a `docker restart openpalm-assistant-1`
-  (or equivalent) is required for chat to pick up the change.
+- **Model changes are persisted first and live-patched best-effort.** The file
+  remains authoritative across restarts. A live-patch failure is reported, but
+  it does not discard the persisted choice.
 - **`connected` is env-detection only.** OpenCode's `GET /provider`
   `connected` array reports providers whose env vars are set (e.g.
   `OPENAI_API_KEY`). Providers whose credentials live only in `auth.json`
@@ -74,17 +72,11 @@ UI. It writes the files OpenCode itself reads:
   GitHub device code) or the provider times out. Make ONE call and wait;
   don't poll on an interval. Verified with `curl --max-time 7` hanging
   for the full 7s.
-- **The auth subprocess is broken.** `opencode-auth-subprocess.ts` spawns
-  a fresh OpenCode process for OAuth isolation, but in OpenCode 1.14.x /
-  1.15.x the fresh subprocess's OAuth methods map fails to initialize
-  (`TypeError: undefined is not an object (evaluating 'u[d.providerID].methods')`).
-  All three OAuth routes (start / finish / callback) now bypass it and
-  go to the assistant OpenCode at `OP_OPENCODE_URL` directly.
 - **`OPENAI_BASE_URL=""` is fatal.** `@ai-sdk/openai` treats an empty
   string as a literal baseURL, not "unset", and the URL constructor
   throws `fetch() URL is invalid`. The line
   `OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}` was removed from
-  `.openpalm/config/stack/core.compose.yml` because of this. Per-provider
+  `system/stack/core.compose.yml` because of this. Per-provider
   URL overrides go through the Connections tab now, not env.
 
 ## Why the separation matters

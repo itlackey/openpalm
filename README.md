@@ -11,7 +11,8 @@ OpenPalm is two things: a **harness** and a **stack**.
 **The harness** runs on your machine — either as a CLI binary or an Electron desktop app. It manages a single directory (`~/.openpalm/`) that contains plain files you can read and edit:
 
 - Docker Compose files and addon overlays
-- Environment variable files (system config, principal secret files, user API keys)
+- Environment files for non-secret stack config and AKM user variables
+- Private principal, service, and provider credential files
 - OpenCode configuration (model, providers, persona)
 - AKM configuration (memory, embeddings, knowledge stash)
 - Voice and portal configuration
@@ -21,10 +22,10 @@ The harness job is unglamorous: download Docker images, place the right content 
 **The stack** is what the harness runs. At its core:
 
 - An **OpenCode assistant** in Docker — your AI, talking to whatever model you point it at, with persistent memory and skills via AKM
-- A **Guardian** — the only way in from the outside, enforcing principal-authenticated ingress, ownership checks, and rate limiting on every request, with optional fail-closed content validation (heuristic screen + local OpenCode moderator) when enabled
-- Optional **portal containers** — Discord, Slack, voice chat, or anything you build — each one just a compose overlay
+- A **Guardian** — the profile-gated front door for portals and Guardian clients, enforcing principal authentication, ownership checks, rate limits, and default-on fail-closed content validation
+- Optional **addons** — portal adapters such as Discord and Slack, services such as Voice, or anything you add through Compose
 
-Official clients are the Electron desktop app and the OpenCode web interface (served directly by the assistant container). Everything else reaches the assistant through a portal/direct-ingress → guardian pipeline.
+Official clients are the Electron desktop app and the OpenCode web interface served by the assistant. The Assistant and host-served OpenPalm UIs have direct paths to OpenCode; portals and Guardian direct/API clients reach it through Guardian.
 
 ---
 
@@ -34,17 +35,15 @@ No proprietary orchestration layer, no magic runtime, no lock-in. Just container
 
 ## Where things stand
 
-**0.12.0** is the stabilization and hardening release. It builds on the 0.11.0 architecture — assistant, guardian, portal/direct ingress, and the AKM memory/skills layer, all in daily use — and focuses on install/upgrade lifecycle robustness, safer migrations, better error recovery, and a self-updating control plane that avoids unnecessary desktop-app re-downloads. It also completes the channels → portals rename.
-
-If you're running OpenPalm today, 0.12.0 is the release to be on.
+Use the [latest published release](https://github.com/itlackey/openpalm/releases/latest). See the [changelog](CHANGELOG.md) for current work and release-specific upgrade notes.
 
 
 ## What you get
 
 - **An AI assistant that's yours** — Runs on [OpenCode](https://opencode.ai), talks to any OpenAI-compatible model (local or remote), and remembers things between sessions.
 - **Portals** — Talk to your assistant through a web chat, an API, Discord, Slack, or build your own adapter.
-- **Security by default** — Every ingress request passes through guardian principal authentication, ownership checks, and rate limiting before it reaches the assistant. The assistant itself has no Docker socket access.
-- **Plain files all the way down** — The stack is Docker Compose files. Config is env files. Addons are compose overlays. No database for state, no hidden config, nothing you can't `cat`.
+- **Security by default** — Portal and Guardian ingress traffic passes through principal authentication, ownership checks, and rate limits. Direct Assistant access is loopback-only by default, and the Assistant has no Docker socket.
+- **Plain control plane** — Stack and control-plane state use Compose, env, and configuration files. Service runtime data, including SQLite databases, stays under `~/.openpalm/data/`.
 - **LAN-first** — Nothing is exposed to the internet unless you explicitly choose to expose it.
 
 ## Get started
@@ -61,10 +60,10 @@ If you're running OpenPalm today, 0.12.0 is the release to be on.
 
 | Platform | Download | Run |
 |---|---|---|
-| **Mac (Apple Silicon)** | [OpenPalm‑arm64‑mac.zip](https://github.com/itlackey/openpalm/releases/latest) | Unzip → drag **OpenPalm.app** to Applications |
-| **Mac (Intel)** | [OpenPalm‑x64‑mac.zip](https://github.com/itlackey/openpalm/releases/latest) | Unzip → drag **OpenPalm.app** to Applications |
-| **Windows** | [OpenPalm‑win.zip](https://github.com/itlackey/openpalm/releases/latest) | Unzip → run **OpenPalm.exe** (portable, no install) |
-| **Linux** | [OpenPalm.AppImage](https://github.com/itlackey/openpalm/releases/latest) | `chmod +x` → run |
+| **Mac (Apple Silicon)** | [OpenPalm-arm64-mac.zip](https://github.com/itlackey/openpalm/releases) | Unzip → drag **OpenPalm.app** to Applications |
+| **Mac (Intel)** | [OpenPalm-x64-mac.zip](https://github.com/itlackey/openpalm/releases) | Unzip → drag **OpenPalm.app** to Applications |
+| **Windows** | [OpenPalm-win.zip](https://github.com/itlackey/openpalm/releases) | Unzip → run **OpenPalm.exe** (portable, no install) |
+| **Linux** | [OpenPalm.AppImage](https://github.com/itlackey/openpalm/releases) | `chmod +x` → run |
 
 Open the app, follow the setup wizard (it'll confirm Docker is running, ask which AI provider to use, and start the stack), and land directly on the chat page. Done.
 
@@ -89,15 +88,23 @@ This downloads the CLI binary for your platform, seeds `~/.openpalm/`, opens the
 - **Add portals** — Enable Discord, Slack, API, or web chat by enabling the relevant addon in your stack.
 - **Extend the assistant** — Drop in OpenCode plugins, custom tools, or let the assistant find what they need with built-in [AKM](https://github.com/itlackey/akm) support.
 - **Schedule automations** — Add YAML files to run recurring tasks on a cron schedule.
-- **Protect your secrets** — Built-in log redactor masks token/secret/key/password/HMAC values from every service log; `openpalm scan` lists which sensitive slots are populated in your env files.
+- **Protect your secrets** — The shared control-plane logger redacts structured values under recognized sensitive key names; this is not a blanket guarantee for every service log. `openpalm scan` inventories discovered sensitive keys and secret files as set or empty without printing their values.
 
 ## How it works
 
-<div>
-<p>Clients talk to portals or guardian-hosted ingress surfaces. Portals authenticate to the guardian, the guardian validates and forwards to the assistant, and the assistant does the work. That's it.</p>
-</div>
+```mermaid
+flowchart LR
+  Admin[Electron or openpalm admin] -->|host control plane| Compose[Docker Compose]
+  Compose --> Assistant[Assistant and OpenCode]
+  UI[Assistant or host-served UI] -->|same-origin /oc| Assistant
+  Direct[Direct OpenCode client] -->|optional OpenCode Basic auth| Assistant
+  Portals[Discord and Slack portals] -->|principal Basic auth /oc| Guardian
+  Clients[Guardian direct, API, or MCP clients] -->|issued credentials| Guardian
+  Guardian -->|native OpenCode upstream| Assistant
+  Assistant --> AKM[AKM knowledge and BusyBox cron]
+```
 
-![Architecture](docs/technical/architecture.svg)
+Guardian mediates portal and Guardian-facing protocols. It is not inserted into the supported direct Assistant or UI paths.
 
 For the full walkthrough, see [How It Works](docs/how-it-works.md). For security invariants and architectural rules, see [Core Principles](docs/technical/core-principles.md).
 

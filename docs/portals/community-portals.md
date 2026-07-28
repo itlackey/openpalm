@@ -1,80 +1,76 @@
 # Community Portals
 
-OpenPalm's current ingress model is guardian `/oc/*` traffic authenticated with a principal id and shared secret file. First-party adapters are baked into the shared `portal` image.
+A community portal is its own container that translates an external protocol to
+Guardian's authenticated `/oc/*` API. The first-party `portal` image contains
+only the baked first-party adapters; custom integrations must publish their own
+image.
 
-For custom community integrations, the deployment model remains compose-first: create a compose overlay, include it in your file set, and let guardian handle authenticated `/oc/*` traffic.
+## Contract
 
-## Quick start
+Your adapter must:
 
-1. Build a small Bun service that accepts the external protocol you care about.
-2. Read `PRINCIPAL_ID` and `PRINCIPAL_SECRET_FILE` from the environment.
-3. Call guardian `/oc/*` using Basic auth plus `x-openpalm-user`.
-4. Write a custom runtime service in `~/.openpalm/config/stack/custom.compose.yml`, or use one of the first-party portal services in `portals.compose.yml`.
-5. Rerun the OpenPalm compose command.
+- expose a health endpoint
+- read its principal token from a file, never an inline environment value
+- call `http://guardian:8080/oc/*` with HTTP Basic credentials
+- send `x-openpalm-user` for the external user identity
+- join `portal_net`, not `assistant_net`
 
-Example overlay:
+Guardian must know the same principal before traffic arrives. The simplest
+Compose-first path is to grant the same named secret to Guardian through a
+`PORTAL_<ID>_SECRET_FILE` variable. Guardian seeds that principal at boot.
+
+## Example
+
+Create `~/.openpalm/private/secrets/portal_community_secret` with mode `0600`,
+then add this to `~/.openpalm/config/stack/custom.compose.yml`:
 
 ```yaml
 services:
-  my-portal:
-    image: ${OP_IMAGE_NAMESPACE:-openpalm}/portal:${OP_PORTAL_IMAGE_TAG:-${OP_IMAGE_TAG:-latest}}
+  guardian:
+    environment:
+      PORTAL_COMMUNITY_SECRET_FILE: /run/secrets/portal_community_secret
+    secrets:
+      - portal_community_secret
+
+  community-portal:
+    image: ghcr.io/example/community-portal:1.0.0
     restart: unless-stopped
     environment:
-      PORT: '8187'
-      PRINCIPAL_ID: my-portal
-      PRINCIPAL_SECRET_FILE: /run/secrets/portal_my_portal_secret
+      PORT: "8080"
+      GUARDIAN_URL: http://guardian:8080
+      PRINCIPAL_ID: community
+      PRINCIPAL_SECRET_FILE: /run/secrets/portal_community_secret
     secrets:
-      - portal_my_portal_secret
+      - portal_community_secret
     networks: [portal_net]
+    depends_on:
+      guardian:
+        condition: service_healthy
 
 secrets:
-  portal_my_portal_secret:
-    file: ${OP_HOME}/knowledge/secrets/portal_my_portal_secret
+  portal_community_secret:
+    file: ${OP_HOME}/private/secrets/portal_community_secret
 ```
 
-> First-party portal adapters are baked into the portal image. Custom community
-> integrations should ship as normal containers or compose overlays, not as
-> runtime-installed npm packages.
+Enable the Guardian-only gateway profile and reconcile the stack:
 
-## What your integration needs
+```bash
+openpalm addon enable gateway
+openpalm start
+```
 
-- `Bun.serve()` startup with `/health`
-- Basic-auth calls to guardian `/oc/*`
-- structured logging
-- tests that exercise the guardian-facing contract
-
-## Runtime variables
-
-| Variable | Purpose |
-|---|---|
-| `PORT` | Listen port inside the container |
-| `PRINCIPAL_ID` | Guardian principal id |
-| `PRINCIPAL_SECRET_FILE` | Path to the shared secret file used for Basic auth |
+The environment key `PORTAL_COMMUNITY_SECRET_FILE` seeds principal id
+`community`, matching `PRINCIPAL_ID`. Use an env-safe uppercase identifier whose
+lowercase form is the desired principal id.
 
 ## Testing
 
-Test the same things the first-party adapters test: health responses, permission
-policy, Basic-auth `/oc/*` calls, and session/stream behavior.
+Exercise health, invalid and valid Basic authentication, user attribution,
+session ownership, event streaming, and rate-limit behavior against a real
+Guardian. Never test a custom portal by connecting it directly to Assistant.
 
-## Built-in examples
+First-party reference implementations:
 
-- `packages/guardian/src/openai-api.ts` (guardian-hosted OpenAI-compatible API)
-- `portals/discord/README.md`
-- `portals/slack/README.md`
-
-## First-party adapters standalone
-
-Both first-party adapters are also published, independently runnable npm
-packages (`@openpalm/discord-portal`, `@openpalm/slack-portal`) — a standard
-OpenCode-SDK client you can run with Bun (`bunx @openpalm/discord-portal` /
-`bunx @openpalm/slack-portal`) against **any** OpenCode server, not only the
-shipped guardian-fronted stack. Runs best behind the OpenPalm guardian (or
-another auth/rate-limiting reverse proxy); standalone is for personal /
-small-trusted-team use against your own OpenCode server. See
-[`portals/discord/README.md`](../../portals/discord/README.md) and
-[`portals/slack/README.md`](../../portals/slack/README.md) for the full
-standalone quick start and environment variable reference.
-
-## Related addons
-
-- The voice addon serves a static browser UI and is not a guardian-fronted portal.
+- [`portals/discord/README.md`](../../portals/discord/README.md)
+- [`portals/slack/README.md`](../../portals/slack/README.md)
+- `packages/portal-sdk/`

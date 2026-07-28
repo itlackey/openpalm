@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * TAG-LAST guard: refuse to tag a release whose Docker image jobs were SKIPPED.
+ * TAG-LAST guard: refuse to tag a release whose expected publish jobs were SKIPPED.
  *
  * Why this exists. release.yml's tag-release gates on
  * `!contains(needs.*.result, 'failure')`. A skipped job is not a failure, so
@@ -40,7 +40,7 @@ export function expectedImages(unit, includeImages) {
   if (
     unit === "images" ||
     unit === "all" ||
-    ((unit === "guardian" || unit === "platform") && includeImages)
+    (unit === "guardian" && includeImages)
   ) {
     expected.push("guardian");
   }
@@ -53,6 +53,56 @@ export function expectedImages(unit, includeImages) {
     expected.push("assistant");
   }
   return expected.sort();
+}
+
+/** Non-image jobs whose success is required for each release unit. */
+export function expectedArtifactJobs(unit) {
+  switch (unit) {
+    case "platform":
+      return ["npm-skeleton", "npm-lib", "npm-cli", "npm-ui", "cli"].sort();
+    case "portals":
+      return ["npm-portal-sdk", "npm-discord-portal", "npm-slack-portal"].sort();
+    case "guardian":
+      return ["npm-guardian"];
+    case "electron":
+      return ["electron"];
+    case "all":
+      return [
+        "npm-skeleton",
+        "npm-lib",
+        "npm-guardian",
+        "npm-cli",
+        "npm-ui",
+        "npm-portal-sdk",
+        "npm-discord-portal",
+        "npm-slack-portal",
+        "cli",
+        "electron",
+      ].sort();
+    default:
+      return [];
+  }
+}
+
+export function expectedReleaseJobs(unit, includeImages) {
+  return [
+    ...expectedArtifactJobs(unit),
+    ...expectedImages(unit, includeImages).map((image) => `docker-${image}`),
+  ].sort();
+}
+
+export function verifyReleaseJobs({ unit, includeImages, results }) {
+  const expected = expectedReleaseJobs(unit, includeImages);
+  const missing = expected
+    .map((job) => ({ job, result: results[job] ?? "" }))
+    .filter(({ result }) => result !== "success");
+  return { ok: missing.length === 0, expected, missing };
+}
+
+export function describeReleaseJobResult({ ok, expected, missing }) {
+  if (ok) return `Release jobs succeeded as expected: ${expected.join(", ") || "none"}.`;
+  const detail = missing.map(({ job, result }) => `${job} (${result || "no result"})`);
+  return `Refusing to tag: expected release job(s) did not succeed: ${detail.join(", ")}.`;
 }
 
 /**
@@ -97,12 +147,22 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   const unit = process.env.UNIT ?? "";
   const includeImages = process.env.INCLUDE_IMAGES === "true";
   const results = {
-    portal: process.env.RESULT_DOCKER_PORTAL ?? "",
-    guardian: process.env.RESULT_DOCKER_GUARDIAN ?? "",
-    assistant: process.env.RESULT_DOCKER_ASSISTANT ?? "",
+    "npm-skeleton": process.env.RESULT_NPM_SKELETON ?? "",
+    "npm-lib": process.env.RESULT_NPM_LIB ?? "",
+    "npm-guardian": process.env.RESULT_NPM_GUARDIAN ?? "",
+    "npm-cli": process.env.RESULT_NPM_CLI ?? "",
+    "npm-ui": process.env.RESULT_NPM_UI ?? "",
+    "npm-portal-sdk": process.env.RESULT_NPM_PORTAL_SDK ?? "",
+    "npm-discord-portal": process.env.RESULT_NPM_DISCORD_PORTAL ?? "",
+    "npm-slack-portal": process.env.RESULT_NPM_SLACK_PORTAL ?? "",
+    "docker-portal": process.env.RESULT_DOCKER_PORTAL ?? "",
+    "docker-guardian": process.env.RESULT_DOCKER_GUARDIAN ?? "",
+    "docker-assistant": process.env.RESULT_DOCKER_ASSISTANT ?? "",
+    cli: process.env.RESULT_CLI ?? "",
+    electron: process.env.RESULT_ELECTRON ?? "",
   };
-  const result = verifyReleaseImages({ unit, includeImages, results });
-  const message = describeVerifyResult(result);
+  const result = verifyReleaseJobs({ unit, includeImages, results });
+  const message = describeReleaseJobResult(result);
   if (!result.ok) {
     console.log(`::error::${message}`);
     process.exit(1);

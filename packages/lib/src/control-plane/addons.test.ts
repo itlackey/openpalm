@@ -23,6 +23,7 @@ import {
   execFileNoThrow,
   getAddonProfileAvailability,
   resetAvailabilityCache,
+  voiceImageRef,
 } from './addon-availability.js';
 import { readSecret } from './secrets-files.js';
 
@@ -416,6 +417,23 @@ describe('getAddonProfileAvailability', () => {
     const result = await getAddonProfileAvailability({ id: 'addon.voice.rocm' });
     if (!result.available) expect(result.reason).toContain('ROCm');
     else expect(result.reason).toBeUndefined();
+  });
+});
+
+describe('voiceImageRef', () => {
+  it('appends the hardware suffix to the configured base version', () => {
+    const originalNamespace = process.env.OP_IMAGE_NAMESPACE;
+    const originalVersion = process.env.OP_VOICE_VERSION;
+    try {
+      process.env.OP_IMAGE_NAMESPACE = 'example';
+      process.env.OP_VOICE_VERSION = '1.2.3';
+      expect(voiceImageRef('cu121')).toBe('example/voice:1.2.3-cu121');
+    } finally {
+      if (originalNamespace === undefined) delete process.env.OP_IMAGE_NAMESPACE;
+      else process.env.OP_IMAGE_NAMESPACE = originalNamespace;
+      if (originalVersion === undefined) delete process.env.OP_VOICE_VERSION;
+      else process.env.OP_VOICE_VERSION = originalVersion;
+    }
   });
 });
 

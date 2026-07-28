@@ -153,6 +153,5 @@ export const GET: RequestHandler = async (event) => {
     // generated binds — not an inference, so it can never report "custom".
     // (D7/D8); null means custom/hand-tuned, never a secret value (S3).
     access: readAccessToggles(env),
-    hasOpencodePassword: Boolean(secretEnv.OP_OPENCODE_PASSWORD),
   });
 };

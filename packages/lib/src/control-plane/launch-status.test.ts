@@ -92,7 +92,7 @@ describe("classifyLocalInstall (disk markers)", () => {
   afterEach(() => { rmSync(dir, { recursive: true, force: true }); });
 
   function stackDir(): string {
-    const sd = join(dir, "config", "stack");
+    const sd = join(dir, "system", "stack");
     mkdirSync(sd, { recursive: true });
     return sd;
   }
@@ -121,7 +121,7 @@ describe("classifyLocalInstall (disk markers)", () => {
   it("installed when compose exists and both guardian tokens are present, even without the OP_SETUP_COMPLETE stamp (hand-built install, R1-R3)", () => {
     const sd = stackDir();
     writeFileSync(join(sd, "core.compose.yml"), "services: {}");
-    const secretsDir = join(dir, "knowledge", "secrets");
+    const secretsDir = join(dir, "private", "secrets");
     mkdirSync(secretsDir, { recursive: true });
     writeFileSync(join(secretsDir, "op_guardian_admin_token"), "deadbeef\n");
     writeFileSync(join(secretsDir, "op_guardian_mcp_token"), "cafef00d\n");
@@ -131,7 +131,7 @@ describe("classifyLocalInstall (disk markers)", () => {
   it("stays setup_incomplete when compose exists but only ONE guardian token is present", () => {
     const sd = stackDir();
     writeFileSync(join(sd, "core.compose.yml"), "services: {}");
-    const secretsDir = join(dir, "knowledge", "secrets");
+    const secretsDir = join(dir, "private", "secrets");
     mkdirSync(secretsDir, { recursive: true });
     writeFileSync(join(secretsDir, "op_guardian_admin_token"), "deadbeef\n");
     expect(classifyLocalInstall(sd, dir)).toBe("setup_incomplete");

@@ -1,75 +1,71 @@
 # Design Intent
 
-> Authoritative document. Do not edit without a specific request to do so, or direct approval.
+This document explains OpenPalm's stable design philosophy. The enforceable
+architecture, security invariants, and filesystem contract live in
+[`core-principles.md`](core-principles.md).
 
-This document explains the stable design intent behind OpenPalm.
-It captures why the system is shaped the way it is and what must remain true as implementation details evolve.
+## Goals
 
-## Primary goals
+- Keep the runtime operable with Docker Compose and ordinary files.
+- Keep all durable state visible under `OP_HOME` (normally `~/.openpalm`).
+- Make the host CLI self-sufficient; the optional admin UI uses the same shared
+  control-plane library.
+- Avoid hidden infrastructure, generated templates, and duplicated lifecycle
+  implementations.
 
-- The stack is manageable with Docker Compose and a file editor.
-- Core runtime state is simple, visible, and host-owned under `OP_HOME` (default `~/.openpalm`).
-- Tooling (CLI, admin, setup wizard, assistant tools) is convenience-only and must not become required hidden infrastructure.
-- A technical user can always inspect, back up, and manually operate the stack through files and native Compose behavior.
+## Runtime Shape
 
-## Core architecture intent
+OpenPalm is a file-assembly control plane over Docker Compose:
 
-- OpenPalm is a file-assembly control plane over Docker Compose, not a template-rendering engine.
-- Runtime behavior is composed from:
-  - compose files (`config/stack/` core + addon overlays),
-  - non-secret environment file (`state/stack.env`) and file-based service secrets (`knowledge/secrets/`),
-  - service configuration files (`config/assistant/`, `config/akm/`).
-- `stack.yml` is a version marker only (`{ version: 2 }`), not a replacement for Compose or env files.
-- All control-plane logic is implemented once in `@openpalm/lib`; CLI, admin, and the scheduler co-process are thin consumers.
+- `system/` contains release-managed files and is replaced on reconcile.
+- `config/` contains user-owned non-secret configuration and is seeded only
+  when a default is missing.
+- `state/stack.env` contains non-secret app-written runtime state.
+- `knowledge/secrets/auth.json` contains assistant-readable OpenCode provider
+  authentication.
+- `private/secrets/` contains delegated UI, OpenCode-server, Guardian, API,
+  portal, and bot credentials outside assistant `/stash`.
+- `data/`, `cache/`, `knowledge/`, and `workspace/` have the ownership and
+  backup behavior defined in `core-principles.md`.
 
-## Filesystem and ownership model
+Whole files are assembled from shipped assets. The control plane does not
+render Compose templates or merge arbitrary fragments into managed files.
 
-- `config/` is user-owned, non-secret configuration and remains manually editable. `config/stack/` is the system-assembled live Compose runtime definition.
-- `knowledge/env/` is the user-managed secrets boundary (`user.env`). System secrets live as file-based grants under `knowledge/secrets/`; `stack.env` is non-secret.
-- `data/` is durable service-managed data (assistant, guardian, AKM cache/data, logs, backups, rollback).
-- `knowledge/` is the AKM knowledge base (skills, commands, memories, agents).
-- `workspace/` is the shared assistant work area.
-- Lifecycle operations must be non-destructive for user-owned config and user-managed knowledge content unless the user explicitly requests mutation.
+## Trust Boundaries
 
-## Security and boundary intent
+- The host CLI or an admin-capable host UI is the orchestrator.
+- The assistant has no Docker socket, admin credential, or network path to the
+  loopback-only admin process.
+- Guardian is profile-gated. Every portal request reaches the assistant through
+  Guardian's authenticated `/oc/*` proxy.
+- All host publications default to loopback. Broader binds require an explicit
+  service-specific access toggle.
+- Containers receive delegated credentials as named files, not broad secret
+  directories or environment files.
 
-- Host CLI or admin orchestrates Compose operations; Docker socket exposure is tightly constrained.
-- Guardian is the only ingress path from portal and direct-ingress networks to the assistant. It enforces principal authentication, ownership checks, rate limiting, and can run optional fail-closed content validation (a local OpenCode moderator) on inbound messages.
-- Assistant is isolated: no Docker socket, bounded mounts, and stack-management access mediated through authenticated admin APIs when admin is present.
-- Host-only by default: interfaces are local unless the user explicitly opts into broader exposure. The LAN-first threat model is a deliberate architectural choice — the admin UI uses `httpOnly SameSite=Strict` session cookies (`op_session`) and the admin process runs on the host with direct filesystem access, scoped for a localhost/LAN deployment where the network perimeter itself is the primary trust boundary.
-- Secret handling follows least privilege by container and by scope.
+## Extensibility
 
-## Extensibility intent
+OpenPalm has three deliberate extension points:
 
-OpenPalm has three extension points:
+1. Compose addons, including custom services in `config/stack/custom.compose.yml`.
+2. Standard OpenCode configuration, tools, plugins, skills, and agents.
+3. AKM task files under `knowledge/tasks/`, executed by `crond` in the assistant.
 
-1. Addons: compose overlays that add optional services.
-2. Assistant extensions: standard OpenCode assets under user and core extension directories.
-3. Automations: recurring workflows driven by the scheduler co-process inside the assistant container.
+Portal-style addons are a specialized Compose addon and must use Guardian
+ingress. New host orchestration behavior belongs in `@openpalm/lib`, not in a
+consumer-specific implementation.
 
-Portal-style ingress addons are a specialized addon class that use the portal runtime and must ingress through guardian.
+## Operations
 
-## Assistant intent
+- Install and update overwrite managed assets, preserve user-owned files, and
+  validate the assembled Compose configuration before mutation.
+- Rollback and backups cover durable state, including `private/`, but exclude
+  regenerable caches.
+- A native Electron harness changes only when its native contract changes. The
+  UI and shared control plane update independently through the installed UI
+  package.
+- Manual and tool-driven operations must converge on the same files and Compose
+  behavior.
 
-- The assistant is an OpenCode runtime for user-facing interaction and workflows.
-- It can read and write only within its defined mounted boundaries (data/assistant, data/akm/cache, data/akm/data, knowledge/, workspace/, config/assistant, and config/akm/).
-- The user's OpenCode global config is mounted from `config/assistant/` at `~/.config/opencode`.
-- The managed OpenCode config — plugins, permissions, instructions — is mounted from
-  `system/assistant/` at `/etc/opencode` (`OPENCODE_CONFIG_DIR`) and is overwritten on update.
-  **Nothing is baked into the image at `/etc/opencode`** except the fallback `AGENTS.md` the
-  entrypoint seeds there at boot.
-
-## Operational intent
-
-- Apply and upgrade flows validate before writing live runtime assembly.
-- Rollback exists as a first-class safety mechanism for failed deploy transitions.
-- Backup and restore remain straightforward because state is concentrated under `~/.openpalm/`.
-- Manual-first and tooling-first operations should converge on the same runtime result.
-
-## Non-goals for this document
-
-- This is not the full mount/env/port reference.
-- This is not a release roadmap or issue implementation plan.
-- This is not a service-by-service runbook.
-
-Those details belong in the other authoritative documents, especially `core-principles.md` and `foundations.md`.
+Detailed mounts, variables, routes, and release mechanics belong in their
+domain references; they are intentionally not duplicated here.

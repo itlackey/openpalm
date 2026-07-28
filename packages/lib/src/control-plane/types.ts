@@ -4,9 +4,8 @@
 
 // ── Types ──────────────────────────────────────────────────────────────
 
-export type CoreServiceName =
-  | "assistant"
-  | "guardian";
+export type CoreServiceName = "assistant";
+export type ManagedServiceName = CoreServiceName | "guardian";
 
 export type AccessScope = "host" | "lan";
 export type CallerType = "assistant" | "cli" | "ui" | "system" | "test" | "unknown";
@@ -45,5 +44,9 @@ export type ControlPlaneState = {
 // Memory has been replaced by the akm-cli stash (shared with assistant).
 export const CORE_SERVICES: CoreServiceName[] = [
   "assistant",
+];
+
+export const MANAGED_SERVICES: ManagedServiceName[] = [
+  ...CORE_SERVICES,
   "guardian",
 ];

@@ -13,7 +13,7 @@ import {
   isAllowedService,
   isValidPortal,
 } from "@openpalm/lib";
-import { CORE_SERVICES } from "@openpalm/lib";
+import { MANAGED_SERVICES } from "@openpalm/lib";
 import { makeTempDir, trackDir, registerCleanup } from "./test-helpers.js";
 
 registerCleanup();
@@ -91,8 +91,8 @@ describe("discoverPortals", () => {
 // ── Allowlist & Validation Functions ────────────────────────────────────
 
 describe("isAllowedService", () => {
-  test("allows all core services", () => {
-    for (const service of CORE_SERVICES) {
+  test("allows all managed services", () => {
+    for (const service of MANAGED_SERVICES) {
       expect(isAllowedService(service)).toBe(true);
     }
   });

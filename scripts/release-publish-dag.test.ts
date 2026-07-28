@@ -13,14 +13,34 @@
 import { describe, expect, test } from "bun:test";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { expectedImages, verifyReleaseImages } from "./verify-release-images.mjs";
+import {
+	expectedImages,
+	expectedReleaseJobs,
+	verifyReleaseImages,
+	verifyReleaseJobs,
+} from "./verify-release-images.mjs";
 
 const ROOT = join(import.meta.dir, "..");
 const WORKFLOWS_DIR = join(ROOT, ".github", "workflows");
 const RELEASE_WORKFLOW = join(WORKFLOWS_DIR, "release.yml");
+const VOICE_WORKFLOW = join(WORKFLOWS_DIR, "publish-voice.yml");
+const ASSISTANT_MODELS_WORKFLOW = join(WORKFLOWS_DIR, "publish-assistant-models.yml");
+const VOICE_MODELS_WORKFLOW = join(WORKFLOWS_DIR, "publish-voice-models.yml");
+const VOICE_DOCKERFILE = join(ROOT, "containers", "voice", "Dockerfile");
+const VOICE_ENTRYPOINT = join(ROOT, "containers", "voice", "entrypoint.sh");
+const COMPOSE_DEV = join(ROOT, "compose.dev.yml");
+const ROOTLESS_SMOKE_FIXTURE = join(ROOT, "scripts", "rootless-smoke-fixture.sh");
 const PUBLISH_REUSABLE = "publish-npm-package.yml";
+const PUBLISH_WORKFLOW = join(WORKFLOWS_DIR, PUBLISH_REUSABLE);
 
-type Step = { name?: string; run?: string; with?: Record<string, unknown> };
+type Step = {
+	name?: string;
+	run?: string;
+	uses?: string;
+	if?: string;
+	env?: Record<string, string>;
+	with?: Record<string, unknown>;
+};
 type Job = {
 	uses?: string;
 	needs?: string | string[];
@@ -85,6 +105,278 @@ describe("P5e — release DAG stamps via the canonical unit stamper", () => {
 	});
 });
 
+describe("release target inputs are validated before credentialed jobs", () => {
+	const release = parseWorkflow(RELEASE_WORKFLOW);
+	const jobs = jobsOf(release);
+
+	test("release.yml validates the computed target with the shared strict parser", () => {
+		const step = (jobs["compute-version"]?.steps ?? []).find(
+			(s) => s.name === "Validate target version and resolve metadata",
+		);
+		expect(step).toBeDefined();
+		expect(step?.run ?? "").toContain("parseSemver");
+		expect(step?.env?.VERSION ?? "").toContain("steps.bump.outputs.new_version");
+		expect(step?.run ?? "").not.toContain("${{");
+	});
+
+	test("Docker guards receive validated refs through env and fail closed on lookup errors", () => {
+		for (const id of ["docker-portal", "docker-guardian", "docker-assistant"]) {
+			const guard = (jobs[id]?.steps ?? []).find(
+				(s) => s.name === "Guard — fail if image tag already exists",
+			);
+			expect(guard).toBeDefined();
+			expect(String(guard?.env?.IMAGE_REF ?? "")).toContain(
+				"compute-version.outputs.new_version",
+			);
+			expect(guard?.run ?? "").not.toContain("${{");
+			expect(guard?.run ?? "").toContain("manifest unknown|no such manifest");
+			expect(guard?.run ?? "").toContain("Could not verify Docker target");
+		}
+	});
+
+	test("shared registry publication is globally serialized", () => {
+		const concurrency = release.concurrency as { group?: string } | undefined;
+		expect(concurrency?.group).toBe("release");
+	});
+
+	test("target versions are never interpolated directly into shell scripts", () => {
+		for (const path of [RELEASE_WORKFLOW, VOICE_WORKFLOW]) {
+			const workflow = parseWorkflow(path);
+			for (const [jobId, job] of Object.entries(jobsOf(workflow))) {
+				for (const step of job.steps ?? []) {
+					const run = step.run ?? "";
+					expect(`${jobId}:${step.name ?? "unnamed"}:${run}`).not.toMatch(
+						/\$\{\{\s*(?:inputs\.version|needs\.compute-version\.outputs\.new_version|steps\.platform_version\.outputs\.platform_version)/,
+					);
+				}
+			}
+		}
+	});
+});
+
+describe("Voice release validation and Dockerfile guard", () => {
+	const voice = parseWorkflow(VOICE_WORKFLOW);
+	const jobs = jobsOf(voice);
+
+	test("Voice validates the version in a prerequisite job before Docker login", () => {
+		const validate = jobs["validate-version"];
+		const push = jobs["push-voice-images"];
+		expect((validate?.steps ?? []).some((step) => (step.run ?? "").includes("parseSemver"))).toBe(
+			true,
+		);
+		expect(needsList(push ?? {})).toContain("validate-version");
+		const guard = (push?.steps ?? []).find((step) => step.name === "Guard immutable image tag");
+		expect(guard?.run ?? "").not.toContain("${{");
+		expect(guard?.env?.VERSION ?? "").toContain("inputs.version");
+		const promote = (jobs["promote-latest"]?.steps ?? []).find(
+			(step) => step.name === "Promote signed immutable variants",
+		);
+		expect(promote?.run ?? "").not.toContain("${{");
+		expect(promote?.run ?? "").toContain("openpalm/voice@${digest}");
+		expect(String(jobs["promote-latest"]?.if ?? "")).toContain("prerelease == 'false'");
+	});
+
+	test("Voice releases are globally serialized", () => {
+		const concurrency = voice.concurrency as { group?: string } | undefined;
+		expect(concurrency?.group).toBe("publish-voice");
+	});
+
+	test("Voice validates monotonic variant tags before Docker login", () => {
+		const validate = jobs["validate-version"];
+		const runs = (validate?.steps ?? []).map((step) => step.run ?? "").join("\n");
+		expect(runs).toContain("assert-docker-tag-monotonic.mjs");
+		expect(runs).toContain("cpu cu121");
+		const pushSteps = jobs["push-voice-images"]?.steps ?? [];
+		expect(pushSteps.findIndex((step) => step.name === "Login to Docker Hub")).toBeGreaterThan(
+			-1,
+		);
+	});
+
+	test("continued Dockerfile command lines retain a trailing backslash", () => {
+		const lines = readFileSync(VOICE_DOCKERFILE, "utf-8").split("\n");
+		for (let index = 1; index < lines.length; index++) {
+			if (!lines[index]?.trimStart().startsWith("&&")) continue;
+			expect(lines[index - 1]?.trimEnd().endsWith("\\")).toBe(true);
+		}
+	});
+
+	test("Voice CUDA replaces the resolver-installed CPU ONNX runtime", () => {
+		const dockerfile = readFileSync(VOICE_DOCKERFILE, "utf-8");
+		const requirementsInstall = dockerfile.indexOf("pip install -r /build/requirements.txt");
+		const cpuUninstall = dockerfile.indexOf("pip uninstall -y onnxruntime");
+		const gpuInstall = dockerfile.indexOf('pip install --no-deps "onnxruntime-gpu==1.20.1"');
+		expect(requirementsInstall).toBeGreaterThan(-1);
+		expect(cpuUninstall).toBeGreaterThan(requirementsInstall);
+		expect(gpuInstall).toBeGreaterThan(cpuUninstall);
+		expect(dockerfile).toContain("CUDAExecutionProvider");
+	});
+
+	test("Voice CUDA explicitly selects the GPU provider for Kokoro", () => {
+		const entrypoint = readFileSync(VOICE_ENTRYPOINT, "utf-8");
+		expect(entrypoint).toContain(
+			'export ONNX_PROVIDER="${ONNX_PROVIDER:-CUDAExecutionProvider}"',
+		);
+	});
+});
+
+describe("release source is one tested candidate commit", () => {
+	const release = parseWorkflow(RELEASE_WORKFLOW);
+	const jobs = jobsOf(release);
+
+	test("candidate preparation bundles the stamped commit without pushing it", () => {
+		const runs = (jobs.bump?.steps ?? []).map((step) => step.run ?? "").join("\n");
+		expect(runs).toContain("node scripts/bump-unit.mjs");
+		expect(runs).toContain("bun install --lockfile-only");
+		expect(runs).toContain("git bundle create");
+		expect(runs).not.toContain("git push");
+	});
+
+	test("preflight restores the prepared candidate before testing", () => {
+		expect(needsList(jobs.preflight ?? {})).toContain("bump");
+		const runs = (jobs.preflight?.steps ?? []).map((step) => step.run ?? "").join("\n");
+		expect(runs).toContain("restore-release-candidate.sh");
+	});
+
+	test("the live source gate waits for preflight and uses a base lease without rebasing", () => {
+		const source = jobs["release-source"];
+		expect(needsList(source ?? {})).toContain("preflight");
+		const runs = (source?.steps ?? []).map((step) => step.run ?? "").join("\n");
+		expect(runs).toContain("--force-with-lease");
+		expect(runs).not.toContain("pull --rebase");
+	});
+
+	test("every orchestrated npm publish receives the candidate bundle coordinates", () => {
+		for (const [, job] of publishJobs(release)) {
+			expect(needsList(job)).toContain("release-source");
+			expect(String(job.with?.["base-sha"] ?? "")).toContain("release-source.outputs.base_sha");
+			expect(String(job.with?.["candidate-sha"] ?? "")).toContain(
+				"release-source.outputs.candidate_sha",
+			);
+			expect(String(job.with?.["source-artifact"] ?? "")).toContain(
+				"release-source.outputs.source_artifact",
+			);
+		}
+	});
+
+	test("every artifact and release job restores the tested candidate", () => {
+		for (const id of [
+			"docker-portal",
+			"docker-guardian",
+			"docker-assistant",
+			"cli",
+			"electron",
+			"tag-release",
+		]) {
+			const job = jobs[id];
+			expect(needsList(job ?? {})).toContain("release-source");
+			const runs = (job?.steps ?? []).map((step) => step.run ?? "").join("\n");
+			expect(runs).toContain("restore-release-candidate.sh");
+		}
+	});
+});
+
+describe("release publishing preserves candidate identity and fails loudly", () => {
+	test("npm provenance is bound to the verified candidate HEAD", () => {
+		const publish = readFileSync(PUBLISH_WORKFLOW, "utf-8");
+		expect(publish).toContain('HEAD_SHA=$(git rev-parse HEAD)');
+		expect(publish).toContain('GITHUB_SHA="${HEAD_SHA}" npm publish');
+		expect(publish).toContain("ref: ${{ inputs.base-sha }}");
+		expect(publish).not.toContain("workflow_dispatch:");
+		expect(publish).not.toContain("Commit version bump");
+	});
+
+	test("GitHub release retries keep an existing release and do not suppress creation failures", () => {
+		const release = readFileSync(RELEASE_WORKFLOW, "utf-8");
+		expect(release).not.toContain("gh release delete");
+		expect(release).toContain('gh release upload "${TAG}" dist/* --clobber');
+		expect(release).not.toMatch(/gh release create[\s\S]*?\|\| true/);
+	});
+
+	test("stable Docker latest tags are promoted only in the final release job", () => {
+		const release = parseWorkflow(RELEASE_WORKFLOW);
+		const jobs = jobsOf(release);
+		for (const id of ["docker-portal", "docker-guardian", "docker-assistant"]) {
+			const metadata = (jobs[id]?.steps ?? []).find((step) => step.name === "Docker metadata");
+			expect(String(metadata?.with?.tags ?? "")).not.toContain("latest");
+		}
+		const tagSteps = jobs["tag-release"]?.steps ?? [];
+		const promoteIndex = tagSteps.findIndex((step) => step.name === "Promote stable Docker tags");
+		const tagIndex = tagSteps.findIndex((step) => step.name === "Create + push tags");
+		expect(promoteIndex).toBeGreaterThanOrEqual(0);
+		expect(promoteIndex).toBeLessThan(tagIndex);
+		expect(tagSteps[promoteIndex]?.run ?? "").toContain("imagetools create");
+		expect(tagSteps[promoteIndex]?.run ?? "").toContain("openpalm/${image}@${digest}");
+		expect(tagSteps[promoteIndex]?.run ?? "").not.toContain("openpalm/${image}:${VERSION}");
+	});
+
+	test("every selected image is checked against Docker tag history before source publication", () => {
+		const release = parseWorkflow(RELEASE_WORKFLOW);
+		const jobs = jobsOf(release);
+		const compute = jobs["compute-version"];
+		const runs = (compute?.steps ?? []).map((step) => step.run ?? "").join("\n");
+		expect(runs).toContain("assert-docker-tag-monotonic.mjs");
+		expect(runs).toContain('IMAGE="openpalm/${image}"');
+	});
+
+	test("prefixed GitHub releases are explicitly excluded from GitHub Latest", () => {
+		const release = parseWorkflow(RELEASE_WORKFLOW);
+		const jobs = jobsOf(release);
+		const create = (jobs["tag-release"]?.steps ?? []).find(
+			(step) => step.name === "Create GitHub releases",
+		);
+		const run = create?.run ?? "";
+		expect(run).toContain("LATEST_ARGS=(--latest=false)");
+		expect(run).toContain('create_release "${PREFIX}-${VERSION}" "OpenPalm ${PREFIX} ${VERSION}" false');
+		expect(run).toContain('create_release "${UNIT}-${VERSION}" "OpenPalm ${UNIT} ${VERSION}" false');
+		expect(run).toContain('create_release "${VERSION}" "OpenPalm ${VERSION} (all units)" true');
+	});
+});
+
+describe("model bundle workflows publish immutable signed tags before latest", () => {
+	for (const [name, path] of [
+		["assistant", ASSISTANT_MODELS_WORKFLOW],
+		["voice", VOICE_MODELS_WORKFLOW],
+	] as const) {
+		test(`${name} model bundle is monotonic, signed, and digest-promoted`, () => {
+			const workflow = parseWorkflow(path);
+			const job = jobsOf(workflow)["build-models"];
+			const steps = job?.steps ?? [];
+			const validateIndex = steps.findIndex((step) => step.name === "Validate monotonic immutable model tag");
+			const loginIndex = steps.findIndex((step) => step.name === "Login to Docker Hub");
+			expect(validateIndex).toBeGreaterThanOrEqual(0);
+			expect(validateIndex).toBeLessThan(loginIndex);
+			expect(steps[validateIndex]?.run ?? "").toContain("assert-docker-tag-monotonic.mjs");
+			const metadata = steps.find((step) => step.name === "Docker metadata");
+			expect(String(metadata?.with?.tags ?? "")).not.toContain("value=latest");
+			expect(steps.some((step) => step.name?.startsWith("Sign image"))).toBe(true);
+			expect(steps.some((step) => step.name?.startsWith("Verify image signature"))).toBe(true);
+			const promote = steps.find((step) => step.name === "Promote verified model bundle");
+			expect(promote?.run ?? "").toContain("@${DIGEST}");
+		});
+	}
+});
+
+describe("release package owners are disjoint in the publish DAG", () => {
+	const release = parseWorkflow(RELEASE_WORKFLOW);
+	const jobs = jobsOf(release);
+
+	test("platform owns skeleton while guardian owns only guardian", () => {
+		const skeletonCondition = String(jobs["npm-skeleton"]?.if ?? "");
+		const guardianCondition = String(jobs["npm-guardian"]?.if ?? "");
+		expect(skeletonCondition).toContain("inputs.unit == 'platform'");
+		expect(skeletonCondition).not.toContain("inputs.unit == 'guardian'");
+		expect(guardianCondition).toContain("inputs.unit == 'guardian'");
+		expect(guardianCondition).not.toContain("inputs.unit == 'platform'");
+	});
+
+	test("Guardian images receive independent Guardian and skeleton versions", () => {
+		const build = (jobs["docker-guardian"]?.steps ?? []).find((step) => step.name === "Build and push");
+		const args = String(build?.with?.["build-args"] ?? "");
+		expect(args).toContain("GUARDIAN_VERSION=");
+		expect(args).toContain("SKELETON_VERSION=");
+	});
+});
+
 describe("P5e — @openpalm/ui-kit stays unpublished (characterization — green, must stay)", () => {
 	test("no workflow passes @openpalm/ui-kit (or packages/ui-kit) to publish-npm-package.yml", () => {
 		for (const file of workflowFiles) {
@@ -124,10 +416,9 @@ describe("C1 — @openpalm/portal-sdk joins the publish DAG (RED until C1 fix)",
 		expect(portalSdkEntry).toBeDefined();
 	});
 
-	test("portal-sdk publish mirrors the discord/slack portal jobs: package-dir, exact-version pin, computed version", () => {
+	test("portal-sdk publish mirrors the discord/slack portal jobs: package-dir and computed version", () => {
 		const w = portalSdkEntry?.[1].with ?? {};
 		expect(w["package-dir"]).toBe("packages/portal-sdk");
-		expect(w["exact-version"]).toBe(true);
 		expect(String(w.version ?? "")).toContain("compute-version.outputs.new_version");
 	});
 
@@ -137,10 +428,20 @@ describe("C1 — @openpalm/portal-sdk joins the publish DAG (RED until C1 fix)",
 		expect(cond).toContain("inputs.unit == 'all'");
 	});
 
-	test("portal-sdk publish depends on compute-version + bump", () => {
+	test("standalone portal publication is gated by Portal tests", () => {
+		const preflight = jobs.preflight;
+		const testStep = (preflight?.steps ?? []).find((step) => step.name === "Test (portals)");
+		expect(testStep).toBeDefined();
+		expect(String(testStep?.if ?? "")).toContain("inputs.unit == 'portals'");
+		expect(testStep?.run ?? "").toContain("packages/portal-sdk");
+		expect(testStep?.run ?? "").toContain("portals/discord");
+		expect(testStep?.run ?? "").toContain("portals/slack");
+	});
+
+	test("portal-sdk publish depends on compute-version + the tested source gate", () => {
 		const needs = needsList(portalSdkEntry?.[1] ?? {});
 		expect(needs).toContain("compute-version");
-		expect(needs).toContain("bump");
+		expect(needs).toContain("release-source");
 	});
 
 	test("both discord-portal and slack-portal publish jobs need npm-portal-sdk (sdk before adapters)", () => {
@@ -153,6 +454,31 @@ describe("C1 — @openpalm/portal-sdk joins the publish DAG (RED until C1 fix)",
 		);
 		expect(needsList(discordEntry?.[1] ?? {})).toContain(portalSdkJobId);
 		expect(needsList(slackEntry?.[1] ?? {})).toContain(portalSdkJobId);
+	});
+
+	test("docker-portal waits for the SDK and both adapters on coordinated portal releases", () => {
+		const dockerPortal = jobs["docker-portal"];
+		const needs = needsList(dockerPortal ?? {});
+		for (const dependency of [
+			"npm-portal-sdk",
+			"npm-discord-portal",
+			"npm-slack-portal",
+		]) {
+			expect(needs).toContain(dependency);
+			expect(String(dockerPortal?.if ?? "")).toContain(
+				`needs.${dependency}.result == 'success'`,
+			);
+		}
+	});
+
+	test("portal dry-runs install candidate tarballs instead of unpublished registry pins", () => {
+		const dockerPortal = jobs["docker-portal"];
+		const prepare = (dockerPortal?.steps ?? []).find(
+			(step) => step.name === "Prepare portal dry-run Dockerfile",
+		);
+		expect(prepare?.run ?? "").toContain(".release-packages/*.tgz");
+		const build = (dockerPortal?.steps ?? []).find((step) => step.name === "Build and push");
+		expect(String(build?.with?.file ?? "")).toContain(".release-packages/portal.Dockerfile");
 	});
 
 	test("tag-release (TAG-LAST invariant) waits on the portal-sdk publish job", () => {
@@ -211,12 +537,11 @@ describe("I1 — docker-assistant is ordered after npm-skeleton and preflights P
 		expect(needs).toContain("npm-skeleton");
 	});
 
-	test("docker-assistant's if is unit-tolerant of npm-skeleton being skipped (standalone unit=assistant runs)", () => {
-		// Matches the house pattern used by docker-guardian: `!= 'failure'` (not
-		// `== 'success'`), because npm-skeleton is only requested for
-		// unit=platform/all and is legitimately 'skipped' for unit=assistant/images.
+	test("docker-assistant allows skipped npm jobs only for standalone image units", () => {
 		const cond = String(assistantJob?.if ?? "");
-		expect(cond).toContain("needs.npm-skeleton.result != 'failure'");
+		expect(cond).toContain("inputs.unit == 'assistant' || inputs.unit == 'images'");
+		expect(cond).toContain("needs.npm-skeleton.result == 'success'");
+		expect(cond).toContain("needs.npm-ui.result == 'success'");
 	});
 
 	test("docker-assistant preflights that the baked skeleton version is actually published on npm", () => {
@@ -228,68 +553,69 @@ describe("I1 — docker-assistant is ordered after npm-skeleton and preflights P
 		expect(preflight?.run ?? "").toMatch(/exit 1|::error::/);
 	});
 
-	// F13 (2026-07-10 review, dry-run guard follow-up): the preflight has no
-	// `if: !inputs.dry_run` guard, unlike every "Guard — fail if image tag
-	// already exists" step — the docker-portal, docker-guardian, and
-	// docker-assistant jobs each carry one. dry_run=true is the default and
-	// documented "always run first"
-	// mode — npm-skeleton packs-and-validates but deliberately SKIPS
-	// the actual publish on dry-run, so the freshly-bumped PLATFORM_VERSION is
-	// never on npm and `npm view` 404s, failing docker-assistant on every
-	// dry-run of unit=all/images/platform(+images). Fix: guard the preflight
-	// step with the same `if: !inputs.dry_run` the image-tag guards use.
-	test("F13 — the npm-published-version preflight is skipped in dry-run (matches the image-tag guard steps)", () => {
+	test("registry preflight runs for live builds and dry-run image-only units", () => {
 		const steps = assistantJob?.steps ?? [];
 		const preflight = steps.find((s) => /npm view/.test(s.run ?? ""));
 		expect(preflight).toBeDefined();
-		expect(String(preflight?.if ?? "")).toContain("!inputs.dry_run");
+		const condition = String(preflight?.if ?? "");
+		expect(condition).toContain("!inputs.dry_run");
+		expect(condition).toContain("inputs.unit == 'assistant'");
+		expect(condition).toContain("inputs.unit == 'images'");
 	});
 
-	// F13 follow-up (2026-07-11 review): guarding the preflight above is not
-	// enough on its own — the same unpublished freshly-bumped platform_version
-	// is still passed as a literal --build-arg to BOTH the smoke build and the
-	// real "Build and push" step, which are NOT guarded by dry_run (the smoke
-	// step has no `if:` at all; "Build and push" always builds, only `push` is
-	// gated). The assistant entrypoint hard-fails via
-	// `npm install ... "@openpalm/skeleton@${PLATFORM_VERSION}"` (no fallback)
-	// whenever PLATFORM_VERSION is non-empty, so a dry-run of unit=all/images/
-	// platform(+images) still fails at docker-assistant — one step later, as an
-	// opaque npm E404 from inside the docker build instead of the preflight's
-	// explicit ::error::. Fix: gate the build-arg itself so dry-run bakes an
-	// empty PLATFORM_VERSION, which the Dockerfile already treats as a no-op
-	// ("Skipped when PLATFORM_VERSION is unset").
-	test("F13 — the assistant image smoke build does not bake a live PLATFORM_VERSION on dry-run", () => {
+	test("coordinated dry-runs bake candidate package tarballs into the smoke image", () => {
 		const steps = assistantJob?.steps ?? [];
 		const smoke = steps.find((s) => s.name === "Assistant image smoke (amd64 only)");
 		expect(smoke).toBeDefined();
-		// IMG-6 built this step on buildx (sharing the push step's gha cache so
-		// the release builds the image once, not twice), so the build-arg moved
-		// from an inline `--build-arg` into `with.build-args` — same guard.
 		const buildArgs = String(smoke?.with?.["build-args"] ?? "");
-		expect(buildArgs).toMatch(
-			/PLATFORM_VERSION=\$\{\{\s*!inputs\.dry_run\s*&&\s*steps\.\w+\.outputs\.\w+\s*\|\|\s*''\s*\}\}/,
-		);
-		// The smoke must never push — it only gates the push step below it.
+		expect(buildArgs).toContain("inputs.unit == 'assistant'");
+		expect(buildArgs).toContain("inputs.unit == 'images'");
 		expect(smoke?.with?.push).toBe(false);
 		expect(smoke?.with?.load).toBe(true);
+
+		const localBake = steps.find((s) => s.name === "Bake candidate npm packages into dry-run image");
+		expect(localBake).toBeDefined();
+		expect(localBake?.run ?? "").toContain("containers/assistant/Dockerfile.local-packages");
+		expect(localBake?.run ?? "").toContain(".release-packages");
+		const localBakeDockerfile = readFileSync(
+			join(ROOT, "containers", "assistant", "Dockerfile.local-packages"),
+			"utf-8",
+		);
+		expect(localBakeDockerfile).toContain("openpalm-ui-*.tgz");
+		expect(localBakeDockerfile).toContain("openpalm-skeleton-*.tgz");
 	});
 
-	test("F13 — the Build and push step does not bake a live PLATFORM_VERSION on dry-run", () => {
+	test("source smoke applies local packages without requiring their version on npm", () => {
+		const composeDev = readFileSync(COMPOSE_DEV, "utf-8");
+		const fixture = readFileSync(ROOTLESS_SMOKE_FIXTURE, "utf-8");
+		expect(composeDev).toContain("PLATFORM_VERSION: ${PLATFORM_VERSION-latest}");
+		expect(fixture).toContain('compose_platform_version=""');
+		expect(fixture).toContain(
+			'PLATFORM_VERSION="$compose_platform_version" docker compose',
+		);
+		expect(fixture.indexOf('build "${targets[@]}"')).toBeLessThan(
+			fixture.indexOf('bun pm pack --destination "$package_context"'),
+		);
+	});
+
+	test("the registry-backed multi-platform build is live-only", () => {
 		const steps = assistantJob?.steps ?? [];
 		const buildStep = steps.find((s) => s.name === "Build and push");
-		const buildArgs = String(buildStep?.with?.["build-args"] ?? "");
-		expect(buildArgs).toMatch(
-			/PLATFORM_VERSION=\$\{\{\s*!inputs\.dry_run\s*&&\s*steps\.\w+\.outputs\.\w+\s*\|\|\s*''\s*\}\}/,
+		expect(String(buildStep?.if ?? "")).toContain("!inputs.dry_run");
+		expect(String(buildStep?.with?.["build-args"] ?? "")).toContain(
+			"steps.platform_version.outputs.platform_version",
 		);
 	});
 
 	test("docker-assistant does not blindly bake compute-version's unit-local anchor as PLATFORM_VERSION for image-only units", () => {
-		// unit=assistant's compute-version output is bumped from
-		// containers/assistant/VERSION — an anchor independent of the platform npm
-		// version. The build-arg must come from a step that resolves the actual
-		// last-published platform version for that unit, not
+		// Assistant and images releases use image tag versions independent of the
+		// platform npm version. The build-arg must come from a step that resolves
+		// the actual last-published platform version for those units, not
 		// needs.compute-version.outputs.new_version directly.
 		const steps = assistantJob?.steps ?? [];
+		const resolver = steps.find((s) => s.name === "Resolve platform version for baked skeleton (I1)");
+		expect(resolver?.run ?? "").toContain("'assistant' ] || [ \"${UNIT}\" = 'images'");
+		expect(resolver?.run ?? "").toContain("require('./package.json').version");
 		const buildStep = steps.find((s) => s.name === "Build and push");
 		const buildArgs = String(buildStep?.with?.["build-args"] ?? "");
 		expect(buildArgs).not.toContain("needs.compute-version.outputs.new_version");
@@ -297,18 +623,15 @@ describe("I1 — docker-assistant is ordered after npm-skeleton and preflights P
 	});
 });
 
-describe("guardian image dry-run stays buildable before npm publish", () => {
+describe("guardian image dry-run uses the committed candidate", () => {
 	const release = parseWorkflow(RELEASE_WORKFLOW);
 	const jobs = jobsOf(release);
 	const guardianJob = jobs["docker-guardian"];
 
-	test("dry-run stamps local guardian and skeleton sources before the image build", () => {
-		const stampStep = (guardianJob?.steps ?? []).find((s) =>
-			s.name?.includes("Stamp local guardian/skeleton sources for dry-run image build"),
-		);
-		expect(stampStep).toBeDefined();
-		expect(stampStep?.run ?? "").toContain("packages/guardian/package.json");
-		expect(stampStep?.run ?? "").toContain("packages/skeleton/package.json");
+	test("restores candidate source without an ad-hoc version patch", () => {
+		const runs = (guardianJob?.steps ?? []).map((step) => step.run ?? "").join("\n");
+		expect(runs).toContain("restore-release-candidate.sh");
+		expect(runs).not.toContain("set-version.mjs");
 	});
 
 	test("guardian image build switches to local source packages in dry-run mode", () => {
@@ -383,6 +706,10 @@ describe("images-with-every-release — tag-release refuses to tag without its i
 		expect(wired).toContain("needs.docker-portal.result");
 		expect(wired).toContain("needs.docker-guardian.result");
 		expect(wired).toContain("needs.docker-assistant.result");
+		expect(wired).toContain("needs.npm-skeleton.result");
+		expect(wired).toContain("needs.npm-portal-sdk.result");
+		expect(wired).toContain("needs.cli.result");
+		expect(wired).toContain("needs.electron.result");
 	});
 
 	test("tag-release still waits on all three docker jobs (results must be observable)", () => {
@@ -390,6 +717,37 @@ describe("images-with-every-release — tag-release refuses to tag without its i
 		expect(needs).toContain("docker-portal");
 		expect(needs).toContain("docker-guardian");
 		expect(needs).toContain("docker-assistant");
+	});
+});
+
+describe("tag-last verifies every artifact class expected by the selected unit", () => {
+	test("platform cannot tag when an npm or CLI job was skipped", () => {
+		const expected = expectedReleaseJobs("platform", false);
+		const results = Object.fromEntries(expected.map((job) => [job, "success"]));
+		results["npm-ui"] = "skipped";
+		expect(verifyReleaseJobs({ unit: "platform", includeImages: false, results }).ok).toBe(false);
+
+		results["npm-ui"] = "success";
+		results.cli = "skipped";
+		expect(verifyReleaseJobs({ unit: "platform", includeImages: false, results }).ok).toBe(false);
+	});
+
+	test("electron cannot tag when its installer job was skipped", () => {
+		const result = verifyReleaseJobs({
+			unit: "electron",
+			includeImages: true,
+			results: { electron: "skipped" },
+		});
+		expect(result.ok).toBe(false);
+		expect(result.missing.map((entry) => entry.job)).toEqual(["electron"]);
+	});
+
+	test("all requires npm, image, CLI, and Electron jobs", () => {
+		const expected = expectedReleaseJobs("all", true);
+		expect(expected).toContain("npm-guardian");
+		expect(expected).toContain("docker-portal");
+		expect(expected).toContain("cli");
+		expect(expected).toContain("electron");
 	});
 });
 
@@ -407,7 +765,7 @@ describe("images-with-every-release — an image-building unit cannot tag with s
 			results: ALL_SKIPPED,
 		});
 		expect(result.ok).toBe(false);
-		expect(result.missing.map((m) => m.image).sort()).toEqual(["assistant", "guardian"]);
+		expect(result.missing.map((m) => m.image).sort()).toEqual(["assistant"]);
 	});
 
 	// 0.12.49 (unit=guardian) produced a guardian image and only a guardian image
@@ -421,7 +779,7 @@ describe("images-with-every-release — an image-building unit cannot tag with s
 				results: { ...ALL_SKIPPED, guardian: "success" },
 			}).ok,
 		).toBe(true);
-		// unit=platform wants BOTH guardian and assistant; a guardian-only run is short.
+		// unit=platform owns only the assistant image; a guardian-only run is short.
 		const platform = verifyReleaseImages({
 			unit: "platform",
 			includeImages: true,

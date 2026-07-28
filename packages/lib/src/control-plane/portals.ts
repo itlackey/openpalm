@@ -5,7 +5,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { parse as yamlParse } from "yaml";
 import type { PortalInfo } from "./types.js";
-import { CORE_SERVICES } from "./types.js";
+import { MANAGED_SERVICES } from "./types.js";
 import { composeFilePath, customComposeFilePath } from "./home.js";
 
 // ── Portal Name Validation ────────────────────────────────────────────
@@ -81,14 +81,14 @@ export function discoverPortals(configDir: string): PortalInfo[] {
 // ── Allowlist Checks ───────────────────────────────────────────────────
 
 /**
- * Check if a service name is allowed. Core services are always allowed.
+ * Check if a service name is allowed. Managed services are always allowed.
  * Addon services are allowed if they appear as a compose service defined in
  * any active addon compose file. This is compose-derived: the actual compose
  * content is checked, not directory naming conventions.
  */
 export function isAllowedService(value: string, configDir?: string): boolean {
   if (!value?.trim() || value !== value.toLowerCase()) return false;
-  if ((CORE_SERVICES as string[]).includes(value)) return true;
+  if ((MANAGED_SERVICES as string[]).includes(value)) return true;
 
   if (configDir) {
     const homeDir = dirname(configDir);

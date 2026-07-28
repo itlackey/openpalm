@@ -115,7 +115,6 @@ function writeChildLog(text: string): void {
  * Resolve the admin-tools path. Priority:
  *   1. extraResources path (packaged Electron build)
  *   2. Workspace dist path (running from source in dev)
- *   3. npm package name (last-resort fallback)
  */
 function resolveAdminToolsPluginPath(): string {
   // Production: electron-builder copies to resources/admin-tools/index.js
@@ -124,7 +123,7 @@ function resolveAdminToolsPluginPath(): string {
   // Dev: __dirname is packages/electron/dist/ → sibling admin-tools/dist/
   const dev = join(__dirname, '..', 'admin-tools', 'dist', 'index.js');
   if (existsSync(dev)) return dev;
-  return '@openpalm/admin-tools-plugin';
+  throw new Error('Admin tools plugin is missing from both packaged resources and the workspace build');
 }
 
 // Default host UI port used when the corresponding env override is unset.

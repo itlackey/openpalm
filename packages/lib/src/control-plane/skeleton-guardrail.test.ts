@@ -84,7 +84,7 @@ describe("skeleton: config/ structure", () => {
     expect(existsSync(cdi)).toBe(true);
     expect(existsSync(rootless)).toBe(true);
     expect(readFileSync(cdi, "utf-8")).toContain("voice-cuda:");
-    expect(readFileSync(rootless, "utf-8")).toContain("user: null");
+    expect(readFileSync(rootless, "utf-8")).toContain('user: ""');
   });
 
   test("config/akm/ exists", () => {

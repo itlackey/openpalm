@@ -98,4 +98,33 @@ describe("applyStack", () => {
     expect(docker.calls[0]).toContain("pull");
     expect(docker.calls[1]).toContain("up");
   });
+
+  test("does not accept a running container whose healthcheck is still starting", async () => {
+    const docker = new FakeDocker((args) => {
+      if (args.includes("up")) return result(false, "wait timeout");
+      if (args.includes("ps")) {
+        return {
+          ok: true,
+          stdout: JSON.stringify({ Service: "assistant", State: "running", Health: "starting" }),
+          stderr: "",
+          code: 0,
+        };
+      }
+      return result(true);
+    });
+
+    const applied = await applyStack(
+      { kind: "service", service: "assistant" },
+      OPTIONS,
+      deps(docker),
+      { pull: "always" },
+    );
+
+    expect(applied.ok).toBe(false);
+    expect(applied.started).toEqual([]);
+    expect(applied.failed).toEqual([
+      { service: "assistant", reason: "container assistant did not become healthy (state: running)" },
+    ]);
+    expect(applied.upFailed).toBe(true);
+  });
 });

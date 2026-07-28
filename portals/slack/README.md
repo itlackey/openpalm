@@ -14,7 +14,7 @@ guardian in front) means you lose:
 
 - per-principal isolation (the guardian's Basic-auth principal boundary)
 - rate limiting
-- content moderation (the guardian's fail-closed inbound message screening)
+- content validation (on by default; the guardian's fail-closed inbound message screening)
 
 Every Slack user talking to a standalone bot shares one session namespace on
 the upstream OpenCode server — there is no per-user isolation without the
@@ -35,7 +35,7 @@ Minimal environment:
 
 ```bash
 OPENCODE_BASE_URL=http://localhost:4096
-PRINCIPAL_ID=my-slack-bot          # any free-form username
+PRINCIPAL_ID=opencode              # configured OpenCode Basic username; default is opencode
 OPENCODE_PASSWORD=...              # the OpenCode server password, if OPENCODE_AUTH is set
 SLACK_BOT_TOKEN=...
 SLACK_APP_TOKEN=...
@@ -47,28 +47,33 @@ you do not need to set it against a plain OpenCode server. See the
 
 ## Deployment model (shipped stack)
 
-- Shipped service definition: `.openpalm/config/stack/portals.compose.yml`, profile `addon.slack`
+- Shipped service definition: `system/stack/portals.compose.yml`, profile `addon.slack`
 - Non-secret values: `~/.openpalm/state/stack.env`
-- Secret values: files under `~/.openpalm/knowledge/secrets/`
+- Bot and principal secrets: files under `~/.openpalm/private/secrets/`
 
 Manual start example:
 
 ```bash
-cd "$HOME/.openpalm/config/stack"
+OP_HOME="${OP_HOME:-$HOME/.openpalm}"
 docker compose \
   --project-name openpalm \
-  --env-file ../../state/stack.env \
-  -f core.compose.yml \
-  -f services.compose.yml \
-  -f portals.compose.yml \
-  -f custom.compose.yml \
+  --env-file "$OP_HOME/state/stack.env" \
+  -f "$OP_HOME/system/stack/core.compose.yml" \
+  -f "$OP_HOME/system/stack/services.compose.yml" \
+  -f "$OP_HOME/system/stack/portals.compose.yml" \
+  -f "$OP_HOME/config/stack/custom.compose.yml" \
   --profile addon.slack \
   up -d
 ```
 
 The service definition uses explicit non-secret environment entries and Docker secret grants. It does not use service-level `env_file`.
 
-See `docs/portals/slack-setup.md` for the full setup guide.
+`OP_ENABLED_ADDONS` is translated to profiles only by OpenPalm control-plane
+commands. Raw Compose requires the explicit profile above or a
+`COMPOSE_PROFILES` value.
+
+See the [Slack setup guide](../../docs/portals/slack-setup.md) for the full setup
+guide.
 
 ## Environment variables
 
@@ -80,7 +85,7 @@ there's no secret mount).
 | Variable | Required | Purpose |
 |---|---|---|
 | `OPENCODE_BASE_URL` | no | OpenCode/guardian `/oc` base URL, default `http://guardian:8080/oc` |
-| `PRINCIPAL_ID` | yes | Basic-auth username — the guardian principal id in the shipped stack, or any free-form username against a plain OpenCode server |
+| `PRINCIPAL_ID` | yes | Basic-auth username: an issued principal ID for Guardian, or the plain OpenCode server's configured username (default `opencode`) |
 | `PRINCIPAL_SECRET` / `PRINCIPAL_SECRET_FILE` | yes (one of these, or `OPENCODE_PASSWORD`) | Basic-auth password |
 | `OPENCODE_PASSWORD` / `OPENCODE_PASSWORD_FILE` | standalone fallback | Same Basic-auth password slot as `PRINCIPAL_SECRET`, under the natural standalone name — against a plain OpenCode server this IS the OpenCode server password (`OPENCODE_AUTH`) |
 | `PORTAL_SESSION_REUSE` | no | `client` (default) or `server`. The client-side cache keys a session by `(userId, sessionKey)` so a stable thread reuses one session — works standalone AND behind the shipped guardian, which has no server-side reuse cache of its own (a plain OpenCode server also ignores the guardian's session-reuse hint header). Set `server` ONLY if your deployment has built its own server-side reuse authority; leaving both sides unset (the old default) meant NEITHER side reused sessions, and every turn silently minted a new one. |
@@ -95,7 +100,7 @@ there's no secret mount).
 In the shipped stack, secret values are stored as files and exposed only
 through `*_FILE` variables. The schema may collect `SLACK_BOT_TOKEN` and
 `SLACK_APP_TOKEN` for setup, but setup persists them under
-`knowledge/secrets/` and the runtime receives `SLACK_BOT_TOKEN_FILE` and
+`private/secrets/` and the runtime receives `SLACK_BOT_TOKEN_FILE` and
 `SLACK_APP_TOKEN_FILE`, not raw tokens.
 
 The shipped Compose overlay exposes per-portal overrides through

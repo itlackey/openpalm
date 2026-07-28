@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'bun:test';
-import { SERVICE_NAMED_VOLUMES } from './volume-ownership.js';
+import { OWNERSHIP_REPAIR_IMAGE, SERVICE_NAMED_VOLUMES } from './volume-ownership.js';
+
+describe('ownership repair helper image', () => {
+  it('uses an immutable image digest', () => {
+    expect(OWNERSHIP_REPAIR_IMAGE).toMatch(/^alpine:[^@]+@sha256:[a-f0-9]{64}$/);
+  });
+});
 
 describe('SERVICE_NAMED_VOLUMES (#585 — the three /opt/openpalm volumes are retired)', () => {
   it('shrinks to only assistant-persistent — guardian-cache/assistant-artifacts/portal-cache are gone', () => {

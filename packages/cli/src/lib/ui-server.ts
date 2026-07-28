@@ -200,8 +200,8 @@ export function resolveUiChildLaunch(
  * Self-update the control plane (npm `@openpalm/ui` → data/ui) and skeleton
  * (npm `@openpalm/skeleton` → system/), then resolve and spawn the SvelteKit
  * Node child. Re-callable so a UI-build update can respawn the child against the
- * freshly downloaded data/ui without restarting the whole `openpalm ui serve`
- * supervisor (design §6.2).
+ * freshly downloaded data/ui without restarting the whole CLI supervisor
+ * (design §6.2).
  *
  * Non-fatal update: any network/registry error leaves the existing build/skeleton
  * in place. Resolution happens AFTER the update so a strictly-newer data/ui wins.
@@ -230,8 +230,8 @@ async function spawnUiChild(
   }
 
   // Self-update the control plane BEFORE spawning, matching the Electron harness
-  // (main.ts: checkAndUpdateUiBuild before resolveUiBuildDir). `openpalm ui serve`
-  // is a long-lived supervisor too, so without this the served UI/lib would only
+  // (main.ts: checkAndUpdateUiBuild before resolveUiBuildDir). Bare `openpalm`
+  // and `openpalm admin` are long-lived supervisors too, so without this the served UI/lib would only
   // ever update via the `openpalm update` command.
   console.log('Checking for UI build update...');
   const uiResult = await checkAndUpdateUiBuild(PLATFORM_VERSION, state.dataDir);

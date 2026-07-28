@@ -30,12 +30,14 @@ export {
 export type {
   ControlPlaneState,
   CoreServiceName,
+  ManagedServiceName,
   PortalInfo,
   CallerType,
   ArtifactMeta,
 } from "./control-plane/types.js";
 export {
   CORE_SERVICES,
+  MANAGED_SERVICES,
 } from "./control-plane/types.js";
 
 // ── Backups ───────────────────────────────────────────────────────────────
@@ -58,7 +60,10 @@ export type {
   AddonProfile,
   RegistryAddonConfig,
 } from "./control-plane/addons.js";
-export { BUILTIN_ADDON_IDS } from "./control-plane/addon-ids.js";
+export {
+  BUILTIN_ADDON_IDS,
+  GUARDIAN_INGRESS_ADDON_IDS,
+} from "./control-plane/addon-ids.js";
 export {
   getRegistryAutomation,
   getRegistryAddonConfig,
@@ -376,6 +381,10 @@ export {
   applyStack,
 } from "./control-plane/docker.js";
 export type { DockerClient, DockerRunOptions } from "./control-plane/docker.js";
+
+// ── Provider import consumers ────────────────────────────────────────────
+export type { ProviderConsumerRestartResult, ProviderImportChanges } from "./control-plane/provider-import.js";
+export { restartProviderConsumers } from "./control-plane/provider-import.js";
 
 // ── Disk-headroom preflight (S6 — #581 finding #10) ───────────────────────
 export type {

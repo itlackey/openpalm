@@ -97,6 +97,7 @@ router, which 404s because the route tree is deleted.
 | Namespace | Surface | Guard | Endpoints |
 |---|---|---|---|
 | `/api/runtime` | Entry | **public** | GET context for the process serving this UI; not a remote-OpenPalm handshake |
+| `/api/runtime/landing` | Entry | **public**, `no-store` | GET the current server-side landing decision without a document redirect |
 | `/api/runtime-config` | Entry | **public**, `no-store` | GET the launcher-scoped, credential-free connection seed; 404 selects the assistant container's static `/runtime-config.json` fallback |
 | `/health` | Entry | public | Liveness probe |
 | `/guardian/health` | Entry | public | Guardian reachability probe |

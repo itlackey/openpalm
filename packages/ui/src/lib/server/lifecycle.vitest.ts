@@ -18,6 +18,7 @@ import {
   normalizeCaller,
   randomHex,
   CORE_SERVICES,
+  MANAGED_SERVICES,
   readSecret,
 } from "@openpalm/lib";
 import { makeTempDir, makeTestState, trackDir, registerCleanup, seedSecretsEnv } from "./test-helpers.js";
@@ -175,9 +176,9 @@ describe("createState", () => {
 // ── Core Service Constants ──────────────────────────────────────────────
 
 describe("CORE_SERVICES", () => {
-  test("includes all expected core services", () => {
-    expect(CORE_SERVICES).toContain("assistant");
-    expect(CORE_SERVICES).toContain("guardian");
+  test("contains only the always-on assistant", () => {
+    expect(CORE_SERVICES).toEqual(["assistant"]);
+    expect(MANAGED_SERVICES).toEqual(["assistant", "guardian"]);
   });
 
   test("scheduler is not a separate service (folded into assistant)", () => {
@@ -190,9 +191,6 @@ describe("CORE_SERVICES", () => {
     expect(CORE_SERVICES).not.toContain("admin");
   });
 
-  test("has exactly 2 core services", () => {
-    expect(CORE_SERVICES).toHaveLength(2);
-  });
 });
 
 // ── Lifecycle State Transitions ─────────────────────────────────────────

@@ -62,7 +62,7 @@ describe('ui runtime config', () => {
   });
 
   test('seeds the same-origin proxy path for an installed home, not an absolute URL', () => {
-    // The host-served UI (openpalm ui serve / admin / Electron) runs the same
+    // The host-served UI (CLI app/admin or Electron) runs the same
     // /oc route as the container. An absolute URL here would keep those
     // clients calling OpenCode cross-origin, which grants no CORS origin.
     const home = mkdtempSync(join(tmpdir(), 'ui-runtime-config-installed-'));

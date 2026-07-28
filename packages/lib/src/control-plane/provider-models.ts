@@ -24,7 +24,7 @@ const ANTHROPIC_MODELS = [
  *
  * - Empty input → empty string.
  * - `env:NAME` form → looks up `NAME` in `process.env` first, then falls back
-   *   to `knowledge/secrets/<NAME>` resolved against `homeDir`.
+ *   to the name-routed file-secret stores under `homeDir`.
  * - Anything else → returned verbatim (treated as a literal key value).
  */
 function resolveApiKey(apiKeyRef: string, homeDir: string): string {

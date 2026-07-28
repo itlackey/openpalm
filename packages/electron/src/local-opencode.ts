@@ -125,9 +125,9 @@ export function isPidAlive(pid: number): boolean {
  * symlink auth.json — the admin OpenCode is a fresh server with no provider
  * credentials, and we don't want the agent reading the user's LLM keys.
  *
- * @param pluginPath Absolute path to the bundled admin-tools-plugin index.js,
- *   or a bare npm package name as a fallback. Callers should resolve this from
- *   process.resourcesPath (packaged) or the workspace dist dir (dev).
+ * @param pluginPath Absolute path to the bundled admin-tools-plugin index.js.
+ *   Callers resolve this from process.resourcesPath (packaged) or the workspace
+ *   dist directory (development).
  */
 export function stageAdminHome(dataDir: string, pluginPath: string): { home: string; configDir: string } {
   const home = adminOpencodeHome(dataDir);
@@ -246,7 +246,7 @@ export function _resetSpawn(): void {
 
 export type StartOptions = {
   dataDir: string;
-  /** Absolute path to the bundled admin-tools-plugin, or a package name fallback. */
+  /** Absolute path to the bundled admin-tools-plugin. */
   pluginPath: string;
   /** Optional override for opencode hostname (defaults 127.0.0.1). */
   hostname?: string;

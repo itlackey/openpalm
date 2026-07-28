@@ -266,7 +266,7 @@ export async function prepareInstallFiles(
 
   // Seed OP_HOME from the bundled .openpalm/ source (skeleton data/ + managed
   // compose, stamp-gated/skip-existing). This is the PRE-WIZARD seed and is
-  // load-bearing: the wizard's `openpalm ui serve` child reads seeded
+  // load-bearing: the wizard's UI child reads seeded
   // system/stack assets at boot (runStartupApply -> resolveRuntimeFiles), and
   // the bundled-asset fallback does not survive into the packaged UI build, so
   // the live seeded copy must exist before /setup is served.
@@ -287,12 +287,12 @@ export async function prepareInstallFiles(
   // independently versioned, so seed by dist-tag CHANNEL (latest/next) rather
   // than the platform `version`, which is not a valid UI version.
   // NON-FATAL: a download hiccup must not abort the install — the stack still
-  // comes up and the UI is (re)seeded on `openpalm ui serve` / `update` or
+  // comes up and the UI is (re)seeded by a CLI UI supervisor, `update`, or
   // Electron launch. (Also keeps unit tests off the network when no local build.)
   try {
     await seedUiBuild(uiUpdateChannel(version), dataDir);
   } catch (err) {
-    logger.warn('UI build not seeded; it will be installed on first `ui serve`/update', { error: String(err) });
+    logger.warn('UI build not seeded; it will be installed on first UI launch/update', { error: String(err) });
   }
   console.log('Configuring secrets...');
   const bootstrapState = createState();

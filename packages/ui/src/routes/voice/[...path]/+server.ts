@@ -17,7 +17,7 @@
  *
  * Availability mirrors the advertisement (computeVoiceRuntime): the voice
  * addon must be enabled in readable stack state. Every UI server is a host
- * process (`openpalm ui serve` / Electron) with a loopback path to the
+ * process (CLI app/admin or Electron) with a loopback path to the
  * container, so availability is deliberately NOT gated on admin capability —
  * using voice is not a privileged host operation and a served non-admin
  * process must still pass it through. Auth is the ordinary session check —

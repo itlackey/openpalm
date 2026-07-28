@@ -1,58 +1,68 @@
 # Slack Bot Setup
 
-This guide connects a Slack bot to OpenPalm's Slack addon.
-OpenPalm is compose-first: add the Slack overlay to your compose file set, store Slack tokens as file-based secrets, and restart the stack.
+The Slack addon uses Socket Mode and sends native OpenCode requests through
+Guardian. Socket Mode connects outbound, so no public Slack request URL is
+required.
 
 ## Prerequisites
 
-- A working OpenPalm install; see [manual compose runbook](../operations/manual-compose-runbook.md)
+- A working generated OpenPalm installation
 - A Slack workspace where you can create apps
-- The `slack` addon in your compose file set, or the optional `admin` addon if you want admin-assisted install
+- A configured assistant provider/model
 
-## 1. Create the Slack app
+## Create the Slack App
 
 1. Go to <https://api.slack.com/apps> and create an app from scratch.
 2. Enable **Socket Mode**.
-3. Create an app-level token with `connections:write`; save it as `SLACK_APP_TOKEN`.
-4. In **OAuth & Permissions**, add these bot scopes:
+3. Create an app-level `xapp-...` token with `connections:write`.
+4. Add the bot scopes below under **OAuth & Permissions**.
+5. Enable the event subscriptions below.
+6. Enable **Interactivity & Shortcuts**.
+7. Enable the **App Home** tab.
+8. Install the app to the workspace and copy its `xoxb-...` bot token.
 
-| Scope | Purpose |
-|---|---|
-| `app_mentions:read` | Read @mentions |
-| `chat:write` | Reply in channels and DMs |
-| `im:history` | Receive/respond to DM message events |
-| `channels:history` | Read public channel history |
-| `groups:history` | Read private channel history |
-| `users:read` | Display-name lookup |
-| `commands` | Slash commands |
+Required bot scopes:
 
-5. In **Event Subscriptions**, enable events and subscribe to:
-   - `app_mention`
-   - `message.im`
-   - `message.channels`
-   - `message.groups`
-   - `app_home_opened`
-6. In **Interactivity & Shortcuts**, enable interactivity.
-   - For Socket Mode, Request URL can be any placeholder (for example `https://example.com/placeholder`).
-7. Add shortcuts:
-   - Global shortcut: `Ask OpenPalm`, callback ID `ask_openpalm`
-   - Message shortcut: `Ask OpenPalm about this message`, callback ID `ask_openpalm_message`
-8. In **App Home**, enable the Home tab.
-9. Install the app to the workspace and copy the bot token as `SLACK_BOT_TOKEN`.
+- `app_mentions:read`
+- `chat:write`
+- `im:history`
+- `channels:history`
+- `groups:history`
+- `users:read`
+- `commands`
 
-## 2. Add Slack token secrets
+Event subscriptions:
 
-Store Slack tokens under `knowledge/secrets/`:
+- `app_mention`
+- `message.im`
+- `message.channels`
+- `message.groups`
+- `app_home_opened`
+
+Optional shortcuts:
+
+- Global shortcut `Ask OpenPalm`, callback ID `ask_openpalm`
+- Message shortcut `Ask OpenPalm about this message`, callback ID `ask_openpalm_message`
+
+Socket Mode can use a placeholder Request URL for interactivity and slash
+commands.
+
+## Configure Credentials
+
+Both Slack tokens are delegated secrets under `private/secrets/`:
 
 ```bash
-mkdir -p ~/.openpalm/knowledge/secrets
-printf '%s\n' 'xoxb-your-bot-token' > ~/.openpalm/knowledge/secrets/slack_bot_token
-printf '%s\n' 'xapp-your-app-token' > ~/.openpalm/knowledge/secrets/slack_app_token
-chmod 700 ~/.openpalm/knowledge/secrets
-chmod 600 ~/.openpalm/knowledge/secrets/slack_bot_token ~/.openpalm/knowledge/secrets/slack_app_token
+install -d -m 700 "$HOME/.openpalm/private/secrets"
+printf '%s\n' 'xoxb-your-bot-token' \
+  > "$HOME/.openpalm/private/secrets/slack_bot_token"
+printf '%s\n' 'xapp-your-app-token' \
+  > "$HOME/.openpalm/private/secrets/slack_app_token"
+chmod 600 \
+  "$HOME/.openpalm/private/secrets/slack_bot_token" \
+  "$HOME/.openpalm/private/secrets/slack_app_token"
 ```
 
-Optional access controls:
+Optional non-secret controls belong in `state/stack.env`:
 
 ```dotenv
 SLACK_ALLOWED_CHANNELS=C01ABCDEF23
@@ -60,71 +70,73 @@ SLACK_ALLOWED_USERS=U01ABCDEF23
 SLACK_BLOCKED_USERS=U09ZZZZZZ99
 ```
 
-`PRINCIPAL_SECRET_FILE` is system-managed and points to the portal's Basic-auth principal secret granted from `~/.openpalm/knowledge/secrets/`.
+The installer generates `private/secrets/portal_slack_secret` for Guardian
+principal authentication. You may configure all of these values through the
+host admin UI instead of editing files.
 
-## 3. Start the addon
-
-Manual-first path:
+## Enable the Addon
 
 ```bash
-cd "$HOME/.openpalm/config/stack"
+openpalm addon enable slack
+```
+
+For raw Compose, pass the profile explicitly:
+
+```bash
+OP_HOME="${OP_HOME:-$HOME/.openpalm}"
 docker compose \
   --project-name openpalm \
-  --env-file ../../state/stack.env \
-  -f core.compose.yml \
-  -f portals.compose.yml \
+  --env-file "$OP_HOME/state/stack.env" \
+  -f "$OP_HOME/system/stack/core.compose.yml" \
+  -f "$OP_HOME/system/stack/services.compose.yml" \
+  -f "$OP_HOME/system/stack/portals.compose.yml" \
+  -f "$OP_HOME/config/stack/custom.compose.yml" \
   --profile addon.slack \
   up -d
 ```
 
-Optional admin-assisted install: use the admin UI or current admin install API if
-you prefer tooling over editing the compose file list by hand.
+`OP_ENABLED_ADDONS=slack` is OpenPalm state, not a Docker Compose profile
+instruction. Raw Compose needs `--profile addon.slack` or an explicit
+`COMPOSE_PROFILES` value.
 
-## 4. Optional slash commands
+## Verify
 
-Create these commands in the Slack app if you want them:
+```bash
+openpalm status
+openpalm logs slack
+openpalm logs guardian
+```
 
-- `/ask`
-- `/clear`
-- `/help`
+Then:
 
-For Socket Mode, the Request URL can be any placeholder value.
-
-## 5. Verify
-
-- DM the bot
-- Mention the bot in a channel and confirm it replies in a thread
-- Run `/ask`, `/help`, and `/clear`
-- Open App Home and confirm onboarding text renders
-- Run global shortcut `Ask OpenPalm` and submit a prompt
-- Run message shortcut `Ask OpenPalm about this message` from a channel message
-- Check logs with `docker compose logs slack`
-
-Conversation notes:
-
-- DMs are per-user sessions
-- Channel mentions reply in threads
-- Follow-ups sent while a request is running are queued per session
-- The adapter posts a processing message as a thinking indicator
+- DM the bot.
+- Mention it in a channel and confirm it replies in a thread.
+- Run `/ask`, `/help`, and `/clear` if configured.
+- Open App Home.
+- Test configured global and message shortcuts.
 
 ## Troubleshooting
 
-- No replies: verify `slack_bot_token` and `slack_app_token` in `~/.openpalm/knowledge/secrets/`, Socket Mode, and subscribed events
-- DMs fail: verify `im:history` and `message.im`
-- Channel thread follow-ups fail: verify `channels:history` + `message.channels` (public) and `groups:history` + `message.groups` (private)
-- Slash commands missing: add `commands`, create the commands in Slack, then reinstall the app
-- Shortcuts or modals missing: verify Interactivity is enabled and callback IDs match `ask_openpalm` and `ask_openpalm_message`
-- App Home not rendering: verify `app_home_opened` event subscription and Home tab is enabled
-- `not_allowed_token_type`: `SLACK_APP_TOKEN` must be an app-level `xapp-...` token with `connections:write`
-- Forwarding issues: inspect `docker compose logs guardian slack`
+| Symptom | Check |
+|---|---|
+| No replies | Both token files, Socket Mode, event subscriptions, and container status |
+| DMs fail | `im:history` and `message.im` |
+| Channel follow-ups fail | Public/private history scopes and matching message events |
+| Slash commands fail | `commands` scope, command definitions, and app reinstall |
+| `not_allowed_token_type` | App token must be `xapp-...` with `connections:write` |
+| Guardian returns `401` | Matching `portal_slack_secret` grants and recreated services |
+| Guardian blocks content | Guardian logs and moderation provider/model; validation is on by default |
 
-## Environment reference
+## Runtime Environment
 
-| Variable | Required | Purpose |
-|---|---|---|
-| `SLACK_BOT_TOKEN_FILE` | yes | Bot User OAuth token secret file (`xoxb-...`) |
-| `SLACK_APP_TOKEN_FILE` | yes | App-level Socket Mode token secret file (`xapp-...`) |
-| `SLACK_ALLOWED_CHANNELS` | no | Comma-separated channel allowlist |
-| `SLACK_ALLOWED_USERS` | no | Comma-separated user allowlist |
-| `SLACK_BLOCKED_USERS` | no | Comma-separated user blocklist |
-| `PRINCIPAL_SECRET_FILE` | system-managed | Path to the Guardian Basic-auth principal secret file |
+| Variable | Purpose |
+|---|---|
+| `SLACK_BOT_TOKEN_FILE` | Mounted `xoxb-...` bot token path |
+| `SLACK_APP_TOKEN_FILE` | Mounted `xapp-...` Socket Mode token path |
+| `SLACK_ALLOWED_CHANNELS` | Comma-separated channel allowlist |
+| `SLACK_ALLOWED_USERS` | Comma-separated user allowlist |
+| `SLACK_BLOCKED_USERS` | Comma-separated user blocklist |
+| `PRINCIPAL_SECRET_FILE` | System-managed Guardian principal secret path |
+
+See the [Manual Compose Runbook](../operations/manual-compose-runbook.md) for
+profile-safe raw operations.

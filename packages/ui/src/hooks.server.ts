@@ -65,7 +65,7 @@ function loadProcessEnv(): void {
 
   try {
     const state = getState();
-    // Fallback for the UI login password: production `openpalm ui serve`
+    // Fallback for the UI login password: the production CLI UI supervisor
     // (packages/cli/src/lib/ui-server.ts) injects OP_UI_LOGIN_PASSWORD before
     // spawning the UI by reading the `op_ui_login_password` file secret. The
     // raw `vite dev` server has no such launcher, so when the env var is unset
@@ -205,7 +205,7 @@ export const handle: Handle = async ({ event, resolve }) => {
     redirect(302, '/setup');
   }
 
-  if (isSetupPath && !setupComplete) {
+  if ((isSetupPage || isSetupApi) && !setupComplete) {
     const clientIp = event.getClientAddress();
     if (!isLocalhostAddress(clientIp) || !isLocalhostName(event.url.hostname)) {
       return new Response(

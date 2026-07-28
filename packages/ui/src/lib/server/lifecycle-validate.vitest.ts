@@ -2,9 +2,8 @@
  * Tests for validateProposedState().
  *
  * Post-#391 the validator no longer shells out to varlock. It reads the live
- * `state/stack.env` and `knowledge/secrets/` files directly and emits
- * presence-based errors/warnings. These tests stub the on-disk files and
- * assert the resulting shape.
+ * `state/stack.env` and required delegated secret files directly. These tests
+ * stub the on-disk files and assert the resulting shape.
  */
 import { describe, test, expect } from "vitest";
 import { writeFileSync, mkdirSync } from "node:fs";
@@ -61,7 +60,7 @@ describe("validateProposedState", () => {
     expect(result.errors.some((e) => e.includes("OP_UI_LOGIN_PASSWORD"))).toBe(true);
   });
 
-  test("warns about missing optional canonical slots", async () => {
+  test("does not warn about optional provider credentials", async () => {
     const state = makeTestState();
     trackDir(state.homeDir);
     seedStack(state.homeDir, "OP_SETUP_COMPLETE=true\n");
@@ -69,8 +68,6 @@ describe("validateProposedState", () => {
 
     const result = await validateProposedState(state);
     expect(result.ok).toBe(true);
-    expect(result.warnings.length).toBeGreaterThan(0);
-    // Warning text includes the env key
-    expect(result.warnings.some((w) => w.includes("OPENAI_API_KEY"))).toBe(true);
+    expect(result.warnings).toEqual([]);
   });
 });

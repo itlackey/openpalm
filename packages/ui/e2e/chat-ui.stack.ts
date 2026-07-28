@@ -58,6 +58,6 @@ test.describe('Chat UI', () => {
     await page.goto(`${ADMIN_URL}/chat`, { waitUntil: 'domcontentloaded' });
 
     // The conversation picker button is always present in the nav header.
-    await expect(page.getByRole('button', { name: /conversations/i })).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByRole('button', { name: /^conversation:/i })).toBeVisible({ timeout: 10_000 });
   });
 });

@@ -228,11 +228,9 @@ export class SetupState {
   imageTag = $state(INITIAL.imageTag);
   hostAkmEnabled = $state(INITIAL.hostAkmEnabled);
 
-  // ── #563: Network access preset (Finish step) ──────────────────────────────
+  // ── Network access toggles (Finish step) ──────────────────────────────────
   access: AccessToggles = $state({ ...INITIAL.access });
   networkDirty = $state(INITIAL.networkDirty);
-  // PR #564 r3566887969 — set from rerun current-config; keeps a keep-as-is
-  // home-password rerun from rotating the existing OpenCode password secret.
 
   // ── Step 5: Review + Install ─────────────────────────────────────────────────
   installError = $state(INITIAL.installError);
@@ -305,14 +303,6 @@ export class SetupState {
   hasOpenAI = $derived(
     PROVIDERS.some((p) => p.id === 'openai' && this.providerState[p.id]?.verified)
   );
-
-  // #563 — install-time validity of the network access choice: home-open
-  // Every toggle combination is valid: each is an independent capability with
-  // a closed default, so there is no input to require and nothing to
-  // acknowledge. The retired presets needed this gate because two of the four
-  // demanded extra input (a password, a risk acknowledgement) that an
-  // untouched rerun could not supply without rotating an existing secret.
-  networkChoiceValid = true;
 
   // Build the install payload for /api/setup/complete. The pure builder lives
   // in $lib/setup/payload.ts (round-trip tested against parseSetupConfig).
@@ -766,14 +756,6 @@ export class SetupState {
   async handleInstall(): Promise<void> {
     if (this.installing) return;
     this.installError = '';
-
-    // #563 — guard-and-return: an unacknowledged home-open risk or a too-short
-    // home-password password must block Install, same as the store's other
-    // validity gates.
-    if (!this.networkChoiceValid) {
-      this.installError = 'Finish the network access step before installing.';
-      return;
-    }
 
     // Single "no AI configured" confirmation. When the payload has no `llm`,
     // require one explicit acknowledgment before installing. Rerun keeps

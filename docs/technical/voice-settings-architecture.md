@@ -78,7 +78,7 @@ the layout server data) carries `voice: { url: '/voice' }` when the process
 can actually serve it — the voice addon is enabled in readable stack state
 AND the process has a loopback path to the voice container. Voice is **not**
 gated on admin capability: using voice is not a privileged host operation, so
-a served non-admin `openpalm ui serve` / Electron host advertises and proxies
+a served non-admin `openpalm app` / Electron host advertises and proxies
 it too. The one process that must fail closed is the assistant container's
 in-container UI co-process — it reaches only its own `127.0.0.1`, never the
 sibling voice container, and its resolved home can sit in an

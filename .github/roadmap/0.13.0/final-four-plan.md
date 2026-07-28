@@ -5,8 +5,8 @@ Method: one deep-dive investigation agent per issue grounded in the current work
 tree, each followed by an independent adversarial verification agent that re-opened
 every cited file and attempted to refute the draft. All four plans returned
 **sound-with-corrections**; the corrections are folded in below. Every file:line
-citation was verified against the current tree — line numbers in the issues and in
-`docs/public-seams-review.md` have drifted since `a73a6b4` and must not be trusted._
+citation was verified against the current tree; older line-number citations must
+not be trusted._
 
 **Headline findings:**
 

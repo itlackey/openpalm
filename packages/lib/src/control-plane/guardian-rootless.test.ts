@@ -23,6 +23,12 @@ describe('guardian rootless conversion', () => {
     expect(guardianEntrypoint).not.toContain('exec gosu');
   });
 
+  test('guardian entrypoint defaults content validation on', () => {
+    expect(guardianEntrypoint).toContain('enabled=1');
+    expect(guardianEntrypoint).toContain('GUARDIAN_CONTENT_VALIDATION:-1');
+    expect(guardianEntrypoint).not.toContain('GUARDIAN_CONTENT_VALIDATION:-0');
+  });
+
   test('guardian app trees are world-writable for arbitrary-uid runtime install', () => {
     // The guardian runs as the host operator's ARBITRARY uid:gid. #585 retired
     // the `guardian-cache` named volume that used to sit over /opt/openpalm —

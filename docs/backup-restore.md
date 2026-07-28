@@ -1,143 +1,123 @@
 # Backup & Restore
 
-OpenPalm keeps its persistent state under one home directory,
-`~/.openpalm/` by default. That makes backup simple: preserve that directory,
-restore it, and then start the same compose stack again.
+OpenPalm keeps its installation under one home directory (`OP_HOME`, default
+`~/.openpalm/`). A full archive of that directory includes configuration,
+managed files, delegated private secrets, provider auth, service data, and
+regenerable caches.
 
----
+## What Matters
 
-## What to back up
+| Path | Contents |
+|---|---|
+| `config/` | User-owned configuration and `config/stack/custom.compose.yml` |
+| `system/` | Managed Compose and OpenCode configuration |
+| `state/` | `stack.env`, enabled addons, setup state, and app records |
+| `private/` | Delegated UI, Guardian, API, portal, bot, and OpenCode-server secrets |
+| `knowledge/` | AKM stash, tasks, user env, and provider `auth.json` |
+| `data/` | Durable service state and lifecycle backups |
+| `workspace/` | Shared assistant work area |
+| `cache/` | Regenerable container caches; safe to omit |
 
-Backing up the entire `~/.openpalm/` tree is the safest option.
+## Stop the Stack
 
-If you use the optional `pass` backend for secrets, also back up the host GPG
-material it depends on, typically `${GNUPGHOME:-~/.gnupg}`.
-
-| Path | Contains | Back up? |
-|---|---|---|
-| `~/.openpalm/config/stack/` | live compose files (compose assembly only) | Yes |
-| `~/.openpalm/knowledge/env/` | `stack.env` (system, non-secret) + `user.env` (user-managed) | Yes |
-| `~/.openpalm/config/` | assistant config and enabled automations | Yes |
-| `~/.openpalm/data/` | durable service data | Yes, minus caches (see below) |
-| `~/.openpalm/knowledge/` | AKM stash (memory, skills, env, secrets) | Yes |
-| `~/.openpalm/workspace/` | shared workspace | Yes |
-| `~/.openpalm/data/logs/` | logs and audit files | Optional |
-| `~/.openpalm/data/backups/` | lifecycle backup snapshots | Optional |
-
----
-
-## Stop the stack first
-
-For the most consistent backup, stop the running stack first using the same file
-set you normally use.
-
-Example:
+For the most consistent full backup, stop services first:
 
 ```bash
-cd "$HOME/.openpalm/config/stack"
-docker compose \
-  --project-name openpalm \
-  -f core.compose.yml \
-  -f portals.compose.yml \
-  --profile addon.chat \
-  --env-file ../../state/stack.env \
-  down
+openpalm stop
 ```
 
-See the [Manual Compose Runbook](operations/manual-compose-runbook.md) for the full command reference.
+If you manage Compose directly, use the same file list and active profiles as
+normal. See the [Manual Compose Runbook](operations/manual-compose-runbook.md).
 
----
+## Full Backup
 
-## Backup
+This captures the complete home, including `private/` and `cache/`:
 
 ```bash
-tar czf openpalm-backup-$(date +%Y%m%d).tar.gz \
-  --exclude='.cache' --exclude='data/akm/cache' \
-  ~/.openpalm
+tar -czf "openpalm-backup-$(date +%Y%m%d).tar.gz" -C "$HOME" .openpalm
 ```
 
-The excluded paths are package-manager and model caches. They are regenerable
-— containers rebuild them on the next start — and can add several GB to an
-archive for nothing. Drop the `--exclude` flags if you want a byte-exact copy.
+To omit only the regenerable top-level cache:
 
-Two other trees under `data/` are dead weight on any install from 0.13.0 on:
-`data/assistant/tools/` and `data/guardian/tools/`. Tool packages are baked
-into the images now, so nothing reads them. They are left alone rather than
-deleted for you — remove them by hand if you want the space back.
+```bash
+tar --exclude='.openpalm/cache' \
+  -czf "openpalm-backup-$(date +%Y%m%d).tar.gz" \
+  -C "$HOME" .openpalm
+```
 
-If `OP_HOME` points elsewhere, archive that directory instead. If you have set
-`OP_BACKUP_DIR` to keep lifecycle snapshots outside `OP_HOME`, archive that
-location too — it is not under the tree above.
+If `OP_HOME` points elsewhere, archive that directory instead. If
+`OP_BACKUP_DIR` points outside `OP_HOME`, archive it separately if you also want
+OpenPalm's lifecycle snapshots.
 
----
+Treat every backup as sensitive: it contains `private/secrets/` and
+`knowledge/secrets/auth.json`.
+
+## Lifecycle Backups
+
+OpenPalm creates safety snapshots before destructive lifecycle operations.
+Those snapshots include top-level user, managed, state, knowledge, workspace,
+and `private/` content. They exclude `data/` and `cache/` to avoid copying large
+runtime state and regenerable caches.
+
+Lifecycle snapshots are not a replacement for a full service-data backup.
 
 ## Restore
 
-### 1. Stop any running stack
+1. Stop any OpenPalm stack using the target project name.
+2. Extract the archive into the same parent directory.
+3. Repair ownership if the user or machine changed.
+4. Start through OpenPalm or the same raw Compose profile set.
 
-Use the same compose file set you normally run (see the [runbook](operations/manual-compose-runbook.md)).
-
-### 2. Extract the backup
+For an archive created with `-C "$HOME" .openpalm`:
 
 ```bash
-tar xzf openpalm-backup-YYYYMMDD.tar.gz -C /
+tar -xzf openpalm-backup-YYYYMMDD.tar.gz -C "$HOME"
+sudo chown -R "$(id -u):$(id -g)" "$HOME/.openpalm"
+openpalm start
 ```
 
-### 3. Fix ownership if needed
+When moving to a different home path, update `OP_HOME` in
+`state/stack.env` before starting. Review any other absolute bind paths as well.
+
+## Raw Compose Restore
+
+After extraction, use all three managed files, the user overlay, the sole env
+file, and every active profile:
 
 ```bash
-sudo chown -R $(id -u):$(id -g) ~/.openpalm
-```
-
-This is especially important when moving between machines or users.
-
-### 4. Start the stack again
-
-```bash
-cd "$HOME/.openpalm/config/stack"
+OP_HOME="${OP_HOME:-$HOME/.openpalm}"
+OP_PROJECT_NAME="${OP_PROJECT_NAME:-openpalm}"
 docker compose \
-  -f core.compose.yml \
-  -f portals.compose.yml \
+  --project-name "$OP_PROJECT_NAME" \
+  --env-file "$OP_HOME/state/stack.env" \
+  -f "$OP_HOME/system/stack/core.compose.yml" \
+  -f "$OP_HOME/system/stack/services.compose.yml" \
+  -f "$OP_HOME/system/stack/portals.compose.yml" \
+  -f "$OP_HOME/config/stack/custom.compose.yml" \
   --profile addon.chat \
-  --env-file ../../state/stack.env \
   up -d
 ```
 
-Use the same addon profiles you used before the backup.
+Replace `addon.chat` with the profiles that were active for the backup. The
+value of `OP_ENABLED_ADDONS` alone is not translated by raw Docker Compose.
+If the restored `state/stack.env` records a non-default `OP_PROJECT_NAME`, set
+the shell variable to that exact value as well; `--env-file` does not expand the
+shell's earlier `--project-name` argument.
 
----
-
-## Migration to a new machine
-
-1. Back up the old machine's `~/.openpalm/`.
-2. Install Docker on the new machine.
-3. Restore the backup into the new user's home directory.
-4. Fix ownership.
-5. Start the stack with `openpalm start` (or, for a manual run, the compose
-   file set under `~/.openpalm/system/stack/`).
-
-There is no separate staging/artifacts/config-components reconstruction step in
-the current model.
-
-> This is a same-version, host-to-host copy. To move from **0.10.x to 0.11.0**
-> (which relocates env files and secrets), follow the
-> [0.10.x → 0.11.0 upgrade guide](operations/upgrade-0.10-to-0.11.md) instead.
-
----
-
-## Key files reference
+## Key Files
 
 | File or directory | Purpose |
 |---|---|
-| `~/.openpalm/knowledge/env/user.env` | AKM env backing file for user-managed secrets |
-| `~/.openpalm/state/stack.env` | Non-secret ports, paths, image tags, hardware profile selections |
-| `~/.openpalm/knowledge/secrets/` | System-managed service secret files |
-| `~/.openpalm/config/stack/core.compose.yml` | Base stack definition |
-| `~/.openpalm/config/stack/services.compose.yml` | First-party optional services |
-| `~/.openpalm/config/stack/portals.compose.yml` | First-party optional portals and guardian |
-| `~/.openpalm/config/stack/custom.compose.yml` | Custom services and overlays |
-| `~/.openpalm/config/assistant/` | User OpenCode config |
-| `~/.openpalm/knowledge/tasks/` | Active AKM automation task files (YAML, `*.yml`) |
-| `~/.openpalm/knowledge/` | Shared akm stash (assistant + admin memory and knowledge) |
-| `~/.openpalm/workspace/` | Shared workspace |
-| `~/.openpalm/data/logs/` | Logs and audit files |
+| `state/stack.env` | Sole non-secret Compose env file |
+| `private/secrets/` | Delegated runtime credentials |
+| `knowledge/secrets/auth.json` | Assistant-readable OpenCode provider auth |
+| `knowledge/env/user.env` | AKM user env loaded on demand |
+| `system/stack/` | Managed Compose files |
+| `config/stack/custom.compose.yml` | User Compose overlay |
+| `system/assistant/` and `system/guardian/` | Managed OpenCode config |
+| `config/assistant/` and `config/guardian/` | User OpenCode config |
+| `knowledge/tasks/` | AKM task files |
+
+For a historical 0.10.x installation, follow the
+[0.10.x to 0.11.0 upgrade guide](operations/upgrade-0.10-to-0.11.md) before
+using the current restore layout.

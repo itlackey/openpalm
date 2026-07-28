@@ -59,8 +59,7 @@ describe('file-based control-plane secrets', () => {
     expect(listSecretNames(stackDir)).toContain('op_ui_login_password');
   });
 
-  // G1 (docs/public-seams-review.md): delegated secrets — consumed only by
-  // the guardian/portals, never the assistant agent — must resolve UNDER
+  // Delegated service credentials must resolve under
   // private/secrets/, never under knowledge/secrets/ (bind-mounted wholesale
   // into the assistant at /stash). This is the discriminating property the
   // relocation exists for: a round-trip-only test (write then read the same

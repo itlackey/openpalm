@@ -1,13 +1,8 @@
 /**
- * SessionReuseMap — the client-side session-reuse cache used only when
- * PORTAL_SESSION_REUSE=client (standalone mode against a plain OpenCode
- * server). See session-map.ts for the authoritative-side rule (D2): this
- * map is populated ONLY in client mode; in the default server mode it is
- * never constructed, so the guardian's own server-side cache
- * (packages/guardian/src/session-target.ts) stays the sole authority.
- *
- * Module does not exist yet — this import throws at load, failing every
- * test below for the same reason (red stage).
+ * SessionReuseMap — the client-side session-reuse cache used when
+ * PORTAL_SESSION_REUSE=client, which is the default because Guardian has no
+ * server-side reuse cache. Explicit server mode leaves this map unconstructed
+ * for deployments that provide their own authoritative reuse implementation.
  */
 import { describe, expect, test } from 'bun:test';
 import { SessionReuseMap } from './session-map.ts';
@@ -31,15 +26,22 @@ describe('SessionReuseMap', () => {
     expect(map.get('k')).toBeUndefined();
   });
 
-  test('a hit refreshes the TTL', async () => {
-    const map = new SessionReuseMap({ ttlMs: 40, maxSize: 10 });
-    map.set('k', 's1');
-    await Bun.sleep(25);
-    expect(map.get('k')).toBe('s1'); // hit, refreshes expiry
-    await Bun.sleep(25);
-    // 75 ms after the original set, but only 25 ms after the refreshed hit —
-    // still alive because the hit refreshed the 40 ms TTL.
-    expect(map.get('k')).toBe('s1');
+  test('a hit refreshes the TTL', () => {
+    const originalNow = Date.now;
+    let now = 1_000;
+    Date.now = () => now;
+    try {
+      const map = new SessionReuseMap({ ttlMs: 40, maxSize: 10 });
+      map.set('k', 's1');
+      now += 25;
+      expect(map.get('k')).toBe('s1'); // hit, refreshes expiry
+      now += 25;
+      // 50 ms after the original set, but only 25 ms after the refreshed hit —
+      // still alive because the hit refreshed the 40 ms TTL.
+      expect(map.get('k')).toBe('s1');
+    } finally {
+      Date.now = originalNow;
+    }
   });
 
   test('evicts the oldest entry beyond maxSize', () => {

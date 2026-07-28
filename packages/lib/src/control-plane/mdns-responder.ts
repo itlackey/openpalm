@@ -1,8 +1,8 @@
 /**
  * Host control-plane mDNS self-advertisement (#488).
  *
- * Runs inside the long-lived host UI server process (every supervisor —
- * `openpalm ui serve`, `openpalm`, Electron — spawns it; see
+ * Runs inside the long-lived host UI server process (bare `openpalm`,
+ * `openpalm app`, `openpalm admin`, and Electron all spawn it; see
  * `hooks.server.ts`'s one-shot startup init). NOT run inside the guardian
  * container: container mDNS on the default Docker bridge network never
  * reaches the physical LAN and `network_mode: host` would break the

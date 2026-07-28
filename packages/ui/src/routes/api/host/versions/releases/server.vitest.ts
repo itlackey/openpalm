@@ -1,7 +1,7 @@
 /**
  * Route-level tests for GET /api/host/versions/releases.
  *
- * The releases endpoint now returns ONLY platform releases that carry Electron
+ * The releases endpoint returns only releases that carry Electron
  * installer assets (app-level releases). Container-image version pins live in
  * stack.env and are edited via /api/host/versions, not GitHub releases. Fetched
  * fresh per request (no server-side cache).
@@ -48,7 +48,7 @@ describe('GET /api/host/versions/releases', () => {
     expect(res.status).toBe(401);
   });
 
-  test('returns only platform releases with Electron installer assets', async () => {
+  test('returns only releases with Electron installer assets', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(githubResponse([
       { tag_name: 'platform-0.12.5', prerelease: false, published_at: '2026-06-18T00:00:00Z', assets: [{ name: 'OpenPalm-0.12.5.dmg' }] },
       { tag_name: 'assistant-0.12.5', prerelease: false, published_at: '2026-06-18T00:00:00Z', assets: [] },
@@ -60,6 +60,26 @@ describe('GET /api/host/versions/releases', () => {
     const body = await res.json() as { releases: { tag: string; hasElectronBuild: boolean }[] };
     expect(body.releases.map((r) => r.tag)).toEqual(['0.12.5']);
     expect(body.releases[0]?.hasElectronBuild).toBe(true);
+  });
+
+  test('follows pagination to standalone Electron releases', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify([]), {
+        status: 200,
+        headers: {
+          'content-type': 'application/json',
+          link: '<https://api.github.com/repos/itlackey/openpalm/releases?per_page=100&page=2>; rel="next"',
+        },
+      }))
+      .mockResolvedValueOnce(githubResponse([
+        { tag_name: 'electron-0.12.6', prerelease: false, published_at: '2026-06-19T00:00:00Z', assets: [{ name: 'OpenPalm-0.12.6.AppImage' }] },
+      ]));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const res = await GET(makeGetEvent());
+    const body = await res.json() as { releases: { tag: string }[] };
+    expect(body.releases.map((release) => release.tag)).toEqual(['0.12.6']);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
   test('skips platform releases without Electron assets', async () => {

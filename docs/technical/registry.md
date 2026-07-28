@@ -2,7 +2,8 @@
 
 OpenPalm no longer uses a runtime registry catalog for first-party addons or automations.
 
-First-party optional services are defined in the fixed compose files under `config/stack/`:
+First-party optional services are defined in the managed Compose files under
+`system/stack/`:
 
 - `services.compose.yml`
 - `portals.compose.yml`

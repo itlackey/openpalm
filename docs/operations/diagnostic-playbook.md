@@ -1,224 +1,154 @@
 # Diagnostic Playbook
 
-Practical troubleshooting guide for OpenPalm operators and contributors. This is
-based on the provider-display debugging path, but the workflow generalizes well
-to most "the UI looks wrong, but I do not know which layer is broken" issues.
+Use this workflow to isolate a browser, host API, OpenCode, or Compose failure
+without mixing route namespaces or runtimes.
 
-## Authenticating to the admin API
+## Start the Correct UI Process
 
-The admin API uses a session **cookie** (`op_session`), not the login password
-directly. Log in once to a cookie jar, then pass it to every authenticated call:
+The assistant-served UI at port `3800` is intentionally non-admin. Start the
+loopback-only host admin process for `/api/host/*` diagnostics:
 
 ```bash
-# Obtain a session cookie (replace with your UI login password).
-curl -sS -c cookies.txt -X POST http://localhost:3880/admin/auth/login \
-  -H 'content-type: application/json' \
-  -d "{\"password\":\"$OP_UI_LOGIN_PASSWORD\"}"
-
-# Then reuse it on every admin call below:
-#   curl -sS -b cookies.txt http://localhost:3880/admin/...
+openpalm admin --no-open
 ```
 
-> The host UI port defaults to `3880` (`OP_HOST_UI_PORT`). The examples below
-> assume you have `cookies.txt` from the step above.
+The host page is <http://127.0.0.1:3880/host>.
 
-## Common Troubleshooting Workflow
+## Authenticate
 
-1. Reproduce the issue once and write down the exact symptom.
-2. Decide which layer is first failing: browser UI, admin API, OpenCode, or container/config.
-3. Check the request path from the outside in:
-   - browser network request
-   - admin route response
-   - downstream OpenCode or service response
-   - container health, logs, env, and compose wiring
-4. Prefer one known-good direct check per layer before reading a lot of code.
-5. Only after the failing layer is isolated, read the relevant source files.
+UI authentication uses an `op_session` cookie. Log in through
+`/api/auth/login`, then reuse the cookie jar:
 
-For provider display specifically, the usual path is:
+```bash
+password="$(< "${OP_HOME:-$HOME/.openpalm}/private/secrets/op_ui_login_password")"
+jq -nc --arg password "$password" '{password: $password}' \
+  | curl -sS -c cookies.txt -X POST http://127.0.0.1:3880/api/auth/login \
+      -H 'content-type: application/json' \
+      --data-binary @-
+```
+
+The cookie is `HttpOnly` and `SameSite=Lax`. `/admin/*` is not an alias and
+intentionally returns `404`.
+
+Guardian's `http://127.0.0.1:3831/admin/principals` is a separate server. It
+remains valid and uses the bearer token from
+`private/secrets/op_guardian_admin_token`, not the UI session cookie.
+
+## Route Map
+
+| Namespace | Scope |
+|---|---|
+| `/api/auth/*` | Login, logout, and session |
+| `/api/host/*` | Host control plane; available only in an admin-capable host process |
+| `/api/assistant/*` | Assistant-owned model, persona, and AKM settings |
+| `/oc/*` | Same-origin proxy to the configured OpenCode runtime |
+
+Useful host endpoints include:
+
+- `GET /api/host/health`
+- `GET /api/host/providers`
+- `GET /api/host/providers/host-status`
+- `GET /api/host/logs?service=assistant&tail=200`
+- `GET /api/host/config/validate`
+- `GET /api/host/containers/list`
+- `GET /api/host/containers/events?since=1h`
+- `GET /api/host/containers/stats`
+
+## Provider Triage
+
+The provider-display path is:
 
 ```text
-Admin UI component
-  -> GET /admin/providers
-    -> admin route
-      -> OpenCode GET /provider
-      -> OpenCode GET /provider/auth
+browser component
+  -> GET /api/host/providers
+  -> host route
+  -> OpenCode GET /provider
+  -> OpenCode GET /provider/auth
 ```
 
-Relevant code paths:
+Check one layer at a time:
+
+```bash
+# Public UI-server health
+curl -sS http://127.0.0.1:3880/health
+
+# Authenticated host routes
+curl -sS -b cookies.txt http://127.0.0.1:3880/api/host/providers/host-status | jq
+curl -sS -b cookies.txt http://127.0.0.1:3880/api/host/providers | jq
+
+# OpenCode directly
+curl -sS http://127.0.0.1:3810/health | jq
+curl -sS http://127.0.0.1:3810/provider | jq
+curl -sS http://127.0.0.1:3810/provider/auth | jq
+```
+
+If direct OpenCode is protected because `access.assistantDirect` is enabled,
+use its generated Basic credential or inspect through the same-origin `/oc`
+proxy instead of treating `401` as a dead process.
+
+Relevant source paths:
 
 - `packages/ui/src/lib/components/providers/ConnectSheet.svelte`
 - `packages/ui/src/lib/components/providers/ProvidersPanel.svelte`
-- `packages/ui/src/routes/admin/providers/+server.ts`
+- `packages/ui/src/routes/api/host/providers/+server.ts`
+- `packages/ui/src/routes/api/host/providers/host-status/+server.ts`
 - `packages/lib/src/control-plane/opencode-client.ts`
 
-## Distinguishing the Failure Domain
+## Failure Domains
 
-| If this is true | Most likely class | What to inspect next |
-|---|---|---|
-| Browser request succeeds and returns correct JSON, but the page is empty or wrong | UI issue | Browser console, Svelte component state, response-shape assumptions |
-| Browser request fails or returns wrong JSON, but downstream services look healthy | Admin API issue | Admin route code, admin logs, auth headers, request/response shape |
-| Admin route is thin and the downstream OpenCode call is empty, failing, or using the wrong path | OpenCode issue | OpenCode endpoint inventory, `OP_OPENCODE_URL`, OpenCode reachability |
-| Multiple endpoints fail, services restart, or health checks are bad | Container/config issue | Compose status, env files, addon overlays, Docker events, config validation |
+| Observation | Likely layer |
+|---|---|
+| Host API returns correct JSON but the page is wrong | Browser/UI state or response-shape handling |
+| Host API fails while direct OpenCode works | Host route, capability, auth, or upstream-target issue |
+| Host route and direct OpenCode both show missing provider data | OpenCode provider/auth configuration |
+| Several services are missing or restarting | Compose files, profiles, secrets, or container health |
+| `/api/host/*` fails on port `3800` | Expected non-admin assistant UI; use `openpalm admin` on port `3880` |
+| `/admin/*` returns `404` | Expected current route contract |
 
-## Concrete Checks By Layer
-
-### 1. UI issue
-
-Start here when `/admin/providers` returns the data you expect, but the
-UI still does not render it correctly.
-
-- Browser DevTools Network: inspect `/admin/providers`
-- Browser DevTools Console: look for runtime errors, hydration errors, and failed `fetch`
-- Confirm the response shape matches what the component expects:
-  - `data.providers`
-  - `provider.connected`
-  - `provider.models`
-  - `provider.authMethods`
-- Read the consuming components:
-  - `packages/ui/src/lib/components/providers/ConnectSheet.svelte`
-  - `packages/ui/src/lib/components/providers/ProvidersPanel.svelte`
-
-Useful check from the host:
+## Host API Checks
 
 ```bash
-curl -sS -b cookies.txt http://localhost:3880/admin/providers | jq
+curl -sS -b cookies.txt http://127.0.0.1:3880/api/host/containers/list | jq
+curl -sS -b cookies.txt 'http://127.0.0.1:3880/api/host/containers/events?since=1h' | jq
+curl -sS -b cookies.txt http://127.0.0.1:3880/api/host/config/validate | jq
+curl -sS -b cookies.txt 'http://127.0.0.1:3880/api/host/logs?service=assistant&tail=200'
 ```
 
-If that payload is correct and the browser still renders incorrectly, stay in the
-UI layer.
+The host admin is not a Compose service. Read its own logs from the terminal or
+service manager that launched `openpalm admin`.
 
-### 2. Admin API issue
+## Compose Checks
 
-Start here when the UI request itself fails, returns the wrong shape, or behaves
-differently from the downstream service.
-
-Useful endpoints:
-
-- `GET http://localhost:3880/health`
-- `GET http://localhost:3880/admin/providers/host-status`
-- `GET http://localhost:3880/admin/providers`
-- `GET http://localhost:3880/admin/logs?service=assistant&tail=200`
-- `GET http://localhost:3880/admin/config/validate`
-
-Useful commands:
+Using the helper from the
+[Manual Compose Runbook](manual-compose-runbook.md), repeat the real active
+profiles:
 
 ```bash
-curl -sS http://localhost:3880/health | jq
-curl -sS -b cookies.txt http://localhost:3880/admin/providers/host-status | jq
-curl -sS -b cookies.txt http://localhost:3880/admin/providers | jq
-curl -sS -b cookies.txt "http://localhost:3880/admin/logs?service=assistant&tail=200"
+op --profile addon.chat config --quiet
+op --profile addon.chat config --services
+op --profile addon.chat ps
+op --profile addon.chat logs assistant guardian
 ```
 
-Key lessons from the provider-display path:
+Check that:
 
-- the admin route is in `packages/ui/src/routes/admin/providers/+server.ts`
-- it merges OpenCode provider data with auth-method data
-- the route can look broken even when the UI is fine if OpenCode returns an unexpected shape
+- the file list uses managed `system/stack/` files plus `config/stack/custom.compose.yml`
+- `state/stack.env` is the only `--env-file`
+- raw Compose received every active `--profile`
+- delegated secrets resolve under `private/secrets/`
+- provider `auth.json` remains under `knowledge/secrets/`
 
-### 3. OpenCode issue
+## Practical Order
 
-Start here when the admin route is mostly a pass-through and the real failure is
-downstream.
+For a missing-provider symptom:
 
-Important details:
+1. Inspect the browser request to `/api/host/providers`.
+2. Call `/api/host/providers` with the session cookie.
+3. Call OpenCode `/provider` and `/provider/auth` directly.
+4. Call `/api/host/providers/host-status`.
+5. Check assistant logs and host-admin stderr.
+6. Validate the exact Compose profile set.
 
-- OpenCode provider inventory is on `/provider`, not `/providers`
-- OpenCode auth metadata is on `/provider/auth`
-- OpenCode does not expose a normal `/health` endpoint; the shared client treats `/provider` as the availability probe
-- the configured upstream for admin is controlled by `OP_OPENCODE_URL`
-
-Useful checks:
-
-```bash
-curl -sS http://localhost:3810/provider | jq
-curl -sS http://localhost:3810/provider/auth | jq
-curl -sS -b cookies.txt http://localhost:3880/admin/providers/host-status | jq
-```
-
-Also verify which OpenCode runtime the admin UI is actually targeting. In
-confusing cases, check the admin (host) process environment or logs:
-
-```bash
-# Look for the openpalm process and its config
-ps aux | grep "openpalm"
-cat ~/.openpalm/state/stack.env | grep -E "OP_OPENCODE|OPENCODE_PORT"
-```
-
-Read these files if the behavior does not match the docs:
-
-- `packages/lib/src/control-plane/opencode-client.ts`
-- `packages/ui/src/lib/server/opencode/{catalog,config,http}.ts`
-- `docs/technical/api-spec.md`
-- `docs/technical/opencode-configuration.md`
-
-### 4. Container or config issue
-
-Start here when endpoints are unavailable, multiple layers fail, or behavior is
-inconsistent across restarts.
-
-Useful commands with the helper from `docs/operations/manual-compose-runbook.md`:
-
-```bash
-op config --quiet
-op config --services
-op ps
-op logs assistant
-op logs guardian
-```
-
-> The admin UI is a **host process** (`openpalm ui serve`), not a compose
-> service — there is no `admin` container to `op logs`. Read its output from the
-> terminal/service that runs `openpalm`.
-
-Useful admin endpoints:
-
-- `GET /admin/containers/list`
-- `GET /admin/containers/events?since=1h`
-- `GET /admin/containers/stats`
-- `GET /admin/config/validate`
-
-Useful checks from the host:
-
-```bash
-curl -sS -b cookies.txt http://localhost:3880/admin/containers/list | jq
-curl -sS -b cookies.txt "http://localhost:3880/admin/containers/events?since=1h" | jq
-curl -sS -b cookies.txt http://localhost:3880/admin/config/validate | jq
-```
-
-Especially check:
-
-- whether `OP_OPENCODE_URL` points to the intended runtime
-- whether the admin UI can reach the assistant OpenCode at `:4096`
-- whether the stack has restarted onto a different env/config than the one you think is live
-
-## Practical Triage Order
-
-When the symptom is "providers are missing or not displayed":
-
-1. Browser network request to `/admin/providers`
-2. Direct `curl` to `/admin/providers`
-3. Direct `curl` to OpenCode `/provider` and `/provider/auth`
-4. `GET /admin/providers/host-status`
-5. `op logs assistant` (and the host `openpalm` process output for the UI)
-6. `GET /admin/config/validate`
-
-This order usually isolates the broken layer in a few minutes.
-
-## What Would Have Made This Easier
-
-- a maintained route map from UI component -> admin route -> downstream service endpoint
-- a short endpoint inventory for OpenCode, especially that `/provider` is the canonical probe and list endpoint
-- a single provider-debug page or script that shows raw browser payload, raw admin payload, and raw OpenCode payload side by side
-- stronger request ID propagation from browser -> admin logs -> OpenCode logs
-- explicit browser-console guidance in the main troubleshooting docs
-- production source maps, or at least easier stack traces, for admin UI debugging
-- a clearer doc section on how the admin UI proxies to the assistant OpenCode at `:4096`
-- an operator-facing list of the most important env vars for this path, especially `OP_OPENCODE_URL` and `OPENCODE_PORT`
-- a generated endpoint inventory for the admin API and OpenCode API so contributors do not have to infer paths from source
-- a one-command diagnostics report for provider wiring, not just general stack health
-
-## Rule Of Thumb
-
-If the browser payload is wrong, debug the server. If the server payload is wrong,
-debug the downstream service. If every layer is flaky, debug compose, env, and
-container state before touching UI code.
+Stop at the first failing layer. Do not change Compose when the server payload
+is already correct, and do not change UI code when OpenCode itself returns the
+wrong data.

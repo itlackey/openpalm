@@ -38,8 +38,8 @@ function req(value: string | undefined, field: string): string {
 
 /**
  * OpenCode auth token store. Provider credentials are sensitive, so they live
- * under knowledge/secrets/ (out of config/stack/) and are bind-mounted into
- * every OpenCode-based container (assistant + guardian).
+ * under knowledge/secrets/ (out of config/stack/). Assistant receives a bind
+ * mount; Guardian receives the same file as a named Compose secret.
  */
 export const authJsonPath          = (s: ControlPlaneState): string => `${req(s.stashDir, "stashDir")}/secrets/auth.json`;
 /** akm config directory mounted at /etc/akm */

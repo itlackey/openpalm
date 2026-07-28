@@ -100,6 +100,26 @@ describe('discoverHomeBindMountSources (compose config --format json)', () => {
     expect(mounts.find((m) => m.path === cacheDir)?.isFile).toBe(false);
   });
 
+  test('retains OP_HOME cache binds for directory precreation', async () => {
+    homeDir = makeHome();
+    const state = makeState(homeDir);
+    const assistantCache = join(homeDir, 'cache', 'assistant');
+    const guardianCache = join(homeDir, 'cache', 'guardian');
+    const resolve = fakeResolver({
+      assistant: {
+        volumes: [{ type: 'bind', source: assistantCache, target: '/home/opencode/.cache' }],
+      },
+      guardian: {
+        volumes: [{ type: 'bind', source: guardianCache, target: '/opt/openpalm/guardian/.cache' }],
+      },
+    });
+
+    expect(discoverHomeBindMountSources(state, resolve).map((mount) => mount.path)).toEqual([
+      assistantCache,
+      guardianCache,
+    ]);
+  });
+
   test('excludes named volumes and out-of-home (e.g. Windows drive) sources', async () => {
     homeDir = makeHome();
     const state = makeState(homeDir);

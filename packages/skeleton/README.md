@@ -1,120 +1,119 @@
-# ~/.openpalm
+# @openpalm/skeleton
 
-This bundle is the shipped OpenPalm home directory skeleton. Copy it to
-`~/.openpalm/` (or another location via `OP_HOME`). The repo bundle is the
-source asset set; the copied directory becomes the runtime home.
+This package contains release-shipped seed and managed assets. It is an input to
+the OpenPalm installer, not a complete runtime home.
 
-## Runtime directory layout (OP_HOME)
+Do not copy this directory to `~/.openpalm/` and expect a working installation.
+Install/setup also generates app state, delegated private secrets, cache paths,
+host records, UI/runtime files, permissions, and other required directories.
 
-At runtime, after `openpalm install` or manual setup, `OP_HOME` (default `~/.openpalm/`) contains:
+## Install
 
-```text
-~/.openpalm/
-  config/
-    stack/             Stack configuration and composition
-      core.compose.yml Core services (always used)
-      services.compose.yml Optional first-party services (profile-gated)
-      portals.compose.yml Optional first-party portals (profile-gated)
-      custom.compose.yml User custom services/overlays
-    assistant/         OpenCode user tools, plugins, skills, commands
-    guardian/          Guardian OpenCode global config (mounted at /etc/opencode)
-    akm/               AKM config directory
-
-  knowledge/
-    env/               User-managed env config (akm env:user — user.env)
-    secrets/           Stack-managed file secrets (akm secret — Compose grants)
-      auth.json        OpenCode provider credentials (shared by assistant + guardian)
-    tasks/             Scheduled automation task files (*.yml)
-
-  data/
-    assistant/         Assistant home and local runtime state
-    ui/                Operator UI build (@openpalm/ui), seeded/updated from npm
-    guardian/          Guardian nonce and rate-limit state
-    akm/cache/         AKM cache and task logs
-    akm/data/          AKM databases and durable data
-    logs/              Service logs and audit output
-    backups/           Snapshot backups (created by CLI/admin during upgrades)
-    rollback/          Rollback snapshots
-
-  workspace/           Shared `/work` mount
-  openpalm.sh          Power-user helper: docker compose up/down/restart/upgrade (bash)
-  openpalm.ps1         Power-user helper: docker compose up/down/restart/upgrade (PowerShell)
-```
-
-> `openpalm.sh` / `openpalm.ps1` are example convenience wrappers around the
-> same `docker compose` invocation the CLI and admin UI use. The canonical
-> orchestrator remains the `openpalm` CLI and the admin UI; the helpers let
-> power users drive the stack directly. Their `upgrade` only pulls images and
-> recreates containers — it does not refresh shipped assets or the UI build the
-> way `openpalm update` does.
-
-## Repo source asset structure (.openpalm/)
-
-This repo directory contains source assets embedded by the CLI during build. These are **not** the runtime layout:
-
-```text
-.openpalm/               Repo source assets (embedded by CLI)
-  config/
-    stack/               Seed files for runtime config/stack/
-      core.compose.yml   Core Compose file copied to OP_HOME
-      services.compose.yml Optional services Compose file
-      portals.compose.yml Optional portals Compose file
-      custom.compose.yml User-editable custom Compose stub
-    assistant/           Seed files for config/assistant/ (OpenCode config)
-    guardian/            Guardian OpenCode global config (opencode.jsonc → /etc/opencode)
-  knowledge/             Built-in AKM stash assets (skills, tasks, env, secrets)
-  openpalm.sh            Power-user docker compose helper (bash)
-  openpalm.ps1           Power-user docker compose helper (PowerShell)
-```
-
-## Quick start
-
-Recommended install path:
+Linux and macOS:
 
 ```bash
-openpalm install
+curl -fsSL https://raw.githubusercontent.com/itlackey/openpalm/main/scripts/setup.sh | bash
 ```
 
-Manual setup:
+Windows PowerShell:
+
+```powershell
+irm https://raw.githubusercontent.com/itlackey/openpalm/main/scripts/setup.ps1 | iex
+```
+
+For unattended generation:
 
 ```bash
-cp -r .openpalm/ ~/.openpalm/
-$EDITOR ~/.openpalm/state/stack.env
-mkdir -m 700 -p ~/.openpalm/knowledge/secrets
-# Create required secret files here, mode 0600, before enabling addons.
-docker compose \
-  --project-name openpalm \
-  --env-file ~/.openpalm/state/stack.env \
-  -f ~/.openpalm/config/stack/core.compose.yml \
-  -f ~/.openpalm/config/stack/services.compose.yml \
-  -f ~/.openpalm/config/stack/portals.compose.yml \
-  -f ~/.openpalm/config/stack/custom.compose.yml \
-  --profile addon.chat \
-  up -d
+openpalm install --file ./setup-spec.yaml
 ```
 
-See [Manual Compose Runbook](../../docs/operations/manual-compose-runbook.md) for the full reference.
+See [Installation](../../docs/installation.md) and
+[Manual and Headless Install](../../docs/operations/manual-headless-install.md).
 
-The live stack is defined by the fixed compose file set in `config/stack/`.
-Built-in optional services are activated with Compose profiles; manual custom
-services and overlays belong in `custom.compose.yml`.
+## Package Assets
 
-## Ownership rules
+```text
+packages/skeleton/
+  config/
+    assistant/              user-config defaults, seeded if missing
+    guardian/               user Guardian model config, seeded if missing
+    akm/                    user AKM config seed
+    stack/custom.compose.yml
+  system/
+    assistant/              managed assistant OpenCode config
+    guardian/               managed Guardian OpenCode config
+    stack/
+      core.compose.yml
+      services.compose.yml
+      portals.compose.yml
+      voice.compose.cdi.yml
+      voice.compose.rootless.yml
+  knowledge/                shipped AKM skills and task examples
+  data/                     empty durable-directory seeds
+  openpalm.sh               example Bash Compose helper
+  openpalm.ps1              example PowerShell Compose helper
+```
 
-| Directory | Owner | Who writes |
+The installer copies managed assets into `system/`, seeds missing user assets
+under `config/`, and creates everything not represented by this package.
+
+The assistant and Guardian release images also carry exact-version skeleton
+assets as image-baked runtime material. Their entrypoints do not fetch the
+skeleton from npm during normal startup.
+
+## Generated Runtime Layout
+
+After installation, `OP_HOME` (default `~/.openpalm/`) includes:
+
+```text
+config/                         user-owned non-secret config
+  stack/custom.compose.yml      only user Compose overlay
+system/                         managed release assets
+  stack/{core,services,portals}.compose.yml
+  assistant/                    managed config -> /etc/opencode
+  guardian/                     managed config -> /etc/opencode
+state/stack.env                 sole non-secret Compose env file
+private/secrets/                delegated runtime credentials
+knowledge/
+  secrets/auth.json             assistant-readable provider auth
+  env/user.env                  AKM env loaded on demand
+  tasks/                        AKM YAML tasks
+data/                           durable service data and backups
+cache/                          regenerable assistant/Guardian caches
+workspace/                      assistant /work mount
+```
+
+## Ownership
+
+| Tree | Owner | Lifecycle behavior |
 |---|---|---|
-| `config/` | User | User edits and explicit admin actions |
-| `config/stack/` | System/User | CLI/admin manage fixed runtime assets; users edit `custom.compose.yml` |
-| `knowledge/env/` | User | User edits `user.env` directly or via admin UI user-env updates |
-| `knowledge/secrets/` | System | Stack-managed file secrets (Compose grants); written by CLI/admin |
-| `knowledge/tasks/` | User/Services | User creates task markdown; assistant registers with OS cron |
-| `data/` | Services | Containers and processes at runtime |
-| `workspace/` | Services | Durable shared data (not a secret store) |
+| `config/` | User | Existing files are preserved; defaults are seeded if missing |
+| `system/` | OpenPalm release | Refreshed on reconcile/update |
+| `state/` | OpenPalm app | Updated as runtime records change |
+| `private/` | OpenPalm app | Delegated secrets, never mounted as a tree into the assistant |
+| `knowledge/` | User/services | AKM stash, provider auth, tasks, and user env |
+| `data/` | Services | Durable runtime state |
+| `cache/` | Services | Regenerable and excluded from lifecycle backups |
+| `workspace/` | User/assistant | Shared work area |
 
-## Runtime notes
+## Compose Contract
 
-- Docker Compose global env file: `state/stack.env` (system-managed, non-secret).
-- Service secrets live under `knowledge/secrets/` and are granted narrowly through Compose `secrets:` with `*_FILE` environment variables.
-- The assistant workspace is `workspace/`, mounted at `/work`.
-- The CLI always runs from the host and manages Docker Compose directly. Admin UI is a host process started by `openpalm` — no container is needed.
-- Scheduled automations are stored as AKM YAML task files (`*.yml`) in `knowledge/tasks/` and registered with OS cron by the assistant at startup via `akm tasks sync`.
+The fixed Compose assembly is:
+
+```text
+system/stack/core.compose.yml
+system/stack/services.compose.yml
+system/stack/portals.compose.yml
+config/stack/custom.compose.yml
+```
+
+`state/stack.env` is the only `--env-file`. OpenPalm converts
+`OP_ENABLED_ADDONS` to profiles; raw Docker Compose requires explicit
+`--profile addon.<id>` arguments or `COMPOSE_PROFILES`.
+
+Voice bring-up may append the managed `voice.compose.cdi.yml` overlay when CDI
+is required, the managed `voice.compose.rootless.yml` overlay for rootless
+Docker, or both. They are conditional additions to the fixed assembly, not user
+overlays.
+
+See the [Manual Compose Runbook](../../docs/operations/manual-compose-runbook.md).
