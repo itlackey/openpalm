@@ -42,17 +42,17 @@ jobs:
           node --input-type=module <<'NODE'
           import { readFileSync } from 'node:fs';
           const version = process.env.VERSION;
-          for (const file of ['packages/guardian/package.json', 'packages/portal-sdk/package.json', 'portals/discord/package.json', 'portals/slack/package.json']) {
+          for (const file of ['packages/guardian/package.json', 'packages/portal-sdk/package.json', 'packages/portal-discord/package.json', 'packages/portal-slack/package.json']) {
             const actual = JSON.parse(readFileSync(file, 'utf8')).version;
             if (actual !== version) throw new Error(`${file} is ${actual}, expected ${version}`);
            }
            NODE
       - name: Test extensions
-        run: bun test packages/guardian packages/portal-sdk portals/discord portals/slack
+        run: bun test packages/guardian packages/portal-sdk packages/portal-discord packages/portal-slack
       - name: Pack extensions
         run: |
           mkdir -p .extension-packages
-          for dir in packages/guardian packages/portal-sdk portals/discord portals/slack; do
+          for dir in packages/guardian packages/portal-sdk packages/portal-discord packages/portal-slack; do
             (cd "${dir}" && bun pm pack --destination "${GITHUB_WORKSPACE}/.extension-packages")
           done
       - name: Publish extensions independently

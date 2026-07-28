@@ -167,8 +167,8 @@ const UNITS = {
     },
   },
   portals: {
-    diskAnchorFn: () => readJsonVersion('portals/discord/package.json'),
-    anchorFn: () => readJsonVersion('portals/discord/package.json'),
+    diskAnchorFn: () => readJsonVersion('packages/portal-discord/package.json'),
+    anchorFn: () => readJsonVersion('packages/portal-discord/package.json'),
     stamp(version) {
       stampJsonFiles(RELEASE_PACKAGE_GROUPS.portals, version);
     },

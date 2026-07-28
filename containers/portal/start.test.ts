@@ -32,8 +32,8 @@ describe('portal image bake contract', () => {
     const dockerfile = readRelative('containers/portal/Dockerfile');
 
     expect(dockerfile).toContain('COPY packages/portal-sdk /opt/openpalm/local-src/portal-sdk');
-    expect(dockerfile).toContain('COPY portals/discord /opt/openpalm/local-src/discord');
-    expect(dockerfile).toContain('COPY portals/slack /opt/openpalm/local-src/slack');
+    expect(dockerfile).toContain('COPY packages/portal-discord /opt/openpalm/local-src/packages/portal-discord');
+    expect(dockerfile).toContain('COPY packages/portal-slack /opt/openpalm/local-src/packages/portal-slack');
     expect(dockerfile).toContain('bun pm pack');
     expect(dockerfile).toContain('bun add /opt/openpalm/local-artifacts/*.tgz --production');
     expect(dockerfile).toContain('COPY containers/portal/portal-entrypoint.ts /app/portal-entrypoint.ts');

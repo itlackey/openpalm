@@ -68,8 +68,8 @@ copied into its build context:
 
 - Assistant tools use `containers/assistant/tools/package.json`.
 - Guardian tools use `containers/guardian/tools/package.json`.
-- Portal images copy and pack `packages/portal-sdk`, `portals/discord`, and
-  `portals/slack` from candidate source.
+- Portal images copy and pack `packages/portal-sdk`, `packages/portal-discord`,
+  and `packages/portal-slack` from candidate source.
 - Guardian and portal package source/dependencies are installed during image
   build, after the required package files are copied.
 

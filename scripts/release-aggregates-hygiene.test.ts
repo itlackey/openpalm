@@ -52,7 +52,7 @@ describe('release package ownership', () => {
 describe('portal image source boundary', () => {
 	test('packs the candidate-local SDK and adapters without a baked npm manifest', () => {
 		const dockerfile = readFileSync(join(ROOT, 'containers/portal/Dockerfile'), 'utf8');
-		for (const source of ['packages/portal-sdk', 'portals/discord', 'portals/slack']) {
+		for (const source of ['packages/portal-sdk', 'packages/portal-discord', 'packages/portal-slack']) {
 			expect(dockerfile).toContain(`COPY ${source}`);
 		}
 		expect(dockerfile).toContain('bun pm pack');

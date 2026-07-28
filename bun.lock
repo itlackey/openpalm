@@ -68,6 +68,17 @@
         "bun-types": "^1.3.14",
       },
     },
+    "packages/portal-discord": {
+      "name": "@openpalm/discord-portal",
+      "version": "0.13.0-beta.13",
+      "bin": {
+        "openpalm-discord-portal": "bin/openpalm-discord-portal.ts",
+      },
+      "dependencies": {
+        "@openpalm/portal-sdk": "workspace:*",
+        "discord.js": "^14.16.3",
+      },
+    },
     "packages/portal-sdk": {
       "name": "@openpalm/portal-sdk",
       "version": "0.13.0-beta.13",
@@ -76,6 +87,17 @@
       },
       "devDependencies": {
         "bun-types": "^1.3.14",
+      },
+    },
+    "packages/portal-slack": {
+      "name": "@openpalm/slack-portal",
+      "version": "0.13.0-beta.13",
+      "bin": {
+        "openpalm-slack-portal": "bin/openpalm-slack-portal.ts",
+      },
+      "dependencies": {
+        "@openpalm/portal-sdk": "workspace:*",
+        "@slack/bolt": "^4.1.0",
       },
     },
     "packages/skeleton": {
@@ -117,22 +139,6 @@
         "vitest": "^4.0.18",
         "vitest-browser-svelte": "^2.0.2",
         "yaml": "^2.8.0",
-      },
-    },
-    "portals/discord": {
-      "name": "@openpalm/discord-portal",
-      "version": "0.13.0-beta.13",
-      "dependencies": {
-        "@openpalm/portal-sdk": "workspace:*",
-        "discord.js": "^14.16.3",
-      },
-    },
-    "portals/slack": {
-      "name": "@openpalm/slack-portal",
-      "version": "0.13.0-beta.13",
-      "dependencies": {
-        "@openpalm/portal-sdk": "workspace:*",
-        "@slack/bolt": "^4.1.0",
       },
     },
   },
@@ -279,7 +285,7 @@
 
     "@openpalm/admin-tools-plugin": ["@openpalm/admin-tools-plugin@workspace:packages/electron/admin-tools"],
 
-    "@openpalm/discord-portal": ["@openpalm/discord-portal@workspace:portals/discord"],
+    "@openpalm/discord-portal": ["@openpalm/discord-portal@workspace:packages/portal-discord"],
 
     "@openpalm/electron": ["@openpalm/electron@workspace:packages/electron"],
 
@@ -291,7 +297,7 @@
 
     "@openpalm/skeleton": ["@openpalm/skeleton@workspace:packages/skeleton"],
 
-    "@openpalm/slack-portal": ["@openpalm/slack-portal@workspace:portals/slack"],
+    "@openpalm/slack-portal": ["@openpalm/slack-portal@workspace:packages/portal-slack"],
 
     "@openpalm/ui": ["@openpalm/ui@workspace:packages/ui"],
 

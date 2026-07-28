@@ -12,13 +12,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf 
 # and coordinated dry runs, before any standalone npm publication is needed.
 COPY containers/portal/workspace.package.json /opt/openpalm/local-src/package.json
 COPY packages/portal-sdk /opt/openpalm/local-src/packages/portal-sdk
-COPY portals/discord /opt/openpalm/local-src/portals/discord
-COPY portals/slack /opt/openpalm/local-src/portals/slack
+COPY packages/portal-discord /opt/openpalm/local-src/packages/portal-discord
+COPY packages/portal-slack /opt/openpalm/local-src/packages/portal-slack
 RUN mkdir -p /opt/openpalm/local-artifacts /opt/openpalm/tools \
     && (cd /opt/openpalm/local-src && bun install --lockfile-only --ignore-scripts) \
     && (cd /opt/openpalm/local-src/packages/portal-sdk && bun pm pack --destination /opt/openpalm/local-artifacts --quiet) \
-    && (cd /opt/openpalm/local-src/portals/discord && bun pm pack --destination /opt/openpalm/local-artifacts --quiet) \
-    && (cd /opt/openpalm/local-src/portals/slack && bun pm pack --destination /opt/openpalm/local-artifacts --quiet) \
+    && (cd /opt/openpalm/local-src/packages/portal-discord && bun pm pack --destination /opt/openpalm/local-artifacts --quiet) \
+    && (cd /opt/openpalm/local-src/packages/portal-slack && bun pm pack --destination /opt/openpalm/local-artifacts --quiet) \
     && (cd /opt/openpalm/tools && bun add /opt/openpalm/local-artifacts/*.tgz --production) \
     && rm -rf /opt/openpalm/local-src /opt/openpalm/local-artifacts
 

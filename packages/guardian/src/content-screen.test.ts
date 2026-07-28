@@ -13,7 +13,7 @@ import { screenContent, type ContentSignal } from "./content-screen.ts";
 // avoid tripping this screen, and this code has regressed on first-turn
 // preamble blocking before — import the SHIPPED constant directly (not a
 // copy-pasted string) so a future edit to either file can't silently drift.
-import { DISCORD_SESSION_PREAMBLE } from "../../../portals/discord/src/stream-render.ts";
+import { DISCORD_SESSION_PREAMBLE } from "../../portal-discord/src/stream-render.ts";
 
 type Case = {
   name: string;

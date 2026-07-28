@@ -75,8 +75,8 @@ describe('official images assemble platform code locally', () => {
   it('assembles portal candidates from local workspaces', () => {
     const dockerfile = read('containers/portal/Dockerfile');
     expect(dockerfile).toContain('COPY packages/portal-sdk');
-    expect(dockerfile).toContain('COPY portals/discord');
-    expect(dockerfile).toContain('COPY portals/slack');
+    expect(dockerfile).toContain('COPY packages/portal-discord');
+    expect(dockerfile).toContain('COPY packages/portal-slack');
     expect(dockerfile).not.toContain('containers/portal/tools/package.json');
   });
 });

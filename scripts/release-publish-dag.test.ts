@@ -46,7 +46,7 @@ describe('0.13 release workflow', () => {
 	});
 
 	test('extensions are tested and publish the shared SDK before adapters', () => {
-		expect(extensions).toContain('bun test packages/guardian packages/portal-sdk portals/discord portals/slack');
+		expect(extensions).toContain('bun test packages/guardian packages/portal-sdk packages/portal-discord packages/portal-slack');
 		expect(extensions.indexOf('openpalm-portal-sdk-*.tgz')).toBeLessThan(
 			extensions.indexOf('openpalm-discord-portal-*.tgz')
 		);
@@ -56,7 +56,7 @@ describe('0.13 release workflow', () => {
 		const dockerfile = readFileSync(join(ROOT, 'containers', 'portal', 'Dockerfile'), 'utf8');
 		expect(dockerfile).toContain('COPY containers/portal/workspace.package.json /opt/openpalm/local-src/package.json');
 		expect(dockerfile).toContain('bun install --lockfile-only --ignore-scripts');
-		expect(dockerfile).toContain('/opt/openpalm/local-src/portals/discord');
+		expect(dockerfile).toContain('/opt/openpalm/local-src/packages/portal-discord');
 	});
 
 	test('live publication is protected and permissions are job scoped', () => {

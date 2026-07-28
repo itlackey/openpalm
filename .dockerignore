@@ -15,8 +15,8 @@ containers/guardian/node_modules
 containers/assistant/node_modules
 containers/portal/node_modules
 # portal adapter packages
-portals/discord/node_modules
-portals/slack/node_modules
+packages/portal-discord/node_modules
+packages/portal-slack/node_modules
 docs/
 *.md
 !AGENTS.md
