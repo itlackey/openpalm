@@ -27,6 +27,7 @@ import {
   cleanCaches,
   cleanupImagesAndVolumes,
   buildStorageReport,
+  resolveBackupsDirFor,
   describeDiskHeadroom,
   detectGpu,
   detectLocalProviders,
@@ -202,7 +203,13 @@ export async function runDoctorAction(
 
   const ports = await deps.probeInstallPorts(undefined, { dockerAvailable: docker.ok });
   const diskHeadroom = deps.checkDiskHeadroom(homeDir);
-  const storage = await deps.buildStorageReport({ homeDir, skipDocker: !docker.ok });
+  const storage = await deps.buildStorageReport({
+    homeDir,
+    // Honor OP_BACKUP_DIR — the report otherwise measures data/backups even
+    // when backups are configured onto another filesystem entirely.
+    backupsDir: resolveBackupsDirFor(homeDir),
+    skipDocker: !docker.ok,
+  });
 
   const projectName = deps.resolveComposeProjectName(deps.readStackEnv(homeDir));
   const dockerArtifacts = docker.ok

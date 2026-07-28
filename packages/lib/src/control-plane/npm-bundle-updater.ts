@@ -20,11 +20,15 @@ import { retry } from './retry.js';
 import { join } from 'node:path';
 import { createHash } from 'node:crypto';
 import { x as tarExtract } from 'tar';
-import { resolveBackupsDir } from './home.js';
+import { resolveBackupsDir, resolveOpenPalmHome } from './home.js';
+import { type BackupNamespace, pruneBackupNamespace } from './backup.js';
 import { createLogger } from '../logger.js';
 import { compareComparableVersions, isSameMajorVersion } from './versioning.js';
 
 const logger = createLogger('lib:npm-bundle');
+
+/** Newest host-updater snapshots kept per namespace (ui-*, skeleton-*). */
+const BUNDLE_BACKUPS_KEPT = 3;
 
 export const NPM_REGISTRY = 'https://registry.npmjs.org';
 
@@ -158,7 +162,7 @@ export interface CheckAndUpdateConfig<M extends NpmBundleManifest, R> {
    * The live directory to back up before swapping, and the path whose existence
    * gates the backup. `prefix` names the backup dir (`<prefix>-<timestamp>`).
    */
-  backup: { dir: string; gate: string; prefix: string };
+  backup: { dir: string; gate: string; prefix: BackupNamespace };
   /** Download + atomically swap the new bundle into place (throws on failure). */
   install: (manifest: M) => Promise<void>;
   /** Optional post-install side effect (e.g. write the version stamp). */
@@ -219,6 +223,23 @@ export async function checkAndUpdateNpmBundle<M extends NpmBundleManifest, R>(
     await cfg.install(manifest);
     cfg.afterInstall?.(manifest);
     logger.debug(`${cfg.logLabel} updated`, { from: currentVersion ?? '(unstamped)', to: latestVersion });
+
+    // Bound this namespace's own snapshots. These are app-created copies of
+    // regenerable npm bundles, and nothing else pruned them, so they
+    // accumulated indefinitely on every host that updates often. Scoped to
+    // this prefix only: an operator's timestamp backups and any protected
+    // -pre-rollback/-pre-update snapshot are never touched.
+    if (backupDir) {
+      try {
+        const removed = pruneBackupNamespace(resolveOpenPalmHome(), cfg.backup.prefix, BUNDLE_BACKUPS_KEPT);
+        if (removed.length > 0) {
+          logger.debug(`pruned old ${cfg.logLabel} backups`, { removed: removed.length });
+        }
+      } catch (err) {
+        // Retention is best-effort — never fail an otherwise-good update.
+        logger.debug(`${cfg.logLabel} backup prune failed (non-fatal)`, { error: errMessage(err) });
+      }
+    }
 
     return cfg.onSuccess(latestVersion, backupDir);
   } catch (err) {

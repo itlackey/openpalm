@@ -1,5 +1,5 @@
 import { defineCommand } from 'citty';
-import { listBackupDirs, pruneBackupDirs, resolveOpenPalmHome } from '@openpalm/lib';
+import { planBackupPrune, pruneBackupDirs, resolveOpenPalmHome } from '@openpalm/lib';
 import { promptYesNo } from '../lib/prompt.ts';
 
 export default defineCommand({
@@ -20,7 +20,10 @@ export default defineCommand({
           '  - Minor upgrade (e.g. 0.12.0 → 0.13.0): keep 1 prior minor (the most recent',
           '    backup from the previous minor series).',
           '',
-          'Pruning is never automatic and always confirm-gated. Use --yes to skip the prompt.',
+          'This command is always confirm-gated; use --yes to skip the prompt. Two other',
+          'paths prune on their own: `install --force` keeps the newest 3, and the host-side',
+          'UI/skeleton updater keeps the newest 3 of its own `ui-*`/`skeleton-*` snapshots.',
+          'Recovery snapshots (-pre-rollback, -pre-update) are never pruned by anything.',
         ].join('\n'),
       },
       args: {
@@ -48,8 +51,12 @@ export default defineCommand({
         }
 
         const homeDir = resolveOpenPalmHome();
-        const existing = listBackupDirs(homeDir);
-        const toDelete = existing.slice(keep);
+        // Preview exactly what pruneBackupDirs will delete. A global
+        // `listBackupDirs().slice(keep)` disagrees with it in both directions:
+        // retention is per-namespace, and -pre-rollback/-pre-update snapshots
+        // are never pruned — so the old preview could list dirs that survive
+        // and omit dirs that die, on a destructive confirm prompt.
+        const { toDelete, protected: protectedDirs } = planBackupPrune(homeDir, keep);
 
         if (toDelete.length === 0) {
           console.log('No backups to prune.');
@@ -58,6 +65,10 @@ export default defineCommand({
 
         console.log('The following backup directories will be deleted:');
         for (const backupDir of toDelete) console.log(`  ${backupDir}`);
+        if (protectedDirs.length > 0) {
+          console.log('\nThese recovery snapshots are protected and will be kept:');
+          for (const backupDir of protectedDirs) console.log(`  ${backupDir}`);
+        }
 
         if (!args.yes) {
           const ok = await promptYesNo('Delete these backups? [y/N]');

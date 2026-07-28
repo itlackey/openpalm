@@ -1,5 +1,5 @@
 import { defineCommand } from 'citty';
-import { rmSync } from 'node:fs';
+import { existsSync, rmSync } from 'node:fs';
 import { ensureValidState } from '../lib/cli-state.ts';
 import { runComposeWithPreflight } from '../lib/cli-compose.ts';
 import {
@@ -14,6 +14,7 @@ import {
   resolveStateDir,
   resolveSystemDir,
   resolveWorkspaceDir,
+  resolveBackupsDirFor,
 } from '@openpalm/lib';
 import { defineAction } from '../lib/action.ts';
 
@@ -86,12 +87,24 @@ export async function runUninstallAction(
         resolveWorkspaceDir(),
         resolveDataDir(),
       ];
+      // A backup destination configured OUTSIDE OP_HOME (OP_BACKUP_DIR) is not
+      // reached by any resolver above, so purge cannot claim "all data removed"
+      // without saying so. Never delete it: it is an operator-chosen location
+      // that may hold more than OpenPalm's snapshots.
+      const backupsDir = resolveBackupsDirFor(state.homeDir);
+      const externalBackups = !backupsDir.startsWith(`${state.homeDir}/`) && existsSync(backupsDir);
+
       for (const dir of dirs) {
         console.log(`Removing ${dir}`);
         rmSync(dir, { recursive: true, force: true });
         if (dir === state.dataDir) purgeRemovedLock = true;
       }
-      console.log('OpenPalm stack and all data removed.');
+      if (externalBackups) {
+        console.log(`OpenPalm stack and all data under ${state.homeDir} removed.`);
+        console.log(`Backups at ${backupsDir} were preserved — remove them manually if you want them gone.`);
+      } else {
+        console.log('OpenPalm stack and all data removed.');
+      }
     } else {
       console.log('OpenPalm stack stopped and removed.');
       if (!args.volumes) {

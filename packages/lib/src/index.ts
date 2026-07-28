@@ -42,7 +42,9 @@ export {
 export {
   backupOpenPalmHome,
   listBackupDirs,
+  planBackupPrune,
   pruneBackupDirs,
+  pruneBackupNamespace,
   estimateHomeBackupBytes,
   checkBackupFreeSpace,
   describeBackupSpaceShortfall,
@@ -109,6 +111,7 @@ export {
   authJsonFile,
   privateDir,
   privateSecretsDir,
+  resolveBackupsDirFor,
 } from "./control-plane/home.js";
 
 // ── Path Resolution ─────────────────────────────────────────────────────

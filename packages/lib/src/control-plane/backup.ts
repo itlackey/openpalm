@@ -366,7 +366,7 @@ function isProtectedRecoveryBackup(dirPath: string): boolean {
  * a burst of one type must never evict another type's snapshots, and mixing
  * them under one lexicographic/global cutoff is exactly the bug this fixes.
  */
-type BackupNamespace = "timestamp" | "ui" | "skeleton";
+export type BackupNamespace = "timestamp" | "ui" | "skeleton";
 
 function backupNamespace(dirPath: string): BackupNamespace {
   const name = dirPath.slice(dirPath.lastIndexOf("/") + 1);
@@ -383,16 +383,23 @@ function backupNamespace(dirPath: string): BackupNamespace {
  * `skeleton-*` host-updater snapshots instead of leaving them to accumulate
  * unbounded or evicting them out of turn against unrelated timestamp backups.
  */
-export function pruneBackupDirs(homeDir: string, keep: number): string[] {
+export function planBackupPrune(
+  homeDir: string,
+  keep: number,
+  namespace?: BackupNamespace,
+): { toDelete: string[]; protected: string[] } {
   if (!Number.isInteger(keep) || keep < 0) {
     throw new Error('keep must be a non-negative integer');
   }
 
-  const prunable = listBackupDirs(homeDir).filter((dir) => !isProtectedRecoveryBackup(dir));
+  const all = listBackupDirs(homeDir);
+  const protectedDirs = all.filter(isProtectedRecoveryBackup);
+  const prunable = all.filter((dir) => !isProtectedRecoveryBackup(dir));
 
   const byNamespace = new Map<BackupNamespace, string[]>();
   for (const dir of prunable) {
     const ns = backupNamespace(dir);
+    if (namespace && ns !== namespace) continue;
     const list = byNamespace.get(ns);
     if (list) {
       list.push(dir);
@@ -406,6 +413,28 @@ export function pruneBackupDirs(homeDir: string, keep: number): string[] {
     // `dirs` inherits listBackupDirs' newest-first (mtime) order.
     toDelete.push(...dirs.slice(keep));
   }
+  return { toDelete, protected: protectedDirs };
+}
+
+export function pruneBackupDirs(homeDir: string, keep: number): string[] {
+  const { toDelete } = planBackupPrune(homeDir, keep);
+  for (const backupDir of toDelete) {
+    rmSync(backupDir, { recursive: true, force: true });
+  }
+  return toDelete;
+}
+
+/**
+ * Prune ONE namespace to its newest `keep`. Used by the host-side hot-swap
+ * updater to bound its own `ui-*`/`skeleton-*` snapshots without ever touching
+ * an operator's timestamp backups or a protected recovery snapshot.
+ */
+export function pruneBackupNamespace(
+  homeDir: string,
+  namespace: BackupNamespace,
+  keep: number,
+): string[] {
+  const { toDelete } = planBackupPrune(homeDir, keep, namespace);
   for (const backupDir of toDelete) {
     rmSync(backupDir, { recursive: true, force: true });
   }

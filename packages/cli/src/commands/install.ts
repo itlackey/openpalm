@@ -7,7 +7,7 @@ import { defineAction } from '../lib/action.ts';
 import { promptYesNo } from '../lib/prompt.ts';
 import { resolveLatestReleaseTag } from '../lib/github.ts';
 import { DEFAULT_UI_PORT } from '../lib/ports.ts';
-import { resolveOpenPalmHome, resolveConfigDir, ensureHomeDirs, runHomeMigrations, hasMaterializedLocalInstall, hasAnyStackEnvFile } from '@openpalm/lib';
+import { resolveOpenPalmHome, resolveConfigDir, ensureHomeDirs, runHomeMigrations, hasMaterializedLocalInstall, hasAnyStackEnvFile, resolveBackupsDirFor } from '@openpalm/lib';
 import { applyHomeSeed, seedUiBuild, uiUpdateChannel } from '@openpalm/lib';
 import {
   backupOpenPalmHome,
@@ -179,7 +179,7 @@ export async function bootstrapInstall(options: InstallOptions): Promise<void> {
 
   if (alreadyInstalled && options.force) {
     // Match backupOpenPalmHome()'s convention so the prompt is honest.
-    const plannedBackup = `${homeDir}/data/backups/<timestamp>`;
+    const plannedBackup = `${resolveBackupsDirFor(homeDir)}/<timestamp>`;
 
     // Skip the prompt when --yes was passed OR when there's no TTY (CI/scripts).
     // Without the TTY exemption we would silently hang a non-interactive
