@@ -112,6 +112,7 @@ export {
   privateDir,
   privateSecretsDir,
   resolveBackupsDirFor,
+  resolveCacheDir,
 } from "./control-plane/home.js";
 
 // ── Path Resolution ─────────────────────────────────────────────────────

@@ -15,6 +15,7 @@ import {
   resolveSystemDir,
   resolveWorkspaceDir,
   resolveBackupsDirFor,
+  resolveCacheDir,
 } from '@openpalm/lib';
 import { defineAction } from '../lib/action.ts';
 
@@ -85,6 +86,7 @@ export async function runUninstallAction(
         resolveStashDir(),
         resolvePrivateDir(),
         resolveWorkspaceDir(),
+        resolveCacheDir(),
         resolveDataDir(),
       ];
       // A backup destination configured OUTSIDE OP_HOME (OP_BACKUP_DIR) is not

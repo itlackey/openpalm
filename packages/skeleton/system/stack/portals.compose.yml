@@ -186,11 +186,9 @@ services:
       - "${OP_API_BIND_ADDRESS:-127.0.0.1}:${OP_API_PORT:-3821}:8182"
     volumes:
       - ${OP_HOME}/data/guardian:/opt/openpalm/guardian
-      # NOTE: S1 (relocating $HOME/.cache into its own purgeable named volume)
-      # is deferred — nesting a named volume inside the HOME bind mount makes
-      # Docker create the mountpoint root-owned on the host bind, which fails the
-      # rootless-ownership smoke test. The cache stays under the HOME bind
-      # (operator-owned) until a rootless-aware relocation lands. See §S1.
+      # S1: see core.compose.yml — regenerable cache on a pre-created host
+      # bind outside durable data/, not a named volume nested in the HOME bind.
+      - ${OP_HOME}/cache/guardian:/opt/openpalm/guardian/.cache
       - ${OP_HOME}/data/logs:/opt/openpalm/logs
       # MANAGED guardian config (moderation instructions/server/permission) →
       # OPENCODE_CONFIG_DIR. USER config (moderation model) → the operator's

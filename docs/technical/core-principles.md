@@ -67,7 +67,7 @@ These are hard constraints that must never be violated during development. See a
 
 Configuration is managed by **writing whole files** or **targeted edits**, chosen by who owns the file (see the ownership rule in § File System): user-owned files are seeded-if-missing or edited in place; app-owned files may be written whole. What is never done is leaving a template on disk for something to expand later — the CLI or admin validates proposed changes, writes finished files to live paths, and leaves `${VAR}` substitution to Docker Compose at runtime. All control-plane logic lives in `@openpalm/lib` — both CLI and admin import from this shared library. The managed OpenCode config is bind-mounted from `system/assistant/` at `/etc/opencode`, with user extensions mounted from `config/assistant/`.
 
-All OpenPalm state lives under a single root: **`~/.openpalm/`** (configurable via `OP_HOME`). Ephemeral cache lives at `~/.cache/openpalm/`. Under that root the layout is split into trees by **ownership**, so lifecycle sync can overwrite what it owns without ever touching a user file:
+All OpenPalm state lives under a single root: **`~/.openpalm/`** (configurable via `OP_HOME`). Regenerable container caches live in `OP_HOME/cache/` (§S1); host-side ephemeral cache lives at `~/.cache/openpalm/`. Under that root the layout is split into trees by **ownership**, so lifecycle sync can overwrite what it owns without ever touching a user file:
 
 | Tree | Owner | Contents |
 |---|---|---|
@@ -149,7 +149,7 @@ The `op_guardian_` prefix is accepted for the guardian because the shipped stack
 Subtrees: `assistant/`, `guardian/`, `akm/cache/`, `akm/data/`, `logs/`, `backups/`, `rollback/`.
 
 Shared user knowledge lives in `knowledge/` (not `data/`) — see § Stash / Vaults above.
-Ephemeral regenerable artifacts live outside `OP_HOME` under `~/.cache/openpalm/`.
+Regenerable container caches (bun/npm/opencode) live in `OP_HOME/cache/<service>/`, a sibling of `data/` rather than a child of it, so they are purgeable without touching durable state. They are pre-created operator-owned by `ensureHomeDirs` and bind-mounted over the in-container cache paths — NOT named volumes nested inside a bind, which made Docker create root-owned mountpoints and broke rootless installs (§S1). They are excluded from backups and removed by `--purge`. Host-side ephemeral artifacts still live outside `OP_HOME` under `~/.cache/openpalm/`.
 The shared work area lives in `workspace/`.
 
 **Write policy:** Each container may write only to its own designated subdirectories via its mounts. The assistant writes to `data/assistant/`, `knowledge/`, `data/akm/cache/`, `data/akm/data/`, `workspace/`, and `/opt/persistent`; the guardian writes to `data/guardian/` and `data/logs/`; and so on. No container may access another service's data directories. Stack-wide data operations require the host CLI or admin UI.
@@ -174,7 +174,7 @@ logs are the audit trail for chat + tool activity. UI/admin actions
 **Location:** `~/.openpalm/data/rollback/`
 **Purpose:** previous known-good config snapshots for automated rollback on deploy failure.
 
-Ephemeral system cache, when needed, belongs under `~/.cache/openpalm/`, not in the user-facing `OP_HOME` layout.
+Host-side ephemeral system cache belongs under `~/.cache/openpalm/`. Container caches belong in `OP_HOME/cache/` (above) — they must be reachable by a bind mount, which a host-user cache dir outside `OP_HOME` cannot portably provide.
 
 ### 6) Backups
 

@@ -24,7 +24,17 @@ import type { DockerClient } from "./docker.js";
  * (npm cache, `bun/install` cache, `.cache/opencode`) and the akm cache dir —
  * see `containers/assistant/entrypoint.sh` for the paths this mirrors.
  */
-export const CACHE_RELATIVE_PATHS = ["data/assistant/.cache", "data/guardian/.cache", "data/akm/cache"] as const;
+export const CACHE_RELATIVE_PATHS = [
+  // S1 relocation targets (current layout).
+  "cache/assistant",
+  "cache/guardian",
+  // Legacy in-data locations — still purgeable on installs that predate the
+  // relocation, and still real bytes on disk after it (the new bind shadows
+  // them in-container but never deletes them).
+  "data/assistant/.cache",
+  "data/guardian/.cache",
+  "data/akm/cache",
+] as const;
 
 /** Tool/dependency trees — reported (S8) but NEVER included in `cleanCaches` (they are live install state, not a cache). */
 export const TOOL_TREE_RELATIVE_PATHS = ["data/assistant/tools", "data/guardian/tools"] as const;

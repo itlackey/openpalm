@@ -30,7 +30,7 @@ export function estimateHomeBackupBytes(homeDir: string): number {
     }
     for (const entry of entries) {
       const full = join(dir, entry.name);
-      if (dir === homeDir && entry.name === "data") continue;
+      if (dir === homeDir && (entry.name === "data" || entry.name === "cache")) continue;
       if (entry.isDirectory()) {
         walk(full);
       } else if (entry.isFile()) {
@@ -223,7 +223,10 @@ export function backupOpenPalmHome(homeDir: string, options: BackupOpenPalmHomeO
   let copiedAny = false;
   try {
     for (const entry of readdirSync(homeDir, { withFileTypes: true })) {
-      if (entry.name === "data") continue;
+      // `data` is large regenerable runtime state; `cache` (S1) is purely
+      // regenerable by definition. Copying either would re-create the
+      // multi-GB snapshots #581 AC4 exists to prevent.
+      if (entry.name === "data" || entry.name === "cache") continue;
       copyEntry(join(homeDir, entry.name), join(stagingDir, entry.name));
       copiedAny = true;
     }

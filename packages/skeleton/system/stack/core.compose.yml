@@ -156,11 +156,14 @@ services:
       # system/assistant is the MANAGED config (OPENCODE_CONFIG_DIR) — plugins,
       # permissions, instructions; overwritten on update.
       - ${OP_HOME}/data/assistant:/home/opencode
-      # NOTE: S1 (relocating /home/opencode/.cache into its own purgeable named
-      # volume) is deferred. Nesting a named volume inside the HOME bind mount
-      # makes Docker create the mountpoint root-owned on the host bind, which
-      # fails the rootless-ownership smoke test. Caches stay under the HOME bind
-      # (operator-owned) until a rootless-aware relocation lands. See §S1.
+      # S1: regenerable caches (bun/npm/opencode) live OUTSIDE durable data/,
+      # in a purgeable cache/ tree. This is a host BIND, not a named volume:
+      # the first attempt (921412b1) nested a named volume inside the HOME bind
+      # and Docker created the mountpoint root-owned, failing the rootless
+      # smoke. ensureHomeDirs pre-creates cache/assistant operator-owned, so
+      # Docker never has to create it. Purge with `openpalm doctor
+      # --clean-caches`; excluded from backups.
+      - ${OP_HOME}/cache/assistant:/home/opencode/.cache
       - ${OP_HOME}/config/assistant:/home/opencode/.config/opencode
       - ${OP_HOME}/system/assistant:/etc/opencode
       - ${OP_HOME}/knowledge/secrets/auth.json:/home/opencode/.local/share/opencode/auth.json

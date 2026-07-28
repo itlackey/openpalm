@@ -63,6 +63,24 @@ describe('#499 pre-backup free-space check', () => {
     expect(bytes).toBeLessThan(200_000);
   });
 
+  it('excludes the S1 cache/ tree from both the estimate and the copy', () => {
+    // cache/ is regenerable by definition (bun/npm/opencode caches relocated
+    // out of durable data/). If a backup copied it, safety snapshots would
+    // reacquire exactly the multi-GB bloat #581 AC4 removed.
+    mkdirSync(join(homeDir, 'cache', 'assistant'), { recursive: true });
+    writeFileSync(join(homeDir, 'cache', 'assistant', 'huge.bin'), 'a'.repeat(200_000));
+
+    mkdirSync(join(homeDir, 'config'), { recursive: true });
+    writeFileSync(join(homeDir, 'config', 'small.txt'), 'b'.repeat(500));
+
+    expect(estimateHomeBackupBytes(homeDir)).toBeLessThan(200_000);
+
+    const backupDir = backupOpenPalmHome(homeDir);
+    expect(backupDir).not.toBeNull();
+    expect(existsSync(join(backupDir as string, 'config', 'small.txt'))).toBe(true);
+    expect(existsSync(join(backupDir as string, 'cache'))).toBe(false);
+  });
+
   it('does not refuse a real backup under disk pressure when only data/ is large', () => {
     mkdirSync(join(homeDir, 'data', 'assistant'), { recursive: true });
     writeFileSync(join(homeDir, 'data', 'assistant', 'huge.bin'), 'a'.repeat(200_000));
