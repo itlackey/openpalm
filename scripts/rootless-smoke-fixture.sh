@@ -17,6 +17,76 @@ smoke_platform_version() {
   node -p "require('./package.json').version"
 }
 
+# Seed an isolated OP_HOME with a PUBLISHED skeleton version from npm, so tests
+# can build a home as it actually shipped in an earlier release.
+#
+# This is what makes historical fixtures free to maintain: npm keeps every
+# published version immutably and each release adds another, so the pool of
+# testable eras grows on its own. Nothing is checked in, nothing goes stale,
+# and no snapshot has to be hand-updated (or scrubbed of secrets).
+#
+# Note the layouts genuinely differ across eras — 0.12.x ships manifest.json
+# and no system/; 0.13.x ships system/ and no manifest.json. That difference is
+# the point: it is what a migration has to cope with. Assert per-era, not
+# against one generic "old home" shape.
+#
+# Usage: smoke_copy_skeleton_version <home> <version>
+smoke_copy_skeleton_version() {
+  local home="$1"
+  local version="$2"
+  local workdir
+  workdir="$(mktemp -d)"
+
+  if ! ( cd "$workdir" && npm pack "@openpalm/skeleton@${version}" >/dev/null 2>&1 ); then
+    rm -rf "$workdir"
+    echo "Could not fetch @openpalm/skeleton@${version} from npm (offline, or version unpublished)." >&2
+    return 1
+  fi
+
+  mkdir -p "$home"
+  # npm wraps everything under package/; strip it so the tree lands at the
+  # home root exactly as smoke_copy_skeleton lays out the working-tree copy.
+  tar xzf "$workdir"/*.tgz -C "$home" --strip-components=1
+  rm -rf "$workdir"
+}
+
+# Make a skeleton-seeded home look like an INSTALL of that era, not a fresh
+# unpack. This matters more than it sounds: the migration gate treats a home
+# with no stack env file in any known location as an ABSENT install and stamps
+# it current without running anything (home.ts initHomeSchema /
+# home-schema.ts runHomeMigrations). Seeding only the skeleton therefore
+# produces a home that reports "migrated" while no migration ever ran.
+#
+# Writes the pre-split legacy artifacts a real 0.12.x install had:
+#   knowledge/env/stack.env  — the stack env before it moved to state/
+#   knowledge/secrets/*      — delegated secrets before §G1 moved them to private/
+# and removes any schema-version record, so the home reads as version 0.
+#
+# Usage: smoke_seed_legacy_install_state <home>
+smoke_seed_legacy_install_state() {
+  local home="$1"
+
+  rm -f "${home}/state/schema-version"
+
+  mkdir -p "${home}/knowledge/env"
+  cat >"${home}/knowledge/env/stack.env" <<'EOF'
+OP_PROJECT_NAME=upgrade-smoke
+OP_SETUP_COMPLETE=true
+OP_UI_PORT=3800
+OP_ASSISTANT_PORT=3801
+EOF
+
+  # Delegated secrets in their pre-§G1 home. The migration must relocate these
+  # into private/secrets and remove the originals from the assistant-reachable
+  # knowledge tree.
+  mkdir -p "${home}/knowledge/secrets"
+  chmod 700 "${home}/knowledge/secrets"
+  for name in op_guardian_admin_token op_api_key discord_bot_token op_ui_login_password; do
+    printf 'legacy-%s-value\n' "$name" >"${home}/knowledge/secrets/${name}"
+    chmod 600 "${home}/knowledge/secrets/${name}"
+  done
+}
+
 # Copy the shipped skeleton into the isolated OP_HOME.
 # Usage: smoke_copy_skeleton <home>
 smoke_copy_skeleton() {
