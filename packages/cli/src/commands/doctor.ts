@@ -304,7 +304,9 @@ function buildSessionClient(homeDir: string): SessionDeletionClient {
     listSessions: () => client.listSessions(),
     deleteSession: async (id: string) => {
       const res = await client.deleteSession(id);
-      return { ok: res.ok, message: res.ok ? undefined : (res.error ?? `HTTP ${res.status}`) };
+      // ProxyResult's failure branch carries `message` (+ status/code); the
+      // success branch carries neither, so narrow on `ok` before reading.
+      return res.ok ? { ok: true } : { ok: false, message: res.message || `HTTP ${res.status}` };
     },
   };
 }
