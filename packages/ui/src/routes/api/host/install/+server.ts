@@ -12,7 +12,7 @@ import {
 	createLogger,
 	buildComposeOptions,
 	checkDocker,
-	applyStack,
+	activateStack,
 	restoreSnapshot,
 	restoreSnapshotAndApplyStack,
 	teardownRenamedProject
@@ -64,10 +64,15 @@ export const POST: RequestHandler = async (event) => {
 					requestId
 				);
 			}
-			const stackResult = await applyStack({ kind: 'all' }, composeOpts);
+			const stackResult = await activateStack(
+				state,
+				{ kind: 'all' },
+				{},
+				{ lock, composeOptions: composeOpts }
+			);
 			if (!stackResult.ok) {
 				try {
-					await restoreSnapshotAndApplyStack(state);
+					await restoreSnapshotAndApplyStack(state, { lock });
 				} catch (rollbackError) {
 					logger.error('failed to restore install snapshot', {
 						requestId,

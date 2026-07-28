@@ -84,4 +84,19 @@ describe("overwriteSystemTree", () => {
     expect(updated).toHaveLength(0);
     expect(backupDir).toBeNull();
   });
+
+  it("removes managed files retired by the new release", () => {
+    seedSource("old\n");
+    overwriteSystemTree(sourceRoot, opHome);
+    const retired = join(opHome, "system", "retired.compose.yml");
+    writeFileSync(retired, "retired\n");
+    rmSync(join(sourceRoot, "system", "stack", "portals.compose.yml"));
+
+    const result = overwriteSystemTree(sourceRoot, opHome);
+
+    expect(existsSync(retired)).toBe(false);
+    expect(existsSync(join(opHome, "system", "stack", "portals.compose.yml"))).toBe(false);
+    expect(result.updated).toContain("system/retired.compose.yml");
+    expect(result.updated).toContain("system/stack/portals.compose.yml");
+  });
 });

@@ -1,6 +1,6 @@
 <script lang="ts">
-  import Spinner from '@openpalm/ui-kit/components/common/Spinner.svelte';
-  import Panel from '@openpalm/ui-kit/components/common/Panel.svelte';
+  import Spinner from '$lib/components/common/Spinner.svelte';
+  import Panel from '$lib/components/common/Panel.svelte';
   import ContainerRow from '$lib/components/admin/containers/ContainerRow.svelte';
   import ContainerDetail from '$lib/components/admin/containers/ContainerDetail.svelte';
   import ContainersEmptyState from '$lib/components/admin/containers/ContainersEmptyState.svelte';

@@ -118,6 +118,8 @@ export {
   privateSecretsDir,
   resolveBackupsDirFor,
   resolveCacheDir,
+  legacyKnowledgeStackEnvFile,
+  legacyStateEnvFile,
 } from "./control-plane/home.js";
 
 // ── Path Resolution ─────────────────────────────────────────────────────
@@ -201,11 +203,18 @@ export type {
 } from "./control-plane/secret-audit.js";
 export {
   auditComposeSecrets,
+  auditResolvedComposeSecrets,
   auditFileBasedSecrets,
   auditSecretFilesystem,
   auditStackEnv,
   isSecretLikeKey,
 } from "./control-plane/secret-audit.js";
+export {
+  runComposeActivation,
+  activateStack,
+  activateComposeCommand,
+} from './control-plane/activation.js';
+export type { ComposeActivationOptions } from './control-plane/activation.js';
 // ── Setup Status ────────────────────────────────────────────────────────
 export {
   isSetupComplete,
@@ -324,6 +333,8 @@ export {
 // ── Rollback ─────────────────────────────────────────────────────────────
 export {
   restoreSnapshot,
+  snapshotCurrentState,
+  currentSnapshotGeneration,
   hasSnapshot,
   snapshotTimestamp,
 } from "./control-plane/rollback.js";
@@ -685,6 +696,14 @@ export {
   uiUpdateChannel,
   declaredUiChannel,
 } from "./control-plane/ui-assets.js";
+export {
+  GITHUB_API,
+  GITHUB_REPOSITORY,
+  resolveHostAssetsRelease,
+  stageHostAssetsRelease,
+  hostAssetsChannel,
+  restoreHostAssetsBackup,
+} from './control-plane/host-assets-updater.js';
 
 export {
   buildEmptyUiRuntimeConfig,
@@ -745,3 +764,4 @@ export {
 } from "./control-plane/versioning.js";
 
 export { runHomeMigrations } from './control-plane/home-schema.js';
+export { captureRunningImageIds, restoreRunningImageIds } from './control-plane/image-snapshots.js';

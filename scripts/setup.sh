@@ -6,9 +6,6 @@
 #
 set -euo pipefail
 
-# Updated automatically by release workflow — do not edit manually
-SCRIPT_VERSION="0.13.0-beta.13"
-
 # ── Colors ────────────────────────────────────────────────────────────
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; BLUE='\033[0;34m'; NC='\033[0m'
 info() { printf "${BLUE}▸${NC} %s\n" "$*"; }
@@ -67,15 +64,11 @@ if [ -n "${REQUESTED_VERSION}" ]; then
   VERSION="$(normalize_version "${REQUESTED_VERSION}")"
 fi
 if [ -z "${VERSION}" ]; then
-  if [ "${SCRIPT_VERSION}" != "main" ]; then
-    VERSION="$(normalize_version "${SCRIPT_VERSION}")"
-  else
-    LATEST_RELEASE_JSON="$(curl -fsSL "https://api.github.com/repos/itlackey/openpalm/releases/latest")" \
-      || die "Could not determine latest release version"
-    RAW_VERSION="$(printf '%s\n' "${LATEST_RELEASE_JSON}" | grep '"tag_name"' | sed -E 's/.*"tag_name": *"([^"]+)".*/\1/')"
-    [ -n "${RAW_VERSION}" ] || die "Could not determine latest release version"
-    VERSION="$(normalize_version "${RAW_VERSION}")"
-  fi
+  LATEST_RELEASE_JSON="$(curl -fsSL "https://api.github.com/repos/itlackey/openpalm/releases/latest")" \
+    || die "Could not determine latest release version"
+  RAW_VERSION="$(printf '%s\n' "${LATEST_RELEASE_JSON}" | grep '"tag_name"' | sed -E 's/.*"tag_name": *"([^"]+)".*/\1/')"
+  [ -n "${RAW_VERSION}" ] || die "Could not determine latest release version"
+  VERSION="$(normalize_version "${RAW_VERSION}")"
 fi
 
 # ── Download ──────────────────────────────────────────────────────────

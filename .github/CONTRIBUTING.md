@@ -99,7 +99,6 @@ bun run ui:dev                 # Direct UI dev server on :5173
 bun run ui:dev:isolated        # Root isolated UI/API on :3880
 bun run ui:build               # Production UI build
 bun run ui:check               # UI Svelte/TypeScript checks
-bun run ui-kit:check           # UI kit checks
 bun run guardian:dev           # Guardian Bun server
 bun run guardian:api:dev       # Guardian OpenAI-compatible edge
 bun run portal:discord:dev     # Discord adapter
@@ -116,7 +115,7 @@ the complete set for release-sensitive changes.
 
 | Tier | Command | Scope |
 |---|---|---|
-| 1 | `bun run test:t1` | UI/UI-kit type checks |
+| 1 | `bun run test:t1` | UI type checks |
 | 2 | `bun run test:t2` | Non-UI Bun tests |
 | 3 | `bun run test:t3` | UI Vitest unit/component tests |
 | 4 | `bun run test:t4` | Self-contained Playwright browser tests |
@@ -161,30 +160,29 @@ Guardian and portal Dockerfiles must install their runtime dependencies inside
 the image. The Assistant and Guardian OpenCode pins are the exact `opencode-ai`
 dependencies in `containers/assistant/tools/package.json` and
 `containers/guardian/tools/package.json`; keep them in lockstep. There is no
-standalone UI image, but the Assistant image bakes the released UI and skeleton
-packages.
+standalone UI image; the Assistant image bakes the candidate-local compiled UI,
+while skeleton files arrive through the coordinated GitHub host-assets archive.
 
 ## Release Packaging
 
 All supported releases use `.github/workflows/release.yml`; see
 [Release Management](../docs/operations/release-management.md).
 
-The coordinated npm inventory is:
+The product release publishes one npm convenience package:
 
-- `@openpalm/lib`
 - `openpalm`
-- `@openpalm/ui`
-- `@openpalm/skeleton`
+
+The independent extension workflow may publish:
+
 - `@openpalm/guardian`
 - `@openpalm/portal-sdk`
 - `@openpalm/discord-portal`
 - `@openpalm/slack-portal`
 
-`@openpalm/ui` is a lockstep platform package, not an independently versioned
-release. Portal SDK, Discord, and Slack likewise move together in the portals
-unit. Source dependencies using `"workspace:*"` are intentional; the release
-candidate stamps every participating manifest and `bun pm pack` resolves the
-workspace protocol to those packed versions.
+`@openpalm/ui`, `@openpalm/skeleton`, and `@openpalm/lib` are private platform
+workspaces. Portal SDK, Discord, and Slack move together in the extension unit.
+Source dependencies using `"workspace:*"` are intentional; `bun pm pack`
+resolves them only when assembling an image or a package that remains public.
 
 Voice releases independently through `.github/workflows/publish-voice.yml`.
 

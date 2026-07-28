@@ -3,7 +3,7 @@
 // (users see a "please re-download" prompt) so this test catches it in CI.
 //
 // `minHarnessContract` lives in packages/ui/package.json (not a source
-// constant) because it travels with the published @openpalm/ui build. We read
+// constant) because it travels with the GitHub host-assets UI build. We read
 // it from the source package.json here so the assertion fires on every commit.
 //
 // Run via vitest (Node): bun run --cwd packages/electron test

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import Drawer from '../../lib/components/common/Drawer.svelte';
+  import Drawer from '../../components/common/Drawer.svelte';
 
   let firstOpen = $state(false);
   let secondOpen = $state(false);

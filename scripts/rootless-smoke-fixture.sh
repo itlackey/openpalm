@@ -158,8 +158,6 @@ OP_IMAGE_NAMESPACE=openpalm
 OP_ASSISTANT_VERSION=dev
 OP_GUARDIAN_VERSION=dev
 OP_PORTAL_VERSION=dev
-OP_GUARDIAN_NPM_VERSION=${platform_version}
-OP_SKELETON_VERSION=${platform_version}
 OP_ASSISTANT_PORT=${assistant_port}
 OP_UI_PORT=${ui_port}
 OP_GUARDIAN_PORT=${guardian_port}
@@ -190,23 +188,6 @@ smoke_ensure_home_dirs() {
   OP_HOME="$home" bun -e "import { ensureHomeDirs } from './packages/lib/src/index.ts'; ensureHomeDirs();"
 }
 
-# Write the version-pinning compose override both stacks use to force the
-# dev-built skeleton/guardian versions. The caller chooses the file path
-# (the two scripts intentionally place it differently), so this single-sources
-# only the content. Usage: smoke_write_version_override <file> <platform_version>
-smoke_write_version_override() {
-  local file="$1"
-  local platform_version="$2"
-  cat >"$file" <<EOF
-services:
-  assistant:
-    environment:
-      OP_SKELETON_VERSION: "${platform_version}"
-  guardian:
-    environment:
-      OP_GUARDIAN_NPM_VERSION: "${platform_version}"
-EOF
-}
 
 # Build the dev-tagged images (openpalm/{assistant,guardian,portal}:dev) the smoke
 # stacks boot. Honors OP_ROOTLESS_SMOKE_SKIP_BUILD=1 to reuse already-built images
@@ -225,53 +206,28 @@ smoke_build_images() {
   fi
   echo "Building UI..." >&2
   bun run ui:build >/dev/null
-  # The guardian Dockerfile bakes @openpalm/guardian@${GUARDIAN_VERSION} at
-  # build time and fails if it is unset (see compose.dev.yml guardian args).
-  # Bake the repo's exact version so the smoke image matches the source tree.
+  # Bake the repo's exact Guardian version for runtime introspection.
   GUARDIAN_VERSION="$(node -p "require('./packages/guardian/package.json').version")"
   PLATFORM_VERSION="$(smoke_platform_version)"
-  SKELETON_VERSION="$PLATFORM_VERSION"
-  GUARDIAN_USE_LOCAL_SOURCE=true
-  SKELETON_USE_LOCAL_SOURCE=true
   export GUARDIAN_VERSION
   export PLATFORM_VERSION
-  export SKELETON_VERSION
-  export GUARDIAN_USE_LOCAL_SOURCE
-  export SKELETON_USE_LOCAL_SOURCE
   local targets=()
   local target
-  local overlay_assistant=0
   for target in "$@"; do
     if [ "$target" = "portal" ]; then
       targets+=(discord)
     else
       targets+=("$target")
     fi
-    if [ "$target" = "assistant" ]; then overlay_assistant=1; fi
   done
   echo "Building images: ${targets[*]} (PLATFORM_VERSION=${PLATFORM_VERSION}, GUARDIAN_VERSION=${GUARDIAN_VERSION}) ..." >&2
-  local compose_platform_version="$PLATFORM_VERSION"
-  if [ "$overlay_assistant" = "1" ]; then compose_platform_version=""; fi
   # --profile addon.chat makes the profiled guardian visible; addon.discord makes
   # the portal build target visible. compose.dev.yml supplies the build contexts.
-  PLATFORM_VERSION="$compose_platform_version" docker compose --project-directory . \
+  docker compose --project-directory . \
     -f packages/skeleton/system/stack/core.compose.yml \
     -f packages/skeleton/system/stack/portals.compose.yml \
     -f compose.dev.yml \
     --profile addon.chat --profile addon.discord \
     build "${targets[@]}" >/dev/null
 
-  if [ "$overlay_assistant" = "1" ]; then
-    local package_context
-    package_context="$(mktemp -d)"
-    (cd packages/ui && bun pm pack --destination "$package_context" --quiet)
-    (cd packages/skeleton && bun pm pack --destination "$package_context" --quiet)
-    docker build \
-      --file containers/assistant/Dockerfile.local-packages \
-      --build-arg "BASE_IMAGE=${OP_IMAGE_NAMESPACE:-openpalm}/assistant:dev" \
-      --build-arg "PLATFORM_VERSION=${PLATFORM_VERSION}" \
-      --tag "${OP_IMAGE_NAMESPACE:-openpalm}/assistant:dev" \
-      "$package_context" >/dev/null
-    rm -rf "$package_context"
-  fi
 }

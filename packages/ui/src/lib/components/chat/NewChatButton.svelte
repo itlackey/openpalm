@@ -4,8 +4,8 @@
   import { chat } from '$lib/chat/chat-state.svelte.js';
   import { buildConversationPath } from '$lib/chat/navigation.js';
   import { endpointsService } from '$lib/endpoints-state.svelte.js';
-  import IconButton from '@openpalm/ui-kit/components/common/IconButton.svelte';
-  import IconAdd from '@openpalm/ui-kit/components/icons/IconAdd.svelte';
+  import IconButton from '$lib/components/common/IconButton.svelte';
+  import IconAdd from '$lib/components/icons/IconAdd.svelte';
 
   let starting = $state(false);
   async function newChat(): Promise<void> {

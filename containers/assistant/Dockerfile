@@ -203,10 +203,10 @@ RUN set -e; \
 #     Docker seeds a fresh volume from this image path WITH this ownership the
 #     first time the volume is created, so this chmod is what the arbitrary
 #     uid actually inherits.
-#   - `/opt/openpalm/ui` and `/opt/openpalm/skeleton` have no mount over them
-#     at all (#585 deleted the named volume that used to cover /opt/openpalm),
-#     so the image layer is served straight through, unshadowed — this chmod
-#     is likewise what the arbitrary uid sees at runtime.
+#   - `/opt/openpalm/ui` has no mount over it at all (#585 deleted the named
+#     volume that used to cover /opt/openpalm), so the image layer is served
+#     straight through, unshadowed — this chmod is likewise what the arbitrary
+#     uid sees at runtime.
 #   - `/home/opencode`, `/work`, `/stash`, `/opt/akm` are core.compose.yml BIND
 #     mount targets: at runtime the host directory's ownership wins and this
 #     chmod is shadowed. It still matters at the mountPOINT level — it is what
@@ -223,12 +223,12 @@ RUN set -e; \
 # container only ever READS it — no write access needed here. Secrets
 # (knowledge/secrets, 0600) are a separate bind-mount tree.
 RUN mkdir -p /home/opencode/.cache /home/opencode/.local/bin /work /stash /opt/akm/cache /opt/akm/data /opt/persistent/bin \
-    && mkdir -p /opt/openpalm/ui /opt/openpalm/skeleton /opt/openpalm/tools \
-    && chown -R node:node /home/opencode /work /stash /opt/akm /opt/persistent /opt/openpalm/ui /opt/openpalm/skeleton \
-    && chmod -R a+rwX /home/opencode /work /stash /opt/akm /opt/persistent /opt/openpalm/ui /opt/openpalm/skeleton
+    && mkdir -p /opt/openpalm/ui /opt/openpalm/tools \
+    && chown -R node:node /home/opencode /work /stash /opt/akm /opt/persistent /opt/openpalm/ui \
+    && chmod -R a+rwX /home/opencode /work /stash /opt/akm /opt/persistent /opt/openpalm/ui
 
-# Platform version — the exact pin baked into the @openpalm/ui and
-# @openpalm/skeleton bakes below (E2: build-time only, no runtime override).
+# Platform version for runtime introspection. The UI source copied below is the
+# candidate being tested and is never resolved from the public npm registry.
 #
 # IMG-6: this MUST stay below every heavy layer. It changes on every release,
 # so anything under it is cache-invalidated and re-pushed/re-pulled each time.
@@ -240,40 +240,16 @@ ARG PLATFORM_VERSION
 ENV PLATFORM_VERSION=${PLATFORM_VERSION}
 
 # ── @openpalm/ui bake ────────────────────────────────────────────────────────
-# Same approach as containers/guardian/Dockerfile's baked guardian/skeleton
-# install: put a real @openpalm/ui build at its runtime path INSIDE the image,
-# so the image is complete offline with no boot-time npm dependency at all
-# (E2: there is no runtime `npm install` anymore — this bake IS the steady
-# state, not just an air-gap floor). #585 deleted the named volume that used to
-# mount over /opt/openpalm, so this works even more directly now: nothing
-# mounts anything over this path at all — the baked content is served straight
-# from the image's own layer, unshadowed, for the life of the container.
-# Skipped when PLATFORM_VERSION is unset (local/dev builds with no resolvable
-# exact pin) so the image still builds without one; every versioned release
-# build gets it.
-RUN if [ -n "$PLATFORM_VERSION" ]; then \
-      npm install --prefix /opt/openpalm/ui "@openpalm/ui@${PLATFORM_VERSION}" \
-        --omit=dev --no-fund --no-audit \
-      && chmod -R a+rwX /opt/openpalm/ui; \
-    else \
-      echo "WARN: PLATFORM_VERSION unset at build time — no fallback @openpalm/ui baked (dev/local build only)" >&2; \
-    fi
-
-# ── @openpalm/skeleton bake ──────────────────────────────────────────────────
-# Mirrors the @openpalm/ui bake immediately above (and containers/guardian's
-# own baked skeleton install) — the assistant previously baked NO skeleton
-# floor at all, so an air-gapped first boot had nothing to fall back to (the
-# original E2 gap). Now that the runtime `npm install @openpalm/skeleton` is
-# gone from entrypoint.sh, this bake is the ONLY source: no fallback floor,
-# the real thing. Same PLATFORM_VERSION gate and same unshadowed-image-layer
-# reasoning (#585) as the UI bake immediately above.
-RUN if [ -n "$PLATFORM_VERSION" ]; then \
-      npm install --prefix /opt/openpalm/skeleton "@openpalm/skeleton@${PLATFORM_VERSION}" \
-        --omit=dev --no-fund --no-audit \
-      && chmod -R a+rwX /opt/openpalm/skeleton; \
-    else \
-      echo "WARN: PLATFORM_VERSION unset at build time — no fallback @openpalm/skeleton baked (dev/local build only)" >&2; \
-    fi
+# The compiled candidate is copied from the checkout and packed locally. This
+# keeps live builds and coordinated dry runs on the same path without requiring
+# the candidate UI version to have been published first.
+COPY packages/ui /opt/openpalm/local-src/ui
+RUN mkdir -p /opt/openpalm/local-artifacts \
+    && (cd /opt/openpalm/local-src/ui && bun pm pack --destination /opt/openpalm/local-artifacts --quiet) \
+    && npm install --prefix /opt/openpalm/ui /opt/openpalm/local-artifacts/openpalm-ui-*.tgz \
+         --omit=dev --no-fund --no-audit \
+    && rm -rf /opt/openpalm/local-src /opt/openpalm/local-artifacts \
+    && chmod -R a+rwX /opt/openpalm/ui
 
 COPY containers/assistant/entrypoint.sh /usr/local/bin/opencode-entrypoint.sh
 RUN chmod +x /usr/local/bin/opencode-entrypoint.sh

@@ -115,9 +115,9 @@ secrets at `/run/secrets/`; neither appears under `/stash`.
 | OpenPalm UI | `3000` | `${OP_UI_BIND_ADDRESS:-127.0.0.1}:${OP_UI_PORT:-3800}` |
 | OpenCode | `4096` | `${OP_ASSISTANT_BIND_ADDRESS:-127.0.0.1}:${OP_ASSISTANT_PORT:-3810}` |
 
-The image bakes the `@openpalm/ui` build and `@openpalm/skeleton` at build time.
-The entrypoint supervises the baked UI; it does not install either package at
-runtime.
+The image bakes the candidate-local `@openpalm/ui` build. The entrypoint
+supervises the baked UI and performs no runtime package install. Skeleton assets
+are materialized on the host from the coordinated host-assets release.
 
 ### Key Environment
 
@@ -189,7 +189,6 @@ There is one Guardian OpenAI-compatible listener and one host publication. The
 | `GUARDIAN_OPENAI_PORT` | `8182` | Single compatible API listener |
 | `OPENAI_COMPAT_API_KEY_FILE` | `/run/secrets/op_api_key` | Client API key; missing key fails closed |
 | `OP_GUARDIAN_NPM_VERSION` | Image version when unset | Guardian thin-host package override |
-| `OP_SKELETON_VERSION` | Image-baked `SKELETON_VERSION` when unset | Guardian thin-host skeleton override |
 
 Only explicit `0`, `false`, `no`, or `off` values (case-insensitive) disable
 content validation. Suspicious messages escalate to the moderator; moderator

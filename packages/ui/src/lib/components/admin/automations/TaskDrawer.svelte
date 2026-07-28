@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import Drawer from '@openpalm/ui-kit/components/common/Drawer.svelte';
-  import Spinner from '@openpalm/ui-kit/components/common/Spinner.svelte';
+  import Drawer from '$lib/components/common/Drawer.svelte';
+  import Spinner from '$lib/components/common/Spinner.svelte';
   import {
     SCHEDULE_PRESETS,
     DOW_LABELS,

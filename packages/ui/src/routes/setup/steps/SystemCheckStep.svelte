@@ -1,10 +1,10 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import FriendlyError from '@openpalm/ui-kit/components/common/FriendlyError.svelte';
-  import IconServer from '@openpalm/ui-kit/components/icons/IconServer.svelte';
-  import IconConnect from '@openpalm/ui-kit/components/icons/IconConnect.svelte';
+  import FriendlyError from '$lib/components/common/FriendlyError.svelte';
+  import IconServer from '$lib/components/icons/IconServer.svelte';
+  import IconConnect from '$lib/components/icons/IconConnect.svelte';
   import { friendlyError, type FriendlyErrorView } from '$lib/client/error-messages.js';
-  import Spinner from '@openpalm/ui-kit/components/common/Spinner.svelte';
+  import Spinner from '$lib/components/common/Spinner.svelte';
   import { setupState } from '$lib/setup/setup-state.svelte.js';
 
   interface CheckResult {

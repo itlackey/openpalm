@@ -15,7 +15,7 @@ settings screen.
 
 ### Where the tokens live
 
-- `packages/ui-kit/src/lib/theme/tokens.css` — the Stillness `--s-*` tokens
+- `packages/ui/src/lib/theme/tokens.css` — the Stillness `--s-*` tokens
   (colors, type scale, spacing, motion).
 - `packages/ui/src/app.css` imports it and keeps only app-level layout CSS.
 
@@ -63,10 +63,10 @@ surface.
 
 ### Guardrails
 
-`packages/ui-kit/tests/theme-tokens.test.ts` pins the default palette to
+`packages/ui/src/lib/theme-tokens.vitest.ts` pins the default palette to
 WCAG AA (4.5:1 text, 3:1 borders, type floors, 4px spacing grid). If you
 change the **default** theme in source, keep it green
-(`cd packages/ui-kit && bun test`).
+(`cd packages/ui && npm run test:unit -- --run`).
 
 ---
 
@@ -171,7 +171,7 @@ only, ≤ 1 MB.
   (#506): per-pattern design decisions (which implementation won, what was
   absorbed from other surfaces, what was deleted) are logged in this
   section as they're made.
-- Token changes land in `packages/ui-kit`; keep `theme-tokens.test.ts` and
+- Token changes land in `packages/ui/src/lib/theme`; keep the token test and
   `svelte-check` green.
 - Consume `var(--s-*)` anchors or `color-mix()` tints — never hardcode a
   palette literal (hardcoded contrast-paired literals break operator

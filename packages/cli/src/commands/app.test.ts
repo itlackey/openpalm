@@ -311,7 +311,7 @@ describe('openpalm app on a not-installed OP_HOME (#486 stack-less app entry)', 
         fetchedUrls.some((url) => url.includes('@openpalm/skeleton') || url.includes('%40openpalm%2Fskeleton')),
       ).toBe(false);
       expect(
-        fetchedUrls.some((url) => url.includes('@openpalm/ui') || url.includes('%40openpalm%2Fui')),
+        fetchedUrls.some((url) => url.includes('api.github.com/repos/itlackey/openpalm/releases')),
       ).toBe(true);
     },
     15000
@@ -359,7 +359,7 @@ describe('openpalm app on an installed OP_HOME', () => {
 
       expect(logs.some((line) => line.includes('Checking for skeleton update'))).toBe(true);
       expect(
-        fetchedUrls.some((url) => url.includes('@openpalm/skeleton') || url.includes('%40openpalm%2Fskeleton')),
+        fetchedUrls.some((url) => url.includes('api.github.com/repos/itlackey/openpalm/releases')),
       ).toBe(true);
       expect(child.cwd).toBeDefined();
       const runtimeConfig = realLib.parseUiRuntimeConfigJson(

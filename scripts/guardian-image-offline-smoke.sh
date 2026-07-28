@@ -3,11 +3,11 @@
 # ZERO registry access (S.4).
 #
 # The guardian is the trust boundary. Before S.4 it fetched its own code
-# (@openpalm/guardian, @openpalm/skeleton) from npm at first boot via
+# (@openpalm/guardian) from npm at first boot via
 # `bun add` in entrypoint.sh — an unpinned, unverified, network-dependent
 # install of the very code that enforces the security boundary. This script
-# builds the image (registry access allowed at BUILD time, where it is
-# reviewable) and then boots a container with `--network none`: if the
+# builds the image from the local candidate source and then boots a container
+# with `--network none`: if the
 # guardian package is genuinely baked into the image layers, boot is a
 # no-op install-skip and the server reaches healthy with no network at all.
 #
@@ -32,7 +32,6 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
 GUARDIAN_VERSION="$(node -p "require('./packages/guardian/package.json').version")"
-SKELETON_VERSION="$(node -p "require('./packages/skeleton/package.json').version")"
 IMAGE="openpalm-guardian-offline-smoke:test"
 CONTAINER="guardian-offline-smoke-$$"
 # NEVER use a /tmp source for a docker bind-mount here: when dockerd runs
@@ -64,10 +63,9 @@ cleanup() {
 }
 trap cleanup EXIT
 
-echo "Building guardian image (registry access permitted at build time) GUARDIAN_VERSION=${GUARDIAN_VERSION}, SKELETON_VERSION=${SKELETON_VERSION}..."
+echo "Building guardian image from local candidate GUARDIAN_VERSION=${GUARDIAN_VERSION}..."
 docker build -f containers/guardian/Dockerfile \
   --build-arg GUARDIAN_VERSION="${GUARDIAN_VERSION}" \
-  --build-arg SKELETON_VERSION="${SKELETON_VERSION}" \
   -t "$IMAGE" .
 
 echo "Booting with --network none (no DNS, no registry, no assistant reachability)"
@@ -97,30 +95,16 @@ echo "PASS: guardian reached healthy under --network none."
 # The reproducibility receipt (package@version + entry + auth strategy in one
 # structured boot line) is asserted against LOCAL source in
 # packages/guardian/src/server.test.ts ("Guardian boot receipt"), not here:
-# this script builds from the currently-PUBLISHED @openpalm/guardian npm
-# package, which only carries the receipt once this change ships a release.
-# What this script verifies is the install itself: the baked package is used
-# as-is with no re-fetch, which the "already installed, skipping" lines below
-# confirm.
-# Match the prefix and the trailing "skipping" separately rather than the whole
-# sentence: #584 (a72da8f0) added a "(<installed> satisfies <wanted>)" clause to
-# this line when it fixed the range-never-skips bug, and the exact-string match
-# here silently stopped matching — the guard reported failure on every run even
-# though the skip was working. Keep it loose enough to survive wording, tight
-# enough to still prove the skip happened for THIS package at THIS version.
+# this script builds from the local candidate source. What this script verifies
+# is that the baked package is used as-is with no re-fetch.
 # Capture once because `docker logs | grep -q` races under pipefail: grep can
 # close the pipe after a match and turn docker's resulting SIGPIPE into failure.
 CONTAINER_LOGS="$(docker logs "$CONTAINER" 2>&1)"
-if ! grep -q "@openpalm/guardian@${GUARDIAN_VERSION} already installed.*skipping" <<<"$CONTAINER_LOGS"; then
-  echo "FAIL: entrypoint did not skip the guardian install (baked package was re-fetched or missing)" >&2
+if ! grep -q "using image-baked Guardian package" <<<"$CONTAINER_LOGS"; then
+  echo "FAIL: entrypoint did not use the baked guardian package" >&2
   printf '%s\n' "$CONTAINER_LOGS" >&2
   exit 1
 fi
-if ! grep -q "@openpalm/skeleton@${SKELETON_VERSION} already installed.*skipping" <<<"$CONTAINER_LOGS"; then
-  echo "FAIL: entrypoint did not skip the skeleton install (baked package was re-fetched or missing)" >&2
-  printf '%s\n' "$CONTAINER_LOGS" >&2
-  exit 1
-fi
-echo "PASS: baked package@version installs were no-ops at boot (no re-fetch)."
+echo "PASS: local candidate package was used at boot (no re-fetch)."
 
 echo "guardian-image-offline-smoke: OK"

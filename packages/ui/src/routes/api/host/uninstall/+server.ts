@@ -9,9 +9,8 @@ import { withAdminUpdateLock } from '$lib/server/admin-update-lock.js';
 import { getState } from "$lib/server/state.js";
 import {
   applyUninstall,
-  buildComposeOptions,
   createLogger,
-  composeDown,
+  activateComposeCommand,
   checkDocker,
   teardownRenamedProject,
 } from "@openpalm/lib";
@@ -43,7 +42,7 @@ export const POST: RequestHandler = async (event) => {
             requestId,
           );
         }
-        await composeDown(buildComposeOptions(state));
+        await activateComposeCommand(state, ['down'], { lock });
       }
 
       logger.info("stopping containers and applying uninstall", { requestId, dockerAvailable: dockerCheck.ok });

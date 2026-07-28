@@ -13,7 +13,7 @@ vi.mock('@openpalm/lib', async () => {
 	const actual = await vi.importActual<typeof import('@openpalm/lib')>('@openpalm/lib');
 	return {
 		...actual,
-		applyStack: (...args: unknown[]) => applyStackMock(...args),
+		activateStack: (...args: unknown[]) => applyStackMock(...args),
 		buildComposeOptions: (...args: unknown[]) => buildComposeOptionsMock(...args),
 		checkDocker: (...args: unknown[]) => checkDockerMock(...args),
 		composeConfigServices: (...args: unknown[]) => composeConfigServicesMock(...args),
@@ -103,10 +103,10 @@ describe('POST /api/host/update', () => {
 		expect(response.status).toBe(200);
 		expect(composeConfigServicesMock).toHaveBeenCalledWith(composeOptions);
 		expect(applyStackMock).toHaveBeenCalledWith(
+			expect.anything(),
 			{ kind: 'service', service: 'discord' },
-			composeOptions,
-			undefined,
-			{ pull: 'always' }
+			{ pull: 'always' },
+			expect.objectContaining({ composeOptions, lock: expect.anything() })
 		);
 		expect(performUpgradeMock).not.toHaveBeenCalled();
 		expect(await response.json()).toEqual({ ok: true });

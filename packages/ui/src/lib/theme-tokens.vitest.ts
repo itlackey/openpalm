@@ -1,9 +1,9 @@
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 const TOKENS_CSS = readFileSync(
-  fileURLToPath(new URL('../src/lib/theme/tokens.css', import.meta.url)),
+  fileURLToPath(new URL('./theme/tokens.css', import.meta.url)),
   'utf-8',
 );
 

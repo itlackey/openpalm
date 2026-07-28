@@ -12,7 +12,7 @@
    */
 
   import ProviderOAuthList from './ProviderOAuthList.svelte';
-  import Spinner from '@openpalm/ui-kit/components/common/Spinner.svelte';
+  import Spinner from '$lib/components/common/Spinner.svelte';
   import { setupState } from '$lib/setup/setup-state.svelte.js';
 
   // Takes NO props: reads the setup-state store directly (hostImporting /

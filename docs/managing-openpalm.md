@@ -187,9 +187,9 @@ config/assistant/skills/my-skill/SKILL.md
 Guardian uses the same split: managed instructions and permissions from
 `system/guardian/`, user model configuration from `config/guardian/`.
 
-The assistant image contains its UI, skeleton package, and default tool tree at
-build time. There is no runtime UI-tarball install path. Update those assets by
-updating the assistant image.
+The assistant image contains its UI and default tool tree at build time. There
+is no runtime UI-tarball install path. Skeleton updates arrive through the host
+assets release; UI/tool updates arrive through the assistant image.
 
 ## Updates and Recovery
 

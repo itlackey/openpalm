@@ -5,7 +5,6 @@
 $ErrorActionPreference = 'Stop'
 
 $Repo = 'itlackey/openpalm'
-$ScriptVersion = '0.13.0-beta.13'
 
 function Normalize-Version {
     param(
@@ -167,13 +166,9 @@ switch -Regex ($Arch) {
 
 $Version = if ($RequestedVersion) { Normalize-Version $RequestedVersion } else { $null }
 if (-not $Version) {
-    if ($ScriptVersion -ne 'main') {
-        $Version = Normalize-Version $ScriptVersion
-    } else {
-        $release = Invoke-RestMethod "https://api.github.com/repos/$Repo/releases/latest"
-        $Version = $release.tag_name
-        if (-not $Version) { throw "Could not determine latest release version" }
-    }
+    $release = Invoke-RestMethod "https://api.github.com/repos/$Repo/releases/latest"
+    $Version = $release.tag_name
+    if (-not $Version) { throw "Could not determine latest release version" }
 }
 
 # Install directory

@@ -52,7 +52,7 @@ export async function runUninstallAction(
   let purgeRemovedLock = false;
   try {
     const downArgs = args.volumes || args.purge ? ['down', '-v'] : ['down'];
-    await runComposeWithPreflight(state, downArgs);
+    await runComposeWithPreflight(state, downArgs, lock);
 
     if (args.volumes || args.purge) {
       // `down -v` only removes volumes the compose files still DECLARE — on a

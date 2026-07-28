@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { ContainerListResponse } from '$lib/types.js';
-  import IconServer from '@openpalm/ui-kit/components/icons/IconServer.svelte';
+  import IconServer from '$lib/components/icons/IconServer.svelte';
 
   interface Props {
     loading: boolean;

@@ -24,20 +24,17 @@ bun install --frozen-lockfile
 
 Internal `@openpalm/*` references intentionally use `workspace:*` when a
 workspace package should resolve to its local peer during development. Bun's
-pack step is part of the publish contract:
+pack step is used for candidate-local image assembly and packages that remain
+public:
 
 ```bash
 bun pm pack
 ```
 
 `bun pm pack` replaces `workspace:*` with the concrete on-disk workspace
-version in the tarball. Published consumers therefore receive normal semver,
-not the workspace protocol.
-
-Keep intentional published-version contracts as semver when the dependency has
-a distinct runtime policy. Current examples are the CLI's `@openpalm/lib` floor
-range and exact `@openpalm/skeleton` pin. `scripts/set-version.mjs` maintains
-those release-time values.
+version in the tarball. Packed artifacts therefore receive normal semver, not
+the workspace protocol. Private platform workspaces keep `workspace:*`; they
+are not registry contracts.
 
 ## Release Units
 
@@ -48,7 +45,6 @@ Platform manifests are stamped in lockstep for a platform release:
 - `@openpalm/lib`
 - CLI `openpalm`
 - `@openpalm/ui`
-- `@openpalm/ui-kit`
 
 Guardian is its own one-manifest unit. Electron and Electron admin tools form a
 separate harness unit. No manifest belongs to more than one canonical owner.
@@ -59,10 +55,10 @@ The portal SDK and adapters are one portal unit:
 - `@openpalm/discord-portal`
 - `@openpalm/slack-portal`
 
-The publish DAG releases the SDK before either adapter. `all` composes the
-disjoint platform, portal, Guardian, Electron, and Assistant stamp sets at one
-version. All packages are packed through the shared exact-candidate npm workflow
-so workspace references are resolved the same way.
+The extension publish DAG releases the SDK before either adapter. The product
+release is separate: host assets and images are assembled from candidate-local
+source, and only the `openpalm` bootstrap publishes after public GitHub assets
+are verified.
 
 ## Docker Builds
 
@@ -72,7 +68,8 @@ copied into its build context:
 
 - Assistant tools use `containers/assistant/tools/package.json`.
 - Guardian tools use `containers/guardian/tools/package.json`.
-- Portal adapters use `containers/portal/tools/package.json`.
+- Portal images copy and pack `packages/portal-sdk`, `portals/discord`, and
+  `portals/slack` from candidate source.
 - Guardian and portal package source/dependencies are installed during image
   build, after the required package files are copied.
 

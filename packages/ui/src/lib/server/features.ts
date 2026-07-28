@@ -1,5 +1,5 @@
 import type { RequestEvent } from '@sveltejs/kit';
-import { PLATFORM_VERSION, listEnabledAddonIds } from '@openpalm/lib';
+import { listEnabledAddonIds } from '@openpalm/lib';
 import uiPkg from '../../../package.json';
 import type { Capability, ServerRuntimeContext } from '$lib/types.js';
 import { getState } from '$lib/server/state.js';
@@ -114,8 +114,6 @@ export function computeServerRuntimeContext(event: RequestEvent): ServerRuntimeC
     publicBaseUrl: event.url?.origin ?? '',
     uiVersion: uiPkg.version,
     // Skeleton version equals platform version in production;
-    // OP_SKELETON_VERSION is the explicit exact-pin override.
-    skeletonVersion: process.env.OP_SKELETON_VERSION?.trim() || PLATFORM_VERSION,
     // chat + connections are reachable everywhere; the host dashboard and
     // setup wizard only exist in an adminCapable process (Phase 2 (#486)
     // moved connections to /connections; Phase 4 moved the host dashboard to

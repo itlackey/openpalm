@@ -2,7 +2,7 @@
   import { chat } from '$lib/chat/chat-state.svelte.js';
   import { endpointsService } from '$lib/endpoints-state.svelte.js';
   import { resolveSessionTitle } from '$lib/session-title.js';
-  import IconConversations from '@openpalm/ui-kit/components/icons/IconConversations.svelte';
+  import IconConversations from '$lib/components/icons/IconConversations.svelte';
 
   interface Props {
     open: boolean;

@@ -1,9 +1,6 @@
 # ── Portal Runner ─────────────────────────────────────────────────────────────
-# Thin host container for portal adapters. Adapters are exact-pinned and
-# installed from npm at BUILD time only (containers/portal/tools/package.json)
-# — no bind mount overlays /opt/openpalm/tools and there is no boot-time
-# install or update (image-baked-only model, docs/public-seams-review.md
-# §E2/§S2). Bump the manifest and rebuild the image to change a version.
+# Thin host container for portal adapters. Candidate SDK and adapter source is
+# copied and packed locally; only their external dependencies are resolved.
 # ──────────────────────────────────────────────────────────────────────────────
 
 FROM oven/bun:1.3-slim
@@ -11,10 +8,19 @@ WORKDIR /app
 
 RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*
 
-# Bake portal adapter packages at /opt/openpalm/tools using the standard
-# cross-container pattern. Adapters are published npm packages; no source copy needed.
-COPY containers/portal/tools/package.json /opt/openpalm/tools/package.json
-RUN bun install --cwd /opt/openpalm/tools --production
+# Bake the exact candidate SDK and adapter code. This is shared by live builds
+# and coordinated dry runs, before any standalone npm publication is needed.
+COPY containers/portal/workspace.package.json /opt/openpalm/local-src/package.json
+COPY packages/portal-sdk /opt/openpalm/local-src/packages/portal-sdk
+COPY portals/discord /opt/openpalm/local-src/portals/discord
+COPY portals/slack /opt/openpalm/local-src/portals/slack
+RUN mkdir -p /opt/openpalm/local-artifacts /opt/openpalm/tools \
+    && (cd /opt/openpalm/local-src && bun install --lockfile-only --ignore-scripts) \
+    && (cd /opt/openpalm/local-src/packages/portal-sdk && bun pm pack --destination /opt/openpalm/local-artifacts --quiet) \
+    && (cd /opt/openpalm/local-src/portals/discord && bun pm pack --destination /opt/openpalm/local-artifacts --quiet) \
+    && (cd /opt/openpalm/local-src/portals/slack && bun pm pack --destination /opt/openpalm/local-artifacts --quiet) \
+    && (cd /opt/openpalm/tools && bun add /opt/openpalm/local-artifacts/*.tgz --production) \
+    && rm -rf /opt/openpalm/local-src /opt/openpalm/local-artifacts
 
 COPY containers/portal/portal-entrypoint.ts /app/portal-entrypoint.ts
 COPY containers/portal/start.sh /app/start.sh

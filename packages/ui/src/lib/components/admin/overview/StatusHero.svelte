@@ -1,8 +1,8 @@
 <script lang="ts">
   import type { TabId } from '$lib/components/chrome/TabBar.svelte';
-  import IconAlert from '@openpalm/ui-kit/components/icons/IconAlert.svelte';
-  import IconDoneCircle from '@openpalm/ui-kit/components/icons/IconDoneCircle.svelte';
-  import IconInfo from '@openpalm/ui-kit/components/icons/IconInfo.svelte';
+  import IconAlert from '$lib/components/icons/IconAlert.svelte';
+  import IconDoneCircle from '$lib/components/icons/IconDoneCircle.svelte';
+  import IconInfo from '$lib/components/icons/IconInfo.svelte';
 
   interface Props {
     status: 'ok' | 'warning' | 'unknown';

@@ -365,7 +365,7 @@ function isProtectedRecoveryBackup(dirPath: string): boolean {
  * The distinct backup namespaces sharing one `data/backups/` (or configured
  * external) directory: plain timestamp safety snapshots (`backupOpenPalmHome`,
  * `-pre-rollback`/`-pre-update`), and the host-side hot-swap prefixes written
- * by npm-bundle-updater.ts (`ui-*`, `skeleton-*`). Retention is per-namespace —
+ * by host-assets-updater.ts (`ui-*`, `skeleton-*`). Retention is per-namespace —
  * a burst of one type must never evict another type's snapshots, and mixing
  * them under one lexicographic/global cutoff is exactly the bug this fixes.
  */

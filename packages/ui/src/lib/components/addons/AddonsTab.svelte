@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onDestroy, onMount } from 'svelte';
-  import EmptyState from '@openpalm/ui-kit/components/common/EmptyState.svelte';
+  import EmptyState from '$lib/components/common/EmptyState.svelte';
   import {
     fetchAddons,
     toggleAddon,
@@ -18,10 +18,10 @@
   import { notifications } from '$lib/notifications.svelte.js';
   import { refreshAdvertisedVoiceUrl } from '$lib/voice/providers.js';
   import VoiceProfileSelector from '$lib/components/voice/VoiceProfileSelector.svelte';
-  import SecretSelect from '@openpalm/ui-kit/components/common/SecretSelect.svelte';
-  import Spinner from '@openpalm/ui-kit/components/common/Spinner.svelte';
-  import IconAddons from '@openpalm/ui-kit/components/icons/IconAddons.svelte';
-  import Drawer from '@openpalm/ui-kit/components/common/Drawer.svelte';
+  import SecretSelect from '$lib/components/common/SecretSelect.svelte';
+  import Spinner from '$lib/components/common/Spinner.svelte';
+  import IconAddons from '$lib/components/icons/IconAddons.svelte';
+  import Drawer from '$lib/components/common/Drawer.svelte';
 
   interface Props {
     onAuthError: () => void;

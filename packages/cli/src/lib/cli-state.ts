@@ -9,7 +9,6 @@ import {
   createLogger,
   createState,
   resolveRuntimeFiles,
-  runHomeMigrations,
 } from '@openpalm/lib';
 import type { ControlPlaneState } from '@openpalm/lib';
 
@@ -29,14 +28,7 @@ const logger = createLogger('cli:state');
  * call runHomeMigrations directly and keep the strict behavior.
  */
 export function migrateBestEffort(homeDir: string): void {
-  try {
-    runHomeMigrations(homeDir);
-  } catch (error) {
-    logger.warn('could not migrate the OP_HOME layout; continuing with what is readable', {
-      homeDir,
-      error: error instanceof Error ? error.message : String(error),
-    });
-  }
+  logger.debug('schema migration deferred to a locked lifecycle transaction', { homeDir });
 }
 
 /**
@@ -57,7 +49,6 @@ export function migrateBestEffort(homeDir: string): void {
  */
 export function ensureValidState(): ControlPlaneState {
   const state = createState();
-  migrateBestEffort(state.homeDir);
   if (classifyLocalInstall(state.stackDir, state.homeDir) === 'not_installed') {
     throw new Error('OpenPalm is not installed in this OP_HOME yet. Run `openpalm install` first.');
   }
@@ -74,7 +65,6 @@ export function ensureValidState(): ControlPlaneState {
  */
 export function resolveServeState(): ControlPlaneState {
   const state = createState();
-  migrateBestEffort(state.homeDir);
   if (classifyLocalInstall(state.stackDir, state.homeDir) === 'not_installed') {
     return state;
   }

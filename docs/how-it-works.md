@@ -53,8 +53,9 @@ The assistant container runs:
 - `akm tasks sync` at startup and every 60 seconds
 
 The UI reaches OpenCode through its own same-origin `/oc` proxy. The assistant
-image also contains the shipped skeleton and default tool packages; startup does
-not download or resolve a runtime UI tarball.
+image also contains the default tool packages; startup does not download or
+resolve a runtime UI tarball. The host materializes skeleton files from the
+coordinated GitHub host-assets release.
 
 Managed OpenCode config comes from `system/assistant/` at `/etc/opencode`.
 User OpenCode global config comes separately from `config/assistant/` at

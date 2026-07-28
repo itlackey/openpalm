@@ -2,7 +2,7 @@
   import { goto } from '$app/navigation';
   import { page } from '$app/state';
   import { onMount } from 'svelte';
-  import Spinner from '@openpalm/ui-kit/components/common/Spinner.svelte';
+  import Spinner from '$lib/components/common/Spinner.svelte';
   import SessionTitle from '$lib/components/chat/SessionTitle.svelte';
   import { chat } from '$lib/chat/chat-state.svelte.js';
   import { buildConversationPath } from '$lib/chat/navigation.js';

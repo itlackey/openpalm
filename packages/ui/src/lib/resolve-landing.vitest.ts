@@ -109,7 +109,6 @@ function makeCtx(admin: boolean, effectiveCapabilities: Capability[]): RuntimeCo
     serverCapabilities: [...effectiveCapabilities],
     publicBaseUrl: 'http://127.0.0.1:3880',
     uiVersion: '0.0.0-test',
-    skeletonVersion: '0.0.0-test',
     routes: {},
     security: {
       hostAdminLoopbackOnly: true,

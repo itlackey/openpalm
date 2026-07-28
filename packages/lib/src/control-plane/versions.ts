@@ -2,8 +2,8 @@
  * Version variable management for the OpenPalm control plane (§4.2, §5).
  *
  * SERVICE versions (`OP_*_VERSION`) are Docker image tags. They take an exact
- * tag, the moving "latest" / "next" refs, or empty (Compose falls back to
- * "latest"). They are never semver ranges.
+ * tag or an explicit moving "latest" / "next" ref. They are never semver
+ * ranges. Platform images default to the exact host release version.
  *
  * Tool package versions are managed via per-container package.json files at
  * OP_HOME/data/<container>/tools/package.json. Edit those files to pin or
@@ -14,18 +14,18 @@
  * tag anymore. Each image rides its own var.
  *
  */
-import { existsSync, readFileSync, writeFileSync, mkdirSync, renameSync } from "node:fs";
-import { parseEnvFile, mergeEnvContent } from "./env.js";
-import { stackEnvFile } from "./home.js";
-import type { ControlPlaneState } from "./types.js";
-import { distTagForVersion, PLATFORM_VERSION } from "./versioning.js";
+import { existsSync, readFileSync, writeFileSync, mkdirSync, renameSync } from 'node:fs';
+import { parseEnvFile, mergeEnvContent } from './env.js';
+import { stackEnvFile } from './home.js';
+import type { ControlPlaneState } from './types.js';
+import { distTagForVersion, PLATFORM_VERSION } from './versioning.js';
 
 /** Docker image tags — one per deployable OpenPalm image. */
 export const SERVICE_VERSION_KEYS = [
-  "OP_ASSISTANT_VERSION",
-  "OP_GUARDIAN_VERSION",
-  "OP_PORTAL_VERSION",
-  "OP_VOICE_VERSION",
+	'OP_ASSISTANT_VERSION',
+	'OP_GUARDIAN_VERSION',
+	'OP_PORTAL_VERSION',
+	'OP_VOICE_VERSION'
 ] as const;
 
 export type VersionKey = (typeof SERVICE_VERSION_KEYS)[number];
@@ -34,24 +34,24 @@ const VERSION_KEY_SET: ReadonlySet<string> = new Set(SERVICE_VERSION_KEYS);
 
 /** Default values seeded into a fresh stack.env (and returned for unset keys). */
 export const VERSION_DEFAULTS: Record<VersionKey, string> = {
-  OP_ASSISTANT_VERSION: "latest",
-  OP_GUARDIAN_VERSION: "latest",
-  OP_PORTAL_VERSION: "latest",
-  OP_VOICE_VERSION: "latest",
+	OP_ASSISTANT_VERSION: PLATFORM_VERSION,
+	OP_GUARDIAN_VERSION: PLATFORM_VERSION,
+	OP_PORTAL_VERSION: PLATFORM_VERSION,
+	OP_VOICE_VERSION: 'latest'
 };
 
 export function isVersionKey(key: string): key is VersionKey {
-  return VERSION_KEY_SET.has(key);
+	return VERSION_KEY_SET.has(key);
 }
 
 // ── Channel preference (constitution §4.2) ───────────────────────────────────
 
-export type ChannelPreference = "latest" | "next";
+export type ChannelPreference = 'latest' | 'next';
 
-const VALID_CHANNELS: ReadonlySet<string> = new Set(["latest", "next"]);
+const VALID_CHANNELS: ReadonlySet<string> = new Set(['latest', 'next']);
 
 export function isChannelPreference(value: string): value is ChannelPreference {
-  return VALID_CHANNELS.has(value.trim().toLowerCase());
+	return VALID_CHANNELS.has(value.trim().toLowerCase());
 }
 
 /**
@@ -62,8 +62,8 @@ export function isChannelPreference(value: string): value is ChannelPreference {
  * are configured directly through the version keys above.
  */
 export function readChannelPreference(state: ControlPlaneState): ChannelPreference {
-  const raw = (parseEnvFile(stackEnvFile(state.homeDir)).OP_UI_CHANNEL ?? "").trim().toLowerCase();
-  return VALID_CHANNELS.has(raw) ? (raw as ChannelPreference) : distTagForVersion(PLATFORM_VERSION);
+	const raw = (parseEnvFile(stackEnvFile(state.homeDir)).OP_UI_CHANNEL ?? '').trim().toLowerCase();
+	return VALID_CHANNELS.has(raw) ? (raw as ChannelPreference) : distTagForVersion(PLATFORM_VERSION);
 }
 
 /**
@@ -71,16 +71,18 @@ export function readChannelPreference(state: ControlPlaneState): ChannelPreferen
  * Only "latest" and "next" are valid; an invalid value throws.
  */
 export function writeChannelPreference(state: ControlPlaneState, channel: string): void {
-  const normalized = channel.trim().toLowerCase();
-  if (!VALID_CHANNELS.has(normalized)) {
-    throw new Error(`Invalid channel preference: ${JSON.stringify(channel)}. Must be "latest" or "next".`);
-  }
-  const path = stackEnvFile(state.homeDir);
-  mkdirSync(`${state.homeDir}/state`, { recursive: true, mode: 0o700 });
-  const current = existsSync(path) ? readFileSync(path, "utf-8") : "";
-  const tmp = `${path}.tmp`;
-  writeFileSync(tmp, mergeEnvContent(current, { OP_UI_CHANNEL: normalized }), { mode: 0o600 });
-  renameSync(tmp, path);
+	const normalized = channel.trim().toLowerCase();
+	if (!VALID_CHANNELS.has(normalized)) {
+		throw new Error(
+			`Invalid channel preference: ${JSON.stringify(channel)}. Must be "latest" or "next".`
+		);
+	}
+	const path = stackEnvFile(state.homeDir);
+	mkdirSync(`${state.homeDir}/state`, { recursive: true, mode: 0o700 });
+	const current = existsSync(path) ? readFileSync(path, 'utf-8') : '';
+	const tmp = `${path}.tmp`;
+	writeFileSync(tmp, mergeEnvContent(current, { OP_UI_CHANNEL: normalized }), { mode: 0o600 });
+	renameSync(tmp, path);
 }
 
 // ── Version configuration ────────────────────────────────────────────────────
@@ -91,23 +93,23 @@ export function writeChannelPreference(state: ControlPlaneState, channel: string
  * deliberate pin, so treating them as pins would freeze updates.
  */
 export function readVersions(state: ControlPlaneState): Record<string, string> {
-  const fromState = parseEnvFile(stackEnvFile(state.homeDir));
-  const out: Record<string, string> = {};
-  for (const key of SERVICE_VERSION_KEYS) {
-    out[key] = fromState[key] ?? VERSION_DEFAULTS[key];
-  }
-  return out;
+	const fromState = parseEnvFile(stackEnvFile(state.homeDir));
+	const out: Record<string, string> = {};
+	for (const key of SERVICE_VERSION_KEYS) {
+		out[key] = fromState[key] ?? VERSION_DEFAULTS[key];
+	}
+	return out;
 }
 
 /** Ensure every image has an explicit state value that overrides legacy env files. */
 export function ensureVersionDefaults(state: ControlPlaneState): void {
-  const path = stackEnvFile(state.homeDir);
-  const current = existsSync(path) ? parseEnvFile(path) : {};
-  const missing: Record<string, string> = {};
-  for (const key of SERVICE_VERSION_KEYS) {
-    if (current[key] === undefined) missing[key] = VERSION_DEFAULTS[key];
-  }
-  writeVersions(state, missing);
+	const path = stackEnvFile(state.homeDir);
+	const current = existsSync(path) ? parseEnvFile(path) : {};
+	const missing: Record<string, string> = {};
+	for (const key of SERVICE_VERSION_KEYS) {
+		if (current[key] === undefined) missing[key] = VERSION_DEFAULTS[key];
+	}
+	writeVersions(state, missing);
 }
 
 /**
@@ -118,19 +120,19 @@ export function ensureVersionDefaults(state: ControlPlaneState): void {
  * honestly as the desired Compose configuration.
  */
 export function writeVersions(state: ControlPlaneState, updates: Record<string, string>): void {
-  const accepted: Record<string, string> = {};
-  for (const [key, value] of Object.entries(updates)) {
-    if (!isVersionKey(key)) {
-      throw new Error(`Refusing to write unknown version key: ${key}`);
-    }
-    accepted[key] = (value ?? "").trim();
-  }
-  if (Object.keys(accepted).length === 0) return;
+	const accepted: Record<string, string> = {};
+	for (const [key, value] of Object.entries(updates)) {
+		if (!isVersionKey(key)) {
+			throw new Error(`Refusing to write unknown version key: ${key}`);
+		}
+		accepted[key] = (value ?? '').trim();
+	}
+	if (Object.keys(accepted).length === 0) return;
 
-  const path = stackEnvFile(state.homeDir);
-  mkdirSync(`${state.homeDir}/state`, { recursive: true, mode: 0o700 });
-  const current = existsSync(path) ? readFileSync(path, "utf-8") : "";
-  const tmp = `${path}.tmp`;
-  writeFileSync(tmp, mergeEnvContent(current, accepted), { mode: 0o600 });
-  renameSync(tmp, path);
+	const path = stackEnvFile(state.homeDir);
+	mkdirSync(`${state.homeDir}/state`, { recursive: true, mode: 0o700 });
+	const current = existsSync(path) ? readFileSync(path, 'utf-8') : '';
+	const tmp = `${path}.tmp`;
+	writeFileSync(tmp, mergeEnvContent(current, accepted), { mode: 0o600 });
+	renameSync(tmp, path);
 }

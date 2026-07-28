@@ -8,18 +8,14 @@ set -euo pipefail
 # private package at a different version; semver ranges are supported here).
 # OP_GUARDIAN_VERSION is now ONLY the Docker image tag (consumed by Compose on
 # the `image:` line) and is NOT used for the npm install.
-VERSION="${OP_GUARDIAN_NPM_VERSION:-${GUARDIAN_VERSION:-}}"
-if [ -z "$VERSION" ]; then
-  echo "ERROR: No guardian version. Set OP_GUARDIAN_NPM_VERSION, or rebuild the image with the GUARDIAN_VERSION build arg." >&2
-  exit 1
-fi
+VERSION="${OP_GUARDIAN_NPM_VERSION:-}"
 
 # Composition package + boot entry, overridable for downstream distributions
 # built on the published library seams (defaults to the public core).
 OP_GUARDIAN_PACKAGE="${OP_GUARDIAN_PACKAGE:-@openpalm/guardian}"
 OP_GUARDIAN_ENTRY="${OP_GUARDIAN_ENTRY:-src/server.ts}"
 
-mkdir -p /opt/openpalm/skeleton /opt/openpalm/guardian /opt/openpalm/guardian-pkg \
+mkdir -p /opt/openpalm/guardian /opt/openpalm/guardian-pkg \
          /opt/openpalm/guardian/.local/share/opencode /opt/openpalm/guardian/.local/state/opencode \
          /opt/openpalm/guardian/.cache/bun/install 2>/dev/null || true
 
@@ -95,8 +91,8 @@ install_artifact() {
   exit 1
 }
 
-# Guardian and skeleton have independent release owners. The image records both
-# exact package versions; downstream distributions may override either one.
+# The image contains the local Guardian candidate. A downstream distribution
+# may explicitly override that package and version.
 #
 # The guardian PACKAGE installs into /opt/openpalm/guardian-pkg, NOT
 # /opt/openpalm/guardian. The latter is $HOME, bind-mounted from
@@ -111,8 +107,11 @@ install_artifact() {
 # writable layer, so it re-installs (not re-downloads: the bun tarball cache
 # is on the host bind, portals.compose.yml) on every recreation, not just
 # restart/reboot. Accepted regression, documented in the #585 plan.
-install_artifact "$OP_GUARDIAN_PACKAGE" "$VERSION" /opt/openpalm/guardian-pkg
-install_artifact "@openpalm/skeleton" "${OP_SKELETON_VERSION:-${SKELETON_VERSION:-}}" /opt/openpalm/skeleton
+if [ -n "$VERSION" ]; then
+  install_artifact "$OP_GUARDIAN_PACKAGE" "$VERSION" /opt/openpalm/guardian-pkg
+else
+  echo "  using image-baked Guardian package"
+fi
 
 # ── E2/S2: no boot-time tools install ──────────────────────────────────────
 # /opt/openpalm/tools/package.json declares exact tool versions (opencode-ai —

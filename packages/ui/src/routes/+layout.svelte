@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount, untrack } from 'svelte';
   import "../app.css";
-  import Toast from '@openpalm/ui-kit/components/common/Toast.svelte';
+  import Toast from '$lib/components/common/Toast.svelte';
   import { themeService } from '$lib/theme-state.svelte.js';
   import { detectClientDisplayMode } from '$lib/client-context.js';
   import {
@@ -51,7 +51,8 @@
   });
 
   // Voice errors route through the single <Toast /> outlet below. The listener
-  // stays in app code so ui-kit never depends on the app's voice modules.
+  // stays in app code so shared presentational components never depend on the
+  // app's voice modules.
 </script>
 
 <!-- ibrush filter: hand-drawn brush displacement used by all icon components -->

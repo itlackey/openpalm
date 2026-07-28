@@ -28,12 +28,12 @@ export async function runStopAction(services: string[]): Promise<void> {
   if (!lock) throw new Error('install_in_progress: Another lifecycle operation is already running.');
   try {
   if (services.length === 0) {
-    await runComposeWithPreflight(state, ['down']);
+    await runComposeWithPreflight(state, ['down'], lock);
     return;
   }
 
   for (const service of services) {
-    await runComposeWithPreflight(state, ['stop', service]);
+    await runComposeWithPreflight(state, ['stop', service], lock);
   }
   } finally {
     releaseInstallLock(lock);

@@ -9,14 +9,10 @@ is the only path from those clients to the assistant.
 
 ## Thin-Host Runtime
 
-The image bakes the release Guardian package, skeleton package, and OpenCode
-tooling so the default path boots without registry access. The entrypoint keeps
-a package/version override seam for downstream distributions; with no override,
-the already-installed version check is a no-op.
-
-Guardian and skeleton have separate release owners. Image builds pass exact
-`GUARDIAN_VERSION` and `SKELETON_VERSION` arguments rather than assuming both
-packages share a version.
+The image packs the local Guardian candidate, its external dependencies, and
+OpenCode tooling so the default path boots without resolving public
+`@openpalm` packages. The entrypoint keeps an explicit package/version override
+seam for downstream distributions; with no override it uses the baked package.
 
 Runtime state is bind-mounted under `/opt/openpalm/guardian`, while the package
 lives at unshadowed `/opt/openpalm/guardian-pkg`.

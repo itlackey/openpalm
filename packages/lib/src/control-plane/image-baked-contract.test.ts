@@ -30,7 +30,7 @@ function codeLines(source: string): string[] {
 describe('entrypoints do not install packages at boot', () => {
   // The guardian is the one exception: install_artifact exists so a downstream
   // distribution can pin OP_GUARDIAN_NPM_VERSION to something the image did not
-  // bake. In the shipped case its semver check makes it a no-op with no network.
+  // bake. The default path has no installer call at all.
   const cases: Array<{ file: string; allowInstallArtifact: boolean }> = [
     { file: 'containers/assistant/entrypoint.sh', allowInstallArtifact: false },
     { file: 'containers/portal/start.sh', allowInstallArtifact: false },
@@ -56,6 +56,31 @@ describe('entrypoints do not install packages at boot', () => {
   }
 });
 
+describe('official images assemble platform code locally', () => {
+  it('does not resolve public OpenPalm packages in the Assistant image', () => {
+    const dockerfile = read('containers/assistant/Dockerfile');
+    expect(dockerfile).toContain('COPY packages/ui /opt/openpalm/local-src/ui');
+    expect(dockerfile).toContain('bun pm pack');
+    expect(dockerfile).not.toContain('@openpalm/ui@${PLATFORM_VERSION}');
+    expect(dockerfile).not.toContain('/opt/openpalm/skeleton');
+  });
+
+  it('does not resolve public OpenPalm packages in the Guardian image', () => {
+    const dockerfile = read('containers/guardian/Dockerfile');
+    expect(dockerfile).toContain('COPY packages/guardian /opt/openpalm/local-src/guardian');
+    expect(dockerfile).toContain('openpalm-guardian-*.tgz');
+    expect(dockerfile).not.toContain('/opt/openpalm/skeleton');
+  });
+
+  it('assembles portal candidates from local workspaces', () => {
+    const dockerfile = read('containers/portal/Dockerfile');
+    expect(dockerfile).toContain('COPY packages/portal-sdk');
+    expect(dockerfile).toContain('COPY portals/discord');
+    expect(dockerfile).toContain('COPY portals/slack');
+    expect(dockerfile).not.toContain('containers/portal/tools/package.json');
+  });
+});
+
 describe('nothing is mounted over the image-baked artifact paths', () => {
   // Everything the images bake and serve from. A bind or volume landing on any
   // of these hides the image's own copy — the #585 stale-artifact bug.
@@ -63,7 +88,6 @@ describe('nothing is mounted over the image-baked artifact paths', () => {
     '/opt/openpalm',
     '/opt/openpalm/tools',
     '/opt/openpalm/ui',
-    '/opt/openpalm/skeleton',
     '/opt/openpalm/guardian-pkg',
   ];
 

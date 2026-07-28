@@ -132,4 +132,32 @@ describe("rollback snapshot/restore (0.3 — state env + non-destructive restore
     // looking like a complete, trustworthy snapshot at the old timestamp.
     expect(hasSnapshot()).toBe(false);
   });
+
+  test("each snapshot is an isolated generation and does not retain retired files", () => {
+    snapshotCurrentState(state);
+    const oldOnly = join(home, "system", "stack", "old.yml");
+    writeFileSync(oldOnly, "old\n");
+    snapshotCurrentState(state);
+    rmSync(oldOnly);
+    snapshotCurrentState(state);
+    restoreSnapshot(state);
+    expect(existsSync(oldOnly)).toBe(false);
+  });
+
+  test("restoreSnapshot restores the complete managed system generation", () => {
+    const assistantPolicy = join(home, "system", "assistant", "AGENTS.md");
+    mkdirSync(join(home, "system", "assistant"), { recursive: true });
+    writeFileSync(assistantPolicy, "old policy\n");
+    const generation = snapshotCurrentState(state);
+
+    writeFileSync(assistantPolicy, "new policy\n");
+    writeFileSync(join(home, "system", "stack", "new.yml"), "new\n");
+    rmSync(join(home, "system", "stack", "services.compose.yml"));
+
+    restoreSnapshot(state, generation);
+
+    expect(readFileSync(assistantPolicy, "utf8")).toBe("old policy\n");
+    expect(existsSync(join(home, "system", "stack", "new.yml"))).toBe(false);
+    expect(existsSync(join(home, "system", "stack", "services.compose.yml"))).toBe(true);
+  });
 });

@@ -131,7 +131,6 @@ describe('computeServerRuntimeContext — ServerRuntimeContext shape', () => {
     expect(typeof ctx.admin).toBe('boolean');
     expect(typeof ctx.publicBaseUrl).toBe('string');
     expect(typeof ctx.uiVersion).toBe('string');
-    expect(typeof ctx.skeletonVersion).toBe('string');
     expect(ctx.routes).toBeTypeOf('object');
     expect(typeof ctx.security.hostAdminLoopbackOnly).toBe('boolean');
     expect(typeof ctx.security.requiresHttpsForRemoteConnections).toBe('boolean');

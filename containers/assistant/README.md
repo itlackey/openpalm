@@ -18,14 +18,14 @@ publications are `127.0.0.1:3810` for OpenCode and `127.0.0.1:3800` for the UI.
 
 ## Image-Baked Assets
 
-Release builds contain exact-version copies of:
+Release builds contain exact candidate copies of:
 
 - the OpenCode and AKM tool tree
-- `@openpalm/ui`
-- `@openpalm/skeleton`
+- compiled `@openpalm/ui`
 
-The entrypoint does not install/update the UI or skeleton from npm. Updating
-these assets requires a new assistant image.
+The Dockerfile packs the local UI candidate during the image build. The
+entrypoint does not install or update it from npm. Updating the UI requires a
+new assistant image.
 
 OpenCode may resolve explicitly configured plugins according to its own plugin
 behavior; their cache is on the assistant cache bind.

@@ -43,14 +43,6 @@ export async function runStartAction(
 ): Promise<void> {
   const state = ensureValidState();
 
-  // All host-identity/ownership logic (swap detection, deep bind-mount +
-  // named-volume repair, adopt env patch, marker, identity record) lives in the
-  // shared lib reconcile — the CLI is a thin caller. It throws
-  // HostSwapBlockedError on an un-adopted host swap; the command wrapper prints
-  // its actionable message.
-  const managedServices = services.length === 0 ? await buildManagedServices(state) : services;
-  await reconcileHostOwnership(state, { adoptHost: !!options.adoptHost, services: managedServices });
-
   // Hold the install lock across the compose-up calls so a concurrent
   // install/update (which also drives compose) can't interleave with this
   // start and recreate containers out from under it.
@@ -61,6 +53,10 @@ export async function runStartAction(
     );
   }
   try {
+    // Ownership repair can mutate bind mounts and state, so it belongs inside
+    // the same orchestrator transaction as compose.
+    const managedServices = services.length === 0 ? await buildManagedServices(state) : services;
+    await reconcileHostOwnership(state, { adoptHost: !!options.adoptHost, services: managedServices });
     if (services.length === 0) {
       // Project rename (#540): if OP_PROJECT_NAME changed since the stack
       // last came up, stop the recorded outgoing project first — otherwise
@@ -77,13 +73,13 @@ export async function runStartAction(
       }
 
       // Stage artifacts and start all managed services (admin included if enabled)
-      await runComposeWithPreflight(state, ['up', '-d', ...managedServices]);
+      await runComposeWithPreflight(state, ['up', '-d', ...managedServices], lock);
       return;
     }
 
     // Start specific services
     for (const service of services) {
-      await runComposeWithPreflight(state, ['up', '-d', service]);
+      await runComposeWithPreflight(state, ['up', '-d', service], lock);
     }
   } finally {
     releaseInstallLock(lock);

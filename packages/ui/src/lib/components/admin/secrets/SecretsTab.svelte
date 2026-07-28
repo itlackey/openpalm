@@ -1,11 +1,11 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import Spinner from '@openpalm/ui-kit/components/common/Spinner.svelte';
+  import Spinner from '$lib/components/common/Spinner.svelte';
   import { fetchSecretFiles, fetchSecretFile, saveSecretFile, deleteSecretFile, type SecretFileInfo } from '$lib/api.js';
   import { formatBytes } from '$lib/format-date.js';
   import { notifications } from '$lib/notifications.svelte.js';
   import { resource } from '$lib/actions.svelte.js';
-  import IconLock from '@openpalm/ui-kit/components/icons/IconLock.svelte';
+  import IconLock from '$lib/components/icons/IconLock.svelte';
 
   // The file list loads through a resource; its inline banner renders the error.
   const filesRes = resource<SecretFileInfo[]>(

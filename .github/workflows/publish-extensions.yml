@@ -1,0 +1,78 @@
+name: Publish Extensions
+
+# Independent extension release. Nothing in this workflow is a prerequisite for
+# the product release or for product image assembly.
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Exact extension version'
+        required: true
+        type: string
+      dry_run:
+        required: false
+        type: boolean
+        default: true
+
+concurrency:
+  group: extensions
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.sha }}
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          registry-url: https://registry.npmjs.org
+      - uses: oven-sh/setup-bun@v2
+      - name: Install extension source
+        run: bun install --frozen-lockfile
+      - name: Validate extension versions
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+          const version = process.env.VERSION;
+          for (const file of ['packages/guardian/package.json', 'packages/portal-sdk/package.json', 'portals/discord/package.json', 'portals/slack/package.json']) {
+            const actual = JSON.parse(readFileSync(file, 'utf8')).version;
+            if (actual !== version) throw new Error(`${file} is ${actual}, expected ${version}`);
+           }
+           NODE
+      - name: Test extensions
+        run: bun test packages/guardian packages/portal-sdk portals/discord portals/slack
+      - name: Pack extensions
+        run: |
+          mkdir -p .extension-packages
+          for dir in packages/guardian packages/portal-sdk portals/discord portals/slack; do
+            (cd "${dir}" && bun pm pack --destination "${GITHUB_WORKSPACE}/.extension-packages")
+          done
+      - name: Publish extensions independently
+        if: inputs.dry_run != true
+        working-directory: .extension-packages
+        run: |
+          set -euo pipefail
+          tag=latest
+          case '${{ inputs.version }}' in *-*) tag=next ;; esac
+          publish_package() {
+            archive=$1
+            spec=$(tar -xOf "${archive}" package/package.json | node -e "let s=''; process.stdin.on('data',d=>s+=d).on('end',()=>{const p=JSON.parse(s); console.log(p.name+'@'+p.version)})")
+            expected=$(node -e "const {createHash}=require('node:crypto'); const {readFileSync}=require('node:fs'); console.log('sha512-'+createHash('sha512').update(readFileSync(process.argv[1])).digest('base64'))" "${archive}")
+            if actual=$(npm view "${spec}" dist.integrity --json 2>/dev/null); then
+              test "${actual//\"/}" = "${expected}" || { echo "::error::${spec} exists with different contents"; exit 1; }
+            else
+              npm publish --provenance --access public --tag "${tag}" "${archive}"
+            fi
+          }
+          publish_package openpalm-portal-sdk-*.tgz
+          publish_package openpalm-guardian-*.tgz
+          publish_package openpalm-discord-portal-*.tgz
+          publish_package openpalm-slack-portal-*.tgz

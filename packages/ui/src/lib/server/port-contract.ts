@@ -1,6 +1,8 @@
 import {
   buildServedUiRuntimeConfig,
-  runHomeMigrations,
+  legacyKnowledgeStackEnvFile,
+  legacyStateEnvFile,
+  parseEnvFile,
   readStackRuntimeEnv,
   serializeUiRuntimeConfig,
   UI_RUNTIME_CONFIG_ENV,
@@ -40,9 +42,20 @@ export function reconcileSupervisedPortContract(
   homeDir: string,
   env: Record<string, string | undefined> = process.env,
 ): boolean {
-  if (!env.OP_UI_SUPERVISOR || !runHomeMigrations(homeDir)) return false;
+  if (!env.OP_UI_SUPERVISOR) return false;
 
-  const migrated = readStackRuntimeEnv(homeDir);
+  // Read legacy values without consolidating them. Consolidation is a locked
+  // lifecycle migration; startup may only derive its process-local settings.
+  const migrated = {
+    ...parseEnvFile(legacyKnowledgeStackEnvFile(homeDir)),
+    ...parseEnvFile(legacyStateEnvFile(homeDir)),
+    ...readStackRuntimeEnv(homeDir),
+  };
+  const repairedDefaults = migrated.OP_ASSISTANT_PORT === '3800' && !migrated.OP_UI_PORT;
+  if (repairedDefaults) {
+    migrated.OP_ASSISTANT_PORT = '3810';
+    migrated.OP_UI_PORT = '3800';
+  }
   if (!env.OP_ASSISTANT_PORT || env.OP_ASSISTANT_PORT === '3800') {
     env.OP_ASSISTANT_PORT = migrated.OP_ASSISTANT_PORT;
   }
@@ -51,7 +64,7 @@ export function reconcileSupervisedPortContract(
   }
   if (
     env.OP_UI_SUPERVISOR === 'electron'
-    && migrated.OP_ASSISTANT_PORT !== '3800'
+    && repairedDefaults
     && isRetiredGeneratedAssistantUrl(env.OP_OPENCODE_URL, env.OP_ASSISTANT_BIND_ADDRESS)
   ) {
     delete env.OP_OPENCODE_URL;

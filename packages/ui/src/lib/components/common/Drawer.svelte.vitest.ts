@@ -1,7 +1,7 @@
 import { describe, expect, test, vi } from 'vitest';
 import { page, userEvent } from 'vitest/browser';
 import { render } from 'vitest-browser-svelte';
-import DrawerTestHarness from '../../../test/fixtures/drawer-test-harness.svelte';
+import DrawerTestHarness from '../../test/fixtures/drawer-test-harness.svelte';
 
 describe('Drawer', () => {
   test('uses the caller ID, labels the dialog, and provides a 44px close target', async () => {

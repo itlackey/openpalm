@@ -7,8 +7,8 @@
 -->
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import Spinner from '@openpalm/ui-kit/components/common/Spinner.svelte';
-	import EmptyState from '@openpalm/ui-kit/components/common/EmptyState.svelte';
+	import Spinner from '$lib/components/common/Spinner.svelte';
+	import EmptyState from '$lib/components/common/EmptyState.svelte';
 	import {
 		fetchProviders,
 		saveOpencodeModel,
@@ -21,11 +21,11 @@
 	import type { ProviderPageState, ProviderView } from '$lib/types/providers.js';
 	import AddProviderSheet from './AddProviderSheet.svelte';
 	import ConnectSheet from './ConnectSheet.svelte';
-	import IconServer from '@openpalm/ui-kit/components/icons/IconServer.svelte';
-	import IconLock from '@openpalm/ui-kit/components/icons/IconLock.svelte';
+	import IconServer from '$lib/components/icons/IconServer.svelte';
+	import IconLock from '$lib/components/icons/IconLock.svelte';
 	import CustomProviderForm from './CustomProviderForm.svelte';
 	import HostImportModal from './HostImportModal.svelte';
-	import { createFocusTrap, handleTrapKeydown } from '@openpalm/ui-kit/actions/focus-trap.js';
+	import { createFocusTrap, handleTrapKeydown } from '$lib/actions/focus-trap.js';
 
 	let pageState = $state<ProviderPageState>({
 		available: false,

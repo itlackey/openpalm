@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { Snippet } from 'svelte';
-  import IconSend from '@openpalm/ui-kit/components/icons/IconSend.svelte';
-  import IconStop from '@openpalm/ui-kit/components/icons/IconStop.svelte';
+  import IconSend from '$lib/components/icons/IconSend.svelte';
+  import IconStop from '$lib/components/icons/IconStop.svelte';
 
   interface Props {
     sending: boolean;

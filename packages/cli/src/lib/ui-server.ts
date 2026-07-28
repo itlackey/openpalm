@@ -17,7 +17,7 @@ import {
   writeLegacyServedUiRuntimeConfig, UI_RUNTIME_CONFIG_ENV,
   type ControlPlaneState, type UiRuntimeConfig,
 } from '@openpalm/lib';
-import { ensureValidState, migrateBestEffort, resolveServeState } from './cli-state.ts';
+import { ensureValidState, resolveServeState } from './cli-state.ts';
 import { openBrowser } from './browser.ts';
 import { resolveHostUiPortFromEnv } from './ports.ts';
 
@@ -197,13 +197,13 @@ export function resolveUiChildLaunch(
 }
 
 /**
- * Self-update the control plane (npm `@openpalm/ui` → data/ui) and skeleton
- * (npm `@openpalm/skeleton` → system/), then resolve and spawn the SvelteKit
+ * Self-update the control plane from the GitHub host-assets release into data/ui
+ * and system/, then resolve and spawn the SvelteKit
  * Node child. Re-callable so a UI-build update can respawn the child against the
  * freshly downloaded data/ui without restarting the whole CLI supervisor
  * (design §6.2).
  *
- * Non-fatal update: any network/registry error leaves the existing build/skeleton
+ * Non-fatal update: any network/release error leaves the existing build/skeleton
  * in place. Resolution happens AFTER the update so a strictly-newer data/ui wins.
  * Returns the UI backup path so the supervisor can restore on restart failure (§4.4).
  */
@@ -327,11 +327,6 @@ export async function runUiBuild(opts: { port?: number } = {}): Promise<void> {
     process.exit(1);
   }
   const homeDir = resolveOpenPalmHome();
-  // Standalone `openpalm ui` is a state-reading entry point of its own: without
-  // this, a pre-consolidation home serves with no stack env (wrong port, setup
-  // guard redirecting an installed system to /setup). No-op once stamped, so
-  // the supervised child path pays one small file read.
-  migrateBestEffort(homeDir);
   const port = opts.port
     ?? (process.env.PORT ? Number(process.env.PORT) : resolveUiServePort(undefined, homeDir));
   const installState = classifyLocalInstall(stackDirFor(homeDir), homeDir);

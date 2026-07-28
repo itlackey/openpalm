@@ -6,12 +6,24 @@ import { hasGuardianIngressAddon } from './addon-ids.js';
 import { listEnabledAddonIds } from './addons.js';
 import { writeFileAtomic } from './fs-atomic.js';
 import { buildComposeOptions } from './compose-args.js';
-import { applyInstall, buildManagedServices, restoreSnapshotAndApplyStack } from './lifecycle.js';
-import { applyStack, composePs, detectExistingProject, isComposePsRowHealthy, parseComposePsRows, resolveComposeProjectName } from './docker.js';
+import { applyInstall, buildManagedServices } from './lifecycle.js';
+import {
+	composePs,
+	detectExistingProject,
+	isComposePsRowHealthy,
+	parseComposePsRows,
+	resolveComposeProjectName
+} from './docker.js';
+import { activateStack } from './activation.js';
 import { reapAndLogRetiredVolumes } from './image-volume-retention.js';
 import { parseEnvFile } from './env.js';
 import { patchStateEnvFile, readStackEnv } from './secrets.js';
-import { acquireInstallLock, releaseInstallLock, isProcessAlive } from './install-lock.js';
+import {
+	acquireInstallLock,
+	releaseInstallLock,
+	isProcessAlive,
+	type InstallLockHandle
+} from './install-lock.js';
 import { resolveBackupsDir } from './home.js';
 import { stackEnvPath } from './paths.js';
 import { discoverStackOverlays } from './config-persistence.js';
@@ -20,144 +32,172 @@ import { auditComposeSecrets } from './secret-audit.js';
 import { validateProposedState } from './validate.js';
 import { createLogger } from '../logger.js';
 import { restoreSnapshot } from './rollback.js';
+import { currentSnapshotGeneration } from './rollback.js';
+import { captureRunningImageIds, restoreRunningImageIds, type RunningImageSnapshot } from './image-snapshots.js';
 
 const deployLogger = createLogger('deploy');
 
 function restoreDeployFiles(state: ControlPlaneState): void {
-  try {
-    restoreSnapshot(state);
-  } catch (error) {
-    deployLogger.error('failed to restore deploy snapshot', {
-      error: error instanceof Error ? error.message : String(error),
-    });
-  }
+	try {
+		restoreSnapshot(state);
+	} catch (error) {
+		deployLogger.error('failed to restore deploy snapshot', {
+			error: error instanceof Error ? error.message : String(error)
+		});
+	}
 }
 
-async function restoreDeployStack(state: ControlPlaneState): Promise<void> {
-  try {
-    await restoreSnapshotAndApplyStack(state);
-  } catch (error) {
-    deployLogger.error('failed to restore deployed stack', {
-      error: error instanceof Error ? error.message : String(error),
-    });
-  }
+async function restoreDeployStack(
+	state: ControlPlaneState,
+	lock?: InstallLockHandle,
+	images: RunningImageSnapshot = {},
+	generation?: string
+): Promise<void> {
+	try {
+		restoreSnapshot(state, generation);
+		if (generation && Object.keys(images).length > 0) {
+			await restoreRunningImageIds(state, images, generation);
+		}
+		const result = await activateStack(state, { kind: 'all' }, { pull: 'missing' }, { lock });
+		if (!result.ok) throw new Error(result.error ?? 'Failed to reapply restored stack');
+	} catch (error) {
+		deployLogger.error('failed to restore deployed stack', {
+			error: error instanceof Error ? error.message : String(error)
+		});
+	}
 }
 
 export type DeployEntry = {
-  service: string;
-  status: 'pending' | 'running' | 'error' | 'warning';
-  label: string;
+	service: string;
+	status: 'pending' | 'running' | 'error' | 'warning';
+	label: string;
 };
 
-export type DeployPhase = 'writing-config' | 'pulling-images' | 'starting' | 'starting-voice' | 'ready';
+export type DeployPhase =
+	| 'writing-config'
+	| 'pulling-images'
+	| 'starting'
+	| 'starting-voice'
+	| 'ready';
 
 export type DeployJournal = {
-  deploying: boolean;
-  interrupted?: boolean;
-  setupComplete: boolean;
-  deployStatus: DeployEntry[];
-  deployError: string | null;
-  imageWarning: string | null;
-  phase: DeployPhase;
-  startedAt: string | null;
-  pid: number | null;
+	deploying: boolean;
+	interrupted?: boolean;
+	setupComplete: boolean;
+	deployStatus: DeployEntry[];
+	deployError: string | null;
+	imageWarning: string | null;
+	phase: DeployPhase;
+	startedAt: string | null;
+	pid: number | null;
 };
 
 export type DeployProgress = DeployJournal;
 
 type RunDeployOptions = {
-  journalPath?: string;
-  onUpdate?: (state: DeployProgress) => void;
-  markSetupComplete?: () => void;
+	journalPath?: string;
+	onUpdate?: (state: DeployProgress) => void;
+	markSetupComplete?: () => void;
 };
 
 const DEFAULT_DEPLOY_PROGRESS: DeployProgress = {
-  deploying: false,
-  setupComplete: false,
-  deployStatus: [],
-  deployError: null,
-  imageWarning: null,
-  phase: 'writing-config',
-  startedAt: null,
-  pid: null,
+	deploying: false,
+	setupComplete: false,
+	deployStatus: [],
+	deployError: null,
+	imageWarning: null,
+	phase: 'writing-config',
+	startedAt: null,
+	pid: null
 };
 
 function cloneProgress(state: DeployProgress): DeployProgress {
-  return { ...state, deployStatus: state.deployStatus.map((entry) => ({ ...entry })) };
+	return { ...state, deployStatus: state.deployStatus.map((entry) => ({ ...entry })) };
 }
 
 function updateProgress(current: DeployProgress, patch: Partial<DeployProgress>): DeployProgress {
-  return cloneProgress({ ...current, ...patch });
+	return cloneProgress({ ...current, ...patch });
 }
 
 export function writeJournal(path: string, state: DeployProgress): void {
-  mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
-  writeFileAtomic(path, `${JSON.stringify(state, null, 2)}\n`, 0o600);
+	mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
+	writeFileAtomic(path, `${JSON.stringify(state, null, 2)}\n`, 0o600);
 }
 
 export function readDeployJournal(path: string): DeployProgress {
-  if (!existsSync(path)) return cloneProgress(DEFAULT_DEPLOY_PROGRESS);
-  try {
-    const parsed = JSON.parse(readFileSync(path, 'utf-8')) as Partial<DeployProgress>;
-    const state = updateProgress(DEFAULT_DEPLOY_PROGRESS, {
-      deploying: parsed.deploying === true,
-      interrupted: parsed.interrupted === true,
-      setupComplete: parsed.setupComplete === true,
-      deployStatus: Array.isArray(parsed.deployStatus)
-        ? parsed.deployStatus.filter((entry): entry is DeployEntry => Boolean(entry && typeof entry.service === 'string' && typeof entry.label === 'string' && typeof entry.status === 'string'))
-        : [],
-      deployError: typeof parsed.deployError === 'string' ? parsed.deployError : null,
-      imageWarning: typeof parsed.imageWarning === 'string' ? parsed.imageWarning : null,
-      phase: parsed.phase ?? 'writing-config',
-      startedAt: typeof parsed.startedAt === 'string' ? parsed.startedAt : null,
-      pid: typeof parsed.pid === 'number' ? parsed.pid : null,
-    });
-    if (state.deploying && state.pid && !isProcessAlive(state.pid)) {
-      state.deploying = false;
-      state.interrupted = true;
-      state.deployError = state.deployError ?? 'Deployment was interrupted. Retry to resume Docker deploy.';
-    }
-    return state;
-  } catch {
-    return cloneProgress(DEFAULT_DEPLOY_PROGRESS);
-  }
+	if (!existsSync(path)) return cloneProgress(DEFAULT_DEPLOY_PROGRESS);
+	try {
+		const parsed = JSON.parse(readFileSync(path, 'utf-8')) as Partial<DeployProgress>;
+		const state = updateProgress(DEFAULT_DEPLOY_PROGRESS, {
+			deploying: parsed.deploying === true,
+			interrupted: parsed.interrupted === true,
+			setupComplete: parsed.setupComplete === true,
+			deployStatus: Array.isArray(parsed.deployStatus)
+				? parsed.deployStatus.filter((entry): entry is DeployEntry =>
+						Boolean(
+							entry &&
+								typeof entry.service === 'string' &&
+								typeof entry.label === 'string' &&
+								typeof entry.status === 'string'
+						)
+					)
+				: [],
+			deployError: typeof parsed.deployError === 'string' ? parsed.deployError : null,
+			imageWarning: typeof parsed.imageWarning === 'string' ? parsed.imageWarning : null,
+			phase: parsed.phase ?? 'writing-config',
+			startedAt: typeof parsed.startedAt === 'string' ? parsed.startedAt : null,
+			pid: typeof parsed.pid === 'number' ? parsed.pid : null
+		});
+		if (state.deploying && state.pid && !isProcessAlive(state.pid)) {
+			state.deploying = false;
+			state.interrupted = true;
+			state.deployError =
+				state.deployError ?? 'Deployment was interrupted. Retry to resume Docker deploy.';
+		}
+		return state;
+	} catch {
+		return cloneProgress(DEFAULT_DEPLOY_PROGRESS);
+	}
 }
 
 export function resolveDeployJournalPath(state: ControlPlaneState): string {
-  return join(state.dataDir, 'setup', 'deploy-journal.json');
+	return join(state.dataDir, 'setup', 'deploy-journal.json');
 }
 
 function emitProgress(options: RunDeployOptions, state: DeployProgress): void {
-  if (options.journalPath) writeJournal(options.journalPath, state);
-  options.onUpdate?.(cloneProgress(state));
+	if (options.journalPath) writeJournal(options.journalPath, state);
+	options.onUpdate?.(cloneProgress(state));
 }
 
 function projectNameForState(state: ControlPlaneState): string {
-  return resolveComposeProjectName(parseEnvFile(stackEnvPath(state)));
+	return resolveComposeProjectName(parseEnvFile(stackEnvPath(state)));
 }
 
 function resolveImageTag(state: ControlPlaneState): string {
-  const env = readStackEnv(state.homeDir);
-  return env.OP_ASSISTANT_VERSION ?? env.OP_IMAGE_TAG ?? '';
+	const env = readStackEnv(state.homeDir);
+	return env.OP_ASSISTANT_VERSION ?? env.OP_IMAGE_TAG ?? '';
 }
 
 async function detectProjectCollision(state: ControlPlaneState): Promise<string | null> {
-  const projectName = projectNameForState(state);
-  const delays = [0, 1_000, 1_000];
-  for (let attempt = 0; attempt < delays.length; attempt++) {
-    if (delays[attempt] > 0) await new Promise((resolve) => setTimeout(resolve, delays[attempt]));
-    const existing = await detectExistingProject({ projectName, expectedWorkingDir: state.stackDir });
-    if (existing.error) continue;
-    if (!existing.exists) return null;
-    if (existing.isOurs) return null;
-    if (!existing.workingDir) continue;
-    return `Refusing to deploy: docker project "${projectName}" is already running from ${existing.workingDir}, but this deploy would use OP_HOME=${state.homeDir}. Set OP_PROJECT_NAME to a distinct value in stack.env, or stop the existing stack first.`;
-  }
-  return `Refusing to deploy: docker project "${projectName}" could not be verified safely. Docker returned an existing project without a trustworthy working_dir label, so this deploy is failing closed.`;
+	const projectName = projectNameForState(state);
+	const delays = [0, 1_000, 1_000];
+	for (let attempt = 0; attempt < delays.length; attempt++) {
+		if (delays[attempt] > 0) await new Promise((resolve) => setTimeout(resolve, delays[attempt]));
+		const existing = await detectExistingProject({
+			projectName,
+			expectedWorkingDir: state.stackDir
+		});
+		if (existing.error) continue;
+		if (!existing.exists) return null;
+		if (existing.isOurs) return null;
+		if (!existing.workingDir) continue;
+		return `Refusing to deploy: docker project "${projectName}" is already running from ${existing.workingDir}, but this deploy would use OP_HOME=${state.homeDir}. Set OP_PROJECT_NAME to a distinct value in stack.env, or stop the existing stack first.`;
+	}
+	return `Refusing to deploy: docker project "${projectName}" could not be verified safely. Docker returned an existing project without a trustworthy working_dir label, so this deploy is failing closed.`;
 }
 
 function buildLogHint(state: ControlPlaneState, services: string[]): string {
-  return `Check logs: docker compose -p ${projectNameForState(state)} logs ${services.join(' ')}.`;
+	return `Check logs: docker compose -p ${projectNameForState(state)} logs ${services.join(' ')}.`;
 }
 
 /**
@@ -171,70 +211,73 @@ function buildLogHint(state: ControlPlaneState, services: string[]): string {
  * names the failed services"), split into required vs optional services.
  */
 async function refreshDeployStatus(
-  state: ControlPlaneState,
-  progress: DeployProgress,
-  upFailed: boolean,
-  requiredServices: ReadonlySet<string>,
+	state: ControlPlaneState,
+	progress: DeployProgress,
+	upFailed: boolean,
+	requiredServices: ReadonlySet<string>
 ): Promise<{ failedRequired: string[]; failedOptional: string[] }> {
-  const composeOpts = buildComposeOptions(state);
-  const psResult = await composePs(composeOpts);
-  const rows = psResult.ok ? parseComposePsRows(psResult.stdout) : [];
+	const composeOpts = buildComposeOptions(state);
+	const psResult = await composePs(composeOpts);
+	const rows = psResult.ok ? parseComposePsRows(psResult.stdout) : [];
 
-  const failedRequired: string[] = [];
-  const failedOptional: string[] = [];
+	const failedRequired: string[] = [];
+	const failedOptional: string[] = [];
 
-  progress.deployStatus = progress.deployStatus.map((entry) => {
-    const row = rows.find((r) => r.service === entry.service);
-    const healthy = isComposePsRowHealthy(row);
-    if (healthy || !upFailed) {
-      return { ...entry, status: 'running', label: 'Running' };
-    }
-    (requiredServices.has(entry.service) ? failedRequired : failedOptional).push(entry.service);
-    const label = !row
-      ? 'Did not start'
-      : row.health.toLowerCase() === 'unhealthy'
-        ? 'Unhealthy'
-        : row.health.toLowerCase() === 'starting'
-          ? 'Starting'
-          : `Exited (${row.state || 'unknown'})`;
-    return { ...entry, status: 'error', label };
-  });
+	progress.deployStatus = progress.deployStatus.map((entry) => {
+		const row = rows.find((r) => r.service === entry.service);
+		const healthy = isComposePsRowHealthy(row);
+		if (healthy || !upFailed) {
+			return { ...entry, status: 'running', label: 'Running' };
+		}
+		(requiredServices.has(entry.service) ? failedRequired : failedOptional).push(entry.service);
+		const label = !row
+			? 'Did not start'
+			: row.health.toLowerCase() === 'unhealthy'
+				? 'Unhealthy'
+				: row.health.toLowerCase() === 'starting'
+					? 'Starting'
+					: `Exited (${row.state || 'unknown'})`;
+		return { ...entry, status: 'error', label };
+	});
 
-  return { failedRequired, failedOptional };
+	return { failedRequired, failedOptional };
 }
 
 export function markSetupComplete(state: ControlPlaneState): void {
-  // OP_SETUP_COMPLETE is an app-written record → the single state/stack.env
-  // (constitution §1).
-  patchStateEnvFile(state.homeDir, { OP_SETUP_COMPLETE: 'true' });
+	// OP_SETUP_COMPLETE is an app-written record → the single state/stack.env
+	// (constitution §1).
+	patchStateEnvFile(state.homeDir, { OP_SETUP_COMPLETE: 'true' });
 }
 
 export function backupSetupInputs(state: ControlPlaneState): string | null {
-  const stackEnvFile = stackEnvPath(state);
-  const secretsDir = `${state.stashDir}/secrets`;
-  if (!existsSync(stackEnvFile) && !existsSync(secretsDir)) return null;
-  const backupDir = join(resolveBackupsDir(), `${new Date().toISOString().replace(/[:.]/g, '-')}-setup`);
-  if (existsSync(stackEnvFile)) {
-    const dest = join(backupDir, 'state/stack.env');
-    mkdirSync(dirname(dest), { recursive: true });
-    copyFileSync(stackEnvFile, dest);
-  }
-  if (existsSync(secretsDir)) {
-    const copyDir = (sourceDir: string, targetDir: string) => {
-      mkdirSync(targetDir, { recursive: true });
-      for (const entry of readdirSync(sourceDir, { withFileTypes: true })) {
-        const sourcePath = join(sourceDir, entry.name);
-        const targetPath = join(targetDir, entry.name);
-        if (entry.isDirectory()) {
-          copyDir(sourcePath, targetPath);
-          continue;
-        }
-        copyFileSync(sourcePath, targetPath);
-      }
-    };
-    copyDir(secretsDir, join(backupDir, 'knowledge/secrets'));
-  }
-  return backupDir;
+	const stackEnvFile = stackEnvPath(state);
+	const secretsDir = `${state.stashDir}/secrets`;
+	if (!existsSync(stackEnvFile) && !existsSync(secretsDir)) return null;
+	const backupDir = join(
+		resolveBackupsDir(),
+		`${new Date().toISOString().replace(/[:.]/g, '-')}-setup`
+	);
+	if (existsSync(stackEnvFile)) {
+		const dest = join(backupDir, 'state/stack.env');
+		mkdirSync(dirname(dest), { recursive: true });
+		copyFileSync(stackEnvFile, dest);
+	}
+	if (existsSync(secretsDir)) {
+		const copyDir = (sourceDir: string, targetDir: string) => {
+			mkdirSync(targetDir, { recursive: true });
+			for (const entry of readdirSync(sourceDir, { withFileTypes: true })) {
+				const sourcePath = join(sourceDir, entry.name);
+				const targetPath = join(targetDir, entry.name);
+				if (entry.isDirectory()) {
+					copyDir(sourcePath, targetPath);
+					continue;
+				}
+				copyFileSync(sourcePath, targetPath);
+			}
+		};
+		copyDir(secretsDir, join(backupDir, 'knowledge/secrets'));
+	}
+	return backupDir;
 }
 
 /**
@@ -247,163 +290,196 @@ export function backupSetupInputs(state: ControlPlaneState): string | null {
  * block the deploy, warnings are returned for the caller to log and continue.
  */
 export async function auditApplyState(
-  state: ControlPlaneState,
+	state: ControlPlaneState
 ): Promise<{ errors: string[]; warnings: string[] }> {
-  const errors: string[] = [];
-  const warnings: string[] = [];
+	const errors: string[] = [];
+	const warnings: string[] = [];
 
-  for (const file of discoverStackOverlays(state.homeDir)) {
-    for (const auditIssue of auditComposeSecrets(readFileSync(file, 'utf-8'))) {
-      const where = auditIssue.path ? `${file}:${auditIssue.path}` : file;
-      const line = `${auditIssue.code}: ${auditIssue.message} (${where})`;
-      (auditIssue.severity === 'error' ? errors : warnings).push(line);
-    }
-  }
+	for (const file of discoverStackOverlays(state.homeDir)) {
+		for (const auditIssue of auditComposeSecrets(readFileSync(file, 'utf-8'))) {
+			const where = auditIssue.path ? `${file}:${auditIssue.path}` : file;
+			const line = `${auditIssue.code}: ${auditIssue.message} (${where})`;
+			(auditIssue.severity === 'error' ? errors : warnings).push(line);
+		}
+	}
 
-  const validation = await validateProposedState(state);
-  errors.push(...validation.errors);
-  warnings.push(...validation.warnings);
+	const validation = await validateProposedState(state);
+	errors.push(...validation.errors);
+	warnings.push(...validation.warnings);
 
-  return { errors, warnings };
+	return { errors, warnings };
 }
 
-export async function runDeploy(state: ControlPlaneState, options: RunDeployOptions = {}): Promise<DeployProgress> {
-  const progress = cloneProgress(DEFAULT_DEPLOY_PROGRESS);
-  progress.deploying = true;
-  progress.startedAt = new Date().toISOString();
-  progress.pid = process.pid;
-  emitProgress(options, progress);
+export async function runDeploy(
+	state: ControlPlaneState,
+	options: RunDeployOptions = {}
+): Promise<DeployProgress> {
+	const progress = cloneProgress(DEFAULT_DEPLOY_PROGRESS);
+	progress.deploying = true;
+	progress.startedAt = new Date().toISOString();
+	progress.pid = process.pid;
+	emitProgress(options, progress);
 
-  const lock = acquireInstallLock(state.dataDir);
-  if (!lock) {
-    progress.deploying = false;
-    progress.deployError = "install_in_progress: A deploy is already running. Wait for it to finish (the lock clears itself automatically after 30 minutes). If you're sure nothing is running, run 'openpalm unlock' to clear a stale lock.";
-    emitProgress(options, progress);
-    return progress;
-  }
+	const lock = acquireInstallLock(state.dataDir);
+	if (!lock) {
+		progress.deploying = false;
+		progress.deployError =
+			"install_in_progress: A deploy is already running. Wait for it to finish (the lock clears itself automatically after 30 minutes). If you're sure nothing is running, run 'openpalm unlock' to clear a stale lock.";
+		emitProgress(options, progress);
+		return progress;
+	}
+	let imageSnapshot: RunningImageSnapshot = {};
+	let generation: string | undefined;
 
-  try {
-    const collision = await detectProjectCollision(state);
-    if (collision) {
-      progress.deployError = collision;
-      progress.deploying = false;
-      emitProgress(options, progress);
-      return progress;
-    }
+	try {
+		imageSnapshot = await captureRunningImageIds(buildComposeOptions(state));
+		const collision = await detectProjectCollision(state);
+		if (collision) {
+			progress.deployError = collision;
+			progress.deploying = false;
+			emitProgress(options, progress);
+			return progress;
+		}
 
-    progress.phase = 'writing-config';
-    emitProgress(options, progress);
-    await applyInstall(state, { lock });
+		progress.phase = 'writing-config';
+		emitProgress(options, progress);
+		await applyInstall(state, { lock });
+		generation = currentSnapshotGeneration() ?? undefined;
 
-    // Validate the written config BEFORE touching containers (S.2.2). Route a
-    // blocking failure through deployError — the same user-visible surface as a
-    // compose failure — so an unauthorized secret grant refuses the deploy.
-    const audit = await auditApplyState(state);
-    for (const warning of audit.warnings) deployLogger.warn(warning);
-    if (audit.errors.length > 0) {
-      restoreDeployFiles(state);
-      progress.deployError = `Refusing to deploy: configuration validation failed.\n${audit.errors.join('\n')}`;
-      progress.deploying = false;
-      emitProgress(options, progress);
-      return progress;
-    }
+		// Validate the written config BEFORE touching containers (S.2.2). Route a
+		// blocking failure through deployError — the same user-visible surface as a
+		// compose failure — so an unauthorized secret grant refuses the deploy.
+		const audit = await auditApplyState(state);
+		for (const warning of audit.warnings) deployLogger.warn(warning);
+		if (audit.errors.length > 0) {
+			restoreDeployFiles(state);
+			progress.deployError = `Refusing to deploy: configuration validation failed.\n${audit.errors.join('\n')}`;
+			progress.deploying = false;
+			emitProgress(options, progress);
+			return progress;
+		}
 
-    const services = await buildManagedServices(state);
-    const requiredServices = new Set<string>(CORE_SERVICES);
-    if (hasGuardianIngressAddon(listEnabledAddonIds(state.homeDir))) {
-      requiredServices.add('guardian');
-    }
-    progress.deployStatus = services.map((service) => ({ service, status: 'pending', label: 'Waiting...' }));
-    emitProgress(options, progress);
+		const services = await buildManagedServices(state);
+		const requiredServices = new Set<string>(CORE_SERVICES);
+		if (hasGuardianIngressAddon(listEnabledAddonIds(state.homeDir))) {
+			requiredServices.add('guardian');
+		}
+		progress.deployStatus = services.map((service) => ({
+			service,
+			status: 'pending',
+			label: 'Waiting...'
+		}));
+		emitProgress(options, progress);
 
-    const composeOpts = buildComposeOptions(state);
+		// Project rename (#540): if OP_PROJECT_NAME changed since the last apply,
+		// the composeDown below only targets the NEW name — the still-running old
+		// project would keep its containers (and host ports) forever. Tear the
+		// recorded outgoing project down first, before anything comes up. A
+		// blocked teardown (down failed, old project still holding ports) must
+		// abort the deploy — continuing would bring up a colliding second stack.
+		const renameTeardown = await teardownRenamedProject(state);
+		if (renameTeardown.warning) deployLogger.warn(renameTeardown.warning);
+		if (renameTeardown.blocked) {
+			restoreDeployFiles(state);
+			progress.deployError = renameTeardown.warning ?? 'Project rename teardown failed.';
+			progress.deploying = false;
+			emitProgress(options, progress);
+			return progress;
+		}
+		if (renameTeardown.downed) {
+			deployLogger.info(
+				`project rename: stopped previous docker project "${renameTeardown.downed}"`
+			);
+		}
 
-    // Project rename (#540): if OP_PROJECT_NAME changed since the last apply,
-    // the composeDown below only targets the NEW name — the still-running old
-    // project would keep its containers (and host ports) forever. Tear the
-    // recorded outgoing project down first, before anything comes up. A
-    // blocked teardown (down failed, old project still holding ports) must
-    // abort the deploy — continuing would bring up a colliding second stack.
-    const renameTeardown = await teardownRenamedProject(state);
-    if (renameTeardown.warning) deployLogger.warn(renameTeardown.warning);
-    if (renameTeardown.blocked) {
-      restoreDeployFiles(state);
-      progress.deployError = renameTeardown.warning ?? 'Project rename teardown failed.';
-      progress.deploying = false;
-      emitProgress(options, progress);
-      return progress;
-    }
-    if (renameTeardown.downed) {
-      deployLogger.info(`project rename: stopped previous docker project "${renameTeardown.downed}"`);
-    }
+		progress.phase = 'starting';
+		progress.deployStatus = progress.deployStatus.map((entry) => ({
+			...entry,
+			status: 'pending',
+			label: 'Starting...'
+		}));
+		emitProgress(options, progress);
 
-    progress.phase = 'starting';
-    progress.deployStatus = progress.deployStatus.map((entry) => ({ ...entry, status: 'pending', label: 'Starting...' }));
-    emitProgress(options, progress);
+		const imageTag = resolveImageTag(state);
+		const isDevTag = imageTag.startsWith('dev');
+		const stackResult = await activateStack(
+			state,
+			{ kind: 'all' },
+			{
+				pull: isDevTag ? 'missing' : 'always',
+				healthTimeoutMs: 5 * 60_000
+			},
+			{ lock }
+		);
 
-    const imageTag = resolveImageTag(state);
-    const isDevTag = imageTag.startsWith('dev');
-    const stackResult = await applyStack({ kind: 'all' }, composeOpts, undefined, {
-      pull: isDevTag ? 'missing' : 'always',
-      healthTimeoutMs: 5 * 60_000,
-    });
+		if (!stackResult.ok) {
+			// ONE `compose ps` refreshes the per-service display labels and splits the
+			// failures into required vs optional. Guardian is required whenever an
+			// ingress addon enables it; adapter failures remain warnings. `upFailed`
+			// means nothing came up at all and is always a hard failure.
+			const { failedRequired, failedOptional } = await refreshDeployStatus(
+				state,
+				progress,
+				true,
+				requiredServices
+			);
+			if (stackResult.pullFailed || failedRequired.length > 0 || stackResult.upFailed) {
+				if (stackResult.pullFailed && !renameTeardown.downed) restoreDeployFiles(state);
+				else await restoreDeployStack(state, lock, imageSnapshot, generation);
+				const allFailed = [...failedRequired, ...failedOptional];
+				const failureDetail =
+					allFailed.length > 0 ? allFailed.join(', ') : (stackResult.error ?? 'stack update');
+				progress.deployError = isDevTag
+					? `Dev images not found locally or failed to start (tag: ${imageTag}): ${failureDetail}. Run \`bun run dev:build\` from the project root to build them, then retry setup.`
+					: `Stack update failed: ${failureDetail}.${allFailed.length > 0 ? ` ${buildLogHint(state, allFailed)}` : ''}`;
+				progress.deploying = false;
+				emitProgress(options, progress);
+				return progress;
+			}
+			// Only optional adapter/services failed, so setup completes with a
+			// warning rather than wedging a fresh install.
+			// This early return would otherwise skip the success-path retired-volume
+			// reap below, so reclaim before returning the warning.
+			await reapAndLogRetiredVolumes(state.homeDir, deployLogger);
+			progress.imageWarning = `The following optional service(s) did not start correctly and were skipped: ${failedOptional.join(', ')}. ${buildLogHint(state, failedOptional)}`;
+			options.markSetupComplete?.();
+			progress.deploying = false;
+			progress.setupComplete = true;
+			progress.phase = 'ready';
+			emitProgress(options, progress);
+			return progress;
+		}
 
-    if (!stackResult.ok) {
-      // ONE `compose ps` refreshes the per-service display labels and splits the
-      // failures into required vs optional. Guardian is required whenever an
-      // ingress addon enables it; adapter failures remain warnings. `upFailed`
-      // means nothing came up at all and is always a hard failure.
-      const { failedRequired, failedOptional } = await refreshDeployStatus(state, progress, true, requiredServices);
-      if (stackResult.pullFailed || failedRequired.length > 0 || stackResult.upFailed) {
-        if (stackResult.pullFailed && !renameTeardown.downed) restoreDeployFiles(state);
-        else await restoreDeployStack(state);
-        const allFailed = [...failedRequired, ...failedOptional];
-        const failureDetail = allFailed.length > 0
-          ? allFailed.join(', ')
-          : stackResult.error ?? 'stack update';
-        progress.deployError = isDevTag
-          ? `Dev images not found locally or failed to start (tag: ${imageTag}): ${failureDetail}. Run \`bun run dev:build\` from the project root to build them, then retry setup.`
-          : `Stack update failed: ${failureDetail}.${allFailed.length > 0 ? ` ${buildLogHint(state, allFailed)}` : ''}`;
-        progress.deploying = false;
-        emitProgress(options, progress);
-        return progress;
-      }
-      // Only optional adapter/services failed, so setup completes with a
-      // warning rather than wedging a fresh install.
-      // This early return would otherwise skip the success-path retired-volume
-      // reap below, so reclaim before returning the warning.
-      await reapAndLogRetiredVolumes(state.homeDir, deployLogger);
-      progress.imageWarning = `The following optional service(s) did not start correctly and were skipped: ${failedOptional.join(', ')}. ${buildLogHint(state, failedOptional)}`;
-      options.markSetupComplete?.();
-      progress.deploying = false;
-      progress.setupComplete = true;
-      progress.phase = 'ready';
-      emitProgress(options, progress);
-      return progress;
-    }
+		// #585 decision 585-B: reclaim the named volumes retired by #585
+		// (assistant-artifacts, guardian-cache, portal-cache) — image-baked/cache
+		// content only, nothing durable. Runs AFTER the new stack is confirmed
+		// up, so a reclaim failure can never strand this deploy; failures are
+		// logged, never thrown. `openpalm install` on an EXISTING home drives the
+		// same compose transition performUpgrade does (applyInstall overwrites
+		// the managed compose files, applyStack brings the new stack up), so the
+		// reap must run here too — otherwise a user who re-runs install instead
+		// of update strands the retired volumes with no reclamation path
+		// (uninstall --volumes can't see them once their declarations are gone,
+		// and doctor --clean-docker's orphan detector only flags a DIFFERENT
+		// project's volumes).
+		await reapAndLogRetiredVolumes(state.homeDir, deployLogger);
 
-    // #585 decision 585-B: reclaim the named volumes retired by #585
-    // (assistant-artifacts, guardian-cache, portal-cache) — image-baked/cache
-    // content only, nothing durable. Runs AFTER the new stack is confirmed
-    // up, so a reclaim failure can never strand this deploy; failures are
-    // logged, never thrown. `openpalm install` on an EXISTING home drives the
-    // same compose transition performUpgrade does (applyInstall overwrites
-    // the managed compose files, applyStack brings the new stack up), so the
-    // reap must run here too — otherwise a user who re-runs install instead
-    // of update strands the retired volumes with no reclamation path
-    // (uninstall --volumes can't see them once their declarations are gone,
-    // and doctor --clean-docker's orphan detector only flags a DIFFERENT
-    // project's volumes).
-    await reapAndLogRetiredVolumes(state.homeDir, deployLogger);
-
-    await refreshDeployStatus(state, progress, false, requiredServices);
-    options.markSetupComplete?.();
-    progress.deploying = false;
-    progress.setupComplete = true;
-    progress.phase = 'ready';
-    emitProgress(options, progress);
-    return progress;
-  } finally {
-    releaseInstallLock(lock);
-  }
+		await refreshDeployStatus(state, progress, false, requiredServices);
+		options.markSetupComplete?.();
+		progress.deploying = false;
+		progress.setupComplete = true;
+		progress.phase = 'ready';
+		emitProgress(options, progress);
+		return progress;
+	} catch (error) {
+		// A thrown setup/deploy exception must not leave the journal claiming that
+		// deployment is still active forever. Persist a terminal failure before
+		// rethrowing so the UI and a later process can recover deterministically.
+		progress.deploying = false;
+		progress.deployError = error instanceof Error ? error.message : String(error);
+		emitProgress(options, progress);
+		throw error;
+	} finally {
+		releaseInstallLock(lock);
+	}
 }

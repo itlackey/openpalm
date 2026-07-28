@@ -75,10 +75,10 @@ or package set changes.
 
 ## Image-Baked Assets
 
-The standard image already bakes the default tool package tree, OpenPalm UI,
-and skeleton package. Startup does not install or update those assets from npm.
-To change a platform-wide default, build/release a new assistant image rather
-than adding a runtime version variable.
+The standard image already bakes the default tool package tree and OpenPalm UI.
+Startup does not install or update them from npm. Skeleton files are host assets,
+not image content. To change an image-wide default, build/release a new assistant
+image rather than adding a runtime version variable.
 
 ## Verify
 

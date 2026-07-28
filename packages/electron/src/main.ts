@@ -12,7 +12,6 @@ import {
   ensureHomeDirs,
   checkAndUpdateUiBuild,
   checkAndUpdateSkeleton,
-  uiUpdateChannel,
   parseEnvFile,
   stackEnvFile,
   PLATFORM_VERSION,
@@ -333,7 +332,7 @@ async function startUIServer(): Promise<void> {
     }
   }
 
-  // Check for a newer UI build on npm before starting. Non-fatal: if the check
+  // Check for a newer GitHub host-assets build before starting. Non-fatal: if the check
   // or download fails, we continue with what's on disk. Pass this harness's
   // native contract version so a UI build that needs a newer harness is NOT
   // silently installed (§5.3) — instead we keep the current build and the app's
@@ -363,14 +362,14 @@ async function startUIServer(): Promise<void> {
   let uiBuildDir = resolveUiBuildDir();
 
   if (!existsSync(join(uiBuildDir, 'index.js'))) {
-    console.log('UI build not found — seeding @openpalm/ui from npm...');
+    console.log('UI build not found — seeding the GitHub host-assets release...');
     try {
-      // @openpalm/ui is independently versioned — seed the channel (latest/next)
-      // for the PLATFORM release stream, not the harness marketing version.
+      // Fresh installs use the exact coordinated platform release, while the
+      // bundled extraResources remain the offline fallback.
       // Thread this harness's contract version (§5.3) so a fresh install can't
       // silently seed a UI build this harness can't run (remediation 3.2) —
       // mirrors the checkAndUpdateUiBuild call above.
-      await seedUiBuild(uiUpdateChannel(platformVersion), dataDir, undefined, HARNESS_CONTRACT_VERSION);
+      await seedUiBuild(platformVersion, dataDir, undefined, HARNESS_CONTRACT_VERSION);
       uiBuildDir = resolveUiBuildDir();
     } catch (err) {
       console.error('Failed to seed UI build:', err instanceof Error ? err.message : String(err));
