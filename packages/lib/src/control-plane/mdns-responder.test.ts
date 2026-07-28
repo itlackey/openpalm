@@ -18,28 +18,18 @@ import {
   resolveMdnsAdvertisements,
   resolveMdnsStatus,
   sanitizeDnsLabel,
-  startMdnsResponder,
   _resetMdnsResponderForTests,
   _setMdnsFactoryForTests,
-  type MdnsAdvertisement,
   type MdnsAnswer,
   type MdnsFactory,
   type MdnsInstance,
   type MdnsRemoteInfo,
-  type MdnsResponderHandle,
 } from "./mdns-responder.js";
 
 const MDNS_PORT = 5353;
 
 function assertDefined<T>(value: T | undefined | null): asserts value is T {
   expect(value).toBeDefined();
-}
-
-function makeAssistantAdvert(): MdnsAdvertisement {
-  return { service: "assistant", name: "openpalm.local", port: 3810, addresses: ["192.168.1.20"] };
-}
-function makeGuardianAdvert(): MdnsAdvertisement {
-  return { service: "guardian", name: "openpalm-guardian.local", port: 3830, addresses: ["192.168.1.20"] };
 }
 
 // ── Stub multicast-dns instance (records respond()/destroy(), no socket) ─────
@@ -298,35 +288,52 @@ describe("resolveMdnsStatus", () => {
   });
 });
 
-// ── responder lifecycle (stub MdnsInstance) ──────────────────────────────────
+// ── responder record content (stub MdnsInstance) ─────────────────────────────
+//
+// Driven through reconcileMdnsResponder — the only caller that starts a
+// responder in production — rather than a test-only wrapper. Under HOST_IPV4,
+// ASSISTANT_ENV resolves to openpalm.local:3810 and GUARDIAN_ENV to
+// openpalm-guardian.local:3830. The reconcile describe below covers the
+// start/stop/idempotence lifecycle; this block covers the DNS records.
 
-describe("startMdnsResponder", () => {
-  test("returns null and creates no responder when there is nothing to advertise", () => {
-    const { factory, instances } = createStubMdnsFactory();
-    const handle = startMdnsResponder([], { makeMdns: factory });
-    expect(handle).toBeNull();
-    expect(instances).toHaveLength(0);
-  });
+const HOST_IPV4 = ["192.168.1.20"];
+const ASSISTANT_ENV = { OP_ASSISTANT_BIND_ADDRESS: "0.0.0.0" };
+const GUARDIAN_ENV = { GUARDIAN_DIRECT_INGRESS: "true", OP_GUARDIAN_BIND_ADDRESS: "0.0.0.0" };
+const LOOPBACK_ENV = { OP_ASSISTANT_BIND_ADDRESS: "127.0.0.1" };
 
-  test("creates one responder and announces an A record per advert address", () => {
+describe("mdns responder records", () => {
+  /** Reconcile a responder into existence and hand back its stub instance. */
+  function startStub(env: Record<string, string | undefined> = ASSISTANT_ENV): {
+    mdns: StubMdns;
+    factory: MdnsFactory;
+  } {
     const { factory, instances } = createStubMdnsFactory();
-    const handle = startMdnsResponder([makeAssistantAdvert()], { makeMdns: factory });
-    expect(handle).not.toBeNull();
-    expect(instances).toHaveLength(1);
+    reconcileMdnsResponder("/nonexistent", { env, makeMdns: factory, hostIpv4: HOST_IPV4 });
     const [mdns] = instances;
     assertDefined(mdns);
+    return { mdns, factory };
+  }
+
+  beforeEach(() => {
+    _resetMdnsResponderForTests();
+    _setMdnsFactoryForTests(null);
+  });
+
+  afterEach(() => {
+    _resetMdnsResponderForTests();
+    _setMdnsFactoryForTests(null);
+  });
+
+  test("announces an A record per advert address", () => {
+    const { mdns } = startStub();
     const announced = mdns.allAnswers().find((a) => a.type === "A");
     assertDefined(announced);
     expect(announced.name).toBe("openpalm.local");
     expect(announced.data).toBe("192.168.1.20");
-    handle?.stop();
   });
 
   test("answers a matching A query with the advert's address", () => {
-    const { factory, instances } = createStubMdnsFactory();
-    const handle = startMdnsResponder([makeAssistantAdvert()], { makeMdns: factory });
-    const [mdns] = instances;
-    assertDefined(mdns);
+    const { mdns } = startStub();
     mdns.responses.length = 0; // drop startup announcements
 
     mdns.emitQuery([{ name: "openpalm.local", type: "A" }], { address: "192.168.1.50", port: MDNS_PORT });
@@ -339,14 +346,10 @@ describe("startMdnsResponder", () => {
     expect(answer.data).toBe("192.168.1.20");
     // A standard multicast query (source port 5353) is answered to the group.
     expect(last.rinfo).toBeUndefined();
-    handle?.stop();
   });
 
   test("answers a _http._tcp.local PTR query with SRV/TXT/A additionals", () => {
-    const { factory, instances } = createStubMdnsFactory();
-    const handle = startMdnsResponder([makeAssistantAdvert()], { makeMdns: factory });
-    const [mdns] = instances;
-    assertDefined(mdns);
+    const { mdns } = startStub();
     mdns.responses.length = 0;
 
     mdns.emitQuery([{ name: "_http._tcp.local", type: "PTR" }], { address: "192.168.1.50", port: MDNS_PORT });
@@ -356,14 +359,10 @@ describe("startMdnsResponder", () => {
     expect(last.res.answers.some((a) => a.type === "PTR")).toBe(true);
     expect(last.res.additionals?.some((a) => a.type === "SRV")).toBe(true);
     expect(last.res.additionals?.some((a) => a.type === "TXT")).toBe(true);
-    handle?.stop();
   });
 
   test("answers a legacy-unicast query (source port ≠ 5353) back to the sender", () => {
-    const { factory, instances } = createStubMdnsFactory();
-    const handle = startMdnsResponder([makeAssistantAdvert()], { makeMdns: factory });
-    const [mdns] = instances;
-    assertDefined(mdns);
+    const { mdns } = startStub();
     mdns.responses.length = 0;
 
     const rinfo = { address: "192.168.1.50", port: 54321 };
@@ -372,29 +371,27 @@ describe("startMdnsResponder", () => {
     const last = mdns.responses[mdns.responses.length - 1];
     assertDefined(last);
     expect(last.rinfo).toEqual(rinfo);
-    handle?.stop();
   });
 
   test("ignores non-matching queries", () => {
-    const { factory, instances } = createStubMdnsFactory();
-    const handle = startMdnsResponder([makeAssistantAdvert()], { makeMdns: factory });
-    const [mdns] = instances;
-    assertDefined(mdns);
+    const { mdns } = startStub();
     mdns.responses.length = 0;
 
     mdns.emitQuery([{ name: "unknown.local", type: "A" }], { address: "192.168.1.50", port: MDNS_PORT });
     expect(mdns.responses).toHaveLength(0);
-    handle?.stop();
   });
 
-  test("stop() sends TTL-0 goodbye records and destroys the responder", () => {
-    const { factory, instances } = createStubMdnsFactory();
-    const handle = startMdnsResponder([makeAssistantAdvert()], { makeMdns: factory });
-    const [mdns] = instances;
-    assertDefined(mdns);
+  test("every goodbye record carries TTL 0", () => {
+    const { mdns, factory } = startStub();
     const before = mdns.responses.length;
 
-    handle?.stop();
+    // Reconciling back to loopback stops the active responder — the only
+    // production path that sends goodbyes.
+    reconcileMdnsResponder("/nonexistent", {
+      env: LOOPBACK_ENV,
+      makeMdns: factory,
+      hostIpv4: HOST_IPV4,
+    });
 
     expect(mdns.responses.length).toBeGreaterThan(before);
     const goodbye = mdns.responses[mdns.responses.length - 1];
@@ -408,18 +405,16 @@ describe("startMdnsResponder", () => {
     const throwingFactory: MdnsFactory = () => {
       throw new Error("EADDRINUSE");
     };
-    let handle: MdnsResponderHandle | null | undefined;
-    expect(() => {
-      handle = startMdnsResponder([makeAssistantAdvert()], { makeMdns: throwingFactory });
-    }).not.toThrow();
-    expect(() => handle?.stop()).not.toThrow();
+    expect(() =>
+      reconcileMdnsResponder("/nonexistent", {
+        env: ASSISTANT_ENV,
+        makeMdns: throwingFactory,
+        hostIpv4: HOST_IPV4,
+      }),
+    ).not.toThrow();
 
-    const { factory, instances } = createStubMdnsFactory();
-    const handle2 = startMdnsResponder([makeGuardianAdvert()], { makeMdns: factory });
-    const [mdns] = instances;
-    assertDefined(mdns);
+    const { mdns } = startStub(GUARDIAN_ENV);
     expect(() => mdns.emitError(new Error("EACCES"))).not.toThrow();
-    handle2?.stop();
   });
 });
 

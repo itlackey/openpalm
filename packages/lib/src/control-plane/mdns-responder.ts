@@ -447,18 +447,6 @@ function createResponder(
   };
 }
 
-/**
- * Start a responder for `adverts`. Returns `null` and opens no socket at all
- * when there is nothing to advertise (the loopback-default "no socket"
- * guarantee) — the factory is never even consulted in that case.
- */
-export function startMdnsResponder(
-  adverts: MdnsAdvertisement[],
-  deps: { makeMdns?: MdnsFactory } = {},
-): MdnsResponderHandle | null {
-  return createResponder(adverts, deps)?.handle ?? null;
-}
-
 // ── Reconcile singleton ─────────────────────────────────────────────────────
 //
 // Explicit, documented owner of the single live responder — mirrors
