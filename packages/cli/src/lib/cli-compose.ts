@@ -10,10 +10,10 @@ import {
   buildComposeCliArgs,
   buildComposeOptions,
   buildComposePreflightError,
-  checkDiskHeadroom,
+  checkLifecycleDiskHeadroom,
   composePreflight,
   composeUpTimeoutMs,
-  describeDiskHeadroom,
+  describeLifecycleDiskHeadroom,
   dockerBin,
   ensureDockerReady,
   mapDockerError,
@@ -71,10 +71,14 @@ export async function runComposeWithPreflight(
     // default: only warns unless OP_DISK_HARD_BLOCK=1 is set AND the reading
     // is "critical" (S6: "make the hard-block threshold configurable/
     // off-by-default", to avoid refusing legitimate installs).
-    const headroom = checkDiskHeadroom(state.homeDir);
-    const headroomWarning = describeDiskHeadroom(headroom);
+    // #588: this measures Docker's data root alongside OP_HOME whenever the
+    // two are separate filesystems — image pulls write to the Docker root, so
+    // a roomy OP_HOME was never evidence the pull would fit. Fails soft: if
+    // Docker cannot be asked, the OP_HOME reading still stands.
+    const headroom = await checkLifecycleDiskHeadroom(state.homeDir);
+    const headroomWarning = describeLifecycleDiskHeadroom(headroom);
     if (headroomWarning) {
-      if (shouldBlockOnDiskHeadroom(headroom)) {
+      if (shouldBlockOnDiskHeadroom(headroom.worst)) {
         throw new Error(headroomWarning);
       }
       console.warn(`Warning: ${headroomWarning}`);

@@ -13,6 +13,7 @@
 import { describe, expect, test } from "bun:test";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
+import { expectedImages, verifyReleaseImages } from "./verify-release-images.mjs";
 
 const ROOT = join(import.meta.dir, "..");
 const WORKFLOWS_DIR = join(ROOT, ".github", "workflows");
@@ -320,4 +321,203 @@ describe("guardian image dry-run stays buildable before npm publish", () => {
 			"SKELETON_USE_LOCAL_SOURCE",
 		);
 	});
+});
+
+// ── Releases shipped with NO images at all (0.12.43, 0.12.45–0.12.52) ─────────
+// release.yml gated the three docker-* jobs on include_images (default FALSE)
+// for unit=platform/guardian/portals, and release practice had drifted to
+// unit=platform. tag-release's `!contains(needs.*.result, 'failure')` treats a
+// SKIPPED job as fine, so those runs published npm packages, pushed a git tag
+// and cut a GitHub release with zero images — and reported success. Run
+// 28460012584 (0.12.52) is the canonical example: every npm job succeeded, all
+// three docker jobs skipped, tag-release succeeded.
+//
+// Two-part fix, both asserted here: include_images now defaults to TRUE (fixes
+// the common path), and tag-release verifies the expected images actually built
+// before creating any tag (makes the silent variant impossible).
+describe("images-with-every-release — include_images defaults to true", () => {
+	const release = parseWorkflow(RELEASE_WORKFLOW);
+
+	test("include_images defaults to true so unit=platform builds images without a flag", () => {
+		const inputs = (
+			release.on as Record<string, { inputs?: Record<string, { default?: unknown }> }>
+		).workflow_dispatch?.inputs;
+		expect(inputs?.include_images?.default).toBe(true);
+	});
+});
+
+describe("images-with-every-release — tag-release refuses to tag without its images", () => {
+	const release = parseWorkflow(RELEASE_WORKFLOW);
+	const jobs = jobsOf(release);
+	const tagJob = jobs["tag-release"];
+	const steps = tagJob?.steps ?? [];
+	const guardIndex = steps.findIndex((s) => (s.run ?? "").includes("verify-release-images.mjs"));
+
+	test("a guard step runs verify-release-images.mjs", () => {
+		expect(guardIndex).toBeGreaterThanOrEqual(0);
+	});
+
+	test("the guard runs BEFORE any tag is created or release cut", () => {
+		// Order is the whole point: a guard after `Create + push tags` would fire
+		// only once the tag — the thing that means "fully published" — exists.
+		const tagStepIndex = steps.findIndex((s) => s.name === "Create + push tags");
+		expect(tagStepIndex).toBeGreaterThanOrEqual(0);
+		expect(guardIndex).toBeLessThan(tagStepIndex);
+	});
+
+	test("the guard is a STEP, not a job-level condition (a skipped tag-release is the same silence)", () => {
+		// tag-release must still RUN so the guard can fail it loudly. If the job
+		// `if:` ever grew the image conditions, a missing-image release would go
+		// back to being green-and-untagged rather than red.
+		const cond = String(tagJob?.if ?? "");
+		expect(cond).not.toContain("docker-portal.result");
+		expect(cond).not.toContain("docker-guardian.result");
+		expect(cond).not.toContain("docker-assistant.result");
+	});
+
+	test("the guard is handed the unit, the flag, and all three docker job results", () => {
+		const env = (steps[guardIndex] as { env?: Record<string, string> } | undefined)?.env ?? {};
+		const wired = Object.values(env).join("\n");
+		expect(wired).toContain("inputs.unit");
+		expect(wired).toContain("inputs.include_images");
+		expect(wired).toContain("needs.docker-portal.result");
+		expect(wired).toContain("needs.docker-guardian.result");
+		expect(wired).toContain("needs.docker-assistant.result");
+	});
+
+	test("tag-release still waits on all three docker jobs (results must be observable)", () => {
+		const needs = needsList(tagJob ?? {});
+		expect(needs).toContain("docker-portal");
+		expect(needs).toContain("docker-guardian");
+		expect(needs).toContain("docker-assistant");
+	});
+});
+
+// The durable form of the fix: the guard's DECISION, exercised directly across
+// every unit, rather than a text match on the workflow.
+describe("images-with-every-release — an image-building unit cannot tag with skipped image jobs", () => {
+	const ALL_SKIPPED = { portal: "skipped", guardian: "skipped", assistant: "skipped" };
+	const ALL_BUILT = { portal: "success", guardian: "success", assistant: "success" };
+
+	// Exactly the shape of run 28460012584 (0.12.52).
+	test("unit=platform with every docker job skipped is refused", () => {
+		const result = verifyReleaseImages({
+			unit: "platform",
+			includeImages: true,
+			results: ALL_SKIPPED,
+		});
+		expect(result.ok).toBe(false);
+		expect(result.missing.map((m) => m.image).sort()).toEqual(["assistant", "guardian"]);
+	});
+
+	// 0.12.49 (unit=guardian) produced a guardian image and only a guardian image
+	// — the partial case must be judged against the unit's OWN expectation, not
+	// against "some image was built".
+	test("a unit is judged against its own expected image set, not 'some image built'", () => {
+		expect(
+			verifyReleaseImages({
+				unit: "guardian",
+				includeImages: true,
+				results: { ...ALL_SKIPPED, guardian: "success" },
+			}).ok,
+		).toBe(true);
+		// unit=platform wants BOTH guardian and assistant; a guardian-only run is short.
+		const platform = verifyReleaseImages({
+			unit: "platform",
+			includeImages: true,
+			results: { ...ALL_SKIPPED, guardian: "success" },
+		});
+		expect(platform.ok).toBe(false);
+		expect(platform.missing.map((m) => m.image)).toEqual(["assistant"]);
+	});
+
+	test.each(["platform", "portals", "assistant", "guardian", "images", "all"])(
+		"unit=%s passes when its expected images built, and fails when they were skipped",
+		(unit) => {
+			expect(verifyReleaseImages({ unit, includeImages: true, results: ALL_BUILT }).ok).toBe(true);
+			// Every one of these units expects at least one image with the flag on,
+			// so all-skipped must be refused for all of them.
+			expect(expectedImages(unit, true).length).toBeGreaterThan(0);
+			expect(verifyReleaseImages({ unit, includeImages: true, results: ALL_SKIPPED }).ok).toBe(
+				false,
+			);
+		},
+	);
+
+	test("unticking include_images is still a legitimate npm-only thin-host patch", () => {
+		// The opt-out must stay usable — the guard exists to catch the SILENT
+		// case, not to force images onto a deliberate npm-only release.
+		for (const unit of ["platform", "guardian", "portals"]) {
+			expect(expectedImages(unit, false)).toEqual([]);
+			expect(verifyReleaseImages({ unit, includeImages: false, results: ALL_SKIPPED }).ok).toBe(
+				true,
+			);
+		}
+	});
+
+	test("unit=electron expects no images and is unaffected", () => {
+		expect(expectedImages("electron", true)).toEqual([]);
+		expect(
+			verifyReleaseImages({ unit: "electron", includeImages: true, results: ALL_SKIPPED }).ok,
+		).toBe(true);
+	});
+
+	test("a failed or absent docker job is no more tag-worthy than a skipped one", () => {
+		for (const result of ["failure", "cancelled", ""]) {
+			expect(
+				verifyReleaseImages({
+					unit: "assistant",
+					includeImages: true,
+					results: { ...ALL_BUILT, assistant: result },
+				}).ok,
+			).toBe(false);
+		}
+	});
+});
+
+// Anti-drift: the guard's expectation table is a hand-written mirror of the
+// docker-* jobs' `if:` gates. Evaluate those gates for real and require the two
+// to agree — otherwise a future gate edit silently re-opens the hole.
+describe("images-with-every-release — the guard's expectations match the docker job gates", () => {
+	const release = parseWorkflow(RELEASE_WORKFLOW);
+	const jobs = jobsOf(release);
+	const IMAGE_JOB_IDS = { portal: "docker-portal", guardian: "docker-guardian", assistant: "docker-assistant" };
+	const UNITS = ["platform", "portals", "assistant", "guardian", "images", "electron", "all"];
+
+	/**
+	 * Evaluate a workflow `if:` expression with every upstream job healthy, so
+	 * only the unit/flag conditions decide. Handles the subset of GitHub's
+	 * expression syntax these gates actually use.
+	 */
+	function gateRuns(expr: string, unit: string, includeImages: boolean): boolean {
+		const js = expr
+			.replace(/always\(\)/g, "true")
+			.replace(/inputs\.unit/g, JSON.stringify(unit))
+			.replace(/inputs\.include_images/g, String(includeImages))
+			.replace(/inputs\.dry_run/g, "false")
+			.replace(/needs\.[\w-]+\.result/g, '"success"')
+			.replace(/!=/g, "!==")
+			.replace(/(?<![!=])==(?!=)/g, "===");
+		return Boolean(new Function(`return (${js});`)());
+	}
+
+	test("the evaluator actually discriminates (guards against a rubber-stamp)", () => {
+		// If gateRuns returned a constant, every agreement assertion below would
+		// be vacuous. Pin one gate that must differ across units.
+		const portalGate = String(jobs["docker-portal"]?.if ?? "");
+		expect(gateRuns(portalGate, "images", true)).toBe(true);
+		expect(gateRuns(portalGate, "electron", true)).toBe(false);
+	});
+
+	for (const unit of UNITS) {
+		for (const includeImages of [true, false]) {
+			test(`unit=${unit} include_images=${includeImages}: gates and guard agree`, () => {
+				const wouldRun = Object.entries(IMAGE_JOB_IDS)
+					.filter(([, jobId]) => gateRuns(String(jobs[jobId]?.if ?? ""), unit, includeImages))
+					.map(([image]) => image)
+					.sort();
+				expect(expectedImages(unit, includeImages)).toEqual(wouldRun);
+			});
+		}
+	}
 });

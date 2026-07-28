@@ -19,12 +19,14 @@ Each unit has a single canonical version anchor. All packages/images within a un
 | Unit | Artifacts | Canonical version anchor |
 |---|---|---|
 | `platform` | @openpalm/lib (npm), openpalm CLI (npm + binaries), @openpalm/ui (npm), @openpalm/skeleton (npm), @openpalm/guardian (npm) | root `package.json` (max with npm-published) |
-| `portals` | @openpalm/discord-portal + @openpalm/slack-portal (npm), optional `openpalm/portal` Docker image (`include_images=true`) | `portals/discord/package.json` |
+| `portals` | @openpalm/discord-portal + @openpalm/slack-portal (npm), `openpalm/portal` Docker image (`include_images`, on by default) | `portals/discord/package.json` |
 | `assistant` | `openpalm/assistant` Docker image | `containers/assistant/VERSION` |
-| `guardian` | @openpalm/guardian (npm), @openpalm/skeleton (npm), optional guardian Docker image | `packages/guardian/package.json` (max with npm-published) |
+| `guardian` | @openpalm/guardian (npm), @openpalm/skeleton (npm), guardian Docker image (`include_images`, on by default) | `packages/guardian/package.json` (max with npm-published) |
 | `images` | Guardian + assistant + portal Docker images (no npm) | root `package.json` (no bump — use `version` override to tag images at a new version) |
 | `electron` | Electron installers (mac/linux/win). No npm. | `packages/electron/package.json` |
 | `all` | **Every unit** — all platform npm + both portal npm adapters + all three Docker images (assistant/guardian/portal) + electron installers + CLI binaries, flag-free | root `package.json` (max with npm-published) |
+
+> **`include_images` defaults to `true`.** It did not always: releases 0.12.43 and 0.12.45–0.12.52 shipped npm packages, git tags and GitHub releases with **no Docker images at all**, because the default was `false` and release practice had drifted to `unit=platform`. `tag-release` gated on `!contains(needs.*.result, 'failure')`, and a *skipped* job is not a failure, so every one of those runs reported success. Two things now prevent that: the default is `true`, and `tag-release` runs `scripts/verify-release-images.mjs` before creating any tag — it fails the release when an image job the unit expected was skipped. Unticking `include_images` is still supported for a deliberate npm-only thin-host patch; the guard only fires when images were *expected* and did not arrive.
 
 > **Every unit except `all` is partial by design** — it publishes only its own slice and silently leaves the others behind. In particular, `platform` does **not** touch the portal image or the discord/slack npm adapters (that's a `portals` release). For a complete, coordinated release of the whole platform, use **`all`** — it builds every unit at one version with no `include_images`/`include_electron` flags required. The **only** artifact `all` does not build is the **voice** image, which ships from `publish-voice.yml` on its own cadence (GPU cpu/cu121 variants).
 
@@ -75,8 +77,8 @@ inputs:
     default: false
 
   include_images:
-    description: 'Also rebuild Docker images (guardian/platform only; images and all always build images)'
-    default: false
+    description: 'Rebuild Docker images alongside the npm publish (guardian/platform/portals; images and all always build images)'
+    default: true
 
   dry_run:
     description: 'Validate and build without publishing, committing, or tagging'
@@ -133,7 +135,7 @@ Stamps: `packages/guardian/package.json`.
 
 Publishes: @openpalm/skeleton + @openpalm/guardian npm (thin-host needs both at container startup).
 
-Optionally builds guardian Docker image when `include_images=true`.
+Builds the guardian Docker image unless `include_images` is unticked.
 
 Preflight: `bun test packages/guardian`.
 

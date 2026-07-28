@@ -378,11 +378,25 @@ export {
 export type { DockerClient, DockerRunOptions } from "./control-plane/docker.js";
 
 // ── Disk-headroom preflight (S6 — #581 finding #10) ───────────────────────
-export type { DiskHeadroomStatus, DiskHeadroomResult, DiskHeadroomOptions, StatfsLike } from "./control-plane/disk-headroom.js";
+export type {
+  DiskHeadroomStatus,
+  DiskHeadroomResult,
+  DiskHeadroomOptions,
+  StatfsLike,
+  // #588 — the check also covers Docker's data root when that is a separate filesystem.
+  DockerRootProbe,
+  DockerRootProbeFn,
+  DockerRootSkipReason,
+  LifecycleDiskHeadroom,
+  LifecycleDiskHeadroomOptions,
+} from "./control-plane/disk-headroom.js";
 export {
   checkDiskHeadroom,
   describeDiskHeadroom,
   shouldBlockOnDiskHeadroom,
+  checkLifecycleDiskHeadroom,
+  describeLifecycleDiskHeadroom,
+  resolveDockerRoot,
   DEFAULT_LOW_THRESHOLD_BYTES,
   DEFAULT_CRITICAL_THRESHOLD_BYTES,
 } from "./control-plane/disk-headroom.js";

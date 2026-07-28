@@ -5,6 +5,15 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { EventEmitter } from 'node:events';
 import * as nodeChildProcess from 'node:child_process';
+// Snapshot the REAL module members at import time, before any mock.module call
+// below can rebind the `nodeChildProcess` namespace. mock.module replaces the
+// namespace object in place, so a stub that "delegates to the real one" via
+// `nodeChildProcess.execFile` would call ITSELF — and because that call sits in
+// tail position, JavaScriptCore tail-call-optimises it into a silent 100%-CPU
+// spin rather than a RangeError. The spin starves the event loop, so bun's
+// per-test timeout can never fire and the whole run hangs forever. Delegate
+// through these captured references instead.
+const realChildProcess = { ...nodeChildProcess };
 import { detectHostInfo, isAssistantHealthy, main } from './main.ts';
 import { readSecret, resolveRequestedImageTag, upsertEnvValue } from '@openpalm/lib';
 import { canReplaceCurrentExecutable, resolveCliArtifactName } from './commands/self-update.ts';
@@ -129,7 +138,7 @@ function mockDockerCli(): void {
   // (e.g. `addon disable` → `compose stop`) never shell out to real docker.
   // execFile and the rest of the module stay real (only `spawn` is replaced).
   mock.module('node:child_process', () => ({
-    ...nodeChildProcess,
+    ...realChildProcess,
     spawn: mock(() => makeFakeChildProcess(0)),
     // E1 added a `docker manifest inspect` probe to performSetup's image-pin
     // logic. Keep it off the network in tests: report the pinned tag as "not
@@ -146,8 +155,11 @@ function mockDockerCli(): void {
         queueMicrotask(() => callback?.(err, '', 'no such manifest'));
         return makeFakeChildProcess(1);
       }
+      // realChildProcess.execFile, NOT nodeChildProcess.execFile — the latter
+      // is this very stub once mock.module has run (see the import-time
+      // snapshot above).
       return (
-        nodeChildProcess as unknown as {
+        realChildProcess as unknown as {
           execFile: (...a: unknown[]) => unknown;
         }
       ).execFile(cmd, args, opts, callback);
@@ -158,6 +170,10 @@ function mockDockerCli(): void {
 function restoreDockerCli(): void {
   Bun.spawn = originalBunSpawn;
   Bun.which = originalBunWhich;
+  // mock.module is process-global and survives this file, leaking the spawn/
+  // execFile stubs into every later test file in the same `bun test` process.
+  // Put the real module back so the leak stops at this file's boundary.
+  mock.module('node:child_process', () => ({ ...realChildProcess }));
 }
 
 describe('cli main', () => {

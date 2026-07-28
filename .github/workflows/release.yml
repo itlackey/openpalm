@@ -8,15 +8,15 @@ name: Release
 # For a complete, coordinated release of the whole platform, use `all`.
 #   platform  — @openpalm/lib + openpalm (CLI) + @openpalm/ui (npm) +
 #               admin-tools + CLI native binaries + optional Electron + git tag + GitHub release
-#               (add include_images=true to also rebuild guardian + assistant images).
+#               + guardian + assistant images (include_images defaults to TRUE).
 #               PARTIAL: no portal image, no portal npm, no voice.
 #   portals   — @openpalm/discord-portal + @openpalm/slack-portal npm packages
 #               (the portal image bun-installs these at runtime, so they update via
-#               `bun update` without an image rebuild) + optional portal image
-#               (include_images=true) + git tag + GitHub release. PARTIAL.
+#               `bun update` without an image rebuild) + the portal image
+#               (include_images defaults to TRUE) + git tag + GitHub release. PARTIAL.
 #   assistant — openpalm/assistant image + git tag + GitHub release. PARTIAL.
 #   guardian  — @openpalm/guardian + @openpalm/skeleton npm packages only
-#               (add include_images=true to also rebuild the guardian Docker image). PARTIAL.
+#               + the guardian Docker image (include_images defaults to TRUE). PARTIAL.
 #   images    — Docker-only: rebuilds guardian + assistant + portal images at the
 #               current (or explicitly overridden) platform version. No npm publish.
 #               Use to roll out container-level changes (system deps, OpenCode version)
@@ -40,10 +40,13 @@ name: Release
 #               Prefer `all` for a real release; reach for a partial unit only for a
 #               deliberate, isolated hotfix to one slice.
 #
-# Thin-host decoupling: guardian and platform npm packages can be released independently
-# of Docker images. npm patches deploy instantly to thin-host deployments without a
-# docker pull. Use unit=images (or include_images=true) only when the container itself
-# needs to change.
+# Thin-host decoupling: guardian and platform npm packages CAN be released independently
+# of Docker images (npm patches deploy to thin-host deployments without a docker pull) by
+# unticking include_images. That is an OPT-OUT, not the default: releases 0.12.43 through
+# 0.12.52 shipped npm packages, git tags and GitHub releases with no images at all,
+# because include_images defaulted to false and unit=platform silently skipped every
+# Docker job. include_images now defaults to TRUE, and tag-release refuses to tag when an
+# image job that the unit expected was skipped (see scripts/verify-release-images.mjs).
 #
 # Optional version override — when set, skips bump computation and uses the explicit version
 # (e.g. 0.12.14-rc.1). Pre-release suffixes auto-select the correct npm dist-tag (rc/beta/next).
@@ -86,10 +89,10 @@ on:
         type: boolean
         default: false
       include_images:
-        description: 'Also rebuild Docker images (guardian/platform only; images and all always build images)'
+        description: 'Rebuild Docker images alongside the npm publish (guardian/platform/portals; images and all always build images). ON by default — untick ONLY for a deliberate npm-only thin-host patch.'
         required: false
         type: boolean
-        default: false
+        default: true
       include_voice:
         description: 'Also stamp openpalm/voice:<version>-<variant> from this run (opt-in; voice normally ships out-of-band from publish-voice.yml). Ignored on dry_run — publish-voice.yml has no dry-run mode, so this is skipped entirely rather than pushing for real.'
         required: false
@@ -962,6 +965,20 @@ jobs:
           ref: ${{ github.ref_name }}
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
+
+      # TAG-LAST means "tag exists = fully published". The job-level `if:` above
+      # only rejects 'failure'/'cancelled' — a SKIPPED docker job sails through
+      # it, which is how 0.12.43 and 0.12.45–0.12.52 got tags and GitHub
+      # releases with no images. Fail here, LOUDLY, before any tag is created;
+      # a job-level condition would skip tag-release and stay green instead.
+      - name: Verify expected Docker images were built
+        env:
+          UNIT: ${{ inputs.unit }}
+          INCLUDE_IMAGES: ${{ inputs.include_images }}
+          RESULT_DOCKER_PORTAL: ${{ needs.docker-portal.result }}
+          RESULT_DOCKER_GUARDIAN: ${{ needs.docker-guardian.result }}
+          RESULT_DOCKER_ASSISTANT: ${{ needs.docker-assistant.result }}
+        run: node scripts/verify-release-images.mjs
 
       - name: Build deploy bundle
         run: |
