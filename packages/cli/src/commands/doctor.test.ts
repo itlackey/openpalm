@@ -67,6 +67,10 @@ function baseDeps(overrides: Partial<DoctorDeps> = {}): DoctorDeps {
       checkpointed: true,
       vacuumed: true,
     }),
+    buildSessionClient: () => ({
+      listSessions: async () => [],
+      deleteSession: async () => ({ ok: true }),
+    }),
     promptYesNo: async () => false,
     ...overrides,
   } as DoctorDeps;
@@ -353,6 +357,105 @@ describe('openpalm doctor — --reclaim-db (S3 / Codex #7)', () => {
     } finally {
       console.log = originalLog;
       rmSync(home, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('openpalm doctor --prune-sessions / --sessions (S3 live wiring)', () => {
+  test('refuses to prune without an explicit --max-age-days window', async () => {
+    let called = false;
+    const deps = baseDeps({
+      runOpenCodeDbMaintenance: async () => {
+        called = true;
+        throw new Error('must not run');
+      },
+    });
+    const originalError = console.error;
+    console.error = () => {};
+    try {
+      const report = await runDoctorAction({ pruneSessions: true, yes: true }, deps);
+      // Deleting session history by reflex is the failure mode this guards.
+      expect(called).toBe(false);
+      expect(report.pruneSessionsResult).toHaveProperty('error');
+    } finally {
+      console.error = originalError;
+    }
+  });
+
+  test('passes the retention window through and never vacuums on this path', async () => {
+    let seen: { path?: string; options?: Record<string, unknown> } = {};
+    const deps = baseDeps({
+      runOpenCodeDbMaintenance: async (_client, path, options) => {
+        seen = { path, options: options as unknown as Record<string, unknown> };
+        return {
+          dryRun: false,
+          plan: { totalSessions: 3, rootCount: 1, preservedRootIds: ['r'], deleteSessionIds: ['a'], preservedChildIds: ['b'] },
+          deleted: ['a'],
+          deleteFailures: [],
+          checkpointed: false,
+          vacuumed: false,
+        };
+      },
+    });
+    const originalLog = console.log;
+    console.log = () => {};
+    try {
+      await runDoctorAction({ pruneSessions: true, maxAgeDays: '30', yes: true }, deps);
+    } finally {
+      console.log = originalLog;
+    }
+    expect(seen.options?.confirm).toBe(true);
+    // VACUUM needs the assistant stopped; this path needs it running.
+    expect(seen.options?.skipVacuumStage).toBe(true);
+    expect((seen.options?.retention as { maxChildAgeMs: number }).maxChildAgeMs).toBe(30 * 86_400_000);
+    expect(seen.path).toContain('assistant');
+  });
+
+  test('a declined confirmation deletes nothing', async () => {
+    let called = false;
+    const deps = baseDeps({
+      promptYesNo: async () => false,
+      runOpenCodeDbMaintenance: async () => {
+        called = true;
+        throw new Error('must not run');
+      },
+    });
+    const originalLog = console.log;
+    console.log = () => {};
+    try {
+      const report = await runDoctorAction({ pruneSessions: true, maxAgeDays: '30' }, deps);
+      expect(called).toBe(false);
+      expect(report.pruneSessionsResult).toEqual({ skipped: true });
+    } finally {
+      console.log = originalLog;
+    }
+  });
+
+  test('--sessions reports parent/depth without deleting anything', async () => {
+    const deps = baseDeps({
+      buildSessionClient: () => ({
+        listSessions: async () => [
+          { id: 'root1', time: { created: 1, updated: 2 } },
+          { id: 'kid1', parentID: 'root1', time: { created: 1, updated: 2 } },
+        ] as never,
+        deleteSession: async () => {
+          throw new Error('--sessions must never delete');
+        },
+      }),
+    });
+    const originalLog = console.log;
+    console.log = () => {};
+    try {
+      const report = await runDoctorAction({ sessions: true }, deps);
+      const page = report.sessionsResult as {
+        totalSessions: number;
+        summary: { rootCount: number; maxDepth: number };
+      };
+      expect(page.totalSessions).toBe(2);
+      expect(page.summary.rootCount).toBe(1);
+      expect(page.summary.maxDepth).toBe(1);
+    } finally {
+      console.log = originalLog;
     }
   });
 });

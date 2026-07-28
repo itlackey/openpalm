@@ -28,6 +28,14 @@ import {
   cleanupImagesAndVolumes,
   buildStorageReport,
   resolveBackupsDirFor,
+  createOpenCodeClient,
+  resolveAssistantEndpoint,
+  listSessionsPaged,
+  toSessionRecord,
+  type SessionDeletionClient,
+  type SessionRecord,
+  type SessionVisibilityPage,
+  type RunMaintenanceResult,
   describeDiskHeadroom,
   detectGpu,
   detectLocalProviders,
@@ -75,10 +83,34 @@ export default defineCommand({
       description: 'Checkpoint + VACUUM the OpenCode session DBs to reclaim disk (stop the stack first; confirm-gated)',
       default: false,
     },
+    sessions: {
+      type: 'boolean',
+      description: 'List OpenCode sessions with parent/depth/age (needs the stack RUNNING)',
+      default: false,
+    },
+    'prune-sessions': {
+      type: 'boolean',
+      description:
+        'Delete stale ARCHIVED child sessions older than --max-age-days (needs the stack RUNNING; confirm-gated). Root sessions are never deleted.',
+      default: false,
+    },
+    'max-age-days': {
+      type: 'string',
+      description: 'Required with --prune-sessions: only child sessions idle this many days are eligible',
+    },
+    'max-sessions': {
+      type: 'string',
+      description: 'Optional cap with --prune-sessions: keep at most this many sessions',
+    },
+    'dry-run': {
+      type: 'boolean',
+      description: 'With --prune-sessions: report what would be deleted, delete nothing',
+      default: false,
+    },
     yes: {
       type: 'boolean',
       alias: 'y',
-      description: 'Skip the confirmation prompt for --clean-caches/--clean-docker/--reclaim-db',
+      description: 'Skip the confirmation prompt for --clean-caches/--clean-docker/--reclaim-db/--prune-sessions',
       default: false,
     },
     json: {
@@ -92,6 +124,11 @@ export default defineCommand({
       cleanCaches: !!args['clean-caches'],
       cleanDocker: !!args['clean-docker'],
       reclaimDb: !!args['reclaim-db'],
+      sessions: !!args.sessions,
+      pruneSessions: !!args['prune-sessions'],
+      maxAgeDays: args['max-age-days'] as string | undefined,
+      maxSessions: args['max-sessions'] as string | undefined,
+      dryRun: !!args['dry-run'],
       yes: !!args.yes,
       json: !!args.json,
     });
@@ -109,6 +146,8 @@ export interface DoctorReport {
   storage: StorageReport;
   dockerArtifacts: ImageVolumeReport;
   cleanCachesResult?: { removed: string[]; freedBytes: number; dryRun: boolean; skipped?: boolean };
+  sessionsResult?: SessionVisibilityPage | { error: string };
+  pruneSessionsResult?: RunMaintenanceResult | { error: string } | { skipped: true };
   cleanDockerResult?: { removedImages: string[]; removedVolumes: string[]; errors: string[]; skipped?: boolean };
   reclaimDbResult?: ReclaimDbResult;
 }
@@ -132,6 +171,11 @@ export interface DoctorActionOptions {
   cleanCaches?: boolean;
   cleanDocker?: boolean;
   reclaimDb?: boolean;
+  sessions?: boolean;
+  pruneSessions?: boolean;
+  maxAgeDays?: string;
+  maxSessions?: string;
+  dryRun?: boolean;
   yes?: boolean;
   json?: boolean;
 }
@@ -156,6 +200,7 @@ export interface DoctorDeps {
   cleanupImagesAndVolumes: typeof cleanupImagesAndVolumes;
   resolveOpenCodeDbPath: typeof resolveOpenCodeDbPath;
   runOpenCodeDbMaintenance: typeof runOpenCodeDbMaintenance;
+  buildSessionClient: (homeDir: string) => SessionDeletionClient;
   promptYesNo: typeof promptYesNo;
 }
 
@@ -178,6 +223,7 @@ export const defaultDoctorDeps: DoctorDeps = {
   cleanupImagesAndVolumes,
   resolveOpenCodeDbPath,
   runOpenCodeDbMaintenance,
+  buildSessionClient,
   promptYesNo,
 };
 
@@ -227,6 +273,15 @@ export async function runDoctorAction(
   if (opts.reclaimDb) {
     report.reclaimDbResult = await performReclaimDb(homeDir, deps, opts.yes);
   }
+  // --sessions / --prune-sessions need the assistant RUNNING (they use its REST
+  // API), the exact opposite of --reclaim-db, which needs it stopped so VACUUM
+  // can take an exclusive lock. Kept as separate flags for that reason.
+  if (opts.sessions) {
+    report.sessionsResult = await performListSessions(homeDir, deps);
+  }
+  if (opts.pruneSessions) {
+    report.pruneSessionsResult = await performPruneSessions(homeDir, deps, opts);
+  }
 
   if (opts.json) {
     console.log(JSON.stringify(report, null, 2));
@@ -235,6 +290,117 @@ export async function runDoctorAction(
   }
 
   return report;
+}
+
+/**
+ * Build a SessionDeletionClient over the live assistant. Thin adapter only —
+ * endpoint precedence lives in lib's resolveAssistantEndpoint and the REST
+ * calls in lib's createOpenCodeClient; this just shims deleteSession's
+ * ProxyResult into the {ok,message} shape the maintenance module declares.
+ */
+function buildSessionClient(homeDir: string): SessionDeletionClient {
+  const client = createOpenCodeClient({ baseUrl: resolveAssistantEndpoint(homeDir) });
+  return {
+    listSessions: () => client.listSessions(),
+    deleteSession: async (id: string) => {
+      const res = await client.deleteSession(id);
+      return { ok: res.ok, message: res.ok ? undefined : (res.error ?? `HTTP ${res.status}`) };
+    },
+  };
+}
+
+async function performListSessions(
+  homeDir: string,
+  deps: DoctorDeps,
+): Promise<SessionVisibilityPage | { error: string }> {
+  let sessions: SessionRecord[];
+  try {
+    sessions = (await deps.buildSessionClient(homeDir).listSessions()).map(toSessionRecord);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.warn(`Could not list sessions: ${message}. Is the stack running? Start it with \`openpalm start\`.`);
+    return { error: message };
+  }
+
+  const page = listSessionsPaged(sessions, {});
+  console.log(
+    `\nSessions: ${page.totalSessions} total, ${page.summary.rootCount} root, ` +
+      `max depth ${page.summary.maxDepth}, ${page.summary.staleCount} archived.`,
+  );
+  console.log(`Page ${page.page} of ${page.totalPages}.`);
+  for (const row of page.rows) {
+    const kind = row.parentID ? `child(d${row.depth})` : 'root';
+    const age = `${Math.floor(row.ageMs / 86_400_000)}d`;
+    const flag = row.archived ? ' archived' : '';
+    console.log(`  ${row.id}  ${kind.padEnd(11)} age ${age.padStart(5)}${flag}`);
+  }
+  return page;
+}
+
+async function performPruneSessions(
+  homeDir: string,
+  deps: DoctorDeps,
+  opts: DoctorActionOptions,
+): Promise<RunMaintenanceResult | { error: string } | { skipped: true }> {
+  // A retention WINDOW is mandatory: the maintenance module refuses a live
+  // client without one, deliberately, so nobody deletes history by reflex.
+  const days = Number(opts.maxAgeDays);
+  if (!Number.isFinite(days) || days <= 0) {
+    const error = '--prune-sessions requires --max-age-days <n> (a positive number of days).';
+    console.error(error);
+    return { error };
+  }
+  const maxSessions = opts.maxSessions === undefined ? undefined : Number(opts.maxSessions);
+  if (maxSessions !== undefined && (!Number.isInteger(maxSessions) || maxSessions <= 0)) {
+    const error = '--max-sessions must be a positive integer.';
+    console.error(error);
+    return { error };
+  }
+
+  if (!opts.dryRun && !opts.yes) {
+    const ok = await deps.promptYesNo(
+      `Delete archived child sessions idle more than ${days} day(s)? ` +
+        'Root sessions are never deleted. Run with --dry-run first to preview. [y/N]',
+    );
+    if (!ok) {
+      console.log('Session pruning skipped.');
+      return { skipped: true };
+    }
+  }
+
+  try {
+    const result = await deps.runOpenCodeDbMaintenance(
+      deps.buildSessionClient(homeDir),
+      deps.resolveOpenCodeDbPath(homeDir, 'assistant'),
+      {
+        confirm: true,
+        dryRun: opts.dryRun,
+        retention: {
+          maxChildAgeMs: days * 86_400_000,
+          ...(maxSessions === undefined ? {} : { maxSessions }),
+        },
+        // VACUUM needs the assistant STOPPED; this path needs it running.
+        // Reclaim disk separately with `openpalm doctor --reclaim-db`.
+        skipVacuumStage: true,
+      },
+    );
+    const verb = result.dryRun ? 'Would delete' : 'Deleted';
+    console.log(
+      `${verb} ${result.plan.deleteSessionIds.length} session(s); ` +
+        `kept ${result.plan.rootCount} root and ${result.plan.preservedChildIds.length} recent child session(s).`,
+    );
+    if (result.deleteFailures.length > 0) {
+      console.warn(`Some deletions failed: ${result.deleteFailures.map((f) => f.id).join(', ')}`);
+    }
+    if (!result.dryRun && result.plan.deleteSessionIds.length > 0) {
+      console.log('Run `openpalm stop && openpalm doctor --reclaim-db` to reclaim the freed disk space.');
+    }
+    return result;
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.warn(`Session pruning failed: ${message}. Is the stack running?`);
+    return { error: message };
+  }
 }
 
 async function performCleanCaches(

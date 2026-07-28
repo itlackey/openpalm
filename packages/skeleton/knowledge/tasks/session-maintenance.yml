@@ -1,0 +1,40 @@
+schedule: '0 4 * * 0'
+enabled: false
+description: >-
+  Delete archived child sessions idle more than 30 days, so OpenCode's session
+  database stops growing without bound. Disabled by default — turning it on
+  means old conversation branches start disappearing on their own. Root
+  sessions are never touched.
+tags:
+  - openpalm
+  - storage
+  - sessions
+timeoutMs: 300000
+command:
+  - sh
+  - -c
+  # Runs INSIDE the assistant container, where the host `openpalm` CLI does not
+  # exist — so this talks to OpenCode's REST API on localhost directly.
+  #
+  # Deleting sessions frees pages inside the database but does NOT shrink the
+  # file. To reclaim actual disk, stop the stack and run
+  # `openpalm doctor --reclaim-db` on the host (VACUUM needs an exclusive lock,
+  # which it cannot take while the assistant is running).
+  #
+  # The host-side equivalent of this task, with a preview, is:
+  #   openpalm doctor --prune-sessions --max-age-days 30 --dry-run
+  - |
+    set -eu
+    CUTOFF=$(( $(date +%s) - 30*24*60*60 ))
+    curl -sf http://localhost:4096/session \
+      | jq -r --argjson cutoff "$CUTOFF" '
+          .[]
+          | select(.parentID != null)
+          | select(.time.updated / 1000 < $cutoff)
+          | .id
+        ' \
+      | while read -r id; do
+          [ -n "$id" ] || continue
+          curl -sf -X DELETE "http://localhost:4096/session/$id" >/dev/null \
+            && echo "deleted session $id"
+        done
