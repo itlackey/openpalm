@@ -18,7 +18,7 @@ material it depends on, typically `${GNUPGHOME:-~/.gnupg}`.
 | `~/.openpalm/config/stack/` | live compose files (compose assembly only) | Yes |
 | `~/.openpalm/knowledge/env/` | `stack.env` (system, non-secret) + `user.env` (user-managed) | Yes |
 | `~/.openpalm/config/` | assistant config and enabled automations | Yes |
-| `~/.openpalm/data/` | durable service data | Yes |
+| `~/.openpalm/data/` | durable service data | Yes, minus caches (see below) |
 | `~/.openpalm/knowledge/` | AKM stash (memory, skills, env, secrets) | Yes |
 | `~/.openpalm/workspace/` | shared workspace | Yes |
 | `~/.openpalm/data/logs/` | logs and audit files | Optional |
@@ -51,10 +51,23 @@ See the [Manual Compose Runbook](operations/manual-compose-runbook.md) for the f
 ## Backup
 
 ```bash
-tar czf openpalm-backup-$(date +%Y%m%d).tar.gz ~/.openpalm
+tar czf openpalm-backup-$(date +%Y%m%d).tar.gz \
+  --exclude='.cache' --exclude='data/akm/cache' \
+  ~/.openpalm
 ```
 
-If `OP_HOME` points elsewhere, archive that directory instead.
+The excluded paths are package-manager and model caches. They are regenerable
+— containers rebuild them on the next start — and can add several GB to an
+archive for nothing. Drop the `--exclude` flags if you want a byte-exact copy.
+
+Two other trees under `data/` are dead weight on any install from 0.13.0 on:
+`data/assistant/tools/` and `data/guardian/tools/`. Tool packages are baked
+into the images now, so nothing reads them. They are left alone rather than
+deleted for you — remove them by hand if you want the space back.
+
+If `OP_HOME` points elsewhere, archive that directory instead. If you have set
+`OP_BACKUP_DIR` to keep lifecycle snapshots outside `OP_HOME`, archive that
+location too — it is not under the tree above.
 
 ---
 
@@ -100,7 +113,8 @@ Use the same addon profiles you used before the backup.
 2. Install Docker on the new machine.
 3. Restore the backup into the new user's home directory.
 4. Fix ownership.
-5. Start the stack from `~/.openpalm/config/stack/` with the same compose file set.
+5. Start the stack with `openpalm start` (or, for a manual run, the compose
+   file set under `~/.openpalm/system/stack/`).
 
 There is no separate staging/artifacts/config-components reconstruction step in
 the current model.
