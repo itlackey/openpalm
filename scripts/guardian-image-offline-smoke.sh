@@ -49,7 +49,17 @@ chmod 0777 "$GUARDIAN_DATA_DIR"
 
 cleanup() {
   docker rm -f "$CONTAINER" >/dev/null 2>&1 || true
-  rm -rf "$GUARDIAN_DATA_DIR"
+  # Delete the fixture FROM A CONTAINER, not with a host `rm`. The guardian
+  # writes into this bind as its own image user, so under rootful Docker (CI)
+  # those files are owned by a uid the runner cannot unlink — a host `rm -rf`
+  # fails with EACCES and, under `set -e`, fails the whole job even though
+  # every assertion above passed. Under rootless Docker (typical dev machine)
+  # the uid maps back to the caller and a host rm happens to work, which is
+  # exactly why this only ever failed in CI. Same pattern as the rootless
+  # smokes (scripts/rootless-ownership-smoke.sh).
+  docker run --rm -v "$(dirname "$GUARDIAN_DATA_DIR"):/smoke-parent" alpine \
+    sh -c 'rm -rf "/smoke-parent/$1"' _ "$(basename "$GUARDIAN_DATA_DIR")" >/dev/null 2>&1 || true
+  rm -rf "$GUARDIAN_DATA_DIR" 2>/dev/null || true
 }
 trap cleanup EXIT
 
