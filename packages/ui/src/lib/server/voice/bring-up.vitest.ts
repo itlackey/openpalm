@@ -33,15 +33,14 @@ describe('static voice fallback overlays (packages/skeleton/system/stack/)', () 
     expect(yaml).toContain('- nvidia.com/gpu=all');
   });
 
-  test('voice.compose.rootless.yml drops the user: directive from all three voice variants', () => {
+  test('voice.compose.rootless.yml restores the image-default user for all three voice variants', () => {
     const path = join(skeletonStackDir, 'voice.compose.rootless.yml');
     expect(existsSync(path)).toBe(true);
     const yaml = readFileSync(path, 'utf-8');
     for (const svc of ['voice', 'voice-cuda', 'voice-rocm']) {
       expect(yaml).toContain(`  ${svc}:`);
     }
-    // `user: null` merges away the directive across compose files.
-    expect(yaml.match(/user: null/g)?.length).toBe(3);
+    expect(yaml.match(/user: ""/g)?.length).toBe(3);
   });
 });
 
