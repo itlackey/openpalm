@@ -39,8 +39,9 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   under test rather than the previously published npm packages.
 - **CUDA Voice keeps its GPU ONNX runtime.** The build now replaces the CPU
   `onnxruntime` transitively installed by faster-whisper with the pinned GPU wheel,
-  verifies `CUDAExecutionProvider` at build time, and explicitly selects it for
-  Kokoro at runtime. The CDI fallback overlay also declares the required GPU
+  verifies `CUDAExecutionProvider` at build time, exposes the PyTorch wheel's CUDA
+  and cuDNN libraries at runtime, and fails health if Kokoro cannot attach the
+  requested provider. The CDI fallback overlay also declares the required GPU
   capability and now passes Docker Compose schema validation.
 - **Rootless Voice uses the image user.** The rootless overlay now overrides the
   fixed host UID/GID with an empty Compose `user` value; the previous YAML null

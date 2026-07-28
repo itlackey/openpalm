@@ -86,8 +86,19 @@ class TTS:
         try:
             from kokoro_onnx import Kokoro  # local import — heavy
 
-            self._engine = Kokoro(str(model_path), str(voices_path))
-            logger.info("kokoro ready (voice=%s)", self._default_voice)
+            engine = Kokoro(str(model_path), str(voices_path))
+            providers = engine.sess.get_providers()
+            expected_provider = os.environ.get("ONNX_PROVIDER")
+            if expected_provider and expected_provider not in providers:
+                raise RuntimeError(
+                    f"kokoro requested {expected_provider} but loaded {providers}"
+                )
+            self._engine = engine
+            logger.info(
+                "kokoro ready (voice=%s providers=%s)",
+                self._default_voice,
+                providers,
+            )
         except Exception as exc:  # noqa: BLE001
             self.error = f"kokoro load failed: {exc!r}"
             logger.exception("kokoro load failed")

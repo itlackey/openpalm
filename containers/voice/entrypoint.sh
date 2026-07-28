@@ -25,6 +25,16 @@ PORT="${OP_VOICE_PORT:-8880}"
 ARCH="$(uname -m)"
 AVX_CHECK_FILE="${AVX_CHECK_FILE:-/proc/cpuinfo}"
 if [ "$VARIANT" = "cu121" ]; then
+    NVIDIA_LIBRARY_PATH=""
+    for lib_dir in /opt/venv/lib/python*/site-packages/nvidia/*/lib; do
+        [ -d "$lib_dir" ] || continue
+        NVIDIA_LIBRARY_PATH="${NVIDIA_LIBRARY_PATH:+${NVIDIA_LIBRARY_PATH}:}${lib_dir}"
+    done
+    if [ -z "$NVIDIA_LIBRARY_PATH" ]; then
+        echo "voice: FATAL — CUDA variant has no NVIDIA wheel libraries" >&2
+        exit 1
+    fi
+    export LD_LIBRARY_PATH="${NVIDIA_LIBRARY_PATH}${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
     export ONNX_PROVIDER="${ONNX_PROVIDER:-CUDAExecutionProvider}"
     echo "[voice] AVX probe skipped — GPU variant (cu121) runs ONNX on CUDA; CPU AVX2 not required"
 else

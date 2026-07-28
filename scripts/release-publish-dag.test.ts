@@ -28,6 +28,7 @@ const ASSISTANT_MODELS_WORKFLOW = join(WORKFLOWS_DIR, "publish-assistant-models.
 const VOICE_MODELS_WORKFLOW = join(WORKFLOWS_DIR, "publish-voice-models.yml");
 const VOICE_DOCKERFILE = join(ROOT, "containers", "voice", "Dockerfile");
 const VOICE_ENTRYPOINT = join(ROOT, "containers", "voice", "entrypoint.sh");
+const VOICE_TTS = join(ROOT, "containers", "voice", "app", "tts.py");
 const COMPOSE_DEV = join(ROOT, "compose.dev.yml");
 const ROOTLESS_SMOKE_FIXTURE = join(ROOT, "scripts", "rootless-smoke-fixture.sh");
 const PUBLISH_REUSABLE = "publish-npm-package.yml";
@@ -213,9 +214,13 @@ describe("Voice release validation and Dockerfile guard", () => {
 
 	test("Voice CUDA explicitly selects the GPU provider for Kokoro", () => {
 		const entrypoint = readFileSync(VOICE_ENTRYPOINT, "utf-8");
+		expect(entrypoint).toContain("site-packages/nvidia/*/lib");
 		expect(entrypoint).toContain(
 			'export ONNX_PROVIDER="${ONNX_PROVIDER:-CUDAExecutionProvider}"',
 		);
+		const tts = readFileSync(VOICE_TTS, "utf-8");
+		expect(tts).toContain("engine.sess.get_providers()");
+		expect(tts).toContain("expected_provider not in providers");
 	});
 });
 
