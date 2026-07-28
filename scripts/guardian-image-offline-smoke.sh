@@ -108,14 +108,17 @@ echo "PASS: guardian reached healthy under --network none."
 # here silently stopped matching — the guard reported failure on every run even
 # though the skip was working. Keep it loose enough to survive wording, tight
 # enough to still prove the skip happened for THIS package at THIS version.
-if ! docker logs "$CONTAINER" 2>&1 | grep -q "@openpalm/guardian@${GUARDIAN_VERSION} already installed.*skipping"; then
+# Capture once because `docker logs | grep -q` races under pipefail: grep can
+# close the pipe after a match and turn docker's resulting SIGPIPE into failure.
+CONTAINER_LOGS="$(docker logs "$CONTAINER" 2>&1)"
+if ! grep -q "@openpalm/guardian@${GUARDIAN_VERSION} already installed.*skipping" <<<"$CONTAINER_LOGS"; then
   echo "FAIL: entrypoint did not skip the guardian install (baked package was re-fetched or missing)" >&2
-  docker logs "$CONTAINER" >&2 || true
+  printf '%s\n' "$CONTAINER_LOGS" >&2
   exit 1
 fi
-if ! docker logs "$CONTAINER" 2>&1 | grep -q "@openpalm/skeleton@${SKELETON_VERSION} already installed.*skipping"; then
+if ! grep -q "@openpalm/skeleton@${SKELETON_VERSION} already installed.*skipping" <<<"$CONTAINER_LOGS"; then
   echo "FAIL: entrypoint did not skip the skeleton install (baked package was re-fetched or missing)" >&2
-  docker logs "$CONTAINER" >&2 || true
+  printf '%s\n' "$CONTAINER_LOGS" >&2
   exit 1
 fi
 echo "PASS: baked package@version installs were no-ops at boot (no re-fetch)."
