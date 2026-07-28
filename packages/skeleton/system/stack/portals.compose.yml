@@ -8,6 +8,13 @@ services:
     profiles: ["addon.discord"]
     image: ${OP_IMAGE_NAMESPACE:-openpalm}/portal:${OP_PORTAL_VERSION:-latest}
     restart: unless-stopped
+    # IMG-7: cap json-file logs (30 MB/service ceiling). Docker's default
+    # driver is unbounded, which contributed to the production disk incident.
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     user: "${OP_UID:-1000}:${OP_GID:-1000}"
     environment:
       PORT: "8184"
@@ -30,13 +37,6 @@ services:
       DISCORD_THREAD_TTL_HOURS: ${DISCORD_THREAD_TTL_HOURS:-}
       DISCORD_FORWARD_TIMEOUT_MS: ${DISCORD_FORWARD_TIMEOUT_MS:-}
     secrets: [portal_discord_secret, discord_bot_token]
-    volumes:
-      # E2/S2: image-baked adapter packages under /opt/openpalm/tools — no
-      # bind mount overlays any subpath anymore (image-baked-only model,
-      # docs/public-seams-review.md §E2/§S2). Pin a different adapter version
-      # by editing containers/portal/tools/package.json and shipping a new
-      # image, not by editing anything under OP_HOME.
-      - portal-cache:/opt/openpalm
     networks: [portal_net]
     depends_on:
       guardian:
@@ -50,6 +50,13 @@ services:
     profiles: ["addon.slack"]
     image: ${OP_IMAGE_NAMESPACE:-openpalm}/portal:${OP_PORTAL_VERSION:-latest}
     restart: unless-stopped
+    # IMG-7: cap json-file logs (30 MB/service ceiling). Docker's default
+    # driver is unbounded, which contributed to the production disk incident.
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     user: "${OP_UID:-1000}:${OP_GID:-1000}"
     environment:
       PORT: "8185"
@@ -68,10 +75,6 @@ services:
       SLACK_ALLOWED_USERS: ${SLACK_ALLOWED_USERS:-}
       SLACK_BLOCKED_USERS: ${SLACK_BLOCKED_USERS:-}
     secrets: [portal_slack_secret, slack_bot_token, slack_app_token]
-    volumes:
-      # E2/S2: see the discord service's volumes comment above — same
-      # image-baked-only /opt/openpalm/tools, no bind mount.
-      - portal-cache:/opt/openpalm
     networks: [portal_net]
     depends_on:
       guardian:
@@ -85,6 +88,13 @@ services:
     profiles: ["addon.chat", "addon.api", "addon.discord", "addon.slack", "addon.gateway"]
     image: ${OP_IMAGE_NAMESPACE:-openpalm}/guardian:${OP_GUARDIAN_VERSION:-latest}
     restart: unless-stopped
+    # IMG-7: cap json-file logs (30 MB/service ceiling). Docker's default
+    # driver is unbounded, which contributed to the production disk incident.
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     user: "${OP_UID:-1000}:${OP_GID:-1000}"
     environment:
       HOME: /opt/openpalm/guardian
@@ -122,6 +132,16 @@ services:
       # their exact origin when direct ingress is enabled.
       GUARDIAN_CORS_ALLOWED_ORIGINS: ${GUARDIAN_CORS_ALLOWED_ORIGINS:-}
       GUARDIAN_MCP: ${GUARDIAN_MCP:-false}
+      # S4 lifecycle-aware session eviction (#586). The two row-count caps
+      # (GUARDIAN_OWNERSHIP_MAX_ROWS, GUARDIAN_EVICTION_LOG_MAX_ROWS) stay
+      # compile-time internals — only the activity grace window and the sweep
+      # cadence are operator-tunable. GUARDIAN_SESSION_ACTIVE_GRACE_MS is how
+      # recently a session must have been used (through the guardian, or
+      # verified upstream by the sweep) to be exempt from eviction; default
+      # 24h. GUARDIAN_RECONCILE_INTERVAL_MS is the sweep interval that
+      # deletes/archives evicted sessions upstream; '0' disables it.
+      GUARDIAN_SESSION_ACTIVE_GRACE_MS: ${GUARDIAN_SESSION_ACTIVE_GRACE_MS:-86400000}
+      GUARDIAN_RECONCILE_INTERVAL_MS: ${GUARDIAN_RECONCILE_INTERVAL_MS:-300000}
       # #563 — upstream credential for assistant_net calls to the assistant
       # when a home-password network access preset turns assistant auth on.
       # The moderator's own loopback OpenCode spawn pins OPENCODE_AUTH=false
@@ -165,18 +185,10 @@ services:
       # two knobs, two bind addresses and two firewall holes for one service.
       - "${OP_API_BIND_ADDRESS:-127.0.0.1}:${OP_API_PORT:-3821}:8182"
     volumes:
-      # E2/S2: image-baked opencode-ai tool tree + guardian/skeleton packages
-      # under /opt/openpalm — no bind mount overlays /opt/openpalm/tools
-      # anymore (image-baked-only model, docs/public-seams-review.md
-      # §E2/§S2). Pin a different tool version by editing
-      # containers/guardian/tools/package.json and shipping a new image.
-      - guardian-cache:/opt/openpalm
       - ${OP_HOME}/data/guardian:/opt/openpalm/guardian
-      # NOTE: S1 (relocating $HOME/.cache into its own purgeable named volume)
-      # is deferred — nesting a named volume inside the HOME bind mount makes
-      # Docker create the mountpoint root-owned on the host bind, which fails the
-      # rootless-ownership smoke test. The cache stays under the HOME bind
-      # (operator-owned) until a rootless-aware relocation lands. See §S1.
+      # S1: see core.compose.yml — regenerable cache on a pre-created host
+      # bind outside durable data/, not a named volume nested in the HOME bind.
+      - ${OP_HOME}/cache/guardian:/opt/openpalm/guardian/.cache
       - ${OP_HOME}/data/logs:/opt/openpalm/logs
       # MANAGED guardian config (moderation instructions/server/permission) →
       # OPENCODE_CONFIG_DIR. USER config (moderation model) → the operator's
@@ -251,11 +263,3 @@ secrets:
   # process; only the DELIVERY mechanism to the guardian changes.
   guardian_auth_json:
     file: ${OP_HOME}/knowledge/secrets/auth.json
-
-volumes:
-  # Named volumes for npm artifact caches (/opt/openpalm).
-  # Replaces anonymous volumes that Dockerfiles previously declared via
-  # VOLUME ["/opt/openpalm"], which accumulated orphan volumes on every deploy.
-  # docker compose down --volumes will clean these up explicitly.
-  guardian-cache: {}
-  portal-cache: {}

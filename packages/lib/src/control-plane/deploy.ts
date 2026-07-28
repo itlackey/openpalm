@@ -6,6 +6,7 @@ import { writeFileAtomic } from './fs-atomic.js';
 import { buildComposeOptions } from './compose-args.js';
 import { applyInstall, buildManagedServices, restoreSnapshotAndApplyStack } from './lifecycle.js';
 import { applyStack, composePs, detectExistingProject, parseComposePsRows, resolveComposeProjectName } from './docker.js';
+import { reapAndLogRetiredVolumes } from './image-volume-retention.js';
 import { parseEnvFile } from './env.js';
 import { patchStateEnvFile, readStackEnv } from './secrets.js';
 import { acquireInstallLock, releaseInstallLock, isProcessAlive } from './install-lock.js';
@@ -359,6 +360,11 @@ export async function runDeploy(state: ControlPlaneState, options: RunDeployOpti
       // Only OPTIONAL (non-core) services failed — setup completes anyway
       // (§2.1: markSetupComplete gates on CORE_SERVICES only, never the full
       // managed set, so an addon/portal hiccup can't wedge a fresh install).
+      // The #585 retired volumes (guardian-cache, portal-cache) belong
+      // exclusively to optional services, so this is the most likely branch
+      // to strand them — reap here too, not just on the full-success path
+      // below.
+      await reapAndLogRetiredVolumes(state.homeDir, deployLogger);
       progress.imageWarning = `The following optional service(s) did not start correctly and were skipped: ${failedOptional.join(', ')}. ${buildLogHint(state, failedOptional)}`;
       options.markSetupComplete?.();
       progress.deploying = false;
@@ -367,6 +373,20 @@ export async function runDeploy(state: ControlPlaneState, options: RunDeployOpti
       emitProgress(options, progress);
       return progress;
     }
+
+    // #585 decision 585-B: reclaim the named volumes retired by #585
+    // (assistant-artifacts, guardian-cache, portal-cache) — image-baked/cache
+    // content only, nothing durable. Runs AFTER the new stack is confirmed
+    // up, so a reclaim failure can never strand this deploy; failures are
+    // logged, never thrown. `openpalm install` on an EXISTING home drives the
+    // same compose transition performUpgrade does (applyInstall overwrites
+    // the managed compose files, applyStack brings the new stack up), so the
+    // reap must run here too — otherwise a user who re-runs install instead
+    // of update strands the retired volumes with no reclamation path
+    // (uninstall --volumes can't see them once their declarations are gone,
+    // and doctor --clean-docker's orphan detector only flags a DIFFERENT
+    // project's volumes).
+    await reapAndLogRetiredVolumes(state.homeDir, deployLogger);
 
     await refreshDeployStatus(state, progress, false);
     options.markSetupComplete?.();

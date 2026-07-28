@@ -42,7 +42,9 @@ export {
 export {
   backupOpenPalmHome,
   listBackupDirs,
+  planBackupPrune,
   pruneBackupDirs,
+  pruneBackupNamespace,
   estimateHomeBackupBytes,
   checkBackupFreeSpace,
   describeBackupSpaceShortfall,
@@ -109,6 +111,8 @@ export {
   authJsonFile,
   privateDir,
   privateSecretsDir,
+  resolveBackupsDirFor,
+  resolveCacheDir,
 } from "./control-plane/home.js";
 
 // ── Path Resolution ─────────────────────────────────────────────────────
@@ -124,16 +128,6 @@ export {
   resolveRequestedImageTag,
   RELEASE_TAG_REGEX,
 } from "./control-plane/env.js";
-export type {
-  AssistantCliToolId,
-  AssistantCliProviderMapping,
-  AssistantCliToolStatus,
-} from './control-plane/assistant-cli-tools.js';
-export {
-  listAssistantCliTools,
-  useExistingProviderForAssistantCli,
-} from './control-plane/assistant-cli-tools.js';
-
 // ── OpenCode Client ─────────────────────────────────────────────────────
 export { createOpenCodeClient } from "./control-plane/opencode-client.js";
 export type { ProxyResult, OpenCodeProvider, OpenCodeSession } from "./control-plane/opencode-client.js";
@@ -406,9 +400,12 @@ export type {
   ReportImagesAndVolumesOptions,
   CleanupImagesAndVolumesResult,
   CleanupImagesAndVolumesOptions,
+  ReapRetiredVolumesResult,
+  ReapRetiredVolumesOptions,
 } from "./control-plane/image-volume-retention.js";
 export {
   OPENPALM_VOLUME_SUFFIXES,
+  RETIRED_VOLUME_NAMES,
   parseDockerImagesOutput,
   parseDockerVolumeLsOutput,
   findSupersededImages,
@@ -416,6 +413,8 @@ export {
   findOrphanVolumes,
   reportImagesAndVolumes,
   cleanupImagesAndVolumes,
+  reapRetiredVolumes,
+  reapAndLogRetiredVolumes,
 } from "./control-plane/image-volume-retention.js";
 
 // ── Storage diagnostics + cache cleanup (S8/S1 — #581 findings #1, #12) ──

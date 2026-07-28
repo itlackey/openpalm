@@ -19,6 +19,7 @@
  */
 import type { DockerClient } from "./docker.js";
 import { realDockerClient, resolveComposeProjectName } from "./docker.js";
+import { readStackEnv } from "./secrets.js";
 
 export interface DockerImageInfo {
   repository: string;
@@ -102,10 +103,22 @@ export function findSupersededImages(images: DockerImageInfo[]): DockerImageInfo
 }
 
 /**
- * Top-level named volumes declared by OpenPalm's shipped compose files
- * (`system/stack/core.compose.yml`). Docker Compose names a project volume
+ * Volume-name suffixes {@link classifyOpenPalmVolume} / {@link findOrphanVolumes}
+ * treat as OpenPalm-owned. Docker Compose names a project volume
  * `<projectName>_<volumeName>`; a bare (unscoped) name is also matched for
  * the `external: true` / no-project case.
+ *
+ * Deliberately just the one named volume the shipped compose still declares
+ * (`assistant-persistent`, `system/stack/core.compose.yml`) plus
+ * `assistant-artifacts` (#585 retired it, but a pre-#585 install may still
+ * have one sitting under an old project prefix from a rename). `guardian-cache`
+ * and `portal-cache` are NOT here: those two names are generic enough to
+ * collide with an unrelated Docker project on the same host, so treating
+ * them as positively-attributable-to-OpenPalm would let `doctor
+ * --clean-docker` offer to delete someone else's volume. A retired volume
+ * under an OLD project prefix that this suffix list can't see is not
+ * reachable via `findOrphanVolumes` — only `reapRetiredVolumes`, scoped to
+ * the CURRENT project, is trusted to remove `guardian-cache`/`portal-cache`.
  */
 export const OPENPALM_VOLUME_SUFFIXES = ["assistant-persistent", "assistant-artifacts"] as const;
 
@@ -222,4 +235,91 @@ export async function cleanupImagesAndVolumes(
   }
 
   return { removedImages, removedVolumes, errors };
+}
+
+/**
+ * Named volumes retired by #585 — the three mounts over `/opt/openpalm`
+ * (`assistant-artifacts`, `guardian-cache`, `portal-cache`) that held only
+ * image-baked content or npm-artifact caches, nothing durable. Deliberately a
+ * closed literal list, NOT derived from {@link OPENPALM_VOLUME_SUFFIXES} or
+ * any pattern/prefix match: an explicit list is what keeps
+ * `assistant-persistent` (genuine user content, still mounted at
+ * `/opt/persistent`) permanently impossible to match, by construction rather
+ * than by filtering.
+ */
+export const RETIRED_VOLUME_NAMES = ["assistant-artifacts", "guardian-cache", "portal-cache"] as const;
+
+export interface ReapRetiredVolumesResult {
+  reclaimed: string[];
+  errors: string[];
+}
+
+export interface ReapRetiredVolumesOptions {
+  client?: DockerClient;
+}
+
+/**
+ * Remove whichever of the retired #585 volumes still exist for the CURRENT
+ * compose project (decision 585-B). Every name attempted is
+ * `${projectName}_${retiredName}` — never a bare/unscoped name, never another
+ * project's volume, and never anything outside {@link RETIRED_VOLUME_NAMES}.
+ *
+ * Intended to run once per upgrade, AFTER the new stack is confirmed up, so a
+ * removal failure here can never strand a deploy: failures are collected and
+ * returned for the caller to log, never thrown. A volume that no longer
+ * exists ("no such volume") is a silent no-op, not an error — this makes
+ * repeated upgrades cheap once the volumes are gone.
+ */
+export async function reapRetiredVolumes(
+  projectName: string,
+  opts: ReapRetiredVolumesOptions = {},
+): Promise<ReapRetiredVolumesResult> {
+  const client = opts.client ?? realDockerClient;
+  const reclaimed: string[] = [];
+  const errors: string[] = [];
+
+  for (const name of RETIRED_VOLUME_NAMES) {
+    const qualified = `${projectName}_${name}`;
+    const result = await client.run(["volume", "rm", qualified]);
+    if (result.ok) {
+      reclaimed.push(qualified);
+    } else if (!/no such volume/i.test(result.stderr)) {
+      errors.push(`volume ${qualified}: ${result.stderr || "removal failed"}`);
+    }
+  }
+
+  return { reclaimed, errors };
+}
+
+/**
+ * Convenience wrapper shared by every {@link reapRetiredVolumes} call site
+ * (install path in deploy.ts, upgrade path in lifecycle.ts, `uninstall
+ * --volumes`/`--purge` in the CLI): resolve the current compose project name
+ * from `homeDir`, reap, then info-log any reclaimed volumes and warn-log any
+ * per-volume error. Never throws — same contract as {@link reapRetiredVolumes}
+ * itself. Pulled out to avoid duplicating this five-line sequence at each
+ * call site.
+ *
+ * This runs unconditionally on every install/upgrade/uninstall — including
+ * ones where the retired volumes never existed — because it is cheap
+ * (bounded `docker volume rm` calls, a no-op "no such volume" when there is
+ * nothing to reclaim) and runs after the stack is already up, so it cannot
+ * strand a deploy. It is permanent migration machinery for a one-time #585
+ * transition with no built-in sunset; safe to delete this wrapper (and its
+ * call sites) once pre-#585 installs are no longer a supported upgrade
+ * source (tracked for after 0.14.0).
+ */
+export async function reapAndLogRetiredVolumes(
+  homeDir: string,
+  logger: { info: (msg: string) => void; warn: (msg: string) => void },
+  opts: ReapRetiredVolumesOptions = {},
+): Promise<ReapRetiredVolumesResult> {
+  const reap = await reapRetiredVolumes(resolveComposeProjectName(readStackEnv(homeDir)), opts);
+  if (reap.reclaimed.length > 0) {
+    logger.info(`Reclaimed retired volumes: ${reap.reclaimed.join(", ")}`);
+  }
+  for (const err of reap.errors) {
+    logger.warn(`Could not reclaim a retired volume: ${err}`);
+  }
+  return reap;
 }

@@ -341,6 +341,25 @@ Lifecycle operations remain non-destructive for existing user files in `config/`
 
 ---
 
+## Checking on your install
+
+`openpalm doctor` is the one place to look when something seems off or disk is
+getting tight. On its own it reports what OpenPalm found — Docker availability,
+ports, and where your storage is actually going (image sizes, caches, the
+assistant's session database, backups) — and changes nothing.
+
+Each cleanup action is a separate flag, and every one asks before deleting:
+
+```bash
+openpalm doctor                 # report only, changes nothing
+openpalm doctor --clean-caches  # remove regenerable package/model caches
+openpalm doctor --clean-docker  # remove superseded images and retired volumes
+openpalm doctor --reclaim-db    # compact the assistant's session database
+```
+
+`--reclaim-db` needs the stack stopped, since compacting takes an exclusive
+lock on the database. The others are safe while it runs.
+
 ## Backup & Restore
 
 ```bash
@@ -351,20 +370,42 @@ tar czf openpalm-backup.tar.gz ~/.openpalm
 tar xzf openpalm-backup.tar.gz -C /
 ```
 
+That archives everything, including regenerable caches that can be several GB.
+To skip them (they rebuild on the next container start):
+
+```bash
+tar czf openpalm-backup.tar.gz \
+  --exclude='.cache' --exclude='data/akm/cache' \
+  ~/.openpalm
+```
+
+OpenPalm's own lifecycle snapshots already exclude `data/` entirely — see
+[Lifecycle backups](#lifecycle-backups) below.
+
 After restoring, start the stack using the compose commands in the [Manual Compose Runbook](operations/manual-compose-runbook.md).
 
 ### Lifecycle backups
 
 Every layout migration (run automatically on upgrade) first copies your home
 into `~/.openpalm/data/backups/<timestamp>/` and arms `openpalm rollback`. Before
-that copy runs, OpenPalm checks free disk space and **stops with a plain message
-if the backup would exceed a safe fraction (~80%) of free space** rather than
-silently filling the disk — it never deletes anything to make room.
+that copy runs, OpenPalm checks free disk space on the backup destination and
+**stops with a plain message if the backup would exceed a safe fraction (~80%)
+of free space** rather than silently filling the disk — it never deletes
+anything to make room. Set `OP_BACKUP_DIR` to keep backups somewhere else,
+including another filesystem; everything that writes a backup honors it.
 
 The admin UI's **Updates** tab surfaces your backups (count, total size, last
-time, per-backup list) plus restore guidance. Old snapshots are **never pruned
-automatically**. To reclaim space, use the explicit, confirm-gated command (or
-the matching "Prune…" button in the UI), which keeps the newest *N*:
+time, per-backup list) plus restore guidance. Most snapshots stay until you
+remove them, with two exceptions that bound their own space:
+
+- `install --force` keeps the newest 3 after taking its safety copy.
+- The host-side UI/skeleton updater keeps the newest 3 of its own `ui-*` and
+  `skeleton-*` snapshots.
+
+Recovery snapshots (`*-pre-rollback`, `*-pre-update`) are never pruned by
+anything. To reclaim space yourself, use the confirm-gated command (or the
+matching "Prune…" button in the UI), which keeps the newest *N* of each kind
+and shows you exactly what it will delete first:
 
 ```bash
 openpalm backups prune --keep 3

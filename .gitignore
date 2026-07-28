@@ -49,4 +49,5 @@ packages/electron/admin-tools/dist/
 .reviews/
 # Rootless smoke-test scratch OP_HOME trees (scripts/rootless-*-smoke.sh)
 /.rootless-smoke-*/
+/.upgrade-smoke/
 /.rootless-host-swap*/

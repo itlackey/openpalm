@@ -67,11 +67,11 @@ ensure_home_layout() {
 # skeleton instructions (system/assistant/instructions/core.md).
 
 # ── E2/S2: no boot-time package installs ────────────────────────────────────
-# @openpalm/ui, @openpalm/skeleton, and the tool tree (opencode-ai, akm-cli,
-# claude-code, codex, copilot, pi) are all exact-pinned and baked into the
-# image by the Dockerfile (toolbuild stage + the PLATFORM_VERSION-gated ui/
-# skeleton bakes) — there is no runtime `npm install` of ui/skeleton nor `bun
-# update` of /opt/openpalm/tools anymore. The image is the sole source of
+# @openpalm/ui, @openpalm/skeleton, and the tool tree (opencode-ai, akm-cli)
+# are all exact-pinned and baked into the image by the Dockerfile (toolbuild
+# stage + the PLATFORM_VERSION-gated ui/skeleton bakes) — there is no runtime
+# `npm install` of ui/skeleton nor `bun update` of /opt/openpalm/tools
+# anymore. The image is the sole source of
 # truth; updating a version means editing containers/assistant/tools/
 # package.json (or bumping PLATFORM_VERSION) and shipping a new image, not
 # waiting for the next container boot to re-resolve a semver range. This also
@@ -462,13 +462,13 @@ start_cron_and_sync_tasks() {
   export PATH="$wrapper_dir:$PATH"
   # Derive the cron PATH from the boot-time PATH (wrapper dir already first,
   # exported above) so scheduled tasks see the same tools as interactive
-  # sessions — a hardcoded subset silently dropped the tool venvs
-  # (/opt/assistant-tools/bin for apprise, /opt/google-cloud-sdk/bin) and broke
-  # the `notify` skill under cron (#551). Belt-and-braces: re-append the venv
-  # dirs in case a login-shell /etc/profile reset removed them from PATH.
+  # sessions — a hardcoded subset silently dropped the tool venv
+  # (/opt/assistant-tools/bin for apprise) and broke the `notify` skill under
+  # cron (#551). Belt-and-braces: re-append the venv dir in case a
+  # login-shell /etc/profile reset removed it from PATH.
   local cron_path="$PATH"
   local extra_dir
-  for extra_dir in /opt/assistant-tools/bin /opt/google-cloud-sdk/bin; do
+  for extra_dir in /opt/assistant-tools/bin; do
     case ":$cron_path:" in
       *":$extra_dir:"*) ;;
       *) cron_path="$cron_path:$extra_dir" ;;

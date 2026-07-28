@@ -1,0 +1,60 @@
+schedule: '0 4 * * 0'
+enabled: false
+description: >-
+  Delete archived child sessions idle more than 30 days, so OpenCode's session
+  database stops growing without bound. Disabled by default — turning it on
+  means old conversation branches start disappearing on their own. Root
+  sessions are never touched.
+tags:
+  - openpalm
+  - storage
+  - sessions
+timeoutMs: 300000
+command:
+  - sh
+  - -c
+  # Runs INSIDE the assistant container, where the host `openpalm` CLI does not
+  # exist — so this talks to OpenCode's REST API on localhost directly.
+  #
+  # Deleting sessions frees pages inside the database but does NOT shrink the
+  # file. To reclaim actual disk, stop the stack and run
+  # `openpalm doctor --reclaim-db` on the host (VACUUM needs an exclusive lock,
+  # which it cannot take while the assistant is running).
+  #
+  # The host-side equivalent of this task, with a preview, is:
+  #   openpalm doctor --prune-sessions --max-age-days 30 --dry-run
+  - |
+    set -eu
+    CUTOFF=$(( $(date +%s) - 30*24*60*60 ))
+
+    # Match the assistant healthcheck's auth handling (core.compose.yml): with
+    # the home-password preset, OPENCODE_AUTH=true and an unauthenticated
+    # request gets a 401 — under `curl -f` that exits non-zero and the task
+    # silently deletes nothing forever.
+    AUTH=""
+    case "${OPENCODE_AUTH:-false}" in
+      1|true|TRUE|True)
+        PW_FILE="${OPENCODE_SERVER_PASSWORD_FILE:-/run/secrets/opencode_server_password}"
+        [ -r "$PW_FILE" ] || { echo "OPENCODE_AUTH is on but $PW_FILE is unreadable" >&2; exit 1; }
+        AUTH="-u ${OPENCODE_SERVER_USERNAME:-opencode}:$(cat "$PW_FILE")"
+        ;;
+    esac
+
+    # `time.archived` present == OpenCode considers the session finished. The
+    # supported host-side path (computeRetentionPlan) defaults requireArchived
+    # to true, so this MUST filter on it as well — without it the task deletes
+    # live conversation branches that merely went quiet, which is both more
+    # destructive than the CLI and contrary to this task's own description.
+    curl -sf $AUTH http://localhost:4096/session \
+      | jq -r --argjson cutoff "$CUTOFF" '
+          .[]
+          | select(.parentID != null)
+          | select(.time.archived != null)
+          | select(.time.updated / 1000 < $cutoff)
+          | .id
+        ' \
+      | while read -r id; do
+          [ -n "$id" ] || continue
+          curl -sf $AUTH -X DELETE "http://localhost:4096/session/$id" >/dev/null \
+            && echo "deleted archived session $id"
+        done

@@ -24,12 +24,33 @@ describe('guardian rootless conversion', () => {
   });
 
   test('guardian app trees are world-writable for arbitrary-uid runtime install', () => {
-    // The guardian runs as the host operator's ARBITRARY uid:gid and Docker seeds
-    // a fresh `guardian-cache` named volume from the image path WITH its ownership.
-    // g=u would only grant write when OP_GID == 1000; world-writable is required so
-    // the arbitrary uid can `bun add` guardian/skeleton into /opt/openpalm on first
-    // boot. Secrets live in a separate 0600 bind-mount tree.
-    expect(guardianDockerfile).toContain('chmod -R a+rwX /opt/openpalm /opt/openpalm/guardian /opt/openpalm/guardian-pkg /opt/openpalm/skeleton /opt/openpalm/tools');
+    // The guardian runs as the host operator's ARBITRARY uid:gid. #585 retired
+    // the `guardian-cache` named volume that used to sit over /opt/openpalm —
+    // the image's own writable layer holds this content now, still built (and
+    // chmod'd) at image ownership, not the operator's. g=u would only grant
+    // write when OP_GID == 1000; world-writable is required so the arbitrary
+    // uid can `bun add` guardian/skeleton into /opt/openpalm on first boot.
+    // Secrets live in a separate 0600 bind-mount tree.
+    // IMG-6 split the single install RUN in two so the heavy tools layer stays
+    // cached across releases, so the chmod is now split too — the lower layer
+    // must NOT chmod -R over /opt/openpalm, or it copies the whole cached tools
+    // tree up into itself (measured: +790 MB). Assert the union of paths still
+    // gets covered rather than one literal line. Verified against the built
+    // image: all five are drwxrwxrwx.
+    const chmodded = new Set(
+      [...guardianDockerfile.matchAll(/chmod -R a\+rwX ([^\n\\]+)/g)].flatMap((m) =>
+        m[1].trim().split(/\s+/),
+      ),
+    );
+    for (const tree of [
+      '/opt/openpalm',
+      '/opt/openpalm/tools',
+      '/opt/openpalm/guardian',
+      '/opt/openpalm/guardian-pkg',
+      '/opt/openpalm/skeleton',
+    ]) {
+      expect(chmodded).toContain(tree);
+    }
     expect(guardianDockerfile).not.toContain('chmod -R g=u');
   });
 });

@@ -30,6 +30,13 @@ services:
   assistant:
     image: ${OP_IMAGE_NAMESPACE:-openpalm}/assistant:${OP_ASSISTANT_VERSION:-latest}
     restart: unless-stopped
+    # IMG-7: cap json-file logs (30 MB/service ceiling). Docker's default
+    # driver is unbounded, which contributed to the production disk incident.
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     user: "${OP_UID:-1000}:${OP_GID:-1000}"
     extra_hosts:
       - "host.docker.internal:host-gateway"
@@ -149,11 +156,14 @@ services:
       # system/assistant is the MANAGED config (OPENCODE_CONFIG_DIR) — plugins,
       # permissions, instructions; overwritten on update.
       - ${OP_HOME}/data/assistant:/home/opencode
-      # NOTE: S1 (relocating /home/opencode/.cache into its own purgeable named
-      # volume) is deferred. Nesting a named volume inside the HOME bind mount
-      # makes Docker create the mountpoint root-owned on the host bind, which
-      # fails the rootless-ownership smoke test. Caches stay under the HOME bind
-      # (operator-owned) until a rootless-aware relocation lands. See §S1.
+      # S1: regenerable caches (bun/npm/opencode) live OUTSIDE durable data/,
+      # in a purgeable cache/ tree. This is a host BIND, not a named volume:
+      # the first attempt (921412b1) nested a named volume inside the HOME bind
+      # and Docker created the mountpoint root-owned, failing the rootless
+      # smoke. ensureHomeDirs pre-creates cache/assistant operator-owned, so
+      # Docker never has to create it. Purge with `openpalm doctor
+      # --clean-caches`; excluded from backups.
+      - ${OP_HOME}/cache/assistant:/home/opencode/.cache
       - ${OP_HOME}/config/assistant:/home/opencode/.config/opencode
       - ${OP_HOME}/system/assistant:/etc/opencode
       - ${OP_HOME}/knowledge/secrets/auth.json:/home/opencode/.local/share/opencode/auth.json
@@ -175,17 +185,6 @@ services:
       # under $HOME. Prefer $HOME/.local when possible; use /opt/persistent for
       # tools that require an explicit non-home prefix.
       - assistant-persistent:/opt/persistent
-      # E2/S2: image-baked @openpalm/ui, @openpalm/skeleton, AND the tool tree
-      # (opencode-ai/akm-cli/claude-code/codex/copilot/pi) all live under this
-      # ONE named volume now — no bind mount overlays any of /opt/openpalm
-      # anymore. The volume exists only so a fresh install's first container
-      # start seeds it (Docker copies the image's /opt/openpalm content into a
-      # brand-new named volume) and so rootless ownership repair has a stable
-      # target (see volume-ownership.ts SERVICE_NAMED_VOLUMES); there is no
-      # runtime install/update path writing into it. Pin a different tool
-      # version by editing containers/assistant/tools/package.json and
-      # shipping a new image, not by editing anything under OP_HOME.
-      - assistant-artifacts:/opt/openpalm
     secrets:
       - opencode_server_password
       - ui_login_password
@@ -285,7 +284,3 @@ secrets:
 
 volumes:
   assistant-persistent:
-  # Named volume for the image-baked @openpalm/ui, @openpalm/skeleton, and
-  # tool-tree artifacts under /opt/openpalm (E2/S2 — no bind mount overlays
-  # any subpath of it anymore).
-  assistant-artifacts:

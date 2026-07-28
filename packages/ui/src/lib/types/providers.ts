@@ -81,17 +81,6 @@ export type ProviderPageState = {
 	providerCountLabel: string;
 };
 
-export type AssistantCliToolStatus = {
-	id: 'codex' | 'claude' | 'copilot' | 'pi';
-	name: string;
-	configured: boolean;
-	configPaths: string[];
-	availableProviderMappings: Array<{
-		providerId: string;
-		label: string;
-	}>;
-};
-
 export type ProviderActionResult = {
 	ok?: boolean;
 	message?: string;

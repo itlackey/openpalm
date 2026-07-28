@@ -1,9 +1,11 @@
 import { defineCommand } from 'citty';
-import { rmSync } from 'node:fs';
+import { existsSync, rmSync } from 'node:fs';
 import { ensureValidState } from '../lib/cli-state.ts';
 import { runComposeWithPreflight } from '../lib/cli-compose.ts';
 import {
   acquireInstallLock,
+  createLogger,
+  reapAndLogRetiredVolumes,
   releaseInstallLock,
   resolveConfigDir,
   resolveDataDir,
@@ -12,8 +14,12 @@ import {
   resolveStateDir,
   resolveSystemDir,
   resolveWorkspaceDir,
+  resolveBackupsDirFor,
+  resolveCacheDir,
 } from '@openpalm/lib';
 import { defineAction } from '../lib/action.ts';
+
+const logger = createLogger('cli:uninstall');
 
 export default defineCommand({
   meta: {
@@ -48,6 +54,17 @@ export async function runUninstallAction(
     const downArgs = args.volumes || args.purge ? ['down', '-v'] : ['down'];
     await runComposeWithPreflight(state, downArgs);
 
+    if (args.volumes || args.purge) {
+      // `down -v` only removes volumes the compose files still DECLARE — on a
+      // pre-#585 home the retired volumes' declarations are already gone (or
+      // about to be, on --purge), so this is the one lifecycle path (besides
+      // install/upgrade) that can strand them with no remaining reclamation
+      // route. Runs before --purge's own directory removal below; harmless
+      // either order since the reaper only ever touches Docker volumes, never
+      // OP_HOME paths.
+      await reapAndLogRetiredVolumes(state.homeDir, logger);
+    }
+
     if (args.purge) {
       // C1: state/ and system/ must be purged too — otherwise a survivor
       // state/stack.env (OP_SETUP_COMPLETE) or system/stack/core.compose.yml
@@ -69,14 +86,27 @@ export async function runUninstallAction(
         resolveStashDir(),
         resolvePrivateDir(),
         resolveWorkspaceDir(),
+        resolveCacheDir(),
         resolveDataDir(),
       ];
+      // A backup destination configured OUTSIDE OP_HOME (OP_BACKUP_DIR) is not
+      // reached by any resolver above, so purge cannot claim "all data removed"
+      // without saying so. Never delete it: it is an operator-chosen location
+      // that may hold more than OpenPalm's snapshots.
+      const backupsDir = resolveBackupsDirFor(state.homeDir);
+      const externalBackups = !backupsDir.startsWith(`${state.homeDir}/`) && existsSync(backupsDir);
+
       for (const dir of dirs) {
         console.log(`Removing ${dir}`);
         rmSync(dir, { recursive: true, force: true });
         if (dir === state.dataDir) purgeRemovedLock = true;
       }
-      console.log('OpenPalm stack and all data removed.');
+      if (externalBackups) {
+        console.log(`OpenPalm stack and all data under ${state.homeDir} removed.`);
+        console.log(`Backups at ${backupsDir} were preserved — remove them manually if you want them gone.`);
+      } else {
+        console.log('OpenPalm stack and all data removed.');
+      }
     } else {
       console.log('OpenPalm stack stopped and removed.');
       if (!args.volumes) {

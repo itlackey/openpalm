@@ -15,6 +15,13 @@ services:
     profiles: ["addon.ollama.cpu"]
     image: ollama/ollama:0.31.1@sha256:f1a705f2bd113fb8d15f85f7c217f0dc5f6bebda6b0cc42b82c3ad165ffcb9dc
     restart: unless-stopped
+    # IMG-7: cap json-file logs (30 MB/service ceiling). Docker's default
+    # driver is unbounded, which contributed to the production disk incident.
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     user: "${OP_UID:-1000}:${OP_GID:-1000}"
     environment:
       # Bind the data dir at ollama's native data path ($HOME/.ollama), not a
@@ -42,6 +49,13 @@ services:
     profiles: ["addon.ollama.cuda"]
     image: ollama/ollama:0.31.1@sha256:f1a705f2bd113fb8d15f85f7c217f0dc5f6bebda6b0cc42b82c3ad165ffcb9dc
     restart: unless-stopped
+    # IMG-7: cap json-file logs (30 MB/service ceiling). Docker's default
+    # driver is unbounded, which contributed to the production disk incident.
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     user: "${OP_UID:-1000}:${OP_GID:-1000}"
     runtime: nvidia
     environment:
@@ -69,6 +83,13 @@ services:
     profiles: ["addon.ollama.rocm"]
     image: ollama/ollama:0.31.1@sha256:f1a705f2bd113fb8d15f85f7c217f0dc5f6bebda6b0cc42b82c3ad165ffcb9dc
     restart: unless-stopped
+    # IMG-7: cap json-file logs (30 MB/service ceiling). Docker's default
+    # driver is unbounded, which contributed to the production disk incident.
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     user: "${OP_UID:-1000}:${OP_GID:-1000}"
     environment:
       # Native data path ($HOME/.ollama), not a generic /data root — HOME drives
@@ -100,6 +121,13 @@ services:
     profiles: ["addon.voice.cpu"]
     image: ${OP_IMAGE_NAMESPACE:-openpalm}/voice:${OP_VOICE_VERSION:-latest}-cpu
     restart: unless-stopped
+    # IMG-7: cap json-file logs (30 MB/service ceiling). Docker's default
+    # driver is unbounded, which contributed to the production disk incident.
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     user: "${OP_UID:-1000}:${OP_GID:-1000}"
     environment:
       OP_VOICE_PORT: "8880"
@@ -133,6 +161,13 @@ services:
     profiles: ["addon.voice.cuda"]
     image: ${OP_IMAGE_NAMESPACE:-openpalm}/voice:${OP_VOICE_VERSION:-latest}-cu121
     restart: unless-stopped
+    # IMG-7: cap json-file logs (30 MB/service ceiling). Docker's default
+    # driver is unbounded, which contributed to the production disk incident.
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     user: "${OP_UID:-1000}:${OP_GID:-1000}"
     runtime: nvidia
     environment:
@@ -170,6 +205,13 @@ services:
     profiles: ["addon.voice.rocm"]
     image: ${OP_IMAGE_NAMESPACE:-openpalm}/voice:${OP_VOICE_VERSION:-latest}-rocm6
     restart: unless-stopped
+    # IMG-7: cap json-file logs (30 MB/service ceiling). Docker's default
+    # driver is unbounded, which contributed to the production disk incident.
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     user: "${OP_UID:-1000}:${OP_GID:-1000}"
     environment:
       OP_VOICE_PORT: "8880"

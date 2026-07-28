@@ -261,10 +261,16 @@ describe("I1 — docker-assistant is ordered after npm-skeleton and preflights P
 		const steps = assistantJob?.steps ?? [];
 		const smoke = steps.find((s) => s.name === "Assistant image smoke (amd64 only)");
 		expect(smoke).toBeDefined();
-		const run = String(smoke?.run ?? "");
-		expect(run).toMatch(
-			/--build-arg PLATFORM_VERSION=\$\{\{\s*!inputs\.dry_run\s*&&\s*steps\.\w+\.outputs\.\w+\s*\|\|\s*''\s*\}\}/,
+		// IMG-6 built this step on buildx (sharing the push step's gha cache so
+		// the release builds the image once, not twice), so the build-arg moved
+		// from an inline `--build-arg` into `with.build-args` — same guard.
+		const buildArgs = String(smoke?.with?.["build-args"] ?? "");
+		expect(buildArgs).toMatch(
+			/PLATFORM_VERSION=\$\{\{\s*!inputs\.dry_run\s*&&\s*steps\.\w+\.outputs\.\w+\s*\|\|\s*''\s*\}\}/,
 		);
+		// The smoke must never push — it only gates the push step below it.
+		expect(smoke?.with?.push).toBe(false);
+		expect(smoke?.with?.load).toBe(true);
 	});
 
 	test("F13 — the Build and push step does not bake a live PLATFORM_VERSION on dry-run", () => {

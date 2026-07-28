@@ -131,16 +131,15 @@ export async function repairNamedVolumeOwnership(volumeName: string, ids: { uid:
  * compose service that mounts them. Rootless containers cannot fix these
  * themselves, so both orchestrators (CLI start and lib lifecycle reconcile)
  * repair them before compose up. Volumes that do not exist yet are skipped.
+ *
+ * #585: guardian-cache, assistant-artifacts, and portal-cache are retired —
+ * the compose files no longer mount any named volume at /opt/openpalm, so
+ * there is nothing left for those services to repair. assistant-persistent
+ * (/opt/persistent) is the one surviving named volume — genuine user content
+ * (the escape hatch for prefix-style installs), not image-baked/cache content.
  */
-const SERVICE_NAMED_VOLUMES: Record<string, string[]> = {
-  guardian: ['guardian-cache'],
-  assistant: ['assistant-artifacts', 'assistant-persistent'],
-  // Both portal adapters mount the shared `portal-cache` at /opt/openpalm. On an
-  // upgraded install that volume is root-owned from the old rootful portal, so
-  // the now-rootless portal can't write it. Same volume for both services — the
-  // dedup below repairs it once per call.
-  discord: ['portal-cache'],
-  slack: ['portal-cache'],
+export const SERVICE_NAMED_VOLUMES: Record<string, string[]> = {
+  assistant: ['assistant-persistent'],
 };
 
 /**

@@ -78,6 +78,20 @@ read -rp "Enter choice [1-5]: " choice
 
 case "$choice" in
   1)
+    # 'gws auth setup' requires the gcloud CLI. gcloud is not baked into the
+    # assistant image (IMG-3) — install it on demand via the
+    # install-optional-tool skill the first time this path is taken.
+    if ! command -v gcloud &>/dev/null; then
+      INSTALL_SCRIPT="$(dirname "$0")/../../install-optional-tool/scripts/install-tool.sh"
+      if [[ -x "$INSTALL_SCRIPT" ]]; then
+        echo "gcloud CLI not found — installing it now (required by 'gws auth setup')..."
+        bash "$INSTALL_SCRIPT" gcloud
+      else
+        echo "ERROR: gcloud CLI not found and the install-optional-tool skill is unavailable." >&2
+        echo "Install gcloud manually, or choose option 2 (Manual OAuth), which does not need it." >&2
+        exit 1
+      fi
+    fi
     echo ""
     echo "Running 'gws auth setup'..."
     echo "This will create a GCP project, enable Workspace APIs, and open a browser."

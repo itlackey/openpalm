@@ -31,7 +31,9 @@ import {
   backupOpenPalmHome,
   checkBackupFreeSpace,
   listBackupDirs,
+  planBackupPrune,
   pruneBackupDirs,
+  pruneBackupNamespace,
 } from './backup.js';
 
 let homeDir: string;
@@ -104,6 +106,60 @@ describe('pruneBackupDirs keeps the N newest by mtime, per namespace', () => {
     expect(existsSync(skel2)).toBe(true);
 
     expect(deleted.sort()).toEqual([t3, t4, ui3].sort());
+  });
+});
+
+describe('planBackupPrune previews exactly what pruneBackupDirs deletes', () => {
+  it('agrees with the real prune, and never lists a protected recovery snapshot', () => {
+    const backupsDir = join(homeDir, 'data', 'backups');
+    mkdirSync(backupsDir, { recursive: true });
+
+    // A mix that a global `listBackupDirs().slice(keep)` preview gets wrong in
+    // BOTH directions: it would list the protected snapshots for deletion, and
+    // omit ui-2 (which per-namespace retention actually deletes).
+    makeBackupDir(backupsDir, 't-1', 0); // newest timestamp — kept
+    const t2 = makeBackupDir(backupsDir, 't-2', 1_000);
+    const t3 = makeBackupDir(backupsDir, 't-3', 2_000);
+    makeBackupDir(backupsDir, 'ui-1', 0); // newest ui-* — kept
+    const ui2 = makeBackupDir(backupsDir, 'ui-2', 1_000);
+    const guarded1 = makeBackupDir(backupsDir, 'x-pre-rollback', 5_000);
+    const guarded2 = makeBackupDir(backupsDir, 'y-pre-update', 6_000);
+
+    // keep=1 per namespace: t-1 and ui-1 survive; everything older in each
+    // namespace goes; the two recovery snapshots are excluded entirely.
+    const plan = planBackupPrune(homeDir, 1);
+    expect(plan.toDelete.sort()).toEqual([t2, t3, ui2].sort());
+    expect(plan.protected.sort()).toEqual([guarded1, guarded2].sort());
+
+    // The preview is the contract: what it lists is exactly what gets deleted.
+    const deleted = pruneBackupDirs(homeDir, 1);
+    expect(deleted.sort()).toEqual(plan.toDelete.sort());
+    expect(existsSync(guarded1)).toBe(true);
+    expect(existsSync(guarded2)).toBe(true);
+  });
+});
+
+describe('pruneBackupNamespace bounds one namespace only', () => {
+  it('prunes ui-* to the newest N and leaves timestamp and protected dirs alone', () => {
+    const backupsDir = join(homeDir, 'data', 'backups');
+    mkdirSync(backupsDir, { recursive: true });
+
+    const ui1 = makeBackupDir(backupsDir, 'ui-1', 0);
+    const ui2 = makeBackupDir(backupsDir, 'ui-2', 1_000);
+    const ui3 = makeBackupDir(backupsDir, 'ui-3', 2_000);
+    const skel = makeBackupDir(backupsDir, 'skeleton-1', 3_000);
+    const stamp = makeBackupDir(backupsDir, 't-old', 9_000);
+    const guarded = makeBackupDir(backupsDir, 'x-pre-rollback', 9_000);
+
+    const deleted = pruneBackupNamespace(homeDir, 'ui', 2);
+
+    expect(deleted).toEqual([ui3]);
+    expect(existsSync(ui1)).toBe(true);
+    expect(existsSync(ui2)).toBe(true);
+    // An operator's own snapshots are never collateral of a bundle update.
+    expect(existsSync(skel)).toBe(true);
+    expect(existsSync(stamp)).toBe(true);
+    expect(existsSync(guarded)).toBe(true);
   });
 });
 

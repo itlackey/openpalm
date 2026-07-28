@@ -196,6 +196,8 @@ Key env:
 | `GUARDIAN_MODERATION_PORT` | `4097` | Loopback port the entrypoint starts the moderator on |
 | `GUARDIAN_MODERATION_THRESHOLD` | `3` | Heuristic risk score at/above which a message escalates to the model |
 | `GUARDIAN_MODERATION_TIMEOUT_MS` | `4000` | Per-classification timeout; on expiry the message fails closed |
+| `GUARDIAN_SESSION_ACTIVE_GRACE_MS` | `${GUARDIAN_SESSION_ACTIVE_GRACE_MS:-86400000}` | Idle window (default 24h) before an evicted session is treated as stale enough to delete/archive upstream; a session touched more recently than this is restored (un-evicted) instead |
+| `GUARDIAN_RECONCILE_INTERVAL_MS` | `${GUARDIAN_RECONCILE_INTERVAL_MS:-300000}` | Interval (default 5m) between periodic orphan-session reconciliation sweeps; `0` disables the sweep entirely |
 
 Notes:
 

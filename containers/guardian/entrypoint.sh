@@ -104,16 +104,23 @@ install_artifact() {
 # OpenCode auth.json/config) — an empty host dir bind-mounted there would
 # shadow a baked node_modules and force a network re-fetch every boot.
 # guardian-pkg has no bind-mount in the shipped compose, so the image-baked
-# install (or a prior boot's install) actually persists.
+# install serves every boot with nothing to shadow it. #585 deleted the
+# guardian-cache named volume that USED to make an override install (a
+# non-default OP_GUARDIAN_NPM_VERSION/OP_GUARDIAN_PACKAGE) persist across
+# container recreation — an override now lives only in the container's
+# writable layer, so it re-installs (not re-downloads: the bun tarball cache
+# is on the host bind, portals.compose.yml) on every recreation, not just
+# restart/reboot. Accepted regression, documented in the #585 plan.
 install_artifact "$OP_GUARDIAN_PACKAGE" "$VERSION" /opt/openpalm/guardian-pkg
 install_artifact "@openpalm/skeleton" "${OP_SKELETON_VERSION:-$VERSION}" /opt/openpalm/skeleton
 
 # ── E2/S2: no boot-time tools install ──────────────────────────────────────
 # /opt/openpalm/tools/package.json declares exact tool versions (opencode-ai —
 # the guardian's moderator has no use for any agent CLI, so akm-cli was
-# dropped from this manifest) and is baked into the guardian-cache named
-# volume by the Dockerfile at build time. No bind mount overlays it anymore
-# (image-baked-only model), so there is nothing to install or update here —
+# dropped from this manifest) and is baked directly into the image's own layer
+# by the Dockerfile at build time (#585: no named volume over /opt/openpalm
+# anymore). No mount overlays it (image-baked-only model), so there is nothing
+# to install or update here —
 # the content-validation check below already verifies `opencode` resolved
 # from the baked tree before anything that needs it starts. See
 # docs/public-seams-review.md §E2/§S2.

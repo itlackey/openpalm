@@ -23,12 +23,9 @@
 #
 # Run locally: ./scripts/guardian-image-offline-smoke.sh
 #
-# NOTE (2026-07): this guards a REAL security invariant (S.4) but is currently
-# wired into NOTHING — no CI job and no package.json script runs it, so the
-# baked-guardian invariant it protects is never actually exercised. TODO:
-# either wire it into CI (a cheap `--network none` boot on image changes) or
-# remove it if S.4 is covered elsewhere. Do not leave it as silently-
-# unexercised guard code.
+# Wired into CI (.github/workflows/ci.yml, "Guardian offline-boot smoke").
+# It previously ran nowhere, which is exactly how its assertions rotted
+# unnoticed against a reworded log line.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -52,7 +49,17 @@ chmod 0777 "$GUARDIAN_DATA_DIR"
 
 cleanup() {
   docker rm -f "$CONTAINER" >/dev/null 2>&1 || true
-  rm -rf "$GUARDIAN_DATA_DIR"
+  # Delete the fixture FROM A CONTAINER, not with a host `rm`. The guardian
+  # writes into this bind as its own image user, so under rootful Docker (CI)
+  # those files are owned by a uid the runner cannot unlink — a host `rm -rf`
+  # fails with EACCES and, under `set -e`, fails the whole job even though
+  # every assertion above passed. Under rootless Docker (typical dev machine)
+  # the uid maps back to the caller and a host rm happens to work, which is
+  # exactly why this only ever failed in CI. Same pattern as the rootless
+  # smokes (scripts/rootless-ownership-smoke.sh).
+  docker run --rm -v "$(dirname "$GUARDIAN_DATA_DIR"):/smoke-parent" alpine \
+    sh -c 'rm -rf "/smoke-parent/$1"' _ "$(basename "$GUARDIAN_DATA_DIR")" >/dev/null 2>&1 || true
+  rm -rf "$GUARDIAN_DATA_DIR" 2>/dev/null || true
 }
 trap cleanup EXIT
 
@@ -91,12 +98,18 @@ echo "PASS: guardian reached healthy under --network none."
 # What this script verifies is the install itself: the baked package is used
 # as-is with no re-fetch, which the "already installed, skipping" lines below
 # confirm.
-if ! docker logs "$CONTAINER" 2>&1 | grep -q "@openpalm/guardian@${GUARDIAN_VERSION} already installed, skipping"; then
+# Match the prefix and the trailing "skipping" separately rather than the whole
+# sentence: #584 (a72da8f0) added a "(<installed> satisfies <wanted>)" clause to
+# this line when it fixed the range-never-skips bug, and the exact-string match
+# here silently stopped matching — the guard reported failure on every run even
+# though the skip was working. Keep it loose enough to survive wording, tight
+# enough to still prove the skip happened for THIS package at THIS version.
+if ! docker logs "$CONTAINER" 2>&1 | grep -q "@openpalm/guardian@${GUARDIAN_VERSION} already installed.*skipping"; then
   echo "FAIL: entrypoint did not skip the guardian install (baked package was re-fetched or missing)" >&2
   docker logs "$CONTAINER" >&2 || true
   exit 1
 fi
-if ! docker logs "$CONTAINER" 2>&1 | grep -q "@openpalm/skeleton@${GUARDIAN_VERSION} already installed, skipping"; then
+if ! docker logs "$CONTAINER" 2>&1 | grep -q "@openpalm/skeleton@${GUARDIAN_VERSION} already installed.*skipping"; then
   echo "FAIL: entrypoint did not skip the skeleton install (baked package was re-fetched or missing)" >&2
   docker logs "$CONTAINER" >&2 || true
   exit 1

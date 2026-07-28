@@ -439,9 +439,10 @@ jobs:
       exact-version: true
       dry-run: ${{ inputs.dry_run }}
 
-  # Portal adapters: the portal image bun-installs these from npm at runtime
-  # (data/portal/tools/package.json + bun update), so a published patch reaches
-  # running portals without an image rebuild. Published as `src` only (no build).
+  # Portal adapters: baked into the portal image at build time from
+  # containers/portal/tools/package.json (image-baked-only, E2/§S2) — a
+  # published patch reaches running portals via an image rebuild + stack
+  # update, not a runtime install. Published as `src` only (no build).
   npm-discord-portal:
     name: npm @openpalm/discord-portal
     needs: [compute-version, bump, npm-portal-sdk]
@@ -728,13 +729,30 @@ jobs:
       # assistant entrypoint's `npm install @openpalm/skeleton@$PLATFORM_VERSION`
       # and fail with an opaque E404 (F13 follow-up, review 2026-07-11). An unset
       # PLATFORM_VERSION is a documented no-op for that entrypoint step.
+      # IMG-6: build the amd64 smoke image on the SAME buildx builder and gha
+      # cache scope as "Build and push" below, so the release builds this image
+      # once instead of twice — the push step then restores these layers from
+      # cache rather than rebuilding ~3.5 GB. Still runs BEFORE the push, so it
+      # keeps gating the release exactly as it did.
       - name: Assistant image smoke (amd64 only)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: containers/assistant/Dockerfile
+          build-args: |
+            PLATFORM_VERSION=${{ !inputs.dry_run && steps.platform_version.outputs.platform_version || '' }}
+          platforms: linux/amd64
+          load: true
+          push: false
+          provenance: false
+          sbom: false
+          tags: openpalm-assistant-smoke:${{ github.run_id }}
+          cache-from: type=gha,scope=openpalm/assistant
+          cache-to: type=gha,scope=openpalm/assistant,mode=max
+      - name: Assistant image smoke — baked tools present
         run: |
-          docker build -f containers/assistant/Dockerfile \
-            --build-arg PLATFORM_VERSION=${{ !inputs.dry_run && steps.platform_version.outputs.platform_version || '' }} \
-            -t openpalm-assistant-smoke:${{ github.run_id }} .
           docker run --rm --entrypoint bash openpalm-assistant-smoke:${{ github.run_id }} \
-            -lc 'codex --version && claude --version && pi --version && copilot --version'
+            -lc 'opencode --version && akm --version && gh --version && jq --version && sqlite3 --version && uv --version'
       - name: Build and push
         id: build
         uses: docker/build-push-action@v6

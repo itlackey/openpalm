@@ -128,8 +128,7 @@ router, which 404s because the route tree is deleted.
   `akm/embedding/{detect,test}` — the assistant-scoped AKM config lives at
   `/api/assistant/akm`
 - Providers (`host:secrets`): `providers`, `providers/[id]`,
-  `providers/{host-status,import-host}`, `providers/assistant-clis`,
-  `providers/assistant-clis/[toolId]/use-provider`,
+  `providers/{host-status,import-host}`,
   `providers/oauth/{start,finish}`, `providers/oauth/[providerId]/callback`,
   `opencode/providers/[id]/{auth,models}`
 - Secrets (`host:secrets`): `secrets`, `secrets/[name]`, `secrets/user-env`, `secret-notice`

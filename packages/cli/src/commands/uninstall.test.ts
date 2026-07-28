@@ -28,9 +28,11 @@ const uninstallModuleUrl = new URL('./uninstall.ts', import.meta.url).href;
 const originalHome = process.env.OP_HOME;
 let tempHome: string;
 let composeCalls: string[][];
+let reapCalls: string[];
 
 function resetMocks(): void {
 	mock.restore();
+	reapCalls = [];
 	mock.module('@openpalm/lib', () => ({
 		...realLib,
 		// Stub the install lock (matching start.test.ts/repair-ownership.test.ts
@@ -41,7 +43,13 @@ function resetMocks(): void {
 		// implementation's runtime state. This test is about the purge dir
 		// list, not lock acquisition semantics (covered elsewhere).
 		acquireInstallLock: () => ({ path: '/tmp/fake-uninstall-test.install.lock' }),
-		releaseInstallLock: () => {}
+		releaseInstallLock: () => {},
+		// Round-3 reviewer concern: stub the #585 retired-volume reaper so
+		// these tests never shell out to real docker — just record calls.
+		reapAndLogRetiredVolumes: async (homeDir: string) => {
+			reapCalls.push(homeDir);
+			return { reclaimed: [], errors: [] };
+		}
 	}));
 	mock.module(moduleUrls.cliState, () => ({
 		...realCliState,
@@ -131,6 +139,39 @@ describe('runUninstallAction --purge (C1)', () => {
 		expect(existsSync(join(tempHome, 'state'))).toBe(true);
 		expect(existsSync(join(tempHome, 'system'))).toBe(true);
 		expect(existsSync(join(tempHome, 'data'))).toBe(true);
+		// No -v, so nothing to reclaim — the reaper must not run.
+		expect(reapCalls).toEqual([]);
+	});
+});
+
+describe('runUninstallAction reclaims retired #585 volumes (round-3 reviewer concern)', () => {
+	// deploy.ts's own comment on this exact gap: "uninstall --volumes can't
+	// see them once their declarations are gone, and doctor --clean-docker's
+	// orphan detector only flags a DIFFERENT project's volumes" — uninstall
+	// --volumes/--purge is the one lifecycle path that runs `compose down -v`
+	// (which can only remove volumes still DECLARED in the compose files) and
+	// therefore the one path that needs the same reap the install/upgrade
+	// paths already get.
+	test('--volumes runs `down -v` then reaps retired volumes', async () => {
+		seedInstalledHome(tempHome);
+		resetMocks();
+
+		const { runUninstallAction } = await import(`${uninstallModuleUrl}?t=${Math.random()}`);
+		await runUninstallAction({ volumes: true });
+
+		expect(composeCalls).toEqual([['down', '-v']]);
+		expect(reapCalls).toEqual([tempHome]);
+	});
+
+	test('--purge runs `down -v` then reaps retired volumes (before the purge removes state/system)', async () => {
+		seedInstalledHome(tempHome);
+		resetMocks();
+
+		const { runUninstallAction } = await import(`${uninstallModuleUrl}?t=${Math.random()}`);
+		await runUninstallAction({ purge: true });
+
+		expect(composeCalls).toEqual([['down', '-v']]);
+		expect(reapCalls).toEqual([tempHome]);
 	});
 });
 

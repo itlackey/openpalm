@@ -47,6 +47,16 @@ export function resolveDataDir(): string {
   return `${resolveOpenPalmHome()}/data`;
 }
 
+/**
+ * Regenerable cache tree (§S1). Deliberately a sibling of `data/`, not a child:
+ * everything here is safe to delete at any time, which is what lets
+ * `doctor --clean-caches` purge it, backups skip it, and `--purge` remove it
+ * without a second thought about durable state.
+ */
+export function resolveCacheDir(): string {
+  return `${resolveOpenPalmHome()}/cache`;
+}
+
 export function resolveStackDir(): string {
   return stackDirFor(resolveOpenPalmHome());
 }
@@ -262,6 +272,14 @@ export function ensureHomeDirs(home: string = resolveOpenPalmHome()): void {
     `${home}/config/akm`,           // akm XDG config directory
     `${home}/config/stack`,         // user-owned custom.compose.yml overlay (seeded once)
 
+    // cache/ — regenerable, purgeable, and NEVER backed up. Pre-created here
+    // (operator-owned) because Docker creates a MISSING bind-mount source
+    // root-owned, which is precisely what broke the first S1 attempt
+    // (commit 921412b1) under rootless.
+    `${home}/cache`,
+    `${home}/cache/assistant`,
+    `${home}/cache/guardian`,
+
     // data/ — persistent service data
     `${home}/data`,
     `${home}/data/assistant`,      // assistant HOME bind mount
@@ -270,12 +288,11 @@ export function ensureHomeDirs(home: string = resolveOpenPalmHome()): void {
     `${home}/data/assistant/.local/bin`,
     `${home}/data/assistant/.local/share/opencode`,
     `${home}/data/assistant/.local/state/opencode`,
-    `${home}/data/assistant/tools`, // runtime tools managed via package.json
     `${home}/data/guardian`,       // guardian runtime data
+    `${home}/data/guardian/.cache`,
     `${home}/data/guardian/.config/opencode`,
     `${home}/data/guardian/.local/share/opencode`,
     `${home}/data/guardian/.local/state/opencode`,
-    `${home}/data/guardian/tools`, // runtime tools managed via package.json
     `${home}/data/akm/cache`,      // akm cache
     `${home}/data/akm/data`,       // akm durable data
     `${home}/data/akm/empty-host-stash`, // always-present /host-stash fallback when host AKM is absent

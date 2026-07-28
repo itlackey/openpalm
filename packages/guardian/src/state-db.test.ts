@@ -23,6 +23,7 @@ import {
   listPendingEvictedSessions,
   markSessionReconciled,
   recordSessionOwnerRow,
+  touchSessionOwnerRow,
   STATE_DB_SCHEMA_VERSION,
 } from './state-db.ts';
 
@@ -285,6 +286,112 @@ describe('state-db — configureStateDatabase', () => {
     rmSync(tmpDir, { recursive: true, force: true });
   });
 
+  it('migrates a v3 DB (pre-last_used_at) up to schema v4: backfills last_used_at from created_at, preserves the eviction log (#586)', () => {
+    // A pre-last_used_at v3 DB: the exact DDL from BEFORE this change, stamped
+    // user_version = 3, seeded with a session_owners row (data-preservation
+    // precedent of the v1/v2 migration tests above) AND a session_eviction_log
+    // row, so both tables' data-preservation survives the v3→v4 step.
+    const seed = new Database(dbPath, { create: true });
+    seed.exec(`
+      CREATE TABLE principals (
+        id TEXT PRIMARY KEY,
+        kind TEXT NOT NULL CHECK(kind IN ('portal', 'direct')),
+        label TEXT NOT NULL,
+        token_hash TEXT NOT NULL,
+        enabled INTEGER NOT NULL,
+        created_at INTEGER NOT NULL
+      );
+      CREATE TABLE session_owners (
+        session_id TEXT PRIMARY KEY,
+        principal_key TEXT NOT NULL,
+        created_at INTEGER NOT NULL
+      );
+      CREATE INDEX session_owners_principal ON session_owners(principal_key);
+      CREATE TABLE permission_owners (
+        request_id TEXT PRIMARY KEY,
+        principal_key TEXT NOT NULL,
+        created_at INTEGER NOT NULL
+      );
+      CREATE TABLE session_eviction_log (
+        session_id TEXT PRIMARY KEY,
+        principal_key TEXT NOT NULL,
+        evicted_at INTEGER NOT NULL,
+        reconciled_at INTEGER
+      );
+      CREATE INDEX session_eviction_log_pending ON session_eviction_log(reconciled_at);
+      INSERT INTO session_owners (session_id, principal_key, created_at) VALUES ('ses_v3', 'p1', 500);
+      INSERT INTO session_eviction_log (session_id, principal_key, evicted_at, reconciled_at)
+        VALUES ('ses_evicted', 'p2', 900, NULL);
+      PRAGMA user_version = 3;
+    `);
+    seed.close();
+
+    const database = new Database(dbPath);
+    configureStateDatabase(database);
+
+    expect(STATE_DB_SCHEMA_VERSION).toBe(4);
+    expect(userVersion(database)).toBe(4);
+
+    const columns = database
+      .query<{ name: string }, []>("PRAGMA table_info(session_owners)")
+      .all()
+      .map((c) => c.name);
+    expect(columns).toContain('last_used_at');
+
+    // Backfilled from created_at, not left at the DEFAULT 0.
+    const row = database.query('SELECT last_used_at FROM session_owners WHERE session_id = ?').get('ses_v3') as {
+      last_used_at: number;
+    };
+    expect(row.last_used_at).toBe(500);
+
+    // session_eviction_log data survives the migration untouched.
+    const logRow = database
+      .query('SELECT principal_key, evicted_at, reconciled_at FROM session_eviction_log WHERE session_id = ?')
+      .get('ses_evicted');
+    expect(logRow).toEqual({ principal_key: 'p2', evicted_at: 900, reconciled_at: null });
+
+    database.close();
+
+    // Idempotent re-run.
+    const reopened = new Database(dbPath);
+    configureStateDatabase(reopened);
+    expect(userVersion(reopened)).toBe(4);
+    reopened.close();
+
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('fresh-DB and migrated-DB session_owners schemas converge on the same columns (#586)', () => {
+    // Fresh-DB path.
+    const freshPath = join(tmpDir, 'fresh.db');
+    const fresh = new Database(freshPath, { create: true });
+    configureStateDatabase(fresh);
+    const freshColumns = fresh
+      .query<{ name: string }, []>("PRAGMA table_info(session_owners)")
+      .all()
+      .map((c) => c.name)
+      .sort();
+    fresh.close();
+
+    // Migrated-DB path: a bare v0 DB (no tables at all) runs every migration
+    // step in one pass, including the v1→v2 step that creates session_owners
+    // — createOwnershipTables is reused as BOTH that step and the
+    // unconditional configure-time CREATE, so this exercises the exact "v3→v4
+    // ALTER runs against a table that already has the column" case the sniff
+    // guard must no-op on.
+    const migrated = new Database(dbPath, { create: true });
+    configureStateDatabase(migrated);
+    const migratedColumns = migrated
+      .query<{ name: string }, []>("PRAGMA table_info(session_owners)")
+      .all()
+      .map((c) => c.name)
+      .sort();
+    migrated.close();
+
+    expect(migratedColumns).toEqual(freshColumns);
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
   it('migrates a v1 principals-only DB up to the ownership schema without data loss', () => {
     // A pre-ownership v1 DB: principals present, stamped user_version = 1, no owner tables.
     const seed = new Database(dbPath, { create: true });
@@ -461,7 +568,7 @@ describe('session_owners eviction persists a reconciliation record (S4, #581 fin
     expect(pending.some((r) => r.sessionId === 'ses_0' && r.principalKey === 'p2')).toBe(true);
   });
 
-  it('the eviction log itself is bounded: reconciled rows are pruned before unreconciled ones', () => {
+  it('the eviction log NEVER drops a pending row: reconciled rows are pruned first, pending rows survive even over cap (S4 Fix B, #586)', () => {
     // Evict 5 sessions (cap 1 keeps only the newest owner row); reconcile 3 of
     // them, then force the eviction-log cap down to 2 via a further eviction.
     for (let i = 0; i < 6; i++) {
@@ -473,20 +580,98 @@ describe('session_owners eviction persists a reconciliation record (S4, #581 fin
     markSessionReconciled('ses_1', database);
     markSessionReconciled('ses_2', database);
 
-    // One more eviction, with the eviction-log cap constrained to 2 rows:
-    // prune must drop the 3 already-reconciled rows first, never an
-    // unreconciled one.
+    // One more eviction, with the eviction-log cap constrained to 2 rows.
+    // This USED to pin defect B: the old prune order (reconciled-first, then
+    // oldest-pending) dropped ses_3 (a still-PENDING row) to hit the cap
+    // exactly. Under the fix, pruneEvictionLog's candidate set is
+    // reconciled-only — pending rows are structurally unreachable — so ALL
+    // THREE already-reconciled rows are pruned (even though that leaves 3
+    // pending rows over the cap of 2) and NONE of ses_3/ses_4/the
+    // freshly-evicted ses_5 is ever dropped.
     recordSessionOwnerRow('ses_6', 'p1', 6, database, /* maxRows */ 1, /* evictionLogMaxRows */ 2);
 
     const allLogRows = database
-      .query('SELECT session_id, reconciled_at FROM session_eviction_log')
+      .query('SELECT session_id, reconciled_at FROM session_eviction_log ORDER BY session_id')
       .all() as { session_id: string; reconciled_at: number | null }[];
-    expect(allLogRows).toHaveLength(2);
-    // The still-pending rows (ses_3, ses_4, and the just-evicted ses_5) must
-    // never be pruned while reconciled rows remain available to drop instead.
+    expect(allLogRows.map((r) => r.session_id)).toEqual(['ses_3', 'ses_4', 'ses_5']);
     for (const row of allLogRows) {
       expect(row.reconciled_at).toBeNull();
     }
+  });
+
+  it('touching an old row lets it survive an eviction that would otherwise take it (Fix A, #586)', () => {
+    recordSessionOwnerRow('ses_0', 'p1', 0, database, /* maxRows */ 3);
+    recordSessionOwnerRow('ses_1', 'p1', 1, database, 3);
+    recordSessionOwnerRow('ses_2', 'p1', 2, database, 3);
+    // Refresh ses_0's last_used_at to "now" — WAY more recent than ses_1/ses_2's
+    // tiny createdAt-derived values.
+    touchSessionOwnerRow('ses_0', Date.now(), database);
+    // A 4th row crosses the cap: without the touch, ses_0 (oldest by
+    // created_at) would be evicted; with it, ses_1 is now the oldest by
+    // last_used_at instead.
+    recordSessionOwnerRow('ses_3', 'p1', 3, database, 3);
+
+    expect(sessionOwnerIds()).toEqual(['ses_0', 'ses_2', 'ses_3']);
+    const pending = listPendingEvictedSessions(100, database).map((r) => r.sessionId);
+    expect(pending).toEqual(['ses_1']);
+  });
+
+  it('recordSessionOwnerRow refreshes last_used_at on an ON CONFLICT re-insert', () => {
+    recordSessionOwnerRow('ses_a', 'p1', 0, database, /* maxRows */ 100);
+    recordSessionOwnerRow('ses_a', 'p1', 5000, database, 100);
+    const row = database.query('SELECT last_used_at FROM session_owners WHERE session_id = ?').get('ses_a') as {
+      last_used_at: number;
+    };
+    expect(row.last_used_at).toBe(5000);
+  });
+
+  it('active-grace soft cap: rows all within grace are never evicted even though the table exceeds the cap (Fix A step 3, #586)', () => {
+    const graceMs = 100;
+    // 4 rows, cap 3. last_used_at = createdAt (recordSessionOwnerRow's own
+    // write semantics) — small, closely-spaced values relative to a MUCH
+    // bigger grace window, so every row is still "in grace" at the final
+    // insert's cutoff (40 - 100 = -60): none are stale, so the cap is
+    // exceeded but nothing is evicted (never-delete-user-data outranks table
+    // hygiene).
+    recordSessionOwnerRow('ses_0', 'p1', 10, database, /* maxRows */ 3, /* evictionLogMaxRows */ 100, graceMs, 10);
+    recordSessionOwnerRow('ses_1', 'p1', 20, database, 3, 100, graceMs, 20);
+    recordSessionOwnerRow('ses_2', 'p1', 30, database, 3, 100, graceMs, 30);
+    recordSessionOwnerRow('ses_3', 'p1', 40, database, 3, 100, graceMs, 40);
+
+    expect(sessionOwnerIds()).toEqual(['ses_0', 'ses_1', 'ses_2', 'ses_3']);
+    expect(listPendingEvictedSessions(100, database)).toEqual([]);
+  });
+
+  it('active-grace soft cap: exactly the row that ages out of grace evicts, others in grace survive (Fix A step 3, #586)', () => {
+    const graceMs = 15;
+    recordSessionOwnerRow('ses_0', 'p1', 0, database, /* maxRows */ 3, /* evictionLogMaxRows */ 100, graceMs, 0);
+    recordSessionOwnerRow('ses_1', 'p1', 190, database, 3, 100, graceMs, 190);
+    recordSessionOwnerRow('ses_2', 'p1', 195, database, 3, 100, graceMs, 195);
+    // Triggering insert at now=200: cutoff = 200-15 = 185. Only ses_0 (0) is
+    // <= 185; ses_1 (190) and ses_2 (195) are both still within grace.
+    recordSessionOwnerRow('ses_3', 'p1', 200, database, 3, 100, graceMs, 200);
+
+    expect(sessionOwnerIds()).toEqual(['ses_1', 'ses_2', 'ses_3']);
+    const pending = listPendingEvictedSessions(100, database).map((r) => r.sessionId);
+    expect(pending).toEqual(['ses_0']);
+  });
+
+  it('a touched (active) session never appears in the eviction log across repeated cap-crossings (AC1, #586)', () => {
+    const graceMs = 50;
+    let clock = 0;
+    recordSessionOwnerRow('kept_alive', 'p1', clock, database, /* maxRows */ 2, /* evictionLogMaxRows */ 1000, graceMs, clock);
+
+    for (let i = 0; i < 20; i++) {
+      clock += 100; // well past the 50ms grace window each iteration
+      touchSessionOwnerRow('kept_alive', clock, database); // refresh right before the crossing
+      recordSessionOwnerRow(`ses_${i}`, 'p1', clock, database, 2, 1000, graceMs, clock);
+    }
+
+    expect(sessionOwnerIds()).toContain('kept_alive');
+    const everLogged = database
+      .query('SELECT 1 AS x FROM session_eviction_log WHERE session_id = ?')
+      .get('kept_alive');
+    expect(everLogged).toBeNull();
   });
 });
 

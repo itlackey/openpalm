@@ -23,6 +23,8 @@ import { ensureOpenCodeSystemConfig } from "./core-assets.js";
 import { applyHomeSeed } from "./ui-assets.js";
 import { restoreSnapshot, snapshotCurrentState } from "./rollback.js";
 import { checkDocker, composePreflight, applyStack, composeConfigServices, buildComposePreflightError } from "./docker.js";
+import { checkDiskHeadroom, describeDiskHeadroom, shouldBlockOnDiskHeadroom } from "./disk-headroom.js";
+import { reapAndLogRetiredVolumes } from "./image-volume-retention.js";
 import { reconcileHostOwnership } from "./ownership-reconcile.js";
 import { buildComposeOptions } from "./compose-args.js";
 import { teardownRenamedProject } from "./project-rename.js";
@@ -107,6 +109,19 @@ async function reconcileCore(
   // Fails if Docker is unavailable (Docker is required for any compose operation).
   const { files, envFiles, profiles } = buildComposeOptions(state);
   if (files.length > 0 && !process.env.OP_SKIP_COMPOSE_PREFLIGHT) {
+    // S6: one preflight, two checks. The CLI runs this same pair in
+    // cli-compose.ts for day-2 commands; doing it HERE too is what covers the
+    // UI-driven install/update/apply paths, which reach compose through this
+    // function and otherwise had no disk guard at all — the exact restart/
+    // install feedback loop that filled the disk in the #581 incident.
+    // Non-fatal by default: warns unless OP_DISK_HARD_BLOCK=1 AND critical.
+    const headroom = checkDiskHeadroom(state.homeDir);
+    const headroomWarning = describeDiskHeadroom(headroom);
+    if (headroomWarning) {
+      if (shouldBlockOnDiskHeadroom(headroom)) throw new Error(headroomWarning);
+      lifecycleLogger.warn(headroomWarning);
+    }
+
     const dockerCheck = await checkDocker();
     if (!dockerCheck.ok) {
       throw new Error(
@@ -309,6 +324,13 @@ export async function performUpgrade(state: ControlPlaneState, opts?: LockedLife
         containersMutated = containersMutated || result.pullFailed !== true;
         throw new Error(result.error ?? "Failed to apply stack");
       }
+
+      // #585 decision 585-B: reclaim the named volumes retired by #585
+      // (assistant-artifacts, guardian-cache, portal-cache) — image-baked/cache
+      // content only, nothing durable. Runs AFTER the new stack is confirmed
+      // up, so a reclaim failure can never strand this upgrade; failures are
+      // logged, never thrown.
+      await reapAndLogRetiredVolumes(state.homeDir, lifecycleLogger);
     }, () => containersMutated);
   } finally {
     releaseLifecycleLock(lock, opts);

@@ -33,14 +33,21 @@ describe("ensureHomeDirs", () => {
     expect(existsSync(join(home, "config", "guardian"))).toBe(true);
     expect(existsSync(join(home, "config", "akm"))).toBe(true);
 
-    // cache/ — no longer part of the normal OP_HOME skeleton
-    expect(existsSync(join(home, "cache"))).toBe(false);
+    // cache/ — regenerable container caches (§S1). Pre-created here, and
+    // deliberately operator-owned: Docker creates a MISSING bind-mount source
+    // root-owned, which is what broke rootless in the first S1 attempt.
+    expect(existsSync(join(home, "cache"))).toBe(true);
+    expect(existsSync(join(home, "cache", "assistant"))).toBe(true);
+    // The guardian's bun/npm cache — NOT the old per-service AKM cache this
+    // suite used to assert against (the guardian still makes no akm calls).
+    expect(existsSync(join(home, "cache", "guardian"))).toBe(true);
+
+    // The abandoned cache-everything layout stays abandoned: only the two
+    // service cache dirs live here, never durable state.
     expect(existsSync(join(home, "cache", "akm"))).toBe(false);
     expect(existsSync(join(home, "cache", "rollback"))).toBe(false);
     expect(existsSync(join(home, "cache", "logs"))).toBe(false);
     expect(existsSync(join(home, "cache", "backups"))).toBe(false);
-    // guardian AKM cache removed — guardian has no akm CLI invocations
-    expect(existsSync(join(home, "cache", "guardian"))).toBe(false);
 
     // data/ — persistent service data
     expect(existsSync(join(home, "data", "assistant"))).toBe(true);
