@@ -183,6 +183,13 @@ jobs:
           OP_ROOTLESS_SMOKE_SKIP_BUILD: '1'
         run: ./scripts/rootless-host-swap-smoke.sh
 
+      # S.4: the guardian is the trust boundary, and it must boot with ZERO
+      # registry access from its baked packages. This existed but ran nowhere,
+      # so its assertions silently rotted (they matched a log line #584
+      # reworded) and reported failure on every run with nobody watching.
+      - name: Guardian offline-boot smoke (--network none)
+        run: ./scripts/guardian-image-offline-smoke.sh
+
       # Upgrades an install that already exists — the case every other suite
       # misses, because they all build homes from the CURRENT skeleton. Seeds
       # from PUBLISHED skeleton versions on npm, so the set of testable eras
