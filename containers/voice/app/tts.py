@@ -62,10 +62,6 @@ class TTS:
     def ready(self) -> bool:
         return self._engine is not None and self.error is None
 
-    @property
-    def default_voice(self) -> str:
-        return self._default_voice
-
     def load(self) -> None:
         if self._engine is not None:
             return

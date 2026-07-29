@@ -17,17 +17,11 @@ logger = logging.getLogger("voice.stt")
 class STT:
     def __init__(self) -> None:
         self._model = None
-        self._device = "cpu"
-        self._compute_type = "int8"
         self.error: Optional[str] = None
 
     @property
     def ready(self) -> bool:
         return self._model is not None and self.error is None
-
-    @property
-    def device(self) -> str:
-        return self._device
 
     def load(self) -> None:
         """Download (if needed) and warm the configured faster-whisper model."""
@@ -66,8 +60,6 @@ class STT:
                 compute_type=compute_type,
                 download_root=cache_dir,
             )
-            self._device = device
-            self._compute_type = compute_type
             logger.info("whisper ready")
         except Exception as exc:  # noqa: BLE001
             self.error = f"whisper load failed: {exc!r}"
