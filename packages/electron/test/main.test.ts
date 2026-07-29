@@ -192,6 +192,31 @@ vi.mock('@openpalm/lib', () => ({
     }
     return false;
   }),
+  // Faithful reimplementations of the two probe primitives the harness now
+  // shares with the CLI. The identity probe hits /api/runtime; the test's
+  // stubbed fetch only answers /health, so it reports 'absent' and the harness
+  // takes the normal spawn path — which is what these tests exercise.
+  checkExistingUiInstance: vi.fn(
+    async (port: number, expectedAdmin: boolean): Promise<
+      { status: 'absent' } | { status: 'match'; admin: boolean } | { status: 'mismatch'; admin: boolean }
+    > => {
+      try {
+        const res = await fetch(`http://127.0.0.1:${port}/api/runtime`, {
+          signal: AbortSignal.timeout(1000),
+        });
+        if (!res.ok) return { status: 'absent' };
+        const body = (await res.json()) as { admin?: boolean };
+        const admin = body.admin === true;
+        return admin === expectedAdmin ? { status: 'match', admin } : { status: 'mismatch', admin };
+      } catch {
+        return { status: 'absent' };
+      }
+    },
+  ),
+  readyOrChildExit: vi.fn(
+    (waitFn: () => Promise<boolean>, childExited: Promise<unknown> | undefined) =>
+      childExited ? Promise.race([waitFn(), childExited.then(() => false)]) : waitFn(),
+  ),
   consumePendingUiBackup: vi.fn(() => null),
   restoreUiBackup: vi.fn(() => ({ status: 'no-backup' as const })),
   // Faithful reimplementation of lib's UiSupervisor state machine (same style as

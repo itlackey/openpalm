@@ -107,6 +107,95 @@ export async function waitForReady(
   return false;
 }
 
+// ── Instance identity probe ───────────────────────────────────────────────────
+
+/** Outcome of {@link checkExistingUiInstance}. */
+export type UiInstanceCheck =
+  | { status: 'absent' }
+  | { status: 'match'; admin: boolean }
+  | { status: 'mismatch'; admin: boolean };
+
+/** Fetch and parse a JSON body; `null` on any failure — "couldn't confirm" is
+ *  treated as "not there", never as a hard failure. */
+async function probeJson<T>(
+  fetchFn: typeof fetch,
+  url: string,
+  timeoutMs: number,
+): Promise<T | null> {
+  try {
+    const res = await fetchFn(url, { signal: AbortSignal.timeout(timeoutMs) });
+    if (!res.ok) return null;
+    return (await res.json()) as T;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Pre-spawn instance-identity probe.
+ *
+ * Readiness alone is a bare port poll (200 OR 401) that cannot tell "our child
+ * is still starting" from "our child died of EADDRINUSE and the poll is hitting
+ * some OTHER process that happens to own the port". The CLI learned this (D1);
+ * Electron never did, and the failure is user-visible: with a bare `openpalm`
+ * already serving a non-admin UI on 3880, launching the desktop app spawned a
+ * child that died instantly, `waitForReady` was satisfied by the FOREIGN
+ * server, and the window opened onto a UI with no host capability — /host
+ * silently redirecting to /chat.
+ *
+ * `absent` → nothing there, spawn normally. `match` → an OpenPalm UI of the
+ * expected capability level already owns the port, so attach instead of racing
+ * it. `mismatch` → something OpenPalm-shaped but of the WRONG capability level;
+ * the caller must refuse with an actionable error rather than silently open the
+ * wrong thing.
+ */
+export async function checkExistingUiInstance(
+  port: number,
+  expectedAdmin: boolean,
+  deps: { fetchFn?: typeof fetch; host?: string; timeoutMs?: number } = {},
+): Promise<UiInstanceCheck> {
+  const fetchFn = deps.fetchFn ?? fetch;
+  const host = deps.host ?? '127.0.0.1';
+  // Loopback targets answer near-instantly or are not there at all.
+  const timeoutMs = deps.timeoutMs ?? 1_500;
+  const body = await probeJson<{ admin?: boolean }>(
+    fetchFn,
+    `http://${host}:${port}/api/runtime`,
+    timeoutMs,
+  );
+  if (body === null) return { status: 'absent' };
+  const admin = body.admin === true;
+  return admin === expectedAdmin ? { status: 'match', admin } : { status: 'mismatch', admin };
+}
+
+/**
+ * Readiness that loses to the child's own death.
+ *
+ * Wrap a readiness poll so a child which exits before the poll settles reports
+ * not-ready IMMEDIATELY, instead of waiting out the full timeout while some
+ * unrelated process on the port answers for it. `childExited` is the harness's
+ * own "this handle has exited" promise (Bun's `proc.exited`, or a promise
+ * resolved from node's `exit` event).
+ */
+export function readyOrChildExit(
+  waitFn: () => Promise<boolean>,
+  childExited: Promise<unknown> | undefined,
+): Promise<boolean> {
+  if (!childExited) return waitFn();
+  // Both settlement paths mean the same thing — the child is gone, so it is not
+  // ready. A REJECTION must not propagate: node's `events.once(child, 'exit')`
+  // rejects if the child emits `error` first, and letting that escape would turn
+  // "the child failed to spawn" into an exception thrown out of the supervisor
+  // instead of the not-ready result its callers handle.
+  return Promise.race([
+    waitFn(),
+    childExited.then(
+      () => false,
+      () => false,
+    ),
+  ]);
+}
+
 /** Injectable dependencies for {@link restoreUiBackup} (defaults to real fs/clock/log). */
 export interface RestoreUiBackupDeps {
   existsSync?: (path: string) => boolean;

@@ -752,12 +752,15 @@ export type {
   RestoreUiBackupDeps,
   RestoreUiBackupOutcome,
   UiChildStrategy,
+  UiInstanceCheck,
   UiSupervisorCallbacks,
   UiSupervisorOptions,
 } from "./control-plane/ui-supervisor.js";
 export {
   DEFAULT_READY_TIMEOUT_MS,
+  checkExistingUiInstance,
   consumePendingUiBackup,
+  readyOrChildExit,
   recordPendingUiBackup,
   waitForReady,
   restoreUiBackup,

@@ -11,7 +11,8 @@ import { existsSync } from 'node:fs';
 import {
   resolveOpenPalmHome, resolveUiBuildDir, createLogger, readSecret, readStackEnv,
   checkAndUpdateUiBuild, checkAndUpdateSkeleton, PLATFORM_VERSION,
-  consumePendingUiBackup, isRemoteSetupAllowed, restoreUiBackup, UiSupervisor, waitForReady,
+  consumePendingUiBackup, isRemoteSetupAllowed, readyOrChildExit, restoreUiBackup, UiSupervisor, waitForReady,
+  checkExistingUiInstance, type UiInstanceCheck,
   buildEmptyUiRuntimeConfig, buildServedUiRuntimeConfig, classifyLocalInstall, stackDirFor,
   serializeUiRuntimeConfig, uiBuildSupportsProcessRuntimeConfig,
   writeLegacyServedUiRuntimeConfig, UI_RUNTIME_CONFIG_ENV,
@@ -23,10 +24,6 @@ import { resolveHostUiPortFromEnv } from './ports.ts';
 
 const logger = createLogger('cli:ui');
 const STOP_TIMEOUT_MS  = 5_000;
-/** Short probe timeout for the pre-spawn instance-identity check and the
- *  landing/setup-status probes below — these targets are on loopback and
- *  either answer near-instantly or aren't there at all. */
-const PROBE_TIMEOUT_MS = 1_500;
 
 /**
  * Resolve the UI server's listen port: an explicit --port always wins;
@@ -128,55 +125,13 @@ export interface UIServerOptions {
   adminHostUi?: boolean;
 }
 
-/** Fetch and parse a JSON body; `null` on any failure (network error, non-2xx,
- *  non-JSON, timeout) — every caller below treats "couldn't confirm" the same
- *  as "not there", never as a hard failure. */
-async function probeJson<T>(
-  fetchFn: typeof fetch,
-  url: string,
-  timeoutMs: number,
-): Promise<T | null> {
-  try {
-    const res = await fetchFn(url, { signal: AbortSignal.timeout(timeoutMs) });
-    if (!res.ok) return null;
-    return (await res.json()) as T;
-  } catch {
-    return null;
-  }
-}
-
-/** Outcome of {@link checkExistingUiInstance}. */
-export type UiInstanceCheck =
-  | { status: 'absent' }
-  | { status: 'match'; admin: boolean }
-  | { status: 'mismatch'; admin: boolean };
-
-/**
- * Pre-spawn instance-identity probe (review finding D1). Readiness was a bare
- * port poll (200 OR 401) with no check that whatever answered is even an
- * OpenPalm UI instance of the capability level THIS invocation wants — with a
- * bare `openpalm` already on 3880, `openpalm admin` would poll-succeed, "reuse"
- * it, and open a UI with no admin capability while its own spawn attempt
- * EADDRINUSEs into a respawn loop.
- *
- * If port is silent → 'absent' (proceed with the normal spawn). If it answers
- * `/api/runtime` with the expected `admin` boolean → 'match' (safe to treat as
- * already-running; skip spawning a second child). A different `admin` value →
- * 'mismatch' (a clear, actionable error — never a silent wrong-capability open).
- */
-export async function checkExistingUiInstance(
-  port: number,
-  expectedAdmin: boolean,
-  deps: { fetchFn?: typeof fetch; host?: string; timeoutMs?: number } = {},
-): Promise<UiInstanceCheck> {
-  const fetchFn = deps.fetchFn ?? fetch;
-  const host = deps.host ?? '127.0.0.1';
-  const timeoutMs = deps.timeoutMs ?? PROBE_TIMEOUT_MS;
-  const body = await probeJson<{ admin?: boolean }>(fetchFn, `http://${host}:${port}/api/runtime`, timeoutMs);
-  if (body === null) return { status: 'absent' };
-  const admin = body.admin === true;
-  return admin === expectedAdmin ? { status: 'match', admin } : { status: 'mismatch', admin };
-}
+// The instance-identity probe (review finding D1) and the readiness-vs-child-exit
+// race now live in @openpalm/lib beside UiSupervisor, so Electron gets both
+// instead of re-deriving them — it had neither, and opened its window onto
+// whatever foreign server happened to own the port. Re-exported here because
+// the CLI tests and commands import them from this module. Imported into scope
+// (not `export … from`) because startUIServer below calls it directly.
+export { checkExistingUiInstance, type UiInstanceCheck };
 
 export function resolveUiChildLaunch(
   state: Pick<ControlPlaneState, 'homeDir' | 'stackDir'>,
@@ -406,18 +361,13 @@ export function createCliUiSupervisor(deps: CliUiSupervisorDeps): {
     if (!proc.killed) proc.kill('SIGKILL');
   };
 
-  // D1: race readiness against the just-spawned child's own exit. A bare port
-  // poll (200/401) can't tell "our child is genuinely still starting" apart
-  // from "our child died immediately (e.g. EADDRINUSE) and the poll happens
-  // to be hitting some OTHER, unrelated process already on the port" — if the
-  // child we just spawned exits before the poll would otherwise settle,
-  // that's an immediate not-ready, not something worth waiting the full
-  // timeout to discover.
-  const waitForReadyFn = (p: number): Promise<boolean> => {
-    const handle = lastHandle;
-    if (!handle) return baseWaitForReady(p);
-    return Promise.race([baseWaitForReady(p), handle.exited.then(() => false)]);
-  };
+  // D1: race readiness against the just-spawned child's own exit (shared with
+  // Electron via lib's readyOrChildExit). A bare port poll (200/401) can't tell
+  // "our child is genuinely still starting" apart from "our child died
+  // immediately (e.g. EADDRINUSE) and the poll happens to be hitting some
+  // OTHER, unrelated process already on the port".
+  const waitForReadyFn = (p: number): Promise<boolean> =>
+    readyOrChildExit(() => baseWaitForReady(p), lastHandle?.exited);
 
   const supervisor = new UiSupervisor<Bun.Subprocess>({
     port,

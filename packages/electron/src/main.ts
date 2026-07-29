@@ -1,8 +1,9 @@
 import { app, BrowserWindow, shell, dialog, ipcMain, globalShortcut, Notification } from 'electron';
 import { join, dirname } from 'node:path';
-import { existsSync, readFileSync, writeFileSync, rmSync, mkdirSync, createWriteStream, type WriteStream } from 'node:fs';
+import { existsSync, mkdirSync, createWriteStream, type WriteStream } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { spawn, type ChildProcess } from 'node:child_process';
+import { once } from 'node:events';
 
 import {
   resolveOpenPalmHome,
@@ -16,6 +17,8 @@ import {
   stackEnvFile,
   PLATFORM_VERSION,
   waitForReady as libWaitForReady,
+  checkExistingUiInstance,
+  readyOrChildExit,
   consumePendingUiBackup,
   restoreUiBackup,
   UiSupervisor,
@@ -254,26 +257,15 @@ export function buildUIServerEnv(homeDir: string, port: number, update?: UpdateI
 }
 
 // ── UI server lifecycle ──────────────────────────────────────────────────────
-
-/** Kill an orphaned UI server left by a previous crashed Electron instance. */
-async function killStaleUIServer(pidFile: string): Promise<void> {
-  let pid: number | null = null;
-  try {
-    const raw = readFileSync(pidFile, 'utf-8').trim();
-    const n = Number.parseInt(raw, 10);
-    if (Number.isFinite(n) && n > 0) pid = n;
-  } catch {
-    return; // no PID file — nothing to do
-  }
-  if (!pid) return;
-  try { process.kill(pid, 0); } catch { return; } // already dead
-  console.log(`Killing stale UI server (PID ${pid})…`);
-  // Group-kill: the stale node server may have left an `opencode serve` child
-  // (the setup wizard). killProcessTree reaps the whole subtree.
-  killProcessTree(pid, 'SIGTERM');
-  await new Promise(r => setTimeout(r, 2000));
-  killProcessTree(pid, 'SIGKILL');
-}
+//
+// There is deliberately no stale-pid sweep. It read `.ui-server.pid` and
+// group-killed whatever process currently owned that pid, verifying only that
+// the pid was alive — never that it was OUR server. After an unclean shutdown,
+// or simply pid recycling on a busy machine, that pid can belong to an
+// arbitrary user process, which every subsequent launch then SIGTERM/SIGKILLed
+// along with its children. The identity probe in startUIServer supersedes it:
+// an admin-capable OpenPalm UI on the port is attached to, anything else is
+// reported, and nothing is killed on the strength of a recorded number.
 
 /**
  * Poll the UI server's /health until ready. Thin re-export of the shared lib
@@ -378,15 +370,47 @@ async function startUIServer(): Promise<void> {
     }
   }
 
-  const uiPidFile = join(dataDir, '.ui-server.pid');
-  await killStaleUIServer(uiPidFile);
+  // Identity probe BEFORE spawning (shared with the CLI via lib). A bare
+  // readiness poll cannot tell "our child is starting" from "our child died of
+  // EADDRINUSE and something else owns the port": with a plain `openpalm`
+  // already serving a non-admin UI on this port, the desktop app used to adopt
+  // that foreign server and open its window onto a UI with no host capability,
+  // /host silently redirecting to /chat. This replaces the pid-file kill, which
+  // signalled whatever process currently held a recorded pid — after an unclean
+  // shutdown and pid reuse, that could be any user process.
+  const existing = await checkExistingUiInstance(UI_PORT, true);
+  if (existing.status === 'mismatch') {
+    splash.close();
+    dialog.showErrorBox(
+      'OpenPalm is already running',
+      [
+        `Another OpenPalm UI (admin=${existing.admin}) is already listening on port ${UI_PORT}.`,
+        '',
+        'The desktop app needs an admin-capable UI on that port. Stop the other',
+        'instance (e.g. the `openpalm` you started in a terminal) and reopen this app.',
+      ].join('\n'),
+    );
+    app.quit();
+    return;
+  }
 
-  spawnUIServer(uiBuildDir, homeDir, uiPidFile, appUpdate);
-  // Hand the bespoke initial child to the shared supervisor so a later
-  // SIGUSR2/IPC restart knows which handle to stop (§6.2).
-  if (uiProcess) uiSupervisor.adopt(uiProcess);
+  if (existing.status === 'absent') {
+    spawnUIServer(uiBuildDir, homeDir, appUpdate);
+    // Hand the bespoke initial child to the shared supervisor so a later
+    // SIGUSR2/IPC restart knows which handle to stop (§6.2).
+    if (uiProcess) uiSupervisor.adopt(uiProcess);
+  } else {
+    // An admin-capable instance already owns the port — attach to it rather
+    // than racing it for the socket. It owns its own lifecycle.
+    console.log(`Reusing already-running admin UI server on port ${UI_PORT}.`);
+  }
 
-  const ready = await waitForReady(UI_PORT);
+  // Lose to the child's own death instead of waiting out the full timeout while
+  // an unrelated process on the port answers for it.
+  const ready = await readyOrChildExit(
+    () => waitForReady(UI_PORT),
+    uiProcess ? once(uiProcess, 'exit') : undefined,
+  );
   if (!ready) {
     const recentLogs = getRecentStderr(40);
     const detail = [
@@ -413,7 +437,6 @@ async function startUIServer(): Promise<void> {
 function spawnUIServer(
   uiBuildDir: string,
   homeDir: string,
-  uiPidFile: string,
   appUpdate?: UpdateInfo | null,
 ): void {
   seedLegacyServedUiRuntimeConfig(uiBuildDir, homeDir);
@@ -442,10 +465,6 @@ function spawnUIServer(
     // re-emit to the parent's streams for terminal users).
     stdio: ['ignore', 'pipe', 'pipe'],
   });
-  if (uiProcess.pid) {
-    try { writeFileSync(uiPidFile, String(uiProcess.pid)); } catch { /* best-effort */ }
-  }
-
   // Tail UI server stdout to the parent stdout + log file.
   uiProcess.stdout?.on('data', (chunk: Buffer) => {
     const text = chunk.toString();
@@ -538,8 +557,6 @@ const uiSupervisor = new UiSupervisor<ChildProcess>({
     // false and the app stays up, matching the pre-refactor `return false` guard.
     spawn: () => {
       const homeDir = resolveOpenPalmHome();
-      const dataDir = resolveDataDir();
-      const uiPidFile = join(dataDir, '.ui-server.pid');
       const uiBuildDir = resolveUiBuildDir();
       if (!existsSync(join(uiBuildDir, 'index.js'))) {
         // Log the EXACT pre-refactor message on stderr, then throw a marker the
@@ -547,7 +564,7 @@ const uiSupervisor = new UiSupervisor<ChildProcess>({
         console.error('UI restart aborted: build not found at', uiBuildDir);
         throw new UiRestartAbortError();
       }
-      spawnUIServer(uiBuildDir, homeDir, uiPidFile, getCachedUpdateInfo());
+      spawnUIServer(uiBuildDir, homeDir, getCachedUpdateInfo());
       if (!uiProcess) throw new Error('UI server failed to spawn');
       return uiProcess;
     },
@@ -621,7 +638,6 @@ function stopUIServer(): void {
     killProcessTree(pid, 'SIGTERM');
     killProcessTree(pid, 'SIGKILL');
   }
-  try { rmSync(join(resolveDataDir(), '.ui-server.pid'), { force: true }); } catch { /* best-effort */ }
 }
 
 // ── Window management ────────────────────────────────────────────────────────

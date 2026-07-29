@@ -3,8 +3,10 @@ import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
+  checkExistingUiInstance,
   consumePendingUiBackup,
   DEFAULT_READY_TIMEOUT_MS,
+  readyOrChildExit,
   recordPendingUiBackup,
   waitForReady,
   restoreUiBackup,
@@ -469,5 +471,84 @@ describe("UiSupervisor.restart", () => {
     expect(restartFailures).toBe(1);
     // Guard is released in `finally` so a later restart can proceed.
     expect(sup.isRestarting).toBe(false);
+  });
+});
+
+// ── Instance identity + child-exit race (shared with Electron) ────────────────
+
+describe("checkExistingUiInstance", () => {
+  const jsonResponse = (body: unknown) =>
+    new Response(JSON.stringify(body), { headers: { "content-type": "application/json" } });
+
+  test("a silent port is 'absent' — proceed with a normal spawn", async () => {
+    const result = await checkExistingUiInstance(3880, true, {
+      fetchFn: (async () => {
+        throw new TypeError("ECONNREFUSED");
+      }) as unknown as typeof fetch,
+    });
+    expect(result).toEqual({ status: "absent" });
+  });
+
+  test("a matching capability level is 'match' — attach instead of racing for the socket", async () => {
+    const result = await checkExistingUiInstance(3880, true, {
+      fetchFn: (async () => jsonResponse({ admin: true })) as unknown as typeof fetch,
+    });
+    expect(result).toEqual({ status: "match", admin: true });
+  });
+
+  test("a DIFFERENT capability level is 'mismatch', never a silent adoption", async () => {
+    // This is the Electron failure: a bare `openpalm` serving a non-admin UI on
+    // the port, the desktop app's own child dying of EADDRINUSE, and the window
+    // opening onto the foreign server with no host capability.
+    const result = await checkExistingUiInstance(3880, true, {
+      fetchFn: (async () => jsonResponse({ admin: false })) as unknown as typeof fetch,
+    });
+    expect(result).toEqual({ status: "mismatch", admin: false });
+  });
+
+  test("a non-2xx or non-JSON answer is 'absent' — never inferred as a match", async () => {
+    const notFound = await checkExistingUiInstance(3880, true, {
+      fetchFn: (async () => new Response("nope", { status: 404 })) as unknown as typeof fetch,
+    });
+    expect(notFound).toEqual({ status: "absent" });
+
+    const garbage = await checkExistingUiInstance(3880, true, {
+      fetchFn: (async () => new Response("<html>", { status: 200 })) as unknown as typeof fetch,
+    });
+    expect(garbage).toEqual({ status: "absent" });
+  });
+
+  test("a missing `admin` field reads as non-admin, so it cannot pass an admin expectation", async () => {
+    const result = await checkExistingUiInstance(3880, true, {
+      fetchFn: (async () => jsonResponse({})) as unknown as typeof fetch,
+    });
+    expect(result).toEqual({ status: "mismatch", admin: false });
+  });
+});
+
+describe("readyOrChildExit", () => {
+  test("a child that dies first reports not-ready immediately", async () => {
+    // Without this the supervisor waits out the FULL ready timeout while an
+    // unrelated process on the port answers the health poll for it.
+    const never = new Promise<boolean>(() => {});
+    expect(await readyOrChildExit(() => never, Promise.resolve(1))).toBe(false);
+  });
+
+  test("readiness still wins when the child stays alive", async () => {
+    const never = new Promise<never>(() => {});
+    expect(await readyOrChildExit(() => Promise.resolve(true), never)).toBe(true);
+  });
+
+  test("a rejected exit promise is not-ready, not a thrown exception", async () => {
+    // node's events.once(child, 'exit') REJECTS if the child emits 'error'
+    // first; letting that escape would throw out of the supervisor instead of
+    // producing the not-ready result its callers handle.
+    const never = new Promise<boolean>(() => {});
+    expect(await readyOrChildExit(() => never, Promise.reject(new Error("ENOENT")))).toBe(false);
+  });
+
+  test("with no child handle it degrades to the plain readiness poll", async () => {
+    expect(await readyOrChildExit(() => Promise.resolve(true), undefined)).toBe(true);
+    expect(await readyOrChildExit(() => Promise.resolve(false), undefined)).toBe(false);
   });
 });
