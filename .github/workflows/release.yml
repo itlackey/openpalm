@@ -245,9 +245,6 @@ jobs:
           - os: windows-latest
             script: build:windows-x64
             asset: openpalm-cli-windows-x64.exe
-          - os: windows-latest
-            script: build:windows-arm64
-            asset: openpalm-cli-windows-arm64.exe
     runs-on: ${{ matrix.os }}
     permissions:
       contents: read
@@ -488,7 +485,7 @@ jobs:
           for asset in \
             openpalm-cli-linux-x64 openpalm-cli-linux-arm64 \
             openpalm-cli-darwin-x64 openpalm-cli-darwin-arm64 \
-            openpalm-cli-windows-x64.exe openpalm-cli-windows-arm64.exe; do
+            openpalm-cli-windows-x64.exe; do
             curl --fail --location --silent --show-error -O "https://github.com/${GITHUB_REPOSITORY}/releases/download/${VERSION}/${asset}"
             grep -E "[[:space:]]${asset}$" checksums-sha256.txt | sha256sum --check --strict
           done

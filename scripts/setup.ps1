@@ -157,7 +157,7 @@ for ($i = 0; $i -lt $args.Count; $i++) {
 $Arch = if ($RequestedArch) { $RequestedArch } else { $env:PROCESSOR_ARCHITECTURE }
 switch -Regex ($Arch) {
     '^(AMD64|x64)$' { $Binary = 'openpalm-cli-windows-x64.exe'; $ArchLabel = 'x64'; break }
-    '^(ARM64|arm64)$' { $Binary = 'openpalm-cli-windows-arm64.exe'; $ArchLabel = 'arm64'; break }
+    '^(ARM64|arm64)$' { $Binary = 'openpalm-cli-windows-x64.exe'; $ArchLabel = 'ARM64 via x64 emulation'; break }
     default {
         Write-Host "ERROR: Unsupported architecture '$Arch' (expected AMD64/x64 or ARM64)." -ForegroundColor Red
         exit 1
@@ -222,20 +222,7 @@ Write-Host "▸ Downloading openpalm $Version for Windows $ArchLabel..." -Foregr
 New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
 $DownloadUrl = "https://github.com/$Repo/releases/download/$Version/$Binary"
 
-try {
-    Invoke-WebRequestWithRetry -Uri $DownloadUrl -OutFile $TempDest
-} catch {
-    if ($ArchLabel -eq 'arm64') {
-        # B4: Bun may not yet be able to --compile a bun-windows-arm64
-        # target, in which case no windows-arm64 release asset exists. Give a
-        # clear, actionable message instead of surfacing a raw 404/exception.
-        Write-Host "ERROR: openpalm $Version does not have a native Windows ARM64 build yet." -ForegroundColor Red
-        Write-Host "arm64 not yet available — use x64 instead (it runs fine under Windows 11's built-in x64 emulation)." -ForegroundColor Yellow
-        Write-Host "Set `$env:OP_ARCH = 'x64' before re-running the one-liner, or pass --arch x64 if running this script directly." -ForegroundColor Yellow
-        exit 1
-    }
-    throw
-}
+Invoke-WebRequestWithRetry -Uri $DownloadUrl -OutFile $TempDest
 
 # ── Verify SHA-256 checksum against the release-published checksums file (B1) ──
 # Fail closed: any failure to fetch/parse/match the checksum aborts before

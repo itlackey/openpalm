@@ -17,7 +17,7 @@ export function resolveCliArtifactName(platform = process.platform, arch = proce
   if (platform === 'darwin' && arch === 'x64') return 'openpalm-cli-darwin-x64';
   if (platform === 'darwin' && arch === 'arm64') return 'openpalm-cli-darwin-arm64';
   if (platform === 'win32' && arch === 'x64') return 'openpalm-cli-windows-x64.exe';
-  if (platform === 'win32' && arch === 'arm64') return 'openpalm-cli-windows-arm64.exe';
+  if (platform === 'win32' && arch === 'arm64') return 'openpalm-cli-windows-x64.exe';
   throw new Error(`Unsupported platform for self-update: ${platform}/${arch}`);
 }
 

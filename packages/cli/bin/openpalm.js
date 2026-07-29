@@ -36,7 +36,7 @@ export function resolveArtifactName(platform = process.platform, arch = process.
 	if (platform === 'darwin' && arch === 'x64') return 'openpalm-cli-darwin-x64';
 	if (platform === 'darwin' && arch === 'arm64') return 'openpalm-cli-darwin-arm64';
 	if (platform === 'win32' && arch === 'x64') return 'openpalm-cli-windows-x64.exe';
-	if (platform === 'win32' && arch === 'arm64') return 'openpalm-cli-windows-arm64.exe';
+	if (platform === 'win32' && arch === 'arm64') return 'openpalm-cli-windows-x64.exe';
 	throw new Error(
 		`Unsupported platform: ${platform}/${arch}. OpenPalm does not publish a prebuilt CLI binary ` +
 			`for this platform yet. See https://github.com/${GITHUB_REPO}#installation for supported platforms.`

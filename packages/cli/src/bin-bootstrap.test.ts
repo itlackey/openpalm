@@ -15,7 +15,7 @@ describe('resolveArtifactName', () => {
 		expect(resolveArtifactName('darwin', 'x64')).toBe('openpalm-cli-darwin-x64');
 		expect(resolveArtifactName('darwin', 'arm64')).toBe('openpalm-cli-darwin-arm64');
 		expect(resolveArtifactName('win32', 'x64')).toBe('openpalm-cli-windows-x64.exe');
-		expect(resolveArtifactName('win32', 'arm64')).toBe('openpalm-cli-windows-arm64.exe');
+		expect(resolveArtifactName('win32', 'arm64')).toBe('openpalm-cli-windows-x64.exe');
 	});
 
 	it('errors clearly for any other unpublished platform/arch', () => {
