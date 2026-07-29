@@ -126,6 +126,13 @@ const MIGRATIONS: { since: number; run: (homeDir: string) => boolean }[] = [
   // never recorded a version at all (recorded 0 here still satisfies `2 >= 0`
   // since the loop condition is `migration.since >= recorded`).
   { since: 2, run: (homeDir) => migrateDelegatedSecretsToPrivateDir(homeDir).migrated.length > 0 },
+  // Same migration again at `since: 3`, because the SET it iterates grew:
+  // `op_session_signing_key` was added to DELEGATED_SECRET_NAMES, and a home
+  // already stamped 3 would otherwise never re-run it and would keep the
+  // cookie-signing key readable from the assistant's /stash. The function
+  // re-checks real filesystem state, so this is a no-op for a home that has
+  // no such file.
+  { since: 3, run: (homeDir) => migrateDelegatedSecretsToPrivateDir(homeDir).migrated.length > 0 },
 ];
 
 /**
