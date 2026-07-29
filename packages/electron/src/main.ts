@@ -19,6 +19,7 @@ import {
   waitForReady as libWaitForReady,
   checkExistingUiInstance,
   readyOrChildExit,
+  resolveHostUiPort,
   consumePendingUiBackup,
   restoreUiBackup,
   UiSupervisor,
@@ -128,11 +129,16 @@ function resolveAdminToolsPluginPath(): string {
   throw new Error('Admin tools plugin is missing from both packaged resources and the workspace build');
 }
 
-// Default host UI port used when the corresponding env override is unset.
-// (The assistant-port default used to live here too, but resolving the
-// assistant URL is now entirely lib's job — see resolveAssistantUrl/E1.)
-const DEFAULT_UI_PORT = 3880;
-const UI_PORT = Number(process.env.OP_HOST_UI_PORT) || DEFAULT_UI_PORT;
+// The host UI port, resolved through lib's network contract so this harness and
+// the CLI cannot disagree. It previously read live env alone, ignoring the
+// OP_HOST_UI_PORT a headless install persists to stack.env — so on the same home
+// `openpalm` bound the persisted port while the desktop app bound 3880, and the
+// mic-permission origin check keyed off Electron's wrong answer.
+const UI_PORT = resolveHostUiPort(
+  undefined,
+  process.env,
+  parseEnvFile(stackEnvFile(resolveOpenPalmHome())),
+);
 
 const READY_TIMEOUT_MS = 60_000;
 const MIC_SHORTCUT = 'CommandOrControl+Shift+M';
@@ -218,8 +224,14 @@ export function buildUIServerEnv(homeDir: string, port: number, update?: UpdateI
     stackForUi[k] = v;
   }
   const env: NodeJS.ProcessEnv = {
-    ...process.env,
+    // Persisted stack.env UNDER live env: live-env-wins matches every other
+    // resolver in the codebase (the UI's own startup promotion, lib's
+    // resolveAssistantEndpoint, the CLI's port resolution). This spread was
+    // inverted, so a value an operator exported before launching the desktop app
+    // was silently clobbered by the file — while the identical launch through
+    // `openpalm` honored it. Same home, two harnesses, opposite precedence.
     ...stackForUi,
+    ...process.env,
     OP_HOME: homeDir,
     HOST: '127.0.0.1',
     PORT: String(port),

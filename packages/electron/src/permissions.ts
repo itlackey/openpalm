@@ -1,4 +1,5 @@
 import { session, shell, systemPreferences } from 'electron';
+import { resolveHostUiPort } from '@openpalm/lib';
 
 // The navbar mic records via getUserMedia in the renderer. Two layers must both
 // grant access or the captured audio is SILENT (not an error) — and silence is
@@ -20,7 +21,7 @@ function isTrustedLocalOrigin(url: string): boolean {
   }
   if (parsed.protocol !== 'http:' || parsed.username || parsed.password) return false;
   if (parsed.hostname !== '127.0.0.1' && parsed.hostname !== 'localhost') return false;
-  const expectedPort = Number(process.env.OP_HOST_UI_PORT) || 3880;
+  const expectedPort = resolveHostUiPort(undefined, process.env);
   const actualPort = parsed.port ? Number(parsed.port) : 80;
   return actualPort === expectedPort;
 }

@@ -13,6 +13,7 @@ import {
   checkAndUpdateUiBuild, checkAndUpdateSkeleton, PLATFORM_VERSION,
   consumePendingUiBackup, isRemoteSetupAllowed, readyOrChildExit, restoreUiBackup, UiSupervisor, waitForReady,
   checkExistingUiInstance, type UiInstanceCheck,
+  resolveUiListenEnv, UI_LOOPBACK_HOST, type UiListenEnv,
   buildEmptyUiRuntimeConfig, buildServedUiRuntimeConfig, classifyLocalInstall, stackDirFor,
   serializeUiRuntimeConfig, uiBuildSupportsProcessRuntimeConfig,
   writeLegacyServedUiRuntimeConfig, UI_RUNTIME_CONFIG_ENV,
@@ -78,8 +79,18 @@ export function resolveExpectedAdmin(adminHostUi: boolean, env: NodeJS.ProcessEn
   return env.OP_INSIDE_ELECTRON === '1' || env.OP_ENABLE_ADMIN === '1';
 }
 
-export function resolveUiLoopbackHost(adminHostUi: boolean): '127.0.0.1' | 'localhost' {
-  return adminHostUi ? '127.0.0.1' : 'localhost';
+/**
+ * ONE loopback spelling for the browser-facing URL, regardless of mode.
+ *
+ * `openpalm` used to print `localhost` while `openpalm admin` and Electron
+ * printed `127.0.0.1`, which split the cookie jar: a session established on
+ * `localhost:3880` is simply not sent to `127.0.0.1:3880`, so switching
+ * commands silently demanded a second login. Pinning the literal IP also avoids
+ * the case where `localhost` resolves to `::1` while the listener — always
+ * `HOST=127.0.0.1` — is IPv4-only.
+ */
+export function resolveUiLoopbackHost(): typeof UI_LOOPBACK_HOST {
+  return UI_LOOPBACK_HOST;
 }
 
 export function resolveUiNetworkEnv(
@@ -89,25 +100,13 @@ export function resolveUiNetworkEnv(
   // Fail closed: an omitted install state must never widen the bind to 0.0.0.0.
   // Only an explicit 'installed' (below) unlocks the remote-setup wildcard bind.
   localInstallState: ReturnType<typeof classifyLocalInstall> = 'not_installed',
-): Record<'HOST' | 'PORT' | 'ORIGIN' | 'HOST_HEADER' | 'PROTOCOL_HEADER', string | undefined> {
+): UiListenEnv {
   const effectiveAdmin = resolveExpectedAdmin(adminHostUi, env);
-  if (!effectiveAdmin && localInstallState === 'installed' && isRemoteSetupAllowed(env)) {
-    return {
-      HOST: '0.0.0.0',
-      PORT: String(port),
-      HOST_HEADER: 'host',
-      PROTOCOL_HEADER: 'x-forwarded-proto',
-      ORIGIN: undefined,
-    };
-  }
-  const host = resolveUiLoopbackHost(effectiveAdmin);
-  return {
-    HOST: '127.0.0.1',
-    PORT: String(port),
-    ORIGIN: `http://${host}:${port}`,
-    HOST_HEADER: undefined,
-    PROTOCOL_HEADER: undefined,
-  };
+  return resolveUiListenEnv({
+    port,
+    admin: effectiveAdmin,
+    allowRemote: localInstallState === 'installed' && isRemoteSetupAllowed(env),
+  });
 }
 
 export interface UIServerOptions {
@@ -282,11 +281,21 @@ export async function runUiBuild(opts: { port?: number } = {}): Promise<void> {
   const homeDir = resolveOpenPalmHome();
   const port = opts.port
     ?? (process.env.PORT ? Number(process.env.PORT) : resolveUiServePort(undefined, homeDir));
-  const installState = classifyLocalInstall(stackDirFor(homeDir), homeDir);
-  const networkEnv = resolveUiNetworkEnv(port, resolveExpectedAdmin(false), process.env, installState);
-  for (const [key, value] of Object.entries(networkEnv)) {
-    if (value === undefined) delete process.env[key];
-    else process.env[key] = value;
+  // Derive the listen env ONLY when nobody already did.
+  //
+  // `openpalm ui` runs both as the supervisor's child — where spawnUiChild has
+  // already resolved HOST/ORIGIN and injected them — and standalone, where
+  // nothing has. It used to recompute unconditionally and overwrite, so the
+  // parent's carefully-derived values were dead on arrival and the same inputs
+  // were read at two different times by two call sites that had to agree by
+  // coincidence. Whoever is first now owns the answer.
+  if (!process.env.HOST) {
+    const installState = classifyLocalInstall(stackDirFor(homeDir), homeDir);
+    const networkEnv = resolveUiNetworkEnv(port, resolveExpectedAdmin(false), process.env, installState);
+    for (const [key, value] of Object.entries(networkEnv)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
   }
   process.chdir(uiBuildDir);
   await import(indexPath);
@@ -426,7 +435,7 @@ export async function startUIServer(opts: UIServerOptions = {}): Promise<void> {
     : ensureValidState();
   const localInstallState = classifyLocalInstall(state.stackDir, state.homeDir);
   const expectedAdmin = resolveExpectedAdmin(opts.adminHostUi === true);
-  const browserHost = resolveUiLoopbackHost(expectedAdmin);
+  const browserHost = resolveUiLoopbackHost();
   const probeHost = '127.0.0.1';
   const uiUrl = `http://${browserHost}:${port}`;
 

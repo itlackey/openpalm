@@ -437,7 +437,7 @@ describe('openpalm admin serve mode (#556)', () => {
 
 describe('bare serve path spawn env', () => {
   it(
-    'binds IPv4 loopback with a canonical localhost ORIGIN and does NOT enable admin',
+    'binds IPv4 loopback with a matching ORIGIN and does NOT enable admin',
     async () => {
       seedServeHome({ installed: true });
       const calls = captureSpawns();
@@ -460,7 +460,10 @@ describe('bare serve path spawn env', () => {
         () => failure.error
       );
       expect(child.env?.HOST).toBe('127.0.0.1');
-      expect(child.env?.ORIGIN).toBe('http://localhost:4614');
+      // ONE loopback spelling everywhere: `openpalm` used to pin
+      // http://localhost while admin/Electron pinned http://127.0.0.1, which
+      // split the cookie jar between them.
+      expect(child.env?.ORIGIN).toBe('http://127.0.0.1:4614');
       expect(child.env?.HOST_HEADER).toBeUndefined();
       // Bare serve is NOT the admin surface: no admin env is introduced.
       expect(child.env?.OP_ENABLE_ADMIN).toBeUndefined();
@@ -469,7 +472,7 @@ describe('bare serve path spawn env', () => {
   );
 
   it(
-    'restores the explicit remote-setup bind while the parent URL stays localhost',
+    'restores the explicit remote-setup bind while the parent URL stays loopback',
     async () => {
       seedServeHome({ installed: true });
       process.env.OP_ALLOW_REMOTE_SETUP = '1';
@@ -501,7 +504,7 @@ describe('bare serve path spawn env', () => {
         'remote-setup parent browser open',
         () => failure.error,
       );
-      expect(browser.argv).toContain('http://localhost:4615');
+      expect(browser.argv).toContain('http://127.0.0.1:4615');
     },
     15000
   );

@@ -354,6 +354,3 @@ export function checkOriginHeader(request: Request, csrfMode: CsrfMode = 'loopba
     { status: 403, headers: { "content-type": "application/json" } }
   );
 }
-
-// UI_PORT is exported so hooks.server.ts and other modules can import it.
-export const UI_PORT = Number(process.env.PORT ?? 3880);

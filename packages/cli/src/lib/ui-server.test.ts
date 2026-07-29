@@ -184,18 +184,22 @@ describe('resolveExpectedAdmin', () => {
 });
 
 describe('resolveUiLoopbackHost', () => {
-  it('uses localhost for normal user-facing UI and IPv4 loopback for admin', () => {
-    expect(resolveUiLoopbackHost(false)).toBe('localhost');
-    expect(resolveUiLoopbackHost(true)).toBe('127.0.0.1');
+  it('uses ONE loopback spelling regardless of mode', () => {
+    // `openpalm` used to print localhost while `openpalm admin` and Electron
+    // printed 127.0.0.1. That split the cookie jar — a session established on
+    // localhost:3880 is not sent to 127.0.0.1:3880 — so switching commands
+    // silently demanded a second login. The literal IP also avoids `localhost`
+    // resolving to ::1 while the listener is IPv4-only.
+    expect(resolveUiLoopbackHost()).toBe('127.0.0.1');
   });
 });
 
 describe('resolveUiNetworkEnv', () => {
-  it('uses canonical localhost by default for non-admin UI processes', () => {
+  it('pins the loopback ORIGIN to the bound address for non-admin UI processes', () => {
     expect(resolveUiNetworkEnv(3880, false, {})).toEqual({
       HOST: '127.0.0.1',
       PORT: '3880',
-      ORIGIN: 'http://localhost:3880',
+      ORIGIN: 'http://127.0.0.1:3880',
       HOST_HEADER: undefined,
       PROTOCOL_HEADER: undefined,
     });
@@ -225,7 +229,7 @@ describe('resolveUiNetworkEnv', () => {
     expect(resolveUiNetworkEnv(3880, false, { OP_ALLOW_REMOTE_SETUP: '1' }, 'not_installed')).toEqual({
       HOST: '127.0.0.1',
       PORT: '3880',
-      ORIGIN: 'http://localhost:3880',
+      ORIGIN: 'http://127.0.0.1:3880',
       HOST_HEADER: undefined,
       PROTOCOL_HEADER: undefined,
     });
@@ -235,7 +239,7 @@ describe('resolveUiNetworkEnv', () => {
     expect(resolveUiNetworkEnv(3880, false, { OP_ALLOW_REMOTE_SETUP: '1' }, 'setup_incomplete')).toEqual({
       HOST: '127.0.0.1',
       PORT: '3880',
-      ORIGIN: 'http://localhost:3880',
+      ORIGIN: 'http://127.0.0.1:3880',
       HOST_HEADER: undefined,
       PROTOCOL_HEADER: undefined,
     });

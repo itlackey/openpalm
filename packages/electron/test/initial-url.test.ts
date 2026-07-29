@@ -109,7 +109,26 @@ vi.mock('@openpalm/lib', () => ({
   checkAndUpdateSkeleton: vi.fn(() => Promise.resolve({ updated: false, latestVersion: '0.12.0' })),
   uiUpdateChannel: vi.fn((v: string) => (v.includes('-') ? 'next' : 'latest')),
   parseEnvFile: vi.fn(() => ({})),
+  stackEnvFile: vi.fn((home: string) => `${home}/state/stack.env`),
   PLATFORM_VERSION: 'v0.12.0',
+  // Host-UI port contract (lib network-contract.ts) — resolved at main.ts
+  // module scope, so it must exist even for tests that never start the server.
+  resolveHostUiPort: vi.fn(
+    (
+      explicit: number | undefined,
+      env: Record<string, string | undefined>,
+      persisted: Record<string, string | undefined> = {},
+    ): number => {
+      if (explicit !== undefined && Number.isFinite(explicit)) return explicit;
+      const merged = { ...persisted, ...env };
+      return Number(merged.OP_HOST_UI_PORT) || 3880;
+    },
+  ),
+  checkExistingUiInstance: vi.fn(async () => ({ status: 'absent' as const })),
+  readyOrChildExit: vi.fn(
+    (waitFn: () => Promise<boolean>, childExited: Promise<unknown> | undefined) =>
+      childExited ? Promise.race([waitFn(), childExited.then(() => false)]) : waitFn(),
+  ),
   resolveAssistantEndpoint: vi.fn(() => 'http://127.0.0.1:3800'),
   // Faithful reimplementation of lib's waitForReady for the UI bootstrap path.
   waitForReady: vi.fn(async (port: number, timeoutMs = 60_000): Promise<boolean> => {

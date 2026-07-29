@@ -1,5 +1,6 @@
 import { json } from "@sveltejs/kit";
 import { getState } from "$lib/server/state.js";
+import { resolveHostUiPort } from "@openpalm/lib";
 import { getDeployState } from "$lib/server/setup-deploy.js";
 import type { RequestHandler } from "./$types";
 
@@ -8,7 +9,7 @@ import type { RequestHandler } from "./$types";
 // Guardian is omitted: it has no host port mapping (network-only service).
 function resolvePorts() {
   return {
-    admin: Number(process.env.OP_HOST_UI_PORT) || 3880,
+    admin: resolveHostUiPort(undefined, process.env),
     ui: Number(process.env.OP_UI_PORT) || 3800,
     assistant: Number(process.env.OP_ASSISTANT_PORT) || 3810,
   };

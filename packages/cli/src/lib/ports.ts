@@ -1,11 +1,16 @@
 /**
- * Default host ports for OpenPalm services, defined once so the CLI does not
- * scatter magic numbers across install/run sites. Each is overridable via the
- * matching environment variable at the call site.
+ * Default host ports for OpenPalm services.
+ *
+ * The host-UI port and its resolution live in `@openpalm/lib`
+ * (control-plane/network-contract.ts) so the CLI, Electron, and the UI's own
+ * routes share ONE answer — three independent `3880` constants plus inline
+ * fallbacks is how the desktop app came to ignore a port a headless install had
+ * persisted. This module stays as the CLI's import site.
  */
+import { DEFAULT_HOST_UI_PORT, resolveHostUiPort } from '@openpalm/lib';
 
 /** Default host port for the UI server (override via OP_HOST_UI_PORT). */
-export const DEFAULT_UI_PORT = 3880;
+export const DEFAULT_UI_PORT = DEFAULT_HOST_UI_PORT;
 
 /** Default published host port for the assistant (override via OP_ASSISTANT_PORT). */
 export const DEFAULT_ASSISTANT_PORT = 3810;
@@ -13,15 +18,11 @@ export const DEFAULT_ASSISTANT_PORT = 3810;
 /**
  * Merge-and-resolve `OP_HOST_UI_PORT`: a persisted-env record (e.g. headless
  * install's stack.env) layered under a live env (live env wins), falling back
- * to {@link DEFAULT_UI_PORT}. Hoisted here (review finding U2) so
- * ui-server.ts's `resolveUiServePort` shares ONE implementation instead of
- * byte-duplicating it — it already imports this module, which imports it back,
- * so there is no import-cycle reason to keep the logic separate.
+ * to {@link DEFAULT_UI_PORT}.
  */
 export function resolveHostUiPortFromEnv(
   env: NodeJS.ProcessEnv,
   persistedEnv: Record<string, string>,
 ): number {
-  const merged = { ...persistedEnv, ...env };
-  return Number(merged.OP_HOST_UI_PORT) || DEFAULT_UI_PORT;
+  return resolveHostUiPort(undefined, env, persistedEnv);
 }

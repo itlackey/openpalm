@@ -746,6 +746,18 @@ export {
 export { resolveAssistantEndpoint } from './control-plane/assistant-endpoint.js';
 export { normalizeLoopbackUrl } from './control-plane/url-normalize.js';
 
+// ── Host UI network contract (one owner for port + bind) ─────────────────────
+// STACK_DEFAULTS is the canonical port table; it is exported here so consumers
+// stop re-typing 3880/3800/3810 as inline fallbacks.
+export { STACK_DEFAULTS } from "./control-plane/defaults.js";
+export {
+  DEFAULT_HOST_UI_PORT,
+  UI_LOOPBACK_HOST,
+  resolveHostUiPort,
+  resolveUiListenEnv,
+  type UiListenEnv,
+} from "./control-plane/network-contract.js";
+
 // ── UI-server supervisor primitives (shared by CLI + Electron) ───────────────
 export type {
   WaitForReadyDeps,

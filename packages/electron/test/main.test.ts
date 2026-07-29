@@ -192,6 +192,19 @@ vi.mock('@openpalm/lib', () => ({
     }
     return false;
   }),
+  // The host-UI port contract (lib network-contract.ts): explicit arg, then
+  // live env, then the home's persisted stack.env, then the default.
+  resolveHostUiPort: vi.fn(
+    (
+      explicit: number | undefined,
+      env: Record<string, string | undefined>,
+      persisted: Record<string, string | undefined> = {},
+    ): number => {
+      if (explicit !== undefined && Number.isFinite(explicit)) return explicit;
+      const merged = { ...persisted, ...env };
+      return Number(merged.OP_HOST_UI_PORT) || 3880;
+    },
+  ),
   // Faithful reimplementations of the two probe primitives the harness now
   // shares with the CLI. The identity probe hits /api/runtime; the test's
   // stubbed fetch only answers /health, so it reports 'absent' and the harness

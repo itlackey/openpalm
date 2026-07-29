@@ -1,5 +1,6 @@
 import { describe, it, expect, afterEach } from 'vitest';
-import { checkHostHeader, checkOriginHeader, UI_PORT } from './helpers.js';
+import { checkHostHeader, checkOriginHeader } from './helpers.js';
+import { DEFAULT_HOST_UI_PORT as UI_PORT } from '@openpalm/lib';
 
 function req(
   host: string,

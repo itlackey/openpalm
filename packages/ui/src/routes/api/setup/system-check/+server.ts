@@ -1,5 +1,5 @@
 import { json } from "@sveltejs/kit";
-import { checkDocker, checkDockerCompose, detectGpu, detectLocalProviders, detectRuntime } from "@openpalm/lib";
+import { checkDocker, checkDockerCompose, detectGpu, detectLocalProviders, detectRuntime, resolveHostUiPort, STACK_DEFAULTS } from "@openpalm/lib";
 import { createServer } from "node:net";
 import { execFile } from "node:child_process";
 import type { RequestHandler } from "./$types";
@@ -83,15 +83,15 @@ function pickPort(...envNames: string[]): number | null {
 
 function resolvePortsToCheck(): { port: number; service: string; blocking: boolean }[] {
   return [
-    { port: pickPort("OP_HOST_UI_PORT")  ?? 3880, service: "admin", blocking: true },
-    { port: pickPort("OP_UI_PORT")       ?? 3800, service: "ui", blocking: true },
-    { port: pickPort("OP_ASSISTANT_PORT") ?? 3810, service: "assistant", blocking: true },
+    { port: pickPort("OP_HOST_UI_PORT")  ?? STACK_DEFAULTS.ports.hostUi, service: "admin", blocking: true },
+    { port: pickPort("OP_UI_PORT")       ?? STACK_DEFAULTS.ports.ui, service: "ui", blocking: true },
+    { port: pickPort("OP_ASSISTANT_PORT") ?? STACK_DEFAULTS.ports.assistant, service: "assistant", blocking: true },
   ];
 }
 
 // The SvelteKit adapter-node server listens on PORT. Trying to bind another
 // TCP server on this same port always fails — suppress the false conflict.
-const SERVER_PORT = Number(process.env.PORT ?? process.env.OP_HOST_UI_PORT ?? 3880);
+const SERVER_PORT = Number(process.env.PORT) || resolveHostUiPort(undefined, process.env);
 
 export const GET: RequestHandler = async () => {
   const [docker, compose, gpu, localProviders, runtime] = await Promise.all([
