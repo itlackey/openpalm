@@ -330,7 +330,7 @@ describe('resolveUiChildLaunch', () => {
     const homeDir = mkdtempSync(join(tmpdir(), 'openpalm-ui-child-launch-'));
     const stackDir = join(homeDir, 'system', 'stack');
     try {
-      const before = resolveUiChildLaunch({ homeDir, stackDir }, true, {});
+      const before = resolveUiChildLaunch({ homeDir, stackDir }, {});
       expect(before.stacklessApp).toBe(true);
       expect(parseUiRuntimeConfigJson(before.runtimeConfigJson)).toEqual({
         status: 'valid',
@@ -342,7 +342,7 @@ describe('resolveUiChildLaunch', () => {
       mkdirSync(join(homeDir, 'state'), { recursive: true });
       writeFileSync(join(homeDir, 'state', 'stack.env'), 'OP_SETUP_COMPLETE=true\n');
 
-      const after = resolveUiChildLaunch({ homeDir, stackDir }, true, {});
+      const after = resolveUiChildLaunch({ homeDir, stackDir }, {});
       expect(after.stacklessApp).toBe(false);
       const parsed = parseUiRuntimeConfigJson(after.runtimeConfigJson);
       expect(parsed.status).toBe('valid');
@@ -358,7 +358,7 @@ describe('resolveUiChildLaunch', () => {
     const homeDir = mkdtempSync(join(tmpdir(), 'openpalm-ui-admin-launch-'));
     const stackDir = join(homeDir, 'system', 'stack');
     try {
-      const launch = resolveUiChildLaunch({ homeDir, stackDir }, false, {
+      const launch = resolveUiChildLaunch({ homeDir, stackDir }, {
         OP_UI_DEFAULT_ASSISTANT_URL: 'http://127.0.0.1:3810',
       });
       expect(launch.stacklessApp).toBe(true);
@@ -378,12 +378,12 @@ describe('resolveUiChildLaunch', () => {
       mkdirSync(stackDir, { recursive: true });
       writeFileSync(join(stackDir, 'core.compose.yml'), 'services: {}\n');
 
-      expect(resolveUiChildLaunch({ homeDir, stackDir }, false, {}).stacklessApp).toBe(false);
+      expect(resolveUiChildLaunch({ homeDir, stackDir }, {}).stacklessApp).toBe(false);
 
       mkdirSync(join(homeDir, 'knowledge', 'secrets'), { recursive: true });
       writeFileSync(join(homeDir, 'knowledge', 'secrets', 'op_guardian_admin_token'), 'admin\n');
       writeFileSync(join(homeDir, 'knowledge', 'secrets', 'op_guardian_mcp_token'), 'mcp\n');
-      expect(resolveUiChildLaunch({ homeDir, stackDir }, false, {}).stacklessApp).toBe(false);
+      expect(resolveUiChildLaunch({ homeDir, stackDir }, {}).stacklessApp).toBe(false);
     } finally {
       rmSync(homeDir, { recursive: true, force: true });
     }

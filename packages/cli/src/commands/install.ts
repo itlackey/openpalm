@@ -279,10 +279,7 @@ export async function bootstrapInstall(options: InstallOptions): Promise<void> {
 	await deployServices('update', false);
 }
 
-// Exported (not just internal) so it's independently testable — see
-// install-prepare.test.ts's "seeds the client build" coverage (C3) — without
-// exercising the rest of bootstrapInstall (wizard/deploy/docker).
-export async function prepareInstallFiles(
+async function prepareInstallFiles(
 	homeDir: string,
 	configDir: string,
 	dataDir: string,

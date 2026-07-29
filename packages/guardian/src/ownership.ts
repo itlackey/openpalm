@@ -67,18 +67,6 @@ export function ownsSession(sessionId: string, principal: Principal): boolean {
   return ownerKey === principalKey(principal);
 }
 
-/**
- * Returns true only if `sessionId` is currently owned by a DIFFERENT principal.
- * Fail-open for reuse decisions: an unknown/unowned session returns false (safe
- * to claim). Used to refuse re-pointing an already-owned session to a new
- * principal (which would silently steal it).
- */
-export function sessionOwnedByOther(sessionId: string, principal: Principal): boolean {
-  const ownerKey = getSessionOwnerKey(sessionId);
-  if (ownerKey === null) return false;
-  return ownerKey !== principalKey(principal);
-}
-
 /** Forget a session's ownership (called after a successful DELETE /session/{id}). */
 export function forgetSession(sessionId: string): void {
   deleteSessionOwnerRow(sessionId);

@@ -180,7 +180,6 @@ export async function checkExistingUiInstance(
 
 export function resolveUiChildLaunch(
   state: Pick<ControlPlaneState, 'homeDir' | 'stackDir'>,
-  _appMode: boolean,
   env: Record<string, string | undefined> = process.env,
 ): {
   config: UiRuntimeConfig;
@@ -212,12 +211,11 @@ async function spawnUiChild(
   homeDir: string,
   state: ReturnType<typeof ensureValidState>,
   adminHostUi = false,
-  appMode = false,
 ): Promise<{ proc: Bun.Subprocess; uiBackupDir: string | undefined }> {
   // Installation may complete while this long-lived supervisor is running.
   // Re-read it for every initial spawn and restart rather than freezing it in
   // startUIServer.
-  const { config, runtimeConfigJson, stacklessApp, installState } = resolveUiChildLaunch(state, appMode);
+  const { config, runtimeConfigJson, stacklessApp, installState } = resolveUiChildLaunch(state);
   if (!stacklessApp) {
     // Hot-swap the skeleton (managed system/ tree) before spawning.
     console.log('Checking for skeleton update...');
@@ -477,7 +475,6 @@ export async function startUIServer(opts: UIServerOptions = {}): Promise<void> {
     ? resolveServeState()
     : ensureValidState();
   const localInstallState = classifyLocalInstall(state.stackDir, state.homeDir);
-  const appMode = opts.allowUninstalled === true;
   const expectedAdmin = resolveExpectedAdmin(opts.adminHostUi === true);
   const browserHost = resolveUiLoopbackHost(expectedAdmin);
   const probeHost = '127.0.0.1';
@@ -519,7 +516,7 @@ export async function startUIServer(opts: UIServerOptions = {}): Promise<void> {
   const { supervisor, stop: stopUiProc } = createCliUiSupervisor({
     port,
     host: probeHost,
-    spawnChild: () => spawnUiChild(port, homeDir, state, opts.adminHostUi === true, appMode),
+    spawnChild: () => spawnUiChild(port, homeDir, state, opts.adminHostUi === true),
     restoreBackup: (backupDir) => restoreUiBackup(state.dataDir, backupDir),
     consumePendingBackup: () => consumePendingUiBackup(state.dataDir),
   });
