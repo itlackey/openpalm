@@ -1,6 +1,6 @@
 # Portal Rich-UX Design — Guardian as a Filtering OpenCode Proxy
 
-**Status:** Implemented (historical design record). The guardian proxy fan-out and the shared portal renderers described here have shipped — the shared code now lives in the `@openpalm/portal-sdk` package (`packages/portal-sdk/`: `oc-events.ts`, `render-turn.ts`, `OcClient`, `BasePortal`). Incorporates a three-perspective expert review (security, OpenPalm architecture, OpenCode-API correctness); §11 records what changed. File/line citations below reflect the pre-implementation tree and may no longer resolve.
+**Status:** Implemented (historical design record). The guardian proxy fan-out and the shared portal renderers described here have shipped — the shared code now lives in the `@openpalm/portal-sdk` package (`packages/portal-sdk/`: `oc-events.ts`, `render-turn.ts`, `OcClient`, `BasePortal`). Incorporates a three-perspective expert review (security, OpenPalm architecture, OpenCode-API correctness); §11 records what changed. File citations below were re-verified against the shipped tree on 2026-07-29.
 **Scope:** Give portal conversations (Discord first, then Slack, the API portal, and future add-ons) the native OpenCode experience — live streaming output, tool-call visibility, and **interactive permission prompts** — by making the guardian a **transparent OpenCode API reverse proxy with security gates that short-circuit malicious requests**, rather than inventing a custom portal contract.
 **Audience:** Implementers of the guardian proxy and the portal renderers, and reviewers of the security posture.
 
@@ -8,7 +8,7 @@
 
 An earlier draft proposed a normalized "Guardian Event Protocol" that translated OpenCode events into a portal-agnostic union. **That is rejected.** Three reasons:
 
-1. **The UI already proves the proxy pattern.** `packages/ui/src/routes/proxy/assistant/[...path]/+server.ts` authenticates, then returns `upstream.body` untouched — native streaming by *proxying* OpenCode, with an explicit comment forbidding buffering. Portals should use the same mechanism, not a parallel one.
+1. **The UI already proves the proxy pattern.** `packages/ui/src/routes/oc/[...path]/+server.ts` authenticates, then returns `upstream.body` untouched — native streaming by *proxying* OpenCode, with an explicit comment forbidding buffering. Portals should use the same mechanism, not a parallel one.
 2. **OpenCode already ships the typed contract.** `@opencode-ai/sdk` exports `Event`, `Part`, `Permission`, and `createOpencodeClient`. A custom protocol re-encodes — lossily — types that already exist, are versioned upstream, and portals can import directly. This violates "avoid complexity you cannot justify" and the no-wrappers policy in `code-quality-principles.md`.
 3. **A contract makes version-coupling worse.** Per-portal rendering (OpenCode event → Discord embed/button) is identical either way; a protocol only inserts a second mapping to maintain in lockstep. One extra hop, zero capability gained.
 
@@ -16,7 +16,7 @@ An earlier draft proposed a normalized "Guardian Event Protocol" that translated
 
 This design was validated against **OpenCode `1.15.13`**. The endpoint/event surface below was read from that version's OpenAPI spec, and the permission flow (§1.2) was **empirically driven end-to-end** against a live `1.15.13` server.
 
-> **Prerequisite — permission prompts must actually fire (§1.2). VERIFIED on 1.15.13.** Whether a tool pauses with `permission.asked` depends on the assistant's permission configuration. The current `.openpalm/config/assistant/opencode.jsonc` sets only file-read denials and `external_directory` allows — it does **not** gate tool execution, so as shipped no `permission.asked` fires. Adding `"permission": { "bash": "ask" }` (etc.) makes the gate work: this was driven end-to-end against a live 1.15.13 server (tool blocked → `permission.asked` → reply → resume). The remaining work is configuration, not an upstream unknown — see §1.2.
+> **Prerequisite — permission prompts must actually fire (§1.2). VERIFIED on 1.15.13.** Whether a tool pauses with `permission.asked` depends on the assistant's permission configuration. The current assistant OpenCode config (shipped as `packages/skeleton/system/assistant/opencode.jsonc`) sets only file-read denials and `external_directory` allows — it does **not** gate tool execution, so as shipped no `permission.asked` fires. Adding `"permission": { "bash": "ask" }` (etc.) makes the gate work: this was driven end-to-end against a live 1.15.13 server (tool blocked → `permission.asked` → reply → resume). The remaining work is configuration, not an upstream unknown — see §1.2.
 
 ---
 
@@ -54,7 +54,7 @@ Every SSE frame is a JSON object `{ "type": "<name>", "properties": { … } }`. 
 
 The last row is load-bearing for filtering: **global events carry no `sessionID` and must never be forwarded to a portal** (§3.2). Confirmed live on 1.15.13: `server.heartbeat` and `server.connected` arrive with `properties: {}` (no `sessionID`).
 
-> **Turn-end signal nuance — PINNED against a live 1.15.13 server (2026-06-04).** Both signals fire at turn boundaries: a `session.status` frame whose **`status` is the object `{ type: "idle" }`** *and* a standalone `session.idle`. (Earlier runs saw `session.status` without a `session.idle`; the verified run saw both — so the renderer must accept either.) **Critical shape correction:** `session.status.status` is an **object `{ type: "busy" | "idle" }`, not a bare string** — code that does `typeof status === "string"` will never detect turn-end. Turn-end = `session.idle` **or** `session.status` with `status.type === "idle"`. This is implemented in `portals-sdk/oc-events.ts` (`statusName()` + `TURN_IDLE_STATUSES`, tolerating both object and string shapes) and reused by the guardian fan-out's turn-accounting.
+> **Turn-end signal nuance — PINNED against a live 1.15.13 server (2026-06-04).** Both signals fire at turn boundaries: a `session.status` frame whose **`status` is the object `{ type: "idle" }`** *and* a standalone `session.idle`. (Earlier runs saw `session.status` without a `session.idle`; the verified run saw both — so the renderer must accept either.) **Critical shape correction:** `session.status.status` is an **object `{ type: "busy" | "idle" }`, not a bare string** — code that does `typeof status === "string"` will never detect turn-end. Turn-end = `session.idle` **or** `session.status` with `status.type === "idle"`. This is implemented in `packages/portal-sdk/src/oc-events.ts` (`statusName()` + `TURN_IDLE_STATUSES`, tolerating both object and string shapes) and reused by the guardian fan-out's turn-accounting.
 
 **Richer streaming family (new in 1.15.13).** Beyond `message.part.delta`, 1.15.13 adds a fine-grained `session.next.*` event family — `session.next.text.delta`, `session.next.tool.called`, `session.next.tool.input.delta`, `session.next.tool.progress`, `session.next.reasoning.delta`, `session.next.step.started/ended`, etc. These give the portal renderers a cleaner, lower-latency stream than diffing `message.part.updated` snapshots; prefer them where available (they did not exist on 1.3.3). All carry `sessionID` and filter identically (§3.2).
 
@@ -79,7 +79,7 @@ The last row is load-bearing for filtering: **global events carry no `sessionID`
 3. `POST /permission/{id}/reply` with `{ "reply": "once" }` returned `200 true`; the tool advanced to `state.status = "completed"` with `output: "hello-from-tool\n"`, and `GET /permission` returned `[]`.
 
 So the headline feature is **not** blocked upstream — it needs only a `permission` config that gates the relevant tools (`bash`, `edit`, `task`, …) to `"ask"`. Two consequences for OpenPalm:
-- The shipped `.openpalm/config/assistant/opencode.jsonc` must add a `permission` policy for tools we want a human to approve (a separate, deliberate change — out of scope for this doc, tracked for Stage 4).
+- The shipped assistant OpenCode config (`packages/skeleton/system/assistant/opencode.jsonc`, materialized at `OP_HOME/system/assistant/`) must add a `permission` policy for tools we want a human to approve (a separate, deliberate change — out of scope for this doc, tracked for Stage 4).
 - The `always` array in the request (e.g. `["echo *"]`) is exactly what an **"Always"** button maps to (`reply: "always"`).
 
 ---
@@ -113,10 +113,10 @@ A **principal** is `(portal, userId)` — the identity the portal already authen
 
 ### 2.2 Code placement (and why not `@openpalm/lib`)
 
-A reviewer suggested extracting the proxy/allowlist/ownership logic into `@openpalm/lib`. **We deliberately do not.** The guardian (`containers/guardian`, Bun) is built as a minimal image that depends only on its local runtime deps — the Docker dependency-resolution pattern in `CLAUDE.md` keeps `@openpalm/lib` (a CLI/UI control-plane package) out of the guardian and portal images on purpose. Forcing a lib dependency would *add* build complexity, not remove it. Correct homes:
+A reviewer suggested extracting the proxy/allowlist/ownership logic into `@openpalm/lib`. **We deliberately do not.** The guardian (`packages/guardian`, Bun; image assets in `containers/guardian`) is built as a minimal image that depends only on its local runtime deps — the Docker dependency-resolution pattern in `CLAUDE.md` keeps `@openpalm/lib` (a CLI/UI control-plane package) out of the guardian and portal images on purpose. Forcing a lib dependency would *add* build complexity, not remove it. Correct homes:
 
-- **Shared, pure, portal+guardian:** request signing/verification primitives and the allowlist path-matcher. These now live as guardian-local and adapter-local helpers rather than a shared `packages/portals-sdk` package.
-- **Guardian-only runtime state:** the session/permission-ownership maps and `/event` fan-out → local to `containers/guardian`, mirroring its existing `replay.ts` and `rate-limit.ts` (which are *also* guardian-local, not in lib). This is consistent with the established structure, not a violation of it.
+- **Shared, pure, portal+guardian:** request signing/verification primitives and the allowlist path-matcher. These now live as guardian-local and adapter-local helpers (`packages/guardian/src/crypto.ts`, `packages/guardian/src/oc-path.ts`) rather than in the shared `packages/portal-sdk` package.
+- **Guardian-only runtime state:** the session/permission ownership (`packages/guardian/src/ownership.ts` + `state-db.ts`) and `/event` fan-out (`event-fanout.ts`) → local to `packages/guardian`, mirroring its existing `rate-limit.ts` (*also* guardian-local, not in lib). This is consistent with the established structure, not a violation of it.
 - The UI proxy and the guardian proxy share only the *idea*; a generic "proxy helper" that both consume would conflate two different auth models (operator cookie vs. per-portal HMAC) and is rejected. At most, a tiny pure `forwardStreaming(targetUrl, method, headers, body, signal) → Response` could be shared, but each side keeps its own gates.
 
 ---
@@ -177,7 +177,7 @@ Everything else denied. Dedicated deny-tests: `/shell`, `/pty`, `/share`, `/fork
 
 ### 3.4 Session- and permission-ownership authorization
 
-- **Session create rewrites the body (security review F5a):** on `POST /session` the guardian **constructs** the body itself — `{ title: "${portal}:${sessionKey}" }` — and **discards** any client-supplied title/body. `sessionKey` derives from validated metadata as today (`resolveSessionTarget` in `packages/guardian/src/session-target.ts`; the old `forward.ts` was deleted), but the portal can no longer inject an arbitrary session title (a prompt-injection / moderation-bypass surface). It then records `sessionId → principal` (TTL mirroring the existing session cache; pruned on delete/TTL/hard-cap).
+- **Session create rewrites the body (security review F5a):** on `POST /session` the guardian **constructs** the body itself — `{ title: "${portal}:${sessionKey}" }` — and **discards** any client-supplied title/body. `sessionKey` derives from validated metadata as today (session-title construction lives in `packages/guardian/src/proxy.ts`; the old `forward.ts` and its `session-target.ts` successor were both deleted), but the portal can no longer inject an arbitrary session title (a prompt-injection / moderation-bypass surface). It then records `sessionId → principal` (TTL mirroring the existing session cache; pruned on delete/TTL/hard-cap).
 - **Session calls** (`GET/DELETE /session/{id}`, `message`, `prompt_async`, `abort`): assert the principal owns `{id}`, else `403`. Replaces the implicit server-side derivation with an explicit ownership check — same isolation guarantee.
 - **`GET /session`** response is filtered to the principal's own sessions (the raw list must not leak other principals' titles).
 - **Permission replies are ownership-checked by `requestID` (API review, authz consequence of the corrected endpoint):** because `POST /permission/{requestID}/reply` is keyed by `requestID` (not `sessionID`), the guardian records `requestID → principal` **when it relays the `permission.asked` frame** to that principal, and authorizes the reply against that record. Prevents principal A answering principal B's permission request.
@@ -304,10 +304,10 @@ Each stage ships independently; the buffered path is the safe default throughout
 
 ## 10. References
 
-- `packages/ui/src/routes/proxy/assistant/[...path]/+server.ts` — the transparent streaming proxy precedent.
-- `packages/guardian/src/{server,proxy,rate-limit,session-target}.ts` — current pipeline and guardian-local runtime state pattern (the old `forward.ts` was deleted; session targeting now lives in `session-target.ts`).
+- `packages/ui/src/routes/oc/[...path]/+server.ts` — the transparent streaming proxy precedent.
+- `packages/guardian/src/{server,proxy,rate-limit,ownership}.ts` — current pipeline and guardian-local runtime state pattern (the old `forward.ts` and its `session-target.ts` successor were deleted; session routing and title construction live in `proxy.ts`, ownership in `ownership.ts`/`state-db.ts`).
 - `packages/guardian/src/crypto.ts` — signing/verification primitives (kept guardian-local, not in a shared `portal-sdk` package).
-- `.openpalm/config/assistant/opencode.jsonc` — assistant permission config (§1.2).
+- `packages/skeleton/system/assistant/opencode.jsonc` — assistant permission config (§1.2), materialized at `OP_HOME/system/assistant/`.
 - Live OpenCode OpenAPI: `curl http://127.0.0.1:3810/doc` (assistant OpenCode published on `:3810` → container `:4096`; `:3800` is the OpenPalm UI).
 
 ## 11. Review incorporated (changelog)

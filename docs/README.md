@@ -17,7 +17,7 @@ Repo layout convention:
 | [manual-compose-runbook.md](operations/manual-compose-runbook.md) | Step-by-step manual host configuration (no scripts) |
 | [how-it-works.md](how-it-works.md) | Architecture overview and data flow |
 | [managing-openpalm.md](managing-openpalm.md) | Configuration, portals, secrets, access control, automations |
-| [theming.md](theming.md) | UI theming — Stillness tokens today; edit `config/ui/theme.css` to re-theme (0.14.0, #426) |
+| [theming.md](theming.md) | UI theming — Stillness tokens today; the editable `config/ui/theme.css` workflow is planned for 0.14.0 (#426) |
 | [discord-setup.md](portals/discord-setup.md) | Discord bot setup — create app, install portal addon, invite bot |
 | [slack-setup.md](portals/slack-setup.md) | Slack bot setup — create app, install portal addon, configure Socket Mode |
 
@@ -32,9 +32,7 @@ Repo layout convention:
 
 | Document | Description |
 |---|---|
-| [release-management.md](operations/release-management.md) | Authoritative release guide: platform release boundaries, image/package versioning, and beta→stable cutover |
-| [release-rc-runbook.md](operations/release-rc-runbook.md) | Ordered RC release procedure with merge gates, commands, evidence capture, and post-publish verification |
-| [unit-all-rc-checklist.md](operations/unit-all-rc-checklist.md) | Coordinated `unit=all` release-candidate worksheet with commands, pass criteria, and evidence capture |
+| [release.md](operations/release.md) | The product release: architecture, dry-run/live commands, checklist, and the independent extensions workflow |
 | [manual-compose-runbook.md](operations/manual-compose-runbook.md) | Step-by-step manual host configuration (no scripts) |
 | [manual-headless-install.md](operations/manual-headless-install.md) | Hand-built install disk contract (tokens, auth.json, setup stamp) + scripted `openpalm install --file` |
 | [diagnostic-playbook.md](operations/diagnostic-playbook.md) | Layer-by-layer debugging workflow for UI, admin API, OpenCode, and container/config issues |

@@ -17,11 +17,11 @@ Send short operational notifications with a familiar interface:
 
 ## Requirements
 
-Install the Apprise CLI before using this skill if it is not already available in your environment.:
-
-```bash
-pip install apprise
-```
+The OpenPalm assistant image ships Apprise pre-installed (an isolated venv at
+`/opt/assistant-tools`, already on PATH), so inside the assistant container
+there is nothing to install. On a host without it, install via
+`uv tool install apprise` or `pipx install apprise` (a bare `pip install`
+fails on Debian-managed Python).
 
 ## Script
 

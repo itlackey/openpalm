@@ -1,7 +1,9 @@
 # Theming the OpenPalm UI
 
 > **Status:** the "Today" sections describe the current UI (0.13.x). The
-> `theme.css` workflow ships with **0.14.0 (#426)**.
+> `theme.css` workflow is **not available in 0.13.x** — it is planned for
+> **0.14.0 (#426)**, and the section below is a design preview, not current
+> behavior.
 
 OpenPalm's operator console is styled by a single design-token system called
 **Stillness**. Every color in the UI resolves to a CSS custom property, so
@@ -70,9 +72,9 @@ change the **default** theme in source, keep it green
 
 ---
 
-## Creating and applying a theme (0.14.0, #426)
+## Creating and applying a theme (planned for 0.14.0, #426 — not yet available)
 
-Every install seeds an editable theme file:
+Once shipped, every install seeds an editable theme file:
 
 ```
 ~/.openpalm/config/ui/theme.css

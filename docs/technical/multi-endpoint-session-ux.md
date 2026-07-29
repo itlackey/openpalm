@@ -8,7 +8,7 @@ Branch context: `release/0.11.0` — written after the auth/proxy refactor and t
 
 ## 1. Problem statement
 
-The endpoint switcher (`packages/ui/src/lib/components/EndpointSwitcher.svelte`) lets a user point the UI at "Local Assistant" (containerized OpenCode), "OpenPalm Admin" (Electron-spawned local OpenCode), or any user-added remote OpenCode. Server-side that selection is durable; client-side the chat state is a single in-memory singleton (`packages/ui/src/lib/chat/chat-state.svelte.ts`) tracking one `sessionId` and one `entries[]`. On switch, `endpointsService.activate()` nulls the session id (`chat.dropCurrentSession()`); the UI never remembers the per-endpoint session or enumerates sessions OpenCode already has on disk.
+The endpoint switcher (`packages/ui/src/lib/components/chat/EndpointSwitcher.svelte`) lets a user point the UI at "Local Assistant" (containerized OpenCode), "OpenPalm Admin" (Electron-spawned local OpenCode), or any user-added remote OpenCode. Server-side that selection is durable; client-side the chat state is a single in-memory singleton (`packages/ui/src/lib/chat/chat-state.svelte.ts`) tracking one `sessionId` and one `entries[]`. On switch, `endpointsService.activate()` nulls the session id (`chat.dropCurrentSession()`); the UI never remembers the per-endpoint session or enumerates sessions OpenCode already has on disk.
 
 The user wants per-endpoint history persistence (switching to X restores X's most recent conversation), a session picker, default-to-most-recent on switch, and continuation across switches (Local → Admin → Local lands back in the previous Local conversation). OpenCode already persists sessions on disk per server, so this is a UI/state-shape problem, not a data-modeling problem.
 
@@ -241,10 +241,10 @@ Ship A and B together as one PR. C and D can land independently.
 | `packages/ui/src/lib/endpoints-state.svelte.ts` | Replace `chat.dropCurrentSession()` call with `chat.onEndpointChanged(id)`. |
 | `packages/ui/src/lib/api.ts` | Add `listSessions()`, `getSessionMessages(id)`, `createSession()`, (Phase C) `renameSession`, `deleteSession`. Existing `createChatSession` / `sendChatMessage` stay. |
 | `packages/ui/src/lib/types.ts` | Add `SessionSummary`, `EndpointChatState`. Map OpenCode `Message`+`Part` to `ChatEntry` in a new helper. |
-| `packages/ui/src/lib/components/SessionPicker.svelte` (new) | The dropdown. |
-| `packages/ui/src/lib/components/Navbar.svelte` | Mount `SessionPicker` next to `EndpointSwitcher`. |
-| `packages/ui/src/routes/chat/+page.svelte` | Loading skeleton while `chat.entriesLoading`; remove `reconnect()`'s `dropCurrentSession`. |
-| `packages/ui/src/lib/chat/chat-state.vitest.ts` (new) | Unit-test the per-endpoint Map transitions, esp. switch-then-switch-back continuity. |
-| `packages/ui/e2e/session-picker.pw.ts` (new, gated `RUN_DOCKER_STACK_TESTS=1`) | Stack-level test: Local → Admin → Local restores prior session. |
+| `packages/ui/src/lib/components/chat/SessionPicker.svelte` (shipped) | The dropdown. |
+| `packages/ui/src/lib/components/chrome/ChatNavbar.svelte` | Mounts `SessionPicker` next to `EndpointSwitcher` (`components/chat/EndpointSwitcher.svelte`). |
+| `packages/ui/src/routes/(app)/chat/+page.svelte` | Loading skeleton while `chat.entriesLoading`; remove `reconnect()`'s `dropCurrentSession`. |
+| `packages/ui/src/lib/chat/chat-state.svelte.vitest.ts` (shipped) | Unit-tests the per-endpoint Map transitions, esp. switch-then-switch-back continuity. |
+| `packages/ui/src/lib/components/chat/SessionPicker.svelte.vitest.ts` (shipped) | Component-level session-picker coverage (the originally planned `e2e/session-picker.pw.ts` stack test was not built). |
 
 No server-side changes. No `packages/lib/` changes. No guardian or assistant container changes.

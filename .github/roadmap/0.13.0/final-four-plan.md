@@ -77,8 +77,9 @@ strands with adversarial verification; findings are measured, not estimated.
 
 ## Execution model
 
-Same gated test-first pipeline as the rest of the milestone
-(`.claude/workflows/implement-0-13-0.js`): spec → spec review (gate) → failing
+Same gated test-first pipeline as the rest of the milestone (the
+`implement-0-13-0.js` workflow script, since removed with the other workflow
+assets): spec → spec review (gate) → failing
 tests first (red) → implement (green + gates) → code review (gate) → fix loop.
 Repo gates per change: `bun run lint`, `bun run check`, targeted package suites
 (`cd packages/guardian && bun test --no-orphans`, `bun run lib:test`,

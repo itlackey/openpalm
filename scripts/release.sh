@@ -11,7 +11,7 @@
 # Examples:
 #   ./scripts/release.sh 0.13.0                           # full product release
 #
-# See docs/operations/release-management.md for the full process.
+# See docs/operations/release.md for the full process.
 set -euo pipefail
 
 VERSION="${1:?Usage: release.sh <version> [ref]}"

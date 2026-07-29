@@ -87,5 +87,5 @@ bun run lint
 bun run test
 ```
 
-See [`../operations/release-management.md`](../operations/release-management.md)
+See [`../operations/release.md`](../operations/release.md)
 for release execution.
