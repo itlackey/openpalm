@@ -57,24 +57,26 @@ describe('release workflows', () => {
 		}
 	});
 
-	test('extension version validation script executes for each release unit', () => {
+	test('extension stamping script executes for each release unit', () => {
 		const extensionWorkflow = Bun.YAML.parse(
 			readFileSync(join(WORKFLOWS, 'publish-extensions.yml'), 'utf8')
 		) as {
 			jobs: { publish: { steps: Array<{ name?: string; run?: string }> } };
 		};
 		const run = extensionWorkflow.jobs.publish.steps.find(
-			(step) => step.name === 'Validate extension versions'
+			(step) => step.name === 'Stamp extension version'
 		)?.run;
-		if (!run) throw new Error('Missing extension workflow step: Validate extension versions');
+		if (!run) throw new Error('Missing extension workflow step: Stamp extension version');
 		for (const [unit, manifest] of [
 			['guardian', 'packages/guardian/package.json'],
 			['portals', 'packages/portal-sdk/package.json']
 		]) {
 			const version = JSON.parse(readFileSync(join(ROOT, manifest), 'utf8')).version;
+			// Override STAMP to preview mode so this test never writes to package.json
+			// or the lockfile, regardless of what the workflow step itself sets.
 			const result = Bun.spawnSync(['bash', '-euo', 'pipefail', '-c', run], {
 				cwd: ROOT,
-				env: { ...process.env, UNIT: unit, VERSION: version },
+				env: { ...process.env, UNIT: unit, VERSION: version, STAMP: 'false' },
 				stderr: 'pipe'
 			});
 			expect(result.exitCode, result.stderr.toString()).toBe(0);

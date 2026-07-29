@@ -42,22 +42,14 @@ jobs:
       - uses: oven-sh/setup-bun@v2
       - name: Install extension source
         run: bun install --frozen-lockfile
-      - name: Validate extension versions
+      - name: Stamp extension version
         env:
-          VERSION: ${{ inputs.version }}
           UNIT: ${{ inputs.unit }}
+          VERSION: ${{ inputs.version }}
+          STAMP: true
         run: |
-          node --input-type=module <<'NODE'
-          import { readFileSync } from 'node:fs';
-          const version = process.env.VERSION;
-          const files = process.env.UNIT === 'guardian'
-            ? ['packages/guardian/package.json']
-            : ['packages/portal-sdk/package.json', 'packages/portal-discord/package.json', 'packages/portal-slack/package.json'];
-          for (const file of files) {
-            const actual = JSON.parse(readFileSync(file, 'utf8')).version;
-            if (actual !== version) throw new Error(`${file} is ${actual}, expected ${version}`);
-          }
-          NODE
+          node scripts/bump-unit.mjs
+          bun install --lockfile-only
       - name: Test extensions
         run: bun test packages/guardian packages/portal-sdk packages/portal-discord packages/portal-slack
       - name: Pack extensions
