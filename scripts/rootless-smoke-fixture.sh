@@ -17,32 +17,52 @@ smoke_platform_version() {
   node -p "require('./package.json').version"
 }
 
-# Seed an isolated OP_HOME with a PUBLISHED skeleton version from npm, so tests
-# can build a home as it actually shipped in an earlier release.
+# Seed an isolated OP_HOME with the skeleton from a published host-assets
+# release. Pre-host-assets releases fall back to their immutable npm skeleton.
 #
-# This is what makes historical fixtures free to maintain: npm keeps every
-# published version immutably and each release adds another, so the pool of
-# testable eras grows on its own. Nothing is checked in, nothing goes stale,
-# and no snapshot has to be hand-updated (or scrubbed of secrets).
+# This keeps historical fixtures release-backed without a checked-in snapshot.
 #
 # Note the layouts genuinely differ across eras — 0.12.x ships manifest.json
 # and no system/; 0.13.x ships system/ and no manifest.json. That difference is
 # the point: it is what a migration has to cope with. Assert per-era, not
 # against one generic "old home" shape.
 #
-# Usage: smoke_copy_skeleton_version <home> <version>
-smoke_copy_skeleton_version() {
+# Usage: smoke_copy_release_skeleton <home> <version>
+smoke_copy_release_skeleton() {
   local home="$1"
   local version="$2"
   local workdir
   workdir="$(mktemp -d)"
 
-  if ! ( cd "$workdir" && npm pack "@openpalm/skeleton@${version}" >/dev/null 2>&1 ); then
+  local asset="openpalm-host-assets-${version}.tar.gz"
+  local release_url="https://github.com/itlackey/openpalm/releases/download/${version}"
+  if curl -fsL "${release_url}/${asset}" -o "${workdir}/${asset}" \
+    && curl -fsL "${release_url}/checksums-sha256.txt" -o "${workdir}/checksums-sha256.txt"; then
+    local expected actual
+    expected="$(grep -E "[[:space:]]${asset}$" "${workdir}/checksums-sha256.txt" | awk '{print $1}')"
+    if command -v sha256sum >/dev/null 2>&1; then
+      actual="$(sha256sum "${workdir}/${asset}" | awk '{print $1}')"
+    else
+      actual="$(shasum -a 256 "${workdir}/${asset}" | awk '{print $1}')"
+    fi
+    if [ -z "$expected" ] || [ "$actual" != "$expected" ]; then
+      rm -rf "$workdir"
+      echo "Host-assets checksum failed for OpenPalm ${version}." >&2
+      return 1
+    fi
+    mkdir -p "$home"
+    tar xzf "${workdir}/${asset}" -C "$home" --strip-components=1 skeleton
     rm -rf "$workdir"
-    echo "Could not fetch @openpalm/skeleton@${version} from npm (offline, or version unpublished)." >&2
-    return 1
+    return 0
   fi
 
+  # 0.12 and earlier did not publish host-assets archives.
+  rm -f "${workdir}/${asset}" "${workdir}/checksums-sha256.txt"
+  if ! ( cd "$workdir" && npm pack "@openpalm/skeleton@${version}" >/dev/null 2>&1 ); then
+    rm -rf "$workdir"
+    echo "Could not fetch release skeleton for ${version} (offline, or version unpublished)." >&2
+    return 1
+  fi
   mkdir -p "$home"
   # npm wraps everything under package/; strip it so the tree lands at the
   # home root exactly as smoke_copy_skeleton lays out the working-tree copy.

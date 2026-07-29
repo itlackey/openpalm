@@ -18,7 +18,7 @@ import { existsSync, readFileSync, writeFileSync, mkdirSync, renameSync } from '
 import { parseEnvFile, mergeEnvContent } from './env.js';
 import { stackEnvFile } from './home.js';
 import type { ControlPlaneState } from './types.js';
-import { distTagForVersion, PLATFORM_VERSION } from './versioning.js';
+import { distTagForVersion, normalizeVersion, PLATFORM_VERSION } from './versioning.js';
 
 /** Docker image tags — one per deployable OpenPalm image. */
 export const SERVICE_VERSION_KEYS = [
@@ -31,6 +31,12 @@ export const SERVICE_VERSION_KEYS = [
 export type VersionKey = (typeof SERVICE_VERSION_KEYS)[number];
 
 const VERSION_KEY_SET: ReadonlySet<string> = new Set(SERVICE_VERSION_KEYS);
+const MANAGED_VERSION_MARKERS: Record<VersionKey, string> = {
+	OP_ASSISTANT_VERSION: 'OP_MANAGED_ASSISTANT_VERSION',
+	OP_GUARDIAN_VERSION: 'OP_MANAGED_GUARDIAN_VERSION',
+	OP_PORTAL_VERSION: 'OP_MANAGED_PORTAL_VERSION',
+	OP_VOICE_VERSION: 'OP_MANAGED_VOICE_VERSION'
+};
 
 /** Default values seeded into a fresh stack.env (and returned for unset keys). */
 export const VERSION_DEFAULTS: Record<VersionKey, string> = {
@@ -107,9 +113,38 @@ export function ensureVersionDefaults(state: ControlPlaneState): void {
 	const current = existsSync(path) ? parseEnvFile(path) : {};
 	const missing: Record<string, string> = {};
 	for (const key of SERVICE_VERSION_KEYS) {
-		if (current[key] === undefined) missing[key] = VERSION_DEFAULTS[key];
+		if (current[key] === undefined) {
+			missing[key] = VERSION_DEFAULTS[key];
+			missing[MANAGED_VERSION_MARKERS[key]] = VERSION_DEFAULTS[key];
+		}
 	}
-	writeVersions(state, missing);
+	writeVersionState(state, missing);
+}
+
+/** Advance release-managed exact pins while preserving explicit moving or custom pins. */
+export function advanceManagedImageVersions(
+	state: ControlPlaneState,
+	previousPlatformVersion: string | null,
+	targetPlatformVersion = PLATFORM_VERSION
+): void {
+	const current = parseEnvFile(stackEnvFile(state.homeDir));
+	const previous = normalizeVersion(previousPlatformVersion);
+	const updates: Record<string, string> = {};
+	for (const key of SERVICE_VERSION_KEYS) {
+		const value = current[key]?.trim() ?? '';
+		const markerKey = MANAGED_VERSION_MARKERS[key];
+		const managedValue = current[markerKey]?.trim() ?? '';
+		const legacyManaged = current[markerKey] === undefined && key !== 'OP_VOICE_VERSION' && previous && normalizeVersion(value) === previous;
+		if (value.startsWith('rollback-')) {
+			const target = key === 'OP_VOICE_VERSION' ? VERSION_DEFAULTS.OP_VOICE_VERSION : targetPlatformVersion;
+			updates[key] = target;
+			updates[markerKey] = target;
+		} else if ((managedValue && value === managedValue) || legacyManaged) {
+			updates[key] = targetPlatformVersion;
+			updates[markerKey] = targetPlatformVersion;
+		}
+	}
+	writeVersionState(state, updates);
 }
 
 /**
@@ -126,13 +161,17 @@ export function writeVersions(state: ControlPlaneState, updates: Record<string, 
 			throw new Error(`Refusing to write unknown version key: ${key}`);
 		}
 		accepted[key] = (value ?? '').trim();
+		accepted[MANAGED_VERSION_MARKERS[key]] = '';
 	}
-	if (Object.keys(accepted).length === 0) return;
+	writeVersionState(state, accepted);
+}
 
+function writeVersionState(state: ControlPlaneState, updates: Record<string, string>): void {
+	if (Object.keys(updates).length === 0) return;
 	const path = stackEnvFile(state.homeDir);
 	mkdirSync(`${state.homeDir}/state`, { recursive: true, mode: 0o700 });
 	const current = existsSync(path) ? readFileSync(path, 'utf-8') : '';
 	const tmp = `${path}.tmp`;
-	writeFileSync(tmp, mergeEnvContent(current, accepted), { mode: 0o600 });
+	writeFileSync(tmp, mergeEnvContent(current, updates), { mode: 0o600 });
 	renameSync(tmp, path);
 }

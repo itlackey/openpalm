@@ -23,7 +23,7 @@
  * lifecycle-volume-reap.test.ts / lifecycle-install-ownership.test.ts.
  */
 import { afterEach, describe, expect, mock, test } from 'bun:test';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import * as realDocker from './docker.js';
@@ -212,6 +212,36 @@ describe('runDeploy reclaims retired volumes after the new stack is up (#585 dec
 
 				expect(result.deployError).not.toBeNull();
 				expect(reapMock).toHaveBeenCalledTimes(0);
+			});
+		} finally {
+			rmSync(homeDir, { recursive: true, force: true });
+		}
+	});
+
+	test('returns a structured error and restores files when activation audit throws', async () => {
+		const homeDir = mkdtempSync(join(tmpdir(), 'openpalm-deploy-activation-audit-'));
+		try {
+			mkdirSync(join(homeDir, 'state'), { recursive: true });
+			writeFileSync(join(homeDir, 'state', 'stack.env'), 'OP_ASSISTANT_VERSION=custom-pin\nOP_SETUP_COMPLETE=false\n');
+			await withDeployEnv(homeDir, async () => {
+				const activationError = new Error('Refusing Compose stack activation: secret-boundary audit failed.');
+				const activateStackMock = mock(async () => { throw activationError; });
+				mock.module('./docker.js', () => ({
+					...realDocker,
+					detectExistingProject: mock(async () => ({ exists: false }))
+				}));
+				mock.module('./activation.js', () => ({
+					...realActivation,
+					activateStack: activateStackMock
+				}));
+
+				const { runDeploy } = await import(`./deploy.js?deploy-activation-audit=${Math.random()}`);
+				const { createState } = await import(`./lifecycle.js?deploy-activation-audit-state=${Math.random()}`);
+				const result = await runDeploy(createState());
+
+				expect(result.deploying).toBe(false);
+				expect(result.deployError).toContain('secret-boundary audit failed');
+				expect(readFileSync(join(homeDir, 'state', 'stack.env'), 'utf8')).toBe('OP_ASSISTANT_VERSION=custom-pin\nOP_SETUP_COMPLETE=false\n');
 			});
 		} finally {
 			rmSync(homeDir, { recursive: true, force: true });

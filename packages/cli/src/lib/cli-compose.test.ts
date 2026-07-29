@@ -29,6 +29,48 @@ afterEach(() => {
 });
 
 describe('runComposeWithPreflight — D1 docker-readiness preamble', () => {
+	test('runs down and stop directly without migration or activation audit', async () => {
+		let migrated = false;
+		let activated = false;
+		const streamed: string[][] = [];
+		mock.module('@openpalm/lib', () => ({
+			...realLib,
+			buildComposeCliArgs: () => ['compose-base'],
+			runHomeMigrations: () => { migrated = true; },
+			activateComposeCommand: async () => { activated = true; },
+			runComposeStreaming: async (args: string[]) => { streamed.push(args); }
+		}));
+
+		const { runComposeWithPreflight } = await import(`${cliComposeModuleUrl}?t=${Math.random()}`);
+		await runComposeWithPreflight(fakeState, ['down', '-v']);
+		await runComposeWithPreflight(fakeState, ['stop', 'assistant']);
+
+		expect(streamed).toEqual([
+			['compose-base', 'down', '-v'],
+			['compose-base', 'stop', 'assistant']
+		]);
+		expect(migrated).toBe(false);
+		expect(activated).toBe(false);
+	});
+
+	test('keeps restart on the fail-closed activation path', async () => {
+		process.env.OP_SKIP_COMPOSE_PREFLIGHT = '1';
+		let activated = false;
+		let streamed = false;
+		mock.module('@openpalm/lib', () => ({
+			...realLib,
+			runHomeMigrations: () => {},
+			activateComposeCommand: async () => { activated = true; },
+			runComposeStreaming: async () => { streamed = true; }
+		}));
+
+		const { runComposeWithPreflight } = await import(`${cliComposeModuleUrl}?t=${Math.random()}`);
+		await runComposeWithPreflight(fakeState, ['restart', 'assistant']);
+
+		expect(activated).toBe(true);
+		expect(streamed).toBe(false);
+	});
+
 	test('throws the friendly ensureDockerReady message when Docker is missing, before touching compose', async () => {
 		delete process.env.OP_SKIP_COMPOSE_PREFLIGHT;
 		let activationCalled = false;

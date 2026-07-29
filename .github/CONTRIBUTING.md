@@ -6,7 +6,7 @@ Repository layout:
 
 - `packages/*`: application and package workspaces
 - `containers/*`: image assembly and container entrypoints
-- `portals/*`: first-party protocol adapters
+- `packages/portal-*`: first-party protocol adapters
 
 ## Prerequisites
 

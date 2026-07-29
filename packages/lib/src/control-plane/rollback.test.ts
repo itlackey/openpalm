@@ -13,6 +13,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ControlPlaneState } from "./types.js";
 import {
+  currentSnapshotGeneration,
   hasSnapshot,
   restoreSnapshot,
   snapshotCurrentState,
@@ -84,6 +85,16 @@ describe("rollback snapshot/restore (0.3 — state env + non-destructive restore
     expect(readFileSync(join(home, "state", "stack.env"), "utf-8")).toContain("discord");
   });
 
+  test("restoreSnapshot removes a skeleton stamp absent from the snapshot", () => {
+    snapshotCurrentState(state);
+    writeFileSync(join(home, ".skeleton-version"), "0.13.1\n");
+
+    restoreSnapshot(state);
+
+    expect(existsSync(join(home, ".skeleton-version"))).toBe(false);
+    expect(existsSync(join(home, "state", "stack.env"))).toBe(true);
+  });
+
   test("restoreSnapshot does NOT restore auth.json (drop it from restore; keep the live copy)", () => {
     snapshotCurrentState(state); // captures auth.json v1
     writeFileSync(join(home, "knowledge", "secrets", "auth.json"), '{"v":2}\n');
@@ -110,7 +121,7 @@ describe("rollback snapshot/restore (0.3 — state env + non-destructive restore
     expect(readFileSync(join(backupDir, "state", "stack.env"), "utf-8")).toContain("custom");
   });
 
-  test("a torn (interrupted) snapshot reads as absent rather than a stale, inconsistent snapshot", () => {
+  test("a torn snapshot preserves the previous complete generation", () => {
     snapshotCurrentState(state);
     expect(hasSnapshot()).toBe(true);
 
@@ -127,10 +138,9 @@ describe("rollback snapshot/restore (0.3 — state env + non-destructive restore
       chmodSync(target, 0o600);
     }
 
-    // The old ts marker must have been cleared at the top of snapshotCurrentState,
-    // so the torn (half-written) snapshot correctly reads as absent instead of
-    // looking like a complete, trustworthy snapshot at the old timestamp.
-    expect(hasSnapshot()).toBe(false);
+    expect(hasSnapshot()).toBe(true);
+    restoreSnapshot(state);
+    expect(readFileSync(join(home, "config", "stack", "custom.compose.yml"), "utf8")).toBe("services: {}\n");
   });
 
   test("each snapshot is an isolated generation and does not retain retired files", () => {
@@ -159,5 +169,35 @@ describe("rollback snapshot/restore (0.3 — state env + non-destructive restore
     expect(readFileSync(assistantPolicy, "utf8")).toBe("old policy\n");
     expect(existsSync(join(home, "system", "stack", "new.yml"))).toBe(false);
     expect(existsSync(join(home, "system", "stack", "services.compose.yml"))).toBe(true);
+  });
+
+  test("restoreSnapshot leaves a bootstrapped live file when the snapshot predates it", () => {
+    rmSync(join(home, "state", "stack.env"));
+    snapshotCurrentState(state);
+    writeFileSync(join(home, "state", "stack.env"), "OP_SETUP_COMPLETE=false\n");
+
+    restoreSnapshot(state);
+
+    expect(readFileSync(join(home, "state", "stack.env"), "utf8")).toContain("OP_SETUP_COMPLETE=false");
+  });
+
+  test("recognizes and restores the shipped flat snapshot layout", () => {
+    const rollbackDir = join(home, "data", "rollback");
+    mkdirSync(join(rollbackDir, "state"), { recursive: true });
+    writeFileSync(join(rollbackDir, ".snapshot-ts"), "2026-01-01T00:00:00.000Z\n");
+    writeFileSync(join(rollbackDir, "state", "stack.env"), "OP_ENABLED_ADDONS=api\n");
+
+    expect(hasSnapshot()).toBe(true);
+    expect(currentSnapshotGeneration()).toBe('.');
+    snapshotCurrentState(state, { activate: false });
+    restoreSnapshot(state, '.');
+    expect(readFileSync(join(home, "state", "stack.env"), "utf8")).toContain("api");
+  });
+
+  test("retains only the three newest rollback generations", () => {
+    for (let i = 0; i < 5; i += 1) snapshotCurrentState(state);
+
+    const generations = readdirSync(join(home, "data", "rollback")).filter((name) => name.startsWith("generation-"));
+    expect(generations).toHaveLength(3);
   });
 });

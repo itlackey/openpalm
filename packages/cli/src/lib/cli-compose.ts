@@ -33,19 +33,26 @@ export async function runComposeReadOnly(
 }
 
 /**
- * Run compose preflight validation, then execute the compose command.
- * This is the canonical CLI mutation path — all compose operations
- * that modify state must go through this function.
+ * Execute a Compose lifecycle command. Activation-capable operations validate
+ * and audit first; teardown-only `down` and `stop` deliberately skip those
+ * gates so a broken or audit-failing stack can still be stopped.
  *
- * Preflight can be bypassed by setting OP_SKIP_COMPOSE_PREFLIGHT=1 (e.g. in tests).
- * The invocation carries lib's `up` timeout budget so a first install extracting
- * multi-GB images is bounded exactly like the capturing `composeUp` path.
+ * Activation preflight can be bypassed by setting OP_SKIP_COMPOSE_PREFLIGHT=1
+ * (e.g. in tests). Activation carries lib's `up` timeout budget so a first
+ * install extracting multi-GB images is bounded like the capturing path.
  */
 export async function runComposeWithPreflight(
 	state: ControlPlaneState,
 	composeSubArgs: string[],
 	lock?: InstallLockHandle
 ): Promise<void> {
+	const operation = composeSubArgs[0];
+	if (operation === 'down' || operation === 'stop') {
+		const composeArgs = buildComposeCliArgs(state);
+		await runComposeStreaming([...composeArgs, ...composeSubArgs]);
+		return;
+	}
+
 	runHomeMigrations(state.homeDir);
 
 	// D1: a single "is Docker actually usable right now" readiness check ahead

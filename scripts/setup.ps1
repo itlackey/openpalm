@@ -165,10 +165,52 @@ switch -Regex ($Arch) {
 }
 
 $Version = if ($RequestedVersion) { Normalize-Version $RequestedVersion } else { $null }
-if (-not $Version) {
-    $release = Invoke-RestMethod "https://api.github.com/repos/$Repo/releases/latest"
-    $Version = $release.tag_name
-    if (-not $Version) { throw "Could not determine latest release version" }
+if ($Version -and $Version -notmatch '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$') {
+    throw "Invalid release version: $Version"
+}
+
+# The release manifest is both the version resolver and an asset-identity check.
+# latest/download follows GitHub's stable-release redirect without consuming API
+# quota; prereleases remain available through an explicit --version/OP_VERSION.
+$ManifestUrl = if ($Version) {
+    "https://github.com/$Repo/releases/download/$Version/release-assets-manifest.json"
+} else {
+    "https://github.com/$Repo/releases/latest/download/release-assets-manifest.json"
+}
+$ManifestTempFile = "$env:TEMP\openpalm-release-manifest-$([guid]::NewGuid().ToString('N')).json"
+$Manifest = $null
+try {
+    Invoke-WebRequest -Uri $ManifestUrl -OutFile $ManifestTempFile -UseBasicParsing
+    $Manifest = Get-Content -Path $ManifestTempFile -Raw | ConvertFrom-Json
+} catch {
+    if (-not $Version) {
+        # Compatibility for stable releases that predate the release manifest.
+        $LatestResponse = Invoke-WebRequest -Uri "https://github.com/$Repo/releases/latest" -UseBasicParsing
+        $LatestUrl = if ($LatestResponse.BaseResponse.ResponseUri) {
+            $LatestResponse.BaseResponse.ResponseUri.AbsoluteUri
+        } else {
+            $LatestResponse.BaseResponse.RequestMessage.RequestUri.AbsoluteUri
+        }
+        if ($LatestUrl -notmatch '/releases/tag/([^/?#]+)') {
+            throw "Could not determine latest release version"
+        }
+        $Version = Normalize-Version $Matches[1]
+    }
+} finally {
+    Remove-Item -Force $ManifestTempFile -ErrorAction SilentlyContinue
+}
+if ($Manifest) {
+    $ManifestVersion = Normalize-Version ([string] $Manifest.version)
+    if (-not $ManifestVersion -or $ManifestVersion -notmatch '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$') {
+        throw "Release manifest does not declare a valid version"
+    }
+    if ($Version -and $ManifestVersion -ne $Version) {
+        throw "Release manifest identifies $ManifestVersion, expected $Version"
+    }
+    $Version = $ManifestVersion
+}
+if (-not $Version -or $Version -notmatch '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$') {
+    throw "Could not determine a valid release version"
 }
 
 # Install directory

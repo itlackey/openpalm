@@ -59,7 +59,7 @@ describe('entrypoints do not install packages at boot', () => {
 describe('official images assemble platform code locally', () => {
   it('does not resolve public OpenPalm packages in the Assistant image', () => {
     const dockerfile = read('containers/assistant/Dockerfile');
-    expect(dockerfile).toContain('COPY packages/ui /opt/openpalm/local-src/ui');
+    expect(dockerfile).toContain('COPY packages/ui /opt/openpalm/local-src/packages/ui');
     expect(dockerfile).toContain('bun pm pack');
     expect(dockerfile).not.toContain('@openpalm/ui@${PLATFORM_VERSION}');
     expect(dockerfile).not.toContain('/opt/openpalm/skeleton');

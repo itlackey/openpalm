@@ -15,7 +15,7 @@ import { ACCESS_ENV_KEYS, migrateLegacyAccessEnv, RETIRED_BIND_KEYS } from './ac
 import { assertNoSecretLikeStackEnvKeys, isSecretLikeStackEnvKey } from './secrets.js';
 import { writeSecret } from './secrets-files.js';
 import type { ControlPlaneState, ArtifactMeta } from "./types.js";
-import { stackEnvFile, legacyKnowledgeStackEnvFile, composeFilePath, customComposeFilePath } from "./home.js";
+import { stackEnvFile, legacyKnowledgeStackEnvFile, legacyStateEnvFile, composeFilePath, customComposeFilePath } from "./home.js";
 import { stackEnvPath } from "./paths.js";
 import { writeFileAtomic } from "./fs-atomic.js";
 import { resolveOperatorIds, hasUsableOperatorId, type OperatorIds } from "./operator-ids.js";
@@ -45,7 +45,9 @@ const logger = createLogger("config-persistence");
 export function buildEnvFiles(state: ControlPlaneState): string[] {
   // One file. user.env is intentionally NOT here; scoped tools load it on
   // demand and the assistant entrypoint never sources it.
-  return [stackEnvFile(state.homeDir)].filter(existsSync);
+  const current = stackEnvFile(state.homeDir);
+  if (existsSync(current)) return [current];
+  return [legacyKnowledgeStackEnvFile(state.homeDir), legacyStateEnvFile(state.homeDir)].filter(existsSync);
 }
 
 /**

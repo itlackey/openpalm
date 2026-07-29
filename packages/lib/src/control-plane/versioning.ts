@@ -1,6 +1,6 @@
 import libPkg from "../../package.json" with { type: "json" };
 
-const SEMVER_RE = /^v?\d+\.\d+\.\d+(?:[-+].*)?$/;
+const SEMVER_RE = /^v?\d+\.\d+\.\d+(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/;
 
 /**
  * Matches an Electron desktop-app installer asset by filename. Anchored to

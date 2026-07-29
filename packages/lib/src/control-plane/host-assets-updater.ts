@@ -1,11 +1,11 @@
 /** GitHub Release host-assets transport shared by CLI, admin, and Electron. */
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { x as extract } from 'tar';
 import { errMessage } from './errors.js';
 import { retry } from './retry.js';
-import { compareComparableVersions, distTagForVersion, normalizeVersion } from './versioning.js';
+import { compareComparableVersions, distTagForVersion, isComparableSemver, normalizeVersion } from './versioning.js';
 
 export const GITHUB_REPOSITORY = 'itlackey/openpalm';
 export const GITHUB_API = `https://api.github.com/repos/${GITHUB_REPOSITORY}`;
@@ -34,7 +34,7 @@ async function githubFetch(url: string): Promise<Response> {
 
 function releaseVersion(release: GithubRelease): string {
   const version = normalizeVersion(release.tag_name);
-  if (!version) throw new Error('GitHub release has no usable tag');
+  if (!isComparableSemver(version)) throw new Error('GitHub release has no usable tag');
   return version;
 }
 
@@ -70,8 +70,7 @@ export async function resolveHostAssetsRelease(ref: string, channel?: HostAssets
   }
   const candidates = releases.filter(release => !release.draft && Boolean(release.prerelease) === (desired === 'prerelease'));
   const withAssets = candidates.map(release => {
-    const version = releaseVersion(release);
-    try { return releaseAsset(release, version); } catch { return null; }
+    try { return releaseAsset(release, releaseVersion(release)); } catch { return null; }
   }).filter((release): release is HostAssetsRelease => release !== null);
   const newest = withAssets.sort((a, b) => compareComparableVersions(b.version, a.version))[0];
   if (!newest) throw new Error(`No ${desired} host-assets release is available`);
@@ -88,9 +87,9 @@ export async function stageHostAssetsRelease(release: HostAssetsRelease, dataDir
   const actual = createHash('sha256').update(bytes).digest('hex');
   if (!expected || !/^[a-f0-9]{64}$/.test(expected) || expected !== actual) throw new Error('Host-assets checksum mismatch');
 
-  const staging = join(dataDir, '.host-assets.staging');
-  const archive = join(dataDir, '.host-assets.tar.gz.tmp');
-  rmSync(staging, { recursive: true, force: true });
+  const operationId = `${process.pid}-${randomUUID()}`;
+  const staging = join(dataDir, `.host-assets.staging-${operationId}`);
+  const archive = join(dataDir, `.host-assets-${operationId}.tar.gz.tmp`);
   mkdirSync(staging, { recursive: true });
   try {
     writeFileSync(archive, bytes);

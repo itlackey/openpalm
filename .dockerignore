@@ -17,12 +17,17 @@ containers/portal/node_modules
 # portal adapter packages
 packages/portal-discord/node_modules
 packages/portal-slack/node_modules
+# generated package output
+packages/*/build
+packages/*/dist
+packages/*/.svelte-kit
+!packages/ui/build
+!packages/ui/build/**
 docs/
 *.md
 !AGENTS.md
 !containers/**/*.md
 !packages/**/*.md
-!portals/**/*.md
 !.openpalm/**/*.md
 # Secrets — never send to Docker build context
 # Stack/channel secrets (OP_HOME/config/stack/)

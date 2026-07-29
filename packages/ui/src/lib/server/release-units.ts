@@ -14,7 +14,7 @@
 
 // Single source of truth for "is this asset an Electron installer" — shared with
 // the desktop app's update check (packages/electron/src/update-check.ts).
-import { ELECTRON_ASSET_PATTERN } from '@openpalm/lib';
+import { ELECTRON_ASSET_PATTERN, isComparableSemver } from '@openpalm/lib';
 
 export interface ReleaseEntry {
   tag: string;
@@ -33,6 +33,7 @@ export type RawGitHubRelease = {
 const PLATFORM_TAG_PATTERN = /^platform-(\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]*)?)$/;
 const ELECTRON_TAG_PATTERN = /^electron-(\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]*)?)$/;
 const LEGACY_V_TAG_PATTERN = /^v(\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]*)?)$/;
+const PRODUCT_TAG_PATTERN = /^(\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]*)?)$/;
 
 /**
  * Select only platform releases that carry installable app assets (Electron
@@ -57,9 +58,12 @@ export function selectInstallableReleases(raw: RawGitHubRelease[]): ReleaseEntry
     if (!hasElectronBuild) continue;
 
     // Platform and standalone native-harness releases both carry installers.
-    const unitMatch = r.tag_name.match(PLATFORM_TAG_PATTERN) ?? r.tag_name.match(ELECTRON_TAG_PATTERN);
+    const unitMatch = r.tag_name.match(PRODUCT_TAG_PATTERN)
+      ?? r.tag_name.match(PLATFORM_TAG_PATTERN)
+      ?? r.tag_name.match(ELECTRON_TAG_PATTERN);
     if (unitMatch) {
       const tag = unitMatch[1];
+      if (!isComparableSemver(tag)) continue;
       if (!seen.has(tag)) {
         seen.add(tag);
         releases.push({ tag, prerelease: r.prerelease, publishedAt: r.published_at, hasElectronBuild });
@@ -71,6 +75,7 @@ export function selectInstallableReleases(raw: RawGitHubRelease[]): ReleaseEntry
     const legacyMatch = r.tag_name.match(LEGACY_V_TAG_PATTERN);
     if (legacyMatch) {
       const tag = legacyMatch[1];
+      if (!isComparableSemver(tag)) continue;
       if (!seen.has(tag)) {
         seen.add(tag);
         releases.push({ tag, prerelease: r.prerelease, publishedAt: r.published_at, hasElectronBuild });

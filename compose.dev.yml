@@ -44,7 +44,7 @@ services:
       args:
         # Source builds use the candidate-local compiled UI; no OpenPalm npm
         # package or image-baked skeleton is fetched.
-        PLATFORM_VERSION: ${PLATFORM_VERSION-latest}
+        PLATFORM_VERSION: ${PLATFORM_VERSION:-dev}
     image: ${OP_IMAGE_NAMESPACE:-openpalm}/assistant:dev
 
   discord:

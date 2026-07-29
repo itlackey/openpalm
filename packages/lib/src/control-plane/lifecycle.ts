@@ -20,7 +20,7 @@ import {
 	ensureComposeVolumeTargets
 } from './config-persistence.js';
 import { ensureOpenCodeSystemConfig } from './core-assets.js';
-import { applyHomeSeed } from './ui-assets.js';
+import { applyHomeSeed, readSkeletonVersion } from './ui-assets.js';
 import { restoreSnapshot, snapshotCurrentState } from './rollback.js';
 import {
 	checkDocker,
@@ -43,10 +43,10 @@ import { createLogger } from '../logger.js';
 import { acquireInstallLock, releaseInstallLock } from './install-lock.js';
 import type { InstallLockHandle } from './install-lock.js';
 import { getAddonServiceNames, listEnabledAddonIds, pruneRemovedAddonState } from './addons.js';
+import { backupOpenPalmHome, pruneBackupDirs } from './backup.js';
 import { hasGuardianIngressAddon } from './addon-ids.js';
 import { PLATFORM_VERSION } from './versioning.js';
-import { ensureVersionDefaults } from './versions.js';
-import { backupOpenPalmHome } from './backup.js';
+import { advanceManagedImageVersions, ensureVersionDefaults } from './versions.js';
 import {
 	captureRunningImageIds,
 	restoreRunningImageIds,
@@ -210,17 +210,20 @@ async function applyManagedFiles(
 	if (overlayCheck.blockError) throw new Error(overlayCheck.blockError);
 	if (overlayCheck.warning) lifecycleLogger.warn(overlayCheck.warning);
 
-	// Migrate BEFORE snapshotting: on a pre-consolidation home the snapshot
+	// The durable operator backup precedes every migration or managed-file write.
+	// Rollback snapshots remain narrow and are used only for automatic recovery.
+	const backupDir = backupOpenPalmHome(state.homeDir);
+	if (backupDir) pruneBackupDirs(state.homeDir, 3);
+
+	// Migrate BEFORE rollback snapshotting: on a pre-consolidation home the snapshot
 	// list's state/stack.env does not exist yet, so snapshotting first would
 	// capture no stack env at all and a failed deploy could not roll back env
 	// mutations. The migration is value-preserving, so the snapshot still
 	// records the pre-update values — just in the canonical location.
-	// Migrations are destructive lifecycle work. The complete safety backup is
-	// deliberately created while the caller's install lock is held and before
-	// the first migration can write anything.
-	backupOpenPalmHome(state.homeDir);
 	runHomeMigrations(state.homeDir);
+	const previousPlatformVersion = readSkeletonVersion(state.homeDir);
 	const generation = snapshotCurrentState(state);
+	advanceManagedImageVersions(state, previousPlatformVersion);
 	await applyHome(state);
 	await reconcileCore(state, { activateServices });
 	return generation;

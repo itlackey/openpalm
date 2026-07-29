@@ -19,7 +19,12 @@ RUN mkdir -p /opt/openpalm/local-artifacts /opt/openpalm/tools \
     && (cd /opt/openpalm/local-src/packages/portal-sdk && bun pm pack --destination /opt/openpalm/local-artifacts --quiet) \
     && (cd /opt/openpalm/local-src/packages/portal-discord && bun pm pack --destination /opt/openpalm/local-artifacts --quiet) \
     && (cd /opt/openpalm/local-src/packages/portal-slack && bun pm pack --destination /opt/openpalm/local-artifacts --quiet) \
-    && (cd /opt/openpalm/tools && bun add /opt/openpalm/local-artifacts/*.tgz --production) \
+    && SDK_ARCHIVE=$(printf '%s' /opt/openpalm/local-artifacts/openpalm-portal-sdk-*.tgz) \
+    && DISCORD_ARCHIVE=$(printf '%s' /opt/openpalm/local-artifacts/openpalm-discord-portal-*.tgz) \
+    && SLACK_ARCHIVE=$(printf '%s' /opt/openpalm/local-artifacts/openpalm-slack-portal-*.tgz) \
+    && printf '{"private":true,"dependencies":{"@openpalm/portal-sdk":"file:%s","@openpalm/discord-portal":"file:%s","@openpalm/slack-portal":"file:%s"},"overrides":{"@openpalm/portal-sdk":"file:%s"}}\n' \
+         "$SDK_ARCHIVE" "$DISCORD_ARCHIVE" "$SLACK_ARCHIVE" "$SDK_ARCHIVE" > /opt/openpalm/tools/package.json \
+    && (cd /opt/openpalm/tools && bun install --production) \
     && rm -rf /opt/openpalm/local-src /opt/openpalm/local-artifacts
 
 COPY containers/portal/portal-entrypoint.ts /app/portal-entrypoint.ts

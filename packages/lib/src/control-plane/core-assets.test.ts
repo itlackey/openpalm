@@ -3,7 +3,7 @@
  * the release skeleton on every install/update (constitution §1), backing up a
  * changed copy first. Unchanged files are skipped. User trees, data/, and state/
  * are NEVER touched here — they are seeded once by applyHomeSeed's
- * skip-existing copy (covered in ui-assets.test.ts), so they are not tested here.
+ * skip-existing copy, so they are not tested here.
  */
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync } from "node:fs";

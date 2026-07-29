@@ -5,7 +5,7 @@
  * is snapshotted to OP_HOME/data/rollback/. On deploy failure
  * (or manual `openpalm rollback`), the snapshot is restored.
  */
-import { mkdirSync, copyFileSync, cpSync, existsSync, readFileSync, rmSync, writeFileSync, renameSync, statSync } from "node:fs";
+import { mkdirSync, copyFileSync, cpSync, existsSync, readFileSync, readdirSync, rmSync, writeFileSync, renameSync, statSync } from "node:fs";
 import { join, dirname } from "node:path";
 import type { ControlPlaneState } from "./types.js";
 import { resolveRollbackDir, resolveBackupsDir } from "./home.js";
@@ -20,6 +20,7 @@ const SNAPSHOT_FILES = [
   "state/stack.env",
   "config/stack/custom.compose.yml",
   "knowledge/secrets/auth.json",
+  ".skeleton-version",
 ];
 const SYSTEM_TREE = "system";
 
@@ -31,8 +32,11 @@ const RESTORE_FILES = SNAPSHOT_FILES.filter((rel) => rel !== "knowledge/secrets/
 
 const SNAPSHOT_TS_FILE = '.snapshot-ts';
 const SNAPSHOT_CURRENT_FILE = '.snapshot-current';
+const FLAT_SNAPSHOT_GENERATION = '.';
 export type SnapshotGeneration = string;
 let snapshotSequence = 0;
+const SNAPSHOT_GENERATIONS_KEPT = 3;
+const GENERATION_PATTERN = /^generation-(\d+)-\d+-\d+$/;
 
 /**
  * Copy a file if it exists, creating parent directories as needed.
@@ -53,14 +57,15 @@ function safeCopyTree(src: string, dest: string): void {
  * Save the current live configuration files to the rollback directory.
  * Also snapshots the complete lifecycle-owned system tree.
  */
-export function snapshotCurrentState(state: ControlPlaneState): SnapshotGeneration {
+export function snapshotCurrentState(
+  state: ControlPlaneState,
+  options: { activate?: boolean } = {},
+): SnapshotGeneration {
   const rollbackDir = resolveRollbackDir();
   mkdirSync(rollbackDir, { recursive: true });
   const generation = `generation-${Date.now()}-${process.pid}-${++snapshotSequence}`;
   const stagingDir = join(rollbackDir, `.staging-${generation}`);
   const generationDir = join(rollbackDir, generation);
-  rmSync(join(rollbackDir, SNAPSHOT_CURRENT_FILE), { force: true });
-  rmSync(join(rollbackDir, SNAPSHOT_TS_FILE), { force: true });
   for (const rel of [...SNAPSHOT_FILES, SYSTEM_TREE]) {
     const active = join(rollbackDir, rel);
     if (existsSync(active) && (statSync(active).mode & 0o222) === 0) {
@@ -84,24 +89,44 @@ export function snapshotCurrentState(state: ControlPlaneState): SnapshotGenerati
     `${new Date().toISOString()}\n`,
   );
   renameSync(stagingDir, generationDir);
-  // Keep the historical active-snapshot layout for operators and older tools,
-  // but rebuild it from the generation so retired files cannot survive.
-  for (const rel of SNAPSHOT_FILES) {
-    rmSync(join(rollbackDir, rel), { force: true, recursive: true });
-    safeCopy(join(generationDir, rel), join(rollbackDir, rel));
+  if (options.activate !== false) {
+    // Keep the historical active-snapshot layout for operators and older tools,
+    // but rebuild it from the generation so retired files cannot survive.
+    for (const rel of SNAPSHOT_FILES) {
+      rmSync(join(rollbackDir, rel), { force: true, recursive: true });
+      safeCopy(join(generationDir, rel), join(rollbackDir, rel));
+    }
+    rmSync(join(rollbackDir, SYSTEM_TREE), { force: true, recursive: true });
+    safeCopyTree(join(generationDir, SYSTEM_TREE), join(rollbackDir, SYSTEM_TREE));
+    const currentTmp = join(rollbackDir, `${SNAPSHOT_CURRENT_FILE}.tmp`);
+    writeFileSync(currentTmp, `${generation}\n`);
+    renameSync(currentTmp, join(rollbackDir, SNAPSHOT_CURRENT_FILE));
+    writeFileSync(join(rollbackDir, SNAPSHOT_TS_FILE), `${new Date().toISOString()}\n`);
   }
-  rmSync(join(rollbackDir, SYSTEM_TREE), { force: true, recursive: true });
-  safeCopyTree(join(generationDir, SYSTEM_TREE), join(rollbackDir, SYSTEM_TREE));
-  writeFileSync(join(rollbackDir, SNAPSHOT_CURRENT_FILE), `${generation}\n`);
-  writeFileSync(join(rollbackDir, SNAPSHOT_TS_FILE), `${new Date().toISOString()}\n`);
+  const generations = readdirSync(rollbackDir, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory() && GENERATION_PATTERN.test(entry.name))
+    .sort((a, b) => b.name.localeCompare(a.name, undefined, { numeric: true }));
+  for (const entry of generations.slice(SNAPSHOT_GENERATIONS_KEPT)) {
+    rmSync(join(rollbackDir, entry.name), { recursive: true, force: true });
+  }
   return generation;
 }
 
-function resolveGeneration(generation?: SnapshotGeneration): string {
+function resolveGeneration(generation?: SnapshotGeneration): string | null {
   if (generation) return generation;
-  const current = readFileSync(join(resolveRollbackDir(), SNAPSHOT_CURRENT_FILE), "utf-8").trim();
-  if (!/^generation-\d+-\d+-\d+$/.test(current)) throw new Error("No rollback snapshot available");
-  return current;
+  const rollbackDir = resolveRollbackDir();
+  try {
+    const current = readFileSync(join(rollbackDir, SNAPSHOT_CURRENT_FILE), "utf-8").trim();
+    if (GENERATION_PATTERN.test(current)) return current;
+  } catch { /* fall through to the shipped flat snapshot layout */ }
+  if (existsSync(join(rollbackDir, SNAPSHOT_TS_FILE))) return null;
+  throw new Error("No rollback snapshot available");
+}
+
+function resolveSnapshotDir(generation?: SnapshotGeneration): string {
+  const rollbackDir = resolveRollbackDir();
+  const resolved = resolveGeneration(generation);
+  return resolved ? join(rollbackDir, resolved) : rollbackDir;
 }
 
 /**
@@ -114,8 +139,7 @@ function resolveGeneration(generation?: SnapshotGeneration): string {
  * but is still backed up here for safety.
  */
 export function restoreSnapshot(state: ControlPlaneState, generation?: SnapshotGeneration): void {
-  const rollbackDir = resolveRollbackDir();
-  const snapshotDir = join(rollbackDir, resolveGeneration(generation));
+  const snapshotDir = resolveSnapshotDir(generation);
   if (!existsSync(join(snapshotDir, SNAPSHOT_TS_FILE))) throw new Error("No rollback snapshot available");
 
   const preRollbackDir = join(resolveBackupsDir(), `${timestampDirName()}-pre-rollback`);
@@ -128,8 +152,12 @@ export function restoreSnapshot(state: ControlPlaneState, generation?: SnapshotG
   for (const rel of RESTORE_FILES) {
     const src = join(snapshotDir, rel);
     const dest = join(state.homeDir, rel);
-    rmSync(dest, { force: true, recursive: true });
-    safeCopy(src, dest);
+    if (existsSync(src)) {
+      rmSync(dest, { force: true, recursive: true });
+      safeCopy(src, dest);
+    } else if (rel === '.skeleton-version') {
+      rmSync(dest, { force: true });
+    }
   }
   const liveSystem = join(state.homeDir, SYSTEM_TREE);
   rmSync(liveSystem, { recursive: true, force: true });
@@ -141,8 +169,7 @@ export function restoreSnapshot(state: ControlPlaneState, generation?: SnapshotG
  */
 export function hasSnapshot(): boolean {
   try {
-    const generation = resolveGeneration();
-    return existsSync(join(resolveRollbackDir(), generation, SNAPSHOT_TS_FILE));
+    return existsSync(join(resolveSnapshotDir(), SNAPSHOT_TS_FILE));
   } catch {
     return false;
   }
@@ -158,5 +185,5 @@ export function snapshotTimestamp(): string | null {
 }
 
 export function currentSnapshotGeneration(): SnapshotGeneration | null {
-  try { return resolveGeneration(); } catch { return null; }
+  try { return resolveGeneration() ?? FLAT_SNAPSHOT_GENERATION; } catch { return null; }
 }

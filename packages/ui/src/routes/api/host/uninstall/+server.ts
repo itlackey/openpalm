@@ -32,17 +32,35 @@ export const POST: RequestHandler = async (event) => {
       // Stop Docker containers first
       const dockerCheck = await checkDocker();
       if (dockerCheck.ok) {
-        const renameTeardown = await teardownRenamedProject(state);
+        let renameTeardown: Awaited<ReturnType<typeof teardownRenamedProject>>;
+        try {
+          renameTeardown = await teardownRenamedProject(state);
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          logger.error('previous project teardown verification failed', { requestId, error: message });
+          return errorResponse(409, 'uninstall_teardown_failed', message, {}, requestId);
+        }
         if (renameTeardown.blocked) {
+          logger.error('previous project teardown blocked uninstall', {
+            requestId,
+            warning: renameTeardown.warning,
+          });
           return errorResponse(
-            502,
-            'project_rename_teardown_failed',
-            renameTeardown.warning ?? 'Failed to stop the previous project',
+            409,
+            'uninstall_teardown_failed',
+            renameTeardown.warning ?? 'The previous OpenPalm project could not be stopped.',
             {},
             requestId,
           );
         }
-        await activateComposeCommand(state, ['down'], { lock });
+        try {
+          await activateComposeCommand(state, ['down'], { lock });
+        } catch (err) {
+          logger.warn('compose teardown failed during uninstall; continuing', {
+            requestId,
+            error: err instanceof Error ? err.message : String(err),
+          });
+        }
       }
 
       logger.info("stopping containers and applying uninstall", { requestId, dockerAvailable: dockerCheck.ok });

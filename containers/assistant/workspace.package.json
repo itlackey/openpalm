@@ -1,0 +1,8 @@
+{
+  "name": "openpalm-assistant-image-build",
+  "private": true,
+  "workspaces": [
+    "packages/lib",
+    "packages/ui"
+  ]
+}

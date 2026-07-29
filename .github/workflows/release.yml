@@ -76,6 +76,7 @@ jobs:
           VERSION_OVERRIDE: ${{ needs.compute-version.outputs.version }}
         run: |
           node scripts/bump-unit.mjs
+          UNIT=electron node scripts/bump-unit.mjs
           bun install --lockfile-only
       - name: Commit and bundle candidate
         id: bundle

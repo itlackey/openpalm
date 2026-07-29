@@ -13,6 +13,16 @@ function raw(tag: string, assets: string[] = [], prerelease = false): RawGitHubR
 const ELECTRON_ASSET = 'OpenPalm-0.12.5.dmg';
 
 describe('selectInstallableReleases', () => {
+  test('returns bare semver product releases with installer assets', () => {
+    const releases = selectInstallableReleases([
+      raw('0.13.0', [ELECTRON_ASSET]),
+      raw('0.14.0-beta.2', [ELECTRON_ASSET], true),
+    ]);
+
+    expect(releases.map((r) => r.tag)).toEqual(['0.13.0', '0.14.0-beta.2']);
+    expect(releases[1]?.prerelease).toBe(true);
+  });
+
   test('returns only platform releases with Electron installer assets', () => {
     const releases = selectInstallableReleases([
       raw('platform-0.12.5', [ELECTRON_ASSET]),

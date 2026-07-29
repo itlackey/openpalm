@@ -1,11 +1,20 @@
 import { describe, expect, test } from 'bun:test';
-import { readFileSync, readdirSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 const ROOT = join(import.meta.dir, '..');
 const WORKFLOWS = join(ROOT, '.github', 'workflows');
 const release = readFileSync(join(WORKFLOWS, 'release.yml'), 'utf8');
 const extensions = readFileSync(join(WORKFLOWS, 'publish-extensions.yml'), 'utf8');
+const extensionWorkflow = Bun.YAML.parse(extensions) as {
+	jobs: { publish: { steps: Array<{ name?: string; run?: string }> } };
+};
+
+function extensionStep(name: string): string {
+	const run = extensionWorkflow.jobs.publish.steps.find((step) => step.name === name)?.run;
+	if (!run) throw new Error(`Missing extension workflow step: ${name}`);
+	return run;
+}
 
 describe('0.13 release workflow', () => {
 	test('all workflows parse as YAML', () => {
@@ -46,17 +55,75 @@ describe('0.13 release workflow', () => {
 	});
 
 	test('extensions are tested and publish the shared SDK before adapters', () => {
-		expect(extensions).toContain('bun test packages/guardian packages/portal-sdk packages/portal-discord packages/portal-slack');
+		expect(extensions).toContain(
+			'bun test packages/guardian packages/portal-sdk packages/portal-discord packages/portal-slack'
+		);
 		expect(extensions.indexOf('openpalm-portal-sdk-*.tgz')).toBeLessThan(
 			extensions.indexOf('openpalm-discord-portal-*.tgz')
 		);
 	});
 
+	test('extension version validation script executes for each release unit', () => {
+		for (const [unit, manifest] of [
+			['guardian', 'packages/guardian/package.json'],
+			['portals', 'packages/portal-sdk/package.json']
+		]) {
+			const version = JSON.parse(readFileSync(join(ROOT, manifest), 'utf8')).version;
+			const result = Bun.spawnSync(
+				['bash', '-euo', 'pipefail', '-c', extensionStep('Validate extension versions')],
+				{
+					cwd: ROOT,
+					env: { ...process.env, UNIT: unit, VERSION: version },
+					stderr: 'pipe'
+				}
+			);
+			expect(result.exitCode, result.stderr.toString()).toBe(0);
+		}
+	});
+
 	test('portal image packs adapters inside the root workspace', () => {
 		const dockerfile = readFileSync(join(ROOT, 'containers', 'portal', 'Dockerfile'), 'utf8');
-		expect(dockerfile).toContain('COPY containers/portal/workspace.package.json /opt/openpalm/local-src/package.json');
+		expect(dockerfile).toContain(
+			'COPY containers/portal/workspace.package.json /opt/openpalm/local-src/package.json'
+		);
 		expect(dockerfile).toContain('bun install --lockfile-only --ignore-scripts');
 		expect(dockerfile).toContain('/opt/openpalm/local-src/packages/portal-discord');
+	});
+
+	test('assistant image packs UI inside a candidate-local workspace', () => {
+		const dockerfile = readFileSync(join(ROOT, 'containers', 'assistant', 'Dockerfile'), 'utf8');
+		const workspace = JSON.parse(
+			readFileSync(join(ROOT, 'containers', 'assistant', 'workspace.package.json'), 'utf8')
+		);
+		expect(workspace.workspaces).toEqual(['packages/lib', 'packages/ui']);
+		expect(dockerfile).toContain('COPY packages/lib /opt/openpalm/local-src/packages/lib');
+		expect(dockerfile).toContain('bun install --lockfile-only --ignore-scripts');
+	});
+
+	test('product candidate stamps both Electron release manifests', () => {
+		expect(release).toContain('UNIT=electron node scripts/bump-unit.mjs');
+		const groups = JSON.parse(
+			readFileSync(join(ROOT, '.github/release-package-groups.json'), 'utf8')
+		);
+		expect(groups.units.electron).toEqual([
+			'packages/electron/package.json',
+			'packages/electron/admin-tools/package.json'
+		]);
+	});
+
+	test('dev setup supplies the exact managed image pins', () => {
+		const source = readFileSync(join(ROOT, 'scripts/dev-setup.sh'), 'utf8');
+		expect(source).toContain('OP_ASSISTANT_VERSION OP_GUARDIAN_VERSION OP_PORTAL_VERSION');
+		expect(source).toContain('printf \'%s=dev\\n\' "$image_var"');
+	});
+
+	test('upgrade smoke sources current-era skeletons from checksummed host assets', () => {
+		const fixture = readFileSync(join(ROOT, 'scripts/rootless-smoke-fixture.sh'), 'utf8');
+		expect(fixture).toContain('openpalm-host-assets-${version}.tar.gz');
+		expect(fixture).toContain('checksums-sha256.txt');
+		expect(fixture).toContain(
+			'tar xzf "${workdir}/${asset}" -C "$home" --strip-components=1 skeleton'
+		);
 	});
 
 	test('live publication is protected and permissions are job scoped', () => {

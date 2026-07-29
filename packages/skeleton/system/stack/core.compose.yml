@@ -186,8 +186,8 @@ services:
       - ui_login_password
     networks: [ assistant_net ]
     # Probe the UI co-process too, not just OpenCode — a boot-time
-    # `npm install @openpalm/ui` failure would otherwise leave the published UI
-    # port with nothing listening while this healthcheck still reported healthy.
+    # UI startup failure would otherwise leave the published UI port with
+    # nothing listening while this healthcheck still reported healthy.
     # Skipped (not failed) when the UI build is missing or its supervisor gives
     # up after a crash loop (marker file /tmp/openpalm-ui-skip).
     #

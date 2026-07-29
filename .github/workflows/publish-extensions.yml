@@ -5,6 +5,13 @@ name: Publish Extensions
 on:
   workflow_dispatch:
     inputs:
+      unit:
+        description: 'Extension release unit'
+        required: true
+        type: choice
+        options:
+          - guardian
+          - portals
       version:
         description: 'Exact extension version'
         required: true
@@ -32,36 +39,51 @@ jobs:
         with:
           node-version: '24'
           registry-url: https://registry.npmjs.org
+      - run: npm install -g npm@latest
       - uses: oven-sh/setup-bun@v2
       - name: Install extension source
         run: bun install --frozen-lockfile
       - name: Validate extension versions
         env:
           VERSION: ${{ inputs.version }}
+          UNIT: ${{ inputs.unit }}
         run: |
           node --input-type=module <<'NODE'
           import { readFileSync } from 'node:fs';
           const version = process.env.VERSION;
-          for (const file of ['packages/guardian/package.json', 'packages/portal-sdk/package.json', 'packages/portal-discord/package.json', 'packages/portal-slack/package.json']) {
+          const files = process.env.UNIT === 'guardian'
+            ? ['packages/guardian/package.json']
+            : ['packages/portal-sdk/package.json', 'packages/portal-discord/package.json', 'packages/portal-slack/package.json'];
+          for (const file of files) {
             const actual = JSON.parse(readFileSync(file, 'utf8')).version;
             if (actual !== version) throw new Error(`${file} is ${actual}, expected ${version}`);
-           }
-           NODE
+          }
+          NODE
       - name: Test extensions
         run: bun test packages/guardian packages/portal-sdk packages/portal-discord packages/portal-slack
       - name: Pack extensions
+        env:
+          UNIT: ${{ inputs.unit }}
         run: |
           mkdir -p .extension-packages
-          for dir in packages/guardian packages/portal-sdk packages/portal-discord packages/portal-slack; do
+          if [ "${UNIT}" = guardian ]; then
+            dirs=(packages/guardian)
+          else
+            dirs=(packages/portal-sdk packages/portal-discord packages/portal-slack)
+          fi
+          for dir in "${dirs[@]}"; do
             (cd "${dir}" && bun pm pack --destination "${GITHUB_WORKSPACE}/.extension-packages")
           done
       - name: Publish extensions independently
         if: inputs.dry_run != true
         working-directory: .extension-packages
+        env:
+          VERSION: ${{ inputs.version }}
+          UNIT: ${{ inputs.unit }}
         run: |
           set -euo pipefail
           tag=latest
-          case '${{ inputs.version }}' in *-*) tag=next ;; esac
+          case "${VERSION}" in *-*) tag=next ;; esac
           publish_package() {
             archive=$1
             spec=$(tar -xOf "${archive}" package/package.json | node -e "let s=''; process.stdin.on('data',d=>s+=d).on('end',()=>{const p=JSON.parse(s); console.log(p.name+'@'+p.version)})")
@@ -72,7 +94,10 @@ jobs:
               npm publish --provenance --access public --tag "${tag}" "${archive}"
             fi
           }
-          publish_package openpalm-portal-sdk-*.tgz
-          publish_package openpalm-guardian-*.tgz
-          publish_package openpalm-discord-portal-*.tgz
-          publish_package openpalm-slack-portal-*.tgz
+          if [ "${UNIT}" = guardian ]; then
+            publish_package openpalm-guardian-*.tgz
+          else
+            publish_package openpalm-portal-sdk-*.tgz
+            publish_package openpalm-discord-portal-*.tgz
+            publish_package openpalm-slack-portal-*.tgz
+          fi

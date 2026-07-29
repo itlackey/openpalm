@@ -273,10 +273,7 @@ jobs:
           set -euo pipefail
           # Releases are by deployment UNIT (release-package-groups.json -> units).
           # Each unit's manifests must share ONE version; units may drift from each
-          # other (a host-only or portals-only release is legitimate). The host
-          # unit lists package.json (root) first, so the host base == root version,
-          # and the setup-script versions are anchored to root.
-          ROOT_VERSION=$(jq -r .version package.json)
+          # other (a host-only or portals-only release is legitimate).
           errors=0
 
           for unit in $(jq -r '.units | keys[]' .github/release-package-groups.json); do

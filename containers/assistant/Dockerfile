@@ -243,9 +243,12 @@ ENV PLATFORM_VERSION=${PLATFORM_VERSION}
 # The compiled candidate is copied from the checkout and packed locally. This
 # keeps live builds and coordinated dry runs on the same path without requiring
 # the candidate UI version to have been published first.
-COPY packages/ui /opt/openpalm/local-src/ui
+COPY containers/assistant/workspace.package.json /opt/openpalm/local-src/package.json
+COPY packages/lib /opt/openpalm/local-src/packages/lib
+COPY packages/ui /opt/openpalm/local-src/packages/ui
 RUN mkdir -p /opt/openpalm/local-artifacts \
-    && (cd /opt/openpalm/local-src/ui && bun pm pack --destination /opt/openpalm/local-artifacts --quiet) \
+    && (cd /opt/openpalm/local-src && bun install --lockfile-only --ignore-scripts) \
+    && (cd /opt/openpalm/local-src/packages/ui && bun pm pack --destination /opt/openpalm/local-artifacts --quiet) \
     && npm install --prefix /opt/openpalm/ui /opt/openpalm/local-artifacts/openpalm-ui-*.tgz \
          --omit=dev --no-fund --no-audit \
     && rm -rf /opt/openpalm/local-src /opt/openpalm/local-artifacts \

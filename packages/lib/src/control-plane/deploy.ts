@@ -12,7 +12,8 @@ import {
 	detectExistingProject,
 	isComposePsRowHealthy,
 	parseComposePsRows,
-	resolveComposeProjectName
+	resolveComposeProjectName,
+	type ApplyStackResult
 } from './docker.js';
 import { activateStack } from './activation.js';
 import { reapAndLogRetiredVolumes } from './image-volume-retention.js';
@@ -37,9 +38,9 @@ import { captureRunningImageIds, restoreRunningImageIds, type RunningImageSnapsh
 
 const deployLogger = createLogger('deploy');
 
-function restoreDeployFiles(state: ControlPlaneState): void {
+function restoreDeployFiles(state: ControlPlaneState, generation?: string): void {
 	try {
-		restoreSnapshot(state);
+		restoreSnapshot(state, generation);
 	} catch (error) {
 		deployLogger.error('failed to restore deploy snapshot', {
 			error: error instanceof Error ? error.message : String(error)
@@ -402,15 +403,24 @@ export async function runDeploy(
 
 		const imageTag = resolveImageTag(state);
 		const isDevTag = imageTag.startsWith('dev');
-		const stackResult = await activateStack(
-			state,
-			{ kind: 'all' },
-			{
-				pull: isDevTag ? 'missing' : 'always',
-				healthTimeoutMs: 5 * 60_000
-			},
-			{ lock }
-		);
+		let stackResult: ApplyStackResult;
+		try {
+			stackResult = await activateStack(
+				state,
+				{ kind: 'all' },
+				{
+					pull: isDevTag ? 'missing' : 'always',
+					healthTimeoutMs: 5 * 60_000
+				},
+				{ lock }
+			);
+		} catch (error) {
+			restoreDeployFiles(state, generation);
+			progress.deployError = error instanceof Error ? error.message : String(error);
+			progress.deploying = false;
+			emitProgress(options, progress);
+			return progress;
+		}
 
 		if (!stackResult.ok) {
 			// ONE `compose ps` refreshes the per-service display labels and splits the

@@ -8,18 +8,19 @@ import {
   UI_RUNTIME_CONFIG_ENV,
 } from '@openpalm/lib';
 
-function isRetiredGeneratedAssistantUrl(
+function isGeneratedAssistantUrlForPort(
   value: string | undefined,
   bindAddress: string | undefined,
+  port: string | undefined,
 ): boolean {
-  if (!value) return false;
+  if (!value || !port) return false;
   try {
     const url = new URL(value);
     const generatedHost = url.hostname === '127.0.0.1'
       || url.hostname === 'localhost'
       || (!!bindAddress && url.hostname === bindAddress);
     return url.protocol === 'http:'
-      && url.port === '3800'
+      && url.port === port
       && generatedHost
       && (url.pathname === '' || url.pathname === '/');
   } catch {
@@ -28,15 +29,8 @@ function isRetiredGeneratedAssistantUrl(
 }
 
 /**
- * Reconcile the corrected port contract in the updatable UI control plane. A
- * successful migration refreshes the process-scoped browser connection without
- * mutating the shared UI build artifact.
- *
- * Goes through `runHomeMigrations` rather than calling the port migration
- * directly: the migrations are gated on the recorded OP_HOME schema version, so
- * an already-migrated home does nothing here, and a home that still needs the
- * env-file consolidation gets that too — calling the port migration alone would
- * target a file the consolidation has since removed.
+ * Reconcile persisted and legacy port values into the supervised UI process.
+ * This is process-local: locked lifecycle paths own on-disk home migrations.
  */
 export function reconcileSupervisedPortContract(
   homeDir: string,
@@ -56,16 +50,21 @@ export function reconcileSupervisedPortContract(
     migrated.OP_ASSISTANT_PORT = '3810';
     migrated.OP_UI_PORT = '3800';
   }
-  if (!env.OP_ASSISTANT_PORT || env.OP_ASSISTANT_PORT === '3800') {
+  const previousAssistantPort = env.OP_ASSISTANT_PORT;
+  if (migrated.OP_ASSISTANT_PORT && (!env.OP_ASSISTANT_PORT || env.OP_ASSISTANT_PORT === '3800')) {
     env.OP_ASSISTANT_PORT = migrated.OP_ASSISTANT_PORT;
   }
-  if (!env.OP_UI_PORT || env.OP_UI_PORT === '3810') {
+  if (migrated.OP_UI_PORT && (!env.OP_UI_PORT || env.OP_UI_PORT === '3810')) {
     env.OP_UI_PORT = migrated.OP_UI_PORT;
   }
   if (
     env.OP_UI_SUPERVISOR === 'electron'
-    && repairedDefaults
-    && isRetiredGeneratedAssistantUrl(env.OP_OPENCODE_URL, env.OP_ASSISTANT_BIND_ADDRESS)
+    && previousAssistantPort !== env.OP_ASSISTANT_PORT
+    && isGeneratedAssistantUrlForPort(
+      env.OP_OPENCODE_URL,
+      env.OP_ASSISTANT_BIND_ADDRESS,
+      previousAssistantPort,
+    )
   ) {
     delete env.OP_OPENCODE_URL;
   }

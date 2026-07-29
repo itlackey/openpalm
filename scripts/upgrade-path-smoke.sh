@@ -5,19 +5,18 @@ set -euo pipefail
 #
 # The unit suites build homes from the CURRENT skeleton, so they can only ever
 # prove we handle a home this build created. This one seeds homes from
-# PUBLISHED skeleton versions (npm keeps every release immutably) and upgrades
+# PUBLISHED release host-assets (with npm fallback for older eras) and upgrades
 # them, plus proves the #585 retired-volume reaper removes real Docker volumes.
 #
-# Nothing here is checked in or hand-maintained: the historical fixtures come
-# from npm, and each release publishes another one, so the pool of testable
-# eras grows on its own.
+# Nothing here is checked in or hand-maintained: each release adds another
+# immutable host-assets fixture, so the pool of testable eras grows on its own.
 #
 # Needs network (npm) and Docker. Run explicitly:
 #     bash scripts/upgrade-path-smoke.sh
 #
 # Env:
 #   OP_UPGRADE_SMOKE_HOME     Override the isolated root (must stay under the repo).
-#   OP_UPGRADE_SMOKE_VERSIONS Space-separated skeleton versions to test.
+#   OP_UPGRADE_SMOKE_VERSIONS Space-separated product release versions to test.
 #   OP_UPGRADE_SMOKE_KEEP=1   Leave the fixtures on disk for inspection.
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -70,12 +69,12 @@ mkdir -p "$SMOKE_ROOT"
 
 # ── 1. Migration: upgrade a home seeded from each published era ───────────────
 
-echo "Upgrading homes seeded from published skeleton versions..."
+echo "Upgrading homes seeded from published release assets..."
 for version in "${VERSIONS[@]}"; do
-  echo "- @openpalm/skeleton@${version}"
+  echo "- OpenPalm ${version}"
   home="${SMOKE_ROOT}/home-${version}"
 
-  if ! smoke_copy_skeleton_version "$home" "$version"; then
+  if ! smoke_copy_release_skeleton "$home" "$version"; then
     fail "could not seed ${version} (offline or unpublished) — skipping"
     continue
   fi

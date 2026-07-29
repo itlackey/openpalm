@@ -21,7 +21,7 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { execFile } from "node:child_process";
 import { parseEnvFile } from "./env.js";
-import { privateSecretsDir, stackDirFor, stackEnvFile } from "./home.js";
+import { legacyKnowledgeStackEnvFile, legacyStateEnvFile, privateSecretsDir, stackDirFor, stackEnvFile } from "./home.js";
 import { checkDocker, checkDockerCompose, dockerBin } from "./docker.js";
 
 export type LocalStackState =
@@ -178,7 +178,13 @@ export function classifyLocalInstall(stackDir: string, homeDir: string): "not_in
   const hasCompose = existsSync(join(stackDir, "core.compose.yml"));
   // OP_SETUP_COMPLETE lives in state/ (constitution §1); merge state OVER legacy so
   // installs that recorded it in the legacy stack.env still classify as installed.
-  const env = parseEnvFile(stackEnvFile(homeDir));
+  const currentEnv = parseEnvFile(stackEnvFile(homeDir));
+  const env = Object.keys(currentEnv).length > 0
+    ? currentEnv
+    : {
+        ...parseEnvFile(legacyKnowledgeStackEnvFile(homeDir)),
+        ...parseEnvFile(legacyStateEnvFile(homeDir)),
+      };
   if (!hasCompose && env.OP_SETUP_COMPLETE !== "true") return "not_installed";
   if (env.OP_SETUP_COMPLETE === "true") return "installed";
   const secrets = privateSecretsDir(homeDir);

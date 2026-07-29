@@ -60,16 +60,8 @@ export default defineConfig(({ mode }) => {
     plugins: [sveltekit(), isolateVitestBrowserDynamicImports(), devtoolsJson()],
     envDir: rootDir,
     ssr: {
-      // LOAD-BEARING for the npm publish: @openpalm/ui ships `files:["build"]`
-      // with ZERO runtime `dependencies` (they live in devDependencies). That is
-      // only safe because `noExternal: true` below inlines every dep into the
-      // server chunks. If you ever externalize a runtime dep here, you MUST add
-      // it back to `dependencies` in package.json or the published bundle will
-      // reference a module that isn't installed on user machines.
-      //
-      // In PRODUCTION builds we bundle every SSR dep into the server chunks
-      // so the build/ directory is self-contained and can be deployed
-      // without node_modules (required for state/ui/ deployment).
+      // The GitHub host-assets archive and assistant image carry build/ without
+      // node_modules, so production builds must inline every SSR dependency.
       //
       // In DEV we externalize most deps — Node handles them natively via
       // require interop, and Vite's ESM-only module runner doesn't have

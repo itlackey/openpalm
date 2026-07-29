@@ -11,6 +11,7 @@ const composeDownMock = vi.fn<() => Promise<void>>();
 const checkDockerMock =
 	vi.fn<() => Promise<{ ok: boolean; stdout: string; stderr: string; code: number }>>();
 const applyUninstallMock = vi.fn<() => Promise<{ stopped: string[] }>>();
+const teardownRenamedProjectMock = vi.fn<() => Promise<{ blocked: boolean; warning?: string }>>();
 
 vi.mock('@openpalm/lib', async () => {
 	const actual = await vi.importActual<typeof import('@openpalm/lib')>('@openpalm/lib');
@@ -19,6 +20,7 @@ vi.mock('@openpalm/lib', async () => {
 		activateComposeCommand: (...args: unknown[]) => composeDownMock(...(args as [])),
 		checkDocker: (...args: unknown[]) => checkDockerMock(...(args as [])),
 		applyUninstall: (...args: unknown[]) => applyUninstallMock(...(args as [])),
+		teardownRenamedProject: (...args: unknown[]) => teardownRenamedProjectMock(...(args as [])),
 		buildComposeOptions: () => ({ files: ['/tmp/fake/compose.yml'], envFiles: [] })
 	};
 });
@@ -48,6 +50,7 @@ beforeEach(() => {
 	checkDockerMock.mockResolvedValue({ ok: true, stdout: '24.0.0', stderr: '', code: 0 });
 	composeDownMock.mockResolvedValue(undefined);
 	applyUninstallMock.mockResolvedValue({ stopped: ['assistant', 'guardian'] });
+	teardownRenamedProjectMock.mockResolvedValue({ blocked: false });
 });
 
 afterEach(() => {
@@ -85,6 +88,33 @@ describe('POST /api/host/uninstall', () => {
 		expect(body.dockerAvailable).toBe(false);
 		expect(composeDownMock).not.toHaveBeenCalled();
 		expect(applyUninstallMock).toHaveBeenCalledOnce();
+	});
+
+	test('continues uninstall when compose teardown fails its activation audit', async () => {
+		composeDownMock.mockRejectedValue(new Error('Refusing Compose down: secret-boundary audit failed'));
+
+		const res = await POST(makePostEvent());
+
+		expect(res.status).toBe(200);
+		expect(applyUninstallMock).toHaveBeenCalledOnce();
+	});
+
+	test('refuses to remove state while a renamed project is still running', async () => {
+		teardownRenamedProjectMock.mockResolvedValue({ blocked: true, warning: 'old project still running' });
+
+		const res = await POST(makePostEvent());
+
+		expect(res.status).toBe(409);
+		expect(applyUninstallMock).not.toHaveBeenCalled();
+	});
+
+	test('refuses to remove state when renamed-project verification throws', async () => {
+		teardownRenamedProjectMock.mockRejectedValue(new Error('docker inspect failed'));
+
+		const res = await POST(makePostEvent());
+
+		expect(res.status).toBe(409);
+		expect(applyUninstallMock).not.toHaveBeenCalled();
 	});
 
 	test('returns 500 uninstall_failed when applyUninstall throws', async () => {

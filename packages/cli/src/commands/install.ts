@@ -14,13 +14,13 @@ import {
 	runHomeMigrations,
 	hasMaterializedLocalInstall,
 	hasAnyStackEnvFile,
-	resolveBackupsDirFor
+	resolveBackupsDirFor,
+	resolveRuntimeFiles
 } from '@openpalm/lib';
 import { applyHomeSeed, seedUiBuild } from '@openpalm/lib';
 import {
 	backupOpenPalmHome,
 	pruneBackupDirs,
-	activateComposeCommand,
 	initializeStateSecrets,
 	ensureOpenCodeConfig,
 	ensureOpenCodeSystemConfig,
@@ -40,6 +40,7 @@ import {
 } from '@openpalm/lib';
 import { detectHostInfo } from '../lib/host-info.ts';
 import { ensureValidState } from '../lib/cli-state.ts';
+import { runComposeWithPreflight } from '../lib/cli-compose.ts';
 
 const logger = createLogger('cli:install');
 
@@ -233,9 +234,10 @@ export async function bootstrapInstall(options: InstallOptions): Promise<void> {
 		// host or a never-started install simply has nothing to bring down.
 		try {
 			const existingState = createState();
+			existingState.artifacts = resolveRuntimeFiles();
 			if (existingState.artifacts.compose) {
 				console.log('Stopping existing stack before backup...');
-				await activateComposeCommand(existingState, ['down']);
+				await runComposeWithPreflight(existingState, ['down']);
 			}
 		} catch (err) {
 			if (err instanceof Error && err.message.startsWith('Refusing Compose')) throw err;

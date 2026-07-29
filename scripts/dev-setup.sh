@@ -265,6 +265,13 @@ fi
 if ! grep -q '^OP_UI_PORT=' "$STACK_ENV"; then
 	printf 'OP_UI_PORT=4810\n' >>"$STACK_ENV"
 fi
+# Managed Compose requires immutable image pins even when compose.dev.yml
+# replaces the resulting image names with locally built :dev images.
+for image_var in OP_ASSISTANT_VERSION OP_GUARDIAN_VERSION OP_PORTAL_VERSION; do
+	if ! grep -q "^${image_var}=" "$STACK_ENV"; then
+		printf '%s=dev\n' "$image_var" >>"$STACK_ENV"
+	fi
+done
 # Migrate legacy OP_ADMIN_PORT → OP_HOST_UI_PORT (idempotent).
 # If only the old name exists, add the canonical name so consumers see it.
 if grep -q '^OP_ADMIN_PORT=' "$STACK_ENV" \

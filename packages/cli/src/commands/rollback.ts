@@ -70,7 +70,7 @@ export async function runRollbackAction(opts: { yes?: boolean } = {}): Promise<v
 		const targetGeneration = currentSnapshotGeneration() ?? undefined;
 		let preRollbackGeneration: string | undefined;
 		try {
-			preRollbackGeneration = snapshotCurrentState(rollbackState);
+			preRollbackGeneration = snapshotCurrentState(rollbackState, { activate: false });
 		} catch {
 			/* test seams and empty homes have no pre-image */
 		}
@@ -94,13 +94,22 @@ export async function runRollbackAction(opts: { yes?: boolean } = {}): Promise<v
 			// not pass the same apply/health gate, put the pre-rollback generation
 			// back and attempt to return the previously running stack.
 			if (preRollbackGeneration) {
-				restoreSnapshot(rollbackState, preRollbackGeneration);
-				const restoredState = ensureValidState();
-				await runComposeWithPreflight(
-					restoredState,
-					['up', '-d', '--wait', '--remove-orphans', ...managedServices],
-					lock
-				);
+				try {
+					restoreSnapshot(rollbackState, preRollbackGeneration);
+					const restoredState = ensureValidState();
+					const restoredServices = await buildManagedServices(restoredState);
+					await runComposeWithPreflight(
+						restoredState,
+						['up', '-d', '--wait', '--remove-orphans', ...restoredServices],
+						lock
+					);
+				} catch (recoveryError) {
+					const original = error instanceof Error ? error.message : String(error);
+					const recovery = recoveryError instanceof Error ? recoveryError.message : String(recoveryError);
+					throw new Error(`Rollback failed: ${original}. Restoring the previous stack also failed: ${recovery}`, {
+						cause: error
+					});
+				}
 			}
 			throw error;
 		}

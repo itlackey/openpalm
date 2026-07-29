@@ -393,6 +393,7 @@ describe('cli main', () => {
 
 		try {
 			await main(['install', '--force', '--no-start', '--file', specFile]);
+			expect(console.log).toHaveBeenCalledWith('Stopping existing stack before backup...');
 
 			const backupsDir = join(base, 'data', 'backups');
 			const backups = readdirSync(backupsDir).filter((name) => name !== '.gitkeep');
