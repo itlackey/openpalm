@@ -4,10 +4,7 @@
 // Product workspaces are source-only and use workspace:* references, so release
 // stamping changes only each manifest's own version. Used by bump-unit.mjs and
 // release workflows so there is exactly one place that writes that field.
-//
-// Usage: node scripts/set-version.mjs <path/to/package.json> <version>
 import { readFileSync, writeFileSync } from 'node:fs';
-import { pathToFileURL } from 'node:url';
 
 const PRERELEASE_IDENTIFIER = '(?:0|[1-9]\\d*|\\d*[A-Za-z-][0-9A-Za-z-]*)';
 
@@ -62,20 +59,4 @@ export function setVersion(file, version) {
   pkg.version = version;
   writeFileSync(file, `${JSON.stringify(pkg, null, 2)}\n`);
   return version;
-}
-
-// CLI entry — only when executed directly, not when imported by a test.
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  const [, , file, version] = process.argv;
-  if (!file || !version) {
-    console.error('Usage: set-version.mjs <package.json path> <version>');
-    process.exit(1);
-  }
-  try {
-    setVersion(file, version);
-    console.log(`  ${file} → ${version}`);
-  } catch (e) {
-    console.error(`Error: ${e instanceof Error ? e.message : String(e)}`);
-    process.exit(1);
-  }
 }

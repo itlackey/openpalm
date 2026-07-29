@@ -1,8 +1,9 @@
 import { describe, expect, test } from 'bun:test';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 
 const ROOT = join(import.meta.dir, '..');
+const WORKFLOWS = join(ROOT, '.github', 'workflows');
 
 type Manifest = {
 	private?: boolean;
@@ -46,6 +47,38 @@ describe('release package ownership', () => {
 			'packages/electron/admin-tools/package.json'
 		]);
 		expect(groups.units.platform).toContain('packages/skeleton/package.json');
+	});
+});
+
+describe('release workflows', () => {
+	test('all workflows parse as YAML', () => {
+		for (const file of readdirSync(WORKFLOWS).filter((name) => name.endsWith('.yml'))) {
+			expect(() => Bun.YAML.parse(readFileSync(join(WORKFLOWS, file), 'utf8'))).not.toThrow();
+		}
+	});
+
+	test('extension version validation script executes for each release unit', () => {
+		const extensionWorkflow = Bun.YAML.parse(
+			readFileSync(join(WORKFLOWS, 'publish-extensions.yml'), 'utf8')
+		) as {
+			jobs: { publish: { steps: Array<{ name?: string; run?: string }> } };
+		};
+		const run = extensionWorkflow.jobs.publish.steps.find(
+			(step) => step.name === 'Validate extension versions'
+		)?.run;
+		if (!run) throw new Error('Missing extension workflow step: Validate extension versions');
+		for (const [unit, manifest] of [
+			['guardian', 'packages/guardian/package.json'],
+			['portals', 'packages/portal-sdk/package.json']
+		]) {
+			const version = JSON.parse(readFileSync(join(ROOT, manifest), 'utf8')).version;
+			const result = Bun.spawnSync(['bash', '-euo', 'pipefail', '-c', run], {
+				cwd: ROOT,
+				env: { ...process.env, UNIT: unit, VERSION: version },
+				stderr: 'pipe'
+			});
+			expect(result.exitCode, result.stderr.toString()).toBe(0);
+		}
 	});
 });
 

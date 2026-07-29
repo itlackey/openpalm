@@ -71,9 +71,8 @@ jobs:
       - name: Stamp product candidate
         env:
           UNIT: platform
-          BUMP: patch
           STAMP: true
-          VERSION_OVERRIDE: ${{ needs.compute-version.outputs.version }}
+          VERSION: ${{ needs.compute-version.outputs.version }}
         run: |
           node scripts/bump-unit.mjs
           UNIT=electron node scripts/bump-unit.mjs
@@ -141,7 +140,6 @@ jobs:
 
   docker:
     needs: [compute-version, candidate, preflight]
-    if: always() && needs.preflight.result == 'success'
     strategy:
       fail-fast: false
       matrix:
@@ -159,8 +157,6 @@ jobs:
     permissions:
       contents: read
       id-token: write
-    outputs:
-      assistant_digest: ${{ steps.build.outputs.digest }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -225,7 +221,6 @@ jobs:
 
   cli:
     needs: [compute-version, candidate, preflight]
-    if: always() && needs.preflight.result == 'success'
     strategy:
       fail-fast: false
       matrix:
@@ -271,7 +266,6 @@ jobs:
 
   electron:
     needs: [candidate, preflight]
-    if: always() && needs.preflight.result == 'success'
     strategy:
       fail-fast: false
       matrix:
@@ -319,7 +313,6 @@ jobs:
 
   assemble-assets:
     needs: [compute-version, candidate, preflight, cli, electron]
-    if: always() && needs.preflight.result == 'success' && needs.cli.result == 'success' && needs.electron.result == 'success'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -373,7 +366,6 @@ jobs:
 
   release-source:
     needs: [compute-version, candidate, preflight, docker, assemble-assets]
-    if: always() && needs.preflight.result == 'success' && needs.docker.result == 'success' && needs.assemble-assets.result == 'success'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -417,7 +409,7 @@ jobs:
 
   tag-release:
     needs: [compute-version, candidate, release-source, assemble-assets]
-    if: always() && inputs.dry_run != true && needs.release-source.result == 'success' && needs.assemble-assets.result == 'success'
+    if: inputs.dry_run != true
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -459,7 +451,6 @@ jobs:
 
   publish-bootstrap:
     needs: [compute-version, tag-release]
-    if: always() && needs.tag-release.result == 'success'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -472,7 +463,6 @@ jobs:
         with:
           node-version: '24'
           registry-url: https://registry.npmjs.org
-      - run: npm install -g npm@latest
       - name: Verify matching public assets before npm
         env:
           VERSION: ${{ needs.compute-version.outputs.version }}

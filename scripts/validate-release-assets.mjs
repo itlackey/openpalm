@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-const dir = process.env.ASSET_DIR ?? 'dist';
+const dir = 'dist';
 const version = process.env.VERSION;
 if (!version) throw new Error('VERSION is required');
 
