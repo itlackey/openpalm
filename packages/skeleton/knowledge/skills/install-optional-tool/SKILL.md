@@ -1,6 +1,6 @@
 ---
 name: install-optional-tool
-description: Install an optional CLI tool that is not baked into the assistant image (Codex CLI, Claude Code, GitHub Copilot CLI, Pi Coding Agent, or the Google Cloud CLI) on request. Use this skill whenever the user asks to use, install, or run one of these tools and it is not already on PATH.
+description: Install an optional CLI tool that is not baked into the assistant image (Codex CLI, Claude Code, GitHub Copilot CLI, Pi Coding Agent, the Google Cloud CLI, or the Google Workspace CLI) on request. Use this skill whenever the user asks to use, install, or run one of these tools and it is not already on PATH.
 ---
 
 # Install Optional Tool
@@ -16,13 +16,14 @@ because most installs never use them:
 | `claude` | Anthropic's Claude Code CLI |
 | `copilot` | GitHub's Copilot CLI |
 | `pi` | Pi Coding Agent |
-| `gcloud` | Google Cloud CLI (also required by the `gws-setup` skill) |
+| `gcloud` | Google Cloud CLI (needed by the `gws-setup` skill's Interactive Setup method) |
+| `gws` | Google Workspace CLI (used by the `gws-setup` skill and its scripts) |
 
 ## When to use this skill
 
 Use it when the user asks to run one of the tools above and it is not
-already on PATH, or when another skill (e.g. `gws-setup`) needs `gcloud` and
-it isn't installed yet.
+already on PATH, or when another skill (e.g. `gws-setup`) needs `gws` or
+`gcloud` and it isn't installed yet.
 
 ## Before you start
 
@@ -70,7 +71,7 @@ bash scripts/install-tool.sh --list
   before doing any work, so re-running it for an already-installed tool is a
   fast no-op — safe to call every time rather than trying to remember
   whether a tool was installed in a previous session.
-- npm-based tools (`codex`, `claude`, `copilot`, `pi`) install via
+- npm-based tools (`codex`, `claude`, `copilot`, `pi`, `gws`) install via
   `npm install -g --prefix /opt/persistent <package>@<version>`, pinned to
   the same versions OpenPalm used to bake into the image.
 - `gcloud` downloads the official Google Cloud CLI tarball and extracts it

@@ -39,13 +39,22 @@ done
 GWS_DIR="${OP_HOME}/knowledge/secrets/.gws"
 SECRETS_DIR="${OP_HOME}/knowledge/secrets"
 
-# Check gws is installed
+# Check gws is installed. It is not baked into the assistant image — inside
+# the container, install it on demand via the install-optional-tool skill
+# (same pattern as gcloud below). On a host without /opt/persistent, print
+# manual install options instead.
 if ! command -v gws &>/dev/null; then
-  echo "ERROR: gws CLI not found. Install it first:"
-  echo "  npm install -g @googleworkspace/cli"
-  echo "  # or: cargo install --git https://github.com/googleworkspace/cli --locked"
-  echo "  # or: brew install googleworkspace-cli"
-  exit 1
+  INSTALL_SCRIPT="$(dirname "$0")/../../install-optional-tool/scripts/install-tool.sh"
+  if [[ -x "$INSTALL_SCRIPT" && -d /opt/persistent ]]; then
+    echo "gws CLI not found — installing it now via the install-optional-tool skill..."
+    bash "$INSTALL_SCRIPT" gws
+  else
+    echo "ERROR: gws CLI not found. Install it first:"
+    echo "  npm install -g @googleworkspace/cli"
+    echo "  # or: cargo install --git https://github.com/googleworkspace/cli --locked"
+    echo "  # or: brew install googleworkspace-cli"
+    exit 1
+  fi
 fi
 
 echo "=== Google Workspace CLI Setup for OpenPalm ==="

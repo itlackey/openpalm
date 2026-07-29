@@ -178,19 +178,13 @@ ENV APPRISE_NOTIFY_CONFIG="/stash/env/apprise.conf"
 # connected on every install, even when the credentials file does not exist.
 
 # gcloud CLI is NOT baked here (IMG-3, 0.13.0: ~550 MB, and its only in-image
-# consumer was the `gws-setup` skill's OAuth bootstrap). The
-# `install-optional-tool` akm skill installs it on request into
-# /opt/persistent, which is already on PATH below; gcloud then defaults its
-# own config dir to $HOME/.config/gcloud, which persists via the assistant
-# home bind mount without needing a CLOUDSDK_CONFIG override here.
-
-# Google Workspace CLI — used by the `gws-setup` skill (gws-verify.sh + drive operations).
-ARG GWS_VERSION=0.22.3
-RUN set -e; \
-    if [ "$(dpkg --print-architecture)" = "arm64" ]; then GWS_TRIPLE=aarch64-unknown-linux-gnu; else GWS_TRIPLE=x86_64-unknown-linux-gnu; fi \
-    && curl -fsSL "https://github.com/googleworkspace/cli/releases/download/v${GWS_VERSION}/google-workspace-cli-${GWS_TRIPLE}.tar.gz" \
-         | tar xz --strip-components=1 -C /usr/local/bin "google-workspace-cli-${GWS_TRIPLE}/gws" \
-    && chmod +x /usr/local/bin/gws
+# consumer was the `gws-setup` skill's OAuth bootstrap). The Google Workspace
+# CLI (gws) is likewise NOT baked: its only consumer is the `gws-setup` skill,
+# whose scripts install it on first use. Both install on request via the
+# `install-optional-tool` akm skill into /opt/persistent, which is already on
+# PATH below; gcloud then defaults its own config dir to
+# $HOME/.config/gcloud, which persists via the assistant home bind mount
+# without needing a CLOUDSDK_CONFIG override here.
 
 # Seed the runtime dirs and make them group-writable so a container entered with
 # `--user ${OP_UID}:${OP_GID}` can populate them on first boot. The container

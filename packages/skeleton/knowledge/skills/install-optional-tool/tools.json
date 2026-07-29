@@ -31,5 +31,12 @@
     "label": "Google Cloud CLI",
     "kind": "gcloud-sdk",
     "bin": "gcloud"
+  },
+  "gws": {
+    "label": "Google Workspace CLI",
+    "kind": "npm",
+    "package": "@googleworkspace/cli",
+    "version": "0.22.3",
+    "bin": "gws"
   }
 }

@@ -49,7 +49,7 @@ echo ""
 if command -v gws &>/dev/null; then
   check "gws CLI installed" "ok"
 else
-  check "gws CLI installed" "not found on PATH"
+  check "gws CLI installed" "not found on PATH (install via the install-optional-tool skill: install-tool.sh gws)"
 fi
 
 # Check 2: gcloud binary

@@ -74,10 +74,19 @@ Ask the user which installation method they prefer:
 
 After install, verify: `gws --version`
 
-The OpenPalm assistant Docker image already includes `gws`. `gcloud` (needed
-only by the Interactive Setup method below) is installed on first use via
-the `install-optional-tool` skill — `scripts/gws-setup.sh` does this
-automatically when you pick that method.
+The OpenPalm assistant Docker image does NOT bake `gws` (or `gcloud`,
+needed only by the Interactive Setup method below). Both install on first
+use via the `install-optional-tool` skill, into the persistent volume so
+the install survives container recreation:
+
+```bash
+bash ../install-optional-tool/scripts/install-tool.sh gws
+```
+
+`scripts/gws-setup.sh` runs this automatically when `gws` is missing, so
+inside the assistant container you normally do not need to install
+anything by hand; `scripts/gws-verify.sh` reports the same install hint
+when `gws` is absent.
 
 ## Step 2: Choose an Authentication Method
 
@@ -252,7 +261,7 @@ gws schema drive.files.list
 | Scope errors | Use `-s service1,service2` to request only needed scopes |
 | Token expired | Run `gws auth login` again, or `gws auth export --unmasked` to refresh credentials.json |
 | Container can't find creds | Check `knowledge/secrets/.gws/` exists and has credentials.json or encrypted creds |
-| "gws not found" in container | Already included in assistant image — check PATH |
+| "gws not found" in container | Not baked into the image — install via the `install-optional-tool` skill: `bash ../install-optional-tool/scripts/install-tool.sh gws` |
 | Drive API not enabled | Run `gws auth setup` or enable Drive API in Cloud Console |
 | Wrong client_secret.json | Must be "Desktop app" type, not "Web application" |
 | Credentials work on host but not in container | Did you copy the .encryption_key too? Or use `gws auth export --unmasked` for plaintext |
