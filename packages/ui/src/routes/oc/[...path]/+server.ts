@@ -42,12 +42,23 @@ import { errorResponse, getRequestId, requireAdmin } from '$lib/server/helpers.j
 import { getHostOpencodeTarget } from '$lib/server/opencode-target.js';
 
 /**
- * Bounds the CONNECTION + response headers, never the streamed body. OpenCode's
- * `/event` stream is open for the life of a session and a long completion can
- * stream past any fixed budget — aborting mid-body would hand the client a
- * truncated response it already saw a 200 for.
+ * NO upstream timeout, deliberately.
+ *
+ * This route carried a 30s header-arrival timeout on the theory that headers
+ * always arrive quickly and only bodies stream. That is false for the one
+ * request that matters most: OpenCode's `POST /session/:id/message` returns
+ * its headers when the TURN COMPLETES, so every chat turn longer than 30s —
+ * tool use, long reasoning, a slow local model — was aborted and surfaced as
+ * `502 assistant_unreachable`, on the locked default connection of every
+ * install. The client's own budget is 150s.
+ *
+ * Nothing is lost by removing it. The upstream is loopback in every topology
+ * (host process → published assistant port; container co-process →
+ * `localhost:4096`), so an absent server fails immediately with
+ * ECONNREFUSED rather than hanging. What must stay is the CLIENT's abort,
+ * forwarded below: without it every `/oc/event` reconnect would leak an
+ * upstream subscription OpenCode keeps alive for a browser that is gone.
  */
-const UPSTREAM_HEADER_TIMEOUT_MS = 30_000;
 
 /** Hop-by-hop and length headers that must not be forwarded in either direction. */
 const STRIPPED_REQUEST_HEADERS = new Set([
@@ -114,13 +125,8 @@ const handle: RequestHandler = async (event) => {
     headers.set('authorization', `Basic ${credentials}`);
   }
 
-  // Two abort sources, deliberately combined:
-  //   1. a header timeout, cleared the moment headers arrive;
-  //   2. the CLIENT's own disconnect. Forwarding it matters for `/oc/event`:
-  //      without it, every SSE reconnect would leak an upstream subscription
-  //      that OpenCode keeps alive for a browser that is already gone.
+  // One abort source: the CLIENT's own disconnect (see the header comment).
   const controller = new AbortController();
-  const headerTimeout = setTimeout(() => controller.abort(), UPSTREAM_HEADER_TIMEOUT_MS);
   const onClientAbort = () => controller.abort();
   event.request.signal?.addEventListener('abort', onClientAbort);
 
@@ -128,7 +134,6 @@ const handle: RequestHandler = async (event) => {
   try {
     upstream = await fetch(upstreamUrl, { method, headers, body, signal: controller.signal });
   } catch {
-    clearTimeout(headerTimeout);
     event.request.signal?.removeEventListener('abort', onClientAbort);
     return errorResponse(
       502,
@@ -138,7 +143,6 @@ const handle: RequestHandler = async (event) => {
       requestId,
     );
   }
-  clearTimeout(headerTimeout);
 
   // The abort listener is deliberately NOT removed here. It must stay attached
   // for the life of the streamed body — that is the whole point of forwarding
