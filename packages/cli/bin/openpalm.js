@@ -11,8 +11,9 @@
 //   1. Maps process.platform/arch to the matching release binary name.
 //   2. Resolves this package's own version (must match an existing release tag).
 //   3. Downloads + SHA-256-verifies the binary into a per-user cache dir on
-//      first use for that version (never in postinstall — see A1 in
-//      docs/public-seams-review.md for why).
+//      first use for that version (never in postinstall — a failed download
+//      in a postinstall hook would fail `npm install` itself in CI/offline
+//      environments, so the fetch happens on first run instead).
 //   4. Runs the cached binary, inheriting stdio, and propagates its exit code.
 
 import { createHash } from 'node:crypto';

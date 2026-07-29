@@ -32,16 +32,16 @@ ENV HOME=/opt/openpalm/guardian \
 
 # Point Bun's install-tarball cache at $HOME/.cache/bun/install (a stable,
 # operator-owned location under the guardian HOME bind) rather than Bun's own
-# default ($HOME/.bun/install/cache). NOTE: S1 (relocating $HOME/.cache into a
-# separate purgeable named volume) is deferred — nesting a named volume inside
+# default ($HOME/.bun/install/cache). NOTE: relocating $HOME/.cache into a
+# separate purgeable named volume is deferred — nesting a named volume inside
 # the HOME bind makes Docker create a root-owned mountpoint that fails the
-# rootless-ownership smoke test. See docs/public-seams-review.md §S1.
+# rootless-ownership smoke test.
 ENV BUN_INSTALL_CACHE_DIR=/opt/openpalm/guardian/.cache/bun/install
 
-# Bake default tool packages (opencode-ai) at /opt/openpalm/tools. E2/S2: no
-# bind mount overlays this path anymore (image-baked-only model) — bump this
+# Bake default tool packages (opencode-ai) at /opt/openpalm/tools. No bind
+# mount overlays this path anymore (image-baked-only model) — bump this
 # manifest and rebuild the image to change a version, not by editing anything
-# under OP_HOME. See docs/public-seams-review.md §E2/§S2.
+# under OP_HOME.
 #
 # `bun install` (below) does not apply npm's os/cpu/libc optionalDependencies
 # filtering the way `npm install` does, so all four opencode-ai

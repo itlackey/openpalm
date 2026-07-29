@@ -6,9 +6,9 @@
 # Tool packages (opencode-ai, akm-cli) are exact-pinned in
 # containers/assistant/tools/package.json and baked into the image at
 # /opt/openpalm/tools by the toolbuild stage below. There is no runtime
-# install or update — no bind mount overlays this path anymore (E2/S2:
-# docs/public-seams-review.md). Bumping a tool version means editing the
-# manifest and cutting a new image.
+# install or update — no bind mount overlays this path anymore (image-baked-
+# only model). Bumping a tool version means editing the manifest and cutting
+# a new image.
 #
 # The four AI coding CLIs (claude-code, codex, copilot, pi) and the Google
 # Cloud SDK (gcloud) used to be baked here too (~1.4 GB combined). Nothing
@@ -257,10 +257,9 @@ WORKDIR /work
 # /home/opencode/.cache (a stable, operator-owned location on the HOME bind).
 # NPM_CONFIG_CACHE does the same for any ad hoc `npm install` an agent runs
 # on-session (the entrypoint itself no longer installs anything at boot).
-# NOTE: S1 (relocating /home/opencode/.cache into a separate purgeable named
-# volume) is deferred — nesting a named volume inside the HOME bind makes
+# NOTE: relocating /home/opencode/.cache into a separate purgeable named
+# volume is deferred — nesting a named volume inside the HOME bind makes
 # Docker create a root-owned mountpoint that fails the rootless smoke test.
-# See docs/public-seams-review.md §S1.
 ENV BUN_INSTALL=/home/opencode/.bun
 ENV BUN_INSTALL_CACHE_DIR=/home/opencode/.cache/bun/install
 ENV NPM_CONFIG_CACHE=/home/opencode/.cache/npm

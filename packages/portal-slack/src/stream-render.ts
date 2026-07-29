@@ -383,8 +383,8 @@ class SlackRenderSink implements RenderSink {
   }
 
   async onQuestion(ask: QuestionAsk): Promise<void> {
-    // Interactive question UI for Slack is not implemented yet (Block Kit select
-    // TODO); reject so the turn doesn't hang awaiting an answer.
+    // Interactive question UI for Slack (a Block Kit select) is not
+    // implemented; reject so the turn doesn't hang awaiting an answer.
     log.info("question_rejected_unsupported", { requestID: ask.requestID });
     await this.client.rejectQuestion(this.userId, ask.requestID).catch((err) =>
       log.warn("question_reject_failed", { error: String(err), requestID: ask.requestID }),
