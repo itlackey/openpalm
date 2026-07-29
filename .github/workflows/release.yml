@@ -22,11 +22,15 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  compute-version:
+  candidate:
     runs-on: ubuntu-latest
     permissions:
       contents: read
     outputs:
+      base_sha: ${{ steps.bundle.outputs.base_sha }}
+      candidate_sha: ${{ steps.bundle.outputs.candidate_sha }}
+      candidate_tree: ${{ steps.bundle.outputs.candidate_tree }}
+      source_artifact: ${{ steps.bundle.outputs.source_artifact }}
       version: ${{ steps.version.outputs.version }}
       prerelease: ${{ steps.version.outputs.prerelease }}
     steps:
@@ -52,27 +56,12 @@ jobs:
           }
           appendFileSync(process.env.GITHUB_OUTPUT, `version=${version}\nprerelease=${parsed.pre !== null}\n`);
           NODE
-  candidate:
-    needs: compute-version
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    outputs:
-      base_sha: ${{ steps.bundle.outputs.base_sha }}
-      candidate_sha: ${{ steps.bundle.outputs.candidate_sha }}
-      candidate_tree: ${{ steps.bundle.outputs.candidate_tree }}
-      source_artifact: ${{ steps.bundle.outputs.source_artifact }}
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          ref: ${{ github.sha }}
-          fetch-depth: 0
       - uses: oven-sh/setup-bun@v2
       - name: Stamp product candidate
         env:
           UNIT: platform
           STAMP: true
-          VERSION: ${{ needs.compute-version.outputs.version }}
+          VERSION: ${{ steps.version.outputs.version }}
         run: |
           node scripts/bump-unit.mjs
           UNIT=electron node scripts/bump-unit.mjs
@@ -80,7 +69,7 @@ jobs:
       - name: Commit and bundle candidate
         id: bundle
         env:
-          VERSION: ${{ needs.compute-version.outputs.version }}
+          VERSION: ${{ steps.version.outputs.version }}
           DISPATCH_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
@@ -106,7 +95,7 @@ jobs:
           compression-level: 0
 
   preflight:
-    needs: [compute-version, candidate]
+    needs: candidate
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -122,7 +111,7 @@ jobs:
         run: bash scripts/restore-release-candidate.sh .git/release-source/release-candidate.bundle '${{ needs.candidate.outputs.candidate_sha }}' '${{ needs.candidate.outputs.base_sha }}'
       - name: Validate an existing product tag
         env:
-          VERSION: ${{ needs.compute-version.outputs.version }}
+          VERSION: ${{ needs.candidate.outputs.version }}
           CANDIDATE_TREE: ${{ needs.candidate.outputs.candidate_tree }}
         run: |
           set -euo pipefail
@@ -169,17 +158,17 @@ jobs:
           path: packages/ui/build
 
   docker:
-    needs: [compute-version, candidate, preflight, ui-build]
+    needs: [candidate, preflight, ui-build]
     strategy:
       fail-fast: false
       matrix:
         include:
           - image: assistant
             file: containers/assistant/Dockerfile
-            build_args: PLATFORM_VERSION=${{ needs.compute-version.outputs.version }}
+            build_args: PLATFORM_VERSION=${{ needs.candidate.outputs.version }}
           - image: guardian
             file: containers/guardian/Dockerfile
-            build_args: GUARDIAN_VERSION=${{ needs.compute-version.outputs.version }}
+            build_args: GUARDIAN_VERSION=${{ needs.candidate.outputs.version }}
           - image: portal
             file: containers/portal/Dockerfile
             build_args: ''
@@ -209,7 +198,7 @@ jobs:
         id: image-tag
         if: inputs.dry_run != true
         env:
-          VERSION: ${{ needs.compute-version.outputs.version }}
+          VERSION: ${{ needs.candidate.outputs.version }}
           CANDIDATE_TREE: ${{ needs.candidate.outputs.candidate_tree }}
         run: |
           set -euo pipefail
@@ -240,16 +229,16 @@ jobs:
           file: ${{ matrix.file }}
           platforms: linux/amd64,linux/arm64
           push: ${{ inputs.dry_run != true }}
-          tags: openpalm/${{ matrix.image }}:${{ needs.compute-version.outputs.version }}
+          tags: openpalm/${{ matrix.image }}:${{ needs.candidate.outputs.version }}
           build-args: ${{ matrix.build_args }}
           labels: |
             org.opencontainers.image.source-tree=${{ needs.candidate.outputs.candidate_tree }}
-            org.opencontainers.image.version=${{ needs.compute-version.outputs.version }}
+            org.opencontainers.image.version=${{ needs.candidate.outputs.version }}
           provenance: false
           sbom: false
 
   cli:
-    needs: [compute-version, candidate, preflight]
+    needs: [candidate, preflight]
     strategy:
       fail-fast: false
       matrix:
@@ -344,7 +333,7 @@ jobs:
             packages/electron/dist/packages/*.zip
 
   assemble-assets:
-    needs: [compute-version, candidate, preflight, ui-build, cli, electron]
+    needs: [candidate, preflight, ui-build, cli, electron]
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -374,11 +363,11 @@ jobs:
           merge-multiple: true
       - name: Build host asset archive
         env:
-          VERSION: ${{ needs.compute-version.outputs.version }}
+          VERSION: ${{ needs.candidate.outputs.version }}
         run: node scripts/build-host-assets.mjs
       - name: Assemble and validate complete asset manifest
         env:
-          VERSION: ${{ needs.compute-version.outputs.version }}
+          VERSION: ${{ needs.candidate.outputs.version }}
         run: |
           node --input-type=module <<'NODE'
           import { readdirSync, writeFileSync } from 'node:fs';
@@ -396,7 +385,7 @@ jobs:
           path: dist
 
   release-source:
-    needs: [compute-version, candidate, preflight, docker, assemble-assets]
+    needs: [candidate, preflight, docker, assemble-assets]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -420,7 +409,7 @@ jobs:
           CANDIDATE_SHA: ${{ needs.candidate.outputs.candidate_sha }}
           CANDIDATE_TREE: ${{ needs.candidate.outputs.candidate_tree }}
           TARGET_BRANCH: ${{ github.ref_name }}
-          VERSION: ${{ needs.compute-version.outputs.version }}
+          VERSION: ${{ needs.candidate.outputs.version }}
         run: |
           set -euo pipefail
           REMOTE_SHA=$(git ls-remote --exit-code origin "refs/heads/${TARGET_BRANCH}" | cut -f1)
@@ -439,7 +428,7 @@ jobs:
           git push --atomic --force-with-lease="refs/heads/${TARGET_BRANCH}:${BASE_SHA}" origin "${CANDIDATE_SHA}:refs/heads/${TARGET_BRANCH}" "refs/tags/${VERSION}"
 
   tag-release:
-    needs: [compute-version, candidate, release-source, assemble-assets]
+    needs: [candidate, release-source, assemble-assets]
     if: inputs.dry_run != true
     runs-on: ubuntu-latest
     permissions:
@@ -456,12 +445,12 @@ jobs:
           path: dist
       - name: Validate assets before public release
         env:
-          VERSION: ${{ needs.compute-version.outputs.version }}
+          VERSION: ${{ needs.candidate.outputs.version }}
         run: VERSION="${VERSION}" node scripts/validate-release-assets.mjs
       - name: Create one summary GitHub Release
         env:
-          VERSION: ${{ needs.compute-version.outputs.version }}
-          PRERELEASE: ${{ needs.compute-version.outputs.prerelease }}
+          VERSION: ${{ needs.candidate.outputs.version }}
+          PRERELEASE: ${{ needs.candidate.outputs.prerelease }}
           GH_TOKEN: ${{ github.token }}
         run: |
           if gh release view "${VERSION}" >/dev/null 2>&1; then
@@ -473,15 +462,15 @@ jobs:
           fi
       - name: Verify public GitHub Release assets
         env:
-          VERSION: ${{ needs.compute-version.outputs.version }}
-          PRERELEASE: ${{ needs.compute-version.outputs.prerelease }}
+          VERSION: ${{ needs.candidate.outputs.version }}
+          PRERELEASE: ${{ needs.candidate.outputs.prerelease }}
           GH_TOKEN: ${{ github.token }}
         run: |
           test "$(gh release view "${VERSION}" --json isDraft,isPrerelease,assets --jq ".isDraft == false and .isPrerelease == (${PRERELEASE}) and ([.assets[].name] | index(\"checksums-sha256.txt\")) != null")" = true
           curl --fail --location --silent --show-error "https://github.com/${GITHUB_REPOSITORY}/releases/download/${VERSION}/checksums-sha256.txt" >/dev/null
 
   publish-bootstrap:
-    needs: [compute-version, tag-release]
+    needs: [candidate, tag-release]
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -489,14 +478,14 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: ${{ needs.compute-version.outputs.version }}
+          ref: ${{ needs.candidate.outputs.version }}
       - uses: actions/setup-node@v6
         with:
           node-version: '24'
           registry-url: https://registry.npmjs.org
       - name: Verify matching public assets before npm
         env:
-          VERSION: ${{ needs.compute-version.outputs.version }}
+          VERSION: ${{ needs.candidate.outputs.version }}
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
@@ -514,7 +503,7 @@ jobs:
         id: bootstrap
         working-directory: packages/cli
         env:
-          VERSION: ${{ needs.compute-version.outputs.version }}
+          VERSION: ${{ needs.candidate.outputs.version }}
         run: |
           set -euo pipefail
           EXPECTED=$(npm pack --json | node -e "let s=''; process.stdin.on('data',d=>s+=d).on('end',()=>{const result=JSON.parse(s); console.log((Array.isArray(result) ? result[0] : Object.values(result)[0]).integrity)})")
@@ -528,7 +517,7 @@ jobs:
         if: steps.bootstrap.outputs.exists != 'true'
         working-directory: packages/cli
         env:
-          VERSION: ${{ needs.compute-version.outputs.version }}
+          VERSION: ${{ needs.candidate.outputs.version }}
         run: |
           tag=latest
           case "${VERSION}" in *-*) tag=next ;; esac
