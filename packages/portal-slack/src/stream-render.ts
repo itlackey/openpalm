@@ -510,11 +510,3 @@ async function renderPermissionPrompt(
     log.warn("permission_prompt_failed", { error: String(err), requestID: ask.requestID });
   }
 }
-
-// ── Exported pure helpers for unit tests ───────────────────────────────────
-
-export const _internal = {
-  buildPermissionBlocks,
-  buildAnswerBlocks,
-  buildToolBlocks,
-};
