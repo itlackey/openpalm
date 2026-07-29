@@ -496,7 +496,7 @@ jobs:
           VERSION: ${{ needs.compute-version.outputs.version }}
         run: |
           set -euo pipefail
-          EXPECTED=$(npm pack --json | node -e "let s=''; process.stdin.on('data',d=>s+=d).on('end',()=>console.log(JSON.parse(s)[0].integrity))")
+          EXPECTED=$(npm pack --json | node -e "let s=''; process.stdin.on('data',d=>s+=d).on('end',()=>{const result=JSON.parse(s); console.log((Array.isArray(result) ? result[0] : Object.values(result)[0]).integrity)})")
           if ACTUAL=$(npm view "openpalm@${VERSION}" dist.integrity --json 2>/dev/null); then
             test "${ACTUAL//\"/}" = "${EXPECTED}" || { echo "::error::openpalm@${VERSION} exists with different contents"; exit 1; }
             echo 'exists=true' >> "$GITHUB_OUTPUT"

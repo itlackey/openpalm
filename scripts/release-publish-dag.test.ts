@@ -145,6 +145,7 @@ describe('0.13 release workflow', () => {
 		expect(release).toContain('belongs to a different candidate');
 		expect(release).toContain('gh release upload "${VERSION}" dist/* --clobber');
 		expect(release).toContain('npm view "openpalm@${VERSION}" dist.integrity');
+		expect(release).toContain('Array.isArray(result) ? result[0] : Object.values(result)[0]');
 	});
 
 	test('multi-architecture builds and prerelease npm tags are explicit', () => {
