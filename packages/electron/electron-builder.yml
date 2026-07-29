@@ -59,6 +59,9 @@ mac:
   entitlementsInherit: assets/entitlements.mac.plist
 
 linux:
+  # electron-builder ≥26.15 validates executableName; the default derived from
+  # the package name (@openpalm/electron → "@openpalmelectron") fails it.
+  executableName: openpalm
   target:
     - target: AppImage
       arch: [x64, arm64]
