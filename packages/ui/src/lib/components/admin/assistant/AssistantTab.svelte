@@ -83,11 +83,22 @@
       projectName = data.projectName;
       access = { ...data.access };
       mdns = data.mdns;
+      // No "now restart to apply" advice: the save IS the apply (the server
+      // recreates the affected containers before responding). The old advice
+      // was worse than redundant — `compose restart`, which is what both
+      // `openpalm restart` and the Containers tab run, cannot republish a port,
+      // so following it left the toggle silently inert.
+      const recreated = data.recreated?.length
+        ? ` Applied to ${data.recreated.join(', ')}.`
+        : '';
+      const autoEnabled = data.autoEnabledAddons?.length
+        ? ` Enabled ${data.autoEnabledAddons.join(', ')} so the published port has a service behind it.`
+        : '';
       notifications.push(
         'success',
         data.projectRenamed
-          ? 'Stack settings saved. Project name changed — run `openpalm restart` (or `openpalm update`) to move the whole stack to the new project name.'
-          : 'Stack settings saved. Restart the assistant container to apply them.',
+          ? `Stack settings saved and applied.${recreated}${autoEnabled} Project name changed — run \`openpalm restart\` (or \`openpalm update\`) to move the whole stack to the new project name.`
+          : `Stack settings saved and applied.${recreated}${autoEnabled}`,
       );
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Failed to save stack settings.';

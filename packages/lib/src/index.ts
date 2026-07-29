@@ -674,6 +674,12 @@ export {
   type AccessToggles,
   type AccessEnv,
 } from "./control-plane/access-toggles.js";
+export {
+  applyAccessToggles,
+  diffAccessEnv,
+  reconcileGuardianIngressAddons,
+  type AccessApplyResult,
+} from "./control-plane/access-apply.js";
 
 // ── mDNS host self-advertisement (#488) ──────────────────────────────────────
 // Pure helpers (sanitizeDnsLabel, resolveMdnsAdvertisements, etc.) stay

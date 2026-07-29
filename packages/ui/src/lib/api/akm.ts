@@ -70,26 +70,30 @@ export async function fetchHostStackSettings(): Promise<HostStackSettings> {
   return (await res.json()) as HostStackSettings;
 }
 
-export async function saveHostStackSettings(input: {
-  projectName: string;
-  access: AccessToggles;
-}): Promise<{
+/**
+ * Saving access settings APPLIES them: the server recreates the affected
+ * containers so Compose republishes the ports, then advertises over mDNS.
+ * `recreated` and `autoEnabledAddons` report what that took, so the UI can say
+ * what happened instead of telling the operator to restart something (which
+ * would not have worked — `compose restart` cannot republish a port).
+ */
+export type SaveHostStackResult = {
   ok: boolean;
   projectName: string;
   projectRenamed: boolean;
   access: AccessToggles;
   stackEnvPath: string;
   mdns: MdnsSurface;
-}> {
+  recreated?: string[];
+  autoEnabledAddons?: string[];
+};
+
+export async function saveHostStackSettings(input: {
+  projectName: string;
+  access: AccessToggles;
+}): Promise<SaveHostStackResult> {
   const res = await requireOk(await request('PUT', '/api/host/stack', input));
-  return (await res.json()) as {
-    ok: boolean;
-    projectName: string;
-    projectRenamed: boolean;
-    access: AccessToggles;
-    stackEnvPath: string;
-    mdns: MdnsSurface;
-  };
+  return (await res.json()) as SaveHostStackResult;
 }
 
 export type AssistantPersona = {
