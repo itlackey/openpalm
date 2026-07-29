@@ -4,6 +4,32 @@
 > That document is the **authoritative source of architectural rules** for this project.
 > No implementation may violate its Core Goals, Security Invariants, or Filesystem Contract.
 > **IT IS VERY IMPORTANT THAT YOU AVOID AND/OR REMOVE ALL COMPLEXITY THAT YOU CANNOT PROPERLY JUSTIFY. ALWAYS CALLOUT ANY COMPLEXITY THAT YOU FIND AND CANNOT JUSTIFY**
+> Never take shortcuts that weaken correctness, security, or user-data safety.
+
+---
+
+## Never Delete User Data Without Path-Specific Approval
+
+This rule overrides every approved plan and cleanup request that does not name
+the exact path in the user's current message.
+
+Never delete a file or directory that:
+
+- the user did not explicitly name in their current message
+- is matched by `.gitignore` and may contain user secrets or state
+- lives outside obviously generated paths such as `node_modules/`,
+  `.svelte-kit/`, `dist/`, `build/`, or `.cache/`
+
+This includes `.dev*`, `.private`, `.env*`, `knowledge`, `private`, `data`,
+`state`, backups, `~/.openpalm`, `~/.config`, planning directories, and any
+directory containing credentials.
+
+For any other deletion:
+
+1. List every exact path and explain why it is safe.
+2. Wait for explicit approval of each path.
+3. Use the OS trash for untracked user data. Git history is sufficient only for
+   tracked files.
 
 ---
 
@@ -90,7 +116,7 @@ The project has ~100 test files across all packages using Bun test, Vitest, and 
 
 | Runner | Command | Scope |
 |--------|---------|-------|
-| `bun test` (root) | `bun run test` | guardian, cli, all portal packages (excludes ui) |
+| `bun test` (root) | `bun run test` | guardian, cli, lib, all portal packages, electron admin-tools, scripts (excludes ui). An untracked repo-root `.env` breaks its isolation tripwire — run in a clean worktree if one exists |
 | `bun test` (guardian) | `bun run guardian:test` | packages/guardian security tests |
 | `bun test` (cli) | `bun run cli:test` | packages/cli tests |
 | Vitest (UI) | `bun run ui:test:unit` | packages/ui unit + browser component tests |
@@ -243,6 +269,8 @@ Full detail in [`docs/technical/core-principles.md`](docs/technical/core-princip
 - **Guardian-only ingress.** All portal traffic must enter through the guardian (`/oc/*` proxy, ownership checks, rate limiting).
 - **Assistant isolation.** Assistant has no Docker socket and no admin network path. When UI is absent, only the akm-backed memory/knowledge tools are available.
 - **LAN-first by default.** Nothing is publicly exposed without explicit user opt-in.
+- **Flat access model.** Setup uses the flat `access` booleans (`networkAccess`, `assistantDirect`, `guardianNetwork`, `guardianOpenaiApi` — `packages/lib/src/control-plane/access-toggles.ts`), which generate explicit per-service bind/auth variables (`OP_UI_BIND_ADDRESS`, `OP_ASSISTANT_BIND_ADDRESS`, `OP_GUARDIAN_BIND_ADDRESS`, `OP_API_BIND_ADDRESS`; voice is fixed to loopback). Do not reintroduce grouped access modes, global bind cascades, separate chat/API listeners, or assistant SSH controls.
+- **No boot-time installs.** The assistant image bakes UI/skeleton/tools; the entrypoint installs nothing at boot. Optional CLIs (gcloud, gws, codex, claude, copilot, pi) install on demand via the `install-optional-tool` skill into the persistent volume. Guardian retains only its documented thin-host overrides.
 - **Add a portal** by enabling its first-party addon name in the app-written record `~/.openpalm/state/stack.env` (`OP_ENABLED_ADDONS`) or adding a service block to `config/stack/custom.compose.yml` (for custom portals) — no code changes.
 - **No shell interpolation.** Docker commands use `execFile` with argument arrays, never shell strings.
 - **Docker dependency resolution pattern.** Assistant, Guardian, and portal images bake their runtime artifacts and dependencies. The UI has no standalone container image; the assistant image bakes its package build.
@@ -276,8 +304,10 @@ Dev mode uses `.dev/` with the same subdirectory structure.
 
 Before submitting any change:
 
-- [ ] `cd packages/ui && npm run check` passes (UI type correctness)
-- [ ] `cd packages/guardian && bun test` (or `bun run guardian:test`) passes (security-critical branches covered)
+- [ ] `bun run check` passes (UI type correctness)
+- [ ] `bun run test` passes (all non-UI suites)
+- [ ] `bun run guardian:test` passes for Guardian/security changes
+- [ ] `bun run lint` passes
 - [ ] No new dependency duplicates a built-in Bun/platform capability
 - [ ] Filesystem, guardian ingress, and assistant-isolation rules in `docs/technical/core-principles.md` remain intact
 - [ ] Errors and logs are structured and include request identifiers where available
