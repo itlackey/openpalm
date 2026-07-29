@@ -32,8 +32,8 @@
   "dependencies": {
     "dotenv": "^17.4.2",
     "multicast-dns": "^7.2.5",
-    "tar": "^7.5.15",
-    "yaml": "^2.8.0"
+    "tar": "^7.5.22",
+    "yaml": "^2.9.0"
   },
   "devDependencies": {
     "@types/multicast-dns": "^7.2.4",

@@ -37,7 +37,7 @@ const handlers = () => ({
 
 describe('QuestionCard — single question', () => {
   test('renders the question, its options, and the free-text hint', async () => {
-    render(QuestionCard, { props: { question: question(), ...handlers() } });
+    await render(QuestionCard, { props: { question: question(), ...handlers() } });
     await expect.element(page.getByText('What is your name?')).toBeVisible();
     await expect.element(page.getByRole('button', { name: 'Alice' })).toBeVisible();
     await expect.element(page.getByRole('button', { name: 'Bob' })).toBeVisible();
@@ -46,19 +46,19 @@ describe('QuestionCard — single question', () => {
 
   test('clicking an option calls onOption with its label', async () => {
     const h = handlers();
-    render(QuestionCard, { props: { question: question(), ...h } });
+    await render(QuestionCard, { props: { question: question(), ...h } });
     await page.getByRole('button', { name: 'Alice' }).click();
     expect(h.onOption).toHaveBeenCalledWith('Alice');
   });
 
   test('option buttons are disabled when answered', async () => {
-    render(QuestionCard, { props: { question: question({ status: 'answered' }), ...handlers() } });
+    await render(QuestionCard, { props: { question: question({ status: 'answered' }), ...handlers() } });
     await expect.element(page.getByRole('button', { name: 'Alice' })).toBeDisabled();
   });
 
   test('offers a decline action for a single question', async () => {
     const h = handlers();
-    render(QuestionCard, { props: { question: question(), ...h } });
+    await render(QuestionCard, { props: { question: question(), ...h } });
 
     await page.getByRole('button', { name: "can't answer" }).click();
 
@@ -74,7 +74,7 @@ describe('QuestionCard — multiple questions', () => {
     });
 
   test('renders every question plus submit / reject controls', async () => {
-    render(QuestionCard, { props: { question: multi(), ...handlers() } });
+    await render(QuestionCard, { props: { question: multi(), ...handlers() } });
     await expect.element(page.getByText('First?')).toBeVisible();
     await expect.element(page.getByText('Second?')).toBeVisible();
     await expect.element(page.getByRole('button', { name: 'submit answers' })).toBeVisible();
@@ -83,7 +83,7 @@ describe('QuestionCard — multiple questions', () => {
 
   test('option select and submit / reject invoke the right handlers', async () => {
     const h = handlers();
-    render(QuestionCard, { props: { question: multi(), ...h } });
+    await render(QuestionCard, { props: { question: multi(), ...h } });
     await page.getByRole('button', { name: 'A', exact: true }).click();
     expect(h.onSelect).toHaveBeenCalledWith(0, 'A');
     await page.getByRole('button', { name: 'submit answers' }).click();
@@ -94,7 +94,7 @@ describe('QuestionCard — multiple questions', () => {
 
   test('typing in a question input calls onDraft with index and value', async () => {
     const h = handlers();
-    const { container } = render(QuestionCard, { props: { question: multi(), ...h } });
+    const { container } = await render(QuestionCard, { props: { question: multi(), ...h } });
     const input = container.querySelectorAll<HTMLInputElement>('input.s-question-input')[1];
     expect(input).toBeInstanceOf(HTMLInputElement);
     if (!(input instanceof HTMLInputElement)) throw new Error('question input not found');
@@ -104,14 +104,14 @@ describe('QuestionCard — multiple questions', () => {
   });
 
   test('uses each visible question as its text-field label', async () => {
-    render(QuestionCard, { props: { question: multi(), ...handlers() } });
+    await render(QuestionCard, { props: { question: multi(), ...handlers() } });
 
     await expect.element(page.getByRole('textbox', { name: 'First?' })).toBeVisible();
     await expect.element(page.getByRole('textbox', { name: 'Second?' })).toBeVisible();
   });
 
   test('exposes the selected state of multi-question options', async () => {
-    render(QuestionCard, {
+    await render(QuestionCard, {
       props: {
         question: question({
           questions: [q('First?', ['A', 'B']), q('Second?')],
@@ -126,7 +126,7 @@ describe('QuestionCard — multiple questions', () => {
   });
 
   test('controls are disabled when submitting', async () => {
-    render(QuestionCard, { props: { question: question({ questions: [q('First?', ['A']), q('Second?')], answers: ['', ''], status: 'submitting' }), ...handlers() } });
+    await render(QuestionCard, { props: { question: question({ questions: [q('First?', ['A']), q('Second?')], answers: ['', ''], status: 'submitting' }), ...handlers() } });
     await expect.element(page.getByRole('button', { name: 'submit answers' })).toBeDisabled();
     await expect.element(page.getByRole('button', { name: 'A', exact: true })).toBeDisabled();
   });

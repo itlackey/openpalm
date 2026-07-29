@@ -25,7 +25,7 @@ const defaultProps = {
 
 describe('LogsTab — initial state', () => {
   test('shows "Select a service" prompt before any load is triggered', async () => {
-    render(LogsTab, { props: defaultProps });
+    await render(LogsTab, { props: defaultProps });
     await expect.element(page.getByText(/select a service/i)).toBeVisible();
     await expect.element(page.getByText(/no log output/i)).not.toBeInTheDocument();
   });
@@ -35,7 +35,7 @@ describe('LogsTab — after successful load', () => {
   test('shows "No log output" when load returns empty string', async () => {
     vi.mocked(fetchServiceLogs).mockResolvedValue({ ok: true, logs: '' });
 
-    const { getByRole } = render(LogsTab, { props: defaultProps });
+    const { getByRole } = await render(LogsTab, { props: defaultProps });
     await getByRole('button', { name: /load service logs/i }).click();
 
     await expect.element(page.getByText(/no log output/i)).toBeVisible();
@@ -45,7 +45,7 @@ describe('LogsTab — after successful load', () => {
   test('shows log content in pre element when logs are non-empty', async () => {
     vi.mocked(fetchServiceLogs).mockResolvedValue({ ok: true, logs: 'INFO: server started\nINFO: listening on :4096' });
 
-    render(LogsTab, { props: defaultProps });
+    await render(LogsTab, { props: defaultProps });
     await page.getByRole('button', { name: /load service logs/i }).click();
 
     await expect.element(page.getByText(/INFO: server started/)).toBeVisible();
@@ -56,7 +56,7 @@ describe('LogsTab — after successful load', () => {
   test('shows error message when fetch fails', async () => {
     vi.mocked(fetchServiceLogs).mockResolvedValue({ ok: false, logs: '', error: 'service not found' });
 
-    render(LogsTab, { props: defaultProps });
+    await render(LogsTab, { props: defaultProps });
     await page.getByRole('button', { name: /load service logs/i }).click();
 
     await expect.element(page.getByText(/service not found/i)).toBeVisible();

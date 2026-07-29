@@ -64,8 +64,8 @@ describe('computed design foundation', () => {
     }
   });
 
-  test('the shared target overrides scoped icon-control sizing', () => {
-    const { container } = render(PasswordInput);
+  test('the shared target overrides scoped icon-control sizing', async () => {
+    const { container } = await render(PasswordInput);
     const toggle = container.querySelector('.btn-icon');
     expect(toggle).toBeInstanceOf(HTMLButtonElement);
     if (!(toggle instanceof HTMLButtonElement)) throw new Error('password toggle not found');

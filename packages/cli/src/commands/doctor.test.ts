@@ -407,7 +407,7 @@ describe('openpalm doctor --prune-sessions / --sessions (S3 live wiring)', () =>
     expect(seen.options?.confirm).toBe(true);
     // VACUUM needs the assistant stopped; this path needs it running.
     expect(seen.options?.skipVacuumStage).toBe(true);
-    expect((seen.options?.retention as { maxChildAgeMs: number }).maxChildAgeMs).toBe(30 * 86_400_000);
+    expect((seen.options?.retention as { maxChildAgeMs: number } | undefined)?.maxChildAgeMs).toBe(30 * 86_400_000);
     expect(seen.path).toContain('assistant');
   });
 

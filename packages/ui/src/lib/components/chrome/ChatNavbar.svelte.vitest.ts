@@ -105,7 +105,7 @@ beforeEach(() => {
 
 describe('ChatNavbar', () => {
   test('uses explicit context and mode targets in a consistent DOM order', async () => {
-    const { container } = render(ChatNavbar);
+    const { container } = await render(ChatNavbar);
     const targets = Array.from(container.querySelectorAll<HTMLElement>('header a, header button'));
 
     expect(targets.map((target) => target.getAttribute('aria-label'))).toEqual([
@@ -126,7 +126,7 @@ describe('ChatNavbar', () => {
   });
 
   test('connects every drawer trigger to the one mutually exclusive dialog', async () => {
-    render(ChatNavbar);
+    await render(ChatNavbar);
 
     for (const name of [
       'Assistant: Workshop assistant',
@@ -149,7 +149,7 @@ describe('ChatNavbar', () => {
   });
 
   test('routes the single settings entry with conversation return context', async () => {
-    render(ChatNavbar);
+    await render(ChatNavbar);
 
     await expect.element(page.getByRole('link', { name: 'Open settings' })).toHaveAttribute(
       'href',
@@ -167,7 +167,7 @@ describe('ChatNavbar', () => {
   });
 
   test('closes an open drawer on navigation (#473 — no drawer lingering over the next page)', async () => {
-    render(ChatNavbar);
+    await render(ChatNavbar);
 
     await page.getByRole('button', { name: 'Conversation: Current conversation' }).click();
     await expect.element(page.getByRole('dialog', { name: 'Conversations' })).toBeVisible();

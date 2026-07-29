@@ -24,6 +24,6 @@
     "directory": "packages/electron/admin-tools"
   },
   "dependencies": {
-    "@opencode-ai/plugin": "^1.17.7"
+    "@opencode-ai/plugin": "^1.18.9"
   }
 }

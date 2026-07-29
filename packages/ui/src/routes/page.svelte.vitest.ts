@@ -53,7 +53,7 @@ describe('/host/+page.svelte (host dashboard)', () => {
 		});
 		vi.stubGlobal('fetch', fetchMock);
 		guard = useConsoleGuard();
-		const view = render(HostPage);
+		const view = await render(HostPage);
 
 		await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(6));
 		await vi.waitFor(() => expect(view.container.textContent).toContain('Healthy'));

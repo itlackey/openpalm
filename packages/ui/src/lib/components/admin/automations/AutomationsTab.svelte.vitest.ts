@@ -29,7 +29,7 @@ const data = {
 
 describe('AutomationsTab delete confirmation accessibility', () => {
 	test('focuses and traps the modal alertdialog, then restores focus on Escape', async () => {
-		const { container } = render(AutomationsTab, {
+		const { container } = await render(AutomationsTab, {
 			props: { data, loading: false, error: '', onRefresh: vi.fn() }
 		});
 		const trigger = page.getByRole('button', { name: 'Delete daily-summary.yml' });

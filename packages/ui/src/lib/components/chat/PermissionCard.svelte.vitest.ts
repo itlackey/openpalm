@@ -27,7 +27,7 @@ function permission(overrides: Partial<PendingPermissionState> = {}): PendingPer
 
 describe('PermissionCard', () => {
   test('renders the permission title, detail, and patterns', async () => {
-    render(PermissionCard, { props: { permission: permission(), actionInFlight: null, onReply: () => {} } });
+    await render(PermissionCard, { props: { permission: permission(), actionInFlight: null, onReply: () => {} } });
     await expect.element(page.getByText('run bash command')).toBeVisible();
     await expect.element(page.getByText('The assistant wants to run a command.')).toBeVisible();
     await expect.element(page.getByText('git status')).toBeVisible();
@@ -35,7 +35,7 @@ describe('PermissionCard', () => {
 
   test('buttons are enabled and calls onReply with the chosen decision when pending', async () => {
     const onReply = vi.fn();
-    render(PermissionCard, { props: { permission: permission(), actionInFlight: null, onReply } });
+    await render(PermissionCard, { props: { permission: permission(), actionInFlight: null, onReply } });
 
     const allowOnce = page.getByRole('button', { name: 'allow this once' });
     await expect.element(allowOnce).toBeEnabled();
@@ -50,7 +50,7 @@ describe('PermissionCard', () => {
   });
 
   test('all buttons are disabled when submitting', async () => {
-    render(PermissionCard, {
+    await render(PermissionCard, {
       props: { permission: permission({ status: 'submitting' }), actionInFlight: 'once', onReply: () => {} },
     });
     await expect.element(page.getByRole('button', { name: 'sending…' })).toBeDisabled();
@@ -59,7 +59,7 @@ describe('PermissionCard', () => {
   });
 
   test('all buttons are disabled when resolved', async () => {
-    const { container } = render(PermissionCard, {
+    const { container } = await render(PermissionCard, {
       props: { permission: permission({ status: 'resolved' }), actionInFlight: null, onReply: () => {} },
     });
     for (const btn of container.querySelectorAll('button')) {
@@ -68,7 +68,7 @@ describe('PermissionCard', () => {
   });
 
   test('shows the in-flight label only on the acting button', async () => {
-    render(PermissionCard, {
+    await render(PermissionCard, {
       props: { permission: permission({ status: 'submitting' }), actionInFlight: 'reject', onReply: () => {} },
     });
     // reject button shows sending…; the others keep their labels.

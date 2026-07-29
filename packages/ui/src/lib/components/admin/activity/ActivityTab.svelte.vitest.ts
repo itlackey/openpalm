@@ -34,7 +34,7 @@ import ActivityTab from './ActivityTab.svelte';
 
 describe('ActivityTab accessibility', () => {
 	test('exposes which recent-session selector is current', async () => {
-		render(ActivityTab);
+		await render(ActivityTab);
 		const first = page.getByRole('button', { name: /First session/ });
 		const second = page.getByRole('button', { name: /Second session/ });
 
@@ -46,7 +46,7 @@ describe('ActivityTab accessibility', () => {
 	});
 
 	test('keeps visible session text in shortcut accessible names', async () => {
-		const { container } = render(ActivityTab);
+		const { container } = await render(ActivityTab);
 		await vi.waitFor(() => expect(container.querySelectorAll('.session-row')).toHaveLength(2));
 		eventBus.emit?.({
 			type: 'permission.asked',

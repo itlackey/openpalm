@@ -66,7 +66,7 @@ beforeEach(() => {
 
 describe('SessionList', () => {
   test('uses the conversation copy and renders the new action below the list', async () => {
-    render(SessionList);
+    await render(SessionList);
 
     await expect.element(page.getByRole('group', { name: 'Conversations' })).toBeVisible();
     await expect.element(page.getByRole('button', { name: 'New conversation' })).toBeVisible();
@@ -76,7 +76,7 @@ describe('SessionList', () => {
     seedSessions(Array.from({ length: 60 }, (_, index) =>
       session(`sess-${index}`, index === 57 ? 'Needle planning' : `Conversation ${index}`)
     ));
-    render(SessionList);
+    await render(SessionList);
 
     const search = page.getByRole('searchbox', { name: 'Search conversations' });
     await expect.element(search).toBeVisible();
@@ -92,7 +92,7 @@ describe('SessionList', () => {
     seedSessions(Array.from({ length: 51 }, (_, index) =>
       session(`sess-${index}`, `Conversation ${index}`)
     ));
-    render(SessionList);
+    await render(SessionList);
 
     const showAll = page.getByRole('button', { name: 'Show 1 more conversations' });
     await expect.element(showAll).toBeVisible();
@@ -100,7 +100,7 @@ describe('SessionList', () => {
   });
 
   test('selects a session and updates the canonical simple-mode URL', async () => {
-    render(SessionList);
+    await render(SessionList);
 
     await page.getByRole('button', { name: /Resume conversation: Second conversation/ }).click();
 
@@ -110,7 +110,7 @@ describe('SessionList', () => {
 
   test('keeps advanced mode when selecting a session', async () => {
     mocks.appPage.url = new URL('http://localhost/advanced?session=sess-1');
-    render(SessionList);
+    await render(SessionList);
 
     await page.getByRole('button', { name: /Resume conversation: Second conversation/ }).click();
 
@@ -118,7 +118,7 @@ describe('SessionList', () => {
   });
 
   test('starts a conversation and puts its identity in the URL', async () => {
-    render(SessionList);
+    await render(SessionList);
 
     await page.getByRole('button', { name: 'New conversation' }).click();
 
@@ -127,7 +127,7 @@ describe('SessionList', () => {
   });
 
   test('renames a conversation only after an explicit save', async () => {
-    render(SessionList);
+    await render(SessionList);
 
     await page.getByRole('button', { name: 'More actions for First conversation' }).click();
     await page.getByRole('button', { name: 'Rename', exact: true }).click();
@@ -142,7 +142,7 @@ describe('SessionList', () => {
   });
 
   test('dismisses conversation actions before the enclosing drawer', async () => {
-    const { container } = render(SessionList);
+    const { container } = await render(SessionList);
     const trigger = page.getByRole('button', { name: 'More actions for First conversation' });
 
     await trigger.click();
@@ -171,7 +171,7 @@ describe('SessionList', () => {
       mocks.chat.activeSessionId = 'sess-2';
       return true;
     });
-    render(SessionList);
+    await render(SessionList);
 
     await page.getByRole('button', { name: 'More actions for First conversation' }).click();
     await page.getByRole('button', { name: 'Delete conversation', exact: true }).click();

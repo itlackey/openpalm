@@ -2,6 +2,6 @@
   "name": "@openpalm/guardian-tools",
   "private": true,
   "dependencies": {
-    "opencode-ai": "1.17.13"
+    "opencode-ai": "1.18.9"
   }
 }

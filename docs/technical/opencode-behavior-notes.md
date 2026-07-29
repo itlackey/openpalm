@@ -1,4 +1,4 @@
-# OpenCode behavior notes (v1.17.13)
+# OpenCode behavior notes (v1.18.9)
 
 Verified against the pinned source, not the docs. Re-check on every version bump.
 Kept because each item cost real time to establish and is not discoverable from
@@ -9,7 +9,7 @@ config files.
 - Merge order (later wins, `mergeDeep(target, source)`):
   `~/.config/opencode` → project `.opencode` dirs → `OPENCODE_CONFIG_DIR` →
   `systemManagedConfigDir`. On Linux the last one **is** `/etc/opencode`, so the
-  managed tree is merged twice and wins. `config/config.ts:398,423-428,515-521`.
+  managed tree is merged twice and wins. `config/config.ts:399,424-429,516-522`.
 - `instructions` arrays are **set-unioned** across sources, not overridden. A
   user config can add instruction files the managed config cannot remove.
 - Every directory in `ConfigPaths.directories()` gets `ensureGitignore()` plus

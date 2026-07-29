@@ -99,7 +99,7 @@ describe('ChatInput — bindable draft', () => {
 
 describe('ChatInput — focused composer controls', () => {
   test('shows a two-pixel keyboard focus indicator on the textarea', async () => {
-    const { container } = render(ChatInput, { props: { sending: false, onSend: vi.fn() } });
+    const { container } = await render(ChatInput, { props: { sending: false, onSend: vi.fn() } });
     const input = container.querySelector('textarea');
     expect(input).toBeInstanceOf(HTMLTextAreaElement);
     if (!(input instanceof HTMLTextAreaElement)) throw new Error('textarea not found');
@@ -111,7 +111,7 @@ describe('ChatInput — focused composer controls', () => {
   });
 
   test('keeps voice and conversation controls out of the composer', async () => {
-    const { container } = render(ChatInput, { props: { sending: false, onSend: vi.fn() } });
+    const { container } = await render(ChatInput, { props: { sending: false, onSend: vi.fn() } });
     expect(container.querySelector('[aria-label="Start recording"]')).toBeNull();
     expect(container.querySelector('[aria-label="Start conversation mode"]')).toBeNull();
     await expect.element(page.getByRole('button', { name: 'Send message' })).toBeVisible();
@@ -147,7 +147,7 @@ describe('ChatInput — send behaviour', () => {
 
   test('Enter during IME composition does not submit', async () => {
     const onSend = vi.fn();
-    const { container } = render(ChatInput, { props: { sending: false, onSend } });
+    const { container } = await render(ChatInput, { props: { sending: false, onSend } });
     const input = container.querySelector('textarea');
     expect(input).toBeInstanceOf(HTMLTextAreaElement);
     if (!(input instanceof HTMLTextAreaElement)) throw new Error('textarea not found');

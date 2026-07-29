@@ -172,6 +172,8 @@ export function akmConfigToForm(config: Record<string, unknown>, idGen: IdGen = 
 	const decay = asRecord(improveTop?.utilityDecay);
 	const search = asRecord(config.search);
 	const feedback = asRecord(config.feedback);
+	const rawFbModes = feedback?.allowedFailureModes;
+	const fbModes = Array.isArray(rawFbModes) ? (rawFbModes as string[]).join(', ') : '';
 
 	return {
 		llmProfiles,
@@ -191,9 +193,7 @@ export function akmConfigToForm(config: Record<string, unknown>, idGen: IdGen = 
 		searchCurateRerank: triFromEnabled(search?.curateRerank),
 		fbRequireReason:
 			typeof feedback?.requireReason === 'boolean' ? (feedback.requireReason ? 'on' : 'off') : '',
-		fbFailureModes: Array.isArray(feedback?.allowedFailureModes)
-			? (feedback?.allowedFailureModes as string[]).join(', ')
-			: '',
+		fbFailureModes: fbModes,
 		indexJson: config.index && typeof config.index === 'object' ? JSON.stringify(config.index, null, 2) : '',
 	};
 }

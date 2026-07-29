@@ -24,7 +24,7 @@ function contrast(first: string, second: string): number {
 }
 
 test('profile actions remain usable in 320px, 360px, and 375px panels', async () => {
-	const { container } = render(ProfileRow, {
+	const { container } = await render(ProfileRow, {
 		props: {
 			name: 'A profile name long enough to require wrapping on a phone',
 			isDefault: false,

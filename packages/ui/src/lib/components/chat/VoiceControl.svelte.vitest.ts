@@ -81,7 +81,7 @@ afterEach(() => {
 
 describe('VoiceControl route safety', () => {
 	test('disables dictation on settings pages', async () => {
-		render(VoiceControl);
+		await render(VoiceControl);
 
 		await expect
 			.element(page.getByRole('button', { name: 'Voice input unavailable outside chat' }))
@@ -96,7 +96,7 @@ describe('VoiceControl route safety', () => {
 				return () => {};
 			}
 		};
-		render(VoiceControl);
+		await render(VoiceControl);
 		await vi.waitFor(() => expect(globalToggle).toBeTypeOf('function'));
 
 		globalToggle?.();
@@ -110,7 +110,7 @@ describe('VoiceControl route safety', () => {
 		mocks.startListening.mockImplementation((onResult: (text: string) => void) => {
 			onResult(' dictated message ');
 		});
-		render(VoiceControl);
+		await render(VoiceControl);
 
 		await page.getByRole('button', { name: 'Dictate message' }).click();
 
@@ -124,10 +124,10 @@ describe('VoiceControl route safety', () => {
 		mocks.startListening.mockImplementation((onResult: (text: string) => void) => {
 			deliverTranscript = onResult;
 		});
-		const { unmount } = render(VoiceControl);
+		const { unmount } = await render(VoiceControl);
 
 		await page.getByRole('button', { name: 'Dictate message' }).click();
-		unmount();
+		await unmount();
 		deliverTranscript?.('late transcript');
 
 		expect(mocks.chatSend).not.toHaveBeenCalled();
@@ -143,11 +143,11 @@ describe('VoiceControl route safety', () => {
 				})
 		);
 		(window as Window & { openpalm?: TestBridge }).openpalm = { requestMicPermission };
-		const { unmount } = render(VoiceControl);
+		const { unmount } = await render(VoiceControl);
 
 		await page.getByRole('button', { name: 'Dictate message' }).click();
 		await vi.waitFor(() => expect(requestMicPermission).toHaveBeenCalledOnce());
-		unmount();
+		await unmount();
 		resolvePermission?.('granted');
 		await vi.waitFor(() => expect(mocks.startListening).not.toHaveBeenCalled());
 	});
@@ -169,7 +169,7 @@ describe('VoiceControl route safety', () => {
 				return () => {};
 			}
 		};
-		render(VoiceControl);
+		await render(VoiceControl);
 		await expect.element(page.getByRole('button', { name: 'Dictate message' })).toBeEnabled();
 		await vi.waitFor(() => expect(globalToggle).toBeTypeOf('function'));
 
@@ -184,7 +184,7 @@ describe('VoiceControl route safety', () => {
 	test('disables dictation while remote audio is being transcribed', async () => {
 		mocks.page.url = new URL('http://localhost/advanced');
 		mocks.voiceState.status = 'transcribing';
-		render(VoiceControl);
+		await render(VoiceControl);
 
 		await expect.element(page.getByRole('button', { name: 'Transcribing message' })).toBeDisabled();
 	});
@@ -193,7 +193,7 @@ describe('VoiceControl route safety', () => {
 describe('VoiceControl accessibility', () => {
 	test('gives every voice target a 44px target and a two-pixel focus indicator', async () => {
 		mocks.voiceState.ttsSupported = true;
-		const { container } = render(VoiceControl);
+		const { container } = await render(VoiceControl);
 		container.style.setProperty('--s-seal', '#b53a2d');
 		await expect
 			.element(page.getByRole('button', { name: 'Turn on spoken responses' }))
@@ -220,7 +220,7 @@ describe('VoiceControl accessibility', () => {
 	test('exposes the same three controls on the advanced chat surface', async () => {
 		mocks.page.url = new URL('http://localhost/advanced');
 		mocks.voiceState.ttsSupported = true;
-		const { container } = render(VoiceControl);
+		const { container } = await render(VoiceControl);
 
 		await expect.element(page.getByRole('button', { name: 'Dictate message' })).toBeVisible();
 		await expect

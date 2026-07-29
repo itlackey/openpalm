@@ -33,7 +33,7 @@ import RecoveryTab from './RecoveryTab.svelte';
 
 describe('RecoveryTab prune confirmation accessibility', () => {
 	test('focuses the modal alertdialog and restores the trigger on Escape', async () => {
-		const { container } = render(RecoveryTab);
+		const { container } = await render(RecoveryTab);
 		const trigger = page.getByRole('button', { name: 'Prune…' });
 		await expect.element(trigger, { timeout: 5000 }).toBeVisible();
 		await trigger.click();

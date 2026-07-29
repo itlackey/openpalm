@@ -4,9 +4,9 @@ import { page } from 'vitest/browser';
 import DeviceSettingsNav from './DeviceSettingsNav.svelte';
 
 describe('DeviceSettingsNav', () => {
-	test('renders only the two shared-style device settings tabs', () => {
+	test('renders only the two shared-style device settings tabs', async () => {
 		const onTabChange = vi.fn();
-		const { container } = render(DeviceSettingsNav, {
+		const { container } = await render(DeviceSettingsNav, {
 			activeTab: 'general',
 			onTabChange
 		});
@@ -24,7 +24,7 @@ describe('DeviceSettingsNav', () => {
 	});
 
 	test('uses the same mobile selector as host navigation', async () => {
-		render(DeviceSettingsNav, {
+		await render(DeviceSettingsNav, {
 			activeTab: 'connections',
 			onTabChange: vi.fn()
 		});
@@ -37,7 +37,7 @@ describe('DeviceSettingsNav', () => {
 
 	test('selects a settings destination from the shared mobile navigator', async () => {
 		const onTabChange = vi.fn();
-		render(DeviceSettingsNav, {
+		await render(DeviceSettingsNav, {
 			activeTab: 'general',
 			onTabChange
 		});

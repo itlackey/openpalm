@@ -41,7 +41,7 @@ function mockFetch(body: object, ok = true) {
 describe('ProvidersPanel — assistant unavailable', () => {
   test('shows human-readable unavailability message when available=false', async () => {
     mockFetch(unavailableResponse);
-    render(ProvidersPanel);
+    await render(ProvidersPanel);
 
     await expect.element(
       page.getByText(/The assistant \(OpenCode server\) is not reachable/i),
@@ -51,14 +51,14 @@ describe('ProvidersPanel — assistant unavailable', () => {
 
   test('never shows raw "fetch failed" string', async () => {
     mockFetch(unavailableResponse);
-    render(ProvidersPanel);
+    await render(ProvidersPanel);
 
     await expect.element(page.getByText(/fetch failed/i)).not.toBeInTheDocument();
   });
 
   test('never shows "[object Object]" string', async () => {
     mockFetch(unavailableResponse);
-    render(ProvidersPanel);
+    await render(ProvidersPanel);
 
     await expect.element(page.getByText(/\[object Object\]/i)).not.toBeInTheDocument();
   });
@@ -67,7 +67,7 @@ describe('ProvidersPanel — assistant unavailable', () => {
 describe('ProvidersPanel — assistant available', () => {
   test('shows provider name when available=true', async () => {
     mockFetch(availableResponse);
-    render(ProvidersPanel);
+    await render(ProvidersPanel);
 
     // `exact` disambiguates the provider-name <span>OpenAI</span> from the
     // static "OpenAI-compatible API" edge section that always renders.
@@ -79,7 +79,7 @@ describe('ProvidersPanel — assistant available', () => {
 
   test('does not render the retired assistant-CLI subtabs (IMG-1: CLIs removed)', async () => {
     mockFetch(availableResponse);
-    render(ProvidersPanel);
+    await render(ProvidersPanel);
 
     await expect.element(page.getByText('OpenAI', { exact: true }), { timeout: 5000 }).toBeVisible();
     for (const name of ['Codex', 'Claude Code', 'Copilot', 'Pi']) {
@@ -89,7 +89,7 @@ describe('ProvidersPanel — assistant available', () => {
 
   test('restores focus after moving from provider selection into the custom provider drawer', async () => {
     mockFetch(availableResponse);
-    render(ProvidersPanel);
+    await render(ProvidersPanel);
     const trigger = page.getByRole('button', { name: 'Add provider' });
 
     await trigger.click();
@@ -121,7 +121,7 @@ describe('ProvidersPanel — OpenAI-compatible edge API key (S.1b)', () => {
 
   test('the key is not shown until the user reveals it', async () => {
     mockFetchWithSecret('sk-secret-value-123\n');
-    render(ProvidersPanel);
+    await render(ProvidersPanel);
 
     await expect.element(page.getByText('OpenAI-compatible API'), { timeout: 5000 }).toBeVisible();
     // The secret value must not be in the DOM before an explicit reveal.
@@ -130,7 +130,7 @@ describe('ProvidersPanel — OpenAI-compatible edge API key (S.1b)', () => {
 
   test('Reveal API key fetches and displays the op_api_key value (trimmed)', async () => {
     mockFetchWithSecret('sk-secret-value-123\n');
-    render(ProvidersPanel);
+    await render(ProvidersPanel);
 
     await page.getByRole('button', { name: 'Reveal API key' }).click();
 
@@ -147,7 +147,7 @@ describe('ProvidersPanel — disconnect confirmation', () => {
     });
     vi.stubGlobal('confirm', confirmSpy);
     mockFetch(availableResponse);
-    render(ProvidersPanel);
+    await render(ProvidersPanel);
 
     await page.getByRole('button', { name: 'Disconnect' }).click();
 
@@ -160,7 +160,7 @@ describe('ProvidersPanel — disconnect confirmation', () => {
 
   test('Cancel dismisses the confirm dialog without disconnecting', async () => {
     mockFetch(availableResponse);
-    render(ProvidersPanel);
+    await render(ProvidersPanel);
 
     await page.getByRole('button', { name: 'Disconnect' }).click();
     await expect.element(
@@ -176,7 +176,7 @@ describe('ProvidersPanel — disconnect confirmation', () => {
 
   test('manages focus and makes the provider panel inert while confirming', async () => {
     mockFetch(availableResponse);
-    const { container } = render(ProvidersPanel);
+    const { container } = await render(ProvidersPanel);
     const trigger = page.getByRole('button', { name: 'Disconnect' });
     await trigger.click();
 

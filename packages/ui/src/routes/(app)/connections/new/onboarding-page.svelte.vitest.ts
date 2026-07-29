@@ -64,7 +64,7 @@ afterEach(() => {
 
 describe('/connections/new focus and navigation', () => {
   test('focuses each newly shown input and preserves values across internal Back', async () => {
-    render(NewConnectionPage);
+    await render(NewConnectionPage);
     const pairing = page.getByRole('textbox', { name: 'Pairing code' });
     await expect.element(pairing).toHaveFocus();
     await pairing.fill('remember-this-code');
@@ -83,7 +83,7 @@ describe('/connections/new focus and navigation', () => {
   });
 
   test('focuses pairing input when a fragment arrives while manual entry is visible', async () => {
-    render(NewConnectionPage);
+    await render(NewConnectionPage);
     await page.getByRole('button', { name: 'Enter an address instead' }).click();
     await expect.element(page.getByRole('textbox', { name: 'Name', exact: true })).toHaveFocus();
 
@@ -109,7 +109,7 @@ describe('/connections/new focus and navigation', () => {
         auth: { mode: 'basic', username: 'phone', password: 'secret' },
       },
     });
-    render(NewConnectionPage);
+    await render(NewConnectionPage);
     await page.getByRole('button', { name: 'Enter an address instead' }).click();
     await page.getByRole('textbox', { name: 'Name', exact: true }).fill('Home');
     await page.getByRole('textbox', { name: 'Address' }).fill('https://openpalm.example/oc');
@@ -131,7 +131,7 @@ describe('/connections/new focus and navigation', () => {
       reason: 'network-uncertain',
       message: 'CORS or firewall transport failure',
     });
-    render(NewConnectionPage);
+    await render(NewConnectionPage);
     await page.getByRole('button', { name: 'Enter an address instead' }).click();
     await page.getByRole('textbox', { name: 'Name', exact: true }).fill('Home');
     await page.getByRole('textbox', { name: 'Address' }).fill('https://openpalm.example/oc');
@@ -148,7 +148,7 @@ describe('/connections/new focus and navigation', () => {
   test('shows Start Back only after a host-capable onboarding surface settles', async () => {
     mocks.appPage.url = new URL('http://localhost/connections/new?onboarding=1');
     mocks.runtimeContext.effectiveCapabilities = ['host:setup'];
-    render(NewConnectionPage);
+    await render(NewConnectionPage);
     await expect.element(page.getByRole('button', { name: 'Back', exact: true })).toBeVisible();
     await page.getByRole('button', { name: 'Back', exact: true }).click();
     expect(mocks.goto).toHaveBeenCalledWith('/start');
@@ -156,14 +156,14 @@ describe('/connections/new focus and navigation', () => {
 
   test('does not flash or link Back to Start on client-only onboarding', async () => {
     mocks.appPage.url = new URL('http://localhost/connections/new?onboarding=1');
-    render(NewConnectionPage);
+    await render(NewConnectionPage);
     await expect.element(page.getByRole('button', { name: 'Back', exact: true })).not.toBeInTheDocument();
     expect(mocks.goto).not.toHaveBeenCalled();
   });
 
   test('returns Settings-launched wizard to Connections', async () => {
     mocks.appPage.url = new URL('http://localhost/connections/new');
-    render(NewConnectionPage);
+    await render(NewConnectionPage);
     await page.getByRole('button', { name: 'Back', exact: true }).click();
     expect(mocks.goto).toHaveBeenCalledWith('/connections');
   });
@@ -175,7 +175,7 @@ describe('/connections/new focus and navigation', () => {
         resolveVerification = resolve;
       }),
     );
-    render(NewConnectionPage);
+    await render(NewConnectionPage);
     await page.getByRole('button', { name: 'Enter an address instead' }).click();
     await page.getByRole('textbox', { name: 'Name', exact: true }).fill('Home');
     await page.getByRole('textbox', { name: 'Address' }).fill('https://openpalm.example/oc');
@@ -207,13 +207,13 @@ describe('/connections/new focus and navigation', () => {
         resolveVerification = resolve;
       }),
     );
-    const rendered = render(NewConnectionPage);
+    const rendered = await render(NewConnectionPage);
     await page.getByRole('button', { name: 'Enter an address instead' }).click();
     await page.getByRole('textbox', { name: 'Name', exact: true }).fill('Home');
     await page.getByRole('textbox', { name: 'Address' }).fill('https://openpalm.example/oc');
     await page.getByRole('button', { name: 'Connect' }).click();
     await vi.waitFor(() => expect(mocks.verifyConnectionCandidate).toHaveBeenCalledOnce());
-    rendered.unmount();
+    await rendered.unmount();
     resolveVerification({
       ok: true,
       candidate: {
@@ -244,7 +244,7 @@ describe('/connections/new focus and navigation', () => {
         resolveSave = resolve;
       }),
     );
-    render(NewConnectionPage);
+    await render(NewConnectionPage);
     await page.getByRole('button', { name: 'Enter an address instead' }).click();
     await page.getByRole('textbox', { name: 'Name', exact: true }).fill('Home');
     await page.getByRole('textbox', { name: 'Address' }).fill('https://openpalm.example/oc');

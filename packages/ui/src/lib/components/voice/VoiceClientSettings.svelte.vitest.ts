@@ -81,7 +81,7 @@ afterEach(() => {
 
 describe('VoiceClientSettings provider status', () => {
 	test('does not call an advertised but unreachable OpenPalm provider available', async () => {
-		render(VoiceClientSettings);
+		await render(VoiceClientSettings);
 
 		await expect.element(page.getByText(/advertised.*not reachable/i).first(), { timeout: 5000 }).toBeVisible();
 		await expect.element(page.getByText(/Available on this host/i)).not.toBeInTheDocument();
@@ -90,7 +90,7 @@ describe('VoiceClientSettings provider status', () => {
 
 describe('VoiceClientSettings accessibility and mobile layout', () => {
 	test('keeps mobile grids and provider selects inside a 320px viewport', async () => {
-		const { container } = render(VoiceClientSettings);
+		const { container } = await render(VoiceClientSettings);
 		container.style.width = '296px';
 		await expect.element(page.getByRole('combobox').first()).toBeVisible();
 
@@ -103,7 +103,7 @@ describe('VoiceClientSettings accessibility and mobile layout', () => {
 	});
 
 	test('provides a 24px checkbox in a 44px labeled target', async () => {
-		const { container } = render(VoiceClientSettings);
+		const { container } = await render(VoiceClientSettings);
 		const checkbox = page.getByRole('checkbox', { name: 'Speak replies automatically' });
 		await expect.element(checkbox).toBeVisible();
 
@@ -115,7 +115,7 @@ describe('VoiceClientSettings accessibility and mobile layout', () => {
 	});
 
 	test('gives every settings action a 44px target', async () => {
-		const { container } = render(VoiceClientSettings);
+		const { container } = await render(VoiceClientSettings);
 		await expect.element(page.getByText(/advertised.*not reachable/i).first(), { timeout: 5000 }).toBeVisible();
 
 		const actions = container.querySelectorAll<HTMLButtonElement>('.voice-settings button');
@@ -128,7 +128,7 @@ describe('VoiceClientSettings accessibility and mobile layout', () => {
 	});
 
 	test('shows a two-pixel focus indicator on every enabled control', async () => {
-		const { container } = render(VoiceClientSettings);
+		const { container } = await render(VoiceClientSettings);
 		container.style.setProperty('--s-ink', '#26292b');
 		await expect.element(page.getByText(/advertised.*not reachable/i).first(), { timeout: 5000 }).toBeVisible();
 		const controls = container.querySelectorAll<HTMLElement>(
@@ -151,7 +151,7 @@ describe('VoiceClientSettings tests', () => {
 			stt: { provider: 'openai-compatible', baseURL: 'https://speech.example/v1' },
 			tts: { provider: 'openai-compatible', baseURL: 'https://speech.example/v1' },
 		});
-		render(VoiceClientSettings);
+		await render(VoiceClientSettings);
 
 		await expect.element(page.getByText(/Stored encrypted in this browser only/i).first()).toBeVisible();
 		await expect.element(page.getByText(/without at-rest encryption/i)).not.toBeInTheDocument();
@@ -167,7 +167,7 @@ describe('VoiceClientSettings tests', () => {
 				};
 			},
 		);
-		render(VoiceClientSettings);
+		await render(VoiceClientSettings);
 
 		await expect.element(page.getByText(/never sent to the assistant/i)).toBeVisible();
 		await page.getByRole('button', { name: 'Test microphone' }).click();
@@ -178,7 +178,7 @@ describe('VoiceClientSettings tests', () => {
 	});
 
 	test('automatically stops microphone capture after ten seconds', async () => {
-		render(VoiceClientSettings);
+		await render(VoiceClientSettings);
 		const button = page.getByRole('button', { name: 'Test microphone' });
 		await expect.element(button).toBeVisible();
 		mocks.stopListening.mockClear();
@@ -197,7 +197,7 @@ describe('VoiceClientSettings tests', () => {
 		mocks.speakText.mockImplementation(async () => {
 			mocks.voiceState.errorMessage = 'Voice engine is unreachable.';
 		});
-		render(VoiceClientSettings);
+		await render(VoiceClientSettings);
 
 		await page.getByRole('button', { name: 'Test speaker' }).click();
 

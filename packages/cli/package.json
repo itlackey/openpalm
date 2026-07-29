@@ -3,7 +3,7 @@
   "version": "0.13.0-beta.15",
   "type": "module",
   "license": "MPL-2.0",
-  "description": "OpenPalm CLI — install and manage a self-hosted OpenPalm stack",
+  "description": "OpenPalm CLI \u2014 install and manage a self-hosted OpenPalm stack",
   "repository": {
     "type": "git",
     "url": "https://github.com/itlackey/openpalm.git",
@@ -33,9 +33,9 @@
   },
   "devDependencies": {
     "@openpalm/lib": "workspace:*",
-    "@types/node": "^25.9.1",
-    "citty": "^0.2.1",
+    "@types/node": "^26.1.2",
+    "citty": "^0.2.2",
     "typescript": "^6.0.3",
-    "yaml": "^2.8.0"
+    "yaml": "^2.9.0"
   }
 }

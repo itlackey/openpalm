@@ -218,9 +218,8 @@ function load(config: Record<string, unknown>): Loaded {
 	const feedback = config.feedback as Record<string, unknown> | undefined;
 	const fbRequireReason: Tri =
 		typeof feedback?.requireReason === 'boolean' ? (feedback.requireReason ? 'on' : 'off') : '';
-	const fbFailureModes = Array.isArray(feedback?.allowedFailureModes)
-		? (feedback?.allowedFailureModes as string[]).join(', ')
-		: '';
+	const fbModes = feedback?.allowedFailureModes;
+	const fbFailureModes = Array.isArray(fbModes) ? (fbModes as string[]).join(', ') : '';
 	const indexJson = config.index && typeof config.index === 'object' ? JSON.stringify(config.index, null, 2) : '';
 
 	return {

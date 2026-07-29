@@ -54,15 +54,15 @@ describe('EndpointList', () => {
     endpointsService.activate.mockClear();
   });
 
-  test('contains context choices only, without management links', () => {
-    render(EndpointList);
+  test('contains context choices only, without management links', async () => {
+    await render(EndpointList);
 
     expect(document.querySelectorAll('.endpoint-list a')).toHaveLength(0);
     expect(document.body.textContent).not.toContain('Manage');
   });
 
   test('marks the active context row as current and gives every row a 44px target', async () => {
-    render(EndpointList);
+    await render(EndpointList);
 
     const current = page.getByRole('button', { name: /Local assistant/ });
     await expect.element(current).toHaveAttribute('aria-current', 'true');
@@ -71,8 +71,8 @@ describe('EndpointList', () => {
     }
   });
 
-  test('keeps assistant URLs at AA contrast in both themes', () => {
-    const { container } = render(EndpointList);
+  test('keeps assistant URLs at AA contrast in both themes', async () => {
+    const { container } = await render(EndpointList);
     const root = document.documentElement;
     const themes = [
       { paper: '#E5E1D5', ink2: '#575B59', ink3: '#5D5C56' },
@@ -93,8 +93,8 @@ describe('EndpointList', () => {
     for (const property of ['--s-paper', '--s-ink-2', '--s-ink-3']) root.style.removeProperty(property);
   });
 
-  test('shows a two-pixel focus indicator on every endpoint control', () => {
-    const { container } = render(EndpointList);
+  test('shows a two-pixel focus indicator on every endpoint control', async () => {
+    const { container } = await render(EndpointList);
     document.documentElement.style.setProperty('--s-hair', '1px');
     const controls = container.querySelectorAll<HTMLElement>('button');
     expect(controls.length).toBeGreaterThan(0);

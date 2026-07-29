@@ -52,7 +52,7 @@ const improveDraft: ImproveProfile = {
 describe('AKM profile drawer accessibility', () => {
 	test('LLM profile uses the shared focus-managed dialog', async () => {
 		const oncancel = vi.fn();
-		render(LlmProfileDrawer, {
+		await render(LlmProfileDrawer, {
 			props: { draft: llmDraft, oncancel, onapply: vi.fn() }
 		});
 
@@ -67,7 +67,7 @@ describe('AKM profile drawer accessibility', () => {
 		document.body.append(opener);
 		opener.focus();
 		const oncancel = vi.fn();
-		const { unmount } = render(AgentProfileDrawer, {
+		const { unmount } = await render(AgentProfileDrawer, {
 			props: { draft: agentDraft, oncancel, onapply: vi.fn() }
 		});
 
@@ -75,14 +75,14 @@ describe('AKM profile drawer accessibility', () => {
 		await expect.element(page.getByRole('textbox', { name: 'Profile Name' })).toHaveFocus();
 		await userEvent.keyboard('{Escape}');
 		expect(oncancel).toHaveBeenCalledOnce();
-		unmount();
+		await unmount();
 		expect(document.activeElement).toBe(opener);
 		opener.remove();
 	});
 
 	test('Improve profile uses the shared focus-managed dialog', async () => {
 		const oncancel = vi.fn();
-		render(ImproveProfileDrawer, {
+		await render(ImproveProfileDrawer, {
 			props: { draft: improveDraft, llmProfileNames: [], oncancel, onapply: vi.fn() }
 		});
 
@@ -93,7 +93,7 @@ describe('AKM profile drawer accessibility', () => {
 	});
 
 	test('traps Tab inside a profile drawer', async () => {
-		render(AgentProfileDrawer, {
+		await render(AgentProfileDrawer, {
 			props: { draft: agentDraft, oncancel: vi.fn(), onapply: vi.fn() }
 		});
 		const first = page.getByRole('textbox', { name: 'Profile Name' });
