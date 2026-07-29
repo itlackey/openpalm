@@ -7,7 +7,6 @@
 export type CoreServiceName = "assistant";
 export type ManagedServiceName = CoreServiceName | "guardian";
 
-export type AccessScope = "host" | "lan";
 export type CallerType = "assistant" | "cli" | "ui" | "system" | "test" | "unknown";
 
 /** Info about a discovered portal service */

@@ -3,7 +3,6 @@ import { createHash, randomUUID } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { x as extract } from 'tar';
-import { errMessage } from './errors.js';
 import { retry } from './retry.js';
 import { compareComparableVersions, distTagForVersion, isComparableSemver, normalizeVersion } from './versioning.js';
 
@@ -115,5 +114,3 @@ export function restoreHostAssetsBackup(liveDir: string, backupDir: string): voi
 export function hostAssetsChannel(version: string, explicit?: HostAssetsChannel): HostAssetsChannel {
   return explicit ?? (distTagForVersion(version) === 'next' ? 'prerelease' : 'stable');
 }
-
-export function hostAssetsError(error: unknown): string { return errMessage(error); }

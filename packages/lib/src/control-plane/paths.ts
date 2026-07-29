@@ -48,8 +48,6 @@ export const akmConfigDir          = (s: ControlPlaneState): string => `${req(s.
 export const akmConfigPath         = (s: ControlPlaneState): string => `${req(s.configDir, "configDir")}/akm/config.json`;
 export const tasksDir              = (s: ControlPlaneState): string => `${req(s.stashDir, "stashDir")}/tasks`;
 export const assistantConfigDir    = (s: ControlPlaneState): string => `${req(s.configDir, "configDir")}/assistant`;
-/** Guardian OpenCode global config dir — bind-mounted at /etc/opencode */
-export const guardianConfigDir     = (s: ControlPlaneState): string => `${req(s.configDir, "configDir")}/guardian`;
 
 // ── Config/stack directory — compose runtime + stack config ─────────────────
 
@@ -65,27 +63,12 @@ export const stackEnvPath          = (s: ControlPlaneState): string => stackEnvF
 
 // ── Operational state directories ───────────────────────────────────────────
 
-export const akmCacheDir           = (s: ControlPlaneState): string => `${req(s.dataDir, "dataDir")}/akm/cache`;
 export const rollbackDir           = (s: ControlPlaneState): string => `${req(s.dataDir, "dataDir")}/rollback`;
 export const logsDir               = (s: ControlPlaneState): string => `${req(s.dataDir, "dataDir")}/logs`;
-/**
- * Guardian's own audit log of portal ingress (HMAC verify, replay, rate
- * limit). Phase 6 of the auth/proxy refactor removed the OpenPalm-side
- * `admin-audit.jsonl` — OpenCode session logs are the audit trail for
- * chat + tool activity.
- */
-export const guardianAuditPath     = (s: ControlPlaneState): string => `${req(s.dataDir, "dataDir")}/logs/guardian-audit.log`;
 export const backupsDir            = (s: ControlPlaneState): string => `${req(s.dataDir, "dataDir")}/backups`;
 
 // ── State directory — persistent service data ───────────────────────────────
 
-export const assistantServiceDir   = (s: ControlPlaneState): string => `${req(s.dataDir, "dataDir")}/assistant`;
-export const guardianServiceDir    = (s: ControlPlaneState): string => `${req(s.dataDir, "dataDir")}/guardian`;
-export const guardianAkmDir        = (s: ControlPlaneState): string => `${req(s.dataDir, "dataDir")}/guardian/akm`;
-/** akm durable data — NOT config, which lives in config/akm/ */
-export const akmDataDir            = (s: ControlPlaneState): string => `${req(s.dataDir, "dataDir")}/akm/data`;
-export const taskLogDir            = (s: ControlPlaneState, id: string): string => `${req(s.dataDir, "dataDir")}/akm/cache/tasks/logs/${id}`;
-export const taskLogsRootDir       = (s: ControlPlaneState): string => `${req(s.dataDir, "dataDir")}/akm/cache/tasks/logs`;
 // (Removed the dataDir-scoped secretsDir/secretProviderPath/secretsIndexPath/
 //  passStoreDir helpers — zero consumers, and secretsDir here name-collided
 //  with the live knowledge/secrets `home.ts` secretsDir().)
@@ -97,8 +80,6 @@ export const taskLogsRootDir       = (s: ControlPlaneState): string => `${req(s.
 
 // ── Stack directory ─────────────────────────────────────────────────────────
 
-export const coreComposePath       = (s: ControlPlaneState): string => `${req(s.stackDir, "stackDir")}/core.compose.yml`;
-export const servicesComposePath   = (s: ControlPlaneState): string => `${req(s.stackDir, "stackDir")}/services.compose.yml`;
 export const portalsComposePath   = (s: ControlPlaneState): string => `${req(s.stackDir, "stackDir")}/portals.compose.yml`;
 // custom.compose.yml is USER-owned and lives in the config/ tree, not system/stack.
 export const customComposePath     = (s: ControlPlaneState): string => `${req(s.homeDir, "homeDir")}/config/stack/custom.compose.yml`;
