@@ -225,7 +225,15 @@ start_ui() {
   ' "${ui_client_dir}/runtime-config.json" "$assistant_url" "$assistant_name" \
     || echo "warning: could not write runtime-config.json; UI starts with no default connection" >&2
 
-  local ui_port="${OP_UI_PORT:-3000}"
+  # The in-container listen port is FIXED. It is the target of the compose port
+  # mapping (`${OP_UI_BIND_ADDRESS}:${OP_UI_PORT}:3000`), so it cannot vary.
+  # Reading OP_UI_PORT here was a trap: that variable is the HOST-facing knob,
+  # and an operator who set it in custom.compose.yml's `environment:` (the
+  # obvious wrong move, since it IS the documented host knob name) made the UI
+  # child bind that port in-container while the mapping still targeted 3000 —
+  # the front door dead, and both healthchecks following the env var to the
+  # wrong port and reporting healthy anyway.
+  local ui_port=3000
 
   # ── UI session login password ─────────────────────────────────────────────
   # The served UI authenticates browsers with the SAME UI login password as the
@@ -308,12 +316,16 @@ start_ui() {
       fi
       attempt=$((attempt + 1))
       if [ "$attempt" -ge "$max_attempts" ]; then
-        echo "warning: UI co-process exited $attempt times (last exit $exit_code); giving up on respawn — the assistant keeps serving without it" >&2
-        # A permanently-dead UI (attempt cap exhausted) is the SAME non-fatal,
-        # boot-scoped condition as "build not found" above — write the skip
-        # marker so the healthcheck (which probes the UI port unless this marker
-        # exists) stops expecting a UI that will never come back this boot.
-        : > /tmp/openpalm-ui-skip
+        echo "ERROR: UI co-process exited $attempt times (last exit $exit_code); giving up on respawn. The published UI port now serves nothing — this container is reporting UNHEALTHY on purpose." >&2
+        # Deliberately NO skip marker here. The marker exists for a
+        # legitimately-absent build (an image without the UI), which is a real
+        # configuration. A UI that crash-looped to exhaustion is the opposite: it
+        # is the ONE port a home install publishes, and it is dead. Writing the
+        # marker made the healthcheck stop probing it, so the container went
+        # green over a dead front door — precisely the state the UI probe was
+        # added to prevent, and one Docker's restart policy cannot heal because
+        # healthy containers are never restarted. Failing the healthcheck makes
+        # it visible in `docker ps` and in the host UI's own status.
         break
       fi
       echo "warning: UI co-process exited (code $exit_code) — restarting in ${delay}s (attempt $((attempt + 1))/${max_attempts})" >&2

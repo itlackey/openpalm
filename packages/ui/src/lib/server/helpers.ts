@@ -266,34 +266,34 @@ function effectiveRequestOrigin(request: Request): string | null {
 }
 
 /**
- * True when this process is the assistant container's UI co-process AND its
- * host port is published beyond loopback.
+ * True when this process is the assistant container's UI co-process.
  *
- * The Host allowlist asserts "this service is loopback-only". That assertion
- * is permanently true for the HOST process (`openpalm app` / `admin` /
- * Electron), which is admin-capable and never published — so the check stays
- * on there and costs nothing.
- *
- * It is false for the container UI whenever the operator has published it: a
- * service deliberately bound to the LAN, advertised over mDNS, and opened from
- * another device. Enforcing loopback-only on it is not defence in depth, it is
- * a false assertion that surfaces as a 400 on every request from a phone.
- *
- * BOTH conditions are required, deliberately. Relaxing on bind address alone
- * would be unsafe: DNS rebinding specifically targets loopback-bound services
+ * The Host allowlist asserts "this service is loopback-only". That assertion is
+ * permanently true for the HOST process (`openpalm app` / `admin` / Electron),
+ * which is admin-capable and never published — so the check stays on there and
+ * costs nothing. DNS rebinding specifically targets loopback-bound services
  * (the attacker rebinds their domain to 127.0.0.1 and drives the victim's own
- * browser), so a stray `OP_UI_BIND_ADDRESS` in a host operator's shell must
- * never weaken the host process. `OP_UI_SERVED_IN_CONTAINER` is set only by
- * the assistant entrypoint (containers/assistant/entrypoint.sh) and cannot be
- * reached by inference; `OP_UI_BIND_ADDRESS` is passed by core.compose.yml
- * mirroring the UI port line, because the container's own `HOST=0.0.0.0`
- * listener says nothing about whether the port is published to the LAN.
+ * browser), and that is exactly the process worth protecting: it holds host:*.
+ *
+ * The container co-process is the LAN front door by design, so the assertion is
+ * simply false there and enforcing it surfaces as a 400 on every request from a
+ * phone. `OP_UI_SERVED_IN_CONTAINER` is set only by the assistant entrypoint
+ * and cannot be reached by inference, so it is a sufficient discriminator on
+ * its own.
+ *
+ * It used to ALSO require a non-loopback `OP_UI_BIND_ADDRESS`, mirrored into the
+ * container env by core.compose.yml to describe the port mapping one line above
+ * it. That made LAN reachability depend on three values staying hand-mirrored —
+ * the mapping, the env copy, and this marker — and any divergence (a
+ * custom.compose.yml overriding `ports:` without the env, a manual `docker
+ * compose` run, a hand-edited stack.env plus `docker restart`) produced a port
+ * that accepted TCP and then 400'd every single request with invalid_host: the
+ * exact "exposed to the LAN but broken" symptom. Dropping it costs nothing
+ * real: a rebinding attacker who reaches the container UI still meets the login
+ * wall with no session cookie, so they get /login and /health and nothing else.
  */
 function isPublishedContainerUi(): boolean {
-  if (process.env.OP_UI_SERVED_IN_CONTAINER !== "1") return false;
-  const bind = process.env.OP_UI_BIND_ADDRESS?.trim();
-  if (!bind) return false;
-  return !isLoopbackHost(bind);
+  return process.env.OP_UI_SERVED_IN_CONTAINER === "1";
 }
 
 export function checkHostHeader(request: Request, requestId?: string): Response | null {
