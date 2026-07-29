@@ -37,7 +37,7 @@ For any other deletion:
 
 OpenPalm is a self-hosted personal AI platform built on Docker Compose and OpenCode. It manages a stack of containers orchestrated by the host CLI or an optional admin web UI.
 
-One always-on core container: **assistant** (OpenCode runtime, image-baked non-admin UI, BusyBox `crond`, and akm CLI memory/skills/lessons over the shared stash). The **guardian** (principal-authenticated ingress + content validation, ON by default in code and shipped Compose) is not a core container; it is profile-gated in `portals.compose.yml` and deployed only when a guardian-ingress addon (`chat`, `api`, `discord`, `slack`, or `gateway`) is enabled. Portal-style ingress addons and services such as Ollama are added through Compose.
+One always-on core container: **assistant** (OpenCode runtime, image-baked non-admin UI, BusyBox `crond`, and akm CLI memory/skills/lessons over the shared stash). The **guardian** (principal-authenticated ingress) is not a core container; it is profile-gated in `portals.compose.yml` and deployed only when a guardian-ingress addon (`chat`, `api`, `discord`, `slack`, or `gateway`) is enabled. Portal-style ingress addons and services such as Ollama are added through Compose.
 
 Repo layout convention:
 - `packages/*` — app/package source workspaces
@@ -48,10 +48,6 @@ CLI (host)            ->  Docker Compose (lifecycle)    <- primary orchestrator
 Admin UI              ->  Admin API  ->  Docker Compose  <- optional web orchestrator
 External clients      ->  Portal     ->  Guardian (/oc proxy)      ->  Assistant
 ```
-
-The assistant is not an Admin API caller: it has no Docker socket, no admin
-credential, and (loopback-only admin bind) no default network path to the
-admin process — see Security invariant 3 (assistant isolation).
 
 See [`docs/technical/core-principles.md`](docs/technical/core-principles.md) for the filesystem/volume-mount contract.
 
@@ -102,17 +98,9 @@ bun run portal:slack:dev   # Runs slack portal dev server
 bun run wizard:dev                      # Runs `install --no-start` in a throwaway temp OP_HOME (OP_IMAGE_TAG=dev)
 ```
 
-### Type Checking
-
-```bash
-cd packages/ui && npm run check
-# or from root:
-bun run check            # Runs ui:check
-```
-
 ### Tests
 
-The project has ~100 test files across all packages using Bun test, Vitest, and Playwright.
+Bun test, Vitest, and Playwright across all packages:
 
 | Runner | Command | Scope |
 |--------|---------|-------|
@@ -125,17 +113,8 @@ The project has ~100 test files across all packages using Bun test, Vitest, and 
 | Playwright (stack) | `bun run ui:test:stack` | Stack-dependent integration tests (needs running stack + `OP_UI_LOGIN_PASSWORD`) |
 
 ```bash
-# Run guardian tests
-cd packages/guardian && bun test
-
 # Run a single test file
 cd packages/guardian && bun test src/server.test.ts
-
-# Run UI unit tests (Vitest, CI-friendly)
-bun run ui:test:unit
-
-# Run all non-UI tests
-bun run test
 
 # Stack integration tests (requires running compose stack)
 source scripts/load-test-env.sh && RUN_DOCKER_STACK_TESTS=1 OP_UI_LOGIN_PASSWORD="$OP_UI_LOGIN_PASSWORD" bun run ui:test:e2e
@@ -280,22 +259,13 @@ Full detail in [`docs/technical/core-principles.md`](docs/technical/core-princip
 
 ## Filesystem Contract
 
-All state lives under `~/.openpalm/` (configurable via `OP_HOME`):
-
-The layout is split into trees by **ownership** so lifecycle sync can overwrite what it owns without touching a user file:
-
-| Directory | Owner | Purpose |
-|-----------|-------|---------|
-| `config/` | User | Non-secret config: assistant + guardian OpenCode config (`config/assistant/`, `config/guardian/`); the `custom.compose.yml` overlay lives under `config/stack/` |
-| `system/` | Managed | Release-shipped assets overwritten wholesale on reconcile: managed compose files (`system/stack/`) + managed OpenCode config (`system/assistant/`, `system/guardian/`) |
-| `state/` | App | App-written records: version pins, enabled add-ons, channel, setup completion (`state/stack.env`, `state/host-identity.json`) |
-| `knowledge/` | User/Services | AKM knowledge (skills, env, tasks, agents) plus provider `knowledge/secrets/auth.json`; `knowledge/env/user.env` is loaded by scoped tools on demand. Stack config is NOT here because this tree is bind-mounted into the assistant at `/stash` |
-| `data/` | Services/System | Persistent data: assistant, guardian, akm (`data/akm/cache/`, `data/akm/data/`), logs, backups, rollback |
-| `workspace/` | User | Shared assistant work area (bind-mounted at `/work`) |
-| `private/` | App | Delegated credentials outside assistant `/stash`; included in backup/purge/ownership scope |
-| `cache/` | System | Regenerable assistant/guardian caches; excluded from backups and ownership repair |
-| `~/.cache/openpalm/` | System | Ephemeral cache (outside `OP_HOME`) |
-
+All state lives under `~/.openpalm/` (configurable via `OP_HOME`), split into
+trees by **ownership** so lifecycle sync can overwrite what it owns (`system/`,
+`state/`) without touching a user file (`config/`, `knowledge/`, `workspace/`).
+The authoritative per-directory table is in
+[`docs/technical/core-principles.md`](docs/technical/core-principles.md); the
+full env/mount map is in
+[`docs/technical/environment-and-mounts.md`](docs/technical/environment-and-mounts.md).
 Dev mode uses `.dev/` with the same subdirectory structure.
 
 ---
@@ -321,14 +291,10 @@ Before submitting any change:
 
 | Path | Purpose |
 |---|---|
-| `docs/technical/core-principles.md` | **Authoritative architectural rules** |
-| `docs/technical/code-quality-principles.md` | Engineering invariants and quality contracts |
-| `docs/technical/bunjs-rules.md` | Bun built-in API rules |
-| `docs/technical/sveltekit-rules.md` | SvelteKit-specific implementation rules |
 | `packages/lib/src/index.ts` | **Shared control-plane library** (`@openpalm/lib`) barrel export |
 | `packages/lib/src/control-plane/lifecycle.ts` | State factory, lifecycle transitions (install/update/uninstall) |
 | `packages/lib/src/control-plane/config-persistence.ts` | Runtime file writing (compose, env, secrets) |
-| `packages/lib/src/control-plane/types.ts` | CORE_SERVICES, OPTIONAL_SERVICES, ControlPlaneState |
+| `packages/lib/src/control-plane/types.ts` | CORE_SERVICES, MANAGED_SERVICES, ControlPlaneState |
 | `packages/ui/src/lib/server/docker.ts` | Docker compose wrapper (re-exports lib with preflight enforcement) |
 | `packages/ui/src/lib/server/helpers.ts` | Shared request/response utilities |
 | `packages/ui/src/lib/types.ts` | Shared TypeScript types |
