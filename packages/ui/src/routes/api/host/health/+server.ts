@@ -11,7 +11,7 @@
 import { basicAuthHeader } from '$lib/server/basic-auth.js';
 import type { RequestHandler } from './$types';
 import { requireAdmin, requireCapability, jsonResponse, getRequestId } from '$lib/server/helpers.js';
-import { getHostOpencodeTarget } from '$lib/server/opencode-target.js';
+import { getAssistantOpencodeTarget } from '$lib/server/opencode-target.js';
 
 export const GET: RequestHandler = async (event) => {
 	const requestId = getRequestId(event);
@@ -21,7 +21,7 @@ export const GET: RequestHandler = async (event) => {
 	if (authError) return authError;
 
 	// Quick probe of the host's own OpenCode target — non-blocking, best-effort.
-	const endpoint = getHostOpencodeTarget();
+	const endpoint = getAssistantOpencodeTarget();
 	let opencode = false;
 	try {
 		const headers: Record<string, string> = {};

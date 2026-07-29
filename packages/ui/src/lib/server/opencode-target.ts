@@ -1,35 +1,43 @@
 /**
- * The host's OWN OpenCode target — the local admin assistant the host UI's
- * server routes talk to (config, catalog, health, landing reachability).
+ * The ASSISTANT's OpenCode target — the one OpenCode this UI process talks to,
+ * for chat (`/oc`), config, catalog, health, and provider credentials.
  *
- * Phase 3b ("One UI, delete the split"): the browser owns connections and talks
- * to OpenCode directly, so the host connection STORE (`endpoints.json` CRUD +
- * the host assistant proxy broker + the `/api/connections` list/switch surface)
- * is gone. What remains is this: the host process still runs (or points at) one
- * local OpenCode, derived from environment — or, under Electron, the
- * per-launch child advertised in `local-opencode.runtime.json`.
+ * There is exactly one target, deliberately. This module used to resolve "the
+ * host's own OpenCode" with a precedence — the Electron-spawned admin child
+ * first, the env-derived assistant second — which conflated two servers with
+ * different purposes behind one name. Under Electron with a real install, that
+ * meant the browser's locked "Local assistant" connection proxied chat to the
+ * admin child, whose staged HOME is deliberately created WITHOUT `auth.json`
+ * (we do not want an admin agent reading the user's LLM keys), so chat on the
+ * default connection could not work by construction. The same conflation sent
+ * provider-config writes into a HOME the real assistant never reads and
+ * reported the wrong server's health.
  *
- * This is deliberately small: env/runtime derivation + a liveness probe + a URL
- * validator (for the surviving pairing MINT route). No persistence, no active
- * selection, no user entries — those belong to the browser now.
+ * Nothing in the UI wants the admin child: its only consumer was that
+ * accidental precedence (the connection broker it was built to feed was
+ * deleted in Phase 3b). So the resolver is now env/stack-derived, full stop.
+ * Electron still spawns the child; that spawn is now unread and is removed
+ * separately.
+ *
+ * This is deliberately small: env/stack derivation + a URL validator (for the
+ * surviving pairing MINT route). No persistence, no active selection, no user
+ * entries — those belong to the browser.
  */
-import { existsSync, readFileSync } from 'node:fs';
 import { getState } from './state.js';
 import { readSecret, readStackEnv } from '@openpalm/lib';
 import { DEFAULT_OPENCODE_USERNAME, stripTrailingNewlines } from './basic-auth.js';
 
-export type HostOpencodeTarget = {
+export type AssistantOpencodeTarget = {
   id: string;
   label: string;
   url: string;
   username?: string;
   password?: string;
-  /** True for the env-derived default (as opposed to the Electron child). */
+  /** Always true — kept in the shape the health route reports to clients. */
   isDefault: boolean;
 };
 
 const DEFAULT_ID = 'default';
-const LOCAL_ELECTRON_ID = 'local-electron';
 
 function normalizeBrowserFacingUrl(raw: string): string {
   try {
@@ -46,48 +54,15 @@ function normalizeBrowserFacingUrl(raw: string): string {
   }
 }
 
-type LocalRuntime = {
-  url: string;
-  username?: string;
-  password?: string;
-};
-
 /**
- * Read the Electron-written runtime.json each time it's needed. The file is
- * 0600 and is rewritten on each Electron launch (random password per launch),
- * so callers must NOT cache the result.
+ * The assistant's OpenCode: URL and, when OpenCode is configured to require
+ * it, the Basic-auth credential to reach it.
+ *
+ * Read fresh on every call. `OPENCODE_AUTH` and the generated key are
+ * operator-changeable at runtime, and a cached credential would 401 the whole
+ * UI until the process restarted.
  */
-function readLocalRuntime(): LocalRuntime | null {
-  const path = `${getState().dataDir}/local-opencode.runtime.json`;
-  if (!existsSync(path)) return null;
-  try {
-    const parsed = JSON.parse(readFileSync(path, 'utf-8')) as Partial<LocalRuntime>;
-    if (!parsed || typeof parsed.url !== 'string' || !parsed.url) return null;
-    return {
-      url: parsed.url,
-      username: typeof parsed.username === 'string' ? parsed.username : undefined,
-      password: typeof parsed.password === 'string' ? parsed.password : undefined,
-    };
-  } catch (e) {
-    console.warn('[opencode-target] Failed to parse local-opencode.runtime.json:', e);
-    return null;
-  }
-}
-
-function localTarget(): HostOpencodeTarget | null {
-  const rt = readLocalRuntime();
-  if (!rt) return null;
-  return {
-    id: LOCAL_ELECTRON_ID,
-    label: 'OpenPalm Admin',
-    url: normalizeBrowserFacingUrl(rt.url),
-    username: rt.username || DEFAULT_OPENCODE_USERNAME,
-    ...(rt.password ? { password: rt.password } : {}),
-    isDefault: false,
-  };
-}
-
-function defaultTarget(): HostOpencodeTarget {
+export function getAssistantOpencodeTarget(): AssistantOpencodeTarget {
   const persisted = readStackEnv(getState().homeDir);
   const url =
     process.env.OP_OPENCODE_URL ??
@@ -118,15 +93,6 @@ function defaultTarget(): HostOpencodeTarget {
     password,
     isDefault: true,
   };
-}
-
-/**
- * The host's own OpenCode target: the Electron-spawned local child when its
- * runtime.json is present, otherwise the env-derived default. Re-read each call
- * so a password rotated by a new Electron launch is picked up immediately.
- */
-export function getHostOpencodeTarget(): HostOpencodeTarget {
-  return localTarget() ?? defaultTarget();
 }
 
 // ── URL validation (surviving pairing MINT route) ────────────────────────────

@@ -20,7 +20,7 @@ const target = vi.hoisted(() => ({
 }));
 
 vi.mock('$lib/server/opencode-target.js', () => ({
-  getHostOpencodeTarget: () => target.value,
+  getAssistantOpencodeTarget: () => target.value,
 }));
 
 import { GET, POST } from './+server.js';

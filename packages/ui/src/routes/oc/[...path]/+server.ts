@@ -19,12 +19,12 @@
  * the origin it already loaded, carrying the session cookie it already has,
  * and this process makes the local hop.
  *
- * Upstream resolution is `getHostOpencodeTarget()` — the same resolver the
- * host's own server routes use — so ONE code path serves both topologies:
+ * Upstream resolution is `getAssistantOpencodeTarget()` — the same resolver
+ * every other server route uses — so ONE code path serves both topologies:
  *   - container co-process: `OP_OPENCODE_URL=http://localhost:4096`, set by
  *     the assistant entrypoint;
  *   - host process (`openpalm app` / `admin` / Electron): the env-derived
- *     `127.0.0.1:${OP_ASSISTANT_PORT}`, or the Electron-spawned child.
+ *     `127.0.0.1:${OP_ASSISTANT_PORT}`.
  *
  * Basic auth for the upstream is attached HERE, server-side, from the same
  * resolver. That is what closes the third LAN failure: the seeded connection
@@ -39,7 +39,7 @@
  */
 import type { RequestHandler } from './$types';
 import { errorResponse, getRequestId, requireAdmin } from '$lib/server/helpers.js';
-import { getHostOpencodeTarget } from '$lib/server/opencode-target.js';
+import { getAssistantOpencodeTarget } from '$lib/server/opencode-target.js';
 
 /**
  * NO upstream timeout, deliberately.
@@ -104,7 +104,7 @@ const handle: RequestHandler = async (event) => {
   const authError = requireAdmin(event, requestId);
   if (authError) return authError;
 
-  const target = getHostOpencodeTarget();
+  const target = getAssistantOpencodeTarget();
   const path = event.params.path ?? '';
   const upstreamUrl = `${target.url.replace(/\/$/, '')}/${path}${event.url.search}`;
 

@@ -25,7 +25,7 @@ const mockEndpoint = {
 };
 
 vi.mock('$lib/server/opencode-target.js', () => ({
-  getHostOpencodeTarget: vi.fn(() => mockEndpoint),
+  getAssistantOpencodeTarget: vi.fn(() => mockEndpoint),
 }));
 
 import { GET } from './+server.js';

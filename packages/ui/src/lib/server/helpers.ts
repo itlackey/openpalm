@@ -3,7 +3,7 @@
  */
 import type { RequestEvent } from "@sveltejs/kit";
 import { timingSafeEqual, createHash } from "node:crypto";
-import { getHostOpencodeTarget } from "./opencode-target.js";
+import { getAssistantOpencodeTarget } from "./opencode-target.js";
 import { createOpenCodeClient, isRemoteSetupAllowed } from "@openpalm/lib";
 import { validateSession, getUiLoginPassword } from "./session-store.js";
 import { computeServerRuntimeContext } from "./features.js";
@@ -17,7 +17,7 @@ import type { Capability, ServerRuntimeContext } from "$lib/types.js";
 let _openCodeClient: ReturnType<typeof createOpenCodeClient> | undefined;
 let _openCodeClientUrl: string | undefined;
 export function getOpenCodeClient(): ReturnType<typeof createOpenCodeClient> {
-  const { url } = getHostOpencodeTarget();
+  const { url } = getAssistantOpencodeTarget();
   if (!_openCodeClient || url !== _openCodeClientUrl) {
     _openCodeClient = createOpenCodeClient({ baseUrl: url });
     _openCodeClientUrl = url;
