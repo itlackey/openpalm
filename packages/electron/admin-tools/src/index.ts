@@ -21,7 +21,6 @@ import composeUp from "./tools/compose-up.js";
 import composeDown from "./tools/compose-down.js";
 import composePs from "./tools/compose-ps.js";
 import secretsListKeys from "./tools/secrets-list-keys.js";
-import endpointsList from "./tools/endpoints-list.js";
 import healthCheck from "./tools/health-check.js";
 
 export const plugin: Plugin = async () => {
@@ -31,7 +30,6 @@ export const plugin: Plugin = async () => {
       "compose.down": composeDown,
       "compose.ps": composePs,
       "secrets.list-keys": secretsListKeys,
-      "endpoints.list": endpointsList,
       "health-check": healthCheck,
     },
   };

@@ -31,7 +31,7 @@ import {
 import { HARNESS_CONTRACT_VERSION } from './harness-contract.js';
 import { checkForElectronUpdate, getCachedUpdateInfo, type UpdateInfo } from './update-check.js';
 import { loadSettings, saveSettings } from './settings.js';
-import { startLocalOpenCode, killProcessTree, type LocalOpencodeHandle } from './local-opencode.js';
+import { killProcessTree } from './process-tree.js';
 import { resolveAssetPath } from './assets.js';
 import { SplashWindow } from './splash.js';
 import { TrayController } from './tray.js';
@@ -115,21 +115,6 @@ function writeChildLog(text: string): void {
   try { logStream?.write(text); } catch { /* best-effort */ }
 }
 
-/**
- * Resolve the admin-tools path. Priority:
- *   1. extraResources path (packaged Electron build)
- *   2. Workspace dist path (running from source in dev)
- */
-function resolveAdminToolsPluginPath(): string {
-  // Production: electron-builder copies to resources/admin-tools/index.js
-  const packed = join(process.resourcesPath ?? '', 'admin-tools', 'index.js');
-  if (existsSync(packed)) return packed;
-  // Dev: __dirname is packages/electron/dist/ → sibling admin-tools/dist/
-  const dev = join(__dirname, '..', 'admin-tools', 'dist', 'index.js');
-  if (existsSync(dev)) return dev;
-  throw new Error('Admin tools plugin is missing from both packaged resources and the workspace build');
-}
-
 // The host UI port, resolved through lib's network contract so this harness and
 // the CLI cannot disagree. It previously read live env alone, ignoring the
 // OP_HOST_UI_PORT a headless install persists to stack.env — so on the same home
@@ -147,7 +132,6 @@ const APP_USER_MODEL_ID = 'com.openpalm.app';
 
 let mainWindow: BrowserWindow | null = null;
 let uiProcess: ChildProcess | null = null;
-let localOpencode: LocalOpencodeHandle | null = null;
 let registeredMicShortcut: string | null = null;
 // Whether the GitHub update check should surface prereleases (#504). Loaded from
 // desktop settings at boot; toggled live from the tray. Notify-only.
@@ -904,22 +888,6 @@ app.whenReady().then(async () => {
     return;
   }
 
-  // Spawn the ephemeral local OpenCode (Phase 3). Non-fatal: if the binary
-  // is missing or spawn fails, the UI shows a sentinel and remote endpoints
-  // continue to work.
-  try {
-    const dataDir = `${resolveOpenPalmHome()}/data`;
-    localOpencode = await startLocalOpenCode({ dataDir, pluginPath: resolveAdminToolsPluginPath() });
-    if (localOpencode) {
-      console.log(`Local OpenCode listening on ${localOpencode.url}`);
-    }
-  } catch (err) {
-    console.warn(
-      'Local OpenCode spawn raised; continuing without it:',
-      err instanceof Error ? err.message : String(err),
-    );
-  }
-
   configureMediaPermissions();
   await openWindow();
   createTray();
@@ -1009,25 +977,9 @@ app.on('before-quit', (event) => {
   globalShortcut.unregisterAll();
   trayController.stopAnimation();
   stopUIServer();
-  const handle = localOpencode;
-  localOpencode = null;
-  // Safety net: if stop() hangs, force-quit after 500 ms.
   // Use app.exit(0), NOT app.quit() — calling app.quit() from within a
-  // before-quit handler is re-entrant; Electron may silently no-op it on
-  // some versions, leaving the app hanging. app.exit() exits the process
-  // directly without re-firing before-quit.
-  const forceQuitTimer = setTimeout(() => app.exit(0), 500);
-  if (handle) {
-    handle.stop()
-      .catch((err: unknown) => {
-        console.warn('Local OpenCode stop raised:', err instanceof Error ? err.message : String(err));
-      })
-      .finally(() => {
-        clearTimeout(forceQuitTimer);
-        app.exit(0);
-      });
-  } else {
-    clearTimeout(forceQuitTimer);
-    app.exit(0);
-  }
+  // before-quit handler is re-entrant; Electron may silently no-op it on some
+  // versions, leaving the app hanging. app.exit() exits the process directly
+  // without re-firing before-quit.
+  app.exit(0);
 });

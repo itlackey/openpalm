@@ -295,10 +295,6 @@ vi.mock('../src/update-check.js', () => ({
   getCachedUpdateInfo: vi.fn(() => null),
 }));
 
-vi.mock('../src/local-opencode.js', () => ({
-  startLocalOpenCode: vi.fn(() => Promise.resolve(null)),
-  killProcessTree: vi.fn(),
-}));
 
 import {
   buildUIServerEnv,

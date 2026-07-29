@@ -183,10 +183,6 @@ vi.mock('../src/settings.js', () => ({
   loadSettings: mockLoadSettings,
   saveSettings: vi.fn(),
 }));
-vi.mock('../src/local-opencode.js', () => ({
-  startLocalOpenCode: vi.fn(() => Promise.resolve(null)),
-  killProcessTree: vi.fn(),
-}));
 
 import * as main from '../src/main.js';
 import { HARNESS_CONTRACT_VERSION } from '../src/harness-contract.js';
