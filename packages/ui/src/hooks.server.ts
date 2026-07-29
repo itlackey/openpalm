@@ -184,6 +184,18 @@ export const handle: Handle = async ({ event, resolve }) => {
   }
   const isSetupPath = SETUP_PATHS.some(p => path === p || path.startsWith(`${p}/`));
 
+  // A process that cannot SERVE /setup must never redirect anyone TO it.
+  // Sending a browser to a route this same process answers with 403
+  // capability_not_available is a closed loop with no way out — it is how the
+  // CLI wizard shipped broken (a non-admin `openpalm install` UI redirected
+  // every navigation to a /setup it then refused), and it is also how a
+  // write into the assistant-writable home could lock every LAN client out of
+  // the container UI by flipping its install state to 'setup_incomplete'.
+  // Gating the redirect on the capability makes the deadlock unrepresentable
+  // in every harness rather than relying on each launcher to pass the right
+  // flag.
+  const canServeSetup = runtimeContext.serverCapabilities.includes('host:setup');
+
   // SEC-4: While setup is not yet complete the /setup routes are unauthenticated
   // by design (first-run). Restrict them to the local machine so a remote actor
   // can't race the owner to configure the stack. After setup completes the
@@ -195,6 +207,7 @@ export const handle: Handle = async ({ event, resolve }) => {
 
   if (
     wantsHtml &&
+    canServeSetup &&
     !setupComplete &&
     localInstallState !== 'not_installed' &&
     !isSetupPath &&
@@ -220,6 +233,7 @@ export const handle: Handle = async ({ event, resolve }) => {
 
   if (
     wantsHtml
+    && canServeSetup
     && localInstallState === 'not_installed'
     && (path === '/host' || path.startsWith('/host/'))
   ) {

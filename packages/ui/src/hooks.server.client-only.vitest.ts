@@ -123,10 +123,15 @@ describe('hooks.server — client-only public lane (non-admin, not_installed, no
     await expect(handleOutcome(makeEvent('/host'))).resolves.toMatchObject({ location: '/setup' });
   });
 
-  test('a materialized local install keeps its guards (setup redirect), no public lane', async () => {
+  test('a materialized local install revokes the public lane without a /setup dead end', async () => {
     // hasCompose + OP_SETUP_COMPLETE!=='true' classifies as 'setup_incomplete'
-    // (same fixture as hooks.server.pwa-assets.vitest.ts) — the setup guard
-    // owns the navigation before the auth gate is ever reached.
+    // (same fixture as hooks.server.pwa-assets.vitest.ts), so the public lane —
+    // which requires 'not_installed' — no longer applies.
+    //
+    // The guard is observed as the login wall, NOT as a /setup redirect: this
+    // process is non-admin, so it answers /setup with 403
+    // capability_not_available, and redirecting a browser there would be a
+    // closed loop (see hooks.server.setup-deadlock.vitest.ts).
     const state = resetState();
     home = state.homeDir;
     delete process.env.OP_UI_LOGIN_PASSWORD;
@@ -135,6 +140,8 @@ describe('hooks.server — client-only public lane (non-admin, not_installed, no
     mkdirSync(kvDir, { recursive: true });
     writeFileSync(join(kvDir, 'stack.env'), 'OP_SETUP_COMPLETE=false\n');
     _resetLaunchCache();
-    await expect(handleOutcome(makeEvent('/chat'))).resolves.toMatchObject({ location: '/setup' });
+    const outcome = await handleOutcome(makeEvent('/chat'));
+    expect(outcome).toMatchObject({ status: 302 });
+    expect((outcome as { location: string }).location).toMatch(/^\/login\?/);
   });
 });

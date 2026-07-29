@@ -354,6 +354,15 @@ async function prepareInstallFiles(
  * and redirects to /setup where the wizard runs. Deploy is triggered from
  * within the UI process after the user completes the wizard.
  *
+ * `adminHostUi: true` is REQUIRED, not incidental: the wizard writes secrets
+ * and deploys the stack, so `/setup` and `/api/setup/*` are gated on the
+ * `host:setup` capability (packages/ui features.ts), which only an
+ * admin-capable process advertises. Without it `prepareInstallFiles` has
+ * already made the home 'setup_incomplete', so the UI redirects every
+ * navigation TO /setup while /setup itself 403s — a dead loop at the
+ * product's front door. Admin mode also pins the bind to loopback, which is
+ * exactly right for a first-run wizard that has not yet set a password.
+ *
  * Pre-flight: `requireDocker()` runs FIRST so users hit our friendly Docker
  * error before the browser opens to a wizard that will fail at the end of
  * a 10-step flow.
@@ -363,7 +372,7 @@ async function runWizardInstall(noOpen: boolean): Promise<void> {
 	const port = Number(process.env.OP_HOST_UI_PORT) || DEFAULT_UI_PORT;
 	console.log(`Setup wizard: http://localhost:${port}/setup`);
 	const { startUIServer } = await import('../lib/ui-server.ts');
-	await startUIServer({ open: !noOpen, port });
+	await startUIServer({ open: !noOpen, port, adminHostUi: true });
 }
 
 async function runFileInstall(
