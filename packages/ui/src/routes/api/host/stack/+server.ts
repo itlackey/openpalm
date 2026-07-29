@@ -17,6 +17,7 @@
 import type { RequestHandler } from './$types';
 import {
   applyAccessToggles,
+  patchSecretsEnvFile,
   readStackEnv,
   recordProjectRename,
   resolveMdnsStatus,
@@ -97,18 +98,43 @@ export const PUT: RequestHandler = async (event) => {
       // unaddressed beside the new one (#540).
       const currentEnv = readStackEnv(state.homeDir);
       const previousProjectName = currentEnv.OP_PROJECT_NAME?.trim() || DEFAULT_PROJECT_NAME;
-      // Omitted `access` leaves exposure exactly as it is — renaming the
-      // project must never move a bind as a side effect.
-      const toggles = coerceAccessToggles(body.access ?? readAccessToggles(currentEnv));
 
-      // Saving IS applying (lib's applyAccessToggles): write the env, enable an
-      // addon if a guardian port would otherwise have nothing behind it,
-      // recreate exactly the affected containers so Compose republishes the
-      // ports, and advertise over mDNS only once that succeeded. Compose
-      // interpolation is the sole consumer of these values, so a write alone
-      // changed nothing — and every "restart" the product offers runs
-      // `compose restart`, which cannot republish a port.
-      const applied = await applyAccessToggles(state, toggles, {
+      // Omitted `access` touches NOTHING about exposure — not even a
+      // round-trip through the generated row. The endpoint used to
+      // read-then-rewrite it on every PUT, which turned a project rename into
+      // a silent widening: a hand-set single-interface bind
+      // (OP_UI_BIND_ADDRESS=192.168.1.50) reads as "open" and regenerates to
+      // 0.0.0.0, moving a deliberately narrowed listener onto every interface.
+      if (body.access === undefined) {
+        patchSecretsEnvFile(state.homeDir, { OP_PROJECT_NAME: projectName });
+        const projectRenamed = previousProjectName !== projectName;
+        if (projectRenamed) {
+          recordProjectRename(state.homeDir, previousProjectName, projectName);
+        }
+        return jsonResponse(
+          200,
+          {
+            ok: true,
+            projectName,
+            projectRenamed,
+            stackEnvPath: 'state/stack.env',
+            mdns: resolveMdnsStatus(readStackEnv(state.homeDir)),
+            access: readAccessToggles(readStackEnv(state.homeDir)),
+            recreated: [],
+            autoEnabledAddons: [],
+          },
+          requestId,
+        );
+      }
+
+      // Saving IS applying (lib's applyAccessToggles): write intent + the row it
+      // generates, enable an addon if a guardian port would otherwise have
+      // nothing behind it, recreate exactly the affected containers so Compose
+      // republishes the ports, and advertise over mDNS only once that
+      // succeeded. Compose interpolation is the sole consumer of these values,
+      // so a write alone changed nothing — and every "restart" the product
+      // offers runs `compose restart`, which cannot republish a port.
+      const applied = await applyAccessToggles(state, coerceAccessToggles(body.access), {
         extraEnv: { OP_PROJECT_NAME: projectName },
       });
 

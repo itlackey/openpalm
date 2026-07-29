@@ -29,6 +29,7 @@ import {
   coerceAccessToggles,
   readAccessToggles,
   resolveAccessEnv,
+  resolveAccessIntentEnv,
   type AccessEnv,
   type AccessToggles,
 } from "./access-toggles.js";
@@ -235,7 +236,14 @@ export async function applyAccessToggles(
     options.pendingAddons ?? {},
   );
 
-  patchSecretsEnvFile(state.homeDir, { ...(options.extraEnv ?? {}), ...nextEnv });
+  // Store the INTENT alongside the row it generates, so the next read is a read
+  // rather than an inference from bind addresses (which is what could disagree
+  // with Compose and then be made real by the following save).
+  patchSecretsEnvFile(state.homeDir, {
+    ...(options.extraEnv ?? {}),
+    ...resolveAccessIntentEnv(toggles),
+    ...nextEnv,
+  });
 
   let recreated: string[] = [];
   let ok = true;

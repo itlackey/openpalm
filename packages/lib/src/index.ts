@@ -671,6 +671,9 @@ export {
   coerceAccessToggles,
   requiresAssistantKey,
   describeAccessExposure,
+  hasStoredAccessIntent,
+  resolveAccessIntentEnv,
+  ACCESS_INTENT_KEYS,
   type AccessToggles,
   type AccessEnv,
 } from "./control-plane/access-toggles.js";

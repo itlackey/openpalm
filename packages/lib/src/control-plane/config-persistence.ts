@@ -11,7 +11,15 @@ import { dirname, resolve as resolvePath } from "node:path";
 import { composeConfigJsonSync, type ComposeConfigJsonResult } from "./docker.js";
 import { createLogger } from "../logger.js";
 import { parseEnvContent, parseEnvFile, mergeEnvContent, removeEnvKey } from './env.js';
-import { ACCESS_ENV_KEYS, migrateLegacyAccessEnv, RETIRED_BIND_KEYS } from './access-toggles.js';
+import {
+  ACCESS_ENV_KEYS,
+  hasStoredAccessIntent,
+  migrateLegacyAccessEnv,
+  readAccessToggles,
+  resolveAccessEnv,
+  resolveAccessIntentEnv,
+  RETIRED_BIND_KEYS,
+} from './access-toggles.js';
 import { assertNoSecretLikeStackEnvKeys, isSecretLikeStackEnvKey } from './secrets.js';
 import { writeSecret } from './secrets-files.js';
 import type { ControlPlaneState, ArtifactMeta } from "./types.js";
@@ -134,6 +142,50 @@ export function migrateLegacyBindAddresses(homeDir: string): boolean {
     retired,
     ...migrated,
   });
+  return true;
+}
+
+/**
+ * Materialize stored access INTENT into the consolidated `state/stack.env`, and
+ * strip the retired cascade keys from it.
+ *
+ * Two gaps this closes, both of which let display and reality disagree forever:
+ *
+ *  1. Intent was stored only as its own consequences (four bind addresses) and
+ *     read back by inferring "is this loopback?". Inference and Compose's own
+ *     precedence could disagree in BOTH directions, and the next save made the
+ *     wrong reading real. Writing the four booleans once, from the exact reader
+ *     that ran before, makes every later read a read.
+ *  2. `migrateLegacyBindAddresses` only ever rewrote the PRE-consolidation
+ *     `knowledge/env/stack.env`. Nothing sanitized `state/stack.env`, so a
+ *     restored backup — or a hand edit following old docs — could put
+ *     `OP_BIND_ADDRESS` there, where Compose ignores it while the toggle reader
+ *     honored it as a fallback.
+ *
+ * Reads with the legacy-aware reader (its last such use for a migrated home)
+ * and writes the result as explicit intent.
+ */
+export function migrateAccessIntent(homeDir: string): boolean {
+  const path = stackEnvFile(homeDir);
+  if (!existsSync(path)) return false;
+
+  const content = readFileSync(path, "utf-8");
+  const parsed = parseEnvContent(content);
+  const retired = RETIRED_BIND_KEYS.filter((key) => Object.hasOwn(parsed, key));
+  if (hasStoredAccessIntent(parsed) && retired.length === 0) return false;
+
+  const toggles = readAccessToggles(parsed);
+  let next = mergeEnvContent(content, {
+    ...resolveAccessIntentEnv(toggles),
+    // Re-assert the derived row so it agrees with the intent just recorded —
+    // a legacy row could carry a cascade-only value with no per-service key.
+    ...resolveAccessEnv(toggles),
+  });
+  for (const key of retired) next = removeEnvKey(next, key);
+  if (next === content) return false;
+
+  writeFileAtomic(path, next, 0o600);
+  logger.warn("Recorded network access intent explicitly", { retired, ...toggles });
   return true;
 }
 

@@ -32,7 +32,7 @@ import {
 import { writeFileAtomic } from './fs-atomic.js';
 import { mergeEnvContent, parseEnvContent, removeEnvKey } from './env.js';
 import { createLogger } from '../logger.js';
-import { migrateLegacyBindAddresses, migrateLegacyDefaultPorts } from './config-persistence.js';
+import { migrateAccessIntent, migrateLegacyBindAddresses, migrateLegacyDefaultPorts } from './config-persistence.js';
 import { migrateProfileOnlyAddonEnablement } from './addons.js';
 import { SERVICE_VERSION_KEYS } from './versions.js';
 import { migrateDelegatedSecretsToPrivateDir } from './secrets-migration.js';
@@ -133,6 +133,11 @@ const MIGRATIONS: { since: number; run: (homeDir: string) => boolean }[] = [
   // re-checks real filesystem state, so this is a no-op for a home that has
   // no such file.
   { since: 3, run: (homeDir) => migrateDelegatedSecretsToPrivateDir(homeDir).migrated.length > 0 },
+  // Record network-access INTENT explicitly in the consolidated state/stack.env
+  // and strip the retired cascade keys from it. Must run AFTER
+  // migrateToSingleStackEnv (since: 1) so it reads the merged file, and it is
+  // the last place the legacy-aware bind inference is used for a migrated home.
+  { since: 4, run: migrateAccessIntent },
 ];
 
 /**

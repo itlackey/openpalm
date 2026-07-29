@@ -39,6 +39,7 @@ import {
 	coerceAccessToggles,
 	requiresAssistantKey,
 	resolveAccessEnv,
+	resolveAccessIntentEnv,
 	type AccessToggles
 } from './access-toggles.js';
 import { randomHex } from './crypto.js';
@@ -370,7 +371,13 @@ export async function performSetup(
 			// actively set toggles this run.
 			if (access) {
 				const toggles = coerceAccessToggles(access);
-				const patches: Record<string, string> = { ...resolveAccessEnv(toggles) };
+				// Stored intent + the row it generates. Writing intent is what lets
+				// every later read be a read instead of an inference from bind
+				// addresses (access-toggles.ts ACCESS_INTENT_KEYS).
+				const patches: Record<string, string> = {
+					...resolveAccessIntentEnv(toggles),
+					...resolveAccessEnv(toggles),
+				};
 				// Publishing the assistant API always turns auth on, with a key the
 				// system GENERATES. The operator is never asked to invent one: the
 				// human-facing credential is the UI login password in every
