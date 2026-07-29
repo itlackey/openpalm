@@ -71,7 +71,6 @@ const SERVER_CONTEXT: ServerRuntimeContext = {
   serverCapabilities: ADMIN_SERVER_CAPS,
   publicBaseUrl: 'http://127.0.0.1:3880',
   uiVersion: '0.13.0-beta.1',
-  skeletonVersion: '0.13.0-beta.1',
   routes: { chat: '/chat', host: '/host' },
   security: {
     hostAdminLoopbackOnly: true,

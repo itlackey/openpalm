@@ -2,7 +2,7 @@
  * (#440) Launch-status routing table — the authoritative decision logic.
  */
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import {
@@ -116,6 +116,15 @@ describe("classifyLocalInstall (disk markers)", () => {
     const sd = stackDir();
     writeStackEnv("OP_SETUP_COMPLETE=true\n");
     expect(classifyLocalInstall(sd, dir)).toBe("installed");
+  });
+
+  it("reads setup completion from the legacy state env without migrating it", () => {
+    const sd = stackDir();
+    mkdirSync(join(dir, "state"), { recursive: true });
+    writeFileSync(join(dir, "state", "stack.state.env"), "OP_SETUP_COMPLETE=true\n");
+
+    expect(classifyLocalInstall(sd, dir)).toBe("installed");
+    expect(existsSync(join(dir, "state", "stack.env"))).toBe(false);
   });
 
   it("installed when compose exists and both guardian tokens are present, even without the OP_SETUP_COMPLETE stamp (hand-built install, R1-R3)", () => {

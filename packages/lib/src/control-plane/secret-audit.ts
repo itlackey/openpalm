@@ -1,5 +1,5 @@
-import { existsSync, readdirSync, statSync } from 'node:fs';
-import { join } from 'node:path';
+import { existsSync, lstatSync, readdirSync, statSync } from 'node:fs';
+import { basename, normalize, resolve, join } from 'node:path';
 import { parse as parseYaml } from 'yaml';
 import { parseEnvContent, parseEnvFile } from './env.js';
 import { isSecretLikeKey } from './secrets.js';
@@ -25,6 +25,8 @@ export type SecretAuditOptions = {
   stackEnvContent?: string;
   composeConfig?: string | unknown;
   secretsDir?: string;
+  privateSecretsDir?: string;
+  homeDir?: string;
 };
 
 type ComposeService = {
@@ -33,10 +35,12 @@ type ComposeService = {
   environment?: unknown;
   secrets?: unknown;
   networks?: unknown;
+  volumes?: unknown;
 };
 
 type ComposeConfig = {
   services?: Record<string, ComposeService>;
+  secrets?: Record<string, unknown>;
 };
 
 const SECRET_FILE_MODE = 0o600;
@@ -77,6 +81,27 @@ function serviceSecrets(secrets: unknown): string[] {
     if (!isRecord(entry)) return [];
     const source = entry.source ?? entry.target;
     return typeof source === 'string' ? [source] : [];
+  });
+}
+
+function serviceSecretEntries(secrets: unknown): Array<{ source: string; target?: string }> {
+  if (!Array.isArray(secrets)) return [];
+  return secrets.flatMap((entry) => {
+    if (typeof entry === 'string') return [{ source: entry }];
+    if (!isRecord(entry) || typeof entry.source !== 'string') return [];
+    return [{ source: entry.source, target: typeof entry.target === 'string' ? entry.target : undefined }];
+  });
+}
+
+function volumeEntries(volumes: unknown): Array<{ type?: string; source?: string; target?: string }> {
+  if (!Array.isArray(volumes)) return [];
+  return volumes.flatMap((entry) => {
+    if (!isRecord(entry)) return [];
+    return [{
+      type: typeof entry.type === 'string' ? entry.type : undefined,
+      source: typeof entry.source === 'string' ? entry.source : undefined,
+      target: typeof entry.target === 'string' ? entry.target : undefined,
+    }];
   });
 }
 
@@ -156,6 +181,12 @@ export function auditStackEnv(env: Record<string, string>, label = 'stack.env'):
 export function auditComposeSecrets(composeConfig: string | unknown): SecretAuditIssue[] {
   const compose = parseComposeConfig(composeConfig);
   const issues: SecretAuditIssue[] = [];
+  const topLevelSecrets = compose.secrets ?? {};
+  for (const [name, definition] of Object.entries(topLevelSecrets)) {
+    if (!isRecord(definition) || typeof definition.file !== 'string') {
+      issues.push(issue('compose-secret-source', `top-level secret ${name} must use a file source.`, `secrets.${name}`));
+    }
+  }
   for (const [serviceName, service] of Object.entries(compose.services ?? {})) {
     if (service.env_file !== undefined) {
       issues.push(issue(
@@ -165,7 +196,8 @@ export function auditComposeSecrets(composeConfig: string | unknown): SecretAudi
       ));
     }
 
-    for (const [key] of environmentEntries(service.environment)) {
+    const grantedSecrets = new Set(serviceSecrets(service.secrets));
+    for (const [key, value] of environmentEntries(service.environment)) {
       if (isSecretLikeKey(key)) {
         issues.push(issue(
           'compose-secret-env-var',
@@ -173,9 +205,22 @@ export function auditComposeSecrets(composeConfig: string | unknown): SecretAudi
           `services.${serviceName}.environment.${key}`,
         ));
       }
+      if (Object.keys(topLevelSecrets).length > 0 && key.endsWith('_FILE') && typeof value === 'string' && !value.includes('${')) {
+        const referenced = value.startsWith('/run/secrets/') ? basename(value) : '';
+        if (!referenced || value !== `/run/secrets/${referenced}` || !grantedSecrets.has(referenced)) {
+          issues.push(issue(
+            'compose-secret-env-redirection',
+            `service ${serviceName} environment ${key} must reference a secret granted to that service by its declared name.`,
+            `services.${serviceName}.environment.${key}`,
+          ));
+        }
+      }
     }
 
     for (const secretName of serviceSecrets(service.secrets)) {
+      if (Object.keys(topLevelSecrets).length > 0 && !(secretName in topLevelSecrets)) {
+        issues.push(issue('compose-secret-undefined', `service ${serviceName} references undefined secret ${secretName}.`, `services.${serviceName}.secrets`));
+      }
       if (!allowedSecretForService(serviceName, service, secretName)) {
         issues.push(issue(
           'compose-secret-boundary',
@@ -184,8 +229,64 @@ export function auditComposeSecrets(composeConfig: string | unknown): SecretAudi
         ));
       }
     }
+
+    for (const entry of serviceSecretEntries(service.secrets)) {
+      if (entry.target && basename(entry.target) !== normalizedSecretName(entry.source)) {
+        issues.push(issue(
+          'compose-secret-redirection',
+          `service ${serviceName} redirects secret ${entry.source} to ${entry.target}; secret targets must retain their declared name.`,
+          `services.${serviceName}.secrets`,
+        ));
+      }
+    }
+
+    for (const volume of volumeEntries(service.volumes)) {
+      if (volume.type === 'bind' && volume.source && /(?:^|[\\/])private(?:[\\/]|$)/i.test(normalize(volume.source))) {
+        issues.push(issue(
+          'compose-private-bind-mount',
+          `service ${serviceName} must not bind-mount private/; delegated credentials are named Compose secrets only.`,
+          `services.${serviceName}.volumes`,
+        ));
+      }
+    }
   }
   return issues;
+}
+
+export function auditResolvedComposeSecrets(
+  composeConfig: string | unknown,
+  options: { homeDir?: string } = {},
+): SecretAuditIssue[] {
+  const compose = parseComposeConfig(composeConfig);
+  const issues = auditComposeSecrets(compose);
+  const home = options.homeDir ? resolve(options.homeDir) : undefined;
+  for (const [name, definition] of Object.entries(compose.secrets ?? {})) {
+    if (!isRecord(definition) || typeof definition.file !== 'string' || !home) continue;
+    const source = resolve(definition.file);
+    const expectedRoot = isDelegatedSecretNameForAudit(name)
+      ? resolve(home, 'private', 'secrets')
+      : resolve(home, 'knowledge', 'secrets');
+    const expected = resolve(expectedRoot, expectedSecretFilename(name));
+    if (source !== expected) {
+      issues.push(issue(
+        'compose-secret-source-boundary',
+        `top-level secret ${name} must source exactly ${expected}; secret-name aliases and redirection are forbidden.`,
+        `secrets.${name}.file`,
+      ));
+    }
+  }
+  return issues;
+}
+
+function expectedSecretFilename(name: string): string {
+  if (name === 'opencode_server_password') return 'op_opencode_password';
+  if (name === 'ui_login_password') return 'op_ui_login_password';
+  if (name === 'guardian_auth_json') return 'auth.json';
+  return name;
+}
+
+function isDelegatedSecretNameForAudit(name: string): boolean {
+  return /^(op_guardian_|op_api_key|discord_bot_token|slack_bot_token|slack_app_token|opencode_server_password|ui_login_password|op_opencode_password|op_ui_login_password|portal_.*_secret$)/.test(name);
 }
 
 export function auditSecretFilesystem(secretsDir: string): SecretAuditIssue[] {
@@ -206,12 +307,16 @@ export function auditSecretFilesystem(secretsDir: string): SecretAuditIssue[] {
 
   for (const entry of readdirSync(secretsDir, { withFileTypes: true })) {
     const path = join(secretsDir, entry.name);
+    if (entry.isSymbolicLink()) {
+      issues.push(issue('secret-symlink', 'secret directories and files must not be symbolic links.', path));
+      continue;
+    }
     if (entry.isDirectory()) {
       issues.push(...auditSecretFilesystem(path));
       continue;
     }
     if (!entry.isFile()) continue;
-    const fileStat = statSync(path);
+    const fileStat = lstatSync(path);
     if ((fileStat.mode & 0o777) !== SECRET_FILE_MODE) {
       issues.push(issue('secret-file-mode', `secret file must be 0600, got ${formatMode(fileStat.mode)}.`, path));
     }
@@ -233,11 +338,16 @@ export function auditFileBasedSecrets(options: SecretAuditOptions): SecretAuditR
   }
 
   if (options.composeConfig !== undefined) {
-    issues.push(...auditComposeSecrets(options.composeConfig));
+    issues.push(...(options.homeDir
+      ? auditResolvedComposeSecrets(options.composeConfig, { homeDir: options.homeDir })
+      : auditComposeSecrets(options.composeConfig)));
   }
 
   if (options.secretsDir) {
     issues.push(...auditSecretFilesystem(options.secretsDir));
+  }
+  if (options.privateSecretsDir) {
+    issues.push(...auditSecretFilesystem(options.privateSecretsDir));
   }
 
   return { ok: issues.length === 0, issues };

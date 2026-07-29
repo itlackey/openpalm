@@ -71,6 +71,6 @@ Guardian. Never test a custom portal by connecting it directly to Assistant.
 
 First-party reference implementations:
 
-- [`portals/discord/README.md`](../../portals/discord/README.md)
-- [`portals/slack/README.md`](../../portals/slack/README.md)
+- [`packages/portal-discord/README.md`](../../packages/portal-discord/README.md)
+- [`packages/portal-slack/README.md`](../../packages/portal-slack/README.md)
 - `packages/portal-sdk/`

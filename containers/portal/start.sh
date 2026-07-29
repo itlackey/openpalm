@@ -11,8 +11,8 @@ mkdir -p "$HOME"
 export BUN_INSTALL_CACHE_DIR="${BUN_INSTALL_CACHE_DIR:-$HOME/.cache/bun/install}"
 
 # E2/S2: adapter packages (@openpalm/discord-portal, @openpalm/slack-portal)
-# are exact-pinned in containers/portal/tools/package.json and baked into
-# /opt/openpalm/tools at image build time. No bind mount overlays that path
+# are packed from local candidates and baked into /opt/openpalm/tools at image
+# build time. No bind mount overlays that path
 # anymore (the image-baked-only model) — the
 # baked tree IS what runs; there is no boot-time install or update. Keep only
 # a fast presence check so a broken/incomplete image build fails loudly here

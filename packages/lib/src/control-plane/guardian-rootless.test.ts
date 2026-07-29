@@ -34,8 +34,8 @@ describe('guardian rootless conversion', () => {
     // the `guardian-cache` named volume that used to sit over /opt/openpalm —
     // the image's own writable layer holds this content now, still built (and
     // chmod'd) at image ownership, not the operator's. g=u would only grant
-    // write when OP_GID == 1000; world-writable is required so the arbitrary
-    // uid can `bun add` guardian/skeleton into /opt/openpalm on first boot.
+    // write when OP_GID == 1000; world-writable is required for the explicit
+    // downstream override install.
     // Secrets live in a separate 0600 bind-mount tree.
     // IMG-6 split the single install RUN in two so the heavy tools layer stays
     // cached across releases, so the chmod is now split too — the lower layer
@@ -53,7 +53,6 @@ describe('guardian rootless conversion', () => {
       '/opt/openpalm/tools',
       '/opt/openpalm/guardian',
       '/opt/openpalm/guardian-pkg',
-      '/opt/openpalm/skeleton',
     ]) {
       expect(chmodded).toContain(tree);
     }

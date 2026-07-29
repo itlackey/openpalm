@@ -16,6 +16,7 @@ import {
   resolveWorkspaceDir,
   resolveBackupsDirFor,
   resolveCacheDir,
+  teardownRenamedProject,
 } from '@openpalm/lib';
 import { defineAction } from '../lib/action.ts';
 
@@ -51,8 +52,12 @@ export async function runUninstallAction(
   if (!lock) throw new Error('install_in_progress: Another lifecycle operation is already running.');
   let purgeRemovedLock = false;
   try {
+    const renameTeardown = await teardownRenamedProject(state);
+    if (renameTeardown.blocked) {
+      throw new Error(renameTeardown.warning ?? 'The previous OpenPalm project could not be stopped.');
+    }
     const downArgs = args.volumes || args.purge ? ['down', '-v'] : ['down'];
-    await runComposeWithPreflight(state, downArgs);
+    await runComposeWithPreflight(state, downArgs, lock);
 
     if (args.volumes || args.purge) {
       // `down -v` only removes volumes the compose files still DECLARE — on a

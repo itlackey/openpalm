@@ -9,7 +9,7 @@
   import SurfaceToolbar from '$lib/components/chrome/SurfaceToolbar.svelte';
   import PwaInstall from '$lib/components/settings/PwaInstall.svelte';
   import VoiceClientSettings from '$lib/components/voice/VoiceClientSettings.svelte';
-  import IconLock from '@openpalm/ui-kit/components/icons/IconLock.svelte';
+  import IconLock from '$lib/components/icons/IconLock.svelte';
   import {
     endpointsService as connectionsService,
     type ConnectionView,

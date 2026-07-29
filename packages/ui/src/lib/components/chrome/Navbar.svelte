@@ -1,12 +1,12 @@
 <script lang="ts">
   import type { Snippet } from 'svelte';
   import { page } from '$app/state';
-  import IconButton from '@openpalm/ui-kit/components/common/IconButton.svelte';
-  import ThemeToggle from '@openpalm/ui-kit/components/common/ThemeToggle.svelte';
+  import IconButton from '$lib/components/common/IconButton.svelte';
+  import ThemeToggle from '$lib/components/common/ThemeToggle.svelte';
   import { getRuntimeContext, hasCapability } from '$lib/runtime-context.svelte.js';
-  import IconChat from '@openpalm/ui-kit/components/icons/IconChat.svelte';
-  import IconLogo from '@openpalm/ui-kit/components/icons/IconLogo.svelte';
-  import IconSettings from '@openpalm/ui-kit/components/icons/IconSettings.svelte';
+  import IconChat from '$lib/components/icons/IconChat.svelte';
+  import IconLogo from '$lib/components/icons/IconLogo.svelte';
+  import IconSettings from '$lib/components/icons/IconSettings.svelte';
 
   // Top chrome SHELL: brand, the chat↔host utility button, and the theme
   // toggle. Deliberately free of chat components and chat stores (#555) so the admin surface can

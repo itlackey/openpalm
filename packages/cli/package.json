@@ -33,8 +33,7 @@
     "node": ">=18.0.0"
   },
   "devDependencies": {
-    "@openpalm/lib": ">=0.13.0-beta.13 <1.0.0",
-    "@openpalm/skeleton": "0.13.0-beta.13",
+    "@openpalm/lib": "workspace:*",
     "@types/node": "^25.9.1",
     "citty": "^0.2.1",
     "typescript": "^6.0.3",

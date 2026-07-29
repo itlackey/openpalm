@@ -1,8 +1,8 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { afterNavigate } from '$app/navigation';
-  import Drawer from '@openpalm/ui-kit/components/common/Drawer.svelte';
-  import IconActivity from '@openpalm/ui-kit/components/icons/IconActivity.svelte';
+  import Drawer from '$lib/components/common/Drawer.svelte';
+  import IconActivity from '$lib/components/icons/IconActivity.svelte';
   import ToolLog from '$lib/components/chat/ToolLog.svelte';
   import { chat } from '$lib/chat/chat-state.svelte.js';
 

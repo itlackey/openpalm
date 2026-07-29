@@ -2,8 +2,8 @@
   import { afterNavigate } from '$app/navigation';
   import { resolve } from '$app/paths';
   import { page } from '$app/state';
-  import Drawer from '@openpalm/ui-kit/components/common/Drawer.svelte';
-  import IconConnect from '@openpalm/ui-kit/components/icons/IconConnect.svelte';
+  import Drawer from '$lib/components/common/Drawer.svelte';
+  import IconConnect from '$lib/components/icons/IconConnect.svelte';
   import Navbar from '$lib/components/chrome/Navbar.svelte';
   import SurfaceToolbar from '$lib/components/chrome/SurfaceToolbar.svelte';
   import EndpointList from '$lib/components/chat/EndpointList.svelte';

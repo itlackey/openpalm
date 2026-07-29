@@ -1,8 +1,9 @@
 # containers/portal — Unified Portal Image
 
 A single Docker image used by every first-party portal adapter (`discord`,
-`slack`). At build time, the production Dockerfile installs exact-pinned
-published adapter packages from `containers/portal/tools/package.json`.
+`slack`). At build time, the production Dockerfile packs the local portal SDK
+and adapter candidates, then installs those tarballs with their external
+dependencies.
 
 ## How it works
 
@@ -45,8 +46,6 @@ services:
 
 ## Building
 
-The production Dockerfile copies only the tools manifest, then runs `bun install`
-to resolve its exact published package versions. It does not copy adapter source
-from the workspace. Coordinated release dry runs may substitute candidate
-tarballs before publication; the resulting local image still contains installed
-packages and performs no boot-time install.
+The same Dockerfile serves live builds and coordinated dry runs. It does not
+depend on standalone npm publication; those packages remain independently
+publishable for users who install them outside the image.

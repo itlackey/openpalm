@@ -30,16 +30,7 @@ services:
       context: .
       dockerfile: containers/guardian/Dockerfile
       args:
-        # The guardian Dockerfile bakes @openpalm/guardian@${GUARDIAN_VERSION}
-        # at build time and hard-fails (`test -n`) if it is empty. Compose does
-        # not forward host env into ARGs unless declared here. Callers that need
-        # an exact version (the rootless smoke fixture, release builds) export
-        # GUARDIAN_VERSION; a bare `bun run dev:build` falls back to the latest
-        # published guardian, which keeps the guard satisfied.
-        GUARDIAN_VERSION: ${GUARDIAN_VERSION:-latest}
-        SKELETON_VERSION: ${SKELETON_VERSION:-latest}
-        GUARDIAN_USE_LOCAL_SOURCE: ${GUARDIAN_USE_LOCAL_SOURCE:-false}
-        SKELETON_USE_LOCAL_SOURCE: ${SKELETON_USE_LOCAL_SOURCE:-false}
+        GUARDIAN_VERSION: ${GUARDIAN_VERSION:-dev}
     image: ${OP_IMAGE_NAMESPACE:-openpalm}/guardian:dev
     # Guardian is intentionally NOT host-published. It is reachable only on
     # the portal_net / assistant_net networks as `http://guardian:8080`.
@@ -51,9 +42,9 @@ services:
       context: .
       dockerfile: containers/assistant/Dockerfile
       args:
-        # A deliberately empty value lets source-smoke callers build the base
-        # without fetching UI/skeleton from npm before applying local tarballs.
-        PLATFORM_VERSION: ${PLATFORM_VERSION-latest}
+        # Source builds use the candidate-local compiled UI; no OpenPalm npm
+        # package or image-baked skeleton is fetched.
+        PLATFORM_VERSION: ${PLATFORM_VERSION:-dev}
     image: ${OP_IMAGE_NAMESPACE:-openpalm}/assistant:dev
 
   discord:

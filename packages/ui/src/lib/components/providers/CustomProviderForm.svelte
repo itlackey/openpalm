@@ -4,9 +4,9 @@
   Models auto-discovered on first connection.
 -->
 <script lang="ts">
-	import Spinner from '@openpalm/ui-kit/components/common/Spinner.svelte';
-	import FormField from '@openpalm/ui-kit/components/common/FormField.svelte';
-	import Drawer from '@openpalm/ui-kit/components/common/Drawer.svelte';
+	import Spinner from '$lib/components/common/Spinner.svelte';
+	import FormField from '$lib/components/common/FormField.svelte';
+	import Drawer from '$lib/components/common/Drawer.svelte';
 	import { registerCustomProvider } from '$lib/api/providers.js';
 	import { toMessage } from '$lib/api/errors.js';
 	import type { ProviderActionResult } from '$lib/types/providers.js';

@@ -1,5 +1,5 @@
 <script lang="ts">
-	import Drawer from '@openpalm/ui-kit/components/common/Drawer.svelte';
+	import Drawer from '$lib/components/common/Drawer.svelte';
 	import type { AgentProfile } from './profile-types';
 
 	// Slide-in editor for one agent-runner profile. Parent owns the draft

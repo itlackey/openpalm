@@ -38,7 +38,6 @@ export type ServerRuntimeContext = {
   serverCapabilities: Capability[];
   publicBaseUrl: string;
   uiVersion: string;
-  skeletonVersion: string;
   routes: {
     chat?: string;
     connections?: string;

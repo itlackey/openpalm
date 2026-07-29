@@ -80,7 +80,7 @@ describe('OcClient — SDK envelope handling', () => {
 /**
  * #491 — OPENCODE_BASE_URL env fallback (D1) and client-side session reuse (D2).
  *
- * Env hygiene mirrors portals/slack/src/index.test.ts:95-97: save/delete/restore
+ * Env hygiene mirrors packages/portal-slack/src/index.test.ts:95-97: save/delete/restore
  * so these tests never leak state into others in the same file/run.
  */
 const RESET_ENV_KEYS = ['OPENCODE_BASE_URL', 'PORTAL_SESSION_REUSE', 'PORTAL_SESSION_TTL_MS'] as const;

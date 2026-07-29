@@ -54,7 +54,7 @@ Repo layout convention:
 | [code-quality-principles.md](technical/code-quality-principles.md) | All code |
 | [bunjs-rules.md](technical/bunjs-rules.md) | Guardian and portal-side Bun services |
 | [sveltekit-rules.md](technical/sveltekit-rules.md) | Admin UI (`packages/ui/`) |
-| [ui-styling-unification.md](technical/ui-styling-unification.md) | UI styling — verified drift inventory + refactor plan to the unified token/component system (`packages/ui/`, `packages/ui-kit/`) |
+| [ui-styling-unification.md](technical/ui-styling-unification.md) | UI styling — verified drift inventory + refactor plan to the unified token/component system (`packages/ui/src/lib/`) |
 
 ## Release notes
 

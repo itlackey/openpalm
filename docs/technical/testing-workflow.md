@@ -16,7 +16,7 @@ lane. The tier scripts are defined in `scripts/test-tier.sh`.
 
 | Tier | Command | Coverage |
 |---|---|---|
-| 1 | `bun run test:t1` | Svelte/TypeScript checks for UI and UI kit |
+| 1 | `bun run test:t1` | Svelte/TypeScript checks for the UI and shared components under `packages/ui/src/lib` |
 | 2 | `bun run test:t2` | Non-UI Bun suites, including lib, CLI, Guardian, portal SDK/adapters, Electron tools, and scripts |
 | 3 | `bun run test:t3` | UI Vitest server and browser-component tests |
 | 4 | `bun run test:t4` | Self-contained Playwright browser contracts (`*.pw.ts`) |
@@ -30,7 +30,7 @@ bun run test:t1
 ```
 
 Runs the root `check` script: SvelteKit/Svelte type checking for
-`@openpalm/ui` and `@openpalm/ui-kit`.
+`@openpalm/ui` and its shared components under `packages/ui/src/lib/`.
 
 ## Tier 2: Non-UI Tests
 

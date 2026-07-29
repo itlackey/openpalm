@@ -1,5 +1,5 @@
 <script lang="ts">
-	import Drawer from '@openpalm/ui-kit/components/common/Drawer.svelte';
+	import Drawer from '$lib/components/common/Drawer.svelte';
 	import { PROCESS_KEYS, PROCESS_HINTS } from './improve-process-helpers';
 	import type { ImproveProfile } from './profile-types';
 

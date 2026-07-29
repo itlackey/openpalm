@@ -11,7 +11,7 @@
  * a guardian restart would leave every turn for a cached principal hanging
  * forever.
  *
- * (Adopted from the deleted portals/discord twin so the coverage lives beside
+ * (Adopted from the deleted portal-discord twin so the coverage lives beside
  * the class itself.) OcClient.events is stubbed with a controllable async
  * generator; no live guardian needed.
  */

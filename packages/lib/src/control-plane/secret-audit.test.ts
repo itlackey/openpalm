@@ -5,6 +5,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   auditComposeSecrets,
+  auditResolvedComposeSecrets,
   auditFileBasedSecrets,
   auditSecretFilesystem,
   auditStackEnv,
@@ -171,6 +172,70 @@ describe('auditComposeSecrets — #563 opencode_server_password (D2/D3)', () => 
       },
     });
     expect(issues.map((entry) => entry.code)).toEqual(['compose-secret-boundary']);
+  });
+});
+
+describe('auditResolvedComposeSecrets adversarial boundary cases', () => {
+  it('accepts the shipped named-secret aliases only at their canonical files', () => {
+    const issues = auditResolvedComposeSecrets({
+      secrets: {
+        opencode_server_password: { file: `${tempDir}/private/secrets/op_opencode_password` },
+        ui_login_password: { file: `${tempDir}/private/secrets/op_ui_login_password` },
+        guardian_auth_json: { file: `${tempDir}/knowledge/secrets/auth.json` },
+      },
+    }, { homeDir: tempDir });
+
+    expect(issues).toEqual([]);
+  });
+
+  it('rejects a top-level source override even when the service grant name is allowed', () => {
+    const issues = auditResolvedComposeSecrets({
+      secrets: {
+        ui_login_password: { file: `${tempDir}/private/secrets/attacker` },
+      },
+      services: {
+        assistant: {
+          environment: { OP_UI_LOGIN_PASSWORD_FILE: '/run/secrets/ui_login_password' },
+          secrets: ['ui_login_password'],
+        },
+      },
+    }, { homeDir: tempDir });
+
+    expect(issues.map((entry) => entry.code)).toContain('compose-secret-source-boundary');
+  });
+
+  it('rejects an assistant private bind mount in the fully merged service view', () => {
+    const issues = auditResolvedComposeSecrets({
+      services: {
+        assistant: {
+          volumes: [{ type: 'bind', source: `${tempDir}/private`, target: '/stash/private' }],
+        },
+      },
+    }, { homeDir: tempDir });
+
+    expect(issues.map((entry) => entry.code)).toContain('compose-private-bind-mount');
+  });
+
+  it('rejects merged overlay env_file and secret target redirection', () => {
+    const issues = auditResolvedComposeSecrets({
+      secrets: {
+        portal_chat_secret: { file: `${tempDir}/private/secrets/portal_chat_secret` },
+      },
+      services: {
+        chat: {
+          image: 'openpalm/portal:latest',
+          env_file: ['/merged/base.env', '/merged/overlay.env'],
+          environment: { PORTAL_CHAT_SECRET_FILE: '/run/secrets/portal_slack_secret' },
+          secrets: [{ source: 'portal_chat_secret', target: '/run/secrets/other_name' }],
+        },
+      },
+    }, { homeDir: tempDir });
+
+    expect(issues.map((entry) => entry.code)).toEqual(expect.arrayContaining([
+      'compose-service-env-file',
+      'compose-secret-env-redirection',
+      'compose-secret-redirection',
+    ]));
   });
 });
 

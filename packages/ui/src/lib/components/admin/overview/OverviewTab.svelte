@@ -7,8 +7,8 @@
   import MetricTile from './MetricTile.svelte';
   import AkmHealthCard from './AkmHealthCard.svelte';
   import ConfigureShortcuts from './ConfigureShortcuts.svelte';
-  import IconTerminal from '@openpalm/ui-kit/components/icons/IconTerminal.svelte';
-  import IconCloudDownload from '@openpalm/ui-kit/components/icons/IconCloudDownload.svelte';
+  import IconTerminal from '$lib/components/icons/IconTerminal.svelte';
+  import IconCloudDownload from '$lib/components/icons/IconCloudDownload.svelte';
 
   interface Props {
     healthLoading: boolean;

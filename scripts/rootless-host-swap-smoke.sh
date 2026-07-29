@@ -64,7 +64,6 @@ smoke_seed_secrets "$SWAP_HOME" 'swap-smoke-password'
 
 smoke_ensure_home_dirs "$SWAP_HOME"
 
-smoke_write_version_override "$SWAP_HOME/config/stack/custom.compose.yml" "$PLATFORM_VERSION"
 
 mkdir -p "$SWAP_HOME/state"
 cat >"$SWAP_HOME/state/host-identity.json" <<EOF

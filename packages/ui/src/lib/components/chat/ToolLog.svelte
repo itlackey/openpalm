@@ -16,17 +16,17 @@
     toolStatusLabel,
     toolDetailRows,
   } from '$lib/chat/tool-strip.js';
-  import IconAlert from '@openpalm/ui-kit/components/icons/IconAlert.svelte';
-  import IconRefresh from '@openpalm/ui-kit/components/icons/IconRefresh.svelte';
-  import IconDoneCircle from '@openpalm/ui-kit/components/icons/IconDoneCircle.svelte';
-  import IconTerminal from '@openpalm/ui-kit/components/icons/IconTerminal.svelte';
-  import IconSearch from '@openpalm/ui-kit/components/icons/IconSearch.svelte';
-  import IconFile from '@openpalm/ui-kit/components/icons/IconFile.svelte';
-  import IconEdit from '@openpalm/ui-kit/components/icons/IconEdit.svelte';
-  import IconLink from '@openpalm/ui-kit/components/icons/IconLink.svelte';
-  import IconAgent from '@openpalm/ui-kit/components/icons/IconAgent.svelte';
-  import IconDone from '@openpalm/ui-kit/components/icons/IconDone.svelte';
-  import IconClock from '@openpalm/ui-kit/components/icons/IconClock.svelte';
+  import IconAlert from '$lib/components/icons/IconAlert.svelte';
+  import IconRefresh from '$lib/components/icons/IconRefresh.svelte';
+  import IconDoneCircle from '$lib/components/icons/IconDoneCircle.svelte';
+  import IconTerminal from '$lib/components/icons/IconTerminal.svelte';
+  import IconSearch from '$lib/components/icons/IconSearch.svelte';
+  import IconFile from '$lib/components/icons/IconFile.svelte';
+  import IconEdit from '$lib/components/icons/IconEdit.svelte';
+  import IconLink from '$lib/components/icons/IconLink.svelte';
+  import IconAgent from '$lib/components/icons/IconAgent.svelte';
+  import IconDone from '$lib/components/icons/IconDone.svelte';
+  import IconClock from '$lib/components/icons/IconClock.svelte';
 
   interface Props {
     items: ToolStripEntry[];

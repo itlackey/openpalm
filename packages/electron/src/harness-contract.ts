@@ -3,7 +3,8 @@
  *
  * The desktop app is a THIN NATIVE HARNESS. Everything mutable (the @openpalm/ui
  * build, @openpalm/lib, the Docker stack images) self-updates
- * in place over npm / `compose pull` with NO app re-download. The ONE thing whose
+ * in place over the GitHub host-assets transport / `compose pull` with NO app
+ * re-download. The ONE thing whose
  * change forces a re-download is this native contract surface — the boundary
  * between the frozen asar harness and the updatable control plane it spawns.
  *
@@ -13,7 +14,7 @@
  * marketing version (`app.getVersion()`) and of the platform/control-plane version
  * (`PLATFORM_VERSION` in @openpalm/lib, which travels with the data/ui build).
  *
- * A published @openpalm/ui build declares the minimum harness contract it needs;
+ * A host-assets manifest declares the minimum harness contract it needs;
  * the harness only self-updates the control plane when
  * `ui.minHarnessContract <= HARNESS_CONTRACT_VERSION`, otherwise it prompts a
  * re-download instead of failing at runtime (design §5.3).

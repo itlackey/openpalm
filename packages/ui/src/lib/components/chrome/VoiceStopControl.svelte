@@ -1,6 +1,6 @@
 <script lang="ts">
   import { voiceState, stopSpeaking } from '$lib/voice/voice-state.svelte.js';
-  import IconStop from '@openpalm/ui-kit/components/icons/IconStop.svelte';
+  import IconStop from '$lib/components/icons/IconStop.svelte';
 
   // Review 2026-07-10 K1: /host mounts the bare Navbar (no ChatNavbar/
   // VoiceControl), but `voiceState` is module-level and TTS started on

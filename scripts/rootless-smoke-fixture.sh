@@ -17,32 +17,52 @@ smoke_platform_version() {
   node -p "require('./package.json').version"
 }
 
-# Seed an isolated OP_HOME with a PUBLISHED skeleton version from npm, so tests
-# can build a home as it actually shipped in an earlier release.
+# Seed an isolated OP_HOME with the skeleton from a published host-assets
+# release. Pre-host-assets releases fall back to their immutable npm skeleton.
 #
-# This is what makes historical fixtures free to maintain: npm keeps every
-# published version immutably and each release adds another, so the pool of
-# testable eras grows on its own. Nothing is checked in, nothing goes stale,
-# and no snapshot has to be hand-updated (or scrubbed of secrets).
+# This keeps historical fixtures release-backed without a checked-in snapshot.
 #
 # Note the layouts genuinely differ across eras — 0.12.x ships manifest.json
 # and no system/; 0.13.x ships system/ and no manifest.json. That difference is
 # the point: it is what a migration has to cope with. Assert per-era, not
 # against one generic "old home" shape.
 #
-# Usage: smoke_copy_skeleton_version <home> <version>
-smoke_copy_skeleton_version() {
+# Usage: smoke_copy_release_skeleton <home> <version>
+smoke_copy_release_skeleton() {
   local home="$1"
   local version="$2"
   local workdir
   workdir="$(mktemp -d)"
 
-  if ! ( cd "$workdir" && npm pack "@openpalm/skeleton@${version}" >/dev/null 2>&1 ); then
+  local asset="openpalm-host-assets-${version}.tar.gz"
+  local release_url="https://github.com/itlackey/openpalm/releases/download/${version}"
+  if curl -fsL "${release_url}/${asset}" -o "${workdir}/${asset}" \
+    && curl -fsL "${release_url}/checksums-sha256.txt" -o "${workdir}/checksums-sha256.txt"; then
+    local expected actual
+    expected="$(grep -E "[[:space:]]${asset}$" "${workdir}/checksums-sha256.txt" | awk '{print $1}')"
+    if command -v sha256sum >/dev/null 2>&1; then
+      actual="$(sha256sum "${workdir}/${asset}" | awk '{print $1}')"
+    else
+      actual="$(shasum -a 256 "${workdir}/${asset}" | awk '{print $1}')"
+    fi
+    if [ -z "$expected" ] || [ "$actual" != "$expected" ]; then
+      rm -rf "$workdir"
+      echo "Host-assets checksum failed for OpenPalm ${version}." >&2
+      return 1
+    fi
+    mkdir -p "$home"
+    tar xzf "${workdir}/${asset}" -C "$home" --strip-components=1 skeleton
     rm -rf "$workdir"
-    echo "Could not fetch @openpalm/skeleton@${version} from npm (offline, or version unpublished)." >&2
-    return 1
+    return 0
   fi
 
+  # 0.12 and earlier did not publish host-assets archives.
+  rm -f "${workdir}/${asset}" "${workdir}/checksums-sha256.txt"
+  if ! ( cd "$workdir" && npm pack "@openpalm/skeleton@${version}" >/dev/null 2>&1 ); then
+    rm -rf "$workdir"
+    echo "Could not fetch release skeleton for ${version} (offline, or version unpublished)." >&2
+    return 1
+  fi
   mkdir -p "$home"
   # npm wraps everything under package/; strip it so the tree lands at the
   # home root exactly as smoke_copy_skeleton lays out the working-tree copy.
@@ -158,8 +178,6 @@ OP_IMAGE_NAMESPACE=openpalm
 OP_ASSISTANT_VERSION=dev
 OP_GUARDIAN_VERSION=dev
 OP_PORTAL_VERSION=dev
-OP_GUARDIAN_NPM_VERSION=${platform_version}
-OP_SKELETON_VERSION=${platform_version}
 OP_ASSISTANT_PORT=${assistant_port}
 OP_UI_PORT=${ui_port}
 OP_GUARDIAN_PORT=${guardian_port}
@@ -190,23 +208,6 @@ smoke_ensure_home_dirs() {
   OP_HOME="$home" bun -e "import { ensureHomeDirs } from './packages/lib/src/index.ts'; ensureHomeDirs();"
 }
 
-# Write the version-pinning compose override both stacks use to force the
-# dev-built skeleton/guardian versions. The caller chooses the file path
-# (the two scripts intentionally place it differently), so this single-sources
-# only the content. Usage: smoke_write_version_override <file> <platform_version>
-smoke_write_version_override() {
-  local file="$1"
-  local platform_version="$2"
-  cat >"$file" <<EOF
-services:
-  assistant:
-    environment:
-      OP_SKELETON_VERSION: "${platform_version}"
-  guardian:
-    environment:
-      OP_GUARDIAN_NPM_VERSION: "${platform_version}"
-EOF
-}
 
 # Build the dev-tagged images (openpalm/{assistant,guardian,portal}:dev) the smoke
 # stacks boot. Honors OP_ROOTLESS_SMOKE_SKIP_BUILD=1 to reuse already-built images
@@ -225,53 +226,32 @@ smoke_build_images() {
   fi
   echo "Building UI..." >&2
   bun run ui:build >/dev/null
-  # The guardian Dockerfile bakes @openpalm/guardian@${GUARDIAN_VERSION} at
-  # build time and fails if it is unset (see compose.dev.yml guardian args).
-  # Bake the repo's exact version so the smoke image matches the source tree.
+  # Bake the repo's exact Guardian version for runtime introspection.
   GUARDIAN_VERSION="$(node -p "require('./packages/guardian/package.json').version")"
   PLATFORM_VERSION="$(smoke_platform_version)"
-  SKELETON_VERSION="$PLATFORM_VERSION"
-  GUARDIAN_USE_LOCAL_SOURCE=true
-  SKELETON_USE_LOCAL_SOURCE=true
+  OP_ASSISTANT_VERSION=dev
+  OP_GUARDIAN_VERSION=dev
+  OP_PORTAL_VERSION=dev
   export GUARDIAN_VERSION
   export PLATFORM_VERSION
-  export SKELETON_VERSION
-  export GUARDIAN_USE_LOCAL_SOURCE
-  export SKELETON_USE_LOCAL_SOURCE
+  export OP_ASSISTANT_VERSION OP_GUARDIAN_VERSION OP_PORTAL_VERSION
   local targets=()
   local target
-  local overlay_assistant=0
   for target in "$@"; do
     if [ "$target" = "portal" ]; then
       targets+=(discord)
     else
       targets+=("$target")
     fi
-    if [ "$target" = "assistant" ]; then overlay_assistant=1; fi
   done
   echo "Building images: ${targets[*]} (PLATFORM_VERSION=${PLATFORM_VERSION}, GUARDIAN_VERSION=${GUARDIAN_VERSION}) ..." >&2
-  local compose_platform_version="$PLATFORM_VERSION"
-  if [ "$overlay_assistant" = "1" ]; then compose_platform_version=""; fi
   # --profile addon.chat makes the profiled guardian visible; addon.discord makes
   # the portal build target visible. compose.dev.yml supplies the build contexts.
-  PLATFORM_VERSION="$compose_platform_version" docker compose --project-directory . \
+  docker compose --project-directory . \
     -f packages/skeleton/system/stack/core.compose.yml \
     -f packages/skeleton/system/stack/portals.compose.yml \
     -f compose.dev.yml \
     --profile addon.chat --profile addon.discord \
     build "${targets[@]}" >/dev/null
 
-  if [ "$overlay_assistant" = "1" ]; then
-    local package_context
-    package_context="$(mktemp -d)"
-    (cd packages/ui && bun pm pack --destination "$package_context" --quiet)
-    (cd packages/skeleton && bun pm pack --destination "$package_context" --quiet)
-    docker build \
-      --file containers/assistant/Dockerfile.local-packages \
-      --build-arg "BASE_IMAGE=${OP_IMAGE_NAMESPACE:-openpalm}/assistant:dev" \
-      --build-arg "PLATFORM_VERSION=${PLATFORM_VERSION}" \
-      --tag "${OP_IMAGE_NAMESPACE:-openpalm}/assistant:dev" \
-      "$package_context" >/dev/null
-    rm -rf "$package_context"
-  fi
 }

@@ -46,7 +46,7 @@ describe("set-version", () => {
     expect(() => setVersion(f, "latest")).toThrow();
   });
 
-  it("rewrites a >= @openpalm/lib floor range in lockstep (deps + peerDeps)", () => {
+  it("leaves dependency references untouched", () => {
     const f = write({
       name: "x",
       version: "0.10.0",
@@ -55,66 +55,9 @@ describe("set-version", () => {
     });
     setVersion(f, "0.11.0");
     const pkg = read(f);
-    expect(pkg.dependencies["@openpalm/lib"]).toBe(">=0.11.0 <1.0.0");
-    expect(pkg.peerDependencies["@openpalm/lib"]).toBe(">=0.11.0 <1.0.0");
-    expect(pkg.dependencies.other).toBe("^1.0.0"); // untouched
-  });
-
-  it("leaves workspace: and exact @openpalm/lib refs untouched", () => {
-    const f = write({
-      name: "x",
-      version: "0.10.0",
-      dependencies: { "@openpalm/lib": "workspace:*" },
-    });
-    setVersion(f, "0.11.0");
-    expect(read(f).dependencies["@openpalm/lib"]).toBe("workspace:*");
-  });
-
-  it("computes the major-bound ceiling from the new major", () => {
-    const f = write({
-      name: "x",
-      version: "1.0.0",
-      dependencies: { "@openpalm/lib": ">=1.0.0 <2.0.0" },
-    });
-    setVersion(f, "2.3.4");
-    expect(read(f).dependencies["@openpalm/lib"]).toBe(">=2.3.4 <3.0.0");
-  });
-
-  it("rewrites an exact @openpalm/skeleton pin in lockstep", () => {
-    const f = write({
-      name: "x",
-      version: "0.10.0",
-      dependencies: { "@openpalm/skeleton": "0.10.0" },
-    });
-    setVersion(f, "0.11.0");
-    expect(read(f).dependencies["@openpalm/skeleton"]).toBe("0.11.0");
-  });
-
-  it("rewrites CLI-style internal pins in devDependencies", () => {
-    const f = write({
-      name: "openpalm",
-      version: "0.10.0",
-      devDependencies: {
-        "@openpalm/lib": ">=0.10.0 <1.0.0",
-        "@openpalm/skeleton": "0.10.0",
-        typescript: "^6.0.0",
-      },
-    });
-    setVersion(f, "0.11.0");
-    const pkg = read(f);
-    expect(pkg.devDependencies["@openpalm/lib"]).toBe(">=0.11.0 <1.0.0");
-    expect(pkg.devDependencies["@openpalm/skeleton"]).toBe("0.11.0");
-    expect(pkg.devDependencies.typescript).toBe("^6.0.0");
-  });
-
-  it("leaves workspace @openpalm/skeleton refs untouched", () => {
-    const f = write({
-      name: "x",
-      version: "0.10.0",
-      dependencies: { "@openpalm/skeleton": "workspace:*" },
-    });
-    setVersion(f, "0.11.0");
-    expect(read(f).dependencies["@openpalm/skeleton"]).toBe("workspace:*");
+    expect(pkg.dependencies["@openpalm/lib"]).toBe(">=0.10.0 <1.0.0");
+    expect(pkg.peerDependencies["@openpalm/lib"]).toBe(">=0.10.0 <1.0.0");
+    expect(pkg.dependencies.other).toBe("^1.0.0");
   });
 
   it("SEMVER_RE matches stable + prerelease, rejects junk", () => {

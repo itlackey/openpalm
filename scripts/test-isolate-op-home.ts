@@ -2,7 +2,7 @@
  * Bun test preload — OP_HOME isolation.
  *
  * Loaded via root bunfig.toml [test] preload = [...] for every `bun test`
- * invocation in this repo (lib, cli, guardian, portals/discord, portals/slack).
+ * invocation in this repo (lib, cli, guardian, portal-discord, portal-slack).
  *
  * Guarantees:
  *   1. OP_HOME is pointed at a fresh mkdtemp dir, unconditionally overriding
@@ -61,8 +61,7 @@ function assertSafeOpHome(value: string | undefined, label: string): void {
   }
 }
 
-// ── Point @openpalm/skeleton at the repo for tests ─────────────────────────
-// bundledAssetPath() in core-assets.ts tries require.resolve('@openpalm/skeleton')
+// ── Point skeleton asset resolution at the repo for tests ──────────────────
 // first, then falls back to OPENPALM_REPO_ROOT. The package is not published yet,
 // so we set the env var here (top-level, not inside beforeAll) so it is visible
 // before any test module is evaluated. Tests that manage OPENPALM_REPO_ROOT

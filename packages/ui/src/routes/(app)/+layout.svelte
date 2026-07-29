@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { Snippet } from 'svelte';
-  import UpdateBanner from '@openpalm/ui-kit/components/common/UpdateBanner.svelte';
+  import UpdateBanner from '$lib/components/common/UpdateBanner.svelte';
 
   let { children }: { children?: Snippet } = $props();
 </script>

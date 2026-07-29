@@ -2,30 +2,16 @@ import { json } from "@sveltejs/kit";
 import { requireAdmin, requireCapability, getRequestId } from "$lib/server/helpers.js";
 import type { RequestHandler } from "./$types";
 
-/** One installable `@openpalm/ui` build from the npm registry. */
+/** One installable coordinated host-assets release from GitHub. */
 export interface UiVersionEntry {
   version: string;
   prerelease: boolean;
   publishedAt: string | null;
-  distTag: string | null;
+  channel: 'stable' | 'prerelease';
 }
 
-const UI_PACKAGE = "@openpalm/ui";
-
-type Packument = {
-  "dist-tags"?: Record<string, string>;
-  versions?: Record<string, unknown>;
-  time?: Record<string, string>;
-};
-
 /**
- * List published `@openpalm/ui` npm versions for the admin "UI build" picker.
- *
- * The UI is independently versioned and distributed via npm, so this is the
- * authoritative source of installable UI builds — the selected version is POSTed
- * to /api/host/ui-version, which seeds it from npm. Best-effort: a 404 (package not
- * yet published) or registry outage yields an empty list. Newest-first. (No
- * server-side cache — the admin UI no longer polls this.)
+ * List the two GitHub host-assets channels for the admin picker.
  */
 export const GET: RequestHandler = async (event) => {
   const requestId = getRequestId(event);
@@ -35,38 +21,27 @@ export const GET: RequestHandler = async (event) => {
   if (authError) return authError;
 
   try {
-    const res = await fetch(`https://registry.npmjs.org/${encodeURIComponent(UI_PACKAGE)}`, {
-      headers: { Accept: "application/json", "User-Agent": "openpalm-admin/1.0" },
+    const res = await fetch('https://api.github.com/repos/itlackey/openpalm/releases?per_page=100', {
+      headers: { Accept: 'application/vnd.github+json', 'User-Agent': 'openpalm-admin/1.0' },
       signal: AbortSignal.timeout(8_000),
     });
     if (!res.ok) {
-      return json({ versions: [], distTags: {}, error: "npm registry unavailable" });
+      return json({ versions: [], error: 'GitHub releases unavailable' });
     }
-    const pack = (await res.json()) as Packument;
-
-    const distTagByVersion = new Map<string, string>();
-    const distTags: Record<string, string> = {};
-    for (const [tag, version] of Object.entries(pack["dist-tags"] ?? {})) {
-      distTags[tag] = version;
-      // Prefer "latest" if a version carries multiple tags.
-      if (!distTagByVersion.has(version) || tag === "latest") distTagByVersion.set(version, tag);
-    }
-
-    const allVersions = Object.keys(pack.versions ?? {});
-    const time = pack.time ?? {};
-    const versions: UiVersionEntry[] = allVersions
-      .map((version) => ({
-        version,
-        prerelease: version.includes("-"),
-        publishedAt: time[version] ?? null,
-        distTag: distTagByVersion.get(version) ?? null,
-      }))
-      // Newest-first by publish time (fall back to lexical when time is absent).
-      .sort((a, b) => (b.publishedAt ?? "").localeCompare(a.publishedAt ?? ""))
-      .slice(0, 20);
-
-    return json({ versions, distTags });
+    const releases = await res.json() as Array<{ tag_name?: string; prerelease?: boolean; draft?: boolean; published_at?: string | null; assets?: Array<{ name?: string }> }>;
+    const versions = releases.flatMap(release => {
+      if (release.draft || typeof release.tag_name !== 'string') return [];
+      const version = release.tag_name.replace(/^v/, '');
+      if (!release.assets?.some(asset => asset.name === `openpalm-host-assets-${version}.tar.gz`)) return [];
+      return [{
+      version,
+      prerelease: Boolean(release.prerelease),
+      publishedAt: release.published_at ?? null,
+      channel: release.prerelease ? 'prerelease' as const : 'stable' as const,
+      }];
+    }).slice(0, 20);
+    return json({ versions });
   } catch {
-    return json({ versions: [], distTags: {}, error: "npm registry unavailable" });
+    return json({ versions: [], error: 'GitHub releases unavailable' });
   }
 };

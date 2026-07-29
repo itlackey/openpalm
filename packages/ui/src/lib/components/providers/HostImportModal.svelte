@@ -3,8 +3,8 @@
   POST /api/host/providers/import-host on confirm.
 -->
 <script lang="ts">
-	import Spinner from '@openpalm/ui-kit/components/common/Spinner.svelte';
-	import Drawer from '@openpalm/ui-kit/components/common/Drawer.svelte';
+	import Spinner from '$lib/components/common/Spinner.svelte';
+	import Drawer from '$lib/components/common/Drawer.svelte';
 	import { importHostProviders, type HostImportResult } from '$lib/api/providers.js';
 	import { toMessage } from '$lib/api/errors.js';
 

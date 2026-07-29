@@ -1,6 +1,6 @@
 import libPkg from "../../package.json" with { type: "json" };
 
-const SEMVER_RE = /^v?\d+\.\d+\.\d+(?:[-+].*)?$/;
+const SEMVER_RE = /^v?\d+\.\d+\.\d+(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/;
 
 /**
  * Matches an Electron desktop-app installer asset by filename. Anchored to
@@ -19,7 +19,7 @@ export const ELECTRON_ASSET_PATTERN = /^OpenPalm-.*\.(dmg|AppImage|zip|deb|rpm|p
  *
  * This is the ONE source of truth for "which @openpalm/lib + lifecycle is
  * running." It travels with the data/ui
- * build (the published @openpalm/ui inlines this lib), so it self-updates in
+ * build (the GitHub host-assets UI inlines this lib), so it self-updates in
  * place — it is NOT the Electron harness version (see
  * packages/electron/src/harness-contract.ts: HARNESS_CONTRACT_VERSION).
  *

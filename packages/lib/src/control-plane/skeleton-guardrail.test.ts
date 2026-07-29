@@ -110,9 +110,9 @@ describe("skeleton: config/ structure", () => {
     const coreCompose = readFileSync(join(SKELETON_DIR, 'system', 'stack', 'core.compose.yml'), 'utf-8');
     const channelsCompose = readFileSync(join(SKELETON_DIR, 'system', 'stack', 'portals.compose.yml'), 'utf-8');
 
-    expect(coreCompose).toContain('assistant:${OP_ASSISTANT_VERSION:-latest}');
-    expect(channelsCompose).toContain('portal:${OP_PORTAL_VERSION:-latest}');
-    expect(channelsCompose).toContain('guardian:${OP_GUARDIAN_VERSION:-latest}');
+    expect(coreCompose).toContain('assistant:${OP_ASSISTANT_VERSION:?OP_ASSISTANT_VERSION is required}');
+    expect(channelsCompose).toContain('portal:${OP_PORTAL_VERSION:?OP_PORTAL_VERSION is required}');
+    expect(channelsCompose).toContain('guardian:${OP_GUARDIAN_VERSION:?OP_GUARDIAN_VERSION is required}');
     // The old single-tag cascade must be gone.
     expect(coreCompose).not.toContain('OP_IMAGE_TAG');
     expect(channelsCompose).not.toContain('OP_IMAGE_TAG');

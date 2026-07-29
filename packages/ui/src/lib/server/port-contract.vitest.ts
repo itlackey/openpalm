@@ -32,6 +32,16 @@ function runtimeBaseUrl(env: Record<string, string | undefined>): string {
 }
 
 describe('supervised UI port-contract migration', () => {
+  test('does not assign missing ports as string values on an empty first run', () => {
+    const homeDir = mkdtempSync(join(tmpdir(), 'openpalm-port-contract-empty-'));
+    homes.push(homeDir);
+    const env: Record<string, string | undefined> = { OP_UI_SUPERVISOR: 'electron' };
+
+    expect(reconcileSupervisedPortContract(homeDir, env)).toBe(true);
+    expect(env.OP_ASSISTANT_PORT).toBeUndefined();
+    expect(env.OP_UI_PORT).toBeUndefined();
+  });
+
   test('repairs retired inherited defaults and reseeds the browser connection', () => {
     const homeDir = fixture('OP_ASSISTANT_PORT=3800\n');
     const env: Record<string, string | undefined> = {
@@ -60,6 +70,22 @@ describe('supervised UI port-contract migration', () => {
 
     expect(reconcileSupervisedPortContract(homeDir, env)).toBe(true);
     expect(env.OP_OPENCODE_URL).toBe('http://127.0.0.1:3800');
+  });
+
+  test('clears a generated Electron URL when a custom persisted assistant port replaces it', () => {
+    const homeDir = fixture('OP_ASSISTANT_PORT=4910\nOP_UI_PORT=4900\n');
+    const env: Record<string, string | undefined> = {
+      OP_UI_SUPERVISOR: 'electron',
+      OP_ASSISTANT_PORT: '3800',
+      OP_UI_PORT: '3810',
+      OP_OPENCODE_URL: 'http://127.0.0.1:3800',
+    };
+
+    reconcileSupervisedPortContract(homeDir, env);
+
+    expect(env.OP_ASSISTANT_PORT).toBe('4910');
+    expect(env.OP_UI_PORT).toBe('4900');
+    expect(env.OP_OPENCODE_URL).toBeUndefined();
   });
 
   test('preserves an explicit CLI OpenCode URL override', () => {

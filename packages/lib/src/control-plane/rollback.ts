@@ -5,7 +5,7 @@
  * is snapshotted to OP_HOME/data/rollback/. On deploy failure
  * (or manual `openpalm rollback`), the snapshot is restored.
  */
-import { mkdirSync, copyFileSync, existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, copyFileSync, cpSync, existsSync, readFileSync, readdirSync, rmSync, writeFileSync, renameSync, statSync } from "node:fs";
 import { join, dirname } from "node:path";
 import type { ControlPlaneState } from "./types.js";
 import { resolveRollbackDir, resolveBackupsDir } from "./home.js";
@@ -18,11 +18,11 @@ import { timestampDirName } from "./backup.js";
  *  auth.json is backed up but not restored automatically (see RESTORE_FILES). */
 const SNAPSHOT_FILES = [
   "state/stack.env",
-  "system/stack/services.compose.yml",
-  "system/stack/portals.compose.yml",
   "config/stack/custom.compose.yml",
   "knowledge/secrets/auth.json",
+  ".skeleton-version",
 ];
+const SYSTEM_TREE = "system";
 
 /** Files actually overwritten by restoreSnapshot(). Deliberately excludes
  *  auth.json: restoring day-old provider credentials over live ones is rarely
@@ -31,6 +31,12 @@ const SNAPSHOT_FILES = [
 const RESTORE_FILES = SNAPSHOT_FILES.filter((rel) => rel !== "knowledge/secrets/auth.json");
 
 const SNAPSHOT_TS_FILE = '.snapshot-ts';
+const SNAPSHOT_CURRENT_FILE = '.snapshot-current';
+const FLAT_SNAPSHOT_GENERATION = '.';
+export type SnapshotGeneration = string;
+let snapshotSequence = 0;
+const SNAPSHOT_GENERATIONS_KEPT = 3;
+const GENERATION_PATTERN = /^generation-(\d+)-\d+-\d+$/;
 
 /**
  * Copy a file if it exists, creating parent directories as needed.
@@ -41,38 +47,86 @@ function safeCopy(src: string, dest: string): void {
   copyFileSync(src, dest);
 }
 
+function safeCopyTree(src: string, dest: string): void {
+  if (!existsSync(src)) return;
+  mkdirSync(dirname(dest), { recursive: true });
+  cpSync(src, dest, { recursive: true });
+}
+
 /**
  * Save the current live configuration files to the rollback directory.
- * Also snapshots stack/core.compose.yml.
+ * Also snapshots the complete lifecycle-owned system tree.
  */
-export function snapshotCurrentState(state: ControlPlaneState): void {
+export function snapshotCurrentState(
+  state: ControlPlaneState,
+  options: { activate?: boolean } = {},
+): SnapshotGeneration {
   const rollbackDir = resolveRollbackDir();
   mkdirSync(rollbackDir, { recursive: true });
-
-  // Clear the ts marker FIRST, before any copying starts. If this call is
-  // interrupted mid-copy (process killed, disk full), the previous complete
-  // snapshot's files may now be a torn mix of old/new content — but with no ts
-  // marker present, hasSnapshot() correctly reads that as "no snapshot"
-  // instead of a stale timestamp vouching for an inconsistent snapshot (R9-F7).
-  rmSync(join(rollbackDir, SNAPSHOT_TS_FILE), { force: true });
+  const generation = `generation-${Date.now()}-${process.pid}-${++snapshotSequence}`;
+  const stagingDir = join(rollbackDir, `.staging-${generation}`);
+  const generationDir = join(rollbackDir, generation);
+  for (const rel of [...SNAPSHOT_FILES, SYSTEM_TREE]) {
+    const active = join(rollbackDir, rel);
+    if (existsSync(active) && (statSync(active).mode & 0o222) === 0) {
+      throw new Error(`Rollback snapshot target is not writable: ${active}`);
+    }
+  }
+  rmSync(stagingDir, { recursive: true, force: true });
+  mkdirSync(stagingDir, { recursive: true });
 
   // Snapshot known files
   for (const rel of SNAPSHOT_FILES) {
     const src = join(state.homeDir, rel);
-    const dest = join(rollbackDir, rel);
+    const dest = join(stagingDir, rel);
     safeCopy(src, dest);
   }
-
-  // Snapshot system/stack/core.compose.yml
-  const coreCompose = join(state.homeDir, "system/stack/core.compose.yml");
-  safeCopy(coreCompose, join(rollbackDir, "system/stack/core.compose.yml"));
+  safeCopyTree(join(state.homeDir, SYSTEM_TREE), join(stagingDir, SYSTEM_TREE));
 
   // Write a timestamp marker
   writeFileSync(
-    join(rollbackDir, SNAPSHOT_TS_FILE),
+    join(stagingDir, SNAPSHOT_TS_FILE),
     `${new Date().toISOString()}\n`,
   );
+  renameSync(stagingDir, generationDir);
+  if (options.activate !== false) {
+    // Keep the historical active-snapshot layout for operators and older tools,
+    // but rebuild it from the generation so retired files cannot survive.
+    for (const rel of SNAPSHOT_FILES) {
+      rmSync(join(rollbackDir, rel), { force: true, recursive: true });
+      safeCopy(join(generationDir, rel), join(rollbackDir, rel));
+    }
+    rmSync(join(rollbackDir, SYSTEM_TREE), { force: true, recursive: true });
+    safeCopyTree(join(generationDir, SYSTEM_TREE), join(rollbackDir, SYSTEM_TREE));
+    const currentTmp = join(rollbackDir, `${SNAPSHOT_CURRENT_FILE}.tmp`);
+    writeFileSync(currentTmp, `${generation}\n`);
+    renameSync(currentTmp, join(rollbackDir, SNAPSHOT_CURRENT_FILE));
+    writeFileSync(join(rollbackDir, SNAPSHOT_TS_FILE), `${new Date().toISOString()}\n`);
+  }
+  const generations = readdirSync(rollbackDir, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory() && GENERATION_PATTERN.test(entry.name))
+    .sort((a, b) => b.name.localeCompare(a.name, undefined, { numeric: true }));
+  for (const entry of generations.slice(SNAPSHOT_GENERATIONS_KEPT)) {
+    rmSync(join(rollbackDir, entry.name), { recursive: true, force: true });
+  }
+  return generation;
+}
 
+function resolveGeneration(generation?: SnapshotGeneration): string | null {
+  if (generation) return generation;
+  const rollbackDir = resolveRollbackDir();
+  try {
+    const current = readFileSync(join(rollbackDir, SNAPSHOT_CURRENT_FILE), "utf-8").trim();
+    if (GENERATION_PATTERN.test(current)) return current;
+  } catch { /* fall through to the shipped flat snapshot layout */ }
+  if (existsSync(join(rollbackDir, SNAPSHOT_TS_FILE))) return null;
+  throw new Error("No rollback snapshot available");
+}
+
+function resolveSnapshotDir(generation?: SnapshotGeneration): string {
+  const rollbackDir = resolveRollbackDir();
+  const resolved = resolveGeneration(generation);
+  return resolved ? join(rollbackDir, resolved) : rollbackDir;
 }
 
 /**
@@ -84,38 +138,41 @@ export function snapshotCurrentState(state: ControlPlaneState): void {
  * auth.json is intentionally excluded from the overwrite (see RESTORE_FILES)
  * but is still backed up here for safety.
  */
-export function restoreSnapshot(state: ControlPlaneState): void {
-  const rollbackDir = resolveRollbackDir();
-  if (!hasSnapshot()) {
-    throw new Error("No rollback snapshot available");
-  }
+export function restoreSnapshot(state: ControlPlaneState, generation?: SnapshotGeneration): void {
+  const snapshotDir = resolveSnapshotDir(generation);
+  if (!existsSync(join(snapshotDir, SNAPSHOT_TS_FILE))) throw new Error("No rollback snapshot available");
 
   const preRollbackDir = join(resolveBackupsDir(), `${timestampDirName()}-pre-rollback`);
-  for (const rel of [...SNAPSHOT_FILES, "system/stack/core.compose.yml"]) {
+  for (const rel of SNAPSHOT_FILES) {
     safeCopy(join(state.homeDir, rel), join(preRollbackDir, rel));
   }
+  safeCopyTree(join(state.homeDir, SYSTEM_TREE), join(preRollbackDir, SYSTEM_TREE));
 
   // Restore known files (excludes auth.json — see RESTORE_FILES)
   for (const rel of RESTORE_FILES) {
-    const src = join(rollbackDir, rel);
+    const src = join(snapshotDir, rel);
     const dest = join(state.homeDir, rel);
-    safeCopy(src, dest);
+    if (existsSync(src)) {
+      rmSync(dest, { force: true, recursive: true });
+      safeCopy(src, dest);
+    } else if (rel === '.skeleton-version') {
+      rmSync(dest, { force: true });
+    }
   }
-
-  // Restore system/stack/core.compose.yml
-  const srcCoreCompose = join(rollbackDir, "system/stack/core.compose.yml");
-  if (existsSync(srcCoreCompose)) {
-    safeCopy(srcCoreCompose, join(state.homeDir, "system/stack/core.compose.yml"));
-  }
-
+  const liveSystem = join(state.homeDir, SYSTEM_TREE);
+  rmSync(liveSystem, { recursive: true, force: true });
+  safeCopyTree(join(snapshotDir, SYSTEM_TREE), liveSystem);
 }
 
 /**
  * Check whether a rollback snapshot exists.
  */
 export function hasSnapshot(): boolean {
-  const rollbackDir = resolveRollbackDir();
-  return existsSync(join(rollbackDir, SNAPSHOT_TS_FILE));
+  try {
+    return existsSync(join(resolveSnapshotDir(), SNAPSHOT_TS_FILE));
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -125,4 +182,8 @@ export function snapshotTimestamp(): string | null {
   const tsFile = join(resolveRollbackDir(), SNAPSHOT_TS_FILE);
   if (!existsSync(tsFile)) return null;
   return readFileSync(tsFile, "utf-8").trim();
+}
+
+export function currentSnapshotGeneration(): SnapshotGeneration | null {
+  try { return resolveGeneration() ?? FLAT_SNAPSHOT_GENERATION; } catch { return null; }
 }

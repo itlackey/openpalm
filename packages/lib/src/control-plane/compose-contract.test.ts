@@ -2,7 +2,7 @@
  * Behavioral assertions rescued from deleted text-assertion tests. These call
  * real functions and parse real config; string-grep assertions were dropped.
  */
-import { describe, expect, test } from 'bun:test';
+import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { readdirSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { parse as yamlParse } from 'yaml';
@@ -12,6 +12,25 @@ const REPO_ROOT = resolve(import.meta.dir, '../../../..');
 const STACK_DIR = join(REPO_ROOT, 'packages/skeleton/system/stack');
 const CORE_COMPOSE_PATH = join(STACK_DIR, 'core.compose.yml');
 const PORTALS_COMPOSE_PATH = join(STACK_DIR, 'portals.compose.yml');
+const savedImageVersions = {
+  assistant: process.env.OP_ASSISTANT_VERSION,
+  guardian: process.env.OP_GUARDIAN_VERSION,
+  portal: process.env.OP_PORTAL_VERSION,
+};
+
+beforeAll(() => {
+  process.env.OP_ASSISTANT_VERSION = 'test';
+  process.env.OP_GUARDIAN_VERSION = 'test';
+  process.env.OP_PORTAL_VERSION = 'test';
+});
+
+afterAll(() => {
+  for (const [key, value] of Object.entries(savedImageVersions)) {
+    const envKey = `OP_${key.toUpperCase()}_VERSION`;
+    if (value === undefined) delete process.env[envKey];
+    else process.env[envKey] = value;
+  }
+});
 
 /** Every shipped stack compose file (core, portals, services, voice overlays) — excludes README.md. */
 function allStackComposeFiles(): string[] {

@@ -28,19 +28,19 @@ export const GITHUB_REPO = 'itlackey/openpalm';
 /**
  * Map a Node `platform`/`arch` pair to the published release binary name.
  * Mirrors the table in scripts/setup.sh (POSIX) plus the Windows x64 artifact
- * published by release.yml. Throws clearly for anything unpublished — most
- * notably win32/arm64, which has no released artifact yet (see B4).
+ * published by release.yml. Throws clearly for anything unpublished.
  */
 export function resolveArtifactName(platform = process.platform, arch = process.arch) {
-  if (platform === 'linux' && arch === 'x64') return 'openpalm-cli-linux-x64';
-  if (platform === 'linux' && arch === 'arm64') return 'openpalm-cli-linux-arm64';
-  if (platform === 'darwin' && arch === 'x64') return 'openpalm-cli-darwin-x64';
-  if (platform === 'darwin' && arch === 'arm64') return 'openpalm-cli-darwin-arm64';
-  if (platform === 'win32' && arch === 'x64') return 'openpalm-cli-windows-x64.exe';
-  throw new Error(
-    `Unsupported platform: ${platform}/${arch}. OpenPalm does not publish a prebuilt CLI binary ` +
-      `for this platform yet. See https://github.com/${GITHUB_REPO}#installation for supported platforms.`,
-  );
+	if (platform === 'linux' && arch === 'x64') return 'openpalm-cli-linux-x64';
+	if (platform === 'linux' && arch === 'arm64') return 'openpalm-cli-linux-arm64';
+	if (platform === 'darwin' && arch === 'x64') return 'openpalm-cli-darwin-x64';
+	if (platform === 'darwin' && arch === 'arm64') return 'openpalm-cli-darwin-arm64';
+	if (platform === 'win32' && arch === 'x64') return 'openpalm-cli-windows-x64.exe';
+	if (platform === 'win32' && arch === 'arm64') return 'openpalm-cli-windows-arm64.exe';
+	throw new Error(
+		`Unsupported platform: ${platform}/${arch}. OpenPalm does not publish a prebuilt CLI binary ` +
+			`for this platform yet. See https://github.com/${GITHUB_REPO}#installation for supported platforms.`
+	);
 }
 
 /**
@@ -50,17 +50,17 @@ export function resolveArtifactName(platform = process.platform, arch = process.
  * would work too, but createRequire keeps this file runnable on older Node 18/20).
  */
 export function resolvePackageVersion(requireFn = createRequire(import.meta.url)) {
-  return requireFn('../package.json').version;
+	return requireFn('../package.json').version;
 }
 
 /** Resolve a per-user cache directory root. `env.OPENPALM_CACHE_DIR` always wins (tests/ops). */
 export function resolveCacheRoot(env = process.env, platform = process.platform, home = homedir()) {
-  if (env.OPENPALM_CACHE_DIR) return env.OPENPALM_CACHE_DIR;
-  if (platform === 'darwin') return join(home, 'Library', 'Caches', 'openpalm');
-  if (platform === 'win32') {
-    return join(env.LOCALAPPDATA || join(home, 'AppData', 'Local'), 'openpalm', 'Cache');
-  }
-  return join(env.XDG_CACHE_HOME || join(home, '.cache'), 'openpalm');
+	if (env.OPENPALM_CACHE_DIR) return env.OPENPALM_CACHE_DIR;
+	if (platform === 'darwin') return join(home, 'Library', 'Caches', 'openpalm');
+	if (platform === 'win32') {
+		return join(env.LOCALAPPDATA || join(home, 'AppData', 'Local'), 'openpalm', 'Cache');
+	}
+	return join(env.XDG_CACHE_HOME || join(home, '.cache'), 'openpalm');
 }
 
 /**
@@ -68,18 +68,18 @@ export function resolveCacheRoot(env = process.env, platform = process.platform,
  * Mirrors the `grep "${BINARY}" | awk '{print $1}'` pass in scripts/setup.sh.
  */
 export function parseExpectedChecksum(checksums, artifact) {
-  const line = checksums
-    .split('\n')
-    .map((entry) => entry.trim())
-    .find((entry) => entry.endsWith(` ${artifact}`) || entry.endsWith(`  ${artifact}`));
-  if (!line) throw new Error(`No published checksum found for ${artifact}.`);
-  const checksum = line.split(/\s+/)[0]?.trim();
-  if (!checksum) throw new Error(`Published checksum entry for ${artifact} is invalid.`);
-  return checksum;
+	const line = checksums
+		.split('\n')
+		.map((entry) => entry.trim())
+		.find((entry) => entry.endsWith(` ${artifact}`) || entry.endsWith(`  ${artifact}`));
+	if (!line) throw new Error(`No published checksum found for ${artifact}.`);
+	const checksum = line.split(/\s+/)[0]?.trim();
+	if (!checksum) throw new Error(`Published checksum entry for ${artifact} is invalid.`);
+	return checksum;
 }
 
 function sha256Hex(bytes) {
-  return createHash('sha256').update(bytes).digest('hex');
+	return createHash('sha256').update(bytes).digest('hex');
 }
 
 /**
@@ -90,69 +90,70 @@ function sha256Hex(bytes) {
  * or network.
  */
 export async function ensureCachedBinary({
-  version,
-  artifact,
-  cacheRoot,
-  fetchImpl = fetch,
-  fs = { existsSync, mkdirSync, writeFileSync, renameSync, rmSync, chmodSync },
+	version,
+	artifact,
+	cacheRoot,
+	fetchImpl = fetch,
+	fs = { existsSync, mkdirSync, writeFileSync, renameSync, rmSync, chmodSync }
 }) {
-  const versionDir = join(cacheRoot, 'bin', version);
-  const finalPath = join(versionDir, artifact);
-  if (fs.existsSync(finalPath)) return finalPath;
+	const versionDir = join(cacheRoot, 'bin', version);
+	const finalPath = join(versionDir, artifact);
+	if (fs.existsSync(finalPath)) return finalPath;
 
-  fs.mkdirSync(versionDir, { recursive: true });
+	fs.mkdirSync(versionDir, { recursive: true });
 
-  const binaryUrl = `https://github.com/${GITHUB_REPO}/releases/download/${version}/${artifact}`;
-  const checksumUrl = `https://github.com/${GITHUB_REPO}/releases/download/${version}/checksums-sha256.txt`;
+	const binaryUrl = `https://github.com/${GITHUB_REPO}/releases/download/${version}/${artifact}`;
+	const checksumUrl = `https://github.com/${GITHUB_REPO}/releases/download/${version}/checksums-sha256.txt`;
 
-  const [binaryRes, checksumRes] = await Promise.all([
-    fetchImpl(binaryUrl, { signal: AbortSignal.timeout(120_000) }),
-    fetchImpl(checksumUrl, { signal: AbortSignal.timeout(30_000) }),
-  ]);
-  if (!binaryRes.ok) throw new Error(`Failed to download ${artifact} (${binaryRes.status}).`);
-  if (!checksumRes.ok) throw new Error(`Failed to download release checksums (${checksumRes.status}).`);
+	const [binaryRes, checksumRes] = await Promise.all([
+		fetchImpl(binaryUrl, { signal: AbortSignal.timeout(120_000) }),
+		fetchImpl(checksumUrl, { signal: AbortSignal.timeout(30_000) })
+	]);
+	if (!binaryRes.ok) throw new Error(`Failed to download ${artifact} (${binaryRes.status}).`);
+	if (!checksumRes.ok)
+		throw new Error(`Failed to download release checksums (${checksumRes.status}).`);
 
-  const binaryBytes = new Uint8Array(await binaryRes.arrayBuffer());
-  const expected = parseExpectedChecksum(await checksumRes.text(), artifact);
-  const actual = sha256Hex(binaryBytes);
-  if (actual !== expected) {
-    throw new Error(`Checksum mismatch for ${artifact}: expected ${expected}, got ${actual}.`);
-  }
+	const binaryBytes = new Uint8Array(await binaryRes.arrayBuffer());
+	const expected = parseExpectedChecksum(await checksumRes.text(), artifact);
+	const actual = sha256Hex(binaryBytes);
+	if (actual !== expected) {
+		throw new Error(`Checksum mismatch for ${artifact}: expected ${expected}, got ${actual}.`);
+	}
 
-  const tempPath = `${finalPath}.tmp-${process.pid}`;
-  try {
-    fs.writeFileSync(tempPath, binaryBytes);
-    fs.chmodSync(tempPath, 0o755);
-    fs.renameSync(tempPath, finalPath);
-  } catch (err) {
-    fs.rmSync(tempPath, { force: true });
-    throw err;
-  }
-  return finalPath;
+	const tempPath = `${finalPath}.tmp-${process.pid}`;
+	try {
+		fs.writeFileSync(tempPath, binaryBytes);
+		fs.chmodSync(tempPath, 0o755);
+		fs.renameSync(tempPath, finalPath);
+	} catch (err) {
+		fs.rmSync(tempPath, { force: true });
+		throw err;
+	}
+	return finalPath;
 }
 
 /** Run the cached binary, inheriting stdio, and return its exit code. */
 export function runBinary(binaryPath, args = process.argv.slice(2), spawn = spawnSync) {
-  const result = spawn(binaryPath, args, { stdio: 'inherit' });
-  if (result.error) throw result.error;
-  if (typeof result.status === 'number') return result.status;
-  return result.signal ? 1 : 0;
+	const result = spawn(binaryPath, args, { stdio: 'inherit' });
+	if (result.error) throw result.error;
+	if (typeof result.status === 'number') return result.status;
+	return result.signal ? 1 : 0;
 }
 
 export async function main() {
-  const artifact = resolveArtifactName();
-  const version = resolvePackageVersion();
-  const cacheRoot = resolveCacheRoot();
-  const binaryPath = await ensureCachedBinary({ version, artifact, cacheRoot });
-  return runBinary(binaryPath);
+	const artifact = resolveArtifactName();
+	const version = resolvePackageVersion();
+	const cacheRoot = resolveCacheRoot();
+	const binaryPath = await ensureCachedBinary({ version, artifact, cacheRoot });
+	return runBinary(binaryPath);
 }
 
 const isMainModule = import.meta.url === pathToFileURL(process.argv[1] ?? '').href;
 if (isMainModule) {
-  main()
-    .then((code) => process.exit(code))
-    .catch((err) => {
-      console.error(`openpalm: ${err instanceof Error ? err.message : String(err)}`);
-      process.exit(1);
-    });
+	main()
+		.then((code) => process.exit(code))
+		.catch((err) => {
+			console.error(`openpalm: ${err instanceof Error ? err.message : String(err)}`);
+			process.exit(1);
+		});
 }

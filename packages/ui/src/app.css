@@ -1,9 +1,7 @@
 @import url('https://fonts.googleapis.com/css2?family=Poor+Story&family=Iosevka+Charon+Mono:ital,wght@0,300;0,400;0,500;0,700;1,300;1,400;1,500;1,700&display=swap');
-/* Stillness design-system tokens + wiz-* design vocabulary live in the shared
-   ui-kit (plan §6.11, P5a #555). Vite resolves the package specifier and
-   inlines the file at build time. Must stay above all style rules — CSS
-   ignores @import after the first rule. */
-@import '@openpalm/ui-kit/theme/tokens.css';
+/* Stillness design-system tokens + wiz-* design vocabulary. Must stay above
+   all style rules — CSS ignores @import after the first rule. */
+@import './lib/theme/tokens.css';
 
 /* Brushed icon filter — applied to all .s-icon SVGs. The #ibrush filter is
    defined once in the root layout. */

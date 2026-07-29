@@ -1,0 +1,28 @@
+{
+  "name": "@openpalm/slack-portal",
+  "description": "Slack bot portal adapter for OpenPalm",
+  "version": "0.13.0-beta.13",
+  "type": "module",
+  "license": "MPL-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/itlackey/openpalm.git",
+    "directory": "packages/portal-slack"
+  },
+  "engines": {
+    "bun": ">=1.0.0"
+  },
+  "files": [
+    "src",
+    "bin",
+    "README.md"
+  ],
+  "main": "src/index.ts",
+  "bin": {
+    "openpalm-slack-portal": "bin/openpalm-slack-portal.ts"
+  },
+  "dependencies": {
+    "@openpalm/portal-sdk": "workspace:*",
+    "@slack/bolt": "^4.1.0"
+  }
+}

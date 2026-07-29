@@ -1,7 +1,7 @@
 <script lang="ts">
-  import IconButton from '@openpalm/ui-kit/components/common/IconButton.svelte';
-  import IconServer from '@openpalm/ui-kit/components/icons/IconServer.svelte';
-  import IconSettings from '@openpalm/ui-kit/components/icons/IconSettings.svelte';
+  import IconButton from '$lib/components/common/IconButton.svelte';
+  import IconServer from '$lib/components/icons/IconServer.svelte';
+  import IconSettings from '$lib/components/icons/IconSettings.svelte';
   import ConversationNav from '$lib/components/chrome/ConversationNav.svelte';
 
   type Props = {

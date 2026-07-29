@@ -79,7 +79,6 @@ dev_compose() {
   docker compose --project-directory . \
     -f "${SMOKE_HOME}/system/stack/core.compose.yml" \
     -f "${SMOKE_HOME}/system/stack/portals.compose.yml" \
-    -f "${SMOKE_HOME}/rootless-smoke.override.yml" \
     -f compose.dev.yml \
     --env-file "${SMOKE_HOME}/state/stack.env" \
     --project-name "$COMPOSE_PROJECT_NAME" "$@"
@@ -136,7 +135,6 @@ smoke_seed_secrets "$SMOKE_HOME" 'rootless-smoke-password'
 
 smoke_ensure_home_dirs "$SMOKE_HOME"
 
-smoke_write_version_override "$SMOKE_HOME/rootless-smoke.override.yml" "$PLATFORM_VERSION"
 
 if [[ "$TARGET" == "portal-discord" ]]; then
   printf 'OP_ENABLED_ADDONS=discord\n' >> "$SMOKE_HOME/state/stack.env"

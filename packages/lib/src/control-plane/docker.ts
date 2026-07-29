@@ -433,9 +433,21 @@ export interface ResolvedComposeVolume {
   bind?: { create_host_path?: boolean };
 }
 
+export interface ResolvedComposeSecret {
+  file?: string;
+  environment?: string;
+}
+
 /** Docker's resolved project view (subset consumed by the control plane). */
 export interface ResolvedComposeProject {
-  services?: Record<string, { user?: string; volumes?: ResolvedComposeVolume[] } | null>;
+  services?: Record<string, {
+    user?: string;
+    environment?: Record<string, string> | string[];
+    env_file?: string | string[];
+    secrets?: unknown;
+    volumes?: ResolvedComposeVolume[];
+  } | null>;
+  secrets?: Record<string, ResolvedComposeSecret>;
 }
 
 export type ComposeConfigJsonResult = {

@@ -2,8 +2,8 @@
   import { onMount } from 'svelte';
   import type { ChatEntry } from '$lib/types.js';
   import { renderMarkdown } from '$lib/markdown.js';
-  import IconCopy from '@openpalm/ui-kit/components/icons/IconCopy.svelte';
-  import IconDone from '@openpalm/ui-kit/components/icons/IconDone.svelte';
+  import IconCopy from '$lib/components/icons/IconCopy.svelte';
+  import IconDone from '$lib/components/icons/IconDone.svelte';
 
   interface Props {
     entry: ChatEntry;

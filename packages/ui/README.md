@@ -25,10 +25,10 @@ not a UI route.
 
 ### Assistant Image
 
-The production assistant image bakes the matching UI package at build time and
-serves it as a supervised non-admin co-process on container port `3000` (host
-default `3800`). It also bakes the matching skeleton package. Startup does not
-install or resolve a runtime UI tarball.
+The production assistant image bakes the candidate-local compiled UI at build
+time and serves it as a supervised non-admin co-process on container port `3000`
+(host default `3800`). Startup does not install or resolve a runtime UI tarball;
+skeleton delivery is host-side.
 
 ### Host CLI and Electron
 

@@ -1,9 +1,9 @@
 <script lang="ts">
   import type { AutomationsResponse } from '$lib/types.js';
-  import Spinner from '@openpalm/ui-kit/components/common/Spinner.svelte';
-  import EmptyState from '@openpalm/ui-kit/components/common/EmptyState.svelte';
-  import Drawer from '@openpalm/ui-kit/components/common/Drawer.svelte';
-  import { createFocusTrap, handleTrapKeydown } from '@openpalm/ui-kit/actions/focus-trap.js';
+  import Spinner from '$lib/components/common/Spinner.svelte';
+  import EmptyState from '$lib/components/common/EmptyState.svelte';
+  import Drawer from '$lib/components/common/Drawer.svelte';
+  import { createFocusTrap, handleTrapKeydown } from '$lib/actions/focus-trap.js';
   import TaskDrawer from './TaskDrawer.svelte';
   import { fetchTaskFile, saveTaskFile, deleteTaskFile, runAutomation, fetchAutomationLog } from '$lib/api.js';
   import { notifications } from '$lib/notifications.svelte.js';

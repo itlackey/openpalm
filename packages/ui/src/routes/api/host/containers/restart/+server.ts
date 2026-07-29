@@ -9,8 +9,7 @@ import {
 } from "$lib/server/helpers.js";
 import { withAdminUpdateLock } from '$lib/server/admin-update-lock.js';
 import { getState } from "$lib/server/state.js";
-import { isAllowedService, buildComposeOptions, createLogger, reconcileHostOwnership, HostSwapBlockedError } from "@openpalm/lib";
-import { composeRestart, checkDocker } from "@openpalm/lib";
+import { isAllowedService, activateComposeCommand, createLogger, reconcileHostOwnership, HostSwapBlockedError, checkDocker } from "@openpalm/lib";
 import type { RequestHandler } from "./$types";
 
 const logger = createLogger("containers-restart");
@@ -33,7 +32,7 @@ export const POST: RequestHandler = async (event) => {
     return errorResponse(400, "invalid_service", "Service is not in allowlist", { service }, requestId);
   }
 
-  return withAdminUpdateLock(state, requestId, async () => {
+  return withAdminUpdateLock(state, requestId, async (lock) => {
     // Try real Docker — only update state based on actual result
     const dockerCheck = await checkDocker();
     if (dockerCheck.ok) {
@@ -54,11 +53,11 @@ export const POST: RequestHandler = async (event) => {
         }
         throw err;
       }
-      const result = await composeRestart([service], buildComposeOptions(state));
-      if (result.ok) {
+      try {
+        await activateComposeCommand(state, ['restart', service], { lock });
         state.services[service] = "running";
-      } else {
-        return errorResponse(500, "docker_error", `Failed to restart service: ${result.stderr}`, { service }, requestId);
+      } catch (error) {
+        return errorResponse(500, "docker_error", `Failed to restart service: ${error instanceof Error ? error.message : String(error)}`, { service }, requestId);
       }
     } else {
       state.services[service] = "running";

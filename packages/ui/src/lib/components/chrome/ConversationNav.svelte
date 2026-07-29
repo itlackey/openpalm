@@ -2,9 +2,9 @@
   import { onMount } from 'svelte';
   import { goto } from '$app/navigation';
   import { page } from '$app/state';
-  import IconButton from '@openpalm/ui-kit/components/common/IconButton.svelte';
-  import IconChat from '@openpalm/ui-kit/components/icons/IconChat.svelte';
-  import IconTerminal from '@openpalm/ui-kit/components/icons/IconTerminal.svelte';
+  import IconButton from '$lib/components/common/IconButton.svelte';
+  import IconChat from '$lib/components/icons/IconChat.svelte';
+  import IconTerminal from '$lib/components/icons/IconTerminal.svelte';
   import { advancedModeService } from '$lib/advanced-mode-state.svelte.js';
   import { buildAdvancedPath, buildChatPath } from '$lib/conversation-paths.js';
 

@@ -62,9 +62,9 @@ curl -fsS http://127.0.0.1:3810/health
 openpalm logs assistant
 ```
 
-The UI and skeleton are baked into the assistant image. Do not place an npm UI
-tarball in the knowledge stash. Pull/recreate the assistant image with
-`openpalm update`.
+The UI is baked into the assistant image. Do not place an npm UI tarball in the
+knowledge stash. `openpalm update` refreshes both the assistant image and the
+host-managed skeleton assets.
 
 ## Host Admin UI Does Not Load
 

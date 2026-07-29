@@ -1,15 +1,9 @@
 #!/usr/bin/env node
 // Single source of truth for stamping a package.json's version.
 //
-// Sets `version` and keeps any internal `@openpalm/lib` *floor range* dependency
-// (e.g. ">=X <N.0.0") in lockstep so the floor never goes stale (CI enforces
-// this; the test suite covers it). Also stamps any `@openpalm/skeleton`
-// dependency except `workspace:*` to an exact pin matching the new version so
-// the CLI and skeleton are always shipped in lockstep. Exact refs are rewritten
-// too because the published CLI intentionally carries an exact skeleton pin.
-// Exact/non-range refs for other packages are left untouched. Used by
-// bump-unit.mjs and the release workflows so there is exactly one place that
-// understands how a version is written.
+// Product workspaces are source-only and use workspace:* references, so release
+// stamping changes only each manifest's own version. Used by bump-unit.mjs and
+// release workflows so there is exactly one place that writes that field.
 //
 // Usage: node scripts/set-version.mjs <path/to/package.json> <version>
 import { readFileSync, writeFileSync } from 'node:fs';
@@ -66,20 +60,6 @@ export function setVersion(file, version) {
   }
   const pkg = JSON.parse(readFileSync(file, 'utf-8'));
   pkg.version = version;
-  const major = Number.parseInt(version.split('.')[0], 10);
-  for (const field of ['dependencies', 'peerDependencies', 'devDependencies']) {
-    // Keep @openpalm/lib floor range in lockstep with the package version.
-    const libDep = pkg[field]?.['@openpalm/lib'];
-    if (typeof libDep === 'string' && libDep.startsWith('>=')) {
-      pkg[field]['@openpalm/lib'] = `>=${version} <${major + 1}.0.0`;
-    }
-    // Stamp @openpalm/skeleton to an exact pin matching this version so the
-    // CLI and skeleton are always published and consumed in lockstep.
-    const skeletonDep = pkg[field]?.['@openpalm/skeleton'];
-    if (typeof skeletonDep === 'string' && skeletonDep !== 'workspace:*') {
-      pkg[field]['@openpalm/skeleton'] = version;
-    }
-  }
   writeFileSync(file, `${JSON.stringify(pkg, null, 2)}\n`);
   return version;
 }

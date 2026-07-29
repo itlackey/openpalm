@@ -128,9 +128,6 @@ jobs:
       - name: Type check admin UI
         run: cd packages/ui && bun run check
 
-      - name: Type check UI kit
-        run: cd packages/ui-kit && bun run check
-
       - name: Type check CLI
         run: cd packages/cli && bun run typecheck
 
@@ -140,6 +137,9 @@ jobs:
       - name: Validate Docker Compose manifests
         env:
           OP_HOME: ${{ github.workspace }}/.op-home
+          OP_ASSISTANT_VERSION: dev
+          OP_GUARDIAN_VERSION: dev
+          OP_PORTAL_VERSION: dev
         run: |
           set -euo pipefail
           mkdir -p "${OP_HOME}/system/stack" "${OP_HOME}/config/stack" "${OP_HOME}/knowledge/env" "${OP_HOME}/knowledge/secrets" "${OP_HOME}/data"
@@ -276,10 +276,7 @@ jobs:
           set -euo pipefail
           # Releases are by deployment UNIT (release-package-groups.json -> units).
           # Each unit's manifests must share ONE version; units may drift from each
-          # other (a host-only or portals-only release is legitimate). The host
-          # unit lists package.json (root) first, so the host base == root version,
-          # and the setup-script versions are anchored to root.
-          ROOT_VERSION=$(jq -r .version package.json)
+          # other (a host-only or portals-only release is legitimate).
           errors=0
 
           for unit in $(jq -r '.units | keys[]' .github/release-package-groups.json); do
@@ -300,24 +297,11 @@ jobs:
             echo "unit ${unit} @ ${base:-(image-only)}"
           done
 
-          # Setup scripts track root (root is the first member of the host unit).
-          SCRIPT_VERSION=$(grep -oP '^SCRIPT_VERSION="\K[^"]+' scripts/setup.sh || true)
-          if [ -n "${SCRIPT_VERSION}" ] && [ "${SCRIPT_VERSION}" != "${ROOT_VERSION}" ]; then
-            echo "::error file=scripts/setup.sh::setup.sh SCRIPT_VERSION ${SCRIPT_VERSION} does not match root ${ROOT_VERSION}"
-            errors=$((errors + 1))
-          fi
-
-          PS1_VERSION=$(grep -oP "^\\\$ScriptVersion = '\K[^']+" scripts/setup.ps1 || true)
-          if [ -n "${PS1_VERSION}" ] && [ "${PS1_VERSION}" != "${ROOT_VERSION}" ]; then
-            echo "::error file=scripts/setup.ps1::setup.ps1 ScriptVersion ${PS1_VERSION} does not match root ${ROOT_VERSION}"
-            errors=$((errors + 1))
-          fi
-
           if [ "$errors" -gt 0 ]; then
-            echo "::error::${errors} version(s) out of sync (intra-unit / setup scripts vs root ${ROOT_VERSION})"
+            echo "::error::${errors} version(s) out of sync"
             exit 1
           fi
-          echo "All units internally consistent; setup scripts match root ${ROOT_VERSION}"
+          echo "All units internally consistent"
 
   ui-unit-tests:
     name: UI unit tests (Vitest)

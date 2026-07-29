@@ -7,21 +7,17 @@
  * own beyond wiring the pieces together.
  */
 import {
-  buildComposeCliArgs,
-  buildComposeOptions,
-  buildComposePreflightError,
-  checkLifecycleDiskHeadroom,
-  composePreflight,
-  composeUpTimeoutMs,
-  describeLifecycleDiskHeadroom,
-  dockerBin,
-  ensureDockerReady,
-  mapDockerError,
-  runComposeStreaming,
-  runHomeMigrations,
-  shouldBlockOnDiskHeadroom,
+	buildComposeCliArgs,
+	activateComposeCommand,
+	checkLifecycleDiskHeadroom,
+	composeUpTimeoutMs,
+	describeLifecycleDiskHeadroom,
+	ensureDockerReady,
+	runComposeStreaming,
+	runHomeMigrations,
+	shouldBlockOnDiskHeadroom
 } from '@openpalm/lib';
-import type { ControlPlaneState } from '@openpalm/lib';
+import type { ControlPlaneState, InstallLockHandle } from '@openpalm/lib';
 
 /**
  * Run a compose command that does NOT mutate state (e.g. logs, ps, status).
@@ -29,90 +25,71 @@ import type { ControlPlaneState } from '@openpalm/lib';
  * interactive follows (`logs -f`) legitimately run unbounded.
  */
 export async function runComposeReadOnly(
-  state: ControlPlaneState,
-  composeSubArgs: string[],
+	state: ControlPlaneState,
+	composeSubArgs: string[]
 ): Promise<void> {
-  const composeArgs = buildComposeCliArgs(state);
-  await runComposeStreaming([...composeArgs, ...composeSubArgs]);
+	const composeArgs = buildComposeCliArgs(state);
+	await runComposeStreaming([...composeArgs, ...composeSubArgs]);
 }
 
 /**
- * Run compose preflight validation, then execute the compose command.
- * This is the canonical CLI mutation path — all compose operations
- * that modify state must go through this function.
+ * Execute a Compose lifecycle command. Activation-capable operations validate
+ * and audit first; teardown-only `down` and `stop` deliberately skip those
+ * gates so a broken or audit-failing stack can still be stopped.
  *
- * Preflight can be bypassed by setting OP_SKIP_COMPOSE_PREFLIGHT=1 (e.g. in tests).
- * The invocation carries lib's `up` timeout budget so a first install extracting
- * multi-GB images is bounded exactly like the capturing `composeUp` path.
+ * Activation preflight can be bypassed by setting OP_SKIP_COMPOSE_PREFLIGHT=1
+ * (e.g. in tests). Activation carries lib's `up` timeout budget so a first
+ * install extracting multi-GB images is bounded like the capturing path.
  */
 export async function runComposeWithPreflight(
-  state: ControlPlaneState,
-  composeSubArgs: string[],
+	state: ControlPlaneState,
+	composeSubArgs: string[],
+	lock?: InstallLockHandle
 ): Promise<void> {
-  runHomeMigrations(state.homeDir);
-  const options = buildComposeOptions(state);
+	const operation = composeSubArgs[0];
+	if (operation === 'down' || operation === 'stop') {
+		const composeArgs = buildComposeCliArgs(state);
+		await runComposeStreaming([...composeArgs, ...composeSubArgs]);
+		return;
+	}
 
-  // D1: a single "is Docker actually usable right now" readiness check ahead
-  // of every day-2 lifecycle mutation (start/stop/restart/rollback/addon
-  // enable/…). Catches the missing-binary and stopped-daemon cases with a
-  // friendly, non-blank message BEFORE they can surface as the raw (sometimes
-  // literally blank) `docker compose config --quiet` preflight error below —
-  // `docker compose config` never contacts the daemon, so a stopped daemon
-  // would otherwise sail through it. Gated on the same OP_SKIP_COMPOSE_PREFLIGHT
-  // env used below so tests that fully mock this function stay green.
-  if (!process.env.OP_SKIP_COMPOSE_PREFLIGHT) {
-    const ready = await ensureDockerReady();
-    if (!ready.ok) throw new Error(ready.message);
+	runHomeMigrations(state.homeDir);
 
-    // S6: the disk-headroom half of the SAME lifecycle preamble (one
-    // preflight, two checks — not a second bolted-on gate) — fails a
-    // restart/install/update/backup closed BEFORE it can regenerate GBs of
-    // cache into an already-full filesystem (#581 finding #10). Non-fatal by
-    // default: only warns unless OP_DISK_HARD_BLOCK=1 is set AND the reading
-    // is "critical" (S6: "make the hard-block threshold configurable/
-    // off-by-default", to avoid refusing legitimate installs).
-    // #588: this measures Docker's data root alongside OP_HOME whenever the
-    // two are separate filesystems — image pulls write to the Docker root, so
-    // a roomy OP_HOME was never evidence the pull would fit. Fails soft: if
-    // Docker cannot be asked, the OP_HOME reading still stands.
-    const headroom = await checkLifecycleDiskHeadroom(state.homeDir);
-    const headroomWarning = describeLifecycleDiskHeadroom(headroom);
-    if (headroomWarning) {
-      if (shouldBlockOnDiskHeadroom(headroom.worst)) {
-        throw new Error(headroomWarning);
-      }
-      console.warn(`Warning: ${headroomWarning}`);
-    }
-  }
+	// D1: a single "is Docker actually usable right now" readiness check ahead
+	// of every day-2 lifecycle mutation (start/stop/restart/rollback/addon
+	// enable/…). Catches the missing-binary and stopped-daemon cases with a
+	// friendly, non-blank message BEFORE they can surface as the raw (sometimes
+	// literally blank) `docker compose config --quiet` preflight error below —
+	// `docker compose config` never contacts the daemon, so a stopped daemon
+	// would otherwise sail through it. Gated on the same OP_SKIP_COMPOSE_PREFLIGHT
+	// env used below so tests that fully mock this function stay green.
+	if (!process.env.OP_SKIP_COMPOSE_PREFLIGHT) {
+		const ready = await ensureDockerReady();
+		if (!ready.ok) throw new Error(ready.message);
 
-  // Preflight: validate compose merge before mutation. Pass the FULL options
-  // (files, env files, AND profiles) — matching lib's own runPreflight — so
-  // profile-gated services are validated and the error message reports the same
-  // resolved command lib would.
-  if (options.files.length > 0 && !process.env.OP_SKIP_COMPOSE_PREFLIGHT) {
-    const preflight = await composePreflight(options);
-    if (!preflight.ok) {
-      // Belt-and-suspenders: ensureDockerReady() above should already have
-      // caught a missing/stopped Docker, but if Docker vanishes between the
-      // two checks (or a future caller skips the preamble), this preflight's
-      // stderr can still be EMPTY — a bare spawn-level ENOENT carries no
-      // stderr at all (docker.ts's toDockerResult). Route the raw stderr
-      // (synthesizing a short errno-bearing string from `errorCode` when both
-      // are absent) through mapDockerError so the message is NEVER blank.
-      const rawStderr = preflight.stderr && preflight.stderr.length > 0
-        ? preflight.stderr
-        : preflight.errorCode
-          ? `spawn ${dockerBin()} ${preflight.errorCode}`
-          : '';
-      // Single source of truth for the message shape (lib) — includes the
-      // resolved command with --profile args AND the missing-secret repair
-      // guidance, wrapped around the friendly, never-blank mapped stderr.
-      throw new Error(buildComposePreflightError(options, mapDockerError(rawStderr).message));
-    }
-  }
+		// S6: the disk-headroom half of the SAME lifecycle preamble (one
+		// preflight, two checks — not a second bolted-on gate) — fails a
+		// restart/install/update/backup closed BEFORE it can regenerate GBs of
+		// cache into an already-full filesystem (#581 finding #10). Non-fatal by
+		// default: only warns unless OP_DISK_HARD_BLOCK=1 is set AND the reading
+		// is "critical" (S6: "make the hard-block threshold configurable/
+		// off-by-default", to avoid refusing legitimate installs).
+		// #588: this measures Docker's data root alongside OP_HOME whenever the
+		// two are separate filesystems — image pulls write to the Docker root, so
+		// a roomy OP_HOME was never evidence the pull would fit. Fails soft: if
+		// Docker cannot be asked, the OP_HOME reading still stands.
+		const headroom = await checkLifecycleDiskHeadroom(state.homeDir);
+		const headroomWarning = describeLifecycleDiskHeadroom(headroom);
+		if (headroomWarning) {
+			if (shouldBlockOnDiskHeadroom(headroom.worst)) {
+				throw new Error(headroomWarning);
+			}
+			console.warn(`Warning: ${headroomWarning}`);
+		}
+	}
 
-  const composeArgs = buildComposeCliArgs(state);
-  await runComposeStreaming([...composeArgs, ...composeSubArgs], {
-    timeoutMs: composeUpTimeoutMs(),
-  });
+	await activateComposeCommand(state, composeSubArgs, {
+		lock,
+		streamTimeoutMs: composeUpTimeoutMs()
+	});
 }

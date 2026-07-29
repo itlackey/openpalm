@@ -5,8 +5,7 @@
       "packages/skeleton/package.json",
       "packages/lib/package.json",
       "packages/cli/package.json",
-      "packages/ui/package.json",
-      "packages/ui-kit/package.json"
+      "packages/ui/package.json"
     ],
     "electron": [
       "packages/electron/package.json",
@@ -14,8 +13,8 @@
     ],
     "portals": [
       "packages/portal-sdk/package.json",
-      "portals/discord/package.json",
-      "portals/slack/package.json"
+      "packages/portal-discord/package.json",
+      "packages/portal-slack/package.json"
     ],
     "guardian": [
       "packages/guardian/package.json"

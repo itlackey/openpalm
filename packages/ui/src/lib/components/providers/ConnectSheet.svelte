@@ -14,9 +14,9 @@
 -->
 <script lang="ts">
 	import { onDestroy } from 'svelte';
-	import Spinner from '@openpalm/ui-kit/components/common/Spinner.svelte';
-	import FormField from '@openpalm/ui-kit/components/common/FormField.svelte';
-	import Drawer from '@openpalm/ui-kit/components/common/Drawer.svelte';
+	import Spinner from '$lib/components/common/Spinner.svelte';
+	import FormField from '$lib/components/common/FormField.svelte';
+	import Drawer from '$lib/components/common/Drawer.svelte';
 	import {
 		startProviderOauth,
 		oauthCallback,

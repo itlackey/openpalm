@@ -6,9 +6,6 @@
 #
 set -euo pipefail
 
-# Updated automatically by release workflow — do not edit manually
-SCRIPT_VERSION="0.13.0-beta.13"
-
 # ── Colors ────────────────────────────────────────────────────────────
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; BLUE='\033[0;34m'; NC='\033[0m'
 info() { printf "${BLUE}▸${NC} %s\n" "$*"; }
@@ -21,6 +18,15 @@ die()  { printf "${RED}✗${NC} %s\n" "$*" >&2; exit 1; }
 # `v` so a user-supplied "v0.12.45" still resolves to the "0.12.45" release tag.
 normalize_version() {
   printf '%s\n' "${1#v}"
+}
+
+validate_version() {
+  [[ "$1" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]] \
+    || die "Invalid release version: $1"
+}
+
+manifest_version() {
+  grep '"version"' | sed -E 's/.*"version": *"([^"]+)".*/\1/'
 }
 
 # ── Platform detection ────────────────────────────────────────────────
@@ -66,16 +72,32 @@ VERSION=''
 if [ -n "${REQUESTED_VERSION}" ]; then
   VERSION="$(normalize_version "${REQUESTED_VERSION}")"
 fi
-if [ -z "${VERSION}" ]; then
-  if [ "${SCRIPT_VERSION}" != "main" ]; then
-    VERSION="$(normalize_version "${SCRIPT_VERSION}")"
-  else
-    LATEST_RELEASE_JSON="$(curl -fsSL "https://api.github.com/repos/itlackey/openpalm/releases/latest")" \
-      || die "Could not determine latest release version"
-    RAW_VERSION="$(printf '%s\n' "${LATEST_RELEASE_JSON}" | grep '"tag_name"' | sed -E 's/.*"tag_name": *"([^"]+)".*/\1/')"
-    [ -n "${RAW_VERSION}" ] || die "Could not determine latest release version"
-    VERSION="$(normalize_version "${RAW_VERSION}")"
+if [ -n "${VERSION}" ]; then
+  validate_version "${VERSION}"
+  MANIFEST_URL="https://github.com/itlackey/openpalm/releases/download/${VERSION}/release-assets-manifest.json"
+else
+  # GitHub's latest/download redirect is unauthenticated and not API-rate-limited.
+  # Prereleases are intentionally selected only through --version/OP_VERSION.
+  MANIFEST_URL="https://github.com/itlackey/openpalm/releases/latest/download/release-assets-manifest.json"
+fi
+if RELEASE_MANIFEST="$(curl -fsL "${MANIFEST_URL}")"; then
+  MANIFEST_VERSION="$(printf '%s\n' "${RELEASE_MANIFEST}" | manifest_version)"
+  [ -n "${MANIFEST_VERSION}" ] || die "Release manifest does not declare a version"
+  MANIFEST_VERSION="$(normalize_version "${MANIFEST_VERSION}")"
+  validate_version "${MANIFEST_VERSION}"
+  if [ -n "${VERSION}" ] && [ "${MANIFEST_VERSION}" != "${VERSION}" ]; then
+    die "Release manifest identifies ${MANIFEST_VERSION}, expected ${VERSION}"
   fi
+  VERSION="${MANIFEST_VERSION}"
+elif [ -z "${VERSION}" ]; then
+  # Compatibility for stable releases that predate the release manifest.
+  LATEST_RELEASE_URL="$(curl -fsSL --retry 3 --retry-delay 3 --retry-all-errors \
+    -o /dev/null -w '%{url_effective}' "https://github.com/itlackey/openpalm/releases/latest")" \
+    || die "Could not determine latest release version"
+  RAW_VERSION="${LATEST_RELEASE_URL##*/tag/}"
+  [ "${RAW_VERSION}" != "${LATEST_RELEASE_URL}" ] || die "Could not determine latest release version"
+  VERSION="$(normalize_version "${RAW_VERSION}")"
+  validate_version "${VERSION}"
 fi
 
 # ── Download ──────────────────────────────────────────────────────────

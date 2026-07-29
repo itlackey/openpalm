@@ -49,6 +49,19 @@ describe('file-based control-plane secrets', () => {
     expect(buildEnvFiles(state)).toEqual([stackEnv]); // exactly one env file
   });
 
+  it('reads legacy compose env files without migrating them', () => {
+    const homeDir = tempStackDir();
+    const knowledgeEnv = join(homeDir, 'knowledge', 'env', 'stack.env');
+    const stateEnv = join(homeDir, 'state', 'stack.state.env');
+    mkdirSync(join(homeDir, 'knowledge', 'env'), { recursive: true });
+    mkdirSync(join(homeDir, 'state'), { recursive: true });
+    writeFileSync(knowledgeEnv, 'OP_PROJECT_NAME=legacy\n');
+    writeFileSync(stateEnv, 'OP_SETUP_COMPLETE=true\n');
+    const state = { homeDir } as ControlPlaneState;
+
+    expect(buildEnvFiles(state)).toEqual([knowledgeEnv, stateEnv]);
+  });
+
   it('routes secret patches to lower-case secret files instead of stack.env', () => {
     const stackDir = tempStackDir();
     writeFileSync(join(stackDir, 'stack.env'), 'OP_SETUP_COMPLETE=false\n');

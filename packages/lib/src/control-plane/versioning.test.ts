@@ -31,6 +31,14 @@ describe('normalizeVersion', () => {
   });
 });
 
+describe('isComparableSemver', () => {
+  it('rejects empty prerelease and build identifiers', () => {
+    expect(isComparableSemver('1.2.3-')).toBe(false);
+    expect(isComparableSemver('1.2.3+')).toBe(false);
+    expect(isComparableSemver('1.2.3-alpha.1+build.2')).toBe(true);
+  });
+});
+
 describe('isPrerelease', () => {
   it('detects semver pre-release segments', () => {
     expect(isPrerelease('0.12.0-rc.1')).toBe(true);

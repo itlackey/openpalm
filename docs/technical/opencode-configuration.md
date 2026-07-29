@@ -78,9 +78,9 @@ traffic to the local server, and attaches an upstream OpenCode credential when
 direct-assistant auth is enabled. The browser does not need the generated
 OpenCode password for this local path.
 
-The assistant entrypoint performs no runtime install of `@openpalm/ui` or
-`@openpalm/skeleton`; both are image-baked at `PLATFORM_VERSION` during a
-versioned build.
+The assistant entrypoint performs no runtime install of `@openpalm/ui`; the
+candidate-local compiled UI is image-baked at `PLATFORM_VERSION`. Skeleton
+assets are delivered and materialized by the host control plane.
 
 ## Guardian Moderator
 

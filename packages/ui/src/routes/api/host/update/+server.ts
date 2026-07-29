@@ -1,5 +1,5 @@
 import {
-	applyStack,
+	activateStack,
 	buildComposeOptions,
 	checkDocker,
 	composeConfigServices,
@@ -73,9 +73,7 @@ export const POST: RequestHandler = async (event) => {
 						requestId
 					);
 				}
-				const result = await applyStack({ kind: 'service', service }, composeOptions, undefined, {
-					pull: 'always'
-				});
+				const result = await activateStack(state, { kind: 'service', service }, { pull: 'always' }, { lock, composeOptions });
 				if (!result.ok) {
 					return errorResponse(502, 'update_failed', result.error || 'Update failed', {}, requestId);
 				}

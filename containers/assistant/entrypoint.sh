@@ -67,10 +67,9 @@ ensure_home_layout() {
 # skeleton instructions (system/assistant/instructions/core.md).
 
 # ── E2/S2: no boot-time package installs ────────────────────────────────────
-# @openpalm/ui, @openpalm/skeleton, and the tool tree (opencode-ai, akm-cli)
-# are all exact-pinned and baked into the image by the Dockerfile (toolbuild
-# stage + the PLATFORM_VERSION-gated ui/skeleton bakes) — there is no runtime
-# `npm install` of ui/skeleton nor `bun update` of /opt/openpalm/tools
+# @openpalm/ui and the tool tree (opencode-ai, akm-cli) are baked into the image
+# by the Dockerfile — there is no runtime `npm install` nor `bun update` of
+# /opt/openpalm/tools
 # anymore. The image is the sole source of
 # truth; updating a version means editing containers/assistant/tools/
 # package.json (or bumping PLATFORM_VERSION) and shipping a new image, not
@@ -79,12 +78,7 @@ ensure_home_layout() {
 # closing the air-gapped-first-boot gap by construction rather than by adding
 # a fallback floor.
 #
-# The previous hard error here ("no OP_SKELETON_VERSION/PLATFORM_VERSION
-# resolved") guarded a runtime install that no longer exists — the equivalent
-# build-time guard now lives in the Dockerfile's own skeleton bake (it WARNs,
-# rather than fails, when PLATFORM_VERSION is unset at build time, matching
-# the pre-existing @openpalm/ui bake — a dev/local build with no exact pin is
-# expected, not a misconfiguration). Nothing to check at container boot.
+# There is no package version resolution to perform at container boot.
 
 # ── LAN-exposure helper ──────────────────────────────────────────────────────
 # Used by start_ui's exposure warning when OpenCode is bound off-loopback with

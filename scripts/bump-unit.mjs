@@ -45,9 +45,9 @@ function maxPublished(name) {
   return mx;
 }
 
-// Compute the platform anchor as the highest of the on-disk root version and the
-// highest version published across all npm packages owned by the platform unit.
-const PLATFORM_NPM_PACKAGES = ['@openpalm/lib', 'openpalm', '@openpalm/ui', '@openpalm/skeleton'];
+// The bootstrap is the platform unit's only public npm package. Private source
+// workspaces are stamped locally but never queried as registry authorities.
+const PLATFORM_NPM_PACKAGES = ['openpalm'];
 
 // Bump a disk-version anchor up to the highest version published across the
 // given npm package names. Registry failures throw; only an npm 404 is treated
@@ -141,45 +141,10 @@ function stampJsonFiles(files, version) {
   }
 }
 
-function stampSetupScripts(version) {
-  for (const [file, pattern, replacement] of [
-    ['scripts/setup.sh', /^SCRIPT_VERSION=".*"/m, `SCRIPT_VERSION="${version}"`],
-    ['scripts/setup.ps1', /^\$ScriptVersion = '.*'/m, `$ScriptVersion = '${version}'`],
-  ]) {
-    const content = readFileSync(file, 'utf8');
-    const updated = content.replace(pattern, replacement);
-    writeFileSync(file, updated);
-    console.log(`  ${file} → ${version}`);
-  }
-}
-
 function stampVersionFile(file, version) {
   if (!existsSync(file)) throw new Error(`Cannot stamp: file not found: ${file}`);
   writeFileSync(file, `${version}\n`);
   console.log(`  ${file} → ${version}`);
-}
-
-// E2/§S2 (Codex #2/#3 review): the portal adapters are now baked into the
-// portal image at BUILD time from containers/portal/tools/package.json — no
-// runtime install, no bind mount. That manifest is the ONLY thing the built
-// image resolves adapter versions from (containers/portal/Dockerfile:
-// `COPY containers/portal/tools/package.json ...; RUN bun install`), so a
-// portals release that advances only the (now inert) OP_HOME seed above would
-// rebuild the image against the STALE previously-baked version. Stamp the
-// baked manifest to the EXACT just-published version — exact, not a caret,
-// because the image is built once and must be reproducible (a floating range
-// would resolve differently on each rebuild). Regex-replaces in place to keep
-// the file's hand-aligned columns.
-export const PORTAL_TOOLS_BAKED_FILE = 'containers/portal/tools/package.json';
-
-export function stampPortalBakedManifest(version, file = PORTAL_TOOLS_BAKED_FILE) {
-  if (!existsSync(file)) throw new Error(`Cannot stamp: file not found: ${file}`);
-  const content = readFileSync(file, 'utf8');
-  const updated = content
-    .replace(/("@openpalm\/discord-portal":\s*")[^"]*(")/, `$1${version}$2`)
-    .replace(/("@openpalm\/slack-portal":\s*")[^"]*(")/, `$1${version}$2`);
-  writeFileSync(file, updated);
-  console.log(`  ${file} → ${version} (baked discord/slack-portal pins)`);
 }
 
 // Unit definitions: anchor file (for reading current version) and files to stamp.
@@ -199,19 +164,13 @@ const UNITS = {
     anchorFn: () => platformAnchor(),
     stamp(version) {
       stampJsonFiles(RELEASE_PACKAGE_GROUPS.platform, version);
-      stampSetupScripts(version);
     },
   },
   portals: {
-    diskAnchorFn: () => readJsonVersion('portals/discord/package.json'),
-    anchorFn: () => readJsonVersion('portals/discord/package.json'),
+    diskAnchorFn: () => readJsonVersion('packages/portal-discord/package.json'),
+    anchorFn: () => readJsonVersion('packages/portal-discord/package.json'),
     stamp(version) {
       stampJsonFiles(RELEASE_PACKAGE_GROUPS.portals, version);
-      // Pin the BAKED image manifest to the exact just-published adapter
-      // version (Codex #3) — this is what the rebuilt portal image actually
-      // installs (E2/§S2 image-baked-only). Without it, a portals release
-      // publishes new adapters but rebuilds the image against the stale pin.
-      stampPortalBakedManifest(version);
     },
   },
   assistant: {

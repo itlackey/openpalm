@@ -7,7 +7,7 @@
 > that architecture and lays out the refactor to one unified styling system.
 >
 > **Provenance:** produced by a 7-surface parallel code sweep (setup wizard,
-> host dashboard, settings/voice, chat, entry surfaces, ui-kit, global CSS),
+> host dashboard, settings/voice, chat, entry surfaces, shared UI, global CSS),
 > each surface independently re-verified by an adversarial pass that opened
 > every cited file/line, plus manual spot-checks. 119 findings were filed;
 > 117 confirmed, 2 refuted on citation accuracy (premises noted below), and
@@ -20,7 +20,7 @@
 
 One styling system, four layers:
 
-1. **Tokens** — `packages/ui-kit/src/lib/theme/tokens.css` is the single
+1. **Tokens** — `packages/ui/src/lib/theme/tokens.css` is the single
    source of truth: 11 color anchors per mode (migrating to single
    `light-dark()` declarations inside `@layer theme-tokens`, #426 phase 1),
    plus type (`--s-type-*`), fonts (`--s-font-*`), spacing (`--s-sp-*`,
@@ -30,7 +30,7 @@ One styling system, four layers:
    component styles, ever. This is what makes operator theming work: one
    `--s-seal` override must reach every accent surface.
 3. **Shared components & utilities** — presentational components live once
-   in `@openpalm/ui-kit`; genuinely global utility classes (`.btn*`,
+   in `the UI app`; genuinely global utility classes (`.btn*`,
    `.badge*`, `.feedback*`, form primitives) are defined once and consumed
    everywhere; pages never re-implement them.
 4. **Scoped component styles** — everything page/component-specific lives in
@@ -50,7 +50,7 @@ no `{@html}` with non-static content.
 | Entry (login/attention/layout/app.html) | **Clean** | app.html theme-color literals + dead font load |
 | Settings/voice (connections, voice, device chrome) | Good | 2 contrast literals; `.alert`/`.btn-danger`/pill-toggle duplicates; `border-radius: 2px` ×13 |
 | Host dashboard (~20 admin/akm components) | Good | 3 hand-rolled white-on-seal checkboxes; underline input copied ~8×; badge concept reinvented ×5; an 8-property `!important` fight |
-| ui-kit | Good | Drawer scrim literal; wiz-* px/font scales parallel to tokens; 3 components depend on app.css globals |
+| shared UI | Good | Drawer scrim literal; wiz-* px/font scales parallel to tokens; 3 components depend on app.css globals |
 | Chat (chat/advanced routes + 15 components) | Fair | `.s-moon` `[data-theme]` branch; nav heights 64/112/144px copied ×4 files; `0.75/0.875rem` and `120ms` literals pervasive; 5 duplicated mini-patterns |
 | Setup wizard (10 step components) | **Poor** | 9 invented-hue washes incl. one rgb triplet pasted ×3 files; 2 hand-rolled RadioRow clones; third on-seal literal; only surface with zero reduced-motion handling |
 | Global CSS (`app.css`, 1704 lines) | **Poor** | ~500–600 lines confirmed-dead wizard CSS; ~350 lines live-but-misplaced; ~250-line unconsumed "Universal Form System" |
@@ -78,13 +78,13 @@ compliant); no inline `style=` carries colors anywhere.
   …) is built, correct (paper-colored checkmark, token-based), and matches
   the recipes hand-copied across ~11 host/settings files — adopt it and
   delete the copies, rather than deleting it. Long-term these fold into
-  ui-kit components (D6). Rename the chat page's colliding decorative
+  shared UI components (D6). Rename the chat page's colliding decorative
   `.s-field`/`.s-error-msg` classes so names mean one thing.
 - **D4 — new tokens** (all values already de-facto standards in the code):
 
   | Token | Value | Replaces |
   |---|---|---|
-  | `--s-radius-sm` | `2px` | ~24 hand-typed instances (ui-kit ×11, settings ×13) |
+  | `--s-radius-sm` | `2px` | ~24 hand-typed instances (shared UI ×11, settings ×13) |
   | `--s-radius-card` | `10px` | card corners across chat/host |
   | `--s-radius-chip` | `8px` | chip/small-card corners |
   | `--s-radius-pill` | `999px` | pill shapes (`99px` today) |
@@ -99,11 +99,11 @@ compliant); no inline `style=` carries colors anywhere.
 - **D5 — one micro-transition duration.** The untokenized `120ms` (×6 files)
   and `150ms` (×15+ declarations) both collapse to `var(--s-t-instant)`
   (.15s) with `var(--s-ease)`; no new token unless design wants two speeds.
-- **D6 — ui-kit becomes self-contained (end-state).** `Panel`, `FormField`,
+- **D6 — shared UI becomes self-contained (end-state).** `Panel`, `FormField`,
   and `SecretSelect` render classes that exist only in `app.css` (the
   `no-app-coupling` test can't see CSS-class coupling — it only scans import
   specifiers). End-state: the shared utility layer (`.btn*`, `.badge*`,
-  `.feedback*`, form primitives) moves into ui-kit so its components render
+  `.feedback*`, form primitives) moves into shared UI so its components render
   correctly for any consumer. Interim: keep the documented bridge, extend it
   to SecretSelect (currently undocumented).
 - **D7 — fonts.** The token fonts **do** load — `app.css:1` @imports Poor
@@ -135,7 +135,7 @@ All verified at the cited lines.
 | A7 | `Screen2ExtrasStep.svelte:312-358` | Hand-rolled toggle: `#fff` thumb + re-derived track colors at 42×24 while the four `--toggle-*` tokens (36×20) have zero consumers → wire onto the tokens + new `--toggle-thumb`, or delete the tokens; pick one |
 | A8 | `chat/+page.svelte:606-615` | `.s-moon` branches on `[data-theme='dark'/'night']` with hand-picked rgba glows → per-mode token (`light-dark()`), component stays mode-agnostic |
 | A9 | `chat/ToolLog.svelte:282,291` | `var(--s-radius-sm, 4px)` / `var(--s-bg-hover, rgba(127,127,127,.08))` — neither token exists; always resolves to the literal → real tokens (D4) or direct `color-mix` |
-| A10 | `chat/ToolStrip.svelte:196`; `ui-kit Drawer.svelte:119`; `tokens.css:96` | Two hand-rolled scrims (one duplicating `--overlay-bg`'s value, one inlining light-ink rgba) + a dead raw-rgba token → one `light-dark()`-aware `--overlay-bg`, consumed by both (D4 scrim note) |
+| A10 | `chat/ToolStrip.svelte:196`; `shared UI Drawer.svelte:119`; `tokens.css:96` | Two hand-rolled scrims (one duplicating `--overlay-bg`'s value, one inlining light-ink rgba) + a dead raw-rgba token → one `light-dark()`-aware `--overlay-bg`, consumed by both (D4 scrim note) |
 | A12 | `app.css:807,955,1668` | White/grey-alpha hover washes assume a dark surface → `color-mix(in srgb, var(--s-ink) N%, transparent)` |
 | A13 | `app.css:1472,1478` | `.deploy-bar-fill` `.ready`/`.stopped` hardcode `#ffb020`/`#d97706` beside token-correct siblings → `var(--s-warning)` / `var(--s-error)` (D2) |
 | A14 | `connections/+page.svelte:849-852` | Leftover blue `rgba(37,99,235,.08)` focus glow beside a seal border → `color-mix(in srgb, var(--s-seal) 8%, transparent)` |
@@ -161,7 +161,7 @@ All confirmed zero-consumer by grep, twice:
   stamp, local-cta, add-toggle, section-label families).
 - `chat/ChatInput.svelte:236`: `animation: s-ripple …` references a keyframe
   that exists nowhere — delete (or reinstate the keyframe deliberately).
-- `ui-kit MetricTile.svelte:101`: dead `border` declaration overridden 3
+- `shared UI MetricTile.svelte:101`: dead `border` declaration overridden 3
   lines later.
 - Decide-and-act (not blind deletes): `setup/ProgressBar.svelte` (orphaned
   component whose ~100 lines of app.css rules are still shipped) and the
@@ -182,7 +182,7 @@ All confirmed zero-consumer by grep, twice:
 
 ### Track D — consolidate duplicated patterns
 
-New/extended ui-kit components (each replaces 2+ verified hand-rolled copies):
+New/extended shared UI components (each replaces 2+ verified hand-rolled copies):
 
 | Component | Replaces |
 |---|---|
@@ -247,7 +247,7 @@ With D4/D5 tokens in place, mechanical sweeps (all sites verified):
   `AkmHealthCard:62`, `ConfigureShortcuts:59`); `0.2s`→`--s-t-quick`
   (`app.css:140` — the `.btn` rule, 55 consuming files);
   `cubic-bezier(0.4,0,0.2,1)` literals → `var(--s-ease)`.
-- **Radius**: `2px`/`8px`/`10px`/`99px` → the D4 tokens (ui-kit ×11 sites,
+- **Radius**: `2px`/`8px`/`10px`/`99px` → the D4 tokens (shared UI ×11 sites,
   settings ×13, `SessionList` ×10 and siblings).
 - **Tap target**: `44px`/`2.75rem` → `--s-tap-min` (~25 sites across host
   akm sections, ProvidersPanel, connections, voice, chrome; exact citations
@@ -288,7 +288,7 @@ follow-up to move the token-font @import to a `<link>` or self-host.
    the always-defined anchors, (d) references to undefined `--s-*`/custom
    tokens (catches `--s-radius-2`, `--s-bg-hover`, `--transition-fast`
    -class bugs). New literals then fail CI with the file:line and the rule.
-2. **Rewrite `ui-kit/tests/theme-tokens.test.ts` for `light-dark()`** —
+2. **Rewrite `shared UI/tests/theme-tokens.test.ts` for `light-dark()`** —
    **this is a hard blocker for #426 phase 1**: the suite regexes the
    literal selector lists (`:root[data-theme='light'], :root[data-theme='day']`,
    lines 16-21) and its `parseColor()` (32-55) reads only `#hex`/`rgba()`,
@@ -297,9 +297,9 @@ follow-up to move the token-font @import to a `<link>` or self-host.
    resolved values.
 3. **Template contract check** (from #426): the seeded operator
    `theme.css` template's anchor list must match `tokens.css`.
-4. **ui-kit CSS-class coupling**: extend or complement
-   `no-app-coupling.test.ts` to flag ui-kit components rendering classes not
-   defined within ui-kit (catches the Panel/FormField/SecretSelect bridge
+4. **shared UI CSS-class coupling**: extend or complement
+   `no-app-coupling.test.ts` to flag shared UI components rendering classes not
+   defined within shared UI (catches the Panel/FormField/SecretSelect bridge
    regressing further) — enforce once D6's migration lands.
 
 ## 5. Sequencing
@@ -326,11 +326,11 @@ A12's invisible hover washes on light paper).
    *design* dimension of this track is owned by **#506** (rev 3: unify the
    entire UI on a single chat-first Stillness language): for each pattern
    it picks the winning design (chat-first, best-of-breed absorbed from
-   wizard/host/settings), refines it once in ui-kit, adopts it across all
+   wizard/host/settings), refines it once in shared UI, adopts it across all
    surfaces, and deletes the losers — folding each file's Track A fixes
    into the same pass. This plan stays the mechanical-correctness layer;
    don't double-schedule the same surfaces here.
-7. **Phase 6 — D6** (L): move the shared utility layer into ui-kit;
+7. **Phase 6 — D6** (L): move the shared utility layer into shared UI;
    Panel/FormField/SecretSelect become self-contained; enable H4.
 
 ## 6. What this buys
@@ -349,7 +349,7 @@ A12's invisible hover washes on light paper).
 - Two findings were refuted on citation accuracy and need line re-derivation
   before use (premises verified sound): the settings-surface `44px`
   inventory (most cited lines pointed at script/markup, not the CSS; the
-  token gap itself is real) and ~5 of 23 line cites in the ui-kit wiz-*
+  token gap itself is real) and ~5 of 23 line cites in the shared UI wiz-*
   spacing finding (off-by-one/already-tokenized lines; 18 verified).
 - Verifier corrections folded in above: TabBar's real height ≥44px (not
   36px); SecretsTab checkbox is a smaller variant; `LlmProfileDrawer`'s

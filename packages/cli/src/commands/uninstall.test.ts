@@ -49,7 +49,8 @@ function resetMocks(): void {
 		reapAndLogRetiredVolumes: async (homeDir: string) => {
 			reapCalls.push(homeDir);
 			return { reclaimed: [], errors: [] };
-		}
+		},
+		teardownRenamedProject: async () => ({ blocked: false })
 	}));
 	mock.module(moduleUrls.cliState, () => ({
 		...realCliState,
@@ -182,10 +183,8 @@ describe('module mock hygiene (regression guard)', () => {
 	// spread of the real module and no restoration of those two module URLs in
 	// afterEach. mock.module registrations are keyed by resolved file path
 	// (not query string) and persist in the shared module registry once
-	// registered — a later file's plain `import { migrateBestEffort } from
-	// './cli-state.ts'` (ui-server.ts:20) then throws "SyntaxError: Export
-	// named migrateBestEffort not found" because the registry entry never got
-	// its other exports back. This test exercises the narrow mock and then
+	// registered, so a later import of ui-server.ts can fail because the registry
+	// entry never got its other exports back. This test exercises the narrow mock and then
 	// relies on the real afterEach hook above (not a duplicate here) to prove
 	// the registry is restored before the next test runs.
 	test('exercises the narrow cli-state/cli-compose mocks', () => {
@@ -193,7 +192,7 @@ describe('module mock hygiene (regression guard)', () => {
 		resetMocks();
 	});
 
-	test('a later import of ui-server.ts (static `migrateBestEffort` import) still resolves', async () => {
+	test('a later import of ui-server.ts still resolves', async () => {
 		// No resetMocks() here: this test relies solely on the afterEach hook
 		// having restored the real cli-state.ts/cli-compose.ts modules after
 		// the previous test's narrow mock.
@@ -202,7 +201,6 @@ describe('module mock hygiene (regression guard)', () => {
 		expect(typeof uiServer.startUIServer).toBe('function');
 
 		const cliState = await import(`${moduleUrls.cliState}?t=${Math.random()}`);
-		expect(typeof cliState.migrateBestEffort).toBe('function');
 		expect(typeof cliState.resolveServeState).toBe('function');
 		const cliCompose = await import(`${moduleUrls.cliCompose}?t=${Math.random()}`);
 		expect(typeof cliCompose.runComposeWithPreflight).toBe('function');

@@ -1,6 +1,6 @@
 <script lang="ts">
   import { goto } from '$app/navigation';
-  import AuthGate from '@openpalm/ui-kit/components/common/AuthGate.svelte';
+  import AuthGate from '$lib/components/common/AuthGate.svelte';
   import type { PageData } from './$types';
 
   let { data }: { data: PageData } = $props();

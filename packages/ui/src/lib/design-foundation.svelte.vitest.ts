@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from 'vitest';
 import { render } from 'vitest-browser-svelte';
-import PasswordInput from '@openpalm/ui-kit/components/common/PasswordInput.svelte';
+import PasswordInput from '$lib/components/common/PasswordInput.svelte';
 import '../app.css';
 
 type Rgb = { r: number; g: number; b: number; a: number };

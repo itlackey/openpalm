@@ -1,7 +1,7 @@
 <script lang="ts">
 	import ProfileRow from './ProfileRow.svelte';
 	import type { LlmProfile } from './profile-types';
-	import IconDatabase from '@openpalm/ui-kit/components/icons/IconDatabase.svelte';
+	import IconDatabase from '$lib/components/icons/IconDatabase.svelte';
 
 	// Presentation-only list of LLM profiles. The parent (AkmTab) owns the array
 	// and default-name state via $bindable; this component renders the rows and

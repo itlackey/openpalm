@@ -1,7 +1,7 @@
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
-import { SERVICE_VERSION_KEYS } from '@openpalm/lib';
+import { PLATFORM_VERSION, SERVICE_VERSION_KEYS } from '@openpalm/lib';
 import { getState } from '$lib/server/state.js';
 import { resetState } from '$lib/server/test-helpers.js';
 import { GET, PATCH } from './+server.js';
@@ -32,7 +32,9 @@ afterEach(() => {
 
 describe('GET /api/host/versions', () => {
 	test('requires admin auth', async () => {
-		expect((await GET(event('GET', undefined, 'bad-token') as Parameters<typeof GET>[0])).status).toBe(401);
+		expect(
+			(await GET(event('GET', undefined, 'bad-token') as Parameters<typeof GET>[0])).status
+		).toBe(401);
 	});
 
 	test('returns only configured image tags and the UI channel', async () => {
@@ -41,9 +43,9 @@ describe('GET /api/host/versions', () => {
 		expect(response.status).toBe(200);
 		expect(await response.json()).toEqual({
 			configured: {
-				OP_ASSISTANT_VERSION: 'latest',
-				OP_GUARDIAN_VERSION: 'latest',
-				OP_PORTAL_VERSION: 'latest',
+				OP_ASSISTANT_VERSION: PLATFORM_VERSION,
+				OP_GUARDIAN_VERSION: PLATFORM_VERSION,
+				OP_PORTAL_VERSION: PLATFORM_VERSION,
 				OP_VOICE_VERSION: 'latest'
 			},
 			channel: expect.stringMatching(/^(latest|next)$/)
@@ -89,7 +91,9 @@ describe('PATCH /api/host/versions', () => {
 		writeFileSync(join(state.dataDir, '.install.lock'), `${process.pid}\n${Date.now()}\n`);
 
 		const response = await PATCH(
-			event('PATCH', { versions: { OP_ASSISTANT_VERSION: '0.13.1' } }) as Parameters<typeof PATCH>[0]
+			event('PATCH', { versions: { OP_ASSISTANT_VERSION: '0.13.1' } }) as Parameters<
+				typeof PATCH
+			>[0]
 		);
 
 		expect(response.status).toBe(409);

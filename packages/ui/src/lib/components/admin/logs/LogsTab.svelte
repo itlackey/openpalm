@@ -1,8 +1,8 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import Spinner from '@openpalm/ui-kit/components/common/Spinner.svelte';
-  import EmptyState from '@openpalm/ui-kit/components/common/EmptyState.svelte';
-  import Panel from '@openpalm/ui-kit/components/common/Panel.svelte';
+  import Spinner from '$lib/components/common/Spinner.svelte';
+  import EmptyState from '$lib/components/common/EmptyState.svelte';
+  import Panel from '$lib/components/common/Panel.svelte';
   import { fetchServiceLogs, fetchAutomationLog } from '$lib/api.js';
 
   interface Props {

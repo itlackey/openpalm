@@ -2,7 +2,7 @@
 	import { onMount } from 'svelte';
 	import { fetchAkmKnowledgeStats, type AkmKnowledgeStats } from '$lib/api.js';
 	import { formatDate } from '$lib/format-date.js';
-	import Spinner from '@openpalm/ui-kit/components/common/Spinner.svelte';
+	import Spinner from '$lib/components/common/Spinner.svelte';
 
 	type Props = {
 		disabled: boolean;

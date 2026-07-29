@@ -1,11 +1,11 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { page } from '$app/state';
-	import IconMic from '@openpalm/ui-kit/components/icons/IconMic.svelte';
-	import IconSoundOff from '@openpalm/ui-kit/components/icons/IconSoundOff.svelte';
-	import IconSoundOn from '@openpalm/ui-kit/components/icons/IconSoundOn.svelte';
-	import IconStop from '@openpalm/ui-kit/components/icons/IconStop.svelte';
-	import IconWaves from '@openpalm/ui-kit/components/icons/IconWaves.svelte';
+	import IconMic from '$lib/components/icons/IconMic.svelte';
+	import IconSoundOff from '$lib/components/icons/IconSoundOff.svelte';
+	import IconSoundOn from '$lib/components/icons/IconSoundOn.svelte';
+	import IconStop from '$lib/components/icons/IconStop.svelte';
+	import IconWaves from '$lib/components/icons/IconWaves.svelte';
 	import { chat } from '$lib/chat/chat-state.svelte.js';
 	import {
 		destroyVoice,

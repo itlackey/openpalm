@@ -80,7 +80,6 @@ describe('GET /api/runtime — public runtime-context endpoint', () => {
     expect(typeof body.admin).toBe('boolean');
     expect(typeof body.publicBaseUrl).toBe('string');
     expect(typeof body.uiVersion).toBe('string');
-    expect(typeof body.skeletonVersion).toBe('string');
     expect(body.routes).toBeTypeOf('object');
     expect(body.security).toBeTypeOf('object');
   });
