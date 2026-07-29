@@ -147,15 +147,6 @@ export type AutomationsResponse = {
 
 // ── OpenCode Provider/Model Types ──────────────────────────────────────
 
-export type OpenCodeProviderSummary = {
-  id: string;
-  name: string;
-  connected: boolean;
-  env: string[];
-  modelCount: number;
-  models?: OpenCodeModelInfo[];
-};
-
 export type OpenCodeModelInfo = {
   id: string;
   name: string;
@@ -163,11 +154,6 @@ export type OpenCodeModelInfo = {
   providerID: string;
   status?: string;
   capabilities?: Record<string, unknown>;
-};
-
-export type OpenCodeAuthMethod = {
-  type: 'oauth' | 'api';
-  label: string;
 };
 
 // ── Chat Types ──────────────────────────────────────────────────────────
@@ -216,12 +202,6 @@ export type ChatEntry = ChatMessage | ChatDivider | ChatNote | ChatToolGroup;
 
 export type OpenCodeMessageResponse = {
   parts: Array<{ type: string; text?: string }>;
-};
-
-export type ChatSessionState = {
-  sessionId: string | null;
-  status: 'idle' | 'connecting' | 'ready' | 'error';
-  error: string;
 };
 
 // ── Per-endpoint session UX ─────────────────────────────────────────────

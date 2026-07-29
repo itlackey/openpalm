@@ -1,14 +1,7 @@
-import type { Provider, ProviderGroup, Portal, OpenCodeProvider } from './types.js';
+import type { Provider, Portal, OpenCodeProvider } from './types.js';
 import { OLLAMA_DEFAULT_CHAT_MODEL } from '@openpalm/lib/provider-constants';
 
 export { OLLAMA_DEFAULT_CHAT_MODEL };
-
-export const PROVIDER_GROUPS: ProviderGroup[] = [
-  { id: 'recommended', label: 'Recommended', desc: 'Best options to get started quickly' },
-  { id: 'local', label: 'Local', desc: 'Run models on your own hardware' },
-  { id: 'cloud', label: 'Cloud', desc: 'Hosted inference providers' },
-  { id: 'advanced', label: 'Advanced', desc: 'Additional providers' },
-];
 
 export const PROVIDERS: Provider[] = [
   { id: 'ollama', name: 'Ollama', kind: 'local', group: 'recommended', order: 1, icon: '🦙', desc: 'Run open models on your hardware', needsKey: false, placeholder: '', baseUrl: 'http://localhost:11434', llmModel: 'llama3.2', embModel: 'nomic-embed-text', embDims: 768, canDetect: true },
@@ -74,7 +67,6 @@ export const STEP_LABELS = ['Models', 'Extras', 'Review'];
 
 /** Provider IDs excluded from the setup wizard's OAuth provider list. */
 export const WIZARD_EXCLUDED_PROVIDERS = new Set(['anthropic']);
-export const MAX_VISIBLE_MODELS = 6;
 
 export const PORTALS: Portal[] = [
   { id: 'api', name: 'OpenAI-compatible API', icon: '🔌', desc: 'Let apps that expect an OpenAI-style API talk to your assistant' },

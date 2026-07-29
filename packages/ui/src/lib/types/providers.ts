@@ -1,5 +1,3 @@
-export type ProviderFilter = 'all' | 'connected' | 'configured' | 'oauth' | 'disabled';
-
 export type ProviderAuthPromptOption = {
 	label: string;
 	value: string;

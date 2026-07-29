@@ -87,10 +87,3 @@ export interface AuthMethod {
   type: 'api' | 'oauth';
   label: string;
 }
-
-export interface ProviderGroup {
-  id: string;
-  label: string;
-  desc: string;
-}
-

@@ -32,7 +32,3 @@ md.renderer.rules.link_open = (tokens, idx, options, env, self) => {
 export function renderMarkdown(text: string): string {
   return md.render(text);
 }
-
-export function renderMarkdownInline(text: string): string {
-  return md.renderInline(text);
-}

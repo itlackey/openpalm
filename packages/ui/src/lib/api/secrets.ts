@@ -1,30 +1,5 @@
 import { request, requireOk } from './core.js';
 
-// ── User env (akm env:user) ───────────────────────────────────────────────────
-
-export type UserEnvListResponse = {
-  provider: 'akm';
-  envRef: string;
-  keys: string[];
-};
-
-export async function fetchUserEnv(): Promise<UserEnvListResponse> {
-  const res = await requireOk(await request('GET', '/api/host/secrets/user-env'));
-  return (await res.json()) as UserEnvListResponse;
-}
-
-export async function writeUserEnvKey(key: string, value: string): Promise<{ ok: boolean }> {
-  const res = await requireOk(await request('POST', '/api/host/secrets/user-env', { key, value }));
-  return (await res.json()) as { ok: boolean };
-}
-
-export async function deleteUserEnvKey(key: string): Promise<{ ok: boolean }> {
-  const res = await requireOk(
-    await request('DELETE', `/api/host/secrets/user-env?key=${encodeURIComponent(key)}`)
-  );
-  return (await res.json()) as { ok: boolean };
-}
-
 // ── Secret files (/stash/secrets file browser) ───────────────────────────────
 
 export type SecretFileInfo = { name: string; size: number };
