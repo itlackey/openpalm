@@ -44,17 +44,6 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
-      - uses: actions/setup-node@v6
-        with:
-          node-version: '24'
-
-      - name: Validate monotonic immutable model tag
-        env:
-          IMAGE: openpalm/assistant-models
-          TARGET_VERSION: ${{ inputs.tag || 'v1' }}
-          TAG_MODE: model
-        run: node scripts/assert-docker-tag-monotonic.mjs
-
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
@@ -63,6 +52,19 @@ jobs:
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Guard immutable image tag
+        env:
+          TAG: ${{ inputs.tag || 'v1' }}
+        run: |
+          REF="openpalm/assistant-models:${TAG}"
+          if output=$(docker manifest inspect "${REF}" 2>&1); then
+            echo "::error::${REF} already exists"
+            exit 1
+          elif ! grep -qiE 'manifest unknown|no such manifest' <<<"${output}"; then
+            echo "::error::Could not verify ${REF}: ${output}"
+            exit 1
+          fi
 
       - name: Docker metadata
         id: meta

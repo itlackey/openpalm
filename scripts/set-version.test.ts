@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from "bun:test";
 import { mkdtempSync, writeFileSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { compareSemver, parseSemver, setVersion, SEMVER_RE } from "./set-version.mjs";
+import { parseSemver, setVersion, SEMVER_RE } from "./set-version.mjs";
 
 let dir: string;
 beforeEach(() => { dir = mkdtempSync(join(tmpdir(), "op-setver-")); });
@@ -79,11 +79,5 @@ describe("set-version", () => {
     ]) {
       expect(parseSemver(version)).toBeNull();
     }
-  });
-
-  it("compares numeric and lexical prerelease identifiers by SemVer rules", () => {
-    expect(compareSemver("1.2.3-1", "1.2.3-alpha")).toBe(-1);
-    expect(compareSemver("1.2.3-rc.10", "1.2.3-rc.2")).toBe(1);
-    expect(compareSemver("1.2.3", "1.2.3-rc.10")).toBe(1);
   });
 });

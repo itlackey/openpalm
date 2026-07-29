@@ -62,10 +62,6 @@ jobs:
           }
           appendFileSync(process.env.GITHUB_OUTPUT, `prerelease=${parsed.pre !== null}\n`);
           NODE
-          for suffix in cpu cu121; do
-            IMAGE=openpalm/voice TARGET_VERSION="${VERSION}" TAG_SUFFIX="${suffix}" \
-              node scripts/assert-docker-tag-monotonic.mjs
-          done
 
   push-voice-images:
     name: Build and push voice images
