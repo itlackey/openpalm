@@ -137,6 +137,9 @@ jobs:
       - name: Validate Docker Compose manifests
         env:
           OP_HOME: ${{ github.workspace }}/.op-home
+          OP_ASSISTANT_VERSION: dev
+          OP_GUARDIAN_VERSION: dev
+          OP_PORTAL_VERSION: dev
         run: |
           set -euo pipefail
           mkdir -p "${OP_HOME}/system/stack" "${OP_HOME}/config/stack" "${OP_HOME}/knowledge/env" "${OP_HOME}/knowledge/secrets" "${OP_HOME}/data"
