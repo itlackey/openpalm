@@ -229,8 +229,12 @@ smoke_build_images() {
   # Bake the repo's exact Guardian version for runtime introspection.
   GUARDIAN_VERSION="$(node -p "require('./packages/guardian/package.json').version")"
   PLATFORM_VERSION="$(smoke_platform_version)"
+  OP_ASSISTANT_VERSION=dev
+  OP_GUARDIAN_VERSION=dev
+  OP_PORTAL_VERSION=dev
   export GUARDIAN_VERSION
   export PLATFORM_VERSION
+  export OP_ASSISTANT_VERSION OP_GUARDIAN_VERSION OP_PORTAL_VERSION
   local targets=()
   local target
   for target in "$@"; do
