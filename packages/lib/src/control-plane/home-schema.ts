@@ -32,7 +32,12 @@ import {
 import { writeFileAtomic } from './fs-atomic.js';
 import { mergeEnvContent, parseEnvContent, removeEnvKey } from './env.js';
 import { createLogger } from '../logger.js';
-import { migrateAccessIntent, migrateLegacyBindAddresses, migrateLegacyDefaultPorts } from './config-persistence.js';
+import {
+  migrateAccessIntent,
+  migrateConsolidatedDefaultPorts,
+  migrateLegacyBindAddresses,
+  migrateLegacyDefaultPorts,
+} from './config-persistence.js';
 import { migrateProfileOnlyAddonEnablement } from './addons.js';
 import { SERVICE_VERSION_KEYS } from './versions.js';
 import { migrateDelegatedSecretsToPrivateDir } from './secrets-migration.js';
@@ -138,6 +143,10 @@ const MIGRATIONS: { since: number; run: (homeDir: string) => boolean }[] = [
   // migrateToSingleStackEnv (since: 1) so it reads the merged file, and it is
   // the last place the legacy-aware bind inference is used for a migrated home.
   { since: 4, run: migrateAccessIntent },
+  // The retired 3800/3810 pair, corrected on the CONSOLIDATED file. Runs after
+  // migrateToSingleStackEnv for the same reason as migrateAccessIntent, and it
+  // is what lets the UI delete its per-boot process-local re-derivation.
+  { since: 4, run: migrateConsolidatedDefaultPorts },
 ];
 
 /**

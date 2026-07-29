@@ -350,9 +350,15 @@ describe('buildUIServerEnv', () => {
     }
   });
 
-  it('sets OP_OPENCODE_URL so the UI proxy can reach the assistant', () => {
+  it('does NOT bake OP_OPENCODE_URL — the child resolves the assistant lazily', () => {
+    // Freezing the URL at launch made the child unable to distinguish a
+    // harness-generated value from an operator override, so it resorted to
+    // reverse-engineering the URL's shape to decide whether to discard it. Any
+    // change to how this side formatted the URL silently broke that detection
+    // and stranded the /oc proxy on a dead port. Both sides now call the same
+    // lib resolver, on demand.
     const env = buildUIServerEnv('/home/user/.openpalm', 3880);
-    expect(env.OP_OPENCODE_URL).toBe('http://127.0.0.1:3800');
+    expect(env.OP_OPENCODE_URL).toBeUndefined();
   });
 
   it('emits the harness contract version so the control plane can feature-detect', () => {

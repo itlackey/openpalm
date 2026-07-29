@@ -146,6 +146,49 @@ export function migrateLegacyBindAddresses(homeDir: string): boolean {
 }
 
 /**
+ * Apply the retired default-port swap to the CONSOLIDATED `state/stack.env`.
+ *
+ * {@link migrateLegacyDefaultPorts} only ever rewrote the pre-consolidation
+ * `knowledge/env/stack.env`, so a home that had already consolidated could
+ * still carry the retired pair (assistant 3800 / UI 3810) with nothing to
+ * correct it. That gap is why a process-local "port contract reconciliation"
+ * existed in the UI's request path, re-deriving the same swap from magic
+ * literals on every supervised boot — and clobbering an operator who had
+ * deliberately chosen 3800 for the assistant. Doing it once, on disk, lets that
+ * shim be deleted.
+ *
+ * Only the retired PAIR is swapped. An absent value needs no write: the compose
+ * fallbacks already resolve to the corrected defaults.
+ */
+export function migrateConsolidatedDefaultPorts(homeDir: string): boolean {
+  const path = stackEnvFile(homeDir);
+  if (!existsSync(path)) return false;
+
+  const content = readFileSync(path, "utf-8");
+  const parsed = parseEnvContent(content);
+  const assistantPort = parsed.OP_ASSISTANT_PORT?.trim();
+  const uiPort = parsed.OP_UI_PORT?.trim();
+
+  // The retired pair, either written out in full or with the UI port left
+  // implicit (its old default was 3810).
+  const isRetiredPair = assistantPort === "3800" && (uiPort === "3810" || !uiPort);
+  if (!isRetiredPair) return false;
+
+  const next = mergeEnvContent(content, {
+    OP_ASSISTANT_PORT: String(STACK_DEFAULTS.ports.assistant),
+    OP_UI_PORT: String(STACK_DEFAULTS.ports.ui),
+  });
+  if (next === content) return false;
+
+  writeFileAtomic(path, next, 0o600);
+  logger.warn("Swapped the retired default port pair in state/stack.env", {
+    assistant: STACK_DEFAULTS.ports.assistant,
+    ui: STACK_DEFAULTS.ports.ui,
+  });
+  return true;
+}
+
+/**
  * Materialize stored access INTENT into the consolidated `state/stack.env`, and
  * strip the retired cascade keys from it.
  *

@@ -20,6 +20,7 @@ import {
   checkExistingUiInstance,
   readyOrChildExit,
   resolveHostUiPort,
+  runHomeMigrations,
   consumePendingUiBackup,
   restoreUiBackup,
   UiSupervisor,
@@ -253,7 +254,13 @@ export function buildUIServerEnv(homeDir: string, port: number, update?: UpdateI
     // — and `latest`/`latest-*` are never published for prereleases, so the
     // deploy failed with "manifest unknown". The deploy reads the versions from
     // stack.env via --env-file; leave them untouched.
-    OP_OPENCODE_URL: resolveAssistantUrl(homeDir),
+    // Deliberately NOT baking OP_OPENCODE_URL. Freezing the assistant URL at
+    // launch made the child unable to tell a harness-generated value from an
+    // operator override, so it resorted to reverse-engineering the URL's shape
+    // (loopback host, matching old port, empty path) to decide whether to
+    // discard it — and any change to how this side formatted the URL silently
+    // broke that detection and stranded the proxy on a dead port. The child
+    // resolves it lazily through the same lib resolver instead.
   };
   // Pass the bundled skeleton path so the UI server can refresh the registry
   // on startup without needing the source repo or a network download.
@@ -300,6 +307,17 @@ async function startUIServer(): Promise<void> {
   // the harness only ensures dirs here. The UI child locates the bundled skeleton
   // via OPENPALM_SKELETON_DIR (set in buildUIServerEnv).
   ensureHomeDirs();
+
+  // Migrate the home BEFORE the UI child boots, for the same reason the CLI's
+  // serve entry does: a UI process on an unmigrated home is what the deleted
+  // process-local port shim existed to paper over. Schema-gated, so an
+  // up-to-date home reads one small file. Non-fatal — a failure here must not
+  // stop the app from starting.
+  try {
+    runHomeMigrations(homeDir);
+  } catch (err) {
+    console.error('Home migration failed:', err instanceof Error ? err.message : String(err));
+  }
 
   // app.getVersion() is the HARNESS marketing version — use it ONLY for the
   // genuinely harness-scoped Electron self-update check (which polls GitHub

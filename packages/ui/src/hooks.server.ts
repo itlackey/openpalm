@@ -29,7 +29,6 @@ import {
 } from "@openpalm/lib";
 import { resolveRequestLanding, getCachedLocalInstallState } from "$lib/server/landing.js";
 import { BLOCKING_LANDINGS } from "$lib/resolve-landing.js";
-import { reconcileSupervisedPortContract } from '$lib/server/port-contract.js';
 
 // Launch-fact collection + the 5s cache live in $lib/server/landing.ts; the
 // reset hook is re-exported here so tests keep one import site.
@@ -38,16 +37,6 @@ export { _resetLaunchCache } from "$lib/server/landing.js";
 const logger = createLogger("admin");
 
 let startupApplyDone = false;
-
-function reconcilePortContract(): void {
-  if (!process.env.OP_UI_SUPERVISOR) return;
-  try {
-    const state = getState();
-    reconcileSupervisedPortContract(state.homeDir, process.env);
-  } catch (err) {
-    logger.error('default port migration failed', { error: String(err) });
-  }
-}
 
 // Load the process-level config the UI needs to serve, READ-ONLY w.r.t. OP_HOME.
 // install/update own every OP_HOME write (via applyHome), so merely serving
@@ -90,9 +79,17 @@ function loadProcessEnv(): void {
   }
 }
 
-// Run immediately on module load (server startup). The targeted migration runs
-// in this updatable control plane, never in the frozen Electron bootstrap.
-reconcilePortContract();
+// Run immediately on module load (server startup).
+//
+// There is no longer a process-local "port contract reconciliation" here. It
+// re-implemented an on-disk migration inside the request path, keyed on magic
+// literals ('3800' in the live env meant "an inherited retired default"), so an
+// operator who deliberately ran the assistant on 3800 got a UI whose proxy
+// targeted 3810 while compose still published 3800 — assistant_unreachable with
+// nothing in stack.env to explain it. Its two triggers also disagreed with the
+// disk migration's at the edges. Every serve entry (CLI startUIServer, Electron
+// startup, install/compose/lifecycle) now runs runHomeMigrations first, so this
+// process can simply trust the disk.
 loadProcessEnv();
 
 // Scheduler is now a dedicated sidecar — admin has zero background processes.

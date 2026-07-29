@@ -24,7 +24,7 @@
  * entries — those belong to the browser.
  */
 import { getState } from './state.js';
-import { readStackEnv, resolveOpenCodeCredential } from '@openpalm/lib';
+import { resolveAssistantEndpoint, resolveOpenCodeCredential } from '@openpalm/lib';
 
 export type AssistantOpencodeTarget = {
   id: string;
@@ -63,19 +63,19 @@ function normalizeBrowserFacingUrl(raw: string): string {
  */
 export function getAssistantOpencodeTarget(): AssistantOpencodeTarget {
   const homeDir = getState().homeDir;
-  const persisted = readStackEnv(homeDir);
-  const url =
-    process.env.OP_OPENCODE_URL ??
-    process.env.OP_ASSISTANT_URL ??
-    `http://127.0.0.1:${process.env.OP_ASSISTANT_PORT ?? persisted.OP_ASSISTANT_PORT ?? '3810'}`;
-  // Credential resolution is shared control-plane logic (lib's
-  // resolveOpenCodeCredential): the CLI needs the identical answer, and the
-  // 401/rotation regression family came from each consumer deriving its own.
+  // URL and credential are BOTH shared control-plane logic. This module used to
+  // carry its own shorter URL chain — no OP_UI_DEFAULT_ASSISTANT_URL, a
+  // hardcoded 127.0.0.1, and the persisted assistant port read only as a last
+  // resort — while lib's resolveAssistantEndpoint, whose header says it is "the
+  // ONE place this precedence is decided", was used by Electron and the CLI.
+  // The divergence had teeth: an assistant published on a CONCRETE LAN
+  // interface (Docker's `bind:port:target` maps the port onto that interface
+  // ONLY, not also onto loopback) resolved here to an unreachable 127.0.0.1.
   const { username, password } = resolveOpenCodeCredential(homeDir);
   return {
     id: DEFAULT_ID,
     label: 'Local Assistant',
-    url: normalizeBrowserFacingUrl(url),
+    url: normalizeBrowserFacingUrl(resolveAssistantEndpoint(homeDir)),
     username,
     password,
     isDefault: true,

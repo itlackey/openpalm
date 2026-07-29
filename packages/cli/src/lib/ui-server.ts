@@ -9,7 +9,7 @@
 import { join, basename } from 'node:path';
 import { existsSync } from 'node:fs';
 import {
-  resolveOpenPalmHome, resolveUiBuildDir, createLogger, readSecret, readStackEnv,
+  resolveOpenPalmHome, resolveUiBuildDir, createLogger, readSecret, readStackEnv, runHomeMigrations,
   checkAndUpdateUiBuild, checkAndUpdateSkeleton, PLATFORM_VERSION,
   consumePendingUiBackup, isRemoteSetupAllowed, readyOrChildExit, restoreUiBackup, UiSupervisor, waitForReady,
   checkExistingUiInstance, type UiInstanceCheck,
@@ -420,6 +420,17 @@ export function createCliUiSupervisor(deps: CliUiSupervisorDeps): {
  */
 export async function startUIServer(opts: UIServerOptions = {}): Promise<void> {
   const homeDir = resolveOpenPalmHome();
+  // Migrate the home BEFORE serving. Only the compose/install/lifecycle paths
+  // used to do this, so a bare `openpalm`/`app`/`admin` could serve a UI child
+  // against an unmigrated home — which is why a process-local port
+  // "reconciliation" existed in the UI's request path, re-deriving a disk
+  // migration from magic literals on every boot. Cheap and schema-gated: an
+  // up-to-date home reads one small file and returns.
+  try {
+    runHomeMigrations(homeDir);
+  } catch (err) {
+    logger.error('home migration failed before serving', { error: String(err) });
+  }
   // D3: read back a persisted (headless-install) OP_HOST_UI_PORT, not just
   // process.env (resolveUiServePort merges persisted stack.env under process.env).
   const port = resolveUiServePort(opts.port, homeDir);
