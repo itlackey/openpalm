@@ -37,17 +37,7 @@ On that last rule: OpenCode supports a custom config directory via `OPENCODE_CON
 
 ## Tooling
 
-- Simplified docker compose commands
-- Assists in managing secrets
-- Admin provides:
-  - Way to manage addon activation state and custom compose overlays, while providing an easy way to set values or assign secrets required by addon environment variables.
-  - Editor for automation configuration files, simple yaml editor/form and copy from registry function.
-  - Editor to manage AKM configuration (LLM, embedding settings)
-  - Editor to manage account/assistant details
-    - Assistant name, email, persona (there is no "assistant token" — the assistant holds no admin credential; the admin UI's own session is an `httpOnly` cookie, not a user-managed token)
-  - Editor for addon configuration files and non-secret environment values
-
-All of this functionality exists to simplify managing files under `OP_HOME`. The baseline is managed Compose under `system/stack/`, the one user overlay at `config/stack/custom.compose.yml`, the one non-secret app record at `state/stack.env`, provider auth at `knowledge/secrets/auth.json`, delegated credentials under `private/secrets/`, AKM user env and tasks under `knowledge/`, and service files under `data/`. A technical user must be able to understand and manage these files without hidden infrastructure.
+All tooling (CLI, admin UI, setup wizard) exists to simplify managing files under `OP_HOME`. The baseline is managed Compose under `system/stack/`, the one user overlay at `config/stack/custom.compose.yml`, the one non-secret app record at `state/stack.env`, provider auth at `knowledge/secrets/auth.json`, delegated credentials under `private/secrets/`, AKM user env and tasks under `knowledge/`, and service files under `data/`. A technical user must be able to understand and manage these files without hidden infrastructure.
 
 ## Security invariants
 
@@ -66,7 +56,7 @@ These are hard constraints that must never be violated during development. See a
 
 Configuration is managed by **writing whole files** or **targeted edits**, chosen by who owns the file (see the ownership rule in § File System): user-owned files are seeded-if-missing or edited in place; app-owned files may be written whole. What is never done is leaving a template on disk for something to expand later — the CLI or admin validates proposed changes, writes finished files to live paths, and leaves `${VAR}` substitution to Docker Compose at runtime. All control-plane logic lives in `@openpalm/lib` — both CLI and admin import from this shared library. The managed OpenCode config is bind-mounted from `system/assistant/` at `/etc/opencode`, with user extensions mounted from `config/assistant/`.
 
-All OpenPalm state lives under a single root: **`~/.openpalm/`** (configurable via `OP_HOME`). Regenerable container caches live in `OP_HOME/cache/` (§S1); host-side ephemeral cache lives at `~/.cache/openpalm/`. Under that root the layout is split into trees by **ownership**, so lifecycle sync can overwrite what it owns without ever touching a user file:
+All OpenPalm state lives under a single root: **`~/.openpalm/`** (configurable via `OP_HOME`). Regenerable container caches live in `OP_HOME/cache/`; host-side ephemeral cache lives at `~/.cache/openpalm/`. Under that root the layout is split into trees by **ownership**, so lifecycle sync can overwrite what it owns without ever touching a user file:
 
 | Tree | Owner | Contents |
 |---|---|---|
@@ -89,7 +79,7 @@ Subtrees:
 - `assistant/` — the power-user's OpenCode **global** config for the assistant (`persona.md`, model/provider choices); mounted at the assistant's `~/.config/opencode` (nested over `HOME=/home/opencode`). The **managed** config — plugins, permissions, instructions — is a different tree, `system/assistant`, mounted at `/etc/opencode` (`OPENCODE_CONFIG_DIR`)
 - `guardian/` — the operator-tunable moderation **model** setting (`opencode.json`); mounted at the guardian's `~/.config/opencode` (`HOME=/opt/openpalm/guardian`)
 - `akm/` — AKM configuration (LLM, embedding, and related settings in `config.json`)
-- (No host-owned connection list.) The UI is a self-contained browser app that owns its connection list and encrypted credentials in the browser (IndexedDB + WebCrypto AES-GCM; on a non-secure http origin — the plain-HTTP LAN tier — SubtleCrypto is unavailable by platform rule, so credentials degrade to plaintext-at-rest there rather than refusing to save) and talks to each connection's OpenCode/Guardian instance directly — see [`architecture.md`](./architecture.md). The host admin process derives its own single local OpenCode target from the environment / Electron runtime (`$lib/server/opencode-target.ts`), not from a config file.
+- (No host-owned connection list.) The UI is a self-contained browser app that owns its connection list and credentials in the browser (IndexedDB + WebCrypto AES-GCM; storage details in [`architecture.md`](./architecture.md)) and talks to each connection's OpenCode/Guardian instance directly. The host admin process derives its own single local OpenCode target from the environment / Electron runtime (`$lib/server/opencode-target.ts`), not from a config file.
 
 **Rule:** allowed writers are: user direct edits, explicit admin UI/API config actions, and the assistant for the single file `config/assistant/user-profile.md`. Automatic lifecycle operations (install/update/startup apply/setup reruns/upgrades) are non-destructive for existing user files and only seed missing defaults or make targeted updates.
 
@@ -144,7 +134,7 @@ Stack **configuration** does not. It lives in `state/stack.env` (§ 1b), deliber
 Subtrees: `assistant/`, `guardian/`, `akm/cache/`, `akm/data/`, `logs/`, `backups/`, `rollback/`.
 
 Shared user knowledge lives in `knowledge/` (not `data/`) — see § Knowledge above.
-Regenerable container caches (bun/npm/opencode) live in `OP_HOME/cache/<service>/`, a sibling of `data/` rather than a child of it, so they are purgeable without touching durable state. They are pre-created operator-owned by `ensureHomeDirs` and bind-mounted over the in-container cache paths — NOT named volumes nested inside a bind, which made Docker create root-owned mountpoints and broke rootless installs (§S1). They are excluded from backups and removed by `--purge`. Host-side ephemeral artifacts still live outside `OP_HOME` under `~/.cache/openpalm/`.
+Regenerable container caches (bun/npm/opencode) live in `OP_HOME/cache/<service>/`, a sibling of `data/` rather than a child of it, so they are purgeable without touching durable state. They are pre-created operator-owned by `ensureHomeDirs` and bind-mounted over the in-container cache paths — NOT named volumes nested inside a bind, which made Docker create root-owned mountpoints and broke rootless installs. They are excluded from backups and removed by `--purge`. Host-side ephemeral artifacts still live outside `OP_HOME` under `~/.cache/openpalm/`.
 The shared work area lives in `workspace/`.
 
 **Write policy:** Each container may write only to its own designated subdirectories via its mounts. The assistant writes to `data/assistant/`, `knowledge/`, `data/akm/cache/`, `data/akm/data/`, `workspace/`, and `/opt/persistent`; the guardian writes to `data/guardian/` and `data/logs/`; and so on. No container may access another service's data directories. Stack-wide data operations require the host CLI or admin UI.
@@ -158,10 +148,8 @@ configured Docker logging driver unless a service explicitly writes here.
 Files include `guardian-audit.log` (Guardian ingress audit) plus OpenCode session
 and tool-invocation logs under `data/assistant/.local/state/opencode/`.
 
-The OpenPalm-side `admin-audit.jsonl` writer was removed in v0.11.0
-(Phase 6 of the auth/proxy refactor / D6a). OpenCode session
-logs are the audit trail for chat + tool activity. UI/admin actions
-(login, config writes) log to application stderr via
+OpenCode session logs are the audit trail for chat + tool activity; UI/admin
+actions (login, config writes) log to application stderr via
 `createLogger('admin.*')`.
 
 ### 5) Rollback
@@ -237,7 +225,7 @@ All portable control-plane logic — lifecycle management, addon operations, sec
 
 **Hard rules:**
 
-- **The frozen harness bundle runs no lifecycle mutations.** Every state-mutating operation runs in the spawned `data/ui` control plane, which carries its own inlined `@openpalm/lib`. The CI guard `scripts/validate-thin-harness-boundary.sh` enforces this at the **source** level: every file under `packages/electron/src/` may import only the bootstrap allowlist from `@openpalm/lib`, so no lifecycle mutation can reach the harness. (It previously also grepped the built `dist/main.js` for the string `performUpgrade`. That check was removed — a symbol name appearing or not appearing in bundled output is a property of the bundler, not an architectural boundary, and the import allowlist is the real constraint.)
+- **The frozen harness bundle runs no lifecycle mutations.** Every state-mutating operation runs in the spawned `data/ui` control plane, which carries its own inlined `@openpalm/lib`. The CI guard `scripts/validate-thin-harness-boundary.sh` enforces this at the **source** level: every file under `packages/electron/src/` may import only the bootstrap allowlist from `@openpalm/lib`, so no lifecycle mutation can reach the harness.
 - **Electron source imports from `@openpalm/lib` only through the bootstrap allowlist enforced by `scripts/validate-thin-harness-boundary.sh`.** That script is the canonical allowlist; adding a mutating control-plane symbol fails CI. This is the mechanical expression of "the harness is bootstrap-only."
 - **`data/ui` is the steady-state executor.** Supervisors (the Electron harness, bare `openpalm`, and `openpalm admin`) call `checkAndUpdateUiBuild` before resolving + spawning, so a strictly-newer `data/ui` always wins. A de-route back to the frozen bundled lib (missing/stale stamp) MUST be logged, never silent (`resolveUiBuildDir`).
 - **Two independent version lines.** `PLATFORM_VERSION` (in `@openpalm/lib`, travels with `data/ui`) bumps on every control-plane/migration/UI release and **never** forces a re-download. `HARNESS_CONTRACT_VERSION` (a single integer in `packages/electron/src/harness-contract.ts`) bumps **only** when the §5.1 contract surface — renderer IPC bridge, spawn-env keys, or FS/spawn conventions — changes name/argument/return/required-key, and **does** force a re-download. Never feed `app.getVersion()` into control-plane inputs.

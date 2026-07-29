@@ -84,6 +84,18 @@ describe('release workflows', () => {
 	});
 });
 
+describe('image tool pins', () => {
+	// core-principles.md: the assistant and Guardian images install OpenCode
+	// from their own tools manifests, and those two pins must stay in lockstep.
+	test('assistant and guardian opencode-ai pins match', () => {
+		const pin = (p: string) =>
+			(readJson(p) as { dependencies?: Record<string, string> }).dependencies?.['opencode-ai'];
+		const assistant = pin('containers/assistant/tools/package.json');
+		expect(assistant).toBeTruthy();
+		expect(pin('containers/guardian/tools/package.json')).toBe(assistant);
+	});
+});
+
 describe('portal image source boundary', () => {
 	test('packs the candidate-local SDK and adapters without a baked npm manifest', () => {
 		const dockerfile = readFileSync(join(ROOT, 'containers/portal/Dockerfile'), 'utf8');

@@ -50,7 +50,9 @@ exact base URL; Guardian paths are not inferred.
 - Cross-origin requests omit the OpenPalm session cookie. Same-origin `/oc`
   requests include it because the UI session is the local credential.
 - Stored Basic passwords use WebCrypto AES-GCM when the browser origin provides
-  SubtleCrypto.
+  SubtleCrypto. On a non-secure http origin (the plain-HTTP LAN tier),
+  SubtleCrypto is unavailable by platform rule, so credentials degrade to
+  plaintext-at-rest there rather than refusing to save.
 
 One transport implementation, session model, and SSE parser serve both local
 and remote connection forms.
