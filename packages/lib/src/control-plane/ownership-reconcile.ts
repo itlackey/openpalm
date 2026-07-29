@@ -9,6 +9,7 @@ import { resolveSessionIdentity } from './operator-ids.js';
 import { patchStateEnvFile } from './secrets.js';
 import { writeFileAtomic } from './fs-atomic.js';
 import { repairRootOwnedBindMounts, repairManagedNamedVolumes } from './volume-ownership.js';
+import { resolvePrivateSecretsDir, resolveSecretsDir } from './secrets-files.js';
 import { createLogger } from '../logger.js';
 
 const logger = createLogger('lib:ownership-reconcile');
@@ -259,6 +260,10 @@ export async function reconcileHostOwnership(
       // which still holds the PREVIOUS host's ids after a swap. Record the
       // adopted (session) ids so containers run as the uid we just chowned to.
       patchStateEnvFile(homeDir, { OP_UID: String(sessionIds.uid), OP_GID: String(sessionIds.gid) });
+    }
+    if (bindMountsOk) {
+      resolveSecretsDir(homeDir);
+      resolvePrivateSecretsDir(homeDir);
     }
     // Only record "repaired for this uid" when every repair actually
     // succeeded (R9-F2/X15): both helpers swallow docker-chown failures in
