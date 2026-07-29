@@ -10,19 +10,17 @@ import { computeServerRuntimeContext } from "./features.js";
 import type { Capability, ServerRuntimeContext } from "$lib/types.js";
 
 /**
- * Lazy OpenCode client bound to the currently active endpoint. The client is
- * recreated whenever the active endpoint URL changes so user switches in the
- * UI take effect on the next call.
+ * OpenCode client bound to the assistant target.
+ *
+ * Built per call rather than cached: the target's CREDENTIAL is as mutable as
+ * its URL (an operator toggling `assistantDirect` flips `OPENCODE_AUTH` and the
+ * generated key at runtime), and a client cached on URL alone kept sending a
+ * stale credential — or none — until the process restarted. The factory is a
+ * closure over two strings, so rebuilding it is free.
  */
-let _openCodeClient: ReturnType<typeof createOpenCodeClient> | undefined;
-let _openCodeClientUrl: string | undefined;
 export function getOpenCodeClient(): ReturnType<typeof createOpenCodeClient> {
-  const { url } = getAssistantOpencodeTarget();
-  if (!_openCodeClient || url !== _openCodeClientUrl) {
-    _openCodeClient = createOpenCodeClient({ baseUrl: url });
-    _openCodeClientUrl = url;
-  }
-  return _openCodeClient;
+  const { url, username, password } = getAssistantOpencodeTarget();
+  return createOpenCodeClient({ baseUrl: url, username, password });
 }
 
 export function safeTokenCompare(a: string, b: string): boolean {

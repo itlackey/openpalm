@@ -193,3 +193,94 @@ describe("createOpenCodeClient", () => {
     expect(receivedPath).toBe("/session/ses%20a%2Fb");
   });
 });
+
+describe("createOpenCodeClient — Basic auth", () => {
+  /**
+   * OpenCode authenticates EVERY client, loopback included, as soon as the
+   * `assistantDirect` access toggle turns its auth on. This client accepted
+   * only a baseUrl and sent no Authorization header, so turning that toggle on
+   * 401'd every provider, model and setup route in the UI — while three other
+   * forwarders, each with their own inline encoder, kept working.
+   */
+  test("sends the credential when the target requires one", async () => {
+    let received: string | null = null;
+    startMockServer((req) => {
+      received = req.headers.get("authorization");
+      return new Response("{}", { headers: { "Content-Type": "application/json" } });
+    });
+
+    const client = createOpenCodeClient({
+      baseUrl: `http://127.0.0.1:${serverPort}`,
+      username: "opencode",
+      password: "generated-key",
+    });
+    await client.proxy("/provider");
+
+    expect(received).toBe(`Basic ${Buffer.from("opencode:generated-key", "utf-8").toString("base64")}`);
+  });
+
+  test("defaults the username to OpenCode's own default", async () => {
+    let received: string | null = null;
+    startMockServer((req) => {
+      received = req.headers.get("authorization");
+      return new Response("{}", { headers: { "Content-Type": "application/json" } });
+    });
+
+    const client = createOpenCodeClient({
+      baseUrl: `http://127.0.0.1:${serverPort}`,
+      password: "generated-key",
+    });
+    await client.proxy("/provider");
+
+    expect(received).toBe(`Basic ${Buffer.from("opencode:generated-key", "utf-8").toString("base64")}`);
+  });
+
+  test("UTF-8 encodes the credential, matching the guardian and entrypoint byte-for-byte", async () => {
+    // btoa() is Latin-1-only: a non-Latin-1 password must not corrupt or throw.
+    let received: string | null = null;
+    startMockServer((req) => {
+      received = req.headers.get("authorization");
+      return new Response("{}", { headers: { "Content-Type": "application/json" } });
+    });
+
+    const client = createOpenCodeClient({
+      baseUrl: `http://127.0.0.1:${serverPort}`,
+      password: "päss 🔒",
+    });
+    await client.proxy("/provider");
+
+    expect(received).toBe(`Basic ${Buffer.from("opencode:päss 🔒", "utf-8").toString("base64")}`);
+  });
+
+  test("sends no Authorization when the target needs none", async () => {
+    let received: string | null = null;
+    startMockServer((req) => {
+      received = req.headers.get("authorization");
+      return new Response("{}", { headers: { "Content-Type": "application/json" } });
+    });
+
+    const client = createOpenCodeClient({ baseUrl: `http://127.0.0.1:${serverPort}` });
+    await client.proxy("/provider");
+
+    expect(received).toBeNull();
+  });
+
+  test("preserves caller-supplied headers alongside the credential", async () => {
+    let contentType: string | null = null;
+    let auth: string | null = null;
+    startMockServer((req) => {
+      contentType = req.headers.get("content-type");
+      auth = req.headers.get("authorization");
+      return new Response("{}", { headers: { "Content-Type": "application/json" } });
+    });
+
+    const client = createOpenCodeClient({
+      baseUrl: `http://127.0.0.1:${serverPort}`,
+      password: "generated-key",
+    });
+    await client.setProviderApiKey("anthropic", "sk-test");
+
+    expect(contentType).toBe("application/json");
+    expect(auth).not.toBeNull();
+  });
+});

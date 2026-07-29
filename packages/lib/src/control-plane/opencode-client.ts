@@ -5,9 +5,18 @@
  * at a configurable base URL. Used by both the admin UI (host process) and
  * CLI (host subprocess) to talk to OpenCode.
  */
+import { assistantAuthHeaders } from "./opencode-auth.js";
 
 export type OpenCodeClientOpts = {
   baseUrl: string;
+  /**
+   * Basic-auth credential for the target, when it requires one. OpenCode
+   * authenticates ALL clients — including loopback — once `assistantDirect`
+   * turns its auth on, so a client built without this 401s every call the
+   * moment an operator publishes the assistant API.
+   */
+  username?: string;
+  password?: string;
 };
 
 export type ProxyResult =
@@ -39,14 +48,18 @@ export type OpenCodeSession = {
 };
 
 export function createOpenCodeClient(opts: OpenCodeClientOpts) {
-  const { baseUrl } = opts;
+  const { baseUrl, username, password } = opts;
 
   const DEFAULT_TIMEOUT_MS = 30_000;
 
   async function proxy(path: string, options?: RequestInit): Promise<ProxyResult> {
     try {
       const signal = options?.signal ?? AbortSignal.timeout(DEFAULT_TIMEOUT_MS);
-      const res = await fetch(`${baseUrl}${path}`, { ...options, signal });
+      const headers = {
+        ...(options?.headers as Record<string, string> | undefined),
+        ...assistantAuthHeaders({ username, password }),
+      };
+      const res = await fetch(`${baseUrl}${path}`, { ...options, headers, signal });
       if (!res.ok) {
         const body = await res.json().catch((e: unknown) => {
           console.warn('[opencode-client] Failed to parse error response:', e);

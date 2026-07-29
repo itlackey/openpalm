@@ -5,7 +5,7 @@
  * public API of `$lib/server/opencode`. Reads the active endpoint per-call
  * so user switches in the UI take effect immediately.
  */
-import { basicAuthHeader } from '../basic-auth.js';
+import { assistantAuthHeaders } from '../basic-auth.js';
 import { getAssistantOpencodeTarget } from '../opencode-target.js';
 
 export async function opencodeFetch<T>(path: string, init?: RequestInit): Promise<T> {
@@ -13,12 +13,8 @@ export async function opencodeFetch<T>(path: string, init?: RequestInit): Promis
 	const headers: Record<string, string> = {
 		'content-type': 'application/json',
 		...(init?.headers as Record<string, string> | undefined),
+		...assistantAuthHeaders(endpoint),
 	};
-	if (endpoint.password) {
-		// PR #564 r3566888629: default to OpenCode's server username 'opencode'.
-		const user = endpoint.username || 'opencode';
-		headers.authorization = basicAuthHeader(user, endpoint.password);
-	}
 	const response = await fetch(`${endpoint.url}${path}`, {
 		...init,
 		headers,

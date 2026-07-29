@@ -29,6 +29,7 @@ import {
   buildStorageReport,
   resolveBackupsDirFor,
   createOpenCodeClient,
+  resolveOpenCodeCredential,
   resolveAssistantEndpoint,
   listSessionsPaged,
   toSessionRecord,
@@ -299,7 +300,13 @@ export async function runDoctorAction(
  * ProxyResult into the {ok,message} shape the maintenance module declares.
  */
 function buildSessionClient(homeDir: string): SessionDeletionClient {
-  const client = createOpenCodeClient({ baseUrl: resolveAssistantEndpoint(homeDir) });
+  const client = createOpenCodeClient({
+    baseUrl: resolveAssistantEndpoint(homeDir),
+    // OpenCode authenticates every client, loopback included, once
+    // `assistantDirect` is on — without this, session maintenance 401s on
+    // exactly the installs that published the assistant API.
+    ...resolveOpenCodeCredential(homeDir),
+  });
   return {
     listSessions: () => client.listSessions(),
     deleteSession: async (id: string) => {

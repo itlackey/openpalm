@@ -7,6 +7,7 @@ import { defineAction } from '../lib/action.ts';
 import { promptYesNo } from '../lib/prompt.ts';
 import { resolveLatestReleaseTag } from '../lib/github.ts';
 import { DEFAULT_UI_PORT } from '../lib/ports.ts';
+import type { UIServerOptions } from '../lib/ui-server.ts';
 import {
 	resolveOpenPalmHome,
 	resolveConfigDir,
@@ -348,11 +349,7 @@ async function prepareInstallFiles(
 }
 
 /**
- * Launch the UI host server to handle first-time setup.
- *
- * The SvelteKit UI detects that setup is not complete (via hooks.server.ts)
- * and redirects to /setup where the wizard runs. Deploy is triggered from
- * within the UI process after the user completes the wizard.
+ * The UI-server options the first-run setup wizard must be served with.
  *
  * `adminHostUi: true` is REQUIRED, not incidental: the wizard writes secrets
  * and deploys the stack, so `/setup` and `/api/setup/*` are gated on the
@@ -363,16 +360,39 @@ async function prepareInstallFiles(
  * product's front door. Admin mode also pins the bind to loopback, which is
  * exactly right for a first-run wizard that has not yet set a password.
  *
+ * Exported as a pure function so the contract is pinned by a unit test. The
+ * composed alternative — driving the whole `install` command — has to mutate
+ * the process-global OP_HOME, which races other files in the aggregate suite,
+ * and `defineAction` turns any resulting error into `process.exit(1)`.
+ */
+export function wizardUiServerOptions(
+	noOpen: boolean,
+	env: NodeJS.ProcessEnv = process.env
+): UIServerOptions {
+	return {
+		open: !noOpen,
+		port: Number(env.OP_HOST_UI_PORT) || DEFAULT_UI_PORT,
+		adminHostUi: true,
+	};
+}
+
+/**
+ * Launch the UI host server to handle first-time setup.
+ *
+ * The SvelteKit UI detects that setup is not complete (via hooks.server.ts)
+ * and redirects to /setup where the wizard runs. Deploy is triggered from
+ * within the UI process after the user completes the wizard.
+ *
  * Pre-flight: `requireDocker()` runs FIRST so users hit our friendly Docker
  * error before the browser opens to a wizard that will fail at the end of
  * a 10-step flow.
  */
 async function runWizardInstall(noOpen: boolean): Promise<void> {
 	await requireDocker();
-	const port = Number(process.env.OP_HOST_UI_PORT) || DEFAULT_UI_PORT;
-	console.log(`Setup wizard: http://localhost:${port}/setup`);
+	const options = wizardUiServerOptions(noOpen);
+	console.log(`Setup wizard: http://localhost:${options.port}/setup`);
 	const { startUIServer } = await import('../lib/ui-server.ts');
-	await startUIServer({ open: !noOpen, port, adminHostUi: true });
+	await startUIServer(options);
 }
 
 async function runFileInstall(

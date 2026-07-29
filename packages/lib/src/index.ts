@@ -137,6 +137,14 @@ export {
 } from "./control-plane/env.js";
 // ── OpenCode Client ─────────────────────────────────────────────────────
 export { createOpenCodeClient } from "./control-plane/opencode-client.js";
+export {
+  assistantAuthHeaders,
+  basicAuthHeader,
+  DEFAULT_OPENCODE_USERNAME,
+  resolveOpenCodeCredential,
+  stripTrailingNewlines,
+  type OpenCodeCredential,
+} from "./control-plane/opencode-auth.js";
 export type { ProxyResult, OpenCodeProvider, OpenCodeSession } from "./control-plane/opencode-client.js";
 
 // ── Secrets ─────────────────────────────────────────────────────────────

@@ -39,6 +39,7 @@
  */
 import type { RequestHandler } from './$types';
 import { errorResponse, getRequestId, requireAdmin } from '$lib/server/helpers.js';
+import { assistantAuthHeaders } from '$lib/server/basic-auth.js';
 import { getAssistantOpencodeTarget } from '$lib/server/opencode-target.js';
 
 /**
@@ -118,11 +119,8 @@ const handle: RequestHandler = async (event) => {
   for (const [key, value] of event.request.headers) {
     if (!STRIPPED_REQUEST_HEADERS.has(key.toLowerCase())) headers.set(key, value);
   }
-  if (target.password) {
-    const credentials = Buffer.from(`${target.username ?? 'opencode'}:${target.password}`).toString(
-      'base64',
-    );
-    headers.set('authorization', `Basic ${credentials}`);
+  for (const [key, value] of Object.entries(assistantAuthHeaders(target))) {
+    headers.set(key, value);
   }
 
   // One abort source: the CLIENT's own disconnect (see the header comment).

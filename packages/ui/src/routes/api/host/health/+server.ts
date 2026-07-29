@@ -8,7 +8,7 @@
  * Always returns 200 when authenticated, even if OpenCode is down — the
  * caller decides how to surface assistant unavailability.
  */
-import { basicAuthHeader } from '$lib/server/basic-auth.js';
+import { assistantAuthHeaders } from '$lib/server/basic-auth.js';
 import type { RequestHandler } from './$types';
 import { requireAdmin, requireCapability, jsonResponse, getRequestId } from '$lib/server/helpers.js';
 import { getAssistantOpencodeTarget } from '$lib/server/opencode-target.js';
@@ -24,14 +24,8 @@ export const GET: RequestHandler = async (event) => {
 	const endpoint = getAssistantOpencodeTarget();
 	let opencode = false;
 	try {
-		const headers: Record<string, string> = {};
-		if (endpoint.password) {
-			// PR #564 r3566888629: default to OpenCode's server username 'opencode'.
-			const user = endpoint.username || 'opencode';
-			headers.authorization = basicAuthHeader(user, endpoint.password);
-		}
 		const res = await fetch(`${endpoint.url}/health`, {
-			headers,
+			headers: assistantAuthHeaders(endpoint),
 			signal: AbortSignal.timeout(2000),
 		});
 		opencode = res.ok;

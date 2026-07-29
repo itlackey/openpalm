@@ -24,8 +24,7 @@
  * entries — those belong to the browser.
  */
 import { getState } from './state.js';
-import { readSecret, readStackEnv } from '@openpalm/lib';
-import { DEFAULT_OPENCODE_USERNAME, stripTrailingNewlines } from './basic-auth.js';
+import { readStackEnv, resolveOpenCodeCredential } from '@openpalm/lib';
 
 export type AssistantOpencodeTarget = {
   id: string;
@@ -63,28 +62,16 @@ function normalizeBrowserFacingUrl(raw: string): string {
  * UI until the process restarted.
  */
 export function getAssistantOpencodeTarget(): AssistantOpencodeTarget {
-  const persisted = readStackEnv(getState().homeDir);
+  const homeDir = getState().homeDir;
+  const persisted = readStackEnv(homeDir);
   const url =
     process.env.OP_OPENCODE_URL ??
     process.env.OP_ASSISTANT_URL ??
     `http://127.0.0.1:${process.env.OP_ASSISTANT_PORT ?? persisted.OP_ASSISTANT_PORT ?? '3810'}`;
-  // OpenCode's server default username — the shipped assistant compose never
-  // overrides OPENCODE_SERVER_USERNAME, and the guardian's upstream auth sends
-  // 'opencode:<password>', so default here or a correct password 401s.
-  const username = process.env.OPENCODE_SERVER_USERNAME || DEFAULT_OPENCODE_USERNAME;
-  // An explicit host OPENCODE_SERVER_PASSWORD always wins. Otherwise fall back
-  // to the toggle-managed generated OpenCode key, but ONLY when
-  // OPENCODE_AUTH is truthy (the secret file is always materialized). Read auth
-  // from the same fresh sources as the URL, not frozen process.env.
-  const authEnabled = /^(true|1|yes)$/i.test(
-    (persisted.OPENCODE_AUTH ?? process.env.OPENCODE_AUTH ?? '').trim()
-  );
-  let generatedKey: string | undefined;
-  if (authEnabled) {
-    const raw = readSecret(getState().homeDir, 'op_opencode_password');
-    generatedKey = (raw ? stripTrailingNewlines(raw) : undefined) || process.env.OP_OPENCODE_PASSWORD;
-  }
-  const password = process.env.OPENCODE_SERVER_PASSWORD || generatedKey || undefined;
+  // Credential resolution is shared control-plane logic (lib's
+  // resolveOpenCodeCredential): the CLI needs the identical answer, and the
+  // 401/rotation regression family came from each consumer deriving its own.
+  const { username, password } = resolveOpenCodeCredential(homeDir);
   return {
     id: DEFAULT_ID,
     label: 'Local Assistant',
