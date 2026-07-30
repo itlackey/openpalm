@@ -24,6 +24,7 @@ import {
   readSecret,
   describeAccessExposure,
   readAccessToggles,
+  runHomeMigrations,
   stackDirFor,
   reconcileMdnsResponder,
 } from "@openpalm/lib";
@@ -37,6 +38,31 @@ export { _resetLaunchCache } from "$lib/server/landing.js";
 const logger = createLogger("admin");
 
 let startupApplyDone = false;
+let migrationsDone = false;
+
+// Bring the home up to the current schema BEFORE anything reads it.
+//
+// This lives HERE, in the updatable control plane, and nowhere else. Both
+// launchers used to call runHomeMigrations themselves, which put a
+// state-mutating migration inside the frozen Electron harness —
+// scripts/validate-thin-harness-boundary.sh exists to forbid exactly that, on
+// the grounds that a shipped harness can never be updated to match a schema
+// that keeps moving. Every serve path spawns THIS process, so one owner here
+// covers the Electron harness, the CLI supervisor, and `vite dev` alike, and
+// the migration ships with the schema it implements.
+//
+// Schema-gated and idempotent: an up-to-date home reads one small version file
+// and returns. Non-fatal — a home that cannot be migrated must still serve,
+// degraded, rather than refuse to boot.
+function migrateHome(): void {
+  if (migrationsDone) return;
+  migrationsDone = true;
+  try {
+    runHomeMigrations(resolveOpenPalmHome());
+  } catch (err) {
+    logger.error("home migration failed", { error: String(err) });
+  }
+}
 
 // Load the process-level config the UI needs to serve, READ-ONLY w.r.t. OP_HOME.
 // install/update own every OP_HOME write (via applyHome), so merely serving
@@ -86,7 +112,8 @@ function loadProcessEnv(): void {
   }
 }
 
-// Run immediately on module load (server startup).
+// Run immediately on module load (server startup), migrations first so the env
+// load below reads a current stack.env.
 //
 // There is no longer a process-local "port contract reconciliation" here. It
 // re-implemented an on-disk migration inside the request path, keyed on magic
@@ -94,9 +121,9 @@ function loadProcessEnv(): void {
 // operator who deliberately ran the assistant on 3800 got a UI whose proxy
 // targeted 3810 while compose still published 3800 — assistant_unreachable with
 // nothing in stack.env to explain it. Its two triggers also disagreed with the
-// disk migration's at the edges. Every serve entry (CLI startUIServer, Electron
-// startup, install/compose/lifecycle) now runs runHomeMigrations first, so this
-// process can simply trust the disk.
+// disk migration's at the edges. The real migration now runs here, once, before
+// anything reads the home, so the request path can simply trust the disk.
+migrateHome();
 loadProcessEnv();
 
 // Scheduler is now a dedicated sidecar — admin has zero background processes.

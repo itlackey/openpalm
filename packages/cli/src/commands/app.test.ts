@@ -261,7 +261,12 @@ describe('openpalm app on a not-installed OP_HOME (#486 stack-less app entry)', 
       );
       expect(child.env?.PORT).toBe('4711');
       expect(child.env?.HOST).toBe('127.0.0.1');
-      expect(child.env?.ORIGIN).toBe('http://localhost:4711');
+      // ORIGIN is pinned to the ADDRESS the child bound (127.0.0.1), not the
+      // name the browser is sent to (`browserSpawn` below still opens
+      // http://localhost:4711). SvelteKit compares ORIGIN against the request's
+      // Origin header, and a loopback-bound process must accept the origin it
+      // actually serves — see resolveUiListenEnv in network-contract.ts.
+      expect(child.env?.ORIGIN).toBe('http://127.0.0.1:4711');
       expect(child.env?.OP_ENABLE_ADMIN).toBeUndefined();
       expect(child.cwd).toBeDefined();
       const processConfig = realLib.parseUiRuntimeConfigJson(

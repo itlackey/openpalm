@@ -72,6 +72,22 @@ ALLOWED_IMPORTS=(
   restoreUiBackup
   consumePendingUiBackup
   UiSupervisor
+  # Same supervisor family, added by the 0.14.0 LAN-access review so the two
+  # launchers stop hand-rolling divergent copies of these:
+  #   checkExistingUiInstance — probes a port for an already-running OpenPalm UI
+  #     and reports what it found (a pure HTTP probe; it does not act on it).
+  #   readyOrChildExit — races waitForReady against the child's exit so a UI that
+  #     dies during boot surfaces as an error instead of a ready-timeout hang.
+  # Both are read-only over the network/child process, in the same bootstrap
+  # family as waitForReady — no state mutation, no migrations.
+  checkExistingUiInstance
+  readyOrChildExit
+  # Pure port resolver (0.14.0 LAN-access review Phase 1): picks the host UI port
+  # from an explicit argument, then process.env, then persisted stack.env, then
+  # the default. Read-only — the single authority the harness must consult rather
+  # than re-deriving the precedence itself, which is how the two launchers came to
+  # disagree about which port the UI was on.
+  resolveHostUiPort
   # Compatibility-only bootstrap seed: current UI builds use process-scoped
   # /api/runtime-config; an older build retained after a nonfatal update failure
   # still needs its static runtime-config.json contract.

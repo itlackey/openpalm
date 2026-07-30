@@ -20,7 +20,6 @@ import {
   checkExistingUiInstance,
   readyOrChildExit,
   resolveHostUiPort,
-  runHomeMigrations,
   consumePendingUiBackup,
   restoreUiBackup,
   UiSupervisor,
@@ -292,16 +291,12 @@ async function startUIServer(): Promise<void> {
   // via OPENPALM_SKELETON_DIR (set in buildUIServerEnv).
   ensureHomeDirs();
 
-  // Migrate the home BEFORE the UI child boots, for the same reason the CLI's
-  // serve entry does: a UI process on an unmigrated home is what the deleted
-  // process-local port shim existed to paper over. Schema-gated, so an
-  // up-to-date home reads one small file. Non-fatal — a failure here must not
-  // stop the app from starting.
-  try {
-    runHomeMigrations(homeDir);
-  } catch (err) {
-    console.error('Home migration failed:', err instanceof Error ? err.message : String(err));
-  }
+  // NOTE: home migrations are deliberately NOT run here. This harness is
+  // frozen and shipped; anything that mutates control-plane state or runs a
+  // migration belongs in the updatable data/ui control plane
+  // (scripts/validate-thin-harness-boundary.sh enforces this). The UI child
+  // runs them at startup instead — packages/ui/src/hooks.server.ts — which
+  // covers this harness and the CLI supervisor with one owner.
 
   // app.getVersion() is the HARNESS marketing version — use it ONLY for the
   // genuinely harness-scoped Electron self-update check (which polls GitHub
