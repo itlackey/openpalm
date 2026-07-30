@@ -25,7 +25,7 @@ The harness job is unglamorous: download Docker images, place the right content 
 - A **Guardian** — the profile-gated front door for portals and Guardian clients, enforcing principal authentication, ownership checks, rate limits, and default-on fail-closed content validation
 - Optional **addons** — portal adapters such as Discord and Slack, services such as Voice, or anything you add through Compose
 
-Official clients are the Electron desktop app and the OpenCode web interface served by the assistant. The Assistant and host-served OpenPalm UIs have direct paths to OpenCode; portals and Guardian direct/API clients reach it through Guardian.
+Official clients are the Electron desktop app and the OpenPalm UI — the same SvelteKit app, served as a co-process inside the assistant container. The assistant-served and host-served OpenPalm UIs have direct paths to OpenCode; portals and Guardian direct/API clients reach it through Guardian.
 
 ---
 

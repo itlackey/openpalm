@@ -141,8 +141,11 @@ services:
     ports:
       - "${OP_ASSISTANT_BIND_ADDRESS:-127.0.0.1}:${OP_ASSISTANT_PORT:-3810}:4096"
       # UI co-process (@openpalm/ui adapter-node, in-container port 3000).
-      # THE one listener a home install publishes: OpenCode and voice are
-      # reached through this process, not directly.
+      # THE one listener a home install publishes: OpenCode is reached through
+      # this process's same-origin /oc proxy, not directly. Voice is NOT: the
+      # entrypoint sets OP_UI_NO_LOCAL_VOICE=1 (this co-process reaches only
+      # its own loopback, never the sibling voice container), so /voice 503s
+      # here by design — voice is host-UI-only (docs/troubleshooting.md).
       # OP_UI_PORT is the HOST-facing port only; it is deliberately NOT passed
       # into the container env (the UI always serves on 3000 in-container).
       - "${OP_UI_BIND_ADDRESS:-127.0.0.1}:${OP_UI_PORT:-3800}:3000"

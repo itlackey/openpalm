@@ -106,6 +106,20 @@ The resulting listener settings are flat service-specific bind variables. There
 is no global cascade, SSH listener, or separate chat port. Voice stays
 loopback-only on port `8880`.
 
+Turning a toggle on writes it and applies it in the same step: the affected
+containers are recreated so the new port publishes actually take effect, then
+the `.local` name is (re)advertised. `openpalm restart` and the Containers
+tab's restart button never apply an access-toggle change on their own —
+`compose restart` cannot republish a port or change container env; only a
+toggle save (or `openpalm start <service>`, which recreates) does.
+
+With `access.networkAccess` on, open the assistant from another device at
+`http://<name>.local:3800` (include the port — resolving the `.local` name
+only gets you the IP, not the port) or `http://<host-ip>:3800` as a fallback.
+See [Setup Guide → Reaching OpenPalm from Another Device](setup-guide.md#reaching-openpalm-from-another-device)
+for the full detail, including why the `.local` name can stop resolving while
+the IP URL keeps working.
+
 ## Automations
 
 Assistant automations are AKM YAML task files under
@@ -223,6 +237,8 @@ The UI server uses these namespaces:
 | `/api/auth/*` | Login, logout, and session handling |
 | `/api/host/*` | Host control-plane operations; host capability required |
 | `/api/assistant/*` | Assistant-owned settings |
+| `/oc/*` | Same-origin pass-through to this process's own OpenCode (session auth). Not Guardian's `/oc/*` — see [`api-spec.md`](technical/api-spec.md) for the disambiguation |
+| `/voice/*` | Same-origin pass-through to local voice (session auth); `503` when this process cannot serve it — always true on the assistant-served (LAN) UI, see [Troubleshooting](troubleshooting.md#voice-does-not-start) |
 
 `/admin/*` is intentionally unimplemented and returns `404`. This does not
 apply to Guardian's separate loopback listener at

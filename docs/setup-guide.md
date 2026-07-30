@@ -124,6 +124,38 @@ Default URLs:
 | <http://localhost:3821/> | Guardian-hosted compatible API when enabled |
 | <http://localhost:8880/> | Voice API when enabled |
 
+## Reaching OpenPalm from Another Device
+
+With `access.networkAccess` on, the assistant UI publishes on every interface,
+not just loopback. From a phone, tablet, or another computer on the same
+network, open:
+
+```text
+http://<name>.local:3800
+```
+
+`<name>` is the project name (`openpalm` by default; `OP_PROJECT_NAME` if you
+changed it). **The port is not optional** — a browser resolving a bare `.local`
+name follows the DNS `A` record it gets, which points at the host, and defaults
+to port 80, not 3800. If `.local` names don't resolve on your network (some
+routers and older Android builds block mDNS), use the machine's LAN IP
+instead:
+
+```text
+http://<host-ip>:3800
+```
+
+The `<name>.local` advertisement is sent by whichever host `openpalm` process
+is running (bare `openpalm`, `openpalm app`, `openpalm admin`, or Electron) —
+it is not the container. The assistant container itself keeps serving
+`:3800` under Docker's `unless-stopped` restart policy even when no host
+process is running, for example right after a reboot before you've relaunched
+the CLI or desktop app — but nothing is left to answer the `.local` name until
+a host process starts again. The IP URL always works regardless; see
+[Troubleshooting → openpalm.local Stopped Resolving](troubleshooting.md#openpalmlocal-stopped-resolving).
+
+Everyone who opens either URL still signs in with the UI login password.
+
 ## Power-User Compose
 
 Generate the installation first, preferably with `openpalm install --file

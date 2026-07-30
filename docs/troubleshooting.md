@@ -66,6 +66,29 @@ The UI is baked into the assistant image. Do not place an npm UI tarball in the
 knowledge stash. `openpalm update` refreshes both the assistant image and the
 host-managed skeleton assets.
 
+## openpalm.local Stopped Resolving
+
+`<name>.local` (`openpalm.local` by default) is advertised over mDNS by
+whichever host `openpalm` process is currently running (bare `openpalm`,
+`openpalm app`, `openpalm admin`, or Electron) — never by a container. The
+assistant container's UI keeps serving `:3800` under Docker's `unless-stopped`
+restart policy independent of any host process, so after a reboot (or any time
+no host `openpalm` process is running) the name can stop resolving while the
+service itself is still up and reachable.
+
+```bash
+curl -fsS http://<host-ip>:3800/health
+```
+
+If that succeeds, the container is fine and only the advertisement is missing.
+Start a host process (`openpalm`, `openpalm app`, or `openpalm admin`) to
+resume advertising, or just use the IP URL — it does not depend on mDNS at
+all. See [Setup Guide → Reaching OpenPalm from Another Device](setup-guide.md#reaching-openpalm-from-another-device).
+
+Also confirm the client device supports mDNS: some routers block multicast
+between LAN segments/VLANs, and some Android builds do not resolve `.local`
+names in the browser at all — the IP URL is the only guaranteed path there.
+
 ## Host Admin UI Does Not Load
 
 The admin-capable UI is a host process, not a container:
@@ -152,6 +175,14 @@ Check provider auth in `knowledge/secrets/auth.json`, the model configured in
 Voice is defined in `system/stack/services.compose.yml`, uses an
 `addon.voice.*` profile, joins `addon_net`, and publishes only
 `127.0.0.1:8880` by default.
+
+Voice only works from a **host** UI (bare `openpalm`, `openpalm app`,
+`openpalm admin`, or Electron) — never from the assistant-served UI that
+`access.networkAccess` publishes to your LAN at `:3800`. That co-process only
+has a loopback path to its own container, never the sibling voice container,
+so its entrypoint sets `OP_UI_NO_LOCAL_VOICE=1` and `/voice` always `503`s
+there by design. There is no misconfiguration to fix here: a phone connected
+over the network toggle gets chat, not voice.
 
 ```bash
 openpalm addon enable voice
