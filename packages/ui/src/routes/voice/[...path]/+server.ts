@@ -35,7 +35,7 @@
 import type { RequestHandler } from './$types';
 import { listEnabledAddonIds } from '@openpalm/lib';
 import { getState } from '$lib/server/state.js';
-import { canServeLocalVoice } from '$lib/server/features.js';
+import { canServeLocalVoice, servedInContainerWithVoice } from '$lib/server/features.js';
 import { errorResponse, getRequestId, requireAdmin } from '$lib/server/helpers.js';
 import { VOICE_ADDON, voiceUpstreamUrl } from '$lib/server/voice/bring-up.js';
 
@@ -52,6 +52,14 @@ function unavailable(requestId: string): Response | null {
   if (!canServeLocalVoice()) {
     return errorResponse(503, 'voice_unavailable', 'This process has no local voice service.', {}, requestId);
   }
+  // In the container co-process the addon list is NOT readable: no host
+  // OP_HOME is injected, so getState().homeDir points inside the assistant's
+  // own data mount, which carries no stack.env — listEnabledAddonIds returns []
+  // and this gate would refuse even with voice enabled and reachable. The
+  // entrypoint's injected OP_VOICE_URL is the opt-in signal there (see
+  // computeVoiceRuntime); an absent or undeployed voice container then surfaces
+  // as a 502 from the fetch below rather than a 503 here.
+  if (servedInContainerWithVoice()) return null;
   try {
     if (!listEnabledAddonIds(getState().homeDir).includes(VOICE_ADDON)) {
       return errorResponse(

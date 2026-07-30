@@ -58,19 +58,46 @@ const HOST_CAPABILITIES: readonly Capability[] = [
 ];
 
 /**
- * True when this process actually has a loopback path to a local voice
- * container. Voice is deliberately NOT gated on admin capability (using voice
- * is not a privileged host operation, and a served non-admin `openpalm ui
- * serve` / Electron host must still offer it) — but a UI co-process running
- * INSIDE a container (the assistant container's served UI) reaches only its
- * OWN 127.0.0.1, never the sibling voice container, and its `getState()`
- * home can resolve into an assistant-writable mount. Such a process MUST fail
- * closed: it sets `OP_UI_NO_LOCAL_VOICE=1` so it neither advertises nor
- * proxies /voice, no matter what stack state it can read. Host launchers
- * leave the flag unset.
+ * True when this process has SOME path to a voice container.
+ *
+ * Voice is deliberately NOT gated on admin capability — using voice is not a
+ * privileged host operation, and a served non-admin `openpalm ui serve` /
+ * Electron host must still offer it.
+ *
+ * The container co-process is the special case. By default it reaches only its
+ * OWN 127.0.0.1, never the sibling voice container on another compose network,
+ * so the entrypoint sets `OP_UI_NO_LOCAL_VOICE=1` and it neither advertises nor
+ * proxies /voice regardless of what stack state it can read. That flag is now
+ * conditional: with `OP_VOICE_LAN_ACCESS` on, voice.compose.lan.yml puts voice
+ * on `assistant_net`, the entrypoint leaves the flag unset and injects
+ * `OP_VOICE_URL` instead, and the co-process genuinely can reach it — see
+ * {@link servedInContainerWithVoice}. Host launchers never set the flag.
  */
 export function canServeLocalVoice(): boolean {
   return process.env.OP_UI_NO_LOCAL_VOICE !== '1';
+}
+
+/**
+ * True when this is the assistant container's UI co-process AND the operator
+ * opted into LAN voice, so the entrypoint injected an upstream URL.
+ *
+ * The container co-process must decide voice availability from its INJECTED
+ * env, never by reading the addon list off disk. `getState().homeDir` there
+ * resolves to `$HOME/.openpalm` inside the assistant's own data mount — no host
+ * `OP_HOME` is injected — which holds no `stack.env`, so `listEnabledAddonIds`
+ * returns `[]` and the check refuses even when voice is enabled, reachable, and
+ * the network path exists. It is also agent-writable, so trusting it would let a
+ * write inside the container decide what the LAN UI serves. Same
+ * fail-closed-to-injected-env rule the login password follows (session-store.ts).
+ *
+ * `OP_VOICE_URL` is set by containers/assistant/entrypoint.sh ONLY when
+ * `OP_VOICE_LAN_ACCESS` is on, so its presence IS the opt-in. When voice is off
+ * or not deployed the upstream fetch simply fails and `/voice` answers 502 "not
+ * responding" rather than 503 "not enabled" — an honest distinction, since this
+ * process genuinely cannot tell those apart from in here.
+ */
+export function servedInContainerWithVoice(): boolean {
+  return process.env.OP_UI_SERVED_IN_CONTAINER === '1' && !!process.env.OP_VOICE_URL?.trim();
 }
 
 /**
@@ -88,6 +115,7 @@ export function canServeLocalVoice(): boolean {
  */
 export function computeVoiceRuntime(): { url: string } | undefined {
   if (!canServeLocalVoice()) return undefined;
+  if (servedInContainerWithVoice()) return { url: '/voice' };
   try {
     if (!listEnabledAddonIds(getState().homeDir).includes('voice')) return undefined;
     return { url: '/voice' };
