@@ -2,10 +2,12 @@
   import { onMount } from 'svelte';
   import Spinner from '$lib/components/common/Spinner.svelte';
   import {
+    fetchAccessStatus,
     fetchAssistantPersona,
     fetchHostStackSettings,
     saveAssistantPersona,
     saveHostStackSettings,
+    type AccessStatus,
     type MdnsSurface,
   } from '$lib/api.js';
   import { getRuntimeContext, hasCapability } from '$lib/runtime-context.svelte.js';
@@ -38,6 +40,34 @@
   // an advanced choice most installs never make.
   let showAdvancedAccess = $state(false);
 
+  // "What URL do I open on my phone, and does it work?" (Phase 2 of the
+  // LAN-access review) — loaded best-effort alongside the stack settings.
+  // Failure here must never block the rest of the panel: it is a diagnostic
+  // extra, not something project-name/persona editing depends on.
+  let accessStatus: AccessStatus | null = $state(null);
+  let copiedUrl = $state('');
+
+  async function loadAccessStatus(): Promise<void> {
+    if (!showStack) return;
+    try {
+      accessStatus = await fetchAccessStatus();
+    } catch {
+      accessStatus = null;
+    }
+  }
+
+  async function copyUrl(url: string): Promise<void> {
+    try {
+      await navigator.clipboard.writeText(url);
+      copiedUrl = url;
+      setTimeout(() => { if (copiedUrl === url) copiedUrl = ''; }, 2000);
+    } catch {
+      // Clipboard access can be denied (permissions, insecure context); the
+      // URL is still selectable text, so this is a silent no-op rather than
+      // an error banner over a non-essential convenience.
+    }
+  }
+
   // ── Assistant persona (assistant-settings:write) ───────────────────────────
   let personaSaving = $state(false);
   let personaPath = $state('config/assistant/persona.md');
@@ -61,6 +91,7 @@
         access = { ...stack.access };
         stackEnvPath = stack.stackEnvPath;
         mdns = stack.mdns;
+        await loadAccessStatus();
       }
       if (showPersona) {
         const persona = await fetchAssistantPersona();
@@ -100,6 +131,10 @@
           ? `Stack settings saved and applied.${recreated}${autoEnabled} Project name changed — run \`openpalm restart\` (or \`openpalm update\`) to move the whole stack to the new project name.`
           : `Stack settings saved and applied.${recreated}${autoEnabled}`,
       );
+      // The apply above may have just made the front door reachable (or, on
+      // failure, left it exactly as unreachable as before) — refresh the
+      // chip/URLs so the panel does not keep showing pre-apply status.
+      await loadAccessStatus();
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Failed to save stack settings.';
       error = msg;
@@ -224,6 +259,45 @@
           </div>
         {/if}
       </section>
+
+      {#if accessStatus}
+        <section class="settings-card">
+          <h3>Open on your phone</h3>
+          <p class="section-note">
+            The address to type on another device, and whether it currently answers — separate from
+            {ACCESS_TOGGLE_LABELS.networkAccess.toLowerCase()} being ON, since that only records intent
+            until the container behind it is actually up.
+          </p>
+
+          <div class="reachable-row">
+            <span class={`badge ${accessStatus.reachable.ok ? 'badge-running' : accessStatus.reachable.status === 'mismatch' ? 'badge-warning' : 'badge-error'}`}>
+              {#if accessStatus.reachable.ok}
+                Reachable
+              {:else if accessStatus.reachable.status === 'mismatch'}
+                Answering, but not the assistant UI
+              {:else}
+                Not reachable
+              {/if}
+            </span>
+            <span class="field-hint">Loopback check of port {accessStatus.port}.</span>
+          </div>
+
+          <ul class="lan-url-list">
+            {#each accessStatus.urls as url (url)}
+              <li class="lan-url-row">
+                <code class="lan-url">{url}</code>
+                <button type="button" class="copy-btn" onclick={() => void copyUrl(url)}>
+                  {copiedUrl === url ? 'Copied' : 'Copy'}
+                </button>
+              </li>
+            {/each}
+          </ul>
+          <p class="field-hint">
+            The <code>.local</code> name only resolves while a host <code>openpalm</code> process is
+            running; the IP addresses work whenever this machine is on the same network.
+          </p>
+        </section>
+      {/if}
     {/if}
 
     {#if showPersona}
@@ -264,6 +338,12 @@
   .path-chip { display: inline-flex; align-items: center; margin-bottom: var(--s-sp-3); padding: var(--s-sp-1) var(--s-sp-2); border-radius: 2px; border: var(--s-hair) solid var(--s-line-soft); background: var(--s-paper-deep); color: var(--s-ink-3); font-family: var(--s-font-mono); font-size: var(--s-type-mark-sm); letter-spacing: var(--s-track-label); }
   .mdns-chip { flex-direction: column; align-items: flex-start; gap: var(--s-sp-1); }
   .mdns-muted { color: var(--s-ink-3); }
+  .reachable-row { display: flex; align-items: center; gap: var(--s-sp-2); margin-bottom: var(--s-sp-3); }
+  .lan-url-list { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--s-sp-1); }
+  .lan-url-row { display: flex; align-items: center; justify-content: space-between; gap: var(--s-sp-2); padding: var(--s-sp-1) var(--s-sp-2); border: var(--s-hair) solid var(--s-line-soft); border-radius: 2px; background: var(--s-paper-deep); }
+  .lan-url { font-family: var(--s-font-mono); font-size: var(--s-type-mark-sm); color: var(--s-ink-2); overflow-wrap: anywhere; }
+  .copy-btn { flex-shrink: 0; background: none; border: var(--s-hair) solid var(--s-line-soft); border-radius: 2px; padding: 0.15rem 0.5rem; font-family: var(--s-font-mono); font-size: var(--s-type-mark-sm); letter-spacing: var(--s-track-label); color: var(--s-ink-2); cursor: pointer; }
+  .copy-btn:hover { border-color: var(--s-ink-2); color: var(--s-ink); }
   .persona-editor { min-height: 26rem; resize: vertical; font-family: var(--s-font-mono) !important; font-size: var(--s-type-mark-sm) !important; background: color-mix(in srgb, var(--s-ink) 2%, var(--s-paper)) !important; border: var(--s-hair) solid var(--s-line-soft) !important; border-bottom: var(--s-hair) solid var(--s-line-soft) !important; border-radius: 2px !important; padding: var(--s-sp-3) !important; color: var(--s-ink-2) !important; }
   .unsaved-hint { font-family: var(--s-font-mono); font-size: var(--s-type-mark-sm); letter-spacing: var(--s-track-label); text-transform: uppercase; color: var(--s-seal); }
   .card-actions { display: flex; align-items: center; justify-content: flex-end; gap: var(--s-sp-3); margin-top: var(--s-sp-3); }
