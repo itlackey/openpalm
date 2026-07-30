@@ -37,14 +37,15 @@
  *    container, or a sibling process reconciling mid-recreate, could still
  *    advertise a name nobody answers. The front door (`<name>.local`, i.e. the
  *    "assistant" advert — see `resolveFrontDoor`) is now gated on a self-probe
- *    (`checkExistingUiInstance` from `./ui-supervisor.js`) confirming the port
- *    answers before a responder for it is ever created; a failed probe is
- *    retried on the next reconcile/interval tick rather than advertised
- *    optimistically. The guardian advert is NOT probed this way: it is not a
- *    `@openpalm/ui` process, so the `/api/runtime` identity check the probe
- *    relies on cannot confirm it — its bind-address + `GUARDIAN_DIRECT_INGRESS`
- *    gate remains its sole honesty check, matching the original finding's
- *    scope (`<name>.local`, not `<name>-guardian.local`).
+ *    ({@link defaultMdnsProbe}) confirming the port answers before a responder
+ *    for it is ever created; a failed probe is retried on the next
+ *    reconcile/interval tick rather than advertised optimistically. The probe
+ *    is deliberately protocol-agnostic — any HTTP response counts — because the
+ *    front door is the UI on `OP_UI_PORT` for most installs and OpenCode on
+ *    `OP_ASSISTANT_PORT` for a direct-only one. The guardian advert is NOT
+ *    probed: its bind-address + `GUARDIAN_DIRECT_INGRESS` gate remains its sole
+ *    honesty check, matching the original finding's scope (`<name>.local`, not
+ *    `<name>-guardian.local`).
  *
  * The DNS wire format and multicast socket are handled by the maintained
  * `multicast-dns` package; this module owns only the OpenPalm-specific policy:
@@ -57,7 +58,6 @@ import { isLoopback } from "./bind-warning.js";
 import { STACK_DEFAULTS } from "./defaults.js";
 import { collectNonInternalIpv4 } from "./net-interfaces.js";
 import { readStackEnv } from "./secrets.js";
-import { checkExistingUiInstance } from "./ui-supervisor.js";
 
 const logger = createLogger("mdns");
 
@@ -185,6 +185,9 @@ function resolveFrontDoor(
   }
   return null;
 }
+
+/** Loopback answers fast or not at all; a front door that needs longer is down. */
+const MDNS_PROBE_TIMEOUT_MS = 1_500;
 
 function parsePort(value: string | undefined, fallback: number): number {
   if (!value) return fallback;
@@ -488,26 +491,35 @@ export function _setMdnsProbeForTests(probe: MdnsProbe | null): void {
 }
 
 /**
- * Confirm the front-door port answers before advertising its name, by
- * reusing `checkExistingUiInstance` (`./ui-supervisor.js`, same package)
- * rather than hand-rolling a second fetch-with-timeout: it already probes
- * `/api/runtime` on loopback with a short timeout and treats "couldn't
- * confirm" (closed port, timeout, non-JSON body) as absence rather than a
- * hard failure — exactly the "say nothing rather than something possibly
- * wrong" behavior this module wants.
+ * Confirm the front-door port answers before advertising its name.
  *
- * `expectedAdmin: false` matches what the front door's ports actually serve
- * (the container UI co-process on `OP_UI_PORT`, non-admin by design) — but a
- * `'mismatch'` result still counts as "answers": this is a reachability
- * check, not an identity check. Identity matching is
- * `checkExistingUiInstance`'s OTHER caller's job (the CLI/Electron attach
- * protocol in `ui-server.ts`/`main.ts`), which cares WHICH capability level
- * it attaches to; this module only cares whether `<name>.local` resolves to
- * something alive.
+ * A LIVENESS probe, not an identity probe: any HTTP response at all — 200, 401,
+ * 404 — proves something is listening, which is the only question
+ * `<name>.local` needs answered. Only a transport failure (closed port,
+ * timeout, DNS) counts as absence, keeping this module's "say nothing rather
+ * than something possibly wrong" posture.
+ *
+ * This used to call `checkExistingUiInstance`, which fetches the SvelteKit
+ * route `/api/runtime` and folds every non-OK response into "absent". That is
+ * right for the CLI/Electron attach protocol, which genuinely needs to know
+ * WHICH capability level owns a port — but wrong here, and specifically wrong
+ * for the front door {@link resolveFrontDoor} documents as its fallback: with
+ * `assistantDirect` alone, the front door is OpenCode, which serves no such
+ * route (and, since that toggle also turns OPENCODE_AUTH on, answers 401 even
+ * where it does serve one). Both collapse to absent, so the headless
+ * direct-only install never advertised the name the fallback exists to give it.
  */
 async function defaultMdnsProbe(port: number): Promise<boolean> {
-  const result = await checkExistingUiInstance(port, false);
-  return result.status !== "absent";
+  try {
+    await fetch(`http://127.0.0.1:${port}/`, {
+      // HEAD keeps a UI front door from rendering a page just to be counted.
+      method: "HEAD",
+      signal: AbortSignal.timeout(MDNS_PROBE_TIMEOUT_MS),
+    });
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 // ── Reconcile singleton ─────────────────────────────────────────────────────

@@ -1,5 +1,5 @@
 import { session, shell, systemPreferences } from 'electron';
-import { resolveHostUiPort } from '@openpalm/lib';
+import { UI_PORT } from './ui-port.js';
 
 // The navbar mic records via getUserMedia in the renderer. Two layers must both
 // grant access or the captured audio is SILENT (not an error) — and silence is
@@ -21,9 +21,12 @@ function isTrustedLocalOrigin(url: string): boolean {
   }
   if (parsed.protocol !== 'http:' || parsed.username || parsed.password) return false;
   if (parsed.hostname !== '127.0.0.1' && parsed.hostname !== 'localhost') return false;
-  const expectedPort = resolveHostUiPort(undefined, process.env);
+  // The port main.ts actually served the window on — ./ui-port.ts, not a second
+  // resolution. Resolving here from live env alone ignored a persisted
+  // OP_HOST_UI_PORT that main.ts honours, so on a custom-port install the real
+  // renderer origin failed this check and the mic recorded silence.
   const actualPort = parsed.port ? Number(parsed.port) : 80;
-  return actualPort === expectedPort;
+  return actualPort === UI_PORT;
 }
 
 /**

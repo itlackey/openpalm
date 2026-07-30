@@ -8,6 +8,7 @@ import { GET, POST } from './+server.js';
 
 let homeDir = '';
 let originalHome: string | undefined;
+let savedDockerBin: string | undefined;
 
 function makePostEvent(
 	values: Record<string, unknown>,
@@ -44,6 +45,11 @@ beforeEach(() => {
 	process.env.OP_ENABLE_ADMIN = '1';
 	homeDir = mkdtempSync(join(tmpdir(), 'openpalm-addon-credentials-'));
 	process.env.OP_HOME = homeDir;
+	// Fail the compose apply's execFile fast rather than waiting out a real
+	// `docker` against a socket this sandbox has no access to. Only the keys in
+	// ADDON_ENV_RECREATE_SCOPE reach compose at all.
+	savedDockerBin = process.env.OP_DOCKER_BIN;
+	process.env.OP_DOCKER_BIN = '/nonexistent-openpalm-docker-test-binary';
 	resetState('admin-token');
 });
 
@@ -51,6 +57,8 @@ afterEach(() => {
 	delete process.env.OP_ENABLE_ADMIN;
 	if (originalHome === undefined) delete process.env.OP_HOME;
 	else process.env.OP_HOME = originalHome;
+	if (savedDockerBin === undefined) delete process.env.OP_DOCKER_BIN;
+	else process.env.OP_DOCKER_BIN = savedDockerBin;
 	rmSync(homeDir, { recursive: true, force: true });
 });
 
@@ -105,14 +113,38 @@ describe('@boolean schema field (OP_VOICE_LAN_ACCESS)', () => {
 		expect(field?.value).toBe('true');
 	});
 
-	test('POST writes the boolean field to stack.env like any other non-sensitive field', async () => {
+	// OP_VOICE_LAN_ACCESS is NOT self-applying, unlike every other schema field:
+	// it changes the compose file list (voice joins assistant_net) and what the
+	// assistant entrypoint injects (OP_VOICE_URL), so the write alone left LAN
+	// voice unavailable — with the UI telling the operator to recreate the ADDON,
+	// which never touches the assistant. It now recreates both, and says so.
+	test('POST persists the boolean field AND applies it, reporting an apply failure', async () => {
 		const res = await POST(makePostEvent({ OP_VOICE_LAN_ACCESS: 'true' }, 'voice'));
-		expect(res.status).toBe(200);
-		const body = (await res.json()) as { ok: boolean; updated: string[] };
-		expect(body.ok).toBe(true);
-		expect(body.updated).toContain('OP_VOICE_LAN_ACCESS');
-
+		// No Docker in this sandbox, so the apply cannot succeed — the point here
+		// is that one was ATTEMPTED and its failure surfaced instead of a 200 that
+		// implied a setting had taken effect.
+		expect(res.status).toBe(500);
+		const body = (await res.json()) as {
+			error: string;
+			details: { updated: string[]; recreated: string[] };
+		};
+		expect(body.error).toBe('addon_env_apply_failed');
+		// The value is still persisted, and reported, so a retry is `openpalm start`
+		// rather than re-entering the setting.
+		expect(body.details.updated).toContain('OP_VOICE_LAN_ACCESS');
 		const stackEnvPath = join(homeDir, 'state', 'stack.env');
 		expect(readFileSync(stackEnvPath, 'utf-8')).toContain('OP_VOICE_LAN_ACCESS=true');
+	});
+
+	test('an ordinary schema field still saves with no compose apply at all', async () => {
+		// The guarantee that keeps the common path Docker-free: only keys listed in
+		// ADDON_ENV_RECREATE_SCOPE trigger a recreate, so a bot token or a model
+		// name saves exactly as before — 200, nothing recreated.
+		const res = await POST(makePostEvent({ DISCORD_APPLICATION_ID: '123456789' }, 'discord'));
+		expect(res.status).toBe(200);
+		const body = (await res.json()) as { ok: boolean; updated: string[]; recreated: string[] };
+		expect(body.ok).toBe(true);
+		expect(body.updated).toContain('DISCORD_APPLICATION_ID');
+		expect(body.recreated).toEqual([]);
 	});
 });

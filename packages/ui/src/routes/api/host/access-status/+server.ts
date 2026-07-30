@@ -21,10 +21,22 @@
  *                 IPv4 address, always computed regardless of whether
  *                 `networkAccess` is currently on — the point is to pair
  *                 "what you would type" with…
- *  - `reachable`— …"does it currently work": a loopback self-probe of the
- *                 published UI port (`checkExistingUiInstance`) that fetches
- *                 `/api/runtime` and confirms it is OUR non-admin container
- *                 UI, not merely that something answers the port.
+ *  - `reachable`— …"does it currently work": a self-probe of the published UI
+ *                 port (`checkExistingUiInstance`) that fetches `/api/runtime`
+ *                 and confirms it is OUR non-admin container UI, not merely
+ *                 that something answers the port.
+ *
+ *                 The probe targets the address the UI is ACTUALLY published
+ *                 on, which is not always loopback. Probing 127.0.0.1
+ *                 unconditionally answered a different question than the one
+ *                 above it, in both directions: a default loopback-only install
+ *                 answered its own probe and reported "reachable" beside LAN
+ *                 URLs that reach nothing, while a deliberately narrowed bind
+ *                 (`OP_UI_BIND_ADDRESS=192.168.1.50`) reported unreachable
+ *                 because Docker publishes `bind:port:target` on that interface
+ *                 ONLY and never also on loopback. Loopback-only now reports
+ *                 `not_published` — an honest "there is nothing on the LAN to
+ *                 reach", distinct from "something should be there and isn't".
  *
  * Guarded exactly like the neighbouring `GET /api/host/stack`:
  * `host:stack:read` capability, then `requireAdmin`.
@@ -35,11 +47,31 @@ import {
   buildLanUrls,
   checkExistingUiInstance,
   fetchAccessStatusActual,
+  isLoopback,
   readAccessToggles,
   readStackEnv,
 } from '@openpalm/lib';
 import { getState } from '$lib/server/state.js';
 import { getRequestId, jsonResponse, requireAdmin, requireCapability } from '$lib/server/helpers.js';
+
+/** `0.0.0.0` / `::` / `[::]` — published on every interface, so loopback is a
+ *  valid stand-in for the LAN address. Anything else concrete is published on
+ *  that interface ALONE and must be probed there. */
+function isWildcardBind(bind: string): boolean {
+  const v = bind.trim().replace(/^\[|\]$/g, '');
+  return v === '0.0.0.0' || v === '::';
+}
+
+/**
+ * Where to probe the published UI, or null when it is not published at all.
+ * An absent bind means loopback — the generated row writes every bind
+ * explicitly, so unset is a default and not "inherit from somewhere else".
+ */
+function probeHostForBind(bind: string | undefined): string | null {
+  const value = bind?.trim();
+  if (!value || isLoopback(value)) return null;
+  return isWildcardBind(value) ? '127.0.0.1' : value;
+}
 
 export const GET: RequestHandler = async (event) => {
   const requestId = getRequestId(event);
@@ -57,9 +89,12 @@ export const GET: RequestHandler = async (event) => {
   // (fetchAccessStatusActual degrades to null; checkExistingUiInstance
   // degrades to `{status: 'absent'}`), so nothing here needs its own
   // try/catch.
+  const probeHost = probeHostForBind(env.OP_UI_BIND_ADDRESS);
   const [actual, instance] = await Promise.all([
     fetchAccessStatusActual(state),
-    checkExistingUiInstance(port, /* expectedAdmin */ false),
+    probeHost === null
+      ? Promise.resolve(null)
+      : checkExistingUiInstance(port, /* expectedAdmin */ false, { host: probeHost }),
   ]);
 
   return jsonResponse(
@@ -71,8 +106,11 @@ export const GET: RequestHandler = async (event) => {
       urls: buildLanUrls({ port, projectName: env.OP_PROJECT_NAME ?? '' }),
       // `ok` is true only on an EXACT identity match — something answering
       // the port that is NOT our non-admin container UI (a foreign service
-      // that happens to own it) must not read as reachable.
-      reachable: { status: instance.status, ok: instance.status === 'match' },
+      // that happens to own it) must not read as reachable. A loopback-only
+      // bind is not a failed probe; there is simply nothing published to reach.
+      reachable: instance === null
+        ? { status: 'not_published' as const, ok: false, probedHost: null }
+        : { status: instance.status, ok: instance.status === 'match', probedHost: probeHost },
     },
     requestId,
   );

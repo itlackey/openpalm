@@ -6,6 +6,28 @@
  * Each schema is an env-file-shaped string: `KEY=default` lines annotated with
  * `# @required` / `# @sensitive` comment lines directly above the key.
  */
+/**
+ * Env keys whose write is not self-applying, and the services that must be
+ * recreated for it to take effect.
+ *
+ * The credentials editor persists a schema key and stops there, which is right
+ * for the values it was built for: a bot token or a model name is read by ONE
+ * container at start, so "save, then recreate that addon" is the whole apply.
+ * `OP_VOICE_LAN_ACCESS` is not that shape. Turning it on changes the compose
+ * file list (voice.compose.lan.yml joins voice to `assistant_net`) AND changes
+ * what the assistant's entrypoint injects into the UI co-process
+ * (`OP_VOICE_URL`), so recreating only the addon leaves the assistant in the old
+ * posture and LAN voice stays unavailable until some unrelated full-stack apply
+ * happens to run. That is the write-decoupled-from-apply shape the access-toggle
+ * work removed elsewhere on this branch, and it should not survive here.
+ *
+ * Declared beside the schema so a future key that needs a wider apply is one
+ * entry rather than a second special case in the route.
+ */
+export const ADDON_ENV_RECREATE_SCOPE: Record<string, readonly string[]> = {
+  OP_VOICE_LAN_ACCESS: ["voice", "assistant"],
+};
+
 export const BUILTIN_ADDON_ENV_SCHEMAS: Record<string, string> = {
   api: `# API Gateway portal configuration
 # ---

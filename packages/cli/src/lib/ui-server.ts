@@ -250,6 +250,13 @@ async function spawnUiChild(
         // own cwd (packages/ui/build/).
         OP_HOME:                homeDir,
         ...networkEnv,
+        // Explicit "the listen contract is already resolved" marker, consumed by
+        // runUiBuild below. It must be a marker WE set and not an inference from
+        // HOST being present: an ambient HOST in the operator's shell is not
+        // evidence that a supervisor derived the policy, and treating it as such
+        // let `HOST=0.0.0.0` in the environment bind every interface without the
+        // OP_ALLOW_REMOTE_SETUP opt-in.
+        OP_UI_LISTEN_RESOLVED:  '1',
         ...adminEnv,
         OP_UI_LOGIN_PASSWORD:   uiLoginPassword,
         [UI_RUNTIME_CONFIG_ENV]: runtimeConfigJson,
@@ -292,7 +299,14 @@ export async function runUiBuild(opts: { port?: number } = {}): Promise<void> {
   // parent's carefully-derived values were dead on arrival and the same inputs
   // were read at two different times by two call sites that had to agree by
   // coincidence. Whoever is first now owns the answer.
-  if (!process.env.HOST) {
+  //
+  // The test is our OWN marker, not `HOST` being set. Reading an ambient HOST as
+  // proof that a supervisor configured the listener meant `HOST=0.0.0.0` from a
+  // shell or process manager skipped this resolver entirely — including its
+  // loopback default and its ORIGIN pin — so a bare `openpalm ui` published the
+  // UI on every interface with no OP_ALLOW_REMOTE_SETUP opt-in and no origin
+  // check. An env var an operator happens to export is not a capability grant.
+  if (process.env.OP_UI_LISTEN_RESOLVED !== '1') {
     const installState = classifyLocalInstall(stackDirFor(homeDir), homeDir);
     const networkEnv = resolveUiNetworkEnv(port, resolveExpectedAdmin(false), process.env, installState);
     for (const [key, value] of Object.entries(networkEnv)) {

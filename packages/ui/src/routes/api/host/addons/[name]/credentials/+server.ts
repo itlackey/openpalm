@@ -24,6 +24,8 @@ import {
   jsonBodyError,
 } from "$lib/server/helpers.js";
 import {
+  ADDON_ENV_RECREATE_SCOPE,
+  activateStack,
   createLogger,
   getRegistryAddonConfig,
   listAvailableAddonIds,
@@ -206,7 +208,7 @@ export const POST: RequestHandler = async (event) => {
     return errorResponse(400, "bad_request", "no schema-declared keys supplied", {}, requestId);
   }
 
-  return withAdminUpdateLock(state, requestId, () => {
+  return withAdminUpdateLock(state, requestId, async (lock) => {
     try {
       if (Object.keys(sensitiveUpdates).length > 0) {
         writeStackSecretEnv(state, sensitiveUpdates);
@@ -221,6 +223,45 @@ export const POST: RequestHandler = async (event) => {
 
     const updated = [...Object.keys(sensitiveUpdates), ...Object.keys(configUpdates)].sort();
 
-    return jsonResponse(200, { ok: true, name, updated }, requestId);
+    // Most schema keys are read by the addon container alone, so persisting them
+    // IS the apply and the operator recreates that one container when ready.
+    // A few reach further — see ADDON_ENV_RECREATE_SCOPE — and for those a write
+    // with no apply is a setting that silently does nothing. Recreate exactly
+    // the services the key reaches, under the lock we already hold, so compose
+    // rebuilds its file list and the affected entrypoints re-read the value.
+    const scope = [
+      ...new Set(updated.flatMap((key) => ADDON_ENV_RECREATE_SCOPE[key] ?? [])),
+    ];
+    let recreated: string[] = [];
+    if (scope.length > 0) {
+      // activateStack THROWS on a config-resolution failure (no docker binary, an
+      // unparseable overlay) and only RETURNS ok:false for a failed up — both are
+      // the same outcome to the operator, so catch as well as check. Mirrors
+      // applyAccessToggles, which wraps its recreate for exactly this reason.
+      let detail: string | undefined;
+      try {
+        const result = await activateStack(state, { kind: 'services', services: scope }, {}, { lock });
+        recreated = result.started;
+        if (!result.ok) {
+          detail = result.error
+            || result.failed.map((entry) => `${entry.service}: ${entry.reason}`).join('; ')
+            || 'compose apply failed';
+        }
+      } catch (err) {
+        detail = err instanceof Error ? err.message : String(err);
+      }
+      if (detail) {
+        logger.error('apply failed', { name, error: detail, requestId });
+        return errorResponse(
+          500,
+          'addon_env_apply_failed',
+          `Saved, but the change could not be applied: ${detail}. Run \`openpalm start\` to retry.`,
+          { updated, recreated },
+          requestId,
+        );
+      }
+    }
+
+    return jsonResponse(200, { ok: true, name, updated, recreated }, requestId);
   });
 };

@@ -223,6 +223,7 @@ export {
   activateComposeCommand,
 } from './control-plane/activation.js';
 export type { ComposeActivationOptions } from './control-plane/activation.js';
+export { ADDON_ENV_RECREATE_SCOPE } from './control-plane/addon-env-schemas.js';
 // ── Setup Status ────────────────────────────────────────────────────────
 export {
   isSetupComplete,

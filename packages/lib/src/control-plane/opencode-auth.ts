@@ -76,6 +76,17 @@ export function assistantAuthHeaders(target: OpenCodeCredential): Record<string,
  * caller passes only a homeDir. A caller that already holds that read — the
  * `/oc` proxy resolves the URL and the credential for the same request — passes
  * it in, so "fresh per call" costs one parse rather than one per resolver.
+ *
+ * EVERY password source sits behind the gate, including the explicit
+ * `OPENCODE_SERVER_PASSWORD` override. That override used to short-circuit it,
+ * which produced a credential for a server that requires none: core.compose.yml
+ * never passes a raw `OPENCODE_SERVER_PASSWORD` to the assistant (secret-audit
+ * forbids the key, and the comment there is explicit that the password is
+ * "never a password the operator invents"), so an ambient value in a host shell
+ * describes nothing the container knows about. The visible cost was
+ * `/api/host/assistant-key` reporting `available: true` and printing that
+ * invented key as if it were the assistant's. The username override stays
+ * ungated — compose's own healthcheck honours `OPENCODE_SERVER_USERNAME`.
  */
 export function resolveOpenCodeCredential(
   homeDir: string,
@@ -85,11 +96,8 @@ export function resolveOpenCodeCredential(
   const persisted = persistedEnv ?? readStackEnv(homeDir);
   const username = env.OPENCODE_SERVER_USERNAME || DEFAULT_OPENCODE_USERNAME;
   const authEnabled = isEnabledFlag(persisted.OPENCODE_AUTH ?? env.OPENCODE_AUTH);
-  let generatedKey: string | undefined;
-  if (authEnabled) {
-    const raw = readSecret(homeDir, "op_opencode_password");
-    generatedKey = (raw ? stripTrailingNewlines(raw) : undefined) || env.OP_OPENCODE_PASSWORD;
-  }
-  const password = env.OPENCODE_SERVER_PASSWORD || generatedKey || undefined;
-  return { username, password };
+  if (!authEnabled) return { username, password: undefined };
+  const raw = readSecret(homeDir, "op_opencode_password");
+  const generatedKey = (raw ? stripTrailingNewlines(raw) : undefined) || env.OP_OPENCODE_PASSWORD;
+  return { username, password: env.OPENCODE_SERVER_PASSWORD || generatedKey || undefined };
 }

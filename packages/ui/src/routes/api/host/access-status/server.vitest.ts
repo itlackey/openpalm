@@ -147,7 +147,13 @@ describe('GET /api/host/access-status — the shape of the answer', () => {
     for (const url of body.urls as string[]) expect(url.endsWith(':4200')).toBe(true);
   });
 
+  // `reachable` answers "can a phone reach this", so the probe follows the
+  // PUBLISHED address. These seed a bind because a loopback-only install has
+  // nothing published to probe — see the not_published cases below.
+  const LAN_BIND = 'OP_ACCESS_NETWORK=true\nOP_UI_BIND_ADDRESS=0.0.0.0\n';
+
   test('reachable: match — the self-probe hits OUR non-admin container UI', async () => {
+    seedSecretsEnv(homeDir, LAN_BIND);
     vi.stubGlobal(
       'fetch',
       vi.fn().mockResolvedValue({ ok: true, json: async () => ({ admin: false }) }),
@@ -155,10 +161,12 @@ describe('GET /api/host/access-status — the shape of the answer', () => {
     const { GET } = await loadRoute();
     const res = await GET(makeGetEvent());
     const body = (await res.json()) as Record<string, unknown>;
-    expect(body.reachable).toEqual({ status: 'match', ok: true });
+    // A wildcard bind IS published on loopback too, so probing there is valid.
+    expect(body.reachable).toEqual({ status: 'match', ok: true, probedHost: '127.0.0.1' });
   });
 
   test('reachable: mismatch — something answers the port but is not our non-admin UI', async () => {
+    seedSecretsEnv(homeDir, LAN_BIND);
     vi.stubGlobal(
       'fetch',
       vi.fn().mockResolvedValue({ ok: true, json: async () => ({ admin: true }) }),
@@ -166,14 +174,42 @@ describe('GET /api/host/access-status — the shape of the answer', () => {
     const { GET } = await loadRoute();
     const res = await GET(makeGetEvent());
     const body = (await res.json()) as Record<string, unknown>;
-    expect(body.reachable).toEqual({ status: 'mismatch', ok: false });
+    expect(body.reachable).toEqual({ status: 'mismatch', ok: false, probedHost: '127.0.0.1' });
   });
 
-  test('reachable: absent — nothing answers the port (the default stub)', async () => {
+  test('reachable: absent — published, but nothing answers (the default stub)', async () => {
+    seedSecretsEnv(homeDir, LAN_BIND);
     const { GET } = await loadRoute();
     const res = await GET(makeGetEvent());
     const body = (await res.json()) as Record<string, unknown>;
-    expect(body.reachable).toEqual({ status: 'absent', ok: false });
+    expect(body.reachable).toEqual({ status: 'absent', ok: false, probedHost: '127.0.0.1' });
+  });
+
+  test('reachable: not_published on a loopback-only install — and no probe is made', async () => {
+    // The default posture. Probing 127.0.0.1 here answered its own question and
+    // reported "reachable" next to LAN URLs that reach nothing at all — the
+    // single most misleading thing this endpoint could say.
+    const probe = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ admin: false }) });
+    vi.stubGlobal('fetch', probe);
+    const { GET } = await loadRoute();
+    const res = await GET(makeGetEvent());
+    const body = (await res.json()) as Record<string, unknown>;
+    expect(body.reachable).toEqual({ status: 'not_published', ok: false, probedHost: null });
+    expect(probe).not.toHaveBeenCalled();
+  });
+
+  test('a CONCRETE bind is probed at that address, not at loopback', async () => {
+    // Docker maps `bind:port:target` onto that interface ONLY, so a narrowed
+    // bind is not reachable via 127.0.0.1 and probing loopback reported the
+    // opposite of the truth: unreachable while the LAN URL worked.
+    seedSecretsEnv(homeDir, 'OP_ACCESS_NETWORK=true\nOP_UI_BIND_ADDRESS=192.168.1.50\n');
+    const probe = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ admin: false }) });
+    vi.stubGlobal('fetch', probe);
+    const { GET } = await loadRoute();
+    const res = await GET(makeGetEvent());
+    const body = (await res.json()) as Record<string, unknown>;
+    expect(body.reachable).toEqual({ status: 'match', ok: true, probedHost: '192.168.1.50' });
+    expect(String(probe.mock.calls[0]?.[0])).toContain('http://192.168.1.50:3800/');
   });
 
   test('intent reflects a stored networkAccess:true toggle', async () => {

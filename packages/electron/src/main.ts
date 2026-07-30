@@ -19,7 +19,6 @@ import {
   waitForReady as libWaitForReady,
   checkExistingUiInstance,
   readyOrChildExit,
-  resolveHostUiPort,
   resolveUiListenEnv,
   consumePendingUiBackup,
   restoreUiBackup,
@@ -29,6 +28,7 @@ import {
   hasMaterializedLocalInstall,
 } from '@openpalm/lib';
 import { HARNESS_CONTRACT_VERSION } from './harness-contract.js';
+import { UI_PORT } from './ui-port.js';
 import { checkForElectronUpdate, getCachedUpdateInfo, type UpdateInfo } from './update-check.js';
 import { loadSettings, saveSettings } from './settings.js';
 import { killProcessTree } from './process-tree.js';
@@ -115,16 +115,9 @@ function writeChildLog(text: string): void {
   try { logStream?.write(text); } catch { /* best-effort */ }
 }
 
-// The host UI port, resolved through lib's network contract so this harness and
-// the CLI cannot disagree. It previously read live env alone, ignoring the
-// OP_HOST_UI_PORT a headless install persists to stack.env — so on the same home
-// `openpalm` bound the persisted port while the desktop app bound 3880, and the
-// mic-permission origin check keyed off Electron's wrong answer.
-const UI_PORT = resolveHostUiPort(
-  undefined,
-  process.env,
-  parseEnvFile(stackEnvFile(resolveOpenPalmHome())),
-);
+// The host UI port lives in ./ui-port.ts so permissions.ts reads the SAME value
+// this file serves on — see that module's header for why a second resolution
+// silenced the microphone on custom-port installs.
 
 const READY_TIMEOUT_MS = 60_000;
 const MIC_SHORTCUT = 'CommandOrControl+Shift+M';
