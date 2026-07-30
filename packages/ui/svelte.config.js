@@ -17,6 +17,21 @@ const config = {
       envPrefix: "",
     }),
     version: { name: pkg.version },
+    // SvelteKit's own form-CSRF check is disabled (`trustedOrigins: ['*']` is
+    // its supported way to say so); `checkOriginHeader` in hooks.server.ts is
+    // the single origin gate. This is NOT "no CSRF protection" — every
+    // state-changing request still passes the audited check, plus the Host
+    // allowlist, and every /api/host route requires a session cookie.
+    //
+    // The framework check compares Origin against `event.url.origin`, which
+    // under adapter-node is the PINNED ORIGIN env value. That made it a fourth,
+    // unmanaged gate that contradicted the audited one: our check deliberately
+    // accepts SSH tunnels and both loopback spellings, while this one 403'd any
+    // form-like POST (multipart/form-data, urlencoded, text/plain) whose browser
+    // origin differed from the pin — which is exactly how voice uploads failed
+    // through `ssh -L`, while JSON logins sailed through because they are exempt
+    // from it. One gate, audited, with tests.
+    csrf: { trustedOrigins: ['*'] },
     // CSP — enforced from day one (not Report-Only). SvelteKit emits a
     // <meta http-equiv="Content-Security-Policy"> tag with auto-computed
     // hashes for the inline hydration scripts it injects. Without 'hash'

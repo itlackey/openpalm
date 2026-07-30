@@ -72,20 +72,28 @@ describe('configureMediaPermissions request handler', () => {
     expect(requestAllowed('http://127.0.0.1:3880/chat', 'notifications')).toBe(false);
   });
 
-  it('uses the configured local UI port rather than trusting every loopback port', () => {
+  // The port is resolved ONCE, at ../src/ui-port.js module load, and shared with
+  // main.ts so the window's origin and this check cannot disagree — so the env
+  // has to be set before the import, not mutated between calls. That is the
+  // point rather than an inconvenience: re-resolving per request would let a
+  // stack.env edit mid-session change which origin is trusted while the running
+  // window stays on the old port.
+  it('uses the configured local UI port rather than trusting every loopback port', async () => {
     process.env.OP_HOST_UI_PORT = '4999';
-    configureMediaPermissions();
+    vi.resetModules();
+    const { configureMediaPermissions: configure } = await import('../src/permissions.js');
+    mocks.setPermissionRequestHandler.mockClear();
+    configure();
     const handler = mocks.setPermissionRequestHandler.mock.calls.at(-1)?.[0] as RequestHandler;
-    let configuredAllowed = false;
-    handler(null, 'media', (value) => {
-      configuredAllowed = value;
-    }, { requestingUrl: 'http://localhost:4999/chat' });
-    expect(configuredAllowed).toBe(true);
-    let defaultAllowed = true;
-    handler(null, 'media', (value) => {
-      defaultAllowed = value;
-    }, { requestingUrl: 'http://localhost:3880/chat' });
-    expect(defaultAllowed).toBe(false);
+    const allowedFor = (url: string): boolean => {
+      let allowed = false;
+      handler(null, 'media', (value) => {
+        allowed = value;
+      }, { requestingUrl: url });
+      return allowed;
+    };
+    expect(allowedFor('http://localhost:4999/chat')).toBe(true);
+    expect(allowedFor('http://localhost:3880/chat')).toBe(false);
   });
 });
 

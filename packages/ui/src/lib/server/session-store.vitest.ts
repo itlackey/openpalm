@@ -114,6 +114,35 @@ describe("getUiLoginPassword (C3 — the file is the live source of truth)", () 
     process.env.OP_UI_LOGIN_PASSWORD = "env-only-password";
     expect(getUiLoginPassword()).toBe("env-only-password");
   });
+
+  test("the container co-process trusts ONLY its injected secret, never a file", () => {
+    // In the assistant container the UI co-process resolves OP_HOME inside the
+    // agent-writable data mount, so a file-first read lets an agent (or a
+    // restored backup, or a plugin) write a password file there and silently
+    // replace the operator's LAN login password. The compose secret is the only
+    // authority in that process.
+    process.env.OP_UI_SERVED_IN_CONTAINER = "1";
+    try {
+      process.env.OP_UI_LOGIN_PASSWORD = "injected-by-compose";
+      writeSecret(resolveOpenPalmHome(), "op_ui_login_password", "written-by-the-agent");
+      expect(getUiLoginPassword()).toBe("injected-by-compose");
+    } finally {
+      delete process.env.OP_UI_SERVED_IN_CONTAINER;
+    }
+  });
+
+  test("the container co-process fails closed when no secret was injected", () => {
+    process.env.OP_UI_SERVED_IN_CONTAINER = "1";
+    try {
+      delete process.env.OP_UI_LOGIN_PASSWORD;
+      writeSecret(resolveOpenPalmHome(), "op_ui_login_password", "written-by-the-agent");
+      // Empty means "no password configured" — every authenticated route then
+      // 503s rather than accepting an agent-chosen credential.
+      expect(getUiLoginPassword()).toBe("");
+    } finally {
+      delete process.env.OP_UI_SERVED_IN_CONTAINER;
+    }
+  });
 });
 
 describe("touchSession (sliding renewal)", () => {

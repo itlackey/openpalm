@@ -1,8 +1,9 @@
 import { app, BrowserWindow, shell, dialog, ipcMain, globalShortcut, Notification } from 'electron';
 import { join, dirname } from 'node:path';
-import { existsSync, readFileSync, writeFileSync, rmSync, mkdirSync, createWriteStream, type WriteStream } from 'node:fs';
+import { existsSync, mkdirSync, createWriteStream, type WriteStream } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { spawn, type ChildProcess } from 'node:child_process';
+import { once } from 'node:events';
 
 import {
   resolveOpenPalmHome,
@@ -16,6 +17,9 @@ import {
   stackEnvFile,
   PLATFORM_VERSION,
   waitForReady as libWaitForReady,
+  checkExistingUiInstance,
+  readyOrChildExit,
+  resolveUiListenEnv,
   consumePendingUiBackup,
   restoreUiBackup,
   UiSupervisor,
@@ -24,9 +28,10 @@ import {
   hasMaterializedLocalInstall,
 } from '@openpalm/lib';
 import { HARNESS_CONTRACT_VERSION } from './harness-contract.js';
+import { UI_PORT } from './ui-port.js';
 import { checkForElectronUpdate, getCachedUpdateInfo, type UpdateInfo } from './update-check.js';
 import { loadSettings, saveSettings } from './settings.js';
-import { startLocalOpenCode, killProcessTree, type LocalOpencodeHandle } from './local-opencode.js';
+import { killProcessTree } from './process-tree.js';
 import { resolveAssetPath } from './assets.js';
 import { SplashWindow } from './splash.js';
 import { TrayController } from './tray.js';
@@ -110,26 +115,9 @@ function writeChildLog(text: string): void {
   try { logStream?.write(text); } catch { /* best-effort */ }
 }
 
-/**
- * Resolve the admin-tools path. Priority:
- *   1. extraResources path (packaged Electron build)
- *   2. Workspace dist path (running from source in dev)
- */
-function resolveAdminToolsPluginPath(): string {
-  // Production: electron-builder copies to resources/admin-tools/index.js
-  const packed = join(process.resourcesPath ?? '', 'admin-tools', 'index.js');
-  if (existsSync(packed)) return packed;
-  // Dev: __dirname is packages/electron/dist/ → sibling admin-tools/dist/
-  const dev = join(__dirname, '..', 'admin-tools', 'dist', 'index.js');
-  if (existsSync(dev)) return dev;
-  throw new Error('Admin tools plugin is missing from both packaged resources and the workspace build');
-}
-
-// Default host UI port used when the corresponding env override is unset.
-// (The assistant-port default used to live here too, but resolving the
-// assistant URL is now entirely lib's job — see resolveAssistantUrl/E1.)
-const DEFAULT_UI_PORT = 3880;
-const UI_PORT = Number(process.env.OP_HOST_UI_PORT) || DEFAULT_UI_PORT;
+// The host UI port lives in ./ui-port.ts so permissions.ts reads the SAME value
+// this file serves on — see that module's header for why a second resolution
+// silenced the microphone on custom-port installs.
 
 const READY_TIMEOUT_MS = 60_000;
 const MIC_SHORTCUT = 'CommandOrControl+Shift+M';
@@ -137,7 +125,6 @@ const APP_USER_MODEL_ID = 'com.openpalm.app';
 
 let mainWindow: BrowserWindow | null = null;
 let uiProcess: ChildProcess | null = null;
-let localOpencode: LocalOpencodeHandle | null = null;
 let registeredMicShortcut: string | null = null;
 // Whether the GitHub update check should surface prereleases (#504). Loaded from
 // desktop settings at boot; toggled live from the tray. Notify-only.
@@ -215,12 +202,24 @@ export function buildUIServerEnv(homeDir: string, port: number, update?: UpdateI
     stackForUi[k] = v;
   }
   const env: NodeJS.ProcessEnv = {
-    ...process.env,
+    // Persisted stack.env UNDER live env: live-env-wins matches every other
+    // resolver in the codebase (the UI's own startup promotion, lib's
+    // resolveAssistantEndpoint, the CLI's port resolution). This spread was
+    // inverted, so a value an operator exported before launching the desktop app
+    // was silently clobbered by the file — while the identical launch through
+    // `openpalm` honored it. Same home, two harnesses, opposite precedence.
     ...stackForUi,
+    ...process.env,
     OP_HOME: homeDir,
-    HOST: '127.0.0.1',
-    PORT: String(port),
-    ORIGIN: `http://127.0.0.1:${port}`,
+    // The shared listen contract, not a hand-baked copy of it. The desktop app
+    // is unconditionally an admin host UI, so it always lands in the same branch
+    // — but "always lands there" is a property of the CALLER, and baking the
+    // branch's OUTPUT here made it a second implementation that only agreed by
+    // coincidence. That is the exact shape of every bug this subsystem's rework
+    // was chasing: same home, two harnesses, two answers. Spreading the resolver
+    // also clears HOST_HEADER/PROTOCOL_HEADER, so an inherited forwarded-header
+    // setting cannot reach an admin child that must never honour one.
+    ...resolveUiListenEnv({ port, admin: true, allowRemote: false }),
     OP_ALLOW_REMOTE_SETUP: '0',
     OP_INSIDE_ELECTRON: '1',
     OP_ELECTRON_VERSION: app.getVersion?.() ?? '',
@@ -238,7 +237,13 @@ export function buildUIServerEnv(homeDir: string, port: number, update?: UpdateI
     // — and `latest`/`latest-*` are never published for prereleases, so the
     // deploy failed with "manifest unknown". The deploy reads the versions from
     // stack.env via --env-file; leave them untouched.
-    OP_OPENCODE_URL: resolveAssistantUrl(homeDir),
+    // Deliberately NOT baking OP_OPENCODE_URL. Freezing the assistant URL at
+    // launch made the child unable to tell a harness-generated value from an
+    // operator override, so it resorted to reverse-engineering the URL's shape
+    // (loopback host, matching old port, empty path) to decide whether to
+    // discard it — and any change to how this side formatted the URL silently
+    // broke that detection and stranded the proxy on a dead port. The child
+    // resolves it lazily through the same lib resolver instead.
   };
   // Pass the bundled skeleton path so the UI server can refresh the registry
   // on startup without needing the source repo or a network download.
@@ -254,26 +259,15 @@ export function buildUIServerEnv(homeDir: string, port: number, update?: UpdateI
 }
 
 // ── UI server lifecycle ──────────────────────────────────────────────────────
-
-/** Kill an orphaned UI server left by a previous crashed Electron instance. */
-async function killStaleUIServer(pidFile: string): Promise<void> {
-  let pid: number | null = null;
-  try {
-    const raw = readFileSync(pidFile, 'utf-8').trim();
-    const n = Number.parseInt(raw, 10);
-    if (Number.isFinite(n) && n > 0) pid = n;
-  } catch {
-    return; // no PID file — nothing to do
-  }
-  if (!pid) return;
-  try { process.kill(pid, 0); } catch { return; } // already dead
-  console.log(`Killing stale UI server (PID ${pid})…`);
-  // Group-kill: the stale node server may have left an `opencode serve` child
-  // (the setup wizard). killProcessTree reaps the whole subtree.
-  killProcessTree(pid, 'SIGTERM');
-  await new Promise(r => setTimeout(r, 2000));
-  killProcessTree(pid, 'SIGKILL');
-}
+//
+// There is deliberately no stale-pid sweep. It read `.ui-server.pid` and
+// group-killed whatever process currently owned that pid, verifying only that
+// the pid was alive — never that it was OUR server. After an unclean shutdown,
+// or simply pid recycling on a busy machine, that pid can belong to an
+// arbitrary user process, which every subsequent launch then SIGTERM/SIGKILLed
+// along with its children. The identity probe in startUIServer supersedes it:
+// an admin-capable OpenPalm UI on the port is attached to, anything else is
+// reported, and nothing is killed on the strength of a recorded number.
 
 /**
  * Poll the UI server's /health until ready. Thin re-export of the shared lib
@@ -296,6 +290,13 @@ async function startUIServer(): Promise<void> {
   // the harness only ensures dirs here. The UI child locates the bundled skeleton
   // via OPENPALM_SKELETON_DIR (set in buildUIServerEnv).
   ensureHomeDirs();
+
+  // NOTE: home migrations are deliberately NOT run here. This harness is
+  // frozen and shipped; anything that mutates control-plane state or runs a
+  // migration belongs in the updatable data/ui control plane
+  // (scripts/validate-thin-harness-boundary.sh enforces this). The UI child
+  // runs them at startup instead — packages/ui/src/hooks.server.ts — which
+  // covers this harness and the CLI supervisor with one owner.
 
   // app.getVersion() is the HARNESS marketing version — use it ONLY for the
   // genuinely harness-scoped Electron self-update check (which polls GitHub
@@ -378,15 +379,47 @@ async function startUIServer(): Promise<void> {
     }
   }
 
-  const uiPidFile = join(dataDir, '.ui-server.pid');
-  await killStaleUIServer(uiPidFile);
+  // Identity probe BEFORE spawning (shared with the CLI via lib). A bare
+  // readiness poll cannot tell "our child is starting" from "our child died of
+  // EADDRINUSE and something else owns the port": with a plain `openpalm`
+  // already serving a non-admin UI on this port, the desktop app used to adopt
+  // that foreign server and open its window onto a UI with no host capability,
+  // /host silently redirecting to /chat. This replaces the pid-file kill, which
+  // signalled whatever process currently held a recorded pid — after an unclean
+  // shutdown and pid reuse, that could be any user process.
+  const existing = await checkExistingUiInstance(UI_PORT, true);
+  if (existing.status === 'mismatch') {
+    splash.close();
+    dialog.showErrorBox(
+      'OpenPalm is already running',
+      [
+        `Another OpenPalm UI (admin=${existing.admin}) is already listening on port ${UI_PORT}.`,
+        '',
+        'The desktop app needs an admin-capable UI on that port. Stop the other',
+        'instance (e.g. the `openpalm` you started in a terminal) and reopen this app.',
+      ].join('\n'),
+    );
+    app.quit();
+    return;
+  }
 
-  spawnUIServer(uiBuildDir, homeDir, uiPidFile, appUpdate);
-  // Hand the bespoke initial child to the shared supervisor so a later
-  // SIGUSR2/IPC restart knows which handle to stop (§6.2).
-  if (uiProcess) uiSupervisor.adopt(uiProcess);
+  if (existing.status === 'absent') {
+    spawnUIServer(uiBuildDir, homeDir, appUpdate);
+    // Hand the bespoke initial child to the shared supervisor so a later
+    // SIGUSR2/IPC restart knows which handle to stop (§6.2).
+    if (uiProcess) uiSupervisor.adopt(uiProcess);
+  } else {
+    // An admin-capable instance already owns the port — attach to it rather
+    // than racing it for the socket. It owns its own lifecycle.
+    console.log(`Reusing already-running admin UI server on port ${UI_PORT}.`);
+  }
 
-  const ready = await waitForReady(UI_PORT);
+  // Lose to the child's own death instead of waiting out the full timeout while
+  // an unrelated process on the port answers for it.
+  const ready = await readyOrChildExit(
+    () => waitForReady(UI_PORT),
+    uiProcess ? once(uiProcess, 'exit') : undefined,
+  );
   if (!ready) {
     const recentLogs = getRecentStderr(40);
     const detail = [
@@ -413,7 +446,6 @@ async function startUIServer(): Promise<void> {
 function spawnUIServer(
   uiBuildDir: string,
   homeDir: string,
-  uiPidFile: string,
   appUpdate?: UpdateInfo | null,
 ): void {
   seedLegacyServedUiRuntimeConfig(uiBuildDir, homeDir);
@@ -442,10 +474,6 @@ function spawnUIServer(
     // re-emit to the parent's streams for terminal users).
     stdio: ['ignore', 'pipe', 'pipe'],
   });
-  if (uiProcess.pid) {
-    try { writeFileSync(uiPidFile, String(uiProcess.pid)); } catch { /* best-effort */ }
-  }
-
   // Tail UI server stdout to the parent stdout + log file.
   uiProcess.stdout?.on('data', (chunk: Buffer) => {
     const text = chunk.toString();
@@ -538,8 +566,6 @@ const uiSupervisor = new UiSupervisor<ChildProcess>({
     // false and the app stays up, matching the pre-refactor `return false` guard.
     spawn: () => {
       const homeDir = resolveOpenPalmHome();
-      const dataDir = resolveDataDir();
-      const uiPidFile = join(dataDir, '.ui-server.pid');
       const uiBuildDir = resolveUiBuildDir();
       if (!existsSync(join(uiBuildDir, 'index.js'))) {
         // Log the EXACT pre-refactor message on stderr, then throw a marker the
@@ -547,7 +573,7 @@ const uiSupervisor = new UiSupervisor<ChildProcess>({
         console.error('UI restart aborted: build not found at', uiBuildDir);
         throw new UiRestartAbortError();
       }
-      spawnUIServer(uiBuildDir, homeDir, uiPidFile, getCachedUpdateInfo());
+      spawnUIServer(uiBuildDir, homeDir, getCachedUpdateInfo());
       if (!uiProcess) throw new Error('UI server failed to spawn');
       return uiProcess;
     },
@@ -621,7 +647,6 @@ function stopUIServer(): void {
     killProcessTree(pid, 'SIGTERM');
     killProcessTree(pid, 'SIGKILL');
   }
-  try { rmSync(join(resolveDataDir(), '.ui-server.pid'), { force: true }); } catch { /* best-effort */ }
 }
 
 // ── Window management ────────────────────────────────────────────────────────
@@ -858,22 +883,6 @@ app.whenReady().then(async () => {
     return;
   }
 
-  // Spawn the ephemeral local OpenCode (Phase 3). Non-fatal: if the binary
-  // is missing or spawn fails, the UI shows a sentinel and remote endpoints
-  // continue to work.
-  try {
-    const dataDir = `${resolveOpenPalmHome()}/data`;
-    localOpencode = await startLocalOpenCode({ dataDir, pluginPath: resolveAdminToolsPluginPath() });
-    if (localOpencode) {
-      console.log(`Local OpenCode listening on ${localOpencode.url}`);
-    }
-  } catch (err) {
-    console.warn(
-      'Local OpenCode spawn raised; continuing without it:',
-      err instanceof Error ? err.message : String(err),
-    );
-  }
-
   configureMediaPermissions();
   await openWindow();
   createTray();
@@ -963,25 +972,9 @@ app.on('before-quit', (event) => {
   globalShortcut.unregisterAll();
   trayController.stopAnimation();
   stopUIServer();
-  const handle = localOpencode;
-  localOpencode = null;
-  // Safety net: if stop() hangs, force-quit after 500 ms.
   // Use app.exit(0), NOT app.quit() — calling app.quit() from within a
-  // before-quit handler is re-entrant; Electron may silently no-op it on
-  // some versions, leaving the app hanging. app.exit() exits the process
-  // directly without re-firing before-quit.
-  const forceQuitTimer = setTimeout(() => app.exit(0), 500);
-  if (handle) {
-    handle.stop()
-      .catch((err: unknown) => {
-        console.warn('Local OpenCode stop raised:', err instanceof Error ? err.message : String(err));
-      })
-      .finally(() => {
-        clearTimeout(forceQuitTimer);
-        app.exit(0);
-      });
-  } else {
-    clearTimeout(forceQuitTimer);
-    app.exit(0);
-  }
+  // before-quit handler is re-entrant; Electron may silently no-op it on some
+  // versions, leaving the app hanging. app.exit() exits the process directly
+  // without re-firing before-quit.
+  app.exit(0);
 });

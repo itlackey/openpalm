@@ -13,6 +13,7 @@
  * reported as "ours", not a conflict.
  */
 import { createServer } from "node:net";
+import { STACK_DEFAULTS } from "./defaults.js";
 import type { DockerClient } from "./docker.js";
 import { realDockerClient } from "./docker.js";
 
@@ -94,9 +95,9 @@ function pickPort(...envNames: string[]): number | null {
  */
 export function resolveInstallPortTargets(): InstallPortTarget[] {
   return [
-    { port: pickPort("OP_HOST_UI_PORT") ?? 3880, service: "admin", blocking: true },
-    { port: pickPort("OP_UI_PORT") ?? 3800, service: "ui", blocking: true },
-    { port: pickPort("OP_ASSISTANT_PORT") ?? 3810, service: "assistant", blocking: true },
+    { port: pickPort("OP_HOST_UI_PORT") ?? STACK_DEFAULTS.ports.hostUi, service: "admin", blocking: true },
+    { port: pickPort("OP_UI_PORT") ?? STACK_DEFAULTS.ports.ui, service: "ui", blocking: true },
+    { port: pickPort("OP_ASSISTANT_PORT") ?? STACK_DEFAULTS.ports.assistant, service: "assistant", blocking: true },
   ];
 }
 

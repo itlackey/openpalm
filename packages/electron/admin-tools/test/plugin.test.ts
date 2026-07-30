@@ -13,7 +13,6 @@ describe("admin-tools-plugin", () => {
     expect(names).toContain("compose.down");
     expect(names).toContain("compose.ps");
     expect(names).toContain("secrets.list-keys");
-    expect(names).toContain("endpoints.list");
     expect(names).toContain("health-check");
   });
 

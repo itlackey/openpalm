@@ -20,7 +20,7 @@ const target = vi.hoisted(() => ({
 }));
 
 vi.mock('$lib/server/opencode-target.js', () => ({
-  getHostOpencodeTarget: () => target.value,
+  getAssistantOpencodeTarget: () => target.value,
 }));
 
 import { GET, POST } from './+server.js';
@@ -170,5 +170,65 @@ describe('/oc/* — transparency', () => {
     const res = await GET(makeEvent('session'));
     expect(res.status).toBe(502);
     expect(await res.json()).toMatchObject({ error: 'assistant_unreachable' });
+  });
+});
+
+describe('/oc/* — long turns', () => {
+  test('a slow-to-respond turn is NOT aborted by this route', async () => {
+    // OpenCode returns the headers of POST /session/:id/message only when the
+    // turn COMPLETES. A header-arrival timeout here therefore caps chat turn
+    // length on the locked default connection — a 30s cap used to surface as
+    // `502 assistant_unreachable` on any tool-using or long-reasoning turn.
+    // The only abort this route may honor is the client's own.
+    let aborted = false;
+    // The upstream withholds its headers until the "turn" finishes. It is a
+    // bare promise, not a timer, so advancing fake time cannot complete it —
+    // only a timer the ROUTE armed can fire.
+    let finishTurn: () => void = () => {};
+    const turnComplete = new Promise<void>((r) => {
+      finishTurn = r;
+    });
+    vi.stubGlobal('fetch', (async (_url: string, init: RequestInit) => {
+      init.signal?.addEventListener('abort', () => {
+        aborted = true;
+      });
+      await turnComplete;
+      return new Response('{"ok":true}', { status: 200 });
+    }) as unknown as typeof globalThis.fetch);
+
+    vi.useFakeTimers();
+    try {
+      const pending = POST(makeEvent('session/abc/message', { method: 'POST', body: '{}' }));
+      // Fast-forward well past any fixed budget this route might arm.
+      await vi.advanceTimersByTimeAsync(120_000);
+      expect(aborted, 'a long turn must not be aborted by the proxy').toBe(false);
+
+      finishTurn();
+      expect((await pending).status).toBe(200);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test("still forwards the client's disconnect so /event tears down upstream", async () => {
+    const clientAbort = new AbortController();
+    let upstreamAborted = false;
+    vi.stubGlobal('fetch', (async (_url: string, init: RequestInit) => {
+      init.signal?.addEventListener('abort', () => {
+        upstreamAborted = true;
+      });
+      return new Response('data: {}\n\n', {
+        status: 200,
+        headers: { 'content-type': 'text/event-stream' },
+      });
+    }) as unknown as typeof globalThis.fetch);
+
+    const event = makeEvent('event');
+    Object.defineProperty(event.request, 'signal', { value: clientAbort.signal });
+    await GET(event);
+    expect(upstreamAborted).toBe(false);
+
+    clientAbort.abort();
+    expect(upstreamAborted).toBe(true);
   });
 });

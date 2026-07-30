@@ -86,7 +86,7 @@ export type { AddonProfileAvailability } from "./control-plane/addon-availabilit
 export { getAddonProfileAvailability, execFileNoThrow } from "./control-plane/addon-availability.js";
 
 // ── Voice addon host-fact probes (rootless docker, nvidia runtime) ───────
-export { detectRootlessDocker, dockerHasNvidiaRuntime } from "./control-plane/voice-host-probes.js";
+export { detectRootlessDocker, dockerHasNvidiaRuntime, isVoiceLanAccessEnabled } from "./control-plane/voice-host-probes.js";
 
 // ── Home Layout (v0.11.0) ───────────────────────────────────────────────
 export {
@@ -137,6 +137,14 @@ export {
 } from "./control-plane/env.js";
 // ── OpenCode Client ─────────────────────────────────────────────────────
 export { createOpenCodeClient } from "./control-plane/opencode-client.js";
+export {
+  assistantAuthHeaders,
+  basicAuthHeader,
+  DEFAULT_OPENCODE_USERNAME,
+  resolveOpenCodeCredential,
+  stripTrailingNewlines,
+  type OpenCodeCredential,
+} from "./control-plane/opencode-auth.js";
 export type { ProxyResult, OpenCodeProvider, OpenCodeSession } from "./control-plane/opencode-client.js";
 
 // ── Secrets ─────────────────────────────────────────────────────────────
@@ -215,6 +223,7 @@ export {
   activateComposeCommand,
 } from './control-plane/activation.js';
 export type { ComposeActivationOptions } from './control-plane/activation.js';
+export { ADDON_ENV_RECREATE_SCOPE } from './control-plane/addon-env-schemas.js';
 // ── Setup Status ────────────────────────────────────────────────────────
 export {
   isSetupComplete,
@@ -649,7 +658,7 @@ export type { AkmStats } from './control-plane/akm-stats.js';
 export { getAkmStats, parseAkmStats } from './control-plane/akm-stats.js';
 
 // ── Bind Address Startup Warning ─────────────────────────────────────────────
-export { isRemoteSetupAllowed, isLoopback, isUiLanExposed } from "./control-plane/bind-warning.js";
+export { isEnabledFlag, isRemoteSetupAllowed, isLoopback, isTrustedProxyEnabled } from "./control-plane/bind-warning.js";
 
 // ── Network access toggles ───────────────────────────────────────────────────
 export {
@@ -663,9 +672,18 @@ export {
   coerceAccessToggles,
   requiresAssistantKey,
   describeAccessExposure,
+  hasStoredAccessIntent,
+  resolveAccessIntentEnv,
+  ACCESS_INTENT_KEYS,
   type AccessToggles,
   type AccessEnv,
 } from "./control-plane/access-toggles.js";
+export {
+  applyAccessToggles,
+  diffAccessEnv,
+  reconcileGuardianIngressAddons,
+  type AccessApplyResult,
+} from "./control-plane/access-apply.js";
 
 // ── mDNS host self-advertisement (#488) ──────────────────────────────────────
 // Pure helpers (sanitizeDnsLabel, resolveMdnsAdvertisements, etc.) stay
@@ -677,10 +695,23 @@ export {
   resolveMdnsStatus,
   reconcileMdnsResponder,
   _setMdnsFactoryForTests,
+  _setMdnsProbeForTests,
   _resetMdnsResponderForTests,
   type MdnsAdvertisement,
   type MdnsStatus,
 } from "./control-plane/mdns-responder.js";
+
+// ── LAN URLs — the access-status "what do I type on my phone" answer ────────
+export { buildLanUrls, collectNonInternalIpv4 } from "./control-plane/lan-urls.js";
+export type { BuildLanUrlsInput, LanInterfaceEntry, LanInterfaceMap } from "./control-plane/lan-urls.js";
+
+// ── Access status "actual" — Docker's view of the access-toggle containers ──
+export { fetchAccessStatusActual, resolveContainerActualStatus } from "./control-plane/access-status.js";
+export type {
+  AccessStatusActual,
+  AccessStatusService,
+  ContainerActualStatus,
+} from "./control-plane/access-status.js";
 
 // ── UI asset seeding and resolution ─────────────────────────────────────────
 export type { UiBuildUpdateResult, SkeletonUpdateResult, UiUpdateChannel } from "./control-plane/ui-assets.js";
@@ -732,18 +763,36 @@ export {
 export { resolveAssistantEndpoint } from './control-plane/assistant-endpoint.js';
 export { normalizeLoopbackUrl } from './control-plane/url-normalize.js';
 
+// ── Host UI network contract (one owner for port + bind) ─────────────────────
+// STACK_DEFAULTS is the canonical port table; it is exported here so consumers
+// stop re-typing 3880/3800/3810 as inline fallbacks.
+export { STACK_DEFAULTS } from "./control-plane/defaults.js";
+export {
+  DEFAULT_HOST_UI_PORT,
+  DEFAULT_PUBLISHED_UI_PORT,
+  UI_LOOPBACK_HOST,
+  resolveEnvPort,
+  resolveHostUiPort,
+  resolvePublishedUiPort,
+  resolveUiListenEnv,
+  type UiListenEnv,
+} from "./control-plane/network-contract.js";
+
 // ── UI-server supervisor primitives (shared by CLI + Electron) ───────────────
 export type {
   WaitForReadyDeps,
   RestoreUiBackupDeps,
   RestoreUiBackupOutcome,
   UiChildStrategy,
+  UiInstanceCheck,
   UiSupervisorCallbacks,
   UiSupervisorOptions,
 } from "./control-plane/ui-supervisor.js";
 export {
   DEFAULT_READY_TIMEOUT_MS,
+  checkExistingUiInstance,
   consumePendingUiBackup,
+  readyOrChildExit,
   recordPendingUiBackup,
   waitForReady,
   restoreUiBackup,

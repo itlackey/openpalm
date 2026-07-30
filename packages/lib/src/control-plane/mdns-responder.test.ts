@@ -18,11 +18,16 @@ import {
   resolveMdnsAdvertisements,
   resolveMdnsStatus,
   sanitizeDnsLabel,
+  _awaitMdnsProbeForTests,
   _resetMdnsResponderForTests,
   _setMdnsFactoryForTests,
+  _setMdnsIntervalSchedulerForTests,
+  _setMdnsProbeForTests,
   type MdnsAnswer,
   type MdnsFactory,
   type MdnsInstance,
+  type MdnsIntervalScheduler,
+  type MdnsProbe,
   type MdnsRemoteInfo,
 } from "./mdns-responder.js";
 
@@ -302,13 +307,23 @@ const GUARDIAN_ENV = { GUARDIAN_DIRECT_INGRESS: "true", OP_GUARDIAN_BIND_ADDRESS
 const LOOPBACK_ENV = { OP_ASSISTANT_BIND_ADDRESS: "127.0.0.1" };
 
 describe("mdns responder records", () => {
-  /** Reconcile a responder into existence and hand back its stub instance. */
-  function startStub(env: Record<string, string | undefined> = ASSISTANT_ENV): {
+  /**
+   * Reconcile a responder into existence and hand back its stub instance.
+   * ASYNC (contract change, Phase 2 §2 self-probe): the responder no longer
+   * starts synchronously inside `reconcileMdnsResponder` — it starts once a
+   * self-probe confirms the front door answers, so callers await
+   * `_awaitMdnsProbeForTests()` before the stub instance exists. The
+   * always-confirming probe installed in `beforeEach` below keeps every
+   * existing record-content assertion in this block unchanged; only the
+   * synchronicity of getting there changed.
+   */
+  async function startStub(env: Record<string, string | undefined> = ASSISTANT_ENV): Promise<{
     mdns: StubMdns;
     factory: MdnsFactory;
-  } {
+  }> {
     const { factory, instances } = createStubMdnsFactory();
     reconcileMdnsResponder("/nonexistent", { env, makeMdns: factory, hostIpv4: HOST_IPV4 });
+    await _awaitMdnsProbeForTests();
     const [mdns] = instances;
     assertDefined(mdns);
     return { mdns, factory };
@@ -317,23 +332,28 @@ describe("mdns responder records", () => {
   beforeEach(() => {
     _resetMdnsResponderForTests();
     _setMdnsFactoryForTests(null);
+    // Confirm every front door immediately — this block asserts on DNS RECORD
+    // CONTENT, not on self-probe gating (that is its own describe below), so
+    // the probe must never be the thing under test here.
+    _setMdnsProbeForTests(async () => true);
   });
 
   afterEach(() => {
     _resetMdnsResponderForTests();
     _setMdnsFactoryForTests(null);
+    _setMdnsProbeForTests(null);
   });
 
-  test("announces an A record per advert address", () => {
-    const { mdns } = startStub();
+  test("announces an A record per advert address", async () => {
+    const { mdns } = await startStub();
     const announced = mdns.allAnswers().find((a) => a.type === "A");
     assertDefined(announced);
     expect(announced.name).toBe("openpalm.local");
     expect(announced.data).toBe("192.168.1.20");
   });
 
-  test("answers a matching A query with the advert's address", () => {
-    const { mdns } = startStub();
+  test("answers a matching A query with the advert's address", async () => {
+    const { mdns } = await startStub();
     mdns.responses.length = 0; // drop startup announcements
 
     mdns.emitQuery([{ name: "openpalm.local", type: "A" }], { address: "192.168.1.50", port: MDNS_PORT });
@@ -348,8 +368,8 @@ describe("mdns responder records", () => {
     expect(last.rinfo).toBeUndefined();
   });
 
-  test("answers a _http._tcp.local PTR query with SRV/TXT/A additionals", () => {
-    const { mdns } = startStub();
+  test("answers a _http._tcp.local PTR query with SRV/TXT/A additionals", async () => {
+    const { mdns } = await startStub();
     mdns.responses.length = 0;
 
     mdns.emitQuery([{ name: "_http._tcp.local", type: "PTR" }], { address: "192.168.1.50", port: MDNS_PORT });
@@ -361,8 +381,8 @@ describe("mdns responder records", () => {
     expect(last.res.additionals?.some((a) => a.type === "TXT")).toBe(true);
   });
 
-  test("answers a legacy-unicast query (source port ≠ 5353) back to the sender", () => {
-    const { mdns } = startStub();
+  test("answers a legacy-unicast query (source port ≠ 5353) back to the sender", async () => {
+    const { mdns } = await startStub();
     mdns.responses.length = 0;
 
     const rinfo = { address: "192.168.1.50", port: 54321 };
@@ -373,19 +393,20 @@ describe("mdns responder records", () => {
     expect(last.rinfo).toEqual(rinfo);
   });
 
-  test("ignores non-matching queries", () => {
-    const { mdns } = startStub();
+  test("ignores non-matching queries", async () => {
+    const { mdns } = await startStub();
     mdns.responses.length = 0;
 
     mdns.emitQuery([{ name: "unknown.local", type: "A" }], { address: "192.168.1.50", port: MDNS_PORT });
     expect(mdns.responses).toHaveLength(0);
   });
 
-  test("every goodbye record carries TTL 0", () => {
-    const { mdns, factory } = startStub();
+  test("every goodbye record carries TTL 0", async () => {
+    const { mdns, factory } = await startStub();
     const before = mdns.responses.length;
 
-    // Reconciling back to loopback stops the active responder — the only
+    // Reconciling back to loopback stops the active responder SYNCHRONOUSLY
+    // (going to an empty advert set never needs the probe) — the only
     // production path that sends goodbyes.
     reconcileMdnsResponder("/nonexistent", {
       env: LOOPBACK_ENV,
@@ -401,7 +422,7 @@ describe("mdns responder records", () => {
     expect(mdns.destroyed).toBe(true);
   });
 
-  test("factory/socket errors are non-fatal", () => {
+  test("factory/socket errors are non-fatal", async () => {
     const throwingFactory: MdnsFactory = () => {
       throw new Error("EADDRINUSE");
     };
@@ -412,8 +433,11 @@ describe("mdns responder records", () => {
         hostIpv4: HOST_IPV4,
       }),
     ).not.toThrow();
+    // The throwing factory is only reached once the (stubbed, confirming)
+    // self-probe settles and `createResponder` actually runs.
+    await _awaitMdnsProbeForTests();
 
-    const { mdns } = startStub(GUARDIAN_ENV);
+    const { mdns } = await startStub(GUARDIAN_ENV);
     expect(() => mdns.emitError(new Error("EACCES"))).not.toThrow();
   });
 });
@@ -438,11 +462,18 @@ describe("reconcileMdnsResponder", () => {
   beforeEach(() => {
     _resetMdnsResponderForTests();
     _setMdnsFactoryForTests(null);
+    // Confirm every front door immediately by default — most tests in this
+    // block assert on GATING (env in -> responder or not), not on the
+    // self-probe itself (that has its own describe below).
+    _setMdnsProbeForTests(async () => true);
+    _setMdnsIntervalSchedulerForTests(null);
   });
 
   afterEach(() => {
     _resetMdnsResponderForTests();
     _setMdnsFactoryForTests(null);
+    _setMdnsProbeForTests(null);
+    _setMdnsIntervalSchedulerForTests(null);
     for (const home of homes.splice(0)) {
       rmSync(home, { recursive: true, force: true });
     }
@@ -458,40 +489,46 @@ describe("reconcileMdnsResponder", () => {
     expect(status.guardian.advertised).toBe(false);
   });
 
-  test("starts the responder when stack.env enables LAN exposure", () => {
+  test("starts the responder when stack.env enables LAN exposure", async () => {
     const home = makeHome();
     writeStackEnv(home, "OP_ASSISTANT_BIND_ADDRESS=0.0.0.0\n");
     const { factory, instances } = createStubMdnsFactory();
     const status = reconcileMdnsResponder(home, { makeMdns: factory, hostIpv4: ["192.168.1.20"] });
+    await _awaitMdnsProbeForTests(); // contract change: starting now waits on the self-probe
     expect(instances.length).toBeGreaterThanOrEqual(1);
     expect(status.assistant.advertised).toBe(true);
   });
 
-  test("is idempotent for an unchanged env", () => {
+  test("is idempotent for an unchanged env", async () => {
     const home = makeHome();
     writeStackEnv(home, "OP_ASSISTANT_BIND_ADDRESS=0.0.0.0\n");
     const { factory, instances } = createStubMdnsFactory();
     reconcileMdnsResponder(home, { makeMdns: factory, hostIpv4: ["192.168.1.20"] });
+    await _awaitMdnsProbeForTests();
     const countAfterFirst = instances.length;
     const [first] = instances;
     assertDefined(first);
 
+    // Unchanged key -> short-circuits synchronously, before ever scheduling
+    // another probe (see reconcileMdnsResponder's `active.key === key` check).
     reconcileMdnsResponder(home, { makeMdns: factory, hostIpv4: ["192.168.1.20"] });
 
     expect(instances.length).toBe(countAfterFirst); // no new responder created
     expect(first.destroyed).toBe(false); // unchanged handle not stopped
   });
 
-  test("stops the responder when the env returns to loopback", () => {
+  test("stops the responder when the env returns to loopback", async () => {
     const home = makeHome();
     writeStackEnv(home, "OP_ASSISTANT_BIND_ADDRESS=0.0.0.0\n");
     const { factory, instances } = createStubMdnsFactory();
     reconcileMdnsResponder(home, { makeMdns: factory, hostIpv4: ["192.168.1.20"] });
+    await _awaitMdnsProbeForTests();
     const [first] = instances;
     assertDefined(first);
     const before = first.responses.length;
 
     writeStackEnv(home, "OP_ASSISTANT_BIND_ADDRESS=127.0.0.1\n");
+    // Going to an empty advert set is synchronous — no probe involved.
     const status = reconcileMdnsResponder(home, { makeMdns: factory, hostIpv4: ["192.168.1.20"] });
 
     expect(first.responses.length).toBeGreaterThan(before); // goodbye sent
@@ -510,5 +547,151 @@ describe("reconcileMdnsResponder", () => {
     });
     expect(instances).toHaveLength(0);
     expect(status.assistant.advertised).toBe(false);
+  });
+
+  // ── self-probe honesty (0.14.0 LAN-access review, Phase 2) ────────────────
+  //
+  // "advertise a name only once a self-probe confirms the published port
+  // answers" — finding #2. Only the front door (`<name>.local`, the
+  // "assistant" advert) is probed; see the module doc for why the guardian
+  // advert is out of scope for this check.
+
+  test("does not start the responder until a self-probe confirms the front door answers", async () => {
+    const home = makeHome();
+    writeStackEnv(home, "OP_ASSISTANT_BIND_ADDRESS=0.0.0.0\n");
+    const { factory, instances } = createStubMdnsFactory();
+    const probedPorts: number[] = [];
+    const probe: MdnsProbe = async (port) => {
+      probedPorts.push(port);
+      return false; // never confirms
+    };
+
+    const status = reconcileMdnsResponder(home, { makeMdns: factory, hostIpv4: ["192.168.1.20"], probe });
+    await _awaitMdnsProbeForTests();
+
+    expect(probedPorts).toEqual([3810]); // OP_ASSISTANT_PORT default (the resolved front door)
+    expect(instances).toHaveLength(0); // never confirmed -> never started
+    // The returned status still reflects INTENT (the bind-address gate), same
+    // as always — see resolveMdnsStatus's own doc. A probe failure changes
+    // whether a socket exists, never what this status reports.
+    expect(status.assistant.advertised).toBe(true);
+  });
+
+  test("retries the self-probe on the next reconcile call and starts once it confirms", async () => {
+    const home = makeHome();
+    writeStackEnv(home, "OP_ASSISTANT_BIND_ADDRESS=0.0.0.0\n");
+    const { factory, instances } = createStubMdnsFactory();
+    let confirm = false;
+    const probe: MdnsProbe = async () => confirm;
+
+    reconcileMdnsResponder(home, { makeMdns: factory, hostIpv4: ["192.168.1.20"], probe });
+    await _awaitMdnsProbeForTests();
+    expect(instances).toHaveLength(0);
+
+    confirm = true;
+    reconcileMdnsResponder(home, { makeMdns: factory, hostIpv4: ["192.168.1.20"], probe });
+    await _awaitMdnsProbeForTests();
+    expect(instances).toHaveLength(1);
+  });
+
+  test("a guardian-only advert set never calls the front-door probe", async () => {
+    const home = makeHome();
+    writeStackEnv(home, "OP_GUARDIAN_BIND_ADDRESS=0.0.0.0\nGUARDIAN_DIRECT_INGRESS=true\n");
+    const { factory, instances } = createStubMdnsFactory();
+    let probeCalls = 0;
+    const probe: MdnsProbe = async () => {
+      probeCalls++;
+      return true;
+    };
+
+    reconcileMdnsResponder(home, { makeMdns: factory, hostIpv4: ["192.168.1.20"], probe });
+    await _awaitMdnsProbeForTests();
+
+    expect(probeCalls).toBe(0); // no front door to confirm
+    expect(instances).toHaveLength(1); // guardian starts unconditionally on its own gate
+  });
+
+  // ── convergence interval (0.14.0 LAN-access review, Phase 2) ───────────────
+  //
+  // "have the responder re-read state/stack.env on a timer (60s) from inside
+  // the module" — finding #1. A manual scheduler stands in for the real 60s
+  // `setInterval` so the test fires a tick deterministically instead of
+  // waiting on the wall clock.
+
+  test("the convergence interval re-reads stack.env on tick with no explicit reconcile call", async () => {
+    const home = makeHome();
+    writeStackEnv(home, "OP_BIND_ADDRESS=127.0.0.1\n"); // closed
+    const { factory, instances } = createStubMdnsFactory();
+    let tick: (() => void) | undefined;
+    const scheduler: MdnsIntervalScheduler = (fn) => {
+      tick = fn;
+      return { cancel: () => { tick = undefined; } };
+    };
+    _setMdnsIntervalSchedulerForTests(scheduler);
+    _setMdnsFactoryForTests(factory);
+
+    // Arms the interval; nothing to advertise yet.
+    reconcileMdnsResponder(home);
+    await _awaitMdnsProbeForTests();
+    expect(instances).toHaveLength(0);
+    expect(tick).toBeDefined();
+
+    // A DIFFERENT process — the one this interval exists for — wrote a
+    // LAN-open bind straight to disk. A concrete IP (not a wildcard) so this
+    // assertion never depends on the sandbox's real network interfaces.
+    writeStackEnv(home, "OP_ASSISTANT_BIND_ADDRESS=192.168.1.7\n");
+
+    tick?.();
+    await _awaitMdnsProbeForTests();
+
+    expect(instances).toHaveLength(1);
+  });
+
+  test("ensureIntervalStarted only arms the timer once per process", async () => {
+    const home = makeHome();
+    writeStackEnv(home, "OP_BIND_ADDRESS=127.0.0.1\n");
+    let scheduleCalls = 0;
+    _setMdnsIntervalSchedulerForTests(() => {
+      scheduleCalls++;
+      return { cancel: () => {} };
+    });
+
+    reconcileMdnsResponder(home);
+    reconcileMdnsResponder(home);
+    reconcileMdnsResponder(home);
+
+    expect(scheduleCalls).toBe(1);
+  });
+
+  // ── in-container guard (0.14.0 LAN-access review, Phase 2 finding #3) ─────
+  //
+  // The container's UI co-process runs this exact hooks.server.ts init too
+  // (see module doc). Bridge-network multicast can't reach the LAN there, so
+  // the responder — and the interval/probe machinery that would eventually
+  // start one — must never run, explicitly rather than by the accident of no
+  // in-container caller happening to open a LAN bind.
+
+  test("OP_UI_SERVED_IN_CONTAINER=1 never starts the responder or arms the interval", async () => {
+    const home = makeHome();
+    writeStackEnv(home, "OP_ASSISTANT_BIND_ADDRESS=0.0.0.0\n"); // would otherwise advertise
+    const { factory, instances } = createStubMdnsFactory();
+    let schedulerCalls = 0;
+    _setMdnsIntervalSchedulerForTests(() => {
+      schedulerCalls++;
+      return { cancel: () => {} };
+    });
+
+    const status = reconcileMdnsResponder(home, {
+      makeMdns: factory,
+      hostIpv4: ["192.168.1.20"],
+      processEnv: { OP_UI_SERVED_IN_CONTAINER: "1" },
+    });
+    await _awaitMdnsProbeForTests(); // no-op: nothing was ever scheduled
+
+    expect(instances).toHaveLength(0);
+    expect(schedulerCalls).toBe(0);
+    // The status is still computed for informational purposes, purely from
+    // the bind-address gate — it just never becomes a live socket.
+    expect(status.assistant.advertised).toBe(true);
   });
 });

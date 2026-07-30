@@ -265,7 +265,7 @@ describe('POST /api/connections/pairing — mint (#511 D3/D4)', () => {
     expect(fetchStub).not.toHaveBeenCalled();
   });
 
-  test('warns when GUARDIAN_DIRECT_INGRESS is not enabled', async () => {
+  test('warns when GUARDIAN_DIRECT_INGRESS is not enabled, naming the guardianNetwork toggle (not the retired hand-edit)', async () => {
     writeSecret(getState().homeDir, 'op_guardian_admin_token', 'f'.repeat(48));
     seedSecretsEnv(getState().homeDir, 'OP_SETUP_COMPLETE=true\n');
     stubGuardianAdmin(200);
@@ -273,7 +273,12 @@ describe('POST /api/connections/pairing — mint (#511 D3/D4)', () => {
     const { POST } = await loadRoute();
     const res = await POST(makePairingPostEvent({ label: 'My Phone', url: 'https://gw.example.ts.net/oc' }));
     const body = (await res.json()) as { warnings: string[] };
-    expect(body.warnings.some((w) => /GUARDIAN_DIRECT_INGRESS/.test(w))).toBe(true);
+    // The old copy told operators to hand-edit stack.env — a state the
+    // toggle model reverts on the next save (access-toggles.ts). The
+    // warning must name the toggle instead, and must NOT resurrect that
+    // instruction.
+    expect(body.warnings.some((w) => /guardianNetwork/.test(w))).toBe(true);
+    expect(body.warnings.some((w) => /restart the guardian/.test(w))).toBe(false);
   });
 
   test('empties the GUARDIAN_DIRECT_INGRESS warning once the env is enabled', async () => {
@@ -284,7 +289,7 @@ describe('POST /api/connections/pairing — mint (#511 D3/D4)', () => {
     const { POST } = await loadRoute();
     const res = await POST(makePairingPostEvent({ label: 'My Phone', url: 'https://gw.example.ts.net/oc' }));
     const body = (await res.json()) as { warnings: string[] };
-    expect(body.warnings.some((w) => /GUARDIAN_DIRECT_INGRESS/.test(w))).toBe(false);
+    expect(body.warnings.some((w) => /guardianNetwork/.test(w))).toBe(false);
   });
 
   test('warns for a plain-http non-loopback guardian URL', async () => {

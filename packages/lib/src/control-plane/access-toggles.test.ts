@@ -12,10 +12,12 @@ import {
   type AccessToggles,
   coerceAccessToggles,
   describeAccessExposure,
+  hasStoredAccessIntent,
   migrateLegacyAccessEnv,
   readAccessToggles,
   requiresAssistantKey,
   resolveAccessEnv,
+  resolveAccessIntentEnv,
   RETIRED_BIND_KEYS,
 } from "./access-toggles.js";
 
@@ -228,5 +230,79 @@ describe("describeAccessExposure", () => {
     expect(
       describeAccessExposure(on({ networkAccess: true, guardianNetwork: true })),
     ).toHaveLength(2);
+  });
+});
+
+// ── Stored intent (the fix for "intent stored only as its own consequences") ──
+
+describe("stored access intent", () => {
+  test("resolveAccessIntentEnv writes one boolean per toggle", () => {
+    expect(resolveAccessIntentEnv({ ...ACCESS_TOGGLE_DEFAULTS, networkAccess: true })).toEqual({
+      OP_ACCESS_NETWORK: "true",
+      OP_ACCESS_ASSISTANT_DIRECT: "false",
+      OP_ACCESS_GUARDIAN: "false",
+      OP_ACCESS_OPENAI_API: "false",
+    });
+  });
+
+  test("stored intent WINS over the bind addresses it generated", () => {
+    // This is the whole point. A row where the two disagree used to be read as
+    // "open" from the bind, and the next save made that reading real —
+    // publishing a surface the operator had deliberately kept private.
+    const env = {
+      OP_ACCESS_NETWORK: "false",
+      OP_UI_BIND_ADDRESS: "0.0.0.0",
+    };
+    expect(readAccessToggles(env).networkAccess).toBe(false);
+  });
+
+  test("stored intent also wins over a retired cascade root", () => {
+    const env = {
+      OP_ACCESS_NETWORK: "false",
+      OP_ACCESS_GUARDIAN: "false",
+      OP_BIND_ADDRESS: "0.0.0.0",
+    };
+    const toggles = readAccessToggles(env);
+    expect(toggles.networkAccess).toBe(false);
+    expect(toggles.guardianNetwork).toBe(false);
+  });
+
+  test("inference is the fallback ONLY for a key with no stored intent", () => {
+    // A row mid-upgrade: one key recorded, the rest still implied by binds.
+    const env = {
+      OP_ACCESS_NETWORK: "true",
+      OP_ASSISTANT_BIND_ADDRESS: "0.0.0.0",
+    };
+    const toggles = readAccessToggles(env);
+    expect(toggles.networkAccess).toBe(true);
+    expect(toggles.assistantDirect).toBe(true);
+  });
+
+  test.each(["true", "TRUE", "1", "yes", "on", " true "])("accepts %s as on", (value) => {
+    expect(readAccessToggles({ OP_ACCESS_NETWORK: value }).networkAccess).toBe(true);
+  });
+
+  test.each(["false", "FALSE", "0", "no", "off"])("accepts %s as off", (value) => {
+    expect(readAccessToggles({ OP_ACCESS_NETWORK: value, OP_UI_BIND_ADDRESS: "0.0.0.0" }).networkAccess).toBe(false);
+  });
+
+  test("an unparseable stored value falls back to inference rather than guessing", () => {
+    expect(
+      readAccessToggles({ OP_ACCESS_NETWORK: "maybe", OP_UI_BIND_ADDRESS: "0.0.0.0" }).networkAccess,
+    ).toBe(true);
+  });
+
+  test("hasStoredAccessIntent is true only when every key is recorded", () => {
+    expect(hasStoredAccessIntent({})).toBe(false);
+    expect(hasStoredAccessIntent({ OP_ACCESS_NETWORK: "true" })).toBe(false);
+    expect(hasStoredAccessIntent(resolveAccessIntentEnv(ACCESS_TOGGLE_DEFAULTS))).toBe(true);
+  });
+
+  test("intent round-trips through the generated row", () => {
+    for (const key of ACCESS_TOGGLE_KEYS) {
+      const toggles = { ...ACCESS_TOGGLE_DEFAULTS, [key]: true };
+      const env = { ...resolveAccessIntentEnv(toggles), ...resolveAccessEnv(toggles) };
+      expect(readAccessToggles(env)).toEqual(toggles);
+    }
   });
 });

@@ -24,12 +24,12 @@ import {
   readSecret,
   describeAccessExposure,
   readAccessToggles,
+  runHomeMigrations,
   stackDirFor,
   reconcileMdnsResponder,
 } from "@openpalm/lib";
 import { resolveRequestLanding, getCachedLocalInstallState } from "$lib/server/landing.js";
 import { BLOCKING_LANDINGS } from "$lib/resolve-landing.js";
-import { reconcileSupervisedPortContract } from '$lib/server/port-contract.js';
 
 // Launch-fact collection + the 5s cache live in $lib/server/landing.ts; the
 // reset hook is re-exported here so tests keep one import site.
@@ -38,14 +38,29 @@ export { _resetLaunchCache } from "$lib/server/landing.js";
 const logger = createLogger("admin");
 
 let startupApplyDone = false;
+let migrationsDone = false;
 
-function reconcilePortContract(): void {
-  if (!process.env.OP_UI_SUPERVISOR) return;
+// Bring the home up to the current schema BEFORE anything reads it.
+//
+// This lives HERE, in the updatable control plane, and nowhere else. Both
+// launchers used to call runHomeMigrations themselves, which put a
+// state-mutating migration inside the frozen Electron harness —
+// scripts/validate-thin-harness-boundary.sh exists to forbid exactly that, on
+// the grounds that a shipped harness can never be updated to match a schema
+// that keeps moving. Every serve path spawns THIS process, so one owner here
+// covers the Electron harness, the CLI supervisor, and `vite dev` alike, and
+// the migration ships with the schema it implements.
+//
+// Schema-gated and idempotent: an up-to-date home reads one small version file
+// and returns. Non-fatal — a home that cannot be migrated must still serve,
+// degraded, rather than refuse to boot.
+function migrateHome(): void {
+  if (migrationsDone) return;
+  migrationsDone = true;
   try {
-    const state = getState();
-    reconcileSupervisedPortContract(state.homeDir, process.env);
+    runHomeMigrations(resolveOpenPalmHome());
   } catch (err) {
-    logger.error('default port migration failed', { error: String(err) });
+    logger.error("home migration failed", { error: String(err) });
   }
 }
 
@@ -81,18 +96,34 @@ function loadProcessEnv(): void {
       if (v && !process.env[k]) process.env[k] = v;
     }
     // #488 — host-side LAN mDNS advertisement; no-op socket-free when every
-    // bind is loopback (the default) or OP_MDNS=off. This is the single
-    // start locus: every supervisor spawns this process, so the CLI needs no
-    // separate wiring.
+    // bind is loopback (the default) or OP_MDNS=off, and a no-op entirely
+    // inside the container UI co-process (OP_UI_SERVED_IN_CONTAINER=1 — this
+    // hooks.server.ts also runs there, non-admin). This is the single start
+    // locus: every supervisor spawns this process, so the CLI needs no
+    // separate wiring. It is also the ONLY call needed for this process's
+    // whole lifetime — reconcileMdnsResponder arms its own 60s re-read of
+    // stack.env internally (0.14.0 LAN-access review, Phase 2), so a
+    // long-lived sibling process that never serves a stack-settings write
+    // still converges within a minute instead of advertising stale state
+    // forever.
     reconcileMdnsResponder(state.homeDir);
   } catch (err) {
     logger.error("process env load failed", { error: String(err) });
   }
 }
 
-// Run immediately on module load (server startup). The targeted migration runs
-// in this updatable control plane, never in the frozen Electron bootstrap.
-reconcilePortContract();
+// Run immediately on module load (server startup), migrations first so the env
+// load below reads a current stack.env.
+//
+// There is no longer a process-local "port contract reconciliation" here. It
+// re-implemented an on-disk migration inside the request path, keyed on magic
+// literals ('3800' in the live env meant "an inherited retired default"), so an
+// operator who deliberately ran the assistant on 3800 got a UI whose proxy
+// targeted 3810 while compose still published 3800 — assistant_unreachable with
+// nothing in stack.env to explain it. Its two triggers also disagreed with the
+// disk migration's at the edges. The real migration now runs here, once, before
+// anything reads the home, so the request path can simply trust the disk.
+migrateHome();
 loadProcessEnv();
 
 // Scheduler is now a dedicated sidecar — admin has zero background processes.
@@ -184,6 +215,18 @@ export const handle: Handle = async ({ event, resolve }) => {
   }
   const isSetupPath = SETUP_PATHS.some(p => path === p || path.startsWith(`${p}/`));
 
+  // A process that cannot SERVE /setup must never redirect anyone TO it.
+  // Sending a browser to a route this same process answers with 403
+  // capability_not_available is a closed loop with no way out — it is how the
+  // CLI wizard shipped broken (a non-admin `openpalm install` UI redirected
+  // every navigation to a /setup it then refused), and it is also how a
+  // write into the assistant-writable home could lock every LAN client out of
+  // the container UI by flipping its install state to 'setup_incomplete'.
+  // Gating the redirect on the capability makes the deadlock unrepresentable
+  // in every harness rather than relying on each launcher to pass the right
+  // flag.
+  const canServeSetup = runtimeContext.serverCapabilities.includes('host:setup');
+
   // SEC-4: While setup is not yet complete the /setup routes are unauthenticated
   // by design (first-run). Restrict them to the local machine so a remote actor
   // can't race the owner to configure the stack. After setup completes the
@@ -195,6 +238,7 @@ export const handle: Handle = async ({ event, resolve }) => {
 
   if (
     wantsHtml &&
+    canServeSetup &&
     !setupComplete &&
     localInstallState !== 'not_installed' &&
     !isSetupPath &&
@@ -220,6 +264,7 @@ export const handle: Handle = async ({ event, resolve }) => {
 
   if (
     wantsHtml
+    && canServeSetup
     && localInstallState === 'not_installed'
     && (path === '/host' || path.startsWith('/host/'))
   ) {

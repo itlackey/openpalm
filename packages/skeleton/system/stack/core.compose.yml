@@ -134,6 +134,18 @@ services:
       # The UI's Host-header allowlist reads this to decide whether it is
       # allowed to be reached by a name other than localhost.
       OP_UI_BIND_ADDRESS: ${OP_UI_BIND_ADDRESS:-127.0.0.1}
+      # Voice LAN-access opt-in (default off). The entrypoint has no OP_HOME
+      # in-container, so it cannot read state/stack.env itself — this
+      # interpolation is the only way the resolved value reaches it, the same
+      # pattern OP_UI_BIND_ADDRESS above uses. ON: the entrypoint's start_ui
+      # stops setting OP_UI_NO_LOCAL_VOICE=1 and instead sets
+      # OP_VOICE_URL=http://voice:8880 (Docker DNS, voice's FIXED INTERNAL
+      # port — see services.compose.yml OP_VOICE_PORT — reachable ONLY
+      # because voice.compose.lan.yml grants voice this assistant_net
+      # membership on the same opt-in). OFF (default): behavior is unchanged
+      # — this co-process fails closed on voice regardless of readable stack
+      # state (packages/ui/.../features.ts canServeLocalVoice).
+      OP_VOICE_LAN_ACCESS: ${OP_VOICE_LAN_ACCESS:-false}
       # Provider credentials live in OpenCode's auth.json (bind-mounted
       # below) — NOT in this env block. The Connections tab and the setup
       # wizard both call OpenCode's PUT /auth/{providerID}; ai-sdk picks
@@ -141,8 +153,11 @@ services:
     ports:
       - "${OP_ASSISTANT_BIND_ADDRESS:-127.0.0.1}:${OP_ASSISTANT_PORT:-3810}:4096"
       # UI co-process (@openpalm/ui adapter-node, in-container port 3000).
-      # THE one listener a home install publishes: OpenCode and voice are
-      # reached through this process, not directly.
+      # THE one listener a home install publishes: OpenCode is reached through
+      # this process's same-origin /oc proxy, not directly. Voice is NOT: the
+      # entrypoint sets OP_UI_NO_LOCAL_VOICE=1 (this co-process reaches only
+      # its own loopback, never the sibling voice container), so /voice 503s
+      # here by design — voice is host-UI-only (docs/troubleshooting.md).
       # OP_UI_PORT is the HOST-facing port only; it is deliberately NOT passed
       # into the container env (the UI always serves on 3000 in-container).
       - "${OP_UI_BIND_ADDRESS:-127.0.0.1}:${OP_UI_PORT:-3800}:3000"
@@ -191,17 +206,13 @@ services:
     # Skipped (not failed) when the UI build is missing or its supervisor gives
     # up after a crash loop (marker file /tmp/openpalm-ui-skip).
     #
-    # IMPORTANT: the probe targets the FIXED in-container port 3000, not the
-    # host-facing OP_UI_PORT knob (default 3800; operators may override it).
-    # Compose interpolates a bare `${OP_UI_PORT:-3000}` using the HOST env at
-    # config-load time — but OP_UI_PORT is deliberately NEVER passed into the
-    # container's own environment (the UI co-process always serves on 3000
-    # in-container regardless of the host port mapping). The `$${...}` below is
-    # the Compose escape for a literal `$`: it is left untouched by Compose and
-    # expanded by the CONTAINER's own shell, where OP_UI_PORT is unset and so
-    # correctly defaults to 3000 (mirroring the Dockerfile's own HEALTHCHECK,
-    # which gets this right via container-side shell expansion). The UI's /health
-    # route is exempt from the login/setup wall (packages/ui hooks.server.ts).
+    # The UI probe targets the LITERAL in-container port 3000 — the target of the
+    # port mapping above, which cannot vary. It used to read `$${OP_UI_PORT:-3000}`
+    # (container-side expansion, since OP_UI_PORT is never passed in), which was
+    # correct only by omission: an operator who added OP_UI_PORT to
+    # custom.compose.yml's `environment:` made this probe follow it to a port
+    # nothing listens on. A literal cannot drift. The UI's /health route is
+    # exempt from the login/setup wall (packages/ui hooks.server.ts).
     # #564 P1-1: the /health probe authenticates iff the container-side
     # OPENCODE_AUTH is truthy. OpenCode enables Basic auth whenever the
     # assistant API is published, and an unauthenticated `curl -f` then
@@ -229,7 +240,7 @@ services:
           *)
           curl -sf http://localhost:4096/health || exit 1 ;;
           esac;
-          if [ ! -f /tmp/openpalm-ui-skip ]; then curl -sf http://localhost:$${OP_UI_PORT:-3000}/health >/dev/null || exit 1; fi
+          if [ ! -f /tmp/openpalm-ui-skip ]; then curl -sf http://localhost:3000/health >/dev/null || exit 1; fi
       interval: 30s
       timeout: 10s
       retries: 5

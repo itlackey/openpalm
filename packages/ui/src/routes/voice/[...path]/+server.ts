@@ -10,25 +10,34 @@
  *     browser reaches the UI origin, and this process makes the local hop —
  *     so no port ever needs to be opened for voice.
  *
+ * That local hop is loopback for every host-served UI process (CLI app,
+ * Electron, `openpalm app`) — `voiceUpstreamUrl` resolves the voice
+ * container's published `127.0.0.1` port. The ONE exception is the
+ * assistant container's own served UI co-process: it has no loopback path
+ * to a sibling container at all, so it can only reach voice when the
+ * operator opts into `OP_VOICE_LAN_ACCESS` (voice.compose.lan.yml grants
+ * `assistant_net` reachability; the entrypoint sets `OP_VOICE_URL` over
+ * Docker DNS). `canServeLocalVoice`/`OP_UI_NO_LOCAL_VOICE` gate that process
+ * closed otherwise — see `unavailable` below.
+ *
  * Unlike the retired /api/speak and /api/transcribe relays, this holds NO
  * provider configuration and speaks no protocol of its own: the request
  * path/method/body/query pass through 1:1 (the same transparent-proxy
  * pattern as the guardian's /oc). Provider choice lives in the client.
  *
  * Availability mirrors the advertisement (computeVoiceRuntime): the voice
- * addon must be enabled in readable stack state. Every UI server is a host
- * process (CLI app/admin or Electron) with a loopback path to the
- * container, so availability is deliberately NOT gated on admin capability —
- * using voice is not a privileged host operation and a served non-admin
- * process must still pass it through. Auth is the ordinary session check —
- * no host:* capability for the same reason.
+ * addon must be enabled in readable stack state. Availability is
+ * deliberately NOT gated on admin capability — using voice is not a
+ * privileged host operation and a served non-admin process must still pass
+ * it through. Auth is the ordinary session check — no host:* capability for
+ * the same reason.
  */
 import type { RequestHandler } from './$types';
 import { listEnabledAddonIds } from '@openpalm/lib';
 import { getState } from '$lib/server/state.js';
-import { canServeLocalVoice } from '$lib/server/features.js';
+import { canServeLocalVoice, servedInContainerWithVoice } from '$lib/server/features.js';
 import { errorResponse, getRequestId, requireAdmin } from '$lib/server/helpers.js';
-import { VOICE_ADDON, voiceHostPort } from '$lib/server/voice/bring-up.js';
+import { VOICE_ADDON, voiceUpstreamUrl } from '$lib/server/voice/bring-up.js';
 
 // Bounds connection + response HEADERS, not the streamed body — see below.
 const UPSTREAM_TIMEOUT_MS = 60_000;
@@ -43,6 +52,14 @@ function unavailable(requestId: string): Response | null {
   if (!canServeLocalVoice()) {
     return errorResponse(503, 'voice_unavailable', 'This process has no local voice service.', {}, requestId);
   }
+  // In the container co-process the addon list is NOT readable: no host
+  // OP_HOME is injected, so getState().homeDir points inside the assistant's
+  // own data mount, which carries no stack.env — listEnabledAddonIds returns []
+  // and this gate would refuse even with voice enabled and reachable. The
+  // entrypoint's injected OP_VOICE_URL is the opt-in signal there (see
+  // computeVoiceRuntime); an absent or undeployed voice container then surfaces
+  // as a 502 from the fetch below rather than a 503 here.
+  if (servedInContainerWithVoice()) return null;
   try {
     if (!listEnabledAddonIds(getState().homeDir).includes(VOICE_ADDON)) {
       return errorResponse(
@@ -72,7 +89,12 @@ const handle: RequestHandler = async (event) => {
     return errorResponse(404, 'not_found', `No such voice endpoint: ${path}`, {}, requestId);
   }
 
-  const upstreamUrl = `http://127.0.0.1:${voiceHostPort()}/${path}${event.url.search}`;
+  // voiceUpstreamUrl prefers OP_VOICE_URL (the assistant container's LAN-access
+  // opt-in path over Docker DNS) and falls back to the voice container's
+  // published loopback port, live-over-persisted OP_VOICE_PORT_HOST — the ONE
+  // resolver every /voice caller uses, so a host process and the container
+  // co-process never disagree about where "voice" actually is.
+  const upstreamUrl = `${voiceUpstreamUrl(getState().homeDir)}/${path}${event.url.search}`;
   // Buffer the body rather than streaming: the boundary-bearing content-type
   // header passes through untouched, so multipart uploads survive intact,
   // and node's fetch needs no duplex plumbing. GET and HEAD carry no body —

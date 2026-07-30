@@ -192,6 +192,55 @@ vi.mock('@openpalm/lib', () => ({
     }
     return false;
   }),
+  // The host-UI port contract (lib network-contract.ts): explicit arg, then
+  // live env, then the home's persisted stack.env, then the default.
+  // The admin listen contract (lib network-contract.ts). buildUIServerEnv spreads
+  // it rather than baking HOST/PORT/ORIGIN by hand, so the mock must reproduce
+  // the admin branch: loopback bind, origin pinned to it, no forwarded-header
+  // trust. harness-parity.test.ts pins the real function's shape.
+  resolveUiListenEnv: vi.fn((opts: { port: number }) => ({
+    HOST: '127.0.0.1',
+    PORT: String(opts.port),
+    ORIGIN: `http://127.0.0.1:${opts.port}`,
+    HOST_HEADER: undefined,
+    PROTOCOL_HEADER: undefined,
+  })),
+  resolveHostUiPort: vi.fn(
+    (
+      explicit: number | undefined,
+      env: Record<string, string | undefined>,
+      persisted: Record<string, string | undefined> = {},
+    ): number => {
+      if (explicit !== undefined && Number.isFinite(explicit)) return explicit;
+      const merged = { ...persisted, ...env };
+      return Number(merged.OP_HOST_UI_PORT) || 3880;
+    },
+  ),
+  // Faithful reimplementations of the two probe primitives the harness now
+  // shares with the CLI. The identity probe hits /api/runtime; the test's
+  // stubbed fetch only answers /health, so it reports 'absent' and the harness
+  // takes the normal spawn path — which is what these tests exercise.
+  checkExistingUiInstance: vi.fn(
+    async (port: number, expectedAdmin: boolean): Promise<
+      { status: 'absent' } | { status: 'match'; admin: boolean } | { status: 'mismatch'; admin: boolean }
+    > => {
+      try {
+        const res = await fetch(`http://127.0.0.1:${port}/api/runtime`, {
+          signal: AbortSignal.timeout(1000),
+        });
+        if (!res.ok) return { status: 'absent' };
+        const body = (await res.json()) as { admin?: boolean };
+        const admin = body.admin === true;
+        return admin === expectedAdmin ? { status: 'match', admin } : { status: 'mismatch', admin };
+      } catch {
+        return { status: 'absent' };
+      }
+    },
+  ),
+  readyOrChildExit: vi.fn(
+    (waitFn: () => Promise<boolean>, childExited: Promise<unknown> | undefined) =>
+      childExited ? Promise.race([waitFn(), childExited.then(() => false)]) : waitFn(),
+  ),
   consumePendingUiBackup: vi.fn(() => null),
   restoreUiBackup: vi.fn(() => ({ status: 'no-backup' as const })),
   // Faithful reimplementation of lib's UiSupervisor state machine (same style as
@@ -257,10 +306,6 @@ vi.mock('../src/update-check.js', () => ({
   getCachedUpdateInfo: vi.fn(() => null),
 }));
 
-vi.mock('../src/local-opencode.js', () => ({
-  startLocalOpenCode: vi.fn(() => Promise.resolve(null)),
-  killProcessTree: vi.fn(),
-}));
 
 import {
   buildUIServerEnv,
@@ -312,9 +357,15 @@ describe('buildUIServerEnv', () => {
     }
   });
 
-  it('sets OP_OPENCODE_URL so the UI proxy can reach the assistant', () => {
+  it('does NOT bake OP_OPENCODE_URL — the child resolves the assistant lazily', () => {
+    // Freezing the URL at launch made the child unable to distinguish a
+    // harness-generated value from an operator override, so it resorted to
+    // reverse-engineering the URL's shape to decide whether to discard it. Any
+    // change to how this side formatted the URL silently broke that detection
+    // and stranded the /oc proxy on a dead port. Both sides now call the same
+    // lib resolver, on demand.
     const env = buildUIServerEnv('/home/user/.openpalm', 3880);
-    expect(env.OP_OPENCODE_URL).toBe('http://127.0.0.1:3800');
+    expect(env.OP_OPENCODE_URL).toBeUndefined();
   });
 
   it('emits the harness contract version so the control plane can feature-detect', () => {

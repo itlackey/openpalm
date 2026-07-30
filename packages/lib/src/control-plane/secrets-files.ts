@@ -33,6 +33,12 @@ export const DELEGATED_SECRET_NAMES: ReadonlySet<string> = new Set([
   'slack_app_token',
   'op_opencode_password',
   'op_ui_login_password',
+  // The HMAC key mixed into every session cookie. It belongs here for the same
+  // reason op_ui_login_password does, and was missed when that one moved: with
+  // the key readable from /stash, anything running inside the assistant — or
+  // anything that prompt-injects it — can forge a valid host-admin session
+  // cookie, which is precisely the attack the key exists to prevent.
+  'op_session_signing_key',
   ...PORTAL_SECRET_ADDON_IDS.map(portalSecretName),
 ]);
 

@@ -6,9 +6,12 @@
 # OpenCode API (:4096) over a shared bridge. The only exception is ollama, which
 # the assistant reaches as its LLM provider over the Docker DNS name ollama:11434
 # — that inference path needs shared-network reachability, so ollama is granted
-# assistant_net per service. voice needs no assistant reachability at all: the UI
-# host process reaches it over its published loopback port (127.0.0.1:8880), so
-# voice stays on addon_net only.
+# assistant_net per service. voice needs no assistant reachability at all BY
+# DEFAULT: the UI host process reaches it over its published loopback port
+# (127.0.0.1:8880), so voice stays on addon_net only here. An operator who turns
+# on OP_VOICE_LAN_ACCESS opts into the same per-service exception ollama has —
+# see voice.compose.lan.yml (this directory) for why that is not a boundary
+# weakening.
 
 services:
   ollama:

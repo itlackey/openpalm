@@ -32,7 +32,12 @@ import {
 import { writeFileAtomic } from './fs-atomic.js';
 import { mergeEnvContent, parseEnvContent, removeEnvKey } from './env.js';
 import { createLogger } from '../logger.js';
-import { migrateLegacyBindAddresses, migrateLegacyDefaultPorts } from './config-persistence.js';
+import {
+  migrateAccessIntent,
+  migrateConsolidatedDefaultPorts,
+  migrateLegacyBindAddresses,
+  migrateLegacyDefaultPorts,
+} from './config-persistence.js';
 import { migrateProfileOnlyAddonEnablement } from './addons.js';
 import { SERVICE_VERSION_KEYS } from './versions.js';
 import { migrateDelegatedSecretsToPrivateDir } from './secrets-migration.js';
@@ -126,6 +131,22 @@ const MIGRATIONS: { since: number; run: (homeDir: string) => boolean }[] = [
   // never recorded a version at all (recorded 0 here still satisfies `2 >= 0`
   // since the loop condition is `migration.since >= recorded`).
   { since: 2, run: (homeDir) => migrateDelegatedSecretsToPrivateDir(homeDir).migrated.length > 0 },
+  // Same migration again at `since: 3`, because the SET it iterates grew:
+  // `op_session_signing_key` was added to DELEGATED_SECRET_NAMES, and a home
+  // already stamped 3 would otherwise never re-run it and would keep the
+  // cookie-signing key readable from the assistant's /stash. The function
+  // re-checks real filesystem state, so this is a no-op for a home that has
+  // no such file.
+  { since: 3, run: (homeDir) => migrateDelegatedSecretsToPrivateDir(homeDir).migrated.length > 0 },
+  // Record network-access INTENT explicitly in the consolidated state/stack.env
+  // and strip the retired cascade keys from it. Must run AFTER
+  // migrateToSingleStackEnv (since: 1) so it reads the merged file, and it is
+  // the last place the legacy-aware bind inference is used for a migrated home.
+  { since: 4, run: migrateAccessIntent },
+  // The retired 3800/3810 pair, corrected on the CONSOLIDATED file. Runs after
+  // migrateToSingleStackEnv for the same reason as migrateAccessIntent, and it
+  // is what lets the UI delete its per-boot process-local re-derivation.
+  { since: 4, run: migrateConsolidatedDefaultPorts },
 ];
 
 /**

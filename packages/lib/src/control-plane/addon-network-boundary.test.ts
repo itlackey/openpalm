@@ -106,3 +106,52 @@ describe('S.6b addon-network trust boundary', () => {
     }
   });
 });
+
+// ── OP_VOICE_LAN_ACCESS opt-in: the per-service exception ollama already has,
+// extended to voice on explicit operator opt-in only (voice.compose.lan.yml).
+//
+// The assertions above ("voice services are segmented onto addon_net, off
+// the assistant trust network") are NOT weakened by this overlay's existence:
+// they read services.compose.yml alone, which this feature never edits.
+// discoverStackOverlays (config-persistence.ts) only ever ADDS
+// voice.compose.lan.yml to the file list, and only when the operator has
+// turned OP_VOICE_LAN_ACCESS on — so the default posture this file asserts
+// stays exactly what it was.
+describe('OP_VOICE_LAN_ACCESS opt-in overlay (voice.compose.lan.yml)', () => {
+  const lan = loadCompose('voice.compose.lan.yml');
+
+  test('every voice variant is present in the overlay', () => {
+    for (const name of VOICE_SERVICES) {
+      expect(lan.services?.[name]).toBeDefined();
+    }
+  });
+
+  test('every voice variant restates addon_net (unchanged) plus assistant_net (the grant)', () => {
+    for (const name of VOICE_SERVICES) {
+      const nets = serviceNetworks(lan.services?.[name]?.networks);
+      expect(nets).toContain('addon_net');
+      expect(nets).toContain('assistant_net');
+    }
+  });
+
+  test('voice-cuda and voice-rocm carry the SAME "voice" alias on assistant_net that they already have on addon_net', () => {
+    // The base `voice` service needs no alias: Compose already resolves a
+    // service by its own name on every network it joins. Only the two
+    // renamed variants (voice-cuda/voice-rocm) need the alias restated —
+    // matching what services.compose.yml already declares for them on
+    // addon_net — so DNS resolution of "voice" from assistant_net is
+    // identical no matter which hardware profile is active.
+    for (const name of ['voice-cuda', 'voice-rocm']) {
+      const networks = lan.services?.[name]?.networks as
+        | Record<string, { aliases?: string[] }>
+        | undefined;
+      expect(networks?.addon_net?.aliases).toEqual(['voice']);
+      expect(networks?.assistant_net?.aliases).toEqual(['voice']);
+    }
+  });
+
+  test('the overlay does not touch any service other than the three voice variants', () => {
+    const declaredServices = Object.keys(lan.services ?? {});
+    expect(new Set(declaredServices)).toEqual(new Set(VOICE_SERVICES));
+  });
+});

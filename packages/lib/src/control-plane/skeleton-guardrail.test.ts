@@ -8,7 +8,7 @@
  */
 import { describe, test, expect } from "bun:test";
 import { readdirSync, statSync, existsSync, readFileSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { join, relative, resolve } from "node:path";
 
 const REPO_ROOT = resolve(import.meta.dir, "../../../..");
 const SKELETON_DIR = join(REPO_ROOT, "packages", "skeleton");
@@ -85,6 +85,20 @@ describe("skeleton: config/ structure", () => {
     expect(existsSync(rootless)).toBe(true);
     expect(readFileSync(cdi, "utf-8")).toContain("voice-cuda:");
     expect(readFileSync(rootless, "utf-8")).toContain('user: ""');
+  });
+
+  test("voice LAN-access overlay ships as a STATIC skeleton file, same as the CDI/rootless fallbacks", () => {
+    // Unlike the CDI/rootless overlays (selected only by the voice bring-up
+    // engine's one-off applyStack call), this one is also read by
+    // discoverStackOverlays — see config-persistence.ts — so it must be
+    // materialized into every OP_HOME the same way core/services/portals are.
+    const lan = join(SKELETON_DIR, "system", "stack", "voice.compose.lan.yml");
+    expect(existsSync(lan)).toBe(true);
+    const content = readFileSync(lan, "utf-8");
+    for (const svc of ["voice", "voice-cuda", "voice-rocm"]) {
+      expect(content).toContain(`  ${svc}:`);
+    }
+    expect(content).toContain("assistant_net");
   });
 
   test("config/akm/ exists", () => {
@@ -256,5 +270,137 @@ describe("skeleton: data/rollback and workspace/", () => {
 
   test("workspace/ exists", () => {
     expect(existsSync(join(SKELETON_DIR, "workspace"))).toBe(true);
+  });
+});
+
+// ── no new hardcoded host-UI/assistant port literals ────────────────────
+//
+// "Which port?" already had ~7 independent answers before Phase 1
+// consolidated them into STACK_DEFAULTS (defaults.ts) plus the resolvers
+// that read it (resolveHostUiPort/resolveUiListenEnv in network-contract.ts,
+// resolveAssistantEndpoint in assistant-endpoint.ts): three separate
+// hand-rolled `3880` constants, and the 3800/3810 default-port swap
+// implemented three times with heuristics that disagreed at the edges. This
+// is a permanent guard against a NEW hardcoded copy of one of those three
+// numbers being added anywhere else in packages/*/src.
+//
+// Compose's own `${OP_UI_PORT:-3800}`-style interpolation fallbacks are
+// sanctioned too (packages/skeleton/system/stack/*.yml, already pinned
+// verbatim by the "every host-published listener uses a FLAT bind" test
+// above) but packages/skeleton has no src/ directory, so this scan never
+// reaches them — nothing further to exempt for that case.
+
+describe("no new hardcoded 3880/3800/3810 outside STACK_DEFAULTS, compose fallbacks, and tests", () => {
+  const PORT_LITERAL_RE = /\b(3880|3800|3810)\b/;
+
+  // The one file allowed to DEFINE these numbers.
+  const CANONICAL_DEFAULTS_FILE = join("packages", "lib", "src", "control-plane", "defaults.ts");
+
+  // Every other occurrence needs a named, reasoned exemption, matched against
+  // the OFFENDING LINE'S CONTENT (not a line number, which drifts as
+  // unrelated lines above it change). Keep this list small — a growing
+  // allowlist is a sign the ban needs a real fix upstream, not a wider
+  // exemption. `snippet` only needs to be specific enough to identify this
+  // one literal in this one file.
+  type Allowance = { file: string; snippet: string; reason: string };
+  const ALLOWLIST: Allowance[] = [
+    {
+      file: join("packages", "ui", "src", "routes", "setup", "steps", "DeployStep.svelte"),
+      snippet: "window.location.port) || 3880",
+      reason:
+        "Browser-side fallback: this code runs in the browser and cannot import a server-side constant.",
+    },
+    {
+      file: join("packages", "ui", "src", "routes", "setup", "steps", "DeployStep.svelte"),
+      snippet: "deployData.ports?.ui ?? 3800",
+      reason: "Same browser-side reasoning as the window.location.port fallback above it.",
+    },
+    {
+      file: join("packages", "ui", "src", "routes", "setup", "steps", "DeployStep.svelte"),
+      snippet: "deployData.ports?.assistant ?? 3810",
+      reason: "Same browser-side reasoning as the window.location.port fallback above it.",
+    },
+  ];
+
+  /** Blank out `'...'` / `"..."` string contents so quoted digits (help text, URL examples, doc placeholders) never match. */
+  function stripQuotedStrings(line: string): string {
+    return line.replace(/'(?:\\.|[^'\\])*'/g, "''").replace(/"(?:\\.|[^"\\])*"/g, '""');
+  }
+
+  /** 1-based line numbers where a bare (non-string, non-comment) port literal appears, with the raw line text for allowlist matching. */
+  function scanForPortLiterals(filePath: string): { line: number; text: string }[] {
+    const lines = readFileSync(filePath, "utf-8").split("\n");
+    const offenders: { line: number; text: string }[] = [];
+    let inBlockComment = false;
+    for (let i = 0; i < lines.length; i++) {
+      let line = lines[i];
+      const trimmed = line.trim();
+      if (inBlockComment) {
+        const end = line.indexOf("*/");
+        if (end === -1) continue;
+        line = line.slice(end + 2);
+        inBlockComment = false;
+      } else if (trimmed.startsWith("//") || trimmed.startsWith("*")) {
+        if (trimmed.startsWith("/*") && !trimmed.includes("*/")) inBlockComment = true;
+        continue;
+      } else {
+        const blockStart = line.indexOf("/*");
+        if (blockStart !== -1 && !line.slice(blockStart).includes("*/")) {
+          line = line.slice(0, blockStart);
+          inBlockComment = true;
+        }
+      }
+      const noStrings = stripQuotedStrings(line);
+      const commentIdx = noStrings.indexOf("//");
+      const codePart = commentIdx !== -1 ? noStrings.slice(0, commentIdx) : noStrings;
+      if (PORT_LITERAL_RE.test(codePart)) offenders.push({ line: i + 1, text: line.trim() });
+    }
+    return offenders;
+  }
+
+  function listSourceFiles(dir: string): string[] {
+    if (!existsSync(dir)) return [];
+    const entries = readdirSync(dir, { recursive: true, withFileTypes: true }) as Array<
+      import("node:fs").Dirent & { parentPath?: string; path?: string }
+    >;
+    const files: string[] = [];
+    for (const entry of entries) {
+      if (!entry.isFile()) continue;
+      if (!/\.(ts|svelte)$/.test(entry.name)) continue;
+      if (/\.(test|vitest)\.ts$/.test(entry.name)) continue;
+      const parent = entry.parentPath ?? entry.path;
+      if (!parent) continue;
+      files.push(join(parent, entry.name));
+    }
+    return files;
+  }
+
+  test("every 3880/3800/3810 in packages/*/src lives in defaults.ts, a test file, or the allowlist", () => {
+    const packagesDir = join(REPO_ROOT, "packages");
+    const packageNames = readdirSync(packagesDir).filter((name) =>
+      statSync(join(packagesDir, name)).isDirectory(),
+    );
+
+    const failures: string[] = [];
+    for (const pkg of packageNames) {
+      const srcDir = join(packagesDir, pkg, "src");
+      for (const file of listSourceFiles(srcDir)) {
+        const relPath = relative(REPO_ROOT, file);
+        if (relPath === CANONICAL_DEFAULTS_FILE) continue;
+        for (const offender of scanForPortLiterals(file)) {
+          const allowed = ALLOWLIST.some((a) => a.file === relPath && offender.text.includes(a.snippet));
+          if (allowed) continue;
+          failures.push(`${relPath}:${offender.line}: ${offender.text}`);
+        }
+      }
+    }
+
+    const message =
+      `Hardcoded 3880/3800/3810 found outside STACK_DEFAULTS and the allowlist:\n${failures.join("\n")}\n\n` +
+      `Every host-UI/assistant port default lives in packages/lib/src/control-plane/defaults.ts ` +
+      `(STACK_DEFAULTS) — import it (or resolveHostUiPort/resolveUiListenEnv/resolveAssistantEndpoint) ` +
+      `instead of re-declaring the number. If this genuinely cannot import a shared constant (e.g. ` +
+      `browser-only code), add a reasoned entry to this test's ALLOWLIST instead of weakening the pattern.`;
+    expect(failures, message).toEqual([]);
   });
 });

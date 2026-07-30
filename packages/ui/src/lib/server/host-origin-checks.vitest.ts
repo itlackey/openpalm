@@ -1,5 +1,6 @@
 import { describe, it, expect, afterEach } from 'vitest';
-import { checkHostHeader, checkOriginHeader, UI_PORT } from './helpers.js';
+import { checkHostHeader, checkOriginHeader } from './helpers.js';
+import { DEFAULT_HOST_UI_PORT as UI_PORT } from '@openpalm/lib';
 
 function req(
   host: string,
@@ -39,31 +40,32 @@ describe('checkHostHeader', () => {
   });
 
   describe('the published container UI', () => {
-    it('allows a LAN host when the container UI is published beyond loopback', () => {
+    it('allows a LAN host — the container UI IS the LAN front door', () => {
       // The whole point of publishing it: a phone reaches it by name or IP.
       process.env.OP_UI_SERVED_IN_CONTAINER = '1';
-      process.env.OP_UI_BIND_ADDRESS = '0.0.0.0';
       expect(checkHostHeader(req('openpalm.local:3800'))).toBeNull();
       expect(checkHostHeader(req('192.168.1.50:3800'))).toBeNull();
     });
 
-    it('still rejects when the container UI is bound to loopback', () => {
+    it('relaxes on the container marker ALONE, not on a mirrored bind address', () => {
+      // Requiring a non-loopback OP_UI_BIND_ADDRESS too made LAN reachability
+      // depend on three hand-mirrored values (the compose port mapping, the env
+      // copy of it, and this marker). Any divergence — a custom.compose.yml
+      // overriding `ports:` without the env, a manual `docker compose` run, a
+      // hand-edited stack.env plus `docker restart` — produced a port that
+      // accepted TCP and then 400'd every request with invalid_host.
       process.env.OP_UI_SERVED_IN_CONTAINER = '1';
       process.env.OP_UI_BIND_ADDRESS = '127.0.0.1';
-      expect(checkHostHeader(req('openpalm.local:3800'))?.status).toBe(400);
+      expect(checkHostHeader(req('openpalm.local:3800'))).toBeNull();
     });
 
     it('does NOT relax for the host process, even with a stray bind address in its env', () => {
-      // DNS rebinding targets loopback-bound services, so a bind address
-      // leaking into a host operator's shell must never weaken the admin-
-      // capable host UI. The container marker is required, not inferred.
+      // DNS rebinding targets loopback-bound services, and the host process is
+      // the one worth protecting: it holds host:*. Only the entrypoint-set
+      // container marker relaxes the check, and it cannot be reached by
+      // inference.
       process.env.OP_UI_BIND_ADDRESS = '0.0.0.0';
       expect(checkHostHeader(req('192.168.1.50:3880'))?.status).toBe(400);
-    });
-
-    it('does NOT relax on the container marker alone', () => {
-      process.env.OP_UI_SERVED_IN_CONTAINER = '1';
-      expect(checkHostHeader(req('192.168.1.50:3800'))?.status).toBe(400);
     });
   });
 

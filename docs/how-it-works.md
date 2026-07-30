@@ -57,6 +57,14 @@ image also contains the default tool packages; startup does not download or
 resolve a runtime UI tarball. The host materializes skeleton files from the
 coordinated GitHub host-assets release.
 
+With the `networkAccess` toggle on, this UI is reachable from another device at
+`http://<name>.local:3800` or `http://<host-ip>:3800` — see
+[Setup Guide → Reaching OpenPalm from Another Device](setup-guide.md#reaching-openpalm-from-another-device)
+for the concrete URL and its caveats. Voice is not reachable through this
+served copy: the entrypoint sets `OP_UI_NO_LOCAL_VOICE=1` because this
+co-process only has a loopback path to its own container, never the sibling
+voice container, so `/voice` `503`s here by design.
+
 Managed OpenCode config comes from `system/assistant/` at `/etc/opencode`.
 User OpenCode global config comes separately from `config/assistant/` at
 `/home/opencode/.config/opencode`.

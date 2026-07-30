@@ -114,6 +114,41 @@ export type AccessEnv = {
   GUARDIAN_DIRECT_INGRESS: "true" | "false";
 };
 
+/**
+ * Where each toggle's INTENT is stored, as a boolean, alongside the generated
+ * row it produces.
+ *
+ * Intent used to be stored only as its own consequences — four bind addresses —
+ * and read back by inferring "is this loopback?". That is the root cause the
+ * churn history keeps returning to, because inference and Compose's own
+ * precedence could disagree, in both directions:
+ *
+ *   - a shared-guardian row (`OP_BIND_ADDRESS=0.0.0.0` with an explicit
+ *     `OP_UI_BIND_ADDRESS=127.0.0.1`) read back as networkAccess:true, and the
+ *     next save made that reading REAL — silently publishing a surface the
+ *     operator had deliberately kept private;
+ *   - a restored backup or hand edit could show every toggle ON while Compose
+ *     published loopback for all of them.
+ *
+ * A stored boolean cannot disagree with itself. The derived row remains
+ * generated output: hand edits to it are overwritten on the next save.
+ */
+export const ACCESS_INTENT_KEYS: Record<keyof AccessToggles, string> = {
+  networkAccess: "OP_ACCESS_NETWORK",
+  assistantDirect: "OP_ACCESS_ASSISTANT_DIRECT",
+  guardianNetwork: "OP_ACCESS_GUARDIAN",
+  guardianOpenaiApi: "OP_ACCESS_OPENAI_API",
+};
+
+/** Serialize toggles into their stored-intent keys. */
+export function resolveAccessIntentEnv(toggles: AccessToggles): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const key of ACCESS_TOGGLE_KEYS) {
+    out[ACCESS_INTENT_KEYS[key]] = toggles[key] ? "true" : "false";
+  }
+  return out;
+}
+
 /** The generated keys, for callers that need to strip or diff them. */
 export const ACCESS_ENV_KEYS = [
   "OP_UI_BIND_ADDRESS",
@@ -189,26 +224,55 @@ function isOpen(
   return !isLoopback(effectiveBind(env, specificKey, legacyKeys));
 }
 
+const TRUE_RE = /^(true|1|yes|on)$/i;
+const FALSE_RE = /^(false|0|no|off)$/i;
+
+/** Read one stored intent boolean; `undefined` when absent or unparseable. */
+function readIntent(
+  env: Record<string, string | undefined>,
+  key: keyof AccessToggles,
+): boolean | undefined {
+  const raw = env[ACCESS_INTENT_KEYS[key]]?.trim();
+  if (!raw) return undefined;
+  if (TRUE_RE.test(raw)) return true;
+  if (FALSE_RE.test(raw)) return false;
+  return undefined;
+}
+
 /**
  * Read the toggles back out of an env record, for display and for pre-filling
- * a rerun. Unlike the preset model this is a direct read, not an inference —
- * an env that matches no combination cannot exist, because every combination
- * is representable.
+ * a rerun.
  *
- * Legacy rows are mapped rather than rejected, using the cascade's own
- * precedence (see {@link effectiveBind}). `OP_BIND_ADDRESS` was the cascade
- * root for the UI, guardian and API listeners; `OP_CHAT_BIND_ADDRESS` was the
- * second host port onto the guardian's single OpenAI-compatible listener.
- * `OP_ASSISTANT_BIND_ADDRESS` never cascaded — its compose line defaulted
- * straight to loopback — so it has no legacy fallback here.
+ * Stored intent wins (see {@link ACCESS_INTENT_KEYS}). Inference from bind
+ * addresses survives ONLY as the fallback for a row that predates the stored
+ * keys — it is what the migration reads once to materialize them, and what a
+ * hand-edited or restored-backup row falls back to until the next save. It is
+ * no longer the normal read path, which is the point: inference is what could
+ * disagree with Compose and then be made real by the next write.
+ *
+ * The legacy fallbacks live inside that inference. `OP_BIND_ADDRESS` was the
+ * cascade root for the UI, guardian and API listeners; `OP_CHAT_BIND_ADDRESS`
+ * was the second host port onto the guardian's OpenAI-compatible listener.
+ * `OP_ASSISTANT_BIND_ADDRESS` never cascaded, so it has no legacy fallback.
  */
 export function readAccessToggles(env: Record<string, string | undefined>): AccessToggles {
   return {
-    networkAccess: isOpen(env, "OP_UI_BIND_ADDRESS", ["OP_BIND_ADDRESS"]),
-    assistantDirect: isOpen(env, "OP_ASSISTANT_BIND_ADDRESS"),
-    guardianNetwork: isOpen(env, "OP_GUARDIAN_BIND_ADDRESS", ["OP_BIND_ADDRESS"]),
-    guardianOpenaiApi: isOpen(env, "OP_API_BIND_ADDRESS", ["OP_CHAT_BIND_ADDRESS", "OP_BIND_ADDRESS"]),
+    networkAccess:
+      readIntent(env, "networkAccess") ?? isOpen(env, "OP_UI_BIND_ADDRESS", ["OP_BIND_ADDRESS"]),
+    assistantDirect:
+      readIntent(env, "assistantDirect") ?? isOpen(env, "OP_ASSISTANT_BIND_ADDRESS"),
+    guardianNetwork:
+      readIntent(env, "guardianNetwork")
+      ?? isOpen(env, "OP_GUARDIAN_BIND_ADDRESS", ["OP_BIND_ADDRESS"]),
+    guardianOpenaiApi:
+      readIntent(env, "guardianOpenaiApi")
+      ?? isOpen(env, "OP_API_BIND_ADDRESS", ["OP_CHAT_BIND_ADDRESS", "OP_BIND_ADDRESS"]),
   };
+}
+
+/** True when every toggle's intent is stored, i.e. nothing is being inferred. */
+export function hasStoredAccessIntent(env: Record<string, string | undefined>): boolean {
+  return ACCESS_TOGGLE_KEYS.every((key) => readIntent(env, key) !== undefined);
 }
 
 /**

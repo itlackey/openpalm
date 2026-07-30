@@ -243,4 +243,54 @@ describe('computeVoiceRuntime — voice-endpoint advertisement', () => {
     process.env.OP_UI_NO_LOCAL_VOICE = '1';
     expect(computeVoiceRuntime()).toBeUndefined();
   });
+
+  // ── The container co-process (OP_VOICE_LAN_ACCESS opt-in) ────────────────
+  // In-container there is NO host OP_HOME, so getState().homeDir points inside
+  // the assistant's own data mount and carries no stack.env: the addon-list
+  // read below returns [] no matter how voice is configured on the host. The
+  // entrypoint's injected OP_VOICE_URL is the signal instead.
+
+  test('advertises in the container when the entrypoint injected an upstream, with NO readable addon list', () => {
+    // Deliberately does NOT call enableVoice(): this is the real in-container
+    // state — an unreadable/empty home. Before this, the addon check refused
+    // here and LAN voice was dead even with the network path in place.
+    process.env.OP_UI_SERVED_IN_CONTAINER = '1';
+    process.env.OP_VOICE_URL = 'http://voice:8880';
+    try {
+      expect(computeVoiceRuntime()).toEqual({ url: '/voice' });
+    } finally {
+      delete process.env.OP_UI_SERVED_IN_CONTAINER;
+      delete process.env.OP_VOICE_URL;
+    }
+  });
+
+  test('stays absent in the container when the operator did not opt in', () => {
+    // No OP_VOICE_URL: OP_VOICE_LAN_ACCESS is off, so the entrypoint also set
+    // OP_UI_NO_LOCAL_VOICE=1. Either gate alone must keep it closed.
+    process.env.OP_UI_SERVED_IN_CONTAINER = '1';
+    process.env.OP_UI_NO_LOCAL_VOICE = '1';
+    try {
+      expect(computeVoiceRuntime()).toBeUndefined();
+    } finally {
+      delete process.env.OP_UI_SERVED_IN_CONTAINER;
+    }
+  });
+
+  test('the container marker ALONE never advertises — the injected upstream is required', () => {
+    process.env.OP_UI_SERVED_IN_CONTAINER = '1';
+    try {
+      expect(computeVoiceRuntime()).toBeUndefined();
+    } finally {
+      delete process.env.OP_UI_SERVED_IN_CONTAINER;
+    }
+  });
+
+  test('a host process is unaffected by a stray OP_VOICE_URL — it still needs the addon enabled', () => {
+    process.env.OP_VOICE_URL = 'http://voice:8880';
+    try {
+      expect(computeVoiceRuntime()).toBeUndefined();
+    } finally {
+      delete process.env.OP_VOICE_URL;
+    }
+  });
 });

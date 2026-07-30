@@ -73,6 +73,7 @@ transparent proxy routes may use their native upstream shape instead.
 | `/api/assistant/*` | Persona, model, and assistant AKM settings | Session plus assistant-settings capability |
 | `/api/connections/pairing` | Mint a one-time Guardian direct-principal pairing code | Session plus host stack-write capability |
 | `/api/host/*` | Docker, lifecycle, addons, providers, secrets, versions, recovery, and diagnostics | Session plus route-specific host capability |
+| `/oc/*` | Same-origin pass-through to **this process's own** OpenCode | Session; not to be confused with Guardian's `/oc/*` below |
 | `/voice/*` | Same-origin pass-through to local voice | Session; `503` when unavailable |
 | `/guardian/health` | Guardian reachability probe | Public |
 
@@ -109,6 +110,21 @@ non-Anthropic credentials to the running assistant OpenCode process, then
 restarts the assistant and any enabled Guardian consumer so disk credentials
 are reloaded. Per-provider push or restart failures are reported without
 rolling back the completed file import.
+
+## OC Proxy Disambiguation
+
+The path `/oc/*` names two unrelated servers:
+
+| | This UI's `/oc/*` (`routes/oc/[...path]/+server.ts`) | Guardian's `/oc/*` (`packages/guardian/src/proxy.ts`) |
+|---|---|---|
+| Server | Whichever process is serving this UI (assistant co-process, `openpalm app`, `openpalm admin`, Electron) | The separate `guardian` container |
+| Auth | `requireAdmin` — the UI's own `op_session` cookie | Guardian principal HTTP Basic auth + ownership enforcement |
+| Upstream | This process's own OpenCode only (`getAssistantOpencodeTarget()`) | Whatever OpenCode Guardian is configured to front |
+| Reached by | The browser, same-origin, as part of loading this UI | External/portal clients (Discord, Slack, direct principals, MCP) — never this UI |
+
+They happen to share a path segment because both are transparent 1:1 OpenCode
+proxies; neither forwards to the other, and a client authenticated to one has
+no standing on the other.
 
 ## Guardian HTTP Surfaces
 

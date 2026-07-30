@@ -3,26 +3,24 @@
  */
 import type { RequestEvent } from "@sveltejs/kit";
 import { timingSafeEqual, createHash } from "node:crypto";
-import { getHostOpencodeTarget } from "./opencode-target.js";
-import { createOpenCodeClient, isRemoteSetupAllowed } from "@openpalm/lib";
+import { getAssistantOpencodeTarget } from "./opencode-target.js";
+import { createOpenCodeClient, isRemoteSetupAllowed, isTrustedProxyEnabled } from "@openpalm/lib";
 import { validateSession, getUiLoginPassword } from "./session-store.js";
 import { computeServerRuntimeContext } from "./features.js";
 import type { Capability, ServerRuntimeContext } from "$lib/types.js";
 
 /**
- * Lazy OpenCode client bound to the currently active endpoint. The client is
- * recreated whenever the active endpoint URL changes so user switches in the
- * UI take effect on the next call.
+ * OpenCode client bound to the assistant target.
+ *
+ * Built per call rather than cached: the target's CREDENTIAL is as mutable as
+ * its URL (an operator toggling `assistantDirect` flips `OPENCODE_AUTH` and the
+ * generated key at runtime), and a client cached on URL alone kept sending a
+ * stale credential — or none — until the process restarted. The factory is a
+ * closure over two strings, so rebuilding it is free.
  */
-let _openCodeClient: ReturnType<typeof createOpenCodeClient> | undefined;
-let _openCodeClientUrl: string | undefined;
 export function getOpenCodeClient(): ReturnType<typeof createOpenCodeClient> {
-  const { url } = getHostOpencodeTarget();
-  if (!_openCodeClient || url !== _openCodeClientUrl) {
-    _openCodeClient = createOpenCodeClient({ baseUrl: url });
-    _openCodeClientUrl = url;
-  }
-  return _openCodeClient;
+  const { url, username, password } = getAssistantOpencodeTarget();
+  return createOpenCodeClient({ baseUrl: url, username, password });
 }
 
 export function safeTokenCompare(a: string, b: string): boolean {
@@ -213,9 +211,10 @@ export async function withAdminBody(
   handler: (ctx: { requestId: string; body: Record<string, unknown> }) => Promise<Response>
 ): Promise<Response> {
   const requestId = getRequestId(event);
-  const { security } = computeServerRuntimeContext(event);
-  const originError = checkOriginHeader(event.request, security.csrfMode, requestId);
-  if (originError) return originError;
+  // No origin check here: the global hook (hooks.server.ts) already ran
+  // checkOriginHeader on this request. Running it a second time per admin
+  // mutation cost a second computeServerRuntimeContext and gave two places to
+  // keep in sync for no additional protection.
   const authError = requireAdmin(event, requestId);
   if (authError) return authError;
   const result = await parseJsonBody(event.request);
@@ -268,34 +267,34 @@ function effectiveRequestOrigin(request: Request): string | null {
 }
 
 /**
- * True when this process is the assistant container's UI co-process AND its
- * host port is published beyond loopback.
+ * True when this process is the assistant container's UI co-process.
  *
- * The Host allowlist asserts "this service is loopback-only". That assertion
- * is permanently true for the HOST process (`openpalm app` / `admin` /
- * Electron), which is admin-capable and never published — so the check stays
- * on there and costs nothing.
- *
- * It is false for the container UI whenever the operator has published it: a
- * service deliberately bound to the LAN, advertised over mDNS, and opened from
- * another device. Enforcing loopback-only on it is not defence in depth, it is
- * a false assertion that surfaces as a 400 on every request from a phone.
- *
- * BOTH conditions are required, deliberately. Relaxing on bind address alone
- * would be unsafe: DNS rebinding specifically targets loopback-bound services
+ * The Host allowlist asserts "this service is loopback-only". That assertion is
+ * permanently true for the HOST process (`openpalm app` / `admin` / Electron),
+ * which is admin-capable and never published — so the check stays on there and
+ * costs nothing. DNS rebinding specifically targets loopback-bound services
  * (the attacker rebinds their domain to 127.0.0.1 and drives the victim's own
- * browser), so a stray `OP_UI_BIND_ADDRESS` in a host operator's shell must
- * never weaken the host process. `OP_UI_SERVED_IN_CONTAINER` is set only by
- * the assistant entrypoint (containers/assistant/entrypoint.sh) and cannot be
- * reached by inference; `OP_UI_BIND_ADDRESS` is passed by core.compose.yml
- * mirroring the UI port line, because the container's own `HOST=0.0.0.0`
- * listener says nothing about whether the port is published to the LAN.
+ * browser), and that is exactly the process worth protecting: it holds host:*.
+ *
+ * The container co-process is the LAN front door by design, so the assertion is
+ * simply false there and enforcing it surfaces as a 400 on every request from a
+ * phone. `OP_UI_SERVED_IN_CONTAINER` is set only by the assistant entrypoint
+ * and cannot be reached by inference, so it is a sufficient discriminator on
+ * its own.
+ *
+ * It used to ALSO require a non-loopback `OP_UI_BIND_ADDRESS`, mirrored into the
+ * container env by core.compose.yml to describe the port mapping one line above
+ * it. That made LAN reachability depend on three values staying hand-mirrored —
+ * the mapping, the env copy, and this marker — and any divergence (a
+ * custom.compose.yml overriding `ports:` without the env, a manual `docker
+ * compose` run, a hand-edited stack.env plus `docker restart`) produced a port
+ * that accepted TCP and then 400'd every single request with invalid_host: the
+ * exact "exposed to the LAN but broken" symptom. Dropping it costs nothing
+ * real: a rebinding attacker who reaches the container UI still meets the login
+ * wall with no session cookie, so they get /login and /health and nothing else.
  */
 function isPublishedContainerUi(): boolean {
-  if (process.env.OP_UI_SERVED_IN_CONTAINER !== "1") return false;
-  const bind = process.env.OP_UI_BIND_ADDRESS?.trim();
-  if (!bind) return false;
-  return !isLoopbackHost(bind);
+  return process.env.OP_UI_SERVED_IN_CONTAINER === "1";
 }
 
 export function checkHostHeader(request: Request, requestId?: string): Response | null {
@@ -303,7 +302,14 @@ export function checkHostHeader(request: Request, requestId?: string): Response 
   // Allow any loopback host (any port, e.g. via SSH tunnel); any host when the
   // operator has explicitly opted into remote access; and any host when this
   // is the container UI published beyond loopback on purpose.
-  if (isLoopbackHost(host) || isRemoteSetupAllowed() || isPublishedContainerUi()) return null;
+  if (
+    isLoopbackHost(host)
+    || isRemoteSetupAllowed()
+    || isTrustedProxyEnabled()
+    || isPublishedContainerUi()
+  ) {
+    return null;
+  }
   return new Response(
     JSON.stringify({
       error: "invalid_host",
@@ -340,7 +346,7 @@ export function checkOriginHeader(request: Request, csrfMode: CsrfMode = 'loopba
         // Loopback and SSH-tunnel requests are accepted only when the browser's
         // exact origin matches the effective request scheme, host, and port.
         if (sameOrigin && isLoopbackHost(u.host)) return null;
-        if (sameOrigin && isRemoteSetupAllowed()) return null;
+        if (sameOrigin && (isRemoteSetupAllowed() || isTrustedProxyEnabled())) return null;
         break;
       }
       case 'same-site':
@@ -356,6 +362,3 @@ export function checkOriginHeader(request: Request, csrfMode: CsrfMode = 'loopba
     { status: 403, headers: { "content-type": "application/json" } }
   );
 }
-
-// UI_PORT is exported so hooks.server.ts and other modules can import it.
-export const UI_PORT = Number(process.env.PORT ?? 3880);

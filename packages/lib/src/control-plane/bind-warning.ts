@@ -19,15 +19,44 @@ export function isLoopback(value: string): boolean {
 }
 
 /**
- * True when the container-served OpenPalm UI is published off loopback.
+ * What counts as "on" for a binary opt-in flag in stack.env or the process env.
  *
- * Read straight from the generated `OP_UI_BIND_ADDRESS`. There is no cascade
- * to mirror any more: every bind is written explicitly on every deploy, so an
- * absent value means loopback and nothing else.
+ * Every such flag — OP_TRUSTED_PROXY, OP_ALLOW_REMOTE_SETUP,
+ * OP_VOICE_LAN_ACCESS, OPENCODE_AUTH — accepted the same three spellings via
+ * its own inline copy of this comparison, each written slightly differently
+ * (three string chains and a regex). Four copies is how the fifth flag ends up
+ * quietly accepting a different set from the other four.
+ *
+ * Deliberately NOT shared with `access-toggles.ts`'s intent parser: that one is
+ * tri-state (a stored boolean can be absent or unparseable, which is not the
+ * same as false) and so needs a matching FALSE pattern too. These flags are
+ * binary — anything that is not "on" is off.
  */
-export function isUiLanExposed(env: Record<string, string | undefined>): boolean {
-  const bind = env.OP_UI_BIND_ADDRESS?.trim() || "127.0.0.1";
-  return !isLoopback(bind);
+export function isEnabledFlag(value: string | undefined): boolean {
+  const v = value?.trim().toLowerCase();
+  return v === "1" || v === "true" || v === "yes";
+}
+
+/**
+ * Opt-in: trust `x-forwarded-proto` / `Host` from a proxy in front of a
+ * loopback-bound host UI, WITHOUT widening the listener.
+ *
+ * This is what every documented TLS topology actually needs. Tailscale Serve,
+ * Caddy and nginx all connect to `127.0.0.1:3880`, so the two things required
+ * are (a) the Host allowlist relaxed for the proxy's public name and (b)
+ * adapter-node deriving its origin from the forwarded headers. Neither needs a
+ * `0.0.0.0` bind — yet both were keyed off the same flag that opens one, so the
+ * TLS guide had to add a compensating step telling operators to firewall the
+ * plain-HTTP port the code had just opened for no reason.
+ *
+ * Admin capability still wins: a host admin surface is never reachable remotely,
+ * proxy or not.
+ */
+export function isTrustedProxyEnabled(
+  env: Record<string, string | undefined> = process.env,
+): boolean {
+  if (env.OP_ENABLE_ADMIN === '1' || env.OP_INSIDE_ELECTRON === '1') return false;
+  return isEnabledFlag(env.OP_TRUSTED_PROXY);
 }
 
 /**
@@ -44,6 +73,5 @@ export function isRemoteSetupAllowed(
   env: Record<string, string | undefined> = process.env,
 ): boolean {
   if (env.OP_ENABLE_ADMIN === '1' || env.OP_INSIDE_ELECTRON === '1') return false;
-  const v = env.OP_ALLOW_REMOTE_SETUP?.trim().toLowerCase();
-  return v === "1" || v === "true" || v === "yes";
+  return isEnabledFlag(env.OP_ALLOW_REMOTE_SETUP);
 }

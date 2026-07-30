@@ -31,15 +31,15 @@ import type { ControlPlaneState } from './types.js';
 import { validateSetupSpec } from './setup-validation.js';
 import {
 	getRegistryAutomation,
-	listEnabledAddonIds,
 	setAddonEnabled,
 	setAddonProfileSelection
 } from './addons.js';
-import { GUARDIAN_INGRESS_ADDON_IDS } from './addon-ids.js';
+import { reconcileGuardianIngressAddons } from './access-apply.js';
 import {
 	coerceAccessToggles,
 	requiresAssistantKey,
 	resolveAccessEnv,
+	resolveAccessIntentEnv,
 	type AccessToggles
 } from './access-toggles.js';
 import { randomHex } from './crypto.js';
@@ -371,7 +371,13 @@ export async function performSetup(
 			// actively set toggles this run.
 			if (access) {
 				const toggles = coerceAccessToggles(access);
-				const patches: Record<string, string> = { ...resolveAccessEnv(toggles) };
+				// Stored intent + the row it generates. Writing intent is what lets
+				// every later read be a read instead of an inference from bind
+				// addresses (access-toggles.ts ACCESS_INTENT_KEYS).
+				const patches: Record<string, string> = {
+					...resolveAccessIntentEnv(toggles),
+					...resolveAccessEnv(toggles),
+				};
 				// Publishing the assistant API always turns auth on, with a key the
 				// system GENERATES. The operator is never asked to invent one: the
 				// human-facing credential is the UI login password in every
@@ -463,38 +469,12 @@ export async function performSetup(
 			// so a bind address alone deploys no guardian at all. Publishing a front
 			// door promises something reachable, so make it so.
 			//
-			// `guardianOpenaiApi` publishes the OpenAI-compatible edge specifically,
-			// which is the `api` addon — publishing it without enabling it would map
-			// a host port onto a container that was never deployed. The `api` portal
-			// is an ordinary capability toggle now (it used to be pinned enabled,
-			// which is why this only ever needed the generic fallback below).
-			if (access?.guardianOpenaiApi) {
-				const apiEnabled =
-					addons?.api === true ||
-					(addons?.api !== false && listEnabledAddonIds(state.homeDir).includes('api'));
-				if (!apiEnabled) {
-					setAddonEnabled(state.homeDir, 'api', true, state);
-					logger.info('auto-enabled the api portal for a published OpenAI-compatible edge', {
-						reason: 'the published port has nothing behind it otherwise'
-					});
-				}
-			}
-			// Any other guardian ingress will do for the guardian's own front door;
-			// when nothing provides one, enable the built-in chat portal (the only
-			// credential-less guardian-ingress addon).
-			if (access?.guardianNetwork) {
-				const hasGuardianIngress = [
-					...Object.entries(addons ?? {})
-						.filter(([, on]) => on)
-						.map(([name]) => name),
-					...listEnabledAddonIds(state.homeDir)
-				].some((a) => GUARDIAN_INGRESS_ADDON_IDS.includes(a));
-				if (!hasGuardianIngress) {
-					setAddonEnabled(state.homeDir, 'chat', true, state);
-					logger.info('auto-enabled the chat portal for a published guardian', {
-						reason: 'guardian ingress required for the front door to exist'
-					});
-				}
+			// Shared with the admin PUT via lib's reconcileGuardianIngressAddons —
+			// this logic used to live only here, so a guardian toggle flipped after
+			// install published a host port onto a container that was never
+			// deployed, and read back as ON while being silently inert.
+			if (access) {
+				reconcileGuardianIngressAddons(state, coerceAccessToggles(access), addons ?? {});
 			}
 
 			if (voiceProfile?.trim()) {

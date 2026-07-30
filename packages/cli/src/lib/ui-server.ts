@@ -11,7 +11,9 @@ import { existsSync } from 'node:fs';
 import {
   resolveOpenPalmHome, resolveUiBuildDir, createLogger, readSecret, readStackEnv,
   checkAndUpdateUiBuild, checkAndUpdateSkeleton, PLATFORM_VERSION,
-  consumePendingUiBackup, isRemoteSetupAllowed, restoreUiBackup, UiSupervisor, waitForReady,
+  consumePendingUiBackup, isRemoteSetupAllowed, isTrustedProxyEnabled, readyOrChildExit, restoreUiBackup, UiSupervisor, waitForReady,
+  checkExistingUiInstance, type UiInstanceCheck,
+  resolveHostUiPort, resolveUiListenEnv, UI_LOOPBACK_HOST, type UiListenEnv,
   buildEmptyUiRuntimeConfig, buildServedUiRuntimeConfig, classifyLocalInstall, stackDirFor,
   serializeUiRuntimeConfig, uiBuildSupportsProcessRuntimeConfig,
   writeLegacyServedUiRuntimeConfig, UI_RUNTIME_CONFIG_ENV,
@@ -19,23 +21,22 @@ import {
 } from '@openpalm/lib';
 import { ensureValidState, resolveServeState } from './cli-state.ts';
 import { openBrowser } from './browser.ts';
-import { resolveHostUiPortFromEnv } from './ports.ts';
 
 const logger = createLogger('cli:ui');
 const STOP_TIMEOUT_MS  = 5_000;
-/** Short probe timeout for the pre-spawn instance-identity check and the
- *  landing/setup-status probes below — these targets are on loopback and
- *  either answer near-instantly or aren't there at all. */
-const PROBE_TIMEOUT_MS = 1_500;
 
 /**
  * Resolve the UI server's listen port: an explicit --port always wins;
  * otherwise persisted stack.env (OP_HOST_UI_PORT, written at headless
  * install — see manual-headless-install.md) merged under process.env
- * (process.env wins), falling back to {@link DEFAULT_UI_PORT}. Before this
- * (review finding D3), the port default was computed from process.env ALONE
- * at module-load time, so a headless install's persisted OP_HOST_UI_PORT was
+ * (process.env wins), falling back to the shared default. Before this (review
+ * finding D3), the port default was computed from process.env ALONE at
+ * module-load time, so a headless install's persisted OP_HOST_UI_PORT was
  * written but never read back by any host server.
+ *
+ * The precedence itself is lib's `resolveHostUiPort` — this wrapper exists only
+ * to default `persistedEnv` to the home's stack.env, which lib cannot do
+ * without taking a filesystem dependency.
  */
 export function resolveUiServePort(
   portOpt: number | undefined,
@@ -43,8 +44,7 @@ export function resolveUiServePort(
   env: NodeJS.ProcessEnv = process.env,
   persistedEnv: Record<string, string> = readStackEnv(homeDir),
 ): number {
-  if (portOpt !== undefined) return portOpt;
-  return resolveHostUiPortFromEnv(env, persistedEnv);
+  return resolveHostUiPort(portOpt, env, persistedEnv);
 }
 
 /**
@@ -81,8 +81,18 @@ export function resolveExpectedAdmin(adminHostUi: boolean, env: NodeJS.ProcessEn
   return env.OP_INSIDE_ELECTRON === '1' || env.OP_ENABLE_ADMIN === '1';
 }
 
-export function resolveUiLoopbackHost(adminHostUi: boolean): '127.0.0.1' | 'localhost' {
-  return adminHostUi ? '127.0.0.1' : 'localhost';
+/**
+ * ONE loopback spelling for the browser-facing URL, regardless of mode.
+ *
+ * `openpalm` used to print `localhost` while `openpalm admin` and Electron
+ * printed `127.0.0.1`, which split the cookie jar: a session established on
+ * `localhost:3880` is simply not sent to `127.0.0.1:3880`, so switching
+ * commands silently demanded a second login. Pinning the literal IP also avoids
+ * the case where `localhost` resolves to `::1` while the listener — always
+ * `HOST=127.0.0.1` — is IPv4-only.
+ */
+export function resolveUiLoopbackHost(): typeof UI_LOOPBACK_HOST {
+  return UI_LOOPBACK_HOST;
 }
 
 export function resolveUiNetworkEnv(
@@ -92,25 +102,14 @@ export function resolveUiNetworkEnv(
   // Fail closed: an omitted install state must never widen the bind to 0.0.0.0.
   // Only an explicit 'installed' (below) unlocks the remote-setup wildcard bind.
   localInstallState: ReturnType<typeof classifyLocalInstall> = 'not_installed',
-): Record<'HOST' | 'PORT' | 'ORIGIN' | 'HOST_HEADER' | 'PROTOCOL_HEADER', string | undefined> {
+): UiListenEnv {
   const effectiveAdmin = resolveExpectedAdmin(adminHostUi, env);
-  if (!effectiveAdmin && localInstallState === 'installed' && isRemoteSetupAllowed(env)) {
-    return {
-      HOST: '0.0.0.0',
-      PORT: String(port),
-      HOST_HEADER: 'host',
-      PROTOCOL_HEADER: 'x-forwarded-proto',
-      ORIGIN: undefined,
-    };
-  }
-  const host = resolveUiLoopbackHost(effectiveAdmin);
-  return {
-    HOST: '127.0.0.1',
-    PORT: String(port),
-    ORIGIN: `http://${host}:${port}`,
-    HOST_HEADER: undefined,
-    PROTOCOL_HEADER: undefined,
-  };
+  return resolveUiListenEnv({
+    port,
+    admin: effectiveAdmin,
+    allowRemote: localInstallState === 'installed' && isRemoteSetupAllowed(env),
+    trustProxy: isTrustedProxyEnabled(env),
+  });
 }
 
 export interface UIServerOptions {
@@ -128,55 +127,13 @@ export interface UIServerOptions {
   adminHostUi?: boolean;
 }
 
-/** Fetch and parse a JSON body; `null` on any failure (network error, non-2xx,
- *  non-JSON, timeout) — every caller below treats "couldn't confirm" the same
- *  as "not there", never as a hard failure. */
-async function probeJson<T>(
-  fetchFn: typeof fetch,
-  url: string,
-  timeoutMs: number,
-): Promise<T | null> {
-  try {
-    const res = await fetchFn(url, { signal: AbortSignal.timeout(timeoutMs) });
-    if (!res.ok) return null;
-    return (await res.json()) as T;
-  } catch {
-    return null;
-  }
-}
-
-/** Outcome of {@link checkExistingUiInstance}. */
-export type UiInstanceCheck =
-  | { status: 'absent' }
-  | { status: 'match'; admin: boolean }
-  | { status: 'mismatch'; admin: boolean };
-
-/**
- * Pre-spawn instance-identity probe (review finding D1). Readiness was a bare
- * port poll (200 OR 401) with no check that whatever answered is even an
- * OpenPalm UI instance of the capability level THIS invocation wants — with a
- * bare `openpalm` already on 3880, `openpalm admin` would poll-succeed, "reuse"
- * it, and open a UI with no admin capability while its own spawn attempt
- * EADDRINUSEs into a respawn loop.
- *
- * If port is silent → 'absent' (proceed with the normal spawn). If it answers
- * `/api/runtime` with the expected `admin` boolean → 'match' (safe to treat as
- * already-running; skip spawning a second child). A different `admin` value →
- * 'mismatch' (a clear, actionable error — never a silent wrong-capability open).
- */
-export async function checkExistingUiInstance(
-  port: number,
-  expectedAdmin: boolean,
-  deps: { fetchFn?: typeof fetch; host?: string; timeoutMs?: number } = {},
-): Promise<UiInstanceCheck> {
-  const fetchFn = deps.fetchFn ?? fetch;
-  const host = deps.host ?? '127.0.0.1';
-  const timeoutMs = deps.timeoutMs ?? PROBE_TIMEOUT_MS;
-  const body = await probeJson<{ admin?: boolean }>(fetchFn, `http://${host}:${port}/api/runtime`, timeoutMs);
-  if (body === null) return { status: 'absent' };
-  const admin = body.admin === true;
-  return admin === expectedAdmin ? { status: 'match', admin } : { status: 'mismatch', admin };
-}
+// The instance-identity probe (review finding D1) and the readiness-vs-child-exit
+// race now live in @openpalm/lib beside UiSupervisor, so Electron gets both
+// instead of re-deriving them — it had neither, and opened its window onto
+// whatever foreign server happened to own the port. Re-exported here because
+// the CLI tests and commands import them from this module. Imported into scope
+// (not `export … from`) because startUIServer below calls it directly.
+export { checkExistingUiInstance, type UiInstanceCheck };
 
 export function resolveUiChildLaunch(
   state: Pick<ControlPlaneState, 'homeDir' | 'stackDir'>,
@@ -293,6 +250,13 @@ async function spawnUiChild(
         // own cwd (packages/ui/build/).
         OP_HOME:                homeDir,
         ...networkEnv,
+        // Explicit "the listen contract is already resolved" marker, consumed by
+        // runUiBuild below. It must be a marker WE set and not an inference from
+        // HOST being present: an ambient HOST in the operator's shell is not
+        // evidence that a supervisor derived the policy, and treating it as such
+        // let `HOST=0.0.0.0` in the environment bind every interface without the
+        // OP_ALLOW_REMOTE_SETUP opt-in.
+        OP_UI_LISTEN_RESOLVED:  '1',
         ...adminEnv,
         OP_UI_LOGIN_PASSWORD:   uiLoginPassword,
         [UI_RUNTIME_CONFIG_ENV]: runtimeConfigJson,
@@ -327,11 +291,28 @@ export async function runUiBuild(opts: { port?: number } = {}): Promise<void> {
   const homeDir = resolveOpenPalmHome();
   const port = opts.port
     ?? (process.env.PORT ? Number(process.env.PORT) : resolveUiServePort(undefined, homeDir));
-  const installState = classifyLocalInstall(stackDirFor(homeDir), homeDir);
-  const networkEnv = resolveUiNetworkEnv(port, resolveExpectedAdmin(false), process.env, installState);
-  for (const [key, value] of Object.entries(networkEnv)) {
-    if (value === undefined) delete process.env[key];
-    else process.env[key] = value;
+  // Derive the listen env ONLY when nobody already did.
+  //
+  // `openpalm ui` runs both as the supervisor's child — where spawnUiChild has
+  // already resolved HOST/ORIGIN and injected them — and standalone, where
+  // nothing has. It used to recompute unconditionally and overwrite, so the
+  // parent's carefully-derived values were dead on arrival and the same inputs
+  // were read at two different times by two call sites that had to agree by
+  // coincidence. Whoever is first now owns the answer.
+  //
+  // The test is our OWN marker, not `HOST` being set. Reading an ambient HOST as
+  // proof that a supervisor configured the listener meant `HOST=0.0.0.0` from a
+  // shell or process manager skipped this resolver entirely — including its
+  // loopback default and its ORIGIN pin — so a bare `openpalm ui` published the
+  // UI on every interface with no OP_ALLOW_REMOTE_SETUP opt-in and no origin
+  // check. An env var an operator happens to export is not a capability grant.
+  if (process.env.OP_UI_LISTEN_RESOLVED !== '1') {
+    const installState = classifyLocalInstall(stackDirFor(homeDir), homeDir);
+    const networkEnv = resolveUiNetworkEnv(port, resolveExpectedAdmin(false), process.env, installState);
+    for (const [key, value] of Object.entries(networkEnv)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
   }
   process.chdir(uiBuildDir);
   await import(indexPath);
@@ -406,18 +387,13 @@ export function createCliUiSupervisor(deps: CliUiSupervisorDeps): {
     if (!proc.killed) proc.kill('SIGKILL');
   };
 
-  // D1: race readiness against the just-spawned child's own exit. A bare port
-  // poll (200/401) can't tell "our child is genuinely still starting" apart
-  // from "our child died immediately (e.g. EADDRINUSE) and the poll happens
-  // to be hitting some OTHER, unrelated process already on the port" — if the
-  // child we just spawned exits before the poll would otherwise settle,
-  // that's an immediate not-ready, not something worth waiting the full
-  // timeout to discover.
-  const waitForReadyFn = (p: number): Promise<boolean> => {
-    const handle = lastHandle;
-    if (!handle) return baseWaitForReady(p);
-    return Promise.race([baseWaitForReady(p), handle.exited.then(() => false)]);
-  };
+  // D1: race readiness against the just-spawned child's own exit (shared with
+  // Electron via lib's readyOrChildExit). A bare port poll (200/401) can't tell
+  // "our child is genuinely still starting" apart from "our child died
+  // immediately (e.g. EADDRINUSE) and the poll happens to be hitting some
+  // OTHER, unrelated process already on the port".
+  const waitForReadyFn = (p: number): Promise<boolean> =>
+    readyOrChildExit(() => baseWaitForReady(p), lastHandle?.exited);
 
   const supervisor = new UiSupervisor<Bun.Subprocess>({
     port,
@@ -461,6 +437,11 @@ export function createCliUiSupervisor(deps: CliUiSupervisorDeps): {
  */
 export async function startUIServer(opts: UIServerOptions = {}): Promise<void> {
   const homeDir = resolveOpenPalmHome();
+  // NOTE: home migrations are NOT run here. They run once in the UI child, at
+  // packages/ui/src/hooks.server.ts module load, which every serve path spawns —
+  // so the migration ships with the schema it implements instead of being
+  // duplicated across two launchers (one of which, the Electron harness, is
+  // frozen and forbidden from running migrations at all).
   // D3: read back a persisted (headless-install) OP_HOST_UI_PORT, not just
   // process.env (resolveUiServePort merges persisted stack.env under process.env).
   const port = resolveUiServePort(opts.port, homeDir);
@@ -476,7 +457,7 @@ export async function startUIServer(opts: UIServerOptions = {}): Promise<void> {
     : ensureValidState();
   const localInstallState = classifyLocalInstall(state.stackDir, state.homeDir);
   const expectedAdmin = resolveExpectedAdmin(opts.adminHostUi === true);
-  const browserHost = resolveUiLoopbackHost(expectedAdmin);
+  const browserHost = resolveUiLoopbackHost();
   const probeHost = '127.0.0.1';
   const uiUrl = `http://${browserHost}:${port}`;
 

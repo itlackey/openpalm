@@ -57,7 +57,9 @@ const WILDCARD_BIND_HOST = /^(0\.0\.0\.0|\[::\]|::)$/i;
  * `env` is layered as `{ ...readStackEnv(homeDir), ...env }` — the persisted,
  * operator-managed stack config is the base, and the live process env (which
  * may carry a per-launch override) wins. Defaults to `process.env` so callers
- * can invoke this with just a homeDir in the common case.
+ * can invoke this with just a homeDir in the common case. A caller that already
+ * read the persisted row for the same request can pass it as `persistedEnv`
+ * rather than paying for a second parse of the same file.
  *
  * The result is always passed through {@link normalizeLoopbackUrl}: even an
  * explicit override (OP_ASSISTANT_URL etc.) may carry a wildcard host if it
@@ -66,8 +68,12 @@ const WILDCARD_BIND_HOST = /^(0\.0\.0\.0|\[::\]|::)$/i;
  * OP_ASSISTANT_BIND_ADDRESS is normalized to loopback exactly as before —
  * only a CONCRETE bind address is now preserved instead of discarded.
  */
-export function resolveAssistantEndpoint(homeDir: string, env: EnvLike = process.env): string {
-  const merged = { ...readStackEnv(homeDir), ...env };
+export function resolveAssistantEndpoint(
+  homeDir: string,
+  env: EnvLike = process.env,
+  persistedEnv?: EnvLike,
+): string {
+  const merged = { ...(persistedEnv ?? readStackEnv(homeDir)), ...env };
   const override = merged.OP_UI_DEFAULT_ASSISTANT_URL || merged.OP_OPENCODE_URL || merged.OP_ASSISTANT_URL;
   const port = merged.OP_ASSISTANT_PORT || String(STACK_DEFAULTS.ports.assistant);
   const bindAddress = merged.OP_ASSISTANT_BIND_ADDRESS?.trim();

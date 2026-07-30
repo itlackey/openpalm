@@ -97,6 +97,17 @@ opencode_auth_enabled() {
   esac
 }
 
+# Voice LAN-access opt-in (OP_VOICE_LAN_ACCESS, core.compose.yml
+# interpolation — this entrypoint has no OP_HOME and cannot read
+# state/stack.env itself). Off by default: see the OP_UI_NO_LOCAL_VOICE
+# comment in start_ui below for what flips when this is on.
+voice_lan_access_enabled() {
+  case "${OP_VOICE_LAN_ACCESS:-false}" in
+    true|TRUE|True|1|yes|YES) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
 # #563/#564 P1-2: resolve OpenCode's Basic-auth password from the compose
 # secret file, gated on opencode_auth_enabled. The secret file is ALWAYS
 # materialized non-empty by ensureSecrets (random seed on first install, or a
@@ -225,7 +236,15 @@ start_ui() {
   ' "${ui_client_dir}/runtime-config.json" "$assistant_url" "$assistant_name" \
     || echo "warning: could not write runtime-config.json; UI starts with no default connection" >&2
 
-  local ui_port="${OP_UI_PORT:-3000}"
+  # The in-container listen port is FIXED. It is the target of the compose port
+  # mapping (`${OP_UI_BIND_ADDRESS}:${OP_UI_PORT}:3000`), so it cannot vary.
+  # Reading OP_UI_PORT here was a trap: that variable is the HOST-facing knob,
+  # and an operator who set it in custom.compose.yml's `environment:` (the
+  # obvious wrong move, since it IS the documented host knob name) made the UI
+  # child bind that port in-container while the mapping still targeted 3000 —
+  # the front door dead, and both healthchecks following the env var to the
+  # wrong port and reporting healthy anyway.
+  local ui_port=3000
 
   # ── UI session login password ─────────────────────────────────────────────
   # The served UI authenticates browsers with the SAME UI login password as the
@@ -275,6 +294,22 @@ start_ui() {
   # and getState() here can resolve into an assistant-writable mount, so a
   # bare "addon enabled?" check is not a sufficient gate. This flag makes the
   # co-process fail closed regardless of readable stack state.
+  #
+  # OP_VOICE_LAN_ACCESS (opt-in, default off) changes that premise: when the
+  # operator has granted voice assistant_net (voice.compose.lan.yml,
+  # included by discoverStackOverlays only under this same flag), this
+  # co-process DOES have a real network path to voice, over Docker DNS —
+  # so it stops setting OP_UI_NO_LOCAL_VOICE and instead advertises the
+  # upstream via OP_VOICE_URL=http://voice:8880.
+  #
+  # 8880 here is voice's FIXED INTERNAL port (OP_VOICE_PORT in
+  # services.compose.yml) — NOT OP_VOICE_PORT_HOST, the operator-configurable
+  # HOST-facing publish port packages/ui voiceHostPort() resolves for
+  # loopback callers. This container-to-container hop is Docker-DNS-to-
+  # in-container-port and never touches the published port at all. Confusing
+  # the two is exactly the OP_UI_PORT trap documented above (the ui_port
+  # local var) — a host-facing knob fed into a value that must stay fixed
+  # in-container.
   (
     local attempt=0
     local max_attempts=5
@@ -290,9 +325,16 @@ start_ui() {
       local start_ts
       start_ts="$(node -e 'process.stdout.write(String(Date.now()))')"
       local exit_code
+      # Recomputed each iteration (cheap; OP_VOICE_LAN_ACCESS never changes
+      # mid-boot) so a respawn always reflects the same posture the container
+      # was started with — see the block comment above for what each branch means.
+      local voice_env_args=(OP_UI_NO_LOCAL_VOICE=1)
+      if voice_lan_access_enabled; then
+        voice_env_args=(OP_VOICE_URL=http://voice:8880)
+      fi
       if env -u OP_ENABLE_ADMIN -u OP_INSIDE_ELECTRON \
            HOST=0.0.0.0 PORT="$ui_port" HOST_HEADER=host PROTOCOL_HEADER=x-forwarded-proto \
-           OP_UI_NO_LOCAL_VOICE=1 \
+           "${voice_env_args[@]}" \
            OP_UI_SERVED_IN_CONTAINER=1 \
            OP_OPENCODE_URL=http://localhost:4096 \
            OP_UI_LOGIN_PASSWORD="$ui_login_password" \
@@ -308,12 +350,16 @@ start_ui() {
       fi
       attempt=$((attempt + 1))
       if [ "$attempt" -ge "$max_attempts" ]; then
-        echo "warning: UI co-process exited $attempt times (last exit $exit_code); giving up on respawn — the assistant keeps serving without it" >&2
-        # A permanently-dead UI (attempt cap exhausted) is the SAME non-fatal,
-        # boot-scoped condition as "build not found" above — write the skip
-        # marker so the healthcheck (which probes the UI port unless this marker
-        # exists) stops expecting a UI that will never come back this boot.
-        : > /tmp/openpalm-ui-skip
+        echo "ERROR: UI co-process exited $attempt times (last exit $exit_code); giving up on respawn. The published UI port now serves nothing — this container is reporting UNHEALTHY on purpose." >&2
+        # Deliberately NO skip marker here. The marker exists for a
+        # legitimately-absent build (an image without the UI), which is a real
+        # configuration. A UI that crash-looped to exhaustion is the opposite: it
+        # is the ONE port a home install publishes, and it is dead. Writing the
+        # marker made the healthcheck stop probing it, so the container went
+        # green over a dead front door — precisely the state the UI probe was
+        # added to prevent, and one Docker's restart policy cannot heal because
+        # healthy containers are never restarted. Failing the healthcheck makes
+        # it visible in `docker ps` and in the host UI's own status.
         break
       fi
       echo "warning: UI co-process exited (code $exit_code) — restarting in ${delay}s (attempt $((attempt + 1))/${max_attempts})" >&2

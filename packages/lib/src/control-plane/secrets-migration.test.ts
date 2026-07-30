@@ -172,4 +172,23 @@ describe('migrateDelegatedSecretsToPrivateDir', () => {
     migrateDelegatedSecretsToPrivateDir(home);
     expect(statSync(privateSecretsDir(home)).mode & 0o777).toBe(0o700);
   });
+
+  it('relocates the session signing key out of the assistant-readable stash', () => {
+    // The cookie-signing key was missed when the other delegated secrets moved.
+    // Left under knowledge/secrets it is bind-mounted into the assistant at
+    // /stash, so the agent — or anything that prompt-injects it — can read the
+    // key and, with the login password the same mount exposed, forge a valid
+    // host-admin session cookie. That is the exact attack mixing a server-side
+    // key into the cookie HMAC exists to prevent.
+    const home = makeHome();
+    writeOld(home, 'op_session_signing_key', 'deadbeef\n');
+
+    const result = migrateDelegatedSecretsToPrivateDir(home);
+
+    expect(result.migrated).toContain('op_session_signing_key');
+    expect(existsSync(join(secretsDir(home), 'op_session_signing_key'))).toBe(false);
+    expect(readFileSync(join(privateSecretsDir(home), 'op_session_signing_key'), 'utf-8')).toBe(
+      'deadbeef\n',
+    );
+  });
 });

@@ -6,12 +6,15 @@ import { defaultWorkDir } from '../lib/paths.ts';
 import { defineAction } from '../lib/action.ts';
 import { promptYesNo } from '../lib/prompt.ts';
 import { resolveLatestReleaseTag } from '../lib/github.ts';
-import { DEFAULT_UI_PORT } from '../lib/ports.ts';
+import type { UIServerOptions } from '../lib/ui-server.ts';
 import {
 	resolveOpenPalmHome,
 	resolveConfigDir,
 	ensureHomeDirs,
+	readStackEnv,
+	resolveHostUiPort,
 	runHomeMigrations,
+	UI_LOOPBACK_HOST,
 	hasMaterializedLocalInstall,
 	hasAnyStackEnvFile,
 	resolveBackupsDirFor,
@@ -348,6 +351,42 @@ async function prepareInstallFiles(
 }
 
 /**
+ * The UI-server options the first-run setup wizard must be served with.
+ *
+ * `adminHostUi: true` is REQUIRED, not incidental: the wizard writes secrets
+ * and deploys the stack, so `/setup` and `/api/setup/*` are gated on the
+ * `host:setup` capability (packages/ui features.ts), which only an
+ * admin-capable process advertises. Without it `prepareInstallFiles` has
+ * already made the home 'setup_incomplete', so the UI redirects every
+ * navigation TO /setup while /setup itself 403s — a dead loop at the
+ * product's front door. Admin mode also pins the bind to loopback, which is
+ * exactly right for a first-run wizard that has not yet set a password.
+ *
+ * Exported as a pure function so the contract is pinned by a unit test. The
+ * composed alternative — driving the whole `install` command — has to mutate
+ * the process-global OP_HOME, which races other files in the aggregate suite,
+ * and `defineAction` turns any resulting error into `process.exit(1)`.
+ */
+export function wizardUiServerOptions(
+	noOpen: boolean,
+	env: NodeJS.ProcessEnv = process.env,
+	persistedEnv: Record<string, string | undefined> = {}
+): UIServerOptions {
+	return {
+		open: !noOpen,
+		// The shared resolver, not an inline `?? 3880` — that is the exact pattern
+		// network-contract.ts was written to retire, and here it did real damage:
+		// an explicit `port` short-circuits resolveUiServePort, so a port a
+		// headless install had persisted was read back by every serve entry EXCEPT
+		// a wizard re-run, which quietly served somewhere else. Callers pass the
+		// home's stack.env; a first install has none, and `{}` resolves the same
+		// way process.env alone used to.
+		port: resolveHostUiPort(undefined, env, persistedEnv),
+		adminHostUi: true,
+	};
+}
+
+/**
  * Launch the UI host server to handle first-time setup.
  *
  * The SvelteKit UI detects that setup is not complete (via hooks.server.ts)
@@ -360,10 +399,15 @@ async function prepareInstallFiles(
  */
 async function runWizardInstall(noOpen: boolean): Promise<void> {
 	await requireDocker();
-	const port = Number(process.env.OP_HOST_UI_PORT) || DEFAULT_UI_PORT;
-	console.log(`Setup wizard: http://localhost:${port}/setup`);
+	const options = wizardUiServerOptions(noOpen, process.env, readStackEnv(resolveOpenPalmHome()));
+	// Same loopback spelling the server binds, the browser is opened to, and
+	// ORIGIN is pinned to (UI_LOOPBACK_HOST). A wizard session established on
+	// `localhost` is a different cookie jar from the one `openpalm admin` later
+	// serves on `127.0.0.1`, which is how finishing setup used to hand the
+	// operator a login prompt on their very next command.
+	console.log(`Setup wizard: http://${UI_LOOPBACK_HOST}:${options.port}/setup`);
 	const { startUIServer } = await import('../lib/ui-server.ts');
-	await startUIServer({ open: !noOpen, port });
+	await startUIServer(options);
 }
 
 async function runFileInstall(

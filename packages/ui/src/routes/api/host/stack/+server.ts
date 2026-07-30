@@ -16,14 +16,13 @@
  */
 import type { RequestHandler } from './$types';
 import {
+  applyAccessToggles,
   patchSecretsEnvFile,
   readStackEnv,
   recordProjectRename,
-  reconcileMdnsResponder,
   resolveMdnsStatus,
   coerceAccessToggles,
   readAccessToggles,
-  resolveAccessEnv,
 } from '@openpalm/lib';
 import { getState } from '$lib/server/state.js';
 import { withAdminUpdateLock } from '$lib/server/admin-update-lock.js';
@@ -92,30 +91,70 @@ export const PUT: RequestHandler = async (event) => {
     }
 
     const state = getState();
-    return withAdminUpdateLock(state, requestId, () => {
+    return withAdminUpdateLock(state, requestId, async () => {
       // Capture the outgoing project name BEFORE the patch overwrites it — a
       // rename must be recorded so the next locked apply (deploy/update/start)
       // tears the old compose project down instead of leaving it running
       // unaddressed beside the new one (#540).
       const currentEnv = readStackEnv(state.homeDir);
       const previousProjectName = currentEnv.OP_PROJECT_NAME?.trim() || DEFAULT_PROJECT_NAME;
-      // Omitted `access` leaves exposure exactly as it is — renaming the
-      // project must never move a bind as a side effect.
-      const toggles = coerceAccessToggles(body.access ?? readAccessToggles(currentEnv));
-      patchSecretsEnvFile(state.homeDir, {
-        OP_PROJECT_NAME: projectName,
-        ...resolveAccessEnv(toggles),
-      });
-      const projectRenamed = previousProjectName !== projectName;
-      if (projectRenamed) {
-        recordProjectRename(state.homeDir, previousProjectName, projectName);
+      /** Both branches below rename identically; only the write before it differs. */
+      const recordRenameIfChanged = (): boolean => {
+        const renamed = previousProjectName !== projectName;
+        if (renamed) recordProjectRename(state.homeDir, previousProjectName, projectName);
+        return renamed;
+      };
+
+      // Omitted `access` touches NOTHING about exposure — not even a
+      // round-trip through the generated row. The endpoint used to
+      // read-then-rewrite it on every PUT, which turned a project rename into
+      // a silent widening: a hand-set single-interface bind
+      // (OP_UI_BIND_ADDRESS=192.168.1.50) reads as "open" and regenerates to
+      // 0.0.0.0, moving a deliberately narrowed listener onto every interface.
+      if (body.access === undefined) {
+        patchSecretsEnvFile(state.homeDir, { OP_PROJECT_NAME: projectName });
+        const projectRenamed = recordRenameIfChanged();
+        // One read for both views of the row the patch just wrote.
+        const freshEnv = readStackEnv(state.homeDir);
+        return jsonResponse(
+          200,
+          {
+            ok: true,
+            projectName,
+            projectRenamed,
+            stackEnvPath: 'state/stack.env',
+            mdns: resolveMdnsStatus(freshEnv),
+            access: readAccessToggles(freshEnv),
+            recreated: [],
+            autoEnabledAddons: [],
+          },
+          requestId,
+        );
       }
 
-      // Synchronous, non-throwing, and gated — with LAN exposure just enabled
-      // this starts advertising immediately (no restart of the host process).
-      const mdns = reconcileMdnsResponder(state.homeDir);
-      // Read back AFTER the patch so the response reflects what was written.
-      const access = readAccessToggles(readStackEnv(state.homeDir));
+      // Saving IS applying (lib's applyAccessToggles): write intent + the row it
+      // generates, enable an addon if a guardian port would otherwise have
+      // nothing behind it, recreate exactly the affected containers so Compose
+      // republishes the ports, and advertise over mDNS only once that
+      // succeeded. Compose interpolation is the sole consumer of these values,
+      // so a write alone changed nothing — and every "restart" the product
+      // offers runs `compose restart`, which cannot republish a port.
+      const applied = await applyAccessToggles(state, coerceAccessToggles(body.access), {
+        extraEnv: { OP_PROJECT_NAME: projectName },
+      });
+
+      const projectRenamed = recordRenameIfChanged();
+
+      if (!applied.ok) {
+        return errorResponse(
+          500,
+          'access_apply_failed',
+          `Settings were saved but could not be applied: ${applied.error ?? 'compose apply failed'}. `
+            + 'Run `openpalm start` to retry.',
+          { changedKeys: applied.changedKeys, access: applied.access },
+          requestId,
+        );
+      }
 
       return jsonResponse(
         200,
@@ -124,8 +163,12 @@ export const PUT: RequestHandler = async (event) => {
           projectName,
           projectRenamed,
           stackEnvPath: 'state/stack.env',
-          mdns,
-          access,
+          mdns: applied.mdns,
+          access: applied.access,
+          /** Services recreated so the new binds are actually published. */
+          recreated: applied.recreated,
+          /** Addons turned on so a published guardian port has a service behind it. */
+          autoEnabledAddons: applied.autoEnabledAddons,
         },
         requestId,
       );

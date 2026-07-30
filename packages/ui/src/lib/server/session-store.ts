@@ -98,6 +98,18 @@ const _testOverrides = new Set<string>();
  * has a value (first boot, before the wizard runs).
  */
 export function getUiLoginPassword(): string {
+  // The assistant container's UI co-process is the exception, and it must fail
+  // CLOSED to its injected value. In that process `resolveOpenPalmHome()`
+  // resolves inside the agent-writable data mount (no host OP_HOME is
+  // injected), so a file-first read lets any write under
+  // `private/secrets/op_ui_login_password` there — by the agent, a restored
+  // backup, or a misbehaving plugin — silently replace the operator's LAN
+  // login password, with no diagnostic beyond "my password stopped working".
+  // The compose secret is the only authority for this process; the same
+  // fail-closed treatment `OP_UI_NO_LOCAL_VOICE` already gives voice.
+  if (process.env.OP_UI_SERVED_IN_CONTAINER === '1') {
+    return process.env.OP_UI_LOGIN_PASSWORD ?? '';
+  }
   const fileValue = readLivePasswordFile();
   if (fileValue) return fileValue;
   return process.env.OP_UI_LOGIN_PASSWORD ?? "";
@@ -125,6 +137,14 @@ export function getUiLoginPassword(): string {
  * Returns null when no password is configured, or when the secret store is
  * unreachable — minting and validation both fail closed rather than falling
  * back to a weaker key.
+ *
+ * `op_session_signing_key` is a DELEGATED secret (secrets-files.ts), so
+ * `ensureSecret` name-routes it to `private/secrets`, which is never mounted
+ * into the assistant. It was missed when the other delegated secrets moved
+ * there, leaving it under `knowledge/secrets` — bind-mounted into the assistant
+ * at `/stash`. Combined with the login password the same mount exposed, that
+ * made a host-admin session cookie forgeable from inside the container, which
+ * is exactly what mixing in a server key is supposed to prevent.
  */
 function sessionSigningKey(): Buffer | null {
   const password = getUiLoginPassword();

@@ -219,9 +219,12 @@ container and there is no socket-proxy service.
 | `PORT` / `OP_HOST_UI_PORT` | `3880` | Host UI listener |
 | `OP_HOME` | Host environment | OpenPalm home |
 | `OP_UI_LOGIN_PASSWORD` | Loaded from `private/secrets/op_ui_login_password` | Session login verification |
-| `OP_ALLOW_REMOTE_SETUP` | Off | Allows only a non-admin `openpalm app` to bind remotely after local setup |
+| `OP_TRUSTED_PROXY` | Off | Non-admin `openpalm app` only: trusts `Host`/`x-forwarded-proto` from an operator-managed reverse proxy (Tailscale Serve, Caddy, nginx) **without** widening the listener off loopback |
+| `OP_ALLOW_REMOTE_SETUP` | Off | Non-admin `openpalm app` only: binds `0.0.0.0` directly, for the rare case with no reverse proxy in front |
 
-Electron and `openpalm admin` remain loopback-only. Direct package UI development
+`OP_TRUSTED_PROXY` and `OP_ALLOW_REMOTE_SETUP` are independent opt-ins — see
+[Remote Access over TLS](../remote-access-tls.md). Electron and `openpalm
+admin` remain loopback-only. Direct package UI development
 defaults to `5173`; the root `ui:dev:isolated` script explicitly uses `3880`.
 
 ## Addons and Networks
@@ -232,11 +235,15 @@ defaults to `5173`; the root `ui:dev:isolated` script explicitly uses `3880`.
 | `guardian` | `assistant_net`, `portal_net` | Direct `3830`, admin `3831`, compatible API `3821`, loopback by default |
 | `discord`, `slack` | `portal_net` | None |
 | `ollama*` | `assistant_net` | None |
-| `voice*` | `addon_net` | `127.0.0.1:${OP_VOICE_PORT_HOST:-8880}` |
+| `voice*` | `addon_net` (default) | `127.0.0.1:${OP_VOICE_PORT_HOST:-8880}` |
 
 `addon_net` keeps services that do not need assistant access off the assistant
 trust network. Guardian is the only service bridging portal ingress to
-`assistant_net`.
+`assistant_net` by default; `ollama*` is the one per-service exception granted
+to a third-party addon image. `OP_VOICE_LAN_ACCESS=true` grants voice the same
+exception (`voice.compose.lan.yml`, an opt-in overlay), so the assistant
+container's served UI can proxy `/voice` for LAN clients — see [Managing
+OpenPalm](../managing-openpalm.md) and `docs/troubleshooting.md`.
 
 ## Core `state/stack.env` Variables
 
@@ -255,6 +262,7 @@ trust network. Guardian is the only service bridging portal ingress to
 | `OP_HOST_UI_PORT` | Host-process UI port, default `3880` |
 | `OPENCODE_AUTH` | Generated direct-assistant auth posture |
 | `GUARDIAN_DIRECT_INGRESS` | Generated Guardian direct-ingress posture |
+| `OP_ACCESS_NETWORK`, `OP_ACCESS_ASSISTANT_DIRECT`, `OP_ACCESS_GUARDIAN`, `OP_ACCESS_OPENAI_API` | The four access toggles' stored intent (`true`/`false`), written alongside the generated bind/auth row above so a read is a read, not an inference from bind addresses (`access-toggles.ts` `ACCESS_INTENT_KEYS`) |
 | `GUARDIAN_CONTENT_VALIDATION` | Content-validation opt-out switch; on by default |
 | `GUARDIAN_SESSION_ACTIVE_GRACE_MS` | Active-session eviction grace window |
 | `GUARDIAN_RECONCILE_INTERVAL_MS` | Orphan-session reconciliation cadence; `0` disables periodic sweeps |

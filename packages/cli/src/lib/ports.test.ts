@@ -1,21 +1,26 @@
 import { describe, expect, it } from 'bun:test';
-import { DEFAULT_UI_PORT, resolveHostUiPortFromEnv } from './ports.ts';
+import { DEFAULT_ASSISTANT_PORT, DEFAULT_UI_PORT } from './ports.ts';
+import { DEFAULT_HOST_UI_PORT, STACK_DEFAULTS } from '@openpalm/lib';
 
-// U2: the OP_HOST_UI_PORT merge-and-resolve logic
-// (`{ ...persistedEnv, ...env }; Number(merged.OP_HOST_UI_PORT) || DEFAULT_UI_PORT`)
-// lives once in ports.ts and is imported by ui-server.ts's resolveUiServePort
-// rather than duplicated — ports.ts imports no CLI module, so there is no cycle.
-describe('resolveHostUiPortFromEnv (U2: shared OP_HOST_UI_PORT resolver)', () => {
-  it('uses OP_HOST_UI_PORT from the persisted-env record when the live env has none', () => {
-    expect(resolveHostUiPortFromEnv({}, { OP_HOST_UI_PORT: '9200' })).toBe(9200);
-  });
-
-  it('lets the live env override the persisted value', () => {
-    expect(resolveHostUiPortFromEnv({ OP_HOST_UI_PORT: '9300' } as NodeJS.ProcessEnv, { OP_HOST_UI_PORT: '9200' })).toBe(9300);
-  });
-
-  it('falls back to DEFAULT_UI_PORT when nothing is set', () => {
-    expect(resolveHostUiPortFromEnv({}, {})).toBe(DEFAULT_UI_PORT);
+// U2 originally lived here as `resolveHostUiPortFromEnv`, a CLI-local wrapper
+// around lib's resolver that pinned `explicit` to undefined — which forced
+// resolveUiServePort to re-implement the "an explicit --port wins" half itself,
+// putting one two-parameter precedence rule in two places. resolveUiServePort
+// now calls lib's resolveHostUiPort directly, so the precedence is tested once,
+// in network-contract.test.ts, and the wrapper is gone.
+//
+// What ports.ts still owns is the CLI's import site for the shared constants.
+// The literals are asserted here because three independent `3880`s (and the
+// inline `?? 3880` fallbacks beside them) are how the desktop app came to bind a
+// different port than `openpalm` on the same home — if this module ever stops
+// deferring to lib, that must fail loudly rather than diverge quietly.
+describe('CLI port constants defer to the shared table', () => {
+  it('re-exports the ONE host-UI default, not a second literal', () => {
+    expect(DEFAULT_UI_PORT).toBe(DEFAULT_HOST_UI_PORT);
     expect(DEFAULT_UI_PORT).toBe(3880);
+  });
+
+  it('re-exports the assistant default from the canonical port table', () => {
+    expect(DEFAULT_ASSISTANT_PORT).toBe(STACK_DEFAULTS.ports.assistant);
   });
 });
