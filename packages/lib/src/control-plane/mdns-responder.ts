@@ -55,6 +55,7 @@ import makeMdns from "multicast-dns";
 import { networkInterfaces } from "node:os";
 import { createLogger } from "../logger.js";
 import { isLoopback } from "./bind-warning.js";
+import { STACK_DEFAULTS } from "./defaults.js";
 import { readStackEnv } from "./secrets.js";
 import { checkExistingUiInstance } from "./ui-supervisor.js";
 
@@ -66,8 +67,11 @@ const MDNS_PORT = 5353;
 const TTL = 120;
 const HTTP_SERVICE = "_http._tcp.local";
 const DEFAULT_GUARDIAN_PORT = 3830;
-const DEFAULT_ASSISTANT_PORT = 3810;
-const DEFAULT_UI_PORT = 3800;
+// From the canonical port table, not re-typed: independent copies of these are
+// how the desktop app came to disagree with the CLI about which port the UI
+// listens on (see network-contract.ts).
+const DEFAULT_ASSISTANT_PORT = STACK_DEFAULTS.ports.assistant;
+const DEFAULT_UI_PORT = STACK_DEFAULTS.ports.ui;
 
 // ── Pure: name derivation ─────────────────────────────────────────────────
 

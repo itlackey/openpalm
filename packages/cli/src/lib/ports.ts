@@ -7,13 +7,13 @@
  * fallbacks is how the desktop app came to ignore a port a headless install had
  * persisted. This module stays as the CLI's import site.
  */
-import { DEFAULT_HOST_UI_PORT, resolveHostUiPort } from '@openpalm/lib';
+import { DEFAULT_HOST_UI_PORT, resolveHostUiPort, STACK_DEFAULTS } from '@openpalm/lib';
 
 /** Default host port for the UI server (override via OP_HOST_UI_PORT). */
 export const DEFAULT_UI_PORT = DEFAULT_HOST_UI_PORT;
 
 /** Default published host port for the assistant (override via OP_ASSISTANT_PORT). */
-export const DEFAULT_ASSISTANT_PORT = 3810;
+export const DEFAULT_ASSISTANT_PORT = STACK_DEFAULTS.ports.assistant;
 
 /**
  * Merge-and-resolve `OP_HOST_UI_PORT`: a persisted-env record (e.g. headless

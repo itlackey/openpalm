@@ -24,7 +24,11 @@ import { join } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { cleanupTempDirs, resetState, seedSecretsEnv, stackEnvFor, trackDir } from '$lib/server/test-helpers.js';
-import { _resetMdnsResponderForTests, _setMdnsFactoryForTests } from '@openpalm/lib';
+import {
+  _resetMdnsResponderForTests,
+  _setMdnsFactoryForTests,
+  _setMdnsProbeForTests,
+} from '@openpalm/lib';
 import type { MdnsFactory, MdnsInstance } from '@openpalm/lib/control-plane/mdns-responder.js';
 
 /**
@@ -126,11 +130,16 @@ beforeEach(() => {
   resetState('admin-token');
   // #488 — never let the PUT handler's reconcile bind a real UDP socket.
   _setMdnsFactoryForTests(noopMdnsFactory);
+  // Stub the reachability probe too. Without it the PUT path fires a real
+  // loopback fetch — harmless because it is instantly refused here, but a unit
+  // suite should not depend on a connection being refused to stay offline.
+  _setMdnsProbeForTests(async () => false);
 });
 
 afterEach(() => {
   _resetMdnsResponderForTests();
   _setMdnsFactoryForTests(null);
+  _setMdnsProbeForTests(null);
   for (const key of ENV_KEYS) {
     const prev = savedEnv[key];
     if (prev === undefined) delete process.env[key];

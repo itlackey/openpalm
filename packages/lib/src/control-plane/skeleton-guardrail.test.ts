@@ -306,48 +306,6 @@ describe("no new hardcoded 3880/3800/3810 outside STACK_DEFAULTS, compose fallba
       snippet: "deployData.ports?.assistant ?? 3810",
       reason: "Same browser-side reasoning as the window.location.port fallback above it.",
     },
-    // The three exemptions below are PRE-EXISTING duplicate default
-    // constants, found by this guard, in files outside the LAN-access-review
-    // Phase 3 change that added it (see that change's PR/commit for the
-    // owning scope). They are not architecturally required the way the
-    // browser-only case above is: every one of them runs server-side, in a
-    // position that could import STACK_DEFAULTS directly. Allowlisted only so
-    // this guard does not fail on debt it did not introduce, flagged here for
-    // a follow-up to delete the local constant and import STACK_DEFAULTS
-    // instead — do not treat these as sanctioned precedent for new code.
-    {
-      file: join("packages", "cli", "src", "lib", "ports.ts"),
-      snippet: "DEFAULT_ASSISTANT_PORT = 3810",
-      reason:
-        "PRE-EXISTING debt, not fixed here: re-declares 3810 instead of importing " +
-        "STACK_DEFAULTS.ports.assistant the way this same file already does for the UI port above it.",
-    },
-    {
-      file: join("packages", "lib", "src", "control-plane", "mdns-responder.ts"),
-      snippet: "DEFAULT_ASSISTANT_PORT = 3810",
-      reason:
-        "PRE-EXISTING debt, not fixed here: same package as defaults.ts, nothing prevents importing STACK_DEFAULTS.",
-    },
-    {
-      file: join("packages", "lib", "src", "control-plane", "mdns-responder.ts"),
-      snippet: "DEFAULT_UI_PORT = 3800",
-      reason:
-        "PRE-EXISTING debt, not fixed here: same package as defaults.ts, nothing prevents importing STACK_DEFAULTS.",
-    },
-    {
-      file: join("packages", "ui", "src", "routes", "api", "setup", "deploy-status", "+server.ts"),
-      snippet: "OP_UI_PORT) || 3800",
-      reason:
-        "PRE-EXISTING debt, not fixed here: a server route that could import STACK_DEFAULTS.ports.ui " +
-        "but re-hardcodes 3800 as a bare `|| ` fallback instead.",
-    },
-    {
-      file: join("packages", "ui", "src", "routes", "api", "setup", "deploy-status", "+server.ts"),
-      snippet: "OP_ASSISTANT_PORT) || 3810",
-      reason:
-        "PRE-EXISTING debt, not fixed here: a server route that could import STACK_DEFAULTS.ports.assistant " +
-        "but re-hardcodes 3810 as a bare `|| ` fallback instead.",
-    },
   ];
 
   /** Blank out `'...'` / `"..."` string contents so quoted digits (help text, URL examples, doc placeholders) never match. */
