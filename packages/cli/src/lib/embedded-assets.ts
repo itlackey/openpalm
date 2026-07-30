@@ -8,9 +8,9 @@
  * `packages/skeleton` into deterministic tar.gz archives under
  * packages/cli/embedded/ (see scripts/pack-embedded-assets.ts, run before
  * every `build:*` script) and this module embeds them via Bun's
- * compiled-binary file-asset support: `import x from './f' with { type:
- * 'file' }` resolves, INSIDE a --compile binary, to a `/$bunfs/...` virtual
- * path that only `Bun.file` can read — not node:fs, and not the `tar`
+ * compiled-binary file-asset support: a `with { type: 'file' }` import
+ * resolves, INSIDE a --compile binary, to a `/$bunfs/...` virtual path that
+ * only `Bun.file` can read — not node:fs, and not the `tar`
  * package's own file-based extractor (both throw ENOENT against a bunfs
  * path). So materialization always: (1) reads the embedded bytes via
  * `Bun.file(...).arrayBuffer()`, (2) writes them to a REAL temp file, (3) lets
@@ -18,15 +18,20 @@
  * the temp directory into place — a half-written destination is never
  * observable.
  *
- * A source checkout ships tiny placeholder archives (an empty tar.gz holding
- * only a `.placeholder` marker) so the `with { type: 'file' }` imports below
- * always resolve without the pack step having run — `bun build --compile`
- * requires the imported file to exist even for a plain `bun run` dev
- * invocation. Extracting a placeholder never yields the expected marker
- * (`index.js` / `system/`), so both materialize* functions below detect that
- * and no-op, leaving local resolution (repo checkout / Electron
- * resourcesPath) to do its job instead — see @openpalm/lib's
+ * The archives are generated, never committed: packages/cli/embedded/ is
+ * gitignored and populated by the pack step. They are therefore ABSENT in a
+ * source checkout, which is why the imports below are dynamic. A dynamic
+ * `import(...)` of a missing asset rejects (catchable) instead of failing the
+ * module load, and `bun build --compile` accepts the missing specifier — so a
+ * fresh clone runs and tests with no generated files and no placeholder
+ * stand-ins. "Nothing embedded" then falls back to local resolution (repo
+ * checkout / OPENPALM_REPO_ROOT / Electron resourcesPath) via @openpalm/lib's
  * resolveUiBuildDir / resolveLocalOpenpalmDir.
+ *
+ * That fallback finds nothing on a user's machine, so a release binary must
+ * never be compiled without the archives: scripts/pack-embedded-assets.ts
+ * fails the build if its sources are missing, and every `build:*` script runs
+ * it first.
  */
 import { existsSync, mkdirSync, mkdtempSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -34,14 +39,27 @@ import { join } from 'node:path';
 import { x as extractTar } from 'tar';
 import { PLATFORM_VERSION, readUiBuildVersion } from '@openpalm/lib';
 
-import uiArchivePath from '../../embedded/ui-build.tar.gz' with { type: 'file' };
-import skeletonArchivePath from '../../embedded/skeleton.tar.gz' with { type: 'file' };
+/**
+ * Resolve an embedded archive's path, or null when it was not compiled in.
+ * Both specifiers are static string literals so the bundler can still see and
+ * embed them; only the *evaluation* is deferred.
+ */
+async function embeddedArchivePath(kind: 'ui' | 'skeleton'): Promise<string | null> {
+  try {
+    const module = kind === 'ui'
+      ? await import('../../embedded/ui-build.tar.gz', { with: { type: 'file' } })
+      : await import('../../embedded/skeleton.tar.gz', { with: { type: 'file' } });
+    return module.default;
+  } catch {
+    return null;
+  }
+}
 
 /**
  * Extract an embedded (possibly `/$bunfs/`) archive into a fresh real
  * directory under `parentDir` (created if needed). Returns null on any
- * failure — an unreadable or placeholder archive is "nothing embedded", not
- * an error the caller should surface.
+ * failure — an absent or unreadable archive is "nothing embedded", not an
+ * error the caller should surface.
  */
 async function extractEmbeddedArchive(archivePath: string, parentDir: string, label: string): Promise<string | null> {
   let bytes: Uint8Array;
@@ -73,24 +91,25 @@ async function extractEmbeddedArchive(archivePath: string, parentDir: string, la
  * there does not already match this binary's PLATFORM_VERSION. No backup, no
  * rollback, no channel logic: the embedded copy wins unconditionally the
  * moment the stamp differs. No-ops (returns false) when the stamp already
- * matches, or when the embedded archive is the dev placeholder.
+ * matches, or when no UI build was compiled in.
  *
  * Extracts to a temp directory that is a SIBLING of `${dataDir}/ui` (so the
  * final rename is same-filesystem and atomic) before swapping it in, so a
  * half-written data/ui is never observable.
  *
- * `archivePath` defaults to the real embedded UI build and is only
- * overridden by tests, which point it at a fixture archive on real disk
- * (the default embedded path resolves to a `/$bunfs/` virtual path outside a
- * compiled binary, which doesn't exist under plain `bun test`).
+ * `archivePath` defaults to the embedded UI build and is only overridden by
+ * tests, which point it at a fixture archive on real disk (the embedded
+ * archive is absent in a source checkout).
  */
 export async function materializeEmbeddedUi(
   dataDir: string,
-  archivePath: string = uiArchivePath,
+  archivePath?: string,
 ): Promise<boolean> {
   const uiDir = join(dataDir, 'ui');
   if (readUiBuildVersion(uiDir) === PLATFORM_VERSION) return false;
-  const extracted = await extractEmbeddedArchive(archivePath, dataDir, 'ui');
+  const source = archivePath ?? (await embeddedArchivePath('ui'));
+  if (!source) return false;
+  const extracted = await extractEmbeddedArchive(source, dataDir, 'ui');
   if (!extracted) return false;
   if (!existsSync(join(extracted, 'index.js'))) {
     rmSync(extracted, { recursive: true, force: true });
@@ -103,19 +122,21 @@ export async function materializeEmbeddedUi(
 
 /**
  * Materialize the embedded skeleton into a fresh temp directory and return
- * its path, or null when the embedded archive is the dev placeholder (the
- * caller falls back to @openpalm/lib's resolveLocalOpenpalmDir — a repo
- * checkout or OPENPALM_SKELETON_DIR/OPENPALM_REPO_ROOT override). The
- * returned directory is a plain scratch dir the caller owns: point
- * OPENPALM_SKELETON_DIR at it, call applyHomeSeed, then rmSync it.
+ * its path, or null when no skeleton was compiled in (the caller falls back
+ * to @openpalm/lib's resolveLocalOpenpalmDir — a repo checkout or
+ * OPENPALM_SKELETON_DIR/OPENPALM_REPO_ROOT override). The returned directory
+ * is a plain scratch dir the caller owns: point OPENPALM_SKELETON_DIR at it,
+ * call applyHomeSeed, then rmSync it.
  *
- * `archivePath` defaults to the real embedded skeleton; see
+ * `archivePath` defaults to the embedded skeleton; see
  * {@link materializeEmbeddedUi} for why tests override it.
  */
 export async function materializeEmbeddedSkeleton(
-  archivePath: string = skeletonArchivePath,
+  archivePath?: string,
 ): Promise<string | null> {
-  const extracted = await extractEmbeddedArchive(archivePath, tmpdir(), 'skeleton');
+  const source = archivePath ?? (await embeddedArchivePath('skeleton'));
+  if (!source) return null;
+  const extracted = await extractEmbeddedArchive(source, tmpdir(), 'skeleton');
   if (!extracted) return null;
   if (!existsSync(join(extracted, 'system'))) {
     rmSync(extracted, { recursive: true, force: true });
@@ -127,7 +148,7 @@ export async function materializeEmbeddedSkeleton(
 /**
  * Seed OP_HOME's managed system/ tree from the embedded skeleton, falling
  * back to local resolution (repo checkout / OPENPALM_SKELETON_DIR /
- * OPENPALM_REPO_ROOT) when the embedded archive is the dev placeholder.
+ * OPENPALM_REPO_ROOT) when no skeleton was compiled in.
  * Thin wrapper around {@link materializeEmbeddedSkeleton} + applyHomeSeed
  * shared by `install.ts` (pre-wizard seed) and `ui-server.ts` (spawnUiChild's
  * skeleton seed before every spawn — applyHomeSeed's own tree-overwrite is

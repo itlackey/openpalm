@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from 'bun:test';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { c as createTar, x as extractTar } from 'tar';
+import { c as createTar } from 'tar';
 import { PLATFORM_VERSION } from '@openpalm/lib';
 import { materializeEmbeddedSkeleton, materializeEmbeddedUi } from './embedded-assets.ts';
 
@@ -77,11 +77,11 @@ describe('materializeEmbeddedUi', () => {
     expect(existsSync(join(dataDir, 'data', 'backups'))).toBe(false);
   });
 
-  test('no-ops (does not throw) and leaves no partial directory when the archive is a dev placeholder (no index.js)', async () => {
+  test('no-ops (does not throw) and leaves no partial directory when the archive holds no index.js', async () => {
     const archivePath = await fixtureArchive((src) => {
-      writeFileSync(join(src, '.placeholder'), '');
+      writeFileSync(join(src, 'stray.txt'), '');
     });
-    const dataDir = tempDir('embedded-ui-placeholder-');
+    const dataDir = tempDir('embedded-ui-no-index-');
 
     const updated = await materializeEmbeddedUi(dataDir, archivePath);
 
@@ -123,9 +123,9 @@ describe('materializeEmbeddedSkeleton', () => {
     }
   });
 
-  test('returns null for a dev placeholder archive (no system/)', async () => {
+  test('returns null for an archive that holds no system/ tree', async () => {
     const archivePath = await fixtureArchive((src) => {
-      writeFileSync(join(src, '.placeholder'), '');
+      writeFileSync(join(src, 'stray.txt'), '');
     });
 
     expect(await materializeEmbeddedSkeleton(archivePath)).toBeNull();
@@ -139,19 +139,19 @@ describe('materializeEmbeddedSkeleton', () => {
   });
 });
 
-// `bun run pack:embedded` overwrites the committed placeholders in place, so a
-// developer who builds a binary locally is one `git add` away from committing a
-// multi-megabyte real archive. These stay placeholders in git; release builds
-// pack them on the fly (see scripts/pack-embedded-assets.ts).
-describe('committed embedded archives', () => {
-  const embeddedDir = join(import.meta.dir, '..', '..', 'embedded');
+// Nothing is compiled in under `bun test` (packages/cli/embedded/ is generated
+// by the release build and gitignored), so the default-argument calls below are
+// the fresh-clone path: the dynamic `import(...)` of an absent asset must be
+// caught, leaving local resolution to serve the UI/skeleton instead.
+describe('with no archives compiled in', () => {
+  test('materializeEmbeddedUi no-ops instead of throwing', async () => {
+    const dataDir = tempDir('embedded-none-ui-');
 
-  for (const name of ['ui-build.tar.gz', 'skeleton.tar.gz']) {
-    test(`${name} is still the placeholder, not a packed release archive`, async () => {
-      const extracted = tempDir('embedded-committed-');
-      await extractTar({ file: join(embeddedDir, name), cwd: extracted, strict: true });
+    expect(await materializeEmbeddedUi(dataDir)).toBe(false);
+    expect(existsSync(join(dataDir, 'ui'))).toBe(false);
+  });
 
-      expect(readdirSync(extracted)).toEqual(['.placeholder']);
-    });
-  }
+  test('materializeEmbeddedSkeleton returns null instead of throwing', async () => {
+    expect(await materializeEmbeddedSkeleton()).toBeNull();
+  });
 });

@@ -8,20 +8,19 @@
  * src/lib/embedded-assets.ts). Run this before each `build:*` script — every
  * `build:*` script in package.json already does.
  *
- * A source checkout ships tiny placeholder archives (see embedded/README.md)
- * so `embedded-assets.ts`'s `with { type: 'file' }` imports always resolve
- * without this script having run — a plain `bun run src/main.ts` treats the
- * placeholder as "nothing embedded" and falls back to local resolution.
+ * The output directory is gitignored and never committed, so a source
+ * checkout simply has no archives and `embedded-assets.ts` falls back to
+ * local resolution.
  *
  * A missing source directory is FATAL here. Every `build:*` script runs this
- * first, and those scripts exist only to produce release binaries: a binary
- * that embedded the placeholder would compile and start, then fail to serve a
- * UI on a user's machine, because the local-resolution fallback finds nothing
- * outside a repo checkout. Failing the build is the only way that stays
- * caught. Set OPENPALM_ALLOW_PLACEHOLDER_EMBED=1 to compile a deliberately
- * UI-less binary (harness smoke tests); nothing in release does.
+ * first, and those scripts exist only to produce release binaries: `bun build
+ * --compile` happily accepts a missing embed, so a binary built without this
+ * step would compile and start, then fail to serve a UI on a user's machine,
+ * because the local-resolution fallback finds nothing outside a repo
+ * checkout. Failing the build is the only thing standing between that and a
+ * release.
  */
-import { existsSync, readdirSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { c as createTar } from 'tar';
@@ -30,18 +29,14 @@ const cliRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
 const repoRoot = join(cliRoot, '..', '..');
 const embeddedDir = join(cliRoot, 'embedded');
 
-const allowPlaceholder = process.env.OPENPALM_ALLOW_PLACEHOLDER_EMBED === '1';
-
 async function pack(label: string, sourceDir: string, outFile: string): Promise<void> {
   if (!existsSync(sourceDir)) {
-    if (allowPlaceholder) {
-      console.warn(`[pack-embedded-assets] ${label} not found at ${sourceDir} — leaving ${outFile} as-is (OPENPALM_ALLOW_PLACEHOLDER_EMBED=1).`);
-      return;
-    }
     throw new Error(
-      `[pack-embedded-assets] ${label} not found at ${sourceDir}. The binary would embed the dev placeholder and ship without a ${label}. Build it first (\`bun run ui:build\` for the UI build), or set OPENPALM_ALLOW_PLACEHOLDER_EMBED=1 to compile a deliberately UI-less binary.`,
+      `[pack-embedded-assets] ${label} not found at ${sourceDir}. The binary would ship without a ${label}. Build it first (\`bun run ui:build\` for the UI build).`,
     );
   }
+  // The output directory is gitignored, so it is absent in a fresh clone.
+  mkdirSync(dirname(outFile), { recursive: true });
   // Sorted top-level entries: deterministic archive contents regardless of
   // directory-listing order across platforms/filesystems.
   const entries = readdirSync(sourceDir).sort();

@@ -104,7 +104,19 @@ function isNotInstalled(stackDir: string): boolean {
 
 function restoreOpenPalmLib(): void {
   mock.restore();
-  mock.module('@openpalm/lib', () => ({ ...realLib }));
+  mock.module('@openpalm/lib', () => ({
+    ...realLib,
+    // These tests simulate a SHIPPED host — a compiled binary or container,
+    // where the served UI is the materialized data/ui copy seeded by
+    // seedServeHome and there is no repo checkout to resolve instead.
+    // resolveUiBuildDir prefers a local build over data/ui, and its last
+    // candidate is a path relative to the lib source, so running the suite
+    // from this repo AFTER `bun run ui:build` would otherwise resolve the
+    // repo's own packages/ui/build and silently ignore every fixture below.
+    // OPENPALM_REPO_ROOT can't isolate that (it is only the FIRST candidate),
+    // so pin the shipped-host half of the resolution here.
+    resolveUiBuildDir: () => join(realLib.resolveDataDir(), 'ui'),
+  }));
   mock.module(cliStateModuleUrl, () => ({
     ensureValidState: () => {
       const state = realLib.createState();

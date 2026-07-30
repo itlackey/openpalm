@@ -10,13 +10,21 @@ import * as realLib from '@openpalm/lib';
 
 const libUrl = '@openpalm/lib';
 
+// `import * as realLib` is the LIVE module record that mock.module() rewrites in
+// place — every specifier for this package (bare or relative) resolves to the
+// same namespace object. Spreading it inside afterEach would therefore capture
+// whichever mock was last installed and "restore" that, permanently baking a
+// stub like `classifyLocalInstall: () => 'installed'` into the shared process.
+// Snapshot the real exports ONCE, at load, before any mock.module() call.
+const REAL_LIB = { ...realLib };
+
 afterEach(() => {
   mock.restore();
   // mock.restore() does NOT undo mock.module(), so the @openpalm/lib mock below
   // would otherwise leak into every other test file in the shared `bun test`
   // process (other CLI tests get a partial lib → undefined fns → flaky rejection).
   // Re-point it back to the real package.
-  mock.module(libUrl, () => ({ ...realLib }));
+  mock.module(libUrl, () => REAL_LIB);
 });
 
 // Helper that captures what was logged to stdout/stderr during the command run.
