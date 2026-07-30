@@ -62,7 +62,7 @@ All OpenPalm state lives under a single root: **`~/.openpalm/`** (configurable v
 |---|---|---|
 | `config/` | User | User-editable non-secret config; the `custom.compose.yml` overlay under `config/stack/` |
 | `system/` | Managed (release-shipped) | Fixed compose files (`system/stack/`) + managed OpenCode config (`system/assistant/`, `system/guardian/`); overwritten wholesale on reconcile |
-| `state/` | App-written | Records the control plane writes and owns — version pins, enabled add-ons, channel, setup completion (`state/stack.env`) |
+| `state/` | App-written | Records the control plane writes and owns — version pins, enabled add-ons, setup completion (`state/stack.env`) |
 | `knowledge/` | User / services | AKM knowledge, tasks, user env, and provider `secrets/auth.json`; bind-mounted into the assistant at `/stash` |
 | `data/` | Services | Persistent per-service runtime data, logs, backups, rollback |
 | `workspace/` | User | Shared assistant work area, bind-mounted at `/work` |
@@ -219,18 +219,23 @@ All portable control-plane logic — lifecycle management, addon operations, sec
 
 ---
 
-## Thin-harness boundary (Electron) and harness-contract discipline
+## Artifact completeness and updates
 
- The Electron desktop app is a **thin native harness**, not a copy of the control plane. Re-downloading the app is required **only when the native harness surface itself changes** — `BrowserWindow` / `Tray` / IPC channels / preload bridge / native modules / entitlements / PATH shims. Everything else self-updates in place over the GitHub host-assets release and `compose pull` (stack images) with **no app re-download**: the admin UI build, the `@openpalm/lib` control plane (including the lifecycle deploy and upgrade path), and the CLI's view of the served UI.
+Every distributable artifact ships complete: the Electron app, the CLI binary, and every container image each contain the exact UI build and skeleton they run. Nothing is resolved, downloaded, or arbitrated at runtime.
 
-**Hard rules:**
+There is exactly one update operation per target:
 
-- **The frozen harness bundle runs no lifecycle mutations.** Every state-mutating operation runs in the spawned `data/ui` control plane, which carries its own inlined `@openpalm/lib`. The CI guard `scripts/validate-thin-harness-boundary.sh` enforces this at the **source** level: every file under `packages/electron/src/` may import only the bootstrap allowlist from `@openpalm/lib`, so no lifecycle mutation can reach the harness.
-- **Electron source imports from `@openpalm/lib` only through the bootstrap allowlist enforced by `scripts/validate-thin-harness-boundary.sh`.** That script is the canonical allowlist; adding a mutating control-plane symbol fails CI. This is the mechanical expression of "the harness is bootstrap-only."
-- **`data/ui` is the steady-state executor.** Supervisors (the Electron harness, bare `openpalm`, and `openpalm admin`) call `checkAndUpdateUiBuild` before resolving + spawning, so a strictly-newer `data/ui` always wins. A de-route back to the frozen bundled lib (missing/stale stamp) MUST be logged, never silent (`resolveUiBuildDir`).
-- **Two independent version lines.** `PLATFORM_VERSION` (in `@openpalm/lib`, travels with `data/ui`) bumps on every control-plane/migration/UI release and **never** forces a re-download. `HARNESS_CONTRACT_VERSION` (a single integer in `packages/electron/src/harness-contract.ts`) bumps **only** when the §5.1 contract surface — renderer IPC bridge, spawn-env keys, or FS/spawn conventions — changes name/argument/return/required-key, and **does** force a re-download. Never feed `app.getVersion()` into control-plane inputs.
-- **Self-update-vs-redownload gate.** The host-assets `manifest.json` declares `minHarnessContract`. The harness self-updates only when `minHarnessContract ≤ HARNESS_CONTRACT_VERSION`; otherwise it refuses the pull and prompts a re-download (running newer-UI-on-older-harness fails at runtime).
-- **Harness-contract discipline.** When you change anything in the §5.1 surface (see `harness-contract.ts`), bump `HARNESS_CONTRACT_VERSION` **and** update the `HARNESS_CONTRACT` description in the same change. A snapshot test fails CI until the bump is intentional — it enforces that a change was *noticed*, not that the bump is semantically right; that judgement is the contributor's.
+- **Desktop** updates itself as a whole application via electron-updater — a consented download that installs on restart.
+- **CLI** updates by replacing its binary.
+- **Stack images** update via `compose pull`. Docker image pins in `state/stack.env` are unaffected by this section.
+
+An installation therefore runs one coherent release, never a mix of shell/UI/control-plane/skeleton versions.
+
+`OP_HOME/data/ui` is a materialization directory owned by the running artifact, not an update channel. It is rewritten from the artifact's own embedded copy when the version stamp differs. It is never downloaded into.
+
+Because the artifact and its UI ship and version together, there is no compatibility contract to negotiate between them, no version arbitration, and no update rollback: reinstalling or downgrading the artifact is the recovery path.
+
+The Electron main process should still stay bootstrap-only — it launches and supervises the spawned control plane; lifecycle mutations belong there, not in the harness. This is a design preference enforced by review, not a mechanically-verified contract.
 
 ---
 
@@ -258,7 +263,7 @@ Port assignments live in non-secret `state/stack.env`. Configurable host binds a
 
 Docker builds run outside the Bun workspace — the monorepo's hoisted `node_modules` is not available. Each Dockerfile must resolve service dependencies explicitly.
 
- Admin is a host process, not a Docker service. Platform package manifests are stamped in lockstep. Internal workspace references intentionally use `workspace:*` where local coupling is required. The portal SDK plus Discord and Slack adapters form the portal release unit. The host control plane installs the coordinated GitHub host-assets release under `OP_HOME/data/ui` with checksum verification; Electron also carries an offline copy.
+ Admin is a host process, not a Docker service. Platform package manifests are stamped in lockstep. Internal workspace references intentionally use `workspace:*` where local coupling is required. The portal SDK plus Discord and Slack adapters form the portal release unit. The CLI and Electron each embed their own complete copy of the `@openpalm/ui` build and the skeleton at build time; there is no shared host-assets release to install.
 
 ### Guardian + Portals (Bun runtime)
 
@@ -271,7 +276,7 @@ This ensures each service's local runtime dependencies are available at runtime.
 - Every Dockerfile that bakes a service from the workspace must install that service's declared runtime dependencies during the image build.
 - Guardian-local helpers stay in `packages/guardian/src/` (`@openpalm/guardian`); adapter-local helpers stay inside the adapter package that uses them.
 - The assistant **and Guardian** images install the OpenCode binary from the exact `opencode-ai` dependencies in `containers/assistant/tools/package.json` and `containers/guardian/tools/package.json`. Keep those two pins in lockstep.
-- The assistant image bakes the candidate-local `@openpalm/ui` build and its tool manifest. Its entrypoint performs no runtime package install or update. Skeleton assets are delivered to the host through the GitHub host-assets archive.
+- The assistant image bakes the candidate-local `@openpalm/ui` build, the skeleton, and its tool manifest. Its entrypoint performs no runtime package install or update.
 - Guardian bakes its candidate-local package and tools. Only the documented Guardian thin-host package override may install at runtime.
 - The portal image packs the candidate-local portal SDK and Discord/Slack adapter workspaces at build time; it does not install adapters at boot.
 
