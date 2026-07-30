@@ -340,6 +340,8 @@ jobs:
           path: |
             packages/electron/dist/packages/*.AppImage
             packages/electron/dist/packages/*.zip
+            packages/electron/dist/packages/*.exe
+            packages/electron/dist/packages/latest*.yml
 
   assemble-assets:
     needs: [candidate, preflight, ui-build, cli, electron]
@@ -452,6 +454,10 @@ jobs:
         env:
           VERSION: ${{ needs.candidate.outputs.version }}
         run: VERSION="${VERSION}" node scripts/validate-release-assets.mjs
+      - name: Validate desktop updater feed before public release
+        env:
+          VERSION: ${{ needs.candidate.outputs.version }}
+        run: VERSION="${VERSION}" node scripts/validate-updater-feed.mjs
       - name: Create one summary GitHub Release
         env:
           VERSION: ${{ needs.candidate.outputs.version }}
@@ -459,6 +465,16 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           if gh release view "${VERSION}" >/dev/null 2>&1; then
+            # A published stable release is what every installed desktop app
+            # updates from (#572). Overwriting its assets in place would swap
+            # the binaries out from under a feed users are already fetching, so
+            # a re-run against an existing STABLE tag is a hard failure: cut a
+            # new version instead. Prereleases stay re-uploadable, which is the
+            # point of a beta channel.
+            if [ "${PRERELEASE}" != 'true' ]; then
+              echo "::error::Release ${VERSION} already exists. Stable releases are immutable — publish a new version." >&2
+              exit 1
+            fi
             gh release upload "${VERSION}" dist/* --clobber
           else
             args=(release create "${VERSION}" --title "OpenPalm ${VERSION}" --generate-notes)

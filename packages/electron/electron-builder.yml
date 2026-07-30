@@ -24,17 +24,41 @@ extraResources:
   - from: ../../LICENSE
     to: LICENSE
 
+# Update feed (#572). electron-updater reads its metadata (latest.yml /
+# latest-linux.yml) from the GitHub release for this repo, so the desktop app
+# updates as ONE complete artifact — shell and bundled UI together. Only the
+# targets that can self-install publish that metadata; see the per-platform
+# notes below.
+#
+# `releaseType: release` keeps prereleases out of the stable feed. A beta-channel
+# user gets prereleases because electron-updater asks for the `beta` channel
+# (see updaterChannel in src/updater.ts), not because the feed mixes them.
+publish:
+  - provider: github
+    owner: itlackey
+    repo: openpalm
+    releaseType: release
+
 # NOTE: OpenPalm desktop builds are UNSIGNED (no Apple/Windows code-signing certs).
-# To keep install as frictionless as possible we ship plain archives, not OS
-# installers: a .zip of the .app on macOS and a portable .zip on Windows. This
-# trades away in-app auto-update (which on macOS requires a signed app anyway) for
-# the simplest possible "download → extract → run". macOS still shows a one-time
+#
+# Windows and Linux still auto-update: NSIS and AppImage both replace the app
+# in place without a signature, so those two carry the updater feed.
+#
+# macOS does NOT. electron-updater's macOS path verifies the code signature, and
+# an unsigned in-place replacement leaves an app Gatekeeper refuses to launch —
+# so macOS stays a plain .zip of the .app on the manual download path until
+# Developer ID signing and notarization are enforced. macOS shows a one-time
 # Gatekeeper prompt for unsigned apps — right-click the app → Open the first time
 # (or `xattr -dr com.apple.quarantine OpenPalm.app`). electron-builder ad-hoc
 # signs the macOS app by default, which keeps Apple Silicon from refusing it as
 # "damaged"; do NOT set `identity: null`.
 
 mac:
+  # No updater feed for macOS: electron-updater's macOS path requires a signed,
+  # notarized app, so publishing latest-mac.yml would advertise an update the
+  # app cannot install. macOS downloads a new build by hand from the releases
+  # page. scripts/validate-updater-feed.mjs fails the release if this regresses.
+  publish: null
   category: public.app-category.developer-tools
   target:
     - target: zip
@@ -69,11 +93,23 @@ linux:
 
 win:
   target:
-    # Portable .zip only — extract and run, no installer, no admin, and no
-    # "Windows protected your PC" install-time SmartScreen step. (SmartScreen may
-    # still warn on first run of an unsigned .exe → "More info" → "Run anyway".)
+    # NSIS is the updater-capable target: electron-updater can only replace a
+    # Windows install in place through an installer, so this is what makes
+    # "Restart and update" work on Windows.
+    - target: nsis
+      arch: [x64]
+    # The portable .zip stays for people who want extract-and-run with no
+    # installer and no admin prompt. It is MANUAL-ONLY: a portable app has no
+    # install location to update, so electron-updater does not manage it.
     - target: zip
       arch: [x64]
   icon: assets/icon.png
+
+nsis:
+  # Per-user install needs no admin rights, which keeps unattended updates
+  # working: a machine-wide install would prompt for elevation on every update.
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
 
 npmRebuild: false

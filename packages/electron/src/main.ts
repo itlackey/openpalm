@@ -1,4 +1,4 @@
-import { app, BrowserWindow, shell, dialog, ipcMain, globalShortcut, Notification } from 'electron';
+import { app, BrowserWindow, shell, dialog, ipcMain, globalShortcut, Notification, type IpcMainInvokeEvent } from 'electron';
 import { join, dirname } from 'node:path';
 import { existsSync, mkdirSync, createWriteStream, type WriteStream } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -20,7 +20,8 @@ import {
   seedLegacyServedUiRuntimeConfig,
 } from '@openpalm/lib';
 import { UI_PORT } from './ui-port.js';
-import { checkForElectronUpdate, getCachedUpdateInfo, type UpdateInfo } from './update-check.js';
+import { autoUpdater } from 'electron-updater';
+import { DesktopUpdater, isTrustedUpdaterSender, type UpdaterState } from './updater.js';
 import { loadSettings, saveSettings } from './settings.js';
 import { killProcessTree } from './process-tree.js';
 import { resolveAssetPath } from './assets.js';
@@ -117,9 +118,12 @@ const APP_USER_MODEL_ID = 'com.openpalm.app';
 let mainWindow: BrowserWindow | null = null;
 let uiProcess: ChildProcess | null = null;
 let registeredMicShortcut: string | null = null;
-// Whether the GitHub update check should surface prereleases (#504). Loaded from
-// desktop settings at boot; toggled live from the tray. Notify-only.
+// Whether the desktop updater tracks the beta channel (#504 opt-in, mapped onto
+// electron-updater's `beta` channel by updaterChannel). Loaded from desktop
+// settings at boot; toggled live from the tray.
 let checkPrereleaseUpdates = false;
+// Full-application updater (#572). Null until the app is ready.
+let desktopUpdater: DesktopUpdater | null = null;
 // True once the app is genuinely quitting (tray "Quit" or before-quit). The
 // window 'close' handler consults it to hide-to-tray while false and let the
 // close through while true. A typed module-scoped flag — the SSOT for quit
@@ -168,7 +172,7 @@ export function resolveAssistantUrl(homeDir: string): string {
  * Build the environment object to pass to the UI Node child process.
  * Exported as a pure function so tests can verify it without spawning anything.
  */
-export function buildUIServerEnv(homeDir: string, port: number, update?: UpdateInfo | null): NodeJS.ProcessEnv {
+export function buildUIServerEnv(homeDir: string, port: number): NodeJS.ProcessEnv {
   // Operator-managed stack config (state/stack.env) holds settings the
   // host UI server's own routes read from process.env — e.g. OP_VOICE_PORT_HOST,
   // which the /voice pass-through and the voice bring-up use to find the local
@@ -236,10 +240,6 @@ export function buildUIServerEnv(homeDir: string, port: number, update?: UpdateI
   if (existsSync(skeletonDir)) {
     env.OPENPALM_SKELETON_DIR = skeletonDir;
   }
-  if (update?.updateAvailable && update.latestVersion) {
-    env.OP_ELECTRON_LATEST_VERSION = update.latestVersion;
-    if (update.latestUrl) env.OP_ELECTRON_LATEST_URL = update.latestUrl;
-  }
   return env;
 }
 
@@ -281,23 +281,19 @@ async function startUIServer(): Promise<void> {
   // — which covers this harness and the CLI supervisor with one owner.
 
   // app.getVersion() is the HARNESS marketing version — the only version this
-  // harness's own self-update check (checkForElectronUpdate, below) cares about.
+  // harness's own self-update check (the DesktopUpdater below) cares about.
   const appVersion = app.getVersion();
 
   // Load the desktop-local prerelease opt-in (#504) so the update check below
   // knows whether to surface rc's. Notify-only — never changes install behaviour.
   checkPrereleaseUpdates = loadSettings(dataDir).checkPrerelease;
 
-  // Check for a newer Electron app version on GitHub. Non-fatal; result is
-  // surfaced to the UI as an env var so the in-app banner can offer a download.
-  // When the user has opted into prereleases, this polls the full releases list
-  // and filters to the newest matching their channel.
-  const appUpdate = await checkForElectronUpdate(appVersion, checkPrereleaseUpdates);
-  if (appUpdate.updateAvailable) {
-    console.log(`App update available: v${appUpdate.latestVersion}`);
-  } else if (appUpdate.error) {
-    console.log(`App update check skipped: ${appUpdate.error}`);
-  }
+  // Full-application updates (#572). The check is deliberately NOT awaited:
+  // startup must not wait on the network, and an offline launch must be
+  // indistinguishable from an online one. Silent, so a failed check leaves no
+  // banner behind — only a user-initiated check reports errors.
+  desktopUpdater = createDesktopUpdater(appVersion);
+  void desktopUpdater.check({ silent: true });
 
   // The UI build is bundled at build time (electron-builder extraResources →
   // process.resourcesPath/ui-build); resolveUiBuildDir() resolves it directly.
@@ -341,7 +337,7 @@ async function startUIServer(): Promise<void> {
   }
 
   if (existing.status === 'absent') {
-    spawnUIServer(uiBuildDir, homeDir, appUpdate);
+    spawnUIServer(uiBuildDir, homeDir);
   } else {
     // An admin-capable instance already owns the port — attach to it rather
     // than racing it for the socket. It owns its own lifecycle.
@@ -376,11 +372,7 @@ async function startUIServer(): Promise<void> {
  * Spawn the UI Node child against a resolved build dir. Factored out of
  * startUIServer for testability.
  */
-function spawnUIServer(
-  uiBuildDir: string,
-  homeDir: string,
-  appUpdate?: UpdateInfo | null,
-): void {
+function spawnUIServer(uiBuildDir: string, homeDir: string): void {
   seedLegacyServedUiRuntimeConfig(uiBuildDir, homeDir);
 
   // Spawn the UI Node server with Electron's OWN bundled Node (process.execPath
@@ -391,7 +383,7 @@ function spawnUIServer(
   uiProcess = spawn(process.execPath, [join(uiBuildDir, 'index.js')], {
     cwd: uiBuildDir,
     env: {
-      ...buildUIServerEnv(homeDir, UI_PORT, appUpdate),
+      ...buildUIServerEnv(homeDir, UI_PORT),
       ELECTRON_RUN_AS_NODE: '1',
     },
     // Own process group so shutdown can group-kill the UI server AND any
@@ -518,10 +510,7 @@ export function handleWindowOpen(window: BrowserWindow, url: string): { action: 
 }
 
 async function createWindow(): Promise<void> {
-  const update = getCachedUpdateInfo();
-  const title = update?.updateAvailable
-    ? `OpenPalm — Update available (v${update.latestVersion})`
-    : 'OpenPalm';
+  const title = 'OpenPalm';
   const icon = resolveAssetPath('icon.png') ?? undefined;
 
   const window = new BrowserWindow({
@@ -555,6 +544,13 @@ async function createWindow(): Promise<void> {
   // Electron from creating a second BrowserWindow.
   window.webContents.setWindowOpenHandler(({ url }) => {
     return handleWindowOpen(window, url);
+  });
+
+  // Coming back to the app is the natural moment to notice a new release, but
+  // focus fires constantly — DesktopUpdater throttles this to at most one check
+  // an hour, and keeps it silent so an offline machine stays quiet (#572).
+  window.on('focus', () => {
+    void desktopUpdater?.checkOnFocus();
   });
 
   // Hide to tray instead of closing
@@ -637,15 +633,16 @@ async function setCheckPrerelease(enabled: boolean): Promise<void> {
   saveSettings(dataDir, { checkPrerelease: enabled });
 
   try {
-    const appVersion = app.getVersion();
-    const update = await checkForElectronUpdate(appVersion, enabled);
+    // Rebuild on the new channel: electron-updater resolves a feed per channel,
+    // and a half-switched updater would keep answering from the old one.
+    desktopUpdater = createDesktopUpdater(app.getVersion());
+    const update = await desktopUpdater.check({ silent: true });
     // Rebuild the tray menu so the checkbox state (and any update label) refresh.
     trayController.rebuildMenu();
-    if (enabled && update.updateAvailable && update.latestVersion) {
-      const kind = update.isPrerelease ? 'prerelease' : 'version';
+    if (enabled && update.status === 'available' && update.availableVersion) {
       showNotification(
-        `OpenPalm ${kind} available`,
-        `OpenPalm ${update.latestVersion} is available to download.`,
+        'OpenPalm update available',
+        `OpenPalm ${update.availableVersion} is available to download.`,
       );
     }
   } catch (err) {
@@ -711,6 +708,68 @@ app.whenReady().then(async () => {
 app.on('window-all-closed', () => {
   // Keep running in tray on all platforms
 });
+
+// ── Full-application updates (#572) ──────────────────────────────────────────
+//
+// One update operation for the desktop: consent to download a complete tested
+// release, then install it on restart (or on the next ordinary quit). The
+// updater instance owns all policy — see src/updater.ts.
+
+/**
+ * Build the updater over electron-updater's singleton `autoUpdater`, wiring
+ * state changes through to the renderer so download progress is live rather
+ * than polled.
+ */
+function createDesktopUpdater(appVersion: string): DesktopUpdater {
+  return new DesktopUpdater({
+    updater: autoUpdater as unknown as ConstructorParameters<typeof DesktopUpdater>[0]['updater'],
+    currentVersion: appVersion,
+    platform: process.platform,
+    isPackaged: app.isPackaged,
+    prerelease: checkPrereleaseUpdates,
+    onStateChange: (state) => {
+      // The window may be closed-to-tray or already destroyed; a state push is
+      // advisory, never a reason to throw inside the updater.
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('updater-state', state);
+      }
+    },
+  });
+}
+
+/**
+ * Updater IPC can download and execute an installer, so every call is gated on
+ * the sender being the exact trusted UI origin — not merely "some page in our
+ * own window". A compromised or navigated-away renderer must not be able to
+ * drive it. Rejection is a thrown error so the renderer sees a failed invoke
+ * rather than a silent no-op it could mistake for "no update".
+ */
+function assertTrustedUpdaterSender(event: IpcMainInvokeEvent): void {
+  const senderUrl = event.senderFrame?.url ?? '';
+  if (!isTrustedUpdaterSender(senderUrl, UI_PORT)) {
+    throw new Error('Updater IPC rejected: untrusted sender origin');
+  }
+}
+
+function requireUpdater(event: IpcMainInvokeEvent): DesktopUpdater {
+  assertTrustedUpdaterSender(event);
+  if (!desktopUpdater) throw new Error('Updater is not ready yet');
+  return desktopUpdater;
+}
+
+ipcMain.handle('updater-state', (event): UpdaterState => requireUpdater(event).getState());
+
+// Explicit, user-initiated check: reports why it failed, unlike the silent
+// startup and focus checks.
+ipcMain.handle('updater-check', async (event): Promise<UpdaterState> =>
+  requireUpdater(event).check({ silent: false }));
+
+// The consent step. Discovery never downloads; this is the only path that does.
+ipcMain.handle('updater-download', async (event): Promise<UpdaterState> =>
+  requireUpdater(event).download());
+
+ipcMain.handle('updater-quit-and-install', (event): boolean =>
+  requireUpdater(event).quitAndInstall());
 
 ipcMain.handle('restart-app', () => {
   app.relaunch();

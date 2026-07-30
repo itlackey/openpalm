@@ -73,6 +73,24 @@ const { mockNotificationShow } = vi.hoisted(() => ({
   mockNotificationShow: vi.fn(),
 }));
 
+// electron-updater builds its `autoUpdater` singleton at import time against a
+// real Electron app (it reads app.getVersion()), so importing main.ts under the
+// mocked 'electron' above would throw. The updater's own behaviour is covered
+// directly in updater.test.ts against an injected fake; here it only needs to
+// exist and stay inert.
+vi.mock('electron-updater', () => ({
+  autoUpdater: {
+    autoDownload: true,
+    autoInstallOnAppQuit: false,
+    channel: null,
+    allowPrerelease: false,
+    checkForUpdates: vi.fn(async () => null),
+    downloadUpdate: vi.fn(async () => []),
+    quitAndInstall: vi.fn(),
+    on: vi.fn(),
+  },
+}));
+
 vi.mock('electron', () => ({
   app: {
     getVersion: vi.fn(() => '0.11.0'),
@@ -229,11 +247,6 @@ vi.mock('@openpalm/lib', () => ({
     (waitFn: () => Promise<boolean>, childExited: Promise<unknown> | undefined) =>
       childExited ? Promise.race([waitFn(), childExited.then(() => false)]) : waitFn(),
   ),
-}));
-
-vi.mock('../src/update-check.js', () => ({
-  checkForElectronUpdate: vi.fn(async () => ({ updateAvailable: false })),
-  getCachedUpdateInfo: vi.fn(() => null),
 }));
 
 

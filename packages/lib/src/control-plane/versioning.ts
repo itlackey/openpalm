@@ -12,7 +12,7 @@ const SEMVER_RE = /^v?\d+\.\d+\.\d+(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?(?:\+[
  * NOT an installable app update, no matter how new its tag is. Platform releases
  * ship CLI/deploy assets without Electron installers.
  */
-export const ELECTRON_ASSET_PATTERN = /^OpenPalm-.*\.(dmg|AppImage|zip|deb|rpm|pkg)$/i;
+export const ELECTRON_ASSET_PATTERN = /^OpenPalm-.*\.(dmg|AppImage|exe|zip|deb|rpm|pkg)$/i;
 
 /**
  * The canonical control-plane / platform version.

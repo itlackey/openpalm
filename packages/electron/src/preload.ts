@@ -1,15 +1,23 @@
 // Preload script — exposes a minimal API to the renderer over contextBridge.
-// The UI prefers HTTP (via /api/electron/update-status) but can also call
-// `window.openpalm.updateStatus()` when running inside the Electron shell.
+// `window.openpalm.updater` is the desktop's full-application update surface
+// (#572): live status pushed from the main process, plus the explicit check,
+// download and restart-and-install actions. Absent in a browser, which is how
+// the UI knows to hide the desktop-only update controls.
 
 import { contextBridge, ipcRenderer } from 'electron';
 
-interface UpdateStatus {
-  inElectron: boolean;
-  currentVersion: string | null;
-  latestVersion: string | null;
-  latestUrl: string | null;
-  updateAvailable: boolean;
+/** Mirrors UpdaterState in src/updater.ts. */
+interface UpdaterState {
+  status:
+    | 'idle' | 'checking' | 'available' | 'not-available'
+    | 'downloading' | 'downloaded' | 'error' | 'unsupported';
+  currentVersion: string;
+  availableVersion: string | null;
+  percent: number | null;
+  error: string | null;
+  channel: 'stable' | 'beta';
+  supported: boolean;
+  releasesUrl: string;
 }
 
 interface LaunchOnLoginStatus {
@@ -20,18 +28,31 @@ interface LaunchOnLoginStatus {
 type VoidCallback = () => void;
 
 contextBridge.exposeInMainWorld('openpalm', {
-  /** Synchronous read of update info from env vars set by main.ts. */
-  updateStatus(): UpdateStatus {
-    const latest = process.env.OP_ELECTRON_LATEST_VERSION ?? null;
-    const url = process.env.OP_ELECTRON_LATEST_URL ?? null;
-    const current = process.env.OP_ELECTRON_VERSION ?? null;
-    return {
-      inElectron: process.env.OP_INSIDE_ELECTRON === '1',
-      currentVersion: current,
-      latestVersion: latest,
-      latestUrl: url,
-      updateAvailable: !!latest,
-    };
+  updater: {
+    /** Current updater state. Cheap — no network. */
+    state(): Promise<UpdaterState> {
+      return ipcRenderer.invoke('updater-state');
+    },
+    /** User-initiated check. Unlike the silent ones, this reports errors. */
+    check(): Promise<UpdaterState> {
+      return ipcRenderer.invoke('updater-check');
+    },
+    /** The consent step — nothing is downloaded until this is called. */
+    download(): Promise<UpdaterState> {
+      return ipcRenderer.invoke('updater-download');
+    },
+    /** Install the staged update now; no-op unless a download completed. */
+    quitAndInstall(): Promise<boolean> {
+      return ipcRenderer.invoke('updater-quit-and-install');
+    },
+    /** Subscribe to pushed state (download progress). Returns an unsubscribe. */
+    onState(callback: (state: UpdaterState) => void): VoidCallback {
+      const listener = (_event: unknown, state: UpdaterState) => callback(state);
+      ipcRenderer.on('updater-state', listener);
+      return () => {
+        ipcRenderer.removeListener('updater-state', listener);
+      };
+    },
   },
 
   /**

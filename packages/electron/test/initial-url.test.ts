@@ -152,11 +152,6 @@ vi.mock('@openpalm/lib', () => ({
   }),
 }));
 
-// Keep the boot flow's harness-scoped side quests inert and offline.
-vi.mock('../src/update-check.js', () => ({
-  checkForElectronUpdate: vi.fn(async () => ({ updateAvailable: false })),
-  getCachedUpdateInfo: vi.fn(() => null),
-}));
 const { mockLoadSettings } = vi.hoisted(() => ({
   mockLoadSettings: vi.fn<() => { checkPrerelease: boolean; preferClientChat?: boolean }>(
     () => ({ checkPrerelease: false }),

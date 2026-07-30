@@ -12,8 +12,9 @@
  * {@link selectInstallableReleases} after fetching the raw release list.
  */
 
-// Single source of truth for "is this asset an Electron installer" — shared with
-// the desktop app's update check (packages/electron/src/update-check.ts).
+// Single source of truth for "is this asset an Electron installer". The host UI
+// lists desktop releases with it; the desktop app itself no longer consults it,
+// because electron-updater resolves installers from the release feed (#572).
 import { ELECTRON_ASSET_PATTERN, isComparableSemver } from '@openpalm/lib';
 
 export interface ReleaseEntry {
