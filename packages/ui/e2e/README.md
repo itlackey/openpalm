@@ -70,6 +70,7 @@ Current stack files are:
 | `auth-boundary.stack.ts` | Current `/api/host/*` read/write auth boundaries |
 | `secrets.stack.ts` | `env:user` key CRUD, redaction, and input validation |
 | `admin-panel-browser.stack.ts` | Browser smoke for host status, systems, journal, connections, and secrets views |
+| `lan-access.stack.ts` | Two-device LAN access: enables `networkAccess`, then drives login, an `/oc` chat round trip, and `/voice` reachability against the assistant container's own UI co-process from a non-loopback source address |
 
 ## Tier 5 Launcher Contract
 
