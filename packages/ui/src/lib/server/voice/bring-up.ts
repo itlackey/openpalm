@@ -44,6 +44,7 @@ import {
 	getAddonProfileSelection,
 	listEnabledAddonIds,
 	readStackEnv,
+	resolveEnvPort,
 	setAddonEnabled,
 	setAddonProfileSelection,
 	stackDirFor
@@ -147,20 +148,23 @@ export async function voiceAddonInfo(homeDir: string): Promise<{
 	return { profiles, selectedProfile, ...(activeJob ? { activeJob } : {}) };
 }
 
+/** The voice container's own listen port, and the default host publish port. */
+const DEFAULT_VOICE_PORT = 8880;
+
 // Preset values for the bundled openpalm/voice addon. The voice container
 // exposes both endpoints on a single host:port and the UI server reaches
 // it through the loopback binding in the voice addon's compose overlay.
 // Host port is overridable via OP_VOICE_PORT_HOST in stack.env (defaults
-// to 8880, matching the container's internal port).
+// to DEFAULT_VOICE_PORT, matching the container's internal port).
 //
-// Precedence: an explicit `env` value wins, then `persistedEnv`, then the
-// 8880 default — matching resolveHostUiPort (packages/lib
-// network-contract.ts). Live-over-persisted is the important half: Compose
+// Precedence is lib's resolveEnvPort — the one port parser, shared with
+// resolveHostUiPort/resolvePublishedUiPort: an explicit `env` value wins, then
+// `persistedEnv`, then the default. Live-over-persisted is the important half: Compose
 // itself reads OP_VOICE_PORT_HOST ONLY from state/stack.env (its
 // --env-file), so an operator who followed this function's own doc comment
 // (and the UI's error copy) and set it there previously got compose
 // republishing voice on the NEW port while this function — process.env
-// only — kept resolving 8880: a proxy pointed at a dead port that no
+// only — kept resolving the default: a proxy pointed at a dead port that no
 // restart could fix, because process.env never picks up a file-only value.
 // `persistedEnv` defaults to `{}` (not a disk read) so this stays a pure,
 // directly-testable function; callers with a homeDir pass
@@ -169,10 +173,7 @@ export function voiceHostPort(
 	env: Record<string, string | undefined> = process.env,
 	persistedEnv: Record<string, string | undefined> = {}
 ): number {
-	const merged = { ...persistedEnv, ...env };
-	const raw = merged.OP_VOICE_PORT_HOST?.trim();
-	const n = raw ? Number(raw) : NaN;
-	return Number.isFinite(n) && n > 0 ? n : 8880;
+	return resolveEnvPort('OP_VOICE_PORT_HOST', DEFAULT_VOICE_PORT, env, persistedEnv);
 }
 
 /**

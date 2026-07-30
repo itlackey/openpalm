@@ -24,7 +24,7 @@
  * entries — those belong to the browser.
  */
 import { getState } from './state.js';
-import { resolveAssistantEndpoint, resolveOpenCodeCredential } from '@openpalm/lib';
+import { readStackEnv, resolveAssistantEndpoint, resolveOpenCodeCredential } from '@openpalm/lib';
 
 export type AssistantOpencodeTarget = {
   id: string;
@@ -59,10 +59,14 @@ function normalizeBrowserFacingUrl(raw: string): string {
  *
  * Read fresh on every call. `OPENCODE_AUTH` and the generated key are
  * operator-changeable at runtime, and a cached credential would 401 the whole
- * UI until the process restarted.
+ * UI until the process restarted. Fresh does not have to mean twice, though:
+ * both resolvers read the same `state/stack.env`, so this reads it once and
+ * hands the row to each. `/oc` calls this per request — the app's busiest
+ * server path — and was parsing that file two times for every chat token.
  */
 export function getAssistantOpencodeTarget(): AssistantOpencodeTarget {
   const homeDir = getState().homeDir;
+  const persistedEnv = readStackEnv(homeDir);
   // URL and credential are BOTH shared control-plane logic. This module used to
   // carry its own shorter URL chain — no OP_UI_DEFAULT_ASSISTANT_URL, a
   // hardcoded 127.0.0.1, and the persisted assistant port read only as a last
@@ -71,11 +75,11 @@ export function getAssistantOpencodeTarget(): AssistantOpencodeTarget {
   // The divergence had teeth: an assistant published on a CONCRETE LAN
   // interface (Docker's `bind:port:target` maps the port onto that interface
   // ONLY, not also onto loopback) resolved here to an unreachable 127.0.0.1.
-  const { username, password } = resolveOpenCodeCredential(homeDir);
+  const { username, password } = resolveOpenCodeCredential(homeDir, process.env, persistedEnv);
   return {
     id: DEFAULT_ID,
     label: 'Local Assistant',
-    url: normalizeBrowserFacingUrl(resolveAssistantEndpoint(homeDir)),
+    url: normalizeBrowserFacingUrl(resolveAssistantEndpoint(homeDir, process.env, persistedEnv)),
     username,
     password,
     isDefault: true,

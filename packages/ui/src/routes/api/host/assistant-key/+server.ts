@@ -26,13 +26,7 @@
  * The value is never logged.
  */
 import type { RequestHandler } from './$types';
-import {
-  DEFAULT_OPENCODE_USERNAME,
-  readAccessToggles,
-  readSecret,
-  readStackEnv,
-  stripTrailingNewlines,
-} from '@openpalm/lib';
+import { resolveOpenCodeCredential } from '@openpalm/lib';
 import { getState } from '$lib/server/state.js';
 import { getRequestId, requireAdmin, requireCapability } from '$lib/server/helpers.js';
 
@@ -55,25 +49,24 @@ export const GET: RequestHandler = async (event) => {
   const denied = requireAdmin(event, requestId);
   if (denied) return denied;
 
-  const state = getState();
-  const toggles = readAccessToggles(readStackEnv(state.homeDir));
-  if (!toggles.assistantDirect) {
-    return jsonNoStore(200, { available: false }, requestId);
-  }
-
-  // `ensureSecrets` always materializes this file (both the assistant's and
-  // guardian's compose `secrets:` grants reference it unconditionally), so a
-  // null read here means an install that has never deployed rather than a
-  // real absence — report the same "nothing to show" shape either way.
-  const raw = readSecret(state.homeDir, 'op_opencode_password');
-  const password = raw ? stripTrailingNewlines(raw) : '';
+  // The SAME resolver `/oc` and getAssistantOpencodeTarget authenticate with —
+  // this route must show the credential that actually works, and it cannot do
+  // that by re-deriving one. Resolving it here independently (read the toggle,
+  // read the secret file, strip the newline) reproduced the happy path but
+  // dropped the OPENCODE_SERVER_USERNAME / OPENCODE_SERVER_PASSWORD /
+  // OP_OPENCODE_PASSWORD overrides the resolver honours, so an operator using
+  // any of them would have been shown a key the assistant rejects.
+  //
+  // Its `password` is also the availability answer: it is populated only when
+  // OPENCODE_AUTH is on, which `resolveAccessEnv` derives from `assistantDirect`
+  // on every apply. Gating on it directly means the dashboard cannot disagree
+  // with the server about whether auth is in effect — where reading the toggle
+  // separately made that agreement a convention between two implementations.
+  // An install that has never deployed reports the same "nothing to show".
+  const { username, password } = resolveOpenCodeCredential(getState().homeDir);
   if (!password) {
     return jsonNoStore(200, { available: false }, requestId);
   }
 
-  return jsonNoStore(
-    200,
-    { available: true, username: DEFAULT_OPENCODE_USERNAME, password },
-    requestId,
-  );
+  return jsonNoStore(200, { available: true, username, password }, requestId);
 };

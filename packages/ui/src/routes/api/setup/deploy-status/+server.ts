@@ -1,6 +1,6 @@
 import { json } from "@sveltejs/kit";
 import { getState } from "$lib/server/state.js";
-import { resolveHostUiPort, STACK_DEFAULTS } from "@openpalm/lib";
+import { resolveHostUiPort, resolvePublishedUiPort, STACK_DEFAULTS } from "@openpalm/lib";
 import { getDeployState } from "$lib/server/setup-deploy.js";
 import type { RequestHandler } from "./$types";
 
@@ -10,7 +10,7 @@ import type { RequestHandler } from "./$types";
 function resolvePorts() {
   return {
     admin: resolveHostUiPort(undefined, process.env),
-    ui: Number(process.env.OP_UI_PORT) || STACK_DEFAULTS.ports.ui,
+    ui: resolvePublishedUiPort(process.env),
     assistant: Number(process.env.OP_ASSISTANT_PORT) || STACK_DEFAULTS.ports.assistant,
   };
 }

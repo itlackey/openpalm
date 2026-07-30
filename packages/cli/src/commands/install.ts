@@ -6,12 +6,13 @@ import { defaultWorkDir } from '../lib/paths.ts';
 import { defineAction } from '../lib/action.ts';
 import { promptYesNo } from '../lib/prompt.ts';
 import { resolveLatestReleaseTag } from '../lib/github.ts';
-import { DEFAULT_UI_PORT } from '../lib/ports.ts';
 import type { UIServerOptions } from '../lib/ui-server.ts';
 import {
 	resolveOpenPalmHome,
 	resolveConfigDir,
 	ensureHomeDirs,
+	readStackEnv,
+	resolveHostUiPort,
 	runHomeMigrations,
 	UI_LOOPBACK_HOST,
 	hasMaterializedLocalInstall,
@@ -368,11 +369,19 @@ async function prepareInstallFiles(
  */
 export function wizardUiServerOptions(
 	noOpen: boolean,
-	env: NodeJS.ProcessEnv = process.env
+	env: NodeJS.ProcessEnv = process.env,
+	persistedEnv: Record<string, string | undefined> = {}
 ): UIServerOptions {
 	return {
 		open: !noOpen,
-		port: Number(env.OP_HOST_UI_PORT) || DEFAULT_UI_PORT,
+		// The shared resolver, not an inline `?? 3880` — that is the exact pattern
+		// network-contract.ts was written to retire, and here it did real damage:
+		// an explicit `port` short-circuits resolveUiServePort, so a port a
+		// headless install had persisted was read back by every serve entry EXCEPT
+		// a wizard re-run, which quietly served somewhere else. Callers pass the
+		// home's stack.env; a first install has none, and `{}` resolves the same
+		// way process.env alone used to.
+		port: resolveHostUiPort(undefined, env, persistedEnv),
 		adminHostUi: true,
 	};
 }
@@ -390,7 +399,7 @@ export function wizardUiServerOptions(
  */
 async function runWizardInstall(noOpen: boolean): Promise<void> {
 	await requireDocker();
-	const options = wizardUiServerOptions(noOpen);
+	const options = wizardUiServerOptions(noOpen, process.env, readStackEnv(resolveOpenPalmHome()));
 	// Same loopback spelling the server binds, the browser is opened to, and
 	// ORIGIN is pinned to (UI_LOOPBACK_HOST). A wizard session established on
 	// `localhost` is a different cookie jar from the one `openpalm admin` later

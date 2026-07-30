@@ -19,6 +19,7 @@
  * config-persistence.ts, so it stays a safe one-way edge.
  */
 import { execFileNoThrow } from "./addon-availability.js";
+import { isEnabledFlag } from "./bind-warning.js";
 import { dockerBin } from "./docker.js";
 import { readStackEnv } from "./secrets.js";
 
@@ -81,9 +82,8 @@ export async function dockerHasNvidiaRuntime(): Promise<boolean> {
 
 /**
  * Voice-container LAN reachability opt-in: `OP_VOICE_LAN_ACCESS` in
- * `state/stack.env`, default OFF. Same truthy set as the other opt-in flags
- * in bind-warning.ts (`isTrustedProxyEnabled` / `isRemoteSetupAllowed`):
- * `1` | `true` | `yes`, case-insensitive, trimmed.
+ * `state/stack.env`, default OFF. Parsed by the shared `isEnabledFlag`, so it
+ * accepts exactly what every other opt-in flag does and cannot drift from them.
  *
  * Off (default): voice stays segmented onto `addon_net` only
  * (services.compose.yml) — the addon trust boundary's default posture (a
@@ -104,6 +104,5 @@ export async function dockerHasNvidiaRuntime(): Promise<boolean> {
  * interpolation) to decide whether the served UI advertises/proxies voice.
  */
 export function isVoiceLanAccessEnabled(homeDir: string): boolean {
-  const raw = readStackEnv(homeDir).OP_VOICE_LAN_ACCESS?.trim().toLowerCase();
-  return raw === "1" || raw === "true" || raw === "yes";
+  return isEnabledFlag(readStackEnv(homeDir).OP_VOICE_LAN_ACCESS);
 }

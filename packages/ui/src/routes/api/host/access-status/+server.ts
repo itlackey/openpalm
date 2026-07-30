@@ -31,7 +31,7 @@
  */
 import type { RequestHandler } from './$types';
 import {
-  STACK_DEFAULTS,
+  resolvePublishedUiPort,
   buildLanUrls,
   checkExistingUiInstance,
   fetchAccessStatusActual,
@@ -50,7 +50,7 @@ export const GET: RequestHandler = async (event) => {
 
   const state = getState();
   const env = readStackEnv(state.homeDir);
-  const port = Number(env.OP_UI_PORT) || STACK_DEFAULTS.ports.ui;
+  const port = resolvePublishedUiPort(process.env, env);
 
   // Docker query and the self-probe are independent of each other — run them
   // together rather than serially. Both are internally never-throwing

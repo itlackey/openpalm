@@ -19,6 +19,25 @@ export function isLoopback(value: string): boolean {
 }
 
 /**
+ * What counts as "on" for a binary opt-in flag in stack.env or the process env.
+ *
+ * Every such flag — OP_TRUSTED_PROXY, OP_ALLOW_REMOTE_SETUP,
+ * OP_VOICE_LAN_ACCESS, OPENCODE_AUTH — accepted the same three spellings via
+ * its own inline copy of this comparison, each written slightly differently
+ * (three string chains and a regex). Four copies is how the fifth flag ends up
+ * quietly accepting a different set from the other four.
+ *
+ * Deliberately NOT shared with `access-toggles.ts`'s intent parser: that one is
+ * tri-state (a stored boolean can be absent or unparseable, which is not the
+ * same as false) and so needs a matching FALSE pattern too. These flags are
+ * binary — anything that is not "on" is off.
+ */
+export function isEnabledFlag(value: string | undefined): boolean {
+  const v = value?.trim().toLowerCase();
+  return v === "1" || v === "true" || v === "yes";
+}
+
+/**
  * Opt-in: trust `x-forwarded-proto` / `Host` from a proxy in front of a
  * loopback-bound host UI, WITHOUT widening the listener.
  *
@@ -37,8 +56,7 @@ export function isTrustedProxyEnabled(
   env: Record<string, string | undefined> = process.env,
 ): boolean {
   if (env.OP_ENABLE_ADMIN === '1' || env.OP_INSIDE_ELECTRON === '1') return false;
-  const v = env.OP_TRUSTED_PROXY?.trim().toLowerCase();
-  return v === "1" || v === "true" || v === "yes";
+  return isEnabledFlag(env.OP_TRUSTED_PROXY);
 }
 
 /**
@@ -55,6 +73,5 @@ export function isRemoteSetupAllowed(
   env: Record<string, string | undefined> = process.env,
 ): boolean {
   if (env.OP_ENABLE_ADMIN === '1' || env.OP_INSIDE_ELECTRON === '1') return false;
-  const v = env.OP_ALLOW_REMOTE_SETUP?.trim().toLowerCase();
-  return v === "1" || v === "true" || v === "yes";
+  return isEnabledFlag(env.OP_ALLOW_REMOTE_SETUP);
 }

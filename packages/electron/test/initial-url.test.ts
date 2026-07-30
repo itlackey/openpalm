@@ -113,6 +113,17 @@ vi.mock('@openpalm/lib', () => ({
   PLATFORM_VERSION: 'v0.12.0',
   // Host-UI port contract (lib network-contract.ts) — resolved at main.ts
   // module scope, so it must exist even for tests that never start the server.
+  // The admin listen contract (lib network-contract.ts). buildUIServerEnv spreads
+  // it rather than baking HOST/PORT/ORIGIN by hand, so the mock must reproduce
+  // the admin branch: loopback bind, origin pinned to it, no forwarded-header
+  // trust. harness-parity.test.ts pins the real function's shape.
+  resolveUiListenEnv: vi.fn((opts: { port: number }) => ({
+    HOST: '127.0.0.1',
+    PORT: String(opts.port),
+    ORIGIN: `http://127.0.0.1:${opts.port}`,
+    HOST_HEADER: undefined,
+    PROTOCOL_HEADER: undefined,
+  })),
   resolveHostUiPort: vi.fn(
     (
       explicit: number | undefined,

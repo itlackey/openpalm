@@ -20,6 +20,7 @@ import {
   checkExistingUiInstance,
   readyOrChildExit,
   resolveHostUiPort,
+  resolveUiListenEnv,
   consumePendingUiBackup,
   restoreUiBackup,
   UiSupervisor,
@@ -217,9 +218,15 @@ export function buildUIServerEnv(homeDir: string, port: number, update?: UpdateI
     ...stackForUi,
     ...process.env,
     OP_HOME: homeDir,
-    HOST: '127.0.0.1',
-    PORT: String(port),
-    ORIGIN: `http://127.0.0.1:${port}`,
+    // The shared listen contract, not a hand-baked copy of it. The desktop app
+    // is unconditionally an admin host UI, so it always lands in the same branch
+    // — but "always lands there" is a property of the CALLER, and baking the
+    // branch's OUTPUT here made it a second implementation that only agreed by
+    // coincidence. That is the exact shape of every bug this subsystem's rework
+    // was chasing: same home, two harnesses, two answers. Spreading the resolver
+    // also clears HOST_HEADER/PROTOCOL_HEADER, so an inherited forwarded-header
+    // setting cannot reach an admin child that must never honour one.
+    ...resolveUiListenEnv({ port, admin: true, allowRemote: false }),
     OP_ALLOW_REMOTE_SETUP: '0',
     OP_INSIDE_ELECTRON: '1',
     OP_ELECTRON_VERSION: app.getVersion?.() ?? '',

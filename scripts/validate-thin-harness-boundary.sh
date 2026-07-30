@@ -88,6 +88,12 @@ ALLOWED_IMPORTS=(
   # than re-deriving the precedence itself, which is how the two launchers came to
   # disagree about which port the UI was on.
   resolveHostUiPort
+  # Pure listen-env resolver, same family: maps {port, admin, allowRemote,
+  # trustProxy} to the HOST/PORT/ORIGIN/*_HEADER record adapter-node reads. The
+  # harness used to bake that record's admin-branch output by hand, which agreed
+  # with the resolver only by coincidence — exactly the "same question, two
+  # answers" drift this boundary exists to prevent. Read-only, no migration.
+  resolveUiListenEnv
   # Compatibility-only bootstrap seed: current UI builds use process-scoped
   # /api/runtime-config; an older build retained after a nonfatal update failure
   # still needs its static runtime-config.json contract.

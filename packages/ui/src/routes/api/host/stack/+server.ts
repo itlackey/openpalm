@@ -98,6 +98,12 @@ export const PUT: RequestHandler = async (event) => {
       // unaddressed beside the new one (#540).
       const currentEnv = readStackEnv(state.homeDir);
       const previousProjectName = currentEnv.OP_PROJECT_NAME?.trim() || DEFAULT_PROJECT_NAME;
+      /** Both branches below rename identically; only the write before it differs. */
+      const recordRenameIfChanged = (): boolean => {
+        const renamed = previousProjectName !== projectName;
+        if (renamed) recordProjectRename(state.homeDir, previousProjectName, projectName);
+        return renamed;
+      };
 
       // Omitted `access` touches NOTHING about exposure — not even a
       // round-trip through the generated row. The endpoint used to
@@ -107,10 +113,9 @@ export const PUT: RequestHandler = async (event) => {
       // 0.0.0.0, moving a deliberately narrowed listener onto every interface.
       if (body.access === undefined) {
         patchSecretsEnvFile(state.homeDir, { OP_PROJECT_NAME: projectName });
-        const projectRenamed = previousProjectName !== projectName;
-        if (projectRenamed) {
-          recordProjectRename(state.homeDir, previousProjectName, projectName);
-        }
+        const projectRenamed = recordRenameIfChanged();
+        // One read for both views of the row the patch just wrote.
+        const freshEnv = readStackEnv(state.homeDir);
         return jsonResponse(
           200,
           {
@@ -118,8 +123,8 @@ export const PUT: RequestHandler = async (event) => {
             projectName,
             projectRenamed,
             stackEnvPath: 'state/stack.env',
-            mdns: resolveMdnsStatus(readStackEnv(state.homeDir)),
-            access: readAccessToggles(readStackEnv(state.homeDir)),
+            mdns: resolveMdnsStatus(freshEnv),
+            access: readAccessToggles(freshEnv),
             recreated: [],
             autoEnabledAddons: [],
           },
@@ -138,10 +143,7 @@ export const PUT: RequestHandler = async (event) => {
         extraEnv: { OP_PROJECT_NAME: projectName },
       });
 
-      const projectRenamed = previousProjectName !== projectName;
-      if (projectRenamed) {
-        recordProjectRename(state.homeDir, previousProjectName, projectName);
-      }
+      const projectRenamed = recordRenameIfChanged();
 
       if (!applied.ok) {
         return errorResponse(

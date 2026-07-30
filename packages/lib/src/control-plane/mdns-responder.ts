@@ -52,10 +52,10 @@
  * reconcile singleton. Scope: A records + an `_http._tcp` service instance.
  */
 import makeMdns from "multicast-dns";
-import { networkInterfaces } from "node:os";
 import { createLogger } from "../logger.js";
 import { isLoopback } from "./bind-warning.js";
 import { STACK_DEFAULTS } from "./defaults.js";
+import { collectNonInternalIpv4 } from "./net-interfaces.js";
 import { readStackEnv } from "./secrets.js";
 import { checkExistingUiInstance } from "./ui-supervisor.js";
 
@@ -192,23 +192,6 @@ function parsePort(value: string | undefined, fallback: number): number {
   return Number.isFinite(n) && n > 0 ? n : fallback;
 }
 
-function defaultHostIpv4(): string[] {
-  const interfaces = networkInterfaces();
-  const addresses: string[] = [];
-  for (const entries of Object.values(interfaces)) {
-    if (!entries) continue;
-    for (const entry of entries) {
-      // node:os types `family` as the string literal union in current
-      // @types/node; older Node runtimes can report the numeric family (4)
-      // instead, so compare loosely without narrowing entry.family's type.
-      const family: unknown = entry.family;
-      const isIpv4Family = family === "IPv4" || family === 4;
-      if (isIpv4Family && !entry.internal) addresses.push(entry.address);
-    }
-  }
-  return addresses;
-}
-
 /** True only for a dotted-quad IPv4 literal (4 octets, each 0-255). */
 function isIpv4(address: string): boolean {
   const parts = address.trim().split(".");
@@ -237,7 +220,7 @@ function resolveAdvertAddresses(bind: string, hostIpv4: string[]): string[] {
  */
 export function resolveMdnsAdvertisements(
   env: Record<string, string | undefined>,
-  hostIpv4: string[] = defaultHostIpv4(),
+  hostIpv4: string[] = collectNonInternalIpv4(),
 ): MdnsAdvertisement[] {
   const names = deriveMdnsNames(env);
   const adverts: MdnsAdvertisement[] = [];

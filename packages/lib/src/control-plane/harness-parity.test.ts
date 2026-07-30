@@ -24,14 +24,14 @@
  *     secret-like" is exactly the kind of fact a future refactor could get
  *     wrong silently, so it is asserted, per scenario, instead of assumed.
  *
- *  2. Host UI listen env — Electron's `buildUIServerEnv` does NOT call
- *     `resolveUiListenEnv` for HOST/ORIGIN; it bakes an admin-shaped loopback
- *     env by hand (packages/electron/src/main.ts), because the desktop app
- *     is unconditionally an admin host UI. That hand-baked shape is pinned
- *     here against `resolveUiListenEnv({ admin: true, allowRemote: false })`
- *     — if Electron ever stops being unconditionally admin, or the shared
- *     resolver's admin shape changes, THIS fails instead of the two quietly
- *     drifting apart the way the pre-Phase-1 code did.
+ *  2. Host UI listen env — both harnesses now CALL `resolveUiListenEnv`
+ *     (Electron's `buildUIServerEnv` spreads it with `admin: true`; the CLI
+ *     reaches it through `resolveUiNetworkEnv`), so there is no second
+ *     implementation left to drift. Electron previously baked the admin
+ *     branch's output by hand and this file pinned the two shapes against each
+ *     other; what survives is the property that made the hand-baked copy safe
+ *     in the first place — an admin process is loopback-bound and
+ *     origin-pinned no matter what else is asked for.
  *
  *  3. Assistant endpoint — every real caller (Electron's `resolveAssistantUrl`,
  *     the CLI's session-maintenance client in `doctor.ts`, and the UI's
@@ -93,7 +93,7 @@ function seededHome(persisted: Record<string, string>): string {
 
 // ── 1. host UI port: CLI's readStackEnv vs Electron's parseEnvFile+stackEnvFile ──
 
-/** Mirrors packages/cli/src/lib/ui-server.ts's resolvePort() -> resolveHostUiPortFromEnv. */
+/** Mirrors packages/cli/src/lib/ui-server.ts's resolveUiServePort(). */
 function cliHostUiPort(homeDir: string, env: Record<string, string | undefined>): number {
   return resolveHostUiPort(undefined, env, readStackEnv(homeDir));
 }
@@ -153,32 +153,38 @@ describe("host UI port — CLI and Electron's differing persisted-env plumbing c
   }
 });
 
-// ── 2. host UI listen env: Electron's hand-baked shape vs the shared resolver ──
+// ── 2. host UI listen env: the admin contract both harnesses spread ──
 
-describe("host UI listen env — Electron's hand-baked admin shape matches resolveUiListenEnv", () => {
-  test("HOST/PORT/ORIGIN agree with the admin, non-remote branch", () => {
+describe("host UI listen env — the admin shape both harnesses spread", () => {
+  test("loopback bind, pinned origin, and no forwarded-header trust", () => {
     const port = 4200;
-    // Mirrors packages/electron/src/main.ts buildUIServerEnv's literal
-    // `HOST: '127.0.0.1', PORT: String(port), ORIGIN: \`http://127.0.0.1:${port}\``,
-    // plus its forced `OP_ALLOW_REMOTE_SETUP: '0'`.
-    const electronBaked = {
-      HOST: "127.0.0.1",
-      PORT: String(port),
-      ORIGIN: `http://127.0.0.1:${port}`,
-    };
     const shared = resolveUiListenEnv({ port, admin: true, allowRemote: false });
-    expect(shared.HOST).toBe(electronBaked.HOST);
-    expect(shared.PORT).toBe(electronBaked.PORT);
-    expect(shared.ORIGIN).toBe(electronBaked.ORIGIN);
+    expect(shared.HOST).toBe("127.0.0.1");
+    expect(shared.PORT).toBe(String(port));
+    expect(shared.ORIGIN).toBe(`http://127.0.0.1:${port}`);
+    // Both harnesses SPREAD this record over the child env, so the undefined
+    // header keys are load-bearing: they clear an inherited HOST_HEADER /
+    // PROTOCOL_HEADER rather than letting an admin child honour forwarded
+    // headers it must never trust.
+    expect(shared.HOST_HEADER).toBeUndefined();
+    expect(shared.PROTOCOL_HEADER).toBeUndefined();
   });
 
-  test("the baked shape holds even if a future Electron passed allowRemote through", () => {
-    // Electron never actually varies allowRemote (it forces
-    // OP_ALLOW_REMOTE_SETUP=0), but admin:true must ignore it regardless —
-    // host admin is never remotely reachable. If this ever stopped being
-    // true, Electron's hand-baked loopback env would silently disagree with
-    // what the shared resolver considers correct for an admin process.
-    expect(resolveUiListenEnv({ port: 4200, admin: true, allowRemote: true }).HOST).toBe("127.0.0.1");
+  test("admin ignores every widening request", () => {
+    // Electron forces OP_ALLOW_REMOTE_SETUP=0 and passes allowRemote:false, but
+    // admin:true must pin loopback regardless of what a caller asks for — host
+    // admin is never remotely reachable, and that is a property of the resolver,
+    // not of any one caller remembering to pass the right flags.
+    for (const opts of [
+      { port: 4200, admin: true, allowRemote: true },
+      { port: 4200, admin: true, allowRemote: false, trustProxy: true },
+      { port: 4200, admin: true, allowRemote: true, trustProxy: true },
+    ]) {
+      const listen = resolveUiListenEnv(opts);
+      expect(listen.HOST).toBe("127.0.0.1");
+      expect(listen.ORIGIN).toBe("http://127.0.0.1:4200");
+      expect(listen.HOST_HEADER).toBeUndefined();
+    }
   });
 });
 

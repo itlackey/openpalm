@@ -12,50 +12,15 @@
  *
  * Pure and interface-list-injectable, so it is unit-testable without touching
  * real network interfaces — `networkInterfaces()` is consulted only as the
- * default at the call site, mirroring `resolveMdnsAdvertisements`'s own
- * `hostIpv4` parameter in `mdns-responder.ts`.
+ * default at the call site. Which addresses count as LAN-reachable is
+ * `net-interfaces.ts`'s answer, shared with the mDNS responder so the URL
+ * printed here and the A record advertised there can never disagree.
  */
-import { networkInterfaces } from "node:os";
+import { collectNonInternalIpv4, type LanInterfaceMap } from "./net-interfaces.js";
 import { deriveMdnsNames } from "./mdns-responder.js";
 
-/**
- * The subset of `node:os`'s `NetworkInterfaceInfo` this module reads. A
- * reduced local shape (rather than importing the full node:os type) keeps the
- * builder trivially constructible from a plain object in tests.
- */
-export type LanInterfaceEntry = {
-  address: string;
-  /**
-   * Current `@types/node` types this as the string literal union `"IPv4" |
-   * "IPv6"`; older Node runtimes can report the numeric family (4) instead
-   * (see `mdns-responder.ts`'s identical comment on its own `defaultHostIpv4`).
-   */
-  family: string | number;
-  internal: boolean;
-};
-
-/** The shape `node:os`'s `networkInterfaces()` returns. */
-export type LanInterfaceMap = Record<string, LanInterfaceEntry[] | undefined>;
-
-function isIpv4Family(family: string | number): boolean {
-  return family === "IPv4" || family === 4;
-}
-
-/**
- * Every non-internal IPv4 address across all interfaces, in `node:os`'s own
- * enumeration order. Loopback and internal entries are excluded — neither is
- * reachable from another device on the LAN.
- */
-export function collectNonInternalIpv4(interfaces: LanInterfaceMap): string[] {
-  const addresses: string[] = [];
-  for (const entries of Object.values(interfaces)) {
-    if (!entries) continue;
-    for (const entry of entries) {
-      if (isIpv4Family(entry.family) && !entry.internal) addresses.push(entry.address);
-    }
-  }
-  return addresses;
-}
+export { collectNonInternalIpv4 };
+export type { LanInterfaceEntry, LanInterfaceMap } from "./net-interfaces.js";
 
 export type BuildLanUrlsInput = {
   /** The UI's published host port (`OP_UI_PORT`) — the caller resolves the default. */
@@ -81,9 +46,8 @@ export type BuildLanUrlsInput = {
  */
 export function buildLanUrls(input: BuildLanUrlsInput): string[] {
   const { assistantName } = deriveMdnsNames({ OP_PROJECT_NAME: input.projectName });
-  const interfaces = input.interfaces ?? networkInterfaces();
   const urls = [`http://${assistantName}:${input.port}`];
-  for (const address of collectNonInternalIpv4(interfaces)) {
+  for (const address of collectNonInternalIpv4(input.interfaces)) {
     urls.push(`http://${address}:${input.port}`);
   }
   return urls;

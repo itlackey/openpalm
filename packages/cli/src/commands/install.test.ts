@@ -36,3 +36,15 @@ test('the wizard port follows OP_HOST_UI_PORT, defaulting to the shared constant
   // A non-numeric value must not produce NaN — startUIServer rejects that.
   expect(wizardUiServerOptions(false, { OP_HOST_UI_PORT: 'nope' }).port).toBe(DEFAULT_UI_PORT);
 });
+
+test('the wizard reads back a port a headless install persisted to stack.env', () => {
+  // The options builder used to resolve from process.env ALONE. Because an
+  // explicit `port` short-circuits resolveUiServePort, that made the wizard the
+  // one serve entry that ignored a persisted OP_HOST_UI_PORT — it bound 3880 and
+  // printed 3880 while every other entry on the same home used 4300.
+  expect(wizardUiServerOptions(false, {}, { OP_HOST_UI_PORT: '4300' }).port).toBe(4300);
+  // Live env still wins over the file, matching every other resolver.
+  expect(
+    wizardUiServerOptions(false, { OP_HOST_UI_PORT: '5000' }, { OP_HOST_UI_PORT: '4300' }).port,
+  ).toBe(5000);
+});

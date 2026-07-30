@@ -657,7 +657,7 @@ export type { AkmStats } from './control-plane/akm-stats.js';
 export { getAkmStats, parseAkmStats } from './control-plane/akm-stats.js';
 
 // ── Bind Address Startup Warning ─────────────────────────────────────────────
-export { isRemoteSetupAllowed, isLoopback, isTrustedProxyEnabled } from "./control-plane/bind-warning.js";
+export { isEnabledFlag, isRemoteSetupAllowed, isLoopback, isTrustedProxyEnabled } from "./control-plane/bind-warning.js";
 
 // ── Network access toggles ───────────────────────────────────────────────────
 export {
@@ -768,8 +768,11 @@ export { normalizeLoopbackUrl } from './control-plane/url-normalize.js';
 export { STACK_DEFAULTS } from "./control-plane/defaults.js";
 export {
   DEFAULT_HOST_UI_PORT,
+  DEFAULT_PUBLISHED_UI_PORT,
   UI_LOOPBACK_HOST,
+  resolveEnvPort,
   resolveHostUiPort,
+  resolvePublishedUiPort,
   resolveUiListenEnv,
   type UiListenEnv,
 } from "./control-plane/network-contract.js";

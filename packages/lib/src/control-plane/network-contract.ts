@@ -15,24 +15,57 @@ import { STACK_DEFAULTS } from "./defaults.js";
 /** The ONE host-UI port default. Every other site imports this. */
 export const DEFAULT_HOST_UI_PORT = STACK_DEFAULTS.ports.hostUi;
 
+/** The ONE published/container UI port default (what compose maps to the LAN). */
+export const DEFAULT_PUBLISHED_UI_PORT = STACK_DEFAULTS.ports.ui;
+
 /**
- * Resolve the host UI's listen port.
+ * Resolve one port env var: an explicit argument wins, then live process env,
+ * then the home's persisted stack.env, then the default.
  *
- * Precedence, deliberately matching every other resolver in the codebase: an
- * explicit argument (a `--port` flag) wins, then live process env, then the
- * home's persisted stack.env, then the default. Live-env-over-persisted is the
- * important half: Electron's child env spread had it INVERTED, so a value an
- * operator exported before launching the desktop app was silently overridden by
- * the file, while the identical launch through `openpalm` honored it.
+ * Live-env-over-persisted is the important half: Electron's child env spread had
+ * it INVERTED, so a value an operator exported before launching the desktop app
+ * was silently overridden by the file, while the identical launch through
+ * `openpalm` honored it. Every port question in the tree gets this same shape —
+ * expressing it once means a change to the merge semantics (how an empty string
+ * behaves, say) cannot land on some of the ports and miss the rest.
+ *
+ * Rejects anything that is not a positive finite number, which is the strictest
+ * of the parses this replaced: `Number(x) || fallback` let a negative through,
+ * and no listener can bind one, so the default is the more useful answer.
  */
+export function resolveEnvPort(
+  key: string,
+  fallback: number,
+  env: Record<string, string | undefined>,
+  persistedEnv: Record<string, string | undefined> = {},
+  explicit?: number,
+): number {
+  if (explicit !== undefined && Number.isFinite(explicit)) return explicit;
+  const merged = { ...persistedEnv, ...env };
+  const raw = merged[key]?.trim();
+  const parsed = raw ? Number(raw) : Number.NaN;
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+/** Resolve the host UI's listen port (`OP_HOST_UI_PORT`). */
 export function resolveHostUiPort(
   explicit: number | undefined,
   env: Record<string, string | undefined>,
   persistedEnv: Record<string, string | undefined> = {},
 ): number {
-  if (explicit !== undefined && Number.isFinite(explicit)) return explicit;
-  const merged = { ...persistedEnv, ...env };
-  return Number(merged.OP_HOST_UI_PORT) || DEFAULT_HOST_UI_PORT;
+  return resolveEnvPort("OP_HOST_UI_PORT", DEFAULT_HOST_UI_PORT, env, persistedEnv, explicit);
+}
+
+/**
+ * Resolve the PUBLISHED UI port (`OP_UI_PORT`) — the one compose maps onto the
+ * LAN for the assistant container's UI co-process. Distinct question from
+ * {@link resolveHostUiPort}: that is the port a host process listens on.
+ */
+export function resolvePublishedUiPort(
+  env: Record<string, string | undefined>,
+  persistedEnv: Record<string, string | undefined> = {},
+): number {
+  return resolveEnvPort("OP_UI_PORT", DEFAULT_PUBLISHED_UI_PORT, env, persistedEnv);
 }
 
 /**
@@ -70,18 +103,13 @@ export function resolveUiListenEnv(opts: {
    */
   trustProxy?: boolean;
 }): UiListenEnv {
-  if (!opts.admin && opts.trustProxy && !opts.allowRemote) {
+  // Both non-admin opt-ins produce the SAME contract — derive the origin from
+  // the forwarded headers rather than pinning it — and differ only in whether
+  // the listener widens. Keeping them as one branch is what stops the header
+  // names from being changed for the proxy case and missed for the remote one.
+  if (!opts.admin && (opts.trustProxy || opts.allowRemote)) {
     return {
-      HOST: UI_LOOPBACK_HOST,
-      PORT: String(opts.port),
-      HOST_HEADER: "host",
-      PROTOCOL_HEADER: "x-forwarded-proto",
-      ORIGIN: undefined,
-    };
-  }
-  if (!opts.admin && opts.allowRemote) {
-    return {
-      HOST: "0.0.0.0",
+      HOST: opts.allowRemote ? "0.0.0.0" : UI_LOOPBACK_HOST,
       PORT: String(opts.port),
       HOST_HEADER: "host",
       PROTOCOL_HEADER: "x-forwarded-proto",

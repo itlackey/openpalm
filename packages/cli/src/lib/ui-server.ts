@@ -13,7 +13,7 @@ import {
   checkAndUpdateUiBuild, checkAndUpdateSkeleton, PLATFORM_VERSION,
   consumePendingUiBackup, isRemoteSetupAllowed, isTrustedProxyEnabled, readyOrChildExit, restoreUiBackup, UiSupervisor, waitForReady,
   checkExistingUiInstance, type UiInstanceCheck,
-  resolveUiListenEnv, UI_LOOPBACK_HOST, type UiListenEnv,
+  resolveHostUiPort, resolveUiListenEnv, UI_LOOPBACK_HOST, type UiListenEnv,
   buildEmptyUiRuntimeConfig, buildServedUiRuntimeConfig, classifyLocalInstall, stackDirFor,
   serializeUiRuntimeConfig, uiBuildSupportsProcessRuntimeConfig,
   writeLegacyServedUiRuntimeConfig, UI_RUNTIME_CONFIG_ENV,
@@ -21,7 +21,6 @@ import {
 } from '@openpalm/lib';
 import { ensureValidState, resolveServeState } from './cli-state.ts';
 import { openBrowser } from './browser.ts';
-import { resolveHostUiPortFromEnv } from './ports.ts';
 
 const logger = createLogger('cli:ui');
 const STOP_TIMEOUT_MS  = 5_000;
@@ -30,10 +29,14 @@ const STOP_TIMEOUT_MS  = 5_000;
  * Resolve the UI server's listen port: an explicit --port always wins;
  * otherwise persisted stack.env (OP_HOST_UI_PORT, written at headless
  * install — see manual-headless-install.md) merged under process.env
- * (process.env wins), falling back to {@link DEFAULT_UI_PORT}. Before this
- * (review finding D3), the port default was computed from process.env ALONE
- * at module-load time, so a headless install's persisted OP_HOST_UI_PORT was
+ * (process.env wins), falling back to the shared default. Before this (review
+ * finding D3), the port default was computed from process.env ALONE at
+ * module-load time, so a headless install's persisted OP_HOST_UI_PORT was
  * written but never read back by any host server.
+ *
+ * The precedence itself is lib's `resolveHostUiPort` — this wrapper exists only
+ * to default `persistedEnv` to the home's stack.env, which lib cannot do
+ * without taking a filesystem dependency.
  */
 export function resolveUiServePort(
   portOpt: number | undefined,
@@ -41,8 +44,7 @@ export function resolveUiServePort(
   env: NodeJS.ProcessEnv = process.env,
   persistedEnv: Record<string, string> = readStackEnv(homeDir),
 ): number {
-  if (portOpt !== undefined) return portOpt;
-  return resolveHostUiPortFromEnv(env, persistedEnv);
+  return resolveHostUiPort(portOpt, env, persistedEnv);
 }
 
 /**

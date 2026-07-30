@@ -15,6 +15,16 @@ import { tmpdir } from 'node:os';
 import { cleanupTempDirs, resetState, seedSecretsEnv, trackDir } from '$lib/server/test-helpers.js';
 import { writeSecret } from '@openpalm/lib';
 
+/**
+ * The stack.env row a real `applyAccessToggles` writes when assistantDirect is
+ * ON: the stored intent AND the value it generates. `OPENCODE_AUTH` is the half
+ * that matters here — it is what compose passes to OpenCode, so it is what
+ * decides whether the key means anything, and it is what the route's shared
+ * resolver gates on. Seeding the intent alone produced a row no apply can
+ * actually produce (see the divergence test at the end of this file).
+ */
+const ASSISTANT_DIRECT_ON = 'OP_ACCESS_ASSISTANT_DIRECT=true\nOPENCODE_AUTH=true\n';
+
 type RouteHandler = (event: unknown) => Response | Promise<Response>;
 type AssistantKeyRouteModule = { GET: RouteHandler };
 
@@ -109,7 +119,7 @@ describe('GET /api/host/assistant-key', () => {
 
   test('available:true with the trailing-newline-stripped key when assistantDirect is on', async () => {
     process.env.OP_ENABLE_ADMIN = '1';
-    seedSecretsEnv(homeDir, 'OP_ACCESS_ASSISTANT_DIRECT=true\n');
+    seedSecretsEnv(homeDir, ASSISTANT_DIRECT_ON);
     // Multiple trailing newlines — stripTrailingNewlines must remove all of
     // them (matches the assistant entrypoint's `$(cat file)` and the
     // guardian's own reader).
@@ -121,9 +131,48 @@ describe('GET /api/host/assistant-key', () => {
     expect(res.headers.get('cache-control')).toBe('no-store');
   });
 
+  test('withholds the key when OPENCODE_AUTH is off, whatever the stored intent says', async () => {
+    process.env.OP_ENABLE_ADMIN = '1';
+    // A row an apply never writes — hand-edited, or restored from before the
+    // intent keys existed. OpenCode is what OPENCODE_AUTH configures, so with it
+    // off OpenCode accepts any request and the stored key protects nothing;
+    // showing it would advertise a protection that is not in effect. The route
+    // gates on the same resolver /oc authenticates with, so the dashboard cannot
+    // claim auth is on while the assistant disagrees.
+    seedSecretsEnv(homeDir, 'OP_ACCESS_ASSISTANT_DIRECT=true\n');
+    writeSecret(homeDir, 'op_opencode_password', 's3cret-key\n');
+    const { GET } = await loadRoute();
+    const res = await GET(makeGetEvent());
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ available: false });
+  });
+
+  test('honours the OPENCODE_SERVER_* overrides the shared resolver applies', async () => {
+    process.env.OP_ENABLE_ADMIN = '1';
+    seedSecretsEnv(homeDir, ASSISTANT_DIRECT_ON);
+    writeSecret(homeDir, 'op_opencode_password', 'generated-key\n');
+    // Re-deriving the credential here instead of calling resolveOpenCodeCredential
+    // silently ignored these, so an operator using them was shown a key the
+    // assistant rejects — the dashboard's whole reason to exist, inverted.
+    process.env.OPENCODE_SERVER_USERNAME = 'custom-user';
+    process.env.OPENCODE_SERVER_PASSWORD = 'custom-key';
+    try {
+      const { GET } = await loadRoute();
+      const res = await GET(makeGetEvent());
+      expect(await res.json()).toEqual({
+        available: true,
+        username: 'custom-user',
+        password: 'custom-key',
+      });
+    } finally {
+      delete process.env.OPENCODE_SERVER_USERNAME;
+      delete process.env.OPENCODE_SERVER_PASSWORD;
+    }
+  });
+
   test('preserves meaningful surrounding spaces — never .trim()s the secret', async () => {
     process.env.OP_ENABLE_ADMIN = '1';
-    seedSecretsEnv(homeDir, 'OP_ACCESS_ASSISTANT_DIRECT=true\n');
+    seedSecretsEnv(homeDir, ASSISTANT_DIRECT_ON);
     writeSecret(homeDir, 'op_opencode_password', '  spaced key  \n');
     const { GET } = await loadRoute();
     const res = await GET(makeGetEvent());

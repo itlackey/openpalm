@@ -17,6 +17,7 @@
  * duplicated per consumer is exactly how the 401/rotation regression family
  * kept reappearing. Consumers import it; nobody re-implements it.
  */
+import { isEnabledFlag } from "./bind-warning.js";
 import { readSecret } from "./secrets-files.js";
 import { readStackEnv } from "./secrets.js";
 
@@ -70,16 +71,20 @@ export function assistantAuthHeaders(target: OpenCodeCredential): Record<string,
  * presence says nothing about whether OpenCode authenticates. Read fresh —
  * an operator toggling `assistantDirect` changes this at runtime, and a value
  * frozen at process start 401s (or silently omits auth) until a restart.
+ *
+ * `persistedEnv` defaults to a fresh `readStackEnv(homeDir)`, so the common
+ * caller passes only a homeDir. A caller that already holds that read — the
+ * `/oc` proxy resolves the URL and the credential for the same request — passes
+ * it in, so "fresh per call" costs one parse rather than one per resolver.
  */
 export function resolveOpenCodeCredential(
   homeDir: string,
   env: Record<string, string | undefined> = process.env,
+  persistedEnv?: Record<string, string | undefined>,
 ): OpenCodeCredential {
-  const persisted = readStackEnv(homeDir);
+  const persisted = persistedEnv ?? readStackEnv(homeDir);
   const username = env.OPENCODE_SERVER_USERNAME || DEFAULT_OPENCODE_USERNAME;
-  const authEnabled = /^(true|1|yes)$/i.test(
-    (persisted.OPENCODE_AUTH ?? env.OPENCODE_AUTH ?? "").trim(),
-  );
+  const authEnabled = isEnabledFlag(persisted.OPENCODE_AUTH ?? env.OPENCODE_AUTH);
   let generatedKey: string | undefined;
   if (authEnabled) {
     const raw = readSecret(homeDir, "op_opencode_password");
