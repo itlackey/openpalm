@@ -33,7 +33,6 @@ import {
   listBackupDirs,
   planBackupPrune,
   pruneBackupDirs,
-  pruneBackupNamespace,
 } from './backup.js';
 
 let homeDir: string;
@@ -136,30 +135,6 @@ describe('planBackupPrune previews exactly what pruneBackupDirs deletes', () => 
     expect(deleted.sort()).toEqual(plan.toDelete.sort());
     expect(existsSync(guarded1)).toBe(true);
     expect(existsSync(guarded2)).toBe(true);
-  });
-});
-
-describe('pruneBackupNamespace bounds one namespace only', () => {
-  it('prunes ui-* to the newest N and leaves timestamp and protected dirs alone', () => {
-    const backupsDir = join(homeDir, 'data', 'backups');
-    mkdirSync(backupsDir, { recursive: true });
-
-    const ui1 = makeBackupDir(backupsDir, 'ui-1', 0);
-    const ui2 = makeBackupDir(backupsDir, 'ui-2', 1_000);
-    const ui3 = makeBackupDir(backupsDir, 'ui-3', 2_000);
-    const skel = makeBackupDir(backupsDir, 'skeleton-1', 3_000);
-    const stamp = makeBackupDir(backupsDir, 't-old', 9_000);
-    const guarded = makeBackupDir(backupsDir, 'x-pre-rollback', 9_000);
-
-    const deleted = pruneBackupNamespace(homeDir, 'ui', 2);
-
-    expect(deleted).toEqual([ui3]);
-    expect(existsSync(ui1)).toBe(true);
-    expect(existsSync(ui2)).toBe(true);
-    // An operator's own snapshots are never collateral of a bundle update.
-    expect(existsSync(skel)).toBe(true);
-    expect(existsSync(stamp)).toBe(true);
-    expect(existsSync(guarded)).toBe(true);
   });
 });
 

@@ -6,8 +6,6 @@
 		applyServiceUpdate,
 		fetchVersions,
 		patchVersions,
-		updateUiBuild,
-		type UpdateChannel,
 		type VersionKey
 	} from '$lib/api.js';
 	import type { ServiceEntry } from '$lib/types.js';
@@ -45,11 +43,10 @@
 	let loading = $state(true);
 	let loadError = $state('');
 	let configured = $state<Record<VersionKey, string>>(emptyConfigured());
-	let channel = $state<UpdateChannel>('latest');
 
 	type Operation =
 		| { kind: 'service'; service: string }
-		| { kind: 'stack' | 'configuration' | 'ui' }
+		| { kind: 'stack' | 'configuration' }
 		| null;
 	type Notice = { tone: 'success' | 'error'; text: string } | null;
 	let operation = $state<Operation>(null);
@@ -78,7 +75,6 @@
 		try {
 			const data = await fetchVersions();
 			configured = { ...data.configured };
-			channel = data.channel;
 		} catch (error) {
 			loadError = `Failed to load versions: ${error instanceof Error ? error.message : String(error)}`;
 		} finally {
@@ -138,39 +134,9 @@
 		operation = { kind: 'configuration' };
 		notice = null;
 		try {
-			await patchVersions(versions, channel);
+			await patchVersions(versions);
 			configured = versions;
 			notice = { tone: 'success', text: 'Configured image tags saved.' };
-		} catch (error) {
-			notice = { tone: 'error', text: error instanceof Error ? error.message : String(error) };
-		} finally {
-			operation = null;
-		}
-	}
-
-	async function updateUi(): Promise<void> {
-		if (busy) return;
-		operation = { kind: 'ui' };
-		notice = null;
-		try {
-			const result = await updateUiBuild();
-			if (result.redownloadRequired) {
-				notice = { tone: 'success', text: `A newer UI needs OpenPalm desktop harness v${result.requiredHarnessContract ?? 'newer'}. Re-download the desktop app to update.` };
-			} else if (!result.updated) {
-				notice = { tone: 'success', text: result.latestVersion
-					? `No UI update was installed. Current channel version: ${result.latestVersion}.`
-					: 'No UI update was installed.' };
-			} else if (result.pendingRestart) {
-				void window.openpalm?.restartUiServer?.();
-				notice = { tone: 'success', text: 'UI updated. Restarting...' };
-			} else if (result.restarting) {
-				setTimeout(() => {
-					location.href = '/';
-				}, 4_000);
-				notice = { tone: 'success', text: 'UI updated. Reloading shortly...' };
-			} else {
-				notice = { tone: 'success', text: 'UI downloaded. Restart the admin UI to apply it.' };
-			}
 		} catch (error) {
 			notice = { tone: 'error', text: error instanceof Error ? error.message : String(error) };
 		} finally {
@@ -211,14 +177,6 @@
 				aria-busy={operation?.kind === 'stack'}
 			>
 				{#if operation?.kind === 'stack'}<Spinner /> Updating stack...{:else}Update OpenPalm stack{/if}
-			</button>
-			<button
-				class="btn btn-outline"
-				onclick={updateUi}
-				disabled={busy}
-				aria-busy={operation?.kind === 'ui'}
-			>
-				{#if operation?.kind === 'ui'}<Spinner /> Updating UI...{:else}Update UI{/if}
 			</button>
 		</div>
 	</div>
@@ -318,13 +276,6 @@
 						</div>
 
 						<div class="config-actions">
-							<label class="channel-field">
-								<span>UI update channel</span>
-								<select bind:value={channel} aria-label="UI update channel">
-									<option value="latest">Stable</option>
-									<option value="next">Prerelease</option>
-								</select>
-							</label>
 							<button
 								class="btn btn-outline"
 								type="submit"
@@ -574,8 +525,7 @@
 		gap: var(--s-sp-3) var(--s-sp-4);
 	}
 
-	.version-field,
-	.channel-field {
+	.version-field {
 		display: flex;
 		flex-direction: column;
 		gap: var(--s-sp-1);
@@ -588,8 +538,7 @@
 		color: var(--s-ink-3);
 	}
 
-	.version-field input,
-	.channel-field select {
+	.version-field input {
 		min-width: 0;
 		padding: var(--s-sp-2);
 		border: var(--s-hair) solid var(--s-line);
@@ -601,10 +550,6 @@
 	.config-actions {
 		align-items: flex-end;
 		margin-top: var(--s-sp-4);
-	}
-
-	.channel-field {
-		min-width: 12rem;
 	}
 
 	.desktop-setting-row {

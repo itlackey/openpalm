@@ -1,9 +1,8 @@
 // Writes the package version and process-runtime-config capability marker into
 // the UI build root.
 // This stamp travels with the build wherever it goes — bundled into the Electron
-// AppImage (extraResources) and copied/extracted into OP_HOME/data/ui by
-// seedUiBuild — so resolveUiBuildDir() can pick the NEWER of the two channels
-// (see ui-assets.ts UI_VERSION_STAMP / resolveUiBuildDir).
+// AppImage (extraResources) and materialized into OP_HOME/data/ui — so callers
+// can confirm which UI build is actually on disk (see ui-assets.ts).
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';

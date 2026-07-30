@@ -42,32 +42,22 @@ function fakeProc(opts: { killed: boolean; exits: boolean }): FakeProc {
 function harness(opts: {
   readyQueue: boolean[];
   proc?: FakeProc;
-  uiBackupDir?: string | undefined;
-  pendingBackupDir?: string | null;
   /** Bypass the readyQueue entirely (D1 race test needs a fn under its own control). */
   waitForReadyFn?: () => Promise<boolean>;
 }) {
   const proc = opts.proc ?? fakeProc({ killed: false, exits: true });
   const exits: number[] = [];
-  const restores: Array<string | undefined> = [];
-  const errs: unknown[][] = [];
   const readyQueue = [...opts.readyQueue];
   const { supervisor, stop } = createCliUiSupervisor({
     port: 3880,
-    spawnChild: async () => ({
-      proc: proc as unknown as Bun.Subprocess,
-      uiBackupDir: opts.uiBackupDir,
-    }),
+    spawnChild: async () => ({ proc: proc as unknown as Bun.Subprocess }),
     waitForReadyFn: opts.waitForReadyFn ?? (async () => readyQueue.shift() ?? false),
-    restoreBackup: (b) => restores.push(b),
-    consumePendingBackup: () => opts.pendingBackupDir ?? null,
     exit: (c) => { exits.push(c); },
-    logRestartError: (...a) => errs.push(a),
     stopTimeoutMs: 5,
     sleep: () => Promise.resolve(),
     logError: () => {},
   });
-  return { supervisor, stop, proc, exits, restores, errs };
+  return { supervisor, stop, proc, exits };
 }
 
 describe('createCliUiSupervisor stop sequence', () => {
@@ -93,37 +83,6 @@ describe('createCliUiSupervisor exit policy', () => {
     expect(await supervisor.start()).toBe(false);
     expect(proc.signals).toContain('SIGTERM');
     expect(exits).toEqual([1]);
-  });
-
-  it('restart ready-failure restores the backup then exits(1)', async () => {
-    // start ready, restart NOT ready → restoreBackup(last spawn's backup) → exit(1).
-    const { supervisor, exits, restores } = harness({
-      readyQueue: [true, false],
-      uiBackupDir: '/data/.ui-backup',
-    });
-    expect(await supervisor.start()).toBe(true);
-    expect(await supervisor.restart()).toBe(false);
-    expect(restores).toEqual(['/data/.ui-backup']);
-    expect(exits).toEqual([1]);
-  });
-
-  it('prefers the on-demand backup handed off by the UI child', async () => {
-    const { supervisor, restores } = harness({
-      readyQueue: [true, false],
-      uiBackupDir: '/data/old-startup-backup',
-      pendingBackupDir: '/data/on-demand-backup',
-    });
-    expect(await supervisor.start()).toBe(true);
-    expect(await supervisor.restart()).toBe(false);
-    expect(restores).toEqual(['/data/on-demand-backup']);
-  });
-
-  it('a successful restart neither restores a backup nor exits', async () => {
-    const { supervisor, exits, restores } = harness({ readyQueue: [true, true] });
-    expect(await supervisor.start()).toBe(true);
-    expect(await supervisor.restart()).toBe(true);
-    expect(restores).toEqual([]);
-    expect(exits).toEqual([]);
   });
 
   // D1: readiness must not be a bare port poll indifferent to whether the

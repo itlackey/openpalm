@@ -15,11 +15,8 @@ export function applyChanges(): Promise<void> {
 	return update({});
 }
 
-export type UpdateChannel = 'latest' | 'next';
-
 export type VersionsResponse = {
 	configured: Record<VersionKey, string>;
-	channel: UpdateChannel;
 };
 
 export async function fetchVersions(): Promise<VersionsResponse> {
@@ -27,29 +24,10 @@ export async function fetchVersions(): Promise<VersionsResponse> {
 	return (await response.json()) as VersionsResponse;
 }
 
-export async function patchVersions(
-	versions: Partial<Record<VersionKey, string>>,
-	channel?: UpdateChannel
-): Promise<void> {
+export async function patchVersions(versions: Partial<Record<VersionKey, string>>): Promise<void> {
 	await requireOk(
 		await request('PATCH', '/api/host/versions', {
-			...(Object.keys(versions).length > 0 ? { versions } : {}),
-			...(channel ? { channel } : {})
+			...(Object.keys(versions).length > 0 ? { versions } : {})
 		})
 	);
-}
-
-export type UiBuildUpdateResponse = {
-	ok: boolean;
-	updated: boolean;
-	latestVersion: string | null;
-	restarting: boolean;
-	pendingRestart: boolean;
-	redownloadRequired: boolean;
-	requiredHarnessContract?: number;
-};
-
-export async function updateUiBuild(): Promise<UiBuildUpdateResponse> {
-	const response = await requireOk(await request('POST', '/api/host/ui-version', {}));
-	return (await response.json()) as UiBuildUpdateResponse;
 }

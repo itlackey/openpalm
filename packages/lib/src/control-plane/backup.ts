@@ -364,10 +364,10 @@ function isProtectedRecoveryBackup(dirPath: string): boolean {
 /**
  * The distinct backup namespaces sharing one `data/backups/` (or configured
  * external) directory: plain timestamp safety snapshots (`backupOpenPalmHome`,
- * `-pre-rollback`/`-pre-update`), and the host-side hot-swap prefixes written
- * by host-assets-updater.ts (`ui-*`, `skeleton-*`). Retention is per-namespace —
- * a burst of one type must never evict another type's snapshots, and mixing
- * them under one lexicographic/global cutoff is exactly the bug this fixes.
+ * `-pre-rollback`/`-pre-update`), and the `ui-*`/`skeleton-*` namespaces.
+ * Retention is per-namespace — a burst of one type must never evict another
+ * type's snapshots, and mixing them under one lexicographic/global cutoff is
+ * exactly the bug this fixes.
  */
 export type BackupNamespace = "timestamp" | "ui" | "skeleton";
 
@@ -421,23 +421,6 @@ export function planBackupPrune(
 
 export function pruneBackupDirs(homeDir: string, keep: number): string[] {
   const { toDelete } = planBackupPrune(homeDir, keep);
-  for (const backupDir of toDelete) {
-    rmSync(backupDir, { recursive: true, force: true });
-  }
-  return toDelete;
-}
-
-/**
- * Prune ONE namespace to its newest `keep`. Used by the host-side hot-swap
- * updater to bound its own `ui-*`/`skeleton-*` snapshots without ever touching
- * an operator's timestamp backups or a protected recovery snapshot.
- */
-export function pruneBackupNamespace(
-  homeDir: string,
-  namespace: BackupNamespace,
-  keep: number,
-): string[] {
-  const { toDelete } = planBackupPrune(homeDir, keep, namespace);
   for (const backupDir of toDelete) {
     rmSync(backupDir, { recursive: true, force: true });
   }

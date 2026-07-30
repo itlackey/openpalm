@@ -238,7 +238,7 @@ jobs:
           sbom: false
 
   cli:
-    needs: [candidate, preflight]
+    needs: [candidate, preflight, ui-build]
     strategy:
       fail-fast: false
       matrix:
@@ -275,7 +275,16 @@ jobs:
       - uses: oven-sh/setup-bun@v2
       - name: Install candidate source dependencies
         run: bun install --frozen-lockfile
+      - name: Restore prebuilt UI for embedding
+        uses: actions/download-artifact@v8
+        with:
+          name: ui-build
+          path: packages/ui/build
       - name: Build CLI binary without npm
+        # packages/cli's build:* scripts run pack:embedded first, which packs
+        # this restored packages/ui/build and the checked-out packages/skeleton
+        # into packages/cli/embedded/*.tar.gz for bun build --compile to embed
+        # (see packages/cli/scripts/pack-embedded-assets.ts).
         run: bun run --cwd packages/cli ${{ matrix.script }}
       - uses: actions/upload-artifact@v7
         with:
@@ -361,10 +370,6 @@ jobs:
           pattern: electron-*
           path: dist
           merge-multiple: true
-      - name: Build host asset archive
-        env:
-          VERSION: ${{ needs.candidate.outputs.version }}
-        run: node scripts/build-host-assets.mjs
       - name: Assemble and validate complete asset manifest
         env:
           VERSION: ${{ needs.candidate.outputs.version }}

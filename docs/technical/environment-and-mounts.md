@@ -117,7 +117,8 @@ secrets at `/run/secrets/`; neither appears under `/stash`.
 
 The image bakes the candidate-local `@openpalm/ui` build. The entrypoint
 supervises the baked UI and performs no runtime package install. Skeleton assets
-are materialized on the host from the coordinated host-assets release.
+are materialized on the host from the CLI's or Electron app's own embedded
+copy — there is no runtime download.
 
 ### Key Environment
 

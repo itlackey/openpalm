@@ -18,10 +18,8 @@ export const ELECTRON_ASSET_PATTERN = /^OpenPalm-.*\.(dmg|AppImage|zip|deb|rpm|p
  * The canonical control-plane / platform version.
  *
  * This is the ONE source of truth for "which @openpalm/lib + lifecycle is
- * running." It travels with the data/ui
- * build (the GitHub host-assets UI inlines this lib), so it self-updates in
- * place — it is NOT the Electron harness version (see
- * packages/electron/src/harness-contract.ts: HARNESS_CONTRACT_VERSION).
+ * running." Every consumer (containers, Electron, CLI) bundles this lib at
+ * build time, so it is baked in rather than resolved at runtime.
  *
  * Stored BARE (npm form, no `v`) — the canonical spelling everywhere. Docker
  * image tags, git tags, `.skeleton-version`, `OP_RELEASE_VERSION`, and
@@ -99,11 +97,11 @@ export function isSameMajorVersion(a: string | null | undefined, b: string | nul
 }
 
 // ── Canonical normalization across the version vocabularies ───────────────────
-// Versions are bare everywhere (`0.12.0`) as of 0.12.41; npm dist-tags route
-// stable → `latest` / prerelease → `next`. `normalizeVersion` is the ONE place
-// that strips a legacy leading `v` (still present on pre-cutover Docker/git
-// tags); route ad-hoc `replace(/^v/, '')` and `version.includes('-')` checks
-// through these helpers instead of re-deriving inline.
+// Versions are bare everywhere (`0.12.0`) as of 0.12.41. `normalizeVersion` is
+// the ONE place that strips a legacy leading `v` (still present on
+// pre-cutover Docker/git tags); route ad-hoc `replace(/^v/, '')` and
+// `version.includes('-')` checks through these helpers instead of re-deriving
+// inline.
 
 /**
  * Canonical bare form: strip a single legacy leading `v` and trim. `v0.12.0` →
@@ -122,12 +120,4 @@ export function normalizeVersion(version: string | null | undefined): string {
 export function isPrerelease(version: string | null | undefined): boolean {
   if (version == null || !isComparableSemver(version)) return false;
   return parseComparableVersion(version).prerelease !== null;
-}
-
-/**
- * The npm dist-tag channel a release stream tracks: prereleases ride `next`,
- * stable rides `latest`. Canonical home for the prerelease→channel mapping.
- */
-export function distTagForVersion(version: string | null | undefined): 'latest' | 'next' {
-  return isPrerelease(version) ? 'next' : 'latest';
 }

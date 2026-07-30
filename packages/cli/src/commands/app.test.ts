@@ -305,12 +305,12 @@ describe('openpalm app on a not-installed OP_HOME (#486 stack-less app entry)', 
   );
 
   it(
-    'does not update or materialize the managed skeleton, but keeps the UI update check',
+    'does not materialize the managed skeleton on a stack-less app, and never touches the network',
     async () => {
       const home = seedServeHome();
       process.env.OP_HOST_UI_PORT = '4712';
       const calls = captureSpawns();
-      const logs = captureLogs();
+      captureLogs();
 
       const run = await runApp();
 
@@ -322,13 +322,10 @@ describe('openpalm app on a not-installed OP_HOME (#486 stack-less app entry)', 
       expect(calls.some((c) => c.argv.some((a) => a.includes('docker')))).toBe(false);
       expect(existsSync(join(home, 'system'))).toBe(false);
       expect(existsSync(join(home, '.skeleton-version'))).toBe(false);
-      expect(logs.some((line) => line.includes('Checking for skeleton update'))).toBe(false);
-      expect(
-        fetchedUrls.some((url) => url.includes('@openpalm/skeleton') || url.includes('%40openpalm%2Fskeleton')),
-      ).toBe(false);
-      expect(
-        fetchedUrls.some((url) => url.includes('api.github.com/repos/itlackey/openpalm/releases')),
-      ).toBe(true);
+      // Every artifact ships its own UI build + skeleton at build time now —
+      // spawnUiChild materializes what's embedded/bundled locally and never
+      // hits the network (the GitHub host-assets download transport is gone).
+      expect(fetchedUrls.every((url) => url.startsWith('http://127.0.0.1:'))).toBe(true);
     },
     15000
   );
@@ -359,12 +356,12 @@ describe('openpalm app on a not-installed OP_HOME (#486 stack-less app entry)', 
 
 describe('openpalm app on an installed OP_HOME', () => {
   it(
-    'retains skeleton updates and the locked local assistant seed',
+    'seeds the managed skeleton locally (no network) and keeps the locked local assistant seed',
     async () => {
-      seedServeHome(true);
+      const home = seedServeHome(true);
       process.env.OP_HOST_UI_PORT = '4714';
       const calls = captureSpawns();
-      const logs = captureLogs();
+      captureLogs();
 
       const run = await runApp();
       const child = await waitFor(
@@ -373,10 +370,10 @@ describe('openpalm app on an installed OP_HOME', () => {
         () => run.error,
       );
 
-      expect(logs.some((line) => line.includes('Checking for skeleton update'))).toBe(true);
-      expect(
-        fetchedUrls.some((url) => url.includes('api.github.com/repos/itlackey/openpalm/releases')),
-      ).toBe(true);
+      // Seeded from the repo checkout via OPENPALM_REPO_ROOT (this test's
+      // stand-in for the CLI's embedded skeleton) — no network involved.
+      expect(existsSync(join(home, 'system', 'stack'))).toBe(true);
+      expect(fetchedUrls.every((url) => url.startsWith('http://127.0.0.1:'))).toBe(true);
       expect(child.cwd).toBeDefined();
       const runtimeConfig = realLib.parseUiRuntimeConfigJson(
         child.env?.[realLib.UI_RUNTIME_CONFIG_ENV],

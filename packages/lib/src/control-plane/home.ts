@@ -234,9 +234,8 @@ export function resolveLogsDir(): string {
  * Defaults to `${home}/data/backups` (the historical, same-filesystem
  * location). `OP_BACKUP_DIR`, when set, overrides it and may point anywhere
  * else — e.g. a separate volume/filesystem with more headroom than OP_HOME's.
- * Every backup producer (safety snapshots in backup.ts, the host-side UI/
-  * skeleton hot-swap in host-assets-updater.ts) resolves through here so the
- * destination is configured in exactly one place (S5).
+ * Every backup producer (the safety snapshots in backup.ts) resolves through
+ * here so the destination is configured in exactly one place (S5).
  */
 export function resolveBackupsDirFor(home: string): string {
   const override = process.env.OP_BACKUP_DIR;
@@ -297,7 +296,7 @@ export function ensureHomeDirs(home: string = resolveOpenPalmHome()): void {
     `${home}/data/akm/data`,       // akm durable data
     `${home}/data/akm/empty-host-stash`, // always-present /host-stash fallback when host AKM is absent
     `${home}/data/logs`,           // service logs and audit files
-    `${home}/data/ui`,             // host-assets UI build
+    `${home}/data/ui`,             // materialized UI build (CLI-embedded, or bundled/repo-resolved)
     `${home}/data/backups`,        // lifecycle backup snapshots
     `${home}/data/rollback`,       // deploy rollback snapshots
     // knowledge/ — akm knowledge (skills, env, secrets, agents); knowledge/tasks/ for scheduled automations

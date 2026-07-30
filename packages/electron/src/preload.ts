@@ -3,7 +3,6 @@
 // `window.openpalm.updateStatus()` when running inside the Electron shell.
 
 import { contextBridge, ipcRenderer } from 'electron';
-import { HARNESS_CONTRACT_VERSION } from './harness-contract.js';
 
 interface UpdateStatus {
   inElectron: boolean;
@@ -11,10 +10,6 @@ interface UpdateStatus {
   latestVersion: string | null;
   latestUrl: string | null;
   updateAvailable: boolean;
-  /** Native harness contract version this shell provides (design §5.1/§5.3).
-   *  The UI feature-detects new IPC/env against this; an absent/older value
-   *  means "don't use post-N bridge members." */
-  harnessContractVersion: number;
 }
 
 interface LaunchOnLoginStatus {
@@ -25,13 +20,6 @@ interface LaunchOnLoginStatus {
 type VoidCallback = () => void;
 
 contextBridge.exposeInMainWorld('openpalm', {
-  /**
-   * The native harness contract version this shell implements (design §5.1).
-   * Exposed as a dedicated field (not just inside updateStatus) so the UI can
-   * cheaply feature-detect new IPC/env members and fall back to the HTTP path.
-   */
-  harnessContractVersion: HARNESS_CONTRACT_VERSION,
-
   /** Synchronous read of update info from env vars set by main.ts. */
   updateStatus(): UpdateStatus {
     const latest = process.env.OP_ELECTRON_LATEST_VERSION ?? null;
@@ -43,7 +31,6 @@ contextBridge.exposeInMainWorld('openpalm', {
       latestVersion: latest,
       latestUrl: url,
       updateAvailable: !!latest,
-      harnessContractVersion: HARNESS_CONTRACT_VERSION,
     };
   },
 
@@ -58,15 +45,6 @@ contextBridge.exposeInMainWorld('openpalm', {
   /** Restart the Electron app (relaunch + quit). Only works inside Electron. */
   restart(): Promise<void> {
     return ipcRenderer.invoke('restart-app');
-  },
-
-  /**
-   * Restart only the UI server child process (NOT the whole app) so a freshly
-   * downloaded data/ui (new @openpalm/lib + migrations) takes effect without a
-   * full relaunch. Resolves true once the new UI child is ready (design §6.2).
-   */
-  restartUiServer(): Promise<boolean> {
-    return ipcRenderer.invoke('restart-ui-server');
   },
 
   openLocalApp(): Promise<void> {

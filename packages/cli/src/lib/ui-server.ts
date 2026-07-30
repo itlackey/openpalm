@@ -10,8 +10,8 @@ import { join, basename } from 'node:path';
 import { existsSync } from 'node:fs';
 import {
   resolveOpenPalmHome, resolveUiBuildDir, createLogger, readSecret, readStackEnv,
-  checkAndUpdateUiBuild, checkAndUpdateSkeleton, PLATFORM_VERSION,
-  consumePendingUiBackup, isRemoteSetupAllowed, isTrustedProxyEnabled, readyOrChildExit, restoreUiBackup, UiSupervisor, waitForReady,
+  applyHomeSeed,
+  isRemoteSetupAllowed, isTrustedProxyEnabled, readyOrChildExit, UiSupervisor, waitForReady,
   checkExistingUiInstance, type UiInstanceCheck,
   resolveHostUiPort, resolveUiListenEnv, UI_LOOPBACK_HOST, type UiListenEnv,
   buildEmptyUiRuntimeConfig, buildServedUiRuntimeConfig, classifyLocalInstall, stackDirFor,
@@ -21,6 +21,7 @@ import {
 } from '@openpalm/lib';
 import { ensureValidState, resolveServeState } from './cli-state.ts';
 import { openBrowser } from './browser.ts';
+import { materializeEmbeddedUi, seedSkeletonFromEmbedded } from './embedded-assets.ts';
 
 const logger = createLogger('cli:ui');
 const STOP_TIMEOUT_MS  = 5_000;
@@ -153,51 +154,31 @@ export function resolveUiChildLaunch(
 }
 
 /**
- * Self-update the control plane from the GitHub host-assets release into data/ui
- * and system/, then resolve and spawn the SvelteKit
- * Node child. Re-callable so a UI-build update can respawn the child against the
- * freshly downloaded data/ui without restarting the whole CLI supervisor
- * (design §6.2).
- *
- * Non-fatal update: any network/release error leaves the existing build/skeleton
- * in place. Resolution happens AFTER the update so a strictly-newer data/ui wins.
- * Returns the UI backup path so the supervisor can restore on restart failure (§4.4).
+ * Materialize this binary's embedded UI build + skeleton (no network, no
+ * backup/rollback — the embedded copy wins unconditionally once its stamp
+ * differs from what's on disk), then resolve and spawn the SvelteKit Node
+ * child.
  */
 async function spawnUiChild(
   port: number,
   homeDir: string,
   state: ReturnType<typeof ensureValidState>,
   adminHostUi = false,
-): Promise<{ proc: Bun.Subprocess; uiBackupDir: string | undefined }> {
+): Promise<{ proc: Bun.Subprocess }> {
   // Installation may complete while this long-lived supervisor is running.
-  // Re-read it for every initial spawn and restart rather than freezing it in
+  // Re-read it for every initial spawn rather than freezing it in
   // startUIServer.
   const { config, runtimeConfigJson, stacklessApp, installState } = resolveUiChildLaunch(state);
   if (!stacklessApp) {
-    // Hot-swap the skeleton (managed system/ tree) before spawning.
-    console.log('Checking for skeleton update...');
-    const skelResult = await checkAndUpdateSkeleton(PLATFORM_VERSION, homeDir, state.dataDir);
-    if (skelResult.updated) {
-      console.log(`Skeleton updated to v${skelResult.latestVersion}.`);
-    } else if (skelResult.error) {
-      console.warn(`Warning: skeleton update skipped — ${skelResult.error}. Existing skeleton still active.`);
-    }
+    // Materialize the embedded skeleton (managed system/ tree) before spawning.
+    await seedSkeletonFromEmbedded(applyHomeSeed, homeDir, state.configDir, state.dataDir);
   }
 
-  // Self-update the control plane BEFORE spawning, matching the Electron harness
-  // (main.ts: checkAndUpdateUiBuild before resolveUiBuildDir). Bare `openpalm`
-  // and `openpalm admin` are long-lived supervisors too, so without this the served UI/lib would only
-  // ever update via the `openpalm update` command.
-  console.log('Checking for UI build update...');
-  const uiResult = await checkAndUpdateUiBuild(PLATFORM_VERSION, state.dataDir);
-  if (uiResult.updated) {
-    console.log(`UI build updated to v${uiResult.latestVersion}.`);
-  } else if (uiResult.error) {
-    console.warn(`Warning: UI build update skipped — ${uiResult.error}. Existing build still active.`);
-  }
+  // Materialize the embedded UI build into data/ui BEFORE spawning, matching
+  // the Electron harness's own bundled-build resolution. A no-op once data/ui
+  // is already stamped with this binary's PLATFORM_VERSION.
+  await materializeEmbeddedUi(state.dataDir);
 
-  // Resolve AFTER the update so a freshly downloaded, strictly-newer data/ui is
-  // the build we spawn (resolveUiBuildDir re-reads data/ui's version stamp).
   const uiBuildDir = resolveUiBuildDir();
   if (!existsSync(join(uiBuildDir, 'index.js'))) {
     console.error(`UI build not found at ${uiBuildDir}`);
@@ -260,16 +241,12 @@ async function spawnUiChild(
         ...adminEnv,
         OP_UI_LOGIN_PASSWORD:   uiLoginPassword,
         [UI_RUNTIME_CONFIG_ENV]: runtimeConfigJson,
-        // Tell the UI child it has a supervisor that can respawn it on demand
-        // (design §6.2). The admin "install UI version" route signals SIGUSR2 to
-        // its parent (this process) after seeding a newer data/ui.
-        OP_UI_SUPERVISOR:       'cli',
       },
       stdout: 'inherit',
       stderr: 'inherit',
     }
   );
-  return { proc, uiBackupDir: uiResult.backupDir };
+  return { proc };
 }
 
 /**
@@ -327,18 +304,12 @@ export interface CliUiSupervisorDeps {
   port: number;
   /** Hostname the readiness poll targets (defaults to IPv4 loopback). */
   host?: string;
-  /** Spawn the UI child (self-updates data/ui, returns handle + backup path). */
-  spawnChild: () => Promise<{ proc: Bun.Subprocess; uiBackupDir: string | undefined }>;
+  /** Spawn the UI child (materializes the embedded UI/skeleton, returns its handle). */
+  spawnChild: () => Promise<{ proc: Bun.Subprocess }>;
   /** Readiness poll (defaults to the shared lib waitForReady). */
   waitForReadyFn?: (port: number) => Promise<boolean>;
-  /** Restore the previous data/ui after a post-restart ready-failure. */
-  restoreBackup: (backupDir: string | undefined) => void;
-  /** Consume an on-demand update backup recorded by the UI child. */
-  consumePendingBackup?: () => string | null;
   /** Process exit (defaults to process.exit) — the exit-based failure policy. */
   exit?: (code: number) => void;
-  /** Structured restart-error logger (defaults to the cli:ui logger). */
-  logRestartError?: (err: unknown) => void;
   /** Force-kill grace window, ms (defaults to STOP_TIMEOUT_MS). */
   stopTimeoutMs?: number;
   /** Sleep for the stop race (defaults to a real setTimeout-backed delay). */
@@ -360,21 +331,14 @@ export function createCliUiSupervisor(deps: CliUiSupervisorDeps): {
   supervisor: UiSupervisor<Bun.Subprocess>;
   stop: (proc: CliChildProc) => Promise<void>;
 } {
-  const { port, spawnChild, restoreBackup } = deps;
+  const { port, spawnChild } = deps;
   const baseWaitForReady = deps.waitForReadyFn
     ?? ((p: number) => waitForReady(p, undefined, { host: deps.host }));
   const exit = deps.exit ?? ((code: number) => process.exit(code));
-  const logRestartError = deps.logRestartError
-    ?? ((err: unknown) => logger.error('Error restarting UI server', { error: String(err) }));
   const stopTimeoutMs = deps.stopTimeoutMs ?? STOP_TIMEOUT_MS;
   const sleep = deps.sleep ?? ((ms: number) => new Promise<void>(r => setTimeout(r, ms)));
   const logError = deps.logError ?? console.error;
 
-  // Tracks the LAST spawn's backup path so a post-restart ready-failure restores
-  // the build that just failed (spawnUiChild re-runs the update check on each
-  // respawn, so this is reassigned per spawn — matching the pre-refactor flow).
-  let pendingUiBackupDir: string | undefined;
-  let restartUiBackupDir: string | undefined;
   // Tracks the LAST spawned handle so waitForReadyFn (below) can race it (D1).
   let lastHandle: Bun.Subprocess | null = null;
 
@@ -400,7 +364,6 @@ export function createCliUiSupervisor(deps: CliUiSupervisorDeps): {
     strategy: {
       spawn: async () => {
         const spawnResult = await spawnChild();
-        if (spawnResult.uiBackupDir) pendingUiBackupDir = spawnResult.uiBackupDir;
         lastHandle = spawnResult.proc;
         return spawnResult.proc;
       },
@@ -408,10 +371,6 @@ export function createCliUiSupervisor(deps: CliUiSupervisorDeps): {
     },
     callbacks: {
       waitForReady: waitForReadyFn,
-      beforeRestart: () => {
-        restartUiBackupDir = deps.consumePendingBackup?.() ?? pendingUiBackupDir;
-        pendingUiBackupDir = undefined;
-      },
       // Ready-timeout on first start → kill the child and exit non-zero (the lib
       // never exits; this policy hook does).
       onStartFailure: (proc) => {
@@ -419,12 +378,6 @@ export function createCliUiSupervisor(deps: CliUiSupervisorDeps): {
         logError('UI server did not become ready in time.');
         exit(1);
       },
-      // Post-swap failure → restore the prior data/ui (§4.4 / §6) with a local
-      // rename — no registry needed (shared lib routine)…
-      restoreBackup: () => { restoreBackup(restartUiBackupDir); },
-      // …then exit non-zero, as the pre-refactor CLI supervisor did.
-      onRestartFailure: () => { exit(1); },
-      onRestartError: logRestartError,
     },
   });
 
@@ -498,8 +451,6 @@ export async function startUIServer(opts: UIServerOptions = {}): Promise<void> {
     port,
     host: probeHost,
     spawnChild: () => spawnUiChild(port, homeDir, state, opts.adminHostUi === true),
-    restoreBackup: (backupDir) => restoreUiBackup(state.dataDir, backupDir),
-    consumePendingBackup: () => consumePendingUiBackup(state.dataDir),
   });
 
   if (!await supervisor.start()) return; // onStartFailure already exited
@@ -516,15 +467,7 @@ export async function startUIServer(opts: UIServerOptions = {}): Promise<void> {
     await openBrowser(resolveAdminUrl(uiUrl, opts.adminHostUi === true, localInstallState));
   }
 
-  // Supervisor restart (§4.4): the UI child (admin "install UI version" route)
-  // sends SIGUSR2/SIGHUP to this parent after seeding a newer data/ui. The
-  // supervisor kills the current child and respawns against the freshly
-  // downloaded build — the new @openpalm/lib only takes effect once the Node
-  // child restarts (automatic, no "apply" click needed). On restart failure it
-  // restores the backup and exits (§6).
-
   async function shutdown(signal: string): Promise<void> {
-    supervisor.markShuttingDown();
     console.log(`\nReceived ${signal}. Shutting down...`);
     try {
       const proc = supervisor.current;
@@ -538,10 +481,6 @@ export async function startUIServer(opts: UIServerOptions = {}): Promise<void> {
 
   process.on('SIGINT',  () => shutdown('SIGINT'));
   process.on('SIGTERM', () => shutdown('SIGTERM'));
-  // SIGUSR2: sent by the UI child's admin/ui-version route after seeding a new build.
-  // SIGHUP:  kept for backward compatibility / manual use.
-  process.on('SIGUSR2', () => { void supervisor.restart(); });
-  process.on('SIGHUP',  () => { void supervisor.restart(); });
 
   // Keep the process alive
   await new Promise<never>(() => {});

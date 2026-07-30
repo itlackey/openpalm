@@ -202,8 +202,9 @@ Guardian uses the same split: managed instructions and permissions from
 `system/guardian/`, user model configuration from `config/guardian/`.
 
 The assistant image contains its UI and default tool tree at build time. There
-is no runtime UI-tarball install path. Skeleton updates arrive through the host
-assets release; UI/tool updates arrive through the assistant image.
+is no runtime UI-tarball install path; the CLI and Electron ship the same
+skeleton and UI build embedded in their own artifact, and the assistant image
+carries its own copy for the container-served UI.
 
 ## Updates and Recovery
 
@@ -214,8 +215,9 @@ openpalm backups prune --keep 3
 ```
 
 `openpalm update` refreshes managed assets and reapplies the configured stack.
-The host UI build under `data/ui/` can update independently for CLI/Electron
-serving, while the assistant-served UI is part of the assistant image.
+`data/ui/` is a materialization directory rewritten from the CLI's own
+embedded UI build when the version stamp differs; it is not an independent
+update target. The assistant-served UI is part of the assistant image.
 
 If an operation appears abandoned, `openpalm unlock` removes only a verified
 stale lifecycle lock and refuses to clear a live one.

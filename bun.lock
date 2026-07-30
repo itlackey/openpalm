@@ -18,6 +18,7 @@
         "@openpalm/lib": "workspace:*",
         "@types/node": "^26.1.2",
         "citty": "^0.2.2",
+        "tar": "^7.5.22",
         "typescript": "^6.0.3",
         "yaml": "^2.9.0",
       },

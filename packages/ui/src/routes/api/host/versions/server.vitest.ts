@@ -37,7 +37,7 @@ describe('GET /api/host/versions', () => {
 		).toBe(401);
 	});
 
-	test('returns only configured image tags and the UI channel', async () => {
+	test('returns only configured image tags', async () => {
 		const response = await GET(event('GET') as Parameters<typeof GET>[0]);
 
 		expect(response.status).toBe(200);
@@ -47,8 +47,7 @@ describe('GET /api/host/versions', () => {
 				OP_GUARDIAN_VERSION: PLATFORM_VERSION,
 				OP_PORTAL_VERSION: PLATFORM_VERSION,
 				OP_VOICE_VERSION: 'latest'
-			},
-			channel: expect.stringMatching(/^(latest|next)$/)
+			}
 		});
 	});
 });
@@ -61,15 +60,14 @@ describe('PATCH /api/host/versions', () => {
 		expect(response.status).toBe(400);
 	});
 
-	test('writes only requested tags and channel to state', async () => {
+	test('writes only requested tags to state', async () => {
 		mkdirSync(getState().dataDir, { recursive: true });
 		const response = await PATCH(
 			event('PATCH', {
 				versions: {
 					OP_ASSISTANT_VERSION: '0.13.1',
 					OP_PORTAL_VERSION: 'latest'
-				},
-				channel: 'next'
+				}
 			}) as Parameters<typeof PATCH>[0]
 		);
 
@@ -77,7 +75,6 @@ describe('PATCH /api/host/versions', () => {
 		const content = readFileSync(join(getState().homeDir, 'state', 'stack.env'), 'utf-8');
 		expect(content).toContain('OP_ASSISTANT_VERSION=0.13.1');
 		expect(content).toContain('OP_PORTAL_VERSION=latest');
-		expect(content).toContain('OP_UI_CHANNEL=next');
 		for (const key of SERVICE_VERSION_KEYS) {
 			if (key !== 'OP_ASSISTANT_VERSION' && key !== 'OP_PORTAL_VERSION') {
 				expect(content).not.toContain(`${key}=`);
