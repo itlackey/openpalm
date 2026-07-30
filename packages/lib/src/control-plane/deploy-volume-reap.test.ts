@@ -29,6 +29,7 @@ import { join } from 'node:path';
 import * as realDocker from './docker.js';
 import * as realActivation from './activation.js';
 import * as realImageVolumeRetention from './image-volume-retention.js';
+import { runHomeMigrations } from './home-schema.js';
 import { readStackEnv } from './secrets.js';
 import { CORE_SERVICES } from './types.js';
 
@@ -73,6 +74,25 @@ function withDeployEnv(homeDir: string, run: () => Promise<void>): Promise<void>
 			else process.env[key as keyof NodeJS.ProcessEnv] = value;
 		}
 	});
+}
+
+/**
+ * Run the home-schema migrations over a throwaway home seeded with `content`
+ * and return the resulting state/stack.env. Lets a rollback assertion say
+ * "the pre-deploy file, as migrated" without hard-coding the current schema's
+ * output. Reads nothing from process.env, so it is safe to call inside
+ * withDeployEnv (which points OP_HOME at a different directory).
+ */
+function migratedStackEnv(content: string): string {
+	const referenceHome = mkdtempSync(join(tmpdir(), 'openpalm-stack-env-migration-reference-'));
+	try {
+		mkdirSync(join(referenceHome, 'state'), { recursive: true });
+		writeFileSync(join(referenceHome, 'state', 'stack.env'), content);
+		runHomeMigrations(referenceHome);
+		return readFileSync(join(referenceHome, 'state', 'stack.env'), 'utf8');
+	} finally {
+		rmSync(referenceHome, { recursive: true, force: true });
+	}
 }
 
 describe('runDeploy reclaims retired volumes after the new stack is up (#585 decision 585-B, install path)', () => {
@@ -219,10 +239,11 @@ describe('runDeploy reclaims retired volumes after the new stack is up (#585 dec
 	});
 
 	test('returns a structured error and restores files when activation audit throws', async () => {
+		const seedStackEnv = 'OP_ASSISTANT_VERSION=custom-pin\nOP_SETUP_COMPLETE=false\n';
 		const homeDir = mkdtempSync(join(tmpdir(), 'openpalm-deploy-activation-audit-'));
 		try {
 			mkdirSync(join(homeDir, 'state'), { recursive: true });
-			writeFileSync(join(homeDir, 'state', 'stack.env'), 'OP_ASSISTANT_VERSION=custom-pin\nOP_SETUP_COMPLETE=false\n');
+			writeFileSync(join(homeDir, 'state', 'stack.env'), seedStackEnv);
 			await withDeployEnv(homeDir, async () => {
 				const activationError = new Error('Refusing Compose stack activation: secret-boundary audit failed.');
 				const activateStackMock = mock(async () => { throw activationError; });
@@ -241,7 +262,21 @@ describe('runDeploy reclaims retired volumes after the new stack is up (#585 dec
 
 				expect(result.deploying).toBe(false);
 				expect(result.deployError).toContain('secret-boundary audit failed');
-				expect(readFileSync(join(homeDir, 'state', 'stack.env'), 'utf8')).toBe('OP_ASSISTANT_VERSION=custom-pin\nOP_SETUP_COMPLETE=false\n');
+				// The rollback target is the pre-deploy file AS MIGRATED, not the bytes
+				// the operator's copy happened to hold. applyManagedFiles deliberately
+				// runs runHomeMigrations BEFORE it snapshots (lifecycle.ts explains why),
+				// so a failed deploy can never strand a half-migrated home — a schema
+				// upgrade is not part of whichever deploy it travelled with, and undoing
+				// it would only make the next boot redo it.
+				//
+				// Derive the expectation by migrating a pristine copy of the same seed
+				// rather than re-pinning a literal: the assertion stays byte-exact, so
+				// any deploy-time write to stack.env still fails it, but a future
+				// migration that legitimately adds a key does not have to be transcribed
+				// into this test to keep it honest.
+				expect(readFileSync(join(homeDir, 'state', 'stack.env'), 'utf8')).toBe(
+					migratedStackEnv(seedStackEnv)
+				);
 			});
 		} finally {
 			rmSync(homeDir, { recursive: true, force: true });
