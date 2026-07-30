@@ -40,12 +40,24 @@ const MAX_PAIRING_LABEL_LENGTH = 64;
 /** Warnings named in the panel copy so the operator knows exactly which env
  *  keys / prerequisites this pairing code depends on (D3 risk 6: the pairing
  *  endpoint never mutates stack env implicitly — it only tells the operator
- *  what to set). */
+ *  what to set).
+ *
+ *  The hand-edit this used to suggest ("set GUARDIAN_DIRECT_INGRESS=true in
+ *  stack.env and restart the guardian") is a state the flat access-toggle
+ *  model cannot represent: `resolveAccessEnv` derives
+ *  `GUARDIAN_DIRECT_INGRESS` from `guardianNetwork` on every apply, so a
+ *  hand-set value survives only until the next toggle save silently reverts
+ *  it. The `guardianNetwork` toggle is the only supported way to turn this
+ *  on — it sets the bind AND `GUARDIAN_DIRECT_INGRESS` atomically and applies
+ *  them (container recreate + mDNS), which a stack.env edit plus a plain
+ *  `restart` cannot do (recreate, not restart, republishes a port). */
 function computeWarnings(mergedEnv: Record<string, string>, targetUrl: string): string[] {
   const warnings: string[] = [];
   if (mergedEnv.GUARDIAN_DIRECT_INGRESS !== 'true') {
     warnings.push(
-      'GUARDIAN_DIRECT_INGRESS is not enabled on this stack — set it to true in stack.env and restart the guardian, or this connection will 404.',
+      'This stack\'s guardian direct-ingress listener is off — turn on the "Let other devices reach the '
+        + 'guardian" access toggle (guardianNetwork, in Assistant settings → Advanced) to publish it, or this '
+        + 'connection will 404.',
     );
   }
   try {

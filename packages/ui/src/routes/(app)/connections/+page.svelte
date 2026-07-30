@@ -472,19 +472,20 @@
             autocomplete="new-password"
           />
           <small>
-            Forwarded as HTTP Basic auth. Only required for a remote assistant running the
-            <strong>Home network, with password</strong> network access preset (<code>OPENCODE_AUTH=true</code>).
+            Forwarded as HTTP Basic auth. Only required for a remote assistant with the
+            <strong>Allow direct connections to the assistant API</strong> access toggle on
+            (<code>OPENCODE_AUTH=true</code>).
           </small>
             <small class="rotate-hint">
               <strong>Rotating this password?</strong>
-              The password lives as the file secret <code>knowledge/secrets/op_opencode_password</code> on the
-              remote host — never in <code>stack.env</code>. Rotation is a two-step process:
+              The password lives as the file secret <code>private/secrets/op_opencode_password</code> on the
+              remote host — never in <code>stack.env</code>. It is generated once when the toggle first
+              turns on and is not reissued by turning it off and back on. Rotation is a two-step process:
               <ol>
                 <li>
-                  On the remote host: re-run setup's Network access step (choose
-                  <strong>Home network, with password</strong> again with the new password), or edit
-                  <code>knowledge/secrets/op_opencode_password</code> directly and restart the
-                  <code>assistant</code> container.
+                  On the remote host: edit <code>private/secrets/op_opencode_password</code> directly (or
+                  view the current value from Assistant settings, Advanced), then restart the
+                  <code>assistant</code> container so it re-reads the file.
                 </li>
                 <li>Paste the new value here and save.</li>
               </ol>

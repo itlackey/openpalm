@@ -1,5 +1,6 @@
 import { request, requireOk } from './core.js';
 import type { AccessToggles } from '@openpalm/lib/control-plane/access-toggles.js';
+import type { AccessStatusActual } from '@openpalm/lib/control-plane/access-status.js';
 
 // ── AKM Config ────────────────────────────────────────────────────────────────
 
@@ -94,6 +95,46 @@ export async function saveHostStackSettings(input: {
 }): Promise<SaveHostStackResult> {
   const res = await requireOk(await request('PUT', '/api/host/stack', input));
   return (await res.json()) as SaveHostStackResult;
+}
+
+/**
+ * "What URL do I open on my phone, and does it work?" (Phase 2 of the
+ * LAN-access review). Pairs the STORED toggles (`intent`, identical to
+ * `HostStackSettings.access`) against what Docker and a live self-probe
+ * actually observe, so drift between the two is visible instead of assumed
+ * away — see `GET /api/host/access-status`'s doc comment for the full
+ * rationale on each field.
+ */
+export type AccessStatus = {
+  intent: AccessToggles;
+  actual: AccessStatusActual;
+  /** The `OP_UI_PORT` every URL below and the reachability probe target. */
+  port: number;
+  /** `<project>.local` first, then every non-loopback IPv4 address. */
+  urls: string[];
+  reachable: { status: 'absent' | 'match' | 'mismatch'; ok: boolean };
+};
+
+export async function fetchAccessStatus(): Promise<AccessStatus> {
+  const res = await requireOk(await request('GET', '/api/host/access-status'));
+  return (await res.json()) as AccessStatus;
+}
+
+/**
+ * The generated OpenCode Basic-auth key `assistantDirect`'s own copy
+ * promises is "shown in the dashboard" (`ACCESS_TOGGLE_DESCRIPTIONS.assistantDirect`
+ * in `@openpalm/lib`). `available` is false whenever the toggle is off — at
+ * that point OpenCode requires no auth, so there is nothing meaningful to
+ * show. GET /api/host/assistant-key sends `Cache-Control: no-store`; the
+ * value must never be persisted or logged by a caller.
+ */
+export type AssistantKey =
+  | { available: false }
+  | { available: true; username: string; password: string };
+
+export async function fetchAssistantKey(): Promise<AssistantKey> {
+  const res = await requireOk(await request('GET', '/api/host/assistant-key'));
+  return (await res.json()) as AssistantKey;
 }
 
 export type AssistantPersona = {
