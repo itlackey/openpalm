@@ -1,6 +1,6 @@
 # Assistant UI serving & LAN access — brittleness review
 
-Status: assessment
+Status: implemented (§4 delivered; see "Implementation status" at the end)
 Date: 2026-07-29
 Scope: everything that decides where the OpenPalm UI and OpenCode are served,
 bound, published, advertised, and authenticated — `packages/cli` (ui-server,
@@ -319,3 +319,77 @@ writers → 0, 4 origin gates → 1, 3 credential encoders → 1 — and exposur
 intent stored once, applied transactionally, and *provable in the dashboard*.
 The absence of exactly these properties is what caused four access-model
 rewrites in five releases.
+
+---
+
+## Implementation status
+
+All four phases of §4 landed. Recorded here because the plan above is written in
+the future tense and would otherwise read as outstanding work.
+
+### Delivered
+
+**Phase 0** — every one of the six verified defects, plus the two security holes
+found alongside them:
+
+| Fix | Commit |
+|---|---|
+| Wizard served from an admin-capable process; the UI no longer redirects to a `/setup` it would refuse | `9194706` |
+| `/oc` no longer aborts chat turns past 30s | `2451342` |
+| Every OpenCode call targets the assistant, not Electron's credential-less admin child | `fa15fca` |
+| One credentialed client and one encoder (`createOpenCodeClient` sent no auth) | `536d287` |
+| Toggle saves apply themselves — write, reconcile addons, recreate, then advertise | `74277db` |
+| Session signing key out of the assistant-readable stash; container UI trusts only its injected password | `ce7059c` |
+| Electron probes for an existing instance instead of killing a recorded pid | `333fa1a` |
+
+**Phase 1** — the consolidation, by the numbers: 7 port authorities → 1
+(`701ddc6`), 4 assistant-URL chains → 1 and 3 port-swap implementations → 1
+run-once disk migration with `port-contract.ts` deleted (`3379fe7`), 4 origin
+gates → 1 plus `OP_TRUSTED_PROXY` split from bind-widening (`2fe8619`), intent
+stored rather than inferred (`64ae6cb`), the container UI hardened (`d87c9e6`),
+and the unread Electron admin OpenCode child deleted (`6da1779`).
+
+**Phase 2** — `GET /api/host/access-status` and the "open this on your phone"
+card (`b85fc69`); mDNS converged across processes and gated on a self-probe
+(`c5f6b7e`); the generated assistant key finally servable, with the stale
+rotation and pairing copy corrected (`84a3f38`); the docs sweep (`3c7ec8e`).
+
+**Phase 3** — harness-parity table, the port-literal ban, and the LAN e2e
+(`b9abe09`), then the last duplicate port constants retired so the ban's
+allowlist holds only the unavoidable browser-side cases (`a6a67a5`).
+
+### Deliberately not done
+
+**Voice on the LAN UI** (§4 Phase 2, R14). `services.compose.yml:4-11` keeps
+voice on `addon_net` and never `assistant_net` as an explicit addon trust
+boundary (S.6b / D3(b)): "a compromised addon image cannot reach the
+assistant's" API. Giving the container UI a route to voice means either putting
+voice on `assistant_net` or adding a network — a security-boundary decision that
+belongs to a deliberate change, not to this refactor. The asymmetry (voice works
+on the host-served UI, not the LAN-published container UI) is now documented in
+`docs/troubleshooting.md` instead of being a silent surprise.
+
+### Follow-up this work surfaced
+
+**The guardian has no proxy-trust equivalent.** `OP_TRUSTED_PROXY` lets the host
+UI sit behind TLS while staying loopback-bound, which is why
+`remote-access-tls.md` no longer tells operators to firewall a port OpenPalm
+opened for them. The guardian still has no such option: `resolveAccessEnv`
+derives both `OP_GUARDIAN_BIND_ADDRESS` and `GUARDIAN_DIRECT_INGRESS` from the
+single `guardianNetwork` boolean, so fronting the guardian with TLS genuinely
+requires opening its LAN bind — and the doc still carries a compensating
+firewall step for it. The same split would remove it.
+
+### Verification
+
+`bun run check` 0 errors (1316 files); `bun run lint` clean (845 files);
+`packages/ui` server project 1509 pass (160 files); Electron 104 pass; root
+`bun run test` 1812 pass, up from 1703, with the failing-test NAME SET
+byte-identical to the pre-change baseline. Those 147 failures are pre-existing
+in a sandbox with no Docker and no network, and are unrelated to this subsystem
+— they were measured before any change on this branch and compared by name, not
+count, after every commit.
+
+The LAN e2e (`packages/ui/e2e/lan-access.stack.ts`) is verified to collect but
+is UNEXECUTED here: it needs Docker and a real network interface. Running it is
+the one outstanding validation of the headline claim.
