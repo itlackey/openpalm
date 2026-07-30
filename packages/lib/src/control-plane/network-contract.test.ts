@@ -92,3 +92,32 @@ describe("resolveUiListenEnv", () => {
     expect(env.ORIGIN).toBe(`http://${env.HOST}:4200`);
   });
 });
+
+describe("resolveUiListenEnv — trusted proxy", () => {
+  test("trusts forwarded headers while STAYING on loopback", () => {
+    // What Tailscale Serve / Caddy / nginx actually need: they connect to
+    // 127.0.0.1, so the listener must not widen. Keying this off the same flag
+    // that opens 0.0.0.0 is why the TLS guide had to add "now firewall the port
+    // we just opened".
+    expect(resolveUiListenEnv({ port: 3880, admin: false, allowRemote: false, trustProxy: true })).toEqual({
+      HOST: UI_LOOPBACK_HOST,
+      PORT: "3880",
+      HOST_HEADER: "host",
+      PROTOCOL_HEADER: "x-forwarded-proto",
+      ORIGIN: undefined,
+    });
+  });
+
+  test("admin ignores it — loopback bind AND a pinned origin", () => {
+    const env = resolveUiListenEnv({ port: 3880, admin: true, allowRemote: false, trustProxy: true });
+    expect(env.HOST).toBe(UI_LOOPBACK_HOST);
+    expect(env.ORIGIN).toBe(`http://${UI_LOOPBACK_HOST}:3880`);
+    expect(env.HOST_HEADER).toBeUndefined();
+  });
+
+  test("the explicit wildcard opt-in still wins when both are set", () => {
+    expect(
+      resolveUiListenEnv({ port: 3880, admin: false, allowRemote: true, trustProxy: true }).HOST,
+    ).toBe("0.0.0.0");
+  });
+});

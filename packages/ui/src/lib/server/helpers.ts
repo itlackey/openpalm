@@ -4,7 +4,7 @@
 import type { RequestEvent } from "@sveltejs/kit";
 import { timingSafeEqual, createHash } from "node:crypto";
 import { getAssistantOpencodeTarget } from "./opencode-target.js";
-import { createOpenCodeClient, isRemoteSetupAllowed } from "@openpalm/lib";
+import { createOpenCodeClient, isRemoteSetupAllowed, isTrustedProxyEnabled } from "@openpalm/lib";
 import { validateSession, getUiLoginPassword } from "./session-store.js";
 import { computeServerRuntimeContext } from "./features.js";
 import type { Capability, ServerRuntimeContext } from "$lib/types.js";
@@ -211,9 +211,10 @@ export async function withAdminBody(
   handler: (ctx: { requestId: string; body: Record<string, unknown> }) => Promise<Response>
 ): Promise<Response> {
   const requestId = getRequestId(event);
-  const { security } = computeServerRuntimeContext(event);
-  const originError = checkOriginHeader(event.request, security.csrfMode, requestId);
-  if (originError) return originError;
+  // No origin check here: the global hook (hooks.server.ts) already ran
+  // checkOriginHeader on this request. Running it a second time per admin
+  // mutation cost a second computeServerRuntimeContext and gave two places to
+  // keep in sync for no additional protection.
   const authError = requireAdmin(event, requestId);
   if (authError) return authError;
   const result = await parseJsonBody(event.request);
@@ -301,7 +302,14 @@ export function checkHostHeader(request: Request, requestId?: string): Response 
   // Allow any loopback host (any port, e.g. via SSH tunnel); any host when the
   // operator has explicitly opted into remote access; and any host when this
   // is the container UI published beyond loopback on purpose.
-  if (isLoopbackHost(host) || isRemoteSetupAllowed() || isPublishedContainerUi()) return null;
+  if (
+    isLoopbackHost(host)
+    || isRemoteSetupAllowed()
+    || isTrustedProxyEnabled()
+    || isPublishedContainerUi()
+  ) {
+    return null;
+  }
   return new Response(
     JSON.stringify({
       error: "invalid_host",
@@ -338,7 +346,7 @@ export function checkOriginHeader(request: Request, csrfMode: CsrfMode = 'loopba
         // Loopback and SSH-tunnel requests are accepted only when the browser's
         // exact origin matches the effective request scheme, host, and port.
         if (sameOrigin && isLoopbackHost(u.host)) return null;
-        if (sameOrigin && isRemoteSetupAllowed()) return null;
+        if (sameOrigin && (isRemoteSetupAllowed() || isTrustedProxyEnabled())) return null;
         break;
       }
       case 'same-site':

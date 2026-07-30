@@ -62,7 +62,23 @@ export function resolveUiListenEnv(opts: {
   admin: boolean;
   /** True only for an explicit remote-access opt-in on an installed home. */
   allowRemote: boolean;
+  /**
+   * Trust `Host`/`x-forwarded-proto` from a proxy WITHOUT widening the bind.
+   * Every documented TLS topology (Tailscale Serve, Caddy, nginx) proxies to
+   * loopback, so opening 0.0.0.0 for them was gratuitous — and the docs then had
+   * to tell operators to firewall the port the code had just opened.
+   */
+  trustProxy?: boolean;
 }): UiListenEnv {
+  if (!opts.admin && opts.trustProxy && !opts.allowRemote) {
+    return {
+      HOST: UI_LOOPBACK_HOST,
+      PORT: String(opts.port),
+      HOST_HEADER: "host",
+      PROTOCOL_HEADER: "x-forwarded-proto",
+      ORIGIN: undefined,
+    };
+  }
   if (!opts.admin && opts.allowRemote) {
     return {
       HOST: "0.0.0.0",

@@ -11,7 +11,7 @@ import { existsSync } from 'node:fs';
 import {
   resolveOpenPalmHome, resolveUiBuildDir, createLogger, readSecret, readStackEnv, runHomeMigrations,
   checkAndUpdateUiBuild, checkAndUpdateSkeleton, PLATFORM_VERSION,
-  consumePendingUiBackup, isRemoteSetupAllowed, readyOrChildExit, restoreUiBackup, UiSupervisor, waitForReady,
+  consumePendingUiBackup, isRemoteSetupAllowed, isTrustedProxyEnabled, readyOrChildExit, restoreUiBackup, UiSupervisor, waitForReady,
   checkExistingUiInstance, type UiInstanceCheck,
   resolveUiListenEnv, UI_LOOPBACK_HOST, type UiListenEnv,
   buildEmptyUiRuntimeConfig, buildServedUiRuntimeConfig, classifyLocalInstall, stackDirFor,
@@ -106,6 +106,7 @@ export function resolveUiNetworkEnv(
     port,
     admin: effectiveAdmin,
     allowRemote: localInstallState === 'installed' && isRemoteSetupAllowed(env),
+    trustProxy: isTrustedProxyEnabled(env),
   });
 }
 

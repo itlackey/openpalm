@@ -657,7 +657,7 @@ export type { AkmStats } from './control-plane/akm-stats.js';
 export { getAkmStats, parseAkmStats } from './control-plane/akm-stats.js';
 
 // ── Bind Address Startup Warning ─────────────────────────────────────────────
-export { isRemoteSetupAllowed, isLoopback, isUiLanExposed } from "./control-plane/bind-warning.js";
+export { isRemoteSetupAllowed, isLoopback, isTrustedProxyEnabled } from "./control-plane/bind-warning.js";
 
 // ── Network access toggles ───────────────────────────────────────────────────
 export {

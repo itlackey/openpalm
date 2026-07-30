@@ -19,15 +19,26 @@ export function isLoopback(value: string): boolean {
 }
 
 /**
- * True when the container-served OpenPalm UI is published off loopback.
+ * Opt-in: trust `x-forwarded-proto` / `Host` from a proxy in front of a
+ * loopback-bound host UI, WITHOUT widening the listener.
  *
- * Read straight from the generated `OP_UI_BIND_ADDRESS`. There is no cascade
- * to mirror any more: every bind is written explicitly on every deploy, so an
- * absent value means loopback and nothing else.
+ * This is what every documented TLS topology actually needs. Tailscale Serve,
+ * Caddy and nginx all connect to `127.0.0.1:3880`, so the two things required
+ * are (a) the Host allowlist relaxed for the proxy's public name and (b)
+ * adapter-node deriving its origin from the forwarded headers. Neither needs a
+ * `0.0.0.0` bind — yet both were keyed off the same flag that opens one, so the
+ * TLS guide had to add a compensating step telling operators to firewall the
+ * plain-HTTP port the code had just opened for no reason.
+ *
+ * Admin capability still wins: a host admin surface is never reachable remotely,
+ * proxy or not.
  */
-export function isUiLanExposed(env: Record<string, string | undefined>): boolean {
-  const bind = env.OP_UI_BIND_ADDRESS?.trim() || "127.0.0.1";
-  return !isLoopback(bind);
+export function isTrustedProxyEnabled(
+  env: Record<string, string | undefined> = process.env,
+): boolean {
+  if (env.OP_ENABLE_ADMIN === '1' || env.OP_INSIDE_ELECTRON === '1') return false;
+  const v = env.OP_TRUSTED_PROXY?.trim().toLowerCase();
+  return v === "1" || v === "true" || v === "yes";
 }
 
 /**
