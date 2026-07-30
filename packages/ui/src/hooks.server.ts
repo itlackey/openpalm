@@ -70,9 +70,16 @@ function loadProcessEnv(): void {
       if (v && !process.env[k]) process.env[k] = v;
     }
     // #488 — host-side LAN mDNS advertisement; no-op socket-free when every
-    // bind is loopback (the default) or OP_MDNS=off. This is the single
-    // start locus: every supervisor spawns this process, so the CLI needs no
-    // separate wiring.
+    // bind is loopback (the default) or OP_MDNS=off, and a no-op entirely
+    // inside the container UI co-process (OP_UI_SERVED_IN_CONTAINER=1 — this
+    // hooks.server.ts also runs there, non-admin). This is the single start
+    // locus: every supervisor spawns this process, so the CLI needs no
+    // separate wiring. It is also the ONLY call needed for this process's
+    // whole lifetime — reconcileMdnsResponder arms its own 60s re-read of
+    // stack.env internally (0.14.0 LAN-access review, Phase 2), so a
+    // long-lived sibling process that never serves a stack-settings write
+    // still converges within a minute instead of advertising stale state
+    // forever.
     reconcileMdnsResponder(state.homeDir);
   } catch (err) {
     logger.error("process env load failed", { error: String(err) });

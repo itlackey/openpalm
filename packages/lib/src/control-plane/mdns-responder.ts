@@ -10,6 +10,42 @@
  * macOS anyway). See `docs/technical/network-partitioning-d5a.md` for the
  * full rationale (D1 in `.github/roadmap/0.13.0/specs/488.md`).
  *
+ * The container's UI co-process is a subtler case than "the guardian
+ * container": it runs the identical `@openpalm/ui` build, including this
+ * SAME `hooks.server.ts` startup init, just launched non-admin. Bridge
+ * multicast is exactly as unreachable there, but nothing made that
+ * structural — it only stayed off because no in-container caller happened to
+ * set LAN-open binds from the container's own vantage point. `OP_UI_SERVED_IN_CONTAINER`
+ * (set only by the assistant image's entrypoint) turns that accident into an
+ * explicit, tested guard (see `reconcileMdnsResponder`).
+ *
+ * Two more honesty properties beyond the original #488 scope (0.14.0 LAN-access
+ * review, Phase 2):
+ *
+ *  - **Convergence, not a call-site relay.** A save used to reconcile only the
+ *    ONE process that served the write (the stack PUT, or setup complete); a
+ *    long-lived sibling host process (a bare `openpalm` alongside `openpalm
+ *    admin`, or Electron) never re-read stack.env again and advertised
+ *    whatever it saw at boot, forever. `reconcileMdnsResponder` now also arms
+ *    a 60s `unref()`'d interval, on first call, that re-invokes itself against
+ *    the same `homeDir` — so every process converges to the on-disk state
+ *    within one interval period with no cross-process signaling.
+ *  - **Advertise only what answers.** A name used to go out the moment the
+ *    bind-address gate opened, with nothing checking the port behind it was
+ *    actually listening. Phase 0 made saves apply-then-advertise, but that is
+ *    a per-writer promise, not a per-responder one — a crash-looping
+ *    container, or a sibling process reconciling mid-recreate, could still
+ *    advertise a name nobody answers. The front door (`<name>.local`, i.e. the
+ *    "assistant" advert — see `resolveFrontDoor`) is now gated on a self-probe
+ *    (`checkExistingUiInstance` from `./ui-supervisor.js`) confirming the port
+ *    answers before a responder for it is ever created; a failed probe is
+ *    retried on the next reconcile/interval tick rather than advertised
+ *    optimistically. The guardian advert is NOT probed this way: it is not a
+ *    `@openpalm/ui` process, so the `/api/runtime` identity check the probe
+ *    relies on cannot confirm it — its bind-address + `GUARDIAN_DIRECT_INGRESS`
+ *    gate remains its sole honesty check, matching the original finding's
+ *    scope (`<name>.local`, not `<name>-guardian.local`).
+ *
  * The DNS wire format and multicast socket are handled by the maintained
  * `multicast-dns` package; this module owns only the OpenPalm-specific policy:
  * which `.local` names to advertise, gated on the bind-address env, and a
@@ -20,6 +56,7 @@ import { networkInterfaces } from "node:os";
 import { createLogger } from "../logger.js";
 import { isLoopback } from "./bind-warning.js";
 import { readStackEnv } from "./secrets.js";
+import { checkExistingUiInstance } from "./ui-supervisor.js";
 
 const logger = createLogger("mdns");
 
@@ -447,6 +484,45 @@ function createResponder(
   };
 }
 
+// ── Self-probe (front-door honesty) ─────────────────────────────────────────
+//
+// A name is advertised only once SOMETHING answers on its port — see the
+// module doc's "Advertise only what answers". Only the front door (the
+// "assistant" advert, i.e. `<name>.local`) is probed; see the module doc for
+// why the guardian advert is out of scope for this specific check.
+
+export type MdnsProbe = (port: number) => Promise<boolean>;
+
+/** Test-only override consulted whenever a caller doesn't pass `deps.probe`. */
+let testMdnsProbe: MdnsProbe | null = null;
+
+export function _setMdnsProbeForTests(probe: MdnsProbe | null): void {
+  testMdnsProbe = probe;
+}
+
+/**
+ * Confirm the front-door port answers before advertising its name, by
+ * reusing `checkExistingUiInstance` (`./ui-supervisor.js`, same package)
+ * rather than hand-rolling a second fetch-with-timeout: it already probes
+ * `/api/runtime` on loopback with a short timeout and treats "couldn't
+ * confirm" (closed port, timeout, non-JSON body) as absence rather than a
+ * hard failure — exactly the "say nothing rather than something possibly
+ * wrong" behavior this module wants.
+ *
+ * `expectedAdmin: false` matches what the front door's ports actually serve
+ * (the container UI co-process on `OP_UI_PORT`, non-admin by design) — but a
+ * `'mismatch'` result still counts as "answers": this is a reachability
+ * check, not an identity check. Identity matching is
+ * `checkExistingUiInstance`'s OTHER caller's job (the CLI/Electron attach
+ * protocol in `ui-server.ts`/`main.ts`), which cares WHICH capability level
+ * it attaches to; this module only cares whether `<name>.local` resolves to
+ * something alive.
+ */
+async function defaultMdnsProbe(port: number): Promise<boolean> {
+  const result = await checkExistingUiInstance(port, false);
+  return result.status !== "absent";
+}
+
 // ── Reconcile singleton ─────────────────────────────────────────────────────
 //
 // Explicit, documented owner of the single live responder — mirrors
@@ -457,11 +533,128 @@ function createResponder(
 let active: { key: string; handle: MdnsResponderHandle; silentClose: () => void } | null = null;
 
 /**
+ * Advert set (by `key`, i.e. `JSON.stringify(adverts)`) a self-probe is
+ * currently confirming, or null. Guards against scheduling a second
+ * concurrent probe for the exact same desired state (harmless but wasteful:
+ * a fetch per redundant reconcile call in a 60s window).
+ */
+let pendingProbeKey: string | null = null;
+/** The in-flight probe chain, exposed only so tests can await convergence. */
+let pendingProbePromise: Promise<void> | null = null;
+
+/**
+ * Confirm the front door answers, then — if this key is still the desired
+ * state when the probe settles — start the responder. A guardian-only advert
+ * set has no front door to confirm, so it starts as soon as the (still-async,
+ * for one uniform code path) check settles trivially true.
+ *
+ * `active` is guaranteed null by the time the probe resolves and confirms:
+ * `reconcileMdnsResponder` stops any differently-keyed active responder
+ * SYNCHRONOUSLY before ever calling this function for a new key, and this
+ * exact key cannot already be active (the caller short-circuits before
+ * reaching here in that case) — so there is nothing to guard against beyond
+ * the staleness check below.
+ */
+function scheduleSelfProbeAndStart(
+  adverts: MdnsAdvertisement[],
+  key: string,
+  deps: { probe?: MdnsProbe; makeMdns?: MdnsFactory },
+): void {
+  if (pendingProbeKey === key) return; // already confirming this exact desired state
+  pendingProbeKey = key;
+
+  const frontDoor = adverts.find((a) => a.service === "assistant");
+  const probe = deps.probe ?? testMdnsProbe ?? defaultMdnsProbe;
+
+  pendingProbePromise = (async () => {
+    let confirmed = true;
+    if (frontDoor) {
+      try {
+        confirmed = await probe(frontDoor.port);
+      } catch (err) {
+        logger.warn("mdns: self-probe failed", { error: String(err), port: frontDoor.port });
+        confirmed = false;
+      }
+    }
+
+    // A newer reconcile moved the desired state on (to a different config, or
+    // back to nothing) while this probe was in flight. What we just learned
+    // no longer applies — the newer call already owns `pendingProbeKey`/`active`.
+    if (pendingProbeKey !== key) return;
+    pendingProbeKey = null;
+
+    if (!confirmed) {
+      logger.warn("mdns: front door did not answer; not advertising until it does", {
+        name: frontDoor?.name,
+        port: frontDoor?.port,
+      });
+      return; // retried by the next explicit reconcile or interval tick
+    }
+
+    const created = createResponder(adverts, { makeMdns: deps.makeMdns });
+    if (created) active = { key, ...created };
+  })();
+}
+
+/** Test-only: await the in-flight self-probe (and the responder it may start). */
+export async function _awaitMdnsProbeForTests(): Promise<void> {
+  await pendingProbePromise;
+}
+
+// ── Convergence interval ─────────────────────────────────────────────────────
+//
+// Finding #1 (0.14.0 LAN-access review): per-process drift. Only the process
+// that served a write (the stack PUT, setup complete) ever reconciled; any
+// other long-lived host process kept advertising whatever it read at boot.
+// Arming this interval on the FIRST reconcile call makes `reconcileMdnsResponder`
+// self-sufficient — one call at startup is enough for the whole process
+// lifetime, because the process now keeps re-reading `homeDir`'s stack.env on
+// its own.
+
+const RECONCILE_INTERVAL_MS = 60_000;
+
+export type MdnsIntervalScheduler = (tick: () => void) => { cancel(): void };
+
+/** Test-only override: lets tests fire a tick deterministically instead of waiting 60s. */
+let testIntervalScheduler: MdnsIntervalScheduler | null = null;
+
+export function _setMdnsIntervalSchedulerForTests(scheduler: MdnsIntervalScheduler | null): void {
+  testIntervalScheduler = scheduler;
+}
+
+function defaultIntervalScheduler(tick: () => void): { cancel(): void } {
+  const timer = setInterval(tick, RECONCILE_INTERVAL_MS);
+  // Never hold the process open for this — advertisement is a convenience,
+  // not a reason `openpalm`/Electron can't exit cleanly.
+  timer.unref?.();
+  return { cancel: () => clearInterval(timer) };
+}
+
+let intervalHandle: { cancel(): void } | null = null;
+let intervalHomeDir: string | null = null;
+
+/** Idempotent: the first call in a process's lifetime arms the timer; every later call no-ops. */
+function ensureIntervalStarted(homeDir: string): void {
+  if (intervalHandle) return;
+  intervalHomeDir = homeDir;
+  const scheduler = testIntervalScheduler ?? defaultIntervalScheduler;
+  intervalHandle = scheduler(() => {
+    if (intervalHomeDir) reconcileMdnsResponder(intervalHomeDir);
+  });
+}
+
+/**
  * Reconcile the live responder against the current stack.env (read fresh on
  * every call — never process.env for the gate vars, since hooks.server.ts's
  * startup promotion is only-if-unset and would go stale after a PUT). The
  * single process-env exception: `OP_MDNS` in `processEnv` force-disables
- * (operator/test kill switch), checked alongside the stack.env value. Never
+ * (operator/test kill switch), checked alongside the stack.env value.
+ *
+ * Also arms the 60s convergence interval (see above) and, when the front door
+ * is desired, defers actually starting the responder until a self-probe
+ * confirms it answers (see `scheduleSelfProbeAndStart`) — so the return value
+ * reflects INTENT (the bind-address gate, unchanged from before: see
+ * `resolveMdnsStatus`'s own doc), not yet necessarily a live socket. Never
  * throws. Returns the effective `MdnsStatus` so route handlers can echo it.
  */
 export function reconcileMdnsResponder(
@@ -471,6 +664,7 @@ export function reconcileMdnsResponder(
     processEnv?: Record<string, string | undefined>;
     makeMdns?: MdnsFactory;
     hostIpv4?: string[];
+    probe?: MdnsProbe;
   } = {},
 ): MdnsStatus {
   let env: Record<string, string | undefined>;
@@ -483,6 +677,16 @@ export function reconcileMdnsResponder(
 
   const processEnv = deps.processEnv ?? process.env;
   const effectiveEnv = isMdnsOffToken(processEnv.OP_MDNS) ? { ...env, OP_MDNS: "off" } : env;
+
+  // Finding #3: this responder must never run inside the container UI
+  // co-process (see module doc). Refuse explicitly and skip the interval +
+  // probe machinery too — there is nothing for either to converge toward from
+  // inside a bridge-network container, so arming them would be pure waste.
+  if (processEnv.OP_UI_SERVED_IN_CONTAINER === "1") {
+    return resolveMdnsStatus(effectiveEnv);
+  }
+
+  ensureIntervalStarted(homeDir);
 
   try {
     const adverts = resolveMdnsAdvertisements(effectiveEnv, deps.hostIpv4);
@@ -502,8 +706,11 @@ export function reconcileMdnsResponder(
     }
 
     if (adverts.length > 0) {
-      const created = createResponder(adverts, { makeMdns: deps.makeMdns });
-      if (created) active = { key, ...created };
+      scheduleSelfProbeAndStart(adverts, key, deps);
+    } else {
+      // Nothing desired: drop any outstanding probe so it can't resurrect a
+      // responder for a config this process has already moved away from.
+      pendingProbeKey = null;
     }
   } catch (err) {
     logger.warn("mdns: reconcile failed", { error: String(err) });
@@ -512,7 +719,12 @@ export function reconcileMdnsResponder(
   return resolveMdnsStatus(effectiveEnv);
 }
 
-/** Test-only: stop the active responder (no goodbye) and clear the singleton. */
+/**
+ * Test-only: stop the active responder (no goodbye), clear the singleton,
+ * cancel the convergence interval, and drop any in-flight self-probe — full
+ * teardown so consecutive test files never observe each other's timers or
+ * pending promises.
+ */
 export function _resetMdnsResponderForTests(): void {
   if (active) {
     try {
@@ -522,4 +734,11 @@ export function _resetMdnsResponderForTests(): void {
     }
     active = null;
   }
+  pendingProbeKey = null;
+  pendingProbePromise = null;
+  if (intervalHandle) {
+    intervalHandle.cancel();
+    intervalHandle = null;
+  }
+  intervalHomeDir = null;
 }

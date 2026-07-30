@@ -694,10 +694,23 @@ export {
   resolveMdnsStatus,
   reconcileMdnsResponder,
   _setMdnsFactoryForTests,
+  _setMdnsProbeForTests,
   _resetMdnsResponderForTests,
   type MdnsAdvertisement,
   type MdnsStatus,
 } from "./control-plane/mdns-responder.js";
+
+// ── LAN URLs — the access-status "what do I type on my phone" answer ────────
+export { buildLanUrls, collectNonInternalIpv4 } from "./control-plane/lan-urls.js";
+export type { BuildLanUrlsInput, LanInterfaceEntry, LanInterfaceMap } from "./control-plane/lan-urls.js";
+
+// ── Access status "actual" — Docker's view of the access-toggle containers ──
+export { fetchAccessStatusActual, resolveContainerActualStatus } from "./control-plane/access-status.js";
+export type {
+  AccessStatusActual,
+  AccessStatusService,
+  ContainerActualStatus,
+} from "./control-plane/access-status.js";
 
 // ── UI asset seeding and resolution ─────────────────────────────────────────
 export type { UiBuildUpdateResult, SkeletonUpdateResult, UiUpdateChannel } from "./control-plane/ui-assets.js";
