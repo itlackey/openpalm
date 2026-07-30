@@ -176,13 +176,25 @@ Voice is defined in `system/stack/services.compose.yml`, uses an
 `addon.voice.*` profile, joins `addon_net`, and publishes only
 `127.0.0.1:8880` by default.
 
-Voice only works from a **host** UI (bare `openpalm`, `openpalm app`,
-`openpalm admin`, or Electron) — never from the assistant-served UI that
+By default, voice only works from a **host** UI (bare `openpalm`, `openpalm
+app`, `openpalm admin`, or Electron) — not from the assistant-served UI that
 `access.networkAccess` publishes to your LAN at `:3800`. That co-process only
 has a loopback path to its own container, never the sibling voice container,
-so its entrypoint sets `OP_UI_NO_LOCAL_VOICE=1` and `/voice` always `503`s
-there by design. There is no misconfiguration to fix here: a phone connected
-over the network toggle gets chat, not voice.
+so its entrypoint sets `OP_UI_NO_LOCAL_VOICE=1` and `/voice` `503`s there by
+design.
+
+To let LAN devices use voice through the published UI, turn on **Let devices
+on your network use voice through the published UI** in the voice addon's
+settings drawer (writes `OP_VOICE_LAN_ACCESS=true` to `state/stack.env`),
+then recreate both the assistant and voice containers (`openpalm start`, or
+`openpalm start assistant voice`) so the change actually takes effect —
+saving the addon setting alone only writes the file. This grants the voice
+container `assistant_net` (`voice.compose.lan.yml`, a static opt-in overlay)
+so the assistant's served UI can reach it over Docker DNS
+(`OP_VOICE_URL=http://voice:8880`) instead of failing closed. It is off by
+default because it is the one addon-network-boundary exception (`S.6b /
+D3(b)`) besides ollama — see `services.compose.yml`'s header comment and
+`voice.compose.lan.yml` for the reasoning.
 
 ```bash
 openpalm addon enable voice

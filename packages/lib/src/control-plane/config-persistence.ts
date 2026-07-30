@@ -22,6 +22,7 @@ import {
 } from './access-toggles.js';
 import { assertNoSecretLikeStackEnvKeys, isSecretLikeStackEnvKey } from './secrets.js';
 import { writeSecret } from './secrets-files.js';
+import { isVoiceLanAccessEnabled } from './voice-host-probes.js';
 import type { ControlPlaneState, ArtifactMeta } from "./types.js";
 import { stackEnvFile, legacyKnowledgeStackEnvFile, legacyStateEnvFile, composeFilePath, customComposeFilePath } from "./home.js";
 import { stackEnvPath } from "./paths.js";
@@ -447,6 +448,26 @@ export function discoverStackOverlays(homeDir: string): string[] {
   for (const name of ['core.compose.yml', 'services.compose.yml', 'portals.compose.yml']) {
     const composePath = composeFilePath(homeDir, name);
     if (existsSync(composePath)) files.push(composePath);
+  }
+
+  // Voice LAN-access overlay: opt-in (OP_VOICE_LAN_ACCESS, default off — see
+  // isVoiceLanAccessEnabled) and gated on the file actually being seeded, same
+  // double-gate as every other conditional overlay in this codebase.
+  //
+  // Deliberately included HERE — in the file list every compose invocation
+  // builds from — and NOT only in the voice bring-up engine's one-off
+  // applyStack call (packages/ui/.../voice/bring-up.ts extraFiles, which
+  // carries the CDI/rootless fallback overlays). Those exist for exactly one
+  // compose-up call each time bring-up runs. Every OTHER compose invocation —
+  // `openpalm start`, an update, a settings-triggered recreate — builds its
+  // file list from THIS function. If voice's network membership lived only in
+  // bring-up's extraFiles, the next plain `openpalm start` would recreate
+  // voice WITHOUT assistant_net, silently breaking LAN voice until someone
+  // re-ran bring-up — the exact write-then-drift shape the access-toggle
+  // apply work (access-apply.ts) removed elsewhere on this branch.
+  if (isVoiceLanAccessEnabled(homeDir)) {
+    const voiceLan = composeFilePath(homeDir, 'voice.compose.lan.yml');
+    if (existsSync(voiceLan)) files.push(voiceLan);
   }
 
   // User custom overlay lives in the config/ tree (not system/stack).

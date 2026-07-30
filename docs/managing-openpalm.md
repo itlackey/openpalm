@@ -238,7 +238,7 @@ The UI server uses these namespaces:
 | `/api/host/*` | Host control-plane operations; host capability required |
 | `/api/assistant/*` | Assistant-owned settings |
 | `/oc/*` | Same-origin pass-through to this process's own OpenCode (session auth). Not Guardian's `/oc/*` — see [`api-spec.md`](technical/api-spec.md) for the disambiguation |
-| `/voice/*` | Same-origin pass-through to local voice (session auth); `503` when this process cannot serve it — always true on the assistant-served (LAN) UI, see [Troubleshooting](troubleshooting.md#voice-does-not-start) |
+| `/voice/*` | Same-origin pass-through to local voice (session auth); `503` when this process cannot serve it — true on the assistant-served (LAN) UI unless `OP_VOICE_LAN_ACCESS=true`, see [Troubleshooting](troubleshooting.md#voice-does-not-start) |
 
 `/admin/*` is intentionally unimplemented and returns `404`. This does not
 apply to Guardian's separate loopback listener at

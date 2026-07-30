@@ -97,6 +97,17 @@ opencode_auth_enabled() {
   esac
 }
 
+# Voice LAN-access opt-in (OP_VOICE_LAN_ACCESS, core.compose.yml
+# interpolation — this entrypoint has no OP_HOME and cannot read
+# state/stack.env itself). Off by default: see the OP_UI_NO_LOCAL_VOICE
+# comment in start_ui below for what flips when this is on.
+voice_lan_access_enabled() {
+  case "${OP_VOICE_LAN_ACCESS:-false}" in
+    true|TRUE|True|1|yes|YES) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
 # #563/#564 P1-2: resolve OpenCode's Basic-auth password from the compose
 # secret file, gated on opencode_auth_enabled. The secret file is ALWAYS
 # materialized non-empty by ensureSecrets (random seed on first install, or a
@@ -283,6 +294,22 @@ start_ui() {
   # and getState() here can resolve into an assistant-writable mount, so a
   # bare "addon enabled?" check is not a sufficient gate. This flag makes the
   # co-process fail closed regardless of readable stack state.
+  #
+  # OP_VOICE_LAN_ACCESS (opt-in, default off) changes that premise: when the
+  # operator has granted voice assistant_net (voice.compose.lan.yml,
+  # included by discoverStackOverlays only under this same flag), this
+  # co-process DOES have a real network path to voice, over Docker DNS —
+  # so it stops setting OP_UI_NO_LOCAL_VOICE and instead advertises the
+  # upstream via OP_VOICE_URL=http://voice:8880.
+  #
+  # 8880 here is voice's FIXED INTERNAL port (OP_VOICE_PORT in
+  # services.compose.yml) — NOT OP_VOICE_PORT_HOST, the operator-configurable
+  # HOST-facing publish port packages/ui voiceHostPort() resolves for
+  # loopback callers. This container-to-container hop is Docker-DNS-to-
+  # in-container-port and never touches the published port at all. Confusing
+  # the two is exactly the OP_UI_PORT trap documented above (the ui_port
+  # local var) — a host-facing knob fed into a value that must stay fixed
+  # in-container.
   (
     local attempt=0
     local max_attempts=5
@@ -298,9 +325,16 @@ start_ui() {
       local start_ts
       start_ts="$(node -e 'process.stdout.write(String(Date.now()))')"
       local exit_code
+      # Recomputed each iteration (cheap; OP_VOICE_LAN_ACCESS never changes
+      # mid-boot) so a respawn always reflects the same posture the container
+      # was started with — see the block comment above for what each branch means.
+      local voice_env_args=(OP_UI_NO_LOCAL_VOICE=1)
+      if voice_lan_access_enabled; then
+        voice_env_args=(OP_VOICE_URL=http://voice:8880)
+      fi
       if env -u OP_ENABLE_ADMIN -u OP_INSIDE_ELECTRON \
            HOST=0.0.0.0 PORT="$ui_port" HOST_HEADER=host PROTOCOL_HEADER=x-forwarded-proto \
-           OP_UI_NO_LOCAL_VOICE=1 \
+           "${voice_env_args[@]}" \
            OP_UI_SERVED_IN_CONTAINER=1 \
            OP_OPENCODE_URL=http://localhost:4096 \
            OP_UI_LOGIN_PASSWORD="$ui_login_password" \

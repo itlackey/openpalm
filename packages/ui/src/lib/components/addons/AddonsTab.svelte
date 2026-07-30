@@ -360,30 +360,50 @@
         <p class="creds-hint">Values are written to <code>state/stack.env</code> and read by the addon container on next recreate.</p>
         {#each credFields[aid] ?? [] as field (field.key)}
           <div class="creds-row">
-            <label class="creds-label" for="cred-{aid}-{field.key}">
-              <code>{field.key}</code>
-              {#if field.sensitive}<span class="creds-tag">sensitive</span>{/if}
-              {#if field.sensitive && field.set}<span class="creds-tag creds-tag--set">set</span>{/if}
-            </label>
-            {#if field.description}<p class="creds-desc">{field.description}</p>{/if}
-            {#if field.sensitive}
-              <SecretSelect
-                id="cred-{aid}-{field.key}"
-                bind:value={credSecretRef[aid][field.key]}
-                onChange={(secretName) => void onSecretChosen(aid, field.key, secretName)}
-                {fetchSecretFiles}
-                {saveSecretFile}
-              />
-              {#if field.set}<p class="creds-desc">A value is already set — choose a secret to replace it.</p>{/if}
+            {#if field.boolean}
+              <!-- Boolean fields render as a checkbox, not a labeled text row —
+                   a text box you'd have to type "true" into is not "easy to
+                   toggle". The value written is still the literal string
+                   "true"/"false" (credValues stays Record<string, string> so
+                   the POST payload shape is unchanged for every field type). -->
+              <label class="creds-checkbox" for="cred-{aid}-{field.key}">
+                <input
+                  id="cred-{aid}-{field.key}"
+                  type="checkbox"
+                  checked={credValues[aid][field.key] === 'true'}
+                  onchange={(e) => {
+                    credValues[aid][field.key] = e.currentTarget.checked ? 'true' : 'false';
+                  }}
+                />
+                <code>{field.key}</code>
+              </label>
+              {#if field.description}<p class="creds-desc">{field.description}</p>{/if}
             {:else}
-              <input
-                id="cred-{aid}-{field.key}"
-                type="text"
-                class="form-input"
-                placeholder={field.default}
-                bind:value={credValues[aid][field.key]}
-                autocomplete="off"
-              />
+              <label class="creds-label" for="cred-{aid}-{field.key}">
+                <code>{field.key}</code>
+                {#if field.sensitive}<span class="creds-tag">sensitive</span>{/if}
+                {#if field.sensitive && field.set}<span class="creds-tag creds-tag--set">set</span>{/if}
+              </label>
+              {#if field.description}<p class="creds-desc">{field.description}</p>{/if}
+              {#if field.sensitive}
+                <SecretSelect
+                  id="cred-{aid}-{field.key}"
+                  bind:value={credSecretRef[aid][field.key]}
+                  onChange={(secretName) => void onSecretChosen(aid, field.key, secretName)}
+                  {fetchSecretFiles}
+                  {saveSecretFile}
+                />
+                {#if field.set}<p class="creds-desc">A value is already set — choose a secret to replace it.</p>{/if}
+              {:else}
+                <input
+                  id="cred-{aid}-{field.key}"
+                  type="text"
+                  class="form-input"
+                  placeholder={field.default}
+                  bind:value={credValues[aid][field.key]}
+                  autocomplete="off"
+                />
+              {/if}
             {/if}
           </div>
         {/each}
@@ -553,6 +573,54 @@
     display: flex;
     flex-direction: column;
     gap: var(--s-sp-1);
+  }
+
+  .creds-checkbox {
+    display: flex;
+    align-items: center;
+    gap: var(--s-sp-2);
+    font-family: var(--s-font-display);
+    font-size: var(--s-type-deed);
+    color: var(--s-ink);
+    cursor: pointer;
+  }
+
+  .creds-checkbox code {
+    font-family: var(--s-font-mono);
+    background: var(--s-paper-deep);
+    color: var(--s-ink-2);
+    padding: 1px 6px;
+    border-radius: 2px;
+  }
+
+  .creds-checkbox input[type='checkbox'] {
+    appearance: none;
+    width: 1rem;
+    height: 1rem;
+    border: var(--s-hair) solid var(--s-line);
+    border-radius: 2px;
+    background: none;
+    flex-shrink: 0;
+    position: relative;
+    cursor: pointer;
+  }
+
+  .creds-checkbox input[type='checkbox']:checked {
+    background: var(--s-seal);
+    border-color: var(--s-seal);
+  }
+
+  .creds-checkbox input[type='checkbox']:checked::after {
+    content: '';
+    position: absolute;
+    left: 2px;
+    top: 1px;
+    width: 8px;
+    height: 5px;
+    border: 1.4px solid white;
+    border-top: 0;
+    border-right: 0;
+    transform: rotate(-45deg);
   }
 
   .creds-label {

@@ -86,7 +86,7 @@ export type { AddonProfileAvailability } from "./control-plane/addon-availabilit
 export { getAddonProfileAvailability, execFileNoThrow } from "./control-plane/addon-availability.js";
 
 // ── Voice addon host-fact probes (rootless docker, nvidia runtime) ───────
-export { detectRootlessDocker, dockerHasNvidiaRuntime } from "./control-plane/voice-host-probes.js";
+export { detectRootlessDocker, dockerHasNvidiaRuntime, isVoiceLanAccessEnabled } from "./control-plane/voice-host-probes.js";
 
 // ── Home Layout (v0.11.0) ───────────────────────────────────────────────
 export {

@@ -43,6 +43,7 @@ import {
 	getAddonProfileAvailability,
 	getAddonProfileSelection,
 	listEnabledAddonIds,
+	readStackEnv,
 	setAddonEnabled,
 	setAddonProfileSelection,
 	stackDirFor
@@ -151,10 +152,49 @@ export async function voiceAddonInfo(homeDir: string): Promise<{
 // it through the loopback binding in the voice addon's compose overlay.
 // Host port is overridable via OP_VOICE_PORT_HOST in stack.env (defaults
 // to 8880, matching the container's internal port).
-export function voiceHostPort(): number {
-	const raw = process.env.OP_VOICE_PORT_HOST?.trim();
+//
+// Precedence: an explicit `env` value wins, then `persistedEnv`, then the
+// 8880 default — matching resolveHostUiPort (packages/lib
+// network-contract.ts). Live-over-persisted is the important half: Compose
+// itself reads OP_VOICE_PORT_HOST ONLY from state/stack.env (its
+// --env-file), so an operator who followed this function's own doc comment
+// (and the UI's error copy) and set it there previously got compose
+// republishing voice on the NEW port while this function — process.env
+// only — kept resolving 8880: a proxy pointed at a dead port that no
+// restart could fix, because process.env never picks up a file-only value.
+// `persistedEnv` defaults to `{}` (not a disk read) so this stays a pure,
+// directly-testable function; callers with a homeDir pass
+// `readStackEnv(homeDir)` explicitly (see voiceUpstreamUrl below).
+export function voiceHostPort(
+	env: Record<string, string | undefined> = process.env,
+	persistedEnv: Record<string, string | undefined> = {}
+): number {
+	const merged = { ...persistedEnv, ...env };
+	const raw = merged.OP_VOICE_PORT_HOST?.trim();
 	const n = raw ? Number(raw) : NaN;
 	return Number.isFinite(n) && n > 0 ? n : 8880;
+}
+
+/**
+ * The upstream base URL this process's `/voice` pass-through should call.
+ *
+ * `OP_VOICE_URL` wins when set: the assistant container's entrypoint
+ * (containers/assistant/entrypoint.sh) injects it ONLY when the operator
+ * turned on `OP_VOICE_LAN_ACCESS` — a Docker-DNS URL reaching the sibling
+ * voice container over `assistant_net` (`http://voice:8880`), because that
+ * in-container co-process has no loopback path to a container on another
+ * compose network (voice.compose.lan.yml grants the reachability;
+ * `OP_UI_NO_LOCAL_VOICE` stops being set for the same reason — see
+ * `canServeLocalVoice`, packages/ui `$lib/server/features.ts`).
+ *
+ * Every OTHER UI process — host CLI, Electron, `openpalm app` — never sets
+ * `OP_VOICE_URL` and falls back to the voice container's published loopback
+ * port, resolved with live-over-persisted precedence by {@link voiceHostPort}.
+ */
+export function voiceUpstreamUrl(homeDir: string): string {
+	const configured = process.env.OP_VOICE_URL?.trim();
+	if (configured) return configured;
+	return `http://127.0.0.1:${voiceHostPort(process.env, readStackEnv(homeDir))}`;
 }
 
 // ── Helpers: docker image inspect, port probe, container probe ─────
@@ -578,7 +618,7 @@ export async function engageVoiceAddon(input: {
 	// --force-recreate below). The vitest harness sets VITEST=1; under
 	// tests this whole check is meaningless because the integration
 	// surface is mocked, so we short-circuit.
-	const hostPort = voiceHostPort();
+	const hostPort = voiceHostPort(process.env, readStackEnv(state.homeDir));
 	const inVitest = !!process.env.VITEST;
 	const portTaken = inVitest ? false : await isPortListening(hostPort);
 	if (portTaken) {

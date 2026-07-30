@@ -109,6 +109,12 @@ OP_VOICE_KOKORO_VOICE=bf_isabella
 
 # Python logging level: debug, info, warning, error.
 OP_VOICE_LOG_LEVEL=info
+
+# Let devices on your network use voice through the published UI. Off by
+# default: enabling it puts the voice container on the assistant's Docker
+# network so the published UI can reach it.
+# @boolean
+OP_VOICE_LAN_ACCESS=false
 `,
 };
 

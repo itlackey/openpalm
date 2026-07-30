@@ -102,6 +102,8 @@ export async function saveVoiceProfile(profile: string): Promise<AddonToggleResu
 export type AddonCredentialField = {
   key: string;
   sensitive: boolean;
+  /** Renders as a checkbox instead of a text input; value is the literal string "true"/"false". */
+  boolean: boolean;
   description: string;
   default: string;
   set: boolean;

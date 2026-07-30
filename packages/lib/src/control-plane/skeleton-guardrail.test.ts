@@ -87,6 +87,20 @@ describe("skeleton: config/ structure", () => {
     expect(readFileSync(rootless, "utf-8")).toContain('user: ""');
   });
 
+  test("voice LAN-access overlay ships as a STATIC skeleton file, same as the CDI/rootless fallbacks", () => {
+    // Unlike the CDI/rootless overlays (selected only by the voice bring-up
+    // engine's one-off applyStack call), this one is also read by
+    // discoverStackOverlays — see config-persistence.ts — so it must be
+    // materialized into every OP_HOME the same way core/services/portals are.
+    const lan = join(SKELETON_DIR, "system", "stack", "voice.compose.lan.yml");
+    expect(existsSync(lan)).toBe(true);
+    const content = readFileSync(lan, "utf-8");
+    for (const svc of ["voice", "voice-cuda", "voice-rocm"]) {
+      expect(content).toContain(`  ${svc}:`);
+    }
+    expect(content).toContain("assistant_net");
+  });
+
   test("config/akm/ exists", () => {
     expect(existsSync(join(SKELETON_DIR, "config", "akm"))).toBe(true);
   });

@@ -235,11 +235,15 @@ defaults to `5173`; the root `ui:dev:isolated` script explicitly uses `3880`.
 | `guardian` | `assistant_net`, `portal_net` | Direct `3830`, admin `3831`, compatible API `3821`, loopback by default |
 | `discord`, `slack` | `portal_net` | None |
 | `ollama*` | `assistant_net` | None |
-| `voice*` | `addon_net` | `127.0.0.1:${OP_VOICE_PORT_HOST:-8880}` |
+| `voice*` | `addon_net` (default) | `127.0.0.1:${OP_VOICE_PORT_HOST:-8880}` |
 
 `addon_net` keeps services that do not need assistant access off the assistant
 trust network. Guardian is the only service bridging portal ingress to
-`assistant_net`.
+`assistant_net` by default; `ollama*` is the one per-service exception granted
+to a third-party addon image. `OP_VOICE_LAN_ACCESS=true` grants voice the same
+exception (`voice.compose.lan.yml`, an opt-in overlay), so the assistant
+container's served UI can proxy `/voice` for LAN clients — see [Managing
+OpenPalm](../managing-openpalm.md) and `docs/troubleshooting.md`.
 
 ## Core `state/stack.env` Variables
 

@@ -38,6 +38,7 @@ const logger = createLogger("addons.name.credentials");
 type SchemaField = {
   key: string;
   sensitive: boolean;
+  boolean: boolean;
   description: string;
   default: string;
 };
@@ -50,6 +51,9 @@ type SchemaField = {
  *     accumulate as the *description* of the next KEY=VALUE line.
  *   - `# @sensitive` marks the next field as sensitive (renders as a
  *     password input and is masked on GET).
+ *   - `# @boolean` marks the next field as a true/false toggle (renders as
+ *     a checkbox, writing the literal strings "true"/"false" — a text box
+ *     you'd have to type "true" into is not "easy to toggle").
  *   - `# ---` resets the accumulator (used as a section separator).
  *   - `KEY=DEFAULT` declares the field; default may be empty.
  */
@@ -57,6 +61,7 @@ function parseEnvSchema(text: string): SchemaField[] {
   const fields: SchemaField[] = [];
   let commentBuffer: string[] = [];
   let sensitive = false;
+  let bool = false;
 
   for (const rawLine of text.split(/\r?\n/)) {
     const line = rawLine.trim();
@@ -70,13 +75,15 @@ function parseEnvSchema(text: string): SchemaField[] {
       if (body === "---") {
         commentBuffer = [];
         sensitive = false;
+        bool = false;
         continue;
       }
       if (body.startsWith("@")) {
         // Annotation line — may have multiple flags on one line
         // (e.g. `# @required @sensitive`). We only care about
-        // @sensitive today; the rest are accepted but ignored.
+        // @sensitive/@boolean today; the rest are accepted but ignored.
         if (/\B@sensitive\b/.test(body)) sensitive = true;
+        if (/\B@boolean\b/.test(body)) bool = true;
         continue;
       }
       commentBuffer.push(body);
@@ -90,11 +97,13 @@ function parseEnvSchema(text: string): SchemaField[] {
     fields.push({
       key,
       sensitive,
+      boolean: bool,
       description: commentBuffer.join(" ").trim(),
       default: def,
     });
     commentBuffer = [];
     sensitive = false;
+    bool = false;
   }
   return fields;
 }
@@ -132,11 +141,17 @@ export const GET: RequestHandler = async (event) => {
     return {
       key: f.key,
       sensitive: f.sensitive,
+      boolean: f.boolean,
       description: f.description,
       default: f.default,
       set,
       secret: { envKey: f.key, present: set },
-      value: "",
+      // Every other field stays blank on GET (the drawer shows `default` as
+      // a placeholder instead). A boolean checkbox can't work that way — an
+      // unchecked box reads as "off", not "unset" — so it needs the actual
+      // current value. Booleans are never @sensitive, so this never echoes
+      // a secret back to the browser.
+      value: f.boolean ? (set ? (stored as string) : f.default) : "",
     };
   });
 

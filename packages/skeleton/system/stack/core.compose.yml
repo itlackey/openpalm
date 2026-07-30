@@ -134,6 +134,18 @@ services:
       # The UI's Host-header allowlist reads this to decide whether it is
       # allowed to be reached by a name other than localhost.
       OP_UI_BIND_ADDRESS: ${OP_UI_BIND_ADDRESS:-127.0.0.1}
+      # Voice LAN-access opt-in (default off). The entrypoint has no OP_HOME
+      # in-container, so it cannot read state/stack.env itself — this
+      # interpolation is the only way the resolved value reaches it, the same
+      # pattern OP_UI_BIND_ADDRESS above uses. ON: the entrypoint's start_ui
+      # stops setting OP_UI_NO_LOCAL_VOICE=1 and instead sets
+      # OP_VOICE_URL=http://voice:8880 (Docker DNS, voice's FIXED INTERNAL
+      # port — see services.compose.yml OP_VOICE_PORT — reachable ONLY
+      # because voice.compose.lan.yml grants voice this assistant_net
+      # membership on the same opt-in). OFF (default): behavior is unchanged
+      # — this co-process fails closed on voice regardless of readable stack
+      # state (packages/ui/.../features.ts canServeLocalVoice).
+      OP_VOICE_LAN_ACCESS: ${OP_VOICE_LAN_ACCESS:-false}
       # Provider credentials live in OpenCode's auth.json (bind-mounted
       # below) — NOT in this env block. The Connections tab and the setup
       # wizard both call OpenCode's PUT /auth/{providerID}; ai-sdk picks

@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, describe, expect, test } from 'vitest';
 import {
@@ -7,8 +7,11 @@ import {
   isLargeImageTag,
   resolveDefaultProfile,
   setJob,
+  voiceHostPort,
+  voiceUpstreamUrl,
 } from './bring-up.js';
 import { addonProfileId, type AddonProfile } from '@openpalm/lib';
+import { makeTempDir, seedSecretsEnv } from '$lib/server/test-helpers.js';
 
 afterEach(() => {
   _resetJobs();
@@ -41,6 +44,62 @@ describe('static voice fallback overlays (packages/skeleton/system/stack/)', () 
       expect(yaml).toContain(`  ${svc}:`);
     }
     expect(yaml.match(/user: ""/g)?.length).toBe(3);
+  });
+});
+
+describe('voiceHostPort', () => {
+  test('falls back to 8880 with no env at all', () => {
+    expect(voiceHostPort({}, {})).toBe(8880);
+  });
+
+  test('an explicit live env value wins', () => {
+    expect(voiceHostPort({ OP_VOICE_PORT_HOST: '9001' }, {})).toBe(9001);
+  });
+
+  test('falls back to the persisted stack.env value when live env has none', () => {
+    // Compose itself reads OP_VOICE_PORT_HOST ONLY from state/stack.env (its
+    // --env-file) — an operator who sets it there per this function's own
+    // doc comment must get the SAME answer this resolver gives.
+    expect(voiceHostPort({}, { OP_VOICE_PORT_HOST: '9002' })).toBe(9002);
+  });
+
+  test('live env beats persisted stack.env, matching resolveHostUiPort', () => {
+    expect(
+      voiceHostPort({ OP_VOICE_PORT_HOST: '9001' }, { OP_VOICE_PORT_HOST: '9002' })
+    ).toBe(9001);
+  });
+
+  test('a non-numeric or zero value falls back to 8880 rather than NaN', () => {
+    expect(voiceHostPort({ OP_VOICE_PORT_HOST: 'nope' }, {})).toBe(8880);
+    expect(voiceHostPort({ OP_VOICE_PORT_HOST: '0' }, {})).toBe(8880);
+    expect(voiceHostPort({ OP_VOICE_PORT_HOST: '' }, {})).toBe(8880);
+  });
+});
+
+describe('voiceUpstreamUrl', () => {
+  let homeDir = '';
+
+  afterEach(() => {
+    delete process.env.OP_VOICE_URL;
+    if (homeDir) rmSync(homeDir, { recursive: true, force: true });
+    homeDir = '';
+  });
+
+  test('OP_VOICE_URL wins when set — the container co-process LAN-access path', () => {
+    homeDir = makeTempDir();
+    process.env.OP_VOICE_URL = 'http://voice:8880';
+    expect(voiceUpstreamUrl(homeDir)).toBe('http://voice:8880');
+  });
+
+  test('falls back to the loopback port when OP_VOICE_URL is unset', () => {
+    homeDir = makeTempDir();
+    expect(voiceUpstreamUrl(homeDir)).toBe('http://127.0.0.1:8880');
+  });
+
+  test('the loopback fallback honours a persisted OP_VOICE_PORT_HOST', () => {
+    homeDir = makeTempDir();
+    seedSecretsEnv(homeDir, 'OP_VOICE_PORT_HOST=9123\n');
+    expect(voiceUpstreamUrl(homeDir)).toBe('http://127.0.0.1:9123');
   });
 });
 
