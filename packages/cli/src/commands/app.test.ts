@@ -224,8 +224,15 @@ function uiChildSpawn(calls: CapturedSpawn[], port: number): CapturedSpawn | und
   return calls.find((c) => c.env?.PORT === String(port));
 }
 
+/**
+ * The browser open is the only capture with no env. It targets the ONE loopback
+ * spelling every entry point now uses — the literal IP, not `localhost`. See
+ * resolveUiLoopbackHost: the two spellings are different cookie jars, so a
+ * session established under one is simply not sent to the other, and switching
+ * between `openpalm` and `openpalm admin` used to demand a second login.
+ */
 function browserSpawn(calls: CapturedSpawn[], port: number): CapturedSpawn | undefined {
-  return calls.find((c) => c.env === undefined && c.argv.includes(`http://localhost:${port}`));
+  return calls.find((c) => c.env === undefined && c.argv.includes(`http://127.0.0.1:${port}`));
 }
 
 /**
@@ -245,7 +252,7 @@ async function runApp(): Promise<{ error?: unknown }> {
 
 describe('openpalm app on a not-installed OP_HOME (#486 stack-less app entry)', () => {
   it(
-    'serves an empty client UI on canonical localhost without changing its loopback bind',
+    'serves an empty client UI on the canonical loopback spelling without changing its bind',
     async () => {
       seedServeHome();
       process.env.OP_HOST_UI_PORT = '4711';
@@ -261,11 +268,11 @@ describe('openpalm app on a not-installed OP_HOME (#486 stack-less app entry)', 
       );
       expect(child.env?.PORT).toBe('4711');
       expect(child.env?.HOST).toBe('127.0.0.1');
-      // ORIGIN is pinned to the ADDRESS the child bound (127.0.0.1), not the
-      // name the browser is sent to (`browserSpawn` below still opens
-      // http://localhost:4711). SvelteKit compares ORIGIN against the request's
-      // Origin header, and a loopback-bound process must accept the origin it
-      // actually serves — see resolveUiListenEnv in network-contract.ts.
+      // ORIGIN is pinned to the ADDRESS the child bound, which is now also the
+      // address the browser is sent to. SvelteKit compares ORIGIN against the
+      // request's Origin header, so the bind, the printed URL and the browser
+      // open all have to agree on one spelling — see resolveUiListenEnv in
+      // network-contract.ts and resolveUiLoopbackHost in ui-server.ts.
       expect(child.env?.ORIGIN).toBe('http://127.0.0.1:4711');
       expect(child.env?.OP_ENABLE_ADMIN).toBeUndefined();
       expect(child.cwd).toBeDefined();
@@ -279,11 +286,15 @@ describe('openpalm app on a not-installed OP_HOME (#486 stack-less app entry)', 
 
       const browser = await waitFor(
         () => browserSpawn(calls, 4711),
-        'canonical localhost browser open',
+        'canonical loopback browser open',
         () => run.error,
       );
-      expect(browser.argv).toContain('http://localhost:4711');
-      expect(browser.argv.some((arg) => arg.includes('127.0.0.1:4711'))).toBe(false);
+      // One spelling, everywhere: `openpalm` opened `localhost` while `openpalm
+      // admin` and Electron opened `127.0.0.1`, and because those are separate
+      // cookie jars, switching commands silently demanded a second login. The
+      // literal IP also can't resolve to ::1 while the listener is IPv4-only.
+      expect(browser.argv).toContain('http://127.0.0.1:4711');
+      expect(browser.argv.some((arg) => arg.includes('localhost'))).toBe(false);
       expect(fetchedUrls).toContain('http://127.0.0.1:4711/api/runtime');
       expect(fetchedUrls).toContain('http://127.0.0.1:4711/health');
       // The command promise must not have rejected — it stays running as a

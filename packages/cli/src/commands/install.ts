@@ -13,6 +13,7 @@ import {
 	resolveConfigDir,
 	ensureHomeDirs,
 	runHomeMigrations,
+	UI_LOOPBACK_HOST,
 	hasMaterializedLocalInstall,
 	hasAnyStackEnvFile,
 	resolveBackupsDirFor,
@@ -390,7 +391,12 @@ export function wizardUiServerOptions(
 async function runWizardInstall(noOpen: boolean): Promise<void> {
 	await requireDocker();
 	const options = wizardUiServerOptions(noOpen);
-	console.log(`Setup wizard: http://localhost:${options.port}/setup`);
+	// Same loopback spelling the server binds, the browser is opened to, and
+	// ORIGIN is pinned to (UI_LOOPBACK_HOST). A wizard session established on
+	// `localhost` is a different cookie jar from the one `openpalm admin` later
+	// serves on `127.0.0.1`, which is how finishing setup used to hand the
+	// operator a login prompt on their very next command.
+	console.log(`Setup wizard: http://${UI_LOOPBACK_HOST}:${options.port}/setup`);
 	const { startUIServer } = await import('../lib/ui-server.ts');
 	await startUIServer(options);
 }
