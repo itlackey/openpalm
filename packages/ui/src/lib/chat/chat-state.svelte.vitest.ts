@@ -1543,6 +1543,37 @@ describe('live SSE updates', () => {
 
     expect(mocked.listSessions).toHaveBeenCalledTimes(1);
   });
+
+  // A connect that lands WHILE the initial load is still in flight must not
+  // start a second one: loadSessions() bumps sessionsGeneration on entry, so
+  // the in-flight call would abandon its own result and never set
+  // sessionsLoaded. The chat route resolver treats an endpoint without that
+  // flag as non-authoritative and drops ?session= from the URL — which is
+  // exactly how this regressed the PWA onboarding session-restore e2e.
+  it('does not supersede an in-flight session load when connect arrives mid-load', async () => {
+    let releaseSessions: (value: ReturnType<typeof session>[]) => void = () => {};
+    mocked.listSessions.mockReturnValueOnce(
+      new Promise((resolve) => {
+        releaseSessions = resolve;
+      }),
+    );
+    mocked.getSessionMessages.mockResolvedValueOnce([]);
+
+    const changed = chat.onEndpointChanged('alpha');
+    await new Promise<void>((r) => setTimeout(r, 0));
+    expect(chat.byEndpoint.get('alpha')?.sessionsLoading).toBe(true);
+
+    // Connect arrives before the list resolves — the real-world ordering.
+    sseCaptured.handlers?.onConnect?.();
+    await new Promise<void>((r) => setTimeout(r, 0));
+
+    releaseSessions([session('s1', 1000)]);
+    await changed;
+
+    expect(mocked.listSessions).toHaveBeenCalledTimes(1);
+    expect(chat.byEndpoint.get('alpha')?.sessionsLoaded).toBe(true);
+    expect(chat.byEndpoint.get('alpha')?.sessions.map((s) => s.id)).toEqual(['s1']);
+  });
 });
 
 describe('session.error handling', () => {

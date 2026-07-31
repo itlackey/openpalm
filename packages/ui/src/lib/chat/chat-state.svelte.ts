@@ -390,6 +390,13 @@ class ChatService {
 				// already succeeded: nothing here changed, so re-fetching is pure
 				// waste on the (overwhelmingly common) already-healthy path.
 				const state = this.byEndpoint.get(endpointId);
+				// A load already in flight must be left alone. loadSessions() bumps
+				// sessionsGeneration on entry, so starting a second one makes the
+				// FIRST abandon its own result — it returns without ever setting
+				// sessionsLoaded. The route resolver reads that flag to decide
+				// whether the session list is authoritative, so superseding the
+				// initial load drops the session out of the chat URL entirely.
+				if (state?.sessionsLoading) return;
 				if (!state || state.sessionsError || !state.sessionsLoaded) {
 					void this.loadSessions();
 				}

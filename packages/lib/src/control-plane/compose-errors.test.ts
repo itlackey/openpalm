@@ -51,6 +51,31 @@ describe("mapDockerError", () => {
     expect(mapDockerError("pull access denied for openpalm/assistant, repository does not exist or may require 'docker login'").code).toBe("image_pull_failed");
   });
 
+  it("states the registry-access requirement on every pull failure", () => {
+    // Install and update always pull, so an offline host cannot complete
+    // either — even with the images already in the local daemon. The message
+    // must say so outright, or the failure reads as a transient glitch.
+    for (const stderr of [
+      "pull access denied for openpalm/assistant, repository does not exist or may require 'docker login'",
+      "dial tcp 140.82.121.4:443: connect: network is unreachable",
+      "manifest unknown: manifest unknown",
+    ]) {
+      const mapped = mapDockerError(stderr);
+      expect(mapped.code).toBe("image_pull_failed");
+      expect(mapped.message).toContain("require internet access to the container registry");
+      expect(mapped.message).toContain("cannot run offline");
+    }
+  });
+
+  it("names the docker login remedy only for a Docker Hub rate limit", () => {
+    const limited = mapDockerError("toomanyrequests: You have reached your pull rate limit");
+    expect(limited.code).toBe("image_pull_failed");
+    expect(limited.message).toContain("docker login");
+
+    const offline = mapDockerError("dial tcp 140.82.121.4:443: connect: network is unreachable");
+    expect(offline.message).not.toContain("docker login");
+  });
+
   it("maps resource-exhaustion (OOM) failures", () => {
     expect(mapDockerError("container exited: OOMKilled").code).toBe("resource_exhausted");
   });
