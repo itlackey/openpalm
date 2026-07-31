@@ -360,6 +360,7 @@ export {
 
 // ── Version variables (stack.env image tags) ─────────────────────────────
 export {
+  MANAGED_VERSION_MARKERS,
   SERVICE_VERSION_KEYS,
   VERSION_DEFAULTS,
   isVersionKey,

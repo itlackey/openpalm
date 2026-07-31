@@ -29,6 +29,7 @@ import { stackEnvPath } from "./paths.js";
 import { writeFileAtomic } from "./fs-atomic.js";
 import { resolveOperatorIds, hasUsableOperatorId, type OperatorIds } from "./operator-ids.js";
 import { STACK_DEFAULTS } from "./defaults.js";
+import { MANAGED_VERSION_MARKERS, SERVICE_VERSION_KEYS, VERSION_DEFAULTS } from "./versions.js";
 
 import {
   readCoreCompose,
@@ -423,15 +424,20 @@ export function generateFallbackSystemEnv(state: ControlPlaneState): string {
     "",
     "# ── Images ──────────────────────────────────────────────────────────",
     `OP_IMAGE_NAMESPACE=${process.env.OP_IMAGE_NAMESPACE ?? "openpalm"}`,
-    // Service version tags are deliberately NOT seeded here. ensureVersionDefaults
-    // owns them because it writes each key together with its
-    // OP_MANAGED_<SERVICE>_VERSION marker, and that pairing is what
-    // advanceManagedImageVersions uses to tell a release-managed default from a
-    // pin the operator chose. Emitting the values here without their markers
-    // would make every fresh install look explicitly pinned on all four
-    // services, so updates would never advance them — and, because the keys
-    // would no longer be missing, ensureVersionDefaults could never seed the
-    // markers to repair it.
+    "# Docker image tags (exact tag, \"latest\", or \"next\" — no semver ranges).",
+    // Each default is emitted WITH its OP_MANAGED_<SERVICE>_VERSION marker.
+    // The pair is the contract advanceManagedImageVersions reads to tell a
+    // release-managed default from a pin the operator chose: a version whose
+    // marker is absent (or no longer matches) is treated as an explicit pin and
+    // is never advanced. Seeding the bare values alone would therefore leave
+    // every fresh install permanently stuck on its original tags — and, since
+    // the keys would no longer be missing, ensureVersionDefaults could not seed
+    // the markers afterwards to repair it. The values themselves are required:
+    // the compose files reference them as ${OP_*_VERSION:?}.
+    ...SERVICE_VERSION_KEYS.flatMap((key) => [
+      `${key}=${VERSION_DEFAULTS[key]}`,
+      `${MANAGED_VERSION_MARKERS[key]}=${VERSION_DEFAULTS[key]}`
+    ]),
     "",
     "# ── Enabled addons (comma-separated; managed via the Add-ons UI / CLI) ──",
     "OP_ENABLED_ADDONS=",

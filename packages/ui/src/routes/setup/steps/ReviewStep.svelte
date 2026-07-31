@@ -452,12 +452,6 @@
     flex-shrink: 0;
   }
 
-  .rerun-note {
-    font-size: var(--s-type-deed);
-    color: var(--s-ink-3);
-    font-style: italic;
-  }
-
   .password-error {
     font-size: var(--s-type-deed);
     color: var(--s-seal);
