@@ -6,17 +6,10 @@ vi.mock('$lib/api.js', () => ({
 	applyChanges: vi.fn(),
 	applyServiceUpdate: vi.fn(),
 	fetchVersions: vi.fn(),
-	patchVersions: vi.fn(),
-	updateUiBuild: vi.fn()
+	patchVersions: vi.fn()
 }));
 
-import {
-	applyChanges,
-	applyServiceUpdate,
-	fetchVersions,
-	patchVersions,
-	updateUiBuild
-} from '$lib/api.js';
+import { applyChanges, applyServiceUpdate, fetchVersions, patchVersions } from '$lib/api.js';
 import type { ServiceEntry } from '$lib/types.js';
 import UpdatesTab from './UpdatesTab.svelte';
 
@@ -26,8 +19,7 @@ const versionsResponse = {
 		OP_GUARDIAN_VERSION: 'latest',
 		OP_PORTAL_VERSION: 'latest',
 		OP_VOICE_VERSION: '0.13.0'
-	},
-	channel: 'latest' as const
+	}
 };
 
 function service(service: string, state: string, image: string, health: string): ServiceEntry {
@@ -72,14 +64,6 @@ beforeEach(() => {
 	vi.mocked(applyChanges).mockResolvedValue(undefined);
 	vi.mocked(patchVersions).mockResolvedValue(undefined);
 	onRefresh.mockResolvedValue(undefined);
-	vi.mocked(updateUiBuild).mockResolvedValue({
-		ok: true,
-		updated: true,
-		latestVersion: '0.13.0-beta.6',
-		restarting: false,
-		pendingRestart: false,
-		redownloadRequired: false
-	});
 	window.openpalm = {
 		launchOnLoginStatus: vi.fn().mockResolvedValue({ supported: false, enabled: false }),
 		setLaunchOnLogin: vi.fn()
@@ -126,31 +110,17 @@ describe('UpdatesTab', () => {
 		await page.getByText('Advanced image tags').click();
 		const assistantTag = page.getByRole('textbox', { name: 'OP_ASSISTANT_VERSION' });
 		await assistantTag.fill('100.0.0');
-		await page.getByRole('combobox', { name: 'UI update channel' }).selectOptions('next');
 		await page.getByRole('button', { name: 'Save advanced settings' }).click();
 
 		await vi.waitFor(() => {
-			expect(patchVersions).toHaveBeenCalledWith(
-				{
-					OP_ASSISTANT_VERSION: '100.0.0',
-					OP_GUARDIAN_VERSION: 'latest',
-					OP_PORTAL_VERSION: 'latest',
-					OP_VOICE_VERSION: '0.13.0'
-				},
-				'next'
-			);
+			expect(patchVersions).toHaveBeenCalledWith({
+				OP_ASSISTANT_VERSION: '100.0.0',
+				OP_GUARDIAN_VERSION: 'latest',
+				OP_PORTAL_VERSION: 'latest',
+				OP_VOICE_VERSION: '0.13.0'
+			});
 		});
 		expect(applyServiceUpdate).not.toHaveBeenCalled();
-	});
-
-	test('keeps the independent UI update action', async () => {
-		renderUpdates();
-
-		await page.getByRole('button', { name: 'Update UI' }).click();
-
-		await vi.waitFor(() => {
-			expect(updateUiBuild).toHaveBeenCalledOnce();
-		});
 	});
 
 	test('keeps Electron launch-on-login settings', async () => {

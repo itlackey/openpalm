@@ -4,15 +4,17 @@
 
 ## Rule
 
-Release images are complete at build time. Container startup must not depend on
-installing ordinary runtime content from npm. The one retained runtime package
-installer is Guardian's explicit thin-host override path.
+Every release artifact — container image, CLI binary, desktop app — is
+complete at build time. None of them performs a runtime content download.
+Container startup must not depend on installing ordinary runtime content from
+npm. The one retained runtime package installer is Guardian's explicit
+thin-host override path.
 
 ## Delivery Paths
 
 | Artifact | Delivery | Version source | Runtime behavior |
 |---|---|---|---|
-| Host UI | GitHub Release `openpalm-host-assets-<version>.tar.gz` into `OP_HOME/data/ui` | Coordinated platform release/channel resolution | SHA-256-verified and atomically swapped by the host control plane |
+| Host UI + skeleton | Embedded in the CLI binary and in the Electron app bundle | Artifact build version | Materialized into `OP_HOME/data/ui` (and skeleton into `OP_HOME`) from the artifact's own embedded copy; no download, no verification step — the artifact is the trust boundary |
 | Assistant UI | Baked into `/opt/openpalm/ui` during image build | `PLATFORM_VERSION` build arg | Entrypoint supervises the baked build; no runtime install or version override |
 | Assistant tools | Baked from `containers/assistant/tools/package.json` | Exact manifest pins | No boot-time update |
 | Guardian package | Baked into `/opt/openpalm/guardian-pkg` | `GUARDIAN_VERSION` build arg | Existing-version check is normally a no-op; `OP_GUARDIAN_NPM_VERSION` enables an explicit override install |
@@ -23,14 +25,14 @@ Changing either baked assistant artifact requires a new assistant image.
 
 ## Host Skeleton Resolution
 
-Host install/update code resolves skeleton source in this order:
+Host install code resolves skeleton source in this order:
 
 1. `OPENPALM_REPO_ROOT` for a source checkout
-2. `OPENPALM_SKELETON_DIR` for Electron bundled resources
-3. the source-relative repository fallback
-4. an integrity-checked GitHub host-assets release when no local source is available
+2. the artifact's own embedded/bundled skeleton (packed into the CLI binary or
+   the Electron app bundle)
 
-The Electron bundle keeps an offline skeleton seed for a fresh desktop install.
+There is no remote fallback: every artifact carries its own skeleton copy, so
+resolution never leaves local disk.
 
 ## Guardian Thin Host
 
@@ -64,10 +66,12 @@ on-disk package version in the published tarball.
 
 ### Host UI
 
-- Installed under `OP_HOME/data/ui`
+- Materialized under `OP_HOME/data/ui` from the CLI binary's or Electron
+  bundle's own embedded copy
 - Served by `openpalm app`, `openpalm admin`, or Electron
 - Defaults to host port `3880`
-- Updated by the host control plane with registry integrity verification
+- Updated by updating the artifact itself (a new CLI binary, or a new
+  electron-updater release); there is no separate in-place UI update
 
 ### Assistant UI
 
@@ -86,7 +90,6 @@ on-disk package version in the published tarball.
 
 - A release build without the version needed to bake an artifact must fail or
   be explicitly identified as an unversioned local/dev build.
-- Host asset downloads verify the GitHub release checksum and manifest before activation.
 - Guardian override installation failure is fatal after bounded retries.
 - No production runtime silently substitutes `latest` for a missing exact
   artifact version.
@@ -100,7 +103,7 @@ on-disk package version in the published tarball.
 | `containers/guardian/Dockerfile` | Bakes candidate-local Guardian and tools |
 | `containers/guardian/entrypoint.sh` | Guardian thin-host override path |
 | `containers/portal/Dockerfile` | Packs candidate-local portal SDK and adapters |
-| `packages/lib/src/control-plane/ui-assets.ts` | Host UI and skeleton delivery |
+| `packages/lib/src/control-plane/ui-assets.ts` | Local seeding/materialization of the embedded host UI and skeleton into `OP_HOME` |
 | `scripts/set-version.mjs` | Shared manifest version stamping |
 | `scripts/bump-unit.mjs` | Release-unit stamping |
 | `.github/workflows/release.yml` | Publish/build DAG |

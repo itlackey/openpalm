@@ -13,7 +13,6 @@ const required = [
   'openpalm-cli-darwin-x64',
   'openpalm-cli-darwin-arm64',
   'openpalm-cli-windows-x64.exe',
-  `openpalm-host-assets-${version}.tar.gz`,
   'checksums-sha256.txt',
 ];
 

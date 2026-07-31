@@ -55,7 +55,7 @@ The assistant container runs:
 The UI reaches OpenCode through its own same-origin `/oc` proxy. The assistant
 image also contains the default tool packages; startup does not download or
 resolve a runtime UI tarball. The host materializes skeleton files from the
-coordinated GitHub host-assets release.
+CLI's or Electron app's own embedded copy — there is no runtime download.
 
 With the `networkAccess` toggle on, this UI is reachable from another device at
 `http://<name>.local:3800` or `http://<host-ip>:3800` — see

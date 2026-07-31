@@ -20,7 +20,8 @@ import {
 	resolveBackupsDirFor,
 	resolveRuntimeFiles
 } from '@openpalm/lib';
-import { applyHomeSeed, seedUiBuild } from '@openpalm/lib';
+import { applyHomeSeed } from '@openpalm/lib';
+import { materializeEmbeddedUi, seedSkeletonFromEmbedded } from '../lib/embedded-assets.ts';
 import {
 	backupOpenPalmHome,
 	pruneBackupDirs,
@@ -32,7 +33,6 @@ import {
 	createLogger,
 	resolveRequestedImageTag,
 	ensureAkmUserEnv,
-	PLATFORM_VERSION,
 	runDeploy,
 	markSetupComplete,
 	writeSystemEnv,
@@ -304,33 +304,28 @@ async function prepareInstallFiles(
 		logger.debug('failed to write host.json', { error: String(err) });
 	}
 
-	// Seed OP_HOME from the bundled .openpalm/ source (skeleton data/ + managed
-	// compose, stamp-gated/skip-existing). This is the PRE-WIZARD seed and is
-	// load-bearing: the wizard's UI child reads seeded
-	// system/stack assets at boot (runStartupApply -> resolveRuntimeFiles), and
-	// the bundled-asset fallback does not survive into the packaged UI build, so
-	// the live seeded copy must exist before /setup is served.
+	// Seed OP_HOME from the embedded skeleton (falling back to a local repo
+	// checkout / OPENPALM_SKELETON_DIR / OPENPALM_REPO_ROOT — see
+	// embedded-assets.ts). This is the PRE-WIZARD seed and is load-bearing: the
+	// wizard's UI child reads seeded system/stack assets at boot
+	// (runStartupApply -> resolveRuntimeFiles), and the bundled-asset fallback
+	// does not survive into the packaged UI build, so the live seeded copy must
+	// exist before /setup is served.
 	//
 	// NOT redundant with applyInstall's applyHome: the deploy paths (runFileInstall
 	// and the update-mode redeploy) reach applyHome via runDeploy -> applyInstall,
 	// which re-seeds idempotently; but the interactive wizard serves BEFORE any
 	// applyInstall runs (deploy happens later from inside the UI), so this explicit
 	// seed is the only one that runs before the wizard comes up.
-	//
-	// Stamp with PLATFORM_VERSION (not `version`, the GitHub install ref like
-	// "v0.12.5"/"main") so this pre-wizard seed and applyHome's seed agree on the
-	// stamp written into .skeleton-version.
-	await applyHomeSeed(PLATFORM_VERSION, homeDir, configDir, dataDir);
+	await seedSkeletonFromEmbedded(applyHomeSeed, homeDir, configDir, dataDir);
 	runHomeMigrations(homeDir);
-	// Install UI build to data/ui/ (local build if available, else the
-	// coordinated GitHub host-assets release matching PLATFORM_VERSION.
-	// NON-FATAL: a download hiccup must not abort the install — the stack still
-	// comes up and the UI is (re)seeded by a CLI UI supervisor, `update`, or
-	// Electron launch. (Also keeps unit tests off the network when no local build.)
+	// Materialize the embedded UI build into data/ui — no network, no backup:
+	// this binary's build wins unconditionally once its stamp differs from
+	// what's already there (a no-op on a repeat install at the same version).
 	try {
-		await seedUiBuild(PLATFORM_VERSION, dataDir);
+		await materializeEmbeddedUi(dataDir);
 	} catch (err) {
-		logger.warn('UI build not seeded; it will be installed on first UI launch/update', {
+		logger.warn('UI build not materialized; it will be installed on first UI launch', {
 			error: String(err)
 		});
 	}

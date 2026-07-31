@@ -3,7 +3,6 @@ import {
   PLATFORM_VERSION,
   normalizeVersion,
   isPrerelease,
-  distTagForVersion,
   isComparableSemver,
   compareComparableVersions,
   majorVersionOf,
@@ -50,15 +49,6 @@ describe('isPrerelease', () => {
     expect(isPrerelease('0.12.0+build.5')).toBe(false);
     expect(isPrerelease('latest')).toBe(false);
     expect(isPrerelease(null)).toBe(false);
-  });
-});
-
-describe('distTagForVersion', () => {
-  it('maps prerelease -> next and stable -> latest', () => {
-    expect(distTagForVersion('0.12.0-rc.1')).toBe('next');
-    expect(distTagForVersion('v0.12.0-rc.1')).toBe('next');
-    expect(distTagForVersion('0.12.0')).toBe('latest');
-    expect(distTagForVersion('latest')).toBe('latest');
   });
 });
 

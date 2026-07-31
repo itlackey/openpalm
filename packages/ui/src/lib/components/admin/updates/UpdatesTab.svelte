@@ -6,8 +6,6 @@
 		applyServiceUpdate,
 		fetchVersions,
 		patchVersions,
-		updateUiBuild,
-		type UpdateChannel,
 		type VersionKey
 	} from '$lib/api.js';
 	import type { ServiceEntry } from '$lib/types.js';
@@ -42,20 +40,79 @@
 		onRefresh: () => Promise<void>;
 	} = $props();
 
+	async function loadUpdaterState(): Promise<void> {
+		const api = window.openpalm?.updater;
+		if (!api) return;
+		try {
+			updater = await api.state();
+			api.onState((next) => {
+				updater = next;
+			});
+		} catch {
+			// Additive surface: never break the tab over it.
+		}
+	}
+
+	async function runUpdaterAction(
+		action: (api: NonNullable<Window['openpalm']>['updater']) => Promise<unknown>
+	): Promise<void> {
+		const api = window.openpalm?.updater;
+		if (!api || updaterBusy) return;
+		updaterBusy = true;
+		try {
+			await action(api);
+			updater = await api.state();
+		} finally {
+			updaterBusy = false;
+		}
+	}
+
+	/** Explicit, user-initiated check — unlike the silent ones, it reports errors. */
+	const checkForAppUpdate = () => runUpdaterAction((api) => api!.check());
+	const downloadAppUpdate = () => runUpdaterAction((api) => api!.download());
+	const installAppUpdate = () => runUpdaterAction((api) => api!.quitAndInstall());
+
+	const updaterSummary = $derived.by(() => {
+		if (!updater) return '';
+		switch (updater.status) {
+			case 'checking':
+				return 'Checking for updates…';
+			case 'available':
+				return `Version ${updater.availableVersion} is available.`;
+			case 'not-available':
+				return 'OpenPalm is up to date.';
+			case 'downloading':
+				return updater.percent === null
+					? 'Downloading…'
+					: `Downloading… ${Math.round(updater.percent)}%`;
+			case 'downloaded':
+				return `Version ${updater.availableVersion} is ready to install.`;
+			case 'unsupported':
+				return 'This install updates by downloading a new build.';
+			default:
+				return '';
+		}
+	});
+
 	let loading = $state(true);
 	let loadError = $state('');
 	let configured = $state<Record<VersionKey, string>>(emptyConfigured());
-	let channel = $state<UpdateChannel>('latest');
 
 	type Operation =
 		| { kind: 'service'; service: string }
-		| { kind: 'stack' | 'configuration' | 'ui' }
+		| { kind: 'stack' | 'configuration' }
 		| null;
 	type Notice = { tone: 'success' | 'error'; text: string } | null;
 	let operation = $state<Operation>(null);
 	let notice = $state<Notice>(null);
 
 	let inElectron = $state(false);
+	// Desktop application update surface (#572). The silent startup/focus checks
+	// never surface an error, so this is the ONLY place a user can retry after an
+	// offline launch, read why a check failed, or reach the manual download page
+	// on a platform that cannot self-install.
+	let updater = $state<UpdaterState | null>(null);
+	let updaterBusy = $state(false);
 	let notificationsEnabled = $state(false);
 	let replyPreviewEnabled = $state(false);
 	let launchOnLoginSupported = $state(false);
@@ -66,6 +123,7 @@
 
 	onMount(() => {
 		inElectron = typeof window.openpalm !== 'undefined';
+		void loadUpdaterState();
 		notificationsEnabled = desktopNotifyEnabled();
 		replyPreviewEnabled = desktopReplyPreviewEnabled();
 		void loadVersions();
@@ -78,7 +136,6 @@
 		try {
 			const data = await fetchVersions();
 			configured = { ...data.configured };
-			channel = data.channel;
 		} catch (error) {
 			loadError = `Failed to load versions: ${error instanceof Error ? error.message : String(error)}`;
 		} finally {
@@ -138,39 +195,9 @@
 		operation = { kind: 'configuration' };
 		notice = null;
 		try {
-			await patchVersions(versions, channel);
+			await patchVersions(versions);
 			configured = versions;
 			notice = { tone: 'success', text: 'Configured image tags saved.' };
-		} catch (error) {
-			notice = { tone: 'error', text: error instanceof Error ? error.message : String(error) };
-		} finally {
-			operation = null;
-		}
-	}
-
-	async function updateUi(): Promise<void> {
-		if (busy) return;
-		operation = { kind: 'ui' };
-		notice = null;
-		try {
-			const result = await updateUiBuild();
-			if (result.redownloadRequired) {
-				notice = { tone: 'success', text: `A newer UI needs OpenPalm desktop harness v${result.requiredHarnessContract ?? 'newer'}. Re-download the desktop app to update.` };
-			} else if (!result.updated) {
-				notice = { tone: 'success', text: result.latestVersion
-					? `No UI update was installed. Current channel version: ${result.latestVersion}.`
-					: 'No UI update was installed.' };
-			} else if (result.pendingRestart) {
-				void window.openpalm?.restartUiServer?.();
-				notice = { tone: 'success', text: 'UI updated. Restarting...' };
-			} else if (result.restarting) {
-				setTimeout(() => {
-					location.href = '/';
-				}, 4_000);
-				notice = { tone: 'success', text: 'UI updated. Reloading shortly...' };
-			} else {
-				notice = { tone: 'success', text: 'UI downloaded. Restart the admin UI to apply it.' };
-			}
 		} catch (error) {
 			notice = { tone: 'error', text: error instanceof Error ? error.message : String(error) };
 		} finally {
@@ -211,14 +238,6 @@
 				aria-busy={operation?.kind === 'stack'}
 			>
 				{#if operation?.kind === 'stack'}<Spinner /> Updating stack...{:else}Update OpenPalm stack{/if}
-			</button>
-			<button
-				class="btn btn-outline"
-				onclick={updateUi}
-				disabled={busy}
-				aria-busy={operation?.kind === 'ui'}
-			>
-				{#if operation?.kind === 'ui'}<Spinner /> Updating UI...{:else}Update UI{/if}
 			</button>
 		</div>
 	</div>
@@ -318,13 +337,6 @@
 						</div>
 
 						<div class="config-actions">
-							<label class="channel-field">
-								<span>UI update channel</span>
-								<select bind:value={channel} aria-label="UI update channel">
-									<option value="latest">Stable</option>
-									<option value="next">Prerelease</option>
-								</select>
-							</label>
 							<button
 								class="btn btn-outline"
 								type="submit"
@@ -342,6 +354,58 @@
 		{#if inElectron}
 			<section class="desktop-settings" aria-labelledby="desktop-settings-title">
 				<h3 id="desktop-settings-title" class="section-heading">Desktop settings</h3>
+
+				{#if updater}
+					<div class="desktop-setting-row">
+						<div class="setting-label">Application updates</div>
+						<p class="setting-hint">
+							OpenPalm {updater.currentVersion} · {updater.channel} channel
+							{#if updaterSummary}— {updaterSummary}{/if}
+						</p>
+
+						{#if updater.error}
+							<p class="setting-hint setting-hint--error" role="alert">{updater.error}</p>
+						{/if}
+
+						<div class="updater-actions">
+							{#if updater.supported}
+								{#if updater.status === 'available'}
+									<button
+										type="button"
+										class="updater-action"
+										onclick={downloadAppUpdate}
+										disabled={updaterBusy}>Download update</button
+									>
+								{:else if updater.status === 'downloaded'}
+									<button
+										type="button"
+										class="updater-action"
+										onclick={installAppUpdate}
+										disabled={updaterBusy}>Restart and update</button
+									>
+								{/if}
+								<button
+									type="button"
+									class="updater-action"
+									onclick={checkForAppUpdate}
+									disabled={updaterBusy || updater.status === 'downloading'}
+									>Check for updates</button
+								>
+							{:else}
+								<!-- Auto-update is unavailable here (macOS until it is signed and
+								     notarized, the portable Windows archive, and dev runs), so the
+								     only honest action is the manual download. -->
+								<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
+								<a
+									class="updater-action"
+									href={updater.releasesUrl}
+									target="_blank"
+									rel="noopener noreferrer">Open releases page</a
+								>
+							{/if}
+						</div>
+					</div>
+				{/if}
 
 				<div class="desktop-setting-row">
 					<div class="setting-label">Launch on login</div>
@@ -422,6 +486,30 @@
 </div>
 
 <style>
+	.updater-actions {
+		display: flex;
+		flex-wrap: wrap;
+		gap: var(--s-sp-3);
+		margin-top: var(--s-sp-2);
+	}
+	.updater-action {
+		background: none;
+		border: 0;
+		cursor: pointer;
+		padding: 0;
+		color: var(--s-seal);
+		font-family: var(--s-font-mono);
+		font-size: var(--s-type-mark);
+		text-transform: uppercase;
+		letter-spacing: var(--s-track-label);
+		text-decoration: none;
+		border-bottom: var(--s-hair) solid var(--s-seal);
+		transition: opacity var(--s-t-quick) var(--s-ease);
+	}
+	.updater-action:hover:not(:disabled) { opacity: 0.7; }
+	.updater-action:disabled { cursor: default; opacity: 0.5; }
+	.setting-hint--error { color: var(--s-danger, #b3261e); }
+
 	.panel-header,
 	.section-title-row,
 	.config-actions {
@@ -574,8 +662,7 @@
 		gap: var(--s-sp-3) var(--s-sp-4);
 	}
 
-	.version-field,
-	.channel-field {
+	.version-field {
 		display: flex;
 		flex-direction: column;
 		gap: var(--s-sp-1);
@@ -588,8 +675,7 @@
 		color: var(--s-ink-3);
 	}
 
-	.version-field input,
-	.channel-field select {
+	.version-field input {
 		min-width: 0;
 		padding: var(--s-sp-2);
 		border: var(--s-hair) solid var(--s-line);
@@ -601,10 +687,6 @@
 	.config-actions {
 		align-items: flex-end;
 		margin-top: var(--s-sp-4);
-	}
-
-	.channel-field {
-		min-width: 12rem;
 	}
 
 	.desktop-setting-row {

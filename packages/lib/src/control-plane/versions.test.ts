@@ -1,20 +1,18 @@
 /**
- * Unit tests for configured image versions and channel preference.
+ * Unit tests for configured image versions.
  */
 import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
 import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import {
-	readChannelPreference,
-	writeChannelPreference,
 	writeVersions,
 	readVersions,
 	ensureVersionDefaults,
 	advanceManagedImageVersions
 } from './versions.js';
 import type { ControlPlaneState } from './types.js';
-import { distTagForVersion, PLATFORM_VERSION } from './versioning.js';
+import { PLATFORM_VERSION } from './versioning.js';
 
 // ── Harness ──────────────────────────────────────────────────────────────────
 
@@ -69,16 +67,18 @@ describe('version configuration', () => {
 	});
 
 	it('writes latest and next honestly to the state file', () => {
+		// OP_UNRELATED_KEY stands in for any pre-existing stack.env key that
+		// writeVersions has no business touching — it must survive untouched.
 		writeFileSync(
 			join(home.state.homeDir, 'state', 'stack.env'),
-			'OP_UI_CHANNEL=next\nOP_ASSISTANT_VERSION=0.12.0\n'
+			'OP_UNRELATED_KEY=next\nOP_ASSISTANT_VERSION=0.12.0\n'
 		);
 		writeVersions(home.state, {
 			OP_ASSISTANT_VERSION: 'latest',
 			OP_GUARDIAN_VERSION: 'next'
 		});
 		const content = readFileSync(join(home.state.homeDir, 'state', 'stack.env'), 'utf-8');
-		expect(content).toContain('OP_UI_CHANNEL=next');
+		expect(content).toContain('OP_UNRELATED_KEY=next');
 		expect(content).toContain('OP_ASSISTANT_VERSION=latest');
 		expect(content).toContain('OP_GUARDIAN_VERSION=next');
 	});
@@ -125,78 +125,6 @@ describe('version configuration', () => {
 
 		advanceManagedImageVersions(home.state, '0.12.0', '0.13.1');
 
-		expect(readVersions(home.state).OP_ASSISTANT_VERSION).toBe('0.12.0');
-	});
-});
-
-// ── readChannelPreference / writeChannelPreference ───────────────────────────
-
-describe('readChannelPreference', () => {
-	let home: ReturnType<typeof makeState>;
-	beforeEach(() => {
-		home = makeState();
-	});
-	afterEach(() => {
-		home.cleanup();
-	});
-
-	it('defaults to the running platform release channel when unset', () => {
-		expect(readChannelPreference(home.state)).toBe(distTagForVersion(PLATFORM_VERSION));
-	});
-
-	it("reads 'next' from state file", () => {
-		writeFileSync(join(home.state.homeDir, 'state', 'stack.env'), 'OP_UI_CHANNEL=next\n');
-		expect(readChannelPreference(home.state)).toBe('next');
-	});
-
-	it("reads 'latest' from state file", () => {
-		writeFileSync(join(home.state.homeDir, 'state', 'stack.env'), 'OP_UI_CHANNEL=latest\n');
-		expect(readChannelPreference(home.state)).toBe('latest');
-	});
-
-	it('falls back to the platform channel for unrecognized values', () => {
-		writeFileSync(join(home.state.homeDir, 'state', 'stack.env'), 'OP_UI_CHANNEL=bogus\n');
-		expect(readChannelPreference(home.state)).toBe(distTagForVersion(PLATFORM_VERSION));
-	});
-
-	it('falls back to legacy stack.env (dual-read §1a)', () => {
-		writeFileSync(join(home.state.homeDir, 'state', 'stack.env'), 'OP_UI_CHANNEL=next\n');
-		expect(readChannelPreference(home.state)).toBe('next');
-	});
-
-	it('state file wins over legacy', () => {
-		writeFileSync(join(home.state.homeDir, 'state', 'stack.env'), 'OP_UI_CHANNEL=next\n');
-		writeFileSync(join(home.state.homeDir, 'state', 'stack.env'), 'OP_UI_CHANNEL=latest\n');
-		expect(readChannelPreference(home.state)).toBe('latest');
-	});
-});
-
-describe('writeChannelPreference', () => {
-	let home: ReturnType<typeof makeState>;
-	beforeEach(() => {
-		home = makeState();
-	});
-	afterEach(() => {
-		home.cleanup();
-	});
-
-	it('writes to state file and is readable back', () => {
-		writeChannelPreference(home.state, 'next');
-		expect(readChannelPreference(home.state)).toBe('next');
-		writeChannelPreference(home.state, 'latest');
-		expect(readChannelPreference(home.state)).toBe('latest');
-	});
-
-	it('throws on invalid channel', () => {
-		expect(() => writeChannelPreference(home.state, 'alpha')).toThrow(/Invalid channel/);
-		expect(() => writeChannelPreference(home.state, '')).toThrow(/Invalid channel/);
-	});
-
-	it('write is atomic — does not corrupt existing keys in state file', () => {
-		writeVersions(home.state, { OP_ASSISTANT_VERSION: '0.12.0' });
-		writeChannelPreference(home.state, 'next');
-		// Both should be present
-		expect(readChannelPreference(home.state)).toBe('next');
 		expect(readVersions(home.state).OP_ASSISTANT_VERSION).toBe('0.12.0');
 	});
 });

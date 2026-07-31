@@ -1,12 +1,4 @@
-import {
-	type ChannelPreference,
-	isChannelPreference,
-	readChannelPreference,
-	readVersions,
-	SERVICE_VERSION_KEYS,
-	writeChannelPreference,
-	writeVersions
-} from '@openpalm/lib';
+import { readVersions, SERVICE_VERSION_KEYS, writeVersions } from '@openpalm/lib';
 import { withAdminUpdateLock } from '$lib/server/admin-update-lock.js';
 import {
 	errorResponse,
@@ -37,8 +29,7 @@ export const GET: RequestHandler = async (event) => {
 	return jsonResponse(
 		200,
 		{
-			configured: readVersions(state),
-			channel: readChannelPreference(state)
+			configured: readVersions(state)
 		},
 		requestId
 	);
@@ -54,9 +45,7 @@ export const PATCH: RequestHandler = async (event) => {
 	const parsedBody = await parseJsonBody(event.request);
 	if ('error' in parsedBody) return jsonBodyError(parsedBody, requestId);
 
-	const unknownKey = Object.keys(parsedBody.data).find(
-		(key) => key !== 'versions' && key !== 'channel'
-	);
+	const unknownKey = Object.keys(parsedBody.data).find((key) => key !== 'versions');
 	if (unknownKey) {
 		return errorResponse(
 			400,
@@ -96,32 +85,14 @@ export const PATCH: RequestHandler = async (event) => {
 		}
 	}
 
-	let channel: ChannelPreference | undefined;
-	if (parsedBody.data.channel !== undefined) {
-		if (
-			typeof parsedBody.data.channel !== 'string' ||
-			!isChannelPreference(parsedBody.data.channel)
-		) {
-			return errorResponse(
-				400,
-				'invalid_channel',
-				'channel must be "latest" or "next"',
-				{},
-				requestId
-			);
-		}
-		channel = parsedBody.data.channel;
-	}
-
-	if (Object.keys(versions).length === 0 && channel === undefined) {
-		return errorResponse(400, 'invalid_body', 'Provide versions or channel', {}, requestId);
+	if (Object.keys(versions).length === 0) {
+		return errorResponse(400, 'invalid_body', 'Provide versions', {}, requestId);
 	}
 
 	const state = getState();
 	return withAdminUpdateLock(state, requestId, () => {
 		try {
-			if (Object.keys(versions).length > 0) writeVersions(state, versions);
-			if (channel !== undefined) writeChannelPreference(state, channel);
+			writeVersions(state, versions);
 			return jsonResponse(200, { ok: true }, requestId);
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);

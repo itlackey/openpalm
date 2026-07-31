@@ -202,8 +202,9 @@ Guardian uses the same split: managed instructions and permissions from
 `system/guardian/`, user model configuration from `config/guardian/`.
 
 The assistant image contains its UI and default tool tree at build time. There
-is no runtime UI-tarball install path. Skeleton updates arrive through the host
-assets release; UI/tool updates arrive through the assistant image.
+is no runtime UI-tarball install path; the CLI and Electron ship the same
+skeleton and UI build embedded in their own artifact, and the assistant image
+carries its own copy for the container-served UI.
 
 ## Updates and Recovery
 
@@ -214,8 +215,41 @@ openpalm backups prune --keep 3
 ```
 
 `openpalm update` refreshes managed assets and reapplies the configured stack.
-The host UI build under `data/ui/` can update independently for CLI/Electron
-serving, while the assistant-served UI is part of the assistant image.
+`data/ui/` is a materialization directory rewritten from the CLI's own
+embedded UI build when the version stamp differs; it is not an independent
+update target. The assistant-served UI is part of the assistant image.
+
+### Desktop app updates
+
+The desktop app updates as one complete application — shell and UI together —
+rather than pulling a UI separately at runtime.
+
+- **Discovery is silent.** The app checks shortly after launch and, at most
+  once an hour, when you return to the window. A failed check (offline, say)
+  shows nothing; only a check you start yourself reports an error.
+- **Downloading needs your consent.** Finding an update never downloads it.
+  The banner offers **Download**, and only then does the app fetch the release.
+- **Installing happens on restart.** Once the download finishes, use **Restart
+  and update**, or simply quit — a staged update installs on the next ordinary
+  quit either way.
+- **Channels are stable and beta.** The desktop "check for prerelease versions"
+  setting switches to the beta channel; there is no separate `rc` channel.
+
+Which installs update themselves:
+
+| Install | Auto-update |
+| --- | --- |
+| Windows installer (NSIS `.exe`) | Yes |
+| Linux `AppImage` | Yes |
+| Windows portable `.zip` | No — manual: download and extract a new build |
+| macOS `.app` `.zip` | No — manual: download from the releases page |
+
+The portable Windows archive stays manual on purpose: it has no install
+location to replace, so there is nothing for the updater to update in place.
+macOS stays manual until the app is signed with a Developer ID and notarized —
+an unsigned in-place replacement would leave you with an app macOS refuses to
+open. Both cases download from
+[the releases page](https://github.com/itlackey/openpalm/releases).
 
 If an operation appears abandoned, `openpalm unlock` removes only a verified
 stale lifecycle lock and refuses to clear a live one.

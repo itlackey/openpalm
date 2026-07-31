@@ -46,7 +46,6 @@ export {
   listBackupDirs,
   planBackupPrune,
   pruneBackupDirs,
-  pruneBackupNamespace,
   estimateHomeBackupBytes,
   checkBackupFreeSpace,
   describeBackupSpaceShortfall,
@@ -366,11 +365,8 @@ export {
   isVersionKey,
   readVersions,
   writeVersions,
-  readChannelPreference,
-  isChannelPreference,
-  writeChannelPreference,
 } from "./control-plane/versions.js";
-export type { VersionKey, ChannelPreference } from "./control-plane/versions.js";
+export type { VersionKey } from "./control-plane/versions.js";
 
 // ── Docker ──────────────────────────────────────────────────────────────
 export type { DockerResult, ExistingProject, ComposePsRow, ApplyStackScope, ApplyStackResult } from "./control-plane/docker.js";
@@ -714,27 +710,16 @@ export type {
 } from "./control-plane/access-status.js";
 
 // ── UI asset seeding and resolution ─────────────────────────────────────────
-export type { UiBuildUpdateResult, SkeletonUpdateResult, UiUpdateChannel } from "./control-plane/ui-assets.js";
 export {
+  UI_VERSION_STAMP,
+  SKELETON_VERSION_STAMP,
   resolveLocalOpenpalmDir,
   applyHomeSeed,
   resolveLocalUiBuild,
   resolveUiBuildDir,
+  readUiBuildVersion,
   readSkeletonVersion,
-  seedUiBuild,
-  checkAndUpdateUiBuild,
-  checkAndUpdateSkeleton,
-  uiUpdateChannel,
-  declaredUiChannel,
 } from "./control-plane/ui-assets.js";
-export {
-  GITHUB_API,
-  GITHUB_REPOSITORY,
-  resolveHostAssetsRelease,
-  stageHostAssetsRelease,
-  hostAssetsChannel,
-  restoreHostAssetsBackup,
-} from './control-plane/host-assets-updater.js';
 
 export {
   buildEmptyUiRuntimeConfig,
@@ -781,8 +766,6 @@ export {
 // ── UI-server supervisor primitives (shared by CLI + Electron) ───────────────
 export type {
   WaitForReadyDeps,
-  RestoreUiBackupDeps,
-  RestoreUiBackupOutcome,
   UiChildStrategy,
   UiInstanceCheck,
   UiSupervisorCallbacks,
@@ -791,11 +774,8 @@ export type {
 export {
   DEFAULT_READY_TIMEOUT_MS,
   checkExistingUiInstance,
-  consumePendingUiBackup,
   readyOrChildExit,
-  recordPendingUiBackup,
   waitForReady,
-  restoreUiBackup,
   UiSupervisor,
 } from "./control-plane/ui-supervisor.js";
 
@@ -809,7 +789,6 @@ export {
   isSameMajorVersion,
   normalizeVersion,
   isPrerelease,
-  distTagForVersion,
 } from "./control-plane/versioning.js";
 
 export { runHomeMigrations } from './control-plane/home-schema.js';

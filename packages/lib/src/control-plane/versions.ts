@@ -18,7 +18,7 @@ import { existsSync, readFileSync, writeFileSync, mkdirSync, renameSync } from '
 import { parseEnvFile, mergeEnvContent } from './env.js';
 import { stackEnvFile } from './home.js';
 import type { ControlPlaneState } from './types.js';
-import { distTagForVersion, normalizeVersion, PLATFORM_VERSION } from './versioning.js';
+import { normalizeVersion, PLATFORM_VERSION } from './versioning.js';
 
 /** Docker image tags — one per deployable OpenPalm image. */
 export const SERVICE_VERSION_KEYS = [
@@ -48,47 +48,6 @@ export const VERSION_DEFAULTS: Record<VersionKey, string> = {
 
 export function isVersionKey(key: string): key is VersionKey {
 	return VERSION_KEY_SET.has(key);
-}
-
-// ── Channel preference (constitution §4.2) ───────────────────────────────────
-
-export type ChannelPreference = 'latest' | 'next';
-
-const VALID_CHANNELS: ReadonlySet<string> = new Set(['latest', 'next']);
-
-export function isChannelPreference(value: string): value is ChannelPreference {
-	return VALID_CHANNELS.has(value.trim().toLowerCase());
-}
-
-/**
- * Read the channel preference from state (OP_UI_CHANNEL), falling back to the
- * legacy stack.env, then the default ("latest").
- *
- * The channel preference controls UI package self-updates. Container image tags
- * are configured directly through the version keys above.
- */
-export function readChannelPreference(state: ControlPlaneState): ChannelPreference {
-	const raw = (parseEnvFile(stackEnvFile(state.homeDir)).OP_UI_CHANNEL ?? '').trim().toLowerCase();
-	return VALID_CHANNELS.has(raw) ? (raw as ChannelPreference) : distTagForVersion(PLATFORM_VERSION);
-}
-
-/**
- * Write the channel preference to the state file (atomically: temp + rename).
- * Only "latest" and "next" are valid; an invalid value throws.
- */
-export function writeChannelPreference(state: ControlPlaneState, channel: string): void {
-	const normalized = channel.trim().toLowerCase();
-	if (!VALID_CHANNELS.has(normalized)) {
-		throw new Error(
-			`Invalid channel preference: ${JSON.stringify(channel)}. Must be "latest" or "next".`
-		);
-	}
-	const path = stackEnvFile(state.homeDir);
-	mkdirSync(`${state.homeDir}/state`, { recursive: true, mode: 0o700 });
-	const current = existsSync(path) ? readFileSync(path, 'utf-8') : '';
-	const tmp = `${path}.tmp`;
-	writeFileSync(tmp, mergeEnvContent(current, { OP_UI_CHANNEL: normalized }), { mode: 0o600 });
-	renameSync(tmp, path);
 }
 
 // ── Version configuration ────────────────────────────────────────────────────

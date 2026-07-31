@@ -42,14 +42,9 @@ let migrationsDone = false;
 
 // Bring the home up to the current schema BEFORE anything reads it.
 //
-// This lives HERE, in the updatable control plane, and nowhere else. Both
-// launchers used to call runHomeMigrations themselves, which put a
-// state-mutating migration inside the frozen Electron harness —
-// scripts/validate-thin-harness-boundary.sh exists to forbid exactly that, on
-// the grounds that a shipped harness can never be updated to match a schema
-// that keeps moving. Every serve path spawns THIS process, so one owner here
-// covers the Electron harness, the CLI supervisor, and `vite dev` alike, and
-// the migration ships with the schema it implements.
+// This lives HERE, and nowhere else. Every serve path spawns THIS process, so
+// one owner here covers the Electron harness, the CLI supervisor, and `vite
+// dev` alike, and the migration ships with the schema it implements.
 //
 // Schema-gated and idempotent: an up-to-date home reads one small version file
 // and returns. Non-fatal — a home that cannot be migrated must still serve,

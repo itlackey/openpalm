@@ -2,62 +2,125 @@
   import { onMount } from 'svelte';
   import IconDownload from '../icons/IconDownload.svelte';
 
-  interface UpdateStatus {
-    inElectron: boolean;
-    currentVersion: string | null;
-    latestVersion: string | null;
-    latestUrl: string | null;
-    updateAvailable: boolean;
-  }
+  // Full-application update surface (#572). This reads `window.openpalm.updater`,
+  // which only the desktop shell exposes — served in a browser (CLI/container),
+  // the object is absent and the banner never renders. Update state is PUSHED
+  // from the main process, so download progress is live rather than polled.
+  //
+  // Discovery never downloads: the "Download" button below is the consent step.
+  // Once a download completes the update also installs on an ordinary quit, so
+  // "Restart and update" is a shortcut, not the only way to apply it.
 
-  let status = $state<UpdateStatus | null>(null);
+  let updateState = $state<UpdaterState | null>(null);
   let dismissed = $state(false);
+  let busy = $state(false);
 
   function dismissKey(version: string): string {
     return `openpalm.updateBanner.dismissed.${version}`;
   }
 
-  onMount(async () => {
-    try {
-      const res = await fetch('/api/electron/update-status');
-      if (!res.ok) return;
-      const data = await res.json() as UpdateStatus;
-      // Only render when running inside Electron AND an update is available.
-      if (!data.inElectron || !data.updateAvailable || !data.latestVersion) return;
-      // Honor per-version dismissal.
-      if (typeof localStorage !== 'undefined') {
-        if (localStorage.getItem(dismissKey(data.latestVersion))) return;
+  onMount(() => {
+    const updater = window.openpalm?.updater;
+    if (!updater) return;
+
+    let unsubscribe: (() => void) | undefined;
+    void (async () => {
+      try {
+        updateState = await updater.state();
+        unsubscribe = updater.onState((next) => {
+          updateState = next;
+        });
+      } catch {
+        // Purely additive surface — never break the app over it.
       }
-      status = data;
-    } catch {
-      // Silently fail — banner is purely additive.
-    }
+    })();
+    return () => unsubscribe?.();
   });
 
+  // Hidden until there is something to act on. `unsupported` (macOS, and any
+  // unpackaged run) never reaches an actionable state — those installs update
+  // by downloading a new build from the releases page.
+  const visible = $derived(
+    !!updateState &&
+      !dismissed &&
+      (updateState.status === 'available' ||
+        updateState.status === 'downloading' ||
+        updateState.status === 'downloaded'),
+  );
+
   function handleDismiss() {
-    if (status?.latestVersion && typeof localStorage !== 'undefined') {
-      localStorage.setItem(dismissKey(status.latestVersion), '1');
+    if (updateState?.availableVersion && typeof localStorage !== 'undefined') {
+      localStorage.setItem(dismissKey(updateState.availableVersion), '1');
     }
     dismissed = true;
   }
+
+  async function handleDownload() {
+    if (busy) return;
+    busy = true;
+    try {
+      updateState = (await window.openpalm?.updater?.download()) ?? updateState;
+    } finally {
+      busy = false;
+    }
+  }
+
+  async function handleRestart() {
+    if (busy) return;
+    busy = true;
+    try {
+      await window.openpalm?.updater?.quitAndInstall();
+    } finally {
+      busy = false;
+    }
+  }
+
+  // Suppress a banner the user already dismissed for this exact version.
+  $effect(() => {
+    const version = updateState?.availableVersion;
+    if (!version || typeof localStorage === 'undefined') return;
+    if (updateState?.status === 'available' && localStorage.getItem(dismissKey(version))) {
+      dismissed = true;
+    }
+  });
 </script>
 
-{#if status && !dismissed}
+{#if visible && updateState}
   <div class="update-banner" role="status">
     <span class="update-banner-icon" aria-hidden="true">
       <IconDownload size={16} />
     </span>
-    <span class="update-banner-text">
-      A new version of OpenPalm is available — <strong>v{status.latestVersion}</strong>
-      {#if status.currentVersion}(you have v{status.currentVersion}){/if}
-    </span>
-    {#if status.latestUrl}
-      <!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
-      <a href={status.latestUrl} target="_blank" rel="noopener noreferrer" class="update-banner-link">
+
+    {#if updateState.status === 'available'}
+      <span class="update-banner-text">
+        A new version of OpenPalm is available — <strong>v{updateState.availableVersion}</strong>
+        (you have v{updateState.currentVersion})
+      </span>
+      <button type="button" class="update-banner-action" onclick={handleDownload} disabled={busy}>
         Download
-      </a>
+      </button>
+    {:else if updateState.status === 'downloading'}
+      <span class="update-banner-text">
+        Downloading v{updateState.availableVersion}{#if updateState.percent !== null}
+          — {Math.round(updateState.percent)}%{/if}
+      </span>
+    {:else if updateState.status === 'downloaded'}
+      <span class="update-banner-text">
+        OpenPalm <strong>v{updateState.availableVersion}</strong> is ready to install
+      </span>
+      <button type="button" class="update-banner-action" onclick={handleRestart} disabled={busy}>
+        Restart and update
+      </button>
     {/if}
-    <button type="button" class="update-banner-dismiss" aria-label="Dismiss" onclick={handleDismiss}>×</button>
+
+    {#if updateState.status !== 'downloading'}
+      <button
+        type="button"
+        class="update-banner-dismiss"
+        aria-label="Dismiss"
+        onclick={handleDismiss}>×</button
+      >
+    {/if}
   </div>
 {/if}
 
@@ -82,17 +145,20 @@
     flex-shrink: 0;
   }
   .update-banner-text { flex: 1; }
-  .update-banner-link {
+  .update-banner-action {
+    background: none;
+    border: 0;
+    cursor: pointer;
     color: var(--s-seal);
     font-family: var(--s-font-mono);
     font-size: var(--s-type-mark);
     text-transform: uppercase;
     letter-spacing: var(--s-track-label);
-    text-decoration: none;
     border-bottom: var(--s-hair) solid var(--s-seal);
     transition: opacity var(--s-t-quick) var(--s-ease);
   }
-  .update-banner-link:hover { opacity: 0.7; }
+  .update-banner-action:hover:not(:disabled) { opacity: 0.7; }
+  .update-banner-action:disabled { cursor: default; opacity: 0.5; }
   .update-banner-dismiss {
     background: none;
     border: 0;

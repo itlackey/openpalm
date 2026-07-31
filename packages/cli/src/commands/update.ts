@@ -1,9 +1,7 @@
 import { defineCommand } from 'citty';
 import { join } from 'node:path';
 import {
-  PLATFORM_VERSION,
   performUpgrade,
-  checkAndUpdateUiBuild,
   classifyLocalInstall,
   createState,
   type ControlPlaneState,
@@ -32,22 +30,11 @@ export async function runUpgradeAction(): Promise<void> {
   console.log('Updating stack...');
   await performUpgrade(state);
 
-  // Check for a newer UI build on GitHub and install it if available.
-  // Pass the running control-plane version as the reference so any newer
-  // release (including the one just upgraded to) triggers a download.
-  // Existing data/ui/ is backed up to data/backups/ui-{timestamp}/ before
-  // replacement. Non-fatal — existing build remains on any error.
-  console.log('Checking for UI build update...');
-  const uiResult = await checkAndUpdateUiBuild(PLATFORM_VERSION, state.dataDir);
-  if (uiResult.updated) {
-    console.log(`UI build updated to v${uiResult.latestVersion}.`);
-  } else if (uiResult.error) {
-    console.warn(`Warning: UI build update skipped — ${uiResult.error}. Existing build still active.`);
-  } else {
-    console.log(`UI build is current (v${uiResult.latestVersion}).`);
-  }
-
-  console.log('Update complete.');
+  // The UI build ships INSIDE this binary now (see embedded-assets.ts) — the
+  // running `openpalm`/`openpalm admin` supervisor materializes it into
+  // data/ui on its next spawn. Updating the CLI itself means replacing the
+  // binary (see the install docs), not downloading a separate UI release.
+  console.log('Update complete. To update the CLI itself, install a newer openpalm binary.');
 }
 
 export function resolveUpgradeState(): ControlPlaneState {

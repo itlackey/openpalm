@@ -1,4 +1,4 @@
-import { app, BrowserWindow, shell, dialog, ipcMain, globalShortcut, Notification } from 'electron';
+import { app, BrowserWindow, shell, dialog, ipcMain, globalShortcut, Notification, type IpcMainInvokeEvent } from 'electron';
 import { join, dirname } from 'node:path';
 import { existsSync, mkdirSync, createWriteStream, type WriteStream } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -9,27 +9,21 @@ import {
   resolveOpenPalmHome,
   resolveDataDir,
   resolveUiBuildDir,
-  seedUiBuild,
   ensureHomeDirs,
-  checkAndUpdateUiBuild,
-  checkAndUpdateSkeleton,
   parseEnvFile,
   stackEnvFile,
-  PLATFORM_VERSION,
   waitForReady as libWaitForReady,
   checkExistingUiInstance,
   readyOrChildExit,
   resolveUiListenEnv,
-  consumePendingUiBackup,
-  restoreUiBackup,
-  UiSupervisor,
   resolveAssistantEndpoint,
   seedLegacyServedUiRuntimeConfig,
-  hasMaterializedLocalInstall,
+  applyHomeSeed,
+  resolveConfigDir,
 } from '@openpalm/lib';
-import { HARNESS_CONTRACT_VERSION } from './harness-contract.js';
 import { UI_PORT } from './ui-port.js';
-import { checkForElectronUpdate, getCachedUpdateInfo, type UpdateInfo } from './update-check.js';
+import { autoUpdater } from 'electron-updater';
+import { DesktopUpdater, isTrustedUpdaterSender, type UpdaterState } from './updater.js';
 import { loadSettings, saveSettings } from './settings.js';
 import { killProcessTree } from './process-tree.js';
 import { resolveAssetPath } from './assets.js';
@@ -126,9 +120,12 @@ const APP_USER_MODEL_ID = 'com.openpalm.app';
 let mainWindow: BrowserWindow | null = null;
 let uiProcess: ChildProcess | null = null;
 let registeredMicShortcut: string | null = null;
-// Whether the GitHub update check should surface prereleases (#504). Loaded from
-// desktop settings at boot; toggled live from the tray. Notify-only.
+// Whether the desktop updater tracks the beta channel (#504 opt-in, mapped onto
+// electron-updater's `beta` channel by updaterChannel). Loaded from desktop
+// settings at boot; toggled live from the tray.
 let checkPrereleaseUpdates = false;
+// Full-application updater (#572). Null until the app is ready.
+let desktopUpdater: DesktopUpdater | null = null;
 // True once the app is genuinely quitting (tray "Quit" or before-quit). The
 // window 'close' handler consults it to hide-to-tray while false and let the
 // close through while true. A typed module-scoped flag — the SSOT for quit
@@ -177,7 +174,7 @@ export function resolveAssistantUrl(homeDir: string): string {
  * Build the environment object to pass to the UI Node child process.
  * Exported as a pure function so tests can verify it without spawning anything.
  */
-export function buildUIServerEnv(homeDir: string, port: number, update?: UpdateInfo | null): NodeJS.ProcessEnv {
+export function buildUIServerEnv(homeDir: string, port: number): NodeJS.ProcessEnv {
   // Operator-managed stack config (state/stack.env) holds settings the
   // host UI server's own routes read from process.env — e.g. OP_VOICE_PORT_HOST,
   // which the /voice pass-through and the voice bring-up use to find the local
@@ -223,12 +220,6 @@ export function buildUIServerEnv(homeDir: string, port: number, update?: UpdateI
     OP_ALLOW_REMOTE_SETUP: '0',
     OP_INSIDE_ELECTRON: '1',
     OP_ELECTRON_VERSION: app.getVersion?.() ?? '',
-    // The native contract version this harness provides. The control plane
-    // feature-detects against it (design §5.3): UI code introduced after
-    // contract N guards on this value and falls back otherwise. This is a
-    // genuinely harness-scoped value (it describes the native shell, not the
-    // platform/control-plane version).
-    OP_HARNESS_CONTRACT_VERSION: String(HARNESS_CONTRACT_VERSION),
     // Do NOT set the per-unit OP_*_VERSION vars here. Docker precedence is
     // shell-env > --env-file, so any value injected into the UI server's
     // process.env overrides the authoritative versions written to stack.env
@@ -247,15 +238,56 @@ export function buildUIServerEnv(homeDir: string, port: number, update?: UpdateI
   };
   // Pass the bundled skeleton path so the UI server can refresh the registry
   // on startup without needing the source repo or a network download.
-  const skeletonDir = join(process.resourcesPath ?? '', 'openpalm-skeleton');
-  if (existsSync(skeletonDir)) {
+  const skeletonDir = resolveBundledSkeletonDir();
+  if (skeletonDir) {
     env.OPENPALM_SKELETON_DIR = skeletonDir;
   }
-  if (update?.updateAvailable && update.latestVersion) {
-    env.OP_ELECTRON_LATEST_VERSION = update.latestVersion;
-    if (update.latestUrl) env.OP_ELECTRON_LATEST_URL = update.latestUrl;
-  }
   return env;
+}
+
+/** The skeleton electron-builder ships in extraResources, or null in dev. */
+function resolveBundledSkeletonDir(): string | null {
+  const dir = join(process.resourcesPath ?? '', 'openpalm-skeleton');
+  return existsSync(dir) ? dir : null;
+}
+
+/**
+ * Materialize this app version's OWN skeleton into OP_HOME before the UI starts.
+ *
+ * An app update replaces the shell and its bundled UI atomically, but OP_HOME
+ * outlives it — so without this the new release would start against the managed
+ * `system/` tree written by the OLD one (stale Compose files and managed
+ * instructions) until the user happened to run a lifecycle apply. That is
+ * exactly the mixed-release state this artifact model exists to prevent, and it
+ * is what Electron's removed `checkAndUpdateSkeleton` used to cover.
+ *
+ * The CLI supervisor already does this before every spawn
+ * (seedSkeletonFromEmbedded in packages/cli/src/lib/ui-server.ts); this is the
+ * Electron half, sourcing the same tree from extraResources instead of an
+ * embedded archive. applyHomeSeed overwrites the managed tree and leaves user
+ * data alone, which is what keeps repeat launches at the same version cheap.
+ *
+ * Nonfatal: a failure here must not stop the app from starting, since the
+ * previous release's tree is still serviceable.
+ */
+async function seedBundledSkeleton(homeDir: string, configDir: string, dataDir: string): Promise<void> {
+  const skeletonDir = resolveBundledSkeletonDir();
+  if (!skeletonDir) return;
+  const previous = process.env.OPENPALM_SKELETON_DIR;
+  try {
+    // applyHomeSeed resolves its source through the same lib resolver the child
+    // uses; point it at the bundled copy for the duration of the call.
+    process.env.OPENPALM_SKELETON_DIR = skeletonDir;
+    await applyHomeSeed(app.getVersion(), homeDir, configDir, dataDir);
+  } catch (err) {
+    console.warn(
+      'Bundled skeleton seed failed (non-fatal):',
+      err instanceof Error ? err.message : String(err),
+    );
+  } finally {
+    if (previous === undefined) delete process.env.OPENPALM_SKELETON_DIR;
+    else process.env.OPENPALM_SKELETON_DIR = previous;
+  }
 }
 
 // ── UI server lifecycle ──────────────────────────────────────────────────────
@@ -281,7 +313,6 @@ export function waitForReady(port: number, timeoutMs = READY_TIMEOUT_MS): Promis
 async function startUIServer(): Promise<void> {
   const homeDir = resolveOpenPalmHome();
   const dataDir = resolveDataDir();
-  const localInstallWasMaterialized = hasMaterializedLocalInstall(homeDir);
 
   // Ensure the runtime dir tree exists so the harness can write its pid file and
   // the UI child can boot. The harness does NOT seed or apply OP_HOME — that is
@@ -291,92 +322,45 @@ async function startUIServer(): Promise<void> {
   // via OPENPALM_SKELETON_DIR (set in buildUIServerEnv).
   ensureHomeDirs();
 
-  // NOTE: home migrations are deliberately NOT run here. This harness is
-  // frozen and shipped; anything that mutates control-plane state or runs a
-  // migration belongs in the updatable data/ui control plane
-  // (scripts/validate-thin-harness-boundary.sh enforces this). The UI child
-  // runs them at startup instead — packages/ui/src/hooks.server.ts — which
-  // covers this harness and the CLI supervisor with one owner.
+  // Refresh the managed system/ tree from THIS app version's bundled skeleton,
+  // so an updated shell never serves the previous release's managed files.
+  await seedBundledSkeleton(homeDir, resolveConfigDir(), dataDir);
 
-  // app.getVersion() is the HARNESS marketing version — use it ONLY for the
-  // genuinely harness-scoped Electron self-update check (which polls GitHub
-  // releases for a new app binary). The control-plane / UI channel must key on
-  // the PLATFORM version that travels with @openpalm/lib (design §5.2), so a
-  // platform release on the `next` channel pulls a `next` UI without the harness
-  // marketing version having to be a prerelease.
+  // NOTE: home migrations are deliberately NOT run here. Anything that mutates
+  // control-plane state or runs a migration belongs to the UI control plane.
+  // The UI child runs them at startup instead — packages/ui/src/hooks.server.ts
+  // — which covers this harness and the CLI supervisor with one owner.
+
+  // app.getVersion() is the HARNESS marketing version — the only version this
+  // harness's own self-update check (the DesktopUpdater below) cares about.
   const appVersion = app.getVersion();
-  const platformVersion = PLATFORM_VERSION;
 
   // Load the desktop-local prerelease opt-in (#504) so the update check below
   // knows whether to surface rc's. Notify-only — never changes install behaviour.
   checkPrereleaseUpdates = loadSettings(dataDir).checkPrerelease;
 
-  // Check for a newer Electron app version on GitHub. Non-fatal; result is
-  // surfaced to the UI as an env var so the in-app banner can offer a download.
-  // When the user has opted into prereleases, this polls the full releases list
-  // and filters to the newest matching their channel.
-  const appUpdate = await checkForElectronUpdate(appVersion, checkPrereleaseUpdates);
-  if (appUpdate.updateAvailable) {
-    console.log(`App update available: v${appUpdate.latestVersion}`);
-  } else if (appUpdate.error) {
-    console.log(`App update check skipped: ${appUpdate.error}`);
-  }
+  // Full-application updates (#572). The check is deliberately NOT awaited:
+  // startup must not wait on the network, and an offline launch must be
+  // indistinguishable from an online one. Silent, so a failed check leaves no
+  // banner behind — only a user-initiated check reports errors.
+  desktopUpdater = createDesktopUpdater(appVersion);
+  void desktopUpdater.check({ silent: true });
 
-  // A release refresh must not materialize core.compose.yml into an empty home:
-  // that file means setup was user-started. Existing installs still refresh.
-  if (localInstallWasMaterialized) {
-    const skeletonResult = await checkAndUpdateSkeleton(platformVersion, homeDir, dataDir);
-    if (skeletonResult.updated) {
-      console.log(`Skeleton updated to v${skeletonResult.latestVersion}`);
-    } else if (skeletonResult.error) {
-      console.log(`Skeleton update check skipped: ${skeletonResult.error}`);
-    }
-  }
-
-  // Check for a newer GitHub host-assets build before starting. Non-fatal: if the check
-  // or download fails, we continue with what's on disk. Pass this harness's
-  // native contract version so a UI build that needs a newer harness is NOT
-  // silently installed (§5.3) — instead we keep the current build and the app's
-  // GitHub update check surfaces the "re-download required" prompt.
-  const updateResult = await checkAndUpdateUiBuild(
-    platformVersion,
-    dataDir,
-    undefined,
-    HARNESS_CONTRACT_VERSION,
-  );
-  if (updateResult.updated) {
-    console.log(`UI updated to v${updateResult.latestVersion}`);
-  } else if (updateResult.redownloadRequired) {
-    console.log(
-      `UI build v${updateResult.latestVersion} needs OpenPalm app harness ` +
-      `v${updateResult.requiredHarnessContract} (this app provides v${HARNESS_CONTRACT_VERSION}) — ` +
-      `keeping the current UI; re-download the app to update.`,
-    );
-  } else if (updateResult.error) {
-    console.log(`UI update check skipped: ${updateResult.error}`);
-  }
-
-  // Stash the UI backup path so the supervisor can restore it if the new build
-  // fails to start (§4.4 / §6). Cleared once the server confirms healthy.
-  pendingUiBackupDir = updateResult.backupDir ?? null;
-
-  let uiBuildDir = resolveUiBuildDir();
+  // The UI build is bundled at build time (electron-builder extraResources →
+  // process.resourcesPath/ui-build); resolveUiBuildDir() resolves it directly.
+  // There is no runtime download or update path — a newer UI ships in a newer
+  // app release (electron-updater, #572).
+  const uiBuildDir = resolveUiBuildDir();
 
   if (!existsSync(join(uiBuildDir, 'index.js'))) {
-    console.log('UI build not found — seeding the GitHub host-assets release...');
-    try {
-      // Fresh installs use the exact coordinated platform release, while the
-      // bundled extraResources remain the offline fallback.
-      // Thread this harness's contract version (§5.3) so a fresh install can't
-      // silently seed a UI build this harness can't run (remediation 3.2) —
-      // mirrors the checkAndUpdateUiBuild call above.
-      await seedUiBuild(platformVersion, dataDir, undefined, HARNESS_CONTRACT_VERSION);
-      uiBuildDir = resolveUiBuildDir();
-    } catch (err) {
-      console.error('Failed to seed UI build:', err instanceof Error ? err.message : String(err));
-      app.quit();
-      return;
-    }
+    console.error(`Bundled UI build not found at ${uiBuildDir}`);
+    splash.close();
+    dialog.showErrorBox(
+      'OpenPalm failed to start',
+      `The bundled UI build is missing at:\n${uiBuildDir}\n\nReinstall the app.`,
+    );
+    app.quit();
+    return;
   }
 
   // Identity probe BEFORE spawning (shared with the CLI via lib). A bare
@@ -404,10 +388,7 @@ async function startUIServer(): Promise<void> {
   }
 
   if (existing.status === 'absent') {
-    spawnUIServer(uiBuildDir, homeDir, appUpdate);
-    // Hand the bespoke initial child to the shared supervisor so a later
-    // SIGUSR2/IPC restart knows which handle to stop (§6.2).
-    if (uiProcess) uiSupervisor.adopt(uiProcess);
+    spawnUIServer(uiBuildDir, homeDir);
   } else {
     // An admin-capable instance already owns the port — attach to it rather
     // than racing it for the socket. It owns its own lifecycle.
@@ -440,14 +421,9 @@ async function startUIServer(): Promise<void> {
 
 /**
  * Spawn the UI Node child against a resolved build dir. Factored out of
- * startUIServer so the supervisor can respawn it after a UI-build update
- * (design §6.2) without re-running the GitHub update checks.
+ * startUIServer for testability.
  */
-function spawnUIServer(
-  uiBuildDir: string,
-  homeDir: string,
-  appUpdate?: UpdateInfo | null,
-): void {
+function spawnUIServer(uiBuildDir: string, homeDir: string): void {
   seedLegacyServedUiRuntimeConfig(uiBuildDir, homeDir);
 
   // Spawn the UI Node server with Electron's OWN bundled Node (process.execPath
@@ -458,12 +434,8 @@ function spawnUIServer(
   uiProcess = spawn(process.execPath, [join(uiBuildDir, 'index.js')], {
     cwd: uiBuildDir,
     env: {
-      ...buildUIServerEnv(homeDir, UI_PORT, appUpdate),
+      ...buildUIServerEnv(homeDir, UI_PORT),
       ELECTRON_RUN_AS_NODE: '1',
-      // Tell the UI child it has a supervisor that can respawn it on demand
-      // (design §6.2). The admin "install UI version" route signals the
-      // supervisor (this main process) after seeding a newer data/ui.
-      OP_UI_SUPERVISOR: 'electron',
     },
     // Own process group so shutdown can group-kill the UI server AND any
     // children it spawns (e.g. the wizard's `opencode serve` subprocess),
@@ -513,126 +485,11 @@ function spawnUIServer(
   });
 
   uiProcess.on('exit', (code) => {
-    // During a supervisor-driven UI restart we intentionally kill + respawn the
-    // child; don't null out the handle the restart path just reassigned. The
-    // UiSupervisor owns the single restart guard — consult it directly rather
-    // than mirroring it into a module-local flag.
-    if (uiSupervisor.isRestarting) return;
     if (code !== 0 && code !== null) {
       console.error(`UI server exited with code ${code}`);
     }
     uiProcess = null;
-    // Keep the supervisor's handle in sync: this child died UNSUPERVISED, so a
-    // later restart must NOT stop() a dead handle (pid-reuse hazard + a needless
-    // 1.5s SIGTERM→SIGKILL wait). Matches the pre-refactor `prev = uiProcess`
-    // (null) → skip-kill behavior.
-    uiSupervisor.detachHandle();
   });
-}
-
-// ── UI server restart (post UI-build update) ──────────────────────────────────
-// The admin "install UI version" route seeds a newer data/ui, then signals this
-// supervisor to respawn the UI child so the new @openpalm/lib loads without a
-// full app relaunch (design §6.2). The downloaded build does nothing until the
-// Node child is respawned.
-
-/**
- * Marker thrown by the restart spawn strategy when the seeded build vanished.
- * The strategy logs the exact "UI restart aborted: build not found at …"
- * message itself; this marker just tells onRestartError to skip its generic
- * "restart failed" log. restart() still returns false and the app stays up.
- */
-class UiRestartAbortError extends Error {}
-
-// Backup of the previous data/ui set by checkAndUpdateUiBuild; used by the
-// supervisor to restore on startup failure (§4.4 / §6). Null = no backup available.
-let pendingUiBackupDir: string | null = null;
-// The backup captured (and consumed) at the start of the in-flight restart — the
-// UiSupervisor's restoreBackup hook reads it on a post-restart ready-failure.
-let restartBackupDir: string | null = null;
-
-// Thin Electron adapter over the shared UiSupervisor state machine (design §6.2 /
-// §4.4). The bespoke INITIAL start (seed-or-quit + splash + stderr ring-buffer +
-// dialog) stays in startUIServer, which then adopt()s the spawned child; the
-// supervisor owns the RESTART state machine (kill → respawn → wait → restore /
-// reload). Every harness-scoped effect is an adapter closure: the Node
-// child_process + killProcessTree spawn/kill strategy, the renderer reload, and
-// the restart-failure policy (Electron stays up — onRestartFailure is omitted).
-const uiSupervisor = new UiSupervisor<ChildProcess>({
-  port: UI_PORT,
-  strategy: {
-    // Respawn against the freshly-seeded data/ui (restart path). Aborts if the
-    // build vanished — the throw routes to onRestartError, so restart() returns
-    // false and the app stays up, matching the pre-refactor `return false` guard.
-    spawn: () => {
-      const homeDir = resolveOpenPalmHome();
-      const uiBuildDir = resolveUiBuildDir();
-      if (!existsSync(join(uiBuildDir, 'index.js'))) {
-        // Log the EXACT pre-refactor message on stderr, then throw a marker the
-        // catch path recognizes so it does NOT re-log a generic "restart failed".
-        console.error('UI restart aborted: build not found at', uiBuildDir);
-        throw new UiRestartAbortError();
-      }
-      spawnUIServer(uiBuildDir, homeDir, getCachedUpdateInfo());
-      if (!uiProcess) throw new Error('UI server failed to spawn');
-      return uiProcess;
-    },
-    // Group-kill the current child (it runs detached and may have its own
-    // children, e.g. the wizard's `opencode serve`): SIGTERM → fixed 1.5s delay
-    // → SIGKILL.
-    stop: async (handle) => {
-      uiProcess = null;
-      if (handle.pid) {
-        killProcessTree(handle.pid, 'SIGTERM');
-        await new Promise(r => setTimeout(r, 1500));
-        killProcessTree(handle.pid, 'SIGKILL');
-      }
-    },
-  },
-  callbacks: {
-    waitForReady: (p) => waitForReady(p),
-    // Consume the pending backup at the START of every restart, exactly-once and
-    // UNCONDITIONALLY — before the conditional stop(). This must NOT live in
-    // stop(): after an unsupervised crash the handle is detached (null) so stop()
-    // is skipped, but the pending backup must still be captured so a failed
-    // respawn restores the correct build (mirrors the pre-refactor capture-then-
-    // clear at restartUIServer's top).
-    beforeRestart: () => {
-      restartBackupDir = consumePendingUiBackup(resolveDataDir()) ?? pendingUiBackupDir;
-      pendingUiBackupDir = null;
-    },
-    // Post-swap failure → restore the prior data/ui with a local rename — no
-    // registry needed (shared lib routine). onRestartFailure is omitted, so the
-    // app stays running and restart() returns false (Electron never exits here).
-    restoreBackup: () => { restoreUiBackup(resolveDataDir(), restartBackupDir); },
-    // Reload the renderer onto the freshly-restarted control plane. Respawning the
-    // server child is not enough on its own: the window keeps showing the OLD
-    // build's page (and its stale "control plane vX" / cached state), so an update
-    // looks like it did nothing. Load the root so the launch guard re-routes
-    // (→ /splash to apply a pending home update, then onward; → /chat when healthy).
-    // Covers both restart triggers: the IPC path and the SIGUSR2 supervisor path.
-    onReloadRenderer: () => {
-      const win = mainWindow ?? BrowserWindow.getAllWindows()[0] ?? null;
-      if (win && !win.isDestroyed()) {
-        void win.loadURL(`http://127.0.0.1:${UI_PORT}/`);
-      }
-    },
-    onRestartError: (err) => {
-      // The build-not-found abort already logged its exact message in spawn();
-      // don't double-log a generic failure for it.
-      if (err instanceof UiRestartAbortError) return;
-      console.error('UI server restart failed:', err instanceof Error ? err.message : String(err));
-    },
-  },
-});
-
-// SIGUSR2/IPC restart trigger. Delegates to the shared supervisor, which owns
-// the single restart guard: its `restarting` flag both no-ops re-entrant
-// triggers (re-entrant calls return false) and gates the UI child's 'exit'
-// handler (via uiSupervisor.isRestarting) so an intentional kill/respawn does
-// NOT null out the handle the restart path just reassigned.
-function restartUIServer(): Promise<boolean> {
-  return uiSupervisor.restart();
 }
 
 function stopUIServer(): void {
@@ -704,10 +561,7 @@ export function handleWindowOpen(window: BrowserWindow, url: string): { action: 
 }
 
 async function createWindow(): Promise<void> {
-  const update = getCachedUpdateInfo();
-  const title = update?.updateAvailable
-    ? `OpenPalm — Update available (v${update.latestVersion})`
-    : 'OpenPalm';
+  const title = 'OpenPalm';
   const icon = resolveAssetPath('icon.png') ?? undefined;
 
   const window = new BrowserWindow({
@@ -741,6 +595,13 @@ async function createWindow(): Promise<void> {
   // Electron from creating a second BrowserWindow.
   window.webContents.setWindowOpenHandler(({ url }) => {
     return handleWindowOpen(window, url);
+  });
+
+  // Coming back to the app is the natural moment to notice a new release, but
+  // focus fires constantly — DesktopUpdater throttles this to at most one check
+  // an hour, and keeps it silent so an offline machine stays quiet (#572).
+  window.on('focus', () => {
+    void desktopUpdater?.checkOnFocus();
   });
 
   // Hide to tray instead of closing
@@ -823,15 +684,16 @@ async function setCheckPrerelease(enabled: boolean): Promise<void> {
   saveSettings(dataDir, { checkPrerelease: enabled });
 
   try {
-    const appVersion = app.getVersion();
-    const update = await checkForElectronUpdate(appVersion, enabled);
+    // Rebuild on the new channel: electron-updater resolves a feed per channel,
+    // and a half-switched updater would keep answering from the old one.
+    desktopUpdater = createDesktopUpdater(app.getVersion());
+    const update = await desktopUpdater.check({ silent: true });
     // Rebuild the tray menu so the checkbox state (and any update label) refresh.
     trayController.rebuildMenu();
-    if (enabled && update.updateAvailable && update.latestVersion) {
-      const kind = update.isPrerelease ? 'prerelease' : 'version';
+    if (enabled && update.status === 'available' && update.availableVersion) {
       showNotification(
-        `OpenPalm ${kind} available`,
-        `OpenPalm ${update.latestVersion} is available to download.`,
+        'OpenPalm update available',
+        `OpenPalm ${update.availableVersion} is available to download.`,
       );
     }
   } catch (err) {
@@ -898,26 +760,76 @@ app.on('window-all-closed', () => {
   // Keep running in tray on all platforms
 });
 
+// ── Full-application updates (#572) ──────────────────────────────────────────
+//
+// One update operation for the desktop: consent to download a complete tested
+// release, then install it on restart (or on the next ordinary quit). The
+// updater instance owns all policy — see src/updater.ts.
+
+/**
+ * Build the updater over electron-updater's singleton `autoUpdater`, wiring
+ * state changes through to the renderer so download progress is live rather
+ * than polled.
+ */
+function createDesktopUpdater(appVersion: string): DesktopUpdater {
+  return new DesktopUpdater({
+    updater: autoUpdater as unknown as ConstructorParameters<typeof DesktopUpdater>[0]['updater'],
+    currentVersion: appVersion,
+    platform: process.platform,
+    isPackaged: app.isPackaged,
+    prerelease: checkPrereleaseUpdates,
+    onStateChange: (state) => {
+      // The window may be closed-to-tray or already destroyed; a state push is
+      // advisory, never a reason to throw inside the updater.
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('updater-state', state);
+      }
+    },
+  });
+}
+
+/**
+ * Updater IPC can download and execute an installer, so every call is gated on
+ * the sender being the exact trusted UI origin — not merely "some page in our
+ * own window". A compromised or navigated-away renderer must not be able to
+ * drive it. Rejection is a thrown error so the renderer sees a failed invoke
+ * rather than a silent no-op it could mistake for "no update".
+ */
+function assertTrustedUpdaterSender(event: IpcMainInvokeEvent): void {
+  const senderUrl = event.senderFrame?.url ?? '';
+  if (!isTrustedUpdaterSender(senderUrl, UI_PORT)) {
+    throw new Error('Updater IPC rejected: untrusted sender origin');
+  }
+}
+
+function requireUpdater(event: IpcMainInvokeEvent): DesktopUpdater {
+  assertTrustedUpdaterSender(event);
+  if (!desktopUpdater) throw new Error('Updater is not ready yet');
+  return desktopUpdater;
+}
+
+ipcMain.handle('updater-state', (event): UpdaterState => requireUpdater(event).getState());
+
+// Explicit, user-initiated check: reports why it failed, unlike the silent
+// startup and focus checks.
+ipcMain.handle('updater-check', async (event): Promise<UpdaterState> =>
+  requireUpdater(event).check({ silent: false }));
+
+// The consent step. Discovery never downloads; this is the only path that does.
+ipcMain.handle('updater-download', async (event): Promise<UpdaterState> =>
+  requireUpdater(event).download());
+
+ipcMain.handle('updater-quit-and-install', (event): boolean =>
+  requireUpdater(event).quitAndInstall());
+
 ipcMain.handle('restart-app', () => {
   app.relaunch();
   app.quit();
 });
 
-// Restart only the UI server child (NOT the whole app) after a UI-build update
-// (design §6.2). Respawns against the freshly seeded data/ui so the new
-// control-plane lib loads. Returns true once the new child is ready.
-ipcMain.handle('restart-ui-server', async (): Promise<boolean> => {
-  return restartUIServer();
-});
-
 ipcMain.handle('open-local-app', async (): Promise<void> => {
   await openLocalApp();
 });
-
-// The UI child (admin "install UI version" route) sends SIGUSR2 to this parent
-// after seeding a newer data/ui. Same effect as the IPC path: respawn the UI
-// server child so the new lib loads (design §6.2).
-process.on('SIGUSR2', () => { void restartUIServer(); });
 
 ipcMain.handle('launch-on-login-status', (): LaunchOnLoginStatus => {
   return getLaunchOnLoginStatus();

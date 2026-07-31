@@ -190,14 +190,6 @@ jobs:
       - name: Guardian offline-boot smoke (--network none)
         run: ./scripts/guardian-image-offline-smoke.sh
 
-      # Upgrades an install that already exists — the case every other suite
-      # misses, because they all build homes from the CURRENT skeleton. Seeds
-      # from PUBLISHED skeleton versions on npm, so the set of testable eras
-      # grows with each release and nothing has to be maintained by hand.
-      # Needs npm; no images (it exercises the home + Docker volumes only).
-      - name: Upgrade-path smoke (historical homes + retired-volume reap)
-        run: ./scripts/upgrade-path-smoke.sh
-
       - name: Assert deleted scripts are absent
         run: |
           set -euo pipefail
@@ -333,12 +325,6 @@ jobs:
 
       - name: Run client-only PWA acceptance tests (production build + Chromium)
         run: bun run ui:test:pwa
-
-      - name: Validate thin-harness boundary (design §6.1/§6.6)
-        # Asserts every packages/electron/src/*.ts file imports only the
-        # @openpalm/lib bootstrap allowlist — a source-level import check, not
-        # a grep of the built dist/main.js bundle. No build step is needed first.
-        run: ./scripts/validate-thin-harness-boundary.sh
 
   electron-tests:
     name: Electron unit tests (Vitest)

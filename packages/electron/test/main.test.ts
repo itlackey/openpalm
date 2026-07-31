@@ -10,23 +10,23 @@ const startupHarness = vi.hoisted(() => {
   return {
     ready,
     releaseReady: () => releaseReady(),
-    coreComposeExists: false,
   };
 });
 
 // ── Mock node:fs before any imports ─────────────────────────────────────────
-// Return true for the UI build index.js check so startUIServer skips seeding
-// and the spawn path is reached. We mock spawn separately via node:child_process.
+// Return true for the UI build index.js check so startUIServer's bundled-build
+// guard passes and the spawn path is reached. We mock spawn separately via
+// node:child_process.
 vi.mock('node:fs', async (importOriginal) => {
   const actual = await importOriginal<typeof import('node:fs')>();
   return {
     ...actual,
     existsSync: vi.fn((p: string) => {
-      if (String(p).endsWith('system/stack/core.compose.yml')) {
-        return startupHarness.coreComposeExists;
-      }
-      // Make the UI build appear present so seedUiBuild is never called
+      // Make the UI build appear present.
       if (String(p).endsWith('index.js')) return true;
+      // Make the extraResources skeleton appear present, so the startup path
+      // that reseeds OP_HOME from THIS app version's bundled copy is exercised.
+      if (String(p).endsWith('openpalm-skeleton')) return true;
       // Icon file does not exist — skip tray creation
       return false;
     }),
@@ -74,6 +74,24 @@ const { mockBrowserWindow, ipcMainOnHandlers, ipcMainHandleHandlers, notificatio
 
 const { mockNotificationShow } = vi.hoisted(() => ({
   mockNotificationShow: vi.fn(),
+}));
+
+// electron-updater builds its `autoUpdater` singleton at import time against a
+// real Electron app (it reads app.getVersion()), so importing main.ts under the
+// mocked 'electron' above would throw. The updater's own behaviour is covered
+// directly in updater.test.ts against an injected fake; here it only needs to
+// exist and stay inert.
+vi.mock('electron-updater', () => ({
+  autoUpdater: {
+    autoDownload: true,
+    autoInstallOnAppQuit: false,
+    channel: null,
+    allowPrerelease: false,
+    checkForUpdates: vi.fn(async () => null),
+    downloadUpdate: vi.fn(async () => []),
+    quitAndInstall: vi.fn(),
+    on: vi.fn(),
+  },
 }));
 
 vi.mock('electron', () => ({
@@ -157,21 +175,13 @@ vi.mock('@openpalm/lib', () => ({
   resolveDataDir: vi.fn(() => '/home/user/.openpalm/data'),
   resolveConfigDir: vi.fn(() => '/home/user/.openpalm/config'),
   resolveUiBuildDir: vi.fn(() => '/home/user/.openpalm/data/ui'),
-  seedUiBuild: vi.fn(() => Promise.resolve()),
   seedLegacyServedUiRuntimeConfig: vi.fn(),
+  applyHomeSeed: vi.fn(async () => ({ updated: [], backupDir: null })),
   ensureHomeDirs: vi.fn(),
-  hasMaterializedLocalInstall: vi.fn(() => startupHarness.coreComposeExists),
   checkDocker: vi.fn(),
   checkDockerCompose: vi.fn(),
-  checkAndUpdateUiBuild: vi.fn(() => {
-    startupHarness.coreComposeExists = true;
-    return Promise.resolve({ updated: false, latestVersion: '0.11.0' });
-  }),
-  checkAndUpdateSkeleton: vi.fn(() => Promise.resolve({ updated: false, latestVersion: '0.11.0' })),
-  uiUpdateChannel: vi.fn((v: string) => (v.includes('-') ? 'next' : 'latest')),
   parseEnvFile: vi.fn(() => ({})),
   stackEnvFile: vi.fn((home: string) => `${home}/state/stack.env`),
-  PLATFORM_VERSION: 'v0.11.0',
   // E1: the shared assistant-endpoint resolver main.ts now delegates to
   // instead of re-deriving the OP_ASSISTANT_BIND_ADDRESS/PORT precedence
   // chain locally (which is how the http://0.0.0.0:3800 seed bug happened).
@@ -241,69 +251,6 @@ vi.mock('@openpalm/lib', () => ({
     (waitFn: () => Promise<boolean>, childExited: Promise<unknown> | undefined) =>
       childExited ? Promise.race([waitFn(), childExited.then(() => false)]) : waitFn(),
   ),
-  consumePendingUiBackup: vi.fn(() => null),
-  restoreUiBackup: vi.fn(() => ({ status: 'no-backup' as const })),
-  // Faithful reimplementation of lib's UiSupervisor state machine (same style as
-  // the waitForReady mock above) so the restart path the harness drives — stop →
-  // respawn → wait-for-ready → restoreBackup/onReloadRenderer — actually runs its
-  // injected strategy + callbacks under the test.
-  UiSupervisor: class {
-    private handle: unknown = null;
-    private restarting = false;
-    private shuttingDown = false;
-    private readonly port: number;
-    // biome-ignore lint/suspicious/noExplicitAny: test-only faithful stub
-    private readonly strategy: any;
-    // biome-ignore lint/suspicious/noExplicitAny: test-only faithful stub
-    private readonly cb: any;
-    // biome-ignore lint/suspicious/noExplicitAny: test-only faithful stub
-    constructor(opts: any) {
-      this.port = opts.port;
-      this.strategy = opts.strategy;
-      this.cb = opts.callbacks;
-    }
-    get current() { return this.handle; }
-    get isRestarting() { return this.restarting; }
-    adopt(handle: unknown) { this.handle = handle; }
-    detachHandle() { this.handle = null; }
-    async start() {
-      this.handle = await this.strategy.spawn();
-      if (!(await this.cb.waitForReady(this.port))) {
-        await this.cb.onStartFailure?.(this.handle);
-        return false;
-      }
-      return true;
-    }
-    async restart() {
-      if (this.shuttingDown || this.restarting) return false;
-      this.restarting = true;
-      try {
-        this.cb.beforeRestart?.();
-        if (this.handle) await this.strategy.stop(this.handle);
-        this.handle = await this.strategy.spawn();
-        if (!(await this.cb.waitForReady(this.port))) {
-          this.cb.restoreBackup?.();
-          await this.cb.onRestartFailure?.();
-          return false;
-        }
-        this.cb.onReloadRenderer?.();
-        return true;
-      } catch (err) {
-        this.cb.restoreBackup?.();
-        await this.cb.onRestartFailure?.();
-        this.cb.onRestartError?.(err);
-        return false;
-      } finally {
-        this.restarting = false;
-      }
-    }
-    markShuttingDown() { this.shuttingDown = true; }
-  },
-}));
-
-vi.mock('../src/update-check.js', () => ({
-  checkForElectronUpdate: vi.fn(async () => ({ updateAvailable: false })),
-  getCachedUpdateInfo: vi.fn(() => null),
 }));
 
 
@@ -321,7 +268,6 @@ import {
 } from '../src/main.js';
 import { app, BrowserWindow, Notification, shell } from 'electron';
 import * as lib from '@openpalm/lib';
-import { HARNESS_CONTRACT_VERSION, HARNESS_CONTRACT } from '../src/harness-contract.js';
 import { TrayController } from '../src/tray.js';
 
 // ── buildUIServerEnv ─────────────────────────────────────────────────────────
@@ -366,55 +312,6 @@ describe('buildUIServerEnv', () => {
     // lib resolver, on demand.
     const env = buildUIServerEnv('/home/user/.openpalm', 3880);
     expect(env.OP_OPENCODE_URL).toBeUndefined();
-  });
-
-  it('emits the harness contract version so the control plane can feature-detect', () => {
-    const env = buildUIServerEnv('/home/user/.openpalm', 3880);
-    expect(env.OP_HARNESS_CONTRACT_VERSION).toBe(String(HARNESS_CONTRACT_VERSION));
-  });
-});
-
-// ── harness contract surface (design §5.1) ──────────────────────────────────
-// Snapshot the contract surface so any change to the native boundary forces a
-// deliberate HARNESS_CONTRACT_VERSION bump (design §6.6 / §8.8).
-
-describe('harness contract', () => {
-  it('is at the expected version', () => {
-    expect(HARNESS_CONTRACT_VERSION).toBe(2);
-    expect(HARNESS_CONTRACT.version).toBe(HARNESS_CONTRACT_VERSION);
-  });
-
-  it('enumerates the v1 native surface (bump the version when this changes)', () => {
-    expect(HARNESS_CONTRACT.ipc.sync).toEqual(['updateStatus']);
-    expect(HARNESS_CONTRACT.ipc.send).toEqual(['notify']);
-    expect(HARNESS_CONTRACT.ipc.invoke).toEqual([
-      'restart',
-      'restartUiServer',
-      'openLocalApp',
-      'launchOnLoginStatus',
-      'setLaunchOnLogin',
-      'setTrayMicRecording',
-      'requestMicPermission',
-    ]);
-    expect(HARNESS_CONTRACT.ipc.push).toEqual([
-      { channel: 'global-mic-toggle', subscribe: 'onGlobalMicToggle' },
-    ]);
-    expect(HARNESS_CONTRACT.env.required).toEqual([
-      'OP_HOME',
-      'HOST',
-      'PORT',
-      'ORIGIN',
-      'OP_INSIDE_ELECTRON',
-      'OP_ELECTRON_VERSION',
-      'OP_HARNESS_CONTRACT_VERSION',
-      'OP_OPENCODE_URL',
-      'ELECTRON_RUN_AS_NODE',
-    ]);
-    expect(HARNESS_CONTRACT.env.optional).toEqual([
-      'OPENPALM_SKELETON_DIR',
-      'OP_ELECTRON_LATEST_VERSION',
-      'OP_ELECTRON_LATEST_URL',
-    ]);
   });
 });
 
@@ -603,69 +500,6 @@ describe('openLocalApp', () => {
   });
 });
 
-// ── restart-ui-server: must reload the window onto the new control plane ──────
-// Regression guard: respawning the UI server child is not enough — without a
-// window reload the renderer keeps showing the OLD build, so an in-app update
-// looks like it did nothing (the recurring "the restart doesn't work" report).
-describe('restart-ui-server reloads the renderer', () => {
-  afterEach(() => {
-    vi.restoreAllMocks();
-  });
-
-  it('loads the root URL after the UI server becomes ready', async () => {
-    // /health responds 200 → the restart "succeeds" and the reload runs.
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, status: 200 }));
-    mockBrowserWindow.loadURL.mockClear();
-    mockBrowserWindow.isDestroyed.mockReturnValue(false);
-
-    const handler = ipcMainHandleHandlers.get('restart-ui-server');
-    expect(handler).toBeTypeOf('function');
-
-    const ok = await handler?.();
-
-    expect(ok).toBe(true);
-    expect(mockBrowserWindow.loadURL).toHaveBeenCalledWith('http://127.0.0.1:3880/');
-  });
-
-  it('restart ready-FAILURE keeps the app up, restores the backup, and does NOT reload', async () => {
-    // Locks the Electron divergence: unlike the CLI (which process.exit(1)s on a
-    // failed restart), Electron stays running — it restores the prior data/ui and
-    // leaves the window on the old page (no reload). onRestartFailure is omitted.
-    vi.mocked(lib.waitForReady).mockResolvedValueOnce(false); // respawn never becomes ready
-    vi.mocked(lib.restoreUiBackup).mockClear();
-    mockBrowserWindow.loadURL.mockClear();
-    vi.mocked(app.quit).mockClear();
-
-    const handler = ipcMainHandleHandlers.get('restart-ui-server');
-    const ok = await handler?.();
-
-    expect(ok).toBe(false);
-    expect(lib.restoreUiBackup).toHaveBeenCalled();            // §4.4 backup restored
-    expect(mockBrowserWindow.loadURL).not.toHaveBeenCalled();  // renderer NOT reloaded on failure
-    expect(app.quit).not.toHaveBeenCalled();                   // app STAYS UP (no exit/quit)
-  });
-
-  it('re-entrant restart is guarded (uiServerRestarting): the second trigger no-ops with a single respawn', async () => {
-    // The IPC/SIGUSR2 wrapper sets uiServerRestarting for the whole restart so a
-    // concurrent trigger is dropped — preserving the pre-refactor guard and the
-    // exit-handler coupling. Prove only ONE respawn happens across two triggers.
-    vi.mocked(lib.waitForReady).mockResolvedValue(true);
-    mockBrowserWindow.isDestroyed.mockReturnValue(false);
-    const { spawn } = await import('node:child_process');
-    vi.mocked(spawn).mockClear();
-
-    const handler = ipcMainHandleHandlers.get('restart-ui-server');
-    const inFlight = handler?.();       // sets uiServerRestarting = true before its first await
-    const second = await handler?.();   // guarded out immediately
-    const first = await inFlight;
-
-    expect(second).toBe(false);
-    expect(first).toBe(true);
-    expect(vi.mocked(spawn)).toHaveBeenCalledTimes(1); // only the first trigger respawned
-    vi.mocked(lib.waitForReady).mockReset();
-  });
-});
-
 describe('showNotification', () => {
   beforeEach(() => {
     mockNotificationShow.mockReset();
@@ -756,13 +590,10 @@ describe('launch-on-login helpers', () => {
 });
 
 describe('desktop bootstrap', () => {
-  it('starts at /start when an updater materializes compose after the fresh-home snapshot', async () => {
+  it('spawns the bundled UI and lands on /start', async () => {
     const { spawn } = await import('node:child_process');
     vi.mocked(spawn).mockClear();
     vi.mocked(lib.waitForReady).mockResolvedValue(true);
-    vi.mocked(lib.hasMaterializedLocalInstall).mockClear();
-    vi.mocked(lib.checkAndUpdateUiBuild).mockClear();
-    vi.mocked(lib.checkAndUpdateSkeleton).mockClear();
     vi.mocked(app.quit).mockClear();
     mockBrowserWindow.loadURL.mockClear();
     vi.stubGlobal('fetch', vi.fn(async (input: string | URL | Request) => {
@@ -776,24 +607,35 @@ describe('desktop bootstrap', () => {
       return new Response(null, { status: 200 });
     }));
 
-    expect(startupHarness.coreComposeExists).toBe(false);
     startupHarness.releaseReady();
 
     await vi.waitFor(() => {
       expect(mockBrowserWindow.loadURL).toHaveBeenCalledWith('http://127.0.0.1:3880/start');
     });
-    expect(lib.hasMaterializedLocalInstall).toHaveBeenCalledWith('/home/user/.openpalm');
-    expect(vi.mocked(lib.hasMaterializedLocalInstall).mock.results[0]?.value).toBe(false);
-    expect(vi.mocked(lib.hasMaterializedLocalInstall).mock.invocationCallOrder[0]).toBeLessThan(
-      vi.mocked(lib.checkAndUpdateUiBuild).mock.invocationCallOrder[0],
-    );
-    expect(startupHarness.coreComposeExists).toBe(true);
-    expect(lib.checkAndUpdateSkeleton).not.toHaveBeenCalled();
     expect(spawn).toHaveBeenCalled();
     expect(lib.checkDocker).not.toHaveBeenCalled();
     expect(lib.checkDockerCompose).not.toHaveBeenCalled();
     expect(app.quit).not.toHaveBeenCalled();
     expect(mockSetAppUserModelId).toHaveBeenCalledWith('com.openpalm.app');
+  });
+
+  // OP_HOME outlives an app update, so a new release that did not reseed would
+  // serve the PREVIOUS release's managed system/ tree — stale Compose files and
+  // managed instructions — until the user happened to run a lifecycle apply.
+  // This is the Electron half of what the CLI supervisor does before every spawn.
+  it('reseeds OP_HOME from the bundled skeleton before spawning the UI', async () => {
+    const { spawn } = await import('node:child_process');
+    const seedOrder = vi.mocked(lib.applyHomeSeed).mock.invocationCallOrder;
+    const spawnOrder = vi.mocked(spawn).mock.invocationCallOrder;
+
+    expect(lib.applyHomeSeed).toHaveBeenCalled();
+    expect(vi.mocked(lib.applyHomeSeed).mock.calls[0]?.slice(1)).toEqual([
+      '/home/user/.openpalm',
+      '/home/user/.openpalm/config',
+      '/home/user/.openpalm/data',
+    ]);
+    // Seeded BEFORE the child starts, or the child reads the old tree.
+    expect(seedOrder[0]).toBeLessThan(spawnOrder[0]);
   });
 });
 

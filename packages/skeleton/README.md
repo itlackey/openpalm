@@ -57,9 +57,10 @@ packages/skeleton/
 The installer copies managed assets into `system/`, seeds missing user assets
 under `config/`, and creates everything not represented by this package.
 
-Product releases package this workspace into the GitHub host-assets archive.
-The host control plane verifies and materializes it; service images do not carry
-or fetch a second skeleton copy.
+Product releases embed this workspace directly into the CLI binary and the
+Electron app bundle. The host control plane materializes it from that
+embedded copy at startup; service images do not carry or fetch a second
+skeleton copy.
 
 ## Generated Runtime Layout
 

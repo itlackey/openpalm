@@ -13,7 +13,7 @@ vi.mock('node:fs', async (importOriginal) => {
   return {
     ...actual,
     existsSync: vi.fn((p: string) => {
-      // Make the UI build appear present so seedUiBuild is never called.
+      // Make the bundled UI build appear present so startUIServer doesn't bail.
       if (String(p).endsWith('index.js')) return true;
       return false;
     }),
@@ -103,14 +103,9 @@ vi.mock('@openpalm/lib', () => ({
   resolveDataDir: vi.fn(() => '/home/user/.openpalm/data'),
   resolveConfigDir: vi.fn(() => '/home/user/.openpalm/config'),
   resolveUiBuildDir: vi.fn(() => '/home/user/.openpalm/data/ui'),
-  seedUiBuild: vi.fn(() => Promise.resolve()),
   ensureHomeDirs: vi.fn(),
-  checkAndUpdateUiBuild: vi.fn(() => Promise.resolve({ updated: false, latestVersion: '0.12.0' })),
-  checkAndUpdateSkeleton: vi.fn(() => Promise.resolve({ updated: false, latestVersion: '0.12.0' })),
-  uiUpdateChannel: vi.fn((v: string) => (v.includes('-') ? 'next' : 'latest')),
   parseEnvFile: vi.fn(() => ({})),
   stackEnvFile: vi.fn((home: string) => `${home}/state/stack.env`),
-  PLATFORM_VERSION: 'v0.12.0',
   // Host-UI port contract (lib network-contract.ts) — resolved at main.ts
   // module scope, so it must exist even for tests that never start the server.
   // The admin listen contract (lib network-contract.ts). buildUIServerEnv spreads
@@ -155,36 +150,8 @@ vi.mock('@openpalm/lib', () => ({
     }
     return false;
   }),
-  restoreUiBackup: vi.fn(() => ({ status: 'no-backup' as const })),
-  consumePendingUiBackup: vi.fn(() => null),
-  // Faithful minimal UiSupervisor stub (main.ts constructs one at module scope).
-  UiSupervisor: class {
-    private handle: unknown = null;
-    private restarting = false;
-    // biome-ignore lint/suspicious/noExplicitAny: test-only faithful stub
-    private readonly strategy: any;
-    // biome-ignore lint/suspicious/noExplicitAny: test-only faithful stub
-    private readonly cb: any;
-    // biome-ignore lint/suspicious/noExplicitAny: test-only faithful stub
-    constructor(opts: any) {
-      this.strategy = opts.strategy;
-      this.cb = opts.callbacks;
-    }
-    get current() { return this.handle; }
-    get isRestarting() { return this.restarting; }
-    adopt(handle: unknown) { this.handle = handle; }
-    detachHandle() { this.handle = null; }
-    markShuttingDown() { /* no-op */ }
-    async start() { return true; }
-    async restart() { return false; }
-  },
 }));
 
-// Keep the boot flow's harness-scoped side quests inert and offline.
-vi.mock('../src/update-check.js', () => ({
-  checkForElectronUpdate: vi.fn(async () => ({ updateAvailable: false })),
-  getCachedUpdateInfo: vi.fn(() => null),
-}));
 const { mockLoadSettings } = vi.hoisted(() => ({
   mockLoadSettings: vi.fn<() => { checkPrerelease: boolean; preferClientChat?: boolean }>(
     () => ({ checkPrerelease: false }),
@@ -196,7 +163,6 @@ vi.mock('../src/settings.js', () => ({
 }));
 
 import * as main from '../src/main.js';
-import { HARNESS_CONTRACT_VERSION } from '../src/harness-contract.js';
 
 // Namespace access (not a named import) so THIS file loads even before the
 // export exists — each test then fails with the precise missing-feature reason
@@ -291,13 +257,5 @@ describe('resolveInitialUrl', () => {
   it('falls back to the UI root when the landing probe fails', async () => {
     stubFetch('error');
     await expect(callResolveInitialUrl()).resolves.toBe('http://127.0.0.1:3880');
-  });
-});
-
-// ── characterization: harness contract version ───────────────────────────────
-
-describe('harness contract version', () => {
-  it('stays at 2 because the existing IPC shape is unchanged', () => {
-    expect(HARNESS_CONTRACT_VERSION).toBe(2);
   });
 });

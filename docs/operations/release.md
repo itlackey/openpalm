@@ -13,8 +13,9 @@ units, no per-unit GitHub Releases, and no deploy bundle.
 
 Product user assets are published once on the summary GitHub Release named by
 the bare product version: the five CLI binaries, Electron artifacts,
-`openpalm-host-assets-<version>.tar.gz`, `release-assets-manifest.json`, and
-`checksums-sha256.txt`.
+`release-assets-manifest.json`, and `checksums-sha256.txt`. The CLI binaries
+embed the UI build directly, so there is no separate host-assets tarball to
+publish or download.
 
 The `openpalm` npm package is only a convenience bootstrap. It is published
 after the GitHub Release exists and its binary and checksum assets have been
@@ -67,8 +68,7 @@ Never reuse a version after an immutable artifact has been published.
 - [ ] Frozen-lockfile preflight passes.
 - [ ] Canonical Assistant, Guardian, and Portal images build from candidate
       source without npm job dependencies.
-- [ ] CLI binaries and Electron installers are present.
-- [ ] `openpalm-host-assets-<version>.tar.gz` is present.
+- [ ] CLI binaries (with the UI build embedded) and Electron installers are present.
 - [ ] `release-assets-manifest.json` lists every user asset.
 - [ ] `checksums-sha256.txt` validates every required asset.
 - [ ] Dry run pushed nothing: no source, images, tags, releases, or npm.

@@ -60,8 +60,9 @@ export default defineConfig(({ mode }) => {
     plugins: [sveltekit(), isolateVitestBrowserDynamicImports(), devtoolsJson()],
     envDir: rootDir,
     ssr: {
-      // The GitHub host-assets archive and assistant image carry build/ without
-      // node_modules, so production builds must inline every SSR dependency.
+      // Every shipped artifact (container image, Electron extraResources, CLI
+      // embedded archive) carries build/ without node_modules, so production
+      // builds must inline every SSR dependency.
       //
       // In DEV we externalize most deps — Node handles them natively via
       // require interop, and Vite's ESM-only module runner doesn't have

@@ -161,7 +161,8 @@ the image. The Assistant and Guardian OpenCode pins are the exact `opencode-ai`
 dependencies in `containers/assistant/tools/package.json` and
 `containers/guardian/tools/package.json`; keep them in lockstep. There is no
 standalone UI image; the Assistant image bakes the candidate-local compiled UI,
-while skeleton files arrive through the coordinated GitHub host-assets archive.
+while the CLI and Electron app each embed their own compiled UI and skeleton
+at build time.
 
 ## Release Packaging
 

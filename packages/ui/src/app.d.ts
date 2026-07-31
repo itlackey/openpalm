@@ -10,22 +10,34 @@ declare global {
     // interface Platform {}
   }
 
+  /** Mirrors UpdaterState in packages/electron/src/updater.ts. */
+  interface UpdaterState {
+    status:
+      | 'idle' | 'checking' | 'available' | 'not-available'
+      | 'downloading' | 'downloaded' | 'error' | 'unsupported';
+    currentVersion: string;
+    availableVersion: string | null;
+    percent: number | null;
+    error: string | null;
+    channel: 'stable' | 'beta';
+    supported: boolean;
+    releasesUrl: string;
+  }
+
   interface Window {
     openpalm?: {
-      /** Native harness contract version (design §5.1). Feature-detect new
-       *  IPC/env members against this; absent ⇒ pre-contract harness. */
-      harnessContractVersion?: number;
-      updateStatus?: () => {
-        inElectron: boolean;
-        currentVersion: string | null;
-        latestVersion: string | null;
-        latestUrl: string | null;
-        updateAvailable: boolean;
-        harnessContractVersion?: number;
+      /** Full-application update surface (#572). Present only in the desktop
+       *  shell — a browser has no `openpalm` object at all, which is how the
+       *  UI knows to hide the desktop-only update controls. */
+      updater?: {
+        state: () => Promise<UpdaterState>;
+        check: () => Promise<UpdaterState>;
+        download: () => Promise<UpdaterState>;
+        quitAndInstall: () => Promise<boolean>;
+        onState: (callback: (state: UpdaterState) => void) => () => void;
       };
       notify?: (title: string, body: string) => void;
       restart?: () => Promise<void>;
-      restartUiServer?: () => Promise<boolean>;
       openLocalApp?: () => Promise<void>;
       launchOnLoginStatus?: () => Promise<{
         supported: boolean;
