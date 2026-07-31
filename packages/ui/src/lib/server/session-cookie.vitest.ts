@@ -13,6 +13,7 @@ import {
   sessionCookieHeader,
   clearSessionCookieHeader,
   isSecureRequest,
+  resolveSessionCookieName,
   SESSION_COOKIE_NAME,
 } from "./session-cookie.js";
 import { SESSION_TTL_SECONDS } from "./session-store.js";
@@ -64,6 +65,28 @@ describe("isSecureRequest", () => {
   });
   test("true for https", () => {
     expect(isSecureRequest(req("https://x/"))).toBe(true);
+  });
+});
+
+describe("resolveSessionCookieName", () => {
+  test("uses the plain name for the host process (no container marker)", () => {
+    expect(resolveSessionCookieName({})).toBe("op_session");
+  });
+
+  test("uses a distinct name for the assistant container UI co-process", () => {
+    expect(resolveSessionCookieName({ OP_UI_SERVED_IN_CONTAINER: "1" })).toBe(
+      "op_session_assistant",
+    );
+  });
+
+  test("does not treat any other value as the container marker", () => {
+    expect(resolveSessionCookieName({ OP_UI_SERVED_IN_CONTAINER: "true" })).toBe("op_session");
+  });
+
+  test("the exported constant matches resolving the live process env", () => {
+    // Guards against the module-load-time resolution silently drifting from
+    // the pure function above.
+    expect(SESSION_COOKIE_NAME).toBe(resolveSessionCookieName(process.env));
   });
 });
 

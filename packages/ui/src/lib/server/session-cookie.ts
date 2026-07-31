@@ -1,10 +1,18 @@
 /**
- * Single source of truth for the `op_session` cookie's Set-Cookie attributes.
+ * Single source of truth for the `op_session` cookie's name and Set-Cookie
+ * attributes.
  *
- * Every issuer (login, session, setup/complete) and the sliding-renewal path in
+ * Every issuer (login, setup/complete) and the sliding-renewal path in
  * hooks.server.ts builds the cookie through these helpers so the attributes can
  * never drift apart. Logout uses `clearSessionCookie()` with the SAME path so
  * the browser actually drops the cookie.
+ *
+ * Cookie NAME is per-surface, not a fixed string (see SESSION_COOKIE_NAME
+ * below) — the host admin process (:3880) and the assistant container's UI
+ * co-process (:3800) both answer on 127.0.0.1, so a shared cookie name is one
+ * jar entry fought over by two processes whose signed tokens are mutually
+ * invalid (each signs with its own key — see session-store.ts). Whichever
+ * surface issues the cookie last silently signs the other one out.
  *
  * Attribute rationale:
  *  - HttpOnly       — the cookie is the only credential the browser holds; XSS
@@ -27,7 +35,40 @@
  */
 import { SESSION_TTL_SECONDS } from "./session-store.js";
 
-export const SESSION_COOKIE_NAME = "op_session";
+/**
+ * Resolve the per-surface cookie name. Exported (rather than inlined below)
+ * purely so tests can drive both branches without needing a fresh module
+ * instance — production always calls it with the ambient `process.env`.
+ *
+ * `OP_UI_SERVED_IN_CONTAINER` is the existing, entrypoint-only marker for
+ * "this process is the assistant container's UI co-process" (see
+ * session-store.ts's `getUiLoginPassword` and helpers.ts's
+ * `isPublishedContainerUi`); it is set before the process — and therefore
+ * this module — ever starts, so resolving it once at import time (below) is
+ * safe: the two surfaces are always separate OS processes, never one process
+ * switching surfaces mid-run.
+ *
+ * The host surface keeps the original name so upgrading an existing host
+ * install needs no re-login; only the container surface's cookie (and any
+ * session held there) is invalidated by this change — one re-login, on the
+ * surface where the clash was actually reported.
+ *
+ * IMPORTANT — companion fix needed outside this file's ownership:
+ * `helpers.ts`'s `extractToken()` (which `requireAdmin()` /
+ * `identifyCallerByToken()` use for every protected request, on BOTH
+ * surfaces) currently matches the incoming cookie with a hardcoded
+ * `op_session=` regex instead of importing SESSION_COOKIE_NAME from this
+ * module. Until that regex is switched to use SESSION_COOKIE_NAME, the
+ * container surface will mint a cookie under the new name but never be able
+ * to read it back — i.e. this change must not ship without that one-line
+ * companion edit, or the assistant UI (:3800) loses the ability to
+ * authenticate entirely.
+ */
+export function resolveSessionCookieName(env: NodeJS.ProcessEnv = process.env): string {
+  return env.OP_UI_SERVED_IN_CONTAINER === "1" ? "op_session_assistant" : "op_session";
+}
+
+export const SESSION_COOKIE_NAME = resolveSessionCookieName();
 
 /** True when the request reached us over HTTPS (direct or via TLS-terminating proxy). */
 export function isSecureRequest(request: Request): boolean {

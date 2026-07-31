@@ -14,6 +14,7 @@ import type {
 import { asNumber, asRecord, asString, asStringArray, asStringRecord } from '../coercion.js';
 import { getCurrentConfig, type RawConfig } from './config.js';
 import { opencodeFetch } from './http.js';
+import { resolveSetupOpencodeTarget } from './setup-target.js';
 import { getState } from '../state.js';
 import { authJsonPath } from '@openpalm/lib';
 
@@ -141,10 +142,16 @@ export type SetupProviderPageState =
     };
 
 export async function loadSetupProviderPage(): Promise<SetupProviderPageState> {
+  // W1: on a fresh host the deployed assistant isn't up yet — resolve
+  // whichever OpenCode the wizard should actually be talking to (the real
+  // assistant if reachable, else the wizard-spawned instance `ensure`
+  // started) instead of hardcoding the deployed-assistant target.
+  const target = await resolveSetupOpencodeTarget();
+  if (!target) return { available: false, providers: [] };
   try {
     const [catalog, auth] = await Promise.all([
-      opencodeFetch<RawProviderCatalog>('/provider'),
-      opencodeFetch<Record<string, RawAuthMethod[]>>('/provider/auth'),
+      opencodeFetch<RawProviderCatalog>('/provider', undefined, target),
+      opencodeFetch<Record<string, RawAuthMethod[]>>('/provider/auth', undefined, target),
     ]);
     return {
       available: true,

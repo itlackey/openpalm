@@ -78,7 +78,6 @@ export type DeployPhase =
 	| 'writing-config'
 	| 'pulling-images'
 	| 'starting'
-	| 'starting-voice'
 	| 'ready';
 
 export type DeployJournal = {
@@ -244,6 +243,68 @@ async function refreshDeployStatus(
 	return { failedRequired, failedOptional };
 }
 
+/**
+ * How often the interim poll below peeks at `compose ps` while `activateStack`
+ * is in flight. Read-only and best-effort — it never decides pass/fail (that
+ * stays refreshDeployStatus's job once activateStack resolves) and never
+ * issues another compose mutation, so it cannot race or compete with compose's
+ * own `--wait` health gate.
+ */
+const INTERIM_STATUS_POLL_MS = 5_000;
+
+/**
+ * W7: `activateStack` (pull + up, §4.3) is ONE call with no progress
+ * callback, so the journal would otherwise sit frozen on "Waiting..." for the
+ * entire pull and the entire up/health-wait. Poll `compose ps` on the side
+ * while that call is outstanding so the wizard's rows move as containers
+ * actually appear. The first non-empty `compose ps` result is also the
+ * signal that the discrete pull finished and `up` began creating containers,
+ * so it flips the phase from 'pulling-images' to 'starting'.
+ *
+ * Deliberately conservative: a row is only ever promoted to 'running' here
+ * (once compose reports it healthy); nothing is ever marked 'error' —
+ * a container still warming up mid-pull is not a failure, and the actual
+ * failure determination belongs solely to refreshDeployStatus() after
+ * activateStack returns.
+ */
+function startInterimStatusPoll(
+	state: ControlPlaneState,
+	options: RunDeployOptions,
+	progress: DeployProgress
+): { stop: () => void } {
+	const composeOpts = buildComposeOptions(state);
+	let stopped = false;
+	let tickInFlight = false;
+	const tick = async () => {
+		if (stopped || tickInFlight) return;
+		tickInFlight = true;
+		try {
+			const psResult = await composePs(composeOpts);
+			if (stopped || !psResult.ok) return;
+			const rows = parseComposePsRows(psResult.stdout);
+			if (rows.length === 0) return;
+			if (progress.phase === 'pulling-images') progress.phase = 'starting';
+			progress.deployStatus = progress.deployStatus.map((entry) => {
+				const row = rows.find((r) => r.service === entry.service);
+				if (!row) return entry;
+				return isComposePsRowHealthy(row)
+					? { ...entry, status: 'running', label: 'Running' }
+					: { ...entry, status: 'pending', label: 'Starting...' };
+			});
+			emitProgress(options, progress);
+		} finally {
+			tickInFlight = false;
+		}
+	};
+	const timer = setInterval(() => { void tick(); }, INTERIM_STATUS_POLL_MS);
+	return {
+		stop: () => {
+			stopped = true;
+			clearInterval(timer);
+		}
+	};
+}
+
 export function markSetupComplete(state: ControlPlaneState): void {
 	// OP_SETUP_COMPLETE is an app-written record → the single state/stack.env
 	// (constitution §1).
@@ -393,17 +454,25 @@ export async function runDeploy(
 			);
 		}
 
-		progress.phase = 'starting';
+		const imageTag = resolveImageTag(state);
+		const isDevTag = imageTag.startsWith('dev');
+
+		// W7: a dev tag uses `pull: 'missing'` — any fetch is folded into `up`
+		// itself, so there's no separate download wait to announce. Every other
+		// tag pulls first (`pull: 'always'`), which is the multi-GB, multi-minute
+		// wait the wizard has dedicated copy for ("Downloading Images…") — give it
+		// its own phase instead of leaving 'starting' (and its "0 of N services
+		// running" subtitle) covering both the download and the actual startup.
+		progress.phase = isDevTag ? 'starting' : 'pulling-images';
 		progress.deployStatus = progress.deployStatus.map((entry) => ({
 			...entry,
 			status: 'pending',
-			label: 'Starting...'
+			label: isDevTag ? 'Starting...' : 'Waiting to download...'
 		}));
 		emitProgress(options, progress);
 
-		const imageTag = resolveImageTag(state);
-		const isDevTag = imageTag.startsWith('dev');
 		let stackResult: ApplyStackResult;
+		const interimPoll = startInterimStatusPoll(state, options, progress);
 		try {
 			stackResult = await activateStack(
 				state,
@@ -420,7 +489,19 @@ export async function runDeploy(
 			progress.deploying = false;
 			emitProgress(options, progress);
 			return progress;
+		} finally {
+			interimPoll.stop();
 		}
+
+		// The interim poll above flips 'pulling-images' → 'starting' the moment it
+		// OBSERVES containers being (re)created — a best-effort signal that can
+		// miss a fast up (finishes between poll ticks). Force the transition here
+		// too so the phase sequence is guaranteed writing-config → pulling-images →
+		// starting → ready regardless of timing; a failure right after overrides
+		// the visible title via `deployError`, so this is never shown as a false
+		// "now starting" on a pull that actually failed.
+		progress.phase = 'starting';
+		emitProgress(options, progress);
 
 		if (!stackResult.ok) {
 			// ONE `compose ps` refreshes the per-service display labels and splits the
@@ -451,6 +532,15 @@ export async function runDeploy(
 			// This early return would otherwise skip the success-path retired-volume
 			// reap below, so reclaim before returning the warning.
 			await reapAndLogRetiredVolumes(state.homeDir, deployLogger);
+			// W5: the client's poll loop (setup-state.svelte.ts pollDeployStatus)
+			// treats 'warning' rows as a non-blocking terminal state — every
+			// required service is up, so a failed OPTIONAL row must read as "done,
+			// with a warning" rather than 'error' (which reads as still-failing and
+			// would poll forever, since nothing else ever produces a terminal state
+			// here).
+			progress.deployStatus = progress.deployStatus.map((entry) =>
+				failedOptional.includes(entry.service) ? { ...entry, status: 'warning' } : entry
+			);
 			progress.imageWarning = `The following optional service(s) did not start correctly and were skipped: ${failedOptional.join(', ')}. ${buildLogHint(state, failedOptional)}`;
 			options.markSetupComplete?.();
 			progress.deploying = false;

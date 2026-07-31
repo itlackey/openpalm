@@ -14,7 +14,6 @@
     | 'writing-config'
     | 'pulling-images'
     | 'starting'
-    | 'starting-voice'
     | 'ready';
 
   interface DeployData {
@@ -82,7 +81,6 @@
           ? 'Downloading Images (incl. Voice ~2.4 GB)…'
           : 'Downloading Images…';
       case 'starting': return 'Starting Services…';
-      case 'starting-voice': return 'Starting Voice Addon…';
       case 'ready': return 'Setup Complete';
     }
     return 'Deploying…';
@@ -102,8 +100,6 @@
           ? 'Downloading container images. The voice model (~2.4 GB) is the largest — on a typical home connection this step can take 10–30 minutes. The wizard will wait — keep this tab open.'
           : 'Downloading container images — first install can take 3–8 minutes depending on connection.';
       case 'starting': return `${running} of ${total} services running.`;
-      case 'starting-voice':
-        return 'Pulling the voice image (~2.4 GB) and warming up Kokoro + Whisper models. First launch can take 5–30 minutes on slow connections — the wizard will wait.';
       case 'ready': return 'All services are up.';
     }
     return 'Writing configuration and starting services.';

@@ -80,7 +80,10 @@ export async function fetchRecommendation(): Promise<RecommendResponse | null> {
 
 // ── OpenCode ─────────────────────────────────────────────────────────────────
 
-export interface OpenCodeEnsureResponse { ok: boolean; }
+// W1: `url`/`started` were dropped from this type even though the server
+// always sends them — carried through now so callers that need the resolved
+// wizard-instance URL (rather than just the `ok` flag) can read it.
+export interface OpenCodeEnsureResponse { ok: boolean; url?: string; started?: boolean; }
 export interface OpenCodeStatusResponse { available?: boolean; }
 export interface OpenCodeProvidersResponse {
   available?: boolean;
