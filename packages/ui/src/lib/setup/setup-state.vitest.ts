@@ -659,8 +659,8 @@ describe('SetupState — module singleton is reset on a fresh (non-rerun) mount'
     // Public reactive fields only (derived getters + private internals excluded).
     const FIELDS = [
       'currentStep', 'maxVisitedStep', 'showDeploy', 'systemCheckPassed',
-      'modelMode', 'voiceEnabled', 'uiLoginPassword', 'step0Error',
-      'autoModeImporting', 'gpuDetected', 'providerState', 'detectedHostProviders',
+      'modelMode', 'voiceEnabled', 'uiLoginPassword',
+      'gpuDetected', 'providerState', 'detectedHostProviders',
       'detectedProviders', 'opencodeAvailable', 'opencodeProviders', 'opencodeAuth',
       'hostProviderCount', 'allowEmptyInstall', 'recommendation', 'recommendationAlert',
       'recommendationApplied', 'detectedGpuVramMb', 'detectedGpuVendor', 'detectedGpuName',

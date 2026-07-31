@@ -368,4 +368,22 @@ export class DesktopUpdater {
     this.deps.updater.quitAndInstall(false, true);
     return true;
   }
+
+  /**
+   * Silently launch the installer for an already-staged update WITHOUT
+   * quitting — called by main.ts's before-quit handler immediately before its
+   * own `app.exit(0)`, since a real Electron `'quit'` event (which
+   * electron-updater's built-in install-on-quit hook needs) never fires from
+   * that path (see this class's docblock and `autoInstallOnAppQuit` above).
+   *
+   * Silent + no relaunch (`install(true, false)`): an ordinary quit is not
+   * "restart now" — that stays the explicit button's job (`quitAndInstall()`,
+   * non-silent, force-run-after).
+   *
+   * No-op (returns false) unless a download has actually completed.
+   */
+  installOnQuit(): boolean {
+    if (!this.state.supported || this.state.status !== 'downloaded') return false;
+    return this.deps.updater.install(true, false);
+  }
 }

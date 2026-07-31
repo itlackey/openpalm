@@ -118,8 +118,6 @@ export const INITIAL = {
   // PR #564 P1-1 — true once the operator explicitly sets a new UI login
   // password; a rerun keeps the existing secret unless this is set.
   uiLoginPasswordDirty: false,
-  step0Error: '',
-  autoModeImporting: false,
   gpuDetected: false,
   // Step 1: Providers
   providerState: {} as Record<string, ProviderState>,
@@ -209,9 +207,6 @@ export class SetupState {
   // Operator UI login password — replaces the legacy "admin token" UI.
   uiLoginPassword = $state(INITIAL.uiLoginPassword);
   uiLoginPasswordDirty = $state(INITIAL.uiLoginPasswordDirty);
-  step0Error = $state(INITIAL.step0Error);
-  // True while auto mode is performing a host provider import before jumping to Review
-  autoModeImporting = $state(INITIAL.autoModeImporting);
   // Set when System Check detects a GPU — used to auto-select CUDA voice profile
   gpuDetected = $state(INITIAL.gpuDetected);
 

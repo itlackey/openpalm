@@ -93,6 +93,146 @@ describe('openpalm doctor — registration', () => {
   });
 });
 
+describe('doctorReportHasFailure (C10/B8 — exit-code semantics)', () => {
+  const availableAdmin = { port: 3880, service: 'admin', blocking: true, available: true } as const;
+
+  test('false when Docker is ok and no blocking port is unavailable', () => {
+    expect(doctorReportHasFailure({ docker: okDockerResult, ports: [availableAdmin] })).toBe(false);
+  });
+
+  test('true when the Docker check FAILed, even with every port available', () => {
+    expect(
+      doctorReportHasFailure({ docker: { ...okDockerResult, ok: false }, ports: [availableAdmin] }),
+    ).toBe(true);
+  });
+
+  test('true when a blocking port is unavailable', () => {
+    expect(
+      doctorReportHasFailure({
+        docker: okDockerResult,
+        ports: [{ ...availableAdmin, available: false, ownership: 'free' }],
+      }),
+    ).toBe(true);
+  });
+
+  test('false when only a NON-blocking port is unavailable', () => {
+    expect(
+      doctorReportHasFailure({
+        docker: okDockerResult,
+        ports: [{ ...availableAdmin, blocking: false, available: false }],
+      }),
+    ).toBe(false);
+  });
+});
+
+describe('openpalm doctor — port-probe fixes (C10/B9)', () => {
+  test('port targets are resolved from persisted stack.env, not live process.env alone', async () => {
+    const savedPorts = {
+      OP_HOST_UI_PORT: process.env.OP_HOST_UI_PORT,
+      OP_UI_PORT: process.env.OP_UI_PORT,
+      OP_ASSISTANT_PORT: process.env.OP_ASSISTANT_PORT,
+    };
+    delete process.env.OP_HOST_UI_PORT;
+    delete process.env.OP_UI_PORT;
+    delete process.env.OP_ASSISTANT_PORT;
+    const originalLog = console.log;
+    console.log = silentConsole.log;
+    let seenTargets: Array<{ port: number; service: string }> = [];
+    try {
+      const deps = baseDeps({
+        readStackEnv: () => ({ OP_HOST_UI_PORT: '4300', OP_UI_PORT: '4301', OP_ASSISTANT_PORT: '4302' }),
+        probeInstallPorts: async (targets) => {
+          seenTargets = (targets ?? []).map((t) => ({ port: t.port, service: t.service }));
+          return [];
+        },
+      });
+      await runDoctorAction({ json: true }, deps);
+    } finally {
+      console.log = originalLog;
+      for (const [key, value] of Object.entries(savedPorts)) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+    }
+    expect(seenTargets).toEqual([
+      { port: 4300, service: 'admin' },
+      { port: 4301, service: 'ui' },
+      { port: 4302, service: 'assistant' },
+    ]);
+  });
+
+  test('passes serverPort for the admin port once an OpenPalm UI instance answers there — the host UI is never a container, so no docker check could otherwise attribute it to "us"', async () => {
+    const originalLog = console.log;
+    console.log = silentConsole.log;
+    let seenServerPort: number | undefined;
+    try {
+      const deps = baseDeps({
+        readStackEnv: () => ({ OP_HOST_UI_PORT: '4400' }),
+        checkExistingUiInstance: async (port) =>
+          port === 4400 ? { status: 'match' as const, admin: true } : { status: 'absent' as const },
+        probeInstallPorts: async (_targets, opts) => {
+          seenServerPort = opts?.serverPort;
+          return [];
+        },
+      });
+      await runDoctorAction({ json: true }, deps);
+    } finally {
+      console.log = originalLog;
+    }
+    expect(seenServerPort).toBe(4400);
+  });
+
+  test("reclassifies a blocked ui/assistant port as ours once Docker confirms THIS home's own compose project holds it — a custom OP_PROJECT_NAME must not read as a conflict against itself", async () => {
+    const originalLog = console.log;
+    console.log = silentConsole.log;
+    let seenProjectName: string | undefined;
+    try {
+      const deps = baseDeps({
+        resolveComposeProjectName: () => 'myproj',
+        probeInstallPorts: async (targets) =>
+          (targets ?? []).map((t) => ({
+            ...t,
+            available: t.service === 'admin',
+            ownership: t.service === 'admin' ? undefined : ('free' as const),
+          })),
+        detectExistingProject: async (opts) => {
+          seenProjectName = opts.projectName;
+          return { exists: true, isOurs: true, workingDir: opts.expectedWorkingDir };
+        },
+      });
+      const report = await runDoctorAction({ json: true }, deps);
+      const ui = report.ports.find((p) => p.service === 'ui');
+      const assistant = report.ports.find((p) => p.service === 'assistant');
+      expect(seenProjectName).toBe('myproj');
+      expect(ui).toMatchObject({ available: true, ownership: 'ours' });
+      expect(assistant).toMatchObject({ available: true, ownership: 'ours' });
+    } finally {
+      console.log = originalLog;
+    }
+  });
+
+  test("leaves a blocked ui/assistant port as a real conflict when the running project is NOT this home's own", async () => {
+    const originalLog = console.log;
+    console.log = silentConsole.log;
+    try {
+      const deps = baseDeps({
+        probeInstallPorts: async (targets) =>
+          (targets ?? []).map((t) => ({
+            ...t,
+            available: t.service === 'admin',
+            ownership: t.service === 'admin' ? undefined : ('free' as const),
+          })),
+        detectExistingProject: async () => ({ exists: true, isOurs: false, workingDir: '/some/other/path' }),
+      });
+      const report = await runDoctorAction({ json: true }, deps);
+      const ui = report.ports.find((p) => p.service === 'ui');
+      expect(ui).toMatchObject({ available: false });
+    } finally {
+      console.log = originalLog;
+    }
+  });
+});
+
 describe('openpalm doctor — composes checks without throwing', () => {
   test('Docker absent (ENOENT) is handled — report reflects the failure instead of throwing', async () => {
     const originalLog = console.log;
