@@ -231,7 +231,7 @@
              of what it is or how sign-in there differs from this app's own
              login — labeled as the advanced/raw surface it is, matching the
              framing the same link gets on the Advanced page post-install. -->
-        <a href="http://127.0.0.1:{assistantPort}" target="_blank" rel="noopener" class="btn btn-tertiary" title="Raw OpenCode developer console — its own separate sign-in, for advanced use">Raw AI console (advanced)</a>
+        <a href="http://127.0.0.1:{assistantPort}" target="_blank" rel="noopener" class="btn btn-secondary" title="Raw OpenCode developer console — its own separate sign-in, for advanced use">Raw AI console (advanced)</a>
       </div>
     {/if}
   </div>
