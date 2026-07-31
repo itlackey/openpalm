@@ -143,7 +143,6 @@
         spellcheck="false"
         value={uiLoginPassword}
         oninput={onPasswordInput}
-        onfocus={(e) => (e.currentTarget as HTMLInputElement).select()}
         aria-invalid={!passwordValid}
         aria-describedby={!passwordValid ? 'password-error' : undefined}
       />
@@ -170,7 +169,12 @@
             </svg>
           {/if}
         </button>
-        <!-- Copy button -->
+        <!-- Copy button. copyPassword() itself falls back to focus()+select()
+             when the Clipboard API is unavailable — that (not an onfocus
+             handler on the input) is where "select everything" belongs. This
+             field is genuinely editable (W12): a select-on-focus here meant
+             clicking in to fix a typo selected the WHOLE password, so the
+             next keystroke wiped it instead of editing at the cursor. -->
         <button
           type="button"
           class="btn-icon"

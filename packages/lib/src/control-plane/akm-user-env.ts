@@ -26,6 +26,10 @@ import { existsSync, readFileSync, writeFileSync, mkdirSync, chmodSync } from "n
 import { dirname } from "node:path";
 import { parseEnvFile, quoteEnvValue, upsertEnvValue, removeEnvKey } from "./env.js";
 import type { ControlPlaneState } from "./types.js";
+import { createLogger } from "../logger.js";
+import { errMessage } from "./errors.js";
+
+const logger = createLogger("akm-user-env");
 
 /** akm ref for the user-managed environment file. */
 export const AKM_USER_ENV_REF = "env:user";
@@ -102,11 +106,26 @@ export function userEnvPathSync(state: ControlPlaneState): string {
  * mode the skeleton source is chmod'd to. This is the home for user-set LLM
  * provider keys, in a 0755 directory — enforce 0600 unconditionally rather
  * than trusting whatever arrived on disk.
+ *
+ * That enforcement is best-effort: chmod requires ownership, so a
+ * root-seeded or container-recreated user.env this process does not own
+ * would throw EPERM. This function is called unguarded from several call
+ * sites (e.g. prepareInstallFiles), so an unguarded chmod here would abort
+ * the whole install before the wizard is ever served — mirroring
+ * enforceVaultDirMode/writeVaultFile (secrets.ts), which already treat mode
+ * enforcement as best-effort for the same reason.
  */
 export function ensureAkmUserEnv(state: ControlPlaneState): string {
   const envPath = userEnvPathSync(state);
   if (existsSync(envPath)) {
-    chmodSync(envPath, ENV_FILE_MODE);
+    try {
+      chmodSync(envPath, ENV_FILE_MODE);
+    } catch (error) {
+      logger.warn("failed to enforce user.env permissions", {
+        path: envPath,
+        error: errMessage(error),
+      });
+    }
     return envPath;
   }
 

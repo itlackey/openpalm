@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount, tick } from 'svelte';
+	import { onMount, tick, untrack } from 'svelte';
 	import { fly } from 'svelte/transition';
 	import { page } from '$app/state';
 	import { afterNavigate, goto, replaceState } from '$app/navigation';
@@ -49,7 +49,16 @@
 			return;
 		}
 		if (pendingRenderFrame !== null) return;
-		if (!renderedPendingHtml) {
+		// Minor finding: this effect WRITES renderedPendingHtml below (both here
+		// and from the rAF callback) — reading it untracked keeps the effect's
+		// only dependency `chat.pendingAssistantText`, so those writes don't
+		// re-invalidate this same effect. Before this, the plain read here made
+		// renderedPendingHtml a tracked dependency too: the immediate-render
+		// write on the first chunk of a reply re-triggered the effect a second
+		// time, which found pendingRenderFrame still null and spuriously
+		// scheduled a coalescing frame that re-parsed the same unchanged text —
+		// ~2 markdown parses instead of 1 for that chunk.
+		if (!untrack(() => renderedPendingHtml)) {
 			renderedPendingHtml = renderMarkdown(text);
 			return;
 		}

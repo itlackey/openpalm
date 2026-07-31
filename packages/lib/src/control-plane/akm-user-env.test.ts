@@ -5,8 +5,9 @@
  * `knowledge/env/user.env` file directly. Writes/deletes are plain atomic .env
  * edits — no akm subprocess — so these tests run everywhere (no akm-on-PATH gate).
  */
-import { describe, expect, it, beforeEach, afterEach } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, rmSync, readFileSync, statSync } from "node:fs";
+import { describe, expect, it, beforeEach, afterEach, spyOn } from "bun:test";
+import * as nodeFs from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -109,6 +110,28 @@ describe("akm user-env helpers", () => {
 
   it("readUserEnvSync returns {} when no file exists yet", () => {
     expect(readUserEnvSync(state)).toEqual({});
+  });
+
+  // D5: chmod requires ownership. A root-seeded or container-recreated
+  // user.env this process does not own throws EPERM — ensureAkmUserEnv is
+  // called unguarded from prepareInstallFiles, so letting that throw would
+  // abort the whole install before the wizard is ever served.
+  it("does not throw when chmod on an existing user.env fails (best-effort, mirrors enforceVaultDirMode)", () => {
+    const path = ensureAkmUserEnv(state);
+    writeFileSync(path, "TOKEN=already-here\n");
+
+    const spy = spyOn(nodeFs, "chmodSync").mockImplementation(() => {
+      throw Object.assign(new Error("EPERM: operation not permitted"), { code: "EPERM" });
+    });
+    try {
+      expect(() => ensureAkmUserEnv(state)).not.toThrow();
+      expect(ensureAkmUserEnv(state)).toBe(path);
+    } finally {
+      spy.mockRestore();
+    }
+
+    // The file itself is untouched by the failed chmod attempt.
+    expect(readFileSync(path, "utf-8")).toBe("TOKEN=already-here\n");
   });
 });
 

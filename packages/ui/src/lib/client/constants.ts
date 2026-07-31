@@ -63,8 +63,6 @@ export function friendlyProviderName(
   return PROVIDERS.find((p) => p.id === connId)?.name ?? connId;
 }
 
-export const STEP_LABELS = ['Models', 'Extras', 'Review'];
-
 /** Provider IDs excluded from the setup wizard's OAuth provider list. */
 export const WIZARD_EXCLUDED_PROVIDERS = new Set(['anthropic']);
 

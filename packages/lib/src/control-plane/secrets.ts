@@ -17,7 +17,7 @@ import {
 } from './secrets-files.js';
 import { PORTAL_SECRET_ADDON_IDS } from './addon-ids.js';
 import { writeFileAtomic, writeFileInPlace } from './fs-atomic.js';
-import { generateFallbackSystemEnv } from './config-persistence.js';
+import { generateFallbackSystemEnv } from './fallback-system-env.js';
 
 const OPENCODE_STARTER_CONFIG = `${JSON.stringify({ $schema: "https://opencode.ai/config.json" }, null, 2)}\n`;
 const logger = createLogger("secrets");
@@ -127,12 +127,14 @@ function ensureSystemSecrets(state: ControlPlaneState): void {
   writeStackSecretEnv(state, updates);
 
   if (!existsSync(systemEnvPath)) {
-    // K6: reuse config-persistence's generateFallbackSystemEnv as the ONE
+    // K6: reuse fallback-system-env.ts's generateFallbackSystemEnv as the ONE
     // definition of "a fresh stack.env" instead of hand-rolling a second,
     // smaller skeleton here — the two used to diverge (this branch shipped a
     // 5-line stub while writeSystemEnv's fallback carried the full
     // paths/images/ports template), and whichever ran first silently won,
-    // with the other's content never seen by a real install. OP_SETUP_COMPLETE
+    // with the other's content never seen by a real install. It lives in its
+    // own leaf module (not config-persistence.ts, which imports FROM this
+    // file) so this import can't become a require cycle. OP_SETUP_COMPLETE
     // is asserted explicitly because generateFallbackSystemEnv only owns
     // paths/images/ports — writeSystemEnv is what normally stamps the
     // Admin-managed OP_SETUP_COMPLETE section, and this path must not leave a

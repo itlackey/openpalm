@@ -56,8 +56,8 @@ function rowLine(service: string, state: string, health = ""): string {
 
 describe("resolveContainerActualStatus", () => {
   const rows: ComposePsRow[] = [
-    { service: "assistant", state: "running", health: "healthy" },
-    { service: "guardian", state: "exited", health: "" },
+    { service: "assistant", state: "running", health: "healthy", id: "assistant-id" },
+    { service: "guardian", state: "exited", health: "", id: "guardian-id" },
   ];
 
   test("a running, healthy row reports deployed+running+healthy", () => {
@@ -85,12 +85,12 @@ describe("resolveContainerActualStatus", () => {
   });
 
   test("running with no health field at all still counts as healthy (no healthcheck configured)", () => {
-    const noHealthcheck: ComposePsRow[] = [{ service: "assistant", state: "running", health: "" }];
+    const noHealthcheck: ComposePsRow[] = [{ service: "assistant", state: "running", health: "", id: "assistant-id" }];
     expect(resolveContainerActualStatus(noHealthcheck, "assistant").healthy).toBe(true);
   });
 
   test("running but explicitly unhealthy is not healthy", () => {
-    const unhealthy: ComposePsRow[] = [{ service: "assistant", state: "running", health: "unhealthy" }];
+    const unhealthy: ComposePsRow[] = [{ service: "assistant", state: "running", health: "unhealthy", id: "assistant-id" }];
     expect(resolveContainerActualStatus(unhealthy, "assistant").healthy).toBe(false);
   });
 });

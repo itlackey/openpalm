@@ -31,14 +31,14 @@ describe('ReviewStep — rerun password unmount/remount', () => {
     setupState.updateUiLoginPassword('a-new-password');
     expect(setupState.uiLoginPasswordDirty).toBe(true);
 
-    const { unmount } = render(ReviewStep);
+    const { unmount } = await render(ReviewStep);
     // First mount: already expanded (the operator just typed this), showing
     // the value — not the collapsed dots.
     await expect.element(page.getByLabelText('New sign-in password')).toHaveValue('a-new-password');
 
     // Simulate Back → Continue: ReviewStep unmounts, then remounts.
     await unmount();
-    render(ReviewStep);
+    await render(ReviewStep);
 
     // The remount must NOT silently re-collapse to "keep existing" — the
     // store is still dirty, so the expanded field (showing what will
@@ -53,13 +53,13 @@ describe('ReviewStep — rerun password unmount/remount', () => {
     setupState.isRerun = true;
     expect(setupState.uiLoginPasswordDirty).toBe(false);
 
-    const { unmount } = render(ReviewStep);
+    const { unmount } = await render(ReviewStep);
     await expect.element(
       page.getByText('Previously set — not changed unless you set a new one.'),
     ).toBeInTheDocument();
 
     await unmount();
-    render(ReviewStep);
+    await render(ReviewStep);
 
     await expect.element(
       page.getByText('Previously set — not changed unless you set a new one.'),
@@ -71,7 +71,7 @@ describe('ReviewStep — rerun password unmount/remount', () => {
     setupState.updateUiLoginPassword('short');
     expect(setupState.passwordValid).toBe(false);
 
-    render(ReviewStep);
+    await render(ReviewStep);
     await expect.element(page.getByLabelText('New sign-in password')).toBeInTheDocument();
     await page.getByRole('button', { name: 'Cancel' }).click();
 

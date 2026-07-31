@@ -13,7 +13,8 @@ import {
 	isComposePsRowHealthy,
 	parseComposePsRows,
 	resolveComposeProjectName,
-	type ApplyStackResult
+	type ApplyStackResult,
+	type ComposePsRow
 } from './docker.js';
 import { activateStack } from './activation.js';
 import { reapAndLogRetiredVolumes } from './image-volume-retention.js';
@@ -279,13 +280,38 @@ async function refreshDeployStatus(
 const INTERIM_STATUS_POLL_MS = 5_000;
 
 /**
+ * Filter `compose ps` rows down to the ones that count as evidence THIS
+ * deploy's `up` is progressing, as opposed to a STALE row left over from a
+ * PREVIOUS `up` under the same service name. On a redeploy the old
+ * containers are often still present (and healthy) while the new `up` is
+ * still pulling images — polling `compose ps` at that point would otherwise
+ * see them and report progress on a deploy that hasn't touched them yet.
+ * Every `up` this codebase issues passes `--force-recreate` (docker.ts), so a
+ * service that genuinely (re)started always gets a NEW container ID; a row
+ * whose id matches its baseline is therefore still the pre-deploy container,
+ * not new. A row with no id at all (older Compose with no `ID` field) counts
+ * as evidence too — there is nothing to compare, so we fall back to trusting
+ * it rather than silently discarding every row forever.
+ *
+ * Pure decision split out from startInterimStatusPoll so it's unit-testable
+ * without a running docker daemon or the poll's 5s interval.
+ */
+export function newlyObservedRows(
+	rows: ComposePsRow[],
+	baselineIds: ReadonlyMap<string, string>
+): ComposePsRow[] {
+	return rows.filter((row) => row.id === '' || row.id !== baselineIds.get(row.service));
+}
+
+/**
  * W7: `activateStack` (pull + up, §4.3) is ONE call with no progress
  * callback, so the journal would otherwise sit frozen on "Waiting..." for the
  * entire pull and the entire up/health-wait. Poll `compose ps` on the side
  * while that call is outstanding so the wizard's rows move as containers
- * actually appear. The first non-empty `compose ps` result is also the
- * signal that the discrete pull finished and `up` began creating containers,
- * so it flips the phase from 'pulling-images' to 'starting'.
+ * actually appear. The first non-empty `compose ps` result reporting a NEWLY
+ * (re)created container (see newlyObservedRows) is also the signal that the
+ * discrete pull finished and `up` began creating containers, so it flips the
+ * phase from 'pulling-images' to 'starting'.
  *
  * Deliberately conservative: a row is only ever promoted to 'running' here
  * (once compose reports it healthy); nothing is ever marked 'error' —
@@ -293,12 +319,23 @@ const INTERIM_STATUS_POLL_MS = 5_000;
  * failure determination belongs solely to refreshDeployStatus() after
  * activateStack returns.
  */
-function startInterimStatusPoll(
+async function startInterimStatusPoll(
 	state: ControlPlaneState,
 	options: RunDeployOptions,
 	progress: DeployProgress
-): { stop: () => void } {
+): Promise<{ stop: () => void }> {
 	const composeOpts = buildComposeOptions(state);
+	// Baseline container IDs per service, taken right before `up` starts. On a
+	// redeploy this is what lets the poll below tell "the new `up` actually
+	// did something" apart from "the OLD containers from the last `up` are
+	// still sitting there, already healthy" — see newlyObservedRows.
+	const baselineResult = await composePs(composeOpts);
+	const baselineIds = new Map<string, string>();
+	if (baselineResult.ok) {
+		for (const row of parseComposePsRows(baselineResult.stdout)) {
+			baselineIds.set(row.service, row.id);
+		}
+	}
 	let stopped = false;
 	let tickInFlight = false;
 	const tick = async () => {
@@ -307,7 +344,7 @@ function startInterimStatusPoll(
 		try {
 			const psResult = await composePs(composeOpts);
 			if (stopped || !psResult.ok) return;
-			const rows = parseComposePsRows(psResult.stdout);
+			const rows = newlyObservedRows(parseComposePsRows(psResult.stdout), baselineIds);
 			if (rows.length === 0) return;
 			if (progress.phase === 'pulling-images') progress.phase = 'starting';
 			progress.deployStatus = progress.deployStatus.map((entry) => {
@@ -498,7 +535,7 @@ export async function runDeploy(
 		emitProgress(options, progress);
 
 		let stackResult: ApplyStackResult;
-		const interimPoll = startInterimStatusPoll(state, options, progress);
+		const interimPoll = await startInterimStatusPoll(state, options, progress);
 		try {
 			stackResult = await activateStack(
 				state,

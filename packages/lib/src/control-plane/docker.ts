@@ -762,8 +762,14 @@ export async function composePs(
   return run(args, undefined);
 }
 
-/** One row of `compose ps --format json` output, reduced to what callers need. */
-export type ComposePsRow = { service: string; state: string; health: string };
+/**
+ * One row of `compose ps --format json` output, reduced to what callers need.
+ * `id` is the container ID — empty string when the JSON carried no `ID` field
+ * (older Compose). Used to tell a freshly (re)created container apart from a
+ * stale one left over from a PREVIOUS `up` under the same service name (see
+ * {@link newlyObservedRows}).
+ */
+export type ComposePsRow = { service: string; state: string; health: string; id: string };
 
 /**
  * Parse `compose ps --format json` stdout (one JSON object per line, or a
@@ -788,7 +794,12 @@ export function parseComposePsRows(stdout: string): ComposePsRow[] {
         const obj = entry as Record<string, unknown>;
         const service = String(obj.Service ?? obj.Name ?? "");
         if (!service) continue;
-        rows.push({ service, state: String(obj.State ?? ""), health: String(obj.Health ?? "") });
+        rows.push({
+          service,
+          state: String(obj.State ?? ""),
+          health: String(obj.Health ?? ""),
+          id: String(obj.ID ?? ""),
+        });
       }
     } catch {
       // Ignore unparsable lines.

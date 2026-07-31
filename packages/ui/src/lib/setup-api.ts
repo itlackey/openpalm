@@ -1,4 +1,4 @@
-import type { SetupRecommendation } from '@openpalm/lib';
+import type { SetupRecommendation, DeployPhase } from '@openpalm/lib';
 import type { VoiceAddonProfile } from './api.js';
 import type { AuthMethod, DetectedProvider, OpenCodeProvider } from './client/types.js';
 import type { RawSetupConfig, SetupPayload } from './setup/payload.js';
@@ -227,6 +227,19 @@ export interface DeployStatusResponse {
   setupComplete?: boolean;
   deployStatus?: { service: string; status: string; label?: string }[];
   deployError?: string | null;
+  /**
+   * Minor finding: this is a third copy of the deploy shape alongside
+   * `DeployData` (setup-state.svelte.ts) and DeployStep.svelte's props — the
+   * two already drifted once (DeployStep read `phase`/`imageWarning` the
+   * store's declaration didn't have, working only because `deployData`
+   * passed through untyped). This one can't import `DeployData` directly
+   * (setup-state.svelte.ts imports fetchDeployStatus FROM this module, so
+   * that would be circular) — kept manually in sync instead. GET
+   * /api/setup/deploy-status (routes/api/setup/deploy-status/+server.ts)
+   * always returns both.
+   */
+  imageWarning?: string | null;
+  phase?: DeployPhase;
   ports?: { admin?: number; ui?: number; assistant?: number };
 }
 

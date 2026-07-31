@@ -387,8 +387,8 @@ describe("parseComposePsRows (`compose ps --format json` parser)", () => {
       JSON.stringify({ Service: "guardian", State: "running", Health: "unhealthy" }),
     ].join("\n");
     expect(parseComposePsRows(stdout)).toEqual([
-      { service: "assistant", state: "running", health: "" },
-      { service: "guardian", state: "running", health: "unhealthy" },
+      { service: "assistant", state: "running", health: "", id: "" },
+      { service: "guardian", state: "running", health: "unhealthy", id: "" },
     ]);
   });
 
@@ -410,8 +410,18 @@ describe("parseComposePsRows (`compose ps --format json` parser)", () => {
       { Service: "guardian", State: "exited", Health: "" },
     ]);
     expect(parseComposePsRows(stdout)).toEqual([
-      { service: "assistant", state: "running", health: "" },
-      { service: "guardian", state: "exited", health: "" },
+      { service: "assistant", state: "running", health: "", id: "" },
+      { service: "guardian", state: "exited", health: "", id: "" },
+    ]);
+  });
+
+  // D6: the interim deploy poll (deploy.ts's startInterimStatusPoll) tells a
+  // freshly (re)created container apart from a stale one left over from a
+  // PREVIOUS `up` by comparing container IDs, so the ID must survive parsing.
+  it("captures the container ID (used to tell a fresh container from a stale one)", () => {
+    const stdout = JSON.stringify({ ID: "abc123", Service: "assistant", State: "running", Health: "" });
+    expect(parseComposePsRows(stdout)).toEqual([
+      { service: "assistant", state: "running", health: "", id: "abc123" },
     ]);
   });
 });

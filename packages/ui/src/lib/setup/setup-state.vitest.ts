@@ -58,6 +58,18 @@ function providerEntry(patch: Partial<ProviderState> = {}): ProviderState {
   };
 }
 
+function makeSessionStorageStub(): Storage {
+  const store = new Map<string, string>();
+  return {
+    getItem: (k: string) => (store.has(k) ? (store.get(k) as string) : null),
+    setItem: (k: string, v: string) => { store.set(k, String(v)); },
+    removeItem: (k: string) => { store.delete(k); },
+    clear: () => { store.clear(); },
+    key: () => null,
+    get length() { return store.size; },
+  } as Storage;
+}
+
 describe('SetupState — defaults', () => {
   it('starts on the hidden system-check step with nothing selected', () => {
     const s = new SetupState();
@@ -172,6 +184,62 @@ describe('SetupState — the assistant key is generated, never typed', () => {
     s.setAccessToggle('assistantDirect', true);
     expect(s.payload.access?.assistantDirect).toBe(true);
     expect(Object.keys(s.payload)).not.toContain('opencodePassword');
+  });
+});
+
+// Adversarial-review finding #4: the OAuth authorize/callback routes retarget
+// to resolveSetupOpencodeTarget(), which on a fresh host resolves to the
+// wizard-spawned `opencode serve` instance — started with `env: process.env`,
+// i.e. the OPERATOR's own HOME/XDG dirs, not OP_HOME. That instance writes
+// its token to the operator's host auth.json, not the file the assistant
+// container bind-mounts (${OP_HOME}/knowledge/secrets/auth.json) — and
+// nothing copied it over before Install, so the wizard showed "Connected"
+// while the container shipped with an empty credential and the first chat
+// message failed. importHost() (POST /api/setup/import-host) already reads
+// from exactly that host XDG path (host-opencode.ts's hostAuthJsonPath()) and
+// merges it into OP_HOME, so re-running it right after a successful OAuth
+// callback closes the gap.
+describe('SetupState — Finding #4: OAuth success re-imports the host credential', () => {
+  it('re-runs the host import after a successful OAuth callback', async () => {
+    const { pollOpenCodeOAuthCallback, importHost } = await import('$lib/setup-api.js');
+    vi.mocked(importHost).mockClear();
+    vi.mocked(pollOpenCodeOAuthCallback).mockResolvedValueOnce({ ok: true, data: { ok: true } });
+
+    const s = new SetupState();
+    s.initProviderState();
+
+    await s.pollOpenCodeOAuth('openai', 0);
+
+    expect(s.providerState.openai.verified).toBe(true);
+    expect(importHost).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not re-import when the OAuth callback fails', async () => {
+    const { pollOpenCodeOAuthCallback, importHost } = await import('$lib/setup-api.js');
+    vi.mocked(importHost).mockClear();
+    vi.mocked(pollOpenCodeOAuthCallback).mockResolvedValueOnce({ ok: false, data: null });
+
+    const s = new SetupState();
+    s.initProviderState();
+
+    await s.pollOpenCodeOAuth('openai', 0);
+
+    expect(s.providerState.openai.verified).toBe(false);
+    expect(importHost).not.toHaveBeenCalled();
+  });
+
+  it('a re-import failure does not block the OAuth success state', async () => {
+    const { pollOpenCodeOAuthCallback, importHost } = await import('$lib/setup-api.js');
+    vi.mocked(pollOpenCodeOAuthCallback).mockResolvedValueOnce({ ok: true, data: { ok: true } });
+    vi.mocked(importHost).mockRejectedValueOnce(new Error('network error'));
+
+    const s = new SetupState();
+    s.initProviderState();
+
+    await s.pollOpenCodeOAuth('openai', 0);
+
+    expect(s.providerState.openai.verified).toBe(true);
+    expect(s.providerState.openai.error).toBe(false);
   });
 });
 
@@ -338,6 +406,48 @@ describe('SetupState — handleConnectModeChange (cloud ↔ local)', () => {
     expect(s.modelMode).toBe('local');
     expect(s.canComplete).toBe(true);
   });
+
+  // Adversarial-review finding #5: modelMode was committed to 'local' BEFORE
+  // the Apple-Silicon-without-host-Ollama early return, but `modelSelection.llm`
+  // was never repointed on that path. If a cloud model was already verified
+  // and selected, canComplete (keyed only off modelSelection.llm) stayed true
+  // and Continue proceeded to install against cloud while step 1 visually
+  // claimed "local".
+  it('disables canComplete when Local is selected on Apple Silicon with no host Ollama, even with a previously verified cloud model', () => {
+    const s = new SetupState();
+    s.initProviderState();
+    s.detectedGpuVendor = 'apple';
+    s.modelSelection.llm = { connId: 'openai', model: 'gpt-4o', dims: 0 };
+    expect(s.canComplete).toBe(true); // valid cloud selection, before touching Local
+
+    s.handleConnectModeChange('local');
+
+    // modelMode still flips (so the UI/callout correctly reflect the choice
+    // and LocalModelsStatus.svelte's "install Ollama" guidance shows), but
+    // `modelSelection.llm` is untouched (still the stale cloud value) — so
+    // Continue must NOT be enabled on that mismatch.
+    expect(s.modelMode).toBe('local');
+    expect(s.modelSelection.llm?.connId).toBe('openai');
+    expect(s.localModeUnready).toBe(true);
+    expect(s.canComplete).toBe(false);
+  });
+
+  it('re-enables canComplete once a host Ollama is detected running for that same Apple Silicon selection', () => {
+    const s = new SetupState();
+    s.initProviderState();
+    s.detectedGpuVendor = 'apple';
+    s.modelSelection.llm = { connId: 'openai', model: 'gpt-4o', dims: 0 };
+    s.handleConnectModeChange('local');
+    expect(s.canComplete).toBe(false);
+
+    // The operator installs/starts Ollama and the wizard re-detects it.
+    s.detectedHostProviders = [{ provider: 'ollama', url: 'http://127.0.0.1:11434' }];
+    expect(s.localModeUnready).toBe(false);
+    // Still true: modelSelection.llm was never repointed at the local
+    // runtime — a real Re-check flow calls fetchAndApplyRecommendation(true)
+    // to fix that too, but the local-readiness half of the guard clears.
+    expect(s.hostLocalLlmRunning).toBe(true);
+  });
 });
 
 describe('SetupState — autoSelectModels', () => {
@@ -438,18 +548,6 @@ describe('SetupState — fetchAndApplyRecommendation force re-check (W9)', () =>
 // generatePassword() next, so an F5 on the Welcome step silently swapped in a
 // DIFFERENT password than the one the user was just told to keep a copy of.
 describe('SetupState — uiLoginPassword survives a remount (W12)', () => {
-  function makeSessionStorageStub(): Storage {
-    const store = new Map<string, string>();
-    return {
-      getItem: (k: string) => (store.has(k) ? (store.get(k) as string) : null),
-      setItem: (k: string, v: string) => { store.set(k, String(v)); },
-      removeItem: (k: string) => { store.delete(k); },
-      clear: () => { store.clear(); },
-      key: () => null,
-      get length() { return store.size; },
-    } as Storage;
-  }
-
   it('a remount (F5, same tab) reuses the password instead of generating a new one', () => {
     vi.stubGlobal('window', { location: { search: '' }, sessionStorage: makeSessionStorageStub() });
 
@@ -476,6 +574,72 @@ describe('SetupState — uiLoginPassword survives a remount (W12)', () => {
     expect(s.uiLoginPassword).toBe('');
     expect(sessionStorage.getItem('openpalm.setup.uiLoginPassword')).toBeNull();
     s.dispose();
+  });
+});
+
+// Adversarial-review finding #2: the plaintext password stash was never
+// cleared. (a) it survives into the live admin UI after install (same-tab
+// same-origin navigation from DeployStep), a longer-lived credential than the
+// HttpOnly session cookie for any later XSS to recover; (b) wiping OP_HOME and
+// reinstalling in the SAME TAB silently reused the OLD install's password for
+// the NEW install, with `dirty` still false and no sign it wasn't fresh.
+describe('SetupState — Finding #2: sessionStorage password stash cleared on install', () => {
+  it('a successful handleInstall() clears the stash', async () => {
+    const sessionStorage = makeSessionStorageStub();
+    vi.stubGlobal('window', { location: { search: '' }, sessionStorage, confirm: vi.fn(() => true) });
+
+    const s = new SetupState();
+    s.init();
+    expect(sessionStorage.getItem('openpalm.setup.uiLoginPassword')).not.toBeNull();
+    s.modelSelection.llm = { connId: 'ollama', model: 'llama3.2', dims: 0 };
+
+    await s.handleInstall();
+
+    expect(s.installError).toBe('');
+    expect(sessionStorage.getItem('openpalm.setup.uiLoginPassword')).toBeNull();
+    s.dispose();
+  });
+
+  it('a FAILED handleInstall() leaves the stash intact so a retry keeps working', async () => {
+    const { completeSetup } = await import('$lib/setup-api.js');
+    vi.mocked(completeSetup).mockResolvedValueOnce({
+      ok: true,
+      data: { ok: false, message: 'Docker is not running.' },
+    });
+
+    const sessionStorage = makeSessionStorageStub();
+    vi.stubGlobal('window', { location: { search: '' }, sessionStorage, confirm: vi.fn(() => true) });
+
+    const s = new SetupState();
+    s.init();
+    s.modelSelection.llm = { connId: 'ollama', model: 'llama3.2', dims: 0 };
+
+    await s.handleInstall();
+
+    expect(s.installError).toMatch(/Docker is not running/);
+    expect(sessionStorage.getItem('openpalm.setup.uiLoginPassword')).not.toBeNull();
+    s.dispose();
+  });
+
+  it('after a successful install, a later fresh mount in the same tab generates a NEW password instead of reusing the old one', async () => {
+    const sessionStorage = makeSessionStorageStub();
+    vi.stubGlobal('window', { location: { search: '' }, sessionStorage, confirm: vi.fn(() => true) });
+
+    const first = new SetupState();
+    first.init();
+    first.modelSelection.llm = { connId: 'ollama', model: 'llama3.2', dims: 0 };
+    const installedPassword = first.uiLoginPassword;
+    await first.handleInstall();
+    expect(first.installError).toBe('');
+    first.dispose();
+
+    // Simulate wiping OP_HOME and reloading /setup in the same tab (same
+    // sessionStorage) — a brand-new, non-rerun mount.
+    const second = new SetupState();
+    second.init();
+    expect(second.uiLoginPassword).not.toBe('');
+    expect(second.uiLoginPassword).not.toBe(installedPassword);
+    second.dispose();
   });
 });
 

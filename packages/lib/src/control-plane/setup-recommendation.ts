@@ -106,7 +106,7 @@ export function recommendSetup(input: SetupRecommendationInput): SetupRecommenda
       action: "connect-manually",
       alert:
         "Your host OpenCode installation has configured AI providers. " +
-        "Import them now to use your existing setup — choose \"Sign in to a cloud service\" " +
+        "Import them now to use your existing setup — choose \"Sign in to a different service\" " +
         "and use the account found on this computer, or connect a provider manually.",
     };
   }
