@@ -554,6 +554,17 @@ export class SetupState {
       void this.fetchAndApplyRecommendation();
       this.applyImportedModelPreferences();
       this.autoSelectModels();
+      // W4: loadHostStatus() (fired once at init, while the user is still on
+      // step 0) only auto-imports if THIS step is already current at the
+      // moment its fetch resolves — the common ordering is the opposite
+      // (fetch resolves first, user reaches step 1 after). Cover that
+      // ordering here. hostImportTriggered is the single guard shared with
+      // loadHostStatus(), so whichever side runs first wins and the other
+      // never double-fires or races an import already in flight.
+      if (this.hostProviderCount > 0 && !this.hostImportTriggered) {
+        this.hostImportTriggered = true;
+        void this.handleHostImport();
+      }
     }
   }
 
@@ -1009,7 +1020,11 @@ export class SetupState {
         if (data.modelPreferences?.model) this.importedLlmModel = data.modelPreferences.model;
         if (data.modelPreferences?.small_model) this.importedSmallModel = data.modelPreferences.small_model;
         // Auto-import if already on Providers step (index 1), or always on rerun
-        // so models/settings have verified providers to attach to.
+        // so models/settings have verified providers to attach to. This fetch
+        // is kicked off at init() (step 0) and usually resolves before the
+        // user reaches step 1 — goToStep(1) covers that ordering with the
+        // same hostImportTriggered guard, so between the two, exactly one
+        // fires regardless of which happens first.
         if (this.hostProviderCount > 0 && !this.hostImportTriggered && (this.currentStep === 1 || this.isRerun)) {
           this.hostImportTriggered = true;
           void this.handleHostImport();
