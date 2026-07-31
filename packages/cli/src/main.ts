@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 import { defineCommand, runCommand, runMain } from 'citty';
 import cliPkg from '../package.json' with { type: 'json' };
-import { classifyLocalInstall, resolveStackDir, resolveOpenPalmHome } from '@openpalm/lib';
+import { classifyLocalInstall, resolveStackDir, resolveOpenPalmHome, resolveEnvPort, readStackEnv } from '@openpalm/lib';
 import { DEFAULT_ASSISTANT_PORT } from './lib/ports.ts';
 
 // Re-export public API used by tests and external consumers
@@ -29,7 +29,17 @@ interface BareRunOpts {
  * a restart, not a recreate, is the operator's tool) reads as "not up".
  */
 export async function isAssistantHealthy(): Promise<boolean> {
-  const port = process.env.OP_ASSISTANT_PORT ?? String(DEFAULT_ASSISTANT_PORT);
+  // Read the SAME persisted-over-live merge every other port resolver uses
+  // (resolveUiServePort et al) — a file install persists a custom
+  // OP_ASSISTANT_PORT to stack.env, and live env alone (the old behavior)
+  // never saw it, so this probed the wrong port, read the stack as "down",
+  // and force-recreated a perfectly healthy install on a different port.
+  const port = resolveEnvPort(
+    'OP_ASSISTANT_PORT',
+    DEFAULT_ASSISTANT_PORT,
+    process.env,
+    readStackEnv(resolveOpenPalmHome()),
+  );
   try {
     const res = await fetch(`http://127.0.0.1:${port}/health`, {
       signal: AbortSignal.timeout(1500),
@@ -56,13 +66,17 @@ async function autoRun(opts: BareRunOpts = {}): Promise<void> {
   const isInstalled = classifyLocalInstall(resolveStackDir(), resolveOpenPalmHome()) !== 'not_installed';
 
   if (!isInstalled) {
-    const { bootstrapInstall, resolveDefaultInstallRef } = await import('./commands/install.ts');
-    const version: string = typeof resolveDefaultInstallRef === 'function'
-      ? await resolveDefaultInstallRef()
-      : (cliPkg.version ?? 'main');
+    const { bootstrapInstall } = await import('./commands/install.ts');
+    // C9: this used to also destructure resolveDefaultInstallRef and await
+    // its GitHub `releases/latest` lookup (up to ~10s, worst on an offline
+    // machine) purely to compute `version` — but prepareInstallFiles' own
+    // `version` parameter is unused (host assets are always this binary's
+    // embedded build; see C7), so the result was discarded. A bare
+    // `openpalm` on a fresh machine no longer waits on the network for a
+    // value nothing reads.
     await bootstrapInstall({
       force: false,
-      version,
+      version: cliPkg.version ?? 'main',
       noStart: false,
       noOpen: opts.open === false,
       assumeYes: false,
@@ -155,6 +169,25 @@ function hasSubcommand(argv: string[]): boolean {
   return first !== undefined && SUBCOMMAND_NAMES.has(first);
 }
 
+/**
+ * True when argv's first token looks like an ATTEMPTED subcommand — a bare,
+ * non-flag word — that isn't registered (C8): `openpalm statsu` is almost
+ * certainly a typo for `status`, not an instruction to run the bare
+ * auto-detect flow, which used to swallow it and start the stack. A leading
+ * flag (`--port 1234`) or no token at all (bare `openpalm`) is genuinely "no
+ * subcommand" and must keep going to autoRun.
+ */
+function isUnknownSubcommand(argv: string[]): boolean {
+  const first = argv[0];
+  if (first === undefined || first.startsWith('-')) return false;
+  return !SUBCOMMAND_NAMES.has(first);
+}
+
+/** The shared "unknown command" message for both entry points below. */
+function unknownCommandMessage(command: string): string {
+  return `Unknown command: ${command}. Run \`openpalm --help\` to see available commands.`;
+}
+
 /** Parse `--port`/`--no-open` from a bare-command argv. */
 function parseBareArgs(argv: string[]): BareRunOpts {
   const opts: BareRunOpts = {};
@@ -181,6 +214,11 @@ export async function main(argv = process.argv.slice(2)): Promise<void> {
     console.log(cliPkg.version);
     return;
   }
+  if (isUnknownSubcommand(argv)) {
+    // Thrown (not process.exit) so tests can drive this programmatically —
+    // matches how every other validation failure in main() surfaces.
+    throw new Error(unknownCommandMessage(argv[0]));
+  }
   if (!hasSubcommand(argv)) {
     await autoRun(parseBareArgs(argv));
     return;
@@ -195,6 +233,9 @@ if (import.meta.main) {
   // (main() uses runCommand so tests can drive it programmatically).
   if (isVersionFlag(argv)) {
     console.log(cliPkg.version);
+  } else if (isUnknownSubcommand(argv)) {
+    console.error(unknownCommandMessage(argv[0]));
+    process.exit(1);
   } else if (!hasSubcommand(argv)) {
     await autoRun(parseBareArgs(argv));
   } else {

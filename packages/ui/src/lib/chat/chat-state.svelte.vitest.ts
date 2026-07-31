@@ -375,6 +375,37 @@ describe('startNewSession', () => {
 		expect(persistedSessions.get('beta')).toBe('beta-session');
 		expect(persistedSessions.get('alpha')).toBe('alpha-session');
 	});
+
+	// F3: startNewSession previously bypassed mapAssistantError entirely,
+	// hand-building "Failed to start conversation: HTTP 502" from the raw
+	// error message. It must go through the same mapper as every other
+	// failure surface so a structured detail (or the 502/503 ladder) reaches
+	// the user instead of a bare status code.
+	it('routes a failure through mapAssistantError instead of a hand-built message', async () => {
+		mocked.listSessions.mockResolvedValueOnce([]);
+		await chat.onEndpointChanged('alpha');
+
+		mocked.createSession.mockRejectedValueOnce(
+			Object.assign(new Error('HTTP 502'), { status: 502 })
+		);
+		const id = await chat.startNewSession();
+
+		expect(id).toBeNull();
+		expect(chat.error).toBe('Assistant is not reachable.');
+	});
+
+	it('surfaces a structured detail from a rejected startNewSession call', async () => {
+		mocked.listSessions.mockResolvedValueOnce([]);
+		await chat.onEndpointChanged('alpha');
+
+		mocked.createSession.mockRejectedValueOnce(
+			Object.assign(new Error('HTTP 400'), { status: 400, detail: 'Unknown assistant target.' })
+		);
+		const id = await chat.startNewSession();
+
+		expect(id).toBeNull();
+		expect(chat.error).toBe('Unknown assistant target.');
+	});
 });
 
 describe('setActiveSessionId', () => {
@@ -1482,4 +1513,181 @@ describe('live SSE updates', () => {
     sseCaptured.handlers?.onDisconnect?.(new Error('boom'));
     expect(chat.liveConnected).toBe(false);
   });
+
+  // F5: a connect that follows a FAILED load (assistant still warming up) must
+  // retry so the sessionsError banner and empty session list don't linger once
+  // the assistant is actually reachable.
+  it('reloads sessions on connect when the previous load left sessionsError set', async () => {
+    mocked.listSessions.mockRejectedValueOnce(new Error('offline'));
+    await chat.onEndpointChanged('alpha');
+    expect(chat.byEndpoint.get('alpha')?.sessionsError).toBeTruthy();
+    expect(mocked.listSessions).toHaveBeenCalledTimes(1);
+
+    mocked.listSessions.mockResolvedValueOnce([session('s1', 1000)]);
+    mocked.getSessionMessages.mockResolvedValueOnce([]);
+    sseCaptured.handlers?.onConnect?.();
+    await new Promise<void>((r) => setTimeout(r, 0));
+
+    expect(mocked.listSessions).toHaveBeenCalledTimes(2);
+    expect(chat.byEndpoint.get('alpha')?.sessionsError).toBe('');
+    expect(chat.byEndpoint.get('alpha')?.sessions.map((s) => s.id)).toEqual(['s1']);
+  });
+
+  it('does not reload sessions on connect when the previous load already succeeded', async () => {
+    mocked.listSessions.mockResolvedValueOnce([session('s1', 1000)]);
+    mocked.getSessionMessages.mockResolvedValueOnce([]);
+    await chat.onEndpointChanged('alpha');
+
+    sseCaptured.handlers?.onConnect?.();
+    await new Promise<void>((r) => setTimeout(r, 0));
+
+    expect(mocked.listSessions).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('session.error handling', () => {
+	// F3: the underlying provider error (an invalid/revoked/quota-exhausted API
+	// key is the most common cause at first-message time) previously never
+	// reached the user — session.error always collapsed to a generic "ended
+	// unexpectedly" message with properties.error unread.
+	it('surfaces the provider detail from a session.error event instead of the generic message', async () => {
+		mocked.listSessions.mockResolvedValueOnce([session('sess1', 1000)]);
+		mocked.getSessionMessages.mockResolvedValueOnce([]);
+		await chat.onEndpointChanged('alpha');
+		sseCaptured.handlers?.onConnect?.();
+		vi.mocked(api.startChatMessageTurn).mockResolvedValueOnce(undefined);
+
+		const sendPromise = chat.send('use my api key');
+		await new Promise<void>((r) => setTimeout(r, 0));
+
+		sseCaptured.handlers?.onEvent?.({
+			type: 'session.error',
+			properties: {
+				sessionID: 'sess1',
+				error: { name: 'ProviderAuthError', message: 'Invalid API key for provider "anthropic".' },
+			},
+		});
+		await sendPromise;
+
+		expect(chat.error).toContain('Invalid API key for provider "anthropic".');
+	});
+
+	it('falls back to the generic message when session.error carries no usable detail', async () => {
+		mocked.listSessions.mockResolvedValueOnce([session('sess1', 1000)]);
+		mocked.getSessionMessages.mockResolvedValueOnce([]);
+		await chat.onEndpointChanged('alpha');
+		sseCaptured.handlers?.onConnect?.();
+		vi.mocked(api.startChatMessageTurn).mockResolvedValueOnce(undefined);
+
+		const sendPromise = chat.send('hello');
+		await new Promise<void>((r) => setTimeout(r, 0));
+
+		sseCaptured.handlers?.onEvent?.({
+			type: 'session.error',
+			properties: { sessionID: 'sess1' },
+		});
+		await sendPromise;
+
+		expect(chat.error).toContain('ended unexpectedly');
+	});
+});
+
+describe('turn idle timeout', () => {
+	afterEach(() => {
+		vi.useRealTimers();
+	});
+
+	// F4: STREAM_TURN_TIMEOUT_MS was previously armed once at send and never
+	// reset on streaming activity — a cold model's slow first token (or a long
+	// tool call) got failed as "timed out" while it was actually still working.
+	it('resets the idle timeout on streaming activity instead of failing a still-working turn', async () => {
+		vi.useFakeTimers();
+		mocked.listSessions.mockResolvedValueOnce([session('sess1', 1000)]);
+		mocked.getSessionMessages.mockResolvedValueOnce([]);
+		await chat.onEndpointChanged('alpha');
+		sseCaptured.handlers?.onConnect?.();
+		vi.mocked(api.startChatMessageTurn).mockResolvedValueOnce(undefined);
+
+		const sendPromise = chat.send('slow model, please respond');
+		await vi.advanceTimersByTimeAsync(0);
+
+		// Almost the full timeout elapses with no activity...
+		await vi.advanceTimersByTimeAsync(140_000);
+		expect(chat.sending).toBe(true);
+
+		// ...then a delta arrives, which must push the deadline back out.
+		sseCaptured.handlers?.onEvent?.({
+			type: 'message.part.delta',
+			properties: { sessionID: 'sess1', delta: 'still working on it' },
+		});
+
+		// Another 140s passes — more than 150s since send(), but less than 150s
+		// since the reset above — so the turn must NOT have timed out.
+		await vi.advanceTimersByTimeAsync(140_000);
+		expect(chat.sending).toBe(true);
+		expect(mocked.abortChatTurn).not.toHaveBeenCalled();
+
+		sseCaptured.handlers?.onEvent?.({ type: 'session.idle', properties: { sessionID: 'sess1' } });
+		await sendPromise;
+		expect(chat.sending).toBe(false);
+		expect(chat.error).toBe('');
+	});
+
+	it('fails the turn as timed out and aborts it server-side after a true idle period', async () => {
+		vi.useFakeTimers();
+		mocked.listSessions.mockResolvedValueOnce([session('sess1', 1000)]);
+		mocked.getSessionMessages.mockResolvedValueOnce([]);
+		await chat.onEndpointChanged('alpha');
+		sseCaptured.handlers?.onConnect?.();
+		vi.mocked(api.startChatMessageTurn).mockResolvedValueOnce(undefined);
+		mocked.abortChatTurn.mockResolvedValueOnce(undefined);
+
+		const sendPromise = chat.send('hello, cold model');
+		await vi.advanceTimersByTimeAsync(0);
+
+		await vi.advanceTimersByTimeAsync(150_000);
+		await sendPromise;
+
+		expect(chat.error).toContain('timed out');
+		// The server-side turn is aborted so a stale reply doesn't keep
+		// streaming into a session nobody is listening to, and so a re-send
+		// doesn't race the still-running turn.
+		expect(mocked.abortChatTurn).toHaveBeenCalledWith('sess1');
+	});
+
+	// F4: the timeout must be paused (not merely reset) while a permission ask
+	// awaits the user — stepping away from the browser to think it over must
+	// not wipe the prompt out from under them.
+	it('pauses the timeout while a permission ask awaits the user, and resumes once decided', async () => {
+		vi.useFakeTimers();
+		mocked.listSessions.mockResolvedValueOnce([session('sess1', 1000)]);
+		mocked.getSessionMessages.mockResolvedValueOnce([]);
+		await chat.onEndpointChanged('alpha');
+		sseCaptured.handlers?.onConnect?.();
+		vi.mocked(api.startChatMessageTurn).mockResolvedValueOnce(undefined);
+
+		const sendPromise = chat.send('run a command');
+		await vi.advanceTimersByTimeAsync(0);
+
+		sseCaptured.handlers?.onEvent?.({
+			type: 'permission.asked',
+			properties: { sessionID: 'sess1', id: 'perm-1', permission: 'bash', patterns: [], always: [] },
+		});
+		expect(chat.pendingPermission?.status).toBe('pending');
+
+		// Far longer than the timeout — must not fire while the card is up.
+		await vi.advanceTimersByTimeAsync(400_000);
+		expect(chat.sending).toBe(true);
+		expect(mocked.abortChatTurn).not.toHaveBeenCalled();
+
+		vi.mocked(api.replyChatPermission).mockResolvedValueOnce(undefined);
+		await chat.answerPermission('once');
+		expect(chat.pendingPermission?.status).toBe('resolved');
+
+		// The clock resumes now that the assistant is expected to continue —
+		// idle again for the full timeout must fail the turn.
+		await vi.advanceTimersByTimeAsync(150_000);
+		await sendPromise;
+		expect(chat.error).toContain('timed out');
+	});
 });

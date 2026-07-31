@@ -1,6 +1,16 @@
-import { app, BrowserWindow, shell, dialog, ipcMain, globalShortcut, Notification, type IpcMainInvokeEvent } from 'electron';
+import {
+  app,
+  BrowserWindow,
+  shell,
+  dialog,
+  ipcMain,
+  globalShortcut,
+  Notification,
+  type IpcMainInvokeEvent,
+  type IpcMainEvent,
+} from 'electron';
 import { join, dirname } from 'node:path';
-import { existsSync, mkdirSync, createWriteStream, type WriteStream } from 'node:fs';
+import { existsSync, mkdirSync, statSync, renameSync, createWriteStream, type WriteStream } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { spawn, type ChildProcess } from 'node:child_process';
 import { once } from 'node:events';
@@ -20,6 +30,10 @@ import {
   seedLegacyServedUiRuntimeConfig,
   applyHomeSeed,
   resolveConfigDir,
+  createState,
+  readDeployJournal,
+  resolveDeployJournalPath,
+  type DeployProgress,
 } from '@openpalm/lib';
 import { UI_PORT } from './ui-port.js';
 import { autoUpdater } from 'electron-updater';
@@ -76,6 +90,38 @@ augmentPathForGuiLaunch();
 // are diagnosable. Best-effort: any logging error must never crash the app.
 let logStream: WriteStream | null = null;
 
+// E6: this is an always-on tray app whose log tees the FULL stdout/stderr of
+// every UI-server child launch — with no cap, main.log grows without bound for
+// as long as the user keeps the app running (which, by design, is "forever").
+// Rotate it once it crosses a generous size instead. One rotated generation
+// (main.log.1) is enough for a "what just happened" log, not a full history —
+// this is a crash/failure diagnostic tool, not an audit log.
+const MAX_LOG_BYTES = 5 * 1024 * 1024;
+const LOG_ROTATION_CHECK_MS = 5 * 60 * 1000;
+
+/** If the current log file is oversized, rotate it out to `main.log.1` and reopen a fresh stream. */
+function rotateLogIfOversized(): void {
+  try {
+    const path = logFilePath();
+    if (!existsSync(path) || statSync(path).size <= MAX_LOG_BYTES) return;
+    const reopen = (): void => {
+      try {
+        renameSync(path, `${path}.1`);
+      } catch { /* best-effort: a locked/missing file just keeps growing until the next check */ }
+      logStream = createWriteStream(path, { flags: 'a' });
+    };
+    if (logStream) {
+      // Close the current handle before renaming its target out from under it;
+      // `reopen` runs once the pending writes have flushed.
+      const current = logStream;
+      logStream = null;
+      current.end(reopen);
+    } else {
+      reopen();
+    }
+  } catch { /* best-effort: rotation must never crash the app */ }
+}
+
 function logFilePath(): string {
   return join(app.getPath('logs'), 'main.log');
 }
@@ -85,6 +131,8 @@ function initFileLogger(): void {
   try {
     const logsDir = app.getPath('logs');
     mkdirSync(logsDir, { recursive: true });
+    // A previous, unrotated session may have already left an oversized file.
+    rotateLogIfOversized();
     logStream = createWriteStream(logFilePath(), { flags: 'a' });
 
     const tee = (orig: (...args: unknown[]) => void, level: string) => {
@@ -101,6 +149,12 @@ function initFileLogger(): void {
     console.log = tee(console.log.bind(console), 'info') as typeof console.log;
     console.warn = tee(console.warn.bind(console), 'warn') as typeof console.warn;
     console.error = tee(console.error.bind(console), 'error') as typeof console.error;
+
+    // Re-check periodically while the app keeps running — an always-on tray
+    // app can log for weeks without ever restarting to pick up the
+    // startup-only check above. unref() so this timer never keeps the process
+    // alive on its own.
+    setInterval(rotateLogIfOversized, LOG_ROTATION_CHECK_MS).unref?.();
   } catch { /* best-effort: logging is non-fatal */ }
 }
 
@@ -114,6 +168,12 @@ function writeChildLog(text: string): void {
 // silenced the microphone on custom-port installs.
 
 const READY_TIMEOUT_MS = 60_000;
+// E4 review: the splash-closing watchdog for the MAIN WINDOW's own page load,
+// distinct from READY_TIMEOUT_MS above (which bounds the UI SERVER CHILD
+// coming up before the window is even created). Generous — a cold Electron
+// window on a loaded machine can take a few seconds — but bounded, so a hung
+// load can't spin the splash forever.
+const MAIN_WINDOW_LOAD_TIMEOUT_MS = 20_000;
 const MIC_SHORTCUT = 'CommandOrControl+Shift+M';
 const APP_USER_MODEL_ID = 'com.openpalm.app';
 
@@ -124,6 +184,12 @@ let registeredMicShortcut: string | null = null;
 // electron-updater's `beta` channel by updaterChannel). Loaded from desktop
 // settings at boot; toggled live from the tray.
 let checkPrereleaseUpdates = false;
+// Opt-in (review E3): Ctrl/Cmd+Shift+M is Teams' global mute/unmute chord.
+// Registering it system-wide unconditionally on first launch silently took it
+// away from every other app on the machine, with no setting and no prompt.
+// Default OFF; loaded from desktop settings at boot, toggled live from the
+// tray. openWindow() only calls registerGlobalMicShortcut() when this is true.
+let micShortcutEnabled = false;
 // Full-application updater (#572). Null until the app is ready.
 let desktopUpdater: DesktopUpdater | null = null;
 // True once the app is genuinely quitting (tray "Quit" or before-quit). The
@@ -310,7 +376,20 @@ export function waitForReady(port: number, timeoutMs = READY_TIMEOUT_MS): Promis
   return libWaitForReady(port, timeoutMs);
 }
 
-async function startUIServer(): Promise<void> {
+/**
+ * Whether the UI child's own 'error' handler (spawnUIServer, below) already
+ * surfaced a specific failure dialog and called app.quit() for THIS launch
+ * attempt. E4 review: an ENOENT-class spawn failure fires 'error' (async,
+ * next tick) AND — because Node still emits 'exit' after 'error' for a spawn
+ * that never started — makes readyOrChildExit's race resolve to `ready:
+ * false` too, so the generic "did not respond in time" branch below used to
+ * ALSO show a dialog and ALSO call app.quit(): two error dialogs stacked for
+ * one failure. Reset per attempt at the top of startUIServer.
+ */
+let uiServerFailureReported = false;
+
+async function startUIServer(): Promise<boolean> {
+  uiServerFailureReported = false;
   const homeDir = resolveOpenPalmHome();
   const dataDir = resolveDataDir();
 
@@ -337,7 +416,11 @@ async function startUIServer(): Promise<void> {
 
   // Load the desktop-local prerelease opt-in (#504) so the update check below
   // knows whether to surface rc's. Notify-only — never changes install behaviour.
-  checkPrereleaseUpdates = loadSettings(dataDir).checkPrerelease;
+  // Also load the mic-shortcut opt-in (#E3) — openWindow()'s first call reads
+  // this to decide whether to grab the global shortcut at all.
+  const desktopSettings = loadSettings(dataDir);
+  checkPrereleaseUpdates = desktopSettings.checkPrerelease;
+  micShortcutEnabled = desktopSettings.micShortcutEnabled;
 
   // Full-application updates (#572). The check is deliberately NOT awaited:
   // startup must not wait on the network, and an offline launch must be
@@ -360,7 +443,7 @@ async function startUIServer(): Promise<void> {
       `The bundled UI build is missing at:\n${uiBuildDir}\n\nReinstall the app.`,
     );
     app.quit();
-    return;
+    return false;
   }
 
   // Identity probe BEFORE spawning (shared with the CLI via lib). A bare
@@ -384,7 +467,7 @@ async function startUIServer(): Promise<void> {
       ].join('\n'),
     );
     app.quit();
-    return;
+    return false;
   }
 
   if (existing.status === 'absent') {
@@ -402,6 +485,13 @@ async function startUIServer(): Promise<void> {
     uiProcess ? once(uiProcess, 'exit') : undefined,
   );
   if (!ready) {
+    // The child's own 'error' handler (spawnUIServer) already showed a
+    // specific dialog (e.g. ENOENT) and called app.quit() for this exact
+    // failure — Node still emits 'exit' after 'error' for a spawn that never
+    // started, which is what made readyOrChildExit's race resolve `false`
+    // here too. Showing a second, generic "did not respond in time" dialog on
+    // top would be redundant and confusing (E4 review).
+    if (uiServerFailureReported) return false;
     const recentLogs = getRecentStderr(40);
     const detail = [
       `The UI server on port ${UI_PORT} did not respond within ${READY_TIMEOUT_MS / 1000} seconds.`,
@@ -416,7 +506,9 @@ async function startUIServer(): Promise<void> {
     splash.close();
     dialog.showErrorBox('OpenPalm failed to start', detail);
     app.quit();
+    return false;
   }
+  return true;
 }
 
 /**
@@ -472,6 +564,11 @@ function spawnUIServer(uiBuildDir: string, homeDir: string): void {
   // ready-poll spin out its full 60s timeout with a useless splash (#456).
   uiProcess.on('error', (err) => {
     console.error('UI server process error:', err.message);
+    // Node still emits 'exit' after 'error' for a spawn that never started,
+    // which would otherwise also trip the generic "did not respond in time"
+    // dialog in startUIServer for the SAME failure (E4 review — two dialogs
+    // for one cause). Mark it handled so that branch stands down.
+    uiServerFailureReported = true;
     splash.close();
     dialog.showErrorBox(
       'OpenPalm failed to start',
@@ -535,9 +632,18 @@ export async function resolveInitialUrl(): Promise<string> {
  * — admitted non-loopback hosts such as `http://127.0.0.1.evil.com`
  * (subdomain bypass) and `http://127.0.0.1@evil.com` (userinfo bypass),
  * either of which would open attacker content inside the trusted app's
- * in-app window instead of the external browser. Real URL parsing: only
- * http: URLs whose HOSTNAME is exactly `127.0.0.1` or `localhost` (any port)
- * are allowed.
+ * in-app window instead of the external browser. Real URL parsing fixed
+ * that: only http: URLs whose HOSTNAME is exactly `127.0.0.1` or `localhost`
+ * are allowed — that parsing (not a string check) is what makes the
+ * subdomain/userinfo bypasses above fail (`new URL(...).hostname` never
+ * includes the userinfo, and a subdomain is a different, longer hostname).
+ *
+ * E2 follow-up (review): this used to accept ANY port on those two hosts, so
+ * a link to some OTHER local service (another app's loopback port, a stray
+ * dev server) would load INSIDE this trusted window — with preload.cjs and
+ * window.openpalm attached — instead of being deferred to the external
+ * browser like every other non-OpenPalm destination. Pinned to the app's
+ * actual UI_PORT: this is the one port OpenPalm itself ever serves on.
  */
 export function isAllowedInAppWindowUrl(url: string): boolean {
   let parsed: URL;
@@ -546,7 +652,10 @@ export function isAllowedInAppWindowUrl(url: string): boolean {
   } catch {
     return false;
   }
-  return parsed.protocol === 'http:' && (parsed.hostname === '127.0.0.1' || parsed.hostname === 'localhost');
+  if (parsed.protocol !== 'http:') return false;
+  if (parsed.hostname !== '127.0.0.1' && parsed.hostname !== 'localhost') return false;
+  const port = parsed.port ? Number(parsed.port) : 80;
+  return port === UI_PORT;
 }
 
 export function handleWindowOpen(window: BrowserWindow, url: string): { action: 'deny' } {
@@ -558,6 +667,67 @@ export function handleWindowOpen(window: BrowserWindow, url: string): { action: 
     void shell.openExternal(url);
   }
   return { action: 'deny' };
+}
+
+/**
+ * Whether `url` is the app's OWN served origin — the only content allowed to
+ * navigate the main window's frame in place. E2 (HIGH, security): there were
+ * zero `will-navigate` handlers anywhere in this app. `setWindowOpenHandler`
+ * (handleWindowOpen, above) only governs POPUPS (window.open / target=_blank);
+ * plain in-page navigation — an `<a>` with no target, `location.href`, a
+ * `<meta http-equiv=refresh>`, or script-driven navigation from ANY content
+ * that achieves script execution in the loaded page (including
+ * assistant-rendered chat output) — is not gated by it at all. Without a
+ * `will-navigate` handler, that navigation could take the main window itself
+ * — preload.cjs and window.openpalm still attached — to an arbitrary origin.
+ *
+ * Deliberately narrower than isAllowedInAppWindowUrl: that function decides
+ * where an explicit, user-initiated POPUP destination should go (in-window vs
+ * external browser) and is never a dead end either way, so a slightly wider
+ * allow-list there (both 127.0.0.1 and localhost) is safe. An in-place
+ * navigation is different — it silently replaces what the user is looking
+ * at — so it is held to the exact origin this app actually serves
+ * (resolveInitialUrl only ever produces `http://127.0.0.1:${UI_PORT}` URLs).
+ */
+export function isOwnOriginUrl(url: string): boolean {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return false;
+  }
+  return parsed.protocol === 'http:' && parsed.hostname === '127.0.0.1' && parsed.port === String(UI_PORT);
+}
+
+/**
+ * `will-navigate` handler body, factored out as a pure(-ish) function over an
+ * injected `{ preventDefault }` so it's testable without a real Electron
+ * navigation event. Own-origin navigation is left alone; everything else is
+ * blocked in-window and handed to the external system browser instead —
+ * mirroring how off-origin popups are already handled, but for navigation
+ * that never went through a popup at all.
+ */
+export function handleWillNavigate(event: { preventDefault: () => void }, url: string): void {
+  if (isOwnOriginUrl(url)) return;
+  event.preventDefault();
+  void shell.openExternal(url);
+}
+
+/** net::ERR_ABORTED — a navigation superseded by another (e.g. the user clicked
+ * a second link before the first finished), not a real load failure. Chromium
+ * fires `did-fail-load` for this constantly; treating it as fatal would pop
+ * an error/watchdog reveal on totally routine navigation. */
+const ERR_ABORTED = -3;
+
+/**
+ * Whether a `did-fail-load` event represents a genuine "the page has nothing
+ * to show" failure worth reacting to (E4 review). Only a MAIN-FRAME failure
+ * that isn't ERR_ABORTED qualifies: a subframe failing (e.g. an embedded
+ * iframe) doesn't leave the shell itself blank, and ERR_ABORTED is routine
+ * Chromium noise, not a dead server.
+ */
+export function isFatalMainFrameLoadFailure(isMainFrame: boolean, errorCode: number): boolean {
+  return isMainFrame && errorCode !== ERR_ABORTED;
 }
 
 async function createWindow(): Promise<void> {
@@ -584,11 +754,48 @@ async function createWindow(): Promise<void> {
   mainWindow = window;
 
   const initialUrl = await resolveInitialUrl();
-  window.loadURL(initialUrl);
 
-  window.once('ready-to-show', () => {
+  // E4 review: this used to be a fire-and-forget `window.loadURL(initialUrl)`
+  // — no `await`, no `.catch`, and the splash's ONLY close trigger was
+  // 'ready-to-show'. If the UI child died between passing /health (which
+  // startUIServer already confirmed) and this navigation finishing — or the
+  // load simply hung — 'ready-to-show' would never fire, and the always-on-top
+  // splash spun forever on top of an invisible, unreachable window with no
+  // exit but a force-quit. Three independent nets now close the splash and
+  // reveal the (possibly errored) window instead of hanging: a rejected
+  // loadURL promise, a fatal `did-fail-load`, and a fixed watchdog timeout in
+  // case neither fires. `settled` makes the first of the three win.
+  let settled = false;
+  const revealWindow = (): void => {
+    if (settled) return;
+    settled = true;
+    clearTimeout(watchdog);
     splash.close();
-    window.show();
+    if (!window.isDestroyed()) window.show();
+  };
+  const watchdog = setTimeout(() => {
+    console.error(`Main window did not finish loading ${initialUrl} within ${MAIN_WINDOW_LOAD_TIMEOUT_MS / 1000}s.`);
+    revealWindow();
+  }, MAIN_WINDOW_LOAD_TIMEOUT_MS);
+
+  void window.loadURL(initialUrl).catch((err) => {
+    console.error('Main window failed to load initial URL:', err instanceof Error ? err.message : String(err));
+  });
+
+  window.once('ready-to-show', revealWindow);
+
+  window.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL, isMainFrame) => {
+    if (!isFatalMainFrameLoadFailure(isMainFrame, errorCode)) return;
+    console.error(`Main window failed to load ${validatedURL}: ${errorDescription} (${errorCode})`);
+    revealWindow();
+  });
+
+  // E2 review: plain in-page navigation (no popup involved) was completely
+  // unguarded — see isOwnOriginUrl's docblock. Anything that isn't this app's
+  // own served origin is diverted to the external browser instead of
+  // silently replacing what's in the trusted window.
+  window.webContents.on('will-navigate', (event, url) => {
+    handleWillNavigate(event, url);
   });
 
   // Reuse the existing window for loopback links. Denying every popup prevents
@@ -604,9 +811,16 @@ async function createWindow(): Promise<void> {
     void desktopUpdater?.checkOnFocus();
   });
 
-  // Hide to tray instead of closing
+  // Hide to tray instead of closing — but only where hiding is actually
+  // reachable again afterward. E1 review: TrayController.create() can leave
+  // no tray behind (missing icon asset, or a Linux desktop with no
+  // StatusNotifier host to hold the icon); hiding to a tray that doesn't
+  // exist strands the window with no way to reopen or quit short of a
+  // process manager. Where there is no tray, closing the window IS quitting —
+  // ordinary desktop-app semantics — and window-all-closed (below) follows
+  // through with the actual app.quit().
   window.on('close', (event) => {
-    if (!isQuitting) {
+    if (!isQuitting && trayController.isActive()) {
       event.preventDefault();
       window.hide();
     }
@@ -649,11 +863,34 @@ function registerGlobalMicShortcut(): void {
   console.warn('Failed to register a global mic shortcut.');
 }
 
+function unregisterGlobalMicShortcut(): void {
+  if (!registeredMicShortcut) return;
+  globalShortcut.unregister(registeredMicShortcut);
+  registeredMicShortcut = null;
+}
+
 async function openWindow(): Promise<void> {
   await createWindow();
-  if (!registeredMicShortcut) {
+  // E3 review: this used to grab Ctrl/Cmd+Shift+M — Teams' global mute chord —
+  // system-wide, unconditionally, on first window open, with no opt-out. Only
+  // register it when the user has explicitly turned it on via the tray menu.
+  if (micShortcutEnabled && !registeredMicShortcut) {
     registerGlobalMicShortcut();
   }
+}
+
+/** Tray "Global Mic Shortcut" toggle (#E3): persist, then (un)register live. */
+function setMicShortcutEnabled(enabled: boolean): void {
+  micShortcutEnabled = enabled;
+  saveSettings(resolveDataDir(), { micShortcutEnabled: enabled });
+
+  if (enabled) {
+    if (!registeredMicShortcut) registerGlobalMicShortcut();
+  } else {
+    unregisterGlobalMicShortcut();
+  }
+
+  trayController.rebuildMenu();
 }
 
 // ── Desktop notifications ─────────────────────────────────────────────────────
@@ -718,6 +955,8 @@ function createTray(): void {
     onSetLaunchOnLogin: (enabled) => { setLaunchOnLogin(enabled); },
     isPrereleaseEnabled: () => checkPrereleaseUpdates,
     onTogglePrerelease: (enabled) => { void setCheckPrerelease(enabled); },
+    isMicShortcutEnabled: () => micShortcutEnabled,
+    onToggleMicShortcut: (enabled) => { setMicShortcutEnabled(enabled); },
     onQuit: () => {
       // Set isQuitting here so the window 'close' handler (which hides to
       // tray when !isQuitting) does not re-hide during teardown.
@@ -729,36 +968,81 @@ function createTray(): void {
   });
 }
 
-// ── App lifecycle ─────────────────────────────────────────────────────────────
-
-app.whenReady().then(async () => {
-  initFileLogger();
-  app.setAppUserModelId?.(APP_USER_MODEL_ID);
-  console.log(`OpenPalm starting (v${app.getVersion?.() ?? '?'}); logs at ${logFilePath()}`);
-  splash.showStartup();
-  try {
-    await startUIServer();
-  } catch (err) {
-    splash.close();
-    console.error('Failed to start UI server:', err instanceof Error ? err.message : String(err));
-    app.quit();
-    return;
-  }
-
-  configureMediaPermissions();
-  await openWindow();
-  createTray();
-
-  app.on('activate', () => {
-    // macOS: re-open window when dock icon is clicked
-    if (BrowserWindow.getAllWindows().length === 0) void openWindow();
-    else showWindow();
+// ── Single instance (E1) ─────────────────────────────────────────────────────
+// A second `openpalm` desktop launch used to attach to the FIRST instance's UI
+// server (checkExistingUiInstance sees an admin UI already on the port and
+// reuses it, by design) and open its own window onto it — two windows, one
+// server. Quitting the first instance then SIGKILLs the shared UI server out
+// from under the second instance's window, stranding it on a dead server with
+// no recovery (only a relaunch fixes it). Electron's own single-instance lock
+// closes this: the loser quits immediately and hands off to the primary
+// instance instead of ever reaching startUIServer/spawnUIServer.
+const gotSingleInstanceLock = app.requestSingleInstanceLock();
+if (!gotSingleInstanceLock) {
+  // Another OpenPalm instance holds the lock and owns the UI server — this
+  // process has nothing useful left to do. Do not proceed to whenReady/IPC
+  // registration; just exit and let the primary instance's 'second-instance'
+  // handler (below) bring its window forward.
+  app.quit();
+} else {
+  app.on('second-instance', () => {
+    // A user double-clicked the app (or Dock/taskbar icon) again while we
+    // already hold the lock — surface the existing window instead of a
+    // second one fighting the first for the same UI server.
+    showWindow();
   });
-});
 
-app.on('window-all-closed', () => {
-  // Keep running in tray on all platforms
-});
+  // ── App lifecycle ───────────────────────────────────────────────────────────
+
+  app.whenReady().then(async () => {
+    initFileLogger();
+    app.setAppUserModelId?.(APP_USER_MODEL_ID);
+    console.log(`OpenPalm starting (v${app.getVersion?.() ?? '?'}); logs at ${logFilePath()}`);
+    splash.showStartup();
+    let uiServerStarted: boolean;
+    try {
+      uiServerStarted = await startUIServer();
+    } catch (err) {
+      splash.close();
+      console.error('Failed to start UI server:', err instanceof Error ? err.message : String(err));
+      app.quit();
+      return;
+    }
+    // startUIServer already surfaced an error dialog and called app.quit() on
+    // every failure path (E4 review) — app.quit() is asynchronous (it runs
+    // through before-quit/window-all-closed/will-quit before the process
+    // actually exits), so without this check the continuation below used to
+    // race ahead and open a window and tray over a UI server that never
+    // started, rather than let the pending quit win.
+    if (!uiServerStarted) return;
+
+    configureMediaPermissions();
+    await openWindow();
+    createTray();
+    startDeployCompletionWatch();
+
+    app.on('activate', () => {
+      // macOS: re-open window when dock icon is clicked
+      if (BrowserWindow.getAllWindows().length === 0) void openWindow();
+      else showWindow();
+    });
+  });
+
+  app.on('window-all-closed', () => {
+    // Keep running in tray — UNLESS there is no tray to keep running IN. The
+    // window 'close' handler below only hides (rather than lets close proceed)
+    // when trayController.isActive() — so window-all-closed only fires here
+    // in the no-tray case (tray-icon asset missing, or the platform's tray
+    // protocol refused creation, e.g. vanilla GNOME with no StatusNotifier
+    // host). Without this, a Linux user closing the window would strand the UI
+    // server running with no window and no tray icon — unreachable, and
+    // unkillable short of a process manager (E1 review).
+    if (!trayController.isActive()) {
+      isQuitting = true;
+      app.quit();
+    }
+  });
+}
 
 // ── Full-application updates (#572) ──────────────────────────────────────────
 //
@@ -772,6 +1056,15 @@ app.on('window-all-closed', () => {
  * than polled.
  */
 function createDesktopUpdater(appVersion: string): DesktopUpdater {
+  // E6 review: this rebuilds a FRESH DesktopUpdater over the SAME singleton
+  // `autoUpdater` every time the prerelease-channel toggle fires — without
+  // disposing the outgoing instance first, its 'download-progress' /
+  // 'update-downloaded' listeners stay registered on the singleton forever.
+  // N toggles used to leave N sets of listeners, each still patching a
+  // `this.state` no one reads anymore but still pushing through its own
+  // (stale) onStateChange closure to whatever window was current at
+  // construction time.
+  desktopUpdater?.dispose();
   return new DesktopUpdater({
     updater: autoUpdater as unknown as ConstructorParameters<typeof DesktopUpdater>[0]['updater'],
     currentVersion: appVersion,
@@ -789,21 +1082,35 @@ function createDesktopUpdater(appVersion: string): DesktopUpdater {
 }
 
 /**
- * Updater IPC can download and execute an installer, so every call is gated on
- * the sender being the exact trusted UI origin — not merely "some page in our
- * own window". A compromised or navigated-away renderer must not be able to
- * drive it. Rejection is a thrown error so the renderer sees a failed invoke
- * rather than a silent no-op it could mistake for "no update".
+ * Whether an IPC message came from THIS app's own trusted UI origin — not
+ * merely "some page in our own window", but the EXACT scheme+host+port
+ * OpenPalm itself serves on. Originally written for the updater IPC (which
+ * can download and execute an installer) but now the one shared gate for
+ * every privileged main-process action reachable from the renderer: login-item
+ * persistence, native notifications, the mic-permission TCC prompt, tray
+ * recording state, and app restart/relaunch (E2 review — these all used to
+ * accept ANY sender, so off-origin content that achieved script execution in
+ * the loaded page could toggle login-item persistence, forge OS
+ * notifications, or pop the mic permission prompt).
  */
-function assertTrustedUpdaterSender(event: IpcMainInvokeEvent): void {
-  const senderUrl = event.senderFrame?.url ?? '';
-  if (!isTrustedUpdaterSender(senderUrl, UI_PORT)) {
-    throw new Error('Updater IPC rejected: untrusted sender origin');
+function isTrustedRendererSender(event: IpcMainInvokeEvent | IpcMainEvent): boolean {
+  return isTrustedUpdaterSender(event.senderFrame?.url ?? '', UI_PORT);
+}
+
+/**
+ * Throwing variant for `ipcMain.handle` (invoke) callbacks: Electron turns a
+ * thrown error into a rejected promise on the renderer's `invoke()` call, so
+ * the caller sees a failed action rather than a silent no-op it could mistake
+ * for success.
+ */
+function assertTrustedSender(event: IpcMainInvokeEvent): void {
+  if (!isTrustedRendererSender(event)) {
+    throw new Error('IPC rejected: untrusted sender origin');
   }
 }
 
 function requireUpdater(event: IpcMainInvokeEvent): DesktopUpdater {
-  assertTrustedUpdaterSender(event);
+  assertTrustedSender(event);
   if (!desktopUpdater) throw new Error('Updater is not ready yet');
   return desktopUpdater;
 }
@@ -822,43 +1129,147 @@ ipcMain.handle('updater-download', async (event): Promise<UpdaterState> =>
 ipcMain.handle('updater-quit-and-install', (event): boolean =>
   requireUpdater(event).quitAndInstall());
 
-ipcMain.handle('restart-app', () => {
+ipcMain.handle('restart-app', (event) => {
+  assertTrustedSender(event);
   app.relaunch();
   app.quit();
 });
 
-ipcMain.handle('open-local-app', async (): Promise<void> => {
+ipcMain.handle('open-local-app', async (event): Promise<void> => {
+  assertTrustedSender(event);
   await openLocalApp();
 });
 
-ipcMain.handle('launch-on-login-status', (): LaunchOnLoginStatus => {
+ipcMain.handle('launch-on-login-status', (event): LaunchOnLoginStatus => {
+  assertTrustedSender(event);
   return getLaunchOnLoginStatus();
 });
 
-ipcMain.handle('set-launch-on-login', (_event, enabled: boolean): LaunchOnLoginStatus => {
+ipcMain.handle('set-launch-on-login', (event, enabled: boolean): LaunchOnLoginStatus => {
+  assertTrustedSender(event);
   return setLaunchOnLogin(!!enabled);
 });
 
-ipcMain.on('notify', (_event, payload: { title?: string; body?: string } | null) => {
+ipcMain.on('notify', (event, payload: { title?: string; body?: string } | null) => {
+  // `ipcMain.on` is fire-and-forget (renderer uses `send`, not `invoke`), so
+  // there is no promise to reject — silently drop untrusted senders instead
+  // of throwing (an uncaught throw here would crash the whole main process,
+  // not just fail one call).
+  if (!isTrustedRendererSender(event)) return;
   const focusedWindow = mainWindow ?? BrowserWindow.getAllWindows()[0] ?? null;
   if (focusedWindow?.isFocused()) return;
   const title = payload?.title?.trim();
   if (!title) return;
+  // E6 review: showNotification() already guards on Notification.isSupported()
+  // before constructing one; this second call site (built before that helper
+  // existed) had drifted to construct unconditionally.
+  if (!Notification.isSupported()) return;
   const notification = new Notification({ title, body: payload?.body ?? '' });
   notification.on('click', showWindow);
   notification.show();
 });
 
-ipcMain.handle('set-tray-mic-recording', (_event, recording: boolean) => {
+ipcMain.handle('set-tray-mic-recording', (event, recording: boolean) => {
+  assertTrustedSender(event);
   trayController.setMicRecording(recording);
 });
 
 // Request microphone access from the OS (macOS TCC). Called by the renderer
 // when the user clicks the mic button — the OS only shows the permission dialog
 // in response to a real user gesture, not at app startup.
-ipcMain.handle('request-mic-permission', async (): Promise<string> => {
+ipcMain.handle('request-mic-permission', async (event): Promise<string> => {
+  assertTrustedSender(event);
   return requestMicrophoneAccess();
 });
+
+// ── Deploy-in-progress quit guard & completion notify (E5) ──────────────────
+//
+// Quit used to SIGTERM+SIGKILL the UI server's whole process group
+// immediately and unconditionally — killing an in-flight `docker compose`
+// with zero warning, even though the deploy journal (the same one the setup
+// wizard polls) already records whether one is running. Read it here instead
+// of guessing, and warn before doing something destructive to it.
+//
+// Separately, DeployStep.svelte's wizard promises "You can leave this window —
+// we'll let you know when it's ready", but no code path ever sent that
+// notification (window.openpalm.notify is wired only to chat replies/errors).
+// Rather than wait on a UI-side hook that doesn't exist, watch the SAME
+// journal for the deploying→settled transition and notify from ground truth.
+
+/**
+ * Best-effort read of the current deploy journal for this OP_HOME. `null` on
+ * any error (unresolved home, corrupt/missing journal) — both callers below
+ * treat "couldn't read it" the same as "nothing to report", never a crash.
+ */
+function readCurrentDeployJournal(): DeployProgress | null {
+  try {
+    return readDeployJournal(resolveDeployJournalPath(createState()));
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Whether quitting right now should first warn that a deploy is still
+ * running. Exported pure predicate over the journal shape alone so it's
+ * testable without touching the filesystem or Electron.
+ */
+export function shouldWarnBeforeQuitDuringDeploy(journal: Pick<DeployProgress, 'deploying'> | null): boolean {
+  return journal?.deploying === true;
+}
+
+export type DeployCompletionNotification = { title: string; body: string } | null;
+
+/**
+ * Decide whether transitioning from `previous` to `current` deploy-journal
+ * snapshots warrants a "your backgrounded deploy is done" notification. Fires
+ * exactly once per deploying→settled edge — a previous snapshot of `null`
+ * (nothing observed yet, e.g. right after app launch) or a `current` that is
+ * STILL deploying never notifies, only the transition does.
+ */
+export function deployCompletionNotification(
+  previous: Pick<DeployProgress, 'deploying'> | null,
+  current: Pick<DeployProgress, 'deploying' | 'deployError' | 'setupComplete'>,
+): DeployCompletionNotification {
+  if (!previous?.deploying || current.deploying) return null;
+  if (current.deployError) {
+    return { title: 'OpenPalm setup failed', body: current.deployError };
+  }
+  if (current.setupComplete) {
+    return { title: 'OpenPalm is ready', body: "Setup finished — your assistant is ready to chat." };
+  }
+  return null;
+}
+
+const DEPLOY_JOURNAL_POLL_MS = 3_000;
+let lastDeployJournalSnapshot: Pick<DeployProgress, 'deploying'> | null = null;
+let deployCompletionWatchTimer: ReturnType<typeof setInterval> | null = null;
+
+function pollDeployJournalForCompletion(): void {
+  const journal = readCurrentDeployJournal();
+  if (!journal) return;
+  const decision = deployCompletionNotification(lastDeployJournalSnapshot, journal);
+  // Only when the window isn't the thing the user is already looking at —
+  // matching the same "don't notify what's already visible" rule the `notify`
+  // IPC handler applies to chat replies.
+  if (decision && !mainWindow?.isFocused()) {
+    showNotification(decision.title, decision.body);
+  }
+  lastDeployJournalSnapshot = { deploying: journal.deploying };
+}
+
+/** Start watching the deploy journal for a backgrounded deploy's completion. Idempotent. */
+function startDeployCompletionWatch(): void {
+  if (deployCompletionWatchTimer) return;
+  deployCompletionWatchTimer = setInterval(pollDeployJournalForCompletion, DEPLOY_JOURNAL_POLL_MS);
+  deployCompletionWatchTimer.unref?.();
+}
+
+function stopDeployCompletionWatch(): void {
+  if (!deployCompletionWatchTimer) return;
+  clearInterval(deployCompletionWatchTimer);
+  deployCompletionWatchTimer = null;
+}
 
 let cleanupStarted = false;
 
@@ -866,23 +1277,53 @@ let cleanupStarted = false;
 // not await async before-quit handlers: `event.preventDefault()` fires
 // synchronously and the async continuation runs detached, so the original quit
 // races ahead before cleanup finishes (root cause of the "quit twice" bug).
-// Instead we:
-//   1. preventDefault synchronously on the FIRST call (cleanupStarted=false).
-//   2. Fire cleanup synchronously (stopUIServer SIGKILL, unregister shortcuts).
-//   3. For the optional LocalOpenCode graceful stop, detach a best-effort
-//      promise that calls app.quit() when done — the process exits either way
-//      within the 500ms forceful timeout below.
-//   4. As a safety net, schedule app.quit() 500ms out so a hung stop() can't
-//      leave the app hanging (the user would have to force-quit).
-//   5. The re-entrant call (cleanupStarted=true) does nothing — passes through
+//
+// What actually happens, in order (this comment used to describe a five-step
+// plan — detached graceful stop, 500ms safety net — that the code below has
+// never implemented; corrected to match reality):
+//   1. On the FIRST call (cleanupStarted=false): if a deploy is in progress
+//      (per the journal), show a blocking confirmation. Choosing to wait
+//      un-sets isQuitting, calls preventDefault, and returns — the quit never
+//      proceeds, and a later quit attempt re-checks the journal from scratch.
+//   2. Otherwise, preventDefault synchronously, then run cleanup SYNCHRONOUSLY
+//      (stopUIServer SIGTERM+SIGKILLs the UI server's process group, shortcuts
+//      are unregistered, the tray animation stops) and call app.exit(0)
+//      directly — there is no detached async step and no timer here.
+//   3. The re-entrant call (cleanupStarted=true) does nothing — passes through
 //      so Electron completes the quit.
 app.on('before-quit', (event) => {
   isQuitting = true;
   if (cleanupStarted) return;
+
+  if (shouldWarnBeforeQuitDuringDeploy(readCurrentDeployJournal())) {
+    // Blocking and synchronous by necessity — before-quit cannot await an
+    // async dialog (see above) — dialog.showMessageBoxSync is Electron's
+    // sync-modal API for exactly this.
+    const CANCEL_ID = 1;
+    const choice = dialog.showMessageBoxSync({
+      type: 'warning',
+      title: 'Setup is still running',
+      message: 'OpenPalm is still deploying your stack.',
+      detail:
+        'Quitting now stops the in-progress deploy mid-flight. Reopening the ' +
+        'app will resume where it left off, but anything currently ' +
+        'downloading or starting will be interrupted.',
+      buttons: ['Quit Anyway', 'Keep Waiting'],
+      defaultId: CANCEL_ID,
+      cancelId: CANCEL_ID,
+    });
+    if (choice === CANCEL_ID) {
+      isQuitting = false;
+      event.preventDefault();
+      return;
+    }
+  }
+
   cleanupStarted = true;
   event.preventDefault();
   globalShortcut.unregisterAll();
   trayController.stopAnimation();
+  stopDeployCompletionWatch();
   stopUIServer();
   // Use app.exit(0), NOT app.quit() — calling app.quit() from within a
   // before-quit handler is re-entrant; Electron may silently no-op it on some

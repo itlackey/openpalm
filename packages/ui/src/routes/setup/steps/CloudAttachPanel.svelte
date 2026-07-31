@@ -20,16 +20,19 @@
   // / ReviewStep. The nested ProviderOAuthList likewise reads the store.
   const s = setupState;
 
-  // The wizard always drove these as 0 / [] — the "account already found on this
-  // computer" path is inert in the current flow but kept for behavior parity.
-  const credentialCount = 0;
-  const cloudProviders: string[] = [];
+  // W4: this used to be hardcoded to 0 / [], making the "found on this
+  // computer" branch (#btn-host-import) statically unreachable — the
+  // recommendation copy tells users to click a button that never rendered.
+  // `hostProviderCount` is real data from GET /api/setup/host-status
+  // (max of providerCount/credentialCount), loaded by the store's
+  // loadHostStatus() at mount.
+  const credentialCount = $derived(s.hostProviderCount);
 
   const hostImporting = $derived(s.hostImporting);
   const verifiedCount = $derived(s.verifiedCount);
   const onhostimport = (): void => void s.handleHostImport();
 
-  const hasFoundAccount = $derived(credentialCount > 0 || cloudProviders.length > 0);
+  const hasFoundAccount = $derived(credentialCount > 0);
   const connected = $derived(verifiedCount > 0);
 
   // When an account is found, default to using it; let the user switch to sign-in.

@@ -104,6 +104,13 @@ describe('fetchProviderModels error semantics', () => {
     await expect(fetchProviderModels('openai', { apiKey: '', baseUrl: '' })).rejects.toThrow('HTTP 502');
   });
 
+  test('W15: prefers the human `message` over the machine `error` code on a 500', async () => {
+    // Matches /api/setup/models/[provider]'s catch-all: { error: 'model_fetch_failed', message: <human text> }.
+    mockFetch(500, { error: 'model_fetch_failed', message: 'Ollama is not reachable at http://localhost:11434' });
+    await expect(fetchProviderModels('ollama', { apiKey: '', baseUrl: '' }))
+      .rejects.toThrow('Ollama is not reachable at http://localhost:11434');
+  });
+
   test('throws on a 200 body with status recoverable_error', async () => {
     mockFetch(200, { status: 'recoverable_error', error: 'try again' });
     await expect(fetchProviderModels('openai', { apiKey: '', baseUrl: '' })).rejects.toThrow('try again');

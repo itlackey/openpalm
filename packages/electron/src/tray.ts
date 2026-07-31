@@ -26,6 +26,10 @@ export interface TrayCallbacks {
   isPrereleaseEnabled: () => boolean;
   /** "Check for prerelease versions" toggle. */
   onTogglePrerelease: (enabled: boolean) => void;
+  /** Whether the global Ctrl/Cmd+Shift+M mic shortcut opt-in is currently on (review E3). */
+  isMicShortcutEnabled: () => boolean;
+  /** "Global Mic Shortcut" toggle. */
+  onToggleMicShortcut: (enabled: boolean) => void;
   /** "Quit" — tear down and exit. */
   onQuit: () => void;
 }
@@ -70,7 +74,12 @@ export class TrayController {
   /**
    * Create the tray icon (idempotent — reuses an existing Tray so a rebuild
    * after a settings toggle never leaks a duplicate menu-bar icon). No-ops when
-   * the tray-icon asset is missing.
+   * the tray-icon asset is missing, AND degrades to the same no-op if the
+   * platform's tray protocol itself refuses the icon (review E1: vanilla GNOME
+   * ships no StatusNotifier host, so `new Tray()` can fail there) — either way
+   * `isActive()` reports false afterward, which is what main.ts's window
+   * 'close' handler consults to decide whether hiding to tray is even
+   * reachable, instead of assuming create() always succeeds.
    */
   create(callbacks: TrayCallbacks): void {
     const iconPath = resolveAssetPath('tray-icon.png');
@@ -79,30 +88,46 @@ export class TrayController {
     }
     this.callbacks = callbacks;
 
-    // The source asset is 128×122 RGBA; passing it straight to Tray renders it
-    // ~128pt tall in the macOS menu bar (#455). Resize to a menu-bar-appropriate
-    // size, and on macOS mark it as a template image so it adopts the menu bar's
-    // monochrome light/dark treatment. Follow-up polish: ship a dedicated
-    // monochrome trayTemplate.png/@2x asset rather than recolouring this one.
-    this.baseIcon = nativeImage.createFromPath(iconPath).resize({ width: TRAY_ICON_SIZE, height: TRAY_ICON_SIZE });
-    if (process.platform === 'darwin') {
-      this.baseIcon.setTemplateImage(true);
-    }
-    this.recordingIcons = RECORDING_ALPHAS.map((alpha) => createTrayIconVariant(this.baseIcon as NativeImage, alpha));
-    // Reuse an existing Tray (e.g. a menu rebuild after a settings toggle) so we
-    // never leak a duplicate menu-bar icon or reset the recording animation.
-    if (!this.tray) {
-      this.tray = new Tray(this.baseIcon);
-    }
+    try {
+      // The source asset is 128×122 RGBA; passing it straight to Tray renders it
+      // ~128pt tall in the macOS menu bar (#455). Resize to a menu-bar-appropriate
+      // size, and on macOS mark it as a template image so it adopts the menu bar's
+      // monochrome light/dark treatment. Follow-up polish: ship a dedicated
+      // monochrome trayTemplate.png/@2x asset rather than recolouring this one.
+      this.baseIcon = nativeImage.createFromPath(iconPath).resize({ width: TRAY_ICON_SIZE, height: TRAY_ICON_SIZE });
+      if (process.platform === 'darwin') {
+        this.baseIcon.setTemplateImage(true);
+      }
+      this.recordingIcons = RECORDING_ALPHAS.map((alpha) => createTrayIconVariant(this.baseIcon as NativeImage, alpha));
+      // Reuse an existing Tray (e.g. a menu rebuild after a settings toggle) so we
+      // never leak a duplicate menu-bar icon or reset the recording animation.
+      if (!this.tray) {
+        this.tray = new Tray(this.baseIcon);
+      }
 
-    this.rebuildMenu();
+      this.rebuildMenu();
 
-    this.tray.setToolTip('OpenPalm');
-    // NOTE: No tray.on('click', ...) handler — a plain tray-icon click should
-    // NOT open/restore the window.  The window is always accessible via the
-    // "Open OpenPalm" item in the context menu (right-click or left-click the
-    // tray icon to see it, depending on the OS).  Removing the click handler
-    // prevents the surprise "tray icon pops my window" behavior reported in #427.
+      this.tray.setToolTip('OpenPalm');
+      // NOTE: No tray.on('click', ...) handler — a plain tray-icon click should
+      // NOT open/restore the window.  The window is always accessible via the
+      // "Open OpenPalm" item in the context menu (right-click or left-click the
+      // tray icon to see it, depending on the OS).  Removing the click handler
+      // prevents the surprise "tray icon pops my window" behavior reported in #427.
+    } catch (err) {
+      // No usable tray protocol on this desktop — degrade to "no tray" rather
+      // than crashing app startup over a menu-bar icon.
+      console.warn('Tray icon unavailable (no-op):', err instanceof Error ? err.message : String(err));
+      this.tray = null;
+    }
+  }
+
+  /**
+   * Whether the tray icon actually exists right now. False when the icon
+   * asset was missing, or the platform's tray protocol rejected creation
+   * (review E1 — hide-to-tray-on-close must not assume a tray is reachable).
+   */
+  isActive(): boolean {
+    return this.tray !== null;
   }
 
   /** (Re)build the tray context menu from current settings/state. */
@@ -144,6 +169,18 @@ export class TrayController {
         checked: cb.isPrereleaseEnabled(),
         click: (menuItem) => {
           cb.onTogglePrerelease(menuItem.checked);
+        },
+      },
+      {
+        // Opt-in (review E3): Ctrl/Cmd+Shift+M is Teams' global mute chord.
+        // Registering it system-wide unconditionally on first launch silently
+        // took it away from every other app with no setting and no prompt.
+        // Default OFF; this is the only way to turn it on.
+        label: 'Global Mic Shortcut (Ctrl/Cmd+Shift+M)',
+        type: 'checkbox',
+        checked: cb.isMicShortcutEnabled(),
+        click: (menuItem) => {
+          cb.onToggleMicShortcut(menuItem.checked);
         },
       },
       { type: 'separator' },

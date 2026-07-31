@@ -8,20 +8,64 @@
    * Takes NO props: reads the setup-state store directly (opencodeProviders /
    * opencodeAuth / providerState) and calls its OAuth methods
    * (startOpenCodeOAuth / cancelOAuth), mirroring Screen1ModelsStep / ReviewStep.
+   *
+   * The empty state distinguishes "OpenCode isn't reachable" from "everything
+   * is already connected" (`opencodeAvailable`) and offers a retry in the
+   * former case, rather than telling a first-run user with zero providers
+   * they're done.
    */
 
   import { WIZARD_EXCLUDED_PROVIDERS } from '$lib/client/constants.js';
   import type { ProviderState } from '$lib/client/types.js';
   import Spinner from '$lib/components/common/Spinner.svelte';
   import { setupState } from '$lib/setup/setup-state.svelte.js';
+  import { pollOpenCodeOAuthCallback } from '$lib/setup-api.js';
 
   const s = setupState;
 
+  const opencodeAvailable = $derived(s.opencodeAvailable);
   const opencodeProviders = $derived(s.opencodeProviders);
   const opencodeAuth = $derived(s.opencodeAuth);
   const providerState = $derived(s.providerState);
   const onoauthstart = (id: string, methodIndex: number): void => void s.startOpenCodeOAuth(id, methodIndex);
   const onoauthcancel = (id: string): void => s.cancelOAuth(id);
+
+  // ── W2: manual authorization-code entry ─────────────────────────────────────
+  // `method:'code'` providers show a page with a code the user copies back
+  // here — the wizard had no way to submit it, so sign-in for those providers
+  // never completed. The store's long-poll (startOpenCodeOAuth) can't tell us
+  // which method a given flow is (OpenCode only reveals that in the authorize
+  // response, which the store consumes without re-exposing it), so this input
+  // is offered whenever instructions are shown rather than gated on method —
+  // harmless for 'auto' flows, which complete via the popup and never need it.
+  const codeInputs: Record<string, string> = $state({});
+  const codeSubmitting: Record<string, boolean> = $state({});
+  const codeErrors: Record<string, string> = $state({});
+
+  async function submitOauthCode(id: string, methodIndex: number): Promise<void> {
+    const code = (codeInputs[id] ?? '').trim();
+    if (!code) { codeErrors[id] = 'Paste the code first.'; return; }
+    codeSubmitting[id] = true;
+    codeErrors[id] = '';
+    try {
+      const { ok, data } = await pollOpenCodeOAuthCallback(id, methodIndex, AbortSignal.timeout(20_000), code);
+      if (ok && data?.ok) {
+        // Stop the store's own long-poll (still waiting on the same flow with
+        // no code) so it can't later overwrite this success with a stale
+        // timeout error — see cancelOAuth's abort of the in-flight fetch.
+        s.cancelOAuth(id);
+        const st = providerState[id];
+        if (st) { st.verified = true; st.error = false; }
+        codeInputs[id] = '';
+      } else {
+        codeErrors[id] = data?.message ?? 'That code was not accepted. Try again.';
+      }
+    } catch (e) {
+      codeErrors[id] = e instanceof Error ? e.message : 'Failed to submit the code.';
+    } finally {
+      codeSubmitting[id] = false;
+    }
+  }
 
   // Order recognizable consumer providers first; obscure ones fall to the end.
   const RECOGNIZABLE_FIRST = ['openai', 'google', 'github-copilot', 'groq', 'mistral', 'huggingface'];
@@ -62,7 +106,19 @@
 
 <div class="oauth-list" role="list">
   {#if filteredProviders.length === 0}
-    <p class="oauth-empty">Nothing more to add — you're all connected.</p>
+    {#if !opencodeAvailable}
+      <!-- W1a: an empty catalog because the service is unreachable must not
+           read as "you're all connected" — that told a first-run user with
+           zero providers they were done. -->
+      <div class="oauth-unavailable">
+        <p class="oauth-empty">Can't reach the sign-in service right now.</p>
+        <button type="button" class="oauth-retry" onclick={() => void s.checkOpenCodeAndInit()}>
+          Retry
+        </button>
+      </div>
+    {:else}
+      <p class="oauth-empty">Nothing more to add — you're all connected.</p>
+    {/if}
   {:else}
     {#each visibleOauth as provider (provider.id)}
       {@const st = getState(provider.id)}
@@ -82,6 +138,33 @@
             {/if}
             {#if st.oauthInstructions}
               <p class="oauth-instructions">{st.oauthInstructions}</p>
+              <!-- W2: `method:'code'` providers need the code pasted back here —
+                   there is no client-side way to tell 'auto' and 'code' flows
+                   apart before this point, so the field is offered whenever the
+                   provider sent instructions; an 'auto' flow that completes via
+                   its popup simply never needs it. -->
+              <div class="oauth-code-entry">
+                <input
+                  type="text"
+                  class="oauth-code-input"
+                  placeholder="Paste authorization code"
+                  aria-label="{provider.name} authorization code"
+                  value={codeInputs[provider.id] ?? ''}
+                  disabled={codeSubmitting[provider.id]}
+                  oninput={(e) => { codeInputs[provider.id] = (e.currentTarget as HTMLInputElement).value; }}
+                />
+                <button
+                  type="button"
+                  class="btn-oauth-code-submit"
+                  disabled={codeSubmitting[provider.id] || !(codeInputs[provider.id] ?? '').trim()}
+                  onclick={() => submitOauthCode(provider.id, methodIdx)}
+                >
+                  {codeSubmitting[provider.id] ? 'Submitting…' : 'Submit code'}
+                </button>
+              </div>
+              {#if codeErrors[provider.id]}
+                <span class="oauth-code-error" role="alert">{codeErrors[provider.id]}</span>
+              {/if}
             {/if}
             <div class="oauth-waiting">
               <Spinner /> Waiting for authorization…
@@ -130,6 +213,64 @@
     color: var(--s-ink-2);
     margin: 0;
     padding: 8px 0;
+  }
+
+  .oauth-unavailable {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+
+  .oauth-retry {
+    padding: 4px 12px;
+    background: none;
+    border: var(--s-hair) solid var(--s-line);
+    border-radius: 2px;
+    font-size: var(--s-type-deed);
+    color: var(--s-ink);
+    cursor: pointer;
+    min-height: 28px;
+  }
+  .oauth-retry:hover { border-color: var(--s-ink-3); }
+
+  .oauth-code-entry {
+    display: flex;
+    gap: 6px;
+    width: 100%;
+  }
+
+  .oauth-code-input {
+    flex: 1;
+    min-width: 0;
+    padding: 6px 8px;
+    border: var(--s-hair) solid var(--s-line);
+    border-radius: 2px;
+    background: var(--s-paper);
+    color: var(--s-ink);
+    font-size: var(--s-type-deed);
+    font: inherit;
+  }
+  .oauth-code-input:focus-visible { outline: 2px solid var(--s-seal); outline-offset: 1px; }
+
+  .btn-oauth-code-submit {
+    padding: 4px 10px;
+    background: none;
+    border: var(--s-hair) solid var(--s-line);
+    border-radius: 2px;
+    font-size: var(--s-type-deed);
+    color: var(--s-ink);
+    cursor: pointer;
+    min-height: 28px;
+    flex-shrink: 0;
+  }
+  .btn-oauth-code-submit:hover:not(:disabled) { border-color: var(--s-ink-3); }
+  .btn-oauth-code-submit:disabled { opacity: 0.55; cursor: not-allowed; }
+
+  .oauth-code-error {
+    width: 100%;
+    font-size: var(--s-type-deed);
+    color: var(--s-seal);
   }
 
   .oauth-more {

@@ -642,14 +642,39 @@ export function writeRuntimeFiles(
   // compose files a fresh home is missing, never overwriting the managed copies.
   const composePath = `${state.stackDir}/core.compose.yml`;
   if (!existsSync(composePath)) writeFileSync(composePath, state.artifacts.compose);
+  // K4: `readBundledStackAsset` degrades to `''` BY DESIGN when the skeleton
+  // is unresolvable (e.g. a fresh Electron first-run before OP_HOME is
+  // seeded) — never write that empty string out as the seeded file. An empty
+  // file is invalid Compose input, `discoverStackOverlays` includes it purely
+  // because it EXISTS (content is never checked), and every subsequent
+  // `docker compose` invocation then fails — permanently, because the file
+  // now exists and this seed-if-missing guard never runs again to repair it.
+  // Skipping the write here leaves the slot open for the NEXT writeRuntimeFiles
+  // call (e.g. once the skeleton resolves) to seed it for real.
   for (const name of ['services.compose.yml', 'portals.compose.yml']) {
     const path = `${state.stackDir}/${name}`;
-    if (!existsSync(path)) writeFileSync(path, readBundledStackAsset(name));
+    if (existsSync(path)) continue;
+    const content = readBundledStackAsset(name);
+    if (!content) {
+      logger.warn(`Skipping seed of ${name}: bundled stack asset unavailable (empty content)`, { path });
+      continue;
+    }
+    writeFileSync(path, content);
   }
   const customComposePath = customComposeFilePath(state.homeDir);
   if (!existsSync(customComposePath)) {
-    mkdirSync(dirname(customComposePath), { recursive: true });
-    writeFileSync(customComposePath, readBundledCustomCompose());
+    const customContent = readBundledCustomCompose();
+    // Same empty-fallback hazard as the loop above (readBundledCustomCompose
+    // shares the identical try/catch-to-'' degradation) — this file is also
+    // unconditionally included by discoverStackOverlays once it exists.
+    if (customContent) {
+      mkdirSync(dirname(customComposePath), { recursive: true });
+      writeFileSync(customComposePath, customContent);
+    } else {
+      logger.warn('Skipping seed of custom.compose.yml: bundled asset unavailable (empty content)', {
+        path: customComposePath,
+      });
+    }
   }
 
   // Write stack.env (no secrets — those live in knowledge/secrets/)

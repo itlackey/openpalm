@@ -129,12 +129,16 @@ export interface ProviderModelsResponse {
   models: string[];
   status?: string;
   error?: string;
+  /** Human-readable failure reason — present on the route's 500 catch-all;
+   *  the 200 `recoverable_error` path puts the human text in `error` instead. */
+  message?: string;
 }
 
 /**
  * POST /models/:provider — list models for a provider connection.
- * Throws with the server's `error` (or an HTTP fallback) on a non-ok response
- * OR a 200 body with status === 'recoverable_error'.
+ * Throws with the server's human `message` (falling back to `error`, then an
+ * HTTP fallback) on a non-ok response OR a 200 body with
+ * status === 'recoverable_error'.
  */
 export async function fetchProviderModels(
   provider: string,
@@ -145,7 +149,11 @@ export async function fetchProviderModels(
   });
   const data = (await res.json()) as ProviderModelsResponse;
   if (!res.ok || data.status === 'recoverable_error') {
-    throw new Error(data.error ?? `Failed to fetch models (HTTP ${res.status})`);
+    // W15: a 500 from this route carries BOTH a machine `error` code
+    // ("model_fetch_failed") and the human-readable `message` — prefer the
+    // human message when present (`error` is otherwise the human-readable
+    // reason itself, on the 200 `recoverable_error` path).
+    throw new Error(data.message ?? data.error ?? `Failed to fetch models (HTTP ${res.status})`);
   }
   return data;
 }
@@ -179,14 +187,21 @@ export interface OAuthCallbackResponse { ok?: boolean; message?: string; }
  * supplies the combined abort/timeout signal). Returns { ok, data }; `data` is
  * null when the body couldn't be parsed. Network/abort errors propagate so the
  * caller can distinguish user-cancel from timeout.
+ *
+ * `code` (W2): `method:'code'` providers need the user to paste back an
+ * authorization code shown on the provider's own page — pass it once the user
+ * has it. Omitted, this is the plain long-poll wait `startOpenCodeOAuth` makes
+ * immediately after `authorize`.
  */
 export async function pollOpenCodeOAuthCallback(
   providerId: string,
   methodIndex: number,
   signal: AbortSignal,
+  code?: string,
 ): Promise<SetupApiResult<OAuthCallbackResponse | null>> {
   const res = await setupRequest(
-    'POST', `/opencode/provider/${encodeURIComponent(providerId)}/oauth/callback`, { method: methodIndex }, signal,
+    'POST', `/opencode/provider/${encodeURIComponent(providerId)}/oauth/callback`,
+    { method: methodIndex, ...(code ? { code } : {}) }, signal,
   );
   const data = (await res.json().catch(() => null)) as OAuthCallbackResponse | null;
   return { ok: res.ok, data };

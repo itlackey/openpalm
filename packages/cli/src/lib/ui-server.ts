@@ -12,7 +12,7 @@ import {
   resolveOpenPalmHome, resolveUiBuildDir, createLogger, readSecret, readStackEnv,
   applyHomeSeed,
   isRemoteSetupAllowed, isTrustedProxyEnabled, readyOrChildExit, UiSupervisor, waitForReady,
-  checkExistingUiInstance, type UiInstanceCheck,
+  checkExistingUiInstance, type UiInstanceCheck, checkPortAvailable,
   resolveHostUiPort, resolveUiListenEnv, UI_LOOPBACK_HOST, type UiListenEnv,
   buildEmptyUiRuntimeConfig, buildServedUiRuntimeConfig, classifyLocalInstall, stackDirFor,
   serializeUiRuntimeConfig, uiBuildSupportsProcessRuntimeConfig,
@@ -46,6 +46,21 @@ export function resolveUiServePort(
   persistedEnv: Record<string, string> = readStackEnv(homeDir),
 ): number {
   return resolveHostUiPort(portOpt, env, persistedEnv);
+}
+
+/**
+ * Open a URL and print an outcome that matches reality (C5) — `openBrowser`
+ * can fail at runtime (no DISPLAY, no configured opener on a headless/SSH
+ * host) even though spawning the opener succeeded, so this no longer claims
+ * "Opening ... in your browser..." unconditionally regardless of what
+ * actually happened.
+ */
+async function openBrowserAndReport(url: string): Promise<void> {
+  if (await openBrowser(url)) {
+    console.log(`Opened ${url} in your browser.`);
+  } else {
+    console.log(`Could not open a browser automatically. Open ${url} manually.`);
+  }
 }
 
 /**
@@ -375,7 +390,10 @@ export function createCliUiSupervisor(deps: CliUiSupervisorDeps): {
       // never exits; this policy hook does).
       onStartFailure: (proc) => {
         proc.kill('SIGTERM');
-        logError('UI server did not become ready in time.');
+        // C4: name the port — a bare "did not become ready" left a port
+        // conflict (foreign process on 3880, EADDRINUSE) with no clue what to
+        // check next.
+        logError(`UI server did not become ready in time (port ${port}).`);
         exit(1);
       },
     },
@@ -424,7 +442,22 @@ export async function startUIServer(opts: UIServerOptions = {}): Promise<void> {
     console.error(
       `A different OpenPalm UI instance (admin=${existing.admin}) is already listening ` +
       `on port ${port}, but this command expected admin=${expectedAdmin}. Refusing to ` +
-      'attach — stop the other instance first, or choose a different --port.'
+      `attach — stop the other instance first, or set OP_HOST_UI_PORT to a different port and retry.`
+    );
+    process.exit(1);
+  }
+
+  // C4: nothing OpenPalm-shaped answered the identity probe above, but that
+  // does not mean the port is free — a foreign process there makes the
+  // instance probe read `absent` too, and previously the child would then be
+  // spawned anyway, die of EADDRINUSE, and surface 60 seconds later as an
+  // opaque "did not become ready" with no port mentioned. Check up front with
+  // the same probe `doctor` already uses, and fail fast with an actionable
+  // message naming the port and the real remedy.
+  if (existing.status === 'absent' && !(await checkPortAvailable(port))) {
+    console.error(
+      `Port ${port} is already in use by another program (not an OpenPalm UI). ` +
+      'Free it, or set OP_HOST_UI_PORT to a different port and retry.'
     );
     process.exit(1);
   }
@@ -442,7 +475,7 @@ export async function startUIServer(opts: UIServerOptions = {}): Promise<void> {
       `(admin=${existing.admin}).`
     );
     if (opts.open !== false) {
-      await openBrowser(resolveAdminUrl(uiUrl, opts.adminHostUi === true, localInstallState));
+      await openBrowserAndReport(resolveAdminUrl(uiUrl, opts.adminHostUi === true, localInstallState));
     }
     return;
   }
@@ -464,7 +497,7 @@ export async function startUIServer(opts: UIServerOptions = {}): Promise<void> {
   if (opts.open !== false) {
     // `openpalm admin` opens `/host`; every other entry uses the full UI's
     // own landing resolver from the root URL.
-    await openBrowser(resolveAdminUrl(uiUrl, opts.adminHostUi === true, localInstallState));
+    await openBrowserAndReport(resolveAdminUrl(uiUrl, opts.adminHostUi === true, localInstallState));
   }
 
   async function shutdown(signal: string): Promise<void> {

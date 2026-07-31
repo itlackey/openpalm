@@ -64,6 +64,17 @@ class FakeUpdater implements AppUpdaterLike {
     return this;
   }
 
+  removeListener(event: string, listener: (...args: unknown[]) => void) {
+    const list = this.listeners.get(event) ?? [];
+    const idx = list.indexOf(listener);
+    if (idx >= 0) list.splice(idx, 1);
+    return this;
+  }
+
+  listenerCount(event: string): number {
+    return (this.listeners.get(event) ?? []).length;
+  }
+
   emit(event: string, ...args: unknown[]): void {
     for (const l of this.listeners.get(event) ?? []) l(...args);
   }
@@ -308,6 +319,59 @@ describe('quitAndInstall', () => {
     expect(updater.quitAndInstall()).toBe(true);
     // isSilent=false keeps the installer UI; isForceRunAfter=true relaunches.
     expect(fake.quitCalls).toEqual([[false, true]]);
+  });
+});
+
+// E6: createDesktopUpdater rebuilds a DesktopUpdater over the SAME singleton
+// autoUpdater on every prerelease-channel toggle. Without dispose(), each
+// rebuild leaves the PRIOR instance's listeners registered on the shared
+// updater, so N toggles == N sets of listeners all still firing.
+describe('dispose (listener teardown)', () => {
+  it('removes this instance\'s listeners from the shared updater', () => {
+    const { updater, fake } = makeUpdater();
+    expect(fake.listenerCount('download-progress')).toBe(1);
+    expect(fake.listenerCount('update-downloaded')).toBe(1);
+
+    updater.dispose();
+
+    expect(fake.listenerCount('download-progress')).toBe(0);
+    expect(fake.listenerCount('update-downloaded')).toBe(0);
+  });
+
+  it('a disposed instance no longer reacts to events from the shared updater', async () => {
+    const { updater, fake } = makeUpdater();
+    await updater.check();
+    updater.dispose();
+
+    fake.emit('download-progress', { percent: 77 });
+    // percent stays whatever it was before dispose (null — no download started).
+    expect(updater.getState().percent).toBeNull();
+  });
+
+  it('rebuilding over the same singleton after dispose leaves exactly one listener set', () => {
+    const fake = new FakeUpdater();
+    const first = new DesktopUpdater({ updater: fake, currentVersion: '1.0.0', platform: 'linux', isPackaged: true, prerelease: false });
+    first.dispose();
+    const second = new DesktopUpdater({ updater: fake, currentVersion: '1.0.0', platform: 'linux', isPackaged: true, prerelease: true });
+
+    expect(fake.listenerCount('download-progress')).toBe(1);
+    expect(fake.listenerCount('update-downloaded')).toBe(1);
+
+    fake.emit('download-progress', { percent: 55 });
+    expect(second.getState().percent).toBe(55);
+  });
+
+  it('is a no-op on an unsupported (e.g. macOS) instance', () => {
+    const { updater, fake } = makeUpdater({ platform: 'darwin' });
+    expect(() => updater.dispose()).not.toThrow();
+    expect(fake.listenerCount('download-progress')).toBe(0);
+  });
+
+  it('is safe to call twice', () => {
+    const { updater, fake } = makeUpdater();
+    updater.dispose();
+    expect(() => updater.dispose()).not.toThrow();
+    expect(fake.listenerCount('download-progress')).toBe(0);
   });
 });
 

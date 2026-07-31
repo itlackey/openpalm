@@ -98,4 +98,26 @@ describe('POST /api/setup/opencode/ensure', () => {
     expect(secondBody).toEqual({ ok: true, url: 'http://127.0.0.1:40125', started: true });
     expect(process.env.OP_OPENCODE_URL).toBe('http://127.0.0.1:3800');
   });
+
+  // W15: this used to return HTTP 200 with `{ ok: false }` on a spawn failure —
+  // `ensureOpenCode()` (setup-api.ts) treats any non-2xx as "unusable" (returns
+  // null) but could not tell success from failure on a 200, so the client fell
+  // through the SAME fallback path either way with no distinct signal.
+  test('a spawn failure surfaces as a non-200 status, not ok:false on HTTP 200', async () => {
+    const proc = createProc(1099);
+    spawnMock.mockReturnValue(proc);
+
+    const fetchMock = vi.fn(async () => ({ ok: false }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const mod = await import('./+server.js');
+    const resPromise = mod.POST({} as Parameters<typeof mod.POST>[0]);
+    setTimeout(() => { proc.emit('error', new Error('spawn ENOENT')); }, 0);
+    const res = await resPromise;
+
+    expect(res.status).not.toBe(200);
+    const body = await res.json() as { ok: boolean; error?: string };
+    expect(body.ok).toBe(false);
+    expect(body.error).toMatch(/ENOENT/);
+  });
 });

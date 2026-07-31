@@ -1,26 +1,7 @@
 import { defineCommand } from 'citty';
-import { classifyLocalInstall, composePs, buildComposeOptions, deriveLaunchStatus, deriveLocalStackState, detectRuntime } from '@openpalm/lib';
+import { classifyLocalInstall, composePs, buildComposeOptions, deriveLaunchStatus, deriveLocalStackState, detectRuntime, parseComposePsRows } from '@openpalm/lib';
 import { defineAction } from '../lib/action.ts';
 import { resolveServeState } from '../lib/cli-state.ts';
-
-function parseComposePsServices(stdout: string) {
-  return stdout
-    .split('\n')
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .flatMap((line) => {
-      try {
-        const parsed = JSON.parse(line) as Record<string, unknown>;
-        return [{
-          service: String(parsed.Service ?? parsed.Name ?? ''),
-          state: String(parsed.State ?? ''),
-          health: String(parsed.Health ?? ''),
-        }];
-      } catch {
-        return [];
-      }
-    });
-}
 
 export default defineCommand({
   meta: {
@@ -36,7 +17,11 @@ export default defineCommand({
     const ps = await composePs(buildComposeOptions(state));
     const launchStatus = deriveLaunchStatus({
       local: {
-        state: deriveLocalStackState(installState, ps.ok ? parseComposePsServices(ps.stdout) : []),
+        // parseComposePsRows is the lib's single source of truth for this parse
+        // (docker.ts) — the local reimplementation this replaces missed the
+        // JSON-array `compose ps` output shape some Compose versions emit,
+        // which made a genuinely running stack classify as installed_offline.
+        state: deriveLocalStackState(installState, ps.ok ? parseComposePsRows(ps.stdout) : []),
         runtime: installState === 'not_installed' ? await detectRuntime() : undefined,
         detail: { installState },
       },

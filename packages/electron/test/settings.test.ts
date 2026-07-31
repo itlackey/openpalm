@@ -15,8 +15,8 @@ afterEach(() => {
 });
 
 describe('desktop settings', () => {
-  it('defaults checkPrerelease to false when no file exists', () => {
-    expect(loadSettings(dir)).toEqual({ checkPrerelease: false });
+  it('defaults checkPrerelease and micShortcutEnabled to false when no file exists', () => {
+    expect(loadSettings(dir)).toEqual({ checkPrerelease: false, micShortcutEnabled: false });
   });
 
   it('round-trips a saved value', () => {
@@ -28,7 +28,7 @@ describe('desktop settings', () => {
 
   it('falls back to defaults for a corrupt file (never throws)', () => {
     writeFileSync(settingsPath(dir), '{ not json', 'utf-8');
-    expect(loadSettings(dir)).toEqual({ checkPrerelease: false });
+    expect(loadSettings(dir)).toEqual({ checkPrerelease: false, micShortcutEnabled: false });
   });
 
   it('falls back to default for a mistyped field', () => {
@@ -49,7 +49,7 @@ describe('desktop settings', () => {
       JSON.stringify({ checkPrerelease: true, preferClientChat: true }),
       'utf-8',
     );
-    expect(loadSettings(dir)).toEqual({ checkPrerelease: true });
+    expect(loadSettings(dir)).toEqual({ checkPrerelease: true, micShortcutEnabled: false });
   });
 
   it('drops legacy fields the next time current settings are saved', () => {
@@ -59,6 +59,30 @@ describe('desktop settings', () => {
       'utf-8',
     );
     saveSettings(dir, { checkPrerelease: true });
-    expect(JSON.parse(readFileSync(settingsPath(dir), 'utf-8'))).toEqual({ checkPrerelease: true });
+    expect(JSON.parse(readFileSync(settingsPath(dir), 'utf-8'))).toEqual({
+      checkPrerelease: true,
+      micShortcutEnabled: false,
+    });
+  });
+
+  // E3 review: Ctrl/Cmd+Shift+M is Teams' global mute chord. Registering it
+  // system-wide unconditionally silently took it away from every other app on
+  // a first launch. It must default OFF and round-trip like any other setting.
+  describe('micShortcutEnabled (E3 opt-in)', () => {
+    it('defaults to false', () => {
+      expect(loadSettings(dir).micShortcutEnabled).toBe(false);
+    });
+
+    it('round-trips a saved value independently of checkPrerelease', () => {
+      saveSettings(dir, { micShortcutEnabled: true });
+      expect(loadSettings(dir)).toEqual({ checkPrerelease: false, micShortcutEnabled: true });
+      saveSettings(dir, { micShortcutEnabled: false });
+      expect(loadSettings(dir).micShortcutEnabled).toBe(false);
+    });
+
+    it('falls back to default for a mistyped field', () => {
+      writeFileSync(settingsPath(dir), JSON.stringify({ micShortcutEnabled: 'on' }), 'utf-8');
+      expect(loadSettings(dir).micShortcutEnabled).toBe(false);
+    });
   });
 });

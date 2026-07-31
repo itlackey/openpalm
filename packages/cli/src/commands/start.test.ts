@@ -1,4 +1,7 @@
 import { afterEach, describe, expect, mock, test } from 'bun:test';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import * as realLib from '../../../lib/src/index.ts';
 import * as realCliState from '../lib/cli-state.ts';
 import * as realCliCompose from '../lib/cli-compose.ts';
@@ -33,7 +36,7 @@ describe('runStartAction', () => {
       acquireInstallLock: () => ({ path: '/tmp/op-home/data/.install.lock' }),
       releaseInstallLock: () => {},
     }));
-    mock.module(moduleUrls.cliState, () => ({ ensureValidState: () => ({ homeDir: '/tmp/op-home', workspaceDir: '/tmp/op-home/workspace', dataDir: '/tmp/op-home/data' }) }));
+    mock.module(moduleUrls.cliState, () => ({ ensureValidState: () => ({ homeDir: '/tmp/op-home', workspaceDir: '/tmp/op-home/workspace', dataDir: '/tmp/op-home/data', stackDir: '/tmp/op-home/system/stack' }) }));
     mock.module(moduleUrls.cliCompose, () => ({ runComposeWithPreflight: async () => {} }));
 
     const { runStartAction } = await import(`${startModuleUrl}?t=${Math.random()}`);
@@ -52,7 +55,7 @@ describe('runStartAction', () => {
       acquireInstallLock: () => ({ path: '/tmp/op-home/data/.install.lock' }),
       releaseInstallLock: () => {},
     }));
-    mock.module(moduleUrls.cliState, () => ({ ensureValidState: () => ({ homeDir: '/tmp/op-home', workspaceDir: '/tmp/op-home/workspace', dataDir: '/tmp/op-home/data' }) }));
+    mock.module(moduleUrls.cliState, () => ({ ensureValidState: () => ({ homeDir: '/tmp/op-home', workspaceDir: '/tmp/op-home/workspace', dataDir: '/tmp/op-home/data', stackDir: '/tmp/op-home/system/stack' }) }));
     mock.module(moduleUrls.cliCompose, () => ({ runComposeWithPreflight: async (_state: unknown, args: string[]) => { composedArgs.push(args); } }));
 
     const { runStartAction } = await import(`${startModuleUrl}?t=${Math.random()}`);
@@ -74,7 +77,7 @@ describe('runStartAction', () => {
       acquireInstallLock: () => ({ path: '/tmp/op-home/data/.install.lock' }),
       releaseInstallLock: () => {},
     }));
-    mock.module(moduleUrls.cliState, () => ({ ensureValidState: () => ({ homeDir: '/tmp/op-home', workspaceDir: '/tmp/op-home/workspace', dataDir: '/tmp/op-home/data' }) }));
+    mock.module(moduleUrls.cliState, () => ({ ensureValidState: () => ({ homeDir: '/tmp/op-home', workspaceDir: '/tmp/op-home/workspace', dataDir: '/tmp/op-home/data', stackDir: '/tmp/op-home/system/stack' }) }));
     mock.module(moduleUrls.cliCompose, () => ({ runComposeWithPreflight: async (_state: unknown, args: string[]) => { composedArgs.push(args); } }));
 
     const { runStartAction } = await import(`${startModuleUrl}?t=${Math.random()}`);
@@ -95,12 +98,139 @@ describe('runStartAction', () => {
       acquireInstallLock: () => null,
       releaseInstallLock: () => {},
     }));
-    mock.module(moduleUrls.cliState, () => ({ ensureValidState: () => ({ homeDir: '/tmp/op-home', workspaceDir: '/tmp/op-home/workspace', dataDir: '/tmp/op-home/data' }) }));
+    mock.module(moduleUrls.cliState, () => ({ ensureValidState: () => ({ homeDir: '/tmp/op-home', workspaceDir: '/tmp/op-home/workspace', dataDir: '/tmp/op-home/data', stackDir: '/tmp/op-home/system/stack' }) }));
     mock.module(moduleUrls.cliCompose, () => ({ runComposeWithPreflight: async () => { composed = true; } }));
 
     const { runStartAction } = await import(`${startModuleUrl}?t=${Math.random()}`);
     await expect(runStartAction([])).rejects.toThrow(/install_in_progress/);
     // The compose recreate must NOT run while another install holds the lock.
     expect(composed).toBe(false);
+  });
+});
+
+// C2: `install --file --no-start` runs performSetup (which mints the guardian
+// tokens classifyLocalInstall's fallback reads as "installed") but never
+// deploys, so the deploy-journal's markSetupComplete callback never fires.
+// `openpalm start` bringing up that SAME configured home must fire the
+// equivalent stamp itself, or the home is `setup_incomplete` forever.
+describe('runStartAction — marks setup complete on a healthy, previously-configured start (C2)', () => {
+  function seedConfiguredButUndeployedHome(): { homeDir: string; stackDir: string } {
+    const homeDir = mkdtempSync(join(tmpdir(), 'openpalm-start-stamp-'));
+    const stackDir = join(homeDir, 'system', 'stack');
+    mkdirSync(stackDir, { recursive: true });
+    writeFileSync(join(stackDir, 'core.compose.yml'), 'services: {}\n');
+    // Guardian tokens are exactly what performSetup leaves behind without a
+    // deploy ever running — classifyLocalInstall's documented fallback reads
+    // compose + both tokens as "installed" despite OP_SETUP_COMPLETE being
+    // unset.
+    const secretsDir = join(homeDir, 'knowledge', 'secrets');
+    mkdirSync(secretsDir, { recursive: true, mode: 0o700 });
+    writeFileSync(join(secretsDir, 'op_guardian_admin_token'), 'admin\n');
+    writeFileSync(join(secretsDir, 'op_guardian_mcp_token'), 'mcp\n');
+    return { homeDir, stackDir };
+  }
+
+  test('stamps OP_SETUP_COMPLETE=true once the started core services report healthy', async () => {
+    const { homeDir, stackDir } = seedConfiguredButUndeployedHome();
+    mock.module('@openpalm/lib', () => ({
+      ...realLib,
+      reconcileHostOwnership: async () => {},
+      buildManagedServices: async () => ['assistant'],
+      acquireInstallLock: () => ({ path: join(homeDir, 'data', '.install.lock') }),
+      releaseInstallLock: () => {},
+      composePs: async () => ({
+        ok: true,
+        stdout: JSON.stringify({ Service: 'assistant', State: 'running', Health: 'healthy' }),
+        stderr: '',
+        code: 0,
+      }),
+    }));
+    mock.module(moduleUrls.cliState, () => ({
+      ensureValidState: () => ({
+        homeDir,
+        workspaceDir: join(homeDir, 'workspace'),
+        dataDir: join(homeDir, 'data'),
+        stackDir,
+      }),
+    }));
+    mock.module(moduleUrls.cliCompose, () => ({ runComposeWithPreflight: async () => {} }));
+
+    try {
+      const { runStartAction } = await import(`${startModuleUrl}?t=${Math.random()}`);
+      await runStartAction([]);
+
+      const stackEnv = readFileSync(join(homeDir, 'state', 'stack.env'), 'utf-8');
+      expect(stackEnv).toContain('OP_SETUP_COMPLETE=true');
+    } finally {
+      rmSync(homeDir, { recursive: true, force: true });
+    }
+  });
+
+  test('does not stamp completion when the started service is not actually healthy', async () => {
+    const { homeDir, stackDir } = seedConfiguredButUndeployedHome();
+    mock.module('@openpalm/lib', () => ({
+      ...realLib,
+      reconcileHostOwnership: async () => {},
+      buildManagedServices: async () => ['assistant'],
+      acquireInstallLock: () => ({ path: join(homeDir, 'data', '.install.lock') }),
+      releaseInstallLock: () => {},
+      composePs: async () => ({
+        ok: true,
+        stdout: JSON.stringify({ Service: 'assistant', State: 'exited', Health: '' }),
+        stderr: '',
+        code: 0,
+      }),
+    }));
+    mock.module(moduleUrls.cliState, () => ({
+      ensureValidState: () => ({
+        homeDir,
+        workspaceDir: join(homeDir, 'workspace'),
+        dataDir: join(homeDir, 'data'),
+        stackDir,
+      }),
+    }));
+    mock.module(moduleUrls.cliCompose, () => ({ runComposeWithPreflight: async () => {} }));
+
+    try {
+      const { runStartAction } = await import(`${startModuleUrl}?t=${Math.random()}`);
+      await runStartAction([]);
+
+      expect(existsSync(join(homeDir, 'state', 'stack.env'))).toBe(false);
+    } finally {
+      rmSync(homeDir, { recursive: true, force: true });
+    }
+  });
+
+  test('never touches a genuinely never-configured home (no compose, no guardian tokens)', async () => {
+    const homeDir = mkdtempSync(join(tmpdir(), 'openpalm-start-unconfigured-'));
+    const stackDir = join(homeDir, 'system', 'stack');
+    mock.module('@openpalm/lib', () => ({
+      ...realLib,
+      reconcileHostOwnership: async () => {},
+      buildManagedServices: async () => ['assistant'],
+      acquireInstallLock: () => ({ path: join(homeDir, 'data', '.install.lock') }),
+      releaseInstallLock: () => {},
+      composePs: async () => {
+        throw new Error('composePs must not be called for a not_installed home');
+      },
+    }));
+    mock.module(moduleUrls.cliState, () => ({
+      ensureValidState: () => ({
+        homeDir,
+        workspaceDir: join(homeDir, 'workspace'),
+        dataDir: join(homeDir, 'data'),
+        stackDir,
+      }),
+    }));
+    mock.module(moduleUrls.cliCompose, () => ({ runComposeWithPreflight: async () => {} }));
+
+    try {
+      const { runStartAction } = await import(`${startModuleUrl}?t=${Math.random()}`);
+      await runStartAction([]);
+
+      expect(existsSync(join(homeDir, 'state', 'stack.env'))).toBe(false);
+    } finally {
+      rmSync(homeDir, { recursive: true, force: true });
+    }
   });
 });

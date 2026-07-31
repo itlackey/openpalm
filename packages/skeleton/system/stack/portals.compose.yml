@@ -46,6 +46,11 @@ services:
       interval: 10s
       timeout: 5s
       retries: 3
+      # K5: without a start_period, a cold-start portal that takes >30s
+      # (10s interval x 3 retries) to open its socket is marked "did not
+      # start correctly" spuriously, even though depends_on already waited
+      # for guardian's own healthcheck. Matches the assistant's start_period.
+      start_period: 30s
   slack:
     profiles: ["addon.slack"]
     image: ${OP_IMAGE_NAMESPACE:-openpalm}/portal:${OP_PORTAL_VERSION:?OP_PORTAL_VERSION is required}
@@ -84,6 +89,8 @@ services:
       interval: 10s
       timeout: 5s
       retries: 3
+      # K5: same start_period rationale as the discord service above.
+      start_period: 30s
   guardian:
     profiles: ["addon.chat", "addon.api", "addon.discord", "addon.slack", "addon.gateway"]
     image: ${OP_IMAGE_NAMESPACE:-openpalm}/guardian:${OP_GUARDIAN_VERSION:?OP_GUARDIAN_VERSION is required}

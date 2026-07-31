@@ -17,10 +17,19 @@ export interface DesktopSettings {
    * scan paginated releases for installer assets. Notify-only either way.
    */
   checkPrerelease: boolean;
+  /**
+   * Opt-in for the global Ctrl/Cmd+Shift+M mic-toggle shortcut (review E3).
+   * That chord is Teams' global mute/unmute — registering it system-wide
+   * unconditionally on first launch silently took it away from every other
+   * app on the machine, with no setting and no prompt. Default OFF; the tray
+   * menu's "Global Mic Shortcut" checkbox is the only way to turn it on.
+   */
+  micShortcutEnabled: boolean;
 }
 
 const DEFAULT_SETTINGS: DesktopSettings = {
   checkPrerelease: false,
+  micShortcutEnabled: false,
 };
 
 const SETTINGS_FILENAME = 'electron-settings.json';
@@ -44,6 +53,10 @@ export function loadSettings(dataDir: string): DesktopSettings {
         typeof parsed.checkPrerelease === 'boolean'
           ? parsed.checkPrerelease
           : DEFAULT_SETTINGS.checkPrerelease,
+      micShortcutEnabled:
+        typeof parsed.micShortcutEnabled === 'boolean'
+          ? parsed.micShortcutEnabled
+          : DEFAULT_SETTINGS.micShortcutEnabled,
     };
   } catch {
     return { ...DEFAULT_SETTINGS };

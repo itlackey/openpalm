@@ -18,14 +18,14 @@ import {
 	hasMaterializedLocalInstall,
 	hasAnyStackEnvFile,
 	resolveBackupsDirFor,
-	resolveRuntimeFiles
+	resolveRuntimeFiles,
+	ensureDockerReady
 } from '@openpalm/lib';
 import { applyHomeSeed } from '@openpalm/lib';
 import { materializeEmbeddedUi, seedSkeletonFromEmbedded } from '../lib/embedded-assets.ts';
 import {
 	backupOpenPalmHome,
 	pruneBackupDirs,
-	initializeStateSecrets,
 	ensureOpenCodeConfig,
 	ensureOpenCodeSystemConfig,
 	performSetup,
@@ -39,6 +39,9 @@ import {
 	patchSecretsEnvFile,
 	describeAccessExposure,
 	readAccessToggles,
+	resolveDeployJournalPath,
+	type DeployPhase,
+	type DeployProgress,
 	type SetupSpec
 } from '@openpalm/lib';
 import { detectHostInfo } from '../lib/host-info.ts';
@@ -69,7 +72,10 @@ export default defineCommand({
 		},
 		version: {
 			type: 'string',
-			description: 'Install specific repository ref (default: latest release)'
+			description:
+				"Pin container image tags to a specific release (default: this binary's own " +
+				'version). Host assets (UI, skeleton) are always the binary\'s embedded build ' +
+				'and are never changed by this flag. Pass "main" for no pin.'
 		},
 		start: {
 			type: 'boolean',
@@ -95,13 +101,33 @@ export default defineCommand({
 	},
 	run: defineAction(
 		async ({ args }) => {
-			const version = args.version || (await resolveDefaultInstallRef());
-			// A user-supplied --version explicitly selects both host assets and the
-			// platform image tag. Without it, setup pins images to PLATFORM_VERSION,
-			// the same coordinated product release as this packaged host.
-			const explicitImageTag = args.version
-				? (resolveRequestedImageTag(String(args.version)) ?? undefined)
-				: undefined;
+			const requestedVersion = args.version ? String(args.version).trim() : undefined;
+			// A user-supplied --version pins the CONTAINER IMAGE tag only — host
+			// assets (UI, skeleton) are always this binary's own embedded build,
+			// never a downloaded ref (see prepareInstallFiles). "main" is the
+			// explicit "no pin" spelling (matches resolveDefaultInstallRef's own
+			// fallback chain); anything else must be a real release tag, or this is
+			// a typo that used to silently fall back to the default pin with no
+			// warning at all.
+			let explicitImageTag: string | undefined;
+			if (requestedVersion && requestedVersion !== 'main') {
+				explicitImageTag = resolveRequestedImageTag(requestedVersion) ?? undefined;
+				if (!explicitImageTag) {
+					throw new Error(
+						`Invalid --version value "${requestedVersion}". Expected a release tag like ` +
+							'1.2.3 or v1.2.3 (optionally with a pre-release suffix), or "main" for no pin.'
+					);
+				}
+				if (explicitImageTag.replace(/^v/, '') !== cliPkg.version) {
+					console.warn(
+						`Warning: --version ${requestedVersion} pins container image tags only. This ` +
+							`binary's own host assets (UI, skeleton) stay at ${cliPkg.version} regardless ` +
+							'of --version — a mismatched pin can run images against compose contracts this ' +
+							'host does not ship.'
+					);
+				}
+			}
+			const version = requestedVersion || (await resolveDefaultInstallRef());
 			await bootstrapInstall({
 				force: !!args.force,
 				version: String(version),
@@ -127,38 +153,79 @@ type InstallOptions = {
 	assumeYes: boolean;
 };
 
-async function requireCmd(cmd: string[], msg: string): Promise<void> {
-	if ((await Bun.spawn(cmd, { stdout: 'ignore', stderr: 'ignore' }).exited) !== 0)
-		throw new Error(msg);
+/**
+ * Docker/Compose preflight for install — delegates entirely to the lib's own
+ * probes rather than a bespoke `docker info`/`docker compose version` check.
+ * `ensureDockerReady` distinguishes "daemon stopped" from "socket permission
+ * denied" (mapDockerError), tolerates a warning-only `docker info` exit
+ * (checkDocker), and its Compose check enforces the `--wait`/`--wait-timeout`
+ * version floor (checkDockerCompose / meetsComposeWaitFloor) that the final
+ * deploy's `--wait-timeout` flag needs — a bare version-exists check would
+ * pass a too-old Compose that then fails at the very end of the wizard.
+ */
+async function ensureDockerAndComposeReady(): Promise<void> {
+	const result = await ensureDockerReady();
+	if (!result.ok) throw new Error(result.message);
 }
 
-async function requireDocker(): Promise<void> {
-	if (!Bun.which('docker'))
-		throw new Error(
-			'Docker is not installed. Install Docker first: https://docs.docker.com/get-docker/'
-		);
-	await requireCmd(
-		['docker', 'info'],
-		'Docker is not running (or current user lacks permission). Start Docker and retry.'
-	);
-	await requireCmd(
-		['docker', 'compose', 'version'],
-		'Docker Compose v2 is required. Install it: https://docs.docker.com/compose/install/'
-	);
+function describeDeployPhase(phase: DeployPhase): string {
+	switch (phase) {
+		case 'writing-config':
+			return 'Writing configuration...';
+		case 'pulling-images':
+			return 'Downloading images...';
+		case 'starting':
+			return 'Starting services...';
+		case 'ready':
+			return 'Ready.';
+		default:
+			return phase;
+	}
 }
 
-async function deployServices(mode: string, pull = true): Promise<string[]> {
+/**
+ * Print human-readable deploy progress to the terminal for a `--file` install
+ * — without this, a headless install prints nothing between "Setup
+ * complete." and the final JSON, through a pull budget of 60 minutes plus an
+ * up budget of 30 minutes (C6). Diffs against the last-seen phase/labels so
+ * each line prints once, when it actually changes.
+ */
+function reportDeployProgress(
+	progress: DeployProgress,
+	seen: { phase: DeployPhase | null; labels: Map<string, string> }
+): void {
+	if (progress.phase !== seen.phase) {
+		seen.phase = progress.phase;
+		console.log(`[deploy] ${describeDeployPhase(progress.phase)}`);
+	}
+	for (const entry of progress.deployStatus) {
+		if (seen.labels.get(entry.service) !== entry.label) {
+			seen.labels.set(entry.service, entry.label);
+			console.log(`[deploy]   ${entry.service}: ${entry.label}`);
+		}
+	}
+}
+
+async function deployServices(mode: string): Promise<string[]> {
 	const state = ensureValidState();
+	const seen: { phase: DeployPhase | null; labels: Map<string, string> } = {
+		phase: null,
+		labels: new Map()
+	};
 	// PR #564 second retest R9: pass the setup-completion callback so a healthy
 	// non-interactive (file) install records OP_SETUP_COMPLETE=true. Without it,
 	// runDeploy brought the stack up healthy but never stamped completion, so the
 	// UI later bounced the operator back to the setup wizard. runDeploy only fires
 	// this once CORE services are healthy, so it stays correct for every mode.
-	const result = await runDeploy(state, { markSetupComplete: () => markSetupComplete(state) });
+	const result = await runDeploy(state, {
+		markSetupComplete: () => markSetupComplete(state),
+		journalPath: resolveDeployJournalPath(state),
+		onUpdate: (progress) => reportDeployProgress(progress, seen)
+	});
 	if (result.deployError) throw new Error(result.deployError);
 	console.log(
 		JSON.stringify(
-			{ ok: true, mode, services: result.deployStatus.map((entry) => entry.service), pull },
+			{ ok: true, mode, services: result.deployStatus.map((entry) => entry.service) },
 			null,
 			2
 		)
@@ -206,9 +273,22 @@ export async function bootstrapInstall(options: InstallOptions): Promise<void> {
 	const alreadyInstalled = hasAnyStackEnvFile(homeDir) || hasMaterializedLocalInstall(homeDir);
 	if (alreadyInstalled && !options.force) {
 		throw new Error(
-			'OpenPalm appears to already be installed. Re-run install with --force to continue.'
+			'OpenPalm appears to already be installed. Run `openpalm update` to upgrade it in ' +
+				'place, `openpalm uninstall` to remove it, or re-run install with --force to back ' +
+				'up the existing home and reinstall.'
 		);
 	}
+
+	// Docker preflight BEFORE any disk mutation — including the --force backup
+	// below. A missing/stopped Docker is the single most likely first-run
+	// failure, and prepareInstallFiles seeds a compose file + stack.env that
+	// makes THIS SAME home look "already installed" on the very next run (the
+	// check above), turning "go install Docker and retry" into a false, scary
+	// dead end. Skipped only for the one path that genuinely never touches
+	// Docker: a `--file` install with `--no-start` (writes config, never
+	// deploys — see runFileInstall).
+	const needsDocker = options.file ? !options.noStart : true;
+	if (needsDocker) await ensureDockerAndComposeReady();
 
 	if (alreadyInstalled && options.force) {
 		// Match backupOpenPalmHome()'s convention so the prompt is honest.
@@ -220,8 +300,9 @@ export async function bootstrapInstall(options: InstallOptions): Promise<void> {
 		const interactive = process.stdin.isTTY && process.stdout.isTTY;
 		if (!options.assumeYes && interactive) {
 			const proceed = await promptYesNo(
-				`--force will back up (copy) the existing OpenPalm install at ${homeDir} to ${plannedBackup}, ` +
-					'then prune old backups down to the 3 most recent. Continue? [y/N]'
+				`--force will back up (copy) the existing OpenPalm install at ${homeDir} to ${plannedBackup} ` +
+					'— everything except data/ and cache/ (chat history and other regenerable runtime ' +
+					'state are NOT included) — then prune old backups down to the 3 most recent. Continue? [y/N]'
 			);
 			if (!proceed) {
 				console.log(
@@ -266,20 +347,12 @@ export async function bootstrapInstall(options: InstallOptions): Promise<void> {
 		return;
 	}
 
-	// Interactive wizard: start the admin UI which serves the setup wizard
-	const needsWizard = !alreadyInstalled || options.force;
-	if (needsWizard) {
-		await runWizardInstall(options.noOpen);
-		return;
-	}
-
-	// Update mode (already installed, no --force): just redeploy
-	if (options.noStart) {
-		console.log('Config updated. Run `openpalm start` to start services.');
-		return;
-	}
-	await requireDocker();
-	await deployServices('update', false);
+	// Interactive wizard: start the admin UI which serves the setup wizard.
+	// Reachable unconditionally — the guard above already returned/threw for
+	// every `alreadyInstalled && !options.force` case, so getting this far
+	// means either the home was fresh or the caller explicitly passed
+	// --force; both want the wizard.
+	await runWizardInstall(options.noOpen);
 }
 
 async function prepareInstallFiles(
@@ -312,11 +385,11 @@ async function prepareInstallFiles(
 	// does not survive into the packaged UI build, so the live seeded copy must
 	// exist before /setup is served.
 	//
-	// NOT redundant with applyInstall's applyHome: the deploy paths (runFileInstall
-	// and the update-mode redeploy) reach applyHome via runDeploy -> applyInstall,
-	// which re-seeds idempotently; but the interactive wizard serves BEFORE any
-	// applyInstall runs (deploy happens later from inside the UI), so this explicit
-	// seed is the only one that runs before the wizard comes up.
+	// NOT redundant with applyInstall's applyHome: runFileInstall's deploy
+	// reaches applyHome via runDeploy -> applyInstall, which re-seeds
+	// idempotently; but the interactive wizard serves BEFORE any applyInstall
+	// runs (deploy happens later from inside the UI), so this explicit seed is
+	// the only one that runs before the wizard comes up.
 	await seedSkeletonFromEmbedded(applyHomeSeed, homeDir, configDir, dataDir);
 	runHomeMigrations(homeDir);
 	// Materialize the embedded UI build into data/ui — no network, no backup:
@@ -331,7 +404,15 @@ async function prepareInstallFiles(
 	}
 	console.log('Configuring secrets...');
 	const bootstrapState = createState();
-	initializeStateSecrets(bootstrapState);
+	// Deliberately NOT initializeStateSecrets() here (C1): that mints the
+	// guardian tokens performSetup/applyHome are documented as the sole
+	// source of (classifyLocalInstall's "installed" fallback treats
+	// core.compose.yml + both guardian tokens as strong evidence a real setup
+	// ran). Minting them this early — before the wizard has asked a single
+	// question — let a Ctrl-C'd wizard read back as a completed install.
+	// performSetup (file installs) and applyHome (every deploy, wizard
+	// included) both mint the same secrets once setup actually runs, so
+	// nothing downstream is left unconfigured by deferring this.
 	writeSystemEnv(bootstrapState);
 	// Ensure the akm env:user file exists (empty 0600) so the assistant can
 	// source it. Owned and edited directly by OpenPalm — see akm-user-env.ts.
@@ -388,19 +469,27 @@ export function wizardUiServerOptions(
  * and redirects to /setup where the wizard runs. Deploy is triggered from
  * within the UI process after the user completes the wizard.
  *
- * Pre-flight: `requireDocker()` runs FIRST so users hit our friendly Docker
- * error before the browser opens to a wizard that will fail at the end of
- * a 10-step flow.
+ * Pre-flight: the Docker/Compose check now runs in `bootstrapInstall`, BEFORE
+ * any disk mutation (C1) — so users hit our friendly Docker error before
+ * `prepareInstallFiles` has seeded anything, and before the browser opens to
+ * a wizard that would otherwise fail at the end of a 10-step flow.
  */
 async function runWizardInstall(noOpen: boolean): Promise<void> {
-	await requireDocker();
 	const options = wizardUiServerOptions(noOpen, process.env, readStackEnv(resolveOpenPalmHome()));
 	// Same loopback spelling the server binds, the browser is opened to, and
 	// ORIGIN is pinned to (UI_LOOPBACK_HOST). A wizard session established on
 	// `localhost` is a different cookie jar from the one `openpalm admin` later
 	// serves on `127.0.0.1`, which is how finishing setup used to hand the
 	// operator a login prompt on their very next command.
-	console.log(`Setup wizard: http://${UI_LOOPBACK_HOST}:${options.port}/setup`);
+	const wizardUrl = `http://${UI_LOOPBACK_HOST}:${options.port}/setup`;
+	console.log(`Setup wizard: ${wizardUrl}`);
+	// C5: the wizard is loopback-only by design (SEC-4, admin mode always
+	// pins the bind) — on a remote/SSH host that URL is otherwise unreachable
+	// and nothing pointed the operator at the one thing that works: tunneling
+	// the port over the SSH connection they're already using.
+	console.log(
+		`On a remote host, tunnel it first: ssh -L ${options.port}:127.0.0.1:${options.port} <user>@<host>`
+	);
 	const { startUIServer } = await import('../lib/ui-server.ts');
 	await startUIServer(options);
 }
@@ -454,13 +543,14 @@ async function runFileInstall(
 			return value ? [[key, value]] : [];
 		})
 	);
-	patchSecretsEnvFile(process.env.OP_HOME ?? resolveOpenPalmHome(), runtimeOverrides);
+	patchSecretsEnvFile(resolveOpenPalmHome(), runtimeOverrides);
 
 	console.log('Setup complete.');
 	if (noStart) {
 		console.log('Config written. Run `openpalm start` to start services.');
 		return;
 	}
-	await requireDocker();
+	// Docker/Compose readiness was already confirmed in bootstrapInstall,
+	// before prepareInstallFiles touched disk (C1) — no second check here.
 	await deployServices('install');
 }

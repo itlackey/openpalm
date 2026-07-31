@@ -39,6 +39,7 @@ import type {
 	SessionSummary,
 } from '$lib/types.js';
 import {
+	extractSessionErrorDetail,
 	extractTextDelta,
 	extractPermissionAsk,
 	extractQuestionAsk,
@@ -73,6 +74,15 @@ import { getConnectionStore } from '$lib/connections/boot.js';
 
 type EndpointId = string;
 type SessionId = string;
+/**
+ * Idle ceiling for a turn: this many ms with NO relevant activity for the
+ * pending turn's session fails it as timed out. Re-armed on every such event
+ * (see `_armTurnTimeout`) rather than a wall-clock deadline set once at send —
+ * a cold local model's slow first token, or a long tool call, must not be
+ * failed while it's actually still working. The `/oc` proxy deliberately
+ * removed its own 30s cap for this exact bug class; this must stay idle-based
+ * rather than reintroducing a wall-clock cap client-side.
+ */
 const STREAM_TURN_TIMEOUT_MS = 150_000;
 
 type TurnFailure = Error & { turnMayHaveRun?: true };
@@ -80,6 +90,12 @@ type TurnFailure = Error & { turnMayHaveRun?: true };
 function isExplicitRejection(error: unknown): boolean {
 	const status = (error as { status?: unknown } | null)?.status;
 	return typeof status === 'number' && status >= 400 && status < 500 && status !== 408;
+}
+
+/** The sessionID a raw event carries, if any — used to scope the idle-timeout reset to the pending turn's own session. */
+function frameSessionId(event: RawEvent): string | undefined {
+	const value = event.properties?.sessionID;
+	return typeof value === 'string' ? value : undefined;
 }
 
 function eventTimestamp(event: RawEvent): number | undefined {
@@ -126,7 +142,11 @@ type PendingTurn = {
 	reasoningPartIds: Set<string>;
 	resolve: () => void;
 	reject: (error: Error) => void;
-	timeout: ReturnType<typeof setTimeout>;
+	/**
+	 * Null while paused (a permission/question ask is awaiting the user) —
+	 * see `_armTurnTimeout`. Never both set AND expected to fire while paused.
+	 */
+	timeout: ReturnType<typeof setTimeout> | null;
 };
 
 function emptyEndpointState(): EndpointChatState {
@@ -362,6 +382,17 @@ class ChatService {
 			onConnect: () => {
 				if (!isCurrent()) return;
 				this.liveConnected = true;
+				// A connect can follow a stretch where the assistant was still
+				// warming up and the initial session load failed (or never
+				// completed) — now that the stream is confirmably live, retry so a
+				// stale sessionsError / perpetually empty list doesn't linger once
+				// the assistant is actually reachable. Skipped when the last load
+				// already succeeded: nothing here changed, so re-fetching is pure
+				// waste on the (overwhelmingly common) already-healthy path.
+				const state = this.byEndpoint.get(endpointId);
+				if (!state || state.sessionsError || !state.sessionsLoaded) {
+					void this.loadSessions();
+				}
 			},
 			onDisconnect: () => {
 				if (!isCurrent()) return;
@@ -480,9 +511,50 @@ class ChatService {
 	private _clearPendingTurn(): PendingTurn | null {
 		const pending = this._pendingTurn;
 		if (!pending) return null;
-		clearTimeout(pending.timeout);
+		if (pending.timeout) clearTimeout(pending.timeout);
 		this._pendingTurn = null;
 		return pending;
+	}
+
+	/**
+	 * (Re)arm the pending turn's idle timeout. Paused (no timer running at
+	 * all) while a permission/question ask isn't yet resolved into a
+	 * continuation — status `'resolved'` (permission) / `'answered'` or
+	 * `'rejected'` (question) means the assistant is expected to resume, so
+	 * the clock restarts there; every earlier status ('pending', 'submitting',
+	 * 'error') means the user is still looking at the card and stepping away
+	 * from it must not wipe it out from under them.
+	 */
+	private _armTurnTimeout(pending: PendingTurn): void {
+		if (pending.timeout) clearTimeout(pending.timeout);
+		const awaitingUser =
+			(this.pendingPermission != null && this.pendingPermission.status !== 'resolved') ||
+			(this.pendingQuestion != null &&
+				this.pendingQuestion.status !== 'answered' &&
+				this.pendingQuestion.status !== 'rejected');
+		pending.timeout = awaitingUser
+			? null
+			: setTimeout(() => this._onTurnTimeout(), STREAM_TURN_TIMEOUT_MS);
+	}
+
+	/** Re-arm the active pending turn's timeout, if any — a no-op once the turn is done. */
+	private _rearmActiveTurnTimeout(): void {
+		if (this._pendingTurn) this._armTurnTimeout(this._pendingTurn);
+	}
+
+	private _onTurnTimeout(): void {
+		const pending = this._pendingTurn;
+		if (!pending) return;
+		// The client is giving up, but the turn may still be running server-side
+		// — abort it so a stale reply doesn't keep streaming into a session
+		// nobody is listening to, and so a re-send doesn't race the still-running
+		// turn. Best-effort: a failure here changes nothing about the client-side
+		// failure being reported below.
+		void abortChatTurn(pending.sessionId).catch(() => {});
+		this._failPendingTurn(
+			new Error('The assistant response timed out. This request may have run; check activity before trying again.'),
+			true
+		);
 	}
 
 	/**
@@ -638,8 +710,17 @@ class ChatService {
 		}
 
 		if (isSessionError(raw, pending.sessionId)) {
+			// The underlying provider error (an invalid/revoked/quota-exhausted API
+			// key at first-message time is the most common cause) lives in
+			// properties.error — surface it instead of the generic "ended
+			// unexpectedly" text whenever the event actually carries one.
+			const detail = extractSessionErrorDetail(raw, pending.sessionId);
 			this._failPendingTurn(
-				new Error('The assistant session ended unexpectedly. This request may have run; check activity before trying again.'),
+				new Error(
+					detail
+						? `The assistant reported an error: ${detail} This request may have run; check activity before trying again.`
+						: 'The assistant session ended unexpectedly. This request may have run; check activity before trying again.'
+				),
 				true
 			);
 			return;
@@ -647,6 +728,14 @@ class ChatService {
 
 		if (isTurnEnd(raw, pending.sessionId)) {
 			this._finishPendingTurn();
+			return;
+		}
+
+		// Idle reset: any activity for THIS session pushes the deadline back
+		// rather than letting a wall-clock timer armed once at send fail a
+		// turn that's actually still working (see STREAM_TURN_TIMEOUT_MS).
+		if (frameSessionId(raw) === pending.sessionId) {
+			this._armTurnTimeout(pending);
 		}
 	}
 
@@ -950,8 +1039,7 @@ class ChatService {
 		} catch (e) {
 			if (!this.isEndpointCurrent(endpointId, endpointGeneration)) return null;
 			if (this.sessionGeneration !== sessionGeneration) return null;
-			const err = e as { message?: string };
-			this.error = `Failed to start conversation: ${err.message ?? 'unknown error'}`;
+			this.error = mapAssistantError(e, { fallback: 'Failed to start conversation.' });
 			return null;
 		}
 	}
@@ -1025,21 +1113,17 @@ class ChatService {
 		try {
 			if (this._unsubscribeEvents && this.liveConnected) {
 				await new Promise<void>((resolve, reject) => {
-					const timeout = setTimeout(() => {
-						this._failPendingTurn(
-							new Error('The assistant response timed out. This request may have run; check activity before trying again.'),
-							true
-						);
-					}, STREAM_TURN_TIMEOUT_MS);
-					this._pendingTurn = {
+					const pendingTurn: PendingTurn = {
 						endpointId: this.activeEndpointId,
 						sessionId,
 						spokenOffset: 0,
 						reasoningPartIds: new Set(),
 						resolve,
 						reject,
-						timeout,
+						timeout: null,
 					};
+					this._pendingTurn = pendingTurn;
+					this._armTurnTimeout(pendingTurn);
 					void startChatMessageTurn(sessionId, trimmed).catch((error) => {
 						const turnError = error instanceof Error ? error : new Error(String(error));
 						this._failPendingTurn(turnError, !isExplicitRejection(error));
@@ -1182,6 +1266,9 @@ class ChatService {
 				message,
 			};
 		}
+		// Resume the turn's idle timeout now that the ask is no longer awaiting
+		// the user (a no-op if it's still in an unresolved state, e.g. 'error').
+		this._rearmActiveTurnTimeout();
 	}
 
 	setQuestionAnswer(index: number, answer: string): void {
@@ -1229,6 +1316,7 @@ class ChatService {
 				message,
 			};
 		}
+		this._rearmActiveTurnTimeout();
 	}
 
 	async rejectQuestion(): Promise<void> {
@@ -1254,6 +1342,7 @@ class ChatService {
 				message,
 			};
 		}
+		this._rearmActiveTurnTimeout();
 	}
 
 	reset(): void {

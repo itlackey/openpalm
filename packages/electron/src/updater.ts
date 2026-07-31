@@ -11,8 +11,22 @@
  *
  * - `autoDownload = false`. Discovery must never spend a user's bandwidth;
  *   downloading is a separate, explicit act of consent (`download()`).
- * - `autoInstallOnAppQuit = true`. A staged update installs on normal quit, so
- *   "Restart and update" is a convenience rather than the only route.
+ * - `autoInstallOnAppQuit = true`, set for parity with electron-updater's own
+ *   documented default and in case a future quit path restores the normal
+ *   Electron quit sequence. As THIS app quits today it does essentially
+ *   nothing: electron-updater's install-on-quit hook (`BaseUpdater.addQuitHandler`)
+ *   is wired to Electron's `app`'s `'quit'` event, but main.ts's `before-quit`
+ *   handler always finishes with `app.exit(0)` — which Electron's own docs
+ *   state skips `before-quit`/`will-quit`, and does not run the normal
+ *   will-quit → window-teardown → `quit` sequence those events gate, so the
+ *   hook's listener is never reached (verified against installed electron-updater
+ *   6.8.9's `BaseUpdater`/`ElectronAppAdapter` sources). "Restart and update"
+ *   (`quitAndInstall()`, which calls electron-updater's own `app.quit()`
+ *   internally — a different path than our before-quit's `app.exit(0)`) is
+ *   therefore the ONLY route that installs a staged update. This is
+ *   documented rather than "fixed" by returning to a plain `app.quit()` from
+ *   before-quit: that reintroduces the re-entrant silent-no-op double-quit bug
+ *   the `app.exit(0)` switch exists to fix (see main.ts's before-quit comment).
  * - Silent checks (startup, window focus) never surface an error: a laptop that
  *   is offline is the normal case, not a fault worth a persistent banner. Only
  *   a user-initiated check reports why it failed.
@@ -68,6 +82,15 @@ export interface AppUpdaterLike {
   downloadUpdate(): Promise<unknown>;
   quitAndInstall(isSilent?: boolean, isForceRunAfter?: boolean): void;
   on(event: string, listener: (...args: unknown[]) => void): unknown;
+  /**
+   * Needed by `dispose()` (review E6): `createDesktopUpdater` builds a FRESH
+   * DesktopUpdater over the SAME singleton `autoUpdater` every time the
+   * prerelease-channel toggle fires, and without a way to remove the prior
+   * instance's `download-progress`/`update-downloaded` listeners, N toggles
+   * leave N of each registered — all still firing, all still calling their
+   * (stale) `onStateChange` closure.
+   */
+  removeListener(event: string, listener: (...args: unknown[]) => void): unknown;
 }
 
 export interface UpdaterDeps {
@@ -158,6 +181,10 @@ export class DesktopUpdater {
   private downloadInFlight: Promise<UpdaterState> | null = null;
   /** null = never checked. Not 0: that is a real (if ancient) timestamp. */
   private lastCheckAt: number | null = null;
+  // Bound listener references, kept so dispose() can remove exactly these
+  // from the shared singleton updater (review E6 — see dispose() below).
+  private readonly onDownloadProgress: ((...args: unknown[]) => void) | null;
+  private readonly onUpdateDownloaded: (() => void) | null;
 
   constructor(deps: UpdaterDeps) {
     this.deps = deps;
@@ -173,29 +200,54 @@ export class DesktopUpdater {
       supported,
       releasesUrl: RELEASES_URL,
     };
-    if (!supported) return;
+    if (!supported) {
+      this.onDownloadProgress = null;
+      this.onUpdateDownloaded = null;
+      return;
+    }
 
     const u = deps.updater;
     // Consent before bytes: discovery must not download (#572 acceptance).
     u.autoDownload = false;
     // A staged update also installs on an ordinary quit, not only via the
-    // explicit "Restart and update" action.
+    // explicit "Restart and update" action — in THEORY (see the class
+    // docblock: main.ts's actual quit path never reaches the hook this relies
+    // on today).
     u.autoInstallOnAppQuit = true;
     u.channel = updaterFeedChannel(this.state.channel);
     u.allowPrerelease = deps.prerelease;
 
-    u.on('download-progress', (...args: unknown[]) => {
+    this.onDownloadProgress = (...args: unknown[]) => {
       const progress = args[0] as { percent?: number } | undefined;
       const percent = typeof progress?.percent === 'number' ? progress.percent : null;
       this.patch({ status: 'downloading', percent });
-    });
-    u.on('update-downloaded', () => {
+    };
+    this.onUpdateDownloaded = () => {
       this.patch({ status: 'downloaded', percent: 100, error: null });
-    });
+    };
+    u.on('download-progress', this.onDownloadProgress);
+    u.on('update-downloaded', this.onUpdateDownloaded);
   }
 
   getState(): UpdaterState {
     return { ...this.state };
+  }
+
+  /**
+   * Remove this instance's listeners from the shared electron-updater
+   * singleton (review E6). `createDesktopUpdater` in main.ts builds a FRESH
+   * DesktopUpdater over that same singleton every time the prerelease-channel
+   * toggle fires (#504); without this, N toggles leave N sets of
+   * 'download-progress'/'update-downloaded' listeners all still firing —
+   * each patching a `this.state` nothing reads anymore, but still forwarding
+   * through its own (now stale) `onStateChange` closure. Call before
+   * discarding an instance in favor of a new one. Safe to call more than
+   * once or on an `unsupported` instance (no-op either way).
+   */
+  dispose(): void {
+    if (!this.state.supported) return;
+    if (this.onDownloadProgress) this.deps.updater.removeListener('download-progress', this.onDownloadProgress);
+    if (this.onUpdateDownloaded) this.deps.updater.removeListener('update-downloaded', this.onUpdateDownloaded);
   }
 
   private patch(next: Partial<UpdaterState>): UpdaterState {

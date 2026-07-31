@@ -1,5 +1,9 @@
 import { json } from "@sveltejs/kit";
-import { checkDocker, checkDockerCompose, detectGpu, detectLocalProviders, detectRuntime, resolveHostUiPort, STACK_DEFAULTS } from "@openpalm/lib";
+import {
+  checkDocker, checkDockerCompose, detectGpu, detectLocalProviders, detectRuntime,
+  resolveHostUiPort, STACK_DEFAULTS, resolveOpenPalmHome,
+  checkLifecycleDiskHeadroom, describeLifecycleDiskHeadroom, shouldBlockOnDiskHeadroom,
+} from "@openpalm/lib";
 import { createServer } from "node:net";
 import { execFile } from "node:child_process";
 import type { RequestHandler } from "./$types";
@@ -94,12 +98,17 @@ function resolvePortsToCheck(): { port: number; service: string; blocking: boole
 const SERVER_PORT = Number(process.env.PORT) || resolveHostUiPort(undefined, process.env);
 
 export const GET: RequestHandler = async () => {
-  const [docker, compose, gpu, localProviders, runtime] = await Promise.all([
+  const [docker, compose, gpu, localProviders, runtime, diskHeadroom] = await Promise.all([
     checkDocker(),
     checkDockerCompose(),
     detectGpu(),
     detectLocalProviders(),
     detectRuntime(),
+    // W11: the same disk-headroom preflight `performSetup`/lifecycle.ts runs at
+    // apply time (5 GiB/1 GiB thresholds) — that one only ever logs server-side.
+    // Surfacing the reading here is what lets the wizard warn BEFORE a 5-10 GB
+    // image pull starts, instead of failing mid-extraction on a full disk.
+    checkLifecycleDiskHeadroom(resolveOpenPalmHome()),
   ]);
 
   const targets = resolvePortsToCheck();
@@ -147,6 +156,14 @@ export const GET: RequestHandler = async () => {
     hostProviders: localProviders
       .filter((p) => p.available)
       .map(({ provider, url }) => ({ provider, url })),
+    // W11: non-"ok" by default is a WARNING, never blocking — matches the lib's
+    // own warn-unless-opted-in stance. Only a "critical" reading with
+    // OP_DISK_HARD_BLOCK=1 set is `blocking: true`.
+    disk: {
+      status: diskHeadroom.worst.status,
+      message: describeLifecycleDiskHeadroom(diskHeadroom),
+      blocking: shouldBlockOnDiskHeadroom(diskHeadroom.worst),
+    },
   });
 };
 

@@ -4,9 +4,12 @@
 // Pins the browser-chat and admin entries to their supplied callbacks.
 import { describe, it, expect, vi } from 'vitest';
 
-const { mockBuildFromTemplate, mockTrayInstance } = vi.hoisted(() => ({
+const { mockBuildFromTemplate, mockTrayInstance, mockTrayConstructor } = vi.hoisted(() => ({
   mockBuildFromTemplate: vi.fn((template: unknown) => template),
   mockTrayInstance: { setToolTip: vi.fn(), setContextMenu: vi.fn(), setImage: vi.fn(), on: vi.fn() },
+  mockTrayConstructor: vi.fn(function MockTray() {
+    return mockTrayInstance;
+  }),
 }));
 
 vi.mock('electron', () => {
@@ -24,7 +27,7 @@ vi.mock('electron', () => {
   }
   return {
     Menu: { buildFromTemplate: mockBuildFromTemplate },
-    Tray: function MockTray() { return mockTrayInstance; },
+    Tray: mockTrayConstructor,
     nativeImage: {
       createFromPath: vi.fn(() => makeFakeImage()),
       createFromBitmap: vi.fn(() => makeFakeImage()),
@@ -48,6 +51,8 @@ function makeCallbacks(overrides: Partial<TrayCallbacks> = {}): TrayCallbacks {
     onSetLaunchOnLogin: vi.fn(),
     isPrereleaseEnabled: vi.fn(() => false),
     onTogglePrerelease: vi.fn(),
+    isMicShortcutEnabled: vi.fn(() => false),
+    onToggleMicShortcut: vi.fn(),
     onQuit: vi.fn(),
     ...overrides,
   };
@@ -91,5 +96,51 @@ describe('TrayController menu template', () => {
 
     const template = mockBuildFromTemplate.mock.calls.at(-1)?.[0];
     expect(findItem(template, 'Use the new app chat (experimental)')).toBeUndefined();
+  });
+
+  // E3: the global mic shortcut is opt-in — the tray must expose a way to
+  // turn it on, and its checked state must reflect the persisted setting.
+  it('contains a "Global Mic Shortcut" checkbox reflecting isMicShortcutEnabled and invoking onToggleMicShortcut', () => {
+    const controller = new TrayController();
+    const callbacks = makeCallbacks({ isMicShortcutEnabled: vi.fn(() => true) });
+    controller.create(callbacks);
+
+    const template = mockBuildFromTemplate.mock.calls.at(-1)?.[0];
+    const item = findItem(template, 'Global Mic Shortcut (Ctrl/Cmd+Shift+M)');
+    expect(item).toBeTruthy();
+    expect(item.type).toBe('checkbox');
+    expect(item.checked).toBe(true);
+    item.click({ checked: false });
+    expect(callbacks.onToggleMicShortcut).toHaveBeenCalledWith(false);
+  });
+});
+
+describe('TrayController.isActive', () => {
+  it('is false before create() is called', () => {
+    const controller = new TrayController();
+    expect(controller.isActive()).toBe(false);
+  });
+
+  it('is true after a successful create()', () => {
+    const controller = new TrayController();
+    controller.create(makeCallbacks());
+    expect(controller.isActive()).toBe(true);
+  });
+
+  it('stays false when the tray-icon asset is missing (no-op create)', async () => {
+    const assets = await import('../src/assets.js');
+    vi.mocked(assets.resolveAssetPath).mockReturnValueOnce(null);
+    const controller = new TrayController();
+    controller.create(makeCallbacks());
+    expect(controller.isActive()).toBe(false);
+  });
+
+  it('stays false (and does not throw) when the native Tray constructor fails — e.g. a Linux desktop with no StatusNotifier host', () => {
+    mockTrayConstructor.mockImplementationOnce(() => {
+      throw new Error('no StatusNotifier host');
+    });
+    const controller = new TrayController();
+    expect(() => controller.create(makeCallbacks())).not.toThrow();
+    expect(controller.isActive()).toBe(false);
   });
 });

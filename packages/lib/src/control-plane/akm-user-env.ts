@@ -90,13 +90,25 @@ export function userEnvPathSync(state: ControlPlaneState): string {
 /**
  * Ensure the user env file exists and return its absolute path.
  *
- * Pure filesystem — no akm subprocess. Returns immediately when the file is
- * already provisioned (the steady state — read paths pay no extra syscalls).
- * Otherwise creates `knowledge/env/` (0700) and an empty `user.env` (0600).
+ * Pure filesystem — no akm subprocess. Otherwise creates `knowledge/env/`
+ * (0700) and an empty `user.env` (0600).
+ *
+ * The existing-file path still `chmodSync`s to 0600 (K3): the file can reach
+ * an OP_HOME with a laxer mode than this function ever wrote — the shipped
+ * skeleton copy (`applyHomeSeed`'s `copyFileSync`) preserves whatever mode
+ * the repo-tracked seed file happens to carry, which git's tree-object model
+ * cannot represent below the 644/755 executable-bit distinction, so a
+ * packaging/checkout step can hand back a world-readable file no matter what
+ * mode the skeleton source is chmod'd to. This is the home for user-set LLM
+ * provider keys, in a 0755 directory — enforce 0600 unconditionally rather
+ * than trusting whatever arrived on disk.
  */
 export function ensureAkmUserEnv(state: ControlPlaneState): string {
   const envPath = userEnvPathSync(state);
-  if (existsSync(envPath)) return envPath;
+  if (existsSync(envPath)) {
+    chmodSync(envPath, ENV_FILE_MODE);
+    return envPath;
+  }
 
   mkdirSync(dirname(envPath), { recursive: true, mode: ENV_DIR_MODE });
   writeFileSync(envPath, "", { mode: ENV_FILE_MODE });
