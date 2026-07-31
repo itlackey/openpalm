@@ -119,7 +119,7 @@ describe("detectExistingProject (inspects EVERY matched container, not just ids[
 
     const result = await detectExistingProject({
       projectName: "openpalm",
-      expectedWorkingDir: process.env.FAKE_OURS_DIR!,
+      expectedWorkingDir: process.env.FAKE_OURS_DIR ?? "",
     });
 
     expect(result.exists).toBe(true);
@@ -133,7 +133,7 @@ describe("detectExistingProject (inspects EVERY matched container, not just ids[
 
     const result = await detectExistingProject({
       projectName: "openpalm",
-      expectedWorkingDir: process.env.FAKE_OURS_DIR!,
+      expectedWorkingDir: process.env.FAKE_OURS_DIR ?? "",
     });
 
     expect(result.exists).toBe(true);
@@ -146,7 +146,7 @@ describe("detectExistingProject (inspects EVERY matched container, not just ids[
 
     const result = await detectExistingProject({
       projectName: "openpalm",
-      expectedWorkingDir: process.env.FAKE_OURS_DIR!,
+      expectedWorkingDir: process.env.FAKE_OURS_DIR ?? "",
     });
 
     expect(result.running).toBe(true);
@@ -157,7 +157,7 @@ describe("detectExistingProject (inspects EVERY matched container, not just ids[
 
     const result = await detectExistingProject({
       projectName: "openpalm",
-      expectedWorkingDir: process.env.FAKE_OURS_DIR!,
+      expectedWorkingDir: process.env.FAKE_OURS_DIR ?? "",
     });
 
     expect(result.running).toBe(false);
