@@ -244,6 +244,10 @@ Which installs update themselves:
 | Windows portable `.zip` | No — manual: download and extract a new build |
 | macOS `.app` `.zip` | No — manual: download from the releases page |
 
+The NSIS installer and its updater feed files (`beta.yml`/`latest*.yml`) are
+not present in releases before `0.13.0` — earlier Windows releases ship only
+the portable `.zip`, which cannot auto-update regardless of this table.
+
 The portable Windows archive stays manual on purpose: it has no install
 location to replace, so there is nothing for the updater to update in place.
 macOS stays manual until the app is signed with a Developer ID and notarized —

@@ -140,6 +140,9 @@ operations remain host CLI or admin UI actions.
     core.compose.yml
     services.compose.yml
     portals.compose.yml
+    voice.compose.lan.yml       # conditional — OP_VOICE_LAN_ACCESS=true
+    voice.compose.rootless.yml  # conditional — rootless Docker fallback
+    voice.compose.cdi.yml       # conditional — CDI-only NVIDIA fallback
   config/stack/custom.compose.yml
   state/stack.env
   private/secrets/
@@ -147,9 +150,14 @@ operations remain host CLI or admin UI actions.
   knowledge/env/user.env
 ```
 
-The three managed Compose files are overwritten on lifecycle reconcile. The
-single user overlay is seeded once. `state/stack.env` is the sole non-secret
-Compose env file.
+`system/stack/` ships six managed Compose files, not three: `core.compose.yml`,
+`services.compose.yml`, and `portals.compose.yml` are used by every deploy;
+the three voice overlays are conditional — `voice.compose.lan.yml` joins the
+set only when the voice addon's LAN-access setting is on, and
+`voice.compose.rootless.yml` / `voice.compose.cdi.yml` only when the voice
+bring-up flow selects that hardware fallback. All six are overwritten on
+lifecycle reconcile. The single user overlay is seeded once. `state/stack.env`
+is the sole non-secret Compose env file.
 
 Delegated UI, Guardian, API, portal, bot, and OpenCode-server secrets live in
 `private/secrets/`. Only provider `auth.json` remains under

@@ -1,3 +1,5 @@
+# OpenPalm
+
 <p>
   <strong>Your own AI assistant. Private, self-hosted, no hype required.</strong>
 </p>
@@ -11,8 +13,8 @@ OpenPalm is two things: a **harness** and a **stack**.
 **The harness** runs on your machine — either as a CLI binary or an Electron desktop app. It manages a single directory (`~/.openpalm/`) that contains plain files you can read and edit:
 
 - Docker Compose files and addon overlays
-- Environment files for non-secret stack config and AKM user variables
-- Private principal, service, and provider credential files
+- Environment files for non-secret stack config and [AKM](https://github.com/itlackey/akm) (the assistant's persistent memory and knowledge-stash layer) user variables
+- Private principal (an authenticated identity Guardian issues credentials to — a portal, bot, or direct client), service, and provider credential files
 - OpenCode configuration (model, providers, persona)
 - AKM configuration (memory, embeddings, knowledge stash)
 - Voice and portal configuration
@@ -37,6 +39,11 @@ No proprietary orchestration layer, no magic runtime, no lock-in. Just container
 
 Use the [latest published release](https://github.com/itlackey/openpalm/releases/latest). See the [changelog](CHANGELOG.md) for current work and release-specific upgrade notes.
 
+The desktop app currently ships only in the `0.13.0` prerelease — the latest
+stable release has CLI binaries only, no desktop assets. See the download
+table below. The `access.*` setup-spec fields (`networkAccess`,
+`assistantDirect`, `guardianNetwork`, `guardianOpenaiApi`) require `0.13.0` or
+newer; see [Setup Guide](docs/setup-guide.md#headless-setup).
 
 ## What you get
 
@@ -58,27 +65,83 @@ Use the [latest published release](https://github.com/itlackey/openpalm/releases
 
 **2. Download the OpenPalm desktop app** — Recommended for most users.
 
-| Platform | Download | Run |
+Grab the file matching your platform from the
+[releases page](https://github.com/itlackey/openpalm/releases). Filenames are
+versioned — `<version>` below stands for the release tag (e.g.
+`0.13.0-beta.15`) — so link to the releases page, not to a specific file URL.
+
+| Platform | Filename | Run |
 |---|---|---|
-| **Mac (Apple Silicon)** | [OpenPalm-arm64-mac.zip](https://github.com/itlackey/openpalm/releases) | Unzip → drag **OpenPalm.app** to Applications |
-| **Mac (Intel)** | [OpenPalm-x64-mac.zip](https://github.com/itlackey/openpalm/releases) | Unzip → drag **OpenPalm.app** to Applications |
-| **Windows** | [OpenPalm-win.zip](https://github.com/itlackey/openpalm/releases) | Unzip → run **OpenPalm.exe** (portable, no install) |
-| **Linux** | [OpenPalm.AppImage](https://github.com/itlackey/openpalm/releases) | `chmod +x` → run |
+| **Mac (Apple Silicon)** | `OpenPalm-<version>-arm64-mac.zip` | Unzip → drag **OpenPalm.app** to Applications |
+| **Mac (Intel)** | `OpenPalm-<version>-mac.zip` | Unzip → drag **OpenPalm.app** to Applications |
+| **Windows (portable)** | `OpenPalm-<version>-win.zip` | Unzip → run **OpenPalm.exe**. No install step, but no auto-update either. |
+| **Windows (installer)** | NSIS `.exe`, on releases that ship one | Run it to install per-user (no admin prompt); updates itself in place afterward. |
+| **Linux (x64)** | `OpenPalm-<version>.AppImage` | `chmod +x` → run |
+| **Linux (arm64)** | `OpenPalm-<version>-arm64.AppImage` | `chmod +x` → run |
+
+> **Mac Intel has no arch marker in its filename.** `OpenPalm-<version>-mac.zip`
+> (no `-x64-` or `-arm64-`) is the Intel build; only the Apple Silicon build
+> says `-arm64-`. Picking the file that "looks" more specific gets you the
+> wrong architecture.
+>
+> **Windows: pick one.** The portable zip needs no install but never
+> auto-updates; the installer replaces itself on new releases but writes to
+> `%LOCALAPPDATA%`. Not every release ships the installer — see
+> [Desktop app updates](docs/managing-openpalm.md#desktop-app-updates) for
+> which releases have it and the full auto-update matrix.
+>
+> **Linux AppImage needs `libfuse2`**, which Ubuntu 22.04+ and Fedora no
+> longer install by default (`apt install libfuse2`, or your distro's
+> equivalent). Without it the AppImage fails with `dlopen(): error loading
+> libfuse.so.2` before OpenPalm starts. If you can't install libfuse2, run
+> `./OpenPalm-<version>.AppImage --appimage-extract-and-run` instead.
+>
+> **The desktop app currently ships only in the `0.13.0` prerelease** — the
+> latest stable release has no desktop assets yet. Check "Show prereleases" (or
+> the equivalent expander) on the
+> [releases page](https://github.com/itlackey/openpalm/releases) to find it.
 
 Open the app, follow the setup wizard (it'll confirm Docker is running, ask which AI provider to use, and start the stack), and land directly on the chat page. Done.
 
-> First launch on macOS/Windows: builds are not code-signed, so there's a one-time security prompt. On macOS, **right-click OpenPalm.app → Open** the first time (or `xattr -dr com.apple.quarantine OpenPalm.app`). On Windows, click **More info → Run anyway** on the SmartScreen prompt. Subsequent launches are unrestricted.
+> First launch on macOS/Windows: builds are not code-signed, so there's a
+> one-time security prompt. On macOS 15 (Sequoia) and newer, right-click →
+> Open no longer bypasses this for unsigned apps — instead, try to open the
+> app once (it will be blocked), then go to **System Settings → Privacy &
+> Security**, scroll to the block notice, and click **Open Anyway**, then
+> confirm **Open** in the follow-up dialog. On older macOS versions,
+> right-click **OpenPalm.app → Open** still works. Either way, you can instead
+> clear the quarantine flag before first launch: `xattr -dr
+> com.apple.quarantine OpenPalm.app`. On Windows, click **More info → Run
+> anyway** on the SmartScreen prompt. Subsequent launches are unrestricted.
 
 <details>
-<summary><strong>Advanced / headless install (CLI)</strong></summary>
+<summary><strong>Command-line install</strong></summary>
 
-For servers or power users who prefer a CLI:
+For power users who prefer a CLI:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/itlackey/openpalm/main/scripts/setup.sh | bash
 ```
 
-This downloads the CLI binary for your platform, seeds `~/.openpalm/`, opens the same wizard in your browser, and starts the stack. See the [setup guide](docs/setup-guide.md) for the full headless flow and the bare-metal `docker compose` path.
+This downloads the CLI binary for your platform, seeds `~/.openpalm/`, and
+opens the same setup wizard in a browser — at
+`http://127.0.0.1:3880/setup`, loopback-only, on purpose. **This is not
+headless**: on an SSH-only server there's no local browser to open it in. Tunnel
+the port over SSH instead, then open the URL on your side of the tunnel:
+
+```bash
+ssh -L 3880:127.0.0.1:3880 user@host
+```
+
+For a genuinely headless install with no browser step, write a setup spec and
+run:
+
+```bash
+openpalm install --file <path-to-setup-spec.yaml>
+```
+
+See the [setup guide](docs/setup-guide.md) for the full headless flow, the
+setup-spec format, and the bare-metal `docker compose` path.
 
 </details>
 
@@ -113,11 +176,11 @@ For the full walkthrough, see [How It Works](docs/how-it-works.md). For security
 | Guide | What's inside |
 |---|---|
 | [Setup Guide](docs/setup-guide.md) | Install, update, and troubleshoot |
-| [Upgrade 0.10.x → 0.11.0](docs/operations/upgrade-0.10-to-0.11.md) | Upgrade an existing install: file/env/port migration |
 | [How It Works](docs/how-it-works.md) | Architecture and data flow |
 | [Managing OpenPalm](docs/managing-openpalm.md) | Config, addons, secrets, automations |
 | [Core Principles](docs/technical/core-principles.md) | Security invariants and design rules |
 | [Community Portals](docs/portals/community-portals.md) | Build your own guardian-facing portal adapter |
+| [Upgrade 0.10.x → 0.11.0](docs/operations/upgrade-0.10-to-0.11.md) | Historical: migrating a pre-0.11 install |
 | [Full docs index](docs/README.md) | Everything else |
 
 ## Contributing

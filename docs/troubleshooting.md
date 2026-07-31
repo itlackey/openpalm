@@ -8,9 +8,10 @@ openpalm status
 openpalm validate
 ```
 
-If you operate Docker Compose directly, inspect the three managed files under
-`system/stack/`, the user overlay, the sole env file, and the exact active
-profiles. See the [Manual Compose Runbook](operations/manual-compose-runbook.md).
+If you operate Docker Compose directly, inspect the managed files under
+`system/stack/` (three core files, plus a voice overlay when voice LAN access
+is on), the user overlay, the sole env file, and the exact active profiles. See
+the [Manual Compose Runbook](operations/manual-compose-runbook.md).
 
 > Existing 0.10.x installation? Use the historical
 > [0.10.x to 0.11.0 upgrade guide](operations/upgrade-0.10-to-0.11.md) for that
@@ -192,9 +193,9 @@ saving the addon setting alone only writes the file. This grants the voice
 container `assistant_net` (`voice.compose.lan.yml`, a static opt-in overlay)
 so the assistant's served UI can reach it over Docker DNS
 (`OP_VOICE_URL=http://voice:8880`) instead of failing closed. It is off by
-default because it is the one addon-network-boundary exception (`S.6b /
-D3(b)`) besides ollama — see `services.compose.yml`'s header comment and
-`voice.compose.lan.yml` for the reasoning.
+default because, besides Ollama, it is the one case where an addon crosses
+the normal addon-network boundary — see `services.compose.yml`'s header
+comment and `voice.compose.lan.yml` for the reasoning.
 
 ```bash
 openpalm addon enable voice
@@ -236,6 +237,26 @@ Back up first. Then remove the stack and all OpenPalm-owned trees:
 ```bash
 openpalm uninstall --purge
 ```
+
+`--purge` removes every tree under `OP_HOME`, but not the installer's own
+artifacts: the `openpalm` CLI binary, the PATH entry `setup.sh`/`setup.ps1`
+added to your shell profile, or the `op` alias. There is no command that
+undoes those; remove them by hand if you want them gone too.
+
+Linux/macOS:
+
+```bash
+rm "${OP_INSTALL_DIR:-$HOME/.local/bin}/openpalm"
+```
+
+Then remove the `# OpenPalm CLI` block (the `PATH` export and/or `alias
+op=openpalm` line) from your shell profile (`~/.bashrc`, `~/.zshrc`,
+`~/.profile`, etc., depending on your shell).
+
+Windows: delete `%LOCALAPPDATA%\openpalm\bin\openpalm.exe` (or your
+`OP_INSTALL_DIR`), then remove the matching entry from your User `Path` under
+**Settings → System → About → Advanced system settings → Environment
+Variables**.
 
 Reinstall with `setup.sh`, `setup.ps1`, or `openpalm install --file`. Do not
 replace this with a copy of `packages/skeleton/`.

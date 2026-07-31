@@ -6,6 +6,24 @@ Repo layout convention:
 - `packages/*` contains app/package source code.
 - `containers/*` contains container/runtime assembly assets and Docker build contexts.
 
+## Glossary
+
+Quick definitions for terms used throughout these docs, in first-use order you'd
+meet them:
+
+| Term | Meaning |
+|---|---|
+| **Harness** | The host-side manager (CLI binary or Electron app) that seeds `OP_HOME`, controls Docker Compose, and serves the admin UI. |
+| **Stack** | The Docker Compose services the harness runs: the always-on assistant, the profile-gated Guardian, and addons. |
+| **Principal** | An authenticated identity Guardian issues credentials to — a portal, a bot, or a direct client — not an end user behind a portal. |
+| **Guardian** | The profile-gated proxy in front of portals and direct/API clients. Authenticates principals, enforces ownership and rate limits, and screens content before forwarding to the assistant. |
+| **Portal** | A protocol adapter (Discord, Slack, web chat) that turns its native protocol into authenticated Guardian requests. |
+| **Addon** | An optional, profile-gated Compose service (Voice, Discord, Slack, Ollama, etc.), enabled through `OP_ENABLED_ADDONS`. |
+| **AKM** | The assistant's persistent memory and knowledge-stash layer (skills, lessons, embeddings) — a separate open-source project ([itlackey/akm](https://github.com/itlackey/akm)) the assistant container uses through the `akm` CLI. |
+| `OP_HOME` | The single host directory (default `~/.openpalm/`) holding all OpenPalm state. |
+
+See [How It Works](how-it-works.md) for the full architecture behind these terms.
+
 ## Getting started
 
 | Document | Description |
@@ -13,7 +31,7 @@ Repo layout convention:
 | [CONTRIBUTING.md](../.github/CONTRIBUTING.md) | **Dev environment cheatsheet** — clone, bootstrap, run, test |
 | [system-requirements.md](system-requirements.md) | CPU, RAM, disk, network — minimum and recommended specs |
 | [setup-guide.md](setup-guide.md) | Installation, updating, troubleshooting |
-| [troubleshooting.md](troubleshooting.md) | Top 10 common problems and solutions |
+| [troubleshooting.md](troubleshooting.md) | Common problems and solutions |
 | [manual-compose-runbook.md](operations/manual-compose-runbook.md) | Step-by-step manual host configuration (no scripts) |
 | [how-it-works.md](how-it-works.md) | Architecture overview and data flow |
 | [managing-openpalm.md](managing-openpalm.md) | Configuration, portals, secrets, access control, automations |
