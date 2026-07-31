@@ -106,6 +106,51 @@
   // Show cloud sign-in panel when cloud row is selected.
   const showSignInPanel = $derived(selectedRow === 'cloud');
 
+  // W14: arrow-key navigation for the role="radiogroup" choice list — the
+  // rows were plain click targets with no keyboard equivalent to the arrow
+  // keys a native radio group supports. Order follows visual top-to-bottom
+  // order; the local row is skipped when disabled, matching how a native
+  // radiogroup skips disabled radios.
+  type SelectableRow = 'detected' | 'local' | 'cloud';
+  let detectedRowEl: HTMLButtonElement | null = $state(null);
+  let localRowEl: HTMLButtonElement | null = $state(null);
+  let cloudRowEl: HTMLButtonElement | null = $state(null);
+
+  function rowEl(row: SelectableRow): HTMLButtonElement | null {
+    if (row === 'detected') return detectedRowEl;
+    if (row === 'local') return localRowEl;
+    return cloudRowEl;
+  }
+
+  function visibleRowOrder(): SelectableRow[] {
+    const order: SelectableRow[] = [];
+    if (showDetectedRow) order.push('detected');
+    if (localAvailable) order.push('local');
+    order.push('cloud');
+    return order;
+  }
+
+  function onRadiogroupKeydown(e: KeyboardEvent): void {
+    const order = visibleRowOrder();
+    const currentIndex = selectedRow ? order.indexOf(selectedRow as SelectableRow) : -1;
+    let nextIndex: number;
+    if (e.key === 'ArrowDown' || e.key === 'ArrowRight') {
+      nextIndex = currentIndex < 0 ? 0 : (currentIndex + 1) % order.length;
+    } else if (e.key === 'ArrowUp' || e.key === 'ArrowLeft') {
+      nextIndex = currentIndex < 0 ? order.length - 1 : (currentIndex - 1 + order.length) % order.length;
+    } else if (e.key === 'Home') {
+      nextIndex = 0;
+    } else if (e.key === 'End') {
+      nextIndex = order.length - 1;
+    } else {
+      return;
+    }
+    e.preventDefault();
+    const nextRow = order[nextIndex];
+    selectRow(nextRow);
+    rowEl(nextRow)?.focus();
+  }
+
   // In detected state, the cloud row label changes.
   const cloudRowTitle = $derived(
     showDetectedRow ? 'Sign in to a different service' : 'Sign in to a cloud AI service'
@@ -155,11 +200,12 @@
     {/if}
 
     <!-- Primary choice list -->
-    <div class="s1-choice-list" role="radiogroup" aria-label="Which AI should your assistant use">
+    <div class="s1-choice-list" role="radiogroup" aria-label="Which AI should your assistant use" onkeydown={onRadiogroupKeydown}>
 
       <!-- Row 1: Detected cloud service (only when a cloud provider is verified) -->
       {#if showDetectedRow}
         <button
+          bind:this={detectedRowEl}
           type="button"
           class="s1-choice-row"
           class:s1-choice-row--selected={selectedRow === 'detected'}
@@ -180,6 +226,7 @@
 
       <!-- Row 2: Run on this computer (local AI — always shown, co-equal primary) -->
       <button
+        bind:this={localRowEl}
         type="button"
         class="s1-choice-row"
         class:s1-choice-row--selected={selectedRow === 'local'}
@@ -220,6 +267,7 @@
 
       <!-- Row 3: Sign in to a cloud service -->
       <button
+        bind:this={cloudRowEl}
         type="button"
         class="s1-choice-row"
         class:s1-choice-row--selected={selectedRow === 'cloud'}

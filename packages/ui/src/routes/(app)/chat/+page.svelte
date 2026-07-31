@@ -26,6 +26,36 @@
 
 	let scrollAnchorEl = $state<HTMLDivElement | undefined>();
 
+	// F7: re-rendering markdown on every SSE delta re-parses the WHOLE
+	// accumulated reply each time — O(n²) over a long streamed turn, and each
+	// resulting DOM write also re-fires the autoscroll MutationObserver below.
+	// Coalesce to at most one re-parse per animation frame; a burst of deltas
+	// within a frame collapses into a single render of the latest text. The
+	// very first chunk renders immediately so a reply doesn't open with a
+	// blank beat before the first frame.
+	let renderedPendingHtml = $state('');
+	let pendingRenderFrame: number | null = null;
+	$effect(() => {
+		const text = chat.pendingAssistantText;
+		if (!text) {
+			if (pendingRenderFrame !== null) {
+				cancelAnimationFrame(pendingRenderFrame);
+				pendingRenderFrame = null;
+			}
+			renderedPendingHtml = '';
+			return;
+		}
+		if (pendingRenderFrame !== null) return;
+		if (!renderedPendingHtml) {
+			renderedPendingHtml = renderMarkdown(text);
+			return;
+		}
+		pendingRenderFrame = requestAnimationFrame(() => {
+			pendingRenderFrame = null;
+			renderedPendingHtml = renderMarkdown(chat.pendingAssistantText);
+		});
+	});
+
 	const entriesLoading = $derived(chat.entriesLoading);
 	const activeEndpointState = $derived(chat.byEndpoint.get(chat.activeEndpointId));
 	const sessionsLoading = $derived(activeEndpointState?.sessionsLoading ?? false);
@@ -365,6 +395,7 @@
 			motionPreference.removeEventListener('change', updateMotionPreference);
 			document.removeEventListener('keydown', onKey);
 			document.removeEventListener('visibilitychange', handleVisibilityChange);
+			if (pendingRenderFrame !== null) cancelAnimationFrame(pendingRenderFrame);
 		};
 	});
 </script>
@@ -449,7 +480,7 @@
 					<div class="turn master">
 						<div class="master-words settled s-streaming">
 							<!-- eslint-disable-next-line svelte/no-at-html-tags -- renderMarkdown uses markdown-it with html:false, so raw HTML in assistant output is escaped (not rendered); only generated formatting markup reaches here -->
-							<div class="markdown-body">{@html renderMarkdown(chat.pendingAssistantText)}</div>
+							<div class="markdown-body">{@html renderedPendingHtml}</div>
 						</div>
 					</div>
 				{:else if !chat.pendingPermission && !chat.pendingQuestion}

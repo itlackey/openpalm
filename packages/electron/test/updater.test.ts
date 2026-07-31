@@ -23,6 +23,8 @@ class FakeUpdater implements AppUpdaterLike {
   checkCalls = 0;
   downloadCalls = 0;
   quitCalls: Array<[boolean | undefined, boolean | undefined]> = [];
+  installCalls: Array<[boolean | undefined, boolean | undefined]> = [];
+  installResult = true;
   feedVersion: string | null = '2.0.0';
   checkError: Error | null = null;
   downloadError: Error | null = null;
@@ -55,6 +57,11 @@ class FakeUpdater implements AppUpdaterLike {
 
   quitAndInstall(isSilent?: boolean, isForceRunAfter?: boolean): void {
     this.quitCalls.push([isSilent, isForceRunAfter]);
+  }
+
+  install(isSilent?: boolean, isForceRunAfter?: boolean): boolean {
+    this.installCalls.push([isSilent, isForceRunAfter]);
+    return this.installResult;
   }
 
   on(event: string, listener: (...args: unknown[]) => void) {
@@ -162,10 +169,15 @@ describe('platform support', () => {
 });
 
 describe('consent before download', () => {
-  it('disables autoDownload and enables install-on-quit', () => {
+  // autoInstallOnAppQuit stays OFF: electron-updater's own install-on-quit
+  // hook is wired to Electron's 'quit' event, which main.ts's before-quit
+  // handler never reaches (it always finishes with app.exit(0) — see the
+  // class docblock). Ordinary-quit install is handled explicitly by
+  // installOnQuit() below instead, called directly from main.ts.
+  it('disables autoDownload and does not rely on electron-updater\'s own install-on-quit hook', () => {
     const { fake } = makeUpdater();
     expect(fake.autoDownload).toBe(false);
-    expect(fake.autoInstallOnAppQuit).toBe(true);
+    expect(fake.autoInstallOnAppQuit).toBe(false);
   });
 
   it('discovering an update does not download it', async () => {
@@ -319,6 +331,50 @@ describe('quitAndInstall', () => {
     expect(updater.quitAndInstall()).toBe(true);
     // isSilent=false keeps the installer UI; isForceRunAfter=true relaunches.
     expect(fake.quitCalls).toEqual([[false, true]]);
+  });
+});
+
+// installOnQuit() is what actually makes a staged update install on an
+// ordinary quit (main.ts's before-quit calls this, not quitAndInstall — see
+// the class docblock for why the two must not be conflated).
+describe('installOnQuit', () => {
+  it('does nothing until a download has completed', async () => {
+    const { updater, fake } = makeUpdater();
+    expect(updater.installOnQuit()).toBe(false);
+    await updater.check();
+    expect(updater.installOnQuit()).toBe(false);
+    expect(fake.installCalls).toEqual([]);
+    expect(fake.quitCalls).toEqual([]);
+  });
+
+  it('silently launches the installer with no relaunch, once a download has completed', async () => {
+    const { updater, fake } = makeUpdater();
+    await updater.check();
+    fake.emit('update-downloaded');
+    await updater.download();
+    expect(updater.installOnQuit()).toBe(true);
+    // isSilent=true, isForceRunAfter=false: an ordinary quit is not "restart
+    // now" — that stays quitAndInstall()'s job.
+    expect(fake.installCalls).toEqual([[true, false]]);
+    // Crucially, this must NOT go through quitAndInstall — that schedules
+    // electron-updater's own app.quit() internally, which would race
+    // main.ts's own exit sequence (see the class docblock).
+    expect(fake.quitCalls).toEqual([]);
+  });
+
+  it('propagates a failed install (e.g. no installer file) as false', async () => {
+    const { updater, fake } = makeUpdater();
+    await updater.check();
+    fake.emit('update-downloaded');
+    await updater.download();
+    fake.installResult = false;
+    expect(updater.installOnQuit()).toBe(false);
+  });
+
+  it('does nothing on an unsupported (e.g. macOS) instance', async () => {
+    const { updater, fake } = makeUpdater({ platform: 'darwin' });
+    expect(updater.installOnQuit()).toBe(false);
+    expect(fake.installCalls).toEqual([]);
   });
 });
 

@@ -258,6 +258,83 @@ export const defaultDoctorDeps: DoctorDeps = {
 };
 
 /**
+ * Doctor's install-port targets, resolved the same way `resolveUiServePort`
+ * resolves the host UI port: persisted stack.env merged under live process
+ * env, never live env alone (C10/B9). The lib's own `resolveInstallPortTargets`
+ * reads live `process.env` only, so a headless install that persisted a
+ * custom OP_HOST_UI_PORT/OP_UI_PORT/OP_ASSISTANT_PORT was probed on the wrong
+ * (default) ports by `openpalm doctor`.
+ */
+function resolveDoctorPortTargets(persistedEnv: Record<string, string>): InstallPortTarget[] {
+  return [
+    { port: resolveEnvPort('OP_HOST_UI_PORT', DEFAULT_HOST_UI_PORT, process.env, persistedEnv), service: 'admin', blocking: true },
+    { port: resolveEnvPort('OP_UI_PORT', DEFAULT_PUBLISHED_UI_PORT, process.env, persistedEnv), service: 'ui', blocking: true },
+    { port: resolveEnvPort('OP_ASSISTANT_PORT', STACK_DEFAULTS.ports.assistant, process.env, persistedEnv), service: 'assistant', blocking: true },
+  ];
+}
+
+/**
+ * Resolve doctor's port-conflict report — folding in TWO ownership checks
+ * `probeInstallPorts`'s own container-ownership fallback cannot make (C10/B9):
+ *
+ *  1. The admin (host UI) port is never a container at all — it is a bare
+ *     host process, so no `docker ps` lookup can ever attribute it to "us".
+ *     `serverPort` short-circuits it via the same instance-identity probe
+ *     `ui-server.ts`'s own D1 fix uses: if ANYTHING OpenPalm-shaped already
+ *     answers there, it is our own already-running server, not a conflict —
+ *     without this, running `openpalm doctor` while the host UI is up always
+ *     reported a blocking conflict against itself.
+ *  2. `portHeldByOurContainer` (lib) hardcodes the `openpalm-` container-name
+ *     prefix, so a customized `OP_PROJECT_NAME` (containers then named
+ *     `<project>-ui-1` etc.) makes the operator's OWN running stack read as a
+ *     conflict on the ui/assistant ports. Once Docker confirms THIS home's own
+ *     compose project — by resolved project name + stack dir, the exact test
+ *     `deploy.ts`'s collision check already trusts — is what is running, any
+ *     still-blocked container-backed port is reclassified as ours.
+ */
+async function resolveDoctorPorts(
+  state: Pick<ControlPlaneState, 'stackDir'>,
+  persistedEnv: Record<string, string>,
+  projectName: string,
+  dockerAvailable: boolean,
+  deps: DoctorDeps,
+): Promise<InstallPortStatus[]> {
+  const targets = resolveDoctorPortTargets(persistedEnv);
+  const adminTarget = targets.find((t) => t.service === 'admin');
+  let serverPort: number | undefined;
+  if (adminTarget) {
+    // expectedAdmin is irrelevant here — either outcome (match OR mismatch)
+    // means an OpenPalm UI process, not a stranger, already owns this port.
+    const identity: UiInstanceCheck = await deps.checkExistingUiInstance(adminTarget.port, true, {});
+    if (identity.status !== 'absent') serverPort = adminTarget.port;
+  }
+
+  const ports = await deps.probeInstallPorts(targets, { dockerAvailable, serverPort });
+  if (!dockerAvailable) return ports;
+
+  const isUnresolvedConflict = (p: InstallPortStatus): boolean =>
+    p.service !== 'admin' && !p.available && p.ownership !== 'unreachable' && p.ownership !== 'ours';
+  if (!ports.some(isUnresolvedConflict)) return ports;
+
+  const existing: ExistingProject = await deps.detectExistingProject({ projectName, expectedWorkingDir: state.stackDir });
+  if (!existing.exists || !existing.isOurs) return ports;
+
+  return ports.map((p) => (isUnresolvedConflict(p) ? { ...p, available: true, ownership: 'ours' as const } : p));
+}
+
+/**
+ * Whether `report` should make `openpalm doctor` exit non-zero (C10/B8): a
+ * Docker FAIL or an unresolved blocking port conflict is a real problem even
+ * though `runDoctorAction` itself never throws for either (it always returns
+ * a full report reflecting the failure — see doctor.test.ts) — a script that
+ * only checks the exit code needs a way to see that.
+ */
+export function doctorReportHasFailure(report: Pick<DoctorReport, 'docker' | 'ports'>): boolean {
+  if (!report.docker.ok) return true;
+  return report.ports.some((p) => p.blocking && !p.available);
+}
+
+/**
  * Run every doctor check and return the composed report (also used directly
  * by tests via the injectable `deps` param — the CLI `run` above is a thin
  * args-parsing wrapper that always uses the real `defaultDoctorDeps`).
@@ -268,6 +345,8 @@ export async function runDoctorAction(
 ): Promise<DoctorReport> {
   const state = deps.resolveServeState();
   const homeDir = state.homeDir;
+  const persistedEnv = deps.readStackEnv(homeDir);
+  const projectName = deps.resolveComposeProjectName(persistedEnv);
 
   const [docker, compose, runtime, gpu, localProviders] = await Promise.all([
     deps.checkDocker(),
@@ -277,7 +356,7 @@ export async function runDoctorAction(
     deps.detectLocalProviders(),
   ]);
 
-  const ports = await deps.probeInstallPorts(undefined, { dockerAvailable: docker.ok });
+  const ports = await resolveDoctorPorts(state, persistedEnv, projectName, docker.ok, deps);
   const diskHeadroom = deps.checkDiskHeadroom(homeDir);
   const storage = await deps.buildStorageReport({
     homeDir,
@@ -287,7 +366,6 @@ export async function runDoctorAction(
     skipDocker: !docker.ok,
   });
 
-  const projectName = deps.resolveComposeProjectName(deps.readStackEnv(homeDir));
   const dockerArtifacts = docker.ok
     ? await deps.reportImagesAndVolumes({ projectName })
     : { reliable: false, error: 'Docker unavailable', images: [], supersededImages: [], volumes: [], orphanVolumes: [] };

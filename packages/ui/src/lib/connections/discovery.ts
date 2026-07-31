@@ -102,6 +102,23 @@ async function probe(baseUrl: string, fetchImpl: typeof globalThis.fetch): Promi
 }
 
 /**
+ * True for a locked (config-owned) connection shaped like this app's own
+ * same-origin `/oc` reverse proxy resolved to a loopback address — i.e. the
+ * admin origin itself (`resolveLockedBaseUrl` in `./store.ts` resolves the
+ * seeded relative `/oc` against `location.origin`, which is loopback whenever
+ * the admin UI is being viewed on this machine).
+ */
+function isLockedLoopbackOcProxy(connection: Connection): boolean {
+  if (!connection.locked) return false;
+  try {
+    const url = new URL(connection.baseUrl);
+    return isLoopbackHost(url.hostname) && url.pathname.replace(/\/+$/, '') === '/oc';
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Probe the well-known local endpoints and add the first reachable one to
  * `store` as an unlocked connection — unless the list already contains that
  * loopback port under any host spelling, or the user previously removed a
@@ -116,8 +133,21 @@ export async function discoverLocalAssistant(
     if (typeof fetchImpl !== 'function') return null;
     if (isLocalDiscoveryDismissed()) return null;
 
-    const hasCandidate = async (baseUrl: string): Promise<boolean> =>
-      (await store.list()).some((connection) => hasSameLoopbackPort(connection.baseUrl, baseUrl));
+    const hasCandidate = async (baseUrl: string): Promise<boolean> => {
+      const connections = await store.list();
+      if (connections.some((connection) => hasSameLoopbackPort(connection.baseUrl, baseUrl))) {
+        return true;
+      }
+      // F9: on the admin origin the locked default is the relative `/oc`
+      // proxy, resolved to the UI's OWN port — a different port from either
+      // discovery candidate, so the port-based check above never catches it
+      // even though it fronts the exact same local OpenCode a candidate
+      // would also find. Without this, a fresh install ends up with both the
+      // config-owned connection AND a second, unlocked, no-auth entry for
+      // the identical assistant (and the no-auth entry starts failing later
+      // if direct auth is enabled).
+      return connections.some(isLockedLoopbackOcProxy);
+    };
 
     for (const candidate of LOCAL_DISCOVERY_CANDIDATES) {
       if (await hasCandidate(candidate.baseUrl)) return null;

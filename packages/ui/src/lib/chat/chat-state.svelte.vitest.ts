@@ -817,37 +817,80 @@ describe('send', () => {
 		expect(chat.entries.length).toBe(2); // user + assistant, no leftover failed entry
 	});
 
-	it('preserves the initiating request and observed tool when the stream disconnects', async () => {
-		mocked.listSessions.mockResolvedValueOnce([session('sess1', 1000)]);
-		mocked.getSessionMessages.mockResolvedValueOnce([]);
-		await chat.onEndpointChanged('alpha');
-		sseCaptured.handlers?.onConnect?.();
-		vi.mocked(api.startChatMessageTurn).mockResolvedValueOnce(undefined);
+	// F7: a disconnect is not itself a failed turn — only one that outlasts
+	// the reconnect grace window is. Fake timers drive that window
+	// deterministically instead of the test taking it in real wall time.
+	it('preserves the initiating request and observed tool once a disconnect outlasts the reconnect grace window', async () => {
+		vi.useFakeTimers();
+		try {
+			mocked.listSessions.mockResolvedValueOnce([session('sess1', 1000)]);
+			mocked.getSessionMessages.mockResolvedValueOnce([]);
+			await chat.onEndpointChanged('alpha');
+			sseCaptured.handlers?.onConnect?.();
+			vi.mocked(api.startChatMessageTurn).mockResolvedValueOnce(undefined);
 
-		const sendPromise = chat.send('publish the release');
-		await new Promise<void>((resolve) => setTimeout(resolve, 0));
-		sseCaptured.handlers?.onEvent?.({
-			type: 'session.next.tool.completed',
-			properties: { sessionID: 'sess1', callID: 'publish-1', tool: 'bash', output: 'published' },
-		});
-		sseCaptured.handlers?.onEvent?.({
-			type: 'session.next.tool.called',
-			properties: { sessionID: 'sess1', callID: 'verify-1', tool: 'read' },
-		});
-		sseCaptured.handlers?.onDisconnect?.(new Error('network lost'));
-		await sendPromise;
+			const sendPromise = chat.send('publish the release');
+			await vi.advanceTimersByTimeAsync(0);
+			sseCaptured.handlers?.onEvent?.({
+				type: 'session.next.tool.completed',
+				properties: { sessionID: 'sess1', callID: 'publish-1', tool: 'bash', output: 'published' },
+			});
+			sseCaptured.handlers?.onEvent?.({
+				type: 'session.next.tool.called',
+				properties: { sessionID: 'sess1', callID: 'verify-1', tool: 'read' },
+			});
+			sseCaptured.handlers?.onDisconnect?.(new Error('network lost'));
+			// The grace window hasn't elapsed yet — the turn must still be live.
+			expect(chat.sending).toBe(true);
+			await vi.advanceTimersByTimeAsync(10_000);
+			await sendPromise;
 
-		const userEntry = chat.entries.find(
-			(entry): entry is ChatMessage => !entry.type && entry.role === 'user'
-		);
-		const toolGroup = chat.entries.find((entry) => entry.type === 'tool-group');
-		expect(userEntry?.text).toBe('publish the release');
-		expect(toolGroup?.toolStates).toMatchObject([
-			{ id: 'publish-1', tool: 'bash', status: 'succeeded' },
-			{ id: 'verify-1', tool: 'read', status: 'uncertain' },
-		]);
-		expect(chat.lastFailedText).toBe('');
-		expect(chat.error).toContain('may have run');
+			const userEntry = chat.entries.find(
+				(entry): entry is ChatMessage => !entry.type && entry.role === 'user'
+			);
+			const toolGroup = chat.entries.find((entry) => entry.type === 'tool-group');
+			expect(userEntry?.text).toBe('publish the release');
+			expect(toolGroup?.toolStates).toMatchObject([
+				{ id: 'publish-1', tool: 'bash', status: 'succeeded' },
+				{ id: 'verify-1', tool: 'read', status: 'uncertain' },
+			]);
+			expect(chat.lastFailedText).toBe('');
+			expect(chat.error).toContain('may have run');
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	// F7: routine stream rotation (e.g. an `/oc` server restart) must not fail
+	// a turn whose fallback POST may still complete server-side — a reconnect
+	// well inside the grace window cancels the countdown entirely.
+	it('does not fail the turn when the stream reconnects inside the disconnect grace window', async () => {
+		vi.useFakeTimers();
+		try {
+			mocked.listSessions.mockResolvedValueOnce([session('sess1', 1000)]);
+			mocked.getSessionMessages.mockResolvedValueOnce([]);
+			await chat.onEndpointChanged('alpha');
+			sseCaptured.handlers?.onConnect?.();
+			vi.mocked(api.startChatMessageTurn).mockResolvedValueOnce(undefined);
+
+			const sendPromise = chat.send('hello');
+			await vi.advanceTimersByTimeAsync(0);
+
+			sseCaptured.handlers?.onDisconnect?.(new Error('stream rotated'));
+			await vi.advanceTimersByTimeAsync(2_000);
+			sseCaptured.handlers?.onConnect?.();
+			// Well past the grace window that a live reconnect should have cancelled.
+			await vi.advanceTimersByTimeAsync(10_000);
+			expect(chat.sending).toBe(true);
+
+			sseCaptured.handlers?.onEvent?.({ type: 'session.idle', properties: { sessionID: 'sess1' } });
+			await sendPromise;
+
+			expect(chat.error).toBe('');
+			expect(chat.sending).toBe(false);
+		} finally {
+			vi.useRealTimers();
+		}
 	});
 
 	it('preserves an ambiguously failed non-streaming request without offering blind retry', async () => {

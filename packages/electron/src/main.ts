@@ -1390,6 +1390,18 @@ app.on('before-quit', (event) => {
   trayController.stopAnimation();
   stopDeployCompletionWatch();
   stopUIServer();
+  // A staged update installs now instead of silently waiting for the user to
+  // notice "Restart and update". Best-effort: install() already catches
+  // internally (see electron-updater's BaseUpdater), but nothing on this
+  // shutdown path may throw its way past app.exit(0) below.
+  try {
+    desktopUpdater?.installOnQuit();
+  } catch (err) {
+    console.error(
+      'Failed to install staged update on quit (non-fatal):',
+      err instanceof Error ? err.message : String(err),
+    );
+  }
   // Use app.exit(0), NOT app.quit() — calling app.quit() from within a
   // before-quit handler is re-entrant; Electron may silently no-op it on some
   // versions, leaving the app hanging. app.exit() exits the process directly

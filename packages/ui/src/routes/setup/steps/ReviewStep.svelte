@@ -348,10 +348,13 @@
     type="button"
     class="btn-save"
     onclick={() => saveConfig(payload)}
-    aria-label="Save configuration as JSON file"
+    aria-label="Save configuration as JSON file — contains your password and API keys in plain text"
   >
     Save configuration
   </button>
+  <!-- W14: the download is the full install payload — password, provider API
+       keys, and portal (Discord/Slack) tokens, all in plaintext. -->
+  <span class="review-save-warning">Contains your password, API keys, and tokens in plain text — store it somewhere private.</span>
 </div>
 
 <style>
@@ -590,6 +593,10 @@
 
   /* ── Save configuration quiet link ─────────────────────────────── */
   .review-save-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 4px 10px;
     margin: 16px 0 4px;
   }
 
@@ -608,5 +615,10 @@
 
   .btn-save:hover {
     color: var(--s-ink-2);
+  }
+
+  .review-save-warning {
+    font-size: var(--s-type-whisper);
+    color: var(--s-ink-3);
   }
 </style>

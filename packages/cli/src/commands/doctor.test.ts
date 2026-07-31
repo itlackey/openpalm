@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import type { ControlPlaneState } from '@openpalm/lib';
-import { runDoctorAction, type DoctorDeps } from './doctor.ts';
+import { doctorReportHasFailure, runDoctorAction, type DoctorDeps } from './doctor.ts';
 
 // This file deliberately never calls `mock.module('@openpalm/lib', ...)`.
 // `doctor.ts` takes an injectable `deps` object (mirroring the
@@ -48,6 +48,11 @@ function baseDeps(overrides: Partial<DoctorDeps> = {}): DoctorDeps {
     detectGpu: async () => null,
     detectLocalProviders: async () => [],
     probeInstallPorts: async () => [],
+    // Instant no-op defaults: neither check should ever hit the network/docker
+    // in a unit test unless a test overrides them to exercise the reconcile
+    // logic (see the "port-probe reconciliation" describe block below).
+    checkExistingUiInstance: async () => ({ status: 'absent' as const }),
+    detectExistingProject: async () => ({ exists: false, isOurs: false, workingDir: '' }),
     checkDiskHeadroom: () => okDiskHeadroom,
     describeDiskHeadroom: () => null,
     buildStorageReport: async () => okStorageReport,
