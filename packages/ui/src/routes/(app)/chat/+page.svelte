@@ -607,6 +607,30 @@
 		flex: 1;
 	}
 
+	/* Fixed to the content area (not the scrolling thread), so it stays put
+	   regardless of scroll position. */
+	.s-signout {
+		position: absolute;
+		z-index: 30;
+		top: 0.75rem;
+		right: 1rem;
+		appearance: none;
+		border: var(--s-hair) solid var(--s-line);
+		background: var(--s-paper);
+		cursor: pointer;
+		font-family: var(--s-font-mono);
+		font-size: var(--s-type-mark-sm);
+		letter-spacing: var(--s-track-label);
+		text-transform: lowercase;
+		color: var(--s-ink-3);
+		padding: 0.2rem 0.6rem;
+		border-radius: var(--s-radius-seal);
+	}
+
+	.s-signout:hover {
+		color: var(--s-ink);
+	}
+
 	.s-scroll {
 		position: relative;
 		z-index: 10;
@@ -699,6 +723,52 @@
 		letter-spacing: var(--s-track-label);
 		text-transform: uppercase;
 		color: var(--s-ink-3);
+	}
+
+	/* ── Startup / unreachable state ────────────────────────────────────
+	   F5: a failed session load previously rendered nothing on the main
+	   surface — a silent empty thread with a live composer above a banner
+	   that only exists inside the (closed) conversations drawer. */
+	.s-startup {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 0.6rem;
+		padding: 2.5rem 1rem;
+		text-align: center;
+	}
+
+	.s-startup-text {
+		margin: 0;
+		font-family: var(--s-font-header);
+		font-size: 1.1rem;
+		color: var(--s-ink-2);
+	}
+
+	.s-startup-detail {
+		margin: 0;
+		font-family: var(--s-font-mono);
+		font-size: var(--s-type-mark);
+		color: var(--s-ink-3);
+	}
+
+	.s-startup-action {
+		appearance: none;
+		border: var(--s-hair) solid var(--s-line);
+		background: var(--s-paper);
+		cursor: pointer;
+		font-family: var(--s-font-mono);
+		font-size: var(--s-type-mark);
+		letter-spacing: var(--s-track-label);
+		text-transform: lowercase;
+		color: var(--s-ink-2);
+		padding: 0.35rem 0.9rem;
+		border-radius: var(--s-radius-seal);
+		text-decoration: none;
+	}
+
+	.s-startup-action:hover {
+		color: var(--s-ink);
 	}
 
 	/* ── Pending / streaming ──────────────────────────────────────────── */
