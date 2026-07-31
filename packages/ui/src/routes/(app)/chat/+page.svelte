@@ -27,8 +27,20 @@
 	let scrollAnchorEl = $state<HTMLDivElement | undefined>();
 
 	const entriesLoading = $derived(chat.entriesLoading);
-	const sessionsLoading = $derived(
-		chat.byEndpoint.get(chat.activeEndpointId)?.sessionsLoading ?? false
+	const activeEndpointState = $derived(chat.byEndpoint.get(chat.activeEndpointId));
+	const sessionsLoading = $derived(activeEndpointState?.sessionsLoading ?? false);
+	const sessionsError = $derived(activeEndpointState?.sessionsError ?? '');
+	// `mapAssistantError` (chat/assistant-error.ts) always renders a 401 as this
+	// exact literal, so it doubles as a stable, safe-to-match sentinel here —
+	// the alternative (attaching a status code end-to-end through a string
+	// field) isn't worth it for a two-way branch.
+	const SIGN_IN_REQUIRED = 'Sign-in required.';
+	const sessionsAuthFailure = $derived(sessionsError === SIGN_IN_REQUIRED);
+	// The empty-thread-with-a-live-composer trap (F5): a failed session load
+	// with zero rendered messages looks like a healthy, quiet chat rather than
+	// an assistant that's still starting up (or unreachable/signed-out).
+	const showStartupState = $derived(
+		!sessionsLoading && !entriesLoading && chat.entries.length === 0 && sessionsError !== ''
 	);
 	const activeSession = $derived(
 		chat.byEndpoint
@@ -51,6 +63,20 @@
 		chat.error = '';
 		// onEndpointChanged always calls loadSessions() internally — no separate call needed.
 		await chat.onEndpointChanged(endpointsService.activeId);
+	}
+
+	// F6: a 14-day sliding session had no UI control to end it on a shared
+	// machine, despite POST /api/auth/logout already existing server-side.
+	async function handleSignOut(): Promise<void> {
+		try {
+			await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' });
+		} catch {
+			// Best-effort — land on /login regardless; if the network is down the
+			// cookie may already be unusable anyway.
+		}
+		const redirectTo = encodeURIComponent(`${page.url.pathname}${page.url.search}`);
+		// eslint-disable-next-line svelte/no-navigation-without-resolve -- static internal route
+		await goto(`/login?redirectTo=${redirectTo}`);
 	}
 
 	async function retryFailedSend(): Promise<void> {
@@ -356,6 +382,7 @@
 
 <ConversationFrame bind:drawerOpen={navigationOpen}>
 <div class="s-chat-content">
+<button class="s-signout" type="button" onclick={() => void handleSignOut()}>sign out</button>
 {#if chat.toolLog.length > 0 && activityRailOpen}
 	<aside
 		class="s-tool-rail"
@@ -391,6 +418,24 @@
 		{#if sessionsLoading || entriesLoading}
 			<div class="s-loading" aria-live="polite">
 				<span class="s-loading-text">loading…</span>
+			</div>
+		{/if}
+
+		{#if showStartupState}
+			<div class="s-startup" role="alert">
+				<p class="s-startup-text">
+					{sessionsAuthFailure ? 'Sign-in required.' : 'The assistant is still starting up, or unreachable.'}
+				</p>
+				<p class="s-startup-detail">{sessionsError}</p>
+				{#if sessionsAuthFailure}
+					<a class="s-startup-action" href={`/login?redirectTo=${encodeURIComponent(`${page.url.pathname}${page.url.search}`)}`}>
+						sign in
+					</a>
+				{:else}
+					<button class="s-startup-action" type="button" onclick={() => void chat.loadSessions(true)}>
+						retry
+					</button>
+				{/if}
 			</div>
 		{/if}
 
@@ -454,10 +499,18 @@
 		{#if chat.error}
 			<div class="s-error-banner" role="alert">
 				<span class="s-error-msg">{chat.error}</span>
-				{#if chat.lastFailedText}
-					<button class="s-error-reconnect" type="button" onclick={retryFailedSend}>retry</button>
+				{#if chat.error === SIGN_IN_REQUIRED}
+					<!-- A dead-end "reconnect" button can't fix an expired session — the
+					     only way out is signing back in. -->
+					<a class="s-error-reconnect" href={`/login?redirectTo=${encodeURIComponent(`${page.url.pathname}${page.url.search}`)}`}>
+						sign in
+					</a>
+				{:else}
+					{#if chat.lastFailedText}
+						<button class="s-error-reconnect" type="button" onclick={retryFailedSend}>retry</button>
+					{/if}
+					<button class="s-error-reconnect" type="button" onclick={reconnect}>reconnect</button>
 				{/if}
-				<button class="s-error-reconnect" type="button" onclick={reconnect}>reconnect</button>
 				<button
 					class="s-error-dismiss"
 					type="button"

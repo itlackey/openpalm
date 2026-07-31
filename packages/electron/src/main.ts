@@ -1300,8 +1300,8 @@ app.on('before-quit', (event) => {
     // async dialog (see above) — dialog.showMessageBoxSync is Electron's
     // sync-modal API for exactly this.
     const CANCEL_ID = 1;
-    const choice = dialog.showMessageBoxSync({
-      type: 'warning',
+    const dialogOptions = {
+      type: 'warning' as const,
       title: 'Setup is still running',
       message: 'OpenPalm is still deploying your stack.',
       detail:
@@ -1311,7 +1311,13 @@ app.on('before-quit', (event) => {
       buttons: ['Quit Anyway', 'Keep Waiting'],
       defaultId: CANCEL_ID,
       cancelId: CANCEL_ID,
-    });
+    };
+    // Attach to the main window when it's still around so the warning reads
+    // as modal rather than a floating dialog with no obvious owner.
+    const choice =
+      mainWindow && !mainWindow.isDestroyed()
+        ? dialog.showMessageBoxSync(mainWindow, dialogOptions)
+        : dialog.showMessageBoxSync(dialogOptions);
     if (choice === CANCEL_ID) {
       isQuitting = false;
       event.preventDefault();

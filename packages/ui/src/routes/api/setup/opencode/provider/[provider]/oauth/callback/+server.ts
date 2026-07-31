@@ -34,7 +34,7 @@ export const POST: RequestHandler = async ({ params, request }) => {
     // user copies back from the provider's page — accepted here so a caller
     // that collected one can submit it in the same long-poll request.
     const code = typeof body.code === "string" ? body.code.slice(0, 1024) : undefined;
-    const client = createOpenCodeClient(target);
+    const client = createOpenCodeClient({ baseUrl: target.url, username: target.username, password: target.password });
     const result = await client.proxy(
       `/provider/${encodeURIComponent(params.provider)}/oauth/callback`,
       {

@@ -549,8 +549,9 @@ class ChatService {
 		// — abort it so a stale reply doesn't keep streaming into a session
 		// nobody is listening to, and so a re-send doesn't race the still-running
 		// turn. Best-effort: a failure here changes nothing about the client-side
-		// failure being reported below.
-		void abortChatTurn(pending.sessionId).catch(() => {});
+		// failure being reported below. Wrapped in Promise.resolve() so a caller
+		// (or test double) that doesn't return a promise still can't throw here.
+		void Promise.resolve(abortChatTurn(pending.sessionId)).catch(() => {});
 		this._failPendingTurn(
 			new Error('The assistant response timed out. This request may have run; check activity before trying again.'),
 			true

@@ -16,8 +16,16 @@ extraResources:
   - from: ../../packages/ui/build
     to: ui-build
     filter: "**/*"
-  - from: admin-tools/dist/index.js
-    to: admin-tools/index.js
+  # admin-tools/dist/index.js was deliberately dropped from here (review E6):
+  # it was built and shipped in every release's extraResources, but nothing
+  # under src/*.ts ever reads it back out of resourcesPath (grep for
+  # 'admin-tools' turns up only the workspace's own build tooling) — its
+  # intended consumer, an Electron-spawned ephemeral OpenCode server loading
+  # this as a plugin, was never wired up here. Dead payload riding every
+  # release. The admin-tools workspace itself (packages/electron/admin-tools)
+  # is left alone — it still builds and tests independently — only its
+  # inclusion in the shipped app bundle is removed. Re-add this entry if/when
+  # main.ts actually spawns that OpenCode server and loads the plugin.
   - from: ../../packages/skeleton
     to: openpalm-skeleton
     filter: "**/*"

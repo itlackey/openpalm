@@ -21,7 +21,7 @@ export const POST: RequestHandler = async ({ params, request }) => {
   try {
     const body = await request.json();
     const method = Number.isInteger(body.method) ? (body.method as number) : 0;
-    const client = createOpenCodeClient(target);
+    const client = createOpenCodeClient({ baseUrl: target.url, username: target.username, password: target.password });
     const result = await client.startProviderOAuth(params.provider, method);
     if (!result.ok) return json({ ok: false, message: "OAuth authorization failed" }, { status: 400 });
     return json({ ok: true, ...(result.data as object) });
