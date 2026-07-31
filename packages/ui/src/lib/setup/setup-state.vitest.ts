@@ -12,7 +12,10 @@
  * verifiedProviders, payload delegation), gating (goToStep), and synchronous
  * state transitions (handleConnectModeChange, handleEnableVoiceChange,
  * autoSelectModels). Fetch/window-dependent methods are exercised elsewhere by
- * the e2e wizard tests.
+ * the e2e wizard tests — EXCEPT where a store/API "contract" is exactly what a
+ * prior bug broke (deploy-poll restart on retry, the Re-check force re-probe,
+ * the password surviving a remount): those are pinned here against the mocked
+ * $lib/setup-api.js so a regression trips a fast unit test, not just e2e.
  */
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { SetupState, setupState, INITIAL } from './setup-state.svelte.js';
@@ -44,6 +47,7 @@ vi.mock('$lib/setup-api.js', () => ({
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  vi.useRealTimers();
 });
 
 function providerEntry(patch: Partial<ProviderState> = {}): ProviderState {
@@ -196,6 +200,46 @@ describe('SetupState — handleConnectModeChange (cloud ↔ local)', () => {
     expect(s.modelSelection.llm?.connId).toBe('openai');
     expect(s.modelSelection.llm?.model).toBe('gpt-4o');
   });
+
+  // W8: switching back to cloud must not silently leave a multi-GB in-stack
+  // Ollama enabled in the install payload.
+  it('switching back to cloud clears ollamaEnabled', () => {
+    const s = new SetupState();
+    s.initProviderState();
+    s.modelSelection.llm = { connId: 'openai', model: 'gpt-4o', dims: 0 };
+    s.handleConnectModeChange('local');
+    expect(s.ollamaEnabled).toBe(true);
+    s.handleConnectModeChange('cloud');
+    expect(s.ollamaEnabled).toBe(false);
+    expect(s.payload.addons.ollama).toBeUndefined();
+  });
+
+  it('going local with no prior cloud selection then back to cloud clears `llm` instead of leaving it on the disabled local runtime', () => {
+    const s = new SetupState();
+    s.initProviderState();
+    // No cloud model was ever selected — modelMode starts 'cloud' by default
+    // but nothing has been chosen yet.
+    s.handleConnectModeChange('local');
+    expect(s.modelSelection.llm?.connId).toBe('ollama');
+    s.handleConnectModeChange('cloud');
+    expect(s.ollamaEnabled).toBe(false);
+    expect(s.modelSelection.llm).toBeUndefined();
+  });
+
+  // W8: detectedCloudConn is the field whose entire purpose is keeping
+  // Screen1ModelsStep's "detected cloud service" row visible after switching
+  // to local. Before the fix, nothing in production code ever assigned it.
+  it('captures detectedCloudConn when leaving a cloud selection for local', () => {
+    const s = new SetupState();
+    s.initProviderState();
+    expect(s.detectedCloudConn).toBe('');
+    s.modelSelection.llm = { connId: 'openai', model: 'gpt-4o', dims: 0 };
+    s.handleConnectModeChange('local');
+    expect(s.detectedCloudConn).toBe('openai');
+    // Stays stable — the row must not vanish while the active selection is local.
+    expect(s.modelSelection.llm?.connId).toBe('ollama');
+    expect(s.detectedCloudConn).toBe('openai');
+  });
 });
 
 describe('SetupState — autoSelectModels', () => {
@@ -213,6 +257,127 @@ describe('SetupState — autoSelectModels', () => {
     s.modelSelection.llm = { connId: 'groq', model: 'x', dims: 0 };
     s.autoSelectModels();
     expect(s.modelSelection.llm?.connId).toBe('groq');
+  });
+});
+
+// W6: handleDeployRetry() used to call the one-shot pollDeployStatus() instead
+// of startDeployPolling() — the interval was already cleared when the prior
+// error was detected, so exactly one poll ran after a retry and the screen
+// then froze even on a successful deploy.
+describe('SetupState — handleDeployRetry restarts polling (W6)', () => {
+  it('keeps polling after a successful retry until the deploy actually finishes', async () => {
+    vi.useFakeTimers();
+    const api = await import('$lib/setup-api.js');
+    vi.mocked(api.fetchDeployStatus)
+      .mockImplementationOnce(async () => ({
+        ok: true,
+        data: { deploying: true, setupComplete: false, deployStatus: [{ service: 'assistant', status: 'pending' }] },
+      }))
+      .mockImplementationOnce(async () => ({
+        ok: true,
+        data: { deploying: false, setupComplete: true, deployStatus: [{ service: 'assistant', status: 'running' }] },
+      }));
+
+    const s = new SetupState();
+    s.deployError = 'Stack update failed.';
+
+    await s.handleDeployRetry();
+    // startDeployPolling()'s immediate (unawaited) poll — flush its microtasks.
+    await vi.advanceTimersByTimeAsync(0);
+    expect(s.deployError).toBeNull();
+    expect(s.deployDone).toBe(false); // still the first (still-deploying) response
+
+    // The one-shot bug would never reach this second poll at all.
+    await vi.advanceTimersByTimeAsync(2500);
+    expect(s.deployDone).toBe(true);
+
+    s.dispose();
+  });
+});
+
+// W9: LocalModelsStatus's "Re-check" button (shown to macOS users told to
+// "install Ollama… then click Re-check") called fetchAndApplyRecommendation()
+// with no arguments, which early-returns once a recommendation was already
+// applied — by the time the button is visible, one always has been, so the
+// button was a no-op.
+describe('SetupState — fetchAndApplyRecommendation force re-check (W9)', () => {
+  it('a plain call is a no-op once a recommendation was already applied (the bug)', async () => {
+    const s = new SetupState();
+    s.recommendationApplied = true;
+    s.recommendationAlert = 'stale';
+    await s.fetchAndApplyRecommendation();
+    expect(s.recommendationAlert).toBe('stale');
+    expect(s.ollamaEnabled).toBe(false);
+  });
+
+  it('force:true re-probes and re-applies even though a recommendation was already applied', async () => {
+    const api = await import('$lib/setup-api.js');
+    vi.mocked(api.fetchRecommendation).mockResolvedValueOnce({
+      ok: true,
+      recommendation: {
+        action: 'enable-ollama',
+        profileVariant: 'cpu',
+        gpu: { vendor: 'nvidia', name: 'RTX 4090', vramMb: 24576 },
+        alert: 'A capable GPU was found. Local models via Ollama have been enabled for you.',
+      },
+    });
+
+    const s = new SetupState();
+    s.recommendationApplied = true;
+    s.recommendation = { action: 'connect-manually', alert: 'stale' };
+    s.ollamaEnabled = false;
+
+    await s.fetchAndApplyRecommendation(true);
+
+    expect(api.fetchRecommendation).toHaveBeenCalled();
+    expect(s.recommendationAlert).toBe('A capable GPU was found. Local models via Ollama have been enabled for you.');
+    expect(s.ollamaEnabled).toBe(true);
+  });
+});
+
+// W12: reset() (run at the start of every init()) always clears
+// uiLoginPassword to '' — a fresh mount used to unconditionally call
+// generatePassword() next, so an F5 on the Welcome step silently swapped in a
+// DIFFERENT password than the one the user was just told to keep a copy of.
+describe('SetupState — uiLoginPassword survives a remount (W12)', () => {
+  function makeSessionStorageStub(): Storage {
+    const store = new Map<string, string>();
+    return {
+      getItem: (k: string) => (store.has(k) ? (store.get(k) as string) : null),
+      setItem: (k: string, v: string) => { store.set(k, String(v)); },
+      removeItem: (k: string) => { store.delete(k); },
+      clear: () => { store.clear(); },
+      key: () => null,
+      get length() { return store.size; },
+    } as Storage;
+  }
+
+  it('a remount (F5, same tab) reuses the password instead of generating a new one', () => {
+    vi.stubGlobal('window', { location: { search: '' }, sessionStorage: makeSessionStorageStub() });
+
+    const first = new SetupState();
+    first.init();
+    const firstPassword = first.uiLoginPassword;
+    expect(firstPassword).not.toBe('');
+    first.dispose();
+
+    // A brand-new store instance, same tab (same sessionStorage) — mirrors a
+    // full page reload of the singleton in production.
+    const second = new SetupState();
+    second.init();
+    expect(second.uiLoginPassword).toBe(firstPassword);
+    second.dispose();
+  });
+
+  it('a rerun (?rerun=1) never touches the stored password', () => {
+    const sessionStorage = makeSessionStorageStub();
+    vi.stubGlobal('window', { location: { search: '?rerun=1' }, sessionStorage });
+
+    const s = new SetupState();
+    s.init();
+    expect(s.uiLoginPassword).toBe('');
+    expect(sessionStorage.getItem('openpalm.setup.uiLoginPassword')).toBeNull();
+    s.dispose();
   });
 });
 

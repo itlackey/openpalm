@@ -45,7 +45,7 @@ import type {
   OpenCodeProvider, AuthMethod, Provider,
 } from '$lib/client/types.js';
 import type { VoiceAddonProfile } from '$lib/api.js';
-import type { SetupRecommendation } from '@openpalm/lib';
+import type { SetupRecommendation, DeployPhase } from '@openpalm/lib';
 import { addonProfileId } from '@openpalm/lib/provider-constants';
 import { ACCESS_TOGGLE_DEFAULTS, type AccessToggles } from '@openpalm/lib/control-plane/access-toggles.js';
 import { SvelteURLSearchParams } from 'svelte/reactivity';
@@ -57,7 +57,37 @@ interface DeployData {
   setupComplete?: boolean;
   deployStatus?: { service: string; status: string; label?: string }[];
   deployError?: string | null;
+  imageWarning?: string | null;
+  phase?: DeployPhase;
   ports?: { admin?: number; ui?: number; assistant?: number };
+}
+
+// W12: the Welcome step tells the user to "keep a copy somewhere safe" of the
+// generated password, but every mount used to call generatePassword() fresh —
+// an F5 silently swapped in a DIFFERENT password than the one just copied.
+// sessionStorage survives a refresh but not a closed tab, which matches the
+// pre-install trust boundary the password already lives in (displayed in
+// cleartext on the Welcome/Review steps).
+const SETUP_UI_LOGIN_PASSWORD_STORAGE_KEY = 'openpalm.setup.uiLoginPassword';
+
+function readStoredSetupPassword(): string {
+  if (typeof window === 'undefined') return '';
+  try {
+    return window.sessionStorage.getItem(SETUP_UI_LOGIN_PASSWORD_STORAGE_KEY) ?? '';
+  } catch {
+    return '';
+  }
+}
+
+function writeStoredSetupPassword(value: string): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.sessionStorage.setItem(SETUP_UI_LOGIN_PASSWORD_STORAGE_KEY, value);
+  } catch {
+    // Ignore storage failures (private browsing, quota) — the in-memory
+    // password still works for this mount; only a LATER refresh would
+    // regenerate it.
+  }
 }
 
 /**
@@ -406,9 +436,14 @@ export class SetupState {
   handleConnectModeChange(mode: 'cloud' | 'local' | 'both'): void {
     this.modelMode = mode;
     if (mode === 'local') {
-      // Remember the cloud model so switching back restores it.
+      // Remember the cloud model — and its connId, STABLY — so switching back
+      // restores it. detectedCloudConn is what keeps Screen1ModelsStep's
+      // "detected cloud service" row visible once `llm` itself points at the
+      // local runtime below (its own live-selection fallback only works while
+      // the active selection is still the cloud provider).
       if (this.modelSelection.llm && !LOCAL_PROVIDER_IDS.has(this.modelSelection.llm.connId)) {
         this.savedCloudLlm = this.modelSelection.llm;
+        this.detectedCloudConn = this.modelSelection.llm.connId;
       }
       // Use a detected host runtime if present; otherwise enable in-stack Ollama.
       if (!this.hostLocalLlmRunning) this.enableRecommendedOllama();
@@ -418,17 +453,33 @@ export class SetupState {
         ? { connId: localOpt.connId, model: localOpt.id, dims: localOpt.dims }
         : { connId: 'ollama', model: OLLAMA_DEFAULT_CHAT_MODEL, dims: 0 };
     } else if (mode === 'cloud') {
-      if (this.savedCloudLlm) this.modelSelection.llm = this.savedCloudLlm;
+      // Undo whatever 'local' enabled — otherwise a user who toggled "Run on
+      // this computer" once and switched back silently keeps a multi-GB
+      // in-stack Ollama container + model pull enabled in the install payload.
+      this.ollamaEnabled = false;
+      if (this.savedCloudLlm) {
+        this.modelSelection.llm = this.savedCloudLlm;
+      } else if (this.modelSelection.llm && LOCAL_PROVIDER_IDS.has(this.modelSelection.llm.connId)) {
+        // No cloud model was ever selected before going local — don't leave
+        // `llm` silently pointing at the in-stack runtime that was just disabled.
+        this.modelSelection.llm = undefined;
+      }
     }
   }
 
   // Fetch the GPU/provider-aware setup recommendation once and apply it. Safe to
   // call multiple times — applies only once. Reuses a recommendation already
   // fetched for display (fetchRecommendation()).
-  async fetchAndApplyRecommendation(): Promise<void> {
-    if (this.recommendationApplied) return;
+  //
+  // `force` re-probes even after a prior call already applied a recommendation
+  // — the Apple Silicon "install Ollama, then click Re-check" flow (
+  // LocalModelsStatus.svelte) needs this: the user's action happened OUTSIDE
+  // the wizard (installing/starting Ollama on the host), so re-evaluating
+  // means re-fetching detection, not replaying the cached verdict.
+  async fetchAndApplyRecommendation(force = false): Promise<void> {
+    if (this.recommendationApplied && !force) return;
     let rec: SetupRecommendation;
-    if (this.recommendation) {
+    if (this.recommendation && !force) {
       rec = this.recommendation;
     } else {
       try {
@@ -905,7 +956,11 @@ export class SetupState {
       return;
     }
     this.installing = true;
-    void this.pollDeployStatus();
+    // startDeployPolling(), not a one-shot pollDeployStatus() — the interval
+    // was already cleared by stopDeployPolling() when the prior error was
+    // detected. A one-shot call here would poll exactly once and then freeze
+    // the screen forever, even when the retried deploy goes on to succeed.
+    this.startDeployPolling();
   }
 
   handleDeployBack(): void {
@@ -1160,7 +1215,14 @@ export class SetupState {
         })
         .catch((e) => { console.error('[setup] failed to load existing config:', e); });
     } else {
-      this.uiLoginPassword = generatePassword();
+      // W12: reuse the password already stashed for THIS browser session
+      // instead of always minting a fresh one — reset() above unconditionally
+      // clears uiLoginPassword to '', so without this an F5 on the Welcome
+      // step silently swapped in a different password than the one the user
+      // was just told to keep a copy of.
+      const stored = readStoredSetupPassword();
+      this.uiLoginPassword = stored || generatePassword();
+      if (!stored) writeStoredSetupPassword(this.uiLoginPassword);
       fetchSetupStatus()
         .then((data) => { if (data.setupComplete) window.location.href = '/'; })
         .catch((e) => { console.error('[setup] failed to check setup status:', e); });
