@@ -94,7 +94,7 @@
 	const showEmptyState = $derived(
 		!sessionsLoading && !entriesLoading && !showStartupState && !chat.sending && chat.entries.length === 0
 	);
-	const canOpenAssistantSettings = hasCapability(runtimeContext, 'host:stack:read');
+	const canOpenAssistantSettings = $derived(hasCapability(runtimeContext, 'host:stack:read'));
 	const assistantSettingsHref = $derived(
 		`/host?tab=assistant&returnTo=${encodeURIComponent(`${page.url.pathname}${page.url.search}`)}`
 	);
@@ -869,6 +869,63 @@
 
 	.s-startup-action:hover {
 		color: var(--s-ink);
+	}
+
+	/* ── First-run empty state (F10) ─────────────────────────────────────
+	   A genuinely empty, healthy session previously rendered nothing at
+	   all — a silent thread above a live composer with no orientation. */
+	.s-empty {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 0.5rem;
+		padding: 2.5rem 1rem;
+		text-align: center;
+	}
+
+	.s-empty-title {
+		margin: 0;
+		font-family: var(--s-font-header);
+		font-size: 1.1rem;
+		color: var(--s-ink-2);
+	}
+
+	.s-empty-detail {
+		margin: 0;
+		font-family: var(--s-font-mono);
+		font-size: var(--s-type-mark);
+		color: var(--s-ink-3);
+	}
+
+	.s-empty-detail a {
+		color: var(--s-ink-2);
+	}
+
+	.s-empty-prompts {
+		display: flex;
+		flex-wrap: wrap;
+		justify-content: center;
+		gap: 0.5rem;
+		margin-top: 0.75rem;
+		max-width: 34rem;
+	}
+
+	.s-empty-prompt {
+		appearance: none;
+		border: var(--s-hair) solid var(--s-line);
+		background: var(--s-paper);
+		cursor: pointer;
+		font-family: var(--s-font-mono);
+		font-size: var(--s-type-mark-sm);
+		letter-spacing: var(--s-track-label);
+		color: var(--s-ink-2);
+		padding: 0.35rem 0.8rem;
+		border-radius: var(--s-radius-seal);
+	}
+
+	.s-empty-prompt:hover {
+		color: var(--s-ink);
+		border-color: var(--s-ink-3);
 	}
 
 	/* ── Pending / streaming ──────────────────────────────────────────── */

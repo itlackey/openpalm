@@ -52,7 +52,12 @@ import { SvelteURLSearchParams } from 'svelte/reactivity';
 
 export type ModelMode = 'cloud' | 'local' | 'both';
 
-interface DeployData {
+// G-series: exported so DeployStep.svelte (the only other consumer of this
+// shape) imports it instead of maintaining its own separate declaration —
+// the two had already drifted once (DeployStep read `phase`/`imageWarning`
+// this copy didn't declare, working only because the store's `deployData`
+// field passes through untyped at the call site).
+export interface DeployData {
   deploying?: boolean;
   setupComplete?: boolean;
   deployStatus?: { service: string; status: string; label?: string }[];

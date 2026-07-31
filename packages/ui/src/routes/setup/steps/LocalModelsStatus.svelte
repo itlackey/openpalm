@@ -8,6 +8,7 @@
    */
 
   import { setupState } from '$lib/setup/setup-state.svelte.js';
+  import { friendlyProviderName } from '$lib/client/constants.js';
 
   const s = setupState;
 
@@ -33,12 +34,11 @@
     selectedOllamaProfile.endsWith('rocm') ? 'ROCm' : 'CPU'
   );
 
-  function runtimeLabel(provider: string): string {
-    if (provider === 'ollama') return 'Ollama';
-    if (provider === 'lmstudio') return 'LM Studio';
-    if (provider === 'model-runner') return 'Docker Model Runner';
-    return provider;
-  }
+  // G-series: friendlyProviderName (constants.js, backed by the PROVIDERS
+  // catalog) already resolves these three ids — this used to keep its own
+  // copy of the same three labels (a third copy, alongside
+  // SystemCheckStep.svelte's — now also on the shared helper).
+  const runtimeLabel = friendlyProviderName;
 </script>
 
 <div class="local-models-status">

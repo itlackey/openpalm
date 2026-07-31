@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { secretsDir as secretsDirPath, privateSecretsDir as privateSecretsDirPath } from './home.js';
 import { randomHex } from './crypto.js';
 import { PORTAL_SECRET_ADDON_IDS } from './addon-ids.js';
+import { writeFileAtomic } from './fs-atomic.js';
 
 const SECRET_NAME_RE = /^[a-z0-9][a-z0-9_]{0,80}$/;
 const SECRETS_DIR_MODE = 0o700;
@@ -107,7 +108,13 @@ export function readSecret(homeDir: string, name: string): string | null {
 
 export function writeSecret(homeDir: string, name: string, value: string): void {
   const path = secretPath(homeDir, name);
-  writeFileSync(path, value, { mode: SECRET_FILE_MODE });
+  // K5 residual: tmp + rename, not a direct write. A kill mid-write of a
+  // direct writeFileSync can leave a partial-but-non-empty file — ensureSecret's
+  // torn-write check above only catches a 0-byte file, so a partial write would
+  // be read back as a "valid" secret. Harmless for a generated random (re-run
+  // regenerates it), but a partially-written wizard-supplied UI login password
+  // would silently lock the operator out until `openpalm reset-password`.
+  writeFileAtomic(path, value, SECRET_FILE_MODE);
   chmodSync(path, SECRET_FILE_MODE);
 }
 
@@ -189,7 +196,8 @@ export function readSecretFile(homeDir: string, name: string): string | null {
 export function writeSecretFile(homeDir: string, name: string, value: string): void {
   assertSafeSecretFilename(name);
   const path = join(resolveSecretsDirForName(homeDir, name), name);
-  writeFileSync(path, value, { mode: SECRET_FILE_MODE });
+  // Same tmp + rename rationale as writeSecret() above.
+  writeFileAtomic(path, value, SECRET_FILE_MODE);
   chmodSync(path, SECRET_FILE_MODE);
 }
 

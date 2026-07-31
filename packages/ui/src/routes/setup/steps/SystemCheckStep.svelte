@@ -6,6 +6,7 @@
   import { friendlyError, type FriendlyErrorView } from '$lib/client/error-messages.js';
   import Spinner from '$lib/components/common/Spinner.svelte';
   import { setupState } from '$lib/setup/setup-state.svelte.js';
+  import { friendlyProviderName } from '$lib/client/constants.js';
 
   interface CheckResult {
     ok: boolean;
@@ -43,12 +44,9 @@
     disk?: DiskResult;
   }
 
-  const PROVIDER_LABELS: Record<string, string> = {
-    ollama: 'Ollama',
-    lmstudio: 'LM Studio',
-    'model-runner': 'Docker Model Runner',
-  };
-
+  // G-series: friendlyProviderName (constants.js, backed by the PROVIDERS
+  // catalog) already resolves these three ids — this used to keep its own
+  // copy of the same three labels.
   const KNOWN_PROVIDERS = new Set(['ollama', 'lmstudio', 'model-runner']);
 
   // Takes NO props: reads the setup-state store directly (isRerun) and calls its
@@ -210,7 +208,7 @@
           {#if KNOWN_PROVIDERS.has(hp.provider)}<IconServer size={18} />{:else}<IconConnect size={18} />{/if}
         </div>
         <div class="syscheck-body">
-          <div class="syscheck-title">{PROVIDER_LABELS[hp.provider] ?? hp.provider} is running</div>
+          <div class="syscheck-title">{friendlyProviderName(hp.provider)} is running</div>
           <div class="syscheck-meta">{hp.url}</div>
           <div class="syscheck-hint">We can use this automatically — pick your model on the Models step.</div>
         </div>

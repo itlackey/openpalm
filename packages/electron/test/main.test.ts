@@ -46,6 +46,23 @@ vi.mock('node:child_process', async (importOriginal) => {
   };
 });
 
+// ── Mock ../src/settings.js — real defaults, spyable saveSettings ──────────
+// Avoids touching the real filesystem at the mocked resolveDataDir() path
+// (below) when the first-close notice (or the mic/prerelease toggles) persist
+// a setting.
+const { mockLoadSettings, mockSaveSettings } = vi.hoisted(() => ({
+  mockLoadSettings: vi.fn(() => ({
+    checkPrerelease: false,
+    micShortcutEnabled: false,
+    hideToTrayNoticeShown: false,
+  })),
+  mockSaveSettings: vi.fn(),
+}));
+vi.mock('../src/settings.js', () => ({
+  loadSettings: mockLoadSettings,
+  saveSettings: mockSaveSettings,
+}));
+
 // ── Mock process-tree — pin the UiSupervisor migration's kill strategy
 // without shelling out a real SIGTERM/SIGKILL against whatever pid a test
 // fixture happens to carry.
@@ -1003,6 +1020,47 @@ describe('global mic shortcut opt-in (E3)', () => {
 // test flips the module-scoped `isQuitting` flag to true and nothing in this
 // file ever flips it back, so these tests — which depend on isQuitting still
 // being false — must run first for a correct read of "close" in isolation.
+// ── First-close discoverability notice ──────────────────────────────────────
+// Placed BEFORE 'window close handler' (below) deliberately: that block's
+// first test also hides-to-tray, which would otherwise consume the one-time
+// notice before these tests get to observe a genuine "first close".
+describe('first-close discoverability notice', () => {
+  function getCloseHandler(): (event: { preventDefault: () => void }) => void {
+    const entry = mockBrowserWindow.on.mock.calls.find(([e]) => e === 'close');
+    expect(entry, 'window close handler must be registered').toBeDefined();
+    return entry?.[1] as (event: { preventDefault: () => void }) => void;
+  }
+
+  it('shows the one-time tray notice on the first hide-to-tray close and persists it', () => {
+    const spy = vi.spyOn(TrayController.prototype, 'isActive').mockReturnValue(true);
+    notificationInstances.length = 0;
+    mockNotificationShow.mockClear();
+    mockSaveSettings.mockClear();
+
+    getCloseHandler()({ preventDefault: vi.fn() });
+
+    expect(notificationInstances).toHaveLength(1);
+    expect(mockNotificationShow).toHaveBeenCalledTimes(1);
+    expect(mockSaveSettings).toHaveBeenCalledWith('/home/user/.openpalm/data', {
+      hideToTrayNoticeShown: true,
+    });
+    spy.mockRestore();
+  });
+
+  it('does not show the notice again on a later hide-to-tray close', () => {
+    const spy = vi.spyOn(TrayController.prototype, 'isActive').mockReturnValue(true);
+    notificationInstances.length = 0;
+    mockNotificationShow.mockClear();
+    mockSaveSettings.mockClear();
+
+    getCloseHandler()({ preventDefault: vi.fn() });
+
+    expect(notificationInstances).toHaveLength(0);
+    expect(mockSaveSettings).not.toHaveBeenCalled();
+    spy.mockRestore();
+  });
+});
+
 describe('window close handler (E1 — hide-to-tray only when a tray exists)', () => {
   function getCloseHandler(): (event: { preventDefault: () => void }) => void {
     const entry = mockBrowserWindow.on.mock.calls.find(([e]) => e === 'close');

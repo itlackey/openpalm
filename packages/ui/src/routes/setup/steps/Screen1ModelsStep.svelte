@@ -20,7 +20,7 @@
   import { untrack } from 'svelte';
   import CloudAttachPanel from './CloudAttachPanel.svelte';
   import LocalModelsStatus from './LocalModelsStatus.svelte';
-  import { LOCAL_PROVIDER_IDS, FRIENDLY_PROVIDER_NAMES } from '$lib/client/constants.js';
+  import { LOCAL_PROVIDER_IDS, friendlyProviderName } from '$lib/client/constants.js';
   import { setupState } from '$lib/setup/setup-state.svelte.js';
   // G-series: this used to hardcode its own copy of the threshold
   // setup-recommendation.ts (the macOS/GPU decision engine) already exports —
@@ -56,21 +56,18 @@
     hostProviders.length > 0
   );
 
-  // Resolve a friendly display name for a provider connId.
-  function friendlyServiceLabel(connId: string): string {
-    if (FRIENDLY_PROVIDER_NAMES[connId]) return FRIENDLY_PROVIDER_NAMES[connId];
-    const fromProviders = opencodeProviders.find((p) => p.id === connId)?.name;
-    if (fromProviders) return fromProviders;
-    return connId;
-  }
-
   // The "detected" cloud service — a STABLE value so this row stays visible even
   // after the user switches to local (so they can switch back). Falls back to the
   // current cloud selection before the parent has captured it.
   const detectedConn = $derived(
     detectedCloudConn || (llmProvider && !LOCAL_PROVIDER_IDS.has(llmProvider) ? llmProvider : '')
   );
-  const detectedServiceLabel = $derived(detectedConn ? friendlyServiceLabel(detectedConn) : '');
+  // G-series: friendlyProviderName (constants.js) is the shared label
+  // resolver — this used to reimplement the same curated-name-then-fallback
+  // logic locally.
+  const detectedServiceLabel = $derived(
+    detectedConn ? friendlyProviderName(detectedConn, { extraProviders: opencodeProviders }) : ''
+  );
 
   // Whether the current selection is a local runtime (drives initial row pick).
   const detectedIsLocal = $derived(LOCAL_PROVIDER_IDS.has(llmProvider));

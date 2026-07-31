@@ -128,6 +128,18 @@ describe("buildComposePreflightError (shared CLI + lib message)", () => {
     expect(msg).toContain("your OpenPalm home is missing files");
   });
 
+  it("names a remedy that actually exists for a missing op_ui_login_password secret", () => {
+    // K5 residual: no ensure path (including `openpalm update`) mints this
+    // secret — only setup or `openpalm reset-password` do — so the generic
+    // "run update to repair it" guidance would send the operator in a circle.
+    const msg = buildComposePreflightError(
+      options,
+      'secret "ui_login_password" not found: /home/.openpalm/private/secrets/op_ui_login_password: no such file or directory',
+    );
+    expect(msg).toContain("openpalm reset-password");
+    expect(msg).not.toContain("Run `openpalm update` to repair it");
+  });
+
   it("omits guidance for a generic (non-missing-file) failure", () => {
     const msg = buildComposePreflightError(options, "yaml: mapping values are not allowed");
     expect(msg).not.toContain("your OpenPalm home is missing files");

@@ -174,26 +174,47 @@ function projectNameForState(state: ControlPlaneState): string {
 }
 
 function resolveImageTag(state: ControlPlaneState): string {
+	// OP_IMAGE_TAG was the pre-per-image-pin single cascade var, retired along
+	// with the OP_IMAGE_TAG compose interpolation itself (skeleton-guardrail.test.ts
+	// asserts it's gone from every compose file). ensureVersionDefaults always
+	// gives OP_ASSISTANT_VERSION a value, so there is nothing left to fall back to.
 	const env = readStackEnv(state.homeDir);
-	return env.OP_ASSISTANT_VERSION ?? env.OP_IMAGE_TAG ?? '';
+	return env.OP_ASSISTANT_VERSION ?? '';
 }
 
 async function detectProjectCollision(state: ControlPlaneState): Promise<string | null> {
 	const projectName = projectNameForState(state);
 	const delays = [0, 1_000, 1_000];
+	// Track WHY every attempt fell through, so the fail-closed message names the
+	// actual cause instead of always blaming an untrustworthy working_dir label —
+	// that label was never even read on an attempt that errored outright (Docker
+	// unreachable/timed out), which is a materially different problem from "found
+	// a project sharing our name but its label is missing/blank".
+	let lastDockerError: string | null = null;
+	let sawUnlabeledForeignProject = false;
 	for (let attempt = 0; attempt < delays.length; attempt++) {
 		if (delays[attempt] > 0) await new Promise((resolve) => setTimeout(resolve, delays[attempt]));
 		const existing = await detectExistingProject({
 			projectName,
 			expectedWorkingDir: state.stackDir
 		});
-		if (existing.error) continue;
+		if (existing.error) {
+			lastDockerError = existing.error;
+			continue;
+		}
+		lastDockerError = null;
 		if (!existing.exists) return null;
 		if (existing.isOurs) return null;
-		if (!existing.workingDir) continue;
+		if (!existing.workingDir) {
+			sawUnlabeledForeignProject = true;
+			continue;
+		}
 		return `Refusing to deploy: docker project "${projectName}" is already running from ${existing.workingDir}, but this deploy would use OP_HOME=${state.homeDir}. Set OP_PROJECT_NAME to a distinct value in stack.env, or stop the existing stack first.`;
 	}
-	return `Refusing to deploy: docker project "${projectName}" could not be verified safely. Docker returned an existing project without a trustworthy working_dir label, so this deploy is failing closed.`;
+	if (sawUnlabeledForeignProject) {
+		return `Refusing to deploy: docker project "${projectName}" could not be verified safely. Docker returned an existing project without a trustworthy working_dir label, so this deploy is failing closed.`;
+	}
+	return `Refusing to deploy: docker project "${projectName}" could not be verified safely. Docker could not be queried${lastDockerError ? ` (${lastDockerError})` : ''}, so this deploy is failing closed.`;
 }
 
 function buildLogHint(state: ControlPlaneState, services: string[]): string {

@@ -14,7 +14,7 @@ import { enableHostAkmSharing, disableHostAkmSharing } from './host-akm-sharing.
 import { addHostStashToOpenpalmConfig } from './akm-sources.js';
 import { PROVIDER_KEY_MAP } from '../provider-constants.js';
 import { buildAkmEndpoint } from './akm-endpoints.js';
-import { SERVICE_VERSION_KEYS, writeVersions } from './versions.js';
+import { SERVICE_VERSION_KEYS, VERSION_DEFAULTS, writeVersions } from './versions.js';
 import { PLATFORM_VERSION } from './versioning.js';
 import { ensureHomeDirs } from './home.js';
 import { acquireInstallLock, releaseInstallLock, type InstallLockHandle } from './install-lock.js';
@@ -23,7 +23,8 @@ import {
 	updateSecretsEnv,
 	patchSecretsEnvFile,
 	ensureOpenCodeConfig,
-	writeAuthJsonProviderKeys
+	writeAuthJsonProviderKeys,
+	readStackEnv
 } from './secrets.js';
 import { createState, initializeStateSecrets } from './lifecycle.js';
 import { readSecret } from './secrets-files.js';
@@ -419,17 +420,29 @@ export async function performSetup(
 			// Voice is EXCLUDED from the pin: its tags are `latest-cpu` /
 			// `vX.Y.Z-cu121` (GPU-variant suffixed), not platform semver, so a bare
 			// PLATFORM_VERSION pin would resolve to a nonexistent
-			// `openpalm/voice:0.13.0`. It keeps tracking `latest` until explicitly
-			// pinned by the operator.
+			// `openpalm/voice:0.13.0`; it also ships on its own, out-of-band release
+			// cadence (publish-voice.yml), decoupled from platform releases entirely,
+			// so there is no platform-coordinated tag to fall back to either. It
+			// keeps tracking `latest` until explicitly pinned by the operator —
+			// K2: that means an existing operator pin (set via the Updates tab, or a
+			// prior setup run's own write to this same field — see below) must
+			// SURVIVE a rerun, not get silently stomped back to `latest` every time
+			// setup runs. Only a value still at the shared default is safe to
+			// (re)default; anything else is a deliberate pin this run must preserve.
+			const existingVoiceVersion = readStackEnv(state.homeDir).OP_VOICE_VERSION?.trim();
+			const voiceVersion =
+				existingVoiceVersion && existingVoiceVersion !== VERSION_DEFAULTS.OP_VOICE_VERSION
+					? existingVoiceVersion
+					: VERSION_DEFAULTS.OP_VOICE_VERSION;
 			const akmUpdates: Record<string, string> = {};
 			const trimmedTag = imageTag?.trim();
 			if (trimmedTag) {
 				for (const key of SERVICE_VERSION_KEYS) {
-					akmUpdates[key] = key === 'OP_VOICE_VERSION' ? 'latest' : trimmedTag;
+					akmUpdates[key] = key === 'OP_VOICE_VERSION' ? voiceVersion : trimmedTag;
 				}
 			} else {
 				for (const key of SERVICE_VERSION_KEYS) {
-					akmUpdates[key] = key === 'OP_VOICE_VERSION' ? 'latest' : PLATFORM_VERSION;
+					akmUpdates[key] = key === 'OP_VOICE_VERSION' ? voiceVersion : PLATFORM_VERSION;
 				}
 			}
 			// NOTE: host-akm sharing no longer repoints the container's primary stash

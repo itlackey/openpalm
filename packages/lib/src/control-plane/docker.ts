@@ -160,10 +160,16 @@ export function isProjectOurs(workingDirLabel: string, expectedWorkingDir: strin
 }
 
 /**
- * Probe the Docker daemon for a running compose project that shares
- * `projectName`. Decides ours-vs-foreign by comparing the project's
+ * Probe the Docker daemon for a compose project that shares `projectName`,
+ * running OR stopped. Decides ours-vs-foreign by comparing the project's
  * `com.docker.compose.project.working_dir` label against `expectedWorkingDir`
  * (the install's OP_HOME / compose context).
+ *
+ * `-a` is required, not cosmetic: a STOPPED foreign stack (e.g. a different
+ * OP_HOME's install the operator `docker compose stop`ped, or one that never
+ * finished coming up) is invisible to a running-only `ps` — the collision
+ * probe this feeds would then see "no project" and let the deploy's
+ * `up --force-recreate --remove-orphans` adopt/clobber it.
  *
  * Docker errors are returned separately from a confirmed absent project so
  * callers never mistake "could not check" for "safe to continue".
@@ -174,7 +180,7 @@ export async function detectExistingProject(opts: {
 }): Promise<ExistingProject> {
   const none: ExistingProject = { exists: false, isOurs: false, workingDir: "" };
   const ps = await run(
-    ["ps", "-q", "--filter", `label=com.docker.compose.project=${opts.projectName}`],
+    ["ps", "-a", "-q", "--filter", `label=com.docker.compose.project=${opts.projectName}`],
     undefined,
     10_000,
   );
@@ -357,6 +363,10 @@ export async function composePreflight(
  *     running platform (secrets are written only by install/update, not
  *     self-healed on a plain command) — so we point the user at `openpalm
  *     update` instead of leaving them with a raw compose "file not found".
+ *     op_ui_login_password is the one exception: no ensure path (including
+ *     `openpalm update`) ever creates it — only setup and `openpalm
+ *     reset-password` do — so naming `update` there would send the operator
+ *     to a command that reproduces the exact same failure.
  */
 export function buildComposePreflightError(
   options: { files: string[]; envFiles?: string[]; profiles?: string[] },
@@ -380,9 +390,12 @@ export function buildComposePreflightError(
 
   const looksLikeMissingFile = /secret/i.test(stderr)
     && /(not found|no such file|does not exist|cannot find)/i.test(stderr);
-  const guidance = looksLikeMissingFile
-    ? "\n\nThis usually means your OpenPalm home is missing files. Run `openpalm update` to repair it, then try again."
-    : "";
+  const looksLikeMissingLoginPassword = looksLikeMissingFile && /ui_login_password/i.test(stderr);
+  const guidance = looksLikeMissingLoginPassword
+    ? "\n\nThis usually means the UI login password secret is missing. `openpalm update` cannot create it — run `openpalm reset-password` (or re-run setup) to create it, then try again."
+    : looksLikeMissingFile
+      ? "\n\nThis usually means your OpenPalm home is missing files. Run `openpalm update` to repair it, then try again."
+      : "";
 
   return (
     `Compose preflight failed: ${stderr}\n` +

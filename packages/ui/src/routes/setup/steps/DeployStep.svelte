@@ -3,27 +3,10 @@
   import { friendlyError } from '$lib/client/error-messages.js';
   import Spinner from '$lib/components/common/Spinner.svelte';
   import { resolve } from '$app/paths';
-
-  interface ServiceStatus {
-    service: string;
-    status: string;
-    label?: string;
-  }
-
-  type DeployPhase =
-    | 'writing-config'
-    | 'pulling-images'
-    | 'starting'
-    | 'ready';
-
-  interface DeployData {
-    deployStatus?: ServiceStatus[];
-    deployError?: string | null;
-    /** Non-fatal: install used cached images because the registry pull failed. */
-    imageWarning?: string | null;
-    phase?: DeployPhase;
-    ports?: { admin?: number; ui?: number; assistant?: number };
-  }
+  // G-series: shared with the store instead of a separately-maintained copy
+  // that had already drifted once (this component read `phase`/`imageWarning`
+  // the store's old declaration didn't have).
+  import type { DeployData } from '$lib/setup/setup-state.svelte.js';
 
   interface Props {
     deployData: DeployData;
@@ -243,8 +226,12 @@
              Navigating to a different host alias (localhost vs 127.0.0.1) would
              drop the session cookie, which is scoped per-host. -->
         <a href={resolve('/chat')} data-sveltekit-reload class="btn btn-primary">Open Chat</a>
-        <a href="http://127.0.0.1:{assistantPort}" target="_blank" rel="noopener" class="btn btn-secondary">OpenCode UI</a>
         <a href={resolve('/host')} data-sveltekit-reload class="btn btn-secondary">Admin Dashboard</a>
+        <!-- W14: was an unlabeled raw "OpenCode UI" link with no explanation
+             of what it is or how sign-in there differs from this app's own
+             login — labeled as the advanced/raw surface it is, matching the
+             framing the same link gets on the Advanced page post-install. -->
+        <a href="http://127.0.0.1:{assistantPort}" target="_blank" rel="noopener" class="btn btn-tertiary" title="Raw OpenCode developer console — its own separate sign-in, for advanced use">Raw AI console (advanced)</a>
       </div>
     {/if}
   </div>
