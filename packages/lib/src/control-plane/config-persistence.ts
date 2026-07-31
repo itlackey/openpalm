@@ -29,7 +29,6 @@ import { stackEnvPath } from "./paths.js";
 import { writeFileAtomic } from "./fs-atomic.js";
 import { resolveOperatorIds, hasUsableOperatorId, type OperatorIds } from "./operator-ids.js";
 import { STACK_DEFAULTS } from "./defaults.js";
-import { SERVICE_VERSION_KEYS, VERSION_DEFAULTS } from "./versions.js";
 
 import {
   readCoreCompose,
@@ -424,8 +423,15 @@ export function generateFallbackSystemEnv(state: ControlPlaneState): string {
     "",
     "# ── Images ──────────────────────────────────────────────────────────",
     `OP_IMAGE_NAMESPACE=${process.env.OP_IMAGE_NAMESPACE ?? "openpalm"}`,
-    "# Docker image tags (exact tag, \"latest\", or \"next\" — no semver ranges).",
-    ...SERVICE_VERSION_KEYS.map((key) => `${key}=${VERSION_DEFAULTS[key]}`),
+    // Service version tags are deliberately NOT seeded here. ensureVersionDefaults
+    // owns them because it writes each key together with its
+    // OP_MANAGED_<SERVICE>_VERSION marker, and that pairing is what
+    // advanceManagedImageVersions uses to tell a release-managed default from a
+    // pin the operator chose. Emitting the values here without their markers
+    // would make every fresh install look explicitly pinned on all four
+    // services, so updates would never advance them — and, because the keys
+    // would no longer be missing, ensureVersionDefaults could never seed the
+    // markers to repair it.
     "",
     "# ── Enabled addons (comma-separated; managed via the Add-ons UI / CLI) ──",
     "OP_ENABLED_ADDONS=",

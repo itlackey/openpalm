@@ -25,7 +25,9 @@
   // G-series: this used to hardcode its own copy of the threshold
   // setup-recommendation.ts (the macOS/GPU decision engine) already exports —
   // the two had already drifted apart in spirit even though the value matched.
-  import { MIN_LOCAL_GPU_VRAM_MB } from '@openpalm/lib';
+  // Imported from the submodule path (not the `@openpalm/lib` barrel) so this
+  // client bundle doesn't pull in the barrel's server-only modules (node:fs, …).
+  import { MIN_LOCAL_GPU_VRAM_MB } from '@openpalm/lib/control-plane/setup-recommendation.js';
 
   type ModelMode = 'cloud' | 'local' | 'both';
 
@@ -181,7 +183,7 @@
     {/if}
 
     <!-- Primary choice list -->
-    <div class="s1-choice-list" role="radiogroup" aria-label="Which AI should your assistant use" onkeydown={onRadiogroupKeydown}>
+    <div class="s1-choice-list" role="radiogroup" aria-label="Which AI should your assistant use">
 
       <!-- Row 1: Detected cloud service (only when a cloud provider is verified) -->
       {#if showDetectedRow}
@@ -193,6 +195,7 @@
           role="radio"
           aria-checked={selectedRow === 'detected'}
           onclick={() => selectRow('detected')}
+          onkeydown={onRadiogroupKeydown}
         >
           <div class="s1-radio-dot">
             <div class="s1-radio-dot-inner"></div>
@@ -216,6 +219,7 @@
         aria-checked={selectedRow === 'local'}
         disabled={!localAvailable}
         onclick={() => selectRow('local')}
+        onkeydown={onRadiogroupKeydown}
       >
         <div class="s1-radio-dot">
           <div class="s1-radio-dot-inner"></div>
@@ -255,6 +259,7 @@
         role="radio"
         aria-checked={selectedRow === 'cloud'}
         onclick={() => selectRow('cloud')}
+        onkeydown={onRadiogroupKeydown}
       >
         <div class="s1-radio-dot">
           <div class="s1-radio-dot-inner"></div>

@@ -513,6 +513,80 @@ describe('SetupState — goToStep gating', () => {
   });
 });
 
+// W4: loadHostStatus() fires once at init() while the user is still on step 0
+// and usually resolves BEFORE the user reaches step 1 — its own auto-import
+// check (`currentStep === 1 || isRerun`) then never fires. goToStep(1) covers
+// the opposite ordering so the trigger doesn't depend on network timing.
+describe('SetupState — W4 host-import auto-trigger on reaching the Providers step', () => {
+  it('triggers the host import once hostProviderCount is already known by the time step 1 is reached', async () => {
+    const { importHost } = await import('$lib/setup-api.js');
+    vi.mocked(importHost).mockClear();
+
+    const s = new SetupState();
+    s.initProviderState();
+    s.systemCheckPassed = true;
+    s.hostProviderCount = 2; // as if loadHostStatus() already resolved on step 0
+
+    s.goToStep(1);
+    // handleHostImport is fire-and-forget (`void`) — flush its microtasks.
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(importHost).toHaveBeenCalledTimes(1);
+    expect(s.hostImportTriggered).toBe(true);
+  });
+
+  it('does not fire again if already triggered (e.g. by loadHostStatus resolving after the step change)', async () => {
+    const { importHost } = await import('$lib/setup-api.js');
+    vi.mocked(importHost).mockClear();
+
+    const s = new SetupState();
+    s.initProviderState();
+    s.systemCheckPassed = true;
+    s.hostProviderCount = 2;
+    s.hostImportTriggered = true;
+
+    s.goToStep(1);
+    await Promise.resolve();
+
+    expect(importHost).not.toHaveBeenCalled();
+  });
+
+  it('does not fire when there is nothing to import', async () => {
+    const { importHost } = await import('$lib/setup-api.js');
+    vi.mocked(importHost).mockClear();
+
+    const s = new SetupState();
+    s.initProviderState();
+    s.systemCheckPassed = true;
+    s.hostProviderCount = 0;
+
+    s.goToStep(1);
+    await Promise.resolve();
+
+    expect(importHost).not.toHaveBeenCalled();
+  });
+
+  it('does not fire on a rerun (goToStep(1) skips the step-1 side effects entirely there)', async () => {
+    const { importHost } = await import('$lib/setup-api.js');
+    vi.mocked(importHost).mockClear();
+
+    const s = new SetupState();
+    s.initProviderState();
+    s.systemCheckPassed = true;
+    s.isRerun = true;
+    s.hostProviderCount = 2;
+
+    s.goToStep(1);
+    await Promise.resolve();
+
+    // Reruns are covered by loadHostStatus()'s own unconditional (`|| isRerun`)
+    // check, not by this navigation-time trigger.
+    expect(importHost).not.toHaveBeenCalled();
+  });
+});
+
 describe('SetupState — payload derivation delegates to buildSetupPayload', () => {
   it('reflects live wizard state (password, llm) in the derived payload', () => {
     const s = new SetupState();
