@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { createHash } from 'node:crypto';
-import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -54,11 +54,17 @@ describe('release package ownership', () => {
 
 	test('guardian and electron have independent owner groups', () => {
 		expect(groups.units.guardian).toEqual(['packages/guardian/package.json']);
-		expect(groups.units.electron).toEqual([
-			'packages/electron/package.json',
-			'packages/electron/admin-tools/package.json'
-		]);
+		expect(groups.units.electron).toEqual(['packages/electron/package.json']);
 		expect(groups.units.platform).toContain('packages/skeleton/package.json');
+	});
+
+	test('every listed manifest exists on disk', () => {
+		// A group entry pointing at a deleted package silently breaks release
+		// version stamping for that whole unit — the admin-tools removal left
+		// exactly such a dangling entry behind.
+		for (const manifest of Object.values(groups.units).flat()) {
+			expect(existsSync(join(ROOT, manifest))).toBe(true);
+		}
 	});
 });
 

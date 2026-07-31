@@ -8,8 +8,7 @@
       "packages/ui/package.json"
     ],
     "electron": [
-      "packages/electron/package.json",
-      "packages/electron/admin-tools/package.json"
+      "packages/electron/package.json"
     ],
     "portals": [
       "packages/portal-sdk/package.json",
