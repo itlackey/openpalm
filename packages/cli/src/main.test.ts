@@ -22,7 +22,7 @@ import * as nodeChildProcess from 'node:child_process';
 // per-test timeout can never fire and the whole run hangs forever. Delegate
 // through these captured references instead.
 const realChildProcess = { ...nodeChildProcess };
-import { detectHostInfo, isAssistantHealthy, main } from './main.ts';
+import { detectHostInfo, isAssistantHealthy, main, parseBareArgs } from './main.ts';
 import {
 	PLATFORM_VERSION,
 	readSecret,
@@ -912,6 +912,31 @@ describe('unknown command (C8)', () => {
 		const err = await main(['isntall']).catch((e: unknown) => e);
 		expect(err).toBeInstanceOf(Error);
 		expect((err as Error).message).toContain('Unknown command: isntall');
+	});
+});
+
+// C10/B6: parseBareArgs used to be a hand-rolled loop duplicating
+// mainCommand.args (help text only) — it understood --no-open but not
+// --open=false, and silently dropped a malformed --port.
+describe('parseBareArgs (C10/B6)', () => {
+	it('parses --port and --no-open', () => {
+		expect(parseBareArgs(['--port', '4200'])).toEqual({ port: 4200 });
+		expect(parseBareArgs(['--no-open'])).toEqual({ open: false });
+		expect(parseBareArgs(['--port=4200', '--no-open'])).toEqual({ port: 4200, open: false });
+	});
+
+	it('parses --open=false the same as --no-open', () => {
+		expect(parseBareArgs(['--open=false'])).toEqual({ open: false });
+	});
+
+	it('an explicit --open=true / --open leaves opts.open unset (the default already means "open")', () => {
+		expect(parseBareArgs(['--open=true'])).toEqual({});
+		expect(parseBareArgs([])).toEqual({});
+	});
+
+	it('throws on a malformed --port instead of silently falling back to the default port', () => {
+		expect(() => parseBareArgs(['--port', 'banana'])).toThrow(/Invalid --port value/);
+		expect(() => parseBareArgs(['--port=banana'])).toThrow(/Invalid --port value/);
 	});
 });
 

@@ -22,10 +22,12 @@
   import LocalModelsStatus from './LocalModelsStatus.svelte';
   import { LOCAL_PROVIDER_IDS, FRIENDLY_PROVIDER_NAMES } from '$lib/client/constants.js';
   import { setupState } from '$lib/setup/setup-state.svelte.js';
+  // G-series: this used to hardcode its own copy of the threshold
+  // setup-recommendation.ts (the macOS/GPU decision engine) already exports —
+  // the two had already drifted apart in spirit even though the value matched.
+  import { MIN_LOCAL_GPU_VRAM_MB } from '@openpalm/lib';
 
   type ModelMode = 'cloud' | 'local' | 'both';
-
-  const MIN_LOCAL_GPU_VRAM_MB = 8192;
 
   // This step reads the wizard store directly instead of receiving ~20 drilled
   // props from +page.svelte. Local aliases keep the rest of the component body
@@ -33,8 +35,6 @@
   // wrap the store's methods.
   const s = setupState;
 
-  const detectionLoading = $derived(s.autoModeImporting);
-  const systemCheckError = $derived(s.systemCheckPassed ? '' : (s.step0Error || ''));
   const gpuVramMb = $derived(s.detectedGpuVramMb);
   const gpuVendor = $derived(s.detectedGpuVendor);
   const hostProviders = $derived(s.detectedHostProviders);
@@ -47,7 +47,6 @@
   const detectedCloudConn = $derived(s.detectedCloudConn);
 
   const onmodelmodechange = (mode: ModelMode): void => s.handleConnectModeChange(mode);
-  const onsystemcheckretry = (): void => s.goToStep(0);
   const onallowemptyinstallchange = (v: boolean): void => { s.allowEmptyInstall = v; };
 
   // Local-models gate: available when GPU >= 8 GiB, Apple Silicon, or runtime running.
@@ -164,23 +163,8 @@
 
 <div data-testid="step-models" class="screen-models">
 
-  <!-- System check failure inline alert -->
-  {#if systemCheckError}
-    <div class="s1-alert s1-alert--error" role="alert">
-      <span class="s1-alert-text">{systemCheckError}</span>
-      <button
-        type="button"
-        class="s1-alert-btn"
-        id="btn-syscheck-retry"
-        onclick={onsystemcheckretry}
-      >
-        Retry
-      </button>
-    </div>
-  {/if}
-
   <!-- Loading shimmer while importing -->
-  {#if detectionLoading || hostImporting}
+  {#if hostImporting}
     <div class="s1-shimmer" aria-busy="true" aria-label="Detecting AI services…">
       <span class="s1-shimmer-bar"></span>
       <span class="s1-shimmer-bar s1-shimmer-bar--short"></span>
@@ -326,45 +310,6 @@
     gap: 0;
     font-family: var(--s-font-display);
   }
-
-  /* ── Alerts ─────────────────────────────────────────────── */
-  .s1-alert {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 9px 12px;
-    margin-bottom: 12px;
-    border-radius: 8px;
-    font-size: 13px;
-    flex-wrap: wrap;
-  }
-
-  .s1-alert--error {
-    background: rgba(242, 92, 92, 0.1);
-    border: 1px solid rgba(242, 92, 92, 0.3);
-  }
-
-  .s1-alert-text {
-    flex: 1;
-    color: var(--s-ink-2);
-  }
-
-  .s1-alert--error .s1-alert-text { color: var(--s-seal); }
-
-  .s1-alert-btn {
-    padding: 4px 10px;
-    background: none;
-    border: 1px solid currentColor;
-    border-radius: 6px;
-    font-size: 12px;
-    cursor: pointer;
-    min-height: 28px;
-    color: var(--s-seal);
-    font-family: inherit;
-    transition: opacity 150ms;
-  }
-
-  .s1-alert-btn:disabled { opacity: 0.55; cursor: not-allowed; }
 
   /* ── Detection shimmer ───────────────────────────────────── */
   .s1-shimmer {

@@ -16,7 +16,12 @@
  * other files in the aggregate suite, and `defineAction` converts any resulting
  * error into `process.exit(1)` — taking the entire test run down with it.
  */
-import { expect, test } from 'bun:test';
+import { afterEach, describe, expect, mock, test } from 'bun:test';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import * as realLib from '../../../lib/src/index.ts';
+import * as realPrompt from '../lib/prompt.ts';
 import { wizardUiServerOptions } from './install.ts';
 import { DEFAULT_UI_PORT } from '../lib/ports.ts';
 
@@ -47,4 +52,92 @@ test('the wizard reads back a port a headless install persisted to stack.env', (
   expect(
     wizardUiServerOptions(false, { OP_HOST_UI_PORT: '5000' }, { OP_HOST_UI_PORT: '4300' }).port,
   ).toBe(5000);
+});
+
+// ── bootstrapInstall: decline exit code + the seed-phase install lock ──────
+//
+// Unlike the pure-options tests above, these two DO drive bootstrapInstall
+// directly (mirroring rollback.test.ts's runRollbackAction tests) — safely,
+// because Docker and the install lock are mocked out (never a real `docker`
+// call) and OP_HOME/mock.module state is saved and restored around each test.
+const moduleUrls = {
+  prompt: new URL('../lib/prompt.ts', import.meta.url).href,
+};
+const installModuleUrl = new URL('./install.ts', import.meta.url).href;
+
+afterEach(() => {
+  mock.restore();
+  // mock.restore() does NOT undo mock.module(); re-point to the real modules
+  // so these mocks do not leak into other test files in the shared bun test process.
+  mock.module('@openpalm/lib', () => ({ ...realLib }));
+  mock.module(moduleUrls.prompt, () => ({ ...realPrompt }));
+});
+
+/** Run `fn` with a fresh temp OP_HOME and process.stdin/stdout forced into TTY mode, restoring both afterward. */
+async function withInteractiveTempHome(fn: (tempHome: string) => Promise<void>): Promise<void> {
+  const savedHome = process.env.OP_HOME;
+  const tempHome = mkdtempSync(join(tmpdir(), 'openpalm-install-test-'));
+  process.env.OP_HOME = tempHome;
+  const stdinTty = Object.getOwnPropertyDescriptor(process.stdin, 'isTTY');
+  const stdoutTty = Object.getOwnPropertyDescriptor(process.stdout, 'isTTY');
+  Object.defineProperty(process.stdin, 'isTTY', { value: true, configurable: true });
+  Object.defineProperty(process.stdout, 'isTTY', { value: true, configurable: true });
+  try {
+    await fn(tempHome);
+  } finally {
+    if (stdinTty) Object.defineProperty(process.stdin, 'isTTY', stdinTty);
+    else Object.defineProperty(process.stdin, 'isTTY', { value: undefined, configurable: true });
+    if (stdoutTty) Object.defineProperty(process.stdout, 'isTTY', stdoutTty);
+    else Object.defineProperty(process.stdout, 'isTTY', { value: undefined, configurable: true });
+    if (savedHome === undefined) delete process.env.OP_HOME;
+    else process.env.OP_HOME = savedHome;
+    rmSync(tempHome, { recursive: true, force: true });
+  }
+}
+
+describe('bootstrapInstall — declined --force confirmation (C10/B8 exit-code fix)', () => {
+  test('throws instead of silently returning, so the CLI exits non-zero', async () => {
+    await withInteractiveTempHome(async () => {
+      mock.module('@openpalm/lib', () => ({
+        ...realLib,
+        hasAnyStackEnvFile: () => true,
+        hasMaterializedLocalInstall: () => false,
+        ensureDockerReady: async () => ({ ok: true, message: '' }),
+      }));
+      mock.module(moduleUrls.prompt, () => ({
+        promptYesNo: async () => false,
+      }));
+
+      const { bootstrapInstall } = await import(`${installModuleUrl}?t=${Math.random()}`);
+      await expect(
+        bootstrapInstall({ force: true, version: '1.0.0', noStart: false, noOpen: true, assumeYes: false }),
+      ).rejects.toThrow(/Install aborted/);
+    });
+  });
+});
+
+describe('bootstrapInstall — seed-phase install lock (C10/B10)', () => {
+  test('refuses with install_in_progress when the lock is already held, before any home seed write', async () => {
+    await withInteractiveTempHome(async () => {
+      let ensureHomeDirsCalled = false;
+      mock.module('@openpalm/lib', () => ({
+        ...realLib,
+        hasAnyStackEnvFile: () => false,
+        hasMaterializedLocalInstall: () => false,
+        ensureDockerReady: async () => ({ ok: true, message: '' }),
+        // Lock held by a concurrent install/update — acquire returns null.
+        acquireInstallLock: () => null,
+        releaseInstallLock: () => {},
+        ensureHomeDirs: () => {
+          ensureHomeDirsCalled = true;
+        },
+      }));
+
+      const { bootstrapInstall } = await import(`${installModuleUrl}?t=${Math.random()}`);
+      await expect(
+        bootstrapInstall({ force: false, version: '1.0.0', noStart: false, noOpen: true, assumeYes: false }),
+      ).rejects.toThrow(/install_in_progress/);
+      expect(ensureHomeDirsCalled).toBe(false);
+    });
+  });
 });

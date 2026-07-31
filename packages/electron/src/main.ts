@@ -190,6 +190,13 @@ let checkPrereleaseUpdates = false;
 // Default OFF; loaded from desktop settings at boot, toggled live from the
 // tray. openWindow() only calls registerGlobalMicShortcut() when this is true.
 let micShortcutEnabled = false;
+// First-close discoverability: whether the one-time "OpenPalm is still
+// running" tray notice has already fired. Hide-to-tray silently rescues an
+// ordinary window close, but gives no OTHER indication the app is still
+// alive — a user who hasn't spotted the tray icon reads the close as "the app
+// quit". Loaded from desktop settings at boot; latched true (and persisted)
+// the first time notifyFirstHideToTray runs, so it fires at most once ever.
+let hideToTrayNoticeShown = false;
 // Full-application updater (#572). Null until the app is ready.
 let desktopUpdater: DesktopUpdater | null = null;
 // True once the app is genuinely quitting (tray "Quit" or before-quit). The
@@ -473,10 +480,12 @@ async function startUIServer(): Promise<boolean> {
   // Load the desktop-local prerelease opt-in (#504) so the update check below
   // knows whether to surface rc's. Notify-only — never changes install behaviour.
   // Also load the mic-shortcut opt-in (#E3) — openWindow()'s first call reads
-  // this to decide whether to grab the global shortcut at all.
+  // this to decide whether to grab the global shortcut at all — and whether
+  // the first-close tray notice has already fired on a previous run.
   const desktopSettings = loadSettings(dataDir);
   checkPrereleaseUpdates = desktopSettings.checkPrerelease;
   micShortcutEnabled = desktopSettings.micShortcutEnabled;
+  hideToTrayNoticeShown = desktopSettings.hideToTrayNoticeShown;
 
   // Full-application updates (#572). The check is deliberately NOT awaited:
   // startup must not wait on the network, and an offline launch must be
@@ -882,6 +891,7 @@ async function createWindow(): Promise<void> {
     if (!isQuitting && trayController.isActive()) {
       event.preventDefault();
       window.hide();
+      notifyFirstHideToTray();
     }
   });
 
@@ -967,6 +977,29 @@ export function showNotification(title: string, body?: string): void {
   if (!Notification.isSupported()) return;
   const n = new Notification({ title, body: body ?? '' });
   n.show();
+}
+
+// ── First-close discoverability ───────────────────────────────────────────────
+// Hide-to-tray (E1) silently rescues an ordinary window close, but that alone
+// looks EXACTLY like the app quit: the window is gone and nothing says
+// otherwise. The tray icon is the only way back, and a user who hasn't
+// noticed it has no way to tell "closed" from "still running in the
+// background". A one-time notice on the FIRST hide closes that gap without
+// nagging on every subsequent close.
+export const HIDE_TO_TRAY_NOTICE_TITLE = 'OpenPalm is still running';
+export const HIDE_TO_TRAY_NOTICE_BODY =
+  'It moved to the system tray instead of closing. Click its icon to reopen, or use its menu to quit.';
+
+/**
+ * Show the one-time tray-discoverability notice and persist that it has fired
+ * (settings.ts — same mechanism as checkPrerelease/micShortcutEnabled), so it
+ * never repeats, even across restarts. No-op if it already has.
+ */
+function notifyFirstHideToTray(): void {
+  if (hideToTrayNoticeShown) return;
+  hideToTrayNoticeShown = true;
+  saveSettings(resolveDataDir(), { hideToTrayNoticeShown: true });
+  showNotification(HIDE_TO_TRAY_NOTICE_TITLE, HIDE_TO_TRAY_NOTICE_BODY);
 }
 
 // ── Prerelease update opt-in (#504) ───────────────────────────────────────────

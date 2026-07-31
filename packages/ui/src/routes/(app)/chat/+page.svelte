@@ -13,7 +13,7 @@
 	// Direct domain-client import (#555): the chat page
 	// must not import the $lib/api.js barrel, which re-exports every admin
 	// domain client and would drag them all into the chat chunk.
-	import { probeChatBackend } from '$lib/api/chat.js';
+	import { getAssistantModel, probeChatBackend } from '$lib/api/chat.js';
 	import { advancedModeService } from '$lib/advanced-mode-state.svelte.js';
 	import { buildAdvancedPath, buildChatPath } from '$lib/chat/navigation.js';
 	import { nextFollowState } from '$lib/chat/autoscroll.js';
@@ -21,8 +21,11 @@
 	import { renderMarkdown } from '$lib/markdown.js';
 	import { endpointsService } from '$lib/endpoints-state.svelte.js';
 	import { onConnectionActivated } from '$lib/connection-events.js';
+	import { getRuntimeContext, hasCapability } from '$lib/runtime-context.svelte.js';
 	import { resolveSessionTitle } from '$lib/session-title.js';
 	import { stopConversation, voiceState } from '$lib/voice/voice-state.svelte.js';
+
+	const runtimeContext = getRuntimeContext();
 
 	let scrollAnchorEl = $state<HTMLDivElement | undefined>();
 
@@ -81,6 +84,45 @@
 		activeSession ? resolveSessionTitle(activeSession.title) : 'New conversation'
 	);
 	const activeConnectionLabel = $derived(endpointsService.active?.label ?? 'No active connection');
+
+	// F10: a genuinely empty (not loading, not errored, not mid-send) session
+	// otherwise rendered nothing at all. `/host` only exists on a server that
+	// advertises host:stack:read (hooks.server.ts redirects everyone else
+	// straight back to /chat) — gate the settings pointer on it so the
+	// suggestion is never a dead end for a client-only connection to someone
+	// else's OpenPalm.
+	const showEmptyState = $derived(
+		!sessionsLoading && !entriesLoading && !showStartupState && !chat.sending && chat.entries.length === 0
+	);
+	const canOpenAssistantSettings = hasCapability(runtimeContext, 'host:stack:read');
+	const assistantSettingsHref = $derived(
+		`/host?tab=assistant&returnTo=${encodeURIComponent(`${page.url.pathname}${page.url.search}`)}`
+	);
+	const EMPTY_STATE_PROMPTS = [
+		'Summarize a document I paste in',
+		'Draft a reply to an email',
+		'Explain a concept in plain terms',
+		'Help me plan a task',
+	];
+	// null = not checked yet; '' = checked, nothing configured. Best-effort —
+	// a failed fetch is left as null (quietly says nothing) rather than
+	// asserted as "unconfigured".
+	let emptyStateModel = $state<string | null>(null);
+	let emptyStateModelFor = '';
+	$effect(() => {
+		if (!showEmptyState) return;
+		const endpointId = chat.activeEndpointId;
+		if (emptyStateModelFor === endpointId) return;
+		emptyStateModelFor = endpointId;
+		emptyStateModel = null;
+		void getAssistantModel()
+			.then((model) => {
+				if (chat.activeEndpointId === endpointId) emptyStateModel = model;
+			})
+			.catch(() => {
+				// Left as null — quiet degradation, not a false "unconfigured" claim.
+			});
+	});
 
 	let navigationOpen = $state(false);
 	let activityRailOpen = $state(true);
