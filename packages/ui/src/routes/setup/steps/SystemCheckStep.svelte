@@ -210,7 +210,7 @@
         <div class="syscheck-body">
           <div class="syscheck-title">{friendlyProviderName(hp.provider)} is running</div>
           <div class="syscheck-meta">{hp.url}</div>
-          <div class="syscheck-hint">We can use this automatically — pick your model on the Models step.</div>
+          <div class="syscheck-hint">We can use this automatically — pick your model on the next step.</div>
         </div>
       </div>
     {/each}
