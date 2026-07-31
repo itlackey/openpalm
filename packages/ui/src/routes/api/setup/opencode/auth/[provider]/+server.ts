@@ -1,20 +1,22 @@
 import { json } from "@sveltejs/kit";
-import { getOpenCodeClient } from "$lib/server/helpers.js";
+import { getOpenCodeClient, errorResponse, getRequestId } from "$lib/server/helpers.js";
 import type { RequestHandler } from "./$types";
 
 const PROVIDER_ID_RE = /^[a-zA-Z0-9_-]{1,64}$/;
 
-export const PUT: RequestHandler = async ({ params, request }) => {
+export const PUT: RequestHandler = async (event) => {
+  const { params, request } = event;
+  const requestId = getRequestId(event);
   if (!PROVIDER_ID_RE.test(params.provider)) {
-    return json({ ok: false, message: "Invalid provider" }, { status: 400 });
+    return errorResponse(400, "invalid_provider", "Invalid provider", {}, requestId);
   }
   try {
     const { key } = await request.json();
     const client = getOpenCodeClient();
     const result = await client.setProviderApiKey(params.provider, typeof key === "string" ? key : "");
-    if (!result.ok) return json({ ok: false, message: "Failed to set provider credentials" }, { status: 400 });
+    if (!result.ok) return errorResponse(400, "provider_credentials_failed", "Failed to set provider credentials", {}, requestId);
     return json({ ok: true });
   } catch {
-    return json({ ok: false, message: "Failed to set provider credentials" }, { status: 500 });
+    return errorResponse(500, "provider_credentials_failed", "Failed to set provider credentials", {}, requestId);
   }
 };

@@ -1,6 +1,18 @@
 import { describe, expect, test } from 'bun:test';
-import { readFileSync, readdirSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import {
+	CLI_BINARIES,
+	checksumFor,
+	desktopAssetName,
+	expectedDesktopAssets,
+	expectedUpdaterFeeds,
+	readElectronProductName,
+	requiredReleaseAssets,
+	validateReleaseAssets
+} from './validate-release-assets.mjs';
 
 const ROOT = join(import.meta.dir, '..');
 const WORKFLOWS = join(ROOT, '.github', 'workflows');
@@ -104,5 +116,137 @@ describe('portal image source boundary', () => {
 		}
 		expect(dockerfile).toContain('bun pm pack');
 		expect(dockerfile).not.toContain('containers/portal/tools/package.json');
+	});
+});
+
+describe('release completeness gate: no CLI-only releases (onboarding-setup-review D1/D4)', () => {
+	// electron-builder.yml's actual productName, read once so these tests fail
+	// loudly if it is ever renamed rather than silently drifting from reality.
+	const productName = readElectronProductName();
+
+	test('electron-builder.yml still declares the productName these tests assume', () => {
+		expect(productName).toBe('OpenPalm');
+	});
+
+	test('the cli job matrix and CLI_BINARIES stay in lockstep', () => {
+		const workflow = Bun.YAML.parse(readFileSync(join(WORKFLOWS, 'release.yml'), 'utf8')) as {
+			jobs: { cli: { strategy: { matrix: { include: Array<{ asset: string }> } } } };
+		};
+		const matrixAssets = workflow.jobs.cli.strategy.matrix.include.map((entry) => entry.asset);
+		// A GitHub Actions matrix must stay static YAML, so this is the one
+		// hand-maintained copy of the CLI asset list; every other consumer in
+		// this repo's release tooling derives from CLI_BINARIES instead of
+		// repeating it, and this test is what keeps the two matched.
+		expect(matrixAssets.sort()).toEqual([...CLI_BINARIES].sort());
+	});
+
+	test('publish-bootstrap derives its asset list from validate-release-assets.mjs instead of a fourth hand-written copy', () => {
+		const workflow = Bun.YAML.parse(readFileSync(join(WORKFLOWS, 'release.yml'), 'utf8')) as {
+			jobs: { 'publish-bootstrap': { steps: Array<{ name?: string; run?: string }> } };
+		};
+		const run = workflow.jobs['publish-bootstrap'].steps.find(
+			(step) => step.name === 'Verify matching public assets before npm'
+		)?.run;
+		if (!run) throw new Error('Missing publish-bootstrap step: Verify matching public assets before npm');
+		expect(run).toContain("from '../scripts/validate-release-assets.mjs'");
+		expect(run).not.toContain('openpalm-cli-linux-x64 openpalm-cli-linux-arm64');
+	});
+
+	test('every desktop target electron-builder.yml configures is required, with names derived from the version', () => {
+		expect(expectedDesktopAssets('1.4.2', productName)).toEqual([
+			'OpenPalm-1.4.2-arm64-mac.zip',
+			'OpenPalm-1.4.2-mac.zip',
+			'OpenPalm Setup 1.4.2.exe',
+			'OpenPalm-1.4.2-win.zip',
+			'OpenPalm-1.4.2.AppImage',
+			'OpenPalm-1.4.2-arm64.AppImage'
+		]);
+	});
+
+	test('the Intel mac zip carries no arch token, matching the live-release-verified naming (review D2)', () => {
+		expect(desktopAssetName(productName, '1.4.2', { platform: 'mac', arch: 'x64', kind: 'zip' })).toBe(
+			'OpenPalm-1.4.2-mac.zip'
+		);
+		expect(desktopAssetName(productName, '1.4.2', { platform: 'mac', arch: 'arm64', kind: 'zip' })).toBe(
+			'OpenPalm-1.4.2-arm64-mac.zip'
+		);
+	});
+
+	test('required assets cover CLI binaries, every desktop artifact, the updater feed, and checksums', () => {
+		const required = requiredReleaseAssets('2.0.0-beta.1', productName);
+		for (const binary of CLI_BINARIES) expect(required).toContain(binary);
+		for (const asset of expectedDesktopAssets('2.0.0-beta.1', productName)) expect(required).toContain(asset);
+		for (const feed of expectedUpdaterFeeds('2.0.0-beta.1')) expect(required).toContain(feed);
+		expect(required).toContain('checksums-sha256.txt');
+		// A beta candidate publishes its own channel feed, never the stable name.
+		expect(required).not.toContain('latest.yml');
+	});
+
+	test('checksumFor matches a filename containing a space, like the default NSIS installer name', () => {
+		const hash = 'f'.repeat(64);
+		const checksums = `${hash}  OpenPalm Setup 1.4.2.exe\n`;
+		expect(checksumFor(checksums, 'OpenPalm Setup 1.4.2.exe')).toBe(hash);
+	});
+
+	function withDir(run: (dir: string) => void): void {
+		const dir = mkdtempSync(join(tmpdir(), 'release-assets-'));
+		try {
+			run(dir);
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
+		}
+	}
+
+	function writeCompleteDist(dir: string, version: string): string[] {
+		const required = requiredReleaseAssets(version, productName);
+		const withoutChecksums = required.filter((name) => name !== 'checksums-sha256.txt');
+		for (const name of withoutChecksums) writeFileSync(join(dir, name), `content-of-${name}`);
+		const lines = withoutChecksums.map((name) => {
+			const hash = createHash('sha256').update(`content-of-${name}`).digest('hex');
+			return `${hash}  ${name}`;
+		});
+		writeFileSync(join(dir, 'checksums-sha256.txt'), `${lines.join('\n')}\n`);
+		writeFileSync(
+			join(dir, 'release-assets-manifest.json'),
+			JSON.stringify({ version, assets: [...required].sort() }, null, 2)
+		);
+		return required;
+	}
+
+	test('validateReleaseAssets passes a complete, checksummed asset set', () => {
+		withDir((dir) => {
+			writeCompleteDist(dir, '1.4.2');
+			expect(validateReleaseAssets(dir, '1.4.2', productName)).toEqual([]);
+		});
+	});
+
+	test('validateReleaseAssets fails closed when every desktop artifact is missing — the exact 0.12.52 gap', () => {
+		withDir((dir) => {
+			writeCompleteDist(dir, '1.4.2');
+			const desktop = expectedDesktopAssets('1.4.2', productName);
+			for (const asset of desktop) rmSync(join(dir, asset));
+			const problems = validateReleaseAssets(dir, '1.4.2', productName);
+			for (const asset of desktop) expect(problems).toContain(`Missing release asset: ${asset}`);
+			expect(problems.length).toBe(desktop.length);
+		});
+	});
+
+	test('validateReleaseAssets fails closed when the updater feed is missing', () => {
+		withDir((dir) => {
+			writeCompleteDist(dir, '1.4.2');
+			const feeds = expectedUpdaterFeeds('1.4.2');
+			for (const feed of feeds) rmSync(join(dir, feed));
+			const problems = validateReleaseAssets(dir, '1.4.2', productName);
+			for (const feed of feeds) expect(problems).toContain(`Missing release asset: ${feed}`);
+		});
+	});
+
+	test('validateReleaseAssets catches a desktop artifact corrupted in transit even though it is present', () => {
+		withDir((dir) => {
+			writeCompleteDist(dir, '1.4.2');
+			writeFileSync(join(dir, 'OpenPalm-1.4.2-arm64-mac.zip'), 'corrupted-in-transit');
+			const problems = validateReleaseAssets(dir, '1.4.2', productName);
+			expect(problems).toContain('Checksum mismatch for OpenPalm-1.4.2-arm64-mac.zip');
+		});
 	});
 });

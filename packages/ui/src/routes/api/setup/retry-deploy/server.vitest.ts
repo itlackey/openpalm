@@ -40,6 +40,13 @@ vi.mock('$lib/server/setup-deploy.js', async (importOriginal) => {
 
 import { POST } from './+server.js';
 
+// getRequestId(event) (W15 error envelope) reads event.request.headers — a
+// bare `{}` throws before the route logic runs, so every call needs a real
+// Request even though these tests don't care about its URL/headers.
+function fakeEvent(): Parameters<typeof POST>[0] {
+  return { request: new Request('http://127.0.0.1/api/setup/retry-deploy') } as Parameters<typeof POST>[0];
+}
+
 // ── Temp home ───────────────────────────────────────────────────────────────
 
 let rootDir = '';
@@ -72,7 +79,7 @@ describe('POST /api/setup/retry-deploy', () => {
     mkdirSync(stateDir, { recursive: true });
     writeFileSync(join(stateDir, 'stack.env'), 'OP_SETUP_COMPLETE=true\n');
 
-    const response = await POST({} as never);
+    const response = await POST(fakeEvent());
     const payload = await response.json();
 
     expect(response.status).toBe(409);
@@ -96,7 +103,7 @@ describe('POST /api/setup/retry-deploy', () => {
     const akmConfigMtimeBefore = statSync(akmConfigFile).mtimeMs;
 
     // POST the route — startDeploy is mocked so no Docker calls happen.
-    const response = await POST({} as never);
+    const response = await POST(fakeEvent());
     expect(response.status).toBe(200);
 
     const secretMtimeAfter = statSync(secretFile).mtimeMs;

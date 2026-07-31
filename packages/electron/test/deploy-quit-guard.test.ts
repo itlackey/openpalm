@@ -137,6 +137,14 @@ vi.mock('@openpalm/lib', () => ({
   createState: vi.fn(() => ({ dataDir: '/home/user/.openpalm/data' })),
   resolveDeployJournalPath: vi.fn((state: { dataDir: string }) => `${state.dataDir}/setup/deploy-journal.json`),
   readDeployJournal: mockReadDeployJournal,
+  // Minimal fake of lib's UiSupervisor (adopt()/current only — main.ts never
+  // calls start() here; see main.ts's uiSupervisor docblock).
+  UiSupervisor: class {
+    current: unknown = null;
+    adopt(handle: unknown) {
+      this.current = handle;
+    }
+  },
 }));
 
 // Importing for its module-scope side effect: registers app.on('before-quit', ...).

@@ -1,17 +1,37 @@
 #!/usr/bin/env bun
-import { defineCommand, runCommand, runMain } from 'citty';
+import { defineCommand, parseArgs, runCommand, runMain, type ArgsDef } from 'citty';
 import cliPkg from '../package.json' with { type: 'json' };
 import { classifyLocalInstall, resolveStackDir, resolveOpenPalmHome, resolveEnvPort, readStackEnv } from '@openpalm/lib';
-import { DEFAULT_ASSISTANT_PORT } from './lib/ports.ts';
+import { DEFAULT_ASSISTANT_PORT, DEFAULT_UI_PORT } from './lib/ports.ts';
 
 // Re-export public API used by tests and external consumers
 export { detectHostInfo } from './lib/host-info.ts';
 export type { HostInfo } from './lib/host-info.ts';
 
-interface BareRunOpts {
+export interface BareRunOpts {
   port?: number;
   open?: boolean;
 }
+
+/**
+ * Bare-command flags — the ONE definition both `mainCommand`'s --help text
+ * and the actual bare-run parsing below use. Before this they were two
+ * independent sources of truth (mainCommand.args existed for --help only; a
+ * hand-rolled parseBareArgs did the real parsing) that had already drifted:
+ * the hand-rolled parser understood `--no-open` but not `--open=false`, and
+ * silently dropped a malformed `--port` instead of erroring.
+ */
+const bareArgsDef = {
+  port: {
+    type: 'string',
+    description: `UI server port (default: ${DEFAULT_UI_PORT} or OP_HOST_UI_PORT)`,
+  },
+  open: {
+    type: 'boolean',
+    description: 'Open browser after start (use --no-open to skip)',
+    default: true,
+  },
+} satisfies ArgsDef;
 
 /**
  * Probe the assistant container's healthcheck to decide whether the stack
@@ -76,7 +96,7 @@ async function autoRun(opts: BareRunOpts = {}): Promise<void> {
     // value nothing reads.
     await bootstrapInstall({
       force: false,
-      version: cliPkg.version ?? 'main',
+      version: cliPkg.version,
       noStart: false,
       noOpen: opts.open === false,
       assumeYes: false,
@@ -136,17 +156,7 @@ export const mainCommand = defineCommand({
     version: cliPkg.version,
     description: 'OpenPalm CLI — install and manage a self-hosted OpenPalm stack',
   },
-  args: {
-    port: {
-      type: 'string',
-      description: 'UI server port (default: 3880 or OP_HOST_UI_PORT)',
-    },
-    open: {
-      type: 'boolean',
-      description: 'Open browser after start (use --no-open to skip)',
-      default: true,
-    },
-  },
+  args: bareArgsDef,
   subCommands,
 });
 
@@ -188,17 +198,27 @@ function unknownCommandMessage(command: string): string {
   return `Unknown command: ${command}. Run \`openpalm --help\` to see available commands.`;
 }
 
-/** Parse `--port`/`--no-open` from a bare-command argv. */
-function parseBareArgs(argv: string[]): BareRunOpts {
+/**
+ * Parse `--port`/`--open`/`--no-open` from a bare-command argv, via citty's
+ * own `parseArgs` against `bareArgsDef` — the SAME definition `mainCommand`
+ * uses for --help, instead of a hand-rolled loop that had drifted from it: it
+ * understood `--no-open` but not `--open=false`, and silently dropped a
+ * malformed `--port` (`Number('banana')` → NaN, which resolveHostUiPort's own
+ * `Number.isFinite` guard then discards with no indication anything was
+ * wrong, quietly falling back to the persisted/default port instead).
+ */
+export function parseBareArgs(argv: string[]): BareRunOpts {
+  const parsed = parseArgs(argv, bareArgsDef);
   const opts: BareRunOpts = {};
-  for (let i = 0; i < argv.length; i++) {
-    if (argv[i] === '--port' && argv[i + 1]) {
-      opts.port = Number(argv[++i]);
-    } else if (argv[i]?.startsWith('--port=')) {
-      opts.port = Number(argv[i]?.split('=')[1]);
-    } else if (argv[i] === '--no-open') {
-      opts.open = false;
+  // `open` defaults to true (bareArgsDef), so only an explicit --no-open /
+  // --open=false needs to be threaded through.
+  if (parsed.open === false) opts.open = false;
+  if (typeof parsed.port === 'string' && parsed.port.length > 0) {
+    const port = Number(parsed.port);
+    if (!Number.isFinite(port)) {
+      throw new Error(`Invalid --port value "${parsed.port}". Expected a number.`);
     }
+    opts.port = port;
   }
   return opts;
 }
@@ -237,7 +257,15 @@ if (import.meta.main) {
     console.error(unknownCommandMessage(argv[0]));
     process.exit(1);
   } else if (!hasSubcommand(argv)) {
-    await autoRun(parseBareArgs(argv));
+    // parseBareArgs can now throw (a malformed --port) — previously it never
+    // did, so this path had no error boundary of its own. Match the
+    // unknown-subcommand branch above: one-line message, exit(1).
+    try {
+      await autoRun(parseBareArgs(argv));
+    } catch (err) {
+      console.error(err instanceof Error ? err.message : String(err));
+      process.exit(1);
+    }
   } else {
     await runMain(mainCommand);
   }

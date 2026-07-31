@@ -85,6 +85,18 @@ type SessionId = string;
  */
 const STREAM_TURN_TIMEOUT_MS = 150_000;
 
+/**
+ * Grace period after an SSE disconnect before a pending turn is treated as
+ * unrecoverable. A dropped stream is not itself a failed turn — the POST that
+ * started it (`startChatMessageTurn`) runs independently and may complete
+ * server-side regardless, and `session-events`'s own reconnect is fast (not
+ * backed off) for a stream that was actually delivering frames, which is
+ * exactly the "routine rotation" case (e.g. an `/oc` server restart) this
+ * exists to not scare the user over. Only a disconnect that outlasts this
+ * window — well short of STREAM_TURN_TIMEOUT_MS — fails the turn.
+ */
+const TURN_DISCONNECT_GRACE_MS = 10_000;
+
 type TurnFailure = Error & { turnMayHaveRun?: true };
 
 function isExplicitRejection(error: unknown): boolean {
@@ -147,6 +159,13 @@ type PendingTurn = {
 	 * see `_armTurnTimeout`. Never both set AND expected to fire while paused.
 	 */
 	timeout: ReturnType<typeof setTimeout> | null;
+	/**
+	 * Set while an SSE disconnect is being given a chance to reconnect (see
+	 * TURN_DISCONNECT_GRACE_MS). Null the rest of the time — including while
+	 * the stream is healthy — so its mere presence answers "is a disconnect
+	 * currently being tolerated for this turn?".
+	 */
+	disconnectGrace: ReturnType<typeof setTimeout> | null;
 };
 
 function emptyEndpointState(): EndpointChatState {
@@ -288,6 +307,26 @@ class ChatService {
 		);
 	}
 
+	/**
+	 * The "check generation after every await" staleness test (#F8) for
+	 * callers that don't yet have a specific session id to compare against —
+	 * only the endpoint and the session-selection generation captured at the
+	 * start of the async op. The narrower sibling of isSessionCurrent; every
+	 * async chat op must recheck ITS OWN combination of these after each
+	 * await, since a missed check is how a superseded operation clobbers a
+	 * newer one's result (see the onConnect/loadSessions note above).
+	 */
+	private isSelectionCurrent(
+		endpointId: EndpointId,
+		endpointGeneration: number,
+		sessionGeneration: number
+	): boolean {
+		return (
+			this.isEndpointCurrent(endpointId, endpointGeneration) &&
+			this.sessionGeneration === sessionGeneration
+		);
+	}
+
 	private async persistLastSession(
 		endpointId: EndpointId,
 		endpointGeneration: number,
@@ -382,6 +421,15 @@ class ChatService {
 			onConnect: () => {
 				if (!isCurrent()) return;
 				this.liveConnected = true;
+				// A reconnect inside the grace window means the disconnect was
+				// exactly the "routine rotation" case it exists to tolerate — the
+				// turn was never actually in trouble, so cancel the countdown
+				// without touching anything else about it.
+				const pending = this._pendingTurn;
+				if (pending?.disconnectGrace) {
+					clearTimeout(pending.disconnectGrace);
+					pending.disconnectGrace = null;
+				}
 				// A connect can follow a stretch where the assistant was still
 				// warming up and the initial session load failed (or never
 				// completed) — now that the stream is confirmably live, retry so a
@@ -404,11 +452,21 @@ class ChatService {
 			onDisconnect: () => {
 				if (!isCurrent()) return;
 				this.liveConnected = false;
-				if (this._pendingTurn) {
-					this._failPendingTurn(
-						new Error('The assistant connection was interrupted. This request may have run; check activity before trying again.'),
-						true
-					);
+				const pending = this._pendingTurn;
+				// A disconnect is not itself a failed turn (F7): session-events
+				// reconnects fast when the stream was actually flowing, and the
+				// POST that started this turn runs independently of the SSE
+				// stream. Give it TURN_DISCONNECT_GRACE_MS to come back before
+				// treating the turn as unrecoverable — onConnect above cancels
+				// this the instant the stream is live again.
+				if (pending && !pending.disconnectGrace) {
+					pending.disconnectGrace = setTimeout(() => {
+						if (this._pendingTurn !== pending) return;
+						this._failPendingTurn(
+							new Error('The assistant connection was interrupted. This request may have run; check activity before trying again.'),
+							true
+						);
+					}, TURN_DISCONNECT_GRACE_MS);
 				}
 			},
 		});
@@ -519,6 +577,7 @@ class ChatService {
 		const pending = this._pendingTurn;
 		if (!pending) return null;
 		if (pending.timeout) clearTimeout(pending.timeout);
+		if (pending.disconnectGrace) clearTimeout(pending.disconnectGrace);
 		this._pendingTurn = null;
 		return pending;
 	}
@@ -867,11 +926,26 @@ class ChatService {
 
 		while (requestIsCurrent()) {
 			const revision = this.sessionRevision(id);
+			// The two things every await below must recheck before touching
+			// state, expressed once instead of re-derived ad hoc at each of the
+			// six sites that follow — forgetting either check on a newly-added
+			// await here is exactly the bug class the onConnect/loadSessions
+			// note above guards against. 'stale': a DIFFERENT load or endpoint
+			// switch has superseded this call outright — bail and let that call
+			// win. 'revised': only the list itself changed underneath this
+			// fetch (an out-of-band session.created/updated/deleted) — cheap to
+			// retry the loop with a fresh revision rather than act on data
+			// already known wrong.
+			const checkpoint = (): 'ok' | 'stale' | 'revised' => {
+				if (!requestIsCurrent()) return 'stale';
+				if (this.sessionRevision(id) !== revision) return 'revised';
+				return 'ok';
+			};
 			this.setEndpointState(id, { sessionsLoading: true, sessionsError: '' });
 			try {
 				const sessions = await listSessions();
-				if (!requestIsCurrent()) return false;
-				if (this.sessionRevision(id) !== revision) continue;
+				if (checkpoint() === 'stale') return false;
+				if (checkpoint() === 'revised') continue;
 
 				this.setEndpointState(id, {
 					sessions,
@@ -886,21 +960,21 @@ class ChatService {
 					this.entriesLoading = false;
 					this._resetPendingRenderState();
 					await this.persistLastSession(id, endpointGeneration, null, sessionGeneration);
-					if (!requestIsCurrent()) return false;
-					if (this.sessionRevision(id) !== revision) continue;
+					if (checkpoint() === 'stale') return false;
+					if (checkpoint() === 'revised') continue;
 				} else {
 					const current = this.byEndpoint.get(id)?.activeSessionId ?? null;
 					if (current && sessions.some((session) => session.id === current)) {
 						if (reopenCurrent) {
 							await this.openSession(current);
-							if (!requestIsCurrent()) return false;
-							if (this.sessionRevision(id) !== revision) continue;
+							if (checkpoint() === 'stale') return false;
+							if (checkpoint() === 'revised') continue;
 						}
 					} else {
 						const selectionGeneration = ++this.sessionGeneration;
 						const persisted = await getConnectionStore().getLastSessionId(id).catch(() => null);
-						if (!requestIsCurrent()) return false;
-						if (this.sessionRevision(id) !== revision) continue;
+						if (checkpoint() === 'stale') return false;
+						if (checkpoint() === 'revised') continue;
 						if (this.sessionGeneration !== selectionGeneration) return false;
 						const nextSessionId =
 							persisted && sessions.some((session) => session.id === persisted)
@@ -908,14 +982,14 @@ class ChatService {
 								: sessions[0].id;
 						this.setEndpointState(id, { activeSessionId: nextSessionId });
 						await this.openSession(nextSessionId);
-						if (!requestIsCurrent()) return false;
-						if (this.sessionRevision(id) !== revision) continue;
+						if (checkpoint() === 'stale') return false;
+						if (checkpoint() === 'revised') continue;
 					}
 				}
 				return true;
 			} catch (e) {
-				if (!requestIsCurrent()) return false;
-				if (this.sessionRevision(id) !== revision) continue;
+				if (checkpoint() === 'stale') return false;
+				if (checkpoint() === 'revised') continue;
 				this.setEndpointState(id, {
 					sessionsLoading: false,
 					sessionsError: mapAssistantError(e, { fallback: 'Failed to load sessions.' }),
@@ -1025,8 +1099,7 @@ class ChatService {
 		this.error = '';
 		try {
 			const { id } = await createSession();
-			if (!this.isEndpointCurrent(endpointId, endpointGeneration)) return null;
-			if (this.sessionGeneration !== sessionGeneration) return null;
+			if (!this.isSelectionCurrent(endpointId, endpointGeneration, sessionGeneration)) return null;
 			const now = Date.now();
 			const summary = { id, title: '', createdAt: now, updatedAt: now };
 			const prev = this.byEndpoint.get(endpointId) ?? emptyEndpointState();
@@ -1045,8 +1118,7 @@ class ChatService {
 			);
 			return id;
 		} catch (e) {
-			if (!this.isEndpointCurrent(endpointId, endpointGeneration)) return null;
-			if (this.sessionGeneration !== sessionGeneration) return null;
+			if (!this.isSelectionCurrent(endpointId, endpointGeneration, sessionGeneration)) return null;
 			this.error = mapAssistantError(e, { fallback: 'Failed to start conversation.' });
 			return null;
 		}
@@ -1129,6 +1201,7 @@ class ChatService {
 						resolve,
 						reject,
 						timeout: null,
+						disconnectGrace: null,
 					};
 					this._pendingTurn = pendingTurn;
 					this._armTurnTimeout(pendingTurn);

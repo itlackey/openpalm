@@ -96,6 +96,72 @@ describe('SetupState — UI login password rerun keep-as-is (PR #564 P1-1)', () 
   });
 });
 
+// W12: there was no way to choose a password — installs got a generated hex
+// string and the rotation machinery (uiLoginPasswordDirty,
+// keepExistingUiLoginPassword) was wired but never actually driven by any UI.
+describe('SetupState — W12 password input', () => {
+  it('a fresh install with the untouched generated default is valid', () => {
+    const s = new SetupState();
+    s.uiLoginPassword = 'a'.repeat(32); // generatePassword()'s length
+    expect(s.passwordValid).toBe(true);
+  });
+
+  it('updateUiLoginPassword marks the field dirty and validates length', () => {
+    const s = new SetupState();
+    s.updateUiLoginPassword('short');
+    expect(s.uiLoginPasswordDirty).toBe(true);
+    expect(s.uiLoginPassword).toBe('short');
+    expect(s.passwordValid).toBe(false);
+
+    s.updateUiLoginPassword('a-fine-password');
+    expect(s.passwordValid).toBe(true);
+  });
+
+  it('an untouched rerun (no password field ever opened) is always valid', () => {
+    const s = new SetupState();
+    s.isRerun = true;
+    s.uiLoginPassword = '';
+    s.uiLoginPasswordDirty = false;
+    expect(s.passwordValid).toBe(true);
+  });
+
+  it('opting into a rerun password change validates the new value', () => {
+    const s = new SetupState();
+    s.isRerun = true;
+    s.updateUiLoginPassword('short');
+    expect(s.passwordValid).toBe(false);
+    s.updateUiLoginPassword('long-enough-pw');
+    expect(s.passwordValid).toBe(true);
+  });
+
+  it('cancelUiLoginPasswordChange reverts a rerun to "keep existing"', () => {
+    const s = new SetupState();
+    s.isRerun = true;
+    s.updateUiLoginPassword('short');
+    expect(s.passwordValid).toBe(false);
+
+    s.cancelUiLoginPasswordChange();
+    expect(s.uiLoginPasswordDirty).toBe(false);
+    expect(s.uiLoginPassword).toBe('');
+    expect(s.passwordValid).toBe(true);
+    expect(s.payload.security).toEqual({});
+  });
+
+  it('handleInstall refuses to proceed with an invalid password', async () => {
+    const { completeSetup } = await import('$lib/setup-api.js');
+    const s = new SetupState();
+    s.initProviderState();
+    s.modelSelection.llm = { connId: 'ollama', model: 'llama3.2', dims: 0 };
+    s.updateUiLoginPassword('short');
+
+    await s.handleInstall();
+
+    expect(s.installError).toMatch(/at least 8 characters/);
+    expect(s.installing).toBe(false);
+    expect(completeSetup).not.toHaveBeenCalled();
+  });
+});
+
 describe('SetupState — the assistant key is generated, never typed', () => {
   it('no toggle asks the operator for a credential', () => {
     // Older access setup made the operator hold a second password. Publishing
@@ -239,6 +305,38 @@ describe('SetupState — handleConnectModeChange (cloud ↔ local)', () => {
     // Stays stable — the row must not vanish while the active selection is local.
     expect(s.modelSelection.llm?.connId).toBe('ollama');
     expect(s.detectedCloudConn).toBe('openai');
+  });
+
+  // W9: in-stack Ollama is a Linux container with no Metal access — CPU-only,
+  // exactly what setup-recommendation.ts's macOS branch exists to prevent.
+  // Selecting Local on an Apple Silicon Mac before a real host Ollama is
+  // running must not silently enable that fallback.
+  it('does not enable in-stack Ollama on Apple Silicon without a running host Ollama', () => {
+    const s = new SetupState();
+    s.initProviderState();
+    s.detectedGpuVendor = 'apple';
+
+    s.handleConnectModeChange('local');
+
+    expect(s.modelMode).toBe('local');
+    expect(s.ollamaEnabled).toBe(false);
+    expect(s.providerState.ollama.selected).toBe(false);
+  });
+
+  it('still enables in-stack Ollama on Apple Silicon once a host Ollama is detected running', () => {
+    const s = new SetupState();
+    s.initProviderState();
+    s.detectedGpuVendor = 'apple';
+    s.detectedHostProviders = [{ provider: 'ollama', url: 'http://127.0.0.1:11434' }];
+
+    s.handleConnectModeChange('local');
+
+    // hostLocalLlmRunning is true here, so the payload uses the real host
+    // runtime rather than the in-stack one — ollamaEnabled correctly stays
+    // false (buildSetupPayload suppresses the addon when a host runtime is
+    // running), and the chat model still resolves to a usable local option.
+    expect(s.modelMode).toBe('local');
+    expect(s.canComplete).toBe(true);
   });
 });
 

@@ -206,7 +206,7 @@
                 class="btn btn-primary"
                 id="btn-install"
                 onclick={() => void s.handleInstall()}
-                disabled={!s.canComplete || s.installing}
+                disabled={!s.canComplete || !s.passwordValid || s.installing}
               >
                 {#if s.installing}Installing...{:else}{s.isRerun ? 'Update' : 'Install'}{/if}
               </button>

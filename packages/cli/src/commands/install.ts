@@ -19,7 +19,9 @@ import {
 	hasAnyStackEnvFile,
 	resolveBackupsDirFor,
 	resolveRuntimeFiles,
-	ensureDockerReady
+	ensureDockerReady,
+	acquireInstallLock,
+	releaseInstallLock
 } from '@openpalm/lib';
 import { applyHomeSeed } from '@openpalm/lib';
 import { materializeEmbeddedUi, seedSkeletonFromEmbedded } from '../lib/embedded-assets.ts';
@@ -52,8 +54,9 @@ const logger = createLogger('cli:install');
 
 export async function resolveDefaultInstallRef(): Promise<string> {
 	// Prefer the latest published release tag; fall back to the packaged CLI
-	// version (then `main`) when the network lookup fails.
-	return (await resolveLatestReleaseTag()) ?? cliPkg.version ?? 'main';
+	// version when the network lookup fails. cliPkg.version always exists — a
+	// further `?? 'main'` fallback here can never fire.
+	return (await resolveLatestReleaseTag()) ?? cliPkg.version;
 }
 
 export default defineCommand({
@@ -137,8 +140,7 @@ export default defineCommand({
 				file: args.file ? String(args.file) : undefined,
 				assumeYes: !!args.yes
 			});
-		},
-		(message) => console.error(`Error: ${message}`)
+		}
 	)
 });
 
@@ -305,40 +307,63 @@ export async function bootstrapInstall(options: InstallOptions): Promise<void> {
 					'state are NOT included) — then prune old backups down to the 3 most recent. Continue? [y/N]'
 			);
 			if (!proceed) {
-				console.log(
+				// A declined confirmation is a no-op, not a success: exit non-zero so
+				// scripts can tell "the user said no" apart from "the install ran"
+				// (this used to `return` here, exiting 0 either way).
+				throw new Error(
 					'Install aborted. Re-run with --yes (or -y) to skip this confirmation in non-interactive use.'
 				);
-				return;
 			}
-		}
-		// #461: stop the currently-running stack BEFORE backing up OP_HOME.
-		// Backing up the home dir while the old stack is up leaves orphaned containers
-		// holding the project name + host ports, so the fresh install collides on
-		// `compose up`. Volumes are preserved (no -v). Best-effort: a Docker-down
-		// host or a never-started install simply has nothing to bring down.
-		try {
-			const existingState = createState();
-			existingState.artifacts = resolveRuntimeFiles();
-			if (existingState.artifacts.compose) {
-				console.log('Stopping existing stack before backup...');
-				await runComposeWithPreflight(existingState, ['down']);
-			}
-		} catch (err) {
-			if (err instanceof Error && err.message.startsWith('Refusing Compose')) throw err;
-			logger.debug('pre-force compose down threw — continuing', { error: String(err) });
-		}
-
-		const backupDir = backupOpenPalmHome(homeDir);
-		if (backupDir) {
-			console.log(`Backed up existing OP_HOME to ${backupDir}`);
-			// Bounded retention: keep the most recent few snapshots so repeated
-			// --force runs can't accumulate unbounded and fill the disk.
-			pruneBackupDirs(homeDir, 3);
 		}
 	}
 
-	// ── Bootstrap files ────────────────────────────────────────────────────
-	await prepareInstallFiles(homeDir, configDir, dataDir, workDir, options.version);
+	// Acquire the install lock across compose-down + backup + prune + the home
+	// seed (C10/B10): none of that previously ran under any lock, so two
+	// concurrent `--force -y` runs could interleave a backup with a fresh seed.
+	// Released BEFORE runFileInstall/runWizardInstall — both reach this SAME
+	// lock themselves (performSetup / runDeploy), and the wizard path in
+	// particular spawns a long-lived child while THIS process blocks in its own
+	// supervisor loop, so holding the lock past this point would make that
+	// child's later deploy see it (still) held by a live PID forever.
+	const seedLock = acquireInstallLock(dataDir);
+	if (!seedLock) {
+		throw new Error(
+			"install_in_progress: Another install or update is already running. Wait for it to finish, or run 'openpalm unlock' to clear a stale lock."
+		);
+	}
+	try {
+		if (alreadyInstalled && options.force) {
+			// #461: stop the currently-running stack BEFORE backing up OP_HOME.
+			// Backing up the home dir while the old stack is up leaves orphaned containers
+			// holding the project name + host ports, so the fresh install collides on
+			// `compose up`. Volumes are preserved (no -v). Best-effort: a Docker-down
+			// host or a never-started install simply has nothing to bring down.
+			try {
+				const existingState = createState();
+				existingState.artifacts = resolveRuntimeFiles();
+				if (existingState.artifacts.compose) {
+					console.log('Stopping existing stack before backup...');
+					await runComposeWithPreflight(existingState, ['down']);
+				}
+			} catch (err) {
+				if (err instanceof Error && err.message.startsWith('Refusing Compose')) throw err;
+				logger.debug('pre-force compose down threw — continuing', { error: String(err) });
+			}
+
+			const backupDir = backupOpenPalmHome(homeDir);
+			if (backupDir) {
+				console.log(`Backed up existing OP_HOME to ${backupDir}`);
+				// Bounded retention: keep the most recent few snapshots so repeated
+				// --force runs can't accumulate unbounded and fill the disk.
+				pruneBackupDirs(homeDir, 3);
+			}
+		}
+
+		// ── Bootstrap files ────────────────────────────────────────────────────
+		await prepareInstallFiles(homeDir, configDir, dataDir, workDir, options.version);
+	} finally {
+		releaseInstallLock(seedLock);
+	}
 
 	// ── Configure ──────────────────────────────────────────────────────────
 	// File-based install: read config, run performSetup, optionally deploy
@@ -508,7 +533,9 @@ async function runFileInstall(
 	const config = await parseConfigFile(filePath, await Bun.file(filePath).text());
 
 	if (config.version !== 2)
-		throw new Error('Setup config must be version 2. See example.spec.yaml for the format.');
+		throw new Error(
+			'Setup config must be version 2. See docs/operations/manual-headless-install.md for the format.'
+		);
 	if ('spec' in config || 'capabilities' in config) {
 		throw new Error(
 			'Setup config must use the modern flat shape (`llm`, `embedding`, `security`, `connections`) — legacy `spec`/`capabilities` forms are no longer supported.'

@@ -46,6 +46,12 @@ vi.mock('node:child_process', async (importOriginal) => {
   };
 });
 
+// ── Mock process-tree — pin the UiSupervisor migration's kill strategy
+// without shelling out a real SIGTERM/SIGKILL against whatever pid a test
+// fixture happens to carry.
+const { mockKillProcessTree } = vi.hoisted(() => ({ mockKillProcessTree: vi.fn() }));
+vi.mock('../src/process-tree.js', () => ({ killProcessTree: mockKillProcessTree }));
+
 // ── Mock electron before importing anything that imports it ──────────────────
 // vi.mock() factories are hoisted above other top-level code, so the mock
 // objects they close over must be created via vi.hoisted() to be reachable
@@ -277,6 +283,15 @@ vi.mock('@openpalm/lib', () => ({
     startedAt: null,
     pid: null,
   })),
+  // Faithful-enough fake of lib's UiSupervisor: adopt()/current match the real
+  // class exactly (main.ts never calls start() — see its uiSupervisor
+  // docblock — so start() isn't reproduced here).
+  UiSupervisor: class {
+    current: unknown = null;
+    adopt(handle: unknown) {
+      this.current = handle;
+    }
+  },
 }));
 
 
@@ -294,6 +309,8 @@ import {
   setLaunchOnLogin,
   shouldWarnBeforeQuitDuringDeploy,
   showNotification,
+  stopUIServer,
+  stopUiChild,
   supportsLaunchOnLogin,
   waitForReady,
 } from '../src/main.js';
@@ -708,6 +725,35 @@ describe('waitForReady', () => {
   });
 });
 
+// ── stopUiChild (UiSupervisor migration — shared group-kill strategy) ──────
+// The desktop harness now stores the UI child handle in lib's UiSupervisor
+// (via adopt()/current) instead of a bare module-level variable, and drives
+// teardown through this exported strategy function instead of inlining the
+// kill sequence at each call site. Pure over its argument, so the sequence
+// pins here without spawning a real child.
+describe('stopUiChild', () => {
+  beforeEach(() => {
+    mockKillProcessTree.mockClear();
+  });
+
+  it('is a no-op for a null handle (nothing adopted)', async () => {
+    await stopUiChild(null);
+    expect(mockKillProcessTree).not.toHaveBeenCalled();
+  });
+
+  it('is a no-op for a handle with no pid', async () => {
+    await stopUiChild({} as unknown as Parameters<typeof stopUiChild>[0]);
+    expect(mockKillProcessTree).not.toHaveBeenCalled();
+  });
+
+  it('group-kills SIGTERM then SIGKILL for a handle with a pid', async () => {
+    await stopUiChild({ pid: 4242 } as unknown as Parameters<typeof stopUiChild>[0]);
+    expect(mockKillProcessTree).toHaveBeenNthCalledWith(1, 4242, 'SIGTERM');
+    expect(mockKillProcessTree).toHaveBeenNthCalledWith(2, 4242, 'SIGKILL');
+    expect(mockKillProcessTree).toHaveBeenCalledTimes(2);
+  });
+});
+
 // ── openLocalApp compatibility alias ─────────────────────────────────────────
 describe('openLocalApp', () => {
   afterEach(() => {
@@ -873,6 +919,37 @@ describe('desktop bootstrap', () => {
     ]);
     // Seeded BEFORE the child starts, or the child reads the old tree.
     expect(seedOrder[0]).toBeLessThan(spawnOrder[0]);
+  });
+});
+
+// ── UiSupervisor migration — adopt()/current handle lifecycle ──────────────
+// 'desktop bootstrap' (above) already spawned and adopted the ONE UI child
+// this suite ever spawns. This pins the other half of the migration: the
+// child's own 'exit' handler un-adopts it (uiSupervisor.adopt(null)), so a
+// later stopUIServer() call finds nothing to kill instead of re-targeting a
+// pid that no longer belongs to a running process.
+describe('UiSupervisor migration — UI child handle lifecycle', () => {
+  it('un-adopts the UI child on exit, so a later stop is a no-op instead of re-killing a dead pid', async () => {
+    const { spawn } = await import('node:child_process');
+    const fakeProcess = vi.mocked(spawn).mock.results[0]?.value as {
+      on: ReturnType<typeof vi.fn>;
+      pid?: number;
+    };
+    expect(fakeProcess, 'the shared spawn() fixture from desktop bootstrap').toBeDefined();
+
+    const exitHandler = fakeProcess.on.mock.calls.find(
+      ([event]: [string]) => event === 'exit',
+    )?.[1] as ((code: number | null) => void) | undefined;
+    expect(exitHandler, "spawnUIServer must register an 'exit' handler").toBeDefined();
+
+    // Give the fixture a pid so the no-op assertion below is meaningful (a
+    // handle with no pid would no-op regardless of adopt state).
+    fakeProcess.pid = 4242;
+    exitHandler?.(0);
+
+    mockKillProcessTree.mockClear();
+    stopUIServer();
+    expect(mockKillProcessTree).not.toHaveBeenCalled();
   });
 });
 

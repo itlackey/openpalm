@@ -24,6 +24,7 @@ import {
   checkDiskHeadroom,
   checkDocker,
   checkDockerCompose,
+  checkExistingUiInstance,
   cleanCaches,
   cleanupImagesAndVolumes,
   buildStorageReport,
@@ -31,6 +32,7 @@ import {
   createOpenCodeClient,
   resolveOpenCodeCredential,
   resolveAssistantEndpoint,
+  detectExistingProject,
   listSessionsPaged,
   toSessionRecord,
   type SessionDeletionClient,
@@ -46,17 +48,24 @@ import {
   readStackEnv,
   reportImagesAndVolumes,
   resolveComposeProjectName,
+  resolveEnvPort,
+  DEFAULT_HOST_UI_PORT,
+  DEFAULT_PUBLISHED_UI_PORT,
+  STACK_DEFAULTS,
   resolveOpenCodeDbPath,
   runOpenCodeDbMaintenance,
+  type ControlPlaneState,
   type DockerResult,
+  type ExistingProject,
   type GpuInfo,
   type ImageVolumeReport,
   type InstallPortStatus,
+  type InstallPortTarget,
   type LocalProviderDetection,
   type RuntimeInfo,
   type StorageReport,
+  type UiInstanceCheck,
 } from '@openpalm/lib';
-import { defineAction } from '../lib/action.ts';
 import { resolveServeState } from '../lib/cli-state.ts';
 import { promptYesNo } from '../lib/prompt.ts';
 
@@ -120,20 +129,34 @@ export default defineCommand({
       default: false,
     },
   },
-  run: defineAction(async ({ args }) => {
-    await runDoctorAction({
-      cleanCaches: !!args['clean-caches'],
-      cleanDocker: !!args['clean-docker'],
-      reclaimDb: !!args['reclaim-db'],
-      sessions: !!args.sessions,
-      pruneSessions: !!args['prune-sessions'],
-      maxAgeDays: args['max-age-days'] as string | undefined,
-      maxSessions: args['max-sessions'] as string | undefined,
-      dryRun: !!args['dry-run'],
-      yes: !!args.yes,
-      json: !!args.json,
-    });
-  }),
+  // Not wrapped in defineAction (C10/B8): a successful run — one that produced
+  // a full report, not a thrown error — must still be able to exit non-zero
+  // when the report itself says Docker FAILed or a blocking port conflict is
+  // unresolved, or `openpalm doctor` is useless for scripts that gate on it.
+  // defineAction's own catch only fires on a THROWN error and always exits 1,
+  // which can't express "ran fine, but here's what's wrong" — the same reason
+  // `scan`/`audit-secrets` also manage their own exit codes.
+  async run({ args }) {
+    let report: DoctorReport;
+    try {
+      report = await runDoctorAction({
+        cleanCaches: !!args['clean-caches'],
+        cleanDocker: !!args['clean-docker'],
+        reclaimDb: !!args['reclaim-db'],
+        sessions: !!args.sessions,
+        pruneSessions: !!args['prune-sessions'],
+        maxAgeDays: args['max-age-days'] as string | undefined,
+        maxSessions: args['max-sessions'] as string | undefined,
+        dryRun: !!args['dry-run'],
+        yes: !!args.yes,
+        json: !!args.json,
+      });
+    } catch (err) {
+      console.error(err instanceof Error ? err.message : String(err));
+      process.exit(1);
+    }
+    process.exit(doctorReportHasFailure(report) ? 1 : 0);
+  },
 });
 
 export interface DoctorReport {
@@ -190,6 +213,10 @@ export interface DoctorDeps {
   detectGpu: typeof detectGpu;
   detectLocalProviders: typeof detectLocalProviders;
   probeInstallPorts: typeof probeInstallPorts;
+  /** Instance-identity probe (D1) — tells the admin (host UI) port apart from a foreign process on it; it is never a container, so no docker check can attribute it to "us". */
+  checkExistingUiInstance: typeof checkExistingUiInstance;
+  /** Ownership-by-project probe (deploy.ts's own collision check) — tells a custom OP_PROJECT_NAME's OWN containers apart from a real foreign conflict on the ui/assistant ports. */
+  detectExistingProject: typeof detectExistingProject;
   checkDiskHeadroom: typeof checkDiskHeadroom;
   describeDiskHeadroom: typeof describeDiskHeadroom;
   buildStorageReport: typeof buildStorageReport;
@@ -213,6 +240,8 @@ export const defaultDoctorDeps: DoctorDeps = {
   detectGpu,
   detectLocalProviders,
   probeInstallPorts,
+  checkExistingUiInstance,
+  detectExistingProject,
   checkDiskHeadroom,
   describeDiskHeadroom,
   buildStorageReport,

@@ -81,7 +81,7 @@ export class TrayController {
    * 'close' handler consults to decide whether hiding to tray is even
    * reachable, instead of assuming create() always succeeds.
    */
-  create(callbacks: TrayCallbacks): void {
+  create(callbacks: TrayCallbacks, platform: NodeJS.Platform = process.platform): void {
     const iconPath = resolveAssetPath('tray-icon.png');
     if (!iconPath) {
       return;
@@ -108,11 +108,19 @@ export class TrayController {
       this.rebuildMenu();
 
       this.tray.setToolTip('OpenPalm');
-      // NOTE: No tray.on('click', ...) handler — a plain tray-icon click should
-      // NOT open/restore the window.  The window is always accessible via the
-      // "Open OpenPalm" item in the context menu (right-click or left-click the
-      // tray icon to see it, depending on the OS).  Removing the click handler
-      // prevents the surprise "tray icon pops my window" behavior reported in #427.
+      // #427: a cross-platform tray.on('click', ...) handler was removed
+      // because macOS/Linux tray backends don't cleanly separate "left-click"
+      // from "the user is opening the context menu" — GNOME's StatusNotifier
+      // host in particular can dispatch the same activation for both, so the
+      // handler fired every time someone just wanted the menu, "popping" the
+      // window open as an unwanted side effect. Windows' notification-area
+      // protocol has no such overlap (Explorer reports left-click and
+      // right-click as distinct events), so restore click-to-open there only —
+      // it's the platform convention, and hide-to-tray with no click affordance
+      // reads as "the app closed" with the context menu as the only way back.
+      if (platform === 'win32') {
+        this.tray.on('click', () => this.callbacks?.onOpen());
+      }
     } catch (err) {
       // No usable tray protocol on this desktop — degrade to "no tray" rather
       // than crashing app startup over a menu-bar icon.

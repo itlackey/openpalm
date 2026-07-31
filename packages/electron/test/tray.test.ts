@@ -115,6 +115,29 @@ describe('TrayController menu template', () => {
   });
 });
 
+describe('TrayController click-to-open (#427)', () => {
+  it('registers a click handler that calls onOpen on win32', () => {
+    const controller = new TrayController();
+    const callbacks = makeCallbacks();
+    controller.create(callbacks, 'win32');
+
+    expect(mockTrayInstance.on).toHaveBeenCalledWith('click', expect.any(Function));
+    const clickHandler = mockTrayInstance.on.mock.calls.find(([event]) => event === 'click')?.[1];
+    expect(clickHandler).toBeTruthy();
+    clickHandler();
+    expect(callbacks.onOpen).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not register a click handler on darwin or linux', () => {
+    for (const platform of ['darwin', 'linux'] as const) {
+      mockTrayInstance.on.mockClear();
+      const controller = new TrayController();
+      controller.create(makeCallbacks(), platform);
+      expect(mockTrayInstance.on).not.toHaveBeenCalledWith('click', expect.any(Function));
+    }
+  });
+});
+
 describe('TrayController.isActive', () => {
   it('is false before create() is called', () => {
     const controller = new TrayController();

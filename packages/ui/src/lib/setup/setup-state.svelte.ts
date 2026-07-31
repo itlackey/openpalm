@@ -330,6 +330,15 @@ export class SetupState {
     !!this.modelSelection.llm?.model || this.allowEmptyInstall,
   );
 
+  // W12: mirrors the server's own rule (setup-validation.ts, >= 8 chars) so a
+  // too-short password is caught before the round-trip instead of surfacing
+  // as a generic install failure. A rerun that never touches the password
+  // field keeps the existing secret (payload above omits it entirely) and so
+  // has nothing here to validate.
+  passwordValid = $derived(
+    (this.isRerun && !this.uiLoginPasswordDirty) || this.uiLoginPassword.length >= 8,
+  );
+
   hasOpenAI = $derived(
     PROVIDERS.some((p) => p.id === 'openai' && this.providerState[p.id]?.verified)
   );
@@ -445,6 +454,13 @@ export class SetupState {
         this.savedCloudLlm = this.modelSelection.llm;
         this.detectedCloudConn = this.modelSelection.llm.connId;
       }
+      // W9: on Apple Silicon, in-stack Ollama is a Linux container with no
+      // Metal access — CPU-only, exactly what setup-recommendation.ts's macOS
+      // branch steers users away from (LocalModelsStatus.svelte shows "install
+      // Ollama for macOS, then Re-check" instead of a runtime status for this
+      // reason). Without a real host Ollama detected yet, selecting Local must
+      // NOT silently enable that fallback out from under the recommendation.
+      if (this.detectedGpuVendor === 'apple' && !this.hostLocalLlmRunning) return;
       // Use a detected host runtime if present; otherwise enable in-stack Ollama.
       if (!this.hostLocalLlmRunning) this.enableRecommendedOllama();
       // Point the chat model at the local runtime so the install + button reflect it.
@@ -526,6 +542,26 @@ export class SetupState {
         this.recommendationAlert = rec.alert;
         break;
     }
+  }
+
+  // W12: called from the Review step's password field, on a fresh install
+  // (override the generated default) or a rerun that opts into changing it.
+  // Marking it dirty is what makes the payload actually SEND the new value —
+  // an untouched rerun field stays non-dirty and the server keeps the
+  // existing secret. Also keeps the stashed copy (readStoredSetupPassword)
+  // in sync so a refresh doesn't quietly revert a fresh install's edit back
+  // to the original generated value — but only for a fresh install; a rerun
+  // edit has no business seeding the value a LATER fresh install would read.
+  updateUiLoginPassword(value: string): void {
+    this.uiLoginPassword = value;
+    this.uiLoginPasswordDirty = true;
+    if (!this.isRerun) writeStoredSetupPassword(value);
+  }
+
+  /** Reverts an in-progress rerun password change back to "keep existing". */
+  cancelUiLoginPasswordChange(): void {
+    this.uiLoginPassword = '';
+    this.uiLoginPasswordDirty = false;
   }
 
   handleEnableVoiceChange(v: boolean): void {
@@ -819,6 +855,14 @@ export class SetupState {
     if (this.installing) return;
     this.installError = '';
 
+    // W12: the Install button is already disabled while this is false — this
+    // is the defensive backstop against a stale/bypassed button state, same
+    // pattern as the AI-configured check right below.
+    if (!this.passwordValid) {
+      this.installError = 'Password must be at least 8 characters.';
+      return;
+    }
+
     // Single "no AI configured" confirmation. When the payload has no `llm`,
     // require one explicit acknowledgment before installing. Rerun keeps
     // existing config, so don't re-prompt there.
@@ -1063,8 +1107,10 @@ export class SetupState {
       if (!ok || !data?.ok) {
         // Hard failure (could not copy host config). Keep the user on the
         // Providers step with a clear message instead of silently doing nothing.
+        // W15: prefer the structured envelope's human `message`, falling back
+        // to the older prose-in-`error` shape for anything not yet migrated.
         this.hostImportError =
-          data?.error ?? `Couldn't import providers from this computer. You can sign in or add a provider manually instead.`;
+          data?.message ?? data?.error ?? `Couldn't import providers from this computer. You can sign in or add a provider manually instead.`;
         this.hostImporting = false;
         return;
       }

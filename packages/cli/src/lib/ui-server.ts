@@ -429,7 +429,10 @@ export async function startUIServer(opts: UIServerOptions = {}): Promise<void> {
   const localInstallState = classifyLocalInstall(state.stackDir, state.homeDir);
   const expectedAdmin = resolveExpectedAdmin(opts.adminHostUi === true);
   const browserHost = resolveUiLoopbackHost();
-  const probeHost = '127.0.0.1';
+  // ONE loopback spelling for both the printed/browser URL and the identity
+  // probe below — a second literal here is exactly the class of drift this
+  // module's own comments (see resolveUiLoopbackHost) exist to prevent.
+  const probeHost = browserHost;
   const uiUrl = `http://${browserHost}:${port}`;
 
   // D1: pre-spawn instance-identity probe. A bare port poll has no way to

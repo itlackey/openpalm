@@ -11,22 +11,29 @@
  *
  * - `autoDownload = false`. Discovery must never spend a user's bandwidth;
  *   downloading is a separate, explicit act of consent (`download()`).
- * - `autoInstallOnAppQuit = true`, set for parity with electron-updater's own
- *   documented default and in case a future quit path restores the normal
- *   Electron quit sequence. As THIS app quits today it does essentially
- *   nothing: electron-updater's install-on-quit hook (`BaseUpdater.addQuitHandler`)
- *   is wired to Electron's `app`'s `'quit'` event, but main.ts's `before-quit`
- *   handler always finishes with `app.exit(0)` — which Electron's own docs
- *   state skips `before-quit`/`will-quit`, and does not run the normal
- *   will-quit → window-teardown → `quit` sequence those events gate, so the
- *   hook's listener is never reached (verified against installed electron-updater
- *   6.8.9's `BaseUpdater`/`ElectronAppAdapter` sources). "Restart and update"
- *   (`quitAndInstall()`, which calls electron-updater's own `app.quit()`
- *   internally — a different path than our before-quit's `app.exit(0)`) is
- *   therefore the ONLY route that installs a staged update. This is
- *   documented rather than "fixed" by returning to a plain `app.quit()` from
- *   before-quit: that reintroduces the re-entrant silent-no-op double-quit bug
- *   the `app.exit(0)` switch exists to fix (see main.ts's before-quit comment).
+ * - `autoInstallOnAppQuit = false`. electron-updater's OWN install-on-quit
+ *   hook (`BaseUpdater.addQuitHandler`) is wired to Electron's `app`'s
+ *   `'quit'` event — but main.ts's `before-quit` handler always finishes with
+ *   `app.exit(0)`, which Electron's own docs state skips `before-quit` /
+ *   `will-quit`, and does not run the normal will-quit → window-teardown →
+ *   `quit` sequence those events gate, so that hook's listener would never be
+ *   reached regardless of this flag (verified against installed
+ *   electron-updater 6.8.9's `BaseUpdater`/`ElectronAppAdapter` sources).
+ *   Leaving it `true` would be pure decoration, so it is explicitly off.
+ *   Ordinary quit DOES still install a staged update — see `installOnQuit()`
+ *   below, which main.ts's before-quit handler calls directly instead of
+ *   depending on electron-updater's hook. It deliberately calls `install()`,
+ *   NOT `quitAndInstall()`: the latter schedules electron-updater's OWN
+ *   `app.quit()` internally, and racing that against main.ts's own exit
+ *   sequence is exactly the double-quit hazard the `app.exit(0)` switch in
+ *   before-quit exists to avoid (see its comment) — reintroducing it here
+ *   would trade one dead setting for a live bug. `install()` alone just
+ *   launches the installer and returns; it never touches app lifecycle, so
+ *   before-quit's existing `app.exit(0)` remains the one thing that ends the
+ *   process, on every path, whether or not a staged update happened to exist.
+ *   "Restart and update" (the explicit button, `quitAndInstall()`) is
+ *   unaffected — it is a user-chosen restart, not an ordinary quit, and keeps
+ *   using electron-updater's own quit path.
  * - Silent checks (startup, window focus) never surface an error: a laptop that
  *   is offline is the normal case, not a fault worth a persistent banner. Only
  *   a user-initiated check reports why it failed.
@@ -81,6 +88,13 @@ export interface AppUpdaterLike {
   checkForUpdates(): Promise<{ updateInfo?: { version?: string } } | null>;
   downloadUpdate(): Promise<unknown>;
   quitAndInstall(isSilent?: boolean, isForceRunAfter?: boolean): void;
+  /**
+   * Trigger the installer WITHOUT quitting — unlike `quitAndInstall`, which
+   * always schedules electron-updater's own `app.quit()` internally. Returns
+   * whether the installer actually launched. See `installOnQuit()` below for
+   * why the desktop harness needs this split.
+   */
+  install(isSilent?: boolean, isForceRunAfter?: boolean): boolean;
   on(event: string, listener: (...args: unknown[]) => void): unknown;
   /**
    * Needed by `dispose()` (review E6): `createDesktopUpdater` builds a FRESH
@@ -209,11 +223,10 @@ export class DesktopUpdater {
     const u = deps.updater;
     // Consent before bytes: discovery must not download (#572 acceptance).
     u.autoDownload = false;
-    // A staged update also installs on an ordinary quit, not only via the
-    // explicit "Restart and update" action — in THEORY (see the class
-    // docblock: main.ts's actual quit path never reaches the hook this relies
-    // on today).
-    u.autoInstallOnAppQuit = true;
+    // Off — see the class docblock. Ordinary-quit install is handled
+    // explicitly by `installOnQuit()` below, not by electron-updater's own
+    // (unreachable) install-on-quit hook.
+    u.autoInstallOnAppQuit = false;
     u.channel = updaterFeedChannel(this.state.channel);
     u.allowPrerelease = deps.prerelease;
 

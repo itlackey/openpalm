@@ -1,5 +1,6 @@
 import { defineCommand } from 'citty';
 import { runUiBuild } from '../lib/ui-server.ts';
+import { DEFAULT_UI_PORT } from '../lib/ports.ts';
 
 export default defineCommand({
   meta: {
@@ -12,7 +13,7 @@ export default defineCommand({
   args: {
     port: {
       type: 'string',
-      description: 'UI server port (default: 3880 or OP_HOST_UI_PORT)',
+      description: `UI server port (default: ${DEFAULT_UI_PORT} or OP_HOST_UI_PORT)`,
     },
   },
   async run({ args }) {

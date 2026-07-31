@@ -18,6 +18,7 @@ import {
 } from '@openpalm/lib';
 import { getState } from '$lib/server/state.js';
 import { pushImportedAuth } from '$lib/server/provider-import.js';
+import { errorResponse, getRequestId } from '$lib/server/helpers.js';
 import type { RequestHandler } from './$types';
 
 const logger = createLogger('setup:import-host');
@@ -35,7 +36,7 @@ function providerIdsFromAuth(authPath: string): string[] {
   return [];
 }
 
-export const POST: RequestHandler = async () => {
+export const POST: RequestHandler = async (event) => {
   const state = getState();
 
   // Copy host config + auth into OP_HOME. This is the only step that must
@@ -45,9 +46,16 @@ export const POST: RequestHandler = async () => {
   try {
     result = importHostOpenCode(state, { overwriteConflicts: false });
   } catch (err) {
-    return json(
-      { ok: false, error: `Could not copy host OpenCode config: ${err instanceof Error ? err.message : String(err)}` },
-      { status: 500 },
+    // W15: previously `error` carried the full human sentence with no
+    // machine code and no requestId — the standard envelope splits those out.
+    // handleHostImport (setup-state.svelte.ts) already prefers `message`, so
+    // this is additive for that caller.
+    return errorResponse(
+      500,
+      'host_import_failed',
+      `Could not copy host OpenCode config: ${err instanceof Error ? err.message : String(err)}`,
+      {},
+      getRequestId(event),
     );
   }
 

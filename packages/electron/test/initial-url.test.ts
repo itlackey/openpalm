@@ -155,6 +155,14 @@ vi.mock('@openpalm/lib', () => ({
     }
     return false;
   }),
+  // Minimal fake of lib's UiSupervisor (adopt()/current only — main.ts never
+  // calls start() here; see main.ts's uiSupervisor docblock).
+  UiSupervisor: class {
+    current: unknown = null;
+    adopt(handle: unknown) {
+      this.current = handle;
+    }
+  },
 }));
 
 const { mockLoadSettings } = vi.hoisted(() => ({

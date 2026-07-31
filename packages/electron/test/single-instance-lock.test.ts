@@ -112,6 +112,15 @@ vi.mock('@openpalm/lib', () => ({
   createState: vi.fn(() => ({ dataDir: '/home/user/.openpalm/data' })),
   resolveDeployJournalPath: vi.fn(() => '/mock/deploy-journal.json'),
   readDeployJournal: vi.fn(() => ({ deploying: false })),
+  // Minimal fake of lib's UiSupervisor (adopt()/current only — main.ts never
+  // calls start() here; see main.ts's uiSupervisor docblock). Constructed at
+  // module load regardless of the single-instance-lock outcome.
+  UiSupervisor: class {
+    current: unknown = null;
+    adopt(handle: unknown) {
+      this.current = handle;
+    }
+  },
 }));
 
 // Importing for its module-scope side effect: the single-instance check runs

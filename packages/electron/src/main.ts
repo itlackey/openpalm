@@ -34,6 +34,7 @@ import {
   readDeployJournal,
   resolveDeployJournalPath,
   type DeployProgress,
+  UiSupervisor,
 } from '@openpalm/lib';
 import { UI_PORT } from './ui-port.js';
 import { autoUpdater } from 'electron-updater';
@@ -178,7 +179,6 @@ const MIC_SHORTCUT = 'CommandOrControl+Shift+M';
 const APP_USER_MODEL_ID = 'com.openpalm.app';
 
 let mainWindow: BrowserWindow | null = null;
-let uiProcess: ChildProcess | null = null;
 let registeredMicShortcut: string | null = null;
 // Whether the desktop updater tracks the beta channel (#504 opt-in, mapped onto
 // electron-updater's `beta` channel by updaterChannel). Loaded from desktop
@@ -377,6 +377,62 @@ export function waitForReady(port: number, timeoutMs = READY_TIMEOUT_MS): Promis
 }
 
 /**
+ * Group-kill the UI child's process group (SIGTERM then immediate SIGKILL) —
+ * the one implementation of "how the UI child dies", shared between
+ * `uiSupervisor`'s stop strategy (below) and stopUIServer's direct call, so
+ * they can't drift into two different kill sequences. No graceful-drain wait:
+ * the app is exiting, there is no window left to wait out, and a lingering
+ * timer would not survive `app.exit()` anyway — unlike the CLI's
+ * SIGTERM→race-a-timeout→SIGKILL, which has a real shutdown window to wait
+ * inside. Exported (pure over its argument) so the kill sequence is testable
+ * without spawning Electron or a real child process.
+ */
+export function stopUiChild(handle: ChildProcess | null): Promise<void> {
+  if (handle?.pid) {
+    killProcessTree(handle.pid, 'SIGTERM');
+    killProcessTree(handle.pid, 'SIGKILL');
+  }
+  return Promise.resolve();
+}
+
+/**
+ * Shared UI-child-handle holder (lib's `UiSupervisor`, added specifically for
+ * this harness's `adopt()` path). This used to be a bare module-level
+ * `uiProcess` variable, hand-rolled independently of the CLI's fully-adopted
+ * supervisor (packages/cli/src/lib/ui-server.ts's `createCliUiSupervisor`).
+ *
+ * `start()` is deliberately never called here — Electron's INITIAL spawn is
+ * bespoke in ways `start()` can't express: an identity probe BEFORE spawning
+ * that decides whether to spawn at ALL (attach to an already-running
+ * admin-capable instance instead of racing it for the port — the 'match'
+ * branch in startUIServer, below), and its own error-dialog + `app.quit()`
+ * failure handling in place of the CLI's `process.exit`. `adopt()` exists in
+ * the shared class precisely for this "bespoke prelude, then hand the
+ * resulting handle to the supervisor" shape. What IS shared here: this is the
+ * ONE place that holds "the child we own, if any" (`adopt`/`current`,
+ * replacing the bare variable) and the group-kill teardown strategy above, in
+ * the exact shape the CLI's own supervisor adapter uses.
+ */
+const uiSupervisor = new UiSupervisor<ChildProcess | null>({
+  port: UI_PORT,
+  strategy: {
+    // Never invoked — see the class comment above; spawning stays bespoke in
+    // spawnUIServer. Throw rather than silently no-op if that ever changes
+    // without updating this.
+    spawn: () => {
+      throw new Error('uiSupervisor.start() is unused by the Electron harness; see startUIServer.');
+    },
+    stop: stopUiChild,
+  },
+  callbacks: {
+    // Also never invoked (start() isn't called) — startUIServer drives its own
+    // readyOrChildExit call directly so it can race the freshly-spawned
+    // child's own exit, which this single-argument shape can't express.
+    waitForReady: (port) => waitForReady(port),
+  },
+});
+
+/**
  * Whether the UI child's own 'error' handler (spawnUIServer, below) already
  * surfaced a specific failure dialog and called app.quit() for THIS launch
  * attempt. E4 review: an ENOENT-class spawn failure fires 'error' (async,
@@ -482,7 +538,7 @@ async function startUIServer(): Promise<boolean> {
   // an unrelated process on the port answers for it.
   const ready = await readyOrChildExit(
     () => waitForReady(UI_PORT),
-    uiProcess ? once(uiProcess, 'exit') : undefined,
+    uiSupervisor.current ? once(uiSupervisor.current, 'exit') : undefined,
   );
   if (!ready) {
     // The child's own 'error' handler (spawnUIServer) already showed a
@@ -523,7 +579,7 @@ function spawnUIServer(uiBuildDir: string, homeDir: string): void {
   // macOS apps don't get Homebrew/nvm on PATH, so `spawn('node', …)` failed
   // with ENOENT and silently hung the splash for 60s (#456). Using the bundled
   // runtime removes the system-Node dependency entirely.
-  uiProcess = spawn(process.execPath, [join(uiBuildDir, 'index.js')], {
+  const child = spawn(process.execPath, [join(uiBuildDir, 'index.js')], {
     cwd: uiBuildDir,
     env: {
       ...buildUIServerEnv(homeDir, UI_PORT),
@@ -538,15 +594,20 @@ function spawnUIServer(uiBuildDir: string, homeDir: string): void {
     // re-emit to the parent's streams for terminal users).
     stdio: ['ignore', 'pipe', 'pipe'],
   });
+  // Hand the handle to the shared supervisor (adopt(), not start() — see its
+  // docblock above) so stopUIServer and the ready-check race below have a
+  // single source for "the child we own, if any".
+  uiSupervisor.adopt(child);
+
   // Tail UI server stdout to the parent stdout + log file.
-  uiProcess.stdout?.on('data', (chunk: Buffer) => {
+  child.stdout?.on('data', (chunk: Buffer) => {
     const text = chunk.toString();
     process.stdout.write(text);
     writeChildLog(text);
   });
 
   // Tail UI server stderr into the ring buffer, the parent stderr, and the log.
-  uiProcess.stderr?.on('data', (chunk: Buffer) => {
+  child.stderr?.on('data', (chunk: Buffer) => {
     const text = chunk.toString();
     process.stderr.write(text);
     writeChildLog(text);
@@ -562,7 +623,7 @@ function spawnUIServer(uiBuildDir: string, homeDir: string): void {
 
   // A spawn failure (ENOENT etc.) must surface immediately — don't let the
   // ready-poll spin out its full 60s timeout with a useless splash (#456).
-  uiProcess.on('error', (err) => {
+  child.on('error', (err) => {
     console.error('UI server process error:', err.message);
     // Node still emits 'exit' after 'error' for a spawn that never started,
     // which would otherwise also trip the generic "did not respond in time"
@@ -581,26 +642,24 @@ function spawnUIServer(uiBuildDir: string, homeDir: string): void {
     app.quit();
   });
 
-  uiProcess.on('exit', (code) => {
+  child.on('exit', (code) => {
     if (code !== 0 && code !== null) {
       console.error(`UI server exited with code ${code}`);
     }
-    uiProcess = null;
+    uiSupervisor.adopt(null);
   });
 }
 
-function stopUIServer(): void {
-  if (!uiProcess) return;
-  const pid = uiProcess.pid;
-  uiProcess = null;
-  // Group-kill so the UI server's children (e.g. the wizard's `opencode serve`)
-  // die with it instead of orphaning. SIGKILL the group immediately after as a
-  // backstop — the process is exiting, so there is no graceful-drain window to
-  // wait for, and a lingering timer would not survive app.quit() anyway.
-  if (pid) {
-    killProcessTree(pid, 'SIGTERM');
-    killProcessTree(pid, 'SIGKILL');
-  }
+/** Exported so tests can pin the adopt(child)→exit→adopt(null) lifecycle without spawning Electron. */
+export function stopUIServer(): void {
+  const handle = uiSupervisor.current;
+  if (!handle) return;
+  uiSupervisor.adopt(null);
+  // stopUiChild's kill calls are synchronous (killProcessTree wraps
+  // spawnSync/process.kill); the returned promise is already settled by the
+  // time this call returns, so before-quit's synchronous-cleanup guarantee
+  // (see its docblock) holds without awaiting it here.
+  void stopUiChild(handle);
 }
 
 // ── Window management ────────────────────────────────────────────────────────

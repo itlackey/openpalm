@@ -289,6 +289,7 @@ jobs:
       - uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.asset }}
+          if-no-files-found: error
           path: packages/cli/dist/${{ matrix.asset }}
 
   electron:
@@ -515,10 +516,14 @@ jobs:
           mkdir verified-assets
           cd verified-assets
           curl --fail --location --silent --show-error -O "https://github.com/${GITHUB_REPOSITORY}/releases/download/${VERSION}/checksums-sha256.txt"
-          for asset in \
-            openpalm-cli-linux-x64 openpalm-cli-linux-arm64 \
-            openpalm-cli-darwin-x64 openpalm-cli-darwin-arm64 \
-            openpalm-cli-windows-x64.exe; do
+          # The CLI binary list lives once in scripts/validate-release-assets.mjs
+          # (CLI_BINARIES) — mirroring the `cli` job matrix above, which
+          # release-aggregates-hygiene.test.ts checks stays in sync with it.
+          mapfile -t ASSETS < <(node --input-type=module -e "
+            import { CLI_BINARIES } from '../scripts/validate-release-assets.mjs';
+            console.log(CLI_BINARIES.join('\n'));
+          ")
+          for asset in "${ASSETS[@]}"; do
             curl --fail --location --silent --show-error -O "https://github.com/${GITHUB_REPOSITORY}/releases/download/${VERSION}/${asset}"
             grep -E "[[:space:]]${asset}$" checksums-sha256.txt | sha256sum --check --strict
           done

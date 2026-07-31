@@ -17,6 +17,7 @@ import {
 } from './secrets-files.js';
 import { PORTAL_SECRET_ADDON_IDS } from './addon-ids.js';
 import { writeFileAtomic, writeFileInPlace } from './fs-atomic.js';
+import { generateFallbackSystemEnv } from './config-persistence.js';
 
 const OPENCODE_STARTER_CONFIG = `${JSON.stringify({ $schema: "https://opencode.ai/config.json" }, null, 2)}\n`;
 const logger = createLogger("secrets");
@@ -126,15 +127,18 @@ function ensureSystemSecrets(state: ControlPlaneState): void {
   writeStackSecretEnv(state, updates);
 
   if (!existsSync(systemEnvPath)) {
-      const header = [
-        "# OpenPalm — Stack Configuration",
-        "# Non-secret stack configuration only. Credentials live in name-routed file-secret storage.",
-        "",
-        "# ── Authentication ──────────────────────────────────────────────────",
-        "OP_SETUP_COMPLETE=false",
-      "",
-    ].join("\n");
-    writeVaultFile(systemEnvPath, header.endsWith("\n") ? header : `${header}\n`);
+    // K6: reuse config-persistence's generateFallbackSystemEnv as the ONE
+    // definition of "a fresh stack.env" instead of hand-rolling a second,
+    // smaller skeleton here — the two used to diverge (this branch shipped a
+    // 5-line stub while writeSystemEnv's fallback carried the full
+    // paths/images/ports template), and whichever ran first silently won,
+    // with the other's content never seen by a real install. OP_SETUP_COMPLETE
+    // is asserted explicitly because generateFallbackSystemEnv only owns
+    // paths/images/ports — writeSystemEnv is what normally stamps the
+    // Admin-managed OP_SETUP_COMPLETE section, and this path must not leave a
+    // brand-new file silently without it before that ever runs.
+    const base = generateFallbackSystemEnv(state);
+    writeVaultFile(systemEnvPath, mergeEnvContent(base, { OP_SETUP_COMPLETE: "false" }));
     return;
   }
 }

@@ -267,6 +267,8 @@ export async function fetchHostStatus(): Promise<HostStatusResponse | null> {
 export interface ImportHostResponse {
   ok?: boolean;
   error?: string;
+  /** W15: the structured-envelope human message; prefer this over `error`. */
+  message?: string;
   importedProviders?: string[];
   pushedProviders?: string[];
 }

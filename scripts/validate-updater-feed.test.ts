@@ -7,11 +7,13 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
   feedChannelForVersion,
+  forbiddenFeedsFor,
   parseUpdaterFeed,
   updaterFeedsFor,
   validateFeed,
   validateUpdaterFeeds,
 } from './validate-updater-feed.mjs';
+import { expectedDesktopAssets } from './validate-release-assets.mjs';
 
 function feedYaml(version: string, file: string): string {
   return [
@@ -175,5 +177,23 @@ describe('validateUpdaterFeeds on a prerelease candidate', () => {
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+});
+
+// Cross-check with validate-release-assets.mjs's required-asset gate, added to
+// close review finding D1/D4: 0.12.52 shipped a stable release with zero
+// desktop assets. macOS ships a required desktop zip but stays on
+// manual-download only (no signed/notarized build yet) — the two files must
+// keep agreeing on that split, or a regression in one goes unnoticed by the
+// other.
+describe('desktop assets vs updater feeds agree on the macOS manual-download policy', () => {
+  test('macOS gets a required desktop zip but no updater feed, forbidden or otherwise, changes silently', () => {
+    const desktop = expectedDesktopAssets('1.2.3', 'OpenPalm');
+    expect(desktop).toContain('OpenPalm-1.2.3-mac.zip');
+    expect(desktop).toContain('OpenPalm-1.2.3-arm64-mac.zip');
+
+    const channel = feedChannelForVersion('1.2.3');
+    expect(updaterFeedsFor(channel).some((name) => name.includes('mac'))).toBe(false);
+    expect(forbiddenFeedsFor(channel)).toEqual(['latest-mac.yml']);
   });
 });
