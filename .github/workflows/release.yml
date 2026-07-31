@@ -389,6 +389,19 @@ jobs:
           rm -f dist/checksums-sha256.txt
           (cd dist && sha256sum -- * > checksums-sha256.txt)
           VERSION="${VERSION}" node scripts/validate-release-assets.mjs
+      - name: Validate desktop updater feed before the release tag is pushed
+        # Run here, not only in tag-release: release-source (which follows
+        # this job) pushes the version-bump commit AND the git tag before
+        # tag-release ever runs. A stable tag is immutable, so if the feed
+        # were only checked in tag-release, a mismatch between the on-disk
+        # installer name and the name electron-updater's feed references
+        # (review finding #1 — e.g. an artifactName regression) would only
+        # be caught AFTER the tag is already live, forcing a version bump to
+        # recover. Checking it here fails the release before anything is
+        # mutated.
+        env:
+          VERSION: ${{ needs.candidate.outputs.version }}
+        run: VERSION="${VERSION}" node scripts/validate-updater-feed.mjs
       - uses: actions/upload-artifact@v7
         with:
           name: product-release-assets

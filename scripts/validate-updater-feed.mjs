@@ -40,9 +40,22 @@ export function feedChannelForVersion(version) {
   return match ? match[1] : 'latest';
 }
 
-/** Feed files electron-updater consumes for `channel`, by platform. */
+/**
+ * Feed files electron-updater consumes for `channel`, by platform+arch.
+ *
+ * electron-builder writes a SEPARATE Linux feed per arch:
+ * `getArchPrefixForUpdateFile` (app-builder-lib) appends `-arm64` to the
+ * update-info filename for any non-x64 Linux build, and electron-updater's
+ * `Provider.getChannelFilePrefix()` requests exactly that file on an arm64
+ * Linux install. `packages/electron/electron-builder.yml`'s `linux.target`
+ * builds AppImage for BOTH x64 and arm64 (mirrored in DESKTOP_TARGETS in
+ * validate-release-assets.mjs), so both `${channel}-linux.yml` (x64) and
+ * `${channel}-linux-arm64.yml` (arm64) are required feeds — omitting the
+ * arm64 one leaves a required, shipped, updater-capable target ungated
+ * (review finding #4).
+ */
 export function updaterFeedsFor(channel) {
-  return [`${channel}.yml`, `${channel}-linux.yml`];
+  return [`${channel}.yml`, `${channel}-linux.yml`, `${channel}-linux-arm64.yml`];
 }
 
 /** Feeds that must NOT be published while that platform is manual-only. */

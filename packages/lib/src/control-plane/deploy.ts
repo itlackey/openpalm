@@ -209,7 +209,12 @@ async function detectProjectCollision(state: ControlPlaneState): Promise<string 
 			sawUnlabeledForeignProject = true;
 			continue;
 		}
-		return `Refusing to deploy: docker project "${projectName}" is already running from ${existing.workingDir}, but this deploy would use OP_HOME=${state.homeDir}. Set OP_PROJECT_NAME to a distinct value in stack.env, or stop the existing stack first.`;
+		// detectExistingProject probes `docker ps -a` (running OR stopped), so
+		// this fires for a merely-stopped foreign leftover too — "is already
+		// running" would be false in that case and "stop the existing stack
+		// first" would be a no-op. Name removal instead: it's the one remedy
+		// that actually clears either state.
+		return `Refusing to deploy: docker project "${projectName}" already exists (running or stopped), created from ${existing.workingDir}, but this deploy would use OP_HOME=${state.homeDir}. Set OP_PROJECT_NAME to a distinct value in stack.env, or remove the existing project first (docker compose -p ${projectName} down, or docker rm the containers).`;
 	}
 	if (sawUnlabeledForeignProject) {
 		return `Refusing to deploy: docker project "${projectName}" could not be verified safely. Docker returned an existing project without a trustworthy working_dir label, so this deploy is failing closed.`;

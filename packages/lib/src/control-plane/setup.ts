@@ -14,7 +14,7 @@ import { enableHostAkmSharing, disableHostAkmSharing } from './host-akm-sharing.
 import { addHostStashToOpenpalmConfig } from './akm-sources.js';
 import { PROVIDER_KEY_MAP } from '../provider-constants.js';
 import { buildAkmEndpoint } from './akm-endpoints.js';
-import { SERVICE_VERSION_KEYS, VERSION_DEFAULTS, writeVersions } from './versions.js';
+import { SERVICE_VERSION_KEYS, VERSION_DEFAULTS, writeManagedVersions, writeVersions } from './versions.js';
 import { PLATFORM_VERSION } from './versioning.js';
 import { ensureHomeDirs } from './home.js';
 import { acquireInstallLock, releaseInstallLock, type InstallLockHandle } from './install-lock.js';
@@ -406,16 +406,18 @@ export async function performSetup(
 		// single try/catch so that a disk-full or permission-denied mid-way returns a
 		// clean error rather than leaving a broken half-installed ~/.openpalm/.
 		try {
-			// Reconcile the per-image version pins on EVERY setup run. A non-empty
+			// Reconcile the per-image versions on EVERY setup run. A non-empty
 			// wizard value pins each platform service image to that exact tag —
 			// kept verbatim, "latest" included, as an explicit opt-in.
 			// state/stack.env is the SOLE pin location (never the legacy
-			// — writeVersions() writes there exclusively.
+			// — writeVersions()/writeManagedVersions() write there exclusively.
 			//
-			// A BLANK Advanced field pins platform services to this host release's
-			// immutable version tag. Product releases publish host assets and all
-			// three platform images as one unit, so falling back to moving `latest`
-			// would make two identical installs resolve different runtimes.
+			// A BLANK Advanced field defaults platform services to this host
+			// release's immutable version tag, as a release-managed default rather
+			// than a pin — see writeManagedVersions below. Product releases publish
+			// host assets and all three platform images as one unit, so falling
+			// back to moving `latest` would make two identical installs resolve
+			// different runtimes.
 			//
 			// Voice is EXCLUDED from the pin: its tags are `latest-cpu` /
 			// `vX.Y.Z-cu121` (GPU-variant suffixed), not platform semver, so a bare
@@ -434,22 +436,37 @@ export async function performSetup(
 				existingVoiceVersion && existingVoiceVersion !== VERSION_DEFAULTS.OP_VOICE_VERSION
 					? existingVoiceVersion
 					: VERSION_DEFAULTS.OP_VOICE_VERSION;
-			const akmUpdates: Record<string, string> = {};
+			// Voice is "pinned" (an operator's deliberate choice, preserved above)
+			// exactly when it has drifted from the shared default; otherwise it's
+			// still tracking the default and counts as release-managed below.
+			const voiceIsPinned = voiceVersion !== VERSION_DEFAULTS.OP_VOICE_VERSION;
 			const trimmedTag = imageTag?.trim();
-			if (trimmedTag) {
-				for (const key of SERVICE_VERSION_KEYS) {
-					akmUpdates[key] = key === 'OP_VOICE_VERSION' ? voiceVersion : trimmedTag;
+			// Split into what the OPERATOR chose (an explicit Advanced image tag, or
+			// an existing voice pin preserved above) from what SETUP is filling in on
+			// its own behalf (the coordinated platform default, or voice still on its
+			// shared default). The former must go through writeVersions, which blanks
+			// each key's managed marker so a later `openpalm update` never touches an
+			// operator's deliberate pin. The latter must go through
+			// writeManagedVersions instead, which stamps the marker to match — using
+			// writeVersions for these too would blank every fresh install's markers on
+			// setup's own writes, leaving `openpalm update` unable to ever advance the
+			// very tags it just seeded.
+			const pinnedUpdates: Record<string, string> = {};
+			const managedUpdates: Record<string, string> = {};
+			for (const key of SERVICE_VERSION_KEYS) {
+				if (key === 'OP_VOICE_VERSION') {
+					(voiceIsPinned ? pinnedUpdates : managedUpdates)[key] = voiceVersion;
+					continue;
 				}
-			} else {
-				for (const key of SERVICE_VERSION_KEYS) {
-					akmUpdates[key] = key === 'OP_VOICE_VERSION' ? voiceVersion : PLATFORM_VERSION;
-				}
+				if (trimmedTag) pinnedUpdates[key] = trimmedTag;
+				else managedUpdates[key] = PLATFORM_VERSION;
 			}
 			// NOTE: host-akm sharing no longer repoints the container's primary stash
 			// (the old OP_AKM_STASH/OP_AKM_CONFIG split-brain). The personal ~/akm is
 			// wired as a read-write SECONDARY source — see configureHostAkmSharing()
 			// below (Phase 4) and the host-akm.compose.yml overlay.
-			writeVersions(state, akmUpdates);
+			if (Object.keys(pinnedUpdates).length > 0) writeVersions(state, pinnedUpdates);
+			if (Object.keys(managedUpdates).length > 0) writeManagedVersions(state, managedUpdates);
 
 			// Write akm config with LLM and embedding settings from setup — atomic.
 			persistAkmConfig(state, { llm, embedding });

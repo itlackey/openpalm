@@ -133,8 +133,13 @@ function initFileLogger(): void {
     const logsDir = app.getPath('logs');
     mkdirSync(logsDir, { recursive: true });
     // A previous, unrotated session may have already left an oversized file.
+    // If it HAD to rotate, `rotateLogIfOversized` already opened a fresh
+    // `logStream` itself (its cold-path `reopen()` branch, taken because
+    // `logStream` is still null here) — `??=` avoids clobbering that handle
+    // with a second, un-tracked stream to the same path that would then leak
+    // its fd for the process lifetime.
     rotateLogIfOversized();
-    logStream = createWriteStream(logFilePath(), { flags: 'a' });
+    logStream ??= createWriteStream(logFilePath(), { flags: 'a' });
 
     const tee = (orig: (...args: unknown[]) => void, level: string) => {
       return (...args: unknown[]) => {

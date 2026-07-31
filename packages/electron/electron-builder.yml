@@ -116,5 +116,17 @@ nsis:
   oneClick: false
   perMachine: false
   allowToChangeInstallationDirectory: true
+  # Without an explicit artifactName, electron-builder's NSIS default pattern
+  # is "${productName} Setup ${version}.${ext}" — the SPACE-containing name is
+  # not GitHub-safe, so computeSafeArtifactNameIfNeeded (app-builder-lib's
+  # platformPackager.js) rewrites it to "OpenPalm-Setup-<version>.exe" for the
+  # updater feed (updateInfoBuilder.js) while the on-disk installer keeps the
+  # space. Those two spellings disagreeing is exactly what breaks
+  # validate-updater-feed.mjs after the release tag has already been pushed
+  # (review finding #1). Name it GitHub-safe from the start so every spelling
+  # — on disk, in latest.yml/beta.yml, and on the uploaded GitHub Release —
+  # agrees. See scripts/validate-release-assets.mjs's desktopAssetName (nsis
+  # case), which must match this pattern.
+  artifactName: ${productName}-Setup-${version}.${ext}
 
 npmRebuild: false

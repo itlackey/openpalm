@@ -7,6 +7,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import {
 	writeVersions,
+	writeManagedVersions,
 	readVersions,
 	ensureVersionDefaults,
 	advanceManagedImageVersions
@@ -126,5 +127,44 @@ describe('version configuration', () => {
 		advanceManagedImageVersions(home.state, '0.12.0', '0.13.1');
 
 		expect(readVersions(home.state).OP_ASSISTANT_VERSION).toBe('0.12.0');
+	});
+
+	// D3: the marker-match arm (unlike the rollback arm just above it) used to
+	// advance voice to the bare platform version too. Voice tags are
+	// variant-suffixed (latest-cpu, vX.Y.Z-cu121) and publish-voice.yml never
+	// publishes a bare platform-version tag, so that pointed voice at an image
+	// that was never published — and since this arm also re-stamps the marker
+	// to match, the bad value stuck forever.
+	it('never advances a marker-armed voice version to the bare platform version', () => {
+		writeFileSync(
+			join(home.state.homeDir, 'state', 'stack.env'),
+			[
+				'OP_ASSISTANT_VERSION=0.12.0',
+				'OP_MANAGED_ASSISTANT_VERSION=0.12.0',
+				'OP_VOICE_VERSION=latest',
+				'OP_MANAGED_VOICE_VERSION=latest',
+			].join('\n')
+		);
+
+		advanceManagedImageVersions(home.state, '0.12.0', '0.13.1');
+
+		const versions = readVersions(home.state);
+		expect(versions.OP_ASSISTANT_VERSION).toBe('0.13.1');
+		expect(versions.OP_VOICE_VERSION).toBe('latest');
+	});
+
+	// D2: setup's own release-managed defaults must stamp the marker (so a
+	// later advance recognizes them), never blank it the way an operator's
+	// explicit pin (writeVersions) does.
+	it('writeManagedVersions stamps the marker so a later advance recognizes the default', () => {
+		writeManagedVersions(home.state, { OP_ASSISTANT_VERSION: PLATFORM_VERSION });
+
+		const content = readFileSync(join(home.state.homeDir, 'state', 'stack.env'), 'utf-8');
+		expect(content).toContain(`OP_ASSISTANT_VERSION=${PLATFORM_VERSION}`);
+		expect(content).toContain(`OP_MANAGED_ASSISTANT_VERSION=${PLATFORM_VERSION}`);
+
+		advanceManagedImageVersions(home.state, PLATFORM_VERSION, '0.99.0');
+
+		expect(readVersions(home.state).OP_ASSISTANT_VERSION).toBe('0.99.0');
 	});
 });

@@ -162,7 +162,7 @@ describe('release completeness gate: no CLI-only releases (onboarding-setup-revi
 		expect(expectedDesktopAssets('1.4.2', productName)).toEqual([
 			'OpenPalm-1.4.2-arm64-mac.zip',
 			'OpenPalm-1.4.2-mac.zip',
-			'OpenPalm Setup 1.4.2.exe',
+			'OpenPalm-Setup-1.4.2.exe',
 			'OpenPalm-1.4.2-win.zip',
 			'OpenPalm-1.4.2.AppImage',
 			'OpenPalm-1.4.2-arm64.AppImage'
@@ -188,7 +188,7 @@ describe('release completeness gate: no CLI-only releases (onboarding-setup-revi
 		expect(required).not.toContain('latest.yml');
 	});
 
-	test('checksumFor matches a filename containing a space, like the default NSIS installer name', () => {
+	test('checksumFor matches a filename containing a space, in case an asset name ever regresses to one (review finding #1: NSIS used to)', () => {
 		const hash = 'f'.repeat(64);
 		const checksums = `${hash}  OpenPalm Setup 1.4.2.exe\n`;
 		expect(checksumFor(checksums, 'OpenPalm Setup 1.4.2.exe')).toBe(hash);

@@ -316,12 +316,26 @@ if ($CliOnly) {
     return
 }
 
-# Run install. Propagate the CLI's own exit code — without this, a `pwsh -File
-# setup.ps1` / `powershell -File setup.ps1` invocation (the documented
-# save-and-run path for `--cli-only`/`--file` installs) always reports
-# success to its caller regardless of whether the install actually failed,
-# because falling off the end of a script does not adopt $LASTEXITCODE as the
-# process's own exit code — a CI wrapper checking the process exit code can
-# never see a failure.
+# Run install. Propagate the CLI's own exit code on FAILURE only — without
+# this, a `pwsh -File setup.ps1` / `powershell -File setup.ps1` invocation
+# (the documented save-and-run path for `--cli-only`/`--file` installs) always
+# reports success to its caller regardless of whether the install actually
+# failed, because falling off the end of a script does not adopt
+# $LASTEXITCODE as the process's own exit code — a CI wrapper checking the
+# process exit code can never see a failure.
+#
+# `exit` here would close the user's PowerShell window/session under the
+# documented `irm | iex` one-liner (see the arch-check throw above for why) —
+# and it fires on the SUCCESS path too, since an unconditional `exit
+# $LASTEXITCODE` runs even when $LASTEXITCODE is 0. That closed window takes
+# the wizard URL and next-steps output with it, on the primary success path,
+# not an edge case. `throw` on failure only: it still sets a non-zero process
+# exit code under `-File` (an uncaught terminating error fails that
+# subprocess), while leaving an `iex` session alive to show the error and any
+# already-printed output. On success, nothing needs to run here at all —
+# falling off the end leaves $LASTEXITCODE at 0, which is already the correct
+# default process exit code.
 & $Dest install --version $Version @PassthroughArgs
-exit $LASTEXITCODE
+if ($LASTEXITCODE -ne 0) {
+    throw "openpalm install failed (exit code $LASTEXITCODE)."
+}

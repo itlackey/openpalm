@@ -95,6 +95,28 @@ function writeStoredSetupPassword(value: string): void {
   }
 }
 
+// Adversarial review finding #2: the stash exists ONLY to survive an F5
+// mid-setup (see the block comment above the key). Once install actually
+// succeeds there is no legitimate reason left to keep the plaintext
+// password sitting in sessionStorage — the tab may go on to load the live
+// admin UI (DeployStep's Open Chat / Admin Dashboard links are same-tab,
+// same-origin navigations), and XSS there could otherwise recover the
+// longer-lived admin password instead of just the HttpOnly session cookie.
+// Clearing it also closes the "wipe OP_HOME and reinstall in the same tab"
+// gap: without this, init()'s non-rerun path would read the PRIOR install's
+// stashed password back out and hand it to a install that never generated
+// it, with no indication it isn't fresh. Called once, right after
+// completeSetup() reports success (handleInstall) — never on a failed
+// attempt, which the operator may still retry.
+function clearStoredSetupPassword(): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.sessionStorage.removeItem(SETUP_UI_LOGIN_PASSWORD_STORAGE_KEY);
+  } catch {
+    // Ignore — nothing left to clean up if storage is unavailable.
+  }
+}
+
 /**
  * Single source of truth for every field `reset()` restores. Both the class
  * field initializers and `reset()` derive their defaults from here via
@@ -321,13 +343,27 @@ export class SetupState {
     buildVerifiedProviders(this.opencodeAvailable, this.opencodeProviders, this.providerState),
   );
 
+  // True when the wizard is visually claiming "local" (modelMode === 'local',
+  // e.g. the Apple-Silicon-without-a-detected-host-Ollama path in
+  // handleConnectModeChange, which intentionally still flips modelMode so the
+  // UI reflects the user's choice and shows the "install Ollama" callout) but
+  // nothing backing that claim is actually configured yet — neither a real
+  // host runtime nor the in-stack addon. Without this guard, `modelSelection.llm`
+  // is left pointing at whatever it held before (often a previously-verified
+  // CLOUD model), so canComplete stayed true and Continue silently installed
+  // against cloud while step 1 said local.
+  localModeUnready = $derived(
+    this.modelMode === 'local' && !this.hostLocalLlmRunning && !this.ollamaEnabled,
+  );
+
   // ── Single source of truth for "can the user finish setup?" ──────────────
   // Expressed as a derived predicate (NOT a state-mutating $effect that flipped
   // `allowEmptyInstall` off on every background verification — that silently
   // moved the checkbox under the user). Can finish when an actual chat model is
-  // selected, OR the user explicitly opted to skip AI for now.
+  // selected, OR the user explicitly opted to skip AI for now — UNLESS the
+  // local claim above isn't backed by anything real yet.
   canComplete = $derived(
-    !!this.modelSelection.llm?.model || this.allowEmptyInstall,
+    !this.localModeUnready && (!!this.modelSelection.llm?.model || this.allowEmptyInstall),
   );
 
   // W12: mirrors the server's own rule (setup-validation.ts, >= 8 chars) so a
@@ -820,6 +856,22 @@ export class SetupState {
       if (ok && data?.ok) {
         st.verified = true;
         st.error = false;
+        // The OAuth exchange ran against resolveSetupOpencodeTarget()'s
+        // instance, which on a fresh host is the wizard-spawned `opencode
+        // serve` process — started with this server's own HOME/XDG dirs, so
+        // it wrote the token to the OPERATOR's host auth.json, not OP_HOME's
+        // (the file the assistant container bind-mounts). Re-run the same
+        // host-import copy handleHostImport() uses so the credential the
+        // user just granted actually lands where Install will look for it —
+        // otherwise the provider reads "Connected" here but ships with an
+        // empty credential and the first chat message fails silently. A
+        // failure here is non-fatal (surfaces later as a real error) so it
+        // doesn't block the OAuth success state.
+        try {
+          await importHost();
+        } catch {
+          /* best-effort — see comment above */
+        }
       } else {
         st.error = true;
         st.errorMessage = data?.message ?? 'Authorization failed';
@@ -900,6 +952,13 @@ export class SetupState {
         this.showDeploy = false;
         return;
       }
+
+      // The server now holds this password; the sessionStorage stash was only
+      // ever a refresh-survival aid for THIS install (see the block comment
+      // above SETUP_UI_LOGIN_PASSWORD_STORAGE_KEY / clearStoredSetupPassword).
+      // Never on a failed attempt above — the operator may still retry with
+      // the same generated password.
+      clearStoredSetupPassword();
 
       this.showDeploy = true;
       this.startDeployPolling();

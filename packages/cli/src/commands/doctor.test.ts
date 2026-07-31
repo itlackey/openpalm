@@ -53,6 +53,7 @@ function baseDeps(overrides: Partial<DoctorDeps> = {}): DoctorDeps {
     // logic (see the "port-probe reconciliation" describe block below).
     checkExistingUiInstance: async () => ({ status: 'absent' as const }),
     detectExistingProject: async () => ({ exists: false, isOurs: false, workingDir: '' }),
+    resolveProjectPublishedPorts: async () => new Set<number>(),
     checkDiskHeadroom: () => okDiskHeadroom,
     describeDiskHeadroom: () => null,
     buildStorageReport: async () => okStorageReport,
@@ -182,28 +183,68 @@ describe('openpalm doctor — port-probe fixes (C10/B9)', () => {
     expect(seenServerPort).toBe(4400);
   });
 
-  test("reclassifies a blocked ui/assistant port as ours once Docker confirms THIS home's own compose project holds it — a custom OP_PROJECT_NAME must not read as a conflict against itself", async () => {
+  test('does NOT short-circuit the admin port on a "mismatch" identity — a non-admin `openpalm ui` already on the port is a real conflict, not "ours" (review finding #5)', async () => {
+    const originalLog = console.log;
+    console.log = silentConsole.log;
+    try {
+      const deps = baseDeps({
+        readStackEnv: () => ({ OP_HOST_UI_PORT: '4400' }),
+        // "mismatch" — something OpenPalm-shaped is on the port, but at the
+        // wrong capability level (ui-server.ts / Electron's main.ts both
+        // hard-refuse to attach to this). Doctor must not paper over it.
+        checkExistingUiInstance: async (port) =>
+          port === 4400 ? { status: 'mismatch' as const, admin: false } : { status: 'absent' as const },
+        probeInstallPorts: async (targets, opts) =>
+          (targets ?? []).map((t) => ({
+            ...t,
+            // Mirrors the real probeInstallPorts: a mismatched process really
+            // does hold the socket, so a plain TCP bind fails for it too —
+            // UNLESS serverPort short-circuited it, which must not happen here.
+            available: opts?.serverPort === t.port,
+            ownership: opts?.serverPort === t.port ? ('ours' as const) : ('free' as const),
+          })),
+      });
+      const report = await runDoctorAction({ json: true }, deps);
+      const admin = report.ports.find((p) => p.service === 'admin');
+      expect(admin).toMatchObject({ available: false, ownership: 'free' });
+      expect(doctorReportHasFailure(report)).toBe(true);
+    } finally {
+      console.log = originalLog;
+    }
+  });
+
+  test("reclassifies a blocked ui/assistant port as ours once Docker confirms THIS home's own compose project both holds the project AND actually publishes those ports — a custom OP_PROJECT_NAME must not read as a conflict against itself", async () => {
     const originalLog = console.log;
     console.log = silentConsole.log;
     let seenProjectName: string | undefined;
+    let portsRequestedFor: string | undefined;
+    const seenTargetPorts: Record<string, number> = {};
     try {
       const deps = baseDeps({
         resolveComposeProjectName: () => 'myproj',
         probeInstallPorts: async (targets) =>
-          (targets ?? []).map((t) => ({
-            ...t,
-            available: t.service === 'admin',
-            ownership: t.service === 'admin' ? undefined : ('free' as const),
-          })),
+          (targets ?? []).map((t) => {
+            seenTargetPorts[t.service] = t.port;
+            return {
+              ...t,
+              available: t.service === 'admin',
+              ownership: t.service === 'admin' ? undefined : ('free' as const),
+            };
+          }),
         detectExistingProject: async (opts) => {
           seenProjectName = opts.projectName;
           return { exists: true, isOurs: true, workingDir: opts.expectedWorkingDir };
+        },
+        resolveProjectPublishedPorts: async (projectName) => {
+          portsRequestedFor = projectName;
+          return new Set([seenTargetPorts.ui, seenTargetPorts.assistant]);
         },
       });
       const report = await runDoctorAction({ json: true }, deps);
       const ui = report.ports.find((p) => p.service === 'ui');
       const assistant = report.ports.find((p) => p.service === 'assistant');
       expect(seenProjectName).toBe('myproj');
+      expect(portsRequestedFor).toBe('myproj');
       expect(ui).toMatchObject({ available: true, ownership: 'ours' });
       expect(assistant).toMatchObject({ available: true, ownership: 'ours' });
     } finally {
@@ -227,6 +268,65 @@ describe('openpalm doctor — port-probe fixes (C10/B9)', () => {
       const report = await runDoctorAction({ json: true }, deps);
       const ui = report.ports.find((p) => p.service === 'ui');
       expect(ui).toMatchObject({ available: false });
+    } finally {
+      console.log = originalLog;
+    }
+  });
+
+  test('does NOT launder a genuine foreign conflict into "ours" just because our own (e.g. stopped) compose project exists — only ports it actually publishes are reclassified (review finding #2)', async () => {
+    const originalLog = console.log;
+    console.log = silentConsole.log;
+    try {
+      const deps = baseDeps({
+        probeInstallPorts: async (targets) =>
+          (targets ?? []).map((t) => ({
+            ...t,
+            available: t.service === 'admin',
+            ownership: t.service === 'admin' ? undefined : ('free' as const),
+          })),
+        // Our own project's containers exist (e.g. stopped — `docker ps -a`
+        // still finds them) and match by working dir, so `isOurs` is true —
+        // but they are not RUNNING, so they publish no ports at all. An
+        // unrelated process holds the assistant port instead.
+        detectExistingProject: async () => ({ exists: true, isOurs: true, workingDir: '/home/op' }),
+        resolveProjectPublishedPorts: async () => new Set<number>(),
+      });
+      const report = await runDoctorAction({ json: true }, deps);
+      const ui = report.ports.find((p) => p.service === 'ui');
+      const assistant = report.ports.find((p) => p.service === 'assistant');
+      expect(ui).toMatchObject({ available: false });
+      expect(assistant).toMatchObject({ available: false });
+      expect(doctorReportHasFailure(report)).toBe(true);
+    } finally {
+      console.log = originalLog;
+    }
+  });
+
+  test('reclassifies only the specific port our project actually publishes, leaving an unrelated conflicting port alone (review finding #2)', async () => {
+    const originalLog = console.log;
+    console.log = silentConsole.log;
+    const seenTargetPorts: Record<string, number> = {};
+    try {
+      const deps = baseDeps({
+        probeInstallPorts: async (targets) =>
+          (targets ?? []).map((t) => {
+            seenTargetPorts[t.service] = t.port;
+            return {
+              ...t,
+              available: t.service === 'admin',
+              ownership: t.service === 'admin' ? undefined : ('free' as const),
+            };
+          }),
+        detectExistingProject: async () => ({ exists: true, isOurs: true, workingDir: '/home/op' }),
+        // Our project's running container publishes only the ui port — the
+        // assistant port conflict is with something else entirely.
+        resolveProjectPublishedPorts: async () => new Set([seenTargetPorts.ui]),
+      });
+      const report = await runDoctorAction({ json: true }, deps);
+      const ui = report.ports.find((p) => p.service === 'ui');
+      const assistant = report.ports.find((p) => p.service === 'assistant');
+      expect(ui).toMatchObject({ available: true, ownership: 'ours' });
+      expect(assistant).toMatchObject({ available: false });
     } finally {
       console.log = originalLog;
     }

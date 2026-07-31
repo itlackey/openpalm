@@ -69,12 +69,14 @@ export type ProjectRenameTeardown = {
 	/** Problem the caller should surface; null on clean runs. */
 	warning: string | null;
 	/**
-	 * True when the outgoing project is still running but could not be
+	 * True when the outgoing project is still RUNNING but could not be
 	 * stopped (the `down` failed). The marker is kept for retry, and bringing
 	 * the stack up under the NEW name would collide with the old project's
 	 * containers and host ports — callers must ABORT the apply and surface
-	 * `warning` instead of continuing. The foreign-project case is NOT
-	 * blocking: that project was never ours to stop.
+	 * `warning` instead of continuing. NOT set when the old project was
+	 * already fully stopped and `down` merely failed to clean it up (nothing
+	 * is holding a port to collide with), nor for the foreign-project case
+	 * (that project was never ours to stop).
 	 */
 	blocked: boolean;
 };
@@ -128,9 +130,16 @@ export async function teardownRenamedProject(
 		};
 	}
 	if (!existing.exists) {
-		// Nothing is running under the old name. Clear the marker: with
-		// no running containers there are no port conflicts, and stopped old
-		// containers are harmless leftovers, not a split stack.
+		// Nothing AT ALL remains under the old name — `docker ps -a` found no
+		// containers, running or stopped. Clear the marker: there is nothing
+		// left to collide with, so there is nothing left to tear down either.
+		//
+		// A merely-STOPPED previous project does NOT reach this branch:
+		// detectExistingProject probes `docker ps -a`, so it reports
+		// `exists: true` for a stopped project too. That falls through to the
+		// isOurs / composeDownProject path below exactly like a running
+		// project would — which is what actually removes the leftover
+		// containers instead of silently leaving them behind.
 		clearRecordedProjectRename(state.homeDir);
 		return { downed: null, warning: null, blocked: false };
 	}
@@ -150,13 +159,32 @@ export async function teardownRenamedProject(
 		removeOrphans: true
 	});
 	if (!result.ok) {
+		// Only a RUNNING previous project is actually blocking: it still holds
+		// host ports/the project name and would collide with the new one
+		// coming up. A previous project that was already fully stopped holds
+		// nothing — a failed `down` there just means leftover containers
+		// weren't cleaned up, which must not abort the apply forever.
+		// `running` is `undefined` for a caller-built fixture that predates
+		// this field (or a detection/down timing gap) — treated as the risky
+		// case rather than assumed safe.
+		if (existing.running !== false) {
+			return {
+				downed: null,
+				warning:
+					`Project rename: failed to stop previous docker project "${previous}" ` +
+					`(${result.stderr.trim() || `exit ${result.code}`}); it is still running and would ` +
+					`collide with the new project name. Aborting; the rename will be retried on the next apply.`,
+				blocked: true
+			};
+		}
+		clearRecordedProjectRename(state.homeDir);
 		return {
 			downed: null,
 			warning:
-				`Project rename: failed to stop previous docker project "${previous}" ` +
-				`(${result.stderr.trim() || `exit ${result.code}`}); it is still running and would ` +
-				`collide with the new project name. Aborting; the rename will be retried on the next apply.`,
-			blocked: true
+				`Project rename: previous docker project "${previous}" was already stopped but could not be ` +
+				`fully removed (${result.stderr.trim() || `exit ${result.code}`}); leftover containers may ` +
+				`remain (remove them manually if desired). Not aborting — nothing under the old name is running.`,
+			blocked: false
 		};
 	}
 

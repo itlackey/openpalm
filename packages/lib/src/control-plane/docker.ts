@@ -129,19 +129,32 @@ export function resolveComposeProjectName(envOverrides: Record<string, string> =
  * Result of probing the Docker daemon for an existing compose project that
  * shares our project name.
  *
- * - `exists`   — at least one running container carries the project label.
- * - `isOurs`   — those containers were launched from THIS install's working
- *                dir (compose working_dir label === expectedWorkingDir). When
- *                true the caller should reconcile in place (up --force-recreate).
- *                When false a DIFFERENT OpenPalm install (e.g. dev vs host) owns
- *                the name and the caller must refuse.
- * - `workingDir` — the working_dir label read off the first container, for
- *                error messages. Empty string when unknown.
+ * - `exists`   — at least one container (running or stopped) carries the
+ *                project label.
+ * - `isOurs`   — EVERY one of those containers was launched from THIS
+ *                install's working dir (compose working_dir label ===
+ *                expectedWorkingDir). When true the caller should reconcile in
+ *                place (up --force-recreate). When false at least one
+ *                container under this project name belongs to a DIFFERENT
+ *                OpenPalm install (e.g. dev vs host, or a foreign leftover)
+ *                and the caller must refuse — `up` would otherwise try to
+ *                adopt/recreate a container it does not own.
+ * - `workingDir` — a representative working_dir label for error messages:
+ *                the first FOREIGN one when `isOurs` is false (so the message
+ *                names the actual conflict), otherwise the shared label.
+ *                Empty string when unknown.
+ * - `running`  — true when at least one matched container is actually in the
+ *                `running` state (as opposed to merely present-but-stopped).
+ *                `undefined` when unknown (a Docker error, or a caller-built
+ *                fixture that predates this field) — callers that gate a
+ *                blocking decision on this must treat `undefined` the same as
+ *                `true` (assume the risky case) rather than as `false`.
  */
 export type ExistingProject = {
   exists: boolean;
   isOurs: boolean;
   workingDir: string;
+  running?: boolean;
   error?: string;
 };
 
@@ -171,6 +184,13 @@ export function isProjectOurs(workingDirLabel: string, expectedWorkingDir: strin
  * probe this feeds would then see "no project" and let the deploy's
  * `up --force-recreate --remove-orphans` adopt/clobber it.
  *
+ * `-a` also means MULTIPLE containers under the same project name is no
+ * longer a corner case: a stopped foreign leftover can sit right alongside
+ * our own running containers. Every returned id is inspected (not just the
+ * first — `docker ps -a` orders newest-first, so relying on one id would let
+ * whichever container happens to be newest decide ours-vs-foreign for the
+ * whole project) and `isOurs` requires ALL of them to match.
+ *
  * Docker errors are returned separately from a confirmed absent project so
  * callers never mistake "could not check" for "safe to continue".
  */
@@ -179,20 +199,39 @@ export async function detectExistingProject(opts: {
   expectedWorkingDir: string;
 }): Promise<ExistingProject> {
   const none: ExistingProject = { exists: false, isOurs: false, workingDir: "" };
+  // ID + State in one call (no separate `docker ps` round trip) — State feeds
+  // `running` below, distinguishing an actually-running collision (blocking)
+  // from a merely-stopped leftover (not).
   const ps = await run(
-    ["ps", "-a", "-q", "--filter", `label=com.docker.compose.project=${opts.projectName}`],
+    [
+      "ps",
+      "-a",
+      "--filter",
+      `label=com.docker.compose.project=${opts.projectName}`,
+      "--format",
+      "{{.ID}}\t{{.State}}",
+    ],
     undefined,
     10_000,
   );
   if (!ps.ok) return { ...none, error: ps.stderr || "Could not query Docker projects" };
-  const ids = ps.stdout.trim().split(/\s+/).filter(Boolean);
-  if (ids.length === 0) return none;
+  const psRows = ps.stdout
+    .trim()
+    .split(/\r?\n/)
+    .filter(Boolean)
+    .map((line) => {
+      const [id, state] = line.split("\t");
+      return { id: id?.trim() ?? "", state: state?.trim().toLowerCase() ?? "" };
+    })
+    .filter((row) => row.id !== "");
+  if (psRows.length === 0) return none;
+  const running = psRows.some((row) => row.state === "running");
   const inspect = await run(
     [
       "inspect",
       "--format",
       '{{ index .Config.Labels "com.docker.compose.project.working_dir" }}',
-      ids[0],
+      ...psRows.map((row) => row.id),
     ],
     undefined,
     10_000,
@@ -202,11 +241,22 @@ export async function detectExistingProject(opts: {
       exists: true,
       isOurs: false,
       workingDir: "",
+      running,
       error: inspect.stderr || "Could not inspect Docker project ownership",
     };
   }
-  const workingDir = inspect.stdout.trim();
-  return { exists: true, isOurs: isProjectOurs(workingDir, opts.expectedWorkingDir), workingDir };
+  // One line of output per id, in the same order they were passed to
+  // `inspect` — drop only the trailing newline's empty artifact, never a
+  // genuinely blank (unlabeled) line, since an unlabeled container must still
+  // count as foreign below.
+  const lines = inspect.stdout.split("\n");
+  if (lines[lines.length - 1] === "") lines.pop();
+  const workingDirs = lines.map((line) => line.trim());
+  const isOurs =
+    workingDirs.length > 0 && workingDirs.every((dir) => isProjectOurs(dir, opts.expectedWorkingDir));
+  const workingDir =
+    workingDirs.find((dir) => !isProjectOurs(dir, opts.expectedWorkingDir)) ?? workingDirs[0] ?? "";
+  return { exists: true, isOurs, workingDir, running };
 }
 
 /** Check if Docker is available */

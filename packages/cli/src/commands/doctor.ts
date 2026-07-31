@@ -19,6 +19,7 @@
  * file from ever touching global module state.
  */
 import { defineCommand } from 'citty';
+import { execFile } from 'node:child_process';
 import { existsSync, statSync } from 'node:fs';
 import {
   checkDiskHeadroom,
@@ -33,6 +34,7 @@ import {
   resolveOpenCodeCredential,
   resolveAssistantEndpoint,
   detectExistingProject,
+  dockerBin,
   listSessionsPaged,
   toSessionRecord,
   type SessionDeletionClient,
@@ -217,6 +219,15 @@ export interface DoctorDeps {
   checkExistingUiInstance: typeof checkExistingUiInstance;
   /** Ownership-by-project probe (deploy.ts's own collision check) — tells a custom OP_PROJECT_NAME's OWN containers apart from a real foreign conflict on the ui/assistant ports. */
   detectExistingProject: typeof detectExistingProject;
+  /**
+   * Ports actually published by THIS project's RUNNING containers — scopes
+   * `detectExistingProject`'s project-level "isOurs" answer down to the
+   * specific ports our own project holds, so a genuine foreign conflict on an
+   * unrelated port (e.g. our stack is stopped and a stranger squats the
+   * assistant port) is never laundered into "ours" just because a compose
+   * project with our name happens to exist (review finding #2).
+   */
+  resolveProjectPublishedPorts: typeof resolveProjectPublishedPorts;
   checkDiskHeadroom: typeof checkDiskHeadroom;
   describeDiskHeadroom: typeof describeDiskHeadroom;
   buildStorageReport: typeof buildStorageReport;
@@ -242,6 +253,7 @@ export const defaultDoctorDeps: DoctorDeps = {
   probeInstallPorts,
   checkExistingUiInstance,
   detectExistingProject,
+  resolveProjectPublishedPorts,
   checkDiskHeadroom,
   describeDiskHeadroom,
   buildStorageReport,
@@ -274,23 +286,68 @@ function resolveDoctorPortTargets(persistedEnv: Record<string, string>): Install
 }
 
 /**
+ * Ports actually published by RUNNING containers labelled with `projectName`'s
+ * compose project (`com.docker.compose.project=<projectName>`).
+ *
+ * Deliberately independent of the lib's `portHeldByOurContainer`: that
+ * function hardcodes an `openpalm-` container-NAME prefix, which is exactly
+ * the customized-`OP_PROJECT_NAME` gap this doctor-side check exists to close
+ * (containers named `<project>-ui-1` etc. never match that prefix). Filtering
+ * on the compose project LABEL instead is unaffected by a renamed project.
+ *
+ * Only running containers are queried (no `-a`): a stopped container binds no
+ * port, so it cannot hold anything a live TCP probe found unavailable — and
+ * treating a stopped project as if it still held the port is precisely what
+ * let a genuine foreign conflict get laundered into "ours" (review finding
+ * #2).
+ */
+export async function resolveProjectPublishedPorts(projectName: string): Promise<Set<number>> {
+  const ports = new Set<number>();
+  const result = await new Promise<{ ok: boolean; stdout: string }>((resolve) => {
+    execFile(
+      dockerBin(),
+      ['ps', '--filter', `label=com.docker.compose.project=${projectName}`, '--format', '{{.Ports}}'],
+      { timeout: 10_000 },
+      (error, stdout) => resolve({ ok: !error, stdout: stdout?.toString() ?? '' }),
+    );
+  });
+  if (!result.ok) return ports;
+  for (const match of result.stdout.matchAll(/:(\d+)->/g)) {
+    const port = Number(match[1]);
+    if (Number.isFinite(port)) ports.add(port);
+  }
+  return ports;
+}
+
+/**
  * Resolve doctor's port-conflict report — folding in TWO ownership checks
  * `probeInstallPorts`'s own container-ownership fallback cannot make (C10/B9):
  *
  *  1. The admin (host UI) port is never a container at all — it is a bare
  *     host process, so no `docker ps` lookup can ever attribute it to "us".
  *     `serverPort` short-circuits it via the same instance-identity probe
- *     `ui-server.ts`'s own D1 fix uses: if ANYTHING OpenPalm-shaped already
- *     answers there, it is our own already-running server, not a conflict —
- *     without this, running `openpalm doctor` while the host UI is up always
- *     reported a blocking conflict against itself.
+ *     `ui-server.ts`'s own D1 fix uses, but ONLY on a genuine `match`: a
+ *     `mismatch` (something OpenPalm-shaped but the WRONG capability level —
+ *     e.g. a bare `openpalm ui` holding the admin port) is a real conflict
+ *     `ui-server.ts`/Electron's `main.ts` both hard-refuse on (review finding
+ *     #5) — doctor must not paper over it by calling the port "ours" too.
+ *     Falling through to the plain TCP probe below for a `mismatch` reports
+ *     it as a genuine (non-`ours`) conflict, matching what actually happens
+ *     when `openpalm admin` is then run against it.
  *  2. `portHeldByOurContainer` (lib) hardcodes the `openpalm-` container-name
  *     prefix, so a customized `OP_PROJECT_NAME` (containers then named
  *     `<project>-ui-1` etc.) makes the operator's OWN running stack read as a
  *     conflict on the ui/assistant ports. Once Docker confirms THIS home's own
  *     compose project — by resolved project name + stack dir, the exact test
- *     `deploy.ts`'s collision check already trusts — is what is running, any
- *     still-blocked container-backed port is reclassified as ours.
+ *     `deploy.ts`'s collision check already trusts — is what is running,
+ *     reclassify as ours ONLY the ports that project's RUNNING containers
+ *     actually publish (`resolveProjectPublishedPorts`) — not every
+ *     unresolved conflict. `detectExistingProject` only proves a compose
+ *     project with this name exists (its `docker ps -a` counts STOPPED
+ *     containers, and it never looks at ports at all), so blindly clearing
+ *     every conflict once it returns `isOurs` would launder a genuine foreign
+ *     process squatting an unrelated port into "ours" too (review finding #2
+ *     — e.g. our stack is stopped and a stranger holds the assistant port).
  */
 async function resolveDoctorPorts(
   state: Pick<ControlPlaneState, 'stackDir'>,
@@ -303,10 +360,8 @@ async function resolveDoctorPorts(
   const adminTarget = targets.find((t) => t.service === 'admin');
   let serverPort: number | undefined;
   if (adminTarget) {
-    // expectedAdmin is irrelevant here — either outcome (match OR mismatch)
-    // means an OpenPalm UI process, not a stranger, already owns this port.
     const identity: UiInstanceCheck = await deps.checkExistingUiInstance(adminTarget.port, true, {});
-    if (identity.status !== 'absent') serverPort = adminTarget.port;
+    if (identity.status === 'match') serverPort = adminTarget.port;
   }
 
   const ports = await deps.probeInstallPorts(targets, { dockerAvailable, serverPort });
@@ -319,7 +374,10 @@ async function resolveDoctorPorts(
   const existing: ExistingProject = await deps.detectExistingProject({ projectName, expectedWorkingDir: state.stackDir });
   if (!existing.exists || !existing.isOurs) return ports;
 
-  return ports.map((p) => (isUnresolvedConflict(p) ? { ...p, available: true, ownership: 'ours' as const } : p));
+  const ourPorts = await deps.resolveProjectPublishedPorts(projectName);
+  return ports.map((p) =>
+    isUnresolvedConflict(p) && ourPorts.has(p.port) ? { ...p, available: true, ownership: 'ours' as const } : p,
+  );
 }
 
 /**

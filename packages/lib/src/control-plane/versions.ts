@@ -99,8 +99,15 @@ export function advanceManagedImageVersions(
 			updates[key] = target;
 			updates[markerKey] = target;
 		} else if ((managedValue && value === managedValue) || legacyManaged) {
-			updates[key] = targetPlatformVersion;
-			updates[markerKey] = targetPlatformVersion;
+			// Voice tags are variant-suffixed (latest-cpu, vX.Y.Z-cu121), not
+			// platform semver, and publish-voice.yml never publishes a bare
+			// platform-version tag — same reason the rollback arm above excludes
+			// it. Advancing voice to targetPlatformVersion here would point it at
+			// an image that was never published, and because this arm also
+			// re-stamps the marker to match, the bad value would be sticky.
+			const target = key === 'OP_VOICE_VERSION' ? VERSION_DEFAULTS.OP_VOICE_VERSION : targetPlatformVersion;
+			updates[key] = target;
+			updates[markerKey] = target;
 		}
 	}
 	writeVersionState(state, updates);
@@ -112,15 +119,45 @@ export function advanceManagedImageVersions(
  * arbitrary env into the stack config. mergeEnvContent preserves any existing state
  * keys/comments. Supplied values, including `latest` and `next`, are persisted
  * honestly as the desired Compose configuration.
+ *
+ * This is the OPERATOR-PIN API: it blanks each key's OP_MANAGED_*_VERSION
+ * marker, which tells advanceManagedImageVersions the value is a deliberate
+ * choice that must never be auto-advanced. Only a genuine operator choice
+ * (the Updates tab PATCH, or a wizard's explicit Advanced image-tag field)
+ * should call this. A release-managed DEFAULT that setup fills in on the
+ * operator's behalf must use writeManagedVersions below instead — blanking
+ * its marker here would make it indistinguishable from a real pin and freeze
+ * it on the install-time tag forever.
  */
 export function writeVersions(state: ControlPlaneState, updates: Record<string, string>): void {
+	writeVersionEntries(state, updates, () => '');
+}
+
+/**
+ * Same validation/persistence as writeVersions, but for a value setup chose
+ * as a release-managed DEFAULT, not something the operator asked for: the
+ * marker is stamped to match the value (instead of blanked) so a later
+ * advanceManagedImageVersions still recognizes it as managed and advances it
+ * on the next release, exactly like the markers generateFallbackSystemEnv
+ * seeds into a brand-new stack.env.
+ */
+export function writeManagedVersions(state: ControlPlaneState, updates: Record<string, string>): void {
+	writeVersionEntries(state, updates, (value) => value);
+}
+
+function writeVersionEntries(
+	state: ControlPlaneState,
+	updates: Record<string, string>,
+	markerValue: (value: string) => string
+): void {
 	const accepted: Record<string, string> = {};
 	for (const [key, value] of Object.entries(updates)) {
 		if (!isVersionKey(key)) {
 			throw new Error(`Refusing to write unknown version key: ${key}`);
 		}
-		accepted[key] = (value ?? '').trim();
-		accepted[MANAGED_VERSION_MARKERS[key]] = '';
+		const trimmed = (value ?? '').trim();
+		accepted[key] = trimmed;
+		accepted[MANAGED_VERSION_MARKERS[key]] = markerValue(trimmed);
 	}
 	writeVersionState(state, accepted);
 }

@@ -66,8 +66,17 @@
   let passwordInputEl: HTMLInputElement | null = $state(null);
   // W12: the rerun password field starts collapsed — the default is "keep
   // the existing secret", so the input only appears once the operator asks
-  // to replace it.
-  let showRerunPasswordInput = $state(false);
+  // to replace it. Seeded from the STORE's dirty flag (not hardcoded false):
+  // this component unmounts/remounts every time the wizard navigates off and
+  // back onto step 3 (routes/setup/+page.svelte wraps it in `{#if
+  // s.currentStep === 3}`), while `uiLoginPasswordDirty` lives in the
+  // module-singleton store and survives that. Hardcoding false here used to
+  // let a remount silently re-collapse an in-progress password change: the
+  // store still had the typed password + dirty=true (so Update would send
+  // and ROTATE it), but the UI rendered the "Previously set — not changed"
+  // branch with dots, telling the operator nothing was changing. Seeding
+  // from the store keeps the two in lockstep on every mount.
+  let showRerunPasswordInput = $state(s.uiLoginPasswordDirty);
 
   function onPasswordInput(e: Event): void {
     s.updateUiLoginPassword((e.currentTarget as HTMLInputElement).value);
@@ -201,6 +210,14 @@
         </button>
       </div>
     </div>
+    <!-- Defensive: this branch should only ever render while passwordValid is
+         true (collapsed ⇒ !uiLoginPasswordDirty ⇒ the isRerun && !dirty OR
+         clause in passwordValid), but render the same error affordance the
+         other two branches have rather than leaving a silently-disabled
+         Update with no explanation if that invariant is ever broken. -->
+    {#if !passwordValid}
+      <p class="password-error" id="password-error" role="alert">Password must be at least 8 characters.</p>
+    {/if}
     <p class="password-note">Previously set — not changed unless you set a new one.</p>
   </div>
 {:else}

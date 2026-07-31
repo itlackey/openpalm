@@ -84,16 +84,27 @@ const DESKTOP_TARGETS = [
 ];
 
 /**
- * Name one desktop artifact the way electron-builder's default artifactName
- * template names it (electron-builder.yml sets no `artifactName`, so the
- * built-in pattern applies — traced from the installed electron-builder
- * package, not asserted from a live release: no NSIS installer has shipped
- * yet, see review finding D4):
- *   - zip (mac/win):    "${productName}-${version}[-${arch}]-${os}.zip"
- *   - AppImage (linux): "${productName}-${version}[-${arch}].AppImage"
- *   - nsis (win):       "${productName} Setup ${version}[-${arch}].exe"
+ * Name one desktop artifact the way electron-builder actually names it
+ * (traced from the installed electron-builder package):
+ *   - zip (mac/win):    default pattern, electron-builder.yml sets no
+ *                       `artifactName` for these — "${productName}-${version}[-${arch}]-${os}.zip"
+ *   - AppImage (linux): same, no override — "${productName}-${version}[-${arch}].AppImage"
+ *   - nsis (win):       electron-builder.yml SETS `nsis.artifactName` to
+ *                       "${productName}-Setup-${version}.${ext}" (review
+ *                       finding #1): the built-in default
+ *                       "${productName} Setup ${version}.${ext}" contains a
+ *                       space, which is not a valid GitHub release asset
+ *                       character — app-builder-lib's
+ *                       computeSafeArtifactNameIfNeeded rewrites it to
+ *                       "${productName}-Setup-${version}.exe" for the
+ *                       electron-updater feed (updateInfoBuilder.js) while
+ *                       the on-disk file kept the space, so the feed
+ *                       referenced a file that was never uploaded. Setting
+ *                       the artifactName explicitly makes the on-disk name,
+ *                       the feed, and the GitHub-uploaded asset all agree.
  * The `-${arch}` segment is dropped for the configured default arch (x64);
- * every non-default arch (arm64) keeps it.
+ * every non-default arch (arm64) keeps it. NSIS only ever builds x64 (see
+ * DESKTOP_TARGETS), so it never carries an arch suffix.
  */
 export function desktopAssetName(productName, version, { platform, arch, kind }) {
   const archSuffix = arch === DEFAULT_ARCH ? '' : `-${arch}`;
@@ -103,7 +114,7 @@ export function desktopAssetName(productName, version, { platform, arch, kind })
     case 'appimage':
       return `${productName}-${version}${archSuffix}.AppImage`;
     case 'nsis':
-      return `${productName} Setup ${version}${archSuffix}.exe`;
+      return `${productName}-Setup-${version}${archSuffix}.exe`;
     default:
       throw new Error(`Unknown desktop target kind: ${kind}`);
   }
@@ -135,10 +146,11 @@ export function requiredReleaseAssets(version, productName = readElectronProduct
 
 /**
  * Look up the sha256 `checksums-sha256.txt` (as written by `sha256sum --`)
- * records for `filename`. A plain `split(/\s+/)` breaks on the NSIS
- * installer's name, which contains a literal space ("OpenPalm Setup
- * 1.2.3.exe") — this matches only on the fixed 64-hex-char hash prefix so the
- * remainder, spaces included, is taken as the filename.
+ * records for `filename`. A plain `split(/\s+/)` would break on any asset
+ * name that ever contains a space (the NSIS installer used to, before review
+ * finding #1 gave it an explicit GitHub-safe `artifactName`) — this matches
+ * only on the fixed 64-hex-char hash prefix so the remainder, spaces
+ * included, is taken as the filename, staying correct if that ever recurs.
  */
 export function checksumFor(checksumsText, filename) {
   for (const rawLine of checksumsText.split('\n')) {

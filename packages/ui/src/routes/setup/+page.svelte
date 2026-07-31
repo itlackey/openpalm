@@ -184,6 +184,7 @@
                 id="btn-screen1-next"
                 onclick={() => s.goToStep(2)}
                 disabled={!s.canComplete}
+                title={s.localModeUnready ? 'Install Ollama and click Re-check above, or choose a cloud AI service, before continuing.' : undefined}
               >
                 {#if s.modelSelection.llm?.connId && !LOCAL_PROVIDER_IDS.has(s.modelSelection.llm.connId)}
                   Use {friendlyProviderName(s.modelSelection.llm.connId, { extraProviders: s.opencodeProviders })} — Continue

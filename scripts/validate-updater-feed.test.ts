@@ -91,13 +91,14 @@ describe('validateUpdaterFeeds', () => {
     }
   }
 
-  test('passes when both updater-capable feeds are complete', () => {
+  test('passes when all three updater-capable feeds are complete', () => {
     withDir((dir) => {
       writeFileSync(join(dir, 'latest.yml'), feedYaml('1.2.3', 'OpenPalm-1.2.3.exe'));
       writeFileSync(join(dir, 'latest-linux.yml'), feedYaml('1.2.3', 'OpenPalm-1.2.3.AppImage'));
+      writeFileSync(join(dir, 'latest-linux-arm64.yml'), feedYaml('1.2.3', 'OpenPalm-1.2.3-arm64.AppImage'));
       const present = new Set([
-        'latest.yml', 'latest-linux.yml',
-        'OpenPalm-1.2.3.exe', 'OpenPalm-1.2.3.AppImage',
+        'latest.yml', 'latest-linux.yml', 'latest-linux-arm64.yml',
+        'OpenPalm-1.2.3.exe', 'OpenPalm-1.2.3.AppImage', 'OpenPalm-1.2.3-arm64.AppImage',
       ]);
       expect(validateUpdaterFeeds(dir, '1.2.3', present)).toEqual([]);
     });
@@ -113,13 +114,28 @@ describe('validateUpdaterFeeds', () => {
     });
   });
 
-  test('fails when a macOS feed appears — macOS is manual-download only', () => {
+  test('fails when the arm64 Linux feed is missing — the x64 feed alone does not cover an arm64 AppImage install (review finding #4)', () => {
     withDir((dir) => {
       writeFileSync(join(dir, 'latest.yml'), feedYaml('1.2.3', 'OpenPalm-1.2.3.exe'));
       writeFileSync(join(dir, 'latest-linux.yml'), feedYaml('1.2.3', 'OpenPalm-1.2.3.AppImage'));
       const present = new Set([
-        'latest.yml', 'latest-linux.yml', 'latest-mac.yml',
+        'latest.yml', 'latest-linux.yml',
         'OpenPalm-1.2.3.exe', 'OpenPalm-1.2.3.AppImage',
+      ]);
+      expect(validateUpdaterFeeds(dir, '1.2.3', present).join(' ')).toMatch(
+        /Missing updater feed latest-linux-arm64\.yml/,
+      );
+    });
+  });
+
+  test('fails when a macOS feed appears — macOS is manual-download only', () => {
+    withDir((dir) => {
+      writeFileSync(join(dir, 'latest.yml'), feedYaml('1.2.3', 'OpenPalm-1.2.3.exe'));
+      writeFileSync(join(dir, 'latest-linux.yml'), feedYaml('1.2.3', 'OpenPalm-1.2.3.AppImage'));
+      writeFileSync(join(dir, 'latest-linux-arm64.yml'), feedYaml('1.2.3', 'OpenPalm-1.2.3-arm64.AppImage'));
+      const present = new Set([
+        'latest.yml', 'latest-linux.yml', 'latest-linux-arm64.yml', 'latest-mac.yml',
+        'OpenPalm-1.2.3.exe', 'OpenPalm-1.2.3.AppImage', 'OpenPalm-1.2.3-arm64.AppImage',
       ]);
       expect(validateUpdaterFeeds(dir, '1.2.3', present).join(' ')).toMatch(
         /latest-mac\.yml must not be published/,
@@ -135,14 +151,14 @@ describe('feedChannelForVersion', () => {
   test('a stable version uses the latest feed', () => {
     expect(feedChannelForVersion('1.2.3')).toBe('latest');
     expect(updaterFeedsFor(feedChannelForVersion('1.2.3'))).toEqual([
-      'latest.yml', 'latest-linux.yml',
+      'latest.yml', 'latest-linux.yml', 'latest-linux-arm64.yml',
     ]);
   });
 
   test('a prerelease version uses its own channel feed', () => {
     expect(feedChannelForVersion('0.13.0-beta.15')).toBe('beta');
     expect(updaterFeedsFor(feedChannelForVersion('0.13.0-beta.15'))).toEqual([
-      'beta.yml', 'beta-linux.yml',
+      'beta.yml', 'beta-linux.yml', 'beta-linux-arm64.yml',
     ]);
     expect(feedChannelForVersion('1.0.0-alpha.1')).toBe('alpha');
   });
@@ -157,9 +173,13 @@ describe('validateUpdaterFeeds on a prerelease candidate', () => {
         join(dir, 'beta-linux.yml'),
         feedYaml('0.13.0-beta.15', 'OpenPalm-0.13.0-beta.15.AppImage'),
       );
+      writeFileSync(
+        join(dir, 'beta-linux-arm64.yml'),
+        feedYaml('0.13.0-beta.15', 'OpenPalm-0.13.0-beta.15-arm64.AppImage'),
+      );
       const present = new Set([
-        'beta.yml', 'beta-linux.yml',
-        'OpenPalm-0.13.0-beta.15.exe', 'OpenPalm-0.13.0-beta.15.AppImage',
+        'beta.yml', 'beta-linux.yml', 'beta-linux-arm64.yml',
+        'OpenPalm-0.13.0-beta.15.exe', 'OpenPalm-0.13.0-beta.15.AppImage', 'OpenPalm-0.13.0-beta.15-arm64.AppImage',
       ]);
       expect(validateUpdaterFeeds(dir, '0.13.0-beta.15', present)).toEqual([]);
     } finally {
