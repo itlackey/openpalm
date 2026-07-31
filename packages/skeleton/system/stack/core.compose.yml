@@ -229,6 +229,13 @@ services:
     # rather than on file non-emptiness, so a stale-secret regression (the
     # secret file is always materialized non-empty by ensureSecrets) fails
     # this healthcheck loudly instead of being silently masked.
+    #
+    # K6: interval/timeout/retries/start_period below MUST match
+    # containers/assistant/Dockerfile's own HEALTHCHECK (its raw-env-password
+    # branch is the one deliberate difference — see that Dockerfile's
+    # comment). THIS definition governs the shipped stack; the Dockerfile's
+    # only matters for a bare `docker run` with no compose in front of it.
+    # healthcheck-parity.test.ts pins the two together.
     healthcheck:
       test:
         - CMD-SHELL

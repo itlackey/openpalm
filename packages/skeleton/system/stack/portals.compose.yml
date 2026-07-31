@@ -221,6 +221,11 @@ services:
     depends_on:
       assistant:
         condition: service_healthy
+    # K6: interval/timeout/retries/start_period below MUST match
+    # containers/guardian/Dockerfile's own HEALTHCHECK. THIS definition
+    # governs the shipped stack; the Dockerfile's only matters for a bare
+    # `docker run` with no compose in front of it. healthcheck-parity.test.ts
+    # pins the two together.
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:8080/health/ready || exit 1"]
       interval: 30s

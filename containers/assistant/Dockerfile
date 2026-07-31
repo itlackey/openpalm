@@ -312,7 +312,16 @@ EXPOSE 4096 3000
 # HEALTHCHECK CMD is expanded by the container's own shell, not at Dockerfile
 # build time, so healthcheck processes see created env (compose `environment:`
 # / `docker run -e`) but never variables the entrypoint exports later.
-HEALTHCHECK --interval=15s --timeout=5s --start-period=30s --retries=3 \
+#
+# K6: interval/timeout/retries/start-period below MUST match core.compose.yml's
+# assistant healthcheck (the raw-env-password branch above is the one
+# deliberate exception — see the paragraph above). The compose values win in
+# the shipped stack; this Dockerfile default only governs a bare `docker run`
+# or image-smoke-test path with no compose in front of it — there is no
+# reason for that path to have a different failure-detection threshold than
+# the real stack, and healthcheck-parity.test.ts pins the two together so a
+# future edit to one side alone fails CI instead of silently drifting again.
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=5 \
   CMD bash -c 'case "${OPENCODE_AUTH:-false}" in true|TRUE|True|1|yes|YES) curl -sf -u "${OPENCODE_SERVER_USERNAME:-opencode}:${OPENCODE_SERVER_PASSWORD:-$(cat "${OPENCODE_SERVER_PASSWORD_FILE:-/run/secrets/opencode_server_password}")}" http://localhost:${OPENCODE_PORT:-4096}/health >/dev/null ;; *) curl -sf http://localhost:${OPENCODE_PORT:-4096}/health >/dev/null ;; esac && { [ -f /tmp/openpalm-ui-skip ] || curl -sf http://localhost:3000/health >/dev/null; }' || exit 1
 
 ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/opencode-entrypoint.sh"]

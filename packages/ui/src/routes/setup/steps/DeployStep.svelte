@@ -91,7 +91,11 @@
   const noStartMode = $derived(deployDone && services.length === 0);
 </script>
 
-<div class="deploy-header">
+<!-- W14: the longest wait of onboarding had no screen-reader announcement at
+     all — phase/progress changes were purely visual. aria-live="polite" here
+     announces each title/subtitle change (phase transitions, the running
+     services count, and the final done/error state) without interrupting. -->
+<div class="deploy-header" aria-live="polite" aria-atomic="true">
   <h2 id="deploy-title">{deployTitle}</h2>
   <p class="step-description" id="deploy-subtitle">{deploySubtitle}</p>
 </div>
