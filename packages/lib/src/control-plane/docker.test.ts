@@ -1,4 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import { mkdtempSync, rmSync, writeFileSync, chmodSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
   buildComposePreflightError,
   checkDocker,
@@ -46,6 +49,118 @@ describe("detectExistingProject", () => {
     expect(result.exists).toBe(false);
     expect(result.isOurs).toBe(false);
     expect(result.workingDir).toBe("");
+  });
+});
+
+/**
+ * D4: `docker ps -a` is newest-first, so inspecting only the first returned id
+ * would let whichever container happens to be newest decide ours-vs-foreign
+ * for the WHOLE project — unreliable in exactly the mixed case `-a` was added
+ * to catch (our own containers alongside one foreign leftover). A fake
+ * `docker` binary (OP_DOCKER_BIN, same knob dockerBin() reads) stands in for
+ * the daemon so this is deterministic without one.
+ */
+describe("detectExistingProject (inspects EVERY matched container, not just ids[0])", () => {
+  let scriptDir: string;
+  const saved: Record<string, string | undefined> = {};
+
+  function writeFakeDockerBin(): string {
+    const scriptPath = join(scriptDir, "fake-docker.sh");
+    writeFileSync(
+      scriptPath,
+      [
+        "#!/bin/sh",
+        'if [ "$1" = "ps" ]; then',
+        "  for entry in $FAKE_PS_ROWS; do",
+        '    id="${entry%%:*}"',
+        '    state="${entry#*:}"',
+        '    printf "%s\\t%s\\n" "$id" "$state"',
+        "  done",
+        "  exit 0",
+        "fi",
+        'if [ "$1" = "inspect" ]; then',
+        "  shift 3", // drop "inspect" "--format" "<fmt>"
+        '  for id in "$@"; do',
+        "    case \"$id\" in",
+        "      *foreign*) echo \"$FAKE_FOREIGN_DIR\" ;;",
+        "      *) echo \"$FAKE_OURS_DIR\" ;;",
+        "    esac",
+        "  done",
+        "  exit 0",
+        "fi",
+        "exit 1",
+        "",
+      ].join("\n"),
+    );
+    chmodSync(scriptPath, 0o755);
+    return scriptPath;
+  }
+
+  beforeEach(() => {
+    scriptDir = mkdtempSync(join(tmpdir(), "openpalm-fake-docker-"));
+    for (const key of ["OP_DOCKER_BIN", "FAKE_PS_ROWS", "FAKE_OURS_DIR", "FAKE_FOREIGN_DIR"]) {
+      saved[key] = process.env[key];
+    }
+    process.env.OP_DOCKER_BIN = writeFakeDockerBin();
+    process.env.FAKE_OURS_DIR = "/home/me/.openpalm";
+    process.env.FAKE_FOREIGN_DIR = "/home/other/.openpalm";
+  });
+
+  afterEach(() => {
+    for (const [key, value] of Object.entries(saved)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+    rmSync(scriptDir, { recursive: true, force: true });
+  });
+
+  it("is NOT ours when a foreign container sorts first (newest) but an ours container also matches", async () => {
+    process.env.FAKE_PS_ROWS = "container-foreign-1:exited container-ours-2:running";
+
+    const result = await detectExistingProject({
+      projectName: "openpalm",
+      expectedWorkingDir: process.env.FAKE_OURS_DIR!,
+    });
+
+    expect(result.exists).toBe(true);
+    expect(result.isOurs).toBe(false);
+    // Names the actual foreign conflict, not whichever id happened to be first.
+    expect(result.workingDir).toBe(process.env.FAKE_FOREIGN_DIR);
+  });
+
+  it("is ours only when EVERY matched container's working_dir matches, regardless of order", async () => {
+    process.env.FAKE_PS_ROWS = "container-ours-2:running container-ours-1:exited";
+
+    const result = await detectExistingProject({
+      projectName: "openpalm",
+      expectedWorkingDir: process.env.FAKE_OURS_DIR!,
+    });
+
+    expect(result.exists).toBe(true);
+    expect(result.isOurs).toBe(true);
+    expect(result.workingDir).toBe(process.env.FAKE_OURS_DIR);
+  });
+
+  it("reports running:true when at least one matched container is running", async () => {
+    process.env.FAKE_PS_ROWS = "container-ours-1:exited container-ours-2:running";
+
+    const result = await detectExistingProject({
+      projectName: "openpalm",
+      expectedWorkingDir: process.env.FAKE_OURS_DIR!,
+    });
+
+    expect(result.running).toBe(true);
+  });
+
+  it("reports running:false when every matched container is stopped", async () => {
+    process.env.FAKE_PS_ROWS = "container-ours-1:exited container-ours-2:created";
+
+    const result = await detectExistingProject({
+      projectName: "openpalm",
+      expectedWorkingDir: process.env.FAKE_OURS_DIR!,
+    });
+
+    expect(result.running).toBe(false);
   });
 });
 
