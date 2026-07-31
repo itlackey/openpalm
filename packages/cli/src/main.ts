@@ -208,7 +208,7 @@ function unknownCommandMessage(command: string): string {
  * wrong, quietly falling back to the persisted/default port instead).
  */
 export function parseBareArgs(argv: string[]): BareRunOpts {
-  const parsed = parseArgs(argv, bareArgsDef);
+  const parsed = parseArgs<typeof bareArgsDef>(argv, bareArgsDef);
   const opts: BareRunOpts = {};
   // `open` defaults to true (bareArgsDef), so only an explicit --no-open /
   // --open=false needs to be threaded through.

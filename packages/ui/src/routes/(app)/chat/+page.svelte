@@ -266,6 +266,12 @@
 	// the user reviews spoken text before it goes out.
 	let draft = $state('');
 
+	// F10: a suggested-prompt chip fills the draft for review rather than
+	// sending immediately — same principle as dictation above.
+	function useSuggestedPrompt(prompt: string): void {
+		draft = prompt;
+	}
+
 	async function syncSessionUrl(
 		endpointId: string,
 		sessionId: string | null,
@@ -509,6 +515,27 @@
 						retry
 					</button>
 				{/if}
+			</div>
+		{/if}
+
+		{#if showEmptyState}
+			<div class="s-empty" role="status">
+				<p class="s-empty-title">Nothing here yet.</p>
+				<p class="s-empty-detail">Answering on {activeConnectionLabel}.</p>
+				{#if emptyStateModel}
+					<p class="s-empty-detail">{emptyStateModel}</p>
+				{:else if emptyStateModel === '' && canOpenAssistantSettings}
+					<p class="s-empty-detail">
+						No model configured yet — <a href={assistantSettingsHref}>choose one in settings</a>.
+					</p>
+				{/if}
+				<div class="s-empty-prompts">
+					{#each EMPTY_STATE_PROMPTS as prompt (prompt)}
+						<button type="button" class="s-empty-prompt" onclick={() => useSuggestedPrompt(prompt)}>
+							{prompt}
+						</button>
+					{/each}
+				</div>
 			</div>
 		{/if}
 
