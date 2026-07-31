@@ -341,7 +341,9 @@ jobs:
             packages/electron/dist/packages/*.AppImage
             packages/electron/dist/packages/*.zip
             packages/electron/dist/packages/*.exe
-            packages/electron/dist/packages/latest*.yml
+            # Every channel's feed metadata, not just the stable names:
+            # electron-builder writes beta.yml for a 1.2.3-beta.4 candidate.
+            packages/electron/dist/packages/*.yml
 
   assemble-assets:
     needs: [candidate, preflight, ui-build, cli, electron]

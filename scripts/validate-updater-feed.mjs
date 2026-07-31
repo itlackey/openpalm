@@ -3,7 +3,8 @@
  * Gate a release on a COMPLETE desktop updater feed (#572).
  *
  * electron-updater points every installed desktop app at the newest release's
- * latest.yml / latest-linux.yml. A release that publishes those files but omits
+ * channel feed — latest.yml for stable, beta.yml for a beta candidate, plus the
+ * -linux variant. A release that publishes those files but omits
  * (or misnames) an installer they reference does not fail at publish time — it
  * fails later, on every user's machine, as a download 404 partway through an
  * update they consented to. A release whose feed advertises a different version
@@ -18,16 +19,36 @@
  *
  * macOS is deliberately absent: it stays on the manual download path until the
  * app is signed and notarized, so it publishes no feed (electron-builder.yml
- * sets `mac.publish: null`). A latest-mac.yml appearing here means that policy
- * regressed, and is treated as an error rather than silently accepted.
+ * sets `mac.publish: null`). A <channel>-mac.yml appearing here means that
+ * policy regressed, and is treated as an error rather than silently accepted.
  */
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 
-/** Feed files electron-updater consumes, by platform. */
-export const UPDATER_FEEDS = ['latest.yml', 'latest-linux.yml'];
+/**
+ * The channel electron-builder names its feed after, derived exactly the way
+ * electron-builder derives it: the first prerelease identifier of the version,
+ * or "latest" for a stable release. `0.13.0-beta.15` publishes `beta.yml`, NOT
+ * `latest.yml`, so a validator hard-coded to the stable names would fail every
+ * prerelease and let a beta release ship with no feed at all.
+ *
+ * Mirroring the derivation rather than restating it is the point: if the two
+ * ever disagree, this gate is checking for files the build never produced.
+ */
+export function feedChannelForVersion(version) {
+  const match = /^\d+\.\d+\.\d+(?:-([0-9A-Za-z-]+))/.exec(version.trim());
+  return match ? match[1] : 'latest';
+}
+
+/** Feed files electron-updater consumes for `channel`, by platform. */
+export function updaterFeedsFor(channel) {
+  return [`${channel}.yml`, `${channel}-linux.yml`];
+}
+
 /** Feeds that must NOT be published while that platform is manual-only. */
-export const FORBIDDEN_FEEDS = ['latest-mac.yml'];
+export function forbiddenFeedsFor(channel) {
+  return [`${channel}-mac.yml`];
+}
 
 /**
  * Minimal reader for the electron-updater feed shape. Deliberately not a
@@ -118,16 +139,17 @@ export function validateFeed(name, text, version, presentFiles) {
 /** Validate every feed in `dir` for `version`. Returns all problems found. */
 export function validateUpdaterFeeds(dir, version, presentFiles) {
   const problems = [];
-  for (const forbidden of FORBIDDEN_FEEDS) {
+  const channel = feedChannelForVersion(version);
+  for (const forbidden of forbiddenFeedsFor(channel)) {
     if (presentFiles.has(forbidden)) {
       problems.push(
         `${forbidden} must not be published: that platform is manual-download only until it is signed and notarized`,
       );
     }
   }
-  for (const name of UPDATER_FEEDS) {
+  for (const name of updaterFeedsFor(channel)) {
     if (!presentFiles.has(name)) {
-      problems.push(`Missing updater feed ${name} — installed desktop apps update from it`);
+      problems.push(`Missing updater feed ${name} — installed desktop apps on the ${channel} channel update from it`);
       continue;
     }
     problems.push(...validateFeed(name, readFileSync(join(dir, name), 'utf8'), version, presentFiles));
@@ -149,5 +171,6 @@ if (process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/^.*[/\\
     for (const problem of problems) console.error(`  - ${problem}`);
     process.exit(1);
   }
-  console.log(`Desktop updater feed OK for ${version} (${UPDATER_FEEDS.join(', ')})`);
+  const feeds = updaterFeedsFor(feedChannelForVersion(version));
+  console.log(`Desktop updater feed OK for ${version} (${feeds.join(', ')})`);
 }

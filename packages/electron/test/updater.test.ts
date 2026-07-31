@@ -11,6 +11,7 @@ import {
   isAutoUpdateSupported,
   isTrustedUpdaterSender,
   updaterChannel,
+  updaterFeedChannel,
   type AppUpdaterLike,
 } from '../src/updater.js';
 
@@ -98,6 +99,26 @@ describe('channel mapping', () => {
     const { fake } = makeUpdater({ prerelease: true });
     expect(fake.channel).toBe('beta');
     expect(fake.allowPrerelease).toBe(true);
+  });
+
+  // electron-updater turns `channel` straight into the feed FILENAME, and the
+  // stable feed electron-builder publishes is latest.yml — there is no
+  // stable.yml. Assigning the UI label directly would 404 every stable check,
+  // which the user would read as "no updates" forever.
+  it('asks for the latest feed on the stable channel, not a stable.yml', () => {
+    expect(updaterFeedChannel('stable')).toBe('latest');
+    const { fake } = makeUpdater({ prerelease: false });
+    expect(fake.channel).toBe('latest');
+    expect(fake.allowPrerelease).toBe(false);
+  });
+
+  it('keeps stable as the user-facing label even though the feed is latest', () => {
+    const { updater } = makeUpdater({ prerelease: false });
+    expect(updater.getState().channel).toBe('stable');
+  });
+
+  it('leaves the beta channel name alone — beta.yml is what is published', () => {
+    expect(updaterFeedChannel('beta')).toBe('beta');
   });
 });
 

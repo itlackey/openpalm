@@ -24,6 +24,9 @@ vi.mock('node:fs', async (importOriginal) => {
     existsSync: vi.fn((p: string) => {
       // Make the UI build appear present.
       if (String(p).endsWith('index.js')) return true;
+      // Make the extraResources skeleton appear present, so the startup path
+      // that reseeds OP_HOME from THIS app version's bundled copy is exercised.
+      if (String(p).endsWith('openpalm-skeleton')) return true;
       // Icon file does not exist — skip tray creation
       return false;
     }),
@@ -173,6 +176,7 @@ vi.mock('@openpalm/lib', () => ({
   resolveConfigDir: vi.fn(() => '/home/user/.openpalm/config'),
   resolveUiBuildDir: vi.fn(() => '/home/user/.openpalm/data/ui'),
   seedLegacyServedUiRuntimeConfig: vi.fn(),
+  applyHomeSeed: vi.fn(async () => ({ updated: [], backupDir: null })),
   ensureHomeDirs: vi.fn(),
   checkDocker: vi.fn(),
   checkDockerCompose: vi.fn(),
@@ -613,6 +617,25 @@ describe('desktop bootstrap', () => {
     expect(lib.checkDockerCompose).not.toHaveBeenCalled();
     expect(app.quit).not.toHaveBeenCalled();
     expect(mockSetAppUserModelId).toHaveBeenCalledWith('com.openpalm.app');
+  });
+
+  // OP_HOME outlives an app update, so a new release that did not reseed would
+  // serve the PREVIOUS release's managed system/ tree — stale Compose files and
+  // managed instructions — until the user happened to run a lifecycle apply.
+  // This is the Electron half of what the CLI supervisor does before every spawn.
+  it('reseeds OP_HOME from the bundled skeleton before spawning the UI', async () => {
+    const { spawn } = await import('node:child_process');
+    const seedOrder = vi.mocked(lib.applyHomeSeed).mock.invocationCallOrder;
+    const spawnOrder = vi.mocked(spawn).mock.invocationCallOrder;
+
+    expect(lib.applyHomeSeed).toHaveBeenCalled();
+    expect(vi.mocked(lib.applyHomeSeed).mock.calls[0]?.slice(1)).toEqual([
+      '/home/user/.openpalm',
+      '/home/user/.openpalm/config',
+      '/home/user/.openpalm/data',
+    ]);
+    // Seeded BEFORE the child starts, or the child reads the old tree.
+    expect(seedOrder[0]).toBeLessThan(spawnOrder[0]);
   });
 });
 

@@ -120,6 +120,22 @@ export function updaterChannel(prerelease: boolean): UpdaterChannel {
 }
 
 /**
+ * The feed file electron-updater actually requests for a channel.
+ *
+ * electron-updater turns `channel` straight into a filename —
+ * `getChannelFilename(c)` returns `${c}.yml` — and electron-builder names the
+ * stable feed `latest.yml`, not `stable.yml` (its default channel IS "latest";
+ * a prerelease version like 1.2.3-beta.4 emits `beta.yml` instead). So the
+ * user-facing label and the wire name differ for exactly one channel, and
+ * assigning the label directly would make every stable install request a
+ * `stable.yml` that is never published — a 404 on every check, which reads to
+ * the user as "no updates" forever.
+ */
+export function updaterFeedChannel(channel: UpdaterChannel): string {
+  return channel === 'stable' ? 'latest' : channel;
+}
+
+/**
  * Whether this build can install an update in place. Windows (NSIS) and Linux
  * (AppImage) can; macOS cannot until the app is Developer ID-signed AND
  * notarized, because electron-updater's macOS path verifies the signature and
@@ -165,7 +181,7 @@ export class DesktopUpdater {
     // A staged update also installs on an ordinary quit, not only via the
     // explicit "Restart and update" action.
     u.autoInstallOnAppQuit = true;
-    u.channel = this.state.channel;
+    u.channel = updaterFeedChannel(this.state.channel);
     u.allowPrerelease = deps.prerelease;
 
     u.on('download-progress', (...args: unknown[]) => {

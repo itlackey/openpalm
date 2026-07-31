@@ -18,6 +18,8 @@ import {
   resolveUiListenEnv,
   resolveAssistantEndpoint,
   seedLegacyServedUiRuntimeConfig,
+  applyHomeSeed,
+  resolveConfigDir,
 } from '@openpalm/lib';
 import { UI_PORT } from './ui-port.js';
 import { autoUpdater } from 'electron-updater';
@@ -236,11 +238,56 @@ export function buildUIServerEnv(homeDir: string, port: number): NodeJS.ProcessE
   };
   // Pass the bundled skeleton path so the UI server can refresh the registry
   // on startup without needing the source repo or a network download.
-  const skeletonDir = join(process.resourcesPath ?? '', 'openpalm-skeleton');
-  if (existsSync(skeletonDir)) {
+  const skeletonDir = resolveBundledSkeletonDir();
+  if (skeletonDir) {
     env.OPENPALM_SKELETON_DIR = skeletonDir;
   }
   return env;
+}
+
+/** The skeleton electron-builder ships in extraResources, or null in dev. */
+function resolveBundledSkeletonDir(): string | null {
+  const dir = join(process.resourcesPath ?? '', 'openpalm-skeleton');
+  return existsSync(dir) ? dir : null;
+}
+
+/**
+ * Materialize this app version's OWN skeleton into OP_HOME before the UI starts.
+ *
+ * An app update replaces the shell and its bundled UI atomically, but OP_HOME
+ * outlives it — so without this the new release would start against the managed
+ * `system/` tree written by the OLD one (stale Compose files and managed
+ * instructions) until the user happened to run a lifecycle apply. That is
+ * exactly the mixed-release state this artifact model exists to prevent, and it
+ * is what Electron's removed `checkAndUpdateSkeleton` used to cover.
+ *
+ * The CLI supervisor already does this before every spawn
+ * (seedSkeletonFromEmbedded in packages/cli/src/lib/ui-server.ts); this is the
+ * Electron half, sourcing the same tree from extraResources instead of an
+ * embedded archive. applyHomeSeed overwrites the managed tree and leaves user
+ * data alone, which is what keeps repeat launches at the same version cheap.
+ *
+ * Nonfatal: a failure here must not stop the app from starting, since the
+ * previous release's tree is still serviceable.
+ */
+async function seedBundledSkeleton(homeDir: string, configDir: string, dataDir: string): Promise<void> {
+  const skeletonDir = resolveBundledSkeletonDir();
+  if (!skeletonDir) return;
+  const previous = process.env.OPENPALM_SKELETON_DIR;
+  try {
+    // applyHomeSeed resolves its source through the same lib resolver the child
+    // uses; point it at the bundled copy for the duration of the call.
+    process.env.OPENPALM_SKELETON_DIR = skeletonDir;
+    await applyHomeSeed(app.getVersion(), homeDir, configDir, dataDir);
+  } catch (err) {
+    console.warn(
+      'Bundled skeleton seed failed (non-fatal):',
+      err instanceof Error ? err.message : String(err),
+    );
+  } finally {
+    if (previous === undefined) delete process.env.OPENPALM_SKELETON_DIR;
+    else process.env.OPENPALM_SKELETON_DIR = previous;
+  }
 }
 
 // ── UI server lifecycle ──────────────────────────────────────────────────────
@@ -274,6 +321,10 @@ async function startUIServer(): Promise<void> {
   // the harness only ensures dirs here. The UI child locates the bundled skeleton
   // via OPENPALM_SKELETON_DIR (set in buildUIServerEnv).
   ensureHomeDirs();
+
+  // Refresh the managed system/ tree from THIS app version's bundled skeleton,
+  // so an updated shell never serves the previous release's managed files.
+  await seedBundledSkeleton(homeDir, resolveConfigDir(), dataDir);
 
   // NOTE: home migrations are deliberately NOT run here. Anything that mutates
   // control-plane state or runs a migration belongs to the UI control plane.

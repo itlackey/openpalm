@@ -6,7 +6,9 @@ import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
+  feedChannelForVersion,
   parseUpdaterFeed,
+  updaterFeedsFor,
   validateFeed,
   validateUpdaterFeeds,
 } from './validate-updater-feed.mjs';
@@ -121,5 +123,57 @@ describe('validateUpdaterFeeds', () => {
         /latest-mac\.yml must not be published/,
       );
     });
+  });
+});
+
+// electron-builder names the feed after the version's prerelease identifier, so
+// a beta candidate publishes beta.yml and no latest.yml at all. A validator that
+// assumed the stable names would fail every prerelease release.
+describe('feedChannelForVersion', () => {
+  test('a stable version uses the latest feed', () => {
+    expect(feedChannelForVersion('1.2.3')).toBe('latest');
+    expect(updaterFeedsFor(feedChannelForVersion('1.2.3'))).toEqual([
+      'latest.yml', 'latest-linux.yml',
+    ]);
+  });
+
+  test('a prerelease version uses its own channel feed', () => {
+    expect(feedChannelForVersion('0.13.0-beta.15')).toBe('beta');
+    expect(updaterFeedsFor(feedChannelForVersion('0.13.0-beta.15'))).toEqual([
+      'beta.yml', 'beta-linux.yml',
+    ]);
+    expect(feedChannelForVersion('1.0.0-alpha.1')).toBe('alpha');
+  });
+});
+
+describe('validateUpdaterFeeds on a prerelease candidate', () => {
+  test('accepts the beta feed and does not demand latest.yml', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'updater-feed-beta-'));
+    try {
+      writeFileSync(join(dir, 'beta.yml'), feedYaml('0.13.0-beta.15', 'OpenPalm-0.13.0-beta.15.exe'));
+      writeFileSync(
+        join(dir, 'beta-linux.yml'),
+        feedYaml('0.13.0-beta.15', 'OpenPalm-0.13.0-beta.15.AppImage'),
+      );
+      const present = new Set([
+        'beta.yml', 'beta-linux.yml',
+        'OpenPalm-0.13.0-beta.15.exe', 'OpenPalm-0.13.0-beta.15.AppImage',
+      ]);
+      expect(validateUpdaterFeeds(dir, '0.13.0-beta.15', present)).toEqual([]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('fails when a beta candidate ships no beta feed', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'updater-feed-beta-missing-'));
+    try {
+      const present = new Set(['OpenPalm-0.13.0-beta.15.exe']);
+      expect(validateUpdaterFeeds(dir, '0.13.0-beta.15', present).join(' ')).toMatch(
+        /Missing updater feed beta\.yml/,
+      );
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
