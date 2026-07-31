@@ -74,7 +74,7 @@ export default defineCommand({
 			type: 'string',
 			description:
 				"Pin container image tags to a specific release (default: this binary's own " +
-				'version). Host assets (UI, skeleton) are always the binary\'s embedded build ' +
+				"version). Host assets (UI, skeleton) are always the binary's embedded build " +
 				'and are never changed by this flag. Pass "main" for no pin.'
 		},
 		start: {
