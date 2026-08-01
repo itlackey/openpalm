@@ -67,12 +67,29 @@ const convertProcess = (raw) => {
 const improve = { ...asObject(source.improve) };
 const strategies = { ...asObject(improve.strategies) };
 const strategyNames = new Map();
+const supportedProcesses = new Set([
+  'reflect',
+  'distill',
+  'consolidate',
+  'memoryInference',
+  'graphExtraction',
+  'extract',
+  'validation',
+  'triage',
+  'proactiveMaintenance',
+]);
 for (const [oldName, raw] of Object.entries(improveProfiles)) {
   const profile = { ...asObject(raw) };
   const name = slug(oldName, 'custom');
   const processes = {};
-  for (const [processName, process] of Object.entries(asObject(profile.processes))) {
-    processes[processName] = convertProcess(process);
+  for (const [processName, rawProcess] of Object.entries(asObject(profile.processes))) {
+    processes[processName] = convertProcess(rawProcess);
+    if (!supportedProcesses.has(processName) && processes[processName].enabled === true) {
+      processes[processName].enabled = false;
+      process.stderr.write(
+        `warning: disabled removed AKM improve process ${oldName}.${processName}; its configuration was preserved\n`,
+      );
+    }
   }
   if (Object.keys(processes).length > 0) profile.processes = processes;
   delete profile.autoAccept;

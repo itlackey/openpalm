@@ -43,6 +43,11 @@ AKM also blocks migration while another writer or workflow claim is active. Stop
 those processes and restart; the retained journal resumes instead of starting
 over.
 
+AKM 0.9 removed improve processes such as `recombine` without an equivalent
+replacement. Target preparation preserves those process blocks but changes
+`enabled: true` to `enabled: false` and logs a warning, preventing an unsupported
+process from blocking the rest of the migration or appearing to keep running.
+
 ## Inspection And Recovery
 
 Inspect container logs and the migration state:

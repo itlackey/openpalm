@@ -34,7 +34,14 @@ describe('prepare-akm-09-config', () => {
       profiles: {
         llm: { default: { endpoint: 'https://api.example/v1/chat/completions', model: 'model' } },
         agent: { worker: { platform: 'opencode' } },
-        improve: { nightly: { processes: { reflect: { mode: 'llm', profile: 'default' } } } },
+        improve: {
+          nightly: {
+            processes: {
+              reflect: { mode: 'llm', profile: 'default' },
+              recombine: { enabled: true, minClusterSize: 3 },
+            },
+          },
+        },
       },
       defaults: { llm: 'default', agent: 'worker', improve: 'nightly' },
     });
@@ -45,6 +52,11 @@ describe('prepare-akm-09-config', () => {
     expect(target.engines.worker).toMatchObject({ kind: 'agent', platform: 'opencode' });
     expect(target.defaults).toMatchObject({ engine: 'worker', llmEngine: 'default', improveStrategy: 'nightly' });
     expect(target.improve.strategies.nightly.processes.reflect).toEqual({ engine: 'default' });
+    expect(target.improve.strategies.nightly.processes.recombine).toEqual({
+      enabled: false,
+      minClusterSize: 3,
+    });
+    expect(result.stderr.toString()).toContain('disabled removed AKM improve process nightly.recombine');
     expect(target.profiles).toBeUndefined();
     expect(target.stashDir).toBe('/stash');
     expect(target.sources).toHaveLength(1);
