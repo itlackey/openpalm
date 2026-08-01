@@ -385,6 +385,20 @@ run_akm_command() {
   env HOME="${HOME:-/home/opencode}" "$@"
 }
 
+prepare_crontab_wrapper() {
+  local spool_dir="/tmp/openpalm-crontabs"
+  local wrapper_dir="/tmp/openpalm-bin"
+  local crontab_wrapper="${wrapper_dir}/crontab"
+  mkdir -p "$spool_dir" "$wrapper_dir"
+  install -m 755 /dev/null "$crontab_wrapper"
+  # The single-quoted format must leave $@ unescaped for the generated wrapper.
+  printf '#!/usr/bin/env sh\nexec busybox crontab -c %s "$@"\n' "$spool_dir" > "$crontab_wrapper"
+  case ":$PATH:" in
+    *":$wrapper_dir:"*) ;;
+    *) export PATH="$wrapper_dir:$PATH" ;;
+  esac
+}
+
 run_akm_schema_migration() {
   if ! command -v akm >/dev/null 2>&1; then return 0; fi
 
@@ -462,6 +476,7 @@ run_akm_schema_migration() {
         return 78
       fi
     fi
+    prepare_crontab_wrapper
     if ! run_akm_command akm task sync --rebind >&2; then
       restore_failed_akm_migration
       return 78
@@ -514,13 +529,7 @@ start_cron_and_sync_tasks() {
   local crontab_wrapper="${wrapper_dir}/crontab"
   local existing_crontab=""
   local preserved_crontab=""
-  mkdir -p "$spool_dir" "$wrapper_dir"
-  install -m 755 /dev/null "$crontab_wrapper"
-  # NOTE: the format string is single-quoted, so `$@` must NOT be escaped —
-  # bash printf passes `\$` through literally, which would bake the literal
-  # string `$@` into the wrapper and break every crontab invocation.
-  printf '#!/usr/bin/env sh\nexec busybox crontab -c %s "$@"\n' "$spool_dir" > "$crontab_wrapper"
-  export PATH="$wrapper_dir:$PATH"
+  prepare_crontab_wrapper
   # Derive the cron PATH from the boot-time PATH (wrapper dir already first,
   # exported above) so scheduled tasks see the same tools as interactive
   # sessions — a hardcoded subset silently dropped the tool venv
