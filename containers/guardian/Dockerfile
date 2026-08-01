@@ -93,7 +93,12 @@ RUN test -n "$GUARDIAN_VERSION" \
     && chmod -R a+rwX /opt/openpalm/guardian /opt/openpalm/guardian-pkg
 
 EXPOSE 8080
-HEALTHCHECK --interval=30s --timeout=5s --start-period=120s --retries=3 \
+# K6: interval/timeout/retries/start-period below MUST match
+# portals.compose.yml's guardian healthcheck — that definition governs the
+# shipped stack; this one only matters for a bare `docker run` or image-smoke
+# path with no compose in front of it. healthcheck-parity.test.ts pins them
+# together so a future edit to one side alone fails CI instead of drifting.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=180s --retries=3 \
   CMD curl -sf http://localhost:8080/health/ready || exit 1
 
 USER bun

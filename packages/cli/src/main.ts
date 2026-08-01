@@ -1,17 +1,37 @@
 #!/usr/bin/env bun
-import { defineCommand, runCommand, runMain } from 'citty';
+import { defineCommand, parseArgs, runCommand, runMain, type ArgsDef } from 'citty';
 import cliPkg from '../package.json' with { type: 'json' };
-import { classifyLocalInstall, resolveStackDir, resolveOpenPalmHome } from '@openpalm/lib';
-import { DEFAULT_ASSISTANT_PORT } from './lib/ports.ts';
+import { classifyLocalInstall, resolveStackDir, resolveOpenPalmHome, resolveEnvPort, readStackEnv } from '@openpalm/lib';
+import { DEFAULT_ASSISTANT_PORT, DEFAULT_UI_PORT } from './lib/ports.ts';
 
 // Re-export public API used by tests and external consumers
 export { detectHostInfo } from './lib/host-info.ts';
 export type { HostInfo } from './lib/host-info.ts';
 
-interface BareRunOpts {
+export interface BareRunOpts {
   port?: number;
   open?: boolean;
 }
+
+/**
+ * Bare-command flags — the ONE definition both `mainCommand`'s --help text
+ * and the actual bare-run parsing below use. Before this they were two
+ * independent sources of truth (mainCommand.args existed for --help only; a
+ * hand-rolled parseBareArgs did the real parsing) that had already drifted:
+ * the hand-rolled parser understood `--no-open` but not `--open=false`, and
+ * silently dropped a malformed `--port` instead of erroring.
+ */
+const bareArgsDef = {
+  port: {
+    type: 'string',
+    description: `UI server port (default: ${DEFAULT_UI_PORT} or OP_HOST_UI_PORT)`,
+  },
+  open: {
+    type: 'boolean',
+    description: 'Open browser after start (use --no-open to skip)',
+    default: true,
+  },
+} satisfies ArgsDef;
 
 /**
  * Probe the assistant container's healthcheck to decide whether the stack
@@ -29,7 +49,17 @@ interface BareRunOpts {
  * a restart, not a recreate, is the operator's tool) reads as "not up".
  */
 export async function isAssistantHealthy(): Promise<boolean> {
-  const port = process.env.OP_ASSISTANT_PORT ?? String(DEFAULT_ASSISTANT_PORT);
+  // Read the SAME persisted-over-live merge every other port resolver uses
+  // (resolveUiServePort et al) — a file install persists a custom
+  // OP_ASSISTANT_PORT to stack.env, and live env alone (the old behavior)
+  // never saw it, so this probed the wrong port, read the stack as "down",
+  // and force-recreated a perfectly healthy install on a different port.
+  const port = resolveEnvPort(
+    'OP_ASSISTANT_PORT',
+    DEFAULT_ASSISTANT_PORT,
+    process.env,
+    readStackEnv(resolveOpenPalmHome()),
+  );
   try {
     const res = await fetch(`http://127.0.0.1:${port}/health`, {
       signal: AbortSignal.timeout(1500),
@@ -56,13 +86,17 @@ async function autoRun(opts: BareRunOpts = {}): Promise<void> {
   const isInstalled = classifyLocalInstall(resolveStackDir(), resolveOpenPalmHome()) !== 'not_installed';
 
   if (!isInstalled) {
-    const { bootstrapInstall, resolveDefaultInstallRef } = await import('./commands/install.ts');
-    const version: string = typeof resolveDefaultInstallRef === 'function'
-      ? await resolveDefaultInstallRef()
-      : (cliPkg.version ?? 'main');
+    const { bootstrapInstall } = await import('./commands/install.ts');
+    // C9: this used to also destructure resolveDefaultInstallRef and await
+    // its GitHub `releases/latest` lookup (up to ~10s, worst on an offline
+    // machine) purely to compute `version` — but prepareInstallFiles' own
+    // `version` parameter is unused (host assets are always this binary's
+    // embedded build; see C7), so the result was discarded. A bare
+    // `openpalm` on a fresh machine no longer waits on the network for a
+    // value nothing reads.
     await bootstrapInstall({
       force: false,
-      version,
+      version: cliPkg.version,
       noStart: false,
       noOpen: opts.open === false,
       assumeYes: false,
@@ -122,17 +156,7 @@ export const mainCommand = defineCommand({
     version: cliPkg.version,
     description: 'OpenPalm CLI — install and manage a self-hosted OpenPalm stack',
   },
-  args: {
-    port: {
-      type: 'string',
-      description: 'UI server port (default: 3880 or OP_HOST_UI_PORT)',
-    },
-    open: {
-      type: 'boolean',
-      description: 'Open browser after start (use --no-open to skip)',
-      default: true,
-    },
-  },
+  args: bareArgsDef,
   subCommands,
 });
 
@@ -155,17 +179,46 @@ function hasSubcommand(argv: string[]): boolean {
   return first !== undefined && SUBCOMMAND_NAMES.has(first);
 }
 
-/** Parse `--port`/`--no-open` from a bare-command argv. */
-function parseBareArgs(argv: string[]): BareRunOpts {
+/**
+ * True when argv's first token looks like an ATTEMPTED subcommand — a bare,
+ * non-flag word — that isn't registered (C8): `openpalm statsu` is almost
+ * certainly a typo for `status`, not an instruction to run the bare
+ * auto-detect flow, which used to swallow it and start the stack. A leading
+ * flag (`--port 1234`) or no token at all (bare `openpalm`) is genuinely "no
+ * subcommand" and must keep going to autoRun.
+ */
+function isUnknownSubcommand(argv: string[]): boolean {
+  const first = argv[0];
+  if (first === undefined || first.startsWith('-')) return false;
+  return !SUBCOMMAND_NAMES.has(first);
+}
+
+/** The shared "unknown command" message for both entry points below. */
+function unknownCommandMessage(command: string): string {
+  return `Unknown command: ${command}. Run \`openpalm --help\` to see available commands.`;
+}
+
+/**
+ * Parse `--port`/`--open`/`--no-open` from a bare-command argv, via citty's
+ * own `parseArgs` against `bareArgsDef` — the SAME definition `mainCommand`
+ * uses for --help, instead of a hand-rolled loop that had drifted from it: it
+ * understood `--no-open` but not `--open=false`, and silently dropped a
+ * malformed `--port` (`Number('banana')` → NaN, which resolveHostUiPort's own
+ * `Number.isFinite` guard then discards with no indication anything was
+ * wrong, quietly falling back to the persisted/default port instead).
+ */
+export function parseBareArgs(argv: string[]): BareRunOpts {
+  const parsed = parseArgs<typeof bareArgsDef>(argv, bareArgsDef);
   const opts: BareRunOpts = {};
-  for (let i = 0; i < argv.length; i++) {
-    if (argv[i] === '--port' && argv[i + 1]) {
-      opts.port = Number(argv[++i]);
-    } else if (argv[i]?.startsWith('--port=')) {
-      opts.port = Number(argv[i]?.split('=')[1]);
-    } else if (argv[i] === '--no-open') {
-      opts.open = false;
+  // `open` defaults to true (bareArgsDef), so only an explicit --no-open /
+  // --open=false needs to be threaded through.
+  if (parsed.open === false) opts.open = false;
+  if (typeof parsed.port === 'string' && parsed.port.length > 0) {
+    const port = Number(parsed.port);
+    if (!Number.isFinite(port)) {
+      throw new Error(`Invalid --port value "${parsed.port}". Expected a number.`);
     }
+    opts.port = port;
   }
   return opts;
 }
@@ -181,6 +234,11 @@ export async function main(argv = process.argv.slice(2)): Promise<void> {
     console.log(cliPkg.version);
     return;
   }
+  if (isUnknownSubcommand(argv)) {
+    // Thrown (not process.exit) so tests can drive this programmatically —
+    // matches how every other validation failure in main() surfaces.
+    throw new Error(unknownCommandMessage(argv[0]));
+  }
   if (!hasSubcommand(argv)) {
     await autoRun(parseBareArgs(argv));
     return;
@@ -195,8 +253,19 @@ if (import.meta.main) {
   // (main() uses runCommand so tests can drive it programmatically).
   if (isVersionFlag(argv)) {
     console.log(cliPkg.version);
+  } else if (isUnknownSubcommand(argv)) {
+    console.error(unknownCommandMessage(argv[0]));
+    process.exit(1);
   } else if (!hasSubcommand(argv)) {
-    await autoRun(parseBareArgs(argv));
+    // parseBareArgs can now throw (a malformed --port) — previously it never
+    // did, so this path had no error boundary of its own. Match the
+    // unknown-subcommand branch above: one-line message, exit(1).
+    try {
+      await autoRun(parseBareArgs(argv));
+    } catch (err) {
+      console.error(err instanceof Error ? err.message : String(err));
+      process.exit(1);
+    }
   } else {
     await runMain(mainCommand);
   }

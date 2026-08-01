@@ -8,6 +8,7 @@
    */
 
   import { setupState } from '$lib/setup/setup-state.svelte.js';
+  import { friendlyProviderName } from '$lib/client/constants.js';
 
   const s = setupState;
 
@@ -17,7 +18,12 @@
   const gpuName = $derived(s.detectedGpuName);
   const ollamaEnabled = $derived(s.ollamaEnabled);
   const selectedOllamaProfile = $derived(s.selectedOllamaProfile);
-  const onrecheck = (): void => void s.fetchAndApplyRecommendation();
+  // force:true — a plain call would early-return once the wizard already
+  // applied a recommendation (which it always has by the time this row is
+  // visible), so the button would silently do nothing. The whole point of
+  // Re-check is to re-probe NOW, after the user installed/started Ollama
+  // outside the wizard.
+  const onrecheck = (): void => void s.fetchAndApplyRecommendation(true);
 
   const isAppleSilicon = $derived(gpuVendor === 'apple');
   const hasRunningRuntime = $derived(hostProviders.length > 0);
@@ -28,12 +34,11 @@
     selectedOllamaProfile.endsWith('rocm') ? 'ROCm' : 'CPU'
   );
 
-  function runtimeLabel(provider: string): string {
-    if (provider === 'ollama') return 'Ollama';
-    if (provider === 'lmstudio') return 'LM Studio';
-    if (provider === 'model-runner') return 'Docker Model Runner';
-    return provider;
-  }
+  // G-series: friendlyProviderName (constants.js, backed by the PROVIDERS
+  // catalog) already resolves these three ids — this used to keep its own
+  // copy of the same three labels (a third copy, alongside
+  // SystemCheckStep.svelte's — now also on the shared helper).
+  const runtimeLabel = friendlyProviderName;
 </script>
 
 <div class="local-models-status">

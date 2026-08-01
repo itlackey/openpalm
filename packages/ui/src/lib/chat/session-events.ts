@@ -88,6 +88,26 @@ function dispatch(handlers: SessionEventHandlers, payload: OpenCodeSessionEventP
   }
 }
 
+/** Fixed, no-jitter delay before reopening a stream that actually delivered at
+ * least one frame this run — a "genuinely transient drop" (network blip,
+ * routine server restart) gets a fast retry rather than the escalating
+ * backoff below. */
+const FAST_RECONNECT_MS = 500;
+
+/**
+ * Exponential backoff with full jitter, applied only when a run never
+ * delivered a single frame (see `established` below). A server that accepts
+ * the connection and closes it immediately — the F7 case — would otherwise
+ * hit the `established` branch's fixed delay every time and reconnect at a
+ * steady 2 req/s forever; escalating (and randomizing, so a later multi-tab
+ * reconnect doesn't all land on the same tick) the delay instead settles into
+ * a slow, bounded poll against a wedged endpoint.
+ */
+function backoffWithJitter(attempt: number): number {
+  const cap = Math.min(INITIAL_BACKOFF_MS * 2 ** Math.max(0, attempt - 1), MAX_BACKOFF_MS);
+  return Math.random() * cap;
+}
+
 /**
  * Open the active connection's `/event` SSE stream (via the direct transport)
  * and dispatch session-scoped events. Returns an unsubscribe function that
@@ -133,43 +153,51 @@ export function subscribeSessionEvents(handlers: SessionEventHandlers): () => vo
   void (async () => {
     let attempt = 0;
     while (!stopped) {
+      attempt++;
       let established = false;
+      let thrown: Error | null = null;
       try {
-        attempt++;
         await readStream(() => {
           established = true;
         });
-        // Stream ended cleanly (server closed). Reconnect with a tiny
-        // delay so we don't tight-loop if the server hangs up immediately.
-        attempt = 0;
-        if (!stopped) {
-          if (established) {
-            handlers.onDisconnect?.(new Error('The assistant event stream closed.'));
-          }
-          await sleep(500);
-        }
       } catch (err) {
         if (stopped) return;
-        const error = err instanceof Error ? err : new Error(String(err));
+        thrown = err instanceof Error ? err : new Error(String(err));
+      }
+      if (stopped) return;
+
+      if (thrown) {
         // Don't log aborts triggered by the unsubscribe path — those are
         // expected.
-        if (error.name !== 'AbortError') {
-          console.warn('[session-events] SSE error, reconnecting', error);
+        if (thrown.name !== 'AbortError') {
+          console.warn('[session-events] SSE error, reconnecting', thrown);
         }
-        if (established || error.name !== 'AbortError') {
-          handlers.onDisconnect?.(error);
+        if (established || thrown.name !== 'AbortError') {
+          handlers.onDisconnect?.(thrown);
         }
-        const backoff = Math.min(
-          INITIAL_BACKOFF_MS * 2 ** Math.max(0, attempt - 1),
-          MAX_BACKOFF_MS
-        );
-        await sleep(backoff);
         // Reset the AbortController if the previous one was aborted by
         // something other than us (e.g. a network layer). We track `stopped`
         // for our own teardown signal.
         if (controller.signal.aborted && !stopped) {
           controller = new AbortController();
         }
+      } else if (established) {
+        // Stream ended cleanly after actually delivering data.
+        handlers.onDisconnect?.(new Error('The assistant event stream closed.'));
+      }
+      // else: resolved with no thrown error AND no frame ever arrived — the
+      // server accepted the connection and closed it right away. Falls
+      // through to the `established` check below, which routes this to the
+      // escalating branch instead of the fast one.
+      if (stopped) return;
+
+      if (established) {
+        // A frame got through this run, so the endpoint genuinely works right
+        // now — reconnect quickly rather than punishing a real, if brief, drop.
+        attempt = 0;
+        await sleep(FAST_RECONNECT_MS);
+      } else {
+        await sleep(backoffWithJitter(attempt));
       }
     }
   })();

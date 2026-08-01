@@ -1,4 +1,4 @@
-import type { SetupRecommendation } from '@openpalm/lib';
+import type { SetupRecommendation, DeployPhase } from '@openpalm/lib';
 import type { VoiceAddonProfile } from './api.js';
 import type { AuthMethod, DetectedProvider, OpenCodeProvider } from './client/types.js';
 import type { RawSetupConfig, SetupPayload } from './setup/payload.js';
@@ -80,7 +80,10 @@ export async function fetchRecommendation(): Promise<RecommendResponse | null> {
 
 // ── OpenCode ─────────────────────────────────────────────────────────────────
 
-export interface OpenCodeEnsureResponse { ok: boolean; }
+// W1: `url`/`started` were dropped from this type even though the server
+// always sends them — carried through now so callers that need the resolved
+// wizard-instance URL (rather than just the `ok` flag) can read it.
+export interface OpenCodeEnsureResponse { ok: boolean; url?: string; started?: boolean; }
 export interface OpenCodeStatusResponse { available?: boolean; }
 export interface OpenCodeProvidersResponse {
   available?: boolean;
@@ -126,12 +129,16 @@ export interface ProviderModelsResponse {
   models: string[];
   status?: string;
   error?: string;
+  /** Human-readable failure reason — present on the route's 500 catch-all;
+   *  the 200 `recoverable_error` path puts the human text in `error` instead. */
+  message?: string;
 }
 
 /**
  * POST /models/:provider — list models for a provider connection.
- * Throws with the server's `error` (or an HTTP fallback) on a non-ok response
- * OR a 200 body with status === 'recoverable_error'.
+ * Throws with the server's human `message` (falling back to `error`, then an
+ * HTTP fallback) on a non-ok response OR a 200 body with
+ * status === 'recoverable_error'.
  */
 export async function fetchProviderModels(
   provider: string,
@@ -142,14 +149,21 @@ export async function fetchProviderModels(
   });
   const data = (await res.json()) as ProviderModelsResponse;
   if (!res.ok || data.status === 'recoverable_error') {
-    throw new Error(data.error ?? `Failed to fetch models (HTTP ${res.status})`);
+    // W15: a 500 from this route carries BOTH a machine `error` code
+    // ("model_fetch_failed") and the human-readable `message` — prefer the
+    // human message when present (`error` is otherwise the human-readable
+    // reason itself, on the 200 `recoverable_error` path).
+    throw new Error(data.message ?? data.error ?? `Failed to fetch models (HTTP ${res.status})`);
   }
   return data;
 }
 
 // ── OpenCode OAuth ───────────────────────────────────────────────────────────
 
+export type SetupOpenCodeSource = 'wizard' | 'assistant';
+
 export interface OAuthAuthorizeResponse {
+  source: SetupOpenCodeSource;
   url?: string;
   method?: 'auto' | 'code';
   instructions?: string;
@@ -176,14 +190,21 @@ export interface OAuthCallbackResponse { ok?: boolean; message?: string; }
  * supplies the combined abort/timeout signal). Returns { ok, data }; `data` is
  * null when the body couldn't be parsed. Network/abort errors propagate so the
  * caller can distinguish user-cancel from timeout.
+ *
+ * `code` (W2): `method:'code'` providers need the user to paste back an
+ * authorization code shown on the provider's own page. Browser-auto flows omit
+ * it and use the long-poll callback immediately after `authorize`.
  */
 export async function pollOpenCodeOAuthCallback(
   providerId: string,
   methodIndex: number,
+  source: SetupOpenCodeSource,
   signal: AbortSignal,
+  code?: string,
 ): Promise<SetupApiResult<OAuthCallbackResponse | null>> {
   const res = await setupRequest(
-    'POST', `/opencode/provider/${encodeURIComponent(providerId)}/oauth/callback`, { method: methodIndex }, signal,
+    'POST', `/opencode/provider/${encodeURIComponent(providerId)}/oauth/callback`,
+    { method: methodIndex, source, ...(code ? { code } : {}) }, signal,
   );
   const data = (await res.json().catch(() => null)) as OAuthCallbackResponse | null;
   return { ok: res.ok, data };
@@ -209,6 +230,19 @@ export interface DeployStatusResponse {
   setupComplete?: boolean;
   deployStatus?: { service: string; status: string; label?: string }[];
   deployError?: string | null;
+  /**
+   * Minor finding: this is a third copy of the deploy shape alongside
+   * `DeployData` (setup-state.svelte.ts) and DeployStep.svelte's props — the
+   * two already drifted once (DeployStep read `phase`/`imageWarning` the
+   * store's declaration didn't have, working only because `deployData`
+   * passed through untyped). This one can't import `DeployData` directly
+   * (setup-state.svelte.ts imports fetchDeployStatus FROM this module, so
+   * that would be circular) — kept manually in sync instead. GET
+   * /api/setup/deploy-status (routes/api/setup/deploy-status/+server.ts)
+   * always returns both.
+   */
+  imageWarning?: string | null;
+  phase?: DeployPhase;
   ports?: { admin?: number; ui?: number; assistant?: number };
 }
 
@@ -249,6 +283,8 @@ export async function fetchHostStatus(): Promise<HostStatusResponse | null> {
 export interface ImportHostResponse {
   ok?: boolean;
   error?: string;
+  /** W15: the structured-envelope human message; prefer this over `error`. */
+  message?: string;
   importedProviders?: string[];
   pushedProviders?: string[];
 }

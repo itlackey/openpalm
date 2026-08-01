@@ -91,7 +91,7 @@ export const PUT: RequestHandler = async (event) => {
     }
 
     const state = getState();
-    return withAdminUpdateLock(state, requestId, async () => {
+    return withAdminUpdateLock(state, requestId, async (lock) => {
       // Capture the outgoing project name BEFORE the patch overwrites it — a
       // rename must be recorded so the next locked apply (deploy/update/start)
       // tears the old compose project down instead of leaving it running
@@ -141,6 +141,7 @@ export const PUT: RequestHandler = async (event) => {
       // offers runs `compose restart`, which cannot republish a port.
       const applied = await applyAccessToggles(state, coerceAccessToggles(body.access), {
         extraEnv: { OP_PROJECT_NAME: projectName },
+        lock,
       });
 
       const projectRenamed = recordRenameIfChanged();

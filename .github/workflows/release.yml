@@ -125,6 +125,7 @@ jobs:
           bun install --frozen-lockfile
           bun run test
           bun run ui:check
+          bun run --cwd packages/electron typecheck
           bun run electron:test
 
   # The compiled UI is identical for every consumer (assistant image, all three
@@ -158,7 +159,7 @@ jobs:
           path: packages/ui/build
 
   docker:
-    needs: [candidate, preflight, ui-build]
+    needs: [candidate, preflight, ui-build, assemble-assets]
     strategy:
       fail-fast: false
       matrix:
@@ -196,16 +197,23 @@ jobs:
           password: ${{ secrets.DOCKERHUB_TOKEN }}
       - name: Validate an existing immutable image tag
         id: image-tag
-        if: inputs.dry_run != true
         env:
           VERSION: ${{ needs.candidate.outputs.version }}
           CANDIDATE_TREE: ${{ needs.candidate.outputs.candidate_tree }}
         run: |
           set -euo pipefail
           ref="openpalm/${{ matrix.image }}:${VERSION}"
-          if ! docker buildx imagetools inspect "${ref}" >/dev/null 2>&1; then
-            echo 'exists=false' >> "$GITHUB_OUTPUT"
-            exit 0
+          if ! inspect_error=$(docker buildx imagetools inspect "${ref}" 2>&1 >/dev/null); then
+            case "${inspect_error}" in
+              *"manifest unknown"*|*"not found"*|*"no such manifest"*)
+                echo 'exists=false' >> "$GITHUB_OUTPUT"
+                exit 0
+                ;;
+              *)
+                echo "::error::Could not inspect ${ref}: ${inspect_error}"
+                exit 1
+                ;;
+            esac
           fi
           for platform in linux/amd64 linux/arm64; do
             docker buildx imagetools inspect "${ref}" --format "{{json (index .Image \"${platform}\")}}" \
@@ -289,6 +297,7 @@ jobs:
       - uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.asset }}
+          if-no-files-found: error
           path: packages/cli/dist/${{ matrix.asset }}
 
   electron:
@@ -375,6 +384,8 @@ jobs:
           path: dist
           merge-multiple: true
       - name: Assemble and validate complete asset manifest
+        # validate-release-assets composes updater-feed validation here, before
+        # release-source can push the immutable version tag.
         env:
           VERSION: ${{ needs.candidate.outputs.version }}
         run: |
@@ -456,10 +467,6 @@ jobs:
         env:
           VERSION: ${{ needs.candidate.outputs.version }}
         run: VERSION="${VERSION}" node scripts/validate-release-assets.mjs
-      - name: Validate desktop updater feed before public release
-        env:
-          VERSION: ${{ needs.candidate.outputs.version }}
-        run: VERSION="${VERSION}" node scripts/validate-updater-feed.mjs
       - name: Create one summary GitHub Release
         env:
           VERSION: ${{ needs.candidate.outputs.version }}
@@ -515,10 +522,14 @@ jobs:
           mkdir verified-assets
           cd verified-assets
           curl --fail --location --silent --show-error -O "https://github.com/${GITHUB_REPOSITORY}/releases/download/${VERSION}/checksums-sha256.txt"
-          for asset in \
-            openpalm-cli-linux-x64 openpalm-cli-linux-arm64 \
-            openpalm-cli-darwin-x64 openpalm-cli-darwin-arm64 \
-            openpalm-cli-windows-x64.exe; do
+          # The CLI binary list lives once in scripts/validate-release-assets.mjs
+          # (CLI_BINARIES) — mirroring the `cli` job matrix above, which
+          # release-aggregates-hygiene.test.ts checks stays in sync with it.
+          mapfile -t ASSETS < <(node --input-type=module -e "
+            import { CLI_BINARIES } from '../scripts/validate-release-assets.mjs';
+            console.log(CLI_BINARIES.join('\n'));
+          ")
+          for asset in "${ASSETS[@]}"; do
             curl --fail --location --silent --show-error -O "https://github.com/${GITHUB_REPOSITORY}/releases/download/${VERSION}/${asset}"
             grep -E "[[:space:]]${asset}$" checksums-sha256.txt | sha256sum --check --strict
           done

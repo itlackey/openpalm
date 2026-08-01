@@ -195,6 +195,26 @@ describe('teardownRenamedProject', () => {
 		expect(recordedMarker()).toBe('openpalm');
 	});
 
+	// D4: `detectExistingProject`'s `-a` probe reports `exists: true` for a
+	// project that is fully stopped, not just a running one, so this path (an
+	// already-stopped project whose `down` cleanup fails) is now reachable —
+	// it must NOT block the apply, since nothing under the old name is
+	// holding a port to collide with.
+	it('clears the marker and does NOT block when a down failure only affects an already-stopped project', async () => {
+		writeStackEnv('OP_PROJECT_NAME=my-agent\n');
+		recordProjectRename(home, 'openpalm', 'my-agent');
+		const state = makeState();
+		const { deps } = makeDeps({
+			existing: { exists: true, isOurs: true, workingDir: state.stackDir, running: false },
+			downResult: { ok: false, stdout: '', stderr: 'no such container', code: 1 }
+		});
+		const result = await teardownRenamedProject(state, deps);
+		expect(result.downed).toBeNull();
+		expect(result.warning).toContain('already stopped');
+		expect(result.blocked).toBe(false);
+		expect(recordedMarker()).toBe('');
+	});
+
 	it('treats a marker equal to the current name as a reverted rename (clears, no docker calls)', async () => {
 		writeStackEnv('OP_PROJECT_NAME=openpalm\n');
 		// Simulate a stale marker equal to the current name (e.g. legacy state).

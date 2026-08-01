@@ -38,22 +38,15 @@ test.describe('Install flow — wizard browser walk-through', () => {
     restoreWizardState(opHome);
   });
 
-  test('GET / redirects to /setup when setup is not complete', async ({ page }) => {
+  test('walks from the setup redirect through the enabled Install review without starting install', async ({ page }) => {
     const res = await page.goto(`${ADMIN_URL}/`);
     expect(res?.status()).toBeLessThan(400);
     await expect(page).toHaveURL(/\/setup$/);
-  });
 
-  test('Connect step renders after the hidden System Check passes', async ({ page }) => {
     await page.goto(`${ADMIN_URL}/setup`);
     await expect(page.locator('[data-testid="step-models"]')).toBeVisible({ timeout: 15_000 });
     await expect(page.getByRole('heading', { name: /connect your ai brain/i })).toBeVisible();
     await expect(page.locator('#btn-screen1-next')).toBeAttached();
-  });
-
-  test('Continue from Connect advances to Add-ons step', async ({ page }) => {
-    await page.goto(`${ADMIN_URL}/setup`);
-    await expect(page.locator('[data-testid="step-models"]')).toBeVisible({ timeout: 15_000 });
 
     await allowEmptyInstallIfNeeded(page);
     const continueBtn = page.locator('#btn-screen1-next');
@@ -62,32 +55,10 @@ test.describe('Install flow — wizard browser walk-through', () => {
 
     await expect(page.locator('#step-2')).toBeVisible({ timeout: 10_000 });
     await expect(page.getByRole('heading', { name: /optional extras/i })).toBeVisible();
-  });
+    const addonsContinue = page.getByRole('button', { name: /^continue$/i });
+    await expect(addonsContinue).toBeVisible();
+    await addonsContinue.click();
 
-  test('Add-ons step shows optional extras and Continue button', async ({ page }) => {
-    await page.goto(`${ADMIN_URL}/setup`);
-
-    await expect(page.locator('[data-testid="step-models"]')).toBeVisible({ timeout: 15_000 });
-    await allowEmptyInstallIfNeeded(page);
-    await page.locator('#btn-screen1-next').click();
-
-    await expect(page.locator('#step-2')).toBeVisible({ timeout: 10_000 });
-    await expect(page.getByRole('button', { name: /^continue$/i })).toBeVisible();
-  });
-
-  test('Review step shows Install button when reached via Continue', async ({ page }) => {
-    await page.goto(`${ADMIN_URL}/setup`);
-
-    // Step 1: Connect → Add-ons
-    await expect(page.locator('[data-testid="step-models"]')).toBeVisible({ timeout: 15_000 });
-    await allowEmptyInstallIfNeeded(page);
-    await page.locator('#btn-screen1-next').click();
-
-    // Step 2: Add-ons → Finish
-    await expect(page.locator('#step-2')).toBeVisible({ timeout: 10_000 });
-    await page.getByRole('button', { name: /^continue$/i }).click();
-
-    // Review & Install step must show the Install button.
     await expect(page.getByRole('button', { name: /^install$/i })).toBeVisible({ timeout: 10_000 });
     await expect(page.getByRole('button', { name: /^install$/i })).toBeEnabled();
   });

@@ -109,11 +109,24 @@ export function mapDockerError(stderr: string): DockerErrorMapping {
   // image_pull_failed — auth / rate-limit / bad tag / network, collapsed into
   // ONE class: the remedy is always "check the registry/network/tag", and the
   // raw stderr line (passed through in `summary`) already carries the specifics.
+  //
+  // The message states the requirement outright rather than only naming the
+  // symptom: installing and updating ALWAYS pull from the registry, so an
+  // offline host cannot complete either — even when the exact images are
+  // already in the local daemon. Operators otherwise read "could not pull" as a
+  // transient glitch to retry, rather than as a prerequisite they have not met.
   if (RATE_LIMIT_RE.test(stderr) || MANIFEST_UNKNOWN_RE.test(stderr) || NETWORK_ERROR_RE.test(stderr)
     || /pull access denied|unauthorized|authentication required|requested access to the resource is denied|denied: requested access/i.test(stderr)) {
+    const rateLimited = RATE_LIMIT_RE.test(stderr);
     return {
       code: "image_pull_failed",
-      message: `Docker could not pull the required image: ${summary}`,
+      message:
+        `Docker could not pull the required image: ${summary} ` +
+        'Installing and updating OpenPalm require internet access to the container ' +
+        'registry (Docker Hub / ghcr.io); they cannot run offline.' +
+        (rateLimited
+          ? ' This host hit Docker Hub\'s anonymous pull rate limit — run `docker login`, or wait for the limit to reset, then retry.'
+          : ''),
     };
   }
 

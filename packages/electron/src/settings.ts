@@ -17,10 +17,30 @@ export interface DesktopSettings {
    * scan paginated releases for installer assets. Notify-only either way.
    */
   checkPrerelease: boolean;
+  /**
+   * Opt-in for the global Ctrl/Cmd+Shift+M mic-toggle shortcut (review E3).
+   * That chord is Teams' global mute/unmute — registering it system-wide
+   * unconditionally on first launch silently took it away from every other
+   * app on the machine, with no setting and no prompt. Default OFF; the tray
+   * menu's "Global Mic Shortcut" checkbox is the only way to turn it on.
+   */
+  micShortcutEnabled: boolean;
+  /**
+   * Whether the one-time "OpenPalm is still running" tray-discoverability
+   * notice has already been shown. Hide-to-tray silently rescues an ordinary
+   * window close, but that alone gives no indication the app is still
+   * running — the tray icon is the only way back, and a user who hasn't
+   * noticed it reads the close as "the app quit". Shown at most once ever;
+   * the tray menu's "Open OpenPalm" item (and, on Windows, a tray click) stay
+   * available regardless of whether the notice fired.
+   */
+  hideToTrayNoticeShown: boolean;
 }
 
 const DEFAULT_SETTINGS: DesktopSettings = {
   checkPrerelease: false,
+  micShortcutEnabled: false,
+  hideToTrayNoticeShown: false,
 };
 
 const SETTINGS_FILENAME = 'electron-settings.json';
@@ -44,6 +64,14 @@ export function loadSettings(dataDir: string): DesktopSettings {
         typeof parsed.checkPrerelease === 'boolean'
           ? parsed.checkPrerelease
           : DEFAULT_SETTINGS.checkPrerelease,
+      micShortcutEnabled:
+        typeof parsed.micShortcutEnabled === 'boolean'
+          ? parsed.micShortcutEnabled
+          : DEFAULT_SETTINGS.micShortcutEnabled,
+      hideToTrayNoticeShown:
+        typeof parsed.hideToTrayNoticeShown === 'boolean'
+          ? parsed.hideToTrayNoticeShown
+          : DEFAULT_SETTINGS.hideToTrayNoticeShown,
     };
   } catch {
     return { ...DEFAULT_SETTINGS };

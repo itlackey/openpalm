@@ -742,6 +742,34 @@ describe('performSetup', () => {
 		expect(env).toMatch(/^OP_VOICE_VERSION=latest$/m);
 	});
 
+	it('K2: an operator-pinned OP_VOICE_VERSION survives a setup rerun instead of being reset to latest', async () => {
+		// Simulate an operator pin set out-of-band (e.g. the admin Updates tab)
+		// after a prior install. force-pull-always + a floating `latest-*` tag is
+		// exactly the supply-chain gap K2 flags — an operator who has taken the
+		// documented escape hatch (pin to an exact build) must not have that
+		// protection silently discarded the next time setup runs for an
+		// unrelated reason (adding a portal, changing a toggle, etc).
+		writeFileSync(
+			stateEnvPath(),
+			['OP_SETUP_COMPLETE=true', 'OP_VOICE_VERSION=1.2.3', ''].join('\n')
+		);
+		const result = await performSetup(makeValidSpec());
+		expect(result.ok).toBe(true);
+		const env = readFileSync(stateEnvPath(), 'utf-8');
+		expect(env).toMatch(/^OP_VOICE_VERSION=1\.2\.3$/m);
+	});
+
+	it('K2: a voice pin still at the shared default is treated as unset (no operator opt-in to preserve)', async () => {
+		writeFileSync(
+			stateEnvPath(),
+			['OP_SETUP_COMPLETE=true', 'OP_VOICE_VERSION=latest', ''].join('\n')
+		);
+		const result = await performSetup(makeValidSpec());
+		expect(result.ok).toBe(true);
+		const env = readFileSync(stateEnvPath(), 'utf-8');
+		expect(env).toMatch(/^OP_VOICE_VERSION=latest$/m);
+	});
+
 	it('writes the UI login password to its secret file (private/secrets — §G1 delegated)', async () => {
 		const result = await performSetup(makeValidSpec());
 		expect(result.ok).toBe(true);

@@ -165,6 +165,31 @@ export function isSessionError(event: RawEvent, sessionId: string): boolean {
   return event.type === 'session.error' && propStr(event.properties, 'sessionID') === sessionId;
 }
 
+/**
+ * Read the assistant-supplied detail off a `session.error` event for this
+ * session, if any. This is exactly the event an invalid/revoked/quota-exhausted
+ * provider API key produces at first-message time — the request that started
+ * the turn already returned 200, and the provider only rejects once OpenCode
+ * dials out, so the failure only ever surfaces here, not as an HTTP status.
+ *
+ * `properties.error` isn't guaranteed to be one shape: the guardian's own
+ * upstream-reset synthetic frames send `{name, message}` (event-fanout.ts),
+ * while OpenCode's own errors aren't contractually documented — so every
+ * reasonable field is tried before giving up and letting the caller fall back
+ * to its own generic copy.
+ */
+export function extractSessionErrorDetail(event: RawEvent, sessionId: string): string | undefined {
+  if (!isSessionError(event, sessionId)) return undefined;
+  const error = event.properties?.error;
+  if (typeof error === 'string' && error.trim()) return error;
+  if (error && typeof error === 'object') {
+    const rec = error as Record<string, unknown>;
+    const data = rec.data as Record<string, unknown> | undefined;
+    return firstText(rec.message, data?.message, rec.name);
+  }
+  return undefined;
+}
+
 export function extractPermissionAsk(event: RawEvent, sessionId: string): PermissionAsk | null {
   if (event.type !== 'permission.asked') return null;
   if (propStr(event.properties, 'sessionID') !== sessionId) return null;

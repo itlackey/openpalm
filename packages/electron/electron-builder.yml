@@ -16,8 +16,13 @@ extraResources:
   - from: ../../packages/ui/build
     to: ui-build
     filter: "**/*"
-  - from: admin-tools/dist/index.js
-    to: admin-tools/index.js
+  # The `@openpalm/admin-tools-plugin` workspace (packages/electron/admin-tools)
+  # used to ship its dist/index.js here as extraResources, but nothing under
+  # src/*.ts ever read it back out of resourcesPath — its intended consumer, an
+  # Electron-spawned ephemeral OpenCode server loading this as a plugin, was
+  # never wired up. Confirmed genuinely dead (no runtime reference anywhere in
+  # the repo, including CI and dynamic path construction) and removed entirely:
+  # the workspace, its build step, and its test invocation.
   - from: ../../packages/skeleton
     to: openpalm-skeleton
     filter: "**/*"
@@ -106,10 +111,25 @@ win:
   icon: assets/icon.png
 
 nsis:
+  # Match electron-updater's dash-safe feed URL exactly. The release workflow
+  # uploads artifacts itself, so the on-disk filename must already be the name
+  # clients request from the GitHub Release.
+  artifactName: ${productName}-Setup-${version}.${ext}
   # Per-user install needs no admin rights, which keeps unattended updates
   # working: a machine-wide install would prompt for elevation on every update.
   oneClick: false
   perMachine: false
   allowToChangeInstallationDirectory: true
+  # Without an explicit artifactName, electron-builder's NSIS default pattern
+  # is "${productName} Setup ${version}.${ext}" — the SPACE-containing name is
+  # not GitHub-safe, so computeSafeArtifactNameIfNeeded (app-builder-lib's
+  # platformPackager.js) rewrites it to "OpenPalm-Setup-<version>.exe" for the
+  # updater feed (updateInfoBuilder.js) while the on-disk installer keeps the
+  # space. Those two spellings disagreeing is exactly what breaks
+  # validate-updater-feed.mjs after the release tag has already been pushed
+  # (review finding #1). Name it GitHub-safe from the start so every spelling
+  # — on disk, in latest.yml/beta.yml, and on the uploaded GitHub Release —
+  # agrees. See scripts/validate-release-assets.mjs's desktopAssetName (nsis
+  # case), which must match this pattern.
 
 npmRebuild: false

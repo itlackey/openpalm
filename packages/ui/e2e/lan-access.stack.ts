@@ -31,7 +31,11 @@
  */
 import { expect, request as apiRequest, test } from '@playwright/test';
 import { networkInterfaces } from 'node:os';
-import { loginAndGetSessionCookie, loginBrowserContext } from './auth-helpers';
+import {
+  loginAndGetSessionCookie,
+  loginBrowserContext,
+  type SessionCookie,
+} from './auth-helpers.js';
 
 const ADMIN_URL = process.env.ADMIN_URL ?? 'http://127.0.0.1:9100';
 const UI_LOGIN_PASSWORD = process.env.OP_UI_LOGIN_PASSWORD ?? '';
@@ -67,7 +71,7 @@ test.describe('Two-device LAN access', () => {
   test.setTimeout(60_000);
 
   let lanUrl: string;
-  let lanCookie: string;
+  let lanCookie: SessionCookie;
 
   test.beforeAll(async () => {
     const api = await apiRequest.newContext();
@@ -79,7 +83,7 @@ test.describe('Two-device LAN access', () => {
       //    "restart to apply" button will keep later.
       const adminCookie = await loginAndGetSessionCookie(api, ADMIN_URL, UI_LOGIN_PASSWORD);
       const adminHeaders = {
-        cookie: `op_session=${adminCookie}`,
+        cookie: `${adminCookie.name}=${adminCookie.value}`,
         'x-requested-by': 'e2e-test',
         'x-request-id': crypto.randomUUID(),
         'content-type': 'application/json',
@@ -143,7 +147,7 @@ test.describe('Two-device LAN access', () => {
     // exactly the leg that broke silently for findings #2-#5 in the review.
     const res = await request.post(`${lanUrl}/oc/session`, {
       headers: {
-        cookie: `op_session=${lanCookie}`,
+        cookie: `${lanCookie.name}=${lanCookie.value}`,
         'content-type': 'application/json',
         'x-request-id': crypto.randomUUID(),
       },
@@ -166,7 +170,10 @@ test.describe('Two-device LAN access', () => {
     // hung socket, which is what the review's §3 describes shipping instead
     // ("LAN users silently have no voice").
     const res = await request.get(`${lanUrl}/voice/health`, {
-      headers: { cookie: `op_session=${lanCookie}`, 'x-request-id': crypto.randomUUID() },
+      headers: {
+        cookie: `${lanCookie.name}=${lanCookie.value}`,
+        'x-request-id': crypto.randomUUID(),
+      },
       timeout: 10_000,
     });
     expect(res.status(), '/voice must return a handled HTTP response over the LAN address').toBeLessThan(600);

@@ -19,14 +19,47 @@ curl -fsSL https://raw.githubusercontent.com/itlackey/openpalm/main/scripts/setu
   | bash -s -- --cli-only
 ```
 
-Windows PowerShell:
+Windows PowerShell — the plain `irm | iex` one-liner has no way to pass script
+arguments (`$args` is empty inside a script run through `iex`), so use the
+saved-file form when you need `--cli-only` or any other flag:
 
 ```powershell
 irm https://raw.githubusercontent.com/itlackey/openpalm/main/scripts/setup.ps1 -OutFile setup.ps1
-./setup.ps1 --cli-only
+Unblock-File .\setup.ps1
+powershell -ExecutionPolicy Bypass -File .\setup.ps1 --cli-only
 ```
 
+The default Windows execution policy (`Restricted`, or `RemoteSigned` for a
+file downloaded from the internet) blocks running a saved, unsigned script
+directly — `./setup.ps1 --cli-only` fails with a policy error on a stock
+machine. `Unblock-File` clears the mark-of-the-web flag the download added;
+`-ExecutionPolicy Bypass` overrides the policy for that one invocation only
+and does not change your system-wide setting.
+
 Then run the file install below.
+
+### Environment Variables and Flags
+
+Both installer scripts accept the same knobs. Under `irm | iex` on Windows,
+only environment variables take effect — script arguments are silently
+ignored in that form (see above), so pin a version or architecture with
+`OP_VERSION`/`OP_ARCH` rather than `--version`/`--arch` when using the
+one-liner.
+
+| Variable | Equivalent flag (saved-file form only) | Purpose |
+|---|---|---|
+| `OP_VERSION` | `--version <tag>` | Install a specific release tag instead of resolving latest stable |
+| `OP_ARCH` | `--arch <arch>` (Windows only) | Override detected architecture |
+| `OP_INSTALL_DIR` | — | Install location. Default `~/.local/bin` on Linux/macOS, `%LOCALAPPDATA%\openpalm\bin` on Windows |
+| `OP_NO_ALIAS` | — | Linux/macOS only. Set to `1` to skip writing the `op` shell alias |
+| — | `--cli-only` | Install the CLI binary only; skip seeding `OP_HOME` and starting the stack |
+
+Example — pin a release and skip the `op` alias, Linux/macOS:
+
+```bash
+OP_VERSION=0.13.0-beta.15 OP_NO_ALIAS=1 \
+  curl -fsSL https://raw.githubusercontent.com/itlackey/openpalm/main/scripts/setup.sh | bash
+```
 
 ## Minimal Setup Spec
 
@@ -89,6 +122,13 @@ writes sensitive values to `private/secrets/` and non-secret portal settings to
 
 The access object contains independent booleans. There is no nested network
 object, preset, operator-supplied OpenCode password, or SSH option.
+
+> The `access` object requires OpenPalm `0.13.0` or newer. On an older
+> resolved release (the current latest **stable** release predates `0.13.0`),
+> validation does not know about `access` at all — the object is silently
+> accepted and dropped, so none of these booleans take effect and no error is
+> raised. Pin `--version`/`OP_VERSION` to a `0.13.0`-or-later release if you
+> need `access` to actually apply.
 
 ## Run the Install
 
@@ -172,8 +212,10 @@ copy-and-fill recipe.
 
 ## Raw Compose After Generation
 
-After a generated install, use all three managed files, the user overlay, the
-sole env file, and explicit active profiles. `OP_ENABLED_ADDONS` is translated
-only by OpenPalm control-plane commands.
+After a generated install, use the managed files, the user overlay, the
+sole env file, and explicit active profiles. The three core managed files are
+always present; a voice overlay joins them when voice LAN access is on. See the
+[Manual Compose Runbook](manual-compose-runbook.md) for the exact file list.
+`OP_ENABLED_ADDONS` is translated only by OpenPalm control-plane commands.
 
 Continue with the [Manual Compose Runbook](manual-compose-runbook.md).

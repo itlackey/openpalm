@@ -30,8 +30,8 @@ vi.mock('node:child_process', async (importOriginal) => {
 // ── Mock electron (same shape as main.test.ts, plus session/systemPreferences) ─
 const { mockBrowserWindow } = vi.hoisted(() => ({
   mockBrowserWindow: {
-    loadURL: vi.fn(),
-    webContents: { setWindowOpenHandler: vi.fn(), send: vi.fn() },
+    loadURL: vi.fn(() => Promise.resolve()),
+    webContents: { setWindowOpenHandler: vi.fn(), send: vi.fn(), on: vi.fn() },
     on: vi.fn(),
     once: vi.fn(),
     show: vi.fn(),
@@ -58,13 +58,18 @@ vi.mock('electron', () => ({
     setAppUserModelId: vi.fn(),
     getLoginItemSettings: vi.fn(() => ({ openAtLogin: false })),
     setLoginItemSettings: vi.fn(),
+    // E1: this suite never actually reaches whenReady (it stays pending
+    // forever, by design — see the comment below), so the lock's return value
+    // doesn't drive any behavior here; it only needs to exist so module load
+    // doesn't throw.
+    requestSingleInstanceLock: vi.fn(() => true),
   },
   BrowserWindow: Object.assign(
     function MockBrowserWindow() { return mockBrowserWindow; },
     { getAllWindows: vi.fn(() => [mockBrowserWindow]) },
   ),
   contextBridge: { exposeInMainWorld: vi.fn() },
-  dialog: { showErrorBox: vi.fn() },
+  dialog: { showErrorBox: vi.fn(), showMessageBoxSync: vi.fn(() => 1) },
   Tray: function MockTray() {
     return { setToolTip: vi.fn(), setContextMenu: vi.fn(), on: vi.fn() };
   },
@@ -150,6 +155,14 @@ vi.mock('@openpalm/lib', () => ({
     }
     return false;
   }),
+  // Minimal fake of lib's UiSupervisor (adopt()/current only — main.ts never
+  // calls start() here; see main.ts's uiSupervisor docblock).
+  UiSupervisor: class {
+    current: unknown = null;
+    adopt(handle: unknown) {
+      this.current = handle;
+    }
+  },
 }));
 
 const { mockLoadSettings } = vi.hoisted(() => ({

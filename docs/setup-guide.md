@@ -47,6 +47,13 @@ The normal home-install control is `access.networkAccess`. Advanced controls
 are `access.assistantDirect`, `access.guardianNetwork`, and
 `access.guardianOpenaiApi`. These are independent booleans, not presets.
 
+> These `access.*` fields require OpenPalm `0.13.0` or newer. `setup.sh` and
+> `setup.ps1` resolve the latest **stable** release by default, which may
+> predate `0.13.0` — on an older resolved release, an `access` object in a
+> setup spec is silently accepted and ignored rather than applied. Pin
+> `--version`/`OP_VERSION` to a `0.13.0`-or-later release (a prerelease, for
+> now) if these fields matter to your install.
+
 ## Headless Setup
 
 Create a version 2 YAML or JSON setup spec and run:
@@ -83,8 +90,14 @@ openpalm install --file ./setup-spec.yaml --no-start
 
 The installed stack has three ownership layers:
 
-- Managed Compose files: `~/.openpalm/system/stack/core.compose.yml`,
-  `services.compose.yml`, and `portals.compose.yml`
+- Managed Compose files in `~/.openpalm/system/stack/`. `core.compose.yml`,
+  `services.compose.yml`, and `portals.compose.yml` are the three every deploy
+  uses. The directory also ships three conditional voice overlays that are
+  not part of every deploy: `voice.compose.lan.yml` (applied when
+  `OP_VOICE_LAN_ACCESS=true`), and `voice.compose.rootless.yml` /
+  `voice.compose.cdi.yml` (hardware fallbacks the voice bring-up flow selects
+  automatically for rootless Docker or CDI-only NVIDIA hosts) — six managed
+  files ship in total, not three.
 - User overlay: `~/.openpalm/config/stack/custom.compose.yml`
 - App-owned runtime record and sole Compose env file:
   `~/.openpalm/state/stack.env`
@@ -93,6 +106,28 @@ First-party addon IDs are recorded in `OP_ENABLED_ADDONS`. OpenPalm commands
 translate them to Compose profiles. Raw Docker Compose does not, so manual
 commands must include matching `--profile addon.<id>` arguments or an explicit
 `COMPOSE_PROFILES` value.
+
+## Runtime Layout
+
+Beyond the Compose files above, a complete install also generates:
+
+| Path | Purpose |
+|---|---|
+| `~/.openpalm/system/assistant/` | Managed assistant OpenCode config mounted at `/etc/opencode` |
+| `~/.openpalm/system/guardian/` | Managed Guardian OpenCode config mounted at `/etc/opencode` |
+| `~/.openpalm/config/assistant/` | User OpenCode global config for the assistant |
+| `~/.openpalm/config/guardian/` | User Guardian model config |
+| `~/.openpalm/config/akm/` | AKM configuration |
+| `~/.openpalm/private/secrets/` | UI, Guardian, API, portal, bot, and OpenCode-server secrets |
+| `~/.openpalm/knowledge/secrets/auth.json` | Assistant-readable OpenCode provider credentials |
+| `~/.openpalm/knowledge/env/user.env` | AKM user env, loaded on demand rather than by Compose or the assistant entrypoint |
+| `~/.openpalm/knowledge/tasks/` | AKM scheduled task files |
+| `~/.openpalm/data/` | Durable service data and lifecycle backups |
+| `~/.openpalm/cache/` | Regenerable container caches |
+| `~/.openpalm/workspace/` | Shared assistant workspace mounted at `/work` |
+
+`config/` is user-owned. Automatic lifecycle operations may refresh `system/`
+and app-owned `state/`, but do not overwrite existing user configuration.
 
 ## Access Settings
 
@@ -159,7 +194,8 @@ Everyone who opens either URL still signs in with the UI login password.
 ## Power-User Compose
 
 Generate the installation first, preferably with `openpalm install --file
-... --no-start`, then use the fixed file list in the
+... --no-start`, then use the managed file list (plus any conditional voice
+overlay) in the
 [Manual Compose Runbook](operations/manual-compose-runbook.md). This preserves
 the same on-disk contract as CLI-managed installs without requiring the CLI for
 day-to-day Compose commands.
@@ -175,5 +211,7 @@ remains the reference for that migration. It is not a fresh-install procedure.
 |---|---|
 | [Managing OpenPalm](managing-openpalm.md) | Day-to-day operations |
 | [Manual Compose Runbook](operations/manual-compose-runbook.md) | Raw Compose commands and profile handling |
+| [Password & Secret Management](password-management.md) | Current secret boundaries and rotation |
+| [Troubleshooting](troubleshooting.md) | Common problems and diagnostics |
 | [How It Works](how-it-works.md) | Runtime and security model |
 | [Core Principles](technical/core-principles.md) | Architectural invariants |

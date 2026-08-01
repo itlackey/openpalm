@@ -16,6 +16,7 @@ import { parseFrame } from '../chat/session-events.js';
 import type { RawEvent } from '../chat/oc-events.js';
 import { validateConnectionUrl } from '../connections/url-policy.js';
 import type { Connection } from '../connections/store.js';
+import type { AssistantErrorLike } from '../chat/assistant-error.js';
 
 /**
  * Resolved (usable) auth for a single request — the password is present here,
@@ -99,6 +100,59 @@ export function authorizationHeader(auth: ResolvedAuth): string | null {
     return `Basic ${base64Utf8(`${username}:${auth.password}`)}`;
   }
   return null;
+}
+
+/**
+ * Extract a structured error detail from a non-ok response's JSON body, and
+ * fully drain the body either way — an unread body on a non-ok response is a
+ * connection that never gets recycled back to the pool.
+ *
+ * Only a JSON body is trusted as a `detail`: this app's own `/oc` proxy
+ * (`{error, message, details, requestId}` — see server/helpers.ts's
+ * errorResponse) and OpenCode's own error responses are both JSON, while an
+ * HTML proxy error page or an empty body carry nothing worth showing — those
+ * fall through to the generic per-status copy in mapAssistantError instead of
+ * dumping markup or "[object Object]" at the user.
+ */
+async function extractErrorDetail(res: Response): Promise<{ message?: string; code?: string }> {
+  const contentType = res.headers.get('content-type') ?? '';
+  if (!contentType.includes('application/json')) {
+    if (res.body) {
+      try {
+        await res.body.cancel();
+      } catch {
+        // already released/errored — nothing to clean up
+      }
+    }
+    return {};
+  }
+  try {
+    const data = (await res.json()) as Record<string, unknown> | null;
+    const message =
+      typeof data?.message === 'string' && data.message.trim() ? data.message : undefined;
+    const code = typeof data?.error === 'string' && data.error.trim() ? data.error : undefined;
+    return { message: message ?? code, code };
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * Build (but do not throw) the Error for a non-ok response, carrying status
+ * plus whatever structured detail/code/requestId could be extracted. `.message`
+ * stays the plain `HTTP <status>` placeholder — mapAssistantError treats that
+ * as "no real detail" and applies its own per-status copy; `.detail` is the
+ * field that wins when present (see chat/assistant-error.ts).
+ */
+async function errorForResponse(res: Response): Promise<Error & AssistantErrorLike> {
+  const { message, code } = await extractErrorDetail(res);
+  const requestId = res.headers.get('x-request-id') ?? undefined;
+  return Object.assign(new Error(`HTTP ${res.status}`), {
+    status: res.status,
+    ...(message ? { detail: message } : {}),
+    ...(code ? { code } : {}),
+    ...(requestId ? { requestId } : {}),
+  });
 }
 
 function isSessionList(value: unknown): boolean {
@@ -188,7 +242,7 @@ export function createDirectTransport(
       if (body !== undefined) init.body = JSON.stringify(body);
       const response = await fetchImpl(`${baseFor(connection)}${path}`, init);
       if (!response.ok) {
-        throw Object.assign(new Error(`HTTP ${response.status}`), { status: response.status });
+        throw await errorForResponse(response);
       }
       return response;
     },
@@ -202,9 +256,7 @@ export function createDirectTransport(
         signal,
       });
       if (!response.ok || !response.body) {
-        throw Object.assign(new Error(`SSE stream failed: HTTP ${response.status}`), {
-          status: response.status,
-        });
+        throw await errorForResponse(response);
       }
       const reader = response.body.getReader();
       const decoder = new TextDecoder();

@@ -129,19 +129,32 @@ export function resolveComposeProjectName(envOverrides: Record<string, string> =
  * Result of probing the Docker daemon for an existing compose project that
  * shares our project name.
  *
- * - `exists`   — at least one running container carries the project label.
- * - `isOurs`   — those containers were launched from THIS install's working
- *                dir (compose working_dir label === expectedWorkingDir). When
- *                true the caller should reconcile in place (up --force-recreate).
- *                When false a DIFFERENT OpenPalm install (e.g. dev vs host) owns
- *                the name and the caller must refuse.
- * - `workingDir` — the working_dir label read off the first container, for
- *                error messages. Empty string when unknown.
+ * - `exists`   — at least one container (running or stopped) carries the
+ *                project label.
+ * - `isOurs`   — EVERY one of those containers was launched from THIS
+ *                install's working dir (compose working_dir label ===
+ *                expectedWorkingDir). When true the caller should reconcile in
+ *                place (up --force-recreate). When false at least one
+ *                container under this project name belongs to a DIFFERENT
+ *                OpenPalm install (e.g. dev vs host, or a foreign leftover)
+ *                and the caller must refuse — `up` would otherwise try to
+ *                adopt/recreate a container it does not own.
+ * - `workingDir` — a representative working_dir label for error messages:
+ *                the first FOREIGN one when `isOurs` is false (so the message
+ *                names the actual conflict), otherwise the shared label.
+ *                Empty string when unknown.
+ * - `running`  — true when at least one matched container is actually in the
+ *                `running` state (as opposed to merely present-but-stopped).
+ *                `undefined` when unknown (a Docker error, or a caller-built
+ *                fixture that predates this field) — callers that gate a
+ *                blocking decision on this must treat `undefined` the same as
+ *                `true` (assume the risky case) rather than as `false`.
  */
 export type ExistingProject = {
   exists: boolean;
   isOurs: boolean;
   workingDir: string;
+  running?: boolean;
   error?: string;
 };
 
@@ -160,10 +173,23 @@ export function isProjectOurs(workingDirLabel: string, expectedWorkingDir: strin
 }
 
 /**
- * Probe the Docker daemon for a running compose project that shares
- * `projectName`. Decides ours-vs-foreign by comparing the project's
+ * Probe the Docker daemon for a compose project that shares `projectName`,
+ * running OR stopped. Decides ours-vs-foreign by comparing the project's
  * `com.docker.compose.project.working_dir` label against `expectedWorkingDir`
  * (the install's OP_HOME / compose context).
+ *
+ * `-a` is required, not cosmetic: a STOPPED foreign stack (e.g. a different
+ * OP_HOME's install the operator `docker compose stop`ped, or one that never
+ * finished coming up) is invisible to a running-only `ps` — the collision
+ * probe this feeds would then see "no project" and let the deploy's
+ * `up --force-recreate --remove-orphans` adopt/clobber it.
+ *
+ * `-a` also means MULTIPLE containers under the same project name is no
+ * longer a corner case: a stopped foreign leftover can sit right alongside
+ * our own running containers. Every returned id is inspected (not just the
+ * first — `docker ps -a` orders newest-first, so relying on one id would let
+ * whichever container happens to be newest decide ours-vs-foreign for the
+ * whole project) and `isOurs` requires ALL of them to match.
  *
  * Docker errors are returned separately from a confirmed absent project so
  * callers never mistake "could not check" for "safe to continue".
@@ -173,20 +199,39 @@ export async function detectExistingProject(opts: {
   expectedWorkingDir: string;
 }): Promise<ExistingProject> {
   const none: ExistingProject = { exists: false, isOurs: false, workingDir: "" };
+  // ID + State in one call (no separate `docker ps` round trip) — State feeds
+  // `running` below, distinguishing an actually-running collision (blocking)
+  // from a merely-stopped leftover (not).
   const ps = await run(
-    ["ps", "-q", "--filter", `label=com.docker.compose.project=${opts.projectName}`],
+    [
+      "ps",
+      "-a",
+      "--filter",
+      `label=com.docker.compose.project=${opts.projectName}`,
+      "--format",
+      "{{.ID}}\t{{.State}}",
+    ],
     undefined,
     10_000,
   );
   if (!ps.ok) return { ...none, error: ps.stderr || "Could not query Docker projects" };
-  const ids = ps.stdout.trim().split(/\s+/).filter(Boolean);
-  if (ids.length === 0) return none;
+  const psRows = ps.stdout
+    .trim()
+    .split(/\r?\n/)
+    .filter(Boolean)
+    .map((line) => {
+      const [id, state] = line.split("\t");
+      return { id: id?.trim() ?? "", state: state?.trim().toLowerCase() ?? "" };
+    })
+    .filter((row) => row.id !== "");
+  if (psRows.length === 0) return none;
+  const running = psRows.some((row) => row.state === "running");
   const inspect = await run(
     [
       "inspect",
       "--format",
       '{{ index .Config.Labels "com.docker.compose.project.working_dir" }}',
-      ids[0],
+      ...psRows.map((row) => row.id),
     ],
     undefined,
     10_000,
@@ -196,11 +241,22 @@ export async function detectExistingProject(opts: {
       exists: true,
       isOurs: false,
       workingDir: "",
+      running,
       error: inspect.stderr || "Could not inspect Docker project ownership",
     };
   }
-  const workingDir = inspect.stdout.trim();
-  return { exists: true, isOurs: isProjectOurs(workingDir, opts.expectedWorkingDir), workingDir };
+  // One line of output per id, in the same order they were passed to
+  // `inspect` — drop only the trailing newline's empty artifact, never a
+  // genuinely blank (unlabeled) line, since an unlabeled container must still
+  // count as foreign below.
+  const lines = inspect.stdout.split("\n");
+  if (lines[lines.length - 1] === "") lines.pop();
+  const workingDirs = lines.map((line) => line.trim());
+  const isOurs =
+    workingDirs.length > 0 && workingDirs.every((dir) => isProjectOurs(dir, opts.expectedWorkingDir));
+  const workingDir =
+    workingDirs.find((dir) => !isProjectOurs(dir, opts.expectedWorkingDir)) ?? workingDirs[0] ?? "";
+  return { exists: true, isOurs, workingDir, running };
 }
 
 /** Check if Docker is available */
@@ -219,11 +275,11 @@ export async function checkDocker(): Promise<DockerResult> {
 
 /**
  * Minimum Docker Compose version that supports `--wait`/`--wait-timeout`
- * (added in Compose v2.14.0) — §2.1 makes these the single health gate for
+ * (`--wait-timeout` requires Compose v2.17.0) — §2.1 makes these the health gate for
  * every `compose up`, so an older CLI must fail the preflight instead of
  * silently rejecting the flag at runtime.
  */
-const COMPOSE_WAIT_FLOOR = [2, 14, 0] as const;
+const COMPOSE_WAIT_FLOOR = [2, 17, 0] as const;
 
 /**
  * Decide whether a `docker compose version` output (e.g. "Docker Compose
@@ -253,7 +309,7 @@ export async function checkDockerCompose(): Promise<DockerResult> {
       ok: false,
       stderr:
         result.stderr ||
-        `Docker Compose ${result.stdout.trim() || "(unknown version)"} is too old — v2.14.0 or newer is required.`,
+        `Docker Compose ${result.stdout.trim() || "(unknown version)"} is too old — v2.17.0 or newer is required.`,
     };
   }
   return result;
@@ -357,6 +413,10 @@ export async function composePreflight(
  *     running platform (secrets are written only by install/update, not
  *     self-healed on a plain command) — so we point the user at `openpalm
  *     update` instead of leaving them with a raw compose "file not found".
+ *     op_ui_login_password is the one exception: no ensure path (including
+ *     `openpalm update`) ever creates it — only setup and `openpalm
+ *     reset-password` do — so naming `update` there would send the operator
+ *     to a command that reproduces the exact same failure.
  */
 export function buildComposePreflightError(
   options: { files: string[]; envFiles?: string[]; profiles?: string[] },
@@ -380,9 +440,12 @@ export function buildComposePreflightError(
 
   const looksLikeMissingFile = /secret/i.test(stderr)
     && /(not found|no such file|does not exist|cannot find)/i.test(stderr);
-  const guidance = looksLikeMissingFile
-    ? "\n\nThis usually means your OpenPalm home is missing files. Run `openpalm update` to repair it, then try again."
-    : "";
+  const looksLikeMissingLoginPassword = looksLikeMissingFile && /ui_login_password/i.test(stderr);
+  const guidance = looksLikeMissingLoginPassword
+    ? "\n\nThis usually means the UI login password secret is missing. `openpalm update` cannot create it — run `openpalm reset-password` (or re-run setup) to create it, then try again."
+    : looksLikeMissingFile
+      ? "\n\nThis usually means your OpenPalm home is missing files. Run `openpalm update` to repair it, then try again."
+      : "";
 
   return (
     `Compose preflight failed: ${stderr}\n` +
@@ -699,8 +762,14 @@ export async function composePs(
   return run(args, undefined);
 }
 
-/** One row of `compose ps --format json` output, reduced to what callers need. */
-export type ComposePsRow = { service: string; state: string; health: string };
+/**
+ * One row of `compose ps --format json` output, reduced to what callers need.
+ * `id` is the container ID — empty string when the JSON carried no `ID` field
+ * (older Compose). Used to tell a freshly (re)created container apart from a
+ * stale one left over from a PREVIOUS `up` under the same service name (see
+ * {@link newlyObservedRows}).
+ */
+export type ComposePsRow = { service: string; state: string; health: string; id: string };
 
 /**
  * Parse `compose ps --format json` stdout (one JSON object per line, or a
@@ -725,7 +794,12 @@ export function parseComposePsRows(stdout: string): ComposePsRow[] {
         const obj = entry as Record<string, unknown>;
         const service = String(obj.Service ?? obj.Name ?? "");
         if (!service) continue;
-        rows.push({ service, state: String(obj.State ?? ""), health: String(obj.Health ?? "") });
+        rows.push({
+          service,
+          state: String(obj.State ?? ""),
+          health: String(obj.Health ?? ""),
+          id: String(obj.ID ?? ""),
+        });
       }
     } catch {
       // Ignore unparsable lines.

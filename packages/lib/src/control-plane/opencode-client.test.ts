@@ -192,6 +192,98 @@ describe("createOpenCodeClient", () => {
     expect(receivedMethod).toBe("DELETE");
     expect(receivedPath).toBe("/session/ses%20a%2Fb");
   });
+
+  // W2: the wizard's OAuth callback needs a MUCH longer budget than the
+  // client's 30s default (a user can easily spend minutes in the provider's
+  // browser tab) — startProviderOAuth/completeProviderOAuth accept an
+  // explicit override instead of hardcoding the shared default.
+  describe("OAuth timeout override", () => {
+    test("startProviderOAuth honors an explicit timeoutMs shorter than the default", async () => {
+      startMockServer(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 200));
+        return new Response(JSON.stringify({ ok: true }), {
+          headers: { "Content-Type": "application/json" },
+        });
+      });
+
+      const client = createOpenCodeClient({ baseUrl: `http://127.0.0.1:${serverPort}` });
+      const result = await client.startProviderOAuth("openai", 0, { timeoutMs: 20 });
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) expect(result.code).toBe("opencode_unavailable");
+    });
+
+    test("completeProviderOAuth honors an explicit timeoutMs shorter than the default", async () => {
+      startMockServer(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 200));
+        return new Response(JSON.stringify({ ok: true }), {
+          headers: { "Content-Type": "application/json" },
+        });
+      });
+
+      const client = createOpenCodeClient({ baseUrl: `http://127.0.0.1:${serverPort}` });
+      const result = await client.completeProviderOAuth("openai", 0, undefined, { timeoutMs: 20 });
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) expect(result.code).toBe("opencode_unavailable");
+    });
+
+    test("completeProviderOAuth with a generous timeoutMs still succeeds against a slow-but-faster server", async () => {
+      startMockServer(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 20));
+        return new Response(JSON.stringify({ done: true }), {
+          headers: { "Content-Type": "application/json" },
+        });
+      });
+
+      const client = createOpenCodeClient({ baseUrl: `http://127.0.0.1:${serverPort}` });
+      const result = await client.completeProviderOAuth("openai", 0, "the-code", { timeoutMs: 5_000 });
+
+      expect(result.ok).toBe(true);
+      if (result.ok) expect(result.data).toEqual({ done: true });
+    });
+
+    test("startProviderOAuth without timeoutMs falls back to the client's shared default behavior", async () => {
+      let receivedBody: unknown = null;
+      startMockServer(async (req) => {
+        receivedBody = await req.json();
+        return new Response(JSON.stringify({ ok: true }), {
+          headers: { "Content-Type": "application/json" },
+        });
+      });
+
+      const client = createOpenCodeClient({ baseUrl: `http://127.0.0.1:${serverPort}` });
+      const result = await client.startProviderOAuth("openai", 2);
+
+      expect(result.ok).toBe(true);
+      expect(receivedBody).toEqual({ method: 2 });
+    });
+
+    test("completeProviderOAuth combines caller cancellation with its timeout", async () => {
+      let markStarted!: () => void;
+      const started = new Promise<void>((resolve) => { markStarted = resolve; });
+      startMockServer(async () => {
+        markStarted();
+        await new Promise((resolve) => setTimeout(resolve, 500));
+        return new Response(JSON.stringify({ done: true }), {
+          headers: { "Content-Type": "application/json" },
+        });
+      });
+
+      const controller = new AbortController();
+      const client = createOpenCodeClient({ baseUrl: `http://127.0.0.1:${serverPort}` });
+      const pending = client.completeProviderOAuth("openai", 0, undefined, {
+        timeoutMs: 5_000,
+        signal: controller.signal,
+      });
+      await started;
+      controller.abort();
+
+      const result = await pending;
+      expect(result.ok).toBe(false);
+      if (!result.ok) expect(result.code).toBe("opencode_unavailable");
+    });
+  });
 });
 
 describe("createOpenCodeClient — Basic auth", () => {

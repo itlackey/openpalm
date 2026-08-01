@@ -10,8 +10,8 @@ OpenPalm stack.
 | Requirement | Minimum | Notes |
 |---|---|---|
 | Docker Engine or Docker Desktop | 24.0+ | Must include Compose V2 |
-| Docker Compose | 2.20+ | Usually bundled with Docker |
-| `git` | any | Needed if you clone the repo to copy `packages/skeleton/` |
+| Docker Compose | 2.17+ | Required for `docker compose up --wait-timeout`; usually bundled with Docker |
+| `git` | any | Only needed to clone the repo for development; not required to install OpenPalm — a raw copy of `packages/skeleton/` is not a working install (see [Setup Guide](setup-guide.md)) |
 | `curl` | any | Only needed for optional installer scripts |
 
 ### CPU architecture (`x86_64` hosts)
@@ -140,8 +140,19 @@ Approximate storage use:
 | Destination | When needed |
 |---|---|
 | LLM provider APIs | When using remote models |
-| Docker Hub / GHCR | Pulling or updating images |
+| Docker Hub / GHCR | **Required** for every install and update |
 | `host.docker.internal` targets | When containers need host-run services |
+
+**Installing and updating require reachable container registries.** Both
+operations pull images before starting anything, so they cannot complete on a
+host with no route to Docker Hub / GHCR — even when the exact images are
+already present in the local Docker daemon. A pull failure fails the operation
+and rolls the configuration back; it does not silently fall back to cached
+images. An already-installed stack keeps running offline (containers restart
+under `unless-stopped`); it is only install and update that need the network.
+
+Hosts that pull anonymously share Docker Hub's per-IP rate limit. If you hit
+`toomanyrequests`, run `docker login` and retry.
 
 ### Default inbound ports
 

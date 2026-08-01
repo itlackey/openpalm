@@ -11,8 +11,29 @@
  *
  * - `autoDownload = false`. Discovery must never spend a user's bandwidth;
  *   downloading is a separate, explicit act of consent (`download()`).
- * - `autoInstallOnAppQuit = true`. A staged update installs on normal quit, so
- *   "Restart and update" is a convenience rather than the only route.
+ * - `autoInstallOnAppQuit = false`. electron-updater's OWN install-on-quit
+ *   hook (`BaseUpdater.addQuitHandler`) is wired to Electron's `app`'s
+ *   `'quit'` event — but main.ts's `before-quit` handler always finishes with
+ *   `app.exit(0)`, which Electron's own docs state skips `before-quit` /
+ *   `will-quit`, and does not run the normal will-quit → window-teardown →
+ *   `quit` sequence those events gate, so that hook's listener would never be
+ *   reached regardless of this flag (verified against installed
+ *   electron-updater 6.8.9's `BaseUpdater`/`ElectronAppAdapter` sources).
+ *   Leaving it `true` would be pure decoration, so it is explicitly off.
+ *   Ordinary quit DOES still install a staged update — see `installOnQuit()`
+ *   below, which main.ts's before-quit handler calls directly instead of
+ *   depending on electron-updater's hook. It deliberately calls `install()`,
+ *   NOT `quitAndInstall()`: the latter schedules electron-updater's OWN
+ *   `app.quit()` internally, and racing that against main.ts's own exit
+ *   sequence is exactly the double-quit hazard the `app.exit(0)` switch in
+ *   before-quit exists to avoid (see its comment) — reintroducing it here
+ *   would trade one dead setting for a live bug. `install()` alone just
+ *   launches the installer and returns; it never touches app lifecycle, so
+ *   before-quit's existing `app.exit(0)` remains the one thing that ends the
+ *   process, on every path, whether or not a staged update happened to exist.
+ *   "Restart and update" (the explicit button, `quitAndInstall()`) is
+ *   unaffected — it is a user-chosen restart, not an ordinary quit, and keeps
+ *   using electron-updater's own quit path.
  * - Silent checks (startup, window focus) never surface an error: a laptop that
  *   is offline is the normal case, not a fault worth a persistent banner. Only
  *   a user-initiated check reports why it failed.
@@ -52,7 +73,7 @@ export interface UpdaterState {
   /** Only ever set by a user-initiated action — silent checks stay quiet. */
   error: string | null;
   channel: UpdaterChannel;
-  /** False on macOS and unpackaged runs: the UI must offer a manual download. */
+  /** False on macOS, Windows portable builds, and unpackaged runs. */
   supported: boolean;
   /** Where to send a user whose platform cannot self-install. */
   releasesUrl: string;
@@ -67,7 +88,23 @@ export interface AppUpdaterLike {
   checkForUpdates(): Promise<{ updateInfo?: { version?: string } } | null>;
   downloadUpdate(): Promise<unknown>;
   quitAndInstall(isSilent?: boolean, isForceRunAfter?: boolean): void;
+  /**
+   * Trigger the installer WITHOUT quitting — unlike `quitAndInstall`, which
+   * always schedules electron-updater's own `app.quit()` internally. Returns
+   * whether the installer actually launched. See `installOnQuit()` below for
+   * why the desktop harness needs this split.
+   */
+  install(isSilent?: boolean, isForceRunAfter?: boolean): boolean;
   on(event: string, listener: (...args: unknown[]) => void): unknown;
+  /**
+   * Needed by `dispose()` (review E6): `createDesktopUpdater` builds a FRESH
+   * DesktopUpdater over the SAME singleton `autoUpdater` every time the
+   * prerelease-channel toggle fires, and without a way to remove the prior
+   * instance's `download-progress`/`update-downloaded` listeners, N toggles
+   * leave N of each registered — all still firing, all still calling their
+   * (stale) `onStateChange` closure.
+   */
+  removeListener(event: string, listener: (...args: unknown[]) => void): unknown;
 }
 
 export interface UpdaterDeps {
@@ -75,6 +112,10 @@ export interface UpdaterDeps {
   currentVersion: string;
   platform: NodeJS.Platform;
   isPackaged: boolean;
+  /** Set by electron-builder when its Windows portable launcher runs the app. */
+  portableExecutableFile?: string;
+  /** NSIS ships this beside the installed executable; extracted archives do not. */
+  windowsInstallerPresent: boolean;
   prerelease: boolean;
   /** Injected so tests can assert throttling without real time. */
   now?: () => number;
@@ -140,11 +181,21 @@ export function updaterFeedChannel(channel: UpdaterChannel): string {
  * (AppImage) can; macOS cannot until the app is Developer ID-signed AND
  * notarized, because electron-updater's macOS path verifies the signature and
  * an unsigned in-place replacement would leave the user with an app Gatekeeper
- * refuses to launch. An unpackaged dev run has no installer at all.
+ * refuses to launch. An unpackaged dev run has no installer at all. A Windows
+ * portable build also has no install location to replace. electron-builder's
+ * portable launcher identifies that runtime with PORTABLE_EXECUTABLE_FILE,
+ * while an installed NSIS runtime is positively identified by its adjacent
+ * shipped uninstaller so an extracted ZIP cannot install into a second copy.
  */
-export function isAutoUpdateSupported(platform: NodeJS.Platform, isPackaged: boolean): boolean {
+export function isAutoUpdateSupported(
+  platform: NodeJS.Platform,
+  isPackaged: boolean,
+  windowsInstallerPresent: boolean,
+  portableExecutableFile?: string,
+): boolean {
   if (!isPackaged) return false;
-  return platform === 'win32' || platform === 'linux';
+  if (platform === 'win32') return windowsInstallerPresent && !portableExecutableFile;
+  return platform === 'linux';
 }
 
 /** Throttle for focus-triggered checks — a window regains focus constantly. */
@@ -158,11 +209,20 @@ export class DesktopUpdater {
   private downloadInFlight: Promise<UpdaterState> | null = null;
   /** null = never checked. Not 0: that is a real (if ancient) timestamp. */
   private lastCheckAt: number | null = null;
+  // Bound listener references, kept so dispose() can remove exactly these
+  // from the shared singleton updater (review E6 — see dispose() below).
+  private readonly onDownloadProgress: ((...args: unknown[]) => void) | null;
+  private readonly onUpdateDownloaded: (() => void) | null;
 
   constructor(deps: UpdaterDeps) {
     this.deps = deps;
     this.now = deps.now ?? Date.now;
-    const supported = isAutoUpdateSupported(deps.platform, deps.isPackaged);
+    const supported = isAutoUpdateSupported(
+      deps.platform,
+      deps.isPackaged,
+      deps.windowsInstallerPresent,
+      deps.portableExecutableFile,
+    );
     this.state = {
       status: supported ? 'idle' : 'unsupported',
       currentVersion: deps.currentVersion,
@@ -173,29 +233,53 @@ export class DesktopUpdater {
       supported,
       releasesUrl: RELEASES_URL,
     };
-    if (!supported) return;
+    if (!supported) {
+      this.onDownloadProgress = null;
+      this.onUpdateDownloaded = null;
+      return;
+    }
 
     const u = deps.updater;
     // Consent before bytes: discovery must not download (#572 acceptance).
     u.autoDownload = false;
-    // A staged update also installs on an ordinary quit, not only via the
-    // explicit "Restart and update" action.
-    u.autoInstallOnAppQuit = true;
+    // Off — see the class docblock. Ordinary-quit install is handled
+    // explicitly by `installOnQuit()` below, not by electron-updater's own
+    // (unreachable) install-on-quit hook.
+    u.autoInstallOnAppQuit = false;
     u.channel = updaterFeedChannel(this.state.channel);
     u.allowPrerelease = deps.prerelease;
 
-    u.on('download-progress', (...args: unknown[]) => {
+    this.onDownloadProgress = (...args: unknown[]) => {
       const progress = args[0] as { percent?: number } | undefined;
       const percent = typeof progress?.percent === 'number' ? progress.percent : null;
       this.patch({ status: 'downloading', percent });
-    });
-    u.on('update-downloaded', () => {
+    };
+    this.onUpdateDownloaded = () => {
       this.patch({ status: 'downloaded', percent: 100, error: null });
-    });
+    };
+    u.on('download-progress', this.onDownloadProgress);
+    u.on('update-downloaded', this.onUpdateDownloaded);
   }
 
   getState(): UpdaterState {
     return { ...this.state };
+  }
+
+  /**
+   * Remove this instance's listeners from the shared electron-updater
+   * singleton (review E6). `createDesktopUpdater` in main.ts builds a FRESH
+   * DesktopUpdater over that same singleton every time the prerelease-channel
+   * toggle fires (#504); without this, N toggles leave N sets of
+   * 'download-progress'/'update-downloaded' listeners all still firing —
+   * each patching a `this.state` nothing reads anymore, but still forwarding
+   * through its own (now stale) `onStateChange` closure. Call before
+   * discarding an instance in favor of a new one. Safe to call more than
+   * once or on an `unsupported` instance (no-op either way).
+   */
+  dispose(): void {
+    if (!this.state.supported) return;
+    if (this.onDownloadProgress) this.deps.updater.removeListener('download-progress', this.onDownloadProgress);
+    if (this.onUpdateDownloaded) this.deps.updater.removeListener('update-downloaded', this.onUpdateDownloaded);
   }
 
   private patch(next: Partial<UpdaterState>): UpdaterState {
@@ -302,5 +386,23 @@ export class DesktopUpdater {
     if (!this.state.supported || this.state.status !== 'downloaded') return false;
     this.deps.updater.quitAndInstall(false, true);
     return true;
+  }
+
+  /**
+   * Silently launch the installer for an already-staged update WITHOUT
+   * quitting — called by main.ts's before-quit handler immediately before its
+   * own `app.exit(0)`, since a real Electron `'quit'` event (which
+   * electron-updater's built-in install-on-quit hook needs) never fires from
+   * that path (see this class's docblock and `autoInstallOnAppQuit` above).
+   *
+   * Silent + no relaunch (`install(true, false)`): an ordinary quit is not
+   * "restart now" — that stays the explicit button's job (`quitAndInstall()`,
+   * non-silent, force-run-after).
+   *
+   * No-op (returns false) unless a download has actually completed.
+   */
+  installOnQuit(): boolean {
+    if (!this.state.supported || this.state.status !== 'downloaded') return false;
+    return this.deps.updater.install(true, false);
   }
 }

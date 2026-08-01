@@ -53,24 +53,64 @@ describe('checkPortAvailable', () => {
 });
 
 describe('portHeldByOurContainer', () => {
-  it('returns "held" when an openpalm-* container publishes the port', async () => {
-    const client = fakeClient(async () => okResult('openpalm-assistant\t0.0.0.0:3810->3810/tcp\n'));
-    expect(await portHeldByOurContainer(3810, client)).toBe('held');
-  });
-
-  it('returns "free" when no openpalm-* container publishes the port', async () => {
-    const client = fakeClient(async () => okResult('some-other-container\t0.0.0.0:9999->9999/tcp\n'));
-    expect(await portHeldByOurContainer(3810, client)).toBe('free');
-  });
-
-  it('ignores non-openpalm containers even if they happen to publish the port', async () => {
-    const client = fakeClient(async () => okResult('random-app\t0.0.0.0:3810->3810/tcp\n'));
-    expect(await portHeldByOurContainer(3810, client)).toBe('free');
-  });
+  const composeProject = { name: 'my-project', workingDir: '/tmp/op-home/system/stack' };
 
   it('returns "unreachable" when docker itself cannot be queried', async () => {
     const client = fakeClient(async () => failResult);
-    expect(await portHeldByOurContainer(3810, client)).toBe('unreachable');
+    expect(await portHeldByOurContainer(3810, composeProject, client)).toBe('unreachable');
+  });
+
+  it('queries the matching project and requires its working-directory label', async () => {
+    let args: string[] = [];
+    const client = fakeClient(async (seenArgs) => {
+      args = seenArgs;
+      return okResult('/tmp/op-home/system/stack\t127.0.0.1:3810->4096/tcp\n');
+    });
+
+    expect(await portHeldByOurContainer(3810, composeProject, client)).toBe('held');
+    expect(args).toContain('label=com.docker.compose.project=my-project');
+  });
+
+  const renderings = [
+    ['exact IPv4 loopback TCP publication', '127.0.0.1:3810->4096/tcp', 'held'],
+    ['another IPv4 loopback address', '127.0.0.2:3810->4096/tcp', 'held'],
+    ['host-port range containing the port', '127.0.0.1:3808-3811->4094-4097/tcp', 'held'],
+    ['host-port range excluding the port', '127.0.0.1:3808-3809->4094-4095/tcp', 'free'],
+    ['UDP publication', '127.0.0.1:3810->4096/udp', 'free'],
+    ['wildcard IPv4 publication', '0.0.0.0:3810->4096/tcp', 'held'],
+    ['LAN-address publication', '192.168.1.20:3810->4096/tcp', 'free'],
+    ['IPv6 loopback publication', '[::1]:3810->4096/tcp', 'free'],
+    ['unpublished container port', '4096/tcp', 'free'],
+    ['different exact host port', '127.0.0.1:13810->4096/tcp', 'free'],
+  ] as const;
+
+  for (const [name, ports, expected] of renderings) {
+    it(`classifies ${name}`, async () => {
+      const client = fakeClient(async () => okResult(`${composeProject.workingDir}\t${ports}\n`));
+      expect(await portHeldByOurContainer(3810, composeProject, client)).toBe(expected);
+    });
+  }
+
+  it('accepts a matching publication among multiple rendered mappings', async () => {
+    const client = fakeClient(async () =>
+      okResult(`${composeProject.workingDir}\t0.0.0.0:9000->9000/tcp, 127.0.0.1:3810->4096/tcp\n`),
+    );
+    expect(await portHeldByOurContainer(3810, composeProject, client)).toBe('held');
+  });
+
+  it('does not attribute a foreign listener merely because this project exists', async () => {
+    const client = fakeClient(async () =>
+      okResult(
+        [
+          '/tmp/op-home/system/stack\t127.0.0.1:3900->3000/tcp',
+          '/tmp/other-home/system/stack\t127.0.0.1:3810->4096/tcp',
+        ].join('\n'),
+      ),
+    );
+
+    expect(
+      await portHeldByOurContainer(3810, composeProject, client),
+    ).toBe('free');
   });
 });
 
@@ -105,13 +145,16 @@ describe('resolveInstallPortTargets', () => {
 
 describe('probeInstallPorts (C2 — no false conflict while our own stack is up)', () => {
   const targets: InstallPortTarget[] = [{ port: 65000, service: 'admin', blocking: true }];
+  const composeProject = { name: 'openpalm', workingDir: '/tmp/op-home/system/stack' };
 
   it('marks a port held by our own container as available, not a conflict', async () => {
     server = createServer();
     await new Promise<void>((resolve) => server?.listen(65000, '127.0.0.1', () => resolve()));
 
-    const client = fakeClient(async () => okResult('openpalm-admin\t0.0.0.0:65000->65000/tcp\n'));
-    const results = await probeInstallPorts(targets, { client, dockerAvailable: true });
+    const client = fakeClient(async () =>
+      okResult(`${composeProject.workingDir}\t127.0.0.1:65000->65000/tcp\n`),
+    );
+    const results = await probeInstallPorts(targets, { client, dockerAvailable: true, composeProject });
 
     expect(results[0]?.available).toBe(true);
     expect(results[0]?.ownership).toBe('held');
@@ -121,8 +164,10 @@ describe('probeInstallPorts (C2 — no false conflict while our own stack is up)
     server = createServer();
     await new Promise<void>((resolve) => server?.listen(65000, '127.0.0.1', () => resolve()));
 
-    const client = fakeClient(async () => okResult('some-other-app\t0.0.0.0:65000->65000/tcp\n'));
-    const results = await probeInstallPorts(targets, { client, dockerAvailable: true });
+    const client = fakeClient(async () =>
+      okResult('/tmp/other-home/system/stack\t127.0.0.1:65000->65000/tcp\n'),
+    );
+    const results = await probeInstallPorts(targets, { client, dockerAvailable: true, composeProject });
 
     expect(results[0]?.available).toBe(false);
     expect(results[0]?.blocking).toBe(true);
@@ -133,7 +178,7 @@ describe('probeInstallPorts (C2 — no false conflict while our own stack is up)
     await new Promise<void>((resolve) => server?.listen(65000, '127.0.0.1', () => resolve()));
 
     const client = fakeClient(async () => okResult('irrelevant'));
-    const results = await probeInstallPorts(targets, { client, dockerAvailable: false });
+    const results = await probeInstallPorts(targets, { client, dockerAvailable: false, composeProject });
 
     expect(results[0]?.available).toBe(false);
     expect(results[0]?.blocking).toBe(false);

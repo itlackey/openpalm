@@ -184,6 +184,7 @@
                 id="btn-screen1-next"
                 onclick={() => s.goToStep(2)}
                 disabled={!s.canComplete}
+                title={s.localModeUnready ? 'Install Ollama and click Re-check above, or choose a cloud AI service, before continuing.' : undefined}
               >
                 {#if s.modelSelection.llm?.connId && !LOCAL_PROVIDER_IDS.has(s.modelSelection.llm.connId)}
                   Use {friendlyProviderName(s.modelSelection.llm.connId, { extraProviders: s.opencodeProviders })} — Continue
@@ -206,7 +207,7 @@
                 class="btn btn-primary"
                 id="btn-install"
                 onclick={() => void s.handleInstall()}
-                disabled={!s.canComplete || s.installing}
+                disabled={!s.canComplete || !s.passwordValid || s.installing}
               >
                 {#if s.installing}Installing...{:else}{s.isRerun ? 'Update' : 'Install'}{/if}
               </button>
@@ -246,7 +247,7 @@
             {:else}Sign in once and you're set. A browser tab will open for you to log in — come back here when you're done, it connects automatically.
             {/if}
           {:else if s.currentStep === 2}All of this is optional. Skip this whole step if you want — your assistant works fine without any of these. You can turn them on whenever you're ready from the dashboard.
-          {:else if s.currentStep === 3}You're ready. Click <strong>Install OpenPalm</strong> and it'll start up in the background. The first launch pulls a few files — this takes a minute or two. When it's done, open your browser, sign in with that password, and you're good to go. Everything can be changed later from the dashboard.
+          {:else if s.currentStep === 3}You're ready. Click <strong>Install</strong> and it'll start up in the background — typically 3–8 minutes, longer if you enabled voice. You'll stay right here and land in your assistant automatically when it's done. Everything can be changed later from the dashboard.
           {/if}
         </p>
 
@@ -303,7 +304,7 @@
               <div class="wiz-bullet-icon" aria-hidden="true">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="3" y="11" width="18" height="10" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
               </div>
-              <div>Your sign-in password is already saved on this computer — keep a copy somewhere safe just in case.</div>
+              <div>This becomes your sign-in password when you install — keep a copy somewhere safe, or change it above.</div>
             </div>
             <div class="wiz-bullet">
               <div class="wiz-bullet-icon" aria-hidden="true">

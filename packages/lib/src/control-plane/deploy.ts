@@ -13,7 +13,8 @@ import {
 	isComposePsRowHealthy,
 	parseComposePsRows,
 	resolveComposeProjectName,
-	type ApplyStackResult
+	type ApplyStackResult,
+	type ComposePsRow
 } from './docker.js';
 import { activateStack } from './activation.js';
 import { reapAndLogRetiredVolumes } from './image-volume-retention.js';
@@ -78,7 +79,6 @@ export type DeployPhase =
 	| 'writing-config'
 	| 'pulling-images'
 	| 'starting'
-	| 'starting-voice'
 	| 'ready';
 
 export type DeployJournal = {
@@ -175,26 +175,52 @@ function projectNameForState(state: ControlPlaneState): string {
 }
 
 function resolveImageTag(state: ControlPlaneState): string {
+	// OP_IMAGE_TAG was the pre-per-image-pin single cascade var, retired along
+	// with the OP_IMAGE_TAG compose interpolation itself (skeleton-guardrail.test.ts
+	// asserts it's gone from every compose file). ensureVersionDefaults always
+	// gives OP_ASSISTANT_VERSION a value, so there is nothing left to fall back to.
 	const env = readStackEnv(state.homeDir);
-	return env.OP_ASSISTANT_VERSION ?? env.OP_IMAGE_TAG ?? '';
+	return env.OP_ASSISTANT_VERSION ?? '';
 }
 
 async function detectProjectCollision(state: ControlPlaneState): Promise<string | null> {
 	const projectName = projectNameForState(state);
 	const delays = [0, 1_000, 1_000];
+	// Track WHY every attempt fell through, so the fail-closed message names the
+	// actual cause instead of always blaming an untrustworthy working_dir label —
+	// that label was never even read on an attempt that errored outright (Docker
+	// unreachable/timed out), which is a materially different problem from "found
+	// a project sharing our name but its label is missing/blank".
+	let lastDockerError: string | null = null;
+	let sawUnlabeledForeignProject = false;
 	for (let attempt = 0; attempt < delays.length; attempt++) {
 		if (delays[attempt] > 0) await new Promise((resolve) => setTimeout(resolve, delays[attempt]));
 		const existing = await detectExistingProject({
 			projectName,
 			expectedWorkingDir: state.stackDir
 		});
-		if (existing.error) continue;
+		if (existing.error) {
+			lastDockerError = existing.error;
+			continue;
+		}
+		lastDockerError = null;
 		if (!existing.exists) return null;
 		if (existing.isOurs) return null;
-		if (!existing.workingDir) continue;
-		return `Refusing to deploy: docker project "${projectName}" is already running from ${existing.workingDir}, but this deploy would use OP_HOME=${state.homeDir}. Set OP_PROJECT_NAME to a distinct value in stack.env, or stop the existing stack first.`;
+		if (!existing.workingDir) {
+			sawUnlabeledForeignProject = true;
+			continue;
+		}
+		// detectExistingProject probes `docker ps -a` (running OR stopped), so
+		// this fires for a merely-stopped foreign leftover too — "is already
+		// running" would be false in that case and "stop the existing stack
+		// first" would be a no-op. Name removal instead: it's the one remedy
+		// that actually clears either state.
+		return `Refusing to deploy: docker project "${projectName}" already exists (running or stopped), created from ${existing.workingDir}, but this deploy would use OP_HOME=${state.homeDir}. Set OP_PROJECT_NAME to a distinct value in stack.env, or remove the existing project first (docker compose -p ${projectName} down, or docker rm the containers).`;
 	}
-	return `Refusing to deploy: docker project "${projectName}" could not be verified safely. Docker returned an existing project without a trustworthy working_dir label, so this deploy is failing closed.`;
+	if (sawUnlabeledForeignProject) {
+		return `Refusing to deploy: docker project "${projectName}" could not be verified safely. Docker returned an existing project without a trustworthy working_dir label, so this deploy is failing closed.`;
+	}
+	return `Refusing to deploy: docker project "${projectName}" could not be verified safely. Docker could not be queried${lastDockerError ? ` (${lastDockerError})` : ''}, so this deploy is failing closed.`;
 }
 
 function buildLogHint(state: ControlPlaneState, services: string[]): string {
@@ -242,6 +268,104 @@ async function refreshDeployStatus(
 	});
 
 	return { failedRequired, failedOptional };
+}
+
+/**
+ * How often the interim poll below peeks at `compose ps` while `activateStack`
+ * is in flight. Read-only and best-effort — it never decides pass/fail (that
+ * stays refreshDeployStatus's job once activateStack resolves) and never
+ * issues another compose mutation, so it cannot race or compete with compose's
+ * own `--wait` health gate.
+ */
+const INTERIM_STATUS_POLL_MS = 5_000;
+
+/**
+ * Filter `compose ps` rows down to the ones that count as evidence THIS
+ * deploy's `up` is progressing, as opposed to a STALE row left over from a
+ * PREVIOUS `up` under the same service name. On a redeploy the old
+ * containers are often still present (and healthy) while the new `up` is
+ * still pulling images — polling `compose ps` at that point would otherwise
+ * see them and report progress on a deploy that hasn't touched them yet.
+ * Every `up` this codebase issues passes `--force-recreate` (docker.ts), so a
+ * service that genuinely (re)started always gets a NEW container ID; a row
+ * whose id matches its baseline is therefore still the pre-deploy container,
+ * not new. A row with no id at all (older Compose with no `ID` field) counts
+ * as evidence too — there is nothing to compare, so we fall back to trusting
+ * it rather than silently discarding every row forever.
+ *
+ * Pure decision split out from startInterimStatusPoll so it's unit-testable
+ * without a running docker daemon or the poll's 5s interval.
+ */
+export function newlyObservedRows(
+	rows: ComposePsRow[],
+	baselineIds: ReadonlyMap<string, string>
+): ComposePsRow[] {
+	return rows.filter((row) => row.id === '' || row.id !== baselineIds.get(row.service));
+}
+
+/**
+ * W7: `activateStack` (pull + up, §4.3) is ONE call with no progress
+ * callback, so the journal would otherwise sit frozen on "Waiting..." for the
+ * entire pull and the entire up/health-wait. Poll `compose ps` on the side
+ * while that call is outstanding so the wizard's rows move as containers
+ * actually appear. The first non-empty `compose ps` result reporting a NEWLY
+ * (re)created container (see newlyObservedRows) is also the signal that the
+ * discrete pull finished and `up` began creating containers, so it flips the
+ * phase from 'pulling-images' to 'starting'.
+ *
+ * Deliberately conservative: a row is only ever promoted to 'running' here
+ * (once compose reports it healthy); nothing is ever marked 'error' —
+ * a container still warming up mid-pull is not a failure, and the actual
+ * failure determination belongs solely to refreshDeployStatus() after
+ * activateStack returns.
+ */
+async function startInterimStatusPoll(
+	state: ControlPlaneState,
+	options: RunDeployOptions,
+	progress: DeployProgress
+): Promise<{ stop: () => void }> {
+	const composeOpts = buildComposeOptions(state);
+	// Baseline container IDs per service, taken right before `up` starts. On a
+	// redeploy this is what lets the poll below tell "the new `up` actually
+	// did something" apart from "the OLD containers from the last `up` are
+	// still sitting there, already healthy" — see newlyObservedRows.
+	const baselineResult = await composePs(composeOpts);
+	const baselineIds = new Map<string, string>();
+	if (baselineResult.ok) {
+		for (const row of parseComposePsRows(baselineResult.stdout)) {
+			baselineIds.set(row.service, row.id);
+		}
+	}
+	let stopped = false;
+	let tickInFlight = false;
+	const tick = async () => {
+		if (stopped || tickInFlight) return;
+		tickInFlight = true;
+		try {
+			const psResult = await composePs(composeOpts);
+			if (stopped || !psResult.ok) return;
+			const rows = newlyObservedRows(parseComposePsRows(psResult.stdout), baselineIds);
+			if (rows.length === 0) return;
+			if (progress.phase === 'pulling-images') progress.phase = 'starting';
+			progress.deployStatus = progress.deployStatus.map((entry) => {
+				const row = rows.find((r) => r.service === entry.service);
+				if (!row) return entry;
+				return isComposePsRowHealthy(row)
+					? { ...entry, status: 'running', label: 'Running' }
+					: { ...entry, status: 'pending', label: 'Starting...' };
+			});
+			emitProgress(options, progress);
+		} finally {
+			tickInFlight = false;
+		}
+	};
+	const timer = setInterval(() => { void tick(); }, INTERIM_STATUS_POLL_MS);
+	return {
+		stop: () => {
+			stopped = true;
+			clearInterval(timer);
+		}
+	};
 }
 
 export function markSetupComplete(state: ControlPlaneState): void {
@@ -393,17 +517,25 @@ export async function runDeploy(
 			);
 		}
 
-		progress.phase = 'starting';
+		const imageTag = resolveImageTag(state);
+		const isDevTag = imageTag.startsWith('dev');
+
+		// W7: a dev tag uses `pull: 'missing'` — any fetch is folded into `up`
+		// itself, so there's no separate download wait to announce. Every other
+		// tag pulls first (`pull: 'always'`), which is the multi-GB, multi-minute
+		// wait the wizard has dedicated copy for ("Downloading Images…") — give it
+		// its own phase instead of leaving 'starting' (and its "0 of N services
+		// running" subtitle) covering both the download and the actual startup.
+		progress.phase = isDevTag ? 'starting' : 'pulling-images';
 		progress.deployStatus = progress.deployStatus.map((entry) => ({
 			...entry,
 			status: 'pending',
-			label: 'Starting...'
+			label: isDevTag ? 'Starting...' : 'Waiting to download...'
 		}));
 		emitProgress(options, progress);
 
-		const imageTag = resolveImageTag(state);
-		const isDevTag = imageTag.startsWith('dev');
 		let stackResult: ApplyStackResult;
+		const interimPoll = await startInterimStatusPoll(state, options, progress);
 		try {
 			stackResult = await activateStack(
 				state,
@@ -420,7 +552,19 @@ export async function runDeploy(
 			progress.deploying = false;
 			emitProgress(options, progress);
 			return progress;
+		} finally {
+			interimPoll.stop();
 		}
+
+		// The interim poll above flips 'pulling-images' → 'starting' the moment it
+		// OBSERVES containers being (re)created — a best-effort signal that can
+		// miss a fast up (finishes between poll ticks). Force the transition here
+		// too so the phase sequence is guaranteed writing-config → pulling-images →
+		// starting → ready regardless of timing; a failure right after overrides
+		// the visible title via `deployError`, so this is never shown as a false
+		// "now starting" on a pull that actually failed.
+		progress.phase = 'starting';
+		emitProgress(options, progress);
 
 		if (!stackResult.ok) {
 			// ONE `compose ps` refreshes the per-service display labels and splits the
@@ -451,6 +595,15 @@ export async function runDeploy(
 			// This early return would otherwise skip the success-path retired-volume
 			// reap below, so reclaim before returning the warning.
 			await reapAndLogRetiredVolumes(state.homeDir, deployLogger);
+			// W5: the client's poll loop (setup-state.svelte.ts pollDeployStatus)
+			// treats 'warning' rows as a non-blocking terminal state — every
+			// required service is up, so a failed OPTIONAL row must read as "done,
+			// with a warning" rather than 'error' (which reads as still-failing and
+			// would poll forever, since nothing else ever produces a terminal state
+			// here).
+			progress.deployStatus = progress.deployStatus.map((entry) =>
+				failedOptional.includes(entry.service) ? { ...entry, status: 'warning' } : entry
+			);
 			progress.imageWarning = `The following optional service(s) did not start correctly and were skipped: ${failedOptional.join(', ')}. ${buildLogHint(state, failedOptional)}`;
 			options.markSetupComplete?.();
 			progress.deploying = false;

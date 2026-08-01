@@ -33,7 +33,10 @@ function harness(options: {
 }
 
 describe('/start browser bootstrap', () => {
-  test('restores a valid saved active connection without a health probe', async () => {
+  // F11: an already-known active connection must short-circuit straight to
+  // /chat instead of also waiting out localDiscoverySettled()'s probe
+  // timeouts — that detour is for the genuinely-empty-list case only.
+  test('restores a valid saved active connection without a health probe or a discovery detour', async () => {
     const h = harness({
       endpoints: [{ id: 'saved' }, { id: 'other' }],
       serviceActiveId: 'saved',
@@ -45,12 +48,12 @@ describe('/start browser bootstrap', () => {
       kind: 'navigate',
       href: '/chat?assistant=saved',
     });
-    expect(h.calls).toEqual(['load:false', 'discovery']);
+    expect(h.calls).toEqual(['load:false']);
     expect(fetchSpy).not.toHaveBeenCalled();
     vi.unstubAllGlobals();
   });
 
-  test('uses the active id repaired by endpointsService during load', async () => {
+  test('uses the active id repaired by endpointsService during load, without a discovery detour', async () => {
     const h = harness({
       endpoints: [{ id: 'first' }, { id: 'second' }],
       serviceActiveId: 'removed',
@@ -60,6 +63,14 @@ describe('/start browser bootstrap', () => {
       kind: 'navigate',
       href: '/chat?assistant=first',
     });
+    expect(h.calls).toEqual(['load:false']);
+  });
+
+  // The discovery detour still runs — and is still awaited — when load()
+  // resolves to no active connection at all (a genuinely fresh browser).
+  test('still waits on local discovery when load resolves to no active connection', async () => {
+    const h = harness({ capabilities: ['host:setup'] });
+    await expect(bootstrapStart(h.runtimeContext, h.service)).resolves.toEqual({ kind: 'choice' });
     expect(h.calls).toEqual(['load:false', 'discovery']);
   });
 

@@ -2,6 +2,7 @@ import { afterEach, describe, expect, test, vi } from 'vitest';
 import {
   fetchVoiceProfiles, fetchProviderModels, ensureOpenCode,
   completeSetup, fetchDeployStatus, fetchSetupStatus, importHost,
+  pollOpenCodeOAuthCallback,
 } from './setup-api.js';
 import type { SetupPayload } from './setup/payload.js';
 
@@ -55,6 +56,17 @@ describe('setupRequest shaping', () => {
     await fetchProviderModels('a/b', { apiKey: '', baseUrl: '' });
     expect(calls[0].url).toBe('/api/setup/models/a%2Fb');
   });
+
+  test('OAuth callback sends the authorize target source, never a URL', async () => {
+    const calls = mockFetch(200, { ok: true });
+    await pollOpenCodeOAuthCallback('openai', 2, 'wizard', new AbortController().signal, 'code');
+
+    expect(JSON.parse(calls[0].init?.body as string)).toEqual({
+      method: 2,
+      source: 'wizard',
+      code: 'code',
+    });
+  });
 });
 
 describe('result mapping', () => {
@@ -102,6 +114,13 @@ describe('fetchProviderModels error semantics', () => {
   test('throws HTTP fallback when no server error message', async () => {
     mockFetch(502, {});
     await expect(fetchProviderModels('openai', { apiKey: '', baseUrl: '' })).rejects.toThrow('HTTP 502');
+  });
+
+  test('W15: prefers the human `message` over the machine `error` code on a 500', async () => {
+    // Matches /api/setup/models/[provider]'s catch-all: { error: 'model_fetch_failed', message: <human text> }.
+    mockFetch(500, { error: 'model_fetch_failed', message: 'Ollama is not reachable at http://localhost:11434' });
+    await expect(fetchProviderModels('ollama', { apiKey: '', baseUrl: '' }))
+      .rejects.toThrow('Ollama is not reachable at http://localhost:11434');
   });
 
   test('throws on a 200 body with status recoverable_error', async () => {

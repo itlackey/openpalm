@@ -3,33 +3,15 @@
   import { friendlyError } from '$lib/client/error-messages.js';
   import Spinner from '$lib/components/common/Spinner.svelte';
   import { resolve } from '$app/paths';
-
-  interface ServiceStatus {
-    service: string;
-    status: string;
-    label?: string;
-  }
-
-  type DeployPhase =
-    | 'writing-config'
-    | 'pulling-images'
-    | 'starting'
-    | 'starting-voice'
-    | 'ready';
-
-  interface DeployData {
-    deployStatus?: ServiceStatus[];
-    deployError?: string | null;
-    /** Non-fatal: install used cached images because the registry pull failed. */
-    imageWarning?: string | null;
-    phase?: DeployPhase;
-    ports?: { admin?: number; ui?: number; assistant?: number };
-  }
+  // G-series: shared with the store instead of a separately-maintained copy
+  // that had already drifted once (this component read `phase`/`imageWarning`
+  // the store's old declaration didn't have).
+  import type { DeployData } from '$lib/setup/setup-state.svelte.js';
 
   interface Props {
     deployData: DeployData;
     deployDone: boolean;
-    /** Terminal state reached with non-running rows that are all warnings. */
+    /** Terminal state reached when only optional services failed. */
     deployHasWarnings?: boolean;
     deployError: string | null;
     onback: () => void;
@@ -82,7 +64,6 @@
           ? 'Downloading Images (incl. Voice ~2.4 GB)…'
           : 'Downloading Images…';
       case 'starting': return 'Starting Services…';
-      case 'starting-voice': return 'Starting Voice Addon…';
       case 'ready': return 'Setup Complete';
     }
     return 'Deploying…';
@@ -91,7 +72,7 @@
   const deploySubtitle = $derived.by(() => {
     if (deployDone) {
       return deployHasWarnings
-        ? 'Setup is complete. Some services are still warming up in the background — they will be ready shortly.'
+        ? 'Setup is complete, but one or more optional services did not start. Features that depend on them may be unavailable.'
         : 'Your OpenPalm stack is up and running.';
     }
     if (deployError) return 'Setup could not finish starting the stack.';
@@ -102,8 +83,6 @@
           ? 'Downloading container images. The voice model (~2.4 GB) is the largest — on a typical home connection this step can take 10–30 minutes. The wizard will wait — keep this tab open.'
           : 'Downloading container images — first install can take 3–8 minutes depending on connection.';
       case 'starting': return `${running} of ${total} services running.`;
-      case 'starting-voice':
-        return 'Pulling the voice image (~2.4 GB) and warming up Kokoro + Whisper models. First launch can take 5–30 minutes on slow connections — the wizard will wait.';
       case 'ready': return 'All services are up.';
     }
     return 'Writing configuration and starting services.';
@@ -112,7 +91,11 @@
   const noStartMode = $derived(deployDone && services.length === 0);
 </script>
 
-<div class="deploy-header">
+<!-- W14: the longest wait of onboarding had no screen-reader announcement at
+     all — phase/progress changes were purely visual. aria-live="polite" here
+     announces each title/subtitle change (phase transitions, the running
+     services count, and the final done/error state) without interrupting. -->
+<div class="deploy-header" aria-live="polite" aria-atomic="true">
   <h2 id="deploy-title">{deployTitle}</h2>
   <p class="step-description" id="deploy-subtitle">{deploySubtitle}</p>
 </div>
@@ -207,15 +190,15 @@
     {:else}
       <p class="done-subtitle">
         {deployHasWarnings
-          ? 'Setup is complete. Some services are still warming up in the background.'
+          ? 'Setup is complete, but one or more optional services did not start. Features that depend on them may be unavailable.'
           : 'Your OpenPalm stack is up and running.'}
       </p>
       {#if deployHasWarnings && warningRows.length > 0}
         <div class="deploy-warnings-note" role="status" id="deploy-warnings-note">
-          Still warming up: {warningRows.map((s) => s.label || s.service).join(', ')}. You can finish setup now — these will be ready shortly.
+          Optional services with startup warnings: {warningRows.map((s) => s.service || s.label).join(', ')}. These addons remain enabled; review their service details in the Admin Dashboard.
         </div>
       {/if}
-      {#if deployData.imageWarning}
+      {#if deployData.imageWarning && !deployHasWarnings}
         <div class="feedback feedback--warning" role="status" id="deploy-image-warning" style="margin-top:12px">
           <span>⚠ {deployData.imageWarning}</span>
         </div>
@@ -227,16 +210,16 @@
         {#each services as svc (svc.service)}
           {@const name = svc.service || svc.label || ''}
           {@const linkInfo = serviceLinks[name]}
-          {@const isWarming = svc.status === 'warning'}
+          {@const hasWarning = svc.status === 'warning'}
           <li>
             {#if linkInfo}
               {@const url = 'http://127.0.0.1:' + linkInfo.port + linkInfo.path}
               <span class="deploy-svc-name">{linkInfo.label}</span>
               <a href={url} target="_blank" rel="noopener" class="deploy-svc-link">{url}</a>
-              <span class="deploy-svc-status">{isWarming ? (svc.label || '⚠ Warming up') : '✓ Running'}</span>
+              <span class="deploy-svc-status">{hasWarning ? (svc.label || 'Did not start') : '✓ Running'}</span>
             {:else}
               <span class="deploy-svc-name">{name}</span>
-              <span class="deploy-svc-status">{isWarming ? (svc.label || '⚠ Warming up') : '✓ Running'}</span>
+              <span class="deploy-svc-status">{hasWarning ? (svc.label || 'Did not start') : '✓ Running'}</span>
             {/if}
           </li>
         {/each}
@@ -247,8 +230,12 @@
              Navigating to a different host alias (localhost vs 127.0.0.1) would
              drop the session cookie, which is scoped per-host. -->
         <a href={resolve('/chat')} data-sveltekit-reload class="btn btn-primary">Open Chat</a>
-        <a href="http://127.0.0.1:{assistantPort}" target="_blank" rel="noopener" class="btn btn-secondary">OpenCode UI</a>
         <a href={resolve('/host')} data-sveltekit-reload class="btn btn-secondary">Admin Dashboard</a>
+        <!-- W14: was an unlabeled raw "OpenCode UI" link with no explanation
+             of what it is or how sign-in there differs from this app's own
+             login — labeled as the advanced/raw surface it is, matching the
+             framing the same link gets on the Advanced page post-install. -->
+        <a href="http://127.0.0.1:{assistantPort}" target="_blank" rel="noopener" class="btn btn-secondary" title="Raw OpenCode developer console — its own separate sign-in, for advanced use">Raw AI console (advanced)</a>
       </div>
     {/if}
   </div>
@@ -263,9 +250,8 @@
 
 <style>
   /* Warning bar variant — wizard.css ships complete/ready/stopped/indeterminate
-     but no `warning`. Voice-warming rows render distinctly (amber, settled —
-     NOT the animated indeterminate "still working" bar, and NOT the red error
-     bar). Uses the same amber tokens as the existing ready/stopped variants. */
+     but no `warning`. Optional-service warning rows render distinctly from both
+     active work and blocking errors. */
   .deploy-bar-fill.warning {
     width: 72%;
     background: var(--s-ink-2);

@@ -6,6 +6,7 @@ import { timingSafeEqual, createHash } from "node:crypto";
 import { getAssistantOpencodeTarget } from "./opencode-target.js";
 import { createOpenCodeClient, isRemoteSetupAllowed, isTrustedProxyEnabled } from "@openpalm/lib";
 import { validateSession, getUiLoginPassword } from "./session-store.js";
+import { SESSION_COOKIE_NAME } from "./session-cookie.js";
 import { computeServerRuntimeContext } from "./features.js";
 import type { Capability, ServerRuntimeContext } from "$lib/types.js";
 
@@ -72,18 +73,26 @@ export function getRequestId(event: RequestEvent): string {
 export { getUiLoginPassword };
 
 /**
- * Extract raw session token from the `op_session` cookie.
+ * Extract raw session token from the session cookie.
  *
  * Phase 2 of the auth/proxy refactor removed the legacy `x-admin-token` /
  * `Authorization: Bearer` header fallbacks.
  * The cookie is HttpOnly + SameSite=Lax and is the ONLY credential the browser
  * holds; XSS cannot read it and out-of-process callers must obtain a session via
- * `POST /api/auth/login` (or `/session`) and present the cookie on subsequent
- * requests.
+ * `POST /api/auth/login` and present the cookie on subsequent requests.
+ *
+ * The name comes from SESSION_COOKIE_NAME, never a literal: the host and
+ * container surfaces issue DIFFERENTLY-named cookies (they sign with different
+ * per-process keys, so sharing one name on a shared 127.0.0.1 host made each
+ * surface invalidate the other's session). A hardcoded `op_session=` here would
+ * read back nothing at all on the container surface, which authenticates every
+ * request through this function.
  */
 function extractToken(event: RequestEvent): string {
   const cookieHeader = event.request.headers.get("cookie") ?? "";
-  const match = cookieHeader.match(/(?:^|;\s*)op_session=([^;]+)/);
+  const match = cookieHeader.match(
+    new RegExp(`(?:^|;\\s*)${SESSION_COOKIE_NAME}=([^;]+)`),
+  );
   if (match) return match[1];
   return "";
 }

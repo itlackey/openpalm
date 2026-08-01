@@ -158,3 +158,18 @@ export async function probeChatBackend(): Promise<boolean> {
   const result = await getTransport().probeHealth();
   return result.status === 'accessible';
 }
+
+/**
+ * The active connection's configured default model (`provider/model`, or ''
+ * when nothing is set yet). This is OpenCode's OWN `/config` — not an
+ * OpenPalm/admin concept — so, like every other chat call, it goes straight
+ * through the direct transport for whichever connection is active; there is
+ * no per-connection admin surface to route through. Used only for the chat
+ * page's first-run empty state ("who will answer" / "nothing configured
+ * yet") — callers should treat failures as "unknown" and degrade quietly.
+ */
+export async function getAssistantModel(): Promise<string> {
+  const res = await getTransport().request('GET', '/config');
+  const config = (await res.json()) as { model?: unknown };
+  return typeof config.model === 'string' ? config.model : '';
+}

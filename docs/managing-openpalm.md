@@ -219,6 +219,15 @@ openpalm backups prune --keep 3
 embedded UI build when the version stamp differs; it is not an independent
 update target. The assistant-served UI is part of the assistant image.
 
+**Updating requires internet access to the container registry.** `update`
+pulls every managed image before starting anything, so it cannot run on a host
+with no route to Docker Hub / GHCR — including a host whose images are already
+cached locally. A failed pull aborts the update and restores the previous
+configuration rather than falling back to the cached images, so a partial or
+mixed-version stack is never left behind. An installed stack continues running
+offline; only the update itself needs the network. See
+[System Requirements → Network requirements](system-requirements.md#network-requirements).
+
 ### Desktop app updates
 
 The desktop app updates as one complete application — shell and UI together —
@@ -243,6 +252,10 @@ Which installs update themselves:
 | Linux `AppImage` | Yes |
 | Windows portable `.zip` | No — manual: download and extract a new build |
 | macOS `.app` `.zip` | No — manual: download from the releases page |
+
+The NSIS installer and its updater feed files (`beta.yml`/`latest*.yml`) are
+not present in releases before `0.13.0` — earlier Windows releases ship only
+the portable `.zip`, which cannot auto-update regardless of this table.
 
 The portable Windows archive stays manual on purpose: it has no install
 location to replace, so there is nothing for the updater to update in place.

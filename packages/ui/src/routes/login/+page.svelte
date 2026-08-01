@@ -1,6 +1,7 @@
 <script lang="ts">
   import { goto } from '$app/navigation';
   import AuthGate from '$lib/components/common/AuthGate.svelte';
+  import { describeLoginFailure, type LoginFailureBody } from './login-errors.js';
   import type { PageData } from './$types';
 
   let { data }: { data: PageData } = $props();
@@ -23,9 +24,11 @@
         credentials: 'include'
       });
       if (!res.ok) {
-        error = res.status === 503
-          ? 'Admin password is not configured yet. Complete setup first.'
-          : 'Invalid password.';
+        // 429 (login-throttle backoff) previously fell through to "Invalid
+        // password." — the correct password read as wrong while the wait
+        // was in effect.
+        const body = (await res.json().catch(() => null)) as LoginFailureBody | null;
+        error = describeLoginFailure(res.status, body);
         return false;
       }
       // Cookie is set; navigate to the originally-requested page. goto runs the
@@ -48,4 +51,9 @@
   <title>Sign in — OpenPalm</title>
 </svelte:head>
 
-<AuthGate onSuccess={handleAuthSuccess} {loading} {error} />
+<AuthGate
+  onSuccess={handleAuthSuccess}
+  {loading}
+  {error}
+  hint={'Forgot the password? From a terminal, run `openpalm reset-password`. (Desktop-app-only installs may not have this CLI available.)'}
+/>

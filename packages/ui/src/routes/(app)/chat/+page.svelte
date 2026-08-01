@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount, tick } from 'svelte';
+	import { onMount, tick, untrack } from 'svelte';
 	import { fly } from 'svelte/transition';
 	import { page } from '$app/state';
 	import { afterNavigate, goto, replaceState } from '$app/navigation';
@@ -13,7 +13,7 @@
 	// Direct domain-client import (#555): the chat page
 	// must not import the $lib/api.js barrel, which re-exports every admin
 	// domain client and would drag them all into the chat chunk.
-	import { probeChatBackend } from '$lib/api/chat.js';
+	import { getAssistantModel, probeChatBackend } from '$lib/api/chat.js';
 	import { advancedModeService } from '$lib/advanced-mode-state.svelte.js';
 	import { buildAdvancedPath, buildChatPath } from '$lib/chat/navigation.js';
 	import { nextFollowState } from '$lib/chat/autoscroll.js';
@@ -21,14 +21,68 @@
 	import { renderMarkdown } from '$lib/markdown.js';
 	import { endpointsService } from '$lib/endpoints-state.svelte.js';
 	import { onConnectionActivated } from '$lib/connection-events.js';
+	import { getRuntimeContext, hasCapability } from '$lib/runtime-context.svelte.js';
 	import { resolveSessionTitle } from '$lib/session-title.js';
 	import { stopConversation, voiceState } from '$lib/voice/voice-state.svelte.js';
 
+	const runtimeContext = getRuntimeContext();
+
 	let scrollAnchorEl = $state<HTMLDivElement | undefined>();
 
+	// F7: re-rendering markdown on every SSE delta re-parses the WHOLE
+	// accumulated reply each time — O(n²) over a long streamed turn, and each
+	// resulting DOM write also re-fires the autoscroll MutationObserver below.
+	// Coalesce to at most one re-parse per animation frame; a burst of deltas
+	// within a frame collapses into a single render of the latest text. The
+	// very first chunk renders immediately so a reply doesn't open with a
+	// blank beat before the first frame.
+	let renderedPendingHtml = $state('');
+	let pendingRenderFrame: number | null = null;
+	$effect(() => {
+		const text = chat.pendingAssistantText;
+		if (!text) {
+			if (pendingRenderFrame !== null) {
+				cancelAnimationFrame(pendingRenderFrame);
+				pendingRenderFrame = null;
+			}
+			renderedPendingHtml = '';
+			return;
+		}
+		if (pendingRenderFrame !== null) return;
+		// Minor finding: this effect WRITES renderedPendingHtml below (both here
+		// and from the rAF callback) — reading it untracked keeps the effect's
+		// only dependency `chat.pendingAssistantText`, so those writes don't
+		// re-invalidate this same effect. Before this, the plain read here made
+		// renderedPendingHtml a tracked dependency too: the immediate-render
+		// write on the first chunk of a reply re-triggered the effect a second
+		// time, which found pendingRenderFrame still null and spuriously
+		// scheduled a coalescing frame that re-parsed the same unchanged text —
+		// ~2 markdown parses instead of 1 for that chunk.
+		if (!untrack(() => renderedPendingHtml)) {
+			renderedPendingHtml = renderMarkdown(text);
+			return;
+		}
+		pendingRenderFrame = requestAnimationFrame(() => {
+			pendingRenderFrame = null;
+			renderedPendingHtml = renderMarkdown(chat.pendingAssistantText);
+		});
+	});
+
 	const entriesLoading = $derived(chat.entriesLoading);
-	const sessionsLoading = $derived(
-		chat.byEndpoint.get(chat.activeEndpointId)?.sessionsLoading ?? false
+	const activeEndpointState = $derived(chat.byEndpoint.get(chat.activeEndpointId));
+	const sessionsLoading = $derived(activeEndpointState?.sessionsLoading ?? false);
+	const sessionsError = $derived(activeEndpointState?.sessionsError ?? '');
+	// `mapAssistantError` (chat/assistant-error.ts) always renders a 401 as this
+	// exact literal, so it doubles as a stable, safe-to-match sentinel here —
+	// the alternative (attaching a status code end-to-end through a string
+	// field) isn't worth it for a two-way branch.
+	const SIGN_IN_REQUIRED = 'Sign-in required.';
+	const sessionsAuthFailure = $derived(sessionsError === SIGN_IN_REQUIRED);
+	// The empty-thread-with-a-live-composer trap (F5): a failed session load
+	// with zero rendered messages looks like a healthy, quiet chat rather than
+	// an assistant that's still starting up (or unreachable/signed-out).
+	const showStartupState = $derived(
+		!sessionsLoading && !entriesLoading && chat.entries.length === 0 && sessionsError !== ''
 	);
 	const activeSession = $derived(
 		chat.byEndpoint
@@ -39,6 +93,45 @@
 		activeSession ? resolveSessionTitle(activeSession.title) : 'New conversation'
 	);
 	const activeConnectionLabel = $derived(endpointsService.active?.label ?? 'No active connection');
+
+	// F10: a genuinely empty (not loading, not errored, not mid-send) session
+	// otherwise rendered nothing at all. `/host` only exists on a server that
+	// advertises host:stack:read (hooks.server.ts redirects everyone else
+	// straight back to /chat) — gate the settings pointer on it so the
+	// suggestion is never a dead end for a client-only connection to someone
+	// else's OpenPalm.
+	const showEmptyState = $derived(
+		!sessionsLoading && !entriesLoading && !showStartupState && !chat.sending && chat.entries.length === 0
+	);
+	const canOpenAssistantSettings = $derived(hasCapability(runtimeContext, 'host:stack:read'));
+	const assistantSettingsHref = $derived(
+		`/host?tab=assistant&returnTo=${encodeURIComponent(`${page.url.pathname}${page.url.search}`)}`
+	);
+	const EMPTY_STATE_PROMPTS = [
+		'Summarize a document I paste in',
+		'Draft a reply to an email',
+		'Explain a concept in plain terms',
+		'Help me plan a task',
+	];
+	// null = not checked yet; '' = checked, nothing configured. Best-effort —
+	// a failed fetch is left as null (quietly says nothing) rather than
+	// asserted as "unconfigured".
+	let emptyStateModel = $state<string | null>(null);
+	let emptyStateModelFor = '';
+	$effect(() => {
+		if (!showEmptyState) return;
+		const endpointId = chat.activeEndpointId;
+		if (emptyStateModelFor === endpointId) return;
+		emptyStateModelFor = endpointId;
+		emptyStateModel = null;
+		void getAssistantModel()
+			.then((model) => {
+				if (chat.activeEndpointId === endpointId) emptyStateModel = model;
+			})
+			.catch(() => {
+				// Left as null — quiet degradation, not a false "unconfigured" claim.
+			});
+	});
 
 	let navigationOpen = $state(false);
 	let activityRailOpen = $state(true);
@@ -51,6 +144,20 @@
 		chat.error = '';
 		// onEndpointChanged always calls loadSessions() internally — no separate call needed.
 		await chat.onEndpointChanged(endpointsService.activeId);
+	}
+
+	// F6: a 14-day sliding session had no UI control to end it on a shared
+	// machine, despite POST /api/auth/logout already existing server-side.
+	async function handleSignOut(): Promise<void> {
+		try {
+			await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' });
+		} catch {
+			// Best-effort — land on /login regardless; if the network is down the
+			// cookie may already be unusable anyway.
+		}
+		const redirectTo = encodeURIComponent(`${page.url.pathname}${page.url.search}`);
+		// eslint-disable-next-line svelte/no-navigation-without-resolve -- static internal route
+		await goto(`/login?redirectTo=${redirectTo}`);
 	}
 
 	async function retryFailedSend(): Promise<void> {
@@ -167,6 +274,12 @@
 	// Composer draft — dictation inserts here instead of auto-sending, so
 	// the user reviews spoken text before it goes out.
 	let draft = $state('');
+
+	// F10: a suggested-prompt chip fills the draft for review rather than
+	// sending immediately — same principle as dictation above.
+	function useSuggestedPrompt(prompt: string): void {
+		draft = prompt;
+	}
 
 	async function syncSessionUrl(
 		endpointId: string,
@@ -339,6 +452,7 @@
 			motionPreference.removeEventListener('change', updateMotionPreference);
 			document.removeEventListener('keydown', onKey);
 			document.removeEventListener('visibilitychange', handleVisibilityChange);
+			if (pendingRenderFrame !== null) cancelAnimationFrame(pendingRenderFrame);
 		};
 	});
 </script>
@@ -356,6 +470,7 @@
 
 <ConversationFrame bind:drawerOpen={navigationOpen}>
 <div class="s-chat-content">
+<button class="s-signout" type="button" onclick={() => void handleSignOut()}>sign out</button>
 {#if chat.toolLog.length > 0 && activityRailOpen}
 	<aside
 		class="s-tool-rail"
@@ -394,6 +509,45 @@
 			</div>
 		{/if}
 
+		{#if showStartupState}
+			<div class="s-startup" role="alert">
+				<p class="s-startup-text">
+					{sessionsAuthFailure ? 'Sign-in required.' : 'The assistant is still starting up, or unreachable.'}
+				</p>
+				<p class="s-startup-detail">{sessionsError}</p>
+				{#if sessionsAuthFailure}
+					<a class="s-startup-action" href={`/login?redirectTo=${encodeURIComponent(`${page.url.pathname}${page.url.search}`)}`}>
+						sign in
+					</a>
+				{:else}
+					<button class="s-startup-action" type="button" onclick={() => void chat.loadSessions(true)}>
+						retry
+					</button>
+				{/if}
+			</div>
+		{/if}
+
+		{#if showEmptyState}
+			<div class="s-empty" role="status">
+				<p class="s-empty-title">Nothing here yet.</p>
+				<p class="s-empty-detail">Answering on {activeConnectionLabel}.</p>
+				{#if emptyStateModel}
+					<p class="s-empty-detail">{emptyStateModel}</p>
+				{:else if emptyStateModel === '' && canOpenAssistantSettings}
+					<p class="s-empty-detail">
+						No model configured yet — <a href={assistantSettingsHref}>choose one in settings</a>.
+					</p>
+				{/if}
+				<div class="s-empty-prompts">
+					{#each EMPTY_STATE_PROMPTS as prompt (prompt)}
+						<button type="button" class="s-empty-prompt" onclick={() => useSuggestedPrompt(prompt)}>
+							{prompt}
+						</button>
+					{/each}
+				</div>
+			</div>
+		{/if}
+
 		{#each chat.entries as entry (entry.id)}
 			<ChatMessage {entry} />
 		{/each}
@@ -404,7 +558,7 @@
 					<div class="turn master">
 						<div class="master-words settled s-streaming">
 							<!-- eslint-disable-next-line svelte/no-at-html-tags -- renderMarkdown uses markdown-it with html:false, so raw HTML in assistant output is escaped (not rendered); only generated formatting markup reaches here -->
-							<div class="markdown-body">{@html renderMarkdown(chat.pendingAssistantText)}</div>
+							<div class="markdown-body">{@html renderedPendingHtml}</div>
 						</div>
 					</div>
 				{:else if !chat.pendingPermission && !chat.pendingQuestion}
@@ -454,10 +608,18 @@
 		{#if chat.error}
 			<div class="s-error-banner" role="alert">
 				<span class="s-error-msg">{chat.error}</span>
-				{#if chat.lastFailedText}
-					<button class="s-error-reconnect" type="button" onclick={retryFailedSend}>retry</button>
+				{#if chat.error === SIGN_IN_REQUIRED}
+					<!-- A dead-end "reconnect" button can't fix an expired session — the
+					     only way out is signing back in. -->
+					<a class="s-error-reconnect" href={`/login?redirectTo=${encodeURIComponent(`${page.url.pathname}${page.url.search}`)}`}>
+						sign in
+					</a>
+				{:else}
+					{#if chat.lastFailedText}
+						<button class="s-error-reconnect" type="button" onclick={retryFailedSend}>retry</button>
+					{/if}
+					<button class="s-error-reconnect" type="button" onclick={reconnect}>reconnect</button>
 				{/if}
-				<button class="s-error-reconnect" type="button" onclick={reconnect}>reconnect</button>
 				<button
 					class="s-error-dismiss"
 					type="button"
@@ -554,6 +716,30 @@
 		flex: 1;
 	}
 
+	/* Fixed to the content area (not the scrolling thread), so it stays put
+	   regardless of scroll position. */
+	.s-signout {
+		position: absolute;
+		z-index: 30;
+		top: 0.75rem;
+		right: 1rem;
+		appearance: none;
+		border: var(--s-hair) solid var(--s-line);
+		background: var(--s-paper);
+		cursor: pointer;
+		font-family: var(--s-font-mono);
+		font-size: var(--s-type-mark-sm);
+		letter-spacing: var(--s-track-label);
+		text-transform: lowercase;
+		color: var(--s-ink-3);
+		padding: 0.2rem 0.6rem;
+		border-radius: var(--s-radius-seal);
+	}
+
+	.s-signout:hover {
+		color: var(--s-ink);
+	}
+
 	.s-scroll {
 		position: relative;
 		z-index: 10;
@@ -646,6 +832,109 @@
 		letter-spacing: var(--s-track-label);
 		text-transform: uppercase;
 		color: var(--s-ink-3);
+	}
+
+	/* ── Startup / unreachable state ────────────────────────────────────
+	   F5: a failed session load previously rendered nothing on the main
+	   surface — a silent empty thread with a live composer above a banner
+	   that only exists inside the (closed) conversations drawer. */
+	.s-startup {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 0.6rem;
+		padding: 2.5rem 1rem;
+		text-align: center;
+	}
+
+	.s-startup-text {
+		margin: 0;
+		font-family: var(--s-font-header);
+		font-size: 1.1rem;
+		color: var(--s-ink-2);
+	}
+
+	.s-startup-detail {
+		margin: 0;
+		font-family: var(--s-font-mono);
+		font-size: var(--s-type-mark);
+		color: var(--s-ink-3);
+	}
+
+	.s-startup-action {
+		appearance: none;
+		border: var(--s-hair) solid var(--s-line);
+		background: var(--s-paper);
+		cursor: pointer;
+		font-family: var(--s-font-mono);
+		font-size: var(--s-type-mark);
+		letter-spacing: var(--s-track-label);
+		text-transform: lowercase;
+		color: var(--s-ink-2);
+		padding: 0.35rem 0.9rem;
+		border-radius: var(--s-radius-seal);
+		text-decoration: none;
+	}
+
+	.s-startup-action:hover {
+		color: var(--s-ink);
+	}
+
+	/* ── First-run empty state (F10) ─────────────────────────────────────
+	   A genuinely empty, healthy session previously rendered nothing at
+	   all — a silent thread above a live composer with no orientation. */
+	.s-empty {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 0.5rem;
+		padding: 2.5rem 1rem;
+		text-align: center;
+	}
+
+	.s-empty-title {
+		margin: 0;
+		font-family: var(--s-font-header);
+		font-size: 1.1rem;
+		color: var(--s-ink-2);
+	}
+
+	.s-empty-detail {
+		margin: 0;
+		font-family: var(--s-font-mono);
+		font-size: var(--s-type-mark);
+		color: var(--s-ink-3);
+	}
+
+	.s-empty-detail a {
+		color: var(--s-ink-2);
+	}
+
+	.s-empty-prompts {
+		display: flex;
+		flex-wrap: wrap;
+		justify-content: center;
+		gap: 0.5rem;
+		margin-top: 0.75rem;
+		max-width: 34rem;
+	}
+
+	.s-empty-prompt {
+		appearance: none;
+		border: var(--s-hair) solid var(--s-line);
+		background: var(--s-paper);
+		cursor: pointer;
+		font-family: var(--s-font-mono);
+		font-size: var(--s-type-mark-sm);
+		letter-spacing: var(--s-track-label);
+		color: var(--s-ink-2);
+		padding: 0.35rem 0.8rem;
+		border-radius: var(--s-radius-seal);
+	}
+
+	.s-empty-prompt:hover {
+		color: var(--s-ink);
+		border-color: var(--s-ink-3);
 	}
 
 	/* ── Pending / streaming ──────────────────────────────────────────── */

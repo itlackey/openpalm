@@ -1,8 +1,7 @@
-import { json } from "@sveltejs/kit";
 import { performSetup, checkDocker, mapDockerError, reconcileMdnsResponder, type SetupSpec } from "@openpalm/lib";
 import { resetState, getState } from "$lib/server/state.js";
 import { prepareSetupRestorePoint, startDeploy, resetDeployState } from "$lib/server/setup-deploy.js";
-import { getUiLoginPassword, requireAdmin, getRequestId } from "$lib/server/helpers.js";
+import { getUiLoginPassword, requireAdmin, getRequestId, errorResponse } from "$lib/server/helpers.js";
 import { isSetupComplete, resolveOpenPalmHome } from "@openpalm/lib";
 import { createSession } from "$lib/server/session-store.js";
 import { sessionCookieHeader } from "$lib/server/session-cookie.js";
@@ -16,9 +15,14 @@ interface CompleteBody extends SetupSpec {
 }
 
 export const POST: RequestHandler = async (event) => {
+  // W15: computed unconditionally (not just inside the admin-check branch
+  // below) so every error response from this route — not only the auth
+  // failure — carries the same requestId the rest of the app's error
+  // envelope uses.
+  const requestId = getRequestId(event);
+
   // S2: Once setup is complete, re-running it is an admin-only action.
   if (isSetupComplete(resolveOpenPalmHome())) {
-    const requestId = getRequestId(event);
     const authError = requireAdmin(event, requestId);
     if (authError) return authError;
   }
@@ -28,7 +32,7 @@ export const POST: RequestHandler = async (event) => {
   try {
     body = await request.json() as CompleteBody;
   } catch {
-    return json({ ok: false, error: "invalid_json", message: "Request body must be valid JSON" }, { status: 400 });
+    return errorResponse(400, "invalid_json", "Request body must be valid JSON", {}, requestId);
   }
 
   const dryRun = body.dryRun === true;
@@ -39,11 +43,17 @@ export const POST: RequestHandler = async (event) => {
     result = await performSetup(body);
   } catch (err) {
     const mapped = mapDockerError(String(err));
-    return json({ ok: false, error: mapped.code, message: mapped.message }, { status: 500 });
+    return errorResponse(500, mapped.code, mapped.message, {}, requestId);
   }
 
   if (!result.ok) {
-    return json(result, { status: 400 });
+    // performSetup's own failure shape is `{ ok: false, error: <human text> }`
+    // (validation errors, persistence failures) — `error` there is prose, not
+    // a machine code. Wrap it in the standard envelope instead of returning
+    // the lib's shape verbatim so every /api/setup/* failure looks the same
+    // on the wire; `completeSetup()` (setup-api.ts) already reads
+    // `message ?? error`, so this is a pure addition for existing callers.
+    return errorResponse(400, "setup_invalid", result.error ?? "Setup failed.", {}, requestId);
   }
 
   // Reset state singleton so next getState() re-reads fresh paths.
@@ -79,14 +89,12 @@ export const POST: RequestHandler = async (event) => {
       // deploy. Returning ok:true here used to leave the client polling the
       // deploy state forever (it never starts). Surface a structured,
       // actionable error instead (#464).
-      return json(
-        {
-          ok: false,
-          error: "docker_unavailable",
-          message:
-            "Docker isn't running. Start Docker Desktop or OrbStack, then try again.",
-        },
-        { status: 503, headers: { "content-type": "application/json" } }
+      return errorResponse(
+        503,
+        "docker_unavailable",
+        "Docker isn't running. Start Docker Desktop or OrbStack, then try again.",
+        {},
+        requestId,
       );
     }
   }

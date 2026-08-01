@@ -98,6 +98,48 @@ describe('buildSetupPayload', () => {
     expect(p.embedding).toEqual({ provider: 'openai', model: 'text-embedding-3-small', dims: 1536, baseUrl: 'https://api.openai.com' });
   });
 
+  // W10: a host-loopback provider URL (however it was detected/entered) means
+  // "the host running the wizard", but persisted verbatim it would mean "the
+  // assistant container itself" — rewrite it to the container-reachable form.
+  test('a localhost provider baseUrl is rewritten to host.docker.internal for container consumption', () => {
+    const p = buildSetupPayload(baseInput({
+      modelSelection: { llm: { connId: 'ollama', model: 'llama3.2' } },
+      verifiedProviders: [provider('ollama', { baseUrl: 'http://localhost:11434' })],
+      providerState: { ollama: providerState({ baseUrl: 'http://localhost:11434' }) },
+    }));
+    expect(p.connections).toEqual([
+      { id: 'ollama', name: 'ollama', provider: 'ollama', baseUrl: 'http://host.docker.internal:11434', apiKey: '' },
+    ]);
+    expect(p.llm).toEqual({ provider: 'ollama', model: 'llama3.2', baseUrl: 'http://host.docker.internal:11434' });
+  });
+
+  test('a 127.0.0.1 provider baseUrl is also rewritten', () => {
+    const p = buildSetupPayload(baseInput({
+      modelSelection: { llm: { connId: 'lmstudio', model: 'loaded-model' } },
+      verifiedProviders: [provider('lmstudio', { baseUrl: 'http://127.0.0.1:1234' })],
+      providerState: { lmstudio: providerState({ baseUrl: 'http://127.0.0.1:1234' }) },
+    }));
+    expect(p.llm?.baseUrl).toBe('http://host.docker.internal:1234');
+  });
+
+  test('an in-stack (docker-network) baseUrl is left untouched', () => {
+    const p = buildSetupPayload(baseInput({
+      modelSelection: { llm: { connId: 'ollama', model: 'llama3.2' } },
+      verifiedProviders: [provider('ollama', { baseUrl: 'http://ollama:11434' })],
+      providerState: { ollama: providerState({ baseUrl: 'http://ollama:11434' }) },
+    }));
+    expect(p.llm?.baseUrl).toBe('http://ollama:11434');
+  });
+
+  test('a non-loopback cloud baseUrl is left untouched', () => {
+    const p = buildSetupPayload(baseInput({
+      modelSelection: { llm: { connId: 'openai', model: 'gpt-4o' } },
+      verifiedProviders: [provider('openai')],
+      providerState: { openai: providerState({ baseUrl: 'https://api.openai.com' }) },
+    }));
+    expect(p.llm?.baseUrl).toBe('https://api.openai.com');
+  });
+
   test('ollama addon enabled when ollamaEnabled and no host runtime', () => {
     const p = buildSetupPayload(baseInput({ ollamaEnabled: true, selectedOllamaProfile: 'ollama-cpu' }));
     expect(p.addons.ollama).toBe(true);

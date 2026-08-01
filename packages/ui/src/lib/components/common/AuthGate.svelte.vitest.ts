@@ -66,6 +66,19 @@ describe('AuthGate — error display', () => {
   });
 });
 
+// F6: /login had no discoverable recovery pointer for a lost password.
+describe('AuthGate — recovery hint', () => {
+  test('renders the hint text when provided', async () => {
+    await render(AuthGate, { props: defaultProps({ hint: 'Run `openpalm reset-password`.' }) });
+    await expect.element(page.getByText('Run `openpalm reset-password`.')).toBeVisible();
+  });
+
+  test('renders nothing extra when no hint is provided', async () => {
+    await render(AuthGate, { props: defaultProps() });
+    await expect.element(page.getByText('reset-password', { exact: false })).not.toBeInTheDocument();
+  });
+});
+
 describe('AuthGate — token visibility toggle', () => {
   test('input starts as password type (token hidden)', async () => {
     await render(AuthGate, { props: defaultProps() });

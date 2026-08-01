@@ -6,9 +6,11 @@
     onSuccess: (token: string) => Promise<boolean>;
     loading: boolean;
     error: string;
+    /** Optional recovery copy shown below the form (e.g. a password-reset pointer). */
+    hint?: string;
   }
 
-  let { onSuccess, loading, error }: Props = $props();
+  let { onSuccess, loading, error, hint }: Props = $props();
 
   let tokenInput = $state('');
   let showToken = $state(false);
@@ -69,6 +71,10 @@
         {#if loading}<Spinner />{:else}Unlock Console{/if}
       </button>
     </form>
+
+    {#if hint}
+      <p class="s-gate-hint">{hint}</p>
+    {/if}
   </div>
 </main>
 
@@ -165,6 +171,16 @@
     letter-spacing: var(--s-track-label);
     color: var(--s-seal);
     text-align: center;
+  }
+
+  .s-gate-hint {
+    margin: 0;
+    font-family: var(--s-font-mono);
+    font-size: var(--s-type-mark-sm);
+    letter-spacing: var(--s-track-label);
+    color: var(--s-ink-3);
+    text-align: center;
+    max-width: 26rem;
   }
 
   .s-gate-submit {

@@ -9,6 +9,7 @@ const BACKUP = `${STACK_ENV}.e2e-backup`;
 const OP_HOME_DIR = process.env.OP_HOME ?? resolve(REPO_ROOT, ".dev");
 const STATE_ENV = resolve(OP_HOME_DIR, "state/stack.env");
 const STATE_BACKUP = `${STATE_ENV}.e2e-backup`;
+const WIZARD_BACKUP = `${STATE_ENV}.wizard-test-backup`;
 
 /**
  * Write to a file in-place (truncate + write) to preserve the inode.
@@ -28,6 +29,12 @@ function writeInPlace(path: string, data: string): void {
 export default async function globalTeardown() {
 	if (process.env.RUN_DOCKER_STACK_TESTS !== "1") return;
 
+	// Recover state even when Playwright interrupts a wizard file before its
+	// afterAll hook can restore the shared stack record.
+	if (existsSync(WIZARD_BACKUP)) {
+		writeInPlace(STATE_ENV, readFileSync(WIZARD_BACKUP, "utf8"));
+		unlinkSync(WIZARD_BACKUP);
+	}
 	if (existsSync(BACKUP)) {
 		// Restore stack.env in-place to preserve the file inode for
 		// Docker bind mounts (guardian secrets file).

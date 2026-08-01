@@ -7,7 +7,13 @@
    *
    * Takes NO props: reads the setup-state store directly (opencodeProviders /
    * opencodeAuth / providerState) and calls its OAuth methods
-   * (startOpenCodeOAuth / cancelOAuth), mirroring Screen1ModelsStep / ReviewStep.
+    * (startOpenCodeOAuth / submitOpenCodeOAuthCode / cancelOAuth), mirroring
+    * Screen1ModelsStep / ReviewStep.
+   *
+   * The empty state distinguishes "OpenCode isn't reachable" from "everything
+   * is already connected" (`opencodeAvailable`) and offers a retry in the
+   * former case, rather than telling a first-run user with zero providers
+   * they're done.
    */
 
   import { WIZARD_EXCLUDED_PROVIDERS } from '$lib/client/constants.js';
@@ -17,11 +23,21 @@
 
   const s = setupState;
 
+  const opencodeAvailable = $derived(s.opencodeAvailable);
   const opencodeProviders = $derived(s.opencodeProviders);
   const opencodeAuth = $derived(s.opencodeAuth);
   const providerState = $derived(s.providerState);
   const onoauthstart = (id: string, methodIndex: number): void => void s.startOpenCodeOAuth(id, methodIndex);
   const onoauthcancel = (id: string): void => s.cancelOAuth(id);
+
+  // Authorization codes are transient component input. The store owns all
+  // callback, cancellation, success, and failure state.
+  const codeInputs: Record<string, string> = $state({});
+
+  function cancelOauth(id: string): void {
+    codeInputs[id] = '';
+    onoauthcancel(id);
+  }
 
   // Order recognizable consumer providers first; obscure ones fall to the end.
   const RECOGNIZABLE_FIRST = ['openai', 'google', 'github-copilot', 'groq', 'mistral', 'huggingface'];
@@ -62,7 +78,19 @@
 
 <div class="oauth-list" role="list">
   {#if filteredProviders.length === 0}
-    <p class="oauth-empty">Nothing more to add — you're all connected.</p>
+    {#if !opencodeAvailable}
+      <!-- W1a: an empty catalog because the service is unreachable must not
+           read as "you're all connected" — that told a first-run user with
+           zero providers they were done. -->
+      <div class="oauth-unavailable">
+        <p class="oauth-empty">Can't reach the sign-in service right now.</p>
+        <button type="button" class="oauth-retry" onclick={() => void s.checkOpenCodeAndInit()}>
+          Retry
+        </button>
+      </div>
+    {:else}
+      <p class="oauth-empty">Nothing more to add — you're all connected.</p>
+    {/if}
   {:else}
     {#each visibleOauth as provider (provider.id)}
       {@const st = getState(provider.id)}
@@ -83,13 +111,39 @@
             {#if st.oauthInstructions}
               <p class="oauth-instructions">{st.oauthInstructions}</p>
             {/if}
-            <div class="oauth-waiting">
-              <Spinner /> Waiting for authorization…
-            </div>
+            {#if st.oauthMethod === 'code'}
+              <div class="oauth-code-entry">
+                <input
+                  type="text"
+                  class="oauth-code-input"
+                  placeholder="Paste authorization code"
+                  aria-label="{provider.name} authorization code"
+                  value={codeInputs[provider.id] ?? ''}
+                  disabled={st.verifying}
+                  oninput={(e) => { codeInputs[provider.id] = (e.currentTarget as HTMLInputElement).value; }}
+                />
+                <button
+                  type="button"
+                  class="btn-oauth-code-submit"
+                  disabled={st.verifying || !(codeInputs[provider.id] ?? '').trim()}
+                  onclick={() => void s.submitOpenCodeOAuthCode(provider.id, methodIdx, codeInputs[provider.id] ?? '')}
+                >
+                  {st.verifying ? 'Submitting…' : 'Submit code'}
+                </button>
+              </div>
+              {#if st.error}
+                <span class="oauth-code-error" role="alert">{st.errorMessage ?? 'That code was not accepted. Try again.'}</span>
+              {/if}
+            {/if}
+            {#if st.oauthMethod === 'auto'}
+              <div class="oauth-waiting">
+                <Spinner /> Waiting for authorization…
+              </div>
+            {/if}
             <button
               type="button"
               class="btn-oauth-cancel"
-              onclick={() => onoauthcancel(provider.id)}
+              onclick={() => cancelOauth(provider.id)}
             >
               Cancel
             </button>
@@ -130,6 +184,64 @@
     color: var(--s-ink-2);
     margin: 0;
     padding: 8px 0;
+  }
+
+  .oauth-unavailable {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+
+  .oauth-retry {
+    padding: 4px 12px;
+    background: none;
+    border: var(--s-hair) solid var(--s-line);
+    border-radius: 2px;
+    font-size: var(--s-type-deed);
+    color: var(--s-ink);
+    cursor: pointer;
+    min-height: 28px;
+  }
+  .oauth-retry:hover { border-color: var(--s-ink-3); }
+
+  .oauth-code-entry {
+    display: flex;
+    gap: 6px;
+    width: 100%;
+  }
+
+  .oauth-code-input {
+    flex: 1;
+    min-width: 0;
+    padding: 6px 8px;
+    border: var(--s-hair) solid var(--s-line);
+    border-radius: 2px;
+    background: var(--s-paper);
+    color: var(--s-ink);
+    font-size: var(--s-type-deed);
+    font: inherit;
+  }
+  .oauth-code-input:focus-visible { outline: 2px solid var(--s-seal); outline-offset: 1px; }
+
+  .btn-oauth-code-submit {
+    padding: 4px 10px;
+    background: none;
+    border: var(--s-hair) solid var(--s-line);
+    border-radius: 2px;
+    font-size: var(--s-type-deed);
+    color: var(--s-ink);
+    cursor: pointer;
+    min-height: 28px;
+    flex-shrink: 0;
+  }
+  .btn-oauth-code-submit:hover:not(:disabled) { border-color: var(--s-ink-3); }
+  .btn-oauth-code-submit:disabled { opacity: 0.55; cursor: not-allowed; }
+
+  .oauth-code-error {
+    width: 100%;
+    font-size: var(--s-type-deed);
+    color: var(--s-seal);
   }
 
   .oauth-more {

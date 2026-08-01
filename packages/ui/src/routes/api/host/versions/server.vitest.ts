@@ -1,7 +1,12 @@
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
-import { PLATFORM_VERSION, SERVICE_VERSION_KEYS } from '@openpalm/lib';
+import {
+	MANAGED_VERSION_MARKERS,
+	PLATFORM_VERSION,
+	SERVICE_VERSION_KEYS,
+	VERSION_DEFAULTS
+} from '@openpalm/lib';
 import { getState } from '$lib/server/state.js';
 import { resetState } from '$lib/server/test-helpers.js';
 import { GET, PATCH } from './+server.js';
@@ -60,7 +65,7 @@ describe('PATCH /api/host/versions', () => {
 		expect(response.status).toBe(400);
 	});
 
-	test('writes only requested tags to state', async () => {
+	test('changes only the requested tags, leaving the rest at their managed defaults', async () => {
 		mkdirSync(getState().dataDir, { recursive: true });
 		const response = await PATCH(
 			event('PATCH', {
@@ -75,10 +80,27 @@ describe('PATCH /api/host/versions', () => {
 		const content = readFileSync(join(getState().homeDir, 'state', 'stack.env'), 'utf-8');
 		expect(content).toContain('OP_ASSISTANT_VERSION=0.13.1');
 		expect(content).toContain('OP_PORTAL_VERSION=latest');
+
+		// The untouched services keep the seeded default rather than disappearing:
+		// the compose files reference every version as ${OP_*_VERSION:?}, so a
+		// stack.env missing one fails `compose up` outright. What matters is that
+		// PATCH did not CHANGE them, and that each still carries its
+		// OP_MANAGED_<SERVICE>_VERSION marker — the pair is what marks a value as
+		// a release-managed default rather than an operator's explicit pin, and
+		// only marked values are advanced by a later update.
+		const parsed = Object.fromEntries(
+			content
+				.split('\n')
+				.filter((line) => line.includes('=') && !line.trimStart().startsWith('#'))
+				.map((line) => {
+					const at = line.indexOf('=');
+					return [line.slice(0, at).trim(), line.slice(at + 1).trim()];
+				})
+		);
 		for (const key of SERVICE_VERSION_KEYS) {
-			if (key !== 'OP_ASSISTANT_VERSION' && key !== 'OP_PORTAL_VERSION') {
-				expect(content).not.toContain(`${key}=`);
-			}
+			if (key === 'OP_ASSISTANT_VERSION' || key === 'OP_PORTAL_VERSION') continue;
+			expect(parsed[key]).toBe(VERSION_DEFAULTS[key]);
+			expect(parsed[MANAGED_VERSION_MARKERS[key]]).toBe(VERSION_DEFAULTS[key]);
 		}
 	});
 

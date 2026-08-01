@@ -1,8 +1,9 @@
-import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { secretsDir as secretsDirPath, privateSecretsDir as privateSecretsDirPath } from './home.js';
 import { randomHex } from './crypto.js';
 import { PORTAL_SECRET_ADDON_IDS } from './addon-ids.js';
+import { writeFileAtomic, writeFileInPlace } from './fs-atomic.js';
 
 const SECRET_NAME_RE = /^[a-z0-9][a-z0-9_]{0,80}$/;
 const SECRETS_DIR_MODE = 0o700;
@@ -107,7 +108,25 @@ export function readSecret(homeDir: string, name: string): string | null {
 
 export function writeSecret(homeDir: string, name: string, value: string): void {
   const path = secretPath(homeDir, name);
-  writeFileSync(path, value, { mode: SECRET_FILE_MODE });
+  // K5 residual: tmp + rename, not a direct write. A kill mid-write of a
+  // direct writeFileSync can leave a partial-but-non-empty file — ensureSecret's
+  // torn-write check above only catches a 0-byte file, so a partial write would
+  // be read back as a "valid" secret. Harmless for a generated random (re-run
+  // regenerates it), but a partially-written wizard-supplied UI login password
+  // would silently lock the operator out until `openpalm reset-password`.
+  //
+  // Safe to rename here (unlike writeSecretFile's auth.json case below):
+  // SECRET_NAME_RE forbids dots, so this never targets auth.json, and every
+  // name it CAN target is either a delegated `private/secrets/*` file — never
+  // bind-mounted, only handed to containers as a Compose `secrets: file:`
+  // entry copied in at container-create time, so a new inode is irrelevant —
+  // or a non-delegated `knowledge/secrets/*` file, which lives inside the
+  // wholesale `knowledge:/stash` DIRECTORY bind mount (core.compose.yml). A
+  // directory bind mount tracks the directory, not a per-file inode, so a
+  // rename of a file inside it is visible to the container immediately. Only
+  // a mount of one SPECIFIC file (auth.json's separate bind, see
+  // writeFileInPlace's docblock) breaks on rename.
+  writeFileAtomic(path, value, SECRET_FILE_MODE);
   chmodSync(path, SECRET_FILE_MODE);
 }
 
@@ -185,11 +204,24 @@ export function readSecretFile(homeDir: string, name: string): string | null {
   return readFileSync(path, 'utf-8');
 }
 
-/** Write a secrets-dir file by basename (0600). */
+/**
+ * Write a secrets-dir file by basename (0600).
+ *
+ * Unlike writeSecret(), this is the admin Secrets-tab file browser's raw
+ * write path and it DOES reach `auth.json` (SECRET_FILENAME_RE allows dots).
+ * `auth.json` is bind-mounted as a single file, not a directory
+ * (core.compose.yml), so a tmp+rename write would swap it for a new inode
+ * while the running assistant container keeps the old, now-unlinked one open
+ * — the container silently stops seeing host writes. writeFileInPlace keeps
+ * the destination's inode (and, since it writes into the existing file rather
+ * than renaming a new one over it, the destination's owner too). Applied to
+ * every name this function handles, not just auth.json, since all of them are
+ * reachable from the same admin editor and none benefit from tmp+rename here.
+ */
 export function writeSecretFile(homeDir: string, name: string, value: string): void {
   assertSafeSecretFilename(name);
   const path = join(resolveSecretsDirForName(homeDir, name), name);
-  writeFileSync(path, value, { mode: SECRET_FILE_MODE });
+  writeFileInPlace(path, value, SECRET_FILE_MODE);
   chmodSync(path, SECRET_FILE_MODE);
 }
 

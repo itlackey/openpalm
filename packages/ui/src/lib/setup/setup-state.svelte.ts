@@ -39,25 +39,83 @@ import {
   authorizeOpenCodeOAuth, pollOpenCodeOAuthCallback,
   completeSetup, fetchDeployStatus, retryDeploy,
   fetchHostStatus, importHost, fetchCurrentConfig, fetchSetupStatus,
+  type SetupOpenCodeSource,
 } from '$lib/setup-api.js';
 import type {
   ProviderState, ModelSelection, DetectedProvider, PortalState,
   OpenCodeProvider, AuthMethod, Provider,
 } from '$lib/client/types.js';
 import type { VoiceAddonProfile } from '$lib/api.js';
-import type { SetupRecommendation } from '@openpalm/lib';
+import type { SetupRecommendation, DeployPhase } from '@openpalm/lib';
 import { addonProfileId } from '@openpalm/lib/provider-constants';
 import { ACCESS_TOGGLE_DEFAULTS, type AccessToggles } from '@openpalm/lib/control-plane/access-toggles.js';
 import { SvelteURLSearchParams } from 'svelte/reactivity';
 
 export type ModelMode = 'cloud' | 'local' | 'both';
 
-interface DeployData {
+// G-series: exported so DeployStep.svelte (the only other consumer of this
+// shape) imports it instead of maintaining its own separate declaration —
+// the two had already drifted once (DeployStep read `phase`/`imageWarning`
+// this copy didn't declare, working only because the store's `deployData`
+// field passes through untyped at the call site).
+export interface DeployData {
   deploying?: boolean;
   setupComplete?: boolean;
   deployStatus?: { service: string; status: string; label?: string }[];
   deployError?: string | null;
+  imageWarning?: string | null;
+  phase?: DeployPhase;
   ports?: { admin?: number; ui?: number; assistant?: number };
+}
+
+// W12: the Welcome step tells the user to "keep a copy somewhere safe" of the
+// generated password, but every mount used to call generatePassword() fresh —
+// an F5 silently swapped in a DIFFERENT password than the one just copied.
+// sessionStorage survives a refresh but not a closed tab, which matches the
+// pre-install trust boundary the password already lives in (displayed in
+// cleartext on the Welcome/Review steps).
+const SETUP_UI_LOGIN_PASSWORD_STORAGE_KEY = 'openpalm.setup.uiLoginPassword';
+
+function readStoredSetupPassword(): string {
+  if (typeof window === 'undefined') return '';
+  try {
+    return window.sessionStorage.getItem(SETUP_UI_LOGIN_PASSWORD_STORAGE_KEY) ?? '';
+  } catch {
+    return '';
+  }
+}
+
+function writeStoredSetupPassword(value: string): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.sessionStorage.setItem(SETUP_UI_LOGIN_PASSWORD_STORAGE_KEY, value);
+  } catch {
+    // Ignore storage failures (private browsing, quota) — the in-memory
+    // password still works for this mount; only a LATER refresh would
+    // regenerate it.
+  }
+}
+
+// Adversarial review finding #2: the stash exists ONLY to survive an F5
+// mid-setup (see the block comment above the key). Once install actually
+// succeeds there is no legitimate reason left to keep the plaintext
+// password sitting in sessionStorage — the tab may go on to load the live
+// admin UI (DeployStep's Open Chat / Admin Dashboard links are same-tab,
+// same-origin navigations), and XSS there could otherwise recover the
+// longer-lived admin password instead of just the HttpOnly session cookie.
+// Clearing it also closes the "wipe OP_HOME and reinstall in the same tab"
+// gap: without this, init()'s non-rerun path would read the PRIOR install's
+// stashed password back out and hand it to a install that never generated
+// it, with no indication it isn't fresh. Called once, right after
+// completeSetup() reports success (handleInstall) — never on a failed
+// attempt, which the operator may still retry.
+function clearStoredSetupPassword(): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.sessionStorage.removeItem(SETUP_UI_LOGIN_PASSWORD_STORAGE_KEY);
+  } catch {
+    // Ignore — nothing left to clean up if storage is unavailable.
+  }
 }
 
 /**
@@ -88,8 +146,6 @@ export const INITIAL = {
   // PR #564 P1-1 — true once the operator explicitly sets a new UI login
   // password; a rerun keeps the existing secret unless this is set.
   uiLoginPasswordDirty: false,
-  step0Error: '',
-  autoModeImporting: false,
   gpuDetected: false,
   // Step 1: Providers
   providerState: {} as Record<string, ProviderState>,
@@ -179,9 +235,6 @@ export class SetupState {
   // Operator UI login password — replaces the legacy "admin token" UI.
   uiLoginPassword = $state(INITIAL.uiLoginPassword);
   uiLoginPasswordDirty = $state(INITIAL.uiLoginPasswordDirty);
-  step0Error = $state(INITIAL.step0Error);
-  // True while auto mode is performing a host provider import before jumping to Review
-  autoModeImporting = $state(INITIAL.autoModeImporting);
   // Set when System Check detects a GPU — used to auto-select CUDA voice profile
   gpuDetected = $state(INITIAL.gpuDetected);
 
@@ -208,6 +261,11 @@ export class SetupState {
   private verifyGeneration: Record<string, number> = {};
   /** AbortControllers for in-flight OAuth long-poll requests */
   private oauthAbortControllers: Record<string, AbortController> = {};
+  /** Active flow token per provider; stale callbacks cannot mutate newer state. */
+  private oauthGenerations: Record<string, number> = {};
+  /** Non-secret target source selected by authorize for each active flow. */
+  private oauthSources: Record<string, SetupOpenCodeSource> = {};
+  private nextOauthGeneration = 0;
 
   // ── Step 2: Models ──────────────────────────────────────────────────────────
   modelSelection = $state(INITIAL.modelSelection);
@@ -241,8 +299,8 @@ export class SetupState {
   // ── Deploy screen ────────────────────────────────────────────────────────────
   deployData = $state(INITIAL.deployData);
   deployDone = $state(INITIAL.deployDone);
-  // Terminal state where remaining non-running rows are warnings (e.g. voice
-  // still warming). Setup IS complete — "Done (with warnings)", not an error.
+  // Terminal state where only optional services failed. Setup IS complete;
+  // "Done (with warnings)", not an error.
   deployHasWarnings = $state(INITIAL.deployHasWarnings);
   deployError = $state(INITIAL.deployError);
   deployPollErrors = $state(INITIAL.deployPollErrors);
@@ -291,13 +349,36 @@ export class SetupState {
     buildVerifiedProviders(this.opencodeAvailable, this.opencodeProviders, this.providerState),
   );
 
+  // True when the wizard is visually claiming "local" (modelMode === 'local',
+  // e.g. the Apple-Silicon-without-a-detected-host-Ollama path in
+  // handleConnectModeChange, which intentionally still flips modelMode so the
+  // UI reflects the user's choice and shows the "install Ollama" callout) but
+  // nothing backing that claim is actually configured yet — neither a real
+  // host runtime nor the in-stack addon. Without this guard, `modelSelection.llm`
+  // is left pointing at whatever it held before (often a previously-verified
+  // CLOUD model), so canComplete stayed true and Continue silently installed
+  // against cloud while step 1 said local.
+  localModeUnready = $derived(
+    this.modelMode === 'local' && !this.hostLocalLlmRunning && !this.ollamaEnabled,
+  );
+
   // ── Single source of truth for "can the user finish setup?" ──────────────
   // Expressed as a derived predicate (NOT a state-mutating $effect that flipped
   // `allowEmptyInstall` off on every background verification — that silently
   // moved the checkbox under the user). Can finish when an actual chat model is
-  // selected, OR the user explicitly opted to skip AI for now.
+  // selected, OR the user explicitly opted to skip AI for now — UNLESS the
+  // local claim above isn't backed by anything real yet.
   canComplete = $derived(
-    !!this.modelSelection.llm?.model || this.allowEmptyInstall,
+    !this.localModeUnready && (!!this.modelSelection.llm?.model || this.allowEmptyInstall),
+  );
+
+  // W12: mirrors the server's own rule (setup-validation.ts, >= 8 chars) so a
+  // too-short password is caught before the round-trip instead of surfacing
+  // as a generic install failure. A rerun that never touches the password
+  // field keeps the existing secret (payload above omits it entirely) and so
+  // has nothing here to validate.
+  passwordValid = $derived(
+    (this.isRerun && !this.uiLoginPasswordDirty) || this.uiLoginPassword.length >= 8,
   );
 
   hasOpenAI = $derived(
@@ -406,10 +487,22 @@ export class SetupState {
   handleConnectModeChange(mode: 'cloud' | 'local' | 'both'): void {
     this.modelMode = mode;
     if (mode === 'local') {
-      // Remember the cloud model so switching back restores it.
+      // Remember the cloud model — and its connId, STABLY — so switching back
+      // restores it. detectedCloudConn is what keeps Screen1ModelsStep's
+      // "detected cloud service" row visible once `llm` itself points at the
+      // local runtime below (its own live-selection fallback only works while
+      // the active selection is still the cloud provider).
       if (this.modelSelection.llm && !LOCAL_PROVIDER_IDS.has(this.modelSelection.llm.connId)) {
         this.savedCloudLlm = this.modelSelection.llm;
+        this.detectedCloudConn = this.modelSelection.llm.connId;
       }
+      // W9: on Apple Silicon, in-stack Ollama is a Linux container with no
+      // Metal access — CPU-only, exactly what setup-recommendation.ts's macOS
+      // branch steers users away from (LocalModelsStatus.svelte shows "install
+      // Ollama for macOS, then Re-check" instead of a runtime status for this
+      // reason). Without a real host Ollama detected yet, selecting Local must
+      // NOT silently enable that fallback out from under the recommendation.
+      if (this.detectedGpuVendor === 'apple' && !this.hostLocalLlmRunning) return;
       // Use a detected host runtime if present; otherwise enable in-stack Ollama.
       if (!this.hostLocalLlmRunning) this.enableRecommendedOllama();
       // Point the chat model at the local runtime so the install + button reflect it.
@@ -418,17 +511,33 @@ export class SetupState {
         ? { connId: localOpt.connId, model: localOpt.id, dims: localOpt.dims }
         : { connId: 'ollama', model: OLLAMA_DEFAULT_CHAT_MODEL, dims: 0 };
     } else if (mode === 'cloud') {
-      if (this.savedCloudLlm) this.modelSelection.llm = this.savedCloudLlm;
+      // Undo whatever 'local' enabled — otherwise a user who toggled "Run on
+      // this computer" once and switched back silently keeps a multi-GB
+      // in-stack Ollama container + model pull enabled in the install payload.
+      this.ollamaEnabled = false;
+      if (this.savedCloudLlm) {
+        this.modelSelection.llm = this.savedCloudLlm;
+      } else if (this.modelSelection.llm && LOCAL_PROVIDER_IDS.has(this.modelSelection.llm.connId)) {
+        // No cloud model was ever selected before going local — don't leave
+        // `llm` silently pointing at the in-stack runtime that was just disabled.
+        this.modelSelection.llm = undefined;
+      }
     }
   }
 
   // Fetch the GPU/provider-aware setup recommendation once and apply it. Safe to
   // call multiple times — applies only once. Reuses a recommendation already
   // fetched for display (fetchRecommendation()).
-  async fetchAndApplyRecommendation(): Promise<void> {
-    if (this.recommendationApplied) return;
+  //
+  // `force` re-probes even after a prior call already applied a recommendation
+  // — the Apple Silicon "install Ollama, then click Re-check" flow (
+  // LocalModelsStatus.svelte) needs this: the user's action happened OUTSIDE
+  // the wizard (installing/starting Ollama on the host), so re-evaluating
+  // means re-fetching detection, not replaying the cached verdict.
+  async fetchAndApplyRecommendation(force = false): Promise<void> {
+    if (this.recommendationApplied && !force) return;
     let rec: SetupRecommendation;
-    if (this.recommendation) {
+    if (this.recommendation && !force) {
       rec = this.recommendation;
     } else {
       try {
@@ -477,6 +586,26 @@ export class SetupState {
     }
   }
 
+  // W12: called from the Review step's password field, on a fresh install
+  // (override the generated default) or a rerun that opts into changing it.
+  // Marking it dirty is what makes the payload actually SEND the new value —
+  // an untouched rerun field stays non-dirty and the server keeps the
+  // existing secret. Also keeps the stashed copy (readStoredSetupPassword)
+  // in sync so a refresh doesn't quietly revert a fresh install's edit back
+  // to the original generated value — but only for a fresh install; a rerun
+  // edit has no business seeding the value a LATER fresh install would read.
+  updateUiLoginPassword(value: string): void {
+    this.uiLoginPassword = value;
+    this.uiLoginPasswordDirty = true;
+    if (!this.isRerun) writeStoredSetupPassword(value);
+  }
+
+  /** Reverts an in-progress rerun password change back to "keep existing". */
+  cancelUiLoginPasswordChange(): void {
+    this.uiLoginPassword = '';
+    this.uiLoginPasswordDirty = false;
+  }
+
   handleEnableVoiceChange(v: boolean): void {
     // The toggle IS the state: it enables the voice addon (capability) in the
     // payload. TTS/STT provider choice is client-owned and not part of setup.
@@ -503,6 +632,17 @@ export class SetupState {
       void this.fetchAndApplyRecommendation();
       this.applyImportedModelPreferences();
       this.autoSelectModels();
+      // W4: loadHostStatus() (fired once at init, while the user is still on
+      // step 0) only auto-imports if THIS step is already current at the
+      // moment its fetch resolves — the common ordering is the opposite
+      // (fetch resolves first, user reaches step 1 after). Cover that
+      // ordering here. hostImportTriggered is the single guard shared with
+      // loadHostStatus(), so whichever side runs first wins and the other
+      // never double-fires or races an import already in flight.
+      if (this.hostProviderCount > 0 && !this.hostImportTriggered) {
+        this.hostImportTriggered = true;
+        void this.handleHostImport();
+      }
     }
   }
 
@@ -682,22 +822,37 @@ export class SetupState {
     const st = this.providerState[providerId];
     if (!st) return;
 
+    this.oauthAbortControllers[providerId]?.abort();
+    delete this.oauthSources[providerId];
+    const generation = ++this.nextOauthGeneration;
+    this.oauthGenerations[providerId] = generation;
     st.verifying = true;
     st.error = false;
+    st.errorMessage = '';
 
     try {
       const oauthRes = await authorizeOpenCodeOAuth(providerId, methodIndex);
+      if (this.oauthGenerations[providerId] !== generation) return;
+      this.oauthSources[providerId] = oauthRes.source;
 
       st.oauthPolling = true;
       st.oauthUrl = oauthRes.url ?? '';
       st.oauthInstructions = oauthRes.instructions ?? '';
+      st.oauthMethod = oauthRes.method ?? 'auto';
 
-      if (oauthRes.url && oauthRes.method === 'auto') {
+      if (oauthRes.url) {
         window.open(oauthRes.url, '_blank');
       }
 
-      await this.pollOpenCodeOAuth(providerId, methodIndex);
+      if (st.oauthMethod === 'auto') {
+        await this.pollOpenCodeOAuth(providerId, methodIndex, oauthRes.source, generation);
+      } else {
+        // Authorization-code providers do not have a code-less callback to
+        // poll. Keep the flow UI open until the operator submits or cancels.
+        st.verifying = false;
+      }
     } catch (e) {
+      if (this.oauthGenerations[providerId] !== generation) return;
       st.verifying = false;
       st.error = true;
       st.errorMessage = e instanceof Error ? e.message : 'OAuth failed';
@@ -705,7 +860,12 @@ export class SetupState {
     }
   }
 
-  async pollOpenCodeOAuth(providerId: string, methodIndex: number): Promise<void> {
+  async pollOpenCodeOAuth(
+    providerId: string,
+    methodIndex: number,
+    source: SetupOpenCodeSource,
+    generation: number,
+  ): Promise<void> {
     const st = this.providerState[providerId];
     const ac = new AbortController();
     this.oauthAbortControllers[providerId] = ac;
@@ -718,7 +878,13 @@ export class SetupState {
 
     try {
       // The callback is a long-poll — make one call and wait (up to 10 minutes)
-      const { ok, data } = await pollOpenCodeOAuthCallback(providerId, methodIndex, combinedSignal);
+      const { ok, data } = await pollOpenCodeOAuthCallback(
+        providerId,
+        methodIndex,
+        source,
+        combinedSignal,
+      );
+      if (this.oauthGenerations[providerId] !== generation) return;
       if (ok && data?.ok) {
         st.verified = true;
         st.error = false;
@@ -727,6 +893,7 @@ export class SetupState {
         st.errorMessage = data?.message ?? 'Authorization failed';
       }
     } catch (e) {
+      if (this.oauthGenerations[providerId] !== generation) return;
       // AbortError from user cancel — don't show an error
       if (e instanceof Error && e.name === 'AbortError' && ac.signal.aborted) return;
       // Timeout case
@@ -738,17 +905,89 @@ export class SetupState {
         st.errorMessage = e instanceof Error ? e.message : 'Authorization failed';
       }
     } finally {
-      delete this.oauthAbortControllers[providerId];
-      st.oauthPolling = false;
-      st.verifying = false;
+      if (this.oauthAbortControllers[providerId] === ac) {
+        delete this.oauthAbortControllers[providerId];
+      }
+      if (this.oauthGenerations[providerId] === generation) {
+        st.oauthPolling = false;
+        st.verifying = false;
+      }
+    }
+  }
+
+  async submitOpenCodeOAuthCode(providerId: string, methodIndex: number, code: string): Promise<void> {
+    const st = this.providerState[providerId];
+    const generation = this.oauthGenerations[providerId];
+    const source = this.oauthSources[providerId];
+    const trimmedCode = code.trim();
+    if (
+      st?.oauthMethod !== 'code'
+      || !st.oauthPolling
+      || st.verifying
+      || generation === undefined
+      || source === undefined
+    ) return;
+    if (!trimmedCode) {
+      st.error = true;
+      st.errorMessage = 'Paste the code first.';
+      return;
+    }
+
+    const ac = new AbortController();
+    this.oauthAbortControllers[providerId] = ac;
+    const timeoutSignal = AbortSignal.timeout(20_000);
+    const combinedSignal = AbortSignal.any
+      ? AbortSignal.any([ac.signal, timeoutSignal])
+      : ac.signal;
+    st.verifying = true;
+    st.error = false;
+    st.errorMessage = '';
+
+    try {
+      const { ok, data } = await pollOpenCodeOAuthCallback(
+        providerId,
+        methodIndex,
+        source,
+        combinedSignal,
+        trimmedCode,
+      );
+      if (this.oauthGenerations[providerId] !== generation) return;
+      if (ok && data?.ok) {
+        st.verified = true;
+        st.error = false;
+        st.oauthPolling = false;
+      } else {
+        st.error = true;
+        st.errorMessage = data?.message ?? 'That code was not accepted. Try again.';
+      }
+    } catch (e) {
+      if (this.oauthGenerations[providerId] !== generation) return;
+      if (e instanceof Error && e.name === 'AbortError' && ac.signal.aborted) return;
+      st.error = true;
+      st.errorMessage = e instanceof Error ? e.message : 'Failed to submit the code.';
+    } finally {
+      if (this.oauthAbortControllers[providerId] === ac) {
+        delete this.oauthAbortControllers[providerId];
+      }
+      if (this.oauthGenerations[providerId] === generation) st.verifying = false;
     }
   }
 
   cancelOAuth(id: string): void {
+    this.oauthGenerations[id] = ++this.nextOauthGeneration;
+    delete this.oauthSources[id];
     const ac = this.oauthAbortControllers[id];
     if (ac) { ac.abort(); delete this.oauthAbortControllers[id]; }
     const st = this.providerState[id];
-    if (st) { st.oauthPolling = false; st.verifying = false; }
+    if (st) {
+      st.oauthPolling = false;
+      st.verifying = false;
+      st.oauthMethod = undefined;
+      st.oauthUrl = '';
+      st.oauthInstructions = '';
+      st.error = false;
+      st.errorMessage = '';
+    }
   }
 
   // ── Install & deploy ─────────────────────────────────────────────────────────
@@ -756,6 +995,14 @@ export class SetupState {
   async handleInstall(): Promise<void> {
     if (this.installing) return;
     this.installError = '';
+
+    // W12: the Install button is already disabled while this is false — this
+    // is the defensive backstop against a stale/bypassed button state, same
+    // pattern as the AI-configured check right below.
+    if (!this.passwordValid) {
+      this.installError = 'Password must be at least 8 characters.';
+      return;
+    }
 
     // Single "no AI configured" confirmation. When the payload has no `llm`,
     // require one explicit acknowledgment before installing. Rerun keeps
@@ -794,6 +1041,13 @@ export class SetupState {
         this.showDeploy = false;
         return;
       }
+
+      // The server now holds this password; the sessionStorage stash was only
+      // ever a refresh-survival aid for THIS install (see the block comment
+      // above SETUP_UI_LOGIN_PASSWORD_STORAGE_KEY / clearStoredSetupPassword).
+      // Never on a failed attempt above — the operator may still retry with
+      // the same generated password.
+      clearStoredSetupPassword();
 
       this.showDeploy = true;
       this.startDeployPolling();
@@ -836,10 +1090,8 @@ export class SetupState {
       } else if (data.setupComplete && data.deployStatus && data.deployStatus.length > 0) {
         const rows = data.deployStatus as { status: string }[];
         const allRunning = rows.every((s) => s.status === 'running');
-        // Treat "warning" (e.g. voice still warming) as a NON-blocking terminal
-        // status. Once setup is complete and not deploying, any remaining
-        // non-running rows that are ALL warnings mean we're done — with
-        // warnings. Otherwise (non-running, non-warning rows) keep polling.
+        // Treat optional-service warnings as a non-blocking terminal status.
+        // Otherwise (non-running, non-warning rows) keep polling.
         const onlyWarningsLeft = !data.deploying
           && rows.every((s) => s.status === 'running' || s.status === 'warning')
           && rows.some((s) => s.status === 'warning');
@@ -905,7 +1157,11 @@ export class SetupState {
       return;
     }
     this.installing = true;
-    void this.pollDeployStatus();
+    // startDeployPolling(), not a one-shot pollDeployStatus() — the interval
+    // was already cleared by stopDeployPolling() when the prior error was
+    // detected. A one-shot call here would poll exactly once and then freeze
+    // the screen forever, even when the retried deploy goes on to succeed.
+    this.startDeployPolling();
   }
 
   handleDeployBack(): void {
@@ -954,7 +1210,11 @@ export class SetupState {
         if (data.modelPreferences?.model) this.importedLlmModel = data.modelPreferences.model;
         if (data.modelPreferences?.small_model) this.importedSmallModel = data.modelPreferences.small_model;
         // Auto-import if already on Providers step (index 1), or always on rerun
-        // so models/settings have verified providers to attach to.
+        // so models/settings have verified providers to attach to. This fetch
+        // is kicked off at init() (step 0) and usually resolves before the
+        // user reaches step 1 — goToStep(1) covers that ordering with the
+        // same hostImportTriggered guard, so between the two, exactly one
+        // fires regardless of which happens first.
         if (this.hostProviderCount > 0 && !this.hostImportTriggered && (this.currentStep === 1 || this.isRerun)) {
           this.hostImportTriggered = true;
           void this.handleHostImport();
@@ -993,8 +1253,10 @@ export class SetupState {
       if (!ok || !data?.ok) {
         // Hard failure (could not copy host config). Keep the user on the
         // Providers step with a clear message instead of silently doing nothing.
+        // W15: prefer the structured envelope's human `message`, falling back
+        // to the older prose-in-`error` shape for anything not yet migrated.
         this.hostImportError =
-          data?.error ?? `Couldn't import providers from this computer. You can sign in or add a provider manually instead.`;
+          data?.message ?? data?.error ?? `Couldn't import providers from this computer. You can sign in or add a provider manually instead.`;
         this.hostImporting = false;
         return;
       }
@@ -1070,6 +1332,8 @@ export class SetupState {
       try { this.oauthAbortControllers[id].abort(); } catch { /* ignore */ }
       delete this.oauthAbortControllers[id];
     }
+    this.oauthGenerations = {};
+    this.oauthSources = {};
     this.verifyGeneration = {};
 
     // Restore EVERY resettable field from the single INITIAL source. A fresh
@@ -1160,7 +1424,14 @@ export class SetupState {
         })
         .catch((e) => { console.error('[setup] failed to load existing config:', e); });
     } else {
-      this.uiLoginPassword = generatePassword();
+      // W12: reuse the password already stashed for THIS browser session
+      // instead of always minting a fresh one — reset() above unconditionally
+      // clears uiLoginPassword to '', so without this an F5 on the Welcome
+      // step silently swapped in a different password than the one the user
+      // was just told to keep a copy of.
+      const stored = readStoredSetupPassword();
+      this.uiLoginPassword = stored || generatePassword();
+      if (!stored) writeStoredSetupPassword(this.uiLoginPassword);
       fetchSetupStatus()
         .then((data) => { if (data.setupComplete) window.location.href = '/'; })
         .catch((e) => { console.error('[setup] failed to check setup status:', e); });
@@ -1174,7 +1445,16 @@ export class SetupState {
         if (data.deploying || data.deployError) {
           this.deployData = data;
           this.showDeploy = true;
-          this.startDeployPolling();
+          if (data.deployError) {
+            // A reload can restore a terminal deploy failure before SystemCheck
+            // ever mounts. Unlock the already-visited setup steps so "Back to
+            // Review" and its Change actions are not dead ends.
+            this.systemCheckPassed = true;
+            this.maxVisitedStep = 3;
+            this.deployError = data.deployError;
+          } else {
+            this.startDeployPolling();
+          }
         }
       })
       .catch((e) => { console.error('[setup] failed to fetch deploy status:', e); });
@@ -1193,6 +1473,10 @@ export class SetupState {
   // AbortControllers would otherwise outlive the page.
   dispose(): void {
     this.stopDeployPolling();
+    for (const id of Object.keys(this.oauthGenerations)) {
+      this.oauthGenerations[id] = ++this.nextOauthGeneration;
+    }
+    this.oauthSources = {};
     for (const id of Object.keys(this.oauthAbortControllers)) {
       try { this.oauthAbortControllers[id].abort(); } catch { /* ignore */ }
       delete this.oauthAbortControllers[id];

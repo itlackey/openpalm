@@ -4,16 +4,24 @@
  * Ensures an OpenCode server is running for the setup wizard.
  * 1. Checks the configured OP_OPENCODE_URL / OP_ASSISTANT_PORT first.
  * 2. If unreachable, starts a dedicated `opencode serve` subprocess via the SDK.
- * 3. Returns { ok, url, started } — client updates its OP_OPENCODE_URL accordingly.
+ * 3. Returns { ok, url, started }.
+ *
+ * The resolved URL is recorded in `$lib/server/opencode/wizard-instance.js`
+ * (NOT written to `process.env.OP_OPENCODE_URL`, which stays untouched) so the
+ * sibling `/api/setup/opencode/*` routes — providers, status, both OAuth
+ * routes — can target this same instance via `resolveSetupOpencodeTarget()`
+ * (`$lib/server/opencode/setup-target.js`) instead of each hardcoding the
+ * deployed-assistant target, which is unreachable until the first deploy
+ * completes (W1).
  *
  * No auth required — called during pre-setup wizard initialization.
  */
 import { spawn } from 'node:child_process';
 import { json } from '@sveltejs/kit';
+import { getWizardOpencodeUrl, setWizardOpencodeUrl } from '$lib/server/opencode/wizard-instance.js';
 import type { RequestHandler } from './$types';
 
 // Module-level singleton — persists for the lifetime of the wizard server process.
-let _url: string | null = null;
 let _proc: ReturnType<typeof spawn> | null = null;
 let _inFlight: Promise<{ url: string; started: boolean }> | null = null;
 
@@ -28,7 +36,7 @@ function killWizardOpencode(): void {
     try { proc.kill('SIGTERM'); } catch { /* best effort */ }
   }
   _proc = null;
-  _url = null;
+  setWizardOpencodeUrl(null);
 }
 if (!(globalThis as Record<string, unknown>).__opWizardOpencodeReaper) {
   (globalThis as Record<string, unknown>).__opWizardOpencodeReaper = true;
@@ -92,7 +100,7 @@ function spawnOpencodeServer(): Promise<string> {
       clearTimeout(timer);
       if (_proc === proc) {
         _proc = null;
-        _url = null;
+        setWizardOpencodeUrl(null);
       }
       if (!resolved && code !== 0) reject(new Error(`OpenCode exited (code ${code}). Output: ${out.slice(0, 300)}`));
     });
@@ -101,7 +109,7 @@ function spawnOpencodeServer(): Promise<string> {
       clearTimeout(timer);
       if (_proc === proc) {
         _proc = null;
-        _url = null;
+        setWizardOpencodeUrl(null);
       }
       reject(err);
     });
@@ -120,8 +128,9 @@ export const POST: RequestHandler = async () => {
   }
 
   // 2. Previously started instance still alive
-  if (_url && await checkReachable(_url)) {
-    return json({ ok: true, url: _url, started: false });
+  const existingUrl = getWizardOpencodeUrl();
+  if (existingUrl && await checkReachable(existingUrl)) {
+    return json({ ok: true, url: existingUrl, started: false });
   }
 
   if (_inFlight) {
@@ -129,10 +138,13 @@ export const POST: RequestHandler = async () => {
       const result = await _inFlight;
       return json({ ok: true, ...result });
     } catch (err) {
+      // W15: failures used to return HTTP 200 with ok:false, which made the
+      // client's `!res.ok` check (setup-api.ts) unable to tell success from
+      // failure. A real HTTP status lets it distinguish the two correctly.
       return json({
         ok: false,
         error: err instanceof Error ? err.message : 'Failed to start OpenCode',
-      });
+      }, { status: 503 });
     }
   }
 
@@ -141,20 +153,20 @@ export const POST: RequestHandler = async () => {
     _inFlight = (async () => {
       await stopWizardOpencode(_proc);
       const url = await spawnOpencodeServer();
-      _url = url;
+      setWizardOpencodeUrl(url);
       return { url, started: true };
     })();
     const { url, started } = await _inFlight;
     _inFlight = null;
-    _url = url;
+    setWizardOpencodeUrl(url);
     return json({ ok: true, url, started });
   } catch (err) {
     _inFlight = null;
     _proc = null;
-    _url = null;
+    setWizardOpencodeUrl(null);
     return json({
       ok: false,
       error: err instanceof Error ? err.message : 'Failed to start OpenCode',
-    });
+    }, { status: 503 });
   }
 };

@@ -8,8 +8,25 @@
 import { assistantAuthHeaders } from '../basic-auth.js';
 import { getAssistantOpencodeTarget } from '../opencode-target.js';
 
-export async function opencodeFetch<T>(path: string, init?: RequestInit): Promise<T> {
-	const endpoint = getAssistantOpencodeTarget();
+export interface OpencodeFetchTarget {
+	url: string;
+	username?: string;
+	password?: string;
+}
+
+/**
+ * `target` is an explicit override for the `/api/setup/*` namespace (W1):
+ * on a fresh host the deployed assistant isn't up yet, so setup-time callers
+ * resolve their own target (`setup-target.ts`, preferring the wizard-spawned
+ * OpenCode instance) rather than always hitting `getAssistantOpencodeTarget()`.
+ * Every other caller omits it and keeps today's behavior unchanged.
+ */
+export async function opencodeFetch<T>(
+	path: string,
+	init?: RequestInit,
+	target?: OpencodeFetchTarget,
+): Promise<T> {
+	const endpoint = target ?? getAssistantOpencodeTarget();
 	const headers: Record<string, string> = {
 		'content-type': 'application/json',
 		...(init?.headers as Record<string, string> | undefined),

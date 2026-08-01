@@ -24,6 +24,7 @@ import {
   checkDiskHeadroom,
   checkDocker,
   checkDockerCompose,
+  checkExistingUiInstance,
   cleanCaches,
   cleanupImagesAndVolumes,
   buildStorageReport,
@@ -46,17 +47,23 @@ import {
   readStackEnv,
   reportImagesAndVolumes,
   resolveComposeProjectName,
+  resolveEnvPort,
+  DEFAULT_HOST_UI_PORT,
+  DEFAULT_PUBLISHED_UI_PORT,
+  STACK_DEFAULTS,
   resolveOpenCodeDbPath,
   runOpenCodeDbMaintenance,
+  type ControlPlaneState,
   type DockerResult,
   type GpuInfo,
   type ImageVolumeReport,
   type InstallPortStatus,
+  type InstallPortTarget,
   type LocalProviderDetection,
   type RuntimeInfo,
   type StorageReport,
+  type UiInstanceCheck,
 } from '@openpalm/lib';
-import { defineAction } from '../lib/action.ts';
 import { resolveServeState } from '../lib/cli-state.ts';
 import { promptYesNo } from '../lib/prompt.ts';
 
@@ -120,20 +127,34 @@ export default defineCommand({
       default: false,
     },
   },
-  run: defineAction(async ({ args }) => {
-    await runDoctorAction({
-      cleanCaches: !!args['clean-caches'],
-      cleanDocker: !!args['clean-docker'],
-      reclaimDb: !!args['reclaim-db'],
-      sessions: !!args.sessions,
-      pruneSessions: !!args['prune-sessions'],
-      maxAgeDays: args['max-age-days'] as string | undefined,
-      maxSessions: args['max-sessions'] as string | undefined,
-      dryRun: !!args['dry-run'],
-      yes: !!args.yes,
-      json: !!args.json,
-    });
-  }),
+  // Not wrapped in defineAction (C10/B8): a successful run — one that produced
+  // a full report, not a thrown error — must still be able to exit non-zero
+  // when the report itself says Docker FAILed or a blocking port conflict is
+  // unresolved, or `openpalm doctor` is useless for scripts that gate on it.
+  // defineAction's own catch only fires on a THROWN error and always exits 1,
+  // which can't express "ran fine, but here's what's wrong" — the same reason
+  // `scan`/`audit-secrets` also manage their own exit codes.
+  async run({ args }) {
+    let report: DoctorReport;
+    try {
+      report = await runDoctorAction({
+        cleanCaches: !!args['clean-caches'],
+        cleanDocker: !!args['clean-docker'],
+        reclaimDb: !!args['reclaim-db'],
+        sessions: !!args.sessions,
+        pruneSessions: !!args['prune-sessions'],
+        maxAgeDays: args['max-age-days'] as string | undefined,
+        maxSessions: args['max-sessions'] as string | undefined,
+        dryRun: !!args['dry-run'],
+        yes: !!args.yes,
+        json: !!args.json,
+      });
+    } catch (err) {
+      console.error(err instanceof Error ? err.message : String(err));
+      process.exit(1);
+    }
+    process.exit(doctorReportHasFailure(report) ? 1 : 0);
+  },
 });
 
 export interface DoctorReport {
@@ -190,6 +211,8 @@ export interface DoctorDeps {
   detectGpu: typeof detectGpu;
   detectLocalProviders: typeof detectLocalProviders;
   probeInstallPorts: typeof probeInstallPorts;
+  /** Instance-identity probe (D1) — tells the admin (host UI) port apart from a foreign process on it; it is never a container, so no docker check can attribute it to "us". */
+  checkExistingUiInstance: typeof checkExistingUiInstance;
   checkDiskHeadroom: typeof checkDiskHeadroom;
   describeDiskHeadroom: typeof describeDiskHeadroom;
   buildStorageReport: typeof buildStorageReport;
@@ -213,6 +236,7 @@ export const defaultDoctorDeps: DoctorDeps = {
   detectGpu,
   detectLocalProviders,
   probeInstallPorts,
+  checkExistingUiInstance,
   checkDiskHeadroom,
   describeDiskHeadroom,
   buildStorageReport,
@@ -229,6 +253,96 @@ export const defaultDoctorDeps: DoctorDeps = {
 };
 
 /**
+ * Doctor's install-port targets, resolved the same way `resolveUiServePort`
+ * resolves the host UI port: persisted stack.env merged under live process
+ * env, never live env alone (C10/B9). The lib's own `resolveInstallPortTargets`
+ * reads live `process.env` only, so a headless install that persisted a
+ * custom OP_HOST_UI_PORT/OP_UI_PORT/OP_ASSISTANT_PORT was probed on the wrong
+ * (default) ports by `openpalm doctor`.
+ */
+function resolveDoctorPortTargets(persistedEnv: Record<string, string>): InstallPortTarget[] {
+  return [
+    { port: resolveEnvPort('OP_HOST_UI_PORT', DEFAULT_HOST_UI_PORT, process.env, persistedEnv), service: 'admin', blocking: true },
+    { port: resolveEnvPort('OP_UI_PORT', DEFAULT_PUBLISHED_UI_PORT, process.env, persistedEnv), service: 'ui', blocking: true },
+    { port: resolveEnvPort('OP_ASSISTANT_PORT', STACK_DEFAULTS.ports.assistant, process.env, persistedEnv), service: 'assistant', blocking: true },
+  ];
+}
+
+/**
+ * Resolve doctor's port-conflict report with the two identities unavailable to
+ * a plain TCP bind probe:
+ *
+ *  1. The admin (host UI) port is never a container at all — it is a bare
+ *     host process, so no `docker ps` lookup can ever attribute it to "us".
+ *     `serverPort` short-circuits it via the same instance-identity probe
+ *     `ui-server.ts`'s own D1 fix uses, but ONLY on a genuine `match`: a
+ *     `mismatch` (something OpenPalm-shaped but the WRONG capability level —
+ *     e.g. a bare `openpalm ui` holding the admin port) is a real conflict
+ *     that the admin launcher refuses, so doctor must not call it "ours".
+ *     Falling through to the plain TCP probe below for a `mismatch` reports
+ *     it as a genuine conflict.
+ *  2. Container ownership is resolved per port by `probeInstallPorts`, using
+ *     both the Compose project name and this home's working-directory label.
+ *     A project existing elsewhere is not evidence that it owns this listener.
+ */
+async function resolveDoctorPorts(
+  state: Pick<ControlPlaneState, 'stackDir'>,
+  persistedEnv: Record<string, string>,
+  projectName: string,
+  dockerAvailable: boolean,
+  deps: DoctorDeps,
+): Promise<InstallPortStatus[]> {
+  const targets = resolveDoctorPortTargets(persistedEnv);
+  const adminTarget = targets.find((t) => t.service === 'admin');
+  let serverPort: number | undefined;
+  if (adminTarget) {
+    const identity: UiInstanceCheck = await deps.checkExistingUiInstance(adminTarget.port, true, {});
+    if (identity.status === 'match') serverPort = adminTarget.port;
+  }
+
+  return deps.probeInstallPorts(targets, {
+    dockerAvailable,
+    serverPort,
+    composeProject: { name: projectName, workingDir: state.stackDir },
+  });
+}
+
+/**
+ * Whether `report` should make `openpalm doctor` exit non-zero (C10/B8).
+ * Optional actions only fail when they report an error; declining/skipping
+ * one is an intentional no-op.
+ */
+export function doctorReportHasFailure(
+  report: Pick<
+    DoctorReport,
+    | 'docker'
+    | 'compose'
+    | 'ports'
+    | 'diskHeadroom'
+    | 'storage'
+    | 'dockerArtifacts'
+    | 'sessionsResult'
+    | 'pruneSessionsResult'
+    | 'cleanCachesResult'
+    | 'cleanDockerResult'
+    | 'reclaimDbResult'
+  >,
+): boolean {
+  if (!report.docker.ok || !report.compose.ok) return true;
+  if (report.ports.some((port) => port.blocking && !port.available)) return true;
+  if (report.diskHeadroom.status === 'critical' || report.diskHeadroom.measurementFailed) return true;
+  if (report.storage.filesystem.measurementFailed) return true;
+  if (!report.storage.docker.reliable || !report.dockerArtifacts.reliable) return true;
+  if (report.cleanDockerResult && report.cleanDockerResult.errors.length > 0) return true;
+  if (report.sessionsResult && 'error' in report.sessionsResult) return true;
+  if (report.pruneSessionsResult) {
+    if ('error' in report.pruneSessionsResult) return true;
+    if ('deleteFailures' in report.pruneSessionsResult && report.pruneSessionsResult.deleteFailures.length > 0) return true;
+  }
+  return report.reclaimDbResult?.databases.some((database) => database.error !== undefined) ?? false;
+}
+
+/**
  * Run every doctor check and return the composed report (also used directly
  * by tests via the injectable `deps` param — the CLI `run` above is a thin
  * args-parsing wrapper that always uses the real `defaultDoctorDeps`).
@@ -239,6 +353,8 @@ export async function runDoctorAction(
 ): Promise<DoctorReport> {
   const state = deps.resolveServeState();
   const homeDir = state.homeDir;
+  const persistedEnv = deps.readStackEnv(homeDir);
+  const projectName = deps.resolveComposeProjectName(persistedEnv);
 
   const [docker, compose, runtime, gpu, localProviders] = await Promise.all([
     deps.checkDocker(),
@@ -248,7 +364,7 @@ export async function runDoctorAction(
     deps.detectLocalProviders(),
   ]);
 
-  const ports = await deps.probeInstallPorts(undefined, { dockerAvailable: docker.ok });
+  const ports = await resolveDoctorPorts(state, persistedEnv, projectName, docker.ok, deps);
   const diskHeadroom = deps.checkDiskHeadroom(homeDir);
   const storage = await deps.buildStorageReport({
     homeDir,
@@ -258,7 +374,6 @@ export async function runDoctorAction(
     skipDocker: !docker.ok,
   });
 
-  const projectName = deps.resolveComposeProjectName(deps.readStackEnv(homeDir));
   const dockerArtifacts = docker.ok
     ? await deps.reportImagesAndVolumes({ projectName })
     : { reliable: false, error: 'Docker unavailable', images: [], supersededImages: [], volumes: [], orphanVolumes: [] };

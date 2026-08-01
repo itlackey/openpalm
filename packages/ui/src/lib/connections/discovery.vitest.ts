@@ -131,6 +131,46 @@ describe('discoverLocalAssistant', () => {
     expect(await store.list()).toHaveLength(2);
   });
 
+  // F9: on the admin origin the locked default is the relative `/oc` proxy,
+  // resolved to the UI's OWN port (e.g. 3880) — a different port from either
+  // discovery candidate (3810 / 3830), so the plain port-based dedup above
+  // never fires even though `/oc` fronts the exact same local OpenCode.
+  test('suppresses discovery when a locked loopback /oc proxy already fronts the local assistant', async () => {
+    const store = freshStore();
+    await store.add({
+      id: 'default',
+      label: 'This computer',
+      baseUrl: 'http://127.0.0.1:3880/oc',
+      auth: { mode: 'none' },
+      locked: true,
+    });
+    const added = await discoverLocalAssistant(
+      store,
+      fetchRespondingTo({ 'http://127.0.0.1:3810': 200, 'http://127.0.0.1:3830/oc': 200 })
+    );
+    expect(added).toBeNull();
+    expect(await store.list()).toHaveLength(1);
+  });
+
+  // The suppression is specific to the config-owned default — an unlocked
+  // connection that merely happens to share the `/oc` path shape (e.g. a
+  // user-added entry) must not blind discovery to a genuinely separate
+  // local assistant.
+  test('does not suppress discovery for an unlocked loopback /oc connection', async () => {
+    const store = freshStore();
+    await store.add({
+      label: 'Manually added',
+      baseUrl: 'http://127.0.0.1:9999/oc',
+      auth: { mode: 'none' },
+    });
+    const added = await discoverLocalAssistant(
+      store,
+      fetchRespondingTo({ 'http://127.0.0.1:3810': 200 })
+    );
+    expect(added?.baseUrl).toBe('http://127.0.0.1:3810');
+    expect(await store.list()).toHaveLength(2);
+  });
+
   test('does not skip for remote-only connections', async () => {
     const store = freshStore();
     await store.add({

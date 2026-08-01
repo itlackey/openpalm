@@ -16,6 +16,7 @@
   const s = setupState;
 
   const uiLoginPassword = $derived(s.uiLoginPassword);
+  const passwordValid = $derived(s.passwordValid);
   const verifiedProviders = $derived(s.verifiedProviders);
   const modelSelection = $derived(s.modelSelection);
   const portalSelection = $derived(s.portalSelection);
@@ -62,8 +63,29 @@
   // Password reveal/copy state
   let passwordVisible = $state(false);
   let passwordCopied = $state(false);
-  let copyFallback = $state(false);
   let passwordInputEl: HTMLInputElement | null = $state(null);
+  // W12: the rerun password field starts collapsed — the default is "keep
+  // the existing secret", so the input only appears once the operator asks
+  // to replace it. Seeded from the STORE's dirty flag (not hardcoded false):
+  // this component unmounts/remounts every time the wizard navigates off and
+  // back onto step 3 (routes/setup/+page.svelte wraps it in `{#if
+  // s.currentStep === 3}`), while `uiLoginPasswordDirty` lives in the
+  // module-singleton store and survives that. Hardcoding false here used to
+  // let a remount silently re-collapse an in-progress password change: the
+  // store still had the typed password + dirty=true (so Update would send
+  // and ROTATE it), but the UI rendered the "Previously set — not changed"
+  // branch with dots, telling the operator nothing was changing. Seeding
+  // from the store keeps the two in lockstep on every mount.
+  let showRerunPasswordInput = $state(s.uiLoginPasswordDirty);
+
+  function onPasswordInput(e: Event): void {
+    s.updateUiLoginPassword((e.currentTarget as HTMLInputElement).value);
+  }
+
+  function cancelRerunPasswordChange(): void {
+    s.cancelUiLoginPasswordChange();
+    showRerunPasswordInput = false;
+  }
 
   async function copyPassword(): Promise<void> {
     try {
@@ -75,7 +97,8 @@
       }
       throw new Error('Clipboard API unavailable');
     } catch {
-      copyFallback = true;
+      // Clipboard API unavailable (older browser, permissions) — the field is
+      // a real input now, so fall back to focus+select for a manual Ctrl+C.
       if (passwordInputEl) {
         passwordInputEl.focus();
         passwordInputEl.select();
@@ -107,22 +130,22 @@
 <!-- ── Password block (tinted surface, no border) ──────────────── -->
 {#if !isRerun}
   <div class="password-block">
-    <p class="password-label">Sign-in password</p>
+    <label class="password-label" for="setup-ui-login-password">Sign-in password</label>
     <div class="password-row">
-      {#if copyFallback}
-        <input
-          bind:this={passwordInputEl}
-          class="password-value password-value--mono"
-          type={passwordVisible ? 'text' : 'password'}
-          readonly
-          value={uiLoginPassword}
-          onfocus={(e) => (e.currentTarget as HTMLInputElement).select()}
-        />
-      {:else if passwordVisible}
-        <span class="password-value password-value--mono" aria-label="Sign-in password">{uiLoginPassword}</span>
-      {:else}
-        <span class="password-value password-value--dots" aria-label="Sign-in password">••••••••••••••••</span>
-      {/if}
+      <!-- W12: a real, editable field — a generated default the operator can
+           just keep, or replace with their own. -->
+      <input
+        id="setup-ui-login-password"
+        bind:this={passwordInputEl}
+        class="password-value password-value--mono"
+        type={passwordVisible ? 'text' : 'password'}
+        autocomplete="new-password"
+        spellcheck="false"
+        value={uiLoginPassword}
+        oninput={onPasswordInput}
+        aria-invalid={!passwordValid}
+        aria-describedby={!passwordValid ? 'password-error' : undefined}
+      />
       <div class="password-actions">
         <!-- Reveal/hide toggle -->
         <button
@@ -146,7 +169,12 @@
             </svg>
           {/if}
         </button>
-        <!-- Copy button -->
+        <!-- Copy button. copyPassword() itself falls back to focus()+select()
+             when the Clipboard API is unavailable — that (not an onfocus
+             handler on the input) is where "select everything" belongs. This
+             field is genuinely editable (W12): a select-on-focus here meant
+             clicking in to fix a typo selected the WHOLE password, so the
+             next keystroke wiped it instead of editing at the cursor. -->
         <button
           type="button"
           class="btn-icon"
@@ -170,17 +198,75 @@
         </button>
       </div>
     </div>
-    <p class="password-note">Already saved on this computer — keep a copy somewhere safe just in case.</p>
+    {#if !passwordValid}
+      <p class="password-error" id="password-error" role="alert">Password must be at least 8 characters.</p>
+    {/if}
+    <p class="password-note">This becomes your sign-in password when you install — keep a copy somewhere safe, or edit it above.</p>
   </div>
-{:else}
+{:else if !showRerunPasswordInput}
   <div class="password-block">
     <p class="password-label">Sign-in password</p>
     <div class="password-row">
       <span class="password-value password-value--dots" aria-label="Sign-in password">••••••••</span>
       <div class="password-actions">
-        <span class="rerun-note">Previously set — not changed.</span>
+        <button type="button" class="btn-text" onclick={() => { showRerunPasswordInput = true; }}>
+          Change password
+        </button>
       </div>
     </div>
+    <!-- Defensive: this branch should only ever render while passwordValid is
+         true (collapsed ⇒ !uiLoginPasswordDirty ⇒ the isRerun && !dirty OR
+         clause in passwordValid), but render the same error affordance the
+         other two branches have rather than leaving a silently-disabled
+         Update with no explanation if that invariant is ever broken. -->
+    {#if !passwordValid}
+      <p class="password-error" id="password-error" role="alert">Password must be at least 8 characters.</p>
+    {/if}
+    <p class="password-note">Previously set — not changed unless you set a new one.</p>
+  </div>
+{:else}
+  <div class="password-block">
+    <label class="password-label" for="setup-ui-login-password">New sign-in password</label>
+    <div class="password-row">
+      <input
+        id="setup-ui-login-password"
+        bind:this={passwordInputEl}
+        class="password-value password-value--mono"
+        type={passwordVisible ? 'text' : 'password'}
+        autocomplete="new-password"
+        spellcheck="false"
+        placeholder="Type a new password"
+        value={uiLoginPassword}
+        oninput={onPasswordInput}
+        aria-invalid={!passwordValid}
+        aria-describedby={!passwordValid ? 'password-error' : undefined}
+      />
+      <div class="password-actions">
+        <button
+          type="button"
+          class="btn-icon"
+          aria-label={passwordVisible ? 'Hide password' : 'Show password'}
+          onclick={() => { passwordVisible = !passwordVisible; }}
+          title={passwordVisible ? 'Hide' : 'Show'}
+        >
+          {#if passwordVisible}
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M2 2l12 12"/>
+              <path d="M6.7 6.8A3 3 0 009.3 9.2M4 4.5C2.5 5.7 1.5 7 1 8c1 2.5 3.8 5 7 5a8.4 8.4 0 003-.6M7 3.1A8.4 8.4 0 018 3c3.2 0 6 2.5 7 5-.4 1-.9 1.9-1.7 2.7"/>
+            </svg>
+          {:else}
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M1 8s2.5-5 7-5 7 5 7 5-2.5 5-7 5-7-5-7-5z"/>
+              <circle cx="8" cy="8" r="2"/>
+            </svg>
+          {/if}
+        </button>
+        <button type="button" class="btn-text" onclick={cancelRerunPasswordChange}>Cancel</button>
+      </div>
+    </div>
+    {#if !passwordValid}
+      <p class="password-error" id="password-error" role="alert">Password must be at least 8 characters.</p>
+    {/if}
   </div>
 {/if}
 
@@ -283,10 +369,13 @@
     type="button"
     class="btn-save"
     onclick={() => saveConfig(payload)}
-    aria-label="Save configuration as JSON file"
+    aria-label="Save configuration as JSON file — contains your password and API keys in plain text"
   >
     Save configuration
   </button>
+  <!-- W14: the download is the full install payload — password, provider API
+       keys, and portal (Discord/Slack) tokens, all in plaintext. -->
+  <span class="review-save-warning">Contains your password, API keys, and tokens in plain text — store it somewhere private.</span>
 </div>
 
 <style>
@@ -321,6 +410,7 @@
   }
 
   .password-label {
+    display: block;
     font-size: var(--s-type-deed);
     font-weight: 700;
     letter-spacing: 0.06em;
@@ -352,6 +442,23 @@
     width: 100%;
   }
 
+  input.password-value--mono:focus-visible {
+    outline: 2px solid var(--s-seal);
+    outline-offset: 2px;
+    border-radius: 2px;
+  }
+
+  input.password-value--mono[aria-invalid="true"] {
+    color: var(--s-seal);
+  }
+
+  input.password-value--mono::placeholder {
+    color: var(--s-ink-3);
+    font-family: inherit;
+    font-weight: 400;
+    letter-spacing: normal;
+  }
+
   .password-value--dots {
     font-family: inherit;
     letter-spacing: 0.18em;
@@ -366,10 +473,30 @@
     flex-shrink: 0;
   }
 
-  .rerun-note {
+  .password-error {
     font-size: var(--s-type-deed);
+    color: var(--s-seal);
+    margin-top: 8px;
+  }
+
+  .btn-text {
+    background: none;
+    border: none;
+    font-size: var(--s-type-deed);
+    font-weight: 600;
     color: var(--s-ink-3);
-    font-style: italic;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+    padding: 4px 0;
+    min-height: 24px; /* WCAG 2.5.8 target size */
+    white-space: nowrap;
+    cursor: pointer;
+    font-family: inherit;
+    transition: color 150ms;
+  }
+
+  .btn-text:hover {
+    color: var(--s-ink-2);
   }
 
   /* ── Icon buttons (reveal/copy) ────────────────────────────────── */
@@ -481,6 +608,10 @@
 
   /* ── Save configuration quiet link ─────────────────────────────── */
   .review-save-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 4px 10px;
     margin: 16px 0 4px;
   }
 
@@ -499,5 +630,10 @@
 
   .btn-save:hover {
     color: var(--s-ink-2);
+  }
+
+  .review-save-warning {
+    font-size: var(--s-type-whisper);
+    color: var(--s-ink-3);
   }
 </style>

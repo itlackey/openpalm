@@ -20,12 +20,16 @@
   import { untrack } from 'svelte';
   import CloudAttachPanel from './CloudAttachPanel.svelte';
   import LocalModelsStatus from './LocalModelsStatus.svelte';
-  import { LOCAL_PROVIDER_IDS, FRIENDLY_PROVIDER_NAMES } from '$lib/client/constants.js';
+  import { LOCAL_PROVIDER_IDS, friendlyProviderName } from '$lib/client/constants.js';
   import { setupState } from '$lib/setup/setup-state.svelte.js';
+  // G-series: this used to hardcode its own copy of the threshold
+  // setup-recommendation.ts (the macOS/GPU decision engine) already exports —
+  // the two had already drifted apart in spirit even though the value matched.
+  // Imported from the submodule path (not the `@openpalm/lib` barrel) so this
+  // client bundle doesn't pull in the barrel's server-only modules (node:fs, …).
+  import { MIN_LOCAL_GPU_VRAM_MB } from '@openpalm/lib/control-plane/setup-recommendation.js';
 
   type ModelMode = 'cloud' | 'local' | 'both';
-
-  const MIN_LOCAL_GPU_VRAM_MB = 8192;
 
   // This step reads the wizard store directly instead of receiving ~20 drilled
   // props from +page.svelte. Local aliases keep the rest of the component body
@@ -33,8 +37,6 @@
   // wrap the store's methods.
   const s = setupState;
 
-  const detectionLoading = $derived(s.autoModeImporting);
-  const systemCheckError = $derived(s.systemCheckPassed ? '' : (s.step0Error || ''));
   const gpuVramMb = $derived(s.detectedGpuVramMb);
   const gpuVendor = $derived(s.detectedGpuVendor);
   const hostProviders = $derived(s.detectedHostProviders);
@@ -47,7 +49,6 @@
   const detectedCloudConn = $derived(s.detectedCloudConn);
 
   const onmodelmodechange = (mode: ModelMode): void => s.handleConnectModeChange(mode);
-  const onsystemcheckretry = (): void => s.goToStep(0);
   const onallowemptyinstallchange = (v: boolean): void => { s.allowEmptyInstall = v; };
 
   // Local-models gate: available when GPU >= 8 GiB, Apple Silicon, or runtime running.
@@ -57,21 +58,18 @@
     hostProviders.length > 0
   );
 
-  // Resolve a friendly display name for a provider connId.
-  function friendlyServiceLabel(connId: string): string {
-    if (FRIENDLY_PROVIDER_NAMES[connId]) return FRIENDLY_PROVIDER_NAMES[connId];
-    const fromProviders = opencodeProviders.find((p) => p.id === connId)?.name;
-    if (fromProviders) return fromProviders;
-    return connId;
-  }
-
   // The "detected" cloud service — a STABLE value so this row stays visible even
   // after the user switches to local (so they can switch back). Falls back to the
   // current cloud selection before the parent has captured it.
   const detectedConn = $derived(
     detectedCloudConn || (llmProvider && !LOCAL_PROVIDER_IDS.has(llmProvider) ? llmProvider : '')
   );
-  const detectedServiceLabel = $derived(detectedConn ? friendlyServiceLabel(detectedConn) : '');
+  // G-series: friendlyProviderName (constants.js) is the shared label
+  // resolver — this used to reimplement the same curated-name-then-fallback
+  // logic locally.
+  const detectedServiceLabel = $derived(
+    detectedConn ? friendlyProviderName(detectedConn, { extraProviders: opencodeProviders }) : ''
+  );
 
   // Whether the current selection is a local runtime (drives initial row pick).
   const detectedIsLocal = $derived(LOCAL_PROVIDER_IDS.has(llmProvider));
@@ -106,6 +104,51 @@
   // Show cloud sign-in panel when cloud row is selected.
   const showSignInPanel = $derived(selectedRow === 'cloud');
 
+  // W14: arrow-key navigation for the role="radiogroup" choice list — the
+  // rows were plain click targets with no keyboard equivalent to the arrow
+  // keys a native radio group supports. Order follows visual top-to-bottom
+  // order; the local row is skipped when disabled, matching how a native
+  // radiogroup skips disabled radios.
+  type SelectableRow = 'detected' | 'local' | 'cloud';
+  let detectedRowEl: HTMLButtonElement | null = $state(null);
+  let localRowEl: HTMLButtonElement | null = $state(null);
+  let cloudRowEl: HTMLButtonElement | null = $state(null);
+
+  function rowEl(row: SelectableRow): HTMLButtonElement | null {
+    if (row === 'detected') return detectedRowEl;
+    if (row === 'local') return localRowEl;
+    return cloudRowEl;
+  }
+
+  function visibleRowOrder(): SelectableRow[] {
+    const order: SelectableRow[] = [];
+    if (showDetectedRow) order.push('detected');
+    if (localAvailable) order.push('local');
+    order.push('cloud');
+    return order;
+  }
+
+  function onRadiogroupKeydown(e: KeyboardEvent): void {
+    const order = visibleRowOrder();
+    const currentIndex = selectedRow ? order.indexOf(selectedRow as SelectableRow) : -1;
+    let nextIndex: number;
+    if (e.key === 'ArrowDown' || e.key === 'ArrowRight') {
+      nextIndex = currentIndex < 0 ? 0 : (currentIndex + 1) % order.length;
+    } else if (e.key === 'ArrowUp' || e.key === 'ArrowLeft') {
+      nextIndex = currentIndex < 0 ? order.length - 1 : (currentIndex - 1 + order.length) % order.length;
+    } else if (e.key === 'Home') {
+      nextIndex = 0;
+    } else if (e.key === 'End') {
+      nextIndex = order.length - 1;
+    } else {
+      return;
+    }
+    e.preventDefault();
+    const nextRow = order[nextIndex];
+    selectRow(nextRow);
+    rowEl(nextRow)?.focus();
+  }
+
   // In detected state, the cloud row label changes.
   const cloudRowTitle = $derived(
     showDetectedRow ? 'Sign in to a different service' : 'Sign in to a cloud AI service'
@@ -119,23 +162,8 @@
 
 <div data-testid="step-models" class="screen-models">
 
-  <!-- System check failure inline alert -->
-  {#if systemCheckError}
-    <div class="s1-alert s1-alert--error" role="alert">
-      <span class="s1-alert-text">{systemCheckError}</span>
-      <button
-        type="button"
-        class="s1-alert-btn"
-        id="btn-syscheck-retry"
-        onclick={onsystemcheckretry}
-      >
-        Retry
-      </button>
-    </div>
-  {/if}
-
   <!-- Loading shimmer while importing -->
-  {#if detectionLoading || hostImporting}
+  {#if hostImporting}
     <div class="s1-shimmer" aria-busy="true" aria-label="Detecting AI services…">
       <span class="s1-shimmer-bar"></span>
       <span class="s1-shimmer-bar s1-shimmer-bar--short"></span>
@@ -160,12 +188,14 @@
       <!-- Row 1: Detected cloud service (only when a cloud provider is verified) -->
       {#if showDetectedRow}
         <button
+          bind:this={detectedRowEl}
           type="button"
           class="s1-choice-row"
           class:s1-choice-row--selected={selectedRow === 'detected'}
           role="radio"
           aria-checked={selectedRow === 'detected'}
           onclick={() => selectRow('detected')}
+          onkeydown={onRadiogroupKeydown}
         >
           <div class="s1-radio-dot">
             <div class="s1-radio-dot-inner"></div>
@@ -180,6 +210,7 @@
 
       <!-- Row 2: Run on this computer (local AI — always shown, co-equal primary) -->
       <button
+        bind:this={localRowEl}
         type="button"
         class="s1-choice-row"
         class:s1-choice-row--selected={selectedRow === 'local'}
@@ -188,6 +219,7 @@
         aria-checked={selectedRow === 'local'}
         disabled={!localAvailable}
         onclick={() => selectRow('local')}
+        onkeydown={onRadiogroupKeydown}
       >
         <div class="s1-radio-dot">
           <div class="s1-radio-dot-inner"></div>
@@ -220,12 +252,14 @@
 
       <!-- Row 3: Sign in to a cloud service -->
       <button
+        bind:this={cloudRowEl}
         type="button"
         class="s1-choice-row"
         class:s1-choice-row--selected={selectedRow === 'cloud'}
         role="radio"
         aria-checked={selectedRow === 'cloud'}
         onclick={() => selectRow('cloud')}
+        onkeydown={onRadiogroupKeydown}
       >
         <div class="s1-radio-dot">
           <div class="s1-radio-dot-inner"></div>
@@ -278,45 +312,6 @@
     gap: 0;
     font-family: var(--s-font-display);
   }
-
-  /* ── Alerts ─────────────────────────────────────────────── */
-  .s1-alert {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 9px 12px;
-    margin-bottom: 12px;
-    border-radius: 8px;
-    font-size: 13px;
-    flex-wrap: wrap;
-  }
-
-  .s1-alert--error {
-    background: rgba(242, 92, 92, 0.1);
-    border: 1px solid rgba(242, 92, 92, 0.3);
-  }
-
-  .s1-alert-text {
-    flex: 1;
-    color: var(--s-ink-2);
-  }
-
-  .s1-alert--error .s1-alert-text { color: var(--s-seal); }
-
-  .s1-alert-btn {
-    padding: 4px 10px;
-    background: none;
-    border: 1px solid currentColor;
-    border-radius: 6px;
-    font-size: 12px;
-    cursor: pointer;
-    min-height: 28px;
-    color: var(--s-seal);
-    font-family: inherit;
-    transition: opacity 150ms;
-  }
-
-  .s1-alert-btn:disabled { opacity: 0.55; cursor: not-allowed; }
 
   /* ── Detection shimmer ───────────────────────────────────── */
   .s1-shimmer {

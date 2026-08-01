@@ -1,17 +1,23 @@
 import type { APIRequestContext, BrowserContext } from '@playwright/test';
 
-function extractSessionCookie(setCookie: string | undefined): string {
+export type SessionCookie = { name: 'op_session' | 'op_session_assistant'; value: string };
+
+export function extractSessionCookie(setCookie: string | undefined): SessionCookie {
   if (!setCookie) throw new Error('Login response did not include Set-Cookie');
-  const match = setCookie.match(/(?:^|,\s*)op_session=([^;]+)/);
-  if (!match) throw new Error(`Could not parse op_session from Set-Cookie: ${setCookie}`);
-  return match[1];
+  const match = setCookie.match(/(?:^|,\s*)(op_session|op_session_assistant)=([^;]+)/);
+  if (!match) throw new Error(`Could not parse session cookie from Set-Cookie: ${setCookie}`);
+  const [, name, value] = match;
+  if ((name !== 'op_session' && name !== 'op_session_assistant') || !value) {
+    throw new Error(`Could not parse session cookie from Set-Cookie: ${setCookie}`);
+  }
+  return { name, value };
 }
 
 export async function loginAndGetSessionCookie(
   request: APIRequestContext,
   adminUrl: string,
   password: string,
-): Promise<string> {
+): Promise<SessionCookie> {
   const res = await request.post(`${adminUrl}/api/auth/login`, {
     data: { password },
   });
@@ -28,7 +34,7 @@ export async function loginHeaders(
 ): Promise<Record<string, string>> {
   const cookie = await loginAndGetSessionCookie(request, adminUrl, password);
   return {
-    cookie: `op_session=${cookie}`,
+    cookie: `${cookie.name}=${cookie.value}`,
     'x-requested-by': 'e2e-test',
     'x-request-id': crypto.randomUUID(),
     'content-type': 'application/json',
@@ -45,8 +51,8 @@ export async function loginBrowserContext(
   const url = new URL(adminUrl);
   await context.addCookies([
     {
-      name: 'op_session',
-      value: cookie,
+      name: cookie.name,
+      value: cookie.value,
       domain: url.hostname,
       path: '/',
       httpOnly: true,

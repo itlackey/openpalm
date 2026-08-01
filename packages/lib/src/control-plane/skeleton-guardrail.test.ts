@@ -9,6 +9,7 @@
 import { describe, test, expect } from "bun:test";
 import { readdirSync, statSync, existsSync, readFileSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
+import { VERSION_DEFAULTS } from "./versions.js";
 
 const REPO_ROOT = resolve(import.meta.dir, "../../../..");
 const SKELETON_DIR = join(REPO_ROOT, "packages", "skeleton");
@@ -144,6 +145,25 @@ describe("skeleton: config/ structure", () => {
     const matches = servicesCompose.match(pinnedOllamaImage) ?? [];
     // ollama, ollama-cuda, and ollama-rocm each declare their own pinned image.
     expect(matches.length).toBe(3);
+  });
+
+  test('K2: voice is the one image that intentionally floats — but its compose fallback and its code-level default can never silently disagree', () => {
+    // Unlike Ollama (bundled third-party, exact-tag+digest pinned above) and
+    // assistant/guardian/portal (platform semver, pinned to PLATFORM_VERSION —
+    // see the OP_IMAGE_TAG test above), voice ships on its own out-of-band
+    // release cadence (publish-voice.yml) with a variant-suffixed tag scheme
+    // (`latest-cpu`, `1.0.0-cu121`, …) that has no platform-semver equivalent
+    // to pin to. Tracking the moving `latest-<variant>` alias by default is a
+    // deliberate, documented product decision (setup.ts, addon-availability.ts),
+    // not an oversight — but the fallback compose reads and the code-level
+    // default (versions.ts's VERSION_DEFAULTS, what a fresh stack.env is
+    // seeded with) are two independently-edited literals, and only this test
+    // notices if a future edit moves one without the other.
+    const servicesCompose = readFileSync(join(SKELETON_DIR, 'system', 'stack', 'services.compose.yml'), 'utf-8');
+    const composeFallback = `voice:\${OP_VOICE_VERSION:-${VERSION_DEFAULTS.OP_VOICE_VERSION}}-`;
+    for (const variant of ['cpu', 'cu121', 'rocm6']) {
+      expect(servicesCompose).toContain(`${composeFallback}${variant}`);
+    }
   });
 
   test('every host-published listener uses a FLAT bind — no cascade', () => {

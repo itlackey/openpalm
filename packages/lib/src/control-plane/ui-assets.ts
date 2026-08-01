@@ -78,6 +78,24 @@ export async function applyHomeSeed(_repoRef: string, homeDir: string, _configDi
   const source = resolveLocalOpenpalmDir();
   if (!source) return { updated: [], backupDir: null };
   const managed = overwriteSystemTree(source, homeDir);
+  // K7 (product decision, not yet resolved): copyTree's skipExisting=true
+  // below treats every non-system/ file — including knowledge/skills/**,
+  // which is release-authored content the operator is not expected to
+  // author or edit, same as system/ — as a one-time seed. That means a skill
+  // bugfix shipped in a LATER release only ever reaches a brand-new OP_HOME;
+  // every home that seeded the old copy keeps it forever, with no update
+  // channel and no signal to the operator that anything is stale. This is
+  // the right call for the REST of this tree (knowledge/env/user.env,
+  // knowledge/secrets/, config/, data/, workspace/ — genuinely user-owned or
+  // user-populated), which is exactly why skills can't simply be folded into
+  // that same skipExisting pass without risking a silent clobber of a
+  // user-customized or user-authored skill (knowledge/skills/ has no
+  // separate "this one's mine" marker the way config/ vs system/ does for
+  // OpenCode config). Moving skills to the always-overwritten system/ tree,
+  // or giving knowledge/skills/** its own changed-file-only refresh (like
+  // overwriteSystemTree, but preserving anything NOT byte-identical to what
+  // was last shipped), are both viable — deferred pending a decision on
+  // whether skills are meant to be user-editable at all.
   copyTree(source, homeDir, true);
   try {
     const version = JSON.parse(readFileSync(join(source, 'package.json'), 'utf8')).version;

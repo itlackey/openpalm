@@ -81,8 +81,11 @@ When moving to a different home path, update `OP_HOME` in
 
 ## Raw Compose Restore
 
-After extraction, use all three managed files, the user overlay, the sole env
-file, and every active profile:
+After extraction, use the managed files, the user overlay, the sole env
+file, and every active profile. The three core managed files below are always
+present; add `-f "$OP_HOME/system/stack/voice.compose.lan.yml"` as well if the
+restored `state/stack.env` sets `OP_VOICE_LAN_ACCESS=true`, or the restored
+stack loses the voice network topology it was backed up with:
 
 ```bash
 OP_HOME="${OP_HOME:-$HOME/.openpalm}"

@@ -153,6 +153,71 @@ describe('request', () => {
     await expect(transport.request('GET', '/session')).rejects.toMatchObject({ status: 503 });
   });
 
+  // F3: the oc-proxy/OpenCode error envelope must survive the throw as a
+  // structured `detail` + `code` + `requestId` instead of being discarded in
+  // favor of a bare "HTTP 502".
+  test('a JSON error body becomes a structured detail + code + requestId', async () => {
+    const { fetch } = recordingFetch(
+      () =>
+        new Response(
+          JSON.stringify({
+            error: 'assistant_unreachable',
+            message: 'The assistant is not responding — it may still be starting.',
+            details: {},
+            requestId: 'req-abc',
+          }),
+          { status: 502, headers: { 'content-type': 'application/json', 'x-request-id': 'req-abc' } }
+        )
+    );
+    const transport = createDirectTransport(() => CONNECTION, NO_AUTH, fetch);
+    await expect(transport.request('GET', '/session')).rejects.toMatchObject({
+      status: 502,
+      detail: 'The assistant is not responding — it may still be starting.',
+      code: 'assistant_unreachable',
+      requestId: 'req-abc',
+    });
+  });
+
+  test('a JSON body with only an `error` string is used as both detail and code', async () => {
+    const { fetch } = recordingFetch(
+      () =>
+        new Response(JSON.stringify({ error: 'model_fetch_failed' }), {
+          status: 400,
+          headers: { 'content-type': 'application/json' },
+        })
+    );
+    const transport = createDirectTransport(() => CONNECTION, NO_AUTH, fetch);
+    await expect(transport.request('GET', '/session')).rejects.toMatchObject({
+      status: 400,
+      detail: 'model_fetch_failed',
+      code: 'model_fetch_failed',
+    });
+  });
+
+  test('a non-JSON error body (e.g. an HTML proxy error page) carries no detail', async () => {
+    const { fetch } = recordingFetch(
+      () =>
+        new Response('<html>502 Bad Gateway</html>', {
+          status: 502,
+          headers: { 'content-type': 'text/html' },
+        })
+    );
+    const transport = createDirectTransport(() => CONNECTION, NO_AUTH, fetch);
+    const error = await transport.request('GET', '/session').catch((e: unknown) => e);
+    expect(error).toMatchObject({ status: 502 });
+    expect((error as { detail?: string }).detail).toBeUndefined();
+  });
+
+  test('an unparseable JSON-labeled body carries no detail and does not throw while parsing', async () => {
+    const { fetch } = recordingFetch(
+      () => new Response('not actually json', { status: 500, headers: { 'content-type': 'application/json' } })
+    );
+    const transport = createDirectTransport(() => CONNECTION, NO_AUTH, fetch);
+    const error = await transport.request('GET', '/session').catch((e: unknown) => e);
+    expect(error).toMatchObject({ status: 500 });
+    expect((error as { detail?: string }).detail).toBeUndefined();
+  });
+
   test('no active connection throws', async () => {
     const { fetch } = recordingFetch(() => new Response('{}', { status: 200 }));
     const transport = createDirectTransport(() => null, NO_AUTH, fetch);
@@ -203,6 +268,23 @@ describe('subscribeEvents', () => {
     await expect(
       transport.subscribeEvents(() => {}, new AbortController().signal)
     ).rejects.toMatchObject({ status: 401 });
+  });
+
+  test('a non-ok stream response with a JSON error body throws with a structured detail', async () => {
+    const { fetch } = recordingFetch(
+      () =>
+        new Response(
+          JSON.stringify({ error: 'assistant_unreachable', message: 'The assistant is not responding — it may still be starting.' }),
+          { status: 502, headers: { 'content-type': 'application/json' } }
+        )
+    );
+    const transport = createDirectTransport(() => CONNECTION, NO_AUTH, fetch);
+    await expect(
+      transport.subscribeEvents(() => {}, new AbortController().signal)
+    ).rejects.toMatchObject({
+      status: 502,
+      detail: 'The assistant is not responding — it may still be starting.',
+    });
   });
 });
 

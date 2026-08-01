@@ -7,6 +7,10 @@ const detectGpu = vi.fn();
 const detectLocalProviders = vi.fn();
 const detectRuntime = vi.fn();
 const execFileMock = vi.fn();
+// W11: real checkLifecycleDiskHeadroom shells out to `docker info` and statfs
+// — mocked so this suite stays hermetic and fast, and so each test can set an
+// exact disk reading without depending on the sandbox's actual free space.
+const checkLifecycleDiskHeadroom = vi.fn();
 
 vi.mock('@openpalm/lib', async (importOriginal) => {
   const original = await importOriginal<typeof import('@openpalm/lib')>();
@@ -17,6 +21,8 @@ vi.mock('@openpalm/lib', async (importOriginal) => {
     detectGpu,
     detectLocalProviders,
     detectRuntime,
+    checkLifecycleDiskHeadroom,
+    resolveOpenPalmHome: () => '/fake/home',
   };
 });
 
@@ -62,6 +68,7 @@ describe('GET /api/setup/system-check', () => {
     process.env.OP_HOST_UI_PORT = '3880';
     process.env.OP_UI_PORT = '3800';
     process.env.OP_ASSISTANT_PORT = '3810';
+    checkLifecycleDiskHeadroom.mockResolvedValue(diskHeadroom('ok'));
   });
 
   afterEach(() => {
@@ -69,7 +76,19 @@ describe('GET /api/setup/system-check', () => {
     delete process.env.OP_HOST_UI_PORT;
     delete process.env.OP_UI_PORT;
     delete process.env.OP_ASSISTANT_PORT;
+    delete process.env.OP_DISK_HARD_BLOCK;
   });
+
+  const GIB = 1024 ** 3;
+
+  function diskHeadroom(status: 'ok' | 'low' | 'critical') {
+    const freeBytes = status === 'critical' ? 0.5 * GIB : status === 'low' ? 3 * GIB : 50 * GIB;
+    const reading = {
+      path: '/fake/home', status, freeBytes, totalBytes: 500 * GIB, measurementFailed: false,
+      lowThresholdBytes: 5 * GIB, criticalThresholdBytes: 1 * GIB,
+    };
+    return { home: reading, dockerRoot: null, dockerRootSkipped: 'unresolved' as const, worst: reading };
+  }
 
   test('degrades port conflicts to non-blocking when docker ps is unreachable', async () => {
     execFileMock.mockImplementation((
@@ -132,6 +151,53 @@ describe('GET /api/setup/system-check', () => {
       service: 'assistant',
       available: true,
       blocking: true,
+    });
+  });
+
+  // W11: disk headroom used to reach only a server-side log during apply —
+  // never the browser. These pin the route's contract for surfacing it.
+  describe('disk headroom (W11)', () => {
+    test('an "ok" reading is not surfaced as a warning', async () => {
+      const mod = await import('./+server.js');
+      const res = await mod.GET({} as Parameters<typeof mod.GET>[0]);
+      const body = await res.json() as { disk: { status: string; blocking: boolean; message: string | null } };
+
+      expect(body.disk).toEqual({ status: 'ok', message: null, blocking: false });
+    });
+
+    test('a critical reading warns but does not block by default', async () => {
+      checkLifecycleDiskHeadroom.mockResolvedValue(diskHeadroom('critical'));
+
+      const mod = await import('./+server.js');
+      const res = await mod.GET({} as Parameters<typeof mod.GET>[0]);
+      const body = await res.json() as { disk: { status: string; blocking: boolean; message: string | null } };
+
+      expect(body.disk.status).toBe('critical');
+      expect(body.disk.blocking).toBe(false);
+      expect(body.disk.message).toMatch(/critically low disk space/i);
+    });
+
+    test('a critical reading blocks only when OP_DISK_HARD_BLOCK=1 is set', async () => {
+      process.env.OP_DISK_HARD_BLOCK = '1';
+      checkLifecycleDiskHeadroom.mockResolvedValue(diskHeadroom('critical'));
+
+      const mod = await import('./+server.js');
+      const res = await mod.GET({} as Parameters<typeof mod.GET>[0]);
+      const body = await res.json() as { disk: { status: string; blocking: boolean } };
+
+      expect(body.disk.blocking).toBe(true);
+    });
+
+    test('a "low" reading never blocks, even with the hard-block flag set', async () => {
+      process.env.OP_DISK_HARD_BLOCK = '1';
+      checkLifecycleDiskHeadroom.mockResolvedValue(diskHeadroom('low'));
+
+      const mod = await import('./+server.js');
+      const res = await mod.GET({} as Parameters<typeof mod.GET>[0]);
+      const body = await res.json() as { disk: { status: string; blocking: boolean } };
+
+      expect(body.disk.status).toBe('low');
+      expect(body.disk.blocking).toBe(false);
     });
   });
 });

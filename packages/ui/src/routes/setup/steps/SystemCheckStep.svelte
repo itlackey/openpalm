@@ -6,6 +6,7 @@
   import { friendlyError, type FriendlyErrorView } from '$lib/client/error-messages.js';
   import Spinner from '$lib/components/common/Spinner.svelte';
   import { setupState } from '$lib/setup/setup-state.svelte.js';
+  import { friendlyProviderName } from '$lib/client/constants.js';
 
   interface CheckResult {
     ok: boolean;
@@ -24,6 +25,12 @@
     runtimeName?: 'Docker' | 'OrbStack' | 'Podman';
   }
 
+  interface DiskResult {
+    status: 'ok' | 'low' | 'critical';
+    message: string | null;
+    blocking: boolean;
+  }
+
   interface SystemCheckResponse {
     ok: boolean;
     docker: CheckResult;
@@ -34,14 +41,12 @@
     runtime?: RuntimeInfo;
     gpu?: string;
     hostProviders?: HostProvider[];
+    disk?: DiskResult;
   }
 
-  const PROVIDER_LABELS: Record<string, string> = {
-    ollama: 'Ollama',
-    lmstudio: 'LM Studio',
-    'model-runner': 'Docker Model Runner',
-  };
-
+  // G-series: friendlyProviderName (constants.js, backed by the PROVIDERS
+  // catalog) already resolves these three ids — this used to keep its own
+  // copy of the same three labels.
   const KNOWN_PROVIDERS = new Set(['ollama', 'lmstudio', 'model-runner']);
 
   // Takes NO props: reads the setup-state store directly (isRerun) and calls its
@@ -67,7 +72,11 @@
     isRerun ? [] : (result?.ports.filter((p) => !p.available) ?? []),
   );
   const blockingPortConflicts = $derived(portConflicts.filter((p) => p.blocking));
-  const hasBlockingConflict = $derived(blockingPortConflicts.length > 0);
+  // W11: `disk.blocking` only comes back true when the lib's own thresholds
+  // intend a hard stop (critical reading AND the operator opted into
+  // OP_DISK_HARD_BLOCK=1) — anything else is a warning row only, never gates.
+  const diskBlocking = $derived(!!result?.disk?.blocking);
+  const hasBlockingConflict = $derived(blockingPortConflicts.length > 0 || diskBlocking);
   const allRequiredPassed = $derived(
     !!result?.docker.ok && !!result?.compose.ok && !hasBlockingConflict,
   );
@@ -91,7 +100,12 @@
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json() as SystemCheckResponse;
       result = data;
-      if (data.docker.ok && data.compose.ok) onpass();
+      // W3: auto-advance used to ignore hasBlockingConflict entirely — a user
+      // with another app parked on 3800/3810/3880 (or, now, a hard disk-space
+      // block) sailed straight through this screen and only hit an opaque
+      // compose error at deploy time. `hasBlockingConflict` is derived from
+      // the `result` just assigned above, so it already reflects this response.
+      if (data.docker.ok && data.compose.ok && !hasBlockingConflict) onpass();
       if (data.gpu) ongpudetected();
     } catch (err) {
       errorView = friendlyError(err, 'system-check');
@@ -194,9 +208,9 @@
           {#if KNOWN_PROVIDERS.has(hp.provider)}<IconServer size={18} />{:else}<IconConnect size={18} />{/if}
         </div>
         <div class="syscheck-body">
-          <div class="syscheck-title">{PROVIDER_LABELS[hp.provider] ?? hp.provider} is running</div>
+          <div class="syscheck-title">{friendlyProviderName(hp.provider)} is running</div>
           <div class="syscheck-meta">{hp.url}</div>
-          <div class="syscheck-hint">We can use this automatically — pick your model on the Models step.</div>
+          <div class="syscheck-hint">We can use this automatically — pick your model on the next step.</div>
         </div>
       </div>
     {/each}
@@ -219,6 +233,23 @@
             Another program is using this port. Quit it and click Retry.
           {/if}
         </div>
+      </div>
+    </div>
+  {/if}
+
+  {#if result?.disk && result.disk.status !== 'ok'}
+    <div class="syscheck-row {diskBlocking ? 'syscheck-row--fail' : 'syscheck-row--warn'}">
+      <div class="syscheck-icon">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={diskBlocking ? 'var(--s-seal)' : 'var(--s-ink-2)'} stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 9v4"/><path d="M12 17h.01"/>
+          <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+        </svg>
+      </div>
+      <div class="syscheck-body">
+        <div class="syscheck-title">
+          {result.disk.status === 'critical' ? 'Critically low disk space' : 'Low disk space'}
+        </div>
+        <div class="syscheck-hint">{result.disk.message}</div>
       </div>
     </div>
   {/if}

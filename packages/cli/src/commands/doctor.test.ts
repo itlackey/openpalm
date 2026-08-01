@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import type { ControlPlaneState } from '@openpalm/lib';
-import { runDoctorAction, type DoctorDeps } from './doctor.ts';
+import { doctorReportHasFailure, runDoctorAction, type DoctorDeps } from './doctor.ts';
 
 // This file deliberately never calls `mock.module('@openpalm/lib', ...)`.
 // `doctor.ts` takes an injectable `deps` object (mirroring the
@@ -14,7 +14,10 @@ import { runDoctorAction, type DoctorDeps } from './doctor.ts';
 // relation to doctor at all. Dependency injection sidesteps that class of
 // problem entirely.
 
-const fakeState = { homeDir: '/tmp/fake-home' } as unknown as ControlPlaneState;
+const fakeState = {
+  homeDir: '/tmp/fake-home',
+  stackDir: '/tmp/fake-home/system/stack',
+} as unknown as ControlPlaneState;
 
 const okDockerResult = { ok: true, stdout: '24.0.0', stderr: '', code: 0 };
 const okStorageReport = {
@@ -48,6 +51,10 @@ function baseDeps(overrides: Partial<DoctorDeps> = {}): DoctorDeps {
     detectGpu: async () => null,
     detectLocalProviders: async () => [],
     probeInstallPorts: async () => [],
+    // Instant no-op defaults: neither check should ever hit the network/docker
+    // in a unit test unless a test overrides them to exercise the reconcile
+    // logic (see the "port-probe reconciliation" describe block below).
+    checkExistingUiInstance: async () => ({ status: 'absent' as const }),
     checkDiskHeadroom: () => okDiskHeadroom,
     describeDiskHeadroom: () => null,
     buildStorageReport: async () => okStorageReport,
@@ -85,6 +92,305 @@ describe('openpalm doctor — registration', () => {
     expect(typeof sub).toBe('function');
     const cmd = (await sub()) as { meta?: { name?: string } };
     expect(cmd.meta?.name).toBe('doctor');
+  });
+});
+
+describe('doctorReportHasFailure (C10/B8 — exit-code semantics)', () => {
+  const availableAdmin = { port: 3880, service: 'admin', blocking: true, available: true } as const;
+  type FailureReport = Parameters<typeof doctorReportHasFailure>[0];
+
+  function healthyReport(overrides: Partial<FailureReport> = {}): FailureReport {
+    return {
+      docker: okDockerResult,
+      compose: okDockerResult,
+      ports: [availableAdmin],
+      diskHeadroom: okDiskHeadroom,
+      storage: okStorageReport,
+      dockerArtifacts: { reliable: true, images: [], supersededImages: [], volumes: [], orphanVolumes: [] },
+      ...overrides,
+    };
+  }
+
+  test('false for a healthy report with no optional actions', () => {
+    expect(doctorReportHasFailure(healthyReport())).toBe(false);
+  });
+
+  test('true when Docker fails', () => {
+    expect(doctorReportHasFailure(healthyReport({ docker: { ...okDockerResult, ok: false } }))).toBe(true);
+  });
+
+  test('true when Compose fails independently of Docker', () => {
+    expect(doctorReportHasFailure(healthyReport({ compose: { ...okDockerResult, ok: false } }))).toBe(true);
+  });
+
+  test('true when a blocking port is unavailable', () => {
+    expect(
+      doctorReportHasFailure(healthyReport({
+        ports: [{ ...availableAdmin, available: false, ownership: 'free' }],
+      })),
+    ).toBe(true);
+  });
+
+  test('false when only a NON-blocking port is unavailable', () => {
+    expect(
+      doctorReportHasFailure(healthyReport({
+        ports: [{ ...availableAdmin, blocking: false, available: false }],
+      })),
+    ).toBe(false);
+  });
+
+  test('true for critical disk headroom but false for a measurable low warning', () => {
+    expect(
+      doctorReportHasFailure(healthyReport({ diskHeadroom: { ...okDiskHeadroom, status: 'critical' } })),
+    ).toBe(true);
+    expect(doctorReportHasFailure(healthyReport({ diskHeadroom: { ...okDiskHeadroom, status: 'low' } }))).toBe(false);
+  });
+
+  test('true when either filesystem measurement fails', () => {
+    expect(
+      doctorReportHasFailure(
+        healthyReport({ diskHeadroom: { ...okDiskHeadroom, status: 'low', measurementFailed: true } }),
+      ),
+    ).toBe(true);
+    expect(
+      doctorReportHasFailure(
+        healthyReport({
+          storage: {
+            ...okStorageReport,
+            filesystem: { ...okStorageReport.filesystem, measurementFailed: true },
+          },
+        }),
+      ),
+    ).toBe(true);
+  });
+
+  test('true when either Docker inventory is unreliable', () => {
+    const unavailable = {
+      reliable: false as const,
+      error: 'inventory failed',
+      images: [],
+      supersededImages: [],
+      volumes: [],
+      orphanVolumes: [],
+    };
+    expect(doctorReportHasFailure(healthyReport({ dockerArtifacts: unavailable }))).toBe(true);
+    expect(
+      doctorReportHasFailure(healthyReport({ storage: { ...okStorageReport, docker: unavailable } })),
+    ).toBe(true);
+  });
+
+  test('true for explicit Docker cleanup errors; successful and skipped cleanup are not failures', () => {
+    expect(
+      doctorReportHasFailure(
+        healthyReport({ cleanDockerResult: { removedImages: [], removedVolumes: [], errors: ['remove failed'] } }),
+      ),
+    ).toBe(true);
+    expect(
+      doctorReportHasFailure(
+        healthyReport({ cleanDockerResult: { removedImages: ['old'], removedVolumes: [], errors: [] } }),
+      ),
+    ).toBe(false);
+    expect(
+      doctorReportHasFailure(
+        healthyReport({ cleanDockerResult: { removedImages: [], removedVolumes: [], errors: [], skipped: true } }),
+      ),
+    ).toBe(false);
+  });
+
+  test('successful and skipped cache cleanup are not failures', () => {
+    expect(
+      doctorReportHasFailure(
+        healthyReport({ cleanCachesResult: { removed: ['cache'], freedBytes: 1, dryRun: false } }),
+      ),
+    ).toBe(false);
+    expect(
+      doctorReportHasFailure(
+        healthyReport({ cleanCachesResult: { removed: [], freedBytes: 0, dryRun: false, skipped: true } }),
+      ),
+    ).toBe(false);
+  });
+
+  test('session listing errors fail; a successful listing does not', () => {
+    expect(doctorReportHasFailure(healthyReport({ sessionsResult: { error: 'offline' } }))).toBe(true);
+    expect(
+      doctorReportHasFailure(
+        healthyReport({
+          sessionsResult: {
+            page: 1,
+            pageSize: 100,
+            totalSessions: 0,
+            totalPages: 0,
+            rows: [],
+            summary: { rootCount: 0, maxDepth: 0, staleCount: 0 },
+          },
+        }),
+      ),
+    ).toBe(false);
+  });
+
+  test('session pruning errors and partial deletion failures fail', () => {
+    expect(doctorReportHasFailure(healthyReport({ pruneSessionsResult: { error: 'list failed' } }))).toBe(true);
+    expect(
+      doctorReportHasFailure(
+        healthyReport({
+          pruneSessionsResult: {
+            dryRun: false,
+            plan: { totalSessions: 1, rootCount: 0, preservedRootIds: [], deleteSessionIds: ['s1'], preservedChildIds: [] },
+            deleted: [],
+            deleteFailures: [{ id: 's1', message: 'delete failed' }],
+            checkpointed: false,
+            vacuumed: false,
+          },
+        }),
+      ),
+    ).toBe(true);
+  });
+
+  test('successful, dry-run, and skipped session pruning are not failures', () => {
+    const success = {
+      dryRun: false,
+      plan: { totalSessions: 1, rootCount: 0, preservedRootIds: [], deleteSessionIds: ['s1'], preservedChildIds: [] },
+      deleted: ['s1'],
+      deleteFailures: [],
+      checkpointed: false,
+      vacuumed: false,
+    };
+    expect(doctorReportHasFailure(healthyReport({ pruneSessionsResult: success }))).toBe(false);
+    expect(
+      doctorReportHasFailure(healthyReport({ pruneSessionsResult: { ...success, dryRun: true, deleted: [] } })),
+    ).toBe(false);
+    expect(doctorReportHasFailure(healthyReport({ pruneSessionsResult: { skipped: true } }))).toBe(false);
+  });
+
+  test('DB reclamation errors fail; successful, no-op, and skipped results do not', () => {
+    const database = {
+      role: 'assistant' as const,
+      path: '/tmp/opencode.db',
+      present: true,
+      vacuumed: false,
+      freedBytes: 0,
+    };
+    expect(
+      doctorReportHasFailure(
+        healthyReport({ reclaimDbResult: { databases: [{ ...database, error: 'database is locked' }] } }),
+      ),
+    ).toBe(true);
+    expect(doctorReportHasFailure(healthyReport({ reclaimDbResult: { databases: [database] } }))).toBe(false);
+    expect(doctorReportHasFailure(healthyReport({ reclaimDbResult: { databases: [] } }))).toBe(false);
+    expect(doctorReportHasFailure(healthyReport({ reclaimDbResult: { databases: [], skipped: true } }))).toBe(false);
+  });
+});
+
+describe('openpalm doctor — port-probe fixes (C10/B9)', () => {
+  test('port targets are resolved from persisted stack.env, not live process.env alone', async () => {
+    const savedPorts = {
+      OP_HOST_UI_PORT: process.env.OP_HOST_UI_PORT,
+      OP_UI_PORT: process.env.OP_UI_PORT,
+      OP_ASSISTANT_PORT: process.env.OP_ASSISTANT_PORT,
+    };
+    delete process.env.OP_HOST_UI_PORT;
+    delete process.env.OP_UI_PORT;
+    delete process.env.OP_ASSISTANT_PORT;
+    const originalLog = console.log;
+    console.log = silentConsole.log;
+    let seenTargets: Array<{ port: number; service: string }> = [];
+    try {
+      const deps = baseDeps({
+        readStackEnv: () => ({ OP_HOST_UI_PORT: '4300', OP_UI_PORT: '4301', OP_ASSISTANT_PORT: '4302' }),
+        probeInstallPorts: async (targets) => {
+          seenTargets = (targets ?? []).map((t) => ({ port: t.port, service: t.service }));
+          return [];
+        },
+      });
+      await runDoctorAction({ json: true }, deps);
+    } finally {
+      console.log = originalLog;
+      for (const [key, value] of Object.entries(savedPorts)) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+    }
+    expect(seenTargets).toEqual([
+      { port: 4300, service: 'admin' },
+      { port: 4301, service: 'ui' },
+      { port: 4302, service: 'assistant' },
+    ]);
+  });
+
+  test('passes serverPort for the admin port once an OpenPalm UI instance answers there — the host UI is never a container, so no docker check could otherwise attribute it to "us"', async () => {
+    const originalLog = console.log;
+    console.log = silentConsole.log;
+    let seenServerPort: number | undefined;
+    try {
+      const deps = baseDeps({
+        readStackEnv: () => ({ OP_HOST_UI_PORT: '4400' }),
+        checkExistingUiInstance: async (port) =>
+          port === 4400 ? { status: 'match' as const, admin: true } : { status: 'absent' as const },
+        probeInstallPorts: async (_targets, opts) => {
+          seenServerPort = opts?.serverPort;
+          return [];
+        },
+      });
+      await runDoctorAction({ json: true }, deps);
+    } finally {
+      console.log = originalLog;
+    }
+    expect(seenServerPort).toBe(4400);
+  });
+
+  test('does NOT short-circuit the admin port on a "mismatch" identity — a non-admin `openpalm ui` already on the port is a real conflict, not "ours" (review finding #5)', async () => {
+    const originalLog = console.log;
+    console.log = silentConsole.log;
+    try {
+      const deps = baseDeps({
+        readStackEnv: () => ({ OP_HOST_UI_PORT: '4400' }),
+        // "mismatch" — something OpenPalm-shaped is on the port, but at the
+        // wrong capability level (ui-server.ts / Electron's main.ts both
+        // hard-refuse to attach to this). Doctor must not paper over it.
+        checkExistingUiInstance: async (port) =>
+          port === 4400 ? { status: 'mismatch' as const, admin: false } : { status: 'absent' as const },
+        probeInstallPorts: async (targets, opts) =>
+          (targets ?? []).map((t) => ({
+            ...t,
+            // Mirrors the real probeInstallPorts: a mismatched process really
+            // does hold the socket, so a plain TCP bind fails for it too —
+            // UNLESS serverPort short-circuited it, which must not happen here.
+            available: opts?.serverPort === t.port,
+            ownership: opts?.serverPort === t.port ? ('ours' as const) : ('free' as const),
+          })),
+      });
+      const report = await runDoctorAction({ json: true }, deps);
+      const admin = report.ports.find((p) => p.service === 'admin');
+      expect(admin).toMatchObject({ available: false, ownership: 'free' });
+      expect(doctorReportHasFailure(report)).toBe(true);
+    } finally {
+      console.log = originalLog;
+    }
+  });
+
+  test('passes the custom project and this stack directory into the per-port ownership probe', async () => {
+    const originalLog = console.log;
+    console.log = silentConsole.log;
+    let seenProject: { name: string; workingDir: string } | undefined;
+    try {
+      const deps = baseDeps({
+        resolveComposeProjectName: () => 'myproj',
+        probeInstallPorts: async (targets, opts) => {
+          seenProject = opts?.composeProject;
+          return (targets ?? []).map((t) => ({
+            ...t,
+            available: t.service === 'admin',
+            ownership: t.service === 'admin' ? undefined : ('free' as const),
+          }));
+        },
+      });
+      const report = await runDoctorAction({ json: true }, deps);
+      const ui = report.ports.find((p) => p.service === 'ui');
+      expect(seenProject).toEqual({ name: 'myproj', workingDir: '/tmp/fake-home/system/stack' });
+      expect(ui).toMatchObject({ available: false, ownership: 'free' });
+    } finally {
+      console.log = originalLog;
+    }
   });
 });
 

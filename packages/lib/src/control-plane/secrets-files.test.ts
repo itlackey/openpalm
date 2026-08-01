@@ -145,6 +145,25 @@ describe('secrets-dir file browser API (admin Secrets tab)', () => {
     expect(readSecretFile(stackDir, 'auth.json')).toBeNull();
   });
 
+  // auth.json is a single-file bind mount (core.compose.yml): a tmp+rename
+  // write would swap it for a new inode while the running assistant container
+  // keeps the old, unlinked one open. writeAuthJsonProviderKeys (secrets.ts)
+  // is pinned against this by auth-json-inode.test.ts, but writeSecretFile is
+  // a SEPARATE writer reaching the same file (the admin Secrets tab's raw file
+  // editor) — pin it here too so the two writers cannot silently diverge again.
+  it('keeps auth.json\'s inode across a writeSecretFile write', () => {
+    const stackDir = tempStackDir();
+    const path = join(resolveSecretsDir(stackDir), 'auth.json');
+    writeFileSync(path, '{}\n', { mode: 0o600 });
+    const before = statSync(path).ino;
+
+    writeSecretFile(stackDir, 'auth.json', '{"token":"x"}');
+
+    expect(statSync(path).ino).toBe(before);
+    expect(statSync(path).mode & 0o777).toBe(0o600);
+    expect(readSecretFile(stackDir, 'auth.json')).toBe('{"token":"x"}');
+  });
+
   it('rejects path traversal and unsafe names', () => {
     expect(() => assertSafeSecretFilename('../escape')).toThrow();
     expect(() => assertSafeSecretFilename('a/b')).toThrow();

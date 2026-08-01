@@ -11,7 +11,6 @@
     "packages/guardian",
     "packages/cli",
     "packages/portal-discord",
-    "packages/electron/admin-tools",
     "packages/portal-slack",
     "packages/electron"
   ],
@@ -42,7 +41,7 @@
     "dev:build": "./scripts/dev-setup.sh --seed-env && docker compose --project-name openpalm-dev --project-directory . -f .dev/system/stack/core.compose.yml -f .dev/system/stack/services.compose.yml -f .dev/system/stack/portals.compose.yml -f .dev/config/stack/custom.compose.yml -f compose.dev.yml --env-file .dev/state/stack.env up --build -d",
     "_dev:stack:note": "Intentional dev shortcut: 4-file compose list mirrors the CLI overlay discovery for the dev layout — MANAGED core/services/portals from .dev/system/stack/, USER custom from .dev/config/stack/. --project-name openpalm-dev is required to avoid colliding with a production stack under ~/.openpalm/.",
     "electron:test": "bun run --cwd packages/electron test",
-    "test": "bun test --isolate --no-orphans packages/portal-discord packages/portal-slack packages/portal-sdk packages/cli/src packages/lib packages/electron/admin-tools packages/guardian/ scripts/",
+    "test": "bun test --isolate --no-orphans packages/portal-discord packages/portal-slack packages/portal-sdk packages/cli/src packages/lib packages/guardian/ scripts/",
     "analysis:fta:json": "npx -y fta-cli . -c fta.json --json",
     "check": "bun run ui:check",
     "lint": "biome lint .",

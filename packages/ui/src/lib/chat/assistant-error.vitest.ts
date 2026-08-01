@@ -51,4 +51,45 @@ describe('mapAssistantError', () => {
 		expect(mapAssistantError(null)).toBe('Something went wrong.');
 		expect(mapAssistantError(undefined)).toBe('Something went wrong.');
 	});
+
+	// F3: a structured `detail` (extracted from the /oc proxy envelope,
+	// OpenCode's own error JSON, or a session.error event) is more specific
+	// than every generic ladder entry below it and must win.
+	it('prefers a structured detail over the generic 503/502 copy', () => {
+		expect(
+			mapAssistantError({ status: 503, detail: 'The assistant is not responding — it may still be starting.' })
+		).toBe('The assistant is not responding — it may still be starting.');
+		expect(mapAssistantError({ status: 502, detail: 'Upstream provider rejected the request: invalid API key.' })).toBe(
+			'Upstream provider rejected the request: invalid API key.'
+		);
+	});
+
+	it('appends the reconnect hint after a structured detail', () => {
+		expect(
+			mapAssistantError(
+				{ status: 503, detail: 'The assistant is not responding — it may still be starting.' },
+				{ reconnectHint: true }
+			)
+		).toBe('The assistant is not responding — it may still be starting. Try reconnecting.');
+	});
+
+	it('falls back to the generic 503/502 copy when there is no detail', () => {
+		expect(mapAssistantError({ status: 503, message: 'HTTP 503' })).toBe('Assistant is not reachable.');
+	});
+
+	it('ignores a structured detail for 401 — Sign-in required is a fixed app message', () => {
+		expect(mapAssistantError({ status: 401, detail: 'irrelevant provider detail' })).toBe(
+			'Sign-in required.'
+		);
+	});
+
+	it('uses a structured detail for an unrecognized status even when message is a generic placeholder', () => {
+		expect(mapAssistantError({ status: 400, message: 'HTTP 400', detail: 'Unknown model "gpt-9".' })).toBe(
+			'Unknown model "gpt-9".'
+		);
+	});
+
+	it('ignores a blank/whitespace-only detail', () => {
+		expect(mapAssistantError({ status: 500, detail: '   ', message: 'boom' })).toBe('boom');
+	});
 });

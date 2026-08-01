@@ -106,8 +106,8 @@ export function recommendSetup(input: SetupRecommendationInput): SetupRecommenda
       action: "connect-manually",
       alert:
         "Your host OpenCode installation has configured AI providers. " +
-        "Import them now to use your existing setup — click \"Import from host OpenCode\" " +
-        "on the Providers step, or connect a provider manually.",
+        "Import them now to use your existing setup — choose \"Sign in to a different service\" " +
+        "and use the account found on this computer, or connect a provider manually.",
     };
   }
 
@@ -117,7 +117,7 @@ export function recommendSetup(input: SetupRecommendationInput): SetupRecommenda
       hostProviders,
       alert: `No cloud AI provider was detected, but ${labelHostProviders(hostProviders)} ${
         hostProviders.length > 1 ? "are" : "is"
-      } running on your computer — added automatically. Pick your models on the next step.`,
+      } running on your computer — added automatically.`,
     };
   }
 
@@ -133,7 +133,7 @@ export function recommendSetup(input: SetupRecommendationInput): SetupRecommenda
         "No AI provider was detected. On macOS, fast local models need Ollama running " +
         "natively (it uses your Apple Silicon / Metal GPU) — the bundled in-stack Ollama " +
         "runs in Linux and cannot reach Metal. Install Ollama for macOS (https://ollama.com/download), " +
-        "or connect a provider on the next step.",
+        "or sign in to a cloud provider instead.",
     };
   }
 
@@ -152,6 +152,7 @@ export function recommendSetup(input: SetupRecommendationInput): SetupRecommenda
     action: "connect-manually",
     alert:
       "No AI provider was detected and no GPU with enough memory for local models was found. " +
-      "Connect a provider to continue — sign in to a provider on the next step, or add a custom OpenAI-compatible endpoint and key.",
+      "Sign in to a provider to continue, or add a custom OpenAI-compatible endpoint and key " +
+      "from your dashboard.",
   };
 }

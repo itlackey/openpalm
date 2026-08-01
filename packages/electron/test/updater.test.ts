@@ -23,6 +23,8 @@ class FakeUpdater implements AppUpdaterLike {
   checkCalls = 0;
   downloadCalls = 0;
   quitCalls: Array<[boolean | undefined, boolean | undefined]> = [];
+  installCalls: Array<[boolean | undefined, boolean | undefined]> = [];
+  installResult = true;
   feedVersion: string | null = '2.0.0';
   checkError: Error | null = null;
   downloadError: Error | null = null;
@@ -57,11 +59,27 @@ class FakeUpdater implements AppUpdaterLike {
     this.quitCalls.push([isSilent, isForceRunAfter]);
   }
 
+  install(isSilent?: boolean, isForceRunAfter?: boolean): boolean {
+    this.installCalls.push([isSilent, isForceRunAfter]);
+    return this.installResult;
+  }
+
   on(event: string, listener: (...args: unknown[]) => void) {
     const list = this.listeners.get(event) ?? [];
     list.push(listener);
     this.listeners.set(event, list);
     return this;
+  }
+
+  removeListener(event: string, listener: (...args: unknown[]) => void) {
+    const list = this.listeners.get(event) ?? [];
+    const idx = list.indexOf(listener);
+    if (idx >= 0) list.splice(idx, 1);
+    return this;
+  }
+
+  listenerCount(event: string): number {
+    return (this.listeners.get(event) ?? []).length;
   }
 
   emit(event: string, ...args: unknown[]): void {
@@ -73,6 +91,8 @@ function makeUpdater(
   overrides: Partial<{
     platform: NodeJS.Platform;
     isPackaged: boolean;
+    portableExecutableFile: string;
+    windowsInstallerPresent: boolean;
     prerelease: boolean;
     now: () => number;
   }> = {},
@@ -83,6 +103,8 @@ function makeUpdater(
     currentVersion: '1.0.0',
     platform: overrides.platform ?? 'linux',
     isPackaged: overrides.isPackaged ?? true,
+    portableExecutableFile: overrides.portableExecutableFile,
+    windowsInstallerPresent: overrides.windowsInstallerPresent ?? true,
     prerelease: overrides.prerelease ?? false,
     now: overrides.now,
   });
@@ -124,14 +146,57 @@ describe('channel mapping', () => {
 
 describe('platform support', () => {
   it('supports packaged Windows and Linux', () => {
-    expect(isAutoUpdateSupported('win32', true)).toBe(true);
-    expect(isAutoUpdateSupported('linux', true)).toBe(true);
+    expect(isAutoUpdateSupported('win32', true, true)).toBe(true);
+    expect(isAutoUpdateSupported('linux', true, false)).toBe(true);
   });
 
   it('does not support macOS (unsigned/un-notarized) or unpackaged runs', () => {
-    expect(isAutoUpdateSupported('darwin', true)).toBe(false);
-    expect(isAutoUpdateSupported('linux', false)).toBe(false);
-    expect(isAutoUpdateSupported('win32', false)).toBe(false);
+    expect(isAutoUpdateSupported('darwin', true, false)).toBe(false);
+    expect(isAutoUpdateSupported('linux', false, false)).toBe(false);
+    expect(isAutoUpdateSupported('win32', false, true)).toBe(false);
+  });
+
+  it('does not support electron-builder Windows portable runtimes', () => {
+    expect(isAutoUpdateSupported('win32', true, true, 'C:\\Downloads\\OpenPalm.exe')).toBe(false);
+    expect(isAutoUpdateSupported('linux', true, false, '/tmp/irrelevant-portable-signal')).toBe(true);
+  });
+
+  it('does not support an extracted Windows archive with no NSIS uninstaller', () => {
+    expect(isAutoUpdateSupported('win32', true, false)).toBe(false);
+  });
+
+  it('keeps an extracted Windows archive inert instead of installing NSIS elsewhere', async () => {
+    const { updater, fake } = makeUpdater({
+      platform: 'win32',
+      windowsInstallerPresent: false,
+    });
+
+    expect(updater.getState()).toMatchObject({ status: 'unsupported', supported: false });
+    await updater.check();
+    await updater.download();
+    expect(updater.quitAndInstall()).toBe(false);
+    expect(updater.installOnQuit()).toBe(false);
+    expect(fake.checkCalls).toBe(0);
+    expect(fake.downloadCalls).toBe(0);
+    expect(fake.quitCalls).toEqual([]);
+    expect(fake.installCalls).toEqual([]);
+  });
+
+  it('keeps a portable runtime inert so it cannot download or install NSIS', async () => {
+    const { updater, fake } = makeUpdater({
+      platform: 'win32',
+      portableExecutableFile: 'C:\\Downloads\\OpenPalm.exe',
+    });
+
+    expect(updater.getState()).toMatchObject({ status: 'unsupported', supported: false });
+    await updater.check();
+    await updater.download();
+    expect(updater.quitAndInstall()).toBe(false);
+    expect(updater.installOnQuit()).toBe(false);
+    expect(fake.checkCalls).toBe(0);
+    expect(fake.downloadCalls).toBe(0);
+    expect(fake.quitCalls).toEqual([]);
+    expect(fake.installCalls).toEqual([]);
   });
 
   it('reports unsupported with a manual releases URL, and never calls the updater', async () => {
@@ -151,10 +216,15 @@ describe('platform support', () => {
 });
 
 describe('consent before download', () => {
-  it('disables autoDownload and enables install-on-quit', () => {
+  // autoInstallOnAppQuit stays OFF: electron-updater's own install-on-quit
+  // hook is wired to Electron's 'quit' event, which main.ts's before-quit
+  // handler never reaches (it always finishes with app.exit(0) — see the
+  // class docblock). Ordinary-quit install is handled explicitly by
+  // installOnQuit() below instead, called directly from main.ts.
+  it('disables autoDownload and does not rely on electron-updater\'s own install-on-quit hook', () => {
     const { fake } = makeUpdater();
     expect(fake.autoDownload).toBe(false);
-    expect(fake.autoInstallOnAppQuit).toBe(true);
+    expect(fake.autoInstallOnAppQuit).toBe(false);
   });
 
   it('discovering an update does not download it', async () => {
@@ -308,6 +378,103 @@ describe('quitAndInstall', () => {
     expect(updater.quitAndInstall()).toBe(true);
     // isSilent=false keeps the installer UI; isForceRunAfter=true relaunches.
     expect(fake.quitCalls).toEqual([[false, true]]);
+  });
+});
+
+// installOnQuit() is what actually makes a staged update install on an
+// ordinary quit (main.ts's before-quit calls this, not quitAndInstall — see
+// the class docblock for why the two must not be conflated).
+describe('installOnQuit', () => {
+  it('does nothing until a download has completed', async () => {
+    const { updater, fake } = makeUpdater();
+    expect(updater.installOnQuit()).toBe(false);
+    await updater.check();
+    expect(updater.installOnQuit()).toBe(false);
+    expect(fake.installCalls).toEqual([]);
+    expect(fake.quitCalls).toEqual([]);
+  });
+
+  it('silently launches the installer with no relaunch, once a download has completed', async () => {
+    const { updater, fake } = makeUpdater();
+    await updater.check();
+    fake.emit('update-downloaded');
+    await updater.download();
+    expect(updater.installOnQuit()).toBe(true);
+    // isSilent=true, isForceRunAfter=false: an ordinary quit is not "restart
+    // now" — that stays quitAndInstall()'s job.
+    expect(fake.installCalls).toEqual([[true, false]]);
+    // Crucially, this must NOT go through quitAndInstall — that schedules
+    // electron-updater's own app.quit() internally, which would race
+    // main.ts's own exit sequence (see the class docblock).
+    expect(fake.quitCalls).toEqual([]);
+  });
+
+  it('propagates a failed install (e.g. no installer file) as false', async () => {
+    const { updater, fake } = makeUpdater();
+    await updater.check();
+    fake.emit('update-downloaded');
+    await updater.download();
+    fake.installResult = false;
+    expect(updater.installOnQuit()).toBe(false);
+  });
+
+  it('does nothing on an unsupported (e.g. macOS) instance', async () => {
+    const { updater, fake } = makeUpdater({ platform: 'darwin' });
+    expect(updater.installOnQuit()).toBe(false);
+    expect(fake.installCalls).toEqual([]);
+  });
+});
+
+// E6: createDesktopUpdater rebuilds a DesktopUpdater over the SAME singleton
+// autoUpdater on every prerelease-channel toggle. Without dispose(), each
+// rebuild leaves the PRIOR instance's listeners registered on the shared
+// updater, so N toggles == N sets of listeners all still firing.
+describe('dispose (listener teardown)', () => {
+  it('removes this instance\'s listeners from the shared updater', () => {
+    const { updater, fake } = makeUpdater();
+    expect(fake.listenerCount('download-progress')).toBe(1);
+    expect(fake.listenerCount('update-downloaded')).toBe(1);
+
+    updater.dispose();
+
+    expect(fake.listenerCount('download-progress')).toBe(0);
+    expect(fake.listenerCount('update-downloaded')).toBe(0);
+  });
+
+  it('a disposed instance no longer reacts to events from the shared updater', async () => {
+    const { updater, fake } = makeUpdater();
+    await updater.check();
+    updater.dispose();
+
+    fake.emit('download-progress', { percent: 77 });
+    // percent stays whatever it was before dispose (null — no download started).
+    expect(updater.getState().percent).toBeNull();
+  });
+
+  it('rebuilding over the same singleton after dispose leaves exactly one listener set', () => {
+    const fake = new FakeUpdater();
+    const first = new DesktopUpdater({ updater: fake, currentVersion: '1.0.0', platform: 'linux', isPackaged: true, windowsInstallerPresent: false, prerelease: false });
+    first.dispose();
+    const second = new DesktopUpdater({ updater: fake, currentVersion: '1.0.0', platform: 'linux', isPackaged: true, windowsInstallerPresent: false, prerelease: true });
+
+    expect(fake.listenerCount('download-progress')).toBe(1);
+    expect(fake.listenerCount('update-downloaded')).toBe(1);
+
+    fake.emit('download-progress', { percent: 55 });
+    expect(second.getState().percent).toBe(55);
+  });
+
+  it('is a no-op on an unsupported (e.g. macOS) instance', () => {
+    const { updater, fake } = makeUpdater({ platform: 'darwin' });
+    expect(() => updater.dispose()).not.toThrow();
+    expect(fake.listenerCount('download-progress')).toBe(0);
+  });
+
+  it('is safe to call twice', () => {
+    const { updater, fake } = makeUpdater();
+    updater.dispose();
+    expect(() => updater.dispose()).not.toThrow();
+    expect(fake.listenerCount('download-progress')).toBe(0);
   });
 });
 

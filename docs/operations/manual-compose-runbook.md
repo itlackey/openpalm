@@ -12,12 +12,32 @@ complete install.
 | `$OP_HOME/system/stack/core.compose.yml` | Core assistant service |
 | `$OP_HOME/system/stack/services.compose.yml` | Profile-gated first-party services |
 | `$OP_HOME/system/stack/portals.compose.yml` | Profile-gated Guardian and portals |
+| `$OP_HOME/system/stack/voice.compose.lan.yml` | **Conditional** — only when `OP_VOICE_LAN_ACCESS=true` in `stack.env` (see below) |
 | `$OP_HOME/config/stack/custom.compose.yml` | Sole user-owned Compose overlay |
 | `$OP_HOME/state/stack.env` | Sole non-secret Compose env file |
 | `$OP_HOME/private/secrets/` | Delegated service secret sources |
 | `$OP_HOME/knowledge/secrets/auth.json` | Provider auth used by OpenCode |
 
-Use the same four-file list for every command.
+The first three managed files are always present in a generated install and
+are used by every command. `voice.compose.lan.yml` is not fixed: it joins the
+list only when the voice addon's **Let devices on your network use voice
+through the published UI** setting is on
+(`OP_VOICE_LAN_ACCESS=true` in `state/stack.env`). Every OpenPalm-driven
+Compose invocation (`openpalm start`, an update, a settings-triggered
+recreate) includes it automatically when that flag is set — a manual command
+that leaves it out silently recreates the voice container without
+`assistant_net`, breaking LAN voice access until the file is included again.
+Check the current value with:
+
+```bash
+grep OP_VOICE_LAN_ACCESS "$OP_HOME/state/stack.env"
+```
+
+`system/stack/` also ships `voice.compose.rootless.yml` and
+`voice.compose.cdi.yml`, hardware-specific fallbacks the voice bring-up flow
+selects on its own for rootless Docker or CDI-only NVIDIA hosts. Prefer
+`openpalm start`/the voice addon's bring-up flow over inventing an equivalent
+manual overlay for those two.
 
 ## Profile Contract
 
@@ -43,23 +63,29 @@ op() {
   local home="${OP_HOME:-$HOME/.openpalm}"
   local project="${OP_PROJECT_NAME:-openpalm}"
   local key value
+  local -a files=(
+    -f "$home/system/stack/core.compose.yml"
+    -f "$home/system/stack/services.compose.yml"
+    -f "$home/system/stack/portals.compose.yml"
+  )
 
-  if [ -z "${OP_PROJECT_NAME:-}" ]; then
-    while IFS='=' read -r key value; do
-      if [ "$key" = "OP_PROJECT_NAME" ]; then
-        project="${value%$'\r'}"
-        break
-      fi
-    done < "$home/state/stack.env"
-  fi
+  # Also picks up OP_VOICE_LAN_ACCESS so the voice LAN overlay is never
+  # silently dropped (see Runtime Inputs above).
+  while IFS='=' read -r key value; do
+    value="${value%$'\r'}"
+    if [ -z "${OP_PROJECT_NAME:-}" ] && [ "$key" = "OP_PROJECT_NAME" ]; then
+      project="$value"
+    elif [ "$key" = "OP_VOICE_LAN_ACCESS" ] && [ "$value" = "true" ]; then
+      files+=(-f "$home/system/stack/voice.compose.lan.yml")
+    fi
+  done < "$home/state/stack.env"
+
+  files+=(-f "$home/config/stack/custom.compose.yml")
 
   docker compose \
     --project-name "$project" \
     --env-file "$home/state/stack.env" \
-    -f "$home/system/stack/core.compose.yml" \
-    -f "$home/system/stack/services.compose.yml" \
-    -f "$home/system/stack/portals.compose.yml" \
-    -f "$home/config/stack/custom.compose.yml" \
+    "${files[@]}" \
     "$@"
 }
 ```
@@ -94,6 +120,11 @@ docker compose \
 If `state/stack.env` records a non-default `OP_PROJECT_NAME`, export that exact
 value before using the expanded command. Compose's `--env-file` does not apply
 to shell expansion of the preceding `--project-name` argument.
+
+If `OP_VOICE_LAN_ACCESS=true` is set in `state/stack.env`, add `-f
+"$OP_HOME/system/stack/voice.compose.lan.yml"` before the `-f
+"$OP_HOME/config/stack/custom.compose.yml"` line in the command above — the
+`op` shell helper does this automatically.
 
 ## Validate Before Mutation
 
@@ -204,7 +235,10 @@ curl -fsS http://127.0.0.1:8880/health
 
 Use the managed hardware profile selected for the host. For CDI or rootless
 fallback selection, prefer the OpenPalm bring-up flow rather than inventing an
-operator GPU overlay.
+operator GPU overlay. To also expose voice to the assistant-served (LAN) UI,
+see the `voice.compose.lan.yml` note under [Runtime Inputs](#runtime-inputs)
+above and
+[Troubleshooting → Voice Does Not Start](../troubleshooting.md#voice-does-not-start).
 
 ## Backup and Restore
 
@@ -222,7 +256,7 @@ includes regenerable caches. See [Backup & Restore](../backup-restore.md).
 
 | Document | Purpose |
 |---|---|
-| [Installation](../installation.md) | Generate a complete runtime home |
+| [Setup Guide](../setup-guide.md) | Generate a complete runtime home |
 | [Manual and Headless Install](manual-headless-install.md) | Version 2 setup specs |
 | [Troubleshooting](../troubleshooting.md) | Common failures |
 | [Core Principles](../technical/core-principles.md) | Architecture and security rules |

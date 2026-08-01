@@ -2,6 +2,24 @@ import type { ModelSelection, PortalState, Provider, ProviderState } from '../cl
 import { buildPortalsConfig } from '../client/helpers.js';
 import { coerceAccessToggles, type AccessToggles } from '@openpalm/lib/control-plane/access-toggles.js';
 
+// W10: a detected/entered `localhost`/`127.0.0.1` provider URL means "this
+// machine" from the wizard's own (host-process) point of view — where the
+// probing and live model-list verification actually run — but once persisted
+// into the ASSISTANT CONTAINER's config, `localhost` means the container
+// itself, not the host running Ollama/LM Studio/Docker Model Runner. The
+// assistant service ships `host.docker.internal:host-gateway` in
+// `extra_hosts` unconditionally (core.compose.yml), which resolves to the
+// host on Linux, macOS, and Windows alike, so rewrite the hostname only here
+// — at the point a baseUrl is persisted for container consumption — and
+// leave `providerState.baseUrl` (used for host-side verification throughout
+// the wizard) untouched.
+const LOOPBACK_HOST_RE = /^(https?:\/\/)(localhost|127(?:\.\d{1,3}){3}|\[?::1\]?)(?=[:/]|$)/i;
+
+function toContainerReachableUrl(url: string): string {
+  if (!url) return url;
+  return url.replace(LOOPBACK_HOST_RE, '$1host.docker.internal');
+}
+
 // ── Install payload contract (POST /api/setup/complete) ──────────────────────
 // The pure builder + inverse parser for the setup install contract. Extracted
 // from setup/+page.svelte so the assembly rules (capability selection, addon
@@ -92,7 +110,8 @@ export function buildSetupPayload(input: SetupPayloadInput): SetupPayload {
     .filter((p) => capabilityProviderIds[p.id])
     .map((p) => {
       const st = providerState[p.id];
-      return { id: p.id, name: p.name, provider: p.id, baseUrl: st?.baseUrl ?? p.baseUrl, apiKey: st?.apiKey ?? '' };
+      const baseUrl = toContainerReachableUrl(st?.baseUrl ?? p.baseUrl);
+      return { id: p.id, name: p.name, provider: p.id, baseUrl, apiKey: st?.apiKey ?? '' };
     });
 
   const llmConnId = llm?.connId ?? '';

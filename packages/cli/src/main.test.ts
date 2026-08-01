@@ -22,7 +22,7 @@ import * as nodeChildProcess from 'node:child_process';
 // per-test timeout can never fire and the whole run hangs forever. Delegate
 // through these captured references instead.
 const realChildProcess = { ...nodeChildProcess };
-import { detectHostInfo, isAssistantHealthy, main } from './main.ts';
+import { detectHostInfo, isAssistantHealthy, main, parseBareArgs } from './main.ts';
 import {
 	PLATFORM_VERSION,
 	readSecret,
@@ -542,6 +542,76 @@ describe('cli main', () => {
 			rmSync(base, { recursive: true, force: true });
 		}
 	});
+
+	// C7: --version pins CONTAINER IMAGE tags only; a garbage value used to
+	// silently fall back to the default pin instead of erroring.
+	it('hard-errors on an unparseable --version instead of silently falling back', async () => {
+		const base = mkdtempSync(join(tmpdir(), 'openpalm-install-version-invalid-'));
+		const workDir = join(base, 'work');
+		const specFile = writeMinimalSetupSpec(base);
+
+		process.env.OP_HOME = base;
+		process.env.OP_WORK_DIR = workDir;
+		const originalExit = process.exit;
+		const originalError = console.error;
+		process.exit = mock((_code?: number) => {
+			throw new Error(`process.exit(${_code})`);
+		}) as typeof process.exit;
+		let errorLine = '';
+		console.error = mock((...args: unknown[]) => {
+			errorLine = args.map(String).join(' ');
+		}) as typeof console.error;
+
+		try {
+			const err = await main(['install', '--no-start', '--file', specFile, '--version', 'banana']).catch(
+				(e: unknown) => e
+			);
+			expect(err instanceof Error ? err.message : String(err)).toBe('process.exit(1)');
+			expect(errorLine).toContain('Invalid --version value "banana"');
+			// Rejected before touching disk — no config written for a garbage pin.
+			expect(existsSync(join(base, 'state', 'stack.env'))).toBe(false);
+		} finally {
+			process.exit = originalExit;
+			console.error = originalError;
+			rmSync(base, { recursive: true, force: true });
+		}
+	});
+
+	// C7: a same-binary/different-release skew (host assets stay pinned to
+	// this binary's own version; only the image tag changes) must be visible,
+	// not silent.
+	it('warns when --version differs from this binary\'s own packaged version', async () => {
+		const base = mkdtempSync(join(tmpdir(), 'openpalm-install-version-skew-'));
+		const workDir = join(base, 'work');
+		const specFile = writeMinimalSetupSpec(base);
+
+		process.env.OP_HOME = base;
+		process.env.OP_WORK_DIR = workDir;
+		mockDockerCli();
+		globalThis.fetch = mock(async (input: string | URL) => {
+			const url = String(input);
+			if (url.includes('/core.compose.yml') || url.includes('/compose.yml')) {
+				return new Response('services: {}\n', { status: 200 });
+			}
+			if (url.includes('/AGENTS.md')) return new Response('# Agents\n', { status: 200 });
+			if (url.includes('/opencode.jsonc'))
+				return new Response('{"$schema":"https://opencode.ai/config.json"}\n', { status: 200 });
+			if (url.endsWith('.yml')) return new Response('name: test\nschedule: daily\n', { status: 200 });
+			return new Response('', { status: 503 });
+		}) as unknown as typeof fetch;
+		console.log = mock(() => {}) as typeof console.log;
+		const warnings: string[] = [];
+		console.warn = mock((...args: unknown[]) => {
+			warnings.push(args.map(String).join(' '));
+		}) as typeof console.warn;
+
+		try {
+			await main(['install', '--no-start', '--file', specFile, '--version', '0.1.0']);
+			expect(warnings.some((w) => w.includes('pins container image tags only'))).toBe(true);
+		} finally {
+			rmSync(base, { recursive: true, force: true });
+		}
+	});
 });
 
 describe('self-update helpers', () => {
@@ -826,6 +896,86 @@ describe('detectHostInfo', () => {
 		expect(info.ollama.running).toBe(false);
 		expect(info.lmstudio.running).toBe(false);
 		expect(info.llamacpp.running).toBe(false);
+	});
+});
+
+// C8: an unrecognized first token used to fall through to autoRun — e.g.
+// `openpalm statsu` silently started the stack instead of reporting the typo.
+describe('unknown command (C8)', () => {
+	it('rejects an unrecognized first token instead of silently auto-running', async () => {
+		const err = await main(['statsu']).catch((e: unknown) => e);
+		expect(err).toBeInstanceOf(Error);
+		expect((err as Error).message).toContain('Unknown command: statsu');
+	});
+
+	it('rejects a typo of `install` instead of starting a fresh install', async () => {
+		const err = await main(['isntall']).catch((e: unknown) => e);
+		expect(err).toBeInstanceOf(Error);
+		expect((err as Error).message).toContain('Unknown command: isntall');
+	});
+});
+
+// C10/B6: parseBareArgs used to be a hand-rolled loop duplicating
+// mainCommand.args (help text only) — it understood --no-open but not
+// --open=false, and silently dropped a malformed --port.
+describe('parseBareArgs (C10/B6)', () => {
+	it('parses --port and --no-open', () => {
+		expect(parseBareArgs(['--port', '4200'])).toEqual({ port: 4200 });
+		expect(parseBareArgs(['--no-open'])).toEqual({ open: false });
+		expect(parseBareArgs(['--port=4200', '--no-open'])).toEqual({ port: 4200, open: false });
+	});
+
+	it('parses --open=false the same as --no-open', () => {
+		expect(parseBareArgs(['--open=false'])).toEqual({ open: false });
+	});
+
+	it('an explicit --open=true / --open leaves opts.open unset (the default already means "open")', () => {
+		expect(parseBareArgs(['--open=true'])).toEqual({});
+		expect(parseBareArgs([])).toEqual({});
+	});
+
+	it('throws on a malformed --port instead of silently falling back to the default port', () => {
+		expect(() => parseBareArgs(['--port', 'banana'])).toThrow(/Invalid --port value/);
+		expect(() => parseBareArgs(['--port=banana'])).toThrow(/Invalid --port value/);
+	});
+});
+
+// C9: isAssistantHealthy used to read OP_ASSISTANT_PORT from live env only —
+// a file install persists a custom port to state/stack.env, so bare
+// `openpalm` probed the DEFAULT port, read a healthy custom-port stack as
+// "down", and force-recreated it needlessly.
+describe('isAssistantHealthy — persisted port (C9)', () => {
+	const originalHome = process.env.OP_HOME;
+	const originalPort = process.env.OP_ASSISTANT_PORT;
+	const originalFetch = globalThis.fetch;
+
+	afterEach(() => {
+		if (originalHome === undefined) delete process.env.OP_HOME;
+		else process.env.OP_HOME = originalHome;
+		if (originalPort === undefined) delete process.env.OP_ASSISTANT_PORT;
+		else process.env.OP_ASSISTANT_PORT = originalPort;
+		globalThis.fetch = originalFetch;
+	});
+
+	it('reads OP_ASSISTANT_PORT from persisted stack.env when live env has none', async () => {
+		const tempHome = mkdtempSync(join(tmpdir(), 'openpalm-test-'));
+		mkdirSync(join(tempHome, 'state'), { recursive: true });
+		writeFileSync(join(tempHome, 'state', 'stack.env'), 'OP_ASSISTANT_PORT=4899\n');
+		process.env.OP_HOME = tempHome;
+		delete process.env.OP_ASSISTANT_PORT;
+
+		let requestedUrl = '';
+		globalThis.fetch = mock(async (input: string | URL) => {
+			requestedUrl = String(input);
+			return new Response('', { status: 200 });
+		}) as unknown as typeof fetch;
+
+		try {
+			expect(await isAssistantHealthy()).toBe(true);
+			expect(requestedUrl).toBe('http://127.0.0.1:4899/health');
+		} finally {
+			rmSync(tempHome, { recursive: true, force: true });
+		}
 	});
 });
 
