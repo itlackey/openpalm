@@ -276,6 +276,7 @@ This ensures each service's local runtime dependencies are available at runtime.
 - Every Dockerfile that bakes a service from the workspace must install that service's declared runtime dependencies during the image build.
 - Guardian-local helpers stay in `packages/guardian/src/` (`@openpalm/guardian`); adapter-local helpers stay inside the adapter package that uses them.
 - The assistant **and Guardian** images install the OpenCode binary from the exact `opencode-ai` dependencies in `containers/assistant/tools/package.json` and `containers/guardian/tools/package.json`. Keep those two pins in lockstep.
+- The assistant **and Guardian** images install the matching exact-pinned AKM CLI into npm's global root under `/usr/local`. A package-local AKM launcher is forbidden because AKM rejects it for automatic scheduler registration.
 - The assistant image bakes the candidate-local `@openpalm/ui` build and its tool manifest. Its entrypoint performs no runtime package install or update. It does NOT carry a skeleton copy: the skeleton is materialized into `OP_HOME` by the CLI or desktop artifact that owns it, and the assistant reads it from the mounted home.
 - Guardian bakes its candidate-local package and tools. Only the documented Guardian thin-host package override may install at runtime.
 - The portal image packs the candidate-local portal SDK and Discord/Slack adapter workspaces at build time; it does not install adapters at boot.

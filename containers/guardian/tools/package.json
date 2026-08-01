@@ -2,7 +2,6 @@
   "name": "@openpalm/guardian-tools",
   "private": true,
   "dependencies": {
-    "opencode-ai": "1.18.9",
-    "akm-cli": "0.9.0-rc.13"
+    "opencode-ai": "1.18.9"
   }
 }

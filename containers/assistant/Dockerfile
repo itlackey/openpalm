@@ -3,12 +3,10 @@
 # and tools. Config, plugins, and persona are mounted at runtime — not baked
 # into the image.
 #
-# Tool packages (opencode-ai, akm-cli) are exact-pinned in
-# containers/assistant/tools/package.json and baked into the image at
-# /opt/openpalm/tools by the toolbuild stage below. There is no runtime
-# install or update — no bind mount overlays this path anymore (image-baked-
-# only model). Bumping a tool version means editing the manifest and cutting
-# a new image.
+# OpenCode is exact-pinned in containers/assistant/tools/package.json and baked
+# at /opt/openpalm/tools. AKM is exact-pinned below and installed into npm's
+# real global root so its scheduler can verify the launcher as immutable. There
+# is no runtime install or update; bumping either version requires a new image.
 #
 # The four AI coding CLIs (claude-code, codex, copilot, pi) and the Google
 # Cloud SDK (gcloud) used to be baked here too (~1.4 GB combined). Nothing
@@ -35,61 +33,58 @@
 # Dockerfile.models) and update this default. Operators/CI can override via
 # --build-arg.
 ARG ASSISTANT_MODELS_IMAGE=openpalm/assistant-models:v1
+ARG AKM_CLI_VERSION=0.9.0-rc.13
 FROM --platform=$BUILDPLATFORM ${ASSISTANT_MODELS_IMAGE} AS modelfetch
 
-# ── Tool builder stage ────────────────────────────────────────────────────────
-# Install the tool packages from the single exact-pinned manifest (edit +
-# rebuild the image to change a version — no runtime override, E2/S2), prune
-# the content IMG-1/onnxruntime pruning below removed, then PARTITION the
-# remaining node_modules into balanced groups. A single `npm install` used to
-# produce one ~3.5GB layer (~1.75GB compressed) that Docker Hub's CDN rejects
-# on push (HTTP 400 on the oversized blob) — the split keeps every COPY layer
-# comfortably under that ceiling even though the tree is far smaller now.
-# NOT --platform pinned: native deps (onnxruntime, the opencode binary) must
-# match the TARGET arch.
+# ── OpenCode builder stage ────────────────────────────────────────────────────
+# Install OpenCode from its exact-pinned manifest and remove package variants
+# this image can never execute. AKM has a separate npm-global stage below.
+# NOT --platform pinned: the OpenCode binary must match the TARGET arch.
 FROM node:22-trixie-slim AS toolbuild
 WORKDIR /opt/openpalm/tools
 COPY containers/assistant/tools/package.json ./package.json
-# ONNXRUNTIME_NODE_INSTALL=skip stops onnxruntime-node's postinstall from
-# downloading the CUDA/TensorRT execution provider (~301 MB, fetched from
-# NuGet on every install) — nothing in this stack maps a GPU device into any
-# container, so that provider can never run. The base linux/x64 (or
-# linux/arm64) binding still ships pre-bundled in the npm package itself, so
-# this does not touch the CPU codepath akm's local embedder actually uses.
-#
 # opencode-ai ships one npm package per platform/libc/microarch combination as
 # optionalDependencies; `npm install` filters by os/cpu but not by the
 # "baseline" (pre-AVX2) vs. modern split, and this image's glibc base can
 # never run the musl builds at all. Prune everything except the modern glibc
 # build for the arch being built (docs/system-requirements.md documents the
 # resulting AVX2-era CPU floor).
-#
-# @huggingface/transformers (akm's local embedder) depends on both
-# onnxruntime-node (the Node/native backend it actually uses here) and
-# onnxruntime-web (browser/WASM — unreachable in this Node runtime, ~130 MB).
-# onnxruntime-node itself pre-bundles win32/darwin binaries and the
-# non-target linux arch, none of which this container can ever load.
-RUN ONNXRUNTIME_NODE_INSTALL=skip npm install --omit=dev --no-fund --no-audit \
+RUN npm install --omit=dev --no-fund --no-audit \
     && find node_modules ! -perm -o+r -exec chmod a+rX {} + \
     && rm -rf node_modules/opencode-linux-x64-musl \
               node_modules/opencode-linux-x64-baseline \
               node_modules/opencode-linux-x64-baseline-musl \
-              node_modules/opencode-linux-arm64-musl \
-    && OTHER_ARCH="$([ "$(dpkg --print-architecture)" = "arm64" ] && echo x64 || echo arm64)" \
-    && rm -rf node_modules/onnxruntime-node/bin/napi-v6/win32 \
-              node_modules/onnxruntime-node/bin/napi-v6/darwin \
-              "node_modules/onnxruntime-node/bin/napi-v6/linux/${OTHER_ARCH}" \
-              node_modules/onnxruntime-web \
-    && mkdir -p /split/g1 /split/g2 \
-    && mv node_modules/@huggingface /split/g1/ \
-    && mv node_modules/onnxruntime-node /split/g2/
+              node_modules/opencode-linux-arm64-musl
+
+# ── AKM builder stage ─────────────────────────────────────────────────────────
+# AKM 0.9 only auto-registers scheduler entries from a verified npm-global or
+# standalone launcher. Install it through the same Node/npm distribution the
+# runtime image uses so `npm root --global` resolves this exact package tree.
+FROM node:22-trixie-slim AS akmbuild
+ARG AKM_CLI_VERSION
+RUN ONNXRUNTIME_NODE_INSTALL=skip npm install --global --omit=dev --include=optional --no-fund --no-audit \
+      "akm-cli@${AKM_CLI_VERSION}" \
+    && AKM_MODULES=/usr/local/lib/node_modules/akm-cli/node_modules \
+    && OTHER_ARCH="$([ "$(dpkg --print-architecture)" = "arm64" ] && printf x64 || printf arm64)" \
+    && rm -rf "${AKM_MODULES}/onnxruntime-node/bin/napi-v6/win32" \
+              "${AKM_MODULES}/onnxruntime-node/bin/napi-v6/darwin" \
+              "${AKM_MODULES}/onnxruntime-node/bin/napi-v6/linux/${OTHER_ARCH}" \
+              "${AKM_MODULES}/onnxruntime-web" \
+    && chmod -R a+rX /usr/local/lib/node_modules/akm-cli \
+    && test "$(npm root --global)" = "/usr/local/lib/node_modules" \
+    && test "$(akm --version)" = "${AKM_CLI_VERSION}" \
+    && test "$(readlink -f /usr/local/bin/akm)" = "/usr/local/lib/node_modules/akm-cli/dist/akm" \
+    && test "$(readlink -f /usr/local/bin/akm-migrate)" = "/usr/local/lib/node_modules/akm-cli/dist/akm-migrate" \
+    && rm -rf /root/.npm
 
 FROM node:22-trixie-slim
 
 ARG BUN_VERSION=bun-v1.3.10
+ARG AKM_CLI_VERSION
 
 # Re-export for runtime introspection.
-ENV BUN_VERSION=${BUN_VERSION}
+ENV BUN_VERSION=${BUN_VERSION} \
+    AKM_CLI_VERSION=${AKM_CLI_VERSION}
 
 # Combined OS packages: base tools (tini) + assistant-specific (busybox
 # crond/crontab tooling, python3, jq, gh) + sqlite3 so agents can query
@@ -119,17 +114,19 @@ ENV BUN_INSTALL=/usr/local
 RUN curl -fsSL https://bun.sh/install | bash -s -- "$BUN_VERSION"
 ENV BUN_INSTALL=
 
-# Bake default tool packages at /opt/openpalm/tools, assembled from the toolbuild
-# stage as THREE COPY layers (g1, g2, and the remainder) so no single blob is the
-# ~1.75GB monolith Docker Hub rejects on push. --chown sets opencode (UID 1000)
-# ownership in-layer (no copy-up). This baked tree IS what runs — no bind mount
-# overlays it anymore (E2/S2), so the image alone is the source of truth for
-# the tool set; bump containers/assistant/tools/package.json and rebuild to
-# change a version.
+# Bake OpenCode at /opt/openpalm/tools. --chown sets node (UID 1000) ownership
+# in-layer. No bind mount overlays this path, so the image remains the source of
+# truth for the exact OpenCode version.
 COPY --from=toolbuild --chown=1000:1000 /opt/openpalm/tools/node_modules /opt/openpalm/tools/node_modules
-COPY --from=toolbuild --chown=1000:1000 /split/g2/ /opt/openpalm/tools/node_modules/
-COPY --from=toolbuild --chown=1000:1000 /split/g1/ /opt/openpalm/tools/node_modules/
 COPY containers/assistant/tools/package.json /opt/openpalm/tools/package.json
+
+# Bake AKM into npm's real global root. Recreate npm's relative bin links in the
+# runtime image rather than relying on cross-stage symlink copy behavior.
+COPY --from=akmbuild /usr/local/lib/node_modules/akm-cli /usr/local/lib/node_modules/akm-cli
+RUN ln -s ../lib/node_modules/akm-cli/dist/akm /usr/local/bin/akm \
+    && ln -s ../lib/node_modules/akm-cli/dist/akm-migrate /usr/local/bin/akm-migrate \
+    && test "$(npm root --global)" = "/usr/local/lib/node_modules" \
+    && test "$(akm --version)" = "${AKM_CLI_VERSION}"
 
 # Pre-bake akm's default local embedding model so semantic search works out of
 # the box with NO embedding configuration and NO runtime network. When
@@ -151,10 +148,10 @@ COPY containers/assistant/tools/package.json /opt/openpalm/tools/package.json
 # @huggingface/transformers / onnxruntime native binary can't load on this arch or
 # the copied cache is incomplete — no silent fallback to keyword-only search, and
 # no network access.
-COPY --from=modelfetch /opt/embedder-cache/ /opt/openpalm/tools/node_modules/@huggingface/transformers/.cache/
-RUN cd /opt/openpalm/tools/node_modules \
+COPY --from=modelfetch /opt/embedder-cache/ /usr/local/lib/node_modules/akm-cli/node_modules/@huggingface/transformers/.cache/
+RUN cd /usr/local/lib/node_modules/akm-cli/node_modules \
     && node --input-type=module -e "import { env, pipeline } from '@huggingface/transformers'; env.allowRemoteModels = false; const embed = await pipeline('feature-extraction', 'Xenova/bge-small-en-v1.5'); const out = await embed('warmup', { pooling: 'mean', normalize: true }); if (!out?.data?.length) { console.error('local embedder produced no vector'); process.exit(1); } console.log('akm local embedder OK offline (' + out.data.length + ' dims)');" \
-    && chmod -R a+rX /opt/openpalm/tools/node_modules/@huggingface/transformers/.cache
+    && chmod -R a+rX /usr/local/lib/node_modules/akm-cli/node_modules/@huggingface/transformers/.cache
 
 # Keep the image-baked runtime user simple: the base `node` user remains UID 1000,
 # while `/home/opencode` stays the stable home path used by mounts and runtime env.
@@ -208,13 +205,10 @@ ENV APPRISE_NOTIFY_CONFIG="/stash/env/apprise.conf"
 #     root-owned inside the image layer before the host directory is mounted
 #     over it.
 # Scope the chmod to these freshly created seed dirs ONLY — deliberately
-# excluding /opt/openpalm/tools, whose baked node_modules + @huggingface model
-# cache is a multi-hundred-MB tree split across COPY layers (Docker Hub rejects
-# giant blobs); a recursive chmod over it would materialize a duplicate overlay
-# layer. E2/S2: the tools tree is no longer bind-mounted (image-baked only, no
-# runtime install/update), and the toolbuild stage already leaves it world-
-# readable+executable (`find ... -exec chmod a+rX`), so an arbitrary-uid
-# container only ever READS it — no write access needed here. Secrets
+# excluding the image-baked OpenCode and global AKM trees. Recursively chmodding
+# either would materialize a duplicate overlay layer. Both builders already
+# leave their packages world-readable and executable, so an arbitrary-UID
+# container only reads them. Secrets
 # (knowledge/secrets, 0600) are a separate bind-mount tree.
 RUN mkdir -p /home/opencode/.cache /home/opencode/.local/bin /work /stash /opt/akm/cache /opt/akm/data /opt/persistent/bin \
     && mkdir -p /opt/openpalm/ui /opt/openpalm/tools \
@@ -267,10 +261,10 @@ ENV NPM_CONFIG_CACHE=/home/opencode/.cache/npm
 
 # PATH precedence (highest first):
 #   /opt/persistent/bin        — prefix-style global installs (escape hatch)
-#   /opt/openpalm/tools/node_modules/.bin — image-baked tool packages (exact-pinned, E2/S2)
+#   /opt/openpalm/tools/node_modules/.bin — exact-pinned image-baked OpenCode
 #   /home/opencode/.local/bin  — per-user installs in the persistent home bind mount
 #   /home/opencode/.bun/bin    — bun install -g (BUN_INSTALL points here)
-#   /usr/local/bin             — image-baked system tools
+#   /usr/local/bin             — npm-global AKM and image-baked system tools
 ENV PATH="/opt/persistent/bin:/opt/openpalm/tools/node_modules/.bin:/home/opencode/.local/bin:/home/opencode/.bun/bin:/usr/local/bin:$PATH"
 
 # A login shell (`bash -l`, e.g. the release smoke test and interactive ssh)

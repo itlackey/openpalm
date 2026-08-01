@@ -4,6 +4,10 @@ OpenPalm images pin `akm-cli` `0.9.0-rc.13`. AKM 0.9 changes its config,
 reference, task, scheduler, and durable-state formats, so an existing 0.8 home
 must cross the boundary through AKM's journaled migrator.
 
+Both images bake AKM into npm's global root. The Assistant's scheduler can
+therefore reconstruct missing registrations with plain `akm task sync`; the
+explicit `--rebind` below replaces pre-0.9 scheduler bindings during migration.
+
 ## Normal OpenPalm Update
 
 Use the normal OpenPalm update command. When the recreated assistant first

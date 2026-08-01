@@ -20,7 +20,8 @@ publications are `127.0.0.1:3810` for OpenCode and `127.0.0.1:3800` for the UI.
 
 Release builds contain exact candidate copies of:
 
-- the OpenCode and AKM tool tree
+- OpenCode under `/opt/openpalm/tools`
+- npm-global AKM under `/usr/local/lib/node_modules/akm-cli`
 - compiled `@openpalm/ui`
 
 The Dockerfile packs the local UI candidate during the image build. The

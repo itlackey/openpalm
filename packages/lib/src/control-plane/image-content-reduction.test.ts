@@ -30,26 +30,38 @@ function readJson(relPath: string): Record<string, unknown> {
 
 // ── IMG-1: four AI coding CLIs removed from the tool manifests ─────────────
 
-describe('IMG-1 — AI coding CLIs removed from tool manifests', () => {
-  test('containers/assistant/tools/package.json no longer depends on the four CLIs', () => {
+describe('IMG-1 — local tool manifests contain only OpenCode', () => {
+  test('containers/assistant/tools/package.json no longer depends on unrelated CLIs', () => {
     const pkg = readJson('containers/assistant/tools/package.json');
     const deps = pkg.dependencies as Record<string, string>;
     for (const name of REMOVED_CLI_PACKAGES) {
       expect(deps).not.toHaveProperty(name);
     }
-    // The runtime the assistant actually uses stays.
-    expect(deps).toHaveProperty('opencode-ai');
-    expect(deps['akm-cli']).toBe('0.9.0-rc.13');
+    expect(deps['opencode-ai']).toBe('1.18.9');
+    expect(deps).not.toHaveProperty('akm-cli');
   });
 
-  test('containers/guardian/tools/package.json pins the shared AKM runtime', () => {
+  test('containers/guardian/tools/package.json no longer depends on unrelated CLIs', () => {
     const pkg = readJson('containers/guardian/tools/package.json');
     const deps = pkg.dependencies as Record<string, string>;
     for (const name of REMOVED_CLI_PACKAGES) {
       expect(deps).not.toHaveProperty(name);
     }
-    expect(deps).toHaveProperty('opencode-ai');
-    expect(deps['akm-cli']).toBe('0.9.0-rc.13');
+    expect(deps['opencode-ai']).toBe('1.18.9');
+    expect(deps).not.toHaveProperty('akm-cli');
+  });
+
+  test('assistant and Guardian install the exact AKM pin in npm global root', () => {
+    const assistant = readFileSync(join(REPO_ROOT, 'containers/assistant/Dockerfile'), 'utf8');
+    const guardian = readFileSync(join(REPO_ROOT, 'containers/guardian/Dockerfile'), 'utf8');
+    for (const dockerfile of [assistant, guardian]) {
+      expect(dockerfile).toContain('ARG AKM_CLI_VERSION=0.9.0-rc.13');
+      expect(dockerfile).toContain('npm install --global');
+      expect(dockerfile).toContain('/usr/local/lib/node_modules/akm-cli');
+      expect(dockerfile).toContain('test "$(npm root --global)" = "/usr/local/lib/node_modules"');
+      expect(dockerfile).toContain('test "$(akm --version)" = "${AKM_CLI_VERSION}"');
+    }
+    expect(guardian).toContain('FROM node:22-trixie-slim');
   });
 });
 
@@ -188,27 +200,37 @@ describe('IMG-5 — speculative CLI tooling trimmed', () => {
   });
 });
 
-// ── onnxruntime pruning (assistant only) ────────────────────────────────────
+// ── npm-global AKM onnxruntime pruning ──────────────────────────────────────
 
-describe('onnxruntime content pruned from the assistant toolbuild stage', () => {
-  const dockerfile = readFileSync(join(REPO_ROOT, 'containers/assistant/Dockerfile'), 'utf8');
+describe('onnxruntime content pruned from the npm-global AKM installation', () => {
+  const assistant = readFileSync(join(REPO_ROOT, 'containers/assistant/Dockerfile'), 'utf8');
+  const guardian = readFileSync(join(REPO_ROOT, 'containers/guardian/Dockerfile'), 'utf8');
 
-  test('prunes the non-target-platform onnxruntime-node binaries', () => {
-    expect(dockerfile).toContain('onnxruntime-node/bin/napi-v6/win32');
-    expect(dockerfile).toContain('onnxruntime-node/bin/napi-v6/darwin');
+  test('both images prune non-target-platform onnxruntime-node binaries', () => {
+    for (const dockerfile of [assistant, guardian]) {
+      expect(dockerfile).toContain('onnxruntime-node/bin/napi-v6/win32');
+      expect(dockerfile).toContain('onnxruntime-node/bin/napi-v6/darwin');
+    }
   });
 
-  test('skips the CUDA/TensorRT provider download at install time', () => {
-    expect(dockerfile).toContain('ONNXRUNTIME_NODE_INSTALL=skip');
+  test('both images skip the CUDA/TensorRT provider download at install time', () => {
+    for (const dockerfile of [assistant, guardian]) {
+      expect(dockerfile).toContain('ONNXRUNTIME_NODE_INSTALL=skip');
+    }
   });
 
-  test('removes onnxruntime-web entirely', () => {
-    expect(dockerfile).toContain('rm -rf');
-    expect(dockerfile).toContain('onnxruntime-web');
+  test('both images remove onnxruntime-web entirely', () => {
+    for (const dockerfile of [assistant, guardian]) {
+      expect(dockerfile).toContain('rm -rf');
+      expect(dockerfile).toContain('onnxruntime-web');
+    }
   });
 
-  test('the build-time offline inference guard test is still present', () => {
-    expect(dockerfile).toContain("pipeline('feature-extraction', 'Xenova/bge-small-en-v1.5')");
+  test('the Assistant build-time offline inference guard is still present', () => {
+    expect(assistant).toContain("pipeline('feature-extraction', 'Xenova/bge-small-en-v1.5')");
+    expect(assistant).toContain(
+      '/usr/local/lib/node_modules/akm-cli/node_modules/@huggingface/transformers/.cache',
+    );
   });
 });
 

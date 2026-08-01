@@ -57,8 +57,9 @@ elif [ -n "${OP_GUARDIAN_NPMRC:-}" ]; then
 fi
 
 # ── Exact-pinned install: skip if already at version, retry transient failures ─
-# FROM oven/bun:1.3-slim ships no node/npm — use bun. bun installs into the
-# cwd's node_modules, so cd into the prefix.
+# The downstream Guardian-package override remains a Bun install so it shares
+# Guardian's runtime and private-registry behavior. Bun installs into the cwd's
+# node_modules, so cd into the prefix.
 install_artifact() {
   local pkg="$1" version="$2" prefix="$3"
   local manifest="${prefix}/node_modules/${pkg}/package.json"
@@ -114,9 +115,10 @@ else
 fi
 
 # ── E2/S2: no boot-time tools install ──────────────────────────────────────
-# /opt/openpalm/tools/package.json declares exact tool versions (opencode-ai and
-# akm-cli) and is baked directly into the image's own layer
-# by the Dockerfile at build time (#585: no named volume over /opt/openpalm
+# /opt/openpalm/tools/package.json declares exact OpenCode version, while AKM is
+# exact-pinned in the Dockerfile and installed npm-global. Both are baked into
+# the image's own layers by the Dockerfile at build time (#585: no named volume
+# over /opt/openpalm
 # anymore). No mount overlays it (image-baked-only model), so there is nothing
 # to install or update here —
 # the content-validation check below already verifies `opencode` resolved

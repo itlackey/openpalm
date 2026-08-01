@@ -1,8 +1,14 @@
-FROM oven/bun:1.3-slim
+FROM oven/bun:1.3-slim AS bunbase
 
-# nodejs provides npm, required for opencode-ai's postinstall (binary download).
+FROM node:22-trixie-slim
+
+# Guardian runs on Bun, while npm-global AKM requires the Node 22/npm installation
+# used to verify its scheduler-safe package root. Bun is a standalone binary.
+COPY --from=bunbase /usr/local/bin/bun /usr/local/bin/bun
+RUN ln -s bun /usr/local/bin/bunx
+
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl bash ca-certificates nodejs && rm -rf /var/lib/apt/lists/*
+    curl bash ca-certificates && rm -rf /var/lib/apt/lists/*
 
 COPY containers/guardian/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
@@ -38,10 +44,8 @@ ENV HOME=/opt/openpalm/guardian \
 # rootless-ownership smoke test.
 ENV BUN_INSTALL_CACHE_DIR=/opt/openpalm/guardian/.cache/bun/install
 
-# Bake default tool packages (opencode-ai and akm-cli) at /opt/openpalm/tools. No bind
-# mount overlays this path anymore (image-baked-only model) — bump this
-# manifest and rebuild the image to change a version, not by editing anything
-# under OP_HOME.
+# Bake exact-pinned OpenCode at /opt/openpalm/tools. No bind mount overlays this
+# path; bump the manifest and rebuild the image to change the version.
 #
 # `bun install` (below) does not apply npm's os/cpu/libc optionalDependencies
 # filtering the way `npm install` does, so all four opencode-ai
@@ -51,10 +55,29 @@ ENV BUN_INSTALL_CACHE_DIR=/opt/openpalm/guardian/.cache/bun/install
 # docs/system-requirements.md documents the resulting AVX2-era CPU floor.
 COPY containers/guardian/tools/package.json /opt/openpalm/tools/package.json
 
-# IMG-6: install the tools tree in its OWN layer, ABOVE the release-version
-# ARG below. This is the heavy layer (the opencode binary) and it depends only
-# on the manifest COPY'd above, so it stays cached across releases instead of
-# being re-pushed and re-pulled every time the version stamp changes.
+# AKM is an explicitly shipped Guardian CLI even though Guardian does not invoke
+# it today. Install it in npm's real global root, matching the Assistant's
+# scheduler-safe and runtime-immutable layout.
+ARG AKM_CLI_VERSION=0.9.0-rc.13
+ENV AKM_CLI_VERSION=${AKM_CLI_VERSION}
+RUN ONNXRUNTIME_NODE_INSTALL=skip npm install --global --omit=dev --include=optional --no-fund --no-audit \
+      "akm-cli@${AKM_CLI_VERSION}" \
+    && AKM_MODULES=/usr/local/lib/node_modules/akm-cli/node_modules \
+    && OTHER_ARCH="$([ "$(dpkg --print-architecture)" = "arm64" ] && printf x64 || printf arm64)" \
+    && rm -rf "${AKM_MODULES}/onnxruntime-node/bin/napi-v6/win32" \
+              "${AKM_MODULES}/onnxruntime-node/bin/napi-v6/darwin" \
+              "${AKM_MODULES}/onnxruntime-node/bin/napi-v6/linux/${OTHER_ARCH}" \
+              "${AKM_MODULES}/onnxruntime-web" \
+    && chmod -R a+rX /usr/local/lib/node_modules/akm-cli \
+    && test "$(npm root --global)" = "/usr/local/lib/node_modules" \
+    && test "$(akm --version)" = "${AKM_CLI_VERSION}" \
+    && test "$(readlink -f /usr/local/bin/akm)" = "/usr/local/lib/node_modules/akm-cli/dist/akm" \
+    && test "$(readlink -f /usr/local/bin/akm-migrate)" = "/usr/local/lib/node_modules/akm-cli/dist/akm-migrate" \
+    && rm -rf /root/.npm
+
+# IMG-6: install OpenCode in its OWN layer, ABOVE the release-version ARG below.
+# The heavy package layers depend only on exact tool pins, so they stay cached
+# across releases instead of being repushed when the version stamp changes.
 RUN mkdir -p /opt/openpalm/guardian/.cache/bun/install \
     && bun install --cwd /opt/openpalm/tools --production \
     && rm -rf /opt/openpalm/tools/node_modules/opencode-linux-x64-musl \
@@ -101,6 +124,6 @@ EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=5s --start-period=180s --retries=3 \
   CMD curl -sf http://localhost:8080/health/ready || exit 1
 
-USER bun
+USER node
 
 CMD ["/entrypoint.sh"]

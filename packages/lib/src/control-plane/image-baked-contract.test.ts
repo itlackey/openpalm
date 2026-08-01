@@ -89,6 +89,7 @@ describe('nothing is mounted over the image-baked artifact paths', () => {
     '/opt/openpalm/tools',
     '/opt/openpalm/ui',
     '/opt/openpalm/guardian-pkg',
+    '/usr/local/lib/node_modules/akm-cli',
   ];
 
   const composeFiles = [

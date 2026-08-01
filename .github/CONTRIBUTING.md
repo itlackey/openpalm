@@ -160,7 +160,9 @@ Guardian and portal Dockerfiles must install their runtime dependencies inside
 the image. The Assistant and Guardian OpenCode pins are the exact `opencode-ai`
 dependencies in `containers/assistant/tools/package.json` and
 `containers/guardian/tools/package.json`; keep them in lockstep. There is no
-standalone UI image; the Assistant image bakes the candidate-local compiled UI,
+separate manifest pin for AKM: the matching exact `AKM_CLI_VERSION` Docker build
+arguments install it npm-global in both images. The Assistant image bakes the
+candidate-local compiled UI; there is no standalone UI image,
 while the CLI and Electron app each embed their own compiled UI and skeleton
 at build time.
 

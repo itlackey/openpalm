@@ -189,6 +189,25 @@ if [[ "$assistant_status" != "healthy" || "$guardian_status" != "healthy" || ( "
   fi
 fi
 
+if [[ "$health_ok" == "1" ]]; then
+  echo "Checking image-baked tool layout..."
+  assistant_container="${COMPOSE_PROJECT_NAME}-assistant-1"
+  guardian_container="${COMPOSE_PROJECT_NAME}-guardian-1"
+  docker exec "$assistant_container" sh -c '
+    set -eu
+    test "$(readlink -f "$(command -v akm)")" = /usr/local/lib/node_modules/akm-cli/dist/akm
+    test "$(readlink -f "$(command -v opencode)")" = /opt/openpalm/tools/node_modules/opencode-ai/bin/opencode.exe
+    test ! -e /opt/openpalm/tools/node_modules/akm-cli
+    akm task doctor | jq -e '\''.akm.kind == "npm" and .akm.eligible == true'\'' >/dev/null
+  '
+  docker exec "$guardian_container" sh -c '
+    set -eu
+    test "$(readlink -f "$(command -v akm)")" = /usr/local/lib/node_modules/akm-cli/dist/akm
+    test "$(readlink -f "$(command -v opencode)")" = /opt/openpalm/tools/node_modules/opencode-ai/bin/opencode.exe
+    test ! -e /opt/openpalm/tools/node_modules/akm-cli
+  '
+fi
+
 echo "Checking for root-owned files under ${SMOKE_HOME}..."
 expected_uid="$(id -u)"
 expected_gid="$(id -g)"

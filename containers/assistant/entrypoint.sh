@@ -66,16 +66,11 @@ ensure_home_layout() {
 # for the requested subprocess, never the server's top-level environment.
 
 # ── E2/S2: no boot-time package installs ────────────────────────────────────
-# @openpalm/ui and the tool tree (opencode-ai, akm-cli) are baked into the image
-# by the Dockerfile — there is no runtime `npm install` nor `bun update` of
-# /opt/openpalm/tools
-# anymore. The image is the sole source of
-# truth; updating a version means editing containers/assistant/tools/
-# package.json (or bumping PLATFORM_VERSION) and shipping a new image, not
-# waiting for the next container boot to re-resolve a semver range. This also
-# removes the old boot-time dependency on registry reachability (npm/bun),
-# closing the air-gapped-first-boot gap by construction rather than by adding
-# a fallback floor.
+# @openpalm/ui, local OpenCode, and npm-global AKM are baked into the image by
+# the Dockerfile. There is no runtime package install or update. The image is
+# the sole source of truth; updating a tool pin or PLATFORM_VERSION requires a
+# new image instead of boot-time registry resolution. This closes the
+# air-gapped-first-boot gap by construction rather than by adding a fallback.
 #
 # There is no package version resolution to perform at container boot.
 

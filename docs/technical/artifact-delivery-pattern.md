@@ -16,12 +16,14 @@ thin-host override path.
 |---|---|---|---|
 | Host UI + skeleton | Embedded in the CLI binary and in the Electron app bundle | Artifact build version | Materialized into `OP_HOME/data/ui` (and skeleton into `OP_HOME`) from the artifact's own embedded copy; no download, no verification step — the artifact is the trust boundary |
 | Assistant UI | Baked into `/opt/openpalm/ui` during image build | `PLATFORM_VERSION` build arg | Entrypoint supervises the baked build; no runtime install or version override |
-| Assistant tools | Baked from `containers/assistant/tools/package.json` | Exact manifest pins | No boot-time update |
+| Assistant OpenCode | Baked under `/opt/openpalm/tools` from `containers/assistant/tools/package.json` | Exact manifest pin | No boot-time update |
+| Assistant AKM | Installed npm-global under `/usr/local/lib/node_modules/akm-cli` during the image build | Exact Docker build pin | No boot-time update |
 | Guardian package | Baked into `/opt/openpalm/guardian-pkg` | `GUARDIAN_VERSION` build arg | Existing-version check is normally a no-op; `OP_GUARDIAN_NPM_VERSION` enables an explicit override install |
-| Guardian tools | Baked from `containers/guardian/tools/package.json` | Exact manifest pins | No boot-time update |
+| Guardian OpenCode | Baked under `/opt/openpalm/tools` from `containers/guardian/tools/package.json` | Exact manifest pin | No boot-time update |
+| Guardian AKM | Installed npm-global under `/usr/local/lib/node_modules/akm-cli` during the image build | Exact Docker build pin | No boot-time update |
 | Portal adapters | Candidate-local SDK and adapter workspaces packed during image build | Candidate source versions | No runtime adapter install |
 
-Changing either baked assistant artifact requires a new assistant image.
+Changing any baked assistant artifact requires a new assistant image.
 
 ## Host Skeleton Resolution
 

@@ -113,6 +113,16 @@ describe('image tool pins', () => {
 		expect(assistant).toBeTruthy();
 		expect(pin('containers/guardian/tools/package.json')).toBe(assistant);
 	});
+
+	test('assistant and guardian npm-global AKM pins match', () => {
+		const pin = (p: string) => {
+			const dockerfile = readFileSync(join(ROOT, p), 'utf8');
+			return dockerfile.match(/^ARG AKM_CLI_VERSION=(\S+)$/m)?.[1];
+		};
+		const assistant = pin('containers/assistant/Dockerfile');
+		expect(assistant).toBeTruthy();
+		expect(pin('containers/guardian/Dockerfile')).toBe(assistant);
+	});
 });
 
 describe('portal image source boundary', () => {

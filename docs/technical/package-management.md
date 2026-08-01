@@ -63,11 +63,14 @@ are verified.
 ## Docker Builds
 
 Docker builds do not consume the monorepo's hoisted `node_modules` or root lock
-as if they were runtime volumes. Each image installs from the explicit manifest
-copied into its build context:
+as if they were runtime volumes. Each image resolves from explicit manifests or
+exact Docker build pins:
 
-- Assistant tools use `containers/assistant/tools/package.json`.
-- Guardian tools use `containers/guardian/tools/package.json`.
+- Assistant and Guardian OpenCode use their respective
+  `containers/{assistant,guardian}/tools/package.json` manifests.
+- Assistant and Guardian AKM use matching exact `AKM_CLI_VERSION` Docker build
+  pins and install into npm's global root. AKM's scheduler verifies this
+  ownership before creating registrations.
 - Portal images copy and pack `packages/portal-sdk`, `packages/portal-discord`,
   and `packages/portal-slack` from candidate source.
 - Guardian and portal package source/dependencies are installed during image

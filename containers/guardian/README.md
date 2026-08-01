@@ -9,10 +9,11 @@ is the only path from those clients to the assistant.
 
 ## Thin-Host Runtime
 
-The image packs the local Guardian candidate, its external dependencies, and
-OpenCode tooling so the default path boots without resolving public
-`@openpalm` packages. The entrypoint keeps an explicit package/version override
-seam for downstream distributions; with no override it uses the baked package.
+The image packs the local Guardian candidate, its external dependencies,
+OpenCode, and an exact-pinned npm-global AKM CLI. The default path therefore
+boots without resolving public `@openpalm` packages. The entrypoint keeps an
+explicit package/version override seam for downstream distributions; with no
+override it uses the baked package.
 
 Runtime state is bind-mounted under `/opt/openpalm/guardian`, while the package
 lives at unshadowed `/opt/openpalm/guardian-pkg`.
