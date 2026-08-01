@@ -9,7 +9,7 @@ import {
   type IpcMainInvokeEvent,
   type IpcMainEvent,
 } from 'electron';
-import { join, dirname } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import { existsSync, mkdirSync, statSync, renameSync, createWriteStream, type WriteStream } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { spawn, type ChildProcess } from 'node:child_process';
@@ -1167,6 +1167,10 @@ function createDesktopUpdater(appVersion: string): DesktopUpdater {
     currentVersion: appVersion,
     platform: process.platform,
     isPackaged: app.isPackaged,
+    portableExecutableFile: process.env.PORTABLE_EXECUTABLE_FILE,
+    windowsInstallerPresent: existsSync(
+      join(dirname(process.execPath), `Uninstall ${basename(process.execPath)}`),
+    ),
     prerelease: checkPrereleaseUpdates,
     onStateChange: (state) => {
       // The window may be closed-to-tray or already destroyed; a state push is

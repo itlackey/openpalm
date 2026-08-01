@@ -9,8 +9,8 @@
  * Audit refinement (C2): a plain TCP-bind probe run WHILE the stack is up
  * flags all three install ports as conflicts — a false positive for exactly
  * the operator whose stack is running. {@link portHeldByOurContainer} folds
- * in docker ownership so a port already held by an `openpalm-*` container is
- * reported as "ours", not a conflict.
+ * in docker ownership so a port already published by this exact Compose
+ * project is reported as "ours", not a conflict.
  */
 import { createServer } from "node:net";
 import { STACK_DEFAULTS } from "./defaults.js";
@@ -43,25 +43,53 @@ export async function checkPortAvailable(port: number, timeoutMs = 1000): Promis
   });
 }
 
+function publishesIpv4LoopbackTcpPort(renderedPorts: string, port: number): boolean {
+  for (const renderedPort of renderedPorts.split(",")) {
+    const match = /^(\d{1,3}(?:\.\d{1,3}){3}):(\d+)(?:-(\d+))?->\d+(?:-\d+)?\/tcp$/.exec(
+      renderedPort.trim(),
+    );
+    if (!match) continue;
+
+    const address = match[1].split(".").map(Number);
+    const isLoopback = address[0] === 127;
+    const isWildcard = address.every((octet) => octet === 0);
+    if ((!isLoopback && !isWildcard) || address.some((octet) => octet > 255)) continue;
+
+    const firstPort = Number(match[2]);
+    const lastPort = Number(match[3] ?? match[2]);
+    if (port >= firstPort && port <= lastPort) return true;
+  }
+  return false;
+}
+
 /**
- * Is the named port published by an openpalm-managed container? Returns
- * "unreachable" when Docker itself cannot be queried (caller should degrade
- * a resulting conflict from blocking to warning, exactly like the UI route).
+ * Is the named port published over IPv4 loopback by this exact Compose
+ * project? Returns "unreachable" when Docker itself cannot be queried.
  */
 export async function portHeldByOurContainer(
   port: number,
+  composeProject: { name: string; workingDir: string },
   client: DockerClient = realDockerClient,
 ): Promise<PortOwnership> {
-  const result = await client.run(["ps", "--format", "{{.Names}}\t{{.Ports}}"]);
+  const result = await client.run([
+    "ps",
+    "--filter",
+    `label=com.docker.compose.project=${composeProject.name}`,
+    "--format",
+    '{{.Label "com.docker.compose.project.working_dir"}}\t{{.Ports}}',
+  ]);
   if (!result.ok) return "unreachable";
-  const lines = result.stdout
-    .split("\n")
-    .map((l) => l.trim())
-    .filter(Boolean);
-  for (const line of lines) {
-    const [name, ports] = line.split("\t");
-    if (!name?.startsWith("openpalm-")) continue;
-    if (ports?.includes(`:${port}->`)) return "held";
+  for (const line of result.stdout.split(/\r?\n/)) {
+    const separator = line.indexOf("\t");
+    if (separator === -1) continue;
+    const workingDir = line.slice(0, separator);
+    const ports = line.slice(separator + 1);
+    if (
+      workingDir === composeProject.workingDir &&
+      publishesIpv4LoopbackTcpPort(ports, port)
+    ) {
+      return "held";
+    }
   }
   return "free";
 }
@@ -107,6 +135,8 @@ export interface ProbeInstallPortsOptions {
   dockerAvailable?: boolean;
   /** A port this very process is already listening on (e.g. the admin UI's own server) — never a conflict. */
   serverPort?: number;
+  /** Compose identity required to attribute each occupied port to this exact installed project. */
+  composeProject?: { name: string; workingDir: string };
 }
 
 /**
@@ -132,7 +162,9 @@ export async function probeInstallPorts(
       if (!dockerAvailable) {
         return { ...t, available: false, blocking: false, ownership: "unreachable" };
       }
-      const ownership = await portHeldByOurContainer(t.port, client);
+      const ownership = opts.composeProject
+        ? await portHeldByOurContainer(t.port, opts.composeProject, client)
+        : "free";
       if (ownership === "held") {
         return { ...t, available: true, ownership };
       }

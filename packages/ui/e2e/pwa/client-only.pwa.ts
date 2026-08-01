@@ -1,13 +1,10 @@
 import { chromium } from '@playwright/test';
-import type { Browser, BrowserContext, CDPSession, Page } from '@playwright/test';
-import { spawn } from 'node:child_process';
-import type { ChildProcess } from 'node:child_process';
-import { once } from 'node:events';
+import type { BrowserContext, CDPSession, Page } from '@playwright/test';
 import { mkdtemp, rm } from 'node:fs/promises';
-import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { blockAmbientLocalDiscovery, expect, test } from '../fixtures.js';
+import { resolveChromiumLaunchTarget } from './chromium-launch-target.js';
 
 const UI_PORT = process.env.OP_PWA_UI_PORT ?? '4174';
 const FIXTURE_PORT = process.env.OP_PWA_FIXTURE_PORT ?? '4175';
@@ -23,6 +20,11 @@ const OLDER_SESSION_ID = 'fixture-older-session';
 const NEWEST_TRANSCRIPT = 'Newest fixture transcript';
 const OLDER_TRANSCRIPT = 'Older fixture transcript';
 const LOCAL_CHOICE_TEXT = 'Set up OpenPalm on this computer';
+
+const chromiumLaunchTarget = resolveChromiumLaunchTarget(
+  process.env.OP_PLAYWRIGHT_EXECUTABLE_PATH,
+  chromium.executablePath(),
+);
 
 type Cdp = {
   send(method: string, params?: Record<string, unknown>): Promise<unknown>;
@@ -63,10 +65,8 @@ type FixtureState = {
 };
 
 type LaunchedChromium = {
-  browser: Browser;
   context: BrowserContext;
   page: Page;
-  process: ChildProcess;
 };
 
 async function cdpSend<T>(session: CDPSession, method: string, params?: Record<string, unknown>): Promise<T> {
@@ -216,34 +216,6 @@ async function seedFixtureSessions(): Promise<void> {
   });
 }
 
-async function availablePort(): Promise<number> {
-  const server = createServer();
-  server.listen(0, '127.0.0.1');
-  await once(server, 'listening');
-  const address = server.address();
-  if (!address || typeof address === 'string') throw new Error('Could not allocate a CDP port');
-  const { port } = address;
-  server.close();
-  await once(server, 'close');
-  return port;
-}
-
-function processRunning(child: ChildProcess): boolean {
-  return child.exitCode === null && child.signalCode === null;
-}
-
-async function stopChromiumProcess(child: ChildProcess): Promise<void> {
-  if (!processRunning(child)) return;
-  const exited = once(child, 'exit');
-  child.kill('SIGTERM');
-  const timedOut = await Promise.race([
-    exited.then(() => false),
-    new Promise<true>((resolve) => setTimeout(() => resolve(true), 2_000)),
-  ]);
-  if (timedOut && processRunning(child)) child.kill('SIGKILL');
-  await exited;
-}
-
 async function removeProfile(profile: string): Promise<void> {
   const retryable = new Set(['EBUSY', 'ENOTEMPTY', 'EPERM']);
   for (let attempt = 0; ; attempt += 1) {
@@ -260,61 +232,38 @@ async function removeProfile(profile: string): Promise<void> {
 
 async function launchChromium(
   profile: string,
-  executablePath: string,
   standalone: boolean,
 ): Promise<LaunchedChromium> {
-  const cdpPort = await availablePort();
-  const process = spawn(
-    executablePath,
-    [
-      '--headless=new',
-      '--no-sandbox',
-      '--disable-dev-shm-usage',
-      '--no-first-run',
-      `--remote-debugging-port=${cdpPort}`,
-      `--user-data-dir=${profile}`,
-      ...(standalone ? [`--app=${UI_ORIGIN}/manifest.webmanifest`] : ['about:blank']),
-    ],
-    { stdio: 'ignore' },
-  );
-
-  let browser: Browser | undefined;
-  for (let attempt = 0; attempt < 50 && process.exitCode === null; attempt += 1) {
-    try {
-      browser = await chromium.connectOverCDP(`http://127.0.0.1:${cdpPort}`);
-      break;
-    } catch {
-      await new Promise((resolve) => setTimeout(resolve, 100));
-    }
-  }
-  if (!browser) {
-    await stopChromiumProcess(process);
-    throw new Error('Could not attach Playwright to Chromium');
+  let context: BrowserContext;
+  try {
+    context = await chromium.launchPersistentContext(profile, {
+      ...chromiumLaunchTarget,
+      headless: true,
+      ignoreDefaultArgs: standalone ? ['about:blank'] : undefined,
+      args: standalone ? [`--app=${UI_ORIGIN}/manifest.webmanifest`] : [],
+    });
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    throw new Error(`Could not launch Chromium with persistent profile ${profile}: ${detail}`, {
+      cause: error,
+    });
   }
 
-  const context = browser.contexts()[0];
-  if (!context) {
-    await closeChromium(browser, process);
-    throw new Error('Chromium did not create a browser context');
-  }
   let page = context.pages()[0];
   for (let attempt = 0; !page && attempt < 50; attempt += 1) {
     await new Promise((resolve) => setTimeout(resolve, 100));
     page = context.pages()[0];
   }
   if (!page) {
-    await closeChromium(browser, process);
+    await closeChromium(context);
     throw new Error('Chromium did not open a page');
   }
   await blockAmbientLocalDiscovery(context);
-  return { browser, context, page, process };
+  return { context, page };
 }
 
-async function closeChromium(browser: Browser, child: ChildProcess): Promise<void> {
-  const closed = browser.close().catch(() => {});
-  await Promise.race([closed, new Promise((resolve) => setTimeout(resolve, 2_000))]);
-  await stopChromiumProcess(child);
-  await closed;
+async function closeChromium(context: BrowserContext): Promise<void> {
+  await context.close();
 }
 
 async function installLocalChoiceObserver(page: Page): Promise<void> {
@@ -459,10 +408,9 @@ test('empty client and standalone PWA starts reach onboarding without Back or a 
   expect(await localChoiceFlashes(page)).toEqual([]);
 
   const profile = await mkdtemp(join(tmpdir(), 'openpalm-pwa-empty-standalone-'));
-  const executablePath = process.env.OP_PLAYWRIGHT_EXECUTABLE_PATH?.trim() || chromium.executablePath();
   let launched: LaunchedChromium | undefined;
   try {
-    launched = await launchChromium(profile, executablePath, true);
+    launched = await launchChromium(profile, true);
     const navigationPaths: string[] = [];
     launched.page.on('framenavigated', (frame) => {
       if (frame === launched?.page.mainFrame()) navigationPaths.push(new URL(frame.url()).pathname);
@@ -477,7 +425,7 @@ test('empty client and standalone PWA starts reach onboarding without Back or a 
     expect(navigationPaths).not.toContain('/start');
     expect(await launched.page.evaluate(() => matchMedia('(display-mode: standalone)').matches)).toBe(true);
   } finally {
-    if (launched) await closeChromium(launched.browser, launched.process);
+    if (launched) await closeChromium(launched.context);
     await removeProfile(profile);
   }
 });
@@ -640,12 +588,11 @@ test('pairing verifies before writing, stores the encrypted secret and active ID
 test('manual onboarding persists a real profile, restores a non-newest session, and repairs a deleted cursor', async () => {
   await seedFixtureSessions();
   const profile = await mkdtemp(join(tmpdir(), 'openpalm-pwa-chromium-'));
-  const executablePath = process.env.OP_PLAYWRIGHT_EXECUTABLE_PATH?.trim() || chromium.executablePath();
   let launched: LaunchedChromium | undefined;
   let bodyError: unknown;
 
   try {
-    launched = await launchChromium(profile, executablePath, false);
+    launched = await launchChromium(profile, false);
     const fixtureRequests: Array<{ method: string; url: string }> = [];
     const fixtureEventContentTypes: string[] = [];
     launched.context.on('request', (request) => {
@@ -733,10 +680,10 @@ test('manual onboarding persists a real profile, restores a non-newest session, 
     expect(installability.installabilityErrors).toEqual([]);
     await expect.poll(async () => (await cacheSnapshot(page)).names).toHaveLength(1);
 
-    await closeChromium(launched.browser, launched.process);
+    await closeChromium(launched.context);
     launched = undefined;
 
-    launched = await launchChromium(profile, executablePath, true);
+    launched = await launchChromium(profile, true);
     launched.context.on('request', (request) => {
       if (request.url().startsWith(FIXTURE_ORIGIN)) {
         fixtureRequests.push({ method: request.method(), url: request.url() });
@@ -813,14 +760,14 @@ test('manual onboarding persists a real profile, restores a non-newest session, 
       await launched.context.setOffline(false);
     }
 
-    await closeChromium(launched.browser, launched.process);
+    await closeChromium(launched.context);
     launched = undefined;
     const deleted = await fixtureControl(`/__test/session/${encodeURIComponent(OLDER_SESSION_ID)}`, {
       method: 'DELETE',
     });
     expect(deleted.sessionIds).toEqual([NEWEST_SESSION_ID]);
 
-    launched = await launchChromium(profile, executablePath, true);
+    launched = await launchChromium(profile, true);
     standalonePage = launched.page;
     await standalonePage.goto(`${UI_ORIGIN}/chat`, { waitUntil: 'domcontentloaded' });
     await expect.poll(() => new URL(standalonePage.url()).searchParams.get('assistant')).toBe(connection.id);
@@ -843,7 +790,7 @@ test('manual onboarding persists a real profile, restores a non-newest session, 
 
   let cleanupError: unknown;
   try {
-    if (launched) await closeChromium(launched.browser, launched.process);
+    if (launched) await closeChromium(launched.context);
   } catch (error) {
     cleanupError = error;
   }

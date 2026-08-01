@@ -11,6 +11,7 @@ const moduleUrls = {
   cliCompose: new URL('../lib/cli-compose.ts', import.meta.url).href,
 };
 const startModuleUrl = new URL('./start.ts', import.meta.url).href;
+const composeWaitArgs = ['--wait', '--wait-timeout', String(realLib.composeWaitTimeoutSec())];
 
 afterEach(() => {
   mock.restore();
@@ -43,7 +44,7 @@ describe('runStartAction', () => {
     await expect(runStartAction([])).rejects.toThrow(/Host swap detected/);
   });
 
-  test('reconciles ownership for all managed services, then composes up', async () => {
+  test('starts all managed services, then waits only for core services', async () => {
     let reconcileArgs: { adoptHost?: boolean; services?: string[] } | null = null;
     const composedArgs: string[][] = [];
     mock.module('@openpalm/lib', () => ({
@@ -62,7 +63,10 @@ describe('runStartAction', () => {
     await runStartAction([]);
 
     expect(reconcileArgs).toEqual({ adoptHost: false, services: ['assistant', 'guardian'] });
-    expect(composedArgs).toEqual([['up', '-d', 'assistant', 'guardian']]);
+    expect(composedArgs).toEqual([
+      ['up', '-d', 'assistant', 'guardian'],
+      ['up', '-d', ...composeWaitArgs, 'assistant'],
+    ]);
   });
 
   test('passes adoptHost through and reconciles the explicit service set', async () => {
@@ -85,7 +89,7 @@ describe('runStartAction', () => {
 
     // Explicit services are passed straight through (no buildManagedServices).
     expect(reconcileArgs).toEqual({ adoptHost: true, services: ['guardian'] });
-    expect(composedArgs).toEqual([['up', '-d', 'guardian']]);
+    expect(composedArgs).toEqual([['up', '-d', ...composeWaitArgs, 'guardian']]);
   });
 
   test('refuses with install_in_progress when the install lock is held (no compose up)', async () => {
@@ -123,27 +127,33 @@ describe('runStartAction — marks setup complete on a healthy, previously-confi
     // deploy ever running — classifyLocalInstall's documented fallback reads
     // compose + both tokens as "installed" despite OP_SETUP_COMPLETE being
     // unset.
-    const secretsDir = join(homeDir, 'knowledge', 'secrets');
+    const secretsDir = join(homeDir, 'private', 'secrets');
     mkdirSync(secretsDir, { recursive: true, mode: 0o700 });
     writeFileSync(join(secretsDir, 'op_guardian_admin_token'), 'admin\n');
     writeFileSync(join(secretsDir, 'op_guardian_mcp_token'), 'mcp\n');
     return { homeDir, stackDir };
   }
 
-  test('stamps OP_SETUP_COMPLETE=true once the started core services report healthy', async () => {
+  test('stamps after healthy core even when an optional service is unhealthy, with one lock held', async () => {
     const { homeDir, stackDir } = seedConfiguredButUndeployedHome();
+    let releaseCalled = false;
+    let finishCompose: (() => void) | undefined;
+    let signalComposeStarted: (() => void) | undefined;
+    const composedArgs: string[][] = [];
+    const composeStarted = new Promise<void>((resolve) => {
+      signalComposeStarted = resolve;
+    });
+    const composeFinished = new Promise<void>((resolve) => {
+      finishCompose = resolve;
+    });
     mock.module('@openpalm/lib', () => ({
       ...realLib,
       reconcileHostOwnership: async () => {},
-      buildManagedServices: async () => ['assistant'],
+      buildManagedServices: async () => ['assistant', 'guardian'],
       acquireInstallLock: () => ({ path: join(homeDir, 'data', '.install.lock') }),
-      releaseInstallLock: () => {},
-      composePs: async () => ({
-        ok: true,
-        stdout: JSON.stringify({ Service: 'assistant', State: 'running', Health: 'healthy' }),
-        stderr: '',
-        code: 0,
-      }),
+      releaseInstallLock: () => {
+        releaseCalled = true;
+      },
     }));
     mock.module(moduleUrls.cliState, () => ({
       ensureValidState: () => ({
@@ -153,33 +163,92 @@ describe('runStartAction — marks setup complete on a healthy, previously-confi
         stackDir,
       }),
     }));
-    mock.module(moduleUrls.cliCompose, () => ({ runComposeWithPreflight: async () => {} }));
+    mock.module(moduleUrls.cliCompose, () => ({
+      runComposeWithPreflight: async (_state: unknown, args: string[]) => {
+        composedArgs.push(args);
+        if (!args.includes('--wait')) return;
+        signalComposeStarted?.();
+        await composeFinished;
+      },
+    }));
 
     try {
       const { runStartAction } = await import(`${startModuleUrl}?t=${Math.random()}`);
-      await runStartAction([]);
+      const start = runStartAction([]);
+      await composeStarted;
+
+      expect(composedArgs).toEqual([
+        ['up', '-d', 'assistant', 'guardian'],
+        ['up', '-d', ...composeWaitArgs, 'assistant'],
+      ]);
+      expect(existsSync(join(homeDir, 'state', 'stack.env'))).toBe(false);
+      expect(releaseCalled).toBe(false);
+
+      finishCompose?.();
+      await start;
 
       const stackEnv = readFileSync(join(homeDir, 'state', 'stack.env'), 'utf-8');
       expect(stackEnv).toContain('OP_SETUP_COMPLETE=true');
+      expect(releaseCalled).toBe(true);
     } finally {
       rmSync(homeDir, { recursive: true, force: true });
     }
   });
 
-  test('does not stamp completion when the started service is not actually healthy', async () => {
+  test('does not stamp when Compose reports that health did not converge', async () => {
     const { homeDir, stackDir } = seedConfiguredButUndeployedHome();
+    let releaseCalled = false;
+    const composedArgs: string[][] = [];
+    mock.module('@openpalm/lib', () => ({
+      ...realLib,
+      reconcileHostOwnership: async () => {},
+      buildManagedServices: async () => ['assistant', 'guardian'],
+      acquireInstallLock: () => ({ path: join(homeDir, 'data', '.install.lock') }),
+      releaseInstallLock: () => {
+        releaseCalled = true;
+      },
+    }));
+    mock.module(moduleUrls.cliState, () => ({
+      ensureValidState: () => ({
+        homeDir,
+        workspaceDir: join(homeDir, 'workspace'),
+        dataDir: join(homeDir, 'data'),
+        stackDir,
+      }),
+    }));
+    mock.module(moduleUrls.cliCompose, () => ({
+      runComposeWithPreflight: async (_state: unknown, args: string[]) => {
+        composedArgs.push(args);
+        if (args.includes('--wait')) throw new Error('container assistant is unhealthy');
+      },
+    }));
+
+    try {
+      const { runStartAction } = await import(`${startModuleUrl}?t=${Math.random()}`);
+      await expect(runStartAction([])).rejects.toThrow(/unhealthy/);
+
+      expect(composedArgs).toEqual([
+        ['up', '-d', 'assistant', 'guardian'],
+        ['up', '-d', ...composeWaitArgs, 'assistant'],
+      ]);
+      expect(existsSync(join(homeDir, 'state', 'stack.env'))).toBe(false);
+      expect(releaseCalled).toBe(true);
+    } finally {
+      rmSync(homeDir, { recursive: true, force: true });
+    }
+  });
+
+  test('does not promote an interrupted wizard skeleton to setup complete', async () => {
+    const homeDir = mkdtempSync(join(tmpdir(), 'openpalm-start-interrupted-wizard-'));
+    const stackDir = join(homeDir, 'system', 'stack');
+    mkdirSync(stackDir, { recursive: true });
+    writeFileSync(join(stackDir, 'core.compose.yml'), 'services: {}\n');
     mock.module('@openpalm/lib', () => ({
       ...realLib,
       reconcileHostOwnership: async () => {},
       buildManagedServices: async () => ['assistant'],
       acquireInstallLock: () => ({ path: join(homeDir, 'data', '.install.lock') }),
       releaseInstallLock: () => {},
-      composePs: async () => ({
-        ok: true,
-        stdout: JSON.stringify({ Service: 'assistant', State: 'exited', Health: '' }),
-        stderr: '',
-        code: 0,
-      }),
     }));
     mock.module(moduleUrls.cliState, () => ({
       ensureValidState: () => ({
@@ -195,6 +264,7 @@ describe('runStartAction — marks setup complete on a healthy, previously-confi
       const { runStartAction } = await import(`${startModuleUrl}?t=${Math.random()}`);
       await runStartAction([]);
 
+      expect(realLib.classifyLocalInstall(stackDir, homeDir)).toBe('setup_incomplete');
       expect(existsSync(join(homeDir, 'state', 'stack.env'))).toBe(false);
     } finally {
       rmSync(homeDir, { recursive: true, force: true });
@@ -210,9 +280,6 @@ describe('runStartAction — marks setup complete on a healthy, previously-confi
       buildManagedServices: async () => ['assistant'],
       acquireInstallLock: () => ({ path: join(homeDir, 'data', '.install.lock') }),
       releaseInstallLock: () => {},
-      composePs: async () => {
-        throw new Error('composePs must not be called for a not_installed home');
-      },
     }));
     mock.module(moduleUrls.cliState, () => ({
       ensureValidState: () => ({

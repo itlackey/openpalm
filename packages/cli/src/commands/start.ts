@@ -6,11 +6,9 @@ import {
   releaseInstallLock,
   teardownRenamedProject,
   classifyLocalInstall,
+  composeWaitTimeoutSec,
   markSetupComplete,
   readStackEnv,
-  composePs,
-  parseComposePsRows,
-  buildComposeOptions,
   CORE_SERVICES,
 } from '@openpalm/lib';
 import type { ControlPlaneState } from '@openpalm/lib';
@@ -47,7 +45,7 @@ export default defineCommand({
 
 /**
  * `performSetup` intentionally defers `OP_SETUP_COMPLETE` to the deploy
- * callback that fires once `compose up --wait` confirms the CORE services are
+ * callback that fires once `compose up --wait` confirms the core services are
  * healthy (deploy.ts) — writing it earlier would mark setup "complete" even
  * when containers fail to start. `install --file --no-start` runs
  * performSetup but never deploys, so that callback never fires; a later
@@ -56,27 +54,16 @@ export default defineCommand({
  * and `openpalm admin` bounces the operator into the wizard over their
  * already-finished config.
  *
- * Mirrors the deploy contract's evidence bar rather than trusting a bare
- * `compose up -d` exit code: `classifyLocalInstall` must already see this
- * home as more than a never-configured skeleton (not `not_installed`), AND
- * the just-started core services must show up healthy on a follow-up
- * `compose ps` — `up -d` alone (no `--wait` here) proves containers were
- * created, not that they stayed up.
+ * Mirrors the deploy contract's evidence bar: Compose's own `--wait` is the
+ * health gate, and the pre-start state must already contain completed setup
+ * inputs. An interrupted wizard skeleton remains `setup_incomplete` and must
+ * not be promoted merely because its default containers can start.
  */
-async function markSetupCompleteIfHealthy(state: ControlPlaneState): Promise<void> {
+function markSetupCompleteAfterHealthyStart(state: ControlPlaneState, startedServices: string[]): void {
   if (readStackEnv(state.homeDir).OP_SETUP_COMPLETE === 'true') return;
-  if (classifyLocalInstall(state.stackDir, state.homeDir) === 'not_installed') return;
-  const ps = await composePs(buildComposeOptions(state));
-  if (!ps.ok) return;
-  const rows = parseComposePsRows(ps.stdout);
-  const coreHealthy = CORE_SERVICES.every((service) => {
-    const row = rows.find((r) => r.service === service);
-    return (
-      row?.state.toLowerCase() === 'running' &&
-      (row.health === '' || row.health.toLowerCase() === 'healthy')
-    );
-  });
-  if (coreHealthy) markSetupComplete(state);
+  if (classifyLocalInstall(state.stackDir, state.homeDir) !== 'installed') return;
+  if (!CORE_SERVICES.every((service) => startedServices.includes(service))) return;
+  markSetupComplete(state);
 }
 
 export async function runStartAction(
@@ -98,6 +85,7 @@ export async function runStartAction(
     // Ownership repair can mutate bind mounts and state, so it belongs inside
     // the same orchestrator transaction as compose.
     const managedServices = services.length === 0 ? await buildManagedServices(state) : services;
+    const waitArgs = ['--wait', '--wait-timeout', String(composeWaitTimeoutSec())];
     await reconcileHostOwnership(state, { adoptHost: !!options.adoptHost, services: managedServices });
     if (services.length === 0) {
       // Project rename (#540): if OP_PROJECT_NAME changed since the stack
@@ -114,17 +102,20 @@ export async function runStartAction(
         console.log(`Project rename: stopped previous docker project "${renameTeardown.downed}".`);
       }
 
-      // Stage artifacts and start all managed services (admin included if enabled)
+      // Start every enabled service, but gate setup only on the core runtime.
+      // Optional services may still be starting or unhealthy without preventing
+      // a usable core installation from completing.
       await runComposeWithPreflight(state, ['up', '-d', ...managedServices], lock);
-      await markSetupCompleteIfHealthy(state);
+      await runComposeWithPreflight(state, ['up', '-d', ...waitArgs, ...CORE_SERVICES], lock);
+      markSetupCompleteAfterHealthyStart(state, managedServices);
       return;
     }
 
     // Start specific services
     for (const service of services) {
-      await runComposeWithPreflight(state, ['up', '-d', service], lock);
+      await runComposeWithPreflight(state, ['up', '-d', ...waitArgs, service], lock);
     }
-    await markSetupCompleteIfHealthy(state);
+    markSetupCompleteAfterHealthyStart(state, managedServices);
   } finally {
     releaseInstallLock(lock);
   }

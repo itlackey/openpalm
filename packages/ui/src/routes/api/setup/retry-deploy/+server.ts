@@ -7,8 +7,13 @@ import type { RequestHandler } from './$types';
 
 export const POST: RequestHandler = async (event) => {
   const requestId = getRequestId(event);
+  const state = getState();
+  const current = getDeployState(state);
 
-  if (isSetupComplete(resolveOpenPalmHome())) {
+  // Authenticated setup reruns mark setup complete before the deploy finishes.
+  // Permit only recovery of a persisted failed deploy; ordinary post-setup
+  // calls remain blocked.
+  if (isSetupComplete(resolveOpenPalmHome()) && !current.deployError) {
     return errorResponse(409, 'setup_complete', 'Setup is already complete.', {}, requestId);
   }
 
@@ -17,11 +22,10 @@ export const POST: RequestHandler = async (event) => {
     return errorResponse(503, 'docker_unavailable', "Docker isn't running. Start Docker, then retry deploy.", {}, requestId);
   }
 
-  const current = getDeployState(getState());
   if (current.deploying) {
     return errorResponse(409, 'install_in_progress', 'A deploy is already running.', {}, requestId);
   }
 
-  startDeploy(getState());
+  startDeploy(state);
   return json({ ok: true });
 };

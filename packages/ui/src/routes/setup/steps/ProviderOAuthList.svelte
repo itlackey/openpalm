@@ -7,7 +7,8 @@
    *
    * Takes NO props: reads the setup-state store directly (opencodeProviders /
    * opencodeAuth / providerState) and calls its OAuth methods
-   * (startOpenCodeOAuth / cancelOAuth), mirroring Screen1ModelsStep / ReviewStep.
+    * (startOpenCodeOAuth / submitOpenCodeOAuthCode / cancelOAuth), mirroring
+    * Screen1ModelsStep / ReviewStep.
    *
    * The empty state distinguishes "OpenCode isn't reachable" from "everything
    * is already connected" (`opencodeAvailable`) and offers a retry in the
@@ -19,7 +20,6 @@
   import type { ProviderState } from '$lib/client/types.js';
   import Spinner from '$lib/components/common/Spinner.svelte';
   import { setupState } from '$lib/setup/setup-state.svelte.js';
-  import { pollOpenCodeOAuthCallback } from '$lib/setup-api.js';
 
   const s = setupState;
 
@@ -30,41 +30,13 @@
   const onoauthstart = (id: string, methodIndex: number): void => void s.startOpenCodeOAuth(id, methodIndex);
   const onoauthcancel = (id: string): void => s.cancelOAuth(id);
 
-  // ── W2: manual authorization-code entry ─────────────────────────────────────
-  // `method:'code'` providers show a page with a code the user copies back
-  // here — the wizard had no way to submit it, so sign-in for those providers
-  // never completed. The store's long-poll (startOpenCodeOAuth) can't tell us
-  // which method a given flow is (OpenCode only reveals that in the authorize
-  // response, which the store consumes without re-exposing it), so this input
-  // is offered whenever instructions are shown rather than gated on method —
-  // harmless for 'auto' flows, which complete via the popup and never need it.
+  // Authorization codes are transient component input. The store owns all
+  // callback, cancellation, success, and failure state.
   const codeInputs: Record<string, string> = $state({});
-  const codeSubmitting: Record<string, boolean> = $state({});
-  const codeErrors: Record<string, string> = $state({});
 
-  async function submitOauthCode(id: string, methodIndex: number): Promise<void> {
-    const code = (codeInputs[id] ?? '').trim();
-    if (!code) { codeErrors[id] = 'Paste the code first.'; return; }
-    codeSubmitting[id] = true;
-    codeErrors[id] = '';
-    try {
-      const { ok, data } = await pollOpenCodeOAuthCallback(id, methodIndex, AbortSignal.timeout(20_000), code);
-      if (ok && data?.ok) {
-        // Stop the store's own long-poll (still waiting on the same flow with
-        // no code) so it can't later overwrite this success with a stale
-        // timeout error — see cancelOAuth's abort of the in-flight fetch.
-        s.cancelOAuth(id);
-        const st = providerState[id];
-        if (st) { st.verified = true; st.error = false; }
-        codeInputs[id] = '';
-      } else {
-        codeErrors[id] = data?.message ?? 'That code was not accepted. Try again.';
-      }
-    } catch (e) {
-      codeErrors[id] = e instanceof Error ? e.message : 'Failed to submit the code.';
-    } finally {
-      codeSubmitting[id] = false;
-    }
+  function cancelOauth(id: string): void {
+    codeInputs[id] = '';
+    onoauthcancel(id);
   }
 
   // Order recognizable consumer providers first; obscure ones fall to the end.
@@ -138,11 +110,8 @@
             {/if}
             {#if st.oauthInstructions}
               <p class="oauth-instructions">{st.oauthInstructions}</p>
-              <!-- W2: `method:'code'` providers need the code pasted back here —
-                   there is no client-side way to tell 'auto' and 'code' flows
-                   apart before this point, so the field is offered whenever the
-                   provider sent instructions; an 'auto' flow that completes via
-                   its popup simply never needs it. -->
+            {/if}
+            {#if st.oauthMethod === 'code'}
               <div class="oauth-code-entry">
                 <input
                   type="text"
@@ -150,29 +119,31 @@
                   placeholder="Paste authorization code"
                   aria-label="{provider.name} authorization code"
                   value={codeInputs[provider.id] ?? ''}
-                  disabled={codeSubmitting[provider.id]}
+                  disabled={st.verifying}
                   oninput={(e) => { codeInputs[provider.id] = (e.currentTarget as HTMLInputElement).value; }}
                 />
                 <button
                   type="button"
                   class="btn-oauth-code-submit"
-                  disabled={codeSubmitting[provider.id] || !(codeInputs[provider.id] ?? '').trim()}
-                  onclick={() => submitOauthCode(provider.id, methodIdx)}
+                  disabled={st.verifying || !(codeInputs[provider.id] ?? '').trim()}
+                  onclick={() => void s.submitOpenCodeOAuthCode(provider.id, methodIdx, codeInputs[provider.id] ?? '')}
                 >
-                  {codeSubmitting[provider.id] ? 'Submitting…' : 'Submit code'}
+                  {st.verifying ? 'Submitting…' : 'Submit code'}
                 </button>
               </div>
-              {#if codeErrors[provider.id]}
-                <span class="oauth-code-error" role="alert">{codeErrors[provider.id]}</span>
+              {#if st.error}
+                <span class="oauth-code-error" role="alert">{st.errorMessage ?? 'That code was not accepted. Try again.'}</span>
               {/if}
             {/if}
-            <div class="oauth-waiting">
-              <Spinner /> Waiting for authorization…
-            </div>
+            {#if st.oauthMethod === 'auto'}
+              <div class="oauth-waiting">
+                <Spinner /> Waiting for authorization…
+              </div>
+            {/if}
             <button
               type="button"
               class="btn-oauth-cancel"
-              onclick={() => onoauthcancel(provider.id)}
+              onclick={() => cancelOauth(provider.id)}
             >
               Cancel
             </button>

@@ -11,7 +11,7 @@
   interface Props {
     deployData: DeployData;
     deployDone: boolean;
-    /** Terminal state reached with non-running rows that are all warnings. */
+    /** Terminal state reached when only optional services failed. */
     deployHasWarnings?: boolean;
     deployError: string | null;
     onback: () => void;
@@ -72,7 +72,7 @@
   const deploySubtitle = $derived.by(() => {
     if (deployDone) {
       return deployHasWarnings
-        ? 'Setup is complete. Some services are still warming up in the background — they will be ready shortly.'
+        ? 'Setup is complete, but one or more optional services did not start. Features that depend on them may be unavailable.'
         : 'Your OpenPalm stack is up and running.';
     }
     if (deployError) return 'Setup could not finish starting the stack.';
@@ -190,15 +190,15 @@
     {:else}
       <p class="done-subtitle">
         {deployHasWarnings
-          ? 'Setup is complete. Some services are still warming up in the background.'
+          ? 'Setup is complete, but one or more optional services did not start. Features that depend on them may be unavailable.'
           : 'Your OpenPalm stack is up and running.'}
       </p>
       {#if deployHasWarnings && warningRows.length > 0}
         <div class="deploy-warnings-note" role="status" id="deploy-warnings-note">
-          Still warming up: {warningRows.map((s) => s.label || s.service).join(', ')}. You can finish setup now — these will be ready shortly.
+          Optional services with startup warnings: {warningRows.map((s) => s.service || s.label).join(', ')}. These addons remain enabled; review their service details in the Admin Dashboard.
         </div>
       {/if}
-      {#if deployData.imageWarning}
+      {#if deployData.imageWarning && !deployHasWarnings}
         <div class="feedback feedback--warning" role="status" id="deploy-image-warning" style="margin-top:12px">
           <span>⚠ {deployData.imageWarning}</span>
         </div>
@@ -210,16 +210,16 @@
         {#each services as svc (svc.service)}
           {@const name = svc.service || svc.label || ''}
           {@const linkInfo = serviceLinks[name]}
-          {@const isWarming = svc.status === 'warning'}
+          {@const hasWarning = svc.status === 'warning'}
           <li>
             {#if linkInfo}
               {@const url = 'http://127.0.0.1:' + linkInfo.port + linkInfo.path}
               <span class="deploy-svc-name">{linkInfo.label}</span>
               <a href={url} target="_blank" rel="noopener" class="deploy-svc-link">{url}</a>
-              <span class="deploy-svc-status">{isWarming ? (svc.label || '⚠ Warming up') : '✓ Running'}</span>
+              <span class="deploy-svc-status">{hasWarning ? (svc.label || 'Did not start') : '✓ Running'}</span>
             {:else}
               <span class="deploy-svc-name">{name}</span>
-              <span class="deploy-svc-status">{isWarming ? (svc.label || '⚠ Warming up') : '✓ Running'}</span>
+              <span class="deploy-svc-status">{hasWarning ? (svc.label || 'Did not start') : '✓ Running'}</span>
             {/if}
           </li>
         {/each}
@@ -250,9 +250,8 @@
 
 <style>
   /* Warning bar variant — wizard.css ships complete/ready/stopped/indeterminate
-     but no `warning`. Voice-warming rows render distinctly (amber, settled —
-     NOT the animated indeterminate "still working" bar, and NOT the red error
-     bar). Uses the same amber tokens as the existing ready/stopped variants. */
+     but no `warning`. Optional-service warning rows render distinctly from both
+     active work and blocking errors. */
   .deploy-bar-fill.warning {
     width: 72%;
     background: var(--s-ink-2);

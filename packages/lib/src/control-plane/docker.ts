@@ -275,11 +275,11 @@ export async function checkDocker(): Promise<DockerResult> {
 
 /**
  * Minimum Docker Compose version that supports `--wait`/`--wait-timeout`
- * (added in Compose v2.14.0) — §2.1 makes these the single health gate for
+ * (`--wait-timeout` requires Compose v2.17.0) — §2.1 makes these the health gate for
  * every `compose up`, so an older CLI must fail the preflight instead of
  * silently rejecting the flag at runtime.
  */
-const COMPOSE_WAIT_FLOOR = [2, 14, 0] as const;
+const COMPOSE_WAIT_FLOOR = [2, 17, 0] as const;
 
 /**
  * Decide whether a `docker compose version` output (e.g. "Docker Compose
@@ -309,7 +309,7 @@ export async function checkDockerCompose(): Promise<DockerResult> {
       ok: false,
       stderr:
         result.stderr ||
-        `Docker Compose ${result.stdout.trim() || "(unknown version)"} is too old — v2.14.0 or newer is required.`,
+        `Docker Compose ${result.stdout.trim() || "(unknown version)"} is too old — v2.17.0 or newer is required.`,
     };
   }
   return result;

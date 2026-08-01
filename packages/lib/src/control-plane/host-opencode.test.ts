@@ -7,7 +7,11 @@ import { describe, expect, it, beforeEach, afterEach } from "bun:test";
 import { existsSync, mkdirSync, mkdtempSync, rmSync, readFileSync, writeFileSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { detectHostOpenCode, importHostOpenCode } from "./host-opencode.js";
+import {
+  detectHostOpenCode,
+  importHostOpenCode,
+  persistHostOpenCodeOAuthCredential,
+} from "./host-opencode.js";
 import type { ControlPlaneState } from "./types.js";
 
 // ── helpers ──────────────────────────────────────────────────────────────────
@@ -407,5 +411,56 @@ describe("importHostOpenCode", () => {
     expect(written.azure.key).toBe("existing");
     // Verify groq was added
     expect(written.groq.key).toBe("gsk-host");
+  });
+
+  for (const credential of [
+    { type: "oauth", access: "new-access", refresh: "new-refresh" },
+    { type: "api", key: "oauth-method-result" },
+  ]) {
+    it(`persists a completed OAuth method stored as type ${credential.type}`, () => {
+      const hostDataDir = join(xdgRoot, "data", "opencode");
+      mkdirSync(hostDataDir, { recursive: true });
+      writeFileSync(join(hostDataDir, "auth.json"), JSON.stringify({
+        openai: credential,
+        github: { type: "oauth", access: "unrelated" },
+      }));
+
+      const destDir = join(opHome, "knowledge", "secrets");
+      const destPath = join(destDir, "auth.json");
+      mkdirSync(destDir, { recursive: true, mode: 0o755 });
+      writeFileSync(destPath, JSON.stringify({
+        groq: { type: "api", key: "existing" },
+        openai: { type: "oauth", access: "old-access" },
+      }), { mode: 0o640 });
+      const inode = statSync(destPath).ino;
+
+      withXdgEnv(`${xdgRoot}/config`, `${xdgRoot}/data`, () => {
+        persistHostOpenCodeOAuthCredential(makeState(opHome), "openai");
+      });
+
+      const written = JSON.parse(readFileSync(destPath, "utf-8"));
+      expect(written).toEqual({
+        groq: { type: "api", key: "existing" },
+        openai: credential,
+      });
+      expect(written.github).toBeUndefined();
+      expect(statSync(destPath).ino).toBe(inode);
+      expect(statSync(destPath).mode & 0o777).toBe(0o600);
+      expect(statSync(destDir).mode & 0o777).toBe(0o700);
+    });
+  }
+
+  it("rejects non-object credential entries", () => {
+    const hostDataDir = join(xdgRoot, "data", "opencode");
+    mkdirSync(hostDataDir, { recursive: true });
+    const hostAuthPath = join(hostDataDir, "auth.json");
+
+    withXdgEnv(`${xdgRoot}/config`, `${xdgRoot}/data`, () => {
+      for (const invalid of [null, "credential", 42, ["credential"]]) {
+        writeFileSync(hostAuthPath, JSON.stringify({ openai: invalid }));
+        expect(() => persistHostOpenCodeOAuthCredential(makeState(opHome), "openai"))
+          .toThrow("Completed OAuth credential for openai was not found");
+      }
+    });
   });
 });

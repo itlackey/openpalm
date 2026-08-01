@@ -91,6 +91,8 @@ function makeUpdater(
   overrides: Partial<{
     platform: NodeJS.Platform;
     isPackaged: boolean;
+    portableExecutableFile: string;
+    windowsInstallerPresent: boolean;
     prerelease: boolean;
     now: () => number;
   }> = {},
@@ -101,6 +103,8 @@ function makeUpdater(
     currentVersion: '1.0.0',
     platform: overrides.platform ?? 'linux',
     isPackaged: overrides.isPackaged ?? true,
+    portableExecutableFile: overrides.portableExecutableFile,
+    windowsInstallerPresent: overrides.windowsInstallerPresent ?? true,
     prerelease: overrides.prerelease ?? false,
     now: overrides.now,
   });
@@ -142,14 +146,57 @@ describe('channel mapping', () => {
 
 describe('platform support', () => {
   it('supports packaged Windows and Linux', () => {
-    expect(isAutoUpdateSupported('win32', true)).toBe(true);
-    expect(isAutoUpdateSupported('linux', true)).toBe(true);
+    expect(isAutoUpdateSupported('win32', true, true)).toBe(true);
+    expect(isAutoUpdateSupported('linux', true, false)).toBe(true);
   });
 
   it('does not support macOS (unsigned/un-notarized) or unpackaged runs', () => {
-    expect(isAutoUpdateSupported('darwin', true)).toBe(false);
-    expect(isAutoUpdateSupported('linux', false)).toBe(false);
-    expect(isAutoUpdateSupported('win32', false)).toBe(false);
+    expect(isAutoUpdateSupported('darwin', true, false)).toBe(false);
+    expect(isAutoUpdateSupported('linux', false, false)).toBe(false);
+    expect(isAutoUpdateSupported('win32', false, true)).toBe(false);
+  });
+
+  it('does not support electron-builder Windows portable runtimes', () => {
+    expect(isAutoUpdateSupported('win32', true, true, 'C:\\Downloads\\OpenPalm.exe')).toBe(false);
+    expect(isAutoUpdateSupported('linux', true, false, '/tmp/irrelevant-portable-signal')).toBe(true);
+  });
+
+  it('does not support an extracted Windows archive with no NSIS uninstaller', () => {
+    expect(isAutoUpdateSupported('win32', true, false)).toBe(false);
+  });
+
+  it('keeps an extracted Windows archive inert instead of installing NSIS elsewhere', async () => {
+    const { updater, fake } = makeUpdater({
+      platform: 'win32',
+      windowsInstallerPresent: false,
+    });
+
+    expect(updater.getState()).toMatchObject({ status: 'unsupported', supported: false });
+    await updater.check();
+    await updater.download();
+    expect(updater.quitAndInstall()).toBe(false);
+    expect(updater.installOnQuit()).toBe(false);
+    expect(fake.checkCalls).toBe(0);
+    expect(fake.downloadCalls).toBe(0);
+    expect(fake.quitCalls).toEqual([]);
+    expect(fake.installCalls).toEqual([]);
+  });
+
+  it('keeps a portable runtime inert so it cannot download or install NSIS', async () => {
+    const { updater, fake } = makeUpdater({
+      platform: 'win32',
+      portableExecutableFile: 'C:\\Downloads\\OpenPalm.exe',
+    });
+
+    expect(updater.getState()).toMatchObject({ status: 'unsupported', supported: false });
+    await updater.check();
+    await updater.download();
+    expect(updater.quitAndInstall()).toBe(false);
+    expect(updater.installOnQuit()).toBe(false);
+    expect(fake.checkCalls).toBe(0);
+    expect(fake.downloadCalls).toBe(0);
+    expect(fake.quitCalls).toEqual([]);
+    expect(fake.installCalls).toEqual([]);
   });
 
   it('reports unsupported with a manual releases URL, and never calls the updater', async () => {
@@ -406,9 +453,9 @@ describe('dispose (listener teardown)', () => {
 
   it('rebuilding over the same singleton after dispose leaves exactly one listener set', () => {
     const fake = new FakeUpdater();
-    const first = new DesktopUpdater({ updater: fake, currentVersion: '1.0.0', platform: 'linux', isPackaged: true, prerelease: false });
+    const first = new DesktopUpdater({ updater: fake, currentVersion: '1.0.0', platform: 'linux', isPackaged: true, windowsInstallerPresent: false, prerelease: false });
     first.dispose();
-    const second = new DesktopUpdater({ updater: fake, currentVersion: '1.0.0', platform: 'linux', isPackaged: true, prerelease: true });
+    const second = new DesktopUpdater({ updater: fake, currentVersion: '1.0.0', platform: 'linux', isPackaged: true, windowsInstallerPresent: false, prerelease: true });
 
     expect(fake.listenerCount('download-progress')).toBe(1);
     expect(fake.listenerCount('update-downloaded')).toBe(1);

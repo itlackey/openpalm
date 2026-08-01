@@ -24,7 +24,7 @@ export const POST: RequestHandler = async (event) => {
     const client = createOpenCodeClient({ baseUrl: target.url, username: target.username, password: target.password });
     const result = await client.startProviderOAuth(params.provider, method);
     if (!result.ok) return errorResponse(400, "oauth_authorize_failed", "OAuth authorization failed", {}, requestId);
-    return json({ ok: true, ...(result.data as object) });
+    return json({ ok: true, ...(result.data as object), source: target.source });
   } catch {
     return errorResponse(500, "oauth_authorize_failed", "OAuth authorization failed", {}, requestId);
   }

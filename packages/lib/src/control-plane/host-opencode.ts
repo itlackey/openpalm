@@ -21,6 +21,7 @@ import { homedir } from "node:os";
 import { dirname } from "node:path";
 import type { ControlPlaneState } from "./types.js";
 import { authJsonPath, assistantConfigDir } from "./paths.js";
+import { writeFileInPlace } from "./fs-atomic.js";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -80,6 +81,13 @@ function readJsonFileSafe(path: string): OpenCodeJson | null {
   } catch {
     return null;
   }
+}
+
+function isPlainObject(value: unknown): value is OpenCodeJson {
+  return value !== null
+    && typeof value === "object"
+    && !Array.isArray(value)
+    && Object.getPrototypeOf(value) === Object.prototype;
 }
 
 function writeJsonIfChanged(path: string, value: OpenCodeJson): boolean {
@@ -162,6 +170,44 @@ export function detectHostOpenCode(): HostOpenCodeStatus {
     credentialCount,
     ...(modelPreferences ? { modelPreferences } : {}),
   };
+}
+
+/**
+ * Persist one OAuth credential written by the host OpenCode process into the
+ * assistant's canonical auth.json. This is intentionally provider-scoped: the
+ * setup wizard must not import unrelated host credentials as a side effect of
+ * completing one OAuth flow.
+ */
+export function persistHostOpenCodeOAuthCredential(
+  state: ControlPlaneState,
+  providerId: string,
+): void {
+  if (!/^[a-zA-Z0-9_-]{1,64}$/.test(providerId)) {
+    throw new Error("Invalid provider ID");
+  }
+
+  const hostAuth = readJsonFileSafe(hostAuthJsonPath());
+  const credential = isPlainObject(hostAuth) ? hostAuth[providerId] : undefined;
+  if (!isPlainObject(credential)) {
+    throw new Error(`Completed OAuth credential for ${providerId} was not found`);
+  }
+
+  const destPath = authJsonPath(state);
+  const destDir = dirname(destPath);
+  mkdirSync(destDir, { recursive: true, mode: 0o700 });
+  chmodSync(destDir, 0o700);
+
+  let existing: OpenCodeJson = {};
+  if (existsSync(destPath)) {
+    const parsed = readJsonFileSafe(destPath);
+    if (!isPlainObject(parsed)) throw new Error("Canonical auth.json must be a JSON object");
+    existing = parsed;
+  }
+
+  existing[providerId] = credential;
+  // auth.json is a single-file bind mount; replacing its inode strands running
+  // containers on the old file.
+  writeFileInPlace(destPath, `${JSON.stringify(existing, null, 2)}\n`, 0o600);
 }
 
 /**

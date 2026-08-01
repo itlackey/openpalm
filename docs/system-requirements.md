@@ -10,7 +10,7 @@ OpenPalm stack.
 | Requirement | Minimum | Notes |
 |---|---|---|
 | Docker Engine or Docker Desktop | 24.0+ | Must include Compose V2 |
-| Docker Compose | 2.20+ | Usually bundled with Docker |
+| Docker Compose | 2.17+ | Required for `docker compose up --wait-timeout`; usually bundled with Docker |
 | `git` | any | Only needed to clone the repo for development; not required to install OpenPalm — a raw copy of `packages/skeleton/` is not a working install (see [Setup Guide](setup-guide.md)) |
 | `curl` | any | Only needed for optional installer scripts |
 

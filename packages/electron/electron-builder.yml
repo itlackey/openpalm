@@ -111,6 +111,10 @@ win:
   icon: assets/icon.png
 
 nsis:
+  # Match electron-updater's dash-safe feed URL exactly. The release workflow
+  # uploads artifacts itself, so the on-disk filename must already be the name
+  # clients request from the GitHub Release.
+  artifactName: ${productName}-Setup-${version}.${ext}
   # Per-user install needs no admin rights, which keeps unattended updates
   # working: a machine-wide install would prompt for elevation on every update.
   oneClick: false
@@ -127,6 +131,5 @@ nsis:
   # — on disk, in latest.yml/beta.yml, and on the uploaded GitHub Release —
   # agrees. See scripts/validate-release-assets.mjs's desktopAssetName (nsis
   # case), which must match this pattern.
-  artifactName: ${productName}-Setup-${version}.${ext}
 
 npmRebuild: false

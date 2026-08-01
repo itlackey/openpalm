@@ -160,7 +160,10 @@ export async function fetchProviderModels(
 
 // ── OpenCode OAuth ───────────────────────────────────────────────────────────
 
+export type SetupOpenCodeSource = 'wizard' | 'assistant';
+
 export interface OAuthAuthorizeResponse {
+  source: SetupOpenCodeSource;
   url?: string;
   method?: 'auto' | 'code';
   instructions?: string;
@@ -189,19 +192,19 @@ export interface OAuthCallbackResponse { ok?: boolean; message?: string; }
  * caller can distinguish user-cancel from timeout.
  *
  * `code` (W2): `method:'code'` providers need the user to paste back an
- * authorization code shown on the provider's own page — pass it once the user
- * has it. Omitted, this is the plain long-poll wait `startOpenCodeOAuth` makes
- * immediately after `authorize`.
+ * authorization code shown on the provider's own page. Browser-auto flows omit
+ * it and use the long-poll callback immediately after `authorize`.
  */
 export async function pollOpenCodeOAuthCallback(
   providerId: string,
   methodIndex: number,
+  source: SetupOpenCodeSource,
   signal: AbortSignal,
   code?: string,
 ): Promise<SetupApiResult<OAuthCallbackResponse | null>> {
   const res = await setupRequest(
     'POST', `/opencode/provider/${encodeURIComponent(providerId)}/oauth/callback`,
-    { method: methodIndex, ...(code ? { code } : {}) }, signal,
+    { method: methodIndex, source, ...(code ? { code } : {}) }, signal,
   );
   const data = (await res.json().catch(() => null)) as OAuthCallbackResponse | null;
   return { ok: res.ok, data };

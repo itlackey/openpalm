@@ -94,6 +94,76 @@ Never reuse a version after an immutable artifact has been published.
 
 ## Checklist
 
+Record the candidate SHA, platform and artifact used, observed result, and a
+link to logs or screenshots for every manual check. Mark checks that could not
+run as `BLOCKED_PLATFORM`, `BLOCKED_CREDENTIAL`, or `N/A` with the exact reason;
+an unexecuted check is not a pass. Never include credential values in evidence.
+
+### Automated gates
+
+- [ ] `bun run lint` passes.
+- [ ] `bun run test:t1`, `bun run test:t2`, `bun run test:t3`, and
+      `bun run test:t4` pass.
+- [ ] `bun run test:t5` passes for stack or onboarding changes.
+- [ ] `bun run ui:test:pwa` passes for UI, PWA, or release candidates.
+- [ ] `bun run --cwd packages/electron typecheck` and
+      `bun run --cwd packages/electron test` pass.
+
+### Onboarding and runtime acceptance
+
+- [ ] On a host with no existing `OP_HOME`, Docker preflight failures leave no
+      partial install, and rerunning install after fixing Docker succeeds.
+- [ ] A fresh browser-wizard run with no deployed assistant loads the provider
+      catalog from its temporary OpenCode instance.
+- [ ] Browser-redirect OAuth completes, persists the credential to
+      `OP_HOME/knowledge/secrets/auth.json`, survives deployment, and can send a
+      model-backed message from the assistant UI.
+- [ ] Authorization-code OAuth keeps its code input available until submission,
+      persists the credential, survives deployment, and can send a model-backed
+      message.
+- [ ] Host credential import persists imported credentials into `OP_HOME` and
+      the deployed assistant can use them without reopening the wizard.
+- [ ] A blocking port conflict remains visible on System Check and prevents
+      continuing until the conflict is resolved.
+- [ ] Clicking Install reaches `writing-config`, `pulling-images`, `starting`,
+      and `ready`; an optional-service failure terminates with a warning rather
+      than polling forever.
+- [ ] Retry resumes status polling after a failed deploy, and reopening a failed
+      deploy still permits returning to Review and editing configuration.
+- [ ] Setup completion signs into the host UI, the assistant UI uses its
+      independent session cookie, and logging into either surface does not log
+      the other out.
+- [ ] The first real chat message succeeds; invalid credentials, quota errors,
+      permission waits, and idle timeouts surface actionable errors without
+      abandoning a still-running server turn.
+- [ ] `install --file <spec> --no-start` followed by `openpalm start` waits for
+      core health and records `OP_SETUP_COMPLETE=true`.
+- [ ] `openpalm doctor` exits nonzero for Docker, Compose, blocking-port, disk,
+      inventory, cleanup, and database-maintenance failures that it reports.
+
+### Packaged desktop and installer acceptance
+
+- [ ] Linux x64 and arm64 AppImages launch on a supported distribution; the
+      documented `libfuse2` and `--appimage-extract-and-run` paths are verified.
+- [ ] Windows NSIS install, update, relaunch, uninstall, launch-on-login, tray,
+      and single-instance behavior are verified on a clean Windows host.
+- [ ] The Windows portable archive remains portable and does not offer or apply
+      an NSIS update into a second installation.
+- [ ] Intel and Apple Silicon macOS archives launch through the documented
+      macOS 15 approval flow and remain on the manual-update path.
+- [ ] On Linux and Windows, closing with a usable tray hides the window and
+      closing without a usable tray exits; a second launch focuses the primary
+      instance.
+- [ ] Quitting during deployment offers Keep Waiting and Quit Anyway, and a
+      backgrounded completed or failed deploy produces the documented native
+      notification.
+- [ ] Off-origin navigation, redirects, popups, and privileged IPC cannot retain
+      access to the trusted Electron window or invoke privileged actions.
+- [ ] A staged Windows or Linux update installs on both explicit restart and an
+      ordinary confirmed application quit.
+
+### Release workflow and publication
+
 - [ ] Dispatch a dry run from `main` or `release/*`.
 - [ ] Candidate is directly atop the recorded base SHA.
 - [ ] Frozen-lockfile preflight passes.
@@ -111,7 +181,8 @@ Never reuse a version after an immutable artifact has been published.
 - [ ] Live source and tag are pushed atomically.
 - [ ] One summary GitHub Release is publicly verified.
 - [ ] `openpalm` publishes only after that verification.
-- [ ] Stable image aliases move only after immutable release completion.
+- [ ] No mutable image aliases were published; product images use only the
+      immutable release version.
 
 ## Extensions
 

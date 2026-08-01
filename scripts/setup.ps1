@@ -2,7 +2,9 @@
 # One-liner install:
 #   irm https://raw.githubusercontent.com/itlackey/openpalm/main/scripts/setup.ps1 | iex
 #
-$ErrorActionPreference = 'Stop'
+$OpenPalmPreviousErrorActionPreference = $ErrorActionPreference
+try {
+    $ErrorActionPreference = 'Stop'
 
 # Windows 10 LTSC / Server 2016 hosts can still default their .NET Framework
 # to TLS 1.0/1.1, which GitHub rejects — every HTTPS call below would fail
@@ -336,6 +338,10 @@ if ($CliOnly) {
 # falling off the end leaves $LASTEXITCODE at 0, which is already the correct
 # default process exit code.
 & $Dest install --version $Version @PassthroughArgs
-if ($LASTEXITCODE -ne 0) {
-    throw "openpalm install failed (exit code $LASTEXITCODE)."
+$InstallExitCode = $LASTEXITCODE
+if ($InstallExitCode -ne 0) {
+    throw "openpalm install failed with exit code $InstallExitCode"
+}
+} finally {
+    $ErrorActionPreference = $OpenPalmPreviousErrorActionPreference
 }

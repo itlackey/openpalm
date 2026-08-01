@@ -2,6 +2,7 @@ import { afterEach, describe, expect, test, vi } from 'vitest';
 import {
   fetchVoiceProfiles, fetchProviderModels, ensureOpenCode,
   completeSetup, fetchDeployStatus, fetchSetupStatus, importHost,
+  pollOpenCodeOAuthCallback,
 } from './setup-api.js';
 import type { SetupPayload } from './setup/payload.js';
 
@@ -54,6 +55,17 @@ describe('setupRequest shaping', () => {
     const calls = mockFetch(200, { models: [] });
     await fetchProviderModels('a/b', { apiKey: '', baseUrl: '' });
     expect(calls[0].url).toBe('/api/setup/models/a%2Fb');
+  });
+
+  test('OAuth callback sends the authorize target source, never a URL', async () => {
+    const calls = mockFetch(200, { ok: true });
+    await pollOpenCodeOAuthCallback('openai', 2, 'wizard', new AbortController().signal, 'code');
+
+    expect(JSON.parse(calls[0].init?.body as string)).toEqual({
+      method: 2,
+      source: 'wizard',
+      code: 'code',
+    });
   });
 });
 

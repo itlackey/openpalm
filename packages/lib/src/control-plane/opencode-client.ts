@@ -23,6 +23,11 @@ export type ProxyResult =
   | { ok: true; data: unknown }
   | { ok: false; status: number; code: string; message: string };
 
+export type OpenCodeRequestOptions = {
+  timeoutMs?: number;
+  signal?: AbortSignal;
+};
+
 export type OpenCodeProvider = {
   id: string;
   name?: string;
@@ -52,9 +57,16 @@ export function createOpenCodeClient(opts: OpenCodeClientOpts) {
 
   const DEFAULT_TIMEOUT_MS = 30_000;
 
-  async function proxy(path: string, options?: RequestInit): Promise<ProxyResult> {
+  async function proxy(
+    path: string,
+    options?: RequestInit,
+    timeoutMs = DEFAULT_TIMEOUT_MS,
+  ): Promise<ProxyResult> {
     try {
-      const signal = options?.signal ?? AbortSignal.timeout(DEFAULT_TIMEOUT_MS);
+      const timeoutSignal = AbortSignal.timeout(timeoutMs);
+      const signal = options?.signal
+        ? AbortSignal.any([options.signal, timeoutSignal])
+        : timeoutSignal;
       const headers = {
         ...(options?.headers as Record<string, string> | undefined),
         ...assistantAuthHeaders({ username, password }),
@@ -104,27 +116,36 @@ export function createOpenCodeClient(opts: OpenCodeClientOpts) {
   }
 
   /**
-   * `timeoutMs` overrides the shared 30s default — callers that know the
+   * `options.timeoutMs` overrides the shared 30s default — callers that know the
    * remote step is inherently slow (a user completing a provider's
    * browser-based OAuth flow can easily take minutes) grant it a realistic
    * budget instead of racing `proxy`'s generic timeout.
    */
-  async function startProviderOAuth(providerID: string, methodIndex: number, timeoutMs?: number): Promise<ProxyResult> {
+  async function startProviderOAuth(
+    providerID: string,
+    methodIndex: number,
+    options: OpenCodeRequestOptions = {},
+  ): Promise<ProxyResult> {
     return proxy(`/provider/${encodeURIComponent(providerID)}/oauth/authorize`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ method: methodIndex }),
-      ...(timeoutMs !== undefined ? { signal: AbortSignal.timeout(timeoutMs) } : {}),
-    });
+      signal: options.signal,
+    }, options.timeoutMs);
   }
 
-  async function completeProviderOAuth(providerID: string, methodIndex: number, code?: string, timeoutMs?: number): Promise<ProxyResult> {
+  async function completeProviderOAuth(
+    providerID: string,
+    methodIndex: number,
+    code?: string,
+    options: OpenCodeRequestOptions = {},
+  ): Promise<ProxyResult> {
     return proxy(`/provider/${encodeURIComponent(providerID)}/oauth/callback`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ method: methodIndex, ...(code ? { code } : {}) }),
-      ...(timeoutMs !== undefined ? { signal: AbortSignal.timeout(timeoutMs) } : {}),
-    });
+      signal: options.signal,
+    }, options.timeoutMs);
   }
 
   async function getConfig(): Promise<Record<string, unknown> | null> {

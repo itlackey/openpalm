@@ -346,5 +346,26 @@ jobs:
       - name: Install Bun workspace dependencies
         run: bun install --frozen-lockfile
 
+      - name: Type check Electron
+        run: bun run --cwd packages/electron typecheck
+
       - name: Run Electron unit tests
         run: bun run --cwd packages/electron test
+
+  powershell-installer-tests:
+    name: PowerShell installer behavior
+    runs-on: windows-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Run installer contract tests with required pwsh
+        env:
+          OPENPALM_REQUIRE_PWSH_TESTS: '1'
+          OPENPALM_REQUIRE_WINDOWS_POWERSHELL_TESTS: '1'
+        run: bun test --test-name-pattern 'setup\.ps1' scripts/setup-sh-latest-resolver.test.ts

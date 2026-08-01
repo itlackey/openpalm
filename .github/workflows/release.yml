@@ -125,6 +125,7 @@ jobs:
           bun install --frozen-lockfile
           bun run test
           bun run ui:check
+          bun run --cwd packages/electron typecheck
           bun run electron:test
 
   # The compiled UI is identical for every consumer (assistant image, all three
@@ -158,7 +159,7 @@ jobs:
           path: packages/ui/build
 
   docker:
-    needs: [candidate, preflight, ui-build]
+    needs: [candidate, preflight, ui-build, assemble-assets]
     strategy:
       fail-fast: false
       matrix:
@@ -196,16 +197,23 @@ jobs:
           password: ${{ secrets.DOCKERHUB_TOKEN }}
       - name: Validate an existing immutable image tag
         id: image-tag
-        if: inputs.dry_run != true
         env:
           VERSION: ${{ needs.candidate.outputs.version }}
           CANDIDATE_TREE: ${{ needs.candidate.outputs.candidate_tree }}
         run: |
           set -euo pipefail
           ref="openpalm/${{ matrix.image }}:${VERSION}"
-          if ! docker buildx imagetools inspect "${ref}" >/dev/null 2>&1; then
-            echo 'exists=false' >> "$GITHUB_OUTPUT"
-            exit 0
+          if ! inspect_error=$(docker buildx imagetools inspect "${ref}" 2>&1 >/dev/null); then
+            case "${inspect_error}" in
+              *"manifest unknown"*|*"not found"*|*"no such manifest"*)
+                echo 'exists=false' >> "$GITHUB_OUTPUT"
+                exit 0
+                ;;
+              *)
+                echo "::error::Could not inspect ${ref}: ${inspect_error}"
+                exit 1
+                ;;
+            esac
           fi
           for platform in linux/amd64 linux/arm64; do
             docker buildx imagetools inspect "${ref}" --format "{{json (index .Image \"${platform}\")}}" \
@@ -376,6 +384,8 @@ jobs:
           path: dist
           merge-multiple: true
       - name: Assemble and validate complete asset manifest
+        # validate-release-assets composes updater-feed validation here, before
+        # release-source can push the immutable version tag.
         env:
           VERSION: ${{ needs.candidate.outputs.version }}
         run: |
@@ -389,19 +399,6 @@ jobs:
           rm -f dist/checksums-sha256.txt
           (cd dist && sha256sum -- * > checksums-sha256.txt)
           VERSION="${VERSION}" node scripts/validate-release-assets.mjs
-      - name: Validate desktop updater feed before the release tag is pushed
-        # Run here, not only in tag-release: release-source (which follows
-        # this job) pushes the version-bump commit AND the git tag before
-        # tag-release ever runs. A stable tag is immutable, so if the feed
-        # were only checked in tag-release, a mismatch between the on-disk
-        # installer name and the name electron-updater's feed references
-        # (review finding #1 — e.g. an artifactName regression) would only
-        # be caught AFTER the tag is already live, forcing a version bump to
-        # recover. Checking it here fails the release before anything is
-        # mutated.
-        env:
-          VERSION: ${{ needs.candidate.outputs.version }}
-        run: VERSION="${VERSION}" node scripts/validate-updater-feed.mjs
       - uses: actions/upload-artifact@v7
         with:
           name: product-release-assets
@@ -470,10 +467,6 @@ jobs:
         env:
           VERSION: ${{ needs.candidate.outputs.version }}
         run: VERSION="${VERSION}" node scripts/validate-release-assets.mjs
-      - name: Validate desktop updater feed before public release
-        env:
-          VERSION: ${{ needs.candidate.outputs.version }}
-        run: VERSION="${VERSION}" node scripts/validate-updater-feed.mjs
       - name: Create one summary GitHub Release
         env:
           VERSION: ${{ needs.candidate.outputs.version }}

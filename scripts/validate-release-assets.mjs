@@ -22,10 +22,14 @@
  * for exactly how each name is built and where that rule comes from.
  */
 import { createHash } from 'node:crypto';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { feedChannelForVersion, updaterFeedsFor } from './validate-updater-feed.mjs';
+import {
+  feedChannelForVersion,
+  updaterFeedsFor,
+  validateUpdaterFeeds,
+} from './validate-updater-feed.mjs';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const ELECTRON_BUILDER_YML = join(REPO_ROOT, 'packages/electron/electron-builder.yml');
@@ -146,11 +150,8 @@ export function requiredReleaseAssets(version, productName = readElectronProduct
 
 /**
  * Look up the sha256 `checksums-sha256.txt` (as written by `sha256sum --`)
- * records for `filename`. A plain `split(/\s+/)` would break on any asset
- * name that ever contains a space (the NSIS installer used to, before review
- * finding #1 gave it an explicit GitHub-safe `artifactName`) — this matches
- * only on the fixed 64-hex-char hash prefix so the remainder, spaces
- * included, is taken as the filename, staying correct if that ever recurs.
+ * records for `filename`. Match only on the fixed 64-hex-character hash prefix
+ * so filenames remain opaque to the parser.
  */
 export function checksumFor(checksumsText, filename) {
   for (const rawLine of checksumsText.split('\n')) {
@@ -186,6 +187,12 @@ export function validateReleaseAssets(dir, version, productName = readElectronPr
       problems.push(`Missing release asset: ${name}`);
     }
   }
+
+  // This is the one release-asset gate used by both dry runs and live releases.
+  // Compose the semantic updater validation here so neither workflow path can
+  // validate only feed presence while skipping its artifact contract.
+  const presentFiles = new Set(readdirSync(dir));
+  problems.push(...validateUpdaterFeeds(dir, version, presentFiles, productName));
 
   const checksumsPath = join(dir, 'checksums-sha256.txt');
   if (!existsSync(checksumsPath)) {

@@ -3,6 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, statSync, writeFileSync } from 'node:fs
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { resetState } from '$lib/server/test-helpers.js';
+import { resolveDeployJournalPath, writeJournal } from '@openpalm/lib';
 
 // ── Hoisted mocks (must be declared before vi.mock factories run) ────────────
 
@@ -27,14 +28,6 @@ vi.mock('$lib/server/setup-deploy.js', async (importOriginal) => {
   return {
     ...original,
     startDeploy: startDeployMock,
-    getDeployState: vi.fn(() => ({
-      deploying: false,
-      setupComplete: false,
-      deployStatus: [],
-      deployError: null,
-      imageWarning: null,
-      phase: 'writing-config',
-    })),
   };
 });
 
@@ -84,6 +77,29 @@ describe('POST /api/setup/retry-deploy', () => {
 
     expect(response.status).toBe(409);
     expect(payload.error).toBe('setup_complete');
+    expect(startDeployMock).not.toHaveBeenCalled();
+  });
+
+  test('allows a setup-complete rerun to retry its persisted failed deploy', async () => {
+    const state = resetState('pw');
+    const stateDir = join(state.homeDir, 'state');
+    mkdirSync(stateDir, { recursive: true });
+    writeFileSync(join(stateDir, 'stack.env'), 'OP_SETUP_COMPLETE=true\n');
+    writeJournal(resolveDeployJournalPath(state), {
+      deploying: false,
+      setupComplete: true,
+      deployStatus: [{ service: 'assistant', status: 'error', label: 'Did not start' }],
+      deployError: 'Stack update failed.',
+      imageWarning: null,
+      phase: 'starting',
+      startedAt: null,
+      pid: null,
+    });
+
+    const response = await POST(fakeEvent());
+
+    expect(response.status).toBe(200);
+    expect(startDeployMock).toHaveBeenCalledWith(state);
   });
 
   test('knowledge/secrets/ and akm config mtimes are unchanged — performSetup is never called', async () => {

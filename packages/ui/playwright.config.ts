@@ -33,11 +33,39 @@ const MOCKED_ENV = STACK_TESTS
       OP_UI_LOGIN_PASSWORD: 'e2e-mocked-password',
     };
 
+const STACK_PROJECTS = [
+  {
+    name: 'stack-baseline',
+    testMatch: ['*.stack.ts', 'auth-flow.pw.ts'],
+    testIgnore: [
+      'install-flow.stack.ts',
+      'lan-access.stack.ts',
+      'setup-wizard-api.stack.ts',
+      'setup-wizard-browser.stack.ts',
+    ],
+  },
+  {
+    name: 'stack-lan',
+    testMatch: 'lan-access.stack.ts',
+    dependencies: ['stack-baseline'],
+  },
+  {
+    name: 'stack-wizard',
+    testMatch: [
+      'install-flow.stack.ts',
+      'setup-wizard-api.stack.ts',
+      'setup-wizard-browser.stack.ts',
+    ],
+    dependencies: ['stack-lan'],
+  },
+];
+
 export default defineConfig({
 	globalSetup: './e2e/global-setup.ts',
 	globalTeardown: './e2e/global-teardown.ts',
 	reporter: [['list'], ['./e2e/no-skip-reporter.mjs']],
 	workers: STACK_TESTS ? 1 : undefined,
+	projects: STACK_TESTS ? STACK_PROJECTS : undefined,
 	use: {
 		baseURL,
 		launchOptions: browserExecutablePath ? { executablePath: browserExecutablePath } : undefined,
@@ -46,6 +74,6 @@ export default defineConfig({
 		? undefined
 		: { command: 'npm run build && npm run preview', port: 4173, env: MOCKED_ENV },
 	testDir: 'e2e',
-	testMatch: STACK_TESTS ? ['*.stack.ts', 'auth-flow.pw.ts'] : '*.pw.ts',
+	testMatch: STACK_TESTS ? undefined : '*.pw.ts',
 	timeout: 60000,
 });

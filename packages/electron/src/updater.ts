@@ -73,7 +73,7 @@ export interface UpdaterState {
   /** Only ever set by a user-initiated action — silent checks stay quiet. */
   error: string | null;
   channel: UpdaterChannel;
-  /** False on macOS and unpackaged runs: the UI must offer a manual download. */
+  /** False on macOS, Windows portable builds, and unpackaged runs. */
   supported: boolean;
   /** Where to send a user whose platform cannot self-install. */
   releasesUrl: string;
@@ -112,6 +112,10 @@ export interface UpdaterDeps {
   currentVersion: string;
   platform: NodeJS.Platform;
   isPackaged: boolean;
+  /** Set by electron-builder when its Windows portable launcher runs the app. */
+  portableExecutableFile?: string;
+  /** NSIS ships this beside the installed executable; extracted archives do not. */
+  windowsInstallerPresent: boolean;
   prerelease: boolean;
   /** Injected so tests can assert throttling without real time. */
   now?: () => number;
@@ -177,11 +181,21 @@ export function updaterFeedChannel(channel: UpdaterChannel): string {
  * (AppImage) can; macOS cannot until the app is Developer ID-signed AND
  * notarized, because electron-updater's macOS path verifies the signature and
  * an unsigned in-place replacement would leave the user with an app Gatekeeper
- * refuses to launch. An unpackaged dev run has no installer at all.
+ * refuses to launch. An unpackaged dev run has no installer at all. A Windows
+ * portable build also has no install location to replace. electron-builder's
+ * portable launcher identifies that runtime with PORTABLE_EXECUTABLE_FILE,
+ * while an installed NSIS runtime is positively identified by its adjacent
+ * shipped uninstaller so an extracted ZIP cannot install into a second copy.
  */
-export function isAutoUpdateSupported(platform: NodeJS.Platform, isPackaged: boolean): boolean {
+export function isAutoUpdateSupported(
+  platform: NodeJS.Platform,
+  isPackaged: boolean,
+  windowsInstallerPresent: boolean,
+  portableExecutableFile?: string,
+): boolean {
   if (!isPackaged) return false;
-  return platform === 'win32' || platform === 'linux';
+  if (platform === 'win32') return windowsInstallerPresent && !portableExecutableFile;
+  return platform === 'linux';
 }
 
 /** Throttle for focus-triggered checks — a window regains focus constantly. */
@@ -203,7 +217,12 @@ export class DesktopUpdater {
   constructor(deps: UpdaterDeps) {
     this.deps = deps;
     this.now = deps.now ?? Date.now;
-    const supported = isAutoUpdateSupported(deps.platform, deps.isPackaged);
+    const supported = isAutoUpdateSupported(
+      deps.platform,
+      deps.isPackaged,
+      deps.windowsInstallerPresent,
+      deps.portableExecutableFile,
+    );
     this.state = {
       status: supported ? 'idle' : 'unsupported',
       currentVersion: deps.currentVersion,

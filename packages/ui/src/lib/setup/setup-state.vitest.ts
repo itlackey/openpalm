@@ -17,7 +17,7 @@
  * the password surviving a remount): those are pinned here against the mocked
  * $lib/setup-api.js so a regression trips a fast unit test, not just e2e.
  */
-import { describe, it, expect, vi, afterEach } from 'vitest';
+import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
 import { SetupState, setupState, INITIAL } from './setup-state.svelte.js';
 import type { ProviderState } from '$lib/client/types.js';
 
@@ -34,7 +34,7 @@ vi.mock('$lib/setup-api.js', () => ({
   fetchOpenCodeProviders: vi.fn(async () => null),
   fetchDetectedProviders: vi.fn(async () => null),
   fetchProviderModels: vi.fn(async () => ({ models: [] })),
-  authorizeOpenCodeOAuth: vi.fn(async () => ({})),
+  authorizeOpenCodeOAuth: vi.fn(async () => ({ source: 'wizard' })),
   pollOpenCodeOAuthCallback: vi.fn(async () => ({ ok: false, data: null })),
   completeSetup: vi.fn(async () => ({ ok: true, data: { ok: true } })),
   fetchDeployStatus: vi.fn(async () => ({ ok: false, data: null })),
@@ -187,20 +187,10 @@ describe('SetupState — the assistant key is generated, never typed', () => {
   });
 });
 
-// Adversarial-review finding #4: the OAuth authorize/callback routes retarget
-// to resolveSetupOpencodeTarget(), which on a fresh host resolves to the
-// wizard-spawned `opencode serve` instance — started with `env: process.env`,
-// i.e. the OPERATOR's own HOME/XDG dirs, not OP_HOME. That instance writes
-// its token to the operator's host auth.json, not the file the assistant
-// container bind-mounts (${OP_HOME}/knowledge/secrets/auth.json) — and
-// nothing copied it over before Install, so the wizard showed "Connected"
-// while the container shipped with an empty credential and the first chat
-// message failed. importHost() (POST /api/setup/import-host) already reads
-// from exactly that host XDG path (host-opencode.ts's hostAuthJsonPath()) and
-// merges it into OP_HOME, so re-running it right after a successful OAuth
-// callback closes the gap.
-describe('SetupState — Finding #4: OAuth success re-imports the host credential', () => {
-  it('re-runs the host import after a successful OAuth callback', async () => {
+// Credential persistence belongs to the callback route, which copies only the
+// provider that completed. The client must not trigger a broad host import.
+describe('SetupState — OAuth callback state', () => {
+  it('marks a successful callback verified without importing unrelated host credentials', async () => {
     const { pollOpenCodeOAuthCallback, importHost } = await import('$lib/setup-api.js');
     vi.mocked(importHost).mockClear();
     vi.mocked(pollOpenCodeOAuthCallback).mockResolvedValueOnce({ ok: true, data: { ok: true } });
@@ -208,10 +198,10 @@ describe('SetupState — Finding #4: OAuth success re-imports the host credentia
     const s = new SetupState();
     s.initProviderState();
 
-    await s.pollOpenCodeOAuth('openai', 0);
+    await s.startOpenCodeOAuth('openai', 0);
 
     expect(s.providerState.openai.verified).toBe(true);
-    expect(importHost).toHaveBeenCalledTimes(1);
+    expect(importHost).not.toHaveBeenCalled();
   });
 
   it('does not re-import when the OAuth callback fails', async () => {
@@ -222,25 +212,12 @@ describe('SetupState — Finding #4: OAuth success re-imports the host credentia
     const s = new SetupState();
     s.initProviderState();
 
-    await s.pollOpenCodeOAuth('openai', 0);
+    await s.startOpenCodeOAuth('openai', 0);
 
     expect(s.providerState.openai.verified).toBe(false);
     expect(importHost).not.toHaveBeenCalled();
   });
 
-  it('a re-import failure does not block the OAuth success state', async () => {
-    const { pollOpenCodeOAuthCallback, importHost } = await import('$lib/setup-api.js');
-    vi.mocked(pollOpenCodeOAuthCallback).mockResolvedValueOnce({ ok: true, data: { ok: true } });
-    vi.mocked(importHost).mockRejectedValueOnce(new Error('network error'));
-
-    const s = new SetupState();
-    s.initProviderState();
-
-    await s.pollOpenCodeOAuth('openai', 0);
-
-    expect(s.providerState.openai.verified).toBe(true);
-    expect(s.providerState.openai.error).toBe(false);
-  });
 });
 
 describe('SetupState — canComplete', () => {
@@ -307,6 +284,114 @@ describe('SetupState — verified providers derivations', () => {
     expect(s.verifiedCount).toBe(2);
   });
 
+});
+
+describe('SetupState - OAuth flow ownership', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('starts callback polling immediately for browser-auto flows', async () => {
+    const api = await import('$lib/setup-api.js');
+    vi.mocked(api.authorizeOpenCodeOAuth).mockResolvedValueOnce({
+      url: 'https://provider.test/authorize',
+      method: 'auto',
+      source: 'wizard',
+    });
+    vi.mocked(api.pollOpenCodeOAuthCallback).mockResolvedValueOnce({ ok: true, data: { ok: true } });
+    const open = vi.fn();
+    vi.stubGlobal('window', { open });
+    const s = new SetupState();
+    s.initProviderState();
+
+    await s.startOpenCodeOAuth('openai', 1);
+
+    expect(open).toHaveBeenCalledWith('https://provider.test/authorize', '_blank');
+    expect(api.pollOpenCodeOAuthCallback).toHaveBeenCalledWith(
+      'openai', 1, 'wizard', expect.any(AbortSignal),
+    );
+    expect(s.providerState.openai.verified).toBe(true);
+  });
+
+  it('keeps authorization-code flows open without starting a code-less callback', async () => {
+    const api = await import('$lib/setup-api.js');
+    vi.mocked(api.authorizeOpenCodeOAuth).mockResolvedValueOnce({
+      url: 'https://provider.test/code',
+      method: 'code',
+      instructions: 'Paste the code shown by the provider.',
+      source: 'assistant',
+    });
+    vi.mocked(api.pollOpenCodeOAuthCallback).mockClear();
+    vi.stubGlobal('window', { open: vi.fn() });
+    const s = new SetupState();
+    s.initProviderState();
+
+    await s.startOpenCodeOAuth('openai', 2);
+
+    expect(api.pollOpenCodeOAuthCallback).not.toHaveBeenCalled();
+    expect(s.providerState.openai.oauthMethod).toBe('code');
+    expect(s.providerState.openai.oauthPolling).toBe(true);
+    expect(s.providerState.openai.verifying).toBe(false);
+  });
+
+  it('submits an authorization code through the callback API and marks success', async () => {
+    const api = await import('$lib/setup-api.js');
+    vi.mocked(api.authorizeOpenCodeOAuth).mockResolvedValueOnce({ method: 'code', source: 'assistant' });
+    vi.mocked(api.pollOpenCodeOAuthCallback).mockResolvedValueOnce({ ok: true, data: { ok: true } });
+    vi.stubGlobal('window', { open: vi.fn() });
+    const s = new SetupState();
+    s.initProviderState();
+    await s.startOpenCodeOAuth('openai', 3);
+
+    await s.submitOpenCodeOAuthCode('openai', 3, '  pasted-code  ');
+
+    expect(api.pollOpenCodeOAuthCallback).toHaveBeenCalledWith(
+      'openai', 3, 'assistant', expect.any(AbortSignal), 'pasted-code',
+    );
+    expect(s.providerState.openai.verified).toBe(true);
+    expect(s.providerState.openai.oauthPolling).toBe(false);
+    expect(s.providerState.openai.error).toBe(false);
+  });
+
+  it('keeps the code UI active and exposes the server message when submission fails', async () => {
+    const api = await import('$lib/setup-api.js');
+    vi.mocked(api.authorizeOpenCodeOAuth).mockResolvedValueOnce({ method: 'code', source: 'wizard' });
+    vi.mocked(api.pollOpenCodeOAuthCallback).mockResolvedValueOnce({
+      ok: false,
+      data: { ok: false, message: 'Code rejected' },
+    });
+    vi.stubGlobal('window', { open: vi.fn() });
+    const s = new SetupState();
+    s.initProviderState();
+    await s.startOpenCodeOAuth('openai', 0);
+
+    await s.submitOpenCodeOAuthCode('openai', 0, 'bad-code');
+
+    expect(s.providerState.openai.verified).toBe(false);
+    expect(s.providerState.openai.oauthPolling).toBe(true);
+    expect(s.providerState.openai.errorMessage).toBe('Code rejected');
+  });
+
+  it('ignores a stale browser poll after a newer success state', async () => {
+    const api = await import('$lib/setup-api.js');
+    let resolvePoll!: (value: { ok: false; data: { ok: false; message: string } }) => void;
+    const stalePoll = new Promise<{ ok: false; data: { ok: false; message: string } }>((resolve) => {
+      resolvePoll = resolve;
+    });
+    vi.mocked(api.authorizeOpenCodeOAuth).mockResolvedValueOnce({ method: 'auto', source: 'wizard' });
+    vi.mocked(api.pollOpenCodeOAuthCallback).mockReturnValueOnce(stalePoll);
+    vi.stubGlobal('window', { open: vi.fn() });
+    const s = new SetupState();
+    s.initProviderState();
+
+    const pending = s.startOpenCodeOAuth('openai', 0);
+    await vi.waitFor(() => expect(api.pollOpenCodeOAuthCallback).toHaveBeenCalledTimes(1));
+    s.cancelOAuth('openai');
+    s.providerState.openai.verified = true;
+    resolvePoll({ ok: false, data: { ok: false, message: 'Stale failure' } });
+    await pending;
+
+    expect(s.providerState.openai.verified).toBe(true);
+    expect(s.providerState.openai.error).toBe(false);
+  });
 });
 
 describe('SetupState — handleConnectModeChange (cloud ↔ local)', () => {
@@ -499,6 +584,34 @@ describe('SetupState — handleDeployRetry restarts polling (W6)', () => {
     await vi.advanceTimersByTimeAsync(2500);
     expect(s.deployDone).toBe(true);
 
+    s.dispose();
+  });
+});
+
+describe('SetupState - failed deploy reload recovery', () => {
+  it('unlocks prior steps so Back to Review is not a navigation dead end', async () => {
+    const api = await import('$lib/setup-api.js');
+    vi.mocked(api.fetchDeployStatus).mockResolvedValueOnce({
+      ok: true,
+      data: { deploying: false, setupComplete: false, deployError: 'Stack update failed.' },
+    });
+    vi.stubGlobal('window', {
+      location: { search: '' },
+      sessionStorage: {
+        getItem: () => null,
+        setItem: () => undefined,
+      },
+    });
+    const s = new SetupState();
+
+    s.init();
+    await vi.waitFor(() => expect(s.deployError).toBe('Stack update failed.'));
+    expect(s.systemCheckPassed).toBe(true);
+
+    s.handleDeployBack();
+    expect(s.currentStep).toBe(3);
+    s.goToStep(1);
+    expect(s.currentStep).toBe(1);
     s.dispose();
   });
 });

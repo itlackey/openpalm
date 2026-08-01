@@ -1,6 +1,38 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+canonicalize_e2e_home() {
+  local requested
+  if [[ "${OP_E2E_HOME+x}" == x ]]; then
+    requested="$OP_E2E_HOME"
+    if [[ -z "$requested" ]]; then
+      echo "Refusing empty OP_E2E_HOME" >&2
+      return 1
+    fi
+  else
+    requested="${ROOT_DIR}/.dev-e2e"
+  fi
+
+  local canonical
+  if ! canonical="$(realpath -m -- "$requested")"; then
+    echo "Could not canonicalize OP_E2E_HOME: ${requested}" >&2
+    return 1
+  fi
+
+  if [[ "$canonical" != "${ROOT_DIR}/.dev-e2e" && "$canonical" != "${ROOT_DIR}/.cache/"* ]]; then
+    echo "Refusing unsafe OP_E2E_HOME: ${requested} resolves to ${canonical}" >&2
+    echo "Allowed locations are ${ROOT_DIR}/.dev-e2e or a descendant of ${ROOT_DIR}/.cache" >&2
+    return 1
+  fi
+
+  OP_E2E_HOME="$canonical"
+}
+
+# Permit the safety function to be exercised without running the stack launcher.
+if [[ "${BASH_SOURCE[0]}" != "$0" ]]; then
+  return 0
+fi
+
 usage() {
   cat <<'EOF'
 Usage: ./scripts/dev-e2e-test.sh [--skip-build] [--keep] [--playwright]
@@ -27,13 +59,13 @@ for arg in "$@"; do
   esac
 done
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 cd "$ROOT_DIR"
 # shellcheck source=scripts/rootless-smoke-fixture.sh
 source scripts/rootless-smoke-fixture.sh
 
 export COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-openpalm-e2e}"
-OP_E2E_HOME="${OP_E2E_HOME:-${ROOT_DIR}/.dev-e2e}"
+canonicalize_e2e_home
 ADMIN_PORT="${OP_E2E_UI_PORT:-3890}"
 ASSISTANT_PORT="${OP_E2E_ASSISTANT_PORT:-3891}"
 CONTAINER_UI_PORT="${OP_E2E_CONTAINER_UI_PORT:-3892}"
@@ -134,6 +166,24 @@ else
   pass "Existing UI and dev images found"
 fi
 
+echo "=== Start loopback-only host admin ==="
+OP_HOME="$OP_E2E_HOME" \
+OP_HOST_UI_PORT="$ADMIN_PORT" \
+bun run packages/cli/src/main.ts admin --port "$ADMIN_PORT" --no-open \
+  >"${OP_E2E_HOME}/admin.log" 2>&1 &
+UI_PID=$!
+for _ in $(seq 1 90); do
+  if curl -sf "${ADMIN_URL}/health" >/dev/null 2>&1; then break; fi
+  sleep 1
+done
+if curl -sf "${ADMIN_URL}/health" >/dev/null; then
+  pass "Host admin is healthy at ${ADMIN_URL}"
+else
+  fail "Host admin failed to start"
+  tail -100 "${OP_E2E_HOME}/admin.log" || true
+  exit 1
+fi
+
 echo "=== Start assistant and profile-gated guardian ==="
 compose up --force-recreate -d assistant guardian
 for _ in $(seq 1 60); do
@@ -153,21 +203,20 @@ for service in assistant guardian; do
 done
 [[ $FAIL -eq 0 ]] || exit 1
 
-echo "=== Start loopback-only host admin ==="
-OP_HOME="$OP_E2E_HOME" \
-OP_HOST_UI_PORT="$ADMIN_PORT" \
-bun run packages/cli/src/main.ts admin --port "$ADMIN_PORT" --no-open \
-  >"${OP_E2E_HOME}/admin.log" 2>&1 &
-UI_PID=$!
-for _ in $(seq 1 90); do
-  if curl -sf "${ADMIN_URL}/health" >/dev/null 2>&1; then break; fi
-  sleep 1
+echo "=== Warm the assistant provider catalog ==="
+provider_ready=0
+for _ in $(seq 1 45); do
+  if curl -sf --max-time 2 "http://127.0.0.1:${ASSISTANT_PORT}/provider" >/dev/null 2>&1; then
+    provider_ready=1
+    break
+  fi
+  sleep 2
 done
-if curl -sf "${ADMIN_URL}/health" >/dev/null; then
-  pass "Host admin is healthy at ${ADMIN_URL}"
+if [[ $provider_ready -eq 1 ]]; then
+  pass "Assistant provider endpoint is ready"
 else
-  fail "Host admin failed to start"
-  tail -100 "${OP_E2E_HOME}/admin.log" || true
+  fail "Assistant provider endpoint did not become ready"
+  compose logs --tail 100 assistant || true
   exit 1
 fi
 
@@ -219,6 +268,7 @@ if [[ $RUN_PLAYWRIGHT -eq 1 ]]; then
   ADMIN_URL="$ADMIN_URL" \
   ASSISTANT_URL="http://127.0.0.1:${ASSISTANT_PORT}" \
   OP_UI_LOGIN_PASSWORD="$UI_PASSWORD" \
+  PW_ENFORCE_NO_SKIP=1 \
   npm --prefix packages/ui run test:e2e
   pass "Playwright stack suite passed"
 fi

@@ -144,7 +144,12 @@ export {
   stripTrailingNewlines,
   type OpenCodeCredential,
 } from "./control-plane/opencode-auth.js";
-export type { ProxyResult, OpenCodeProvider, OpenCodeSession } from "./control-plane/opencode-client.js";
+export type {
+  OpenCodeRequestOptions,
+  ProxyResult,
+  OpenCodeProvider,
+  OpenCodeSession,
+} from "./control-plane/opencode-client.js";
 
 // ── Secrets ─────────────────────────────────────────────────────────────
 export {
@@ -632,6 +637,7 @@ export type {
 export {
   detectHostOpenCode,
   importHostOpenCode,
+  persistHostOpenCodeOAuthCredential,
 } from "./control-plane/host-opencode.js";
 
 // ── AKM user env (env:user) ──────────────────────────────────────────────

@@ -39,6 +39,7 @@ import {
   authorizeOpenCodeOAuth, pollOpenCodeOAuthCallback,
   completeSetup, fetchDeployStatus, retryDeploy,
   fetchHostStatus, importHost, fetchCurrentConfig, fetchSetupStatus,
+  type SetupOpenCodeSource,
 } from '$lib/setup-api.js';
 import type {
   ProviderState, ModelSelection, DetectedProvider, PortalState,
@@ -260,6 +261,11 @@ export class SetupState {
   private verifyGeneration: Record<string, number> = {};
   /** AbortControllers for in-flight OAuth long-poll requests */
   private oauthAbortControllers: Record<string, AbortController> = {};
+  /** Active flow token per provider; stale callbacks cannot mutate newer state. */
+  private oauthGenerations: Record<string, number> = {};
+  /** Non-secret target source selected by authorize for each active flow. */
+  private oauthSources: Record<string, SetupOpenCodeSource> = {};
+  private nextOauthGeneration = 0;
 
   // ── Step 2: Models ──────────────────────────────────────────────────────────
   modelSelection = $state(INITIAL.modelSelection);
@@ -293,8 +299,8 @@ export class SetupState {
   // ── Deploy screen ────────────────────────────────────────────────────────────
   deployData = $state(INITIAL.deployData);
   deployDone = $state(INITIAL.deployDone);
-  // Terminal state where remaining non-running rows are warnings (e.g. voice
-  // still warming). Setup IS complete — "Done (with warnings)", not an error.
+  // Terminal state where only optional services failed. Setup IS complete;
+  // "Done (with warnings)", not an error.
   deployHasWarnings = $state(INITIAL.deployHasWarnings);
   deployError = $state(INITIAL.deployError);
   deployPollErrors = $state(INITIAL.deployPollErrors);
@@ -816,22 +822,37 @@ export class SetupState {
     const st = this.providerState[providerId];
     if (!st) return;
 
+    this.oauthAbortControllers[providerId]?.abort();
+    delete this.oauthSources[providerId];
+    const generation = ++this.nextOauthGeneration;
+    this.oauthGenerations[providerId] = generation;
     st.verifying = true;
     st.error = false;
+    st.errorMessage = '';
 
     try {
       const oauthRes = await authorizeOpenCodeOAuth(providerId, methodIndex);
+      if (this.oauthGenerations[providerId] !== generation) return;
+      this.oauthSources[providerId] = oauthRes.source;
 
       st.oauthPolling = true;
       st.oauthUrl = oauthRes.url ?? '';
       st.oauthInstructions = oauthRes.instructions ?? '';
+      st.oauthMethod = oauthRes.method ?? 'auto';
 
-      if (oauthRes.url && oauthRes.method === 'auto') {
+      if (oauthRes.url) {
         window.open(oauthRes.url, '_blank');
       }
 
-      await this.pollOpenCodeOAuth(providerId, methodIndex);
+      if (st.oauthMethod === 'auto') {
+        await this.pollOpenCodeOAuth(providerId, methodIndex, oauthRes.source, generation);
+      } else {
+        // Authorization-code providers do not have a code-less callback to
+        // poll. Keep the flow UI open until the operator submits or cancels.
+        st.verifying = false;
+      }
     } catch (e) {
+      if (this.oauthGenerations[providerId] !== generation) return;
       st.verifying = false;
       st.error = true;
       st.errorMessage = e instanceof Error ? e.message : 'OAuth failed';
@@ -839,7 +860,12 @@ export class SetupState {
     }
   }
 
-  async pollOpenCodeOAuth(providerId: string, methodIndex: number): Promise<void> {
+  async pollOpenCodeOAuth(
+    providerId: string,
+    methodIndex: number,
+    source: SetupOpenCodeSource,
+    generation: number,
+  ): Promise<void> {
     const st = this.providerState[providerId];
     const ac = new AbortController();
     this.oauthAbortControllers[providerId] = ac;
@@ -852,31 +878,22 @@ export class SetupState {
 
     try {
       // The callback is a long-poll — make one call and wait (up to 10 minutes)
-      const { ok, data } = await pollOpenCodeOAuthCallback(providerId, methodIndex, combinedSignal);
+      const { ok, data } = await pollOpenCodeOAuthCallback(
+        providerId,
+        methodIndex,
+        source,
+        combinedSignal,
+      );
+      if (this.oauthGenerations[providerId] !== generation) return;
       if (ok && data?.ok) {
         st.verified = true;
         st.error = false;
-        // The OAuth exchange ran against resolveSetupOpencodeTarget()'s
-        // instance, which on a fresh host is the wizard-spawned `opencode
-        // serve` process — started with this server's own HOME/XDG dirs, so
-        // it wrote the token to the OPERATOR's host auth.json, not OP_HOME's
-        // (the file the assistant container bind-mounts). Re-run the same
-        // host-import copy handleHostImport() uses so the credential the
-        // user just granted actually lands where Install will look for it —
-        // otherwise the provider reads "Connected" here but ships with an
-        // empty credential and the first chat message fails silently. A
-        // failure here is non-fatal (surfaces later as a real error) so it
-        // doesn't block the OAuth success state.
-        try {
-          await importHost();
-        } catch {
-          /* best-effort — see comment above */
-        }
       } else {
         st.error = true;
         st.errorMessage = data?.message ?? 'Authorization failed';
       }
     } catch (e) {
+      if (this.oauthGenerations[providerId] !== generation) return;
       // AbortError from user cancel — don't show an error
       if (e instanceof Error && e.name === 'AbortError' && ac.signal.aborted) return;
       // Timeout case
@@ -888,17 +905,89 @@ export class SetupState {
         st.errorMessage = e instanceof Error ? e.message : 'Authorization failed';
       }
     } finally {
-      delete this.oauthAbortControllers[providerId];
-      st.oauthPolling = false;
-      st.verifying = false;
+      if (this.oauthAbortControllers[providerId] === ac) {
+        delete this.oauthAbortControllers[providerId];
+      }
+      if (this.oauthGenerations[providerId] === generation) {
+        st.oauthPolling = false;
+        st.verifying = false;
+      }
+    }
+  }
+
+  async submitOpenCodeOAuthCode(providerId: string, methodIndex: number, code: string): Promise<void> {
+    const st = this.providerState[providerId];
+    const generation = this.oauthGenerations[providerId];
+    const source = this.oauthSources[providerId];
+    const trimmedCode = code.trim();
+    if (
+      st?.oauthMethod !== 'code'
+      || !st.oauthPolling
+      || st.verifying
+      || generation === undefined
+      || source === undefined
+    ) return;
+    if (!trimmedCode) {
+      st.error = true;
+      st.errorMessage = 'Paste the code first.';
+      return;
+    }
+
+    const ac = new AbortController();
+    this.oauthAbortControllers[providerId] = ac;
+    const timeoutSignal = AbortSignal.timeout(20_000);
+    const combinedSignal = AbortSignal.any
+      ? AbortSignal.any([ac.signal, timeoutSignal])
+      : ac.signal;
+    st.verifying = true;
+    st.error = false;
+    st.errorMessage = '';
+
+    try {
+      const { ok, data } = await pollOpenCodeOAuthCallback(
+        providerId,
+        methodIndex,
+        source,
+        combinedSignal,
+        trimmedCode,
+      );
+      if (this.oauthGenerations[providerId] !== generation) return;
+      if (ok && data?.ok) {
+        st.verified = true;
+        st.error = false;
+        st.oauthPolling = false;
+      } else {
+        st.error = true;
+        st.errorMessage = data?.message ?? 'That code was not accepted. Try again.';
+      }
+    } catch (e) {
+      if (this.oauthGenerations[providerId] !== generation) return;
+      if (e instanceof Error && e.name === 'AbortError' && ac.signal.aborted) return;
+      st.error = true;
+      st.errorMessage = e instanceof Error ? e.message : 'Failed to submit the code.';
+    } finally {
+      if (this.oauthAbortControllers[providerId] === ac) {
+        delete this.oauthAbortControllers[providerId];
+      }
+      if (this.oauthGenerations[providerId] === generation) st.verifying = false;
     }
   }
 
   cancelOAuth(id: string): void {
+    this.oauthGenerations[id] = ++this.nextOauthGeneration;
+    delete this.oauthSources[id];
     const ac = this.oauthAbortControllers[id];
     if (ac) { ac.abort(); delete this.oauthAbortControllers[id]; }
     const st = this.providerState[id];
-    if (st) { st.oauthPolling = false; st.verifying = false; }
+    if (st) {
+      st.oauthPolling = false;
+      st.verifying = false;
+      st.oauthMethod = undefined;
+      st.oauthUrl = '';
+      st.oauthInstructions = '';
+      st.error = false;
+      st.errorMessage = '';
+    }
   }
 
   // ── Install & deploy ─────────────────────────────────────────────────────────
@@ -1001,10 +1090,8 @@ export class SetupState {
       } else if (data.setupComplete && data.deployStatus && data.deployStatus.length > 0) {
         const rows = data.deployStatus as { status: string }[];
         const allRunning = rows.every((s) => s.status === 'running');
-        // Treat "warning" (e.g. voice still warming) as a NON-blocking terminal
-        // status. Once setup is complete and not deploying, any remaining
-        // non-running rows that are ALL warnings mean we're done — with
-        // warnings. Otherwise (non-running, non-warning rows) keep polling.
+        // Treat optional-service warnings as a non-blocking terminal status.
+        // Otherwise (non-running, non-warning rows) keep polling.
         const onlyWarningsLeft = !data.deploying
           && rows.every((s) => s.status === 'running' || s.status === 'warning')
           && rows.some((s) => s.status === 'warning');
@@ -1245,6 +1332,8 @@ export class SetupState {
       try { this.oauthAbortControllers[id].abort(); } catch { /* ignore */ }
       delete this.oauthAbortControllers[id];
     }
+    this.oauthGenerations = {};
+    this.oauthSources = {};
     this.verifyGeneration = {};
 
     // Restore EVERY resettable field from the single INITIAL source. A fresh
@@ -1356,7 +1445,16 @@ export class SetupState {
         if (data.deploying || data.deployError) {
           this.deployData = data;
           this.showDeploy = true;
-          this.startDeployPolling();
+          if (data.deployError) {
+            // A reload can restore a terminal deploy failure before SystemCheck
+            // ever mounts. Unlock the already-visited setup steps so "Back to
+            // Review" and its Change actions are not dead ends.
+            this.systemCheckPassed = true;
+            this.maxVisitedStep = 3;
+            this.deployError = data.deployError;
+          } else {
+            this.startDeployPolling();
+          }
         }
       })
       .catch((e) => { console.error('[setup] failed to fetch deploy status:', e); });
@@ -1375,6 +1473,10 @@ export class SetupState {
   // AbortControllers would otherwise outlive the page.
   dispose(): void {
     this.stopDeployPolling();
+    for (const id of Object.keys(this.oauthGenerations)) {
+      this.oauthGenerations[id] = ++this.nextOauthGeneration;
+    }
+    this.oauthSources = {};
     for (const id of Object.keys(this.oauthAbortControllers)) {
       try { this.oauthAbortControllers[id].abort(); } catch { /* ignore */ }
       delete this.oauthAbortControllers[id];

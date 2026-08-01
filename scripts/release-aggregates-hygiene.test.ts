@@ -13,6 +13,7 @@ import {
 	requiredReleaseAssets,
 	validateReleaseAssets
 } from './validate-release-assets.mjs';
+import { updaterArtifactForFeed } from './validate-updater-feed.mjs';
 
 const ROOT = join(import.meta.dir, '..');
 const WORKFLOWS = join(ROOT, '.github', 'workflows');
@@ -134,6 +135,11 @@ describe('release completeness gate: no CLI-only releases (onboarding-setup-revi
 		expect(productName).toBe('OpenPalm');
 	});
 
+	test('the NSIS build artifact uses the exact dash-safe filename referenced by updater feeds', () => {
+		const builder = readFileSync(join(ROOT, 'packages/electron/electron-builder.yml'), 'utf8');
+		expect(builder).toContain('artifactName: ${productName}-Setup-${version}.${ext}');
+	});
+
 	test('the cli job matrix and CLI_BINARIES stay in lockstep', () => {
 		const workflow = Bun.YAML.parse(readFileSync(join(WORKFLOWS, 'release.yml'), 'utf8')) as {
 			jobs: { cli: { strategy: { matrix: { include: Array<{ asset: string }> } } } };
@@ -156,6 +162,57 @@ describe('release completeness gate: no CLI-only releases (onboarding-setup-revi
 		if (!run) throw new Error('Missing publish-bootstrap step: Verify matching public assets before npm');
 		expect(run).toContain("from '../scripts/validate-release-assets.mjs'");
 		expect(run).not.toContain('openpalm-cli-linux-x64 openpalm-cli-linux-arm64');
+	});
+
+	test('dry-run asset assembly runs the release validator that composes updater-feed semantics', () => {
+		const workflow = Bun.YAML.parse(readFileSync(join(WORKFLOWS, 'release.yml'), 'utf8')) as {
+			jobs: {
+				'assemble-assets': { steps: Array<{ name?: string; run?: string }> };
+				docker: { needs: string[] };
+			};
+		};
+		const run = workflow.jobs['assemble-assets'].steps.find(
+			(step) => step.name === 'Assemble and validate complete asset manifest'
+		)?.run;
+		if (!run) throw new Error('Missing assemble-assets validation step');
+		expect(run).toContain('node scripts/validate-release-assets.mjs');
+		expect(readFileSync(join(ROOT, 'scripts/validate-release-assets.mjs'), 'utf8')).toContain(
+			'validateUpdaterFeeds(dir, version, presentFiles, productName)'
+		);
+		expect(workflow.jobs.docker.needs).toContain('assemble-assets');
+		expect(readFileSync(join(WORKFLOWS, 'release.yml'), 'utf8')).not.toContain(
+			'node scripts/validate-updater-feed.mjs'
+		);
+	});
+
+	test('CI and release preflight both typecheck Electron', () => {
+		const release = readFileSync(join(WORKFLOWS, 'release.yml'), 'utf8');
+		const ci = readFileSync(join(WORKFLOWS, 'ci.yml'), 'utf8');
+		expect(release).toContain('bun run --cwd packages/electron typecheck');
+		expect(ci).toContain('bun run --cwd packages/electron typecheck');
+	});
+
+	test('CI requires the real PowerShell installer contract on a Windows runner', () => {
+		const workflow = Bun.YAML.parse(readFileSync(join(WORKFLOWS, 'ci.yml'), 'utf8')) as {
+			jobs: Record<string, { 'runs-on': string; steps: Array<{ env?: Record<string, string>; run?: string }> }>;
+		};
+		const job = workflow.jobs['powershell-installer-tests'];
+		expect(job['runs-on']).toBe('windows-latest');
+		const step = job.steps.find((candidate) => candidate.run?.includes('setup-sh-latest-resolver.test.ts'));
+		expect(step?.env?.OPENPALM_REQUIRE_PWSH_TESTS).toBe('1');
+		expect(step?.env?.OPENPALM_REQUIRE_WINDOWS_POWERSHELL_TESTS).toBe('1');
+	});
+
+	test('immutable image collision checks also run read-only during dry runs', () => {
+		const workflow = Bun.YAML.parse(readFileSync(join(WORKFLOWS, 'release.yml'), 'utf8')) as {
+			jobs: { docker: { steps: Array<{ name?: string; if?: string; run?: string }> } };
+		};
+		const steps = workflow.jobs.docker.steps;
+		const collision = steps.find((step) => step.name === 'Validate an existing immutable image tag');
+		expect(collision?.if).toBeUndefined();
+		expect(collision?.run).toContain('docker buildx imagetools inspect');
+		const login = steps.find((step) => step.name === 'Login to Docker Hub');
+		expect(login?.if).toContain('inputs.dry_run != true');
 	});
 
 	test('every desktop target electron-builder.yml configures is required, with names derived from the version', () => {
@@ -183,12 +240,14 @@ describe('release completeness gate: no CLI-only releases (onboarding-setup-revi
 		for (const binary of CLI_BINARIES) expect(required).toContain(binary);
 		for (const asset of expectedDesktopAssets('2.0.0-beta.1', productName)) expect(required).toContain(asset);
 		for (const feed of expectedUpdaterFeeds('2.0.0-beta.1')) expect(required).toContain(feed);
+		expect(required).toContain('beta-linux-arm64.yml');
+		expect(required).toContain('OpenPalm-Setup-2.0.0-beta.1.exe');
 		expect(required).toContain('checksums-sha256.txt');
 		// A beta candidate publishes its own channel feed, never the stable name.
 		expect(required).not.toContain('latest.yml');
 	});
 
-	test('checksumFor matches a filename containing a space, in case an asset name ever regresses to one (review finding #1: NSIS used to)', () => {
+	test('checksumFor treats the release filename as opaque, including spaces', () => {
 		const hash = 'f'.repeat(64);
 		const checksums = `${hash}  OpenPalm Setup 1.4.2.exe\n`;
 		expect(checksumFor(checksums, 'OpenPalm Setup 1.4.2.exe')).toBe(hash);
@@ -207,8 +266,21 @@ describe('release completeness gate: no CLI-only releases (onboarding-setup-revi
 		const required = requiredReleaseAssets(version, productName);
 		const withoutChecksums = required.filter((name) => name !== 'checksums-sha256.txt');
 		for (const name of withoutChecksums) writeFileSync(join(dir, name), `content-of-${name}`);
+
+		for (const feed of expectedUpdaterFeeds(version)) {
+			const artifact = updaterArtifactForFeed(feed, version, productName);
+			if (!artifact) throw new Error(`No updater artifact contract for ${feed}`);
+			const hash = createHash('sha512')
+				.update(readFileSync(join(dir, artifact.physicalArtifact)))
+				.digest('base64');
+			writeFileSync(
+				join(dir, feed),
+				`version: ${version}\nfiles:\n  - url: ${artifact.feedArtifact}\n    sha512: ${hash}\n    size: 1\n    blockMapSize: 1\npath: ${artifact.feedArtifact}\nsha512: ${hash}\n`
+			);
+		}
+
 		const lines = withoutChecksums.map((name) => {
-			const hash = createHash('sha256').update(`content-of-${name}`).digest('hex');
+			const hash = createHash('sha256').update(readFileSync(join(dir, name))).digest('hex');
 			return `${hash}  ${name}`;
 		});
 		writeFileSync(join(dir, 'checksums-sha256.txt'), `${lines.join('\n')}\n`);
@@ -233,7 +305,7 @@ describe('release completeness gate: no CLI-only releases (onboarding-setup-revi
 			for (const asset of desktop) rmSync(join(dir, asset));
 			const problems = validateReleaseAssets(dir, '1.4.2', productName);
 			for (const asset of desktop) expect(problems).toContain(`Missing release asset: ${asset}`);
-			expect(problems.length).toBe(desktop.length);
+			expect(problems.length).toBeGreaterThanOrEqual(desktop.length);
 		});
 	});
 
@@ -253,6 +325,17 @@ describe('release completeness gate: no CLI-only releases (onboarding-setup-revi
 			writeFileSync(join(dir, 'OpenPalm-1.4.2-arm64-mac.zip'), 'corrupted-in-transit');
 			const problems = validateReleaseAssets(dir, '1.4.2', productName);
 			expect(problems).toContain('Checksum mismatch for OpenPalm-1.4.2-arm64-mac.zip');
+		});
+	});
+
+	test('validateReleaseAssets includes semantic updater-feed validation', () => {
+		withDir((dir) => {
+			writeCompleteDist(dir, '1.4.2');
+			const feed = expectedUpdaterFeeds('1.4.2')[0];
+			const feedPath = join(dir, feed);
+			writeFileSync(feedPath, readFileSync(feedPath, 'utf8').replace(/sha512: .+/, 'sha512: invalid'));
+			const problems = validateReleaseAssets(dir, '1.4.2', productName);
+			expect(problems.some((problem) => problem.includes('sha512 does not match'))).toBe(true);
 		});
 	});
 });

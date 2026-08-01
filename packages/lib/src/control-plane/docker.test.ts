@@ -302,14 +302,15 @@ describe("toDockerResult (execFile error → DockerResult code normalization)", 
 });
 
 describe("meetsComposeWaitFloor (§2.1 precondition: Compose version floor for --wait)", () => {
-  it("accepts a version at or above the v2.14.0 floor", () => {
-    expect(meetsComposeWaitFloor("Docker Compose version v2.14.0")).toBe(true);
+  it("accepts a version at or above the v2.17.0 floor", () => {
+    expect(meetsComposeWaitFloor("Docker Compose version v2.17.0")).toBe(true);
     expect(meetsComposeWaitFloor("Docker Compose version v2.29.1")).toBe(true);
     expect(meetsComposeWaitFloor("Docker Compose version v3.0.0")).toBe(true);
   });
 
   it("rejects a version below the floor", () => {
-    expect(meetsComposeWaitFloor("Docker Compose version v2.13.9")).toBe(false);
+    expect(meetsComposeWaitFloor("Docker Compose version v2.16.9")).toBe(false);
+    expect(meetsComposeWaitFloor("Docker Compose version v2.14.0")).toBe(false);
     expect(meetsComposeWaitFloor("Docker Compose version v2.0.0")).toBe(false);
     expect(meetsComposeWaitFloor("Docker Compose version v1.29.2")).toBe(false);
   });

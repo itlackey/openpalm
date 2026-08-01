@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'bun:test';
-import { readFileSync } from 'node:fs';
+import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 const SETUP_SH_PATH = join(import.meta.dir, 'setup.sh');
@@ -181,5 +182,153 @@ describe('setup.ps1 latest release-asset resolver', () => {
 		expect(source).toContain('$LatestResponse.BaseResponse.ResponseUri.AbsoluteUri');
 		expect(source).toContain('$LatestResponse.BaseResponse.RequestMessage.RequestUri.AbsoluteUri');
 		expect(source).not.toContain('api.github.com');
+	});
+});
+
+describe('setup.ps1 CLI install failure propagation', () => {
+	const source = readFileSync(join(import.meta.dir, 'setup.ps1'), 'utf8');
+	const invocationMarker = '& $Dest install --version $Version @PassthroughArgs';
+	const invocationIndex = source.indexOf(invocationMarker);
+	if (invocationIndex < 0) throw new Error('Could not locate the setup.ps1 CLI invocation');
+	const outerFinallyIndex = source.lastIndexOf('} finally {');
+	if (outerFinallyIndex < invocationIndex) throw new Error('Could not locate setup.ps1 outer finally');
+	const installFooter = source.slice(invocationIndex, outerFinallyIndex);
+
+	it('uses a terminating PowerShell error rather than exit, while preserving cli-only return', () => {
+		const executableLines = source
+			.split('\n')
+			.filter((line) => !line.trimStart().startsWith('#'))
+			.join('\n');
+		expect(executableLines).not.toMatch(/^\s*exit\b/m);
+		expect(installFooter).toContain('$InstallExitCode = $LASTEXITCODE');
+		expect(installFooter).toContain('if ($InstallExitCode -ne 0)');
+		expect(installFooter).toContain('throw "openpalm install failed with exit code $InstallExitCode"');
+
+		const cliOnlyReturn = source.indexOf('if ($CliOnly) {');
+		expect(cliOnlyReturn).toBeGreaterThan(-1);
+		expect(source.indexOf('return', cliOnlyReturn)).toBeLessThan(invocationIndex);
+	});
+
+	const pwsh = Bun.which('pwsh');
+	const windowsPowerShell = process.platform === 'win32' ? Bun.which('powershell') : null;
+	const powershellExecutables = [...new Set([pwsh, windowsPowerShell].filter((value) => value !== null))];
+	const powershellIt = powershellExecutables.length > 0 ? it : it.skip;
+
+	it('requires the configured PowerShell runtimes when the CI contract is enabled', () => {
+		if (process.env.OPENPALM_REQUIRE_PWSH_TESTS === '1') {
+			expect(pwsh, 'OPENPALM_REQUIRE_PWSH_TESTS=1 requires pwsh on PATH').toBeTruthy();
+		}
+		if (process.env.OPENPALM_REQUIRE_WINDOWS_POWERSHELL_TESTS === '1') {
+			expect(
+				windowsPowerShell,
+				'OPENPALM_REQUIRE_WINDOWS_POWERSHELL_TESTS=1 requires Windows PowerShell on PATH'
+			).toBeTruthy();
+		}
+	});
+
+	powershellIt('fails a script process but does not close an irm | iex-style caller', () => {
+		const dir = mkdtempSync(join(tmpdir(), 'setup-ps1-failure-'));
+		try {
+			const fakeCli = join(dir, process.platform === 'win32' ? 'openpalm-failing.cmd' : 'openpalm-failing');
+			writeFileSync(fakeCli, process.platform === 'win32' ? '@exit /b 23\r\n' : '#!/bin/sh\nexit 23\n');
+			if (process.platform !== 'win32') chmodSync(fakeCli, 0o755);
+
+			const escapedCli = fakeCli.replaceAll("'", "''");
+			const variables = `$Dest = '${escapedCli}'\n$Version = '1.2.3'\n$PassthroughArgs = @()\n`;
+
+			for (const [index, powershellExecutable] of powershellExecutables.entries()) {
+				const fileHarness = join(dir, `run-installer-footer-${index}.ps1`);
+				writeFileSync(fileHarness, `$ErrorActionPreference = 'Stop'\n${variables}${installFooter}`);
+				const fileResult = Bun.spawnSync({
+					cmd: [powershellExecutable, '-NoProfile', '-NonInteractive', '-File', fileHarness],
+					stdout: 'pipe',
+					stderr: 'pipe'
+				});
+				expect(fileResult.exitCode).not.toBe(0);
+				expect(`${fileResult.stdout}${fileResult.stderr}`).toContain(
+					'openpalm install failed with exit code 23'
+				);
+
+				const inlineHarness = [
+					"$ErrorActionPreference = 'Stop'",
+					variables,
+					"$InstallerFooter = @'",
+					installFooter,
+					"'@",
+					'try { Invoke-Expression $InstallerFooter } catch { Write-Output "caught:$($_.Exception.Message)" }',
+					"Write-Output 'shell-survived'"
+				].join('\n');
+				const inlineHarnessPath = join(dir, `invoke-expression-harness-${index}.ps1`);
+				writeFileSync(inlineHarnessPath, inlineHarness);
+				const inlineResult = Bun.spawnSync({
+					cmd: [powershellExecutable, '-NoProfile', '-NonInteractive', '-File', inlineHarnessPath],
+					stdout: 'pipe',
+					stderr: 'pipe'
+				});
+				const stdout = inlineResult.stdout.toString('utf8');
+				expect(inlineResult.exitCode, inlineResult.stderr.toString()).toBe(0);
+				expect(stdout).toContain('caught:openpalm install failed with exit code 23');
+				expect(stdout).toContain('shell-survived');
+			}
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
+		}
+	});
+});
+
+describe('setup.ps1 caller ErrorActionPreference', () => {
+	const source = readFileSync(join(import.meta.dir, 'setup.ps1'), 'utf8');
+	const saveLine = findLine(source, '$OpenPalmPreviousErrorActionPreference = $ErrorActionPreference');
+	const setLine = findLine(source, "$ErrorActionPreference = 'Stop'");
+	const finallyMatch = source.match(
+		/\} finally \{\r?\n\s+\$ErrorActionPreference = \$OpenPalmPreviousErrorActionPreference\r?\n\}\s*$/
+	);
+	if (!finallyMatch) throw new Error('Could not locate setup.ps1 preference-restoring finally block');
+
+	it('wraps the shipped script in the preference-restoring try/finally', () => {
+		expect(source.indexOf(saveLine)).toBeLessThan(source.indexOf(setLine));
+		expect(source.indexOf('try {', source.indexOf(saveLine))).toBeLessThan(source.indexOf(setLine));
+		expect(finallyMatch.index).toBeGreaterThan(source.indexOf('& $Dest install'));
+	});
+
+	const pwsh = Bun.which('pwsh');
+	const windowsPowerShell = process.platform === 'win32' ? Bun.which('powershell') : null;
+	const powershellExecutables = [...new Set([pwsh, windowsPowerShell].filter((value) => value !== null))];
+	const powershellIt = powershellExecutables.length > 0 ? it : it.skip;
+
+	powershellIt('restores caller session state after controlled success and failure paths', () => {
+		const dir = mkdtempSync(join(tmpdir(), 'setup-ps1-preference-'));
+		try {
+			for (const [shellIndex, powershellExecutable] of powershellExecutables.entries()) {
+				for (const [caseIndex, body] of [
+					[0, 'Write-Output "inside:$ErrorActionPreference"'],
+					[1, 'Write-Output "inside:$ErrorActionPreference"\nthrow "controlled failure"']
+				] as const) {
+					const contract = [saveLine, 'try {', setLine, body, finallyMatch[0].trimEnd()].join('\n');
+					const harness = [
+						"$ErrorActionPreference = 'Continue'",
+						"$Contract = @'",
+						contract,
+						"'@",
+						'try { Invoke-Expression $Contract } catch { Write-Output "caught:$($_.Exception.Message)" }',
+						'Write-Output "after:$ErrorActionPreference"'
+					].join('\n');
+					const harnessPath = join(dir, `preference-${shellIndex}-${caseIndex}.ps1`);
+					writeFileSync(harnessPath, harness);
+					const result = Bun.spawnSync({
+						cmd: [powershellExecutable, '-NoProfile', '-NonInteractive', '-File', harnessPath],
+						stdout: 'pipe',
+						stderr: 'pipe'
+					});
+					const stdout = result.stdout.toString('utf8');
+					expect(result.exitCode, result.stderr.toString()).toBe(0);
+					expect(stdout).toContain('inside:Stop');
+					expect(stdout).toContain('after:Continue');
+					if (caseIndex === 1) expect(stdout).toContain('caught:controlled failure');
+				}
+			}
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
+		}
 	});
 });

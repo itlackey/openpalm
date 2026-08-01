@@ -31,6 +31,7 @@ export interface ProviderState {
   oauthPolling?: boolean;
   oauthUrl?: string;
   oauthInstructions?: string;
+  oauthMethod?: 'auto' | 'code';
 }
 
 export interface ModelSelection {

@@ -19,7 +19,6 @@
  * file from ever touching global module state.
  */
 import { defineCommand } from 'citty';
-import { execFile } from 'node:child_process';
 import { existsSync, statSync } from 'node:fs';
 import {
   checkDiskHeadroom,
@@ -33,8 +32,6 @@ import {
   createOpenCodeClient,
   resolveOpenCodeCredential,
   resolveAssistantEndpoint,
-  detectExistingProject,
-  dockerBin,
   listSessionsPaged,
   toSessionRecord,
   type SessionDeletionClient,
@@ -58,7 +55,6 @@ import {
   runOpenCodeDbMaintenance,
   type ControlPlaneState,
   type DockerResult,
-  type ExistingProject,
   type GpuInfo,
   type ImageVolumeReport,
   type InstallPortStatus,
@@ -217,17 +213,6 @@ export interface DoctorDeps {
   probeInstallPorts: typeof probeInstallPorts;
   /** Instance-identity probe (D1) — tells the admin (host UI) port apart from a foreign process on it; it is never a container, so no docker check can attribute it to "us". */
   checkExistingUiInstance: typeof checkExistingUiInstance;
-  /** Ownership-by-project probe (deploy.ts's own collision check) — tells a custom OP_PROJECT_NAME's OWN containers apart from a real foreign conflict on the ui/assistant ports. */
-  detectExistingProject: typeof detectExistingProject;
-  /**
-   * Ports actually published by THIS project's RUNNING containers — scopes
-   * `detectExistingProject`'s project-level "isOurs" answer down to the
-   * specific ports our own project holds, so a genuine foreign conflict on an
-   * unrelated port (e.g. our stack is stopped and a stranger squats the
-   * assistant port) is never laundered into "ours" just because a compose
-   * project with our name happens to exist (review finding #2).
-   */
-  resolveProjectPublishedPorts: typeof resolveProjectPublishedPorts;
   checkDiskHeadroom: typeof checkDiskHeadroom;
   describeDiskHeadroom: typeof describeDiskHeadroom;
   buildStorageReport: typeof buildStorageReport;
@@ -252,8 +237,6 @@ export const defaultDoctorDeps: DoctorDeps = {
   detectLocalProviders,
   probeInstallPorts,
   checkExistingUiInstance,
-  detectExistingProject,
-  resolveProjectPublishedPorts,
   checkDiskHeadroom,
   describeDiskHeadroom,
   buildStorageReport,
@@ -286,42 +269,8 @@ function resolveDoctorPortTargets(persistedEnv: Record<string, string>): Install
 }
 
 /**
- * Ports actually published by RUNNING containers labelled with `projectName`'s
- * compose project (`com.docker.compose.project=<projectName>`).
- *
- * Deliberately independent of the lib's `portHeldByOurContainer`: that
- * function hardcodes an `openpalm-` container-NAME prefix, which is exactly
- * the customized-`OP_PROJECT_NAME` gap this doctor-side check exists to close
- * (containers named `<project>-ui-1` etc. never match that prefix). Filtering
- * on the compose project LABEL instead is unaffected by a renamed project.
- *
- * Only running containers are queried (no `-a`): a stopped container binds no
- * port, so it cannot hold anything a live TCP probe found unavailable — and
- * treating a stopped project as if it still held the port is precisely what
- * let a genuine foreign conflict get laundered into "ours" (review finding
- * #2).
- */
-export async function resolveProjectPublishedPorts(projectName: string): Promise<Set<number>> {
-  const ports = new Set<number>();
-  const result = await new Promise<{ ok: boolean; stdout: string }>((resolve) => {
-    execFile(
-      dockerBin(),
-      ['ps', '--filter', `label=com.docker.compose.project=${projectName}`, '--format', '{{.Ports}}'],
-      { timeout: 10_000 },
-      (error, stdout) => resolve({ ok: !error, stdout: stdout?.toString() ?? '' }),
-    );
-  });
-  if (!result.ok) return ports;
-  for (const match of result.stdout.matchAll(/:(\d+)->/g)) {
-    const port = Number(match[1]);
-    if (Number.isFinite(port)) ports.add(port);
-  }
-  return ports;
-}
-
-/**
- * Resolve doctor's port-conflict report — folding in TWO ownership checks
- * `probeInstallPorts`'s own container-ownership fallback cannot make (C10/B9):
+ * Resolve doctor's port-conflict report with the two identities unavailable to
+ * a plain TCP bind probe:
  *
  *  1. The admin (host UI) port is never a container at all — it is a bare
  *     host process, so no `docker ps` lookup can ever attribute it to "us".
@@ -329,25 +278,12 @@ export async function resolveProjectPublishedPorts(projectName: string): Promise
  *     `ui-server.ts`'s own D1 fix uses, but ONLY on a genuine `match`: a
  *     `mismatch` (something OpenPalm-shaped but the WRONG capability level —
  *     e.g. a bare `openpalm ui` holding the admin port) is a real conflict
- *     `ui-server.ts`/Electron's `main.ts` both hard-refuse on (review finding
- *     #5) — doctor must not paper over it by calling the port "ours" too.
+ *     that the admin launcher refuses, so doctor must not call it "ours".
  *     Falling through to the plain TCP probe below for a `mismatch` reports
- *     it as a genuine (non-`ours`) conflict, matching what actually happens
- *     when `openpalm admin` is then run against it.
- *  2. `portHeldByOurContainer` (lib) hardcodes the `openpalm-` container-name
- *     prefix, so a customized `OP_PROJECT_NAME` (containers then named
- *     `<project>-ui-1` etc.) makes the operator's OWN running stack read as a
- *     conflict on the ui/assistant ports. Once Docker confirms THIS home's own
- *     compose project — by resolved project name + stack dir, the exact test
- *     `deploy.ts`'s collision check already trusts — is what is running,
- *     reclassify as ours ONLY the ports that project's RUNNING containers
- *     actually publish (`resolveProjectPublishedPorts`) — not every
- *     unresolved conflict. `detectExistingProject` only proves a compose
- *     project with this name exists (its `docker ps -a` counts STOPPED
- *     containers, and it never looks at ports at all), so blindly clearing
- *     every conflict once it returns `isOurs` would launder a genuine foreign
- *     process squatting an unrelated port into "ours" too (review finding #2
- *     — e.g. our stack is stopped and a stranger holds the assistant port).
+ *     it as a genuine conflict.
+ *  2. Container ownership is resolved per port by `probeInstallPorts`, using
+ *     both the Compose project name and this home's working-directory label.
+ *     A project existing elsewhere is not evidence that it owns this listener.
  */
 async function resolveDoctorPorts(
   state: Pick<ControlPlaneState, 'stackDir'>,
@@ -364,32 +300,46 @@ async function resolveDoctorPorts(
     if (identity.status === 'match') serverPort = adminTarget.port;
   }
 
-  const ports = await deps.probeInstallPorts(targets, { dockerAvailable, serverPort });
-  if (!dockerAvailable) return ports;
-
-  const isUnresolvedConflict = (p: InstallPortStatus): boolean =>
-    p.service !== 'admin' && !p.available && p.ownership !== 'unreachable' && p.ownership !== 'ours';
-  if (!ports.some(isUnresolvedConflict)) return ports;
-
-  const existing: ExistingProject = await deps.detectExistingProject({ projectName, expectedWorkingDir: state.stackDir });
-  if (!existing.exists || !existing.isOurs) return ports;
-
-  const ourPorts = await deps.resolveProjectPublishedPorts(projectName);
-  return ports.map((p) =>
-    isUnresolvedConflict(p) && ourPorts.has(p.port) ? { ...p, available: true, ownership: 'ours' as const } : p,
-  );
+  return deps.probeInstallPorts(targets, {
+    dockerAvailable,
+    serverPort,
+    composeProject: { name: projectName, workingDir: state.stackDir },
+  });
 }
 
 /**
- * Whether `report` should make `openpalm doctor` exit non-zero (C10/B8): a
- * Docker FAIL or an unresolved blocking port conflict is a real problem even
- * though `runDoctorAction` itself never throws for either (it always returns
- * a full report reflecting the failure — see doctor.test.ts) — a script that
- * only checks the exit code needs a way to see that.
+ * Whether `report` should make `openpalm doctor` exit non-zero (C10/B8).
+ * Optional actions only fail when they report an error; declining/skipping
+ * one is an intentional no-op.
  */
-export function doctorReportHasFailure(report: Pick<DoctorReport, 'docker' | 'ports'>): boolean {
-  if (!report.docker.ok) return true;
-  return report.ports.some((p) => p.blocking && !p.available);
+export function doctorReportHasFailure(
+  report: Pick<
+    DoctorReport,
+    | 'docker'
+    | 'compose'
+    | 'ports'
+    | 'diskHeadroom'
+    | 'storage'
+    | 'dockerArtifacts'
+    | 'sessionsResult'
+    | 'pruneSessionsResult'
+    | 'cleanCachesResult'
+    | 'cleanDockerResult'
+    | 'reclaimDbResult'
+  >,
+): boolean {
+  if (!report.docker.ok || !report.compose.ok) return true;
+  if (report.ports.some((port) => port.blocking && !port.available)) return true;
+  if (report.diskHeadroom.status === 'critical' || report.diskHeadroom.measurementFailed) return true;
+  if (report.storage.filesystem.measurementFailed) return true;
+  if (!report.storage.docker.reliable || !report.dockerArtifacts.reliable) return true;
+  if (report.cleanDockerResult && report.cleanDockerResult.errors.length > 0) return true;
+  if (report.sessionsResult && 'error' in report.sessionsResult) return true;
+  if (report.pruneSessionsResult) {
+    if ('error' in report.pruneSessionsResult) return true;
+    if ('deleteFailures' in report.pruneSessionsResult && report.pruneSessionsResult.deleteFailures.length > 0) return true;
+  }
+  return report.reclaimDbResult?.databases.some((database) => database.error !== undefined) ?? false;
 }
 
 /**

@@ -16,8 +16,31 @@ import { setupState } from '$lib/setup/setup-state.svelte.js';
 
 afterEach(() => {
   setupState.reset();
+  vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
+
+function showActiveOAuth(method: 'auto' | 'code'): void {
+  setupState.opencodeAvailable = true;
+  setupState.opencodeProviders = [{ id: 'openai', name: 'OpenAI' }];
+  setupState.opencodeAuth = { openai: [{ type: 'oauth', label: 'OAuth' }] };
+  setupState.providerState = {
+    openai: {
+      selected: true,
+      verified: false,
+      verifying: false,
+      error: false,
+      apiKey: '',
+      baseUrl: '',
+      models: [],
+      ollamaMode: null,
+      oauthPolling: true,
+      oauthMethod: method,
+      oauthUrl: 'https://provider.test/authorize',
+      oauthInstructions: 'Complete authorization with the provider.',
+    },
+  };
+}
 
 describe('ProviderOAuthList — empty state', () => {
   test('an unreachable OpenCode is reported as unreachable, with a retry — not "all connected"', async () => {
@@ -55,5 +78,33 @@ describe('ProviderOAuthList — empty state', () => {
     await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledWith(
       '/api/setup/opencode/ensure', expect.anything(),
     ));
+  });
+});
+
+describe('ProviderOAuthList - OAuth mode UI', () => {
+  test('browser-auto flow shows polling without an authorization-code input', async () => {
+    showActiveOAuth('auto');
+
+    render(ProviderOAuthList);
+
+    await expect.element(page.getByText(/waiting for authorization/i)).toBeVisible();
+    await expect.element(page.getByRole('textbox', { name: /authorization code/i })).not.toBeInTheDocument();
+  });
+
+  test('code flow stays visible and submits through the setup store', async () => {
+    showActiveOAuth('code');
+    const submit = vi.spyOn(setupState, 'submitOpenCodeOAuthCode').mockResolvedValue();
+
+    render(ProviderOAuthList);
+    const input = page.getByRole('textbox', { name: 'OpenAI authorization code' });
+    await expect.element(input).toBeVisible();
+    await expect.element(page.getByText(/waiting for authorization/i)).not.toBeInTheDocument();
+
+    await input.fill('provider-code');
+    await page.getByRole('button', { name: 'Submit code' }).click();
+
+    expect(submit).toHaveBeenCalledWith('openai', 0, 'provider-code');
+    await expect.element(input).toBeVisible();
+    await expect.element(page.getByRole('button', { name: 'Cancel' })).toBeVisible();
   });
 });

@@ -1,31 +1,22 @@
-import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { beforeEach, describe, expect, test, vi } from 'vitest';
+import { loadSetupProviderPage } from './catalog.js';
 
-const resolveSetupOpencodeTarget = vi.fn();
+const { resolveSetupOpencodeTarget, opencodeFetch } = vi.hoisted(() => ({
+  resolveSetupOpencodeTarget: vi.fn(),
+  opencodeFetch: vi.fn(),
+}));
+
 vi.mock('./setup-target.js', () => ({ resolveSetupOpencodeTarget }));
-
-const opencodeFetch = vi.fn();
 vi.mock('./http.js', () => ({ opencodeFetch }));
 
-// Dynamically imported per test (after vi.resetModules()) — see setup-target.vitest.ts
-// for why a static top-level import here would TDZ-fail against the mocks above.
-async function loadModule() {
-  return await import('./catalog.js');
-}
-
 beforeEach(() => {
-  vi.resetModules();
   vi.clearAllMocks();
-});
-
-afterEach(() => {
-  vi.unstubAllGlobals();
 });
 
 describe('loadSetupProviderPage (W1)', () => {
   test('reports unavailable without ever calling OpenCode when no target resolves', async () => {
     resolveSetupOpencodeTarget.mockResolvedValue(null);
 
-    const { loadSetupProviderPage } = await loadModule();
     const result = await loadSetupProviderPage();
 
     expect(result).toEqual({ available: false, providers: [] });
@@ -41,7 +32,6 @@ describe('loadSetupProviderPage (W1)', () => {
       throw new Error(`unexpected path ${path}`);
     });
 
-    const { loadSetupProviderPage } = await loadModule();
     const result = await loadSetupProviderPage();
 
     expect(result.available).toBe(true);

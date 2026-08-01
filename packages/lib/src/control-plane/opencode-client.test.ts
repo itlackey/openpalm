@@ -207,7 +207,7 @@ describe("createOpenCodeClient", () => {
       });
 
       const client = createOpenCodeClient({ baseUrl: `http://127.0.0.1:${serverPort}` });
-      const result = await client.startProviderOAuth("openai", 0, 20);
+      const result = await client.startProviderOAuth("openai", 0, { timeoutMs: 20 });
 
       expect(result.ok).toBe(false);
       if (!result.ok) expect(result.code).toBe("opencode_unavailable");
@@ -222,7 +222,7 @@ describe("createOpenCodeClient", () => {
       });
 
       const client = createOpenCodeClient({ baseUrl: `http://127.0.0.1:${serverPort}` });
-      const result = await client.completeProviderOAuth("openai", 0, undefined, 20);
+      const result = await client.completeProviderOAuth("openai", 0, undefined, { timeoutMs: 20 });
 
       expect(result.ok).toBe(false);
       if (!result.ok) expect(result.code).toBe("opencode_unavailable");
@@ -237,7 +237,7 @@ describe("createOpenCodeClient", () => {
       });
 
       const client = createOpenCodeClient({ baseUrl: `http://127.0.0.1:${serverPort}` });
-      const result = await client.completeProviderOAuth("openai", 0, "the-code", 5_000);
+      const result = await client.completeProviderOAuth("openai", 0, "the-code", { timeoutMs: 5_000 });
 
       expect(result.ok).toBe(true);
       if (result.ok) expect(result.data).toEqual({ done: true });
@@ -257,6 +257,31 @@ describe("createOpenCodeClient", () => {
 
       expect(result.ok).toBe(true);
       expect(receivedBody).toEqual({ method: 2 });
+    });
+
+    test("completeProviderOAuth combines caller cancellation with its timeout", async () => {
+      let markStarted!: () => void;
+      const started = new Promise<void>((resolve) => { markStarted = resolve; });
+      startMockServer(async () => {
+        markStarted();
+        await new Promise((resolve) => setTimeout(resolve, 500));
+        return new Response(JSON.stringify({ done: true }), {
+          headers: { "Content-Type": "application/json" },
+        });
+      });
+
+      const controller = new AbortController();
+      const client = createOpenCodeClient({ baseUrl: `http://127.0.0.1:${serverPort}` });
+      const pending = client.completeProviderOAuth("openai", 0, undefined, {
+        timeoutMs: 5_000,
+        signal: controller.signal,
+      });
+      await started;
+      controller.abort();
+
+      const result = await pending;
+      expect(result.ok).toBe(false);
+      if (!result.ok) expect(result.code).toBe("opencode_unavailable");
     });
   });
 });

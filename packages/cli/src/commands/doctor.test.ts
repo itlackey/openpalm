@@ -14,7 +14,10 @@ import { doctorReportHasFailure, runDoctorAction, type DoctorDeps } from './doct
 // relation to doctor at all. Dependency injection sidesteps that class of
 // problem entirely.
 
-const fakeState = { homeDir: '/tmp/fake-home' } as unknown as ControlPlaneState;
+const fakeState = {
+  homeDir: '/tmp/fake-home',
+  stackDir: '/tmp/fake-home/system/stack',
+} as unknown as ControlPlaneState;
 
 const okDockerResult = { ok: true, stdout: '24.0.0', stderr: '', code: 0 };
 const okStorageReport = {
@@ -52,8 +55,6 @@ function baseDeps(overrides: Partial<DoctorDeps> = {}): DoctorDeps {
     // in a unit test unless a test overrides them to exercise the reconcile
     // logic (see the "port-probe reconciliation" describe block below).
     checkExistingUiInstance: async () => ({ status: 'absent' as const }),
-    detectExistingProject: async () => ({ exists: false, isOurs: false, workingDir: '' }),
-    resolveProjectPublishedPorts: async () => new Set<number>(),
     checkDiskHeadroom: () => okDiskHeadroom,
     describeDiskHeadroom: () => null,
     buildStorageReport: async () => okStorageReport,
@@ -96,33 +97,187 @@ describe('openpalm doctor — registration', () => {
 
 describe('doctorReportHasFailure (C10/B8 — exit-code semantics)', () => {
   const availableAdmin = { port: 3880, service: 'admin', blocking: true, available: true } as const;
+  type FailureReport = Parameters<typeof doctorReportHasFailure>[0];
 
-  test('false when Docker is ok and no blocking port is unavailable', () => {
-    expect(doctorReportHasFailure({ docker: okDockerResult, ports: [availableAdmin] })).toBe(false);
+  function healthyReport(overrides: Partial<FailureReport> = {}): FailureReport {
+    return {
+      docker: okDockerResult,
+      compose: okDockerResult,
+      ports: [availableAdmin],
+      diskHeadroom: okDiskHeadroom,
+      storage: okStorageReport,
+      dockerArtifacts: { reliable: true, images: [], supersededImages: [], volumes: [], orphanVolumes: [] },
+      ...overrides,
+    };
+  }
+
+  test('false for a healthy report with no optional actions', () => {
+    expect(doctorReportHasFailure(healthyReport())).toBe(false);
   });
 
-  test('true when the Docker check FAILed, even with every port available', () => {
-    expect(
-      doctorReportHasFailure({ docker: { ...okDockerResult, ok: false }, ports: [availableAdmin] }),
-    ).toBe(true);
+  test('true when Docker fails', () => {
+    expect(doctorReportHasFailure(healthyReport({ docker: { ...okDockerResult, ok: false } }))).toBe(true);
+  });
+
+  test('true when Compose fails independently of Docker', () => {
+    expect(doctorReportHasFailure(healthyReport({ compose: { ...okDockerResult, ok: false } }))).toBe(true);
   });
 
   test('true when a blocking port is unavailable', () => {
     expect(
-      doctorReportHasFailure({
-        docker: okDockerResult,
+      doctorReportHasFailure(healthyReport({
         ports: [{ ...availableAdmin, available: false, ownership: 'free' }],
-      }),
+      })),
     ).toBe(true);
   });
 
   test('false when only a NON-blocking port is unavailable', () => {
     expect(
-      doctorReportHasFailure({
-        docker: okDockerResult,
+      doctorReportHasFailure(healthyReport({
         ports: [{ ...availableAdmin, blocking: false, available: false }],
-      }),
+      })),
     ).toBe(false);
+  });
+
+  test('true for critical disk headroom but false for a measurable low warning', () => {
+    expect(
+      doctorReportHasFailure(healthyReport({ diskHeadroom: { ...okDiskHeadroom, status: 'critical' } })),
+    ).toBe(true);
+    expect(doctorReportHasFailure(healthyReport({ diskHeadroom: { ...okDiskHeadroom, status: 'low' } }))).toBe(false);
+  });
+
+  test('true when either filesystem measurement fails', () => {
+    expect(
+      doctorReportHasFailure(
+        healthyReport({ diskHeadroom: { ...okDiskHeadroom, status: 'low', measurementFailed: true } }),
+      ),
+    ).toBe(true);
+    expect(
+      doctorReportHasFailure(
+        healthyReport({
+          storage: {
+            ...okStorageReport,
+            filesystem: { ...okStorageReport.filesystem, measurementFailed: true },
+          },
+        }),
+      ),
+    ).toBe(true);
+  });
+
+  test('true when either Docker inventory is unreliable', () => {
+    const unavailable = {
+      reliable: false as const,
+      error: 'inventory failed',
+      images: [],
+      supersededImages: [],
+      volumes: [],
+      orphanVolumes: [],
+    };
+    expect(doctorReportHasFailure(healthyReport({ dockerArtifacts: unavailable }))).toBe(true);
+    expect(
+      doctorReportHasFailure(healthyReport({ storage: { ...okStorageReport, docker: unavailable } })),
+    ).toBe(true);
+  });
+
+  test('true for explicit Docker cleanup errors; successful and skipped cleanup are not failures', () => {
+    expect(
+      doctorReportHasFailure(
+        healthyReport({ cleanDockerResult: { removedImages: [], removedVolumes: [], errors: ['remove failed'] } }),
+      ),
+    ).toBe(true);
+    expect(
+      doctorReportHasFailure(
+        healthyReport({ cleanDockerResult: { removedImages: ['old'], removedVolumes: [], errors: [] } }),
+      ),
+    ).toBe(false);
+    expect(
+      doctorReportHasFailure(
+        healthyReport({ cleanDockerResult: { removedImages: [], removedVolumes: [], errors: [], skipped: true } }),
+      ),
+    ).toBe(false);
+  });
+
+  test('successful and skipped cache cleanup are not failures', () => {
+    expect(
+      doctorReportHasFailure(
+        healthyReport({ cleanCachesResult: { removed: ['cache'], freedBytes: 1, dryRun: false } }),
+      ),
+    ).toBe(false);
+    expect(
+      doctorReportHasFailure(
+        healthyReport({ cleanCachesResult: { removed: [], freedBytes: 0, dryRun: false, skipped: true } }),
+      ),
+    ).toBe(false);
+  });
+
+  test('session listing errors fail; a successful listing does not', () => {
+    expect(doctorReportHasFailure(healthyReport({ sessionsResult: { error: 'offline' } }))).toBe(true);
+    expect(
+      doctorReportHasFailure(
+        healthyReport({
+          sessionsResult: {
+            page: 1,
+            pageSize: 100,
+            totalSessions: 0,
+            totalPages: 0,
+            rows: [],
+            summary: { rootCount: 0, maxDepth: 0, staleCount: 0 },
+          },
+        }),
+      ),
+    ).toBe(false);
+  });
+
+  test('session pruning errors and partial deletion failures fail', () => {
+    expect(doctorReportHasFailure(healthyReport({ pruneSessionsResult: { error: 'list failed' } }))).toBe(true);
+    expect(
+      doctorReportHasFailure(
+        healthyReport({
+          pruneSessionsResult: {
+            dryRun: false,
+            plan: { totalSessions: 1, rootCount: 0, preservedRootIds: [], deleteSessionIds: ['s1'], preservedChildIds: [] },
+            deleted: [],
+            deleteFailures: [{ id: 's1', message: 'delete failed' }],
+            checkpointed: false,
+            vacuumed: false,
+          },
+        }),
+      ),
+    ).toBe(true);
+  });
+
+  test('successful, dry-run, and skipped session pruning are not failures', () => {
+    const success = {
+      dryRun: false,
+      plan: { totalSessions: 1, rootCount: 0, preservedRootIds: [], deleteSessionIds: ['s1'], preservedChildIds: [] },
+      deleted: ['s1'],
+      deleteFailures: [],
+      checkpointed: false,
+      vacuumed: false,
+    };
+    expect(doctorReportHasFailure(healthyReport({ pruneSessionsResult: success }))).toBe(false);
+    expect(
+      doctorReportHasFailure(healthyReport({ pruneSessionsResult: { ...success, dryRun: true, deleted: [] } })),
+    ).toBe(false);
+    expect(doctorReportHasFailure(healthyReport({ pruneSessionsResult: { skipped: true } }))).toBe(false);
+  });
+
+  test('DB reclamation errors fail; successful, no-op, and skipped results do not', () => {
+    const database = {
+      role: 'assistant' as const,
+      path: '/tmp/opencode.db',
+      present: true,
+      vacuumed: false,
+      freedBytes: 0,
+    };
+    expect(
+      doctorReportHasFailure(
+        healthyReport({ reclaimDbResult: { databases: [{ ...database, error: 'database is locked' }] } }),
+      ),
+    ).toBe(true);
+    expect(doctorReportHasFailure(healthyReport({ reclaimDbResult: { databases: [database] } }))).toBe(false);
+    expect(doctorReportHasFailure(healthyReport({ reclaimDbResult: { databases: [] } }))).toBe(false);
+    expect(doctorReportHasFailure(healthyReport({ reclaimDbResult: { databases: [], skipped: true } }))).toBe(false);
   });
 });
 
@@ -213,120 +368,26 @@ describe('openpalm doctor — port-probe fixes (C10/B9)', () => {
     }
   });
 
-  test("reclassifies a blocked ui/assistant port as ours once Docker confirms THIS home's own compose project both holds the project AND actually publishes those ports — a custom OP_PROJECT_NAME must not read as a conflict against itself", async () => {
+  test('passes the custom project and this stack directory into the per-port ownership probe', async () => {
     const originalLog = console.log;
     console.log = silentConsole.log;
-    let seenProjectName: string | undefined;
-    let portsRequestedFor: string | undefined;
-    const seenTargetPorts: Record<string, number> = {};
+    let seenProject: { name: string; workingDir: string } | undefined;
     try {
       const deps = baseDeps({
         resolveComposeProjectName: () => 'myproj',
-        probeInstallPorts: async (targets) =>
-          (targets ?? []).map((t) => {
-            seenTargetPorts[t.service] = t.port;
-            return {
-              ...t,
-              available: t.service === 'admin',
-              ownership: t.service === 'admin' ? undefined : ('free' as const),
-            };
-          }),
-        detectExistingProject: async (opts) => {
-          seenProjectName = opts.projectName;
-          return { exists: true, isOurs: true, workingDir: opts.expectedWorkingDir };
-        },
-        resolveProjectPublishedPorts: async (projectName) => {
-          portsRequestedFor = projectName;
-          return new Set([seenTargetPorts.ui, seenTargetPorts.assistant]);
+        probeInstallPorts: async (targets, opts) => {
+          seenProject = opts?.composeProject;
+          return (targets ?? []).map((t) => ({
+            ...t,
+            available: t.service === 'admin',
+            ownership: t.service === 'admin' ? undefined : ('free' as const),
+          }));
         },
       });
       const report = await runDoctorAction({ json: true }, deps);
       const ui = report.ports.find((p) => p.service === 'ui');
-      const assistant = report.ports.find((p) => p.service === 'assistant');
-      expect(seenProjectName).toBe('myproj');
-      expect(portsRequestedFor).toBe('myproj');
-      expect(ui).toMatchObject({ available: true, ownership: 'ours' });
-      expect(assistant).toMatchObject({ available: true, ownership: 'ours' });
-    } finally {
-      console.log = originalLog;
-    }
-  });
-
-  test("leaves a blocked ui/assistant port as a real conflict when the running project is NOT this home's own", async () => {
-    const originalLog = console.log;
-    console.log = silentConsole.log;
-    try {
-      const deps = baseDeps({
-        probeInstallPorts: async (targets) =>
-          (targets ?? []).map((t) => ({
-            ...t,
-            available: t.service === 'admin',
-            ownership: t.service === 'admin' ? undefined : ('free' as const),
-          })),
-        detectExistingProject: async () => ({ exists: true, isOurs: false, workingDir: '/some/other/path' }),
-      });
-      const report = await runDoctorAction({ json: true }, deps);
-      const ui = report.ports.find((p) => p.service === 'ui');
-      expect(ui).toMatchObject({ available: false });
-    } finally {
-      console.log = originalLog;
-    }
-  });
-
-  test('does NOT launder a genuine foreign conflict into "ours" just because our own (e.g. stopped) compose project exists — only ports it actually publishes are reclassified (review finding #2)', async () => {
-    const originalLog = console.log;
-    console.log = silentConsole.log;
-    try {
-      const deps = baseDeps({
-        probeInstallPorts: async (targets) =>
-          (targets ?? []).map((t) => ({
-            ...t,
-            available: t.service === 'admin',
-            ownership: t.service === 'admin' ? undefined : ('free' as const),
-          })),
-        // Our own project's containers exist (e.g. stopped — `docker ps -a`
-        // still finds them) and match by working dir, so `isOurs` is true —
-        // but they are not RUNNING, so they publish no ports at all. An
-        // unrelated process holds the assistant port instead.
-        detectExistingProject: async () => ({ exists: true, isOurs: true, workingDir: '/home/op' }),
-        resolveProjectPublishedPorts: async () => new Set<number>(),
-      });
-      const report = await runDoctorAction({ json: true }, deps);
-      const ui = report.ports.find((p) => p.service === 'ui');
-      const assistant = report.ports.find((p) => p.service === 'assistant');
-      expect(ui).toMatchObject({ available: false });
-      expect(assistant).toMatchObject({ available: false });
-      expect(doctorReportHasFailure(report)).toBe(true);
-    } finally {
-      console.log = originalLog;
-    }
-  });
-
-  test('reclassifies only the specific port our project actually publishes, leaving an unrelated conflicting port alone (review finding #2)', async () => {
-    const originalLog = console.log;
-    console.log = silentConsole.log;
-    const seenTargetPorts: Record<string, number> = {};
-    try {
-      const deps = baseDeps({
-        probeInstallPorts: async (targets) =>
-          (targets ?? []).map((t) => {
-            seenTargetPorts[t.service] = t.port;
-            return {
-              ...t,
-              available: t.service === 'admin',
-              ownership: t.service === 'admin' ? undefined : ('free' as const),
-            };
-          }),
-        detectExistingProject: async () => ({ exists: true, isOurs: true, workingDir: '/home/op' }),
-        // Our project's running container publishes only the ui port — the
-        // assistant port conflict is with something else entirely.
-        resolveProjectPublishedPorts: async () => new Set([seenTargetPorts.ui]),
-      });
-      const report = await runDoctorAction({ json: true }, deps);
-      const ui = report.ports.find((p) => p.service === 'ui');
-      const assistant = report.ports.find((p) => p.service === 'assistant');
-      expect(ui).toMatchObject({ available: true, ownership: 'ours' });
-      expect(assistant).toMatchObject({ available: false });
+      expect(seenProject).toEqual({ name: 'myproj', workingDir: '/tmp/fake-home/system/stack' });
+      expect(ui).toMatchObject({ available: false, ownership: 'free' });
     } finally {
       console.log = originalLog;
     }
