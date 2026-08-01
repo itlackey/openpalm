@@ -87,6 +87,12 @@ describe('AKM 0.9 migration boot contract', () => {
     expect(backup).toBeGreaterThan(-1);
     expect(sentinel).toBeGreaterThan(backup);
   });
+
+  test('restores AKM recovery state and blocks same-version retries after failed verification', () => {
+    expect(entrypoint).toContain('akm-migrate restore --for 0.9.0 --run "$migration_backup_run" --confirm');
+    expect(entrypoint).toContain('openpalm-0.9-blocked-version');
+    expect(entrypoint).toContain('install a newer AKM release before retrying');
+  });
 });
 
 // ── IMG-2: on-demand install skill manifest ─────────────────────────────────

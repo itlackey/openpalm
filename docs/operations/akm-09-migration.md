@@ -27,9 +27,13 @@ it, the entrypoint first snapshots the config and AKM databases under
 `0.8.0` sentinel required for migration eligibility. Existing snapshots are
 never overwritten.
 
-The assistant fails startup if migration or health verification fails. This is
-intentional: the stack update remains unhealthy and can use its normal rollback
-path rather than starting cron and OpenCode against partially migrated state.
+The assistant fails startup if migration or health verification fails. When
+apply completed far enough to create a recovery run, the entrypoint immediately
+restores that verified run and records the failing AKM version under
+`data/akm/state/`. Restarts with the same version fail without retrying the
+cutover; installing a newer AKM release allows another attempt. This prevents
+cron and OpenCode from starting against partially migrated state and does not
+depend on OpenPalm's narrower stack rollback snapshot.
 
 ## Blockers
 
