@@ -20,8 +20,8 @@
  * channel_lan is referenced but not defined" case. Runs the real
  * applyInstall/applyUpdate/applyUninstall entry points end-to-end (no mocks)
  * against a throwaway OP_HOME, the same way setup.test.ts's `performSetup`
- * suite does — OP_SKIP_COMPOSE_PREFLIGHT keeps reconcileCore's Docker-backed
- * compose preflight (an unrelated concern) out of the picture.
+ * suite does — the skip flags keep Docker-backed compose preflight and
+ * ownership reconciliation (unrelated concerns) out of the picture.
  */
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -46,8 +46,10 @@ beforeEach(() => {
 
   savedEnv.OP_HOME = process.env.OP_HOME;
   savedEnv.OP_SKIP_COMPOSE_PREFLIGHT = process.env.OP_SKIP_COMPOSE_PREFLIGHT;
+  savedEnv.OP_SKIP_OWNERSHIP_RECONCILE = process.env.OP_SKIP_OWNERSHIP_RECONCILE;
   process.env.OP_HOME = homeDir;
   process.env.OP_SKIP_COMPOSE_PREFLIGHT = "1";
+  process.env.OP_SKIP_OWNERSHIP_RECONCILE = "1";
 
   state = createState();
 
@@ -60,6 +62,8 @@ afterEach(() => {
   else process.env.OP_HOME = savedEnv.OP_HOME;
   if (savedEnv.OP_SKIP_COMPOSE_PREFLIGHT === undefined) delete process.env.OP_SKIP_COMPOSE_PREFLIGHT;
   else process.env.OP_SKIP_COMPOSE_PREFLIGHT = savedEnv.OP_SKIP_COMPOSE_PREFLIGHT;
+  if (savedEnv.OP_SKIP_OWNERSHIP_RECONCILE === undefined) delete process.env.OP_SKIP_OWNERSHIP_RECONCILE;
+  else process.env.OP_SKIP_OWNERSHIP_RECONCILE = savedEnv.OP_SKIP_OWNERSHIP_RECONCILE;
   rmSync(homeDir, { recursive: true, force: true });
 });
 

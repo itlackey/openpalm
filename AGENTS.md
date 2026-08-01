@@ -104,7 +104,7 @@ Bun test, Vitest, and Playwright across all packages:
 
 | Runner | Command | Scope |
 |--------|---------|-------|
-| `bun test` (root) | `bun run test` | guardian, cli, lib, all portal packages, electron admin-tools, scripts (excludes ui). An untracked repo-root `.env` breaks its isolation tripwire — run in a clean worktree if one exists |
+| `bun test` (root) | `bun run test` | guardian, cli, lib, all portal packages, and scripts (excludes UI and Electron). An untracked repo-root `.env` breaks its isolation tripwire — run in a clean worktree if one exists |
 | `bun test` (guardian) | `bun run guardian:test` | packages/guardian security tests |
 | `bun test` (cli) | `bun run cli:test` | packages/cli tests |
 | Vitest (UI) | `bun run ui:test:unit` | packages/ui unit + browser component tests |
