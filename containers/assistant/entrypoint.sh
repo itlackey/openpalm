@@ -391,8 +391,18 @@ prepare_crontab_wrapper() {
   local crontab_wrapper="${wrapper_dir}/crontab"
   mkdir -p "$spool_dir" "$wrapper_dir"
   install -m 755 /dev/null "$crontab_wrapper"
-  # The single-quoted format must leave $@ unescaped for the generated wrapper.
-  printf '#!/usr/bin/env sh\nexec busybox crontab -c %s "$@"\n' "$spool_dir" > "$crontab_wrapper"
+  printf '%s\n' \
+    '#!/usr/bin/env sh' \
+    'set -eu' \
+    'file="/tmp/openpalm-crontabs/node"' \
+    'case "${1:-}" in' \
+    '  -l) [ -f "$file" ] || exit 1; cat "$file" ;;' \
+    '  -r) rm -f "$file" ;;' \
+    '  -) temp="${file}.tmp"; cat > "$temp"; mv "$temp" "$file" ;;' \
+    '  -e|"") exit 2 ;;' \
+    '  *) temp="${file}.tmp"; cp "$1" "$temp"; mv "$temp" "$file" ;;' \
+    'esac' > "$crontab_wrapper"
+  [ -f "$spool_dir/node" ] || : > "$spool_dir/node"
   case ":$PATH:" in
     *":$wrapper_dir:"*) ;;
     *) export PATH="$wrapper_dir:$PATH" ;;
