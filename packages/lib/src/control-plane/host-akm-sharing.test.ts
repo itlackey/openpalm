@@ -19,11 +19,15 @@ const savedHome = process.env.HOME;
 function readJson(p: string): Record<string, unknown> {
   return JSON.parse(readFileSync(p, "utf-8"));
 }
-function setHostAkmConfig(opts?: { profiles?: unknown }): void {
+function setHostAkmConfig(opts?: { engines?: unknown }): void {
   mkdirSync(join(fakeHome, "akm"), { recursive: true });
   mkdirSync(join(fakeHome, ".config", "akm"), { recursive: true });
-  const cfg: Record<string, unknown> = { stashDir: join(fakeHome, "akm") };
-  if (opts?.profiles) cfg.profiles = opts.profiles;
+  const cfg: Record<string, unknown> = {
+    configVersion: "0.9.0",
+    bundles: { stash: { path: join(fakeHome, "akm"), writable: true } },
+    defaultBundle: "stash",
+  };
+  if (opts?.engines) cfg.engines = opts.engines;
   writeFileSync(join(fakeHome, ".config", "akm", "config.json"), JSON.stringify(cfg));
 }
 
@@ -53,22 +57,22 @@ describe("enableHostAkmSharing", () => {
     expect(readFileSync(stackEnv, "utf-8")).toContain(`OP_HOST_AKM_STASH=${join(fakeHome, "akm")}`);
   });
 
-  it("does NOT add a source entry to akm config (source is managed separately)", () => {
+  it("does NOT add a bundle entry to akm config (the bundle is managed separately)", () => {
     writeFileSync(opConfig, "{}");
     enableHostAkmSharing(state);
     const cfg = readJson(opConfig);
-    expect((cfg.sources as unknown[]) ?? []).toHaveLength(0);
+    expect(cfg.bundles).toBeUndefined();
   });
 
-  it("imports host LLM profiles when host config exists", () => {
+  it("imports host LLM engines when host config exists", () => {
     setHostAkmConfig({
-      profiles: { llm: { default: { endpoint: "http://h/v1/chat/completions", model: "qwen" } } },
+      engines: { default: { kind: "llm", endpoint: "http://h/v1/chat/completions", model: "qwen" } },
     });
     writeFileSync(opConfig, "{}");
     const { profilesImported } = enableHostAkmSharing(state);
-    expect(profilesImported).toContain("profiles.llm");
-    const opProfiles = readJson(opConfig).profiles as Record<string, Record<string, Record<string, unknown>>>;
-    expect(opProfiles.llm.default.model).toBe("qwen");
+    expect(profilesImported).toContain("engines");
+    const engines = readJson(opConfig).engines as Record<string, Record<string, unknown>>;
+    expect(engines.default.model).toBe("qwen");
   });
 
   it("skips profile import (no error) when host config is absent", () => {
@@ -94,13 +98,13 @@ describe("disableHostAkmSharing", () => {
     expect(readFileSync(stackEnv, "utf-8")).not.toContain("OP_HOST_AKM_STASH=");
   });
 
-  it("does NOT touch the akm config source list", () => {
-    writeFileSync(opConfig, JSON.stringify({ sources: [{ type: "filesystem", name: "host-akm", path: "/host-stash", writable: true, enabled: true }] }));
+  it("does NOT touch the akm config bundle map", () => {
+    writeFileSync(opConfig, JSON.stringify({ bundles: { "host-akm": { path: "/host-stash", writable: true, enabled: true } } }));
     disableHostAkmSharing(state);
-    // source entry untouched — source is always present
+    // Bundle entry untouched; enable/disable only changes the Compose mount.
     const cfg = readJson(opConfig);
-    const sources = cfg.sources as Array<Record<string, unknown>>;
-    expect(sources.some((s) => s.name === "host-akm")).toBe(true);
+    const bundles = cfg.bundles as Record<string, Record<string, unknown>>;
+    expect(bundles["host-akm"].path).toBe("/host-stash");
   });
 
   it("is safe when OP_HOST_AKM_STASH was never set", () => {

@@ -74,7 +74,7 @@ export const backupsDir            = (s: ControlPlaneState): string => `${req(s.
 //  with the live knowledge/secrets `home.ts` secretsDir().)
 
 // ── Knowledge directory ─────────────────────────────────────────────────────
-// The akm env:user file path (`knowledge/env/user.env`) is owned by
+// The akm env/user file path (`knowledge/env/user.env`) is owned by
 // `akm-user-env.ts` (`userEnvPathSync`), which also handles its read/write and
 // legacy migration — kept there rather than duplicated as a bare path here.
 

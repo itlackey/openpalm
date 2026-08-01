@@ -439,7 +439,7 @@ async function prepareInstallFiles(
 	// included) both mint the same secrets once setup actually runs, so
 	// nothing downstream is left unconfigured by deferring this.
 	writeSystemEnv(bootstrapState);
-	// Ensure the akm env:user file exists (empty 0600) so the assistant can
+	// Ensure the akm env/user file exists (empty 0600) so the assistant can
 	// source it. Owned and edited directly by OpenPalm — see akm-user-env.ts.
 	ensureAkmUserEnv(bootstrapState);
 

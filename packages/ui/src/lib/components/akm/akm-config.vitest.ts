@@ -16,44 +16,47 @@ import { akmConfigToForm, formToAkmPayload } from './akm-config';
 
 const idGen = () => 'test-id';
 
-// Representative config exercising embedding / behavior / search / feedback /
-// defaults plus profiles (incl. an unmodeled forward-compat process field).
+// Representative persisted AKM 0.9 config exercising engines, strategies,
+// embedding, behavior, search, feedback, and defaults.
 function representativeConfig(): Record<string, unknown> {
 	return {
-		profiles: {
-			llm: {
-				default: {
-					endpoint: 'https://api.openai.com/v1/chat/completions',
-					model: 'gpt-4o-mini',
-					provider: 'openai',
-					apiKey: '${AKM_LLM_API_KEY}',
-					temperature: 0.2,
-					maxTokens: 4096,
-					timeoutMs: 30000,
-					concurrency: 4,
-					contextLength: 128000,
-					judgeModel: 'gpt-4o',
-					supportsJsonSchema: true,
-					enableThinking: true,
-					capabilities: { structuredOutput: true },
-					extraParams: { top_p: 0.9 },
-				},
+		configVersion: '0.9.0',
+		engines: {
+			default: {
+				kind: 'llm',
+				endpoint: 'https://api.openai.com/v1/chat/completions',
+				model: 'gpt-4o-mini',
+				provider: 'openai',
+				apiKey: '${AKM_LLM_API_KEY}',
+				temperature: 0.2,
+				maxTokens: 4096,
+				timeoutMs: 30000,
+				concurrency: 4,
+				contextLength: 128000,
+				judgeModel: 'gpt-4o',
+				supportsJsonSchema: true,
+				enableThinking: true,
+				capabilities: { structuredOutput: true },
+				extraParams: { top_p: 0.9 },
 			},
-			agent: {
-				opencode: {
-					platform: 'opencode',
-					bin: 'opencode',
-					args: ['run', '--model', 'gpt-4o'],
-					workspace: '${PWD}',
-					model: 'gpt-4o',
-				},
-				sdk: {
-					platform: 'opencode-sdk',
-					model: 'anthropic/claude-sonnet-4-5',
-					workspace: '${PWD}',
-				},
+			opencode: {
+				kind: 'agent',
+				platform: 'opencode',
+				bin: 'opencode',
+				args: ['run', '--model', 'gpt-4o'],
+				workspace: '${PWD}',
+				model: 'gpt-4o',
 			},
-			improve: {
+			sdk: {
+				kind: 'agent',
+				platform: 'opencode-sdk',
+				model: 'anthropic/claude-sonnet-4-5',
+				workspace: '${PWD}',
+			},
+		},
+		defaults: { engine: 'opencode', llmEngine: 'default', improveStrategy: 'default' },
+		improve: {
+			strategies: {
 				default: {
 					description: 'default improve profile',
 					limit: 30,
@@ -92,8 +95,9 @@ function representativeConfig(): Record<string, unknown> {
 					sync: { enabled: true, push: false, message: 'akm improve sync' },
 				},
 			},
+			utilityDecay: { halfLifeDays: 30, feedbackStabilityBoost: 1.5 },
+			eventRetentionDays: 90,
 		},
-		defaults: { llm: 'default', agent: 'opencode', improve: 'default' },
 		embedding: {
 			endpoint: 'https://api.openai.com/v1/embeddings',
 			model: 'text-embedding-3-small',
@@ -108,10 +112,6 @@ function representativeConfig(): Record<string, unknown> {
 		},
 		semanticSearchMode: 'auto',
 		output: { format: 'json', detail: 'brief' },
-		improve: {
-			utilityDecay: { halfLifeDays: 30, feedbackStabilityBoost: 1.5 },
-			eventRetentionDays: 90,
-		},
 		search: { minScore: 0.35, curateRerank: { enabled: true } },
 		feedback: { requireReason: true, allowedFailureModes: ['stale', 'wrong'] },
 		index: { sessions: { enabled: true } },
@@ -119,11 +119,19 @@ function representativeConfig(): Record<string, unknown> {
 }
 
 describe('akmConfigToForm → formToAkmPayload round-trip', () => {
-	it('preserves every modeled field through form then payload', () => {
+	it('maps every modeled persisted field into the UI save payload', () => {
 		const input = representativeConfig();
 		const form = akmConfigToForm(input, idGen);
-		const output = formToAkmPayload(form);
-		expect(output).toEqual(input);
+		const output = formToAkmPayload(form) as Record<string, unknown>;
+		const profiles = output.profiles as Record<string, Record<string, Record<string, unknown>>>;
+		expect(profiles.llm.default).toMatchObject({ model: 'gpt-4o-mini', provider: 'openai' });
+		expect(profiles.agent.opencode).toMatchObject({ platform: 'opencode', model: 'gpt-4o' });
+		expect(profiles.improve.default).toMatchObject({ limit: 30, autoAccept: 0.85 });
+		expect(output.defaults).toEqual({ llm: 'default', agent: 'opencode', improve: 'default' });
+		expect((output.improve as Record<string, unknown>).utilityDecay).toEqual({
+			halfLifeDays: 30,
+			feedbackStabilityBoost: 1.5,
+		});
 	});
 
 	it('round-trips the unmodeled forward-compat process field via `rest`', () => {
@@ -153,8 +161,8 @@ describe('akmConfigToForm → formToAkmPayload round-trip', () => {
 	it('applies the same defaults as today for partial / missing fields', () => {
 		const form = akmConfigToForm(
 			{
-				profiles: {
-					improve: {
+				improve: {
+					strategies: {
 						// improve profile missing limit/autoAccept → defaults 25 / 0
 						sparse: { processes: {} },
 					},

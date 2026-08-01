@@ -8,7 +8,7 @@ Usage: scripts/dev-setup.sh [--seed-env] [--force] [--enable-addon <name>]
 Creates local .dev directories and seeds dev config files.
 
 Options:
-  --seed-env          Seed .dev/knowledge/env/user.env for akm env:user, generate
+  --seed-env          Seed .dev/knowledge/env/user.env for akm env/user, generate
                       .dev/state/stack.env with auto-detected values, and
                       write system secrets under .dev/knowledge/secrets/.
   --force             Overwrite seeded files even if they already exist.

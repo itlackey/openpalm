@@ -44,27 +44,26 @@ ensure_home_layout() {
     /work \
     /opt/akm/cache \
     /opt/akm/data \
+    /opt/akm/state \
     /stash
 
 }
 
-# ── G1: env:user is NOT sourced into this process ───────────────────────────
-# This entrypoint used to `set -a; . "$AKM_STASH_DIR/env/user.env"` here and
-# then `exec opencode` from the SAME shell, which put every env:user value
+# ── G1: env/user is NOT sourced into this process ───────────────────────────
+# This entrypoint used to `set -a; . "$AKM_BUNDLE_DIR/env/user.env"` here and
+# then `exec opencode` from the SAME shell, which put every env/user value
 # (API keys, owner info, anything the operator configured) into the OpenCode
 # server's own process environment — and therefore into every bash-tool
 # subprocess the agent runs, retrievable with a single `env`/`printenv` call
 # with no file path involved at all. Nothing between here and `start_opencode`
-# needs env:user's arbitrary
-# keys: `run_akm_schema_migration`/`persist_akm_stash_dir_fallback` only need
-# HOME/AKM_STASH_DIR (already in the container's own environment), and
+# needs env/user's arbitrary
+# keys: `run_akm_schema_migration` only needs HOME and the AKM directory
+# variables already in the container's own environment, and
 # `start_cron_and_sync_tasks` forwards its own small, explicit allowlist of
 # vars into the crontab preamble rather than the whole file. The sanctioned,
 # on-demand path for the AGENT to use a user secret is still available and
-# unaffected by this change: the `load_vault` OpenCode tool (akm-cli) resolves
-# `akm env path env:user` and sources it inside its OWN tool-call subprocess
-# for that one turn — never the server's top-level environment — matching the
-# skeleton instructions (system/assistant/instructions/core.md).
+# unaffected by this change: `akm env run env/user -- <command>` loads it only
+# for the requested subprocess, never the server's top-level environment.
 
 # ── E2/S2: no boot-time package installs ────────────────────────────────────
 # @openpalm/ui and the tool tree (opencode-ai, akm-cli) are baked into the image
@@ -387,80 +386,65 @@ run_akm_command() {
 }
 
 run_akm_schema_migration() {
-  # akm auto-migrates its db/stash schema whenever it opens the database.
-  # Run a deterministic db-opening command HERE — as the opencode user, with
-  # output surfaced to docker logs — so the migration happens under the
-  # correct uid (root-owned db files in the bind-mounted stash are the
-  # chown-clobber class of bug) and a failed migration is visible instead of
-  # being swallowed by the silenced `akm tasks sync` call below.
-  # Idempotent (akm no-ops when the schema is current) and non-fatal: a
-  # migration hiccup must never block the assistant from starting. (#474)
   if ! command -v akm >/dev/null 2>&1; then return 0; fi
 
-  echo "entrypoint: running akm schema migration (akm health)..." >&2
-  # akm health exit codes: 0 = ok, 4 = health warn (db still opened + migrated).
-  # Anything else means the db could not be opened/migrated — surface it loudly
-  # but keep booting.
+  local config_file="${AKM_CONFIG_DIR:-/etc/akm}/config.json"
+  local target_file="${AKM_STATE_DIR:-/opt/akm/state}/openpalm-0.9-target.json"
+  local config_version=""
+  if [ -f "$config_file" ]; then
+    config_version="$(node -e 'try { process.stdout.write(JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")).configVersion || "") } catch {}' "$config_file")"
+  fi
+
+  if [ -f "$config_file" ] && [ "$config_version" != "0.9.0" ]; then
+    if [ -z "$config_version" ]; then
+      # OpenPalm's 0.8 writer emitted the native shape but did not stamp the
+      # version itself. AKM 0.8 normally added it on first load; preserve a
+      # separate exact snapshot for a never-started home before adding only the
+      # missing sentinel that makes the official migrator classify it as old.
+      local preflight_backup="${AKM_STATE_DIR:-/opt/akm/state}/openpalm-pre-0.9-missing-version"
+      if [ ! -d "$preflight_backup" ]; then
+        mkdir -m 700 -p "$preflight_backup"
+        cp -a "$config_file" "$preflight_backup/config.json"
+        local artifact
+        for artifact in state.db state.db-wal state.db-shm workflow.db workflow.db-wal workflow.db-shm; do
+          if [ -f "${AKM_DATA_DIR:-/opt/akm/data}/$artifact" ]; then
+            cp -a "${AKM_DATA_DIR:-/opt/akm/data}/$artifact" "$preflight_backup/$artifact"
+          fi
+        done
+      fi
+      node -e '
+        const fs = require("fs");
+        const file = process.argv[1];
+        const config = JSON.parse(fs.readFileSync(file, "utf8"));
+        if (config.configVersion !== undefined) process.exit(0);
+        config.configVersion = "0.8.0";
+        const temp = `${file}.openpalm-09.tmp`;
+        fs.writeFileSync(temp, `${JSON.stringify(config, null, 2)}\n`, { mode: 0o600 });
+        fs.renameSync(temp, file);
+      ' "$config_file"
+      config_version="0.8.0"
+    fi
+    echo "entrypoint: preparing akm 0.8 to 0.9 migration..." >&2
+    node /usr/local/lib/openpalm/prepare-akm-09-config.mjs "$config_file" "$target_file"
+    run_akm_command akm migrate status --config "$target_file" >&2
+    run_akm_command akm migrate apply --config "$target_file" --dry-run >&2
+    run_akm_command akm migrate apply --config "$target_file" >&2
+    if command -v akm-migrate >/dev/null 2>&1; then
+      run_akm_command akm-migrate storage --from 0.8 --yes >&2
+    fi
+    run_akm_command akm task sync --rebind >&2
+    run_akm_command akm index >&2
+  fi
+
+  echo "entrypoint: checking akm health..." >&2
   local rc=0
   run_akm_command akm health >&2 || rc=$?
   if [ "$rc" = "0" ] || [ "$rc" = "4" ]; then
-    echo "entrypoint: akm schema migration check complete (exit $rc)" >&2
+    echo "entrypoint: akm health check complete (exit $rc)" >&2
   else
-    echo "warning: akm schema migration check failed (exit $rc); continuing startup" >&2
+    echo "error: akm health check failed (exit $rc)" >&2
+    return "$rc"
   fi
-}
-
-persist_akm_stash_dir_fallback() {
-  # Defense-in-depth for scheduled tasks (#552): cron jobs normally receive
-  # AKM_STASH_DIR / AKM_CONFIG_DIR / HOME from the managed crontab preamble.
-  # If an external crontab rewrite drops that preamble, akm falls back to
-  # $HOME/.config/akm/config.json — which never existed — so every akm-based
-  # task fails with "No stash directory found" while still exiting 0.
-  # Persist stashDir into the config locations akm can resolve WITHOUT the
-  # forwarded env so a lost preamble degrades gracefully instead of silently
-  # breaking every automation.
-  if ! command -v akm >/dev/null 2>&1; then return 0; fi
-  local stash_dir="${AKM_STASH_DIR:-/stash}"
-  [ -d "$stash_dir" ] || return 0
-
-  # Candidate config dirs, most specific first: the configured AKM_CONFIG_DIR,
-  # the boot-time HOME default, and the passwd-home default (busybox crond
-  # sets HOME from the passwd entry, which can differ from the boot-time HOME).
-  local passwd_home=""
-  passwd_home="$(getent passwd "$(id -u)" 2>/dev/null | cut -d: -f6 || true)"
-  local config_dir config_file
-  for config_dir in "${AKM_CONFIG_DIR:-}" \
-                    "${HOME:-/home/opencode}/.config/akm" \
-                    "${passwd_home:+${passwd_home}/.config/akm}"; do
-    [ -n "$config_dir" ] || continue
-    config_file="$config_dir/config.json"
-    if [ -f "$config_file" ]; then
-      # Merge stashDir into an existing config without touching other keys.
-      # A corrupt or already-populated file is left alone — never destroy
-      # operator config from the entrypoint.
-      node -e '
-        const fs = require("fs");
-        const [file, stashDir] = process.argv.slice(1);
-        let cfg;
-        try { cfg = JSON.parse(fs.readFileSync(file, "utf8")); } catch { process.exit(0); }
-        if (!cfg || typeof cfg !== "object" || Array.isArray(cfg) || cfg.stashDir) process.exit(0);
-        cfg.stashDir = stashDir;
-        const tmp = file + ".tmp";
-        fs.writeFileSync(tmp, JSON.stringify(cfg, null, 2) + "\n");
-        fs.renameSync(tmp, file);
-      ' "$config_file" "$stash_dir" 2>/dev/null \
-        || echo "warning: could not merge stashDir into $config_file; continuing" >&2
-    else
-      mkdir -p "$config_dir" 2>/dev/null || continue
-      # JSON-escape backslashes and double quotes so an unusual stash path
-      # cannot produce an invalid config.json (which would re-break stash
-      # resolution under cron — the exact failure this fallback guards against).
-      local stash_dir_json="${stash_dir//\\/\\\\}"
-      stash_dir_json="${stash_dir_json//\"/\\\"}"
-      printf '{\n  "stashDir": "%s"\n}\n' "$stash_dir_json" > "$config_file" 2>/dev/null \
-        || echo "warning: could not write stashDir fallback to $config_file; continuing" >&2
-    fi
-  done
 }
 
 start_cron_and_sync_tasks() {
@@ -520,7 +504,7 @@ start_cron_and_sync_tasks() {
   echo "PATH=$cron_path" >> "$crontab_file"
 
   # Forward selected env vars into cron jobs
-  for var in HOME AKM_STASH_DIR AKM_CONFIG_DIR AKM_CACHE_DIR AKM_DATA_DIR \
+  for var in HOME AKM_BUNDLE_DIR AKM_CONFIG_DIR AKM_CACHE_DIR AKM_DATA_DIR AKM_STATE_DIR \
              OPENCODE_API_URL OPENCODE_CONFIG_DIR; do
     if [ -n "${!var:-}" ]; then
       echo "export $var=\"${!var}\"" >> "$crontab_file"
@@ -539,11 +523,11 @@ start_cron_and_sync_tasks() {
   # writes task blocks into the same per-user crontab.
   crontab "$crontab_file" 2>/dev/null || true
 
-  # Sync automation tasks from the akm stash into cron, then start cron.
-  local tasks_dir="${AKM_STASH_DIR:-/stash}/tasks"
+  # Sync automation tasks from the akm bundle into cron, then start cron.
+  local tasks_dir="${AKM_BUNDLE_DIR:-/stash}/tasks"
   if command -v akm >/dev/null 2>&1 && [ -d "$tasks_dir" ]; then
-    if ! run_akm_command akm tasks sync >&2; then
-      echo "warning: initial akm tasks sync failed; continuing startup" >&2
+    if ! run_akm_command akm task sync >&2; then
+      echo "warning: initial akm task sync failed; continuing startup" >&2
     fi
   fi
 
@@ -559,8 +543,8 @@ start_cron_and_sync_tasks() {
     while true; do
       sleep 60
       if command -v akm >/dev/null 2>&1 && [ -d "$tasks_dir" ]; then
-        if ! run_akm_command akm tasks sync >&2; then
-          echo "warning: background akm tasks sync failed; retrying in 60s" >&2
+        if ! run_akm_command akm task sync >&2; then
+          echo "warning: background akm task sync failed; retrying in 60s" >&2
         fi
       fi
     done
@@ -592,7 +576,6 @@ ensure_home_layout
 maybe_prepare_nss_wrapper
 seed_default_agents_md
 run_akm_schema_migration
-persist_akm_stash_dir_fallback
 start_cron_and_sync_tasks
 resolve_opencode_server_password
 start_ui

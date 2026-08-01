@@ -1,7 +1,7 @@
 /**
  * Tests for the /api/host/secrets/user-env route.
  *
- * The route operates on the akm `env:user` file (`knowledge/env/user.env`)
+ * The route operates on the akm `env/user` file (`knowledge/env/user.env`)
  * directly. akm (>= 0.8.0) no longer manages individual env entries, so the
  * lib helpers are pure filesystem operations (no `akm` subprocess) — we run
  * them for real here against a temporary OP_HOME. End-to-end coverage of the
@@ -76,7 +76,7 @@ describe('admin user-env route', () => {
     expect(res.status).toBe(200);
     const body = await res.json() as { keys: string[]; envRef: string; provider: string };
     expect(body.provider).toBe('akm');
-    expect(body.envRef).toBe('env:user');
+    expect(body.envRef).toBe('env/user');
     expect(body.keys).toContain('CUSTOM_KEY');
     expect(body.keys).toContain('OTHER_KEY');
     // The response body must not contain any of the values.

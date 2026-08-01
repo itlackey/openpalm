@@ -168,7 +168,8 @@ function buildPortalCredentialEnvVars(
  * operator (or a prior run) already wrote — extra/unknown keys are preserved
  * verbatim via the index signature.
  */
-export type AkmLlmProfile = {
+export type AkmLlmEngine = {
+	kind: 'llm';
 	endpoint: string;
 	model: string;
 	provider: string;
@@ -184,28 +185,19 @@ export type AkmEmbeddingConfig = {
 };
 
 export type AkmConfig = {
-	profiles?: { llm?: Record<string, AkmLlmProfile>; [key: string]: unknown };
-	defaults?: { llm?: string; [key: string]: unknown };
+	configVersion?: '0.9.0';
+	engines?: Record<string, AkmLlmEngine | Record<string, unknown>>;
+	defaults?: { engine?: string; llmEngine?: string; [key: string]: unknown };
 	embedding?: AkmEmbeddingConfig;
-	stashDir?: string;
-	/** Legacy 0.7 top-level key — read for migration awareness, never persisted. */
-	llm?: unknown;
+	bundles?: Record<string, Record<string, unknown>>;
+	defaultBundle?: string;
 	[key: string]: unknown;
 };
 
 /**
- * Merge the setup wizard's LLM + embedding selections into the assistant's
- * akm config.json (atomic write). Existing operator keys — sibling profiles,
- * `sources`, custom fields — are preserved. No-op when neither llm nor
- * embedding is supplied.
- *
- * Writes the CANONICAL akm 0.8.0 shape: profiles.llm.default + defaults.llm.
- * The runtime resolver reads profiles.llm[defaults.llm] (akm config.ts).
- * Do NOT write a top-level `llm` — akm's top-level schema is .strict() with no
- * `llm` key (config-schema.ts AkmConfigShape). A top-level `llm` only loads
- * today via akm's legacy 0.7→0.8 migration shim (config-migration.ts), which
- * rewrites the file on load and is marked for removal — writing the native
- * shape removes that dependency, so any pre-existing legacy key is dropped.
+ * Merge setup's LLM and embedding selections into a native akm 0.9 config.
+ * Existing 0.9 operator fields are preserved; retired 0.8 fields are removed
+ * because the 0.9 schema rejects them.
  */
 export function persistAkmConfig(
 	state: ControlPlaneState,
@@ -226,23 +218,31 @@ export function persistAkmConfig(
 			/* ignore corrupt */
 		}
 	}
-	const updated: AkmConfig = { ...existing };
+	const updated: AkmConfig = {
+		...existing,
+		configVersion: '0.9.0',
+		semanticSearchMode: existing.semanticSearchMode ?? 'auto',
+		bundles: {
+			stash: { path: '/stash', writable: true },
+			...(existing.bundles ?? {})
+		},
+		defaultBundle: existing.defaultBundle ?? 'stash'
+	};
 
 	if (llm) {
-		const profiles = updated.profiles ?? {};
-		const llmProfiles = profiles.llm ?? {};
-		llmProfiles.default = {
-			...(llmProfiles.default ?? {}),
+		const engines = updated.engines ?? {};
+		engines.default = {
+			...(engines.default ?? {}),
+			kind: 'llm',
 			endpoint: buildAkmEndpoint(llm.provider, llm.baseUrl, '/chat/completions'),
 			model: llm.model,
 			provider: llm.provider
 		};
-		profiles.llm = llmProfiles;
-		updated.profiles = profiles;
+		updated.engines = engines;
 		const defaults = updated.defaults ?? {};
-		if (typeof defaults.llm !== 'string') defaults.llm = 'default';
+		if (typeof defaults.engine !== 'string') defaults.engine = 'default';
+		if (typeof defaults.llmEngine !== 'string') defaults.llmEngine = 'default';
 		updated.defaults = defaults;
-		delete updated.llm; // never persist the legacy key
 	}
 
 	if (embedding) {
@@ -255,11 +255,14 @@ export function persistAkmConfig(
 		};
 	}
 
-	// The assistant's primary stash is ALWAYS /stash (the bind mount). Pin it in
-	// config so it is explicit and operator-edits can't repoint it; the UI does
-	// not expose stashDir. (The host task-runner still uses its own
-	// AKM_STASH_DIR env, which takes precedence over config.stashDir.)
-	updated.stashDir = '/stash';
+	for (const key of ['profiles', 'llm', 'agent', 'features', 'stashes', 'stashDir', 'sources', 'installed', 'bindings', 'writable']) {
+		delete updated[key];
+	}
+	if (updated.defaults) {
+		delete updated.defaults.llm;
+		delete updated.defaults.agent;
+		delete updated.defaults.improve;
+	}
 	writeFileAtomic(akmConfigPath, JSON.stringify(updated, null, 2), 0o600);
 }
 

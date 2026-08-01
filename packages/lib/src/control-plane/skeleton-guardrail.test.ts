@@ -106,6 +106,19 @@ describe("skeleton: config/ structure", () => {
     expect(existsSync(join(SKELETON_DIR, "config", "akm"))).toBe(true);
   });
 
+  test("AKM 0.9 runtime paths and strict-v2 tasks are shipped", () => {
+    const coreCompose = readFileSync(join(SKELETON_DIR, "system", "stack", "core.compose.yml"), "utf-8");
+    expect(coreCompose).toContain("AKM_BUNDLE_DIR: /stash");
+    expect(coreCompose).toContain("AKM_STATE_DIR: /opt/akm/state");
+    expect(coreCompose).toContain("${OP_HOME}/data/akm/state:/opt/akm/state");
+    expect(coreCompose).not.toContain("AKM_STASH_DIR");
+
+    const tasksDir = join(SKELETON_DIR, "knowledge", "tasks");
+    for (const file of readdirSync(tasksDir).filter((name) => name.endsWith(".yml"))) {
+      expect(readFileSync(join(tasksDir, file), "utf-8").startsWith("version: 2\n")).toBe(true);
+    }
+  });
+
   test("OpenCode config is split: MANAGED → system/, USER → config/ (four-tree)", () => {
     // MANAGED (OPENCODE_CONFIG_DIR): plugins/permissions/instructions in system/.
     expect(existsSync(join(SKELETON_DIR, "system", "assistant", "opencode.jsonc"))).toBe(true);
@@ -263,9 +276,10 @@ describe("skeleton: data/ service directories", () => {
     expect(existsSync(join(SKELETON_DIR, "data", "akm"))).toBe(true);
   });
 
-  test("data/akm/cache and data/akm/data exist", () => {
+  test("data/akm/cache, data/akm/data, and data/akm/state exist", () => {
     expect(existsSync(join(SKELETON_DIR, "data", "akm", "cache"))).toBe(true);
     expect(existsSync(join(SKELETON_DIR, "data", "akm", "data"))).toBe(true);
+    expect(existsSync(join(SKELETON_DIR, "data", "akm", "state"))).toBe(true);
   });
 
   test("data/logs/ exists", () => {

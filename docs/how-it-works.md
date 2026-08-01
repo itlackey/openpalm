@@ -50,7 +50,7 @@ The assistant container runs:
 - OpenCode on container port `4096` (host default `3810`)
 - the image-baked OpenPalm UI on container port `3000` (host default `3800`)
 - BusyBox `crond` for AKM task schedules
-- `akm tasks sync` at startup and every 60 seconds
+- `akm task sync` at startup and every 60 seconds
 
 The UI reaches OpenCode through its own same-origin `/oc` proxy. The assistant
 image also contains the default tool packages; startup does not download or

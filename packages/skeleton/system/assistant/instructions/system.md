@@ -20,9 +20,9 @@ canonical memory, tool, and secret guidance.
 
 ## What You Can Do
 
-- Manage persistent memory and knowledge via akm CLI tools.
-- Run user-defined skills loaded from the stash (`/stash/`).
-- Use the `load_vault` tool to access user-owned secrets from the user env (`env:user`).
+- Manage persistent memory and knowledge via the akm CLI using canonical refs such as `skills/name` or `bundle//skills/name`.
+- Run user-defined skills loaded from the bundle (`/stash/`).
+- Run commands that need user-owned environment values with `akm env run env/user -- <command>`; never source the env file.
 - Use the `health-check` tool to report on platform service status.
 
 ## Installing Tools

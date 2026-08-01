@@ -783,12 +783,17 @@ describe("performSetup end-to-end artifacts", () => {
 
     const akmConfigPath = join(homeDir, "config", "akm", "config.json");
     const config = JSON.parse(readFileSync(akmConfigPath, "utf-8"));
-    // Canonical akm 0.8.0 shape (I-3): profiles.llm.default + defaults.llm.
+    // Canonical persisted AKM 0.9 shape.
+    expect(config.configVersion).toBe("0.9.0");
     expect(config.llm).toBeUndefined();
-    expect(config.profiles.llm.default.provider).toBe("openai");
-    expect(config.profiles.llm.default.model).toBe("gpt-4o");
-    expect(config.defaults.llm).toBe("default");
+    expect(config.engines.default.kind).toBe("llm");
+    expect(config.engines.default.provider).toBe("openai");
+    expect(config.engines.default.model).toBe("gpt-4o");
+    expect(config.defaults.engine).toBe("default");
+    expect(config.defaults.llmEngine).toBe("default");
     expect(config.embedding.model).toBe("text-embedding-3-small");
+    expect(config.bundles.stash).toEqual({ path: "/stash", writable: true });
+    expect(config.defaultBundle).toBe("stash");
   });
 });
 

@@ -84,7 +84,7 @@ The two runtime secret areas have different trust boundaries:
 | `private/secrets/` | UI, Guardian, compatible API, portals, bots, and OpenCode server only, through narrow grants |
 | `knowledge/secrets/auth.json` | Assistant OpenCode provider credentials; Guardian gets a narrow copy through Compose secrets |
 
-`knowledge/env/user.env` is available through `akm env:user` on demand. The
+`knowledge/env/user.env` is available through `akm env/user` on demand. The
 assistant entrypoint does not source it, so arbitrary user-env values do not
 enter the OpenCode server or every tool subprocess.
 
@@ -124,7 +124,7 @@ the IP URL keeps working.
 
 Assistant automations are AKM YAML task files under
 `knowledge/tasks/`. The assistant entrypoint starts BusyBox `crond`, runs
-`akm tasks sync` at boot, and re-syncs every 60 seconds.
+`akm task sync` at boot, and re-syncs every 60 seconds.
 
 Task targets are limited to `command`, `prompt`, or `workflow`.
 
@@ -177,7 +177,7 @@ Task Scheduler. These jobs run outside the assistant container.
 To force an immediate in-container task resync:
 
 ```bash
-docker exec openpalm-assistant-1 akm tasks sync
+docker exec openpalm-assistant-1 akm task sync
 ```
 
 Use `docker ps --format '{{.Names}}'` if your Compose-generated container name

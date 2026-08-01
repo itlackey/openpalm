@@ -1,15 +1,15 @@
 /**
  * Host ↔ Assistant AKM source wiring (control-plane logic — lives in lib).
  *
- * The assistant config ALWAYS has a `host-akm` secondary source pointing at
+ * The assistant config ALWAYS has a `host-akm` secondary bundle pointing at
  * /host-stash (written once at install, never removed). The compose bind-mount
  * controls what actually lands at /host-stash: the real ~/akm when sharing is
  * enabled, an empty dir when disabled. Profile import is best-effort — missing
  * or corrupt host config is logged and skipped, never an error.
  *
  * Invariants (enforced + unit-tested):
- *  - Only ever appends/updates a NAMED source (idempotent upsert by name).
- *  - NEVER sets `primary`, NEVER sets `defaultWriteTarget`, NEVER sets `stashDir`.
+ *  - Only ever appends/updates the named bundle.
+ *  - NEVER changes `defaultBundle` or `defaultWriteTarget`.
  *  - Atomic 0600 writes.
  *  - The OpenPalm config is parse-tolerant (we own it: corrupt → start from {}).
  */
@@ -24,16 +24,18 @@ const logger = createLogger("akm-sources");
 /** Source entry name added to the OpenPalm/container config (points at /host-stash). */
 export const HOST_SOURCE_NAME = "host-akm";
 
-/** A filesystem source entry as akm persists it in config.sources[]. */
-type FilesystemSourceEntry = {
-  type: "filesystem";
+/** A filesystem bundle entry as akm 0.9 persists it in config.bundles. */
+type FilesystemBundleEntry = {
   path: string;
-  name: string;
   writable: boolean;
   enabled: boolean;
 };
 
 type AkmConfigObject = Record<string, unknown>;
+
+function isObject(value: unknown): value is AkmConfigObject {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
 
 function readConfigTolerant(configPath: string): AkmConfigObject {
   if (!existsSync(configPath)) return {};
@@ -58,24 +60,20 @@ function readHostConfigBestEffort(configPath: string): AkmConfigObject | null {
 }
 
 /**
- * Upsert a named filesystem source into `config.sources[]` by name. Idempotent.
- * NEVER touches `primary`, `defaultWriteTarget`, or `stashDir`.
+ * Upsert the named filesystem bundle. Idempotent and never changes either
+ * default target.
  */
-function upsertSource(config: AkmConfigObject, entry: FilesystemSourceEntry): AkmConfigObject {
-  const sources = Array.isArray(config.sources) ? [...(config.sources as unknown[])] : [];
-  const idx = sources.findIndex(
-    (s) => s && typeof s === "object" && (s as Record<string, unknown>).name === entry.name,
-  );
-  if (idx >= 0) {
-    // Preserve any unrelated fields the user set (e.g. options), override ours.
-    sources[idx] = { ...(sources[idx] as Record<string, unknown>), ...entry };
-  } else {
-    sources.push(entry);
-  }
-  return { ...config, sources };
+function upsertBundle(config: AkmConfigObject, entry: FilesystemBundleEntry): AkmConfigObject {
+  const bundles = isObject(config.bundles) ? config.bundles : {};
+  const existing = isObject(bundles[HOST_SOURCE_NAME]) ? bundles[HOST_SOURCE_NAME] : {};
+  return {
+    ...config,
+    configVersion: "0.9.0",
+    bundles: { ...bundles, [HOST_SOURCE_NAME]: { ...existing, ...entry } },
+  };
 }
 
-function assertNoPrimaryEscalation(entry: FilesystemSourceEntry): void {
+function assertNoPrimaryEscalation(entry: FilesystemBundleEntry): void {
   // Defense in depth: the type forbids `primary`, but assert at runtime too —
   // a secondary that became primary would change the write target.
   if ((entry as Record<string, unknown>).primary !== undefined) {
@@ -94,16 +92,23 @@ function openpalmConfigPath(state: ControlPlaneState): string {
  */
 export function addHostStashToOpenpalmConfig(state: ControlPlaneState, writable = true): void {
   const configPath = openpalmConfigPath(state);
-  const entry: FilesystemSourceEntry = {
-    type: "filesystem",
+  const entry: FilesystemBundleEntry = {
     path: "/host-stash",
-    name: HOST_SOURCE_NAME,
     writable,
     enabled: true,
   };
   assertNoPrimaryEscalation(entry);
   const config = readConfigTolerant(configPath);
-  const updated = upsertSource(config, entry);
+  const base = {
+    ...config,
+    configVersion: "0.9.0",
+    bundles: isObject(config.bundles)
+      ? config.bundles
+      : { stash: { path: "/stash", writable: true } },
+    defaultBundle: typeof config.defaultBundle === "string" ? config.defaultBundle : "stash",
+    semanticSearchMode: config.semanticSearchMode ?? "auto",
+  };
+  const updated = upsertBundle(base, entry);
   writeFileAtomic(configPath, JSON.stringify(updated, null, 2), 0o600);
 }
 
@@ -115,8 +120,8 @@ export function addHostStashToOpenpalmConfig(state: ControlPlaneState, writable 
  * Returns `{ imported: [] }` when the host config is absent or unreadable (never
  * throws — profile import is always optional).
  *
- * Writes the canonical akm shape (profiles.* + defaults.* + embedding).
- * NEVER touches `sources`, `stashDir`, `registries`, or `installed`.
+ * Writes the canonical akm shape (engines + defaults + embedding).
+ * NEVER touches bundles or registries.
  */
 export function importHostProfiles(
   state: ControlPlaneState,
@@ -124,12 +129,12 @@ export function importHostProfiles(
 ): { imported: string[] } {
   const host = readHostConfigBestEffort(hostConfigPath);
   if (!host) return { imported: [] };
-  const hostProfiles = (host.profiles as Record<string, unknown> | undefined) ?? {};
+  const hostEngines = (host.engines as Record<string, unknown> | undefined) ?? {};
   const hostDefaults = (host.defaults as Record<string, unknown> | undefined) ?? {};
 
   const opPath = openpalmConfigPath(state);
   const op = readConfigTolerant(opPath);
-  const opProfiles = (op.profiles as Record<string, unknown> | undefined) ?? {};
+  const opEngines = (op.engines as Record<string, unknown> | undefined) ?? {};
   const opDefaults = (op.defaults as Record<string, unknown> | undefined) ?? {};
 
   const imported: string[] = [];
@@ -139,22 +144,25 @@ export function importHostProfiles(
   // operator/wizard already set. `imported` lists what was actually added.
   const isObj = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 
-  // All three profile namespaces akm supports (config-schema.ts ProfilesSchema).
-  for (const ns of ["llm", "agent", "improve"] as const) {
-    if (isObj(hostProfiles[ns])) {
-      const existing = isObj(opProfiles[ns]) ? (opProfiles[ns] as Record<string, unknown>) : {};
-      // host first, existing last → existing wins; only host-only profile names are added.
-      const merged: Record<string, unknown> = { ...(hostProfiles[ns] as Record<string, unknown>), ...existing };
-      const added = Object.keys(merged).length - Object.keys(existing).length;
-      opProfiles[ns] = merged;
-      if (added > 0) imported.push(`profiles.${ns}`);
-    }
-    // Only adopt a host default selection when OpenPalm has none.
-    if (typeof hostDefaults[ns] === "string" && typeof opDefaults[ns] !== "string") {
-      opDefaults[ns] = hostDefaults[ns];
-      imported.push(`defaults.${ns}`);
+  const mergedEngines = { ...hostEngines, ...opEngines };
+  if (Object.keys(mergedEngines).length > Object.keys(opEngines).length) imported.push("engines");
+  for (const key of ["engine", "llmEngine", "improveStrategy"] as const) {
+    if (typeof hostDefaults[key] === "string" && typeof opDefaults[key] !== "string") {
+      opDefaults[key] = hostDefaults[key];
+      imported.push(`defaults.${key}`);
     }
   }
+
+  const hostImprove = isObj(host.improve) ? host.improve : {};
+  const opImprove = isObj(op.improve) ? op.improve : {};
+  const hostStrategies = isObj(hostImprove.strategies) ? hostImprove.strategies : {};
+  const opStrategies = isObj(opImprove.strategies) ? opImprove.strategies : {};
+  const mergedStrategies = { ...hostStrategies, ...opStrategies };
+  const improve =
+    Object.keys(mergedStrategies).length > 0
+      ? { ...hostImprove, ...opImprove, strategies: mergedStrategies }
+      : opImprove;
+  if (Object.keys(mergedStrategies).length > Object.keys(opStrategies).length) imported.push("improve.strategies");
 
   // Top-level embedding connection (EmbeddingConnectionConfigSchema). Per-field
   // additive: existing OpenPalm fields win; host fills only missing fields.
@@ -170,9 +178,14 @@ export function importHostProfiles(
 
   if (imported.length === 0) return { imported };
 
-  const updated: AkmConfigObject = { ...op, profiles: opProfiles, defaults: opDefaults };
+  const updated: AkmConfigObject = {
+    ...op,
+    configVersion: "0.9.0",
+    engines: mergedEngines,
+    defaults: opDefaults,
+    ...(Object.keys(improve).length > 0 ? { improve } : {}),
+  };
   if (embedding !== undefined) updated.embedding = embedding;
-  delete (updated as Record<string, unknown>).llm; // never persist the legacy key
   writeFileAtomic(opPath, JSON.stringify(updated, null, 2), 0o600);
   return { imported };
 }

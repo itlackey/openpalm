@@ -249,6 +249,7 @@ RUN mkdir -p /opt/openpalm/local-artifacts \
     && chmod -R a+rwX /opt/openpalm/ui
 
 COPY containers/assistant/entrypoint.sh /usr/local/bin/opencode-entrypoint.sh
+COPY containers/assistant/prepare-akm-09-config.mjs /usr/local/lib/openpalm/prepare-akm-09-config.mjs
 RUN chmod +x /usr/local/bin/opencode-entrypoint.sh
 
 WORKDIR /work

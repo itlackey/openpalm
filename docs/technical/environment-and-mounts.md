@@ -59,7 +59,7 @@ Secret storage is split by exposure:
   server password, Guardian/API tokens, portal principal secrets, and bot
   tokens. The directory is never mounted into assistant `/stash`; Compose grants
   only named files to the service process that consumes them.
-- `knowledge/env/user.env` is the AKM `env:user` backing file. It is not a
+- `knowledge/env/user.env` is the AKM `env/user` backing file. It is not a
   Compose env file and the assistant entrypoint does not source it. Scoped agent
   tools and AKM commands load it on demand.
 
@@ -96,11 +96,12 @@ Compose source: `packages/skeleton/system/stack/core.compose.yml`.
 | `$OP_HOME/config/assistant` | `/home/opencode/.config/opencode` | rw | User OpenCode global config |
 | `$OP_HOME/system/assistant` | `/etc/opencode` | rw | Managed `OPENCODE_CONFIG_DIR` |
 | `$OP_HOME/knowledge/secrets/auth.json` | `/home/opencode/.local/share/opencode/auth.json` | rw | Provider auth state |
-| `$OP_HOME/knowledge` | `/stash` | rw | AKM stash, including `env/user.env` and `tasks/` |
+| `$OP_HOME/knowledge` | `/stash` | rw | Primary AKM bundle, including `env/user.env` and `tasks/` |
 | `$OP_HOME/config/akm` | `/etc/akm` | rw | AKM config |
 | `$OP_HOME/data/akm/cache` | `/opt/akm/cache` | rw | AKM cache and task logs |
 | `$OP_HOME/data/akm/data` | `/opt/akm/data` | rw | AKM databases and task history |
-| `$OP_HOST_AKM_STASH` or an empty fallback | `/host-stash` | rw | Optional secondary host AKM source |
+| `$OP_HOME/data/akm/state` | `/opt/akm/state` | rw | AKM scheduler/runtime state |
+| `$OP_HOST_AKM_STASH` or an empty fallback | `/host-stash` | rw | Optional secondary host AKM bundle |
 | `$OP_HOME/workspace` | `/work` | rw | Shared work area |
 | `assistant-persistent` | `/opt/persistent` | rw | Optional-tool persistence |
 
@@ -131,10 +132,11 @@ copy — there is no runtime download.
 | `OP_UI_LOGIN_PASSWORD_FILE` | `/run/secrets/ui_login_password` | Login credential passed only to the UI child |
 | `OP_OPENCODE_URL` | `http://localhost:4096` | Local upstream for the UI's same-origin `/oc` proxy |
 | `HOME` | `/home/opencode` | Persistent runtime home |
-| `AKM_STASH_DIR` | `/stash` | Primary AKM stash |
+| `AKM_BUNDLE_DIR` | `/stash` | Primary AKM bundle |
 | `AKM_CONFIG_DIR` | `/etc/akm` | AKM config |
 | `AKM_CACHE_DIR` | `/opt/akm/cache` | AKM cache |
 | `AKM_DATA_DIR` | `/opt/akm/data` | AKM durable data |
+| `AKM_STATE_DIR` | `/opt/akm/state` | AKM scheduler/runtime state |
 | `OP_UI_DEFAULT_ASSISTANT_URL` | `/oc` when unset | Optional default-connection override |
 
 The assistant has no Docker socket, admin credential, or admin network path.
@@ -202,7 +204,7 @@ Scheduling runs through BusyBox `crond` inside the assistant container.
 - Definitions are AKM YAML task files under `$OP_HOME/knowledge/tasks/`, visible
   in the container as `/stash/tasks/`.
 - Supported task targets are `command`, `prompt`, and `workflow`.
-- `akm tasks sync` registers tasks in the user crontab at startup and every 60
+- `akm task sync` registers tasks in the user crontab at startup and every 60
   seconds.
 - `crond` has no network listener or Docker socket.
 - Cron receives only the small managed environment preamble needed by AKM and

@@ -640,7 +640,7 @@ export {
   persistHostOpenCodeOAuthCredential,
 } from "./control-plane/host-opencode.js";
 
-// ── AKM user env (env:user) ──────────────────────────────────────────────
+// ── AKM user env (env/user) ──────────────────────────────────────────────
 export {
   AKM_USER_ENV_REF,
   AKM_ENV_KEYS,

@@ -13,13 +13,8 @@
     // USER-owned persona (config/assistant → ~/.config/opencode).
     "~/.config/opencode/persona.md"
   ],
-  // Exact-pinned (E2): OpenCode resolves plugin specs itself at runtime, so an
-  // "@latest" reference here would still be a live registry fetch even after
-  // the image-baked-only model removed every other runtime install. Bump this
-  // deliberately at release time, same as containers/assistant/tools/package.json.
-  "plugin": [
-    "akm-opencode@0.8.2"
-  ],
+  // No AKM plugin is loaded because no 0.9-compatible release exists.
+  "plugin": [],
   // MCP consume-only example: OpenCode can connect to external MCP servers,
   // but it does not serve MCP itself. Seed-only file: existing installs keep
   // their current config unless the operator edits it.

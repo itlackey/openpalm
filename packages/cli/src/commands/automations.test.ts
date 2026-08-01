@@ -93,12 +93,15 @@ describe('automationsCheck — B5 crontab platform guard', () => {
 				callback: (error: Error | null, stdout: string, stderr: string) => void
 			) => {
 				execFileCalled = true;
-				callback(new Error('ENOENT'), '', '');
+				callback(null, '', '');
 			}
 		}));
 
+		const logs: string[] = [];
 		const originalLog = console.log;
-		console.log = () => {};
+		console.log = (...args: unknown[]) => {
+			logs.push(args.map(String).join(' '));
+		};
 		try {
 			const { automationsCheck } = await import(`${automationsModuleUrl}?t=${Math.random()}`);
 			await automationsCheck();
@@ -107,5 +110,6 @@ describe('automationsCheck — B5 crontab platform guard', () => {
 		}
 
 		expect(execFileCalled).toBe(true);
+		expect(logs).toContain("Run 'akm task sync' inside the assistant container to register remaining tasks.");
 	});
 });

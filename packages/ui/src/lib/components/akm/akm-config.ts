@@ -118,9 +118,10 @@ function improveProfileFromRaw(name: string, raw: Record<string, unknown>, idGen
 
 /** Map a raw akm config object into UI form state. Pure. */
 export function akmConfigToForm(config: Record<string, unknown>, idGen: IdGen = defaultIdGen): AkmForm {
-	const rawProfiles = asRecord(config.profiles);
-
-	const rawLlm = asRecord(rawProfiles?.llm);
+	const rawEngines = asRecord(config.engines);
+	const rawLlm = rawEngines
+		? Object.fromEntries(Object.entries(rawEngines).filter(([, value]) => asRecord(value)?.kind === 'llm'))
+		: undefined;
 	const llmProfiles: LlmProfile[] = rawLlm
 		? Object.entries(rawLlm).map(([name, p]) => ({
 				id: idGen(),
@@ -129,7 +130,9 @@ export function akmConfigToForm(config: Record<string, unknown>, idGen: IdGen = 
 			}))
 		: [];
 
-	const rawAgent = asRecord(rawProfiles?.agent);
+	const rawAgent = rawEngines
+		? Object.fromEntries(Object.entries(rawEngines).filter(([, value]) => asRecord(value)?.kind === 'agent'))
+		: undefined;
 	const agentProfiles: AgentProfile[] = rawAgent
 		? Object.entries(rawAgent).map(([name, p]) => {
 				const raw = asRecord(p) ?? {};
@@ -145,7 +148,7 @@ export function akmConfigToForm(config: Record<string, unknown>, idGen: IdGen = 
 			})
 		: [];
 
-	const rawImprove = asRecord(rawProfiles?.improve);
+	const rawImprove = asRecord(asRecord(config.improve)?.strategies);
 	const improveProfiles: ImproveProfile[] = rawImprove
 		? Object.entries(rawImprove).map(([name, p]) => improveProfileFromRaw(name, asRecord(p) ?? {}, idGen))
 		: [];
@@ -177,11 +180,11 @@ export function akmConfigToForm(config: Record<string, unknown>, idGen: IdGen = 
 
 	return {
 		llmProfiles,
-		defaultLlmProfile: (rawDefaults?.llm as string) ?? '',
+		defaultLlmProfile: (rawDefaults?.llmEngine as string) ?? '',
 		agentProfiles,
-		defaultAgentProfile: (rawDefaults?.agent as string) ?? '',
+		defaultAgentProfile: (rawDefaults?.engine as string) ?? '',
 		improveProfiles,
-		defaultImproveProfile: (rawDefaults?.improve as string) ?? '',
+		defaultImproveProfile: (rawDefaults?.improveStrategy as string) ?? '',
 		embedding,
 		semanticSearchMode: (config.semanticSearchMode as 'auto' | 'off') ?? 'auto',
 		outputFormat: (output?.format as 'json' | 'yaml' | 'text') ?? 'json',

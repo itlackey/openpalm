@@ -117,8 +117,7 @@ export const triFromEnabled = (o: unknown): Tri =>
 // Known per-process keys we model explicitly; everything else round-trips via `rest`.
 const KNOWN_PROC_KEYS = new Set([
 	'enabled',
-	'mode',
-	'profile',
+	'engine',
 	'timeoutMs',
 	'allowedTypes',
 	'qualityGate',
@@ -143,8 +142,7 @@ export function readFEntry(raw: unknown, defaultEnabled: boolean): FEntry {
 	if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return e;
 	const r = raw as Record<string, unknown>;
 	if (typeof r.enabled === 'boolean') e.enabled = r.enabled;
-	e.mode = (r.mode as FMode) ?? '';
-	e.profile = (r.profile as string) ?? '';
+	e.profile = (r.engine as string) ?? '';
 	e.timeoutMs = r.timeoutMs != null ? String(r.timeoutMs) : '';
 	e.allowedTypes = Array.isArray(r.allowedTypes) ? (r.allowedTypes as string[]).join(', ') : '';
 	e.qualityGate = triFromEnabled(r.qualityGate);
@@ -160,8 +158,8 @@ export function readFEntry(raw: unknown, defaultEnabled: boolean): FEntry {
 	if (typeof r.judgment === 'object' && r.judgment !== null) {
 		const j = r.judgment as Record<string, unknown>;
 		e.judgment = {
-			mode: (j.mode as FMode) ?? '',
-			profile: (j.profile as string) ?? '',
+			mode: '',
+			profile: (j.engine as string) ?? '',
 			timeoutMs: j.timeoutMs != null ? String(j.timeoutMs) : '',
 		};
 	}
@@ -172,8 +170,7 @@ export function readFEntry(raw: unknown, defaultEnabled: boolean): FEntry {
 
 export function buildProcessConfig(e: FEntry): Record<string, unknown> {
 	const out: Record<string, unknown> = { ...e.rest, enabled: e.enabled };
-	if (e.mode) out.mode = e.mode;
-	if (e.profile) out.profile = e.profile;
+	if (e.profile) out.engine = e.profile;
 	if (e.timeoutMs !== '') out.timeoutMs = parseInt(e.timeoutMs, 10);
 	const types = e.allowedTypes
 		.split(',')
@@ -195,8 +192,7 @@ export function buildProcessConfig(e: FEntry): Record<string, unknown> {
 	if (mdl !== undefined) out.maxDiffLines = mdl;
 	if (e.rejectEmpty) out.rejectEmpty = true;
 	const j: Record<string, unknown> = {};
-	if (e.judgment.mode) j.mode = e.judgment.mode;
-	if (e.judgment.profile) j.profile = e.judgment.profile;
+	if (e.judgment.profile) j.engine = e.judgment.profile;
 	if (e.judgment.timeoutMs !== '') j.timeoutMs = parseInt(e.judgment.timeoutMs, 10);
 	if (Object.keys(j).length) out.judgment = j;
 	return out;

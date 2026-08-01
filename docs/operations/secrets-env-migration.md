@@ -12,7 +12,7 @@ at `/stash`.
 | `state/stack.env` | The sole non-secret Compose `--env-file` |
 | `private/secrets/` | Delegated UI, OpenCode-server, Guardian, API, portal, and bot credentials |
 | `knowledge/secrets/auth.json` | Assistant-readable OpenCode provider auth only |
-| `knowledge/env/user.env` | AKM `env:user` data loaded by scoped tools on demand |
+| `knowledge/env/user.env` | AKM `env/user` data loaded by scoped tools on demand |
 | `system/stack/` | Release-managed Compose files |
 | `config/stack/custom.compose.yml` | The one user-owned Compose overlay |
 

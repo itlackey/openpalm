@@ -39,16 +39,17 @@ describe('IMG-1 — AI coding CLIs removed from tool manifests', () => {
     }
     // The runtime the assistant actually uses stays.
     expect(deps).toHaveProperty('opencode-ai');
-    expect(deps).toHaveProperty('akm-cli');
+    expect(deps['akm-cli']).toBe('0.9.0-rc.13');
   });
 
-  test('containers/guardian/tools/package.json never had the CLIs (unaffected)', () => {
+  test('containers/guardian/tools/package.json pins the shared AKM runtime', () => {
     const pkg = readJson('containers/guardian/tools/package.json');
     const deps = pkg.dependencies as Record<string, string>;
     for (const name of REMOVED_CLI_PACKAGES) {
       expect(deps).not.toHaveProperty(name);
     }
     expect(deps).toHaveProperty('opencode-ai');
+    expect(deps['akm-cli']).toBe('0.9.0-rc.13');
   });
 });
 
@@ -60,6 +61,31 @@ describe('dead seeded tool manifests removed from the skeleton', () => {
       const p = join(REPO_ROOT, 'packages/skeleton/data', svc, 'tools', 'package.json');
       expect(existsSync(p)).toBe(false);
     }
+  });
+});
+
+describe('AKM 0.9 migration boot contract', () => {
+  const entrypoint = readFileSync(join(REPO_ROOT, 'containers/assistant/entrypoint.sh'), 'utf8');
+
+  test('runs journaled migration and scheduler rebind before cron starts', () => {
+    const migration = entrypoint.indexOf('akm migrate apply --config "$target_file"');
+    const rebind = entrypoint.indexOf('akm task sync --rebind');
+    const cron = entrypoint.lastIndexOf('start_cron_and_sync_tasks');
+    expect(migration).toBeGreaterThan(-1);
+    expect(rebind).toBeGreaterThan(migration);
+    expect(cron).toBeGreaterThan(rebind);
+  });
+
+  test('fails health errors instead of continuing with partial AKM state', () => {
+    expect(entrypoint).toContain('error: akm health check failed');
+    expect(entrypoint).not.toContain('akm schema migration check failed (exit $rc); continuing startup');
+  });
+
+  test('backs up an unstamped 0.8 config before adding its migration sentinel', () => {
+    const backup = entrypoint.indexOf('openpalm-pre-0.9-missing-version');
+    const sentinel = entrypoint.indexOf('config.configVersion = "0.8.0"');
+    expect(backup).toBeGreaterThan(-1);
+    expect(sentinel).toBeGreaterThan(backup);
   });
 });
 

@@ -114,9 +114,8 @@ else
 fi
 
 # ── E2/S2: no boot-time tools install ──────────────────────────────────────
-# /opt/openpalm/tools/package.json declares exact tool versions (opencode-ai —
-# the guardian's moderator has no use for any agent CLI, so akm-cli was
-# dropped from this manifest) and is baked directly into the image's own layer
+# /opt/openpalm/tools/package.json declares exact tool versions (opencode-ai and
+# akm-cli) and is baked directly into the image's own layer
 # by the Dockerfile at build time (#585: no named volume over /opt/openpalm
 # anymore). No mount overlays it (image-baked-only model), so there is nothing
 # to install or update here —

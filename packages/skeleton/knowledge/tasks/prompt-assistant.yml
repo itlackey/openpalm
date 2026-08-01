@@ -1,3 +1,4 @@
+version: 2
 schedule: '0 8 * * *'
 enabled: false
 description: Example scheduled prompt routed through the optional chat addon

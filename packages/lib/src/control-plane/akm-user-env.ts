@@ -1,12 +1,12 @@
 /// <reference types="bun-types" />
 /**
- * akm `env:user` helpers.
+ * akm `env/user` helpers.
  *
  * The user-managed environment file lives at `${OP_HOME}/knowledge/env/user.env`
  * and is the canonical home for user-managed configuration (LLM provider keys,
  * owner info, and any other user-set values). It maps to the akm `env` asset
- * type (ref `env:user`): a whole `.env` file that akm loads wholesale via
- * `akm env run env:user` / `akm env path env:user`. The assistant entrypoint
+ * type (ref `env/user`): a whole `.env` file that akm loads wholesale via
+ * `akm env run env/user -- <command>`. The assistant entrypoint
  * deliberately does not source it into the OpenCode server environment.
  *
  * akm (>= 0.8.0) no longer manages individual env entries — the file owner edits
@@ -19,8 +19,8 @@
  * outside this file. Service credentials are granted as named Compose secrets.
  *
  * Layout:
- *   knowledge/     — AKM_STASH_DIR: asset content (skills, env, secrets, agents)
- *   data/akm/      — akm operational cache and data
+ *   knowledge/     — AKM_BUNDLE_DIR: asset content (skills, env, secrets, agents)
+ *   data/akm/      — akm operational cache, data, and state
  */
 import { existsSync, readFileSync, writeFileSync, mkdirSync, chmodSync } from "node:fs";
 import { dirname } from "node:path";
@@ -32,7 +32,7 @@ import { errMessage } from "./errors.js";
 const logger = createLogger("akm-user-env");
 
 /** akm ref for the user-managed environment file. */
-export const AKM_USER_ENV_REF = "env:user";
+export const AKM_USER_ENV_REF = "env/user";
 
 const ENV_DIR_MODE = 0o700;
 const ENV_FILE_MODE = 0o600;
@@ -149,46 +149,48 @@ function resolveHostAkmConfigDir(state: ControlPlaneState): string {
  * Host-side runs use the same explicit directories as the assistant container:
  * config in config/akm (or a loopback-translated view of it — see
  * `resolveHostAkmConfigDir`), cache in data/akm/cache, and durable data in
- * data/akm/data. Used by automation execution (`executeAutomation`).
+ * data/akm/data, and state in data/akm/state. Used by automation execution
+ * (`executeAutomation`).
  */
 export function buildAkmEnv(state: ControlPlaneState): NodeJS.ProcessEnv {
   return {
     ...process.env,
-    AKM_STASH_DIR: state.stashDir,
+    AKM_BUNDLE_DIR: state.stashDir,
     AKM_CONFIG_DIR: resolveHostAkmConfigDir(state),
     AKM_CACHE_DIR: `${state.dataDir}/akm/cache`,
     AKM_DATA_DIR: `${state.dataDir}/akm/data`,
+    AKM_STATE_DIR: `${state.dataDir}/akm/state`,
   };
 }
 
-/** The four XDG-base akm env vars that MUST be set together (akm 0.8.0). */
-export const AKM_ENV_KEYS = ["AKM_STASH_DIR", "AKM_CONFIG_DIR", "AKM_CACHE_DIR", "AKM_DATA_DIR"] as const;
+/** The five akm location vars that MUST be set together (akm 0.9.0). */
+export const AKM_ENV_KEYS = ["AKM_BUNDLE_DIR", "AKM_CONFIG_DIR", "AKM_CACHE_DIR", "AKM_DATA_DIR", "AKM_STATE_DIR"] as const;
 
 /**
- * Guard (I-6): every OpenPalm-internal `akm` spawn MUST set all four AKM_* dirs
+ * Guard (I-6): every OpenPalm-internal `akm` spawn MUST set all five AKM_* dirs
  * explicitly. Partially overriding them lets akm fall back to the operator's
  * GLOBAL ~/.config/akm / ~/.local/share/akm for the unset families — the
  * documented forensic hazard (akm setup writing the global config regardless of
- * AKM_STASH_DIR). We check the keys are present as OWN properties of the env
+ * AKM_BUNDLE_DIR). We check the keys are present as OWN properties of the env
  * object passed to akm, not merely inherited from process.env (process.env may
- * carry the operator's global AKM_STASH_DIR, which is exactly what must NOT be
+ * carry the operator's global AKM_BUNDLE_DIR, which is exactly what must NOT be
  * relied upon). `buildAkmEnv` satisfies this by construction.
  */
 export function assertAkmEnvComplete(env: NodeJS.ProcessEnv): void {
   const missing = AKM_ENV_KEYS.filter((k) => !env[k] || !String(env[k]).trim());
   if (missing.length > 0) {
     throw new Error(
-      `Refusing to spawn akm without all four AKM_* dirs set: missing ${missing.join(", ")}. ` +
+      `Refusing to spawn akm without all five AKM_* dirs set: missing ${missing.join(", ")}. ` +
         `Use buildAkmEnv(state) — a partial set lets akm write the operator's global config.`,
     );
   }
 }
 
 /**
- * Canonical akm `env:user` file path for a control-plane state.
+ * Canonical akm `env/user` file path for a control-plane state.
  *
  * Deterministic: akm (>= 0.8.0) materializes env files at
- * `${AKM_STASH_DIR}/env/<name>.env`, and `state.stashDir` is the stash root.
+ * `${AKM_BUNDLE_DIR}/env/<name>.env`, and `state.stashDir` is the bundle root.
  * Returns the path regardless of whether the file currently exists.
  */
 export function userEnvPathSync(state: ControlPlaneState): string {
@@ -240,7 +242,7 @@ export function ensureAkmUserEnv(state: ControlPlaneState): string {
 }
 
 /**
- * Write a single key/value into the user env file (`env:user`).
+ * Write a single key/value into the user env file (`env/user`).
  *
  * `ensureAkmUserEnv` guarantees the file exists; `chmodSync` keeps it 0600.
  * Throws on filesystem errors so callers can surface the error.
@@ -252,7 +254,7 @@ export function writeUserEnvKey(state: ControlPlaneState, key: string, value: st
 }
 
 /**
- * Remove a key from the user env file (`env:user`). Idempotent: removing an
+ * Remove a key from the user env file (`env/user`). Idempotent: removing an
  * absent key rewrites the file unchanged. Throws on filesystem errors.
  */
 export function deleteUserEnvKey(state: ControlPlaneState, key: string): void {

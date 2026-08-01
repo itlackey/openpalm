@@ -294,6 +294,7 @@ export function ensureHomeDirs(home: string = resolveOpenPalmHome()): void {
     `${home}/data/guardian/.local/state/opencode`,
     `${home}/data/akm/cache`,      // akm cache
     `${home}/data/akm/data`,       // akm durable data
+    `${home}/data/akm/state`,      // akm scheduler/runtime state
     `${home}/data/akm/empty-host-stash`, // always-present /host-stash fallback when host AKM is absent
     `${home}/data/logs`,           // service logs and audit files
     `${home}/data/ui`,             // materialized UI build (CLI-embedded, or bundled/repo-resolved)

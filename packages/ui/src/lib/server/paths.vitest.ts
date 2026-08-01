@@ -57,7 +57,7 @@ describe("ensureHomeDirs", () => {
     expect(existsSync(join(home, "data", "akm"))).toBe(true);
     expect(existsSync(join(home, "data", "akm", "cache"))).toBe(true);
     expect(existsSync(join(home, "data", "akm", "data"))).toBe(true);
-    expect(existsSync(join(home, "data", "akm", "state"))).toBe(false);
+    expect(existsSync(join(home, "data", "akm", "state"))).toBe(true);
     // guardian AKM subdirs removed — guardian has no akm CLI invocations
     expect(existsSync(join(home, "data", "guardian", "knowledge"))).toBe(false);
     expect(existsSync(join(home, "data", "guardian", "akm"))).toBe(false);

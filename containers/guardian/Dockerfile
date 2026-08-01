@@ -38,7 +38,7 @@ ENV HOME=/opt/openpalm/guardian \
 # rootless-ownership smoke test.
 ENV BUN_INSTALL_CACHE_DIR=/opt/openpalm/guardian/.cache/bun/install
 
-# Bake default tool packages (opencode-ai) at /opt/openpalm/tools. No bind
+# Bake default tool packages (opencode-ai and akm-cli) at /opt/openpalm/tools. No bind
 # mount overlays this path anymore (image-baked-only model) — bump this
 # manifest and rebuild the image to change a version, not by editing anything
 # under OP_HOME.

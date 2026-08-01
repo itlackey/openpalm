@@ -68,7 +68,7 @@ Current stack files are:
 | `chat-ui.stack.ts` | Auth gate and interactive chat controls without sending a real message |
 | `install-flow.stack.ts` | Wizard navigation through Review without clicking Install |
 | `auth-boundary.stack.ts` | Current `/api/host/*` read/write auth boundaries |
-| `secrets.stack.ts` | `env:user` key CRUD, redaction, and input validation |
+| `secrets.stack.ts` | `env/user` key CRUD, redaction, and input validation |
 | `admin-panel-browser.stack.ts` | Browser smoke for host status, systems, journal, connections, and secrets views |
 | `lan-access.stack.ts` | Two-device LAN access: enables `networkAccess`, then drives login, an `/oc` chat round trip, and `/voice` reachability against the assistant container's own UI co-process from a non-loopback source address |
 

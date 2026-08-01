@@ -121,12 +121,13 @@ afterEach(() => {
 
 describe('GET /api/assistant/akm — assistant-scoped AKM config', () => {
   test('200 in a non-admin process with a valid session — returns the config', async () => {
-    seedAkmConfig({ defaults: { llm: 'main' } });
+    seedAkmConfig({ configVersion: '0.9.0', defaults: { llmEngine: 'main' } });
     const { GET } = await loadRoute();
     const res = await GET(makeGetEvent());
     expect(res.status).toBe(200);
     const body = (await res.json()) as { config: Record<string, unknown> };
-    expect((body.config.defaults as Record<string, unknown>).llm).toBe('main');
+    expect(body.config.configVersion).toBe('0.9.0');
+    expect((body.config.defaults as Record<string, unknown>).llmEngine).toBe('main');
   });
 
   test('401 without a session cookie (requireAdmin still enforced)', async () => {
@@ -139,9 +140,26 @@ describe('GET /api/assistant/akm — assistant-scoped AKM config', () => {
 describe('PATCH /api/assistant/akm — the browser can edit AKM (Phase 4 acceptance)', () => {
   test('200 in a non-admin process: the patch is persisted to config/akm/config.json', async () => {
     const { PATCH } = await loadRoute();
-    const res = await PATCH(makePatchEvent({ defaults: { llm: 'primary' } }));
+    const res = await PATCH(makePatchEvent({
+      profiles: {
+        llm: { primary: { endpoint: 'https://api.openai.com/v1/chat/completions', model: 'gpt-4o' } },
+      },
+      defaults: { llm: 'primary' },
+    }));
     expect(res.status).toBe(200);
-    expect(readFileSync(akmConfigFile(), 'utf-8')).toContain('primary');
+    const persisted = JSON.parse(readFileSync(akmConfigFile(), 'utf-8')) as Record<string, unknown>;
+    expect(persisted.configVersion).toBe('0.9.0');
+    expect(persisted.engines).toEqual({
+      primary: {
+        endpoint: 'https://api.openai.com/v1/chat/completions',
+        model: 'gpt-4o',
+        kind: 'llm',
+      },
+    });
+    expect(persisted.defaults).toEqual({ llmEngine: 'primary' });
+    expect(persisted.bundles).toEqual({ stash: { path: '/stash', writable: true } });
+    expect(persisted.defaultBundle).toBe('stash');
+    expect(persisted.profiles).toBeUndefined();
   });
 
   test('200 in an admin process too (assistant-settings:write is a base capability)', async () => {
@@ -149,6 +167,8 @@ describe('PATCH /api/assistant/akm — the browser can edit AKM (Phase 4 accepta
     const { PATCH } = await loadRoute();
     const res = await PATCH(makePatchEvent({ defaults: { llm: 'primary' } }));
     expect(res.status).toBe(200);
-    expect(readFileSync(akmConfigFile(), 'utf-8')).toContain('primary');
+    const persisted = JSON.parse(readFileSync(akmConfigFile(), 'utf-8')) as Record<string, unknown>;
+    expect(persisted.configVersion).toBe('0.9.0');
+    expect((persisted.defaults as Record<string, unknown>).llmEngine).toBe('primary');
   });
 });

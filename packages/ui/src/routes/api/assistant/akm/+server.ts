@@ -1,6 +1,6 @@
 /**
  * GET  /api/assistant/akm  — Return current akm config from OP_HOME/config/akm/config.json
- * PATCH /api/assistant/akm — Update config fields aligned with AKM 0.8.0 schema
+ * PATCH /api/assistant/akm — Update config fields aligned with AKM 0.9.0 schema
  *
  * Assistant-SCOPED AKM configuration: config/akm/config.json holds the assistant's AKM settings.
  * Assistant settings are a BASE capability (every process), so the browser can
@@ -305,24 +305,26 @@ export const PATCH: RequestHandler = async (event) => {
     const existing = readAkmConfig(state.configDir);
     const updated: Rec = { ...existing };
 
-    // profiles
+    // The form payload groups engines by UI section; persist the native 0.9 map.
     if (profilesBody !== undefined) {
-      const existingProfiles = (existing.profiles as Rec) ?? {};
-      const newProfiles: Rec = { ...existingProfiles };
+      const engines: Rec = { ...((existing.engines as Rec) ?? {}) };
 
       if (profilesLlmBody !== undefined) {
         const built: Rec = {};
         for (const [name, entry] of Object.entries(profilesLlmBody)) {
-          built[name] = pickLlmProfile(entry as Rec);
+          built[name] = { ...pickLlmProfile(entry as Rec), kind: 'llm' };
         }
-        newProfiles.llm = built;
+        for (const [name, engine] of Object.entries(engines)) {
+          if ((engine as Rec)?.kind === 'llm') delete engines[name];
+        }
+        Object.assign(engines, built);
       }
 
       if (profilesAgentBody !== undefined) {
         const built: Rec = {};
         for (const [name, entry] of Object.entries(profilesAgentBody)) {
           const raw = entry as Rec;
-          const agentEntry: Rec = {};
+          const agentEntry: Rec = { kind: 'agent' };
           if ('platform' in raw) agentEntry.platform = raw.platform;
           if ('bin' in raw && raw.bin) agentEntry.bin = raw.bin;
           if ('args' in raw && Array.isArray(raw.args) && (raw.args as unknown[]).length) agentEntry.args = raw.args;
@@ -330,11 +332,14 @@ export const PATCH: RequestHandler = async (event) => {
           if ('model' in raw && raw.model) agentEntry.model = raw.model;
           built[name] = agentEntry;
         }
-        newProfiles.agent = built;
+        for (const [name, engine] of Object.entries(engines)) {
+          if ((engine as Rec)?.kind === 'agent') delete engines[name];
+        }
+        Object.assign(engines, built);
       }
 
       if (profilesImproveBody !== undefined) {
-        const existingImprove = (existingProfiles.improve as Rec) ?? {};
+        const existingImprove = ((existing.improve as Rec)?.strategies as Rec) ?? {};
         const builtImprove: Rec = {};
         for (const [name, entry] of Object.entries(profilesImproveBody)) {
           const raw = entry as Rec;
@@ -342,7 +347,6 @@ export const PATCH: RequestHandler = async (event) => {
           const profileEntry: Rec = { ...existingProfile };
           if ('description' in raw && raw.description) profileEntry.description = raw.description;
           if ('limit' in raw) profileEntry.limit = raw.limit;
-          if ('autoAccept' in raw) profileEntry.autoAccept = raw.autoAccept;
           if ('processes' in raw && isRec(raw.processes)) {
             // The UI sends the COMPLETE intended process config (it round-trips any
             // fields it doesn't model via a passthrough), so replace each process
@@ -361,10 +365,11 @@ export const PATCH: RequestHandler = async (event) => {
           }
           builtImprove[name] = profileEntry;
         }
-        newProfiles.improve = builtImprove;
+        const improve = (updated.improve as Rec) ?? {};
+        updated.improve = { ...improve, strategies: builtImprove };
       }
 
-      updated.profiles = newProfiles;
+      updated.engines = engines;
     }
 
     // defaults — defaults.improve is a string (profile name)
@@ -372,9 +377,9 @@ export const PATCH: RequestHandler = async (event) => {
       const existingDefaults = (existing.defaults as Rec) ?? {};
       updated.defaults = {
         ...existingDefaults,
-        ...('llm' in defaultsBody ? { llm: defaultsBody.llm } : {}),
-        ...('agent' in defaultsBody ? { agent: defaultsBody.agent } : {}),
-        ...('improve' in defaultsBody ? { improve: defaultsBody.improve } : {}),
+        ...('llm' in defaultsBody ? { llmEngine: defaultsBody.llm } : {}),
+        ...('agent' in defaultsBody ? { engine: defaultsBody.agent } : {}),
+        ...('improve' in defaultsBody ? { improveStrategy: defaultsBody.improve } : {}),
       };
     }
 
@@ -398,8 +403,10 @@ export const PATCH: RequestHandler = async (event) => {
 
     // scalars
     if ('semanticSearchMode' in body) updated.semanticSearchMode = body.semanticSearchMode;
-    // stashDir is pinned to the bind mount — never operator-editable.
-    updated.stashDir = '/stash';
+    updated.configVersion = '0.9.0';
+    const bundles = isRec(updated.bundles) ? updated.bundles : {};
+    updated.bundles = { stash: { path: '/stash', writable: true }, ...bundles };
+    updated.defaultBundle = typeof updated.defaultBundle === 'string' ? updated.defaultBundle : 'stash';
 
     // output
     if (outputBody !== undefined) {
@@ -414,10 +421,22 @@ export const PATCH: RequestHandler = async (event) => {
     // advanced top-level sections — the UI sends the complete intended object for
     // each (only configured fields), so replace wholesale; an empty/omitted body
     // for a section is left untouched (preserved via the `existing` spread).
-    if (improveTopBody !== undefined) updated.improve = improveTopBody;
+    if (improveTopBody !== undefined) {
+      updated.improve = { ...((updated.improve as Rec) ?? {}), ...improveTopBody };
+    }
     if (searchBody !== undefined) updated.search = searchBody;
     if (feedbackBody !== undefined) updated.feedback = feedbackBody;
     if (indexBody !== undefined) updated.index = indexBody;
+
+    for (const key of ['profiles', 'llm', 'agent', 'features', 'stashes', 'stashDir', 'sources', 'installed', 'bindings', 'writable']) {
+      delete updated[key];
+    }
+    const persistedDefaults = updated.defaults as Rec | undefined;
+    if (persistedDefaults) {
+      delete persistedDefaults.llm;
+      delete persistedDefaults.agent;
+      delete persistedDefaults.improve;
+    }
 
     mkdirSync(`${state.configDir}/akm`, { recursive: true });
     // I-5: atomic write through the shared lib writer (tmp+rename) so a

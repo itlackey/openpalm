@@ -40,7 +40,7 @@ Ownership is a security boundary, not just organization:
   Discord, and Slack credentials. It is never bind-mounted into `/stash`.
 - Compose grants delegated credentials as individual files under
   `/run/secrets/` only to the services that need them.
-- `knowledge/env/user.env` backs AKM `env:user`. It is neither a Compose env file
+- `knowledge/env/user.env` backs AKM `env/user`. It is neither a Compose env file
   nor sourced by the assistant entrypoint. Scoped tools load it on demand.
 - No service receives a broad secret env file, and `state/stack.env` must remain
   non-secret.
@@ -88,7 +88,7 @@ The assistant is the one always-on core container. It provides:
 - OpenCode on container port `4096`
 - the image-baked non-admin `@openpalm/ui` on container port `3000`
 - AKM memory, skills, lessons, and knowledge through `/stash`
-- scheduled automation through BusyBox `crond` and `akm tasks sync`
+- scheduled automation through BusyBox `crond` and `akm task sync`
 
 Principal mounts:
 
@@ -153,7 +153,7 @@ produce an allow/flag/block verdict.
 
 ## Scheduler
 
-The assistant entrypoint starts BusyBox `crond`, runs `akm tasks sync` at boot,
+The assistant entrypoint starts BusyBox `crond`, runs `akm task sync` at boot,
 and repeats the sync every 60 seconds. Task files live in
 `knowledge/tasks/*.yml`; supported targets are `command`, `prompt`, and
 `workflow`.

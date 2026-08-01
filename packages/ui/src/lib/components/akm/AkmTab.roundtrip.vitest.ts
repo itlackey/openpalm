@@ -451,7 +451,7 @@ function representativeConfig(): Record<string, unknown> {
 							maxAcceptsPerRun: 5,
 							maxDiffLines: 200,
 							rejectEmpty: true,
-							judgment: { mode: 'llm', profile: 'default', timeoutMs: 9000 },
+							judgment: { timeoutMs: 9000 },
 						},
 					},
 					sync: { enabled: true, push: false, message: 'akm improve sync' },
