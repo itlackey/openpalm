@@ -399,6 +399,17 @@ run_akm_schema_migration() {
   fi
   local config_version=""
   local migration_backup_run=""
+  restore_failed_akm_migration() {
+    [ -n "$migration_backup_run" ] || return 0
+    command -v akm-migrate >/dev/null 2>&1 || return 0
+    echo "entrypoint: restoring failed akm migration run $migration_backup_run..." >&2
+    if run_akm_command akm-migrate restore --for 0.9.0 --run "$migration_backup_run" --confirm >&2; then
+      printf '%s\n' "$akm_version" > "$blocked_file"
+      echo "entrypoint: akm migration restored; blocked further retries with $akm_version" >&2
+    else
+      echo "error: akm migration restore failed; manual recovery is required" >&2
+    fi
+  }
   if [ -f "$config_file" ]; then
     config_version="$(node -e 'try { process.stdout.write(JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")).configVersion || "") } catch {}' "$config_file")"
   fi
@@ -446,10 +457,19 @@ run_akm_schema_migration() {
       } catch {}
     ' "$apply_output")"
     if command -v akm-migrate >/dev/null 2>&1; then
-      run_akm_command akm-migrate storage --from 0.8 --yes >&2
+      if ! run_akm_command akm-migrate storage --from 0.8 --yes >&2; then
+        restore_failed_akm_migration
+        return 78
+      fi
     fi
-    run_akm_command akm task sync --rebind >&2
-    run_akm_command akm index >&2
+    if ! run_akm_command akm task sync --rebind >&2; then
+      restore_failed_akm_migration
+      return 78
+    fi
+    if ! run_akm_command akm index >&2; then
+      restore_failed_akm_migration
+      return 78
+    fi
   fi
 
   echo "entrypoint: checking akm health..." >&2
@@ -459,15 +479,7 @@ run_akm_schema_migration() {
     echo "entrypoint: akm health check complete (exit $rc)" >&2
   else
     echo "error: akm health check failed (exit $rc)" >&2
-    if [ -n "$migration_backup_run" ] && command -v akm-migrate >/dev/null 2>&1; then
-      echo "entrypoint: restoring failed akm migration run $migration_backup_run..." >&2
-      if run_akm_command akm-migrate restore --for 0.9.0 --run "$migration_backup_run" --confirm >&2; then
-        printf '%s\n' "$akm_version" > "$blocked_file"
-        echo "entrypoint: akm migration restored; blocked further retries with $akm_version" >&2
-      else
-        echo "error: akm migration restore failed; manual recovery is required" >&2
-      fi
-    fi
+    restore_failed_akm_migration
     return "$rc"
   fi
 }
