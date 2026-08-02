@@ -39,12 +39,36 @@ function allStackComposeFiles(): string[] {
     .map((name) => join(STACK_DIR, name));
 }
 
-describe('assistant runs as the operator, not root', () => {
-  test('core.compose.yml pins the assistant to OP_UID:OP_GID', () => {
+describe('assistant cron privilege boundary', () => {
+  test('entrypoint receives OP_UID:OP_GID without a Compose user override', () => {
     const compose = yamlParse(
       readFileSync(join(REPO_ROOT, 'packages/skeleton/system/stack/core.compose.yml'), 'utf8'),
-    ) as { services?: Record<string, { user?: string }> };
-    expect(compose.services?.assistant?.user).toBe('${OP_UID:-1000}:${OP_GID:-1000}');
+    ) as { services?: Record<string, { user?: string; environment?: Record<string, string> }> };
+    const assistant = compose.services?.assistant;
+    expect(assistant?.user).toBeUndefined();
+    expect(assistant?.environment?.OP_UID).toBe('${OP_UID:-1000}');
+    expect(assistant?.environment?.OP_GID).toBe('${OP_GID:-1000}');
+  });
+
+  test('narrows the Assistant root bootstrap to its required capabilities', () => {
+    const compose = yamlParse(readFileSync(CORE_COMPOSE_PATH, 'utf8')) as {
+      services?: Record<
+        string,
+        { cap_drop?: string[]; cap_add?: string[]; security_opt?: string[] }
+      >;
+    };
+    const assistant = compose.services?.assistant;
+    expect(assistant?.cap_drop).toEqual(['ALL']);
+    expect(assistant?.cap_add).toEqual([
+      'CHOWN',
+      'DAC_OVERRIDE',
+      'FOWNER',
+      'KILL',
+      'SETGID',
+      'SETPCAP',
+      'SETUID',
+    ]);
+    expect(assistant?.security_opt).toContain('no-new-privileges:true');
   });
 });
 

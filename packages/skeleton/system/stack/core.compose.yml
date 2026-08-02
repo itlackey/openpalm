@@ -40,7 +40,22 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
-    user: "${OP_UID:-1000}:${OP_GID:-1000}"
+    # The entrypoint starts as root only to remap the `node` account, supervise,
+    # and run Debian cron. OpenCode, UI, AKM reconciliation, and scheduled jobs
+    # run as OP_UID:OP_GID. Root keeps only the capabilities required for that
+    # identity/bootstrap boundary; the container has no Docker socket.
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
+      - KILL
+      - SETGID
+      - SETPCAP
+      - SETUID
+    security_opt:
+      - no-new-privileges:true
     extra_hosts:
       - "host.docker.internal:host-gateway"
 
@@ -202,11 +217,8 @@ services:
       - opencode_server_password
       - ui_login_password
     networks: [ assistant_net ]
-    # Probe the UI co-process too, not just OpenCode — a boot-time
-    # UI startup failure would otherwise leave the published UI port with
-    # nothing listening while this healthcheck still reported healthy.
-    # Skipped (not failed) when the UI build is missing or its supervisor gives
-    # up after a crash loop (marker file /tmp/openpalm-ui-skip).
+    # Probe cron and task reconciliation in addition to both required
+    # application ports. A missing or crash-looped UI is always unhealthy.
     #
     # The UI probe targets the LITERAL in-container port 3000 — the target of the
     # port mapping above, which cannot vary. It used to read `$${OP_UI_PORT:-3000}`
@@ -242,14 +254,17 @@ services:
       test:
         - CMD-SHELL
         - >-
+          test -r /run/openpalm/cron.pid || exit 1;
+          kill -0 "$$(/usr/bin/cat /run/openpalm/cron.pid)" || exit 1;
+          test ! -e /run/openpalm/user/task-sync-failed || exit 1;
           case "$${OPENCODE_AUTH:-false}" in
           true|TRUE|True|1|yes|YES)
-          curl -sf -u "$${OPENCODE_SERVER_USERNAME:-opencode}:$$(cat "$${OPENCODE_SERVER_PASSWORD_FILE:-/run/secrets/opencode_server_password}")"
+          /usr/bin/curl -sf -u "$${OPENCODE_SERVER_USERNAME:-opencode}:$$(/usr/bin/cat "$${OPENCODE_SERVER_PASSWORD_FILE:-/run/secrets/opencode_server_password}")"
           http://localhost:4096/health || exit 1 ;;
           *)
-          curl -sf http://localhost:4096/health || exit 1 ;;
+          /usr/bin/curl -sf http://localhost:4096/health || exit 1 ;;
           esac;
-          if [ ! -f /tmp/openpalm-ui-skip ]; then curl -sf http://localhost:3000/health >/dev/null || exit 1; fi
+          /usr/bin/curl -sf http://localhost:3000/health >/dev/null || exit 1
       interval: 30s
       timeout: 10s
       retries: 5

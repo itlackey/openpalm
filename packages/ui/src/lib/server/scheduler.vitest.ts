@@ -28,7 +28,7 @@ function makeTempDir(): string {
 function writeTask(stashDir: string, id: string, content: string): void {
   const tasksDir = join(stashDir, "tasks");
   mkdirSync(tasksDir, { recursive: true });
-  writeFileSync(join(tasksDir, `${id}.md`), content);
+  writeFileSync(join(tasksDir, `${id}.yml`), content);
 }
 
 let stashDir: string;
@@ -63,13 +63,12 @@ describe("loadAutomations", () => {
   });
 
   test("loads a command-target task as shell action", () => {
-    writeTask(stashDir, "health-check", `---
+    writeTask(stashDir, "health-check", `version: 2
 schedule: "*/5 * * * *"
 enabled: true
 description: Health check every 5 minutes
 tags: [openpalm]
 command: ["sh","-c","openpalm status --json"]
----
 `);
 
     const automations = loadAutomations(stashDir);
@@ -80,18 +79,15 @@ command: ["sh","-c","openpalm status --json"]
     expect(a.enabled).toBe(true);
     expect(a.description).toBe("Health check every 5 minutes");
     expect(a.action.type).toBe("shell");
-    expect(a.fileName).toBe("health-check.md");
+    expect(a.fileName).toBe("health-check.yml");
   });
 
   test("loads a prompt-target task as assistant action", () => {
-    writeTask(stashDir, "daily-brief", `---
+    writeTask(stashDir, "daily-brief", `version: 2
 schedule: "0 8 * * *"
 enabled: true
 description: Daily briefing
-prompt: inline
----
-
-Good morning. How are systems?
+prompt: Good morning. How are systems?
 `);
 
     const automations = loadAutomations(stashDir);
@@ -102,11 +98,10 @@ Good morning. How are systems?
   });
 
   test("respects enabled: false", () => {
-    writeTask(stashDir, "disabled-task", `---
+    writeTask(stashDir, "disabled-task", `version: 2
 schedule: "*/5 * * * *"
 enabled: false
 command: ["echo","hello"]
----
 `);
 
     const automations = loadAutomations(stashDir);
@@ -116,10 +111,9 @@ command: ["echo","hello"]
 
   test("skips malformed task files without crashing", () => {
     writeTask(stashDir, "bad-task", `not valid frontmatter at all`);
-    writeTask(stashDir, "good-task", `---
+    writeTask(stashDir, "good-task", `version: 2
 schedule: "0 3 * * *"
 command: ["akm","improve"]
----
 `);
 
     const automations = loadAutomations(stashDir);
@@ -128,8 +122,8 @@ command: ["akm","improve"]
   });
 
   test("loads multiple tasks", () => {
-    writeTask(stashDir, "task-a", `---\nschedule: "*/5 * * * *"\ncommand: ["echo","a"]\n---\n`);
-    writeTask(stashDir, "task-b", `---\nschedule: "0 3 * * *"\ncommand: ["echo","b"]\n---\n`);
+    writeTask(stashDir, "task-a", `version: 2\nschedule: "*/5 * * * *"\ncommand: ["echo","a"]\n`);
+    writeTask(stashDir, "task-b", `version: 2\nschedule: "0 3 * * *"\ncommand: ["echo","b"]\n`);
 
     const automations = loadAutomations(stashDir);
     expect(automations).toHaveLength(2);
@@ -165,12 +159,12 @@ describe("readAutomationLogs", () => {
     expect(lines).toHaveLength(5);
   });
 
-  test("strips .md suffix from id", () => {
+  test("strips .yml suffix from id", () => {
     const logDir = join(dataDir, "akm", "cache", "tasks", "logs", "health-check");
     mkdirSync(logDir, { recursive: true });
     writeFileSync(join(logDir, "2026-05-16T00-00-00-000Z.log"), "entry\n");
 
-    const lines = readAutomationLogs("health-check.md", dataDir, 50);
+    const lines = readAutomationLogs("health-check.yml", dataDir, 50);
     expect(lines).toContain("entry");
   });
 });

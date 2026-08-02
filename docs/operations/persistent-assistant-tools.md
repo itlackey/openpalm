@@ -57,7 +57,7 @@ USER root
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ripgrep \
     && rm -rf /var/lib/apt/lists/*
-USER node
+USER root
 ```
 
 Then override only the assistant image in the user-owned overlay:
@@ -83,9 +83,9 @@ image rather than adding a runtime version variable.
 ## Verify
 
 ```bash
-docker exec openpalm-assistant-1 sh -lc 'command -v <tool>'
-docker exec openpalm-assistant-1 ls -la /home/opencode/.local/bin
-docker exec openpalm-assistant-1 ls -la /opt/persistent/bin
+docker exec --user node openpalm-assistant-1 sh -lc 'command -v <tool>'
+docker exec --user node openpalm-assistant-1 ls -la /home/opencode/.local/bin
+docker exec --user node openpalm-assistant-1 ls -la /opt/persistent/bin
 ```
 
 Use the actual container name from `docker ps` if the Compose project name is

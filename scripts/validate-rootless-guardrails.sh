@@ -26,15 +26,23 @@ check_final_user_non_root() {
   fi
 }
 
-check_final_user_non_root containers/assistant/Dockerfile assistant
 check_final_user_non_root containers/portal/Dockerfile portal
 check_final_user_non_root containers/voice/Dockerfile voice
 check_final_user_non_root containers/guardian/Dockerfile guardian
 
-# Static invariant: no container image or entrypoint may reintroduce the
-# root+privilege-drop re-exec pattern the rootless conversion deleted. `gosu`,
-# `usermod`, and `groupmod` have no legitimate use in a rootless container and no
-# spelling synonym, so a token grep is a meaningful guard here.
+assistant_user_line=$(awk '
+  /^[[:space:]]*FROM[[:space:]]+/ { user=""; next }
+  /^[[:space:]]*USER[[:space:]]+/ { user=$0 }
+  END { print user }
+' containers/assistant/Dockerfile)
+if ! printf '%s\n' "$assistant_user_line" | grep -Eq '^[[:space:]]*USER[[:space:]]+(root|0)$'; then
+  echo "::error file=containers/assistant/Dockerfile::assistant must start as root for Debian cron"
+  errors=$((errors + 1))
+fi
+
+# Static invariant: no container other than Assistant may use the root identity
+# remap required by its standard cron daemon. Assistant uses Debian's existing
+# setpriv plus usermod/groupmod; it must not add another privilege-drop helper.
 #
 # NOTE: we deliberately do NOT grep entrypoints for `chown`/`chmod`. That check
 # policed spelling, not behavior — it never caught the ownership-mutating
@@ -55,6 +63,7 @@ fi
 
 unexpected_root_entrypoint_helpers=$(grep -RInwE '(gosu|usermod|groupmod)' containers \
   --include='*.sh' \
+  | grep -v '^containers/assistant/entrypoint.sh:' \
   | grep -vE '^[^:]+:[0-9]+:[[:space:]]*#' \
   || true)
 if [ -n "$unexpected_root_entrypoint_helpers" ]; then
@@ -62,6 +71,17 @@ if [ -n "$unexpected_root_entrypoint_helpers" ]; then
   printf '%s\n' "$unexpected_root_entrypoint_helpers"
   errors=$((errors + 1))
 fi
+
+if grep -qw gosu containers/assistant/entrypoint.sh; then
+  echo "::error file=containers/assistant/entrypoint.sh::assistant must use the image-baked setpriv rather than adding gosu"
+  errors=$((errors + 1))
+fi
+for helper in setpriv usermod groupmod; do
+  if ! grep -qw "$helper" containers/assistant/entrypoint.sh; then
+    echo "::error file=containers/assistant/entrypoint.sh::assistant root boundary must retain ${helper}"
+    errors=$((errors + 1))
+  fi
+done
 
 require_service_user_directive() {
   local service="$1"
@@ -81,7 +101,15 @@ for service in ollama ollama-cuda ollama-rocm voice voice-cuda voice-rocm; do
   require_service_user_directive "$service" packages/skeleton/system/stack/services.compose.yml
 done
 
-require_service_user_directive assistant packages/skeleton/system/stack/core.compose.yml
+if awk '
+  $0 ~ "^  assistant:$" { in_service=1; next }
+  in_service && $0 ~ "^  [^[:space:]]" { exit found ? 0 : 1 }
+  in_service && $0 ~ "^    user:" { found=1 }
+  END { exit found ? 0 : 1 }
+' packages/skeleton/system/stack/core.compose.yml; then
+  echo "::error file=packages/skeleton/system/stack/core.compose.yml::assistant must not override the image root startup user"
+  errors=$((errors + 1))
+fi
 
 for service in discord slack; do
   require_service_user_directive "$service" packages/skeleton/system/stack/portals.compose.yml
@@ -105,4 +133,4 @@ if [ "$errors" -gt 0 ]; then
   exit 1
 fi
 
-echo "Rootless guardrails intact for the services that are already expected to stay non-root."
+echo "Rootless guardrails intact; only Assistant's cron supervisor starts as root."

@@ -49,7 +49,7 @@ The assistant container runs:
 
 - OpenCode on container port `4096` (host default `3810`)
 - the image-baked OpenPalm UI on container port `3000` (host default `3800`)
-- BusyBox `crond` for AKM task schedules
+- Debian cron for AKM task schedules
 - `akm task sync` at startup and every 60 seconds
 
 The UI reaches OpenCode through its own same-origin `/oc` proxy. The assistant
@@ -178,8 +178,9 @@ must pass active profiles itself or set `COMPOSE_PROFILES` explicitly.
 
 ## Scheduling
 
-AKM task files support `command`, `prompt`, and `workflow` targets. They execute
-inside the assistant container under BusyBox cron. Because that environment has
+AKM v2 `.yml` task files support `command`, `prompt`, and `workflow` targets.
+They execute as the configured Assistant identity under Debian cron inside the
+assistant container. Because that environment has
 no Docker socket or host CLI authority, host lifecycle schedules must use the
 host OS scheduler and call the host `openpalm` binary.
 

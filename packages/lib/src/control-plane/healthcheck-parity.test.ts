@@ -21,6 +21,7 @@ const REPO_ROOT = resolve(import.meta.dir, '../../../..');
 const STACK_DIR = join(REPO_ROOT, 'packages/skeleton/system/stack');
 
 type ComposeHealthcheck = {
+  test?: string | string[];
   interval?: string;
   timeout?: string;
   retries?: number;
@@ -58,9 +59,8 @@ function readCompose(path: string): ComposeFile {
 
 describe('Dockerfile HEALTHCHECK thresholds match the compose healthcheck they must mirror (K6)', () => {
   test('assistant: containers/assistant/Dockerfile vs core.compose.yml', () => {
-    const dockerfile = parseDockerfileHealthcheck(
-      readFileSync(join(REPO_ROOT, 'containers/assistant/Dockerfile'), 'utf-8'),
-    );
+    const dockerfileSource = readFileSync(join(REPO_ROOT, 'containers/assistant/Dockerfile'), 'utf-8');
+    const dockerfile = parseDockerfileHealthcheck(dockerfileSource);
     const compose = readCompose(join(STACK_DIR, 'core.compose.yml')).services?.assistant?.healthcheck;
     expect(compose, 'core.compose.yml assistant service has no healthcheck').toBeDefined();
 
@@ -68,6 +68,16 @@ describe('Dockerfile HEALTHCHECK thresholds match the compose healthcheck they m
     expect(dockerfile.timeout).toBe(compose?.timeout);
     expect(dockerfile.startPeriod).toBe(compose?.start_period);
     expect(dockerfile.retries).toBe(compose?.retries);
+
+    const composeCommand = Array.isArray(compose?.test) ? compose.test.join(' ') : (compose?.test ?? '');
+    for (const predicate of ['/run/openpalm/cron.pid', '/run/openpalm/user/task-sync-failed']) {
+      expect(dockerfileSource).toContain(predicate);
+      expect(composeCommand).toContain(predicate);
+    }
+    expect(composeCommand).toContain('test -r /run/openpalm/cron.pid || exit 1');
+    expect(composeCommand).toContain('test ! -e /run/openpalm/user/task-sync-failed || exit 1');
+    expect(composeCommand).not.toContain('openpalm-ui-skip');
+    expect(dockerfileSource).not.toContain('openpalm-ui-skip');
   });
 
   test('guardian: containers/guardian/Dockerfile vs portals.compose.yml', () => {

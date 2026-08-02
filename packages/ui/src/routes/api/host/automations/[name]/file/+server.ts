@@ -6,10 +6,17 @@
  *   PUT    /api/host/automations/<name>/file — write raw contents (body { content })
  *   DELETE /api/host/automations/<name>/file — delete the task file
  *
- * `name` is a .yml/.yaml/.md basename; the lib guards against path traversal.
+ * `name` is a canonical .yml basename. The lib guards traversal and validates
+ * YAML syntax; AKM remains the task-schema authority during reconciliation.
  */
 import type { RequestHandler } from './$types';
-import { readTaskFile, writeTaskFile, removeTaskFile, assertSafeTaskFilename } from '@openpalm/lib';
+import {
+  readTaskFile,
+  writeTaskFile,
+  removeTaskFile,
+  assertSafeTaskFilename,
+  assertTaskYamlDocument,
+} from '@openpalm/lib';
 import { getState } from '$lib/server/state.js';
 import {
   errorResponse,
@@ -55,6 +62,11 @@ export const PUT: RequestHandler = async (event) => {
   if ('error' in result) return jsonBodyError(result, requestId);
   const content = result.data.content;
   if (typeof content !== 'string') return errorResponse(400, 'bad_request', 'content must be a string', {}, requestId);
+  try {
+    assertTaskYamlDocument(content);
+  } catch (error) {
+    return errorResponse(400, 'bad_request', error instanceof Error ? error.message : String(error), {}, requestId);
+  }
 
   writeTaskFile(getState().stashDir, name, content);
   return jsonResponse(200, { ok: true, name }, requestId);

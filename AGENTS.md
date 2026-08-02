@@ -37,7 +37,7 @@ For any other deletion:
 
 OpenPalm is a self-hosted personal AI platform built on Docker Compose and OpenCode. It manages a stack of containers orchestrated by the host CLI or an optional admin web UI.
 
-One always-on core container: **assistant** (OpenCode runtime, image-baked non-admin UI, BusyBox `crond`, and akm CLI memory/skills/lessons over the shared stash). The **guardian** (principal-authenticated ingress) is not a core container; it is profile-gated in `portals.compose.yml` and deployed only when a guardian-ingress addon (`chat`, `api`, `discord`, `slack`, or `gateway`) is enabled. Portal-style ingress addons and services such as Ollama are added through Compose.
+One always-on core container: **assistant** (OpenCode runtime, image-baked non-admin UI, Debian cron, and akm CLI memory/skills/lessons over the shared stash). The **guardian** (principal-authenticated ingress) is not a core container; it is profile-gated in `portals.compose.yml` and deployed only when a guardian-ingress addon (`chat`, `api`, `discord`, `slack`, or `gateway`) is enabled. Portal-style ingress addons and services such as Ollama are added through Compose.
 
 Repo layout convention:
 - `packages/*` — app/package source workspaces
@@ -60,7 +60,7 @@ See [`docs/technical/core-principles.md`](docs/technical/core-principles.md) for
 - **UI** (`packages/ui/`) — One SvelteKit adapter-node app. Electron and CLI host launches can carry admin capability and use the host Docker socket; the assistant image runs the same build as a non-admin child with no socket or host-control capability.
 - **Guardian** (`packages/guardian/`, `@openpalm/guardian`; image build assets in `containers/guardian/`) — Bun HTTP server: a **transparent 1:1 OpenCode reverse proxy** (`/oc/*` forwards native OpenCode method/path/query/body/SSE) with fail-closed policy overlays for principal auth, SQLite-persisted ownership, rate limiting, event filtering, and content validation. `GUARDIAN_CONTENT_VALIDATION` defaults ON in package code and shipped Compose; only explicit `0`, `false`, `no`, or `off` disables it. Escalated moderator failure blocks the message.
 - **Assistant** (`containers/assistant/`) — OpenCode runtime with tools/skills and the local UI child. No Docker socket, admin credential, or admin network path. Memory/skills/lessons use the akm-opencode plugin and the shared `knowledge/` stash. The entrypoint does not source `knowledge/env/user.env`; scoped tools load it on demand.
-- **Scheduler** — OS cron daemon (`crond`) started by the assistant container entrypoint. No network port. Automations are AKM v2 YAML task files (`*.yml`) in `knowledge/tasks/`; `akm task sync` registers them at startup and every 60 s. Supported targets are `command`, `prompt`, and `workflow`.
+- **Scheduler** — Debian cron started by the assistant container entrypoint. Only fixed runtime infrastructure (Tini, the supervisor, and cron) remains root with a narrowed capability set; migration, reconciliation, OpenCode/UI, and jobs run as the configured `node` identity. No network port. Automations are AKM v2 YAML task files (`*.yml`) in `knowledge/tasks/`; `akm task sync` registers them at startup and every 60 s. Supported targets are `command`, `prompt`, and `workflow`.
 - **Portal runtime** (`containers/portal/`) — Unified `portal` image build for baked first-party adapters.
 - **Voice** (`containers/voice/`) — Optional addon: FastAPI service exposing OpenAI-compatible `/v1/audio/speech` (Kokoro) and `/v1/audio/transcriptions` (faster-whisper). Gated by an `addon.voice.*` Compose profile in `services.compose.yml`; joins `addon_net` only by default (never `assistant_net`), loopback-published, reached by the UI via the same-origin `/voice/*` pass-through. `OP_VOICE_LAN_ACCESS` (default off) opts voice into the same per-service `assistant_net` exception ollama has (`voice.compose.lan.yml`), so the assistant container's served UI can proxy `/voice` for LAN clients.
 - **Portal adapters** (`packages/portal-discord/`, `packages/portal-slack/`) — Translate external protocols into guardian `/oc/*` traffic. The OpenAI-compatible API now runs from the guardian image.
@@ -167,7 +167,7 @@ Read these before making significant changes. They are the authoritative sources
 ### Language & Runtime
 
 - **TypeScript** everywhere (`"strict": true`, no `any` for untrusted data)
-- **Bun** for guardian and portals; **BusyBox `crond`** for scheduled tasks; **Node/Vite** for the SvelteKit `adapter-node` UI
+- **Bun** for guardian and portals; **Debian cron** for scheduled tasks; **Node/Vite** for the SvelteKit `adapter-node` UI
 - All packages use `"type": "module"` (ES modules only)
 
 ### Imports

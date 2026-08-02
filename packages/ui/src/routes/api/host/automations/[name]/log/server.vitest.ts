@@ -76,6 +76,11 @@ describe('GET /api/host/automations/:name/log', () => {
     expect(res.status).toBe(400);
   });
 
+  test('rejects .yaml filenames without rejecting a valid .md task ID', async () => {
+    expect((await GET(makeLogEvent('health-check.yaml'))).status).toBe(400);
+    expect((await GET(makeLogEvent('health-check.md'))).status).toBe(200);
+  });
+
   test('returns 400 when limit is negative', async () => {
     const res = await GET(makeLogEvent('health-check', { limit: '-1' }));
     expect(res.status).toBe(400);
@@ -142,5 +147,13 @@ describe('GET /api/host/automations/:name/log', () => {
     const body = (await res.json()) as { name: string; lines: string[] };
     expect(body.name).toBe('health-check');
     expect(body.lines).toContain('found-entry');
+  });
+
+  test('accepts an AKM task ID ending in .md', async () => {
+    const state = getState();
+    seedTaskLogs(state.dataDir, 'report.md', [
+      { ts: '2026-05-16T03-00-00-000Z', content: 'found-entry' },
+    ]);
+    expect((await GET(makeLogEvent('report.md'))).status).toBe(200);
   });
 });

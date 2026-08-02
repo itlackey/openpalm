@@ -1,115 +1,59 @@
-/**
- * B5 — `automations check` must not shell out to `crontab` on Windows (no
- * crontab binary there); guard on process.platform before the execFile call.
- *
- * Harness: real @openpalm/lib + a seeded temp OP_HOME (matching
- * admin.test.ts's documented convention) rather than mocking
- * @openpalm/lib's resolveOpenPalmHome — that function is shared by many
- * files' imports, and other aggregate CLI test files use
- * mock.module('@openpalm/lib'), which can leak across files sharing this
- * bun test process. The mock is re-asserted at the START of every test
- * (not just in afterEach) for the same reason.
- */
-import { afterEach, beforeEach, describe, expect, mock, test } from 'bun:test';
-import * as nodeChildProcess from 'node:child_process';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import * as realLib from '../../../lib/src/index.ts';
+import { describe, expect, mock, test } from 'bun:test';
+import type { AutomationRegistrationStatus, ControlPlaneState } from '@openpalm/lib';
+import { automationsCheck } from './automations.ts';
 
-const automationsModuleUrl = new URL('./automations.ts', import.meta.url).href;
+const state = {} as ControlPlaneState;
 
-const originalHome = process.env.OP_HOME;
-let tempHome: string;
-const originalPlatform = process.platform;
-
-function setPlatform(platform: NodeJS.Platform): void {
-	Object.defineProperty(process, 'platform', { value: platform, configurable: true });
+async function captureLogs(status: AutomationRegistrationStatus): Promise<string[]> {
+  const logs: string[] = [];
+  const originalLog = console.log;
+  console.log = (...args: unknown[]) => logs.push(args.map(String).join(' '));
+  try {
+    await automationsCheck({
+      getState: () => state,
+      inspect: mock(() => Promise.resolve(status)),
+    });
+  } finally {
+    console.log = originalLog;
+  }
+  return logs;
 }
 
-function resetMocks(): void {
-	mock.restore();
-	mock.module('@openpalm/lib', () => ({ ...realLib }));
-	mock.module('node:child_process', () => ({ ...nodeChildProcess }));
-}
+describe('automationsCheck', () => {
+  test('reports registrations from the Assistant scheduler', async () => {
+    const logs = await captureLogs({
+      ok: true,
+      configured: ['daily-digest', 'health-check'],
+      registered: ['daily-digest'],
+      missing: ['health-check'],
+    });
 
-beforeEach(() => {
-	tempHome = mkdtempSync(join(tmpdir(), 'openpalm-automations-'));
-	process.env.OP_HOME = tempHome;
-	const tasksDir = join(tempHome, 'knowledge', 'tasks');
-	mkdirSync(tasksDir, { recursive: true });
-	writeFileSync(join(tasksDir, 'daily-digest.yml'), 'name: daily-digest\n');
-});
+    expect(logs).toContain('Registered in Assistant scheduler: 1/2');
+    expect(logs).toContain('Not registered: health-check');
+  });
 
-afterEach(() => {
-	mock.restore();
-	mock.module('@openpalm/lib', () => ({ ...realLib }));
-	mock.module('node:child_process', () => ({ ...nodeChildProcess }));
-	setPlatform(originalPlatform);
-	if (originalHome === undefined) delete process.env.OP_HOME;
-	else process.env.OP_HOME = originalHome;
-	rmSync(tempHome, { recursive: true, force: true });
-});
+  test('reports an Assistant inspection failure without reading the host crontab', async () => {
+    await expect(
+      automationsCheck({
+        getState: () => state,
+        inspect: mock(() =>
+          Promise.resolve({ ok: false, configured: ['daily-digest'], error: 'assistant is not running' }),
+        ),
+      }),
+    ).rejects.toThrow('Unable to inspect the Assistant scheduler: assistant is not running');
+  });
 
-describe('automationsCheck — B5 crontab platform guard', () => {
-	test('on win32, prints a platform message and never shells out to crontab', async () => {
-		resetMocks();
-		setPlatform('win32');
-		let execFileCalled = false;
-		mock.module('node:child_process', () => ({
-			...nodeChildProcess,
-			execFile: (...args: unknown[]) => {
-				execFileCalled = true;
-				return (nodeChildProcess.execFile as unknown as (...a: unknown[]) => unknown)(...args);
-			}
-		}));
+  test('does not mask a task-file inspection failure as an empty install', async () => {
+    await expect(
+      automationsCheck({
+        getState: () => state,
+        inspect: mock(() => Promise.resolve({ ok: false, configured: [], error: 'unsafe tasks directory' })),
+      }),
+    ).rejects.toThrow('Unable to inspect the Assistant scheduler: unsafe tasks directory');
+  });
 
-		const logs: string[] = [];
-		const originalLog = console.log;
-		console.log = (...args: unknown[]) => {
-			logs.push(args.map(String).join(' '));
-		};
-
-		try {
-			const { automationsCheck } = await import(`${automationsModuleUrl}?t=${Math.random()}`);
-			await automationsCheck();
-		} finally {
-			console.log = originalLog;
-		}
-
-		expect(execFileCalled).toBe(false);
-		expect(logs.some((line) => /not available on Windows/i.test(line))).toBe(true);
-	});
-
-	test('on a non-Windows platform, still shells out to crontab', async () => {
-		resetMocks();
-		setPlatform('linux');
-		let execFileCalled = false;
-		mock.module('node:child_process', () => ({
-			...nodeChildProcess,
-			execFile: (
-				_cmd: string,
-				_cmdArgs: string[],
-				callback: (error: Error | null, stdout: string, stderr: string) => void
-			) => {
-				execFileCalled = true;
-				callback(null, '', '');
-			}
-		}));
-
-		const logs: string[] = [];
-		const originalLog = console.log;
-		console.log = (...args: unknown[]) => {
-			logs.push(args.map(String).join(' '));
-		};
-		try {
-			const { automationsCheck } = await import(`${automationsModuleUrl}?t=${Math.random()}`);
-			await automationsCheck();
-		} finally {
-			console.log = originalLog;
-		}
-
-		expect(execFileCalled).toBe(true);
-		expect(logs).toContain("Run 'akm task sync' inside the assistant container to register remaining tasks.");
-	});
+  test('returns early when no v2 task files exist', async () => {
+    const logs = await captureLogs({ ok: true, configured: [], registered: [], missing: [] });
+    expect(logs).toEqual(['No automation tasks installed.']);
+  });
 });

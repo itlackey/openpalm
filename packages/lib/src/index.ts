@@ -200,6 +200,7 @@ export type {
 } from './control-plane/pairing.js';
 export {
   assertSafeTaskFilename,
+  assertTaskYamlDocument,
   resolveTasksDir,
   listTaskFiles,
   readTaskFile,
@@ -523,12 +524,14 @@ export {
 // ── Scheduler ───────────────────────────────────────────────────────────
 export type {
   AutomationConfig,
+  AutomationRegistrationStatus,
   AutomationRunResult,
 } from "./control-plane/scheduler.js";
 export {
   SCHEDULE_PRESETS,
   loadAutomations,
   executeAutomation,
+  getAutomationRegistrationStatus,
   readAutomationLogs,
 } from "./control-plane/scheduler.js";
 
@@ -643,9 +646,6 @@ export {
 // ── AKM user env (env/user) ──────────────────────────────────────────────
 export {
   AKM_USER_ENV_REF,
-  AKM_ENV_KEYS,
-  buildAkmEnv,
-  assertAkmEnvComplete,
   ensureAkmUserEnv,
   writeUserEnvKey,
   deleteUserEnvKey,

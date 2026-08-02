@@ -7,10 +7,10 @@
  *   workflow — `workflow: workflow:<ref>` + optional `params` map
  */
 import { parse as parseYaml } from "yaml";
-import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import type { AutomationConfig } from "./scheduler.js";
 import { createLogger } from "../logger.js";
+import { listTaskFiles, readTaskFile } from "./task-files.js";
 
 const logger = createLogger("task-file");
 
@@ -29,26 +29,18 @@ export interface MarkdownTask {
 
 export type MarkdownTaskTarget =
   | { kind: "command"; cmd: string[] }
-  | { kind: "prompt"; profile?: string; body: string }
+  | { kind: "prompt"; body: string }
   | { kind: "workflow"; ref: string; params: Record<string, unknown> };
 
 // ── Parser ────────────────────────────────────────────────────────────────
 
-function parseMarkdownTask(filePath: string): MarkdownTask | null {
+function parseMarkdownTask(filePath: string, raw: string): MarkdownTask | null {
   const fileName = basename(filePath);
-  const id = fileName.replace(/\.(?:ya?ml|md)$/, "");
-  let raw: string;
-  try {
-    raw = readFileSync(filePath, "utf-8");
-  } catch (err) {
-    logger.warn("failed to read task file", { filePath, error: String(err) });
-    return null;
-  }
+  const id = fileName.replace(/\.yml$/, "");
 
-  const { frontmatter, body } = splitTaskSource(raw);
   let fm: Record<string, unknown>;
   try {
-    const parsed = parseYaml(frontmatter);
+    const parsed = parseYaml(raw);
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
       logger.warn("task YAML is not an object", { filePath });
       return null;
@@ -59,19 +51,31 @@ function parseMarkdownTask(filePath: string): MarkdownTask | null {
     return null;
   }
 
+  if (fm.version !== 2) {
+    logger.warn("task version must be 2", { filePath });
+    return null;
+  }
+
   const schedule = fm.schedule;
   if (typeof schedule !== "string" || !schedule.trim()) {
     logger.warn("task missing or empty 'schedule'", { filePath });
     return null;
   }
 
-  // Resolve target type from frontmatter
+  const targetKeys = ["command", "prompt", "workflow"].filter((key) => fm[key] !== undefined);
+  if (targetKeys.length !== 1) {
+    logger.warn("task must have exactly one of: command, prompt, workflow", { filePath });
+    return null;
+  }
+
   let target: MarkdownTaskTarget;
 
   if (fm.command !== undefined) {
     const cmd = Array.isArray(fm.command)
-      ? fm.command.map(String)
-      : typeof fm.command === "string"
+      && fm.command.length > 0
+      && fm.command.every((part): part is string => typeof part === "string" && part.length > 0)
+      ? fm.command
+      : typeof fm.command === "string" && fm.command.trim() !== ""
         ? [fm.command]
         : null;
     if (!cmd || cmd.length === 0) {
@@ -84,15 +88,9 @@ function parseMarkdownTask(filePath: string): MarkdownTask | null {
       logger.warn("task 'prompt' must be a non-empty string", { filePath });
       return null;
     }
-    const promptBody = fm.prompt.trim() === "inline" ? body.trim() : fm.prompt.trim();
-    if (!promptBody) {
-      logger.warn("task prompt body is empty", { filePath });
-      return null;
-    }
     target = {
       kind: "prompt",
-      profile: typeof fm.profile === "string" ? fm.profile : undefined,
-      body: promptBody,
+      body: fm.prompt.trim(),
     };
   } else if (fm.workflow !== undefined) {
     if (typeof fm.workflow !== "string") {
@@ -107,7 +105,6 @@ function parseMarkdownTask(filePath: string): MarkdownTask | null {
         : {},
     };
   } else {
-    logger.warn("task must have one of: command, prompt, workflow", { filePath });
     return null;
   }
 
@@ -123,20 +120,13 @@ function parseMarkdownTask(filePath: string): MarkdownTask | null {
   };
 }
 
-function splitTaskSource(raw: string): { frontmatter: string; body: string } {
-  const match = raw.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/);
-  if (!match) return { frontmatter: raw, body: "" };
-  return { frontmatter: match[1] ?? "", body: match[2] ?? "" };
-}
-
 export function loadMarkdownTasks(stashDir: string): MarkdownTask[] {
   const dir = join(stashDir, "tasks");
-  if (!existsSync(dir)) return [];
-
   const tasks: MarkdownTask[] = [];
-  for (const entry of readdirSync(dir, { withFileTypes: true })) {
-    if (!entry.isFile() || (!entry.name.endsWith(".md") && !entry.name.endsWith(".yml") && !entry.name.endsWith(".yaml"))) continue;
-    const task = parseMarkdownTask(join(dir, entry.name));
+  for (const file of listTaskFiles(stashDir)) {
+    const raw = readTaskFile(stashDir, file.name);
+    if (raw === null) continue;
+    const task = parseMarkdownTask(join(dir, file.name), raw);
     if (task) tasks.push(task);
   }
   return tasks;
@@ -158,7 +148,6 @@ export function taskToAutomationConfig(task: MarkdownTask): AutomationConfig {
   } else if (target.kind === "prompt") {
     actionType = "assistant";
     content = target.body;
-    agent = target.profile;
   } else {
     actionType = "workflow";
   }

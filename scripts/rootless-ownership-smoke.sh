@@ -61,6 +61,8 @@ Environment:
   OP_ROOTLESS_SMOKE_HOME      Override isolated OP_HOME path.
   OP_ROOTLESS_SMOKE_UI_PORT   Override isolated UI host port.
   OP_ROOTLESS_SMOKE_KEEP=1    Keep the stack running for inspection.
+  OP_ROOTLESS_SMOKE_OPENCODE_AUTH=1
+                              Enable OpenCode auth and verify the UI /oc proxy.
 EOF
 }
 
@@ -132,9 +134,24 @@ smoke_write_stack_env "$SMOKE_HOME" "$PLATFORM_VERSION" \
   "${OP_ROOTLESS_SMOKE_API_PORT:-${api_port_default}}"
 printf 'OP_HOST_UI_PORT=%s\n' "$UI_PORT" >> "$SMOKE_HOME/state/stack.env"
 smoke_seed_secrets "$SMOKE_HOME" 'rootless-smoke-password'
+if [[ "${OP_ROOTLESS_SMOKE_OPENCODE_AUTH:-0}" == "1" ]]; then
+  printf '%s\n' 'rootless-opencode-password' > "$SMOKE_HOME/private/secrets/op_opencode_password"
+  chmod 600 "$SMOKE_HOME/private/secrets/op_opencode_password"
+  printf 'OPENCODE_AUTH=true\n' >> "$SMOKE_HOME/state/stack.env"
+fi
 
 smoke_ensure_home_dirs "$SMOKE_HOME"
 
+mkdir -p "$SMOKE_HOME/knowledge/tasks"
+cat > "$SMOKE_HOME/knowledge/tasks/rootless-cron-canary.yml" <<'EOF'
+version: 2
+schedule: "* * * * *"
+enabled: true
+command:
+  - /bin/sh
+  - -c
+  - "printf '%s:%s:%s:%s\\n' \"$(id -u)\" \"$(id -g)\" \"$(awk '/^NoNewPrivs:/{print $2}' /proc/self/status)\" \"$(command -v apprise)\" > /work/rootless-cron-canary"
+EOF
 
 if [[ "$TARGET" == "portal-discord" ]]; then
   printf 'OP_ENABLED_ADDONS=discord\n' >> "$SMOKE_HOME/state/stack.env"
@@ -193,19 +210,96 @@ if [[ "$health_ok" == "1" ]]; then
   echo "Checking image-baked tool layout..."
   assistant_container="${COMPOSE_PROJECT_NAME}-assistant-1"
   guardian_container="${COMPOSE_PROJECT_NAME}-guardian-1"
-  docker exec "$assistant_container" sh -c '
+  docker exec --user node "$assistant_container" sh -c '
     set -eu
-    test "$(readlink -f "$(command -v akm)")" = /usr/local/lib/node_modules/akm-cli/dist/akm
-    test "$(readlink -f "$(command -v opencode)")" = /opt/openpalm/tools/node_modules/opencode-ai/bin/opencode.exe
+    test "$(readlink -f /usr/local/bin/akm)" = /usr/local/lib/node_modules/akm-cli/dist/akm
+    test "$(readlink -f /opt/openpalm/tools/node_modules/.bin/opencode)" = /opt/openpalm/tools/node_modules/opencode-ai/bin/opencode.exe
     test ! -e /opt/openpalm/tools/node_modules/akm-cli
-    akm task doctor | jq -e '\''.akm.kind == "npm" and .akm.eligible == true'\'' >/dev/null
   '
+  assistant_gid="$(docker exec --user root "$assistant_container" /usr/bin/id -g node)"
+  [[ "$assistant_gid" =~ ^[1-9][0-9]{0,9}$ ]] || {
+    echo "invalid Assistant primary GID: ${assistant_gid}" >&2
+    exit 1
+  }
+  docker exec --user root "$assistant_container" /usr/bin/setpriv \
+    --reuid=node --regid="$assistant_gid" --groups=crontab \
+    --bounding-set=-all --inh-caps=-all --ambient-caps=-all --no-new-privs -- \
+    /usr/bin/env PATH=/opt/openpalm/tools/node_modules/.bin:/usr/local/bin:/opt/assistant-tools/bin:/usr/local/sbin:/usr/sbin:/usr/bin:/sbin:/bin \
+    /usr/local/bin/akm task doctor --format json --quiet \
+    | jq -e '.akm.kind == "npm" and .akm.eligible == true' >/dev/null
   docker exec "$guardian_container" sh -c '
     set -eu
-    test "$(readlink -f "$(command -v akm)")" = /usr/local/lib/node_modules/akm-cli/dist/akm
-    test "$(readlink -f "$(command -v opencode)")" = /opt/openpalm/tools/node_modules/opencode-ai/bin/opencode.exe
+    test "$(readlink -f /usr/local/bin/akm)" = /usr/local/lib/node_modules/akm-cli/dist/akm
+    test "$(readlink -f /opt/openpalm/tools/node_modules/.bin/opencode)" = /opt/openpalm/tools/node_modules/opencode-ai/bin/opencode.exe
     test ! -e /opt/openpalm/tools/node_modules/akm-cli
   '
+
+  if [[ "${OP_ROOTLESS_SMOKE_OPENCODE_AUTH:-0}" == "1" ]]; then
+    echo "Checking file-backed auth through the served UI /oc proxy..."
+    docker exec "$assistant_container" sh -c '
+      set -eu
+      if curl -sf http://localhost:4096/health >/dev/null; then
+        echo "OpenCode accepted an unauthenticated request while auth was enabled" >&2
+        exit 1
+      fi
+      cookie=/tmp/openpalm-auth-smoke-cookie
+      curl -sf -c "$cookie" -H "content-type: application/json" \
+        -d '\''{"password":"rootless-smoke-password"}'\'' \
+        http://localhost:3000/api/auth/login >/dev/null
+      curl -sf -b "$cookie" http://localhost:3000/oc/health >/dev/null
+      rm -f "$cookie"
+    '
+  fi
+
+  echo "Checking cron privilege boundary..."
+  docker exec "$assistant_container" sh -c '
+    set -eu
+    expected="${OP_UID}:${OP_GID}"
+    process_owner() {
+      pid="$(cat "/run/openpalm/$1.pid")"
+      uid="$(awk '\''/^Uid:/{print $2}'\'' "/proc/${pid}/status")"
+      gid="$(awk '\''/^Gid:/{print $2}'\'' "/proc/${pid}/status")"
+      printf "%s:%s\n" "$uid" "$gid"
+    }
+    test "$(process_owner cron)" = 0:0
+    test "$(process_owner sync)" = "$expected"
+    test "$(process_owner app)" = "$expected"
+    cron_pid="$(cat /run/openpalm/cron.pid)"
+    sync_pid="$(cat /run/openpalm/sync.pid)"
+    app_pid="$(cat /run/openpalm/app.pid)"
+    test "$(awk '\''/^NoNewPrivs:/{print $2}'\'' "/proc/${cron_pid}/status")" = 1
+    test "$(awk '\''/^NoNewPrivs:/{print $2}'\'' "/proc/${sync_pid}/status")" = 1
+    test "$(awk '\''/^NoNewPrivs:/{print $2}'\'' "/proc/${app_pid}/status")" = 1
+    test "$(awk '\''/^CapEff:/{print $2}'\'' "/proc/${sync_pid}/status")" = 0000000000000000
+    test "$(awk '\''/^CapEff:/{print $2}'\'' "/proc/${app_pid}/status")" = 0000000000000000
+    crontab_gid="$(getent group crontab | cut -d: -f3)"
+    test "$(awk '\''/^Groups:/{print NF ":" $2}'\'' "/proc/${sync_pid}/status")" = "2:${crontab_gid}"
+    test "$(awk '\''/^Groups:/{print NF}'\'' "/proc/${app_pid}/status")" = 1
+    test "$(stat -c %u /var/spool/cron/crontabs/node)" = "${OP_UID}"
+    test "$(stat -c %g /var/spool/cron/crontabs/node)" = "${OP_GID}"
+    test "$(stat -c %a /var/spool/cron/crontabs/node)" = 600
+    test "$(stat -c %U:%G /run/openpalm)" = root:root
+    test ! -e /var/spool/cron/crontabs/root
+    test ! -e /tmp/openpalm-bin
+    test ! -e /tmp/openpalm-crontabs
+    ! crontab -u node -l | grep -q "^export "
+    ! crontab -u node -l | grep -q "^OPENCODE_SERVER_PASSWORD="
+  '
+
+  echo "Waiting for the cron canary to run as the configured Assistant identity..."
+  for _ in $(seq 1 40); do
+    if [[ -f "$SMOKE_HOME/workspace/rootless-cron-canary" ]]; then break; fi
+    sleep 2
+  done
+  if [[ ! -f "$SMOKE_HOME/workspace/rootless-cron-canary" ]]; then
+    echo "Scheduled cron canary did not run." >&2
+    dev_compose logs assistant --tail 80 >&2 || true
+    exit 1
+  fi
+  if [[ "$(cat "$SMOKE_HOME/workspace/rootless-cron-canary")" != "$(id -u):$(id -g):1:/opt/assistant-tools/bin/apprise" ]]; then
+    echo "Scheduled cron canary ran with the wrong identity, privilege state, or PATH." >&2
+    exit 1
+  fi
 fi
 
 echo "Checking for root-owned files under ${SMOKE_HOME}..."

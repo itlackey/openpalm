@@ -23,7 +23,7 @@ $OP_HOME/config/stack/custom.compose.yml
 ## Core and Addons
 
 The assistant is the only always-on container. It runs OpenCode, the image-baked
-OpenPalm UI, and BusyBox cron for AKM tasks.
+OpenPalm UI, and Debian cron for AKM tasks.
 
 Guardian is not core. It is deployed by a Guardian-ingress profile such as
 `addon.chat`, `addon.api`, `addon.discord`, `addon.slack`, or `addon.gateway`.

@@ -199,14 +199,16 @@ timeout, failure, or an invalid verdict blocks the escalated message.
 
 ## Scheduler
 
-Scheduling runs through BusyBox `crond` inside the assistant container.
+Scheduling runs through Debian cron inside the assistant container.
 
-- Definitions are AKM YAML task files under `$OP_HOME/knowledge/tasks/`, visible
+- Definitions are AKM v2 `.yml` task files under `$OP_HOME/knowledge/tasks/`, visible
   in the container as `/stash/tasks/`.
 - Supported task targets are `command`, `prompt`, and `workflow`.
 - `akm task sync` registers tasks in the user crontab at startup and every 60
   seconds.
-- `crond` has no network listener or Docker socket.
+- Only the cron daemon runs as root. AKM reconciliation and scheduled jobs run
+  as the configured Assistant UID/GID.
+- Cron has no network listener or Docker socket.
 - Cron receives only the small managed environment preamble needed by AKM and
   OpenCode. It does not inherit all values from `knowledge/env/user.env`.
 

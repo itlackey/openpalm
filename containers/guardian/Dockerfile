@@ -70,7 +70,7 @@ RUN ONNXRUNTIME_NODE_INSTALL=skip npm install --global --omit=dev --include=opti
               "${AKM_MODULES}/onnxruntime-web" \
     && chmod -R a+rX /usr/local/lib/node_modules/akm-cli \
     && test "$(npm root --global)" = "/usr/local/lib/node_modules" \
-    && test "$(akm --version)" = "${AKM_CLI_VERSION}" \
+    && test "$(/usr/local/bin/akm --version)" = "${AKM_CLI_VERSION}" \
     && test "$(readlink -f /usr/local/bin/akm)" = "/usr/local/lib/node_modules/akm-cli/dist/akm" \
     && test "$(readlink -f /usr/local/bin/akm-migrate)" = "/usr/local/lib/node_modules/akm-cli/dist/akm-migrate" \
     && rm -rf /root/.npm

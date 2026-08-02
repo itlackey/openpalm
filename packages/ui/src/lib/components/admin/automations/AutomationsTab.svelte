@@ -78,11 +78,11 @@
     drawerError = '';
   }
 
-  async function handleSave(fileName: string, yaml: string): Promise<void> {
+  async function handleSave(fileName: string, content: string): Promise<void> {
     drawerSaving = true;
     drawerError = '';
     try {
-      await saveTaskFile(fileName, yaml);
+      await saveTaskFile(fileName, content);
       notifications.push('success', `Saved ${fileName}. Refreshing…`);
       closeDrawer();
       onRefresh();
@@ -123,7 +123,11 @@
     runningTaskName = name;
     try {
       const result = await runAutomation(name);
-      if (result.ok) {
+      if (result.status === 'active') {
+        notifications.push('success', `"${name}" started and remains active.`);
+      } else if (result.status === 'disabled') {
+        notifications.push('success', `"${name}" is disabled and did not run.`);
+      } else if (result.ok) {
         notifications.push('success', `"${name}" completed. Open the log to view output.`);
       } else {
         const detail = result.error ? `: ${result.error}` : '';
@@ -237,18 +241,22 @@
               <div class="automation-main">
                 <div class="automation-name">
                   {automation.name}
-                  <span class="badge" class:badge-enabled={automation.enabled} class:badge-disabled={!automation.enabled}>
-                    {automation.enabled ? 'Enabled' : 'Disabled'}
+                  <span class="badge" class:badge-enabled={automation.valid && automation.enabled} class:badge-disabled={!automation.valid || !automation.enabled}>
+                    {automation.valid ? (automation.enabled ? 'Enabled' : 'Disabled') : 'Needs repair'}
                   </span>
-                  <span class="badge badge-type">{automation.action.type}</span>
+                  {#if automation.valid}
+                    <span class="badge badge-type">{automation.action.type}</span>
+                  {/if}
                 </div>
                 {#if automation.description}
                   <div class="automation-desc">{automation.description}</div>
                 {/if}
               </div>
               <div class="automation-meta">
-                <span class="meta-item">{formatSchedule(automation.schedule)}</span>
-                <span class="meta-item meta-item-action">{describeAction(automation)}</span>
+                <span class="meta-item">{automation.valid ? formatSchedule(automation.schedule) : 'Invalid AKM task'}</span>
+                {#if automation.valid}
+                  <span class="meta-item meta-item-action">{describeAction(automation)}</span>
+                {/if}
               </div>
             </div>
             <div class="automation-footer">
@@ -257,7 +265,7 @@
                 <button
                   class="btn btn-secondary btn-sm"
                   onclick={() => void handleRunNow(automation.name)}
-                  disabled={!!runningTaskName || drawerSaving}
+                  disabled={!automation.valid || !!runningTaskName || drawerSaving}
                 >
                   {#if runningTaskName === automation.name}
                     <Spinner />
@@ -303,7 +311,7 @@
         {:else}
           <p>No automations configured.</p>
           <button class="btn btn-secondary btn-sm empty-state-btn" onclick={openNewTask}>Create your first task</button>
-          <p class="empty-state-hint">Or drop <code>.md</code>/<code>.yml</code> files into <code>~/.openpalm/knowledge/tasks/</code>.</p>
+          <p class="empty-state-hint">Or drop AKM v2 <code>.yml</code> files into <code>~/.openpalm/knowledge/tasks/</code>.</p>
         {/if}
       </EmptyState>
     {/if}
@@ -338,7 +346,7 @@
     saving={drawerSaving}
     saveError={drawerError}
     onClose={closeDrawer}
-    onSave={(fileName, yaml) => void handleSave(fileName, yaml)}
+    onSave={(fileName, content) => void handleSave(fileName, content)}
   />
 {/key}
 

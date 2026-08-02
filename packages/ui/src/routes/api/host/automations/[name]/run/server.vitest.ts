@@ -5,6 +5,7 @@ import { randomBytes } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { resetState, trackDir, cleanupTempDirs } from '$lib/server/test-helpers.js';
 import { getState } from '$lib/server/state.js';
+import { executeAutomation } from '@openpalm/lib';
 import { POST } from './+server.js';
 
 vi.mock('@openpalm/lib', async () => {
@@ -42,7 +43,7 @@ function seedInstalledTask(stashDir: string, id: string): void {
   mkdirSync(tasksDir, { recursive: true });
   writeFileSync(
     join(tasksDir, `${id}.yml`),
-    `schedule: "0 3 * * *"\ncommand: ["echo","hello"]\n`,
+    `version: 2\nschedule: "0 3 * * *"\ncommand: ["echo","hello"]\n`,
   );
 }
 
@@ -84,6 +85,16 @@ describe('POST /api/host/automations/:name/run', () => {
     expect(res.status).toBe(400);
   });
 
+  test('rejects .yaml filenames without rejecting a valid .md task ID', async () => {
+    expect((await POST(makeRunEvent('health-check.yaml'))).status).toBe(400);
+    expect((await POST(makeRunEvent('health-check.md'))).status).toBe(404);
+  });
+
+  test('rejects task IDs that alias a canonical .yml filename', async () => {
+    expect((await POST(makeRunEvent('health-check.yml.yml'))).status).toBe(400);
+    expect((await POST(makeRunEvent('health-check.yaml.yml'))).status).toBe(400);
+  });
+
   test('returns 404 when the automation is not installed', async () => {
     const res = await POST(makeRunEvent('not-installed'));
     expect(res.status).toBe(404);
@@ -103,6 +114,7 @@ describe('POST /api/host/automations/:name/run', () => {
     expect(body.name).toBe('health-check');
     expect(body.status).toBe('completed');
     expect(body.error).toBeNull();
+    expect(executeAutomation).toHaveBeenCalledWith(state, 'health-check');
   });
 
   test('accepts a bare base name without .yml', async () => {
@@ -111,5 +123,11 @@ describe('POST /api/host/automations/:name/run', () => {
 
     const res = await POST(makeRunEvent('health-check'));
     expect(res.status).toBe(202);
+  });
+
+  test('accepts an AKM task ID ending in .md', async () => {
+    const state = getState();
+    seedInstalledTask(state.stashDir, 'report.md');
+    expect((await POST(makeRunEvent('report.md'))).status).toBe(202);
   });
 });

@@ -88,7 +88,7 @@ The assistant is the one always-on core container. It provides:
 - OpenCode on container port `4096`
 - the image-baked non-admin `@openpalm/ui` on container port `3000`
 - AKM memory, skills, lessons, and knowledge through `/stash`
-- scheduled automation through BusyBox `crond` and `akm task sync`
+- scheduled automation through Debian cron and `akm task sync`
 
 Principal mounts:
 
@@ -153,8 +153,10 @@ produce an allow/flag/block verdict.
 
 ## Scheduler
 
-The assistant entrypoint starts BusyBox `crond`, runs `akm task sync` at boot,
-and repeats the sync every 60 seconds. Task files live in
+The assistant entrypoint starts Debian cron, runs `akm task sync` at boot, and
+repeats the sync every 60 seconds. The entrypoint starts as root only for
+identity mapping and cron supervision; migration, reconciliation, OpenCode/UI,
+and scheduled jobs run as the configured `node` identity. Task files live in
 `knowledge/tasks/*.yml`; supported targets are `command`, `prompt`, and
 `workflow`.
 

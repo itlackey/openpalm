@@ -136,6 +136,7 @@ export type AutomationInfo = {
   schedule: string;
   timezone: string;
   enabled: boolean;
+  valid: boolean;
   action: AutomationActionInfo;
   on_failure: 'log' | 'audit';
   fileName: string;

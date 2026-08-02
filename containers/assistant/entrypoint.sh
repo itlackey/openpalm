@@ -1,33 +1,78 @@
-#!/usr/bin/env bash
+#!/bin/bash
 set -euo pipefail
 
+SYSTEM_PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+ASSISTANT_PATH="/opt/persistent/bin:/opt/openpalm/tools/node_modules/.bin:/home/opencode/.local/bin:/home/opencode/.bun/bin:/usr/local/bin:/opt/assistant-tools/bin:/usr/local/sbin:/usr/sbin:/usr/bin:/sbin:/bin"
+SCHEDULED_TASK_PATH="/opt/openpalm/tools/node_modules/.bin:/usr/local/bin:/opt/assistant-tools/bin:/usr/local/sbin:/usr/sbin:/usr/bin:/sbin:/bin:/opt/persistent/bin:/home/opencode/.local/bin:/home/opencode/.bun/bin"
+AKM_BIN="/usr/local/bin/akm"
+AKM_MIGRATE_BIN="/usr/local/bin/akm-migrate"
+NODE_BIN="/usr/local/bin/node"
+OPENCODE_BIN="/opt/openpalm/tools/node_modules/.bin/opencode"
+RUNTIME_DIR="/run/openpalm"
+USER_RUNTIME_DIR="${RUNTIME_DIR}/user"
+TASK_SYNC_FAILURE_MARKER="${USER_RUNTIME_DIR}/task-sync-failed"
 PORT="${OPENCODE_PORT:-4096}"
+UI_SUPERVISOR_PID=""
 
-maybe_prepare_nss_wrapper() {
-  if getent passwd "$(id -u)" >/dev/null 2>&1; then return 0; fi
+if [ "$EUID" -eq 0 ]; then
+  # Root startup must never resolve a command from an operator-writable mount.
+  export PATH="$SYSTEM_PATH"
+fi
 
-  # libnss-wrapper installs to the fixed Debian multiarch dir
-  # (/usr/lib/<triple>/libnss_wrapper.so). Glob those known locations instead of
-  # an unbounded recursive `find` over the whole library tree on every boot; the
-  # bare /usr/lib and /lib paths remain as a fallback if the layout differs.
-  local nss_wrapper_lib="" candidate
-  for candidate in /usr/lib/*/libnss_wrapper.so /lib/*/libnss_wrapper.so \
-                   /usr/lib/libnss_wrapper.so /lib/libnss_wrapper.so; do
-    if [ -e "$candidate" ]; then nss_wrapper_lib="$candidate"; break; fi
-  done
-  if [ -z "$nss_wrapper_lib" ]; then
-    echo "warning: current uid has no passwd entry and libnss_wrapper is unavailable; continuing" >&2
-    return 0
+runtime_id() {
+  local name="$1"
+  local value="$2"
+  if [[ ! "$value" =~ ^[1-9][0-9]*$ ]] || [ "${#value}" -gt 10 ]; then
+    echo "ERROR: ${name} must be an integer between 1 and 2147483647 (got ${value})." >&2
+    return 64
+  fi
+  local number=$((10#$value))
+  if [ "$number" -gt 2147483647 ]; then
+    echo "ERROR: ${name} must be an integer between 1 and 2147483647 (got ${value})." >&2
+    return 64
+  fi
+  printf '%s\n' "$number"
+}
+
+configure_assistant_identity() {
+  local runtime_uid runtime_gid existing_user runtime_group current_uid
+  runtime_uid="$(runtime_id OP_UID "${OP_UID:-1000}")"
+  runtime_gid="$(runtime_id OP_GID "${OP_GID:-1000}")"
+
+  existing_user="$(getent passwd "$runtime_uid" | cut -d: -f1 || true)"
+  if [ -n "$existing_user" ] && [ "$existing_user" != "node" ]; then
+    echo "ERROR: OP_UID ${runtime_uid} already belongs to account ${existing_user}; refusing an ambiguous cron identity." >&2
+    return 64
   fi
 
-  local passwd_file group_file
-  passwd_file="/tmp/openpalm-passwd"
-  group_file="/tmp/openpalm-group"
-  printf 'opencode:x:%s:%s:OpenPalm Assistant:%s:/bin/bash\n' "$(id -u)" "$(id -g)" "/home/opencode" > "$passwd_file"
-  printf 'opencode:x:%s:\n' "$(id -g)" > "$group_file"
-  export NSS_WRAPPER_PASSWD="$passwd_file"
-  export NSS_WRAPPER_GROUP="$group_file"
-  export LD_PRELOAD="$nss_wrapper_lib${LD_PRELOAD:+:$LD_PRELOAD}"
+  runtime_group="$(getent group "$runtime_gid" | cut -d: -f1 || true)"
+  case "$runtime_group" in
+    adm|crontab|disk|kmem|mail|shadow|staff|sudo|tty|utmp)
+      echo "ERROR: OP_GID ${runtime_gid} collides with privileged image group ${runtime_group}." >&2
+      return 64
+      ;;
+  esac
+  if [ -z "$runtime_group" ]; then
+    groupmod --gid "$runtime_gid" node
+    runtime_group="node"
+  fi
+
+  current_uid="$(id -u node)"
+  if [ "$current_uid" != "$runtime_uid" ]; then
+    # usermod recursively changes ownership below the account's current home
+    # when changing its UID. Keep that operation on the image-owned /home/node,
+    # never on the persistent /home/opencode bind mount.
+    usermod --home /home/node node
+    usermod --uid "$runtime_uid" node
+  fi
+  usermod --gid "$runtime_group" --home /home/opencode --shell /bin/bash node
+
+  export OP_UID="$runtime_uid" OP_GID="$runtime_gid"
+  mkdir -p "$USER_RUNTIME_DIR"
+  chown root:root "$RUNTIME_DIR"
+  chmod 0755 "$RUNTIME_DIR"
+  chown node:"$runtime_group" "$USER_RUNTIME_DIR"
+  chmod 0700 "$USER_RUNTIME_DIR"
 }
 
 ensure_home_layout() {
@@ -124,7 +169,6 @@ resolve_opencode_server_password() {
   if [ -z "${OPENCODE_SERVER_PASSWORD:-}" ] \
      && [ -n "${OPENCODE_SERVER_PASSWORD_FILE:-}" ] && [ -s "${OPENCODE_SERVER_PASSWORD_FILE}" ]; then
     OPENCODE_SERVER_PASSWORD="$(cat "${OPENCODE_SERVER_PASSWORD_FILE}")"
-    export OPENCODE_SERVER_PASSWORD
   fi
   if [ -z "${OPENCODE_SERVER_PASSWORD:-}" ]; then
     echo "ERROR: OPENCODE_AUTH=${OPENCODE_AUTH:-} is enabled but no password is available — set OPENCODE_SERVER_PASSWORD or OPENCODE_SERVER_PASSWORD_FILE (compose secret opencode_server_password)." >&2
@@ -145,7 +189,6 @@ start_ui() {
   # removing the configured UI is not an acceptable substitute for that warning.
   # Flat: generated explicitly by the access toggles, so unset means loopback.
   local assistant_bind_address="${OP_ASSISTANT_BIND_ADDRESS:-127.0.0.1}"
-  rm -f /tmp/openpalm-ui-skip
   if ! is_loopback_address "$assistant_bind_address" && ! opencode_auth_enabled; then
     echo "WARNING: OP_ASSISTANT_BIND_ADDRESS=${assistant_bind_address} exposes OpenCode beyond loopback while OPENCODE_AUTH=${OPENCODE_AUTH:-false} leaves it unauthenticated; the UI will still start. Publishing the assistant API is expected to generate a key — this combination means something wrote the bind by hand." >&2
   fi
@@ -155,14 +198,8 @@ start_ui() {
   local ui_index="${ui_build}/index.js"
   local ui_client_dir="${ui_build}/client"
   if [ ! -f "$ui_index" ]; then
-    echo "entrypoint: @openpalm/ui build not found — UI co-process skipped" >&2
-    # A missing/never-installed UI build is a non-fatal, permanent condition for
-    # this boot — the healthcheck (Dockerfile + core.compose.yml) probes the UI
-    # port UNLESS this marker exists, so without it a legitimately-absent UI
-    # would fail the healthcheck forever, marking the assistant unhealthy and
-    # blocking every service behind guardian's depends_on: service_healthy.
-    : > /tmp/openpalm-ui-skip
-    return 0
+    echo "ERROR: image-baked @openpalm/ui build not found at ${ui_index}." >&2
+    return 1
   fi
 
   # Write runtime-config.json into the served static root: adapter-node serves
@@ -188,7 +225,7 @@ start_ui() {
   local assistant_url="${OP_UI_DEFAULT_ASSISTANT_URL:-/oc}"
   local assistant_name="${OP_PROJECT_NAME:-}"
   mkdir -p "$ui_client_dir"
-  node -e '
+  "$NODE_BIN" -e '
     const fs = require("fs");
     const [file, url, assistantName] = process.argv.slice(1);
     // Never let a wildcard bind host leak into a browser-facing URL — an
@@ -279,8 +316,10 @@ start_ui() {
   # NON-admin build: OP_ENABLE_ADMIN and OP_INSIDE_ELECTRON are explicitly UNSET
   # in the child so isAdminCapable() is false and every /host (host:*) route
   # 404s — the Phase-5 Electron/CLI-only admin boundary holds in the container.
-  # No host OP_HOME is injected; the ONLY credential the child receives is the
-  # UI login password resolved above (session auth — not a host:* capability).
+  # No host OP_HOME or raw OpenCode password is injected. The child receives
+  # the UI login password plus the existing OPENCODE_SERVER_PASSWORD_FILE path
+  # so its same-origin /oc proxy can authenticate to the local server when the
+  # operator enables direct Assistant auth.
   #
   # OP_UI_NO_LOCAL_VOICE=1: this in-container co-process reaches only its OWN
   # 127.0.0.1, never the sibling voice container, so it must never advertise or
@@ -317,7 +356,7 @@ start_ui() {
     local healthy_uptime_ms="${OP_UI_RESPAWN_HEALTHY_UPTIME_MS:-60000}"
     while true; do
       local start_ts
-      start_ts="$(node -e 'process.stdout.write(String(Date.now()))')"
+      start_ts="$("$NODE_BIN" -e 'process.stdout.write(String(Date.now()))')"
       local exit_code
       # Recomputed each iteration (cheap; OP_VOICE_LAN_ACCESS never changes
       # mid-boot) so a respawn always reflects the same posture the container
@@ -326,34 +365,26 @@ start_ui() {
       if voice_lan_access_enabled; then
         voice_env_args=(OP_VOICE_URL=http://voice:8880)
       fi
-      if env -u OP_ENABLE_ADMIN -u OP_INSIDE_ELECTRON \
+      if /usr/bin/env -u OP_ENABLE_ADMIN -u OP_INSIDE_ELECTRON -u OPENCODE_SERVER_PASSWORD \
            HOST=0.0.0.0 PORT="$ui_port" HOST_HEADER=host PROTOCOL_HEADER=x-forwarded-proto \
+           PATH="$ASSISTANT_PATH" \
            "${voice_env_args[@]}" \
            OP_UI_SERVED_IN_CONTAINER=1 \
            OP_OPENCODE_URL=http://localhost:4096 \
            OP_UI_LOGIN_PASSWORD="$ui_login_password" \
-           node "$ui_index"; then
+           "$NODE_BIN" "$ui_index"; then
         exit_code=0
       else
         exit_code=$?
       fi
       local end_ts
-      end_ts="$(node -e 'process.stdout.write(String(Date.now()))')"
+      end_ts="$("$NODE_BIN" -e 'process.stdout.write(String(Date.now()))')"
       if [ "$((end_ts - start_ts))" -ge "$healthy_uptime_ms" ]; then
         attempt=0
       fi
       attempt=$((attempt + 1))
       if [ "$attempt" -ge "$max_attempts" ]; then
-        echo "ERROR: UI co-process exited $attempt times (last exit $exit_code); giving up on respawn. The published UI port now serves nothing — this container is reporting UNHEALTHY on purpose." >&2
-        # Deliberately NO skip marker here. The marker exists for a
-        # legitimately-absent build (an image without the UI), which is a real
-        # configuration. A UI that crash-looped to exhaustion is the opposite: it
-        # is the ONE port a home install publishes, and it is dead. Writing the
-        # marker made the healthcheck stop probing it, so the container went
-        # green over a dead front door — precisely the state the UI probe was
-        # added to prevent, and one Docker's restart policy cannot heal because
-        # healthy containers are never restarted. Failing the healthcheck makes
-        # it visible in `docker ps` and in the host UI's own status.
+        echo "ERROR: UI co-process exited $attempt times (last exit $exit_code); giving up on respawn." >&2
         break
       fi
       echo "warning: UI co-process exited (code $exit_code) — restarting in ${delay}s (attempt $((attempt + 1))/${max_attempts})" >&2
@@ -363,7 +394,8 @@ start_ui() {
     done
   ) &
 
-  echo "entrypoint: UI co-process supervisor PID $! started" >&2
+  UI_SUPERVISOR_PID=$!
+  echo "entrypoint: UI co-process supervisor PID $UI_SUPERVISOR_PID started" >&2
 }
 
 seed_default_agents_md() {
@@ -377,41 +409,89 @@ seed_default_agents_md() {
 run_akm_command() {
   # Keep akm invocations anchored to the assistant's persistent home rather than
   # inheriting a bootstrap-time HOME (e.g. /root) from the shell environment.
-  env HOME="${HOME:-/home/opencode}" "$@"
+  # A raw OpenCode password is intentionally withheld; scheduled work receives
+  # only the file path from the managed crontab environment.
+  /usr/bin/env -u OPENCODE_SERVER_PASSWORD HOME="${HOME:-/home/opencode}" "$@"
 }
 
-prepare_crontab_wrapper() {
-  local spool_dir="/tmp/openpalm-crontabs"
-  local wrapper_dir="/tmp/openpalm-bin"
-  local crontab_wrapper="${wrapper_dir}/crontab"
-  mkdir -p "$spool_dir" "$wrapper_dir"
-  install -m 755 /dev/null "$crontab_wrapper"
-  printf '%s\n' \
-    '#!/usr/bin/env sh' \
-    'set -eu' \
-    'file="/tmp/openpalm-crontabs/node"' \
-    'case "${1:-}" in' \
-    '  -l) [ -f "$file" ] || exit 1; cat "$file" ;;' \
-    '  -r) rm -f "$file" ;;' \
-    '  -) temp="${file}.tmp"; cat > "$temp"; mv "$temp" "$file" ;;' \
-    '  -e|"") exit 2 ;;' \
-    '  *) temp="${file}.tmp"; cp "$1" "$temp"; mv "$temp" "$file" ;;' \
-    'esac' > "$crontab_wrapper"
-  [ -f "$spool_dir/node" ] || : > "$spool_dir/node"
-  case ":$PATH:" in
-    *":$wrapper_dir:"*) ;;
-    *) export PATH="$wrapper_dir:$PATH" ;;
-  esac
+append_cron_environment() {
+  local file="$1"
+  local name="$2"
+  local value="${!name:-}"
+  if [ -z "$value" ]; then return 0; fi
+  if [[ "$value" == *$'\n'* || "$value" == *$'\r'* ]]; then
+    echo "ERROR: ${name} contains a newline and cannot be placed in the cron environment." >&2
+    return 64
+  fi
+  printf '%s=%s\n' "$name" "$value" >> "$file"
+}
+
+prepare_user_crontab() {
+  local crontab_file
+  crontab_file="$(mktemp "${USER_RUNTIME_DIR}/crontab.XXXXXX")"
+  chmod 0600 "$crontab_file"
+  {
+    printf '%s\n' \
+      '# Auto-generated by the OpenPalm Assistant entrypoint; derived from knowledge/tasks/*.yml.' \
+      'MAILTO=""' \
+      'SHELL=/bin/bash' \
+      "PATH=${SCHEDULED_TASK_PATH}" \
+      'HOME=/home/opencode'
+  } > "$crontab_file"
+
+  local name
+  for name in AKM_BUNDLE_DIR AKM_CONFIG_DIR AKM_CACHE_DIR AKM_DATA_DIR AKM_STATE_DIR \
+              APPRISE_NOTIFY_CONFIG OPENCODE_API_URL OPENCODE_CONFIG_DIR OPENCODE_AUTH \
+              OPENCODE_SERVER_PASSWORD_FILE OPENCODE_SERVER_USERNAME; do
+    if ! append_cron_environment "$crontab_file" "$name"; then
+      rm -f "$crontab_file"
+      return 64
+    fi
+  done
+
+  # The cron spool is derived container state. Rebuild it on every boot rather
+  # than preserving stale bindings or unsupported hand-written entries.
+  if ! /usr/bin/crontab "$crontab_file"; then
+    rm -f "$crontab_file"
+    echo "ERROR: failed to install the Assistant user's native crontab." >&2
+    return 1
+  fi
+  rm -f "$crontab_file"
+}
+
+sync_akm_tasks() {
+  local output=""
+  local args=(task sync --format json --quiet "$@")
+  if ! output="$(run_akm_command /usr/bin/env PATH="$SCHEDULED_TASK_PATH" /usr/bin/timeout --signal=TERM --kill-after=5s 50s "$AKM_BIN" "${args[@]}")"; then
+    : > "$TASK_SYNC_FAILURE_MARKER"
+    if [ -n "$output" ]; then printf '%s\n' "$output" >&2; fi
+    echo "error: akm task sync failed" >&2
+    return 1
+  fi
+  printf '%s\n' "$output" >&2
+  if ! printf '%s\n' "$output" | /usr/bin/jq -e -s \
+      'length == 1 and .[0].shape == "task-sync" and .[0].schemaVersion == 1 and ((.[0].skipped | type) == "array")' \
+      >/dev/null; then
+    : > "$TASK_SYNC_FAILURE_MARKER"
+    echo "error: akm task sync returned invalid output" >&2
+    return 1
+  fi
+  if ! printf '%s\n' "$output" | /usr/bin/jq -e -s '.[0].skipped | length == 0' >/dev/null; then
+    : > "$TASK_SYNC_FAILURE_MARKER"
+    echo "error: akm task sync reported skipped tasks" >&2
+    return 2
+  fi
+  rm -f "$TASK_SYNC_FAILURE_MARKER"
 }
 
 run_akm_schema_migration() {
-  if ! command -v akm >/dev/null 2>&1; then return 0; fi
+  if [ ! -x "$AKM_BIN" ]; then return 0; fi
 
   local config_file="${AKM_CONFIG_DIR:-/etc/akm}/config.json"
   local target_file="${AKM_STATE_DIR:-/opt/akm/state}/openpalm-0.9-target.json"
   local blocked_file="${AKM_STATE_DIR:-/opt/akm/state}/openpalm-0.9-blocked-version"
   local akm_version=""
-  akm_version="$(run_akm_command akm --version)"
+  akm_version="$(run_akm_command "$AKM_BIN" --version)"
   if [ -f "$blocked_file" ] && [ "$(<"$blocked_file")" = "$akm_version" ]; then
     echo "error: akm $akm_version migration previously failed and was restored; install a newer AKM release before retrying" >&2
     return 78
@@ -420,9 +500,9 @@ run_akm_schema_migration() {
   local migration_backup_run=""
   restore_failed_akm_migration() {
     [ -n "$migration_backup_run" ] || return 0
-    command -v akm-migrate >/dev/null 2>&1 || return 0
+    [ -x "$AKM_MIGRATE_BIN" ] || return 0
     echo "entrypoint: restoring failed akm migration run $migration_backup_run..." >&2
-    if run_akm_command akm-migrate restore --for 0.9.0 --run "$migration_backup_run" --confirm >&2; then
+    if run_akm_command "$AKM_MIGRATE_BIN" restore --for 0.9.0 --run "$migration_backup_run" --confirm >&2; then
       printf '%s\n' "$akm_version" > "$blocked_file"
       echo "entrypoint: akm migration restored; blocked further retries with $akm_version" >&2
     else
@@ -430,7 +510,7 @@ run_akm_schema_migration() {
     fi
   }
   if [ -f "$config_file" ]; then
-    config_version="$(node -e 'try { process.stdout.write(JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")).configVersion || "") } catch {}' "$config_file")"
+    config_version="$("$NODE_BIN" -e 'try { process.stdout.write(JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")).configVersion || "") } catch {}' "$config_file")"
   fi
 
   if [ -f "$config_file" ] && [ "$config_version" != "0.9.0" ]; then
@@ -450,7 +530,7 @@ run_akm_schema_migration() {
           fi
         done
       fi
-      node -e '
+      "$NODE_BIN" -e '
         const fs = require("fs");
         const file = process.argv[1];
         const config = JSON.parse(fs.readFileSync(file, "utf8"));
@@ -463,30 +543,34 @@ run_akm_schema_migration() {
       config_version="0.8.0"
     fi
     echo "entrypoint: preparing akm 0.8 to 0.9 migration..." >&2
-    node /usr/local/lib/openpalm/prepare-akm-09-config.mjs "$config_file" "$target_file"
-    run_akm_command akm migrate status --config "$target_file" >&2
-    run_akm_command akm migrate apply --config "$target_file" --dry-run >&2
+    "$NODE_BIN" /usr/local/lib/openpalm/prepare-akm-09-config.mjs "$config_file" "$target_file"
+    run_akm_command "$AKM_BIN" migrate status --config "$target_file" >&2
+    run_akm_command "$AKM_BIN" migrate apply --config "$target_file" --dry-run >&2
     local apply_output=""
-    apply_output="$(run_akm_command akm migrate apply --config "$target_file")"
+    apply_output="$(run_akm_command "$AKM_BIN" migrate apply --config "$target_file")"
     printf '%s\n' "$apply_output" >&2
-    migration_backup_run="$(node -e '
+    migration_backup_run="$("$NODE_BIN" -e '
       try {
         const value = JSON.parse(process.argv[1]);
         if (typeof value.backupRunId === "string") process.stdout.write(value.backupRunId);
       } catch {}
     ' "$apply_output")"
-    if command -v akm-migrate >/dev/null 2>&1; then
-      if ! run_akm_command akm-migrate storage --from 0.8 --yes >&2; then
+    if [ -x "$AKM_MIGRATE_BIN" ]; then
+      if ! run_akm_command "$AKM_MIGRATE_BIN" storage --from 0.8 --yes >&2; then
         restore_failed_akm_migration
         return 78
       fi
     fi
-    prepare_crontab_wrapper
-    if ! run_akm_command akm task sync --rebind >&2; then
+    local task_sync_rc=0
+    sync_akm_tasks --rebind || task_sync_rc=$?
+    if [ "$task_sync_rc" -eq 1 ]; then
       restore_failed_akm_migration
       return 78
     fi
-    if ! run_akm_command akm index >&2; then
+    if [ "$task_sync_rc" -eq 2 ]; then
+      echo "warning: migrated task reconciliation contains skipped tasks; fix the task files and retry without changing AKM versions" >&2
+    fi
+    if ! run_akm_command "$AKM_BIN" index >&2; then
       restore_failed_akm_migration
       return 78
     fi
@@ -494,7 +578,7 @@ run_akm_schema_migration() {
 
   echo "entrypoint: checking akm health..." >&2
   local rc=0
-  run_akm_command akm health >&2 || rc=$?
+  run_akm_command "$AKM_BIN" health >&2 || rc=$?
   if [ "$rc" = "0" ] || [ "$rc" = "4" ]; then
     echo "entrypoint: akm health check complete (exit $rc)" >&2
   else
@@ -504,102 +588,13 @@ run_akm_schema_migration() {
   fi
 }
 
-start_cron_and_sync_tasks() {
-  # Build a crontab preamble with environment variables and user env keys
-  # so cron jobs inherit the same secrets as the main process. Keep it in a
-  # managed block so restarts update the env preamble without clobbering the
-  # akm-owned task entries in the user's crontab.
-  strip_managed_cron_preamble() {
-    local existing="$1"
-    local line=""
-    local in_block=0
-    while IFS= read -r line || [ -n "$line" ]; do
-      if [ "$line" = "# openpalm:cron-preamble BEGIN" ]; then
-        in_block=1
-        continue
-      fi
-      if [ "$line" = "# openpalm:cron-preamble END" ]; then
-        in_block=0
-        continue
-      fi
-      if [ "$in_block" = "0" ]; then
-        printf '%s\n' "$line"
-      fi
-    done <<< "$existing"
-  }
-
-  local crontab_file="/tmp/crontab"
-  local spool_dir="/tmp/openpalm-crontabs"
-  local wrapper_dir="/tmp/openpalm-bin"
-  local crontab_wrapper="${wrapper_dir}/crontab"
-  local existing_crontab=""
-  local preserved_crontab=""
-  prepare_crontab_wrapper
-  # Derive the cron PATH from the boot-time PATH (wrapper dir already first,
-  # exported above) so scheduled tasks see the same tools as interactive
-  # sessions — a hardcoded subset silently dropped the tool venv
-  # (/opt/assistant-tools/bin for apprise) and broke the `notify` skill under
-  # cron (#551). Belt-and-braces: re-append the venv dir in case a
-  # login-shell /etc/profile reset removed it from PATH.
-  local cron_path="$PATH"
-  local extra_dir
-  for extra_dir in /opt/assistant-tools/bin; do
-    case ":$cron_path:" in
-      *":$extra_dir:"*) ;;
-      *) cron_path="$cron_path:$extra_dir" ;;
-    esac
-  done
-  echo "# openpalm:cron-preamble BEGIN" > "$crontab_file"
-  echo "# Auto-generated by entrypoint — do not edit" >> "$crontab_file"
-  echo "SHELL=/bin/bash" >> "$crontab_file"
-  echo "PATH=$cron_path" >> "$crontab_file"
-
-  # Forward selected env vars into cron jobs
-  for var in HOME AKM_BUNDLE_DIR AKM_CONFIG_DIR AKM_CACHE_DIR AKM_DATA_DIR AKM_STATE_DIR \
-             OPENCODE_API_URL OPENCODE_CONFIG_DIR; do
-    if [ -n "${!var:-}" ]; then
-      echo "export $var=\"${!var}\"" >> "$crontab_file"
+sync_tasks_forever() {
+  while true; do
+    sleep 60
+    if ! sync_akm_tasks; then
+      echo "warning: background akm task reconciliation is degraded; retrying in 60s" >&2
     fi
   done
-  echo "# openpalm:cron-preamble END" >> "$crontab_file"
-
-  if existing_crontab="$(crontab -l 2>/dev/null)"; then
-    preserved_crontab="$(strip_managed_cron_preamble "$existing_crontab")"
-    if [ -n "$preserved_crontab" ]; then
-      printf '\n%s\n' "$preserved_crontab" >> "$crontab_file"
-    fi
-  fi
-
-  # Install the managed preamble before syncing so akm preserves it when it
-  # writes task blocks into the same per-user crontab.
-  crontab "$crontab_file" 2>/dev/null || true
-
-  # Sync automation tasks from the akm bundle into cron, then start cron.
-  local tasks_dir="${AKM_BUNDLE_DIR:-/stash}/tasks"
-  if command -v akm >/dev/null 2>&1 && [ -d "$tasks_dir" ]; then
-    if ! run_akm_command akm task sync >&2; then
-      echo "warning: initial akm task sync failed; continuing startup" >&2
-    fi
-  fi
-
-  if [ -f "$crontab_file" ]; then
-    rm -f "$crontab_file"
-    if ! busybox crond -c "$spool_dir" -L /dev/stderr; then
-      echo "warning: busybox crond failed to start; scheduled automations will not run" >&2
-    fi
-  fi
-
-  # Background re-sync loop: picks up task file changes without restart
-  (
-    while true; do
-      sleep 60
-      if command -v akm >/dev/null 2>&1 && [ -d "$tasks_dir" ]; then
-        if ! run_akm_command akm task sync >&2; then
-          echo "warning: background akm task sync failed; retrying in 60s" >&2
-        fi
-      fi
-    done
-  ) &
 }
 
 start_opencode() {
@@ -611,7 +606,7 @@ start_opencode() {
 
   # --print-logs sends OpenCode's logs to stderr (docker logs) instead of a file;
   # --log-level sets verbosity (override via OPENCODE_LOG_LEVEL).
-  local cmd=(opencode web --hostname 0.0.0.0 --port "$PORT" --print-logs --log-level "${OPENCODE_LOG_LEVEL:-INFO}")
+  local cmd=("$OPENCODE_BIN" web --hostname 0.0.0.0 --port "$PORT" --print-logs --log-level "${OPENCODE_LOG_LEVEL:-INFO}")
 
   # No --cors grant. The browser reaches OpenCode through the UI's OWN
   # same-origin /oc proxy (packages/ui routes/oc), so it never makes a
@@ -620,14 +615,158 @@ start_opencode() {
   # LAN addresses, so the correct origins had to be resolved host-side and
   # injected — and getting them wrong surfaced as a bare network error.
 
-  exec "${cmd[@]}"
+  if opencode_auth_enabled; then
+    exec /usr/bin/env PATH="$ASSISTANT_PATH" OPENCODE_SERVER_PASSWORD="$OPENCODE_SERVER_PASSWORD" "${cmd[@]}"
+  fi
+  exec /usr/bin/env -u OPENCODE_SERVER_PASSWORD PATH="$ASSISTANT_PATH" "${cmd[@]}"
 }
 
-ensure_home_layout
-maybe_prepare_nss_wrapper
-seed_default_agents_md
-run_akm_schema_migration
-start_cron_and_sync_tasks
-resolve_opencode_server_password
-start_ui
-start_opencode
+require_assistant_identity() {
+  if [ "$EUID" -eq 0 ] || [ "$(id -un)" != "node" ]; then
+    echo "ERROR: Assistant work must run as the configured node account." >&2
+    return 70
+  fi
+}
+
+bootstrap_assistant() {
+  require_assistant_identity
+  ensure_home_layout
+  seed_default_agents_md
+  prepare_user_crontab
+  run_akm_schema_migration
+  if ! sync_akm_tasks; then
+    echo "warning: initial akm task reconciliation is degraded; the healthcheck will remain red until a retry succeeds" >&2
+  fi
+}
+
+serve_assistant() {
+  require_assistant_identity
+  resolve_opencode_server_password
+  start_ui
+  start_opencode &
+  local opencode_pid=$!
+  local status=0
+  set +e
+  wait -n "$UI_SUPERVISOR_PID" "$opencode_pid"
+  status=$?
+  set -e
+  if [ "$status" -eq 0 ]; then status=1; fi
+  kill -TERM "$UI_SUPERVISOR_PID" "$opencode_pid" 2>/dev/null || true
+  wait "$UI_SUPERVISOR_PID" "$opencode_pid" 2>/dev/null || true
+  return "$status"
+}
+
+start_root_runtime() {
+  if [ "$EUID" -ne 0 ]; then
+    echo "ERROR: the Assistant entrypoint must start as root so Debian cron can safely run node's user crontab." >&2
+    return 70
+  fi
+
+  configure_assistant_identity
+  rm -f "${RUNTIME_DIR}/cron.pid" "${RUNTIME_DIR}/sync.pid" "${RUNTIME_DIR}/app.pid"
+  local crontab_gid
+  crontab_gid="$(getent group crontab | cut -d: -f3)"
+  if [ -z "$crontab_gid" ]; then
+    echo "ERROR: Debian crontab group is missing." >&2
+    return 70
+  fi
+  local assistant_exec=(
+    /usr/bin/setpriv
+    --reuid=node
+    --regid="$(id -g node)"
+    --groups="$crontab_gid"
+    --bounding-set=-all
+    --inh-caps=-all
+    --ambient-caps=-all
+    --no-new-privs
+    /usr/bin/env
+    HOME=/home/opencode
+    USER=node
+    LOGNAME=node
+    SHELL=/bin/bash
+    PATH="$SYSTEM_PATH"
+  )
+  local assistant_app_exec=(
+    /usr/bin/setpriv
+    --reuid=node
+    --regid="$(id -g node)"
+    --clear-groups
+    --bounding-set=-all
+    --inh-caps=-all
+    --ambient-caps=-all
+    --no-new-privs
+    /usr/bin/env
+    HOME=/home/opencode
+    USER=node
+    LOGNAME=node
+    SHELL=/bin/bash
+    PATH="$SYSTEM_PATH"
+  )
+  "${assistant_exec[@]}" /usr/local/bin/opencode-entrypoint.sh --bootstrap
+
+  /usr/bin/env -i PATH="$SYSTEM_PATH" \
+    /usr/bin/setpriv --no-new-privs /usr/sbin/cron -f &
+  local cron_pid=$!
+  printf '%s\n' "$cron_pid" > "${RUNTIME_DIR}/cron.pid"
+  sleep 0.2
+  if ! kill -0 "$cron_pid" 2>/dev/null; then
+    wait "$cron_pid" || true
+    echo "ERROR: Debian cron failed to start." >&2
+    return 1
+  fi
+
+  "${assistant_exec[@]}" /usr/local/bin/opencode-entrypoint.sh --sync-loop &
+  local sync_pid=$!
+  printf '%s\n' "$sync_pid" > "${RUNTIME_DIR}/sync.pid"
+
+  "${assistant_app_exec[@]}" /usr/local/bin/opencode-entrypoint.sh --serve &
+  local app_pid=$!
+  printf '%s\n' "$app_pid" > "${RUNTIME_DIR}/app.pid"
+
+  shutdown_runtime() {
+    local status="${1:-0}"
+    trap - TERM INT HUP
+    kill -TERM -1 2>/dev/null || true
+    (
+      sleep 5
+      kill -KILL "$cron_pid" "$sync_pid" "$app_pid" 2>/dev/null || true
+    ) &
+    local escalation_pid=$!
+    wait "$cron_pid" "$sync_pid" "$app_pid" 2>/dev/null || true
+    kill "$escalation_pid" 2>/dev/null || true
+    wait "$escalation_pid" 2>/dev/null || true
+    # Required children may have left scheduled or UI descendants behind.
+    kill -KILL -1 2>/dev/null || true
+    exit "$status"
+  }
+  trap 'shutdown_runtime 0' TERM INT HUP
+
+  local status=0
+  set +e
+  wait -n "$cron_pid" "$sync_pid" "$app_pid"
+  status=$?
+  set -e
+  if [ "$status" -eq 0 ]; then status=1; fi
+  echo "ERROR: a required Assistant process exited; stopping the container." >&2
+  shutdown_runtime "$status"
+}
+
+case "${1:-}" in
+  --bootstrap)
+    bootstrap_assistant
+    ;;
+  --sync-loop)
+    require_assistant_identity
+    sync_tasks_forever
+    ;;
+  --serve)
+    serve_assistant
+    ;;
+  "")
+    start_root_runtime
+    ;;
+  *)
+    echo "ERROR: unknown Assistant entrypoint mode: $1" >&2
+    exit 64
+    ;;
+esac

@@ -18,7 +18,8 @@ import {
 } from "$lib/server/helpers.js";
 import { readAutomationLogs } from "@openpalm/lib";
 
-const SAFE_NAME_RE = /^[a-zA-Z0-9._-]+(?:\.ya?ml)?$/;
+const SAFE_NAME_RE = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
+const UNSUPPORTED_SUFFIX_RE = /\.yaml$/i;
 const DEFAULT_LIMIT = 50;
 const MAX_LIMIT = 500;
 
@@ -31,9 +32,13 @@ export const GET: RequestHandler = async (event) => {
 
   const state = getState();
   const rawName = event.params.name ?? "";
-  const taskId = rawName.replace(/\.ya?ml$/, '');
+  const taskId = rawName.replace(/\.yml$/, '');
 
-  if (!SAFE_NAME_RE.test(rawName) || rawName.includes("..") || rawName.includes("/")) {
+  if (
+    !SAFE_NAME_RE.test(rawName) ||
+    UNSUPPORTED_SUFFIX_RE.test(rawName) ||
+    rawName.includes("/")
+  ) {
     return errorResponse(400, "invalid_input", "name must match /^[a-zA-Z0-9._-]+$/", {}, requestId);
   }
 

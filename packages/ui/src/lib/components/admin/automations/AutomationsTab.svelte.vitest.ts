@@ -20,6 +20,7 @@ const data = {
 			schedule: '0 8 * * *',
 			timezone: 'UTC',
 			enabled: true,
+			valid: true,
 			action: { type: 'assistant' as const, content: 'Summarize' },
 			on_failure: 'log' as const,
 			fileName: 'daily-summary.yml'
@@ -45,5 +46,34 @@ describe('AutomationsTab delete confirmation accessibility', () => {
 		await userEvent.keyboard('{Escape}');
 		await expect.element(dialog).not.toBeInTheDocument();
 		await expect.element(trigger).toHaveFocus();
+	});
+});
+
+describe('AutomationsTab invalid task recovery', () => {
+	test('keeps raw invalid tasks editable and disables execution', async () => {
+		await render(AutomationsTab, {
+			props: {
+				data: {
+					automations: [{
+						name: 'broken',
+						description: 'AKM could not parse this task. Edit or delete the raw file.',
+						schedule: '',
+						timezone: 'UTC',
+						enabled: false,
+						valid: false,
+						action: { type: 'shell' as const },
+						on_failure: 'log' as const,
+						fileName: 'broken.yml'
+					}]
+				},
+				loading: false,
+				error: '',
+				onRefresh: vi.fn()
+			}
+		});
+
+		await expect.element(page.getByText('Needs repair')).toBeInTheDocument();
+		await expect.element(page.getByRole('button', { name: 'Run now' })).toBeDisabled();
+		await expect.element(page.getByRole('button', { name: 'Edit' })).toBeEnabled();
 	});
 });

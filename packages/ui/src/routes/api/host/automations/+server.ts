@@ -13,7 +13,7 @@ import {
   requireCapability,
   getRequestId,
 } from "$lib/server/helpers.js";
-import { loadAutomations } from "@openpalm/lib";
+import { listTaskFiles, loadAutomations } from "@openpalm/lib";
 
 export const GET: RequestHandler = async (event) => {
   const requestId = getRequestId(event);
@@ -24,20 +24,38 @@ export const GET: RequestHandler = async (event) => {
 
   const state = getState();
 
-  const automations = loadAutomations(state.stashDir).map((c) => ({
-    name: c.name,
-    description: c.description,
-    schedule: c.schedule,
-    timezone: c.timezone,
-    enabled: c.enabled,
-    action: {
-      type: c.action.type,
-      content: c.action.content,
-      agent: c.action.agent
-    },
-    on_failure: c.on_failure,
-    fileName: c.fileName,
-  }));
+  const parsedByFile = new Map(loadAutomations(state.stashDir).map((config) => [config.fileName, config]));
+  const automations = listTaskFiles(state.stashDir).map((file) => {
+    const config = parsedByFile.get(file.name);
+    if (!config) {
+      return {
+        name: file.name.slice(0, -4),
+        description: 'AKM could not parse this task. Edit or delete the raw file.',
+        schedule: '',
+        timezone: 'UTC',
+        enabled: false,
+        valid: false,
+        action: { type: 'shell' as const },
+        on_failure: 'log' as const,
+        fileName: file.name,
+      };
+    }
+    return {
+      name: config.name,
+      description: config.description,
+      schedule: config.schedule,
+      timezone: config.timezone,
+      enabled: config.enabled,
+      valid: true,
+      action: {
+        type: config.action.type,
+        content: config.action.content,
+        agent: config.action.agent
+      },
+      on_failure: config.on_failure,
+      fileName: config.fileName,
+    };
+  });
 
   return jsonResponse(200, { automations }, requestId);
 };

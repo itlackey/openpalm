@@ -1,8 +1,8 @@
 /**
  * POST /api/host/automations/:name/run — Manually trigger an automation.
  *
- * Spawns `akm task run <id>` directly (no sentinel files). The task
- * must exist in ${stashDir}/tasks/<name>.yml to be accepted.
+ * Executes `akm task run <id>` inside the Assistant container. The task must
+ * exist in ${stashDir}/tasks/<name>.yml to be accepted.
  */
 import type { RequestHandler } from "./$types";
 import { getState } from "$lib/server/state.js";
@@ -16,10 +16,11 @@ import {
 import {
   loadAutomations,
   executeAutomation,
-  buildAkmEnv,
 } from "@openpalm/lib";
 
-const SAFE_NAME_RE = /^[a-zA-Z0-9._-]+(?:\.ya?ml)?$/;
+const SAFE_NAME_RE = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
+const UNSUPPORTED_SUFFIX_RE = /\.yaml$/i;
+const AMBIGUOUS_TASK_ID_SUFFIX_RE = /\.ya?ml$/i;
 
 export const POST: RequestHandler = async (event) => {
   const requestId = getRequestId(event);
@@ -32,9 +33,14 @@ export const POST: RequestHandler = async (event) => {
   const rawName = event.params.name ?? "";
 
   // Accept both bare IDs and full filenames; normalize to bare ID.
-  const taskId = rawName.replace(/\.ya?ml$/, '');
+  const taskId = rawName.replace(/\.yml$/, '');
 
-  if (!SAFE_NAME_RE.test(rawName) || rawName.includes("..") || rawName.includes("/")) {
+  if (
+    !SAFE_NAME_RE.test(rawName) ||
+    UNSUPPORTED_SUFFIX_RE.test(rawName) ||
+    AMBIGUOUS_TASK_ID_SUFFIX_RE.test(taskId) ||
+    rawName.includes("/")
+  ) {
     return errorResponse(400, "invalid_input", "name must match /^[a-zA-Z0-9._-]+$/", {}, requestId);
   }
 
@@ -43,7 +49,7 @@ export const POST: RequestHandler = async (event) => {
     return errorResponse(404, "not_found", `Automation '${taskId}' is not installed.`, {}, requestId);
   }
 
-  const result = await executeAutomation(taskId, buildAkmEnv(state));
+  const result = await executeAutomation(state, taskId);
 
   return jsonResponse(202, { ok: result.ok, name: taskId, status: result.status, error: result.error ?? null }, requestId);
 };

@@ -72,7 +72,7 @@ RUN ONNXRUNTIME_NODE_INSTALL=skip npm install --global --omit=dev --include=opti
               "${AKM_MODULES}/onnxruntime-web" \
     && chmod -R a+rX /usr/local/lib/node_modules/akm-cli \
     && test "$(npm root --global)" = "/usr/local/lib/node_modules" \
-    && test "$(akm --version)" = "${AKM_CLI_VERSION}" \
+    && test "$(/usr/local/bin/akm --version)" = "${AKM_CLI_VERSION}" \
     && test "$(readlink -f /usr/local/bin/akm)" = "/usr/local/lib/node_modules/akm-cli/dist/akm" \
     && test "$(readlink -f /usr/local/bin/akm-migrate)" = "/usr/local/lib/node_modules/akm-cli/dist/akm-migrate" \
     && rm -rf /root/.npm
@@ -86,8 +86,8 @@ ARG AKM_CLI_VERSION
 ENV BUN_VERSION=${BUN_VERSION} \
     AKM_CLI_VERSION=${AKM_CLI_VERSION}
 
-# Combined OS packages: base tools (tini) + assistant-specific (busybox
-# crond/crontab tooling, python3, jq, gh) + sqlite3 so agents can query
+# Combined OS packages: base tools (tini) + assistant-specific (Debian cron,
+# identity management, python3, jq, gh) + sqlite3 so agents can query
 # SQLite directly. The Postgres client package and the unused GLib runtime
 # library were dropped (IMG-5, 0.13.0): nothing links the latter, and
 # nothing in this image talks to Postgres — its client is one
@@ -95,8 +95,7 @@ ENV BUN_VERSION=${BUN_VERSION} \
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         tini curl git ca-certificates bash unzip \
-        libnss-wrapper \
-        busybox \
+        cron passwd \
         python3 jq \
         sqlite3 \
     && curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
@@ -105,6 +104,8 @@ RUN apt-get update \
         > /etc/apt/sources.list.d/github-cli.list \
     && apt-get update \
     && apt-get install -y --no-install-recommends gh \
+    && printf '%s\n' '# OpenPalm intentionally runs only per-user AKM crontabs.' > /etc/crontab \
+    && test -z "$(find /etc/cron.d -mindepth 1 -type f ! -name .placeholder -print -quit)" \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Bun into /usr/local. Later we override BUN_INSTALL +
@@ -114,10 +115,10 @@ ENV BUN_INSTALL=/usr/local
 RUN curl -fsSL https://bun.sh/install | bash -s -- "$BUN_VERSION"
 ENV BUN_INSTALL=
 
-# Bake OpenCode at /opt/openpalm/tools. --chown sets node (UID 1000) ownership
-# in-layer. No bind mount overlays this path, so the image remains the source of
-# truth for the exact OpenCode version.
-COPY --from=toolbuild --chown=1000:1000 /opt/openpalm/tools/node_modules /opt/openpalm/tools/node_modules
+# Bake OpenCode at /opt/openpalm/tools as root-owned, world-readable image
+# content. No bind mount overlays this path, so the exact launcher cannot be
+# replaced by the runtime Assistant identity.
+COPY --from=toolbuild /opt/openpalm/tools/node_modules /opt/openpalm/tools/node_modules
 COPY containers/assistant/tools/package.json /opt/openpalm/tools/package.json
 
 # Bake AKM into npm's real global root. Recreate npm's relative bin links in the
@@ -126,7 +127,7 @@ COPY --from=akmbuild /usr/local/lib/node_modules/akm-cli /usr/local/lib/node_mod
 RUN ln -s ../lib/node_modules/akm-cli/dist/akm /usr/local/bin/akm \
     && ln -s ../lib/node_modules/akm-cli/dist/akm-migrate /usr/local/bin/akm-migrate \
     && test "$(npm root --global)" = "/usr/local/lib/node_modules" \
-    && test "$(akm --version)" = "${AKM_CLI_VERSION}"
+    && test "$(/usr/local/bin/akm --version)" = "${AKM_CLI_VERSION}"
 
 # Pre-bake akm's default local embedding model so semantic search works out of
 # the box with NO embedding configuration and NO runtime network. When
@@ -183,12 +184,12 @@ ENV APPRISE_NOTIFY_CONFIG="/stash/env/apprise.conf"
 # $HOME/.config/gcloud, which persists via the assistant home bind mount
 # without needing a CLOUDSDK_CONFIG override here.
 
-# Seed the runtime dirs and make them group-writable so a container entered with
-# `--user ${OP_UID}:${OP_GID}` can populate them on first boot. The container
-# runs as the host operator's ARBITRARY uid:gid (not 1000), and this build never
-# knows that id, so a fixed owner/group (the g=u "arbitrary uid" convention
-# needs gid 0, which OpenPalm does not use) can never match it; world-writable
-# is the only image-side mode that works. These paths fall into three
+# Seed the runtime dirs and make them writable by the configured Assistant
+# identity. The entrypoint remaps `node` to the host operator's arbitrary
+# uid:gid at boot, and this build never knows those ids, so a fixed owner/group
+# cannot match them; world-writable is the only image-side mode that works for
+# unmounted image paths and a freshly seeded named volume. These paths fall into
+# three
 # different cases, not one:
 #   - `/opt/persistent` is a real named volume (still mounted — #585 kept it).
 #     Docker seeds a fresh volume from this image path WITH this ownership the
@@ -286,15 +287,13 @@ COPY AGENTS.md /usr/local/share/openpalm/AGENTS.md
 
 EXPOSE 4096 3000
 
-# Probes OpenCode unconditionally, plus the UI co-process unless its build is
-# absent or the supervisor exhausted its restart attempts. Those conditions
-# write /tmp/openpalm-ui-skip and must not themselves register as a healthcheck
-# failure. The UI probe hits the login/setup-exempt
+# Probes the root-owned cron daemon and task reconciliation state, OpenCode,
+# and the required UI co-process. The UI probe hits the login/setup-exempt
 # /health route on the FIXED in-container UI port 3000 (OP_UI_PORT is the
 # host-facing knob and is deliberately NEVER passed into the container env, so
 # the container-side default 3000 is always the real listen port). Mirrors
-# core.compose.yml's own healthcheck (same skip-marker exemption, same fixed
-# port). curl is already installed above.
+# core.compose.yml's own healthcheck on the same fixed port. curl is already
+# installed above.
 #
 # #564 P1-1 (D3 mirror): the /health probe authenticates iff OPENCODE_AUTH is
 # truthy, using the same truthy set and username/password resolution as
@@ -317,7 +316,7 @@ EXPOSE 4096 3000
 # the real stack, and healthcheck-parity.test.ts pins the two together so a
 # future edit to one side alone fails CI instead of silently drifting again.
 HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=5 \
-  CMD bash -c 'case "${OPENCODE_AUTH:-false}" in true|TRUE|True|1|yes|YES) curl -sf -u "${OPENCODE_SERVER_USERNAME:-opencode}:${OPENCODE_SERVER_PASSWORD:-$(cat "${OPENCODE_SERVER_PASSWORD_FILE:-/run/secrets/opencode_server_password}")}" http://localhost:${OPENCODE_PORT:-4096}/health >/dev/null ;; *) curl -sf http://localhost:${OPENCODE_PORT:-4096}/health >/dev/null ;; esac && { [ -f /tmp/openpalm-ui-skip ] || curl -sf http://localhost:3000/health >/dev/null; }' || exit 1
+  CMD /bin/bash -c 'test -r /run/openpalm/cron.pid || exit 1; kill -0 "$(/usr/bin/cat /run/openpalm/cron.pid)" || exit 1; test ! -e /run/openpalm/user/task-sync-failed || exit 1; case "${OPENCODE_AUTH:-false}" in true|TRUE|True|1|yes|YES) /usr/bin/curl -sf -u "${OPENCODE_SERVER_USERNAME:-opencode}:${OPENCODE_SERVER_PASSWORD:-$(/usr/bin/cat "${OPENCODE_SERVER_PASSWORD_FILE:-/run/secrets/opencode_server_password}")}" http://localhost:${OPENCODE_PORT:-4096}/health >/dev/null ;; *) /usr/bin/curl -sf http://localhost:${OPENCODE_PORT:-4096}/health >/dev/null ;; esac || exit 1; /usr/bin/curl -sf http://localhost:3000/health >/dev/null || exit 1'
 
-ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/opencode-entrypoint.sh"]
-USER node
+ENTRYPOINT ["/usr/bin/tini", "-g", "--", "/usr/local/bin/opencode-entrypoint.sh"]
+USER root

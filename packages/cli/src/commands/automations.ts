@@ -1,56 +1,41 @@
 import { defineCommand } from 'citty';
-import { execFile } from 'node:child_process';
-import { existsSync, readdirSync } from 'node:fs';
-import { join } from 'node:path';
-import { resolveOpenPalmHome } from '@openpalm/lib';
+import {
+  getAutomationRegistrationStatus,
+  type AutomationRegistrationStatus,
+  type ControlPlaneState,
+} from '@openpalm/lib';
 import { defineAction } from '../lib/action.ts';
+import { ensureValidState } from '../lib/cli-state.ts';
 
-export async function automationsCheck(): Promise<void> {
-  const home = resolveOpenPalmHome();
-  const tasksDir = join(home, 'knowledge', 'tasks');
+type AutomationsCheckDeps = {
+  getState: () => ControlPlaneState;
+  inspect: (state: ControlPlaneState) => Promise<AutomationRegistrationStatus>;
+};
 
-  if (!existsSync(tasksDir)) {
-    console.log('No tasks directory found at', tasksDir);
-    process.exit(0);
+const defaultDeps: AutomationsCheckDeps = {
+  getState: ensureValidState,
+  inspect: getAutomationRegistrationStatus,
+};
+
+export async function automationsCheck(deps: AutomationsCheckDeps = defaultDeps): Promise<void> {
+  const status = await deps.inspect(deps.getState());
+  if (!status.ok) {
+    throw new Error(`Unable to inspect the Assistant scheduler: ${status.error}`);
   }
-
-  const taskFiles = readdirSync(tasksDir).filter((f) => f.endsWith('.yml'));
-  if (taskFiles.length === 0) {
+  if (status.configured.length === 0) {
     console.log('No automation tasks installed.');
-    process.exit(0);
-  }
-
-  console.log(`Found ${taskFiles.length} automation task(s):`);
-  for (const file of taskFiles) {
-    console.log(`  - ${file.replace('.yml', '')}`);
-  }
-
-  // B5: `crontab` doesn't exist on Windows — execFile would ENOENT and print
-  // the misleading "No crontab found — assistant not started?" message.
-  // Guard on the platform instead, before the execFile shell-out.
-  if (process.platform === 'win32') {
-    console.log('Automation task registration check is not available on Windows (no crontab).');
     return;
   }
 
-  // Check crontab for registered tasks
-  await new Promise<void>((resolve) => {
-    execFile('crontab', ['-l'], (error, stdout) => {
-      if (error) {
-        console.log('No crontab found — tasks not yet registered (assistant not started?)');
-        resolve();
-        return;
-      }
-      const registered = taskFiles.filter((f) => stdout.includes(f.replace('.yml', '')));
-      console.log(`Registered in crontab: ${registered.length}/${taskFiles.length}`);
-      if (registered.length < taskFiles.length) {
-        console.log(
-          "Run 'akm task sync' inside the assistant container to register remaining tasks."
-        );
-      }
-      resolve();
-    });
-  });
+  console.log(`Found ${status.configured.length} automation task(s):`);
+  for (const id of status.configured) {
+    console.log(`  - ${id}`);
+  }
+
+  console.log(`Registered in Assistant scheduler: ${status.registered.length}/${status.configured.length}`);
+  if (status.missing.length > 0) {
+    console.log(`Not registered: ${status.missing.join(', ')}`);
+  }
 }
 
 export default defineCommand({

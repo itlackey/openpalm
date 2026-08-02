@@ -62,9 +62,10 @@ Inspect container logs and the migration state:
 
 ```bash
 docker compose logs assistant
-docker compose exec assistant akm migrate status
-docker compose exec assistant akm task doctor
-docker compose exec assistant akm health
+docker compose exec --user node assistant /usr/local/bin/akm migrate status
+assistant_gid="$(docker compose exec -T --user root assistant /usr/bin/id -g node)"
+docker compose exec --user root assistant /usr/bin/setpriv --reuid=node --regid="$assistant_gid" --groups=crontab --bounding-set=-all --inh-caps=-all --ambient-caps=-all --no-new-privs -- /usr/bin/env PATH=/opt/openpalm/tools/node_modules/.bin:/usr/local/bin:/opt/assistant-tools/bin:/usr/local/sbin:/usr/sbin:/usr/bin:/sbin:/bin /usr/local/bin/akm task doctor --format json --quiet
+docker compose exec --user node assistant /usr/local/bin/akm health
 ```
 
 Do not delete migration journals manually. To retry a prepared or interrupted
@@ -73,7 +74,7 @@ follow the run id and exact restore command printed by AKM. The underlying
 command is:
 
 ```bash
-akm-migrate restore --for 0.9.0 --run <run-id> --confirm
+/usr/local/bin/akm-migrate restore --for 0.9.0 --run <run-id> --confirm
 ```
 
 Restore the migration recovery run before reinstalling a 0.8 binary.

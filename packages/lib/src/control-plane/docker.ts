@@ -863,7 +863,13 @@ export async function composeStats(
 export async function composeExec(
   service: string,
   command: string[],
-  options: { files: string[]; envFiles?: string[]; profiles?: string[]; timeoutMs?: number },
+  options: {
+    files: string[];
+    envFiles?: string[];
+    profiles?: string[];
+    timeoutMs?: number;
+    user?: string;
+  },
 ): Promise<DockerResult> {
   await runPreflight(options);
   const primaryFile = options.files[0];
@@ -872,7 +878,9 @@ export async function composeExec(
   }
 
   const args = buildComposeArgs(options);
-  args.push('exec', '-T', service, ...command);
+  args.push('exec', '-T');
+  if (options.user) args.push('--user', options.user);
+  args.push(service, ...command);
   return run(args, undefined, options.timeoutMs ?? 120_000, collectComposeEnvOverrides(options.envFiles));
 }
 

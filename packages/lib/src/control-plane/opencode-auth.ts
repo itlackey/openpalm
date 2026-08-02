@@ -17,6 +17,7 @@
  * duplicated per consumer is exactly how the 401/rotation regression family
  * kept reappearing. Consumers import it; nobody re-implements it.
  */
+import { readFileSync } from 'node:fs';
 import { isEnabledFlag } from "./bind-warning.js";
 import { readSecret } from "./secrets-files.js";
 import { readStackEnv } from "./secrets.js";
@@ -97,7 +98,15 @@ export function resolveOpenCodeCredential(
   const username = env.OPENCODE_SERVER_USERNAME || DEFAULT_OPENCODE_USERNAME;
   const authEnabled = isEnabledFlag(persisted.OPENCODE_AUTH ?? env.OPENCODE_AUTH);
   if (!authEnabled) return { username, password: undefined };
+  let filePassword: string | undefined;
+  if (env.OPENCODE_SERVER_PASSWORD_FILE) {
+    try {
+      filePassword = stripTrailingNewlines(readFileSync(env.OPENCODE_SERVER_PASSWORD_FILE, 'utf8')) || undefined;
+    } catch {
+      filePassword = undefined;
+    }
+  }
   const raw = readSecret(homeDir, "op_opencode_password");
   const generatedKey = (raw ? stripTrailingNewlines(raw) : undefined) || env.OP_OPENCODE_PASSWORD;
-  return { username, password: env.OPENCODE_SERVER_PASSWORD || generatedKey || undefined };
+  return { username, password: env.OPENCODE_SERVER_PASSWORD || filePassword || generatedKey || undefined };
 }

@@ -2,17 +2,37 @@
  * Raw file access for the Automations admin tab — a plain editor for the akm
  * task files in the assistant tasks dir (/stash/tasks = knowledge/tasks).
  *
- * akm task files are YAML (`.yml`/`.yaml`) or markdown (`.md`). Names are always
- * basenames within the tasks dir; the guard rejects path separators and `..`.
+ * AKM v2 task files use the canonical `.yml` suffix. Names are always basenames
+ * within the tasks dir; the guard rejects path separators and `..`.
  */
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { parse as parseYaml } from 'yaml';
 
-const TASK_FILENAME_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}\.(ya?ml|md)$/;
+const TASK_FILENAME_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}\.yml$/;
+const AMBIGUOUS_TASK_ID_SUFFIX_RE = /\.ya?ml$/i;
+
+function isCanonicalTaskFilename(name: string): boolean {
+  if (!TASK_FILENAME_RE.test(name)) return false;
+  return !AMBIGUOUS_TASK_ID_SUFFIX_RE.test(name.slice(0, -4));
+}
 
 export function assertSafeTaskFilename(name: string): void {
-  if (!TASK_FILENAME_RE.test(name) || name.includes('..')) {
-    throw new Error(`Invalid task file name: ${name} (expected a .yml/.yaml/.md basename)`);
+  if (!isCanonicalTaskFilename(name) || name.includes('..')) {
+    throw new Error(`Invalid task file name: ${name} (expected a .yml basename)`);
+  }
+}
+
+/** Validate only the YAML transport shape; AKM owns all task semantics. */
+export function assertTaskYamlDocument(content: string): void {
+  let value: unknown;
+  try {
+    value = parseYaml(content);
+  } catch (error) {
+    throw new Error(`Invalid task YAML: ${error instanceof Error ? error.message : String(error)}`);
+  }
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    throw new Error('Invalid task YAML: expected an object');
   }
 }
 
@@ -25,11 +45,11 @@ export function resolveTasksDir(stashDir: string): string {
 
 export type TaskFileInfo = { name: string; size: number };
 
-/** List the task files (.yml/.yaml/.md) in the tasks dir, with byte sizes. */
+/** List canonical `.yml` task files in the tasks dir, with byte sizes. */
 export function listTaskFiles(stashDir: string): TaskFileInfo[] {
   const dir = resolveTasksDir(stashDir);
   return readdirSync(dir, { withFileTypes: true })
-    .filter((e) => e.isFile() && TASK_FILENAME_RE.test(e.name) && !e.name.includes('..'))
+    .filter((e) => e.isFile() && isCanonicalTaskFilename(e.name) && !e.name.includes('..'))
     .map((e) => ({ name: e.name, size: statSync(join(dir, e.name)).size }))
     .sort((a, b) => a.name.localeCompare(b.name));
 }
@@ -42,6 +62,7 @@ export function readTaskFile(stashDir: string, name: string): string | null {
 
 export function writeTaskFile(stashDir: string, name: string, content: string): void {
   assertSafeTaskFilename(name);
+  assertTaskYamlDocument(content);
   writeFileSync(join(resolveTasksDir(stashDir), name), content, { mode: 0o644 });
 }
 

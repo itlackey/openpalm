@@ -59,7 +59,7 @@ describe('IMG-1 — local tool manifests contain only OpenCode', () => {
       expect(dockerfile).toContain('npm install --global');
       expect(dockerfile).toContain('/usr/local/lib/node_modules/akm-cli');
       expect(dockerfile).toContain('test "$(npm root --global)" = "/usr/local/lib/node_modules"');
-      expect(dockerfile).toContain('test "$(akm --version)" = "${AKM_CLI_VERSION}"');
+      expect(dockerfile).toContain('test "$(/usr/local/bin/akm --version)" = "${AKM_CLI_VERSION}"');
     }
     expect(guardian).toContain('FROM node:22-trixie-slim');
   });
@@ -80,12 +80,37 @@ describe('AKM 0.9 migration boot contract', () => {
   const entrypoint = readFileSync(join(REPO_ROOT, 'containers/assistant/entrypoint.sh'), 'utf8');
 
   test('runs journaled migration and scheduler rebind before cron starts', () => {
-    const migration = entrypoint.indexOf('akm migrate apply --config "$target_file"');
-    const rebind = entrypoint.indexOf('akm task sync --rebind');
-    const cron = entrypoint.lastIndexOf('start_cron_and_sync_tasks');
+    const migration = entrypoint.indexOf('"$AKM_BIN" migrate apply --config "$target_file"');
+    const rebind = entrypoint.indexOf('sync_akm_tasks --rebind');
+    const cron = entrypoint.indexOf('/usr/sbin/cron -f');
     expect(migration).toBeGreaterThan(-1);
     expect(rebind).toBeGreaterThan(migration);
     expect(cron).toBeGreaterThan(rebind);
+  });
+
+  test('uses native Debian cron with an explicit non-root application boundary', () => {
+    const dockerfile = readFileSync(join(REPO_ROOT, 'containers/assistant/Dockerfile'), 'utf8');
+    expect(dockerfile).toContain('cron passwd');
+    expect(dockerfile).toContain('USER root');
+    expect(dockerfile).not.toContain('libnss-wrapper');
+    expect(dockerfile).not.toMatch(/\bbusybox\b/);
+    expect(entrypoint).toContain('/usr/bin/setpriv');
+    expect(entrypoint).toContain('--reuid=node');
+    expect(entrypoint).not.toContain('/tmp/openpalm-crontabs');
+    expect(entrypoint).not.toContain('/tmp/openpalm-bin');
+  });
+
+  test('treats skipped task registrations as degraded reconciliation', () => {
+    expect(entrypoint).toContain('.[0].skipped | length == 0');
+    expect(entrypoint).toContain('.[0].shape == "task-sync"');
+    expect(entrypoint).toContain('.[0].schemaVersion == 1');
+    expect(entrypoint).toContain('/task-sync-failed');
+    expect(entrypoint).toContain('if [ "$task_sync_rc" -eq 2 ]');
+    expect(entrypoint).toContain('fix the task files and retry without changing AKM versions');
+    expect(entrypoint).toContain('task sync --format json --quiet');
+    expect(entrypoint).toContain(
+      '/usr/bin/env PATH="$SCHEDULED_TASK_PATH" /usr/bin/timeout --signal=TERM --kill-after=5s 50s "$AKM_BIN"',
+    );
   });
 
   test('fails health errors instead of continuing with partial AKM state', () => {
@@ -101,7 +126,9 @@ describe('AKM 0.9 migration boot contract', () => {
   });
 
   test('restores AKM recovery state and blocks same-version retries after failed verification', () => {
-    expect(entrypoint).toContain('akm-migrate restore --for 0.9.0 --run "$migration_backup_run" --confirm');
+    expect(entrypoint).toContain(
+      '"$AKM_MIGRATE_BIN" restore --for 0.9.0 --run "$migration_backup_run" --confirm',
+    );
     expect(entrypoint).toContain('openpalm-0.9-blocked-version');
     expect(entrypoint).toContain('install a newer AKM release before retrying');
   });

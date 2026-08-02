@@ -122,15 +122,17 @@ the IP URL keeps working.
 
 ## Automations
 
-Assistant automations are AKM YAML task files under
-`knowledge/tasks/`. The assistant entrypoint starts BusyBox `crond`, runs
-`akm task sync` at boot, and re-syncs every 60 seconds.
+Assistant automations are AKM v2 `.yml` task files under
+`knowledge/tasks/`. The assistant entrypoint starts Debian cron, runs `akm task
+sync` at boot, and re-syncs every 60 seconds. Only the cron daemon is root;
+task registration and execution use the configured Assistant identity.
 
 Task targets are limited to `command`, `prompt`, or `workflow`.
 
 ### Prompt Task
 
 ```yaml
+version: 2
 schedule: "0 9 * * *"
 enabled: true
 description: Daily briefing
@@ -140,6 +142,7 @@ prompt: Summarize my priorities for today.
 ### Command Task
 
 ```yaml
+version: 2
 schedule: "0 4 * * 0"
 enabled: true
 description: Check the AKM store
@@ -149,10 +152,11 @@ command: ["akm", "health"]
 ### Workflow Task
 
 ```yaml
+version: 2
 schedule: "0 8 * * 1"
 enabled: true
 description: Weekly review
-workflow: workflow:weekly-review
+workflow: workflows/weekly-review
 params:
   audience: owner
 ```
@@ -177,11 +181,8 @@ Task Scheduler. These jobs run outside the assistant container.
 To force an immediate in-container task resync:
 
 ```bash
-docker exec openpalm-assistant-1 akm task sync
+openpalm restart assistant
 ```
-
-Use `docker ps --format '{{.Names}}'` if your Compose-generated container name
-differs.
 
 ## Assistant Extensions
 

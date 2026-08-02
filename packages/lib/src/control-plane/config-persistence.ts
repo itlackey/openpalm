@@ -487,10 +487,10 @@ export { ensurePortalSecret, portalSecretName } from './secrets-files.js';
  * explicit OP_HOME paths.
  */
 export function ensureComposeVolumeTargets(state: ControlPlaneState): void {
-  // Resolve the operator UID/GID compose runs containers as (`user:`), so we
-  // can chown the dirs we pre-create to match. Without this, dirs created by
-  // a root-running install (or a host UID that differs from the forced
-  // container UID) are unwritable inside the non-root container — on OrbStack
+  // Resolve the operator UID/GID that service workloads use, so we can chown
+  // the dirs we pre-create to match. Without this, dirs created by a
+  // root-running install (or a host UID that differs from the configured
+  // workload UID) are unwritable inside the service — on OrbStack
   // real UIDs are preserved, so e.g. ollama's mkdir is denied (issue #452).
   const operatorIds = resolveOperatorIds(state.homeDir);
 
@@ -576,8 +576,8 @@ function isFileMount(resolvedHostPath: string): boolean {
 }
 
 /**
- * chown a just-created bind-mount target to the operator UID/GID so the
- * non-root container (`user: ${OP_UID}:${OP_GID}`) can write to it.
+ * chown a just-created bind-mount target to the operator UID/GID so non-root
+ * service workloads can write to it.
  *
  * No-op on Windows (chown is meaningless there) or when no operator can be
  * resolved. A failure (e.g. not the owner) is logged and swallowed — the
