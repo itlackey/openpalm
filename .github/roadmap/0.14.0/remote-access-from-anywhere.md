@@ -79,7 +79,9 @@ valid certificate without an Advanced Certificate.
 `tailscale serve` publishes a service privately to the user's own tailnet at
 `https://<node>.<tailnet>.ts.net`, with a real Let's Encrypt certificate and no
 inbound ports. `tailscale funnel` publishes the same service to the **public
-internet**. Funnel is restricted to ports 443, 8443, and 10000.
+internet**. Funnel is restricted to a small set of ports — 443, 8443, and
+10000 by default; see the correction in §7.3, the list is control-plane
+delivered rather than hardcoded.
 
 Three properties make this the best fit here.
 
@@ -413,7 +415,126 @@ The one genuine gap:
   is well-scoped here: the only client that can reach container port 3000 is
   the sidecar on `assistant_net`.
 
-## 7. The Bun control-plane surface
+## 7. Placement, multi-stack, and routing
+
+Three questions that change the design, answered against the code.
+
+### 7.1 Why not host the tunnel inside guardian or portal?
+
+**Portal is disqualified outright.** The discord and slack services declare
+`networks: [portal_net]` — they have no `assistant_net` membership, so a
+portal-hosted tunnel physically cannot reach `assistant:3000`. Portals are also
+multi-instance (discord and slack are separate containers from the same image),
+so "which portal hosts the tunnel" has no principled answer.
+
+**Guardian is technically possible but wrong.** It is on
+`networks: [portal_net, assistant_net]`, so it *can* reach either target, and
+privileges are not the obstacle — userspace mode needs no `NET_ADMIN` and no
+`/dev/net/tun`, and both images are `oven/bun:1.3-slim` running non-root, which
+tailscaled tolerates. Four objections decide it anyway:
+
+1. **Guardian does not exist in a default install.** It is profile-gated:
+   `profiles: ["addon.chat", "addon.api", "addon.discord", "addon.slack",
+   "addon.gateway"]`. Hosting the tunnel there means "reach it from anywhere"
+   silently depends on a portal addon being enabled.
+   `reconcileGuardianIngressAddons` sets a precedent for auto-enabling `chat`,
+   but forcing a chat portal on someone who only wants phone access is a
+   surprising side effect of an unrelated toggle.
+2. **Release coupling.** Guardian ships as a versioned image
+   (`OP_GUARDIAN_VERSION`). Baking `tailscaled` into it means a Tailscale
+   security fix requires a Guardian release. A pinned sidecar image updates on
+   its own cadence.
+3. **Blast radius.** Guardian *is* the security boundary — principal auth,
+   ownership checks, rate limits, content validation. Adding a networking
+   daemon holding a long-lived tunnel credential widens exactly the container
+   you least want widened, and the auth key joins Guardian's secret set.
+4. **Restart granularity.** Toggling remote access would recreate Guardian and
+   drop in-flight portal traffic. The sidecar is recreated in isolation, which
+   is the whole point of `KEY_OWNER` scoping ("a guardian-only change must not
+   recreate the assistant and drop an in-flight chat turn").
+
+The sidecar costs one ~40 MB image that is **not deployed at all** when the
+toggle is off, because the overlay is gated. That is cheaper than any of the
+four objections above.
+
+### 7.2 Multiple stacks on one host
+
+This is the strongest argument for the design, not a complication.
+
+Today two stacks on one host collide on **host ports** — `3800`, `3810`,
+`3880`, `3830`, `3831`, `3821`, `8880` — and the only remedy is renumbering
+every one by hand. The tunnel publishes **no host ports at all**: it dials
+outbound and reaches services over the project-scoped compose network. A second
+stack therefore needs nothing renumbered in order to be reachable from
+anywhere.
+
+Each stack becomes one tailnet node with its own FQDN. `AllowFunnel` is keyed
+per `HostPort` **on that node**, and the funnel-port allowance is a node
+attribute, so two stacks can both use 443 with no host-level contention.
+
+What must be per-stack for this to hold:
+
+- **`hostname:` must derive from `OP_PROJECT_NAME`.** Two nodes claiming
+  `openpalm` means the second becomes `openpalm-1` **permanently** — the suffix
+  survives even after the conflict is resolved — and the UI would advertise a
+  URL that does not exist. `OP_PROJECT_NAME` is already unique per host (Docker
+  enforces it) and already derives the mDNS names `<base>.local` and
+  `<base>-guardian.local` in `mdns-responder.ts`, so the same derivation
+  extends naturally and stays consistent with the LAN naming.
+- **`TS_STATE_DIR` must be per-stack**, which falls out of distinct `OP_HOME`
+  (`${OP_HOME}/data/tunnel`). If it is shared or lost, the node re-registers,
+  picks up a suffix, and the public URL changes underneath every bookmark.
+- **A reusable auth key**, or interactive login once per stack.
+- Each stack counts as one device against the plan. The free Personal plan's
+  unlimited user-owned devices covers this; the 6-user limit is unaffected.
+
+Two consequences to design for. First, this makes the **stack rename path
+load-bearing**: `recordProjectRename` exists, and a rename would otherwise
+change the tailnet hostname and therefore the public URL. The hostname should
+be derived once at first registration and then **stored in
+`remote-access.json`**, not re-derived on every apply. Second, the mDNS
+responder binds UDP 5353 on the host and remains a host-level singleton — it is
+unrelated to the tunnel, but it stays the one genuinely contended resource
+across stacks.
+
+### 7.3 Routing to guardian or assistant — configurable, and not either/or
+
+`ServeConfig` provides two independent axes, which together give more than a
+binary choice:
+
+- `Handlers map[string]*HTTPHandler` is mount-point → handler with
+  **longest-prefix matching**, and the matched prefix is **stripped**
+  (`http.StripPrefix` at `ipn/ipnlocal/serve.go:1209`) before proxying. The
+  proxy target may carry its own path, which Go's `SetURL` re-joins — so a
+  `/oc` mount pointed at `http://guardian:8080/oc` resolves correctly.
+- `AllowFunnel map[HostPort]bool` is keyed **per port**, so Serve and Funnel
+  coexist on one node.
+
+Three shapes therefore fall out of the same generator, selected by `target` in
+`remote-access.json`:
+
+1. `"assistant"` — `/` → `http://assistant:3000`. The default.
+2. `"guardian"` — `/` → `http://guardian:8080`. For API clients.
+3. `"both"` — either `/` → assistant and `/oc` → guardian on one port, **or**
+   assistant on 443 and guardian on 8443 with *different funnel bits* — the UI
+   private to the user's own devices, Guardian's screened API publicly funneled
+   for a bot. That is exactly the 443/8443 pair `docs/remote-access-tls.md`
+   already documents, so the manual guide and the toggle produce the same
+   topology.
+
+`target` therefore widens from `"assistant" | "guardian"` to
+`"assistant" | "guardian" | "both"`. When it includes guardian, two things
+follow: the sidecar must join `portal_net` as well as `assistant_net`, and a
+guardian-bearing addon must be enabled — the same check
+`reconcileGuardianIngressAddons` already performs for `guardianNetwork`.
+
+**Correction to §2:** Funnel's port restriction is not a hardcoded 443/8443/
+10000. `CheckFunnelPort` reads the allowed list from the node's
+`CapabilityFunnelPorts` attribute delivered by the control plane; those three
+are the defaults currently granted. Treat the list as dynamic and read it from
+`tailscale status --json` rather than hardcoding it.
+
+## 8. The Bun control-plane surface
 
 **Shell out to `docker compose`. No library, no Docker socket.** `docker.ts`
 already commits to `node:child_process` with argv arrays specifically so one
@@ -504,7 +625,7 @@ Derive displayed state from `composePs`, never from stored intent. Helpfully,
 `docker compose ps` is not profile-aware, so a stale tunnel container stays
 visible even after the overlay is dropped.
 
-## 8. What the user sees and does
+## 9. What the user sees and does
 
 ### Copy, in the existing voice
 
@@ -596,7 +717,7 @@ Raise it for this path specifically. The login throttle is good — 5 free
 attempts, doubling backoff to a 15-minute ceiling, comfortably inside NIST SP
 800-63B — but a throttle is not a substitute for entropy.
 
-## 9. Open risks and what stays manual
+## 10. Open risks and what stays manual
 
 **Irreducibly manual:** creating a Tailscale account (SSO, ~3 clicks) and
 clicking Connect; the one-time browser approval for public mode; choosing a
@@ -662,7 +783,7 @@ gate and the `ADDRESS_HEADER` fix as the price of admission, keeping
 clients. Shipping a "reach it from anywhere" toggle that lands on a page a
 non-technical user cannot log into would be worse than not shipping it.
 
-## 10. Sources
+## 11. Sources
 
 Primary sources, grouped. All checked against vendor documentation, official
 repositories, or package registries rather than secondary write-ups.
