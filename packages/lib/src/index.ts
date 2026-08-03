@@ -688,6 +688,22 @@ export {
   type AccessApplyResult,
 } from "./control-plane/access-apply.js";
 
+// ── Remote access (`remote` addon — Tailscale sidecar) ───────────────────────
+export {
+  REMOTE_ACCESS_DEFAULTS,
+  REMOTE_TARGETS,
+  deriveRemoteHostname,
+  resolveRemoteHostname,
+  readRemoteAccessConfig,
+  coerceRemoteAccessConfig,
+  resolveRemoteEnv,
+  resolveServeConfig,
+  describeRemoteExposure,
+  type RemoteAccessConfig,
+  type RemoteTarget,
+  type ServeConfigDoc,
+} from "./control-plane/remote-access.js";
+
 // ── mDNS host self-advertisement (#488) ──────────────────────────────────────
 // Pure helpers (sanitizeDnsLabel, resolveMdnsAdvertisements, etc.) stay
 // reachable via the ./control-plane/mdns-responder.js subpath for tests; only

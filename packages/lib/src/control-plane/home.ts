@@ -195,6 +195,35 @@ export function userEnvFile(home: string): string {
 export function secretsDir(home: string): string {
   return `${home}/knowledge/secrets`;
 }
+
+/**
+ * The `remote` addon's generated Tailscale Serve/Funnel config DIRECTORY,
+ * bind-mounted into the `tunnel` container. Must be a directory mount, not a
+ * file mount: Tailscale's containerboot registers an fsnotify watch on the
+ * DIRECTORY and hard-fails at startup if that watch cannot be added, so the
+ * directory has to exist before the container is created. A directory mount
+ * also makes atomic config writes (temp file + rename, same pattern as
+ * writeFileAtomic elsewhere in this codebase) visible to the container —
+ * bind-mounting the single generated file instead would pin that file's
+ * inode, and a rename-based rewrite would leave the container reading the
+ * stale copy forever.
+ */
+export function remoteServeConfigDir(home: string): string {
+  return `${stackDirFor(home)}/remote`;
+}
+
+/**
+ * The `remote` addon's persistent tunnel state (Tailscale's node identity and
+ * keys), a data volume for the `tunnel` container. Must pre-exist and must
+ * survive: losing it makes the tailnet node re-register from scratch, which
+ * Tailscale resolves a hostname collision on by appending "-1" — silently
+ * changing the assistant's public URL out from under every bookmark, shared
+ * link and shortcut that pointed at the old one.
+ */
+export function remoteTunnelStateDir(home: string): string {
+  return `${home}/data/tunnel`;
+}
+
 export function authJsonFile(home: string): string {
   return `${secretsDir(home)}/auth.json`;
 }
@@ -292,6 +321,7 @@ export function ensureHomeDirs(home: string = resolveOpenPalmHome()): void {
     `${home}/data/guardian/.config/opencode`,
     `${home}/data/guardian/.local/share/opencode`,
     `${home}/data/guardian/.local/state/opencode`,
+    `${home}/data/tunnel`,         // remote addon: persistent tailnet node identity (see remoteTunnelStateDir)
     `${home}/data/akm/cache`,      // akm cache
     `${home}/data/akm/data`,       // akm durable data
     `${home}/data/akm/empty-host-stash`, // always-present /host-stash fallback when host AKM is absent
@@ -314,6 +344,7 @@ export function ensureHomeDirs(home: string = resolveOpenPalmHome()): void {
 
     // system/ — managed tree (release-shipped assets, overwritten); state/ — app-written records
     `${home}/system/stack`,         // fixed compose files (managed, overwritten on update)
+    `${home}/system/stack/remote`,  // remote addon: generated Tailscale serve config (see remoteServeConfigDir)
     `${home}/system/assistant`,     // MANAGED assistant OpenCode config (OPENCODE_CONFIG_DIR)
     `${home}/system/guardian`,      // MANAGED guardian OpenCode config (OPENCODE_CONFIG_DIR)
     `${home}/state`,

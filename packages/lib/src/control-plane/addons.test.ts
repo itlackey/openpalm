@@ -50,7 +50,7 @@ describe('builtin addon metadata', () => {
     // Canonical list from BUILTIN_ADDON_IDS (addon-ids.ts — single source of truth).
     // chat and gateway were previously missing from BUILTIN_ADDONS in addons.ts
     // but present in the builtin addon id set; H6 unified them.
-    expect(listAvailableAddonIds()).toEqual(['api', 'chat', 'discord', 'gateway', 'ollama', 'slack', 'voice']);
+    expect(listAvailableAddonIds()).toEqual(['api', 'chat', 'discord', 'gateway', 'ollama', 'remote', 'slack', 'voice']);
   });
 
   it('returns built-in addon schemas without registry materialization', () => {
