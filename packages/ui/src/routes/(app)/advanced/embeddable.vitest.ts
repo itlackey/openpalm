@@ -4,7 +4,7 @@
  * rendered a dead "refused to connect" panel instead of a conversation.
  */
 import { describe, expect, test } from 'vitest';
-import { isEmbeddableOpencodeUi } from './embeddable.js';
+import { isEmbeddableOpencodeUi, resolveWorkspaceUrl } from './embeddable.js';
 
 const LAN_PAGE = { origin: 'http://192.168.0.201:3800', protocol: 'http:' };
 const HTTPS_PAGE = { origin: 'https://openpalm.example', protocol: 'https:' };
@@ -41,6 +41,32 @@ describe('isEmbeddableOpencodeUi — credentials never ride in an iframe URL', (
         LAN_PAGE,
       ),
     ).toBe(false);
+  });
+});
+
+describe('resolveWorkspaceUrl — composed from the host the browser visited', () => {
+  test('uses the visited LAN host when the assistant port is published beyond loopback', () => {
+    expect(
+      resolveWorkspaceUrl({ port: 3810, loopbackOnly: false }, { hostname: '192.168.0.201' }),
+    ).toBe('http://192.168.0.201:3810');
+  });
+
+  test('offers nothing to a LAN client when the publish is loopback-only', () => {
+    expect(
+      resolveWorkspaceUrl({ port: 3810, loopbackOnly: true }, { hostname: '192.168.0.201' }),
+    ).toBeNull();
+  });
+
+  test('offers the loopback-only publish to a client on the machine itself', () => {
+    for (const hostname of ['localhost', '127.0.0.1']) {
+      expect(resolveWorkspaceUrl({ port: 3810, loopbackOnly: true }, { hostname }), hostname).toBe(
+        `http://${hostname}:3810`,
+      );
+    }
+  });
+
+  test('offers nothing without an advertisement', () => {
+    expect(resolveWorkspaceUrl(undefined, { hostname: 'localhost' })).toBeNull();
   });
 });
 

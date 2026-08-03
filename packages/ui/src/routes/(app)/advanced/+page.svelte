@@ -13,7 +13,8 @@
   import { endpointsService } from '$lib/endpoints-state.svelte.js';
   import { chat } from '$lib/chat/chat-state.svelte.js';
   import { getTransport } from '$lib/connections/boot.js';
-  import { isEmbeddableOpencodeUi } from './embeddable.js';
+  import { isEmbeddableOpencodeUi, resolveWorkspaceUrl } from './embeddable.js';
+  import { getRuntimeContext } from '$lib/runtime-context.svelte.js';
   import { onConnectionActivated } from '$lib/connection-events.js';
   import { resolveSessionTitle } from '$lib/session-title.js';
   import { themeService } from '$lib/theme-state.svelte.js';
@@ -34,7 +35,16 @@
   //     the SPA inside resolves every asset and API call against the origin
   //     root, where OpenPalm answers rather than OpenCode.
 
+  const runtimeContext = getRuntimeContext();
   const active = $derived(endpointsService.active);
+  /**
+   * OpenCode's own web UI as a top-level page, when this browser can reach it.
+   * Offered wherever the frame isn't available — a new tab has none of the
+   * framing restrictions, so it works in deployments the iframe cannot serve.
+   */
+  const workspaceUrl = $derived(
+    resolveWorkspaceUrl(runtimeContext.opencodeWorkspace, { hostname: page.url.hostname }),
+  );
   const requestedSessionId = $derived(page.url.searchParams.get('session'));
   const requestedAssistantId = $derived(page.url.searchParams.get('assistant'));
 
@@ -264,6 +274,12 @@
             <p class="native-notice" role="note">
               The OpenCode workspace can’t be embedded for this assistant — this conversation
               runs on OpenPalm’s own surface.
+              {#if workspaceUrl}
+                <!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- OpenCode's own origin, composed from the server's published-port advertisement -->
+                <a href={workspaceUrl} target="_blank" rel="noopener noreferrer"
+                  >Open the workspace in a new tab</a
+                >
+              {/if}
             </p>
             {#if chat.entriesLoading}
               <p class="native-status" role="status">Loading conversation…</p>
@@ -318,6 +334,12 @@
             {reconnecting ? 'Reconnecting…' : 'Reconnect'}
           </button>
           <a class="btn btn-secondary btn-lg" href={resolvePath('/connections')}>Manage connection</a>
+          {#if workspaceUrl}
+            <!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- OpenCode's own origin, composed from the server's published-port advertisement -->
+            <a class="workspace-link" href={workspaceUrl} target="_blank" rel="noopener noreferrer"
+              >Open the OpenCode workspace in a new tab</a
+            >
+          {/if}
         {/if}
       </div>
     {/if}
@@ -438,6 +460,17 @@
     line-height: 1.5;
     text-align: center;
     overflow-wrap: anywhere;
+  }
+  .native-notice a,
+  .workspace-link {
+    color: var(--s-ink-2);
+    text-decoration: underline;
+    text-underline-offset: 0.15em;
+    overflow-wrap: anywhere;
+  }
+  .workspace-link {
+    font-family: var(--s-font-mono);
+    font-size: var(--s-type-mark);
   }
   .native-pending {
     white-space: pre-wrap;

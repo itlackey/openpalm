@@ -32,6 +32,35 @@ export type EmbeddingPage = { origin: string; protocol: string };
  *  - **The browser won't block it as mixed content.** A loopback target is
  *    always allowed; otherwise an https page cannot frame a plain-http target.
  */
+/** The server's `opencodeWorkspace` advertisement (see computeOpencodeWorkspace). */
+export type OpencodeWorkspaceHint = { port: number; loopbackOnly: boolean };
+
+/**
+ * The address of OpenCode's own web UI for THIS browser, or null when there
+ * isn't one it can reach.
+ *
+ * Composed from the host the browser actually visited, because that is the
+ * only party that knows it — the server publishes a port, not a URL. A
+ * loopback-only publish is reachable only from the machine running the stack,
+ * so a LAN or tailnet client gets null rather than an address that resolves to
+ * its own device. The scheme is always http: OpenCode serves plain HTTP, and
+ * any TLS in front of it is a proxy this hint knows nothing about.
+ *
+ * This is for opening the workspace as a top-level page, NOT for framing —
+ * top-level navigation is exempt from X-Frame-Options, frame-src, and
+ * mixed-content blocking, so it works in deployments where an iframe cannot.
+ */
+export function resolveWorkspaceUrl(
+  hint: OpencodeWorkspaceHint | undefined,
+  embeddingPage: { hostname: string },
+): string | null {
+  if (!hint) return null;
+  const { hostname } = embeddingPage;
+  if (!hostname) return null;
+  if (hint.loopbackOnly && !isLoopbackHost(hostname)) return null;
+  return `http://${hostname}:${hint.port}`;
+}
+
 export function isEmbeddableOpencodeUi(
   connection: EmbeddableConnection,
   embeddingPage: EmbeddingPage,

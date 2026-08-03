@@ -1,8 +1,9 @@
 import type { RequestEvent } from '@sveltejs/kit';
-import { listEnabledAddonIds } from '@openpalm/lib';
+import { listEnabledAddonIds, readStackEnv } from '@openpalm/lib';
 import uiPkg from '../../../package.json';
 import type { Capability, ServerRuntimeContext } from '$lib/types.js';
 import { getState } from '$lib/server/state.js';
+import { getCachedLocalInstallState } from '$lib/server/landing.js';
 
 /**
  * Server runtime context — RuntimeContext v2 (issue #509). Computed server-side on every request via
@@ -123,6 +124,66 @@ export function computeVoiceRuntime(): { url: string } | undefined {
     return undefined;
   }
 }
+
+/**
+ * Where OpenCode's own web UI is published, when a browser can reach it.
+ *
+ * `/advanced` frames OpenCode only when the active connection IS an OpenCode
+ * origin (see routes/(app)/advanced/embeddable.ts). The locked default
+ * connection is this app's `/oc` API pass-through, which is not one — so for
+ * that connection there is nothing to frame, and the workspace has to be
+ * opened as its own top-level page instead. This advertisement is what lets
+ * the browser build that address.
+ *
+ * It is a PORT and a reachability fact, never a URL: only the browser knows
+ * which host it typed, and that is the whole reason the connection seed became
+ * origin-relative in the first place. `loopbackOnly` mirrors the compose
+ * publish (`${OP_ASSISTANT_BIND_ADDRESS}:${OP_ASSISTANT_PORT}:4096`), so a
+ * client on the LAN can tell that a loopback-published port is its own machine
+ * and not offer a dead address.
+ *
+ * Absent when OpenCode requires Basic auth: neither a frame nor a new tab can
+ * carry that credential (the browser deliberately never holds it — see
+ * routes/oc), so the address would dead-end at a password prompt nobody can
+ * answer. Absent, too, when no port is known; a guessed default would
+ * advertise a listener that may not exist.
+ *
+ * Deliberately NOT part of computeServerRuntimeContext() — same reason as
+ * computeVoiceRuntime above: that function runs on requireCapability's
+ * per-request hot path and this one may read the stack env from disk.
+ */
+export function computeOpencodeWorkspace():
+  | { port: number; loopbackOnly: boolean }
+  | undefined {
+  const stackEnv = (() => {
+    try {
+      const { homeDir, stackDir } = getState();
+      // getState() materializes a stack.env carrying the DEFAULT ports whether
+      // or not anything is deployed, so reading it unconditionally would
+      // advertise a port with no listener behind it on a fresh host process.
+      // Same guard buildServedUiRuntimeConfig uses before seeding a connection.
+      if (getCachedLocalInstallState(stackDir, homeDir) === 'not_installed') {
+        return {} as Record<string, string>;
+      }
+      return readStackEnv(homeDir);
+    } catch {
+      // The container co-process has no OP_HOME; its values arrive as env.
+      return {} as Record<string, string>;
+    }
+  })();
+  const read = (key: string): string | undefined =>
+    process.env[key]?.trim() || stackEnv[key]?.trim() || undefined;
+
+  if (TRUTHY_ENV.test(read('OPENCODE_AUTH') ?? '')) return undefined;
+  const port = Number(read('OP_ASSISTANT_PORT'));
+  if (!Number.isInteger(port) || port <= 0 || port > 65535) return undefined;
+  const bindAddress = read('OP_ASSISTANT_BIND_ADDRESS') ?? '127.0.0.1';
+  return { port, loopbackOnly: LOOPBACK_BIND.has(bindAddress) };
+}
+
+const TRUTHY_ENV = /^(true|1|yes|on)$/i;
+/** Bind addresses that publish the assistant port to this machine only. */
+const LOOPBACK_BIND = new Set(['127.0.0.1', 'localhost', '::1', '[::1]']);
 
 export function computeServerRuntimeContext(event: RequestEvent): ServerRuntimeContext {
   const admin = isAdminCapable();

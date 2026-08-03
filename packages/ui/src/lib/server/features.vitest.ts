@@ -14,8 +14,14 @@ import { tmpdir } from 'node:os';
 import { randomBytes } from 'node:crypto';
 import type { RequestEvent } from '@sveltejs/kit';
 import type { Capability } from '$lib/types.js';
-import { computeServerRuntimeContext, computeVoiceRuntime, isAdminCapable } from './features.js';
+import {
+  computeOpencodeWorkspace,
+  computeServerRuntimeContext,
+  computeVoiceRuntime,
+  isAdminCapable,
+} from './features.js';
 import { resetState } from '$lib/server/test-helpers.js';
+import { clearLaunchRoutingCache } from '$lib/server/landing.js';
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -299,6 +305,85 @@ describe('computeVoiceRuntime — voice-endpoint advertisement', () => {
       expect(computeVoiceRuntime()).toBeUndefined();
     } finally {
       delete process.env.OP_VOICE_URL;
+    }
+  });
+});
+
+describe('computeOpencodeWorkspace — where OpenCode’s own web UI is published', () => {
+  let homeDir = '';
+  let savedHome: string | undefined;
+  const WORKSPACE_ENV_KEYS = [
+    'OP_ASSISTANT_PORT',
+    'OP_ASSISTANT_BIND_ADDRESS',
+    'OPENCODE_AUTH',
+  ] as const;
+  let savedWorkspaceEnv: Record<string, string | undefined> = {};
+
+  beforeEach(() => {
+    savedHome = process.env.OP_HOME;
+    savedWorkspaceEnv = {};
+    for (const key of WORKSPACE_ENV_KEYS) {
+      savedWorkspaceEnv[key] = process.env[key];
+      delete process.env[key];
+    }
+    homeDir = join(tmpdir(), `openpalm-workspace-rt-${randomBytes(4).toString('hex')}`);
+    mkdirSync(join(homeDir, 'state'), { recursive: true });
+    process.env.OP_HOME = homeDir;
+    resetState();
+    // The install-state cache is module-level and time-based; a neighbouring
+    // test's home would otherwise decide this one's answer.
+    clearLaunchRoutingCache();
+  });
+
+  afterEach(() => {
+    if (savedHome === undefined) delete process.env.OP_HOME;
+    else process.env.OP_HOME = savedHome;
+    for (const key of WORKSPACE_ENV_KEYS) {
+      const prev = savedWorkspaceEnv[key];
+      if (prev === undefined) delete process.env[key];
+      else process.env[key] = prev;
+    }
+    rmSync(homeDir, { recursive: true, force: true });
+    resetState();
+    clearLaunchRoutingCache();
+  });
+
+  /** Seeds a stack.env for a home that classifies as INSTALLED. */
+  function writeStackEnv(env: string): void {
+    writeFileSync(join(homeDir, 'state', 'stack.env'), `OP_SETUP_COMPLETE=true\n${env}`);
+    clearLaunchRoutingCache();
+  }
+
+  test('absent with no local install — getState() materializes DEFAULT ports for a home that deployed nothing', () => {
+    expect(computeOpencodeWorkspace()).toBeUndefined();
+  });
+
+  test('reads the published port and loopback-only default from the stack env', () => {
+    writeStackEnv('OP_ASSISTANT_PORT=3810\n');
+    expect(computeOpencodeWorkspace()).toEqual({ port: 3810, loopbackOnly: true });
+  });
+
+  test('reports a LAN publish as reachable beyond this machine', () => {
+    writeStackEnv('OP_ASSISTANT_PORT=3810\nOP_ASSISTANT_BIND_ADDRESS=0.0.0.0\n');
+    expect(computeOpencodeWorkspace()).toEqual({ port: 3810, loopbackOnly: false });
+  });
+
+  test('process env wins over the stack file — the container gets its values injected', () => {
+    writeStackEnv('OP_ASSISTANT_PORT=3810\n');
+    process.env.OP_ASSISTANT_PORT = '4810';
+    process.env.OP_ASSISTANT_BIND_ADDRESS = '0.0.0.0';
+    expect(computeOpencodeWorkspace()).toEqual({ port: 4810, loopbackOnly: false });
+  });
+
+  test('absent when OpenCode requires Basic auth — no frame or tab can carry that credential', () => {
+    writeStackEnv('OP_ASSISTANT_PORT=3810\nOPENCODE_AUTH=true\n');
+    expect(computeOpencodeWorkspace()).toBeUndefined();
+  });
+
+  test('absent for a port that is not a usable TCP port', () => {
+    for (const port of ['0', '70000', 'not-a-port']) {
+      writeStackEnv(`OP_ASSISTANT_PORT=${port}\n`);
+      expect(computeOpencodeWorkspace(), port).toBeUndefined();
     }
   });
 });

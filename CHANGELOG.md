@@ -25,7 +25,23 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   classifies that connection as non-embeddable and runs the conversation on
   OpenPalm's own surface, which reaches the same OpenCode through the same
   proxy; a connection that IS a reachable, credential-free OpenCode origin is
-  still embedded as before.
+  still embedded as before — including the `127.0.0.1:${OP_ASSISTANT_PORT}`
+  entry local discovery adds on a desktop install, which is why the desktop
+  workspace keeps working unchanged.
+
+### Added
+
+- **Advanced can open the OpenCode workspace in a new tab.** Where the frame
+  isn't available — the locked `/oc` connection, a credentialed one, or an
+  https page facing a plain-http assistant — the surface now offers the
+  workspace as a top-level page, which is exempt from `X-Frame-Options`,
+  `frame-src`, and mixed-content blocking and therefore works in deployments an
+  iframe cannot serve. The server advertises `opencodeWorkspace` (the published
+  assistant port plus whether that publish is loopback-only) and the browser
+  composes the address from the host it actually visited, so a LAN client is
+  never handed a loopback address that resolves to its own device. Absent when
+  OpenCode requires Basic auth, since neither a frame nor a tab can carry that
+  credential.
 - **The published UI advertises PWA installation again.** `pwa:install` was
   filtered out whenever `OP_UI_NO_LOCAL_VOICE=1`, which is set for the assistant
   container's UI co-process — the one listener a home install publishes, and the
