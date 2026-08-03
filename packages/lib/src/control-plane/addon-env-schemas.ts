@@ -152,7 +152,10 @@ OP_REMOTE_PUBLIC=false
 # URL, breaking any bookmark or shortcut that points at the old one.
 OP_REMOTE_HOSTNAME=
 
-# Tailscale auth key, from https://login.tailscale.com/admin/settings/keys.
+# Tailscale auth key, from the Tailscale admin console under Settings > Keys.
+# (Spelled out rather than linked: a literal admin URL here trips the stale
+# /admin path scan in admin-paths-hygiene.vitest.ts, which is host-unaware by
+# design so it can catch references to OpenPalm's own retired /admin routes.)
 # Leave blank — that's the recommended setting, not a placeholder — and the
 # tunnel will ask you to sign in through a link the first time it starts.
 # Only set this if you're pre-authorizing the node yourself (e.g. scripted
