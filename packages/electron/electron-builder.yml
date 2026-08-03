@@ -25,7 +25,9 @@ extraResources:
   # the workspace, its build step, and its test invocation.
   - from: ../../packages/skeleton
     to: openpalm-skeleton
-    filter: "**/*"
+    filter:
+      - "**/*"
+      - "!node_modules{,/**/*}"
   - from: ../../LICENSE
     to: LICENSE
 

@@ -29,7 +29,12 @@ const cliRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
 const repoRoot = join(cliRoot, '..', '..');
 const embeddedDir = join(cliRoot, 'embedded');
 
-async function pack(label: string, sourceDir: string, outFile: string): Promise<void> {
+async function pack(
+  label: string,
+  sourceDir: string,
+  outFile: string,
+  excludedEntries: readonly string[] = [],
+): Promise<void> {
   if (!existsSync(sourceDir)) {
     throw new Error(
       `[pack-embedded-assets] ${label} not found at ${sourceDir}. The binary would ship without a ${label}. Build it first (\`bun run ui:build\` for the UI build).`,
@@ -39,7 +44,9 @@ async function pack(label: string, sourceDir: string, outFile: string): Promise<
   mkdirSync(dirname(outFile), { recursive: true });
   // Sorted top-level entries: deterministic archive contents regardless of
   // directory-listing order across platforms/filesystems.
-  const entries = readdirSync(sourceDir).sort();
+  const entries = readdirSync(sourceDir)
+    .filter((entry) => !excludedEntries.includes(entry))
+    .sort();
   await createTar(
     // `dot: true` — node-tar ignores dotfiles by default, but the UI build's
     // .openpalm-ui-version stamp (and the skeleton's own dotfiles) must survive.
@@ -50,4 +57,9 @@ async function pack(label: string, sourceDir: string, outFile: string): Promise<
 }
 
 await pack('UI build', join(repoRoot, 'packages', 'ui', 'build'), join(embeddedDir, 'ui-build.tar.gz'));
-await pack('skeleton', join(repoRoot, 'packages', 'skeleton'), join(embeddedDir, 'skeleton.tar.gz'));
+await pack(
+  'skeleton',
+  join(repoRoot, 'packages', 'skeleton'),
+  join(embeddedDir, 'skeleton.tar.gz'),
+  ['node_modules'],
+);

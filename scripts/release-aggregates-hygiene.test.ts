@@ -145,6 +145,13 @@ describe('release completeness gate: no CLI-only releases (onboarding-setup-revi
 		expect(productName).toBe('OpenPalm');
 	});
 
+	test('desktop and CLI skeleton artifacts exclude workspace dependencies', () => {
+		const builder = readFileSync(join(ROOT, 'packages/electron/electron-builder.yml'), 'utf8');
+		const packer = readFileSync(join(ROOT, 'packages/cli/scripts/pack-embedded-assets.ts'), 'utf8');
+		expect(builder).toContain('!node_modules{,/**/*}');
+		expect(packer).toContain("['node_modules']");
+	});
+
 	test('the NSIS build artifact uses the exact dash-safe filename referenced by updater feeds', () => {
 		const builder = readFileSync(join(ROOT, 'packages/electron/electron-builder.yml'), 'utf8');
 		expect(builder).toContain('artifactName: ${productName}-Setup-${version}.${ext}');

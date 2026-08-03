@@ -9,6 +9,9 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- Exclude workspace `node_modules` from bundled skeleton assets so packaged
+  desktop and CLI releases can refresh managed files without rejecting
+  dependency symlinks.
 - **Conflicting legacy delegated-secret copies no longer block startup.** Home
   migration preserves both files, logs the conflict, and continues without
   choosing, overwriting, or deleting either credential.
