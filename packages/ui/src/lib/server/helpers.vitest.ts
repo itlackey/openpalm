@@ -284,5 +284,55 @@ describe("parseJsonBody", () => {
     const result = await parseJsonBody(req);
     expect(result).toEqual({ error: "too_large" });
   });
-});
 
+  test("returns too_large when streamed bytes exceed maxBytes despite a smaller content-length", async () => {
+    const req = new Request("http://localhost", {
+      method: "POST",
+      body: JSON.stringify({ key: "value" }),
+      headers: { "content-type": "application/json", "content-length": "1" }
+    });
+    const result = await parseJsonBody(req, 8);
+    expect(result).toEqual({ error: "too_large" });
+  });
+
+  test("counts actual UTF-8 bytes, accepting the exact limit and rejecting one byte over", async () => {
+    const body = JSON.stringify({ key: "é" });
+    const byteLength = new TextEncoder().encode(body).byteLength;
+    const exact = new Request("http://localhost", { method: "POST", body });
+    const over = new Request("http://localhost", { method: "POST", body });
+
+    await expect(parseJsonBody(exact, byteLength)).resolves.toEqual({ data: { key: "é" } });
+    await expect(parseJsonBody(over, byteLength - 1)).resolves.toEqual({ error: "too_large" });
+  });
+
+  test("rejects malformed UTF-8 instead of decoding replacement characters", async () => {
+    const prefix = new TextEncoder().encode('{"key":"');
+    const suffix = new TextEncoder().encode('"}');
+    const body = new Uint8Array([...prefix, 0xc3, 0x28, ...suffix]);
+    const req = new Request("http://localhost", { method: "POST", body });
+
+    await expect(parseJsonBody(req)).resolves.toEqual({ error: "invalid_json" });
+  });
+
+  test("maps a streamed HTTP 413 error to too_large", async () => {
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.error(Object.assign(new Error("body size limit exceeded"), { status: 413 }));
+      },
+    });
+    const req = {
+      headers: new Headers(),
+      body,
+    } as Request;
+
+    await expect(parseJsonBody(req)).resolves.toEqual({ error: "too_large" });
+  });
+
+  test.each([null, [], "value", 1, true])("rejects non-object JSON: %j", async (body) => {
+    const req = new Request("http://localhost", {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+    await expect(parseJsonBody(req)).resolves.toEqual({ error: "invalid_json" });
+  });
+});

@@ -1,11 +1,13 @@
-import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
-import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
 import { randomBytes } from 'node:crypto';
+import { mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { resetState, trackDir, cleanupTempDirs } from '$lib/server/test-helpers.js';
-import { getState } from '$lib/server/state.js';
-import { executeAutomation } from '@openpalm/lib';
+import { join } from 'node:path';
+import {
+  AutomationRuntimeError,
+  executeAutomation,
+} from '@openpalm/lib';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { cleanupTempDirs, resetState, trackDir } from '$lib/server/test-helpers.js';
 import { POST } from './+server.js';
 
 vi.mock('@openpalm/lib', async () => {
@@ -22,112 +24,139 @@ function makeTempDir(): string {
   return trackDir(dir);
 }
 
-function makeRunEvent(
-  name: string,
-  token = 'admin-token',
-): Parameters<typeof POST>[0] {
+function makeRunEvent(name: string, token = 'admin-token'): Parameters<typeof POST>[0] {
   return {
     request: new Request(`http://localhost/api/host/automations/${encodeURIComponent(name)}/run`, {
       method: 'POST',
-      headers: {
-        cookie: `op_session=${token}`,
-        'x-request-id': 'req-run-test',
-      },
+      headers: { cookie: `op_session=${token}`, 'x-request-id': 'req-run-test' },
     }),
     params: { name },
   } as unknown as Parameters<typeof POST>[0];
 }
 
-function seedInstalledTask(stashDir: string, id: string): void {
-  const tasksDir = join(stashDir, 'tasks');
-  mkdirSync(tasksDir, { recursive: true });
-  writeFileSync(
-    join(tasksDir, `${id}.yml`),
-    `version: 2\nschedule: "0 3 * * *"\ncommand: ["echo","hello"]\n`,
-  );
-}
-
 let originalHome: string | undefined;
 
 beforeEach(() => {
-  // Phase 4: /api/host + /api/assistant endpoints are capability-guarded;
-  // run this suite as a host-capable mode.
   process.env.OP_ENABLE_ADMIN = '1';
   originalHome = process.env.OP_HOME;
   process.env.OP_HOME = makeTempDir();
   resetState('admin-token');
   vi.clearAllMocks();
+  vi.mocked(executeAutomation).mockResolvedValue({ ok: true, status: 'completed' });
 });
 
 afterEach(() => {
   delete process.env.OP_ENABLE_ADMIN;
   process.env.OP_HOME = originalHome;
   cleanupTempDirs();
-  rmSync(getState().homeDir, { recursive: true, force: true });
+  vi.restoreAllMocks();
 });
 
 describe('POST /api/host/automations/:name/run', () => {
-  test('returns 401 when unauthenticated', async () => {
-    seedInstalledTask(getState().stashDir, 'health-check');
-    const res = await POST(makeRunEvent('health-check', 'bad-token'));
-    expect(res.status).toBe(401);
+  test('returns auth failure before disclosing an absent host capability', async () => {
+    const infoLog = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const errorLog = vi.spyOn(console, 'error').mockImplementation(() => {});
+    delete process.env.OP_ENABLE_ADMIN;
+    const response = await POST(makeRunEvent('daily.yml', 'bad-token'));
+    expect(response.status).toBe(401);
+    expect(await response.json()).toMatchObject({ error: 'unauthorized' });
+    expect(executeAutomation).not.toHaveBeenCalled();
+    expect([...infoLog.mock.calls, ...errorLog.mock.calls].flat().join('\n')).not.toContain(
+      'admin.automations',
+    );
   });
 
-  test('returns 400 when name contains traversal', async () => {
-    const res = await POST(makeRunEvent('../etc/passwd'));
-    expect(res.status).toBe(400);
-    const body = (await res.json()) as { error: string };
-    expect(body.error).toBe('invalid_input');
+  test('rejects traversal and unschedulable IDs before invoking the helper or AKM', async () => {
+    for (const name of [
+      '../escape.yml',
+      'foo/bar.yml',
+      '.yml',
+      'foo .yml',
+      'nested.yml.yml',
+      'health-check.yaml',
+    ]) {
+      expect((await POST(makeRunEvent(name))).status).toBe(400);
+    }
+    expect(executeAutomation).not.toHaveBeenCalled();
   });
 
-  test('returns 400 when name contains a slash', async () => {
-    const res = await POST(makeRunEvent('foo/bar'));
-    expect(res.status).toBe(400);
+  test('returns 404 when execution reports no installed file', async () => {
+    vi.mocked(executeAutomation).mockRejectedValue(
+      new AutomationRuntimeError('not_found', 'Task file not found'),
+    );
+    const response = await POST(makeRunEvent('missing.yml'));
+    expect(response.status).toBe(404);
   });
 
-  test('rejects .yaml filenames without rejecting a valid .md task ID', async () => {
-    expect((await POST(makeRunEvent('health-check.yaml'))).status).toBe(400);
-    expect((await POST(makeRunEvent('health-check.md'))).status).toBe(404);
+  test('runs a valid automation and audits its result', async () => {
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const response = await POST(makeRunEvent('health-check.yml'));
+    expect(response.status).toBe(202);
+    expect(await response.json()).toMatchObject({
+      ok: true,
+      fileName: 'health-check.yml',
+      status: 'completed',
+      error: null,
+    });
+    expect(executeAutomation).toHaveBeenCalledWith(expect.any(Object), 'health-check.yml');
+    const auditEntry = log.mock.calls
+      .map(([line]) => JSON.parse(String(line)) as { service?: string; extra?: Record<string, unknown> })
+      .find((entry) => entry.service === 'admin.automations');
+    expect(auditEntry?.extra).toEqual(expect.objectContaining({
+      requestId: 'req-run-test',
+      fileName: 'health-check.yml',
+      operation: 'manual-run',
+      outcome: 'success',
+      runStatus: 'completed',
+    }));
+    expect(auditEntry?.extra).not.toHaveProperty('revision');
   });
 
-  test('rejects task IDs that alias a canonical .yml filename', async () => {
-    expect((await POST(makeRunEvent('health-check.yml.yml'))).status).toBe(400);
-    expect((await POST(makeRunEvent('health-check.yaml.yml'))).status).toBe(400);
+  test.each([
+    { status: 'failed', error: 'command failed' },
+    { status: 'blocked', error: 'dependency unavailable' },
+  ])('returns 202 for a valid semantic $status result', async (result) => {
+    vi.mocked(executeAutomation).mockResolvedValue({ ok: false, ...result });
+    const response = await POST(makeRunEvent('daily.yml'));
+
+    expect(response.status).toBe(202);
+    expect(await response.json()).toMatchObject({ ok: false, ...result });
   });
 
-  test('returns 404 when the automation is not installed', async () => {
-    const res = await POST(makeRunEvent('not-installed'));
-    expect(res.status).toBe(404);
-    const body = (await res.json()) as { error: string };
-    expect(body.error).toBe('not_found');
+  test.each([
+    { code: 'unavailable' as const, status: 503 },
+    { code: 'invalid_response' as const, status: 502 },
+  ])('maps an execution $code error to $status', async ({ code, status }) => {
+    vi.mocked(executeAutomation).mockRejectedValue(
+      new AutomationRuntimeError(code, 'AKM execution failed'),
+    );
+    const response = await POST(makeRunEvent('daily.yml'));
+
+    expect(response.status).toBe(status);
+    expect(await response.json()).toMatchObject({ error: code, requestId: 'req-run-test' });
   });
 
-  test('returns 202 and runs automation for a valid task', async () => {
-    const state = getState();
-    seedInstalledTask(state.stashDir, 'health-check');
-
-    const res = await POST(makeRunEvent('health-check'));
-    expect(res.status).toBe(202);
-
-    const body = (await res.json()) as { ok: boolean; name: string; status: string; error: string | null };
-    expect(body.ok).toBe(true);
-    expect(body.name).toBe('health-check');
-    expect(body.status).toBe('completed');
-    expect(body.error).toBeNull();
-    expect(executeAutomation).toHaveBeenCalledWith(state, 'health-check');
+  test('leaves malformed YAML semantics to AKM', async () => {
+    expect((await POST(makeRunEvent('broken.yml'))).status).toBe(202);
+    expect(executeAutomation).toHaveBeenCalledWith(expect.any(Object), 'broken.yml');
   });
 
-  test('accepts a bare base name without .yml', async () => {
-    const state = getState();
-    seedInstalledTask(state.stashDir, 'health-check');
-
-    const res = await POST(makeRunEvent('health-check'));
-    expect(res.status).toBe(202);
+  test('accepts consecutive dots, a 228-character ID, and foo. exactly as AKM does', async () => {
+    for (const fileName of ['a..b.yml', `${'a'.repeat(228)}.yml`, 'foo..yml']) {
+      expect((await POST(makeRunEvent(fileName))).status).toBe(202);
+      expect(executeAutomation).toHaveBeenCalledWith(expect.any(Object), fileName);
+    }
   });
 
-  test('accepts an AKM task ID ending in .md', async () => {
-    const state = getState();
-    seedInstalledTask(state.stashDir, 'report.md');
-    expect((await POST(makeRunEvent('report.md'))).status).toBe(202);
+  test('maps an unsafe container file to a generic 500', async () => {
+    vi.mocked(executeAutomation).mockRejectedValue(
+      new AutomationRuntimeError('unsafe_file', 'Task file is a symbolic link'),
+    );
+    const response = await POST(makeRunEvent('linked.yml'));
+    expect(response.status).toBe(500);
+    expect(await response.json()).toMatchObject({
+      error: 'internal_error',
+      message: 'Automation operation failed',
+    });
   });
 });

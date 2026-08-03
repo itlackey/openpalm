@@ -1,5 +1,7 @@
 /**
- * AKM task parser.
+ * Legacy AKM task parser retained as unexported source because deleting the
+ * file was not approved. Production task handling must delegate semantics to
+ * AKM and must not import this module.
  *
  * Task files are YAML documents in knowledge/tasks/. Supported target types:
  *   command  — `command: [...]` YAML array (argv)
@@ -8,7 +10,6 @@
  */
 import { parse as parseYaml } from "yaml";
 import { basename, join } from "node:path";
-import type { AutomationConfig } from "./scheduler.js";
 import { createLogger } from "../logger.js";
 import { listTaskFiles, readTaskFile } from "./task-files.js";
 
@@ -130,40 +131,4 @@ export function loadMarkdownTasks(stashDir: string): MarkdownTask[] {
     if (task) tasks.push(task);
   }
   return tasks;
-}
-
-// ── AutomationConfig adapter ──────────────────────────────────────────────
-// Keeps the GET /api/host/automations response shape compatible so the existing
-// UI does not require changes.
-
-export function taskToAutomationConfig(task: MarkdownTask): AutomationConfig {
-  const { target } = task;
-
-  let actionType: "shell" | "assistant" | "workflow" | "api" | "http";
-  let content: string | undefined;
-  let agent: string | undefined;
-
-  if (target.kind === "command") {
-    actionType = "shell";
-  } else if (target.kind === "prompt") {
-    actionType = "assistant";
-    content = target.body;
-  } else {
-    actionType = "workflow";
-  }
-
-  return {
-    name: task.id,
-    description: task.description ?? "",
-    schedule: task.schedule,
-    timezone: "",
-    enabled: task.enabled,
-    action: {
-      type: actionType,
-      content,
-      agent,
-    },
-    on_failure: "log",
-    fileName: basename(task.source.path),
-  };
 }

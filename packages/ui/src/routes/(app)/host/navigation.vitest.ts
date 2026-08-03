@@ -103,4 +103,11 @@ describe('host page history wiring', () => {
     expect(source).toMatch(/conversationHref=\{resolvedChatReturnHref\}/);
     expect(source).toMatch(/focusAddon=\{focusAddon\}/);
   });
+
+  test('offers routine logs only for schedulable task filenames', () => {
+    const source = readFileSync(HOST_PAGE_PATH, 'utf-8');
+
+    expect(source).toContain('.filter((automation) => automation.schedulable)');
+    expect(source).toContain('.map((automation) => automation.fileName)');
+  });
 });

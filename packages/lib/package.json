@@ -18,6 +18,10 @@
     "./pairing.js": "./src/pairing.ts",
     "./provider-constants": "./src/provider-constants.ts",
     "./shared/logger": "./src/logger.ts",
+    "./control-plane/automation-runtime-helper.js": null,
+    "./control-plane/automation-runtime-helper": null,
+    "./control-plane/markdown-task.js": null,
+    "./control-plane/markdown-task": null,
     "./control-plane/*.js": "./src/control-plane/*.ts",
     "./control-plane/*": "./src/control-plane/*.ts"
   },

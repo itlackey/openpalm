@@ -1,16 +1,212 @@
 # shellcheck shell=bash
 # Shared fixture seeding for the rootless smoke scripts.
 #
-# This is a SOURCED helper, not an executable — both
-# scripts/rootless-ownership-smoke.sh and scripts/rootless-host-swap-smoke.sh
-# source it so the seed recipe (skeleton copy, secret files, stack.env skeleton,
-# ensureHomeDirs, version-override compose) lives in ONE place and cannot drift
-# between the two scripts.
+# This is a SOURCED helper, not an executable. The rootless ownership,
+# host-swap, and Debian cron behavior smoke scripts source it so the seed recipe
+# (skeleton copy, secret files, stack.env skeleton, ensureHomeDirs,
+# version-override compose) lives in ONE place and cannot drift between them.
 #
 # Every function assumes the caller has already `cd`'d to the repo root (so the
 # `packages/skeleton`, `package.json`, and `packages/lib` relative paths
-# resolve) and passes the isolated OP_HOME as the first argument. The caller
-# owns the repo-root safety guard on that path and its own boot/assert flow.
+# resolve) and passes the isolated OP_HOME as the first argument. The shared
+# path helpers enforce repo-root cleanup safety; callers own their boot/assert flow.
+
+# Canonicalize a scratch home and constrain it to one guarded repo-root child.
+# A suffix remains available for isolated concurrent runs while preserving each
+# smoke's existing default basename.
+# Usage: smoke_guarded_home <repo-root> <requested-home> <guarded-basename> <env-name>
+smoke_guarded_home() {
+  local root requested guarded_basename env_name home home_basename
+  root="$(realpath -m -- "$1")" || return 1
+  requested="$2"
+  guarded_basename="$3"
+  env_name="$4"
+
+  if [[ -z "$requested" ]]; then
+    echo "${env_name} must not be empty." >&2
+    return 1
+  fi
+  if ! home="$(realpath -m -- "$requested")"; then
+    echo "Could not canonicalize ${env_name}: $requested" >&2
+    return 1
+  fi
+  home_basename="$(basename -- "$home")"
+  if [[ "$(dirname -- "$home")" != "$root" ]]; then
+    echo "${env_name} must be a direct child of the repository root: $home" >&2
+    return 1
+  fi
+  case "$home_basename" in
+    "$guarded_basename" | "$guarded_basename"-*) ;;
+    *)
+      echo "${env_name} must use the guarded ${guarded_basename} basename: $home" >&2
+      return 1
+      ;;
+  esac
+  printf '%s\n' "$home"
+}
+
+# Create a guarded fixture root only when no path, including a broken symlink,
+# already occupies it. The caller may mark the path as owned after this returns.
+# Usage: smoke_create_guarded_home <repo-root> <home> <guarded-basename> <env-name>
+smoke_create_guarded_home() {
+  local root="$1"
+  local home="$2"
+  local guarded_basename="$3"
+  local env_name="$4"
+  local canonical
+  canonical="$(smoke_guarded_home "$root" "$home" "$guarded_basename" "$env_name")" || return 1
+  if [[ "$canonical" != "$home" ]]; then
+    echo "Refusing non-canonical ${env_name}: $home" >&2
+    return 1
+  fi
+  if [[ -e "$home" || -L "$home" ]]; then
+    echo "Refusing to replace an existing smoke path: $home" >&2
+    return 1
+  fi
+  mkdir -- "$home"
+}
+
+# Compose cleanup is label-scoped, so project names must remain inside a
+# script-specific prefix even when supplied through COMPOSE_PROJECT_NAME.
+# Usage: smoke_guarded_project <requested-project> <guarded-prefix> <env-name>
+smoke_guarded_project() {
+  local requested="$1"
+  local guarded_prefix="$2"
+  local env_name="$3"
+  if [[ ! "$requested" =~ ^[a-z0-9][a-z0-9_-]*$ ]]; then
+    echo "${env_name} is not a valid lowercase Compose project name: $requested" >&2
+    return 1
+  fi
+  if [[ "$requested" != "$guarded_prefix" && "$requested" != "$guarded_prefix"-* ]]; then
+    echo "${env_name} must use the guarded ${guarded_prefix} prefix: $requested" >&2
+    return 1
+  fi
+  printf '%s\n' "$requested"
+}
+
+# Refuse to adopt or reset any container, network, or volume from an earlier
+# invocation. Callers recheck immediately before their first creating command.
+# Usage: smoke_assert_project_absent <project>
+smoke_assert_project_absent() {
+  local project="$1"
+  local containers networks volumes
+  containers="$(timeout 5s docker ps -aq --filter "label=com.docker.compose.project=$project")" || {
+    echo "Could not check containers for smoke project $project" >&2
+    return 1
+  }
+  networks="$(timeout 5s docker network ls -q --filter "label=com.docker.compose.project=$project")" || {
+    echo "Could not check networks for smoke project $project" >&2
+    return 1
+  }
+  volumes="$(timeout 5s docker volume ls -q --filter "label=com.docker.compose.project=$project")" || {
+    echo "Could not check volumes for smoke project $project" >&2
+    return 1
+  }
+  if [[ -n "$containers" || -n "$networks" || -n "$volumes" ]]; then
+    echo "Refusing to reset pre-existing Docker resources for smoke project $project" >&2
+    [[ -z "$containers" ]] || printf '  containers: %s\n' "${containers//$'\n'/ }" >&2
+    [[ -z "$networks" ]] || printf '  networks: %s\n' "${networks//$'\n'/ }" >&2
+    [[ -z "$volumes" ]] || printf '  volumes: %s\n' "${volumes//$'\n'/ }" >&2
+    return 1
+  fi
+}
+
+# Remove only resources carrying the exact Compose project label. Every Docker
+# operation is bounded so daemon uncertainty cannot hang cleanup indefinitely.
+# Usage: smoke_remove_project_resources <project>
+smoke_remove_project_resources() {
+  local project="$1"
+  local output
+  local -a resources=()
+  local failed=0
+
+  if output="$(timeout 5s docker ps -aq --filter "label=com.docker.compose.project=$project")"; then
+    if [[ -n "$output" ]]; then
+      mapfile -t resources <<<"$output"
+      timeout 20s docker rm -f "${resources[@]}" >/dev/null || failed=1
+    fi
+  else
+    echo "cleanup: could not list containers for project $project" >&2
+    failed=1
+  fi
+
+  resources=()
+  if output="$(timeout 5s docker network ls -q --filter "label=com.docker.compose.project=$project")"; then
+    if [[ -n "$output" ]]; then
+      mapfile -t resources <<<"$output"
+      timeout 20s docker network rm "${resources[@]}" >/dev/null || failed=1
+    fi
+  else
+    echo "cleanup: could not list networks for project $project" >&2
+    failed=1
+  fi
+
+  resources=()
+  if output="$(timeout 5s docker volume ls -q --filter "label=com.docker.compose.project=$project")"; then
+    if [[ -n "$output" ]]; then
+      mapfile -t resources <<<"$output"
+      timeout 20s docker volume rm "${resources[@]}" >/dev/null || failed=1
+    fi
+  else
+    echo "cleanup: could not list volumes for project $project" >&2
+    failed=1
+  fi
+
+  return "$failed"
+}
+
+# Prove that no label-scoped resource remains before a fixture tree is removed.
+# Usage: smoke_verify_project_clear <project>
+smoke_verify_project_clear() {
+  local project="$1"
+  local containers networks volumes
+  containers="$(timeout 5s docker ps -aq --filter "label=com.docker.compose.project=$project")" || {
+    echo "cleanup: could not verify containers for project $project" >&2
+    return 1
+  }
+  networks="$(timeout 5s docker network ls -q --filter "label=com.docker.compose.project=$project")" || {
+    echo "cleanup: could not verify networks for project $project" >&2
+    return 1
+  }
+  volumes="$(timeout 5s docker volume ls -q --filter "label=com.docker.compose.project=$project")" || {
+    echo "cleanup: could not verify volumes for project $project" >&2
+    return 1
+  }
+  if [[ -n "$containers" || -n "$networks" || -n "$volumes" ]]; then
+    echo "cleanup: project $project still owns Docker resources" >&2
+    [[ -z "$containers" ]] || printf '  containers: %s\n' "${containers//$'\n'/ }" >&2
+    [[ -z "$networks" ]] || printf '  networks: %s\n' "${networks//$'\n'/ }" >&2
+    [[ -z "$volumes" ]] || printf '  volumes: %s\n' "${volumes//$'\n'/ }" >&2
+    return 1
+  fi
+}
+
+# Revalidate the canonical path immediately before mounting its parent and
+# removing the guarded child. This is used only after project verification.
+# Usage: smoke_remove_guarded_home <repo-root> <home> <guarded-basename>
+smoke_remove_guarded_home() {
+  local root="$1"
+  local home="$2"
+  local guarded_basename="$3"
+  local canonical output
+  root="$(realpath -m -- "$root")" || return 1
+  canonical="$(smoke_guarded_home "$root" "$home" "$guarded_basename" 'smoke cleanup path')" || return 1
+  if [[ "$canonical" != "$home" ]]; then
+    echo "cleanup: smoke path changed after canonicalization: $home -> $canonical" >&2
+    return 1
+  fi
+  if [[ ! -e "$home" && ! -L "$home" ]]; then return 0; fi
+  if ! output="$(timeout 30s docker run --rm -v "$root:/smoke-parent" alpine \
+    sh -c 'rm -rf -- "/smoke-parent/$1"' _ "$(basename -- "$home")" 2>&1)"; then
+    echo "cleanup: could not remove guarded scratch tree $home" >&2
+    [[ -z "$output" ]] || printf '%s\n' "$output" >&2
+    return 1
+  fi
+  if [[ -e "$home" || -L "$home" ]]; then
+    echo "cleanup: guarded scratch tree still exists: $home" >&2
+    return 1
+  fi
+}
 
 # Resolve the platform version once (package.json version).
 smoke_platform_version() {
@@ -68,7 +264,7 @@ smoke_seed_secrets() {
 # OP_HOST_UI_PORT, OP_ENABLED_ADDONS) after this returns.
 # Usage: smoke_write_stack_env <home> <platform_version> \
 #          <assistant_port> <ui_port> <guardian_port> <guardian_admin_port> \
-#          <chat_port> <api_port>
+#          <chat_port> <api_port> [runtime_uid] [runtime_gid]
 smoke_write_stack_env() {
   local home="$1"
   local platform_version="$2"
@@ -78,12 +274,14 @@ smoke_write_stack_env() {
   local guardian_admin_port="$6"
   local chat_port="$7"
   local api_port="$8"
+  local runtime_uid="${9:-$(id -u)}"
+  local runtime_gid="${10:-$(id -g)}"
 
   mkdir -p "$home/state"
   cat >"$home/state/stack.env" <<EOF
 OP_HOME=${home}
-OP_UID=$(id -u)
-OP_GID=$(id -g)
+OP_UID=${runtime_uid}
+OP_GID=${runtime_gid}
 OP_IMAGE_NAMESPACE=openpalm
 OP_ASSISTANT_VERSION=dev
 OP_GUARDIAN_VERSION=dev

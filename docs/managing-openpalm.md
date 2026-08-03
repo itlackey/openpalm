@@ -123,13 +123,24 @@ the IP URL keeps working.
 ## Automations
 
 Assistant automations are AKM v2 `.yml` task files under
-`knowledge/tasks/`. The assistant entrypoint starts Debian cron, runs `akm task
-sync` at boot, and re-syncs every 60 seconds. Only the cron daemon is root;
-task registration and execution use the configured Assistant identity.
+`knowledge/tasks/`. OpenPalm seeds missing catalog files but does not interpret
+their task semantics; AKM parses, validates, registers, and executes them. The
+assistant entrypoint starts Debian cron, runs `akm task sync` at boot, and
+re-syncs every 60 seconds. Only fixed Tini, supervisor, and cron infrastructure
+remains root; AKM reconciliation and task execution use the configured
+Assistant identity.
 
-Task targets are limited to `command`, `prompt`, or `workflow`.
+AKM currently supports `command`, `prompt`, and `workflow` targets.
+
+Admin automation file management requires a running Assistant. The admin API
+executes task-file reads and mutations inside the Assistant's Linux mount
+namespace rather than accessing the host task path directly.
 
 ### Prompt Task
+
+Prompt tasks require a configured AKM engine. AKM validates every task document
+during sync, including disabled tasks, so do not add this example to a
+providerless install until an engine is configured.
 
 ```yaml
 version: 2

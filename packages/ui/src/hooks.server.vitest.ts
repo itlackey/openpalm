@@ -17,15 +17,18 @@ import { SESSION_COOKIE_NAME } from '$lib/server/session-cookie.js';
 // Make launch routing DETERMINISTIC: stub the three host probes so the tests don't
 // depend on whether docker / an assistant happens to be running on the dev machine
 // (a reachable assistant on :3800 used to flip the not_installed case to /chat).
-// Everything else from these modules stays real (secret/config
-// startup, the pure routing derivations).
+// Everything else from these modules stays real (read-only process startup and
+// the pure routing derivations). The migration spy pins that serving the UI is
+// not itself a migration owner.
 vi.mock('@openpalm/lib', async (orig) => ({
   ...(await orig<typeof import('@openpalm/lib')>()),
   composePs: vi.fn(async () => ({ ok: false, stdout: '', stderr: '' })),
   detectRuntime: vi.fn(async () => ({ dockerPresent: false, composeAvailable: false })),
+  runHomeMigrations: vi.fn(),
 }));
 
 import { handle, _resetLaunchCache } from './hooks.server.js';
+import { runHomeMigrations } from '@openpalm/lib';
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -60,6 +63,10 @@ function makeEvent(path: string, token: string | null, accept = 'application/jso
 const resolve = () => Promise.resolve(new Response('ok', { status: 200 }));
 
 // ── tests ─────────────────────────────────────────────────────────────────────
+
+test('module startup does not run home migrations', () => {
+  expect(runHomeMigrations).not.toHaveBeenCalled();
+});
 
 describe('hooks.server — sliding renewal', () => {
   let home = '';

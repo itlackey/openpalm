@@ -23,13 +23,16 @@ describe('automationsCheck', () => {
   test('reports registrations from the Assistant scheduler', async () => {
     const logs = await captureLogs({
       ok: true,
-      configured: ['daily-digest', 'health-check'],
-      registered: ['daily-digest'],
-      missing: ['health-check'],
+      localFileNames: ['daily-digest.yml', 'health-check.yml'],
+      matchingSchedulerIds: ['daily-digest'],
+      localOnlyFileNames: ['health-check.yml'],
+      schedulerOnlyTaskIds: ['other-bundle'],
+      attribution: 'unavailable',
     });
 
-    expect(logs).toContain('Registered in Assistant scheduler: 1/2');
-    expect(logs).toContain('Not registered: health-check');
+    expect(logs).toContain('Scheduler ID matches: 1/2 (bundle attribution unavailable)');
+    expect(logs).toContain('Local files without a matching scheduler ID: "health-check.yml"');
+    expect(logs).toContain('Scheduler-only IDs: "other-bundle"');
   });
 
   test('reports an Assistant inspection failure without reading the host crontab', async () => {
@@ -37,7 +40,11 @@ describe('automationsCheck', () => {
       automationsCheck({
         getState: () => state,
         inspect: mock(() =>
-          Promise.resolve({ ok: false, configured: ['daily-digest'], error: 'assistant is not running' }),
+          Promise.resolve({
+            ok: false,
+            localFileNames: ['daily-digest.yml'],
+            error: 'assistant is not running',
+          }),
         ),
       }),
     ).rejects.toThrow('Unable to inspect the Assistant scheduler: assistant is not running');
@@ -47,13 +54,54 @@ describe('automationsCheck', () => {
     await expect(
       automationsCheck({
         getState: () => state,
-        inspect: mock(() => Promise.resolve({ ok: false, configured: [], error: 'unsafe tasks directory' })),
+        inspect: mock(() =>
+          Promise.resolve({ ok: false, localFileNames: [], error: 'unsafe tasks directory' }),
+        ),
       }),
     ).rejects.toThrow('Unable to inspect the Assistant scheduler: unsafe tasks directory');
   });
 
-  test('returns early when no v2 task files exist', async () => {
-    const logs = await captureLogs({ ok: true, configured: [], registered: [], missing: [] });
-    expect(logs).toEqual(['No automation tasks installed.']);
+  test('reports scheduler-only bindings when no local task files exist', async () => {
+    const logs = await captureLogs({
+      ok: true,
+      localFileNames: [],
+      matchingSchedulerIds: [],
+      localOnlyFileNames: [],
+      schedulerOnlyTaskIds: ['other-bundle'],
+      attribution: 'unavailable',
+    });
+    expect(logs).toEqual([
+      'No local automation task files installed.',
+      'Scheduler-only IDs: "other-bundle"',
+    ]);
+  });
+
+  test('reports an empty local and scheduler state', async () => {
+    const logs = await captureLogs({
+      ok: true,
+      localFileNames: [],
+      matchingSchedulerIds: [],
+      localOnlyFileNames: [],
+      schedulerOnlyTaskIds: [],
+      attribution: 'unavailable',
+    });
+    expect(logs).toEqual(['No local automation task files installed.']);
+  });
+
+  test('escapes terminal control characters in local filenames and scheduler IDs', async () => {
+    const logs = await captureLogs({
+      ok: true,
+      localFileNames: ['line\nbreak.yml', 'color\u001b[31m.yml'],
+      matchingSchedulerIds: [],
+      localOnlyFileNames: ['line\nbreak.yml', 'color\u001b[31m.yml'],
+      schedulerOnlyTaskIds: ['direction\u202eright'],
+      attribution: 'unavailable',
+    });
+
+    expect(logs).toContain('  - "line\\u000abreak.yml"');
+    expect(logs).toContain('  - "color\\u001b[31m.yml"');
+    expect(logs).toContain('Scheduler-only IDs: "direction\\u202eright"');
+    expect(logs.join('\n')).not.toContain('\u001b');
+    expect(logs).toHaveLength(6);
   });
 });

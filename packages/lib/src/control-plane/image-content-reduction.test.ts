@@ -55,7 +55,7 @@ describe('IMG-1 — local tool manifests contain only OpenCode', () => {
     const assistant = readFileSync(join(REPO_ROOT, 'containers/assistant/Dockerfile'), 'utf8');
     const guardian = readFileSync(join(REPO_ROOT, 'containers/guardian/Dockerfile'), 'utf8');
     for (const dockerfile of [assistant, guardian]) {
-      expect(dockerfile).toContain('ARG AKM_CLI_VERSION=0.9.0-rc.13');
+      expect(dockerfile).toContain('ARG AKM_CLI_VERSION=0.9.0-rc.15');
       expect(dockerfile).toContain('npm install --global');
       expect(dockerfile).toContain('/usr/local/lib/node_modules/akm-cli');
       expect(dockerfile).toContain('test "$(npm root --global)" = "/usr/local/lib/node_modules"');
@@ -78,14 +78,37 @@ describe('dead seeded tool manifests removed from the skeleton', () => {
 
 describe('AKM 0.9 migration boot contract', () => {
   const entrypoint = readFileSync(join(REPO_ROOT, 'containers/assistant/entrypoint.sh'), 'utf8');
+  const migrationHelper = readFileSync(join(REPO_ROOT, 'containers/assistant/migrate-akm-09.sh'), 'utf8');
+  const dockerfile = readFileSync(join(REPO_ROOT, 'containers/assistant/Dockerfile'), 'utf8');
 
-  test('runs journaled migration and scheduler rebind before cron starts', () => {
-    const migration = entrypoint.indexOf('"$AKM_BIN" migrate apply --config "$target_file"');
-    const rebind = entrypoint.indexOf('sync_akm_tasks --rebind');
+  test('isolates the removable migration gate in a node-only helper', () => {
+    expect(entrypoint).toContain('AKM_MIGRATION_HELPER="/usr/local/lib/openpalm/migrate-akm-09.sh"');
+    expect(entrypoint).toContain('"$AKM_MIGRATION_HELPER"');
+    expect(entrypoint).not.toContain('run_akm_schema_migration()');
+    expect(entrypoint).not.toContain('migrate apply --config');
+    expect(migrationHelper).toContain('if [ "$EUID" -eq 0 ] || [ "$(id -un)" != "node" ]');
+    expect(dockerfile).toContain(
+      'COPY containers/assistant/migrate-akm-09.sh /usr/local/lib/openpalm/migrate-akm-09.sh',
+    );
+    expect(dockerfile).toContain(
+      'chmod +x /usr/local/bin/opencode-entrypoint.sh /usr/local/lib/openpalm/migrate-akm-09.sh',
+    );
+  });
+
+  test('runs the phased migration helper before initial sync and cron', () => {
+    const helper = entrypoint.indexOf('"$AKM_MIGRATION_HELPER"');
+    const initialSync = entrypoint.indexOf('reconcile_akm_tasks "${task_sync_exec[@]}"');
     const cron = entrypoint.indexOf('/usr/sbin/cron -f');
+    const migration = migrationHelper.indexOf('"$AKM_BIN" migrate apply --config "$target_file"');
+    const rebind = migrationHelper.indexOf('"$ENTRYPOINT_BIN" --sync-once --rebind');
+    expect(helper).toBeGreaterThan(-1);
+    expect(initialSync).toBeGreaterThan(helper);
+    expect(cron).toBeGreaterThan(initialSync);
     expect(migration).toBeGreaterThan(-1);
-    expect(rebind).toBeGreaterThan(migration);
-    expect(cron).toBeGreaterThan(rebind);
+    expect(rebind).toBeGreaterThan(-1);
+    expect(migrationHelper).toContain('write_migration_phase apply "$akm_version"');
+    expect(migrationHelper).toContain('write_migration_phase post-apply');
+    expect(migrationHelper).toContain('write_migration_phase complete');
   });
 
   test('uses native Debian cron with an explicit non-root application boundary', () => {
@@ -104,9 +127,9 @@ describe('AKM 0.9 migration boot contract', () => {
     expect(entrypoint).toContain('.[0].skipped | length == 0');
     expect(entrypoint).toContain('.[0].shape == "task-sync"');
     expect(entrypoint).toContain('.[0].schemaVersion == 1');
-    expect(entrypoint).toContain('/task-sync-failed');
-    expect(entrypoint).toContain('if [ "$task_sync_rc" -eq 2 ]');
-    expect(entrypoint).toContain('fix the task files and retry without changing AKM versions');
+    expect(migrationHelper).toContain('if [ "$rc" -eq 2 ]');
+    expect(migrationHelper).toContain('fix the task files and retry without changing AKM versions');
+    expect(migrationHelper).toContain('"$ENTRYPOINT_BIN" --sync-once --rebind');
     expect(entrypoint).toContain('task sync --format json --quiet');
     expect(entrypoint).toContain(
       '/usr/bin/env PATH="$SCHEDULED_TASK_PATH" /usr/bin/timeout --signal=TERM --kill-after=5s 50s "$AKM_BIN"',
@@ -114,23 +137,55 @@ describe('AKM 0.9 migration boot contract', () => {
   });
 
   test('fails health errors instead of continuing with partial AKM state', () => {
-    expect(entrypoint).toContain('error: akm health check failed');
-    expect(entrypoint).not.toContain('akm schema migration check failed (exit $rc); continuing startup');
+    expect(migrationHelper).toContain('error: akm health check failed');
+    expect(migrationHelper).not.toContain('akm schema migration check failed (exit $rc); continuing startup');
   });
 
   test('backs up an unstamped 0.8 config before adding its migration sentinel', () => {
-    const backup = entrypoint.indexOf('openpalm-pre-0.9-missing-version');
-    const sentinel = entrypoint.indexOf('config.configVersion = "0.8.0"');
+    const backup = migrationHelper.indexOf('openpalm-pre-0.9-missing-version');
+    const sentinel = migrationHelper.indexOf('--stamp-missing "$config_file"');
     expect(backup).toBeGreaterThan(-1);
     expect(sentinel).toBeGreaterThan(backup);
   });
 
-  test('restores AKM recovery state and blocks same-version retries after failed verification', () => {
-    expect(entrypoint).toContain(
-      '"$AKM_MIGRATE_BIN" restore --for 0.9.0 --run "$migration_backup_run" --confirm',
+  test('retains post-apply failures instead of restoring task-mutating apply', () => {
+    expect(migrationHelper).toContain('post-apply will retry on restart');
+    expect(migrationHelper).not.toContain(' restore --for ');
+    expect(migrationHelper).not.toContain('restore-required');
+    expect(migrationHelper).not.toContain('openpalm-0.9-blocked-version');
+    expect(migrationHelper).toContain('env run env/user -- "$AKM_BIN" index');
+  });
+});
+
+describe('assistant automation runtime boundary', () => {
+  const dockerfile = readFileSync(join(REPO_ROOT, 'containers/assistant/Dockerfile'), 'utf8');
+
+  test('bakes one read-only Node helper bundle after UI packaging', () => {
+    expect(dockerfile).toContain(
+      'COPY packages/lib/src/control-plane/task-file-contract.ts ./task-file-contract.ts',
     );
-    expect(entrypoint).toContain('openpalm-0.9-blocked-version');
-    expect(entrypoint).toContain('install a newer AKM release before retrying');
+    expect(dockerfile).toContain(
+      'COPY packages/lib/src/control-plane/automation-runtime-helper.ts ./automation-runtime-helper.ts',
+    );
+    expect(dockerfile).toContain('--target=node');
+    expect(dockerfile).toContain(
+      'COPY --from=automationhelperbuild /tmp/automation-runtime-helper.mjs /usr/local/lib/openpalm/automation-runtime-helper.mjs',
+    );
+    expect(dockerfile).toContain(
+      "test \"$(stat -c '%u:%g:%a' /usr/local/lib/openpalm/automation-runtime-helper.mjs)\" = '0:0:444'",
+    );
+    expect(dockerfile).toContain('test -x /usr/bin/timeout');
+    expect(dockerfile).toContain('test -x /usr/bin/sqlite3');
+    expect(dockerfile).not.toContain('/usr/bin/mv --exchange');
+    expect(dockerfile).not.toContain('--update=none-fail');
+    expect(dockerfile).not.toContain('/usr/local/lib/openpalm/automation-runtime-helper.ts');
+    expect(dockerfile).not.toContain('/usr/local/lib/openpalm/task-file-contract.ts');
+    expect(dockerfile).not.toContain(
+      'COPY packages/lib/src/control-plane/task-files.ts /usr/local/lib/openpalm/task-files.ts',
+    );
+    expect(dockerfile).not.toContain(
+      'COPY packages/lib/src/control-plane/automation-runtime.ts /usr/local/lib/openpalm/automation-runtime.ts',
+    );
   });
 });
 

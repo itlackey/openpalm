@@ -5,59 +5,23 @@
  * Scheduling is handled by the OS cron daemon (via `akm task sync`).
  * Execution is handled by `akm task run <id>`.
  */
-import { existsSync, readdirSync, readFileSync } from "node:fs";
-import { join } from "node:path";
 import { createLogger } from "../logger.js";
-import { runAssistantAkmCommand } from "./assistant-akm.js";
-import { loadMarkdownTasks, taskToAutomationConfig } from "./markdown-task.js";
-import { listTaskFiles } from "./task-files.js";
+import {
+  checkAssistantTaskSyncHealth,
+  runAssistantAkmCommand,
+} from "./assistant-akm.js";
+import {
+  AutomationRuntimeError,
+  listAutomationTaskFiles,
+  readAutomationTaskLogs,
+} from './automation-runtime.js';
+import {
+  assertSchedulableTaskFilename,
+  taskIdFromTaskFilename,
+} from './task-file-contract.js';
 import type { ControlPlaneState } from "./types.js";
 
 const logger = createLogger("scheduler");
-
-// ── Types ─────────────────────────────────────────────────────────────────
-
-export type ActionType = "api" | "http" | "shell" | "assistant" | "workflow";
-
-export type AutomationAction = {
-  type: ActionType;
-  method?: string;
-  path?: string;
-  url?: string;
-  content?: string;
-  agent?: string;
-};
-
-export type AutomationConfig = {
-  name: string;
-  description: string;
-  schedule: string;
-  timezone: string;
-  enabled: boolean;
-  action: AutomationAction;
-  on_failure: "log" | "audit";
-  fileName: string;
-};
-
-// ── Schedule presets (UI display labels only) ─────────────────────────────
-
-export const SCHEDULE_PRESETS: Record<string, string> = {
-  "every-minute": "* * * * *",
-  "every-5-minutes": "*/5 * * * *",
-  "every-15-minutes": "*/15 * * * *",
-  "every-hour": "0 * * * *",
-  "daily": "0 0 * * *",
-  "daily-8am": "0 8 * * *",
-  "weekly": "0 0 * * 0",
-  "weekly-sunday-3am": "0 3 * * 0",
-  "weekly-sunday-4am": "0 4 * * 0"
-};
-
-// ── Load automations from AKM task files ──────────────────────────────────
-
-export function loadAutomations(stashDir: string): AutomationConfig[] {
-  return loadMarkdownTasks(stashDir).map(taskToAutomationConfig);
-}
 
 // ── Execute an automation via akm task run ────────────────────────────────
 
@@ -68,15 +32,107 @@ export interface AutomationRunResult {
 }
 
 type AutomationCommandRunner = typeof runAssistantAkmCommand;
+type AutomationTaskSyncHealthChecker = typeof checkAssistantTaskSyncHealth;
+type AutomationTaskFileLister = typeof listAutomationTaskFiles;
+type AutomationLogReader = typeof readAutomationTaskLogs;
+
+const AKM_NOT_FOUND_CODES = new Set([
+  'ASSET_NOT_FOUND',
+  'FILE_NOT_FOUND',
+  'SOURCE_NOT_FOUND',
+  'WORKFLOW_NOT_FOUND',
+]);
+const AKM_INVALID_REQUEST_CODES = new Set([
+  'CONFIG_DIR_UNRESOLVABLE',
+  'INVALID_CONFIG_FILE',
+  'INVALID_FLAG_VALUE',
+  'MISSING_REQUIRED_ARGUMENT',
+  'PATH_ESCAPE_VIOLATION',
+  'STASH_DIR_NOT_A_DIRECTORY',
+  'STASH_DIR_NOT_FOUND',
+  'STASH_DIR_UNREADABLE',
+  'TASK_SCHEMA_VERSION_UNSUPPORTED',
+  'UNSUPPORTED_CONFIG_VERSION',
+]);
+
+function parseAkmCommandError(stderr: string): { error: string; code?: string } | null {
+  let value: unknown;
+  try {
+    value = JSON.parse(stderr);
+  } catch {
+    return null;
+  }
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return null;
+  const envelope = value as Record<string, unknown>;
+  const keys = Object.keys(envelope);
+  if (
+    envelope.ok !== false ||
+    typeof envelope.error !== 'string' ||
+    envelope.error.length === 0 ||
+    envelope.error.length > 4_096 ||
+    (envelope.code !== undefined &&
+      (typeof envelope.code !== 'string' || !/^[A-Z][A-Z0-9_]{0,127}$/.test(envelope.code))) ||
+    (envelope.hint !== undefined &&
+      (typeof envelope.hint !== 'string' || envelope.hint.length > 4_096)) ||
+    keys.some((key) => !['ok', 'error', 'code', 'hint'].includes(key))
+  ) {
+    return null;
+  }
+  return {
+    error: envelope.error,
+    ...(typeof envelope.code === 'string' ? { code: envelope.code } : {}),
+  };
+}
+
+function failedAkmCommandError(
+  result: Awaited<ReturnType<AutomationCommandRunner>>,
+): AutomationRuntimeError {
+  const parsed = parseAkmCommandError(result.stderr.trim());
+  if (parsed === null) {
+    return new AutomationRuntimeError('unavailable', 'Assistant automation execution is unavailable');
+  }
+  if (parsed.code !== undefined && AKM_NOT_FOUND_CODES.has(parsed.code)) {
+    return new AutomationRuntimeError('not_found', parsed.error);
+  }
+  if (parsed.code === 'RESOURCE_ALREADY_EXISTS') {
+    return new AutomationRuntimeError('conflict', parsed.error);
+  }
+  if (
+    result.exitCode === 2 ||
+    result.exitCode === 78 ||
+    (parsed.code !== undefined && AKM_INVALID_REQUEST_CODES.has(parsed.code))
+  ) {
+    return new AutomationRuntimeError('invalid_request', parsed.error);
+  }
+  return new AutomationRuntimeError('invalid_response', 'AKM returned an invalid error response');
+}
+
+function schedulerTaskIdFromFilename(fileName: string): string {
+  assertSchedulableTaskFilename(fileName);
+  return taskIdFromTaskFilename(fileName);
+}
 
 export async function executeAutomation(
   state: ControlPlaneState,
-  id: string,
+  fileName: string,
   runCommand: AutomationCommandRunner = runAssistantAkmCommand,
 ): Promise<AutomationRunResult> {
-  // Strip file suffix if caller passes the full filename.
-  const taskId = id.replace(/\.yml$/, "");
-  const result = await runCommand(state, ["task", "run", taskId, "--format", "json", "--quiet"], 0);
+  const taskId = schedulerTaskIdFromFilename(fileName);
+  let result: Awaited<ReturnType<AutomationCommandRunner>>;
+  try {
+    result = await runCommand(state, ["task", "run", taskId, "--format", "json", "--quiet"], 0);
+  } catch {
+    logger.warn("akm task run transport failed", { id: taskId });
+    throw new AutomationRuntimeError('unavailable', 'Assistant automation execution is unavailable');
+  }
+  if (result.missing) {
+    logger.warn("akm task run is unavailable", { id: taskId, exitCode: result.exitCode });
+    throw new AutomationRuntimeError('unavailable', 'AKM is unavailable in the Assistant');
+  }
+  if (result.transportError) {
+    logger.warn('akm task run transport failed', { id: taskId });
+    throw new AutomationRuntimeError('unavailable', 'Assistant automation execution is unavailable');
+  }
   try {
     const value: unknown = JSON.parse(result.stdout);
     if (typeof value !== "object" || value === null || Array.isArray(value)) throw new Error("expected an object");
@@ -114,46 +170,71 @@ export async function executeAutomation(
       status: taskResult.status,
       ...(envelope.ok || error === undefined ? {} : { error }),
     };
-  } catch (error) {
-    if (result.ok) {
-      const message = `Invalid akm task run response: ${error instanceof Error ? error.message : String(error)}`;
-      logger.warn("akm task run returned invalid output", { id: taskId, error: message });
-      return { ok: false, status: "failed", error: message };
+  } catch {
+    if (!result.ok && result.stdout.trim() === '') {
+      const diagnostic = parseAkmCommandError(result.stderr.trim());
+      logger.warn("akm task run failed without an envelope", {
+        id: taskId,
+        exitCode: result.exitCode,
+        code: diagnostic?.code ?? 'unclassified',
+      });
+      throw failedAkmCommandError(result);
     }
+    logger.warn("akm task run returned invalid output", { id: taskId });
+    throw new AutomationRuntimeError('invalid_response', 'AKM returned an invalid task run response');
   }
-  if (!result.ok) {
-    const error = result.stderr.trim() || result.stdout.trim() || `akm task run exited ${result.exitCode}`;
-    logger.warn("akm task run failed", { id: taskId, error });
-    return { ok: false, status: "failed", error };
-  }
-  return { ok: false, status: "failed", error: "akm task run returned no result" };
 }
 
 export type AutomationRegistrationStatus =
-  | { ok: true; configured: string[]; registered: string[]; missing: string[] }
-  | { ok: false; configured: string[]; error: string };
+  | {
+    ok: true;
+    localFileNames: string[];
+    matchingSchedulerIds: string[];
+    localOnlyFileNames: string[];
+    schedulerOnlyTaskIds: string[];
+    attribution: "unavailable";
+  }
+  | { ok: false; localFileNames: string[]; error: string };
 
 export async function getAutomationRegistrationStatus(
   state: ControlPlaneState,
   runCommand: AutomationCommandRunner = runAssistantAkmCommand,
+  listFiles: AutomationTaskFileLister = listAutomationTaskFiles,
+  checkTaskSyncHealth: AutomationTaskSyncHealthChecker = checkAssistantTaskSyncHealth,
 ): Promise<AutomationRegistrationStatus> {
-  let configured: string[];
+  let localFileMetadata: Awaited<ReturnType<AutomationTaskFileLister>>;
   try {
-    configured = listTaskFiles(state.stashDir).map((file) => file.name.slice(0, -4));
+    localFileMetadata = await listFiles(state);
   } catch (error) {
     return {
       ok: false,
-      configured: [],
+      localFileNames: [],
       error: `Unable to inspect task files: ${error instanceof Error ? error.message : String(error)}`,
     };
   }
-  if (configured.length === 0) return { ok: true, configured, registered: [], missing: [] };
-
+  const localFileNames = localFileMetadata.map((file) => file.fileName);
+  const schedulableFiles = localFileMetadata.filter((file) => file.schedulable);
+  try {
+    const health = await checkTaskSyncHealth(state);
+    if (!health.ok) {
+      return {
+        ok: false,
+        localFileNames,
+        error: `Task reconciliation health check failed: ${health.error}`,
+      };
+    }
+  } catch (error) {
+    return {
+      ok: false,
+      localFileNames,
+      error: `Task reconciliation health check failed: ${error instanceof Error ? error.message : String(error)}`,
+    };
+  }
   const result = await runCommand(state, ["task", "doctor", "--format", "json", "--quiet"], 10_000);
   if (!result.ok) {
     return {
       ok: false,
-      configured,
+      localFileNames,
       error: result.stderr.trim() || result.stdout.trim() || `akm task doctor exited ${result.exitCode}`,
     };
   }
@@ -194,43 +275,35 @@ export async function getAutomationRegistrationStatus(
       }
       for (const id of taskIds as string[]) registeredSet.add(id);
     }
-    const registered = configured.filter((id) => registeredSet.has(id));
-    return { ok: true, configured, registered, missing: configured.filter((id) => !registeredSet.has(id)) };
+    const localTaskIds = new Set(schedulableFiles.map((file) => file.taskId));
+    return {
+      ok: true,
+      localFileNames,
+      matchingSchedulerIds: schedulableFiles
+        .filter((file) => registeredSet.has(file.taskId))
+        .map((file) => file.taskId),
+      localOnlyFileNames: localFileMetadata
+        .filter((file) => !file.schedulable || !registeredSet.has(file.taskId))
+        .map((file) => file.fileName),
+      schedulerOnlyTaskIds: [...registeredSet].filter((id) => !localTaskIds.has(id)),
+      attribution: "unavailable",
+    };
   } catch (error) {
     return {
       ok: false,
-      configured,
+      localFileNames,
       error: `Invalid akm task doctor response: ${error instanceof Error ? error.message : String(error)}`,
     };
   }
 }
 
 // ── Read akm task execution logs ──────────────────────────────────────────
-
-export function readAutomationLogs(
-  id: string,
-  dataDir: string,
-  limit: number = 50,
-): string[] {
-  const taskId = id.replace(/\.yml$/, "");
-  const logDir = join(dataDir, "akm", "cache", "tasks", "logs", taskId);
-  if (!existsSync(logDir)) return [];
-
-  const logFiles = readdirSync(logDir, { withFileTypes: true })
-    .filter((e) => e.isFile() && e.name.endsWith(".log"))
-    .map((e) => ({ name: e.name, path: join(logDir, e.name) }))
-    .sort((a, b) => b.name.localeCompare(a.name)); // newest first (ISO timestamp names)
-
-  const lines: string[] = [];
-  for (const { path } of logFiles) {
-    if (lines.length >= limit) break;
-    try {
-      const content = readFileSync(path, "utf-8");
-      const fileLines = content.split("\n").filter(Boolean).reverse(); // newest within file last
-      lines.push(...fileLines.slice(0, limit - lines.length));
-    } catch {
-      // skip unreadable log files
-    }
-  }
-  return lines.slice(0, limit);
+export async function readAutomationLogs(
+  state: ControlPlaneState,
+  fileName: string,
+  limit = 50,
+  readLogs: AutomationLogReader = readAutomationTaskLogs,
+): Promise<string[]> {
+  schedulerTaskIdFromFilename(fileName);
+  return readLogs(state, fileName, limit);
 }

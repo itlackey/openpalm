@@ -5,12 +5,17 @@ SYSTEM_PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 ASSISTANT_PATH="/opt/persistent/bin:/opt/openpalm/tools/node_modules/.bin:/home/opencode/.local/bin:/home/opencode/.bun/bin:/usr/local/bin:/opt/assistant-tools/bin:/usr/local/sbin:/usr/sbin:/usr/bin:/sbin:/bin"
 SCHEDULED_TASK_PATH="/opt/openpalm/tools/node_modules/.bin:/usr/local/bin:/opt/assistant-tools/bin:/usr/local/sbin:/usr/sbin:/usr/bin:/sbin:/bin:/opt/persistent/bin:/home/opencode/.local/bin:/home/opencode/.bun/bin"
 AKM_BIN="/usr/local/bin/akm"
-AKM_MIGRATE_BIN="/usr/local/bin/akm-migrate"
+AKM_MIGRATION_HELPER="/usr/local/lib/openpalm/migrate-akm-09.sh"
 NODE_BIN="/usr/local/bin/node"
 OPENCODE_BIN="/opt/openpalm/tools/node_modules/.bin/opencode"
 RUNTIME_DIR="/run/openpalm"
 USER_RUNTIME_DIR="${RUNTIME_DIR}/user"
-TASK_SYNC_FAILURE_MARKER="${USER_RUNTIME_DIR}/task-sync-failed"
+TASK_SYNC_STATUS_FILE="${RUNTIME_DIR}/task-sync.status"
+TASK_SYNC_MONITOR_FATAL_RC=70
+TASK_SYNC_STATUS_MAX_AGE_SECONDS=90
+TASK_SYNC_STATUS="degraded"
+TASK_SYNC_REASON="exit-1"
+TASK_SYNC_HEALTH_REPORT="status=invalid reason=invalid updated_at=unknown fresh=false"
 PORT="${OPENCODE_PORT:-4096}"
 UI_SUPERVISOR_PID=""
 
@@ -18,6 +23,88 @@ if [ "$EUID" -eq 0 ]; then
   # Root startup must never resolve a command from an operator-writable mount.
   export PATH="$SYSTEM_PATH"
 fi
+
+task_sync_status_fields_are_valid() {
+  local status="$1"
+  local reason="$2"
+  case "$status:$reason" in
+    healthy:ok|degraded:skipped) return 0 ;;
+  esac
+  if [ "$status" != "degraded" ]; then return 1; fi
+  [[ "$reason" =~ ^exit-([1-9][0-9]{0,2})$ ]] || return 1
+  local exit_code=$((10#${BASH_REMATCH[1]}))
+  [ "$exit_code" -le 255 ] && [ "$reason" = "exit-$exit_code" ]
+}
+
+write_task_sync_status_file() {
+  local updated_at
+  if ! task_sync_status_fields_are_valid "$1" "$2"; then
+    echo "ERROR: invalid task reconciliation status fields." >&2
+    return 64
+  fi
+  if ! updated_at="$(/usr/bin/date +%s)"; then
+    echo "ERROR: could not timestamp task reconciliation status." >&2
+    return "$TASK_SYNC_MONITOR_FATAL_RC"
+  fi
+  if ! printf '%s %s %s\n' "$1" "$updated_at" "$2" > "$TASK_SYNC_STATUS_FILE"; then
+    echo "ERROR: could not write task reconciliation status." >&2
+    return "$TASK_SYNC_MONITOR_FATAL_RC"
+  fi
+  if ! chown root:root "$TASK_SYNC_STATUS_FILE"; then
+    echo "ERROR: could not secure task reconciliation status ownership." >&2
+    return "$TASK_SYNC_MONITOR_FATAL_RC"
+  fi
+  if ! chmod 0644 "$TASK_SYNC_STATUS_FILE"; then
+    echo "ERROR: could not secure task reconciliation status permissions." >&2
+    return "$TASK_SYNC_MONITOR_FATAL_RC"
+  fi
+}
+
+set_task_sync_status() {
+  local rc=0
+  if [ "$EUID" -ne 0 ]; then
+    echo "ERROR: only the root runtime monitor may update task reconciliation health." >&2
+    return "$TASK_SYNC_MONITOR_FATAL_RC"
+  fi
+  write_task_sync_status_file "$1" "$2" || rc=$?
+  if [ "$rc" -ne 0 ]; then return "$rc"; fi
+  TASK_SYNC_STATUS="$1"
+  TASK_SYNC_REASON="$2"
+}
+
+task_sync_status_is_healthy() {
+  local now="${1:-}"
+  local lines=()
+  TASK_SYNC_HEALTH_REPORT="status=invalid reason=invalid updated_at=unknown fresh=false"
+  if [ -z "$now" ]; then
+    now="$(/usr/bin/date +%s)" || return 1
+  fi
+  if [[ ! "$now" =~ ^[1-9][0-9]{0,17}$ ]]; then return 1; fi
+  if ! mapfile -t lines < "$TASK_SYNC_STATUS_FILE" 2>/dev/null; then return 1; fi
+  if [ "${#lines[@]}" -ne 1 ]; then return 1; fi
+  if [[ ! "${lines[0]}" =~ ^(healthy|degraded)\ ([1-9][0-9]{0,17})\ (ok|skipped|exit-[0-9]{1,3})$ ]]; then
+    return 1
+  fi
+
+  local status="${BASH_REMATCH[1]}"
+  local updated_at="${BASH_REMATCH[2]}"
+  local reason="${BASH_REMATCH[3]}"
+  if ! task_sync_status_fields_are_valid "$status" "$reason"; then return 1; fi
+  TASK_SYNC_HEALTH_REPORT="status=$status reason=$reason updated_at=$updated_at fresh=false"
+  if [ "${#updated_at}" -gt "${#now}" ]; then return 1; fi
+  local now_number=$((10#$now))
+  local updated_at_number=$((10#$updated_at))
+  if [ "$updated_at_number" -gt "$now_number" ]; then return 1; fi
+  if [ "$((now_number - updated_at_number))" -gt "$TASK_SYNC_STATUS_MAX_AGE_SECONDS" ]; then return 1; fi
+  TASK_SYNC_HEALTH_REPORT="status=$status reason=$reason updated_at=$updated_at fresh=true"
+  [ "$status" = healthy ]
+}
+
+check_task_sync_health() {
+  if task_sync_status_is_healthy; then return 0; fi
+  printf 'ERROR: task reconciliation health check failed: %s\n' "$TASK_SYNC_HEALTH_REPORT" >&2
+  return 1
+}
 
 runtime_id() {
   local name="$1"
@@ -73,6 +160,7 @@ configure_assistant_identity() {
   chmod 0755 "$RUNTIME_DIR"
   chown node:"$runtime_group" "$USER_RUNTIME_DIR"
   chmod 0700 "$USER_RUNTIME_DIR"
+  set_task_sync_status degraded exit-1
 }
 
 ensure_home_layout() {
@@ -102,9 +190,9 @@ ensure_home_layout() {
 # subprocess the agent runs, retrievable with a single `env`/`printenv` call
 # with no file path involved at all. Nothing between here and `start_opencode`
 # needs env/user's arbitrary
-# keys: `run_akm_schema_migration` only needs HOME and the AKM directory
+# keys: the AKM migration helper only needs HOME and the AKM directory
 # variables already in the container's own environment, and
-# `start_cron_and_sync_tasks` forwards its own small, explicit allowlist of
+# `prepare_user_crontab` forwards its own small, explicit allowlist of
 # vars into the crontab preamble rather than the whole file. The sanctioned,
 # on-demand path for the AGENT to use a user secret is still available and
 # unaffected by this change: `akm env run env/user -- <command>` loads it only
@@ -367,6 +455,7 @@ start_ui() {
       fi
       if /usr/bin/env -u OP_ENABLE_ADMIN -u OP_INSIDE_ELECTRON -u OPENCODE_SERVER_PASSWORD \
            HOST=0.0.0.0 PORT="$ui_port" HOST_HEADER=host PROTOCOL_HEADER=x-forwarded-proto \
+           BODY_SIZE_LIMIT=2097152 \
            PATH="$ASSISTANT_PATH" \
            "${voice_env_args[@]}" \
            OP_UI_SERVED_IN_CONTAINER=1 \
@@ -462,136 +551,77 @@ prepare_user_crontab() {
 sync_akm_tasks() {
   local output=""
   local args=(task sync --format json --quiet "$@")
-  if ! output="$(run_akm_command /usr/bin/env PATH="$SCHEDULED_TASK_PATH" /usr/bin/timeout --signal=TERM --kill-after=5s 50s "$AKM_BIN" "${args[@]}")"; then
-    : > "$TASK_SYNC_FAILURE_MARKER"
+  local rc=0
+  output="$(run_akm_command /usr/bin/env PATH="$SCHEDULED_TASK_PATH" /usr/bin/timeout --signal=TERM --kill-after=5s 50s "$AKM_BIN" "${args[@]}")" || rc=$?
+  if [ "$rc" -ne 0 ]; then
     if [ -n "$output" ]; then printf '%s\n' "$output" >&2; fi
-    echo "error: akm task sync failed" >&2
+    echo "error: akm task sync failed (exit $rc)" >&2
     return 1
   fi
   printf '%s\n' "$output" >&2
   if ! printf '%s\n' "$output" | /usr/bin/jq -e -s \
       'length == 1 and .[0].shape == "task-sync" and .[0].schemaVersion == 1 and ((.[0].skipped | type) == "array")' \
       >/dev/null; then
-    : > "$TASK_SYNC_FAILURE_MARKER"
     echo "error: akm task sync returned invalid output" >&2
     return 1
   fi
   if ! printf '%s\n' "$output" | /usr/bin/jq -e -s '.[0].skipped | length == 0' >/dev/null; then
-    : > "$TASK_SYNC_FAILURE_MARKER"
     echo "error: akm task sync reported skipped tasks" >&2
     return 2
   fi
-  rm -f "$TASK_SYNC_FAILURE_MARKER"
 }
 
-run_akm_schema_migration() {
-  if [ ! -x "$AKM_BIN" ]; then return 0; fi
-
-  local config_file="${AKM_CONFIG_DIR:-/etc/akm}/config.json"
-  local target_file="${AKM_STATE_DIR:-/opt/akm/state}/openpalm-0.9-target.json"
-  local blocked_file="${AKM_STATE_DIR:-/opt/akm/state}/openpalm-0.9-blocked-version"
-  local akm_version=""
-  akm_version="$(run_akm_command "$AKM_BIN" --version)"
-  if [ -f "$blocked_file" ] && [ "$(<"$blocked_file")" = "$akm_version" ]; then
-    echo "error: akm $akm_version migration previously failed and was restored; install a newer AKM release before retrying" >&2
-    return 78
+reconcile_akm_tasks() {
+  if [ "$EUID" -ne 0 ]; then
+    echo "ERROR: task reconciliation health must be supervised by root." >&2
+    return "$TASK_SYNC_MONITOR_FATAL_RC"
   fi
-  local config_version=""
-  local migration_backup_run=""
-  restore_failed_akm_migration() {
-    [ -n "$migration_backup_run" ] || return 0
-    [ -x "$AKM_MIGRATE_BIN" ] || return 0
-    echo "entrypoint: restoring failed akm migration run $migration_backup_run..." >&2
-    if run_akm_command "$AKM_MIGRATE_BIN" restore --for 0.9.0 --run "$migration_backup_run" --confirm >&2; then
-      printf '%s\n' "$akm_version" > "$blocked_file"
-      echo "entrypoint: akm migration restored; blocked further retries with $akm_version" >&2
-    else
-      echo "error: akm migration restore failed; manual recovery is required" >&2
-    fi
-  }
-  if [ -f "$config_file" ]; then
-    config_version="$("$NODE_BIN" -e 'try { process.stdout.write(JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")).configVersion || "") } catch {}' "$config_file")"
-  fi
-
-  if [ -f "$config_file" ] && [ "$config_version" != "0.9.0" ]; then
-    if [ -z "$config_version" ]; then
-      # OpenPalm's 0.8 writer emitted the native shape but did not stamp the
-      # version itself. AKM 0.8 normally added it on first load; preserve a
-      # separate exact snapshot for a never-started home before adding only the
-      # missing sentinel that makes the official migrator classify it as old.
-      local preflight_backup="${AKM_STATE_DIR:-/opt/akm/state}/openpalm-pre-0.9-missing-version"
-      if [ ! -d "$preflight_backup" ]; then
-        mkdir -m 700 -p "$preflight_backup"
-        cp -a "$config_file" "$preflight_backup/config.json"
-        local artifact
-        for artifact in state.db state.db-wal state.db-shm workflow.db workflow.db-wal workflow.db-shm; do
-          if [ -f "${AKM_DATA_DIR:-/opt/akm/data}/$artifact" ]; then
-            cp -a "${AKM_DATA_DIR:-/opt/akm/data}/$artifact" "$preflight_backup/$artifact"
-          fi
-        done
-      fi
-      "$NODE_BIN" -e '
-        const fs = require("fs");
-        const file = process.argv[1];
-        const config = JSON.parse(fs.readFileSync(file, "utf8"));
-        if (config.configVersion !== undefined) process.exit(0);
-        config.configVersion = "0.8.0";
-        const temp = `${file}.openpalm-09.tmp`;
-        fs.writeFileSync(temp, `${JSON.stringify(config, null, 2)}\n`, { mode: 0o600 });
-        fs.renameSync(temp, file);
-      ' "$config_file"
-      config_version="0.8.0"
-    fi
-    echo "entrypoint: preparing akm 0.8 to 0.9 migration..." >&2
-    "$NODE_BIN" /usr/local/lib/openpalm/prepare-akm-09-config.mjs "$config_file" "$target_file"
-    run_akm_command "$AKM_BIN" migrate status --config "$target_file" >&2
-    run_akm_command "$AKM_BIN" migrate apply --config "$target_file" --dry-run >&2
-    local apply_output=""
-    apply_output="$(run_akm_command "$AKM_BIN" migrate apply --config "$target_file")"
-    printf '%s\n' "$apply_output" >&2
-    migration_backup_run="$("$NODE_BIN" -e '
-      try {
-        const value = JSON.parse(process.argv[1]);
-        if (typeof value.backupRunId === "string") process.stdout.write(value.backupRunId);
-      } catch {}
-    ' "$apply_output")"
-    if [ -x "$AKM_MIGRATE_BIN" ]; then
-      if ! run_akm_command "$AKM_MIGRATE_BIN" storage --from 0.8 --yes >&2; then
-        restore_failed_akm_migration
-        return 78
-      fi
-    fi
-    local task_sync_rc=0
-    sync_akm_tasks --rebind || task_sync_rc=$?
-    if [ "$task_sync_rc" -eq 1 ]; then
-      restore_failed_akm_migration
-      return 78
-    fi
-    if [ "$task_sync_rc" -eq 2 ]; then
-      echo "warning: migrated task reconciliation contains skipped tasks; fix the task files and retry without changing AKM versions" >&2
-    fi
-    if ! run_akm_command "$AKM_BIN" index >&2; then
-      restore_failed_akm_migration
-      return 78
-    fi
-  fi
-
-  echo "entrypoint: checking akm health..." >&2
   local rc=0
-  run_akm_command "$AKM_BIN" health >&2 || rc=$?
-  if [ "$rc" = "0" ] || [ "$rc" = "4" ]; then
-    echo "entrypoint: akm health check complete (exit $rc)" >&2
-  else
-    echo "error: akm health check failed (exit $rc)" >&2
-    restore_failed_akm_migration
-    return "$rc"
+  "$@" || rc=$?
+  record_reconciliation_result "$rc"
+}
+
+record_reconciliation_result() {
+  local rc="$1"
+  local status="degraded"
+  local reason=""
+  case "$rc" in
+    0)
+      status="healthy"
+      reason="ok"
+      ;;
+    2) reason="skipped" ;;
+    *)
+      if [[ ! "$rc" =~ ^[1-9][0-9]{0,2}$ ]] || [ "$((10#$rc))" -gt 255 ]; then
+        echo "ERROR: invalid task reconciliation exit status." >&2
+        return "$TASK_SYNC_MONITOR_FATAL_RC"
+      fi
+      reason="exit-$((10#$rc))"
+      ;;
+  esac
+  if ! set_task_sync_status "$status" "$reason"; then
+    return "$TASK_SYNC_MONITOR_FATAL_RC"
   fi
+  if [ "$rc" -eq 0 ]; then return 0; fi
+  return 1
 }
 
 sync_tasks_forever() {
   while true; do
     sleep 60
-    if ! sync_akm_tasks; then
+    # Refresh the prior result before starting bounded reconciliation work so
+    # this root-written timestamp also proves the monitor is still making progress.
+    if ! set_task_sync_status "$TASK_SYNC_STATUS" "$TASK_SYNC_REASON"; then
+      echo "ERROR: task reconciliation health monitor failed; stopping the container." >&2
+      return "$TASK_SYNC_MONITOR_FATAL_RC"
+    fi
+    local rc=0
+    reconcile_akm_tasks "$@" || rc=$?
+    if [ "$rc" -eq "$TASK_SYNC_MONITOR_FATAL_RC" ]; then
+      echo "ERROR: task reconciliation health monitor failed; stopping the container." >&2
+      return "$TASK_SYNC_MONITOR_FATAL_RC"
+    fi
+    if [ "$rc" -ne 0 ]; then
       echo "warning: background akm task reconciliation is degraded; retrying in 60s" >&2
     fi
   done
@@ -633,10 +663,7 @@ bootstrap_assistant() {
   ensure_home_layout
   seed_default_agents_md
   prepare_user_crontab
-  run_akm_schema_migration
-  if ! sync_akm_tasks; then
-    echo "warning: initial akm task reconciliation is degraded; the healthcheck will remain red until a retry succeeds" >&2
-  fi
+  "$AKM_MIGRATION_HELPER"
 }
 
 serve_assistant() {
@@ -654,6 +681,16 @@ serve_assistant() {
   kill -TERM "$UI_SUPERVISOR_PID" "$opencode_pid" 2>/dev/null || true
   wait "$UI_SUPERVISOR_PID" "$opencode_pid" 2>/dev/null || true
   return "$status"
+}
+
+terminate_runtime_processes() {
+  local cron_pid="$1"
+  local sync_pid="$2"
+  local app_pid="$3"
+  kill -TERM -1 2>/dev/null || true
+  sleep 5
+  kill -KILL -1 2>/dev/null || true
+  wait "$cron_pid" "$sync_pid" "$app_pid" 2>/dev/null || true
 }
 
 start_root_runtime() {
@@ -704,6 +741,30 @@ start_root_runtime() {
   )
   "${assistant_exec[@]}" /usr/local/bin/opencode-entrypoint.sh --bootstrap
 
+  # This fixed root monitor owns only the deadline and health result. Its outer
+  # timeout prevents a node process from suspending the node-owned timeout and
+  # leaving a stale healthy result. The reconciliation command itself always
+  # crosses the same capability-free node boundary used for bootstrap work,
+  # including NoNewPrivs.
+  local task_sync_exec=(
+    /usr/bin/timeout
+    --signal=TERM
+    --kill-after=5s
+    60s
+    "${assistant_exec[@]}"
+    /usr/local/bin/opencode-entrypoint.sh
+    --sync-once
+  )
+  local initial_sync_rc=0
+  reconcile_akm_tasks "${task_sync_exec[@]}" || initial_sync_rc=$?
+  if [ "$initial_sync_rc" -eq "$TASK_SYNC_MONITOR_FATAL_RC" ]; then
+    echo "ERROR: initial task reconciliation health could not be recorded." >&2
+    return "$TASK_SYNC_MONITOR_FATAL_RC"
+  fi
+  if [ "$initial_sync_rc" -ne 0 ]; then
+    echo "warning: initial akm task reconciliation is degraded; the healthcheck will remain red until a retry succeeds" >&2
+  fi
+
   /usr/bin/env -i PATH="$SYSTEM_PATH" \
     /usr/bin/setpriv --no-new-privs /usr/sbin/cron -f &
   local cron_pid=$!
@@ -715,7 +776,7 @@ start_root_runtime() {
     return 1
   fi
 
-  "${assistant_exec[@]}" /usr/local/bin/opencode-entrypoint.sh --sync-loop &
+  sync_tasks_forever "${task_sync_exec[@]}" &
   local sync_pid=$!
   printf '%s\n' "$sync_pid" > "${RUNTIME_DIR}/sync.pid"
 
@@ -726,17 +787,7 @@ start_root_runtime() {
   shutdown_runtime() {
     local status="${1:-0}"
     trap - TERM INT HUP
-    kill -TERM -1 2>/dev/null || true
-    (
-      sleep 5
-      kill -KILL "$cron_pid" "$sync_pid" "$app_pid" 2>/dev/null || true
-    ) &
-    local escalation_pid=$!
-    wait "$cron_pid" "$sync_pid" "$app_pid" 2>/dev/null || true
-    kill "$escalation_pid" 2>/dev/null || true
-    wait "$escalation_pid" 2>/dev/null || true
-    # Required children may have left scheduled or UI descendants behind.
-    kill -KILL -1 2>/dev/null || true
+    terminate_runtime_processes "$cron_pid" "$sync_pid" "$app_pid"
     exit "$status"
   }
   trap 'shutdown_runtime 0' TERM INT HUP
@@ -751,22 +802,50 @@ start_root_runtime() {
   shutdown_runtime "$status"
 }
 
-case "${1:-}" in
-  --bootstrap)
-    bootstrap_assistant
-    ;;
-  --sync-loop)
-    require_assistant_identity
-    sync_tasks_forever
-    ;;
-  --serve)
-    serve_assistant
-    ;;
-  "")
-    start_root_runtime
-    ;;
-  *)
-    echo "ERROR: unknown Assistant entrypoint mode: $1" >&2
-    exit 64
-    ;;
-esac
+main() {
+  case "${1:-}" in
+    --bootstrap)
+      bootstrap_assistant
+      ;;
+    --sync-once)
+      require_assistant_identity
+      shift
+      case "$#" in
+        0) ;;
+        1)
+          if [ "$1" != "--rebind" ]; then
+            echo "ERROR: --sync-once accepts only the optional --rebind argument." >&2
+            return 64
+          fi
+          ;;
+        *)
+          echo "ERROR: --sync-once accepts only the optional --rebind argument." >&2
+          return 64
+          ;;
+      esac
+      sync_akm_tasks "$@"
+      ;;
+    --check-task-sync-health)
+      shift
+      if [ "$#" -ne 0 ]; then
+        echo "ERROR: --check-task-sync-health accepts no arguments." >&2
+        return 64
+      fi
+      check_task_sync_health
+      ;;
+    --serve)
+      serve_assistant
+      ;;
+    "")
+      start_root_runtime
+      ;;
+    *)
+      echo "ERROR: unknown Assistant entrypoint mode: $1" >&2
+      return 64
+      ;;
+  esac
+}
+
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+  main "$@"
+fi

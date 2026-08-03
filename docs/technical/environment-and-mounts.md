@@ -131,6 +131,7 @@ copy — there is no runtime download.
 | `OPENCODE_SERVER_PASSWORD_FILE` | `/run/secrets/opencode_server_password` | Generated OpenCode server credential |
 | `OP_UI_LOGIN_PASSWORD_FILE` | `/run/secrets/ui_login_password` | Login credential passed only to the UI child |
 | `OP_OPENCODE_URL` | `http://localhost:4096` | Local upstream for the UI's same-origin `/oc` proxy |
+| `BODY_SIZE_LIMIT` | Fixed `2097152` bytes | adapter-node request-body ceiling; launchers overwrite ambient values |
 | `HOME` | `/home/opencode` | Persistent runtime home |
 | `AKM_BUNDLE_DIR` | `/stash` | Primary AKM bundle |
 | `AKM_CONFIG_DIR` | `/etc/akm` | AKM config |
@@ -203,11 +204,13 @@ Scheduling runs through Debian cron inside the assistant container.
 
 - Definitions are AKM v2 `.yml` task files under `$OP_HOME/knowledge/tasks/`, visible
   in the container as `/stash/tasks/`.
-- Supported task targets are `command`, `prompt`, and `workflow`.
+- AKM owns task parsing and validation; its supported targets are `command`,
+  `prompt`, and `workflow`.
 - `akm task sync` registers tasks in the user crontab at startup and every 60
-  seconds.
-- Only the cron daemon runs as root. AKM reconciliation and scheduled jobs run
-  as the configured Assistant UID/GID.
+  seconds. Any non-empty `skipped` result marks the Assistant unhealthy.
+- Only fixed Tini, entrypoint-supervisor, and cron infrastructure remains root.
+  AKM reconciliation and scheduled jobs run as the configured Assistant
+  UID/GID.
 - Cron has no network listener or Docker socket.
 - Cron receives only the small managed environment preamble needed by AKM and
   OpenCode. It does not inherit all values from `knowledge/env/user.env`.
@@ -224,6 +227,7 @@ container and there is no socket-proxy service.
 | `PORT` / `OP_HOST_UI_PORT` | `3880` | Host UI listener |
 | `OP_HOME` | Host environment | OpenPalm home |
 | `OP_UI_LOGIN_PASSWORD` | Loaded from `private/secrets/op_ui_login_password` | Session login verification |
+| `BODY_SIZE_LIMIT` | Fixed `2097152` bytes | adapter-node request-body ceiling; supervised and direct launches overwrite ambient values |
 | `OP_TRUSTED_PROXY` | Off | Non-admin `openpalm app` only: trusts `Host`/`x-forwarded-proto` from an operator-managed reverse proxy (Tailscale Serve, Caddy, nginx) **without** widening the listener off loopback |
 | `OP_ALLOW_REMOTE_SETUP` | Off | Non-admin `openpalm app` only: binds `0.0.0.0` directly, for the rare case with no reverse proxy in front |
 

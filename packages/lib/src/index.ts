@@ -200,14 +200,53 @@ export type {
 } from './control-plane/pairing.js';
 export {
   assertSafeTaskFilename,
-  assertTaskYamlDocument,
+  TaskFileConflictError,
+  taskIdFromTaskFilename,
   resolveTasksDir,
   listTaskFiles,
+  readTaskFileSnapshot,
   readTaskFile,
   writeTaskFile,
-  removeTaskFile,
 } from './control-plane/task-files.js';
-export type { TaskFileInfo } from './control-plane/task-files.js';
+export type { TaskFileInfo, TaskFileSnapshot } from './control-plane/task-files.js';
+export {
+  AUTOMATION_LOG_MAX_AGGREGATE_READ_BYTES,
+  AUTOMATION_LOG_MAX_CANDIDATE_FILES,
+  AUTOMATION_LOG_MAX_FILE_READ_BYTES,
+  AUTOMATION_LOG_MAX_RESPONSE_BYTES,
+  AUTOMATION_RUNTIME_MAX_DIRECTORY_ENTRIES,
+  AUTOMATION_RUNTIME_MAX_STDIN_BYTES,
+  AUTOMATION_RUNTIME_MAX_STDOUT_BYTES,
+  AUTOMATION_RUNTIME_SCHEMA_VERSION,
+  AUTOMATION_RUNTIME_SHAPE,
+  assertPortableTaskFilename,
+  assertSchedulableTaskFilename,
+  isSchedulableTaskFilename,
+  portableTaskFilenameError,
+  schedulableTaskFilenameError,
+  schedulableTaskIdError,
+  TASK_CONTENT_MAX_BYTES,
+  TASK_FILE_MAX_VISIBLE,
+  TASK_ID_MAX_LENGTH,
+} from './control-plane/task-file-contract.js';
+export type {
+  AutomationRuntimeEnvelope,
+  AutomationRuntimeErrorCode,
+  AutomationRuntimeOperation,
+  AutomationRuntimeRequest,
+  AutomationRuntimeResult,
+  AutomationTaskFileInfo,
+} from './control-plane/task-file-contract.js';
+export {
+  AutomationRuntimeError,
+  deleteAutomationTaskFile,
+  listAutomationTaskFiles,
+  readAutomationTaskFile,
+  readAutomationTaskLogs,
+  runAutomationRuntime,
+  writeAutomationTaskFile,
+} from './control-plane/automation-runtime.js';
+export type { AutomationRuntimeComposeRunner } from './control-plane/automation-runtime.js';
 export type {
   SecretAuditIssue,
   SecretAuditOptions,
@@ -523,13 +562,10 @@ export {
 
 // ── Scheduler ───────────────────────────────────────────────────────────
 export type {
-  AutomationConfig,
   AutomationRegistrationStatus,
   AutomationRunResult,
 } from "./control-plane/scheduler.js";
 export {
-  SCHEDULE_PRESETS,
-  loadAutomations,
   executeAutomation,
   getAutomationRegistrationStatus,
   readAutomationLogs,

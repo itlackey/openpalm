@@ -33,7 +33,7 @@
 # Dockerfile.models) and update this default. Operators/CI can override via
 # --build-arg.
 ARG ASSISTANT_MODELS_IMAGE=openpalm/assistant-models:v1
-ARG AKM_CLI_VERSION=0.9.0-rc.13
+ARG AKM_CLI_VERSION=0.9.0-rc.15
 FROM --platform=$BUILDPLATFORM ${ASSISTANT_MODELS_IMAGE} AS modelfetch
 
 # ── OpenCode builder stage ────────────────────────────────────────────────────
@@ -77,7 +77,7 @@ RUN ONNXRUNTIME_NODE_INSTALL=skip npm install --global --omit=dev --include=opti
     && test "$(readlink -f /usr/local/bin/akm-migrate)" = "/usr/local/lib/node_modules/akm-cli/dist/akm-migrate" \
     && rm -rf /root/.npm
 
-FROM node:22-trixie-slim
+FROM node:22-trixie-slim AS assistantbase
 
 ARG BUN_VERSION=bun-v1.3.10
 ARG AKM_CLI_VERSION
@@ -243,9 +243,32 @@ RUN mkdir -p /opt/openpalm/local-artifacts \
     && rm -rf /opt/openpalm/local-src /opt/openpalm/local-artifacts \
     && chmod -R a+rwX /opt/openpalm/ui
 
+FROM assistantbase AS automationhelperbuild
+WORKDIR /tmp/openpalm-automation-runtime
+COPY packages/lib/src/control-plane/task-file-contract.ts ./task-file-contract.ts
+COPY packages/lib/src/control-plane/automation-runtime-helper.ts ./automation-runtime-helper.ts
+RUN /usr/local/bin/bun build \
+      --target=node \
+      --format=esm \
+      --sourcemap=none \
+      --reject-unresolved \
+      --outfile=/tmp/automation-runtime-helper.mjs \
+      ./automation-runtime-helper.ts
+
+FROM assistantbase AS assistant
+COPY --from=automationhelperbuild /tmp/automation-runtime-helper.mjs /usr/local/lib/openpalm/automation-runtime-helper.mjs
+RUN chown root:root /usr/local/lib/openpalm/automation-runtime-helper.mjs \
+    && chmod 0444 /usr/local/lib/openpalm/automation-runtime-helper.mjs \
+    && test "$(stat -c '%u:%g:%a' /usr/local/lib/openpalm/automation-runtime-helper.mjs)" = '0:0:444' \
+    && /usr/local/bin/node --check /usr/local/lib/openpalm/automation-runtime-helper.mjs \
+    && test -x /usr/bin/flock \
+    && test -x /usr/bin/timeout \
+    && test -x /usr/bin/sqlite3
+
 COPY containers/assistant/entrypoint.sh /usr/local/bin/opencode-entrypoint.sh
+COPY containers/assistant/migrate-akm-09.sh /usr/local/lib/openpalm/migrate-akm-09.sh
 COPY containers/assistant/prepare-akm-09-config.mjs /usr/local/lib/openpalm/prepare-akm-09-config.mjs
-RUN chmod +x /usr/local/bin/opencode-entrypoint.sh
+RUN chmod +x /usr/local/bin/opencode-entrypoint.sh /usr/local/lib/openpalm/migrate-akm-09.sh
 
 WORKDIR /work
 
@@ -287,8 +310,11 @@ COPY AGENTS.md /usr/local/share/openpalm/AGENTS.md
 
 EXPOSE 4096 3000
 
-# Probes the root-owned cron daemon and task reconciliation state, OpenCode,
-# and the required UI co-process. The UI probe hits the login/setup-exempt
+# Probes the root-owned cron daemon and reconciliation monitor, positive fresh
+# root-controlled task reconciliation status, OpenCode, and the required UI
+# co-process. The monitor refreshes its status timestamp before each 60-second
+# reconciliation and the shared checker rejects values older than 90 seconds.
+# The UI probe hits the login/setup-exempt
 # /health route on the FIXED in-container UI port 3000 (OP_UI_PORT is the
 # host-facing knob and is deliberately NEVER passed into the container env, so
 # the container-side default 3000 is always the real listen port). Mirrors
@@ -316,7 +342,7 @@ EXPOSE 4096 3000
 # the real stack, and healthcheck-parity.test.ts pins the two together so a
 # future edit to one side alone fails CI instead of silently drifting again.
 HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=5 \
-  CMD /bin/bash -c 'test -r /run/openpalm/cron.pid || exit 1; kill -0 "$(/usr/bin/cat /run/openpalm/cron.pid)" || exit 1; test ! -e /run/openpalm/user/task-sync-failed || exit 1; case "${OPENCODE_AUTH:-false}" in true|TRUE|True|1|yes|YES) /usr/bin/curl -sf -u "${OPENCODE_SERVER_USERNAME:-opencode}:${OPENCODE_SERVER_PASSWORD:-$(/usr/bin/cat "${OPENCODE_SERVER_PASSWORD_FILE:-/run/secrets/opencode_server_password}")}" http://localhost:${OPENCODE_PORT:-4096}/health >/dev/null ;; *) /usr/bin/curl -sf http://localhost:${OPENCODE_PORT:-4096}/health >/dev/null ;; esac || exit 1; /usr/bin/curl -sf http://localhost:3000/health >/dev/null || exit 1'
+  CMD /bin/bash -c 'test -r /run/openpalm/cron.pid || exit 1; kill -0 "$(/usr/bin/cat /run/openpalm/cron.pid)" || exit 1; test -r /run/openpalm/sync.pid || exit 1; kill -0 "$(/usr/bin/cat /run/openpalm/sync.pid)" || exit 1; /usr/local/bin/opencode-entrypoint.sh --check-task-sync-health || exit 1; case "${OPENCODE_AUTH:-false}" in true|TRUE|True|1|yes|YES) /usr/bin/curl -sf -u "${OPENCODE_SERVER_USERNAME:-opencode}:${OPENCODE_SERVER_PASSWORD:-$(/usr/bin/cat "${OPENCODE_SERVER_PASSWORD_FILE:-/run/secrets/opencode_server_password}")}" http://localhost:${OPENCODE_PORT:-4096}/health >/dev/null ;; *) /usr/bin/curl -sf http://localhost:${OPENCODE_PORT:-4096}/health >/dev/null ;; esac || exit 1; /usr/bin/curl -sf http://localhost:3000/health >/dev/null || exit 1'
 
 ENTRYPOINT ["/usr/bin/tini", "-g", "--", "/usr/local/bin/opencode-entrypoint.sh"]
 USER root

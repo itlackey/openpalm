@@ -169,6 +169,12 @@ export function identifyCallerByToken(event: RequestEvent): "admin" | null {
 export type ParseJsonBodyError = { error: "too_large" | "invalid_json" };
 export type ParseJsonBodyResult = { data: Record<string, unknown> } | ParseJsonBodyError;
 
+function isPayloadTooLargeError(error: unknown): boolean {
+  if (typeof error !== "object" || error === null) return false;
+  const candidate = error as { status?: unknown; statusCode?: unknown };
+  return candidate.status === 413 || candidate.statusCode === 413;
+}
+
 /** Parse JSON body safely — returns discriminated result with error type */
 export async function parseJsonBody(
   request: Request,
@@ -179,7 +185,29 @@ export async function parseJsonBody(
     if (contentLength && parseInt(contentLength, 10) > maxBytes) {
       return { error: "too_large" };
     }
-    const parsed = await request.json();
+    if (request.body === null) return { error: "invalid_json" };
+
+    const reader = request.body.getReader();
+    const decoder = new TextDecoder("utf-8", { fatal: true });
+    const chunks: string[] = [];
+    let bytesRead = 0;
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        bytesRead += value.byteLength;
+        if (bytesRead > maxBytes) {
+          await reader.cancel().catch(() => undefined);
+          return { error: "too_large" };
+        }
+        chunks.push(decoder.decode(value, { stream: true }));
+      }
+      chunks.push(decoder.decode());
+    } finally {
+      reader.releaseLock();
+    }
+
+    const parsed: unknown = JSON.parse(chunks.join(''));
     // PR #564 second retest: a valid-JSON body that is NOT an object (literal
     // `null`, an array, or a primitive) must be rejected as invalid_json — every
     // route here reads named fields off `body`, and `null.label` otherwise throws
@@ -189,6 +217,7 @@ export async function parseJsonBody(
     }
     return { data: parsed as Record<string, unknown> };
   } catch (e) {
+    if (isPayloadTooLargeError(e)) return { error: "too_large" };
     console.warn('[helpers] Failed to parse JSON request body', e);
     return { error: "invalid_json" };
   }

@@ -11,7 +11,7 @@
     saving: boolean;
     saveError: string;
     onClose: () => void;
-    onSave: (fileName: string, content: string) => void;
+    onSave: (fileName: string, content: string, expectedRevision: string | null) => void;
   }
 
   let { open, draft, saving, saveError, onClose, onSave }: Props = $props();
@@ -19,10 +19,14 @@
   let isNew = $derived(draft !== null && draft.fileName === '');
   let newFileName = $state('');
   let rawYaml = $state('');
+  let originalRawYaml = '';
+  let normalizedOriginalRawYaml = '';
 
   onMount(() => {
     if (!draft) return;
-    rawYaml = draft.rawYaml;
+    originalRawYaml = draft.rawYaml;
+    normalizedOriginalRawYaml = originalRawYaml.replace(/\r\n?/g, '\n');
+    rawYaml = normalizedOriginalRawYaml;
   });
 
   let fileNameError = $derived(
@@ -31,14 +35,14 @@
 
   let canSave = $derived(
     !saving &&
-    (isNew ? fileNameError === null && newFileName.trim() !== '' : true) &&
-    rawYaml.trim() !== ''
+    (isNew ? fileNameError === null && newFileName.trim() !== '' : true)
   );
 
   function handleSave(): void {
     if (!canSave || !draft) return;
     const fileName = isNew ? newFileName.trim() : draft.fileName;
-    onSave(fileName, rawYaml);
+    const content = rawYaml === normalizedOriginalRawYaml ? originalRawYaml : rawYaml;
+    onSave(fileName, content, draft.revision);
   }
 </script>
 
@@ -68,13 +72,13 @@
           {#if fileNameError && newFileName.length > 0}
             <span class="field-error" role="alert">{fileNameError}</span>
           {:else}
-            <span class="field-hint">Lowercase letters, digits, hyphens. Must end in .yml</span>
+            <span class="field-hint">A schedulable AKM task ID followed by exact lowercase <code>.yml</code>. AKM validates task semantics.</span>
           {/if}
         </div>
       {/if}
 
       <div class="field-group">
-        <label class="field-label" for="tf-yaml">AKM v2 task YAML</label>
+        <label class="field-label" for="tf-yaml">Task YAML</label>
         <textarea
           id="tf-yaml"
           class="field-input field-textarea field-mono"
@@ -83,7 +87,7 @@
           bind:value={rawYaml}
           disabled={saving}
         ></textarea>
-        <span class="field-hint">AKM requires <code>version: 2</code>, a schedule, and exactly one command, prompt, or workflow target. Reconciliation reports semantic errors after save.</span>
+        <span class="field-hint">AKM validates this text during reconciliation and manual runs. Untouched saves preserve the original bytes; editing may normalize line endings.</span>
       </div>
 
       <!-- Save error -->

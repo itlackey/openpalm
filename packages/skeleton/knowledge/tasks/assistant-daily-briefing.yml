@@ -6,6 +6,9 @@ tags:
   - openpalm
   - assistant
 timeoutMs: 120000
-prompt: >-
-  Good morning. Give me a brief summary of system health, any recent
-  errors in the audit log, and open tasks.
+command:
+  - opencode
+  - run
+  - >-
+    Good morning. Give me a brief summary of system health, any recent
+    errors in the audit log, and open tasks.

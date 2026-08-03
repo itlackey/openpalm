@@ -13,10 +13,17 @@
  *   private/   — APP: delegated service credentials never mounted into the assistant
  *   cache/     — SYSTEM: regenerable container caches
  */
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { writeFileAtomic } from "./fs-atomic.js";
+import {
+  chmodSync,
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  readFileSync,
+  writeFileSync,
+} from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { resolve as resolvePath } from "node:path";
+import { writeFileAtomic } from "./fs-atomic.js";
 
 // ── Path Resolution ──────────────────────────────────────────────────
 
@@ -120,7 +127,8 @@ export function stackEnvFile(home: string): string {
 
 // ── Superseded env files — migration inputs only ─────────────────────────────
 // Read by the schema-2 migration in home-schema.ts, which merges them into
-// stackEnvFile() and deletes them. Nothing else may reference these.
+// stackEnvFile() and retains them as recovery copies. Nothing else may reference
+// these as runtime inputs.
 
 /** Pre-split app-written record (pins/add-ons/channel/setup). */
 export function legacyStateEnvFile(home: string): string {
@@ -144,7 +152,9 @@ export function homeSchemaVersionFile(home: string): string {
  * means consumers never need the superseded path helpers.
  */
 export function hasAnyStackEnvFile(home: string): boolean {
-  return [stackEnvFile(home), legacyStateEnvFile(home), legacyKnowledgeStackEnvFile(home)].some(existsSync);
+  return [stackEnvFile(home), legacyStateEnvFile(home), legacyKnowledgeStackEnvFile(home)].some(
+    existsSync,
+  );
 }
 
 /**
@@ -154,14 +164,19 @@ export function hasAnyStackEnvFile(home: string): boolean {
  * it is pure layout — putting it in `home-schema.ts` would make this module
  * depend on `config-persistence`/`addons`, which depend back on this one.
  */
-export const HOME_SCHEMA_VERSION = 5;
+export const HOME_SCHEMA_VERSION = 6;
 
 /** The recorded schema version, or 0 when nothing is recorded (pre-record home). */
 export function readHomeSchemaVersion(home: string): number {
   const path = homeSchemaVersionFile(home);
   if (!existsSync(path)) return 0;
-  const parsed = Number.parseInt(readFileSync(path, "utf-8").trim(), 10);
-  return Number.isInteger(parsed) && parsed >= 0 ? parsed : 0;
+  const content = readFileSync(path, 'utf-8').trim();
+  if (!/^(?:0|[1-9][0-9]*)$/.test(content)) {
+    throw new Error(`Home schema version is invalid: ${path}`);
+  }
+  const parsed = Number(content);
+  if (!Number.isSafeInteger(parsed)) throw new Error(`Home schema version is invalid: ${path}`);
+  return parsed;
 }
 
 export function writeHomeSchemaVersion(home: string, version: number): void {
@@ -253,6 +268,15 @@ export function resolveRollbackDir(): string {
 
 // ── Directory Setup ──────────────────────────────────────────────────
 
+function ensurePrivateDirectory(path: string): void {
+  if (!existsSync(path)) mkdirSync(path, { mode: 0o700 });
+  const stats = lstatSync(path);
+  if (stats.isSymbolicLink() || !stats.isDirectory()) {
+    throw new Error(`Private credential path must be a real directory: ${path}`);
+  }
+  chmodSync(path, 0o700);
+}
+
 /**
  * Create the full OP_HOME directory tree.
  *
@@ -268,8 +292,8 @@ export function ensureHomeDirs(home: string = resolveOpenPalmHome()): void {
     `${home}/config`,
     `${home}/config/assistant`,
     `${home}/config/guardian`,
-    `${home}/config/akm`,           // akm XDG config directory
-    `${home}/config/stack`,         // user-owned custom.compose.yml overlay (seeded once)
+    `${home}/config/akm`, // akm XDG config directory
+    `${home}/config/stack`, // user-owned custom.compose.yml overlay (seeded once)
 
     // cache/ — regenerable, purgeable, and NEVER backed up. Pre-created here
     // (operator-owned) because Docker creates a MISSING bind-mount source
@@ -281,46 +305,46 @@ export function ensureHomeDirs(home: string = resolveOpenPalmHome()): void {
 
     // data/ — persistent service data
     `${home}/data`,
-    `${home}/data/assistant`,      // assistant HOME bind mount
+    `${home}/data/assistant`, // assistant HOME bind mount
     `${home}/data/assistant/.cache`,
     `${home}/data/assistant/.config/opencode`,
     `${home}/data/assistant/.local/bin`,
     `${home}/data/assistant/.local/share/opencode`,
     `${home}/data/assistant/.local/state/opencode`,
-    `${home}/data/guardian`,       // guardian runtime data
+    `${home}/data/guardian`, // guardian runtime data
     `${home}/data/guardian/.cache`,
     `${home}/data/guardian/.config/opencode`,
     `${home}/data/guardian/.local/share/opencode`,
     `${home}/data/guardian/.local/state/opencode`,
-    `${home}/data/akm/cache`,      // akm cache
-    `${home}/data/akm/data`,       // akm durable data
-    `${home}/data/akm/state`,      // akm scheduler/runtime state
+    `${home}/data/akm/cache`, // akm cache
+    `${home}/data/akm/data`, // akm durable data
+    `${home}/data/akm/state`, // akm scheduler/runtime state
     `${home}/data/akm/empty-host-stash`, // always-present /host-stash fallback when host AKM is absent
-    `${home}/data/logs`,           // service logs and audit files
-    `${home}/data/ui`,             // materialized UI build (CLI-embedded, or bundled/repo-resolved)
-    `${home}/data/backups`,        // lifecycle backup snapshots
-    `${home}/data/rollback`,       // deploy rollback snapshots
+    `${home}/data/logs`, // service logs and audit files
+    `${home}/data/ui`, // materialized UI build (CLI-embedded, or bundled/repo-resolved)
+    `${home}/data/backups`, // lifecycle backup snapshots
+    `${home}/data/rollback`, // deploy rollback snapshots
     // knowledge/ — akm knowledge (skills, env, secrets, agents); knowledge/tasks/ for scheduled automations
     `${home}/knowledge`,
     `${home}/knowledge/env`,
     `${home}/knowledge/secrets`,
     `${home}/knowledge/tasks`,
 
-    // private/ — delegated secrets (guardian/portal-only, never assistant-reachable; §G1)
-    `${home}/private`,
-    `${home}/private/secrets`,
-
     // workspace/ — shared assistant work area
     `${home}/workspace`,
 
     // system/ — managed tree (release-shipped assets, overwritten); state/ — app-written records
-    `${home}/system/stack`,         // fixed compose files (managed, overwritten on update)
-    `${home}/system/assistant`,     // MANAGED assistant OpenCode config (OPENCODE_CONFIG_DIR)
-    `${home}/system/guardian`,      // MANAGED guardian OpenCode config (OPENCODE_CONFIG_DIR)
+    `${home}/system/stack`, // fixed compose files (managed, overwritten on update)
+    `${home}/system/assistant`, // MANAGED assistant OpenCode config (OPENCODE_CONFIG_DIR)
+    `${home}/system/guardian`, // MANAGED guardian OpenCode config (OPENCODE_CONFIG_DIR)
     `${home}/state`,
   ]) {
     mkdirSync(dir, { recursive: true });
   }
+
+  // Re-apply the credential boundary on every run, not only at creation.
+  ensurePrivateDirectory(privateDir(home));
+  ensurePrivateDirectory(privateSecretsDir(home));
 
   // Stamp a brand-new home as schema-current so it runs no legacy migrations.
   // Must happen here: every install path calls this BEFORE seeding, which is
@@ -331,6 +355,6 @@ export function ensureHomeDirs(home: string = resolveOpenPalmHome()): void {
     `${home}/data/assistant/.local/share/opencode/auth.json`,
     `${home}/data/guardian/.local/share/opencode/auth.json`,
   ]) {
-    if (!existsSync(file)) writeFileSync(file, '');
+    if (!existsSync(file)) writeFileSync(file, "");
   }
 }

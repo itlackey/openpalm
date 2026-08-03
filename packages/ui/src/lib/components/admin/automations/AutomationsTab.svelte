@@ -10,7 +10,6 @@
   import {
     yamlToFormData,
     newFormData,
-    cronToPresetId,
     type TaskFormData,
   } from './task-form.js';
 
@@ -37,7 +36,7 @@
   // Delete-confirmation prompt (in-DOM, mirrors RecoveryTab's prune prompt —
   // testable and consistent with the app's own dialog components, unlike the
   // untestable native confirm()).
-  let pendingDeleteFile = $state<string | null>(null);
+  let pendingDelete = $state<{ fileName: string; revision: string } | null>(null);
   const manageDeleteFocus = createFocusTrap({
     initialFocus: '.confirm-actions',
     deferRestore: true,
@@ -62,8 +61,8 @@
     drawerSaving = true;
     drawerError = '';
     try {
-      const { content } = await fetchTaskFile(fileName);
-      drawerDraft = yamlToFormData(fileName, content);
+      const { content, revision } = await fetchTaskFile(fileName);
+      drawerDraft = yamlToFormData(fileName, content, revision);
       drawerOpen = true;
     } catch (e) {
       notifications.push('error', e instanceof Error ? e.message : 'Failed to read task file.');
@@ -78,11 +77,15 @@
     drawerError = '';
   }
 
-  async function handleSave(fileName: string, content: string): Promise<void> {
+  async function handleSave(
+    fileName: string,
+    content: string,
+    expectedRevision: string | null
+  ): Promise<void> {
     drawerSaving = true;
     drawerError = '';
     try {
-      await saveTaskFile(fileName, content);
+      await saveTaskFile(fileName, content, expectedRevision);
       notifications.push('success', `Saved ${fileName}. Refreshing…`);
       closeDrawer();
       onRefresh();
@@ -93,23 +96,23 @@
     }
   }
 
-  function requestRemoveTask(fileName: string): void {
+  function requestRemoveTask(fileName: string, revision: string): void {
     if (drawerSaving) return;
-    pendingDeleteFile = fileName;
+    pendingDelete = { fileName, revision };
   }
 
   function cancelRemoveTask(): void {
-    pendingDeleteFile = null;
+    pendingDelete = null;
   }
 
   async function confirmRemoveTask(): Promise<void> {
-    const fileName = pendingDeleteFile;
-    if (fileName === null || drawerSaving) return;
+    const target = pendingDelete;
+    if (target === null || drawerSaving) return;
     drawerSaving = true;
     try {
-      await deleteTaskFile(fileName);
-      notifications.push('success', `Deleted ${fileName}.`);
-      pendingDeleteFile = null;
+      await deleteTaskFile(target.fileName, target.revision);
+      notifications.push('success', `Deleted ${target.fileName}.`);
+      pendingDelete = null;
       onRefresh();
     } catch (e) {
       notifications.push('error', e instanceof Error ? e.message : 'Failed to delete task file.');
@@ -118,20 +121,20 @@
     }
   }
 
-  async function handleRunNow(name: string): Promise<void> {
+  async function handleRunNow(fileName: string): Promise<void> {
     if (runningTaskName || drawerSaving) return;
-    runningTaskName = name;
+    runningTaskName = fileName;
     try {
-      const result = await runAutomation(name);
+      const result = await runAutomation(fileName);
       if (result.status === 'active') {
-        notifications.push('success', `"${name}" started and remains active.`);
+        notifications.push('success', `"${fileName}" started and remains active.`);
       } else if (result.status === 'disabled') {
-        notifications.push('success', `"${name}" is disabled and did not run.`);
+        notifications.push('success', `"${fileName}" is disabled and did not run.`);
       } else if (result.ok) {
-        notifications.push('success', `"${name}" completed. Open the log to view output.`);
+        notifications.push('success', `"${fileName}" completed. Open the log to view output.`);
       } else {
         const detail = result.error ? `: ${result.error}` : '';
-        notifications.push('error', `"${name}" failed${detail}`);
+        notifications.push('error', `"${fileName}" failed${detail}`);
       }
     } catch (e) {
       notifications.push('error', e instanceof Error ? e.message : 'Failed to start the routine.');
@@ -140,12 +143,12 @@
     }
   }
 
-  async function loadLog(name: string): Promise<void> {
+  async function loadLog(fileName: string): Promise<void> {
     logLoading = true;
     logError = '';
-    logTaskName = name;
+    logTaskName = fileName;
     try {
-      const result = await fetchAutomationLog(name, LOG_LINE_LIMIT);
+      const result = await fetchAutomationLog(fileName, LOG_LINE_LIMIT);
       logLines = result.lines;
     } catch (e) {
       logLines = [];
@@ -155,9 +158,9 @@
     }
   }
 
-  async function openLogDrawer(name: string): Promise<void> {
+  async function openLogDrawer(fileName: string): Promise<void> {
     logDrawerOpen = true;
-    await loadLog(name);
+    await loadLog(fileName);
   }
 
   function closeLogDrawer(): void {
@@ -168,58 +171,13 @@
     logError = '';
   }
 
-  /** Map a cron expression to a friendly display string. */
-  function formatSchedule(cron: string): string {
-    const preset = cronToPresetId(cron);
-    switch (preset) {
-      case 'every-15-minutes': return 'Every 15 minutes';
-      case 'every-hour':       return 'Every hour';
-      case 'daily': {
-        const h = parseInt(cron.split(' ')[1] ?? '0', 10);
-        return `Daily at ${String(h).padStart(2, '0')}:00`;
-      }
-      case 'weekly': {
-        const parts = cron.split(' ');
-        const h = parseInt(parts[1] ?? '0', 10);
-        const d = parseInt(parts[4] ?? '0', 10);
-        const days = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
-        return `Weekly (${days[d] ?? 'Sun'}) at ${String(h).padStart(2, '0')}:00`;
-      }
-      case 'monthly': {
-        const parts = cron.split(' ');
-        const h = parseInt(parts[1] ?? '0', 10);
-        const dom = parseInt(parts[2] ?? '1', 10);
-        return `Monthly (day ${dom}) at ${String(h).padStart(2, '0')}:00`;
-      }
-      default: return cron;
-    }
-  }
-
-  function describeAction(automation: NonNullable<AutomationsResponse['automations']>[number]): string {
-    switch (automation.action.type) {
-      case 'assistant':
-        return automation.action.content?.trim() ? 'Assistant prompt' : 'Assistant task';
-      case 'shell':
-        return automation.action.content?.trim() ? automation.action.content.trim() : 'Shell command';
-      case 'api':
-        return automation.action.path
-          ? `${automation.action.method ?? 'Call'} ${automation.action.path}`
-          : 'API request';
-      case 'http':
-        return automation.action.url ? `${automation.action.method ?? 'Request'} ${automation.action.url}` : 'HTTP request';
-      case 'workflow':
-        return 'Workflow';
-      default:
-        return automation.action.type;
-    }
-  }
 </script>
 
-<div class="panel" role="tabpanel" inert={pendingDeleteFile !== null || drawerOpen || logDrawerOpen}>
+<div class="panel" role="tabpanel" inert={pendingDelete !== null || drawerOpen || logDrawerOpen}>
   <div class="ph">
     <div>
       <h2 class="ph-title">Routines</h2>
-      <p class="ph-sub">Scheduled tasks from knowledge/tasks/</p>
+      <p class="ph-sub">Task files from knowledge/tasks/</p>
     </div>
     <div class="ph-actions">
       <button class="btn btn-primary btn-outline btn-sm" onclick={openNewTask} disabled={drawerSaving}>New task</button>
@@ -235,39 +193,29 @@
   <div class="panel-body">
     {#if hasAutomations && data}
       <div class="automation-list">
-        {#each data.automations as automation (automation.name)}
+        {#each data.automations as automation (automation.fileName)}
           <div class="automation-card">
             <div class="automation-row">
               <div class="automation-main">
                 <div class="automation-name">
-                  {automation.name}
-                  <span class="badge" class:badge-enabled={automation.valid && automation.enabled} class:badge-disabled={!automation.valid || !automation.enabled}>
-                    {automation.valid ? (automation.enabled ? 'Enabled' : 'Disabled') : 'Needs repair'}
-                  </span>
-                  {#if automation.valid}
-                    <span class="badge badge-type">{automation.action.type}</span>
-                  {/if}
+                  {automation.fileName}
                 </div>
-                {#if automation.description}
-                  <div class="automation-desc">{automation.description}</div>
-                {/if}
-              </div>
-              <div class="automation-meta">
-                <span class="meta-item">{automation.valid ? formatSchedule(automation.schedule) : 'Invalid AKM task'}</span>
-                {#if automation.valid}
-                  <span class="meta-item meta-item-action">{describeAction(automation)}</span>
-                {/if}
+                <div class="automation-desc">
+                  {automation.schedulable
+                    ? 'AKM validates during reconciliation and run.'
+                    : 'Filename is not schedulable. Edit or delete this file.'}
+                </div>
               </div>
             </div>
             <div class="automation-footer">
-              <span class="automation-file">{automation.fileName}</span>
+              <span class="automation-file">{automation.size} {automation.size === 1 ? 'byte' : 'bytes'}</span>
               <div class="automation-actions">
                 <button
                   class="btn btn-secondary btn-sm"
-                  onclick={() => void handleRunNow(automation.name)}
-                  disabled={!automation.valid || !!runningTaskName || drawerSaving}
+                  onclick={() => void handleRunNow(automation.fileName)}
+                  disabled={!automation.schedulable || !!runningTaskName || drawerSaving}
                 >
-                  {#if runningTaskName === automation.name}
+                  {#if runningTaskName === automation.fileName}
                     <Spinner />
                     Running...
                   {:else}
@@ -276,8 +224,8 @@
                 </button>
                 <button
                   class="btn btn-ghost btn-sm"
-                  onclick={() => void openLogDrawer(automation.name)}
-                  disabled={logLoading}
+                  onclick={() => void openLogDrawer(automation.fileName)}
+                  disabled={!automation.schedulable || logLoading}
                 >View latest log</button>
                 <button
                   class="btn btn-ghost btn-sm"
@@ -286,7 +234,7 @@
                 >Edit</button>
                 <button
                   class="btn btn-ghost btn-sm"
-                  onclick={() => requestRemoveTask(automation.fileName)}
+                  onclick={() => requestRemoveTask(automation.fileName, automation.revision)}
                   disabled={drawerSaving}
                   aria-label="Delete {automation.fileName}"
                 >Delete</button>
@@ -318,7 +266,7 @@
   </div>
 </div>
 
-{#if pendingDeleteFile !== null}
+{#if pendingDelete !== null}
   <div
     class="confirm-prompt"
     role="alertdialog"
@@ -329,7 +277,7 @@
     {@attach manageDeleteFocus}
   >
     <p class="confirm-prompt-title">Delete task file?</p>
-    <p>Delete task file "{pendingDeleteFile}"? This cannot be undone.</p>
+    <p>Delete task file "{pendingDelete.fileName}"? This cannot be undone.</p>
     <div class="confirm-actions">
       <button class="btn btn-sm btn-danger" onclick={() => void confirmRemoveTask()} disabled={drawerSaving}>
         {#if drawerSaving}<Spinner /> Deleting…{:else}Delete task{/if}
@@ -346,7 +294,7 @@
     saving={drawerSaving}
     saveError={drawerError}
     onClose={closeDrawer}
-    onSave={(fileName, content) => void handleSave(fileName, content)}
+    onSave={(fileName, content, expectedRevision) => void handleSave(fileName, content, expectedRevision)}
   />
 {/key}
 
@@ -480,50 +428,6 @@
     margin-top: var(--s-sp-1);
   }
 
-  .automation-meta {
-    display: flex;
-    flex-direction: column;
-    align-items: flex-end;
-    gap: var(--s-sp-1);
-    flex-shrink: 0;
-  }
-
-  .meta-item {
-    font-family: var(--s-font-mono);
-    font-size: var(--s-type-mark-sm);
-    color: var(--s-ink-3);
-    letter-spacing: var(--s-track-label);
-    text-transform: uppercase;
-  }
-
-  .meta-item-action {
-    max-width: 28ch;
-    text-align: right;
-  }
-
-  .badge {
-    font-family: var(--s-font-mono);
-    font-size: var(--s-type-mark-sm);
-    letter-spacing: var(--s-track-label);
-    text-transform: uppercase;
-    padding: 0.1em 0.5em;
-    border-radius: 2px;
-    border: var(--s-hair) solid currentColor;
-    background: none;
-  }
-
-  .badge.badge-enabled {
-    color: var(--s-moss);
-  }
-
-  .badge.badge-disabled {
-    color: var(--s-ink-3);
-  }
-
-  .badge-type {
-    color: var(--s-ink-3);
-  }
-
   .automation-footer {
     display: flex;
     align-items: center;
@@ -546,6 +450,11 @@
     font-size: var(--s-type-mark-sm);
     color: var(--s-ink-3);
     letter-spacing: var(--s-track-label);
+  }
+
+  .automation-name,
+  .automation-file {
+    overflow-wrap: anywhere;
   }
 
   :global(.panel-body) {
@@ -648,17 +557,6 @@
   @media (max-width: 768px) {
     .automation-row {
       flex-direction: column;
-    }
-
-    .automation-meta {
-      align-items: flex-start;
-      flex-direction: row;
-      gap: var(--s-sp-3);
-    }
-
-    .meta-item-action {
-      text-align: left;
-      max-width: none;
     }
 
     .automation-footer {

@@ -206,9 +206,11 @@ vi.mock('@openpalm/lib', () => ({
   resolveDataDir: vi.fn(() => '/home/user/.openpalm/data'),
   resolveConfigDir: vi.fn(() => '/home/user/.openpalm/config'),
   resolveUiBuildDir: vi.fn(() => '/home/user/.openpalm/data/ui'),
+  DEFAULT_HOST_UI_PORT: 3880,
   seedLegacyServedUiRuntimeConfig: vi.fn(),
   applyHomeSeed: vi.fn(async () => ({ updated: [], backupDir: null })),
   ensureHomeDirs: vi.fn(),
+  runHomeMigrations: vi.fn(),
   checkDocker: vi.fn(),
   checkDockerCompose: vi.fn(),
   parseEnvFile: vi.fn(() => ({})),
@@ -326,6 +328,7 @@ import {
   setLaunchOnLogin,
   shouldWarnBeforeQuitDuringDeploy,
   showNotification,
+  startUIServer,
   stopUIServer,
   stopUiChild,
   supportsLaunchOnLogin,
@@ -893,6 +896,7 @@ describe('desktop bootstrap', () => {
   it('spawns the bundled UI and lands on /start', async () => {
     const { spawn } = await import('node:child_process');
     vi.mocked(spawn).mockClear();
+    vi.mocked(lib.parseEnvFile).mockClear();
     vi.mocked(lib.waitForReady).mockResolvedValue(true);
     vi.mocked(app.quit).mockClear();
     mockBrowserWindow.loadURL.mockClear();
@@ -925,17 +929,40 @@ describe('desktop bootstrap', () => {
   // This is the Electron half of what the CLI supervisor does before every spawn.
   it('reseeds OP_HOME from the bundled skeleton before spawning the UI', async () => {
     const { spawn } = await import('node:child_process');
+    const ensureOrder = vi.mocked(lib.ensureHomeDirs).mock.invocationCallOrder;
+    const migrationOrder = vi.mocked(lib.runHomeMigrations).mock.invocationCallOrder;
+    const persistedPortReadOrder = vi.mocked(lib.parseEnvFile).mock.invocationCallOrder;
     const seedOrder = vi.mocked(lib.applyHomeSeed).mock.invocationCallOrder;
     const spawnOrder = vi.mocked(spawn).mock.invocationCallOrder;
 
+    expect(lib.runHomeMigrations).toHaveBeenCalledWith('/home/user/.openpalm');
     expect(lib.applyHomeSeed).toHaveBeenCalled();
     expect(vi.mocked(lib.applyHomeSeed).mock.calls[0]?.slice(1)).toEqual([
       '/home/user/.openpalm',
       '/home/user/.openpalm/config',
       '/home/user/.openpalm/data',
     ]);
-    // Seeded BEFORE the child starts, or the child reads the old tree.
+    // Migration owns the first persisted-state access and runs after the home
+    // tree exists, before seeding or spawning the read-only UI child.
+    expect(ensureOrder[0]).toBeLessThan(migrationOrder[0]);
+    expect(migrationOrder[0]).toBeLessThan(persistedPortReadOrder[0]);
+    expect(persistedPortReadOrder[0]).toBeLessThan(seedOrder[0]);
     expect(seedOrder[0]).toBeLessThan(spawnOrder[0]);
+  });
+
+  it('propagates migration failure before reading persisted config or spawning', async () => {
+    const { spawn } = await import('node:child_process');
+    const persistedReadCount = vi.mocked(lib.parseEnvFile).mock.calls.length;
+    const seedCount = vi.mocked(lib.applyHomeSeed).mock.calls.length;
+    const spawnCount = vi.mocked(spawn).mock.calls.length;
+    vi.mocked(lib.runHomeMigrations).mockImplementationOnce(() => {
+      throw new Error('delegated secret migration failed');
+    });
+
+    await expect(startUIServer()).rejects.toThrow('delegated secret migration failed');
+    expect(lib.parseEnvFile).toHaveBeenCalledTimes(persistedReadCount);
+    expect(lib.applyHomeSeed).toHaveBeenCalledTimes(seedCount);
+    expect(spawn).toHaveBeenCalledTimes(spawnCount);
   });
 });
 

@@ -20,6 +20,8 @@ import {
   resolveDataDir,
   resolveUiBuildDir,
   ensureHomeDirs,
+  runHomeMigrations,
+  DEFAULT_HOST_UI_PORT,
   parseEnvFile,
   stackEnvFile,
   waitForReady as libWaitForReady,
@@ -36,7 +38,6 @@ import {
   type DeployProgress,
   UiSupervisor,
 } from '@openpalm/lib';
-import { UI_PORT } from './ui-port.js';
 import { autoUpdater } from 'electron-updater';
 import { DesktopUpdater, isTrustedUpdaterSender, type UpdaterState } from './updater.js';
 import { loadSettings, saveSettings } from './settings.js';
@@ -44,7 +45,6 @@ import { killProcessTree } from './process-tree.js';
 import { resolveAssetPath } from './assets.js';
 import { SplashWindow } from './splash.js';
 import { TrayController } from './tray.js';
-import { configureMediaPermissions, requestMicrophoneAccess } from './permissions.js';
 import {
   getLaunchOnLoginStatus,
   setLaunchOnLogin,
@@ -169,9 +169,15 @@ function writeChildLog(text: string): void {
   try { logStream?.write(text); } catch { /* best-effort */ }
 }
 
-// The host UI port lives in ./ui-port.ts so permissions.ts reads the SAME value
-// this file serves on — see that module's header for why a second resolution
-// silenced the microphone on custom-port installs.
+// The persisted host port and permission module are loaded only after migration
+// in startUIServer. Both still consume ./ui-port.ts's one resolved value.
+let uiPort: number = DEFAULT_HOST_UI_PORT;
+let configureMediaPermissions = (): void => {
+  throw new Error('Media permissions were used before UI startup completed');
+};
+let requestMicrophoneAccess = async (): Promise<string> => {
+  throw new Error('Media permissions were used before UI startup completed');
+};
 
 const READY_TIMEOUT_MS = 60_000;
 // E4 review: the splash-closing watchdog for the MAIN WINDOW's own page load,
@@ -286,6 +292,7 @@ export function buildUIServerEnv(homeDir: string, port: number): NodeJS.ProcessE
     ...stackForUi,
     ...process.env,
     OP_HOME: homeDir,
+    BODY_SIZE_LIMIT: '2097152',
     // The shared listen contract, not a hand-baked copy of it. The desktop app
     // is unconditionally an admin host UI, so it always lands in the same branch
     // — but "always lands there" is a property of the CALLER, and baking the
@@ -426,7 +433,8 @@ export function stopUiChild(handle: ChildProcess | null): Promise<void> {
  * the exact shape the CLI's own supervisor adapter uses.
  */
 const uiSupervisor = new UiSupervisor<ChildProcess | null>({
-  port: UI_PORT,
+  // start() is deliberately unused; the bespoke path uses post-migration uiPort.
+  port: uiPort,
   strategy: {
     // Never invoked — see the class comment above; spawning stays bespoke in
     // spawnUIServer. Throw rather than silently no-op if that ever changes
@@ -456,27 +464,28 @@ const uiSupervisor = new UiSupervisor<ChildProcess | null>({
  */
 let uiServerFailureReported = false;
 
-async function startUIServer(): Promise<boolean> {
+export async function startUIServer(): Promise<boolean> {
   uiServerFailureReported = false;
   const homeDir = resolveOpenPalmHome();
   const dataDir = resolveDataDir();
 
-  // Ensure the runtime dir tree exists so the harness can write its pid file and
-  // the UI child can boot. The harness does NOT seed or apply OP_HOME — that is
-  // the UI's job (install/update → applyHome): overwrite the managed system/ tree
-  // and seed the user/data trees once. Serving the UI never mutates OP_HOME, so
-  // the harness only ensures dirs here. The UI child locates the bundled skeleton
-  // via OPENPALM_SKELETON_DIR (set in buildUIServerEnv).
+  // The host harness owns startup writes. Ensure the tree, then migrate before
+  // reading persisted settings or seeding managed assets. A migration failure
+  // aborts startup; the UI child remains read-only and cannot race this owner.
   ensureHomeDirs();
+  runHomeMigrations(homeDir);
+
+  // ui-port.ts reads persisted stack config at module load. Defer it (and the
+  // permission module that imports it) until migration has completed.
+  const portModule = await import('./ui-port.js');
+  uiPort = portModule.UI_PORT;
+  const permissions = await import('./permissions.js');
+  configureMediaPermissions = permissions.configureMediaPermissions;
+  requestMicrophoneAccess = permissions.requestMicrophoneAccess;
 
   // Refresh the managed system/ tree from THIS app version's bundled skeleton,
   // so an updated shell never serves the previous release's managed files.
   await seedBundledSkeleton(homeDir, resolveConfigDir(), dataDir);
-
-  // NOTE: home migrations are deliberately NOT run here. Anything that mutates
-  // control-plane state or runs a migration belongs to the UI control plane.
-  // The UI child runs them at startup instead — packages/ui/src/hooks.server.ts
-  // — which covers this harness and the CLI supervisor with one owner.
 
   // app.getVersion() is the HARNESS marketing version — the only version this
   // harness's own self-update check (the DesktopUpdater below) cares about.
@@ -524,13 +533,13 @@ async function startUIServer(): Promise<boolean> {
   // /host silently redirecting to /chat. This replaces the pid-file kill, which
   // signalled whatever process currently held a recorded pid — after an unclean
   // shutdown and pid reuse, that could be any user process.
-  const existing = await checkExistingUiInstance(UI_PORT, true);
+  const existing = await checkExistingUiInstance(uiPort, true);
   if (existing.status === 'mismatch') {
     splash.close();
     dialog.showErrorBox(
       'OpenPalm is already running',
       [
-        `Another OpenPalm UI (admin=${existing.admin}) is already listening on port ${UI_PORT}.`,
+        `Another OpenPalm UI (admin=${existing.admin}) is already listening on port ${uiPort}.`,
         '',
         'The desktop app needs an admin-capable UI on that port. Stop the other',
         'instance (e.g. the `openpalm` you started in a terminal) and reopen this app.',
@@ -545,13 +554,13 @@ async function startUIServer(): Promise<boolean> {
   } else {
     // An admin-capable instance already owns the port — attach to it rather
     // than racing it for the socket. It owns its own lifecycle.
-    console.log(`Reusing already-running admin UI server on port ${UI_PORT}.`);
+    console.log(`Reusing already-running admin UI server on port ${uiPort}.`);
   }
 
   // Lose to the child's own death instead of waiting out the full timeout while
   // an unrelated process on the port answers for it.
   const ready = await readyOrChildExit(
-    () => waitForReady(UI_PORT),
+    () => waitForReady(uiPort),
     uiSupervisor.current ? once(uiSupervisor.current, 'exit') : undefined,
   );
   if (!ready) {
@@ -564,7 +573,7 @@ async function startUIServer(): Promise<boolean> {
     if (uiServerFailureReported) return false;
     const recentLogs = getRecentStderr(40);
     const detail = [
-      `The UI server on port ${UI_PORT} did not respond within ${READY_TIMEOUT_MS / 1000} seconds.`,
+      `The UI server on port ${uiPort} did not respond within ${READY_TIMEOUT_MS / 1000} seconds.`,
       '',
       recentLogs
         ? `Last output from UI server:\n${recentLogs}`
@@ -596,7 +605,7 @@ function spawnUIServer(uiBuildDir: string, homeDir: string): void {
   const child = spawn(process.execPath, [join(uiBuildDir, 'index.js')], {
     cwd: uiBuildDir,
     env: {
-      ...buildUIServerEnv(homeDir, UI_PORT),
+      ...buildUIServerEnv(homeDir, uiPort),
       ELECTRON_RUN_AS_NODE: '1',
     },
     // Own process group so shutdown can group-kill the UI server AND any
@@ -684,18 +693,18 @@ export function stopUIServer(): void {
  */
 export async function resolveInitialUrl(): Promise<string> {
   try {
-    const res = await fetch(`http://127.0.0.1:${UI_PORT}/api/runtime/landing`, {
+    const res = await fetch(`http://127.0.0.1:${uiPort}/api/runtime/landing`, {
       signal: AbortSignal.timeout(2000),
     });
     if (res.ok) {
       const data = await res.json() as { landing?: string };
       const landing = data.landing ?? '/chat';
-      return `http://127.0.0.1:${UI_PORT}${landing}`;
+      return `http://127.0.0.1:${uiPort}${landing}`;
     }
   } catch {
     // ignore; fall through to root
   }
-  return `http://127.0.0.1:${UI_PORT}`;
+  return `http://127.0.0.1:${uiPort}`;
 }
 
 /**
@@ -716,7 +725,7 @@ export async function resolveInitialUrl(): Promise<string> {
  * dev server) would load INSIDE this trusted window — with preload.cjs and
  * window.openpalm attached — instead of being deferred to the external
  * browser like every other non-OpenPalm destination. Pinned to the app's
- * actual UI_PORT: this is the one port OpenPalm itself ever serves on.
+ * actual resolved UI port: this is the one port OpenPalm itself ever serves on.
  */
 export function isAllowedInAppWindowUrl(url: string): boolean {
   let parsed: URL;
@@ -728,7 +737,7 @@ export function isAllowedInAppWindowUrl(url: string): boolean {
   if (parsed.protocol !== 'http:') return false;
   if (parsed.hostname !== '127.0.0.1' && parsed.hostname !== 'localhost') return false;
   const port = parsed.port ? Number(parsed.port) : 80;
-  return port === UI_PORT;
+  return port === uiPort;
 }
 
 export function handleWindowOpen(window: BrowserWindow, url: string): { action: 'deny' } {
@@ -760,7 +769,7 @@ export function handleWindowOpen(window: BrowserWindow, url: string): { action: 
  * allow-list there (both 127.0.0.1 and localhost) is safe. An in-place
  * navigation is different — it silently replaces what the user is looking
  * at — so it is held to the exact origin this app actually serves
- * (resolveInitialUrl only ever produces `http://127.0.0.1:${UI_PORT}` URLs).
+ * (resolveInitialUrl only ever produces the resolved loopback UI origin).
  */
 export function isOwnOriginUrl(url: string): boolean {
   let parsed: URL;
@@ -769,7 +778,7 @@ export function isOwnOriginUrl(url: string): boolean {
   } catch {
     return false;
   }
-  return parsed.protocol === 'http:' && parsed.hostname === '127.0.0.1' && parsed.port === String(UI_PORT);
+  return parsed.protocol === 'http:' && parsed.hostname === '127.0.0.1' && parsed.port === String(uiPort);
 }
 
 /**
@@ -916,7 +925,7 @@ function showWindow(): void {
 
 /** Compatibility alias that opens the canonical UI chat in the system browser. */
 export async function openLocalApp(): Promise<void> {
-  void shell.openExternal(`http://127.0.0.1:${UI_PORT}/chat`);
+  void shell.openExternal(`http://127.0.0.1:${uiPort}/chat`);
 }
 
 // ── Global mic shortcut ───────────────────────────────────────────────────────
@@ -1046,7 +1055,7 @@ function createTray(): void {
     onOpen: showWindow,
     onOpenChatInBrowser: () => { void openLocalApp(); },
     // A2: always-available path to the host admin dashboard.
-    onOpenAdmin: () => { void shell.openExternal(`http://127.0.0.1:${UI_PORT}/host`); },
+    onOpenAdmin: () => { void shell.openExternal(`http://127.0.0.1:${uiPort}/host`); },
     onShowLogs: () => { void shell.openPath(app.getPath('logs')); },
     getLaunchOnLoginStatus: () => getLaunchOnLoginStatus(),
     onSetLaunchOnLogin: (enabled) => { setLaunchOnLogin(enabled); },
@@ -1195,7 +1204,7 @@ function createDesktopUpdater(appVersion: string): DesktopUpdater {
  * notifications, or pop the mic permission prompt).
  */
 function isTrustedRendererSender(event: IpcMainInvokeEvent | IpcMainEvent): boolean {
-  return isTrustedUpdaterSender(event.senderFrame?.url ?? '', UI_PORT);
+  return isTrustedUpdaterSender(event.senderFrame?.url ?? '', uiPort);
 }
 
 /**

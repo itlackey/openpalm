@@ -1,13 +1,9 @@
 /**
- * SvelteKit server hooks — runs once on admin startup.
+ * SvelteKit server hooks.
  *
- * Performs an idempotent auto-apply: ensures home dirs exist, seeds
- * secrets and OpenCode config, and resolves runtime files. Outcomes are
- * surfaced via the application logger; OpenCode session logs + the
- * guardian's own guardian-audit.log are the audit trail (D6a of the
- * auth/proxy refactor).
- *
- * Also enforces SEC-1: Host header allowlist to prevent DNS rebinding attacks.
+ * Loads the process environment without writing to OP_HOME, then enforces
+ * SEC-1: Host header allowlisting to prevent DNS rebinding attacks. Host
+ * launchers own migrations; the assistant's in-container UI remains isolated.
  */
 import type { Handle } from "@sveltejs/kit";
 import { redirect } from "@sveltejs/kit";
@@ -24,7 +20,6 @@ import {
   readSecret,
   describeAccessExposure,
   readAccessToggles,
-  runHomeMigrations,
   stackDirFor,
   reconcileMdnsResponder,
 } from "@openpalm/lib";
@@ -37,34 +32,14 @@ export { _resetLaunchCache } from "$lib/server/landing.js";
 
 const logger = createLogger("admin");
 
-let startupApplyDone = false;
-let migrationsDone = false;
-
-// Bring the home up to the current schema BEFORE anything reads it.
-//
-// This lives HERE, and nowhere else. Every serve path spawns THIS process, so
-// one owner here covers the Electron harness, the CLI supervisor, and `vite
-// dev` alike, and the migration ships with the schema it implements.
-//
-// Schema-gated and idempotent: an up-to-date home reads one small version file
-// and returns. Non-fatal — a home that cannot be migrated must still serve,
-// degraded, rather than refuse to boot.
-function migrateHome(): void {
-  if (migrationsDone) return;
-  migrationsDone = true;
-  try {
-    runHomeMigrations(resolveOpenPalmHome());
-  } catch (err) {
-    logger.error("home migration failed", { error: String(err) });
-  }
-}
+let startupLoadDone = false;
 
 // Load the process-level config the UI needs to serve, READ-ONLY w.r.t. OP_HOME.
 // install/update own every OP_HOME write (via applyHome), so merely serving
 // the UI never mutates the home directory — no startup "auto-apply".
 function loadProcessEnv(): void {
-  if (startupApplyDone) return;
-  startupApplyDone = true;
+  if (startupLoadDone) return;
+  startupLoadDone = true;
 
   // Report what the operator deliberately opened. Exposure is now read from
   // the access toggles rather than diagnosed from bind addresses:
@@ -107,8 +82,9 @@ function loadProcessEnv(): void {
   }
 }
 
-// Run immediately on module load (server startup), migrations first so the env
-// load below reads a current stack.env.
+// Run immediately on module load (server startup). This remains read-only with
+// respect to OP_HOME: host launchers own migrations before spawning this UI,
+// while a direct low-level UI launch never becomes another migration owner.
 //
 // There is no longer a process-local "port contract reconciliation" here. It
 // re-implemented an on-disk migration inside the request path, keyed on magic
@@ -116,12 +92,11 @@ function loadProcessEnv(): void {
 // operator who deliberately ran the assistant on 3800 got a UI whose proxy
 // targeted 3810 while compose still published 3800 — assistant_unreachable with
 // nothing in stack.env to explain it. Its two triggers also disagreed with the
-// disk migration's at the edges. The real migration now runs here, once, before
-// anything reads the home, so the request path can simply trust the disk.
-migrateHome();
+// disk migration's at the edges. Host launchers run the real migration before
+// spawning the UI, so the request path can simply trust the disk.
 loadProcessEnv();
 
-// Scheduler is now a dedicated sidecar — admin has zero background processes.
+// Automation scheduling runs in the assistant; the UI starts no scheduler process.
 
 // Paths exempt from the setup guard (setup UI itself + health probes)
 const SETUP_PATHS = ["/setup", "/api/setup", "/health", "/guardian/health"];

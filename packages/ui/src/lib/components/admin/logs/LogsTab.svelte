@@ -7,10 +7,10 @@
 
   interface Props {
     services: string[];
-    automations: string[];
+    automationFileNames: string[];
   }
 
-  let { services, automations }: Props = $props();
+  let { services, automationFileNames }: Props = $props();
 
   let logs = $state('');
   let logsLoaded = $state(false);
@@ -46,8 +46,8 @@
           error = result.error ?? 'Failed to fetch logs.';
         }
       } else {
-        if (!selectedAutomation && automations.length > 0) {
-          selectedAutomation = automations[0] ?? '';
+        if (!selectedAutomation && automationFileNames.length > 0) {
+          selectedAutomation = automationFileNames[0] ?? '';
         }
         if (!selectedAutomation) {
           logs = '';
@@ -82,7 +82,7 @@
     logs = '';
     logsLoaded = false;
     if (next === 'routines' && !selectedAutomation) {
-      selectedAutomation = automations[0] ?? '';
+      selectedAutomation = automationFileNames[0] ?? '';
     }
     void loadLogs();
   }
@@ -138,11 +138,11 @@
     <div class="control-group">
       <label for="log-automation" class="control-label">Routine</label>
       <select id="log-automation" class="control-input" bind:value={selectedAutomation} onchange={() => void loadLogs()}>
-        {#if automations.length === 0}
+        {#if automationFileNames.length === 0}
           <option value="">No routines yet</option>
         {:else}
-          {#each automations as automation (automation)}
-            <option value={automation}>{automation}</option>
+          {#each automationFileNames as fileName (fileName)}
+            <option value={fileName}>{fileName}</option>
           {/each}
         {/if}
       </select>

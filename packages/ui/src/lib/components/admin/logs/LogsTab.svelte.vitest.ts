@@ -6,7 +6,7 @@
  *  - After load with empty logs: "No log output..." (not "Select a service...")
  *  - After load with real logs: pre element contains the log text
  */
-import { describe, expect, test, vi } from 'vitest';
+import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { render } from 'vitest-browser-svelte';
 import { page } from 'vitest/browser';
 import LogsTab from './LogsTab.svelte';
@@ -16,12 +16,14 @@ vi.mock('$lib/api.js', () => ({
   fetchAutomationLog: vi.fn(),
 }));
 
-import { fetchServiceLogs } from '$lib/api.js';
+import { fetchAutomationLog, fetchServiceLogs } from '$lib/api.js';
 
 const defaultProps = {
   services: ['assistant', 'guardian'],
-  automations: ['daily-summary'],
+  automationFileNames: ['daily-summary.yml'],
 };
+
+beforeEach(() => vi.clearAllMocks());
 
 describe('LogsTab — initial state', () => {
   test('shows "Select a service" prompt before any load is triggered', async () => {
@@ -60,5 +62,17 @@ describe('LogsTab — after successful load', () => {
     await page.getByRole('button', { name: /load service logs/i }).click();
 
     await expect.element(page.getByText(/service not found/i)).toBeVisible();
+  });
+
+  test('requests routine logs with the exact task filename', async () => {
+    vi.mocked(fetchAutomationLog).mockResolvedValue({
+      fileName: 'daily-summary.yml',
+      lines: [],
+    });
+
+    await render(LogsTab, { props: defaultProps });
+    await page.getByRole('tab', { name: 'Routine logs' }).click();
+
+    expect(fetchAutomationLog).toHaveBeenCalledWith('daily-summary.yml', 100);
   });
 });

@@ -1,5 +1,5 @@
 import { describe, expect, mock, test } from 'bun:test';
-import { runAssistantAkmCommand } from './assistant-akm.js';
+import { checkAssistantTaskSyncHealth, runAssistantAkmCommand } from './assistant-akm.js';
 import type { composeExec } from './docker.js';
 import type { ControlPlaneState } from './types.js';
 
@@ -112,7 +112,8 @@ describe('runAssistantAkmCommand', () => {
 		).resolves.toMatchObject({
 			ok: false,
 			stderr: 'compose unavailable',
-			exitCode: 1
+			exitCode: 1,
+			transportError: true
 		});
 	});
 
@@ -135,7 +136,50 @@ describe('runAssistantAkmCommand', () => {
 		).resolves.toMatchObject({
 			ok: false,
 			stderr: 'Docker execution failed (ENOENT)',
-			missing: false
+			missing: false,
+			transportError: true
+		});
+	});
+});
+
+describe('checkAssistantTaskSyncHealth', () => {
+	test('runs the fixed reconciliation health command as node', async () => {
+		const state = {
+			homeDir: '/openpalm',
+			stackDir: '/openpalm/system/stack'
+		} as ControlPlaneState;
+		const runCompose = mock((() =>
+			Promise.resolve({ ok: true, stdout: '', stderr: '', code: 0 })) as typeof composeExec);
+
+		await expect(checkAssistantTaskSyncHealth(state, runCompose)).resolves.toEqual({ ok: true });
+		expect(runCompose).toHaveBeenCalledTimes(1);
+		const [service, command, options] = runCompose.mock.calls[0] ?? [];
+		expect(service).toBe('assistant');
+		expect(command).toEqual([
+			'/usr/local/bin/opencode-entrypoint.sh',
+			'--check-task-sync-health'
+		]);
+		expect(options?.timeoutMs).toBe(10_000);
+		expect(options?.user).toBe('node');
+	});
+
+	test('fails closed on an unhealthy status or compose rejection', async () => {
+		const state = {
+			homeDir: '/openpalm',
+			stackDir: '/openpalm/system/stack'
+		} as ControlPlaneState;
+		const unhealthy = mock((() =>
+			Promise.resolve({ ok: false, stdout: '', stderr: 'status is stale', code: 1 })) as typeof composeExec);
+		await expect(checkAssistantTaskSyncHealth(state, unhealthy)).resolves.toEqual({
+			ok: false,
+			error: 'status is stale'
+		});
+
+		const rejected = mock((() =>
+			Promise.reject(new Error('compose unavailable'))) as typeof composeExec);
+		await expect(checkAssistantTaskSyncHealth(state, rejected)).resolves.toEqual({
+			ok: false,
+			error: 'compose unavailable'
 		});
 	});
 });

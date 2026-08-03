@@ -7,42 +7,88 @@ cd "$ROOT_DIR"
 # shellcheck source=scripts/rootless-smoke-fixture.sh
 source "${ROOT_DIR}/scripts/rootless-smoke-fixture.sh"
 
-SWAP_HOME="${OP_ROOTLESS_SWAP_HOME:-${ROOT_DIR}/.rootless-host-swap}"
-COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-openpalm-rootless-swap-$$}"
+SWAP_GUARDED_BASENAME='.rootless-host-swap'
+SWAP_PROJECT_PREFIX='openpalm-rootless-swap'
+SWAP_HOME="$(smoke_guarded_home "$ROOT_DIR" \
+  "${OP_ROOTLESS_SWAP_HOME:-${ROOT_DIR}/${SWAP_GUARDED_BASENAME}-$$}" \
+  "$SWAP_GUARDED_BASENAME" OP_ROOTLESS_SWAP_HOME)"
+COMPOSE_PROJECT_NAME="$(smoke_guarded_project \
+  "${COMPOSE_PROJECT_NAME:-${SWAP_PROJECT_PREFIX}-$$}" \
+  "$SWAP_PROJECT_PREFIX" COMPOSE_PROJECT_NAME)"
 export COMPOSE_PROJECT_NAME
+SWAP_HOME_CREATED=0
+SMOKE_COMPLETED=0
+SWAP_PROJECT_CREATED=0
+SMOKE_PROJECT_CLEAR=1
 
-case "$SWAP_HOME" in
-  "$ROOT_DIR"/*) ;;
-  *)
-    echo "OP_ROOTLESS_SWAP_HOME must stay under the repo root for safe cleanup: $SWAP_HOME" >&2
-    exit 1
-    ;;
-esac
+DEV_COMPOSE=(
+  docker compose --project-directory .
+  -f "${SWAP_HOME}/system/stack/core.compose.yml"
+  -f "${SWAP_HOME}/system/stack/portals.compose.yml"
+  -f "${SWAP_HOME}/config/stack/custom.compose.yml"
+  -f compose.dev.yml
+  --env-file "${SWAP_HOME}/state/stack.env"
+  --project-name "$COMPOSE_PROJECT_NAME"
+)
 
 dev_compose() {
-  docker compose --project-directory . \
-    -f "${SWAP_HOME}/system/stack/core.compose.yml" \
-    -f "${SWAP_HOME}/system/stack/portals.compose.yml" \
-    -f "${SWAP_HOME}/config/stack/custom.compose.yml" \
-    -f compose.dev.yml \
-    --env-file "${SWAP_HOME}/state/stack.env" \
-    --project-name "$COMPOSE_PROJECT_NAME" "$@"
+  "${DEV_COMPOSE[@]}" "$@"
+}
+
+smoke_teardown_stack() {
+  local compose_output
+  local failed=0
+  if [[ "$SWAP_PROJECT_CREATED" != "1" ]]; then
+    SMOKE_PROJECT_CLEAR=1
+    return 0
+  fi
+  SMOKE_PROJECT_CLEAR=0
+  if [[ -f "$SWAP_HOME/state/stack.env" ]]; then
+    if ! compose_output="$(timeout --signal=TERM --kill-after=5s 60s "${DEV_COMPOSE[@]}" \
+      --profile addon.chat --profile addon.discord \
+      down --remove-orphans --volumes 2>&1)"; then
+      echo "cleanup: compose down failed for project $COMPOSE_PROJECT_NAME" >&2
+      [[ -z "$compose_output" ]] || printf '%s\n' "$compose_output" >&2
+      failed=1
+    fi
+  fi
+  if ! smoke_remove_project_resources "$COMPOSE_PROJECT_NAME"; then
+    echo "cleanup: force-removal failed for project $COMPOSE_PROJECT_NAME" >&2
+    failed=1
+  fi
+  if smoke_verify_project_clear "$COMPOSE_PROJECT_NAME"; then
+    SMOKE_PROJECT_CLEAR=1
+  else
+    failed=1
+  fi
+  return "$failed"
 }
 
 cleanup() {
-  if [[ -f "$SWAP_HOME/state/stack.env" ]]; then
-    dev_compose --profile addon.chat --profile addon.discord down --remove-orphans --volumes >/dev/null 2>&1 || true
+  local status=$?
+  local cleanup_failed=0
+  trap - EXIT
+  set +e
+  if ! smoke_teardown_stack; then cleanup_failed=1; fi
+  if [[ "$SWAP_HOME_CREATED" == "1" && ( -e "$SWAP_HOME" || -L "$SWAP_HOME" ) ]]; then
+    if [[ "$SMOKE_PROJECT_CLEAR" == "1" ]]; then
+      smoke_remove_guarded_home "$ROOT_DIR" "$SWAP_HOME" "$SWAP_GUARDED_BASENAME" || cleanup_failed=1
+    else
+      echo "cleanup: retaining $SWAP_HOME because Docker resources could not be proven absent" >&2
+    fi
   fi
-  docker ps -aq --filter "label=com.docker.compose.project=${COMPOSE_PROJECT_NAME}" 2>/dev/null | xargs -r docker rm -f >/dev/null 2>&1 || true
-  docker network ls -q --filter "label=com.docker.compose.project=${COMPOSE_PROJECT_NAME}" 2>/dev/null | xargs -r docker network rm >/dev/null 2>&1 || true
-  docker volume ls -q --filter "label=com.docker.compose.project=${COMPOSE_PROJECT_NAME}" 2>/dev/null | xargs -r docker volume rm >/dev/null 2>&1 || true
-  docker run --rm -v "$(dirname "$SWAP_HOME"):/smoke-parent" alpine sh -c 'rm -rf "/smoke-parent/$1"' _ "$(basename "$SWAP_HOME")" >/dev/null 2>&1 || true
+  if [[ "$cleanup_failed" == "1" && "$status" == "0" ]]; then status=1; fi
+  if [[ "$status" == "0" && "$SMOKE_COMPLETED" == "1" ]]; then
+    echo "Rootless host-swap smoke passed."
+  fi
+  exit "$status"
 }
 trap cleanup EXIT
 
 wait_for_stack_health() {
-  for _ in $(seq 1 60); do
-    assistant_status=$(docker inspect --format '{{.State.Health.Status}}' "${COMPOSE_PROJECT_NAME}-assistant-1" 2>/dev/null || echo missing)
+  local deadline=$((SECONDS + 120))
+  while ((SECONDS < deadline)); do
+    assistant_status=$(timeout 5s docker inspect --format '{{.State.Health.Status}}' "${COMPOSE_PROJECT_NAME}-assistant-1" 2>/dev/null || echo missing)
     if [[ "$assistant_status" == "healthy" ]]; then
       return 0
     fi
@@ -53,7 +99,9 @@ wait_for_stack_health() {
   return 1
 }
 
-cleanup
+smoke_assert_project_absent "$COMPOSE_PROJECT_NAME"
+smoke_create_guarded_home "$ROOT_DIR" "$SWAP_HOME" "$SWAP_GUARDED_BASENAME" OP_ROOTLESS_SWAP_HOME
+SWAP_HOME_CREATED=1
 PLATFORM_VERSION="$(smoke_platform_version)"
 
 smoke_copy_skeleton "$SWAP_HOME"
@@ -81,14 +129,19 @@ docker run --rm -v "$SWAP_HOME:/smoke-home" alpine sh -c "chown -R 0:0 /smoke-ho
 smoke_build_images assistant guardian
 
 echo "Expecting default start to block on host swap..."
-if OP_HOME="$SWAP_HOME" bun -e "import { runStartAction } from './packages/cli/src/commands/start.ts'; await runStartAction([]);" >/tmp/rootless-swap.out 2>/tmp/rootless-swap.err; then
+smoke_assert_project_absent "$COMPOSE_PROJECT_NAME"
+SWAP_PROJECT_CREATED=1
+if swap_error="$(OP_HOME="$SWAP_HOME" bun -e "import { runStartAction } from './packages/cli/src/commands/start.ts'; await runStartAction([]);" 2>&1 >/dev/null)"; then
   echo "Expected host swap block, but start succeeded." >&2
   exit 1
 fi
-grep -q 'Host swap detected for OP_HOME' /tmp/rootless-swap.err
+[[ "$swap_error" == *'Host swap detected for OP_HOME'* ]] || {
+  printf '%s\n' "$swap_error" >&2
+  exit 1
+}
 
 echo "Resetting swap fixture for adopt-host run..."
-dev_compose --profile addon.chat --profile addon.discord down --remove-orphans --volumes >/dev/null 2>&1 || true
+smoke_assert_project_absent "$COMPOSE_PROJECT_NAME"
 docker run --rm -v "$SWAP_HOME:/smoke-home" alpine sh -c "chown -R 0:0 /smoke-home/state /smoke-home/config /smoke-home/system /smoke-home/knowledge /smoke-home/workspace /smoke-home/data/assistant /smoke-home/data/guardian /smoke-home/data/akm /smoke-home/data/logs && find /smoke-home/config /smoke-home/system /smoke-home/knowledge -type d -exec chmod 755 {} + && find /smoke-home/config /smoke-home/system /smoke-home/knowledge -type f -exec chmod 644 {} + && rm -f /smoke-home/state/host-identity.json"
 docker run --rm -v "$SWAP_HOME:/smoke-home" alpine sh -c "cat > /smoke-home/state/host-identity.json <<'EOF'
 {
@@ -101,10 +154,16 @@ EOF
 chown -R 0:0 /smoke-home/state /smoke-home/config /smoke-home/system /smoke-home/knowledge /smoke-home/workspace /smoke-home/data/assistant /smoke-home/data/guardian /smoke-home/data/akm /smoke-home/data/logs && find /smoke-home/config /smoke-home/system /smoke-home/knowledge -type d -exec chmod 755 {} + && find /smoke-home/config /smoke-home/system /smoke-home/knowledge -type f -exec chmod 644 {} +"
 
 echo "Verifying adopt-host repairs ownership and starts..."
-OP_HOME="$SWAP_HOME" bun -e "import { runStartAction } from './packages/cli/src/commands/start.ts'; await runStartAction([], { adoptHost: true });" >/tmp/rootless-swap-adopt.out 2>/tmp/rootless-swap-adopt.err || {
-  cat /tmp/rootless-swap-adopt.err >&2
+smoke_assert_project_absent "$COMPOSE_PROJECT_NAME"
+adopt_error=''
+set +e
+adopt_error="$(OP_HOME="$SWAP_HOME" bun -e "import { runStartAction } from './packages/cli/src/commands/start.ts'; await runStartAction([], { adoptHost: true });" 2>&1 >/dev/null)"
+adopt_rc=$?
+set -e
+if [[ "$adopt_rc" -ne 0 ]]; then
+  printf '%s\n' "$adopt_error" >&2
   exit 1
-}
+fi
 wait_for_stack_health
 
 state_owner="$(stat -c '%u:%g' "$SWAP_HOME/state")"
@@ -120,4 +179,4 @@ if [[ "$knowledge_owner" != "$(id -u):$(id -g)" || "$workspace_owner" != "$(id -
   exit 1
 fi
 
-echo "Rootless host-swap smoke passed."
+SMOKE_COMPLETED=1

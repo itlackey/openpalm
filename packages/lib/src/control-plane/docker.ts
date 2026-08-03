@@ -54,6 +54,13 @@ export type DockerRunOptions = {
   cwd?: string;
   timeoutMs?: number;
   env?: Record<string, string>;
+  stdin?: BoundedStdin;
+  maxOutputBytes?: number;
+};
+
+export type BoundedStdin = {
+  data: string | Buffer;
+  maxBytes: number;
 };
 
 export interface DockerClient {
@@ -66,7 +73,15 @@ export interface StackDeps {
 }
 
 export const realDockerClient: DockerClient = {
-  run: (args, opts) => run(args, opts?.cwd, opts?.timeoutMs, opts?.env),
+  run: (args, opts) =>
+    run(
+      args,
+      opts?.cwd,
+      opts?.timeoutMs,
+      opts?.env,
+      opts?.stdin,
+      opts?.maxOutputBytes,
+    ),
 };
 
 export const defaultStackDeps: StackDeps = {
@@ -97,17 +112,44 @@ export function run(
   args: string[],
   cwd?: string,
   timeoutMs = 120_000,
-  envOverrides?: Record<string, string>
+  envOverrides?: Record<string, string>,
+  stdin?: BoundedStdin,
+  maxOutputBytes?: number,
 ): Promise<DockerResult> {
+  if (stdin) {
+    const inputBytes = Buffer.isBuffer(stdin.data)
+      ? stdin.data.byteLength
+      : Buffer.byteLength(stdin.data);
+    if (!Number.isSafeInteger(stdin.maxBytes) || stdin.maxBytes < 0 || inputBytes > stdin.maxBytes) {
+      return Promise.resolve({
+        ok: false,
+        stdout: '',
+        stderr: `Docker command stdin exceeds the ${stdin.maxBytes} byte limit`,
+        code: 1,
+        errorCode: 'E2BIG',
+      });
+    }
+  }
   return new Promise((resolve) => {
-    execFile(
+    const child = execFile(
       dockerBin(),
       args,
-      { cwd, timeout: timeoutMs, env: { ...process.env, ...envOverrides } },
+      {
+        cwd,
+        timeout: timeoutMs,
+        env: { ...process.env, ...envOverrides },
+        ...(maxOutputBytes === undefined ? {} : { maxBuffer: maxOutputBytes }),
+      },
       (error, stdout, stderr) => {
         resolve(toDockerResult(error, stdout, stderr));
       }
     );
+    if (stdin) {
+      child.stdin?.on('error', () => {
+        // The callback reports the child failure; avoid an unhandled EPIPE.
+      });
+      child.stdin?.end(stdin.data);
+    }
   });
 }
 
@@ -867,9 +909,11 @@ export async function composeExec(
     files: string[];
     envFiles?: string[];
     profiles?: string[];
-    timeoutMs?: number;
-    user?: string;
-  },
+     timeoutMs?: number;
+     user?: string;
+     stdin?: BoundedStdin;
+     maxOutputBytes?: number;
+   },
 ): Promise<DockerResult> {
   await runPreflight(options);
   const primaryFile = options.files[0];
@@ -881,7 +925,14 @@ export async function composeExec(
   args.push('exec', '-T');
   if (options.user) args.push('--user', options.user);
   args.push(service, ...command);
-  return run(args, undefined, options.timeoutMs ?? 120_000, collectComposeEnvOverrides(options.envFiles));
+  return run(
+    args,
+    undefined,
+    options.timeoutMs ?? 120_000,
+    collectComposeEnvOverrides(options.envFiles),
+    options.stdin,
+    options.maxOutputBytes,
+  );
 }
 
 /**

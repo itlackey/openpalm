@@ -60,6 +60,10 @@ function readCompose(path: string): ComposeFile {
 describe('Dockerfile HEALTHCHECK thresholds match the compose healthcheck they must mirror (K6)', () => {
   test('assistant: containers/assistant/Dockerfile vs core.compose.yml', () => {
     const dockerfileSource = readFileSync(join(REPO_ROOT, 'containers/assistant/Dockerfile'), 'utf-8');
+    const entrypointSource = readFileSync(
+      join(REPO_ROOT, 'containers/assistant/entrypoint.sh'),
+      'utf-8',
+    );
     const dockerfile = parseDockerfileHealthcheck(dockerfileSource);
     const compose = readCompose(join(STACK_DIR, 'core.compose.yml')).services?.assistant?.healthcheck;
     expect(compose, 'core.compose.yml assistant service has no healthcheck').toBeDefined();
@@ -70,12 +74,31 @@ describe('Dockerfile HEALTHCHECK thresholds match the compose healthcheck they m
     expect(dockerfile.retries).toBe(compose?.retries);
 
     const composeCommand = Array.isArray(compose?.test) ? compose.test.join(' ') : (compose?.test ?? '');
-    for (const predicate of ['/run/openpalm/cron.pid', '/run/openpalm/user/task-sync-failed']) {
+    for (const predicate of ['/run/openpalm/cron.pid', '/run/openpalm/sync.pid']) {
       expect(dockerfileSource).toContain(predicate);
       expect(composeCommand).toContain(predicate);
     }
     expect(composeCommand).toContain('test -r /run/openpalm/cron.pid || exit 1');
-    expect(composeCommand).toContain('test ! -e /run/openpalm/user/task-sync-failed || exit 1');
+    expect(composeCommand).toContain('test -r /run/openpalm/sync.pid || exit 1');
+    expect(composeCommand).toContain(
+      'kill -0 "$$(/usr/bin/cat /run/openpalm/sync.pid)" || exit 1',
+    );
+    expect(dockerfileSource).toContain(
+      'kill -0 "$(/usr/bin/cat /run/openpalm/sync.pid)" || exit 1',
+    );
+    const taskSyncHealthcheck =
+      '/usr/local/bin/opencode-entrypoint.sh --check-task-sync-health || exit 1';
+    expect(composeCommand).toContain(taskSyncHealthcheck);
+    expect(dockerfileSource).toContain(taskSyncHealthcheck);
+    expect(entrypointSource).toContain(
+      'TASK_SYNC_STATUS_FILE="${RUNTIME_DIR}/task-sync.status"',
+    );
+    expect(entrypointSource).toContain('TASK_SYNC_STATUS_MAX_AGE_SECONDS=90');
+    expect(entrypointSource).toContain(
+      "printf '%s %s %s\\n' \"$1\" \"$updated_at\" \"$2\"",
+    );
+    expect(composeCommand).not.toContain('task-sync-failed');
+    expect(dockerfileSource).not.toContain('task-sync-failed');
     expect(composeCommand).not.toContain('openpalm-ui-skip');
     expect(dockerfileSource).not.toContain('openpalm-ui-skip');
   });

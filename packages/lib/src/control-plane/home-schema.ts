@@ -14,12 +14,21 @@
  * `state/stack.env`, because that file is a Compose `--env-file` and this is
  * not a value any container should see.
  *
- * Adding a migration: bump `HOME_SCHEMA_VERSION` in `home.ts` and add an entry
- * below with `since` set to the version it upgrades FROM. Deleting one: drop
- * the entry once the supported upgrade floor has passed it — the version does
- * not need to move when a migration is removed.
+ * Each successful version step is stamped immediately so a failure in a later
+ * step cannot replay an earlier data migration.
  */
-import { existsSync, readFileSync, rmSync } from 'node:fs';
+
+import { existsSync, readFileSync } from 'node:fs';
+import { createLogger } from '../logger.js';
+import { migrateProfileOnlyAddonEnablement } from './addons.js';
+import {
+  migrateAccessIntent,
+  migrateConsolidatedDefaultPorts,
+  migrateLegacyBindAddresses,
+  migrateLegacyDefaultPorts,
+} from './config-persistence.js';
+import { mergeEnvContent, parseEnvContent, removeEnvKey } from './env.js';
+import { writeFileAtomic } from './fs-atomic.js';
 import {
   HOME_SCHEMA_VERSION,
   hasAnyStackEnvFile,
@@ -29,20 +38,47 @@ import {
   stackEnvFile,
   writeHomeSchemaVersion,
 } from './home.js';
-import { writeFileAtomic } from './fs-atomic.js';
-import { mergeEnvContent, parseEnvContent, removeEnvKey } from './env.js';
-import { createLogger } from '../logger.js';
-import {
-  migrateAccessIntent,
-  migrateConsolidatedDefaultPorts,
-  migrateLegacyBindAddresses,
-  migrateLegacyDefaultPorts,
-} from './config-persistence.js';
-import { migrateProfileOnlyAddonEnablement } from './addons.js';
-import { SERVICE_VERSION_KEYS } from './versions.js';
 import { migrateDelegatedSecretsToPrivateDir } from './secrets-migration.js';
+import { replaceTaskFileForHomeMigration } from './task-files.js';
+import { SERVICE_VERSION_KEYS } from './versions.js';
 
 const logger = createLogger('home-schema');
+const DAILY_BRIEFING_TASK = 'assistant-daily-briefing.yml';
+const RELEASED_DAILY_BRIEFING = `${[
+  "schedule: '0 8 * * *'",
+  'enabled: false',
+  'description: Ask the assistant for a daily system health summary',
+  'tags:',
+  '  - openpalm',
+  '  - assistant',
+  'timeoutMs: 120000',
+  'prompt: >-',
+  '  Good morning. Give me a brief summary of system health, any recent',
+  '  errors in the audit log, and open tasks.',
+].join('\n')}\n`;
+const VERSIONED_DAILY_BRIEFING = `version: 2\n${RELEASED_DAILY_BRIEFING}`;
+const HISTORICAL_DAILY_BRIEFINGS = new Set([
+  RELEASED_DAILY_BRIEFING,
+  VERSIONED_DAILY_BRIEFING,
+  RELEASED_DAILY_BRIEFING.replaceAll('\n', '\r\n'),
+  VERSIONED_DAILY_BRIEFING.replaceAll('\n', '\r\n'),
+]);
+const CURRENT_DAILY_BRIEFING = `${[
+  'version: 2',
+  "schedule: '0 8 * * *'",
+  'enabled: false',
+  'description: Ask the assistant for a daily system health summary',
+  'tags:',
+  '  - openpalm',
+  '  - assistant',
+  'timeoutMs: 120000',
+  'command:',
+  '  - opencode',
+  '  - run',
+  '  - >-',
+  '    Good morning. Give me a brief summary of system health, any recent',
+  '    errors in the audit log, and open tasks.',
+].join('\n')}\n`;
 
 /**
  * Collapse the two stack env files into one at `state/stack.env`.
@@ -84,69 +120,64 @@ function migrateToSingleStackEnv(homeDir: string): boolean {
   for (const key of Object.keys(overrides)) base = removeEnvKey(base, key);
   let merged = mergeEnvContent(base, overrides);
 
-  // A target that exists while the legacy files are still here was written
-  // BEFORE this migration ran — `ensureSystemSecrets` bootstraps one with
-  // `OP_SETUP_COMPLETE=false` whenever the file is absent. Letting it override
-  // would tell a fully-installed operator their setup never completed and send
-  // them back to the wizard. It contributes only keys the real sources do not
-  // define, so nothing is lost and nothing is clobbered.
-  if (existsSync(target)) {
-    const defined = parseEnvContent(merged);
-    const targetOnly: Record<string, string> = {};
-    for (const [key, value] of Object.entries(parseEnvContent(readFileSync(target, 'utf-8')))) {
-      if (!(key in defined)) targetOnly[key] = value;
-    }
-    if (Object.keys(targetOnly).length > 0) merged = mergeEnvContent(merged, targetOnly);
-  }
   if (!merged.endsWith('\n')) merged += '\n';
 
-  writeFileAtomic(target, merged, 0o600);
-  for (const source of sources) rmSync(source, { force: true });
+  if (existsSync(target)) {
+    const current = readFileSync(target, 'utf-8');
+    if (current === merged) return false;
 
-  logger.warn('Consolidated the stack env files into state/stack.env', {
-    merged: sources,
-    target,
-  });
+    // Older releases could create a fallback target before migration. Legacy
+    // values stay authoritative; retain only target-only keys.
+    const currentValues = parseEnvContent(current);
+    const defined = parseEnvContent(merged);
+    const targetOnly: Record<string, string> = {};
+    for (const [key, value] of Object.entries(currentValues)) {
+      if (!(key in defined)) targetOnly[key] = value;
+    }
+    merged = mergeEnvContent(merged, targetOnly);
+    if (!merged.endsWith('\n')) merged += '\n';
+    if (current === merged) return false;
+  }
+  writeFileAtomic(target, merged, 0o600);
+  logger.warn(
+    'Consolidated the stack env files and retained the legacy inputs as recovery copies',
+    {
+      merged: sources,
+      target,
+    },
+  );
   return true;
 }
 
-/**
- * Migrations that bring a home up FROM the version in `since`.
- *
- * Array order is the run order and is independent of `since`. The first two
- * rewrite the pre-consolidation knowledge file, so they must precede the
- * consolidation; `migrateProfileOnlyAddonEnablement` reads the *effective*
- * env and writes the app-owned record, so it must follow it.
- */
-const MIGRATIONS: { since: number; run: (homeDir: string) => boolean }[] = [
-  { since: 0, run: migrateLegacyDefaultPorts },
-  { since: 0, run: migrateLegacyBindAddresses },
-  { since: 1, run: migrateToSingleStackEnv },
-  { since: 0, run: (homeDir) => migrateProfileOnlyAddonEnablement(homeDir).changed },
-  // G1: relocate delegated secrets (guardian/portal-only) out of the
-  // assistant-reachable knowledge/secrets into private/secrets. Idempotent and
-  // safe on every state a pre-existing home could be in (see
-  // secrets-migration.ts/secrets-migration.test.ts); `since: 2` runs it for
-  // every home below the new HOME_SCHEMA_VERSION (3), including ones that
-  // never recorded a version at all (recorded 0 here still satisfies `2 >= 0`
-  // since the loop condition is `migration.since >= recorded`).
-  { since: 2, run: (homeDir) => migrateDelegatedSecretsToPrivateDir(homeDir).migrated.length > 0 },
-  // Same migration again at `since: 3`, because the SET it iterates grew:
-  // `op_session_signing_key` was added to DELEGATED_SECRET_NAMES, and a home
-  // already stamped 3 would otherwise never re-run it and would keep the
-  // cookie-signing key readable from the assistant's /stash. The function
-  // re-checks real filesystem state, so this is a no-op for a home that has
-  // no such file.
-  { since: 3, run: (homeDir) => migrateDelegatedSecretsToPrivateDir(homeDir).migrated.length > 0 },
-  // Record network-access INTENT explicitly in the consolidated state/stack.env
-  // and strip the retired cascade keys from it. Must run AFTER
-  // migrateToSingleStackEnv (since: 1) so it reads the merged file, and it is
-  // the last place the legacy-aware bind inference is used for a migrated home.
-  { since: 4, run: migrateAccessIntent },
-  // The retired 3800/3810 pair, corrected on the CONSOLIDATED file. Runs after
-  // migrateToSingleStackEnv for the same reason as migrateAccessIntent, and it
-  // is what lets the UI delete its per-boot process-local re-derivation.
-  { since: 4, run: migrateConsolidatedDefaultPorts },
+function migrateDailyBriefingTask(homeDir: string): boolean {
+  return replaceTaskFileForHomeMigration(
+    homeDir,
+    DAILY_BRIEFING_TASK,
+    HISTORICAL_DAILY_BRIEFINGS,
+    CURRENT_DAILY_BRIEFING,
+  );
+}
+
+function migrateDelegatedSecrets(homeDir: string): boolean {
+  const result = migrateDelegatedSecretsToPrivateDir(homeDir);
+  if (result.skippedMismatch.length > 0) {
+    throw new Error(
+      `Delegated secret migration is ambiguous; both copies were preserved and the home schema was not stamped: ${result.skippedMismatch.join(', ')}`,
+    );
+  }
+  return result.migrated.length > 0;
+}
+
+const MIGRATION_STEPS: { version: number; run: ((homeDir: string) => boolean)[] }[] = [
+  { version: 1, run: [migrateLegacyDefaultPorts, migrateLegacyBindAddresses] },
+  { version: 2, run: [migrateToSingleStackEnv] },
+  {
+    version: 3,
+    run: [(homeDir) => migrateProfileOnlyAddonEnablement(homeDir).changed, migrateDelegatedSecrets],
+  },
+  { version: 4, run: [migrateDelegatedSecrets] },
+  { version: 5, run: [migrateAccessIntent, migrateConsolidatedDefaultPorts] },
+  { version: 6, run: [migrateDailyBriefingTask] },
 ];
 
 /**
@@ -157,20 +188,25 @@ const MIGRATIONS: { since: number; run: (homeDir: string) => boolean }[] = [
  */
 export function runHomeMigrations(homeDir: string): boolean {
   const recorded = readHomeSchemaVersion(homeDir);
-  if (recorded >= HOME_SCHEMA_VERSION) return false;
+  if (recorded > HOME_SCHEMA_VERSION) {
+    throw new Error(
+      `OpenPalm home schema ${recorded} is newer than this release supports (${HOME_SCHEMA_VERSION})`,
+    );
+  }
+  if (recorded === HOME_SCHEMA_VERSION) return false;
 
   // Nothing recorded and no stack env in any location this layout has used:
   // that is an absent install, not an unmigrated one. Stamping it here would
   // materialize state/ under a home the operator never created — `ensureHomeDirs`
   // stamps it if and when it is genuinely created.
   if (!hasAnyStackEnvFile(homeDir)) return false;
-
   let changed = false;
-  for (const migration of MIGRATIONS) {
-    if (migration.since < recorded) continue;
-    if (migration.run(homeDir)) changed = true;
+  for (const step of MIGRATION_STEPS) {
+    if (step.version <= recorded) continue;
+    for (const migration of step.run) {
+      if (migration(homeDir)) changed = true;
+    }
+    writeHomeSchemaVersion(homeDir, step.version);
   }
-
-  writeHomeSchemaVersion(homeDir, HOME_SCHEMA_VERSION);
   return changed;
 }

@@ -1,61 +1,20 @@
 /**
  * Unit tests for task-form helpers:
- *   - cron → preset reverse mapping
- *   - raw YAML preservation
- *   - canonical .yml filename validation
+ *   - raw YAML editor initialization
+ *   - pinned AKM .yml filename validation
  */
 import { describe, expect, test } from 'vitest';
-import {
-  cronToPresetId,
-  newFormData,
-  validateTaskFilename,
-  yamlToFormData,
-} from './task-form.js';
-
-// ── cron → preset reverse mapping ────────────────────────────────────────
-
-describe('cronToPresetId', () => {
-  test('maps known fixed presets', () => {
-    expect(cronToPresetId('*/15 * * * *')).toBe('every-15-minutes');
-    expect(cronToPresetId('0 * * * *')).toBe('every-hour');
-  });
-
-  test('recognises daily variants', () => {
-    expect(cronToPresetId('0 0 * * *')).toBe('daily');
-    expect(cronToPresetId('0 8 * * *')).toBe('daily');
-    expect(cronToPresetId('0 9 * * *')).toBe('daily');
-    expect(cronToPresetId('0 23 * * *')).toBe('daily');
-  });
-
-  test('recognises weekly variants', () => {
-    expect(cronToPresetId('0 3 * * 0')).toBe('weekly');
-    expect(cronToPresetId('0 8 * * 5')).toBe('weekly');
-  });
-
-  test('recognises monthly variants', () => {
-    expect(cronToPresetId('0 4 1 * *')).toBe('monthly');
-    expect(cronToPresetId('0 9 15 * *')).toBe('monthly');
-  });
-
-  test('falls back to advanced for non-matching expressions', () => {
-    expect(cronToPresetId('5 4 * * 1')).toBe('advanced');
-    expect(cronToPresetId('*/5 * * * *')).toBe('advanced');
-    expect(cronToPresetId('* * * * *')).toBe('advanced');
-    expect(cronToPresetId('0 0 0 * *')).toBe('advanced');
-  });
-
-  test('trims whitespace', () => {
-    expect(cronToPresetId('  */15 * * * *  ')).toBe('every-15-minutes');
-  });
-});
+import { newFormData, validateTaskFilename, yamlToFormData } from './task-form.js';
 
 // ── validateTaskFilename ──────────────────────────────────────────────────
 
 describe('validateTaskFilename', () => {
-  test('accepts valid names', () => {
+  test('accepts filenames matching the pinned AKM task ID contract', () => {
     expect(validateTaskFilename('my-task.yml')).toBeNull();
     expect(validateTaskFilename('backup_daily.yml')).toBeNull();
     expect(validateTaskFilename('My.Task..v2.yml')).toBeNull();
+    expect(validateTaskFilename(`${'a'.repeat(228)}.yml`)).toBeNull();
+    expect(validateTaskFilename('foo..yml')).toBeNull();
   });
 
   test('rejects empty name', () => {
@@ -66,20 +25,39 @@ describe('validateTaskFilename', () => {
   test('rejects path separators', () => {
     expect(validateTaskFilename('../escape.yml')).not.toBeNull();
     expect(validateTaskFilename('a/b.yml')).not.toBeNull();
+    expect(validateTaskFilename('a\\b.yml')).not.toBeNull();
   });
 
-  test('rejects wrong extensions', () => {
+  test('rejects names whose task ID is normalized or unsafe', () => {
+    for (const name of [
+      'foo .yml',
+      '.yml',
+      '..yml',
+      '...yml',
+      'not an akm id.yml',
+      'task.yml.yml',
+      'task.yaml.yml',
+      'café.yml',
+      'CON.yml',
+      'bad:name.yml',
+      'line\nbreak.yml',
+      `${'a'.repeat(229)}.yml`,
+    ]) {
+      expect(validateTaskFilename(name)).not.toBeNull();
+    }
+  });
+
+  test('rejects non-canonical suffixes', () => {
     expect(validateTaskFilename('task.txt')).not.toBeNull();
     expect(validateTaskFilename('task.json')).not.toBeNull();
     expect(validateTaskFilename('task.yaml')).not.toBeNull();
     expect(validateTaskFilename('task.md')).not.toBeNull();
-    expect(validateTaskFilename('task.yml.yml')).not.toBeNull();
-    expect(validateTaskFilename('task.yaml.yml')).not.toBeNull();
+    expect(validateTaskFilename('task.YML')).not.toBeNull();
   });
 });
 
 describe('raw YAML editor state', () => {
-  test('preserves existing task bytes exactly', () => {
+  test('initializes the editor without parsing or reformatting', () => {
     const rawYaml = `# keep this comment
 version: 2
 schedule: "0 9 * * *"
@@ -87,9 +65,10 @@ tags: [maintenance]
 timeoutMs: 30000
 command: ["sh", "-c", "printf '%s\\n' hello"]
 `;
-    expect(yamlToFormData('my-task.yml', rawYaml)).toEqual({
+    expect(yamlToFormData('my-task.yml', rawYaml, 'sha256:revision')).toEqual({
       fileName: 'my-task.yml',
       rawYaml,
+      revision: 'sha256:revision',
     });
   });
 });
@@ -100,6 +79,7 @@ describe('newFormData', () => {
   test('starts with a valid disabled AKM v2 command task', () => {
     const form = newFormData();
     expect(form.fileName).toBe('');
+    expect(form.revision).toBeNull();
     expect(form.rawYaml).toContain('version: 2');
     expect(form.rawYaml).toContain('schedule: "0 9 * * *"');
     expect(form.rawYaml).toContain('enabled: false');

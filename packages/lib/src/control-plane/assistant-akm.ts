@@ -12,7 +12,12 @@ export type AssistantAkmCommandResult = {
 	stderr: string;
 	exitCode: number;
 	missing: boolean;
+	transportError?: boolean;
 };
+
+export type AssistantTaskSyncHealthResult =
+	| { ok: true }
+	| { ok: false; error: string };
 
 function looksMissing(stderr: string, exitCode: number): boolean {
 	return (
@@ -36,6 +41,23 @@ function parsePrimaryGid(stdout: string): string | null {
 	const gid = Number(value);
 	if (!Number.isSafeInteger(gid) || gid > 2_147_483_647) return null;
 	return String(gid);
+}
+
+export async function checkAssistantTaskSyncHealth(
+	state: ControlPlaneState,
+	runCompose: typeof composeExec = composeExec
+): Promise<AssistantTaskSyncHealthResult> {
+	try {
+		const result = await runCompose(
+			'assistant',
+			['/usr/local/bin/opencode-entrypoint.sh', '--check-task-sync-health'],
+			{ ...buildComposeOptions(state), timeoutMs: 10_000, user: 'node' }
+		);
+		if (result.ok) return { ok: true };
+		return { ok: false, error: failureDetail(result) };
+	} catch (error) {
+		return { ok: false, error: error instanceof Error ? error.message : String(error) };
+	}
 }
 
 export async function runAssistantAkmCommand(
@@ -67,7 +89,8 @@ export async function runAssistantAkmCommand(
 				stdout: '',
 				stderr: message,
 				exitCode: 1,
-				missing: looksMissing(message, 1)
+				missing: looksMissing(message, 1),
+				transportError: true
 			};
 		}
 		if (!gidResult.ok) {
@@ -77,7 +100,8 @@ export async function runAssistantAkmCommand(
 				stdout: gidResult.stdout,
 				stderr: detail,
 				exitCode: gidResult.code,
-				missing: looksMissing(detail, gidResult.code)
+				missing: looksMissing(detail, gidResult.code),
+				transportError: true
 			};
 		}
 		primaryGid = parsePrimaryGid(gidResult.stdout);
@@ -87,7 +111,8 @@ export async function runAssistantAkmCommand(
 				stdout: gidResult.stdout,
 				stderr: 'Assistant node account has an invalid primary GID.',
 				exitCode: 1,
-				missing: false
+				missing: false,
+				transportError: false
 			};
 		}
 	}
@@ -119,7 +144,8 @@ export async function runAssistantAkmCommand(
 			stdout: '',
 			stderr: message,
 			exitCode: 1,
-			missing: looksMissing(message, 1)
+			missing: looksMissing(message, 1),
+			transportError: true
 		};
 	}
 	const allowed = (options.allowExitCodes ?? []).includes(result.code);
@@ -130,6 +156,7 @@ export async function runAssistantAkmCommand(
 		stdout: result.stdout,
 		stderr: detail,
 		exitCode: result.code,
-		missing: looksMissing(detail, result.code)
+		missing: looksMissing(detail, result.code),
+		transportError: result.errorCode !== undefined
 	};
 }

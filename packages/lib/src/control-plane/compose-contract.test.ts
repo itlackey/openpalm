@@ -12,6 +12,7 @@ const REPO_ROOT = resolve(import.meta.dir, '../../../..');
 const STACK_DIR = join(REPO_ROOT, 'packages/skeleton/system/stack');
 const CORE_COMPOSE_PATH = join(STACK_DIR, 'core.compose.yml');
 const PORTALS_COMPOSE_PATH = join(STACK_DIR, 'portals.compose.yml');
+const ASSISTANT_ENTRYPOINT_PATH = join(REPO_ROOT, 'containers/assistant/entrypoint.sh');
 const savedImageVersions = {
   assistant: process.env.OP_ASSISTANT_VERSION,
   guardian: process.env.OP_GUARDIAN_VERSION,
@@ -69,6 +70,64 @@ describe('assistant cron privilege boundary', () => {
       'SETUID',
     ]);
     expect(assistant?.security_opt).toContain('no-new-privileges:true');
+  });
+
+  test('keeps reconciliation health positive and root-controlled', () => {
+    const entrypoint = readFileSync(ASSISTANT_ENTRYPOINT_PATH, 'utf8');
+    const statusWriter = entrypoint.slice(
+      entrypoint.indexOf('write_task_sync_status_file() {'),
+      entrypoint.indexOf('runtime_id() {'),
+    );
+    const nodeSync = entrypoint.slice(
+      entrypoint.indexOf('sync_akm_tasks() {'),
+      entrypoint.indexOf('reconcile_akm_tasks() {'),
+    );
+
+    expect(entrypoint).toContain('TASK_SYNC_STATUS_FILE="${RUNTIME_DIR}/task-sync.status"');
+    expect(entrypoint).toContain('TASK_SYNC_STATUS_MAX_AGE_SECONDS=90');
+    expect(entrypoint).not.toContain('TASK_SYNC_STATUS_FILE="${USER_RUNTIME_DIR}');
+    expect(entrypoint).toContain('chown root:root "$RUNTIME_DIR"');
+    expect(entrypoint).toContain('chmod 0755 "$RUNTIME_DIR"');
+    expect(entrypoint).toContain('chown node:"$runtime_group" "$USER_RUNTIME_DIR"');
+    expect(entrypoint).toContain('chmod 0700 "$USER_RUNTIME_DIR"');
+    expect(statusWriter).toContain('if [ "$EUID" -ne 0 ]');
+    expect(statusWriter).toContain('updated_at="$(/usr/bin/date +%s)"');
+    expect(statusWriter).toContain("printf '%s %s %s\\n' \"$1\" \"$updated_at\" \"$2\"");
+    expect(statusWriter).toContain('chown root:root "$TASK_SYNC_STATUS_FILE"');
+    expect(statusWriter).toContain('chmod 0644 "$TASK_SYNC_STATUS_FILE"');
+    expect(statusWriter).toContain('return "$TASK_SYNC_MONITOR_FATAL_RC"');
+    expect(entrypoint).toContain('set_task_sync_status degraded exit-1');
+    expect(entrypoint).toContain('reason="ok"');
+    expect(entrypoint).toContain('reason="skipped"');
+    expect(entrypoint).toContain('record_reconciliation_result "$rc"');
+    expect(entrypoint).toContain('set_task_sync_status "$TASK_SYNC_STATUS" "$TASK_SYNC_REASON"');
+    expect(entrypoint).toContain('--check-task-sync-health');
+    expect(entrypoint).toContain('task reconciliation health monitor failed; stopping the container');
+    expect(nodeSync).not.toContain('TASK_SYNC_STATUS_FILE');
+    expect(entrypoint).not.toContain('rm -f "$TASK_SYNC_STATUS_FILE"');
+    expect(entrypoint).not.toContain('task-sync-failed');
+  });
+
+  test('runs every task sync through the capability-free node boundary', () => {
+    const entrypoint = readFileSync(ASSISTANT_ENTRYPOINT_PATH, 'utf8');
+    const assistantBoundary = entrypoint.slice(
+      entrypoint.indexOf('local assistant_exec=('),
+      entrypoint.indexOf('local assistant_app_exec=('),
+    );
+
+    expect(assistantBoundary).toContain('/usr/bin/setpriv');
+    expect(assistantBoundary).toContain('--reuid=node');
+    expect(assistantBoundary).toContain('--bounding-set=-all');
+    expect(assistantBoundary).toContain('--inh-caps=-all');
+    expect(assistantBoundary).toContain('--ambient-caps=-all');
+    expect(assistantBoundary).toContain('--no-new-privs');
+    expect(entrypoint).toContain(
+      'local task_sync_exec=(\n    /usr/bin/timeout\n    --signal=TERM\n    --kill-after=5s\n    60s\n    "${assistant_exec[@]}"',
+    );
+    expect(entrypoint).toContain('/usr/local/bin/opencode-entrypoint.sh\n    --sync-once');
+    expect(entrypoint).toContain('reconcile_akm_tasks "${task_sync_exec[@]}"');
+    expect(entrypoint).toContain('sync_tasks_forever "${task_sync_exec[@]}" &');
+    expect(entrypoint).toContain('initial task reconciliation health could not be recorded');
   });
 });
 

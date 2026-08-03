@@ -46,7 +46,7 @@ jobs:
   quality-gates:
     name: Quality gates
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 60
 
     steps:
       - name: Checkout
@@ -131,7 +131,7 @@ jobs:
       - name: Type check CLI
         run: cd packages/cli && bun run typecheck
 
-      - name: Test (sdk + guardian + portals)
+      - name: Test non-UI Bun suites
         run: bun run test
 
       - name: Validate Docker Compose manifests
@@ -148,8 +148,8 @@ jobs:
       - name: Validate current rootless non-regression guardrails
         run: ./scripts/validate-rootless-guardrails.sh
 
-      # Build UI + assistant/guardian/portal images ONCE, then run all three
-      # rootless smokes against the shared openpalm/*:dev images (each script
+      # Build UI + assistant/guardian/portal images ONCE, then run all rootless
+      # smokes against the shared openpalm/*:dev images (each script
       # skips its own build via OP_ROOTLESS_SMOKE_SKIP_BUILD). Previously each
       # smoke rebuilt UI + images, tripling the build wall-clock.
       - name: Build rootless smoke images (once)
@@ -171,24 +171,30 @@ jobs:
       - name: Rootless ownership smoke (assistant+guardian)
         env:
           OP_ROOTLESS_SMOKE_SKIP_BUILD: '1'
-        run: ./scripts/rootless-ownership-smoke.sh stack
+        run: timeout --signal=TERM --kill-after=3m 12m ./scripts/rootless-ownership-smoke.sh stack
 
       - name: Rootless ownership smoke (portal-discord)
         env:
           OP_ROOTLESS_SMOKE_SKIP_BUILD: '1'
-        run: ./scripts/rootless-ownership-smoke.sh portal-discord
+        run: timeout --signal=TERM --kill-after=3m 12m ./scripts/rootless-ownership-smoke.sh portal-discord
+
+      - name: Debian cron behavior smoke
+        env:
+          OP_ROOTLESS_SMOKE_SKIP_BUILD: '1'
+        # Three independently labelled projects are cleaned serially on TERM.
+        run: timeout --signal=TERM --kill-after=6m 20m ./scripts/debian-cron-behavior-smoke.sh
 
       - name: Rootless host-swap smoke
         env:
           OP_ROOTLESS_SMOKE_SKIP_BUILD: '1'
-        run: ./scripts/rootless-host-swap-smoke.sh
+        run: timeout --signal=TERM --kill-after=3m 12m ./scripts/rootless-host-swap-smoke.sh
 
       # S.4: the guardian is the trust boundary, and it must boot with ZERO
       # registry access from its baked packages. This existed but ran nowhere,
       # so its assertions silently rotted (they matched a log line #584
       # reworded) and reported failure on every run with nobody watching.
       - name: Guardian offline-boot smoke (--network none)
-        run: ./scripts/guardian-image-offline-smoke.sh
+        run: timeout --signal=TERM --kill-after=3m 8m ./scripts/guardian-image-offline-smoke.sh
 
       - name: Assert deleted scripts are absent
         run: |

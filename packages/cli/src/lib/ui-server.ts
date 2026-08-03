@@ -17,6 +17,7 @@ import {
   buildEmptyUiRuntimeConfig, buildServedUiRuntimeConfig, classifyLocalInstall, stackDirFor,
   serializeUiRuntimeConfig, uiBuildSupportsProcessRuntimeConfig,
   writeLegacyServedUiRuntimeConfig, UI_RUNTIME_CONFIG_ENV,
+  runHomeMigrations,
   type ControlPlaneState, type UiRuntimeConfig,
 } from '@openpalm/lib';
 import { ensureValidState, resolveServeState } from './cli-state.ts';
@@ -245,6 +246,7 @@ async function spawnUiChild(
         // relative value (e.g. `.dev` from a repo-root .env) against its
         // own cwd (packages/ui/build/).
         OP_HOME:                homeDir,
+        BODY_SIZE_LIMIT:        '2097152',
         ...networkEnv,
         // Explicit "the listen contract is already resolved" marker, consumed by
         // runUiBuild below. It must be a marker WE set and not an inference from
@@ -268,11 +270,16 @@ async function spawnUiChild(
  * Run the SvelteKit adapter-node build in THIS process. Backs the `openpalm ui`
  * command: the supervisor (startUIServer) spawns `openpalm ui` as its killable/
  * respawnable child, and a user can run it directly to serve the UI standalone
- * (no auto-update). Importing the build runs it on the embedded Bun runtime, so
- * no system `node` is required. The adapter-node entry reads HOST/PORT/ORIGIN
- * from the environment and self-starts; the listening socket keeps us alive.
+ * (no auto-update or home migration). Parent host launchers own migrations so
+ * their child never races a second migration owner. Importing the build runs it
+ * on the embedded Bun runtime, so no system `node` is required. The adapter-node
+ * entry reads HOST/PORT/ORIGIN from the environment and self-starts; the
+ * listening socket keeps us alive.
  */
 export async function runUiBuild(opts: { port?: number } = {}): Promise<void> {
+  // adapter-node reads this once during module initialization. Always replace
+  // ambient values so a direct `openpalm ui` launch cannot weaken the bound.
+  process.env.BODY_SIZE_LIMIT = '2097152';
   const uiBuildDir = resolveUiBuildDir();
   const indexPath = join(uiBuildDir, 'index.js');
   if (!existsSync(indexPath)) {
@@ -408,11 +415,10 @@ export function createCliUiSupervisor(deps: CliUiSupervisorDeps): {
  */
 export async function startUIServer(opts: UIServerOptions = {}): Promise<void> {
   const homeDir = resolveOpenPalmHome();
-  // NOTE: home migrations are NOT run here. They run once in the UI child, at
-  // packages/ui/src/hooks.server.ts module load, which every serve path spawns —
-  // so the migration ships with the schema it implements instead of being
-  // duplicated across two launchers (one of which, the Electron harness, is
-  // frozen and forbidden from running migrations at all).
+  // The host supervisor is the migration owner. Run before reading stack.env or
+  // resolving any persisted launch state; the low-level `openpalm ui` child is
+  // deliberately read-only on startup. Migration failures abort the launch.
+  runHomeMigrations(homeDir);
   // D3: read back a persisted (headless-install) OP_HOST_UI_PORT, not just
   // process.env (resolveUiServePort merges persisted stack.env under process.env).
   const port = resolveUiServePort(opts.port, homeDir);

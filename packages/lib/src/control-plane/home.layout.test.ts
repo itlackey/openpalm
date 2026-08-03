@@ -4,20 +4,22 @@
  * caught and reviewed (and so a future `config/stack`→`system/` move is a one-line
  * edit in home.ts with this test as the guard).
  */
-import { describe, test, expect } from "bun:test";
-import { mkdtempSync, existsSync, rmSync, statSync } from "node:fs";
+import { describe, expect, test } from "bun:test";
+import { chmodSync, existsSync, mkdtempSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
-  resolveSystemDir,
-  resolveStateDir,
-  composeFilePath,
-  stackEnvFile,
-  hostIdentityFile,
-  userEnvFile,
-  secretsDir,
   authJsonFile,
+  composeFilePath,
   ensureHomeDirs,
+  hostIdentityFile,
+  privateDir,
+  privateSecretsDir,
+  resolveStateDir,
+  resolveSystemDir,
+  secretsDir,
+  stackEnvFile,
+  userEnvFile,
 } from "./home.js";
 
 const H = "/op/home";
@@ -43,10 +45,20 @@ describe("OP_HOME layout (single source of truth)", () => {
       expect(resolveStateDir()).toBe(join(home, "state"));
       expect(existsSync(join(home, "system"))).toBe(true);
       expect(existsSync(join(home, "state"))).toBe(true);
-      expect(existsSync(join(home, 'data/assistant/.config/opencode'))).toBe(true);
-      expect(existsSync(join(home, 'data/guardian/.config/opencode'))).toBe(true);
-      expect(statSync(join(home, 'data/assistant/.local/share/opencode/auth.json')).isFile()).toBe(true);
-      expect(statSync(join(home, 'data/guardian/.local/share/opencode/auth.json')).isFile()).toBe(true);
+      expect(existsSync(join(home, "data/assistant/.config/opencode"))).toBe(true);
+      expect(existsSync(join(home, "data/guardian/.config/opencode"))).toBe(true);
+      expect(statSync(join(home, "data/assistant/.local/share/opencode/auth.json")).isFile()).toBe(
+        true,
+      );
+      expect(statSync(join(home, "data/guardian/.local/share/opencode/auth.json")).isFile()).toBe(
+        true,
+      );
+
+      chmodSync(privateDir(home), 0o755);
+      chmodSync(privateSecretsDir(home), 0o755);
+      ensureHomeDirs(home);
+      expect(statSync(privateDir(home)).mode & 0o777).toBe(0o700);
+      expect(statSync(privateSecretsDir(home)).mode & 0o777).toBe(0o700);
     } finally {
       if (prev === undefined) delete process.env.OP_HOME;
       else process.env.OP_HOME = prev;

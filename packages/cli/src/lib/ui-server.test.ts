@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { parseUiRuntimeConfigJson } from '@openpalm/lib';
@@ -7,6 +7,7 @@ import {
   createCliUiSupervisor, type CliChildProc,
   resolveAdminUrl, resolveExpectedAdmin, checkExistingUiInstance,
   resolveUiChildLaunch, resolveUiLoopbackHost, resolveUiNetworkEnv, resolveUiServePort,
+  startUIServer,
 } from './ui-server.ts';
 
 // Behavioral coverage for the CLI's thin UiSupervisor adapter, driven through
@@ -376,5 +377,79 @@ describe('resolveUiServePort', () => {
 
   it('falls back to DEFAULT_UI_PORT (3880) when nothing is set', () => {
     expect(resolveUiServePort(undefined, '/op-home', {}, {})).toBe(3880);
+  });
+});
+
+describe('runUiBuild request body limit', () => {
+  it('overrides ambient BODY_SIZE_LIMIT before importing adapter-node', () => {
+    const source = readFileSync(new URL('./ui-server.ts', import.meta.url), 'utf8');
+    const runUiBuildStart = source.indexOf('export async function runUiBuild');
+    const fixedLimit = source.indexOf("process.env.BODY_SIZE_LIMIT = '2097152';", runUiBuildStart);
+    const adapterImport = source.indexOf('await import(indexPath)', runUiBuildStart);
+
+    expect(runUiBuildStart).toBeGreaterThanOrEqual(0);
+    expect(fixedLimit).toBeGreaterThan(runUiBuildStart);
+    expect(adapterImport).toBeGreaterThan(fixedLimit);
+  });
+});
+
+describe('UI migration ownership', () => {
+  it('migrates in startUIServer before persisted launch reads and child spawn', () => {
+    const source = readFileSync(new URL('./ui-server.ts', import.meta.url), 'utf8');
+    const start = source.indexOf('export async function startUIServer');
+    const body = source.slice(start);
+    const migration = body.indexOf('runHomeMigrations(homeDir);');
+
+    expect(start).toBeGreaterThanOrEqual(0);
+    expect(migration).toBeGreaterThanOrEqual(0);
+    expect(migration).toBeLessThan(body.indexOf('resolveUiServePort(opts.port, homeDir)'));
+    expect(migration).toBeLessThan(body.indexOf('resolveServeState()'));
+    expect(migration).toBeLessThan(body.indexOf('spawnChild: () => spawnUiChild'));
+  });
+
+  it('keeps the low-level runUiBuild child out of migration ownership', () => {
+    const source = readFileSync(new URL('./ui-server.ts', import.meta.url), 'utf8');
+    const start = source.indexOf('export async function runUiBuild');
+    const end = source.indexOf('/** Minimal Bun.Subprocess', start);
+
+    expect(start).toBeGreaterThanOrEqual(0);
+    expect(end).toBeGreaterThan(start);
+    expect(source.slice(start, end)).not.toContain('runHomeMigrations');
+  });
+
+  it('treats migration as a no-op for an uninstalled home', async () => {
+    const homeDir = mkdtempSync(join(tmpdir(), 'openpalm-ui-uninstalled-'));
+    const previousHome = process.env.OP_HOME;
+    process.env.OP_HOME = homeDir;
+    try {
+      await expect(startUIServer({ open: false })).rejects.toThrow(/not installed/i);
+      expect(existsSync(join(homeDir, 'state', 'schema-version'))).toBe(false);
+    } finally {
+      if (previousHome === undefined) delete process.env.OP_HOME;
+      else process.env.OP_HOME = previousHome;
+      rmSync(homeDir, { recursive: true, force: true });
+    }
+  });
+
+  it('propagates an ambiguous delegated-secret migration failure', async () => {
+    const homeDir = mkdtempSync(join(tmpdir(), 'openpalm-ui-migration-failure-'));
+    const previousHome = process.env.OP_HOME;
+    mkdirSync(join(homeDir, 'state'), { recursive: true });
+    mkdirSync(join(homeDir, 'knowledge', 'secrets'), { recursive: true });
+    mkdirSync(join(homeDir, 'private', 'secrets'), { recursive: true });
+    writeFileSync(join(homeDir, 'state', 'stack.env'), 'OP_SETUP_COMPLETE=true\n');
+    writeFileSync(join(homeDir, 'knowledge', 'secrets', 'op_guardian_admin_token'), 'old\n');
+    writeFileSync(join(homeDir, 'private', 'secrets', 'op_guardian_admin_token'), 'new\n');
+    process.env.OP_HOME = homeDir;
+    try {
+      await expect(startUIServer({ allowUninstalled: true, open: false })).rejects.toThrow(
+        /delegated secret migration is ambiguous/i,
+      );
+      expect(readFileSync(join(homeDir, 'state', 'schema-version'), 'utf8')).toBe('2\n');
+    } finally {
+      if (previousHome === undefined) delete process.env.OP_HOME;
+      else process.env.OP_HOME = previousHome;
+      rmSync(homeDir, { recursive: true, force: true });
+    }
   });
 });

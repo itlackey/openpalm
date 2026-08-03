@@ -392,7 +392,9 @@
     {:else if activeTab === 'logs'}
       <LogsTab
         services={serviceNames}
-        automations={automationsData?.automations.map((automation) => automation.name) ?? []}
+        automationFileNames={automationsData?.automations
+          .filter((automation) => automation.schedulable)
+          .map((automation) => automation.fileName) ?? []}
       />
     {/if}
   </main>

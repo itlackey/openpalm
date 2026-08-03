@@ -108,11 +108,12 @@ vi.mock('@openpalm/lib', () => ({
   resolveDataDir: vi.fn(() => '/home/user/.openpalm/data'),
   resolveConfigDir: vi.fn(() => '/home/user/.openpalm/config'),
   resolveUiBuildDir: vi.fn(() => '/home/user/.openpalm/data/ui'),
+  DEFAULT_HOST_UI_PORT: 3880,
   ensureHomeDirs: vi.fn(),
   parseEnvFile: vi.fn(() => ({})),
   stackEnvFile: vi.fn((home: string) => `${home}/state/stack.env`),
-  // Host-UI port contract (lib network-contract.ts) — resolved at main.ts
-  // module scope, so it must exist even for tests that never start the server.
+  // Host-UI port contract (lib network-contract.ts). Production defers the
+  // persisted read until after migration; this suite never starts the server.
   // The admin listen contract (lib network-contract.ts). buildUIServerEnv spreads
   // it rather than baking HOST/PORT/ORIGIN by hand, so the mock must reproduce
   // the admin branch: loopback bind, origin pinned to it, no forwarded-header

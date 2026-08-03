@@ -58,7 +58,7 @@ COPY containers/guardian/tools/package.json /opt/openpalm/tools/package.json
 # AKM is an explicitly shipped Guardian CLI even though Guardian does not invoke
 # it today. Install it in npm's real global root, matching the Assistant's
 # scheduler-safe and runtime-immutable layout.
-ARG AKM_CLI_VERSION=0.9.0-rc.13
+ARG AKM_CLI_VERSION=0.9.0-rc.15
 ENV AKM_CLI_VERSION=${AKM_CLI_VERSION}
 RUN ONNXRUNTIME_NODE_INSTALL=skip npm install --global --omit=dev --include=optional --no-fund --no-audit \
       "akm-cli@${AKM_CLI_VERSION}" \

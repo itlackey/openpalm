@@ -121,29 +121,23 @@ export type ServiceEntry = {
   docker: DockerContainer | null;
 };
 
-export type AutomationActionInfo = {
-  type: 'api' | 'http' | 'shell' | 'assistant' | 'workflow';
-  method?: string;
-  path?: string;
-  url?: string;
-  content?: string;
-  agent?: string;
-};
-
 export type AutomationInfo = {
-  name: string;
-  description: string;
-  schedule: string;
-  timezone: string;
-  enabled: boolean;
-  valid: boolean;
-  action: AutomationActionInfo;
-  on_failure: 'log' | 'audit';
+  taskId: string;
   fileName: string;
+  size: number;
+  revision: string;
+  schedulable: boolean;
 };
 
 export type AutomationsResponse = {
   automations: AutomationInfo[];
+};
+
+export type AutomationRunResult = {
+  ok: boolean;
+  fileName: string;
+  status: 'completed' | 'blocked' | 'failed' | 'disabled' | 'active';
+  error: string | null;
 };
 
 // ── OpenCode Provider/Model Types ──────────────────────────────────────

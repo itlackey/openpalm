@@ -2,86 +2,148 @@
  * Raw editor access to an akm task file in the assistant tasks dir
  * (/stash/tasks = knowledge/tasks), used by the Automations admin tab.
  *
- *   GET    /api/host/automations/<name>/file — read raw contents { name, content }
- *   PUT    /api/host/automations/<name>/file — write raw contents (body { content })
- *   DELETE /api/host/automations/<name>/file — delete the task file
+ *   GET    /api/host/automations/<name>/file — read raw contents and revision
+ *   PUT    /api/host/automations/<name>/file — conditional create/update
+ *   DELETE /api/host/automations/<name>/file — conditional delete
  *
- * `name` is a canonical .yml basename. The lib guards traversal and validates
- * YAML syntax; AKM remains the task-schema authority during reconciliation.
+ * `name` is a transport-safe .yml basename. Content remains opaque; AKM is the
+ * syntax, task-schema, and task-ID authority during reconciliation and runs.
  */
-import type { RequestHandler } from './$types';
+
 import {
-  readTaskFile,
-  writeTaskFile,
-  removeTaskFile,
-  assertSafeTaskFilename,
-  assertTaskYamlDocument,
+  AUTOMATION_RUNTIME_MAX_STDIN_BYTES,
+  assertPortableTaskFilename,
+  deleteAutomationTaskFile,
+  readAutomationTaskFile,
+  writeAutomationTaskFile,
 } from '@openpalm/lib';
-import { getState } from '$lib/server/state.js';
+import {
+  auditAutomationOperation,
+  automationRuntimeErrorResponse,
+} from '$lib/server/automation-runtime.js';
 import {
   errorResponse,
   getRequestId,
+  jsonBodyError,
   jsonResponse,
   parseJsonBody,
-  jsonBodyError,
   requireAdmin,
   requireCapability,
 } from '$lib/server/helpers.js';
+import { getState } from '$lib/server/state.js';
+import type { RequestHandler } from './$types';
 
 function guard(name: string, requestId: string): Response | null {
-  try { assertSafeTaskFilename(name); return null; }
-  catch (err) { return errorResponse(400, 'bad_request', (err as Error).message, {}, requestId); }
+  try {
+    assertPortableTaskFilename(name);
+    return null;
+  } catch (error) {
+    return errorResponse(
+      400,
+      'bad_request',
+      error instanceof Error ? error.message : String(error),
+      {},
+      requestId,
+    );
+  }
 }
 
 export const GET: RequestHandler = async (event) => {
   const requestId = getRequestId(event);
-  const capabilityError = requireCapability(event, 'host:stack:read', requestId);
-  if (capabilityError) return capabilityError;
   const authError = requireAdmin(event, requestId);
   if (authError) return authError;
-  const name = event.params.name;
-  const bad = guard(name, requestId);
+  const capabilityError = requireCapability(event, 'host:stack:read', requestId);
+  if (capabilityError) return capabilityError;
+  const fileName = event.params.name;
+  const bad = guard(fileName, requestId);
   if (bad) return bad;
 
-  const content = readTaskFile(getState().stashDir, name);
-  if (content === null) return errorResponse(404, 'not_found', `Task file not found: ${name}`, {}, requestId);
-  return jsonResponse(200, { name, content }, requestId);
+  try {
+    const snapshot = await readAutomationTaskFile(getState(), fileName);
+    return jsonResponse(200, { fileName, ...snapshot }, requestId);
+  } catch (error) {
+    return automationRuntimeErrorResponse(error, requestId);
+  }
 };
 
 export const PUT: RequestHandler = async (event) => {
   const requestId = getRequestId(event);
-  const capabilityError = requireCapability(event, 'host:stack:write', requestId);
-  if (capabilityError) return capabilityError;
   const authError = requireAdmin(event, requestId);
   if (authError) return authError;
-  const name = event.params.name;
-  const bad = guard(name, requestId);
+  const capabilityError = requireCapability(event, 'host:stack:write', requestId);
+  if (capabilityError) return capabilityError;
+  const fileName = event.params.name;
+  const bad = guard(fileName, requestId);
   if (bad) return bad;
 
-  const result = await parseJsonBody(event.request);
+  const result = await parseJsonBody(event.request, AUTOMATION_RUNTIME_MAX_STDIN_BYTES);
   if ('error' in result) return jsonBodyError(result, requestId);
   const content = result.data.content;
-  if (typeof content !== 'string') return errorResponse(400, 'bad_request', 'content must be a string', {}, requestId);
-  try {
-    assertTaskYamlDocument(content);
-  } catch (error) {
-    return errorResponse(400, 'bad_request', error instanceof Error ? error.message : String(error), {}, requestId);
+  if (typeof content !== 'string')
+    return errorResponse(400, 'bad_request', 'content must be a string', {}, requestId);
+  const expectedRevision = result.data.expectedRevision;
+  if (expectedRevision !== null && typeof expectedRevision !== 'string') {
+    return errorResponse(
+      400,
+      'bad_request',
+      'expectedRevision must be a string or null',
+      {},
+      requestId,
+    );
   }
-
-  writeTaskFile(getState().stashDir, name, content);
-  return jsonResponse(200, { ok: true, name }, requestId);
+  const operation = expectedRevision === null ? 'create' : 'update';
+  const auditContext = {
+    fileName,
+    operation,
+  } as const;
+  try {
+    const revision = await writeAutomationTaskFile(
+      getState(),
+      fileName,
+      content,
+      expectedRevision,
+    );
+    auditAutomationOperation(requestId, auditContext, {
+      outcome: 'success',
+      newRevision: revision,
+    });
+    return jsonResponse(200, { ok: true, fileName, revision }, requestId);
+  } catch (error) {
+    return automationRuntimeErrorResponse(error, requestId, auditContext);
+  }
 };
 
 export const DELETE: RequestHandler = async (event) => {
   const requestId = getRequestId(event);
-  const capabilityError = requireCapability(event, 'host:stack:write', requestId);
-  if (capabilityError) return capabilityError;
   const authError = requireAdmin(event, requestId);
   if (authError) return authError;
-  const name = event.params.name;
-  const bad = guard(name, requestId);
+  const capabilityError = requireCapability(event, 'host:stack:write', requestId);
+  if (capabilityError) return capabilityError;
+  const fileName = event.params.name;
+  const bad = guard(fileName, requestId);
   if (bad) return bad;
 
-  removeTaskFile(getState().stashDir, name);
-  return jsonResponse(200, { ok: true, name }, requestId);
+  const result = await parseJsonBody(event.request);
+  if ('error' in result) return jsonBodyError(result, requestId);
+  const expectedRevision = result.data.expectedRevision;
+  if (typeof expectedRevision !== 'string') {
+    return errorResponse(
+      400,
+      'bad_request',
+      'expectedRevision must be a string',
+      {},
+      requestId,
+    );
+  }
+  const auditContext = {
+    fileName,
+    operation: 'delete',
+  } as const;
+  try {
+    await deleteAutomationTaskFile(getState(), fileName, expectedRevision);
+  } catch (error) {
+    return automationRuntimeErrorResponse(error, requestId, auditContext);
+  }
+  auditAutomationOperation(requestId, auditContext, { outcome: 'success' });
+  return jsonResponse(200, { ok: true, fileName }, requestId);
 };

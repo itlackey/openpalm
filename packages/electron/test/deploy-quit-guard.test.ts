@@ -118,6 +118,7 @@ vi.mock('@openpalm/lib', () => ({
   resolveDataDir: vi.fn(() => '/home/user/.openpalm/data'),
   resolveConfigDir: vi.fn(() => '/home/user/.openpalm/config'),
   resolveUiBuildDir: vi.fn(() => '/home/user/.openpalm/data/ui'),
+  DEFAULT_HOST_UI_PORT: 3880,
   ensureHomeDirs: vi.fn(),
   parseEnvFile: vi.fn(() => ({})),
   stackEnvFile: vi.fn((home: string) => `${home}/state/stack.env`),

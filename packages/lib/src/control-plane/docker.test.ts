@@ -12,6 +12,7 @@ import {
   meetsComposeWaitFloor,
   parseComposePsRows,
   resolveComposeProjectName,
+  run,
   toDockerResult,
 } from "./docker.js";
 
@@ -378,6 +379,36 @@ describe("ensureDockerReady (D1)", () => {
       expect(result.message.length).toBeGreaterThan(0);
       expect(result.message.toLowerCase()).toContain("not installed");
     }
+  });
+});
+
+describe('run bounded stdin', () => {
+  let directory = '';
+  let previousDockerBin: string | undefined;
+
+  beforeEach(() => {
+    directory = mkdtempSync(join(tmpdir(), 'openpalm-docker-stdin-'));
+    const executable = join(directory, 'stdin-docker.sh');
+    writeFileSync(executable, '#!/bin/sh\n/usr/bin/cat\n');
+    chmodSync(executable, 0o755);
+    previousDockerBin = process.env.OP_DOCKER_BIN;
+    process.env.OP_DOCKER_BIN = executable;
+  });
+
+  afterEach(() => {
+    if (previousDockerBin === undefined) delete process.env.OP_DOCKER_BIN;
+    else process.env.OP_DOCKER_BIN = previousDockerBin;
+    rmSync(directory, { recursive: true, force: true });
+  });
+
+  it('writes bounded input to the child without a shell', async () => {
+    const result = await run([], undefined, 1_000, undefined, { data: 'opaque stdin', maxBytes: 32 });
+    expect(result).toMatchObject({ ok: true, stdout: 'opaque stdin' });
+  });
+
+  it('rejects oversized input before spawning the child', async () => {
+    const result = await run([], undefined, 1_000, undefined, { data: 'too large', maxBytes: 3 });
+    expect(result).toMatchObject({ ok: false, errorCode: 'E2BIG' });
   });
 });
 
