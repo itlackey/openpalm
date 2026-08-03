@@ -90,10 +90,22 @@ versioned — `<version>` below stands for the release tag (e.g.
 > [Desktop app updates](docs/managing-openpalm.md#desktop-app-updates) for
 > which releases have it and the full auto-update matrix.
 >
-> **Linux AppImage needs `libfuse2`**, which Ubuntu 22.04+ and Fedora no
-> longer install by default (`apt install libfuse2`, or your distro's
-> equivalent). Without it the AppImage fails with `dlopen(): error loading
-> libfuse.so.2` before OpenPalm starts. If you can't install libfuse2, run
+> **Linux AppImage needs `libfuse2`**, which Ubuntu 22.04+, Debian 12+, and
+> Fedora no longer install by default. Without it the AppImage fails with
+> `dlopen(): error loading libfuse.so.2` before OpenPalm starts. Install it
+> **before** launching the AppImage:
+>
+> ```sh
+> # Ubuntu / Debian 12 and earlier
+> sudo apt update && sudo apt install -y libfuse2
+>
+> # Debian 13 (trixie) and newer — the 64-bit time_t transition renamed the
+> # package to libfuse2t64
+> sudo apt update && sudo apt install -y libfuse2t64
+> ```
+>
+> On other distros, install the equivalent `fuse2`/`libfuse2` package. If you
+> can't install libfuse2, run
 > `./OpenPalm-<version>.AppImage --appimage-extract-and-run` instead.
 >
 > **The desktop app currently ships only in the `0.13.0` prerelease** — the
