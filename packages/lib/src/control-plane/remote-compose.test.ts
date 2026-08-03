@@ -88,7 +88,21 @@ describe("tunnel service — network reachability", () => {
 
 describe("tunnel service — volume mounts are directories, at the right container paths", () => {
   test("mounts OP_HOME's remote serve-config dir at /config", () => {
-    expect(tunnel?.volumes ?? []).toContain("${OP_HOME}/system/stack/remote:/config");
+    expect(tunnel?.volumes ?? []).toContain("${OP_HOME}/state/remote:/config");
+  });
+
+  test("REGRESSION: the /config source is NOT under system/, which is overwritten wholesale on update", () => {
+    // overwriteSystemTree (core-assets.ts) replaces OP_HOME/system entirely
+    // from the release skeleton on any update that changes a managed file —
+    // it renames the old tree aside and moves a staged copy into place. The
+    // skeleton ships no `remote/` directory, so a generated serve config kept
+    // under system/ would be deleted along with the directory containerboot
+    // watches, and containerboot log.Fatalf's when that watch cannot be
+    // registered. The mount source must therefore live in a tree that
+    // overwrite never touches.
+    const configMount = (tunnel?.volumes ?? []).find((entry) => entry.endsWith(":/config"));
+    expect(configMount).toBeDefined();
+    expect(configMount).not.toContain("/system/");
   });
 
   test("mounts OP_HOME's tunnel state dir at /var/lib/tailscale", () => {

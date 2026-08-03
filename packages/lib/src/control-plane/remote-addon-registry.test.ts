@@ -147,7 +147,10 @@ describe("remote addon home directories", () => {
       process.env.OP_HOME = home;
       ensureHomeDirs();
 
-      expect(remoteServeConfigDir(home)).toBe(join(home, "system", "stack", "remote"));
+      // state/, NOT system/stack/: system/ is replaced wholesale from the
+      // release skeleton on update (overwriteSystemTree), which would delete
+      // this generated config along with the directory containerboot watches.
+      expect(remoteServeConfigDir(home)).toBe(join(home, "state", "remote"));
       expect(remoteTunnelStateDir(home)).toBe(join(home, "data", "tunnel"));
       expect(existsSync(remoteServeConfigDir(home))).toBe(true);
       expect(existsSync(remoteTunnelStateDir(home))).toBe(true);

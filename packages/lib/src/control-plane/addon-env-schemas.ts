@@ -28,12 +28,18 @@ export const ADDON_ENV_RECREATE_SCOPE: Record<string, readonly string[]> = {
   OP_VOICE_LAN_ACCESS: ["voice", "assistant"],
   // Same write-decoupled-from-apply shape as OP_VOICE_LAN_ACCESS above, for the
   // tunnel container. These three keys aren't read from stack.env by the tunnel
-  // process at request time — they are baked, at deploy time, into the Tailscale
-  // Serve/Funnel config generated into system/stack/remote/ AND into the
-  // tunnel service's compose `hostname:`. Persisting the key without recreating
-  // "tunnel" leaves the already-running container serving the old target/
-  // visibility/hostname indefinitely; there is nothing in the container that
-  // would notice the new value on its own.
+  // process at request time — they are baked in at CONTAINER-CREATE time, into
+  // the Tailscale Serve/Funnel config generated under state/remote/ (target and
+  // visibility) and into the tunnel service's compose `hostname:`. Persisting a
+  // key without recreating "tunnel" leaves the already-running container
+  // serving the old target/visibility/hostname indefinitely; there is nothing
+  // in the container that would notice the new value on its own.
+  //
+  // The recreate is only half the apply: the generated serve document has to be
+  // REWRITTEN from the new values first, or the recreated container re-reads
+  // the previous one. The credentials route does that (it calls
+  // reconcileRemoteAccess for this addon before recreating), and applyHome does
+  // it on every install/update — this table only decides WHAT to recreate.
   OP_REMOTE_TARGET: ["tunnel"],
   OP_REMOTE_PUBLIC: ["tunnel"],
   OP_REMOTE_HOSTNAME: ["tunnel"],

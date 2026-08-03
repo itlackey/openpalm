@@ -31,6 +31,7 @@ import {
   listAvailableAddonIds,
   readStackSecretEnv,
   readStackEnv,
+  reconcileRemoteAccess,
   writeStackSecretEnv,
   patchSecretsEnvFile,
 } from "@openpalm/lib";
@@ -222,6 +223,27 @@ export const POST: RequestHandler = async (event) => {
     }
 
     const updated = [...Object.keys(sensitiveUpdates), ...Object.keys(configUpdates)].sort();
+
+    // The `remote` addon is the one built-in whose config is not read from
+    // stack.env by its own container at all: `tunnel` reads a GENERATED
+    // Tailscale serve document, so persisting OP_REMOTE_TARGET/OP_REMOTE_PUBLIC
+    // without regenerating that document would recreate the container below
+    // only for it to re-read the previous config — a saved setting that
+    // silently does nothing. Regenerate first, then let the recreate pick it
+    // up. reconcileRemoteAccess never throws; it reports failure in its result.
+    if (name === 'remote') {
+      const remote = reconcileRemoteAccess(state.homeDir);
+      if (remote.error) {
+        logger.error('serve config write failed', { name, error: remote.error, requestId });
+        return errorResponse(
+          500,
+          'internal_error',
+          `Saved, but the remote access config could not be written: ${remote.error}`,
+          { updated },
+          requestId,
+        );
+      }
+    }
 
     // Most schema keys are read by the addon container alone, so persisting them
     // IS the apply and the operator recreates that one container when ready.

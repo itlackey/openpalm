@@ -703,6 +703,13 @@ export {
   type RemoteTarget,
   type ServeConfigDoc,
 } from "./control-plane/remote-access.js";
+export {
+  reconcileRemoteAccess,
+  readRemoteAccessState,
+  writeServeConfig,
+  pinRemoteHostname,
+  type RemoteAccessReconcileResult,
+} from "./control-plane/remote-apply.js";
 
 // ── mDNS host self-advertisement (#488) ──────────────────────────────────────
 // Pure helpers (sanitizeDnsLabel, resolveMdnsAdvertisements, etc.) stay

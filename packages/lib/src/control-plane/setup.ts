@@ -32,17 +32,20 @@ import type { ControlPlaneState } from './types.js';
 import { validateSetupSpec } from './setup-validation.js';
 import {
 	getRegistryAutomation,
+	listEnabledAddonIds,
 	setAddonEnabled,
 	setAddonProfileSelection
 } from './addons.js';
 import { reconcileGuardianIngressAddons } from './access-apply.js';
 import {
 	coerceAccessToggles,
+	remoteRequiresGuardianIngress,
 	requiresAssistantKey,
 	resolveAccessEnv,
 	resolveAccessIntentEnv,
 	type AccessToggles
 } from './access-toggles.js';
+import { readRemoteAccessConfig } from './remote-access.js';
 import { randomHex } from './crypto.js';
 export { validateSetupSpec } from './setup-validation.js';
 
@@ -372,12 +375,26 @@ export async function performSetup(
 			// actively set toggles this run.
 			if (access) {
 				const toggles = coerceAccessToggles(access);
+				// The `remote` addon can require GUARDIAN_DIRECT_INGRESS on its own,
+				// without guardianNetwork being set — it tunnels to the guardian over
+				// portal_net rather than through the LAN bind. Resolving the row
+				// WITHOUT that input would recompute ingress from guardianNetwork
+				// alone and silently switch off the listener a live guardian-targeting
+				// tunnel depends on, breaking remote access until the next
+				// applyAccessToggles happened to run. A setup rerun changes access
+				// toggles, never the remote addon's own config, so current on-disk
+				// state is the right source for both halves here.
+				const remoteTarget = readRemoteAccessConfig(readStackEnv(state.homeDir)).target;
+				const guardianIngressRequired = remoteRequiresGuardianIngress(
+					listEnabledAddonIds(state.homeDir).includes('remote'),
+					remoteTarget
+				);
 				// Stored intent + the row it generates. Writing intent is what lets
 				// every later read be a read instead of an inference from bind
 				// addresses (access-toggles.ts ACCESS_INTENT_KEYS).
 				const patches: Record<string, string> = {
 					...resolveAccessIntentEnv(toggles),
-					...resolveAccessEnv(toggles),
+					...resolveAccessEnv(toggles, { guardianIngressRequired }),
 				};
 				// Publishing the assistant API always turns auth on, with a key the
 				// system GENERATES. The operator is never asked to invent one: the

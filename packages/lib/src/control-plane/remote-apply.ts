@@ -58,7 +58,7 @@ function writeServeConfigDoc(homeDir: string, doc: ServeConfigDoc): void {
   // to the container instead of orphaning it on a stale inode the way
   // writeFileInPlace's single-file case (auth.json) requires. writeFileAtomic
   // also mkdirs the parent recursively, so a fresh home or a manually deleted
-  // `system/stack/remote/` directory still succeeds here instead of failing
+  // `state/remote/` directory still succeeds here instead of failing
   // with an ENOENT on the temp file — and the alternative (a missing
   // directory) is worse than redundant, since containerboot itself
   // `log.Fatalf`s if it cannot register its fsnotify watch on that directory.

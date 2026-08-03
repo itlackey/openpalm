@@ -13,6 +13,7 @@ import {
 } from './home.js';
 import { ensureSecrets, ensureOpenCodeConfig } from './secrets.js';
 import { runHomeMigrations } from './home-schema.js';
+import { reconcileRemoteAccess } from './remote-apply.js';
 import {
 	resolveRuntimeFiles,
 	writeRuntimeFiles,
@@ -166,6 +167,7 @@ async function reconcileCore(
  *   • ensureSecrets         — generate any missing service secrets
  *   • applyHomeSeed       — overwrite the managed system/ tree wholesale +
  *                             seed the user/data trees once (skip-existing)
+ *   • reconcileRemoteAccess — regenerate the `remote` addon's serve config
  *   • ensureOpenCode*       — starter OpenCode config + data dir (seed-if-missing)
  *
  * This is the ONLY function that writes OP_HOME's layout/assets, so callers never
@@ -181,6 +183,30 @@ async function applyHome(state: ControlPlaneState): Promise<void> {
 	runHomeMigrations(state.homeDir);
 	ensureSecrets(state);
 	await applyHomeSeed(PLATFORM_VERSION, state.homeDir, state.configDir, state.dataDir);
+	// Make the `remote` addon's generated serve config match its persisted state
+	// on every install/update, and pin OP_REMOTE_HOSTNAME while doing it. This
+	// has to happen HERE, in the one function that owns OP_HOME's assets, and
+	// specifically BEFORE any compose command runs: `tunnel` bakes both inputs
+	// in at container-create time. compose reads OP_REMOTE_HOSTNAME to set the
+	// container's `hostname:` (its tailnet node name), and containerboot
+	// log.Fatalf's at startup if it cannot register an fsnotify watch on the
+	// directory holding TS_SERVE_CONFIG — so a first start with neither pinned
+	// nor generated would register the node under the wrong name AND crash-loop
+	// the sidecar.
+	//
+	// Never throws (access-apply.ts convention); a failure is reported in the
+	// result rather than aborting an install over an addon that may be off.
+	// Deliberately unconditional, NOT gated on the addon being enabled: the
+	// disabled path writes the explicit empty "serve nothing, funnel nothing"
+	// document, which is how turning `remote` off actually closes the door — an
+	// absent file reads to Tailscale as "no change" and would leave a
+	// previously-funneled service public indefinitely.
+	const remote = reconcileRemoteAccess(state.homeDir);
+	if (remote.error) {
+		lifecycleLogger.warn('failed to reconcile remote access serve config', {
+			error: remote.error
+		});
+	}
 	pruneRemovedAddonState(state.homeDir);
 	ensureVersionDefaults(state);
 	ensureOpenCodeConfig();

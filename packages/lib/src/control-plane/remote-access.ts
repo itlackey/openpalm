@@ -122,6 +122,18 @@ export function coerceRemoteAccessConfig(value: unknown): RemoteAccessConfig {
  * Serialize a config back to its `OP_REMOTE_*` env keys. Must round-trip with
  * {@link readRemoteAccessConfig} — `TS_AUTHKEY` is deliberately absent here:
  * it is `@sensitive` and is routed to a secret file, never to stack.env.
+ *
+ * CAUTION on `hostname`: the round trip is deliberately ASYMMETRIC.
+ * `readRemoteAccessConfig` never returns an empty hostname — it resolves the
+ * pinned-or-derived value — so feeding its output straight back through this
+ * function emits a NON-empty `OP_REMOTE_HOSTNAME` even for an install that
+ * has never pinned one, silently converting a derived value into a permanent
+ * pin behind `pinRemoteHostname`'s back. `pinRemoteHostname` (remote-apply.ts)
+ * is the single writer of that key, and it is write-once precisely so a later
+ * project rename cannot move the operator's public URL. A caller persisting
+ * user-edited config should write only the keys the user actually changed, or
+ * drop `OP_REMOTE_HOSTNAME` from this result when the operator left the field
+ * blank.
  */
 export function resolveRemoteEnv(cfg: RemoteAccessConfig): Record<string, string> {
   return {

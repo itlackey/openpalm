@@ -30,7 +30,7 @@ import {
 import { markSetupComplete } from "./deploy.js";
 import type { SetupSpec, SetupConnection } from "./setup.js";
 import type { ControlPlaneState } from "./types.js";
-import { readSecret } from './secrets-files.js';
+import { readSecret, writeSecret } from './secrets-files.js';
 
 // E1: every performSetup() call in this file uses a blank imageTag, which
 // now probes `dockerManifestExists` (setup.ts) before defaulting to `latest`.
@@ -221,6 +221,56 @@ describe("Fresh Install", () => {
     expect(stackContent).not.toContain("OPENAI_API_KEY=");
     expect(stackContent).toContain("OP_SETUP_COMPLETE=false");
     expect(readSecret(homeDir, 'op_ui_login_password')).toBeNull();
+  });
+
+  // Scenario 1b: every secret that a shipped compose file declares as a
+  // top-level `file:` source must EXIST after ensureSecrets, whether or not
+  // the addon consuming it is enabled. Compose fails container creation when a
+  // declared secret's file is missing, so a missing file breaks `compose up`
+  // for the whole stack rather than for one addon.
+  it("ensureSecrets seeds ts_authkey so enabling `remote` cannot break compose up", () => {
+    const state: ControlPlaneState = {
+      homeDir,
+      configDir,
+      stashDir: join(homeDir, "knowledge"),
+      workspaceDir: join(homeDir, "workspace"),
+      dataDir,
+      stackDir,
+      services: {},
+      artifacts: { compose: "" },
+      artifactMeta: [],
+    };
+
+    ensureSecrets(state);
+
+    // Present, and EMPTY on purpose: a blank TS_AUTHKEY is what makes
+    // containerboot fall back to interactive login (it logs a sign-in URL),
+    // which is this addon's documented default. Empty is a real configuration
+    // here, not a placeholder.
+    expect(readSecret(homeDir, 'ts_authkey')).toBe('');
+  });
+
+  it("ensureSecrets never overwrites an operator-supplied ts_authkey", () => {
+    const state: ControlPlaneState = {
+      homeDir,
+      configDir,
+      stashDir: join(homeDir, "knowledge"),
+      workspaceDir: join(homeDir, "workspace"),
+      dataDir,
+      stackDir,
+      services: {},
+      artifacts: { compose: "" },
+      artifactMeta: [],
+    };
+
+    ensureSecrets(state);
+    writeSecret(homeDir, 'ts_authkey', 'tskey-auth-REAL\n');
+    // Re-running the whole seeding pass (every deploy does) must leave a real
+    // key alone — a re-seed here would silently drop the node's pre-authorized
+    // enrollment and send the tunnel back to interactive login.
+    ensureSecrets(state);
+
+    expect(readSecret(homeDir, 'ts_authkey')).toBe('tskey-auth-REAL\n');
   });
 
   // Scenario 2: isSetupComplete returns false before setup

@@ -290,6 +290,15 @@ services:
     # OP_REMOTE_HOSTNAME so resolveRemoteHostname's project-name derivation
     # (remote-access.ts) and this container's actual registered name can never
     # drift apart from each other.
+    #
+    # The `:-openpalm` fallback is a LAST RESORT that should never be reached:
+    # reconcileRemoteAccess (remote-apply.ts) pins OP_REMOTE_HOSTNAME into
+    # state/stack.env during applyHome, before any compose command runs, and it
+    # pins the PROJECT-NAME-derived value. Registering under a bare "openpalm"
+    # here instead would be worse than cosmetic — a second stack on the same
+    # host would collide with the first, and Tailscale resolves a node-name
+    # collision by permanently appending "-1", so the control plane would
+    # advertise a URL that belongs to the wrong stack (or to nothing at all).
     hostname: ${OP_REMOTE_HOSTNAME:-openpalm}
     environment:
       # `file:` is resolved by `tailscale up` itself, at the moment it reads
@@ -350,7 +359,13 @@ services:
       #      stale, now-unlinked copy forever. Mounting the parent directory
       #      instead means the container resolves the path fresh on every
       #      read and sees the rename.
-      - ${OP_HOME}/system/stack/remote:/config
+      #
+      # NOTE the /config source is under state/, NOT beside these compose files
+      # in system/stack/. system/ is the managed tree and is replaced wholesale
+      # from the release skeleton on every update; a generated config kept
+      # there would be deleted by the next update, taking the directory
+      # containerboot watches with it (see remoteServeConfigDir in home.ts).
+      - ${OP_HOME}/state/remote:/config
       - ${OP_HOME}/data/tunnel:/var/lib/tailscale
     secrets: [ts_authkey]
     # Reaches BOTH possible targets — the per-service trust-boundary exception

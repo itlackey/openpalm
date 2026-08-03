@@ -22,6 +22,8 @@ import {
 import type { SetupSpec, SetupConnection } from './setup.js';
 import type { ControlPlaneState } from './types.js';
 import { readSecret, secretPath } from './secrets-files.js';
+import { patchStateEnvFile } from './secrets.js';
+import { setAddonEnabled } from './addons.js';
 import { PLATFORM_VERSION } from './versioning.js';
 
 /** Escape regex metacharacters (PLATFORM_VERSION contains `.` and `-`). */
@@ -1092,6 +1094,44 @@ describe('performSetup', () => {
 		expect((key ?? '').length).toBeGreaterThanOrEqual(32);
 		// The generated key never lands in the non-secret env file.
 		expect(stackEnv).not.toContain(key ?? 'unreachable');
+	});
+
+	// REGRESSION: a setup rerun must not switch off the guardian's direct
+	// listener out from under a live guardian-targeting `remote` tunnel.
+	//
+	// The tunnel reaches the guardian over portal_net, never through the LAN
+	// bind, so GUARDIAN_DIRECT_INGRESS can be required with guardianNetwork
+	// still off. Resolving the access row from the toggles ALONE — which is
+	// what this path used to do — recomputes ingress as "false" and silently
+	// breaks remote access to the guardian until some later applyAccessToggles
+	// happens to run. The LAN bind must stay loopback throughout: `remote`
+	// asked for a tunnel, not for LAN exposure.
+	it('a rerun keeps GUARDIAN_DIRECT_INGRESS on for a guardian-targeting remote tunnel, without opening the LAN bind', async () => {
+		expect((await performSetup(makeValidSpec())).ok).toBe(true);
+
+		patchStateEnvFile(homeDir, { OP_REMOTE_TARGET: 'guardian' });
+		setAddonEnabled(homeDir, 'remote', true);
+
+		// A rerun that saves access toggles with guardianNetwork explicitly off.
+		const result = await performSetup(makeValidSpec({ access: { guardianNetwork: false } }));
+		expect(result.ok).toBe(true);
+
+		const stackEnv = readFileSync(join(homeDir, 'state', 'stack.env'), 'utf-8');
+		expect(stackEnv).toMatch(/^GUARDIAN_DIRECT_INGRESS=true$/m);
+		expect(stackEnv).toMatch(/^OP_GUARDIAN_BIND_ADDRESS=127\.0\.0\.1$/m);
+	});
+
+	it('a rerun leaves ingress off when the remote addon targets only the assistant', async () => {
+		expect((await performSetup(makeValidSpec())).ok).toBe(true);
+
+		patchStateEnvFile(homeDir, { OP_REMOTE_TARGET: 'assistant' });
+		setAddonEnabled(homeDir, 'remote', true);
+
+		const result = await performSetup(makeValidSpec({ access: { guardianNetwork: false } }));
+		expect(result.ok).toBe(true);
+
+		const stackEnv = readFileSync(join(homeDir, 'state', 'stack.env'), 'utf-8');
+		expect(stackEnv).toMatch(/^GUARDIAN_DIRECT_INGRESS=false$/m);
 	});
 
 	it('preserves an existing assistant key across a rerun — rotating it would break every client', async () => {

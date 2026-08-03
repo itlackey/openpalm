@@ -165,6 +165,21 @@ export function ensureSecrets(state: ControlPlaneState): void {
   // ensureSecret also re-seeds a torn/0-byte file (scripts/dev-setup.sh seeds
   // an empty one).
   ensureSecret(state.homeDir, 'op_opencode_password', () => crypto.randomUUID().replace(/-/g, ''));
+  // The tailnet join key for the `remote` addon's tunnel, for exactly the same
+  // reason as the OpenCode key above: services.compose.yml declares
+  // `ts_authkey` as a top-level file secret, and Compose fails CONTAINER
+  // CREATION outright when a declared secret's source file is missing — so
+  // enabling `remote` without first visiting the credentials form would break
+  // `compose up` for the whole stack rather than just this addon.
+  //
+  // Seeded EMPTY, and empty is a real configuration rather than a placeholder:
+  // a blank TS_AUTHKEY is what tells containerboot to fall back to interactive
+  // login (it logs a sign-in URL on first start), which is the documented
+  // default in this addon's env schema. An operator who later pastes a key
+  // into the credentials form overwrites this via writeStackSecretEnv, and
+  // that write ends in a newline, so it is never mistaken for the 0-byte
+  // "torn write" case ensureSecret re-seeds.
+  ensureSecret(state.homeDir, 'ts_authkey', () => '');
   // Portal principal secrets, for the same reason as the OpenCode key above:
   // portals.compose.yml declares all four as top-level file secrets, so the
   // files must exist whether or not the addon that consumes one is enabled.
