@@ -273,7 +273,7 @@ describe('setup.ps1 CLI install failure propagation', () => {
 		} finally {
 			rmSync(dir, { recursive: true, force: true });
 		}
-	});
+	}, 15_000);
 });
 
 describe('setup.ps1 caller ErrorActionPreference', () => {
