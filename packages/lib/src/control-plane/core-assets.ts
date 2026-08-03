@@ -146,7 +146,7 @@ export function overwriteSystemTree(
 	cpSync(sysSource, stageRoot, { recursive: true });
 
 	const sourceFiles = listFiles(stageRoot);
-	const currentFiles = existsSync(targetRoot) ? listFiles(targetRoot) : [];
+	const currentFiles = existsSync(targetRoot) ? listFiles(targetRoot, true) : [];
 	const changed =
 		currentFiles.length !== sourceFiles.length ||
 		sourceFiles.some((rel) => {
@@ -184,12 +184,18 @@ export function overwriteSystemTree(
 	};
 }
 
-function listFiles(root: string): string[] {
+function listFiles(root: string, collapseNodeModules = false): string[] {
 	const files: string[] = [];
 	const walk = (dir: string): void => {
 		for (const entry of readdirSync(dir, { withFileTypes: true })) {
 			const path = join(dir, entry.name);
-			if (entry.isDirectory()) walk(path);
+			if (entry.isDirectory()) {
+				if (collapseNodeModules && entry.name === 'node_modules') {
+					files.push(relative(root, path));
+				} else {
+					walk(path);
+				}
+			}
 			else if (entry.isFile()) files.push(relative(root, path));
 			else throw new Error(`Invalid managed system asset: ${relative(root, path)}`);
 		}

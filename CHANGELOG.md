@@ -12,6 +12,8 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Exclude workspace `node_modules` from bundled skeleton assets so packaged
   desktop and CLI releases can refresh managed files without rejecting
   dependency symlinks.
+- Allow managed-tree reconciliation to retire an old runtime `node_modules`
+  directory without weakening validation of release-provided assets.
 - **Conflicting legacy delegated-secret copies no longer block startup.** Home
   migration preserves both files, logs the conflict, and continues without
   choosing, overwriting, or deleting either credential.

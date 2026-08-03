@@ -6,7 +6,7 @@
  * skip-existing copy, so they are not tested here.
  */
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 
@@ -98,5 +98,29 @@ describe("overwriteSystemTree", () => {
     expect(existsSync(join(opHome, "system", "stack", "portals.compose.yml"))).toBe(false);
     expect(result.updated).toContain("system/retired.compose.yml");
     expect(result.updated).toContain("system/stack/portals.compose.yml");
+  });
+
+  it("retires runtime node_modules without traversing dependency symlinks", () => {
+    seedSource("same\n");
+    overwriteSystemTree(sourceRoot, opHome);
+    const modules = join(opHome, "system", "assistant", "node_modules");
+    mkdirSync(join(modules, ".bin"), { recursive: true });
+    symlinkSync("../missing.js", join(modules, ".bin", "runtime-tool"));
+
+    const result = overwriteSystemTree(sourceRoot, opHome);
+
+    expect(existsSync(modules)).toBe(false);
+    expect(result.updated).toContain("system/assistant/node_modules");
+    expect(result.backupDir).not.toBeNull();
+  });
+
+  it("still rejects symlinks in release-provided managed assets", () => {
+    seedSource("same\n");
+    symlinkSync(
+      "opencode.jsonc",
+      join(sourceRoot, "system", "assistant", "invalid-link"),
+    );
+
+    expect(() => overwriteSystemTree(sourceRoot, opHome)).toThrow("Invalid managed system asset");
   });
 });
