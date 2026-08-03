@@ -431,25 +431,4 @@ describe('UI migration ownership', () => {
     }
   });
 
-  it('propagates an ambiguous delegated-secret migration failure', async () => {
-    const homeDir = mkdtempSync(join(tmpdir(), 'openpalm-ui-migration-failure-'));
-    const previousHome = process.env.OP_HOME;
-    mkdirSync(join(homeDir, 'state'), { recursive: true });
-    mkdirSync(join(homeDir, 'knowledge', 'secrets'), { recursive: true });
-    mkdirSync(join(homeDir, 'private', 'secrets'), { recursive: true });
-    writeFileSync(join(homeDir, 'state', 'stack.env'), 'OP_SETUP_COMPLETE=true\n');
-    writeFileSync(join(homeDir, 'knowledge', 'secrets', 'op_guardian_admin_token'), 'old\n');
-    writeFileSync(join(homeDir, 'private', 'secrets', 'op_guardian_admin_token'), 'new\n');
-    process.env.OP_HOME = homeDir;
-    try {
-      await expect(startUIServer({ allowUninstalled: true, open: false })).rejects.toThrow(
-        /delegated secret migration is ambiguous/i,
-      );
-      expect(readFileSync(join(homeDir, 'state', 'schema-version'), 'utf8')).toBe('2\n');
-    } finally {
-      if (previousHome === undefined) delete process.env.OP_HOME;
-      else process.env.OP_HOME = previousHome;
-      rmSync(homeDir, { recursive: true, force: true });
-    }
-  });
 });

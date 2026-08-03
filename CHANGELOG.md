@@ -9,6 +9,9 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **Conflicting legacy delegated-secret copies no longer block startup.** Home
+  migration preserves both files, logs the conflict, and continues without
+  choosing, overwriting, or deleting either credential.
 - **Release publication uses one immutable tested candidate.** The release
   orchestrator stamps and bundles one candidate commit, tests it with the frozen
   lockfile, pushes it with a base-SHA lease, and restores that exact bundle in

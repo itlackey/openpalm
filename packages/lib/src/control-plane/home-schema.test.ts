@@ -188,7 +188,7 @@ describe('home schema progression', () => {
     expect(readHomeSchemaVersion(homeDir)).toBe(HOME_SCHEMA_VERSION);
   });
 
-  test('stamps consolidation before a later failure so retry preserves a canonical edit', () => {
+  test('continues after delegated-secret conflicts without reverting consolidated config', () => {
     mkdirSync(join(homeDir, 'knowledge', 'env'), { recursive: true });
     mkdirSync(join(homeDir, 'state'), { recursive: true });
     writeFileSync(legacyKnowledgeStackEnvFile(homeDir), 'OP_OWNER_NAME=legacy\n');
@@ -201,16 +201,16 @@ describe('home schema progression', () => {
     writeFileSync(join(secretsDir(homeDir), secretName), 'source-secret\n');
     writeFileSync(join(privateSecretsDir(homeDir), secretName), 'different-secret\n');
 
-    expect(() => runHomeMigrations(homeDir)).toThrow('both copies were preserved');
-    expect(readHomeSchemaVersion(homeDir)).toBe(2);
+    expect(runHomeMigrations(homeDir)).toBe(true);
+    expect(readHomeSchemaVersion(homeDir)).toBe(HOME_SCHEMA_VERSION);
     expect(readFileSync(legacyKnowledgeStackEnvFile(homeDir), 'utf8')).toBe(
       'OP_OWNER_NAME=legacy\n',
     );
-
-    writeFileSync(stackEnvFile(homeDir), 'OP_OWNER_NAME=canonical-edit\nOP_SETUP_COMPLETE=true\n');
-    writeFileSync(join(privateSecretsDir(homeDir), secretName), 'source-secret\n');
-    expect(runHomeMigrations(homeDir)).toBe(true);
-    expect(readFileSync(stackEnvFile(homeDir), 'utf8')).toContain('OP_OWNER_NAME=canonical-edit');
+    expect(readFileSync(stackEnvFile(homeDir), 'utf8')).toContain('OP_OWNER_NAME=legacy');
+    expect(readFileSync(join(secretsDir(homeDir), secretName), 'utf8')).toBe('source-secret\n');
+    expect(readFileSync(join(privateSecretsDir(homeDir), secretName), 'utf8')).toBe(
+      'different-secret\n',
+    );
   });
 
   test('a corrupt schema stamp fails before replaying retained legacy inputs', () => {
@@ -227,7 +227,7 @@ describe('home schema progression', () => {
     );
   });
 
-  test('a delegated-secret mismatch preserves both files and leaves the schema unstamped', () => {
+  test('a delegated-secret mismatch preserves both files without blocking startup', () => {
     mkdirSync(join(homeDir, 'state'), { recursive: true });
     writeFileSync(stackEnvFile(homeDir), 'OP_SETUP_COMPLETE=true\n');
     writeHomeSchemaVersion(homeDir, 2);
@@ -237,10 +237,10 @@ describe('home schema progression', () => {
     writeFileSync(join(secretsDir(homeDir), name), 'knowledge-copy\n');
     writeFileSync(join(privateSecretsDir(homeDir), name), 'private-copy\n');
 
-    expect(() => runHomeMigrations(homeDir)).toThrow('both copies were preserved');
+    expect(runHomeMigrations(homeDir)).toBe(true);
     expect(readFileSync(join(secretsDir(homeDir), name), 'utf8')).toBe('knowledge-copy\n');
     expect(readFileSync(join(privateSecretsDir(homeDir), name), 'utf8')).toBe('private-copy\n');
-    expect(readHomeSchemaVersion(homeDir)).toBe(2);
+    expect(readHomeSchemaVersion(homeDir)).toBe(HOME_SCHEMA_VERSION);
   });
 
   for (const version of [0, 1, 2, 3, 4, 5]) {

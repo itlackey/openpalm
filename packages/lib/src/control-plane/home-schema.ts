@@ -160,11 +160,6 @@ function migrateDailyBriefingTask(homeDir: string): boolean {
 
 function migrateDelegatedSecrets(homeDir: string): boolean {
   const result = migrateDelegatedSecretsToPrivateDir(homeDir);
-  if (result.skippedMismatch.length > 0) {
-    throw new Error(
-      `Delegated secret migration is ambiguous; both copies were preserved and the home schema was not stamped: ${result.skippedMismatch.join(', ')}`,
-    );
-  }
   return result.migrated.length > 0;
 }
 
