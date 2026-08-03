@@ -22,7 +22,7 @@ import * as nodeChildProcess from 'node:child_process';
 // per-test timeout can never fire and the whole run hangs forever. Delegate
 // through these captured references instead.
 const realChildProcess = { ...nodeChildProcess };
-import { detectHostInfo, isAssistantHealthy, main, parseBareArgs } from './main.ts';
+import { detectHostInfo, isAssistantHealthy, main, mainCommand, parseBareArgs } from './main.ts';
 import {
 	PLATFORM_VERSION,
 	readSecret,
@@ -764,49 +764,9 @@ describe('scan command', () => {
 	});
 });
 
-describe('audit-secrets command', () => {
-	/** Seed a home whose secrets tree is clean; `stackEnv` goes to state/stack.env. */
-	function seedAuditHome(stackEnv: string): string {
-		const tempHome = mkdtempSync(join(tmpdir(), 'openpalm-test-'));
-		const stateDir = join(tempHome, 'state');
-		const secretDir = join(tempHome, 'knowledge', 'secrets');
-		mkdirSync(stateDir, { recursive: true });
-		mkdirSync(secretDir, { recursive: true, mode: 0o700 });
-		writeFileSync(join(stateDir, 'stack.env'), stackEnv);
-		writeFileSync(join(secretDir, 'op_ui_login_password'), 'abc\n', { mode: 0o600 });
-		return tempHome;
-	}
-
-	async function runAudit(tempHome: string): Promise<string> {
-		const originalHome = process.env.OP_HOME;
-		const originalExit = process.exit;
-		process.env.OP_HOME = tempHome;
-		process.exit = mock((_code?: number) => {
-			throw new Error(`process.exit(${_code})`);
-		}) as typeof process.exit;
-		try {
-			const err = await main(['audit-secrets']).catch((e: unknown) => e);
-			return err instanceof Error ? err.message : String(err);
-		} finally {
-			process.exit = originalExit;
-			process.env.OP_HOME = originalHome;
-			rmSync(tempHome, { recursive: true, force: true });
-		}
-	}
-
-	it('is a recognized command and exits 0 for file-based secrets', async () => {
-		const message = await runAudit(seedAuditHome('OP_SETUP_COMPLETE=true\n'));
-		expect(message).not.toContain('Unknown command');
-		expect(message).toBe('process.exit(0)');
-	});
-
-	// Regression: the command read `<home>/system/stack/stack.env` and passed
-	// stackDir to resolveSecretsDir, so it audited a path that never exists and
-	// a directory it had just created itself — reporting clean no matter what
-	// was really in state/stack.env.
-	it('reports a secret-shaped key in state/stack.env', async () => {
-		const message = await runAudit(seedAuditHome('OPENAI_API_KEY=sk-live-value\n'));
-		expect(message).toBe('process.exit(1)');
+describe('removed audit-secrets command', () => {
+	it('is not registered', () => {
+		expect(Object.keys(mainCommand.subCommands ?? {})).not.toContain('audit-secrets');
 	});
 });
 

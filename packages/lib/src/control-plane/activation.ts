@@ -10,8 +10,6 @@ import {
 	type ApplyStackScope
 } from './docker.js';
 import { acquireInstallLock, releaseInstallLock, type InstallLockHandle } from './install-lock.js';
-import { stackEnvPath } from './paths.js';
-import { auditFileBasedSecrets } from './secret-audit.js';
 
 export type ComposeActivationOptions = {
 	lock?: InstallLockHandle | null;
@@ -19,18 +17,6 @@ export type ComposeActivationOptions = {
 	composeOptions?: ComposeOptions;
 };
 
-function activationError(operation: string, issues: string[]): Error {
-	return new Error(
-		`Refusing Compose ${operation}: secret-boundary audit failed.\n${issues.join('\n')}`
-	);
-}
-
-/**
- * Mandatory gate for every host-side Compose activation. The audit deliberately
- * runs against Compose's JSON-resolved project, not an individual overlay, so
- * native merge, include/extends, interpolation, profiles, and source overrides
- * cannot evade the boundary.
- */
 export async function runComposeActivation<T>(
 	state: ControlPlaneState,
 	operation: string,
@@ -46,21 +32,6 @@ export async function runComposeActivation<T>(
 		if (!resolved.ok || !resolved.config) {
 			throw new Error(
 				`Compose ${operation} configuration resolution failed: ${resolved.stderr || 'unknown error'}`
-			);
-		}
-		const result = auditFileBasedSecrets({
-			stackEnvPath: stackEnvPath(state),
-			composeConfig: resolved.config,
-			homeDir: state.homeDir,
-			secretsDir: `${state.homeDir}/knowledge/secrets`,
-			privateSecretsDir: `${state.homeDir}/private/secrets`
-		});
-		if (!result.ok) {
-			throw activationError(
-				operation,
-				result.issues.map(
-					(entry) => `${entry.code}: ${entry.message}${entry.path ? ` (${entry.path})` : ''}`
-				)
 			);
 		}
 		return await mutate(options);

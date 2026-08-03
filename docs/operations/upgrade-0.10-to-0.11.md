@@ -70,7 +70,6 @@ inspect delegated credentials and should not be asked to validate them.
 ```bash
 openpalm status
 openpalm validate
-openpalm audit-secrets
 ```
 
 Then verify:

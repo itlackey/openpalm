@@ -10,6 +10,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import {
   assertNoSecretLikeStackEnvKeys,
+  isSecretLikeKey,
   patchSecretsEnvFile,
   readStackEnv,
   readStackSecretEnv,
@@ -36,6 +37,16 @@ beforeEach(() => {
 
 afterEach(() => {
   // Cleanup happens via OS temp dir rotation; no rmSync needed here.
+});
+
+describe('isSecretLikeKey', () => {
+  it('detects secret-like keys but allows file indirection keys', () => {
+    expect(isSecretLikeKey('OPENAI_API_KEY')).toBe(true);
+    expect(isSecretLikeKey('OP_UI_LOGIN_PASSWORD')).toBe(true);
+    expect(isSecretLikeKey('PORTAL_CHAT_SECRET')).toBe(true);
+    expect(isSecretLikeKey('OPENAI_API_KEY_FILE')).toBe(false);
+    expect(isSecretLikeKey('OP_ASSISTANT_VERSION')).toBe(false);
+  });
 });
 
 describe('assertNoSecretLikeStackEnvKeys hygiene guard', () => {

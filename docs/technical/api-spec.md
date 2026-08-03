@@ -99,8 +99,8 @@ name-routed secret writer.
 2. `private/secrets/op_ui_login_password` must be present and non-empty.
 
 It does not claim to run a complete Compose, registry, provider, or filesystem
-audit. Compose preflight and the dedicated diagnostics/secret-audit paths cover
-their own concerns.
+audit. Compose preflight and the dedicated diagnostics paths cover their own
+concerns.
 
 ## Provider Import
 

@@ -29,7 +29,7 @@ afterEach(() => {
 });
 
 describe('runComposeWithPreflight — D1 docker-readiness preamble', () => {
-	test('runs down and stop directly without migration or activation audit', async () => {
+	test('runs down and stop directly without migration or activation preflight', async () => {
 		let migrated = false;
 		let activated = false;
 		const streamed: string[][] = [];

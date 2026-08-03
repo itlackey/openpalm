@@ -90,8 +90,8 @@ describe('POST /api/host/uninstall', () => {
 		expect(applyUninstallMock).toHaveBeenCalledOnce();
 	});
 
-	test('continues uninstall when compose teardown fails its activation audit', async () => {
-		composeDownMock.mockRejectedValue(new Error('Refusing Compose down: secret-boundary audit failed'));
+	test('continues uninstall when compose teardown fails', async () => {
+		composeDownMock.mockRejectedValue(new Error('Compose teardown failed'));
 
 		const res = await POST(makePostEvent());
 

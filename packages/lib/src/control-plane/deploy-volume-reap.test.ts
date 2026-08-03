@@ -238,14 +238,14 @@ describe('runDeploy reclaims retired volumes after the new stack is up (#585 dec
 		}
 	});
 
-	test('returns a structured error and restores files when activation audit throws', async () => {
+	test('returns a structured error and restores files when activation throws', async () => {
 		const seedStackEnv = 'OP_ASSISTANT_VERSION=custom-pin\nOP_SETUP_COMPLETE=false\n';
-		const homeDir = mkdtempSync(join(tmpdir(), 'openpalm-deploy-activation-audit-'));
+		const homeDir = mkdtempSync(join(tmpdir(), 'openpalm-deploy-activation-'));
 		try {
 			mkdirSync(join(homeDir, 'state'), { recursive: true });
 			writeFileSync(join(homeDir, 'state', 'stack.env'), seedStackEnv);
 			await withDeployEnv(homeDir, async () => {
-				const activationError = new Error('Refusing Compose stack activation: secret-boundary audit failed.');
+				const activationError = new Error('Compose stack activation failed.');
 				const activateStackMock = mock(async () => { throw activationError; });
 				mock.module('./docker.js', () => ({
 					...realDocker,
@@ -256,12 +256,12 @@ describe('runDeploy reclaims retired volumes after the new stack is up (#585 dec
 					activateStack: activateStackMock
 				}));
 
-				const { runDeploy } = await import(`./deploy.js?deploy-activation-audit=${Math.random()}`);
-				const { createState } = await import(`./lifecycle.js?deploy-activation-audit-state=${Math.random()}`);
+				const { runDeploy } = await import(`./deploy.js?deploy-activation=${Math.random()}`);
+				const { createState } = await import(`./lifecycle.js?deploy-activation-state=${Math.random()}`);
 				const result = await runDeploy(createState());
 
 				expect(result.deploying).toBe(false);
-				expect(result.deployError).toContain('secret-boundary audit failed');
+				expect(result.deployError).toContain('Compose stack activation failed');
 				// The rollback target is the pre-deploy file AS MIGRATED, not the bytes
 				// the operator's copy happened to hold. applyManagedFiles deliberately
 				// runs runHomeMigrations BEFORE it snapshots (lifecycle.ts explains why),

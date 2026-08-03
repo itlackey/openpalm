@@ -81,9 +81,8 @@ export function assistantAuthHeaders(target: OpenCodeCredential): Record<string,
  * EVERY password source sits behind the gate, including the explicit
  * `OPENCODE_SERVER_PASSWORD` override. That override used to short-circuit it,
  * which produced a credential for a server that requires none: core.compose.yml
- * never passes a raw `OPENCODE_SERVER_PASSWORD` to the assistant (secret-audit
- * forbids the key, and the comment there is explicit that the password is
- * "never a password the operator invents"), so an ambient value in a host shell
+	 * never passes a raw `OPENCODE_SERVER_PASSWORD` to the assistant, so an
+	 * ambient value in a host shell
  * describes nothing the container knows about. The visible cost was
  * `/api/host/assistant-key` reporting `available: true` and printing that
  * invented key as if it were the assistant's. The username override stays

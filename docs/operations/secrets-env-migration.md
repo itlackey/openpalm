@@ -34,7 +34,6 @@ Compose does not perform `OP_HOME` migrations.
 
    ```bash
    openpalm validate
-   openpalm audit-secrets
    openpalm status
    ```
 

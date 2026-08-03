@@ -14,8 +14,8 @@ import type { ArgsDef, CommandContext } from 'citty';
  * sharing the exit(1) behavior.
  *
  * NOTE: only wrap handlers whose success path does NOT itself call
- * `process.exit`. Commands that exit with a non-1 code (e.g. `scan`/
- * `audit-secrets` exit 2 on bad input, or exit 0 explicitly) keep those
+ * `process.exit`. Commands that exit with a non-1 code (e.g. `scan` exits 2
+ * on bad input, or exits 0 explicitly) keep those
  * exits outside any try/catch so a mocked `process.exit` in tests is not
  * swallowed by this boundary.
  */

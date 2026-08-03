@@ -141,6 +141,10 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Removed
 
+- **The `openpalm audit-secrets` workflow and its activation gates.** The CLI
+  command, public library surface, and blocking deploy/Compose audit are removed.
+  Existing file-secret routing, permissions, named Compose mounts, and runtime
+  authentication remain unchanged.
 - **Legacy host-side voice config plumbing.** The admin Voice tab,
   `GET/PUT /api/host/voice`, the config-holding `/api/speak` /
   `/api/transcribe` relays (which pinned every device to the local host's

@@ -84,9 +84,8 @@ services:
       # service (serves Basic auth) and the guardian (attaches it upstream, see
       # portals.compose.yml) read. Never a password the operator invents.
       OPENCODE_AUTH: ${OPENCODE_AUTH:-false}
-      # The OpenCode server password, read from the compose secret
-      # below. Never a raw OPENCODE_SERVER_PASSWORD env value (secret-audit.ts
-      # forbids *_PASSWORD-suffixed compose environment keys).
+      # The OpenCode server password, read from the compose secret below. Keep
+      # it file-based rather than putting the raw value in the environment.
       OPENCODE_SERVER_PASSWORD_FILE: /run/secrets/opencode_server_password
       TERM: xterm-256color
       HOME: /home/opencode
@@ -132,9 +131,9 @@ services:
       # a served non-admin deployment can authenticate). Without this secret
       # the co-process has no password source (no OP_HOME in-container), login
       # can never mint a session, and the published UI dead-ends at /login.
-      # File-based like OPENCODE_SERVER_PASSWORD_FILE (secret-audit forbids raw
-      # *_PASSWORD compose env keys); the entrypoint resolves it for the UI
-      # child only. Setup fail-closes before deploy if no password exists.
+      # File-based like OPENCODE_SERVER_PASSWORD_FILE; the entrypoint resolves
+      # it for the UI child only. Setup fail-closes before deploy if no password
+      # exists.
       OP_UI_LOGIN_PASSWORD_FILE: /run/secrets/ui_login_password
       # Used only to label the browser's automatically seeded local connection.
       OP_PROJECT_NAME: ${OP_PROJECT_NAME:-openpalm}

@@ -28,7 +28,7 @@ itself.
 - Resolve and create the complete OpenPalm home layout
 - Seed user assets and reconcile managed release assets
 - Build canonical Compose file, env-file, and profile arguments
-- Validate Compose and secret-grant boundaries before mutation
+- Validate required runtime files and assembled Compose configuration before container mutation
 - Install, update, rollback, backup, and recovery workflows
 - Enable/disable first-party addons and select hardware profiles
 - Route delegated secrets to `private/secrets/`

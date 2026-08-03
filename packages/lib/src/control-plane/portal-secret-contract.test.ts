@@ -8,7 +8,7 @@
  *      (`PRINCIPAL_SECRET_FILE` + the service `secrets:` list + the top-level
  *      `secrets:` file declaration the container reads at runtime)
  *   2. the seeder/lookup         → config-persistence.portalSecretName(<name>)
- *      (used by ensurePortalSecret() on install and the guardian secret audit)
+ *      (used by ensurePortalSecret() on install)
  *
  * Each is unit-tested in isolation, but nothing binds them together. If they
  * drift (e.g. the prefix is renamed in compose but not in portalSecretName), a

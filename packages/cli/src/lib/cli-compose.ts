@@ -33,9 +33,9 @@ export async function runComposeReadOnly(
 }
 
 /**
- * Execute a Compose lifecycle command. Activation-capable operations validate
- * and audit first; teardown-only `down` and `stop` deliberately skip those
- * gates so a broken or audit-failing stack can still be stopped.
+ * Execute a Compose lifecycle command. Activation-capable operations run the
+ * lifecycle preflight; teardown-only `down` and `stop` deliberately skip it so
+ * a broken stack can still be stopped.
  *
  * Activation preflight can be bypassed by setting OP_SKIP_COMPOSE_PREFLIGHT=1
  * (e.g. in tests). Activation carries lib's `up` timeout budget so a first

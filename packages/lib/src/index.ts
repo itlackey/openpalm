@@ -247,20 +247,6 @@ export {
   writeAutomationTaskFile,
 } from './control-plane/automation-runtime.js';
 export type { AutomationRuntimeComposeRunner } from './control-plane/automation-runtime.js';
-export type {
-  SecretAuditIssue,
-  SecretAuditOptions,
-  SecretAuditResult,
-  SecretAuditSeverity,
-} from "./control-plane/secret-audit.js";
-export {
-  auditComposeSecrets,
-  auditResolvedComposeSecrets,
-  auditFileBasedSecrets,
-  auditSecretFilesystem,
-  auditStackEnv,
-  isSecretLikeKey,
-} from "./control-plane/secret-audit.js";
 export {
   runComposeActivation,
   activateStack,
@@ -293,7 +279,6 @@ export type {
 
 export {
   runDeploy,
-  auditApplyState,
   writeJournal,
   readDeployJournal,
   resolveDeployJournalPath,

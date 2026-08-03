@@ -32,7 +32,6 @@ process. Never call `/api/host/*` or imply that host validation was performed.
    - `openpalm validate`
    - `openpalm doctor`
    - `openpalm status`
-   - `openpalm audit-secrets`
 5. Explain the expected storage boundary without asking the user to paste a
    value into chat:
    - provider OpenCode auth: `knowledge/secrets/auth.json`

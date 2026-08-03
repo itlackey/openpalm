@@ -43,7 +43,6 @@ release assets.
 | `openpalm update` | Refresh managed assets and safely reapply containers |
 | `openpalm addon enable\|disable\|list` | Manage first-party addon state and profiles |
 | `openpalm validate` | Validate current environment/configuration |
-| `openpalm audit-secrets` | Validate Compose secret grants |
 | `openpalm scan` | Inventory discovered sensitive keys and secret files as set or empty without printing values |
 | `openpalm doctor` | Report Docker, port, storage, and cache state |
 | `openpalm backups prune --keep <n>` | Prune lifecycle backups with confirmation |

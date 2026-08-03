@@ -1,25 +1,10 @@
-/**
- * S.2.2 — the deploy apply path runs the secret-boundary audit + runtime
- * validation BEFORE it touches containers, and refuses when a compose overlay
- * grants an unauthorized secret.
- *
- * Before S.2.2, neither auditComposeSecrets nor validateProposedState was
- * invoked outside the manual `openpalm audit-secrets` command, so an apply
- * could silently grant a secret across the boundary. auditApplyState is the
- * gate runDeploy calls; these tests pin both branches:
- *   - the shipped stack's own overlays audit clean (guards the S.2.1
- *     false-positive regression at the apply gate), and
- *   - an overlay that grants an unauthorized secret produces a blocking error.
- */
+/** The deploy apply path runs narrow runtime validation before container mutation. */
 import { afterEach, describe, expect, it } from 'bun:test';
-import { copyFileSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { auditApplyState } from './deploy.js';
+import { join } from 'node:path';
+import { validateProposedState } from './validate.js';
 import type { ControlPlaneState } from './types.js';
-
-const SHIPPED_STACK_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', 'skeleton', 'system', 'stack');
 
 const homes: string[] = [];
 
@@ -31,17 +16,13 @@ afterEach(() => {
   }
 });
 
-/** A temp OP_HOME seeded with the shipped compose overlays + a valid stack env. */
+/** A temp OP_HOME seeded with valid runtime configuration. */
 function seedHome(): { state: ControlPlaneState; home: string } {
   const home = mkdtempSync(join(tmpdir(), 'apply-validation-'));
   homes.push(home);
 
   const managedStack = join(home, 'system', 'stack');
   mkdirSync(managedStack, { recursive: true });
-  for (const name of readdirSync(SHIPPED_STACK_DIR)) {
-    if (name.endsWith('.compose.yml')) copyFileSync(join(SHIPPED_STACK_DIR, name), join(managedStack, name));
-  }
-
   // validateProposedState needs the stack env file present and OP_UI_LOGIN_PASSWORD set.
   mkdirSync(join(home, 'knowledge', 'env'), { recursive: true });
   mkdirSync(join(home, 'state'), { recursive: true });
@@ -67,24 +48,23 @@ function seedHome(): { state: ControlPlaneState; home: string } {
   return { state, home };
 }
 
-describe('auditApplyState', () => {
-  it('returns zero errors for the shipped stack overlays (S.2.1 false-positive guard)', async () => {
-    const { state } = seedHome();
-    const result = await auditApplyState(state);
-    expect(result.errors).toEqual([]);
-  });
+describe('deploy runtime validation', () => {
+	it('returns zero errors for a valid setup state', async () => {
+		const { state } = seedHome();
+		const result = await validateProposedState(state);
+		expect(result.errors).toEqual([]);
+	});
 
-  it('refuses when a compose overlay grants an unauthorized secret', async () => {
-    const { state, home } = seedHome();
-    const customDir = join(home, 'config', 'stack');
-    mkdirSync(customDir, { recursive: true });
-    writeFileSync(
-      join(customDir, 'custom.compose.yml'),
-      'services:\n  myaddon:\n    image: example/myaddon:1.0\n    secrets:\n      - guardian_admin_token\n',
-    );
+	it('does not enforce the removed Compose secret audit', async () => {
+		const { state, home } = seedHome();
+		const customDir = join(home, 'config', 'stack');
+		mkdirSync(customDir, { recursive: true });
+		writeFileSync(
+			join(customDir, 'custom.compose.yml'),
+			'services:\n  custom:\n    image: example/custom:1\n    environment:\n      CUSTOM_PASSWORD: operator-managed\n'
+		);
 
-    const result = await auditApplyState(state);
-    expect(result.errors.length).toBeGreaterThan(0);
-    expect(result.errors.join('\n')).toMatch(/myaddon is not allowed to mount secret guardian_admin_token/);
-  });
+		const result = await validateProposedState(state);
+		expect(result.errors).toEqual([]);
+	});
 });

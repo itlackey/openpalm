@@ -133,7 +133,7 @@ export default defineCommand({
   // unresolved, or `openpalm doctor` is useless for scripts that gate on it.
   // defineAction's own catch only fires on a THROWN error and always exits 1,
   // which can't express "ran fine, but here's what's wrong" — the same reason
-  // `scan`/`audit-secrets` also manage their own exit codes.
+  // `scan` also manages its own exit codes.
   async run({ args }) {
     let report: DoctorReport;
     try {

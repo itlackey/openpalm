@@ -134,8 +134,7 @@ op --profile addon.discord config --services
 ```
 
 Run `config --quiet` with the same profiles you will use for `up`. It catches
-Compose schema, interpolation, and merge errors, but it does not run OpenPalm's
-secret-boundary audit. Use `openpalm validate` and `openpalm audit-secrets` when
+Compose schema, interpolation, and merge errors. Use `openpalm validate` when
 the CLI is available.
 
 ## Common Operations
