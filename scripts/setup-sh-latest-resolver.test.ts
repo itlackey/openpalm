@@ -6,6 +6,18 @@ import { join } from 'node:path';
 const SETUP_SH_PATH = join(import.meta.dir, 'setup.sh');
 const setupShSource = readFileSync(SETUP_SH_PATH, 'utf8');
 
+// The two `powershellIt` tests below each spawn FOUR PowerShell processes in
+// sequence (two executables — pwsh and Windows PowerShell — times two cases),
+// and on the Windows runner a cold spawn costs on the order of a second. Under
+// bun's default 5s per-test budget that lands right on the boundary: one
+// observed CI run passed the ErrorActionPreference test at 4314ms while another
+// timed out the sibling test on the same commit, alternating which one failed.
+// The default was never a deliberate performance guard — no timeout was set in
+// this file at all — so raising it for exactly the process-spawning tests fixes
+// the flake without loosening any assertion. Wall-clock cost is unchanged on a
+// healthy runner; this only stops a slow one from being reported as a failure.
+const POWERSHELL_SPAWN_TIMEOUT_MS = 60_000;
+
 // setup.sh runs with `set -euo pipefail` (S1/M6): a pipeline extracted and
 // exercised WITHOUT those options can look correct while silently pinning
 // behavior the shipped script does not have — an empty-`grep` result that
@@ -273,7 +285,7 @@ describe('setup.ps1 CLI install failure propagation', () => {
 		} finally {
 			rmSync(dir, { recursive: true, force: true });
 		}
-	});
+	}, POWERSHELL_SPAWN_TIMEOUT_MS);
 });
 
 describe('setup.ps1 caller ErrorActionPreference', () => {
@@ -330,5 +342,5 @@ describe('setup.ps1 caller ErrorActionPreference', () => {
 		} finally {
 			rmSync(dir, { recursive: true, force: true });
 		}
-	});
+	}, POWERSHELL_SPAWN_TIMEOUT_MS);
 });
