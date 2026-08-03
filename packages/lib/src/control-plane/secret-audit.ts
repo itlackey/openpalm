@@ -158,6 +158,17 @@ function allowedSecretForService(serviceName: string, service: ComposeService, s
   if (serviceName === 'admin') {
     return /^(admin|ui|openpalm)_/.test(secretId);
   }
+  if (serviceName === 'tunnel') {
+    // ts_authkey (DELEGATED_SECRET_NAMES, secrets-files.ts) is a tailnet JOIN
+    // credential, not a `tunnel_`-prefixed secret — the naming convention the
+    // generic fallback below expects. tunnel also sits on portal_net (the
+    // trust-boundary exception explained atop services.compose.yml), which
+    // would otherwise make isPortalService() below misclassify it as a portal
+    // adapter and require a `portal_tunnel_`/`tunnel_` prefix it can never
+    // have. A single-secret grant, same shape as guardian's op_api_key rule
+    // above.
+    return secretId === 'ts_authkey';
+  }
   if (isPortalService(serviceName, service)) {
     return secretId.startsWith(`portal_${serviceId}_`) || secretId.startsWith(`${serviceId}_`);
   }

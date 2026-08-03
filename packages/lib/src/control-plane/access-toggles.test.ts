@@ -15,11 +15,13 @@ import {
   hasStoredAccessIntent,
   migrateLegacyAccessEnv,
   readAccessToggles,
+  remoteRequiresGuardianIngress,
   requiresAssistantKey,
   resolveAccessEnv,
   resolveAccessIntentEnv,
   RETIRED_BIND_KEYS,
 } from "./access-toggles.js";
+import type { RemoteTarget } from "./remote-access.js";
 
 const ALL_OFF = ACCESS_TOGGLE_DEFAULTS;
 const on = (overrides: Partial<AccessToggles>): AccessToggles => ({ ...ALL_OFF, ...overrides });
@@ -90,6 +92,112 @@ describe("resolveAccessEnv", () => {
     expect(env.OP_GUARDIAN_BIND_ADDRESS).toBe("0.0.0.0");
     expect(env.OP_API_BIND_ADDRESS).toBe("0.0.0.0");
     expect(env.OP_ASSISTANT_BIND_ADDRESS).toBe("127.0.0.1");
+  });
+});
+
+// ── resolveAccessEnv's second, optional argument (the `remote` addon's need) ──
+
+describe("resolveAccessEnv with no second argument", () => {
+  test("is byte-identical to the pre-`remote` output for all 16 toggle combinations", () => {
+    // The regression guard for every existing call site (setup.ts,
+    // config-persistence.ts, and every caller yet to be written): omitting
+    // opts must reproduce today's GUARDIAN_DIRECT_INGRESS-tracks-
+    // guardianNetwork-alone behaviour exactly, with no drift from a default
+    // argument value sneaking in.
+    for (let mask = 0; mask < 16; mask += 1) {
+      const toggles: AccessToggles = {
+        networkAccess: Boolean(mask & 1),
+        assistantDirect: Boolean(mask & 2),
+        guardianNetwork: Boolean(mask & 4),
+        guardianOpenaiApi: Boolean(mask & 8),
+      };
+      expect(resolveAccessEnv(toggles)).toEqual({
+        OP_UI_BIND_ADDRESS: toggles.networkAccess ? "0.0.0.0" : "127.0.0.1",
+        OP_ASSISTANT_BIND_ADDRESS: toggles.assistantDirect ? "0.0.0.0" : "127.0.0.1",
+        OP_GUARDIAN_BIND_ADDRESS: toggles.guardianNetwork ? "0.0.0.0" : "127.0.0.1",
+        OP_API_BIND_ADDRESS: toggles.guardianOpenaiApi ? "0.0.0.0" : "127.0.0.1",
+        OPENCODE_AUTH: toggles.assistantDirect ? "true" : "false",
+        GUARDIAN_DIRECT_INGRESS: toggles.guardianNetwork ? "true" : "false",
+      });
+    }
+  });
+});
+
+describe("resolveAccessEnv with guardianIngressRequired — the `remote` addon's need", () => {
+  test("guardianNetwork off + remote targeting guardian: ingress answers, LAN bind stays shut", () => {
+    // This is the whole point of the change: the tunnel reaches the guardian
+    // over portal_net, not the LAN bind, so the listener must answer without
+    // the bind moving.
+    const env = resolveAccessEnv(ALL_OFF, { guardianIngressRequired: true });
+    expect(env.GUARDIAN_DIRECT_INGRESS).toBe("true");
+    expect(env.OP_GUARDIAN_BIND_ADDRESS).toBe("127.0.0.1");
+  });
+
+  test("guardianNetwork off + remote targeting both: same — ingress answers, LAN bind stays shut", () => {
+    const env = resolveAccessEnv(ALL_OFF, { guardianIngressRequired: true });
+    expect(env.GUARDIAN_DIRECT_INGRESS).toBe("true");
+    expect(env.OP_GUARDIAN_BIND_ADDRESS).toBe("127.0.0.1");
+  });
+
+  test("guardianNetwork off + remote targeting assistant only: ingress stays shut", () => {
+    // remoteRequiresGuardianIngress(true, "assistant") is false — a tunnel
+    // that never reaches the guardian must not turn its listener on.
+    const env = resolveAccessEnv(ALL_OFF, { guardianIngressRequired: false });
+    expect(env.GUARDIAN_DIRECT_INGRESS).toBe("false");
+    expect(env.OP_GUARDIAN_BIND_ADDRESS).toBe("127.0.0.1");
+  });
+
+  test("guardianNetwork on: bind is LAN regardless of the remote addon", () => {
+    const withRemote = resolveAccessEnv(on({ guardianNetwork: true }), {
+      guardianIngressRequired: true,
+    });
+    const withoutRemote = resolveAccessEnv(on({ guardianNetwork: true }), {
+      guardianIngressRequired: false,
+    });
+    expect(withRemote.OP_GUARDIAN_BIND_ADDRESS).toBe("0.0.0.0");
+    expect(withoutRemote.OP_GUARDIAN_BIND_ADDRESS).toBe("0.0.0.0");
+    expect(withRemote.GUARDIAN_DIRECT_INGRESS).toBe("true");
+    expect(withoutRemote.GUARDIAN_DIRECT_INGRESS).toBe("true");
+  });
+
+  test("remote disabled (guardianIngressRequired: false) has no effect, whatever guardianNetwork is", () => {
+    expect(resolveAccessEnv(ALL_OFF, { guardianIngressRequired: false })).toEqual(
+      resolveAccessEnv(ALL_OFF),
+    );
+    expect(
+      resolveAccessEnv(on({ guardianNetwork: true }), { guardianIngressRequired: false }),
+    ).toEqual(resolveAccessEnv(on({ guardianNetwork: true })));
+  });
+
+  test("only GUARDIAN_DIRECT_INGRESS moves — every other key is unaffected by the option", () => {
+    for (let mask = 0; mask < 16; mask += 1) {
+      const toggles: AccessToggles = {
+        networkAccess: Boolean(mask & 1),
+        assistantDirect: Boolean(mask & 2),
+        guardianNetwork: Boolean(mask & 4),
+        guardianOpenaiApi: Boolean(mask & 8),
+      };
+      const without = resolveAccessEnv(toggles);
+      const withRequired = resolveAccessEnv(toggles, { guardianIngressRequired: true });
+      expect({ ...withRequired, GUARDIAN_DIRECT_INGRESS: without.GUARDIAN_DIRECT_INGRESS }).toEqual(
+        without,
+      );
+    }
+  });
+});
+
+describe("remoteRequiresGuardianIngress", () => {
+  test("truth table: true only when enabled AND the target reaches the guardian", () => {
+    const targets: RemoteTarget[] = ["assistant", "guardian", "both"];
+    const expected: Record<RemoteTarget, boolean> = {
+      assistant: false,
+      guardian: true,
+      both: true,
+    };
+    for (const target of targets) {
+      expect(remoteRequiresGuardianIngress(true, target)).toBe(expected[target]);
+      expect(remoteRequiresGuardianIngress(false, target)).toBe(false);
+    }
   });
 });
 

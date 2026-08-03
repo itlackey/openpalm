@@ -3,13 +3,17 @@
 #
 # Addon trust boundary (S.6b / D3(b)): addon services join addon_net, NOT
 # assistant_net, so a compromised addon image cannot reach the assistant's
-# OpenCode API (:4096) over a shared bridge. The only exception is ollama, which
-# the assistant reaches as its LLM provider over the Docker DNS name ollama:11434
-# — that inference path needs shared-network reachability, so ollama is granted
-# assistant_net per service. voice needs no assistant reachability at all BY
-# DEFAULT: the UI host process reaches it over its published loopback port
-# (127.0.0.1:8880), so voice stays on addon_net only here. An operator who turns
-# on OP_VOICE_LAN_ACCESS opts into the same per-service exception ollama has —
+# OpenCode API (:4096) over a shared bridge. The exceptions are ollama and
+# tunnel. ollama is reached by the assistant as its LLM provider over the
+# Docker DNS name ollama:11434 — that inference path needs shared-network
+# reachability, so ollama is granted assistant_net per service. tunnel is not
+# a general addon at all: it is an INGRESS PATH for the two first-party
+# services it fronts (assistant, guardian), never a third party's code, so it
+# gets the same per-service exception for the same reason — see the tunnel
+# service below. voice needs no assistant reachability at all BY DEFAULT: the
+# UI host process reaches it over its published loopback port (127.0.0.1:8880),
+# so voice stays on addon_net only here. An operator who turns on
+# OP_VOICE_LAN_ACCESS opts into the same per-service exception ollama has —
 # see voice.compose.lan.yml (this directory) for why that is not a boundary
 # weakening.
 
@@ -251,3 +255,143 @@ services:
     labels:
       openpalm.profile.label: AMD (ROCm 6.x)
       openpalm.profile.requires: amdgpu kernel module
+
+  tunnel:
+    profiles: ["addon.remote"]
+    # Pinned to a specific release PLUS its multi-arch manifest-list digest
+    # (same convention as ollama above), never `:latest` and never the
+    # `:stable` floating tag Tailscale itself recommends for this image — a
+    # floating tag means a plain `docker compose pull` silently re-points this
+    # INGRESS path at whatever Tailscale shipped that week, with no changelog
+    # review and no way to roll back to a known-good build. v1.98.10 was the
+    # newest tagged release at the time this was pinned; the digest was
+    # resolved from Docker Hub's registry API (not invented).
+    image: tailscale/tailscale:v1.98.10@sha256:cdf5612ded5be1344f1a704b8c5e53496db97376bb533e5e15f141e48bf60cc0
+    restart: unless-stopped
+    # IMG-7: cap json-file logs (30 MB/service ceiling). Docker's default
+    # driver is unbounded, which contributed to the production disk incident.
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    # Rootless, like every other service in the shipped stack (a convention
+    # portal-rootless.test.ts pins). The upstream image ships no USER
+    # directive and defaults to root, so this is a deliberate downgrade, and
+    # it needs TS_SOCKET below to work — see that comment. containerboot has
+    # no euid/setuid gate of its own; TS_USERSPACE=true is what removes
+    # tailscaled's need for CAP_NET_ADMIN/CAP_NET_RAW and /dev/net/tun, which
+    # are the only things that would genuinely force root here. Both bind
+    # mounts below are created operator-owned by ensureHomeDirs, the same
+    # precondition ollama's HOME dir relies on above.
+    user: "${OP_UID:-1000}:${OP_GID:-1000}"
+    # Becomes the tailnet node name — what shows up in `tailscale status` and
+    # what resolves at https://<hostname>.<tailnet>.ts.net. Sourced from
+    # OP_REMOTE_HOSTNAME so resolveRemoteHostname's project-name derivation
+    # (remote-access.ts) and this container's actual registered name can never
+    # drift apart from each other.
+    hostname: ${OP_REMOTE_HOSTNAME:-openpalm}
+    environment:
+      # `file:` is resolved by `tailscale up` itself, at the moment it reads
+      # this var — the key is read from the mounted secret file and used once,
+      # so it never lands in stack.env, container argv, or `docker inspect`'s
+      # environment dump the way a literal value would.
+      TS_AUTHKEY: file:/run/secrets/ts_authkey
+      # Tailscale's ipn.ServeConfig JSON document (resolveServeConfig in
+      # remote-access.ts derives its contents), inside the mounted /config
+      # directory — see the volumes comment below for why /config has to be a
+      # directory mount, not a file mount, for this path to actually work.
+      TS_SERVE_CONFIG: /config/serve.json
+      # Tailnet node identity + keys, persisted across restarts — see the
+      # volumes comment below for why /var/lib/tailscale also has to be a
+      # directory mount.
+      TS_STATE_DIR: /var/lib/tailscale
+      # REQUIRED because of the rootless `user:` above. tailscaled's default
+      # LocalAPI socket is /var/run/tailscale/tailscaled.sock, and /var/run is
+      # root-owned, so a non-root tailscaled cannot create that directory and
+      # fails to start. containerboot threads TS_SOCKET straight through as
+      # `--socket=` to both tailscaled AND every `tailscale` CLI call it makes
+      # (cmd/containerboot/tailscaled.go), so pointing it at a writable path
+      # is the whole fix. containerboot still tries to symlink this back to
+      # the default location for CLI convenience and only warns when it
+      # cannot — non-fatal, and expected here.
+      #
+      # CONSEQUENCE FOR CALLERS: anything shelling into this container must
+      # pass the socket explicitly, e.g.
+      #   docker compose exec -T tunnel tailscale --socket=/tmp/tailscaled.sock status --json
+      # A bare `tailscale status` looks at the default path, finds nothing,
+      # and reports the tunnel as down even when it is healthy.
+      TS_SOCKET: /tmp/tailscaled.sock
+      # The default, stated explicitly (so a future Tailscale default change
+      # can't silently flip this addon's operating mode). Keeps this sidecar
+      # off /dev/net/tun and away from NET_ADMIN entirely: zero extra Linux
+      # capabilities, zero device mounts. That is also what makes the tunnel
+      # work unmodified on Docker Desktop for Mac/Windows, where there is no
+      # real host network namespace to grant a TUN device into.
+      TS_USERSPACE: "true"
+      # Turns on containerboot's built-in HTTP health endpoint so container
+      # health is observable the same way every other service in this file is
+      # (`docker compose ps`, `docker inspect`) instead of "process is still
+      # running" being the only signal available.
+      TS_ENABLE_HEALTH_CHECK: "true"
+    volumes:
+      # Both mounts MUST be DIRECTORIES, never a bind of a single file at its
+      # final path, for two independent reasons:
+      #   1. containerboot registers an fsnotify watch on the DIRECTORY
+      #      holding TS_SERVE_CONFIG and hard-fails at startup if that watch
+      #      cannot be added — there is no directory to watch if /config
+      #      itself is a single-file mount.
+      #   2. The control plane rewrites serve.json with the same atomic
+      #      temp-file + rename pattern (writeFileAtomic) used everywhere else
+      #      in this codebase. A single-file bind mount pins the CONTAINER's
+      #      view to the inode that existed at container-create time; a
+      #      rename-based rewrite replaces that inode on the HOST side, and a
+      #      container that mounted the old file directly keeps reading the
+      #      stale, now-unlinked copy forever. Mounting the parent directory
+      #      instead means the container resolves the path fresh on every
+      #      read and sees the rename.
+      - ${OP_HOME}/system/stack/remote:/config
+      - ${OP_HOME}/data/tunnel:/var/lib/tailscale
+    secrets: [ts_authkey]
+    # Reaches BOTH possible targets — the per-service trust-boundary exception
+    # explained at the top of this file, restated here: assistant_net to dial
+    # http://assistant:3000, and portal_net because guardian (the OTHER
+    # possible target, at http://guardian:3830) lives on portal_net, not on
+    # assistant_net — see portals.compose.yml. Which target(s) are actually
+    # proxied at runtime is decided by OP_REMOTE_TARGET / resolveServeConfig
+    # (remote-access.ts), not by network membership; this line only grants the
+    # reachability either choice might need.
+    networks: [assistant_net, portal_net]
+    # NO ports: block, deliberately. This sidecar publishes NOTHING on the
+    # host — it only dials OUT to Tailscale's coordination servers and relays
+    # inbound tailnet traffic back over that same outbound connection. LAN
+    # exposure (OP_UI_BIND_ADDRESS / OP_GUARDIAN_BIND_ADDRESS) and tailnet/
+    # internet exposure (this addon) are meant to compose independently, and
+    # never publishing a host port here is what keeps them orthogonal: turning
+    # `remote` on can never widen what is reachable on the LAN, because it
+    # changes nothing about the host's published bind addresses.
+    #
+    # NO depends_on: either. guardian is profile-gated (portals.compose.yml,
+    # profiles: addon.chat/addon.api/addon.discord/addon.slack/addon.gateway)
+    # and is routinely excluded from a given `--profile` selection. A
+    # depends_on naming a service that the active profile set excludes is a
+    # project-level Compose PARSE error — it breaks `docker compose ps` and
+    # `docker compose down` for the ENTIRE stack, not just this service. tunnel
+    # dials out and retries its connection to whichever target(s) are
+    # configured on its own, so it does not need to wait on either one being
+    # up first.
+
+secrets:
+  # `ts_authkey` is a DELEGATED secret (packages/lib/src/control-plane/
+  # secrets-files.ts DELEGATED_SECRET_NAMES) — it lives under private/secrets/,
+  # NOT knowledge/secrets/, because it is a tailnet JOIN credential: anything
+  # that can read it can enroll an arbitrary device onto the operator's own
+  # tailnet, which reaches every other device the operator has signed in
+  # there, not just this assistant. It must stay out of the assistant-visible
+  # /stash tree the same way the guardian/portal secrets do. Declared here
+  # (not only referenced) so this file stands alone for `docker compose
+  # config` when services.compose.yml is the only file naming the secret in a
+  # given invocation — same reasoning as opencode_server_password in
+  # portals.compose.yml.
+  ts_authkey:
+    file: ${OP_HOME}/private/secrets/ts_authkey
