@@ -112,9 +112,17 @@ describe('computeServerRuntimeContext — admin flag reflects the env', () => {
 });
 
 describe('computeServerRuntimeContext — PWA install origin', () => {
-  test('does not advertise installation from the assistant container UI', () => {
+  test('advertises installation from the assistant container UI — the one published listener', () => {
+    // OP_UI_NO_LOCAL_VOICE marks a process with no path to a voice container.
+    // It used to double as the PWA gate, which hid the install affordance from
+    // the exact origin a phone visits.
     process.env.OP_UI_NO_LOCAL_VOICE = '1';
-    expect(computeServerRuntimeContext(makeEvent()).serverCapabilities).not.toContain('pwa:install');
+    expect(computeServerRuntimeContext(makeEvent()).serverCapabilities).toContain('pwa:install');
+  });
+
+  test('advertises installation with a voice path too — the two are unrelated', () => {
+    delete process.env.OP_UI_NO_LOCAL_VOICE;
+    expect(computeServerRuntimeContext(makeEvent()).serverCapabilities).toContain('pwa:install');
   });
 });
 

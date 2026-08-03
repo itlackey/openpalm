@@ -84,7 +84,11 @@ on-disk package version in the published tarball.
 
 - Uses the same `@openpalm/ui` build
 - Caches only hashed/static assets; navigation, API, auth, and SSE stay network-only
-- Installs from the local `openpalm app` origin or an operator-provided HTTPS origin
+- Installs from any origin the browser treats as secure: the local `openpalm app`
+  origin, `http://localhost`, or an operator-provided HTTPS origin. Every process
+  advertises `pwa:install`, including the assistant container's UI child; a
+  plain-HTTP LAN address is not a secure context, so the browser offers no
+  install there and the settings affordance says so rather than staying silent
 
 ## Failure Policy
 

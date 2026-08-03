@@ -52,6 +52,29 @@ export function hasSameLoopbackPort(first: string, second: string): boolean {
   }
 }
 
+/**
+ * True when `rawUrl` resolves back to the app's own origin — which, for the
+ * locked default connection, means the same-origin `/oc` pass-through.
+ *
+ * That path is an OpenCode **API** proxy, never its web UI. OpenCode's web UI
+ * is a root-mounted SPA: it resolves `/assets/*`, `/api/*`, `/global/*` and its
+ * bare API paths against `location.origin`, ignoring any prefix the document
+ * was served under (its stored server URL is normalized to an origin too). So
+ * a connection pointing at this origin cannot be embedded as a UI — the frame
+ * would load an index.html whose every subsequent request lands on OpenPalm.
+ *
+ * `pageOrigin` is `location.origin`-shaped; a null/empty origin (SSR, tests)
+ * answers false, since there is no app origin to collide with.
+ */
+export function isAppOriginUrl(rawUrl: string, pageOrigin: string | null | undefined): boolean {
+  if (!pageOrigin) return false;
+  try {
+    return new URL(rawUrl, pageOrigin).origin === pageOrigin;
+  } catch {
+    return false;
+  }
+}
+
 export type ConnectionUrlVerdict =
   | { ok: true }
   | { ok: false; reason: 'invalid-url'; message: string }

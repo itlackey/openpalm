@@ -5,6 +5,7 @@ export type PwaInstallStatus =
 	| 'accepted'
 	| 'dismissed'
 	| 'installed'
+	| 'insecure-origin'
 	| 'ios';
 
 type InstallChoice = { outcome: 'accepted' | 'dismissed' };
@@ -90,8 +91,26 @@ class PwaInstallService {
 		return this.#displayMode?.matches === true || navigatorWithStandalone.standalone === true;
 	}
 
+	/**
+	 * No install prompt is pending. Say WHY when the reason is knowable.
+	 *
+	 * The common one on a home install is the origin: browsers only offer
+	 * installation from a secure context, and the LAN address a phone uses
+	 * (`http://192.168.x.x:3800`) is not one — loopback is, and https is.
+	 * Without this branch the affordance said "use your browser's install
+	 * option when it is available" on an origin where it never becomes
+	 * available, which reads as a broken app rather than a browser rule.
+	 */
 	#showFallback(): void {
-		this.status = this.#isIosSafari() ? 'ios' : 'idle';
+		if (this.#isIosSafari()) {
+			this.status = 'ios';
+			return;
+		}
+		this.status = this.#isSecureOrigin() ? 'idle' : 'insecure-origin';
+	}
+
+	#isSecureOrigin(): boolean {
+		return window.isSecureContext !== false;
 	}
 
 	#isIosSafari(): boolean {

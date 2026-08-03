@@ -27,9 +27,8 @@ export function isAdminCapable(): boolean {
   return process.env.OP_INSIDE_ELECTRON === '1' || process.env.OP_ENABLE_ADMIN === '1';
 }
 
-/** Base capabilities for host-served UI processes. The browser owns
- * connections uniformly; the assistant-container co-process omits only the
- * canonical-host PWA install affordance below. */
+/** Base capabilities granted to EVERY UI process. The browser owns connections
+ * uniformly, and every build ships the same installable artifact. */
 const BASE_CAPABILITIES: readonly Capability[] = [
   'chat',
   'connections:read',
@@ -127,12 +126,19 @@ export function computeVoiceRuntime(): { url: string } | undefined {
 
 export function computeServerRuntimeContext(event: RequestEvent): ServerRuntimeContext {
   const admin = isAdminCapable();
-  const baseCapabilities = process.env.OP_UI_NO_LOCAL_VOICE === '1'
-    ? BASE_CAPABILITIES.filter((capability) => capability !== 'pwa:install')
-    : [...BASE_CAPABILITIES];
+  // `pwa:install` used to be filtered out when OP_UI_NO_LOCAL_VOICE=1. That
+  // flag says one thing only — this process has no network path to a voice
+  // container — and using it as a PWA gate hid the install affordance from
+  // the assistant container's UI co-process: THE listener a home install
+  // publishes, and the only origin a phone or tablet ever visits. (It also
+  // meant granting LAN voice silently handed the install button back.) Every
+  // build ships the same manifest, icons and service worker, so every process
+  // advertises the capability; whether the BROWSER will actually offer an
+  // install is a client-side question about the origin (secure context) that
+  // the install affordance itself answers.
   const serverCapabilities: Capability[] = admin
-    ? [...baseCapabilities, ...HOST_CAPABILITIES]
-    : baseCapabilities;
+    ? [...BASE_CAPABILITIES, ...HOST_CAPABILITIES]
+    : [...BASE_CAPABILITIES];
   return {
     version: 2,
     admin,
