@@ -11,6 +11,10 @@ type TestInstallPromptEvent = Event & {
 };
 
 const originalMatchMedia = window.matchMedia;
+const originalIsSecureContext = Object.getOwnPropertyDescriptor(window, 'isSecureContext') ?? {
+	configurable: true,
+	value: window.isSecureContext,
+};
 const originalUserAgent = Object.getOwnPropertyDescriptor(navigator, 'userAgent');
 const originalPlatform = Object.getOwnPropertyDescriptor(navigator, 'platform');
 const originalMaxTouchPoints = Object.getOwnPropertyDescriptor(navigator, 'maxTouchPoints');
@@ -168,6 +172,26 @@ describe('PwaInstall', () => {
 
 		await expect.element(page.getByText(/tap Share, then/i)).toBeVisible();
 		await expect.element(page.getByText('Add to Home Screen')).toBeVisible();
+	});
+
+	test('explains the origin when the browser can never offer an install here', async () => {
+		Object.defineProperty(window, 'isSecureContext', { configurable: true, value: false });
+		try {
+			pwaInstallService.init();
+			render(PwaInstall);
+
+			await expect.element(page.getByText(/only install apps from a secure address/i)).toBeVisible();
+			await expect.element(page.getByRole('link', { name: 'Set up HTTPS' })).toBeVisible();
+		} finally {
+			Object.defineProperty(window, 'isSecureContext', originalIsSecureContext);
+		}
+	});
+
+	test('keeps the generic hint on a secure origin with no prompt yet', async () => {
+		pwaInstallService.init();
+		render(PwaInstall);
+
+		await expect.element(page.getByText(/Use your browser's install option/i)).toBeVisible();
 	});
 
 	test('removes browser and display-mode listeners when the root service is disposed', () => {

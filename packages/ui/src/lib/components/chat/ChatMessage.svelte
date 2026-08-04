@@ -207,6 +207,9 @@
     color: var(--s-ink-2);
     max-width: 80%;
     text-wrap: pretty;
+    /* A pasted path, token, or URL has no break opportunity; without this it
+       sets the min-content width of the whole thread. */
+    overflow-wrap: anywhere;
     border-width: 0 0 var(--s-hair);
     border-style: solid;
     border-color: var(--s-line);
@@ -227,7 +230,9 @@
     letter-spacing: 0.002em;
     color: var(--s-ink);
     text-wrap: pretty;
+    overflow-wrap: anywhere;
     width: 100%;
+    min-width: 0;
     max-width: var(--s-measure-whisper);
     opacity: 0;
     transition: opacity var(--s-t-bloom) var(--s-ease);
@@ -274,6 +279,10 @@
     color: var(--s-ink-2);
     overflow-x: auto;
     white-space: pre-wrap;
+    /* Prose breaks anywhere (see .master-words) so a long token can't shear
+       off the viewport; code must not, or a command wraps mid-flag. The block
+       scrolls on its own instead — it is its own overflow context. */
+    overflow-wrap: normal;
   }
   .master-words :global(pre code) {
     font-size: inherit;

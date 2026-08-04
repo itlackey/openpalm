@@ -1,10 +1,19 @@
 import type { LayoutServerLoad } from './$types';
-import { computeServerRuntimeContext, computeVoiceRuntime } from '$lib/server/features.js';
+import {
+  computeOpencodeWorkspace,
+  computeServerRuntimeContext,
+  computeVoiceRuntime,
+} from '$lib/server/features.js';
 
 export const load: LayoutServerLoad = (event) => {
   const serverRuntimeContext = computeServerRuntimeContext(event);
   const voice = computeVoiceRuntime();
+  const opencodeWorkspace = computeOpencodeWorkspace();
   return {
-    serverRuntimeContext: voice ? { ...serverRuntimeContext, voice } : serverRuntimeContext,
+    serverRuntimeContext: {
+      ...serverRuntimeContext,
+      ...(voice ? { voice } : {}),
+      ...(opencodeWorkspace ? { opencodeWorkspace } : {}),
+    },
   };
 };

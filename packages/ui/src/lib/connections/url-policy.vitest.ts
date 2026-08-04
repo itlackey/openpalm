@@ -10,10 +10,36 @@
 import { describe, expect, test } from 'vitest';
 import {
   hasSameLoopbackPort,
+  isAppOriginUrl,
   redactUrlUserinfo,
   TLS_GUIDE_URL,
   validateConnectionUrl,
 } from './url-policy.js';
+
+describe('isAppOriginUrl — the /oc pass-through is not an embeddable UI origin', () => {
+  test('recognizes the resolved same-origin proxy connection', () => {
+    expect(isAppOriginUrl('http://192.168.0.201:3800/oc', 'http://192.168.0.201:3800')).toBe(true);
+  });
+
+  test('recognizes the unresolved root-relative seed', () => {
+    expect(isAppOriginUrl('/oc', 'http://192.168.0.201:3800')).toBe(true);
+  });
+
+  test('leaves a remote assistant on another host, port, or scheme alone', () => {
+    for (const raw of [
+      'http://192.168.0.42:3800/oc',
+      'http://192.168.0.201:3810',
+      'https://192.168.0.201:3800/oc',
+    ]) {
+      expect(isAppOriginUrl(raw, 'http://192.168.0.201:3800'), raw).toBe(false);
+    }
+  });
+
+  test('answers false without an app origin (SSR)', () => {
+    expect(isAppOriginUrl('http://192.168.0.201:3800/oc', null)).toBe(false);
+    expect(isAppOriginUrl('/oc', '')).toBe(false);
+  });
+});
 
 describe('hasSameLoopbackPort', () => {
   test('treats localhost, IPv4, and IPv6 loopback aliases on the same port as equivalent', () => {

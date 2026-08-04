@@ -13,7 +13,8 @@
   import { endpointsService } from '$lib/endpoints-state.svelte.js';
   import { chat } from '$lib/chat/chat-state.svelte.js';
   import { getTransport } from '$lib/connections/boot.js';
-  import { isLoopbackHost } from '$lib/connections/url-policy.js';
+  import { isEmbeddableOpencodeUi, resolveWorkspaceUrl } from './embeddable.js';
+  import { getRuntimeContext } from '$lib/runtime-context.svelte.js';
   import { onConnectionActivated } from '$lib/connection-events.js';
   import { resolveSessionTitle } from '$lib/session-title.js';
   import { themeService } from '$lib/theme-state.svelte.js';
@@ -25,9 +26,25 @@
   //     embeds in an iframe pointed straight at connection.baseUrl;
   //   - a credentialed / Guardian connection can't carry Basic auth into an
   //     iframe, so we render the native chat surface (the existing chat
-  //     components against the direct transport) instead of a dead-end.
+  //     components against the direct transport) instead of a dead-end;
+  //   - the locked default connection now points at THIS app's own `/oc`
+  //     pass-through, which is an OpenCode API proxy and not its web UI (see
+  //     ./embeddable.ts) — that is the native surface too. Framing it produced
+  //     exactly the dead-end this classification exists to avoid: the app's own
+  //     `X-Frame-Options: DENY` refused the frame, and even without that header
+  //     the SPA inside resolves every asset and API call against the origin
+  //     root, where OpenPalm answers rather than OpenCode.
 
+  const runtimeContext = getRuntimeContext();
   const active = $derived(endpointsService.active);
+  /**
+   * OpenCode's own web UI as a top-level page, when this browser can reach it.
+   * Offered wherever the frame isn't available — a new tab has none of the
+   * framing restrictions, so it works in deployments the iframe cannot serve.
+   */
+  const workspaceUrl = $derived(
+    resolveWorkspaceUrl(runtimeContext.opencodeWorkspace, { hostname: page.url.hostname }),
+  );
   const requestedSessionId = $derived(page.url.searchParams.get('session'));
   const requestedAssistantId = $derived(page.url.searchParams.get('assistant'));
 
@@ -53,24 +70,12 @@
     activeSession ? resolveSessionTitle(activeSession.title) : 'OpenPalm conversation',
   );
 
-  /**
-   * Can this connection's OpenCode web UI ride in an iframe? Only when it needs
-   * no credentials (none attached, no URL userinfo) AND the browser won't block
-   * it as mixed content (loopback, or same http(s) scheme as this app).
-   */
+  /** See embeddable.ts for the three rules this decision encodes. */
   function isEmbeddable(conn: { baseUrl: string; hasPassword: boolean }): boolean {
-    if (conn.hasPassword) return false;
-    try {
-      const url = new URL(conn.baseUrl);
-      if (url.protocol !== 'http:' && url.protocol !== 'https:') return false;
-      if (url.username || url.password) return false;
-      if (isLoopbackHost(url.hostname)) return true;
-      // Mixed content: an https app can't embed a plain-http remote target.
-      if (page.url.protocol === 'https:' && url.protocol === 'http:') return false;
-      return true;
-    } catch {
-      return false;
-    }
+    return isEmbeddableOpencodeUi(conn, {
+      origin: page.url.origin,
+      protocol: page.url.protocol,
+    });
   }
 
   function isCurrentProbe(token: number, connectionId: string): boolean {
@@ -258,11 +263,24 @@
         {/if}
       </div>
     {:else if mode === 'native'}
-      <!-- Credentialed / Guardian connection: OpenPalm keeps Basic auth out of
-           iframe URLs, so the embedded OpenCode UI can't authenticate. -->
+      <!-- No embeddable OpenCode web UI for this connection: either it is
+           credentialed (OpenPalm keeps Basic auth out of iframe URLs, so the
+           embedded UI could not authenticate) or it is this app's own /oc API
+           pass-through, which is not a UI origin. Both keep the conversation
+           on the native surface rather than framing a dead end. -->
       <div class="native-shell">
         <section class="native-chat" aria-label="Chat with {active?.label ?? 'your assistant'}">
           <div class="native-scroll">
+            <p class="native-notice" role="note">
+              The OpenCode workspace can’t be embedded for this assistant — this conversation
+              runs on OpenPalm’s own surface.
+              {#if workspaceUrl}
+                <!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- OpenCode's own origin, composed from the server's published-port advertisement -->
+                <a href={workspaceUrl} target="_blank" rel="noopener noreferrer"
+                  >Open the workspace in a new tab</a
+                >
+              {/if}
+            </p>
             {#if chat.entriesLoading}
               <p class="native-status" role="status">Loading conversation…</p>
             {:else if chat.entries.length === 0}
@@ -316,6 +334,12 @@
             {reconnecting ? 'Reconnecting…' : 'Reconnect'}
           </button>
           <a class="btn btn-secondary btn-lg" href={resolvePath('/connections')}>Manage connection</a>
+          {#if workspaceUrl}
+            <!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- OpenCode's own origin, composed from the server's published-port advertisement -->
+            <a class="workspace-link" href={workspaceUrl} target="_blank" rel="noopener noreferrer"
+              >Open the OpenCode workspace in a new tab</a
+            >
+          {/if}
         {/if}
       </div>
     {/if}
@@ -388,13 +412,18 @@
     to { transform: rotate(360deg); }
   }
 
+  /* min-width: 0 on both: a flex item's default min-width is its MIN-CONTENT
+     width, so one unbreakable run of text in a message would otherwise push
+     this column past the viewport (same rule as ConversationFrame's content). */
   .native-shell {
     flex: 1;
+    min-width: 0;
     min-height: 0;
     display: flex;
   }
   .native-chat {
     flex: 1;
+    min-width: 0;
     min-height: 0;
     display: flex;
     flex-direction: column;
@@ -415,6 +444,33 @@
     color: var(--s-ink-2);
     text-align: center;
     margin: var(--s-sp-6) 0;
+  }
+  /* The composer sits directly under the scrolling thread here (the chat page
+     nests it inside ChatFooter, which supplies this separation). Without a
+     rule the last line of a message reads as part of the input. */
+  .native-chat :global(.s-composer) {
+    border-top: var(--s-hair) solid var(--s-line);
+    padding: var(--s-sp-3) var(--s-sp-4);
+  }
+  .native-notice {
+    margin: 0 0 var(--s-sp-2);
+    color: var(--s-ink-3);
+    font-family: var(--s-font-mono);
+    font-size: var(--s-type-mark);
+    line-height: 1.5;
+    text-align: center;
+    overflow-wrap: anywhere;
+  }
+  .native-notice a,
+  .workspace-link {
+    color: var(--s-ink-2);
+    text-decoration: underline;
+    text-underline-offset: 0.15em;
+    overflow-wrap: anywhere;
+  }
+  .workspace-link {
+    font-family: var(--s-font-mono);
+    font-size: var(--s-type-mark);
   }
   .native-pending {
     white-space: pre-wrap;

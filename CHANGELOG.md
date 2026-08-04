@@ -9,6 +9,48 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **Chat no longer shears off the right edge on a phone.** A message containing
+  one unbreakable run of text — a path, a token, a URL — set the min-content
+  width of the whole conversation column, which a flex item's default
+  `min-width: auto` then refused to shrink. The chat surface locks the document,
+  so the surplus width was clipped rather than scrollable and the text was
+  simply unreadable. The layout chain now refuses to grow past the viewport and
+  message prose wraps anywhere it must; code blocks keep their own horizontal
+  scroll instead of breaking a command mid-flag.
+- **Advanced stops framing a dead page.** The locked default connection points
+  at the same-origin `/oc` pass-through, which proxies OpenCode's API — not its
+  web UI, a root-mounted SPA that resolves every asset and API call against the
+  origin root regardless of the path it was served under. Framing it showed
+  "refused to connect" (the app's own `X-Frame-Options: DENY`). Advanced now
+  classifies that connection as non-embeddable and runs the conversation on
+  OpenPalm's own surface, which reaches the same OpenCode through the same
+  proxy; a connection that IS a reachable, credential-free OpenCode origin is
+  still embedded as before — including the `127.0.0.1:${OP_ASSISTANT_PORT}`
+  entry local discovery adds on a desktop install, which is why the desktop
+  workspace keeps working unchanged.
+
+### Added
+
+- **Advanced can open the OpenCode workspace in a new tab.** Where the frame
+  isn't available — the locked `/oc` connection, a credentialed one, or an
+  https page facing a plain-http assistant — the surface now offers the
+  workspace as a top-level page, which is exempt from `X-Frame-Options`,
+  `frame-src`, and mixed-content blocking and therefore works in deployments an
+  iframe cannot serve. The server advertises `opencodeWorkspace` (the published
+  assistant port plus whether that publish is loopback-only) and the browser
+  composes the address from the host it actually visited, so a LAN client is
+  never handed a loopback address that resolves to its own device. Absent when
+  OpenCode requires Basic auth, since neither a frame nor a tab can carry that
+  credential.
+- **The published UI advertises PWA installation again.** `pwa:install` was
+  filtered out whenever `OP_UI_NO_LOCAL_VOICE=1`, which is set for the assistant
+  container's UI co-process — the one listener a home install publishes, and the
+  only origin a phone visits — so the install affordance was hidden exactly
+  where it was wanted (and would have reappeared by enabling LAN voice). Voice
+  reachability no longer gates installation, and when the browser cannot offer
+  an install because the page is on a plain-HTTP LAN address, the affordance now
+  says so and names the address instead of suggesting a menu item that never
+  appears.
 - **Release publication uses one immutable tested candidate.** The release
   orchestrator stamps and bundles one candidate commit, tests it with the frozen
   lockfile, pushes it with a base-SHA lease, and restores that exact bundle in

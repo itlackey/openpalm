@@ -712,6 +712,7 @@
 	.s-chat-content {
 		position: relative;
 		display: flex;
+		min-width: 0;
 		min-height: 0;
 		flex: 1;
 	}
@@ -744,6 +745,7 @@
 		position: relative;
 		z-index: 10;
 		flex: 1;
+		min-width: 0;
 		min-height: 0;
 		overflow-y: auto;
 		overflow-x: hidden;
@@ -785,6 +787,9 @@
 		color: var(--s-ink-2);
 		max-width: 80%;
 		text-wrap: pretty;
+		/* A pasted path, token, or URL has no break opportunity; without this it
+		   sets the min-content width of the whole thread. */
+		overflow-wrap: anywhere;
 		border-width: 0 0 var(--s-hair);
 		border-style: solid;
 		border-color: color-mix(in srgb, var(--s-ink) 10%, transparent);
@@ -804,12 +809,20 @@
 		letter-spacing: 0.002em;
 		color: var(--s-ink);
 		text-wrap: pretty;
+		overflow-wrap: anywhere;
 		max-width: 80%;
 		border-width: var(--s-hair) 0 3px;
 		border-style: solid;
 		border-color: color-mix(in srgb, var(--s-ink) 9%, transparent);
 		border-radius: 20px;
 		padding: var(--s-sp-3) var(--s-sp-4) var(--s-sp-4);
+	}
+
+	/* Prose breaks anywhere (above) so a long token can't shear off the
+	   viewport; code must not, or a command wraps mid-flag. */
+	:global(.master-words pre) {
+		overflow-x: auto;
+		overflow-wrap: normal;
 	}
 
 	:global(.master-words p) {

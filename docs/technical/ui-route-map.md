@@ -86,7 +86,7 @@ router, which 404s because the route tree is deleted.
 | `/login` | Entry | public | Password login; posts to `/api/auth/login`, which issues the `op_session` cookie |
 | `/setup` | Host | setup localhost | First-run wizard; `?rerun=1` after completion requires admin auth |
 | `/chat` | Assistant | auth | Stillness chat; own corner chrome (hides the navbar); imports domain clients directly, never the `$lib/api.js` barrel (#555) |
-| `/advanced` | Assistant | auth | Embedded OpenCode web UI; mounts `ChatNavbar` (chat chrome composition) |
+| `/advanced` | Assistant | auth | Embedded OpenCode web UI when the active connection is a reachable, credential-free OpenCode ORIGIN (`embeddable.ts`) — the case a desktop install gets from local discovery (`127.0.0.1:${OP_ASSISTANT_PORT}`). The locked `/oc` same-origin connection and credentialed ones get the native chat surface instead, since OpenCode's UI is a root-mounted SPA and cannot be framed from a path prefix; where the server advertises `opencodeWorkspace` the surface also offers the workspace as a new tab, which has none of the framing restrictions. Mounts `ChatNavbar` (chat chrome composition) |
 | `/connections` | Connection | auth (page); `connections:manage` UX-gates the manager | Connection manager over the browser-owned (IndexedDB) list; Add and pairing deep links continue to `/connections/new` |
 | `/connections/new` | Connection | narrow pre-auth first-run lane | Pairing-first remote onboarding wizard. It verifies the candidate before browser persistence, stores it as active, and continues to Chat; manual address entry is the secondary path |
 | `/host` | Host | host capability gate + auth | Dashboard (tabbed); mounts the chat-free `Navbar` shell (#555); honors `?tab=diagnostics` (Systems tab) |
