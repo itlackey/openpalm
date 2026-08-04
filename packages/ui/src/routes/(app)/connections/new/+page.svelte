@@ -296,7 +296,13 @@
 		submitting = false;
 		if (backToChoice) {
 			// The welcome choice was retired into this page, so Back steps back a
-			// screen instead of navigating to a route that no longer exists.
+			// screen instead of navigating to a route that no longer exists. Unlike
+			// the navigating branch below, the component stays mounted — so the
+			// failed attempt's error has to be cleared here or it greets the user
+			// again the moment they re-enter the connect flow.
+			errorMessage = '';
+			guideUrl = null;
+			disclosureCandidate = null;
 			choiceMade = false;
 			return;
 		}

@@ -163,6 +163,27 @@ describe('/connections/new focus and navigation', () => {
     expect(mocks.goto, 'Back is a step, not a navigation').not.toHaveBeenCalled();
   });
 
+  // Back keeps the component mounted here, so a failed attempt's error would
+  // survive the step back and greet the user again on the way in.
+  test('does not carry a failed attempt error back into the connect flow', async () => {
+    mocks.appPage.url = new URL('http://localhost/connections/new?onboarding=1');
+    mocks.runtimeContext.effectiveCapabilities = ['host:setup'];
+    await render(NewConnectionPage);
+
+    await page.getByText('Connect to an existing OpenPalm').click();
+    await page.getByRole('button', { name: 'Enter an address instead' }).click();
+    await page.getByRole('textbox', { name: 'Name', exact: true }).fill('Home');
+    await page.getByRole('textbox', { name: 'Address' }).fill('https://openpalm.example/oc');
+    await page.getByRole('button', { name: 'Connect' }).click();
+    await expect.element(page.getByRole('alert')).toHaveTextContent(/could not reach/i);
+
+    await page.getByRole('button', { name: 'Back', exact: true }).click();
+    await expect.element(page.getByText('Set up OpenPalm on this computer')).toBeVisible();
+
+    await page.getByText('Connect to an existing OpenPalm').click();
+    await expect.element(page.getByRole('alert')).not.toBeInTheDocument();
+  });
+
   // A client build has no stack to install, so it never sees the question and
   // goes straight to the connect form.
   test('does not offer the local-install choice on client-only onboarding', async () => {
