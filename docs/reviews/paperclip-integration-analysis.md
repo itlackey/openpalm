@@ -169,7 +169,7 @@ work queues, self-organization, desktop app, third-party ticket integration.
 ## 2. What OpenPalm is, in the terms that matter here
 
 Verified against `docs/technical/core-principles.md` (marked authoritative),
-`design-intent.md`, and the source.
+`docs/technical/design-intent.md`, and the source.
 
 OpenPalm is a **host control plane over a Docker Compose stack** — "simply a set
 of conventions used to manage Docker compose overlay files, .env files, and
@@ -495,7 +495,8 @@ operator TLS problem.
 ## 8. Sources
 
 **OpenPalm** (`155c235`): `docs/technical/core-principles.md`,
-`design-intent.md`, `how-it-works.md`, `ui-route-map.md`, `api-spec.md`,
+`docs/technical/design-intent.md`, `docs/how-it-works.md`,
+`docs/technical/ui-route-map.md`, `docs/technical/api-spec.md`,
 `AGENTS.md`, `docs/portals/community-portals.md`,
 `packages/guardian/src/{ownership,state-db,admin,mcp,oc-path,openai-api}.ts`,
 `packages/lib/src/control-plane/{addon-ids,task-files,access-toggles}.ts`,

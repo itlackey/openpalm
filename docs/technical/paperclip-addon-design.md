@@ -148,7 +148,7 @@ an unpinned third-party image would silently change what the stack runs.
 | Secrets (compose names) | `portal_paperclip_secret`, `opencode_server_password` — file-consumable only by `@openpalm/paperclip-adapter`, which is our code (§5 explains why `op_api_key` cannot be delivered this way) |
 | `depends_on` | `paperclip-db: {condition: service_healthy}` only |
 | `user` | `"${OP_UID:-1000}:${OP_GID:-1000}"` — upstream's `docker-entrypoint.sh` detects a non-root start and execs directly, so this composes with the repo's rootless posture; the data dirs are pre-created operator-owned by `ensureHomeDirs` like every other bind |
-| Logging / health | repo-standard `json-file` caps (IMG-7); portal-style TCP healthcheck on `3100` with `start_period` |
+| Logging / health | repo-standard `json-file` caps — `max-size: "10m"`, `max-file: "3"` (30 MB/service ceiling; Docker's default driver is unbounded and every other service in this compose file already sets this cap); portal-style TCP healthcheck on `3100` with `start_period` |
 
 Host port `3840` is free in the documented `38xx` range (`3800` UI, `3810`
 assistant, `3821` compatible API, `3830`/`3831` guardian, `3880` host admin).
