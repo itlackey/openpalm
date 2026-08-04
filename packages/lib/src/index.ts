@@ -231,6 +231,8 @@ export { ADDON_ENV_RECREATE_SCOPE } from './control-plane/addon-env-schemas.js';
 // ── Setup Status ────────────────────────────────────────────────────────
 export {
   isSetupComplete,
+  readHostEnabled,
+  recordHostEnabled,
 } from "./control-plane/setup-status.js";
 // ── Launch Status (#440 — routing SSOT for UI + CLI) ──────────────────────
 export {

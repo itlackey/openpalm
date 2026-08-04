@@ -320,6 +320,11 @@ describe('cli main', () => {
 			expect(stateEnv).toMatch(new RegExp(`^OP_GUARDIAN_VERSION=${PLATFORM_VERSION}$`, 'm'));
 			expect(stateEnv).toMatch(new RegExp(`^OP_PORTAL_VERSION=${PLATFORM_VERSION}$`, 'm'));
 			expect(stateEnv).toMatch(/^OP_VOICE_VERSION=latest$/m);
+			// Typing `openpalm install` answers "does this machine host a stack".
+			// Recorded during file preparation, not after a successful deploy, so
+			// an interrupted install still explains why its artifacts are there —
+			// this ran with --no-start, i.e. nothing was ever deployed.
+			expect(stateEnv).toMatch(/^OP_HOST_ENABLED=true$/m);
 		} finally {
 			rmSync(base, { recursive: true, force: true });
 		}
