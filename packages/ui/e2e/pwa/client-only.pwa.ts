@@ -835,7 +835,7 @@ test('host-capable first run offers both branches and wizard Back returns to the
   await expect(page.getByRole('heading', { name: 'Welcome to OpenPalm' })).toBeVisible();
 
   await page.getByText(LOCAL_CHOICE_TEXT).click();
-  await expect(page).toHaveURL(`${HOST_UI_ORIGIN}/setup?from=start`);
+  await expect(page).toHaveURL(`${HOST_UI_ORIGIN}/setup`);
   await expect(page.getByRole('heading', { name: 'System Check' })).toBeVisible();
   await expect(page.getByText("Docker isn't installed yet.")).toBeVisible();
   await expect(page.getByRole('link', { name: 'Install Docker Engine for Linux' })).toBeVisible();
