@@ -65,14 +65,22 @@
 	 */
 	async function restoreActiveConnection(): Promise<void> {
 		if (!onboarding) return;
-		await connectionsService.load();
-		if (destroyed || connectionsService.error) return;
-		const active = connectionsService.endpoints.find(
-			(connection) => connection.id === connectionsService.activeId,
-		);
-		if (!active) return;
-		// eslint-disable-next-line svelte/no-navigation-without-resolve -- buildChatPath returns the validated internal Chat route
-		await goto(buildChatPath(null, active.id), { replaceState: true });
+		// Entirely best-effort: all this saves a returning browser is one screen,
+		// and the page behind it works without it. A store that cannot answer —
+		// unavailable, mid-migration, or simply empty — must leave the user on
+		// onboarding rather than surfacing as an unhandled rejection.
+		try {
+			await connectionsService.load();
+			if (destroyed || connectionsService.error) return;
+			const active = (connectionsService.endpoints ?? []).find(
+				(connection) => connection.id === connectionsService.activeId,
+			);
+			if (!active) return;
+			// eslint-disable-next-line svelte/no-navigation-without-resolve -- buildChatPath returns the validated internal Chat route
+			await goto(buildChatPath(null, active.id), { replaceState: true });
+		} catch {
+			// Stay on onboarding; the user can connect from here.
+		}
 	}
 
 	onMount(() => {
