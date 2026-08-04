@@ -22,6 +22,7 @@
   import ActivityTab from '$lib/components/admin/activity/ActivityTab.svelte';
   import AkmTab from '$lib/components/akm/AkmTab.svelte';
   import HostSharingSection from '$lib/components/akm/HostSharingSection.svelte';
+  import StackNotInstalled from '$lib/components/admin/StackNotInstalled.svelte';
   import { getRuntimeContext } from '$lib/runtime-context.svelte.js';
   import { hostReturnTo, hostTabFromUrl, hostUrlForTab } from './navigation.js';
 
@@ -38,6 +39,12 @@
   // an authenticated admin. A session that expires mid-operation surfaces as a
   // 401 on an in-page API call, handled by redirecting to /login.
   const runtimeContext = getRuntimeContext();
+
+  // `stackInstalled` comes from +page.server.ts, which resolves it on BOTH the
+  // SSR and client-navigation lanes. When false there is nothing to
+  // administer: the tabs, the loaders and the 10s container poll are all
+  // skipped in favour of a notice pointing at the wizard.
+  let { data }: { data: import('./$types').PageData } = $props();
 
   // ── Loading flags ───────────────────────────────────────────────────────────
   let healthLoading = $state(false);
@@ -300,6 +307,9 @@
   // ── Mount ────────────────────────────────────────────────────────────────────
 
   onMount(() => {
+    // Nothing to poll or fetch on a host with no install — every /api/host/*
+    // call would fail, on a 10s repeat, behind a notice that says so already.
+    if (!data.stackInstalled) return;
     startContainerPolling();
     // Auto-hydrate key data so tabs show meaningful state without manual refresh.
     void loadHealth();
@@ -327,6 +337,11 @@
   </div>
 </Navbar>
 
+{#if !data.stackInstalled}
+  <main>
+    <StackNotInstalled setupHref={runtimeContext.routes.setup ?? resolve('/setup')} />
+  </main>
+{:else}
 <TabBar active={activeTab} onSelect={handleTabSelect} />
 
   <main>
@@ -396,6 +411,7 @@
       />
     {/if}
   </main>
+{/if}
 
 <style>
   .host-toolbar {
