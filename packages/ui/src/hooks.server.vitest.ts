@@ -113,7 +113,7 @@ describe('hooks.server — sliding renewal', () => {
     expect(setCookie).not.toContain(`${SESSION_COOKIE_NAME}=`);
   });
 
-  test('first-run document navigation routes to /start (resolveLanding)', async () => {
+  test('first-run document navigation routes to onboarding (resolveLanding)', async () => {
     // Pre-Phase-3 this pinned '/' → /splash; the Phase 3 landing matrix sends
     // not_installed straight to /setup (same scenario is also pinned in
     // hooks.server.landing.vitest.ts).
@@ -124,15 +124,15 @@ describe('hooks.server — sliding renewal', () => {
 
     const event = makeEvent('/', null, 'text/html');
 
-    await expect(handle({ event, resolve })).rejects.toMatchObject({ location: '/start' });
+    await expect(handle({ event, resolve })).rejects.toMatchObject({ location: '/connections/new' });
   });
 
-  test('not_installed ignores server-visible reachability and routes through /start', async () => {
+  test('a machine that hosts nothing lands on onboarding, not the wizard', async () => {
     const state = resetState('test-admin-pw');
     const kvDir = join(state.stackDir, '..', '..', 'state');
     mkdirSync(kvDir, { recursive: true });
     writeFileSync(join(kvDir, 'stack.env'), 'OP_SETUP_COMPLETE=false\n');
     const event = makeEvent('/', null, 'text/html');
-    await expect(handle({ event, resolve })).rejects.toMatchObject({ location: '/start' });
+    await expect(handle({ event, resolve })).rejects.toMatchObject({ location: '/connections/new' });
   });
 });

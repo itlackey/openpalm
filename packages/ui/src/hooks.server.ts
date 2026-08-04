@@ -19,6 +19,7 @@ import { computeServerRuntimeContext } from '$lib/server/features.js';
 import {
   createLogger,
   isSetupComplete,
+  readHostEnabled,
   resolveOpenPalmHome,
   readStackRuntimeEnv,
   readSecret,
@@ -28,7 +29,7 @@ import {
   stackDirFor,
   reconcileMdnsResponder,
 } from "@openpalm/lib";
-import { resolveRequestLanding, getCachedLocalInstallState, readConnectionsHint } from "$lib/server/landing.js";
+import { resolveRequestLanding, getCachedLocalInstallState } from "$lib/server/landing.js";
 import { BLOCKING_LANDINGS } from "$lib/resolve-landing.js";
 
 // Launch-fact collection + the 5s cache live in $lib/server/landing.ts; the
@@ -233,28 +234,20 @@ export const handle: Handle = async ({ event, resolve }) => {
   const localInstallState = getCachedLocalInstallState(stackDirFor(homeDir), homeDir);
   const publicFirstRunSetup = isSetupPath && !setupComplete;
 
-  // An unfinished local install pulls every navigation back to the wizard so a
-  // half-configured stack is not used by accident — EXCEPT when the browser
-  // already has connections of its own. A packaged desktop build re-seeds the
-  // managed system/ tree on every launch, which materializes core.compose.yml
-  // and so classifies as `setup_incomplete` from the very first run; without
-  // this exemption, someone using a REMOTE assistant was pinned to a local
-  // install wizard on every restart, and on a machine with no Docker that
-  // wizard can be neither completed nor dismissed. The in-app "connect
-  // instead" link only escaped it because client-side navigations carry no
-  // `Accept: text/html` and never reached this guard — a reload went straight
-  // back to /setup.
-  //
-  // Safe to key on a client hint: this redirect is UX, not a boundary. /setup
-  // keeps its own capability + localhost gates, and every /api/host/* route
-  // enforces auth for itself, so the most a forged cookie buys is the chat
-  // surface the same browser could already reach by clicking a link.
+  // On a machine that HOSTS a stack, an unfinished install pulls every
+  // navigation back to the wizard so a half-configured stack is not used by
+  // accident. Keyed on the recorded fact, not on what is on disk: the managed
+  // system/ tree is re-seeded every launch, so disk state classifies a machine
+  // that installed nothing as `setup_incomplete` from its first run and pinned
+  // anyone using a REMOTE assistant to a wizard they never asked for — one
+  // that cannot even be completed without Docker.
+  const hostEnabled = readHostEnabled(homeDir);
   if (
     wantsHtml &&
     canServeSetup &&
+    hostEnabled &&
     !setupComplete &&
     localInstallState !== 'not_installed' &&
-    !readConnectionsHint(event) &&
     !isSetupPath &&
     !isAuthPath &&
     !isPwaAssetPath &&
@@ -390,10 +383,18 @@ export const handle: Handle = async ({ event, resolve }) => {
   // route still enforces its own auth. The moment a password exists or an
   // install materializes, the lane closes and the wall applies to /host
   // unchanged.
+  //
+  // Keyed on "does not host a stack" rather than on disk state. A machine that
+  // only ever talks to a REMOTE assistant still accumulates a stack env — the
+  // seeder and any abandoned wizard leave one — which classified it as
+  // `setup_incomplete` and closed this lane. That was survivable only while the
+  // guard above bounced those users to /setup, which is exempt from the wall.
+  // The moment the recorded fact stops that bounce, closing the lane would drop
+  // them onto a /login that answers 503. Both halves must move together.
   const clientOnlyPublicUsage =
-    localInstallState === 'not_installed' &&
+    !hostEnabled &&
     !process.env.OP_UI_LOGIN_PASSWORD &&
-    (path === '/start' || path === '/host' || path.startsWith('/host/')
+    (path === '/host' || path.startsWith('/host/')
       || path.startsWith('/chat') || path.startsWith('/advanced') || path.startsWith('/connections'));
 
   if (wantsHtml && !event.locals.role && !publicFirstRunSetup && !isAuthPath && !isPwaAssetPath && !clientOnlyPublicUsage) {

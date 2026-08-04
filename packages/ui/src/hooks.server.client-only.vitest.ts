@@ -29,7 +29,7 @@ vi.mock('@openpalm/lib', async (orig) => ({
 
 import { handle, _resetLaunchCache } from './hooks.server.js';
 
-const USAGE_ROUTES = ['/start', '/chat', '/connections', '/connections/new', '/advanced'];
+const USAGE_ROUTES = ['/chat', '/connections', '/connections/new', '/advanced'];
 
 function makeEvent(path: string, accept = 'text/html'): RequestEvent {
   const url = new URL(`http://localhost:3880${path}`);
@@ -92,9 +92,11 @@ describe('hooks.server — client-only public lane (non-admin, not_installed, no
     expect((outcome as Response).status).toBe(200);
   });
 
-  test('/ lands on /start so browser-owned connections decide the next route', async () => {
+  // A machine that hosts nothing is a client, so the root lands on onboarding —
+  // where the browser's own connection store decides whether to stay.
+  test('/ lands on onboarding when this browser has nowhere to chat', async () => {
     await expect(handleOutcome(makeEvent('/'))).resolves.toMatchObject({
-      location: '/start',
+      location: '/connections/new',
     });
   });
 
@@ -132,25 +134,38 @@ describe('hooks.server — client-only public lane (non-admin, not_installed, no
     expect((outcome as Response).status).toBe(200);
   });
 
-  test('a materialized local install revokes the public lane without a /setup dead end', async () => {
-    // hasCompose + OP_SETUP_COMPLETE!=='true' classifies as 'setup_incomplete'
-    // (same fixture as hooks.server.pwa-assets.vitest.ts), so the public lane —
-    // which requires 'not_installed' — no longer applies.
-    //
-    // The guard is observed as the login wall, NOT as a /setup redirect: this
-    // process is non-admin, so it answers /setup with 403
-    // capability_not_available, and redirecting a browser there would be a
-    // closed loop (see hooks.server.setup-deadlock.vitest.ts).
+  /** A home carrying install artifacts, with whatever stack.env content. */
+  function seedInstallArtifacts(stackEnv: string): void {
     const state = resetState();
     home = state.homeDir;
     delete process.env.OP_UI_LOGIN_PASSWORD;
     writeFileSync(join(state.stackDir, 'core.compose.yml'), 'services: {}\n');
     const kvDir = join(state.stackDir, '..', '..', 'state');
     mkdirSync(kvDir, { recursive: true });
-    writeFileSync(join(kvDir, 'stack.env'), 'OP_SETUP_COMPLETE=false\n');
+    writeFileSync(join(kvDir, 'stack.env'), stackEnv);
     _resetLaunchCache();
+  }
+
+  test('a machine that HOSTS a stack revokes the public lane', async () => {
+    // The guard is observed as the login wall, NOT as a /setup redirect: this
+    // process is non-admin, so it answers /setup with 403
+    // capability_not_available, and redirecting a browser there would be a
+    // closed loop (see hooks.server.setup-deadlock.vitest.ts).
+    seedInstallArtifacts('OP_SETUP_COMPLETE=false\nOP_HOST_ENABLED=true\n');
     const outcome = await handleOutcome(makeEvent('/chat'));
     expect(outcome).toMatchObject({ status: 302 });
     expect((outcome as { location: string }).location).toMatch(/^\/login\?/);
+  });
+
+  // Artifacts alone are not hosting. A machine that only ever talks to a REMOTE
+  // assistant still accumulates a stack env — the seeder and any abandoned
+  // wizard leave one — and keying the lane on disk state closed it for exactly
+  // those users, dropping them onto a /login that answers 503 because no
+  // password exists to accept.
+  test('install artifacts without the record keep the lane open', async () => {
+    seedInstallArtifacts('OP_SETUP_COMPLETE=false\n');
+    const outcome = await handleOutcome(makeEvent('/chat'));
+    expect(outcome, 'a machine that hosts nothing must stay usable').toBeInstanceOf(Response);
+    expect((outcome as Response).status).toBe(200);
   });
 });

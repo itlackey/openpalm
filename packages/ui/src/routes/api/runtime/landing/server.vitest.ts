@@ -16,7 +16,7 @@
  * needed here later.
  *
  * Contract (cross-lane — the CLI lane codes against this in parallel):
- *   GET /api/runtime/landing → 200 JSON {"landing": "/chat" | "/start" | "/setup" |
+ *   GET /api/runtime/landing → 200 JSON {"landing": "/chat" | "/connections/new" | "/setup" |
  *   "/host" | "/host?tab=diagnostics" | "/attention" | ...}, unauthenticated,
  *   Cache-Control: no-store.
  *
@@ -124,12 +124,12 @@ describe('GET /api/runtime/landing — public landing-resolver endpoint (J2/J3)'
     expect(body.landing).toBe('/chat');
   });
 
-  test('nothing installed resolves to /start for browser-owned bootstrap', async () => {
+  test('nothing installed resolves to onboarding for browser-owned bootstrap', async () => {
     const state = resetState('test-admin-pw');
     seedStackEnv(state.stackDir, false);
     const res = await GET(makeEvent());
     const body = (await res.json()) as { landing: string };
-    expect(body.landing).toBe('/start');
+    expect(body.landing).toBe('/connections/new');
   });
 
   // The server cannot read IndexedDB, so before this hint existed a user who
@@ -148,7 +148,7 @@ describe('GET /api/runtime/landing — public landing-resolver endpoint (J2/J3)'
     seedStackEnv(state.stackDir, false);
     const res = await GET(makeEvent({}, { op_has_connections: 'yes-please' }));
     const body = (await res.json()) as { landing: string };
-    expect(body.landing).toBe('/start');
+    expect(body.landing).toBe('/connections/new');
   });
 
   test('an installed-but-offline stack resolves to /host (J2 — stopped/crashed at launch)', async () => {

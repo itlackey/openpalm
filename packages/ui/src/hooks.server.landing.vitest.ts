@@ -124,12 +124,12 @@ describe('hooks.server — landing routing through resolveLanding', () => {
     });
   });
 
-  test('/ with nothing installed redirects to /start', async () => {
+  test('/ with nothing installed redirects to onboarding', async () => {
     const state = resetState('test-admin-pw');
     seedStackEnv(state.stackDir, false); // no core.compose.yml → not_installed
 
     await expect(handle({ event: makeEvent('/'), resolve })).rejects.toMatchObject({
-      location: '/start',
+      location: '/connections/new',
     });
   });
 
@@ -163,12 +163,12 @@ describe('hooks.server — landing routing through resolveLanding', () => {
     });
   });
 
-  test('/splash with nothing installed redirects to /start', async () => {
+  test('/splash with nothing installed redirects to onboarding', async () => {
     const state = resetState('test-admin-pw');
     seedStackEnv(state.stackDir, false);
 
     await expect(handle({ event: makeEvent('/splash'), resolve })).rejects.toMatchObject({
-      location: '/start',
+      location: '/connections/new',
     });
   });
 

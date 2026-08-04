@@ -71,17 +71,27 @@ export type LaunchState = {
   local: { state: LocalStackState };
   connections: ReadonlyArray<{ id: string }>;
   /**
+   * Whether this machine HOSTS a stack — recorded by an install, never
+   * inferred (`readHostEnabled`, @openpalm/lib).
+   *
+   * This is the question `local.state` cannot answer. The managed system/ tree
+   * is re-seeded on every launch, so its files say only "the app has run here",
+   * not "someone chose to install". Reading intent out of them pinned anyone
+   * using a REMOTE assistant to a local-install wizard on every restart.
+   */
+  hostEnabled?: boolean;
+  /**
    * Whether the REQUESTING BROWSER has connections of its own saved.
    *
-   * Deliberately separate from `connections` above, which answers a different
-   * question — "is something reachable from the server right now" — and whose
-   * meaning must not drift: a reachable local assistant is not evidence that
-   * the user has finished choosing how to run OpenPalm, so it must keep landing
-   * on /start. A saved browser connection IS that evidence.
+   * A separate question from `hostEnabled`, with a separate mechanism, because
+   * it has a separate owner: connections live in the browser, and one server
+   * can be serving many of them. `connections` above answers only "is something
+   * reachable from the SERVER right now", which says nothing about what this
+   * particular browser has stored.
    *
-   * Server-side this comes from a client hint cookie and is therefore untrusted
+   * Server-side this arrives as a client hint cookie and is therefore untrusted
    * (see $lib/connections/landing-hint.ts) — it only ever picks between two
-   * public usage routes.
+   * public client routes.
    */
   browserConnections?: boolean;
 };
@@ -89,37 +99,30 @@ export type LaunchState = {
 /** Resolve the landing path for a session. Pure — no I/O, no
  *  global state; the gate is CAPABILITY-driven, not admin-flag-driven. */
 export function resolveLanding(ctx: RuntimeContext, state: LaunchState): string {
-  if (ctx.effectiveCapabilities.includes('host:setup')) {
+  // Being ABLE to host (the capability) and actually hosting (the record) are
+  // different things, and only both together mean the host landings apply. A
+  // host-capable process that hosts nothing wants exactly what a plain client
+  // wants, which is why the two branches below collapsed into one.
+  const isHost = ctx.effectiveCapabilities.includes('host:setup') && state.hostEnabled === true;
+
+  if (isHost) {
+    // OP_HOME migrations only concern a machine that has an OP_HOME worth
+    // migrating, so this gate belongs inside the host branch.
     if (state.migration.status === 'pending') return HOST_ATTENTION_LANDING;
-    // /start exists to ask one question: install here, or connect to one
-    // running elsewhere? Once the browser has a saved connection that question
-    // has been answered, and re-asking it on every launch is a screen in the
-    // way — the user only got past it before because /start redirects itself
-    // once its client-side bootstrap finishes.
-    if (state.local.state === 'not_installed') {
-      return state.browserConnections ? '/chat' : '/start';
-    }
-    // Same reasoning, and it matters MORE here. On a packaged desktop build
-    // `not_installed` is nearly unreachable: every launch re-seeds the managed
-    // system/ tree, which materializes core.compose.yml, and classifyLocalInstall
-    // reads exactly that file — so a machine that has never installed anything
-    // reports `setup_incomplete` from its first launch onward. Landing that
-    // unconditionally on /setup marched anyone using a REMOTE assistant into a
-    // local-install wizard on every restart, and on a machine without Docker
-    // that wizard cannot be completed or dismissed. A saved connection is the
-    // signal that the local install is not what they are here for.
-    if (state.local.state === 'setup_incomplete') {
-      return state.browserConnections ? '/chat' : '/setup';
-    }
-    if (state.local.state === 'installed_offline') return HOST_ADMIN_LANDING;
     if (state.local.state === 'installed_broken') return `${HOST_ADMIN_LANDING}?tab=diagnostics`;
-    return '/chat';
+    if (state.local.state === 'installed_offline') return HOST_ADMIN_LANDING;
+    if (state.local.state === 'running') return '/chat';
+    // not_installed | setup_incomplete — this machine is meant to host a stack
+    // and does not have a working one yet. The wizard is the right place, and
+    // it is no longer a trap: nobody who did not ask to host arrives here.
+    return '/setup';
   }
-  if (state.local.state === 'not_installed' && !state.browserConnections) return '/start';
-  // Non-admin process (no host:setup): the browser owns connections — land on
-  // the add-connection surface only when there is nowhere to chat from EITHER
-  // source, else /chat.
-  return state.connections.length === 0 && !state.browserConnections
-    ? '/connections/new'
-    : '/chat';
+
+  // Not a host: a pure client, wherever it happens to be running. Land on the
+  // add-connection surface only when there is nowhere to chat from EITHER
+  // source — a reachable local assistant, or connections this browser has
+  // saved. Without the second, a browser that already has a remote assistant
+  // would be sent to "add a connection" on every launch.
+  const somewhereToChat = state.connections.length > 0 || state.browserConnections === true;
+  return somewhereToChat ? '/chat' : '/connections/new';
 }

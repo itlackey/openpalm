@@ -53,7 +53,9 @@ describe('setup deployment launch transition', () => {
       request: new Request(url, { headers: { host: 'localhost:3880', accept: 'text/html' } }),
     } as RequestEvent;
     expect(getCachedLocalInstallState(state.stackDir, homeDir)).toBe('not_installed');
-    await expect(resolveRequestLanding(event)).resolves.toBe('/start');
+    // Nothing installed and nothing recorded: this is a client, so it lands on
+    // onboarding rather than a host surface.
+    await expect(resolveRequestLanding(event)).resolves.toBe('/connections/new');
 
     runDeployMock.mockImplementation(async (
       _state: ControlPlaneState,
