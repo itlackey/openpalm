@@ -238,7 +238,12 @@ describe('runStartAction — marks setup complete on a healthy, previously-confi
     }
   });
 
-  test('does not promote an interrupted wizard skeleton to setup complete', async () => {
+  // A bare skeleton is the state EVERY launch leaves behind — both harnesses
+  // re-seed the managed system/ tree on start — so it classifies as
+  // not_installed, and `start` must leave it exactly that way. The guarantee
+  // under test is unchanged and now stricter: nothing here is promoted, and no
+  // stack env file is conjured for a home that never ran an install.
+  test('does not promote a bare seeded skeleton to setup complete', async () => {
     const homeDir = mkdtempSync(join(tmpdir(), 'openpalm-start-interrupted-wizard-'));
     const stackDir = join(homeDir, 'system', 'stack');
     mkdirSync(stackDir, { recursive: true });
@@ -264,7 +269,7 @@ describe('runStartAction — marks setup complete on a healthy, previously-confi
       const { runStartAction } = await import(`${startModuleUrl}?t=${Math.random()}`);
       await runStartAction([]);
 
-      expect(realLib.classifyLocalInstall(stackDir, homeDir)).toBe('setup_incomplete');
+      expect(realLib.classifyLocalInstall(stackDir, homeDir)).toBe('not_installed');
       expect(existsSync(join(homeDir, 'state', 'stack.env'))).toBe(false);
     } finally {
       rmSync(homeDir, { recursive: true, force: true });

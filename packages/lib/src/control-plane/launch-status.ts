@@ -18,15 +18,15 @@
  *   routed around.
  */
 import { existsSync } from "node:fs";
-import { join } from "node:path";
+import { join, resolve as resolvePath } from "node:path";
 import { execFile } from "node:child_process";
 import { parseEnvFile } from "./env.js";
-import { legacyKnowledgeStackEnvFile, legacyStateEnvFile, privateSecretsDir, stackDirFor, stackEnvFile } from "./home.js";
+import { hasAnyStackEnvFile, legacyKnowledgeStackEnvFile, legacyStateEnvFile, privateSecretsDir, stackDirFor, stackEnvFile } from "./home.js";
 import { checkDocker, checkDockerCompose, dockerBin } from "./docker.js";
 
 export type LocalStackState =
   | "not_installed"     // nothing installed — offer install / add remote
-  | "setup_incomplete"  // install started, OP_SETUP_COMPLETE not set
+  | "setup_incomplete"  // install STARTED (left state behind), OP_SETUP_COMPLETE not set
   | "installed_offline" // setup complete, stack not running
   | "installed_broken"  // setup complete, running but unhealthy / config error
   | "running";          // healthy
@@ -152,9 +152,13 @@ export function deriveLaunchStatus(input: { local: LocalStatus; remotes?: Remote
 
 /**
  * Classify the on-disk local install WITHOUT a live health probe:
- *   - not_installed:    no materialized stack (no core.compose.yml)
- *   - setup_incomplete: stack present but OP_SETUP_COMPLETE !== 'true' and no
- *                       other observable evidence of a completed install
+ *   - not_installed:    no materialized stack — either no core.compose.yml at
+ *                       all, or only the MANAGED one, which every launch
+ *                       re-seeds and which therefore proves nothing on its own
+ *                       (see the isManagedStackDir check below)
+ *   - setup_incomplete: an install was STARTED — it left a stack env file
+ *                       behind — but OP_SETUP_COMPLETE !== 'true' and there is
+ *                       no other observable evidence of a completed install
  *   - installed:        OP_SETUP_COMPLETE === 'true', OR (cheap observable
  *                       fallback) core.compose.yml is present AND both guardian tokens
  *                       performSetup mints exist. Caller maps "installed" to
@@ -191,6 +195,31 @@ export function classifyLocalInstall(stackDir: string, homeDir: string): "not_in
   const hasGuardianTokens =
     existsSync(join(secrets, "op_guardian_admin_token")) && existsSync(join(secrets, "op_guardian_mcp_token"));
   if (hasCompose && hasGuardianTokens) return "installed";
+  // A MANAGED core.compose.yml alone is not evidence that an install was ever
+  // attempted. The managed system/ tree is re-seeded from the bundled skeleton
+  // on every single launch by both harnesses (electron main.ts
+  // seedBundledSkeleton → applyHomeSeed → overwriteSystemTree, and the CLI
+  // supervisor's seedSkeletonFromEmbedded), so this file appears on a machine
+  // that has installed nothing. Reading it as "an install was started and
+  // abandoned" pinned desktop users to the setup wizard on every launch — and
+  // on a host without Docker that wizard can be neither finished nor left.
+  //
+  // A real install leaves state the seeder never writes, and a stack env file
+  // is the earliest such artifact: writeSystemEnv, ensureSystemSecrets and the
+  // migrations all produce it, and every one of them sits behind install,
+  // setup or deploy. The seeder touches only system/ and config/ —
+  // core-assets.ts is explicit that data/ and state/ are never written.
+  // (Minted secrets are not a separate signal: ensureSecrets and
+  // ensureSystemSecrets are called together, so the env file is there whenever
+  // they are.)
+  //
+  // Scoped to the MANAGED stack dir on purpose. Callers also probe legacy
+  // locations — `openpalm update` classifies ${home}/config/stack to find a
+  // pre-system-tree install worth migrating — and the seeder has never written
+  // there, so a compose file in one of those IS evidence and must keep
+  // counting as one.
+  const isManagedStackDir = resolvePath(stackDir) === resolvePath(stackDirFor(homeDir));
+  if (isManagedStackDir && !hasAnyStackEnvFile(homeDir)) return "not_installed";
   return "setup_incomplete";
 }
 
