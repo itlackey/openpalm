@@ -22,6 +22,7 @@ import {
   type ComposeServiceStatus,
 } from '@openpalm/lib';
 import { getState } from '$lib/server/state.js';
+import { CONNECTIONS_HINT_COOKIE } from '$lib/connections/landing-hint.js';
 import { computeServerRuntimeContext } from '$lib/server/features.js';
 import { resolveCapabilities } from '$lib/runtime-context.svelte.js';
 import { resolveLanding, type LaunchState } from '$lib/resolve-landing.js';
@@ -122,6 +123,21 @@ async function resolveLaunchRouting(): Promise<LaunchRouting> {
 }
 
 /**
+ * Read the browser's connections hint, tolerating an event without a cookie
+ * jar. This resolver decides where EVERY document navigation goes, so it must
+ * degrade to "no hint" rather than throw and take routing down with it.
+ */
+function readConnectionsHint(event: RequestEvent): boolean {
+  const get = event.cookies?.get;
+  if (typeof get !== 'function') return false;
+  try {
+    return event.cookies.get(CONNECTIONS_HINT_COOKIE) === '1';
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Resolve the landing path for a request via resolveLanding().
  * May return a path with a query string (e.g. '/host?tab=diagnostics').
  */
@@ -143,6 +159,21 @@ export async function resolveRequestLanding(event: RequestEvent): Promise<string
     installState === 'setup_incomplete' && launch.local.state === 'running'
       ? 'setup_incomplete'
       : launch.local.state;
+  // Connections are browser-owned (IndexedDB), so the only way this request can
+  // know the browser has any is the client hint cookie it carries. Without it
+  // the server cannot tell a fresh machine from one with remote assistants
+  // already configured, and answers /start for both — which is why a returning
+  // user was routed through the welcome screen on every launch.
+  //
+  // A HINT, not an authorization: it is client-controlled, and the most a
+  // forged value can do is land a browser on /chat instead of /start. Both are
+  // public usage routes in this lane and nothing else reads it. See
+  // $lib/connections/landing-hint.ts.
+  //
+  // Read from `event`, deliberately OUTSIDE resolveLaunchRouting() — that
+  // function's launch facts are cached process-wide for 5s, and a per-request
+  // client hint must never be baked into a shared cache entry.
+  const browserConnections = readConnectionsHint(event);
   const connections: LaunchState['connections'] = launch.hasHealthyLocal ? [{ id: 'default' }] : [];
   const launchState: LaunchState = {
     // No blocking migration exists yet — the gate (and /attention) is wired
@@ -150,6 +181,7 @@ export async function resolveRequestLanding(event: RequestEvent): Promise<string
     migration: { status: 'none' },
     local: { state: localState },
     connections,
+    browserConnections,
   };
   return resolveLanding(ctx, launchState);
 }

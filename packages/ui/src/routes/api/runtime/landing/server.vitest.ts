@@ -41,13 +41,17 @@ import { _resetLaunchCache } from '$lib/server/landing.js';
 
 const RUNNING_PS = '{"Service":"assistant","State":"running","Health":"healthy"}\n';
 
-function makeEvent(headers: Record<string, string> = {}) {
+function makeEvent(
+  headers: Record<string, string> = {},
+  cookies: Record<string, string> = {},
+) {
   const url = new URL('http://127.0.0.1:3880/api/runtime/landing');
   return {
     url,
     request: new Request(url, { headers }),
     params: {},
     locals: {},
+    cookies: { get: (name: string) => cookies[name] },
     route: { id: '/api/runtime/landing' },
     getClientAddress: () => '127.0.0.1',
     isDataRequest: false,
@@ -124,6 +128,25 @@ describe('GET /api/runtime/landing — public landing-resolver endpoint (J2/J3)'
     const state = resetState('test-admin-pw');
     seedStackEnv(state.stackDir, false);
     const res = await GET(makeEvent());
+    const body = (await res.json()) as { landing: string };
+    expect(body.landing).toBe('/start');
+  });
+
+  // The server cannot read IndexedDB, so before this hint existed a user who
+  // had configured a remote assistant was routed through /start on every
+  // single launch and only escaped via /start's own client-side redirect.
+  test('nothing installed resolves to /chat when the browser reports saved connections', async () => {
+    const state = resetState('test-admin-pw');
+    seedStackEnv(state.stackDir, false);
+    const res = await GET(makeEvent({}, { op_has_connections: '1' }));
+    const body = (await res.json()) as { landing: string };
+    expect(body.landing).toBe('/chat');
+  });
+
+  test('a hint with any other value is ignored — only an exact "1" counts', async () => {
+    const state = resetState('test-admin-pw');
+    seedStackEnv(state.stackDir, false);
+    const res = await GET(makeEvent({}, { op_has_connections: 'yes-please' }));
     const body = (await res.json()) as { landing: string };
     expect(body.landing).toBe('/start');
   });

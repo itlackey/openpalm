@@ -118,9 +118,18 @@ describe('hooks.server — client-only public lane (non-admin, not_installed, no
     }
   });
 
-  test('direct host navigation before install is server-redirected to local setup', async () => {
+  // /host before install used to 302 into /setup, which made the wizard
+  // unskippable and — being gated on `Accept: text/html` — never fired for the
+  // in-app admin button anyway. The surface now renders its own "not installed
+  // here" notice, so it must be SERVED. Both negative assertions matter: /setup
+  // is the behaviour being replaced, and /login is the dead end deleting that
+  // redirect would otherwise create, since this guard runs before the role is
+  // resolved and /login POSTs 503 when no password exists.
+  test('/host before install is served with its not-installed notice, not redirected', async () => {
     process.env.OP_ENABLE_ADMIN = '1';
-    await expect(handleOutcome(makeEvent('/host'))).resolves.toMatchObject({ location: '/setup' });
+    const outcome = await handleOutcome(makeEvent('/host'));
+    expect(outcome, '/host must reach resolve(), not redirect').toBeInstanceOf(Response);
+    expect((outcome as Response).status).toBe(200);
   });
 
   test('a materialized local install revokes the public lane without a /setup dead end', async () => {

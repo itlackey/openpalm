@@ -45,6 +45,13 @@ const { mockBrowserWindow } = vi.hoisted(() => ({
   },
 }));
 
+// The landing probe runs in the main process, whose fetch shares no cookie jar
+// with the window — so the "this browser has connections" hint has to be read
+// off the session and forwarded by hand. This mock is how tests drive it.
+const { mockCookiesGet } = vi.hoisted(() => ({
+  mockCookiesGet: vi.fn<() => Promise<Array<{ value: string }>>>(async () => []),
+}));
+
 vi.mock('electron', () => ({
   app: {
     getVersion: vi.fn(() => '0.12.0'),
@@ -92,6 +99,7 @@ vi.mock('electron', () => ({
     defaultSession: {
       setPermissionRequestHandler: vi.fn(),
       setPermissionCheckHandler: vi.fn(),
+      cookies: { get: mockCookiesGet },
     },
   },
   systemPreferences: {
@@ -206,8 +214,16 @@ function stubFetch(landing: string | 'error') {
   }));
 }
 
+/** The headers the landing probe actually sent, if any. */
+function probeHeaders(): Record<string, string> | undefined {
+  const call = vi.mocked(globalThis.fetch).mock.calls[0];
+  return (call?.[1] as { headers?: Record<string, string> } | undefined)?.headers;
+}
+
 beforeEach(() => {
   mockLoadSettings.mockReturnValue({ checkPrerelease: false });
+  mockCookiesGet.mockReset();
+  mockCookiesGet.mockResolvedValue([]);
   delete process.env.OP_CLIENT_CHAT_OPT_IN;
 });
 
@@ -224,6 +240,30 @@ describe('resolveInitialUrl', () => {
   it('loads the canonical UI chat', async () => {
     stubFetch('/chat');
     await expect(callResolveInitialUrl()).resolves.toBe('http://127.0.0.1:3880/chat');
+  });
+
+  // Without this forwarding the desktop app can never benefit from the hint: a
+  // browser sends its cookies automatically, but this probe runs in the main
+  // process, so the server would always see a first-run request and answer
+  // /start no matter how many connections the user had saved.
+  it('forwards the connections hint from the window session to the landing probe', async () => {
+    mockCookiesGet.mockResolvedValue([{ value: '1' }]);
+    stubFetch('/chat');
+    await callResolveInitialUrl();
+    expect(probeHeaders()).toEqual({ cookie: 'op_has_connections=1' });
+  });
+
+  it('sends no cookie header when the browser has never saved a connection', async () => {
+    stubFetch('/start');
+    await expect(callResolveInitialUrl()).resolves.toBe('http://127.0.0.1:3880/start');
+    expect(probeHeaders()).toBeUndefined();
+  });
+
+  it('still resolves a landing when the cookie store cannot be read', async () => {
+    mockCookiesGet.mockRejectedValue(new Error('session unavailable'));
+    stubFetch('/start');
+    await expect(callResolveInitialUrl()).resolves.toBe('http://127.0.0.1:3880/start');
+    expect(probeHeaders()).toBeUndefined();
   });
 
   it('loads the client-aware bootstrap page when the landing resolver says /start', async () => {

@@ -6,6 +6,7 @@ import {
   ipcMain,
   globalShortcut,
   Notification,
+  session,
   type IpcMainInvokeEvent,
   type IpcMainEvent,
 } from 'electron';
@@ -37,6 +38,12 @@ import {
   UiSupervisor,
 } from '@openpalm/lib';
 import { UI_PORT } from './ui-port.js';
+/**
+ * Mirrors CONNECTIONS_HINT_COOKIE in packages/ui/src/lib/connections/landing-hint.ts.
+ * Declared here rather than imported: the desktop shell does not depend on the
+ * UI package, and this is a one-word wire contract.
+ */
+const CONNECTIONS_HINT_COOKIE = 'op_has_connections';
 import { autoUpdater } from 'electron-updater';
 import { DesktopUpdater, isTrustedUpdaterSender, type UpdaterState } from './updater.js';
 import { loadSettings, saveSettings } from './settings.js';
@@ -679,13 +686,40 @@ export function stopUIServer(): void {
 // ── Window management ────────────────────────────────────────────────────────
 
 /**
+ * Read the browser-owned "this profile has connections" hint out of the window
+ * session, so the landing probe below can carry it.
+ *
+ * The probe runs in the MAIN process, whose fetch has no cookie jar in common
+ * with the BrowserWindow — so without this the server always sees a request
+ * with no hint and answers /start for an uninstalled host, no matter how many
+ * remote assistants the user has configured. Forwarding it explicitly is what
+ * makes the desktop app match what a plain browser gets for free.
+ *
+ * Best-effort: any failure just means the pre-existing /start landing, which
+ * still self-redirects client-side.
+ */
+async function readConnectionsHintCookie(): Promise<string | undefined> {
+  try {
+    const cookies = await session.defaultSession.cookies.get({
+      name: CONNECTIONS_HINT_COOKIE,
+      url: `http://127.0.0.1:${UI_PORT}`,
+    });
+    return cookies[0]?.value;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
  * Resolve the canonical UI landing page. On probe failure, load the UI root so
  * its own navigation guard can perform the same landing decision.
  */
 export async function resolveInitialUrl(): Promise<string> {
   try {
+    const hint = await readConnectionsHintCookie();
     const res = await fetch(`http://127.0.0.1:${UI_PORT}/api/runtime/landing`, {
       signal: AbortSignal.timeout(2000),
+      ...(hint ? { headers: { cookie: `${CONNECTIONS_HINT_COOKIE}=${hint}` } } : {}),
     });
     if (res.ok) {
       const data = await res.json() as { landing?: string };

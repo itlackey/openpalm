@@ -1,4 +1,5 @@
 import { describe, expect, it, afterEach, vi } from 'vitest';
+import type { ComponentProps } from 'svelte';
 import { render } from 'vitest-browser-svelte';
 import { useConsoleGuard, type ConsoleGuard } from '$lib/test-utils/console-guard';
 
@@ -53,7 +54,11 @@ describe('/host/+page.svelte (host dashboard)', () => {
 		});
 		vi.stubGlobal('fetch', fetchMock);
 		guard = useConsoleGuard();
-		const view = await render(HostPage);
+		// The dashboard only hydrates on a host that actually has an install;
+		// see (app)/host/page.svelte.vitest.ts for the not-installed surface.
+		const view = await render(HostPage, {
+			data: { stackInstalled: true }
+		} as unknown as ComponentProps<typeof HostPage>);
 
 		await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(6));
 		await vi.waitFor(() => expect(view.container.textContent).toContain('Healthy'));

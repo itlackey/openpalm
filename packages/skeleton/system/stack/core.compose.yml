@@ -118,6 +118,10 @@ services:
       # *_PASSWORD compose env keys); the entrypoint resolves it for the UI
       # child only. Setup fail-closes before deploy if no password exists.
       OP_UI_LOGIN_PASSWORD_FILE: /run/secrets/ui_login_password
+      # Direct LAN UI deployments are plain HTTP unless an operator places
+      # them behind TLS. Pin the browser origin explicitly so adapter-node does
+      # not assume HTTPS when no forwarded-protocol header is present.
+      ORIGIN: ${OP_UI_ORIGIN:-}
       # Used only to label the browser's automatically seeded local connection.
       OP_PROJECT_NAME: ${OP_PROJECT_NAME:-openpalm}
       # Generated from the access toggles (packages/lib access-toggles.ts) and

@@ -39,42 +39,55 @@
     <span class="eyebrow">Conversation</span>
     <span class="value">
       <span class="dot" class:connected={liveConnected} aria-hidden="true"></span>
-      {triggerLabel}
+      <span class="label">{triggerLabel}</span>
     </span>
   </span>
   <span class="caret" aria-hidden="true">▾</span>
 </button>
 
 <style>
+  /* Sized to SHRINK. The old fixed `width` plus a 52px height (exactly
+     --nav-height, so flush with the navbar with nowhere for a border to go)
+     meant the two pickers alone demanded ~560px and clipped rather than
+     truncating, because .chat-locked hides overflow. Flexible width with
+     min-width:0 lets the label ellipsize instead. */
   .trigger {
     display: inline-flex;
     align-items: center;
     gap: var(--s-sp-2);
     padding: 0 var(--s-sp-3);
-    min-width: 44px;
-    height: 52px;
-    background: color-mix(in srgb, var(--s-paper-deep) 52%, transparent);
+    min-width: 0;
+    flex: 1 1 auto;
+    height: 44px;
+    background: none;
     border: var(--s-hair) solid transparent;
     border-radius: 8px;
     color: var(--s-ink-3);
     cursor: pointer;
-    width: clamp(200px, 21vw, 304px);
     max-width: 304px;
     overflow: hidden;
     transition: color 120ms ease, border-color 120ms ease, background 120ms ease;
   }
   .trigger:hover {
     color: var(--s-ink);
-    border-color: var(--s-line-soft);
+    border-color: var(--s-line);
     background: var(--s-paper-deep);
   }
   .trigger:focus-visible {
     outline: 2px solid var(--s-seal);
     outline-offset: 2px;
   }
+  /* Open state speaks the same language as every other navbar control
+     (IconButton marks "selected" with --s-seal in the FOREGROUND), rather than
+     inventing a border-only accent for these two buttons alone. */
   .trigger.active {
-    border-color: var(--s-seal);
+    color: var(--s-seal);
+    border-color: var(--s-line);
     background: var(--s-paper-deep);
+  }
+  .trigger.active .eyebrow,
+  .trigger.active :global(.trigger-icon) {
+    color: var(--s-seal);
   }
 
   .icon-wrap,
@@ -121,13 +134,21 @@
     align-items: center;
     gap: var(--s-sp-2);
     width: 100%;
+    min-width: 0;
     overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
     color: var(--s-ink);
     font-family: var(--s-font-display);
     font-size: 0.875rem;
     font-weight: 600;
+  }
+  /* `text-overflow` has no effect on a flex container, so the ellipsis has to
+     live on the text's own element — without this the title is simply cut off
+     mid-glyph. */
+  .label {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .caret {

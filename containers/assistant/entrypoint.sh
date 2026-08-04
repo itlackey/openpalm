@@ -332,7 +332,19 @@ start_ui() {
       if voice_lan_access_enabled; then
         voice_env_args=(OP_VOICE_URL=http://voice:8880)
       fi
-      if env -u OP_ENABLE_ADMIN -u OP_INSIDE_ELECTRON \
+      # ORIGIN pins the browser origin adapter-node reports, so an operator can
+      # stop it defaulting the protocol to https on a plain-HTTP LAN install.
+      # It must be a valid absolute URL or ABSENT — adapter-node's parse_origin
+      # throws on anything else, INCLUDING the empty string, and it throws at
+      # module load, so an unset knob would take the UI child down on every
+      # boot rather than degrading. core.compose.yml passes
+      # `ORIGIN: ${OP_UI_ORIGIN:-}`, which is empty until an operator sets it,
+      # so the empty case is the DEFAULT one and has to be dropped here.
+      local origin_env_args=()
+      if [ -z "${ORIGIN:-}" ]; then
+        origin_env_args=(-u ORIGIN)
+      fi
+      if env -u OP_ENABLE_ADMIN -u OP_INSIDE_ELECTRON "${origin_env_args[@]}" \
            HOST=0.0.0.0 PORT="$ui_port" HOST_HEADER=host PROTOCOL_HEADER=x-forwarded-proto \
            "${voice_env_args[@]}" \
            OP_UI_SERVED_IN_CONTAINER=1 \

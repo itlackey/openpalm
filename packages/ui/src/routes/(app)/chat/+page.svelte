@@ -146,20 +146,6 @@
 		await chat.onEndpointChanged(endpointsService.activeId);
 	}
 
-	// F6: a 14-day sliding session had no UI control to end it on a shared
-	// machine, despite POST /api/auth/logout already existing server-side.
-	async function handleSignOut(): Promise<void> {
-		try {
-			await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' });
-		} catch {
-			// Best-effort — land on /login regardless; if the network is down the
-			// cookie may already be unusable anyway.
-		}
-		const redirectTo = encodeURIComponent(`${page.url.pathname}${page.url.search}`);
-		// eslint-disable-next-line svelte/no-navigation-without-resolve -- static internal route
-		await goto(`/login?redirectTo=${redirectTo}`);
-	}
-
 	async function retryFailedSend(): Promise<void> {
 		const text = chat.lastFailedText;
 		if (!text) return;
@@ -470,7 +456,6 @@
 
 <ConversationFrame bind:drawerOpen={navigationOpen}>
 <div class="s-chat-content">
-<button class="s-signout" type="button" onclick={() => void handleSignOut()}>sign out</button>
 {#if chat.toolLog.length > 0 && activityRailOpen}
 	<aside
 		class="s-tool-rail"
@@ -715,30 +700,6 @@
 		min-width: 0;
 		min-height: 0;
 		flex: 1;
-	}
-
-	/* Fixed to the content area (not the scrolling thread), so it stays put
-	   regardless of scroll position. */
-	.s-signout {
-		position: absolute;
-		z-index: 30;
-		top: 0.75rem;
-		right: 1rem;
-		appearance: none;
-		border: var(--s-hair) solid var(--s-line);
-		background: var(--s-paper);
-		cursor: pointer;
-		font-family: var(--s-font-mono);
-		font-size: var(--s-type-mark-sm);
-		letter-spacing: var(--s-track-label);
-		text-transform: lowercase;
-		color: var(--s-ink-3);
-		padding: 0.2rem 0.6rem;
-		border-radius: var(--s-radius-seal);
-	}
-
-	.s-signout:hover {
-		color: var(--s-ink);
 	}
 
 	.s-scroll {

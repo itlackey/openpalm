@@ -210,7 +210,9 @@ export const handle: Handle = async ({ event, resolve }) => {
   }
   const isSetupPath = SETUP_PATHS.some(p => path === p || path.startsWith(`${p}/`));
 
-  // A process that cannot SERVE /setup must never redirect anyone TO it.
+  // A process that cannot SERVE /setup must never redirect anyone TO it. This
+  // now guards exactly one redirect — the `setup_incomplete` bounce below; the
+  // not-installed case is rendered by /host itself and redirects nowhere.
   // Sending a browser to a route this same process answers with 403
   // capability_not_available is a closed loop with no way out — it is how the
   // CLI wizard shipped broken (a non-admin `openpalm install` UI redirected
@@ -257,14 +259,15 @@ export const handle: Handle = async ({ event, resolve }) => {
     }
   }
 
-  if (
-    wantsHtml
-    && canServeSetup
-    && localInstallState === 'not_installed'
-    && (path === '/host' || path.startsWith('/host/'))
-  ) {
-    redirect(302, '/setup');
-  }
+  // `/host` on a host with no install is NOT redirected to /setup. It renders
+  // its own notice with a link into the wizard — see (app)/host/+page.server.ts.
+  // Do not restore the redirect: it made the wizard unskippable (the only exit
+  // from /host was to finish an install the operator may not want), and it
+  // never worked on the path users actually take. Gated on `wantsHtml`, it was
+  // invisible to the in-app admin button, whose client-side navigation carries
+  // no `Accept: text/html` — so it rendered the full console against a stack
+  // that does not exist and polled /api/host/* every 10s. The install fact is
+  // resolved per page load instead, which covers both lanes.
 
   // ── Launch routing: document navigations land where resolveLanding() says.
   // Fires BEFORE the auth guard
@@ -359,10 +362,22 @@ export const handle: Handle = async ({ event, resolve }) => {
   // exists. The usage routes stay public in exactly this lane; every other
   // lane (any local install present, or a password
   // configured) keeps the wall unchanged.
+  //
+  // '/host' is in the lane for the same reason as the usage routes, and it has
+  // to be: this guard runs BEFORE `event.locals.role` is resolved, so with the
+  // old '/host' → '/setup' redirect gone, an admin-capable first run (no
+  // install, no password) would otherwise fall through to a /login whose POST
+  // answers 503 admin_not_configured — swapping a wizard bounce for a login
+  // page that cannot accept anyone. In this state /host loads no host data at
+  // all; it renders the "not installed here" notice, and every /api/host/*
+  // route still enforces its own auth. The moment a password exists or an
+  // install materializes, the lane closes and the wall applies to /host
+  // unchanged.
   const clientOnlyPublicUsage =
     localInstallState === 'not_installed' &&
     !process.env.OP_UI_LOGIN_PASSWORD &&
-    (path === '/start' || path.startsWith('/chat') || path.startsWith('/advanced') || path.startsWith('/connections'));
+    (path === '/start' || path === '/host' || path.startsWith('/host/')
+      || path.startsWith('/chat') || path.startsWith('/advanced') || path.startsWith('/connections'));
 
   if (wantsHtml && !event.locals.role && !publicFirstRunSetup && !isAuthPath && !isPwaAssetPath && !clientOnlyPublicUsage) {
     const redirectTo = path + event.url.search;

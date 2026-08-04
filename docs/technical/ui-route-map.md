@@ -57,6 +57,19 @@ release only.
   the `host:*` capability set (an admin-capable process — Electron or `openpalm
   admin`); otherwise redirects to `/chat`. UX only — the security boundary is
   per-endpoint.
+- **not-installed `/host` (NOT a guard)** — the admin surface renders its own
+  not-installed state from `(app)/host/+page.server.ts`. It is deliberately a
+  page load rather than a redirect: a `load` runs for client-side navigations
+  too, which the `Accept: text/html` guards above never see, and the in-app
+  admin button is exactly such a navigation. `/host` also joins the client-only
+  public lane in this state so removing the old redirect cannot strand a
+  first-run admin process at a `/login` that answers 503.
+- **`op_has_connections` (client hint, not a guard)** — a boolean cookie the
+  browser writes so the server-side landing can tell a first run apart from a
+  configured one; connections live in IndexedDB and are otherwise invisible to
+  the server. Client-controlled and therefore never an authorization: it only
+  picks between `/start` and `/chat`. Electron forwards it explicitly because
+  its landing probe runs in the main process.
 - **requireAdmin()** — per-endpoint session check in `+server.ts` handlers
   (`$lib/server/helpers.js`); JSON 401, never an HTML redirect.
 - **requireCapability(cap)** — per-endpoint server-side capability check
@@ -81,7 +94,7 @@ router, which 404s because the route tree is deleted.
 |---|---|---|---|
 | `/` | Entry | launch-routing (pre-auth) | Never renders: hooks (document nav) + `+page.server.ts` (client-side nav) redirect to the resolved landing |
 | `/splash` | Entry | launch-routing (pre-auth) | **Route removed** in Phase 3; the path 302s to the resolved landing for this release |
-| `/start` | Entry | narrow pre-auth first-run lane | Browser-aware bootstrap: restores the active connection or presents the host-capable local/remote choice; client-only/PWA surfaces continue directly to remote onboarding |
+| `/start` | Entry | narrow pre-auth first-run lane | Browser-aware bootstrap: restores the active connection or presents the host-capable local/remote choice; client-only/PWA surfaces continue directly to remote onboarding. No longer the landing once the browser reports saved connections via the `op_has_connections` hint (see below) |
 | `/attention` | Entry | auth | Migration/blocking surface split out of `/splash`; landing when `migration.status === 'pending'` (no producer yet) |
 | `/login` | Entry | public | Password login; posts to `/api/auth/login`, which issues the `op_session` cookie |
 | `/setup` | Host | setup localhost | First-run wizard; `?rerun=1` after completion requires admin auth |
@@ -89,7 +102,7 @@ router, which 404s because the route tree is deleted.
 | `/advanced` | Assistant | auth | Embedded OpenCode web UI when the active connection is a reachable, credential-free OpenCode ORIGIN (`embeddable.ts`) — the case a desktop install gets from local discovery (`127.0.0.1:${OP_ASSISTANT_PORT}`). The locked `/oc` same-origin connection and credentialed ones get the native chat surface instead, since OpenCode's UI is a root-mounted SPA and cannot be framed from a path prefix; where the server advertises `opencodeWorkspace` the surface also offers the workspace as a new tab, which has none of the framing restrictions. Mounts `ChatNavbar` (chat chrome composition) |
 | `/connections` | Connection | auth (page); `connections:manage` UX-gates the manager | Connection manager over the browser-owned (IndexedDB) list; Add and pairing deep links continue to `/connections/new` |
 | `/connections/new` | Connection | narrow pre-auth first-run lane | Pairing-first remote onboarding wizard. It verifies the candidate before browser persistence, stores it as active, and continues to Chat; manual address entry is the secondary path |
-| `/host` | Host | host capability gate + auth | Dashboard (tabbed); mounts the chat-free `Navbar` shell (#555); honors `?tab=diagnostics` (Systems tab) |
+| `/host` | Host | host capability gate + auth | Dashboard (tabbed); mounts the chat-free `Navbar` shell (#555); honors `?tab=diagnostics` (Systems tab). On a host with **no install** it renders a not-installed notice plus a link to `/setup` instead of the tabs, and starts no loaders or polling — page-rendered by `(app)/host/+page.server.ts`, not a guard (see below) |
 | `/admin`, `/admin/*` | — | none | **404.** Dead namespace since Phase 4 (the Phase 2 `/admin/endpoints` → `/connections` alias is gone too) |
 
 ## API routes
