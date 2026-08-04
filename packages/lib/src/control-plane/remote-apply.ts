@@ -19,8 +19,14 @@
  */
 import { writeFileAtomic } from "./fs-atomic.js";
 import { remoteServeConfigDir } from "./home.js";
-import { listEnabledAddonIds } from "./addons.js";
-import { patchStateEnvFile, readStackEnv } from "./secrets.js";
+import { BUILTIN_ADDON_IDS, GUARDIAN_INGRESS_ADDON_IDS } from "./addon-ids.js";
+import { parseEnabledAddons } from "./env.js";
+import {
+  readAccessToggles,
+  remoteRequiresGuardianIngress,
+  resolveAccessEnv,
+} from "./access-toggles.js";
+import { patchSecretsEnvFile, patchStateEnvFile, readStackEnv } from "./secrets.js";
 import {
   deriveRemoteHostname,
   readRemoteAccessConfig,
@@ -32,6 +38,26 @@ import {
 
 function serveConfigPath(homeDir: string): string {
   return `${remoteServeConfigDir(homeDir)}/serve.json`;
+}
+
+/**
+ * `addons.ts`'s `listEnabledAddonIds`, rebuilt here from the same three
+ * primitives it uses (`readStackEnv`, `parseEnabledAddons`, `BUILTIN_ADDON_IDS`).
+ *
+ * NOT a gratuitous copy: `addons.ts` imports `applyRemoteAccess` from this
+ * module so `setAddonEnabled` can run the full remote apply inline (that hook
+ * is what makes enable/disable fail-closed), and importing `addons.ts` back
+ * from here would close that into a cycle. `addon-ids.ts` is documented as a
+ * pure-constants file precisely so it can be imported from both sides, and
+ * `env.ts`/`secrets.ts` are likewise leaves — so the dependency runs one way
+ * and the PARSE stays shared even though the wrapper cannot be.
+ * `remote-apply.test.ts` asserts this agrees with `listEnabledAddonIds` on the
+ * cases that distinguish them, so the two cannot drift silently.
+ */
+function enabledAddonIds(homeDir: string): string[] {
+  const available = new Set(BUILTIN_ADDON_IDS);
+  const enabled = new Set(parseEnabledAddons(readStackEnv(homeDir).OP_ENABLED_ADDONS));
+  return [...enabled].filter((name) => available.has(name)).sort();
 }
 
 /**
@@ -137,7 +163,7 @@ export function readRemoteAccessState(homeDir: string): {
 } {
   const env = readStackEnv(homeDir);
   return {
-    enabled: listEnabledAddonIds(homeDir).includes("remote"),
+    enabled: enabledAddonIds(homeDir).includes("remote"),
     config: readRemoteAccessConfig(env),
   };
 }
@@ -201,6 +227,106 @@ export function reconcileRemoteAccess(homeDir: string): RemoteAccessReconcileRes
       config: REMOTE_ACCESS_DEFAULTS,
       hostname: "",
       wrote: false,
+      error: err instanceof Error ? err.message : String(err),
+    };
+  }
+}
+
+export type RemoteAccessApplyResult = RemoteAccessReconcileResult & {
+  /**
+   * Services whose containers must be recreated for this apply to take
+   * effect. Always contains `tunnel` (it reads the regenerated document at
+   * container start); contains `guardian` as well whenever this call changed
+   * `GUARDIAN_DIRECT_INGRESS`, because that variable is consumed by the
+   * guardian's own listener and only a recreate re-reads it.
+   */
+  services: string[];
+  /** True when this call changed `GUARDIAN_DIRECT_INGRESS`. */
+  ingressChanged: boolean;
+  /**
+   * Set when the apply succeeded but the result cannot work as configured and
+   * only the operator can finish it — today: `remote` targets the guardian,
+   * so ingress is now on, but no guardian-ingress addon is enabled, which
+   * means no `guardian` service is deployed for the tunnel to proxy TO.
+   * Deliberately NOT auto-fixed: enabling a portal addon deploys a new
+   * network-listening service, which is the operator's call to make, not a
+   * side effect of saving a target. Callers surface this; they do not fail on it.
+   */
+  warning?: string;
+};
+
+/**
+ * The COMPLETE apply for the `remote` addon — what every mutation path must
+ * call, rather than each one re-deriving a piece of it.
+ *
+ * `reconcileRemoteAccess` above is only half the job: it makes `serve.json`
+ * match the addon's state, but the document it writes can name the guardian
+ * as a proxy target, and the guardian's direct listener answers 404 unless
+ * `GUARDIAN_DIRECT_INGRESS` is "true". Regenerating one without recomputing
+ * the other produces a tunnel that reports success and serves a 404 — which
+ * is what happened when the only callers of the reconcile were the install
+ * path and the credentials route, and neither touched the ingress flag.
+ *
+ * ORDER MATTERS, and it is fail-closed: the caller is expected to invoke this
+ * AFTER the enablement/config write lands but BEFORE starting or stopping any
+ * container. On disable that sequence is what closes public access even if
+ * the subsequent `compose stop` fails — the empty document is already on disk
+ * by then, and a running tunnel re-reads it through its fsnotify watch within
+ * seconds. Reversing the order (stop first, rewrite after) would leave a
+ * Funnel publicly reachable for as long as the stop kept failing.
+ *
+ * Never throws — same convention as `reconcileRemoteAccess`.
+ */
+export function applyRemoteAccess(homeDir: string): RemoteAccessApplyResult {
+  const reconcile = reconcileRemoteAccess(homeDir);
+  if (reconcile.error) {
+    return { ...reconcile, services: [], ingressChanged: false };
+  }
+
+  try {
+    const env = readStackEnv(homeDir);
+    const toggles = readAccessToggles(env);
+    // Read enablement/target from the reconcile's OWN read, not a second one:
+    // it already read post-write state, and re-reading here would widen the
+    // window in which a concurrent write could make the two disagree.
+    const guardianIngressRequired = remoteRequiresGuardianIngress(
+      reconcile.enabled,
+      reconcile.config.target,
+    );
+    const next = resolveAccessEnv(toggles, { guardianIngressRequired }).GUARDIAN_DIRECT_INGRESS;
+    const ingressChanged = (env.GUARDIAN_DIRECT_INGRESS ?? "") !== next;
+
+    if (ingressChanged) {
+      // Same file and same helper `applyAccessToggles` uses for this key —
+      // GUARDIAN_DIRECT_INGRESS is operator-facing access config, not an
+      // app-written record, so it belongs in the secrets env file rather than
+      // the state one `pinRemoteHostname` writes to.
+      patchSecretsEnvFile(homeDir, { GUARDIAN_DIRECT_INGRESS: next });
+    }
+
+    const services = ingressChanged ? ["tunnel", "guardian"] : ["tunnel"];
+
+    // The guardian answering is necessary but not sufficient: it also has to
+    // EXIST. guardian is profile-gated behind the ingress addons, so a target
+    // of guardian/both with none of them enabled leaves the tunnel proxying
+    // to a service Compose never deploys.
+    let warning: string | undefined;
+    if (guardianIngressRequired) {
+      const enabledAddons = enabledAddonIds(homeDir);
+      const hasIngressAddon = GUARDIAN_INGRESS_ADDON_IDS.some((id) => enabledAddons.includes(id));
+      if (!hasIngressAddon) {
+        warning =
+          `Remote access targets the guardian, but no guardian service is deployed — ` +
+          `enable one of: ${GUARDIAN_INGRESS_ADDON_IDS.join(", ")}.`;
+      }
+    }
+
+    return { ...reconcile, services, ingressChanged, warning };
+  } catch (err) {
+    return {
+      ...reconcile,
+      services: [],
+      ingressChanged: false,
       error: err instanceof Error ? err.message : String(err),
     };
   }

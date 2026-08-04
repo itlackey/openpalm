@@ -31,7 +31,7 @@ import {
   listAvailableAddonIds,
   readStackSecretEnv,
   readStackEnv,
-  reconcileRemoteAccess,
+  applyRemoteAccess,
   writeStackSecretEnv,
   patchSecretsEnvFile,
 } from "@openpalm/lib";
@@ -149,12 +149,25 @@ export const GET: RequestHandler = async (event) => {
       default: f.default,
       set,
       secret: { envKey: f.key, present: set },
-      // Every other field stays blank on GET (the drawer shows `default` as
-      // a placeholder instead). A boolean checkbox can't work that way — an
-      // unchecked box reads as "off", not "unset" — so it needs the actual
-      // current value. Booleans are never @sensitive, so this never echoes
-      // a secret back to the browser.
-      value: f.boolean ? (set ? (stored as string) : f.default) : "",
+      // A field that IS set round-trips its current value; @sensitive ones
+      // never do (that would put a stored secret in the browser's DOM).
+      //
+      // Set fields used to come back blank, with the drawer showing `default`
+      // as a placeholder. That silently destroyed data: the drawer seeds its
+      // form from this response and POSTs every non-sensitive field,
+      // deliberately including empty ones so a value CAN be cleared — so
+      // editing one field wrote "" over every other field the operator never
+      // touched. Harmless-looking for a display name; not for `remote`, where
+      // blanking OP_REMOTE_TARGET silently re-points a live tunnel back to the
+      // assistant and blanking OP_REMOTE_HOSTNAME un-pins the write-once
+      // tailnet name, moving the operator's public URL. Returning the real
+      // value is what makes "submit everything" a faithful round-trip.
+      //
+      // UNSET fields stay blank rather than pre-filling `default`, so a save
+      // does not materialize every schema default into stack.env as an
+      // explicit setting. The exception is a boolean: an unchecked box reads
+      // as "off", not "unset", so a checkbox needs a concrete value to render.
+      value: f.sensitive ? "" : set ? (stored as string) : f.boolean ? f.default : "",
     };
   });
 
@@ -230,9 +243,17 @@ export const POST: RequestHandler = async (event) => {
     // without regenerating that document would recreate the container below
     // only for it to re-read the previous config — a saved setting that
     // silently does nothing. Regenerate first, then let the recreate pick it
-    // up. reconcileRemoteAccess never throws; it reports failure in its result.
+    // up. applyRemoteAccess never throws; it reports failure in its result.
+    //
+    // Use the FULL apply, not a bare serve-config reconcile: changing
+    // OP_REMOTE_TARGET to guardian/both also requires GUARDIAN_DIRECT_INGRESS
+    // to be "true" and the guardian recreated, or the freshly generated proxy
+    // points at the guardian's 404-disabled direct listener. applyRemoteAccess
+    // owns both halves and reports which services that implies.
+    let remoteServices: string[] = [];
+    let remoteWarning: string | undefined;
     if (name === 'remote') {
-      const remote = reconcileRemoteAccess(state.homeDir);
+      const remote = applyRemoteAccess(state.homeDir);
       if (remote.error) {
         logger.error('serve config write failed', { name, error: remote.error, requestId });
         return errorResponse(
@@ -243,6 +264,8 @@ export const POST: RequestHandler = async (event) => {
           requestId,
         );
       }
+      remoteServices = remote.services;
+      remoteWarning = remote.warning;
     }
 
     // Most schema keys are read by the addon container alone, so persisting them
@@ -252,7 +275,15 @@ export const POST: RequestHandler = async (event) => {
     // the services the key reaches, under the lock we already hold, so compose
     // rebuilds its file list and the affected entrypoints re-read the value.
     const scope = [
-      ...new Set(updated.flatMap((key) => ADDON_ENV_RECREATE_SCOPE[key] ?? [])),
+      ...new Set([
+        ...updated.flatMap((key) => ADDON_ENV_RECREATE_SCOPE[key] ?? []),
+        // ADDON_ENV_RECREATE_SCOPE is keyed by env var and maps OP_REMOTE_* to
+        // `tunnel` alone, which is right for the document itself. It cannot
+        // express "…and guardian, but only when this save flipped ingress" —
+        // that depends on prior state, not on which key changed. applyRemoteAccess
+        // computed it above; union it in.
+        ...remoteServices,
+      ]),
     ];
     let recreated: string[] = [];
     if (scope.length > 0) {
@@ -284,6 +315,10 @@ export const POST: RequestHandler = async (event) => {
       }
     }
 
-    return jsonResponse(200, { ok: true, name, updated, recreated }, requestId);
+    return jsonResponse(
+      200,
+      { ok: true, name, updated, recreated, ...(remoteWarning ? { warning: remoteWarning } : {}) },
+      requestId,
+    );
   });
 };

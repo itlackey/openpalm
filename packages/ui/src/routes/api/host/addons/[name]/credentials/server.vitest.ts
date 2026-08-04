@@ -95,13 +95,14 @@ describe('@boolean schema field (OP_VOICE_LAN_ACCESS)', () => {
 		expect(field?.boolean).toBe(true);
 		expect(field?.sensitive).toBe(false);
 		expect(field?.default).toBe('false');
-		// Unlike other (non-boolean) fields, GET must echo the ACTUAL value for
-		// a checkbox to render correctly — a blank value would read as
-		// unchecked/off even when the persisted value is "true".
+		// GET echoes the ACTUAL value for a checkbox to render correctly — a
+		// blank value would read as unchecked/off even when the persisted
+		// value is "true". (Every non-sensitive field round-trips its value
+		// now; booleans were simply the first that had to.)
 		expect(field?.value).toBe('false');
 	});
 
-	test('GET echoes back a persisted true value (not blanked, unlike other fields)', async () => {
+	test('GET echoes back a persisted true value', async () => {
 		const state = getState();
 		mkdirSync(join(state.homeDir, 'state'), { recursive: true });
 		writeFileSync(join(state.homeDir, 'state', 'stack.env'), 'OP_VOICE_LAN_ACCESS=true\n');
@@ -146,5 +147,61 @@ describe('@boolean schema field (OP_VOICE_LAN_ACCESS)', () => {
 		expect(body.ok).toBe(true);
 		expect(body.updated).toContain('DISCORD_APPLICATION_ID');
 		expect(body.recreated).toEqual([]);
+	});
+});
+
+// The drawer seeds its form from GET and POSTs every non-sensitive field back,
+// including blank ones (so a value CAN be cleared). That makes GET's response
+// the round-trip's source of truth: any field GET blanks is a field an
+// unrelated save silently erases.
+describe('non-sensitive fields round-trip their current value', () => {
+	function writeStackEnv(contents: string): void {
+		mkdirSync(join(homeDir, 'state'), { recursive: true });
+		writeFileSync(join(homeDir, 'state', 'stack.env'), contents);
+	}
+
+	test('GET returns the persisted value of a plain text field', async () => {
+		writeStackEnv('OP_REMOTE_TARGET=guardian\n');
+
+		const res = await GET(makeGetEvent('remote'));
+		const body = (await res.json()) as { fields: Array<{ key: string; value: string }> };
+
+		expect(body.fields.find((f) => f.key === 'OP_REMOTE_TARGET')?.value).toBe('guardian');
+	});
+
+	test('GET still blanks @sensitive fields', async () => {
+		// Round-tripping must never extend to secrets: TS_AUTHKEY is a tailnet
+		// join key, and echoing it back to the browser would put it in the DOM.
+		const res = await GET(makeGetEvent('remote'));
+		const body = (await res.json()) as {
+			fields: Array<{ key: string; sensitive: boolean; value: string }>;
+		};
+
+		const authkey = body.fields.find((f) => f.key === 'TS_AUTHKEY');
+		expect(authkey?.sensitive).toBe(true);
+		expect(authkey?.value).toBe('');
+	});
+
+	// The actual regression: saving ONE field used to blank every other one.
+	// For `remote` that silently re-pointed a live tunnel (target -> assistant)
+	// and un-pinned the write-once tailnet hostname, moving the public URL.
+	test('saving one field does not erase the others', async () => {
+		writeStackEnv('OP_REMOTE_TARGET=guardian\nOP_REMOTE_HOSTNAME=my-pinned-name\n');
+
+		// Replay what the drawer does: seed from GET, change one field, submit all.
+		const seed = (await (await GET(makeGetEvent('remote'))).json()) as {
+			fields: Array<{ key: string; sensitive: boolean; value: string }>;
+		};
+		const submitted: Record<string, string> = {};
+		for (const f of seed.fields) {
+			if (f.sensitive) continue;
+			submitted[f.key] = f.key === 'OP_REMOTE_PUBLIC' ? 'true' : f.value;
+		}
+		await POST(makePostEvent(submitted, 'remote'));
+
+		const after = readFileSync(join(homeDir, 'state', 'stack.env'), 'utf-8');
+		expect(after).toContain('OP_REMOTE_TARGET=guardian');
+		expect(after).toContain('OP_REMOTE_HOSTNAME=my-pinned-name');
+		expect(after).toContain('OP_REMOTE_PUBLIC=true');
 	});
 });

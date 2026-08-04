@@ -11,11 +11,13 @@ import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
+  applyRemoteAccess,
   pinRemoteHostname,
   readRemoteAccessState,
   reconcileRemoteAccess,
   writeServeConfig,
 } from "./remote-apply.ts";
+import { listEnabledAddonIds } from "./addons.ts";
 import {
   REMOTE_ACCESS_DEFAULTS,
   deriveRemoteHostname,
@@ -260,6 +262,158 @@ describe("reconcileRemoteAccess", () => {
     expect(second.hostname).toBe(first.hostname);
     expect(second.hostname).not.toBe(deriveRemoteHostname("beta"));
   });
+});
+
+// ── applyRemoteAccess ────────────────────────────────────────────────────
+
+describe("applyRemoteAccess", () => {
+  test("targeting the guardian turns GUARDIAN_DIRECT_INGRESS on and recreates guardian", () => {
+    const home = makeHome();
+    patchStateEnvFile(home, {
+      OP_ENABLED_ADDONS: "remote,chat",
+      OP_REMOTE_TARGET: "guardian",
+      GUARDIAN_DIRECT_INGRESS: "false",
+    });
+
+    const result = applyRemoteAccess(home);
+
+    expect(result.error).toBeUndefined();
+    expect(result.ingressChanged).toBe(true);
+    expect(readStackEnv(home).GUARDIAN_DIRECT_INGRESS).toBe("true");
+    // tunnel alone is not enough: GUARDIAN_DIRECT_INGRESS is read by the
+    // guardian's own listener at start, so it has to be recreated too or the
+    // freshly generated proxy points at a 404.
+    expect(result.services).toContain("tunnel");
+    expect(result.services).toContain("guardian");
+  });
+
+  test("does NOT open the guardian's LAN bind when flipping ingress", () => {
+    const home = makeHome();
+    patchStateEnvFile(home, {
+      OP_ENABLED_ADDONS: "remote,chat",
+      OP_REMOTE_TARGET: "both",
+      GUARDIAN_DIRECT_INGRESS: "false",
+      OP_GUARDIAN_BIND_ADDRESS: "127.0.0.1",
+    });
+
+    applyRemoteAccess(home);
+
+    // The whole point of the remote ingress path: it reaches the guardian
+    // over portal_net, so the LAN bind must stay loopback. applyRemoteAccess
+    // writes GUARDIAN_DIRECT_INGRESS and nothing else in the access env —
+    // turning on remote access can never widen LAN exposure.
+    expect(readStackEnv(home).OP_GUARDIAN_BIND_ADDRESS).toBe("127.0.0.1");
+  });
+
+  test("targeting the assistant leaves ingress alone and recreates only tunnel", () => {
+    const home = makeHome();
+    patchStateEnvFile(home, {
+      OP_ENABLED_ADDONS: "remote",
+      OP_REMOTE_TARGET: "assistant",
+      GUARDIAN_DIRECT_INGRESS: "false",
+    });
+
+    const result = applyRemoteAccess(home);
+
+    expect(result.ingressChanged).toBe(false);
+    expect(result.services).toEqual(["tunnel"]);
+    expect(readStackEnv(home).GUARDIAN_DIRECT_INGRESS).toBe("false");
+  });
+
+  test("disabling remote turns ingress back off when nothing else needs it", () => {
+    const home = makeHome();
+    patchStateEnvFile(home, {
+      OP_ENABLED_ADDONS: "remote,chat",
+      OP_REMOTE_TARGET: "guardian",
+      GUARDIAN_DIRECT_INGRESS: "false",
+    });
+    applyRemoteAccess(home);
+    expect(readStackEnv(home).GUARDIAN_DIRECT_INGRESS).toBe("true");
+
+    // Addon off — the only reason ingress was on is gone.
+    patchStateEnvFile(home, { OP_ENABLED_ADDONS: "chat" });
+    const result = applyRemoteAccess(home);
+
+    expect(result.ingressChanged).toBe(true);
+    expect(readStackEnv(home).GUARDIAN_DIRECT_INGRESS).toBe("false");
+  });
+
+  test("keeps ingress on when guardianNetwork wants it, even with remote off", () => {
+    const home = makeHome();
+    // guardianNetwork on: the LAN bind is the OTHER reason ingress is true,
+    // and disabling remote must not switch it off underneath that.
+    patchStateEnvFile(home, {
+      OP_ENABLED_ADDONS: "chat",
+      OP_GUARDIAN_BIND_ADDRESS: "0.0.0.0",
+      GUARDIAN_DIRECT_INGRESS: "true",
+    });
+
+    const result = applyRemoteAccess(home);
+
+    expect(result.ingressChanged).toBe(false);
+    expect(readStackEnv(home).GUARDIAN_DIRECT_INGRESS).toBe("true");
+  });
+
+  test("warns when the guardian target has no guardian deployed", () => {
+    const home = makeHome();
+    // remote targets the guardian, but no guardian-ingress addon is on, so
+    // Compose never deploys a guardian for the tunnel to proxy to.
+    patchStateEnvFile(home, {
+      OP_ENABLED_ADDONS: "remote",
+      OP_REMOTE_TARGET: "guardian",
+    });
+
+    const result = applyRemoteAccess(home);
+
+    expect(result.error).toBeUndefined();
+    expect(result.warning).toBeTruthy();
+    expect(result.warning).toContain("guardian");
+  });
+
+  test("does not warn when an ingress addon deploys the guardian", () => {
+    const home = makeHome();
+    patchStateEnvFile(home, {
+      OP_ENABLED_ADDONS: "remote,chat",
+      OP_REMOTE_TARGET: "guardian",
+    });
+
+    expect(applyRemoteAccess(home).warning).toBeUndefined();
+  });
+
+  test("still writes the disabled serve document when the addon is off", () => {
+    const home = makeHome();
+    patchStateEnvFile(home, { OP_ENABLED_ADDONS: "" });
+
+    const result = applyRemoteAccess(home);
+
+    expect(result.wrote).toBe(false);
+    // Fail-closed: "off" is an explicit empty document, never a missing file.
+    expect(readServeDoc(home)).toEqual({ TCP: {}, Web: {}, AllowFunnel: {} });
+  });
+});
+
+// The local `enabledAddonIds` helper in remote-apply.ts exists only to keep
+// addons.ts -> remote-apply.ts a one-way import (see its docblock). It must
+// stay observationally identical to the real `listEnabledAddonIds`, so pin
+// them against each other on the cases that could plausibly diverge.
+describe("enabled-addon read agrees with addons.ts", () => {
+  for (const [label, value] of [
+    ["single", "remote"],
+    ["multiple", "chat,remote"],
+    ["padded", " remote , chat "],
+    ["empty", ""],
+    ["unknown ids", "remote,not-a-real-addon"],
+    ["duplicates", "remote,remote,chat"],
+  ] as const) {
+    test(`${label}: readRemoteAccessState matches listEnabledAddonIds`, () => {
+      const home = makeHome();
+      patchStateEnvFile(home, { OP_ENABLED_ADDONS: value });
+
+      expect(readRemoteAccessState(home).enabled).toBe(
+        listEnabledAddonIds(home).includes("remote"),
+      );
+    });
+  }
 });
 
 // Sanity: the stack.env helper used by these tests points at the file the

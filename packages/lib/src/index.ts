@@ -704,10 +704,12 @@ export {
   type ServeConfigDoc,
 } from "./control-plane/remote-access.js";
 export {
+  applyRemoteAccess,
   reconcileRemoteAccess,
   readRemoteAccessState,
   writeServeConfig,
   pinRemoteHostname,
+  type RemoteAccessApplyResult,
   type RemoteAccessReconcileResult,
 } from "./control-plane/remote-apply.js";
 

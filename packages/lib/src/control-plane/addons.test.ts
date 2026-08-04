@@ -26,6 +26,10 @@ import {
   voiceImageRef,
 } from './addon-availability.js';
 import { readSecret } from './secrets-files.js';
+import { remoteServeConfigDir } from './home.js';
+import { patchStateEnvFile, readStackEnv } from './secrets.js';
+import { resolveServeConfig } from './remote-access.js';
+import { readRemoteAccessState } from './remote-apply.js';
 
 let tempDir = '';
 let homeDir = '';
@@ -117,6 +121,67 @@ describe('addon runtime state', () => {
     expect(disabled.changed).toBe(true);
     expect(disabled.services).toEqual(expect.arrayContaining(['guardian']));
     expect(listEnabledAddonIds(homeDir)).toEqual([]);
+  });
+
+  // The `remote` addon's container serves a GENERATED document, so recording
+  // enablement is not an apply on its own — setAddonEnabled has to run the
+  // full remote apply inline or the CLI/UI toggle starts a tunnel reading the
+  // PREVIOUS document (enable serving nothing) and leaves a live one behind
+  // on disable.
+  describe('remote addon toggling', () => {
+    function serveDoc(): unknown {
+      return JSON.parse(readFileSync(join(remoteServeConfigDir(homeDir), 'serve.json'), 'utf-8'));
+    }
+
+    it('writes the live serve document when remote is enabled', () => {
+      const result = setAddonEnabled(homeDir, 'remote', true);
+
+      expect(result.ok).toBe(true);
+      expect(serveDoc()).toEqual(resolveServeConfig(readRemoteAccessState(homeDir).config));
+      expect(result.services).toEqual(expect.arrayContaining(['tunnel']));
+    });
+
+    // The fail-closed property: the empty document is on disk BEFORE the
+    // caller stops any container, so a `compose stop` that fails afterwards
+    // cannot leave a Funnel publicly reachable.
+    it('writes the disabled serve document when remote is disabled', () => {
+      setAddonEnabled(homeDir, 'remote', true);
+      expect(serveDoc()).not.toEqual({ TCP: {}, Web: {}, AllowFunnel: {} });
+
+      const result = setAddonEnabled(homeDir, 'remote', false);
+
+      expect(result.ok).toBe(true);
+      expect(serveDoc()).toEqual({ TCP: {}, Web: {}, AllowFunnel: {} });
+    });
+
+    it('turns on guardian ingress and recreates guardian for a guardian target', () => {
+      patchStateEnvFile(homeDir, { OP_REMOTE_TARGET: 'guardian' });
+      setAddonEnabled(homeDir, 'chat', true);
+
+      const result = setAddonEnabled(homeDir, 'remote', true);
+
+      expect(result.ok).toBe(true);
+      expect(readStackEnv(homeDir).GUARDIAN_DIRECT_INGRESS).toBe('true');
+      expect(result.services).toEqual(expect.arrayContaining(['tunnel', 'guardian']));
+    });
+
+    it('warns when a guardian target has no guardian deployed', () => {
+      patchStateEnvFile(homeDir, { OP_REMOTE_TARGET: 'guardian' });
+
+      const result = setAddonEnabled(homeDir, 'remote', true);
+
+      expect(result.ok).toBe(true);
+      expect(result.warning).toBeTruthy();
+    });
+
+    it('leaves other addons untouched by the remote apply', () => {
+      const result = setAddonEnabled(homeDir, 'voice', true);
+
+      expect(result.ok).toBe(true);
+      expect(result.warning).toBeUndefined();
+      // voice must not drag the remote serve document into existence.
+      expect(existsSync(join(remoteServeConfigDir(homeDir), 'serve.json'))).toBe(false);
+    });
   });
 
   // PR #564 second retest R6: disabling a profile-bearing addon must clear its
