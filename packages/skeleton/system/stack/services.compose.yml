@@ -8,9 +8,16 @@
 # Docker DNS name ollama:11434 — that inference path needs shared-network
 # reachability, so ollama is granted assistant_net per service. tunnel is not
 # a general addon at all: it is an INGRESS PATH for the two first-party
-# services it fronts (assistant, guardian), never a third party's code, so it
-# gets the same per-service exception for the same reason — see the tunnel
-# service below. voice needs no assistant reachability at all BY DEFAULT: the
+# services it fronts (assistant, guardian), so it gets the same per-service
+# exception for the same reason — see the tunnel service below. Be precise
+# about what that exception costs, though: tunnel runs THIRD-PARTY CODE (the
+# upstream tailscale/tailscale image), so this puts a non-OpenPalm process on
+# the same bridge as the assistant's OpenCode API. It is first-party-CHOSEN,
+# not first-party-written, and what bounds the risk is blast radius rather
+# than authorship — the image is digest-pinned (no floating tag can re-point
+# it), it runs rootless with zero added capabilities and zero device mounts,
+# it publishes no host port, and it receives exactly one secret (ts_authkey,
+# delegated). Same caveat applies to ollama's exception above. voice needs no assistant reachability at all BY DEFAULT: the
 # UI host process reaches it over its published loopback port (127.0.0.1:8880),
 # so voice stays on addon_net only here. An operator who turns on
 # OP_VOICE_LAN_ACCESS opts into the same per-service exception ollama has —
