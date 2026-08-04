@@ -28,7 +28,7 @@ import {
   stackDirFor,
   reconcileMdnsResponder,
 } from "@openpalm/lib";
-import { resolveRequestLanding, getCachedLocalInstallState } from "$lib/server/landing.js";
+import { resolveRequestLanding, getCachedLocalInstallState, readConnectionsHint } from "$lib/server/landing.js";
 import { BLOCKING_LANDINGS } from "$lib/resolve-landing.js";
 
 // Launch-fact collection + the 5s cache live in $lib/server/landing.ts; the
@@ -233,11 +233,28 @@ export const handle: Handle = async ({ event, resolve }) => {
   const localInstallState = getCachedLocalInstallState(stackDirFor(homeDir), homeDir);
   const publicFirstRunSetup = isSetupPath && !setupComplete;
 
+  // An unfinished local install pulls every navigation back to the wizard so a
+  // half-configured stack is not used by accident — EXCEPT when the browser
+  // already has connections of its own. A packaged desktop build re-seeds the
+  // managed system/ tree on every launch, which materializes core.compose.yml
+  // and so classifies as `setup_incomplete` from the very first run; without
+  // this exemption, someone using a REMOTE assistant was pinned to a local
+  // install wizard on every restart, and on a machine with no Docker that
+  // wizard can be neither completed nor dismissed. The in-app "connect
+  // instead" link only escaped it because client-side navigations carry no
+  // `Accept: text/html` and never reached this guard — a reload went straight
+  // back to /setup.
+  //
+  // Safe to key on a client hint: this redirect is UX, not a boundary. /setup
+  // keeps its own capability + localhost gates, and every /api/host/* route
+  // enforces auth for itself, so the most a forged cookie buys is the chat
+  // surface the same browser could already reach by clicking a link.
   if (
     wantsHtml &&
     canServeSetup &&
     !setupComplete &&
     localInstallState !== 'not_installed' &&
+    !readConnectionsHint(event) &&
     !isSetupPath &&
     !isAuthPath &&
     !isPwaAssetPath &&

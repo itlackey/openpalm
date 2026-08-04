@@ -99,7 +99,18 @@ export function resolveLanding(ctx: RuntimeContext, state: LaunchState): string 
     if (state.local.state === 'not_installed') {
       return state.browserConnections ? '/chat' : '/start';
     }
-    if (state.local.state === 'setup_incomplete') return '/setup';
+    // Same reasoning, and it matters MORE here. On a packaged desktop build
+    // `not_installed` is nearly unreachable: every launch re-seeds the managed
+    // system/ tree, which materializes core.compose.yml, and classifyLocalInstall
+    // reads exactly that file — so a machine that has never installed anything
+    // reports `setup_incomplete` from its first launch onward. Landing that
+    // unconditionally on /setup marched anyone using a REMOTE assistant into a
+    // local-install wizard on every restart, and on a machine without Docker
+    // that wizard cannot be completed or dismissed. A saved connection is the
+    // signal that the local install is not what they are here for.
+    if (state.local.state === 'setup_incomplete') {
+      return state.browserConnections ? '/chat' : '/setup';
+    }
     if (state.local.state === 'installed_offline') return HOST_ADMIN_LANDING;
     if (state.local.state === 'installed_broken') return `${HOST_ADMIN_LANDING}?tab=diagnostics`;
     return '/chat';

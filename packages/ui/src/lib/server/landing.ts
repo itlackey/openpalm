@@ -127,7 +127,7 @@ async function resolveLaunchRouting(): Promise<LaunchRouting> {
  * jar. This resolver decides where EVERY document navigation goes, so it must
  * degrade to "no hint" rather than throw and take routing down with it.
  */
-function readConnectionsHint(event: RequestEvent): boolean {
+export function readConnectionsHint(event: RequestEvent): boolean {
   const get = event.cookies?.get;
   if (typeof get !== 'function') return false;
   try {

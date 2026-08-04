@@ -220,6 +220,22 @@ describe('resolveLanding — host:setup capability present', () => {
     expect(resolveLanding(hostCtx, state)).toBe('/setup');
   });
 
+  // A packaged desktop build re-seeds the managed system/ tree on every launch,
+  // materializing core.compose.yml — so classifyLocalInstall reports
+  // setup_incomplete from the FIRST run of a machine that has installed
+  // nothing. Someone using a remote assistant was therefore marched into a
+  // local-install wizard on every restart, unfinishable on a host with no
+  // Docker. A saved connection says the local install is not the point.
+  test('setup_incomplete does not force the wizard once the browser has connections', async () => {
+    const resolveLanding = await loadResolveLanding();
+    const state = makeLaunchState({
+      local: { state: 'setup_incomplete' },
+      connections: [],
+      browserConnections: true,
+    });
+    expect(resolveLanding(hostCtx, state)).toBe('/chat');
+  });
+
   test(`installed_offline lands on the host admin surface (${HOST_ADMIN_LANDING})`, async () => {
     const resolveLanding = await loadResolveLanding();
     const state = makeLaunchState({ local: { state: 'installed_offline' } });
