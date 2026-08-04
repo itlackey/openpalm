@@ -275,7 +275,7 @@ describe('resolveLanding — host-capable but not hosting', () => {
       connections: [],
       hostEnabled: false,
     });
-    expect(resolveLanding(hostCtx, state)).toBe('/connections/new');
+    expect(resolveLanding(hostCtx, state)).toBe('/connections/new?onboarding=1');
   });
 
   // The convergence, pinned: nobody should later "unify" these branches by
@@ -308,7 +308,7 @@ describe('resolveLanding — non-admin process', () => {
   test('nothing installed and no connections lands on onboarding', async () => {
     const resolveLanding = await loadResolveLanding();
     const state = makeLaunchState({ local: { state: 'not_installed' }, connections: [] });
-    expect(resolveLanding(ctx, state)).toBe('/connections/new');
+    expect(resolveLanding(ctx, state)).toBe('/connections/new?onboarding=1');
   });
 
   test('connections this browser saved are enough to go straight to chat', async () => {
@@ -324,7 +324,7 @@ describe('resolveLanding — non-admin process', () => {
   test('zero connections lands on /connections/new', async () => {
     const resolveLanding = await loadResolveLanding();
     const state = makeLaunchState({ local: { state: 'running' }, connections: [] });
-    expect(resolveLanding(ctx, state)).toBe('/connections/new');
+    expect(resolveLanding(ctx, state)).toBe('/connections/new?onboarding=1');
   });
 
   test('one or more connections lands on /chat', async () => {
@@ -340,6 +340,6 @@ describe('resolveLanding — non-admin process', () => {
       local: { state: 'running' },
       connections: [],
     });
-    expect(resolveLanding(ctx, state)).toBe('/connections/new');
+    expect(resolveLanding(ctx, state)).toBe('/connections/new?onboarding=1');
   });
 });

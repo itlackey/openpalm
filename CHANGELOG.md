@@ -7,6 +7,29 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- **Whether a machine hosts a stack is now recorded, not guessed.** The landing
+  is resolved on the server, but the two facts it needs are not server-side
+  facts, so it inferred both — from files on disk and a cookie — through
+  branches that overlapped. `OP_HOST_ENABLED` records the first, written by an
+  install; the browser keeps answering the second, because connections live in
+  the browser and one server can be serving many of them. With one mechanism
+  each, the two capability branches of the landing collapse into one: being
+  *able* to host and *actually* hosting are different things, and a
+  host-capable machine that hosts nothing wants exactly what a client wants.
+  No migration is required — an install that predates the flag is recognised by
+  the completion record it already carries.
+- **The welcome screen is now part of onboarding rather than a route of its
+  own.** `/start` existed only to ask install-or-connect; that question now
+  appears as the first screen of `/connections/new?onboarding=1`, the surface
+  its answer leads to, and only where a stack could actually be installed — a
+  phone or a container-served UI goes straight to the connect form as before.
+  The desktop app also stops pre-resolving its landing in the main process,
+  which never shared a cookie jar with the window: it opens the UI root and lets
+  the server decide, which deletes the hand-rolled cookie forwarding that
+  workaround required.
+
 ### Fixed
 
 - **The welcome screen no longer greets you on every launch.** Someone who

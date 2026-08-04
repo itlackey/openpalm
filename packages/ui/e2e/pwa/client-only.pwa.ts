@@ -422,7 +422,7 @@ test('empty client and standalone PWA starts reach onboarding without Back or a 
     await expect(launched.page.getByText(LOCAL_CHOICE_TEXT)).toHaveCount(0);
     await expect(launched.page.getByText('Back', { exact: true })).toHaveCount(0);
     expect(await localChoiceFlashes(launched.page)).toEqual([]);
-    expect(navigationPaths).not.toContain('/start');
+    expect(navigationPaths).not.toContain('/setup');
     expect(await launched.page.evaluate(() => matchMedia('(display-mode: standalone)').matches)).toBe(true);
   } finally {
     if (launched) await closeChromium(launched.context);
@@ -435,7 +435,7 @@ test('host onboarding Back ignores a successful verification response that arriv
 }) => {
   await waitForOrigin(HOST_UI_ORIGIN);
   await page.goto(HOST_UI_ORIGIN, { waitUntil: 'domcontentloaded' });
-  await expect(page).toHaveURL(`${HOST_UI_ORIGIN}/start`);
+  await expect(page).toHaveURL(`${HOST_UI_ORIGIN}/connections/new?onboarding=1`);
   await page.getByText('Connect to an existing OpenPalm').click();
   await expect(page).toHaveURL(`${HOST_UI_ORIGIN}/connections/new?onboarding=1`);
   await page.getByRole('button', { name: 'Enter an address instead' }).click();
@@ -455,14 +455,14 @@ test('host onboarding Back ignores a successful verification response that arriv
     (response) => response.url() === `${FIXTURE_ORIGIN}/session` && response.status() === 200,
   );
   await page.getByText('Back', { exact: true }).click();
-  await expect(page).toHaveURL(`${HOST_UI_ORIGIN}/start`);
+  await expect(page).toHaveURL(`${HOST_UI_ORIGIN}/connections/new?onboarding=1`);
   await expect(page.getByRole('heading', { name: 'Welcome to OpenPalm' })).toBeVisible();
 
   await releaseVerification();
   await delayedResponse;
   await expect.poll(async () => (await fixtureState()).pendingVerificationRequests).toBe(0);
   await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
-  await expect(page).toHaveURL(`${HOST_UI_ORIGIN}/start`);
+  await expect(page).toHaveURL(`${HOST_UI_ORIGIN}/connections/new?onboarding=1`);
   await expect(page.getByRole('heading', { name: 'Welcome to OpenPalm' })).toBeVisible();
   expect(await indexedDbSnapshot(page)).toEqual(before);
 });
@@ -821,7 +821,7 @@ test('host-capable first run offers both branches and wizard Back returns to the
   );
 
   await page.goto(HOST_UI_ORIGIN, { waitUntil: 'domcontentloaded' });
-  await expect(page).toHaveURL(`${HOST_UI_ORIGIN}/start`);
+  await expect(page).toHaveURL(`${HOST_UI_ORIGIN}/connections/new?onboarding=1`);
   await expect(page.getByRole('heading', { name: 'Welcome to OpenPalm' })).toBeVisible();
   await expect(page.getByText(LOCAL_CHOICE_TEXT)).toBeVisible();
   await expect(page.getByText('Connect to an existing OpenPalm')).toBeVisible();
@@ -831,7 +831,7 @@ test('host-capable first run offers both branches and wizard Back returns to the
   await expect(page.getByRole('heading', { name: 'Connect to OpenPalm' })).toBeVisible();
   await expect(page.getByText('Back', { exact: true })).toBeVisible();
   await page.getByText('Back', { exact: true }).click();
-  await expect(page).toHaveURL(`${HOST_UI_ORIGIN}/start`);
+  await expect(page).toHaveURL(`${HOST_UI_ORIGIN}/connections/new?onboarding=1`);
   await expect(page.getByRole('heading', { name: 'Welcome to OpenPalm' })).toBeVisible();
 
   await page.getByText(LOCAL_CHOICE_TEXT).click();
@@ -841,7 +841,7 @@ test('host-capable first run offers both branches and wizard Back returns to the
   await expect(page.getByRole('link', { name: 'Install Docker Engine for Linux' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Retry checks' })).toBeVisible();
   await page.goBack();
-  await expect(page).toHaveURL(`${HOST_UI_ORIGIN}/start`);
+  await expect(page).toHaveURL(`${HOST_UI_ORIGIN}/connections/new?onboarding=1`);
   await expect(page.getByRole('heading', { name: 'Welcome to OpenPalm' })).toBeVisible();
 });
 
@@ -940,7 +940,7 @@ test('setup completion reloads Chat and reseeds runtime config before using the 
   });
 
   await page.goto(HOST_UI_ORIGIN, { waitUntil: 'domcontentloaded' });
-  await expect(page).toHaveURL(`${HOST_UI_ORIGIN}/start`);
+  await expect(page).toHaveURL(`${HOST_UI_ORIGIN}/connections/new?onboarding=1`);
   await expect.poll(() => runtimeConfigRequests).toBeGreaterThan(0);
   await page.getByText(LOCAL_CHOICE_TEXT).click();
   await expect(page.locator('[data-testid="step-models"]')).toBeVisible();

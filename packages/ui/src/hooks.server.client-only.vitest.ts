@@ -96,7 +96,7 @@ describe('hooks.server — client-only public lane (non-admin, not_installed, no
   // where the browser's own connection store decides whether to stay.
   test('/ lands on onboarding when this browser has nowhere to chat', async () => {
     await expect(handleOutcome(makeEvent('/'))).resolves.toMatchObject({
-      location: '/connections/new',
+      location: '/connections/new?onboarding=1',
     });
   });
 

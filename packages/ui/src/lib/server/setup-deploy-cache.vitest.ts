@@ -55,7 +55,7 @@ describe('setup deployment launch transition', () => {
     expect(getCachedLocalInstallState(state.stackDir, homeDir)).toBe('not_installed');
     // Nothing installed and nothing recorded: this is a client, so it lands on
     // onboarding rather than a host surface.
-    await expect(resolveRequestLanding(event)).resolves.toBe('/connections/new');
+    await expect(resolveRequestLanding(event)).resolves.toBe('/connections/new?onboarding=1');
 
     runDeployMock.mockImplementation(async (
       _state: ControlPlaneState,

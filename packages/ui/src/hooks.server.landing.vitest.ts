@@ -129,7 +129,7 @@ describe('hooks.server — landing routing through resolveLanding', () => {
     seedStackEnv(state.stackDir, false); // no core.compose.yml → not_installed
 
     await expect(handle({ event: makeEvent('/'), resolve })).rejects.toMatchObject({
-      location: '/connections/new',
+      location: '/connections/new?onboarding=1',
     });
   });
 
@@ -168,7 +168,7 @@ describe('hooks.server — landing routing through resolveLanding', () => {
     seedStackEnv(state.stackDir, false);
 
     await expect(handle({ event: makeEvent('/splash'), resolve })).rejects.toMatchObject({
-      location: '/connections/new',
+      location: '/connections/new?onboarding=1',
     });
   });
 

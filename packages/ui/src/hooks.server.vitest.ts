@@ -124,7 +124,7 @@ describe('hooks.server — sliding renewal', () => {
 
     const event = makeEvent('/', null, 'text/html');
 
-    await expect(handle({ event, resolve })).rejects.toMatchObject({ location: '/connections/new' });
+    await expect(handle({ event, resolve })).rejects.toMatchObject({ location: '/connections/new?onboarding=1' });
   });
 
   test('a machine that hosts nothing lands on onboarding, not the wizard', async () => {
@@ -133,6 +133,6 @@ describe('hooks.server — sliding renewal', () => {
     mkdirSync(kvDir, { recursive: true });
     writeFileSync(join(kvDir, 'stack.env'), 'OP_SETUP_COMPLETE=false\n');
     const event = makeEvent('/', null, 'text/html');
-    await expect(handle({ event, resolve })).rejects.toMatchObject({ location: '/connections/new' });
+    await expect(handle({ event, resolve })).rejects.toMatchObject({ location: '/connections/new?onboarding=1' });
   });
 });

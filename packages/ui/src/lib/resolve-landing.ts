@@ -124,5 +124,9 @@ export function resolveLanding(ctx: RuntimeContext, state: LaunchState): string 
   // saved. Without the second, a browser that already has a remote assistant
   // would be sent to "add a connection" on every launch.
   const somewhereToChat = state.connections.length > 0 || state.browserConnections === true;
-  return somewhereToChat ? '/chat' : '/connections/new';
+  // `?onboarding=1` is what marks this as a first run rather than a deliberate
+  // "add another connection" from settings: it is what shows the
+  // install-or-connect question (where a stack could be installed at all) and
+  // what makes Back a step rather than a way out of the flow.
+  return somewhereToChat ? '/chat' : '/connections/new?onboarding=1';
 }

@@ -26,22 +26,30 @@ Every document navigation to `/` (and the legacy `/splash` path) is redirected
 by `hooks.server.ts` to the landing resolved by `resolveLanding(ctx,
 launchState)` (`src/lib/resolve-landing.ts`):
 
+Being ABLE to host (the `host:setup` capability) and actually HOSTING it
+(`OP_HOST_ENABLED`, recorded by an install) are different things. Only both
+together select the host rows — a host-capable process that hosts nothing wants
+exactly what a plain client wants, which is why there is one client row rather
+than a second branch.
+
 | Condition (in precedence order) | Landing |
 |---|---|
-| `host:setup` capability + migration pending | `/attention` |
-| local `not_installed` (any surface) | `/start` |
-| `host:setup` + local `setup_incomplete` | `/setup` |
-| `host:setup` + local `installed_offline` | `/host` |
-| `host:setup` + local `installed_broken` | `/host?tab=diagnostics` |
-| `host:setup` + local `running` | `/chat` |
-| no `host:setup`, 0 connections | `/connections/new` |
-| no `host:setup`, ≥1 connection | `/chat` |
+| hosting + migration pending | `/attention` |
+| hosting + local `installed_broken` | `/host?tab=diagnostics` |
+| hosting + local `installed_offline` | `/host` |
+| hosting + local `running` | `/chat` |
+| hosting, anything else | `/setup` |
+| not hosting, nowhere to chat | `/connections/new?onboarding=1` |
+| not hosting, somewhere to chat | `/chat` |
 
-`/start` finishes the decision in the browser, where the IndexedDB connection
-list is authoritative. A saved connection goes directly to Chat without a
-reachability probe. An empty host-capable browser shows the local-setup versus
-existing-OpenPalm choice; an empty client-only browser or standalone PWA goes
-directly to `/connections/new?onboarding=1`.
+"Somewhere to chat" is either a server-visible connection or the browser's own,
+reported by the `op_has_connections` hint below.
+
+`/connections/new?onboarding=1` finishes the decision in the browser, where the
+IndexedDB connection list is authoritative. Its first screen is the
+install-or-connect choice, shown only to a host-capable process — a client-only
+browser or standalone PWA has no stack to install and goes straight to the
+connect form.
 
 The launch-routing guard fires **before** the auth guard, so `/` and stale
 `/splash` bookmarks never bounce through `/login` first. `/splash` no longer
@@ -64,12 +72,19 @@ release only.
   admin button is exactly such a navigation. `/host` also joins the client-only
   public lane in this state so removing the old redirect cannot strand a
   first-run admin process at a `/login` that answers 503.
+- **`OP_HOST_ENABLED` (a recorded fact, not a guard)** — whether this machine
+  hosts a stack, written to `state/stack.env` by an install (`markSetupComplete`
+  and the CLI's `prepareInstallFiles`) and read by `readHostEnabled`. Default
+  false; `isSetupComplete` answers for installs that predate the flag, so no
+  migration is needed. It exists because the managed `system/` tree is re-seeded
+  on every launch, so disk state says only "the app has run here" — reading
+  intent out of it pinned anyone using a remote assistant to a local-install
+  wizard on every restart.
 - **`op_has_connections` (client hint, not a guard)** — a boolean cookie the
-  browser writes so the server-side landing can tell a first run apart from a
-  configured one; connections live in IndexedDB and are otherwise invisible to
-  the server. Client-controlled and therefore never an authorization: it only
-  picks between `/start` and `/chat`. Electron forwards it explicitly because
-  its landing probe runs in the main process.
+  browser writes so the landing can tell whether THIS browser has connections;
+  they live in IndexedDB and are otherwise invisible to the server, and one
+  server can be serving many browsers. Client-controlled and therefore never an
+  authorization: it only picks between two public client routes.
 - **requireAdmin()** — per-endpoint session check in `+server.ts` handlers
   (`$lib/server/helpers.js`); JSON 401, never an HTML redirect.
 - **requireCapability(cap)** — per-endpoint server-side capability check
@@ -94,14 +109,13 @@ router, which 404s because the route tree is deleted.
 |---|---|---|---|
 | `/` | Entry | launch-routing (pre-auth) | Never renders: hooks (document nav) + `+page.server.ts` (client-side nav) redirect to the resolved landing |
 | `/splash` | Entry | launch-routing (pre-auth) | **Route removed** in Phase 3; the path 302s to the resolved landing for this release |
-| `/start` | Entry | narrow pre-auth first-run lane | Browser-aware bootstrap: restores the active connection or presents the host-capable local/remote choice; client-only/PWA surfaces continue directly to remote onboarding. No longer the landing once the browser reports saved connections via the `op_has_connections` hint (see below) |
 | `/attention` | Entry | auth | Migration/blocking surface split out of `/splash`; landing when `migration.status === 'pending'` (no producer yet) |
 | `/login` | Entry | public | Password login; posts to `/api/auth/login`, which issues the `op_session` cookie |
 | `/setup` | Host | setup localhost | First-run wizard; `?rerun=1` after completion requires admin auth |
 | `/chat` | Assistant | auth | Stillness chat; own corner chrome (hides the navbar); imports domain clients directly, never the `$lib/api.js` barrel (#555) |
 | `/advanced` | Assistant | auth | Embedded OpenCode web UI when the active connection is a reachable, credential-free OpenCode ORIGIN (`embeddable.ts`) — the case a desktop install gets from local discovery (`127.0.0.1:${OP_ASSISTANT_PORT}`). The locked `/oc` same-origin connection and credentialed ones get the native chat surface instead, since OpenCode's UI is a root-mounted SPA and cannot be framed from a path prefix; where the server advertises `opencodeWorkspace` the surface also offers the workspace as a new tab, which has none of the framing restrictions. Mounts `ChatNavbar` (chat chrome composition) |
 | `/connections` | Connection | auth (page); `connections:manage` UX-gates the manager | Connection manager over the browser-owned (IndexedDB) list; Add and pairing deep links continue to `/connections/new` |
-| `/connections/new` | Connection | narrow pre-auth first-run lane | Pairing-first remote onboarding wizard. It verifies the candidate before browser persistence, stores it as active, and continues to Chat; manual address entry is the secondary path |
+| `/connections/new` | Connection | narrow pre-auth first-run lane | Pairing-first remote onboarding wizard. It verifies the candidate before browser persistence, stores it as active, and continues to Chat; manual address entry is the secondary path. With `?onboarding=1` on a host-capable process its first screen is the install-or-connect choice (the retired `/start` route folded into it), and Back steps back to that choice rather than leaving |
 | `/host` | Host | host capability gate + auth | Dashboard (tabbed); mounts the chat-free `Navbar` shell (#555); honors `?tab=diagnostics` (Systems tab). On a host with **no install** it renders a not-installed notice plus a link to `/setup` instead of the tabs, and starts no loaders or polling — page-rendered by `(app)/host/+page.server.ts`, not a guard (see below) |
 | `/admin`, `/admin/*` | — | none | **404.** Dead namespace since Phase 4 (the Phase 2 `/admin/endpoints` → `/connections` alias is gone too) |
 
