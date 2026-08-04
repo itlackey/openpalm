@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node
 import { join } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { tmpdir } from 'node:os';
-import type { AddonProfile } from '@openpalm/lib';
+import { BUILTIN_ADDON_IDS, type AddonProfile } from '@openpalm/lib';
 import { resetState, trackDir, cleanupTempDirs } from '$lib/server/test-helpers.js';
 import { getState } from '$lib/server/state.js';
 
@@ -97,9 +97,11 @@ describe('GET /api/host/addons', () => {
     const res = await GET(makeGetEvent());
     expect(res.status).toBe(200);
     const body = await res.json() as { addons: unknown[] };
-    // 7 built-in addons: api, chat, discord, gateway, ollama, slack, voice
-    // (`ssh` was removed on the rootless branch).
-    expect(body.addons).toHaveLength(7);
+    // Derived from BUILTIN_ADDON_IDS rather than hardcoded. This count was a
+    // literal twice and went stale both times an addon was added — the route
+    // is meant to return exactly the built-in set, so assert that relationship
+    // instead of a number that has to be hand-maintained alongside it.
+    expect(body.addons).toHaveLength(BUILTIN_ADDON_IDS.length);
   });
 
   test('lists available addons with enabled status', async () => {
@@ -110,7 +112,7 @@ describe('GET /api/host/addons', () => {
     expect(res.status).toBe(200);
 
     const body = await res.json() as { addons: Array<{ name: string; enabled: boolean; available: boolean }> };
-    expect(body.addons).toHaveLength(7);
+    expect(body.addons).toHaveLength(BUILTIN_ADDON_IDS.length);
 
     const discord = body.addons.find((a) => a.name === 'discord');
     expect(discord).toEqual({ name: 'discord', enabled: true, available: true });

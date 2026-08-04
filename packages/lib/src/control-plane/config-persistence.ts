@@ -223,6 +223,12 @@ export function migrateAccessIntent(homeDir: string): boolean {
     ...resolveAccessIntentEnv(toggles),
     // Re-assert the derived row so it agrees with the intent just recorded —
     // a legacy row could carry a cascade-only value with no per-service key.
+    //
+    // No `guardianIngressRequired` here, unlike the apply and setup paths: this
+    // is the one-time legacy upgrade, and it returns early above once intent is
+    // stored with no retired keys left. It therefore only ever runs against an
+    // env that predates the `remote` addon entirely, where the addon cannot be
+    // enabled and so cannot be requiring ingress.
     ...resolveAccessEnv(toggles),
   });
   for (const key of retired) next = removeEnvKey(next, key);

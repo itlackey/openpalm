@@ -103,6 +103,12 @@ describe("network partitioning — assistant_net membership", () => {
     "voice",
     "voice-cuda",
     "voice-rocm",
+    // tunnel is not an operator-installed addon: it is the INGRESS PATH for
+    // assistant/guardian (the only two services it ever proxies to), so it
+    // gets the same per-service assistant_net exception as ollama. It does
+    // run a third-party image; see the trust-boundary header comment atop
+    // services.compose.yml for what bounds that exception.
+    "tunnel",
   ]);
 
   // Portal adapters — these must NEVER be on assistant_net.

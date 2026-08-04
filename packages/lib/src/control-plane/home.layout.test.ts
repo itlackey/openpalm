@@ -18,6 +18,8 @@ import {
   secretsDir,
   authJsonFile,
   ensureHomeDirs,
+  remoteServeConfigDir,
+  remoteTunnelStateDir,
 } from "./home.js";
 
 const H = "/op/home";
@@ -47,6 +49,43 @@ describe("OP_HOME layout (single source of truth)", () => {
       expect(existsSync(join(home, 'data/guardian/.config/opencode'))).toBe(true);
       expect(statSync(join(home, 'data/assistant/.local/share/opencode/auth.json')).isFile()).toBe(true);
       expect(statSync(join(home, 'data/guardian/.local/share/opencode/auth.json')).isFile()).toBe(true);
+    } finally {
+      if (prev === undefined) delete process.env.OP_HOME;
+      else process.env.OP_HOME = prev;
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  test("the remote addon's GENERATED serve config lives outside the overwritten system/ tree", () => {
+    // system/ IS the release skeleton: overwriteSystemTree (core-assets.ts)
+    // replaces it wholesale on any update that changes a managed file, by
+    // renaming the existing tree aside and moving a staged copy of the
+    // skeleton into place. Anything generated per-install that lived there
+    // would be deleted by that swap — and for this directory specifically the
+    // consequence is not just a lost file: containerboot registers an fsnotify
+    // watch on the directory holding TS_SERVE_CONFIG and log.Fatalf's when it
+    // cannot, so the tunnel would refuse to start after any update.
+    expect(remoteServeConfigDir(H)).toBe("/op/home/state/remote");
+    expect(remoteServeConfigDir(H).startsWith(`${H}/system/`)).toBe(false);
+
+    // Same reasoning for the tunnel's persistent node identity: losing it
+    // re-registers the node and Tailscale appends "-1" to resolve the name
+    // collision, silently changing the operator's public URL.
+    expect(remoteTunnelStateDir(H)).toBe("/op/home/data/tunnel");
+    expect(remoteTunnelStateDir(H).startsWith(`${H}/system/`)).toBe(false);
+  });
+
+  test("ensureHomeDirs pre-creates the serve-config directory containerboot watches", () => {
+    const prev = process.env.OP_HOME;
+    const home = mkdtempSync(join(tmpdir(), "op-home-remote-"));
+    try {
+      process.env.OP_HOME = home;
+      ensureHomeDirs();
+      // Must exist as a DIRECTORY before the tunnel container is created:
+      // a bind mount of a non-existent source, or of a plain file, leaves
+      // containerboot with nothing to watch.
+      expect(statSync(remoteServeConfigDir(home)).isDirectory()).toBe(true);
+      expect(statSync(remoteTunnelStateDir(home)).isDirectory()).toBe(true);
     } finally {
       if (prev === undefined) delete process.env.OP_HOME;
       else process.env.OP_HOME = prev;

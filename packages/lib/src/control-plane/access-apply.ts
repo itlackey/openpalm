@@ -28,6 +28,7 @@ import {
   ACCESS_ENV_KEYS,
   coerceAccessToggles,
   readAccessToggles,
+  remoteRequiresGuardianIngress,
   resolveAccessEnv,
   resolveAccessIntentEnv,
   type AccessEnv,
@@ -41,6 +42,7 @@ import { reconcileMdnsResponder } from "./mdns-responder.js";
 import { patchSecretsEnvFile, readStackEnv } from "./secrets.js";
 import { GUARDIAN_INGRESS_ADDON_IDS } from "./addon-ids.js";
 import { listEnabledAddonIds, setAddonEnabled } from "./addons.js";
+import { readRemoteAccessConfig } from "./remote-access.js";
 import type { InstallLockHandle } from "./install-lock.js";
 import type { ControlPlaneState } from "./types.js";
 
@@ -60,6 +62,12 @@ const KEY_OWNER: Record<keyof AccessEnv, "assistant" | "guardian"> = {
   OPENCODE_AUTH: "assistant",
   OP_GUARDIAN_BIND_ADDRESS: "guardian",
   OP_API_BIND_ADDRESS: "guardian",
+  // GUARDIAN_DIRECT_INGRESS is consumed by the guardian's own listener — the
+  // `remote` addon changing this value (guardianNetwork stays off, but a
+  // tunnel now targets the guardian) still recreates the guardian, never the
+  // `tunnel` sidecar. The tunnel dials OUT to whatever is already listening;
+  // it has nothing baked in at container-start time for this key, so it has
+  // no need to be recreated when it flips.
   GUARDIAN_DIRECT_INGRESS: "guardian",
 };
 
@@ -226,8 +234,20 @@ export async function applyAccessToggles(
 ): Promise<AccessApplyResult> {
   const deps: AccessApplyDeps = { ...defaultAccessApplyDeps, ...(options.deps ?? {}) };
   const toggles = coerceAccessToggles(requested);
-  const nextEnv = resolveAccessEnv(toggles);
   const currentEnv = readStackEnv(state.homeDir);
+
+  // The `remote` addon can require the guardian's direct listener to answer
+  // without touching `guardianNetwork` at all — it tunnels over `portal_net`,
+  // never through the LAN bind. Its enablement and target live in the same
+  // places every other reader of addon state uses: `listEnabledAddonIds` for
+  // "is it on", the stack env (read BEFORE this apply's own writes land) for
+  // "what does it target" — a toggle save changes access toggles, not the
+  // remote addon's own config, so the current env is always the right source.
+  const remoteEnabled = listEnabledAddonIds(state.homeDir).includes("remote");
+  const remoteTarget = readRemoteAccessConfig(currentEnv).target;
+  const guardianIngressRequired = remoteRequiresGuardianIngress(remoteEnabled, remoteTarget);
+
+  const nextEnv = resolveAccessEnv(toggles, { guardianIngressRequired });
   const changedKeys = diffAccessEnv(currentEnv, nextEnv);
 
   const autoEnabledAddons = reconcileGuardianIngressAddons(

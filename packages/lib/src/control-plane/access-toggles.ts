@@ -29,6 +29,7 @@
  * `@openpalm/lib/control-plane/access-toggles.js` subpath.
  */
 import { isLoopback } from "./bind-warning.js";
+import type { RemoteTarget } from "./remote-access.js";
 
 // ── The model ─────────────────────────────────────────────────────────────
 
@@ -165,16 +166,55 @@ export const ACCESS_ENV_KEYS = [
  * `OPENCODE_AUTH` tracks `assistantDirect` exactly: OpenCode authenticates iff
  * it is published. When it is not published there is no network-reachable
  * surface to authenticate, and the UI's proxy reaches it over loopback.
+ *
+ * `opts.guardianIngressRequired` is the ONE place another feature may add a
+ * reason for `GUARDIAN_DIRECT_INGRESS` to be "true" without also opening the
+ * LAN bind — the `remote` addon tunnels to the guardian over `portal_net`,
+ * never through `OP_GUARDIAN_BIND_ADDRESS`, so it needs the direct listener
+ * to answer while that bind stays loopback. It is deliberately NOT threaded
+ * into `OP_GUARDIAN_BIND_ADDRESS`: that bind is the actual LAN firewall, and
+ * `guardianNetwork` — the toggle an operator reads as "let other devices on
+ * my network reach the guardian" — must stay its ONLY source. Wiring a second
+ * feature into it would mean turning on `remote` silently opens the guardian
+ * to every device on the LAN, which is not what `remote` asked for and not
+ * what the toggle's own label promises.
+ *
+ * The parameter is optional, and every existing call site that omits it gets
+ * today's exact behaviour (`GUARDIAN_DIRECT_INGRESS` tied to `guardianNetwork`
+ * alone) — this is a regression guard, not an implementation detail, because
+ * this function has many callers across setup, config persistence and the
+ * apply path that must not have to learn about `remote` to keep compiling.
  */
-export function resolveAccessEnv(toggles: AccessToggles): AccessEnv {
+export function resolveAccessEnv(
+  toggles: AccessToggles,
+  opts: { guardianIngressRequired?: boolean } = {},
+): AccessEnv {
   return {
     OP_UI_BIND_ADDRESS: toggles.networkAccess ? LAN : LOOPBACK,
     OP_ASSISTANT_BIND_ADDRESS: toggles.assistantDirect ? LAN : LOOPBACK,
     OP_GUARDIAN_BIND_ADDRESS: toggles.guardianNetwork ? LAN : LOOPBACK,
     OP_API_BIND_ADDRESS: toggles.guardianOpenaiApi ? LAN : LOOPBACK,
     OPENCODE_AUTH: toggles.assistantDirect ? "true" : "false",
-    GUARDIAN_DIRECT_INGRESS: toggles.guardianNetwork ? "true" : "false",
+    GUARDIAN_DIRECT_INGRESS:
+      toggles.guardianNetwork || opts.guardianIngressRequired ? "true" : "false",
   };
+}
+
+/**
+ * True when the `remote` addon needs the guardian's direct listener to
+ * ANSWER — i.e. it is enabled and tunnelling to the guardian at all.
+ *
+ * Lives here rather than in remote-access.ts because it feeds exactly one
+ * thing: the `opts.guardianIngressRequired` half of {@link resolveAccessEnv}
+ * above. Keeping it beside its only consumer means a reader of that function
+ * finds the whole "who else can require ingress" story in one file, instead
+ * of having to also open remote-access.ts to see where the boolean comes
+ * from. `RemoteTarget` is imported as a type only, so this stays a
+ * type-level coupling — no runtime import, no risk to the browser-safe
+ * (no-`node:*`) contract this module shares with remote-access.ts.
+ */
+export function remoteRequiresGuardianIngress(enabled: boolean, target: RemoteTarget): boolean {
+  return enabled && (target === "guardian" || target === "both");
 }
 
 /**

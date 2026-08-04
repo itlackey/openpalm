@@ -26,6 +26,23 @@
  */
 export const ADDON_ENV_RECREATE_SCOPE: Record<string, readonly string[]> = {
   OP_VOICE_LAN_ACCESS: ["voice", "assistant"],
+  // Same write-decoupled-from-apply shape as OP_VOICE_LAN_ACCESS above, for the
+  // tunnel container. These three keys aren't read from stack.env by the tunnel
+  // process at request time — they are baked in at CONTAINER-CREATE time, into
+  // the Tailscale Serve/Funnel config generated under state/remote/ (target and
+  // visibility) and into the tunnel service's compose `hostname:`. Persisting a
+  // key without recreating "tunnel" leaves the already-running container
+  // serving the old target/visibility/hostname indefinitely; there is nothing
+  // in the container that would notice the new value on its own.
+  //
+  // The recreate is only half the apply: the generated serve document has to be
+  // REWRITTEN from the new values first, or the recreated container re-reads
+  // the previous one. The credentials route does that (it calls
+  // reconcileRemoteAccess for this addon before recreating), and applyHome does
+  // it on every install/update — this table only decides WHAT to recreate.
+  OP_REMOTE_TARGET: ["tunnel"],
+  OP_REMOTE_PUBLIC: ["tunnel"],
+  OP_REMOTE_HOSTNAME: ["tunnel"],
 };
 
 export const BUILTIN_ADDON_ENV_SCHEMAS: Record<string, string> = {
@@ -117,6 +134,41 @@ SLACK_BOT_NAME=
 `,
   gateway: '',
   ollama: '',
+  remote: `# OpenPalm Remote Access (Tailscale tunnel) configuration
+# ---
+# Lets you reach this assistant when you're away from home, without opening
+# any ports on your router. Values are optional; the tunnel container supplies
+# safe defaults.
+
+# What the tunnel points at: assistant, guardian, or both. Most people only
+# ever need "assistant" — the guardian target is for advanced setups that also
+# expose bot/API portals remotely.
+OP_REMOTE_TARGET=assistant
+
+# Who can use the link this creates. Off (false) keeps it private: only
+# devices you've signed in to your own tailnet can reach it. On (true) makes
+# it a public link anyone on the internet who has the URL can open, with no
+# sign-in — treat that the same as publishing a public website.
+# @boolean
+OP_REMOTE_PUBLIC=false
+
+# The name your assistant is reachable at, e.g. "myname" for
+# https://myname.<your-tailnet>.ts.net. Leave blank to derive it from this
+# stack's project name automatically. Changing this later changes your public
+# URL, breaking any bookmark or shortcut that points at the old one.
+OP_REMOTE_HOSTNAME=
+
+# Tailscale auth key, from the Tailscale admin console under Settings > Keys.
+# (Spelled out rather than linked: a literal admin URL here trips the stale
+# /admin path scan in admin-paths-hygiene.vitest.ts, which is host-unaware by
+# design so it can catch references to OpenPalm's own retired /admin routes.)
+# Leave blank — that's the recommended setting, not a placeholder — and the
+# tunnel will ask you to sign in through a link the first time it starts.
+# Only set this if you're pre-authorizing the node yourself (e.g. scripted
+# setups) and know what a reusable auth key exposes.
+# @sensitive
+TS_AUTHKEY=
+`,
   voice: `# OpenPalm Voice (Kokoro TTS + Whisper STT) configuration
 # ---
 # Local inference server — no upstream API or key. Values are optional; the

@@ -40,6 +40,14 @@ export const DELEGATED_SECRET_NAMES: ReadonlySet<string> = new Set([
   // anything that prompt-injects it — can forge a valid host-admin session
   // cookie, which is precisely the attack the key exists to prevent.
   'op_session_signing_key',
+  // Tailnet join credential (TS_AUTHKEY) for the `remote` addon's tunnel
+  // container. It is handed to `tunnel` only as a Compose secret, never read
+  // from stack.env or the stash. Anything that can read it can use it to
+  // enroll an arbitrary device onto the user's own tailnet — i.e. it grants
+  // network access to every other device the user has signed in there, not
+  // just this assistant — so, like the portal secrets below, it must stay out
+  // of the assistant-visible /stash tree.
+  'ts_authkey',
   ...PORTAL_SECRET_ADDON_IDS.map(portalSecretName),
 ]);
 

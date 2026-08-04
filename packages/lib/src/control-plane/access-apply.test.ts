@@ -226,4 +226,85 @@ describe("applyAccessToggles", () => {
     expect(calls.recreated).toEqual([]);
     expect(readEnv(state).OP_UI_BIND_ADDRESS).toBe("0.0.0.0");
   });
+
+  // ── the `remote` addon feeding GUARDIAN_DIRECT_INGRESS without opening the LAN ──
+
+  /** Baseline env matching what a save with `toggles` already applied would have written. */
+  function baselineEnv(toggles: AccessToggles, extra: Record<string, string> = {}): string {
+    const rows = { ...resolveAccessEnv(toggles), ...extra };
+    return Object.entries(rows)
+      .map(([k, v]) => `${k}=${v}`)
+      .join("\n");
+  }
+
+  describe("the remote addon requiring guardian ingress", () => {
+    test("remote enabled + target=guardian turns ingress on and recreates the guardian, LAN bind untouched", async () => {
+      const state = makeHome(
+        baselineEnv(ALL_OFF, { OP_ENABLED_ADDONS: "remote", OP_REMOTE_TARGET: "guardian" }),
+      );
+      const { deps, calls } = makeDeps(["assistant", "guardian"]);
+
+      const result = await applyAccessToggles(state, ALL_OFF, { deps });
+
+      expect(result.changedKeys).toEqual(["GUARDIAN_DIRECT_INGRESS"]);
+      expect(readEnv(state).GUARDIAN_DIRECT_INGRESS).toBe("true");
+      expect(readEnv(state).OP_GUARDIAN_BIND_ADDRESS).toBe("127.0.0.1");
+      // Owned by "guardian" in KEY_OWNER — the tunnel sidecar is never
+      // recreated for this key, only the guardian whose listener it flips.
+      expect(calls.recreated).toEqual([["guardian"]]);
+    });
+
+    test("remote enabled + target=both also turns ingress on without opening the LAN bind", async () => {
+      const state = makeHome(
+        baselineEnv(ALL_OFF, { OP_ENABLED_ADDONS: "remote", OP_REMOTE_TARGET: "both" }),
+      );
+      const { deps } = makeDeps(["assistant", "guardian"]);
+
+      const result = await applyAccessToggles(state, ALL_OFF, { deps });
+
+      expect(readEnv(state).GUARDIAN_DIRECT_INGRESS).toBe("true");
+      expect(readEnv(state).OP_GUARDIAN_BIND_ADDRESS).toBe("127.0.0.1");
+      expect(result.ok).toBe(true);
+    });
+
+    test("remote enabled + target=assistant leaves ingress off", async () => {
+      const state = makeHome(
+        baselineEnv(ALL_OFF, { OP_ENABLED_ADDONS: "remote", OP_REMOTE_TARGET: "assistant" }),
+      );
+      const { deps, calls } = makeDeps(["assistant", "guardian"]);
+
+      const result = await applyAccessToggles(state, ALL_OFF, { deps });
+
+      expect(readEnv(state).GUARDIAN_DIRECT_INGRESS).toBe("false");
+      expect(result.changedKeys).toEqual([]);
+      expect(calls.recreated).toEqual([]);
+    });
+
+    test("remote NOT enabled has no effect, whatever OP_REMOTE_TARGET says", async () => {
+      const state = makeHome(baselineEnv(ALL_OFF, { OP_REMOTE_TARGET: "guardian" }));
+      const { deps, calls } = makeDeps(["assistant", "guardian"]);
+
+      const result = await applyAccessToggles(state, ALL_OFF, { deps });
+
+      expect(readEnv(state).GUARDIAN_DIRECT_INGRESS).toBe("false");
+      expect(calls.recreated).toEqual([]);
+      expect(result.changedKeys).toEqual([]);
+    });
+
+    test("guardianNetwork on already implies ingress — remote adds nothing further to recreate", async () => {
+      const state = makeHome(
+        baselineEnv(
+          { ...ALL_OFF, guardianNetwork: true },
+          { OP_ENABLED_ADDONS: "remote,chat", OP_REMOTE_TARGET: "guardian" },
+        ),
+      );
+      const { deps, calls } = makeDeps(["assistant", "guardian"]);
+
+      const result = await applyAccessToggles(state, { ...ALL_OFF, guardianNetwork: true }, { deps });
+
+      expect(result.changedKeys).toEqual([]);
+      expect(calls.recreated).toEqual([]);
+      expect(readEnv(state).OP_GUARDIAN_BIND_ADDRESS).toBe("0.0.0.0");
+    });
+  });
 });

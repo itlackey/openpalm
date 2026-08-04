@@ -8,7 +8,7 @@
  * imported from anywhere without risk of circular dependencies.
  */
 export const BUILTIN_ADDON_IDS: ReadonlyArray<string> = [
-  'api', 'chat', 'discord', 'gateway', 'ollama', 'slack', 'voice',
+  'api', 'chat', 'discord', 'gateway', 'ollama', 'remote', 'slack', 'voice',
 ] as const;
 
 /**

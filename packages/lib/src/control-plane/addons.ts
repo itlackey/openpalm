@@ -21,6 +21,7 @@ import type { ControlPlaneState } from './types.js';
 import { resolveStashDir, composeFilePath, customComposeFilePath, stackEnvFile } from './home.js';
 import { BUILTIN_ADDON_ENV_SCHEMAS } from './addon-env-schemas.js';
 import { BUILTIN_ADDON_IDS, GUARDIAN_INGRESS_ADDON_IDS, PORTAL_SECRET_ADDON_IDS } from './addon-ids.js';
+import { applyRemoteAccess } from './remote-apply.js';
 
 const VALID_NAME_RE = /^[a-z0-9][a-z0-9-]{0,62}$/;
 const logger = createLogger('registry');
@@ -33,7 +34,19 @@ export type RegistryAddonConfig = {
 
 type MutationResult = { ok: true } | { ok: false; error: string };
 export type AddonMutationResult = (
-  | { ok: true; enabled: boolean; changed: boolean; services: string[] }
+  | {
+      ok: true;
+      enabled: boolean;
+      changed: boolean;
+      services: string[];
+      /**
+       * Set when the mutation succeeded but left something only the operator
+       * can finish — today: enabling `remote` with a guardian target while no
+       * guardian-ingress addon is enabled. Advisory; callers surface it and
+       * carry on.
+       */
+      warning?: string;
+    }
   | { ok: false; error: string }
 );
 
@@ -498,11 +511,45 @@ export function setAddonEnabled(homeDir: string, name: string, enabled: boolean,
   }
 
 
+  // `remote` is the one built-in whose enablement is not fully expressed by
+  // flipping its Compose profile: the `tunnel` container serves a GENERATED
+  // document (state/remote/serve.json), so recording the addon and starting
+  // the container is not an apply — without this the container would come up
+  // reading the PREVIOUS document, i.e. enable would report success while
+  // serving nothing, and disable would leave a live (possibly Funnel-public)
+  // document on disk.
+  //
+  // Runs HERE, in the shared toggle, rather than in each caller, so the CLI,
+  // the UI route, and the wizard cannot diverge — and runs BEFORE the caller
+  // starts or stops any container, which is what makes disable fail-CLOSED:
+  // the empty document is already on disk, so a `compose stop` that fails
+  // afterwards cannot leave the tunnel publicly serving.
+  let warning: string | undefined;
+  let applyServices: string[] = [];
+  if (name === 'remote') {
+    const applied = applyRemoteAccess(homeDir);
+    if (applied.error) {
+      // The enablement write above already landed, so this is a partial
+      // apply, not a no-op — say so rather than reporting plain success.
+      // Re-running the same toggle re-runs this apply.
+      return {
+        ok: false,
+        error: `Addon "${name}" was recorded as ${enabled ? 'enabled' : 'disabled'}, but its remote access config could not be written: ${applied.error}`,
+      };
+    }
+    warning = applied.warning;
+    applyServices = applied.services;
+  }
+
   return {
     ok: true,
     enabled,
     changed: true,
-    services,
+    // `guardian` joins the list when the apply flipped GUARDIAN_DIRECT_INGRESS
+    // — that variable is read by the guardian's own listener at start, so
+    // recreating only `tunnel` would point the new proxy at a 404.
+    services: [...new Set([...services, ...applyServices])],
+    ...(warning ? { warning } : {}),
   };
 }
 
