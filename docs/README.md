@@ -72,6 +72,16 @@ See [How It Works](how-it-works.md) for the full architecture behind these terms
 | [sveltekit-rules.md](technical/sveltekit-rules.md) | Admin UI (`packages/ui/`) |
 | [ui-styling-unification.md](technical/ui-styling-unification.md) | UI styling — verified drift inventory + refactor plan to the unified token/component system (`packages/ui/src/lib/`) |
 
+## Reviews & analysis
+
+Point-in-time deep dives. Each is stamped with the revision it reviewed and is
+not kept current as the code moves.
+
+| Document | Description |
+|---|---|
+| [onboarding-setup-review.md](reviews/onboarding-setup-review.md) | End-to-end review of the new-user journey: discovery, install, setup wizard, first deploy, first chat |
+| [buzz-integration-analysis.md](reviews/buzz-integration-analysis.md) | OpenPalm vs [Buzz](https://github.com/block/buzz): protocol/architecture comparison against Paperclip, and an integration recommendation for the "agents at work" use case |
+
 ## Release notes
 
 | Document | Description |
@@ -87,3 +97,4 @@ See [How It Works](how-it-works.md) for the full architecture behind these terms
 | [environment-and-mounts.md](technical/environment-and-mounts.md) | All env vars and volume mounts |
 | [opencode-configuration.md](technical/opencode-configuration.md) | OpenCode runtime integration |
 | [community-portals.md](portals/community-portals.md) | Guardian `/oc/*` contract for custom portal adapters |
+| [buzz-addon-design.md](technical/buzz-addon-design.md) | **Design, not yet implemented.** Buzz as two addons — an ACP agent bridge and an optional self-hosted relay |
