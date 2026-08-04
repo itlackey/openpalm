@@ -239,7 +239,12 @@
   <title>Advanced Chat — OpenPalm</title>
 </svelte:head>
 
-<ConversationFrame bind:drawerOpen={navigationOpen} showConversationControls={false}>
+<!-- Advanced view keeps the conversation controls: the assistant and
+     conversation pickers are how you know WHICH assistant and WHICH thread the
+     workspace below is showing, and switching either is as reasonable here as
+     it is in chat. Leaving them out also stripped the drawer they open and the
+     taller navbar that gives them room. -->
+<ConversationFrame bind:drawerOpen={navigationOpen}>
 <main class="advanced-layout" inert={navigationOpen}>
   <div class="advanced-workspace">
     {#if mode === 'iframe'}

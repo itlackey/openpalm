@@ -517,9 +517,14 @@ test('shared chat navbar and footer remain responsive from 320px through desktop
 	await openCodeMode.click();
 	await expect(page).toHaveURL(/\/advanced(?:\?|$)/);
 	await expect(surfaceToolbar).toHaveCSS('height', '52px');
-	await expect(navbar).toHaveCSS('height', '52px');
-	await expect(assistant).toHaveCount(0);
-	await expect(conversation).toHaveCount(0);
+	// Advanced view keeps the conversation chrome: you still need to see which
+	// assistant and which thread the workspace belongs to, and be able to change
+	// either. That means the same taller navbar chat gets, not the collapsed
+	// 52px row. The new-conversation button stays out — it is gated separately,
+	// by ChatFooter's own showConversationActions.
+	await expect(navbar).toHaveCSS('height', '144px');
+	await expect(assistant).toHaveCount(1);
+	await expect(conversation).toHaveCount(1);
 	await expect(newConversation).toHaveCount(0);
 	const advancedFooter = page.locator('.chat-footer');
 	const advancedContent = page.locator(

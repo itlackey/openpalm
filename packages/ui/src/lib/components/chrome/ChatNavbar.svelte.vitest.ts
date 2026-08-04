@@ -125,6 +125,42 @@ describe('ChatNavbar', () => {
     }
   });
 
+  // The mocked URL above is /advanced, and the pickers render there because
+  // ConversationFrame's default is on — /advanced used to opt out, which took
+  // the drawer and the taller navbar with it.
+  test('shows the assistant and conversation pickers on the advanced surface', async () => {
+    const { container } = await render(ChatNavbar);
+
+    expect(container.querySelector('[aria-label="Assistant: Workshop assistant"]')).not.toBeNull();
+    expect(container.querySelector('[aria-label="Conversation: Current conversation"]')).not.toBeNull();
+    // The taller conversation frame is what gives them room to sit in.
+    expect(container.querySelector('header')?.classList.contains('conversation')).toBe(true);
+  });
+
+  test('drops the pickers and their drawer together when context is suppressed', async () => {
+    const { container } = await render(ChatNavbar, { showConversationControls: false });
+
+    expect(container.querySelector('[aria-label^="Assistant:"]')).toBeNull();
+    expect(container.querySelector('[aria-label^="Conversation:"]')).toBeNull();
+    // Leaving a trigger behind whose aria-controls names a dialog that was
+    // never rendered would be worse than hiding both.
+    expect(document.getElementById('chat-navbar-drawer')).toBeNull();
+  });
+
+  // `text-overflow` does nothing on a flex container, so the label needs its
+  // own element — without it a long assistant name is cut off mid-glyph
+  // instead of ellipsized.
+  test('truncates a long picker label rather than clipping it', async () => {
+    const { container } = await render(ChatNavbar);
+    const label = container.querySelector<HTMLElement>('[aria-label^="Assistant:"] .label');
+
+    expect(label, 'the picker label needs its own element to ellipsize').not.toBeNull();
+    const style = getComputedStyle(label as HTMLElement);
+    expect(style.textOverflow).toBe('ellipsis');
+    expect(style.whiteSpace).toBe('nowrap');
+    expect(style.overflow).toBe('hidden');
+  });
+
   test('connects every drawer trigger to the one mutually exclusive dialog', async () => {
     await render(ChatNavbar);
 

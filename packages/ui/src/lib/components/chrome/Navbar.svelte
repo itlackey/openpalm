@@ -158,6 +158,16 @@
     margin-left: auto;
     min-width: 0;
   }
+
+  /* On a conversation surface this cluster holds the assistant/conversation
+     pickers, whose wrapper is width:100%. A percentage width against a
+     content-sized flex parent is circular sizing — it resolved toward the
+     pickers' max-content width and pushed the row past the viewport. Claiming
+     the leftover space outright gives that 100% something real to measure. */
+  .navbar.conversation .navbar-actions {
+    flex: 1;
+    min-width: 0;
+  }
   @media (max-width: 720px) {
     .brand-text {
       display: none;

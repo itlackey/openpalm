@@ -123,6 +123,21 @@ async function resolveLaunchRouting(): Promise<LaunchRouting> {
 }
 
 /**
+ * Read the browser's connections hint, tolerating an event without a cookie
+ * jar. This resolver decides where EVERY document navigation goes, so it must
+ * degrade to "no hint" rather than throw and take routing down with it.
+ */
+function readConnectionsHint(event: RequestEvent): boolean {
+  const get = event.cookies?.get;
+  if (typeof get !== 'function') return false;
+  try {
+    return event.cookies.get(CONNECTIONS_HINT_COOKIE) === '1';
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Resolve the landing path for a request via resolveLanding().
  * May return a path with a query string (e.g. '/host?tab=diagnostics').
  */
@@ -158,7 +173,7 @@ export async function resolveRequestLanding(event: RequestEvent): Promise<string
   // Read from `event`, deliberately OUTSIDE resolveLaunchRouting() — that
   // function's launch facts are cached process-wide for 5s, and a per-request
   // client hint must never be baked into a shared cache entry.
-  const browserConnections = event.cookies?.get(CONNECTIONS_HINT_COOKIE) === '1';
+  const browserConnections = readConnectionsHint(event);
   const connections: LaunchState['connections'] = launch.hasHealthyLocal ? [{ id: 'default' }] : [];
   const launchState: LaunchState = {
     // No blocking migration exists yet — the gate (and /attention) is wired

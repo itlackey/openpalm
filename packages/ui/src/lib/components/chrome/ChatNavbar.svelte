@@ -175,6 +175,13 @@
     width: 100%;
     transition: height 220ms var(--s-ease);
   }
+  /* The pickers live here and are the only shrinkable things in the row — the
+     toolbar's icon buttons all set flex-shrink:0 — so this wrapper has to be
+     allowed to give ground, or the pressure has nowhere to go. */
+  .context-nav {
+    flex: 1 1 auto;
+    overflow: hidden;
+  }
   .assistant-panel {
     display: flex;
     flex-direction: column;
