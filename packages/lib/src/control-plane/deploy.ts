@@ -371,7 +371,12 @@ async function startInterimStatusPoll(
 export function markSetupComplete(state: ControlPlaneState): void {
 	// OP_SETUP_COMPLETE is an app-written record → the single state/stack.env
 	// (constitution §1).
-	patchStateEnvFile(state.homeDir, { OP_SETUP_COMPLETE: 'true' });
+	//
+	// OP_HOST_ENABLED lands in the SAME write: a healthy deploy is the moment
+	// this machine becomes a host, and routing reads that record instead of
+	// inferring it from disk. Written together so the two facts cannot disagree
+	// about the same install.
+	patchStateEnvFile(state.homeDir, { OP_SETUP_COMPLETE: 'true', OP_HOST_ENABLED: 'true' });
 }
 
 export function backupSetupInputs(state: ControlPlaneState): string | null {

@@ -34,7 +34,9 @@ function seedSetupIncompleteHome(home: string): void {
   mkdirSync(join(home, 'system', 'stack'), { recursive: true });
   writeFileSync(join(home, 'system', 'stack', 'core.compose.yml'), 'services: {}\n');
   mkdirSync(join(home, 'state'), { recursive: true });
-  writeFileSync(join(home, 'state', 'stack.env'), 'OP_SETUP_COMPLETE=false\n');
+  // A machine that HOSTS a stack, mid-install. The record is what selects the
+  // wizard now; artifacts alone belong to a machine that has merely launched.
+  writeFileSync(join(home, 'state', 'stack.env'), 'OP_SETUP_COMPLETE=false\nOP_HOST_ENABLED=true\n');
 }
 
 function makeDocumentEvent(path: string): RequestEvent {

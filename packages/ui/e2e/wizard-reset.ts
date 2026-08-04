@@ -5,7 +5,9 @@
  * hooks.server.ts returns false and the wizard re-runs end-to-end:
  *   - backs up stack.env (caller restores after the test via
  *     restoreWizardState)
- *   - rewrites state/stack.env with OP_SETUP_COMPLETE=false so state
+ *   - rewrites state/stack.env with OP_SETUP_COMPLETE=false (and keeps
+ *     OP_HOST_ENABLED=true — these fixtures exercise the wizard, which only
+ *     applies to a machine that hosts a stack) so state
  *     overrides any legacy true value still present in state/stack.env
  *   - removes any persisted voice profile selection so the wizard
  *     starts from a known blank state
@@ -70,12 +72,16 @@ export function resetWizardState(homeDir: string = resolveOpHome()): void {
 		.filter((line) => {
 			const trimmed = line.trim();
 			if (trimmed.startsWith('OP_SETUP_COMPLETE=')) return false;
+			// A "reset" that leaves the host record behind is not a first run:
+			// the landing would still take the host rows and the wizard would
+			// still be forced, so the suite would silently test the wrong thing.
+			if (trimmed.startsWith('OP_HOST_ENABLED=')) return false;
 			if (trimmed.startsWith('OP_VOICE_PROFILE=')) return false;
 			return true;
 		})
 		.filter(Boolean)
 		.join('\n');
-	const next = `${stripped ? `${stripped}\n` : ''}OP_SETUP_COMPLETE=false\n`;
+	const next = `${stripped ? `${stripped}\n` : ''}OP_SETUP_COMPLETE=false\nOP_HOST_ENABLED=true\n`;
 
 	// Note: writeFileSync changes inode. The setup wizard isn't running
 	// inside a container; the UI server reads stack.env via Node fs each

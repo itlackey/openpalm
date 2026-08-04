@@ -106,9 +106,29 @@ describe("classifyLocalInstall (disk markers)", () => {
     expect(classifyLocalInstall(stackDir(), dir)).toBe("not_installed");
   });
 
-  it("setup_incomplete when compose exists but OP_SETUP_COMPLETE is unset", () => {
+  it("setup_incomplete when an install left state behind but OP_SETUP_COMPLETE is unset", () => {
     const sd = stackDir();
     writeFileSync(join(sd, "core.compose.yml"), "services: {}");
+    writeStackEnv("OP_SETUP_COMPLETE=false\n");
+    expect(classifyLocalInstall(sd, dir)).toBe("setup_incomplete");
+  });
+
+  // The managed system/ tree is re-seeded from the bundled skeleton on EVERY
+  // app launch, so core.compose.yml appears on machines that have installed
+  // nothing. Reading that as "an install was started and abandoned" is what
+  // pinned desktop users to a setup wizard they never opened — and, without
+  // Docker, could not finish or leave.
+  it("not_installed when only the seeded compose file exists — a launch is not an install", () => {
+    const sd = stackDir();
+    writeFileSync(join(sd, "core.compose.yml"), "services: {}");
+    expect(classifyLocalInstall(sd, dir)).toBe("not_installed");
+  });
+
+  it("counts a legacy-location env file as install evidence too", () => {
+    const sd = stackDir();
+    writeFileSync(join(sd, "core.compose.yml"), "services: {}");
+    mkdirSync(join(dir, "state"), { recursive: true });
+    writeFileSync(join(dir, "state", "stack.state.env"), "OP_SETUP_COMPLETE=false\n");
     expect(classifyLocalInstall(sd, dir)).toBe("setup_incomplete");
   });
 
@@ -140,6 +160,7 @@ describe("classifyLocalInstall (disk markers)", () => {
   it("stays setup_incomplete when compose exists but only ONE guardian token is present", () => {
     const sd = stackDir();
     writeFileSync(join(sd, "core.compose.yml"), "services: {}");
+    writeStackEnv("OP_SETUP_COMPLETE=false\n");
     const secretsDir = join(dir, "private", "secrets");
     mkdirSync(secretsDir, { recursive: true });
     writeFileSync(join(secretsDir, "op_guardian_admin_token"), "deadbeef\n");
@@ -149,9 +170,14 @@ describe("classifyLocalInstall (disk markers)", () => {
   it("exposes one authoritative read-only materialization predicate", () => {
     expect(hasMaterializedLocalInstall(dir)).toBe(false);
 
+    // Seeded managed files alone are not a materialized install — that is the
+    // state every desktop launch leaves behind before anyone installs anything.
     const sd = join(dir, "system", "stack");
     mkdirSync(sd, { recursive: true });
     writeFileSync(join(sd, "core.compose.yml"), "services: {}");
+    expect(hasMaterializedLocalInstall(dir)).toBe(false);
+
+    writeStackEnv("OP_SETUP_COMPLETE=false\n");
     expect(hasMaterializedLocalInstall(dir)).toBe(true);
 
     rmSync(sd, { recursive: true, force: true });

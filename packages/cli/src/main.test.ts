@@ -320,6 +320,11 @@ describe('cli main', () => {
 			expect(stateEnv).toMatch(new RegExp(`^OP_GUARDIAN_VERSION=${PLATFORM_VERSION}$`, 'm'));
 			expect(stateEnv).toMatch(new RegExp(`^OP_PORTAL_VERSION=${PLATFORM_VERSION}$`, 'm'));
 			expect(stateEnv).toMatch(/^OP_VOICE_VERSION=latest$/m);
+			// Typing `openpalm install` answers "does this machine host a stack".
+			// Recorded during file preparation, not after a successful deploy, so
+			// an interrupted install still explains why its artifacts are there —
+			// this ran with --no-start, i.e. nothing was ever deployed.
+			expect(stateEnv).toMatch(/^OP_HOST_ENABLED=true$/m);
 		} finally {
 			rmSync(base, { recursive: true, force: true });
 		}
@@ -512,7 +517,12 @@ describe('cli main', () => {
 
 		mkdirSync(join(base, 'system', 'stack'), { recursive: true });
 		mkdirSync(join(base, 'data'), { recursive: true });
+		mkdirSync(join(base, 'state'), { recursive: true });
 		writeFileSync(coreCompose, 'services:\n  assistant:\n    image: test\n');
+		// Managing addons presumes a real install. The seeded compose file alone
+		// no longer implies one — every launch re-seeds the managed system/ tree
+		// — so the stack env an install writes has to be part of the fixture.
+		writeFileSync(join(base, 'state', 'stack.env'), 'OP_SETUP_COMPLETE=true\n');
 		writeFileSync(
 			join(base, 'system', 'stack', 'portals.compose.yml'),
 			'services:\n  discord:\n    profiles: ["addon.discord"]\n    image: discord\n    environment:\n      PORTAL_NAME: "Discord Bot"\n'

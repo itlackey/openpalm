@@ -16,18 +16,18 @@
  *    RESOLUTION still lives only in resolveCapabilities();
  *    resolveLanding merely reads the already-resolved list.
  *
- *  Landing matrix:
- *    host:setup capability present (admin process):
+ *  Landing matrix. Being ABLE to host and actually HOSTING are different
+ *  things, and only both together select the host rows — a host-capable
+ *  process that hosts nothing wants what a plain client wants:
+ *    host:setup capability AND hostEnabled:
  *      migration pending          → /attention
- *      local not_installed        → /start
- *      local setup_incomplete     → /setup
- *      local installed_offline    → host admin landing
  *      local installed_broken     → host admin landing + ?tab=diagnostics
- *      otherwise (running)        → /chat
- *    no host:setup capability (non-admin process):
- *      local not_installed        → /start
- *      otherwise, 0 connections   → /connections/new
- *      otherwise, ≥1 connection   → /chat
+ *      local installed_offline    → host admin landing
+ *      local running              → /chat
+ *      otherwise                  → /setup
+ *    anything else (a client, wherever it runs):
+ *      nowhere to chat            → /connections/new
+ *      somewhere to chat          → /chat
  *
  * Phase 4 moved the host admin landing from /admin to /host; the
  * HOST_ADMIN_LANDING constant below flipped with it (and nothing else in
@@ -131,6 +131,7 @@ type TestLaunchState = {
   migration: { status: 'pending' | 'none' };
   local: { state: TestLocalState };
   connections: Array<{ id: string }>;
+  hostEnabled?: boolean;
   browserConnections?: boolean;
 };
 
@@ -139,6 +140,9 @@ function makeLaunchState(overrides: Partial<TestLaunchState> = {}): TestLaunchSt
     migration: { status: 'none' },
     local: { state: 'running' },
     connections: [{ id: 'local' }],
+    // The host rows below all describe a machine that HOSTS a stack; the
+    // not-hosting rows set this false explicitly.
+    hostEnabled: true,
     ...overrides,
   };
 }
@@ -181,36 +185,24 @@ describe('resolveLanding — host:setup capability present', () => {
     expect(resolveLanding(hostCtx, state)).toBe('/attention');
   });
 
-  test('not_installed lands on /start with no server-visible connection', async () => {
+  // A machine that is MEANT to host a stack and has not got a working one is
+  // the case the wizard exists for, and it is no longer a trap: nobody who did
+  // not ask to host ever arrives here.
+  test('not_installed lands on the wizard', async () => {
     const resolveLanding = await loadResolveLanding();
     const state = makeLaunchState({ local: { state: 'not_installed' }, connections: [] });
-    expect(resolveLanding(hostCtx, state)).toBe('/start');
+    expect(resolveLanding(hostCtx, state)).toBe('/setup');
   });
 
-  // A reachable assistant is not evidence that the user has decided how they
-  // want to run OpenPalm, so the install-or-connect choice still stands. This
-  // is exactly why the browser-connection fact below is a separate field.
-  test('not_installed still lands on /start with a server-visible connection', async () => {
+  // A reachable assistant somewhere is not a working local stack, and this
+  // machine was told to run one.
+  test('not_installed lands on the wizard even with a server-visible connection', async () => {
     const resolveLanding = await loadResolveLanding();
     const state = makeLaunchState({
       local: { state: 'not_installed' },
       connections: [{ id: 'reachable-local-placeholder' }],
     });
-    expect(resolveLanding(hostCtx, state)).toBe('/start');
-  });
-
-  // A saved browser connection IS that evidence: the user already answered
-  // install-or-connect. Re-showing /start on every launch made them answer it
-  // again forever, since the server cannot see browser-owned connections and
-  // so could not tell them apart from a first run.
-  test('not_installed skips /start once the browser has its own connections', async () => {
-    const resolveLanding = await loadResolveLanding();
-    const state = makeLaunchState({
-      local: { state: 'not_installed' },
-      connections: [],
-      browserConnections: true,
-    });
-    expect(resolveLanding(hostCtx, state)).toBe('/chat');
+    expect(resolveLanding(hostCtx, state)).toBe('/setup');
   });
 
 
@@ -253,20 +245,73 @@ describe('resolveLanding — host:setup capability present', () => {
   });
 });
 
+// ── host-capable, but not hosting ────────────────────────────────────────────
+//
+// The case the whole record exists for. A desktop app on a machine that only
+// talks to a REMOTE assistant is host-CAPABLE, so it used to take the host rows
+// and be marched into a local-install wizard on every launch — unfinishable on
+// a machine without Docker. Capability is not intent.
+
+describe('resolveLanding — host-capable but not hosting', () => {
+  const hostCtx = makeCtx(true, HOST_EFFECTIVE);
+
+  test('is never sent to the wizard, whatever the disk says', async () => {
+    const resolveLanding = await loadResolveLanding();
+    for (const local of ['not_installed', 'setup_incomplete'] as const) {
+      const state = makeLaunchState({
+        local: { state: local },
+        connections: [],
+        hostEnabled: false,
+        browserConnections: true,
+      });
+      expect(resolveLanding(hostCtx, state), `${local} must not force the wizard`).toBe('/chat');
+    }
+  });
+
+  test('lands on onboarding when there is nowhere to chat at all', async () => {
+    const resolveLanding = await loadResolveLanding();
+    const state = makeLaunchState({
+      local: { state: 'not_installed' },
+      connections: [],
+      hostEnabled: false,
+    });
+    expect(resolveLanding(hostCtx, state)).toBe('/connections/new?onboarding=1');
+  });
+
+  // The convergence, pinned: nobody should later "unify" these branches by
+  // making the client path read the host record, or vice versa.
+  test('behaves exactly like a non-admin process', async () => {
+    const resolveLanding = await loadResolveLanding();
+    const clientCtx = makeCtx(false, BASE_EFFECTIVE);
+    for (const local of ['not_installed', 'setup_incomplete', 'running'] as const) {
+      for (const browserConnections of [true, false]) {
+        const state = makeLaunchState({
+          local: { state: local },
+          connections: [],
+          hostEnabled: false,
+          browserConnections,
+        });
+        expect(resolveLanding(hostCtx, state)).toBe(resolveLanding(clientCtx, state));
+      }
+    }
+  });
+});
+
 // ── non-admin (base) row ──────────────────────────────────────────────────────
 
 describe('resolveLanding — non-admin process', () => {
   const ctx = makeCtx(false, BASE_EFFECTIVE);
 
-  test('not_installed lands on /start so the browser can inspect IndexedDB', async () => {
+  // A client with nowhere to chat goes to onboarding. There is no separate
+  // welcome route any more: the install-or-connect question is asked on the
+  // onboarding surface itself, and only where a stack could be installed.
+  test('nothing installed and no connections lands on onboarding', async () => {
     const resolveLanding = await loadResolveLanding();
     const state = makeLaunchState({ local: { state: 'not_installed' }, connections: [] });
-    expect(resolveLanding(ctx, state)).toBe('/start');
+    expect(resolveLanding(ctx, state)).toBe('/connections/new?onboarding=1');
   });
 
-  // …but once the browser has told us it already has connections, that trip
-  // through /start is pure latency: it would only bounce straight back out.
-  test('not_installed skips /start once the browser reports its own connections', async () => {
+  test('connections this browser saved are enough to go straight to chat', async () => {
     const resolveLanding = await loadResolveLanding();
     const state = makeLaunchState({
       local: { state: 'not_installed' },
@@ -279,7 +324,7 @@ describe('resolveLanding — non-admin process', () => {
   test('zero connections lands on /connections/new', async () => {
     const resolveLanding = await loadResolveLanding();
     const state = makeLaunchState({ local: { state: 'running' }, connections: [] });
-    expect(resolveLanding(ctx, state)).toBe('/connections/new');
+    expect(resolveLanding(ctx, state)).toBe('/connections/new?onboarding=1');
   });
 
   test('one or more connections lands on /chat', async () => {
@@ -295,6 +340,6 @@ describe('resolveLanding — non-admin process', () => {
       local: { state: 'running' },
       connections: [],
     });
-    expect(resolveLanding(ctx, state)).toBe('/connections/new');
+    expect(resolveLanding(ctx, state)).toBe('/connections/new?onboarding=1');
   });
 });

@@ -890,27 +890,21 @@ describe('launch-on-login helpers', () => {
 });
 
 describe('desktop bootstrap', () => {
-  it('spawns the bundled UI and lands on /start', async () => {
+  // The window opens on the UI ROOT; the server's navigation guard resolves the
+  // landing from there. Pre-resolving it in the main process meant asking from a
+  // process with no cookie jar in common with the window, so the browser's own
+  // state was invisible to the probe.
+  it('spawns the bundled UI and opens the UI root', async () => {
     const { spawn } = await import('node:child_process');
     vi.mocked(spawn).mockClear();
     vi.mocked(lib.waitForReady).mockResolvedValue(true);
     vi.mocked(app.quit).mockClear();
     mockBrowserWindow.loadURL.mockClear();
-    vi.stubGlobal('fetch', vi.fn(async (input: string | URL | Request) => {
-      const url = String(input);
-      if (url.endsWith('/api/runtime/landing')) {
-        return new Response(JSON.stringify({ landing: '/start' }), {
-          status: 200,
-          headers: { 'content-type': 'application/json' },
-        });
-      }
-      return new Response(null, { status: 200 });
-    }));
 
     startupHarness.releaseReady();
 
     await vi.waitFor(() => {
-      expect(mockBrowserWindow.loadURL).toHaveBeenCalledWith('http://127.0.0.1:3880/start');
+      expect(mockBrowserWindow.loadURL).toHaveBeenCalledWith('http://127.0.0.1:3880');
     });
     expect(spawn).toHaveBeenCalled();
     expect(lib.checkDocker).not.toHaveBeenCalled();

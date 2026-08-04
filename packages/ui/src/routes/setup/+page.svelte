@@ -17,7 +17,6 @@
   // the store and renders from `setupState.*`. The step components read the
   // store directly (Screen1ModelsStep, ReviewStep) or via callbacks below.
   const s = setupState;
-  const fromStart = $derived(page.url.searchParams.get('from') === 'start');
 
   onMount(() => {
     s.init();
@@ -38,10 +37,6 @@
       <span>Updating existing installation</span>
       <a href={resolve('/')} class="rerun-back-link">← Back to Admin</a>
     </div>
-  {:else if fromStart}
-    <a class="remote-onboarding-link" href={resolve('/start')}>
-      Back to welcome choices
-    </a>
   {:else}
     <a class="remote-onboarding-link" href={resolve('/connections/new?onboarding=1')}>
       Connect to an existing OpenPalm instead

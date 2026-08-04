@@ -37,6 +37,7 @@ import {
 	ensureAkmUserEnv,
 	runDeploy,
 	markSetupComplete,
+	recordHostEnabled,
 	writeSystemEnv,
 	patchSecretsEnvFile,
 	describeAccessExposure,
@@ -439,6 +440,11 @@ async function prepareInstallFiles(
 	// included) both mint the same secrets once setup actually runs, so
 	// nothing downstream is left unconfigured by deferring this.
 	writeSystemEnv(bootstrapState);
+	// Typing `openpalm install` IS the answer to "does this machine host a
+	// stack", so record it on the same line as the artifacts that make the home
+	// look mid-install. Recording it here rather than after a successful deploy
+	// means a Ctrl-C'd install still explains why those artifacts exist.
+	recordHostEnabled(bootstrapState.homeDir);
 	// Ensure the akm env:user file exists (empty 0600) so the assistant can
 	// source it. Owned and edited directly by OpenPalm — see akm-user-env.ts.
 	ensureAkmUserEnv(bootstrapState);
