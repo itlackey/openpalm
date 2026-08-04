@@ -6,7 +6,7 @@
  * skip-existing copy, so they are not tested here.
  */
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 
@@ -99,4 +99,17 @@ describe("overwriteSystemTree", () => {
     expect(result.updated).toContain("system/retired.compose.yml");
     expect(result.updated).toContain("system/stack/portals.compose.yml");
   });
+
+	it("allows runtime plugin symlinks in the managed assistant tree", () => {
+		seedSource("old\n");
+		overwriteSystemTree(sourceRoot, opHome);
+		const binDir = join(opHome, "system", "assistant", "node_modules", ".bin");
+		const target = join(opHome, "system", "assistant", "node_modules", "download-msgpackr-prebuilds.js");
+		mkdirSync(binDir, { recursive: true });
+		writeFileSync(target, "runtime dependency\n");
+		symlinkSync("../download-msgpackr-prebuilds.js", join(binDir, "download-msgpackr-prebuilds"));
+
+		expect(() => overwriteSystemTree(sourceRoot, opHome)).not.toThrow();
+		expect(existsSync(join(opHome, "system", "assistant", "node_modules"))).toBe(false);
+	});
 });
