@@ -15,15 +15,20 @@ with operator control over three things:
 **Defaults:** direct assistant access, host-only web UI. Nothing is exposed and
 nothing new is screened unless the operator asks for it.
 
+It also introduces one stack-wide change that is not Paperclip-specific: a global
+`OP_TELEMETRY` toggle, off by default (§11).
+
 ---
 
 ## 1. Decisions already taken
 
 | Decision | Choice | Consequence |
 |---|---|---|
-| Scanning granularity | **Reuse the existing global toggle** | No Guardian code changes. `GUARDIAN_CONTENT_VALIDATION` keeps its current semantics; routing choice *is* the scanning choice. Per-principal levels are a documented future extension (§9). |
-| `core-principles.md` | **Amend as part of implementation** | §11 carries the exact proposed text. It is deliberately **not** applied yet — amending an authoritative invariant doc to describe behavior that does not exist would make it false in the other direction. |
+| Scanning granularity | **Reuse the existing global toggle** | No Guardian code changes. `GUARDIAN_CONTENT_VALIDATION` keeps its current semantics; routing choice *is* the scanning choice. Per-principal levels are a documented future extension (§10). |
+| `core-principles.md` | **Amend as part of implementation** | §13 carries the exact proposed text. It is deliberately **not** applied yet — amending an authoritative invariant doc to describe behavior that does not exist would make it false in the other direction. |
 | Sequencing | **Design first, no code** | This document. Implementation is a follow-up. |
+| Paperclip's own config/DB | **Documented deviation from the secret pattern** | Paperclip owns its Postgres and its internal secrets through one `env_file` under `private/env/`. Uses the upstream image unmodified, no wrapper. Narrowly exempted in `secret-audit.ts` (§5). |
+| Telemetry | **Global `OP_TELEMETRY`, default `false`** | Stack-wide opt-in toggle, off by default, applied to assistant, guardian, and paperclip (§11). |
 
 ---
 
@@ -77,7 +82,7 @@ either:
 **Mode B requires the adapter package to exist.** It does not today. The addon
 therefore ships with Mode A functional, Mode B's configuration surface defined
 and validated, and the default flipping to `assistant` when the adapter lands
-(§10).
+(§12).
 
 This is the one place where the operator-facing model and the delivery schedule
 disagree, and pretending otherwise would produce an addon whose default setting
@@ -101,7 +106,7 @@ Consequences:
 - Defined in `services.compose.yml`, not `portals.compose.yml`.
 - **Not** added to `GUARDIAN_INGRESS_ADDON_IDS` — enabling Paperclip must not
   force a Guardian deploy, because the default routing does not use it. Guardian
-  deployment becomes routing-dependent instead (§7).
+  deployment becomes routing-dependent instead (§8).
 - **Is** added to `PORTAL_SECRET_ADDON_IDS`. The principal secret is minted
   whenever the addon is enabled and simply goes unused in `direct`/`api` mode.
   Minting unconditionally keeps `secrets-files.ts` and the secret audit's static
@@ -132,9 +137,10 @@ an unpinned third-party image would silently change what the stack runs.
 |---|---|
 | Container port | `3100` |
 | Host publication | `${OP_PAPERCLIP_BIND_ADDRESS:-127.0.0.1}:${OP_PAPERCLIP_PORT:-3840}:3100` |
-| Networks | `assistant_net` and/or `portal_net`, per routing (§6) |
+| Networks | `assistant_net` and/or `portal_net`, per routing (§7) |
 | Volumes | `${OP_HOME}/data/paperclip:/paperclip` |
-| Secrets (compose names) | `paperclip_better_auth_secret`, `paperclip_tool_signing_secret`, `paperclip_db_password`, `portal_paperclip_secret`, `opencode_server_password`, `op_api_key` |
+| `env_file` | `${OP_HOME}/private/env/paperclip.env` — Paperclip's own config and internal secrets (§5) |
+| Secrets (compose names) | `portal_paperclip_secret`, `opencode_server_password`, `op_api_key` — the OpenPalm-**issued** credentials only |
 | `depends_on` | `paperclip-db: {condition: service_healthy}` only |
 
 Host port `3840` is free in the documented `38xx` range (`3800` UI, `3810`
@@ -161,20 +167,98 @@ upstream on its own.
 `postgres:17-alpine`, pinned by digest. Data at
 `${OP_HOME}/data/paperclip-db:/var/lib/postgresql/data`, per the rule that every
 persistence-requiring container path is a bind into `data/`. **No `ports:`
-block** — reachable only from the addon network. Password from
-`paperclip_db_password`; `POSTGRES_PASSWORD_FILE` is used rather than a raw env
-value, because `secret-audit.ts` rejects secret-like compose environment keys.
+block** — never published, reachable only from the addon's own network. It reads
+the same `env_file` (§5) for `POSTGRES_USER` / `POSTGRES_PASSWORD` /
+`POSTGRES_DB`.
 
-`DATABASE_URL` is the one wrinkle: Paperclip wants a single connection string
-containing the password, which the secret audit will reject as an inline
-credential. The entrypoint-free fix is to pass discrete `PG*` variables plus
-`POSTGRES_PASSWORD_FILE` if Paperclip supports them; **if it only accepts
-`DATABASE_URL`, this needs a small wrapper** — flagged as an open item in §12
-rather than assumed away.
+The two services share one Postgres and one credential file because they are a
+single trust domain: `paperclip-db` exists only to serve `paperclip`, and
+splitting the file would add a second thing to keep in sync for no boundary gain.
 
 ---
 
-## 5. Configuration model
+## 5. Paperclip's own config — a documented deviation
+
+Paperclip wants a `DATABASE_URL` connection string with the password inline, plus
+`BETTER_AUTH_SECRET` and `PAPERCLIP_TOOL_ACTION_SIGNING_SECRET` as ordinary
+environment values. Both collide with the standard pattern:
+`secret-audit.ts:202` bans `env_file` on **every** service, and `:211` rejects
+secret-like environment keys, requiring a `*_FILE` indirection the upstream image
+does not implement.
+
+Rather than wrap the upstream image, the addon takes an explicit, narrow
+exception.
+
+### The file
+
+**`~/.openpalm/private/env/paperclip.env`**, mode `0600`, in a new `env/`
+subtree under `private/`.
+
+`private/` is the right tree and not a compromise: it is already the delegated-
+credential boundary — never bind-mounted into assistant `/stash`, `0700`
+directories, `0600` files, included in backups and `--purge`, excluded from the
+assistant's mounts. A secret-bearing env file belongs there, not in `config/`
+(user, non-secret by convention) or `state/stack.env` (explicitly non-secret, and
+Compose's global `--env-file`, so anything in it would reach every service).
+
+Generated content, seeded once on `openpalm addon enable paperclip`:
+
+```sh
+POSTGRES_USER=paperclip
+POSTGRES_DB=paperclip
+POSTGRES_PASSWORD=<randomHex(32)>
+DATABASE_URL=postgres://paperclip:<same>@paperclip-db:5432/paperclip
+BETTER_AUTH_SECRET=<randomHex(32)>
+PAPERCLIP_TOOL_ACTION_SIGNING_SECRET=<randomHex(32)>
+```
+
+Values come from `randomHex` (`packages/lib/src/control-plane/crypto.ts`), the
+same CSPRNG helper behind every other generated credential. **Seed-if-missing,
+never regenerate** — matching `ensurePortalSecret`, so an operator edit or a
+restored backup survives an apply. Regenerating would silently orphan the
+existing Postgres volume and invalidate every Paperclip session.
+
+### The audit exception
+
+`auditComposeSecrets` gains a named allowlist beside its existing per-service
+rules, which already use exactly this shape (`allowedSecretForService` carries
+per-service branches with WHY comments):
+
+```ts
+/**
+ * Services permitted to use `env_file`, and the ONE path they may read.
+ *
+ * The blanket env_file ban exists so a service cannot be handed a broad
+ * credential surface it has no role in. `paperclip` is a third-party image
+ * that accepts a password-bearing DATABASE_URL and two raw secret env values
+ * and implements no *_FILE indirection, so the standard pattern would require
+ * wrapping an upstream image we do not build. The exception is bounded on
+ * three axes instead: only these services, only a path under private/env/,
+ * and only credentials Paperclip issues to ITSELF. Credentials OpenPalm
+ * issues — the guardian principal secret, the OpenCode server password, the
+ * compatible-API key — stay ordinary compose secrets with the normal
+ * boundary check.
+ */
+const ENV_FILE_EXEMPT: Record<string, string> = {
+  paperclip: "private/env/paperclip.env",
+  "paperclip-db": "private/env/paperclip.env",
+};
+```
+
+The audit still fails on: `env_file` from any other service, an exempt service
+pointing at a different path, more than one `env_file` entry, and any
+non-Paperclip-issued secret appearing in the file.
+
+**What this exception is not.** It does not widen `state/stack.env`, does not put
+a secret in `config/`, does not grant Paperclip a secrets *directory*, and does
+not change the rule for any other service. The OpenPalm-issued credentials
+Paperclip needs still arrive as narrowly granted compose secrets, so
+`allowedSecretForService` gains a `paperclip` branch permitting exactly
+`portal_paperclip_secret`, `opencode_server_password`, and `op_api_key`.
+
+---
+
+## 6. Configuration model
 
 New leaf module `packages/lib/src/control-plane/paperclip-access.ts`, modelled
 directly on `remote-access.ts`: browser-safe (no `node:*`), so the setup wizard
@@ -227,14 +311,14 @@ inherit."
 **The exposure/auth coupling is mechanical, not advisory.** Paperclip's own
 `local_trusted` mode has no login (`doc/DEPLOYMENT-MODES.md`). Publishing that
 beyond loopback would put an unauthenticated control plane on the LAN. So
-`networkAccess: true` — or selecting Paperclip as a Tailscale target (§8) —
+`networkAccess: true` — or selecting Paperclip as a Tailscale target (§9) —
 **forces** `authenticated`/`private`. The operator cannot express
 "reachable and unauthenticated," which is the combination that would otherwise
 be one checkbox away.
 
 ---
 
-## 6. Network membership
+## 7. Network membership
 
 Compose cannot make a service's `networks:` list conditional on an env var.
 Two options:
@@ -260,7 +344,7 @@ compose file and one more entry in the recreate-scope table.
 
 ---
 
-## 7. Guardian deploy gating
+## 8. Guardian deploy gating
 
 `hasGuardianIngressAddon(enabledAddons)` currently answers from the addon list
 alone. With routing as a setting, "is Guardian needed?" also depends on
@@ -303,7 +387,7 @@ on the `guardian` service is unchanged — Paperclip in `guardian` mode enables 
 
 ---
 
-## 8. Tailscale exposure
+## 9. Tailscale exposure
 
 `remote-access.ts` already models exactly this. Extend it:
 
@@ -337,12 +421,12 @@ Two required follow-ons:
   the compose file list, so they need `["paperclip"]` (and `["tunnel"]` where the
   serve document changes), exactly like `OP_VOICE_LAN_ACCESS`.
 - Selecting `paperclip` as a tunnel target must force
-  `PAPERCLIP_DEPLOYMENT_MODE=authenticated` (§5). Tailscale Serve is
+  `PAPERCLIP_DEPLOYMENT_MODE=authenticated` (§6). Tailscale Serve is
   device-scoped, but Funnel (`OP_REMOTE_PUBLIC=true`) is the public internet.
 
 ---
 
-## 9. Screening
+## 10. Screening
 
 Per the decision in §1, this addon adds **no Guardian code**. The operator's
 screening choice is expressed entirely by routing:
@@ -374,18 +458,98 @@ directness.
 
 ---
 
-## 10. Delivery phases
+## 11. Telemetry — the global `OP_TELEMETRY` toggle
+
+Paperclip enables anonymous usage telemetry by default. Rather than hard-code
+`PAPERCLIP_TELEMETRY_DISABLED=1` in one compose block, this addon introduces a
+**stack-wide** toggle, because the problem is not Paperclip-specific: the
+assistant already installs optional third-party CLIs on demand
+(`install-optional-tool`: gcloud, gws, codex, claude, copilot, pi), several of
+which phone home with their own defaults.
+
+### Model
+
+New leaf module `packages/lib/src/control-plane/telemetry.ts`, browser-safe, so
+the setup wizard can import it the same way it imports `access-toggles.ts`.
+
+```ts
+/** Stored intent. Opt-IN: absent or false means no telemetry anywhere. */
+export const TELEMETRY_INTENT_KEY = "OP_TELEMETRY";
+export const TELEMETRY_DEFAULT = false;
+
+/** Derived, written explicitly on every apply. */
+export const TELEMETRY_ENV_KEYS = ["OP_TELEMETRY_DISABLED", "DO_NOT_TRACK"] as const;
+
+export function readTelemetryEnabled(env: Record<string, string | undefined>): boolean;
+export function resolveTelemetryEnv(enabled: boolean): Record<string, string>;
+```
+
+`resolveTelemetryEnv(false)` → `{ OP_TELEMETRY_DISABLED: "1", DO_NOT_TRACK: "1" }`.
+
+**Why a derived inverted key rather than using `OP_TELEMETRY` directly in
+Compose.** Compose interpolation supports `${VAR:-default}` and nothing else —
+there is no negation. Every consumer expects the *disabled* polarity
+(`PAPERCLIP_TELEMETRY_DISABLED`, `DO_NOT_TRACK`), so the inversion has to happen
+somewhere. Doing it once in the control plane and writing the result is the same
+stored-intent/derived-row split `access-toggles.ts` already uses, and for the
+same stated reason: intent stored only as its own consequences cannot be read
+back reliably.
+
+`DO_NOT_TRACK` is emitted alongside because it is the cross-vendor convention
+(consoledonottrack.com) that Paperclip and several of the optional CLIs already
+honour — one stored intent, two derived spellings, no per-tool table to maintain.
+
+### Application
+
+Compose blocks reference the derived key with a **fail-safe default**:
+
+```yaml
+environment:
+  DO_NOT_TRACK: ${OP_TELEMETRY_DISABLED:-1}
+  PAPERCLIP_TELEMETRY_DISABLED: ${OP_TELEMETRY_DISABLED:-1}   # paperclip only
+```
+
+Defaulting the interpolation to `1` means an install that predates this key —
+or a hand-run `docker compose` without the generated row — gets telemetry
+**off**, not on. The unset case must never be the permissive one.
+
+Applied to `assistant`, `guardian`, and `paperclip`. The assistant is the one
+that matters most in practice: it is where third-party CLIs get installed and
+run.
+
+### Scope, stated honestly
+
+- OpenPalm itself ships **no** telemetry. This toggle governs third-party
+  software running inside the stack; it is not a claim that OpenPalm collected
+  anything before.
+- It is **best-effort**. It sets the documented opt-out for tools that honour
+  one. It cannot guarantee a given image respects it, and the docs must not
+  imply otherwise.
+- Turning it on (`OP_TELEMETRY=true`) is a per-install operator choice that
+  propagates to every consumer at once, which is the point.
+- `OP_TELEMETRY` and its derived keys are non-secret and live in
+  `state/stack.env` with the rest of the generated access row.
+
+---
+
+## 12. Delivery phases
 
 **Phase 1 — addon skeleton, Mode A functional.**
 `addon-ids.ts`, both compose services, `addon-env-schemas.ts` entry,
-`paperclip-access.ts` + tests, secrets, guardian-gate threading, Tailscale
-target, docs. Default routing ships as **`api`**, because it is the mode that
-actually works. `assistant` and `guardian` are accepted, validated, and
-documented as requiring the adapter.
+`paperclip-access.ts` + tests, the `private/env/paperclip.env` seeder and its
+`secret-audit.ts` exemption, `telemetry.ts` + the derived row across assistant/
+guardian/paperclip, guardian-gate threading, Tailscale target, docs. Default
+routing ships as **`api`**, because it is the mode that actually works.
+`assistant` and `guardian` are accepted, validated, and documented as requiring
+the adapter.
+
+`telemetry.ts` is independent of everything else here and could land first as a
+small standalone change — it touches only `state/stack.env` generation and three
+compose environment blocks, and it is useful with or without Paperclip.
 
 **Phase 2 — `@openpalm/paperclip-adapter`.** Published to npm, implements
 `ServerAdapterModule` over `/oc/*`. On landing, the default routing flips to
-`assistant` and this document's §5 default becomes true.
+`assistant` and this document's §6 default becomes true.
 
 **Phase 3 — admin UI.** Addon panel for routing, exposure, and Tailscale target;
 setup-wizard surfacing. Until then the addon is configured through `stack.env`
@@ -393,7 +557,7 @@ and the CLI, which is the documented management path anyway.
 
 ---
 
-## 11. Proposed `core-principles.md` amendment
+## 13. Proposed `core-principles.md` amendment
 
 Approved by the maintainer, **to be applied with the Phase 1 implementation**,
 not before.
@@ -411,6 +575,26 @@ enters Guardian; no portal communicates directly with the assistant." Append:
 > so the network membership matches the stated intent. `paperclip` is the first
 > such addon; see `paperclip-addon-design.md`.
 
+§ *Filesystem contract → 2b) Private credentials* states that "the secret audit
+rejects broad service env files, raw secret-like environment values, and grants
+outside a service's role," and § *Addon secret lifecycle* repeats it as "Compose
+services must not use broad `env_file`." Both need the same appended carve-out:
+
+> **Named `env_file` exemption.** A third-party addon image that accepts
+> credentials only as plain environment values, and implements no `*_FILE`
+> indirection, may read exactly one env file under `private/env/`. The
+> exemption is per-service and per-path, declared in `secret-audit.ts`, and
+> covers only credentials that addon issues to *itself*. Credentials OpenPalm
+> issues — principal secrets, the OpenCode server password, the compatible-API
+> key — remain narrowly granted Compose secrets under the normal boundary
+> check. `paperclip` is the first such addon.
+
+§Filesystem contract, table row for `private/` — extend the Contents column:
+
+> Delegated UI/OpenCode/Guardian/API/portal/bot credentials; `env/` holds
+> per-addon env files for images that cannot consume file-based secrets. Never
+> part of assistant `/stash`.
+
 §Service port assignments — add:
 
 | Service | Internal | Default host bind | Purpose |
@@ -418,31 +602,40 @@ enters Guardian; no portal communicates directly with the assistant." Append:
 | **Paperclip** | 3100 | `127.0.0.1:3840` (`OP_PAPERCLIP_BIND_ADDRESS`) | Agent-management control plane (addon) |
 | **Paperclip DB** | 5432 | *(none — never published)* | Postgres for the Paperclip addon |
 
+§Operational behavior — add:
+
+> **Telemetry is opt-in.** `OP_TELEMETRY` defaults to `false` and generates
+> `OP_TELEMETRY_DISABLED` / `DO_NOT_TRACK` into the services that run
+> third-party software. OpenPalm itself sends no telemetry; this toggle governs
+> what the stack's third-party images and on-demand CLIs do.
+
 ---
 
-## 12. Open items
+## 14. Open items
 
-1. **`DATABASE_URL` vs. the secret audit.** If Paperclip accepts only a
-   password-bearing connection string, satisfying `secret-audit.ts` needs either
-   a discrete-`PG*` path upstream or a thin entrypoint wrapper. Resolve before
-   Phase 1 — it decides whether this addon can use the upstream image unmodified.
-2. **Image pinning cadence.** Upstream publishes only `latest` and `sha-*`.
+1. **Image pinning cadence.** Upstream publishes only `latest` and `sha-*`.
    Pinning a digest is correct but means OpenPalm releases carry a manual bump
    with no upstream semver to track.
-3. **Telemetry.** Paperclip enables anonymous telemetry by default. The shipped
-   compose block should set `PAPERCLIP_TELEMETRY_DISABLED=1` — OpenPalm's stated
-   posture is private and self-hosted, and an addon that silently phones home
-   would contradict it. Operators can turn it back on.
-4. **Resource footprint.** Node + Postgres + agent CLIs is a significant step up
+2. **Resource footprint.** Node + Postgres + agent CLIs is a significant step up
    from the current stack. `docs/system-requirements.md` needs a line.
-5. **Backup scope.** `data/paperclip-db/` is service-owned data, excluded from
+3. **Backup scope.** `data/paperclip-db/` is service-owned data, excluded from
    lifecycle safety backups by the existing rule. A Postgres volume that is not
    backed up may surprise operators; consider documenting `pg_dump` guidance
-   rather than changing backup scope.
+   rather than changing backup scope. Note that `private/env/paperclip.env`
+   **is** in backup scope (it is under `private/`), so a restore that brings back
+   the credentials without the database is a plausible and confusing state —
+   worth one line in the addon docs.
+4. **`OP_TELEMETRY` for existing installs.** The key is absent on every current
+   install. The compose fallback (`${OP_TELEMETRY_DISABLED:-1}`) makes that safe,
+   but the apply path should still write the derived row so `stack.env` reflects
+   reality rather than relying on the fallback.
+
+*(Resolved since the first draft: `DATABASE_URL` vs. the secret audit — see §5;
+Paperclip telemetry — see §11.)*
 
 ---
 
-## 13. Verification plan
+## 15. Verification plan
 
 Per the delivery checklist in `AGENTS.md`:
 
@@ -455,7 +648,16 @@ Per the delivery checklist in `AGENTS.md`:
   existing `both` configs still resolve to assistant+guardian only.
 - Extend `compose-contract.test.ts` / `skeleton-guardrail.test.ts` — profile gate,
   no `depends_on` on profile-gated services, no published DB port.
-- `secret-audit.ts` must pass with the new secrets — the real gate on open item 1.
+- Extend `secret-audit.test.ts` — the exemption is narrow, not a hole. Assert:
+  `env_file` on any non-exempt service still fails; an exempt service pointing at
+  a path outside `private/env/` fails; a second `env_file` entry fails;
+  `allowedSecretForService('paperclip', …)` permits only the three OpenPalm-issued
+  secrets; and `private/env/paperclip.env` is enforced `0600`.
+- `telemetry.test.ts` — default is disabled; `resolveTelemetryEnv(false)` emits
+  `"1"` for both keys; `readTelemetryEnabled({})` is `false`; an explicit
+  `OP_TELEMETRY=true` round-trips. Plus a compose assertion that every
+  `DO_NOT_TRACK` / `*_TELEMETRY_DISABLED` interpolation defaults to `1`, so a
+  missing key can never mean "on."
 - `bun run lint`, `bun run check`.
 - Manual: enable the addon, confirm `http://127.0.0.1:3840` is reachable and
   `http://<lan-ip>:3840` is not; flip `OP_PAPERCLIP_NETWORK_ACCESS=true`, apply,
