@@ -70,6 +70,20 @@ export type LaunchState = {
   migration: { status: MigrationStatus };
   local: { state: LocalStackState };
   connections: ReadonlyArray<{ id: string }>;
+  /**
+   * Whether the REQUESTING BROWSER has connections of its own saved.
+   *
+   * Deliberately separate from `connections` above, which answers a different
+   * question — "is something reachable from the server right now" — and whose
+   * meaning must not drift: a reachable local assistant is not evidence that
+   * the user has finished choosing how to run OpenPalm, so it must keep landing
+   * on /start. A saved browser connection IS that evidence.
+   *
+   * Server-side this comes from a client hint cookie and is therefore untrusted
+   * (see $lib/connections/landing-hint.ts) — it only ever picks between two
+   * public usage routes.
+   */
+  browserConnections?: boolean;
 };
 
 /** Resolve the landing path for a session. Pure — no I/O, no
@@ -77,14 +91,24 @@ export type LaunchState = {
 export function resolveLanding(ctx: RuntimeContext, state: LaunchState): string {
   if (ctx.effectiveCapabilities.includes('host:setup')) {
     if (state.migration.status === 'pending') return HOST_ATTENTION_LANDING;
-    if (state.local.state === 'not_installed') return '/start';
+    // /start exists to ask one question: install here, or connect to one
+    // running elsewhere? Once the browser has a saved connection that question
+    // has been answered, and re-asking it on every launch is a screen in the
+    // way — the user only got past it before because /start redirects itself
+    // once its client-side bootstrap finishes.
+    if (state.local.state === 'not_installed') {
+      return state.browserConnections ? '/chat' : '/start';
+    }
     if (state.local.state === 'setup_incomplete') return '/setup';
     if (state.local.state === 'installed_offline') return HOST_ADMIN_LANDING;
     if (state.local.state === 'installed_broken') return `${HOST_ADMIN_LANDING}?tab=diagnostics`;
     return '/chat';
   }
-  if (state.local.state === 'not_installed') return '/start';
+  if (state.local.state === 'not_installed' && !state.browserConnections) return '/start';
   // Non-admin process (no host:setup): the browser owns connections — land on
-  // the add-connection surface when there is nowhere to chat yet, else /chat.
-  return state.connections.length === 0 ? '/connections/new' : '/chat';
+  // the add-connection surface only when there is nowhere to chat from EITHER
+  // source, else /chat.
+  return state.connections.length === 0 && !state.browserConnections
+    ? '/connections/new'
+    : '/chat';
 }

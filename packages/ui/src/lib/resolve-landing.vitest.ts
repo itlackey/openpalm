@@ -131,6 +131,7 @@ type TestLaunchState = {
   migration: { status: 'pending' | 'none' };
   local: { state: TestLocalState };
   connections: Array<{ id: string }>;
+  browserConnections?: boolean;
 };
 
 function makeLaunchState(overrides: Partial<TestLaunchState> = {}): TestLaunchState {
@@ -186,6 +187,9 @@ describe('resolveLanding — host:setup capability present', () => {
     expect(resolveLanding(hostCtx, state)).toBe('/start');
   });
 
+  // A reachable assistant is not evidence that the user has decided how they
+  // want to run OpenPalm, so the install-or-connect choice still stands. This
+  // is exactly why the browser-connection fact below is a separate field.
   test('not_installed still lands on /start with a server-visible connection', async () => {
     const resolveLanding = await loadResolveLanding();
     const state = makeLaunchState({
@@ -194,6 +198,21 @@ describe('resolveLanding — host:setup capability present', () => {
     });
     expect(resolveLanding(hostCtx, state)).toBe('/start');
   });
+
+  // A saved browser connection IS that evidence: the user already answered
+  // install-or-connect. Re-showing /start on every launch made them answer it
+  // again forever, since the server cannot see browser-owned connections and
+  // so could not tell them apart from a first run.
+  test('not_installed skips /start once the browser has its own connections', async () => {
+    const resolveLanding = await loadResolveLanding();
+    const state = makeLaunchState({
+      local: { state: 'not_installed' },
+      connections: [],
+      browserConnections: true,
+    });
+    expect(resolveLanding(hostCtx, state)).toBe('/chat');
+  });
+
 
   test('setup_incomplete lands on /setup', async () => {
     const resolveLanding = await loadResolveLanding();
@@ -243,6 +262,18 @@ describe('resolveLanding — non-admin process', () => {
     const resolveLanding = await loadResolveLanding();
     const state = makeLaunchState({ local: { state: 'not_installed' }, connections: [] });
     expect(resolveLanding(ctx, state)).toBe('/start');
+  });
+
+  // …but once the browser has told us it already has connections, that trip
+  // through /start is pure latency: it would only bounce straight back out.
+  test('not_installed skips /start once the browser reports its own connections', async () => {
+    const resolveLanding = await loadResolveLanding();
+    const state = makeLaunchState({
+      local: { state: 'not_installed' },
+      connections: [],
+      browserConnections: true,
+    });
+    expect(resolveLanding(ctx, state)).toBe('/chat');
   });
 
   test('zero connections lands on /connections/new', async () => {

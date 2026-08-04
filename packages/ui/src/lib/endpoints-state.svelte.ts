@@ -27,6 +27,7 @@ import {
   type ConnectionStore,
 } from './connections/store.js';
 import { discoverLocalAssistant } from './connections/discovery.js';
+import { syncConnectionsLandingHint } from './connections/landing-hint.js';
 import {
   activationBlockReason,
   beginConnectionActivation,
@@ -168,6 +169,7 @@ class ConnectionsService {
       // always safe under a concurrent activation and must run unconditionally
       // so a reload still surfaces added/removed connections.
       this.endpoints = connections.map(toView);
+      syncConnectionsLandingHint(this.endpoints.length > 0);
       this.loaded = true;
       if (!this.discoveryStarted) {
         this.discoveryStarted = true;
@@ -254,6 +256,7 @@ class ConnectionsService {
       // Always refresh the endpoint list — a newly discovered connection must
       // surface even when a concurrent activation owns the active selection.
       this.endpoints = connections.map(toView);
+      syncConnectionsLandingHint(this.endpoints.length > 0);
       if (activationSeq !== this.activationSeq) return;
       // #576: same reasoning as _load — suppress only when this discovery would
       // change the in-flight activation's selection; a same-id refresh may still
