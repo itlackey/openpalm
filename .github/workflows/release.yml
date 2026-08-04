@@ -390,6 +390,18 @@ jobs:
           VERSION: ${{ needs.candidate.outputs.version }}
         run: |
           node --input-type=module <<'NODE'
+          import { renameSync } from 'node:fs';
+          import { feedChannelForVersion, updaterFeedsFor } from './scripts/validate-updater-feed.mjs';
+          const channel = feedChannelForVersion(process.env.VERSION);
+          if (channel !== 'latest') {
+            const sources = updaterFeedsFor('latest');
+            const destinations = updaterFeedsFor(channel);
+            for (let index = 0; index < sources.length; index += 1) {
+              renameSync(`dist/${sources[index]}`, `dist/${destinations[index]}`);
+            }
+          }
+          NODE
+          node --input-type=module <<'NODE'
           import { readdirSync, writeFileSync } from 'node:fs';
           const assets = readdirSync('dist').filter((name) => name !== 'release-assets-manifest.json' && name !== 'checksums-sha256.txt');
           assets.push('checksums-sha256.txt');

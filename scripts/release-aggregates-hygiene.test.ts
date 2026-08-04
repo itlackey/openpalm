@@ -185,6 +185,18 @@ describe('release completeness gate: no CLI-only releases (onboarding-setup-revi
 		);
 	});
 
+	test('prerelease assembly renames electron-builder feeds to the release channel', () => {
+		const workflow = Bun.YAML.parse(readFileSync(join(WORKFLOWS, 'release.yml'), 'utf8')) as {
+			jobs: { 'assemble-assets': { steps: Array<{ name?: string; run?: string }> } };
+		};
+		const run = workflow.jobs['assemble-assets'].steps.find(
+			(step) => step.name === 'Assemble and validate complete asset manifest'
+		)?.run;
+		if (!run) throw new Error('Missing assemble-assets validation step');
+		expect(run).toContain("const sources = updaterFeedsFor('latest');");
+		expect(run).toContain('renameSync(`dist/${sources[index]}`, `dist/${destinations[index]}`)');
+	});
+
 	test('CI and release preflight both typecheck Electron', () => {
 		const release = readFileSync(join(WORKFLOWS, 'release.yml'), 'utf8');
 		const ci = readFileSync(join(WORKFLOWS, 'ci.yml'), 'utf8');
