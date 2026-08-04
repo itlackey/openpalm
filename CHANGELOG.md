@@ -9,6 +9,47 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **The welcome screen no longer greets you on every launch.** Someone who
+  opened the app on a machine with no local stack and connected to an OpenPalm
+  running elsewhere was sent back to the install-or-connect choice every time
+  they reopened it. Their connections were saved correctly throughout — the
+  landing is resolved server-side, connections are browser-owned, and the server
+  could not tell a first run apart from a configured one, so it answered
+  `/start` for both. The browser now leaves a one-bit hint the server can read.
+  It carries a boolean and nothing else: no address, no label, no credential,
+  not even a count. Being client-controlled it is treated as a hint and never an
+  authorization — the most a forged value can do is pick `/chat` over `/start`,
+  both public usage routes. The desktop shell forwards it explicitly, since its
+  landing probe runs in the main process, which shares no cookie jar with the
+  window.
+- **The host console admits when there is nothing to administer.** Opening the
+  admin section on a machine with no stack installed either rendered the entire
+  console against a machine with nothing on it — every tab failing, the
+  container poll re-failing every ten seconds — or hard-redirected into the
+  setup wizard, with no way out of `/host` except to finish an install the user
+  may not have wanted. Both came from the same cause: the redirect was gated on
+  `Accept: text/html`, so it only fired on a full page load and never on the
+  in-app admin button, whose client-side navigation sails past it. The install
+  state is now resolved where both kinds of navigation see it, and the surface
+  says plainly that OpenPalm is not installed on this computer, with one link
+  into the wizard.
+- **Advanced view keeps the assistant and conversation pickers.** It had opted
+  out of the conversation controls, which also took away the drawer they open
+  and the taller navbar that gives them room — leaving a workspace with no
+  indication of which assistant or thread it was showing. The pickers
+  themselves are fixed too: they were exactly as tall as the navbar with a fixed
+  width, so the pair demanded around 560px of a row they share with a toolbar
+  that refuses to shrink, and the excess was clipped rather than scrollable.
+  Their labels never truncated either, because `text-overflow` was set on a flex
+  container, where it does nothing. They now shrink, ellipsize, and drop the
+  filled-chip look that made them the only painted controls in a flat navbar —
+  and that left them invisible against the equally-tinted workspace behind them.
+- **Sign out moved out of the chat thread and into Settings.** It floated over
+  the conversation and rendered unconditionally, including where no login
+  password is configured — a lane with no login wall at all, so signing out
+  landed the user on a `/login` whose own POST answers 503, with no way back.
+  It now sits in Settings under General and appears only when there is a
+  session to end.
 - **Chat no longer shears off the right edge on a phone.** A message containing
   one unbreakable run of text — a path, a token, a URL — set the min-content
   width of the whole conversation column, which a flex item's default
@@ -28,6 +69,18 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   still embedded as before — including the `127.0.0.1:${OP_ASSISTANT_PORT}`
   entry local discovery adds on a desktop install, which is why the desktop
   workspace keeps working unchanged.
+
+### Changed
+
+- **Both first-run choices carry equal weight.** The welcome screen offered two
+  ways to begin, but only one looked like a real option: installing locally had
+  an accent border, a tinted fill and a "Recommended" badge, while connecting to
+  an OpenPalm that already exists had a hairline border and nothing else — the
+  consolation prize for people who could not manage the first one. A second
+  laptop or a phone pointing at a stack the household already runs is an
+  ordinary way to use OpenPalm, and the copy never even mentioned that it needs
+  no installation. Both cards now share one treatment and each states what it
+  costs: "Recommended" against "No install needed".
 
 ### Added
 
