@@ -36,6 +36,25 @@
   type SettingsTab = 'general' | 'connections';
   const runtimeContext = getRuntimeContext();
 
+  let { data }: { data: import('./$types').PageData } = $props();
+
+  // F6: a 14-day sliding session had no UI control to end it on a shared
+  // machine, despite POST /api/auth/logout already existing server-side. The
+  // control now lives here rather than floating over the chat thread, and it
+  // renders only when `data.signedIn` — see +page.server.ts for why an
+  // ungated sign-out is a dead end in the client-only lane.
+  async function handleSignOut(): Promise<void> {
+    try {
+      await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' });
+    } catch {
+      // Best-effort — land on /login regardless; if the network is down the
+      // cookie may already be unusable anyway.
+    }
+    const redirectTo = encodeURIComponent(`${page.url.pathname}${page.url.search}`);
+    // eslint-disable-next-line svelte/no-navigation-without-resolve -- static internal route
+    await goto(`/login?redirectTo=${redirectTo}`);
+  }
+
   function initialSettingsTab(): SettingsTab {
     const requested = page.url.searchParams.get('tab');
     if (requested === 'general' || requested === 'connections') return requested;
@@ -704,6 +723,23 @@
         <VoiceClientSettings />
       </section>
 
+      {#if data.signedIn}
+        <section id="session" class="settings-section session-section" aria-labelledby="session-heading">
+          <header class="section-header">
+            <h2 id="session-heading">Session</h2>
+            <p class="lede">
+              You are signed in on this device. Signing out asks for the password again on the
+              next visit; your saved connections stay on this device either way.
+            </p>
+          </header>
+          <div class="form-actions">
+            <button type="button" class="btn btn-secondary" onclick={() => void handleSignOut()}>
+              Sign out
+            </button>
+          </div>
+        </section>
+      {/if}
+
     </div>
   {/if}
 </main>
@@ -753,7 +789,8 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
     align-items: start;
   }
-  .voice-section {
+  .voice-section,
+  .session-section {
     grid-column: 1 / -1;
   }
   .section-header h2 {
@@ -998,7 +1035,8 @@
     .settings-grid {
       grid-template-columns: minmax(0, 1fr);
     }
-    .voice-section {
+    .voice-section,
+    .session-section {
       grid-column: auto;
     }
   }
