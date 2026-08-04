@@ -36,6 +36,7 @@ const MAX_AGE_SECONDS = 31_536_000;
 export function syncConnectionsLandingHint(hasConnections: boolean): void {
   try {
     if (typeof document === 'undefined') return;
+    // biome-ignore lint/suspicious/noDocumentCookie: the Cookie Store API is still Chromium-only (no Firefox, no Safari), and this hint has to work in every browser that can run the client — including the ones most likely to be a second device connecting to a stack elsewhere. One boolean write needs no partial-update safety either.
     document.cookie = hasConnections
       ? `${CONNECTIONS_HINT_COOKIE}=1; Path=/; SameSite=Lax; Max-Age=${MAX_AGE_SECONDS}`
       : `${CONNECTIONS_HINT_COOKIE}=; Path=/; SameSite=Lax; Max-Age=0`;

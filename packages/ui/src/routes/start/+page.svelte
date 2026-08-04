@@ -62,15 +62,20 @@
       <h1>Welcome to OpenPalm</h1>
       <p class="lede">Choose how you want to begin. You can change this later.</p>
 
+      <!-- Both routes are first-class. Connecting to an OpenPalm that already
+           exists is not a fallback for people who failed to install one, and
+           styling it as a lesser option made it read that way — so the cards
+           carry the same weight and each says plainly what it costs. -->
       <div class="choices">
-        <a class="choice choice--primary" href={resolve('/setup?from=start')}>
+        <a class="choice" href={resolve('/setup?from=start')}>
           <strong>Set up OpenPalm on this computer</strong>
           <span>Run your own private assistant here. We will guide you through the setup.</span>
           <small>Recommended</small>
         </a>
         <a class="choice" href={resolve('/connections/new?onboarding=1')}>
           <strong>Connect to an existing OpenPalm</strong>
-          <span>Choose this if you already have an address or a pairing code.</span>
+          <span>Nothing to install — connect with an address or a pairing code.</span>
+          <small>No install needed</small>
         </a>
       </div>
     {/if}
@@ -125,13 +130,18 @@
     gap: 14px;
   }
 
+  /* One treatment for both cards. The accent border and tinted fill used to
+     belong to the install option alone, which made connecting to an existing
+     OpenPalm look like the consolation prize. The badges carry the difference
+     in meaning now; the styling no longer picks a winner. */
   .choice {
     position: relative;
     display: grid;
     gap: 7px;
     padding: 22px;
-    border: var(--s-hair) solid var(--s-line);
+    border: 2px solid var(--s-moss);
     border-radius: 12px;
+    background: color-mix(in srgb, var(--s-moss) 9%, var(--s-paper));
     color: var(--s-ink);
     text-decoration: none;
     transition: border-color 120ms ease, transform 120ms ease;
@@ -139,18 +149,12 @@
 
   .choice:hover,
   .choice:focus-visible {
-    border-color: var(--s-moss);
+    border-color: var(--s-ink);
     transform: translateY(-2px);
   }
 
-  .choice--primary {
-    border-width: 2px;
-    border-color: var(--s-moss);
-    background: color-mix(in srgb, var(--s-moss) 9%, var(--s-paper));
-  }
-
   .choice strong {
-    padding-right: 90px;
+    padding-right: 130px;
     font-size: 1.08rem;
   }
 
