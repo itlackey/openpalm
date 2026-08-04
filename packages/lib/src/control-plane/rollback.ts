@@ -7,9 +7,10 @@
  */
 import { mkdirSync, copyFileSync, cpSync, existsSync, readFileSync, readdirSync, rmSync, writeFileSync, renameSync, statSync } from "node:fs";
 import { join, dirname } from "node:path";
-import type { ControlPlaneState } from "./types.js";
-import { resolveRollbackDir, resolveBackupsDir } from "./home.js";
 import { timestampDirName } from "./backup.js";
+import { resolveRollbackDir, resolveBackupsDir } from "./home.js";
+import { reconcileRemoteAccess } from "./remote-apply.js";
+import type { ControlPlaneState } from "./types.js";
 
 /** Files that are tracked for rollback (relative to homeDir).
  *  Only config/ system files are included — user-editable config files
@@ -162,6 +163,14 @@ export function restoreSnapshot(state: ControlPlaneState, generation?: SnapshotG
   const liveSystem = join(state.homeDir, SYSTEM_TREE);
   rmSync(liveSystem, { recursive: true, force: true });
   safeCopyTree(join(snapshotDir, SYSTEM_TREE), liveSystem);
+
+  // serve.json is generated from state/stack.env and intentionally is not part
+  // of the snapshot. Rebuild it from the restored state before any caller can
+  // restart the stack, including the CLI's manual rollback path.
+  const remote = reconcileRemoteAccess(state.homeDir);
+  if (remote.error) {
+    throw new Error(`Failed to reconcile remote access after rollback: ${remote.error}`);
+  }
 }
 
 /**

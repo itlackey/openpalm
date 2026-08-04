@@ -43,7 +43,7 @@
    * framing restrictions, so it works in deployments the iframe cannot serve.
    */
   const workspaceUrl = $derived(
-    resolveWorkspaceUrl(runtimeContext.opencodeWorkspace, { hostname: page.url.hostname }),
+    resolveWorkspaceUrl(runtimeContext.opencodeWorkspace, { hostname: page.url.hostname }, active),
   );
   const requestedSessionId = $derived(page.url.searchParams.get('session'));
   const requestedAssistantId = $derived(page.url.searchParams.get('assistant'));

@@ -276,12 +276,13 @@ export const POST: RequestHandler = async (event) => {
     // rebuilds its file list and the affected entrypoints re-read the value.
     const scope = [
       ...new Set([
-        ...updated.flatMap((key) => ADDON_ENV_RECREATE_SCOPE[key] ?? []),
-        // ADDON_ENV_RECREATE_SCOPE is keyed by env var and maps OP_REMOTE_* to
-        // `tunnel` alone, which is right for the document itself. It cannot
-        // express "…and guardian, but only when this save flipped ingress" —
-        // that depends on prior state, not on which key changed. applyRemoteAccess
-        // computed it above; union it in.
+        // The remote apply owns the complete scope for remote saves. The
+        // schema table cannot express that a disabled remote addon must not
+        // recreate `tunnel`, or that a guardian recreate depends on ingress
+        // state. Other addons still use their schema-declared scope.
+        ...(name === 'remote'
+          ? []
+          : updated.flatMap((key) => ADDON_ENV_RECREATE_SCOPE[key] ?? [])),
         ...remoteServices,
       ]),
     ];

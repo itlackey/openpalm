@@ -1,14 +1,24 @@
-import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { resetState } from '$lib/server/test-helpers.js';
 import { getState } from '$lib/server/state.js';
+
+const activateStackMock = vi.hoisted(() => vi.fn());
+
+vi.mock('@openpalm/lib', async () => {
+	const actual = await vi.importActual<typeof import('@openpalm/lib')>('@openpalm/lib');
+	return {
+		...actual,
+		activateStack: (...args: unknown[]) => activateStackMock(...args)
+	};
+});
+
 import { GET, POST } from './+server.js';
 
 let homeDir = '';
 let originalHome: string | undefined;
-let savedDockerBin: string | undefined;
 
 function makePostEvent(
 	values: Record<string, unknown>,
@@ -40,16 +50,19 @@ function makeGetEvent(name = 'voice'): Parameters<typeof GET>[0] {
 	} as Parameters<typeof GET>[0];
 }
 
+function writeRemoteStackEnv(contents: string): void {
+	mkdirSync(join(homeDir, 'state'), { recursive: true });
+	writeFileSync(join(homeDir, 'state', 'stack.env'), contents);
+}
+
 beforeEach(() => {
 	originalHome = process.env.OP_HOME;
 	process.env.OP_ENABLE_ADMIN = '1';
 	homeDir = mkdtempSync(join(tmpdir(), 'openpalm-addon-credentials-'));
 	process.env.OP_HOME = homeDir;
-	// Fail the compose apply's execFile fast rather than waiting out a real
-	// `docker` against a socket this sandbox has no access to. Only the keys in
-	// ADDON_ENV_RECREATE_SCOPE reach compose at all.
-	savedDockerBin = process.env.OP_DOCKER_BIN;
-	process.env.OP_DOCKER_BIN = '/nonexistent-openpalm-docker-test-binary';
+	// Replace activation so the tests can assert its service scope without Docker.
+	activateStackMock.mockReset();
+	activateStackMock.mockRejectedValue(new Error('compose apply failed'));
 	resetState('admin-token');
 });
 
@@ -57,8 +70,6 @@ afterEach(() => {
 	delete process.env.OP_ENABLE_ADMIN;
 	if (originalHome === undefined) delete process.env.OP_HOME;
 	else process.env.OP_HOME = originalHome;
-	if (savedDockerBin === undefined) delete process.env.OP_DOCKER_BIN;
-	else process.env.OP_DOCKER_BIN = savedDockerBin;
 	rmSync(homeDir, { recursive: true, force: true });
 });
 
@@ -77,6 +88,27 @@ describe('POST /api/host/addons/:name/credentials', () => {
 		expect(existsSync(stackEnvPath) ? readFileSync(stackEnvPath, 'utf-8') : '').not.toContain(
 			'guild-1'
 		);
+	});
+
+	test('does not activate a disabled remote addon, while an enabled save activates the tunnel', async () => {
+		writeRemoteStackEnv('OP_ENABLED_ADDONS=\nGUARDIAN_DIRECT_INGRESS=false\n');
+
+		const disabled = await POST(makePostEvent({ OP_REMOTE_TARGET: 'guardian' }, 'remote'));
+
+		expect(disabled.status).toBe(200);
+		expect(activateStackMock).not.toHaveBeenCalled();
+
+		writeRemoteStackEnv('OP_ENABLED_ADDONS=remote\nGUARDIAN_DIRECT_INGRESS=false\n');
+		activateStackMock.mockResolvedValue({ ok: true, started: ['tunnel'], failed: [] });
+
+		const enabled = await POST(makePostEvent({ OP_REMOTE_TARGET: 'assistant' }, 'remote'));
+
+		expect(enabled.status).toBe(200);
+		expect(activateStackMock).toHaveBeenCalledTimes(1);
+		expect(activateStackMock.mock.calls[0]?.[1]).toMatchObject({
+			kind: 'services',
+			services: ['tunnel']
+		});
 	});
 });
 
@@ -156,8 +188,7 @@ describe('@boolean schema field (OP_VOICE_LAN_ACCESS)', () => {
 // unrelated save silently erases.
 describe('non-sensitive fields round-trip their current value', () => {
 	function writeStackEnv(contents: string): void {
-		mkdirSync(join(homeDir, 'state'), { recursive: true });
-		writeFileSync(join(homeDir, 'state', 'stack.env'), contents);
+		writeRemoteStackEnv(contents);
 	}
 
 	test('GET returns the persisted value of a plain text field', async () => {

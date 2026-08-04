@@ -7,7 +7,7 @@
  * fs would just assert back at itself.
  */
 import { afterEach, describe, expect, test } from "bun:test";
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -262,6 +262,38 @@ describe("reconcileRemoteAccess", () => {
     expect(second.hostname).toBe(first.hostname);
     expect(second.hostname).not.toBe(deriveRemoteHostname("beta"));
   });
+
+  test("invalid persisted target closes a stale public policy before returning an error", () => {
+    const home = makeHome();
+    patchStateEnvFile(home, {
+      OP_ENABLED_ADDONS: "remote",
+      OP_REMOTE_TARGET: "assistant",
+      OP_REMOTE_PUBLIC: "true",
+    });
+    expect(reconcileRemoteAccess(home).error).toBeUndefined();
+    expect(
+      Object.values((readServeDoc(home) as { AllowFunnel: Record<string, boolean> }).AllowFunnel),
+    ).toEqual([true]);
+
+    patchStateEnvFile(home, { OP_REMOTE_TARGET: "nonsense" });
+    const result = reconcileRemoteAccess(home);
+
+    expect(result.wrote).toBe(false);
+    expect(result.error).toContain("Invalid OP_REMOTE_TARGET");
+    expect(readServeDoc(home)).toEqual({ TCP: {}, Web: {}, AllowFunnel: {} });
+  });
+
+  test("reports when the fail-closed policy cannot be written", () => {
+    const home = makeHome();
+    patchStateEnvFile(home, { OP_REMOTE_TARGET: "nonsense" });
+    writeFileSync(remoteServeConfigDir(home), "not a directory");
+
+    const result = reconcileRemoteAccess(home);
+
+    expect(result.wrote).toBe(false);
+    expect(result.error).toContain("Invalid OP_REMOTE_TARGET");
+    expect(result.error).toContain("failed to write fail-closed serve config");
+  });
 });
 
 // ── applyRemoteAccess ────────────────────────────────────────────────────
@@ -387,6 +419,9 @@ describe("applyRemoteAccess", () => {
     const result = applyRemoteAccess(home);
 
     expect(result.wrote).toBe(false);
+    // The absent ingress setting is reconciled even though the disabled remote
+    // addon itself must not recreate its tunnel.
+    expect(result.services).toEqual(["guardian"]);
     // Fail-closed: "off" is an explicit empty document, never a missing file.
     expect(readServeDoc(home)).toEqual({ TCP: {}, Web: {}, AllowFunnel: {} });
   });

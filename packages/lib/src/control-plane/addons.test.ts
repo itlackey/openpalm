@@ -29,7 +29,7 @@ import { readSecret } from './secrets-files.js';
 import { remoteServeConfigDir } from './home.js';
 import { patchStateEnvFile, readStackEnv } from './secrets.js';
 import { resolveServeConfig } from './remote-access.js';
-import { readRemoteAccessState } from './remote-apply.js';
+import { readRemoteAccessState, writeServeConfig } from './remote-apply.js';
 
 let tempDir = '';
 let homeDir = '';
@@ -139,6 +139,25 @@ describe('addon runtime state', () => {
       expect(result.ok).toBe(true);
       expect(serveDoc()).toEqual(resolveServeConfig(readRemoteAccessState(homeDir).config));
       expect(result.services).toEqual(expect.arrayContaining(['tunnel']));
+    });
+
+    it('retries a failed remote apply when the addon is already in the requested state', () => {
+      const staleConfig = { hostname: 'stale', public: true, target: 'assistant' } as const;
+      writeServeConfig(homeDir, staleConfig);
+      const servePath = join(remoteServeConfigDir(homeDir), 'serve.json');
+      mkdirSync(`${servePath}.tmp`);
+
+      const first = setAddonEnabled(homeDir, 'remote', true);
+
+      expect(first.ok).toBe(false);
+      expect(listEnabledAddonIds(homeDir)).toContain('remote');
+      expect(serveDoc()).toEqual(resolveServeConfig(staleConfig));
+
+      rmSync(`${servePath}.tmp`, { recursive: true, force: true });
+      const retry = setAddonEnabled(homeDir, 'remote', true);
+
+      expect(retry).toEqual(expect.objectContaining({ ok: true, enabled: true, changed: false }));
+      expect(serveDoc()).toEqual(resolveServeConfig(readRemoteAccessState(homeDir).config));
     });
 
     // The fail-closed property: the empty document is on disk BEFORE the

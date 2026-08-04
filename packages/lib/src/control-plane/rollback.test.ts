@@ -11,13 +11,16 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { ControlPlaneState } from "./types.js";
+import { remoteServeConfigDir } from "./home.js";
+import { resolveServeConfig } from "./remote-access.js";
+import { writeServeConfig } from "./remote-apply.js";
 import {
   currentSnapshotGeneration,
   hasSnapshot,
   restoreSnapshot,
   snapshotCurrentState,
 } from "./rollback.js";
+import type { ControlPlaneState } from "./types.js";
 
 function makeState(home: string): ControlPlaneState {
   return {
@@ -31,6 +34,10 @@ function makeState(home: string): ControlPlaneState {
     artifacts: { compose: "" },
     artifactMeta: [],
   };
+}
+
+function readServeDoc(home: string): unknown {
+  return JSON.parse(readFileSync(join(remoteServeConfigDir(home), "serve.json"), "utf-8"));
 }
 
 describe("rollback snapshot/restore (0.3 — state env + non-destructive restore)", () => {
@@ -83,6 +90,55 @@ describe("rollback snapshot/restore (0.3 — state env + non-destructive restore
     restoreSnapshot(state);
 
     expect(readFileSync(join(home, "state", "stack.env"), "utf-8")).toContain("discord");
+  });
+
+  test("restoreSnapshot regenerates an empty serve policy when rollback disables remote", () => {
+    writeFileSync(
+      join(home, "state", "stack.env"),
+      "OP_ENABLED_ADDONS=\nOP_REMOTE_PUBLIC=true\nOP_REMOTE_TARGET=assistant\n",
+    );
+    snapshotCurrentState(state);
+    expect(existsSync(join(home, "data", "rollback", "state", "remote", "serve.json"))).toBe(false);
+
+    // Simulate a failed apply that left the live generated policy public.
+    writeFileSync(
+      join(home, "state", "stack.env"),
+      "OP_ENABLED_ADDONS=remote\nOP_REMOTE_PUBLIC=true\nOP_REMOTE_TARGET=assistant\n",
+    );
+    writeServeConfig(home, { hostname: "openpalm", public: true, target: "assistant" });
+    expect((readServeDoc(home) as { AllowFunnel: Record<string, boolean> }).AllowFunnel)
+      .toEqual({ "${TS_CERT_DOMAIN}:443": true });
+
+    restoreSnapshot(state);
+
+    expect(readFileSync(join(home, "state", "stack.env"), "utf-8")).toContain("OP_ENABLED_ADDONS=\n");
+    expect(readServeDoc(home)).toEqual({ TCP: {}, Web: {}, AllowFunnel: {} });
+  });
+
+  test("restoreSnapshot regenerates explicit false Funnel policy when rollback is private", () => {
+    writeFileSync(
+      join(home, "state", "stack.env"),
+      "OP_ENABLED_ADDONS=remote\nOP_REMOTE_PUBLIC=false\nOP_REMOTE_TARGET=assistant\nOP_REMOTE_HOSTNAME=openpalm\n",
+    );
+    snapshotCurrentState(state);
+
+    // Simulate a failed apply that left the live generated policy public.
+    writeFileSync(
+      join(home, "state", "stack.env"),
+      "OP_ENABLED_ADDONS=remote\nOP_REMOTE_PUBLIC=true\nOP_REMOTE_TARGET=assistant\nOP_REMOTE_HOSTNAME=openpalm\n",
+    );
+    writeServeConfig(home, { hostname: "openpalm", public: true, target: "assistant" });
+
+    restoreSnapshot(state);
+
+    expect(readFileSync(join(home, "state", "stack.env"), "utf-8")).toContain("OP_REMOTE_PUBLIC=false");
+    expect(readServeDoc(home)).toEqual(resolveServeConfig({
+      hostname: "openpalm",
+      public: false,
+      target: "assistant",
+    }));
+    const allowFunnel = (readServeDoc(home) as { AllowFunnel: Record<string, boolean> }).AllowFunnel;
+    expect(Object.values(allowFunnel)).toEqual([false]);
   });
 
   test("restoreSnapshot removes a skeleton stamp absent from the snapshot", () => {

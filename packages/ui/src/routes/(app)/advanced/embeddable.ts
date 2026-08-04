@@ -34,6 +34,7 @@ export type EmbeddingPage = { origin: string; protocol: string };
  */
 /** The server's `opencodeWorkspace` advertisement (see computeOpencodeWorkspace). */
 export type OpencodeWorkspaceHint = { port: number; loopbackOnly: boolean };
+export type WorkspaceConnection = { isDefault: boolean; hasPassword: boolean };
 
 /**
  * The address of OpenCode's own web UI for THIS browser, or null when there
@@ -67,7 +68,11 @@ function formatHostForUrl(hostname: string): string {
 export function resolveWorkspaceUrl(
   hint: OpencodeWorkspaceHint | undefined,
   embeddingPage: { hostname: string },
+  activeConnection: WorkspaceConnection | null | undefined,
 ): string | null {
+  // The server hint describes only this install's local OpenCode listener. It
+  // is not a workspace URL for an arbitrary browser-owned connection.
+  if (!activeConnection?.isDefault || activeConnection.hasPassword) return null;
   if (!hint) return null;
   const { hostname } = embeddingPage;
   if (!hostname) return null;

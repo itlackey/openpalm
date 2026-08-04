@@ -102,11 +102,15 @@ class PwaInstallService {
 	 * available, which reads as a broken app rather than a browser rule.
 	 */
 	#showFallback(): void {
+		if (!this.#isSecureOrigin()) {
+			this.status = 'insecure-origin';
+			return;
+		}
 		if (this.#isIosSafari()) {
 			this.status = 'ios';
 			return;
 		}
-		this.status = this.#isSecureOrigin() ? 'idle' : 'insecure-origin';
+		this.status = 'idle';
 	}
 
 	#isSecureOrigin(): boolean {

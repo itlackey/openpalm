@@ -479,6 +479,22 @@ export function setAddonEnabled(homeDir: string, name: string, enabled: boolean,
   const services = getAddonServiceNames(homeDir, name);
 
   if (wasEnabled === enabled) {
+    if (name === 'remote') {
+      const applied = applyRemoteAccess(homeDir);
+      if (applied.error) {
+        return {
+          ok: false,
+          error: `Addon "${name}" was recorded as ${enabled ? 'enabled' : 'disabled'}, but its remote access config could not be written: ${applied.error}`,
+        };
+      }
+      return {
+        ok: true,
+        enabled: wasEnabled,
+        changed: false,
+        services: [...new Set([...services, ...applied.services])],
+        ...(applied.warning ? { warning: applied.warning } : {}),
+      };
+    }
     return {
       ok: true,
       enabled: wasEnabled,

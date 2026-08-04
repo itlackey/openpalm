@@ -10,14 +10,46 @@
  *    guards /api (and other sensitive) traffic with a network-only
  *    passthrough — no respondWith for anything outside the precache list.
  */
-import { describe, expect, test } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { pwaInstallService } from '$lib/pwa-install-state.svelte.js';
 
 const APP_HTML_PATH = fileURLToPath(new URL('./app.html', import.meta.url));
 const MANIFEST_PATH = fileURLToPath(new URL('../static/manifest.webmanifest', import.meta.url));
 const SERVICE_WORKER_PATH = fileURLToPath(new URL('./service-worker.ts', import.meta.url));
 const SVELTE_CONFIG_PATH = fileURLToPath(new URL('../svelte.config.js', import.meta.url));
+
+const IOS_SAFARI_USER_AGENT =
+  'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 Version/17.5 Mobile/15E148 Safari/604.1';
+
+function installIosBrowserGlobals(isSecureContext: boolean): void {
+  vi.stubGlobal('window', {
+    isSecureContext,
+    matchMedia: () => ({
+      matches: false,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn()
+    }),
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn()
+  });
+  vi.stubGlobal('navigator', {
+    userAgent: IOS_SAFARI_USER_AGENT,
+    platform: 'iPhone',
+    maxTouchPoints: 5,
+    standalone: false
+  });
+}
+
+beforeEach(() => {
+  pwaInstallService.dispose();
+});
+
+afterEach(() => {
+  pwaInstallService.dispose();
+  vi.unstubAllGlobals();
+});
 
 function appHtmlSource(): string {
   return readFileSync(APP_HTML_PATH, 'utf-8');
@@ -40,6 +72,24 @@ type Manifest = {
 function loadManifest(): Manifest {
   return JSON.parse(readFileSync(MANIFEST_PATH, 'utf-8')) as Manifest;
 }
+
+describe('PWA install fallback', () => {
+  test('uses insecure-origin status before iOS Safari guidance on an insecure origin', () => {
+    installIosBrowserGlobals(false);
+
+    pwaInstallService.init();
+
+    expect(pwaInstallService.status).toBe('insecure-origin');
+  });
+
+  test('uses iOS Safari guidance on a secure origin', () => {
+    installIosBrowserGlobals(true);
+
+    pwaInstallService.init();
+
+    expect(pwaInstallService.status).toBe('ios');
+  });
+});
 
 describe('app.html — manifest link', () => {
   test('links static/manifest.webmanifest', () => {

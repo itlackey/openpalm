@@ -350,6 +350,9 @@ services:
       # (`docker compose ps`, `docker inspect`) instead of "process is still
       # running" being the only signal available.
       TS_ENABLE_HEALTH_CHECK: "true"
+      # The health endpoint is consumed only by this container's Compose
+      # healthcheck, so keep it off both Docker networks.
+      TS_LOCAL_ADDR_PORT: "127.0.0.1:9002"
     volumes:
       # Both mounts MUST be DIRECTORIES, never a bind of a single file at its
       # final path, for two independent reasons:
@@ -402,6 +405,17 @@ services:
     # dials out and retries its connection to whichever target(s) are
     # configured on its own, so it does not need to wait on either one being
     # up first.
+    healthcheck:
+      # v1.98.10's containerboot endpoint returns 200 only after the node has
+      # a tailnet IP; an unauthenticated container therefore cannot report
+      # ready merely because containerboot is still running.
+      test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1:9002/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      # containerboot's startup context is 60s; do not count its startup
+      # failures while it is authenticating and applying serve config.
+      start_period: 60s
 
 secrets:
   # `ts_authkey` is a DELEGATED secret (packages/lib/src/control-plane/

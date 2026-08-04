@@ -189,7 +189,10 @@ export type RemoteAccessReconcileResult = {
    * (see `error`).
    */
   wrote: boolean;
-  /** Set only when a step failed; `serve.json` may be unwritten or stale in that case. */
+  /**
+   * Set only when a step failed. A failed reconcile attempts to replace any
+   * stale policy with the explicit disabled document before returning.
+   */
   error?: string;
 };
 
@@ -206,8 +209,9 @@ export type RemoteAccessReconcileResult = {
  *   live document derived from the current config.
  *
  * Follows `access-apply.ts`'s convention: never throws. A failure in either
- * step is caught and surfaced via `error`, with the rest of the result
- * falling back to safe defaults rather than partially-read state.
+ * step is caught and surfaced via `error`; before returning a read or apply
+ * failure, the stale policy is replaced with the explicit disabled document.
+ * If that fail-closed write also fails, both failures are reported.
  */
 export function reconcileRemoteAccess(homeDir: string): RemoteAccessReconcileResult {
   try {
@@ -222,12 +226,26 @@ export function reconcileRemoteAccess(homeDir: string): RemoteAccessReconcileRes
     writeServeConfig(homeDir, config);
     return { enabled, config, hostname, wrote: true };
   } catch (err) {
+    const error = err instanceof Error ? err.message : String(err);
+    try {
+      writeServeConfigDoc(homeDir, DISABLED_SERVE_CONFIG);
+    } catch (closeErr) {
+      const closeError = closeErr instanceof Error ? closeErr.message : String(closeErr);
+      return {
+        enabled: false,
+        config: REMOTE_ACCESS_DEFAULTS,
+        hostname: "",
+        wrote: false,
+        error: `${error}; additionally failed to write fail-closed serve config: ${closeError}`,
+      };
+    }
+
     return {
       enabled: false,
       config: REMOTE_ACCESS_DEFAULTS,
       hostname: "",
       wrote: false,
-      error: err instanceof Error ? err.message : String(err),
+      error,
     };
   }
 }
@@ -235,8 +253,9 @@ export function reconcileRemoteAccess(homeDir: string): RemoteAccessReconcileRes
 export type RemoteAccessApplyResult = RemoteAccessReconcileResult & {
   /**
    * Services whose containers must be recreated for this apply to take
-   * effect. Always contains `tunnel` (it reads the regenerated document at
-   * container start); contains `guardian` as well whenever this call changed
+   * effect. An enabled remote addon always contains `tunnel` (it reads the
+   * regenerated document at container start); a disabled addon never does.
+   * `guardian` is included whenever this call changed
    * `GUARDIAN_DIRECT_INGRESS`, because that variable is consumed by the
    * guardian's own listener and only a recreate re-reads it.
    */
@@ -304,7 +323,13 @@ export function applyRemoteAccess(homeDir: string): RemoteAccessApplyResult {
       patchSecretsEnvFile(homeDir, { GUARDIAN_DIRECT_INGRESS: next });
     }
 
-    const services = ingressChanged ? ["tunnel", "guardian"] : ["tunnel"];
+    const services = reconcile.enabled
+      ? ingressChanged
+        ? ["tunnel", "guardian"]
+        : ["tunnel"]
+      : ingressChanged
+        ? ["guardian"]
+        : [];
 
     // The guardian answering is necessary but not sufficient: it also has to
     // EXIST. guardian is profile-gated behind the ingress addons, so a target

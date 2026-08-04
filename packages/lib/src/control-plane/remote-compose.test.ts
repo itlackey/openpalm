@@ -23,6 +23,7 @@ const SERVICES_COMPOSE_PATH = join(STACK_DIR, "services.compose.yml");
 type ComposeService = {
   profiles?: string[];
   image?: string;
+  healthcheck?: ComposeHealthcheck;
   ports?: unknown[];
   depends_on?: unknown;
   networks?: string[] | Record<string, unknown>;
@@ -30,6 +31,13 @@ type ComposeService = {
   environment?: Record<string, unknown>;
   secrets?: string[];
   user?: string;
+};
+type ComposeHealthcheck = {
+  test?: string[];
+  interval?: string;
+  timeout?: string;
+  retries?: number;
+  start_period?: string;
 };
 type ComposeFile = {
   services?: Record<string, ComposeService>;
@@ -75,6 +83,35 @@ describe("tunnel service — no ports published", () => {
 describe("tunnel service — no depends_on", () => {
   test("tunnel declares no depends_on (guardian is profile-gated; a depends_on onto it would be a stack-wide Compose parse error)", () => {
     expect(tunnel).not.toHaveProperty("depends_on");
+  });
+});
+
+describe("tunnel service — readiness healthcheck", () => {
+  test("uses Tailscale's built-in health endpoint, not process liveness", () => {
+    expect(tunnel?.environment?.TS_ENABLE_HEALTH_CHECK).toBe("true");
+    expect(tunnel?.environment?.TS_LOCAL_ADDR_PORT).toBe("127.0.0.1:9002");
+    expect(tunnel?.healthcheck?.test).toEqual([
+      "CMD",
+      "wget",
+      "--spider",
+      "-q",
+      "http://127.0.0.1:9002/healthz",
+    ]);
+  });
+
+  test("allows containerboot's 60-second startup deadline before counting failures", () => {
+    expect(tunnel?.healthcheck?.interval).toBe("10s");
+    expect(tunnel?.healthcheck?.timeout).toBe("5s");
+    expect(tunnel?.healthcheck?.retries).toBe(3);
+    expect(tunnel?.healthcheck?.start_period).toBe("60s");
+  });
+
+  test("keeps the readiness probe local and does not widen the tunnel boundary", () => {
+    expect(tunnel?.healthcheck?.test?.at(-1)).toBe("http://127.0.0.1:9002/healthz");
+    expect(tunnel).not.toHaveProperty("ports");
+    expect(tunnel).not.toHaveProperty("cap_add");
+    expect(tunnel).not.toHaveProperty("devices");
+    expect(tunnel?.user).toBe("${OP_UID:-1000}:${OP_GID:-1000}");
   });
 });
 

@@ -110,9 +110,22 @@ describe("readRemoteAccessConfig", () => {
     expect(readRemoteAccessConfig({})).toEqual({ hostname: "openpalm", public: false, target: "assistant" });
   });
 
-  test("unrecognised target falls back to assistant", () => {
-    expect(readRemoteAccessConfig({ OP_REMOTE_TARGET: "nonsense" }).target).toBe("assistant");
-    expect(readRemoteAccessConfig({}).target).toBe("assistant");
+  test("missing target uses the safe assistant default", () => {
+    expect(readRemoteAccessConfig({ OP_REMOTE_PUBLIC: "true" }).target).toBe("assistant");
+  });
+
+  test.each(["nonsense", "", "   "])("rejects invalid target %j", (target) => {
+    expect(() => readRemoteAccessConfig({ OP_REMOTE_TARGET: target })).toThrow(
+      "Invalid OP_REMOTE_TARGET",
+    );
+  });
+
+  test("public=true cannot turn an invalid target into assistant exposure", () => {
+    expect(() =>
+      resolveServeConfig(
+        readRemoteAccessConfig({ OP_REMOTE_PUBLIC: "true", OP_REMOTE_TARGET: "nonsense" }),
+      ),
+    ).toThrow("Invalid OP_REMOTE_TARGET");
   });
 
   test.each(["true", "TRUE", "1", "yes", "on", " true "])("accepts %s as public", (value) => {

@@ -87,11 +87,19 @@ export function resolveRemoteHostname(env: Record<string, string | undefined>): 
 const TRUE_RE = /^(true|1|yes|on)$/i;
 
 function parseRemoteTarget(raw: string | undefined): RemoteTarget {
-  const trimmed = raw?.trim();
-  if (trimmed && (REMOTE_TARGETS as readonly string[]).includes(trimmed)) {
+  // An absent key is the safe default. An explicitly present invalid value is
+  // rejected instead of being normalized to assistant, which could turn a
+  // public typo into an unintended assistant exposure.
+  if (raw === undefined) return REMOTE_ACCESS_DEFAULTS.target;
+
+  const trimmed = raw.trim();
+  if ((REMOTE_TARGETS as readonly string[]).includes(trimmed)) {
     return trimmed as RemoteTarget;
   }
-  return REMOTE_ACCESS_DEFAULTS.target;
+
+  throw new Error(
+    `Invalid OP_REMOTE_TARGET; expected one of: ${REMOTE_TARGETS.join(", ")}.`,
+  );
 }
 
 /** Read the addon's config back out of an env record (state/stack.env). */

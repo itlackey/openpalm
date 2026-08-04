@@ -8,6 +8,8 @@ import { isEmbeddableOpencodeUi, resolveWorkspaceUrl } from './embeddable.js';
 
 const LAN_PAGE = { origin: 'http://192.168.0.201:3800', protocol: 'http:' };
 const HTTPS_PAGE = { origin: 'https://openpalm.example', protocol: 'https:' };
+const LOCAL_ACTIVE_CONNECTION = { isDefault: true, hasPassword: false };
+const REMOTE_ACTIVE_CONNECTION = { isDefault: false, hasPassword: false };
 
 describe('isEmbeddableOpencodeUi — this app’s own origin is not an OpenCode UI', () => {
   test('refuses the locked same-origin /oc pass-through', () => {
@@ -47,21 +49,50 @@ describe('isEmbeddableOpencodeUi — credentials never ride in an iframe URL', (
 describe('resolveWorkspaceUrl — composed from the host the browser visited', () => {
   test('uses the visited LAN host when the assistant port is published beyond loopback', () => {
     expect(
-      resolveWorkspaceUrl({ port: 3810, loopbackOnly: false }, { hostname: '192.168.0.201' }),
+      resolveWorkspaceUrl(
+        { port: 3810, loopbackOnly: false },
+        { hostname: '192.168.0.201' },
+        LOCAL_ACTIVE_CONNECTION,
+      ),
     ).toBe('http://192.168.0.201:3810');
+  });
+
+  test('offers the local advertisement only for the active default connection', () => {
+    expect(
+      resolveWorkspaceUrl(
+        { port: 3810, loopbackOnly: false },
+        { hostname: '192.168.0.201' },
+        REMOTE_ACTIVE_CONNECTION,
+      ),
+    ).toBeNull();
+  });
+
+  test('does not offer the local advertisement when the default has credentials', () => {
+    expect(
+      resolveWorkspaceUrl(
+        { port: 3810, loopbackOnly: false },
+        { hostname: '192.168.0.201' },
+        { isDefault: true, hasPassword: true },
+      ),
+    ).toBeNull();
   });
 
   test('offers nothing to a LAN client when the publish is loopback-only', () => {
     expect(
-      resolveWorkspaceUrl({ port: 3810, loopbackOnly: true }, { hostname: '192.168.0.201' }),
+      resolveWorkspaceUrl(
+        { port: 3810, loopbackOnly: true },
+        { hostname: '192.168.0.201' },
+        LOCAL_ACTIVE_CONNECTION,
+      ),
     ).toBeNull();
   });
 
   test('offers the loopback-only publish to a client on the machine itself', () => {
     for (const hostname of ['localhost', '127.0.0.1']) {
-      expect(resolveWorkspaceUrl({ port: 3810, loopbackOnly: true }, { hostname }), hostname).toBe(
-        `http://${hostname}:3810`,
-      );
+      expect(
+        resolveWorkspaceUrl({ port: 3810, loopbackOnly: true }, { hostname }, LOCAL_ACTIVE_CONNECTION),
+        hostname,
+      ).toBe(`http://${hostname}:3810`);
     }
   });
 
@@ -70,14 +101,20 @@ describe('resolveWorkspaceUrl — composed from the host the browser visited', (
     // also accepts the bare spelling, and that one must not produce
     // "http://::1:3810".
     for (const hostname of ['[::1]', '::1']) {
-      const url = resolveWorkspaceUrl({ port: 3810, loopbackOnly: true }, { hostname });
+      const url = resolveWorkspaceUrl(
+        { port: 3810, loopbackOnly: true },
+        { hostname },
+        LOCAL_ACTIVE_CONNECTION,
+      );
       expect(url, hostname).toBe('http://[::1]:3810');
       expect(new URL(url ?? '').port, hostname).toBe('3810');
     }
   });
 
   test('offers nothing without an advertisement', () => {
-    expect(resolveWorkspaceUrl(undefined, { hostname: 'localhost' })).toBeNull();
+    expect(
+      resolveWorkspaceUrl(undefined, { hostname: 'localhost' }, LOCAL_ACTIVE_CONNECTION),
+    ).toBeNull();
   });
 });
 
