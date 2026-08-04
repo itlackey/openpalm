@@ -50,6 +50,20 @@ export type OpencodeWorkspaceHint = { port: number; loopbackOnly: boolean };
  * top-level navigation is exempt from X-Frame-Options, frame-src, and
  * mixed-content blocking, so it works in deployments where an iframe cannot.
  */
+/**
+ * Format a hostname for use in a URL authority.
+ *
+ * The WHATWG URL parser already returns an IPv6 host bracketed (`[::1]`), so
+ * `page.url.hostname` needs nothing here. The bare spelling still has to be
+ * handled, because this module's own reachability check (`isLoopbackHost`)
+ * accepts `::1` as well — and interpolating that unbracketed produces
+ * `http://::1:3810`, which is not a URL at all (RFC 3986 §3.2.2).
+ */
+function formatHostForUrl(hostname: string): string {
+  if (!hostname.includes(':')) return hostname;
+  return hostname.startsWith('[') ? hostname : `[${hostname}]`;
+}
+
 export function resolveWorkspaceUrl(
   hint: OpencodeWorkspaceHint | undefined,
   embeddingPage: { hostname: string },
@@ -58,7 +72,7 @@ export function resolveWorkspaceUrl(
   const { hostname } = embeddingPage;
   if (!hostname) return null;
   if (hint.loopbackOnly && !isLoopbackHost(hostname)) return null;
-  return `http://${hostname}:${hint.port}`;
+  return `http://${formatHostForUrl(hostname)}:${hint.port}`;
 }
 
 export function isEmbeddableOpencodeUi(

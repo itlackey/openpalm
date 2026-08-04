@@ -375,6 +375,17 @@ describe('computeOpencodeWorkspace — where OpenCode’s own web UI is publishe
     expect(computeOpencodeWorkspace()).toEqual({ port: 4810, loopbackOnly: false });
   });
 
+  test('resolves from injected env alone — the container lane never reads the stack file', () => {
+    // Every key compose injects is present, so the file below must not be
+    // consulted: it contradicts all three, and the injected values win. This
+    // pins the lazy read (computeOpencodeWorkspace runs on every layout load).
+    writeStackEnv('OP_ASSISTANT_PORT=1111\nOP_ASSISTANT_BIND_ADDRESS=127.0.0.1\nOPENCODE_AUTH=true\n');
+    process.env.OPENCODE_AUTH = 'false';
+    process.env.OP_ASSISTANT_PORT = '3810';
+    process.env.OP_ASSISTANT_BIND_ADDRESS = '0.0.0.0';
+    expect(computeOpencodeWorkspace()).toEqual({ port: 3810, loopbackOnly: false });
+  });
+
   test('absent when OpenCode requires Basic auth — no frame or tab can carry that credential', () => {
     writeStackEnv('OP_ASSISTANT_PORT=3810\nOPENCODE_AUTH=true\n');
     expect(computeOpencodeWorkspace()).toBeUndefined();

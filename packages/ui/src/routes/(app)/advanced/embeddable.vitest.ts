@@ -65,6 +65,17 @@ describe('resolveWorkspaceUrl — composed from the host the browser visited', (
     }
   });
 
+  test('brackets an IPv6 host so the address is a valid URL', () => {
+    // page.url.hostname arrives bracketed from the WHATWG parser; isLoopbackHost
+    // also accepts the bare spelling, and that one must not produce
+    // "http://::1:3810".
+    for (const hostname of ['[::1]', '::1']) {
+      const url = resolveWorkspaceUrl({ port: 3810, loopbackOnly: true }, { hostname });
+      expect(url, hostname).toBe('http://[::1]:3810');
+      expect(new URL(url ?? '').port, hostname).toBe('3810');
+    }
+  });
+
   test('offers nothing without an advertisement', () => {
     expect(resolveWorkspaceUrl(undefined, { hostname: 'localhost' })).toBeNull();
   });

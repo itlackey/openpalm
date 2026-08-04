@@ -155,24 +155,33 @@ export function computeVoiceRuntime(): { url: string } | undefined {
 export function computeOpencodeWorkspace():
   | { port: number; loopbackOnly: boolean }
   | undefined {
-  const stackEnv = (() => {
-    try {
-      const { homeDir, stackDir } = getState();
-      // getState() materializes a stack.env carrying the DEFAULT ports whether
-      // or not anything is deployed, so reading it unconditionally would
-      // advertise a port with no listener behind it on a fresh host process.
-      // Same guard buildServedUiRuntimeConfig uses before seeding a connection.
-      if (getCachedLocalInstallState(stackDir, homeDir) === 'not_installed') {
-        return {} as Record<string, string>;
+  // Lazily, and at most once per call: this runs on every layout load and
+  // every GET /api/runtime, and readStackEnv is a synchronous readFileSync.
+  // The container co-process has all three keys injected by compose
+  // (core.compose.yml: OPENCODE_AUTH, OP_ASSISTANT_PORT,
+  // OP_ASSISTANT_BIND_ADDRESS), so that lane never touches the disk at all;
+  // a host process pays one read the first time a key is missing.
+  let stackEnv: Record<string, string> | undefined;
+  const stackEnvValue = (key: string): string | undefined => {
+    stackEnv ??= (() => {
+      try {
+        const { homeDir, stackDir } = getState();
+        // getState() materializes a stack.env carrying the DEFAULT ports
+        // whether or not anything is deployed, so reading it unconditionally
+        // would advertise a port with no listener behind it on a fresh host
+        // process. Same guard buildServedUiRuntimeConfig uses before seeding a
+        // connection.
+        if (getCachedLocalInstallState(stackDir, homeDir) === 'not_installed') return {};
+        return readStackEnv(homeDir);
+      } catch {
+        // No readable OP_HOME — the injected env above is the only source.
+        return {};
       }
-      return readStackEnv(homeDir);
-    } catch {
-      // The container co-process has no OP_HOME; its values arrive as env.
-      return {} as Record<string, string>;
-    }
-  })();
+    })();
+    return stackEnv[key]?.trim() || undefined;
+  };
   const read = (key: string): string | undefined =>
-    process.env[key]?.trim() || stackEnv[key]?.trim() || undefined;
+    process.env[key]?.trim() || stackEnvValue(key);
 
   if (TRUTHY_ENV.test(read('OPENCODE_AUTH') ?? '')) return undefined;
   const port = Number(read('OP_ASSISTANT_PORT'));
