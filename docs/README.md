@@ -72,6 +72,16 @@ See [How It Works](how-it-works.md) for the full architecture behind these terms
 | [sveltekit-rules.md](technical/sveltekit-rules.md) | Admin UI (`packages/ui/`) |
 | [ui-styling-unification.md](technical/ui-styling-unification.md) | UI styling — verified drift inventory + refactor plan to the unified token/component system (`packages/ui/src/lib/`) |
 
+## Reviews & analysis
+
+Point-in-time deep dives. Each is stamped with the revision it reviewed and is
+not kept current as the code moves.
+
+| Document | Description |
+|---|---|
+| [onboarding-setup-review.md](reviews/onboarding-setup-review.md) | End-to-end review of the new-user journey: discovery, install, setup wizard, first deploy, first chat |
+| [paperclip-integration-analysis.md](reviews/paperclip-integration-analysis.md) | OpenPalm vs [Paperclip](https://github.com/paperclipai/paperclip): overlap, integration seams, and a phased recommendation for the "agents at work" use case |
+
 ## Release notes
 
 | Document | Description |
