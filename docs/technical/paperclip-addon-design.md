@@ -27,7 +27,7 @@ It also introduces one stack-wide change that is not Paperclip-specific: a globa
 | Decision | Choice | Consequence |
 |---|---|---|
 | Scanning granularity | **Reuse the existing global toggle** | No Guardian code changes. `GUARDIAN_CONTENT_VALIDATION` keeps its current semantics; routing choice *is* the scanning choice. Per-principal levels are a documented future extension (§10). |
-| `core-principles.md` | **Amend as part of implementation** | §13 carries the exact proposed text. It is deliberately **not** applied yet — amending an authoritative invariant doc to describe behavior that does not exist would make it false in the other direction. |
+| `core-principles.md` | **Amended, ahead of implementation** | §13 carries the applied text. The original plan was to hold this until Phase 1 landed code — amending an authoritative invariant doc to describe behavior that does not exist yet makes it false in the other direction. The maintainer confirmed the amendment before that code exists; `core-principles.md` names `paperclip` as the first operator-trusted in-stack consumer and the first `env_file`-exempt addon, and until Phase 1 ships, both references describe an addon this repo does not yet contain. Treat those two clauses as forward-declared, not currently true of the running stack. |
 | Sequencing | **Design first, no code** | This document. Implementation is a follow-up. |
 | Paperclip's own config/DB | **Documented deviation from the secret pattern** | Paperclip owns its Postgres and its internal secrets through one `env_file` under `private/env/`. Uses the upstream image unmodified, no wrapper. Narrowly exempted in `secret-audit.ts` (§5). |
 | Telemetry | **Global `OP_TELEMETRY`, default `false`** | Stack-wide opt-in toggle, off by default, applied to assistant, guardian, and paperclip (§11). |
@@ -721,10 +721,12 @@ and the CLI, which is the documented management path anyway.
 
 ---
 
-## 13. Proposed `core-principles.md` amendment
+## 13. `core-principles.md` amendment — applied
 
-Approved by the maintainer, **to be applied with the Phase 1 implementation**,
-not before.
+Approved by the maintainer and applied ahead of the Phase 1 implementation
+(the code this document describes does not exist yet; only the invariant text
+below is now live in `core-principles.md`). Kept here as the record of what
+changed and why.
 
 §2 (*Guardian-only ingress*) currently reads, in part: "Every portal request
 enters Guardian; no portal communicates directly with the assistant." Append:
