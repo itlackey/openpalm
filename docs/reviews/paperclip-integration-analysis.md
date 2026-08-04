@@ -1,7 +1,8 @@
 # OpenPalm × Paperclip — Integration & Strategy Analysis
 
 **Date:** 2026-08-04
-**OpenPalm revision reviewed:** `155c235` (main, v0.13.0-beta.15), MPL-2.0
+**OpenPalm revision reviewed:** initially `155c235`; implementation-plan alignment
+rechecked at `01161ded`, MPL-2.0
 **Paperclip revision reviewed:** `2ab797d` (master, 2026-08-03, tagged
 `canary/v2026.804.0-canary.5`), MIT — [`paperclipai/paperclip`](https://github.com/paperclipai/paperclip)
 
@@ -51,10 +52,11 @@ reasonable OpenPalm roadmap could reach.
 
 | Phase | Work | Effort | Risk to OpenPalm invariants |
 |---|---|---|---|
-| **0** | Wire the two together with configuration only — Guardian's compatible API as a Paperclip provider; MCP in both directions | days | none |
-| **1** | Build three OpenPalm-side enablers that are valuable standalone: principal management UI, per-principal usage accounting, a trusted-principal class | 1–2 weeks | one new `/api/host/*` family; one documented moderation exception |
-| **2** | Publish `@openpalm/paperclip-adapter` as an external npm plugin implementing Paperclip's `ServerAdapterModule` over Guardian `/oc/*` | 2–4 weeks | none in OpenPalm core |
-| **3** | *(optional)* Workspace overlay for code-capable roles | — | one new optional Compose overlay |
+| **0** | Prove the pinned images, rootless Postgres, health contract, and OpenPalm adapter over Guardian in a disposable fixture | days | none |
+| **1** | Ship a loopback-only, authenticated Paperclip addon with the screened Guardian adapter, private DB network, and transactional lifecycle | 2–4 weeks | one narrow `private/env` exception; one derived image |
+| **2** | Add explicit direct-assistant routing after its conditional network/auth contract passes | 1–2 weeks | one operator-trusted consumer exception |
+| **3** | Add the dedicated admin/bootstrap UI and only then LAN exposure | 1–2 weeks | service-specific exposure state |
+| **4** | Add Tailscale exposure after trusted-origin and rollback orchestration exists | — | remote-access extension |
 
 **Do not** rebuild Paperclip's control plane inside OpenPalm. Specifically, do
 not add multi-user human accounts or RBAC — that collides directly with
@@ -261,16 +263,22 @@ and spawns it as a child process. OpenPalm exposes that same runtime over HTTP
 with Basic principal auth. The protocol knowledge transfers; only the transport
 changes.
 
-**Shape of the adapter** — an external npm package,
-`@openpalm/paperclip-adapter`, requiring **no Paperclip fork**
-(`docs/adapters/external-adapters.md`):
+**Shape of the adapter** — `@openpalm/paperclip-adapter`, using Paperclip's
+external-adapter contract and requiring **no Paperclip fork**
+(`docs/adapters/external-adapters.md`). OpenPalm bakes its exact package tarball
+into a derived Paperclip image; publishing it to npm is optional and would not by
+itself install or register it:
 
 - `execute(ctx)`:
   - resolve/create a session — `POST /oc/session` through Guardian
     (`packages/guardian/src/oc-path.ts:62` classifies this as `session-create`)
   - send the wake prompt to the session's message endpoint
     (`oc-path.ts:80` — `session-scoped`, `moderatedWrite`)
-  - stream `/oc/event` into `ctx.onLog` / `ctx.onEvent`
+  - authenticate as the addon principal and assert a stable Paperclip-agent ID
+    through `x-openpalm-user`; filter `/oc/event` by the exact run session
+  - keep Paperclip's run-scoped control-plane token inside the adapter, translate
+    structured assistant action requests into allowlisted local Paperclip API
+    calls, and feed sanitized results back into the same OpenCode session
   - return `AdapterExecutionResult` with `usage`, `model`, `costUsd`,
     `billingType`, and `sessionParams`
 - **Session continuity is free.** Guardian already persists `session_owners` in
@@ -280,6 +288,13 @@ changes.
 - `testEnvironment()`: `GET /guardian/health` plus a principal auth probe.
 - `getConfigSchema()`: Guardian base URL, principal id, principal secret,
   optional model override.
+
+The adapter-owned action loop is load-bearing. The assistant does not share
+Paperclip's network and must never receive its run token in a prompt. Paperclip's
+separate `runtimeMcp` entries carry per-external-server tokens and are not a
+substitute for its control-plane API. A valid integration proves an actual
+Paperclip issue mutation, not merely an assistant tool call or a heartbeat that
+returns text.
 
 **Four gaps to close, each named against the invariant it touches:**
 
@@ -306,10 +321,12 @@ changes.
    operator-managed TLS.
 
 3. **Attribution granularity.** Guardian isolates per principal, and
-   `x-openpalm-user` is an assertion, not an identity. **One Guardian principal
-   per Paperclip agent** is the right mapping — it makes Guardian's ownership
-   records, audit log, and (after Phase 1) usage accounting line up 1:1 with
-   Paperclip's agents and budgets.
+   `x-openpalm-user` is an assertion, not an identity. One principal per
+   Paperclip agent is the eventual high-fidelity mapping, but it requires a
+   principal lifecycle API that can mint, rotate, revoke, and reconcile dynamic
+   agents safely. The adapter MVP deliberately uses one addon-level `paperclip`
+   principal, so ownership and audit are per Paperclip installation. Per-agent
+   attribution is deferred rather than approximated with unmanaged secrets.
 
 4. **Content validation vs. machine callers — the largest security
    consideration in this document.** `GUARDIAN_CONTENT_VALIDATION` defaults on
@@ -318,20 +335,20 @@ changes.
    wake prompts are long, tool-heavy, and carry issue text authored by other
    agents — they will escalate, and some will be blocked.
 
-   The fix must be a **per-principal, explicitly-granted, audited trusted
-   class** — never a global off switch, and never a silent default. Note the
-   tension honestly: relaxing moderation for a machine principal is exactly the
-   path a prompt-injection payload would want, and Paperclip's own
-   `doc/LOW-TRUST-PRESETS.md` disables direct-parent report comments for
-   precisely this reason. Any implementation should keep the deterministic
-   screen even where it drops the LLM escalation, and log every bypass.
+   The adapter MVP remains fully screened and must surface moderation blocks as
+   failed Paperclip runs rather than bypassing them. A future trusted-principal
+   class could reduce false positives, but it is explicitly deferred: relaxing
+   moderation for a machine principal is exactly the path a prompt-injection
+   payload would want. If implemented later, it must be per-principal,
+   explicitly granted, audited, off by default, and retain the deterministic
+   screen.
 
 **Effort:** 2–4 weeks for a working non-worktree adapter, assuming Phase 1
 enablers exist.
 
 ### Seam B — MCP in both directions
 
-**Cheapest. Do this first — it proves the whole thesis with zero code.**
+**High leverage, but it needs an explicit connectivity and credential design.**
 
 **Paperclip → OpenPalm.** OpenCode is an MCP client, and
 `packages/skeleton/system/assistant/opencode.jsonc:26` already ships the
@@ -352,23 +369,30 @@ Guardian's MCP server currently exposes **one** tool. Broadening it (e.g. an
 AKM knowledge-search tool) is a natural, contained follow-up and would make this
 seam considerably more valuable.
 
-**Invariant changes: none. Configuration only.**
+This is not configuration-only in the first-party addon topology. The assistant,
+Paperclip, and Guardian have different network memberships; Guardian's MCP
+listener is disabled by default and requires its own token. A future MCP phase
+must define explicit network reachability, listener enablement, narrowly granted
+credentials, and isolation tests in both directions. It remains a cheap
+integration seam, but not a Phase 1 shortcut.
 
 ### Seam C — Guardian's compatible API as a Paperclip model provider
 
-**Free. Use it as the smoke test.**
+**Rejected for agent execution after source-level verification.**
 
-Guardian already serves an OpenAI/Anthropic-compatible listener on
-`127.0.0.1:3821` (`packages/guardian/src/openai-api*.ts`), and Paperclip's
-OpenCode adapter accepts arbitrary OpenAI-compatible provider JSON through
-`PAPERCLIP_OPENCODE_PROVIDERS`
-(`packages/adapters/opencode-local/src/server/runtime-config.ts`). Pointing a
-Paperclip agent at it routes that agent's traffic through OpenPalm's moderation,
-rate limits, and audit trail with no code in either project.
+Guardian's compatible listener is an assistant-response shim, not a transparent
+model provider. Its request translation keeps only the latest user text, omits
+system/history/tool schemas, does not pass the requested model into OpenCode,
+and reports zero or unavailable usage (`packages/guardian/src/openai-api*.ts`,
+`openai-api-utils.ts`, `openai-api-oc-client.ts`). Paperclip's local OpenCode
+agent needs model and tool-call fidelity to participate in its heartbeat/tool
+loop. A request may return text while still being operationally incapable of
+doing Paperclip work.
 
-This is the weakest coupling — OpenPalm is reduced to a filtered model endpoint
-and contributes no memory or channels — but it is a ten-minute experiment that
-validates connectivity, auth, and streaming before anyone writes an adapter.
+Do not ship or advertise this route. The native `/oc/*` adapter is the first
+supported integration. The compatible API remains useful for its existing
+human/API clients, but not as Paperclip's agent model transport unless its
+contract is deliberately expanded and independently tested in the future.
 
 ---
 
@@ -384,7 +408,8 @@ validates connectivity, auth, and streaming before anyone writes an adapter.
    existing `/api/host/addons/[name]/credentials` endpoints are the template,
    and `ensurePortalSecret` in the addon secret lifecycle is the pattern to
    reuse. **This is what turns OpenPalm from a single-consumer assistant into a
-   credible multi-consumer runtime**, and it is a prerequisite for Seam A.
+   credible multi-consumer runtime**. It is a prerequisite for per-agent
+   principals, but not for the addon-level principal used by the adapter MVP.
 
 2. **Per-principal usage and cost accounting in Guardian.** Guardian sees every
    request, already owns a SQLite database, and already writes
@@ -395,13 +420,14 @@ validates connectivity, auth, and streaming before anyone writes an adapter.
    Guardian-side truth is strictly better. Unlocks budgets, quotas, and
    chargeback.
 
-3. **A trusted-principal class** (Seam A, gap 4): per-principal, explicit,
-   audited, off by default, deterministic screen retained.
+3. **A trusted-principal class** (optional, deferred from the adapter MVP):
+   per-principal, explicit, audited, off by default, deterministic screen
+   retained.
 
-4. **An optional workspace Compose overlay** so an external orchestrator can
-   hand the assistant a working tree. Pure file-drop into
-   `config/stack/custom.compose.yml` or a new profile-gated managed overlay —
-   exactly the documented addon model, no core change.
+4. **An optional shared-workspace contract** for roles that genuinely need file
+   access. Both Paperclip and the assistant may mount the existing
+   `workspace/` tree at `/work`; Paperclip service data must never be mounted
+   into the assistant. The MVP remains scoped to non-worktree roles.
 
 ### Do not build
 
@@ -437,11 +463,11 @@ Concretely, an "AI agents at work" deployment built on both:
 - **OpenPalm agents** fill the roles where memory and human contact matter —
   an ops agent that remembers last quarter's incidents, a research agent with a
   curated knowledge stash, a comms agent reachable in the team's Slack.
-- **Humans reach the company through OpenPalm's channels.** Paperclip's board UI
+- **Humans can eventually reach the company through OpenPalm's channels.** Paperclip's board UI
   is for supervision; OpenPalm's Discord/Slack/voice surfaces are for the
   ninety-second interaction that would otherwise never happen. This is the
-  integration's clearest end-user win and it needs no adapter at all — Seam B
-  delivers it.
+  integration's clearest end-user win. Seam B can deliver it after its network,
+  listener, and credential contract is implemented.
 - **Guardian is the safety layer on the human edge** — content validation, rate
   limits, per-principal isolation — while Paperclip's MCP gateway is the safety
   layer on the tool edge. They compose rather than duplicate.
@@ -462,7 +488,8 @@ resolve, not legal advice; confirm with counsel before publishing.*
 **Moderation bypass is the real security surface.** See Seam A gap 4. If only
 one item from this document gets careful review, make it this one.
 
-**Release cadence mismatch.** Paperclip tags calendar-versioned canaries
+**Release cadence mismatch.** Paperclip tags SemVer-compatible
+calendar-versioned canaries
 (`canary/v2026.804.0-canary.5`, dated the day before this review) and its
 adapter contract is still moving — `adapter-plugin.md` in the repo root is a
 working note describing the registry being made mutable mid-flight. An external
@@ -494,7 +521,7 @@ operator TLS problem.
 
 ## 8. Sources
 
-**OpenPalm** (`155c235`): `docs/technical/core-principles.md`,
+**OpenPalm** (initially `155c235`, plan rechecked at `01161ded`): `docs/technical/core-principles.md`,
 `docs/technical/design-intent.md`, `docs/how-it-works.md`,
 `docs/technical/ui-route-map.md`, `docs/technical/api-spec.md`,
 `AGENTS.md`, `docs/portals/community-portals.md`,
