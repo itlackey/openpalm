@@ -18,18 +18,40 @@ const composeYml = readFileSync(
  * image shipped with no agent CLIs at all. Each test below encodes a property
  * a plausible edit can actually violate.
  *
- * The previous version also asserted `not.toMatch(/ENTRYPOINT/)`, which
- * forbade the one mechanism available to fix a missing-binary or
- * file-based-secret defect. A test that blocks the remedy for a known defect
- * is removed rather than kept.
+ * On the ENTRYPOINT assertion below: an earlier revision asserted
+ * `not.toMatch(/ENTRYPOINT/)` while the secret-boundary question was still
+ * open, which meant it forbade the one mechanism available to fix a known
+ * defect. That question is now decided — image purity is the preferred
+ * trade-off (PR #599 review) — so the assertion is back, but as a recorded
+ * decision with its cost stated rather than an unexplained prohibition.
  */
 describe('Paperclip image contract', () => {
 	test('packages the pinned upstream release and adds no OpenPalm code', () => {
 		expect(dockerfile).toContain(`ARG PAPERCLIP_VERSION=${PAPERCLIP_UPSTREAM_VERSION}`);
 		expect(dockerfile).toContain('npm install --global --omit=dev');
 		expect(dockerfile).toContain('prepareEmbeddedPostgresNativeRuntime');
+	});
+
+	test('holds the image-purity constraint, whose accepted cost is the env_file exemption', () => {
+		// DECIDED TRADE-OFF, not an accident. This image packages the upstream
+		// release and nothing else: no adapter, no verifier, no wrapper
+		// entrypoint, no copied-in OpenPalm files.
+		//
+		// The cost is real and is accepted deliberately: upstream reads
+		// BETTER_AUTH_SECRET and PAPERCLIP_TOOL_ACTION_SIGNING_SECRET from
+		// process.env only, with no *_FILE indirection, so those two values
+		// reach the container as environment via the audited
+		// private/env/paperclip.env exemption (see core-principles.md § Private
+		// credentials). Delivering them as file secrets instead would require an
+		// exec wrapper — precisely the OpenPalm-authored code this constraint
+		// excludes. Changing this test means re-opening that trade-off, not
+		// working around it.
 		expect(dockerfile).not.toContain('packages/paperclip-adapter');
 		expect(dockerfile).not.toContain('verifier');
+		expect(dockerfile).not.toMatch(/^\s*ENTRYPOINT/m);
+		// No local build context is copied in — the image is composed purely
+		// from published packages.
+		expect(dockerfile).not.toMatch(/^\s*COPY\s/m);
 	});
 
 	test('the upstream version agrees across every file that repeats it', () => {

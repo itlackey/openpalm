@@ -126,6 +126,8 @@ Stack **configuration** does not. It lives in `state/stack.env` (§ 1b), deliber
 
 **Named `env_file` exemption (one service, one path, one key set).** A third-party addon image that reads a credential only as a plain environment variable, and implements no `*_FILE` indirection, may read exactly one env file under `private/env/`. The exemption is not a relaxation of the rule above — it is enforced, per service and per path, by `auditPaperclipEnv` in `secret-audit.ts`, which additionally requires the file to be `0600` inside a `0700` directory, to contain **only** the named keys, to contain **all** of them, and to not have those same values duplicated into the service's Compose `environment`. Any other service using `env_file`, any other path, or any extra key is still an audit failure. `paperclip` is the first and currently only such addon: upstream reads `BETTER_AUTH_SECRET` and `PAPERCLIP_TOOL_ACTION_SIGNING_SECRET` from `process.env` only.
 
+**Why the exemption exists rather than a wrapper.** File-based delivery for those two values is achievable — an exec entrypoint could read `/run/secrets/*` and re-export them — but that puts OpenPalm-authored code inside an image whose stated purpose is to package the upstream release and nothing else. Image purity is the deliberate trade-off: the addon image stays auditable as "upstream, unmodified," and the two secrets it cannot read from a file are contained by the audited exemption above instead. `paperclip-image-contract.test.ts` holds both halves of that bargain, so weakening either one fails a test rather than passing silently.
+
 ### 3) Data (service-managed, durable)
 
 **Location:** `~/.openpalm/data/`
