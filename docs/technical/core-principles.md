@@ -124,6 +124,10 @@ Stack **configuration** does not. It lives in `state/stack.env` (§ 1b), deliber
 
 **Rule:** `private/` is never mounted into assistant `/stash`. Compose grants only named files to consuming services under `/run/secrets/`. The secret audit rejects broad service env files, raw secret-like environment values, and grants outside a service's role. Directories are `0700`; files are `0600`.
 
+**Named `env_file` exemption (one service, one path, one key set).** A third-party addon image that reads a credential only as a plain environment variable, and implements no `*_FILE` indirection, may read exactly one env file under `private/env/`. The exemption is not a relaxation of the rule above — it is enforced, per service and per path, by `auditPaperclipEnv` in `secret-audit.ts`, which additionally requires the file to be `0600` inside a `0700` directory, to contain **only** the named keys, to contain **all** of them, and to have every matching value in the service's Compose `environment` agree with the file. (`docker compose config` inlines `env_file` into `environment`, so the keys appearing there is expected; a value that *differs* from the file means the Compose block overrode the audited source, and that is the failure.) Any other service using `env_file`, any other path, or any extra key is still an audit failure. `paperclip` is the first and currently only such addon: upstream reads `BETTER_AUTH_SECRET` and `PAPERCLIP_TOOL_ACTION_SIGNING_SECRET` from `process.env` only.
+
+**Why the exemption exists rather than a wrapper.** File-based delivery for those two values is achievable — a wrapper entrypoint could read `/run/secrets/*` and re-export them — but that means forking or rebuilding a third-party image, which is the opposite of how this stack consumes third-party software (pull an upstream image, pin it by digest — see `ollama` and `tunnel`). The addon runs the upstream image unmodified, and the two secrets it cannot read from a file are contained by the audited exemption above instead.
+
 ### 3) Data (service-managed, durable)
 
 **Location:** `~/.openpalm/data/`
@@ -248,6 +252,7 @@ Host-exposed OpenPalm services default to a small localhost-friendly port set. C
 | **Assistant UI** | 3000 | `127.0.0.1:3800` | `@openpalm/ui` chat interface |
 | **Assistant** (OpenCode) | 4096 | `127.0.0.1:3810` | OpenCode web UI + API |
 | **Voice addon** | 8880 | `127.0.0.1:8880` (literal loopback; `OP_VOICE_PORT_HOST`) | Voice interface (TTS/STT) |
+| **Paperclip addon** | 3100 | `127.0.0.1:3840` (literal loopback; `OP_PAPERCLIP_PORT`) | Paperclip web UI/API |
 | **Admin** | n/a — host process, not a container | `127.0.0.1:3880` | Admin UI + API (`openpalm admin`) |
 | **Guardian gateway** | 8080 | (internal only — no `ports:` publication) | Principal auth, `/oc/*` proxy, rate limiting, content validation |
 | **Guardian moderator** (OpenCode) | 4097 | (loopback only) | Local content-moderation model |
@@ -255,7 +260,7 @@ Host-exposed OpenPalm services default to a small localhost-friendly port set. C
 | **Guardian admin listener** | 3831 | `127.0.0.1:3831` (`OP_GUARDIAN_ADMIN_PORT`; bind address is fixed) | Principal CRUD (`/admin/principals`), Bearer-token auth via `GUARDIAN_ADMIN_TOKEN_FILE` |
 | **Guardian OpenAI/Anthropic API** | 8182 | `127.0.0.1:3821` (`OP_API_BIND_ADDRESS`) | The one compatible API listener; `chat` does not create a second host port |
 
-Port assignments live in non-secret `state/stack.env`. Configurable host binds are flat and service-specific: `OP_UI_BIND_ADDRESS`, `OP_ASSISTANT_BIND_ADDRESS`, `OP_GUARDIAN_BIND_ADDRESS`, and `OP_API_BIND_ADDRESS`; no listener inherits from a global bind. Voice and the Guardian admin listener are fixed to loopback. The Guardian `/stats` endpoint is gated by the admin bearer token and denies all when no token is configured. Its internal `8080` listener binds for both `portal_net` and loopback callers inside the container.
+Port assignments live in non-secret `state/stack.env`. Configurable host binds are flat and service-specific: `OP_UI_BIND_ADDRESS`, `OP_ASSISTANT_BIND_ADDRESS`, `OP_GUARDIAN_BIND_ADDRESS`, and `OP_API_BIND_ADDRESS`; no listener inherits from a global bind. Voice, Paperclip, and the Guardian admin listener are fixed to loopback. The Guardian `/stats` endpoint is gated by the admin bearer token and denies all when no token is configured. Its internal `8080` listener binds for both `portal_net` and loopback callers inside the container.
 
 ---
 
@@ -292,7 +297,7 @@ When a portal addon is installed, the following secret distribution flow occurs:
 4. **Portal side:** Compose grants the same file only to the matching portal service. The portal receives its path through `PRINCIPAL_SECRET_FILE` and authenticates every `/oc/*` call with Basic auth.
 5. **Verification:** on every inbound request, Guardian authenticates the principal, enforces ownership/rate-limit checks, and screens prompt-bearing traffic before forwarding native OpenCode to the assistant.
 
-Secret grants are intentionally narrow. Provider `auth.json` remains under `knowledge/secrets/`; delegated UI/OpenCode-server/Guardian/API/portal/bot credentials live under `private/secrets/`. Admin host processes read required files directly from the host. `stack.env` must not contain secret-like keys, Compose services must not use broad `env_file`, and secret-like container variables must be `*_FILE` paths.
+Secret grants are intentionally narrow. Provider `auth.json` remains under `knowledge/secrets/`; delegated UI/OpenCode-server/Guardian/API/portal/bot credentials live under `private/secrets/`. Admin host processes read required files directly from the host. `stack.env` must not contain secret-like keys, Compose services must not use broad `env_file`, and secret-like container variables must be `*_FILE` paths — except for the audited, single-service, single-path `env_file` exemption described under § Private credentials, which exists only for third-party images that cannot read file-based secrets.
 
 Rotating a portal principal secret updates its one host file, then recreates Guardian and the affected portal so both read the new value.
 

@@ -16,6 +16,7 @@ import {
   writeSecret,
 } from './secrets-files.js';
 import { PORTAL_SECRET_ADDON_IDS } from './addon-ids.js';
+import { preparePaperclipAddon } from './paperclip.js';
 import { writeFileAtomic, writeFileInPlace } from './fs-atomic.js';
 import { generateFallbackSystemEnv } from './fallback-system-env.js';
 
@@ -188,6 +189,16 @@ export function ensureSecrets(state: ControlPlaneState): void {
   // condition could not fail. It is a capability toggle now, so a real install
   // can have zero portals and this must not depend on any of them.
   for (const portal of PORTAL_SECRET_ADDON_IDS) ensurePortalSecret(state.homeDir, portal);
+  // Paperclip's env_file, for the same reason as ts_authkey above and then
+  // some: services.compose.yml declares `env_file` on the paperclip service,
+  // and a missing env_file on a profile-ACTIVE service fails the entire compose
+  // project — including `config`, which `validateProposedState` and every apply
+  // run. Seeding only on the CLI/UI enable path would leave the documented
+  // manual route (edit OP_ENABLED_ADDONS in stack.env, rerun compose) bricking
+  // the whole stack, and would equally miss a migrated or restored home that
+  // already lists paperclip. Idempotent and seed-if-missing, so it never
+  // rotates an existing secret.
+  preparePaperclipAddon(state.homeDir);
 }
 
 function ensureAuthJson(state: ControlPlaneState): void {

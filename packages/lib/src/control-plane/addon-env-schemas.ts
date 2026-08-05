@@ -134,6 +134,17 @@ SLACK_BOT_NAME=
 `,
   gateway: '',
   ollama: '',
+  paperclip: `# Paperclip configuration
+# ---
+# Paperclip is published on host loopback only.
+OP_PAPERCLIP_PORT=3840
+
+# Third-party telemetry. "1" disables it (the default); set to "0" to opt in.
+# OpenPalm itself sends no telemetry — this governs the upstream Paperclip
+# build only. Compose defaults this to "1" when the key is absent, so leaving
+# it unset never silently enables telemetry.
+OP_TELEMETRY_DISABLED=1
+`,
   remote: `# OpenPalm Remote Access (Tailscale tunnel) configuration
 # ---
 # Lets you reach this assistant when you're away from home, without opening

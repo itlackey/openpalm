@@ -139,6 +139,40 @@ copy — there is no runtime download.
 
 The assistant has no Docker socket, admin credential, or admin network path.
 
+## Paperclip
+
+Compose source: `packages/skeleton/system/stack/services.compose.yml`.
+
+| Host source | Container path | Mode | Purpose |
+|---|---|---|---|
+| `$OP_HOME/data/paperclip` | `/paperclip` | rw | Complete Paperclip instance, including its embedded database |
+| `$OP_HOME/private/env/paperclip.env` | Compose `env_file` | ro input | Upstream-required authentication and action-signing secrets |
+
+Paperclip is a normal `addon.paperclip` service. It is published only at
+`127.0.0.1:${OP_PAPERCLIP_PORT:-3840}` and joins only `addon_net`.
+
+**Backups: `data/paperclip` is NOT covered by lifecycle safety backups.** It is
+service-owned data, which the backup scope in
+[`core-principles.md`](core-principles.md) deliberately excludes — and because
+Paperclip runs an *embedded* PostgreSQL cluster inside that directory, the whole
+company/agent/issue database is excluded with it. Upstream scopes embedded
+Postgres to local development and recommends an external database for
+production, so treat this as an operator responsibility rather than an
+oversight:
+
+```sh
+# Consistent logical backup (preferred — safe while running):
+docker compose exec paperclip paperclipai db:backup
+
+# Or stop the addon first and copy the directory:
+openpalm addon disable paperclip && cp -a ~/.openpalm/data/paperclip <destination>
+```
+
+The credentials in `private/env/paperclip.env` *are* in backup scope (all of
+`private/` is), so a restore that brings back the secrets without
+`data/paperclip` yields a working login against an empty database. Back up both
+or neither.
+
 ## Guardian
 
 Compose source: `packages/skeleton/system/stack/portals.compose.yml`. Guardian is
@@ -237,6 +271,7 @@ defaults to `5173`; the root `ui:dev:isolated` script explicitly uses `3880`.
 | `discord`, `slack` | `portal_net` | None |
 | `ollama*` | `assistant_net` | None |
 | `voice*` | `addon_net` (default) | `127.0.0.1:${OP_VOICE_PORT_HOST:-8880}` |
+| `paperclip` | `addon_net` | `127.0.0.1:${OP_PAPERCLIP_PORT:-3840}` |
 
 `addon_net` keeps services that do not need assistant access off the assistant
 trust network. Guardian is the only service bridging portal ingress to
@@ -253,13 +288,14 @@ OpenPalm](../managing-openpalm.md) and `docs/troubleshooting.md`.
 | `OP_HOME` | Host root used in bind mounts |
 | `OP_UID`, `OP_GID` | Runtime identity for bind-mounted files |
 | `OP_IMAGE_NAMESPACE` | Image namespace |
-| `OP_ASSISTANT_VERSION`, `OP_GUARDIAN_VERSION`, `OP_PORTAL_VERSION`, `OP_VOICE_VERSION` | Image pins |
+| `OP_ASSISTANT_VERSION`, `OP_GUARDIAN_VERSION`, `OP_PORTAL_VERSION`, `OP_VOICE_VERSION` | Image pins for OpenPalm-built images (paperclip pulls a digest-pinned upstream image, so it has no version key) |
 | `OP_ENABLED_ADDONS` | Enabled first-party addon names |
 | `OP_UI_BIND_ADDRESS`, `OP_UI_PORT` | Container-served UI host publication |
 | `OP_ASSISTANT_BIND_ADDRESS`, `OP_ASSISTANT_PORT` | Direct OpenCode host publication |
 | `OP_GUARDIAN_BIND_ADDRESS`, `OP_GUARDIAN_PORT` | Guardian direct host publication |
 | `OP_API_BIND_ADDRESS`, `OP_API_PORT` | Guardian compatible API publication |
 | `OP_VOICE_PORT_HOST` | Voice loopback publication port |
+| `OP_PAPERCLIP_PORT` | Paperclip loopback publication port |
 | `OP_HOST_UI_PORT` | Host-process UI port, default `3880` |
 | `OPENCODE_AUTH` | Generated direct-assistant auth posture |
 | `GUARDIAN_DIRECT_INGRESS` | Generated Guardian direct-ingress posture |

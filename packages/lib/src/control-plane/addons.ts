@@ -22,6 +22,7 @@ import { resolveStashDir, composeFilePath, customComposeFilePath, stackEnvFile }
 import { BUILTIN_ADDON_ENV_SCHEMAS } from './addon-env-schemas.js';
 import { BUILTIN_ADDON_IDS, GUARDIAN_INGRESS_ADDON_IDS, PORTAL_SECRET_ADDON_IDS } from './addon-ids.js';
 import { applyRemoteAccess } from './remote-apply.js';
+import { preparePaperclipAddon } from './paperclip.js';
 
 const VALID_NAME_RE = /^[a-z0-9][a-z0-9-]{0,62}$/;
 const logger = createLogger('registry');
@@ -514,6 +515,19 @@ export function setAddonEnabled(homeDir: string, name: string, enabled: boolean,
     // call here covers enabling an addon between deploys.)
     if (GUARDIAN_INGRESS_ADDON_IDS.includes(name)) {
       for (const portal of PORTAL_SECRET_ADDON_IDS) ensurePortalSecret(homeDir, portal);
+    }
+
+    // Same shape, same reason, as the portal secrets above: services.compose.yml
+    // declares paperclip's env_file, and Compose fails the WHOLE project — even
+    // `config` — when a profile-active service's env_file is missing. Also
+    // seeded unconditionally by `ensureSecrets`; this call covers enabling
+    // between deploys.
+    if (name === 'paperclip') {
+      try {
+        preparePaperclipAddon(homeDir);
+      } catch (error) {
+        return { ok: false, error: errMessage(error) };
+      }
     }
 
     // Pre-create (and chown) any host-side bind-mount targets the newly
