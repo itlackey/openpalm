@@ -50,8 +50,12 @@ services:
       PAPERCLIP_DEPLOYMENT_EXPOSURE: private
       PAPERCLIP_PUBLIC_URL: http://localhost:${OP_PAPERCLIP_PORT:-3840}
       BETTER_AUTH_TRUSTED_ORIGINS: http://127.0.0.1:${OP_PAPERCLIP_PORT:-3840},http://localhost:${OP_PAPERCLIP_PORT:-3840}
-      PAPERCLIP_TELEMETRY_DISABLED: "1"
-      DO_NOT_TRACK: "1"
+      # Telemetry is OFF unless the operator opts in. The interpolation
+      # default is "1" (disabled) so an install predating this key, or a
+      # hand-run `docker compose` without the generated row, still gets
+      # telemetry off — the unset case is never the permissive one.
+      PAPERCLIP_TELEMETRY_DISABLED: ${OP_TELEMETRY_DISABLED:-1}
+      DO_NOT_TRACK: ${OP_TELEMETRY_DISABLED:-1}
     networks: [addon_net]
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:3100/api/health"]

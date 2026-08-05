@@ -7,6 +7,17 @@ import { privateDir } from './home.js';
 
 const PAPERCLIP_ENV_KEYS = ['BETTER_AUTH_SECRET', 'PAPERCLIP_TOOL_ACTION_SIGNING_SECRET'] as const;
 
+/**
+ * The pinned upstream `paperclipai` npm release this stack packages.
+ *
+ * SINGLE SOURCE OF TRUTH. The same version is repeated in three files that
+ * cannot import TypeScript — the Dockerfile's `ARG PAPERCLIP_VERSION`, the
+ * Compose default `${OP_PAPERCLIP_VERSION:-…}`, and the addon env schema —
+ * so `paperclip-image-contract.test.ts` asserts all three agree with this
+ * constant. Bump here first; the test names any file left behind.
+ */
+export const PAPERCLIP_UPSTREAM_VERSION = '2026.722.0';
+
 export function paperclipEnvFile(homeDir: string): string {
 	return join(privateDir(homeDir), 'env', 'paperclip.env');
 }

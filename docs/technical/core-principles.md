@@ -124,6 +124,8 @@ Stack **configuration** does not. It lives in `state/stack.env` (§ 1b), deliber
 
 **Rule:** `private/` is never mounted into assistant `/stash`. Compose grants only named files to consuming services under `/run/secrets/`. The secret audit rejects broad service env files, raw secret-like environment values, and grants outside a service's role. Directories are `0700`; files are `0600`.
 
+**Named `env_file` exemption (one service, one path, one key set).** A third-party addon image that reads a credential only as a plain environment variable, and implements no `*_FILE` indirection, may read exactly one env file under `private/env/`. The exemption is not a relaxation of the rule above — it is enforced, per service and per path, by `auditPaperclipEnv` in `secret-audit.ts`, which additionally requires the file to be `0600` inside a `0700` directory, to contain **only** the named keys, to contain **all** of them, and to not have those same values duplicated into the service's Compose `environment`. Any other service using `env_file`, any other path, or any extra key is still an audit failure. `paperclip` is the first and currently only such addon: upstream reads `BETTER_AUTH_SECRET` and `PAPERCLIP_TOOL_ACTION_SIGNING_SECRET` from `process.env` only.
+
 ### 3) Data (service-managed, durable)
 
 **Location:** `~/.openpalm/data/`
@@ -293,7 +295,7 @@ When a portal addon is installed, the following secret distribution flow occurs:
 4. **Portal side:** Compose grants the same file only to the matching portal service. The portal receives its path through `PRINCIPAL_SECRET_FILE` and authenticates every `/oc/*` call with Basic auth.
 5. **Verification:** on every inbound request, Guardian authenticates the principal, enforces ownership/rate-limit checks, and screens prompt-bearing traffic before forwarding native OpenCode to the assistant.
 
-Secret grants are intentionally narrow. Provider `auth.json` remains under `knowledge/secrets/`; delegated UI/OpenCode-server/Guardian/API/portal/bot credentials live under `private/secrets/`. Admin host processes read required files directly from the host. `stack.env` must not contain secret-like keys, Compose services must not use broad `env_file`, and secret-like container variables must be `*_FILE` paths.
+Secret grants are intentionally narrow. Provider `auth.json` remains under `knowledge/secrets/`; delegated UI/OpenCode-server/Guardian/API/portal/bot credentials live under `private/secrets/`. Admin host processes read required files directly from the host. `stack.env` must not contain secret-like keys, Compose services must not use broad `env_file`, and secret-like container variables must be `*_FILE` paths — except for the audited, single-service, single-path `env_file` exemption described under § Private credentials, which exists only for third-party images that cannot read file-based secrets.
 
 Rotating a portal principal secret updates its one host file, then recreates Guardian and the affected portal so both read the new value.
 

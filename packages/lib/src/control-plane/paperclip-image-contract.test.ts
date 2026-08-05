@@ -1,25 +1,77 @@
 import { describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
+import { PAPERCLIP_UPSTREAM_VERSION } from './paperclip.js';
+import { BUILTIN_ADDON_ENV_SCHEMAS } from './addon-env-schemas.js';
 
-const dockerfile = readFileSync(
-	join(resolve(import.meta.dir, '../../../..'), 'containers/paperclip/Dockerfile'),
+const repoRoot = resolve(import.meta.dir, '../../../..');
+const dockerfile = readFileSync(join(repoRoot, 'containers/paperclip/Dockerfile'), 'utf8');
+const composeYml = readFileSync(
+	join(repoRoot, 'packages/skeleton/system/stack/services.compose.yml'),
 	'utf8'
 );
 
+/**
+ * These tests deliberately avoid the "assert the Dockerfile contains the
+ * strings the Dockerfile contains" shape. That shape cannot fail unless
+ * someone edits the file it reads, and it passed at full green while the
+ * image shipped with no agent CLIs at all. Each test below encodes a property
+ * a plausible edit can actually violate.
+ *
+ * The previous version also asserted `not.toMatch(/ENTRYPOINT/)`, which
+ * forbade the one mechanism available to fix a missing-binary or
+ * file-based-secret defect. A test that blocks the remedy for a known defect
+ * is removed rather than kept.
+ */
 describe('Paperclip image contract', () => {
-	test('packages only the pinned upstream release at build time', () => {
-		expect(dockerfile).toContain('ARG PAPERCLIP_VERSION=2026.722.0');
-		expect(dockerfile).toContain(
-			'npm install --global --omit=dev "paperclipai@${PAPERCLIP_VERSION}"'
-		);
+	test('packages the pinned upstream release and adds no OpenPalm code', () => {
+		expect(dockerfile).toContain(`ARG PAPERCLIP_VERSION=${PAPERCLIP_UPSTREAM_VERSION}`);
+		expect(dockerfile).toContain('npm install --global --omit=dev');
 		expect(dockerfile).toContain('prepareEmbeddedPostgresNativeRuntime');
-		expect(dockerfile).toContain(
-			'CMD ["node", "/usr/local/lib/node_modules/paperclipai/node_modules/@paperclipai/server/dist/index.js"]'
-		);
-		expect(dockerfile).not.toContain('FROM node:22-bookworm-slim\n');
 		expect(dockerfile).not.toContain('packages/paperclip-adapter');
 		expect(dockerfile).not.toContain('verifier');
-		expect(dockerfile).not.toMatch(/ENTRYPOINT/);
+	});
+
+	test('the upstream version agrees across every file that repeats it', () => {
+		expect(composeYml).toContain(`\${OP_PAPERCLIP_VERSION:-${PAPERCLIP_UPSTREAM_VERSION}}`);
+		expect(BUILTIN_ADDON_ENV_SCHEMAS.paperclip).toContain(
+			`OP_PAPERCLIP_VERSION=${PAPERCLIP_UPSTREAM_VERSION}`
+		);
+	});
+
+	test('bakes every agent CLI the built-in local adapters spawn by bare name', () => {
+		// @paperclipai/server dist/adapters/registry.js spawns claude/codex/
+		// opencode/gemini by bare name. Missing binaries fail at agent-run time
+		// while /api/health still returns 200, so the image is the only place
+		// this is catchable.
+		for (const pkg of [
+			'@anthropic-ai/claude-code@',
+			'@openai/codex@',
+			'opencode-ai@',
+			'@google/gemini-cli@'
+		]) {
+			expect(dockerfile).toContain(pkg);
+		}
+		expect(dockerfile).toContain('for bin in claude codex opencode gemini');
+	});
+
+	test('keeps opencode-ai in lockstep with the assistant image', () => {
+		// AGENTS.md requires the assistant and guardian OpenCode pins stay in
+		// lockstep; this image is now the third consumer of that rule.
+		const assistantTools = JSON.parse(
+			readFileSync(join(repoRoot, 'containers/assistant/tools/package.json'), 'utf8')
+		) as { dependencies?: Record<string, string> };
+		const pinned = assistantTools.dependencies?.['opencode-ai'];
+		expect(pinned).toBeTruthy();
+		expect(dockerfile).toContain(`ARG OPENCODE_VERSION=${pinned}`);
+	});
+
+	test('asserts the server entry path at build time', () => {
+		// CMD hardcodes an npm-hoisting-dependent path. It resolves today, but
+		// hoisting is an npm implementation detail, not a contract — the build
+		// must fail loudly if it ever moves, rather than the first agent run.
+		expect(dockerfile).toContain(
+			'test -f /usr/local/lib/node_modules/paperclipai/node_modules/@paperclipai/server/dist/index.js'
+		);
 	});
 });

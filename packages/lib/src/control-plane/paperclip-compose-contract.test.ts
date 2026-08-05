@@ -38,8 +38,14 @@ describe('Paperclip addon Compose contract', () => {
 		const paperclip = services.services?.paperclip;
 		expect(paperclip?.environment?.PAPERCLIP_DEPLOYMENT_MODE).toBe('authenticated');
 		expect(paperclip?.environment?.PAPERCLIP_DEPLOYMENT_EXPOSURE).toBe('private');
-		expect(paperclip?.environment?.PAPERCLIP_TELEMETRY_DISABLED).toBe('1');
-		expect(paperclip?.environment?.DO_NOT_TRACK).toBe('1');
+		// Operator-controllable via OP_TELEMETRY_DISABLED, but the interpolation
+		// default must stay "1": an install predating the key, or a hand-run
+		// `docker compose`, must get telemetry OFF. The unset case is never the
+		// permissive one.
+		expect(paperclip?.environment?.PAPERCLIP_TELEMETRY_DISABLED).toBe(
+			'${OP_TELEMETRY_DISABLED:-1}'
+		);
+		expect(paperclip?.environment?.DO_NOT_TRACK).toBe('${OP_TELEMETRY_DISABLED:-1}');
 		expect(paperclip?.healthcheck?.test).toEqual([
 			'CMD',
 			'curl',

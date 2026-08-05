@@ -151,6 +151,28 @@ Compose source: `packages/skeleton/system/stack/services.compose.yml`.
 Paperclip is a normal `addon.paperclip` service. It is published only at
 `127.0.0.1:${OP_PAPERCLIP_PORT:-3840}` and joins only `addon_net`.
 
+**Backups: `data/paperclip` is NOT covered by lifecycle safety backups.** It is
+service-owned data, which the backup scope in
+[`core-principles.md`](core-principles.md) deliberately excludes — and because
+Paperclip runs an *embedded* PostgreSQL cluster inside that directory, the whole
+company/agent/issue database is excluded with it. Upstream scopes embedded
+Postgres to local development and recommends an external database for
+production, so treat this as an operator responsibility rather than an
+oversight:
+
+```sh
+# Consistent logical backup (preferred — safe while running):
+docker compose exec paperclip paperclipai db:backup
+
+# Or stop the addon first and copy the directory:
+openpalm addon disable paperclip && cp -a ~/.openpalm/data/paperclip <destination>
+```
+
+The credentials in `private/env/paperclip.env` *are* in backup scope (all of
+`private/` is), so a restore that brings back the secrets without
+`data/paperclip` yields a working login against an empty database. Back up both
+or neither.
+
 ## Guardian
 
 Compose source: `packages/skeleton/system/stack/portals.compose.yml`. Guardian is
