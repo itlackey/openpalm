@@ -53,6 +53,7 @@ See [How It Works](how-it-works.md) for the full architecture behind these terms
 | [release.md](operations/release.md) | The product release: architecture, dry-run/live commands, checklist, and the independent extensions workflow |
 | [manual-compose-runbook.md](operations/manual-compose-runbook.md) | Step-by-step manual host configuration (no scripts) |
 | [manual-headless-install.md](operations/manual-headless-install.md) | Hand-built install disk contract (tokens, auth.json, setup stamp) + scripted `openpalm install --file` |
+| [manual-tailscale-paperclip-testing.md](operations/manual-tailscale-paperclip-testing.md) | Isolated, step-by-step manual acceptance for private/public Tailscale access and the Paperclip addon |
 | [diagnostic-playbook.md](operations/diagnostic-playbook.md) | Layer-by-layer debugging workflow for UI, admin API, OpenCode, and container/config issues |
 | [persistent-assistant-tools.md](operations/persistent-assistant-tools.md) | How to keep assistant-installed tools across recreates and upgrades |
 

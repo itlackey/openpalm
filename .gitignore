@@ -35,6 +35,7 @@ packages/assistant-tools/dist/
 .dev-tmp/
 .dev-tmp*
 .dev-*/
+/.cache/manual-tailscale-paperclip/
 packages/cli/src/lib/*.tar.gz
 scripts/azure/.generated/prod.generated.bicepparam
 scripts/azure/vm-declarative/deploy.env

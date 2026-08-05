@@ -6,6 +6,7 @@ node_modules
 .state
 .dev/
 .dev-*/
+.cache/manual-tailscale-paperclip/
 .private/
 .env
 .env.*

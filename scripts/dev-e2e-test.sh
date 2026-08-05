@@ -28,6 +28,45 @@ canonicalize_e2e_home() {
   OP_E2E_HOME="$canonical"
 }
 
+validate_e2e_environment() {
+  local name
+  while IFS= read -r name; do
+    case "$name" in
+      OP_E2E_HOME | OP_E2E_UI_PORT | OP_E2E_ASSISTANT_PORT | OP_E2E_CONTAINER_UI_PORT | \
+        OP_E2E_GUARDIAN_PORT | OP_E2E_GUARDIAN_ADMIN_PORT | OP_E2E_API_PORT | \
+        OP_E2E_CHAT_PORT | OP_E2E_PROJECT_NAME) ;;
+      OP_* | COMPOSE_*)
+        echo "Refusing inherited Compose override: ${name}" >&2
+        return 1
+        ;;
+    esac
+  done < <(compgen -e)
+}
+
+resolve_e2e_project_name() {
+  local requested="${OP_E2E_PROJECT_NAME:-openpalm-e2e}"
+  if [[ ! "$requested" =~ ^openpalm-e2e(-[a-z0-9][a-z0-9_-]*)?$ ]]; then
+    echo "Refusing unsafe E2E project name: ${requested}" >&2
+    return 1
+  fi
+  COMPOSE_PROJECT_NAME="$requested"
+  export COMPOSE_PROJECT_NAME
+}
+
+assert_e2e_project_absent() {
+  local project="$1"
+  local containers
+  local networks
+  local volumes
+  containers="$(docker ps -a --filter "label=com.docker.compose.project=${project}" --format '{{.ID}}')" || return 1
+  networks="$(docker network ls --filter "label=com.docker.compose.project=${project}" --format '{{.ID}}')" || return 1
+  volumes="$(docker volume ls --filter "label=com.docker.compose.project=${project}" --format '{{.Name}}')" || return 1
+  if [[ -n "$containers" || -n "$networks" || -n "$volumes" ]]; then
+    echo "Refusing existing E2E project resources: ${project}" >&2
+    return 1
+  fi
+}
+
 # Permit the safety function to be exercised without running the stack launcher.
 if [[ "${BASH_SOURCE[0]}" != "$0" ]]; then
   return 0
@@ -41,7 +80,7 @@ Builds and tests an isolated current-layout stack. The API addon is enabled so
 the profile-gated guardian is included without requiring third-party credentials.
 
   --skip-build  Reuse existing openpalm/assistant:dev and guardian:dev images
-  --keep        Leave the isolated stack and admin UI running for inspection
+  --keep        Leave a successful isolated stack and admin UI running for inspection
   --playwright  Run the stack-dependent Playwright suite after HTTP smoke checks
 EOF
 }
@@ -59,13 +98,17 @@ for arg in "$@"; do
   esac
 done
 
+validate_e2e_environment
+resolve_e2e_project_name
+
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 cd "$ROOT_DIR"
 # shellcheck source=scripts/rootless-smoke-fixture.sh
 source scripts/rootless-smoke-fixture.sh
 
-export COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-openpalm-e2e}"
 canonicalize_e2e_home
+export OP_HOME="$OP_E2E_HOME"
+assert_e2e_project_absent "$COMPOSE_PROJECT_NAME"
 ADMIN_PORT="${OP_E2E_UI_PORT:-3890}"
 ASSISTANT_PORT="${OP_E2E_ASSISTANT_PORT:-3891}"
 CONTAINER_UI_PORT="${OP_E2E_CONTAINER_UI_PORT:-3892}"
@@ -99,7 +142,7 @@ compose() {
 cleanup() {
   local exit_code=$?
   if [[ -n "$COOKIE_JAR" ]]; then rm -f "$COOKIE_JAR"; fi
-  if [[ $KEEP -eq 0 ]]; then
+  if [[ $KEEP -eq 0 || $exit_code -ne 0 ]]; then
     if [[ -n "$UI_PID" ]] && kill -0 "$UI_PID" 2>/dev/null; then
       kill "$UI_PID" 2>/dev/null || true
       wait "$UI_PID" 2>/dev/null || true
@@ -119,9 +162,6 @@ cleanup() {
 trap cleanup EXIT
 
 echo "=== Seed isolated OP_HOME ==="
-if [[ -f "${OP_E2E_HOME}/system/stack/core.compose.yml" ]]; then
-  compose down --remove-orphans --volumes >/dev/null 2>&1 || true
-fi
 rm -rf "$OP_E2E_HOME"
 smoke_copy_skeleton "$OP_E2E_HOME"
 smoke_seed_secrets "$OP_E2E_HOME" "$UI_PASSWORD"

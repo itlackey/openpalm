@@ -160,9 +160,12 @@ Postgres to local development and recommends an external database for
 production, so treat this as an operator responsibility rather than an
 oversight:
 
+Using the [`op()` Compose helper](../operations/manual-compose-runbook.md#shell-helper):
+
 ```sh
 # Consistent logical backup (preferred — safe while running):
-docker compose exec paperclip paperclipai db:backup
+op --profile addon.paperclip exec -w /app paperclip \
+  pnpm paperclipai db:backup --data-dir /paperclip
 
 # Or stop the addon first and copy the directory:
 openpalm addon disable paperclip && cp -a ~/.openpalm/data/paperclip <destination>

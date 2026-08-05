@@ -141,6 +141,29 @@ an unexecuted check is not a pass. Never include credential values in evidence.
 - [ ] `openpalm doctor` exits nonzero for Docker, Compose, blocking-port, disk,
       inventory, cleanup, and database-maintenance failures that it reports.
 
+### Tailscale and Paperclip acceptance
+
+Run the complete
+[Manual Tailscale and Paperclip Acceptance](manual-tailscale-paperclip-testing.md)
+guide from the candidate SHA. Tier 5 does not replace this lane because it uses
+no real tailnet, Funnel permission, upstream Paperclip runtime, or second
+device.
+
+- [ ] The guide's isolated `.cache` home, unique Compose project, and unique
+      ports are used; no test container mounts `~/.openpalm`, and the captured
+      production containers and `state/stack.env` remain unchanged.
+- [ ] Tailscale private Serve, all three targets (`assistant`, `guardian`, and
+      `both`), node-identity persistence, authenticated Guardian pairing, and
+      short-lived Funnel exposure all pass, including fail-closed public-off and
+      addon-disable checks.
+- [ ] Paperclip Admin/CLI lifecycle, first-admin bootstrap, authenticated/private
+      posture, declared local-agent toolchain, a real credential-backed local-agent
+      run, persistence, port reconfiguration, backup, and network/secret isolation
+      all pass.
+- [ ] Cleanup closes Funnel first, empties the generated Serve policy, removes
+      only the isolated project/home and test tailnet node, and leaves no test
+      credential or listener behind.
+
 ### Packaged desktop and installer acceptance
 
 - [ ] Linux x64 and arm64 AppImages launch on a supported distribution; the

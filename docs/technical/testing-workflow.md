@@ -115,8 +115,20 @@ Subsequent runs may reuse existing builds:
 ```
 
 Tier 5 validates HTTP, UI, auth, compose, and isolation behavior. It does not
-send a model-backed chat message, start the voice service, or use real external
-credentials. There are no LLM-specific Playwright files.
+send a model-backed chat message, start the voice, Tailscale, or Paperclip
+services, or use real external credentials. There are no LLM-specific
+Playwright files.
+
+## Manual External-Addon Acceptance
+
+Tailscale needs a real tailnet, a second device, and a non-tailnet reachability
+check. Paperclip needs its pinned upstream image, first-admin bootstrap, and a
+real agent execution. Those checks remain a manual release lane rather than
+being hidden behind optional credentials in Tier 5. Follow
+[Manual Tailscale and Paperclip Acceptance](../operations/manual-tailscale-paperclip-testing.md).
+
+The runbook reuses the Tier 5 launcher with a dedicated home under `.cache`, a
+unique Compose project and ports, and explicit fail-closed cleanup.
 
 ## Browser Commands
 
