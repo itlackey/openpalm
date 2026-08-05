@@ -27,7 +27,16 @@
 services:
   paperclip:
     profiles: ["addon.paperclip"]
-    image: ${OP_IMAGE_NAMESPACE:-openpalm}/paperclip:${OP_PAPERCLIP_VERSION:-2026.722.0}
+    # Upstream image, digest-pinned — the same third-party pattern as ollama and
+    # tunnel above. OpenPalm does NOT build this: upstream's own runtime bakes
+    # the agent CLIs its adapters spawn (claude/codex/opencode/gemini) plus
+    # ripgrep/python3/openssh-client, and its entrypoint chowns the instance
+    # tree for the runtime UID. Repackaging that ourselves meant owning the
+    # replication, and both defects it produced (missing CLIs, ~560 MB of
+    # unloadable opencode binaries) came from getting the replication wrong.
+    # Upstream publishes no semver tag, so the digest is the pin and the
+    # `sha-` tag records which upstream commit it came from.
+    image: ghcr.io/paperclipai/paperclip:sha-59e29af@sha256:048034718f9922e3c1eb168f21c3fc6f4d3e1689ad7e1dd13322a331217d8457
     restart: unless-stopped
     logging:
       driver: json-file
@@ -41,13 +50,16 @@ services:
       - ${OP_HOME}/data/paperclip:/paperclip
     env_file:
       - ${OP_HOME}/private/env/paperclip.env
+    # HOST/PORT/SERVE_UI/PAPERCLIP_HOME/PAPERCLIP_CONFIG are baked upstream with
+    # these exact values and are purely operational, so they are not restated
+    # here. The two below ARE restated even though upstream also sets them:
+    # they are the security posture (login required, not internet-facing), and
+    # that must not silently depend on a third-party image's ENV default across
+    # a digest bump. The compose contract test asserts them here.
     environment:
-      HOST: 0.0.0.0
-      PORT: "3100"
-      PAPERCLIP_HOME: /paperclip
-      SERVE_UI: "true"
       PAPERCLIP_DEPLOYMENT_MODE: authenticated
       PAPERCLIP_DEPLOYMENT_EXPOSURE: private
+      # Loopback-only publication means the browser origin is always localhost.
       PAPERCLIP_PUBLIC_URL: http://localhost:${OP_PAPERCLIP_PORT:-3840}
       BETTER_AUTH_TRUSTED_ORIGINS: http://127.0.0.1:${OP_PAPERCLIP_PORT:-3840},http://localhost:${OP_PAPERCLIP_PORT:-3840}
       # Telemetry is OFF unless the operator opts in. The interpolation

@@ -139,11 +139,6 @@ SLACK_BOT_NAME=
 # Paperclip is published on host loopback only.
 OP_PAPERCLIP_PORT=3840
 
-# Version of the OpenPalm-packaged upstream Paperclip image.
-# Single source of truth is PAPERCLIP_UPSTREAM_VERSION in paperclip.ts;
-# paperclip-image-contract.test.ts fails if this drifts from it.
-OP_PAPERCLIP_VERSION=2026.722.0
-
 # Third-party telemetry. "1" disables it (the default); set to "0" to opt in.
 # OpenPalm itself sends no telemetry — this governs the upstream Paperclip
 # build only. Compose defaults this to "1" when the key is absent, so leaving

@@ -2,7 +2,7 @@
 
 **Status:** Implemented
 **Date:** 2026-08-04
-**Upstream package:** `paperclipai@2026.722.0`
+**Upstream image:** `ghcr.io/paperclipai/paperclip`, pulled and digest-pinned
 
 Paperclip is a normal first-party service addon. OpenPalm runs the upstream
 application and does not reimplement its control plane or introduce an
@@ -24,7 +24,7 @@ The managed stack declares one service:
 ```yaml
 paperclip:
   profiles: ["addon.paperclip"]
-  image: ${OP_IMAGE_NAMESPACE:-openpalm}/paperclip:${OP_PAPERCLIP_VERSION:-2026.722.0}
+  image: ghcr.io/paperclipai/paperclip:sha-<commit>@sha256:<digest>
   ports:
     - "127.0.0.1:${OP_PAPERCLIP_PORT:-3840}:3100"
   volumes:
@@ -40,19 +40,34 @@ sidecar, route overlay, Guardian principal, or connection to `assistant_net` or
 
 ## Image
 
-`containers/paperclip/Dockerfile` installs the exact upstream npm release at
-image build time. It adds no OpenPalm application code, adapter, verifier, or
-wrapper entrypoint. The server starts through the upstream published
-`@paperclipai/server` package.
+OpenPalm does **not** build a Paperclip image. The upstream image is pulled and
+pinned by digest, the same way `ollama` and `tunnel` consume third-party
+software. Upstream publishes no semver tag, so the digest is the pin and the
+`sha-<commit>` tag records which upstream commit it came from.
 
-The upstream embedded-Postgres package creates compatibility symlinks in its
-native library directory on first start. The image creates those aliases while
-building so the runtime can remain non-root and the installed package tree can
-remain immutable.
+That upstream runtime already provides everything the addon needs, which is
+precisely why rebuilding it was a liability rather than a feature:
 
-`.github/workflows/publish-paperclip.yml` publishes signed multi-architecture
-`openpalm/paperclip:<upstream-version>` images independently from the platform
-release. Existing immutable tags are never overwritten.
+- the agent CLIs Paperclip's local adapters spawn by bare name — `claude`,
+  `codex`, `opencode`, `gemini` — plus `ripgrep`, `python3`, `openssh-client`,
+  `jq`;
+- an entrypoint that remaps the runtime UID/GID and chowns the instance tree,
+  including the root-owned-fresh-volume case;
+- `prepareEmbeddedPostgresNativeRuntime()` invoked by the server at startup, so
+  the embedded database needs no build-time preparation.
+
+An earlier revision packaged the upstream npm release into an
+`openpalm/paperclip` image. It shipped two defects that both reduce to the same
+cause — owning the reproduction of someone else's runtime — and neither is
+detectable by a test that does not build and run the image: every local agent
+adapter failed on a missing binary while `/api/health` still returned 200, and
+~560 MB of unloadable `opencode` binaries rode along per amd64 image. Pulling
+upstream removes that whole class, along with the Dockerfile, the publish
+workflow, four CLI version pins, and the version-drift machinery that kept them
+agreeing.
+
+To bump: resolve the new digest and update the single `image:` line. The compose
+contract test asserts the reference stays digest-pinned.
 
 ## Security
 
@@ -105,8 +120,10 @@ The implementation is covered by tests for:
 - exact resolved-secret audit matching;
 - literal loopback publication and network isolation;
 - absence of Guardian and database-sidecar services;
-- pinned upstream image packaging; and
-- **Not yet covered:** a real image build and `/api/health` runtime smoke. The
-  publish workflow builds and pushes but never starts the container, and no
-  contract test runs one — the Dockerfile's `test -f` and `command -v` guards
-  are the build-time substitute.
+- the image reference staying a digest-pinned upstream pull rather than a
+  rebuild.
+
+**Not covered:** a runtime smoke of `/api/health`. No test starts the
+container. This is now upstream's image, tested upstream, so the residual risk
+is a bad digest rather than a mis-assembled runtime — the failure mode the
+rebuild introduced and this design removes.

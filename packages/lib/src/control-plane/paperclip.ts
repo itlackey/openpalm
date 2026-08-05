@@ -18,17 +18,6 @@ export const PAPERCLIP_ENV_KEYS: ReadonlySet<string> = new Set([
 	'PAPERCLIP_TOOL_ACTION_SIGNING_SECRET'
 ]);
 
-/**
- * The pinned upstream `paperclipai` npm release this stack packages.
- *
- * Authoritative for the TypeScript side. Three files that cannot import
- * TypeScript repeat it — the Dockerfile's `ARG PAPERCLIP_VERSION`, the Compose
- * default `${OP_PAPERCLIP_VERSION:-…}`, and the addon env schema — and
- * `paperclip-image-contract.test.ts` fails if any of them drifts from this
- * constant. Bump here first; the test names whichever file was left behind.
- */
-export const PAPERCLIP_UPSTREAM_VERSION = '2026.722.0';
-
 export function paperclipEnvFile(homeDir: string): string {
 	return join(privateDir(homeDir), 'env', 'paperclip.env');
 }

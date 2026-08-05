@@ -288,7 +288,7 @@ OpenPalm](../managing-openpalm.md) and `docs/troubleshooting.md`.
 | `OP_HOME` | Host root used in bind mounts |
 | `OP_UID`, `OP_GID` | Runtime identity for bind-mounted files |
 | `OP_IMAGE_NAMESPACE` | Image namespace |
-| `OP_ASSISTANT_VERSION`, `OP_GUARDIAN_VERSION`, `OP_PORTAL_VERSION`, `OP_VOICE_VERSION`, `OP_PAPERCLIP_VERSION` | Image pins |
+| `OP_ASSISTANT_VERSION`, `OP_GUARDIAN_VERSION`, `OP_PORTAL_VERSION`, `OP_VOICE_VERSION` | Image pins for OpenPalm-built images (paperclip pulls a digest-pinned upstream image, so it has no version key) |
 | `OP_ENABLED_ADDONS` | Enabled first-party addon names |
 | `OP_UI_BIND_ADDRESS`, `OP_UI_PORT` | Container-served UI host publication |
 | `OP_ASSISTANT_BIND_ADDRESS`, `OP_ASSISTANT_PORT` | Direct OpenCode host publication |

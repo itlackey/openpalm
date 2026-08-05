@@ -24,8 +24,12 @@ describe('Paperclip addon Compose contract', () => {
 	test('uses one ordinary loopback-only addon service', () => {
 		const paperclip = services.services?.paperclip;
 		expect(paperclip?.profiles).toEqual(['addon.paperclip']);
-		expect(paperclip?.image).toBe(
-			'${OP_IMAGE_NAMESPACE:-openpalm}/paperclip:${OP_PAPERCLIP_VERSION:-2026.722.0}'
+		// Third-party image, pulled and digest-pinned — the ollama/tunnel pattern.
+		// The digest is the immutable pin; the `sha-` tag records the upstream
+		// commit. A tag-only ref (or an OpenPalm-namespaced one, i.e. a rebuild)
+		// is the regression this guards.
+		expect(paperclip?.image).toMatch(
+			/^ghcr\.io\/paperclipai\/paperclip:sha-[0-9a-f]+@sha256:[0-9a-f]{64}$/
 		);
 		expect(paperclip?.ports).toEqual(['127.0.0.1:${OP_PAPERCLIP_PORT:-3840}:3100']);
 		// Network segmentation is owned by addon-network-boundary.test.ts (the
