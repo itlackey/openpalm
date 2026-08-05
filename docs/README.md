@@ -67,6 +67,7 @@ See [How It Works](how-it-works.md) for the full architecture behind these terms
 
 | Document | Applies to |
 |---|---|
+| [adding-an-addon.md](technical/adding-an-addon.md) | **Read before adding a stack service.** Build-vs-pull, the touch-point checklist, and the traps |
 | [code-quality-principles.md](technical/code-quality-principles.md) | All code |
 | [bunjs-rules.md](technical/bunjs-rules.md) | Guardian and portal-side Bun services |
 | [sveltekit-rules.md](technical/sveltekit-rules.md) | Admin UI (`packages/ui/`) |
