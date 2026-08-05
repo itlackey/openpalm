@@ -28,9 +28,8 @@ describe('Paperclip addon Compose contract', () => {
 			'${OP_IMAGE_NAMESPACE:-openpalm}/paperclip:${OP_PAPERCLIP_VERSION:-2026.722.0}'
 		);
 		expect(paperclip?.ports).toEqual(['127.0.0.1:${OP_PAPERCLIP_PORT:-3840}:3100']);
-		expect(paperclip?.networks).toEqual(['addon_net']);
-		expect(paperclip?.networks).not.toContain('assistant_net');
-		expect(paperclip?.networks).not.toContain('portal_net');
+		// Network segmentation is owned by addon-network-boundary.test.ts (the
+		// canonical S.6b sweep, which now includes paperclip) — not re-asserted here.
 		expect(services.services?.['paperclip-db']).toBeUndefined();
 	});
 

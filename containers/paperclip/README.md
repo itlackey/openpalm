@@ -29,22 +29,12 @@ workflow.
 ## Image purity, and what it costs
 
 This image contains the upstream release and nothing else — no adapter, no
-verifier, no wrapper entrypoint, no copied-in files. That is a decided
-constraint, and it has one accepted cost worth stating plainly.
-
-Upstream reads `BETTER_AUTH_SECRET` and `PAPERCLIP_TOOL_ACTION_SIGNING_SECRET`
-from `process.env` only, with no `*_FILE` indirection. Delivering them as
-Compose file secrets would need an exec entrypoint to read `/run/secrets/*` and
-re-export them — OpenPalm code inside the image, which this constraint
-excludes. So those two values arrive as environment through the audited
-`private/env/paperclip.env` exemption
-([`core-principles.md`](../../docs/technical/core-principles.md) § Private
-credentials), which enforces one service, one path, `0600` in a `0700`
-directory, only those keys, all of them, and no duplication into Compose
-`environment`.
-
-Both halves are pinned by `paperclip-image-contract.test.ts`. Reversing either
-one means re-opening the trade-off deliberately, not routing around it.
+verifier, no wrapper entrypoint, no copied-in files. The accepted cost is that
+Paperclip's two `process.env`-only secrets reach the container as environment
+via the audited `private/env/paperclip.env` exemption. The rationale and the
+exact enforced properties live in
+[`core-principles.md` § Private credentials](../../docs/technical/core-principles.md);
+`paperclip-image-contract.test.ts` pins both halves of the bargain.
 
 ## What is baked, and why
 

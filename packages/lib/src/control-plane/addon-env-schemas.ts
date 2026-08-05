@@ -45,7 +45,6 @@ export const ADDON_ENV_RECREATE_SCOPE: Record<string, readonly string[]> = {
   OP_REMOTE_HOSTNAME: ["tunnel"],
 };
 
-
 export const BUILTIN_ADDON_ENV_SCHEMAS: Record<string, string> = {
   api: `# API Gateway portal configuration
 # ---
@@ -208,3 +207,4 @@ OP_VOICE_LOG_LEVEL=info
 OP_VOICE_LAN_ACCESS=false
 `,
 };
+

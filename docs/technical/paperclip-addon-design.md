@@ -106,4 +106,7 @@ The implementation is covered by tests for:
 - literal loopback publication and network isolation;
 - absence of Guardian and database-sidecar services;
 - pinned upstream image packaging; and
-- a real image build and `/api/health` runtime smoke.
+- **Not yet covered:** a real image build and `/api/health` runtime smoke. The
+  publish workflow builds and pushes but never starts the container, and no
+  contract test runs one — the Dockerfile's `test -f` and `command -v` guards
+  are the build-time substitute.

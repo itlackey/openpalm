@@ -21,15 +21,29 @@ ARG GEMINI_CLI_VERSION=0.53.1
 # ripgrep/python3/openssh-client/wget mirror upstream's runtime image: agent
 # sessions shell out to them routinely, and a missing `rg` degrades an agent
 # silently rather than loudly.
+# Split from the npm layer on purpose: this instruction references no ARG, so
+# a version bump — the only reason this image is ever rebuilt — reuses it from
+# cache instead of re-running apt under QEMU for the arm64 leg.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
       ca-certificates curl git wget ripgrep python3 openssh-client \
-    && npm install --global --omit=dev \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN npm install --global --omit=dev --no-audit --no-fund \
       "paperclipai@${PAPERCLIP_VERSION}" \
       "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}" \
       "@openai/codex@${CODEX_VERSION}" \
       "opencode-ai@${OPENCODE_VERSION}" \
       "@google/gemini-cli@${GEMINI_CLI_VERSION}" \
+    # npm filters optionalDependencies by os/cpu but NOT by libc or the
+    # baseline/modern CPU split, so opencode ships four linux-x64 binaries
+    # (~180-190 MB each) where only one is loadable: this base is glibc, which
+    # makes both musl builds dead, and the baseline build is redundant with the
+    # modern one. Same prune, same reason, as containers/assistant/Dockerfile.
+    && rm -rf /usr/local/lib/node_modules/opencode-ai/node_modules/opencode-linux-x64-musl \
+              /usr/local/lib/node_modules/opencode-ai/node_modules/opencode-linux-x64-baseline \
+              /usr/local/lib/node_modules/opencode-ai/node_modules/opencode-linux-x64-baseline-musl \
+              /usr/local/lib/node_modules/opencode-ai/node_modules/opencode-linux-arm64-musl \
     && node --input-type=module --eval \
       "import('/usr/local/lib/node_modules/paperclipai/node_modules/@paperclipai/db/dist/embedded-postgres-native.js').then(({ prepareEmbeddedPostgresNativeRuntime }) => prepareEmbeddedPostgresNativeRuntime())" \
     # Fail the BUILD, not the first agent run, if npm's hoisting ever stops
@@ -39,10 +53,10 @@ RUN apt-get update \
     # asserted rather than assumed.
     && test -f /usr/local/lib/node_modules/paperclipai/node_modules/@paperclipai/server/dist/index.js \
     # Same fail-fast for the adapter binaries: a silently missing CLI is the
-    # exact defect this block exists to prevent.
+    # exact defect this block exists to prevent. Also proves the prune above
+    # removed only unreachable builds.
     && for bin in claude codex opencode gemini; do command -v "$bin" >/dev/null || { echo "missing adapter CLI: $bin" >&2; exit 1; }; done \
     && npm cache clean --force \
-    && rm -rf /var/lib/apt/lists/* \
     && mkdir -p /paperclip \
     && chown node:node /paperclip
 

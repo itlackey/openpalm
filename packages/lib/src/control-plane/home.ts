@@ -335,8 +335,6 @@ export function ensureHomeDirs(home: string = resolveOpenPalmHome()): void {
     `${home}/data/guardian/.local/share/opencode`,
     `${home}/data/guardian/.local/state/opencode`,
     `${home}/data/tunnel`,         // remote addon: persistent tailnet node identity (see remoteTunnelStateDir)
-    `${home}/data/paperclip`,      // paperclip addon: instance dir incl. its embedded Postgres cluster
-
     `${home}/data/akm/cache`,      // akm cache
     `${home}/data/akm/data`,       // akm durable data
     `${home}/data/akm/empty-host-stash`, // always-present /host-stash fallback when host AKM is absent

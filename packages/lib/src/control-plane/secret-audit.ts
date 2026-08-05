@@ -3,6 +3,10 @@ import { basename, dirname, normalize, resolve, join } from 'node:path';
 import { parse as parseYaml } from 'yaml';
 import { parseEnvContent, parseEnvFile } from './env.js';
 import { isSecretLikeKey } from './secrets.js';
+// The audit's job is to verify exactly what preparePaperclipAddon wrote, so it
+// shares that module's key set and path helper rather than keeping copies that
+// could drift apart.
+import { PAPERCLIP_ENV_KEYS, paperclipEnvFile } from './paperclip.js';
 
 export { isSecretLikeKey };
 
@@ -45,10 +49,6 @@ type ComposeConfig = {
 
 const SECRET_FILE_MODE = 0o600;
 const SECRET_DIR_MODE = 0o700;
-const PAPERCLIP_SECRET_KEYS = new Set([
-  'BETTER_AUTH_SECRET',
-  'PAPERCLIP_TOOL_ACTION_SIGNING_SECRET',
-]);
 
 function issue(code: string, message: string, path?: string): SecretAuditIssue {
   return { severity: 'error', code, message, path };
@@ -221,7 +221,7 @@ export function auditComposeSecrets(
     for (const [key, value] of environmentEntries(service.environment)) {
       if (
         isSecretLikeKey(key) &&
-        !(options.resolvedPaperclipEnv && serviceName === 'paperclip' && PAPERCLIP_SECRET_KEYS.has(key))
+        !(options.resolvedPaperclipEnv && serviceName === 'paperclip' && PAPERCLIP_ENV_KEYS.has(key))
       ) {
         issues.push(issue(
           'compose-secret-env-var',
@@ -286,52 +286,64 @@ function isPaperclipEnvFile(serviceName: string, envFile: unknown, resolved: boo
     : entries[0] === '${OP_HOME}/private/env/paperclip.env';
 }
 
-function auditPaperclipEnv(service: ComposeService, homeDir: string): SecretAuditIssue[] {
-  const expected = resolve(homeDir, 'private', 'env', 'paperclip.env');
+/**
+ * Audit the resolved Paperclip env file. Returns the FIRST problem found, or
+ * undefined when clean — a single issue rather than an array, because every
+ * check short-circuits and an array return advertised a multi-issue contract
+ * this never had.
+ */
+function auditPaperclipEnv(service: ComposeService, homeDir: string): SecretAuditIssue | undefined {
+  const expected = resolve(paperclipEnvFile(homeDir));
   if (service.env_file !== undefined) {
     const entries = Array.isArray(service.env_file) ? service.env_file : [service.env_file];
     if (entries.length !== 1 || typeof entries[0] !== 'string' || resolve(entries[0]) !== expected) {
-      return [issue(
+      return issue(
         'paperclip-env-file-boundary',
         `service paperclip may use only ${expected} as its single env_file.`,
         'services.paperclip.env_file',
-      )];
+      );
     }
   }
-  if (!existsSync(expected)) {
-    return [issue('paperclip-env-file-missing', `Paperclip env file does not exist: ${expected}`, expected)];
+  // The ENOENT throw IS the existence check — one stat instead of two.
+  let fileStat: ReturnType<typeof lstatSync>;
+  try {
+    fileStat = lstatSync(expected);
+  } catch {
+    return issue('paperclip-env-file-missing', `Paperclip env file does not exist: ${expected}`, expected);
   }
-  const fileStat = lstatSync(expected);
   if (fileStat.isSymbolicLink() || !fileStat.isFile()) {
-    return [issue('paperclip-env-file-type', `Paperclip env file must be a regular file: ${expected}`, expected)];
+    return issue('paperclip-env-file-type', `Paperclip env file must be a regular file: ${expected}`, expected);
   }
   if ((fileStat.mode & 0o777) !== SECRET_FILE_MODE) {
-    return [issue('paperclip-env-file-mode', `Paperclip env file must be 0600, got ${formatMode(fileStat.mode)}.`, expected)];
+    return issue('paperclip-env-file-mode', `Paperclip env file must be 0600, got ${formatMode(fileStat.mode)}.`, expected);
   }
   const envDir = dirname(expected);
   if ((statSync(envDir).mode & 0o777) !== SECRET_DIR_MODE) {
-    return [issue('paperclip-env-dir-mode', `Paperclip env directory must be 0700: ${envDir}`, envDir)];
+    return issue('paperclip-env-dir-mode', `Paperclip env directory must be 0700: ${envDir}`, envDir);
   }
 
   const env = parseEnvFile(expected);
-  const invalid = Object.keys(env).filter((key) => !PAPERCLIP_SECRET_KEYS.has(key));
+  const invalid = Object.keys(env).filter((key) => !PAPERCLIP_ENV_KEYS.has(key));
   if (invalid.length > 0) {
-    return [issue('paperclip-env-key-boundary', `Paperclip env_file contains unsupported key(s): ${invalid.join(', ')}.`, expected)];
+    return issue('paperclip-env-key-boundary', `Paperclip env_file contains unsupported key(s): ${invalid.join(', ')}.`, expected);
   }
-  const missing = [...PAPERCLIP_SECRET_KEYS].filter((key) => env[key] === undefined);
+  const missing = [...PAPERCLIP_ENV_KEYS].filter((key) => env[key] === undefined);
   if (missing.length > 0) {
-    return [issue('paperclip-env-key-missing', `Paperclip env_file is missing required key(s): ${missing.join(', ')}.`, expected)];
+    return issue('paperclip-env-key-missing', `Paperclip env_file is missing required key(s): ${missing.join(', ')}.`, expected);
   }
+  // `compose config` inlines env_file into environment, so an EQUAL value here
+  // is expected; only a DIFFERING value means the compose block overrode the
+  // audited file.
   for (const [key, value] of environmentEntries(service.environment)) {
-    if (PAPERCLIP_SECRET_KEYS.has(key) && String(value) !== env[key]) {
-      return [issue(
+    if (PAPERCLIP_ENV_KEYS.has(key) && String(value) !== env[key]) {
+      return issue(
         'paperclip-env-value-boundary',
         `service paperclip environment ${key} must come from ${expected}.`,
         `services.paperclip.environment.${key}`,
-      )];
+      );
     }
   }
-  return [];
+  return undefined;
 }
 
 export function auditResolvedComposeSecrets(
@@ -342,7 +354,8 @@ export function auditResolvedComposeSecrets(
   const home = options.homeDir ? resolve(options.homeDir) : undefined;
   const issues = auditComposeSecrets(compose, { resolvedPaperclipEnv: Boolean(home) });
   if (home && compose.services?.paperclip) {
-    issues.push(...auditPaperclipEnv(compose.services.paperclip, home));
+    const paperclipIssue = auditPaperclipEnv(compose.services.paperclip, home);
+    if (paperclipIssue) issues.push(paperclipIssue);
   }
   for (const [name, definition] of Object.entries(compose.secrets ?? {})) {
     if (!isRecord(definition) || typeof definition.file !== 'string' || !home) continue;
