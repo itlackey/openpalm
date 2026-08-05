@@ -45,6 +45,7 @@ export const ADDON_ENV_RECREATE_SCOPE: Record<string, readonly string[]> = {
   OP_REMOTE_HOSTNAME: ["tunnel"],
 };
 
+
 export const BUILTIN_ADDON_ENV_SCHEMAS: Record<string, string> = {
   api: `# API Gateway portal configuration
 # ---
@@ -134,6 +135,14 @@ SLACK_BOT_NAME=
 `,
   gateway: '',
   ollama: '',
+  paperclip: `# Paperclip configuration
+# ---
+# Paperclip is published on host loopback only.
+OP_PAPERCLIP_PORT=3840
+
+# Version of the OpenPalm-packaged upstream Paperclip image.
+OP_PAPERCLIP_VERSION=2026.722.0
+`,
   remote: `# OpenPalm Remote Access (Tailscale tunnel) configuration
 # ---
 # Lets you reach this assistant when you're away from home, without opening
@@ -191,4 +200,3 @@ OP_VOICE_LOG_LEVEL=info
 OP_VOICE_LAN_ACCESS=false
 `,
 };
-

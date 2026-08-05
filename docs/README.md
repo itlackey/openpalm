@@ -97,4 +97,4 @@ not kept current as the code moves.
 | [environment-and-mounts.md](technical/environment-and-mounts.md) | All env vars and volume mounts |
 | [opencode-configuration.md](technical/opencode-configuration.md) | OpenCode runtime integration |
 | [community-portals.md](portals/community-portals.md) | Guardian `/oc/*` contract for custom portal adapters |
-| [paperclip-addon-design.md](technical/paperclip-addon-design.md) | **Implementation plan, not yet implemented.** Paperclip as a phased first-party addon, starting API-only and loopback-only before adapter and exposure work |
+| [paperclip-addon-design.md](technical/paperclip-addon-design.md) | Paperclip as a standard loopback-only first-party service addon |

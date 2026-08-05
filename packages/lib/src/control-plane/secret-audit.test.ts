@@ -283,3 +283,51 @@ describe('auditFileBasedSecrets', () => {
     expect(result.issues.map((entry) => entry.code)).toEqual(['stack-env-secret-key']);
   });
 });
+
+describe('Paperclip env-file exception', () => {
+  it('permits only the exact raw Paperclip env_file entry', () => {
+    expect(auditComposeSecrets(`
+services:
+  paperclip:
+    env_file:
+      - \${OP_HOME}/private/env/paperclip.env
+`)).toEqual([]);
+
+    expect(auditComposeSecrets(`
+services:
+  paperclip:
+    env_file:
+      - \${OP_HOME}/private/env/other.env
+`).map((entry) => entry.code)).toEqual(['compose-service-env-file']);
+  });
+
+  it('requires resolved secret values to match the hardened private file', () => {
+    const envPath = join(tempDir, 'private', 'env', 'paperclip.env');
+    mkdirSync(dirname(envPath), { recursive: true, mode: 0o700 });
+    chmodSync(dirname(envPath), 0o700);
+    writeFileSync(
+      envPath,
+      'BETTER_AUTH_SECRET=auth\nPAPERCLIP_TOOL_ACTION_SIGNING_SECRET=sign\n',
+      { mode: 0o600 },
+    );
+
+    expect(auditResolvedComposeSecrets({
+      services: {
+        paperclip: {
+          environment: {
+            BETTER_AUTH_SECRET: 'auth',
+            PAPERCLIP_TOOL_ACTION_SIGNING_SECRET: 'sign',
+          },
+        },
+      },
+    }, { homeDir: tempDir })).toEqual([]);
+
+    expect(auditResolvedComposeSecrets({
+      services: { paperclip: { environment: { BETTER_AUTH_SECRET: 'wrong' } } },
+    }, { homeDir: tempDir }).map((entry) => entry.code)).toContain('paperclip-env-value-boundary');
+
+    expect(auditResolvedComposeSecrets({
+      services: { paperclip: { env_file: ['/tmp/private/env/paperclip.env'] } },
+    }, { homeDir: tempDir }).map((entry) => entry.code)).toContain('paperclip-env-file-boundary');
+  });
+});

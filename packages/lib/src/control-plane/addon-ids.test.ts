@@ -42,6 +42,11 @@ describe("guardian ingress addon ids", () => {
     expect(GUARDIAN_INGRESS_ADDON_IDS).toContain("gateway");
   });
 
+  it("keeps Paperclip as a normal non-ingress addon", () => {
+    expect(BUILTIN_ADDON_IDS).toContain("paperclip");
+    expect(GUARDIAN_INGRESS_ADDON_IDS).not.toContain("paperclip");
+  });
+
   it("requires guardian for every ingress addon and no unrelated addon", () => {
     for (const id of GUARDIAN_INGRESS_ADDON_IDS) {
       expect(hasGuardianIngressAddon([id])).toBe(true);

@@ -22,6 +22,7 @@ import { resolveStashDir, composeFilePath, customComposeFilePath, stackEnvFile }
 import { BUILTIN_ADDON_ENV_SCHEMAS } from './addon-env-schemas.js';
 import { BUILTIN_ADDON_IDS, GUARDIAN_INGRESS_ADDON_IDS, PORTAL_SECRET_ADDON_IDS } from './addon-ids.js';
 import { applyRemoteAccess } from './remote-apply.js';
+import { preparePaperclipAddon } from './paperclip.js';
 
 const VALID_NAME_RE = /^[a-z0-9][a-z0-9-]{0,62}$/;
 const logger = createLogger('registry');
@@ -473,6 +474,14 @@ export function setAddonEnabled(homeDir: string, name: string, enabled: boolean,
     setEnabledAddonState(homeDir, name, false);
     removeRetiredEnvKeys(homeDir);
     return { ok: true, enabled: false, changed: true, services: [] };
+  }
+
+  if (enabled && name === 'paperclip') {
+    try {
+      preparePaperclipAddon(homeDir);
+    } catch (error) {
+      return { ok: false, error: errMessage(error) };
+    }
   }
 
   const wasEnabled = listEnabledAddonIds(homeDir).includes(name);

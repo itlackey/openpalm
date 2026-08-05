@@ -248,6 +248,7 @@ Host-exposed OpenPalm services default to a small localhost-friendly port set. C
 | **Assistant UI** | 3000 | `127.0.0.1:3800` | `@openpalm/ui` chat interface |
 | **Assistant** (OpenCode) | 4096 | `127.0.0.1:3810` | OpenCode web UI + API |
 | **Voice addon** | 8880 | `127.0.0.1:8880` (literal loopback; `OP_VOICE_PORT_HOST`) | Voice interface (TTS/STT) |
+| **Paperclip addon** | 3100 | `127.0.0.1:3840` (literal loopback; `OP_PAPERCLIP_PORT`) | Paperclip web UI/API |
 | **Admin** | n/a — host process, not a container | `127.0.0.1:3880` | Admin UI + API (`openpalm admin`) |
 | **Guardian gateway** | 8080 | (internal only — no `ports:` publication) | Principal auth, `/oc/*` proxy, rate limiting, content validation |
 | **Guardian moderator** (OpenCode) | 4097 | (loopback only) | Local content-moderation model |
@@ -255,7 +256,7 @@ Host-exposed OpenPalm services default to a small localhost-friendly port set. C
 | **Guardian admin listener** | 3831 | `127.0.0.1:3831` (`OP_GUARDIAN_ADMIN_PORT`; bind address is fixed) | Principal CRUD (`/admin/principals`), Bearer-token auth via `GUARDIAN_ADMIN_TOKEN_FILE` |
 | **Guardian OpenAI/Anthropic API** | 8182 | `127.0.0.1:3821` (`OP_API_BIND_ADDRESS`) | The one compatible API listener; `chat` does not create a second host port |
 
-Port assignments live in non-secret `state/stack.env`. Configurable host binds are flat and service-specific: `OP_UI_BIND_ADDRESS`, `OP_ASSISTANT_BIND_ADDRESS`, `OP_GUARDIAN_BIND_ADDRESS`, and `OP_API_BIND_ADDRESS`; no listener inherits from a global bind. Voice and the Guardian admin listener are fixed to loopback. The Guardian `/stats` endpoint is gated by the admin bearer token and denies all when no token is configured. Its internal `8080` listener binds for both `portal_net` and loopback callers inside the container.
+Port assignments live in non-secret `state/stack.env`. Configurable host binds are flat and service-specific: `OP_UI_BIND_ADDRESS`, `OP_ASSISTANT_BIND_ADDRESS`, `OP_GUARDIAN_BIND_ADDRESS`, and `OP_API_BIND_ADDRESS`; no listener inherits from a global bind. Voice, Paperclip, and the Guardian admin listener are fixed to loopback. The Guardian `/stats` endpoint is gated by the admin bearer token and denies all when no token is configured. Its internal `8080` listener binds for both `portal_net` and loopback callers inside the container.
 
 ---
 

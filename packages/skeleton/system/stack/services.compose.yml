@@ -1,5 +1,5 @@
 # OpenPalm first-party optional services.
-# Services are gated by Compose profiles (addon.ollama.*, addon.voice.*).
+# Services are gated by Compose profiles (addon.ollama.*, addon.voice.*, addon.paperclip).
 #
 # Addon trust boundary (S.6b / D3(b)): addon services join addon_net, NOT
 # assistant_net, so a compromised addon image cannot reach the assistant's
@@ -25,6 +25,41 @@
 # weakening.
 
 services:
+  paperclip:
+    profiles: ["addon.paperclip"]
+    image: ${OP_IMAGE_NAMESPACE:-openpalm}/paperclip:${OP_PAPERCLIP_VERSION:-2026.722.0}
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    user: "${OP_UID:-1000}:${OP_GID:-1000}"
+    ports:
+      - "127.0.0.1:${OP_PAPERCLIP_PORT:-3840}:3100"
+    volumes:
+      - ${OP_HOME}/data/paperclip:/paperclip
+    env_file:
+      - ${OP_HOME}/private/env/paperclip.env
+    environment:
+      HOST: 0.0.0.0
+      PORT: "3100"
+      PAPERCLIP_HOME: /paperclip
+      SERVE_UI: "true"
+      PAPERCLIP_DEPLOYMENT_MODE: authenticated
+      PAPERCLIP_DEPLOYMENT_EXPOSURE: private
+      PAPERCLIP_PUBLIC_URL: http://localhost:${OP_PAPERCLIP_PORT:-3840}
+      BETTER_AUTH_TRUSTED_ORIGINS: http://127.0.0.1:${OP_PAPERCLIP_PORT:-3840},http://localhost:${OP_PAPERCLIP_PORT:-3840}
+      PAPERCLIP_TELEMETRY_DISABLED: "1"
+      DO_NOT_TRACK: "1"
+    networks: [addon_net]
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:3100/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 180s
+
   ollama:
     profiles: ["addon.ollama.cpu"]
     image: ollama/ollama:0.31.1@sha256:f1a705f2bd113fb8d15f85f7c217f0dc5f6bebda6b0cc42b82c3ad165ffcb9dc
