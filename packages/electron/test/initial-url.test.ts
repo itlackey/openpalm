@@ -1,6 +1,6 @@
-// Electron always resolves its initial page through the host UI's canonical
-// /api/runtime/landing endpoint. No legacy setting or environment opt-in may
-// select the removed port-3890 chat surface.
+// Electron opens the UI root and lets the server's navigation guard resolve the
+// landing. No legacy setting or environment opt-in may select the removed
+// port-3890 chat surface.
 //
 // Run via vitest (Node), NOT bun test — same reason as main.test.ts.
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
@@ -43,13 +43,6 @@ const { mockBrowserWindow } = vi.hoisted(() => ({
     setSize: vi.fn(),
     isDestroyed: vi.fn(() => false),
   },
-}));
-
-// The landing probe runs in the main process, whose fetch shares no cookie jar
-// with the window — so the "this browser has connections" hint has to be read
-// off the session and forwarded by hand. This mock is how tests drive it.
-const { mockCookiesGet } = vi.hoisted(() => ({
-  mockCookiesGet: vi.fn<() => Promise<Array<{ value: string }>>>(async () => []),
 }));
 
 vi.mock('electron', () => ({
@@ -99,7 +92,6 @@ vi.mock('electron', () => ({
     defaultSession: {
       setPermissionRequestHandler: vi.fn(),
       setPermissionCheckHandler: vi.fn(),
-      cookies: { get: mockCookiesGet },
     },
   },
   systemPreferences: {
@@ -189,41 +181,11 @@ import * as main from '../src/main.js';
 // export exists — each test then fails with the precise missing-feature reason
 // instead of the whole file dying on an import error.
 const resolveInitialUrl = (main as unknown as Record<string, unknown>).resolveInitialUrl as
-  | (() => Promise<string>)
+  | (() => string)
   | undefined;
-
-async function callResolveInitialUrl(): Promise<string> {
-  if (typeof resolveInitialUrl !== 'function') {
-    throw new Error('resolveInitialUrl is not exported from src/main.ts yet (A1 test)');
-  }
-  return resolveInitialUrl();
-}
-
-/**
- * Stub the host UI landing endpoint. Everything else fails fast so a test also
- * detects any attempt to probe or route through another chat server.
- */
-function stubFetch(landing: string | 'error') {
-  vi.stubGlobal('fetch', vi.fn(async (input: unknown) => {
-    const url = String(input);
-    if (url.includes('127.0.0.1:3880/api/runtime/landing')) {
-      if (landing === 'error') throw new Error('ECONNREFUSED');
-      return { ok: true, status: 200, json: async () => ({ landing }) };
-    }
-    throw new Error(`unexpected fetch in test: ${url}`);
-  }));
-}
-
-/** The headers the landing probe actually sent, if any. */
-function probeHeaders(): Record<string, string> | undefined {
-  const call = vi.mocked(globalThis.fetch).mock.calls[0];
-  return (call?.[1] as { headers?: Record<string, string> } | undefined)?.headers;
-}
 
 beforeEach(() => {
   mockLoadSettings.mockReturnValue({ checkPrerelease: false });
-  mockCookiesGet.mockReset();
-  mockCookiesGet.mockResolvedValue([]);
   delete process.env.OP_CLIENT_CHAT_OPT_IN;
 });
 
@@ -237,78 +199,23 @@ describe('resolveInitialUrl', () => {
     expect(typeof resolveInitialUrl, 'export resolveInitialUrl from src/main.ts').toBe('function');
   });
 
-  it('loads the canonical UI chat', async () => {
-    stubFetch('/chat');
-    await expect(callResolveInitialUrl()).resolves.toBe('http://127.0.0.1:3880/chat');
+  // The window opens on the UI ROOT and lets the server's navigation guard pick
+  // the landing. Resolving it here instead meant asking from the main process,
+  // which shares no cookie jar with the window — so the browser's own state was
+  // invisible to the probe and had to be read off the session and forwarded by
+  // hand. Asking from the window makes that mechanism unnecessary.
+  it('opens the UI root so the server resolves the landing', () => {
+    expect(resolveInitialUrl?.()).toBe('http://127.0.0.1:3880');
   });
 
-  // Without this forwarding the desktop app can never benefit from the hint: a
-  // browser sends its cookies automatically, but this probe runs in the main
-  // process, so the server would always see a first-run request and answer
-  // /start no matter how many connections the user had saved.
-  it('forwards the connections hint from the window session to the landing probe', async () => {
-    mockCookiesGet.mockResolvedValue([{ value: '1' }]);
-    stubFetch('/chat');
-    await callResolveInitialUrl();
-    expect(probeHeaders()).toEqual({ cookie: 'op_has_connections=1' });
+  it('resolves without a landing probe at all', () => {
+    const fetchSpy = vi.fn();
+    vi.stubGlobal('fetch', fetchSpy);
+    resolveInitialUrl?.();
+    expect(fetchSpy, 'the window carries its own cookies; no probe is needed').not.toHaveBeenCalled();
   });
 
-  it('sends no cookie header when the browser has never saved a connection', async () => {
-    stubFetch('/start');
-    await expect(callResolveInitialUrl()).resolves.toBe('http://127.0.0.1:3880/start');
-    expect(probeHeaders()).toBeUndefined();
-  });
-
-  it('still resolves a landing when the cookie store cannot be read', async () => {
-    mockCookiesGet.mockRejectedValue(new Error('session unavailable'));
-    stubFetch('/start');
-    await expect(callResolveInitialUrl()).resolves.toBe('http://127.0.0.1:3880/start');
-    expect(probeHeaders()).toBeUndefined();
-  });
-
-  it('loads the client-aware bootstrap page when the landing resolver says /start', async () => {
-    stubFetch('/start');
-    await expect(callResolveInitialUrl()).resolves.toBe('http://127.0.0.1:3880/start');
-  });
-
-  it('ignores a legacy preferClientChat setting and cannot select port 3890', async () => {
-    mockLoadSettings.mockReturnValue({ checkPrerelease: false, preferClientChat: true });
-    stubFetch('/chat');
-    const url = await callResolveInitialUrl();
-    expect(url).toBe('http://127.0.0.1:3880/chat');
-    expect(url).not.toContain(':3890');
-  });
-
-  it('ignores OP_CLIENT_CHAT_OPT_IN and cannot select port 3890', async () => {
-    process.env.OP_CLIENT_CHAT_OPT_IN = '1';
-    stubFetch('/chat');
-    const url = await callResolveInitialUrl();
-    expect(url).toBe('http://127.0.0.1:3880/chat');
-    expect(url).not.toContain(':3890');
-  });
-
-  it('lands on the UI setup wizard when the landing resolver says /setup', async () => {
-    stubFetch('/setup');
-    await expect(callResolveInitialUrl()).resolves.toBe('http://127.0.0.1:3880/setup');
-  });
-
-  it('lands on the UI admin dashboard when the landing resolver says /host', async () => {
-    stubFetch('/host');
-    await expect(callResolveInitialUrl()).resolves.toBe('http://127.0.0.1:3880/host');
-  });
-
-  it('lands on the UI diagnostics tab when requested', async () => {
-    stubFetch('/host?tab=diagnostics');
-    await expect(callResolveInitialUrl()).resolves.toBe('http://127.0.0.1:3880/host?tab=diagnostics');
-  });
-
-  it('lands on /attention when the landing resolver reports a pending migration gate', async () => {
-    stubFetch('/attention');
-    await expect(callResolveInitialUrl()).resolves.toBe('http://127.0.0.1:3880/attention');
-  });
-
-  it('falls back to the UI root when the landing probe fails', async () => {
-    stubFetch('error');
-    await expect(callResolveInitialUrl()).resolves.toBe('http://127.0.0.1:3880');
+  it('is synchronous, so window creation never waits on a network round trip', () => {
+    expect(resolveInitialUrl?.()).not.toBeInstanceOf(Promise);
   });
 });

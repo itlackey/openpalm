@@ -58,7 +58,7 @@ const portals = loadCompose('portals.compose.yml');
 // (services.compose.yml already references assistant_net without redeclaring it).
 const declaredNetworks = new Set(Object.keys(core.networks ?? {}));
 
-const ADDON_SERVICES = ['ollama', 'ollama-cuda', 'ollama-rocm', 'voice', 'voice-cuda', 'voice-rocm'];
+const ADDON_SERVICES = ['ollama', 'ollama-cuda', 'ollama-rocm', 'voice', 'voice-cuda', 'voice-rocm', 'paperclip'];
 const VOICE_SERVICES = ['voice', 'voice-cuda', 'voice-rocm'];
 const OLLAMA_SERVICES = ['ollama', 'ollama-cuda', 'ollama-rocm'];
 
@@ -86,6 +86,14 @@ describe('S.6b addon-network trust boundary', () => {
       expect(nets).toContain('addon_net');
       expect(nets).not.toContain('assistant_net');
     }
+  });
+
+  test('paperclip is segmented onto addon_net, off both trust networks', () => {
+    // Paperclip requests no per-service exception: it is a third-party image
+    // that never dials the assistant, so it gets neither assistant_net (S.6b)
+    // nor portal_net (it is not a guardian-ingress portal).
+    const nets = serviceNetworks(services.services?.paperclip?.networks);
+    expect(nets).toEqual(['addon_net']);
   });
 
   test('ollama services are the documented per-service exception: on assistant_net (assistant inference)', () => {

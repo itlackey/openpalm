@@ -101,7 +101,9 @@ describe('hooks.server — static PWA assets are exempt from every document-navi
       writeFileSync(join(state.stackDir, 'core.compose.yml'), 'services: {}\n');
       const kvDir = join(state.stackDir, '..', '..', 'state');
       mkdirSync(kvDir, { recursive: true });
-      writeFileSync(join(kvDir, 'stack.env'), 'OP_SETUP_COMPLETE=false\n');
+      // A machine that HOSTS a stack, mid-install — the setup guard keys on
+      // that record now, not on the artifacts a launch leaves behind.
+      writeFileSync(join(kvDir, 'stack.env'), 'OP_SETUP_COMPLETE=false\nOP_HOST_ENABLED=true\n');
     });
 
     test('a normal document navigation (/chat) is redirected to /setup', async () => {

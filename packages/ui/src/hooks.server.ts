@@ -19,6 +19,7 @@ import { computeServerRuntimeContext } from '$lib/server/features.js';
 import {
   createLogger,
   isSetupComplete,
+  readHostEnabled,
   resolveOpenPalmHome,
   readStackRuntimeEnv,
   readSecret,
@@ -233,9 +234,18 @@ export const handle: Handle = async ({ event, resolve }) => {
   const localInstallState = getCachedLocalInstallState(stackDirFor(homeDir), homeDir);
   const publicFirstRunSetup = isSetupPath && !setupComplete;
 
+  // On a machine that HOSTS a stack, an unfinished install pulls every
+  // navigation back to the wizard so a half-configured stack is not used by
+  // accident. Keyed on the recorded fact, not on what is on disk: the managed
+  // system/ tree is re-seeded every launch, so disk state classifies a machine
+  // that installed nothing as `setup_incomplete` from its first run and pinned
+  // anyone using a REMOTE assistant to a wizard they never asked for — one
+  // that cannot even be completed without Docker.
+  const hostEnabled = readHostEnabled(homeDir);
   if (
     wantsHtml &&
     canServeSetup &&
+    hostEnabled &&
     !setupComplete &&
     localInstallState !== 'not_installed' &&
     !isSetupPath &&
@@ -373,10 +383,18 @@ export const handle: Handle = async ({ event, resolve }) => {
   // route still enforces its own auth. The moment a password exists or an
   // install materializes, the lane closes and the wall applies to /host
   // unchanged.
+  //
+  // Keyed on "does not host a stack" rather than on disk state. A machine that
+  // only ever talks to a REMOTE assistant still accumulates a stack env — the
+  // seeder and any abandoned wizard leave one — which classified it as
+  // `setup_incomplete` and closed this lane. That was survivable only while the
+  // guard above bounced those users to /setup, which is exempt from the wall.
+  // The moment the recorded fact stops that bounce, closing the lane would drop
+  // them onto a /login that answers 503. Both halves must move together.
   const clientOnlyPublicUsage =
-    localInstallState === 'not_installed' &&
+    !hostEnabled &&
     !process.env.OP_UI_LOGIN_PASSWORD &&
-    (path === '/start' || path === '/host' || path.startsWith('/host/')
+    (path === '/host' || path.startsWith('/host/')
       || path.startsWith('/chat') || path.startsWith('/advanced') || path.startsWith('/connections'));
 
   if (wantsHtml && !event.locals.role && !publicFirstRunSetup && !isAuthPath && !isPwaAssetPath && !clientOnlyPublicUsage) {

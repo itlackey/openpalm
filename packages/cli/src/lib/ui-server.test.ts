@@ -341,6 +341,14 @@ describe('resolveUiChildLaunch', () => {
       mkdirSync(stackDir, { recursive: true });
       writeFileSync(join(stackDir, 'core.compose.yml'), 'services: {}\n');
 
+      // The seeded managed tree on its own is NOT an install — every launch
+      // writes it — so this home is still stackless and must advertise no
+      // local assistant. It becomes a true setup-incomplete install only once
+      // something behind install/setup/deploy has left state behind.
+      expect(resolveUiChildLaunch({ homeDir, stackDir }, {}).stacklessApp).toBe(true);
+
+      mkdirSync(join(homeDir, 'state'), { recursive: true });
+      writeFileSync(join(homeDir, 'state', 'stack.env'), 'OP_SETUP_COMPLETE=false\n');
       expect(resolveUiChildLaunch({ homeDir, stackDir }, {}).stacklessApp).toBe(false);
 
       mkdirSync(join(homeDir, 'knowledge', 'secrets'), { recursive: true });

@@ -93,6 +93,13 @@ image. It bakes two things:
   runtime image with just that binary and the OpenCode install). This is new
   build-maintenance surface OpenPalm did not previously carry — see §9.
 
+Building here is the documented exception, not the default:
+[adding-an-addon.md](adding-an-addon.md) requires third-party software to be
+pulled as a digest-pinned upstream image, and permits a build only when
+upstream ships no usable image at all. `buzz-acp` is that case — it is
+distributed as Rust source with no published binary or image. `buzz-relay`
+below is the ordinary case and is pulled, not built.
+
 No Docker socket, no host filesystem access beyond its own mounts, no
 `assistant_net` membership requirement of its own (it only needs to reach the
 relay — see §5).

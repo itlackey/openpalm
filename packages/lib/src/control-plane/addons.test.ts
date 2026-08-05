@@ -54,7 +54,7 @@ describe('builtin addon metadata', () => {
     // Canonical list from BUILTIN_ADDON_IDS (addon-ids.ts — single source of truth).
     // chat and gateway were previously missing from BUILTIN_ADDONS in addons.ts
     // but present in the builtin addon id set; H6 unified them.
-    expect(listAvailableAddonIds()).toEqual(['api', 'chat', 'discord', 'gateway', 'ollama', 'remote', 'slack', 'voice']);
+    expect(listAvailableAddonIds()).toEqual(['api', 'chat', 'discord', 'gateway', 'ollama', 'paperclip', 'remote', 'slack', 'voice']);
   });
 
   it('returns built-in addon schemas without registry materialization', () => {
@@ -101,6 +101,27 @@ describe('addon runtime state', () => {
     writeFileSync(join(stackDir, 'custom.compose.yml'), 'services:\n  proxy-test:\n    profiles: ["addon.proxy-test"]\n    image: image-a\n  proxy-test-worker:\n    profiles: ["addon.proxy-test"]\n    image: image-b\n');
 
     expect(getAddonServiceNames(homeDir, 'proxy-test')).toEqual(['proxy-test', 'proxy-test-worker']);
+  });
+
+  it('discovers and enables Paperclip through the generic addon path', () => {
+    const stackDir = join(homeDir, 'system', 'stack');
+    mkdirSync(stackDir, { recursive: true });
+    writeFileSync(join(stackDir, 'services.compose.yml'), [
+      'services:',
+      '  paperclip:',
+      '    profiles: [addon.paperclip]',
+      '',
+    ].join('\n'));
+
+    expect(getAddonProfiles(homeDir, 'paperclip').map((profile) => profile.id)).toEqual(['addon.paperclip']);
+    expect(setAddonEnabled(homeDir, 'paperclip', true)).toEqual({
+      ok: true,
+      enabled: true,
+      changed: true,
+      services: ['paperclip'],
+    });
+    expect(listEnabledAddonIds(homeDir)).toContain('paperclip');
+    expect(existsSync(join(homeDir, 'private', 'env', 'paperclip.env'))).toBe(true);
   });
 
   it('toggles addons and generates channel secrets for channel addons', () => {

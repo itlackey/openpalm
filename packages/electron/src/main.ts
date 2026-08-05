@@ -6,7 +6,6 @@ import {
   ipcMain,
   globalShortcut,
   Notification,
-  session,
   type IpcMainInvokeEvent,
   type IpcMainEvent,
 } from 'electron';
@@ -38,12 +37,6 @@ import {
   UiSupervisor,
 } from '@openpalm/lib';
 import { UI_PORT } from './ui-port.js';
-/**
- * Mirrors CONNECTIONS_HINT_COOKIE in packages/ui/src/lib/connections/landing-hint.ts.
- * Declared here rather than imported: the desktop shell does not depend on the
- * UI package, and this is a one-word wire contract.
- */
-const CONNECTIONS_HINT_COOKIE = 'op_has_connections';
 import { autoUpdater } from 'electron-updater';
 import { DesktopUpdater, isTrustedUpdaterSender, type UpdaterState } from './updater.js';
 import { loadSettings, saveSettings } from './settings.js';
@@ -686,49 +679,18 @@ export function stopUIServer(): void {
 // ── Window management ────────────────────────────────────────────────────────
 
 /**
- * Read the browser-owned "this profile has connections" hint out of the window
- * session, so the landing probe below can carry it.
+ * The URL the window opens on: the UI root, which the server's own navigation
+ * guard redirects to the resolved landing.
  *
- * The probe runs in the MAIN process, whose fetch has no cookie jar in common
- * with the BrowserWindow — so without this the server always sees a request
- * with no hint and answers /start for an uninstalled host, no matter how many
- * remote assistants the user has configured. Forwarding it explicitly is what
- * makes the desktop app match what a plain browser gets for free.
- *
- * Best-effort: any failure just means the pre-existing /start landing, which
- * still self-redirects client-side.
+ * This used to probe /api/runtime/landing from the MAIN process and hand the
+ * window a pre-resolved path. That process has no cookie jar in common with the
+ * window, so the probe could not carry the browser's "this profile has
+ * connections" hint and had to read it off the session and forward it by hand —
+ * a whole mechanism that existed only to work around asking the question from
+ * the wrong process. Loading the root asks it from the WINDOW, where cookies
+ * are attached natively, for the cost of one redirect.
  */
-async function readConnectionsHintCookie(): Promise<string | undefined> {
-  try {
-    const cookies = await session.defaultSession.cookies.get({
-      name: CONNECTIONS_HINT_COOKIE,
-      url: `http://127.0.0.1:${UI_PORT}`,
-    });
-    return cookies[0]?.value;
-  } catch {
-    return undefined;
-  }
-}
-
-/**
- * Resolve the canonical UI landing page. On probe failure, load the UI root so
- * its own navigation guard can perform the same landing decision.
- */
-export async function resolveInitialUrl(): Promise<string> {
-  try {
-    const hint = await readConnectionsHintCookie();
-    const res = await fetch(`http://127.0.0.1:${UI_PORT}/api/runtime/landing`, {
-      signal: AbortSignal.timeout(2000),
-      ...(hint ? { headers: { cookie: `${CONNECTIONS_HINT_COOKIE}=${hint}` } } : {}),
-    });
-    if (res.ok) {
-      const data = await res.json() as { landing?: string };
-      const landing = data.landing ?? '/chat';
-      return `http://127.0.0.1:${UI_PORT}${landing}`;
-    }
-  } catch {
-    // ignore; fall through to root
-  }
+export function resolveInitialUrl(): string {
   return `http://127.0.0.1:${UI_PORT}`;
 }
 
@@ -860,7 +822,7 @@ async function createWindow(): Promise<void> {
   });
   mainWindow = window;
 
-  const initialUrl = await resolveInitialUrl();
+  const initialUrl = resolveInitialUrl();
 
   // E4 review: this used to be a fire-and-forget `window.loadURL(initialUrl)`
   // — no `await`, no `.catch`, and the splash's ONLY close trigger was

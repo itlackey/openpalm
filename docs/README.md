@@ -67,6 +67,7 @@ See [How It Works](how-it-works.md) for the full architecture behind these terms
 
 | Document | Applies to |
 |---|---|
+| [adding-an-addon.md](technical/adding-an-addon.md) | **Read before adding a stack service.** Build-vs-pull, the touch-point checklist, and the traps |
 | [code-quality-principles.md](technical/code-quality-principles.md) | All code |
 | [bunjs-rules.md](technical/bunjs-rules.md) | Guardian and portal-side Bun services |
 | [sveltekit-rules.md](technical/sveltekit-rules.md) | Admin UI (`packages/ui/`) |
@@ -81,6 +82,7 @@ not kept current as the code moves.
 |---|---|
 | [onboarding-setup-review.md](reviews/onboarding-setup-review.md) | End-to-end review of the new-user journey: discovery, install, setup wizard, first deploy, first chat |
 | [buzz-integration-analysis.md](reviews/buzz-integration-analysis.md) | OpenPalm vs [Buzz](https://github.com/block/buzz): protocol/architecture comparison against Paperclip, and an integration recommendation for the "agents at work" use case |
+| [paperclip-integration-analysis.md](reviews/paperclip-integration-analysis.md) | OpenPalm vs [Paperclip](https://github.com/paperclipai/paperclip): overlap, integration seams, and a phased recommendation for the "agents at work" use case |
 
 ## Release notes
 
@@ -98,3 +100,4 @@ not kept current as the code moves.
 | [opencode-configuration.md](technical/opencode-configuration.md) | OpenCode runtime integration |
 | [community-portals.md](portals/community-portals.md) | Guardian `/oc/*` contract for custom portal adapters |
 | [buzz-addon-design.md](technical/buzz-addon-design.md) | **Design, not yet implemented.** Buzz as two addons — an ACP agent bridge and an optional self-hosted relay |
+| [paperclip-addon-design.md](technical/paperclip-addon-design.md) | Paperclip as a standard loopback-only first-party service addon |

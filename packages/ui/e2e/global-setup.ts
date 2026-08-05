@@ -68,7 +68,12 @@ export default async function globalSetup() {
 	if (process.env.RUN_DOCKER_STACK_TESTS === "1" && existsSync(STATE_ENV)) {
 		const stateContent = readFileSync(STATE_ENV, "utf8");
 		writeFileSync(STATE_BACKUP, stateContent);
-		writeFileSync(STATE_ENV, patchEnvContent(stateContent, "OP_SETUP_COMPLETE", "true"), {
+		// Both facts, together: "setup finished" and "this machine hosts a
+		// stack" are separate records, and the host rows of the landing matrix
+		// need the second. A baseline carrying only the first would route these
+		// stack tests down the client lane.
+		const withSetup = patchEnvContent(stateContent, "OP_SETUP_COMPLETE", "true");
+		writeFileSync(STATE_ENV, patchEnvContent(withSetup, "OP_HOST_ENABLED", "true"), {
 			encoding: "utf8",
 			mode: 0o600,
 		});

@@ -19,6 +19,7 @@ import {
   composePs,
   deriveLaunchStatus,
   deriveLocalStackState,
+  readHostEnabled,
   type ComposeServiceStatus,
 } from '@openpalm/lib';
 import { getState } from '$lib/server/state.js';
@@ -127,7 +128,7 @@ async function resolveLaunchRouting(): Promise<LaunchRouting> {
  * jar. This resolver decides where EVERY document navigation goes, so it must
  * degrade to "no hint" rather than throw and take routing down with it.
  */
-function readConnectionsHint(event: RequestEvent): boolean {
+export function readConnectionsHint(event: RequestEvent): boolean {
   const get = event.cookies?.get;
   if (typeof get !== 'function') return false;
   try {
@@ -181,6 +182,9 @@ export async function resolveRequestLanding(event: RequestEvent): Promise<string
     migration: { status: 'none' },
     local: { state: localState },
     connections,
+    // Read per request, outside resolveLaunchRouting()'s 5s cache: an install
+    // that finishes mid-session must be visible to the very next navigation.
+    hostEnabled: readHostEnabled(getState().homeDir),
     browserConnections,
   };
   return resolveLanding(ctx, launchState);

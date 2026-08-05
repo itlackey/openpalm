@@ -48,11 +48,47 @@
 	let operationGeneration = 0;
 	let destroyed = false;
 
+	// The install-or-connect question, shown once at the top of onboarding. Only
+	// a host-capable process can offer to install — a phone or a container-served
+	// UI has no stack to put anywhere — so everyone else goes straight to the
+	// connect form, exactly as before.
+	let choiceMade = $state(false);
+	const showChoice = $derived(
+		onboarding && !choiceMade && hasCapability(runtimeContext, 'host:setup'),
+	);
+
+	/**
+	 * A browser that already has a connection does not need to be asked how to
+	 * begin. The landing resolver usually catches this, but it reads a client
+	 * hint cookie that a fresh profile or a cleared jar will not have — so the
+	 * page confirms against the real store and moves on.
+	 */
+	async function restoreActiveConnection(): Promise<void> {
+		if (!onboarding) return;
+		// Entirely best-effort: all this saves a returning browser is one screen,
+		// and the page behind it works without it. A store that cannot answer —
+		// unavailable, mid-migration, or simply empty — must leave the user on
+		// onboarding rather than surfacing as an unhandled rejection.
+		try {
+			await connectionsService.load();
+			if (destroyed || connectionsService.error) return;
+			const active = (connectionsService.endpoints ?? []).find(
+				(connection) => connection.id === connectionsService.activeId,
+			);
+			if (!active) return;
+			// eslint-disable-next-line svelte/no-navigation-without-resolve -- buildChatPath returns the validated internal Chat route
+			await goto(buildChatPath(null, active.id), { replaceState: true });
+		} catch {
+			// Stay on onboarding; the user can connect from here.
+		}
+	}
+
 	onMount(() => {
 		consumePairDeepLink();
 		void focusCurrentInput();
 		void initializeStorageMode();
 		void initializeCancelDestination();
+		void restoreActiveConnection();
 	});
 
 	onDestroy(() => {
@@ -66,7 +102,9 @@
 		// prevents standalone clients from briefly receiving host navigation.
 		await new Promise<void>((done) => requestAnimationFrame(() => done()));
 		if (!destroyed && hasCapability(runtimeContext, 'host:setup')) {
-			cancelDestination = resolve('/start');
+			// Back goes to this page's own choice screen — the welcome route it
+			// used to point at was retired into it.
+			cancelDestination = null;
 		}
 	}
 
@@ -247,10 +285,28 @@
 		await focusCurrentInput();
 	}
 
+	/** Whether Back returns to this page's own choice screen rather than leaving. */
+	const backToChoice = $derived(
+		onboarding && choiceMade && hasCapability(runtimeContext, 'host:setup'),
+	);
+
 	async function cancelWizard(): Promise<void> {
-		if (!cancelDestination || persisting) return;
+		if (persisting) return;
 		operationGeneration += 1;
 		submitting = false;
+		if (backToChoice) {
+			// The welcome choice was retired into this page, so Back steps back a
+			// screen instead of navigating to a route that no longer exists. Unlike
+			// the navigating branch below, the component stays mounted — so the
+			// failed attempt's error has to be cleared here or it greets the user
+			// again the moment they re-enter the connect flow.
+			errorMessage = '';
+			guideUrl = null;
+			disclosureCandidate = null;
+			choiceMade = false;
+			return;
+		}
+		if (!cancelDestination) return;
 		// eslint-disable-next-line svelte/no-navigation-without-resolve -- destination is selected from resolved internal routes above
 		await goto(cancelDestination);
 	}
@@ -264,7 +320,33 @@
 
 <main class="onboarding-shell">
 	<section class="onboarding-card" aria-labelledby="onboarding-title">
-		{#if cancelDestination && !disclosureCandidate}
+		{#if showChoice}
+			<!-- The install-or-connect question, asked on the surface its answer
+			     leads to. Both routes are first-class: connecting to an OpenPalm
+			     that already exists is not a fallback for people who failed to
+			     install one, so the cards carry the same weight and each says
+			     plainly what it costs. Only a host-capable process can offer the
+			     left-hand one at all — a phone or a container-served UI has no
+			     stack to install. -->
+			<header>
+				<span class="eyebrow">Your private assistant</span>
+				<h1 id="onboarding-title">Welcome to OpenPalm</h1>
+				<p>Choose how you want to begin. You can change this later.</p>
+			</header>
+			<div class="choices">
+				<a class="choice" href={runtimeContext.routes?.setup ?? resolve('/setup')}>
+					<strong>Set up OpenPalm on this computer</strong>
+					<span>Run your own private assistant here. We will guide you through the setup.</span>
+					<small>Recommended</small>
+				</a>
+				<button class="choice" type="button" onclick={() => { choiceMade = true; }}>
+					<strong>Connect to an existing OpenPalm</strong>
+					<span>Nothing to install — connect with an address or a pairing code.</span>
+					<small>No install needed</small>
+				</button>
+			</div>
+		{:else}
+		{#if (cancelDestination || backToChoice) && !disclosureCandidate}
 			<button class="back-link" type="button" onclick={cancelWizard} disabled={persisting}
 				>Back</button
 			>
@@ -401,6 +483,7 @@
 				</div>
 			</form>
 		{/if}
+		{/if}
 	</section>
 </main>
 
@@ -432,6 +515,70 @@
 
 	header {
 		margin-bottom: var(--s-sp-5);
+	}
+
+	/* Both first-run routes get one treatment. Styling the connect card as the
+	   lesser option made it read as a consolation prize; the badges carry the
+	   difference in meaning instead. */
+	.choices {
+		display: grid;
+		gap: 14px;
+	}
+
+	.choice {
+		position: relative;
+		display: grid;
+		gap: 7px;
+		padding: 22px;
+		border: 2px solid var(--s-moss);
+		border-radius: 12px;
+		background: color-mix(in srgb, var(--s-moss) 9%, var(--s-paper));
+		color: var(--s-ink);
+		font: inherit;
+		text-align: left;
+		text-decoration: none;
+		cursor: pointer;
+		transition: border-color 120ms ease, transform 120ms ease;
+	}
+
+	.choice:hover,
+	.choice:focus-visible {
+		border-color: var(--s-ink);
+		transform: translateY(-2px);
+	}
+
+	.choice strong {
+		padding-right: 130px;
+		font-size: 1.08rem;
+	}
+
+	.choice span {
+		color: var(--s-ink-2);
+		line-height: 1.5;
+	}
+
+	.choice small {
+		position: absolute;
+		top: 20px;
+		right: 20px;
+		color: var(--s-moss);
+		font-weight: 700;
+	}
+
+	@media (max-width: 520px) {
+		.choice strong {
+			padding-right: 0;
+		}
+		.choice small {
+			position: static;
+			order: -1;
+		}
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.choice {
+			transition: none;
+		}
 	}
 
 	.eyebrow {
