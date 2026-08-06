@@ -64,13 +64,13 @@ steps 3 and 5, not in issuance.
 
 *Added with `pangolin-remote-access.md`:* a fourth path now exists as a
 sibling proposal rather than a tier built here. The Pangolin addon's proxy
-variant, used LAN-only, terminates TLS with the same DNS-01 issuance this
-tier describes (Traefik drives lego's providers) and adds an SSO gate in
-front — at the cost of two containers against one bundled binary, and a
-domain the operator controls rather than a free dynamic-DNS subdomain. It
-does not replace Tier 1 for the paste-one-token case; it makes the Tier 2
-case something the stack can run instead of something the operator
-assembles.
+variant, used LAN-only, is this tier with an SSO gate in front: its
+default domain mode is the same paste-one-DuckDNS-token shape (Traefik
+drives lego's DuckDNS provider for wildcard DNS-01), with an owned domain
+as the option. The cost difference is two containers against one bundled
+binary; the benefit is that Tier 1 *and* Tier 2 become something the
+stack runs instead of something the operator assembles — and the same
+work already builds the remote-access front door.
 
 ## 4. The shortcut, stated honestly
 

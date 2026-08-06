@@ -88,9 +88,10 @@ it: **Pangolin Cloud's free tier provides no domain.** Pangolin-provided
 domain endings (`.hostlocal.app`, `.tunneled.to`) are documented as paid-plan
 features, and attaching a custom domain to Cloud requires NS-delegation or
 CNAME records. The Cloud path is therefore *not* the zero-DNS non-technical
-path the deferral implied. Hosting the server in-stack does not remove the
-domain requirement — but it removes the vendor from it, and OpenPalm can
-automate everything except the DNS record itself.
+path the deferral implied. Hosting the server in-stack removes the vendor
+from the domain requirement — and pairing it with a free dynamic-DNS name
+as the default (§8.1) removes the requirement's cost and its DNS editing
+too: in the default mode OpenPalm writes and maintains the record itself.
 
 ## 3. Replace Tailscale, or offer Pangolin alongside it?
 
@@ -98,29 +99,36 @@ automate everything except the DNS record itself.
 reasons, in decreasing order of weight:
 
 1. **Pangolin requires things Tailscale does not.** Every publicly useful
-   Pangolin shape needs a domain the operator controls, a DNS record, and a
-   host the internet can reach (a public IP, or a router that can forward
-   80/443). Tailscale Serve needs an SSO sign-in and nothing else. For "use
-   it from my phone" — the majority case, including every CGNAT home — Serve
-   remains the right default.
+   Pangolin shape needs a name pointing at the host (a free dynamic-DNS one
+   by default — §8) and, above all, a host the internet can reach (a public
+   IP, or a router that can forward web ports). Tailscale Serve needs an
+   SSO sign-in and nothing else. For "use it from my phone" — the majority
+   case, including every CGNAT home — Serve remains the right default.
 2. **Private access is not Pangolin's strong suit yet.** Serve covers
    only-my-devices access with GA tooling on every platform. Pangolin's
    equivalent (private resources reached through Olm-based clients) is the
    youngest part of the product. Pangolin's strength is precisely the mode
    Tailscale is weakest in: *public* exposure with real auth in front.
-3. **The two compose.** The `remote` tunnel dials out and publishes nothing;
-   Pangolin's ingress listens on 80/443. They share no ports, no config, no
-   failure modes. Private tailnet access for the operator plus a public
-   SSO-gated domain for everyone else is a legitimate, useful topology — a
-   replace-or-choose model would forbid it for no reason.
+3. **Exclusion would cost code and break migration.** The two addons share
+   no ports, config, services, or failure modes, so co-existence is free;
+   forbidding it means a new invariant in `setAddonEnabled`, error UX to
+   explain it, and a forced hard cutover for the operator who starts on
+   Tailscale and later stands up Pangolin. Stated honestly against this
+   document's first draft, which called the combination "a legitimate,
+   useful topology": running both *permanently* is a niche — redundancy
+   when DNS or certificates break, or the tailnet as a private admin path —
+   not a headline. The answer is not exclusion but steering: the UI
+   presents **one front-door chooser** (§8) that recommends exactly one of
+   the two per host, and renders both-enabled as a visible advanced state
+   rather than either a default or an error.
 
 The honest comparison, on the criteria the companion document used:
 
 | | Tailscale Serve/Funnel (shipped) | Pangolin in-stack (proposed) | Pangolin connector → external server |
 |---|---|---|---|
 | Works behind CGNAT | yes (outbound sidecar) | **no** for public exposure (host must be reachable); LAN-only mode still works | yes (outbound sidecar) |
-| Infrastructure required | none | a domain + one DNS record; reachable 80/443 | a Pangolin server somewhere (own VPS or Cloud) |
-| Custom domain | no (`*.ts.net`) | yes, any subdomain, LE certs | yes (Cloud free tier: bring your own domain + DNS records) |
+| Infrastructure required | none | a free DDNS name (default) or own domain; reachable 443 (+80 unless wildcard certs) | a Pangolin server somewhere (own VPS or Cloud) |
+| Custom domain | no (`*.ts.net`) | free `*.duckdns.org` name by default; any owned domain as the option | yes (Cloud free tier: bring your own domain + DNS records) |
 | Auth in front of public mode | **none** (password is the only door) | SSO / OIDC / email OTP / PIN / header auth / access tokens / path+IP+geo rules | same |
 | Vendor can read traffic | no — relays proxy still-encrypted TCP by SNI | **no — TLS terminates inside the stack, on the operator's hardware** | Cloud: yes (TLS terminates on Fossorial's node). Own VPS: no |
 | Control plane operated by | Tailscale (proprietary SaaS) | **the stack itself** (AGPL CE) | whoever runs that server |
@@ -183,10 +191,17 @@ a VPS running the whole OpenPalm stack, a homelab behind a router that can
 forward 80/443, a machine with a static IP. For those hosts the requirements
 are:
 
-- a domain the operator controls, with a wildcard (or per-name) A record
-  pointing at the host — the one step OpenPalm cannot automate;
-- TCP 80 and 443 reachable from the internet (80 is droppable with wildcard
-  DNS-01 certificates, which Pangolin supports via Traefik's DNS providers);
+- a name pointing at the host. By default this is **free and fully
+  automated**: a dynamic-DNS subdomain (`<name>.duckdns.org`) whose A
+  record OpenPalm itself keeps current through the provider's API (§8.1) —
+  no registrar, no DNS UI, no cost. Owning a real domain becomes the
+  *option*, for operators who have one, and manual DNS the escape hatch
+  for operators who want OpenPalm out of their DNS entirely (§8.1's three
+  domain modes);
+- TCP 443 reachable from the internet, plus TCP 80 only when certificates
+  use HTTP-01 — the DDNS default uses wildcard DNS-01 (Pangolin supports
+  it via Traefik's DNS providers, DuckDNS among them), which needs no
+  inbound port 80 at all;
 - UDP 51820 and 21820 additionally, for the tunnel variant only.
 
 A CGNAT home still has two working options: the **connector** variant
@@ -252,8 +267,8 @@ the nearest shipped precedent:
 | Compose services, profile-gated | `tunnel` under `addon.remote` | `pangolin` + `pangolin-traefik` under `addon.pangolin.proxy` and `.tunnel`; `gerbil` under `.tunnel` only; `newt` under `.connector` |
 | Profile variants | none | voice/ollama machinery: `openpalm.profile.*` labels, `OP_PANGOLIN_PROFILE` selection |
 | Images | `tailscale/tailscale:v1.98.10@sha256:…` | `fosrl/pangolin`, `traefik`, `fosrl/gerbil`, `fosrl/newt` — each pinned to a release *and* digest at implementation time; upstream's compose floats `latest`, ours must not |
-| Config keys in `state/stack.env` | `OP_REMOTE_TARGET/PUBLIC/HOSTNAME` | `OP_PANGOLIN_PROFILE/BASE_DOMAIN/DASHBOARD_DOMAIN/ACME_EMAIL/HTTP_PORT/HTTPS_PORT/TARGET`; connector adds `OP_PANGOLIN_ENDPOINT/NEWT_ID` |
-| Delegated secrets (`DELEGATED_SECRET_NAMES`) | `ts_authkey` | `newt_secret` (connector; operator-pasteable, same class as `ts_authkey`), `pangolin_server_secret` (server variants; generated once), `pangolin_api_key` (optional, §8) |
+| Config keys in `state/stack.env` | `OP_REMOTE_TARGET/PUBLIC/HOSTNAME` | `OP_PANGOLIN_PROFILE/DOMAIN_MODE/DDNS_NAME/BASE_DOMAIN/DASHBOARD_DOMAIN/ACME_EMAIL/HTTP_PORT/HTTPS_PORT/TARGET`; connector adds `OP_PANGOLIN_ENDPOINT/NEWT_ID` |
+| Delegated secrets (`DELEGATED_SECRET_NAMES`) | `ts_authkey` | `newt_secret` (connector; operator-pasteable, same class as `ts_authkey`), `pangolin_server_secret` (server variants; generated once), `duckdns_token` (ddns mode; pasted once), `pangolin_api_key` (optional, §8) |
 | Generated artifacts | `state/remote/serve.json` | `private/pangolin/config.yml` (embeds the server secret, hence `private/`), `state/pangolin/traefik/*.yml`, `private/secrets/newt_config` (connector), `state/pangolin/blueprint.yml` (§8.1) — all written with `writeFileAtomic`, none in `DELEGATED_SECRET_NAMES` (that set is for operator-suppliable credentials; generated files are seeded by explicit `ensureSecret`/`ensureHomeDirs` calls, the way `ts_authkey` and `serve.json` are handled today) |
 | Apply hook | `if (name === 'remote') applyRemoteAccess(...)` in `addons.ts` and the credentials route | `applyPangolinConfig(...)` — and this being the **second** special case, both migrate to the declaration table the addon guide prescribes ("two is a signal to generalize"): `ADDON_APPLY_HOOKS: Record<string, (homeDir: string) => AddonApplyResult>` |
 | Recreate scope (`ADDON_ENV_RECREATE_SCOPE`) | `OP_REMOTE_*` → `["tunnel"]` | `OP_PANGOLIN_*` → the variant's services |
@@ -461,8 +476,10 @@ runtime-data-in-`data/` split:
 ├─ state/stack.env                       # INTENT (existing file, new keys)
 │    OP_ENABLED_ADDONS=...,pangolin
 │    OP_PANGOLIN_PROFILE=proxy           # proxy | tunnel | connector
-│    OP_PANGOLIN_BASE_DOMAIN=example.com
-│    OP_PANGOLIN_DASHBOARD_DOMAIN=       # empty → pangolin.<base_domain>
+│    OP_PANGOLIN_DOMAIN_MODE=ddns        # ddns (default) | custom | manual
+│    OP_PANGOLIN_DDNS_NAME=              # ddns: <name>.duckdns.org
+│    OP_PANGOLIN_BASE_DOMAIN=            # custom/manual: example.com
+│    OP_PANGOLIN_DASHBOARD_DOMAIN=       # empty → pangolin.<base domain>
 │    OP_PANGOLIN_ACME_EMAIL=
 │    OP_PANGOLIN_TARGET=assistant        # assistant | guardian | both
 │    OP_PANGOLIN_ENDPOINT=               # connector only
@@ -478,6 +495,7 @@ runtime-data-in-`data/` split:
 ├─ private/secrets/
 │    pangolin_server_secret              # generated once at first enable
 │    pangolin_api_key                    # optional, pasted (§8.1)
+│    duckdns_token                       # ddns mode: pasted once (§8.1)
 │    newt_secret                         # connector: pasted or API-minted
 │    newt_config                         # connector: GENERATED (§6.2)
 │
@@ -490,7 +508,11 @@ runtime-data-in-`data/` split:
 The generated `config.yml` tracks the minimal shape the config-file
 reference documents, key for key: `app.dashboard_url` and `server.cors.
 origins` derived from the dashboard domain; `domains.domain1.base_domain`
-plus `cert_resolver: "letsencrypt"`; `server.secret` from
+plus `cert_resolver: "letsencrypt"` — with the resolver itself generated
+per domain mode: a `dnsChallenge` resolver (DuckDNS provider, token via
+lego's `_FILE` env indirection, `prefer_wildcard_cert: true`) in the
+default `ddns` mode, `httpChallenge` in `custom` mode unless a provider
+token is supplied; `server.secret` from
 `pangolin_server_secret` (the reference's `SERVER_SECRET` env override is
 deliberately not used — an env value surfaces in `docker inspect`, the
 mounted 0600 file does not); `server.trust_proxy` left at its default of
@@ -526,12 +548,30 @@ ignores the rest, as `remote-addon-registry.test.ts` records):
 # OpenPalm Pangolin configuration
 # ---
 # Puts a real web address, with a sign-in page, in front of this assistant.
-# The "Server" profiles run Pangolin inside this stack on your own domain;
-# the "Connector" profile links this stack to a Pangolin server you run
-# elsewhere (or Pangolin Cloud) instead.
+# The "Server" profiles run Pangolin inside this stack — on a free address
+# by default, or your own domain; the "Connector" profile links this stack
+# to a Pangolin server you run elsewhere (or Pangolin Cloud) instead.
 
-# The domain resources are attached to, e.g. "example.com". Server profiles
-# only. You must own this domain and point a DNS record at this machine —
+# Where the address comes from. "ddns" (the default) gets you a free
+# <name>.duckdns.org address that OpenPalm keeps pointed at this machine
+# automatically — no domain to buy, no DNS records to edit. "custom" uses
+# a domain you own (you create one DNS record; the UI shows it). "manual"
+# means you handle DNS yourself and OpenPalm stays out of it entirely.
+OP_PANGOLIN_DOMAIN_MODE=ddns
+
+# The free-address name, for ddns mode: "myname" becomes
+# https://myname.duckdns.org (create the name once at duckdns.org — it's
+# free — and paste its token below).
+OP_PANGOLIN_DDNS_NAME=
+
+# DuckDNS account token, for ddns mode. Lets OpenPalm keep the address
+# pointed here and fetch certificates. From duckdns.org, shown at the top
+# of the page after you sign in.
+# @sensitive
+DUCKDNS_TOKEN=
+
+# The domain resources are attached to, e.g. "example.com". Custom and
+# manual modes only. In custom mode, point a DNS record at this machine —
 # the setup guide walks through the one record to create.
 OP_PANGOLIN_BASE_DOMAIN=
 
@@ -578,12 +618,50 @@ piece of it is reachable from the host: generated config files, `pangctl`
 over `composeExec` (the pattern `remote`'s status read-back already
 planned), and the integration API on loopback.
 
+**One front-door chooser, not two addon rows.** `remote` and `pangolin`
+are separate addons underneath (§3), but the operator meets them as a
+single "Reach it from anywhere" chooser that asks the two questions that
+actually partition the audience — *can the internet reach this machine?*
+and *should visitors see a sign-in page on a real web address?* — and
+recommends exactly one: Tailscale for the CGNAT home and the
+zero-infrastructure case, Pangolin for the reachable host. Neither is
+buried; the non-recommended one stays a visible "instead, or as well"
+link, and enabling both renders as an explicit advanced state
+("two front doors are open") rather than an error — the migration case,
+where an operator proves Pangolin works before turning Tailscale off, is
+the main reason both-at-once exists at all.
+
 ### 8.1 The server path, automated end to end
 
-The operator answers three questions — the domain, the email for
-certificates, and "can the internet reach this machine?" — and creates one
-DNS record with a copy-paste value the UI displays (§8.4). Everything else
-is OpenPalm's:
+The operator answers three questions — a name, the email for certificates,
+and "can the internet reach this machine?" — and pastes one token.
+**Nobody buys a domain and nobody edits DNS records** unless they choose
+to: the name question is a three-mode choice, defaulting to free.
+
+- **Free address** (`OP_PANGOLIN_DOMAIN_MODE=ddns`, the default). The
+  operator picks a name and gets `<name>.duckdns.org` — DuckDNS being the
+  free dynamic-DNS provider `tls-on-the-home-network.md` already selected
+  for its Tier 1. OpenPalm keeps the A record current itself through the
+  provider's token API (the record step disappears entirely, and dynamic
+  home IPs stay correct for free — something the buy-a-domain path handles
+  *worse*), and certificates are wildcard DNS-01 through Traefik's DuckDNS
+  provider with the same pasted token, so port 80 need never open.
+  Resources land on subdomains (`assistant.<name>.duckdns.org`); wildcard
+  resolution and delegated-subdomain DNS-01 through Pangolin's Traefik are
+  §10 verification items. Stated honestly: a `duckdns.org` name is, like
+  `ts.net`, someone else's domain — what the default buys over Funnel is
+  the auth gate in front and a one-toggle graduation to a domain that *is*
+  yours.
+- **My own domain** (`custom`). For the operator who has one: the §8.4
+  record table with copyable values, HTTP-01 by default or DNS-01 with a
+  provider token, any subdomain layout they like.
+- **Manual** (`manual`). OpenPalm stays out of DNS and certificates
+  entirely: the operator brings a name, manages records however they
+  already do, and follows the runbook (§8.5's headless section) — the
+  generated files remain plain and hand-editable, so nothing in this mode
+  fights them.
+
+Everything else is OpenPalm's, in every mode:
 
 1. **Generate** `config.yml` (server secret minted into
    `pangolin_server_secret`; `flags.enable_integration_api: true`;
@@ -719,16 +797,22 @@ The two steps OpenPalm cannot perform are a DNS record at the operator's
 registrar and, on some hosts, a firewall rule. The design treats both as
 UI-guided steps with exact, copyable values — never prose instructions.
 
-**DNS.** The `dns-pending` state (§8.6) renders the record to create as a
-table row — `Type: A`, `Name: *` (the docs' recommended wildcard, so every
-resource subdomain resolves without further records), `Value: <address>` —
-with a copy button per cell. The address is the honest part: a host cannot
-always know its own public IP (NAT, VPS private interfaces), so the UI
-shows its best guess from the interfaces it can see, marks it as a guess,
-and lets the operator correct it from their VPS panel or router. The state
-clears itself: the control plane polls the dashboard domain's resolution
-and flips to `issuing-certificate` when the record appears — DNS becoming
-correct is *observed*, never assumed from a clicked "done" button.
+**DNS.** In the default `ddns` mode there is nothing to show: OpenPalm
+writes the record itself through the provider's API and re-writes it when
+the host's public address changes, so `dns-pending` appears only while
+propagation catches up. In `custom` mode the state renders the record to
+create as a table row — `Type: A`, `Name: *` (the docs' recommended
+wildcard, so every resource subdomain resolves without further records),
+`Value: <address>` — with a copy button per cell. The address is the
+honest part: a host cannot always know its own public IP (NAT, VPS
+private interfaces), so the UI shows its best guess from the interfaces
+it can see, marks it as a guess, and lets the operator correct it from
+their VPS panel or router. In `manual` mode the state reduces to the
+observed fact ("<domain> does not currently resolve to this host") with
+no instructions attached. In every mode the state clears itself: the
+control plane polls the dashboard domain's resolution and flips to
+`issuing-certificate` when the record appears — DNS becoming correct is
+*observed*, never assumed from a clicked "done" button.
 
 **Firewall.** The harness never runs `sudo`, so firewall rules are
 remediation copy, not actions: when the reachability check fails with the
@@ -737,7 +821,7 @@ networking guide for the two common systems — `ufw allow 80/tcp`,
 `ufw allow 443/tcp` (plus the UDP pair on the tunnel variant), and the
 `firewall-cmd` equivalents — each line copyable, with the cloud-provider
 security-group case named beside them. A pre-flight on enable also checks
-nothing else on the host is already bound to the chosen 80/443 (risk 11)
+nothing else on the host is already bound to the chosen 80/443 (risk 12)
 and renames that failure to "another program is using the web ports", with
 the port-override fields as the remediation.
 
@@ -804,6 +888,18 @@ The variant question, asked as capability rather than topology:
 > forward web traffic to it, Pangolin can run entirely inside your stack —
 > nothing leaves your hardware. If not (most home networks), connect to a
 > Pangolin server elsewhere instead.
+
+The address question, with free as the default and ownership as the
+option:
+
+> **Pick your web address.**
+> ○ **A free one** *(recommended)* — choose a name and get
+> `yourname.duckdns.org`. Free, kept up to date automatically; you'll
+> create the name at duckdns.org and paste one token here.
+> ○ **A domain I own** — use your own domain; you'll add one DNS record
+> at your provider (we'll show you exactly what to add).
+> ○ **I'll handle DNS myself** — for people who already run their own
+> DNS. OpenPalm won't touch your records.
 
 And the enable-time confirmation for server variants, in the
 `OP_REMOTE_PUBLIC` register — shown once, not reused for anything milder:
@@ -939,26 +1035,38 @@ Ranked:
    `type: "newt"` only); the §8.1 flow degrades to one guided dashboard
    step if Swagger's surface doesn't cover it. Verify at implementation,
    alongside whether API-key creation can be automated (step 3).
-8. **CONFIG_FILE is read-write to Newt** and the design mounts it
+8. **The DDNS default adds a free third-party dependency.** DuckDNS is a
+   donation-run free service: no SLA, and every default-mode install's
+   name resolution depends on it staying up. Acceptable for the same
+   reason Tier 1 of `tls-on-the-home-network.md` accepted it — the
+   operator can graduate to `custom` mode without reinstalling — but
+   three of its mechanics are verify-at-implementation items: wildcard
+   resolution of `*.<name>.duckdns.org`, Let's Encrypt wildcard DNS-01
+   on a delegated DuckDNS subdomain through Pangolin's generated Traefik
+   resolver, and lego's `_FILE` env indirection for the token (so it
+   never sits in `docker inspect`).
+9. **CONFIG_FILE is read-write to Newt** and the design mounts it
    read-only; Newt logs and continues on failed writes per its source, but
    "logs and continues" is an observation to confirm, not a guarantee.
-9. **Token streaming through Traefik.** The shipped entrypoint config sets
-   a 30-minute read timeout and proxies WebSockets, so SSE should pass —
-   but "should" earned a verification step in the companion document and
-   earns one here: run the real stack behind a real resource and watch
-   tokens stream before building anything else.
-10. **EE gating and terms.** Site-credential rotation, org-level IdPs, and
+10. **Token streaming through Traefik.** The shipped entrypoint config
+    sets a 30-minute read timeout and proxies WebSockets, so SSE should
+    pass — but "should" earned a verification step in the companion
+    document and earns one here: run the real stack behind a real resource
+    and watch tokens stream before building anything else.
+11. **EE gating and terms.** Site-credential rotation, org-level IdPs, and
     clustering are Enterprise; CE credential leak response is
     delete-and-recreate (automatable via the API). Cloud free-tier terms
     are observed, not contractual, and provide no domain (§2) — UI copy
     must not promise "free" on the connector-to-Cloud path.
-11. **Host port conflicts.** 80/443 may be taken by another reverse proxy
+12. **Host port conflicts.** 80/443 may be taken by another reverse proxy
     on the host. The port/bind variables exist for exactly that operator;
     the failure needs the friendly pre-flight check §8.4 specifies, not a
     Compose error.
 
-**Irreducibly manual:** buying a domain and creating one DNS record (server
-variants — the UI displays the exact record with a copy button, §8.4); a
+**Irreducibly manual:** creating the free DuckDNS name and pasting its
+token (default mode — one signup, one paste; DNS records are OpenPalm's
+from there); buying a domain and creating one DNS record only in `custom`
+mode (the UI displays the exact record with a copy button, §8.4); a
 firewall rule on some hosts (copyable commands, §8.4); router
 port-forwarding where applicable; the API-key paste (three guided clicks,
 until upstream offers a headless path); the remote dashboard's site/resource
@@ -1022,6 +1130,12 @@ MDX files, which map one-to-one onto docs.pangolin.net URLs.
 - https://docs.pangolin.net/self-host/manual/docker-compose
 - https://api.pangolin.net/v1/docs (Swagger reference)
 - https://app.pangolin.net (Pangolin Cloud)
+
+**DDNS default**
+- https://www.duckdns.org — the free provider; token API updates A and
+  TXT records (the mechanism behind both the automatic record and DNS-01)
+- https://go-acme.github.io/lego/dns/duckdns/ — the lego provider
+  Traefik's DNS-01 support wraps, incl. env token configuration
 
 **OpenPalm (working tree, this revision)**
 - `.github/roadmap/0.14.0/remote-access-from-anywhere.md` — the deferral,
