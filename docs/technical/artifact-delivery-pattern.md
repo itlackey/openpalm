@@ -4,11 +4,14 @@
 
 ## Rule
 
-Every release artifact — container image, CLI binary, desktop app — is
-complete at build time. None of them performs a runtime content download.
-Container startup must not depend on installing ordinary runtime content from
-npm. The one retained runtime package installer is Guardian's explicit
-thin-host override path.
+Every first-party release artifact — container image, CLI binary, desktop app —
+is complete at build time. None of them performs a runtime content download,
+and container startup must not depend on installing ordinary runtime content
+from npm. The retained runtime package paths are Guardian's explicit thin-host
+override and Paperclip's bounded first-agent-use install of exact-pinned
+OpenCode config dependencies into a regenerable cache. Paperclip is a
+digest-pinned third-party image that OpenPalm deliberately does not rebuild;
+its dependency bootstrap is verified before use and is not a startup install.
 
 ## Delivery Paths
 
@@ -20,6 +23,7 @@ thin-host override path.
 | Guardian package | Baked into `/opt/openpalm/guardian-pkg` | `GUARDIAN_VERSION` build arg | Existing-version check is normally a no-op; `OP_GUARDIAN_NPM_VERSION` enables an explicit override install |
 | Guardian tools | Baked from `containers/guardian/tools/package.json` | Exact manifest pins | No boot-time update |
 | Portal adapters | Candidate-local SDK and adapter workspaces packed during image build | Candidate source versions | No runtime adapter install |
+| Paperclip OpenCode config dependencies | Managed exact manifest beside the digest-pinned third-party image | Exact AKM pins plus the image's OpenCode version | Installed on first agent use into regenerable cache; bounded, CLI- and tool-hook-checked, and fail-closed |
 
 Changing either baked assistant artifact requires a new assistant image.
 

@@ -307,7 +307,7 @@ services:
     chmodSync(dirname(envPath), 0o700);
     writeFileSync(
       envPath,
-      'BETTER_AUTH_SECRET=auth\nPAPERCLIP_TOOL_ACTION_SIGNING_SECRET=sign\n',
+      'BETTER_AUTH_SECRET=auth\nPAPERCLIP_AGENT_JWT_SECRET=sign\n',
       { mode: 0o600 },
     );
 
@@ -316,7 +316,7 @@ services:
         paperclip: {
           environment: {
             BETTER_AUTH_SECRET: 'auth',
-            PAPERCLIP_TOOL_ACTION_SIGNING_SECRET: 'sign',
+            PAPERCLIP_AGENT_JWT_SECRET: 'sign',
           },
         },
       },
@@ -329,5 +329,20 @@ services:
     expect(auditResolvedComposeSecrets({
       services: { paperclip: { env_file: ['/tmp/private/env/paperclip.env'] } },
     }, { homeDir: tempDir }).map((entry) => entry.code)).toContain('paperclip-env-file-boundary');
+  });
+
+  it('rejects an empty required Paperclip secret', () => {
+    const envPath = join(tempDir, 'private', 'env', 'paperclip.env');
+    mkdirSync(dirname(envPath), { recursive: true, mode: 0o700 });
+    chmodSync(dirname(envPath), 0o700);
+    writeFileSync(envPath, 'BETTER_AUTH_SECRET=auth\nPAPERCLIP_AGENT_JWT_SECRET=\n', {
+      mode: 0o600,
+    });
+
+    expect(
+      auditResolvedComposeSecrets({ services: { paperclip: {} } }, { homeDir: tempDir }).map(
+        (entry) => entry.code,
+      ),
+    ).toContain('paperclip-env-key-missing');
   });
 });

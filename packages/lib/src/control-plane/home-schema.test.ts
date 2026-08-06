@@ -89,6 +89,23 @@ describe('an existing home migrates exactly once', () => {
     expect(readFileSync(stackEnvFile(homeDir), 'utf-8')).toBe(afterFirst);
   });
 
+  test('schema 5 migrates the persisted Paperclip signing key', () => {
+    mkdirSync(join(homeDir, 'state'), { recursive: true });
+    mkdirSync(join(homeDir, 'private', 'env'), { recursive: true });
+    writeFileSync(stackEnvFile(homeDir), 'OP_ENABLED_ADDONS=paperclip\n');
+    writeFileSync(
+      join(homeDir, 'private', 'env', 'paperclip.env'),
+      'BETTER_AUTH_SECRET=auth\nPAPERCLIP_TOOL_ACTION_SIGNING_SECRET=legacy\n',
+    );
+    writeHomeSchemaVersion(homeDir, 5);
+
+    expect(runHomeMigrations(homeDir)).toBe(true);
+    expect(readFileSync(join(homeDir, 'private', 'env', 'paperclip.env'), 'utf8')).toBe(
+      'BETTER_AUTH_SECRET=auth\nPAPERCLIP_AGENT_JWT_SECRET=legacy\n',
+    );
+    expect(readHomeSchemaVersion(homeDir)).toBe(HOME_SCHEMA_VERSION);
+  });
+
   test('the two stack env files are merged into one, and the originals removed', () => {
     mkdirSync(join(homeDir, 'knowledge', 'env'), { recursive: true });
     mkdirSync(join(homeDir, 'state'), { recursive: true });

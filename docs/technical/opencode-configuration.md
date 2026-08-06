@@ -1,8 +1,9 @@
 # OpenCode Configuration Integration
 
-This document describes the two containerized OpenCode runtimes in 0.13.0: the
-assistant and Guardian's local moderator. Admin is a host process, not an
-OpenCode container or Docker-socket path.
+This document describes the containerized OpenCode runtimes in 0.13.0: the
+assistant, Guardian's local moderator, and OpenCode processes spawned by the
+optional Paperclip addon. Admin is a host process, not an OpenCode container or
+Docker-socket path.
 
 Primary sources:
 
@@ -102,6 +103,48 @@ content validation is enabled. `GUARDIAN_CONTENT_VALIDATION` is on by default in
 both code and shipped Compose; explicit `0`, `false`, `no`, or `off` disables
 the stage. Failed classification of an escalated message blocks the message.
 
+## Paperclip Agent Runtime
+
+Paperclip spawns its image-baked `opencode` command for each local-agent run.
+OpenPalm supplies two config layers:
+
+1. `system/paperclip/` is mounted read-only at `/opt/openpalm/paperclip`. It
+   contains the exact AKM package manifest, managed permissions and security
+   instructions, a single-export adapter for `akm-opencode`, an embedded-Bun
+   launcher for `akm-cli`, and an `opencode` launcher that removes long-lived
+   Paperclip server secrets from agent runs.
+2. `config/paperclip/opencode/` is mounted read-only at
+   `/paperclip/.config/opencode` for operator model/provider and agent settings.
+   `XDG_CONFIG_HOME=/paperclip/.config` keeps this location stable when
+   Paperclip's model preflight normalizes `HOME` from the passwd database.
+
+The managed launcher copies whole release files into
+`cache/paperclip-opencode/runtime/`, mounted at the writable
+`OPENCODE_CONFIG_DIR=/etc/opencode`. OpenCode installs the exact-pinned
+`akm-opencode` and `akm-cli` dependencies there and adds its own matching plugin
+API package. Changed files are published atomically under a cross-process lock,
+and exact installed versions are checked before a release manifest is marked
+current. No runtime config or dependency content is stored in the managed or
+user config trees or included in backups.
+
+Paperclip receives shared knowledge at `/stash`, with
+`knowledge/paperclip/env/` and `knowledge/paperclip/secrets/` mounted over the
+canonical `/stash/env` and `/stash/secrets` paths. Its AKM config and state are
+isolated at `/etc/akm`, `/opt/akm/cache`, and `/opt/akm/data`.
+
+The compatibility adapter is required by the OpenCode `1.3.0` bundled in the
+current digest-pinned Paperclip image. Re-test plugin loading, bare `akm`, and
+model tool invocation whenever that image changes.
+
+Managed permissions allow `/stash` plus Paperclip's generated per-agent
+instruction and workspace directories. Those paths can sit outside the active
+project cwd, so the grants prevent noninteractive runs from auto-rejecting
+Paperclip's own `HEARTBEAT.md`, `SOUL.md`, `TOOLS.md`, and agent-memory reads.
+The pinned upstream adapter otherwise passes its full server environment to
+OpenCode. The managed launcher removes the server authentication and JWT-signing
+secrets while preserving Paperclip's short-lived run API key; managed
+instructions prohibit environment enumeration so that run key is not logged.
+
 ## Secret Boundary
 
 - Provider `auth.json` is the only service credential retained under
@@ -116,6 +159,9 @@ the stage. Failed classification of an escalated message blocks the message.
 
 - Put user tools, plugins, commands, skills, persona, and provider/model config
   under `~/.openpalm/config/assistant/`.
+- Put Paperclip-specific OpenCode settings under
+  `~/.openpalm/config/paperclip/opencode/` and its AKM settings under
+  `~/.openpalm/config/paperclip/akm/`.
 - Update provider credentials through OpenCode auth state at
   `~/.openpalm/knowledge/secrets/auth.json`.
 - Edit only `~/.openpalm/config/stack/custom.compose.yml` for user stack

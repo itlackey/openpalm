@@ -88,6 +88,8 @@ separate listeners.
   under `private/secrets/`.
 - `private/` is never mounted into assistant `/stash`; services receive only
   the named files they consume.
+- Paperclip's upstream image requires two environment secrets, delivered through
+  the sole audited exact-key file at `private/env/paperclip.env`.
 - `knowledge/env/user.env` is loaded by scoped tools on demand, not sourced by
   the assistant entrypoint.
 

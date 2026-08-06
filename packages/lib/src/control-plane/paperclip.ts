@@ -15,8 +15,10 @@ import { privateDir } from './home.js';
  */
 export const PAPERCLIP_ENV_KEYS: ReadonlySet<string> = new Set([
 	'BETTER_AUTH_SECRET',
-	'PAPERCLIP_TOOL_ACTION_SIGNING_SECRET'
+	'PAPERCLIP_AGENT_JWT_SECRET'
 ]);
+
+const LEGACY_PAPERCLIP_SIGNING_KEY = 'PAPERCLIP_TOOL_ACTION_SIGNING_SECRET';
 
 export function paperclipEnvFile(homeDir: string): string {
 	return join(privateDir(homeDir), 'env', 'paperclip.env');
@@ -39,17 +41,29 @@ export function preparePaperclipAddon(homeDir: string): void {
 
 	// parseEnvFile already returns {} for a missing file.
 	const existingEnv = parseEnvFile(envPath);
-	const unknown = Object.keys(existingEnv).filter((key) => !PAPERCLIP_ENV_KEYS.has(key));
+	const unknown = Object.keys(existingEnv).filter(
+		(key) => !PAPERCLIP_ENV_KEYS.has(key) && key !== LEGACY_PAPERCLIP_SIGNING_KEY
+	);
 	if (unknown.length > 0) {
 		throw new Error(`Paperclip env contains unsupported key(s): ${unknown.join(', ')}`);
 	}
 
 	const betterAuth = existingEnv.BETTER_AUTH_SECRET || randomHex(32);
-	const signing = existingEnv.PAPERCLIP_TOOL_ACTION_SIGNING_SECRET || randomHex(32);
+	// Early Paperclip addon builds seeded an upstream key that this pinned image
+	// does not use. Reuse that entropy rather than rotating persisted state.
+	const agentJwt =
+		existingEnv.PAPERCLIP_AGENT_JWT_SECRET ||
+		existingEnv[LEGACY_PAPERCLIP_SIGNING_KEY] ||
+		randomHex(32);
 
 	// Nothing generated and nothing missing ⇒ the file is already correct.
 	// Skip the rewrite so a no-op enable does not churn the file's inode.
-	if (existingEnv.BETTER_AUTH_SECRET && existingEnv.PAPERCLIP_TOOL_ACTION_SIGNING_SECRET) {
+	if (
+		existingEnv.BETTER_AUTH_SECRET &&
+		existingEnv.PAPERCLIP_AGENT_JWT_SECRET &&
+		!(LEGACY_PAPERCLIP_SIGNING_KEY in existingEnv)
+	) {
+		chmodSync(envPath, 0o600);
 		return;
 	}
 
@@ -57,7 +71,7 @@ export function preparePaperclipAddon(homeDir: string): void {
 		envPath,
 		[
 			`BETTER_AUTH_SECRET=${quoteEnvValue(betterAuth)}`,
-			`PAPERCLIP_TOOL_ACTION_SIGNING_SECRET=${quoteEnvValue(signing)}`,
+			`PAPERCLIP_AGENT_JWT_SECRET=${quoteEnvValue(agentJwt)}`,
 			''
 		].join('\n'),
 		0o600
@@ -65,4 +79,11 @@ export function preparePaperclipAddon(homeDir: string): void {
 	// writeFileSync does not re-apply mode to a pre-existing `${path}.tmp` left
 	// by a crash between write and rename — matches secrets-files.ts:137.
 	chmodSync(envPath, 0o600);
+}
+
+export function migrateLegacyPaperclipEnv(homeDir: string): boolean {
+	const existingEnv = parseEnvFile(paperclipEnvFile(homeDir));
+	if (!(LEGACY_PAPERCLIP_SIGNING_KEY in existingEnv)) return false;
+	preparePaperclipAddon(homeDir);
+	return true;
 }

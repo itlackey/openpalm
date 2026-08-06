@@ -47,6 +47,16 @@ describe("OP_HOME layout (single source of truth)", () => {
       expect(existsSync(join(home, "state"))).toBe(true);
       expect(existsSync(join(home, 'data/assistant/.config/opencode'))).toBe(true);
       expect(existsSync(join(home, 'data/guardian/.config/opencode'))).toBe(true);
+      expect(existsSync(join(home, 'data/paperclip/.config/opencode'))).toBe(true);
+      expect(existsSync(join(home, 'config/paperclip/opencode'))).toBe(true);
+      expect(existsSync(join(home, 'config/paperclip/akm'))).toBe(true);
+      expect(existsSync(join(home, 'system/paperclip'))).toBe(true);
+      expect(existsSync(join(home, 'cache/paperclip-opencode'))).toBe(true);
+      expect(existsSync(join(home, 'cache/paperclip-opencode/runtime'))).toBe(true);
+      expect(existsSync(join(home, 'knowledge/paperclip/env'))).toBe(true);
+      expect(existsSync(join(home, 'knowledge/paperclip/secrets'))).toBe(true);
+      expect(existsSync(join(home, 'data/paperclip-akm/cache'))).toBe(true);
+      expect(existsSync(join(home, 'data/paperclip-akm/data'))).toBe(true);
       expect(statSync(join(home, 'data/assistant/.local/share/opencode/auth.json')).isFile()).toBe(true);
       expect(statSync(join(home, 'data/guardian/.local/share/opencode/auth.json')).isFile()).toBe(true);
     } finally {

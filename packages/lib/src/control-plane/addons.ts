@@ -479,6 +479,16 @@ export function setAddonEnabled(homeDir: string, name: string, enabled: boolean,
   const wasEnabled = listEnabledAddonIds(homeDir).includes(name);
   const services = getAddonServiceNames(homeDir, name);
 
+  // Compose needs this env file even when enablement is already recorded. The
+  // call also migrates the retired signing key on restored or upgraded homes.
+  if (name === 'paperclip' && enabled) {
+    try {
+      preparePaperclipAddon(homeDir);
+    } catch (error) {
+      return { ok: false, error: errMessage(error) };
+    }
+  }
+
   if (wasEnabled === enabled) {
     if (name === 'remote') {
       const applied = applyRemoteAccess(homeDir);
@@ -515,19 +525,6 @@ export function setAddonEnabled(homeDir: string, name: string, enabled: boolean,
     // call here covers enabling an addon between deploys.)
     if (GUARDIAN_INGRESS_ADDON_IDS.includes(name)) {
       for (const portal of PORTAL_SECRET_ADDON_IDS) ensurePortalSecret(homeDir, portal);
-    }
-
-    // Same shape, same reason, as the portal secrets above: services.compose.yml
-    // declares paperclip's env_file, and Compose fails the WHOLE project — even
-    // `config` — when a profile-active service's env_file is missing. Also
-    // seeded unconditionally by `ensureSecrets`; this call covers enabling
-    // between deploys.
-    if (name === 'paperclip') {
-      try {
-        preparePaperclipAddon(homeDir);
-      } catch (error) {
-        return { ok: false, error: errMessage(error) };
-      }
     }
 
     // Pre-create (and chown) any host-side bind-mount targets the newly

@@ -1,0 +1,3 @@
+#!/bin/sh
+export BUN_BE_BUN=1
+exec opencode "$@"

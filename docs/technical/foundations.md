@@ -40,10 +40,13 @@ Ownership is a security boundary, not just organization:
   Discord, and Slack credentials. It is never bind-mounted into `/stash`.
 - Compose grants delegated credentials as individual files under
   `/run/secrets/` only to the services that need them.
+- The digest-pinned Paperclip image cannot consume file-based auth, so its two
+  required server secrets use the sole audited exception:
+  `private/env/paperclip.env`, with an exact key set and strict file modes.
 - `knowledge/env/user.env` backs AKM `env:user`. It is neither a Compose env file
   nor sourced by the assistant entrypoint. Scoped tools load it on demand.
-- No service receives a broad secret env file, and `state/stack.env` must remain
-  non-secret.
+- No service receives a broad secret env file; Paperclip's narrow exact-key file
+  is the only exception. `state/stack.env` must remain non-secret.
 
 ## Security Boundaries
 

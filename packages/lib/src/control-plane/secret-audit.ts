@@ -327,7 +327,7 @@ function auditPaperclipEnv(service: ComposeService, homeDir: string): SecretAudi
   if (invalid.length > 0) {
     return issue('paperclip-env-key-boundary', `Paperclip env_file contains unsupported key(s): ${invalid.join(', ')}.`, expected);
   }
-  const missing = [...PAPERCLIP_ENV_KEYS].filter((key) => env[key] === undefined);
+  const missing = [...PAPERCLIP_ENV_KEYS].filter((key) => !env[key]);
   if (missing.length > 0) {
     return issue('paperclip-env-key-missing', `Paperclip env_file is missing required key(s): ${missing.join(', ')}.`, expected);
   }

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'bun:test';
-import { mkdirSync, mkdtempSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, mkdtempSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { parseEnvFile } from './env.js';
@@ -22,13 +22,30 @@ describe('preparePaperclipAddon', () => {
 		const homeDir = createHome();
 		preparePaperclipAddon(homeDir);
 		const first = parseEnvFile(paperclipEnvFile(homeDir));
+		chmodSync(paperclipEnvFile(homeDir), 0o644);
 		preparePaperclipAddon(homeDir);
 
 		expect(parseEnvFile(paperclipEnvFile(homeDir))).toEqual(first);
 		expect(first.BETTER_AUTH_SECRET).toHaveLength(64);
-		expect(first.PAPERCLIP_TOOL_ACTION_SIGNING_SECRET).toHaveLength(64);
+		expect(first.PAPERCLIP_AGENT_JWT_SECRET).toHaveLength(64);
 		expect(statSync(join(homeDir, 'private', 'env')).mode & 0o777).toBe(0o700);
 		expect(statSync(paperclipEnvFile(homeDir)).mode & 0o777).toBe(0o600);
+	});
+
+	it('migrates the unused legacy signing key without rotating its value', () => {
+		const homeDir = createHome();
+		mkdirSync(join(homeDir, 'private', 'env'), { recursive: true });
+		writeFileSync(
+			paperclipEnvFile(homeDir),
+			'BETTER_AUTH_SECRET=auth\nPAPERCLIP_TOOL_ACTION_SIGNING_SECRET=legacy-signing\n'
+		);
+
+		preparePaperclipAddon(homeDir);
+
+		expect(parseEnvFile(paperclipEnvFile(homeDir))).toEqual({
+			BETTER_AUTH_SECRET: 'auth',
+			PAPERCLIP_AGENT_JWT_SECRET: 'legacy-signing'
+		});
 	});
 
 	it('rejects unsupported values instead of passing them into Paperclip', () => {

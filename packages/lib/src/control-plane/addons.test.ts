@@ -121,7 +121,22 @@ describe('addon runtime state', () => {
       services: ['paperclip'],
     });
     expect(listEnabledAddonIds(homeDir)).toContain('paperclip');
-    expect(existsSync(join(homeDir, 'private', 'env', 'paperclip.env'))).toBe(true);
+    const paperclipEnv = join(homeDir, 'private', 'env', 'paperclip.env');
+    expect(existsSync(paperclipEnv)).toBe(true);
+
+    writeFileSync(
+      paperclipEnv,
+      'BETTER_AUTH_SECRET=auth\nPAPERCLIP_TOOL_ACTION_SIGNING_SECRET=legacy\n',
+    );
+    expect(setAddonEnabled(homeDir, 'paperclip', true)).toEqual({
+      ok: true,
+      enabled: true,
+      changed: false,
+      services: ['paperclip'],
+    });
+    expect(readFileSync(paperclipEnv, 'utf8')).toBe(
+      'BETTER_AUTH_SECRET=auth\nPAPERCLIP_AGENT_JWT_SECRET=legacy\n',
+    );
   });
 
   it('toggles addons and generates channel secrets for channel addons', () => {

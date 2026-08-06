@@ -907,13 +907,19 @@ docker exec "$PAPERCLIP_CONTAINER" sh -lc '
 Required results:
 
 - `paperclip.env` contains exactly `BETTER_AUTH_SECRET` and
-  `PAPERCLIP_TOOL_ACTION_SIGNING_SECRET`, with directory/file modes `0700` and
+  `PAPERCLIP_AGENT_JWT_SECRET`, with directory/file modes `0700` and
   `0600`.
 - Paperclip binds only `127.0.0.1:3940`, runs as the configured non-root UID/GID,
-  joins only this project's `addon_net`, and mounts only its `/paperclip` data
-  tree.
-- It has no `/stash`, `/work`, assistant secret, Guardian secret, Docker socket,
-  `assistant_net`, or `portal_net` access.
+  and joins only this project's `addon_net`.
+- Its mounts are limited to `/paperclip`, managed and user OpenCode config,
+  Paperclip AKM config/state, the shared `/stash`, and the two nested
+  Paperclip-specific `/stash/env` and `/stash/secrets` overlays. The user
+  OpenCode config is read-only; mutable runtime config and plugin dependencies
+  come from `cache/paperclip-opencode/runtime`.
+- The nested mounts obscure the assistant's `knowledge/env/user.env` and
+  `knowledge/secrets/auth.json`. Paperclip has no `/work`, broad `private/`
+  mount, assistant or Guardian credential, Docker socket, `assistant_net`, or
+  `portal_net` access.
 - Authenticated/private deployment and telemetry opt-out values are active.
 - `http://<host-LAN-address>:3940` is unreachable from a second device.
 - The Tailscale URL exposes no Paperclip port. The Remote addon supports only
@@ -976,19 +982,53 @@ Required results:
 
 ## 8. Exercise a Real Paperclip Run
 
-First verify every CLI that the OpenPalm Paperclip runtime contract says is
-available:
+Initialize the exact-pinned OpenCode config dependencies, then verify the
+selected adapter and AKM runtimes:
 
 ```bash
-for tool in curl git node pnpm claude codex opencode gemini rg python3 ssh jq; do
-  docker exec "$PAPERCLIP_CONTAINER" sh -lc 'command -v "$1" >/dev/null' sh "$tool" \
+docker exec -w /tmp "$PAPERCLIP_CONTAINER" opencode debug config >/dev/null
+
+for tool in curl git node pnpm claude codex opencode bun akm; do
+  docker exec "$PAPERCLIP_CONTAINER" sh -c 'command -v "$1" >/dev/null' sh "$tool" \
     && printf 'present  %s\n' "$tool" \
     || printf 'MISSING  %s\n' "$tool"
 done
+
+test "$(docker exec "$PAPERCLIP_CONTAINER" akm --version)" = 0.8.14
+docker exec "$PAPERCLIP_CONTAINER" akm --format json -q info
 ```
 
-Every listed command must resolve. A healthy web server with a missing local
-agent dependency is `FAIL`.
+Every listed command must resolve. `bun` is the managed launcher for the Bun
+runtime embedded in Paperclip's pinned OpenCode binary; it is not downloaded at
+container startup. A healthy web server with a missing selected adapter or AKM
+dependency is `FAIL`.
+
+Seed non-sensitive AKM acceptance assets. The env and secret marker values are
+only leak canaries; never print them in evidence:
+
+```bash
+mkdir -p "$TEST_HOME/knowledge/knowledge"
+cat > "$TEST_HOME/knowledge/knowledge/paperclip-manual-acceptance.md" <<'EOF'
+---
+description: Disposable Paperclip AKM integration acceptance marker.
+---
+
+# Paperclip AKM acceptance
+
+The expected knowledge marker is PAPERCLIP_AKM_KNOWLEDGE_OK.
+EOF
+printf 'PAPERCLIP_AKM_ENV_CANARY=paperclip-env-value-must-not-be-printed\n' \
+  > "$TEST_HOME/knowledge/paperclip/env/user.env"
+printf 'paperclip-secret-value-must-not-be-printed\n' \
+  > "$TEST_HOME/knowledge/paperclip/secrets/manual-acceptance.txt"
+chmod 600 \
+  "$TEST_HOME/knowledge/paperclip/env/user.env" \
+  "$TEST_HOME/knowledge/paperclip/secrets/manual-acceptance.txt"
+
+docker exec "$PAPERCLIP_CONTAINER" akm index
+docker exec "$PAPERCLIP_CONTAINER" akm search \
+  'Paperclip AKM integration acceptance marker'
+```
 
 Create an isolated local workspace for a credential-backed agent run:
 
@@ -1002,13 +1042,16 @@ docker exec "$PAPERCLIP_CONTAINER" mkdir -p /paperclip/manual-acceptance
    `/paperclip/manual-acceptance`.
 3. Create a `backlog` issue in that project instructing the agent to add a
    comment containing `PAPERCLIP_LOCAL_OK`, then mark the issue complete through
-   the Paperclip API.
+   the Paperclip API with a separate status-only PATCH and no second comment.
+   Also require it to call `akm_search`, `akm_show`,
+   `akm_env`, and `akm_secret`; it may report key/ref names and the secret path,
+   but must never report either canary value.
 4. Store a disposable provider credential through Paperclip's own encrypted
    secret/agent configuration. Do not put it in OpenPalm's assistant auth file,
    `stack.env`, evidence, or shell history.
-5. Create and approve an agent using `claude_local`, `codex_local`, or
-   `opencode_local`. Record the adapter, model, provider environment-key name,
-   and small test budget. The project supplies the working directory; do not
+5. Create and approve an agent using `opencode_local`. Record the model,
+   provider environment-key name, and small test budget. The model must use
+   `provider/model` form. The project supplies the working directory; do not
    invent an agent-level `cwd` field that the pinned create form does not show.
 6. Run the agent form's **Test environment** action and require a pass before
    assigning work.
@@ -1017,19 +1060,19 @@ docker exec "$PAPERCLIP_CONTAINER" mkdir -p /paperclip/manual-acceptance
    queued, never in addition to an already queued run.
 8. Inspect the streamed run log and the resulting issue activity.
 
-Use the adapter's normal provider key and record the exact choice:
-
-| Adapter | Runtime | Typical provider key |
-|---|---|---|
-| `claude_local` | `claude` | `ANTHROPIC_API_KEY` |
-| `codex_local` | `codex` | `OPENAI_API_KEY` |
-| `opencode_local` | `opencode` | The selected OpenCode provider's key; model must use `provider/model` form |
+Use the selected OpenCode provider's normal credential and record the provider,
+credential key name, and model without recording its value.
 
 Required result: Paperclip injects an authenticated `PAPERCLIP_API_KEY`, the
 local CLI starts, reads its assigned issue, posts the marker comment, completes
 the issue, and reports one run/cost without exposing its credential. A run that
 continues without an API key, runs twice from one assignment, or cannot use the
-project's local folder is `FAIL`.
+project's local folder is `FAIL`. The same run must complete all four AKM tool
+calls, find `PAPERCLIP_AKM_KNOWLEDGE_OK`, list the env key and secret ref/path,
+and contain neither `paperclip-env-value-must-not-be-printed` nor
+`paperclip-secret-value-must-not-be-printed` in model or tool output. The run
+must not enumerate the process environment or log the injected Paperclip API
+key or either long-lived Paperclip server secret.
 
 ## 9. Verify Paperclip Persistence and Reconfiguration
 

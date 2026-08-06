@@ -1,0 +1,29 @@
+{
+	"semanticSearchMode": "auto",
+	"registries": [
+		{
+			"url": "https://raw.githubusercontent.com/itlackey/akm-registry/main/index.json",
+			"name": "akm-registry"
+		},
+		{
+			"url": "https://skills.sh",
+			"name": "skills.sh",
+			"enabled": false,
+			"provider": "skills-sh"
+		}
+	],
+	"output": {
+		"format": "json",
+		"detail": "brief"
+	},
+	"profiles": {
+		"agent": {
+			"opencode": {
+				"platform": "opencode"
+			}
+		}
+	},
+	"defaults": {
+		"agent": "opencode"
+	}
+}

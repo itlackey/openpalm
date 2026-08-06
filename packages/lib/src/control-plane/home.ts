@@ -154,7 +154,7 @@ export function hasAnyStackEnvFile(home: string): boolean {
  * it is pure layout — putting it in `home-schema.ts` would make this module
  * depend on `config-persistence`/`addons`, which depend back on this one.
  */
-export const HOME_SCHEMA_VERSION = 5;
+export const HOME_SCHEMA_VERSION = 6;
 
 /** The recorded schema version, or 0 when nothing is recorded (pre-record home). */
 export function readHomeSchemaVersion(home: string): number {
@@ -311,6 +311,8 @@ export function ensureHomeDirs(home: string = resolveOpenPalmHome()): void {
     `${home}/config/assistant`,
     `${home}/config/guardian`,
     `${home}/config/akm`,           // akm XDG config directory
+    `${home}/config/paperclip/opencode`, // Paperclip OpenCode global config
+    `${home}/config/paperclip/akm`, // Paperclip's isolated AKM config
     `${home}/config/stack`,         // user-owned custom.compose.yml overlay (seeded once)
 
     // cache/ — regenerable, purgeable, and NEVER backed up. Pre-created here
@@ -320,6 +322,8 @@ export function ensureHomeDirs(home: string = resolveOpenPalmHome()): void {
     `${home}/cache`,
     `${home}/cache/assistant`,
     `${home}/cache/guardian`,
+    `${home}/cache/paperclip-opencode`, // regenerable OpenCode plugin dependencies
+    `${home}/cache/paperclip-opencode/runtime`, // mutable config + node_modules
 
     // data/ — persistent service data
     `${home}/data`,
@@ -334,10 +338,14 @@ export function ensureHomeDirs(home: string = resolveOpenPalmHome()): void {
     `${home}/data/guardian/.config/opencode`,
     `${home}/data/guardian/.local/share/opencode`,
     `${home}/data/guardian/.local/state/opencode`,
+    `${home}/data/paperclip`,       // Paperclip HOME bind mount
+    `${home}/data/paperclip/.config/opencode`, // nested read-only user-config mountpoint
     `${home}/data/tunnel`,         // remote addon: persistent tailnet node identity (see remoteTunnelStateDir)
     `${home}/data/akm/cache`,      // akm cache
     `${home}/data/akm/data`,       // akm durable data
     `${home}/data/akm/empty-host-stash`, // always-present /host-stash fallback when host AKM is absent
+    `${home}/data/paperclip-akm/cache`, // Paperclip AKM cache
+    `${home}/data/paperclip-akm/data`, // Paperclip AKM durable data
     `${home}/data/logs`,           // service logs and audit files
     `${home}/data/ui`,             // materialized UI build (CLI-embedded, or bundled/repo-resolved)
     `${home}/data/backups`,        // lifecycle backup snapshots
@@ -347,6 +355,8 @@ export function ensureHomeDirs(home: string = resolveOpenPalmHome()): void {
     `${home}/knowledge/env`,
     `${home}/knowledge/secrets`,
     `${home}/knowledge/tasks`,
+    `${home}/knowledge/paperclip/env`, // Paperclip-only AKM env overlay
+    `${home}/knowledge/paperclip/secrets`, // Paperclip-only AKM secrets overlay
 
     // private/ — delegated secrets (guardian/portal-only, never assistant-reachable; §G1)
     `${home}/private`,
@@ -359,6 +369,7 @@ export function ensureHomeDirs(home: string = resolveOpenPalmHome()): void {
     `${home}/system/stack`,         // fixed compose files (managed, overwritten on update)
     `${home}/system/assistant`,     // MANAGED assistant OpenCode config (OPENCODE_CONFIG_DIR)
     `${home}/system/guardian`,      // MANAGED guardian OpenCode config (OPENCODE_CONFIG_DIR)
+    `${home}/system/paperclip`,     // MANAGED Paperclip OpenCode plugin bootstrap
     `${home}/state`,
     `${home}/state/remote`,         // remote addon: generated Tailscale serve config (see remoteServeConfigDir)
   ]) {

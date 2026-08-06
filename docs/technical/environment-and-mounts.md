@@ -59,12 +59,16 @@ Secret storage is split by exposure:
   server password, Guardian/API tokens, portal principal secrets, and bot
   tokens. The directory is never mounted into assistant `/stash`; Compose grants
   only named files to the service process that consumes them.
+- `private/env/paperclip.env` is the sole audited env-file exception. The pinned
+  upstream image requires its two server secrets as environment variables; the
+  audit enforces the exact path, exact key set, values, and file modes.
 - `knowledge/env/user.env` is the AKM `env:user` backing file. It is not a
   Compose env file and the assistant entrypoint does not source it. Scoped agent
   tools and AKM commands load it on demand.
 
 Secret directories use mode `0700`; secret files use `0600`. Secret values do
-not belong in `state/stack.env` or broad service `env_file` blocks.
+not belong in `state/stack.env` or broad service `env_file` blocks; Paperclip's
+exact-key file above is the only exception.
 
 ## Access Toggles
 
@@ -146,10 +150,38 @@ Compose source: `packages/skeleton/system/stack/services.compose.yml`.
 | Host source | Container path | Mode | Purpose |
 |---|---|---|---|
 | `$OP_HOME/data/paperclip` | `/paperclip` | rw | Complete Paperclip instance, including its embedded database |
-| `$OP_HOME/private/env/paperclip.env` | Compose `env_file` | ro input | Upstream-required authentication and action-signing secrets |
+| `$OP_HOME/config/paperclip/opencode` | `/paperclip/.config/opencode` | ro | User OpenCode global config |
+| `$OP_HOME/system/paperclip` | `/opt/openpalm/paperclip` | ro | Managed AKM plugin bootstrap and launchers |
+| `$OP_HOME/cache/paperclip-opencode/runtime` | `/etc/opencode` | rw | Regenerable OpenCode runtime config and exact-pinned plugin dependencies |
+| `$OP_HOME/config/paperclip/akm` | `/etc/akm` | rw | Paperclip-specific AKM config |
+| `$OP_HOME/knowledge` | `/stash` | rw | Shared knowledge and AKM assets |
+| `$OP_HOME/knowledge/paperclip/secrets` | `/stash/secrets` | rw | Paperclip-authorized secret assets; obscures assistant provider auth |
+| `$OP_HOME/knowledge/paperclip/env` | `/stash/env` | rw | Paperclip-authorized env assets; obscures assistant `user.env` |
+| `$OP_HOME/data/paperclip-akm/cache` | `/opt/akm/cache` | rw | Paperclip AKM cache |
+| `$OP_HOME/data/paperclip-akm/data` | `/opt/akm/data` | rw | Paperclip AKM database and runtime state |
+| `$OP_HOME/private/env/paperclip.env` | Compose `env_file` | ro input | Upstream-required authentication and agent-JWT secrets |
 
 Paperclip is a normal `addon.paperclip` service. It is published only at
 `127.0.0.1:${OP_PAPERCLIP_PORT:-3840}` and joins only `addon_net`.
+
+The parent `/stash` mount is intentionally followed by more-specific env and
+secret mounts. Paperclip can use shared knowledge, but its canonical AKM value
+paths resolve only to `knowledge/paperclip/`; it cannot reach the assistant's
+`knowledge/env/user.env` or `knowledge/secrets/auth.json` through those paths.
+Values under `knowledge/paperclip/` remain visible to the assistant and must be
+treated as agent-readable.
+
+### Key Environment
+
+| Variable | Value | Purpose |
+|---|---|---|
+| `XDG_CONFIG_HOME` | `/paperclip/.config` | Keeps model preflight and agent runs on one user config |
+| `OPENCODE_CONFIG_DIR` | `/etc/opencode` | Mutable runtime copy of managed plugin bootstrap and permissions |
+| `AKM_STASH_DIR` | `/stash` | Shared stash with Paperclip-specific value overlays |
+| `AKM_CONFIG_DIR` | `/etc/akm` | Paperclip AKM config |
+| `AKM_CACHE_DIR` | `/opt/akm/cache` | AKM cache |
+| `AKM_DATA_DIR` | `/opt/akm/data` | AKM durable state |
+| `PATH` | read-only managed launchers, exact-pinned runtime package shims, then upstream system paths | Keeps the server-secret-scrubbing OpenCode and embedded-Bun launchers authoritative while making `akm` available to every adapter run |
 
 **Backups: `data/paperclip` is NOT covered by lifecycle safety backups.** It is
 service-owned data, which the backup scope in
@@ -175,6 +207,10 @@ The credentials in `private/env/paperclip.env` *are* in backup scope (all of
 `private/` is), so a restore that brings back the secrets without
 `data/paperclip` yields a working login against an empty database. Back up both
 or neither.
+
+Paperclip OpenCode/AKM user config and `knowledge/paperclip/` are also in
+lifecycle safety backup scope. `data/paperclip-akm/` is service state and
+excluded; `cache/paperclip-opencode/runtime/` is regenerable and excluded.
 
 ## Guardian
 

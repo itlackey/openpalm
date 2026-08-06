@@ -1,0 +1,118 @@
+#!/bin/sh
+set -eu
+
+unset BETTER_AUTH_SECRET
+unset PAPERCLIP_AGENT_JWT_SECRET
+unset PAPERCLIP_TOOL_ACTION_SIGNING_SECRET
+
+managed=/opt/openpalm/paperclip
+runtime=/etc/opencode
+bun_mode=${BUN_BE_BUN-}
+
+if [ -n "$bun_mode" ]; then
+  exec /usr/local/bin/opencode "$@"
+fi
+
+unset BUN_BE_BUN
+opencode_version=$(/usr/local/bin/opencode --version)
+
+mkdir -p "$runtime"
+exec 9>"$runtime/.openpalm-bootstrap.lock"
+flock 9
+
+publish() {
+  source=$1
+  destination=$2
+  mode=${3:-0644}
+  if [ -f "$destination" ] && cmp -s "$source" "$destination"; then
+    chmod "$mode" "$destination"
+    return
+  fi
+  temporary="${destination}.tmp.$$"
+  install -m "$mode" "$source" "$temporary"
+  mv -f "$temporary" "$destination"
+}
+
+dependencies_current() {
+  node -e '
+    const fs = require("node:fs");
+    const expected = JSON.parse(fs.readFileSync(process.argv[1], "utf8")).dependencies;
+    const runtime = JSON.parse(fs.readFileSync(`${process.argv[2]}/package.json`, "utf8"));
+    for (const [name, version] of Object.entries(expected)) {
+      const installed = JSON.parse(
+        fs.readFileSync(`${process.argv[2]}/node_modules/${name}/package.json`, "utf8"),
+      ).version;
+      if (runtime.dependencies?.[name] !== version || installed !== version) process.exit(1);
+    }
+    const pluginVersion = runtime.dependencies?.["@opencode-ai/plugin"];
+    if (!pluginVersion || pluginVersion !== process.argv[3]) process.exit(1);
+    const installedPlugin = JSON.parse(
+      fs.readFileSync(`${process.argv[2]}/node_modules/@opencode-ai/plugin/package.json`, "utf8"),
+    ).version;
+    if (installedPlugin !== pluginVersion) process.exit(1);
+  ' "$1" "$runtime" "$opencode_version"
+}
+
+runtime_works() {
+  timeout --kill-after=2s 15s env BUN_BE_BUN=1 /usr/local/bin/opencode -e '
+    const manifest = await Bun.file(process.argv[2]).json();
+    const cli = Bun.spawnSync([process.argv[3], "--version"], {
+      env: process.env,
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    if (cli.exitCode !== 0 || cli.stdout.toString().trim() !== manifest.dependencies["akm-cli"]) {
+      process.exit(1);
+    }
+    const plugin = await import(`file://${process.argv[1]}`);
+    const hooks = await plugin.default({
+      client: { app: { log: async () => ({}) } },
+      directory: "/tmp",
+      worktree: "/tmp",
+    });
+    for (const name of ["akm_search", "akm_show", "akm_env", "akm_secret"]) {
+      if (!hooks?.tool?.[name]) process.exit(1);
+    }
+  ' "$runtime/plugins/akm.ts" "$managed/package.json" "$runtime/node_modules/.bin/akm"
+}
+
+if [ ! -r "$managed/opencode.json" ] \
+  || [ ! -r "$managed/package.json" ] \
+  || [ ! -r "$managed/plugins/akm.ts" ] \
+  || [ ! -r "$managed/security.md" ] \
+  || [ ! -x "$managed/bin/opencode" ] \
+  || [ ! -x "$managed/bin/bun" ]; then
+  printf 'Paperclip managed OpenCode source is unavailable.\n' >&2
+  exit 1
+fi
+
+# Keep dependency artifacts only. OpenCode auto-discovers config directories,
+# so retired managed plugins/tools must not survive a release update.
+for entry in "$runtime"/* "$runtime"/.[!.]* "$runtime"/..?*; do
+  [ -e "$entry" ] || [ -L "$entry" ] || continue
+  case ${entry##*/} in
+    .openpalm-bootstrap.lock|.openpalm-package.json|bun.lock|bun.lockb|node_modules|package.json) ;;
+    *) rm -rf -- "$entry" ;;
+  esac
+done
+mkdir -p "$runtime/plugins"
+
+publish "$managed/opencode.json" "$runtime/opencode.json"
+publish "$managed/security.md" "$runtime/security.md"
+publish "$managed/plugins/akm.ts" "$runtime/plugins/akm.ts"
+
+if [ ! -f "$runtime/.openpalm-package.json" ] \
+  || [ ! -f "$runtime/package.json" ] \
+  || ! cmp -s "$managed/package.json" "$runtime/.openpalm-package.json" \
+  || ! dependencies_current "$managed/package.json"; then
+  publish "$managed/package.json" "$runtime/package.json"
+  timeout --kill-after=2s 15s /usr/local/bin/opencode debug config >/dev/null
+  dependencies_current "$managed/package.json"
+fi
+
+runtime_works
+publish "$managed/package.json" "$runtime/.openpalm-package.json"
+
+flock -u 9
+exec 9>&-
+exec /usr/local/bin/opencode "$@"

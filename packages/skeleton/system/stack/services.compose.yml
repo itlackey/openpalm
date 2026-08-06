@@ -28,12 +28,9 @@ services:
   paperclip:
     profiles: ["addon.paperclip"]
     # Upstream image, digest-pinned — the same third-party pattern as ollama and
-    # tunnel above. OpenPalm does NOT build this: upstream's own runtime bakes
-    # the agent CLIs its adapters spawn (claude/codex/opencode/gemini) plus
-    # ripgrep/python3/openssh-client, and its entrypoint chowns the instance
-    # tree for the runtime UID. Repackaging that ourselves meant owning the
-    # replication, and both defects it produced (missing CLIs, ~560 MB of
-    # unloadable opencode binaries) came from getting the replication wrong.
+    # tunnel above. OpenPalm does NOT rebuild it. Paperclip's OpenCode adapter
+    # gets AKM through user-owned OpenCode config and the published plugin; the
+    # small compatibility launcher there reuses OpenCode's embedded Bun runtime.
     # Upstream publishes no semver tag, so the digest is the pin and the
     # `sha-` tag records which upstream commit it came from.
     image: ghcr.io/paperclipai/paperclip:sha-59e29af@sha256:048034718f9922e3c1eb168f21c3fc6f4d3e1689ad7e1dd13322a331217d8457
@@ -48,6 +45,20 @@ services:
       - "127.0.0.1:${OP_PAPERCLIP_PORT:-3840}:3100"
     volumes:
       - ${OP_HOME}/data/paperclip:/paperclip
+      # User settings, read-only managed bootstrap, and a mutable regenerable
+      # runtime config. OpenCode may install exact-pinned plugin dependencies,
+      # but it never writes into lifecycle-owned system/.
+      - ${OP_HOME}/config/paperclip/opencode:/paperclip/.config/opencode:ro
+      - ${OP_HOME}/system/paperclip:/opt/openpalm/paperclip:ro
+      - ${OP_HOME}/cache/paperclip-opencode/runtime:/etc/opencode
+      - ${OP_HOME}/config/paperclip/akm:/etc/akm
+      # Paperclip shares ordinary knowledge, but its nested mounts obscure the
+      # assistant's canonical /stash/secrets and /stash/env directories.
+      - ${OP_HOME}/knowledge:/stash
+      - ${OP_HOME}/knowledge/paperclip/secrets:/stash/secrets
+      - ${OP_HOME}/knowledge/paperclip/env:/stash/env
+      - ${OP_HOME}/data/paperclip-akm/cache:/opt/akm/cache
+      - ${OP_HOME}/data/paperclip-akm/data:/opt/akm/data
     env_file:
       - ${OP_HOME}/private/env/paperclip.env
     # HOST/PORT/SERVE_UI/PAPERCLIP_HOME/PAPERCLIP_CONFIG are baked upstream with
@@ -57,6 +68,18 @@ services:
     # that must not silently depend on a third-party image's ENV default across
     # a digest bump. The compose contract test asserts them here.
     environment:
+      # Paperclip's model preflight can normalize HOME from passwd. XDG keeps
+      # that preflight and the eventual OpenCode run on the same global config.
+      XDG_CONFIG_HOME: /paperclip/.config
+      OPENCODE_CONFIG_DIR: /etc/opencode
+      OPENCODE_STRICT_CONFIG_DEPS: "1"
+      AKM_STASH_DIR: /stash
+      AKM_CONFIG_DIR: /etc/akm
+      AKM_CACHE_DIR: /opt/akm/cache
+      AKM_DATA_DIR: /opt/akm/data
+      # The read-only managed launchers remain authoritative. OpenCode installs
+      # exact-pinned config dependencies and the akm shim into node_modules.
+      PATH: "/opt/openpalm/paperclip/bin:/etc/opencode/node_modules/.bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/local/games:/usr/games"
       PAPERCLIP_DEPLOYMENT_MODE: authenticated
       PAPERCLIP_DEPLOYMENT_EXPOSURE: private
       # Loopback-only publication means the browser origin is always localhost.

@@ -41,7 +41,9 @@ render Compose templates or merge arbitrary fragments into managed files.
 - All host publications default to loopback. Broader binds require an explicit
   service-specific access toggle.
 - Containers receive delegated credentials as named files, not broad secret
-  directories or environment files.
+  directories or environment files. The sole exception is Paperclip's audited,
+  exact-key `private/env/paperclip.env`, required by its digest-pinned upstream
+  image.
 
 ## Extensibility
 

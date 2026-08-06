@@ -41,6 +41,7 @@ import {
 import { migrateProfileOnlyAddonEnablement } from './addons.js';
 import { SERVICE_VERSION_KEYS } from './versions.js';
 import { migrateDelegatedSecretsToPrivateDir } from './secrets-migration.js';
+import { migrateLegacyPaperclipEnv } from './paperclip.js';
 
 const logger = createLogger('home-schema');
 
@@ -147,6 +148,9 @@ const MIGRATIONS: { since: number; run: (homeDir: string) => boolean }[] = [
   // migrateToSingleStackEnv for the same reason as migrateAccessIntent, and it
   // is what lets the UI delete its per-boot process-local re-derivation.
   { since: 4, run: migrateConsolidatedDefaultPorts },
+  // Paperclip originally seeded an upstream key unused by the pinned image.
+  // Preserve its entropy while moving it to the agent-JWT key the image reads.
+  { since: 5, run: migrateLegacyPaperclipEnv },
 ];
 
 /**

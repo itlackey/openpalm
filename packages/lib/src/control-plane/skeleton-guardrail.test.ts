@@ -106,6 +106,16 @@ describe("skeleton: config/ structure", () => {
     expect(existsSync(join(SKELETON_DIR, "config", "akm"))).toBe(true);
   });
 
+  test("Paperclip user config and isolated AKM directories exist", () => {
+    expect(existsSync(join(SKELETON_DIR, "config", "paperclip", "opencode", "opencode.json"))).toBe(true);
+    expect(existsSync(join(SKELETON_DIR, "system", "paperclip", "opencode.json"))).toBe(true);
+    expect(existsSync(join(SKELETON_DIR, "config", "paperclip", "akm"))).toBe(true);
+    expect(existsSync(join(SKELETON_DIR, "knowledge", "paperclip", "env"))).toBe(true);
+    expect(existsSync(join(SKELETON_DIR, "knowledge", "paperclip", "secrets"))).toBe(true);
+    expect(existsSync(join(SKELETON_DIR, "data", "paperclip-akm", "cache"))).toBe(true);
+    expect(existsSync(join(SKELETON_DIR, "data", "paperclip-akm", "data"))).toBe(true);
+  });
+
   test("OpenCode config is split: MANAGED → system/, USER → config/ (four-tree)", () => {
     // MANAGED (OPENCODE_CONFIG_DIR): plugins/permissions/instructions in system/.
     expect(existsSync(join(SKELETON_DIR, "system", "assistant", "opencode.jsonc"))).toBe(true);
