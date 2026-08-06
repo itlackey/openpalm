@@ -71,7 +71,9 @@ then gate the hostname, and — the single best non-technical finding in the
 Cloudflare track — Access supports a **one-time PIN identity provider needing
 no external IdP at all** (`POST /accounts/{id}/access/identity_providers` with
 `{"type":"onetimepin"}`). The user types their email and pastes a 6-digit code.
-Free for up to 50 users.
+Free for up to 50 users. (*Since revisited:* the 50-user figure could not
+be re-confirmed first-party — `cloudflare-tunnel-comparison.md` §2.3
+carries it hedged and leans on the documented seat mechanics instead.)
 
 The blocker is structural: a named tunnel requires a domain whose nameservers
 are delegated to Cloudflare. That violates "without buying a domain," and
@@ -198,11 +200,11 @@ slots into the same overlay shape with a different image.
 addon). Two later facts reweighted the field without unshipping it: the
 `remote` addon has **no install base beyond local testing**, and OpenPalm
 installs are not only the CGNAT homes §1 optimized for. Pangolin —
-deferred in §2 below — is now proposed as the **flagship** front door
+deferred in §2 above — is now proposed as the **flagship** front door
 wherever the host is reachable (`pangolin-remote-access.md`), with this
 document's recommendation remaining the answer for the CGNAT /
 zero-infrastructure case. The cloudflared secondary was never built; it
-is re-evaluated against all three options in
+is re-evaluated in the three-way comparison of
 `cloudflare-tunnel-comparison.md`.
 
 Do not ship one boolean. Ship **one toggle plus a mode**, because they are
@@ -544,7 +546,12 @@ Three shapes therefore fall out of the same generator, selected by `target` in
 `remote-access.json`:
 
 1. `"assistant"` — `/` → `http://assistant:3000`. The default.
-2. `"guardian"` — `/` → `http://guardian:8080`. For API clients.
+2. `"guardian"` — `/` → `http://guardian:3830`. For API clients.
+   (*Correction:* an earlier revision said `guardian:8080`, the internal
+   portal gateway; the direct-ingress listener the tunnel targets is
+   `3830`, as §10 and the shipped `TARGET_ENDPOINTS` both say. The `/oc`
+   example above stays `8080` because it names the portal-gateway path
+   specifically.)
 3. `"both"` — either `/` → assistant and `/oc` → guardian on one port, **or**
    assistant on 443 and guardian on 8443 with *different funnel bits* — the UI
    private to the user's own devices, Guardian's screened API publicly funneled
