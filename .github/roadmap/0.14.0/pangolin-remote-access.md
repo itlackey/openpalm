@@ -1,4 +1,4 @@
-# Pangolin — a public front door you own
+# Pangolin — a front door the stack itself owns
 
 Status: research + proposal
 Companion to `remote-access-from-anywhere.md`, whose recommendation shipped as
@@ -9,670 +9,915 @@ env vars, no capabilities, no volumes, no host networking) with an
 identity-aware proxy offering PIN/OTP/SSO — better auth than Funnel. It loses
 on maturity and verifiability: free-tier terms could not be confirmed from a
 primary source, and it is a young single-vendor dependency. Most likely future
-addition; not v1."* This document is that revisit. It re-verifies the two
-named blockers against primary sources, answers whether Pangolin should
-**replace** Tailscale or ship **alongside** it, and designs the integration —
-including the non-technical setup path — against the conventions the `remote`
-addon established.
+addition; not v1."* This document is that revisit — and it widens the frame.
+The deferral evaluated only the sidecar-to-someone-else's-server shape. The
+design below makes the **Pangolin server itself part of the OpenPalm stack**:
+the control plane and ingress run as a profile-gated addon inside the same
+Compose project, with a connector-only variant kept for operators whose
+Pangolin lives elsewhere (their own VPS, or Pangolin Cloud).
+
+An earlier draft of this document rejected in-stack hosting outright,
+inheriting the companion document's framing. That was wrong, and the
+correction is kept visible in §4.4 rather than silently dropped — the same
+policy the companion document applies to its own first-pass errors.
 
 Sourcing note: `docs.pangolin.net` blocks this environment's egress proxy, so
-Pangolin claims below were verified against the documentation site's source
-repository (`fosrl/docs-v2`, the MDX behind docs.pangolin.net) and the
-`fosrl/*` source repositories, current as of 2026-08-06. URLs in §11 name the
-rendered pages where they are known to exist.
+Pangolin claims were verified against the documentation site's source
+repository (`fosrl/docs-v2`, the MDX behind docs.pangolin.net, at its
+2026-08-04 head) and the `fosrl/pangolin` / `fosrl/newt` source trees. Claims
+about the OpenPalm side were verified against this working tree. Where a
+claim could not be verified either way, it is hedged and listed as a
+verification item in §10.
 
 ## 1. What the shipped `remote` addon cannot do
 
-Four limits of the Tailscale design, all disclosed as costs in
-`remote-access-from-anywhere.md` §2 and §10, none fixable from our side:
+Four limits of the Tailscale design — the first disclosed in the companion
+document's §3 comparison table, the third and fourth in its §2 costs
+paragraph and §10 risks, the second implicit throughout (the URL is always
+`<node>.<tailnet>.ts.net`):
 
 1. **Public mode has no auth gate.** Funnel strips tailnet identity and sets
    `Tailscale-Funnel-Request: ?1`; anyone with the URL reaches the sign-in
-   page, and the UI login password is the only door. The roadmap doc's answer
-   was a hard password gate plus warning copy — a mitigation, not a feature.
+   page, and the UI login password is the only door. The companion document's
+   answer was a hard password gate plus warning copy — a mitigation, not a
+   feature.
 2. **The hostname is not yours.** `https://<node>.<tailnet>.ts.net`, on
    Funnel-legal ports only. No custom domain, ever.
 3. **The coordination plane is proprietary SaaS.** Traffic stays end-to-end
    encrypted, but registration, `*.ts.net` DNS, cert issuance, and the Funnel
    relay are all Tailscale-operated — already listed as risk 5 ("it sits
    awkwardly with the self-hosted premise").
-4. **The free Personal plan is non-commercial only** (6 users).
+4. **The free Personal plan is non-commercial only.** (The companion document
+   records a six-user limit; Tailscale's published figure has shifted over
+   time and could not be re-verified from this environment. The point stands
+   at any count: it is a personal tier.)
 
 Pangolin answers all four: an identity-aware proxy (SSO, OIDC, email OTP,
 PIN, header auth, path/IP/geo rules) in front of every public HTTP resource;
-any subdomain of a domain you own, with Let's Encrypt certs; an AGPL-3.0
-control plane you can run yourself; and no per-user pricing on the
-self-hosted Community Edition. The price is the shape of the product: a
-Pangolin **server** must exist somewhere with a public IP — either Pangolin
-Cloud (managed, free tier) or a small VPS you operate.
+any subdomain of a domain you own, with Let's Encrypt certificates; an
+AGPL-3.0 control plane; and no per-user pricing on the self-hosted Community
+Edition. And because the control plane is self-hostable, OpenPalm can go one
+step further than "supports Pangolin": it can **be** the Pangolin host, so
+the whole path — TLS termination, auth gate, routing — runs on the
+operator's own hardware, inside the stack's own Compose project, managed by
+the same control plane that manages everything else.
 
 ## 2. The deferral, re-verified
 
 The two blockers named in the deferral, checked again:
 
-**Maturity.** `fosrl/pangolin` was created September 2024. It is now at
-release 1.21.x with roughly 22k GitHub stars, 700+ forks, a DigitalOcean
-Marketplace image, Helm charts, a Kubernetes controller, and active companion
-repositories for every component (`newt`, `gerbil`, `badger`, `olm`, desktop
-and mobile clients). The cadence is fast — 1.7 to 1.21 inside a year — which
-cuts both ways: alive and improving, but interfaces move. "Young" is now a
-risk to manage (§10), not a disqualifier.
+**Maturity.** `fosrl/pangolin` was created September 2024. It is at release
+1.21.x (confirmed from the repository's tags) with roughly 22k GitHub stars,
+active companion repositories for every component (`newt`, `gerbil`,
+`badger`, `olm`, desktop and mobile clients), Helm charts, and a DigitalOcean
+Marketplace image (per the docs' VPS guide). The cadence is fast — 1.7 to
+1.21 inside a year — which cuts both ways: alive and improving, but
+interfaces move (§10 risk 1 shows a concrete instance this document itself
+tripped over). "Young" is now a risk to manage, not a disqualifier.
 
 **Free-tier verifiability.** Now confirmable from primary sources. The
 Community Edition is free and AGPL-3.0 (per-file licensing; files headed
 "Fossorial Commercial License" are the Enterprise Edition, a separate
 `fosrl/pangolin:ee-*` image gated on a license key, free for personal use and
-organizations under $100k gross annual revenue). Pangolin Cloud has a
-documented free tier with no card required. What remains unverifiable is
-whether Cloud's free-tier *terms* hold over time — a risk shared with every
-vendor tier in the field, ranked in §10.
+organizations under $100k gross annual revenue). For the in-stack shape this
+matters directly: CE self-hosted is the edition the addon ships, and it costs
+nothing at any user count.
 
-Both blockers are cleared enough to design against. Not cleared enough to
-make Pangolin the default — see §3.
+One blocker the deferral did not name, because the sidecar shape never hits
+it: **Pangolin Cloud's free tier provides no domain.** Pangolin-provided
+domain endings (`.hostlocal.app`, `.tunneled.to`) are documented as paid-plan
+features, and attaching a custom domain to Cloud requires NS-delegation or
+CNAME records. The Cloud path is therefore *not* the zero-DNS non-technical
+path the deferral implied. Hosting the server in-stack does not remove the
+domain requirement — but it removes the vendor from it, and OpenPalm can
+automate everything except the DNS record itself.
 
 ## 3. Replace Tailscale, or offer Pangolin alongside it?
 
-**Alongside. Pangolin is a second remote-access addon, not a successor.**
-Three reasons, in decreasing order of weight:
+**Alongside. Pangolin is a second front door, not a successor.** Three
+reasons, in decreasing order of weight:
 
-1. **Pangolin requires infrastructure Tailscale does not.** Every Pangolin
-   shape needs a control plane with a public IP: Pangolin Cloud (a vendor
-   dependency with plaintext visibility — see the table) or a VPS the user
-   operates (cost, updates, backups, and a public attack surface). Tailscale
-   Serve needs an SSO sign-in and nothing else. For "use it from my phone" —
-   the majority case — Serve remains the right default, and replacing it
-   would trade the majority's zero-infrastructure path for the minority's
-   public-domain path.
+1. **Pangolin requires things Tailscale does not.** Every publicly useful
+   Pangolin shape needs a domain the operator controls, a DNS record, and a
+   host the internet can reach (a public IP, or a router that can forward
+   80/443). Tailscale Serve needs an SSO sign-in and nothing else. For "use
+   it from my phone" — the majority case, including every CGNAT home — Serve
+   remains the right default.
 2. **Private access is not Pangolin's strong suit yet.** Serve covers
    only-my-devices access with GA tooling on every platform. Pangolin's
-   equivalent (private resources reached through Olm-based clients) shipped
-   in late 2025 and is the youngest part of the product. Pangolin's strength
-   is precisely the mode Tailscale is weakest in: *public* exposure with
-   real auth in front.
-3. **The two compose.** Neither sidecar publishes a host port; both dial out
-   and reach `assistant:3000` / `guardian:3830` as network clients. Running
-   `remote` (private tailnet access) and `pangolin` (public domain with SSO)
-   simultaneously is a legitimate, useful topology, not a conflict. A
+   equivalent (private resources reached through Olm-based clients) is the
+   youngest part of the product. Pangolin's strength is precisely the mode
+   Tailscale is weakest in: *public* exposure with real auth in front.
+3. **The two compose.** The `remote` tunnel dials out and publishes nothing;
+   Pangolin's ingress listens on 80/443. They share no ports, no config, no
+   failure modes. Private tailnet access for the operator plus a public
+   SSO-gated domain for everyone else is a legitimate, useful topology — a
    replace-or-choose model would forbid it for no reason.
 
-The honest comparison, on the criteria `remote-access-from-anywhere.md`
-used:
+The honest comparison, on the criteria the companion document used:
 
-| | Tailscale Serve/Funnel (shipped) | Pangolin + Newt (proposed) |
-|---|---|---|
-| Works behind CGNAT | yes (outbound sidecar) | yes (outbound sidecar) |
-| Infrastructure required | none | Pangolin Cloud account, or a VPS + domain + DNS |
-| Custom domain | no (`*.ts.net`) | yes, any subdomain, LE certs |
-| Auth in front of public mode | **none** (password is the only door) | SSO / OIDC / email OTP / PIN / header auth / access tokens / path+IP+geo rules |
-| Vendor can read traffic | no — relays proxy still-encrypted TCP by SNI; TLS terminates in the sidecar | Cloud: **yes** — TLS terminates on Fossorial's node. Self-hosted: n/a (your VPS terminates) |
-| Self-hostable control plane | no (Headscale is third-party, no Funnel) | yes — AGPL-3.0 Community Edition |
-| Free-plan terms | non-commercial, 6 users | CE: free, AGPL. Cloud: free tier. EE: free under $100k revenue |
-| Bot/API exposure | Funnel only, unauthenticated | per-resource access tokens, Basic header auth, per-path auth-bypass rules |
-| Maturity | Funnel beta ~4 years, company ~5 years older | project born Sep 2024, moving fast |
-| Moving parts on our side | 1 sidecar | 1 sidecar (Newt) |
-| Moving parts on the user's side | 0 | 0 (Cloud) or 4 server containers (self-hosted VPS) |
+| | Tailscale Serve/Funnel (shipped) | Pangolin in-stack (proposed) | Pangolin connector → external server |
+|---|---|---|---|
+| Works behind CGNAT | yes (outbound sidecar) | **no** for public exposure (host must be reachable); LAN-only mode still works | yes (outbound sidecar) |
+| Infrastructure required | none | a domain + one DNS record; reachable 80/443 | a Pangolin server somewhere (own VPS or Cloud) |
+| Custom domain | no (`*.ts.net`) | yes, any subdomain, LE certs | yes (Cloud free tier: bring your own domain + DNS records) |
+| Auth in front of public mode | **none** (password is the only door) | SSO / OIDC / email OTP / PIN / header auth / access tokens / path+IP+geo rules | same |
+| Vendor can read traffic | no — relays proxy still-encrypted TCP by SNI | **no — TLS terminates inside the stack, on the operator's hardware** | Cloud: yes (TLS terminates on Fossorial's node). Own VPS: no |
+| Control plane operated by | Tailscale (proprietary SaaS) | **the stack itself** (AGPL CE) | whoever runs that server |
+| Free-plan terms | non-commercial personal tier | CE: free, AGPL, unlimited | Cloud free tier: no provided domain; terms not contractual |
+| Bot/API exposure | Funnel only, unauthenticated | per-resource access tokens, Basic header auth, per-path rules | same |
+| Moving parts added to the stack | 1 sidecar | 2 containers (3 with tunneling) | 1 sidecar |
 
-The "vendor can read traffic" row deserves emphasis because the original
-document weighted it heavily against Cloudflare and ngrok: with Pangolin
-Cloud and no self-hosted node, TLS for public resources terminates on
-Fossorial's Traefik, so the vendor is *in* the plaintext path — the same
-class as Cloudflare, and unlike Funnel. Self-hosting the Pangolin server (or
-attaching a self-hosted node to Cloud) keeps termination inside the user's
-boundary. The UI copy in §8 must not blur this.
+The "vendor can read traffic" row is why the in-stack shape is the headline
+and Cloud is the fallback: the companion document weighted exactly this
+against Cloudflare and ngrok, and with Pangolin Cloud (no self-hosted node)
+TLS for public resources terminates on Fossorial's Traefik. In-stack, the
+entire path is the operator's.
 
-## 4. The deployment shapes — and the one not to ship
+## 4. The shape: the Pangolin server as a stack addon
 
-Pangolin's server side is four containers: `pangolin` (control plane +
-dashboard), `gerbil` (WireGuard tunnel manager, `NET_ADMIN` + `SYS_MODULE`,
-owns host ports 80, 443, 51820/udp, 21820/udp), `traefik` (ingress, runs in
-Gerbil's network namespace), and the `badger` forward-auth plugin. The site
-side is one container: `newt`, userspace WireGuard, outbound-only, three
-configuration values.
+Pangolin's server side is **three containers plus one Traefik plugin**:
+`pangolin` (Node.js control plane: dashboard, REST API, SQLite state, and a
+dynamic-config endpoint Traefik polls), `traefik` (ingress: TLS termination,
+Let's Encrypt, routing), `gerbil` (WireGuard tunnel manager — needed only
+when remote networks tunnel *into* this server), and `badger`, a forward-auth
+middleware that runs *inside* Traefik as a plugin, enforcing Pangolin's auth
+on public resources. The site side is one container: `newt`, userspace
+WireGuard, outbound-only.
 
-**OpenPalm ships only the site side.** The `pangolin` addon is a Newt sidecar
-pointed at whichever control plane the operator chooses:
+### 4.1 One addon, three variants
 
-### 4.1 Pangolin Cloud
+A single builtin addon `pangolin`, using the same mutually-exclusive
+profile-variant machinery voice and ollama already use
+(`openpalm.profile.label` / `openpalm.profile.requires` /
+`openpalm.profile.default` labels, selection stored as `OP_PANGOLIN_PROFILE`
+via `profileEnvKey`, rendered by the existing profile selector in
+`AddonsTab.svelte`):
 
-The non-technical path. Create a free account at `app.pangolin.net`, add a
-site, get three values (endpoint, Newt ID, Newt secret). No VPS, no domain
-purchase (Cloud provides a subdomain; custom domains attachable), no DNS.
-Cost: the vendor dependency and the plaintext-visibility row above, disclosed
-in the UI copy.
+| Variant | Compose profile | Services deployed | For |
+|---|---|---|---|
+| **Proxy** (default) | `addon.pangolin.proxy` | `pangolin`, `pangolin-traefik` | The full server, no tunneling — Pangolin's documented "without tunneling" mode. Resources reach the assistant over the Docker network as a **local site**. No added capabilities anywhere. |
+| **Tunnel** | `addon.pangolin.tunnel` | `pangolin`, `pangolin-traefik`, `gerbil` | The full server *plus* WireGuard ingress, for operators who also want other machines' services tunneled into this stack's Pangolin, or Pangolin clients. Costs `NET_ADMIN` + `SYS_MODULE` on gerbil and two UDP host ports. |
+| **Connector** | `addon.pangolin.connector` | `newt` | No server in-stack — a Newt sidecar pointed at a Pangolin elsewhere (operator's VPS, or Pangolin Cloud). The deferral's original shape. |
 
-### 4.2 Self-hosted Pangolin on a VPS
+The variant machinery fits because the three shapes are genuinely mutually
+exclusive per stack (a server and a connector to *another* server would
+fight over which control plane defines this stack's resources), while
+`remote` stays a separate addon because running Tailscale *and* Pangolin
+simultaneously is legitimate (§3). This is also why Pangolin is not folded
+into the `remote` addon behind a provider field: variants model exclusive
+alternatives, sibling addons model co-runnable features, and the two addons
+share no configuration at all.
 
-The self-hosted-premise-complete path. A ~$5/mo VPS (1 vCPU / 2 GB is the
-documented floor), a domain with a wildcard A record, ports 80/443/51820/
-21820 open, and Pangolin's own installer
-(`curl -fsSL https://static.pangolin.net/get-installer.sh | bash`) or manual
-compose install. The addon consumes it identically — only the endpoint value
-differs. OpenPalm documents this path (a setup guide, §5's files-touched
-list) but does not automate VPS provisioning; the installer is interactive
-and documents no unattended flags, and operating rented infrastructure is
-outside the harness's job description.
+`docker compose config` treats multiple services per profile exactly as it
+does guardian's multi-profile block, so `pangolin` and `pangolin-traefik`
+listing both server profiles is ordinary Compose.
 
-### 4.3 Not shipped: the Pangolin server inside the OpenPalm stack
+### 4.2 What in-stack hosting requires from the host — stated honestly
 
-Rejected outright. It would add four always-on containers, two added
-capabilities (`NET_ADMIN`, `SYS_MODULE` on gerbil), and host ports 80 and 443
-— violating the loopback-first convention, the rootless convention, and the
-one-always-on-container principle in a single service block. And it would be
-pointless: a Pangolin server is only useful *with a public IP*, which a home
-install behind CGNAT does not have — the constraint that opened
-`remote-access-from-anywhere.md` §1. (Pangolin does run VPS-less as a plain
-LAN reverse proxy with "local" sites, but that solves none of the problems
-this addon exists for.)
+The companion document's §1 constraint has not moved: **a CGNAT home cannot
+be reached from the internet**, and no in-stack server changes that. What
+has changed is the recognition that OpenPalm installs are not only CGNAT
+homes. The proxy and tunnel variants are for hosts the internet can reach —
+a VPS running the whole OpenPalm stack, a homelab behind a router that can
+forward 80/443, a machine with a static IP. For those hosts the requirements
+are:
+
+- a domain the operator controls, with a wildcard (or per-name) A record
+  pointing at the host — the one step OpenPalm cannot automate;
+- TCP 80 and 443 reachable from the internet (80 is droppable with wildcard
+  DNS-01 certificates, which Pangolin supports via Traefik's DNS providers);
+- UDP 51820 and 21820 additionally, for the tunnel variant only.
+
+A CGNAT home still has two working options: the **connector** variant
+(outbound to a server that is reachable), or the proxy variant used
+**LAN-only** — Pangolin's docs explicitly support running it as "a local
+reverse proxy and authentication manager". LAN-only, it puts SSO and real
+TLS (via DNS-01, which needs no inbound reachability) in front of the
+assistant on the home network — which is precisely the Tier-1 shape
+`tls-on-the-home-network.md` costs at "about a week" to build from parts.
+One addon, both roadmap documents.
+
+### 4.3 Host ports 80/443, stated against the loopback-first convention
+
+Every existing addon publishes loopback-only, as a literal. The Pangolin
+server addon is the first whose *purpose* is a public listener, and
+pretending otherwise would produce the exact failure the companion document
+condemns in its DDNS epitaph: a toggle that reports success and simply does
+not work. So the proxy/tunnel variants publish
+
+```yaml
+- "${OP_PANGOLIN_HTTP_BIND:-0.0.0.0}:${OP_PANGOLIN_HTTP_PORT:-80}:80"
+- "${OP_PANGOLIN_HTTPS_BIND:-0.0.0.0}:${OP_PANGOLIN_HTTPS_PORT:-443}:443"
+```
+
+with the deliberate act being the addon enable itself: the UI treats
+enabling a server variant as an exposure change with the same weight as
+`OP_REMOTE_PUBLIC` — explicit confirmation, warning copy, no silent default
+(§8.5). The bind and port variables exist for the operator who fronts
+Pangolin with something else or needs 80/443 for another service; the
+defaults are the ones that work. This deviation is confined to the two
+server variants; the connector variant publishes nothing, exactly like
+`tunnel`. `core-principles.md` § Service port assignments gains rows for
+80/443 (deliberately non-loopback, purpose-stated) and for the
+integration API's loopback publication (§6.1).
+
+### 4.4 The correction: why the earlier rejection was wrong
+
+The first draft rejected in-stack hosting on three grounds. Each fails:
+
+- *"Four always-on containers."* Miscounted (badger is a plugin, not a
+  container) and mis-scoped: the services are profile-gated like every
+  addon, so a default install deploys none of them.
+- *"NET_ADMIN + SYS_MODULE violate the rootless convention."* Those
+  capabilities belong to gerbil alone, and gerbil exists only in the opt-in
+  tunnel variant. The proxy variant adds no capabilities to anything.
+- *"Pointless without a public IP."* False twice: port-forwarding homes and
+  VPS installs have reachable 80/443 without a "public IP" on the host
+  itself, and the LAN-only reverse-proxy mode (§4.2) is useful with no
+  reachability at all.
+
+What survives of the original instinct is §4.2's honesty: the server
+variants are not for CGNAT homes, and the UI must ask the one question that
+distinguishes the cases instead of guessing (§10, the decision).
 
 ## 5. How it maps onto the shipped model
 
-**A sibling builtin addon `pangolin` with one compose service `newt`,
-mirroring `remote` / `tunnel` symbol for symbol.**
-
-One alternative was considered and rejected: folding Pangolin into the
-`remote` addon behind a provider field. The original roadmap document
-sketched `provider: "tailscale"` in a `remote-access.json`, but the shipped
-implementation dropped both the JSON file and the provider field — config
-lives in `state/stack.env` as `OP_REMOTE_*` keys, and the addon machinery is
-per-id: one id, one compose profile, one env schema, one credentials drawer.
-A provider enum inside `remote` would need conditional service selection
-within a single profile (which Compose cannot express), would interleave two
-disjoint config sets in one drawer, and would forbid the both-at-once
-topology §3 calls legitimate. Sibling ids cost nothing: `discord`, `slack`,
-`ollama`, and `paperclip` establish that addons are named for the product
-they wrap, and every piece of plumbing below already iterates tables rather
-than special-casing names.
-
-The mapping, following `docs/technical/adding-an-addon.md`'s checklist:
+Following `docs/technical/adding-an-addon.md`'s checklist, with `remote` as
+the nearest shipped precedent:
 
 | Convention | `remote` (shipped) | `pangolin` (proposed) |
 |---|---|---|
 | Addon id in `BUILTIN_ADDON_IDS` (`addon-ids.ts`) | `remote` | `pangolin` |
-| Compose service, profile-gated | `tunnel`, `profiles: ["addon.remote"]` | `newt`, `profiles: ["addon.pangolin"]` |
-| Image | `tailscale/tailscale:v1.98.10@sha256:…` | `fosrl/newt:<release>@sha256:…` — digest resolved from the registry at implementation time, never `:latest` (upstream's own compose example floats; ours must not) |
-| Config keys in `state/stack.env` | `OP_REMOTE_TARGET/PUBLIC/HOSTNAME` | `OP_PANGOLIN_ENDPOINT/NEWT_ID/TARGET` |
-| Delegated secret(s) (`DELEGATED_SECRET_NAMES`) | `ts_authkey` | `newt_secret` (pasted or API-minted), `newt_config` (generated, §7), `pangolin_api_key` (optional, §8.2) |
-| Generated artifact | `state/remote/serve.json` (ipn.ServeConfig) | `private/secrets/newt_config` (Newt JSON config) |
-| Apply hook | `if (name === 'remote') applyRemoteAccess(...)` in `addons.ts` + the credentials route | `applyPangolinConfig(...)` — and this being the **second** special case, both migrate to the declaration table the addon guide already prescribes ("two is a signal to generalize"): `ADDON_APPLY_HOOKS: Record<string, (homeDir: string) => AddonApplyResult>` |
-| Recreate scope (`ADDON_ENV_RECREATE_SCOPE`) | `OP_REMOTE_*` → `["tunnel"]` | `OP_PANGOLIN_*` → `["newt"]` |
+| Compose services, profile-gated | `tunnel` under `addon.remote` | `pangolin` + `pangolin-traefik` under `addon.pangolin.proxy` and `.tunnel`; `gerbil` under `.tunnel` only; `newt` under `.connector` |
+| Profile variants | none | voice/ollama machinery: `openpalm.profile.*` labels, `OP_PANGOLIN_PROFILE` selection |
+| Images | `tailscale/tailscale:v1.98.10@sha256:…` | `fosrl/pangolin`, `traefik`, `fosrl/gerbil`, `fosrl/newt` — each pinned to a release *and* digest at implementation time; upstream's compose floats `latest`, ours must not |
+| Config keys in `state/stack.env` | `OP_REMOTE_TARGET/PUBLIC/HOSTNAME` | `OP_PANGOLIN_PROFILE/BASE_DOMAIN/DASHBOARD_DOMAIN/ACME_EMAIL/HTTP_PORT/HTTPS_PORT/TARGET`; connector adds `OP_PANGOLIN_ENDPOINT/NEWT_ID` |
+| Delegated secrets (`DELEGATED_SECRET_NAMES`) | `ts_authkey` | `newt_secret` (connector; operator-pasteable, same class as `ts_authkey`), `pangolin_server_secret` (server variants; generated once), `pangolin_api_key` (optional, §8) |
+| Generated artifacts | `state/remote/serve.json` | `private/pangolin/config.yml` (embeds the server secret, hence `private/`), `state/pangolin/traefik/*.yml`, `private/secrets/newt_config` (connector), `state/pangolin/blueprint.yml` (§8.1) — all written with `writeFileAtomic`, none in `DELEGATED_SECRET_NAMES` (that set is for operator-suppliable credentials; generated files are seeded by explicit `ensureSecret`/`ensureHomeDirs` calls, the way `ts_authkey` and `serve.json` are handled today) |
+| Apply hook | `if (name === 'remote') applyRemoteAccess(...)` in `addons.ts` and the credentials route | `applyPangolinConfig(...)` — and this being the **second** special case, both migrate to the declaration table the addon guide prescribes ("two is a signal to generalize"): `ADDON_APPLY_HOOKS: Record<string, (homeDir: string) => AddonApplyResult>` |
+| Recreate scope (`ADDON_ENV_RECREATE_SCOPE`) | `OP_REMOTE_*` → `["tunnel"]` | `OP_PANGOLIN_*` → the variant's services |
 | Guardian ingress | `remoteRequiresGuardianIngress(enabled, target)` through `resolveAccessEnv(toggles, { guardianIngressRequired })` | the same hook — see below |
-| Network membership | `assistant_net` + `portal_net`, stated exception | same, same stated reason |
-| Host port | none, deliberately | none, deliberately — no row in the `core-principles.md` port table, matching `tunnel` |
-| Network-boundary sweep | listed in `ADDON_SERVICES` (`addon-network-boundary.test.ts`) | `newt` added to the same sweep |
-| Compose contract test | `remote-compose.test.ts` | `pangolin-compose.test.ts`: digest-pinned image, no `ports:`, no `depends_on:`, rootless `user:`, no literal secret value in `environment:` |
+| Network membership | `assistant_net` + `portal_net`, stated exception in the `services.compose.yml` header | data path only (§6): `pangolin-traefik` (proxy) or `gerbil` (tunnel) or `newt` (connector) joins `assistant_net` + `portal_net`; the `pangolin` control plane joins only a new `pangolin_net` |
+| Host ports | none, deliberately | server variants: 80/443 (+UDP pair for tunnel), §4.3; integration API loopback-only; connector: none |
+| Contract test | `remote-compose.test.ts` (pins image digest, both networks, no ports, rootless, no literal secret) | `pangolin-compose.test.ts`, same assertions per variant — network posture is pinned *here*, not in `addon-network-boundary.test.ts`'s `ADDON_SERVICES` sweep, which asserts addon_net-only segmentation and deliberately excludes ingress-path services (it excludes `tunnel` today for the same reason) |
 
-**Guardian ingress has one writer, and it must stay that way.**
-`resolveAccessEnv`'s `guardianIngressRequired` option is documented as "the
-ONE place another feature may add a reason for `GUARDIAN_DIRECT_INGRESS` to
-be `true` without also opening the LAN bind." With two tunnel addons, two
-apply hooks would each recompute that flag — and two writers computing from
-different inputs will drift. The predicate therefore generalizes to a single
-shared function reading *both* addons' state:
+**Guardian ingress keeps one writer.** `resolveAccessEnv`'s
+`guardianIngressRequired` option is documented as "the ONE place another
+feature may add a reason for `GUARDIAN_DIRECT_INGRESS` to be `true` without
+also opening the LAN bind." With two front-door addons, two apply hooks
+recomputing that flag from different inputs would drift. The predicate
+generalizes to one shared function reading both addons' state:
 
 ```ts
-/** True when ANY enabled tunnel addon targets the guardian. The only
+/** True when ANY enabled front-door addon targets the guardian. The only
  *  input resolveAccessEnv's guardianIngressRequired option may be fed. */
 export function computeGuardianIngressRequired(env: Record<string, string>): boolean;
 ```
 
 Both `applyRemoteAccess` and `applyPangolinConfig` call it; neither owns it.
-The existing warning behavior carries over verbatim: when the target includes
-guardian but no `GUARDIAN_INGRESS_ADDON_IDS` addon is enabled, warn and do
-not auto-fix.
+The existing warning behavior carries over: when the target includes
+guardian but no `GUARDIAN_INGRESS_ADDON_IDS` addon is enabled, warn, do not
+auto-fix.
 
-**What Pangolin does *not* need that Tailscale did.** There is no serve.json
-analog. The resource → target routing table lives on the Pangolin server, not
-in a locally generated file — Newt receives it over its control channel. That
-deletes the hardest parts of the `remote` implementation (the fsnotify
-directory-mount rules, the never-delete-the-file invariant, the
-`${TS_CERT_DOMAIN}` substitution dance) and replaces them with one small
-generated secret file (§7). It also *narrows* one guarantee, stated honestly:
-`remote`'s disable path is fail-closed even when `compose stop` fails,
-because the empty serve document is already on disk and a running tunnel
-re-reads it within seconds. `pangolin`'s disable is the container stop
-itself — if the stop fails, the tunnel stays up until it succeeds. When an
-API key is on file (§8.2), the disable path should also disable the resource
-server-side, restoring belt-and-braces. Without a key, disable is
-stop-the-container, and the gap is a documented cost.
+### 5.1 Files touched
+
+Create: the four service blocks and `pangolin_net` declaration
+(`packages/skeleton/system/stack/services.compose.yml`,
+`core.compose.yml` networks block); `packages/lib/src/control-plane/`
+`pangolin-access.ts` (browser-safe model + config/traefik/blueprint
+derivation) and `pangolin-apply.ts` (file writes, `pangctl`/API calls);
+`pangolin-compose.test.ts`; the provisioning route
+(`packages/ui/src/routes/api/host/addons/pangolin/provision/+server.ts`);
+`docs/pangolin-setup.md` (user guide).
+
+Modify: `addon-ids.ts`; `addon-env-schemas.ts` (schema + recreate scope);
+`addons.ts` (the `ADDON_APPLY_HOOKS` generalization); `secrets.ts`
+(seeding); `secrets-files.ts` (three delegated names); `access-toggles.ts`
+(`computeGuardianIngressRequired`); `home.ts` (`ensureHomeDirs` entries for
+`state/pangolin/`, `data/pangolin/`); `AddonsTab.svelte` (variant selector
+reuse + provision panel); `docs/technical/core-principles.md` (port table,
+the §4.3 deviation); `docs/technical/environment-and-mounts.md`;
+`docs/technical/network-partitioning-d5a.md`;
+`packages/skeleton/system/stack/README.md`;
+`docs/operations/manual-headless-install.md` — which today documents neither
+the `remote` addon nor this one; add both sections in this change.
 
 ## 6. The compose wiring
 
-New service in `packages/skeleton/system/stack/services.compose.yml`, beside
-`tunnel`, written in the same voice and to the same contract:
+### 6.1 The server (proxy and tunnel variants)
+
+Network layout first, because it is the design's security core. A new
+`pangolin_net` joins the three existing networks in `core.compose.yml`'s
+declarations. The `pangolin` control plane lives **only** there. The data
+path — whichever container holds the ingress network namespace — joins
+`assistant_net` + `portal_net` under the same stated-exception bar as
+`tunnel`. Traefik must reach both the control plane (config polling,
+dashboard/API routing) and the proxy targets, so:
+
+- **Proxy variant:** `pangolin-traefik` joins `pangolin_net` +
+  `assistant_net` + `portal_net`, and publishes 80/443.
+- **Tunnel variant:** `gerbil` owns the netns (`pangolin-traefik` runs with
+  `network_mode: service:gerbil`, upstream's documented layout), so
+  *gerbil* joins the three networks and publishes 80/443/51820/21820.
+
+The control plane never being on `assistant_net` means a compromised
+Pangolin dashboard cannot reach OpenCode (:4096) directly — only route
+traffic through Traefik to targets, which is its job description anyway.
 
 ```yaml
-  newt:
-    profiles: ["addon.pangolin"]
-    # Pinned to a specific release PLUS its multi-arch manifest-list digest,
-    # same convention as tunnel above. Upstream's own compose example uses
-    # the floating `fosrl/newt` tag; a floating tag on an INGRESS path means
-    # a plain `docker compose pull` silently re-points it at whatever
-    # Fossorial shipped that week. Resolve the digest from Docker Hub's
-    # registry API at implementation time.
-    image: fosrl/newt:REPLACE_VERSION@sha256:REPLACE_DIGEST
+  pangolin:
+    profiles: ["addon.pangolin.proxy", "addon.pangolin.tunnel"]
+    # Release + digest pinned at implementation time, same convention as
+    # tunnel above; upstream's own compose floats `latest`, ours must not.
+    image: fosrl/pangolin:REPLACE_VERSION@sha256:REPLACE_DIGEST
+    labels:
+      openpalm.profile.label: "Server (reverse proxy only)"   # on .proxy
+      openpalm.profile.default: "true"
     restart: unless-stopped
-    # IMG-7: cap json-file logs (30 MB/service ceiling).
-    logging:
-      driver: json-file
-      options:
-        max-size: "10m"
-        max-file: "3"
-    # Rootless, like every other service. Newt is userspace WireGuard
-    # (netstack): no NET_ADMIN, no /dev/net/tun, no host networking, no
-    # volumes. Whether the upstream image tolerates an arbitrary uid:gid is
-    # a day-one verification item (§10 risk 7).
-    user: "${OP_UID:-1000}:${OP_GID:-1000}"
-    environment:
-      # ALL THREE connection values (endpoint, Newt ID, Newt secret) arrive
-      # through this one mounted JSON secret, generated by
-      # applyPangolinConfig (pangolin-apply.ts). Newt has no *_FILE variants
-      # of NEWT_SECRET, so a literal `environment:` value would land in
-      # `docker inspect`'s environment dump — the exact leak the tunnel's
-      # `file:` indirection exists to prevent. CONFIG_FILE is Newt's
-      # supported secrets mechanism and covers all three values at once.
-      CONFIG_FILE: /run/secrets/newt_config
-      # Newt touches this file once its control channel and tunnel are up;
-      # the healthcheck below tests for it. Container-up is NOT tunnel-up.
-      HEALTH_FILE: /tmp/healthy
-      # This sidecar exists to publish resources OUT of these networks,
-      # never to admit Pangolin clients INTO them. Site-to-client
-      # connectivity stays off.
-      DISABLE_CLIENTS: "true"
-    secrets: [newt_config]
-    # Reaches BOTH possible targets — the same per-service trust-boundary
-    # exception tunnel states above: assistant_net to dial
-    # http://assistant:3000, portal_net because guardian (the OTHER possible
-    # target, http://guardian:3830) lives on portal_net. Which targets are
-    # actually proxied is decided by the resource list on the Pangolin
-    # server; this line only grants the reachability either choice needs.
-    # That remote-controlled target list is the addon's widest trust grant —
-    # see the proposal's §9.
-    networks: [assistant_net, portal_net]
-    # NO ports: block, deliberately — this sidecar publishes NOTHING on the
-    # host; LAN exposure and internet exposure stay orthogonal, exactly as
-    # tunnel's comment explains.
-    # NO depends_on: — guardian is profile-gated and routinely excluded; a
-    # depends_on naming an excluded service is a project-level Compose PARSE
-    # error. Newt retries its targets on its own.
+    logging: { driver: json-file, options: { max-size: "10m", max-file: "3" } }
+    volumes:
+      # config.yml embeds server.secret, so the whole generated config dir
+      # lives under private/ (0700), not state/. db/ and letsencrypt/ are
+      # service-owned runtime data and stay under data/ — nested binds below
+      # put them where Pangolin expects inside /app/config.
+      - ${OP_HOME}/private/pangolin:/app/config
+      - ${OP_HOME}/data/pangolin/db:/app/config/db
+      - ${OP_HOME}/data/pangolin/letsencrypt:/app/config/letsencrypt
+    ports:
+      # Integration API, loopback ONLY as a literal — the host control plane
+      # is its only intended caller (§8.1). Never routed through Traefik.
+      - "127.0.0.1:${OP_PANGOLIN_API_PORT:-3841}:3003"
+    networks: [pangolin_net]
     healthcheck:
-      test: ["CMD", "test", "-f", "/tmp/healthy"]
+      # Upstream's own check: internal API answers when the server is up.
+      test: ["CMD", "curl", "-f", "http://localhost:3001/api/v1/"]
       interval: 10s
-      timeout: 5s
-      retries: 3
-      # Cover credential exchange + WG handshake on slow links before
-      # counting failures.
-      start_period: 60s
+      timeout: 10s
+      retries: 15
+
+  pangolin-traefik:
+    profiles: ["addon.pangolin.proxy", "addon.pangolin.tunnel"]
+    image: traefik:REPLACE_VERSION@sha256:REPLACE_DIGEST   # v3.6.x line
+    restart: unless-stopped
+    logging: { driver: json-file, options: { max-size: "10m", max-file: "3" } }
+    depends_on:
+      pangolin:
+        condition: service_healthy   # same-profile services; the parse-error
+                                     # hazard tunnel documents applies only to
+                                     # depends_on ACROSS profile sets
+    command: ["--configFile=/etc/traefik/traefik_config.yml"]
+    volumes:
+      - ${OP_HOME}/state/pangolin/traefik:/etc/traefik:ro   # GENERATED, §7
+      - ${OP_HOME}/data/pangolin/letsencrypt:/letsencrypt
+    # Proxy variant only (the tunnel variant replaces networks/ports with
+    # network_mode: service:gerbil):
+    ports:
+      - "${OP_PANGOLIN_HTTP_BIND:-0.0.0.0}:${OP_PANGOLIN_HTTP_PORT:-80}:80"
+      - "${OP_PANGOLIN_HTTPS_BIND:-0.0.0.0}:${OP_PANGOLIN_HTTPS_PORT:-443}:443"
+    # The data-path exception, same bar as tunnel: assistant_net to reach
+    # http://assistant:3000, portal_net to reach http://guardian:3830.
+    networks: [pangolin_net, assistant_net, portal_net]
 ```
 
-And beside `ts_authkey` in the top-level `secrets:` block:
+The `gerbil` block (tunnel variant only) follows upstream's: `cap_add:
+[NET_ADMIN, SYS_MODULE]`, the UDP pair plus 80/443, `--remoteConfig`
+pointing at `http://pangolin:3001/api/v1/`, key material under
+`data/pangolin/gerbil/`. Its capabilities are the variant's stated price,
+carried in its `openpalm.profile.requires` label.
 
-```yaml
-  # Generated by applyPangolinConfig from OP_PANGOLIN_ENDPOINT,
-  # OP_PANGOLIN_NEWT_ID, and the newt_secret delegated secret. DELEGATED,
-  # like ts_authkey, and for the same class of reason: the Newt secret is a
-  # site JOIN credential — anything that can read it can impersonate this
-  # site to the Pangolin control plane and receive its tunnel traffic. It
-  # must stay out of the assistant-visible knowledge/secrets/ stash.
-  newt_config:
-    file: ${OP_HOME}/private/secrets/newt_config
-```
+Two upstream deltas to note in the compose comments: OpenPalm's rootless
+`user:` convention must be **verified per image** here (Pangolin's own
+compose runs all three as root; whether each tolerates an arbitrary uid —
+including Traefik binding :80/:443 in-container, which Docker's default
+`ip_unprivileged_port_start=0` permits — is a day-one item, §10), and
+`badger` arrives through Traefik's plugin mechanism, which **downloads the
+plugin at container start**. That collides with the no-runtime-downloads
+principle; the mitigation is Traefik's local-plugins mode with the plugin
+source vendored into the mounted config tree, evaluated at implementation
+(§10 risk 4).
 
-Like `ts_authkey`, both `newt_secret` and `newt_config` are seeded as empty
-files by `ensureSecrets` at install time regardless of addon state, because
-Compose fails container creation outright when a declared secret's source
-file is missing — the manual `OP_ENABLED_ADDONS` hand-edit path must not
-brick the stack. Unlike a blank `TS_AUTHKEY` (which meaningfully selects
-interactive login), a blank `newt_config` just means "not configured yet":
-Newt exits, the container restarts, and the UI shows the unhealthy state
-until credentials arrive. That is acceptable — the addon is enabled either
-by the drawer (which collects credentials first) or by an operator who
-hand-edits files and can read a health status.
+### 6.2 The connector variant
+
+Carried from the earlier draft with one correction. The `newt` service:
+digest-pinned `fosrl/newt`, rootless (verify, §10), no ports, no
+`depends_on`, `networks: [assistant_net, portal_net]` with the tunnel-style
+stated exception, log caps, `DISABLE_CLIENTS: "true"`, and healthcheck
+`test: ["CMD", "test", "-f", "/tmp/healthy"]` with `HEALTH_FILE=/tmp/healthy`
+(Newt touches the file only once its tunnel is up, so "healthy" means
+tunnel-up, not process-up).
+
+Credentials reach it as one mounted JSON document — `CONFIG_FILE:
+/run/secrets/newt_config`, generated by `applyPangolinConfig` from
+`OP_PANGOLIN_ENDPOINT`, `OP_PANGOLIN_NEWT_ID`, and the `newt_secret` file —
+because Newt has no `*_FILE` variant of `NEWT_SECRET` and a literal
+`environment:` value would land in `docker inspect`. The correction:
+`CONFIG_FILE` is Newt's general **read-and-write** config file, not a
+secrets mechanism — Newt persists credentials back into it in some paths
+(`saveConfig()` in `websocket/config.go` does a read-modify-write), and a
+Compose secret mount is read-only, where Newt logs the failed write and
+continues. That combination must be confirmed harmless on day one (§10).
+
+Disable semantics, stated honestly: stopping the container drops the
+outbound tunnel and the public URL goes dark — but unlike `remote`, whose
+empty serve document is on disk before any stop is attempted, a *failed*
+`compose stop` here leaves the tunnel up until it succeeds. When an API key
+is on file (§8), the disable path should also disable the resource
+server-side, restoring belt-and-braces; without one, the narrower guarantee
+is a documented cost. In-stack server variants do not share this gap: their
+ingress dies with the containers.
+
+Like `ts_authkey`, `newt_secret` and `newt_config` are seeded at install by
+explicit `ensureSecret` calls — `newt_config` because Compose fails
+container creation outright when a declared secret's source file is missing
+(it is the one declared Compose secret), `newt_secret` so the drawer and the
+generator always have a stable 0600 file to read and overwrite. A blank
+`newt_config` just means "not configured yet": Newt exits, the container
+restarts, the UI shows unhealthy until credentials arrive.
 
 ## 7. What the control plane writes
 
-Following the intent-in-`stack.env` / secrets-in-`private/` split exactly:
+Following the intent-in-`stack.env` / secrets-in-`private/` /
+runtime-data-in-`data/` split:
 
 ```
 ~/.openpalm/
-├─ state/stack.env                      # INTENT (existing file, new keys)
+├─ state/stack.env                       # INTENT (existing file, new keys)
 │    OP_ENABLED_ADDONS=...,pangolin
-│    OP_PANGOLIN_ENDPOINT=https://app.pangolin.net
-│    OP_PANGOLIN_NEWT_ID=2ix2t8xk22ubpfy      # public-safe site identifier
-│    OP_PANGOLIN_TARGET=assistant             # assistant | guardian | both
+│    OP_PANGOLIN_PROFILE=proxy           # proxy | tunnel | connector
+│    OP_PANGOLIN_BASE_DOMAIN=example.com
+│    OP_PANGOLIN_DASHBOARD_DOMAIN=       # empty → pangolin.<base_domain>
+│    OP_PANGOLIN_ACME_EMAIL=
+│    OP_PANGOLIN_TARGET=assistant        # assistant | guardian | both
+│    OP_PANGOLIN_ENDPOINT=               # connector only
+│    OP_PANGOLIN_NEWT_ID=                # connector only
 │
-└─ private/secrets/
-   ├─ newt_secret                       # 0600, pasted or API-minted
-   ├─ newt_config                       # 0600, GENERATED — see below
-   └─ pangolin_api_key                  # 0600, optional (§8.2), org-scoped
+├─ state/pangolin/                       # GENERATED, non-secret
+│    traefik/traefik_config.yml          #   static config: providers, ACME
+│    traefik/dynamic_config.yml          #   dashboard/API routers
+│    blueprint.yml                       #   desired resources — §8.1
+│
+├─ private/pangolin/config.yml           # GENERATED, 0600 — embeds
+│                                        #   server.secret, so private/
+├─ private/secrets/
+│    pangolin_server_secret              # generated once at first enable
+│    pangolin_api_key                    # optional, pasted (§8.1)
+│    newt_secret                         # connector: pasted or API-minted
+│    newt_config                         # connector: GENERATED (§6.2)
+│
+└─ data/pangolin/                        # service-owned runtime data
+     db/db.sqlite                        #   accounts, sites, resources
+     letsencrypt/acme.json               #   certificates (regenerable)
+     gerbil/                             #   tunnel variant key material
 ```
 
-`applyPangolinConfig(homeDir)` (new module `pangolin-apply.ts`, beside a
-browser-safe `pangolin-access.ts` holding the config model, labels, and
-`describePangolinExposure` — the same pure-model / node-apply split as
-`remote-access.ts` / `remote-apply.ts`) regenerates `newt_config` whenever
-the endpoint, Newt ID, or secret changes:
+All generated files are derived by pure functions in `pangolin-access.ts`
+(config model → config.yml / traefik configs / blueprint document — the
+`resolveServeConfig` pattern) and written by `pangolin-apply.ts` with
+`writeFileAtomic`. Like `serve.json`, the generated tree lives outside
+`system/` because `overwriteSystemTree` replaces `system/` wholesale on
+update. Data directories are bind mounts pre-created by the existing
+`ensureComposeVolumeTargets` machinery; `data/pangolin/` inherits the
+Paperclip precedent — service-owned data, excluded from lifecycle safety
+backups, and the blueprint file is what makes that acceptable: losing
+`db.sqlite` loses accounts and API keys, but the stack's *resources* are
+re-appliable from the blueprint OpenPalm itself generates.
 
-```json
-{
-  "id": "<OP_PANGOLIN_NEWT_ID>",
-  "secret": "<contents of private/secrets/newt_secret>",
-  "endpoint": "<OP_PANGOLIN_ENDPOINT>"
-}
-```
-
-Written with `writeFileAtomic`, mode 0600. Newt's config precedence is CLI
-flag > env var > config file; the compose service sets only `CONFIG_FILE`,
-so the generated file is authoritative and cannot fight a stray env var.
-
-The env schema, in the established annotation DSL
-(`BUILTIN_ADDON_ENV_SCHEMAS.pangolin`):
+The env schema, in the established annotation DSL — one schema covering all
+variants, the way voice's covers its variants; connector-only fields say so
+in their descriptions rather than pretending `@required` is enforced (the
+credentials-route parser reads only `@sensitive`/`@boolean` today and
+ignores the rest, as `remote-addon-registry.test.ts` records):
 
 ```
-# OpenPalm Pangolin (Newt tunnel) configuration
+# OpenPalm Pangolin configuration
 # ---
-# Publishes this assistant through a Pangolin server — Pangolin Cloud or one
-# you host — on a real domain name, with a sign-in page in front. Create a
-# site in your Pangolin dashboard (Sites > Add Site > Newt) and copy the
-# three values it shows you into the fields below.
+# Puts a real web address, with a sign-in page, in front of this assistant.
+# The "Server" profiles run Pangolin inside this stack on your own domain;
+# the "Connector" profile links this stack to a Pangolin server you run
+# elsewhere (or Pangolin Cloud) instead.
 
-# The Pangolin server this stack connects to: https://app.pangolin.net for
-# Pangolin Cloud, or your own server's dashboard address. Note the privacy
-# trade: with Pangolin Cloud, the connection from visitors to Pangolin is
-# decrypted on Pangolin's servers before it reaches you; with your own
-# server, it is decrypted only on hardware you control.
-OP_PANGOLIN_ENDPOINT=
+# The domain resources are attached to, e.g. "example.com". Server profiles
+# only. You must own this domain and point a DNS record at this machine —
+# the setup guide walks through the one record to create.
+OP_PANGOLIN_BASE_DOMAIN=
 
-# The site ID Pangolin generated for this stack (shown as "Newt ID"). Safe
-# to share — it names the site but grants nothing by itself.
-OP_PANGOLIN_NEWT_ID=
+# Where the Pangolin dashboard lives. Leave blank to use
+# pangolin.<your base domain>.
+OP_PANGOLIN_DASHBOARD_DOMAIN=
 
-# What Pangolin's resources may point at: assistant, guardian, or both. Most
-# people only ever need "assistant" — the guardian target is for advanced
-# setups that also expose bot/API portals remotely.
+# Email address Let's Encrypt sends certificate-expiry notices to. Server
+# profiles only.
+OP_PANGOLIN_ACME_EMAIL=
+
+# What Pangolin's resources may point at: assistant, guardian, or both.
+# Most people only ever need "assistant" — the guardian target is for
+# advanced setups that also expose bot/API portals remotely.
 OP_PANGOLIN_TARGET=assistant
 
-# The site secret Pangolin generated beside the Newt ID. Required — the
-# tunnel cannot start without it. Treat it like a password: anything that
-# has it can impersonate this site to your Pangolin server.
+# Connector profile only: the Pangolin server this stack connects to, e.g.
+# https://app.pangolin.net for Pangolin Cloud, or your own server's
+# dashboard address. Note the privacy trade: through Pangolin Cloud,
+# visitor traffic is decrypted on Pangolin's servers before it reaches
+# you; through your own server (or the in-stack profiles), it is
+# decrypted only on hardware you control.
+OP_PANGOLIN_ENDPOINT=
+
+# Connector profile only: the site ID your Pangolin server generated
+# (shown as "Newt ID"). Pangolin's docs treat only the secret below as
+# sensitive.
+OP_PANGOLIN_NEWT_ID=
+
+# Connector profile only, and required there: the site secret generated
+# beside the Newt ID. Treat it like a password — anything that has it can
+# impersonate this site to your Pangolin server.
 # @sensitive
 NEWT_SECRET=
 ```
 
-`NEWT_SECRET` routes through the `@sensitive` path to the `newt_secret`
-delegated secret file, exactly as `TS_AUTHKEY` routes to `ts_authkey`; the
-non-sensitive keys land in `state/stack.env`. The known `@required`-is-
-unenforced gap (`onboarding-setup-review.md` W5) applies here as it does to
-every portal token; the health state, not validation, is what tells the
-operator a blank secret didn't work.
-
 ## 8. Making it configurable by a non-technical person
 
-This is the section the Tailscale addon never needed — Tailscale's setup
-*is* signing in — and the reason Pangolin was deferred rather than rejected:
-its raw setup asks the user to create a site, then create a resource, then
-type a target of `assistant` port `3000` into a third-party dashboard. Done
-naively that is three chances to mistype. The design below gives that flow a
-floor (a paste path with exact values) and a headline (one click, because
-Pangolin's integration API can do every step programmatically).
+This is where in-stack hosting earns its keep. Every previous shape left a
+gauntlet of third-party dashboard steps between a non-technical operator
+and a working front door. With the server inside the stack, OpenPalm's
+control plane can run almost the entire gauntlet itself, because every
+piece of it is reachable from the host: generated config files, `pangctl`
+over `composeExec` (the pattern `remote`'s status read-back already
+planned), and the integration API on loopback.
 
-### 8.1 The floor: paste three values
+### 8.1 The server path, automated end to end
 
-The generic addon drawer already renders the §7 schema: two text fields, a
-target field, one secret field. The companion setup guide
-(`docs/pangolin-setup.md`, files-touched list below) walks the dashboard
-steps with exact values, in the same shape as the Discord/Slack token
-guides:
+The operator answers three questions — the domain, the email for
+certificates, and "can the internet reach this machine?" — and creates one
+DNS record with a copy-paste value the UI displays. Everything else is
+OpenPalm's:
+
+1. **Generate** `config.yml` (server secret minted into
+   `pangolin_server_secret`; `flags.enable_integration_api: true`;
+   `flags.disable_signup_without_invite: true`; dashboard URL and CORS
+   origins derived from the domain keys) and the two Traefik files, then
+   bring up the variant's services.
+2. **Bootstrap the admin account headlessly**: `docker compose exec
+   pangolin pangctl set-admin-credentials --email <owner> --password
+   <generated>` — no setup-token dance, no dashboard visit. The generated
+   password is surfaced once with a copy button (the pairing-code
+   precedent) as the operator's Pangolin dashboard login.
+3. **Mint an API key.** The one step the documented surfaces keep manual:
+   API keys are created in the dashboard (Server Admin → API Keys for CE
+   root keys). The UI deep-links straight to that page with three-step
+   copy, and the pasted key lands in `pangolin_api_key`. If a `pangctl` or
+   seed path for key creation exists or appears upstream, this step
+   disappears; verify at implementation (§10).
+4. **Apply the blueprint.** `pangolin-access.ts` renders
+   `state/pangolin/blueprint.yml` — sites, resources, targets, and auth as
+   declarative YAML, which is both Pangolin's documented automation format
+   and exactly the kind of hand-editable plain file the control plane
+   already trades in. Applied via the integration API on loopback
+   (`PUT /org/{orgId}/blueprint`, base64 payload) or Pangolin's CLI. The
+   rendered default:
+
+   ```yaml
+   public-resources:
+     assistant:
+       name: Assistant
+       mode: http
+       full-domain: assistant.example.com     # derived from stack.env
+       auth:
+         sso-enabled: true                    # Pangolin's default gate
+       targets:
+         - site: openpalm-local               # the local site, this host
+           hostname: assistant                # Docker service DNS
+           port: 3000                         # in-container port — not 3800
+           method: http
+   ```
+
+   One hedge, stated plainly: the API guide documents creating **Newt**
+   sites only; creating a *local* site programmatically is visible in the
+   Swagger surface but not in the walkthrough docs. If it turns out to be
+   dashboard-only, the flow degrades to one guided dashboard step
+   ("Add Site → Local", deep-linked) before the blueprint apply. Verify at
+   implementation (§10). Direct API calls are the fallback for anything the
+   blueprint format cannot express — using the **current** route names
+   (`PUT /org/{orgId}/public-resource` with `mode: "http"`,
+   `PUT /public-resource/{id}/target`); the `/org/{orgId}/resource` +
+   `http: true` + `method` forms this document's first draft specced are
+   marked deprecated legacy aliases in the Pangolin source.
+5. **Read back and advertise last.** Resource URLs are shown with a copy
+   button only after Traefik holds a certificate and the resource answers —
+   staged progress, not a spinner, because ACME issuance takes tens of
+   seconds and DNS propagation can take longer (both get named states,
+   §8.4).
+
+When `OP_PANGOLIN_TARGET` includes guardian, the blueprint adds a second
+resource (`<name>-api` → `guardian:3830`) with access-token or Basic
+header auth — Pangolin passes both; Guardian still authenticates principals
+itself, so the gate is defense in depth, not a replacement. Never port 3831
+(§9).
+
+### 8.2 The connector path
+
+For the operator whose Pangolin lives elsewhere. The floor is the paste
+path: three schema fields plus the secret, with `docs/pangolin-setup.md`
+walking the remote dashboard's "Add Site → Newt" flow and supplying the
+exact values a human would otherwise mistype:
 
 | Pangolin asks | Enter | Why |
 |---|---|---|
-| Site type | Newt | the only type this addon runs |
+| Site type | Newt | the only type this variant runs |
 | Resource type | HTTP | raw TCP/UDP resources have **no auth layer** — never use them for this stack |
 | Target address | `assistant` | Docker service DNS, resolved from inside the newt container |
-| Target port | `3000` | the UI's in-container port — not 3800, not 3880 (host publishes are host-facing only) |
-| Target method | `http` | TLS terminates at Pangolin's ingress; the Docker network hop is plain HTTP, like every other in-stack hop |
-| Guardian target (advanced) | `guardian`, port `3830`, `http` | only with `OP_PANGOLIN_TARGET` including guardian; never port 3831 (§9) |
+| Target port | `3000` | the UI's in-container port — not 3800 (host publishes are host-facing only) |
+| Guardian target (advanced) | `guardian`, port `3830` | only with `OP_PANGOLIN_TARGET` including guardian |
 
-The drawer's field descriptions carry the deep link to the guide, mirroring
-"How to create a Discord bot and get your token →".
-
-### 8.2 The headline: one-click provisioning over the integration API
-
-Pangolin exposes a REST integration API (Bearer-token auth, org-scoped and
-root API keys, fine-grained permissions, Swagger reference at
-`api.pangolin.net/v1/docs`) that covers every object the paste path creates
-by hand. That turns setup into: **paste one API key, pick a name, click
-Connect.** A new host route (`POST /api/host/addons/pangolin/provision`,
-capability `host:addons`, admin-locked like every addon route) drives:
-
-1. `PUT /org/{orgId}/site` `{name: <project name>, type: "newt"}` — returns
-   `siteId`, `newtId`, and the Newt `secret`. Write `OP_PANGOLIN_NEWT_ID`,
-   the `newt_secret` file, regenerate `newt_config`, enable the addon. The
-   sidecar connects; the site reports Online.
-2. `GET /org/{orgId}/domains` — offer the org's domains in a select,
-   defaulting to the only entry (Cloud accounts start with one).
-3. `PUT /org/{orgId}/resource` `{name, http: true, subdomain, domainId}` —
-   subdomain defaults to the project name; returns `resourceId` and
-   `fullDomain`.
-4. `PUT /resource/{resourceId}/target`
-   `{siteId, ip: "assistant", port: 3000, method: "http"}` — the values a
-   human would have typed, now impossible to mistype.
-5. Leave the resource's default protection (Pangolin platform SSO via the
-   badger forward-auth middleware) in place. Offer "require a PIN instead"
-   as a one-checkbox alternative for sharing with someone who has no
-   Pangolin account. Never offer "no auth" — a user who wants that has
-   Funnel, and it at least says so honestly.
-6. When `OP_PANGOLIN_TARGET` includes guardian: repeat 3–4 with subdomain
-   `<name>-api`, target `guardian:3830`, and access-token or Basic header
-   auth (Pangolin passes both; Guardian still authenticates principals
-   itself — the token is defense in depth, not a replacement).
-7. Read back `fullDomain` and show `https://<fullDomain>` with a copy
-   button — only after the site reports Online and the resource exists,
-   honoring the "advertise LAST" invariant (`a name is never published
-   ahead of a reachable port`).
-
-The API key is pasted once into a `@sensitive` field, stored as the
-`pangolin_api_key` delegated secret, and used server-side only (host
-process; never the browser). Keeping it enables ongoing status read-back
-(site online/offline via the API) and the belt-and-braces disable from §5;
-offering "forget the key after setup" is a reasonable privacy option since
-everything degrades gracefully to the paste path.
-
-Two honest caveats. On self-hosted Community Edition the integration API is
-**off by default** (`flags.enable_integration_api`, served on its own port
-behind extra Traefik routers) — the setup guide documents enabling it, and
-the drawer falls back to the paste path when the endpoint has no API. And
-the drawer today renders only text/checkbox/secret fields, so the
-provision-vs-paste choice and the domain select need a bespoke drawer
-section — precedent exists: `AddonsTab.svelte` already special-cases
-`aid === 'voice'` with a profile selector block above the schema fields.
+The headline remains one click where the remote server's integration API is
+reachable and a key is pasted: mint the site (`PUT /org/{orgId}/site`,
+`type: "newt"` — returns `newtId` and the secret), write the credentials,
+enable, then resource + target + auth via blueprint or the current-surface
+calls above. Two honest caveats carry over from the first draft: on
+self-hosted CE the integration API is off by default (the guide's
+enable-the-API section covers it, and the drawer falls back to the paste
+path — presented as fully supported, not degraded), and on Pangolin Cloud's
+free tier the org may have **no domain at all** (§2), so the flow must
+handle an empty `GET /org/{orgId}/domains` by walking the operator through
+attaching one rather than assuming an entry exists.
 
 ### 8.3 Setup-spec / headless
 
-`addons: {pangolin: true}` works today through the generic spec path. The
-config keys are ordinary `state/stack.env` keys and the secret is an
-ordinary delegated secret file, so the headless recipe is documented in
-`docs/operations/manual-headless-install.md` alongside the existing
-`TS_AUTHKEY` pre-authorization note: write the three keys, write
-`newt_secret`, run `openpalm start`. A first-class
-`pangolin: {endpoint, newtId, ...}` spec object — and the same for the
-`remote` addon — is a fast-follow decision, not v1; the spec has no
-addon-config map today and inventing one for one addon would be the kind of
-single-purpose special case the codebase keeps declining.
+`addons: {pangolin: true}` works today through the generic spec path, and
+the config keys are ordinary `state/stack.env` keys plus delegated secret
+files — so the headless recipe is: write the keys, write the secrets, run
+`openpalm start`. It belongs in `docs/operations/manual-headless-install.md`,
+which today documents neither this addon nor `remote`'s `TS_AUTHKEY`
+pre-authorization path (that guidance lives only in the remote env schema);
+add both sections in this change. A first-class `pangolin:` spec object
+would extend the spec's one existing per-addon surface — `portalCredentials`,
+the addon-id-keyed credential map for discord/slack — rather than invent the
+pattern; that is a fast-follow decision, not v1.
 
 ### 8.4 States the UI must show
 
-Intent and observed state stay separate, as `AssistantTab.svelte` renders
-them for LAN access. Model the addon's status as a discriminated union:
+Intent and observed state stay separate, as the LAN access card renders
+them. The addon's status is a discriminated union; the server variants add
+states the connector never needed, because certificate issuance and DNS are
+now the stack's to narrate:
 
-`off · awaiting-credentials · starting · connecting{endpoint} ·
-up{fullDomain?} · degraded{container-up-tunnel-down} ·
+`off · awaiting-config · starting · dns-pending{expected, observed} ·
+issuing-certificate · up{urls} · degraded{service} ·
 error{reason, remediation}`
 
 Sourced from facts with different owners, mirroring `access-status.ts`:
-enablement and config from `state/stack.env` (intent), container health from
-`compose ps` (the `HEALTH_FILE` check makes "up" mean tunnel-up, not merely
-process-up), and — only when an API key is on file — site online status and
-resource list from the integration API. `fullDomain` is shown from the
-provisioning read-back; without an API key the UI shows the endpoint and a
-"check your Pangolin dashboard" link rather than fabricating a URL it cannot
-verify — the same discipline as `describeRemoteExposure` reporting a port,
-never a URL.
+enablement and config from `state/stack.env`; container health from
+`compose ps` (three containers in server variants — `degraded` names which
+one); DNS by resolving the dashboard domain and comparing against the
+host's addresses (the `dns-pending` state shows the record the operator
+still needs to create, with a copy button); certificate and resource state
+from the integration API on loopback when a key is on file. The connector
+variant keeps the earlier draft's states (`connecting{endpoint}`,
+tunnel-up-vs-container-up from the health file) and its discipline: without
+an API key, show the endpoint and a "check your Pangolin dashboard" link
+rather than fabricating a URL the stack cannot verify — the same rule as
+`describeRemoteExposure` reporting a port, never a URL.
 
 ### 8.5 Copy, in the existing voice
 
-Addon list description, deliberately naming neither WireGuard nor tunnels:
+Proposed wording — noting honestly that the addons list renders no
+descriptions today (name and status only), so the first of these lands
+wherever descriptions land when they exist, or in the wizard card if the
+addon is ever offered at install time:
 
 ```ts
 pangolin: "Put your assistant on a web address you own, with a sign-in
 page in front",
 ```
 
-Drawer intro, distinguishing it from `remote` in the operator's terms:
+Drawer intro, distinguishing the two front doors in the operator's terms:
 
 > **Remote** (Tailscale) is for your own devices — nothing to configure,
 > nobody else can get in. **Pangolin** is for a real web address you can
 > share — it shows a sign-in page to anyone who visits. You can use both at
 > once.
 
-And the §3 privacy trade, surfaced at the moment the endpoint is chosen (not
-buried in docs): the two-card choice "Pangolin Cloud — easiest, free;
-visitor traffic is decrypted on Pangolin's servers before it reaches you" vs
-"My own Pangolin server — your hardware end to end; you run a small server
-to do it", with no silent default.
+The variant question, asked as capability rather than topology:
+
+> **Can the internet reach this machine?**
+> If this stack runs on a server with its own address, or your router can
+> forward web traffic to it, Pangolin can run entirely inside your stack —
+> nothing leaves your hardware. If not (most home networks), connect to a
+> Pangolin server elsewhere instead.
+
+And the enable-time confirmation for server variants, in the
+`OP_REMOTE_PUBLIC` register — shown once, not reused for anything milder:
+
+> **This opens your assistant's front door to the internet.**
+> Anyone can reach the sign-in pages at the addresses you create. Pangolin
+> asks visitors to sign in before anything of yours loads, and your
+> assistant still requires its own password behind that.
+
+### 8.6 What the drawer needs that it lacks
+
+The credentials drawer renders text, checkbox, and secret fields from the
+schema DSL, and descriptions are plain text — no links, no enums, no
+actions. The variant selector reuses the existing profile-selector block
+(`AddonsTab.svelte` already special-cases voice with one). The provision
+panel (steps 2–5 of §8.1, the API-key paste, the DNS-record display) is a
+bespoke drawer section like voice's, plus one new route. Guide links render
+as plain-text URLs in descriptions, as Discord's schema does today —
+link-capable descriptions are their own small improvement, not assumed
+here.
 
 ## 9. Security posture, stated honestly
 
-**The remote-controlled target list is the widest trust grant in this
-design.** The tunnel addon's routing is a locally generated file; a
-compromised Tailscale coordination plane can admit hostile *peers*, but they
-reach only what `serve.json` exposes. Pangolin inverts that: the resource →
-target table lives on the Pangolin server and is pushed to Newt over its
-control channel. Whoever administers the Pangolin org — Fossorial's Cloud,
-or the operator's VPS admin account — can point the sidecar at *anything
-reachable on its networks*, which includes the assistant's OpenCode listener
-(`assistant:4096`) and guardian's portal gateway (`guardian:8080`), not just
-the two blessed targets. The design accepts this with mitigations rather
-than pretending to prevent it: `DISABLE_CLIENTS: "true"` (no
-client-to-site raw connectivity), network membership already minimal, and
-one sentence of documentation that must exist: *the Pangolin account (or
-server) is part of this stack's security boundary — protect it like the
-stack itself.* Self-hosting the control plane keeps that boundary in the
-operator's hands, which is one more reason §3 refuses to make Cloud a silent
-default.
+**In-stack hosting shrinks the trust story; the connector keeps the wide
+one.** The earlier draft's headline risk was Pangolin's remote-controlled
+target list: whoever administers the control plane can point the data path
+at anything reachable on its networks. With the server in-stack, that
+administrator *is the operator* — the dashboard admin account and the
+`pangolin_api_key` join the stack's own security boundary, protected like
+the UI login password. The connector variant pointed at Pangolin Cloud (or
+any server the operator does not control) retains the original caveat, and
+its one sentence of documentation: *the Pangolin server you connect to can
+steer this sidecar at anything on its networks — treat that server as part
+of your stack's security boundary.* Network design bounds the blast radius
+in every variant: the data path reaches `assistant_net`/`portal_net`; the
+control plane reaches neither (§6.1); `DISABLE_CLIENTS` stays on for newt.
 
-**Pangolin's auth gate is defense in depth, not a replacement.** Guardian
+**The ingress path runs third-party code, twice.** Traefik and badger sit
+in front of the stack's front door. The same blast-radius reasoning the
+`services.compose.yml` header applies to `tunnel` applies here — digest
+pins, no unnecessary capabilities, minimal network membership — plus the
+badger plugin-download problem (§6.1, §10 risk 4).
+
+**Docker-socket discovery stays off.** Newt and Pangolin both offer
+container discovery via a mounted Docker socket. The assistant itself is
+denied a socket by design; no addon gets one either. Resource definitions
+come from the rendered blueprint, never from socket scanning — the
+convenience is not worth handing an ingress container the host.
+
+**Pangolin's gate is defense in depth, not a replacement.** Guardian
 remains the authorization layer for portal/API traffic, and the UI login
 password remains the door on the assistant target. The hard-password gate
-`remote-access-from-anywhere.md` §9 specifies for Funnel's public mode
-applies with equal force the day a Pangolin resource is created without SSO
-(the PIN-only option): same gate, same copy, shared implementation.
+the companion document specifies for Funnel's public mode is specified, not
+yet implemented; building it once — shared by `OP_REMOTE_PUBLIC` and by any
+Pangolin resource created without SSO (the PIN-only option) — is part of
+this work, not machinery that exists to reuse.
 
 **Never proxy 3831.** Guardian's principal-admin listener stays
-loopback-only on the host and must never appear as a Pangolin target; the
-setup guide and the provisioning route both refuse it.
+loopback-only and must never appear as a target; the blueprint generator
+and the setup guide both refuse it.
 
 **Forwarded headers already work; the throttle gap carries over.** Traefik
-sets `X-Forwarded-Proto`/`-Host`/`-For`, and the containerized UI already
-launches with `PROTOCOL_HEADER`/`HOST_HEADER` and short-circuits host-header
-checks when `OP_UI_SERVED_IN_CONTAINER=1` — the same wiring the Tailscale
-path relies on. The known `ADDRESS_HEADER` login-throttle issue (all
-requests arriving from the sidecar's IP make five failed logins a global
-lockout) is still open from the original roadmap and serves both addons with
-one fix.
+sets `X-Forwarded-*`, the containerized UI already launches with
+`PROTOCOL_HEADER`/`HOST_HEADER` and accepts proxied Host headers when
+served in-container. The known `ADDRESS_HEADER` login-throttle issue (all
+requests arriving from one proxy IP make five failed logins a global
+lockout) is still open from the companion document and serves both addons
+with one fix.
 
-**CORS for the guardian target.** A Guardian reached at
-`https://<fullDomain>` needs that exact origin in
-`GUARDIAN_CORS_ALLOWED_ORIGINS` (Guardian rejects `*`). The provisioning
-flow knows `fullDomain` and can write it automatically — the fast-follow the
-Tailscale path couldn't have, because it never knows its own URL.
+**CORS for the guardian target.** A Guardian reached at a real domain needs
+that exact origin in `GUARDIAN_CORS_ALLOWED_ORIGINS` (Guardian rejects
+`*`). Unlike the Tailscale path, this flow *knows* its hostnames — they are
+derived from `stack.env` — so `applyPangolinConfig` writes the origin
+automatically instead of documenting a manual step.
 
 ## 10. Open risks and what stays manual
 
 Ranked:
 
-1. **Young, fast-moving upstream.** Born September 2024; 14 minor releases
-   in a year; docs and API surface move. Mitigation: digest-pinned Newt
-   image, a compose contract test, and the §8.2 route treating API errors
-   as "fall back to the paste path," never as setup failure.
-2. **The control-plane trust grant** (§9). Accepted and documented, not
-   solved. The one design lever — self-hosting — is preserved as a
-   first-class, equally supported choice.
-3. **Site credential rotation is Enterprise-gated.** On CE, a leaked
-   `newt_secret` means delete-and-recreate the site. With an API key on
-   file that is one automated round (the same §8.2 calls); without one it
-   is a documented manual step in the setup guide.
-4. **Integration API off by default on self-hosted CE.** The headline flow
-   silently narrows to Cloud users and self-hosters who followed the
-   guide's enable-the-API section. The drawer must present the paste path
-   as fully supported, not as a degraded mode.
-5. **Cloud free-tier terms are observed, not contractual.** The original
-   deferral reason, now verifiable but not guaranteed. The addon's design
-   survives a pricing change (self-host remains), but UI copy should avoid
-   promising "free."
-6. **All public traffic hairpins through the Pangolin node.** Latency and
-   the node's bandwidth bound the experience; a $5 VPS is the bottleneck
-   for heavy use. Tailscale Serve's near-always-P2P private path remains
-   the better daily driver, which §3's copy already tells the user.
-7. **Rootless verification.** The `user:` downgrade and `HEALTH_FILE`
-   writability under an arbitrary uid:gid are asserted from Newt's
-   userspace design, not yet from a running container. Verify on day one,
+1. **Young, fast-moving upstream.** Fourteen minor releases in a year;
+   the API surface moves — this document's own first draft specced routes
+   (`PUT /org/{orgId}/resource`, `http: true`) that the current source
+   marks as deprecated legacy aliases. Mitigations: digest pins on all
+   four images, contract tests, the blueprint format (declarative, more
+   stable than route shapes) as the primary automation surface, and API
+   fallbacks specced against the current routes with the aliases noted.
+2. **The stack becomes internet-facing.** Server variants put Traefik +
+   badger + Pangolin on reachable 80/443 — a materially larger attack
+   surface than anything the stack has exposed before, in exchange for the
+   auth gate. Mitigations: profile-gated (zero default footprint), the §8.5
+   confirmation ceremony, `disable_signup_without_invite` in the generated
+   config, and Pangolin's own MFA/passkey support for the dashboard
+   account.
+3. **Rootless verification.** Upstream runs all server containers as root;
+   whether `fosrl/pangolin`, `traefik`, `fosrl/gerbil`, and `fosrl/newt`
+   tolerate the stack's `user:` convention (including Traefik's in-container
+   :80/:443 binds and Newt's `HEALTH_FILE` write) is unverified. Day one,
    before any UI work.
-8. **Token streaming through Traefik.** Pangolin's shipped Traefik config
-   sets a 30-minute read timeout on the TLS entrypoint and proxies
-   WebSockets, so SSE should pass — but "should" earned a verification
-   step last time (`remote-access-from-anywhere.md` risk 9) and earns one
-   here: run the real stack behind a real resource and watch tokens stream
-   before building anything else.
-9. **VPS operational burden** for the self-hosted shape: updates, backups
-   (`config/db/db.sqlite`), monitoring, and a server secret rotatable only
-   via `pangctl`. OpenPalm documents; it does not manage.
+4. **Badger arrives by runtime download.** Traefik's plugin mechanism
+   fetches it at container start — against the no-runtime-downloads
+   principle and unpinnable by digest. Evaluate Traefik's local-plugins
+   mode with vendored source at implementation; if unworkable, the version
+   pin in the generated config plus the risk being named here is the
+   fallback, stated in `core-principles.md` as a carve-out.
+5. **DNS and ACME failure modes are now ours to narrate.** Wrong records,
+   propagation delay, rate-limited issuance, port 80 blocked by an ISP —
+   each needs a named state and remediation copy (§8.4), or the addon
+   reads as broken when the network is. This is the cost of owning the
+   front door.
+6. **`db.sqlite` is real state.** Accounts, API keys, and any
+   dashboard-made config live in `data/pangolin/db/`, excluded from
+   lifecycle backups by the Paperclip precedent. The generated blueprint
+   makes resources re-appliable; accounts and keys are not, and the
+   backup-restore guide must say so.
+7. **Local-site creation via API is undocumented** (walkthrough docs cover
+   `type: "newt"` only); the §8.1 flow degrades to one guided dashboard
+   step if Swagger's surface doesn't cover it. Verify at implementation,
+   alongside whether API-key creation can be automated (step 3).
+8. **CONFIG_FILE is read-write to Newt** and the design mounts it
+   read-only; Newt logs and continues on failed writes per its source, but
+   "logs and continues" is an observation to confirm, not a guarantee.
+9. **Token streaming through Traefik.** The shipped entrypoint config sets
+   a 30-minute read timeout and proxies WebSockets, so SSE should pass —
+   but "should" earned a verification step in the companion document and
+   earns one here: run the real stack behind a real resource and watch
+   tokens stream before building anything else.
+10. **EE gating and terms.** Site-credential rotation, org-level IdPs, and
+    clustering are Enterprise; CE credential leak response is
+    delete-and-recreate (automatable via the API). Cloud free-tier terms
+    are observed, not contractual, and provide no domain (§2) — UI copy
+    must not promise "free" on the connector-to-Cloud path.
+11. **Host port conflicts.** 80/443 may be taken by another reverse proxy
+    on the host. The port/bind variables exist for exactly that operator;
+    the failure needs a friendly pre-flight check, not a Compose error.
 
-**Irreducibly manual:** creating the Pangolin account (Cloud) or the VPS +
-domain + DNS records (self-hosted); creating the API key for the one-click
-path (a few dashboard clicks, with a guide); choosing a strong UI login
-password; and, on CE self-host, flipping `flags.enable_integration_api` if
-the one-click path is wanted.
+**Irreducibly manual:** buying a domain and creating one DNS record (server
+variants — the UI displays the exact record with a copy button); router
+port-forwarding where applicable; the API-key paste (three guided clicks,
+until upstream offers a headless path); the remote dashboard's site/resource
+steps on the connector paste path; choosing a strong UI login password.
 
-**One decision to make before implementation:** whether v1 ships the §8.2
-provisioning route, or ships the paste path first and the provisioning
-route as the fast-follow. Recommendation: **paste path first** — it is a
-strict subset (schema, compose service, apply hook, docs), it exercises
-every invariant the provisioning route depends on, and it keeps the first
-release reviewable. The provisioning route is where the non-technical
-promise is kept, so it follows in the next release, not "eventually."
+**One decision to make before implementation:** v1 scope. Recommendation:
+**the proxy variant plus the connector paste path first.** The proxy
+variant is the intent-defining shape (the server in the stack, per-file
+config generation, `pangctl` bootstrap, blueprint apply) and the connector
+paste path is a strict subset of machinery the provisioning route builds
+on. The tunnel variant (gerbil) and the one-click connector provisioning
+follow in the next release — they are additive service blocks and one
+route, not new invariants. Second decision, smaller: whether the addon
+appears in the setup wizard at all in v1. Recommendation: no — post-install
+only, from the Addons tab, where the §8.5 capability question has room to
+breathe.
 
 ## 11. Sources
 
 Primary sources. Pangolin documentation was read from the docs site's
-source repository (`fosrl/docs-v2`) because the rendered site is
-unreachable from this environment; rendered URLs are given where known.
+source repository (`fosrl/docs-v2` at its 2026-08-04 head) because the
+rendered site is unreachable from this environment; paths below name the
+MDX files, which map one-to-one onto docs.pangolin.net URLs.
 
-**Pangolin**
+**Pangolin docs (fosrl/docs-v2)**
+- `self-host/manual/docker-compose.mdx` — the manual install this design's
+  generated files mirror, incl. "Verify the Setup" and "Without Tunneling"
+- `self-host/advanced/without-tunneling.mdx` — local reverse-proxy mode
+- `manage/sites/understanding-sites.mdx` — Newt / Local / Basic WireGuard
+  site types and their limits
+- `manage/sites/install-site.mdx`, `manage/sites/configure-site.mdx` —
+  Newt env vars, CONFIG_FILE read/write behavior, HEALTH_FILE
+- `manage/common-api-routes.mdx` — site/resource/target flows
+- `manage/blueprints.mdx` — the declarative YAML format and apply paths
+- `manage/integration-api/using-the-integration-api.mdx`,
+  `self-host/advanced/integration-api.mdx` — key types, enable flag, port
+- `self-host/advanced/container-cli-tool.mdx` — `pangctl`
+  set-admin-credentials / rotate-server-secret
+- `self-host/advanced/config-file.mdx` — flags, ports, SERVER_SECRET
+- `self-host/dns-and-networking.mdx` — records, ports, wildcard guidance
+- `self-host/choosing-a-vps.mdx` — sizing, DigitalOcean image
+- `self-host/enterprise-edition.mdx` — CE/EE licensing and thresholds
+- `manage/domains.mdx` — provided domains are paid-plan; Cloud custom
+  domains need NS/CNAME records
+
+**Pangolin source**
+- https://github.com/fosrl/pangolin — release tags (1.21.x);
+  `server/routers/resource/createResource.ts` and
+  `server/routers/target/createTarget.ts` (legacy `http`/`method` fields,
+  current `mode` enum, `public-resource` route aliases); LICENSE (AGPL-3.0
+  + per-file Fossorial Commercial License)
+- https://github.com/fosrl/newt — `websocket/config.go` (CONFIG_FILE
+  read-modify-write), userspace netstack design
+- https://github.com/fosrl/gerbil, https://github.com/fosrl/badger
+
+**Rendered-site entry points**
 - https://docs.pangolin.net/self-host/manual/docker-compose
-- https://docs.pangolin.net (source: https://github.com/fosrl/docs-v2)
-- https://github.com/fosrl/pangolin (license files: AGPL-3.0 +
-  per-file Fossorial Commercial License)
-- https://github.com/fosrl/newt (CONFIG_FILE, HEALTH_FILE,
-  DISABLE_CLIENTS, userspace netstack)
-- https://github.com/fosrl/gerbil
-- https://github.com/fosrl/badger
-- https://api.pangolin.net/v1/docs (integration API reference)
+- https://api.pangolin.net/v1/docs (Swagger reference)
 - https://app.pangolin.net (Pangolin Cloud)
-- https://static.pangolin.net/get-installer.sh
 
 **OpenPalm (working tree, this revision)**
 - `.github/roadmap/0.14.0/remote-access-from-anywhere.md` — the deferral,
-  the candidate criteria, the Funnel auth/identity findings
+  candidate criteria, Funnel auth findings, the CGNAT constraint
+- `.github/roadmap/0.14.0/tls-on-the-home-network.md` — the LAN TLS tiers
+  the proxy variant's LAN-only mode answers
 - `packages/skeleton/system/stack/services.compose.yml` — the `tunnel`
-  service block and `ts_authkey` secret this design mirrors
+  block, the addon trust-boundary header, the voice/ollama variant labels
 - `packages/lib/src/control-plane/remote-access.ts`, `remote-apply.ts`,
   `remote-compose.test.ts`, `remote-addon-registry.test.ts`
 - `packages/lib/src/control-plane/addon-ids.ts`, `addon-env-schemas.ts`,
-  `addons.ts`, `secrets.ts`, `secrets-files.ts`, `access-toggles.ts`,
-  `addon-network-boundary.test.ts`
+  `addons.ts` (apply hook, profile machinery), `secrets.ts`,
+  `secrets-files.ts`, `access-toggles.ts`,
+  `addon-network-boundary.test.ts` (the sweep `tunnel` is deliberately
+  not in)
 - `packages/ui/src/lib/components/addons/AddonsTab.svelte`,
   `packages/ui/src/routes/api/host/addons/[name]/credentials/+server.ts`,
   `packages/ui/src/routes/api/host/access-status/+server.ts`
 - `docs/technical/adding-an-addon.md`, `docs/technical/core-principles.md`,
   `docs/technical/network-partitioning-d5a.md`, `docs/remote-access-tls.md`,
+  `docs/operations/manual-headless-install.md`,
   `docs/reviews/onboarding-setup-review.md`
