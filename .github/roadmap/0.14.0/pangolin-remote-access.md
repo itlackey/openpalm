@@ -152,7 +152,10 @@ The "vendor can read traffic" row is why the in-stack shape is the headline
 and Cloud is the fallback: the companion document weighted exactly this
 against Cloudflare and ngrok, and with Pangolin Cloud (no self-hosted node)
 TLS for public resources terminates on Fossorial's Traefik. In-stack, the
-entire path is the operator's.
+entire path is the operator's. The field's third serious option —
+Cloudflare's named tunnels, the companion document's never-built
+secondary — is evaluated against both columns above in
+`cloudflare-tunnel-comparison.md`.
 
 ## 4. The shape: the Pangolin server as a stack addon
 

@@ -194,6 +194,17 @@ endpoint. Not offerable.
 already owns a domain on Cloudflare and wants Cloudflare Access in front. It
 slots into the same overlay shape with a different image.
 
+*Since revisited.* The primary shipped as recommended (the `remote`
+addon). Two later facts reweighted the field without unshipping it: the
+`remote` addon has **no install base beyond local testing**, and OpenPalm
+installs are not only the CGNAT homes §1 optimized for. Pangolin —
+deferred in §2 below — is now proposed as the **flagship** front door
+wherever the host is reachable (`pangolin-remote-access.md`), with this
+document's recommendation remaining the answer for the CGNAT /
+zero-infrastructure case. The cloudflared secondary was never built; it
+is re-evaluated against all three options in
+`cloudflare-tunnel-comparison.md`.
+
 Do not ship one boolean. Ship **one toggle plus a mode**, because they are
 different products with different risk:
 
