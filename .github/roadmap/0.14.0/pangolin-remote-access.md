@@ -214,7 +214,7 @@ not work. So the proxy/tunnel variants publish
 with the deliberate act being the addon enable itself: the UI treats
 enabling a server variant as an exposure change with the same weight as
 `OP_REMOTE_PUBLIC` — explicit confirmation, warning copy, no silent default
-(§8.5). The bind and port variables exist for the operator who fronts
+(§8.7). The bind and port variables exist for the operator who fronts
 Pangolin with something else or needs 80/443 for another service; the
 defaults are the ones that work. This deviation is confined to the two
 server variants; the connector variant publishes nothing, exactly like
@@ -289,7 +289,9 @@ Create: the four service blocks and `pangolin_net` declaration
 derivation) and `pangolin-apply.ts` (file writes, `pangctl`/API calls);
 `pangolin-compose.test.ts`; the provisioning route
 (`packages/ui/src/routes/api/host/addons/pangolin/provision/+server.ts`);
-`docs/pangolin-setup.md` (user guide).
+`docs/pangolin-setup.md` (user guide, also shipped into the assistant's
+knowledge stash so the assistant can walk the operator through the DNS and
+firewall steps — §8.9).
 
 Modify: `addon-ids.ts`; `addon-env-schemas.ts` (schema + recreate scope);
 `addons.ts` (the `ADDON_APPLY_HOOKS` generalization); `secrets.ts`
@@ -324,6 +326,20 @@ dashboard/API routing) and the proxy targets, so:
 The control plane never being on `assistant_net` means a compromised
 Pangolin dashboard cannot reach OpenCode (:4096) directly — only route
 traffic through Traefik to targets, which is its job description anyway.
+
+Two deliberate simplifications against the upstream docs. **Database:
+SQLite, full stop.** It is Pangolin's default, requires zero configuration,
+and is built into the main `fosrl/pangolin:<version>` image; PostgreSQL
+needs a different image variant plus a whole postgres container. OpenPalm's
+stated convention is that service runtime data "including SQLite databases,
+stays under `~/.openpalm/data/`", and one assistant's front door is nowhere
+near the scale that motivates Pangolin's Postgres option. **Integration
+API: loopback only, never routed.** The upstream docs expose the API at
+`api.<domain>` through extra Traefik routers for external callers; this
+design's only caller is the host control plane, so the generated Traefik
+config omits those routers entirely and the API exists solely on the
+literal-loopback publish below. An operator who wants external API access
+can add the routers by hand; the stack will not.
 
 ```yaml
   pangolin:
@@ -471,6 +487,23 @@ runtime-data-in-`data/` split:
      gerbil/                             #   tunnel variant key material
 ```
 
+The generated `config.yml` tracks the minimal shape the config-file
+reference documents, key for key: `app.dashboard_url` and `server.cors.
+origins` derived from the dashboard domain; `domains.domain1.base_domain`
+plus `cert_resolver: "letsencrypt"`; `server.secret` from
+`pangolin_server_secret` (the reference's `SERVER_SECRET` env override is
+deliberately not used — an env value surfaces in `docker inspect`, the
+mounted 0600 file does not); `server.trust_proxy` left at its default of
+`1` (Pangolin sits behind exactly one proxy, its own Traefik);
+`server.integration_port` at its default 3003; and `flags` set to
+`enable_integration_api: true`, `disable_signup_without_invite: true`,
+`disable_user_create_org: false`, `require_email_verification: false`,
+`disable_enterprise_features: true` (CE ships; hide what it cannot do).
+The `gerbil:` block (`start_port`, `base_endpoint`) is emitted only for the
+tunnel variant — the without-tunneling doc's instruction to omit it is what
+keeps the proxy variant offering local sites only. No `postgres:` block,
+ever (§6.1).
+
 All generated files are derived by pure functions in `pangolin-access.ts`
 (config model → config.yml / traefik configs / blueprint document — the
 `resolveServeConfig` pattern) and written by `pangolin-apply.ts` with
@@ -549,8 +582,8 @@ planned), and the integration API on loopback.
 
 The operator answers three questions — the domain, the email for
 certificates, and "can the internet reach this machine?" — and creates one
-DNS record with a copy-paste value the UI displays. Everything else is
-OpenPalm's:
+DNS record with a copy-paste value the UI displays (§8.4). Everything else
+is OpenPalm's:
 
 1. **Generate** `config.yml` (server secret minted into
    `pangolin_server_secret`; `flags.enable_integration_api: true`;
@@ -606,7 +639,7 @@ OpenPalm's:
    button only after Traefik holds a certificate and the resource answers —
    staged progress, not a spinner, because ACME issuance takes tens of
    seconds and DNS propagation can take longer (both get named states,
-   §8.4).
+   §8.6, with the record and firewall guidance in §8.4).
 
 When `OP_PANGOLIN_TARGET` includes guardian, the blueprint adds a second
 resource (`<name>-api` → `guardian:3830`) with access-token or Basic
@@ -641,7 +674,74 @@ free tier the org may have **no domain at all** (§2), so the flow must
 handle an empty `GET /org/{orgId}/domains` by walking the operator through
 attaching one rather than assuming an entry exists.
 
-### 8.3 Setup-spec / headless
+### 8.3 Switching variants and targets — one control each, consequences stated
+
+The variant and the target are the two knobs an operator actually revisits,
+so both must be single controls with the apply built in, not env keys plus
+a remembered ritual.
+
+**Variant switches** ride the existing profile-selection machinery
+(`setAddonProfileSelection` → `OP_PANGOLIN_PROFILE`), with
+`applyPangolinConfig` regenerating artifacts and recreating exactly the
+services that changed:
+
+- **proxy ↔ tunnel** is small and the UI says so: same control plane, same
+  database, same certificates, same resources. The switch adds or removes
+  `gerbil` (and moves the 80/443 publish between `pangolin-traefik` and
+  `gerbil`, since the tunnel variant shares gerbil's netns), regenerates
+  `config.yml` with or without the `gerbil:` block, and recreates the
+  server services once. Everything the operator configured survives.
+- **server ↔ connector** changes which control plane defines this stack's
+  resources, and the UI states that before applying: switching away from a
+  server variant stops the server containers (the ingress dies with them —
+  fail-closed by construction), keeps `data/pangolin/` on disk so
+  switching back restores accounts and certificates, and leaves the
+  operator's public URLs dark until the connector's own server has
+  resources pointing here. Nothing is deleted; the consequence is downtime
+  of the front door, and the confirmation copy says exactly that.
+
+**Target switches** (`assistant` | `guardian` | `both`) are one radio
+control in the drawer, not a text field. Changing it re-renders the
+blueprint — both resources are always *rendered*; the target selects which
+are *applied* — and, when an API key is on file, re-applies it in the same
+action, so "also expose the API for my bot" is genuinely one click. The
+same apply recomputes `GUARDIAN_DIRECT_INGRESS` through
+`computeGuardianIngressRequired` and writes the guardian resource's origin
+into `GUARDIAN_CORS_ALLOWED_ORIGINS` (§9), so the two follow-on settings
+that silently break guardian exposure by hand are never manual here. For
+the bot itself, the guardian resource's access token is minted in the same
+flow and shown once with a copy button (the pairing-code precedent) —
+without a key on file, the drawer shows the one dashboard step instead.
+
+### 8.4 DNS and the firewall, through the host UI
+
+The two steps OpenPalm cannot perform are a DNS record at the operator's
+registrar and, on some hosts, a firewall rule. The design treats both as
+UI-guided steps with exact, copyable values — never prose instructions.
+
+**DNS.** The `dns-pending` state (§8.6) renders the record to create as a
+table row — `Type: A`, `Name: *` (the docs' recommended wildcard, so every
+resource subdomain resolves without further records), `Value: <address>` —
+with a copy button per cell. The address is the honest part: a host cannot
+always know its own public IP (NAT, VPS private interfaces), so the UI
+shows its best guess from the interfaces it can see, marks it as a guess,
+and lets the operator correct it from their VPS panel or router. The state
+clears itself: the control plane polls the dashboard domain's resolution
+and flips to `issuing-certificate` when the record appears — DNS becoming
+correct is *observed*, never assumed from a clicked "done" button.
+
+**Firewall.** The harness never runs `sudo`, so firewall rules are
+remediation copy, not actions: when the reachability check fails with the
+record in place, the UI shows the exact commands from Pangolin's DNS &
+networking guide for the two common systems — `ufw allow 80/tcp`,
+`ufw allow 443/tcp` (plus the UDP pair on the tunnel variant), and the
+`firewall-cmd` equivalents — each line copyable, with the cloud-provider
+security-group case named beside them. A pre-flight on enable also checks
+nothing else on the host is already bound to the chosen 80/443 (risk 11)
+and renames that failure to "another program is using the web ports", with
+the port-override fields as the remediation.
+
+### 8.5 Setup-spec / headless
 
 `addons: {pangolin: true}` works today through the generic spec path, and
 the config keys are ordinary `state/stack.env` keys plus delegated secret
@@ -654,7 +754,7 @@ would extend the spec's one existing per-addon surface — `portalCredentials`,
 the addon-id-keyed credential map for discord/slack — rather than invent the
 pattern; that is a fast-follow decision, not v1.
 
-### 8.4 States the UI must show
+### 8.6 States the UI must show
 
 Intent and observed state stay separate, as the LAN access card renders
 them. The addon's status is a discriminated union; the server variants add
@@ -662,8 +762,8 @@ states the connector never needed, because certificate issuance and DNS are
 now the stack's to narrate:
 
 `off · awaiting-config · starting · dns-pending{expected, observed} ·
-issuing-certificate · up{urls} · degraded{service} ·
-error{reason, remediation}`
+ports-unreachable{ports} · issuing-certificate · up{urls} ·
+degraded{service} · error{reason, remediation}`
 
 Sourced from facts with different owners, mirroring `access-status.ts`:
 enablement and config from `state/stack.env`; container health from
@@ -678,7 +778,7 @@ an API key, show the endpoint and a "check your Pangolin dashboard" link
 rather than fabricating a URL the stack cannot verify — the same rule as
 `describeRemoteExposure` reporting a port, never a URL.
 
-### 8.5 Copy, in the existing voice
+### 8.7 Copy, in the existing voice
 
 Proposed wording — noting honestly that the addons list renders no
 descriptions today (name and status only), so the first of these lands
@@ -713,7 +813,7 @@ And the enable-time confirmation for server variants, in the
 > asks visitors to sign in before anything of yours loads, and your
 > assistant still requires its own password behind that.
 
-### 8.6 What the drawer needs that it lacks
+### 8.8 What the drawer needs that it lacks
 
 The credentials drawer renders text, checkbox, and secret fields from the
 schema DSL, and descriptions are plain text — no links, no enums, no
@@ -724,6 +824,23 @@ bespoke drawer section like voice's, plus one new route. Guide links render
 as plain-text URLs in descriptions, as Discord's schema does today —
 link-capable descriptions are their own small improvement, not assumed
 here.
+
+### 8.9 Through the host assistant
+
+The operator's other interface is the assistant itself, and the two DNS and
+firewall steps are exactly the kind of thing people ask an assistant about.
+The design uses it as a **guide, never a hand on the controls**:
+`docs/pangolin-setup.md` (and the §8.4 record/command tables) ship into the
+assistant's knowledge stash, so "help me point my domain at my assistant"
+gets a walkthrough grounded in this stack's actual values rather than
+generic tutorial prose, ending with a link to the deep-linked drawer
+(`/host?tab=addons&addon=pangolin` — the `focusAddon` mechanism that
+already exists). The boundary is deliberate and already load-bearing
+elsewhere: the assistant holds no host-admin capability, and the
+session-signing key is delegated *specifically* so nothing running inside
+the assistant can forge a host-admin session. Wiring the assistant to
+enable addons or edit DNS-adjacent config would break that boundary for
+convenience; explaining the steps and pointing at the button does not.
 
 ## 9. Security posture, stated honestly
 
@@ -793,7 +910,7 @@ Ranked:
 2. **The stack becomes internet-facing.** Server variants put Traefik +
    badger + Pangolin on reachable 80/443 — a materially larger attack
    surface than anything the stack has exposed before, in exchange for the
-   auth gate. Mitigations: profile-gated (zero default footprint), the §8.5
+   auth gate. Mitigations: profile-gated (zero default footprint), the §8.7
    confirmation ceremony, `disable_signup_without_invite` in the generated
    config, and Pangolin's own MFA/passkey support for the dashboard
    account.
@@ -810,9 +927,9 @@ Ranked:
    fallback, stated in `core-principles.md` as a carve-out.
 5. **DNS and ACME failure modes are now ours to narrate.** Wrong records,
    propagation delay, rate-limited issuance, port 80 blocked by an ISP —
-   each needs a named state and remediation copy (§8.4), or the addon
-   reads as broken when the network is. This is the cost of owning the
-   front door.
+   each needs a named state and remediation copy (§8.4, §8.6), or the
+   addon reads as broken when the network is. This is the cost of owning
+   the front door.
 6. **`db.sqlite` is real state.** Accounts, API keys, and any
    dashboard-made config live in `data/pangolin/db/`, excluded from
    lifecycle backups by the Paperclip precedent. The generated blueprint
@@ -837,10 +954,12 @@ Ranked:
     must not promise "free" on the connector-to-Cloud path.
 11. **Host port conflicts.** 80/443 may be taken by another reverse proxy
     on the host. The port/bind variables exist for exactly that operator;
-    the failure needs a friendly pre-flight check, not a Compose error.
+    the failure needs the friendly pre-flight check §8.4 specifies, not a
+    Compose error.
 
 **Irreducibly manual:** buying a domain and creating one DNS record (server
-variants — the UI displays the exact record with a copy button); router
+variants — the UI displays the exact record with a copy button, §8.4); a
+firewall rule on some hosts (copyable commands, §8.4); router
 port-forwarding where applicable; the API-key paste (three guided clicks,
 until upstream offers a headless path); the remote dashboard's site/resource
 steps on the connector paste path; choosing a strong UI login password.
@@ -854,7 +973,7 @@ on. The tunnel variant (gerbil) and the one-click connector provisioning
 follow in the next release — they are additive service blocks and one
 route, not new invariants. Second decision, smaller: whether the addon
 appears in the setup wizard at all in v1. Recommendation: no — post-install
-only, from the Addons tab, where the §8.5 capability question has room to
+only, from the Addons tab, where the §8.7 capability question has room to
 breathe.
 
 ## 11. Sources
@@ -879,7 +998,11 @@ MDX files, which map one-to-one onto docs.pangolin.net URLs.
 - `self-host/advanced/container-cli-tool.mdx` — `pangctl`
   set-admin-credentials / rotate-server-secret
 - `self-host/advanced/config-file.mdx` — flags, ports, SERVER_SECRET
-- `self-host/dns-and-networking.mdx` — records, ports, wildcard guidance
+- `self-host/dns-and-networking.mdx` — records, ports, wildcard guidance,
+  and the UFW / firewalld command sets §8.4 surfaces verbatim
+- `self-host/advanced/database-options.mdx` — SQLite default (zero config,
+  main image) vs the separate PostgreSQL image + container this design
+  declines
 - `self-host/choosing-a-vps.mdx` — sizing, DigitalOcean image
 - `self-host/enterprise-edition.mdx` — CE/EE licensing and thresholds
 - `manage/domains.mdx` — provided domains are paid-plan; Cloud custom
