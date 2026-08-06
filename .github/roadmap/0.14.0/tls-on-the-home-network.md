@@ -62,6 +62,16 @@ steps 3 and 5, not in issuance.
 
 **Tier 2 — bring your own domain.** Falls out of Tier 1 for free.
 
+*Added with `pangolin-remote-access.md`:* a fourth path now exists as a
+sibling proposal rather than a tier built here. The Pangolin addon's proxy
+variant, used LAN-only, terminates TLS with the same DNS-01 issuance this
+tier describes (Traefik drives lego's providers) and adds an SSO gate in
+front — at the cost of two containers against one bundled binary, and a
+domain the operator controls rather than a free dynamic-DNS subdomain. It
+does not replace Tier 1 for the paste-one-token case; it makes the Tier 2
+case something the stack can run instead of something the operator
+assembles.
+
 ## 4. The shortcut, stated honestly
 
 Services such as `traefik.me` publish a wildcard certificate for a wildcard-DNS

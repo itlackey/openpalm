@@ -20,6 +20,16 @@ a domain, or operate a machine with a public IP is out. That removes frp,
 Nebula, Headscale, self-hosted Pangolin, and the classic DDNS + port-forward
 approach in one cut.
 
+**Scope correction, added with `pangolin-remote-access.md`:** "out" here
+means out as the default path for the CGNAT home this section is about. It
+was later over-read as eliminating these tools for OpenPalm entirely, which
+this document never argued: a VPS install or a router that can forward
+80/443 fails none of the constraints above. For self-hosted Pangolin that
+wider frame turned out to matter — `pangolin-remote-access.md` proposes
+running the Pangolin server inside the stack itself for reachable hosts,
+with a connector fallback that preserves this section's verdict for CGNAT
+homes.
+
 The DDNS path deserves its own epitaph because it is what most tutorials still
 recommend: the Node libraries for it are abandoned (`nat-upnp@1.1.1`, 2017;
 `nat-pmp@1.0.0`, 2016), and CGNAT makes it fail *invisibly* — the toggle would
@@ -152,6 +162,15 @@ networking) with an identity-aware proxy offering PIN/OTP/SSO — better auth
 than Funnel. It loses on maturity and verifiability: free-tier terms could not
 be confirmed from a primary source, and it is a young single-vendor
 dependency. Most likely future addition; not v1.
+
+*Since revisited — see `pangolin-remote-access.md`.* The re-verification
+moved two facts. The terms are now confirmable from primary sources: the
+Community Edition is AGPL and free self-hosted, Enterprise is free under
+$100k revenue — but Pangolin Cloud's free tier provides **no domain**
+(provided domain endings are paid-plan features), so the Cloud path is
+less zero-setup than this paragraph implied. The proposal's primary shape
+is accordingly not Cloud + Newt at all: it runs the Pangolin server inside
+the stack itself, keeping this sidecar as the connector variant.
 
 **NetBird** deserves a correction against the common claim that it needs
 `NET_ADMIN`/`/dev/net/tun`/host networking: that applies to the default image
