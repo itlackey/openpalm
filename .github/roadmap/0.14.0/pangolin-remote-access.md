@@ -95,8 +95,13 @@ too: in the default mode OpenPalm writes and maintains the record itself.
 
 ## 3. Replace Tailscale, or offer Pangolin alongside it?
 
-**Alongside. Pangolin is a second front door, not a successor.** Three
-reasons, in decreasing order of weight:
+**Alongside — with the weights stated correctly: Pangolin becomes the
+flagship front door, Tailscale the zero-infrastructure fallback.** One
+fact recorded first, because it changes the calculus: the `remote` addon
+has shipped but has **no install base beyond local testing**. There is no
+compatibility debt in any direction — no migration to protect, nobody to
+strand by either choice — so the question is decided purely on what each
+tool is for. Three reasons, in decreasing order of weight:
 
 1. **Pangolin requires things Tailscale does not.** Every publicly useful
    Pangolin shape needs a name pointing at the host (a free dynamic-DNS one
@@ -109,18 +114,25 @@ reasons, in decreasing order of weight:
    equivalent (private resources reached through Olm-based clients) is the
    youngest part of the product. Pangolin's strength is precisely the mode
    Tailscale is weakest in: *public* exposure with real auth in front.
-3. **Exclusion would cost code and break migration.** The two addons share
-   no ports, config, services, or failure modes, so co-existence is free;
-   forbidding it means a new invariant in `setAddonEnabled`, error UX to
-   explain it, and a forced hard cutover for the operator who starts on
-   Tailscale and later stands up Pangolin. Stated honestly against this
-   document's first draft, which called the combination "a legitimate,
-   useful topology": running both *permanently* is a niche — redundancy
-   when DNS or certificates break, or the tailnet as a private admin path —
-   not a headline. The answer is not exclusion but steering: the UI
-   presents **one front-door chooser** (§8) that recommends exactly one of
-   the two per host, and renders both-enabled as a visible advanced state
-   rather than either a default or an error.
+3. **Exclusion would cost code and buy nothing.** The two addons share no
+   ports, config, services, or failure modes, so co-existence is free;
+   forbidding it means a new invariant in `setAddonEnabled` plus error UX,
+   defending against a conflict that cannot occur. An earlier revision of
+   this section also defended co-existence as a migration path for
+   Tailscale users — with no install base there is nothing to migrate, and
+   the correction is kept visible: what actually remains for both-at-once
+   is side-by-side evaluation and redundancy when DNS or certificates
+   break. A niche, not a headline. The answer is still steering rather
+   than exclusion: the UI presents **one front-door chooser** (§8) that
+   recommends exactly one of the two per host — Pangolin first wherever
+   the host qualifies — and renders both-enabled as a visible advanced
+   state rather than either a default or an error.
+
+The no-install-base fact cuts the other way too, and is worth recording
+while it is true: if maintaining two front-door stories ever costs more
+than the zero-infrastructure fallback is worth, `remote` can be retired
+outright with zero compatibility debt. That option expires the day the
+first real install enables it.
 
 The honest comparison, on the criteria the companion document used:
 
@@ -623,13 +635,12 @@ are separate addons underneath (§3), but the operator meets them as a
 single "Reach it from anywhere" chooser that asks the two questions that
 actually partition the audience — *can the internet reach this machine?*
 and *should visitors see a sign-in page on a real web address?* — and
-recommends exactly one: Tailscale for the CGNAT home and the
-zero-infrastructure case, Pangolin for the reachable host. Neither is
-buried; the non-recommended one stays a visible "instead, or as well"
-link, and enabling both renders as an explicit advanced state
-("two front doors are open") rather than an error — the migration case,
-where an operator proves Pangolin works before turning Tailscale off, is
-the main reason both-at-once exists at all.
+recommends exactly one: Pangolin wherever the host qualifies, Tailscale
+for the CGNAT home and the zero-infrastructure case. Neither is buried;
+the non-recommended one stays a visible "instead, or as well" link, and
+enabling both renders as an explicit advanced state ("two front doors are
+open") rather than an error — side-by-side evaluation and
+DNS-failure redundancy are the only reasons both-at-once exists at all.
 
 ### 8.1 The server path, automated end to end
 
