@@ -205,7 +205,15 @@ wherever the host is reachable (`pangolin-remote-access.md`), with this
 document's recommendation remaining the answer for the CGNAT /
 zero-infrastructure case. The cloudflared secondary was never built; it
 is re-evaluated in the three-way comparison of
-`cloudflare-tunnel-comparison.md`.
+`cloudflare-tunnel-comparison.md`. The shipped single-provider shape is
+also being restructured: `remote-access-providers.md` restores the
+`provider` seam this document's §5 sketched and implementation dropped —
+providers become mutually-exclusive variants of the one `remote` addon
+behind a registry, with Tailscale as the default variant and the §8/§9
+read-back surface (`fetchRemoteAccessActual`'s AuthURL and URL) finally
+landing as the shared status card. One more shipped divergence worth
+naming while correcting: the delegated secret shipped as `ts_authkey`,
+not the `op_tailscale_authkey` this document's §5/§6 snippets show.
 
 Do not ship one boolean. Ship **one toggle plus a mode**, because they are
 different products with different risk:

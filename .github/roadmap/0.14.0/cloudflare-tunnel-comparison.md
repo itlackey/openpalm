@@ -136,7 +136,9 @@ network-membership exception and nothing else):
 
 ```yaml
   cloudflared:
-    profiles: ["addon.cloudflare"]
+    profiles: ["addon.remote.cloudflare"]   # a provider variant of the
+                                            # remote addon — see
+                                            # remote-access-providers.md
     # Distroless (no shell, no package manager), static Go binary, ~28 MB,
     # nonroot 65532 by default. CalVer releases roughly monthly; upstream
     # supports versions younger than one year — pin tag + digest and bump
@@ -263,27 +265,31 @@ only until the operator is willing to rent a VPS.
 
 ## 5. Recommendation
 
-**Do not build a third addon now.** The flagship (Pangolin) and fallback
-(Tailscale) already cover both privacy-respecting cells, there are no
-users yet in any cell (`remote` has no install base), and a third
-front-door story would triple the chooser's surface for a corner case
-nobody currently occupies.
+**Do not build a third provider now.** The flagship (Pangolin) and
+fallback (Tailscale) already cover both privacy-respecting cells, and
+there are no users yet in any cell (`remote` has no install base). Under
+the provider architecture (`remote-access-providers.md`) a third entry is
+mechanically cheap — one registry entry, one variant profile — so the
+reason to wait is not surface cost but demand: a selector option nobody's
+cell needs is noise, however cheap.
 
 **Record Cloudflare named tunnel as the designated occupant of its cell.**
 §2.5 shows it drops into the connector-class conventions with zero new
-invariants — one service block, one delegated secret, one provisioning
-route against a stable public API — so building it later costs no design
-work, only implementation. The revisit trigger is concrete: real installs
-on CGNAT asking for authenticated public sharing (the front-door chooser
-can count how often the "internet cannot reach this machine" answer
-co-occurs with wanting a shareable address). If that demand materializes,
+invariants — one `REMOTE_PROVIDERS` entry, one service block under
+`addon.remote.cloudflare`, one delegated secret, one provisioning route
+against a stable public API — so building it later costs no design work,
+only implementation. The revisit trigger is concrete: real installs on
+CGNAT asking for authenticated public sharing (the provider selector can
+count how often the "internet cannot reach this machine" answer co-occurs
+with wanting a shareable address). If that demand materializes,
 this document's assessment is the spec's starting point, and the honest
 disclosure copy is already written in the Pangolin proposal's register:
 *"visitor traffic is decrypted on Cloudflare's servers before it reaches
 you."*
 
-One follow-through for the chooser regardless: when a CGNAT-bound
-operator asks for public sharing, the UI should state the §3 cost truth
+One follow-through for the provider selector regardless: when a
+CGNAT-bound operator asks for public sharing, the UI should state the §3
+cost truth
 plainly and offer the real menu — a vendor path (Pangolin Cloud connector
 today; Cloudflare, when built) with the visitor-traffic disclosure *and*
 the own-domain requirement stated, or the vendor-free path (connect to a
@@ -355,5 +361,5 @@ environment; paths are under `src/content/` in
 - `.github/roadmap/0.14.0/remote-access-from-anywhere.md` — the original
   Cloudflare assessment and secondary recommendation
 - `.github/roadmap/0.14.0/pangolin-remote-access.md` — the flagship
-  proposal, DDNS default, the front-door chooser this document's
-  recommendation feeds
+  proposal, DDNS default, the provider selector this document's
+  recommendation feeds (see also `remote-access-providers.md`)
