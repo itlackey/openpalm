@@ -23,9 +23,9 @@ import { BUILTIN_ADDON_IDS, GUARDIAN_INGRESS_ADDON_IDS } from "./addon-ids.js";
 import { parseEnabledAddons } from "./env.js";
 import {
   readAccessToggles,
-  remoteRequiresGuardianIngress,
   resolveAccessEnv,
 } from "./access-toggles.js";
+import { computeGuardianIngressRequired } from "./remote-providers.js";
 import { patchSecretsEnvFile, patchStateEnvFile, readStackEnv } from "./secrets.js";
 import {
   deriveRemoteHostname,
@@ -305,13 +305,13 @@ export function applyRemoteAccess(homeDir: string): RemoteAccessApplyResult {
   try {
     const env = readStackEnv(homeDir);
     const toggles = readAccessToggles(env);
-    // Read enablement/target from the reconcile's OWN read, not a second one:
-    // it already read post-write state, and re-reading here would widen the
-    // window in which a concurrent write could make the two disagree.
-    const guardianIngressRequired = remoteRequiresGuardianIngress(
-      reconcile.enabled,
-      reconcile.config.target,
-    );
+    // One env snapshot feeds toggles, enablement, and target alike:
+    // computeGuardianIngressRequired (the registry's single ingress writer —
+    // remote-providers.ts) reads all of it from the `env` read above, so the
+    // three inputs cannot disagree with each other the way the earlier
+    // split read (reconcile's snapshot for enablement/target, this one for
+    // toggles) allowed under a concurrent write.
+    const guardianIngressRequired = computeGuardianIngressRequired(env);
     const next = resolveAccessEnv(toggles, { guardianIngressRequired }).GUARDIAN_DIRECT_INGRESS;
     const ingressChanged = (env.GUARDIAN_DIRECT_INGRESS ?? "") !== next;
 

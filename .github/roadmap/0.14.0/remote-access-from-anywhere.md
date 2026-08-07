@@ -210,8 +210,10 @@ also being restructured: `remote-access-providers.md` restores the
 `provider` seam this document's §5 sketched and implementation dropped —
 providers become mutually-exclusive variants of the one `remote` addon
 behind a registry, with Tailscale as the default variant and the §8/§9
-read-back surface (`fetchRemoteAccessActual`'s AuthURL and URL) finally
-landing as the shared status card. One more shipped divergence worth
+read-back surface (`fetchRemoteAccessActual`'s AuthURL and URL) landed as
+the shared status card (`fetchRemoteProviderStatus` +
+`RemoteStatusCard.svelte`; the sign-in link and the tailnet URL now
+surface in the drawer instead of container logs). One more shipped divergence worth
 naming while correcting: the delegated secret shipped as `ts_authkey`,
 not the `op_tailscale_authkey` this document's §5/§6 snippets show.
 

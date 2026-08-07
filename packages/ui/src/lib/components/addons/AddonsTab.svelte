@@ -18,6 +18,7 @@
   import { notifications } from '$lib/notifications.svelte.js';
   import { refreshAdvertisedVoiceUrl } from '$lib/voice/providers.js';
   import VoiceProfileSelector from '$lib/components/voice/VoiceProfileSelector.svelte';
+  import RemoteStatusCard from '$lib/components/addons/RemoteStatusCard.svelte';
   import SecretSelect from '$lib/components/common/SecretSelect.svelte';
   import Spinner from '$lib/components/common/Spinner.svelte';
   import IconAddons from '$lib/components/icons/IconAddons.svelte';
@@ -25,7 +26,7 @@
 
   interface Props {
     onAuthError: () => void;
-    focusAddon?: 'voice';
+    focusAddon?: 'voice' | 'remote';
   }
 
   let { onAuthError, focusAddon }: Props = $props();
@@ -326,6 +327,18 @@
   {#if expanded}
     {@const aid = expanded}
     <Drawer open={true} title="{formatAddonName(aid)} settings" onClose={closeCredentials}>
+      {#if aid === 'remote'}
+        <!-- Observed provider state (remote-access-providers.md §5): where
+             the Tailscale sign-in link surfaces (it otherwise lives only in
+             the container logs) and where the real tailnet URL appears once
+             the tunnel reports up. Renders the provider-agnostic
+             RemoteAccessStatus vocabulary, so a later provider changes the
+             registry, not this drawer. -->
+        <div class="engine-section">
+          <span class="creds-label">Status</span>
+          <RemoteStatusCard />
+        </div>
+      {/if}
       {#if aid === 'voice' && voiceInfo && voiceInfo.profiles.length > 0}
         <!-- Host capability config: which compose profile (CPU/CUDA/ROCm)
              runs the voice container. Client TTS/STT preferences live in the

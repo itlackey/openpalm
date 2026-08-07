@@ -1,6 +1,7 @@
 # Remote access providers — one front door, swappable engines
 
-Status: proposal
+Status: proposal; §7 phase 1 (registry + card + Tailscale refactor)
+implemented — see Implementation status at the end
 Companion to `remote-access-from-anywhere.md` (which shipped the Tailscale
 `remote` addon), `pangolin-remote-access.md` (the flagship proposal), and
 `cloudflare-tunnel-comparison.md` (the three-way verdict). Those documents
@@ -349,3 +350,60 @@ id exists in this design — that is the point.
 - `.github/roadmap/0.14.0/pangolin-remote-access.md`,
   `.github/roadmap/0.14.0/cloudflare-tunnel-comparison.md` — the
   providers this seam is being built to hold
+
+## Implementation status
+
+Phase 1 of §7 — the registry, the card, and the Tailscale refactor —
+landed on this branch. What shipped, against the spec:
+
+- **Registry**: `packages/lib/src/control-plane/remote-providers.ts`
+  (metadata, predicates, selection, the single ingress writer) plus two
+  node-side dispatchers the spec's one `RemoteProviderDefinition` split
+  into for import-graph acyclicity: `remote-provider-apply.ts`
+  (applyConfig dispatch — addons.ts imports it) and
+  `remote-provider-status.ts` (fetchStatus — needs compose-args, whose
+  chain reaches addons.ts). One naming deviation: the status type shipped
+  as **`RemoteAccessStatus`**, because lib already exports a
+  `RemoteStatus` from `launch-status.ts`.
+- **Profile grammar**: `PROFILE_ID_RE` generalized to arbitrary variant
+  suffixes; `resolveHardwareProfileVariant` still admits only
+  cpu|cuda|rocm (§2's first blocker).
+- **Bare-enable fallback**: `resolveActiveProfiles` gained the
+  variant-defaults table (voice/ollama's hard-coded branches folded in;
+  `OP_REMOTE_PROFILE` read with the `addon.remote.tailscale` fallback) —
+  §2's second blocker. The tunnel service renamed to the variant profile
+  with the selector display labels.
+- **Special cases → dispatch**: both `if (name === 'remote')
+  applyRemoteAccess` sites (addons.ts, credentials route) now call
+  `applyRemoteProviderConfig`; `computeGuardianIngressRequired` replaced
+  the three dispersed `remoteRequiresGuardianIngress` call sites
+  (access-apply.ts, setup.ts, remote-apply.ts); `ensureSecrets` seeds
+  from the registry's per-provider `secrets` lists.
+- **The card**: `GET /api/host/addons/remote/status` returns the
+  vocabulary; `RemoteStatusCard.svelte` renders it (state chip, message,
+  action button, copyables with copy buttons, progress list) inside the
+  remote drawer in `AddonsTab.svelte`, polling every 5 s — the sign-in
+  link and the up-URL now surface in the UI instead of container logs.
+  `focusAddon` widened to `'voice' | 'remote'`.
+- **Tests**: `remote-providers.test.ts` pins registry↔compose agreement,
+  the grammar generalization, the default-provider fallback,
+  selection-never-implies-enablement, and computeGuardianIngressRequired's
+  agreement with the predicate it consolidated;
+  `remote-compose.test.ts` updated for the variant profile + labels.
+
+Deliberately not done in this phase: the QR flag on copyables renders as
+a plain copy row (the pairing route's server-side SVG renderer is not yet
+extracted); the zero-field drawer collapse (§6's advanced-field demotion)
+and the wizard next-step card; the `ADDRESS_HEADER` throttle fix; the
+provider selector itself (correctly renders nothing — the registry holds
+one entry, and `AddonsTab` shows no selector for remote); the
+`remote: {provider, …}` setup-spec shape.
+
+Verification: `bun run lint`, `bun run check`, `bun test packages/lib`
+(the 9 pre-existing failures are root-container/network environment
+cases in operator-ids/host-identity/opencode-client, present on the base
+branch too), and the UI vitest suite (1674 pass; the runner's
+browser-shell launch error is a pinned-Playwright environment artifact).
+Not covered: a live tunnel round-trip — `fetchStatus`'s mapping of
+`AuthURL`/`DNSName` is asserted against `tailscale status --json`'s
+documented shape, not a running tailnet.
