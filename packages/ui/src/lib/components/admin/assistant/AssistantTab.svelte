@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import { resolve } from '$app/paths';
   import Spinner from '$lib/components/common/Spinner.svelte';
   import {
     fetchAccessStatus,
@@ -298,7 +299,7 @@
           </p>
           <p class="field-hint">
             Away from home, these addresses won't reach it — set up
-            <a href="/host?tab=addons&addon=remote">remote access</a> to use the assistant from
+            <a href={`${resolve('/host')}?tab=addons&addon=remote`}>remote access</a> to use the assistant from
             anywhere.
           </p>
         </section>

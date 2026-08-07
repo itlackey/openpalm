@@ -22,6 +22,9 @@
 	let loadError = $state('');
 	let copiedValue = $state('');
 	let pollTimer: ReturnType<typeof setTimeout> | null = null;
+	// Clearing pollTimer alone can't stop a refresh() that is mid-await at
+	// destroy time (no timer exists yet); the flag lets it skip rescheduling.
+	let destroyed = false;
 
 	const STATE_LABELS: Record<RemoteAccessStatus['state'], string> = {
 		off: 'Off',
@@ -44,6 +47,7 @@
 			// claim as the tunnel being down.
 			loadError = err instanceof Error ? err.message : 'Could not read remote access status.';
 		}
+		if (destroyed) return;
 		pollTimer = setTimeout(() => void refresh(), POLL_MS);
 	}
 
@@ -59,7 +63,10 @@
 	}
 
 	onMount(() => { void refresh(); });
-	onDestroy(() => { if (pollTimer) clearTimeout(pollTimer); });
+	onDestroy(() => {
+		destroyed = true;
+		if (pollTimer) clearTimeout(pollTimer);
+	});
 </script>
 
 <section class="remote-status" aria-live="polite">
