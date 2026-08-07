@@ -94,6 +94,17 @@
 						<button type="button" class="copy-btn" onclick={() => void copyValue(item.value)}>
 							{copiedValue === item.value ? 'Copied' : 'Copy'}
 						</button>
+						{#if item.qrSvg}
+							<!-- Server-rendered SVG delivered as a data: image, the pairing
+							     panel's pattern — no {'{@html}'}, no client QR library. -->
+							<img
+								class="copyable-qr"
+								src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(item.qrSvg)}`}
+								alt="QR code for {item.label}"
+								width="160"
+								height="160"
+							/>
+						{/if}
 					</li>
 				{/each}
 			</ul>
@@ -165,6 +176,14 @@
 	.copyable-value {
 		font-size: var(--s-type-mark-sm);
 		overflow-wrap: anywhere;
+	}
+	.copyable-qr {
+		display: block;
+		flex-basis: 100%;
+		background: #fff;
+		border: 1px solid var(--s-line);
+		border-radius: 2px;
+		padding: 0.4rem;
 	}
 	.status-error {
 		font-family: var(--s-font-mono);

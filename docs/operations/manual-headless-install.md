@@ -210,6 +210,35 @@ Raw copying omits generated state and can leave required secrets or bind-source
 directories absent. This guide intentionally does not provide a partial
 copy-and-fill recipe.
 
+## Remote Access Providers (Headless)
+
+The `remote` addon is one capability with mutually-exclusive provider
+variants (Tailscale today), selected by `OP_REMOTE_PROFILE` — see
+`docs/technical/remote-provider-contract.md` for the model. Headlessly it is
+ordinary files, no spec object required:
+
+```bash
+# state/stack.env
+OP_ENABLED_ADDONS=remote          # deploys the default (Tailscale) variant
+# OP_REMOTE_PROFILE=addon.remote.tailscale   # explicit selection, optional
+# OP_REMOTE_TARGET=assistant      # assistant | guardian | both
+```
+
+With nothing else set, the tunnel starts in interactive-login mode: the
+sign-in link appears on the addon's status card in the UI, or in the
+container logs (`openpalm logs tunnel`). For fully unattended installs,
+pre-authorize the node by writing a reusable Tailscale auth key to
+`private/secrets/ts_authkey` (mode `0600`; the file is seeded empty by
+install, and blank deliberately means interactive login). Know what a
+reusable auth key exposes before scripting one.
+
+Two keys have no UI control by design. `OP_REMOTE_PUBLIC=true` turns the
+private tailnet link into a public Funnel link with **no sign-in page in
+front of it** — a hand edit reserved for operators who have read the
+warning in the addon's env schema. `OP_UI_ADDRESS_HEADER` /
+`OP_UI_XFF_DEPTH` are maintained by the addon's own apply (they keep the
+login throttle per-client behind the tunnel) and should not be set by hand.
+
 ## Raw Compose After Generation
 
 After a generated install, use the managed files, the user overlay, the

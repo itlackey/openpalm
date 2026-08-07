@@ -122,6 +122,22 @@ services:
       # them behind TLS. Pin the browser origin explicitly so adapter-node does
       # not assume HTTPS when no forwarded-protocol header is present.
       ORIGIN: ${OP_UI_ORIGIN:-}
+      # Login-throttle client addressing behind the remote addon's proxy.
+      # Behind a tunnel sidecar every request reaches this container from ONE
+      # address (the sidecar's), so the per-client login throttle
+      # (login-throttle.ts) becomes global: five failed attempts by anyone
+      # lock out the owner. When the remote addon is enabled, its apply
+      # (remote-provider-apply.ts) sets these to x-forwarded-for / 1 so
+      # adapter-node keys clients by the proxy-reported address; when it is
+      # disabled they are cleared, because a LAN client hitting this port
+      # DIRECTLY could forge X-Forwarded-For to rotate throttle keys — the
+      # header is only trustworthy when a proxy this stack controls sets it.
+      # Empty values are ignored by adapter-node (falsy check), so the
+      # default is exactly today's socket-address behavior. The entrypoint's
+      # `env` launch inherits container env, so these reach the UI child
+      # without an entrypoint change.
+      ADDRESS_HEADER: ${OP_UI_ADDRESS_HEADER:-}
+      XFF_DEPTH: ${OP_UI_XFF_DEPTH:-}
       # Used only to label the browser's automatically seeded local connection.
       OP_PROJECT_NAME: ${OP_PROJECT_NAME:-openpalm}
       # Generated from the access toggles (packages/lib access-toggles.ts) and

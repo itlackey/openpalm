@@ -1031,13 +1031,15 @@ territory, the posture every hand-edit path already has.
 loopback-only and must never appear as a target; the blueprint generator
 and the setup guide both refuse it.
 
-**Forwarded headers already work; the throttle gap carries over.** Traefik
+**Forwarded headers already work; the throttle gap is closed.** Traefik
 sets `X-Forwarded-*`, the containerized UI already launches with
 `PROTOCOL_HEADER`/`HOST_HEADER` and accepts proxied Host headers when
-served in-container. The known `ADDRESS_HEADER` login-throttle issue (all
+served in-container. The `ADDRESS_HEADER` login-throttle issue (all
 requests arriving from one proxy IP make five failed logins a global
-lockout) is still open from the companion document and serves every
-provider with one fix.
+lockout) *landed with the provider groundwork*: the apply dispatcher
+maintains `OP_UI_ADDRESS_HEADER`/`OP_UI_XFF_DEPTH` for every provider
+(`remote-provider-apply.ts`), so Pangolin inherits the fix by being
+dispatched, not by porting it.
 
 **CORS for the guardian target.** A Guardian reached at a real domain needs
 that exact origin in `GUARDIAN_CORS_ALLOWED_ORIGINS` (Guardian rejects

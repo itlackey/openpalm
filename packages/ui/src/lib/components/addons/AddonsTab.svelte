@@ -10,8 +10,10 @@
     fetchSecretFile,
     fetchSecretFiles,
     saveSecretFile,
+    fetchRemoteAccessStatus,
     type AddonCredentialField,
     type AddonEntry,
+    type RemoteAccessStatus,
     type VoiceAddonInfo,
   } from '$lib/api.js';
   import { isAuthError, toMessage } from '$lib/api/errors.js';
@@ -123,6 +125,38 @@
     }
   }
 
+  // ── Remote addon: row-level status chip ──────────────────────────────────
+  // A one-shot read per list refresh, not a poll: the drawer's status card
+  // owns live observation; the row chip just answers "is the front door up"
+  // at a glance. Compact labels — the card carries the full sentence.
+  let remoteStatus = $state<RemoteAccessStatus | null>(null);
+
+  const REMOTE_ROW_LABELS: Record<RemoteAccessStatus['state'], string> = {
+    off: 'Off',
+    'awaiting-config': 'Needs setup',
+    'awaiting-authentication': 'Sign in',
+    'pending-external': 'Waiting',
+    starting: 'Starting…',
+    up: 'Up',
+    degraded: 'Degraded',
+    error: 'Error',
+  };
+
+  async function refreshRemoteRowStatus(): Promise<void> {
+    const remote = addons.find((a) => a.name === 'remote');
+    if (!remote?.enabled) {
+      remoteStatus = null;
+      return;
+    }
+    try {
+      remoteStatus = await fetchRemoteAccessStatus();
+    } catch {
+      // The chip is a convenience; a failed read shows nothing rather than
+      // an error badge that outranks the row's own enabled/disabled truth.
+      remoteStatus = null;
+    }
+  }
+
   async function loadAddons(): Promise<void> {
     loading = true;
     error = '';
@@ -132,6 +166,7 @@
       voiceInfo = list.voice ?? null;
       if (!voiceProfileDirty) voiceProfile = voiceInfo?.selectedProfile ?? '';
       if (voiceJobRunning) scheduleVoicePoll();
+      void refreshRemoteRowStatus();
     } catch (err) {
       if (isAuthError(err)) { onAuthError(); return; }
       error = toMessage(err, String(err));
@@ -294,6 +329,16 @@
                   {job.state === 'pulling' ? 'Downloading…' : job.state === 'starting' ? 'Starting…' : job.state}
                 </span>
               {/if}
+              {#if addon.name === 'remote' && addon.enabled && remoteStatus && remoteStatus.state !== 'off'}
+                <span
+                  class="badge badge-job"
+                  class:badge-enabled={remoteStatus.state === 'up'}
+                  class:badge-error={remoteStatus.state === 'error' || remoteStatus.state === 'degraded'}
+                  title={remoteStatus.message}
+                >
+                  {REMOTE_ROW_LABELS[remoteStatus.state]}
+                </span>
+              {/if}
             </span>
             <span class="addon-col addon-col--actions">
               <button
@@ -370,8 +415,7 @@
       {:else if (credFields[aid]?.length ?? 0) === 0}
         <p class="creds-empty">This addon has no configurable env vars (compose overlay only).</p>
       {:else}
-        <p class="creds-hint">Values are written to <code>state/stack.env</code> and read by the addon container on next recreate.</p>
-        {#each credFields[aid] ?? [] as field (field.key)}
+        {#snippet credFieldRow(rowAid: string, field: AddonCredentialField)}
           <div class="creds-row">
             {#if field.boolean}
               <!-- Boolean fields render as a checkbox, not a labeled text row —
@@ -379,20 +423,20 @@
                    toggle". The value written is still the literal string
                    "true"/"false" (credValues stays Record<string, string> so
                    the POST payload shape is unchanged for every field type). -->
-              <label class="creds-checkbox" for="cred-{aid}-{field.key}">
+              <label class="creds-checkbox" for="cred-{rowAid}-{field.key}">
                 <input
-                  id="cred-{aid}-{field.key}"
+                  id="cred-{rowAid}-{field.key}"
                   type="checkbox"
-                  checked={credValues[aid][field.key] === 'true'}
+                  checked={credValues[rowAid][field.key] === 'true'}
                   onchange={(e) => {
-                    credValues[aid][field.key] = e.currentTarget.checked ? 'true' : 'false';
+                    credValues[rowAid][field.key] = e.currentTarget.checked ? 'true' : 'false';
                   }}
                 />
                 <code>{field.key}</code>
               </label>
               {#if field.description}<p class="creds-desc">{field.description}</p>{/if}
             {:else}
-              <label class="creds-label" for="cred-{aid}-{field.key}">
+              <label class="creds-label" for="cred-{rowAid}-{field.key}">
                 <code>{field.key}</code>
                 {#if field.sensitive}<span class="creds-tag">sensitive</span>{/if}
                 {#if field.sensitive && field.set}<span class="creds-tag creds-tag--set">set</span>{/if}
@@ -400,26 +444,48 @@
               {#if field.description}<p class="creds-desc">{field.description}</p>{/if}
               {#if field.sensitive}
                 <SecretSelect
-                  id="cred-{aid}-{field.key}"
-                  bind:value={credSecretRef[aid][field.key]}
-                  onChange={(secretName) => void onSecretChosen(aid, field.key, secretName)}
+                  id="cred-{rowAid}-{field.key}"
+                  bind:value={credSecretRef[rowAid][field.key]}
+                  onChange={(secretName) => void onSecretChosen(rowAid, field.key, secretName)}
                   {fetchSecretFiles}
                   {saveSecretFile}
                 />
                 {#if field.set}<p class="creds-desc">A value is already set — choose a secret to replace it.</p>{/if}
               {:else}
                 <input
-                  id="cred-{aid}-{field.key}"
+                  id="cred-{rowAid}-{field.key}"
                   type="text"
                   class="form-input"
                   placeholder={field.default}
-                  bind:value={credValues[aid][field.key]}
+                  bind:value={credValues[rowAid][field.key]}
                   autocomplete="off"
                 />
               {/if}
             {/if}
           </div>
-        {/each}
+        {/snippet}
+        {#if aid === 'remote'}
+          <!-- The status card above is the remote addon's PRIMARY surface —
+               the default setup needs no fields at all (leave everything
+               blank, click Connect on the card). The schema fields are
+               genuinely advanced, so they collapse. OP_REMOTE_PUBLIC is
+               filtered entirely: public-unauthenticated exposure (Funnel)
+               gets no button — it stays a documented hand-edit
+               (remote-access-providers.md §6), and public exposure with an
+               auth gate is a future provider's job. -->
+          <details class="creds-advanced">
+            <summary>Advanced settings</summary>
+            <p class="creds-hint">Values are written to <code>state/stack.env</code> and read by the addon container on next recreate. Most people never need these.</p>
+            {#each (credFields[aid] ?? []).filter((f) => f.key !== 'OP_REMOTE_PUBLIC') as field (field.key)}
+              {@render credFieldRow(aid, field)}
+            {/each}
+          </details>
+        {:else}
+          <p class="creds-hint">Values are written to <code>state/stack.env</code> and read by the addon container on next recreate.</p>
+          {#each credFields[aid] ?? [] as field (field.key)}
+            {@render credFieldRow(aid, field)}
+          {/each}
+        {/if}
       {/if}
       {#snippet footer()}
         <button class="btn btn-secondary btn-sm" onclick={closeCredentials}>Cancel</button>
@@ -580,6 +646,23 @@
     font-size: var(--s-type-deed);
     color: var(--s-ink-3);
     margin: 0;
+  }
+
+  .creds-advanced {
+    border-top: var(--s-hair) solid var(--s-line-soft);
+    padding-top: var(--s-sp-3);
+  }
+
+  .creds-advanced summary {
+    cursor: pointer;
+    font-family: var(--s-font-mono);
+    font-size: var(--s-type-deed);
+    color: var(--s-ink-3);
+    user-select: none;
+  }
+
+  .creds-advanced[open] summary {
+    margin-bottom: var(--s-sp-3);
   }
 
   .creds-row {

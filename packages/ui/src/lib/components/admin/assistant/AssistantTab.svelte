@@ -296,6 +296,11 @@
             The <code>.local</code> name only resolves while a host <code>openpalm</code> process is
             running; the IP addresses work whenever this machine is on the same network.
           </p>
+          <p class="field-hint">
+            Away from home, these addresses won't reach it — set up
+            <a href="/host?tab=addons&addon=remote">remote access</a> to use the assistant from
+            anywhere.
+          </p>
         </section>
       {/if}
     {/if}

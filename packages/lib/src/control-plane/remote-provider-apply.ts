@@ -19,8 +19,8 @@
  * unhandled rejection.
  */
 import { applyRemoteAccess } from "./remote-apply.js";
-import { readStackEnv } from "./secrets.js";
-import { selectedRemoteProviderId } from "./remote-providers.js";
+import { patchSecretsEnvFile, readStackEnv } from "./secrets.js";
+import { remoteAddonEnabled, selectedRemoteProviderId } from "./remote-providers.js";
 
 /**
  * What every provider's apply reports back to the shared enable/save paths:
@@ -36,26 +36,75 @@ export type RemoteProviderApplyResult = {
   error?: string;
 };
 
+/**
+ * Provider-INDEPENDENT half of the apply: behind any remote sidecar, every
+ * request reaches the UI container from one address (the sidecar's), which
+ * turns the per-client login throttle into a global lockout — five failed
+ * attempts by anyone lock out the owner (login-throttle.ts documents the
+ * hazard; the original roadmap called it the "one genuine gap"). Enabled →
+ * adapter-node keys clients by X-Forwarded-For (depth 1: exactly one proxy
+ * this stack controls). Disabled → cleared, because a LAN client hitting
+ * the container port DIRECTLY could forge the header to rotate throttle
+ * keys; the header is only trustworthy while a stack-controlled proxy sets
+ * it. (While remote AND a LAN publish are BOTH active, that forgery window
+ * exists for LAN clients — accepted and documented in core.compose.yml;
+ * the alternative, a global lockout for every remote user, is worse.)
+ *
+ * The env flip is consumed at container create, so the assistant joins the
+ * recreate scope when it changes — the one case a remote toggle recreates
+ * the assistant, and only on the enable/disable edge, never on a config
+ * save.
+ */
+function reconcileUiForwardedAddressEnv(homeDir: string): { changed: boolean } {
+  const env = readStackEnv(homeDir);
+  const enabled = remoteAddonEnabled(env);
+  const desired = enabled
+    ? { OP_UI_ADDRESS_HEADER: "x-forwarded-for", OP_UI_XFF_DEPTH: "1" }
+    : { OP_UI_ADDRESS_HEADER: "", OP_UI_XFF_DEPTH: "" };
+  const changed =
+    (env.OP_UI_ADDRESS_HEADER ?? "") !== desired.OP_UI_ADDRESS_HEADER
+    || (env.OP_UI_XFF_DEPTH ?? "") !== desired.OP_UI_XFF_DEPTH;
+  if (changed) patchSecretsEnvFile(homeDir, desired);
+  return { changed };
+}
+
 export function applyRemoteProviderConfig(homeDir: string): RemoteProviderApplyResult {
   const providerId = selectedRemoteProviderId(readStackEnv(homeDir));
 
-  switch (providerId) {
-    case "tailscale": {
-      const applied = applyRemoteAccess(homeDir);
-      return {
-        services: applied.services,
-        ...(applied.warning ? { warning: applied.warning } : {}),
-        ...(applied.error ? { error: applied.error } : {}),
-      };
+  const provider = ((): RemoteProviderApplyResult => {
+    switch (providerId) {
+      case "tailscale": {
+        const applied = applyRemoteAccess(homeDir);
+        return {
+          services: applied.services,
+          ...(applied.warning ? { warning: applied.warning } : {}),
+          ...(applied.error ? { error: applied.error } : {}),
+        };
+      }
+      default:
+        // selectedRemoteProviderId falls back to the default provider for
+        // anything unrecognized, so this arm is unreachable until a registry
+        // entry ships without its apply — which is exactly the mistake worth
+        // reporting loudly instead of applying nothing silently.
+        return {
+          services: [],
+          error: `Remote provider "${providerId}" has no apply implementation.`,
+        };
     }
-    default:
-      // selectedRemoteProviderId falls back to the default provider for
-      // anything unrecognized, so this arm is unreachable until a registry
-      // entry ships without its apply — which is exactly the mistake worth
-      // reporting loudly instead of applying nothing silently.
-      return {
-        services: [],
-        error: `Remote provider "${providerId}" has no apply implementation.`,
-      };
+  })();
+
+  if (provider.error) return provider;
+
+  try {
+    const forwarded = reconcileUiForwardedAddressEnv(homeDir);
+    const services = forwarded.changed
+      ? [...new Set([...provider.services, "assistant"])]
+      : provider.services;
+    return { ...provider, services };
+  } catch (err) {
+    return {
+      ...provider,
+      error: err instanceof Error ? err.message : String(err),
+    };
   }
 }

@@ -1,7 +1,9 @@
 # Remote access providers — one front door, swappable engines
 
-Status: proposal; §7 phase 1 (registry + card + Tailscale refactor)
-implemented — see Implementation status at the end
+Status: proposal; §7 phase 1 implemented, and the Tailscale reference
+implementation is complete pending live re-verification — see
+Implementation status at the end. Durable contract:
+`docs/technical/remote-provider-contract.md`
 Companion to `remote-access-from-anywhere.md` (which shipped the Tailscale
 `remote` addon), `pangolin-remote-access.md` (the flagship proposal), and
 `cloudflare-tunnel-comparison.md` (the three-way verdict). Those documents
@@ -407,3 +409,46 @@ browser-shell launch error is a pinned-Playwright environment artifact).
 Not covered: a live tunnel round-trip — `fetchStatus`'s mapping of
 `AuthURL`/`DNSName` is asserted against `tailscale status --json`'s
 documented shape, not a running tailnet.
+
+### Phase 2 — the reference implementation completed
+
+The gold-standard pass landed on this branch, on top of phase 1:
+
+- **Status robustness**: `fetchRemoteProviderStatus` takes injected deps;
+  an exec failure is disambiguated through `compose ps` (never-started →
+  `starting` with the start hint, stopped/crash-looping → `error` with the
+  logs pointer, healthy-but-socket-dead → `degraded`); node-key expiry
+  (the companion document's risk 6) surfaces as a dated warning inside 14
+  days and re-sign-in guidance once expired. Every reachable state is
+  pinned in `remote-provider-status.test.ts` (16 tests, no daemon).
+- **The throttle fix (§6's shared item)**: the apply dispatcher maintains
+  `OP_UI_ADDRESS_HEADER`/`OP_UI_XFF_DEPTH` provider-independently —
+  x-forwarded-for/1 while enabled, cleared on disable (a direct LAN client
+  could forge the header), consumed via core.compose.yml, assistant
+  recreated only on the enable/disable edge. Pinned in
+  `remote-provider-apply.test.ts`; the credentials-route vitest updated
+  for the steady-state contract.
+- **The zero-field surface (§6)**: the drawer's schema fields collapsed
+  under Advanced settings; `OP_REMOTE_PUBLIC` has no UI control (schema
+  copy now says so and points hand-editors at the runbook); qr-flagged
+  copyables render server-side QR SVGs (the pairing route's `uqr`
+  renderer); the addon row gained a compact status chip; the "Open on
+  your phone" card links to the remote drawer for away-from-home use.
+- **Exposure lines (§5's adjacent surface)**:
+  `describeSelectedRemoteExposure` joins `describeAccessExposure` in the
+  UI startup log and CLI install warn-early report.
+- **Docs**: `docs/technical/remote-provider-contract.md` is the durable
+  contract with Tailscale as the worked example and the add-a-provider
+  checklist; `docs/operations/manual-headless-install.md` gained the
+  provider-structured headless section; `docs/remote-access-tls.md` now
+  opens by pointing most readers at the addon.
+
+Still deliberately not done: the provider selector (renders only at ≥2
+registry entries — correct today); the wizard next-step card (post-install
+only, per the pangolin doc's decision); the `remote: {provider, …}`
+setup-spec shape (fast-follow with the second provider).
+
+Gate before calling the reference implementation verified: the live
+re-verification loop — enable → Connect → up → phone opens the URL →
+tokens stream → disable closes fail-closed. The pre-refactor
+implementation passed this live; re-run it on this branch.

@@ -99,3 +99,4 @@ not kept current as the code moves.
 | [opencode-configuration.md](technical/opencode-configuration.md) | OpenCode runtime integration |
 | [community-portals.md](portals/community-portals.md) | Guardian `/oc/*` contract for custom portal adapters |
 | [paperclip-addon-design.md](technical/paperclip-addon-design.md) | Paperclip as a standard loopback-only first-party service addon |
+| [remote-provider-contract.md](technical/remote-provider-contract.md) | The `remote` addon's provider-variant contract, with Tailscale as the reference implementation |

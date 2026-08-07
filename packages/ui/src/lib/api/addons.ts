@@ -118,7 +118,8 @@ export type RemoteAccessStatus = {
     | 'error';
   message: string;
   action?: { label: string; url: string };
-  copyables?: { label: string; value: string; qr?: boolean }[];
+  /** `qrSvg` is added server-side by the status route for qr-flagged rows. */
+  copyables?: { label: string; value: string; qr?: boolean; qrSvg?: string }[];
   progress?: { stage: string; done: boolean }[];
 };
 

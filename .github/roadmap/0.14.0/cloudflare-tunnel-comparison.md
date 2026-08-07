@@ -177,8 +177,9 @@ network-membership exception and nothing else):
 
 The edge sets `CF-Connecting-IP` / `X-Forwarded-For` / `X-Forwarded-Proto`,
 so the containerized UI's existing forwarded-header wiring works, and the
-`ADDRESS_HEADER` login-throttle fix — still open, shared by all three
-front doors — would serve this path too.
+`ADDRESS_HEADER` login-throttle fix — landed with the provider groundwork,
+maintained provider-independently by the apply dispatcher — serves this
+path automatically.
 
 ## 3. The three-way comparison
 

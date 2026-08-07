@@ -29,9 +29,35 @@ import {
   requireCapability,
   getRequestId,
 } from '$lib/server/helpers.js';
-import { createLogger, fetchRemoteProviderStatus } from '@openpalm/lib';
+import { createLogger, fetchRemoteProviderStatus, type RemoteAccessStatus } from '@openpalm/lib';
+import { renderSVG } from 'uqr';
 
 const logger = createLogger('addons.remote.status');
+
+/**
+ * Decorate qr-flagged copyables with a server-rendered QR SVG — the same
+ * `uqr` renderer the pairing route uses, applied here so the card's phone
+ * hand-off (scan the tailnet URL) needs no client-side QR library. The lib
+ * status type stays transport-neutral; `qrSvg` is this route's addition.
+ */
+function withQrSvgs(status: RemoteAccessStatus): RemoteAccessStatus & {
+  copyables?: (NonNullable<RemoteAccessStatus['copyables']>[number] & { qrSvg?: string })[];
+} {
+  if (!status.copyables) return status;
+  return {
+    ...status,
+    copyables: status.copyables.map((c) => {
+      if (!c.qr) return c;
+      try {
+        return { ...c, qrSvg: renderSVG(c.value) };
+      } catch {
+        // A failed render degrades to a copy-only row — same posture as the
+        // pairing route's nullable qrSvg.
+        return c;
+      }
+    }),
+  };
+}
 
 export const GET: RequestHandler = async (event) => {
   const requestId = getRequestId(event);
@@ -42,7 +68,7 @@ export const GET: RequestHandler = async (event) => {
 
   try {
     const status = await fetchRemoteProviderStatus(getState());
-    return jsonResponse(200, status, requestId);
+    return jsonResponse(200, withQrSvgs(status), requestId);
   } catch (err) {
     // fetchRemoteProviderStatus is written to never throw; this is the
     // belt-and-braces the card still deserves if that contract slips.
