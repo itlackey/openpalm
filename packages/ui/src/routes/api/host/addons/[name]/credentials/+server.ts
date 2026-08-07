@@ -31,7 +31,7 @@ import {
   listAvailableAddonIds,
   readStackSecretEnv,
   readStackEnv,
-  applyRemoteAccess,
+  applyRemoteProviderConfig,
   writeStackSecretEnv,
   patchSecretsEnvFile,
 } from "@openpalm/lib";
@@ -238,22 +238,25 @@ export const POST: RequestHandler = async (event) => {
     const updated = [...Object.keys(sensitiveUpdates), ...Object.keys(configUpdates)].sort();
 
     // The `remote` addon is the one built-in whose config is not read from
-    // stack.env by its own container at all: `tunnel` reads a GENERATED
-    // Tailscale serve document, so persisting OP_REMOTE_TARGET/OP_REMOTE_PUBLIC
-    // without regenerating that document would recreate the container below
-    // only for it to re-read the previous config — a saved setting that
-    // silently does nothing. Regenerate first, then let the recreate pick it
-    // up. applyRemoteAccess never throws; it reports failure in its result.
+    // stack.env by its own container at all: its providers serve GENERATED
+    // artifacts (the Tailscale variant's serve document today), so persisting
+    // OP_REMOTE_TARGET/OP_REMOTE_PUBLIC without regenerating them would
+    // recreate the container below only for it to re-read the previous
+    // config — a saved setting that silently does nothing. Regenerate first,
+    // then let the recreate pick it up. Which provider's apply runs is the
+    // registry dispatch's job (applyRemoteProviderConfig); it never throws
+    // and reports failure in its result.
     //
-    // Use the FULL apply, not a bare serve-config reconcile: changing
-    // OP_REMOTE_TARGET to guardian/both also requires GUARDIAN_DIRECT_INGRESS
-    // to be "true" and the guardian recreated, or the freshly generated proxy
-    // points at the guardian's 404-disabled direct listener. applyRemoteAccess
-    // owns both halves and reports which services that implies.
+    // The dispatch runs the FULL provider apply, not a bare artifact
+    // reconcile: changing OP_REMOTE_TARGET to guardian/both also requires
+    // GUARDIAN_DIRECT_INGRESS to be "true" and the guardian recreated, or
+    // the freshly generated proxy points at the guardian's 404-disabled
+    // direct listener. The provider apply owns both halves and reports which
+    // services that implies.
     let remoteServices: string[] = [];
     let remoteWarning: string | undefined;
     if (name === 'remote') {
-      const remote = applyRemoteAccess(state.homeDir);
+      const remote = applyRemoteProviderConfig(state.homeDir);
       if (remote.error) {
         logger.error('serve config write failed', { name, error: remote.error, requestId });
         return errorResponse(

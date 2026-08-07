@@ -99,6 +99,35 @@ export async function saveVoiceProfile(profile: string): Promise<AddonToggleResu
   throw new Error(await readErrorMessage(res));
 }
 
+// ── Remote access provider status ─────────────────────────────────────────
+
+/**
+ * Mirrors `RemoteAccessStatus` in lib's remote-providers.ts — the normalized
+ * vocabulary every remote-access provider's status maps into, so this card
+ * type never changes when a provider is added.
+ */
+export type RemoteAccessStatus = {
+  state:
+    | 'off'
+    | 'awaiting-config'
+    | 'awaiting-authentication'
+    | 'pending-external'
+    | 'starting'
+    | 'up'
+    | 'degraded'
+    | 'error';
+  message: string;
+  action?: { label: string; url: string };
+  /** `qrSvg` is added server-side by the status route for qr-flagged rows. */
+  copyables?: { label: string; value: string; qr?: boolean; qrSvg?: string }[];
+  progress?: { stage: string; done: boolean }[];
+};
+
+export async function fetchRemoteAccessStatus(): Promise<RemoteAccessStatus> {
+  const res = await requireOk(await request('GET', '/api/host/addons/remote/status'));
+  return (await res.json()) as RemoteAccessStatus;
+}
+
 export type AddonCredentialField = {
   key: string;
   sensitive: boolean;

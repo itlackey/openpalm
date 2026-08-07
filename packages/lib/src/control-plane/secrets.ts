@@ -16,6 +16,7 @@ import {
   writeSecret,
 } from './secrets-files.js';
 import { PORTAL_SECRET_ADDON_IDS } from './addon-ids.js';
+import { REMOTE_PROVIDERS } from './remote-providers.js';
 import { preparePaperclipAddon } from './paperclip.js';
 import { writeFileAtomic, writeFileInPlace } from './fs-atomic.js';
 import { generateFallbackSystemEnv } from './fallback-system-env.js';
@@ -166,12 +167,15 @@ export function ensureSecrets(state: ControlPlaneState): void {
   // ensureSecret also re-seeds a torn/0-byte file (scripts/dev-setup.sh seeds
   // an empty one).
   ensureSecret(state.homeDir, 'op_opencode_password', () => crypto.randomUUID().replace(/-/g, ''));
-  // The tailnet join key for the `remote` addon's tunnel, for exactly the same
-  // reason as the OpenCode key above: services.compose.yml declares
-  // `ts_authkey` as a top-level file secret, and Compose fails CONTAINER
-  // CREATION outright when a declared secret's source file is missing — so
-  // enabling `remote` without first visiting the credentials form would break
-  // `compose up` for the whole stack rather than just this addon.
+  // Every remote-access provider's declared secret files, for exactly the
+  // same reason as the OpenCode key above: services.compose.yml declares
+  // them as top-level file secrets (`ts_authkey` for the Tailscale variant
+  // today), and Compose fails CONTAINER CREATION outright when a declared
+  // secret's source file is missing — so enabling `remote` without first
+  // visiting the credentials form would break `compose up` for the whole
+  // stack rather than just this addon. The list is registry-driven
+  // (remote-providers.ts): a later provider's secrets seed here by declaring
+  // them, not by adding a line.
   //
   // Seeded EMPTY, and empty is a real configuration rather than a placeholder:
   // a blank TS_AUTHKEY is what tells containerboot to fall back to interactive
@@ -180,7 +184,11 @@ export function ensureSecrets(state: ControlPlaneState): void {
   // into the credentials form overwrites this via writeStackSecretEnv, and
   // that write ends in a newline, so it is never mistaken for the 0-byte
   // "torn write" case ensureSecret re-seeds.
-  ensureSecret(state.homeDir, 'ts_authkey', () => '');
+  for (const provider of Object.values(REMOTE_PROVIDERS)) {
+    for (const secretName of provider.secrets) {
+      ensureSecret(state.homeDir, secretName, () => '');
+    }
+  }
   // Portal principal secrets, for the same reason as the OpenCode key above:
   // portals.compose.yml declares all four as top-level file secrets, so the
   // files must exist whether or not the addon that consumes one is enabled.

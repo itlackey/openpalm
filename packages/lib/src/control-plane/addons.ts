@@ -21,7 +21,7 @@ import type { ControlPlaneState } from './types.js';
 import { resolveStashDir, composeFilePath, customComposeFilePath, stackEnvFile } from './home.js';
 import { BUILTIN_ADDON_ENV_SCHEMAS } from './addon-env-schemas.js';
 import { BUILTIN_ADDON_IDS, GUARDIAN_INGRESS_ADDON_IDS, PORTAL_SECRET_ADDON_IDS } from './addon-ids.js';
-import { applyRemoteAccess } from './remote-apply.js';
+import { applyRemoteProviderConfig } from './remote-provider-apply.js';
 import { preparePaperclipAddon } from './paperclip.js';
 
 const VALID_NAME_RE = /^[a-z0-9][a-z0-9-]{0,62}$/;
@@ -491,7 +491,7 @@ export function setAddonEnabled(homeDir: string, name: string, enabled: boolean,
 
   if (wasEnabled === enabled) {
     if (name === 'remote') {
-      const applied = applyRemoteAccess(homeDir);
+      const applied = applyRemoteProviderConfig(homeDir);
       if (applied.error) {
         return {
           ok: false,
@@ -539,12 +539,15 @@ export function setAddonEnabled(homeDir: string, name: string, enabled: boolean,
 
 
   // `remote` is the one built-in whose enablement is not fully expressed by
-  // flipping its Compose profile: the `tunnel` container serves a GENERATED
-  // document (state/remote/serve.json), so recording the addon and starting
-  // the container is not an apply — without this the container would come up
-  // reading the PREVIOUS document, i.e. enable would report success while
-  // serving nothing, and disable would leave a live (possibly Funnel-public)
-  // document on disk.
+  // flipping its Compose profile: its providers serve GENERATED artifacts
+  // (the Tailscale variant's state/remote/serve.json today), so recording
+  // the addon and starting the container is not an apply — without this the
+  // container would come up reading the PREVIOUS document, i.e. enable would
+  // report success while serving nothing, and disable would leave a live
+  // (possibly Funnel-public) document on disk. Which provider's apply runs
+  // is the registry dispatch's job (remote-provider-apply.ts), not this
+  // module's — a later provider is a registry entry, not a second special
+  // case here.
   //
   // Runs HERE, in the shared toggle, rather than in each caller, so the CLI,
   // the UI route, and the wizard cannot diverge — and runs BEFORE the caller
@@ -554,7 +557,7 @@ export function setAddonEnabled(homeDir: string, name: string, enabled: boolean,
   let warning: string | undefined;
   let applyServices: string[] = [];
   if (name === 'remote') {
-    const applied = applyRemoteAccess(homeDir);
+    const applied = applyRemoteProviderConfig(homeDir);
     if (applied.error) {
       // The enablement write above already landed, so this is a partial
       // apply, not a no-op — say so rather than reporting plain success.

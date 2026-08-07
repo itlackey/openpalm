@@ -98,7 +98,14 @@ describe('POST /api/host/addons/:name/credentials', () => {
 		expect(disabled.status).toBe(200);
 		expect(activateStackMock).not.toHaveBeenCalled();
 
-		writeRemoteStackEnv('OP_ENABLED_ADDONS=remote\nGUARDIAN_DIRECT_INGRESS=false\n');
+		// Steady state includes the forwarded-address keys the provider apply
+		// maintains (remote-provider-apply.ts): with them already set, a CONFIG
+		// save recreates only the tunnel — the assistant joins the scope only
+		// on the enable/disable edge, which the lib dispatcher test pins.
+		writeRemoteStackEnv(
+			'OP_ENABLED_ADDONS=remote\nGUARDIAN_DIRECT_INGRESS=false\n'
+				+ 'OP_UI_ADDRESS_HEADER=x-forwarded-for\nOP_UI_XFF_DEPTH=1\n'
+		);
 		activateStackMock.mockResolvedValue({ ok: true, started: ['tunnel'], failed: [] });
 
 		const enabled = await POST(makePostEvent({ OP_REMOTE_TARGET: 'assistant' }, 'remote'));

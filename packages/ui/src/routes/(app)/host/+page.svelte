@@ -63,9 +63,7 @@
   let currentHostUrl: URL = $state(page.url);
   let activeTab: TabId = $state(hostTabFromUrl(page.url));
   let chatReturnHref: string | undefined = $state(hostReturnTo(page.url));
-  let focusAddon: 'voice' | undefined = $state(
-    page.url.searchParams.get('addon') === 'voice' ? 'voice' : undefined
-  );
+  let focusAddon: 'voice' | 'remote' | undefined = $state(resolveFocusAddon(page.url));
   let pullLoading = $state(false);
 
   const resolvedChatReturnHref = $derived(chatReturnHref ?? runtimeContext.routes.chat ?? resolve('/chat'));
@@ -272,11 +270,20 @@
     }
   }
 
+  // The deep-linkable addon drawers (?tab=addons&addon=<id>): voice for its
+  // profile selector, remote for the provider status card
+  // (remote-access-providers.md §5). One resolver so the initial load and
+  // history navigation cannot drift.
+  function resolveFocusAddon(url: URL): 'voice' | 'remote' | undefined {
+    const addon = url.searchParams.get('addon');
+    return addon === 'voice' || addon === 'remote' ? addon : undefined;
+  }
+
   function applyHostUrl(url: URL): void {
     currentHostUrl = url;
     activeTab = hostTabFromUrl(url);
     chatReturnHref = hostReturnTo(url);
-    focusAddon = url.searchParams.get('addon') === 'voice' ? 'voice' : undefined;
+    focusAddon = resolveFocusAddon(url);
   }
 
   function handleHistoryChange(): void {

@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import { resolve } from '$app/paths';
   import Spinner from '$lib/components/common/Spinner.svelte';
   import {
     fetchAccessStatus,
@@ -295,6 +296,11 @@
           <p class="field-hint">
             The <code>.local</code> name only resolves while a host <code>openpalm</code> process is
             running; the IP addresses work whenever this machine is on the same network.
+          </p>
+          <p class="field-hint">
+            Away from home, these addresses won't reach it — set up
+            <a href={`${resolve('/host')}?tab=addons&addon=remote`}>remote access</a> to use the assistant from
+            anywhere.
           </p>
         </section>
       {/if}

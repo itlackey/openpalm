@@ -20,6 +20,16 @@ a domain, or operate a machine with a public IP is out. That removes frp,
 Nebula, Headscale, self-hosted Pangolin, and the classic DDNS + port-forward
 approach in one cut.
 
+**Scope correction, added with `pangolin-remote-access.md`:** "out" here
+means out as the default path for the CGNAT home this section is about. It
+was later over-read as eliminating these tools for OpenPalm entirely, which
+this document never argued: a VPS install or a router that can forward
+80/443 fails none of the constraints above. For self-hosted Pangolin that
+wider frame turned out to matter — `pangolin-remote-access.md` proposes
+running the Pangolin server inside the stack itself for reachable hosts,
+with a connector fallback that preserves this section's verdict for CGNAT
+homes.
+
 The DDNS path deserves its own epitaph because it is what most tutorials still
 recommend: the Node libraries for it are abandoned (`nat-upnp@1.1.1`, 2017;
 `nat-pmp@1.0.0`, 2016), and CGNAT makes it fail *invisibly* — the toggle would
@@ -61,7 +71,9 @@ then gate the hostname, and — the single best non-technical finding in the
 Cloudflare track — Access supports a **one-time PIN identity provider needing
 no external IdP at all** (`POST /accounts/{id}/access/identity_providers` with
 `{"type":"onetimepin"}`). The user types their email and pastes a 6-digit code.
-Free for up to 50 users.
+Free for up to 50 users. (*Since revisited:* the 50-user figure could not
+be re-confirmed first-party — `cloudflare-tunnel-comparison.md` §2.3
+carries it hedged and leans on the documented seat mechanics instead.)
 
 The blocker is structural: a named tunnel requires a domain whose nameservers
 are delegated to Cloudflare. That violates "without buying a domain," and
@@ -153,6 +165,15 @@ than Funnel. It loses on maturity and verifiability: free-tier terms could not
 be confirmed from a primary source, and it is a young single-vendor
 dependency. Most likely future addition; not v1.
 
+*Since revisited — see `pangolin-remote-access.md`.* The re-verification
+moved two facts. The terms are now confirmable from primary sources: the
+Community Edition is AGPL and free self-hosted, Enterprise is free under
+$100k revenue — but Pangolin Cloud's free tier provides **no domain**
+(provided domain endings are paid-plan features), so the Cloud path is
+less zero-setup than this paragraph implied. The proposal's primary shape
+is accordingly not Cloud + Newt at all: it runs the Pangolin server inside
+the stack itself, keeping this sidecar as the connector variant.
+
 **NetBird** deserves a correction against the common claim that it needs
 `NET_ADMIN`/`/dev/net/tun`/host networking: that applies to the default image
 only, and `netbirdio/netbird:rootless-latest` is documented as working without
@@ -174,6 +195,27 @@ endpoint. Not offerable.
 **Secondary: a `cloudflare/cloudflared` named-tunnel sidecar** for the user who
 already owns a domain on Cloudflare and wants Cloudflare Access in front. It
 slots into the same overlay shape with a different image.
+
+*Since revisited.* The primary shipped as recommended (the `remote`
+addon). Two later facts reweighted the field without unshipping it: the
+`remote` addon has **no install base beyond local testing**, and OpenPalm
+installs are not only the CGNAT homes §1 optimized for. Pangolin —
+deferred in §2 above — is now proposed as the **flagship** front door
+wherever the host is reachable (`pangolin-remote-access.md`), with this
+document's recommendation remaining the answer for the CGNAT /
+zero-infrastructure case. The cloudflared secondary was never built; it
+is re-evaluated in the three-way comparison of
+`cloudflare-tunnel-comparison.md`. The shipped single-provider shape is
+also being restructured: `remote-access-providers.md` restores the
+`provider` seam this document's §5 sketched and implementation dropped —
+providers become mutually-exclusive variants of the one `remote` addon
+behind a registry, with Tailscale as the default variant and the §8/§9
+read-back surface (`fetchRemoteAccessActual`'s AuthURL and URL) landed as
+the shared status card (`fetchRemoteProviderStatus` +
+`RemoteStatusCard.svelte`; the sign-in link and the tailnet URL now
+surface in the drawer instead of container logs). One more shipped divergence worth
+naming while correcting: the delegated secret shipped as `ts_authkey`,
+not the `op_tailscale_authkey` this document's §5/§6 snippets show.
 
 Do not ship one boolean. Ship **one toggle plus a mode**, because they are
 different products with different risk:
@@ -514,7 +556,12 @@ Three shapes therefore fall out of the same generator, selected by `target` in
 `remote-access.json`:
 
 1. `"assistant"` — `/` → `http://assistant:3000`. The default.
-2. `"guardian"` — `/` → `http://guardian:8080`. For API clients.
+2. `"guardian"` — `/` → `http://guardian:3830`. For API clients.
+   (*Correction:* an earlier revision said `guardian:8080`, the internal
+   portal gateway; the direct-ingress listener the tunnel targets is
+   `3830`, as §10 and the shipped `TARGET_ENDPOINTS` both say. The `/oc`
+   example above stays `8080` because it names the portal-gateway path
+   specifically.)
 3. `"both"` — either `/` → assistant and `/oc` → guardian on one port, **or**
    assistant on 443 and guardian on 8443 with *different funnel bits* — the UI
    private to the user's own devices, Guardian's screened API publicly funneled

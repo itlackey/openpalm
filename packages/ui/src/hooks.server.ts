@@ -24,6 +24,7 @@ import {
   readStackRuntimeEnv,
   readSecret,
   describeAccessExposure,
+  describeSelectedRemoteExposure,
   readAccessToggles,
   runHomeMigrations,
   stackDirFor,
@@ -69,8 +70,14 @@ function loadProcessEnv(): void {
 
   // Report what the operator deliberately opened. Exposure is now read from
   // the access toggles rather than diagnosed from bind addresses:
-  // unexplained exposure stays loud (D9).
+  // unexplained exposure stays loud (D9). Remote (tunnel) exposure joins the
+  // same report through the provider registry — same source (env record),
+  // same fact-not-diagnosis rule, empty when the addon is off or the keys
+  // are absent from this process's env.
   for (const line of describeAccessExposure(readAccessToggles(process.env as Record<string, string>))) {
+    logger.warn(line);
+  }
+  for (const line of describeSelectedRemoteExposure(process.env as Record<string, string>)) {
     logger.warn(line);
   }
 

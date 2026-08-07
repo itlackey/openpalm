@@ -66,8 +66,19 @@ describe("tunnel service — exists, profile-gated", () => {
     expect(tunnel).toBeDefined();
   });
 
-  test("tunnel is gated behind addon.remote, and only addon.remote", () => {
-    expect(tunnel?.profiles).toEqual(["addon.remote"]);
+  test("tunnel is gated behind the Tailscale provider variant, and only it", () => {
+    // The provider-variant profile (remote-access-providers.md §2): renamed
+    // from the bare `addon.remote` when providers became variants of the one
+    // remote addon. A bare enable still deploys this service through
+    // resolveActiveProfiles' default-provider fallback, which
+    // remote-providers.test.ts pins.
+    expect(tunnel?.profiles).toEqual(["addon.remote.tailscale"]);
+  });
+
+  test("tunnel carries the provider selector's display labels, default on", () => {
+    const labels = (tunnel?.labels ?? {}) as Record<string, string>;
+    expect(labels["openpalm.profile.label"]).toBe("Tailscale");
+    expect(labels["openpalm.profile.default"]).toBe("true");
   });
 });
 

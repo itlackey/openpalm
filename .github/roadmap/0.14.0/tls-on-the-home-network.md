@@ -62,6 +62,16 @@ steps 3 and 5, not in issuance.
 
 **Tier 2 — bring your own domain.** Falls out of Tier 1 for free.
 
+*Added with `pangolin-remote-access.md`:* a fourth path now exists as a
+sibling proposal rather than a tier built here. The Pangolin addon's proxy
+variant, used LAN-only, is this tier with an SSO gate in front: its
+default domain mode is the same paste-one-DuckDNS-token shape (Traefik
+drives lego's DuckDNS provider for wildcard DNS-01), with an owned domain
+as the option. The cost difference is two containers against one bundled
+binary; the benefit is that Tier 1 *and* Tier 2 become something the
+stack runs instead of something the operator assembles — and the same
+work already builds the remote-access front door.
+
 ## 4. The shortcut, stated honestly
 
 Services such as `traefik.me` publish a wildcard certificate for a wildcard-DNS

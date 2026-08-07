@@ -714,6 +714,25 @@ export {
   type RemoteAccessApplyResult,
   type RemoteAccessReconcileResult,
 } from "./control-plane/remote-apply.js";
+export {
+  REMOTE_PROVIDERS,
+  REMOTE_ACCESS_STATUS_STATES,
+  DEFAULT_REMOTE_PROVIDER_ID,
+  DEFAULT_REMOTE_PROFILE,
+  selectedRemoteProviderId,
+  selectedRemoteProvider,
+  remoteAddonEnabled,
+  computeGuardianIngressRequired,
+  describeSelectedRemoteExposure,
+  type RemoteProviderInfo,
+  type RemoteAccessStatus,
+  type RemoteAccessStatusState,
+} from "./control-plane/remote-providers.js";
+export {
+  applyRemoteProviderConfig,
+  type RemoteProviderApplyResult,
+} from "./control-plane/remote-provider-apply.js";
+export { fetchRemoteProviderStatus } from "./control-plane/remote-provider-status.js";
 
 // ── mDNS host self-advertisement (#488) ──────────────────────────────────────
 // Pure helpers (sanitizeDnsLabel, resolveMdnsAdvertisements, etc.) stay

@@ -41,6 +41,7 @@ import {
 	writeSystemEnv,
 	patchSecretsEnvFile,
 	describeAccessExposure,
+	describeSelectedRemoteExposure,
 	readAccessToggles,
 	resolveDeployJournalPath,
 	type DeployPhase,
@@ -258,6 +259,12 @@ export async function bootstrapInstall(options: InstallOptions): Promise<void> {
 	for (const line of describeAccessExposure(
 		readAccessToggles(process.env as Record<string, string>)
 	)) {
+		logger.warn(line);
+	}
+	// Remote (tunnel) exposure joins the same warn-early report through the
+	// provider registry — empty when the addon is off or the keys are absent
+	// from this process's env.
+	for (const line of describeSelectedRemoteExposure(process.env as Record<string, string>)) {
 		logger.warn(line);
 	}
 

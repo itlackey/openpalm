@@ -32,20 +32,18 @@ import type { ControlPlaneState } from './types.js';
 import { validateSetupSpec } from './setup-validation.js';
 import {
 	getRegistryAutomation,
-	listEnabledAddonIds,
 	setAddonEnabled,
 	setAddonProfileSelection
 } from './addons.js';
 import { reconcileGuardianIngressAddons } from './access-apply.js';
 import {
 	coerceAccessToggles,
-	remoteRequiresGuardianIngress,
 	requiresAssistantKey,
 	resolveAccessEnv,
 	resolveAccessIntentEnv,
 	type AccessToggles
 } from './access-toggles.js';
-import { readRemoteAccessConfig } from './remote-access.js';
+import { computeGuardianIngressRequired } from './remote-providers.js';
 import { randomHex } from './crypto.js';
 export { validateSetupSpec } from './setup-validation.js';
 
@@ -383,11 +381,11 @@ export async function performSetup(
 				// tunnel depends on, breaking remote access until the next
 				// applyAccessToggles happened to run. A setup rerun changes access
 				// toggles, never the remote addon's own config, so current on-disk
-				// state is the right source for both halves here.
-				const remoteTarget = readRemoteAccessConfig(readStackEnv(state.homeDir)).target;
-				const guardianIngressRequired = remoteRequiresGuardianIngress(
-					listEnabledAddonIds(state.homeDir).includes('remote'),
-					remoteTarget
+				// state is the right source — read through the registry's single
+				// ingress writer (remote-providers.ts), shared with access-apply.ts
+				// and applyRemoteAccess so the call sites cannot drift.
+				const guardianIngressRequired = computeGuardianIngressRequired(
+					readStackEnv(state.homeDir)
 				);
 				// Stored intent + the row it generates. Writing intent is what lets
 				// every later read be a read instead of an inference from bind

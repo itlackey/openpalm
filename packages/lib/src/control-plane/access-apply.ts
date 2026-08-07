@@ -28,7 +28,6 @@ import {
   ACCESS_ENV_KEYS,
   coerceAccessToggles,
   readAccessToggles,
-  remoteRequiresGuardianIngress,
   resolveAccessEnv,
   resolveAccessIntentEnv,
   type AccessEnv,
@@ -42,7 +41,7 @@ import { reconcileMdnsResponder } from "./mdns-responder.js";
 import { patchSecretsEnvFile, readStackEnv } from "./secrets.js";
 import { GUARDIAN_INGRESS_ADDON_IDS } from "./addon-ids.js";
 import { listEnabledAddonIds, setAddonEnabled } from "./addons.js";
-import { readRemoteAccessConfig } from "./remote-access.js";
+import { computeGuardianIngressRequired } from "./remote-providers.js";
 import type { InstallLockHandle } from "./install-lock.js";
 import type { ControlPlaneState } from "./types.js";
 
@@ -238,14 +237,14 @@ export async function applyAccessToggles(
 
   // The `remote` addon can require the guardian's direct listener to answer
   // without touching `guardianNetwork` at all — it tunnels over `portal_net`,
-  // never through the LAN bind. Its enablement and target live in the same
-  // places every other reader of addon state uses: `listEnabledAddonIds` for
-  // "is it on", the stack env (read BEFORE this apply's own writes land) for
-  // "what does it target" — a toggle save changes access toggles, not the
-  // remote addon's own config, so the current env is always the right source.
-  const remoteEnabled = listEnabledAddonIds(state.homeDir).includes("remote");
-  const remoteTarget = readRemoteAccessConfig(currentEnv).target;
-  const guardianIngressRequired = remoteRequiresGuardianIngress(remoteEnabled, remoteTarget);
+  // never through the LAN bind. Enablement, provider selection, and target
+  // are all read from `currentEnv` (the stack env read BEFORE this apply's
+  // own writes land) by computeGuardianIngressRequired — the registry's
+  // single ingress writer (remote-providers.ts), shared with setup.ts and
+  // applyRemoteAccess so the three call sites cannot drift. A toggle save
+  // changes access toggles, not the remote addon's own config, so the
+  // current env is always the right source.
+  const guardianIngressRequired = computeGuardianIngressRequired(currentEnv);
 
   const nextEnv = resolveAccessEnv(toggles, { guardianIngressRequired });
   const changedKeys = diffAccessEnv(currentEnv, nextEnv);

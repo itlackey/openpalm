@@ -148,8 +148,10 @@ OP_TELEMETRY_DISABLED=1
   remote: `# OpenPalm Remote Access (Tailscale tunnel) configuration
 # ---
 # Lets you reach this assistant when you're away from home, without opening
-# any ports on your router. Values are optional; the tunnel container supplies
-# safe defaults.
+# any ports on your router. The status card in the addon drawer is the
+# primary surface — the default setup needs NO values here at all: enable
+# the addon, click "Connect your account" on the card, sign in, done.
+# Everything below is advanced.
 
 # What the tunnel points at: assistant, guardian, or both. Most people only
 # ever need "assistant" — the guardian target is for advanced setups that also
@@ -159,7 +161,11 @@ OP_REMOTE_TARGET=assistant
 # Who can use the link this creates. Off (false) keeps it private: only
 # devices you've signed in to your own tailnet can reach it. On (true) makes
 # it a public link anyone on the internet who has the URL can open, with no
-# sign-in — treat that the same as publishing a public website.
+# sign-in — treat that the same as publishing a public website. This key has
+# NO control in the UI, deliberately: public exposure without a sign-in page
+# is the field's worst option, so turning it on is a hand edit of this file
+# (see the manual compose runbook), made by someone who has read this
+# paragraph.
 # @boolean
 OP_REMOTE_PUBLIC=false
 

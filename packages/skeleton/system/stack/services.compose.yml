@@ -338,7 +338,19 @@ services:
       openpalm.profile.requires: amdgpu kernel module
 
   tunnel:
-    profiles: ["addon.remote"]
+    # PROVIDER VARIANT of the `remote` addon (was the bare `addon.remote`
+    # profile): remote access is one capability with mutually-exclusive
+    # provider variants, selected by OP_REMOTE_PROFILE — see
+    # packages/lib/src/control-plane/remote-providers.ts. Tailscale is the
+    # DEFAULT variant: resolveActiveProfiles (compose-args.ts) falls back to
+    # this profile for an enabled `remote` with no stored selection, so a
+    # hand-edited OP_ENABLED_ADDONS=remote still deploys this service. The
+    # labels below are display metadata for the provider selector, not what
+    # decides deployment.
+    profiles: ["addon.remote.tailscale"]
+    labels:
+      openpalm.profile.label: Tailscale
+      openpalm.profile.default: "true"
     # Pinned to a specific release PLUS its multi-arch manifest-list digest
     # (same convention as ollama above), never `:latest` and never the
     # `:stable` floating tag Tailscale itself recommends for this image — a

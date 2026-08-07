@@ -1,5 +1,13 @@
 # Remote Access over TLS
 
+> **Most people don't need this guide.** The `remote` addon does the whole
+> job with no proxy to run: enable it in Host console → Add-ons, click
+> "Connect your account" on its status card, and the card shows your
+> `https://…ts.net` address (with a QR code) once the tunnel is up. This
+> guide is for operators who prefer to run their own reverse proxy instead
+> — see `docs/technical/remote-provider-contract.md` for how the addon
+> works.
+
 This guide fronts two separate services with operator-managed HTTPS:
 
 - the non-admin `openpalm app` host process on port `3880`

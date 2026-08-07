@@ -12,6 +12,7 @@ import { buildComposeCommandArgs } from "./docker.js";
 import { parseEnabledAddons } from "./env.js";
 import { readStackEnv } from "./secrets.js";
 import { canonicalAddonProfileSelection } from "./profile-ids.js";
+import { DEFAULT_REMOTE_PROFILE } from "./remote-providers.js";
 
 // ── Types ────────────────────────────────────────────────────────────────
 
@@ -24,8 +25,24 @@ export type ComposeOptions = {
 // ── Profile Resolution ───────────────────────────────────────────────────
 
 /**
+ * Addons whose services are gated behind VARIANT profiles (`addon.<id>.<x>`)
+ * rather than a bare `addon.<id>`: an enabled addon with no stored selection
+ * must still deploy SOMETHING, so each declares the profile that activates
+ * when its selection env key is absent or invalid. voice/ollama variants are
+ * hardware; remote's are providers (remote-access-providers.md §2) — the
+ * compose `openpalm.profile.default` label is display metadata only, and
+ * THIS table is what actually decides deployment for a bare enable.
+ */
+const VARIANT_ADDON_DEFAULTS: Record<string, { envKey: string; fallback: string }> = {
+  voice: { envKey: 'OP_VOICE_PROFILE', fallback: 'addon.voice.cpu' },
+  ollama: { envKey: 'OP_OLLAMA_PROFILE', fallback: 'addon.ollama.cpu' },
+  remote: { envKey: 'OP_REMOTE_PROFILE', fallback: DEFAULT_REMOTE_PROFILE },
+};
+
+/**
  * Resolve active Docker Compose profiles from the stack env.
- * Reads OP_VOICE_PROFILE and OP_OLLAMA_PROFILE (addon hardware profiles).
+ * Reads the variant selections (OP_VOICE_PROFILE, OP_OLLAMA_PROFILE,
+ * OP_REMOTE_PROFILE) plus OP_ENABLED_ADDONS.
  * Returns deduplicated, non-empty profile strings.
  */
 export function resolveActiveProfiles(state: ControlPlaneState): string[] {
@@ -35,16 +52,22 @@ export function resolveActiveProfiles(state: ControlPlaneState): string[] {
   // `openpalm addon enable`, so an enabled addon never activated its compose
   // profile and its service was never started.
   const env = readStackEnv(state.homeDir);
+  // Legacy profile-only activation for voice/ollama: a stored hardware
+  // selection activates its profile even before the one-time enablement
+  // migration has run. Deliberately NOT extended to OP_REMOTE_PROFILE — the
+  // remote selection survives disable (it is not in PROFILE_ONLY_ENV_KEYS)
+  // and must never imply enablement on its own.
   const voiceProfile = canonicalAddonProfileSelection('voice', env.OP_VOICE_PROFILE ?? '');
   if (voiceProfile) profiles.push(voiceProfile);
   const ollamaProfile = canonicalAddonProfileSelection('ollama', env.OP_OLLAMA_PROFILE ?? '');
   if (ollamaProfile) profiles.push(ollamaProfile);
 
   for (const addon of parseEnabledAddons(env.OP_ENABLED_ADDONS)) {
-    if (addon === 'voice') {
-      profiles.push(canonicalAddonProfileSelection('voice', env.OP_VOICE_PROFILE ?? '') || 'addon.voice.cpu');
-    } else if (addon === 'ollama') {
-      profiles.push(canonicalAddonProfileSelection('ollama', env.OP_OLLAMA_PROFILE ?? '') || 'addon.ollama.cpu');
+    const variant = VARIANT_ADDON_DEFAULTS[addon];
+    if (variant) {
+      profiles.push(
+        canonicalAddonProfileSelection(addon, env[variant.envKey] ?? '') || variant.fallback,
+      );
     } else {
       profiles.push(`addon.${addon}`);
     }
