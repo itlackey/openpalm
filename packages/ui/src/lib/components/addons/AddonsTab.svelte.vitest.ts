@@ -28,6 +28,7 @@ const mocks = vi.hoisted(() => {
 vi.mock('$lib/api.js', () => ({
   fetchAddons: mocks.fetchAddons,
   fetchAddonCredentials: mocks.fetchAddonCredentials,
+  fetchRemoteAccessStatus: vi.fn(async () => ({ state: 'off', message: 'Remote access is off.' })),
   fetchSecretFile: vi.fn(),
   fetchSecretFiles: vi.fn(),
   saveAddonCredentials: vi.fn(),
