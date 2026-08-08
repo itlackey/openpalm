@@ -452,7 +452,7 @@ async function prepareInstallFiles(
 	// look mid-install. Recording it here rather than after a successful deploy
 	// means a Ctrl-C'd install still explains why those artifacts exist.
 	recordHostEnabled(bootstrapState.homeDir);
-	// Ensure the akm env:user file exists (empty 0600) so the assistant can
+	// Ensure the akm env/user file exists (empty 0600) so the assistant can
 	// source it. Owned and edited directly by OpenPalm — see akm-user-env.ts.
 	ensureAkmUserEnv(bootstrapState);
 

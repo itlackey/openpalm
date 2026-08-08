@@ -45,7 +45,7 @@ export async function automationsCheck(): Promise<void> {
       console.log(`Registered in crontab: ${registered.length}/${taskFiles.length}`);
       if (registered.length < taskFiles.length) {
         console.log(
-          "Run 'akm tasks sync' inside the assistant container to register remaining tasks."
+          "Run 'akm task sync' inside the assistant container to register remaining tasks."
         );
       }
       resolve();

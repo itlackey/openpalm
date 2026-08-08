@@ -440,19 +440,23 @@ describe('persistAkmConfig', () => {
 			}
 		});
 		const cfg = JSON.parse(readFileSync(cfgPath(), 'utf-8'));
-		expect(cfg.profiles.llm.default).toEqual({
+		expect(cfg.configVersion).toBe('0.9.0');
+		expect(cfg.engines.default).toEqual({
+			kind: 'llm',
 			endpoint: 'https://api.openai.com/v1/chat/completions',
 			model: 'gpt-4o',
 			provider: 'openai'
 		});
-		expect(cfg.defaults.llm).toBe('default');
+		expect(cfg.defaults.llmEngine).toBe('default');
 		expect(cfg.embedding).toEqual({
 			endpoint: 'https://api.openai.com/v1/embeddings',
 			model: 'text-embedding-3-small',
 			provider: 'openai',
 			dimension: 1536
 		});
-		expect(cfg.stashDir).toBe('/stash');
+		expect(cfg.bundles.openpalm).toEqual({ path: '/stash', writable: true });
+		expect(cfg.defaultBundle).toBe('openpalm');
+		expect(cfg.stashDir).toBeUndefined();
 		expect(cfg.llm).toBeUndefined();
 	});
 
@@ -472,15 +476,15 @@ describe('persistAkmConfig', () => {
 		expect(readFileSync(cfgPath(), 'utf-8')).toBe(first);
 	});
 
-	it('preserves existing user keys and nested profile/defaults fields', () => {
+	it('preserves existing user keys and nested engine/defaults fields', () => {
 		mkdirSync(join(configDir, 'akm'), { recursive: true });
 		writeFileSync(
 			cfgPath(),
 			JSON.stringify({
 				customUserKey: 'keep-me',
-				sources: [{ name: 'host-akm' }],
-				profiles: { llm: { default: { temperature: 0.7 }, alt: { model: 'x' } } },
-				defaults: { embedding: 'myembed' }
+				bundles: { 'host-akm': { path: '/host-stash', writable: true } },
+				engines: { default: { kind: 'llm', temperature: 0.7 }, alt: { kind: 'llm', model: 'x' } },
+				defaults: { engine: 'myagent' }
 			})
 		);
 		persistAkmConfig(stateFor(), {
@@ -489,16 +493,16 @@ describe('persistAkmConfig', () => {
 		const cfg = JSON.parse(readFileSync(cfgPath(), 'utf-8'));
 		// Untouched user keys survive the merge.
 		expect(cfg.customUserKey).toBe('keep-me');
-		expect(cfg.sources).toEqual([{ name: 'host-akm' }]);
-		// Sibling profile and pre-existing default fields are preserved.
-		expect(cfg.profiles.llm.alt).toEqual({ model: 'x' });
-		expect(cfg.profiles.llm.default.temperature).toBe(0.7);
-		// New llm values merge into profiles.llm.default.
-		expect(cfg.profiles.llm.default.model).toBe('llama3.2');
-		expect(cfg.profiles.llm.default.provider).toBe('ollama');
-		// Existing defaults key survives; defaults.llm is added.
-		expect(cfg.defaults.embedding).toBe('myembed');
-		expect(cfg.defaults.llm).toBe('default');
+		expect(cfg.bundles['host-akm']).toEqual({ path: '/host-stash', writable: true });
+		// Sibling engine and pre-existing default fields are preserved.
+		expect(cfg.engines.alt).toEqual({ kind: 'llm', model: 'x' });
+		expect(cfg.engines.default.temperature).toBe(0.7);
+		// New llm values merge into engines.default.
+		expect(cfg.engines.default.model).toBe('llama3.2');
+		expect(cfg.engines.default.provider).toBe('ollama');
+		// Existing defaults key survives; defaults.llmEngine is added.
+		expect(cfg.defaults.engine).toBe('myagent');
+		expect(cfg.defaults.llmEngine).toBe('default');
 	});
 
 	it('does nothing when neither llm nor embedding is provided', () => {
@@ -506,14 +510,34 @@ describe('persistAkmConfig', () => {
 		expect(existsSync(cfgPath())).toBe(false);
 	});
 
-	it('drops a legacy top-level llm key on write', () => {
+	it('drops retired 0.8-era keys on write (hard-rejected by akm 0.9.0)', () => {
 		mkdirSync(join(configDir, 'akm'), { recursive: true });
-		writeFileSync(cfgPath(), JSON.stringify({ llm: { endpoint: 'legacy', model: 'old' } }));
+		writeFileSync(
+			cfgPath(),
+			JSON.stringify({
+				llm: { endpoint: 'legacy', model: 'old' },
+				stashDir: '/stash',
+				sources: [{ name: 'host-akm' }],
+				installed: [],
+				wikiName: 'wiki',
+				profiles: { llm: { default: { endpoint: 'x', model: 'y' } } },
+				defaults: { llm: 'default', agent: 'opencode', improve: 'daily' }
+			})
+		);
 		persistAkmConfig(stateFor(), {
 			llm: { provider: 'openai', model: 'gpt-4o', baseUrl: 'https://api.openai.com' }
 		});
 		const cfg = JSON.parse(readFileSync(cfgPath(), 'utf-8'));
 		expect(cfg.llm).toBeUndefined();
+		expect(cfg.stashDir).toBeUndefined();
+		expect(cfg.sources).toBeUndefined();
+		expect(cfg.installed).toBeUndefined();
+		expect(cfg.wikiName).toBeUndefined();
+		expect(cfg.profiles).toBeUndefined();
+		expect(cfg.defaults.llm).toBeUndefined();
+		expect(cfg.defaults.agent).toBeUndefined();
+		expect(cfg.defaults.improve).toBeUndefined();
+		expect(cfg.defaults.llmEngine).toBe('default');
 	});
 });
 
@@ -808,33 +832,41 @@ describe('performSetup', () => {
 		const akmConfigPath = join(homeDir, 'config', 'akm', 'config.json');
 		expect(existsSync(akmConfigPath)).toBe(true);
 		const config = JSON.parse(readFileSync(akmConfigPath, 'utf-8'));
-		// Canonical akm 0.8.0 shape: profiles.llm.default + defaults.llm — NOT top-level `llm`.
+		// Canonical akm 0.9.0 shape: engines.default + defaults.llmEngine — NOT top-level `llm`.
+		expect(config.configVersion).toBe('0.9.0');
 		expect(config.llm).toBeUndefined();
-		expect(config.profiles.llm.default.model).toBe('gpt-4o');
-		expect(config.profiles.llm.default.provider).toBe('openai');
-		expect(config.defaults.llm).toBe('default');
+		expect(config.engines.default.kind).toBe('llm');
+		expect(config.engines.default.model).toBe('gpt-4o');
+		expect(config.engines.default.provider).toBe('openai');
+		expect(config.defaults.llmEngine).toBe('default');
 		expect(config.embedding.model).toBe('text-embedding-3-small');
 		expect(config.embedding.provider).toBe('openai');
 		expect(config.embedding.dimension).toBe(1536);
-		// The assistant primary stash is pinned to the bind mount, not operator-set.
-		expect(config.stashDir).toBe('/stash');
+		// The assistant primary bundle is pinned to the bind mount, not operator-set.
+		expect(config.bundles.openpalm).toEqual({ path: '/stash', writable: true });
+		expect(config.defaultBundle).toBe('openpalm');
 	});
 
-	it('does not write the legacy migration-triggering akm config shape (I-3)', async () => {
-		// akm's config-migration.ts triggers the legacy 0.7->0.8 shim (which rewrites
-		// the file on load) when `isObj(raw.llm) && hasOwn(raw.llm, "endpoint")`. We must
-		// write the canonical shape so that condition can NEVER be satisfied — otherwise
-		// the assistant's akm config silently rewrites on first load today and becomes a
-		// fatal load error when akm removes the shim.
+	it('does not write any 0.8-era key the 0.9.0 schema hard-rejects (I-3)', async () => {
+		// akm 0.9.0's config schema hard-rejects the retired keys (`stashDir`,
+		// `sources`, `installed`, `wikiName`, `profiles`, `llm`, `defaults.llm`,
+		// `defaults.agent`, `defaults.improve`) — a config carrying any of them
+		// fails to LOAD entirely (the error names `akm migrate apply`). We must
+		// write only the canonical 0.9 shape so the assistant's akm can always
+		// load its config.
 		const result = await performSetup(makeValidSpec());
 		expect(result.ok).toBe(true);
 		const config = JSON.parse(
 			readFileSync(join(homeDir, 'config', 'akm', 'config.json'), 'utf-8')
 		) as Record<string, unknown>;
-		// The exact migration trigger: a top-level `llm` object carrying `endpoint`.
-		const legacyLlm = config.llm as Record<string, unknown> | undefined;
-		expect(legacyLlm === undefined || !Object.hasOwn(legacyLlm, 'endpoint')).toBe(true);
-		expect(config.llm).toBeUndefined();
+		expect(config.configVersion).toBe('0.9.0');
+		for (const retired of ['llm', 'stashDir', 'sources', 'installed', 'wikiName', 'profiles']) {
+			expect(config[retired]).toBeUndefined();
+		}
+		const defaults = (config.defaults ?? {}) as Record<string, unknown>;
+		expect(defaults.llm).toBeUndefined();
+		expect(defaults.agent).toBeUndefined();
+		expect(defaults.improve).toBeUndefined();
 	});
 
 	it('writes core compose file to stack/', async () => {
@@ -872,10 +904,10 @@ describe('performSetup', () => {
 		const akmConfigPath = join(homeDir, 'config', 'akm', 'config.json');
 		const config = JSON.parse(readFileSync(akmConfigPath, 'utf-8'));
 		expect(config.llm).toBeUndefined();
-		expect(config.profiles.llm.default.provider).toBe('ollama');
-		expect(config.profiles.llm.default.model).toBe('llama3.2');
-		expect(config.profiles.llm.default.endpoint).toBe('http://localhost:11434/v1/chat/completions');
-		expect(config.defaults.llm).toBe('default');
+		expect(config.engines.default.provider).toBe('ollama');
+		expect(config.engines.default.model).toBe('llama3.2');
+		expect(config.engines.default.endpoint).toBe('http://localhost:11434/v1/chat/completions');
+		expect(config.defaults.llmEngine).toBe('default');
 		expect(config.embedding.endpoint).toBe('http://localhost:11434/v1/embeddings');
 		expect(config.embedding.dimension).toBe(768);
 	});
@@ -896,7 +928,7 @@ describe('performSetup', () => {
 
 		const akmConfigPath = join(homeDir, 'config', 'akm', 'config.json');
 		const config = JSON.parse(readFileSync(akmConfigPath, 'utf-8'));
-		expect(config.profiles.llm.default.endpoint).toBe('https://api.openai.com/v1/chat/completions');
+		expect(config.engines.default.endpoint).toBe('https://api.openai.com/v1/chat/completions');
 		expect(config.embedding.endpoint).toBe('https://api.openai.com/v1/embeddings');
 	});
 
@@ -908,7 +940,11 @@ describe('performSetup', () => {
 		try {
 			mkdirSync(join(fakeHome, 'akm'), { recursive: true });
 			mkdirSync(join(fakeHome, '.config', 'akm'), { recursive: true });
-			const hostCfgRaw = JSON.stringify({ stashDir: join(fakeHome, 'akm') });
+			const hostCfgRaw = JSON.stringify({
+				configVersion: '0.9.0',
+				bundles: { personal: { path: join(fakeHome, 'akm'), writable: true } },
+				defaultBundle: 'personal'
+			});
 			writeFileSync(join(fakeHome, '.config', 'akm', 'config.json'), hostCfgRaw);
 
 			const result = await performSetup(makeValidSpec({ hostAkm: true }));
@@ -920,14 +956,12 @@ describe('performSetup', () => {
 			expect(readFileSync(join(homeDir, 'state', 'stack.env'), 'utf-8')).toContain(
 				`OP_HOST_AKM_STASH=${join(fakeHome, 'akm')}`
 			);
-			// Assistant-side source entry present.
+			// Assistant-side bundle entry present.
 			const opCfg = JSON.parse(
 				readFileSync(join(homeDir, 'config', 'akm', 'config.json'), 'utf-8')
 			);
-			expect(
-				(opCfg.sources as Array<Record<string, unknown>>).some((s) => s.name === 'host-akm')
-			).toBe(true);
-			// D1: the personal config is NEVER written (byte-for-byte unchanged, no `openpalm` source).
+			expect(Object.keys(opCfg.bundles as Record<string, unknown>)).toContain('host-akm');
+			// D1: the personal config is NEVER written (byte-for-byte unchanged, no `openpalm` bundle).
 			expect(readFileSync(join(fakeHome, '.config', 'akm', 'config.json'), 'utf-8')).toBe(
 				hostCfgRaw
 			);
@@ -938,21 +972,19 @@ describe('performSetup', () => {
 		}
 	});
 
-	it('enables sharing even when host has no akm config (profile import silently skipped)', async () => {
+	it('enables sharing even when host has no akm config (engine import silently skipped)', async () => {
 		const fakeHome = mkdtempSync(join(tmpdir(), 'openpalm-fakehome-'));
 		const savedHome = process.env.HOME;
 		process.env.HOME = fakeHome;
 		try {
-			// ~/akm and ~/.config/akm/config.json both absent on host — profile import skipped.
+			// ~/akm and ~/.config/akm/config.json both absent on host — engine import skipped.
 			const result = await performSetup(makeValidSpec({ hostAkm: true }));
 			expect(result.ok).toBe(true);
-			// Source entry always present (written unconditionally).
+			// Bundle entry always present (written unconditionally).
 			const opCfg = JSON.parse(
 				readFileSync(join(homeDir, 'config', 'akm', 'config.json'), 'utf-8')
 			);
-			expect((opCfg.sources ?? []).some((s: { name?: string }) => s.name === 'host-akm')).toBe(
-				true
-			);
+			expect(Object.keys((opCfg.bundles ?? {}) as Record<string, unknown>)).toContain('host-akm');
 			// OP_HOST_AKM_STASH set (compose mount active; falls back to empty dir since ~/akm absent).
 			expect(readFileSync(join(homeDir, 'state', 'stack.env'), 'utf-8')).toContain(
 				'OP_HOST_AKM_STASH='

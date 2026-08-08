@@ -1,10 +1,12 @@
 /**
  * AKM task parser.
  *
- * Task files are YAML documents in knowledge/tasks/. Supported target types:
- *   command  — `command: [...]` YAML array (argv)
- *   prompt   — `prompt: <text>` inline prompt text
- *   workflow — `workflow: workflow:<ref>` + optional `params` map
+ * Task files are strict version-2 YAML documents in knowledge/tasks/
+ * (akm >= 0.9.0 reads only `version: 2` files). Supported target types:
+ *   command  — `command: [...]` YAML array (argv) or shell string
+ *   prompt   — `prompt: <text>` inline prompt text (+ optional `engine`)
+ *   workflow — `workflow: <ref>` (0.9.0 conceptId, e.g. workflows/foo) +
+ *              optional `params` map
  */
 import { parse as parseYaml } from "yaml";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
@@ -29,7 +31,7 @@ export interface MarkdownTask {
 
 export type MarkdownTaskTarget =
   | { kind: "command"; cmd: string[] }
-  | { kind: "prompt"; profile?: string; body: string }
+  | { kind: "prompt"; engine?: string; body: string }
   | { kind: "workflow"; ref: string; params: Record<string, unknown> };
 
 // ── Parser ────────────────────────────────────────────────────────────────
@@ -91,7 +93,15 @@ function parseMarkdownTask(filePath: string): MarkdownTask | null {
     }
     target = {
       kind: "prompt",
-      profile: typeof fm.profile === "string" ? fm.profile : undefined,
+      // akm task YAML v2 spells the dispatch selection `engine`; accept the
+      // retired 0.8 `profile` spelling as a read-only fallback so pre-upgrade
+      // files still render in the UI until `akm migrate apply` rewrites them.
+      engine:
+        typeof fm.engine === "string"
+          ? fm.engine
+          : typeof fm.profile === "string"
+            ? fm.profile
+            : undefined,
       body: promptBody,
     };
   } else if (fm.workflow !== undefined) {
@@ -158,7 +168,7 @@ export function taskToAutomationConfig(task: MarkdownTask): AutomationConfig {
   } else if (target.kind === "prompt") {
     actionType = "assistant";
     content = target.body;
-    agent = target.profile;
+    agent = target.engine;
   } else {
     actionType = "workflow";
   }

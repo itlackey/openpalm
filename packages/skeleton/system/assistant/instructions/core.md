@@ -12,9 +12,9 @@ For information about managing the system view @system.md
 - Record memories with `akm_remember` whenever new information is discovered
 - Record mistakes alongside successful solutions — both are valuable lessons
 - Submit `akm_feedback` on memories, lessons, and other assets you used so the stash learns what helps
-- Use `akm_wiki` for long-form references you want to browse rather than recall
-- Use `akm_env` / `akm_secret` whenever you need a managed value — never display, log, or echo their values
-- Use `akm_workflow` to drive multi-step playbooks (start, step, complete, resume, status)
+- Refs use the akm 0.9 grammar: `skills/code-review`, `memories/vpn-note`, `env/user` — use the `ref` returned by search or curate directly with show or feedback
+- For a managed env value, run the target command through `akm env run <name> -- <command>` (e.g. `akm env run user -- <command>`) so values are injected into that one subprocess — never display, log, or echo them; single secrets use `akm secret run <name> <VAR> -- <command>`
+- Use `akm workflow run <ref>` (bash) to drive multi-step playbooks; `akm workflow status` inspects a run
 - Write memories as clear, self-contained statements — they must make sense out of context
 - Never store secrets, API keys, passwords, or tokens in memory
 - Don't store ephemeral state (current git branch, temp files)
@@ -41,6 +41,6 @@ short"). Mention in one short sentence that you updated it.
 
 ## Secrets & Environment
 
-- Use `load_vault` to load user secrets — resolves the user-managed env namespace via `akm env path env:user` and sources the resulting file. Primary tool for accessing API keys, owner info, and other user-configured secrets.
-- Use `load_env` only for ad-hoc `.env` files in the `/work` directory. It cannot read files outside the workspace.
+- Run commands that need user secrets through `akm env run user -- <command>` — it injects the user-managed env namespace (`env/user`: API keys, owner info, and other user-configured values) into that one subprocess only. Never `source` the raw file and never export the values into your shell session.
+- For a single credential stored as an akm secret, use `akm secret run <name> <ENV_VAR> -- <command>`.
 - Never display, log, or store secret values.

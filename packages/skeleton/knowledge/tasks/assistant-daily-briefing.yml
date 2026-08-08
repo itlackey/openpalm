@@ -1,3 +1,4 @@
+version: 2
 schedule: '0 8 * * *'
 enabled: false
 description: Ask the assistant for a daily system health summary

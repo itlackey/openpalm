@@ -70,7 +70,7 @@ runtime_works() {
       directory: "/tmp",
       worktree: "/tmp",
     });
-    for (const name of ["akm_search", "akm_show", "akm_env", "akm_secret"]) {
+    for (const name of ["akm_search", "akm_show", "akm_curate", "akm_feedback", "akm_remember"]) {
       if (!hooks?.tool?.[name]) process.exit(1);
     }
   ' "$runtime/plugins/akm.ts" "$managed/package.json" "$runtime/node_modules/.bin/akm"

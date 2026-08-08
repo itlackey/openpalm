@@ -1,7 +1,7 @@
 /**
  * POST /api/host/automations/:name/run — Manually trigger an automation.
  *
- * Spawns `akm tasks run <id>` directly (no sentinel files). The task
+ * Spawns `akm task run <id>` directly (no sentinel files). The task
  * must exist in ${stashDir}/tasks/<name>.yml to be accepted.
  */
 import type { RequestHandler } from "./$types";

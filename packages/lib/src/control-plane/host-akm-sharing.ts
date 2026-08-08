@@ -2,15 +2,15 @@
  * Host AKM sharing (control-plane logic — lives in lib).
  *
  * Model:
- *  - The assistant ALWAYS has `/host-stash` as a secondary akm source (written
+ *  - The assistant ALWAYS has `/host-stash` as a secondary akm bundle (written
  *    once at install by addHostStashToOpenpalmConfig, never removed).
  *  - Enable/disable = flip OP_HOST_AKM_STASH in stack.env between the real
  *    ~/akm path (enabled) and an empty string / removal (disabled). Compose
  *    reads OP_HOST_AKM_STASH and mounts the real stash or the always-present
  *    empty-dir fallback accordingly.
- *  - Enabling also imports host LLM/agent profiles (best-effort, additive merge).
- *    If no host akm config exists the import is silently skipped — it is never
- *    a blocking condition.
+ *  - Enabling also imports host engine/embedding config (best-effort, additive
+ *    merge — akm >= 0.9.0 `engines`/`defaults` shape). If no host akm config
+ *    exists the import is silently skipped — it is never a blocking condition.
  */
 import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
@@ -58,7 +58,7 @@ export function getHostAkmSharingStatus(state: ControlPlaneState): HostAkmSharin
 
 /**
  * Enable host AKM sharing: point OP_HOST_AKM_STASH at ~/akm and import host
- * LLM/agent profiles (best-effort — skipped if host akm config is absent).
+ * engine/embedding config (best-effort — skipped if host akm config is absent).
  */
 export function enableHostAkmSharing(state: ControlPlaneState): { profilesImported: string[] } {
   const envPath = stackEnvPath(state);
@@ -72,8 +72,8 @@ export function enableHostAkmSharing(state: ControlPlaneState): { profilesImport
 
 /**
  * Disable host AKM sharing: remove OP_HOST_AKM_STASH from stack.env so compose
- * falls back to the empty-dir mount. Never removes the /host-stash source entry
- * from the akm config — the source is always present (just points at an empty dir).
+ * falls back to the empty-dir mount. Never removes the /host-stash bundle entry
+ * from the akm config — the bundle is always present (just points at an empty dir).
  */
 export function disableHostAkmSharing(state: ControlPlaneState): void {
   const envPath = stackEnvPath(state);

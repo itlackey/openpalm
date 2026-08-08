@@ -216,7 +216,7 @@ ENV APPRISE_NOTIFY_CONFIG="/stash/env/apprise.conf"
 # readable+executable (`find ... -exec chmod a+rX`), so an arbitrary-uid
 # container only ever READS it — no write access needed here. Secrets
 # (knowledge/secrets, 0600) are a separate bind-mount tree.
-RUN mkdir -p /home/opencode/.cache /home/opencode/.local/bin /work /stash /opt/akm/cache /opt/akm/data /opt/persistent/bin \
+RUN mkdir -p /home/opencode/.cache /home/opencode/.local/bin /work /stash /opt/akm/cache /opt/akm/data /opt/akm/data/state /opt/persistent/bin \
     && mkdir -p /opt/openpalm/ui /opt/openpalm/tools \
     && chown -R node:node /home/opencode /work /stash /opt/akm /opt/persistent /opt/openpalm/ui \
     && chmod -R a+rwX /home/opencode /work /stash /opt/akm /opt/persistent /opt/openpalm/ui

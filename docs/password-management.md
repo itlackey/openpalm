@@ -45,7 +45,7 @@ narrow Compose secret grant rather than a `knowledge/` tree mount.
 This is the AKM user env backing file. It is:
 
 - safe to edit directly on the host
-- available to assistant tools through `akm env:user`
+- available to assistant tools through `akm env run user -- <command>`
 - loaded only on demand in the tool subprocess that needs it
 - not sourced by the assistant entrypoint
 - never passed to Docker Compose or inherited by the OpenCode server process

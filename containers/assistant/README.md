@@ -11,7 +11,7 @@ admin process. It cannot run stack lifecycle operations.
 - OpenCode on container port `4096`
 - Image-baked `@openpalm/ui` on container port `3000`
 - BusyBox `crond`
-- `akm tasks sync` at boot and every 60 seconds
+- `akm task sync` at boot and every 60 seconds
 
 The UI reaches OpenCode through its same-origin `/oc` proxy. The default host
 publications are `127.0.0.1:3810` for OpenCode and `127.0.0.1:3800` for the UI.
