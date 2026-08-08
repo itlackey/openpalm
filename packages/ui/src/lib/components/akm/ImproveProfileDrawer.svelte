@@ -1,30 +1,32 @@
 <script lang="ts">
 	import Drawer from '$lib/components/common/Drawer.svelte';
 	import { PROCESS_KEYS, PROCESS_HINTS } from './improve-process-helpers';
-	import type { ImproveProfile } from './profile-types';
+	import type { ImproveStrategy } from './profile-types';
 
-	// Slide-in editor for one memory-maintenance (improve) profile. Parent owns
-	// the draft (deep-copied on open, including per-process objects) and binds it
-	// here; this component keeps no copy. The LLM profile names feed the datalist
-	// used by the per-process `profile` + judgment `profile` inputs.
+	// Slide-in editor for one memory-maintenance improve strategy
+	// (akm improve.strategies.<name>). Parent owns the draft (deep-copied on
+	// open, including per-process objects) and binds it here; this component
+	// keeps no copy. The engine names (LLM + agent — akm 0.9 has one engines
+	// map) feed the datalist used by the per-process `engine` + judgment
+	// `engine` inputs.
 	interface Props {
-		draft: ImproveProfile;
-		llmProfileNames: string[];
+		draft: ImproveStrategy;
+		engineNames: string[];
 		oncancel: () => void;
 		onapply: () => void;
 	}
-	let { draft = $bindable(), llmProfileNames, oncancel, onapply }: Props = $props();
+	let { draft = $bindable(), engineNames, oncancel, onapply }: Props = $props();
 </script>
 
-<datalist id="llm-profiles-list">
-	{#each llmProfileNames as name (name)}<option value={name}></option>{/each}
+<datalist id="akm-engines-list">
+	{#each engineNames as name (name)}<option value={name}></option>{/each}
 </datalist>
 
-<Drawer open={true} title="Improve profile" onClose={oncancel} width="40rem">
+<Drawer open={true} title="Improve strategy" onClose={oncancel} width="40rem">
 	<div class="profile-drawer-body">
 		<div class="controls controls--grid">
 			<div class="control-group">
-				<label class="control-label" for="d-imp-name">Profile Name</label>
+				<label class="control-label" for="d-imp-name">Strategy Name</label>
 				<input id="d-imp-name" class="control-input" type="text" spellcheck="false" placeholder="e.g. default" bind:value={draft.name} />
 			</div>
 			<div class="control-group control-group--wide">
@@ -35,10 +37,6 @@
 				<label class="control-label" for="d-imp-limit">Max proposals per run</label>
 				<input id="d-imp-limit" class="control-input control-input--narrow" type="number" min="1" max="100" bind:value={draft.limit} />
 			</div>
-			<div class="control-group">
-				<label class="control-label" for="d-imp-autoacc">Auto-accept threshold (0 = manual)</label>
-				<input id="d-imp-autoacc" class="control-input control-input--narrow" type="number" min="0" max="1" step="0.05" bind:value={draft.autoAccept} />
-			</div>
 		</div>
 
 		<div class="proc-list">
@@ -48,13 +46,7 @@
 					<div class="proc-head">
 						<input type="checkbox" bind:checked={proc.enabled} aria-label="{key} enabled" />
 						<div class="proc-name"><span class="feat-name">{key}</span><span class="feat-hint">{PROCESS_HINTS[key]}</span></div>
-						<select class="control-input" bind:value={proc.mode} aria-label="{key} mode">
-							<option value="">Default mode</option>
-							<option value="llm">LLM (direct call)</option>
-							<option value="agent">Agent (subprocess)</option>
-							<option value="sdk">SDK (programmatic)</option>
-						</select>
-						<input class="control-input" type="text" spellcheck="false" list="llm-profiles-list" placeholder="— default profile —" bind:value={proc.profile} aria-label="{key} profile" />
+						<input class="control-input" type="text" spellcheck="false" list="akm-engines-list" placeholder="— default engine —" bind:value={proc.engine} aria-label="{key} engine" />
 						<input class="control-input control-input--narrow" type="number" min="1" placeholder="timeout ms" bind:value={proc.timeoutMs} aria-label="{key} timeout" />
 					</div>
 					<details class="proc-adv">
@@ -109,13 +101,8 @@
 								<div class="adv-field adv-field--wide">
 									<span class="adv-sublabel">Judgment (overrides for the accept/reject decision)</span>
 									<div class="proc-adv-grid">
-										<label class="adv-field"><span>Mode</span>
-											<select class="control-input" bind:value={proc.judgment.mode}>
-												<option value="">Default</option><option value="llm">LLM</option><option value="agent">Agent</option><option value="sdk">SDK</option>
-											</select>
-										</label>
-										<label class="adv-field"><span>Profile</span>
-											<input class="control-input" type="text" spellcheck="false" list="llm-profiles-list" bind:value={proc.judgment.profile} />
+										<label class="adv-field"><span>Engine</span>
+											<input class="control-input" type="text" spellcheck="false" list="akm-engines-list" bind:value={proc.judgment.engine} />
 										</label>
 										<label class="adv-field"><span>Timeout (ms)</span>
 											<input class="control-input control-input--narrow" type="number" min="1" bind:value={proc.judgment.timeoutMs} />
@@ -129,7 +116,7 @@
 			{/each}
 		</div>
 
-		<!-- Profile-level git sync (akm ImproveProfileConfigSchema.sync) -->
+		<!-- Strategy-level git sync (akm improve strategy sync block) -->
 		<div class="controls controls--grid">
 			<div class="control-group">
 				<label class="control-label" for="d-imp-sync">Git sync after run</label>
@@ -196,7 +183,7 @@
 		background: color-mix(in srgb, var(--s-ink) 2%, var(--s-paper));
 		padding: var(--s-sp-3);
 	}
-	.proc-head { display: grid; grid-template-columns: 1.5rem 1fr 9rem 11rem 7rem; align-items: center; gap: var(--s-sp-2); }
+	.proc-head { display: grid; grid-template-columns: 1.5rem 1fr 11rem 7rem; align-items: center; gap: var(--s-sp-2); }
 	@media (max-width: 600px) {
 		.proc-head { grid-template-columns: 1.5rem 1fr; }
 		.proc-head > :nth-child(n+3) { grid-column: 1 / -1; }

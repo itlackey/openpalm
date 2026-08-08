@@ -1,5 +1,5 @@
 /**
- * Tests for the akm user-env helpers (`env:user`).
+ * Tests for the akm user-env helpers (`env/user`).
  *
  * akm (>= 0.8.0) no longer manages individual env entries, so OpenPalm owns the
  * `knowledge/env/user.env` file directly. Writes/deletes are plain atomic .env
@@ -137,7 +137,7 @@ describe("akm user-env helpers", () => {
 
 describe("AKM_USER_ENV_REF", () => {
   it("exports the canonical akm ref string", () => {
-    expect(AKM_USER_ENV_REF).toBe("env:user");
+    expect(AKM_USER_ENV_REF).toBe("env/user");
   });
 });
 
@@ -147,13 +147,14 @@ describe("assertAkmEnvComplete (I-6 guard)", () => {
     expect(() => assertAkmEnvComplete(env)).not.toThrow();
   });
 
-  it("throws when any of the four AKM_* dirs is missing", () => {
+  it("throws when any of the five AKM_* dirs is missing", () => {
     for (const omit of AKM_ENV_KEYS) {
       const env: NodeJS.ProcessEnv = {
-        AKM_STASH_DIR: "/s",
+        AKM_BUNDLE_DIR: "/s",
         AKM_CONFIG_DIR: "/c",
         AKM_CACHE_DIR: "/ca",
         AKM_DATA_DIR: "/d",
+        AKM_STATE_DIR: "/st",
       };
       delete env[omit];
       expect(() => assertAkmEnvComplete(env)).toThrow(omit);
@@ -162,7 +163,13 @@ describe("assertAkmEnvComplete (I-6 guard)", () => {
 
   it("throws when a key is present but blank", () => {
     expect(() =>
-      assertAkmEnvComplete({ AKM_STASH_DIR: "/s", AKM_CONFIG_DIR: "  ", AKM_CACHE_DIR: "/ca", AKM_DATA_DIR: "/d" }),
+      assertAkmEnvComplete({
+        AKM_BUNDLE_DIR: "/s",
+        AKM_CONFIG_DIR: "  ",
+        AKM_CACHE_DIR: "/ca",
+        AKM_DATA_DIR: "/d",
+        AKM_STATE_DIR: "/st",
+      }),
     ).toThrow("AKM_CONFIG_DIR");
   });
 });
@@ -192,8 +199,9 @@ describe("buildAkmEnv — host-side host.docker.internal translation", () => {
     writeFileSync(
       akmConfigPath,
       JSON.stringify({
-        profiles: { llm: { default: { endpoint: "https://api.openai.com/v1/chat/completions", model: "gpt-4o", provider: "openai" } } },
-        defaults: { llm: "default" },
+        configVersion: "0.9.0",
+        engines: { default: { kind: "llm", endpoint: "https://api.openai.com/v1/chat/completions", model: "gpt-4o", provider: "openai" } },
+        defaults: { llmEngine: "default" },
       }),
     );
     const env = buildAkmEnv(state);
@@ -202,24 +210,27 @@ describe("buildAkmEnv — host-side host.docker.internal translation", () => {
 
   it("points AKM_CONFIG_DIR at a translated copy when config.json has a host.docker.internal endpoint, leaving the original untouched", () => {
     const original = {
-      profiles: {
-        llm: {
-          default: {
-            endpoint: "http://host.docker.internal:11434/v1/chat/completions",
-            model: "llama3",
-            provider: "ollama",
-          },
+      configVersion: "0.9.0",
+      engines: {
+        default: {
+          kind: "llm",
+          endpoint: "http://host.docker.internal:11434/v1/chat/completions",
+          model: "llama3",
+          provider: "ollama",
         },
       },
-      defaults: { llm: "default" },
+      defaults: { llmEngine: "default" },
       embedding: {
         endpoint: "http://host.docker.internal:11434/v1/embeddings",
         model: "nomic-embed-text",
         provider: "ollama",
         dimension: 768,
       },
-      sources: [{ type: "filesystem", path: "/host-stash", name: "host-akm", writable: true, enabled: true }],
-      stashDir: "/stash",
+      bundles: {
+        openpalm: { path: "/stash", writable: true },
+        "host-akm": { path: "/host-stash", writable: true, enabled: true },
+      },
+      defaultBundle: "openpalm",
     };
     writeFileSync(akmConfigPath, JSON.stringify(original, null, 2));
 
@@ -229,16 +240,16 @@ describe("buildAkmEnv — host-side host.docker.internal translation", () => {
     expect(hostConfigDir).toBe(join(state.dataDir, "akm", "host-config"));
 
     const translated = JSON.parse(readFileSync(join(hostConfigDir, "config.json"), "utf-8"));
-    expect(translated.profiles.llm.default.endpoint).toBe("http://127.0.0.1:11434/v1/chat/completions");
+    expect(translated.engines.default.endpoint).toBe("http://127.0.0.1:11434/v1/chat/completions");
     expect(translated.embedding.endpoint).toBe("http://127.0.0.1:11434/v1/embeddings");
     // Untouched fields survive the translation verbatim.
-    expect(translated.sources).toEqual(original.sources);
-    expect(translated.stashDir).toBe("/stash");
+    expect(translated.bundles).toEqual(original.bundles);
+    expect(translated.defaultBundle).toBe("openpalm");
 
     // The container-mounted file is never modified — the assistant still needs
     // host.docker.internal.
     const onDisk = JSON.parse(readFileSync(akmConfigPath, "utf-8"));
-    expect(onDisk.profiles.llm.default.endpoint).toBe("http://host.docker.internal:11434/v1/chat/completions");
+    expect(onDisk.engines.default.endpoint).toBe("http://host.docker.internal:11434/v1/chat/completions");
     expect(onDisk.embedding.endpoint).toBe("http://host.docker.internal:11434/v1/embeddings");
   });
 
@@ -246,21 +257,20 @@ describe("buildAkmEnv — host-side host.docker.internal translation", () => {
     writeFileSync(
       akmConfigPath,
       JSON.stringify({
-        profiles: {
-          llm: {
-            default: { endpoint: "https://api.openai.com/v1/chat/completions", model: "gpt-4o", provider: "openai" },
-            local: { endpoint: "http://host.docker.internal:1234/v1/chat/completions", model: "local", provider: "lmstudio" },
-          },
+        configVersion: "0.9.0",
+        engines: {
+          default: { kind: "llm", endpoint: "https://api.openai.com/v1/chat/completions", model: "gpt-4o", provider: "openai" },
+          local: { kind: "llm", endpoint: "http://host.docker.internal:1234/v1/chat/completions", model: "local", provider: "lmstudio" },
         },
-        defaults: { llm: "default" },
+        defaults: { llmEngine: "default" },
       }),
     );
 
     const env = buildAkmEnv(state);
     const hostConfigDir = env.AKM_CONFIG_DIR as string;
     const translated = JSON.parse(readFileSync(join(hostConfigDir, "config.json"), "utf-8"));
-    expect(translated.profiles.llm.default.endpoint).toBe("https://api.openai.com/v1/chat/completions");
-    expect(translated.profiles.llm.local.endpoint).toBe("http://127.0.0.1:1234/v1/chat/completions");
+    expect(translated.engines.default.endpoint).toBe("https://api.openai.com/v1/chat/completions");
+    expect(translated.engines.local.endpoint).toBe("http://127.0.0.1:1234/v1/chat/completions");
   });
 
   it("falls back to the container config dir on unparseable config.json", () => {
@@ -273,7 +283,8 @@ describe("buildAkmEnv — host-side host.docker.internal translation", () => {
     writeFileSync(
       akmConfigPath,
       JSON.stringify({
-        profiles: { llm: { default: { endpoint: "http://host.docker.internal:11434/v1/chat/completions", model: "llama3", provider: "ollama" } } },
+        configVersion: "0.9.0",
+        engines: { default: { kind: "llm", endpoint: "http://host.docker.internal:11434/v1/chat/completions", model: "llama3", provider: "ollama" } },
       }),
     );
     const env = buildAkmEnv(state);

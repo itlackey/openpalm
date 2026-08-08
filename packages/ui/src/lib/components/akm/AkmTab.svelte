@@ -29,7 +29,7 @@
 		type ProcKey,
 	} from '$lib/components/akm/improve-process-helpers';
 	import { akmConfigToForm, formToAkmPayload } from '$lib/components/akm/akm-config';
-	import type { LlmProfile, AgentProfile, ImproveProfile } from '$lib/components/akm/profile-types';
+	import type { LlmEngine, AgentEngine, ImproveStrategy } from '$lib/components/akm/profile-types';
 
 	// ── Status ───────────────────────────────────────────────────────────────────
 	let loading = $state(false);
@@ -56,17 +56,17 @@
 	const runtimeContext = getRuntimeContext();
 	const hostMaintenance = $derived(hasCapability(runtimeContext, 'host:containers'));
 
-	// ── LLM Profiles ─────────────────────────────────────────────────────────────
-	let llmProfiles = $state<LlmProfile[]>([]);
-	let defaultLlmProfile = $state('');
+	// ── LLM Engines (akm engines.<name>, kind "llm") ─────────────────────────────
+	let llmEngines = $state<LlmEngine[]>([]);
+	let defaultLlmEngine = $state('');
 
-	// ── Agent Profiles ────────────────────────────────────────────────────────────
-	let agentProfiles = $state<AgentProfile[]>([]);
-	let defaultAgentProfile = $state('');
+	// ── Agent Engines (akm engines.<name>, kind "agent") ─────────────────────────
+	let agentEngines = $state<AgentEngine[]>([]);
+	let defaultAgentEngine = $state('');
 
-	// ── Improve Profiles ──────────────────────────────────────────────────────────
-	let improveProfiles = $state<ImproveProfile[]>([]);
-	let defaultImproveProfile = $state('');
+	// ── Improve Strategies (akm improve.strategies.<name>) ───────────────────────
+	let improveStrategies = $state<ImproveStrategy[]>([]);
+	let defaultImproveStrategy = $state('');
 
 	// ── Embedding Connection ──────────────────────────────────────────────────────
 	let embEndpoint = $state('');
@@ -103,73 +103,93 @@
 	// ── Drawer ────────────────────────────────────────────────────────────────────
 	type DrawerType = 'llm' | 'agent' | 'improve' | null;
 	let drawerType = $state<DrawerType>(null);
-	let drawerLlm = $state<LlmProfile | null>(null);
-	let drawerAgent = $state<AgentProfile | null>(null);
-	let drawerImprove = $state<ImproveProfile | null>(null);
+	let drawerLlm = $state<LlmEngine | null>(null);
+	let drawerAgent = $state<AgentEngine | null>(null);
+	let drawerImprove = $state<ImproveStrategy | null>(null);
 
 	// ── Derived ──────────────────────────────────────────────────────────────────
-	let llmProfileNames = $derived(llmProfiles.map(p => p.name).filter(n => n));
+	let llmEngineNames = $derived(llmEngines.map(p => p.name).filter(n => n));
+	// One akm engines map — improve processes can reference either kind.
+	let engineNames = $derived([
+		...llmEngines.map(p => p.name),
+		...agentEngines.map(p => p.name),
+	].filter(n => n));
 
 	// ── Helpers ──────────────────────────────────────────────────────────────────
-	function newLlmProfile(): LlmProfile {
-		return { id: crypto.randomUUID(), name: '', endpoint: '', model: '', provider: '', apiKey: '', showApiKey: false, temperature: '', maxTokens: '', timeoutMs: '', concurrency: '', contextLength: '', judgeModel: '', supportsJsonSchema: false, enableThinking: false, structuredOutput: false, extraParams: '' };
+	function newLlmEngine(): LlmEngine {
+		return { id: crypto.randomUUID(), name: '', endpoint: '', model: '', provider: '', apiKey: '', showApiKey: false, temperature: '', maxTokens: '', timeoutMs: '', concurrency: '', contextLength: '', supportsJsonSchema: false, enableThinking: false, extraParams: '' };
 	}
-	function newAgentProfile(): AgentProfile {
-		return { id: crypto.randomUUID(), name: '', platform: 'opencode', bin: '', args: '', workspace: '', model: '' };
+	function newAgentEngine(): AgentEngine {
+		return { id: crypto.randomUUID(), name: '', platform: 'opencode', bin: '', args: '', workspace: '', model: '', timeoutMs: '', llmEngine: '' };
 	}
-	function newImproveProfile(): ImproveProfile {
+	function newImproveStrategy(): ImproveStrategy {
 		const processes = {} as Record<ProcKey, FEntry>;
 		for (const k of PROCESS_KEYS) processes[k] = emptyFEntry(DEFAULT_ENABLED[k]);
 		return {
-			id: crypto.randomUUID(), name: '', description: '', limit: 25, autoAccept: 0,
+			id: crypto.randomUUID(), name: '', description: '', limit: 25,
 			processes, syncEnabled: '', syncPush: '', syncMessage: '',
 		};
 	}
 
 	// ── Drawer actions ────────────────────────────────────────────────────────────
-	function openLlmDrawer(p: LlmProfile) {
+	function openLlmDrawer(p: LlmEngine) {
 		drawerLlm = { ...p };
 		drawerType = 'llm';
 	}
-	function openAgentDrawer(p: AgentProfile) {
+	function openAgentDrawer(p: AgentEngine) {
 		drawerAgent = { ...p };
 		drawerType = 'agent';
 	}
-	function openImproveDrawer(ip: ImproveProfile) {
+	function openImproveDrawer(st: ImproveStrategy) {
 		const processes = {} as Record<ProcKey, FEntry>;
 		for (const k of PROCESS_KEYS) {
-			const src = ip.processes[k];
+			const src = st.processes[k];
 			processes[k] = { ...src, judgment: { ...src.judgment }, rest: { ...src.rest } };
 		}
-		drawerImprove = { ...ip, processes };
+		drawerImprove = { ...st, processes };
 		drawerType = 'improve';
+	}
+
+	// LLM + agent engines share ONE akm engines map — a name can only exist once
+	// across the two sections.
+	function engineNameCollides(name: string, ownId: string): boolean {
+		return llmEngines.some(p => p.id !== ownId && p.name === name)
+			|| agentEngines.some(p => p.id !== ownId && p.name === name);
 	}
 
 	function applyDrawer() {
 		if (drawerType === 'llm' && drawerLlm) {
 			const copy = { ...drawerLlm };
-			const idx = llmProfiles.findIndex(p => p.id === copy.id);
-			const oldName = idx >= 0 ? llmProfiles[idx].name : '';
-			llmProfiles = idx >= 0
-				? llmProfiles.map((p, i) => i === idx ? copy : p)
-				: [...llmProfiles, copy];
-			if (defaultLlmProfile === oldName) defaultLlmProfile = copy.name;
+			if (copy.name && engineNameCollides(copy.name, copy.id)) {
+				notifications.push('error', `Engine name "${copy.name}" is already used by another LLM or agent engine.`);
+				return;
+			}
+			const idx = llmEngines.findIndex(p => p.id === copy.id);
+			const oldName = idx >= 0 ? llmEngines[idx].name : '';
+			llmEngines = idx >= 0
+				? llmEngines.map((p, i) => i === idx ? copy : p)
+				: [...llmEngines, copy];
+			if (defaultLlmEngine === oldName) defaultLlmEngine = copy.name;
 		} else if (drawerType === 'agent' && drawerAgent) {
 			const copy = { ...drawerAgent };
-			const idx = agentProfiles.findIndex(p => p.id === copy.id);
-			const oldName = idx >= 0 ? agentProfiles[idx].name : '';
-			agentProfiles = idx >= 0
-				? agentProfiles.map((p, i) => i === idx ? copy : p)
-				: [...agentProfiles, copy];
-			if (defaultAgentProfile === oldName) defaultAgentProfile = copy.name;
+			if (copy.name && engineNameCollides(copy.name, copy.id)) {
+				notifications.push('error', `Engine name "${copy.name}" is already used by another LLM or agent engine.`);
+				return;
+			}
+			const idx = agentEngines.findIndex(p => p.id === copy.id);
+			const oldName = idx >= 0 ? agentEngines[idx].name : '';
+			agentEngines = idx >= 0
+				? agentEngines.map((p, i) => i === idx ? copy : p)
+				: [...agentEngines, copy];
+			if (defaultAgentEngine === oldName) defaultAgentEngine = copy.name;
 		} else if (drawerType === 'improve' && drawerImprove) {
 			const copy = { ...drawerImprove, processes: { ...drawerImprove.processes } };
-			const idx = improveProfiles.findIndex(ip => ip.id === copy.id);
-			const oldName = idx >= 0 ? improveProfiles[idx].name : '';
-			improveProfiles = idx >= 0
-				? improveProfiles.map((ip, i) => i === idx ? copy : ip)
-				: [...improveProfiles, copy];
-			if (defaultImproveProfile === oldName) defaultImproveProfile = copy.name;
+			const idx = improveStrategies.findIndex(st => st.id === copy.id);
+			const oldName = idx >= 0 ? improveStrategies[idx].name : '';
+			improveStrategies = idx >= 0
+				? improveStrategies.map((st, i) => i === idx ? copy : st)
+				: [...improveStrategies, copy];
+			if (defaultImproveStrategy === oldName) defaultImproveStrategy = copy.name;
 		}
 		closeDrawer();
 	}
@@ -181,19 +201,19 @@
 		drawerImprove = null;
 	}
 
-	function removeProfile(type: 'llm' | 'agent' | 'improve', id: string) {
+	function removeEntry(type: 'llm' | 'agent' | 'improve', id: string) {
 		if (type === 'llm') {
-			const name = llmProfiles.find(p => p.id === id)?.name ?? '';
-			if (defaultLlmProfile === name) defaultLlmProfile = '';
-			llmProfiles = llmProfiles.filter(p => p.id !== id);
+			const name = llmEngines.find(p => p.id === id)?.name ?? '';
+			if (defaultLlmEngine === name) defaultLlmEngine = '';
+			llmEngines = llmEngines.filter(p => p.id !== id);
 		} else if (type === 'agent') {
-			const name = agentProfiles.find(p => p.id === id)?.name ?? '';
-			if (defaultAgentProfile === name) defaultAgentProfile = '';
-			agentProfiles = agentProfiles.filter(p => p.id !== id);
+			const name = agentEngines.find(p => p.id === id)?.name ?? '';
+			if (defaultAgentEngine === name) defaultAgentEngine = '';
+			agentEngines = agentEngines.filter(p => p.id !== id);
 		} else {
-			const name = improveProfiles.find(ip => ip.id === id)?.name ?? '';
-			if (defaultImproveProfile === name) defaultImproveProfile = '';
-			improveProfiles = improveProfiles.filter(ip => ip.id !== id);
+			const name = improveStrategies.find(st => st.id === id)?.name ?? '';
+			if (defaultImproveStrategy === name) defaultImproveStrategy = '';
+			improveStrategies = improveStrategies.filter(st => st.id !== id);
 		}
 		if (drawerType === type) closeDrawer();
 	}
@@ -206,12 +226,12 @@
 			const { config } = await fetchAkmConfig();
 			const form = akmConfigToForm(config);
 
-			llmProfiles = form.llmProfiles;
-			agentProfiles = form.agentProfiles;
-			improveProfiles = form.improveProfiles;
-			defaultLlmProfile = form.defaultLlmProfile;
-			defaultAgentProfile = form.defaultAgentProfile;
-			defaultImproveProfile = form.defaultImproveProfile;
+			llmEngines = form.llmEngines;
+			agentEngines = form.agentEngines;
+			improveStrategies = form.improveStrategies;
+			defaultLlmEngine = form.defaultLlmEngine;
+			defaultAgentEngine = form.defaultAgentEngine;
+			defaultImproveStrategy = form.defaultImproveStrategy;
 
 			embEndpoint = form.embedding.endpoint;
 			embModel = form.embedding.model;
@@ -249,12 +269,12 @@
 		error = '';
 		try {
 			const payload = formToAkmPayload({
-				llmProfiles,
-				defaultLlmProfile,
-				agentProfiles,
-				defaultAgentProfile,
-				improveProfiles,
-				defaultImproveProfile,
+				llmEngines,
+				defaultLlmEngine,
+				agentEngines,
+				defaultAgentEngine,
+				improveStrategies,
+				defaultImproveStrategy,
 				embedding: {
 					endpoint: embEndpoint,
 					model: embModel,
@@ -425,34 +445,34 @@
 
 		<p class="section-note section-note--lead">The AI services your assistant uses to build and search its memory — the language models that organize memories, the embedding provider for semantic search, and the maintenance pipeline.</p>
 
-		<!-- ── LLM Profiles ──────────────────────────────────────────────── -->
+		<!-- ── LLM Engines ───────────────────────────────────────────────── -->
 		<LlmProfilesSection
-			bind:profiles={llmProfiles}
-			bind:defaultName={defaultLlmProfile}
+			bind:engines={llmEngines}
+			bind:defaultName={defaultLlmEngine}
 			disabled={loading || saving}
 			onedit={(p) => openLlmDrawer(p)}
-			onadd={() => { drawerLlm = newLlmProfile(); drawerType = 'llm'; }}
-			onremove={(id) => removeProfile('llm', id)}
+			onadd={() => { drawerLlm = newLlmEngine(); drawerType = 'llm'; }}
+			onremove={(id) => removeEntry('llm', id)}
 		/>
 
-		<!-- ── Agent Profiles ────────────────────────────────────────────── -->
+		<!-- ── Agent Engines ─────────────────────────────────────────────── -->
 		<AgentProfilesSection
-			bind:profiles={agentProfiles}
-			bind:defaultName={defaultAgentProfile}
+			bind:engines={agentEngines}
+			bind:defaultName={defaultAgentEngine}
 			disabled={loading || saving}
 			onedit={(p) => openAgentDrawer(p)}
-			onadd={() => { drawerAgent = newAgentProfile(); drawerType = 'agent'; }}
-			onremove={(id) => removeProfile('agent', id)}
+			onadd={() => { drawerAgent = newAgentEngine(); drawerType = 'agent'; }}
+			onremove={(id) => removeEntry('agent', id)}
 		/>
 
-		<!-- ── Improve Profiles ───────────────────────────────────────────── -->
+		<!-- ── Improve Strategies ─────────────────────────────────────────── -->
 		<ImproveProfilesSection
-			bind:profiles={improveProfiles}
-			bind:defaultName={defaultImproveProfile}
+			bind:strategies={improveStrategies}
+			bind:defaultName={defaultImproveStrategy}
 			disabled={loading || saving}
-			onedit={(ip) => openImproveDrawer(ip)}
-			onadd={() => { drawerImprove = newImproveProfile(); drawerType = 'improve'; }}
-			onremove={(id) => removeProfile('improve', id)}
+			onedit={(st) => openImproveDrawer(st)}
+			onadd={() => { drawerImprove = newImproveStrategy(); drawerType = 'improve'; }}
+			onremove={(id) => removeEntry('improve', id)}
 		/>
 
 		<!-- ── Embedding (semantic search) — part of AI Services ─────────────── -->
@@ -507,9 +527,9 @@
 	{#if drawerType === 'llm' && drawerLlm}
 		<LlmProfileDrawer bind:draft={drawerLlm} oncancel={closeDrawer} onapply={applyDrawer} />
 	{:else if drawerType === 'agent' && drawerAgent}
-		<AgentProfileDrawer bind:draft={drawerAgent} oncancel={closeDrawer} onapply={applyDrawer} />
+		<AgentProfileDrawer bind:draft={drawerAgent} llmEngineNames={llmEngineNames} oncancel={closeDrawer} onapply={applyDrawer} />
 	{:else if drawerType === 'improve' && drawerImprove}
-		<ImproveProfileDrawer bind:draft={drawerImprove} llmProfileNames={llmProfileNames} oncancel={closeDrawer} onapply={applyDrawer} />
+		<ImproveProfileDrawer bind:draft={drawerImprove} engineNames={engineNames} oncancel={closeDrawer} onapply={applyDrawer} />
 	{/if}
 
 </div>

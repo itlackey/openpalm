@@ -32,42 +32,52 @@ afterEach(() => {
 });
 
 describe("addHostStashToOpenpalmConfig (assistant side, parse-tolerant)", () => {
-  it("adds a writable /host-stash secondary with no primary/defaultWriteTarget", () => {
+  it("adds a writable /host-stash secondary bundle with no defaultBundle/defaultWriteTarget", () => {
     addHostStashToOpenpalmConfig(state, true);
     const cfg = readJson(opConfigPath);
-    const sources = cfg.sources as Array<Record<string, unknown>>;
-    expect(sources).toHaveLength(1);
-    expect(sources[0]).toEqual({ type: "filesystem", path: "/host-stash", name: HOST_SOURCE_NAME, writable: true, enabled: true });
+    const bundles = cfg.bundles as Record<string, Record<string, unknown>>;
+    expect(Object.keys(bundles)).toEqual([HOST_SOURCE_NAME]);
+    expect(bundles[HOST_SOURCE_NAME]).toEqual({ path: "/host-stash", writable: true, enabled: true });
     expect(cfg.defaultWriteTarget).toBeUndefined();
+    expect(cfg.defaultBundle).toBeUndefined();
     expect(cfg.stashDir).toBeUndefined();
-    expect("primary" in sources[0]).toBe(false);
   });
 
-  it("is idempotent — upserts by name, never duplicates", () => {
+  it("is idempotent — upserts by id, never duplicates", () => {
     addHostStashToOpenpalmConfig(state, true);
     addHostStashToOpenpalmConfig(state, false);
-    const sources = readJson(opConfigPath).sources as Array<Record<string, unknown>>;
-    expect(sources).toHaveLength(1);
-    expect(sources[0].writable).toBe(false);
+    const bundles = readJson(opConfigPath).bundles as Record<string, Record<string, unknown>>;
+    expect(Object.keys(bundles)).toEqual([HOST_SOURCE_NAME]);
+    expect(bundles[HOST_SOURCE_NAME].writable).toBe(false);
   });
 
-  it("preserves unrelated existing sources and config keys", () => {
+  it("preserves unrelated existing bundles and config keys", () => {
     writeFileSync(opConfigPath, JSON.stringify({
       embedding: { model: "nomic-embed-text", dimension: 768 },
-      sources: [{ type: "filesystem", path: "/other", name: "other", enabled: true }],
+      bundles: { other: { path: "/other", enabled: true } },
     }));
     addHostStashToOpenpalmConfig(state, true);
     const cfg = readJson(opConfigPath);
     expect((cfg.embedding as Record<string, unknown>).dimension).toBe(768);
-    const names = (cfg.sources as Array<Record<string, unknown>>).map((s) => s.name);
-    expect(names).toContain("other");
-    expect(names).toContain(HOST_SOURCE_NAME);
+    const ids = Object.keys(cfg.bundles as Record<string, unknown>);
+    expect(ids).toContain("other");
+    expect(ids).toContain(HOST_SOURCE_NAME);
+  });
+
+  it("preserves unrelated fields on the host-akm bundle entry itself", () => {
+    writeFileSync(opConfigPath, JSON.stringify({
+      bundles: { [HOST_SOURCE_NAME]: { path: "/old", components: { docs: { root: "docs" } } } },
+    }));
+    addHostStashToOpenpalmConfig(state, true);
+    const bundles = readJson(opConfigPath).bundles as Record<string, Record<string, unknown>>;
+    expect(bundles[HOST_SOURCE_NAME].path).toBe("/host-stash");
+    expect(bundles[HOST_SOURCE_NAME].components).toEqual({ docs: { root: "docs" } });
   });
 
   it("recovers from a corrupt OpenPalm config (parse-tolerant → starts from {})", () => {
     writeFileSync(opConfigPath, "{ this is not json");
     addHostStashToOpenpalmConfig(state, true);
-    expect((readJson(opConfigPath).sources as unknown[]).length).toBe(1);
+    expect(Object.keys(readJson(opConfigPath).bundles as Record<string, unknown>)).toHaveLength(1);
   });
 
   it("writes mode 0600", () => {
@@ -77,7 +87,7 @@ describe("addHostStashToOpenpalmConfig (assistant side, parse-tolerant)", () => 
 });
 
 
-describe("importHostProfiles (read-only snapshot of host profiles)", () => {
+describe("importHostProfiles (read-only snapshot of host engine config)", () => {
   function seedHostConfig(obj: Record<string, unknown>): string {
     mkdirSync(join(root, "home", ".config", "akm"), { recursive: true });
     const original = JSON.stringify(obj, null, 2);
@@ -85,62 +95,63 @@ describe("importHostProfiles (read-only snapshot of host profiles)", () => {
     return original;
   }
 
-  it("copies llm/agent/improve profiles + defaults + embedding into an empty config", () => {
+  it("copies engines + defaults + improve.strategies + embedding into an empty config", () => {
     seedHostConfig({
-      profiles: {
-        llm: { default: { endpoint: "http://h/v1/chat/completions", model: "qwen", provider: "ollama" } },
-        agent: { default: { platform: "opencode" } },
-        improve: { thorough: { limit: 50 } },
+      configVersion: "0.9.0",
+      engines: {
+        fast: { kind: "llm", endpoint: "http://h/v1/chat/completions", model: "qwen", provider: "ollama" },
+        reviewer: { kind: "agent", platform: "opencode" },
       },
-      defaults: { llm: "default", agent: "default", improve: "thorough" },
+      defaults: { llmEngine: "fast", engine: "reviewer", improveStrategy: "thorough" },
+      improve: { strategies: { thorough: { engine: "fast" } } },
       embedding: { provider: "ollama", model: "nomic-embed-text", dimension: 768 },
     });
     writeFileSync(opConfigPath, "{}");
     const { imported } = importHostProfiles(state, hostConfigPath);
-    expect(imported).toContain("profiles.llm");
-    expect(imported).toContain("profiles.agent");
-    expect(imported).toContain("profiles.improve");
-    expect(imported).toContain("defaults.llm");
-    expect(imported).toContain("defaults.improve");
+    expect(imported).toContain("engines");
+    expect(imported).toContain("defaults.engine");
+    expect(imported).toContain("defaults.llmEngine");
+    expect(imported).toContain("defaults.improveStrategy");
+    expect(imported).toContain("improve.strategies");
     expect(imported).toContain("embedding");
     const cfg = readJson(opConfigPath);
-    const profiles = cfg.profiles as Record<string, Record<string, Record<string, unknown>>>;
-    expect(profiles.llm.default.model).toBe("qwen");
-    expect(profiles.improve.thorough.limit).toBe(50);
-    expect((cfg.defaults as Record<string, unknown>).improve).toBe("thorough");
+    const engines = cfg.engines as Record<string, Record<string, unknown>>;
+    expect(engines.fast.model).toBe("qwen");
+    expect(engines.reviewer.platform).toBe("opencode");
+    expect((cfg.defaults as Record<string, unknown>).improveStrategy).toBe("thorough");
+    expect(((cfg.improve as Record<string, unknown>).strategies as Record<string, unknown>).thorough).toEqual({ engine: "fast" });
     expect((cfg.embedding as Record<string, unknown>).model).toBe("nomic-embed-text");
     expect((cfg.embedding as Record<string, unknown>).dimension).toBe(768);
     expect(cfg.llm).toBeUndefined();
   });
 
-  it("is ADDITIVE — never overwrites existing profiles, defaults, or embedding fields", () => {
+  it("is ADDITIVE — never overwrites existing engines, defaults, or embedding fields", () => {
     seedHostConfig({
-      profiles: {
-        llm: {
-          default: { endpoint: "http://host/v1/chat/completions", model: "host-model" }, // conflicts with existing
-          "host-only": { endpoint: "http://host/v1/chat/completions", model: "extra" },  // new → added
-        },
+      configVersion: "0.9.0",
+      engines: {
+        default: { kind: "llm", endpoint: "http://host/v1/chat/completions", model: "host-model" }, // conflicts with existing
+        "host-only": { kind: "llm", endpoint: "http://host/v1/chat/completions", model: "extra" },  // new → added
       },
-      defaults: { llm: "host-only" }, // existing already has defaults.llm → must NOT change
+      defaults: { llmEngine: "host-only" }, // existing already has defaults.llmEngine → must NOT change
       embedding: { provider: "ollama", model: "host-emb", dimension: 768, batchSize: 32 }, // model conflicts; batchSize new
     });
     writeFileSync(opConfigPath, JSON.stringify({
-      profiles: { llm: { default: { endpoint: "http://op/v1/chat/completions", model: "op-model" } } },
-      defaults: { llm: "default" },
+      engines: { default: { kind: "llm", endpoint: "http://op/v1/chat/completions", model: "op-model" } },
+      defaults: { llmEngine: "default" },
       embedding: { provider: "openai", model: "op-emb", dimension: 1536 },
     }));
 
     const { imported } = importHostProfiles(state, hostConfigPath);
     const cfg = readJson(opConfigPath);
-    const profiles = cfg.profiles as Record<string, Record<string, Record<string, unknown>>>;
-    // Existing 'default' profile is preserved untouched.
-    expect(profiles.llm.default.model).toBe("op-model");
-    // Host-only profile is added.
-    expect(profiles.llm["host-only"].model).toBe("extra");
-    expect(imported).toContain("profiles.llm");
+    const engines = cfg.engines as Record<string, Record<string, unknown>>;
+    // Existing 'default' engine is preserved untouched.
+    expect(engines.default.model).toBe("op-model");
+    // Host-only engine is added.
+    expect(engines["host-only"].model).toBe("extra");
+    expect(imported).toContain("engines");
     // Existing default selection is NOT overwritten.
-    expect((cfg.defaults as Record<string, unknown>).llm).toBe("default");
-    expect(imported).not.toContain("defaults.llm");
+    expect((cfg.defaults as Record<string, unknown>).llmEngine).toBe("default");
+    expect(imported).not.toContain("defaults.llmEngine");
     // Embedding: existing fields win; only the new field (batchSize) is added.
     const emb = cfg.embedding as Record<string, unknown>;
     expect(emb.model).toBe("op-emb");
@@ -152,32 +163,39 @@ describe("importHostProfiles (read-only snapshot of host profiles)", () => {
 
   it("does not report a namespace as imported when it adds nothing new", () => {
     seedHostConfig({
-      profiles: { llm: { default: { endpoint: "x", model: "host" } } },
-      defaults: { llm: "default" },
+      engines: { default: { kind: "llm", endpoint: "x", model: "host" } },
+      defaults: { llmEngine: "default" },
     });
     writeFileSync(opConfigPath, JSON.stringify({
-      profiles: { llm: { default: { endpoint: "y", model: "op" } } },
-      defaults: { llm: "default" },
+      engines: { default: { kind: "llm", endpoint: "y", model: "op" } },
+      defaults: { llmEngine: "default" },
     }));
     const { imported } = importHostProfiles(state, hostConfigPath);
-    expect(imported).not.toContain("profiles.llm"); // 'default' already present, nothing added
-    expect(imported).not.toContain("defaults.llm");
+    expect(imported).not.toContain("engines"); // 'default' already present, nothing added
+    expect(imported).not.toContain("defaults.llmEngine");
     // existing values untouched
     const cfg = readJson(opConfigPath);
-    expect((cfg.profiles as Record<string, Record<string, Record<string, unknown>>>).llm.default.model).toBe("op");
+    expect((cfg.engines as Record<string, Record<string, unknown>>).default.model).toBe("op");
   });
 
   it("reads the host config READ-ONLY (host file unchanged byte-for-byte)", () => {
-    const original = seedHostConfig({ profiles: { llm: { default: { endpoint: "x", model: "m" } } }, defaults: { llm: "default" } });
+    const original = seedHostConfig({ engines: { default: { kind: "llm", endpoint: "x", model: "m" } }, defaults: { llmEngine: "default" } });
     writeFileSync(opConfigPath, "{}");
     importHostProfiles(state, hostConfigPath);
     expect(readFileSync(hostConfigPath, "utf-8")).toBe(original);
   });
 
-  it("imports nothing (and does not throw) when host has no profiles", () => {
-    seedHostConfig({ stashDir: "/home/u/akm" });
+  it("imports nothing (and does not throw) when host has no engines — including a retired 0.8 profiles shape", () => {
+    seedHostConfig({
+      stashDir: "/home/u/akm",
+      profiles: { llm: { default: { endpoint: "x", model: "m" } } },
+      defaults: { llm: "default" },
+    });
     writeFileSync(opConfigPath, "{}");
     expect(importHostProfiles(state, hostConfigPath).imported).toEqual([]);
+    // The retired shape is never copied into the OpenPalm config.
+    const cfg = readJson(opConfigPath);
+    expect(cfg.profiles).toBeUndefined();
   });
 
   it("returns empty imported list (does not throw) when host config is absent", () => {

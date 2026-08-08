@@ -9,8 +9,20 @@ import type { RequestHandler } from "./$types";
 // Returns the full set of pre-fill data for re-running the setup wizard.
 // Requires session auth so secrets are only returned to authenticated operators.
 
+// One entry of the akm 0.9 `engines` map. The map holds BOTH kinds, so this
+// models either — `platform` is the agent-engine discriminator this reader
+// checks for, and never reads beyond it.
+interface AkmEngine {
+  kind?: string;
+  provider?: string;
+  model?: string;
+  endpoint?: string;
+  platform?: string;
+}
+
 interface AkmConfig {
-  llm?: { provider?: string; model?: string; endpoint?: string };
+  engines?: Record<string, AkmEngine>;
+  defaults?: { llmEngine?: string };
   embedding?: { provider?: string; model?: string; endpoint?: string; dimension?: number };
 }
 
@@ -22,6 +34,39 @@ function readAkmConfig(configDir: string): AkmConfig {
   } catch {
     return {};
   }
+}
+
+/**
+ * Resolve the wizard-prefill LLM connection from the akm 0.9 engines map:
+ * engines[defaults.llmEngine ?? "default"], falling back to engines.default.
+ * Returns undefined when no llm engine is configured.
+ *
+ * `kind` is REQUIRED by akm 0.9's own schema, but this reader is deliberately
+ * lenient about it in exactly the same direction as the AKM tab's reader
+ * (akm-config.ts): an entry counts as LLM unless it is explicitly
+ * `kind: "agent"`. A hand-written config that omits `kind` therefore prefills
+ * the wizard instead of silently reporting "no LLM configured" — the two
+ * readers of this same file must not disagree about what an entry is.
+ */
+function isLlmEngine(entry: AkmEngine | undefined): entry is AkmEngine {
+  return Boolean(entry) && entry?.kind !== "agent";
+}
+
+/**
+ * Exported for unit tests — pure, no request context. The `_` prefix is
+ * required: SvelteKit only permits HTTP verb handlers and a fixed set of
+ * reserved names as `+server.ts` exports, and rejects anything else at BUILD
+ * time (neither svelte-check nor vitest enforces it). Same convention as
+ * `_resetStatsCacheForTests` in api/host/akm/stats.
+ */
+export function _resolveDefaultLlmEngine(akm: AkmConfig): AkmEngine | undefined {
+  const engines = akm.engines;
+  if (!engines || typeof engines !== "object") return undefined;
+  const preferred = engines[akm.defaults?.llmEngine ?? "default"];
+  if (isLlmEngine(preferred)) return preferred;
+  const fallback = engines.default;
+  if (isLlmEngine(fallback)) return fallback;
+  return undefined;
 }
 
 /**
@@ -70,6 +115,7 @@ export const GET: RequestHandler = async (event) => {
   const env = readStackEnv(state.homeDir);
   const secretEnv = readStackSecretEnv(state.homeDir);
   const akm = readAkmConfig(state.configDir);
+  const akmLlm = _resolveDefaultLlmEngine(akm);
   const importedModelPreferences = readPersistedModelPreferences(state.configDir);
 
   // Addon hardware profiles (CPU / CUDA / …)
@@ -125,10 +171,10 @@ export const GET: RequestHandler = async (event) => {
     portalVersion: env.OP_PORTAL_VERSION ?? "",
     voiceVersion: env.OP_VOICE_VERSION ?? "",
     hostAkm,
-    llm: akm.llm ? {
-      provider: akm.llm.provider ?? "",
-      model: akm.llm.model ?? "",
-      baseUrl: deriveBaseUrl(akm.llm.endpoint),
+    llm: akmLlm ? {
+      provider: akmLlm.provider ?? "",
+      model: akmLlm.model ?? "",
+      baseUrl: deriveBaseUrl(akmLlm.endpoint),
     } : null,
     embedding: akm.embedding ? {
       provider: akm.embedding.provider ?? "",

@@ -1,15 +1,20 @@
 /**
- * Host ↔ Assistant AKM source wiring (control-plane logic — lives in lib).
+ * Host ↔ Assistant AKM bundle wiring (control-plane logic — lives in lib).
  *
- * The assistant config ALWAYS has a `host-akm` secondary source pointing at
+ * The assistant config ALWAYS has a `host-akm` secondary bundle pointing at
  * /host-stash (written once at install, never removed). The compose bind-mount
  * controls what actually lands at /host-stash: the real ~/akm when sharing is
- * enabled, an empty dir when disabled. Profile import is best-effort — missing
+ * enabled, an empty dir when disabled. Engine import is best-effort — missing
  * or corrupt host config is logged and skipped, never an error.
  *
+ * akm >= 0.9.0: sources are a `bundles` map (`bundles.<id>` entries) instead
+ * of the retired `sources[]` array, and LLM/agent execution config lives in
+ * `engines` + `defaults.engine`/`defaults.llmEngine` instead of the retired
+ * `profiles.*` + `defaults.llm`/`defaults.agent` keys.
+ *
  * Invariants (enforced + unit-tested):
- *  - Only ever appends/updates a NAMED source (idempotent upsert by name).
- *  - NEVER sets `primary`, NEVER sets `defaultWriteTarget`, NEVER sets `stashDir`.
+ *  - Only ever upserts a NAMED bundle entry (idempotent upsert by id).
+ *  - NEVER sets `defaultBundle`, NEVER sets `defaultWriteTarget`.
  *  - Atomic 0600 writes.
  *  - The OpenPalm config is parse-tolerant (we own it: corrupt → start from {}).
  */
@@ -21,14 +26,12 @@ import type { ControlPlaneState } from "./types.js";
 
 const logger = createLogger("akm-sources");
 
-/** Source entry name added to the OpenPalm/container config (points at /host-stash). */
+/** Bundle id added to the OpenPalm/container config (points at /host-stash). */
 export const HOST_SOURCE_NAME = "host-akm";
 
-/** A filesystem source entry as akm persists it in config.sources[]. */
-type FilesystemSourceEntry = {
-  type: "filesystem";
+/** A filesystem bundle entry as akm >= 0.9.0 persists it in config.bundles. */
+type FilesystemBundleEntry = {
   path: string;
-  name: string;
   writable: boolean;
   enabled: boolean;
 };
@@ -52,34 +55,38 @@ function readHostConfigBestEffort(configPath: string): AkmConfigObject | null {
     const parsed = JSON.parse(readFileSync(configPath, "utf-8"));
     return parsed && typeof parsed === "object" ? (parsed as AkmConfigObject) : null;
   } catch {
-    logger.warn("host akm config is not valid JSON — skipping profile import", { configPath });
+    logger.warn("host akm config is not valid JSON — skipping engine import", { configPath });
     return null;
   }
 }
 
 /**
- * Upsert a named filesystem source into `config.sources[]` by name. Idempotent.
- * NEVER touches `primary`, `defaultWriteTarget`, or `stashDir`.
+ * Upsert a named bundle entry into `config.bundles` by id. Idempotent.
+ * NEVER touches `defaultBundle` or `defaultWriteTarget`.
  */
-function upsertSource(config: AkmConfigObject, entry: FilesystemSourceEntry): AkmConfigObject {
-  const sources = Array.isArray(config.sources) ? [...(config.sources as unknown[])] : [];
-  const idx = sources.findIndex(
-    (s) => s && typeof s === "object" && (s as Record<string, unknown>).name === entry.name,
-  );
-  if (idx >= 0) {
-    // Preserve any unrelated fields the user set (e.g. options), override ours.
-    sources[idx] = { ...(sources[idx] as Record<string, unknown>), ...entry };
-  } else {
-    sources.push(entry);
-  }
-  return { ...config, sources };
+function upsertBundle(
+  config: AkmConfigObject,
+  id: string,
+  entry: FilesystemBundleEntry,
+): AkmConfigObject {
+  const bundles =
+    config.bundles && typeof config.bundles === "object" && !Array.isArray(config.bundles)
+      ? { ...(config.bundles as Record<string, unknown>) }
+      : {};
+  const existing =
+    bundles[id] && typeof bundles[id] === "object" && !Array.isArray(bundles[id])
+      ? (bundles[id] as Record<string, unknown>)
+      : {};
+  // Preserve any unrelated fields the user set (e.g. components), override ours.
+  bundles[id] = { ...existing, ...entry };
+  return { ...config, bundles };
 }
 
-function assertNoPrimaryEscalation(entry: FilesystemSourceEntry): void {
-  // Defense in depth: the type forbids `primary`, but assert at runtime too —
-  // a secondary that became primary would change the write target.
-  if ((entry as Record<string, unknown>).primary !== undefined) {
-    throw new Error("akm-sources: refusing to write a source entry carrying `primary`.");
+function assertNoDefaultEscalation(config: AkmConfigObject, before: AkmConfigObject): void {
+  // Defense in depth: a secondary bundle that became the default would change
+  // the write target. This writer must never introduce or change those keys.
+  if (config.defaultBundle !== before.defaultBundle || config.defaultWriteTarget !== before.defaultWriteTarget) {
+    throw new Error("akm-sources: refusing to change defaultBundle/defaultWriteTarget.");
   }
 }
 
@@ -89,34 +96,37 @@ function openpalmConfigPath(state: ControlPlaneState): string {
 
 /**
  * Container/OpenPalm side: add the personal stash (mounted at /host-stash) as a
- * secondary source. Parse-tolerant (we own this config). Writable by default so
- * the assistant can contribute back via an explicit `--target host-akm`.
+ * secondary bundle. Parse-tolerant (we own this config). Writable by default so
+ * the assistant can contribute back via an explicit `--bundle host-akm` (or
+ * `--target host-akm` on the write commands that kept `--target`).
  */
 export function addHostStashToOpenpalmConfig(state: ControlPlaneState, writable = true): void {
   const configPath = openpalmConfigPath(state);
-  const entry: FilesystemSourceEntry = {
-    type: "filesystem",
+  const entry: FilesystemBundleEntry = {
     path: "/host-stash",
-    name: HOST_SOURCE_NAME,
     writable,
     enabled: true,
   };
-  assertNoPrimaryEscalation(entry);
   const config = readConfigTolerant(configPath);
-  const updated = upsertSource(config, entry);
+  const updated = upsertBundle(config, HOST_SOURCE_NAME, entry);
+  assertNoDefaultEscalation(updated, config);
   writeFileAtomic(configPath, JSON.stringify(updated, null, 2), 0o600);
 }
 
 /**
- * Best-effort import of the host's LLM/agent profiles into the OpenPalm akm config.
- * Reads the personal host config READ-ONLY; never writes back to the host.
+ * Best-effort import of the host's engine/embedding config into the OpenPalm
+ * akm config. Reads the personal host config READ-ONLY; never writes back to
+ * the host.
  *
- * ADDITIVE MERGE: existing OpenPalm values ALWAYS win — the host only fills gaps.
- * Returns `{ imported: [] }` when the host config is absent or unreadable (never
- * throws — profile import is always optional).
+ * ADDITIVE MERGE: existing OpenPalm values ALWAYS win — the host only fills
+ * gaps. Returns `{ imported: [] }` when the host config is absent or
+ * unreadable (never throws — engine import is always optional).
  *
- * Writes the canonical akm shape (profiles.* + defaults.* + embedding).
- * NEVER touches `sources`, `stashDir`, `registries`, or `installed`.
+ * Writes the canonical akm 0.9.0 shape (engines + defaults.* + embedding +
+ * improve.strategies). NEVER touches `bundles`, `defaultBundle`,
+ * `registries`, or `defaultWriteTarget`. A host config still in the retired
+ * 0.8 `profiles` shape is skipped — akm itself refuses to load it, so there
+ * is nothing trustworthy to import.
  */
 export function importHostProfiles(
   state: ControlPlaneState,
@@ -124,40 +134,56 @@ export function importHostProfiles(
 ): { imported: string[] } {
   const host = readHostConfigBestEffort(hostConfigPath);
   if (!host) return { imported: [] };
-  const hostProfiles = (host.profiles as Record<string, unknown> | undefined) ?? {};
-  const hostDefaults = (host.defaults as Record<string, unknown> | undefined) ?? {};
 
   const opPath = openpalmConfigPath(state);
   const op = readConfigTolerant(opPath);
-  const opProfiles = (op.profiles as Record<string, unknown> | undefined) ?? {};
-  const opDefaults = (op.defaults as Record<string, unknown> | undefined) ?? {};
 
   const imported: string[] = [];
-
-  // ADDITIVE MERGE — existing OpenPalm values always win; the host fills only
-  // gaps. Never overwrite a profile, default selection, or embedding field the
-  // operator/wizard already set. `imported` lists what was actually added.
   const isObj = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 
-  // All three profile namespaces akm supports (config-schema.ts ProfilesSchema).
-  for (const ns of ["llm", "agent", "improve"] as const) {
-    if (isObj(hostProfiles[ns])) {
-      const existing = isObj(opProfiles[ns]) ? (opProfiles[ns] as Record<string, unknown>) : {};
-      // host first, existing last → existing wins; only host-only profile names are added.
-      const merged: Record<string, unknown> = { ...(hostProfiles[ns] as Record<string, unknown>), ...existing };
-      const added = Object.keys(merged).length - Object.keys(existing).length;
-      opProfiles[ns] = merged;
-      if (added > 0) imported.push(`profiles.${ns}`);
-    }
-    // Only adopt a host default selection when OpenPalm has none.
-    if (typeof hostDefaults[ns] === "string" && typeof opDefaults[ns] !== "string") {
-      opDefaults[ns] = hostDefaults[ns];
-      imported.push(`defaults.${ns}`);
+  // ADDITIVE MERGE — existing OpenPalm values always win; the host fills only
+  // gaps. Never overwrite an engine, default selection, strategy, or embedding
+  // field the operator/wizard already set. `imported` lists what was added.
+
+  // engines (akm 0.9.0 config-schema EnginesSchema).
+  const opEngines = isObj(op.engines) ? (op.engines as Record<string, unknown>) : {};
+  let engines = opEngines;
+  if (isObj(host.engines)) {
+    // host first, existing last → existing wins; only host-only engine names are added.
+    const merged: Record<string, unknown> = { ...(host.engines as Record<string, unknown>), ...opEngines };
+    if (Object.keys(merged).length > Object.keys(opEngines).length) {
+      engines = merged;
+      imported.push("engines");
     }
   }
 
-  // Top-level embedding connection (EmbeddingConnectionConfigSchema). Per-field
-  // additive: existing OpenPalm fields win; host fills only missing fields.
+  // defaults.engine / defaults.llmEngine / defaults.improveStrategy — only
+  // adopt a host selection when OpenPalm has none.
+  const hostDefaults = isObj(host.defaults) ? (host.defaults as Record<string, unknown>) : {};
+  const opDefaults = isObj(op.defaults) ? { ...(op.defaults as Record<string, unknown>) } : {};
+  for (const key of ["engine", "llmEngine", "improveStrategy"] as const) {
+    if (typeof hostDefaults[key] === "string" && typeof opDefaults[key] !== "string") {
+      opDefaults[key] = hostDefaults[key];
+      imported.push(`defaults.${key}`);
+    }
+  }
+
+  // improve.strategies — additive by strategy name.
+  const hostImprove = isObj(host.improve) ? (host.improve as Record<string, unknown>) : {};
+  const opImprove = isObj(op.improve) ? { ...(op.improve as Record<string, unknown>) } : {};
+  let improveChanged = false;
+  if (isObj(hostImprove.strategies)) {
+    const opStrategies = isObj(opImprove.strategies) ? (opImprove.strategies as Record<string, unknown>) : {};
+    const merged: Record<string, unknown> = { ...(hostImprove.strategies as Record<string, unknown>), ...opStrategies };
+    if (Object.keys(merged).length > Object.keys(opStrategies).length) {
+      opImprove.strategies = merged;
+      improveChanged = true;
+      imported.push("improve.strategies");
+    }
+  }
+
+  // Top-level embedding connection. Per-field additive: existing OpenPalm
+  // fields win; host fills only missing fields.
   let embedding: Record<string, unknown> | undefined;
   if (isObj(host.embedding)) {
     const existing = isObj(op.embedding) ? (op.embedding as Record<string, unknown>) : {};
@@ -170,9 +196,9 @@ export function importHostProfiles(
 
   if (imported.length === 0) return { imported };
 
-  const updated: AkmConfigObject = { ...op, profiles: opProfiles, defaults: opDefaults };
+  const updated: AkmConfigObject = { ...op, engines, defaults: opDefaults };
+  if (improveChanged) updated.improve = opImprove;
   if (embedding !== undefined) updated.embedding = embedding;
-  delete (updated as Record<string, unknown>).llm; // never persist the legacy key
   writeFileAtomic(opPath, JSON.stringify(updated, null, 2), 0o600);
   return { imported };
 }

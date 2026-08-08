@@ -994,7 +994,7 @@ for tool in curl git node pnpm claude codex opencode bun akm; do
     || printf 'MISSING  %s\n' "$tool"
 done
 
-test "$(docker exec "$PAPERCLIP_CONTAINER" akm --version)" = 0.8.14
+test "$(docker exec "$PAPERCLIP_CONTAINER" akm --version)" = 0.9.0
 docker exec "$PAPERCLIP_CONTAINER" akm --format json -q info
 ```
 
@@ -1043,8 +1043,9 @@ docker exec "$PAPERCLIP_CONTAINER" mkdir -p /paperclip/manual-acceptance
 3. Create a `backlog` issue in that project instructing the agent to add a
    comment containing `PAPERCLIP_LOCAL_OK`, then mark the issue complete through
    the Paperclip API with a separate status-only PATCH and no second comment.
-   Also require it to call `akm_search`, `akm_show`,
-   `akm_env`, and `akm_secret`; it may report key/ref names and the secret path,
+   Also require it to call `akm_search` and `akm_show`, and to resolve the env
+   key and the secret through the `akm` CLI (`akm env run user -- <cmd>` and
+   `akm secret`); it may report key/ref names and the secret path,
    but must never report either canary value.
 4. Store a disposable provider credential through Paperclip's own encrypted
    secret/agent configuration. Do not put it in OpenPalm's assistant auth file,
@@ -1067,8 +1068,8 @@ Required result: Paperclip injects an authenticated `PAPERCLIP_API_KEY`, the
 local CLI starts, reads its assigned issue, posts the marker comment, completes
 the issue, and reports one run/cost without exposing its credential. A run that
 continues without an API key, runs twice from one assignment, or cannot use the
-project's local folder is `FAIL`. The same run must complete all four AKM tool
-calls, find `PAPERCLIP_AKM_KNOWLEDGE_OK`, list the env key and secret ref/path,
+project's local folder is `FAIL`. The same run must complete both AKM tool
+calls and both CLI lookups, find `PAPERCLIP_AKM_KNOWLEDGE_OK`, list the env key and secret ref/path,
 and contain neither `paperclip-env-value-must-not-be-printed` nor
 `paperclip-secret-value-must-not-be-printed` in model or tool output. The run
 must not enumerate the process environment or log the injected Paperclip API

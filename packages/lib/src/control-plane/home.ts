@@ -343,9 +343,11 @@ export function ensureHomeDirs(home: string = resolveOpenPalmHome()): void {
     `${home}/data/tunnel`,         // remote addon: persistent tailnet node identity (see remoteTunnelStateDir)
     `${home}/data/akm/cache`,      // akm cache
     `${home}/data/akm/data`,       // akm durable data
+    `${home}/data/akm/data/state`, // akm task-scheduler state (AKM_STATE_DIR, akm >= 0.9.0)
     `${home}/data/akm/empty-host-stash`, // always-present /host-stash fallback when host AKM is absent
     `${home}/data/paperclip-akm/cache`, // Paperclip AKM cache
     `${home}/data/paperclip-akm/data`, // Paperclip AKM durable data
+    `${home}/data/paperclip-akm/data/state`, // Paperclip AKM scheduler state
     `${home}/data/logs`,           // service logs and audit files
     `${home}/data/ui`,             // materialized UI build (CLI-embedded, or bundled/repo-resolved)
     `${home}/data/backups`,        // lifecycle backup snapshots

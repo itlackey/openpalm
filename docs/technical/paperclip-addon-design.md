@@ -43,10 +43,11 @@ paperclip:
   environment:
     XDG_CONFIG_HOME: /paperclip/.config
     OPENCODE_CONFIG_DIR: /etc/opencode
-    AKM_STASH_DIR: /stash
+    AKM_BUNDLE_DIR: /stash
     AKM_CONFIG_DIR: /etc/akm
     AKM_CACHE_DIR: /opt/akm/cache
     AKM_DATA_DIR: /opt/akm/data
+    AKM_STATE_DIR: /opt/akm/data/state
   networks: [addon_net]
 ```
 
@@ -64,7 +65,7 @@ software. Upstream publishes no semver tag, so the digest is the pin and the
 AKM is added through standard OpenCode configuration rather than an image
 layer. Managed `system/paperclip/` contains:
 
-- exact dependencies `akm-opencode@0.8.2` and `akm-cli@0.8.14`;
+- exact dependencies `akm-opencode@0.9.0` and `akm-cli@0.9.0`;
 - `plugins/akm.ts`, which re-exports only the plugin function;
 - `bin/bun`, which sets `BUN_BE_BUN=1` and executes `opencode`, exposing the
   Bun runtime already embedded in Paperclip's OpenCode binary;
@@ -102,9 +103,9 @@ managed-manifest snapshot in the cache, resets the runtime manifest when the
 release pin changes or either required package is absent, and serializes that
 bootstrap with `flock`. Installation is bounded below Paperclip's model-discovery
 timeout; the exact installed versions, executable `akm` shim, plugin
-initialization, and required `akm_search`, `akm_show`, `akm_env`, and
-`akm_secret` hooks are verified before the successful manifest snapshot is
-published.
+initialization, and required `akm_search`, `akm_show`, `akm_curate`,
+`akm_feedback`, and `akm_remember` hooks are verified before the successful
+manifest snapshot is published.
 `OPENCODE_STRICT_CONFIG_DEPS=1` makes installation fail closed instead of
 silently starting without AKM.
 

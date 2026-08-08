@@ -1,29 +1,36 @@
 <script lang="ts">
 	import Drawer from '$lib/components/common/Drawer.svelte';
-	import type { AgentProfile } from './profile-types';
+	import { AGENT_PLATFORMS, type AgentEngine } from './profile-types';
 
-	// Slide-in editor for one agent-runner profile. Parent owns the draft
-	// (deep-copied on open) and binds it here; this component keeps no copy.
+	// Slide-in editor for one agent engine (akm engines.<name>, kind "agent").
+	// Parent owns the draft (deep-copied on open) and binds it here; this
+	// component keeps no copy. llmEngineNames feeds the datalist for the
+	// opencode-sdk-only llmEngine reference.
 	interface Props {
-		draft: AgentProfile;
+		draft: AgentEngine;
+		llmEngineNames: string[];
 		oncancel: () => void;
 		onapply: () => void;
 	}
-	let { draft = $bindable(), oncancel, onapply }: Props = $props();
+	let { draft = $bindable(), llmEngineNames, oncancel, onapply }: Props = $props();
 </script>
 
-<Drawer open={true} title="Agent profile" onClose={oncancel} width="40rem">
+<datalist id="akm-llm-engines-list">
+	{#each llmEngineNames as name (name)}<option value={name}></option>{/each}
+</datalist>
+
+<Drawer open={true} title="Agent engine" onClose={oncancel} width="40rem">
 	<div class="controls controls--grid">
 		<div class="control-group">
-			<label class="control-label" for="d-agent-name">Profile Name</label>
+			<label class="control-label" for="d-agent-name">Engine Name</label>
 			<input id="d-agent-name" class="control-input" type="text" spellcheck="false" placeholder="e.g. opencode" bind:value={draft.name} />
 		</div>
 		<div class="control-group">
 			<label class="control-label" for="d-agent-platform">Platform</label>
 			<select id="d-agent-platform" class="control-input" bind:value={draft.platform}>
-				<option value="opencode">opencode</option>
-				<option value="claude">claude</option>
-				<option value="opencode-sdk">opencode-sdk</option>
+				{#each AGENT_PLATFORMS as platform (platform)}
+					<option value={platform}>{platform}</option>
+				{/each}
 			</select>
 		</div>
 		{#if draft.platform !== 'opencode-sdk'}
@@ -37,14 +44,22 @@
 			</div>
 		{:else}
 			<div class="control-group">
-				<label class="control-label" for="d-agent-model">Model</label>
-				<input id="d-agent-model" class="control-input" type="text" spellcheck="false" placeholder="anthropic/claude-sonnet-4-5" bind:value={draft.model} />
-			</div>
-			<div class="control-group">
-				<label class="control-label" for="d-agent-workspace">Workspace</label>
-				<input id="d-agent-workspace" class="control-input" type="text" spellcheck="false" placeholder={'${PWD}'} bind:value={draft.workspace} />
+				<label class="control-label" for="d-agent-llmengine">LLM engine</label>
+				<input id="d-agent-llmengine" class="control-input" type="text" spellcheck="false" list="akm-llm-engines-list" placeholder="— default engine —" bind:value={draft.llmEngine} />
 			</div>
 		{/if}
+		<div class="control-group">
+			<label class="control-label" for="d-agent-model">Model</label>
+			<input id="d-agent-model" class="control-input" type="text" spellcheck="false" placeholder="anthropic/claude-sonnet-4-5" bind:value={draft.model} />
+		</div>
+		<div class="control-group">
+			<label class="control-label" for="d-agent-workspace">Workspace</label>
+			<input id="d-agent-workspace" class="control-input" type="text" spellcheck="false" placeholder={'${PWD}'} bind:value={draft.workspace} />
+		</div>
+		<div class="control-group">
+			<label class="control-label" for="d-agent-timeout">Timeout (ms)</label>
+			<input id="d-agent-timeout" class="control-input" type="number" min="1" bind:value={draft.timeoutMs} />
+		</div>
 	</div>
 
 	{#snippet footer()}

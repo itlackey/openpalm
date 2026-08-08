@@ -2,8 +2,9 @@
  * Automation scheduler — types and akm CLI integration.
  *
  * Automations are AKM task files at ${stashDir}/tasks/*.yml.
- * Scheduling is handled by the OS cron daemon (via `akm tasks sync`).
- * Execution is handled by `akm tasks run <id>`.
+ * Scheduling is handled by the OS cron daemon (via `akm task sync`).
+ * Execution is handled by `akm task run <id>` (akm >= 0.9.0 retired the
+ * plural `akm tasks` spelling with no alias).
  */
 import { execFile } from "node:child_process";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
@@ -58,7 +59,7 @@ export function loadAutomations(stashDir: string): AutomationConfig[] {
   return loadMarkdownTasks(stashDir).map(taskToAutomationConfig);
 }
 
-// ── Execute an automation via akm tasks run ───────────────────────────────
+// ── Execute an automation via akm task run ────────────────────────────────
 
 export interface AutomationRunResult {
   ok: boolean;
@@ -76,12 +77,12 @@ export async function executeAutomation(
   return new Promise((resolve) => {
     execFile(
       "akm",
-      ["tasks", "run", taskId],
+      ["task", "run", taskId],
       { env: { ...process.env, ...akmEnv } },
       (error, _stdout, stderr) => {
         if (error) {
           const msg = stderr?.trim() || error.message;
-          logger.warn("akm tasks run failed", { id: taskId, error: msg });
+          logger.warn("akm task run failed", { id: taskId, error: msg });
           resolve({ ok: false, status: "failed", error: msg });
         } else {
           resolve({ ok: true, status: "completed" });

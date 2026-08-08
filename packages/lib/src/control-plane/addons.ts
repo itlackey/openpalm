@@ -602,7 +602,7 @@ export function installAutomationFromRegistry(name: string, stashDir: string): M
   }
 
   writeFileSync(ymlPath, taskContent);
-  // The assistant container's 60-second akm tasks sync loop picks up the new
+  // The assistant container's 60-second akm task sync loop picks up the new
   // file from the shared stash mount and registers it with OS cron.
   return { ok: true };
 }
@@ -618,7 +618,7 @@ export function uninstallAutomation(name: string, stashDir: string): MutationRes
   }
 
   rmSync(ymlPath, { force: true });
-  // The assistant container's 60-second akm tasks sync will notice the file
+  // The assistant container's 60-second akm task sync will notice the file
   // is gone and deregister it from OS cron on next sync.
   return { ok: true };
 }

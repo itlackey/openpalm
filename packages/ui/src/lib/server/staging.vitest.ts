@@ -104,7 +104,7 @@ describe("Stack overlay discovery — system/stack layout", () => {
   });
 });
 
-describe("User extensions in knowledge/env/user.env (akm env:user)", () => {
+describe("User extensions in knowledge/env/user.env (akm env/user)", () => {
   test("user.env is read from knowledge/env/", () => {
     const state = makeState(baseDir);
     const secretsContent = "CUSTOM_SECRET=test-token\n";

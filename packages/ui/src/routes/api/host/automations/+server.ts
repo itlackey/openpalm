@@ -3,7 +3,7 @@
  *
  * Read-only endpoint. Automations are AKM task files at
  * ${stashDir}/tasks/*.yml. The scheduler runs as a co-process inside the
- * assistant; `akm tasks run <id>` handles execution.
+ * assistant; `akm task run <id>` handles execution.
  */
 import type { RequestHandler } from "./$types";
 import { getState } from "$lib/server/state.js";

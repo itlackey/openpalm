@@ -6,7 +6,7 @@ relevant tabs **must not bleed into each other**:
 
 | Tab | Owns | Files written | Endpoints |
 |---|---|---|---|
-| **AKM** | AKM's internal LLM/embedding config | `OP_HOME/config/akm/config.json` (`llm`, `embedding` top-level fields) | `PATCH /api/assistant/akm` |
+| **AKM** | AKM's internal LLM/embedding config | `OP_HOME/config/akm/config.json` (`engines.*` kind-"llm" entries + `defaults.llmEngine`, `embedding` top-level field) | `PATCH /api/assistant/akm` |
 | **Connections** | OpenCode's provider config + credentials | `OP_HOME/config/assistant/opencode.json` (`.provider`, `.model`, `.small_model`, `.disabled_providers`), `OP_HOME/knowledge/secrets/auth.json` | `PATCH /api/host/providers/[id]`, `POST /api/assistant/model`, `POST/DELETE /api/host/opencode/providers/[id]/auth`, `POST /api/host/providers/import-host` |
 | **Voice** | Voice addon (container + hardware profile); TTS/STT provider choice is client-owned in the browser | `state/stack.env` (`OP_ENABLED_ADDONS`, `OP_VOICE_PROFILE`) | `POST /api/host/addons(/voice)` |
 
@@ -20,7 +20,8 @@ relevant tabs **must not bleed into each other**:
 `config/akm/config.json` is AKM's native configuration file, read directly by the
 `akm` CLI inside the assistant container at `/etc/akm/config.json`. It controls:
 
-- `llm` — the endpoint, model, and provider AKM uses for internal LLM operations
+- `engines.<name>` (kind `"llm"`) + `defaults.llmEngine` — the endpoint, model, and
+  provider AKM uses for internal LLM operations
   (memory inference, feedback distillation, index operations)
 - `embedding` — the endpoint, model, provider, and dimension for AKM's vector search
 

@@ -1,4 +1,5 @@
 {
+	"configVersion": "0.9.0",
 	"semanticSearchMode": "auto",
 	"registries": [
 		{
@@ -16,14 +17,13 @@
 		"format": "json",
 		"detail": "brief"
 	},
-	"profiles": {
-		"agent": {
-			"opencode": {
-				"platform": "opencode"
-			}
+	"engines": {
+		"opencode": {
+			"kind": "agent",
+			"platform": "opencode"
 		}
 	},
 	"defaults": {
-		"agent": "opencode"
+		"engine": "opencode"
 	}
 }

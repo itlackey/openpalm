@@ -9,6 +9,43 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **akm 0.9.0 + akm-opencode 0.9.0 (official releases).** The whole stack moves
+  to the akm 0.9.0 bundle/adapter release: `akm-cli` is exact-pinned to
+  **0.9.0** (assistant tools image + Paperclip bootstrap) and the OpenCode
+  plugin `akm-opencode` to **0.9.0** (assistant `opencode.jsonc` + Paperclip
+  manifest). 0.9.0 is a hard break from 0.8.x, and every OpenPalm surface that
+  speaks to akm was updated with it:
+  - **Config is written in the 0.9.0 schema** — `configVersion: "0.9.0"`,
+    `engines` + `defaults.llmEngine`/`defaults.engine` (replacing the retired
+    `profiles.*` + `defaults.llm`/`defaults.agent`), and a `bundles` map +
+    `defaultBundle` (replacing the retired `stashDir`/`sources[]`). The
+    assistant's primary bundle is pinned as `bundles.openpalm = /stash`; host
+    sharing is the `bundles["host-akm"]` secondary. Setup, the host-profile
+    import, and the admin AKM tab all write the new shape and strip the retired
+    keys akm 0.9.0 hard-rejects at load.
+  - **`AKM_STASH_DIR` → `AKM_BUNDLE_DIR`** (renamed upstream with no fallback)
+    across compose, the entrypoint, the cron preamble, and the host task
+    runner; the new `AKM_STATE_DIR` (task-scheduler state) is set explicitly to
+    `/opt/akm/data/state` so no akm family ever falls back to a global XDG dir.
+  - **`akm tasks …` → `akm task …`** (the plural spelling was retired with no
+    alias) in the entrypoint sync loop, the host automation runner, and docs.
+  - **Refs use the 0.9 `[bundle//]conceptId` grammar** — the user env is
+    `env/user` (was `env:user`), loaded via `akm env run user -- <cmd>`.
+  - **Shipped task files are strict version-2 YAML** (`version: 2`); the
+    `akm-improve` automation drops the removed `--auto-accept` flag and gains
+    `--skip-if-locked`.
+  - **The assistant entrypoint now runs `akm migrate status` / `akm migrate
+    apply` at boot** — akm 0.9.0 no longer auto-migrates durable state on open,
+    so a pre-existing 0.8 installation is cut over by the crash-resumable
+    migrator (followed by `akm task sync --rebind`), non-fatally and
+    idempotently.
+  - **The plugin tool surface is the 0.9 set** (`akm_search`, `akm_show`,
+    `akm_curate`, `akm_feedback`, `akm_remember`); the retired 0.8 plugin tools
+    (`akm_env`, `akm_secret`, `akm_wiki`, `akm_workflow`, `load_vault`) are
+    gone from the Paperclip launcher probe and the assistant instructions —
+    env/secret access goes through `akm env run` / `akm secret run` in a scoped
+    subprocess.
+
 - **Whether a machine hosts a stack is now recorded, not guessed.** The landing
   is resolved on the server, but the two facts it needs are not server-side
   facts, so it inferred both — from files on disk and a cookie — through

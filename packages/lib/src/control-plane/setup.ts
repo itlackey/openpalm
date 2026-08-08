@@ -163,16 +163,17 @@ function buildPortalCredentialEnvVars(
 // ── AKM Config Persistence ───────────────────────────────────────────────
 
 /**
- * Typed shape of the assistant's akm config.json. This replaces the nested
- * `as Record<string, unknown>` casts that used to hand-manipulate the JSON in
- * performSetup. Every field is optional because we merge over whatever the
- * operator (or a prior run) already wrote — extra/unknown keys are preserved
- * verbatim via the index signature.
+ * Typed shape of the assistant's akm config.json (akm >= 0.9.0 schema). This
+ * replaces the nested `as Record<string, unknown>` casts that used to
+ * hand-manipulate the JSON in performSetup. Every field is optional because we
+ * merge over whatever the operator (or a prior run) already wrote —
+ * extra/unknown keys are preserved verbatim via the index signature.
  */
-export type AkmLlmProfile = {
+export type AkmLlmEngine = {
+	kind: 'llm';
 	endpoint: string;
 	model: string;
-	provider: string;
+	provider?: string;
 	[key: string]: unknown;
 };
 
@@ -184,29 +185,67 @@ export type AkmEmbeddingConfig = {
 	[key: string]: unknown;
 };
 
-export type AkmConfig = {
-	profiles?: { llm?: Record<string, AkmLlmProfile>; [key: string]: unknown };
-	defaults?: { llm?: string; [key: string]: unknown };
-	embedding?: AkmEmbeddingConfig;
-	stashDir?: string;
-	/** Legacy 0.7 top-level key — read for migration awareness, never persisted. */
-	llm?: unknown;
+export type AkmBundleEntry = {
+	path?: string;
+	writable?: boolean;
 	[key: string]: unknown;
 };
 
+export type AkmConfig = {
+	configVersion?: string;
+	engines?: Record<string, Record<string, unknown>>;
+	defaults?: { engine?: string; llmEngine?: string; improveStrategy?: string; [key: string]: unknown };
+	embedding?: AkmEmbeddingConfig;
+	bundles?: Record<string, AkmBundleEntry>;
+	defaultBundle?: string;
+	[key: string]: unknown;
+};
+
+/** The bundle id OpenPalm uses for the assistant's primary /stash bundle. */
+export const PRIMARY_BUNDLE_ID = 'openpalm';
+
+/** The engine name OpenPalm writes for the setup wizard's LLM selection. */
+export const DEFAULT_LLM_ENGINE_NAME = 'default';
+
+/**
+ * akm 0.8-era config keys that the 0.9.0 schema hard-rejects at load time.
+ * A config still carrying any of them fails to load entirely, so every
+ * OpenPalm write strips them (I-3: the assistant's akm config must always be
+ * loadable by the pinned akm-cli without a migration shim).
+ */
+const RETIRED_AKM_CONFIG_KEYS = [
+	'stashDir',
+	'sources',
+	'installed',
+	'wikiName',
+	'profiles',
+	'llm',
+	'agent',
+	'features',
+	'stashes'
+] as const;
+
+function stripRetiredAkmKeys(config: AkmConfig): void {
+	for (const key of RETIRED_AKM_CONFIG_KEYS) delete config[key];
+	if (config.defaults && typeof config.defaults === 'object') {
+		delete (config.defaults as Record<string, unknown>).llm;
+		delete (config.defaults as Record<string, unknown>).agent;
+		delete (config.defaults as Record<string, unknown>).improve;
+	}
+}
+
 /**
  * Merge the setup wizard's LLM + embedding selections into the assistant's
- * akm config.json (atomic write). Existing operator keys — sibling profiles,
- * `sources`, custom fields — are preserved. No-op when neither llm nor
+ * akm config.json (atomic write). Existing operator keys — sibling engines,
+ * `bundles`, custom fields — are preserved. No-op when neither llm nor
  * embedding is supplied.
  *
- * Writes the CANONICAL akm 0.8.0 shape: profiles.llm.default + defaults.llm.
- * The runtime resolver reads profiles.llm[defaults.llm] (akm config.ts).
- * Do NOT write a top-level `llm` — akm's top-level schema is .strict() with no
- * `llm` key (config-schema.ts AkmConfigShape). A top-level `llm` only loads
- * today via akm's legacy 0.7→0.8 migration shim (config-migration.ts), which
- * rewrites the file on load and is marked for removal — writing the native
- * shape removes that dependency, so any pre-existing legacy key is dropped.
+ * Writes the CANONICAL akm 0.9.0 shape: `engines.default` (kind "llm") +
+ * `defaults.llmEngine`, with `configVersion` pinned to "0.9.0" and the
+ * primary bundle pinned to /stash via `bundles` + `defaultBundle`. The
+ * retired 0.8 keys (`profiles`, `defaults.llm`, `stashDir`, `sources`, …) are
+ * hard-rejected by akm 0.9.0's config schema, so they are stripped on every
+ * write — akm no longer ships a load-time migration shim.
  */
 export function persistAkmConfig(
 	state: ControlPlaneState,
@@ -228,22 +267,22 @@ export function persistAkmConfig(
 		}
 	}
 	const updated: AkmConfig = { ...existing };
+	stripRetiredAkmKeys(updated);
+	updated.configVersion = '0.9.0';
 
 	if (llm) {
-		const profiles = updated.profiles ?? {};
-		const llmProfiles = profiles.llm ?? {};
-		llmProfiles.default = {
-			...(llmProfiles.default ?? {}),
+		const engines = updated.engines ?? {};
+		engines[DEFAULT_LLM_ENGINE_NAME] = {
+			...(engines[DEFAULT_LLM_ENGINE_NAME] ?? {}),
+			kind: 'llm',
 			endpoint: buildAkmEndpoint(llm.provider, llm.baseUrl, '/chat/completions'),
 			model: llm.model,
 			provider: llm.provider
 		};
-		profiles.llm = llmProfiles;
-		updated.profiles = profiles;
+		updated.engines = engines;
 		const defaults = updated.defaults ?? {};
-		if (typeof defaults.llm !== 'string') defaults.llm = 'default';
+		if (typeof defaults.llmEngine !== 'string') defaults.llmEngine = DEFAULT_LLM_ENGINE_NAME;
 		updated.defaults = defaults;
-		delete updated.llm; // never persist the legacy key
 	}
 
 	if (embedding) {
@@ -256,11 +295,18 @@ export function persistAkmConfig(
 		};
 	}
 
-	// The assistant's primary stash is ALWAYS /stash (the bind mount). Pin it in
-	// config so it is explicit and operator-edits can't repoint it; the UI does
-	// not expose stashDir. (The host task-runner still uses its own
-	// AKM_STASH_DIR env, which takes precedence over config.stashDir.)
-	updated.stashDir = '/stash';
+	// The assistant's primary bundle is ALWAYS /stash (the bind mount). Pin it
+	// in config so it is explicit and operator-edits can't repoint it; the UI
+	// does not expose the bundle path. (The host task-runner still uses its own
+	// AKM_BUNDLE_DIR env, which takes precedence over the configured bundle.)
+	const bundles = updated.bundles ?? {};
+	bundles[PRIMARY_BUNDLE_ID] = {
+		...(bundles[PRIMARY_BUNDLE_ID] ?? {}),
+		path: '/stash',
+		writable: true
+	};
+	updated.bundles = bundles;
+	if (typeof updated.defaultBundle !== 'string') updated.defaultBundle = PRIMARY_BUNDLE_ID;
 	writeFileAtomic(akmConfigPath, JSON.stringify(updated, null, 2), 0o600);
 }
 
