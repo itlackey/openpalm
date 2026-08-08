@@ -1,21 +1,22 @@
 <script lang="ts">
 	import ProfileRow from './ProfileRow.svelte';
-	import type { LlmProfile } from './profile-types';
+	import type { LlmEngine } from './profile-types';
 	import IconDatabase from '$lib/components/icons/IconDatabase.svelte';
 
-	// Presentation-only list of LLM profiles. The parent (AkmTab) owns the array
-	// and default-name state via $bindable; this component renders the rows and
-	// raises edit/add/remove. Set-default mutates the bound default-name directly.
+	// Presentation-only list of LLM engines (akm engines.<name>, kind "llm").
+	// The parent (AkmTab) owns the array and default-name state via $bindable;
+	// this component renders the rows and raises edit/add/remove. Set-default
+	// mutates the bound default-name directly.
 	interface Props {
-		profiles: LlmProfile[];
+		engines: LlmEngine[];
 		defaultName: string;
 		disabled?: boolean;
-		onedit: (p: LlmProfile) => void;
+		onedit: (p: LlmEngine) => void;
 		onadd: () => void;
 		onremove: (id: string) => void;
 	}
 	let {
-		profiles = $bindable([]),
+		engines = $bindable([]),
 		defaultName = $bindable(''),
 		disabled = false,
 		onedit,
@@ -25,17 +26,17 @@
 </script>
 
 <section class="config-section">
-	<h3 class="section-title">Language models <span class="section-title-aka">akm LLM profiles</span></h3>
+	<h3 class="section-title">Language models <span class="section-title-aka">akm LLM engines</span></h3>
 	<p class="section-note">The language models your assistant uses to organize and improve its memory. Add one per LLM service.</p>
 
-	{#if profiles.length === 0}
+	{#if engines.length === 0}
 		<div class="profile-empty">
 			<IconDatabase size={24} />
-			<p class="empty-note">No LLM profiles configured — add one below.</p>
+			<p class="empty-note">No LLM engines configured — add one below.</p>
 		</div>
 	{:else}
 		<div class="profile-list">
-			{#each profiles as p (p.id)}
+			{#each engines as p (p.id)}
 				<ProfileRow
 					name={p.name}
 					isDefault={defaultName === p.name}
@@ -49,7 +50,7 @@
 	{/if}
 
 	<button class="btn btn-secondary btn-sm" onclick={onadd} {disabled}>
-		+ Add LLM Profile
+		+ Add LLM Engine
 	</button>
 </section>
 

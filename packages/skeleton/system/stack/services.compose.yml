@@ -73,10 +73,11 @@ services:
       XDG_CONFIG_HOME: /paperclip/.config
       OPENCODE_CONFIG_DIR: /etc/opencode
       OPENCODE_STRICT_CONFIG_DEPS: "1"
-      AKM_STASH_DIR: /stash
+      AKM_BUNDLE_DIR: /stash
       AKM_CONFIG_DIR: /etc/akm
       AKM_CACHE_DIR: /opt/akm/cache
       AKM_DATA_DIR: /opt/akm/data
+      AKM_STATE_DIR: /opt/akm/data/state
       # The read-only managed launchers remain authoritative. OpenCode installs
       # exact-pinned config dependencies and the akm shim into node_modules.
       PATH: "/opt/openpalm/paperclip/bin:/etc/opencode/node_modules/.bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/local/games:/usr/games"

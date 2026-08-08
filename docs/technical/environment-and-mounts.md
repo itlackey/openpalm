@@ -29,13 +29,14 @@ ownership:
 Host-side ephemeral artifacts outside `OP_HOME` use `~/.cache/openpalm/`.
 
 > **A final reorganization of this layout has been approved** (2026-08-08) and
-> is not yet implemented; everything in this document describes the current
-> runtime. Under the accepted design `knowledge/` remains the one stash, shared
-> with an addon or not as a single operator toggle — replacing the
-> parent-mount-plus-overmount scheme described under Paperclip below — and
-> shipped skills become release-managed content under `system/`. See
-> [`core-principles.md`](core-principles.md) § Accepted final layout for the
-> binding rules and
+> is not yet implemented; everything below describes the current runtime. Under
+> the accepted design `knowledge/` remains the one stash, shared with an addon
+> or not via an opt-in compose overlay — replacing the
+> parent-mount-plus-overmount scheme described under Paperclip below; `private/`
+> merges into `state/` (credentials at `state/secrets/`); and shipped skills
+> become release-managed content under `system/`. See
+> [`core-principles.md`](core-principles.md) § Accepted changes for the binding
+> rules and
 > [`../reviews/op-home-restructure-proposal.md`](../reviews/op-home-restructure-proposal.md)
 > for the decision record and migration.
 
@@ -73,7 +74,7 @@ Secret storage is split by exposure:
 - `private/env/paperclip.env` is the sole audited env-file exception. The pinned
   upstream image requires its two server secrets as environment variables; the
   audit enforces the exact path, exact key set, values, and file modes.
-- `knowledge/env/user.env` is the AKM `env:user` backing file. It is not a
+- `knowledge/env/user.env` is the AKM `env/user` backing file. It is not a
   Compose env file and the assistant entrypoint does not source it. Scoped agent
   tools and AKM commands load it on demand.
 
@@ -146,10 +147,11 @@ copy — there is no runtime download.
 | `OP_UI_LOGIN_PASSWORD_FILE` | `/run/secrets/ui_login_password` | Login credential passed only to the UI child |
 | `OP_OPENCODE_URL` | `http://localhost:4096` | Local upstream for the UI's same-origin `/oc` proxy |
 | `HOME` | `/home/opencode` | Persistent runtime home |
-| `AKM_STASH_DIR` | `/stash` | Primary AKM stash |
+| `AKM_BUNDLE_DIR` | `/stash` | Primary AKM bundle |
 | `AKM_CONFIG_DIR` | `/etc/akm` | AKM config |
 | `AKM_CACHE_DIR` | `/opt/akm/cache` | AKM cache |
 | `AKM_DATA_DIR` | `/opt/akm/data` | AKM durable data |
+| `AKM_STATE_DIR` | `/opt/akm/data/state` | AKM task-scheduler state |
 | `OP_UI_DEFAULT_ASSISTANT_URL` | `/oc` when unset | Optional default-connection override |
 
 The assistant has no Docker socket, admin credential, or admin network path.
@@ -188,10 +190,11 @@ treated as agent-readable.
 |---|---|---|
 | `XDG_CONFIG_HOME` | `/paperclip/.config` | Keeps model preflight and agent runs on one user config |
 | `OPENCODE_CONFIG_DIR` | `/etc/opencode` | Mutable runtime copy of managed plugin bootstrap and permissions |
-| `AKM_STASH_DIR` | `/stash` | Shared stash with Paperclip-specific value overlays |
+| `AKM_BUNDLE_DIR` | `/stash` | Shared bundle with Paperclip-specific value overlays |
 | `AKM_CONFIG_DIR` | `/etc/akm` | Paperclip AKM config |
 | `AKM_CACHE_DIR` | `/opt/akm/cache` | AKM cache |
 | `AKM_DATA_DIR` | `/opt/akm/data` | AKM durable state |
+| `AKM_STATE_DIR` | `/opt/akm/data/state` | AKM task-scheduler state |
 | `PATH` | read-only managed launchers, exact-pinned runtime package shims, then upstream system paths | Keeps the server-secret-scrubbing OpenCode and embedded-Bun launchers authoritative while making `akm` available to every adapter run |
 
 **Backups: `data/paperclip` is NOT covered by lifecycle safety backups.** It is
@@ -286,7 +289,7 @@ Scheduling runs through BusyBox `crond` inside the assistant container.
 - Definitions are AKM YAML task files under `$OP_HOME/knowledge/tasks/`, visible
   in the container as `/stash/tasks/`.
 - Supported task targets are `command`, `prompt`, and `workflow`.
-- `akm tasks sync` registers tasks in the user crontab at startup and every 60
+- `akm task sync` registers tasks in the user crontab at startup and every 60
   seconds.
 - `crond` has no network listener or Docker socket.
 - Cron receives only the small managed environment preamble needed by AKM and

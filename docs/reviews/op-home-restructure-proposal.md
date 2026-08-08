@@ -17,7 +17,7 @@ another.
 
 | Change | Effect |
 |---|---|
-| delete `knowledge/paperclip/{env,secrets}` | −2 dirs (`home.ts:358-359`) |
+| delete `knowledge/paperclip/{env,secrets}` | −2 dirs (`home.ts:360-361`) |
 | delete the `/stash/env` + `/stash/secrets` overmounts | −2 mounts (`services.compose.yml:58-59`) |
 | `knowledge/skills/` → `system/skills/` | shipped skills get an update channel (**B11**) |
 | `private/` → `state/` | credentials to `state/secrets/`, the audited env file to `state/env/`; 8 top-level trees → 7 |

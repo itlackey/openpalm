@@ -22,8 +22,8 @@ export const GET: RequestHandler = async (event) => {
   const state = getState();
 
   const [health, info] = await Promise.all([
-    runAssistantAkmCommand(state, ['health', '--json', '--quiet'], 8000),
-    runAssistantAkmCommand(state, ['info', '--json', '--quiet'], 8000),
+    runAssistantAkmCommand(state, ['health', '--format', 'json', '--quiet'], 8000),
+    runAssistantAkmCommand(state, ['info', '--format', 'json', '--quiet'], 8000),
   ]);
 
   const parsedHealth = safeParseJsonObject(health.stdout);

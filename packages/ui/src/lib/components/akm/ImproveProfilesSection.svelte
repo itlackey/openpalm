@@ -1,21 +1,22 @@
 <script lang="ts">
 	import ProfileRow from './ProfileRow.svelte';
-	import type { ImproveProfile } from './profile-types';
+	import type { ImproveStrategy } from './profile-types';
 	import IconFlame from '$lib/components/icons/IconFlame.svelte';
 
-	// Presentation-only list of memory-maintenance (improve) profiles. Parent owns
-	// array + default-name via $bindable; this raises edit/add/remove. Each row
-	// shows its optional description via ProfileRow's `extra` snippet.
+	// Presentation-only list of memory-maintenance improve strategies
+	// (akm improve.strategies.<name>). Parent owns array + default-name via
+	// $bindable; this raises edit/add/remove. Each row shows its optional
+	// description via ProfileRow's `extra` snippet.
 	interface Props {
-		profiles: ImproveProfile[];
+		strategies: ImproveStrategy[];
 		defaultName: string;
 		disabled?: boolean;
-		onedit: (ip: ImproveProfile) => void;
+		onedit: (st: ImproveStrategy) => void;
 		onadd: () => void;
 		onremove: (id: string) => void;
 	}
 	let {
-		profiles = $bindable([]),
+		strategies = $bindable([]),
 		defaultName = $bindable(''),
 		disabled = false,
 		onedit,
@@ -25,28 +26,28 @@
 </script>
 
 <section class="config-section">
-	<h3 class="section-title">Memory maintenance <span class="section-title-aka">akm improve</span></h3>
-	<p class="section-note">Scheduled runs that distill, deduplicate, and improve stored memories. Each configuration picks which steps run and which language model they use — add a language model above first.</p>
+	<h3 class="section-title">Memory maintenance <span class="section-title-aka">akm improve strategies</span></h3>
+	<p class="section-note">Scheduled runs that distill, deduplicate, and improve stored memories. Each strategy picks which steps run and which engine they use — add an LLM engine above first.</p>
 
-	{#if profiles.length === 0}
+	{#if strategies.length === 0}
 		<div class="profile-empty">
 			<IconFlame size={24} />
-			<p class="empty-note">No improve profiles defined — add one below.</p>
+			<p class="empty-note">No improve strategies defined — add one below.</p>
 		</div>
 	{:else}
 		<div class="profile-list">
-			{#each profiles as ip (ip.id)}
+			{#each strategies as st (st.id)}
 				<ProfileRow
-					name={ip.name}
-					isDefault={defaultName === ip.name}
+					name={st.name}
+					isDefault={defaultName === st.name}
 					{disabled}
-					onsetdefault={() => { defaultName = ip.name; }}
-					onedit={() => onedit(ip)}
-					onremove={() => onremove(ip.id)}
+					onsetdefault={() => { defaultName = st.name; }}
+					onedit={() => onedit(st)}
+					onremove={() => onremove(st.id)}
 				>
 					{#snippet extra()}
-						{#if ip.description}
-							<span class="profile-row-desc">{ip.description}</span>
+						{#if st.description}
+							<span class="profile-row-desc">{st.description}</span>
 						{/if}
 					{/snippet}
 				</ProfileRow>
@@ -55,7 +56,7 @@
 	{/if}
 
 	<button class="btn btn-secondary btn-sm" onclick={onadd} {disabled}>
-		+ Add Improve Profile
+		+ Add Improve Strategy
 	</button>
 </section>
 

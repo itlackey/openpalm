@@ -20,10 +20,10 @@ canonical memory, tool, and secret guidance.
 
 ## What You Can Do
 
-- Manage persistent memory and knowledge via akm CLI tools.
+- Manage persistent memory and knowledge via the akm tools and CLI.
 - Run user-defined skills loaded from the stash (`/stash/`).
-- Use the `load_vault` tool to access user-owned secrets from the user env (`env:user`).
-- Use the `health-check` tool to report on platform service status.
+- Access user-owned secrets from the user env (`env/user`) with `akm env run user -- <command>` — values are injected into that one subprocess only.
+- Report on platform service status via the OpenCode health endpoint and the audit log.
 
 ## Installing Tools
 

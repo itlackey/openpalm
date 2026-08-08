@@ -1,5 +1,5 @@
 /**
- * /api/host/secrets/user-env — read/write the shared akm user env (`env:user`).
+ * /api/host/secrets/user-env — read/write the shared akm user env (`env/user`).
  *
  * The user env file (`knowledge/env/user.env`) is the sole source of truth for
  * user-managed configuration secrets. OpenPalm owns the file directly: writes
@@ -33,7 +33,7 @@ const logger = createLogger('admin.secrets.user-env');
 const KEY_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
 /**
- * GET — list keys in the akm env:user store. Values are NEVER returned.
+ * GET — list keys in the akm env/user store. Values are NEVER returned.
  */
 export const GET: RequestHandler = async (event) => {
   const requestId = getRequestId(event);

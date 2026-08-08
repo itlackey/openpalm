@@ -9,8 +9,8 @@
 # Portal and bot secrets are mounted per service via Compose secrets in
 # addon overlays and exposed to containers as *_FILE variables.
 #
-# User-managed env config lives in the akm `env:user` file at
-# knowledge/env/user.env (akm-cli >= 0.8.0 layout). The assistant entrypoint
+# User-managed env config lives in the akm `env/user` file at
+# knowledge/env/user.env (akm-cli >= 0.9.0 layout). The assistant entrypoint
 # deliberately does not source that file into the OpenCode server process;
 # agent tools load it on demand in a scoped subprocess.
 # OpenCode provider credentials live in knowledge/secrets/auth.json. The file is
@@ -73,12 +73,16 @@ services:
       OPENCODE_SERVER_PASSWORD_FILE: /run/secrets/opencode_server_password
       TERM: xterm-256color
       HOME: /home/opencode
-      # akm-cli layout: user-managed config and stash are separate from
-      # operational cache/data, which live under OP_HOME/data.
-      AKM_STASH_DIR: /stash
+      # akm-cli layout: user-managed config and bundle content are separate
+      # from operational cache/data, which live under OP_HOME/data.
+      # AKM_BUNDLE_DIR replaced AKM_STASH_DIR in akm 0.9.0 (no fallback to the
+      # old name). AKM_STATE_DIR (new in 0.9.0, task-scheduler invocation
+      # state) points inside the existing durable data mount.
+      AKM_BUNDLE_DIR: /stash
       AKM_CONFIG_DIR: /etc/akm
       AKM_CACHE_DIR: /opt/akm/cache
       AKM_DATA_DIR: /opt/akm/data
+      AKM_STATE_DIR: /opt/akm/data/state
       APPRISE_NOTIFY_CONFIG: /stash/env/apprise.conf
       OP_UID: ${OP_UID:-1000}
       OP_GID: ${OP_GID:-1000}

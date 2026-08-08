@@ -44,27 +44,28 @@ ensure_home_layout() {
     /work \
     /opt/akm/cache \
     /opt/akm/data \
+    /opt/akm/data/state \
     /stash
 
 }
 
-# ── G1: env:user is NOT sourced into this process ───────────────────────────
-# This entrypoint used to `set -a; . "$AKM_STASH_DIR/env/user.env"` here and
-# then `exec opencode` from the SAME shell, which put every env:user value
+# ── G1: env/user is NOT sourced into this process ───────────────────────────
+# This entrypoint used to `set -a; . "$AKM_BUNDLE_DIR/env/user.env"` here and
+# then `exec opencode` from the SAME shell, which put every env/user value
 # (API keys, owner info, anything the operator configured) into the OpenCode
 # server's own process environment — and therefore into every bash-tool
 # subprocess the agent runs, retrievable with a single `env`/`printenv` call
 # with no file path involved at all. Nothing between here and `start_opencode`
-# needs env:user's arbitrary
-# keys: `run_akm_schema_migration`/`persist_akm_stash_dir_fallback` only need
-# HOME/AKM_STASH_DIR (already in the container's own environment), and
+# needs env/user's arbitrary
+# keys: `run_akm_migration_check`/`persist_akm_bundle_dir_fallback` only need
+# HOME/AKM_BUNDLE_DIR (already in the container's own environment), and
 # `start_cron_and_sync_tasks` forwards its own small, explicit allowlist of
 # vars into the crontab preamble rather than the whole file. The sanctioned,
 # on-demand path for the AGENT to use a user secret is still available and
-# unaffected by this change: the `load_vault` OpenCode tool (akm-cli) resolves
-# `akm env path env:user` and sources it inside its OWN tool-call subprocess
-# for that one turn — never the server's top-level environment — matching the
-# skeleton instructions (system/assistant/instructions/core.md).
+# unaffected by this change: `akm env run user -- <cmd>` (akm-cli >= 0.9.0)
+# injects the values into that one tool-call subprocess for that one turn —
+# never the server's top-level environment — matching the skeleton
+# instructions (system/assistant/instructions/core.md).
 
 # ── E2/S2: no boot-time package installs ────────────────────────────────────
 # @openpalm/ui and the tool tree (opencode-ai, akm-cli) are baked into the image
@@ -398,42 +399,69 @@ run_akm_command() {
   env HOME="${HOME:-/home/opencode}" "$@"
 }
 
-run_akm_schema_migration() {
-  # akm auto-migrates its db/stash schema whenever it opens the database.
-  # Run a deterministic db-opening command HERE — as the opencode user, with
-  # output surfaced to docker logs — so the migration happens under the
-  # correct uid (root-owned db files in the bind-mounted stash are the
-  # chown-clobber class of bug) and a failed migration is visible instead of
-  # being swallowed by the silenced `akm tasks sync` call below.
-  # Idempotent (akm no-ops when the schema is current) and non-fatal: a
-  # migration hiccup must never block the assistant from starting. (#474)
+run_akm_migration_check() {
+  # akm >= 0.9.0 no longer auto-migrates on open: ordinary commands fail
+  # closed against an un-migrated durable schema and the explicit,
+  # crash-resumable `akm migrate apply` is the only cutover path. Run the
+  # check HERE — as the opencode user, with output surfaced to docker logs —
+  # so any migration happens under the correct uid (root-owned db files in
+  # the bind-mounted data dir are the chown-clobber class of bug) and a
+  # failed migration is visible instead of being swallowed by the silenced
+  # `akm task sync` call below.
+  # Idempotent (`migrate status` is read-only; `migrate apply` no-ops /
+  # resumes to convergence) and non-fatal: a migration hiccup must never
+  # block the assistant from starting. (#474)
   if ! command -v akm >/dev/null 2>&1; then return 0; fi
 
-  echo "entrypoint: running akm schema migration (akm health)..." >&2
-  # akm health exit codes: 0 = ok, 4 = health warn (db still opened + migrated).
-  # Anything else means the db could not be opened/migrated — surface it loudly
-  # but keep booting.
-  local rc=0
-  run_akm_command akm health >&2 || rc=$?
-  if [ "$rc" = "0" ] || [ "$rc" = "4" ]; then
-    echo "entrypoint: akm schema migration check complete (exit $rc)" >&2
+  echo "entrypoint: checking akm durable-state migration (akm migrate status)..." >&2
+  if run_akm_command akm migrate status >&2; then
+    echo "entrypoint: akm migration state is current" >&2
   else
-    echo "warning: akm schema migration check failed (exit $rc); continuing startup" >&2
+    # A pending 0.8 → 0.9 cutover (or an interrupted apply) — run the
+    # crash-resumable apply. OpenPalm writes the 0.9-shape config itself, so
+    # no --config is needed; a second apply is harmless when the first one
+    # only staged a generated config. Rebind the scheduler entries afterwards
+    # so installed cron rows re-capture the current binary/spelling.
+    echo "entrypoint: akm migration pending — running akm migrate apply..." >&2
+    local rc=0
+    run_akm_command akm migrate apply >&2 || rc=$?
+    if [ "$rc" != "0" ]; then
+      run_akm_command akm migrate apply >&2 || rc=$?
+    fi
+    if [ "$rc" = "0" ]; then
+      echo "entrypoint: akm migrate apply complete" >&2
+      run_akm_command akm task sync --rebind >&2 \
+        || echo "warning: akm task sync --rebind failed after migration; continuing" >&2
+    else
+      echo "warning: akm migrate apply failed (exit $rc); akm commands may fail until it succeeds — continuing startup" >&2
+    fi
+  fi
+
+  # Health probe (0 = ok, 4 = health warn) — surfaces db problems loudly at
+  # boot without blocking startup.
+  local hrc=0
+  run_akm_command akm health >&2 || hrc=$?
+  if [ "$hrc" = "0" ] || [ "$hrc" = "4" ]; then
+    echo "entrypoint: akm health check complete (exit $hrc)" >&2
+  else
+    echo "warning: akm health check failed (exit $hrc); continuing startup" >&2
   fi
 }
 
-persist_akm_stash_dir_fallback() {
+persist_akm_bundle_dir_fallback() {
   # Defense-in-depth for scheduled tasks (#552): cron jobs normally receive
-  # AKM_STASH_DIR / AKM_CONFIG_DIR / HOME from the managed crontab preamble.
+  # AKM_BUNDLE_DIR / AKM_CONFIG_DIR / HOME from the managed crontab preamble.
   # If an external crontab rewrite drops that preamble, akm falls back to
   # $HOME/.config/akm/config.json — which never existed — so every akm-based
-  # task fails with "No stash directory found" while still exiting 0.
-  # Persist stashDir into the config locations akm can resolve WITHOUT the
-  # forwarded env so a lost preamble degrades gracefully instead of silently
-  # breaking every automation.
+  # task fails with "no bundle directory found" while still exiting 0.
+  # Persist the primary bundle into the config locations akm can resolve
+  # WITHOUT the forwarded env so a lost preamble degrades gracefully instead
+  # of silently breaking every automation. akm >= 0.9.0 shape: a `bundles`
+  # map + `defaultBundle` (the retired flat `stashDir` key is hard-rejected),
+  # and any present config file must carry configVersion "0.9.0".
   if ! command -v akm >/dev/null 2>&1; then return 0; fi
-  local stash_dir="${AKM_STASH_DIR:-/stash}"
-  [ -d "$stash_dir" ] || return 0
+  local bundle_dir="${AKM_BUNDLE_DIR:-/stash}"
+  [ -d "$bundle_dir" ] || return 0
 
   # Candidate config dirs, most specific first: the configured AKM_CONFIG_DIR,
   # the boot-time HOME default, and the passwd-home default (busybox crond
@@ -447,30 +475,32 @@ persist_akm_stash_dir_fallback() {
     [ -n "$config_dir" ] || continue
     config_file="$config_dir/config.json"
     if [ -f "$config_file" ]; then
-      # Merge stashDir into an existing config without touching other keys.
-      # A corrupt or already-populated file is left alone — never destroy
-      # operator config from the entrypoint.
+      # Merge the primary bundle into an existing config without touching
+      # other keys. A corrupt or already-populated file is left alone — never
+      # destroy operator config from the entrypoint.
       node -e '
         const fs = require("fs");
-        const [file, stashDir] = process.argv.slice(1);
+        const [file, bundleDir] = process.argv.slice(1);
         let cfg;
         try { cfg = JSON.parse(fs.readFileSync(file, "utf8")); } catch { process.exit(0); }
-        if (!cfg || typeof cfg !== "object" || Array.isArray(cfg) || cfg.stashDir) process.exit(0);
-        cfg.stashDir = stashDir;
+        if (!cfg || typeof cfg !== "object" || Array.isArray(cfg) || cfg.bundles) process.exit(0);
+        if (typeof cfg.configVersion !== "string") cfg.configVersion = "0.9.0";
+        cfg.bundles = { openpalm: { path: bundleDir, writable: true } };
+        cfg.defaultBundle = "openpalm";
         const tmp = file + ".tmp";
         fs.writeFileSync(tmp, JSON.stringify(cfg, null, 2) + "\n");
         fs.renameSync(tmp, file);
-      ' "$config_file" "$stash_dir" 2>/dev/null \
-        || echo "warning: could not merge stashDir into $config_file; continuing" >&2
+      ' "$config_file" "$bundle_dir" 2>/dev/null \
+        || echo "warning: could not merge bundles into $config_file; continuing" >&2
     else
       mkdir -p "$config_dir" 2>/dev/null || continue
-      # JSON-escape backslashes and double quotes so an unusual stash path
-      # cannot produce an invalid config.json (which would re-break stash
+      # JSON-escape backslashes and double quotes so an unusual bundle path
+      # cannot produce an invalid config.json (which would re-break bundle
       # resolution under cron — the exact failure this fallback guards against).
-      local stash_dir_json="${stash_dir//\\/\\\\}"
-      stash_dir_json="${stash_dir_json//\"/\\\"}"
-      printf '{\n  "stashDir": "%s"\n}\n' "$stash_dir_json" > "$config_file" 2>/dev/null \
-        || echo "warning: could not write stashDir fallback to $config_file; continuing" >&2
+      local bundle_dir_json="${bundle_dir//\\/\\\\}"
+      bundle_dir_json="${bundle_dir_json//\"/\\\"}"
+      printf '{\n  "configVersion": "0.9.0",\n  "bundles": {\n    "openpalm": { "path": "%s", "writable": true }\n  },\n  "defaultBundle": "openpalm"\n}\n' "$bundle_dir_json" > "$config_file" 2>/dev/null \
+        || echo "warning: could not write bundle fallback to $config_file; continuing" >&2
     fi
   done
 }
@@ -532,8 +562,8 @@ start_cron_and_sync_tasks() {
   echo "PATH=$cron_path" >> "$crontab_file"
 
   # Forward selected env vars into cron jobs
-  for var in HOME AKM_STASH_DIR AKM_CONFIG_DIR AKM_CACHE_DIR AKM_DATA_DIR \
-             OPENCODE_API_URL OPENCODE_CONFIG_DIR; do
+  for var in HOME AKM_BUNDLE_DIR AKM_CONFIG_DIR AKM_CACHE_DIR AKM_DATA_DIR \
+             AKM_STATE_DIR OPENCODE_API_URL OPENCODE_CONFIG_DIR; do
     if [ -n "${!var:-}" ]; then
       echo "export $var=\"${!var}\"" >> "$crontab_file"
     fi
@@ -551,11 +581,11 @@ start_cron_and_sync_tasks() {
   # writes task blocks into the same per-user crontab.
   crontab "$crontab_file" 2>/dev/null || true
 
-  # Sync automation tasks from the akm stash into cron, then start cron.
-  local tasks_dir="${AKM_STASH_DIR:-/stash}/tasks"
+  # Sync automation tasks from the akm bundle into cron, then start cron.
+  local tasks_dir="${AKM_BUNDLE_DIR:-/stash}/tasks"
   if command -v akm >/dev/null 2>&1 && [ -d "$tasks_dir" ]; then
-    if ! run_akm_command akm tasks sync >&2; then
-      echo "warning: initial akm tasks sync failed; continuing startup" >&2
+    if ! run_akm_command akm task sync >&2; then
+      echo "warning: initial akm task sync failed; continuing startup" >&2
     fi
   fi
 
@@ -571,8 +601,8 @@ start_cron_and_sync_tasks() {
     while true; do
       sleep 60
       if command -v akm >/dev/null 2>&1 && [ -d "$tasks_dir" ]; then
-        if ! run_akm_command akm tasks sync >&2; then
-          echo "warning: background akm tasks sync failed; retrying in 60s" >&2
+        if ! run_akm_command akm task sync >&2; then
+          echo "warning: background akm task sync failed; retrying in 60s" >&2
         fi
       fi
     done
@@ -603,8 +633,8 @@ start_opencode() {
 ensure_home_layout
 maybe_prepare_nss_wrapper
 seed_default_agents_md
-run_akm_schema_migration
-persist_akm_stash_dir_fallback
+run_akm_migration_check
+persist_akm_bundle_dir_fallback
 start_cron_and_sync_tasks
 resolve_opencode_server_password
 start_ui

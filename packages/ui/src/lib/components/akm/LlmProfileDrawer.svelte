@@ -1,24 +1,25 @@
 <script lang="ts">
 	import PasswordInput from '$lib/components/common/PasswordInput.svelte';
 	import Drawer from '$lib/components/common/Drawer.svelte';
-	import type { LlmProfile } from './profile-types';
+	import type { LlmEngine } from './profile-types';
 
-	// Slide-in editor for one LLM profile. The parent (AkmTab) owns the draft
-	// (deep-copied on open) and binds it here — this component does NOT keep its
-	// own copy. Cancel/Apply are raised back; the parent commits the draft.
+	// Slide-in editor for one LLM engine (akm engines.<name>, kind "llm"). The
+	// parent (AkmTab) owns the draft (deep-copied on open) and binds it here —
+	// this component does NOT keep its own copy. Cancel/Apply are raised back;
+	// the parent commits the draft.
 	interface Props {
-		draft: LlmProfile;
+		draft: LlmEngine;
 		oncancel: () => void;
 		onapply: () => void;
 	}
 	let { draft = $bindable(), oncancel, onapply }: Props = $props();
 </script>
 
-<Drawer open={true} title="LLM profile" onClose={oncancel} width="40rem">
+<Drawer open={true} title="LLM engine" onClose={oncancel} width="40rem">
 	<div class="profile-drawer-body">
 		<div class="controls controls--grid">
 			<div class="control-group">
-				<label class="control-label" for="d-llm-name">Profile Name</label>
+				<label class="control-label" for="d-llm-name">Engine Name</label>
 				<input id="d-llm-name" class="control-input" type="text" spellcheck="false" placeholder="e.g. default" bind:value={draft.name} />
 			</div>
 			<div class="control-group control-group--wide">
@@ -34,7 +35,7 @@
 				<input id="d-llm-provider" class="control-input" type="text" spellcheck="false" placeholder="openai" bind:value={draft.provider} />
 			</div>
 			<div class="control-group">
-				<label class="control-label" for="d-llm-apikey">API Key</label>
+				<label class="control-label" for="d-llm-apikey">API Key (env reference)</label>
 				<PasswordInput id="d-llm-apikey" placeholder={'${AKM_LLM_API_KEY}'} bind:value={draft.apiKey} />
 			</div>
 			<div class="control-group">
@@ -57,20 +58,11 @@
 				<label class="control-label" for="d-llm-contextlength">Context length</label>
 				<input id="d-llm-contextlength" class="control-input control-input--narrow" type="number" min="1" bind:value={draft.contextLength} />
 			</div>
-			<div class="control-group">
-				<label class="control-label" for="d-llm-judgemodel">Judge model</label>
-				<input id="d-llm-judgemodel" class="control-input" type="text" spellcheck="false" placeholder="gpt-4o" bind:value={draft.judgeModel} />
-			</div>
 		</div>
 		<label class="toggle-row" style="margin-top: var(--s-sp-4)">
 			<input type="checkbox" bind:checked={draft.supportsJsonSchema} />
 			<span class="toggle-label">Supports JSON schema</span>
 			<span class="toggle-hint">Use response_format: json_schema for structured output</span>
-		</label>
-		<label class="toggle-row">
-		<input type="checkbox" bind:checked={draft.structuredOutput} />
-		<span class="toggle-label">Structured output capability</span>
-		<span class="toggle-hint">capabilities.structuredOutput — model reliably returns valid structured JSON</span>
 		</label>
 		<label class="toggle-row">
 		<input type="checkbox" bind:checked={draft.enableThinking} />

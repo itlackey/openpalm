@@ -54,13 +54,14 @@ The image also exposes the `assistant-persistent` named volume at
 | `OPENCODE_AUTH` | Generated, default `false` | Direct API Basic-auth posture |
 | `OPENCODE_SERVER_PASSWORD_FILE` | `/run/secrets/opencode_server_password` | Generated direct API password |
 | `HOME` | `/home/opencode` | Runtime home |
-| `AKM_STASH_DIR` | `/stash` | Primary AKM stash |
+| `AKM_BUNDLE_DIR` | `/stash` | Primary AKM bundle |
 | `AKM_CONFIG_DIR` | `/etc/akm` | AKM config |
 | `AKM_CACHE_DIR` | `/opt/akm/cache` | AKM cache |
 | `AKM_DATA_DIR` | `/opt/akm/data` | AKM durable data |
+| `AKM_STATE_DIR` | `/opt/akm/data/state` | AKM task-scheduler state |
 
 The entrypoint does not source `knowledge/env/user.env`. Scoped OpenCode tools
-and AKM commands resolve `env:user` only for the operation that needs it, so the
+and AKM commands resolve `env/user` only for the operation that needs it, so the
 OpenCode server and arbitrary tool subprocesses do not inherit every user
 secret.
 

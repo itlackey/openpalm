@@ -1,21 +1,22 @@
 <script lang="ts">
 	import ProfileRow from './ProfileRow.svelte';
-	import type { AgentProfile } from './profile-types';
+	import type { AgentEngine } from './profile-types';
 	import IconAgent from '$lib/components/icons/IconAgent.svelte';
 
-	// Presentation-only list of agent-runner profiles. Parent owns array +
-	// default-name via $bindable; this raises edit/add/remove. Each row gets a
-	// platform badge through ProfileRow's `extra` snippet.
+	// Presentation-only list of agent engines (akm engines.<name>, kind "agent").
+	// Parent owns array + default-name via $bindable; this raises
+	// edit/add/remove. Each row gets a platform badge through ProfileRow's
+	// `extra` snippet.
 	interface Props {
-		profiles: AgentProfile[];
+		engines: AgentEngine[];
 		defaultName: string;
 		disabled?: boolean;
-		onedit: (p: AgentProfile) => void;
+		onedit: (p: AgentEngine) => void;
 		onadd: () => void;
 		onremove: (id: string) => void;
 	}
 	let {
-		profiles = $bindable([]),
+		engines = $bindable([]),
 		defaultName = $bindable(''),
 		disabled = false,
 		onedit,
@@ -25,17 +26,17 @@
 </script>
 
 <section class="config-section">
-	<h3 class="section-title">Agent runners <span class="section-title-aka">akm agent profiles</span></h3>
-	<p class="section-note">Runner configs for maintenance steps that spawn a subprocess (opencode or claude CLI).</p>
+	<h3 class="section-title">Agent runners <span class="section-title-aka">akm agent engines</span></h3>
+	<p class="section-note">Runner configs for maintenance steps that spawn an agent (opencode, claude, and other supported CLIs).</p>
 
-	{#if profiles.length === 0}
+	{#if engines.length === 0}
 		<div class="profile-empty">
 			<IconAgent size={24} />
-			<p class="empty-note">No agent profiles defined.</p>
+			<p class="empty-note">No agent engines defined.</p>
 		</div>
 	{:else}
 		<div class="profile-list">
-			{#each profiles as p (p.id)}
+			{#each engines as p (p.id)}
 				<ProfileRow
 					name={p.name}
 					isDefault={defaultName === p.name}
@@ -53,7 +54,7 @@
 	{/if}
 
 	<button class="btn btn-secondary btn-sm" onclick={onadd} {disabled}>
-		+ Add Agent Profile
+		+ Add Agent Engine
 	</button>
 </section>
 

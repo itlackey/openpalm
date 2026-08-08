@@ -82,10 +82,11 @@ describe('Paperclip addon Compose contract', () => {
 		expect(environment?.XDG_CONFIG_HOME).toBe('/paperclip/.config');
 		expect(environment?.OPENCODE_CONFIG_DIR).toBe('/etc/opencode');
 		expect(environment?.OPENCODE_STRICT_CONFIG_DEPS).toBe('1');
-		expect(environment?.AKM_STASH_DIR).toBe('/stash');
+		expect(environment?.AKM_BUNDLE_DIR).toBe('/stash');
 		expect(environment?.AKM_CONFIG_DIR).toBe('/etc/akm');
 		expect(environment?.AKM_CACHE_DIR).toBe('/opt/akm/cache');
 		expect(environment?.AKM_DATA_DIR).toBe('/opt/akm/data');
+		expect(environment?.AKM_STATE_DIR).toBe('/opt/akm/data/state');
 		expect(environment?.PATH).toBe(
 			'/opt/openpalm/paperclip/bin:/etc/opencode/node_modules/.bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/local/games:/usr/games'
 		);
@@ -139,7 +140,7 @@ describe('Paperclip addon Compose contract', () => {
 		expect(openCodeLauncherContents).toContain('Bun.spawnSync([process.argv[3], "--version"]');
 		expect(openCodeLauncherContents).toContain('const hooks = await plugin.default({');
 		expect(openCodeLauncherContents).toContain(
-			'["akm_search", "akm_show", "akm_env", "akm_secret"]'
+			'["akm_search", "akm_show", "akm_curate", "akm_feedback", "akm_remember"]'
 		);
 		expect(openCodeLauncherContents).toContain('temporary="${destination}.tmp.$$"');
 		expect(openCodeLauncherContents).not.toContain('$runtime/bin');
@@ -202,8 +203,13 @@ describe('Paperclip addon Compose contract', () => {
 
 		const akmConfig = JSON.parse(
 			readFileSync(join(skeletonRoot, 'config/paperclip/akm/config.json'), 'utf8')
-		) as { defaults?: { agent?: string }; profiles?: { agent?: Record<string, unknown> } };
-		expect(akmConfig.defaults?.agent).toBe('opencode');
-		expect(akmConfig.profiles?.agent).toHaveProperty('opencode');
+		) as {
+			configVersion?: string;
+			defaults?: { engine?: string };
+			engines?: Record<string, { kind?: string; platform?: string }>;
+		};
+		expect(akmConfig.configVersion).toBe('0.9.0');
+		expect(akmConfig.defaults?.engine).toBe('opencode');
+		expect(akmConfig.engines?.opencode).toEqual({ kind: 'agent', platform: 'opencode' });
 	});
 });

@@ -43,7 +43,7 @@ test.describe('Secrets CRUD', () => {
     expect(res.ok()).toBeTruthy();
     const body = await res.json();
     expect(body.provider).toBe('akm');
-    expect(body.envRef).toBe('env:user');
+    expect(body.envRef).toBe('env/user');
     expect(Array.isArray(body.keys)).toBe(true);
   });
 
