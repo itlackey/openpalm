@@ -136,6 +136,13 @@ const KNOWN_PROC_KEYS = new Set([
 // (akm 0.9 hard-rejects them).
 const RETIRED_PROC_KEYS = new Set(['mode', 'profile']);
 
+// config.json is operator-editable, so a field can hold any JSON type. Every
+// FEntry string field must actually BE a string: a non-string that survives the
+// read is written straight back out by buildProcessConfig, where the endpoint
+// rejects the whole save (engine/policy) or akm rejects the config. Dropping the
+// bad value keeps the form saveable and loses nothing a valid config had.
+const str = (v: unknown): string => (typeof v === 'string' ? v : '');
+
 export function readFEntry(raw: unknown, defaultEnabled: boolean): FEntry {
 	const e = emptyFEntry(defaultEnabled);
 	if (typeof raw === 'boolean') {
@@ -145,23 +152,25 @@ export function readFEntry(raw: unknown, defaultEnabled: boolean): FEntry {
 	if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return e;
 	const r = raw as Record<string, unknown>;
 	if (typeof r.enabled === 'boolean') e.enabled = r.enabled;
-	e.engine = (r.engine as string) ?? '';
+	e.engine = str(r.engine);
 	e.timeoutMs = r.timeoutMs != null ? String(r.timeoutMs) : '';
 	e.allowedTypes = Array.isArray(r.allowedTypes) ? (r.allowedTypes as string[]).join(', ') : '';
 	e.qualityGate = triFromEnabled(r.qualityGate);
 	e.contradictionDetection = triFromEnabled(r.contradictionDetection);
-	e.defaultSince = (r.defaultSince as string) ?? '';
+	e.defaultSince = str(r.defaultSince);
 	e.maxTotalChars = r.maxTotalChars != null ? String(r.maxTotalChars) : '';
 	e.maxChunkSize = r.maxChunkSize != null ? String(r.maxChunkSize) : '';
-	e.applyMode = (r.applyMode as '' | 'queue' | 'promote') ?? '';
-	e.policy = (r.policy as string) ?? '';
+	// applyMode is an enum, not free text — an out-of-range string is rejected by
+	// the endpoint's APPLY_MODES check, so only the two valid values survive.
+	e.applyMode = r.applyMode === 'queue' || r.applyMode === 'promote' ? r.applyMode : '';
+	e.policy = str(r.policy);
 	e.maxAcceptsPerRun = r.maxAcceptsPerRun != null ? String(r.maxAcceptsPerRun) : '';
 	e.maxDiffLines = r.maxDiffLines != null ? String(r.maxDiffLines) : '';
 	e.rejectEmpty = r.rejectEmpty === true;
 	if (typeof r.judgment === 'object' && r.judgment !== null) {
 		const j = r.judgment as Record<string, unknown>;
 		e.judgment = {
-			engine: (j.engine as string) ?? '',
+			engine: str(j.engine),
 			timeoutMs: j.timeoutMs != null ? String(j.timeoutMs) : '',
 		};
 	}

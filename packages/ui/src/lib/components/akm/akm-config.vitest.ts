@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { akmConfigToForm, formToAkmPayload } from './akm-config';
+import { buildProcessConfig, readFEntry } from './improve-process-helpers';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Round-trip fidelity for the extracted pure config<->form mappers (akm 0.9).
@@ -205,5 +206,58 @@ describe('akmConfigToForm → formToAkmPayload round-trip (akm 0.9)', () => {
 		expect(form.improveStrategies[0].limit).toBe(25);
 		expect(form.llmEngines.map((p) => p.name)).toEqual(['legacy']);
 		expect(form.agentEngines).toEqual([]);
+	});
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Type hygiene on read: config.json is operator-editable, so every field can
+// hold any JSON type. A non-string that survived readFEntry used to be written
+// straight back out by buildProcessConfig, where the endpoint rejects the whole
+// save (engine/policy must be strings) — a form the operator cannot save at all
+// until they hand-fix the file. Reading drops the bad value instead.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('readFEntry type hygiene (non-string process fields)', () => {
+	it('drops non-string engine, judgment.engine, policy, defaultSince, and out-of-range applyMode', () => {
+		const e = readFEntry(
+			{
+				enabled: true,
+				engine: 42,
+				policy: { not: 'a string' },
+				defaultSince: ['24h'],
+				applyMode: 'bogus',
+				judgment: { engine: 7, timeoutMs: 1000 },
+			},
+			false,
+		);
+
+		expect(e.enabled).toBe(true);
+		expect(e.engine).toBe('');
+		expect(e.policy).toBe('');
+		expect(e.defaultSince).toBe('');
+		expect(e.applyMode).toBe('');
+		expect(e.judgment.engine).toBe('');
+		// A valid sibling field on the same object still reads through.
+		expect(e.judgment.timeoutMs).toBe('1000');
+
+		// The dropped values never reach the payload, so the save stays valid.
+		const out = buildProcessConfig(e);
+		expect(out.engine).toBeUndefined();
+		expect(out.policy).toBeUndefined();
+		expect(out.defaultSince).toBeUndefined();
+		expect(out.applyMode).toBeUndefined();
+		expect(out.judgment).toEqual({ timeoutMs: 1000 });
+	});
+
+	it('preserves valid string values and both applyMode enum members', () => {
+		const e = readFEntry(
+			{ engine: 'fast', policy: 'personal-stash', defaultSince: '24h', applyMode: 'queue' },
+			true,
+		);
+		expect(e.engine).toBe('fast');
+		expect(e.policy).toBe('personal-stash');
+		expect(e.defaultSince).toBe('24h');
+		expect(e.applyMode).toBe('queue');
+		expect(readFEntry({ applyMode: 'promote' }, true).applyMode).toBe('promote');
 	});
 });

@@ -9,15 +9,19 @@ import type { RequestHandler } from "./$types";
 // Returns the full set of pre-fill data for re-running the setup wizard.
 // Requires session auth so secrets are only returned to authenticated operators.
 
-interface AkmLlmEngine {
+// One entry of the akm 0.9 `engines` map. The map holds BOTH kinds, so this
+// models either — `platform` is the agent-engine discriminator this reader
+// checks for, and never reads beyond it.
+interface AkmEngine {
   kind?: string;
   provider?: string;
   model?: string;
   endpoint?: string;
+  platform?: string;
 }
 
 interface AkmConfig {
-  engines?: Record<string, AkmLlmEngine>;
+  engines?: Record<string, AkmEngine>;
   defaults?: { llmEngine?: string };
   embedding?: { provider?: string; model?: string; endpoint?: string; dimension?: number };
 }
@@ -34,17 +38,28 @@ function readAkmConfig(configDir: string): AkmConfig {
 
 /**
  * Resolve the wizard-prefill LLM connection from the akm 0.9 engines map:
- * engines[defaults.llmEngine ?? "default"] when that entry has kind "llm",
- * falling back to engines.default. Returns undefined when no llm engine is
- * configured.
+ * engines[defaults.llmEngine ?? "default"], falling back to engines.default.
+ * Returns undefined when no llm engine is configured.
+ *
+ * `kind` is REQUIRED by akm 0.9's own schema, but this reader is deliberately
+ * lenient about it in exactly the same direction as the AKM tab's reader
+ * (akm-config.ts): an entry counts as LLM unless it is explicitly
+ * `kind: "agent"`. A hand-written config that omits `kind` therefore prefills
+ * the wizard instead of silently reporting "no LLM configured" — the two
+ * readers of this same file must not disagree about what an entry is.
  */
-function resolveDefaultLlmEngine(akm: AkmConfig): AkmLlmEngine | undefined {
+function isLlmEngine(entry: AkmEngine | undefined): entry is AkmEngine {
+  return Boolean(entry) && entry?.kind !== "agent";
+}
+
+/** Exported for unit tests — pure, no request context. */
+export function resolveDefaultLlmEngine(akm: AkmConfig): AkmEngine | undefined {
   const engines = akm.engines;
   if (!engines || typeof engines !== "object") return undefined;
   const preferred = engines[akm.defaults?.llmEngine ?? "default"];
-  if (preferred && preferred.kind === "llm") return preferred;
+  if (isLlmEngine(preferred)) return preferred;
   const fallback = engines.default;
-  if (fallback && fallback.kind === "llm") return fallback;
+  if (isLlmEngine(fallback)) return fallback;
   return undefined;
 }
 
