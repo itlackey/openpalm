@@ -177,12 +177,9 @@ ENV APPRISE_NOTIFY_CONFIG="/stash/env/apprise.conf"
 # Baking a path here causes OpenCode to detect google-vertex-anthropic as
 # connected on every install, even when the credentials file does not exist.
 
-# gcloud CLI is NOT baked here (IMG-3, 0.13.0: ~550 MB, and its only in-image
-# consumer was the `gws-setup` skill's OAuth bootstrap). The Google Workspace
-# CLI (gws) is likewise NOT baked: its only consumer is the `gws-setup` skill,
-# whose scripts install it on first use. Both install on request via the
-# `install-optional-tool` akm skill into /opt/persistent, which is already on
-# PATH below; gcloud then defaults its own config dir to
+# gcloud CLI is NOT baked here (IMG-3, 0.13.0: ~550 MB). It installs on
+# request via the `install-optional-tool` akm skill into /opt/persistent,
+# which is already on PATH below; gcloud then defaults its own config dir to
 # $HOME/.config/gcloud, which persists via the assistant home bind mount
 # without needing a CLOUDSDK_CONFIG override here.
 

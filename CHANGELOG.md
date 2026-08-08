@@ -46,6 +46,23 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
     when the target is root: a genuine root install has nothing to repair, and
     repairing to root is never the desired outcome.
 
+### Removed
+
+- **Google Workspace (gws) integration removed from the stack.** The
+  `gws-setup` skill (its `SKILL.md`, auth-methods reference, and the
+  `gws-setup`/`gws-verify`/`gws-export` scripts) and the `gws` entry in the
+  `install-optional-tool` manifest are gone, along with every prose reference
+  in `AGENTS.md`, the assistant `Dockerfile`, and the optional-tool skill.
+  `gcloud` stays — it is a general-purpose CLI, and only the text describing it
+  as a `gws-setup` dependency was removed.
+  - Existing homes keep their seeded copy of the skill: shipped skills are
+    seeded once and never refreshed. Delete `knowledge/skills/gws-setup/` and,
+    once nothing else uses them, the credentials under
+    `knowledge/secrets/.gws/`.
+  - Retiring the skill also removes a latent bug: its scripts resolved paths
+    through `${OP_HOME}`, which is never set inside the assistant container, so
+    they addressed `/knowledge/secrets/.gws` rather than the real location.
+
 ### Changed
 
 - **akm 0.9.0 + akm-opencode 0.9.0 (official releases).** The whole stack moves
