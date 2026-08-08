@@ -28,6 +28,18 @@ ownership:
 
 Host-side ephemeral artifacts outside `OP_HOME` use `~/.cache/openpalm/`.
 
+> **A final reorganization of this layout has been approved** (2026-08-08) and
+> is not yet implemented; everything in this document describes the current
+> runtime. Under the accepted design, each agent-bearing service gets its own
+> `stash/<principal>/` mounted at `/stash` and receives `knowledge/` as a shared
+> AKM secondary source — replacing the parent-mount-plus-overmount scheme
+> described under Paperclip below — and shipped skills become release-managed
+> content under `system/`. See
+> [`core-principles.md`](core-principles.md) § Accepted final layout for the
+> binding rules and
+> [`../reviews/op-home-restructure-proposal.md`](../reviews/op-home-restructure-proposal.md)
+> for the decision record and migration.
+
 Lifecycle safety backups include `private/` and exclude `data/` and regenerable
 `cache/`. `uninstall --purge` removes every `OP_HOME` tree, including `private/`
 and `cache/`. Ownership reconciliation covers durable/user/private paths and does

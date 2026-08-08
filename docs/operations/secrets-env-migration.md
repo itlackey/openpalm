@@ -53,3 +53,22 @@ Assistant-readable copy.
 Do not bulk-move `knowledge/secrets/`: provider `auth.json` deliberately remains
 there. Do not put `state/stack.env` or delegated service credentials under
 `knowledge/`.
+
+## Upcoming layout change
+
+A final reorganization has been approved (2026-08-08) and is not yet
+implemented. When it lands, the current CLI will migrate supported homes
+automatically, as it has for every previous layout move:
+
+- each agent-bearing service gets `stash/<principal>/` (its own `env/`,
+  `secrets/`, `tasks/`), mounted at that service's `/stash`;
+- `knowledge/` becomes the **shared** AKM tree, offered to approved
+  participants as a named secondary source rather than as the stash root;
+- shipped skills become release-managed content under `system/`;
+- the internal secret API defaults to `private/secrets/`, while
+  operator-managed (agent-readable) secrets are written to
+  `stash/<principal>/secrets/`.
+
+Do not pre-move anything by hand. See
+[`../technical/core-principles.md`](../technical/core-principles.md)
+§ Accepted final layout.
