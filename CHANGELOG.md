@@ -27,6 +27,15 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   - `hasUsableOperatorId` now accepts `0`, so a hand-set `OP_UID=0` is treated
     as the explicit operator choice it is rather than as "unset". Negative and
     non-integer values are still rejected.
+  - **Root installs are opt-in.** Supported, but never entered by accident:
+    persisting a root `OP_UID`/`OP_GID` now requires `OP_ALLOW_ROOT=1` and
+    otherwise fails with an actionable message. The gate sits at the three
+    places a root identity can be *persisted* — `writeSystemEnv`,
+    `generateFallbackSystemEnv`, and the `--adopt-host` patch in
+    `reconcileHostOwnership` — not in the resolver, because a resolver that
+    refuses root is the bug this release fixes. A home that already carries
+    `OP_UID=0` records the operator's prior consent and is never rewritten, so
+    it does not re-trip the gate on every apply.
   - **Ownership repair never chowns *to* root.** Reporting root honestly means
     a root session now resolves a real identity where it previously resolved
     `null`, and both repair passes chown to that identity. `sudo openpalm

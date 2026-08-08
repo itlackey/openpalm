@@ -11,12 +11,24 @@
  *   2. A tripwire throws if OP_HOME is re-pointed at a real or dev dir during
  *      the test process lifetime (catches tests that forget to restore OP_HOME).
  *   3. The temp dirs are cleaned up after all tests finish.
+ *   4. Root installs are opted into (OP_ALLOW_ROOT), because the suite must run
+ *      in root environments — CI images, Docker-in-Docker — where the throwaway
+ *      OP_HOME above is root-owned and root is the only resolvable operator
+ *      identity. Without this the persist-time guard in operator-ids.ts refuses,
+ *      which is correct for a real install and wrong for a disposable temp dir.
+ *      Only ever set here, never in shipped code.
  */
 import { beforeAll, afterAll, beforeEach } from "bun:test";
 import { mkdtempSync, rmSync, realpathSync, existsSync } from "node:fs";
 import { tmpdir, homedir } from "node:os";
 import { join, resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+
+// The suite runs as root in CI/container images, against a throwaway OP_HOME
+// that root necessarily owns. Declare the opt-in the persist-time guard wants
+// (see assertRootInstallAllowed) so root environments can run the tests; a real
+// install still has to opt in deliberately.
+process.env.OP_ALLOW_ROOT = "1";
 
 // ── Repo root detection ─────────────────────────────────────────────────────
 

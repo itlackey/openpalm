@@ -12,7 +12,7 @@
 import { existsSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { createLogger } from "../logger.js";
-import { type OperatorIds, resolveSessionIdentity } from "./operator-ids.js";
+import { isRootIds, resolveSessionIdentity } from "./operator-ids.js";
 import { readStackEnv } from "./secrets.js";
 import { run, resolveComposeProjectName } from "./docker.js";
 
@@ -44,11 +44,9 @@ const OWNERSHIP_REPAIR_SANDBOX_ARGS = [
  *
  * A genuine root install needs no repair either: its files are already
  * root-owned and its containers already run as root. So skipping is correct in
- * both cases.
+ * both cases. The root test itself is `isRootIds` in operator-ids.ts — one
+ * definition, shared with the persist-time guard.
  */
-function isRootTarget(ids: OperatorIds): boolean {
-  return ids.uid === 0 || ids.gid === 0;
-}
 
 /**
  * Fix root-owned bind-mount directories under OP_HOME by running a temporary
@@ -77,8 +75,8 @@ export async function repairRootOwnedBindMounts(homeDir: string, candidates?: st
 
   const ids = resolveSessionIdentity(homeDir);
   if (!ids) return true;
-  if (isRootTarget(ids)) {
-    logger.info('Session identity is root — skipping bind-mount ownership repair (see isRootTarget)');
+  if (isRootIds(ids)) {
+    logger.info('Session identity is root — skipping bind-mount ownership repair (see the note above isRootIds usage)');
     return true;
   }
 
@@ -190,8 +188,8 @@ export async function repairManagedNamedVolumes(
 ): Promise<boolean> {
   const ids = resolveSessionIdentity(homeDir);
   if (!ids) return true;
-  if (isRootTarget(ids)) {
-    logger.info('Session identity is root — skipping named-volume ownership repair (see isRootTarget)');
+  if (isRootIds(ids)) {
+    logger.info('Session identity is root — skipping named-volume ownership repair (see the note above isRootIds usage)');
     return true;
   }
   const projectName = resolveComposeProjectName(readStackEnv(homeDir));

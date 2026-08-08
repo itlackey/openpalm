@@ -27,7 +27,13 @@ import type { ControlPlaneState, ArtifactMeta } from "./types.js";
 import { stackEnvFile, legacyKnowledgeStackEnvFile, legacyStateEnvFile, composeFilePath, customComposeFilePath } from "./home.js";
 import { stackEnvPath } from "./paths.js";
 import { writeFileAtomic } from "./fs-atomic.js";
-import { resolveOperatorIds, hasUsableOperatorId, type OperatorIds } from "./operator-ids.js";
+import {
+  assertRootInstallAllowed,
+  hasUsableOperatorId,
+  isRootIds,
+  type OperatorIds,
+  resolveOperatorIds,
+} from "./operator-ids.js";
 import { STACK_DEFAULTS } from "./defaults.js";
 import { generateFallbackSystemEnv } from "./fallback-system-env.js";
 
@@ -278,7 +284,13 @@ export function writeSystemEnv(state: ControlPlaneState): void {
     // reports the ids it actually resolved rather than asserting OP_UID=0.
     // Warn on every write rather than once: it is a standing condition, not a
     // one-time event.
-    if (ids.uid === 0 || ids.gid === 0) {
+    const writeUid = !hasUsableOperatorId(parsed, "OP_UID");
+    const writeGid = !hasUsableOperatorId(parsed, "OP_GID");
+    // Opt-in is checked only when a root identity would actually be PERSISTED.
+    // A home already carrying OP_UID=0 records the operator's prior consent and
+    // is never rewritten, so it does not re-trip the gate on every apply.
+    if (writeUid || writeGid) assertRootInstallAllowed(ids);
+    if (isRootIds(ids)) {
       logger.warn(
         `Resolved a root operator id — containers will run as ${ids.uid}:${ids.gid}. ` +
           "This is supported but NOT recommended. To avoid it, ensure OP_HOME is owned by a " +
@@ -286,8 +298,8 @@ export function writeSystemEnv(state: ControlPlaneState): void {
           "in state/stack.env."
       );
     }
-    if (!hasUsableOperatorId(parsed, "OP_UID")) adminManaged.OP_UID = String(ids.uid);
-    if (!hasUsableOperatorId(parsed, "OP_GID")) adminManaged.OP_GID = String(ids.gid);
+    if (writeUid) adminManaged.OP_UID = String(ids.uid);
+    if (writeGid) adminManaged.OP_GID = String(ids.gid);
   }
 
   // Backfill OP_HOME when missing — compose files reference ${OP_HOME}

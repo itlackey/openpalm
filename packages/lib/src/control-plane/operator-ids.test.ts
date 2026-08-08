@@ -2,7 +2,12 @@ import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import { mkdtempSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { resolveOperatorIds, resolveSessionIdentity, hasUsableOperatorId } from "./operator-ids.js";
+import {
+  assertRootInstallAllowed,
+  hasUsableOperatorId,
+  resolveOperatorIds,
+  resolveSessionIdentity,
+} from "./operator-ids.js";
 
 let tempDir = "";
 
@@ -232,5 +237,42 @@ describe("hasUsableOperatorId", () => {
 
   test("returns false for non-numeric garbage", () => {
     expect(hasUsableOperatorId({ OP_UID: "abc" }, "OP_UID")).toBe(false);
+  });
+});
+
+describe("root installs are opt-in", () => {
+  const origAllow = process.env.OP_ALLOW_ROOT;
+  afterEach(() => {
+    if (origAllow === undefined) delete process.env.OP_ALLOW_ROOT;
+    else process.env.OP_ALLOW_ROOT = origAllow;
+  });
+
+  test("assertRootInstallAllowed throws for a root identity when not opted in", () => {
+    delete process.env.OP_ALLOW_ROOT;
+    expect(() => assertRootInstallAllowed({ uid: 0, gid: 0 })).toThrow(/OP_ALLOW_ROOT=1/);
+  });
+
+  test("it also throws for a gid-only root identity", () => {
+    delete process.env.OP_ALLOW_ROOT;
+    expect(() => assertRootInstallAllowed({ uid: 1000, gid: 0 })).toThrow();
+  });
+
+  test("it permits a root identity once opted in", () => {
+    for (const value of ["1", "true", "TRUE", "yes", "on", " 1 "]) {
+      process.env.OP_ALLOW_ROOT = value;
+      expect(() => assertRootInstallAllowed({ uid: 0, gid: 0 })).not.toThrow();
+    }
+  });
+
+  test("an unrelated value is not an opt-in", () => {
+    for (const value of ["0", "false", "no", "off", ""]) {
+      process.env.OP_ALLOW_ROOT = value;
+      expect(() => assertRootInstallAllowed({ uid: 0, gid: 0 })).toThrow();
+    }
+  });
+
+  test("a non-root identity is never gated", () => {
+    delete process.env.OP_ALLOW_ROOT;
+    expect(() => assertRootInstallAllowed({ uid: 1000, gid: 1000 })).not.toThrow();
   });
 });

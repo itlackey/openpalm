@@ -128,3 +128,45 @@ export function hasUsableOperatorId(parsed: Record<string, string>, key: "OP_UID
   // a real answer would be two sources of truth for the same value.
   return Number.isInteger(n) && n >= 0;
 }
+
+// ── Root installs: supported, opt-in, never accidental ───────────────────────
+
+const TRUE_RE = /^(true|1|yes|on)$/i;
+
+/** True when either axis resolved to root. uid and gid resolve independently. */
+export function isRootIds(ids: OperatorIds): boolean {
+  return ids.uid === 0 || ids.gid === 0;
+}
+
+/**
+ * Has the operator opted into a root install?
+ *
+ * Root is supported but must never be entered by accident: containers then run
+ * privileged and write root-owned files into their bind mounts. A warning
+ * narrates that; an opt-in makes it a choice.
+ */
+export function isRootInstallAllowed(): boolean {
+  return TRUE_RE.test((process.env.OP_ALLOW_ROOT ?? "").trim());
+}
+
+/**
+ * Guard the moments a root identity would be PERSISTED — `stack.env`'s
+ * OP_UID/OP_GID, which every compose `user:` interpolates.
+ *
+ * Deliberately not enforced inside `resolveOperatorIds`: that returning `null`
+ * for root is the bug this whole change fixes (it produced a silently
+ * unwritable stack). The resolver reports the truth; this decides whether the
+ * truth may be written. An install that already carries OP_UID=0 does not trip
+ * it — that record IS the operator's prior consent, and `hasUsableOperatorId`
+ * means it is never rewritten.
+ */
+export function assertRootInstallAllowed(ids: OperatorIds): void {
+  if (!isRootIds(ids) || isRootInstallAllowed()) return;
+  throw new Error(
+    `Refusing to configure a root install: the only resolvable operator identity is ${ids.uid}:${ids.gid}, ` +
+      "so every container would run as root and write root-owned files into its bind mounts. " +
+      "Prefer creating OP_HOME as a non-root user and installing as that user, or set OP_UID/OP_GID " +
+      "explicitly in state/stack.env. To proceed as root anyway (supported, not recommended), " +
+      "set OP_ALLOW_ROOT=1."
+  );
+}
