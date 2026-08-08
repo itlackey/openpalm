@@ -487,6 +487,21 @@ comment rather than a testable invariant (`host-akm-sharing.ts:7-9`).
 a fallback source — turning a feature toggle into a filesystem fixture and a
 config key into a host-path injection point.*
 
+**C14. `OP_HOST_AKM_STASH` is the one bind source outside `OP_HOME` — and it
+sits outside every safety net #452 built.** The #452 fix pre-creates and
+chowns every compose bind source, but **deliberately only for paths under
+`OP_HOME`** (`config-persistence.ts:489-490,556`). The single source that can
+point elsewhere — the operator's personal `~/akm` — is excluded: the enable
+paths never `mkdir` or existence-check it (`host-akm-sharing.ts:63-71`), the
+container never chowns it, and on native Linux enabling the feature when
+`~/akm` does not yet exist makes Docker auto-create it **root-owned** (C3, now
+outside the repair scope). Worse, headless/API setup **default-enables**
+sharing (`hostAkm !== false`, `setup.ts:83,495-497`) while the wizard defaults
+it off — so an omitted field turns on a foreign rw mount.
+*RC: the pre-creation and repair machinery is scoped to `OP_HOME` by design,
+but the layout admits exactly one mount source outside it, which therefore
+inherits none of those guarantees.*
+
 **C7. Compose merge semantics cannot express "remove".** The rootless overlay
 tried to cancel the base file's fixed `user:` UID with YAML `null`; Compose's
 merge **ignores null** and kept the incompatible host identity. The working
@@ -710,6 +725,44 @@ up-under-new-name protocol, not a bare value change.
 *RC: stack identity is derived from mutable data with no migration path for
 the derivation's own inputs.*
 
+**D13. The same OP_HOME behaved differently under two harnesses — opposite
+env precedence.** The Electron desktop app built the UI child's environment by
+spreading `process.env` first and persisted `state/stack.env` second, so the
+file **silently overrode any live operator override**; the CLI layered them
+the other way (live-env-wins). "Same home, two harnesses, opposite
+precedence" (`packages/electron/src/main.ts:279-287`). The fix pins one order
+(persisted `stack.env` *under* live env) across all launchers.
+*RC: `state/stack.env` is one file, but each launcher (Electron, CLI,
+container entrypoint) composed the process environment around it
+independently.*
+
+**D14. Docker's shell-env-beats-`--env-file` precedence turned harness
+process env into a stealth `stack.env` override.** Compose resolves
+interpolation from **shell env before `--env-file`**, so any
+`OP_*_VERSION` value in the spawning host process's environment silently
+overrides the authoritative pins in `state/stack.env`. Electron once injected
+`latest`, so every `compose config`/`pull` resolved `:latest`/`latest-*` tags
+that don't exist for prereleases and deploys failed with "manifest unknown"
+(`packages/electron/src/main.ts:263-278,301-308`). The harness now
+strips `OP_HOME` and the four version keys from the child env.
+*RC: the "single authoritative env file" assumption is false — Compose gives
+the spawning process's ambient environment *higher* precedence than the file
+the layout treats as the source of truth.*
+
+**D15. Bind address is not a connect address — three resolution chains
+produced `http://0.0.0.0` browser URLs.** One `stack.env` key
+(`OP_ASSISTANT_BIND_ADDRESS`) answers two different questions — "which
+interface does Docker publish on" and "what URL should a browser dial" — and
+Electron, the CLI, and the container entrypoint each resolved it
+independently. Electron baked the wildcard `0.0.0.0` into a browser-facing
+URL. The consolidating fix then **over-corrected**, collapsing every
+non-loopback bind to `127.0.0.1` — but Docker's `bind:port` publish maps the
+port onto *only* the named interface, so a concrete LAN-IP bind is genuinely
+not reachable via loopback (`assistant-endpoint.ts:1-55`).
+*RC: a single value serves two semantics (publish-interface vs dial-address);
+absent one resolver, every surface reinvents the mapping and picks a different
+wrong answer.*
+
 ### E. UID/GID ownership of bind-mounted files
 
 A bind mount shares not just bytes but *ownership* between two worlds. An
@@ -795,19 +848,37 @@ The fix separates identity-of-session (process uid) from identity-for-repair
 *RC: the detector's input was derived from the very state whose corruption it
 was meant to detect.*
 
-**E8. Windows is a third host class the layout must special-case.** `OP_UID`
-detection returns `null` on win32 — "containers run in WSL2's Linux;
-`OP_UID` has no meaning on the win32 host" (`operator-ids.ts`) — so Compose's
-`${OP_UID:-1000}` default applies and host-side ownership repair is skipped
-entirely, the same posture as the VM-mediated runtimes (E4). The install
-surface diverges too: Windows path and execution realities force env-var-only
-installer knobs and explicit PowerShell `ExecutionPolicy` guidance in the docs
-(`docs/installation.md`). The layout is authored for a POSIX home
-(`~/.openpalm`, `chmod`, uid:gid) and every non-POSIX host is an exception
-somewhere.
-*RC: the ownership and permission model assumes a POSIX filesystem with
+**E8. Windows/WSL2 is handled by declaring host filesystem facts
+non-authoritative wholesale.** On win32 the entire ownership subsystem is a
+stack of deliberate no-ops: `OP_UID`/`OP_GID` are never computed and are
+**omitted from the generated `stack.env`** so containers run as the compose
+fallback `1000:1000` inside the WSL2 VM (`operator-ids.ts:8-31`;
+`fallback-system-env.ts:24-31`); bind-target chown is a no-op because "Docker
+Desktop's gRPC-FUSE masks ownership anyway"
+(`config-persistence.ts:588-594`); root-owned-volume repair "returns true
+unconditionally" (`volume-ownership.ts:43-52`); and even the voice CDI GPU
+probe is skipped because "/etc/cdi/* exists only inside the WSL2 distro where
+the win32 Node process cannot stat it" (`bring-up.ts:667-679`). The install
+surface diverges too — env-var-only knobs and PowerShell `ExecutionPolicy`
+guidance (`docs/installation.md`).
+*RC: the ownership/permission model assumes a POSIX filesystem with
 authoritative uids; Windows/WSL, like the macOS VM runtimes, satisfies neither
-and is handled by skip-lists rather than a portable abstraction.*
+and is handled by a stack of skip-lists rather than a portable abstraction.*
+
+**E9. Forcing a third-party image rootless relocated its socket — and any
+manual diagnostic that doesn't know reads a healthy tunnel as down.** The
+Tailscale sidecar image defaults to root; the repo's rootless convention runs
+it as `${OP_UID}:${OP_GID}`, which cannot create `/var/run/tailscale`, so the
+socket is relocated to `/tmp/tailscaled.sock` via `TS_SOCKET`. The standing
+trap: "anything shelling into this container must pass the socket explicitly …
+a bare `tailscale status` … reports the tunnel as down even when it is
+healthy" (`services.compose.yml:411-433`). `TS_USERSPACE=true` is pinned
+explicitly (not left to the upstream default) because userspace networking is
+also what makes the tunnel work on Docker Desktop for Mac/Windows, "where
+there is no real host network namespace to grant a TUN device into."
+*RC: forcing a third-party image off its default (root) identity moves the
+paths it hard-codes, and the new paths become undocumented preconditions for
+every operator diagnostic.*
 
 ### F. Path resolution, env-file semantics, and duplication in code
 
@@ -1029,6 +1100,37 @@ with no single apply function — and the consumer treats absence as "keep
 current state." Overlays passed ad hoc to a single invocation are guaranteed
 drift.*
 
+## 2.5. Known unaddressed risks
+
+These are cases the codebase does **not** handle today — verified by searching
+for any code, test, doc warning, or recorded incident and finding none. They
+are latent variants of the families above, listed so the proposal can address
+them structurally rather than waiting for each to become an incident.
+
+- **Symlinked `OP_HOME`.** Path resolution uses lexical `resolvePath` only —
+  no `realpath()` anywhere in `home.ts` (`home.ts:30-34`). Worse,
+  `discoverHomeBindMountSources` decides "is this mount under `OP_HOME`?" by
+  `startsWith(homeRoot)` over un-canonicalized strings
+  (`config-persistence.ts:544-556`) — so if `OP_HOME` is a symlink, a bind
+  source expressed through the real path (or vice versa) can silently fall
+  *outside* the pre-creation and ownership-repair scope, the same class as C14.
+- **Spaces in the `OP_HOME` path.** No handling, tests, or warnings. The
+  manual-compose `op()` helper quotes correctly and Compose YAML scalars
+  tolerate spaces, but nothing pins it — a shell path built without quoting
+  anywhere in the entrypoints would break.
+- **Network filesystems (NFS/SMB) under `OP_HOME`.** Zero mentions. Bind
+  mounts of NFS paths interact badly with uid mapping, file locking (SQLite
+  `data/*.db`, the install lock), and inode stability (C1) — none acknowledged.
+- **macOS Docker Desktop file-sharing scope.** `OP_HOME` must be under a
+  path Docker Desktop shares into the VM; never documented. Only the uid
+  translation the VM performs is acknowledged (E4), not the share-scope
+  precondition itself.
+
+*These four share one root with C14: the layout is authored for a plain local
+POSIX directory, and every deviation (symlink, space, network FS, VM share
+boundary) is an unhandled edge rather than a validated-and-rejected or
+supported input.*
+
 ## 3. Lessons learned
 
 Distilled, grouped, each traceable to the catalog.
@@ -1118,11 +1220,16 @@ Distilled, grouped, each traceable to the catalog.
 ### Configuration and env files
 
 15. **Exactly one Compose env file, one writer per key, intent stored as
-    data.** Two files made every reader reimplement precedence, one wrongly
-    (F3). Mixed value classes (operator/recorded/derived) in one file
-    produced silent reverts, frozen updates, and phantom re-enables (F5).
-    Store intent explicitly (`OP_ACCESS_*`, version markers) "so a read is a
-    read."
+    data — but know it is not actually authoritative.** Two files made every
+    reader reimplement precedence, one wrongly (F3). Mixed value classes
+    (operator/recorded/derived) in one file produced silent reverts, frozen
+    updates, and phantom re-enables (F5). Compose gives the **spawning
+    process's shell env higher precedence than `--env-file`**, so ambient
+    harness env silently overrode the file's version pins (D14) — strip what
+    must not leak. And each launcher (Electron/CLI/container) composed the
+    environment around the file with its own precedence until one order was
+    pinned (D13). Store intent explicitly (`OP_ACCESS_*`, version markers)
+    "so a read is a read."
 16. **A `${VAR:-fallback}` in managed Compose is a second source of truth.**
     It drifted, inverted, and was masked by self-healing migrations for
     years (D2, F6); container-side `$$` expansion adds a second phase over
@@ -1130,12 +1237,15 @@ Distilled, grouped, each traceable to the catalog.
     `stack.env` lacks it?" — mount sources and image tags must fail loud, and
     any silent default must be provably the safe direction (C10). Fail loudly
     (`:?`), generate values explicitly, or use literals.
-17. **Values must cross the host/container boundary once, explicitly, in one
-    direction — and files must not embed either side's topology.** Mirror
+17. **Values must cross the host/container boundary once, through one
+    resolver, and files must not embed either side's topology.** Mirror
     variables with comments are the working pattern (D1); a shared config
     file carrying `host.docker.internal` broke every host-side consumer
     (D6); network identity needs the same conditional translation as paths
-    (D7).
+    (D7). And a single key that answers two questions (publish-interface vs
+    dial-address) resolved by three independent surfaces produced
+    `http://0.0.0.0` URLs and an over-corrected fix (D15) — one resolver, not
+    one key reused by three call sites.
 18. **Treat env parsing as data-loss-capable.** Corrupt-parses-to-empty plus
     read-modify-write equals wiped config (F4); duplicate keys interact
     badly with first-occurrence rewrites (F4); path builders must fail

@@ -17,8 +17,9 @@ catalog)
 
 ## 1. The one root cause
 
-The companion document catalogs 74 issues across seven families. Almost all of
-them reduce to a single sentence:
+The companion document catalogs 79 issues across seven families (plus four
+verified-but-unaddressed edge cases). Almost all of them reduce to a single
+sentence:
 
 > **`OP_HOME` is split by three different classification axes at once, but only
 > one of those axes is actually enforced by the runtime — and it is not the one
@@ -238,11 +239,19 @@ precondition. The `agent/`-grouping in §3 also lets the audit forbid Paperclip
 from mounting the parent `agent/knowledge` at all, mounting only its specific
 subtrees (see 5.4).
 
-**5.3 Host-path env values are validated at write time (`C6`).**
-`OP_HOST_AKM_STASH` is a raw host path consumed as a mount source; a typo
-mounts the wrong directory rw into the assistant. Validate it on write
-(absolute, exists, not inside `OP_HOME`'s private trees) and make the "never
-chown a foreign mount" rule a test over the entrypoint, not a comment.
+**5.3 Host-path env values are validated at write time, and `OP_HOME` is
+canonicalized (`C6`, `C14`, unaddressed-risks §2.5).**
+`OP_HOST_AKM_STASH` is a raw host path consumed as a mount source — the one
+bind source outside `OP_HOME`, and therefore outside the #452 pre-creation and
+ownership-repair net (**C14**). Validate it on write (absolute, exists,
+operator-owned, not inside a private tree), `mkdir` it operator-owned on
+enable so native Linux never auto-creates it root-owned, align the
+headless-setup default with the wizard's (off), and make "never chown a
+foreign mount" a test over the entrypoint. Separately, resolve `OP_HOME`
+through `realpath()` once at the top of `home.ts` (today it is lexical only,
+so a symlinked home can fall outside the `startsWith(homeRoot)` scope guard
+that drives mount discovery) — this closes the symlink edge in §2.5 and makes
+the manifest's exposure/scope reasoning sound under symlinks.
 
 **5.4 The scheduler queue is single-writer (`A13`).** `agent/knowledge/tasks/`
 is executed by the assistant's cron. No other trust level may write it: Paperclip
@@ -341,6 +350,14 @@ records (**C3, C4, C7, E1, E4, B9**). Explicit constraints:
   uid:gid remain the model; Windows/WSL and the VM-mediated macOS runtimes
   (**E4, E8**) stay handled by the existing skip-lists, which the manifest's
   `ownershipRepair` flag now drives instead of hard-coded platform checks.
+- **Not** unifying the harness env/URL resolution divergences (**D13, D14,
+  D15, E9**). Those are control-plane code bugs (Electron vs CLI env
+  precedence; Compose's shell-env-beats-`--env-file`; bind-vs-connect address;
+  the relocated tunnel socket), not layout facts. They are cited here because
+  they share the layout's core failure shape — *one value, many independent
+  resolvers* — and the same "one resolver, derive don't re-read" discipline
+  the manifest applies to paths should apply to them; but fixing them does not
+  require moving a directory.
 - **Not** fixing the disk-headroom preflight measuring OP_HOME's filesystem
   while pulls fill Docker's data root (**G6**) — a real bug, but one about
   *where free space is measured*, orthogonal to the tree layout. Noted here so
