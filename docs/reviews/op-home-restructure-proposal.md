@@ -59,166 +59,130 @@ inverts the fix — see §3.2.
 
 ## 3. Target layout
 
+There is **one stash**. It is `knowledge/`, exactly where it is today. The
+operator chooses, per addon, whether to share it. An addon that is not given
+the shared stash manages its own — that is the addon's business, not
+`OP_HOME`'s.
+
 ```
 ~/.openpalm/
-├─ system/          MANAGED (release) — overwritten wholesale, mounted :ro
+├─ system/          MANAGED (release) — overwritten wholesale, :ro where the service allows
 │  ├─ stack/        core | services | portals compose files
-│  ├─ skills/       ← from knowledge/skills/  (D10)
-│  └─ assistant/ guardian/ paperclip/     OPENCODE_CONFIG_DIR content
-├─ config/          USER — non-secret, seeded once, never overwritten
-│  ├─ stack/custom.compose.yml
-│  └─ akm/ assistant/ guardian/ paperclip/
+│  ├─ skills/       ← from knowledge/skills/  (D10: shipped skills are release-managed)
+│  └─ assistant/ guardian/ paperclip/
+├─ config/          USER — non-secret, seeded once
 ├─ state/           APP — records AND generated runtime config  (D6)
-│  ├─ stack.env  schema-version  host-identity.json
-│  └─ remote/     generated tunnel serve config
-├─ knowledge/       SHARED AKM stash — a named secondary source for every
-│                   approved participant; rw  (D2)
-├─ stash/           PER-PRINCIPAL AKM stash roots — each mounted at /stash
-│  ├─ assistant/    env/  secrets/  tasks/
-│  └─ paperclip/    env/  secrets/
+├─ knowledge/       THE shared stash — mounted at /stash for the assistant, and
+│                   for any addon the operator has chosen to share it with
 ├─ private/         DELEGATED credentials — never agent-readable  (D1)
-│  ├─ secrets/
-│  └─ env/paperclip.env
-├─ data/            SERVICE durable state; restore unit with its credentials (D12)
-├─ workspace/       shared work area
-└─ cache/           regenerable
+├─ data/            SERVICE durable state; one restore unit with its credentials (D12)
+├─ workspace/
+└─ cache/
 ```
 
-### 3.1 What moves
+Against today, that is **two deletions and one move**:
 
-| From | To | Why |
-|---|---|---|
-| `knowledge/env/user.env` | `stash/assistant/env/user.env` | per-principal, not shared |
-| `knowledge/secrets/auth.json` | `stash/assistant/secrets/auth.json` | per-principal provider auth |
-| `knowledge/tasks/` | `stash/assistant/tasks/` | execution queue — single writer (**A13**) |
-| `knowledge/skills/` | `system/skills/` | release-managed system content (D10, closes **B11/K7**) |
-| `knowledge/paperclip/env`,`/secrets` | `stash/paperclip/…` | per-principal, no longer an overlay |
-| everything else in `knowledge/` | stays | this *is* the shared stash |
+| Change | Effect |
+|---|---|
+| delete `knowledge/paperclip/env`, `knowledge/paperclip/secrets` | −2 directories (`home.ts:358-359`) |
+| delete the two `/stash/env` and `/stash/secrets` overmounts | −2 mounts (`services.compose.yml:58-59`) |
+| move `knowledge/skills/` → `system/skills/` | shipped skills stop being user-tree content with no update channel (**B11/K7**) |
 
-`private/secrets/` is unchanged. `config/`, `data/`, `workspace/`, `cache/`,
-and `state/` are unchanged except that `state/`'s documented contract now
-admits generated runtime config (D6).
+No new trees. No per-principal anything. `knowledge/`, `private/`, `config/`,
+`state/`, `data/`, `workspace/`, and `cache/` keep their names and contents.
 
-### 3.2 The inversion that replaces the overmount trick
+### 3.1 Sharing is one toggle
 
 Today Paperclip mounts the whole `knowledge/` tree at `/stash`, then mounts
-`knowledge/paperclip/secrets` and `knowledge/paperclip/env` **over**
-`/stash/secrets` and `/stash/env` to hide the assistant's provider auth and
-`user.env`. Isolation depends on Compose honoring mount declaration order
-(**A8**), and Paperclip retains write access to everything else in
-`knowledge/` — including the `tasks/` queue the assistant executes every 60
-seconds (**A13**).
+two more-specific paths **over** it to hide the assistant's `env/` and
+`secrets/`. That is a *partial* share, and it costs a per-addon subtree, two
+extra mounts, and a security property that depends on Compose honoring mount
+ordering (**A8**) — while still leaving the addon able to write the `tasks/`
+queue the assistant executes (**A13**).
 
-Because sharing is the intent (D2), the answer is not separation — it is to
-**invert which tree is the mount root**:
+Sharing is binary. Use the toggle pattern the stack already has for the
+optional host stash (`core.compose.yml:213`) — a stack.env key flipping the
+mount source between the real tree and an always-present empty directory:
 
 ```yaml
-# before — subtractive: mount everything, then hide the private parts
+# before — a partial share: mount everything, then hide two subtrees
 - ${OP_HOME}/knowledge:/stash
 - ${OP_HOME}/knowledge/paperclip/secrets:/stash/secrets
 - ${OP_HOME}/knowledge/paperclip/env:/stash/env
 
-# after — additive: mount only what is mine, then add what is shared
-- ${OP_HOME}/stash/paperclip:/stash          # primary AKM stash
-- ${OP_HOME}/knowledge:/knowledge            # shared, a named secondary source
+# after — shared or not, one line
+- ${OP_PAPERCLIP_STASH:-${OP_HOME}/data/akm/empty-stash}:/stash
 ```
 
-This uses AKM's **existing** multi-source mechanism — `config.sources[]`, the
-same feature that already backs `/host-stash`
-(`akm-sources.ts`, `HOST_SOURCE_NAME`) — so it adds nothing. What it removes:
+Shared means shared: an addon the operator has granted the stash can read and
+write it, including `tasks/`. That is the operator's call to make, and it is
+now legible from one line instead of inferred from three. An addon that is not
+granted it gets an empty directory and manages its own stash internally.
 
-- the overmount ordering dependency (**A8**) — nothing is hidden, so nothing
-  can be un-hidden by a reordering or a user overlay;
-- every addon's write path into the assistant's cron queue (**A13**) —
-  `tasks/` is per-principal;
-- the subtractive-trust reasoning itself: sharing becomes a grant you can read
-  off one mount line, rather than an absence you have to infer from three.
+**A13 is therefore a documentation duty, not a mount trick:** granting the
+shared stash to an addon grants it the assistant's scheduler queue. The share
+toggle must say so.
 
-Adding a future addon becomes: create `stash/<addon>/`, mount it at `/stash`,
-and grant `/knowledge` if it is approved to share. That is the whole procedure.
+### 3.2 Secrets, after D1
 
-### 3.3 Secrets, after D1
-
-Three locations, each with one meaning, disambiguated by the **top-level tree**
-rather than by the leaf name:
+No layout change — only the routing default inverts:
 
 | Path | Who writes it | Agent-readable |
 |---|---|---|
-| `stash/<principal>/secrets/` | operator (Secrets tab), AKM | **yes, by design** |
+| `knowledge/secrets/` | operator (Secrets tab), AKM, provider auth | **yes, by design** |
 | `private/secrets/` | the control plane | **never** |
 | `private/env/paperclip.env` | the control plane | never (audited exception, **A9**) |
 
-The internal secret API defaults to `private/secrets/` — inverting today's
-fallthrough, which silently publishes an unclassified secret to the agent and
-is the live root cause of **A2**. The admin Secrets tab targets
-`stash/<principal>/secrets/` **explicitly**, so its documented purpose ("values
-the assistant can read") is preserved rather than broken by the inversion.
-`secrets/` and `env/` keep AKM's own names *inside* a stash, because that is
-AKM's contract; the trust meaning is carried by `stash/` vs `private/`.
+The internal secret API defaults to `private/secrets/` instead of falling
+through to the agent-readable tree — the live root cause of **A2**. The admin
+Secrets tab targets `knowledge/secrets/` **explicitly**, so its documented
+purpose ("values the assistant can read") survives the inversion (D1).
 
-### 3.4 Restore units (D12)
+Per D3 the ambiguity between the two `secrets/` names is worth removing:
+rename the agent-readable one to `knowledge/provider-auth/`, leaving
+`private/secrets/` as the only path in the layout containing the word.
 
-A service's durable data and the credentials that unlock it are **one unit**.
-The safety backup must not take one without the other: for any service whose
-`data/` subtree is excluded, its credentials are excluded from that snapshot
-too, and the backup names what it skipped and points at the per-service
-runbook. This closes the **G5** trap — a restore that produced a working login
-against an empty database — without pulling multi-gigabyte service data into
-every lifecycle snapshot.
-
-### 3.5 Accepted, not fixed
+### 3.3 Accepted, not fixed
 
 - **The assistant may write its own managed config** (D9). `system/assistant`
   stays `rw` because OpenCode installs plugin `node_modules` there. Guardian's
-  is mounted `:ro` (D8), verified safe — its entrypoint never writes to
-  `/etc/opencode`.
-- **The secret audit stays** (**A6**, **A7**). A user-editable last-wins
-  overlay plus one interpolation namespace will always need a resolved-config
-  backstop. This design reduces what it must carry; it does not replace it.
+  is `:ro` (D8) — verified safe, its entrypoint never writes to `/etc/opencode`.
+- **The secret audit stays** (**A6**, **A7**). A user-editable last-wins overlay
+  plus one interpolation namespace will always need a resolved-config backstop.
 
 ## 4. Why this is the final reorganization
 
-Decision 3 asked for confidence that this is the last time. The layout was
-reviewed from eight perspectives; each asks what would force the *next* move.
+Decision 3 asked for confidence that this is the last move. The test is what
+would force the *next* one.
 
-1. **Trust / exposure.** Every top-level tree now has exactly one exposure
-   answer: `stash/` and `knowledge/` are agent-readable, `private/` never is,
+1. **Trust / exposure.** Each top-level tree has one exposure answer:
+   `knowledge/` and `workspace/` are agent-readable, `private/` never is,
    `system/` `config/` `state/` are not mounted into an agent. No subtree
-   contradicts its parent, so no future file needs a hiding trick. This was the
-   single largest source of past moves (**A1–A5, A8**).
-2. **AKM's model.** `/stash` is the primary source, `/knowledge` a named
-   secondary — both first-class AKM concepts already in use. A future AKM
-   layout change inside a stash (`env/`, `secrets/`, `tasks/`) is absorbed
-   *within* `stash/<principal>/` and never reaches the top level.
-3. **Compose mechanics.** No overmounts, no ordering dependencies, no
-   single-file mounts introduced. Every mount source is a directory under
-   `OP_HOME`, pre-created operator-owned. The one source that can point outside
-   (`OP_HOST_AKM_STASH`) is validated and pre-created (D5).
-4. **Lifecycle scopes.** Each tree keeps one durability and one writer answer,
-   so backup / purge / ownership-repair / rollback stay derivable from the tree
-   list rather than from per-file exceptions.
-5. **The Nth agent.** Adding an addon is `stash/<addon>/` plus an optional
-   `/knowledge` grant — additive, with no change to any existing service's
-   mounts. This is the property the current layout lacks, and the reason
-   Paperclip's arrival forced an overlay scheme.
+   contradicts its parent, so nothing needs a hiding trick — the single largest
+   source of past moves (**A1–A5, A8**).
+2. **Sharing.** Binary and per-addon, expressed as a mount source. Adding an
+   addon changes no existing tree and no existing service's mounts.
+3. **AKM's model.** `knowledge/` is the stash; AKM's internal layout (`env/`,
+   `secrets/`, `tasks/`) is AKM's business and changes inside that tree without
+   reaching the top level.
+4. **Compose mechanics.** No overmounts, no ordering dependencies, no new
+   single-file mounts. Every mount source is a directory under `OP_HOME`,
+   pre-created operator-owned; the one source that may point outside it is
+   validated (D5).
+5. **Lifecycle scopes.** One durability and one writer answer per tree, so
+   backup / purge / ownership-repair stay derivable from the tree list.
 6. **Operator ergonomics.** The top level reads as a sentence: *system* is
-   ours, *config* is yours, *state* is the app's, *stash* is each agent's,
-   *knowledge* is shared, *private* is off-limits, *data* is the services',
-   *cache* is disposable. Nothing needs a warning label to be used safely.
-7. **Restore units.** Data and credentials travel together (D12), so a service
-   with unusual durability needs is a per-service declaration, not a new tree.
-8. **Migration cost.** Every move is within `OP_HOME` and mechanical, and the
-   project has a proven one-shot gate for exactly this.
+   ours, *config* is yours, *state* is the app's, *knowledge* is the stash,
+   *private* is off-limits, *data* is the services', *cache* is disposable.
+7. **Restore units.** Data and credentials travel together (D12), so an unusual
+   service is a per-service declaration, not a new tree.
+8. **Migration cost.** Two deletions and one move, all within `OP_HOME`.
 
-**What would still force a move:** a genuine fourth axis — for example
-multi-tenant *human* users each needing separate knowledge, or a service that
-must be agent-readable and release-managed at once. Neither is on the roadmap.
-Absent that, this layout absorbs new services and new AKM internals without a
-top-level change, which is what "final" means here.
+**What would still force a move:** a genuine fourth axis — multi-tenant *human*
+users each needing separate knowledge, or content that must be agent-readable
+and release-managed at once. Neither is on the roadmap.
 
 ## 5. Change list and migration
-
-Ordered so the cheapest, riskless items land first.
 
 **Phase 1 — no file moves.**
 - `${OP_HOME:?}` on every managed-compose mount and secret source (D8, **C10**)
@@ -228,29 +192,26 @@ Ordered so the cheapest, riskless items land first.
   (D5, **C14**)
 - amend the `state/` contract in the docs (D6, **B3**)
 
-**Phase 2 — secret routing (no moves).**
-- invert the internal default to `private/secrets/`; point the admin Secrets
-  tab explicitly at `stash/<principal>/secrets/` (D1, **A2**)
+**Phase 2 — secret routing (no moves).** Invert the internal default to
+`private/secrets/`; point the admin Secrets tab explicitly at the
+agent-readable tree (D1, **A2**).
 
-**Phase 3 — the reorganization.** One schema-gated migration, in this order:
+**Phase 3 — the reorganization.** One schema-gated migration:
 1. `knowledge/skills/` → `system/skills/` (D10)
-2. `knowledge/{env,secrets,tasks}/` → `stash/assistant/…`
-3. `knowledge/paperclip/{env,secrets}/` → `stash/paperclip/…`
-4. rewrite the compose mounts to the additive form (§3.2)
-5. register `knowledge/` as a named AKM secondary source for each participant
+2. rename the agent-readable secrets dir → `knowledge/provider-auth/` (D3)
+3. replace Paperclip's three stash mounts with the single share toggle; delete
+   `knowledge/paperclip/` and its two `ensureHomeDirs` entries (§3.1)
+4. document that granting the shared stash grants the scheduler queue
 
 **Phase 4 — backup coherence.** Implement the one-restore-unit rule (D12,
 **G5**).
 
-Migration discipline, per the project's own hard-won pattern: full backup
-first and abort on backup failure; copy → read back and verify → only then
-delete; leave both and warn on conflict; version-gated and idempotent; and
-sweep every doc and UI string naming an old path **in the same change** — the
-**A1** relapse, where the Connections page kept naming a moved path for a
-release, is the failure to avoid. `custom.compose.yml` may reference moved
-paths, so the release notes must call the move out (**G2**: user overlays are
-public API).
+Migration discipline, per the project's own pattern: full backup first and
+abort on backup failure; copy → read back and verify → only then delete; leave
+both and warn on conflict; version-gated and idempotent; and sweep every doc
+and UI string naming an old path **in the same change** (the **A1** relapse).
+`custom.compose.yml` may reference moved paths, so the release notes must call
+the move out (**G2**: user overlays are public API).
 
-**Deferred:** the shared tree constant (D7) lands when a tree is next added.
-**Parked:** regrouping the exposed trees under an `agent/` parent (D11) — this
-design makes exposure legible without it.
+**Deferred:** the shared tree constant (D7). **Parked:** an `agent/` parent for
+the exposed trees (D11).

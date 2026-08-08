@@ -73,11 +73,9 @@ All OpenPalm state lives under a single root: **`~/.openpalm/`** (configurable v
 
 The table above describes the **current** runtime. The owner has approved a
 final reorganization of `OP_HOME`; the rules below are **binding on new work
-from now on**, and the table above is replaced by this one as each phase lands.
-The evidence base is
-[`../reviews/op-home-structure-issues-and-lessons.md`](../reviews/op-home-structure-issues-and-lessons.md)
-and the accepted design, decision record, and migration are in
-[`../reviews/op-home-restructure-proposal.md`](../reviews/op-home-restructure-proposal.md).
+from now on**, and the table above is amended as each phase lands. Evidence
+base: [`../reviews/op-home-structure-issues-and-lessons.md`](../reviews/op-home-structure-issues-and-lessons.md).
+Decision record and migration: [`../reviews/op-home-restructure-proposal.md`](../reviews/op-home-restructure-proposal.md).
 
 **The organizing rule — exposure is the primary axis.** `OP_HOME` was split by
 three axes at once (writer, exposure, durability), but only *exposure* is
@@ -87,46 +85,35 @@ tree's name must agree with its mount.** No subtree may need different exposure
 than its parent, and no boundary may be maintained by hiding one mount behind
 another.
 
-| Tree | Owner | Exposure | Contents |
-|---|---|---|---|
-| `system/` | Managed (release) | not mounted into an agent; `:ro` where a service allows | compose files, managed OpenCode config, **and shipped skills** |
-| `config/` | User | not mounted into an agent | user-editable non-secret config |
-| `state/` | App-written | not mounted into an agent, **except generated runtime config** | `stack.env`, schema version, host identity, generated stack config (e.g. `state/remote/`) |
-| `stash/<principal>/` | Principal + operator | agent-readable — mounted at that principal's `/stash` | that principal's AKM `env/`, `secrets/`, `tasks/` |
-| `knowledge/` | Shared | agent-readable — a named AKM **secondary source** for every approved participant | the shared knowledge base |
-| `private/` | App-written | **never** agent-readable | delegated credentials; the one audited `env/` exception |
-| `data/` | Services | service-owned | durable per-service state; one restore unit with that service's credentials |
-| `workspace/` | User | agent-readable at `/work` | shared work area |
-| `cache/` | System | regenerable | excluded from backups and ownership repair |
+The layout itself does not grow. The accepted changes are:
+
+| Change | Effect |
+|---|---|
+| **One stash, shared or not** | `knowledge/` is THE stash. The operator chooses per addon whether to share it, as a single mount-source toggle. Per-addon subtrees and over-mounting to hide parts of the stash are removed |
+| **Shipped skills are release-managed** | they move to `system/skills/` and are overwritten on update, rather than being release content seeded once into a user tree with no update channel |
+| **Secret placement is default-deny** | the internal secret API resolves to `private/secrets/` unless a name is explicitly agent-readable; operator-managed secrets stay agent-readable through an explicit path, not by name-routing |
+| **`state/` admits generated runtime config** | app-generated files a container reads (e.g. `state/remote/`) belong here, never in the wholesale-overwritten `system/` |
 
 Binding consequences:
 
-1. **Sharing is additive, never subtractive.** A participant mounts its own
-   `stash/<principal>/` at `/stash` and receives the shared `knowledge/` tree as
-   a named AKM secondary source. Mounting a broad tree and then over-mounting
-   more-specific paths to *hide* parts of it is forbidden — that isolation
-   depends on Compose mount ordering and is invisible in any single mount line.
-2. **The scheduler queue is single-writer.** `tasks/` lives inside the
-   executing principal's own stash. No other service may hold a writable mount
-   overlapping it.
-3. **Shipped skills are release-managed.** They live in `system/` and are
-   overwritten on update like the rest of that tree; they are not user-owned
-   content seeded once into a user tree.
-4. **Secret placement is default-deny.** The internal secret API resolves to
-   `private/secrets/` unless a name is explicitly agent-readable. Operator-
-   managed secrets are agent-readable by design and are written to
-   `stash/<principal>/secrets/` through an explicit path, not by name-routing.
-5. **A service's data and its credentials are one restore unit.** A lifecycle
+1. **Sharing is binary and explicit.** An addon either gets the shared stash or
+   it does not; an addon that does not manages its own stash internally.
+   Mounting a broad tree and then over-mounting more-specific paths to *hide*
+   parts of it is forbidden — that isolation depends on Compose mount ordering
+   and is invisible in any single mount line.
+2. **Granting the stash grants the scheduler queue.** `knowledge/tasks/` is
+   synced into the assistant's crontab and executed. Any surface that offers
+   stash sharing must say so; it is an operator decision, not a hidden one.
+3. **A service's data and its credentials are one restore unit.** A lifecycle
    backup takes both or neither, and names what it skipped.
-6. **Managed compose interpolation fails loud.** Mount and secret sources use
+4. **Managed compose interpolation fails loud.** Mount and secret sources use
    `${OP_HOME:?}`; a silent default may only be used where the unset case is
    provably the safe one.
-7. **`OP_HOME` is canonicalized once** at resolution, so symlinked homes are
+5. **`OP_HOME` is canonicalized once** at resolution, so symlinked homes are
    supported and every "is this path under `OP_HOME`?" test is sound.
-
-Adding a new agent-bearing service is therefore: create `stash/<service>/`,
-mount it at `/stash`, and grant the shared `knowledge/` source if approved. No
-existing service's mounts change.
+6. **Managed config is read-only to the service it governs** wherever that
+   service does not write it. Guardian's is; the assistant's remains writable
+   because OpenCode installs plugin dependencies there.
 
 ### 1) Config (user-owned, non-secret)
 
