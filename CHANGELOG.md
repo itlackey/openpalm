@@ -7,6 +7,27 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Root installs work instead of silently producing an unwritable stack.**
+  `resolveOperatorIds` refused to return root: when neither `OP_HOME`'s owner
+  nor the process was a non-root user it returned `null`, so `OP_UID`/`OP_GID`
+  were never written, compose fell back to `${OP_UID:-1000}`, and containers
+  ran as uid 1000 against a root-owned `OP_HOME`. Both repair paths
+  (`chownVolumeTarget`, `repairRootOwnedBindMounts`) also no-op on a `null`
+  identity, so nothing corrected the ownership either — the install came up
+  unable to write, with no error. Root is now reported honestly.
+  - **Root remains a last resort, never a preference.** A non-root `OP_HOME`
+    owner still wins over a root process, and a non-root process still wins
+    over a root-owned `OP_HOME`; root is returned only when both signals are
+    root.
+  - **It warns.** Persisting `OP_UID=0` logs that containers will run as root,
+    that this is supported but not recommended, and how to avoid it (create
+    `OP_HOME` as a non-root user, or set `OP_UID`/`OP_GID` explicitly).
+  - `hasUsableOperatorId` now accepts `0`, so a hand-set `OP_UID=0` is treated
+    as the explicit operator choice it is rather than as "unset". Negative and
+    non-integer values are still rejected.
+
 ### Changed
 
 - **akm 0.9.0 + akm-opencode 0.9.0 (official releases).** The whole stack moves

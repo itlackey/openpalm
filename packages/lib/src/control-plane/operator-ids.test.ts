@@ -45,51 +45,59 @@ describe("resolveOperatorIds", () => {
     expect(ids?.gid).toBe(process.getgid!());
   });
 
-  test("never returns 0 (root) — falls back to process UID when homeDir is root-owned", () => {
-    // We can't easily chown a dir to root without root. Instead, exercise
-    // the branch via a faked statSync output: build a path that triggers
-    // the "owner is 0, prefer process UID" code path by ensuring real
-    // tempDir owner is the process UID and asserting the result for a
-    // missing path matches process UID (already covered above). The
-    // explicit 0-check is enforced by the implementation; this test
-    // documents that the function never *returns* 0 for any of the
-    // exercised inputs in a non-root test process.
+  test("prefers a non-root owner over root — root is a last resort, not the default", () => {
     const ids = resolveOperatorIds(tempDir);
     if (process.platform === "win32") {
       expect(ids).toBeNull();
       return;
     }
     expect(ids).not.toBeNull();
-    expect(ids?.uid).toBeGreaterThan(0);
-    expect(ids?.gid).toBeGreaterThan(0);
+    // The mkdtemp dir is owned by this process, so the answer is the process
+    // identity whether or not that happens to be root. What this pins is the
+    // PRECEDENCE: a non-root signal always wins over a root one (covered
+    // explicitly by the stubbed-root cases below).
+    const expected = statSync(tempDir);
+    expect(ids?.uid).toBe(expected.uid);
+    expect(ids?.gid).toBe(expected.gid);
   });
 
-  test("returns null when BOTH homeDir owner and process UID/GID are 0 (root install on root-owned OP_HOME)", () => {
+  test("prefers a non-root PROCESS uid over a root-owned homeDir", () => {
+    if (process.platform === "win32") return;
+    const origGetuid = process.getuid;
+    const origGetgid = process.getgid;
+    try {
+      (process as unknown as { getuid: () => number }).getuid = () => 4242;
+      (process as unknown as { getgid: () => number }).getgid = () => 4243;
+      // "/" is root-owned, so the non-root process identity must win.
+      const ids = resolveOperatorIds("/");
+      expect(ids).toEqual({ uid: 4242, gid: 4243 });
+    } finally {
+      (process as unknown as { getuid: typeof origGetuid }).getuid = origGetuid;
+      (process as unknown as { getgid: typeof origGetgid }).getgid = origGetgid;
+    }
+  });
+
+  test("reports root when BOTH homeDir owner and process are root (root install)", () => {
     if (process.platform === "win32") {
-      // win32 short-circuits before any of this logic
       expect(resolveOperatorIds(tempDir)).toBeNull();
       return;
     }
 
-    // Stub process.getuid / getgid to simulate running as root. On Linux,
-    // `/` is owned by uid=0 gid=0, so passing "/" gives us a root-owned
-    // homeDir. Combined with the stubbed process IDs, this hits the
-    // "both signals are root" branch that previously returned {0,0}.
+    // Simulate a root install: stubbed root process ids plus "/", which is
+    // root-owned on Linux/macOS. This used to return null, which let compose's
+    // ${OP_UID:-1000} default apply — containers then ran as 1000 against a
+    // root-owned OP_HOME and could not write, silently. Root installs are
+    // supported (with a warning from the caller), so the truth is reported.
     const origGetuid = process.getuid;
     const origGetgid = process.getgid;
     try {
       (process as unknown as { getuid: () => number }).getuid = () => 0;
       (process as unknown as { getgid: () => number }).getgid = () => 0;
-      // Sanity-check the assumption that "/" is root-owned in this env
-      // before relying on it as a fixture. On macOS / Linux CI runners
-      // this holds; if a future weird env breaks it, the assertion
-      // surfaces clearly rather than producing a confusing pass.
       const rootStat = statSync("/");
       expect(rootStat.uid).toBe(0);
       expect(rootStat.gid).toBe(0);
 
-      const ids = resolveOperatorIds("/");
-      expect(ids).toBeNull();
+      expect(resolveOperatorIds("/")).toEqual({ uid: 0, gid: 0 });
     } finally {
       (process as unknown as { getuid: typeof origGetuid }).getuid = origGetuid;
       (process as unknown as { getgid: typeof origGetgid }).getgid = origGetgid;
@@ -156,15 +164,17 @@ describe("resolveSessionIdentity", () => {
     }
   });
 
-  test("returns null for a root session over a root-owned OP_HOME", () => {
+  test("reports root for a root session over a root-owned OP_HOME", () => {
     if (process.platform === "win32") return;
     const origGetuid = process.getuid;
     const origGetgid = process.getgid;
     try {
       (process as unknown as { getuid: () => number }).getuid = () => 0;
       (process as unknown as { getgid: () => number }).getgid = () => 0;
-      // "/" is root-owned; both signals root → resolveOperatorIds returns null.
-      expect(resolveSessionIdentity("/")).toBeNull();
+      // "/" is root-owned; both signals root → root is the honest answer.
+      // Ownership repair and swap detection then operate on real ids instead
+      // of no-opping on a null, which is what left root installs unwritable.
+      expect(resolveSessionIdentity("/")).toEqual({ uid: 0, gid: 0 });
     } finally {
       (process as unknown as { getuid: typeof origGetuid }).getuid = origGetuid;
       (process as unknown as { getgid: typeof origGetgid }).getgid = origGetgid;
@@ -186,8 +196,13 @@ describe("hasUsableOperatorId", () => {
     expect(hasUsableOperatorId({ OP_UID: "" }, "OP_UID")).toBe(false);
   });
 
-  test("returns false for zero", () => {
-    expect(hasUsableOperatorId({ OP_UID: "0" }, "OP_UID")).toBe(false);
+  test("returns true for zero — a hand-set OP_UID=0 is an explicit root choice", () => {
+    expect(hasUsableOperatorId({ OP_UID: "0" }, "OP_UID")).toBe(true);
+  });
+
+  test("returns false for negative or non-integer values", () => {
+    expect(hasUsableOperatorId({ OP_UID: "-1" }, "OP_UID")).toBe(false);
+    expect(hasUsableOperatorId({ OP_UID: "1.5" }, "OP_UID")).toBe(false);
   });
 
   test("returns false for non-numeric garbage", () => {
