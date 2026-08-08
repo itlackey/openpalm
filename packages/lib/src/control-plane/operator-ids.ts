@@ -12,8 +12,11 @@
  *      different account than the one running install (e.g. sudo
  *      install for a service user).
  *   2. Otherwise fall back to the process's real UID/GID.
- *   3. Never return 0 (root). Running install as root is allowed but
- *      the container must run as the operator, not root.
+ *   3. Root (0) only as a LAST RESORT — when neither the OP_HOME owner
+ *      nor the process is a non-root user. Root installs are supported
+ *      but not recommended: the caller warns, and containers then run
+ *      as root. Returning a guessed non-root uid instead would leave
+ *      containers unable to write to a root-owned OP_HOME.
  *
  * Returns `null` on Windows (containers run in WSL2's Linux; OP_UID
  * has no meaning on the win32 host process itself).
@@ -53,26 +56,27 @@ export function resolveOperatorIds(homeDir: string): OperatorIds | null {
       ? ownerUid
       : processUid !== undefined && processUid !== 0
         ? processUid
-        : ownerUid; // last resort: homeDir owner even if 0, or undefined
+        : (ownerUid ?? processUid); // last resort: root, from whichever signal exists
 
   const gid =
     ownerGid !== undefined && ownerGid !== 0
       ? ownerGid
       : processGid !== undefined && processGid !== 0
         ? processGid
-        : ownerGid;
+        : (ownerGid ?? processGid);
 
   if (uid === undefined || gid === undefined) return null;
 
-  // Final guard: never return 0 (root). This happens when BOTH the OP_HOME
-  // owner AND the process UID are root (e.g. `sudo openpalm install` on a
-  // freshly-created root-owned OP_HOME, common in CI builds and Docker-based
-  // installer flows). Returning null causes the caller to skip writing
-  // OP_UID/OP_GID to stack.env, and compose's `${OP_UID:-1000}` default
-  // kicks in — container runs as 1000:1000, which is the sane fallback
-  // when no real operator can be detected.
-  if (uid === 0 || gid === 0) return null;
-
+  // Root reaches here only when BOTH the OP_HOME owner AND the process are
+  // root (e.g. `sudo openpalm install` on a freshly-created root-owned
+  // OP_HOME, common in CI and Docker-based installer flows). We return it.
+  //
+  // This used to return null, letting compose's `${OP_UID:-1000}` default
+  // apply — but that is a guess, not a fallback: containers then ran as 1000
+  // against a root-owned OP_HOME and could not write, while chownVolumeTarget
+  // and repairRootOwnedBindMounts both no-op'd on the null. A root install
+  // silently produced an unwritable stack. Reporting the truth makes it work;
+  // the caller warns that running as root is not recommended.
   return { uid, gid };
 }
 
@@ -104,7 +108,8 @@ export function resolveSessionIdentity(homeDir: string): OperatorIds | null {
   }
 
   // Root session or process ids unavailable — defer to the disk-owner-preferring
-  // resolver (which itself never returns 0).
+  // resolver, which prefers a non-root owner and only reports root as a last
+  // resort.
   return resolveOperatorIds(homeDir);
 }
 
@@ -117,5 +122,51 @@ export function hasUsableOperatorId(parsed: Record<string, string>, key: "OP_UID
   const raw = parsed[key];
   if (!raw) return false;
   const n = Number(raw);
-  return Number.isFinite(n) && n > 0;
+  // `>= 0`, not `> 0`: root is a legitimate (if discouraged) value now, so a
+  // hand-set OP_UID=0 is an explicit operator choice and must be respected
+  // like any other. Treating 0 as "unset" here while the resolver treats it as
+  // a real answer would be two sources of truth for the same value.
+  return Number.isInteger(n) && n >= 0;
+}
+
+// ── Root installs: supported, opt-in, never accidental ───────────────────────
+
+const TRUE_RE = /^(true|1|yes|on)$/i;
+
+/** True when either axis resolved to root. uid and gid resolve independently. */
+export function isRootIds(ids: OperatorIds): boolean {
+  return ids.uid === 0 || ids.gid === 0;
+}
+
+/**
+ * Has the operator opted into a root install?
+ *
+ * Root is supported but must never be entered by accident: containers then run
+ * privileged and write root-owned files into their bind mounts. A warning
+ * narrates that; an opt-in makes it a choice.
+ */
+export function isRootInstallAllowed(): boolean {
+  return TRUE_RE.test((process.env.OP_ALLOW_ROOT ?? "").trim());
+}
+
+/**
+ * Guard the moments a root identity would be PERSISTED — `stack.env`'s
+ * OP_UID/OP_GID, which every compose `user:` interpolates.
+ *
+ * Deliberately not enforced inside `resolveOperatorIds`: that returning `null`
+ * for root is the bug this whole change fixes (it produced a silently
+ * unwritable stack). The resolver reports the truth; this decides whether the
+ * truth may be written. An install that already carries OP_UID=0 does not trip
+ * it — that record IS the operator's prior consent, and `hasUsableOperatorId`
+ * means it is never rewritten.
+ */
+export function assertRootInstallAllowed(ids: OperatorIds): void {
+  if (!isRootIds(ids) || isRootInstallAllowed()) return;
+  throw new Error(
+    `Refusing to configure a root install: the only resolvable operator identity is ${ids.uid}:${ids.gid}, ` +
+      "so every container would run as root and write root-owned files into its bind mounts. " +
+      "Prefer creating OP_HOME as a non-root user and installing as that user, or set OP_UID/OP_GID " +
+      "explicitly in state/stack.env. To proceed as root anyway (supported, not recommended), " +
+      "set OP_ALLOW_ROOT=1."
+  );
 }
