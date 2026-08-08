@@ -17,7 +17,7 @@ something or cost a handful of lines. The constitution says the tooling is a
 thin wrapper over Docker Compose and that simplicity and predictability are
 features — a layout proposal that answers structural problems with new
 subsystems would be a worse fix than the problem. Recommendations that could
-not pay for themselves at that bar are listed in §5, with the reasoning, rather
+not pay for themselves at that bar are listed in §6, with the reasoning, rather
 than silently dropped.
 
 ---
@@ -56,8 +56,8 @@ exception has made it longer.
 
 ## 2. What to change
 
-Eight changes, ordered by value-per-line. Each states the issue it closes and
-its cost. Six are one-liners or deletions; none introduces a new subsystem.
+Nine changes, ordered by value-per-line. Each states the issue it closes and
+its cost. Most are one-liners or deletions; none introduces a new subsystem.
 
 ### R1 — Stop calling two opposite things "secrets"
 
@@ -75,7 +75,56 @@ it.*
 **Cost:** a schema-gated migration + doc/UI sweep. **Deletes:** two standing doc
 warnings and the most-cited naming confusion in the catalog.
 
-### R2 — Give Paperclip its own stash instead of over-mounting the shared one
+### R2 — Invert the secret-placement default to default-deny
+
+The catalog's most serious *security* incident: `op_session_signing_key` — the
+HMAC key mixed into every session cookie — was never added to
+`DELEGATED_SECRET_NAMES`, so it was provisioned into the agent-readable tree,
+where anything running inside the assistant (or anything that prompt-injected
+it) could read it and forge a valid host-admin session cookie (**A2**). Fixing
+it also required re-listing the migration at `since: 3` with a schema bump,
+because a home already stamped 3 would otherwise keep the key exposed forever.
+
+The routing that caused it is one line, and its default is the exposed tree:
+
+```ts
+// secrets-files.ts — today
+function resolveSecretsDirForName(homeDir: string, name: string): string {
+  return isDelegatedSecretName(name) ? resolvePrivateSecretsDir(homeDir) : resolveSecretsDir(homeDir);
+}
+```
+
+So *forgetting to classify a secret* silently publishes it to the agent. R1
+makes that rule memorable; it does not change the default.
+
+**Change:** invert it. Route to `private/secrets/` unless the name is on a
+small explicit agent-readable allowlist. Checked against the tree, that
+allowlist has exactly one structural member today — `auth.json`
+(`home.ts:241`); the skeleton ships nothing else in that directory, and the
+`.gws` credential referenced by the `gws-setup` skill is written by the agent
+into its own stash, not through this routing.
+
+```ts
+// proposed — the unclassified case is now the safe one
+const AGENT_READABLE_SECRET_NAMES: ReadonlySet<string> = new Set(['auth.json']);
+
+function resolveSecretsDirForName(homeDir: string, name: string): string {
+  return AGENT_READABLE_SECRET_NAMES.has(name) ? resolveSecretsDir(homeDir) : resolvePrivateSecretsDir(homeDir);
+}
+```
+
+This converts the failure mode of forgetting to classify a new secret from
+*"credential is silently readable by the agent"* — invisible, and a security
+bug — into *"credential is private and the consuming container cannot find
+it"* — immediate, loud, and safe. `DELEGATED_SECRET_NAMES` remains as the
+migration's input set (**A2**'s set-growth lesson still applies to relocating
+*existing* installs' files), but it stops being what stands between a new
+secret and the agent.
+
+**Cost:** one line inverted, one small set added. No new subsystem, no new
+tree. It is the highest security-value change in this document.
+
+### R3 — Give Paperclip its own stash instead of over-mounting the shared one
 
 Today Paperclip gets three mounts: the whole `knowledge/` tree at `/stash`,
 then `knowledge/paperclip/secrets` and `knowledge/paperclip/env` mounted *over*
@@ -104,7 +153,7 @@ argument, a paragraph of documentation, and an addon's write path into the
 assistant's execution queue. This is the clearest case in the proposal where
 correctness and simplicity point the same way.
 
-### R3 — Make `${OP_HOME}` fail loudly in managed Compose
+### R4 — Make `${OP_HOME}` fail loudly in managed Compose
 
 Image versions already use `${VAR:?required}`. Every bind-mount source is a
 bare `${OP_HOME}/...` (**C10**), so a hand-run `docker compose` without
@@ -119,7 +168,7 @@ sources.
 **Cost:** a find-and-replace in three shipped compose files. No code. Uses a
 Compose feature the repo already relies on.
 
-### R4 — Mount guardian's managed config read-only
+### R5 — Mount guardian's managed config read-only
 
 `system/guardian` is mounted **rw** at `/etc/opencode`, giving the moderator
 write access to the instructions and permissions that govern it (**A14**).
@@ -132,9 +181,9 @@ path).
 **Change:** append `:ro` to that one volume line.
 
 **Cost:** one word. (The assistant is *not* included — it genuinely writes
-plugin `node_modules` into `/etc/opencode`. See §5.)
+plugin `node_modules` into `/etc/opencode`. See §6.)
 
-### R5 — Derive purge and ownership-repair from one list of trees
+### R6 — Derive purge and ownership-repair from one list of trees
 
 The catalog's sharpest lifecycle bug: when `private/` was added as a sibling of
 `knowledge/`, the purge enumeration didn't gain it, so `--purge` reported "all
@@ -153,9 +202,9 @@ it. Adding a tree becomes a one-line change in the module that already owns the
 layout.
 
 **Cost:** roughly 20 lines, net negative. **Explicitly not** a manifest with
-per-tree attribute records — see §5.
+per-tree attribute records — see §6.
 
-### R6 — Canonicalize `OP_HOME` once
+### R7 — Canonicalize `OP_HOME` once
 
 `resolveOpenPalmHome` uses lexical `resolvePath` only (`home.ts:30-34`), and
 mount discovery decides "is this under `OP_HOME`?" with `startsWith(homeRoot)`
@@ -168,7 +217,7 @@ direction as **C14**.
 
 **Cost:** one line, plus a test.
 
-### R7 — Close the `OP_HOST_AKM_STASH` hole
+### R8 — Close the `OP_HOST_AKM_STASH` hole
 
 This is the one bind source that can point outside `OP_HOME`, and it therefore
 inherits none of the guarantees the #452 work established: it is never
@@ -186,7 +235,7 @@ it operator-owned; align the headless default with the wizard's (off).
 **Cost:** a few lines in the one enable path. Closes a real root-owned-directory
 hole and an unintended-default divergence.
 
-### R8 — Fix the `state/` contract in the docs, don't invent a tree
+### R9 — Fix the `state/` contract in the docs, don't invent a tree
 
 `state/` is documented as app-written records that are never mounted; since the
 remote addon shipped, `state/remote/` is a bind-mount source into the tunnel
@@ -202,11 +251,82 @@ which is overwritten wholesale** (**B1**).
 
 **Cost:** two doc edits, zero code, zero new trees.
 
-## 3. What this adds up to
+## 3. Coverage: what this does and does not fix
+
+The catalog is 79 issues, but it is **evidence, not a backlog**. Roughly fifty
+of them are already fixed in the tree — they earn their place by showing which
+mistakes the layout keeps inviting, not by demanding action. The honest
+question is what remains *standing*, and how much of that these nine changes
+close.
+
+**Standing issues closed:**
+
+| Issue | Closed by |
+|---|---|
+| A5 two `secrets/` dirs, opposite meanings | R1 |
+| A2 unclassified secret defaults into the exposed tree | R2 |
+| A8 Paperclip isolation depends on mount order | R3 |
+| A13 addon write path into the assistant's cron queue | R3 |
+| C10 unguarded `${OP_HOME}` → root-anchored mounts | R4 |
+| B8 tree definition restated in several places | R6 |
+| G7 lifecycle scope missing a tree | R6 |
+| C14 `OP_HOST_AKM_STASH` outside the pre-creation net | R8 |
+| B3 `state/` contract contradicted by its contents | R9 |
+
+**Partially closed:**
+
+| Issue | Closed | Left open |
+|---|---|---|
+| A14 / B2 managed policy writable by its own service | guardian (R5) | the assistant, which genuinely writes plugin `node_modules` there — see §6 |
+| F7 permissive root resolution | symlink canonicalization (R7) | the absolute `OP_HOME` frozen into `stack.env`, so a moved home needs a regenerate |
+| G6 parallel scope lists | purge + ownership repair (R6) | the disk-headroom preflight measuring `OP_HOME`'s filesystem while pulls fill Docker's data root |
+
+**Standing and deliberately not addressed** — listed so the gap is visible
+rather than implied:
+
+- **A6 / A7** — the trust boundary is enforced by a resolved-config audit, and
+  the `stack.env` secret boundary by key-name patterns. Both stay: a
+  user-editable last-wins overlay plus one interpolation namespace will always
+  need a backstop. R1–R3 reduce how much it has to carry, not whether it
+  exists.
+- **A9** — the Paperclip `env_file` exception. Forced by an upstream image that
+  reads only `process.env`; already fenced as tightly as it can be.
+- **B5, B6** — the `config/stack/` carve-out for one file, and permission
+  granularity stopping at the parent directory. Both are consequences of
+  external tools' models (Compose, OpenCode), not of this layout.
+- **B11 (K7)** — `knowledge/skills/` is release content seeded once into a user
+  tree with no update channel, so a skill fix never reaches an existing home.
+  Genuinely open, and flagged as an unresolved product decision in the code.
+  Not a layout fix: it needs a provenance decision first.
+- **C13** — file-vs-directory pre-creation guesses from a dot in the basename.
+  A real fragility with no incident yet; the shipped stack has exactly one file
+  mount, and R1's rename does not add another.
+- **D12** — the Compose project name derives from mutable config with no rename
+  protocol, so changing it orphans running containers.
+- **E9** — forcing the tunnel sidecar rootless relocated its socket, so a bare
+  `tailscale status` reports a healthy tunnel as down. Documentation-fixable;
+  not a layout question.
+- **F5** — `stack.env` still mixes operator-set, app-recorded, and app-derived
+  keys. Partly mitigated already (version markers, explicit `OP_ACCESS_*`
+  intent keys); a general fix would mean splitting the file, which reintroduces
+  the multi-file precedence bug that **F3** was created by.
+- **G5** — Paperclip's embedded database sits in backup-excluded `data/` while
+  its credentials are backed up. A per-service durability question, handled
+  today by an operator runbook.
+
+**The shape of the residue:** what these nine changes do *not* fix is mostly
+either (a) imposed by an external tool's model, (b) a documentation or product
+decision rather than a layout one, or (c) a fragility with no incident behind
+it yet. That is the intended stopping point — the bar in this document is that
+a recommendation must prove its value, and for each item above the evidence
+does not yet support paying structural cost.
+
+## 4. What this adds up to
 
 | | Before | After |
 |---|---|---|
 | Directories named "secrets" | 2, opposite meanings | 1 |
+| Unclassified new secret lands | agent-readable tree | private tree (fails loud) |
 | Paperclip stash mounts | 3, order-dependent | 1, structural |
 | Addon write path into cron queue | yes | no |
 | Managed config writable by its own service | assistant + guardian | assistant only (documented) |
@@ -218,14 +338,14 @@ No new top-level trees. No new file formats. No new runtime components. The
 stack gets smaller: two fewer mounts, one fewer confusing name, two fewer
 enumeration sites.
 
-## 4. Sequencing
+## 5. Sequencing
 
 There is no dependency chain, so these can land independently, cheapest first:
 
-1. **Free / one-liners:** R3 (`:?` guards), R4 (guardian `:ro`), R6
-   (`realpath`), R8 (doc correction).
-2. **Small, contained:** R7 (host-stash validation), R5 (shared tree list).
-3. **Needs a migration:** R2 (Paperclip stash — compose-only, but changes an
+1. **Free / one-liners:** R4 (`:?` guards), R5 (guardian `:ro`), R6
+   (`realpath`), R9 (doc correction).
+2. **Small, contained:** R8 (host-stash validation), R6 (shared tree list).
+3. **Needs a migration:** R3 (Paperclip stash — compose-only, but changes an
    addon's data path, so it wants a release note), then R1 (the
    `provider-auth` rename).
 
@@ -236,7 +356,7 @@ verify → only then delete, leave both and warn on conflict
 in the *same* change — the **A1** relapse, where the Connections page kept
 naming the moved path for a release, is the failure to avoid.
 
-## 5. Considered and rejected
+## 6. Considered and rejected
 
 Recorded so the reasoning is reviewable, and so these are not re-proposed
 without new evidence.
@@ -285,7 +405,7 @@ R2 deliver the *correctness* value (honest names, structural isolation) at a
 tiny fraction of the cost, leaving this as legibility-only. Worth revisiting
 only if a future change makes the exposure boundary load-bearing in code.
 
-## 6. Summary
+## 7. Summary
 
 The layout's problems come from names and mounts disagreeing, not from a
 shortage of structure. The response is therefore to make them agree and delete
