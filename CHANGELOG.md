@@ -7,6 +7,45 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Root installs work instead of silently producing an unwritable stack.**
+  `resolveOperatorIds` refused to return root: when neither `OP_HOME`'s owner
+  nor the process was a non-root user it returned `null`, so `OP_UID`/`OP_GID`
+  were never written, compose fell back to `${OP_UID:-1000}`, and containers
+  ran as uid 1000 against a root-owned `OP_HOME`. Both repair paths
+  (`chownVolumeTarget`, `repairRootOwnedBindMounts`) also no-op on a `null`
+  identity, so nothing corrected the ownership either — the install came up
+  unable to write, with no error. Root is now reported honestly.
+  - **Root remains a last resort, never a preference.** A non-root `OP_HOME`
+    owner still wins over a root process, and a non-root process still wins
+    over a root-owned `OP_HOME`; root is returned only when both signals are
+    root.
+  - **It warns.** Persisting `OP_UID=0` logs that containers will run as root,
+    that this is supported but not recommended, and how to avoid it (create
+    `OP_HOME` as a non-root user, or set `OP_UID`/`OP_GID` explicitly).
+  - `hasUsableOperatorId` now accepts `0`, so a hand-set `OP_UID=0` is treated
+    as the explicit operator choice it is rather than as "unset". Negative and
+    non-integer values are still rejected.
+  - **Root installs are opt-in.** Supported, but never entered by accident:
+    persisting a root `OP_UID`/`OP_GID` now requires `OP_ALLOW_ROOT=1` and
+    otherwise fails with an actionable message. The gate sits at the three
+    places a root identity can be *persisted* — `writeSystemEnv`,
+    `generateFallbackSystemEnv`, and the `--adopt-host` patch in
+    `reconcileHostOwnership` — not in the resolver, because a resolver that
+    refuses root is the bug this release fixes. A home that already carries
+    `OP_UID=0` records the operator's prior consent and is never rewritten, so
+    it does not re-trip the gate on every apply.
+  - **Ownership repair never chowns *to* root.** Reporting root honestly means
+    a root session now resolves a real identity where it previously resolved
+    `null`, and both repair passes chown to that identity. `sudo openpalm
+    start` over an operator-owned `OP_HOME` would therefore have recursively
+    handed `knowledge/`, `config/` and `workspace/` to root — and where
+    `stack.env` pins a non-root `OP_UID`, containers would then be unable to
+    write to files the repair had just taken from them. Both passes now skip
+    when the target is root: a genuine root install has nothing to repair, and
+    repairing to root is never the desired outcome.
+
 ### Removed
 
 - **Google Workspace (gws) integration removed from the stack.** The
