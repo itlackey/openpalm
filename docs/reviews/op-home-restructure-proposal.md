@@ -17,14 +17,63 @@ another.
 
 `knowledge/` is an AKM stash. Its contents — `env/`, `secrets/`, `skills/`,
 `tasks/` — are AKM asset directories. **OpenPalm does not rename, relocate, or
-reinterpret them.** Any layout question about stash contents is answered by
-AKM's model, not by a new OpenPalm convention.
+reinterpret them.**
 
-AKM ≥ 0.9.0 models multiple stashes as **bundles** — a named map of
-`{path, writable, enabled}` (`akm-sources.ts`). That is already how the
-optional personal stash works: the mount at `/host-stash` is always present,
-and the `host-akm` bundle entry decides whether it is used and whether it is
-writable. Everything below uses that mechanism rather than inventing one.
+AKM ≥ 0.9.0 models multiple stashes as **bundles**: a named map of
+`{path, writable, enabled}` (`akm-sources.ts:33-37`). A bundle path is
+arbitrary, so bundle structure is *configuration*, not layout. Only two
+services run AKM today — the assistant and Paperclip; guardian deliberately
+dropped akm-cli (`containers/guardian/entrypoint.sh:116-118`).
+
+## Bundle convention
+
+Three tiers. The distinction that matters is **whose data it is**, because
+that decides backup scope — not the fact that all three are AKM bundles.
+
+| Tier | Location | Mount | `writable` | In safety backup |
+|---|---|---|---|---|
+| **System** — release-shipped skills | `system/skills/` | `:ro` | `false` | yes (`system/` is in scope) |
+| **Primary — assistant** | `knowledge/` | rw | `true` | yes (top-level tree) |
+| **Primary — addon** | `data/<svc>/bundle` | rw | `true` | with its service (one restore unit) |
+| **Shared** | `knowledge/`, granted per addon | rw or `:ro` | per grant | yes |
+
+**The assistant's stash is user data; an addon's stash is service data.** They
+have the same shape, which is what makes it tempting to give them the same
+home, but they sit on opposite sides of the backup boundary: `backup.ts:229`
+skips top-level `data/` and `cache/` **by name**, and the space estimator
+mirrors it (`backup.ts:33`). Putting the assistant's accumulated memory under
+`data/` would remove the only irreplaceable bytes in `OP_HOME` from every
+pre-migration snapshot — silently, since nothing measures what a backup should
+have contained. An addon's bundle belongs there precisely because it travels
+with that addon's other state.
+
+Two rules follow:
+
+1. **`:ro` on the mount is the boundary; akm's `writable` flag is a hint.**
+   Paperclip's AKM config dir is mounted **rw** (`services.compose.yml:54`) and
+   its own AKM process is a sanctioned writer of it, so a `writable:false`
+   entry is a policy the governed process can rewrite — **A14**, lesson 8. When
+   an operator grants a shared bundle read-only, that must be `:ro` in compose.
+2. **A service gets a bundle only if it sets `AKM_BUNDLE_DIR`.** Otherwise the
+   next addon author copies the assistant block and creates dead `bundle/`
+   directories for guardian, the portals, ollama, voice, and tunnel — each a
+   fresh **C3** surface.
+
+## No `shared/` tree
+
+`knowledge/` *is* the shared bundle; sharing is a mount plus a bundle entry.
+A top-level `shared/` would be a ninth tree holding one child (**B5**), and
+purge enumerates trees by resolver in an **allowlist** (`uninstall.ts:87-96`) —
+so it would be silently missed and `--purge` would report "all data removed"
+while shared knowledge survived. That is **G7** verbatim, the incident where
+`private/` was missed the same way. Backup, by contrast, is a *denylist*, so a
+new tree is auto-included: the two halves of the idea fail in opposite
+directions, and D7 — the single tree constant that would catch it — is still
+deferred.
+
+It also breaks on the first plural: `shared/bundle` is a singular name, so a
+second shared bundle forces a rename. As configuration, a second one is one
+line.
 
 ## Layout changes
 
@@ -33,29 +82,19 @@ writable. Everything below uses that mechanism rather than inventing one.
 | delete `knowledge/paperclip/{env,secrets}` | −2 dirs (`home.ts:360-361`) |
 | delete the `/stash/env` + `/stash/secrets` overmounts | −2 mounts (`services.compose.yml:58-59`) |
 | `private/` → `state/` | credentials to `state/secrets/`, audited env file to `state/env/`; 8 top-level trees → 7 |
+| skeleton `knowledge/skills/` → `system/skills/` | in **this repo**, not in anyone's `OP_HOME` — `overwriteSystemTree` already refreshes `system/` wholesale, so shipped skills inherit an update channel for free (**B11/K7**) |
 
-`knowledge/` keeps every AKM asset directory it has, including `skills/`.
+`knowledge/` keeps every AKM asset directory it has, and is not renamed. It is
+also the assistant's primary bundle, so no user data moves and no `stashDir`
+call site changes. A rename would additionally make the cache-cleanup safety
+net vacuous — `storage-report.ts:55` matches the literal token `knowledge`, so
+after a rename it would guard nothing while still passing.
 
-`private/` earned its own tree only by carrying an absolute *never
-bind-mounted* rule. `state/` already can't hold that line — `state/remote/` is
-a mount source — so the rule is subpath-scoped either way: **nothing under
-`state/secrets/` or `state/env/` is ever bind-mounted; services receive
-individual files as Compose secrets.** Merging drops a tree, and drops the
-lifecycle-scope entry that was missed when `private/` was introduced (**G7**).
-Delegated credentials are not AKM assets, so this tree is OpenPalm's to define.
-
-## Sharing and release content are bundles
-
-Paperclip's three stash mounts (parent + two overmounts to hide `env/` and
-`secrets/`) are replaced by a bundle entry. The operator's choice to share is
-`enabled`; whether the addon may write back is `writable`. Same shape as
-`host-akm`, no new mechanism, no partial-share overmounting (**A8**).
-
-Release-shipped skills (**B11/K7**) are the same answer: ship them as a
-**read-only bundle** (`writable: false`) so they update with the release
-without competing with the operator's own stash content. They do not move out
-of the stash, and `knowledge/skills/` remains the operator's own skills
-directory.
+For existing installs, the skills migration deletes from `knowledge/skills/`
+only directories **byte-identical to what the previous release shipped**;
+anything modified stays as the operator's own, with a notice. That avoids the
+undecidable classification K7 documents, and avoids duplicate skills in AKM's
+index.
 
 ## Code changes
 
@@ -90,6 +129,33 @@ Migration discipline: backup first and abort on failure; copy → verify → the
 delete; leave both on conflict; version-gated; sweep every doc and UI string
 naming an old path in the same change (**A1**). `custom.compose.yml` may
 reference moved paths — call it out in the release notes (**G2**).
+
+## Verify before implementing
+
+Three AKM behaviours the bundle convention rests on cannot be verified from
+this repo — akm-cli is installed into the image at build time, not vendored:
+
+1. **Untargeted write resolution.** `defaultWriteTarget` is never set anywhere.
+   With three writable bundles, where does an untargeted write land? The nightly
+   `akm improve` task runs unattended at 03:00 and promotes, merges, and
+   deletes. If resolution is not deterministically `defaultBundle`, set
+   `defaultWriteTarget` explicitly and extend `assertNoDefaultEscalation`
+   (`akm-sources.ts:85-91`) to cover it.
+2. **Cross-bundle read precedence.** A shipped skill and an operator's
+   same-named skill is the *expected* collision. Which wins? If it is bundle-map
+   iteration order, that is **A8**'s ordering fragility moved from Compose into
+   JSON key order — worse, because it is invisible in a diff.
+3. **`writable: false` has never run in production** — the only caller passing
+   it is a unit test (`akm-sources.test.ts:48`). Both the system and shared
+   tiers rest on it.
+
+Also settle the scheduler: `akm task sync` is invoked with no bundle argument
+(`entrypoint.sh:587`), so which bundles it registers from is unpinned. Whichever
+it is, pin it with a test — if it walks all enabled bundles, then any writer to
+a writable shared bundle schedules `command` execution inside the assistant
+(lesson 7). And note the latent trap: the guard is `[ -d "$tasks_dir" ]`
+(`entrypoint.sh:586`), so if a primary bundle ever moves without `tasks/` being
+pre-created inside it, sync silently never runs and cron gets an empty crontab.
 
 ## Why this is the last one
 

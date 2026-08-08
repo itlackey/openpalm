@@ -90,9 +90,18 @@ Binding from now on:
 2. **Multiple stashes are AKM bundles.** Sharing the stash with an addon, the
    optional personal stash, and release-shipped content are all named bundles
    (`{path, writable, enabled}`, akm ≥ 0.9.0) — not bespoke mounts, per-addon
-   subtrees, or over-mounting to hide part of a stash. `enabled` is the
-   operator's sharing choice; `writable` is whether the participant may write
-   back.
+   subtrees, or over-mounting to hide part of a stash. A bundle path is
+   arbitrary, so bundle structure is configuration, not layout. Three tiers:
+   a release-managed **system** bundle under `system/`, mounted `:ro`; a
+   **primary writable** bundle — `knowledge/` for the assistant, `data/<svc>/bundle`
+   for an addon; and the **shared** bundle, which is `knowledge/` granted per
+   addon. A service gets a bundle only if it sets `AKM_BUNDLE_DIR`.
+   **The assistant's stash is user data and stays top-level; an addon's stash is
+   service data and lives under `data/` with the rest of that service's state.**
+   They have the same shape but sit on opposite sides of the backup boundary,
+   and `data/` is skipped by name in every safety snapshot.
+   **`:ro` on the mount is the boundary; `writable` is a hint** — an addon whose
+   AKM config dir is mounted rw can rewrite its own `writable:false`.
 3. **`state/` is the app's tree** — records, generated runtime config, and
    credentials. It is not agent-readable. The only parts a container ever
    mounts are explicitly-listed generated-config directories (e.g.
