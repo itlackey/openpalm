@@ -5,7 +5,7 @@ import { stackEnvFile, hostIdentityFile } from './home.js';
 import type { HostIdentity, OwnershipDecision } from './host-identity.js';
 import { detectHostIdentity, describeHostRuntime, readHostIdentity, writeHostIdentity } from './host-identity.js';
 import { discoverHomeBindMountSources } from './config-persistence.js';
-import { resolveSessionIdentity } from './operator-ids.js';
+import { assertRootInstallAllowed, resolveSessionIdentity } from './operator-ids.js';
 import { patchStateEnvFile } from './secrets.js';
 import { writeFileAtomic } from './fs-atomic.js';
 import { repairRootOwnedBindMounts, repairManagedNamedVolumes } from './volume-ownership.js';
@@ -259,6 +259,12 @@ export async function reconcileHostOwnership(
       // Compose interpolates `user: "${OP_UID}:${OP_GID}"` from the stack env,
       // which still holds the PREVIOUS host's ids after a swap. Record the
       // adopted (session) ids so containers run as the uid we just chowned to.
+      //
+      // This is the third place a root identity can be PERSISTED, and the one
+      // that used to be unreachable: before root was resolvable, sessionIds was
+      // null here and the whole branch was skipped. `--adopt-host` from a root
+      // session would otherwise silently pin OP_UID=0.
+      assertRootInstallAllowed(sessionIds);
       patchStateEnvFile(homeDir, { OP_UID: String(sessionIds.uid), OP_GID: String(sessionIds.gid) });
     }
     if (bindMountsOk) {

@@ -167,7 +167,11 @@ describe('reconcile decision building', () => {
   });
 
   test('same recorded host with some root-owned canaries is drift (repair), not swap', () => {
-    const current = { kind: 'linux', host: 'host-a', uid: process.getuid?.() ?? 1000, gid: process.getgid?.() ?? 1000 };
+    // The session identity is stated explicitly rather than read from the live
+    // process: the premise is a NON-root operator finding root-owned files, and
+    // deriving it from the runner made the test assert the opposite whenever
+    // the suite itself ran as root (where root-owned canaries correctly match).
+    const current = { kind: 'linux', host: 'host-a', uid: 1000, gid: 1000 };
     const decision = decideOwnershipFromCanaries({
       currentIdentity: current,
       previousIdentity: { kind: 'linux', host: 'host-a', uid: current.uid, gid: current.gid },
@@ -176,10 +180,21 @@ describe('reconcile decision building', () => {
     expect(decision).toBe('drift');
   });
 
+  test('a root session with root-owned canaries on the same host is match, not drift', () => {
+    // Root installs are supported: when the operator IS root, root-owned files
+    // are correctly owned and there is nothing to repair.
+    const decision = decideOwnershipFromCanaries({
+      currentIdentity: { kind: 'linux', host: 'host-a', uid: 0, gid: 0 },
+      previousIdentity: { kind: 'linux', host: 'host-a', uid: 0, gid: 0 },
+      canaries: [{ path: '/tmp/rootowned', uid: 0, gid: 0 }],
+    });
+    expect(decision).toBe('match');
+  });
+
   test('null session on the SAME recorded host is match, not a spurious swap', () => {
-    // Root session over a root-owned OP_HOME (uid null) or win32 on the original
-    // host — e.g. `sudo openpalm start`. Same kind+host → not a swap; no usable
-    // uid to repair against → match (no spurious block).
+    // No usable session identity — win32, or a runtime without getuid. (A root
+    // session now resolves to uid 0 rather than null.) Same kind+host → not a
+    // swap; nothing to repair against → match (no spurious block).
     const decision = decideOwnershipFromCanaries({
       currentIdentity: { kind: 'linux', host: 'host-a', uid: null, gid: null },
       previousIdentity: { kind: 'linux', host: 'host-a', uid: 1000, gid: 1000 },
@@ -188,7 +203,7 @@ describe('reconcile decision building', () => {
     expect(decision).toBe('match');
   });
 
-  test('null session on a DIFFERENT recorded host is a swap (moved drive started as root)', () => {
+  test('null session on a DIFFERENT recorded host is a swap (moved drive, no usable session id)', () => {
     // A drive moved to a new host and started as root (or on a root CI runner):
     // uid is null, but the recorded host differs — this must still block so the
     // stack is not silently started against foreign-owned files.

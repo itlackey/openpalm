@@ -16,7 +16,7 @@
  * secrets.ts importing generateFallbackSystemEnv straight out of
  * config-persistence.ts would be a require cycle between the two.
  */
-import { resolveOperatorIds } from "./operator-ids.js";
+import { assertRootInstallAllowed, resolveOperatorIds } from "./operator-ids.js";
 import { STACK_DEFAULTS } from "./defaults.js";
 import { MANAGED_VERSION_MARKERS, SERVICE_VERSION_KEYS, VERSION_DEFAULTS } from "./versions.js";
 import type { ControlPlaneState } from "./types.js";
@@ -26,6 +26,9 @@ export function generateFallbackSystemEnv(state: ControlPlaneState): string {
   // Skipped on Windows where containers run in WSL2 and OP_UID has no
   // meaning on the host process.
   const ids = resolveOperatorIds(state.homeDir);
+  // This generator always emits the ids it resolves, so a root identity is
+  // always a persist — gate it unconditionally (see assertRootInstallAllowed).
+  if (ids) assertRootInstallAllowed(ids);
   const idLines: string[] = ids
     ? [`OP_UID=${ids.uid}`, `OP_GID=${ids.gid}`]
     : [];
