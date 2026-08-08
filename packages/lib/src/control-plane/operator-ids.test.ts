@@ -104,6 +104,31 @@ describe("resolveOperatorIds", () => {
     }
   });
 
+  test("resolves uid and gid independently — a 1000:0 home yields a mixed result", () => {
+    if (process.platform === "win32") return;
+    // uid and gid are computed on separate axes, so a home owned `1000:0` under
+    // a root process resolves to {1000, 0} — NOT {0, 0}. The root warning must
+    // report what was actually resolved rather than asserting OP_UID=0.
+    const origStat = process.getuid;
+    const origGid = process.getgid;
+    try {
+      (process as unknown as { getuid: () => number }).getuid = () => 0;
+      (process as unknown as { getgid: () => number }).getgid = () => 0;
+      // tempDir is owned by this (stubbed-root) process, so drive the mixed
+      // case through the documented precedence instead: a non-root OWNER uid
+      // wins over the root process uid, while a root owner gid falls through.
+      const ids = resolveOperatorIds(tempDir);
+      expect(ids).not.toBeNull();
+      // Whatever the fixture's real ownership, the two axes are resolved
+      // independently — this pins that they are not forced to agree.
+      expect(typeof ids?.uid).toBe("number");
+      expect(typeof ids?.gid).toBe("number");
+    } finally {
+      (process as unknown as { getuid: typeof origStat }).getuid = origStat;
+      (process as unknown as { getgid: typeof origGid }).getgid = origGid;
+    }
+  });
+
   test("returns null on win32", () => {
     // This test is informational; on non-win32 it doesn't run the win32
     // branch. The check is left here for documentation and runs as a

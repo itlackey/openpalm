@@ -272,16 +272,18 @@ export function writeSystemEnv(state: ControlPlaneState): void {
   // must not be silently changed.
   const ids = resolveOperatorIds(state.homeDir);
   if (ids) {
-    // Root is supported but not recommended: it is only ever resolved when
-    // neither OP_HOME's owner nor the process is a non-root user, and it makes
-    // every container run privileged. Warn on every write rather than once —
-    // it is a standing condition, not a one-time event.
+    // Root is supported but not recommended. uid and gid resolve INDEPENDENTLY
+    // in resolveOperatorIds, so a mixed result like 1000:0 is reachable (an
+    // OP_HOME owned `1000:0` under a root process) — the message therefore
+    // reports the ids it actually resolved rather than asserting OP_UID=0.
+    // Warn on every write rather than once: it is a standing condition, not a
+    // one-time event.
     if (ids.uid === 0 || ids.gid === 0) {
       logger.warn(
-        "Running as root against a root-owned OP_HOME — containers will run as root " +
-          "(OP_UID=0). This is supported but NOT recommended. To avoid it, create OP_HOME " +
-          "as a non-root user and install as that user, or set OP_UID/OP_GID explicitly in " +
-          "state/stack.env."
+        `Resolved a root operator id — containers will run as ${ids.uid}:${ids.gid}. ` +
+          "This is supported but NOT recommended. To avoid it, ensure OP_HOME is owned by a " +
+          "non-root user and group and install as that user, or set OP_UID/OP_GID explicitly " +
+          "in state/stack.env."
       );
     }
     if (!hasUsableOperatorId(parsed, "OP_UID")) adminManaged.OP_UID = String(ids.uid);

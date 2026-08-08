@@ -27,6 +27,15 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   - `hasUsableOperatorId` now accepts `0`, so a hand-set `OP_UID=0` is treated
     as the explicit operator choice it is rather than as "unset". Negative and
     non-integer values are still rejected.
+  - **Ownership repair never chowns *to* root.** Reporting root honestly means
+    a root session now resolves a real identity where it previously resolved
+    `null`, and both repair passes chown to that identity. `sudo openpalm
+    start` over an operator-owned `OP_HOME` would therefore have recursively
+    handed `knowledge/`, `config/` and `workspace/` to root — and where
+    `stack.env` pins a non-root `OP_UID`, containers would then be unable to
+    write to files the repair had just taken from them. Both passes now skip
+    when the target is root: a genuine root install has nothing to repair, and
+    repairing to root is never the desired outcome.
 
 ### Changed
 

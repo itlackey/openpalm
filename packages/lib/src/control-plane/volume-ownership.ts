@@ -12,7 +12,7 @@
 import { existsSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { createLogger } from "../logger.js";
-import { resolveSessionIdentity } from "./operator-ids.js";
+import { type OperatorIds, resolveSessionIdentity } from "./operator-ids.js";
 import { readStackEnv } from "./secrets.js";
 import { run, resolveComposeProjectName } from "./docker.js";
 
@@ -30,6 +30,25 @@ const OWNERSHIP_REPAIR_SANDBOX_ARGS = [
   '--security-opt', 'no-new-privileges:true',
   '--pids-limit', '64',
 ];
+
+/**
+ * Ownership repair exists to undo root ownership — so repairing *to* root is
+ * never a desirable outcome, and is sometimes destructive.
+ *
+ * Concretely: `sudo openpalm start` over an OP_HOME whose files belong to the
+ * operator resolves a root session identity. Chowning to it would recursively
+ * hand the operator's knowledge, config and workspace to root — and if
+ * stack.env pins a non-root OP_UID (the workaround the root warning
+ * recommends), containers then run as that uid against files this pass just
+ * made root-owned, i.e. an unwritable stack plus collateral damage.
+ *
+ * A genuine root install needs no repair either: its files are already
+ * root-owned and its containers already run as root. So skipping is correct in
+ * both cases.
+ */
+function isRootTarget(ids: OperatorIds): boolean {
+  return ids.uid === 0 || ids.gid === 0;
+}
 
 /**
  * Fix root-owned bind-mount directories under OP_HOME by running a temporary
@@ -58,6 +77,10 @@ export async function repairRootOwnedBindMounts(homeDir: string, candidates?: st
 
   const ids = resolveSessionIdentity(homeDir);
   if (!ids) return true;
+  if (isRootTarget(ids)) {
+    logger.info('Session identity is root — skipping bind-mount ownership repair (see isRootTarget)');
+    return true;
+  }
 
   // `strict` (explicit --adopt-host) and `deep` (one-time reconcile after a
   // session-uid change) both repair every existing candidate: the chown is
@@ -167,6 +190,10 @@ export async function repairManagedNamedVolumes(
 ): Promise<boolean> {
   const ids = resolveSessionIdentity(homeDir);
   if (!ids) return true;
+  if (isRootTarget(ids)) {
+    logger.info('Session identity is root — skipping named-volume ownership repair (see isRootTarget)');
+    return true;
+  }
   const projectName = resolveComposeProjectName(readStackEnv(homeDir));
   const repaired = new Set<string>();
   let allOk = true;
