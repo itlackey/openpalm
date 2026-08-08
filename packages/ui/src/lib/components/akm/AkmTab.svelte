@@ -29,7 +29,7 @@
 		type ProcKey,
 	} from '$lib/components/akm/improve-process-helpers';
 	import { akmConfigToForm, formToAkmPayload } from '$lib/components/akm/akm-config';
-	import type { LlmProfile, AgentProfile, ImproveProfile } from '$lib/components/akm/profile-types';
+	import type { LlmEngine, AgentEngine, ImproveStrategy } from '$lib/components/akm/profile-types';
 
 	// ── Status ───────────────────────────────────────────────────────────────────
 	let loading = $state(false);
