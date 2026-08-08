@@ -92,7 +92,12 @@ Binding from now on:
 3. **Shipped skills are release-managed** under `system/`, not user-tree
    content seeded once with no update channel.
 4. **Secret placement is default-deny** — the internal API resolves to
-   `private/secrets/` unless a name is explicitly agent-readable.
+   `private/secrets/` unless a name is explicitly agent-readable. `private/` is
+   a separate tree from `state/` for one reason: it is the only tree carrying an
+   absolute *never bind-mounted* rule, checkable as a whole-tree assertion.
+   `state/` cannot carry it — `state/remote/` is a mount source — and `data/` is
+   wrong outright, since each `data/<service>/` is mounted wholesale into its
+   service and credentials must be granted file-by-file.
 5. **A service's data and credentials are one restore unit.** A backup takes
    both or neither, and names what it skipped.
 6. **Managed compose interpolation fails loud** (`${OP_HOME:?}`); a silent
