@@ -392,7 +392,9 @@ for a later successful seed.
 as configuration.*
 
 **B11. Release-authored content seeded into a user tree strands forever —
-an acknowledged open problem.** `knowledge/skills/` is release content "the
+an acknowledged open problem.** *(Resolved by decision, 2026-08-08: ship it as
+a read-only AKM bundle, not by relocating it out of the stash — see the
+accepted changes.)* `knowledge/skills/` is release content "the
 operator is not expected to author or edit, same as `system/`" — but it lives
 in the user-owned knowledge tree, so it is seeded once and never updated: "a
 skill bugfix shipped in a LATER release only ever reaches a brand-new

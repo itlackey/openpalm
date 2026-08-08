@@ -60,10 +60,9 @@ A final reorganization has been approved (2026-08-08) and is not yet
 implemented. When it lands, the current CLI will migrate supported homes
 automatically, as it has for every previous layout move:
 
-- `knowledge/` stays the one stash; sharing it with an addon becomes a single
-  operator toggle, and the per-addon `knowledge/paperclip/` overlay directories
-  are removed;
-- shipped skills become release-managed content under `system/`;
+- `knowledge/` stays the one stash with AKM's asset layout unchanged; sharing
+  it with an addon becomes an AKM bundle entry, and the per-addon
+  `knowledge/paperclip/` overlay directories are removed;
 - `private/` is merged into `state/`: delegated credentials move to
   `state/secrets/` and the audited env file to `state/env/`;
 - the internal secret API defaults to `state/secrets/`, while

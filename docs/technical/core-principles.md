@@ -83,13 +83,16 @@ parent, and no boundary may be held up by hiding one mount behind another.
 
 Binding from now on:
 
-1. **One stash.** `knowledge/` is it. Sharing it with an addon is a binary
-   operator choice, expressed as an opt-in compose overlay like every other
-   optional grant; an addon not granted it manages its own. Per-addon subtrees
-   and over-mounting to hide part of the stash are forbidden. Shared means
-   shared, task files included.
-2. **Shipped skills are release-managed** under `system/`, not user-tree
-   content seeded once with no update channel.
+1. **The stash layout is AKM's.** `knowledge/` is an AKM stash; `env/`,
+   `secrets/`, `skills/`, `tasks/` are AKM asset directories. OpenPalm does not
+   rename, relocate, or reinterpret them, and does not invent parallel
+   conventions for stash contents.
+2. **Multiple stashes are AKM bundles.** Sharing the stash with an addon, the
+   optional personal stash, and release-shipped content are all named bundles
+   (`{path, writable, enabled}`, akm ≥ 0.9.0) — not bespoke mounts, per-addon
+   subtrees, or over-mounting to hide part of a stash. `enabled` is the
+   operator's sharing choice; `writable` is whether the participant may write
+   back.
 3. **`state/` is the app's tree** — records, generated runtime config, and
    credentials. It is not agent-readable. The only parts a container ever
    mounts are explicitly-listed generated-config directories (e.g.

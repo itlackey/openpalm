@@ -13,17 +13,28 @@ implied one axis while its mount answered another (**A1**, **A2**).
 exposure than its parent; no boundary held up by hiding one mount behind
 another.
 
+## The stash is AKM's
+
+`knowledge/` is an AKM stash. Its contents — `env/`, `secrets/`, `skills/`,
+`tasks/` — are AKM asset directories. **OpenPalm does not rename, relocate, or
+reinterpret them.** Any layout question about stash contents is answered by
+AKM's model, not by a new OpenPalm convention.
+
+AKM ≥ 0.9.0 models multiple stashes as **bundles** — a named map of
+`{path, writable, enabled}` (`akm-sources.ts`). That is already how the
+optional personal stash works: the mount at `/host-stash` is always present,
+and the `host-akm` bundle entry decides whether it is used and whether it is
+writable. Everything below uses that mechanism rather than inventing one.
+
 ## Layout changes
 
 | Change | Effect |
 |---|---|
 | delete `knowledge/paperclip/{env,secrets}` | −2 dirs (`home.ts:360-361`) |
 | delete the `/stash/env` + `/stash/secrets` overmounts | −2 mounts (`services.compose.yml:58-59`) |
-| `knowledge/skills/` → `system/skills/` | shipped skills get an update channel (**B11**) |
-| `private/` → `state/` | credentials to `state/secrets/`, the audited env file to `state/env/`; 8 top-level trees → 7 |
-| rename `knowledge/secrets/` → `knowledge/provider-auth/` | only `state/secrets/` says "secrets" (**A5**) |
+| `private/` → `state/` | credentials to `state/secrets/`, audited env file to `state/env/`; 8 top-level trees → 7 |
 
-Everything else keeps its name and contents. `knowledge/` is the one stash.
+`knowledge/` keeps every AKM asset directory it has, including `skills/`.
 
 `private/` earned its own tree only by carrying an absolute *never
 bind-mounted* rule. `state/` already can't hold that line — `state/remote/` is
@@ -31,27 +42,20 @@ a mount source — so the rule is subpath-scoped either way: **nothing under
 `state/secrets/` or `state/env/` is ever bind-mounted; services receive
 individual files as Compose secrets.** Merging drops a tree, and drops the
 lifecycle-scope entry that was missed when `private/` was introduced (**G7**).
-`data/` remains wrong for credentials — each `data/<service>/` is mounted
-wholesale into its service.
+Delegated credentials are not AKM assets, so this tree is OpenPalm's to define.
 
-## Sharing
+## Sharing and release content are bundles
 
-The stack already expresses optional grants as overlay files gated on a
-stack.env key and picked up by `discoverStackOverlays` on every compose
-invocation — that is what `voice.compose.lan.yml` is. Stash sharing is the same
-shape:
+Paperclip's three stash mounts (parent + two overmounts to hide `env/` and
+`secrets/`) are replaced by a bundle entry. The operator's choice to share is
+`enabled`; whether the addon may write back is `writable`. Same shape as
+`host-akm`, no new mechanism, no partial-share overmounting (**A8**).
 
-```yaml
-# paperclip.compose.stash.yml — included only when the operator turns it on
-services:
-  paperclip:
-    volumes:
-      - ${OP_HOME}/knowledge:/stash
-```
-
-The base `services.compose.yml` drops all three stash mounts. Shared means
-shared: the addon gets the stash, task files included, and a container that
-syncs tasks runs them.
+Release-shipped skills (**B11/K7**) are the same answer: ship them as a
+**read-only bundle** (`writable: false`) so they update with the release
+without competing with the operator's own stash content. They do not move out
+of the stash, and `knowledge/skills/` remains the operator's own skills
+directory.
 
 ## Code changes
 
@@ -89,9 +93,9 @@ reference moved paths — call it out in the release notes (**G2**).
 
 ## Why this is the last one
 
-Adding an addon changes no existing tree and no existing service's mounts:
-create nothing, flip one toggle. AKM's internals stay inside `knowledge/`.
-Every tree has one exposure answer, so nothing needs hiding.
+Adding an addon changes no existing tree and no existing service's mounts — it
+is a bundle entry. AKM owns the stash layout, so its changes stay inside
+`knowledge/`. Every tree has one exposure answer, so nothing needs hiding.
 
 Only a fourth axis would force another move — multi-tenant human users, or
 content that must be agent-readable and release-managed at once. Neither is on
