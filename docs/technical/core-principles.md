@@ -69,51 +69,40 @@ All OpenPalm state lives under a single root: **`~/.openpalm/`** (configurable v
 | `private/` | App-written | Delegated UI/OpenCode/Guardian/API/portal/bot credentials; never part of assistant `/stash` |
 | `cache/` | System | Regenerable assistant and Guardian caches; excluded from backups and ownership repair |
 
-#### Accepted final layout (approved 2026-08-08 — implementation pending)
+#### Accepted changes (approved 2026-08-08 — not yet implemented)
 
-The table above describes the **current** runtime. The owner has approved a
-final reorganization of `OP_HOME`; the rules below are **binding on new work
-from now on**, and the table above is amended as each phase lands. Evidence
-base: [`../reviews/op-home-structure-issues-and-lessons.md`](../reviews/op-home-structure-issues-and-lessons.md).
-Decision record and migration: [`../reviews/op-home-restructure-proposal.md`](../reviews/op-home-restructure-proposal.md).
+The table above describes the current runtime; it is amended as each change
+lands. Decisions and migration:
+[`../reviews/op-home-restructure-proposal.md`](../reviews/op-home-restructure-proposal.md).
 
-**The organizing rule — exposure is the primary axis.** `OP_HOME` was split by
-three axes at once (writer, exposure, durability), but only *exposure* is
-enforced, implicitly, by the mount graph. Every past trust incident was a file
-whose name implied one axis while its mount answered another. Therefore: **a
-tree's name must agree with its mount.** No subtree may need different exposure
-than its parent, and no boundary may be maintained by hiding one mount behind
-another.
+**A tree's name must agree with its mount.** `OP_HOME` is split by three axes
+(writer, exposure, durability) but only exposure is enforced, by the mount
+graph — every past trust incident was a file whose name implied one axis while
+its mount answered another. No subtree may need different exposure than its
+parent, and no boundary may be held up by hiding one mount behind another.
 
-The layout itself does not grow. The accepted changes are:
+Binding from now on:
 
-| Change | Effect |
-|---|---|
-| **One stash, shared or not** | `knowledge/` is THE stash. The operator chooses per addon whether to share it, as a single mount-source toggle. Per-addon subtrees and over-mounting to hide parts of the stash are removed |
-| **Shipped skills are release-managed** | they move to `system/skills/` and are overwritten on update, rather than being release content seeded once into a user tree with no update channel |
-| **Secret placement is default-deny** | the internal secret API resolves to `private/secrets/` unless a name is explicitly agent-readable; operator-managed secrets stay agent-readable through an explicit path, not by name-routing |
-| **`state/` admits generated runtime config** | app-generated files a container reads (e.g. `state/remote/`) belong here, never in the wholesale-overwritten `system/` |
-
-Binding consequences:
-
-1. **Sharing is binary and explicit.** An addon either gets the shared stash or
-   it does not; an addon that does not manages its own stash internally.
-   Mounting a broad tree and then over-mounting more-specific paths to *hide*
-   parts of it is forbidden — that isolation depends on Compose mount ordering
-   and is invisible in any single mount line.
-2. **Granting the stash grants the scheduler queue.** `knowledge/tasks/` is
-   synced into the assistant's crontab and executed. Any surface that offers
-   stash sharing must say so; it is an operator decision, not a hidden one.
-3. **A service's data and its credentials are one restore unit.** A lifecycle
-   backup takes both or neither, and names what it skipped.
-4. **Managed compose interpolation fails loud.** Mount and secret sources use
-   `${OP_HOME:?}`; a silent default may only be used where the unset case is
-   provably the safe one.
-5. **`OP_HOME` is canonicalized once** at resolution, so symlinked homes are
-   supported and every "is this path under `OP_HOME`?" test is sound.
-6. **Managed config is read-only to the service it governs** wherever that
-   service does not write it. Guardian's is; the assistant's remains writable
-   because OpenCode installs plugin dependencies there.
+1. **One stash.** `knowledge/` is it. Sharing it with an addon is a binary
+   operator choice expressed as a single mount source; an addon not granted it
+   manages its own. Per-addon subtrees and over-mounting to hide part of the
+   stash are forbidden.
+2. **Granting the stash grants `knowledge/tasks/`**, which the assistant's cron
+   executes. Any surface offering stash sharing must say so.
+3. **Shipped skills are release-managed** under `system/`, not user-tree
+   content seeded once with no update channel.
+4. **Secret placement is default-deny** — the internal API resolves to
+   `private/secrets/` unless a name is explicitly agent-readable.
+5. **A service's data and credentials are one restore unit.** A backup takes
+   both or neither, and names what it skipped.
+6. **Managed compose interpolation fails loud** (`${OP_HOME:?}`); a silent
+   default only where the unset case is provably safe.
+7. **`OP_HOME` is canonicalized once**, so symlinked homes work and every
+   "is this under `OP_HOME`?" test is sound.
+8. **`state/` holds records and generated runtime config.** Generated files a
+   container reads never go in the wholesale-overwritten `system/`.
+9. **Managed config is read-only to the service it governs** where that service
+   does not write it (guardian's is; the assistant's is not).
 
 ### 1) Config (user-owned, non-secret)
 
