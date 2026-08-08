@@ -9,8 +9,16 @@ import type { RequestHandler } from "./$types";
 // Returns the full set of pre-fill data for re-running the setup wizard.
 // Requires session auth so secrets are only returned to authenticated operators.
 
+interface AkmLlmEngine {
+  kind?: string;
+  provider?: string;
+  model?: string;
+  endpoint?: string;
+}
+
 interface AkmConfig {
-  llm?: { provider?: string; model?: string; endpoint?: string };
+  engines?: Record<string, AkmLlmEngine>;
+  defaults?: { llmEngine?: string };
   embedding?: { provider?: string; model?: string; endpoint?: string; dimension?: number };
 }
 
@@ -22,6 +30,22 @@ function readAkmConfig(configDir: string): AkmConfig {
   } catch {
     return {};
   }
+}
+
+/**
+ * Resolve the wizard-prefill LLM connection from the akm 0.9 engines map:
+ * engines[defaults.llmEngine ?? "default"] when that entry has kind "llm",
+ * falling back to engines.default. Returns undefined when no llm engine is
+ * configured.
+ */
+function resolveDefaultLlmEngine(akm: AkmConfig): AkmLlmEngine | undefined {
+  const engines = akm.engines;
+  if (!engines || typeof engines !== "object") return undefined;
+  const preferred = engines[akm.defaults?.llmEngine ?? "default"];
+  if (preferred && preferred.kind === "llm") return preferred;
+  const fallback = engines.default;
+  if (fallback && fallback.kind === "llm") return fallback;
+  return undefined;
 }
 
 /**
@@ -70,6 +94,7 @@ export const GET: RequestHandler = async (event) => {
   const env = readStackEnv(state.homeDir);
   const secretEnv = readStackSecretEnv(state.homeDir);
   const akm = readAkmConfig(state.configDir);
+  const akmLlm = resolveDefaultLlmEngine(akm);
   const importedModelPreferences = readPersistedModelPreferences(state.configDir);
 
   // Addon hardware profiles (CPU / CUDA / …)
@@ -125,10 +150,10 @@ export const GET: RequestHandler = async (event) => {
     portalVersion: env.OP_PORTAL_VERSION ?? "",
     voiceVersion: env.OP_VOICE_VERSION ?? "",
     hostAkm,
-    llm: akm.llm ? {
-      provider: akm.llm.provider ?? "",
-      model: akm.llm.model ?? "",
-      baseUrl: deriveBaseUrl(akm.llm.endpoint),
+    llm: akmLlm ? {
+      provider: akmLlm.provider ?? "",
+      model: akmLlm.model ?? "",
+      baseUrl: deriveBaseUrl(akmLlm.endpoint),
     } : null,
     embedding: akm.embedding ? {
       provider: akm.embedding.provider ?? "",
