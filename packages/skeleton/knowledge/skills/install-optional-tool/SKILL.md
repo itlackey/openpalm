@@ -16,14 +16,13 @@ because most installs never use them:
 | `claude` | Anthropic's Claude Code CLI |
 | `copilot` | GitHub's Copilot CLI |
 | `pi` | Pi Coding Agent |
-| `gcloud` | Google Cloud CLI (needed by the `gws-setup` skill's Interactive Setup method) |
-| `gws` | Google Workspace CLI (used by the `gws-setup` skill and its scripts) |
+| `gcloud` | Google Cloud CLI |
 
 ## When to use this skill
 
 Use it when the user asks to run one of the tools above and it is not
-already on PATH, or when another skill (e.g. `gws-setup`) needs `gws` or
-`gcloud` and it isn't installed yet.
+already on PATH, or when another skill needs one of them and it isn't
+installed yet.
 
 ## Before you start
 
@@ -71,7 +70,7 @@ bash scripts/install-tool.sh --list
   before doing any work, so re-running it for an already-installed tool is a
   fast no-op — safe to call every time rather than trying to remember
   whether a tool was installed in a previous session.
-- npm-based tools (`codex`, `claude`, `copilot`, `pi`, `gws`) install via
+- npm-based tools (`codex`, `claude`, `copilot`, `pi`) install via
   `npm install -g --prefix /opt/persistent <package>@<version>`, pinned to
   the same versions OpenPalm used to bake into the image.
 - `gcloud` downloads the official Google Cloud CLI tarball and extracts it
