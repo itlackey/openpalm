@@ -29,14 +29,14 @@ afterEach(() => {
 });
 
 describe('runComposeWithPreflight — D1 docker-readiness preamble', () => {
-	test('runs down and stop directly without migration or activation audit', async () => {
-		let migrated = false;
+	test('runs down and stop directly — migrations still run (they surface addon profiles from a pre-0.13 home) but the activation audit does not', async () => {
+		let migrated = 0;
 		let activated = false;
 		const streamed: string[][] = [];
 		mock.module('@openpalm/lib', () => ({
 			...realLib,
 			buildComposeCliArgs: () => ['compose-base'],
-			runHomeMigrations: () => { migrated = true; },
+			runHomeMigrations: () => { migrated += 1; },
 			activateComposeCommand: async () => { activated = true; },
 			runComposeStreaming: async (args: string[]) => { streamed.push(args); }
 		}));
@@ -49,7 +49,7 @@ describe('runComposeWithPreflight — D1 docker-readiness preamble', () => {
 			['compose-base', 'down', '-v'],
 			['compose-base', 'stop', 'assistant']
 		]);
-		expect(migrated).toBe(false);
+		expect(migrated).toBe(2);
 		expect(activated).toBe(false);
 	});
 

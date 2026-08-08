@@ -10,6 +10,7 @@ import {
   FOCUS_CHECK_THROTTLE_MS,
   isAutoUpdateSupported,
   isTrustedUpdaterSender,
+  isVersionNewer,
   updaterChannel,
   updaterFeedChannel,
   type AppUpdaterLike,
@@ -89,6 +90,7 @@ class FakeUpdater implements AppUpdaterLike {
 
 function makeUpdater(
   overrides: Partial<{
+    currentVersion: string;
     platform: NodeJS.Platform;
     isPackaged: boolean;
     portableExecutableFile: string;
@@ -100,7 +102,7 @@ function makeUpdater(
   const fake = new FakeUpdater();
   const updater = new DesktopUpdater({
     updater: fake,
-    currentVersion: '1.0.0',
+    currentVersion: overrides.currentVersion ?? '1.0.0',
     platform: overrides.platform ?? 'linux',
     isPackaged: overrides.isPackaged ?? true,
     portableExecutableFile: overrides.portableExecutableFile,
@@ -141,6 +143,53 @@ describe('channel mapping', () => {
 
   it('leaves the beta channel name alone — beta.yml is what is published', () => {
     expect(updaterFeedChannel('beta')).toBe('beta');
+  });
+});
+
+// check()'s "available" gate: strictly newer by semver precedence, not merely
+// different. Local implementation because electron-updater's own `semver`
+// dependency is not resolvable from this package (isolated installs).
+describe('isVersionNewer', () => {
+  it('orders plain releases', () => {
+    expect(isVersionNewer('2.0.0', '1.0.0')).toBe(true);
+    expect(isVersionNewer('1.0.1', '1.0.0')).toBe(true);
+    expect(isVersionNewer('1.0.0', '1.0.0')).toBe(false);
+    expect(isVersionNewer('0.9.9', '1.0.0')).toBe(false);
+  });
+
+  it('sorts a prerelease BEFORE its release (1.2.3-beta.4 < 1.2.3)', () => {
+    expect(isVersionNewer('1.2.3', '1.2.3-beta.4')).toBe(true);
+    expect(isVersionNewer('1.2.3-beta.4', '1.2.3')).toBe(false);
+  });
+
+  it('compares numeric prerelease identifiers numerically (beta.4 < beta.10)', () => {
+    expect(isVersionNewer('1.2.3-beta.10', '1.2.3-beta.4')).toBe(true);
+    expect(isVersionNewer('1.2.3-beta.4', '1.2.3-beta.10')).toBe(false);
+  });
+
+  it('compares alphanumeric prerelease identifiers lexically (alpha < beta)', () => {
+    expect(isVersionNewer('1.2.3-beta.1', '1.2.3-alpha.9')).toBe(true);
+    expect(isVersionNewer('1.2.3-alpha.9', '1.2.3-beta.1')).toBe(false);
+  });
+
+  it('ranks numeric identifiers below alphanumeric ones (semver §11)', () => {
+    expect(isVersionNewer('1.2.3-beta', '1.2.3-4')).toBe(true);
+    expect(isVersionNewer('1.2.3-4', '1.2.3-beta')).toBe(false);
+  });
+
+  it('lets a longer identifier set win over its own prefix', () => {
+    expect(isVersionNewer('1.2.3-beta.4.1', '1.2.3-beta.4')).toBe(true);
+    expect(isVersionNewer('1.2.3-beta.4', '1.2.3-beta.4.1')).toBe(false);
+  });
+
+  it('a release with a prerelease is still newer than an older release', () => {
+    expect(isVersionNewer('1.1.0-beta.1', '1.0.0')).toBe(true);
+    expect(isVersionNewer('1.0.0', '1.1.0-beta.1')).toBe(false);
+  });
+
+  it('falls back to plain inequality for non-semver strings', () => {
+    expect(isVersionNewer('nightly-2', 'nightly-1')).toBe(true);
+    expect(isVersionNewer('nightly-1', 'nightly-1')).toBe(false);
   });
 });
 
@@ -251,6 +300,35 @@ describe('state transitions', () => {
     const state = await updater.check();
     expect(state.status).toBe('not-available');
     expect(state.availableVersion).toBeNull();
+  });
+
+  // A different feed version is NOT automatically an update: `!==` used to
+  // report an OLDER feed release as 'available', a phantom whose download can
+  // never succeed (electron-updater never stages a not-newer update).
+  it('reports not-available when the feed is OLDER than the running version', async () => {
+    const { updater, fake } = makeUpdater();
+    fake.feedVersion = '0.9.0';
+    const state = await updater.check();
+    expect(state.status).toBe('not-available');
+    expect(state.availableVersion).toBeNull();
+  });
+
+  // The concrete phantom: a beta install on the default stable channel, whose
+  // stable feed carries the older release the beta was cut ahead of.
+  it('does not offer a beta install its own older stable release as an update', async () => {
+    const { updater, fake } = makeUpdater({ currentVersion: '1.1.0-beta.4' });
+    fake.feedVersion = '1.0.0';
+    const state = await updater.check();
+    expect(state.status).toBe('not-available');
+    expect(state.availableVersion).toBeNull();
+  });
+
+  it('still offers the stable release a prerelease of it predates', async () => {
+    const { updater, fake } = makeUpdater({ currentVersion: '1.0.0-beta.4' });
+    fake.feedVersion = '1.0.0';
+    const state = await updater.check();
+    expect(state.status).toBe('available');
+    expect(state.availableVersion).toBe('1.0.0');
   });
 
   it('walks available → downloading → downloaded, tracking percent', async () => {

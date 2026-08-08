@@ -2,7 +2,7 @@
 import { mkdirSync, writeFileSync, readFileSync, existsSync, chmodSync, lstatSync, rmSync, renameSync, copyFileSync } from "node:fs";
 import { errMessage } from './errors.js';
 import { createLogger } from "../logger.js";
-import { parseEnvFile, mergeEnvContent } from './env.js';
+import { parseEnvFile, mergeEnvContent, parseEnabledAddons } from './env.js';
 import type { ControlPlaneState } from "./types.js";
 import { resolveConfigDir, stackEnvFile } from "./home.js";
 import { authJsonPath as resolveAuthJsonPath, stackEnvPath } from "./paths.js";
@@ -205,8 +205,13 @@ export function ensureSecrets(state: ControlPlaneState): void {
   // manual route (edit OP_ENABLED_ADDONS in stack.env, rerun compose) bricking
   // the whole stack, and would equally miss a migrated or restored home that
   // already lists paperclip. Idempotent and seed-if-missing, so it never
-  // rotates an existing secret.
-  preparePaperclipAddon(state.homeDir);
+  // rotates an existing secret. Strict unknown-key enforcement applies only
+  // while the addon is actually enabled — a stray key in a disabled addon's
+  // env file must not brick every install/update/deploy (the secret audit
+  // still enforces the boundary at activation for enabled stacks).
+  preparePaperclipAddon(state.homeDir, {
+    enabled: parseEnabledAddons(readStackEnv(state.homeDir).OP_ENABLED_ADDONS).includes('paperclip'),
+  });
 }
 
 function ensureAuthJson(state: ControlPlaneState): void {

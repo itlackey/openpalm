@@ -40,7 +40,7 @@ import { createLogger } from "../logger.js";
 import { reconcileMdnsResponder } from "./mdns-responder.js";
 import { patchSecretsEnvFile, readStackEnv } from "./secrets.js";
 import { GUARDIAN_INGRESS_ADDON_IDS } from "./addon-ids.js";
-import { listEnabledAddonIds, setAddonEnabled } from "./addons.js";
+import { getAddonServiceNames, listEnabledAddonIds, setAddonEnabled } from "./addons.js";
 import { computeGuardianIngressRequired } from "./remote-providers.js";
 import type { InstallLockHandle } from "./install-lock.js";
 import type { ControlPlaneState } from "./types.js";
@@ -272,7 +272,11 @@ export async function applyAccessToggles(
     try {
       const scope = resolveRecreateScope(
         changedKeys,
-        autoEnabledAddons,
+        // `autoEnabledAddons` holds ADDON ids ('chat'/'api'), but the scope is
+        // compose SERVICE names — both ids activate the `guardian` profile,
+        // and passing the id through verbatim made `up -d --no-deps chat`
+        // fail while the guardian itself was filtered out as undeployed.
+        autoEnabledAddons.flatMap((addon) => getAddonServiceNames(state.homeDir, addon)),
         await deps.listDeployedServices(state),
       );
       if (scope.length > 0) {

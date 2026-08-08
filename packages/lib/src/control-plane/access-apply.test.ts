@@ -237,6 +237,22 @@ describe("applyAccessToggles", () => {
       .join("\n");
   }
 
+  test("guardianNetwork with no ingress addon auto-enables chat and recreates the guardian SERVICE", async () => {
+    // `reconcileGuardianIngressAddons` returns ADDON ids ('chat'), but the
+    // recreate scope is compose SERVICE names — the chat profile activates the
+    // `guardian` service. Passing the id through verbatim filtered the
+    // guardian out (no service named "chat"), so the published port had no
+    // container behind it and `up -d chat` hard-failed.
+    const state = makeHome(baselineEnv(ALL_OFF));
+    const { deps, calls } = makeDeps(["assistant"]);
+
+    const result = await applyAccessToggles(state, { ...ALL_OFF, guardianNetwork: true }, { deps });
+
+    expect(result.autoEnabledAddons).toEqual(["chat"]);
+    expect(calls.recreated).toEqual([["guardian"]]);
+    expect(result.ok).toBe(true);
+  });
+
   describe("the remote addon requiring guardian ingress", () => {
     test("remote enabled + target=guardian turns ingress on and recreates the guardian, LAN bind untouched", async () => {
       const state = makeHome(

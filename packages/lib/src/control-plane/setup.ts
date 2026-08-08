@@ -213,7 +213,7 @@ export const DEFAULT_LLM_ENGINE_NAME = 'default';
  * OpenPalm write strips them (I-3: the assistant's akm config must always be
  * loadable by the pinned akm-cli without a migration shim).
  */
-const RETIRED_AKM_CONFIG_KEYS = [
+export const RETIRED_AKM_CONFIG_KEYS = [
 	'stashDir',
 	'sources',
 	'installed',
@@ -225,7 +225,7 @@ const RETIRED_AKM_CONFIG_KEYS = [
 	'stashes'
 ] as const;
 
-function stripRetiredAkmKeys(config: AkmConfig): void {
+export function stripRetiredAkmKeys(config: Record<string, unknown>): void {
 	for (const key of RETIRED_AKM_CONFIG_KEYS) delete config[key];
 	if (config.defaults && typeof config.defaults === 'object') {
 		delete (config.defaults as Record<string, unknown>).llm;

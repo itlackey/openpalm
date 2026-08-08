@@ -35,7 +35,9 @@ export async function runComposeReadOnly(
 /**
  * Execute a Compose lifecycle command. Activation-capable operations validate
  * and audit first; teardown-only `down` and `stop` deliberately skip those
- * gates so a broken or audit-failing stack can still be stopped.
+ * gates so a broken or audit-failing stack can still be stopped. Home
+ * migrations still run for teardown — they are what surface addon profiles
+ * from a pre-0.13 home, so skipping them would leave addon containers behind.
  *
  * Activation preflight can be bypassed by setting OP_SKIP_COMPOSE_PREFLIGHT=1
  * (e.g. in tests). Activation carries lib's `up` timeout budget so a first
@@ -47,13 +49,20 @@ export async function runComposeWithPreflight(
 	lock?: InstallLockHandle
 ): Promise<void> {
 	const operation = composeSubArgs[0];
+
+	// Migrations run for EVERY lifecycle command, teardown included: they are
+	// cheap and idempotent, and on a home upgraded from 0.12.x they consolidate
+	// the legacy state/stack.state.env into state/stack.env — without that,
+	// down/stop resolve no addon profiles and leave addon containers running
+	// while reporting success. Only the heavier activation preflight below is
+	// skipped for teardown.
+	runHomeMigrations(state.homeDir);
+
 	if (operation === 'down' || operation === 'stop') {
 		const composeArgs = buildComposeCliArgs(state);
 		await runComposeStreaming([...composeArgs, ...composeSubArgs]);
 		return;
 	}
-
-	runHomeMigrations(state.homeDir);
 
 	// D1: a single "is Docker actually usable right now" readiness check ahead
 	// of every day-2 lifecycle mutation (start/stop/restart/rollback/addon

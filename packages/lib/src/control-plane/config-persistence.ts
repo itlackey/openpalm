@@ -32,6 +32,7 @@ import {
   hasUsableOperatorId,
   isRootIds,
   type OperatorIds,
+  pinnedNonRootOperatorIds,
   resolveOperatorIds,
 } from "./operator-ids.js";
 import { STACK_DEFAULTS } from "./defaults.js";
@@ -524,7 +525,13 @@ export function ensureComposeVolumeTargets(state: ControlPlaneState): void {
   // a root-running install (or a host UID that differs from the forced
   // container UID) are unwritable inside the non-root container — on OrbStack
   // real UIDs are preserved, so e.g. ollama's mkdir is denied (issue #452).
-  const operatorIds = resolveOperatorIds(state.homeDir);
+  // A root resolution defers to a hand-pinned non-root OP_UID/OP_GID in
+  // stack.env when one exists: compose interpolates `user:` from the pin, so
+  // the pinned ids — not root — are what the containers actually run as.
+  const resolvedIds = resolveOperatorIds(state.homeDir);
+  const operatorIds = resolvedIds && isRootIds(resolvedIds)
+    ? pinnedNonRootOperatorIds(parseEnvFile(stackEnvFile(state.homeDir))) ?? resolvedIds
+    : resolvedIds;
 
   for (const mount of discoverHomeBindMountSources(state)) {
     if (existsSync(mount.path)) continue;

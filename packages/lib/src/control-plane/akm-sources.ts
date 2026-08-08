@@ -14,7 +14,11 @@
  *
  * Invariants (enforced + unit-tested):
  *  - Only ever upserts a NAMED bundle entry (idempotent upsert by id).
- *  - NEVER sets `defaultBundle`, NEVER sets `defaultWriteTarget`.
+ *  - NEVER makes `host-akm` the default: `defaultBundle` is only ever pinned
+ *    to the primary openpalm bundle (and only when unset, mirroring
+ *    persistAkmConfig). NEVER sets `defaultWriteTarget`.
+ *  - Every write is a loadable akm 0.9.0 config: configVersion stamped,
+ *    retired 0.8 keys stripped, primary /stash bundle present.
  *  - Atomic 0600 writes.
  *  - The OpenPalm config is parse-tolerant (we own it: corrupt → start from {}).
  */
@@ -22,6 +26,7 @@ import { readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { writeFileAtomic } from "./fs-atomic.js";
 import { createLogger } from "../logger.js";
+import { PRIMARY_BUNDLE_ID, stripRetiredAkmKeys } from "./setup.js";
 import type { ControlPlaneState } from "./types.js";
 
 const logger = createLogger("akm-sources");
@@ -109,7 +114,21 @@ export function addHostStashToOpenpalmConfig(state: ControlPlaneState, writable 
   };
   const config = readConfigTolerant(configPath);
   const updated = upsertBundle(config, HOST_SOURCE_NAME, entry);
+  // The host-akm upsert itself must never touch the default write target.
   assertNoDefaultEscalation(updated, config);
+  // akm 0.9.0 refuses to load a config without configVersion "0.9.0" or with
+  // retired 0.8 keys, and a config whose ONLY bundle is host-akm has lost the
+  // primary /stash bundle. Normalize the write so the file is always loadable
+  // (mirrors persistAkmConfig in setup.ts).
+  stripRetiredAkmKeys(updated);
+  updated.configVersion = "0.9.0";
+  const bundles = updated.bundles as Record<string, unknown>;
+  bundles[PRIMARY_BUNDLE_ID] = {
+    ...((bundles[PRIMARY_BUNDLE_ID] as Record<string, unknown> | undefined) ?? {}),
+    path: "/stash",
+    writable: true,
+  };
+  if (typeof updated.defaultBundle !== "string") updated.defaultBundle = PRIMARY_BUNDLE_ID;
   writeFileAtomic(configPath, JSON.stringify(updated, null, 2), 0o600);
 }
 
@@ -123,8 +142,10 @@ export function addHostStashToOpenpalmConfig(state: ControlPlaneState, writable 
  * unreadable (never throws — engine import is always optional).
  *
  * Writes the canonical akm 0.9.0 shape (engines + defaults.* + embedding +
- * improve.strategies). NEVER touches `bundles`, `defaultBundle`,
- * `registries`, or `defaultWriteTarget`. A host config still in the retired
+ * improve.strategies), stamping configVersion and stripping the retired 0.8
+ * keys so the persisted file is always loadable. NEVER touches `bundles`,
+ * `defaultBundle`, `registries`, or `defaultWriteTarget`. A host config still
+ * in the retired
  * 0.8 `profiles` shape is skipped — akm itself refuses to load it, so there
  * is nothing trustworthy to import.
  */
@@ -199,6 +220,11 @@ export function importHostProfiles(
   const updated: AkmConfigObject = { ...op, engines, defaults: opDefaults };
   if (improveChanged) updated.improve = opImprove;
   if (embedding !== undefined) updated.embedding = embedding;
+  // akm 0.9.0 hard-rejects the retired 0.8 keys and requires configVersion —
+  // never persist a config akm refuses to load (same normalization as
+  // persistAkmConfig in setup.ts).
+  stripRetiredAkmKeys(updated);
+  updated.configVersion = "0.9.0";
   writeFileAtomic(opPath, JSON.stringify(updated, null, 2), 0o600);
   return { imported };
 }

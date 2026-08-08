@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from 'bun:test';
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -250,6 +250,41 @@ describe('reconcileHostOwnership swap block + fast path (R2/R4)', () => {
     // throws before any docker chown, so this needs no docker.
     stubSessionIds(999999, 999999);
     await expect(reconcileHostOwnership(state, {})).rejects.toBeInstanceOf(HostSwapBlockedError);
+  });
+
+  test('repairs to and records the stack.env pinned ids for a root session (FINDING 12)', async () => {
+    // A root session over a root-owned OP_HOME whose stack.env pins non-root
+    // OP_UID/OP_GID — the exact setup the OP_ALLOW_ROOT refusal message
+    // recommends. Requires the suite itself to run as root on Linux (a
+    // non-root runner cannot fabricate a root-owned OP_HOME), which is the
+    // very environment the fix targets; skipped elsewhere.
+    if (process.platform !== 'linux' || process.getuid?.() !== 0) return;
+    const state = makeState();
+    writeFileSync(join(state.homeDir, 'state', 'stack.env'), 'OP_UID=4242\nOP_GID=4243\n');
+
+    // Fake docker (the OP_DOCKER_BIN seam) records argv and succeeds, so the
+    // repair walk runs without a daemon.
+    const argvLog = join(state.homeDir, 'docker-argv.log');
+    const fakeDocker = join(state.homeDir, 'fake-docker.sh');
+    writeFileSync(fakeDocker, `#!/bin/sh\necho "$@" >> ${argvLog}\nexit 0\n`);
+    chmodSync(fakeDocker, 0o755);
+    const savedDockerBin = process.env.OP_DOCKER_BIN;
+    process.env.OP_DOCKER_BIN = fakeDocker;
+    try {
+      await reconcileHostOwnership(state, {});
+    } finally {
+      if (savedDockerBin === undefined) delete process.env.OP_DOCKER_BIN;
+      else process.env.OP_DOCKER_BIN = savedDockerBin;
+    }
+
+    // The chown targeted the PINNED identity, never 0:0.
+    const logged = readFileSync(argvLog, 'utf8');
+    expect(logged).toContain('chown -R 4242:4243');
+    expect(logged).not.toContain('chown -R 0:0');
+    // The marker and recorded host identity carry the pinned ids too, so the
+    // next start's fast path compares against what was actually repaired.
+    expect(ownershipRepairMarkerMatches(state.homeDir, { uid: 4242, gid: 4243 })).toBe(true);
+    expect(readHostIdentity(hostIdentityFile(state.homeDir))?.uid).toBe(4242);
   });
 
   test('skips the repair walk (no docker) when the marker already matches the session', async () => {

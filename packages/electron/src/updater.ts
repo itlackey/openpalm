@@ -198,6 +198,62 @@ export function isAutoUpdateSupported(
   return platform === 'linux';
 }
 
+function parseSemver(
+  version: string,
+): { release: [number, number, number]; prerelease: Array<string | number> | null } | null {
+  const m = /^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?(?:\+[0-9A-Za-z-.]+)?$/.exec(
+    version.trim(),
+  );
+  if (!m) return null;
+  return {
+    release: [Number(m[1]), Number(m[2]), Number(m[3])],
+    // Per semver §11, numeric identifiers compare numerically, so beta.4 <
+    // beta.10 — parse them to numbers here rather than comparing strings.
+    prerelease: m[4] ? m[4].split('.').map((id) => (/^\d+$/.test(id) ? Number(id) : id)) : null,
+  };
+}
+
+/**
+ * Whether `candidate` is a strictly NEWER semver than `current`. `check()`
+ * below needs this because electron-updater resolves with whatever version the
+ * feed carries, newer or not — and a plain `!==` treated a beta install on the
+ * default stable channel as having an "update" to the OLDER stable release, a
+ * phantom whose download can never succeed (electron-updater never stages a
+ * not-newer update).
+ *
+ * electron-updater's own `semver` dependency is not resolvable from this
+ * package (isolated installs), so this is a small local comparison covering
+ * the semver precedence rules that matter here: a prerelease sorts BEFORE its
+ * release (1.2.3-beta.4 < 1.2.3), numeric identifiers compare numerically
+ * (beta.4 < beta.10), and a longer identifier set wins over its own prefix.
+ * When either side is not semver at all, this falls back to plain inequality —
+ * the prior behavior for strings it cannot order.
+ */
+export function isVersionNewer(candidate: string, current: string): boolean {
+  const a = parseSemver(candidate);
+  const b = parseSemver(current);
+  if (!a || !b) return candidate !== current;
+  for (let i = 0; i < 3; i++) {
+    if (a.release[i] !== b.release[i]) return a.release[i] > b.release[i];
+  }
+  // Same release: a prerelease sorts before the release itself.
+  if (!a.prerelease) return b.prerelease !== null;
+  if (!b.prerelease) return false;
+  for (let i = 0; i < Math.max(a.prerelease.length, b.prerelease.length); i++) {
+    const x = a.prerelease[i];
+    const y = b.prerelease[i];
+    // Equal prefix: the version with MORE identifiers is the newer one.
+    if (x === undefined) return false;
+    if (y === undefined) return true;
+    if (x === y) continue;
+    // Numeric identifiers always have lower precedence than alphanumeric.
+    if (typeof x === 'number' && typeof y === 'number') return x > y;
+    if (typeof x === 'number' || typeof y === 'number') return typeof y === 'number';
+    return x > y;
+  }
+  return false;
+}
+
 /** Throttle for focus-triggered checks — a window regains focus constantly. */
 export const FOCUS_CHECK_THROTTLE_MS = 60 * 60 * 1000;
 
@@ -312,8 +368,10 @@ export class DesktopUpdater {
         const result = await this.deps.updater.checkForUpdates();
         const version = result?.updateInfo?.version ?? null;
         // electron-updater resolves with the FEED's version whether or not it
-        // is newer, so "available" means strictly newer than what we run.
-        const available = !!version && version !== this.state.currentVersion;
+        // is newer, so "available" means strictly newer than what we run — a
+        // mere `!==` would report a beta install's OLDER stable release as a
+        // phantom update (see isVersionNewer above).
+        const available = !!version && isVersionNewer(version, this.state.currentVersion);
         return this.patch({
           status: available ? 'available' : 'not-available',
           availableVersion: available ? version : null,

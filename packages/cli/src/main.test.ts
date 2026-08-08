@@ -137,7 +137,18 @@ function makeFakeChildProcess(code = 0): EventEmitter {
 
 function mockDockerCli(): void {
 	Bun.which = mock((_cmd: string) => '/usr/bin/docker') as typeof Bun.which;
-	Bun.spawn = mock((_cmd: string[] | readonly string[], _opts?: unknown) => ({
+	Bun.spawn = mock((cmd: string[] | readonly string[] | { cmd?: readonly string[] }, opts?: unknown) => {
+		// Bun implements node:child_process execFile on top of Bun.spawn (in both
+		// its (cmd, opts) and ({cmd, ...}) call shapes), so this stub also swallows
+		// the activation gate's async `docker compose config` resolution — a
+		// read-only, side-effect-free client command the gate needs to answer (its
+		// execFileSync predecessor used the unmocked spawnSync). Let exactly that
+		// through; every mutating docker spawn stays stubbed.
+		const argv = Array.isArray(cmd) ? (cmd as readonly string[]) : ((cmd as { cmd?: readonly string[] }).cmd ?? []);
+		if (argv.includes('compose') && argv.includes('config')) {
+			return originalBunSpawn(cmd as never, opts as never);
+		}
+		return {
 		pid: 0,
 		exited: Promise.resolve(0),
 		exitCode: null,
@@ -151,7 +162,8 @@ function mockDockerCli(): void {
 		unref: () => {},
 		[Symbol.asyncDispose]: async () => {},
 		resourceUsage: () => undefined
-	})) as unknown as typeof Bun.spawn;
+		};
+	}) as unknown as typeof Bun.spawn;
 	// lib's stdio-inheriting compose runner (runComposeStreaming) spawns via
 	// node:child_process, NOT Bun.spawn — stub that seam too so compose mutations
 	// (e.g. `addon disable` → `compose stop`) never shell out to real docker.

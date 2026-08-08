@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from "bun:test";
 import { mkdtempSync, writeFileSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { parseSemver, setVersion, SEMVER_RE } from "./set-version.mjs";
+import { compareSemver, parseSemver, setVersion, SEMVER_RE } from "./set-version.mjs";
 
 let dir: string;
 beforeEach(() => { dir = mkdtempSync(join(tmpdir(), "op-setver-")); });
@@ -79,5 +79,25 @@ describe("set-version", () => {
     ]) {
       expect(parseSemver(version)).toBeNull();
     }
+  });
+
+  // The release workflow's monotonicity guard rejects a dispatch strictly
+  // lower than the highest published version and allows equal re-runs, so
+  // these orderings are load-bearing for the 'latest' pointers.
+  it("compareSemver orders release tuples, prereleases, and identifiers per semver §11", () => {
+    expect(compareSemver("0.13.0", "0.13.0")).toBe(0);
+    expect(compareSemver("0.12.9", "0.13.0")).toBe(-1);
+    expect(compareSemver("0.14.0", "0.13.0")).toBe(1);
+    // A prerelease sorts BEFORE its release...
+    expect(compareSemver("0.13.0-beta.24", "0.13.0")).toBe(-1);
+    // ...but a prerelease of the NEXT version sorts after the current release.
+    expect(compareSemver("0.14.0-beta.1", "0.13.0")).toBe(1);
+    // Numeric identifiers compare numerically (beta.4 < beta.10).
+    expect(compareSemver("0.13.0-beta.10", "0.13.0-beta.4")).toBe(1);
+    // A longer identifier set wins over its own prefix.
+    expect(compareSemver("0.13.0-beta.1.1", "0.13.0-beta.1")).toBe(1);
+    // Non-numeric identifiers compare lexically (rc > beta).
+    expect(compareSemver("0.13.0-rc.1", "0.13.0-beta.9")).toBe(1);
+    expect(() => compareSemver("nope", "0.13.0")).toThrow();
   });
 });

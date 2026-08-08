@@ -147,15 +147,18 @@ export function overwriteSystemTree(
 
 	const sourceFiles = listFiles(stageRoot);
 	const currentFiles = existsSync(targetRoot) ? listFiles(targetRoot) : [];
-	const changed =
-		currentFiles.length !== sourceFiles.length ||
-		sourceFiles.some((rel) => {
-			const current = join(targetRoot, rel);
-			return (
-				!existsSync(current) ||
-				sha256(readFileSync(current, 'utf8')) !== sha256(readFileSync(join(stageRoot, rel), 'utf8'))
-			);
-		});
+	// Changed is decided from the SOURCE file set only: a skeleton file missing
+	// from the target or differing in content. Target-only extras (runtime
+	// additions like the assistant's node_modules) must NOT count as a change —
+	// otherwise every launch would read 'changed' and re-back-up/rewrite the
+	// whole tree, wiping those runtime files and growing backups unboundedly.
+	const changed = sourceFiles.some((rel) => {
+		const current = join(targetRoot, rel);
+		return (
+			!existsSync(current) ||
+			sha256(readFileSync(current, 'utf8')) !== sha256(readFileSync(join(stageRoot, rel), 'utf8'))
+		);
+	});
 	if (!changed) {
 		rmSync(stageRoot, { recursive: true, force: true });
 		return { backupDir: null, updated: [] };

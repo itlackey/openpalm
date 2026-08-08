@@ -107,6 +107,13 @@ describe('resolveUiBuildDir', () => {
 });
 
 describe('applyHomeSeed', () => {
+  // NOTE: the "no local skeleton source resolves → throws" branch cannot be
+  // exercised from a repo checkout: the source-relative fallback in
+  // resolveLocalOpenpalmDir always resolves packages/skeleton here. It only
+  // triggers in a compiled binary that failed to materialize its embedded
+  // skeleton, which is exactly the silent-stale-update failure the throw exists
+  // to surface.
+
   test('overwrites the managed system/ tree from a local skeleton source and stamps its version', async () => {
     const skeletonSrc = mkdtempSync(join(tmpdir(), 'openpalm-skeleton-src-'));
     const home = mkdtempSync(join(tmpdir(), 'openpalm-home-applyseed-'));

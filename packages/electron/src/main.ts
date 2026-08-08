@@ -729,7 +729,17 @@ export function isAllowedInAppWindowUrl(url: string): boolean {
 
 export function handleWindowOpen(window: BrowserWindow, url: string): { action: 'deny' } {
   if (isAllowedInAppWindowUrl(url)) {
-    void window.loadURL(url);
+    // isAllowedInAppWindowUrl admits both loopback aliases, but everything
+    // that trusts the renderer afterwards — isOwnOriginUrl's will-navigate
+    // guard, isTrustedRendererSender's IPC gate — is pinned to the exact
+    // origin the app serves: 127.0.0.1. Loading a `localhost` URL as-is would
+    // strand the window on a different origin where every in-page navigation
+    // bounces to the external browser and every window.openpalm call is
+    // rejected until restart. Normalize the hostname to the canonical trusted
+    // origin; port, path, query and hash are preserved.
+    const normalized = new URL(url);
+    normalized.hostname = '127.0.0.1';
+    void window.loadURL(normalized.toString());
     window.show();
     window.focus();
   } else {
@@ -1389,6 +1399,13 @@ let cleanupStarted = false;
 //   3. The re-entrant call (cleanupStarted=true) does nothing — passes through
 //      so Electron completes the quit.
 app.on('before-quit', (event) => {
+  // Only the instance that holds the single-instance lock has a window, tray,
+  // UI server or deploy to guard. The LOSING second instance quits via its own
+  // app.quit() (see the lock branch above); without this gate it would pop the
+  // blocking deploy-in-progress dialog below, and "Keep Waiting" would cancel
+  // its quit into a permanent headless zombie — no window or tray code was
+  // ever registered to reach it again.
+  if (!gotSingleInstanceLock) return;
   isQuitting = true;
   if (cleanupStarted) return;
 

@@ -475,15 +475,26 @@ persist_akm_bundle_dir_fallback() {
     [ -n "$config_dir" ] || continue
     config_file="$config_dir/config.json"
     if [ -f "$config_file" ]; then
-      # Merge the primary bundle into an existing config without touching
-      # other keys. A corrupt or already-populated file is left alone — never
-      # destroy operator config from the entrypoint.
+      # Merge the primary bundle into an existing config, dropping only the
+      # retired 0.8 keys akm 0.9.0 refuses to load. A corrupt or
+      # already-populated file is left alone — never destroy operator config
+      # from the entrypoint.
       node -e '
         const fs = require("fs");
         const [file, bundleDir] = process.argv.slice(1);
         let cfg;
         try { cfg = JSON.parse(fs.readFileSync(file, "utf8")); } catch { process.exit(0); }
         if (!cfg || typeof cfg !== "object" || Array.isArray(cfg) || cfg.bundles) process.exit(0);
+        // 0.12.x upgrade path: strip the retired akm 0.8 keys (same list as
+        // lib RETIRED_AKM_CONFIG_KEYS in setup.ts) — akm 0.9.0 hard-rejects a
+        // config that still carries any of them, so leaving them would turn an
+        // old-but-migratable config into one akm classifies as corrupt.
+        for (const key of ["stashDir", "sources", "installed", "wikiName", "profiles", "llm", "agent", "features", "stashes"]) delete cfg[key];
+        if (cfg.defaults && typeof cfg.defaults === "object") {
+          delete cfg.defaults.llm;
+          delete cfg.defaults.agent;
+          delete cfg.defaults.improve;
+        }
         if (typeof cfg.configVersion !== "string") cfg.configVersion = "0.9.0";
         cfg.bundles = { openpalm: { path: bundleDir, writable: true } };
         cfg.defaultBundle = "openpalm";

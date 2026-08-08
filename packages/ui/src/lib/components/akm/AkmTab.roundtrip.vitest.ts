@@ -6,6 +6,8 @@ import {
 	emptyFEntry,
 	readFEntry,
 	buildProcessConfig,
+	optInt,
+	optNum,
 	type FEntry,
 } from './improve-process-helpers';
 import type { LlmEngine } from './profile-types';
@@ -237,5 +239,34 @@ describe('LLM engine payload (0.9)', () => {
 		expect(() => buildLlmEnginePayload({ ...baseEngine, extraParams: 'not json' })).toThrow(
 			/extraParams must be valid JSON/,
 		);
+	});
+});
+
+// Svelte 5 number inputs bind null when cleared (to_number('') === null), and
+// the drawers' string-typed draft fields feed straight into optInt/optNum — a
+// TypeError at s.trim() used to abort the whole AKM save.
+describe('optInt / optNum — cleared and numeric inputs', () => {
+	it('optInt maps null/undefined/empty to undefined', () => {
+		expect(optInt(null)).toBeUndefined();
+		expect(optInt(undefined)).toBeUndefined();
+		expect(optInt('')).toBeUndefined();
+		expect(optInt('   ')).toBeUndefined();
+	});
+
+	it('optInt integerizes numeric inputs and parses strings', () => {
+		expect(optInt(42)).toBe(42);
+		expect(optInt(7.9)).toBe(7);
+		expect(optInt(NaN)).toBeUndefined();
+		expect(optInt('30000')).toBe(30000);
+		expect(optInt('not-a-number')).toBeUndefined();
+	});
+
+	it('optNum maps null/undefined/empty to undefined and passes numbers through', () => {
+		expect(optNum(null)).toBeUndefined();
+		expect(optNum(undefined)).toBeUndefined();
+		expect(optNum('')).toBeUndefined();
+		expect(optNum(0.7)).toBe(0.7);
+		expect(optNum(NaN)).toBeUndefined();
+		expect(optNum('0.2')).toBe(0.2);
 	});
 });

@@ -5,6 +5,7 @@ import { join } from "node:path";
 import {
   buildComposePreflightError,
   checkDocker,
+  composeConfigJson,
   detectExistingProject,
   dockerBin,
   ensureDockerReady,
@@ -269,6 +270,74 @@ describe("buildComposePreflightError (shared CLI + lib message)", () => {
     expect(msg).not.toContain("--env-file");
     // No double spaces from empty arg slots.
     expect(msg).not.toContain("  ");
+  });
+});
+
+describe("composeConfigJson (async variant of composeConfigJsonSync — same error semantics)", () => {
+  let scriptDir: string;
+  const saved: Record<string, string | undefined> = {};
+
+  function writeFakeDockerBin(): string {
+    // Same OP_DOCKER_BIN seam as the detectExistingProject suite above: a fake
+    // engine driven by FAKE_MODE so no daemon is needed.
+    const scriptPath = join(scriptDir, "fake-docker-config.sh");
+    writeFileSync(
+      scriptPath,
+      [
+        "#!/bin/sh",
+        'if [ "$FAKE_MODE" = "ok" ]; then',
+        "  printf '{\"services\":{\"assistant\":{}}}'",
+        "  exit 0",
+        "fi",
+        'if [ "$FAKE_MODE" = "badjson" ]; then',
+        "  printf 'not json'",
+        "  exit 0",
+        "fi",
+        'echo "boom from fake docker" >&2',
+        "exit 1",
+        "",
+      ].join("\n"),
+    );
+    chmodSync(scriptPath, 0o755);
+    return scriptPath;
+  }
+
+  beforeEach(() => {
+    scriptDir = mkdtempSync(join(tmpdir(), "openpalm-fake-docker-config-"));
+    for (const key of ["OP_DOCKER_BIN", "FAKE_MODE"]) saved[key] = process.env[key];
+    process.env.OP_DOCKER_BIN = writeFakeDockerBin();
+  });
+
+  afterEach(() => {
+    for (const [key, value] of Object.entries(saved)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+    rmSync(scriptDir, { recursive: true, force: true });
+  });
+
+  it("resolves ok:true with the parsed project on success", async () => {
+    process.env.FAKE_MODE = "ok";
+    const result = await composeConfigJson({ files: ["/nonexistent/compose.yml"] });
+    expect(result.ok).toBe(true);
+    expect(result.config).toEqual({ services: { assistant: {} } } as never);
+    expect(result.stderr).toBe("");
+  });
+
+  it("resolves ok:false with stderr on a compose failure (never rejects)", async () => {
+    process.env.FAKE_MODE = "fail";
+    const result = await composeConfigJson({ files: ["/nonexistent/compose.yml"] });
+    expect(result.ok).toBe(false);
+    expect(result.config).toBeNull();
+    expect(result.stderr).toContain("boom from fake docker");
+  });
+
+  it("resolves ok:false on unparsable JSON output", async () => {
+    process.env.FAKE_MODE = "badjson";
+    const result = await composeConfigJson({ files: ["/nonexistent/compose.yml"] });
+    expect(result.ok).toBe(false);
+    expect(result.config).toBeNull();
+    expect(result.stderr.length).toBeGreaterThan(0);
   });
 });
 

@@ -72,13 +72,18 @@ export const DEFAULT_ENABLED: Record<ProcKey, boolean> = {
 	triage: false,
 };
 
-export function optNum(s: string | number): number | undefined {
+// null/undefined map to "unset": Svelte 5's number inputs bind null when
+// cleared (to_number('') === null), and the drawers' draft fields flow straight
+// into these helpers — a thrown TypeError here aborted the whole AKM save.
+export function optNum(s: string | number | null | undefined): number | undefined {
+	if (s == null) return undefined;
 	if (typeof s === 'number') return Number.isNaN(s) ? undefined : s;
 	const n = parseFloat(s);
 	return s.trim() === '' || Number.isNaN(n) ? undefined : n;
 }
 
-export function optInt(s: string | number): number | undefined {
+export function optInt(s: string | number | null | undefined): number | undefined {
+	if (s == null) return undefined;
 	if (typeof s === 'number') return Number.isNaN(s) ? undefined : Math.trunc(s);
 	const n = parseInt(s, 10);
 	return s.trim() === '' || Number.isNaN(n) ? undefined : n;

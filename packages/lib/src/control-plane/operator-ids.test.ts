@@ -5,6 +5,7 @@ import { join } from "node:path";
 import {
   assertRootInstallAllowed,
   hasUsableOperatorId,
+  pinnedNonRootOperatorIds,
   resolveOperatorIds,
   resolveSessionIdentity,
 } from "./operator-ids.js";
@@ -237,6 +238,26 @@ describe("hasUsableOperatorId", () => {
 
   test("returns false for non-numeric garbage", () => {
     expect(hasUsableOperatorId({ OP_UID: "abc" }, "OP_UID")).toBe(false);
+  });
+});
+
+describe("pinnedNonRootOperatorIds", () => {
+  test("returns the pinned ids when both OP_UID and OP_GID are usable and non-root", () => {
+    expect(pinnedNonRootOperatorIds({ OP_UID: "4242", OP_GID: "4243" })).toEqual({ uid: 4242, gid: 4243 });
+  });
+
+  test("returns null when either axis is missing or unusable", () => {
+    expect(pinnedNonRootOperatorIds({})).toBeNull();
+    expect(pinnedNonRootOperatorIds({ OP_UID: "1000" })).toBeNull();
+    expect(pinnedNonRootOperatorIds({ OP_GID: "1000" })).toBeNull();
+    expect(pinnedNonRootOperatorIds({ OP_UID: "abc", OP_GID: "1000" })).toBeNull();
+    expect(pinnedNonRootOperatorIds({ OP_UID: "-1", OP_GID: "1000" })).toBeNull();
+  });
+
+  test("returns null when either pinned axis is root — a root pin is never a repair target", () => {
+    expect(pinnedNonRootOperatorIds({ OP_UID: "0", OP_GID: "0" })).toBeNull();
+    expect(pinnedNonRootOperatorIds({ OP_UID: "1000", OP_GID: "0" })).toBeNull();
+    expect(pinnedNonRootOperatorIds({ OP_UID: "0", OP_GID: "1000" })).toBeNull();
   });
 });
 

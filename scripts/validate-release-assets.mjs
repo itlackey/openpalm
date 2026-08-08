@@ -132,7 +132,7 @@ export function expectedDesktopAssets(version, productName = readElectronProduct
 /**
  * The electron-updater feed files for `version`'s channel. Delegates to
  * validate-updater-feed.mjs so the channel-naming rule (stable → latest.yml,
- * a prerelease → its own channel, e.g. beta.yml) lives in exactly one place.
+ * any prerelease → beta.yml) lives in exactly one place.
  */
 export function expectedUpdaterFeeds(version) {
   return updaterFeedsFor(feedChannelForVersion(version));

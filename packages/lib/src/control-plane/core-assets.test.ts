@@ -91,6 +91,9 @@ describe("overwriteSystemTree", () => {
     const retired = join(opHome, "system", "retired.compose.yml");
     writeFileSync(retired, "retired\n");
     rmSync(join(sourceRoot, "system", "stack", "portals.compose.yml"));
+    // A genuine content change accompanies the retirement — retirement alone
+    // (a target-only extra) deliberately does not trigger an overwrite.
+    writeFileSync(join(sourceRoot, first), "new\n");
 
     const result = overwriteSystemTree(sourceRoot, opHome);
 
@@ -108,8 +111,24 @@ describe("overwriteSystemTree", () => {
 		mkdirSync(binDir, { recursive: true });
 		writeFileSync(target, "runtime dependency\n");
 		symlinkSync("../download-msgpackr-prebuilds.js", join(binDir, "download-msgpackr-prebuilds"));
+		seedSource("new\n"); // a genuine skeleton change: the overwrite replaces the tree, extras included
 
 		expect(() => overwriteSystemTree(sourceRoot, opHome)).not.toThrow();
 		expect(existsSync(join(opHome, "system", "assistant", "node_modules"))).toBe(false);
+	});
+
+	it("is a no-op when the skeleton is unchanged, even with extra runtime files in the tree", () => {
+		seedSource("same\n");
+		overwriteSystemTree(sourceRoot, opHome);
+		const nodeModules = join(opHome, "system", "assistant", "node_modules");
+		mkdirSync(nodeModules, { recursive: true });
+		writeFileSync(join(nodeModules, "runtime.js"), "runtime dependency\n");
+
+		const { updated, backupDir } = overwriteSystemTree(sourceRoot, opHome);
+
+		expect(updated).toHaveLength(0);
+		expect(backupDir).toBeNull();
+		expect(existsSync(join(nodeModules, "runtime.js"))).toBe(true);
+		expect(existsSync(join(opHome, "data", "backups"))).toBe(false);
 	});
 });

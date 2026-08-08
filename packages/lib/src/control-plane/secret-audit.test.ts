@@ -188,6 +188,24 @@ describe('auditResolvedComposeSecrets adversarial boundary cases', () => {
     expect(issues).toEqual([]);
   });
 
+  it('accepts ts_authkey sourced from private/secrets — a delegated name (secrets-files.ts), not a pattern match', () => {
+    // Regression: the delegated-name check used to be a pattern list that
+    // omitted ts_authkey, so a remote-addon activation failed the audit even
+    // though the secret was at exactly the path the provisioner writes.
+    const issues = auditResolvedComposeSecrets({
+      secrets: {
+        ts_authkey: { file: `${tempDir}/private/secrets/ts_authkey` },
+      },
+      services: {
+        tunnel: {
+          secrets: ['ts_authkey'],
+        },
+      },
+    }, { homeDir: tempDir });
+
+    expect(issues).toEqual([]);
+  });
+
   it('rejects a top-level source override even when the service grant name is allowed', () => {
     const issues = auditResolvedComposeSecrets({
       secrets: {

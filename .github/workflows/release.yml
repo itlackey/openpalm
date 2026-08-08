@@ -56,6 +56,49 @@ jobs:
           }
           appendFileSync(process.env.GITHUB_OUTPUT, `version=${version}\nprerelease=${parsed.pre !== null}\n`);
           NODE
+      - name: Version monotonicity guard
+        # Publishing moves the GitHub 'latest' release and the npm dist-tags,
+        # so a dispatch LOWER than the highest already-published version would
+        # repoint both backwards. Equal versions stay allowed — idempotent
+        # re-runs of the same version are handled by the tree-identity checks
+        # downstream — and a prerelease of the NEXT version (0.14.0-beta.1
+        # after 0.13.0) sorts higher, so it passes; only strictly-lower
+        # dispatches fail.
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          node --input-type=module <<'NODE'
+          import { execFileSync } from 'node:child_process';
+          import { compareSemver, parseSemver } from './scripts/set-version.mjs';
+          const target = process.env.VERSION;
+          const published = [];
+          // npm: publish-bootstrap moves the openpalm dist-tags.
+          try {
+            let versions = JSON.parse(execFileSync('npm', ['view', 'openpalm', 'versions', '--json'], { stdio: ['ignore', 'pipe', 'ignore'] }).toString());
+            if (!Array.isArray(versions)) versions = versions ? [versions] : [];
+            published.push(...versions);
+          } catch {
+            console.log('openpalm has no published versions on npm — skipping the npm comparison.');
+          }
+          // Git product tags: tag-release repoints the GitHub 'latest' release.
+          published.push(
+            ...execFileSync('git', ['ls-remote', '--tags', 'origin']).toString()
+              .split('\n')
+              .map((line) => line.split('\t')[1] ?? '')
+              .filter(Boolean)
+              .map((ref) => ref.replace('refs/tags/', '').replace(/\^\{\}$/, '')),
+          );
+          let highest = null;
+          for (const version of published) {
+            if (!parseSemver(version)) continue;
+            if (highest === null || compareSemver(version, highest) > 0) highest = version;
+          }
+          if (highest !== null && compareSemver(target, highest) < 0) {
+            console.error(`::error::Requested version ${target} is LOWER than the already-published ${highest}. Releasing it would repoint GitHub and npm 'latest' backwards; re-runs of the SAME version are allowed, lower never.`);
+            process.exit(1);
+          }
+          console.log(`Monotonicity OK: ${target} >= highest published ${highest ?? '(none)'}`);
+          NODE
       - uses: oven-sh/setup-bun@v2
       - name: Stamp product candidate
         env:
@@ -244,6 +287,29 @@ jobs:
             org.opencontainers.image.version=${{ needs.candidate.outputs.version }}
           provenance: false
           sbom: false
+      # Dry runs build without pushing, and an idempotent re-run of an
+      # already-published tag skips the build entirely (exists=true) — in both
+      # cases there is no freshly pushed manifest to sign, so the digest gate
+      # keeps these steps quiet. The id-token: write permission above exists
+      # for exactly this keyless flow.
+      - name: Install cosign
+        if: inputs.dry_run != true && steps.build.outputs.digest != ''
+        uses: sigstore/cosign-installer@v4.1.2
+      - name: Sign image (cosign keyless)
+        if: inputs.dry_run != true && steps.build.outputs.digest != ''
+        # Sign by immutable digest (not by tag) so the signature binds to the
+        # exact pushed manifest even as other tags move. Keyless: uses the
+        # job's GitHub OIDC token (id-token: write) to get a short-lived
+        # Fulcio cert; the signature + cert are recorded in the public Rekor
+        # transparency log. No secret key involved.
+        run: cosign sign --yes openpalm/${{ matrix.image }}@${{ steps.build.outputs.digest }}
+      - name: Verify image signature (fail loudly on a broken signer)
+        if: inputs.dry_run != true && steps.build.outputs.digest != ''
+        run: |
+          cosign verify \
+            --certificate-identity-regexp "^https://github.com/${{ github.repository }}/.github/workflows/release.yml@refs/.*$" \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+            openpalm/${{ matrix.image }}@${{ steps.build.outputs.digest }}
 
   cli:
     needs: [candidate, preflight, ui-build]
@@ -499,7 +565,9 @@ jobs:
             gh release upload "${VERSION}" dist/* --clobber
           else
             args=(release create "${VERSION}" --title "OpenPalm ${VERSION}" --generate-notes)
-            if [ "${PRERELEASE}" = 'true' ]; then args+=(--prerelease); fi
+            # --latest=false keeps a prerelease from ever becoming the GitHub
+            # 'latest' release desktop installs and the install script resolve.
+            if [ "${PRERELEASE}" = 'true' ]; then args+=(--prerelease --latest=false); fi
             gh "${args[@]}" dist/*
           fi
       - name: Verify public GitHub Release assets
@@ -565,6 +633,14 @@ jobs:
         env:
           VERSION: ${{ needs.candidate.outputs.version }}
         run: |
+          # Channel dist-tags: beta and rc each track their own stream, any
+          # other prerelease lands on next, stable moves latest. Collapsing
+          # every prerelease to next would strand the beta tag on whatever
+          # beta was published last before the collapse.
           tag=latest
-          case "${VERSION}" in *-*) tag=next ;; esac
+          case "${VERSION}" in
+            *-beta.*) tag=beta ;;
+            *-rc.*) tag=rc ;;
+            *-*) tag=next ;;
+          esac
           npm publish --provenance --access public --tag "${tag}" $(npm pack --silent)

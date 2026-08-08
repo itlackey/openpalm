@@ -283,9 +283,11 @@ describe('validateUpdaterFeeds', () => {
   });
 });
 
-// electron-builder names the feed after the version's prerelease identifier, so
-// a beta candidate publishes beta.yml and no latest.yml at all. A validator that
-// assumed the stable names would fail every prerelease release.
+// Desktop clients only ever request latest.yml (stable) or beta.yml
+// (prerelease opt-in) — packages/electron/src/updater.ts defines exactly those
+// two channels. So EVERY prerelease publishes the beta feed: naming a feed
+// after the first identifier (rc.yml, alpha.yml) would ship files no installed
+// app fetches while beta-channel installs 404.
 describe('feedChannelForVersion', () => {
   test('a stable version uses the latest feed', () => {
     expect(feedChannelForVersion('1.2.3')).toBe('latest');
@@ -294,12 +296,13 @@ describe('feedChannelForVersion', () => {
     ]);
   });
 
-  test('a prerelease version uses its own channel feed', () => {
+  test('any prerelease version collapses to the beta channel feed', () => {
     expect(feedChannelForVersion('0.13.0-beta.15')).toBe('beta');
     expect(updaterFeedsFor(feedChannelForVersion('0.13.0-beta.15'))).toEqual([
       'beta.yml', 'beta-linux.yml', 'beta-linux-arm64.yml',
     ]);
-    expect(feedChannelForVersion('1.0.0-alpha.1')).toBe('alpha');
+    expect(feedChannelForVersion('1.0.0-rc.1')).toBe('beta');
+    expect(feedChannelForVersion('1.0.0-alpha.1')).toBe('beta');
   });
 });
 

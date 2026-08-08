@@ -7,6 +7,7 @@ import {
   type ControlPlaneState,
 } from '@openpalm/lib';
 import { defineAction } from '../lib/action.ts';
+import { seedSkeletonFromEmbedded } from '../lib/embedded-assets.ts';
 
 export default defineCommand({
   meta: {
@@ -28,7 +29,19 @@ export async function runUpgradeAction(): Promise<void> {
   const state = resolveUpgradeState();
 
   console.log('Updating stack...');
-  await performUpgrade(state);
+  // A compiled binary ships its skeleton INSIDE the executable — materialize it
+  // and point OPENPALM_SKELETON_DIR at it for the duration of the upgrade, the
+  // same way the install and serve paths do (see embedded-assets.ts). Without
+  // this, performUpgrade's applyHomeSeed has no local skeleton source and the
+  // update would bump image versions against the previous release's compose
+  // tree. In a repo checkout there is nothing embedded and the callback runs
+  // against the local skeleton resolution instead.
+  await seedSkeletonFromEmbedded(
+    async () => { await performUpgrade(state); },
+    state.homeDir,
+    state.configDir,
+    state.dataDir,
+  );
 
   // The UI build ships INSIDE this binary now (see embedded-assets.ts) — the
   // running `openpalm`/`openpalm admin` supervisor materializes it into

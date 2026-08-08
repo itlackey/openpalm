@@ -186,6 +186,34 @@ describe('PATCH /api/assistant/akm — akm 0.9 engines map', () => {
     expect(engines.runner).toEqual({ kind: 'agent', platform: 'claude', bin: 'claude', args: ['-p'], timeoutMs: 60000 });
   });
 
+  test('an unmodeled engine field survives a PATCH, and a cleared endpoint keeps the persisted one', async () => {
+    seedAkmConfig({
+      configVersion: '0.9.0',
+      engines: {
+        main: {
+          kind: 'llm',
+          endpoint: 'https://api.openai.com/v1/chat/completions',
+          model: 'gpt-4o-mini',
+          // real akm 0.9 schema field the UI does not model — must survive a save
+          capabilities: ['vision'],
+        },
+      },
+    });
+    const { PATCH } = await loadRoute();
+    // The AKM tab rebuilds the whole engines map from its drawers: only the
+    // UI-modeled fields come back, and a cleared endpoint is simply absent.
+    const res = await PATCH(
+      makePatchEvent({ engines: { main: { kind: 'llm', model: 'gpt-4o' } } }),
+    );
+    expect(res.status).toBe(200);
+    const engines = readWrittenConfig().engines as Record<string, Record<string, unknown>>;
+    expect(engines.main.capabilities).toEqual(['vision']);
+    expect(engines.main.model).toBe('gpt-4o');
+    // Cleared endpoint falls back to the persisted one instead of producing a
+    // bare {kind:'llm'} engine akm's schema rejects.
+    expect(engines.main.endpoint).toBe('https://api.openai.com/v1/chat/completions');
+  });
+
   test('accepts llmEngine on an opencode-sdk agent engine, rejects it elsewhere', async () => {
     const { PATCH } = await loadRoute();
     const ok = await PATCH(

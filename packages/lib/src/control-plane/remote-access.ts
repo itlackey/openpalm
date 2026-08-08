@@ -87,10 +87,13 @@ export function resolveRemoteHostname(env: Record<string, string | undefined>): 
 const TRUE_RE = /^(true|1|yes|on)$/i;
 
 function parseRemoteTarget(raw: string | undefined): RemoteTarget {
-  // An absent key is the safe default. An explicitly present invalid value is
-  // rejected instead of being normalized to assistant, which could turn a
-  // public typo into an unintended assistant exposure.
-  if (raw === undefined) return REMOTE_ACCESS_DEFAULTS.target;
+  // An absent or blank key is the safe default — the credentials drawer
+  // round-trips unset fields as "" and persists `OP_REMOTE_TARGET=` verbatim,
+  // which must read back as "unset" (mirroring resolveRemoteHostname's blank
+  // handling). An explicitly present invalid value is rejected instead of
+  // being normalized to assistant, which could turn a public typo into an
+  // unintended assistant exposure.
+  if (raw === undefined || raw.trim() === "") return REMOTE_ACCESS_DEFAULTS.target;
 
   const trimmed = raw.trim();
   if ((REMOTE_TARGETS as readonly string[]).includes(trimmed)) {

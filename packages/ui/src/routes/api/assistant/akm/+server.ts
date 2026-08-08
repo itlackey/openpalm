@@ -353,12 +353,24 @@ export const PATCH: RequestHandler = async (event) => {
     const updated: Rec = { ...existing };
 
     // engines — the UI sends the COMPLETE intended engines map (both kinds),
-    // so replace wholesale (like the 0.8 profiles.llm/agent replacement).
+    // so the SET of engines is replaced wholesale, but each entry field-merges
+    // over the existing engine of the same name (mirroring the improve-strategy
+    // merge below): the pickers whitelist only UI-modeled fields, so a bare
+    // replace would destroy unmodeled akm 0.9 fields (e.g. `capabilities`) on
+    // every save, and a cleared endpoint would yield a bare {kind:'llm'} engine
+    // akm's schema rejects — merging keeps the persisted value instead.
     if (enginesBody !== undefined) {
+      const existingEngines = isRec(existing.engines) ? (existing.engines as Rec) : {};
       const built: Rec = {};
       for (const [name, entry] of Object.entries(enginesBody)) {
         const raw = entry as Rec;
-        built[name] = raw.kind === 'agent' ? pickAgentEngine(raw) : pickLlmEngine(raw);
+        const picked = raw.kind === 'agent' ? pickAgentEngine(raw) : pickLlmEngine(raw);
+        const prior = existingEngines[name];
+        // Only merge over an existing entry of the SAME kind — a kind switch
+        // must not drag llm fields onto an agent engine (or vice versa).
+        built[name] = isRec(prior) && (prior as Rec).kind === picked.kind
+          ? { ...(prior as Rec), ...picked }
+          : picked;
       }
       updated.engines = built;
     }

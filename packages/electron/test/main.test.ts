@@ -688,6 +688,22 @@ describe('popup handling', () => {
     expect(vi.mocked(BrowserWindow)).toHaveBeenCalledTimes(windowCount);
   });
 
+  // isAllowedInAppWindowUrl admits both loopback aliases, but the trusted
+  // origin (isOwnOriginUrl, the IPC sender gate) is pinned to 127.0.0.1 —
+  // loading a localhost URL as-is would strand the window on an origin where
+  // every navigation bounces external and every window.openpalm call is
+  // rejected until restart.
+  it('normalizes an allowed localhost popup onto the canonical 127.0.0.1 origin', () => {
+    const result = handleWindowOpen(
+      mockBrowserWindow as unknown as InstanceType<typeof BrowserWindow>,
+      'http://localhost:3880/chat/session-1?foo=1#frag',
+    );
+
+    expect(result).toEqual({ action: 'deny' });
+    expect(mockBrowserWindow.loadURL).toHaveBeenCalledWith('http://127.0.0.1:3880/chat/session-1?foo=1#frag');
+    expect(shell.openExternal).not.toHaveBeenCalled();
+  });
+
   it('opens external URLs in the system browser and denies the popup', () => {
     const windowCount = vi.mocked(BrowserWindow).mock.calls.length;
     const result = handleWindowOpen(

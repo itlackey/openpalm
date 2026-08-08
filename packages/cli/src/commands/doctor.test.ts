@@ -338,26 +338,52 @@ describe('openpalm doctor — port-probe fixes (C10/B9)', () => {
     expect(seenServerPort).toBe(4400);
   });
 
-  test('does NOT short-circuit the admin port on a "mismatch" identity — a non-admin `openpalm ui` already on the port is a real conflict, not "ours" (review finding #5)', async () => {
+  test('short-circuits the admin port on a "mismatch" identity too — the canonical bare `openpalm` serve runs a NON-admin UI child on that port, which is a healthy running install, not a conflict (review finding #14)', async () => {
     const originalLog = console.log;
     console.log = silentConsole.log;
     try {
       const deps = baseDeps({
         readStackEnv: () => ({ OP_HOST_UI_PORT: '4400' }),
-        // "mismatch" — something OpenPalm-shaped is on the port, but at the
-        // wrong capability level (ui-server.ts / Electron's main.ts both
-        // hard-refuse to attach to this). Doctor must not paper over it.
+        // "mismatch" with admin:false — exactly what a bare `openpalm` serve's
+        // non-admin UI child answers when probed with expectedAdmin=true. The
+        // admin LAUNCHER refuses to attach to this, but doctor is diagnosing
+        // health: an OpenPalm UI on the expected port IS the running install.
         checkExistingUiInstance: async (port) =>
           port === 4400 ? { status: 'mismatch' as const, admin: false } : { status: 'absent' as const },
         probeInstallPorts: async (targets, opts) =>
-          (targets ?? []).map((t) => ({
-            ...t,
-            // Mirrors the real probeInstallPorts: a mismatched process really
-            // does hold the socket, so a plain TCP bind fails for it too —
-            // UNLESS serverPort short-circuited it, which must not happen here.
-            available: opts?.serverPort === t.port,
-            ownership: opts?.serverPort === t.port ? ('ours' as const) : ('free' as const),
-          })),
+          (targets ?? []).map((t) => {
+            // Mirrors the real probeInstallPorts: only the UI child holds a
+            // socket (port 4400), so it is a conflict UNLESS the serverPort
+            // short-circuit reads it as ours; the other ports bind freely.
+            if (t.port !== 4400) return { ...t, available: true };
+            const ours = opts?.serverPort === t.port;
+            return { ...t, available: ours, ownership: ours ? ('ours' as const) : ('free' as const) };
+          }),
+      });
+      const report = await runDoctorAction({ json: true }, deps);
+      const admin = report.ports.find((p) => p.service === 'admin');
+      expect(admin).toMatchObject({ available: true, ownership: 'ours' });
+      expect(doctorReportHasFailure(report)).toBe(false);
+    } finally {
+      console.log = originalLog;
+    }
+  });
+
+  test('a non-OpenPalm process on the admin port ("absent" identity, socket held) stays a genuine blocking conflict', async () => {
+    const originalLog = console.log;
+    console.log = silentConsole.log;
+    try {
+      const deps = baseDeps({
+        readStackEnv: () => ({ OP_HOST_UI_PORT: '4400' }),
+        // "absent" — nothing answered /api/runtime, so whatever holds the
+        // socket is not an OpenPalm UI. No short-circuit applies.
+        checkExistingUiInstance: async () => ({ status: 'absent' as const }),
+        probeInstallPorts: async (targets, opts) =>
+          (targets ?? []).map((t) => {
+            if (t.port !== 4400) return { ...t, available: true };
+            const ours = opts?.serverPort === t.port;
+            return { ...t, available: ours, ownership: ours ? ('ours' as const) : ('free' as const) };
+          }),
       });
       const report = await runDoctorAction({ json: true }, deps);
       const admin = report.ports.find((p) => p.service === 'admin');

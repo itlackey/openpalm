@@ -533,6 +533,8 @@ export type ComposeConfigJsonResult = {
  * this async would force an async cascade through those and their many
  * synchronous UI/CLI callers for no benefit — this runs during a blocking
  * install/addon mutation where a short subprocess wait is already the norm.
+ * Callers that are ALREADY async use {@link composeConfigJson} instead so the
+ * subprocess wait never blocks the event loop.
  *
  * Best-effort: a compose or JSON-parse failure returns `{ ok:false, config:null }`.
  */
@@ -553,6 +555,43 @@ export function composeConfigJsonSync(
       (error as { stderr?: Buffer | string })?.stderr?.toString() ?? String(error);
     return { ok: false, config: null, stderr };
   }
+}
+
+/**
+ * Async variant of {@link composeConfigJsonSync} — same args, timeout, and
+ * error semantics, but via `execFile` so an already-async caller never blocks
+ * the event loop on the subprocess. Used by `runComposeActivation`, which runs
+ * on every admin-UI compose action (addon toggle, containers up/down/restart,
+ * pull, deploy): a synchronous 30s subprocess there stalls the whole SvelteKit
+ * server. Callers on the synchronous mutation paths keep using the sync form.
+ */
+export function composeConfigJson(
+  options: { files: string[]; envFiles?: string[]; profiles?: string[] }
+): Promise<ComposeConfigJsonResult> {
+  const args = buildComposeArgs(options);
+  args.push("config", "--format", "json");
+  return new Promise((resolve) => {
+    execFile(
+      dockerBin(),
+      args,
+      {
+        timeout: 30_000,
+        encoding: "utf-8",
+        env: { ...process.env, ...collectComposeEnvOverrides(options.envFiles) },
+      },
+      (error, stdout, stderr) => {
+        if (error) {
+          resolve({ ok: false, config: null, stderr: stderr?.toString() ?? String(error) });
+          return;
+        }
+        try {
+          resolve({ ok: true, config: JSON.parse(stdout.toString()) as ResolvedComposeProject, stderr: "" });
+        } catch (parseError) {
+          resolve({ ok: false, config: null, stderr: String(parseError) });
+        }
+      }
+    );
+  });
 }
 
 /**
