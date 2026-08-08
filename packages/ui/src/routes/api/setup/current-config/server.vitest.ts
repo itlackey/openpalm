@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { resolveDefaultLlmEngine } from './+server';
+import { _resolveDefaultLlmEngine as resolveDefaultLlmEngine } from './+server';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Wizard-prefill resolution against the akm 0.9 `engines` map.

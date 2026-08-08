@@ -52,8 +52,14 @@ function isLlmEngine(entry: AkmEngine | undefined): entry is AkmEngine {
   return Boolean(entry) && entry?.kind !== "agent";
 }
 
-/** Exported for unit tests — pure, no request context. */
-export function resolveDefaultLlmEngine(akm: AkmConfig): AkmEngine | undefined {
+/**
+ * Exported for unit tests — pure, no request context. The `_` prefix is
+ * required: SvelteKit only permits HTTP verb handlers and a fixed set of
+ * reserved names as `+server.ts` exports, and rejects anything else at BUILD
+ * time (neither svelte-check nor vitest enforces it). Same convention as
+ * `_resetStatsCacheForTests` in api/host/akm/stats.
+ */
+export function _resolveDefaultLlmEngine(akm: AkmConfig): AkmEngine | undefined {
   const engines = akm.engines;
   if (!engines || typeof engines !== "object") return undefined;
   const preferred = engines[akm.defaults?.llmEngine ?? "default"];
@@ -109,7 +115,7 @@ export const GET: RequestHandler = async (event) => {
   const env = readStackEnv(state.homeDir);
   const secretEnv = readStackSecretEnv(state.homeDir);
   const akm = readAkmConfig(state.configDir);
-  const akmLlm = resolveDefaultLlmEngine(akm);
+  const akmLlm = _resolveDefaultLlmEngine(akm);
   const importedModelPreferences = readPersistedModelPreferences(state.configDir);
 
   // Addon hardware profiles (CPU / CUDA / …)
