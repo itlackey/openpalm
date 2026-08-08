@@ -64,7 +64,9 @@ automatically, as it has for every previous layout move:
   operator toggle, and the per-addon `knowledge/paperclip/` overlay directories
   are removed;
 - shipped skills become release-managed content under `system/`;
-- the internal secret API defaults to `private/secrets/`, while
+- `private/` is merged into `state/`: delegated credentials move to
+  `state/secrets/` and the audited env file to `state/env/`;
+- the internal secret API defaults to `state/secrets/`, while
   operator-managed (agent-readable) secrets keep their existing home.
 
 Do not pre-move anything by hand. See

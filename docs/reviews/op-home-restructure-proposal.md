@@ -20,9 +20,19 @@ another.
 | delete `knowledge/paperclip/{env,secrets}` | −2 dirs (`home.ts:358-359`) |
 | delete the `/stash/env` + `/stash/secrets` overmounts | −2 mounts (`services.compose.yml:58-59`) |
 | `knowledge/skills/` → `system/skills/` | shipped skills get an update channel (**B11**) |
-| rename `knowledge/secrets/` → `knowledge/provider-auth/` | only `private/secrets/` says "secrets" (**A5**) |
+| `private/` → `state/` | credentials to `state/secrets/`, the audited env file to `state/env/`; 8 top-level trees → 7 |
+| rename `knowledge/secrets/` → `knowledge/provider-auth/` | only `state/secrets/` says "secrets" (**A5**) |
 
 Everything else keeps its name and contents. `knowledge/` is the one stash.
+
+`private/` earned its own tree only by carrying an absolute *never
+bind-mounted* rule. `state/` already can't hold that line — `state/remote/` is
+a mount source — so the rule is subpath-scoped either way: **nothing under
+`state/secrets/` or `state/env/` is ever bind-mounted; services receive
+individual files as Compose secrets.** Merging drops a tree, and drops the
+lifecycle-scope entry that was missed when `private/` was introduced (**G7**).
+`data/` remains wrong for credentials — each `data/<service>/` is mounted
+wholesale into its service.
 
 ## Sharing
 
@@ -47,7 +57,7 @@ syncs tasks runs them.
 
 | | Change | Cost |
 |---|---|---|
-| 1 | Secret routing defaults to `private/secrets/`; Secrets tab targets the agent-readable dir explicitly | 1 line + allowlist (**A2**) |
+| 1 | Secret routing defaults to `state/secrets/`; Secrets tab targets the agent-readable dir explicitly | 1 line + allowlist (**A2**) |
 | 2 | `${OP_HOME:?}` on mount and secret sources | find/replace (**C10**) |
 | 3 | `system/guardian:/etc/opencode:ro` — verified it never writes there | 1 word (**A14**) |
 | 4 | `realpath()` `OP_HOME` once | 1 line (**F7**) |
@@ -67,6 +77,9 @@ syncs tasks runs them.
 1. Code changes 2–5, 7 — no file moves.
 2. Code change 1 — secret routing.
 3. One schema-gated migration for the layout changes + the compose rewrite.
+   `private/` → `state/` moves credential files, so it runs with the same
+   copy → verify → delete discipline as the G1 relocation, and every
+   `secrets:` `file:` source in the three managed compose files moves with it.
 4. Backup coherence (6).
 
 Migration discipline: backup first and abort on failure; copy → verify → then
