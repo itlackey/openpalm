@@ -53,3 +53,21 @@ Assistant-readable copy.
 Do not bulk-move `knowledge/secrets/`: provider `auth.json` deliberately remains
 there. Do not put `state/stack.env` or delegated service credentials under
 `knowledge/`.
+
+## Upcoming layout change
+
+A final reorganization has been approved (2026-08-08) and is not yet
+implemented. When it lands, the current CLI will migrate supported homes
+automatically, as it has for every previous layout move:
+
+- `knowledge/` stays the one stash with AKM's asset layout unchanged; sharing
+  it with an addon becomes an AKM bundle entry, and the per-addon
+  `knowledge/paperclip/` overlay directories are removed;
+- `private/` is merged into `state/`: delegated credentials move to
+  `state/secrets/` and the audited env file to `state/env/`;
+- the internal secret API defaults to `state/secrets/`, while
+  operator-managed (agent-readable) secrets keep their existing home.
+
+Do not pre-move anything by hand. See
+[`../technical/core-principles.md`](../technical/core-principles.md)
+§ Accepted changes.

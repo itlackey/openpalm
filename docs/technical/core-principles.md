@@ -69,6 +69,58 @@ All OpenPalm state lives under a single root: **`~/.openpalm/`** (configurable v
 | `private/` | App-written | Delegated UI/OpenCode/Guardian/API/portal/bot credentials; never part of assistant `/stash` |
 | `cache/` | System | Regenerable assistant and Guardian caches; excluded from backups and ownership repair |
 
+#### Accepted changes (approved 2026-08-08 — not yet implemented)
+
+The table above describes the current runtime; it is amended as each change
+lands. Decisions and migration:
+[`../reviews/op-home-restructure-proposal.md`](../reviews/op-home-restructure-proposal.md).
+
+**A tree's name must agree with its mount.** `OP_HOME` is split by three axes
+(writer, exposure, durability) but only exposure is enforced, by the mount
+graph — every past trust incident was a file whose name implied one axis while
+its mount answered another. No subtree may need different exposure than its
+parent, and no boundary may be held up by hiding one mount behind another.
+
+Binding from now on:
+
+1. **The stash layout is AKM's.** `knowledge/` is an AKM stash; `env/`,
+   `secrets/`, `skills/`, `tasks/` are AKM asset directories. OpenPalm does not
+   rename, relocate, or reinterpret them, and does not invent parallel
+   conventions for stash contents.
+2. **Multiple stashes are AKM bundles.** Sharing the stash with an addon, the
+   optional personal stash, and release-shipped content are all named bundles
+   (`{path, writable, enabled}`, akm ≥ 0.9.0) — not bespoke mounts, per-addon
+   subtrees, or over-mounting to hide part of a stash. A bundle path is
+   arbitrary, so bundle structure is configuration, not layout. Three tiers:
+   a release-managed **system** bundle under `system/`, mounted `:ro`; a
+   **primary writable** bundle — `knowledge/` for the assistant, `data/<svc>/bundle`
+   for an addon; and the **shared** bundle, which is `knowledge/` granted per
+   addon. A service gets a bundle only if it sets `AKM_BUNDLE_DIR`.
+   **The assistant's stash is user data and stays top-level; an addon's stash is
+   service data and lives under `data/` with the rest of that service's state.**
+   They have the same shape but sit on opposite sides of the backup boundary,
+   and `data/` is skipped by name in every safety snapshot.
+   **`:ro` on the mount is the boundary; `writable` is a hint** — an addon whose
+   AKM config dir is mounted rw can rewrite its own `writable:false`.
+3. **`state/` is the app's tree** — records, generated runtime config, and
+   credentials. It is not agent-readable. The only parts a container ever
+   mounts are explicitly-listed generated-config directories (e.g.
+   `state/remote/`); **nothing under `state/secrets/` or `state/env/` is ever
+   bind-mounted**, and services receive individual files as Compose secrets.
+   Generated files a container reads never go in the wholesale-overwritten
+   `system/`. `data/` is wrong for credentials, since each `data/<service>/` is
+   mounted wholesale into its service.
+4. **Secret placement is default-deny** — the internal API resolves to
+   `state/secrets/` unless a name is explicitly agent-readable.
+5. **A service's data and credentials are one restore unit.** A backup takes
+   both or neither, and names what it skipped.
+6. **Managed compose interpolation fails loud** (`${OP_HOME:?}`); a silent
+   default only where the unset case is provably safe.
+7. **`OP_HOME` is canonicalized once**, so symlinked homes work and every
+   "is this under `OP_HOME`?" test is sound.
+8. **Managed config is read-only to the service it governs** where that service
+   does not write it (guardian's is; the assistant's is not).
+
 ### 1) Config (user-owned, non-secret)
 
 **Location:** `~/.openpalm/config/`

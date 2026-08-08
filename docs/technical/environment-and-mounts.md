@@ -28,6 +28,17 @@ ownership:
 
 Host-side ephemeral artifacts outside `OP_HOME` use `~/.cache/openpalm/`.
 
+> **A final reorganization of this layout has been approved** (2026-08-08) and
+> is not yet implemented; everything below describes the current runtime. Under
+> the accepted design `knowledge/` remains the one stash, shared with an addon
+> or not via an AKM bundle entry — replacing the parent-mount-plus-overmount
+> scheme described under Paperclip below — and `private/` merges into `state/`
+> (credentials at `state/secrets/`). Stash contents keep AKM's asset layout. See
+> [`core-principles.md`](core-principles.md) § Accepted changes for the binding
+> rules and
+> [`../reviews/op-home-restructure-proposal.md`](../reviews/op-home-restructure-proposal.md)
+> for the decision record and migration.
+
 Lifecycle safety backups include `private/` and exclude `data/` and regenerable
 `cache/`. `uninstall --purge` removes every `OP_HOME` tree, including `private/`
 and `cache/`. Ownership reconciliation covers durable/user/private paths and does
