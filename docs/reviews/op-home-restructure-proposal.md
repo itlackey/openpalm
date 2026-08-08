@@ -26,22 +26,22 @@ Everything else keeps its name and contents. `knowledge/` is the one stash.
 
 ## Sharing
 
-Binary, per addon, one line — the fallback pattern already used for
-`OP_HOST_AKM_STASH` (`core.compose.yml:213`):
+The stack already expresses optional grants as overlay files gated on a
+stack.env key and picked up by `discoverStackOverlays` on every compose
+invocation — that is what `voice.compose.lan.yml` is. Stash sharing is the same
+shape:
 
 ```yaml
-# before — partial share: mount everything, hide two subtrees
-- ${OP_HOME}/knowledge:/stash
-- ${OP_HOME}/knowledge/paperclip/secrets:/stash/secrets
-- ${OP_HOME}/knowledge/paperclip/env:/stash/env
-
-# after
-- ${OP_PAPERCLIP_STASH:-${OP_HOME}/data/akm/empty-stash}:/stash
+# paperclip.compose.stash.yml — included only when the operator turns it on
+services:
+  paperclip:
+    volumes:
+      - ${OP_HOME}/knowledge:/stash
 ```
 
-An addon that isn't granted the stash manages its own. Shared means shared,
-including `knowledge/tasks/`, which the assistant's cron executes — the share
-toggle must say so (**A13**).
+The base `services.compose.yml` drops all three stash mounts. Shared means
+shared: the addon gets the stash, task files included, and a container that
+syncs tasks runs them.
 
 ## Code changes
 

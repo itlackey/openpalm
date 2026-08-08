@@ -46,9 +46,9 @@ These are hard constraints that must never be violated during development. See a
 1. **Host CLI or admin is the orchestrator.** The host CLI manages Docker Compose directly on the host. An admin-capable UI is an adapter-node host process launched by Electron or `openpalm admin`; it serves the `@openpalm/ui` build and manages Compose through the host Docker socket. There is no admin container. Only one orchestrator should manage Compose operations at a time, and the Docker socket is never exposed to a container.
 2. **Guardian-only ingress.** Guardian is deployed on demand from `portals.compose.yml` whenever a guardian-ingress addon (`chat`, `api`, `discord`, `slack`, or `gateway`) is enabled. Every portal request enters Guardian; no portal communicates directly with the assistant. Guardian is a transparent 1:1 native OpenCode proxy with fail-closed overlays for HTTP Basic principal authentication, SQLite-persisted session/permission ownership, tenant-filtered events, rate/resource limits, and content validation. `GUARDIAN_CONTENT_VALIDATION` defaults on in both package code and shipped Compose; only explicit `0`, `false`, `no`, or `off` values disable it. A deterministic screen escalates suspicious messages to Guardian's loopback OpenCode moderator, and an escalated message is blocked when the moderator fails or cannot return a valid verdict. Principal, API, admin, MCP, and bot credentials live under `private/secrets/`; provider `knowledge/secrets/auth.json` reaches Guardian as one Compose secret. The `x-openpalm-user` header is an assertion by an already-authenticated portal principal, so isolation is between principals rather than between every end user behind one portal. Guardian's principal CRUD listener is separately Bearer-authenticated on loopback port `3831` and denies all if no token is configured. Guardian serves plain HTTP; remote TLS termination belongs in operator infrastructure.
 3. **Assistant isolation.** The assistant has no Docker socket and no broad host filesystem access beyond its designated mounts: `system/assistant/ -> /etc/opencode`, `config/assistant/ -> /home/opencode/.config/opencode`, `config/akm/ -> /etc/akm`, `knowledge/secrets/auth.json -> /home/opencode/.local/share/opencode/auth.json`, `data/assistant/ -> /home/opencode`, `cache/assistant/ -> /home/opencode/.cache`, `knowledge/ -> /stash`, `data/akm/cache/ -> /opt/akm/cache`, `data/akm/data/ -> /opt/akm/data`, `workspace/ -> /work`, and the `assistant-persistent` named volume at `/opt/persistent`. The optional host AKM secondary stash (or an empty fallback) is mounted at `/host-stash`; the container never chowns it. `private/` is never mounted into `/stash`; only named UI/OpenCode server secret files are granted to their consuming processes. The entrypoint does not source `knowledge/env/user.env`; scoped tools load it on demand. The assistant has no network path to the loopback-only admin process and no admin tools, so it cannot perform stack operations.
-4. **Host only by default.** Admin interfaces, dashboards, and portals are loopback-restricted by default. Nothing is exposed to the network or internet without explicit user action. The UI uses an `httpOnly` `SameSite=Lax` session cookie plus Host and Origin checks. Electron and `openpalm admin` always bind to `127.0.0.1` and neutralize `OP_ALLOW_REMOTE_SETUP`. After local setup, an operator may explicitly expose only a non-admin `openpalm app` behind operator-managed HTTPS. Setup schema v2 stores flat `access` booleans (`networkAccess`, `assistantDirect`, `guardianNetwork`, `guardianOpenaiApi`) and generates explicit `OP_UI_BIND_ADDRESS`, `OP_ASSISTANT_BIND_ADDRESS`, `OP_GUARDIAN_BIND_ADDRESS`, `OP_API_BIND_ADDRESS`, `OPENCODE_AUTH`, and `GUARDIAN_DIRECT_INGRESS` values. There is no global bind inheritance. Direct assistant publication turns on OpenCode Basic auth with a generated password that Guardian also uses for upstream calls; the loopback default leaves it off.
-5. **Scheduled automation is scoped.** The assistant entrypoint starts BusyBox `crond`, runs `akm tasks sync` at boot, and repeats the sync every 60 seconds. Task files live under `knowledge/tasks/`; supported targets are `command`, `prompt`, and `workflow`. Cron receives a small managed AKM/OpenCode environment preamble rather than all of `knowledge/env/user.env`. It has no Docker socket, network listener, admin credential, or admin API role.
-6. **Admin is host-only.** Electron and `openpalm admin` bind to `127.0.0.1`; they are not reachable from the Docker bridge network or any container, and `OP_ALLOW_REMOTE_SETUP` cannot change that boundary. The admin process manages Docker Compose directly on the host via the host Docker socket — there is no docker-socket-proxy container.
+3. **Host only by default.** Admin interfaces, dashboards, and portals are loopback-restricted by default. Nothing is exposed to the network or internet without explicit user action. The UI uses an `httpOnly` `SameSite=Lax` session cookie plus Host and Origin checks. Electron and `openpalm admin` always bind to `127.0.0.1` and neutralize `OP_ALLOW_REMOTE_SETUP`. After local setup, an operator may explicitly expose only a non-admin `openpalm app` behind operator-managed HTTPS. Setup schema v2 stores flat `access` booleans (`networkAccess`, `assistantDirect`, `guardianNetwork`, `guardianOpenaiApi`) and generates explicit `OP_UI_BIND_ADDRESS`, `OP_ASSISTANT_BIND_ADDRESS`, `OP_GUARDIAN_BIND_ADDRESS`, `OP_API_BIND_ADDRESS`, `OPENCODE_AUTH`, and `GUARDIAN_DIRECT_INGRESS` values. There is no global bind inheritance. Direct assistant publication turns on OpenCode Basic auth with a generated password that Guardian also uses for upstream calls; the loopback default leaves it off.
+4. **Scheduled automation is scoped.** The assistant entrypoint starts BusyBox `crond`, runs `akm tasks sync` at boot, and repeats the sync every 60 seconds. Task files live under `knowledge/tasks/`; supported targets are `command`, `prompt`, and `workflow`. Cron receives a small managed AKM/OpenCode environment preamble rather than all of `knowledge/env/user.env`. It has no Docker socket, network listener, admin credential, or admin API role.
+5. **Admin is host-only.** Electron and `openpalm admin` bind to `127.0.0.1`; they are not reachable from the Docker bridge network or any container, and `OP_ALLOW_REMOTE_SETUP` cannot change that boundary. The admin process manages Docker Compose directly on the host via the host Docker socket — there is no docker-socket-proxy container.
 
 ---
 
@@ -84,29 +84,28 @@ parent, and no boundary may be held up by hiding one mount behind another.
 Binding from now on:
 
 1. **One stash.** `knowledge/` is it. Sharing it with an addon is a binary
-   operator choice expressed as a single mount source; an addon not granted it
-   manages its own. Per-addon subtrees and over-mounting to hide part of the
-   stash are forbidden.
-2. **Granting the stash grants `knowledge/tasks/`**, which the assistant's cron
-   executes. Any surface offering stash sharing must say so.
-3. **Shipped skills are release-managed** under `system/`, not user-tree
+   operator choice, expressed as an opt-in compose overlay like every other
+   optional grant; an addon not granted it manages its own. Per-addon subtrees
+   and over-mounting to hide part of the stash are forbidden. Shared means
+   shared, task files included.
+2. **Shipped skills are release-managed** under `system/`, not user-tree
    content seeded once with no update channel.
-4. **Secret placement is default-deny** — the internal API resolves to
+3. **Secret placement is default-deny** — the internal API resolves to
    `private/secrets/` unless a name is explicitly agent-readable. `private/` is
    a separate tree from `state/` for one reason: it is the only tree carrying an
    absolute *never bind-mounted* rule, checkable as a whole-tree assertion.
    `state/` cannot carry it — `state/remote/` is a mount source — and `data/` is
    wrong outright, since each `data/<service>/` is mounted wholesale into its
    service and credentials must be granted file-by-file.
-5. **A service's data and credentials are one restore unit.** A backup takes
+4. **A service's data and credentials are one restore unit.** A backup takes
    both or neither, and names what it skipped.
-6. **Managed compose interpolation fails loud** (`${OP_HOME:?}`); a silent
+5. **Managed compose interpolation fails loud** (`${OP_HOME:?}`); a silent
    default only where the unset case is provably safe.
-7. **`OP_HOME` is canonicalized once**, so symlinked homes work and every
+6. **`OP_HOME` is canonicalized once**, so symlinked homes work and every
    "is this under `OP_HOME`?" test is sound.
-8. **`state/` holds records and generated runtime config.** Generated files a
+7. **`state/` holds records and generated runtime config.** Generated files a
    container reads never go in the wholesale-overwritten `system/`.
-9. **Managed config is read-only to the service it governs** where that service
+8. **Managed config is read-only to the service it governs** where that service
    does not write it (guardian's is; the assistant's is not).
 
 ### 1) Config (user-owned, non-secret)
@@ -339,8 +338,8 @@ When a portal addon is installed, the following secret distribution flow occurs:
 1. **Generation:** a per-principal shared secret is generated by the CLI or admin during addon install.
 2. **Storage:** the secret is written as one `0600` file under `private/secrets/`, outside assistant `/stash`.
 3. **Guardian side:** Compose grants that file to Guardian, which uses it to seed the principal record at boot.
-4. **Portal side:** Compose grants the same file only to the matching portal service. The portal receives its path through `PRINCIPAL_SECRET_FILE` and authenticates every `/oc/*` call with Basic auth.
-5. **Verification:** on every inbound request, Guardian authenticates the principal, enforces ownership/rate-limit checks, and screens prompt-bearing traffic before forwarding native OpenCode to the assistant.
+3. **Portal side:** Compose grants the same file only to the matching portal service. The portal receives its path through `PRINCIPAL_SECRET_FILE` and authenticates every `/oc/*` call with Basic auth.
+4. **Verification:** on every inbound request, Guardian authenticates the principal, enforces ownership/rate-limit checks, and screens prompt-bearing traffic before forwarding native OpenCode to the assistant.
 
 Secret grants are intentionally narrow. Provider `auth.json` remains under `knowledge/secrets/`; delegated UI/OpenCode-server/Guardian/API/portal/bot credentials live under `private/secrets/`. Admin host processes read required files directly from the host. `stack.env` must not contain secret-like keys, Compose services must not use broad `env_file`, and secret-like container variables must be `*_FILE` paths — except for the audited, single-service, single-path `env_file` exemption described under § Private credentials, which exists only for third-party images that cannot read file-based secrets.
 

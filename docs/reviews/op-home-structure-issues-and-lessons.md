@@ -237,8 +237,12 @@ schedule arbitrary command execution inside the assistant container by
 dropping one YAML file. The documented mitigation covers only the reverse
 direction ("values under `knowledge/paperclip/` … must be treated as
 agent-readable") (`services.compose.yml:36,57`;
-`entrypoint.sh:554-579`; `environment-and-mounts.md:271-282`). Standing
-fragility, not a fixed incident.
+`entrypoint.sh:554-579`; `environment-and-mounts.md:271-282`).
+
+**Resolved by decision, 2026-08-08:** stash sharing is intentional and binary,
+so this is a consequence of an operator's grant rather than a defect. Task
+files are ordinary stash files; a container that syncs them runs them. The
+partial-share machinery that tried to have it both ways is removed.
 *RC: sharing one rw tree conflates read-sharing (intended) with write-sharing
 into an execution path (unintended); `tasks/` is simultaneously user config
 and an execution queue.*
