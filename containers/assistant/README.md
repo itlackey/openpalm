@@ -11,6 +11,8 @@ admin process. It cannot run stack lifecycle operations.
 - OpenCode on container port `4096`
 - Image-baked `@openpalm/ui` on container port `3000`
 - BusyBox `crond`
+- `akm migrate status` (and, when pending, the crash-resumable `akm migrate
+  apply`) at boot — akm 0.9 no longer auto-migrates its database on open
 - `akm task sync` at boot and every 60 seconds
 
 The UI reaches OpenCode through its same-origin `/oc` proxy. The default host
@@ -66,7 +68,7 @@ are passed to the relevant child process; the assistant does not receive host
 control-plane credentials.
 
 `knowledge/env/user.env` is not sourced by the entrypoint. A tool that needs a
-user-env value resolves `akm env:user` and loads it in that tool subprocess only.
+user-env value runs `akm env run user -- <cmd>` and loads it in that tool subprocess only.
 The OpenCode server and unrelated tools do not inherit the whole file.
 
 ## Automations
@@ -113,10 +115,11 @@ See
 | `OPENCODE_AUTH` | Generated from direct-assistant access; off when the API remains loopback-only |
 | `OPENCODE_SERVER_PASSWORD_FILE` | Narrow Compose secret path used when OpenCode auth is enabled |
 | `OP_UI_LOGIN_PASSWORD_FILE` | Narrow secret path for UI login |
-| `AKM_STASH_DIR` | `/stash` |
+| `AKM_BUNDLE_DIR` | `/stash` |
 | `AKM_CONFIG_DIR` | `/etc/akm` |
 | `AKM_CACHE_DIR` | `/opt/akm/cache` |
 | `AKM_DATA_DIR` | `/opt/akm/data` |
+| `AKM_STATE_DIR` | `/opt/akm/data/state` |
 
 Host bind policy is controlled by flat service-specific values in
 `state/stack.env`; there is no global bind cascade or SSH listener.

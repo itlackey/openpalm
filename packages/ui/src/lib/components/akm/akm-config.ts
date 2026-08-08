@@ -1,4 +1,4 @@
-// Pure config<->form mappers for the AKM Knowledge tab.
+// Pure config<->form mappers for the AKM Knowledge tab (akm 0.9 schema).
 //
 // AkmTab.svelte owns a large set of $state form fields. Previously the
 // raw-config → form and form → payload mapping lived inline in load()/save()
@@ -6,6 +6,10 @@
 // helpers. This module extracts that mapping into two pure functions —
 // akmConfigToForm() and formToAkmPayload() — so the round trip is testable in
 // isolation and the component just binds fields and calls these two functions.
+//
+// akm 0.9: LLM + agent engines share ONE `engines.<name>` map partitioned by
+// `kind`; improve strategies live under `improve.strategies.<name>`; defaults
+// are `defaults.llmEngine` / `defaults.engine` / `defaults.improveStrategy`.
 //
 // The per-process improve mapping is NOT duplicated here: it composes the
 // existing improve-process-helpers (readFEntry / buildProcessConfig / …).
@@ -22,7 +26,7 @@ import {
 	type FEntry,
 	type ProcKey,
 } from './improve-process-helpers';
-import type { LlmProfile, AgentProfile, ImproveProfile } from './profile-types';
+import type { LlmEngine, AgentEngine, ImproveStrategy, AgentPlatform } from './profile-types';
 
 // ── Typed form shapes (replace the inline casts) ─────────────────────────────
 
@@ -42,12 +46,12 @@ export interface EmbeddingForm {
 
 /** Full AKM Knowledge-tab form state. */
 export interface AkmForm {
-	llmProfiles: LlmProfile[];
-	defaultLlmProfile: string;
-	agentProfiles: AgentProfile[];
-	defaultAgentProfile: string;
-	improveProfiles: ImproveProfile[];
-	defaultImproveProfile: string;
+	llmEngines: LlmEngine[];
+	defaultLlmEngine: string;
+	agentEngines: AgentEngine[];
+	defaultAgentEngine: string;
+	improveStrategies: ImproveStrategy[];
+	defaultImproveStrategy: string;
 	embedding: EmbeddingForm;
 	semanticSearchMode: 'auto' | 'off';
 	outputFormat: 'json' | 'yaml' | 'text';
@@ -75,7 +79,7 @@ const numStr = (v: unknown): string => (typeof v === 'number' ? String(v) : '');
 
 // ── config → form ────────────────────────────────────────────────────────────
 
-function llmProfileFromRaw(raw: Record<string, unknown>): Omit<LlmProfile, 'name' | 'id'> {
+function llmEngineFromRaw(raw: Record<string, unknown>): Omit<LlmEngine, 'name' | 'id'> {
 	return {
 		endpoint: (raw.endpoint as string) ?? '',
 		model: (raw.model as string) ?? '',
@@ -87,10 +91,8 @@ function llmProfileFromRaw(raw: Record<string, unknown>): Omit<LlmProfile, 'name
 		timeoutMs: raw.timeoutMs != null ? String(raw.timeoutMs) : '',
 		concurrency: raw.concurrency != null ? String(raw.concurrency) : '',
 		contextLength: raw.contextLength != null ? String(raw.contextLength) : '',
-		judgeModel: (raw.judgeModel as string) ?? '',
 		supportsJsonSchema: (raw.supportsJsonSchema as boolean) ?? false,
 		enableThinking: (raw.enableThinking as boolean) ?? false,
-		structuredOutput: (asRecord(raw.capabilities)?.structuredOutput as boolean) ?? false,
 		extraParams:
 			raw.extraParams && typeof raw.extraParams === 'object'
 				? JSON.stringify(raw.extraParams, null, 2)
@@ -98,7 +100,21 @@ function llmProfileFromRaw(raw: Record<string, unknown>): Omit<LlmProfile, 'name
 	};
 }
 
-function improveProfileFromRaw(name: string, raw: Record<string, unknown>, idGen: IdGen): ImproveProfile {
+function agentEngineFromRaw(name: string, raw: Record<string, unknown>, idGen: IdGen): AgentEngine {
+	return {
+		id: idGen(),
+		name,
+		platform: (raw.platform as AgentPlatform) ?? 'opencode',
+		bin: (raw.bin as string) ?? '',
+		args: Array.isArray(raw.args) ? (raw.args as string[]).join(' ') : '',
+		workspace: (raw.workspace as string) ?? '',
+		model: (raw.model as string) ?? '',
+		timeoutMs: raw.timeoutMs != null ? String(raw.timeoutMs) : '',
+		llmEngine: (raw.llmEngine as string) ?? '',
+	};
+}
+
+function improveStrategyFromRaw(name: string, raw: Record<string, unknown>, idGen: IdGen): ImproveStrategy {
 	const procs = asRecord(raw.processes) ?? {};
 	const processes = {} as Record<ProcKey, FEntry>;
 	for (const k of PROCESS_KEYS) processes[k] = readFEntry(procs[k], DEFAULT_ENABLED[k]);
@@ -108,7 +124,6 @@ function improveProfileFromRaw(name: string, raw: Record<string, unknown>, idGen
 		name,
 		description: (raw.description as string) ?? '',
 		limit: typeof raw.limit === 'number' ? raw.limit : 25,
-		autoAccept: typeof raw.autoAccept === 'number' ? raw.autoAccept : 0,
 		processes,
 		syncEnabled: triFromEnabled(sync ? { enabled: sync.enabled } : undefined),
 		syncPush: triFromEnabled(sync ? { enabled: sync.push } : undefined),
@@ -118,36 +133,22 @@ function improveProfileFromRaw(name: string, raw: Record<string, unknown>, idGen
 
 /** Map a raw akm config object into UI form state. Pure. */
 export function akmConfigToForm(config: Record<string, unknown>, idGen: IdGen = defaultIdGen): AkmForm {
-	const rawProfiles = asRecord(config.profiles);
+	// One engines map, partitioned into the two UI sections by `kind`.
+	const rawEngines = asRecord(config.engines);
+	const llmEngines: LlmEngine[] = [];
+	const agentEngines: AgentEngine[] = [];
+	if (rawEngines) {
+		for (const [name, entry] of Object.entries(rawEngines)) {
+			const raw = asRecord(entry) ?? {};
+			if (raw.kind === 'agent') agentEngines.push(agentEngineFromRaw(name, raw, idGen));
+			else llmEngines.push({ id: idGen(), name, ...llmEngineFromRaw(raw) });
+		}
+	}
 
-	const rawLlm = asRecord(rawProfiles?.llm);
-	const llmProfiles: LlmProfile[] = rawLlm
-		? Object.entries(rawLlm).map(([name, p]) => ({
-				id: idGen(),
-				name,
-				...llmProfileFromRaw(asRecord(p) ?? {}),
-			}))
-		: [];
-
-	const rawAgent = asRecord(rawProfiles?.agent);
-	const agentProfiles: AgentProfile[] = rawAgent
-		? Object.entries(rawAgent).map(([name, p]) => {
-				const raw = asRecord(p) ?? {};
-				return {
-					id: idGen(),
-					name,
-					platform: (raw.platform as 'opencode' | 'claude' | 'opencode-sdk') ?? 'opencode',
-					bin: (raw.bin as string) ?? '',
-					args: Array.isArray(raw.args) ? (raw.args as string[]).join(' ') : '',
-					workspace: (raw.workspace as string) ?? '',
-					model: (raw.model as string) ?? '',
-				};
-			})
-		: [];
-
-	const rawImprove = asRecord(rawProfiles?.improve);
-	const improveProfiles: ImproveProfile[] = rawImprove
-		? Object.entries(rawImprove).map(([name, p]) => improveProfileFromRaw(name, asRecord(p) ?? {}, idGen))
+	const improveTop = asRecord(config.improve);
+	const rawStrategies = asRecord(improveTop?.strategies);
+	const improveStrategies: ImproveStrategy[] = rawStrategies
+		? Object.entries(rawStrategies).map(([name, s]) => improveStrategyFromRaw(name, asRecord(s) ?? {}, idGen))
 		: [];
 
 	const rawDefaults = asRecord(config.defaults);
@@ -168,7 +169,6 @@ export function akmConfigToForm(config: Record<string, unknown>, idGen: IdGen = 
 	};
 
 	const output = asRecord(config.output);
-	const improveTop = asRecord(config.improve);
 	const decay = asRecord(improveTop?.utilityDecay);
 	const search = asRecord(config.search);
 	const feedback = asRecord(config.feedback);
@@ -176,12 +176,12 @@ export function akmConfigToForm(config: Record<string, unknown>, idGen: IdGen = 
 	const fbModes = Array.isArray(rawFbModes) ? (rawFbModes as string[]).join(', ') : '';
 
 	return {
-		llmProfiles,
-		defaultLlmProfile: (rawDefaults?.llm as string) ?? '',
-		agentProfiles,
-		defaultAgentProfile: (rawDefaults?.agent as string) ?? '',
-		improveProfiles,
-		defaultImproveProfile: (rawDefaults?.improve as string) ?? '',
+		llmEngines,
+		defaultLlmEngine: (rawDefaults?.llmEngine as string) ?? '',
+		agentEngines,
+		defaultAgentEngine: (rawDefaults?.engine as string) ?? '',
+		improveStrategies,
+		defaultImproveStrategy: (rawDefaults?.improveStrategy as string) ?? '',
 		embedding,
 		semanticSearchMode: (config.semanticSearchMode as 'auto' | 'off') ?? 'auto',
 		outputFormat: (output?.format as 'json' | 'yaml' | 'text') ?? 'json',
@@ -201,11 +201,12 @@ export function akmConfigToForm(config: Record<string, unknown>, idGen: IdGen = 
 // ── form → payload ───────────────────────────────────────────────────────────
 
 /**
- * Build the akm save payload for one LLM profile. Throws a friendly error when
- * extraParams is not a valid JSON object so save() can surface it.
+ * Build the akm save payload for one LLM engine (engines.<name>, kind "llm").
+ * Throws a friendly error when extraParams is not a valid JSON object so
+ * save() can surface it.
  */
-export function buildLlmProfilePayload(p: LlmProfile): Record<string, unknown> {
-	const out: Record<string, unknown> = { endpoint: p.endpoint, model: p.model };
+export function buildLlmEnginePayload(p: LlmEngine): Record<string, unknown> {
+	const out: Record<string, unknown> = { kind: 'llm', endpoint: p.endpoint, model: p.model };
 	if (p.provider) out.provider = p.provider;
 	if (p.apiKey) out.apiKey = p.apiKey;
 	const t = optNum(p.temperature);
@@ -218,19 +219,17 @@ export function buildLlmProfilePayload(p: LlmProfile): Record<string, unknown> {
 	if (co !== undefined) out.concurrency = co;
 	const cl = optInt(p.contextLength);
 	if (cl !== undefined) out.contextLength = cl;
-	if (p.judgeModel) out.judgeModel = p.judgeModel;
 	if (p.supportsJsonSchema) out.supportsJsonSchema = true;
 	if (p.enableThinking) out.enableThinking = true;
-	if (p.structuredOutput) out.capabilities = { structuredOutput: true };
 	if (p.extraParams.trim()) {
 		let parsed: unknown;
 		try {
 			parsed = JSON.parse(p.extraParams);
 		} catch {
-			throw new Error(`LLM profile "${p.name}": extraParams must be valid JSON`);
+			throw new Error(`LLM engine "${p.name}": extraParams must be valid JSON`);
 		}
 		if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed))
-			throw new Error(`LLM profile "${p.name}": extraParams must be a JSON object`);
+			throw new Error(`LLM engine "${p.name}": extraParams must be a JSON object`);
 		out.extraParams = parsed;
 	}
 	return out;
@@ -238,39 +237,44 @@ export function buildLlmProfilePayload(p: LlmProfile): Record<string, unknown> {
 
 /**
  * Map UI form state back into the akm save payload. Pure (may throw on invalid
- * extraParams / index JSON, exactly as the previous inline save() did).
+ * extraParams / index JSON or on an LLM/agent engine name collision, exactly
+ * as save() expects to surface).
  */
 export function formToAkmPayload(form: AkmForm): Record<string, unknown> {
-	const profilesLlm: Record<string, unknown> = {};
-	for (const p of form.llmProfiles) {
-		if (p.name.trim()) profilesLlm[p.name.trim()] = buildLlmProfilePayload(p);
+	// LLM + agent engines share ONE engines map — a name can only exist once.
+	const engines: Record<string, unknown> = {};
+	for (const p of form.llmEngines) {
+		if (p.name.trim()) engines[p.name.trim()] = buildLlmEnginePayload(p);
 	}
-
-	const profilesAgent: Record<string, unknown> = {};
-	for (const p of form.agentProfiles) {
-		if (!p.name.trim()) continue;
-		const entry: Record<string, unknown> = { platform: p.platform };
+	for (const p of form.agentEngines) {
+		const name = p.name.trim();
+		if (!name) continue;
+		if (name in engines)
+			throw new Error(`Engine name "${name}" is used by both an LLM engine and an agent engine — names must be unique`);
+		const entry: Record<string, unknown> = { kind: 'agent', platform: p.platform };
 		if (p.bin) entry.bin = p.bin;
 		if (p.args) entry.args = p.args.split(/\s+/).filter(Boolean);
 		if (p.workspace) entry.workspace = p.workspace;
 		if (p.model) entry.model = p.model;
-		profilesAgent[p.name.trim()] = entry;
+		const to = optInt(p.timeoutMs);
+		if (to !== undefined) entry.timeoutMs = to;
+		if (p.platform === 'opencode-sdk' && p.llmEngine) entry.llmEngine = p.llmEngine;
+		engines[name] = entry;
 	}
 
-	const profilesImprove: Record<string, unknown> = {};
-	for (const ip of form.improveProfiles) {
-		if (!ip.name.trim()) continue;
+	const strategies: Record<string, unknown> = {};
+	for (const st of form.improveStrategies) {
+		if (!st.name.trim()) continue;
 		const processes: Record<string, unknown> = {};
-		for (const k of PROCESS_KEYS) processes[k] = buildProcessConfig(ip.processes[k]);
-		const entry: Record<string, unknown> = { limit: ip.limit, processes };
-		if (ip.description) entry.description = ip.description;
-		if (ip.autoAccept > 0) entry.autoAccept = ip.autoAccept;
+		for (const k of PROCESS_KEYS) processes[k] = buildProcessConfig(st.processes[k]);
+		const entry: Record<string, unknown> = { limit: st.limit, processes };
+		if (st.description) entry.description = st.description;
 		const sync: Record<string, unknown> = {};
-		if (ip.syncEnabled) sync.enabled = ip.syncEnabled === 'on';
-		if (ip.syncPush) sync.push = ip.syncPush === 'on';
-		if (ip.syncMessage.trim()) sync.message = ip.syncMessage.trim();
+		if (st.syncEnabled) sync.enabled = st.syncEnabled === 'on';
+		if (st.syncPush) sync.push = st.syncPush === 'on';
+		if (st.syncMessage.trim()) sync.message = st.syncMessage.trim();
 		if (Object.keys(sync).length) entry.sync = sync;
-		profilesImprove[ip.name.trim()] = entry;
+		strategies[st.name.trim()] = entry;
 	}
 
 	const emb = form.embedding;
@@ -292,19 +296,21 @@ export function formToAkmPayload(form: AkmForm): Record<string, unknown> {
 	if (numCtx !== undefined) embPayload.ollamaOptions = { num_ctx: numCtx };
 
 	const defaultsPayload: Record<string, unknown> = {};
-	if (form.defaultLlmProfile) defaultsPayload.llm = form.defaultLlmProfile;
-	if (form.defaultAgentProfile) defaultsPayload.agent = form.defaultAgentProfile;
-	if (form.defaultImproveProfile) defaultsPayload.improve = form.defaultImproveProfile;
+	if (form.defaultLlmEngine) defaultsPayload.llmEngine = form.defaultLlmEngine;
+	if (form.defaultAgentEngine) defaultsPayload.engine = form.defaultAgentEngine;
+	if (form.defaultImproveStrategy) defaultsPayload.improveStrategy = form.defaultImproveStrategy;
 
-	const improveTopPayload: Record<string, unknown> = {};
+	// akm 0.9: strategies live INSIDE the top-level improve block, next to the
+	// global tuning knobs.
+	const improvePayload: Record<string, unknown> = { strategies };
 	const decayPayload: Record<string, unknown> = {};
 	const hl = optNum(form.imHalfLife);
 	if (hl !== undefined) decayPayload.halfLifeDays = hl;
 	const fb = optNum(form.imFeedbackBoost);
 	if (fb !== undefined) decayPayload.feedbackStabilityBoost = fb;
-	if (Object.keys(decayPayload).length) improveTopPayload.utilityDecay = decayPayload;
+	if (Object.keys(decayPayload).length) improvePayload.utilityDecay = decayPayload;
 	const er = optNum(form.imEventRetention);
-	if (er !== undefined) improveTopPayload.eventRetentionDays = er;
+	if (er !== undefined) improvePayload.eventRetentionDays = er;
 
 	const searchPayload: Record<string, unknown> = {};
 	const ms = optNum(form.searchMinScore);
@@ -333,12 +339,12 @@ export function formToAkmPayload(form: AkmForm): Record<string, unknown> {
 	}
 
 	return {
-		profiles: { llm: profilesLlm, agent: profilesAgent, improve: profilesImprove },
+		engines,
 		defaults: defaultsPayload,
+		improve: improvePayload,
 		embedding: embPayload,
 		semanticSearchMode: form.semanticSearchMode,
 		output: { format: form.outputFormat, detail: form.outputDetail },
-		...(Object.keys(improveTopPayload).length ? { improve: improveTopPayload } : {}),
 		...(Object.keys(searchPayload).length ? { search: searchPayload } : {}),
 		...(Object.keys(feedbackPayload).length ? { feedback: feedbackPayload } : {}),
 		...(indexPayload !== undefined ? { index: indexPayload } : {}),
