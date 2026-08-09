@@ -91,9 +91,8 @@ describe("overwriteSystemTree", () => {
     const retired = join(opHome, "system", "retired.compose.yml");
     writeFileSync(retired, "retired\n");
     rmSync(join(sourceRoot, "system", "stack", "portals.compose.yml"));
-    // A genuine content change accompanies the retirement — retirement alone
-    // (a target-only extra) deliberately does not trigger an overwrite.
-    writeFileSync(join(sourceRoot, first), "new\n");
+    // Retirement ALONE triggers the overwrite: no source file changed content
+    // here, and nothing else prunes the managed tree.
 
     const result = overwriteSystemTree(sourceRoot, opHome);
 
@@ -130,5 +129,23 @@ describe("overwriteSystemTree", () => {
 		expect(backupDir).toBeNull();
 		expect(existsSync(join(nodeModules, "runtime.js"))).toBe(true);
 		expect(existsSync(join(opHome, "data", "backups"))).toBe(false);
+	});
+
+	// The two target-only classes pull in opposite directions, so pin them
+	// together: runtime extras never trigger an overwrite, a retirement always
+	// does — even when it arrives in the same tree as those extras.
+	it("still detects a retirement when runtime extras are present", () => {
+		seedSource("same\n");
+		overwriteSystemTree(sourceRoot, opHome);
+		const nodeModules = join(opHome, "system", "assistant", "node_modules");
+		mkdirSync(nodeModules, { recursive: true });
+		writeFileSync(join(nodeModules, "runtime.js"), "runtime dependency\n");
+		rmSync(join(sourceRoot, "system", "stack", "portals.compose.yml"));
+
+		const { updated, backupDir } = overwriteSystemTree(sourceRoot, opHome);
+
+		expect(existsSync(join(opHome, "system", "stack", "portals.compose.yml"))).toBe(false);
+		expect(updated).toContain("system/stack/portals.compose.yml");
+		expect(backupDir).not.toBeNull();
 	});
 });

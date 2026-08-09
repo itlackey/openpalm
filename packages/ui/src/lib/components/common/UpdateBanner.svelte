@@ -19,6 +19,20 @@
     return `openpalm.updateBanner.dismissed.${version}`;
   }
 
+  /**
+   * The phase a version's banner was dismissed in, or null. A dismissal
+   * suppresses ONLY that phase: dismissing the "available" prompt must not
+   * also swallow the later "ready to install" prompt for the same version,
+   * which offers a different and more consequential action (the in-app
+   * "Restart and update" would otherwise never appear again). Values written
+   * before this fix are a bare '1', which reads as a dismissed "available".
+   */
+  function dismissedStatus(version: string): string | null {
+    if (typeof localStorage === 'undefined') return null;
+    const raw = localStorage.getItem(dismissKey(version));
+    return raw === '1' ? 'available' : raw;
+  }
+
   onMount(() => {
     const updater = window.openpalm?.updater;
     if (!updater) return;
@@ -50,7 +64,7 @@
 
   function handleDismiss() {
     if (updateState?.availableVersion && typeof localStorage !== 'undefined') {
-      localStorage.setItem(dismissKey(updateState.availableVersion), '1');
+      localStorage.setItem(dismissKey(updateState.availableVersion), updateState.status);
     }
     dismissed = true;
   }
@@ -75,16 +89,17 @@
     }
   }
 
-  // Suppress a banner the user already dismissed for this exact version —
-  // and ONLY that version. Review E6: `dismissed` used to be a one-way
-  // boolean, so dismissing version X also suppressed a LATER version Y for
-  // the rest of the session. Re-derive it from the CURRENT availableVersion's
-  // stored key on every pushed state, so a version the user never dismissed
-  // clears the flag again.
+  // Suppress a banner the user already dismissed for this exact version AND
+  // phase. Review E6: `dismissed` used to be a one-way boolean, so dismissing
+  // version X also suppressed a LATER version Y for the rest of the session.
+  // Re-derive it from the CURRENT version+status on every pushed state, so
+  // neither a new version nor a new phase of the same version stays hidden
+  // behind an older dismissal (see {@link dismissedStatus}).
   $effect(() => {
     const version = updateState?.availableVersion;
-    if (!version || typeof localStorage === 'undefined') return;
-    dismissed = localStorage.getItem(dismissKey(version)) !== null;
+    const status = updateState?.status;
+    if (!version || !status) return;
+    dismissed = dismissedStatus(version) === status;
   });
 </script>
 

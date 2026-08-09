@@ -58,6 +58,7 @@ describe('UpdateBanner', () => {
 	});
 
 	test('a version dismissed in an earlier session stays dismissed', async () => {
+		// Legacy '1' value, written before dismissals recorded their phase.
 		localStorage.setItem('openpalm.updateBanner.dismissed.2.0.0', '1');
 		await render(UpdateBanner);
 
@@ -69,5 +70,33 @@ describe('UpdateBanner', () => {
 		// ...but a NEWER version still surfaces.
 		pushState(updaterState({ availableVersion: '2.1.0' }));
 		await expect.element(page.getByText('v2.1.0')).toBeVisible();
+	});
+
+	// A dismissal suppresses only the phase it was made in. Dismissing the
+	// "available" prompt must not also swallow the "ready to install" prompt,
+	// or the in-app "Restart and update" action becomes unreachable for that
+	// version.
+	test('dismissing the available prompt still surfaces the downloaded one', async () => {
+		await render(UpdateBanner);
+
+		await expect.element(page.getByText('v2.0.0')).toBeVisible();
+		await page.getByRole('button', { name: 'Dismiss' }).click();
+		await expect.element(page.getByText('v2.0.0')).not.toBeInTheDocument();
+
+		pushState(updaterState({ status: 'downloaded' }));
+		await expect.element(page.getByRole('button', { name: 'Restart and update' })).toBeVisible();
+	});
+
+	test('dismissing the downloaded prompt keeps that version hidden', async () => {
+		await render(UpdateBanner);
+		await expect.element(page.getByText('v2.0.0')).toBeVisible();
+
+		pushState(updaterState({ status: 'downloaded' }));
+		await page.getByRole('button', { name: 'Dismiss' }).click();
+		await expect.element(page.getByRole('button', { name: 'Restart and update' })).not.toBeInTheDocument();
+
+		// Re-pushing the same downloaded state must not resurrect it.
+		pushState(updaterState({ status: 'downloaded' }));
+		await expect.element(page.getByRole('button', { name: 'Restart and update' })).not.toBeInTheDocument();
 	});
 });

@@ -96,7 +96,6 @@ async function autoRun(opts: BareRunOpts = {}): Promise<void> {
     // value nothing reads.
     await bootstrapInstall({
       force: false,
-      version: cliPkg.version,
       noStart: false,
       noOpen: opts.open === false,
       assumeYes: false,

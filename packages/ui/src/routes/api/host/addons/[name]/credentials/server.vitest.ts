@@ -218,10 +218,11 @@ describe('@boolean schema field (OP_VOICE_LAN_ACCESS)', () => {
 
 		expect(res.status).toBe(200);
 		expect(activateStackMock).toHaveBeenCalledTimes(1);
-		const services = (activateStackMock.mock.calls[0]?.[1] as { services: string[] }).services;
-		expect(services).toContain('voice-cuda');
-		expect(services).toContain('assistant');
-		expect(services).not.toContain('voice');
+		// The active profile's service, never the inactive-profile 'voice'.
+		expect(activateStackMock.mock.calls[0]?.[1]).toMatchObject({
+			kind: 'services',
+			services: ['voice-cuda', 'assistant']
+		});
 	});
 
 	test('an ordinary schema field still saves with no compose apply at all', async () => {

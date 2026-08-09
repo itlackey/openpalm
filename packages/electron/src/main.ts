@@ -29,7 +29,6 @@ import {
   resolveAssistantEndpoint,
   seedLegacyServedUiRuntimeConfig,
   applyHomeSeed,
-  resolveConfigDir,
   createState,
   readDeployJournal,
   resolveDeployJournalPath,
