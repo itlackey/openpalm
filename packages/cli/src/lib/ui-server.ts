@@ -21,7 +21,7 @@ import {
 } from '@openpalm/lib';
 import { ensureValidState, resolveServeState } from './cli-state.ts';
 import { openBrowser } from './browser.ts';
-import { materializeEmbeddedUi, seedSkeletonFromEmbedded } from './embedded-assets.ts';
+import { materializeEmbeddedSkeleton, materializeEmbeddedUi, seedSkeletonFromEmbedded } from './embedded-assets.ts';
 
 const logger = createLogger('cli:ui');
 const STOP_TIMEOUT_MS  = 5_000;
@@ -65,7 +65,8 @@ async function openBrowserAndReport(url: string): Promise<void> {
 
 /**
  * Installed admin launches open the host dashboard directly. A fresh admin
- * home stays at root so the UI's browser-aware `/start` bootstrap can run.
+ * home stays at root so the UI's landing resolver can route to setup or
+ * onboarding (see packages/ui/src/lib/resolve-landing.ts).
  */
 export function resolveAdminUrl(
   uiUrl: string,
@@ -184,10 +185,13 @@ async function spawnUiChild(
   // Re-read it for every initial spawn rather than freezing it in
   // startUIServer.
   const { config, runtimeConfigJson, stacklessApp, installState } = resolveUiChildLaunch(state);
-  if (!stacklessApp) {
-    // Materialize the embedded skeleton (managed system/ tree) before spawning.
-    await seedSkeletonFromEmbedded(applyHomeSeed, homeDir, state.configDir, state.dataDir);
-  }
+  // Materialize the embedded skeleton (managed system/ tree) before spawning.
+  // Stackless (not-yet-installed) homes get the materialization WITHOUT the
+  // seed: nothing to re-seed yet, but the wizard the child serves is about to
+  // install, and its performSetup needs a skeleton source inside the child.
+  const skeletonDir = stacklessApp
+    ? await materializeEmbeddedSkeleton(state.dataDir)
+    : await seedSkeletonFromEmbedded(applyHomeSeed, homeDir, state.configDir, state.dataDir);
 
   // Materialize the embedded UI build into data/ui BEFORE spawning, matching
   // the Electron harness's own bundled-build resolution. A no-op once data/ui
@@ -235,6 +239,16 @@ async function spawnUiChild(
   const adminEnv = effectiveAdmin
     ? { OP_ENABLE_ADMIN: '1', OP_ALLOW_REMOTE_SETUP: '0' }
     : {};
+  // A compiled binary's UI child must be able to seed the managed system/
+  // tree itself — UI-driven install and update run performSetup/performUpgrade
+  // INSIDE the child, where nothing embedded resolves. Point it at the
+  // persistent materialized skeleton unless the operator already provided an
+  // override (which `...process.env` below forwards as-is, and which
+  // lib's resolveLocalOpenpalmDir would let win regardless via
+  // OPENPALM_REPO_ROOT's higher precedence).
+  const skeletonEnv = skeletonDir && !process.env.OPENPALM_SKELETON_DIR
+    ? { OPENPALM_SKELETON_DIR: skeletonDir }
+    : {};
   const proc = Bun.spawn(
     [process.execPath, ...childArgs],
     {
@@ -245,6 +259,7 @@ async function spawnUiChild(
         // relative value (e.g. `.dev` from a repo-root .env) against its
         // own cwd (packages/ui/build/).
         OP_HOME:                homeDir,
+        ...skeletonEnv,
         ...networkEnv,
         // Explicit "the listen contract is already resolved" marker, consumed by
         // runUiBuild below. It must be a marker WE set and not an inference from
