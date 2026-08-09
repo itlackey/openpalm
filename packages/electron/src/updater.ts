@@ -86,7 +86,7 @@ export interface AppUpdaterLike {
   channel: string | null;
   allowPrerelease: boolean;
   checkForUpdates(): Promise<{ updateInfo?: { version?: string } } | null>;
-  downloadUpdate(): Promise<unknown>;
+  downloadUpdate(cancellationToken?: CancellationTokenLike): Promise<unknown>;
   quitAndInstall(isSilent?: boolean, isForceRunAfter?: boolean): void;
   /**
    * Trigger the installer WITHOUT quitting — unlike `quitAndInstall`, which
@@ -107,6 +107,11 @@ export interface AppUpdaterLike {
   removeListener(event: string, listener: (...args: unknown[]) => void): unknown;
 }
 
+/** Minimal cancellation surface (electron-updater's CancellationToken). */
+export interface CancellationTokenLike {
+  cancel(): void;
+}
+
 export interface UpdaterDeps {
   updater: AppUpdaterLike;
   currentVersion: string;
@@ -120,6 +125,16 @@ export interface UpdaterDeps {
   /** Injected so tests can assert throttling without real time. */
   now?: () => number;
   onStateChange?: (state: UpdaterState) => void;
+  /**
+   * Builds the token `download()` hands to `downloadUpdate` so `dispose()` can
+   * cancel an in-flight download (review E3): the prerelease-channel toggle
+   * rebuilds this wrapper over the SAME singleton `autoUpdater`, and without
+   * cancellation the old instance's download keeps running — completing on the
+   * OLD channel's artifact after the user switched away from it. Injected
+   * (main.ts passes electron-updater's own CancellationToken) so the state
+   * machine stays testable in plain Node.
+   */
+  createCancellationToken?: () => CancellationTokenLike;
 }
 
 export const RELEASES_URL = 'https://github.com/itlackey/openpalm/releases';
@@ -198,6 +213,62 @@ export function isAutoUpdateSupported(
   return platform === 'linux';
 }
 
+function parseSemver(
+  version: string,
+): { release: [number, number, number]; prerelease: Array<string | number> | null } | null {
+  const m = /^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?(?:\+[0-9A-Za-z-.]+)?$/.exec(
+    version.trim(),
+  );
+  if (!m) return null;
+  return {
+    release: [Number(m[1]), Number(m[2]), Number(m[3])],
+    // Per semver §11, numeric identifiers compare numerically, so beta.4 <
+    // beta.10 — parse them to numbers here rather than comparing strings.
+    prerelease: m[4] ? m[4].split('.').map((id) => (/^\d+$/.test(id) ? Number(id) : id)) : null,
+  };
+}
+
+/**
+ * Whether `candidate` is a strictly NEWER semver than `current`. `check()`
+ * below needs this because electron-updater resolves with whatever version the
+ * feed carries, newer or not — and a plain `!==` treated a beta install on the
+ * default stable channel as having an "update" to the OLDER stable release, a
+ * phantom whose download can never succeed (electron-updater never stages a
+ * not-newer update).
+ *
+ * electron-updater's own `semver` dependency is not resolvable from this
+ * package (isolated installs), so this is a small local comparison covering
+ * the semver precedence rules that matter here: a prerelease sorts BEFORE its
+ * release (1.2.3-beta.4 < 1.2.3), numeric identifiers compare numerically
+ * (beta.4 < beta.10), and a longer identifier set wins over its own prefix.
+ * When either side is not semver at all, this falls back to plain inequality —
+ * the prior behavior for strings it cannot order.
+ */
+export function isVersionNewer(candidate: string, current: string): boolean {
+  const a = parseSemver(candidate);
+  const b = parseSemver(current);
+  if (!a || !b) return candidate !== current;
+  for (let i = 0; i < 3; i++) {
+    if (a.release[i] !== b.release[i]) return a.release[i] > b.release[i];
+  }
+  // Same release: a prerelease sorts before the release itself.
+  if (!a.prerelease) return b.prerelease !== null;
+  if (!b.prerelease) return false;
+  for (let i = 0; i < Math.max(a.prerelease.length, b.prerelease.length); i++) {
+    const x = a.prerelease[i];
+    const y = b.prerelease[i];
+    // Equal prefix: the version with MORE identifiers is the newer one.
+    if (x === undefined) return false;
+    if (y === undefined) return true;
+    if (x === y) continue;
+    // Numeric identifiers always have lower precedence than alphanumeric.
+    if (typeof x === 'number' && typeof y === 'number') return x > y;
+    if (typeof x === 'number' || typeof y === 'number') return typeof y === 'number';
+    return x > y;
+  }
+  return false;
+}
+
 /** Throttle for focus-triggered checks — a window regains focus constantly. */
 export const FOCUS_CHECK_THROTTLE_MS = 60 * 60 * 1000;
 
@@ -209,10 +280,12 @@ export class DesktopUpdater {
   private downloadInFlight: Promise<UpdaterState> | null = null;
   /** null = never checked. Not 0: that is a real (if ancient) timestamp. */
   private lastCheckAt: number | null = null;
+  /** Token for the in-flight download, so dispose() can cancel it (review E3). */
+  private downloadCancellation: CancellationTokenLike | null = null;
   // Bound listener references, kept so dispose() can remove exactly these
   // from the shared singleton updater (review E6 — see dispose() below).
   private readonly onDownloadProgress: ((...args: unknown[]) => void) | null;
-  private readonly onUpdateDownloaded: (() => void) | null;
+  private readonly onUpdateDownloaded: ((...args: unknown[]) => void) | null;
 
   constructor(deps: UpdaterDeps) {
     this.deps = deps;
@@ -254,7 +327,17 @@ export class DesktopUpdater {
       const percent = typeof progress?.percent === 'number' ? progress.percent : null;
       this.patch({ status: 'downloading', percent });
     };
-    this.onUpdateDownloaded = () => {
+    this.onUpdateDownloaded = (...args: unknown[]) => {
+      // Review E3: the singleton autoUpdater outlives this wrapper across
+      // prerelease-channel toggles, so a download begun by a PREVIOUS instance
+      // can complete after the rebuild and fire this listener with the OLD
+      // channel's artifact — which quit would then install. Ignore any version
+      // this instance never itself reported as available. (dispose() also
+      // cancels the old download; this guards the race where it completes
+      // first. Dropping that staged artifact on a channel switch is by design:
+      // the user just switched away from the channel it came from.)
+      const info = args[0] as { version?: string } | undefined;
+      if (typeof info?.version === 'string' && info.version !== this.state.availableVersion) return;
       this.patch({ status: 'downloaded', percent: 100, error: null });
     };
     u.on('download-progress', this.onDownloadProgress);
@@ -278,6 +361,13 @@ export class DesktopUpdater {
    */
   dispose(): void {
     if (!this.state.supported) return;
+    // Review E3: a download begun by THIS instance must not keep running on
+    // the shared singleton after the channel toggle discards the instance.
+    // Cancelling also drops anything it already staged — deliberate: an
+    // artifact from the OLD channel must never be what quit installs after
+    // the user switched channels.
+    this.downloadCancellation?.cancel();
+    this.downloadCancellation = null;
     if (this.onDownloadProgress) this.deps.updater.removeListener('download-progress', this.onDownloadProgress);
     if (this.onUpdateDownloaded) this.deps.updater.removeListener('update-downloaded', this.onUpdateDownloaded);
   }
@@ -306,14 +396,21 @@ export class DesktopUpdater {
     }
 
     this.lastCheckAt = this.now();
+    // Review E1: captured BEFORE patching 'checking' so a failed SILENT check
+    // can restore it — patching 'idle' there clobbered a previously discovered
+    // 'available' (while leaving availableVersion set) whenever an offline
+    // focus check failed.
+    const priorStatus = this.state.status;
     this.patch({ status: 'checking', error: null });
     const run = (async (): Promise<UpdaterState> => {
       try {
         const result = await this.deps.updater.checkForUpdates();
         const version = result?.updateInfo?.version ?? null;
         // electron-updater resolves with the FEED's version whether or not it
-        // is newer, so "available" means strictly newer than what we run.
-        const available = !!version && version !== this.state.currentVersion;
+        // is newer, so "available" means strictly newer than what we run — a
+        // mere `!==` would report a beta install's OLDER stable release as a
+        // phantom update (see isVersionNewer above).
+        const available = !!version && isVersionNewer(version, this.state.currentVersion);
         return this.patch({
           status: available ? 'available' : 'not-available',
           availableVersion: available ? version : null,
@@ -321,8 +418,10 @@ export class DesktopUpdater {
         });
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
-        // Silent checks leave the prior state intact and stay quiet.
-        if (silent) return this.patch({ status: 'idle', error: null });
+        // Silent checks leave the prior state intact and stay quiet: restore
+        // the pre-check status so an already-discovered 'available' (with its
+        // availableVersion) survives an offline focus check (review E1).
+        if (silent) return this.patch({ status: priorStatus, error: null });
         return this.patch({ status: 'error', error: message });
       } finally {
         this.checkInFlight = null;
@@ -357,9 +456,13 @@ export class DesktopUpdater {
     }
 
     this.patch({ status: 'downloading', percent: 0, error: null });
+    // Held so dispose() can cancel this download if the channel toggle
+    // discards the instance mid-flight (review E3).
+    this.downloadCancellation = this.deps.createCancellationToken?.() ?? null;
+    const token = this.downloadCancellation;
     const run = (async (): Promise<UpdaterState> => {
       try {
-        await this.deps.updater.downloadUpdate();
+        await this.deps.updater.downloadUpdate(token ?? undefined);
         // `update-downloaded` normally moves us to 'downloaded'; if a fake or a
         // provider resolves without emitting it, don't strand the UI at
         // 'downloading'.
@@ -372,6 +475,7 @@ export class DesktopUpdater {
         return this.patch({ status: 'error', percent: null, error: message });
       } finally {
         this.downloadInFlight = null;
+        if (this.downloadCancellation === token) this.downloadCancellation = null;
       }
     })();
     this.downloadInFlight = run;

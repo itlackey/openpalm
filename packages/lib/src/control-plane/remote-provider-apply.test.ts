@@ -66,4 +66,22 @@ describe("forwarded-address env reconciliation", () => {
     // Disabled remote deploys nothing, so no tunnel recreate either.
     expect(result.services).not.toContain("tunnel");
   });
+
+  test("a FAILED disable still clears the keys — the env tracks the remote-enabled intent, not the apply's success", () => {
+    // An invalid OP_REMOTE_TARGET makes the provider apply itself fail. The
+    // early return on that error used to skip the reconcile, leaving
+    // OP_UI_ADDRESS_HEADER=x-forwarded-for keying the login throttle with no
+    // trusted proxy in front — a LAN client could forge the header at will.
+    seedStackEnv(
+      "OP_ENABLED_ADDONS=\nOP_REMOTE_TARGET=nonsense\nOP_UI_ADDRESS_HEADER=x-forwarded-for\nOP_UI_XFF_DEPTH=1\n",
+    );
+
+    const result = applyRemoteProviderConfig(home);
+    expect(result.error).toContain("Invalid OP_REMOTE_TARGET");
+    // The provider error is still propagated, but the assistant joins the
+    // recreate scope so the cleared env actually lands in the container.
+    expect(result.services).toContain("assistant");
+    expect(readStackEnvRaw()).toContain("OP_UI_ADDRESS_HEADER=\n");
+    expect(readStackEnvRaw()).toContain("OP_UI_XFF_DEPTH=\n");
+  });
 });

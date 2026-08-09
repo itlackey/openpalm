@@ -19,6 +19,7 @@
 import type { RequestHandler } from './$types';
 import { readFileSync, mkdirSync, existsSync } from 'node:fs';
 import { writeFileAtomic } from '@openpalm/lib';
+import { PRIMARY_BUNDLE_ID, stripRetiredAkmKeys } from '@openpalm/lib/control-plane/setup.js';
 import { getState } from '$lib/server/state.js';
 import {
   errorResponse,
@@ -111,10 +112,9 @@ const SEMANTIC_SEARCH_MODES = new Set(['auto','off']);
 const OUTPUT_FORMATS = new Set(['json','yaml','text']);
 const OUTPUT_DETAILS = new Set(['brief','normal','full']);
 
-// Retired 0.8 top-level keys — akm 0.9 refuses to load a config carrying them,
-// so PATCH strips them from the merged output (and never accepts them as input).
-const RETIRED_TOP_LEVEL_KEYS = ['profiles','llm','agent','features','stashes','stashDir','sources','installed','wikiName'] as const;
-const RETIRED_DEFAULTS_KEYS = ['llm','agent','improve'] as const;
+// Retired 0.8 keys — akm 0.9 refuses to load a config carrying them, so PATCH
+// strips them from the merged output (and never accepts them as input) via
+// lib's stripRetiredAkmKeys (RETIRED_AKM_CONFIG_KEYS + defaults.llm/agent/improve).
 
 function validateAgentEngine(raw: Rec, prefix: string): Error | null {
   if ('platform' in raw && (typeof raw.platform !== 'string' || !AGENT_PLATFORMS.has(raw.platform as string)))
@@ -353,12 +353,24 @@ export const PATCH: RequestHandler = async (event) => {
     const updated: Rec = { ...existing };
 
     // engines — the UI sends the COMPLETE intended engines map (both kinds),
-    // so replace wholesale (like the 0.8 profiles.llm/agent replacement).
+    // so the SET of engines is replaced wholesale, but each entry field-merges
+    // over the existing engine of the same name (mirroring the improve-strategy
+    // merge below): the pickers whitelist only UI-modeled fields, so a bare
+    // replace would destroy unmodeled akm 0.9 fields (e.g. `capabilities`) on
+    // every save, and a cleared endpoint would yield a bare {kind:'llm'} engine
+    // akm's schema rejects — merging keeps the persisted value instead.
     if (enginesBody !== undefined) {
+      const existingEngines = isRec(existing.engines) ? (existing.engines as Rec) : {};
       const built: Rec = {};
       for (const [name, entry] of Object.entries(enginesBody)) {
         const raw = entry as Rec;
-        built[name] = raw.kind === 'agent' ? pickAgentEngine(raw) : pickLlmEngine(raw);
+        const picked = raw.kind === 'agent' ? pickAgentEngine(raw) : pickLlmEngine(raw);
+        const prior = existingEngines[name];
+        // Only merge over an existing entry of the SAME kind — a kind switch
+        // must not drag llm fields onto an agent engine (or vice versa).
+        built[name] = isRec(prior) && (prior as Rec).kind === picked.kind
+          ? { ...(prior as Rec), ...picked }
+          : picked;
       }
       updated.engines = built;
     }
@@ -406,8 +418,9 @@ export const PATCH: RequestHandler = async (event) => {
     }
 
     // improve — strategies get a per-strategy merge (so unmodeled strategy
-    // fields survive a UI save); the global tuning knobs are replaced from the
-    // body wholesale (the UI sends the complete intended tuning).
+    // fields survive a UI save); the global tuning knobs use the same
+    // key-presence semantics as defaults/embedding/output above: keys absent
+    // from the body are left untouched.
     if (improveBody !== undefined) {
       const existingImprove = (existing.improve as Rec) ?? {};
       const mergedImprove: Rec = { ...existingImprove };
@@ -446,9 +459,7 @@ export const PATCH: RequestHandler = async (event) => {
         mergedImprove.strategies = builtStrategies;
       }
       if ('utilityDecay' in improveBody) mergedImprove.utilityDecay = improveBody.utilityDecay;
-      else delete mergedImprove.utilityDecay;
       if ('eventRetentionDays' in improveBody) mergedImprove.eventRetentionDays = improveBody.eventRetentionDays;
-      else delete mergedImprove.eventRetentionDays;
       updated.improve = mergedImprove;
     }
 
@@ -463,20 +474,15 @@ export const PATCH: RequestHandler = async (event) => {
     // Strip every retired 0.8 key from the merged output — akm refuses to load
     // a config that carries them, so a pre-upgrade config is cleaned on the
     // first PATCH.
-    for (const key of RETIRED_TOP_LEVEL_KEYS) delete updated[key];
-    if (isRec(updated.defaults)) {
-      const cleanedDefaults = { ...(updated.defaults as Rec) };
-      for (const key of RETIRED_DEFAULTS_KEYS) delete cleanedDefaults[key];
-      updated.defaults = cleanedDefaults;
-    }
+    stripRetiredAkmKeys(updated);
     // The config version is always the 0.9.0 schema this endpoint writes.
     updated.configVersion = '0.9.0';
     // The assistant's primary bundle is pinned to the /stash bind mount —
     // never operator-editable (body.bundles/defaultBundle are ignored above).
     const existingBundles = isRec(existing.bundles) ? (existing.bundles as Rec) : {};
-    updated.bundles = { ...existingBundles, openpalm: { path: '/stash', writable: true } };
+    updated.bundles = { ...existingBundles, [PRIMARY_BUNDLE_ID]: { path: '/stash', writable: true } };
     if (typeof existing.defaultBundle === 'string') updated.defaultBundle = existing.defaultBundle;
-    else updated.defaultBundle = 'openpalm';
+    else updated.defaultBundle = PRIMARY_BUNDLE_ID;
 
     mkdirSync(`${state.configDir}/akm`, { recursive: true });
     // I-5: atomic write through the shared lib writer (tmp+rename) so a

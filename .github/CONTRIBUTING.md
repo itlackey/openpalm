@@ -167,7 +167,7 @@ at build time.
 ## Release Packaging
 
 All supported releases use `.github/workflows/release.yml`; see
-[Release Management](../docs/operations/release-management.md).
+[Releasing OpenPalm](../docs/operations/release.md).
 
 The product release publishes one npm convenience package:
 
@@ -196,4 +196,4 @@ Voice releases independently through `.github/workflows/publish-voice.yml`.
 | [Bun Rules](../docs/technical/bunjs-rules.md) | Bun/platform API preferences |
 | [SvelteKit Rules](../docs/technical/sveltekit-rules.md) | Server/client boundaries and routing |
 | [API Conventions](../docs/technical/api-spec.md) | Admin API security and route conventions |
-| [Release Architecture](../docs/technical/release-architecture.md) | Candidate source and artifact DAG |
+| [Releasing OpenPalm](../docs/operations/release.md) | Release architecture, commands, and checklist |

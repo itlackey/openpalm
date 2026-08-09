@@ -55,4 +55,47 @@ describe('preparePaperclipAddon', () => {
 
 		expect(() => preparePaperclipAddon(homeDir)).toThrow(/unsupported key/);
 	});
+
+	it('names the env file path in the unsupported-key error', () => {
+		const homeDir = createHome();
+		mkdirSync(join(homeDir, 'private', 'env'), { recursive: true });
+		writeFileSync(paperclipEnvFile(homeDir), 'UNEXPECTED_SECRET=value\n');
+
+		expect(() => preparePaperclipAddon(homeDir, { enabled: true })).toThrow(
+			paperclipEnvFile(homeDir)
+		);
+	});
+
+	it('does not throw for unknown keys when the addon is disabled — seeds and preserves them', () => {
+		const homeDir = createHome();
+		mkdirSync(join(homeDir, 'private', 'env'), { recursive: true });
+		writeFileSync(paperclipEnvFile(homeDir), 'UNEXPECTED_SECRET=value\n');
+
+		preparePaperclipAddon(homeDir, { enabled: false });
+
+		const env = parseEnvFile(paperclipEnvFile(homeDir));
+		// The stray key survives untouched (audit enforces the boundary at
+		// activation once the addon is enabled), and the required secrets are
+		// still seeded so compose config never fails on the env_file.
+		expect(env.UNEXPECTED_SECRET).toBe('value');
+		expect(env.BETTER_AUTH_SECRET).toHaveLength(64);
+		expect(env.PAPERCLIP_AGENT_JWT_SECRET).toHaveLength(64);
+	});
+
+	it('leaves a complete file with unknown keys untouched when the addon is disabled', () => {
+		const homeDir = createHome();
+		mkdirSync(join(homeDir, 'private', 'env'), { recursive: true });
+		writeFileSync(
+			paperclipEnvFile(homeDir),
+			'BETTER_AUTH_SECRET=auth\nPAPERCLIP_AGENT_JWT_SECRET=jwt\nUNEXPECTED_SECRET=value\n'
+		);
+
+		preparePaperclipAddon(homeDir, { enabled: false });
+
+		expect(parseEnvFile(paperclipEnvFile(homeDir))).toEqual({
+			BETTER_AUTH_SECRET: 'auth',
+			PAPERCLIP_AGENT_JWT_SECRET: 'jwt',
+			UNEXPECTED_SECRET: 'value'
+		});
+	});
 });

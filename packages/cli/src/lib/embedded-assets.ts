@@ -33,7 +33,7 @@
  * fails the build if its sources are missing, and every `build:*` script runs
  * it first.
  */
-import { existsSync, mkdirSync, mkdtempSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { x as extractTar } from 'tar';
@@ -87,6 +87,30 @@ async function extractEmbeddedArchive(archivePath: string, parentDir: string, la
 }
 
 /**
+ * Replace `targetDir` with `replacementDir` without a window where the target
+ * is absent-but-unrecoverable: the old tree is renamed aside (not deleted)
+ * before the replacement is renamed in, and restored if that second rename
+ * fails (e.g. Windows EPERM from an open handle) — the pre-swap tree survives
+ * any single failure. Only after the replacement is in place is the old tree
+ * deleted. Both paths must share a filesystem (callers extract into a sibling
+ * of the target for exactly this reason).
+ */
+function swapDirIntoPlace(targetDir: string, replacementDir: string): void {
+  const previous = `${targetDir}.previous-${process.pid}`;
+  const hadTarget = existsSync(targetDir);
+  if (hadTarget) renameSync(targetDir, previous);
+  try {
+    renameSync(replacementDir, targetDir);
+  } catch (err) {
+    if (hadTarget) {
+      try { renameSync(previous, targetDir); } catch { /* leave `.previous-*` for manual recovery */ }
+    }
+    throw err;
+  }
+  if (hadTarget) rmSync(previous, { recursive: true, force: true });
+}
+
+/**
  * Materialize the embedded UI build into `${dataDir}/ui` when the stamp
  * there does not already match this binary's PLATFORM_VERSION. No backup, no
  * rollback, no channel logic: the embedded copy wins unconditionally the
@@ -94,8 +118,9 @@ async function extractEmbeddedArchive(archivePath: string, parentDir: string, la
  * matches, or when no UI build was compiled in.
  *
  * Extracts to a temp directory that is a SIBLING of `${dataDir}/ui` (so the
- * final rename is same-filesystem and atomic) before swapping it in, so a
- * half-written data/ui is never observable.
+ * final rename is same-filesystem and atomic) before swapping it in via
+ * {@link swapDirIntoPlace}, so a half-written data/ui is never observable and
+ * a failed swap leaves the previous build in place.
  *
  * `archivePath` defaults to the embedded UI build and is only overridden by
  * tests, which point it at a fixture archive on real disk (the embedded
@@ -115,34 +140,73 @@ export async function materializeEmbeddedUi(
     rmSync(extracted, { recursive: true, force: true });
     return false;
   }
-  rmSync(uiDir, { recursive: true, force: true });
-  renameSync(extracted, uiDir);
+  try {
+    swapDirIntoPlace(uiDir, extracted);
+  } catch {
+    // The previous build was restored (or never existed); serve continues on
+    // whatever resolveUiBuildDir finds rather than crashing the spawn.
+    rmSync(extracted, { recursive: true, force: true });
+    return false;
+  }
   return true;
 }
 
 /**
- * Materialize the embedded skeleton into a fresh temp directory and return
- * its path, or null when no skeleton was compiled in (the caller falls back
- * to @openpalm/lib's resolveLocalOpenpalmDir — a repo checkout or
- * OPENPALM_SKELETON_DIR/OPENPALM_REPO_ROOT override). The returned directory
- * is a plain scratch dir the caller owns: point OPENPALM_SKELETON_DIR at it,
- * call applyHomeSeed, then rmSync it.
+ * Stamp file at the ROOT of the persistent materialized skeleton dir (a
+ * sibling of its system/ tree, so applyHomeSeed never copies it into
+ * OP_HOME). Distinct from lib's OP_HOME-level `.skeleton-version` stamp,
+ * which records what a HOME was last seeded with — this one records what
+ * this binary last EXTRACTED.
+ */
+const SKELETON_DIR_STAMP = '.openpalm-skeleton-version';
+
+function readSkeletonDirVersion(dir: string): string | null {
+  try { return readFileSync(join(dir, SKELETON_DIR_STAMP), 'utf8').trim() || null; } catch { return null; }
+}
+
+/**
+ * Materialize the embedded skeleton into the PERSISTENT `${dataDir}/skeleton`
+ * directory and return its path, or null when no skeleton was compiled in
+ * (the caller falls back to @openpalm/lib's resolveLocalOpenpalmDir — a repo
+ * checkout or OPENPALM_SKELETON_DIR/OPENPALM_REPO_ROOT override).
+ *
+ * Persistent on purpose: the supervisor passes this directory to the spawned
+ * UI child as OPENPALM_SKELETON_DIR, and the child's own lifecycle routes
+ * (UI-driven install and update run performSetup/performUpgrade in-process)
+ * need it long after this call returns — a temp dir deleted post-seed left
+ * the child with no skeleton source in a compiled binary. A stamp at the dir
+ * root makes repeat calls at the same PLATFORM_VERSION free (no re-extract);
+ * a stale or missing stamp re-extracts and atomically swaps the new tree in
+ * ({@link swapDirIntoPlace} — a failed swap restores the previous tree, and
+ * null is returned so callers fail loudly rather than seed a stale tree).
  *
  * `archivePath` defaults to the embedded skeleton; see
  * {@link materializeEmbeddedUi} for why tests override it.
  */
 export async function materializeEmbeddedSkeleton(
+  dataDir: string,
   archivePath?: string,
 ): Promise<string | null> {
+  const skeletonDir = join(dataDir, 'skeleton');
+  if (readSkeletonDirVersion(skeletonDir) === PLATFORM_VERSION && existsSync(join(skeletonDir, 'system'))) {
+    return skeletonDir;
+  }
   const source = archivePath ?? (await embeddedArchivePath('skeleton'));
   if (!source) return null;
-  const extracted = await extractEmbeddedArchive(source, tmpdir(), 'skeleton');
+  const extracted = await extractEmbeddedArchive(source, dataDir, 'skeleton');
   if (!extracted) return null;
   if (!existsSync(join(extracted, 'system'))) {
     rmSync(extracted, { recursive: true, force: true });
     return null;
   }
-  return extracted;
+  writeFileSync(join(extracted, SKELETON_DIR_STAMP), `${PLATFORM_VERSION}\n`);
+  try {
+    swapDirIntoPlace(skeletonDir, extracted);
+  } catch {
+    rmSync(extracted, { recursive: true, force: true });
+    return null;
+  }
+  return skeletonDir;
 }
 
 /**
@@ -150,28 +214,34 @@ export async function materializeEmbeddedSkeleton(
  * back to local resolution (repo checkout / OPENPALM_SKELETON_DIR /
  * OPENPALM_REPO_ROOT) when no skeleton was compiled in.
  * Thin wrapper around {@link materializeEmbeddedSkeleton} + applyHomeSeed
- * shared by `install.ts` (pre-wizard seed) and `ui-server.ts` (spawnUiChild's
- * skeleton seed before every spawn — applyHomeSeed's own tree-overwrite is
- * what keeps repeat calls at the same version cheap, not a check here).
+ * shared by `install.ts` (pre-wizard seed), `update.ts` (the whole upgrade
+ * runs as the callback) and `ui-server.ts` (spawnUiChild's skeleton seed
+ * before every spawn — the materialization's version stamp is what keeps
+ * repeat calls at the same version cheap).
+ *
+ * Returns the persistent materialized skeleton dir (for callers that need to
+ * hand it to a child process), or null when the local-resolution fallback
+ * was used instead. The env override is scoped to the callback: it is
+ * restored afterwards so an operator-set OPENPALM_SKELETON_DIR keeps
+ * flowing to child processes untouched.
  */
 export async function seedSkeletonFromEmbedded(
-  applyHomeSeed: (repoRef: string, homeDir: string, configDir: string, dataDir: string) => Promise<unknown>,
+  applyHomeSeed: (homeDir: string) => Promise<unknown>,
   homeDir: string,
-  configDir: string,
   dataDir: string,
-): Promise<void> {
-  const extracted = await materializeEmbeddedSkeleton();
-  if (!extracted) {
-    await applyHomeSeed(PLATFORM_VERSION, homeDir, configDir, dataDir);
-    return;
+): Promise<string | null> {
+  const skeletonDir = await materializeEmbeddedSkeleton(dataDir);
+  if (!skeletonDir) {
+    await applyHomeSeed(homeDir);
+    return null;
   }
   const previous = process.env.OPENPALM_SKELETON_DIR;
   try {
-    process.env.OPENPALM_SKELETON_DIR = extracted;
-    await applyHomeSeed(PLATFORM_VERSION, homeDir, configDir, dataDir);
+    process.env.OPENPALM_SKELETON_DIR = skeletonDir;
+    await applyHomeSeed(homeDir);
   } finally {
     if (previous === undefined) delete process.env.OPENPALM_SKELETON_DIR;
     else process.env.OPENPALM_SKELETON_DIR = previous;
-    rmSync(extracted, { recursive: true, force: true });
   }
+  return skeletonDir;
 }

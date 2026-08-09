@@ -176,6 +176,55 @@ describe('@boolean schema field (OP_VOICE_LAN_ACCESS)', () => {
 		expect(readFileSync(stackEnvPath, 'utf-8')).toContain('OP_VOICE_LAN_ACCESS=true');
 	});
 
+	// The drawer POSTs every non-sensitive field on every save, so the recreate
+	// scope must derive from keys whose value actually CHANGED — an unchanged
+	// OP_VOICE_LAN_ACCESS round-tripped alongside a cosmetic edit must not
+	// force-recreate voice+assistant (killing live OpenCode sessions).
+	test('posting an unchanged OP_VOICE_LAN_ACCESS alongside a changed cosmetic key recreates nothing', async () => {
+		writeRemoteStackEnv('OP_VOICE_LAN_ACCESS=true\nOP_VOICE_KOKORO_VOICE=bf_isabella\n');
+
+		const res = await POST(
+			makePostEvent({ OP_VOICE_LAN_ACCESS: 'true', OP_VOICE_KOKORO_VOICE: 'am_michael' }, 'voice')
+		);
+
+		expect(res.status).toBe(200);
+		const body = (await res.json()) as { ok: boolean; updated: string[]; recreated: string[] };
+		expect(body.ok).toBe(true);
+		expect(body.updated).toContain('OP_VOICE_KOKORO_VOICE');
+		expect(body.recreated).toEqual([]);
+		expect(activateStackMock).not.toHaveBeenCalled();
+		const after = readFileSync(join(homeDir, 'state', 'stack.env'), 'utf-8');
+		expect(after).toContain('OP_VOICE_KOKORO_VOICE=am_michael');
+	});
+
+	// ADDON_ENV_RECREATE_SCOPE names the CPU-profile service "voice"; when the
+	// operator selected the CUDA profile, the running container is "voice-cuda"
+	// and THAT is the service the apply must recreate — recreating "voice" would
+	// touch only the inactive profile's service.
+	test('a changed OP_VOICE_LAN_ACCESS under the cuda profile recreates voice-cuda, not voice', async () => {
+		const state = getState();
+		const stackDir = join(state.homeDir, 'system', 'stack');
+		mkdirSync(stackDir, { recursive: true });
+		writeFileSync(
+			join(stackDir, 'services.compose.yml'),
+			'services:\n' +
+				'  voice:\n    profiles: ["addon.voice.cpu"]\n    image: test\n' +
+				'  voice-cuda:\n    profiles: ["addon.voice.cuda"]\n    image: test\n'
+		);
+		writeRemoteStackEnv('OP_VOICE_PROFILE=addon.voice.cuda\n');
+		activateStackMock.mockResolvedValue({ ok: true, started: ['voice-cuda', 'assistant'], failed: [] });
+
+		const res = await POST(makePostEvent({ OP_VOICE_LAN_ACCESS: 'true' }, 'voice'));
+
+		expect(res.status).toBe(200);
+		expect(activateStackMock).toHaveBeenCalledTimes(1);
+		// The active profile's service, never the inactive-profile 'voice'.
+		expect(activateStackMock.mock.calls[0]?.[1]).toMatchObject({
+			kind: 'services',
+			services: ['voice-cuda', 'assistant']
+		});
+	});
+
 	test('an ordinary schema field still saves with no compose apply at all', async () => {
 		// The guarantee that keeps the common path Docker-free: only keys listed in
 		// ADDON_ENV_RECREATE_SCOPE trigger a recreate, so a bot token or a model

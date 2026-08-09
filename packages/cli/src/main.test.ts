@@ -137,7 +137,18 @@ function makeFakeChildProcess(code = 0): EventEmitter {
 
 function mockDockerCli(): void {
 	Bun.which = mock((_cmd: string) => '/usr/bin/docker') as typeof Bun.which;
-	Bun.spawn = mock((_cmd: string[] | readonly string[], _opts?: unknown) => ({
+	Bun.spawn = mock((cmd: string[] | readonly string[] | { cmd?: readonly string[] }, opts?: unknown) => {
+		// Bun implements node:child_process execFile on top of Bun.spawn (in both
+		// its (cmd, opts) and ({cmd, ...}) call shapes), so this stub also swallows
+		// the activation gate's async `docker compose config` resolution — a
+		// read-only, side-effect-free client command the gate needs to answer (its
+		// execFileSync predecessor used the unmocked spawnSync). Let exactly that
+		// through; every mutating docker spawn stays stubbed.
+		const argv = Array.isArray(cmd) ? (cmd as readonly string[]) : ((cmd as { cmd?: readonly string[] }).cmd ?? []);
+		if (argv.includes('compose') && argv.includes('config')) {
+			return originalBunSpawn(cmd as never, opts as never);
+		}
+		return {
 		pid: 0,
 		exited: Promise.resolve(0),
 		exitCode: null,
@@ -151,7 +162,8 @@ function mockDockerCli(): void {
 		unref: () => {},
 		[Symbol.asyncDispose]: async () => {},
 		resourceUsage: () => undefined
-	})) as unknown as typeof Bun.spawn;
+		};
+	}) as unknown as typeof Bun.spawn;
 	// lib's stdio-inheriting compose runner (runComposeStreaming) spawns via
 	// node:child_process, NOT Bun.spawn — stub that seam too so compose mutations
 	// (e.g. `addon disable` → `compose stop`) never shell out to real docker.
@@ -246,6 +258,10 @@ describe('cli main', () => {
 
 		try {
 			await main(['install', '--no-start', '--file', specFile]);
+			// C2: no --version means NO GitHub `releases/latest` lookup — the
+			// resolved ref informed a parameter nothing reads (prepareInstallFiles
+			// ignores it), and the up-to-10s wait blocked offline installs.
+			expect(fetchedUrls.some((url) => url.includes('/releases/latest'))).toBe(false);
 			// Bootstrap runs directly, creating directories
 			expect(existsSync(join(base, 'data', 'assistant'))).toBe(true);
 			expect(existsSync(join(base, 'system', 'stack', 'services.compose.yml'))).toBe(true);
@@ -925,6 +941,24 @@ describe('unknown command (C8)', () => {
 	});
 });
 
+// C8 residual: a positional AFTER a flag bypasses isUnknownSubcommand (which
+// only inspects argv[0]) and used to be silently discarded by parseBareArgs —
+// `openpalm --no-open status` started the stack instead of erroring.
+describe('positional after flags', () => {
+	it('rejects a subcommand placed after a flag instead of silently auto-running', async () => {
+		const err = await main(['--no-open', 'status']).catch((e: unknown) => e);
+		expect(err).toBeInstanceOf(Error);
+		expect((err as Error).message).toContain('Unexpected argument: status');
+		expect((err as Error).message).toContain('openpalm <subcommand> [flags]');
+	});
+
+	it('rejects a typo placed after a flag', async () => {
+		const err = await main(['--port', '4200', 'statsu']).catch((e: unknown) => e);
+		expect(err).toBeInstanceOf(Error);
+		expect((err as Error).message).toContain('Unexpected argument: statsu');
+	});
+});
+
 // C10/B6: parseBareArgs used to be a hand-rolled loop duplicating
 // mainCommand.args (help text only) — it understood --no-open but not
 // --open=false, and silently dropped a malformed --port.
@@ -947,6 +981,15 @@ describe('parseBareArgs (C10/B6)', () => {
 	it('throws on a malformed --port instead of silently falling back to the default port', () => {
 		expect(() => parseBareArgs(['--port', 'banana'])).toThrow(/Invalid --port value/);
 		expect(() => parseBareArgs(['--port=banana'])).toThrow(/Invalid --port value/);
+	});
+
+	it('throws on a non-integer --port (finite values used to pass and fail later, opaquely)', () => {
+		expect(() => parseBareArgs(['--port', '3880.5'])).toThrow(/Invalid --port value/);
+	});
+
+	it('throws on an out-of-range --port', () => {
+		expect(() => parseBareArgs(['--port', '0'])).toThrow(/Invalid --port value/);
+		expect(() => parseBareArgs(['--port', '65536'])).toThrow(/Invalid --port value/);
 	});
 });
 

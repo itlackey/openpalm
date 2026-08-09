@@ -433,6 +433,43 @@ describe('SetupState — handleConnectModeChange (cloud ↔ local)', () => {
     expect(s.payload.addons.ollama).toBeUndefined();
   });
 
+  // Clearing ollamaEnabled alone left the providerState.ollama mutations from
+  // enableRecommendedOllama in place — a phantom selected/verified in-stack
+  // provider that inflated verifiedCount and could emit a connection to a
+  // never-deployed container.
+  it('switching back to cloud leaves no verified in-stack ollama provider behind', () => {
+    const s = new SetupState();
+    s.initProviderState();
+    s.modelSelection.llm = { connId: 'openai', model: 'gpt-4o', dims: 0 };
+
+    s.handleConnectModeChange('local');
+    expect(s.providerState.ollama.verified).toBe(true);
+    expect(s.providerState.ollama.ollamaMode).toBe('instack');
+
+    s.handleConnectModeChange('cloud');
+    expect(s.providerState.ollama.selected).toBe(false);
+    expect(s.providerState.ollama.verified).toBe(false);
+    expect(s.providerState.ollama.ollamaMode).toBeNull();
+    expect(s.providerState.ollama.baseUrl).not.toBe('http://ollama:11434');
+    expect(s.providerState.ollama.models).toEqual([]);
+    expect(s.verifiedCount).toBe(0);
+    expect(s.payload.connections.some((c) => c.provider === 'ollama')).toBe(false);
+  });
+
+  it('switching to cloud does not clobber a genuinely detected host ollama (ollamaMode !== instack)', () => {
+    const s = new SetupState();
+    s.initProviderState();
+    s.providerState.ollama = providerEntry({
+      selected: true, verified: true, ollamaMode: 'running',
+      baseUrl: 'http://localhost:11434', models: ['llama3.2'],
+    });
+
+    s.handleConnectModeChange('cloud');
+    expect(s.providerState.ollama.verified).toBe(true);
+    expect(s.providerState.ollama.ollamaMode).toBe('running');
+    expect(s.providerState.ollama.models).toEqual(['llama3.2']);
+  });
+
   it('going local with no prior cloud selection then back to cloud clears `llm` instead of leaving it on the disabled local runtime', () => {
     const s = new SetupState();
     s.initProviderState();
@@ -843,6 +880,46 @@ describe('SetupState — W4 host-import auto-trigger on reaching the Providers s
     await Promise.resolve();
 
     expect(importHost).not.toHaveBeenCalled();
+  });
+
+  // A slow auto-triggered host import that resolves after the user already
+  // advanced must not yank the wizard back from Add-ons/Review to Connect.
+  it('a host import resolving after the user advanced past step 1 does not navigate back', async () => {
+    const { importHost } = await import('$lib/setup-api.js');
+    vi.mocked(importHost).mockClear();
+    let resolveImport: (v: { ok: boolean; data: { ok: boolean } }) => void = () => {};
+    vi.mocked(importHost).mockImplementationOnce(
+      () => new Promise((resolve) => { resolveImport = resolve; })
+    );
+
+    const s = new SetupState();
+    s.initProviderState();
+    s.systemCheckPassed = true;
+
+    const pending = s.handleHostImport();
+    // The user moves on while the import is still in flight.
+    s.goToStep(2);
+    expect(s.currentStep).toBe(2);
+
+    resolveImport({ ok: true, data: { ok: true } });
+    await pending;
+
+    expect(s.currentStep).toBe(2);
+  });
+
+  it('a host import resolving while still on step 1 or earlier keeps the stay-on-screen-1 behavior', async () => {
+    const { importHost } = await import('$lib/setup-api.js');
+    vi.mocked(importHost).mockClear();
+    vi.mocked(importHost).mockResolvedValueOnce({ ok: true, data: { ok: true } });
+
+    const s = new SetupState();
+    s.initProviderState();
+    s.systemCheckPassed = true;
+    expect(s.currentStep).toBe(0);
+
+    await s.handleHostImport();
+
+    expect(s.currentStep).toBe(1);
   });
 
   it('does not fire on a rerun (goToStep(1) skips the step-1 side effects entirely there)', async () => {

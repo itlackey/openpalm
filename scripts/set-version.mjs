@@ -19,6 +19,43 @@ export function parseSemver(version) {
     : null;
 }
 
+/**
+ * Semver precedence per §11: release tuples compare numerically, a prerelease
+ * sorts before its release, numeric identifiers compare numerically, and a
+ * longer identifier set wins over its own prefix. Used by the release
+ * workflow's monotonicity guard.
+ */
+export function compareSemver(a, b) {
+  const left = parseSemver(a);
+  const right = parseSemver(b);
+  if (!left || !right) throw new Error(`Cannot compare invalid semver: '${a}' and '${b}'`);
+  for (const key of ['ma', 'mi', 'pa']) {
+    if (left[key] !== right[key]) return left[key] > right[key] ? 1 : -1;
+  }
+  if (left.pre === right.pre) return 0;
+  if (left.pre === null) return 1;
+  if (right.pre === null) return -1;
+
+  const leftParts = left.pre.split('.');
+  const rightParts = right.pre.split('.');
+  for (let i = 0; i < Math.max(leftParts.length, rightParts.length); i++) {
+    if (leftParts[i] === undefined) return -1;
+    if (rightParts[i] === undefined) return 1;
+    const leftNumeric = /^[0-9]+$/.test(leftParts[i]);
+    const rightNumeric = /^[0-9]+$/.test(rightParts[i]);
+    if (leftNumeric && rightNumeric) {
+      if (Number(leftParts[i]) !== Number(rightParts[i])) {
+        return Number(leftParts[i]) > Number(rightParts[i]) ? 1 : -1;
+      }
+    } else if (leftNumeric !== rightNumeric) {
+      return leftNumeric ? -1 : 1;
+    } else if (leftParts[i] !== rightParts[i]) {
+      return leftParts[i] > rightParts[i] ? 1 : -1;
+    }
+  }
+  return 0;
+}
+
 /** Stamp `version` into a package.json file (in place). Returns the new version. */
 export function setVersion(file, version) {
   if (!parseSemver(version)) {

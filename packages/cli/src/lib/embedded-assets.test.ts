@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { c as createTar } from 'tar';
 import { PLATFORM_VERSION } from '@openpalm/lib';
-import { materializeEmbeddedSkeleton, materializeEmbeddedUi } from './embedded-assets.ts';
+import { materializeEmbeddedSkeleton, materializeEmbeddedUi, seedSkeletonFromEmbedded } from './embedded-assets.ts';
 
 const tempDirs: string[] = [];
 function tempDir(prefix: string): string {
@@ -108,34 +108,77 @@ describe('materializeEmbeddedUi', () => {
 });
 
 describe('materializeEmbeddedSkeleton', () => {
-  test('extracts the embedded skeleton into a fresh directory', async () => {
+  test('extracts the embedded skeleton into the persistent dataDir/skeleton, stamped with PLATFORM_VERSION', async () => {
     const archivePath = await fixtureArchive((src) => {
       mkdirSync(join(src, 'system', 'stack'), { recursive: true });
       writeFileSync(join(src, 'system', 'stack', 'core.compose.yml'), 'services: {}\n');
     });
+    const dataDir = tempDir('embedded-skel-data-');
 
-    const extracted = await materializeEmbeddedSkeleton(archivePath);
+    const skeletonDir = await materializeEmbeddedSkeleton(dataDir, archivePath);
 
-    expect(extracted).not.toBeNull();
-    if (extracted) {
-      tempDirs.push(extracted);
-      expect(existsSync(join(extracted, 'system', 'stack', 'core.compose.yml'))).toBe(true);
-    }
+    expect(skeletonDir).toBe(join(dataDir, 'skeleton'));
+    expect(existsSync(join(dataDir, 'skeleton', 'system', 'stack', 'core.compose.yml'))).toBe(true);
+    expect(readFileSync(join(dataDir, 'skeleton', '.openpalm-skeleton-version'), 'utf8').trim()).toBe(PLATFORM_VERSION);
   });
 
-  test('returns null for an archive that holds no system/ tree', async () => {
+  test('a matching stamp reuses the persistent dir without re-extracting', async () => {
+    const archivePath = await fixtureArchive((src) => {
+      mkdirSync(join(src, 'system'), { recursive: true });
+      writeFileSync(join(src, 'system', 'first.txt'), 'first\n');
+    });
+    const dataDir = tempDir('embedded-skel-reuse-');
+    await materializeEmbeddedSkeleton(dataDir, archivePath);
+    // A sentinel the archive does not contain: it survives only if the second
+    // call skips extraction entirely.
+    writeFileSync(join(dataDir, 'skeleton', 'sentinel.txt'), 'kept\n');
+    const differentArchive = await fixtureArchive((src) => {
+      mkdirSync(join(src, 'system'), { recursive: true });
+      writeFileSync(join(src, 'system', 'second.txt'), 'second\n');
+    });
+
+    const skeletonDir = await materializeEmbeddedSkeleton(dataDir, differentArchive);
+
+    expect(skeletonDir).toBe(join(dataDir, 'skeleton'));
+    expect(existsSync(join(dataDir, 'skeleton', 'sentinel.txt'))).toBe(true);
+    expect(existsSync(join(dataDir, 'skeleton', 'system', 'second.txt'))).toBe(false);
+  });
+
+  test('a stale stamp re-extracts and atomically replaces the persistent dir', async () => {
+    const archivePath = await fixtureArchive((src) => {
+      mkdirSync(join(src, 'system'), { recursive: true });
+      writeFileSync(join(src, 'system', 'fresh.txt'), 'fresh\n');
+    });
+    const dataDir = tempDir('embedded-skel-stale-');
+    mkdirSync(join(dataDir, 'skeleton', 'system'), { recursive: true });
+    writeFileSync(join(dataDir, 'skeleton', 'system', 'stale.txt'), 'stale\n');
+    writeFileSync(join(dataDir, 'skeleton', '.openpalm-skeleton-version'), '0.0.1\n');
+
+    const skeletonDir = await materializeEmbeddedSkeleton(dataDir, archivePath);
+
+    expect(skeletonDir).toBe(join(dataDir, 'skeleton'));
+    expect(existsSync(join(dataDir, 'skeleton', 'system', 'fresh.txt'))).toBe(true);
+    expect(existsSync(join(dataDir, 'skeleton', 'system', 'stale.txt'))).toBe(false);
+    // No `.previous-*` swap droppings survive a successful replacement.
+    expect(readdirSync(dataDir)).toEqual(['skeleton']);
+  });
+
+  test('returns null for an archive that holds no system/ tree, leaving dataDir clean', async () => {
     const archivePath = await fixtureArchive((src) => {
       writeFileSync(join(src, 'stray.txt'), '');
     });
+    const dataDir = tempDir('embedded-skel-no-system-');
 
-    expect(await materializeEmbeddedSkeleton(archivePath)).toBeNull();
+    expect(await materializeEmbeddedSkeleton(dataDir, archivePath)).toBeNull();
+    expect(existsSync(join(dataDir, 'skeleton'))).toBe(false);
   });
 
   test('returns null (does not throw) when extraction fails outright', async () => {
     const badArchive = join(tempDir('embedded-skel-corrupt-'), 'corrupt.tar.gz');
     writeFileSync(badArchive, 'not a real gzip archive');
+    const dataDir = tempDir('embedded-skel-corrupt-data-');
 
-    expect(await materializeEmbeddedSkeleton(badArchive)).toBeNull();
+    expect(await materializeEmbeddedSkeleton(dataDir, badArchive)).toBeNull();
   });
 });
 
@@ -152,6 +195,27 @@ describe('with no archives compiled in', () => {
   });
 
   test('materializeEmbeddedSkeleton returns null instead of throwing', async () => {
-    expect(await materializeEmbeddedSkeleton()).toBeNull();
+    expect(await materializeEmbeddedSkeleton(tempDir('embedded-none-skel-'))).toBeNull();
+  });
+});
+
+describe('seedSkeletonFromEmbedded', () => {
+  test('with nothing embedded, runs the seed callback under the ambient env and returns null', async () => {
+    const calls: string[][] = [];
+    const before = process.env.OPENPALM_SKELETON_DIR;
+
+    const result = await seedSkeletonFromEmbedded(
+      async (homeDir) => {
+        calls.push([homeDir, process.env.OPENPALM_SKELETON_DIR ?? '<unset>']);
+      },
+      '/home-x', tempDir('embedded-seed-none-'),
+    );
+
+    expect(result).toBeNull();
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.[0]).toBe('/home-x');
+    // Env untouched on the fallback path.
+    expect(calls[0]?.[1]).toBe(before ?? '<unset>');
+    expect(process.env.OPENPALM_SKELETON_DIR).toBe(before as string | undefined);
   });
 });

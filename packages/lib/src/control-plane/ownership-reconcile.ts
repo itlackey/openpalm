@@ -5,10 +5,10 @@ import { stackEnvFile, hostIdentityFile } from './home.js';
 import type { HostIdentity, OwnershipDecision } from './host-identity.js';
 import { detectHostIdentity, describeHostRuntime, readHostIdentity, writeHostIdentity } from './host-identity.js';
 import { discoverHomeBindMountSources } from './config-persistence.js';
-import { assertRootInstallAllowed, resolveSessionIdentity } from './operator-ids.js';
+import { assertRootInstallAllowed } from './operator-ids.js';
 import { patchStateEnvFile } from './secrets.js';
 import { writeFileAtomic } from './fs-atomic.js';
-import { repairRootOwnedBindMounts, repairManagedNamedVolumes } from './volume-ownership.js';
+import { repairRootOwnedBindMounts, repairManagedNamedVolumes, resolveRepairIdentity } from './volume-ownership.js';
 import { resolvePrivateSecretsDir, resolveSecretsDir } from './secrets-files.js';
 import { createLogger } from '../logger.js';
 
@@ -210,8 +210,18 @@ export async function reconcileHostOwnership(
   const { adoptHost = false, services } = options;
   const homeDir = state.homeDir;
 
-  const currentIdentity = detectHostIdentity(homeDir);
-  const sessionIds = resolveSessionIdentity(homeDir);
+  // The REPAIR identity, not the raw session identity: a root session over a
+  // stack.env that pins non-root OP_UID/OP_GID repairs to (and records) the
+  // pinned ids — the uid containers actually run as (see resolveRepairIdentity).
+  // In every other case this is exactly resolveSessionIdentity's answer, so the
+  // uid/gid override below is identity-preserving there; the machine
+  // fingerprint (kind + host) that decides swap is untouched either way.
+  const sessionIds = resolveRepairIdentity(homeDir);
+  const currentIdentity = {
+    ...detectHostIdentity(homeDir),
+    uid: sessionIds?.uid ?? null,
+    gid: sessionIds?.gid ?? null,
+  };
   const runtime = describeHostRuntime();
 
   if (!runtime.hostUidAuthoritative) {

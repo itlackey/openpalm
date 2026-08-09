@@ -138,11 +138,23 @@ describe('POST setup OpenCode OAuth callback', () => {
     expect(completeProviderOAuth).not.toHaveBeenCalled();
   });
 
-  test('propagates request cancellation and does not persist after an abort', async () => {
+  test('honors an abort detected before completion without consuming the code', async () => {
+    resolveSetupOpencodeTarget.mockResolvedValue({ source: 'wizard', url: 'http://127.0.0.1:40123' });
+
+    const response = await POST(event('google', { method: 0, source: 'wizard' }, AbortSignal.abort()));
+    const body = await response.json() as { error: string };
+
+    expect(response.status).toBe(400);
+    expect(body.error).toBe('oauth_callback_aborted');
+    expect(completeProviderOAuth).not.toHaveBeenCalled();
+    expect(existsSync(join(home, 'knowledge', 'secrets', 'auth.json'))).toBe(false);
+  });
+
+  test('an abort racing a successful completion still responds ok — the one-time code is consumed', async () => {
     const hostData = join(home, 'host-data');
     mkdirSync(join(hostData, 'opencode'), { recursive: true });
     writeFileSync(join(hostData, 'opencode', 'auth.json'), JSON.stringify({
-      google: { type: 'api', key: 'must-not-persist' },
+      google: { type: 'api', key: 'completed-credential' },
     }));
     process.env.XDG_DATA_HOME = hostData;
     resolveSetupOpencodeTarget.mockResolvedValue({ source: 'wizard', url: 'http://127.0.0.1:40123' });
@@ -162,7 +174,29 @@ describe('POST setup OpenCode OAuth callback', () => {
 
     const response = await POST(callbackEvent);
 
-    expect(response.status).toBe(400);
-    expect(existsSync(join(home, 'knowledge', 'secrets', 'auth.json'))).toBe(false);
+    // A 400 here would make the wizard retry a code the provider has already
+    // consumed; the completed credential is persisted and reported as success.
+    expect(response.status).toBe(200);
+    expect(JSON.parse(readFileSync(join(home, 'knowledge', 'secrets', 'auth.json'), 'utf-8'))).toEqual({
+      google: { type: 'api', key: 'completed-credential' },
+    });
+  });
+
+  test('a persist failure after a successful OAuth reports oauth_credential_import_failed, not a generic 500', async () => {
+    // Host store never received the credential: OAuth SUCCEEDED (the code is
+    // consumed) but the import cannot find anything to copy. The generic catch
+    // used to mask this as oauth_callback_failed, prompting a doomed retry.
+    const hostData = join(home, 'host-data');
+    mkdirSync(join(hostData, 'opencode'), { recursive: true });
+    writeFileSync(join(hostData, 'opencode', 'auth.json'), JSON.stringify({}));
+    process.env.XDG_DATA_HOME = hostData;
+    resolveSetupOpencodeTarget.mockResolvedValue({ source: 'wizard', url: 'http://127.0.0.1:40123' });
+
+    const response = await POST(event('google', { method: 0, source: 'wizard' }));
+    const body = await response.json() as { error: string; message: string };
+
+    expect(response.status).toBe(500);
+    expect(body.error).toBe('oauth_credential_import_failed');
+    expect(body.message).toContain('google');
   });
 });

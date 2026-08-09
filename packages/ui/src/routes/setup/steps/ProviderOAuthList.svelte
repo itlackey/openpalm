@@ -132,7 +132,9 @@
                 </button>
               </div>
               {#if st.error}
-                <span class="oauth-code-error" role="alert">{st.errorMessage ?? 'That code was not accepted. Try again.'}</span>
+                <!-- `||`, not `??`: a failed verify can set errorMessage to '' (non-Error
+                     throw), and an empty alert reads as nothing at all. -->
+                <span class="oauth-code-error" role="alert">{st.errorMessage || 'That code was not accepted. Try again.'}</span>
               {/if}
             {/if}
             {#if st.oauthMethod === 'auto'}
@@ -160,7 +162,7 @@
         {/if}
 
         {#if st.error && !st.oauthPolling}
-          <span class="oauth-error" role="alert">{st.errorMessage ?? 'Authorization failed'}</span>
+          <span class="oauth-error" role="alert">{st.errorMessage || 'Authorization failed'}</span>
         {/if}
       </div>
     {/each}

@@ -12,7 +12,7 @@
 import { existsSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { createLogger } from "../logger.js";
-import { isRootIds, resolveSessionIdentity } from "./operator-ids.js";
+import { isRootIds, pinnedNonRootOperatorIds, resolveSessionIdentity, type OperatorIds } from "./operator-ids.js";
 import { readStackEnv } from "./secrets.js";
 import { run, resolveComposeProjectName } from "./docker.js";
 
@@ -49,6 +49,33 @@ const OWNERSHIP_REPAIR_SANDBOX_ARGS = [
  */
 
 /**
+ * The identity ownership repair chowns TO. Normally the live session identity,
+ * with one fallback: a ROOT session over a stack.env that pins usable non-root
+ * OP_UID/OP_GID (the workaround the OP_ALLOW_ROOT refusal message recommends)
+ * repairs to the PINNED identity — that is the uid containers actually run as,
+ * and chowning to a non-root id the operator asked for is exactly what the
+ * root-skip above exists to protect. A pure root identity (no non-root pin) is
+ * returned as-is so the callers' `isRootIds` skip keeps applying.
+ *
+ * `stackEnv` is injectable for tests only; production callers use the default.
+ */
+export function resolveRepairIdentity(
+  homeDir: string,
+  stackEnv?: Record<string, string>,
+): OperatorIds | null {
+  const ids = resolveSessionIdentity(homeDir);
+  if (!ids || !isRootIds(ids)) return ids;
+  const pinned = pinnedNonRootOperatorIds(stackEnv ?? readStackEnv(homeDir));
+  if (pinned) {
+    logger.info(
+      `Session identity is root but stack.env pins OP_UID/OP_GID=${pinned.uid}:${pinned.gid} — repairing to the pinned identity`,
+    );
+    return pinned;
+  }
+  return ids;
+}
+
+/**
  * Fix root-owned bind-mount directories under OP_HOME by running a temporary
  * Docker container as root to chown them back to the operator UID:GID.
  *
@@ -73,7 +100,7 @@ export async function repairRootOwnedBindMounts(homeDir: string, candidates?: st
     join(homeDir, 'data', 'logs'),
   ];
 
-  const ids = resolveSessionIdentity(homeDir);
+  const ids = resolveRepairIdentity(homeDir);
   if (!ids) return true;
   if (isRootIds(ids)) {
     logger.info('Session identity is root — skipping bind-mount ownership repair (see the note above isRootIds usage)');
@@ -186,7 +213,7 @@ export async function repairManagedNamedVolumes(
   services: string[],
   opts?: { strict?: boolean },
 ): Promise<boolean> {
-  const ids = resolveSessionIdentity(homeDir);
+  const ids = resolveRepairIdentity(homeDir);
   if (!ids) return true;
   if (isRootIds(ids)) {
     logger.info('Session identity is root — skipping named-volume ownership repair (see the note above isRootIds usage)');

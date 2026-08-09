@@ -27,6 +27,8 @@ import {
   ADDON_ENV_RECREATE_SCOPE,
   activateStack,
   createLogger,
+  getAddonProfiles,
+  getAddonProfileSelection,
   getRegistryAddonConfig,
   listAvailableAddonIds,
   readStackSecretEnv,
@@ -109,6 +111,22 @@ function parseEnvSchema(text: string): SchemaField[] {
     bool = false;
   }
   return fields;
+}
+
+/**
+ * ADDON_ENV_RECREATE_SCOPE names the voice service by its CPU-profile compose
+ * name ("voice"), but the CUDA/ROCm hardware profiles deploy "voice-cuda"/
+ * "voice-rocm" instead — recreating "voice" there touches only the
+ * inactive-profile service and the running GPU container never picks up the
+ * change. Translate through the addon's profile catalog using the persisted
+ * OP_VOICE_PROFILE selection (same resolution voice/bring-up.ts uses).
+ */
+function resolveVoiceScopeService(homeDir: string, service: string): string {
+  if (service !== "voice") return service;
+  const selected = getAddonProfileSelection(homeDir, "voice");
+  if (!selected) return service;
+  const services = getAddonProfiles(homeDir, "voice").find((p) => p.id === selected)?.services;
+  return services?.[0] ?? service;
 }
 
 export const GET: RequestHandler = async (event) => {
@@ -223,6 +241,18 @@ export const POST: RequestHandler = async (event) => {
   }
 
   return withAdminUpdateLock(state, requestId, async (lock) => {
+    // Snapshot the stored values BEFORE writing: the recreate scope below must
+    // derive from keys whose value actually CHANGED, not keys merely written —
+    // the drawer POSTs every non-sensitive field on every save, so a
+    // write-derived scope force-recreated voice+assistant (killing live
+    // sessions) even when OP_VOICE_LAN_ACCESS was round-tripped unchanged.
+    const priorSecretEnv = readStackSecretEnv(state.homeDir);
+    const priorStackEnv = readStackEnv(state.homeDir);
+    const changedKeys = [
+      ...Object.keys(sensitiveUpdates).filter((k) => sensitiveUpdates[k] !== (priorSecretEnv[k] ?? "")),
+      ...Object.keys(configUpdates).filter((k) => configUpdates[k] !== (priorStackEnv[k] ?? "")),
+    ].sort();
+
     try {
       if (Object.keys(sensitiveUpdates).length > 0) {
         writeStackSecretEnv(state, sensitiveUpdates);
@@ -275,8 +305,9 @@ export const POST: RequestHandler = async (event) => {
     // IS the apply and the operator recreates that one container when ready.
     // A few reach further — see ADDON_ENV_RECREATE_SCOPE — and for those a write
     // with no apply is a setting that silently does nothing. Recreate exactly
-    // the services the key reaches, under the lock we already hold, so compose
-    // rebuilds its file list and the affected entrypoints re-read the value.
+    // the services the key reaches (scoped to keys that actually CHANGED, see
+    // changedKeys above), under the lock we already hold, so compose rebuilds
+    // its file list and the affected entrypoints re-read the value.
     const scope = [
       ...new Set([
         // The remote apply owns the complete scope for remote saves. The
@@ -285,7 +316,9 @@ export const POST: RequestHandler = async (event) => {
         // state. Other addons still use their schema-declared scope.
         ...(name === 'remote'
           ? []
-          : updated.flatMap((key) => ADDON_ENV_RECREATE_SCOPE[key] ?? [])),
+          : changedKeys.flatMap((key) =>
+              (ADDON_ENV_RECREATE_SCOPE[key] ?? []).map((svc) => resolveVoiceScopeService(state.homeDir, svc)),
+            )),
         ...remoteServices,
       ]),
     ];

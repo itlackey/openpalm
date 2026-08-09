@@ -4,15 +4,17 @@
 //
 // DesktopUpdater takes its electron-updater instance as a dependency, so every
 // case below runs in plain Node against the fake — no Electron, no network.
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import {
   DesktopUpdater,
   FOCUS_CHECK_THROTTLE_MS,
   isAutoUpdateSupported,
   isTrustedUpdaterSender,
+  isVersionNewer,
   updaterChannel,
   updaterFeedChannel,
   type AppUpdaterLike,
+  type CancellationTokenLike,
 } from '../src/updater.js';
 
 class FakeUpdater implements AppUpdaterLike {
@@ -49,11 +51,15 @@ class FakeUpdater implements AppUpdaterLike {
     this.pendingCheck?.();
   }
 
-  async downloadUpdate() {
+  async downloadUpdate(cancellationToken?: CancellationTokenLike) {
     this.downloadCalls += 1;
+    this.downloadTokens.push(cancellationToken);
     if (this.downloadError) throw this.downloadError;
     return [];
   }
+
+  /** Tokens passed to downloadUpdate, so tests can pin cancellation (E3). */
+  downloadTokens: Array<CancellationTokenLike | undefined> = [];
 
   quitAndInstall(isSilent?: boolean, isForceRunAfter?: boolean): void {
     this.quitCalls.push([isSilent, isForceRunAfter]);
@@ -89,24 +95,27 @@ class FakeUpdater implements AppUpdaterLike {
 
 function makeUpdater(
   overrides: Partial<{
+    currentVersion: string;
     platform: NodeJS.Platform;
     isPackaged: boolean;
     portableExecutableFile: string;
     windowsInstallerPresent: boolean;
     prerelease: boolean;
     now: () => number;
+    createCancellationToken: () => CancellationTokenLike;
   }> = {},
 ): { updater: DesktopUpdater; fake: FakeUpdater } {
   const fake = new FakeUpdater();
   const updater = new DesktopUpdater({
     updater: fake,
-    currentVersion: '1.0.0',
+    currentVersion: overrides.currentVersion ?? '1.0.0',
     platform: overrides.platform ?? 'linux',
     isPackaged: overrides.isPackaged ?? true,
     portableExecutableFile: overrides.portableExecutableFile,
     windowsInstallerPresent: overrides.windowsInstallerPresent ?? true,
     prerelease: overrides.prerelease ?? false,
     now: overrides.now,
+    createCancellationToken: overrides.createCancellationToken,
   });
   return { updater, fake };
 }
@@ -141,6 +150,53 @@ describe('channel mapping', () => {
 
   it('leaves the beta channel name alone — beta.yml is what is published', () => {
     expect(updaterFeedChannel('beta')).toBe('beta');
+  });
+});
+
+// check()'s "available" gate: strictly newer by semver precedence, not merely
+// different. Local implementation because electron-updater's own `semver`
+// dependency is not resolvable from this package (isolated installs).
+describe('isVersionNewer', () => {
+  it('orders plain releases', () => {
+    expect(isVersionNewer('2.0.0', '1.0.0')).toBe(true);
+    expect(isVersionNewer('1.0.1', '1.0.0')).toBe(true);
+    expect(isVersionNewer('1.0.0', '1.0.0')).toBe(false);
+    expect(isVersionNewer('0.9.9', '1.0.0')).toBe(false);
+  });
+
+  it('sorts a prerelease BEFORE its release (1.2.3-beta.4 < 1.2.3)', () => {
+    expect(isVersionNewer('1.2.3', '1.2.3-beta.4')).toBe(true);
+    expect(isVersionNewer('1.2.3-beta.4', '1.2.3')).toBe(false);
+  });
+
+  it('compares numeric prerelease identifiers numerically (beta.4 < beta.10)', () => {
+    expect(isVersionNewer('1.2.3-beta.10', '1.2.3-beta.4')).toBe(true);
+    expect(isVersionNewer('1.2.3-beta.4', '1.2.3-beta.10')).toBe(false);
+  });
+
+  it('compares alphanumeric prerelease identifiers lexically (alpha < beta)', () => {
+    expect(isVersionNewer('1.2.3-beta.1', '1.2.3-alpha.9')).toBe(true);
+    expect(isVersionNewer('1.2.3-alpha.9', '1.2.3-beta.1')).toBe(false);
+  });
+
+  it('ranks numeric identifiers below alphanumeric ones (semver §11)', () => {
+    expect(isVersionNewer('1.2.3-beta', '1.2.3-4')).toBe(true);
+    expect(isVersionNewer('1.2.3-4', '1.2.3-beta')).toBe(false);
+  });
+
+  it('lets a longer identifier set win over its own prefix', () => {
+    expect(isVersionNewer('1.2.3-beta.4.1', '1.2.3-beta.4')).toBe(true);
+    expect(isVersionNewer('1.2.3-beta.4', '1.2.3-beta.4.1')).toBe(false);
+  });
+
+  it('a release with a prerelease is still newer than an older release', () => {
+    expect(isVersionNewer('1.1.0-beta.1', '1.0.0')).toBe(true);
+    expect(isVersionNewer('1.0.0', '1.1.0-beta.1')).toBe(false);
+  });
+
+  it('falls back to plain inequality for non-semver strings', () => {
+    expect(isVersionNewer('nightly-2', 'nightly-1')).toBe(true);
+    expect(isVersionNewer('nightly-1', 'nightly-1')).toBe(false);
   });
 });
 
@@ -253,6 +309,35 @@ describe('state transitions', () => {
     expect(state.availableVersion).toBeNull();
   });
 
+  // A different feed version is NOT automatically an update: `!==` used to
+  // report an OLDER feed release as 'available', a phantom whose download can
+  // never succeed (electron-updater never stages a not-newer update).
+  it('reports not-available when the feed is OLDER than the running version', async () => {
+    const { updater, fake } = makeUpdater();
+    fake.feedVersion = '0.9.0';
+    const state = await updater.check();
+    expect(state.status).toBe('not-available');
+    expect(state.availableVersion).toBeNull();
+  });
+
+  // The concrete phantom: a beta install on the default stable channel, whose
+  // stable feed carries the older release the beta was cut ahead of.
+  it('does not offer a beta install its own older stable release as an update', async () => {
+    const { updater, fake } = makeUpdater({ currentVersion: '1.1.0-beta.4' });
+    fake.feedVersion = '1.0.0';
+    const state = await updater.check();
+    expect(state.status).toBe('not-available');
+    expect(state.availableVersion).toBeNull();
+  });
+
+  it('still offers the stable release a prerelease of it predates', async () => {
+    const { updater, fake } = makeUpdater({ currentVersion: '1.0.0-beta.4' });
+    fake.feedVersion = '1.0.0';
+    const state = await updater.check();
+    expect(state.status).toBe('available');
+    expect(state.availableVersion).toBe('1.0.0');
+  });
+
   it('walks available → downloading → downloaded, tracking percent', async () => {
     const { updater, fake } = makeUpdater();
     const seen: string[] = [];
@@ -278,6 +363,24 @@ describe('state transitions', () => {
     const state = await updater.download();
     expect(state.status).toBe('error');
     expect(state.error).toBe('disk full');
+  });
+
+  // E3 review: the singleton autoUpdater outlives a wrapper across
+  // prerelease-channel toggles, so a download begun by the PREVIOUS instance
+  // can complete after the rebuild and fire the NEW instance's listener with
+  // the OLD channel's artifact — which quit would then install.
+  it('ignores update-downloaded for a version this instance never reported', async () => {
+    const { updater, fake } = makeUpdater();
+    await updater.check(); // reports 2.0.0 as available
+    fake.emit('update-downloaded', { version: '9.9.9-beta.1' });
+    expect(updater.getState().status).toBe('available');
+  });
+
+  it('accepts update-downloaded carrying the version it reported', async () => {
+    const { updater, fake } = makeUpdater();
+    await updater.check();
+    fake.emit('update-downloaded', { version: '2.0.0' });
+    expect(updater.getState().status).toBe('downloaded');
   });
 
   it('does not let a later check reset a completed download', async () => {
@@ -308,6 +411,21 @@ describe('silent offline checks', () => {
     const state = await updater.check();
     expect(state.status).toBe('error');
     expect(state.error).toMatch(/ENOTFOUND/);
+  });
+
+  // E1 review: a failed SILENT check used to patch {status:'idle'}, clobbering
+  // a previously discovered 'available' while leaving availableVersion set —
+  // an offline focus check silently hid a known update.
+  it('a failed silent check does not clobber an already-discovered update', async () => {
+    const { updater, fake } = makeUpdater();
+    await updater.check();
+    expect(updater.getState().status).toBe('available');
+
+    fake.checkError = new Error('getaddrinfo ENOTFOUND github.com');
+    const state = await updater.check({ silent: true });
+    expect(state.status).toBe('available');
+    expect(state.availableVersion).toBe('2.0.0');
+    expect(state.error).toBeNull();
   });
 });
 
@@ -462,6 +580,22 @@ describe('dispose (listener teardown)', () => {
 
     fake.emit('download-progress', { percent: 55 });
     expect(second.getState().percent).toBe(55);
+  });
+
+  // E3 review: a channel toggle discards the instance mid-download — the
+  // download must not keep running (and staging the old channel's artifact)
+  // on the shared singleton afterwards.
+  it('cancels an in-flight download, using the token it passed to downloadUpdate', async () => {
+    const token: CancellationTokenLike & { cancel: ReturnType<typeof vi.fn> } = { cancel: vi.fn() };
+    const { updater, fake } = makeUpdater({ createCancellationToken: () => token });
+    await updater.check();
+
+    const pending = updater.download();
+    updater.dispose();
+
+    expect(token.cancel).toHaveBeenCalledOnce();
+    expect(fake.downloadTokens).toEqual([token]);
+    await pending;
   });
 
   it('is a no-op on an unsupported (e.g. macOS) instance', () => {

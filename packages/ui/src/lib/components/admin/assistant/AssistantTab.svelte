@@ -271,15 +271,17 @@
           </p>
 
           <div class="reachable-row">
-            <span class={`badge ${accessStatus.reachable.ok ? 'badge-running' : accessStatus.reachable.status === 'mismatch' ? 'badge-warning' : 'badge-error'}`}>
-              {#if accessStatus.reachable.ok}
-                Reachable
-              {:else if accessStatus.reachable.status === 'mismatch'}
-                Answering, but not the assistant UI
-              {:else}
-                Not reachable
-              {/if}
-            </span>
+            {#if accessStatus.reachable.ok}
+              <span class="badge badge-running">Reachable</span>
+            {:else if accessStatus.reachable.status === 'mismatch'}
+              <span class="badge badge-warning">Answering, but not the assistant UI</span>
+            {:else if accessStatus.reachable.status === 'not_published'}
+              <!-- Loopback-only bind: nothing is published on the LAN to probe.
+                   That is the default healthy posture, not an error. -->
+              <span class="badge badge-neutral">Not published on the LAN</span>
+            {:else}
+              <span class="badge badge-error">Not reachable</span>
+            {/if}
             <span class="field-hint">Loopback check of port {accessStatus.port}.</span>
           </div>
 

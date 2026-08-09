@@ -560,21 +560,40 @@ describe("reconcileMdnsResponder", () => {
     const home = makeHome();
     writeStackEnv(home, "OP_ASSISTANT_BIND_ADDRESS=0.0.0.0\n");
     const { factory, instances } = createStubMdnsFactory();
-    const probedPorts: number[] = [];
-    const probe: MdnsProbe = async (port) => {
-      probedPorts.push(port);
+    const probed: string[] = [];
+    const probe: MdnsProbe = async (host, port) => {
+      probed.push(`${host}:${port}`);
       return false; // never confirms
     };
 
     const status = reconcileMdnsResponder(home, { makeMdns: factory, hostIpv4: ["192.168.1.20"], probe });
     await _awaitMdnsProbeForTests();
 
-    expect(probedPorts).toEqual([3810]); // OP_ASSISTANT_PORT default (the resolved front door)
+    // OP_ASSISTANT_PORT default (the resolved front door); a wildcard bind
+    // publishes on loopback too, so that is where the probe connects.
+    expect(probed).toEqual(["127.0.0.1:3810"]);
     expect(instances).toHaveLength(0); // never confirmed -> never started
     // The returned status still reflects INTENT (the bind-address gate), same
     // as always — see resolveMdnsStatus's own doc. A probe failure changes
     // whether a socket exists, never what this status reports.
     expect(status.assistant.advertised).toBe(true);
+  });
+
+  test("a specific-IP bind is probed AT that IP — Docker publishes the port there, not on loopback", async () => {
+    const home = makeHome();
+    writeStackEnv(home, "OP_ASSISTANT_BIND_ADDRESS=192.168.1.7\n");
+    const { factory, instances } = createStubMdnsFactory();
+    const probed: string[] = [];
+    const probe: MdnsProbe = async (host, port) => {
+      probed.push(`${host}:${port}`);
+      return true;
+    };
+
+    reconcileMdnsResponder(home, { makeMdns: factory, hostIpv4: ["192.168.1.20"], probe });
+    await _awaitMdnsProbeForTests();
+
+    expect(probed).toEqual(["192.168.1.7:3810"]);
+    expect(instances).toHaveLength(1); // confirmed at the bind address -> advertised
   });
 
   test("retries the self-probe on the next reconcile call and starts once it confirms", async () => {

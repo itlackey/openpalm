@@ -56,6 +56,49 @@ jobs:
           }
           appendFileSync(process.env.GITHUB_OUTPUT, `version=${version}\nprerelease=${parsed.pre !== null}\n`);
           NODE
+      - name: Version monotonicity guard
+        # Publishing moves the GitHub 'latest' release and the npm dist-tags,
+        # so a dispatch LOWER than the highest already-published version would
+        # repoint both backwards. Equal versions stay allowed — idempotent
+        # re-runs of the same version are handled by the tree-identity checks
+        # downstream — and a prerelease of the NEXT version (0.14.0-beta.1
+        # after 0.13.0) sorts higher, so it passes; only strictly-lower
+        # dispatches fail.
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          node --input-type=module <<'NODE'
+          import { execFileSync } from 'node:child_process';
+          import { compareSemver, parseSemver } from './scripts/set-version.mjs';
+          const target = process.env.VERSION;
+          const published = [];
+          // npm: publish-bootstrap moves the openpalm dist-tags.
+          try {
+            let versions = JSON.parse(execFileSync('npm', ['view', 'openpalm', 'versions', '--json'], { stdio: ['ignore', 'pipe', 'ignore'] }).toString());
+            if (!Array.isArray(versions)) versions = versions ? [versions] : [];
+            published.push(...versions);
+          } catch {
+            console.log('openpalm has no published versions on npm — skipping the npm comparison.');
+          }
+          // Git product tags: tag-release repoints the GitHub 'latest' release.
+          published.push(
+            ...execFileSync('git', ['ls-remote', '--tags', 'origin']).toString()
+              .split('\n')
+              .map((line) => line.split('\t')[1] ?? '')
+              .filter(Boolean)
+              .map((ref) => ref.replace('refs/tags/', '').replace(/\^\{\}$/, '')),
+          );
+          let highest = null;
+          for (const version of published) {
+            if (!parseSemver(version)) continue;
+            if (highest === null || compareSemver(version, highest) > 0) highest = version;
+          }
+          if (highest !== null && compareSemver(target, highest) < 0) {
+            console.error(`::error::Requested version ${target} is LOWER than the already-published ${highest}. Releasing it would repoint GitHub and npm 'latest' backwards; re-runs of the SAME version are allowed, lower never.`);
+            process.exit(1);
+          }
+          console.log(`Monotonicity OK: ${target} >= highest published ${highest ?? '(none)'}`);
+          NODE
       - uses: oven-sh/setup-bun@v2
       - name: Stamp product candidate
         env:
@@ -120,11 +163,19 @@ jobs:
             test "$(git rev-parse "${VERSION}^{tree}")" = "${CANDIDATE_TREE}" || { echo "::error::Product tag ${VERSION} belongs to different source"; exit 1; }
           fi
       - uses: oven-sh/setup-bun@v2
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
       - name: Install and test candidate
         run: |
           bun install --frozen-lockfile
           bun run test
           bun run ui:check
+          # Playwright Chromium + system deps for Vitest browser mode — run
+          # through packages/ui where playwright is a devDependency (same as
+          # ci.yml's ui-unit-tests job) so the binary resolves.
+          bun run --cwd packages/ui test:browsers
+          bun run ui:test:unit
           bun run --cwd packages/electron typecheck
           bun run electron:test
 
@@ -189,8 +240,12 @@ jobs:
         run: bash scripts/restore-release-candidate.sh .git/release-source/release-candidate.bundle '${{ needs.candidate.outputs.candidate_sha }}' '${{ needs.candidate.outputs.base_sha }}'
       - uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@v3
+      # Deliberately NOT gated on dry_run: the immutable-image guard below
+      # inspects the registry on every run, and anonymous inspects from shared
+      # runner IPs get rate-limited (429 toomanyrequests), which matches none
+      # of the tag-absent cases and spuriously fails dry runs. Logging in has
+      # no side effects.
       - name: Login to Docker Hub
-        if: inputs.dry_run != true
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
@@ -210,7 +265,7 @@ jobs:
                 exit 0
                 ;;
               *)
-                echo "::error::Could not inspect ${ref}: ${inspect_error}"
+                echo "::error::Could not inspect ${ref} — not a tag-absent response (possibly rate limiting or a registry outage), so the guard cannot prove the tag is free: ${inspect_error}"
                 exit 1
                 ;;
             esac
@@ -228,6 +283,34 @@ jobs:
         with:
           name: ui-build
           path: packages/ui/build
+      # Pre-push runtime verification (amd64 only): build the assistant image
+      # for the runner's own platform on the same buildx builder as the
+      # multi-arch build below — its amd64 layers are built once here and
+      # restored from the builder cache there — and prove the baked UI and
+      # tool packages actually exist before anything can be pushed. An empty
+      # restored UI tree would otherwise still bake successfully. Runs on dry
+      # runs too.
+      - name: Build assistant smoke image (amd64, pre-push)
+        if: matrix.image == 'assistant' && (inputs.dry_run == true || steps.image-tag.outputs.exists != 'true')
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.file }}
+          platforms: linux/amd64
+          load: true
+          push: false
+          tags: openpalm-assistant-smoke:${{ github.run_id }}
+          build-args: ${{ matrix.build_args }}
+          labels: |
+            org.opencontainers.image.source-tree=${{ needs.candidate.outputs.candidate_tree }}
+            org.opencontainers.image.version=${{ needs.candidate.outputs.version }}
+          provenance: false
+          sbom: false
+      - name: Assistant image smoke — baked UI and tools present
+        if: matrix.image == 'assistant' && (inputs.dry_run == true || steps.image-tag.outputs.exists != 'true')
+        run: |
+          docker run --rm --entrypoint bash openpalm-assistant-smoke:${{ github.run_id }} \
+            -lc 'test -f /opt/openpalm/ui/node_modules/@openpalm/ui/package.json && test -f /opt/openpalm/ui/node_modules/@openpalm/ui/build/index.js && opencode --version && akm --version && gh --version && jq --version && sqlite3 --version && uv --version'
       - name: Build immutable image from candidate-local source
         id: build
         if: inputs.dry_run == true || steps.image-tag.outputs.exists != 'true'
@@ -244,6 +327,29 @@ jobs:
             org.opencontainers.image.version=${{ needs.candidate.outputs.version }}
           provenance: false
           sbom: false
+      # Dry runs build without pushing, and an idempotent re-run of an
+      # already-published tag skips the build entirely (exists=true) — in both
+      # cases there is no freshly pushed manifest to sign, so the digest gate
+      # keeps these steps quiet. The id-token: write permission above exists
+      # for exactly this keyless flow.
+      - name: Install cosign
+        if: inputs.dry_run != true && steps.build.outputs.digest != ''
+        uses: sigstore/cosign-installer@v4.1.2
+      - name: Sign image (cosign keyless)
+        if: inputs.dry_run != true && steps.build.outputs.digest != ''
+        # Sign by immutable digest (not by tag) so the signature binds to the
+        # exact pushed manifest even as other tags move. Keyless: uses the
+        # job's GitHub OIDC token (id-token: write) to get a short-lived
+        # Fulcio cert; the signature + cert are recorded in the public Rekor
+        # transparency log. No secret key involved.
+        run: cosign sign --yes openpalm/${{ matrix.image }}@${{ steps.build.outputs.digest }}
+      - name: Verify image signature (fail loudly on a broken signer)
+        if: inputs.dry_run != true && steps.build.outputs.digest != ''
+        run: |
+          cosign verify \
+            --certificate-identity-regexp "^https://github.com/${{ github.repository }}/.github/workflows/release.yml@refs/.*$" \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+            openpalm/${{ matrix.image }}@${{ steps.build.outputs.digest }}
 
   cli:
     needs: [candidate, preflight, ui-build]
@@ -350,8 +456,15 @@ jobs:
             packages/electron/dist/packages/*.AppImage
             packages/electron/dist/packages/*.zip
             packages/electron/dist/packages/*.exe
-            # Every channel's feed metadata, not just the stable names:
-            # electron-builder writes beta.yml for a 1.2.3-beta.4 candidate.
+            # Blockmaps: the published feed advertises blockMapSize and
+            # electron-updater fetches <installer>.blockmap for differential
+            # updates — omitting them 404s every differential download and
+            # forces full downloads.
+            packages/electron/dist/packages/*.blockmap
+            # Feed metadata. electron-builder's github provider always writes
+            # the stable names (latest*.yml) whatever the candidate's channel;
+            # assemble-assets renames them to the channel feeds (beta*.yml)
+            # for a prerelease candidate.
             packages/electron/dist/packages/*.yml
 
   assemble-assets:
@@ -390,13 +503,19 @@ jobs:
           VERSION: ${{ needs.candidate.outputs.version }}
         run: |
           node --input-type=module <<'NODE'
-          import { renameSync } from 'node:fs';
+          import { existsSync, renameSync } from 'node:fs';
           import { feedChannelForVersion, updaterFeedsFor } from './scripts/validate-updater-feed.mjs';
           const channel = feedChannelForVersion(process.env.VERSION);
           if (channel !== 'latest') {
             const sources = updaterFeedsFor('latest');
             const destinations = updaterFeedsFor(channel);
             for (let index = 0; index < sources.length; index += 1) {
+              // electron-builder's github provider always emits the stable
+              // feed names; a missing source means the electron job's feed
+              // output changed and needs investigating, not a bare ENOENT.
+              if (!existsSync(`dist/${sources[index]}`)) {
+                throw new Error(`Expected updater feed dist/${sources[index]} (to be renamed to ${destinations[index]}) was not produced by the electron job`);
+              }
               renameSync(`dist/${sources[index]}`, `dist/${destinations[index]}`);
             }
           }
@@ -499,7 +618,9 @@ jobs:
             gh release upload "${VERSION}" dist/* --clobber
           else
             args=(release create "${VERSION}" --title "OpenPalm ${VERSION}" --generate-notes)
-            if [ "${PRERELEASE}" = 'true' ]; then args+=(--prerelease); fi
+            # --latest=false keeps a prerelease from ever becoming the GitHub
+            # 'latest' release desktop installs and the install script resolve.
+            if [ "${PRERELEASE}" = 'true' ]; then args+=(--prerelease --latest=false); fi
             gh "${args[@]}" dist/*
           fi
       - name: Verify public GitHub Release assets
@@ -565,6 +686,14 @@ jobs:
         env:
           VERSION: ${{ needs.candidate.outputs.version }}
         run: |
+          # Channel dist-tags: beta and rc each track their own stream, any
+          # other prerelease lands on next, stable moves latest. Collapsing
+          # every prerelease to next would strand the beta tag on whatever
+          # beta was published last before the collapse.
           tag=latest
-          case "${VERSION}" in *-*) tag=next ;; esac
+          case "${VERSION}" in
+            *-beta.*) tag=beta ;;
+            *-rc.*) tag=rc ;;
+            *-*) tag=next ;;
+          esac
           npm publish --provenance --access public --tag "${tag}" $(npm pack --silent)

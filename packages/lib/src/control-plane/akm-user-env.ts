@@ -100,6 +100,16 @@ function rewriteHostDockerInternalDeep<T>(value: T): T {
  * is nothing to translate (no file, unparseable, no occurrences, or the
  * derived copy can't be written) so a host akm run degrades to today's
  * behavior rather than breaking outright.
+ *
+ * EPHEMERAL-MUTATIONS CONTRACT: because the copy is regenerated from the
+ * canonical config on every call, any change a host-side akm process writes
+ * into `data/akm/host-config/config.json` is deliberately discarded on the
+ * next run — this is by design, not a bug. The copy exists ONLY to rewrite
+ * container-scoped endpoints for the host's benefit; durable akm state
+ * (journals, caches, scheduler data) lives in the shared AKM_DATA_DIR /
+ * AKM_CACHE_DIR / AKM_STATE_DIR directories `buildAkmEnv` points at and
+ * persists normally. A config change that should stick must be made to the
+ * canonical `config/akm/config.json` instead.
  */
 function resolveHostAkmConfigDir(state: ControlPlaneState): string {
   const containerConfigDir = `${state.configDir}/akm`;

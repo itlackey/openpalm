@@ -93,8 +93,11 @@ export function applyRemoteProviderConfig(homeDir: string): RemoteProviderApplyR
     }
   })();
 
-  if (provider.error) return provider;
-
+  // Runs even when the provider apply FAILED: the forwarded-header env must
+  // track the remote-ENABLED intent, not the apply's success. Skipping it on
+  // a failed disable left OP_UI_ADDRESS_HEADER=x-forwarded-for keying the
+  // login throttle with no trusted proxy in front — a LAN client could forge
+  // the header to rotate throttle keys at will.
   try {
     const forwarded = reconcileUiForwardedAddressEnv(homeDir);
     const services = forwarded.changed
@@ -104,7 +107,9 @@ export function applyRemoteProviderConfig(homeDir: string): RemoteProviderApplyR
   } catch (err) {
     return {
       ...provider,
-      error: err instanceof Error ? err.message : String(err),
+      // A provider error outranks the reconcile's own — it is the failure the
+      // caller acts on, and callers already treat `error` as singular.
+      error: provider.error ?? (err instanceof Error ? err.message : String(err)),
     };
   }
 }

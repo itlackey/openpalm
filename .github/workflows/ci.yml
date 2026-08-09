@@ -190,6 +190,14 @@ jobs:
       - name: Guardian offline-boot smoke (--network none)
         run: ./scripts/guardian-image-offline-smoke.sh
 
+      # Upgrades an install that already exists — the case every other suite
+      # misses, because they all build homes from the CURRENT skeleton. Seeds
+      # from PUBLISHED skeleton versions on npm, so the set of testable eras
+      # grows with each release and nothing has to be maintained by hand.
+      # Needs npm; no images (it exercises the home + Docker volumes only).
+      - name: Upgrade-path smoke (historical homes + retired-volume reap)
+        run: ./scripts/upgrade-path-smoke.sh
+
       - name: Assert deleted scripts are absent
         run: |
           set -euo pipefail

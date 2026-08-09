@@ -188,6 +188,19 @@ describe("tailscale — LocalAPI answering", () => {
     );
     expect(status.state).toBe("error");
   });
+
+  test("an invalid OP_REMOTE_TARGET maps to error — every path returns a status, never throws", async () => {
+    seedHome("OP_ENABLED_ADDONS=remote\nOP_REMOTE_TARGET=bogus\n");
+    const status = await fetchRemoteProviderStatus(
+      makeState(),
+      deps({
+        exec: execOk({ BackendState: "Running", Self: { DNSName: "op.ts.net." } }),
+      }),
+    );
+    expect(status.state).toBe("error");
+    expect(status.message).toContain("OP_REMOTE_TARGET");
+    expect(status.copyables ?? []).toEqual([]);
+  });
 });
 
 describe("tailscale — node-key expiry (roadmap risk 6)", () => {

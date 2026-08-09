@@ -8,6 +8,7 @@ import { writeFileAtomic } from './fs-atomic.js';
 import { buildComposeOptions } from './compose-args.js';
 import { applyInstall, buildManagedServices } from './lifecycle.js';
 import {
+	applyStack,
 	composePs,
 	detectExistingProject,
 	isComposePsRowHealthy,
@@ -20,12 +21,7 @@ import { activateStack } from './activation.js';
 import { reapAndLogRetiredVolumes } from './image-volume-retention.js';
 import { parseEnvFile } from './env.js';
 import { patchStateEnvFile, readStackEnv } from './secrets.js';
-import {
-	acquireInstallLock,
-	releaseInstallLock,
-	isProcessAlive,
-	type InstallLockHandle
-} from './install-lock.js';
+import { acquireInstallLock, releaseInstallLock, isProcessAlive } from './install-lock.js';
 import { resolveBackupsDir } from './home.js';
 import { stackEnvPath } from './paths.js';
 import { discoverStackOverlays } from './config-persistence.js';
@@ -49,23 +45,37 @@ function restoreDeployFiles(state: ControlPlaneState, generation?: string): void
 	}
 }
 
+/**
+ * Restore the pre-deploy snapshot and bring the restored stack back up.
+ * Recovery must NOT be vetoed by the activation audit — the restored
+ * pre-upgrade config was live before this deploy — so the reapply goes through
+ * the bare compose driver, not activateStack (the caller already holds the
+ * install lock for the whole deploy). Returns an error message on failure so
+ * the caller can surface it alongside the original deploy error, or null when
+ * the restore succeeded.
+ */
 async function restoreDeployStack(
 	state: ControlPlaneState,
-	lock?: InstallLockHandle,
 	images: RunningImageSnapshot = {},
 	generation?: string
-): Promise<void> {
+): Promise<string | null> {
 	try {
 		restoreSnapshot(state, generation);
 		if (generation && Object.keys(images).length > 0) {
 			await restoreRunningImageIds(state, images, generation);
 		}
-		const result = await activateStack(state, { kind: 'all' }, { pull: 'missing' }, { lock });
+		const result = await applyStack(
+			{ kind: 'all' },
+			buildComposeOptions(state),
+			undefined,
+			{ pull: 'missing' }
+		);
 		if (!result.ok) throw new Error(result.error ?? 'Failed to reapply restored stack');
+		return null;
 	} catch (error) {
-		deployLogger.error('failed to restore deployed stack', {
-			error: error instanceof Error ? error.message : String(error)
-		});
+		const message = error instanceof Error ? error.message : String(error);
+		deployLogger.error('failed to restore deployed stack', { error: message });
+		return message;
 	}
 }
 
@@ -583,14 +593,18 @@ export async function runDeploy(
 				requiredServices
 			);
 			if (stackResult.pullFailed || failedRequired.length > 0 || stackResult.upFailed) {
+				let restoreError: string | null = null;
 				if (stackResult.pullFailed && !renameTeardown.downed) restoreDeployFiles(state);
-				else await restoreDeployStack(state, lock, imageSnapshot, generation);
+				else restoreError = await restoreDeployStack(state, imageSnapshot, generation);
 				const allFailed = [...failedRequired, ...failedOptional];
 				const failureDetail =
 					allFailed.length > 0 ? allFailed.join(', ') : (stackResult.error ?? 'stack update');
 				progress.deployError = isDevTag
 					? `Dev images not found locally or failed to start (tag: ${imageTag}): ${failureDetail}. Run \`bun run dev:build\` from the project root to build them, then retry setup.`
 					: `Stack update failed: ${failureDetail}.${allFailed.length > 0 ? ` ${buildLogHint(state, allFailed)}` : ''}`;
+				if (restoreError) {
+					progress.deployError += ` Restoring the previous stack also failed: ${restoreError}`;
+				}
 				progress.deploying = false;
 				emitProgress(options, progress);
 				return progress;

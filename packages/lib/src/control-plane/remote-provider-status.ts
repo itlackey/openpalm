@@ -18,7 +18,7 @@ import type { ControlPlaneState } from "./types.js";
 import { composeExec, composePs, isComposePsRowHealthy, parseComposePsRows } from "./docker.js";
 import { buildComposeOptions } from "./compose-args.js";
 import { readStackEnv } from "./secrets.js";
-import { readRemoteAccessConfig } from "./remote-access.js";
+import { readRemoteAccessConfig, type RemoteAccessConfig } from "./remote-access.js";
 import {
   remoteAddonEnabled,
   selectedRemoteProviderId,
@@ -196,7 +196,21 @@ async function fetchTailscaleStatus(
     // node's own reported FQDN — never interpolated from config
     // (describeRemoteExposure's rule; the tailnet suffix is assigned at
     // registration and unknowable before it).
-    const config = readRemoteAccessConfig(env);
+    //
+    // Caught, not propagated: readRemoteAccessConfig throws on an invalid
+    // OP_REMOTE_TARGET, and this module's contract is that every path
+    // returns a status. An unreadable config is itself an observation.
+    let config: RemoteAccessConfig;
+    try {
+      config = readRemoteAccessConfig(env);
+    } catch (err) {
+      return {
+        state: "error",
+        message: `The tunnel is connected, but its stored config could not be read: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      };
+    }
     const copyables: NonNullable<RemoteAccessStatus["copyables"]> = [];
     if (config.target === "assistant" || config.target === "both") {
       copyables.push({ label: "Assistant address", value: `https://${dnsName}`, qr: true });

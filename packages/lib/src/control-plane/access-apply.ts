@@ -40,7 +40,7 @@ import { createLogger } from "../logger.js";
 import { reconcileMdnsResponder } from "./mdns-responder.js";
 import { patchSecretsEnvFile, readStackEnv } from "./secrets.js";
 import { GUARDIAN_INGRESS_ADDON_IDS } from "./addon-ids.js";
-import { listEnabledAddonIds, setAddonEnabled } from "./addons.js";
+import { getAddonServiceNames, listEnabledAddonIds, setAddonEnabled } from "./addons.js";
 import { computeGuardianIngressRequired } from "./remote-providers.js";
 import type { InstallLockHandle } from "./install-lock.js";
 import type { ControlPlaneState } from "./types.js";
@@ -244,7 +244,26 @@ export async function applyAccessToggles(
   // applyRemoteAccess so the three call sites cannot drift. A toggle save
   // changes access toggles, not the remote addon's own config, so the
   // current env is always the right source.
-  const guardianIngressRequired = computeGuardianIngressRequired(currentEnv);
+  //
+  // Guarded so a poisoned env (an invalid OP_REMOTE_TARGET makes the registry
+  // throw) returns the structured failure result instead of rejecting — and
+  // returns it BEFORE the env write below, so intent is never half-applied.
+  let guardianIngressRequired: boolean;
+  try {
+    guardianIngressRequired = computeGuardianIngressRequired(currentEnv);
+  } catch (err) {
+    const error = err instanceof Error ? err.message : String(err);
+    logger.error("access toggles NOT applied — remote addon config unreadable", { error });
+    return {
+      access: readAccessToggles(currentEnv),
+      changedKeys: [],
+      recreated: [],
+      autoEnabledAddons: [],
+      ok: false,
+      error,
+      mdns: deps.reconcileMdns(state.homeDir),
+    };
+  }
 
   const nextEnv = resolveAccessEnv(toggles, { guardianIngressRequired });
   const changedKeys = diffAccessEnv(currentEnv, nextEnv);
@@ -272,7 +291,11 @@ export async function applyAccessToggles(
     try {
       const scope = resolveRecreateScope(
         changedKeys,
-        autoEnabledAddons,
+        // `autoEnabledAddons` holds ADDON ids ('chat'/'api'), but the scope is
+        // compose SERVICE names — both ids activate the `guardian` profile,
+        // and passing the id through verbatim made `up -d --no-deps chat`
+        // fail while the guardian itself was filtered out as undeployed.
+        autoEnabledAddons.flatMap((addon) => getAddonServiceNames(state.homeDir, addon)),
         await deps.listDeployedServices(state),
       );
       if (scope.length > 0) {

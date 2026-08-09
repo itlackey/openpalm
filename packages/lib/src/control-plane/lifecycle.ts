@@ -24,6 +24,7 @@ import { ensureOpenCodeSystemConfig } from './core-assets.js';
 import { applyHomeSeed, readSkeletonVersion } from './ui-assets.js';
 import { restoreSnapshot, snapshotCurrentState } from './rollback.js';
 import {
+	applyStack,
 	checkDocker,
 	composePreflight,
 	composeConfigServices,
@@ -46,7 +47,6 @@ import type { InstallLockHandle } from './install-lock.js';
 import { getAddonServiceNames, listEnabledAddonIds, pruneRemovedAddonState } from './addons.js';
 import { backupOpenPalmHome, pruneBackupDirs } from './backup.js';
 import { hasGuardianIngressAddon } from './addon-ids.js';
-import { PLATFORM_VERSION } from './versioning.js';
 import { advanceManagedImageVersions, ensureVersionDefaults } from './versions.js';
 import {
 	captureRunningImageIds,
@@ -182,7 +182,7 @@ async function applyHome(state: ControlPlaneState): Promise<void> {
 	// state and reporting a completed install as unconfigured.
 	runHomeMigrations(state.homeDir);
 	ensureSecrets(state);
-	await applyHomeSeed(PLATFORM_VERSION, state.homeDir, state.configDir, state.dataDir);
+	await applyHomeSeed(state.homeDir);
 	// Make the `remote` addon's generated serve config match its persisted state
 	// on every install/update, and pin OP_REMOTE_HOSTNAME while doing it. This
 	// has to happen HERE, in the one function that owns OP_HOME's assets, and
@@ -255,11 +255,14 @@ async function applyManagedFiles(
 	return generation;
 }
 
-async function reapplyRestoredStack(
-	state: ControlPlaneState,
-	lock?: InstallLockHandle
-): Promise<void> {
-	const result = await activateStack(state, { kind: 'all' }, { pull: 'missing' }, { lock });
+async function reapplyRestoredStack(state: ControlPlaneState): Promise<void> {
+	// Recovery path: the restored pre-upgrade config was live before the failed
+	// apply, so it must not be vetoed by the activation audit — a veto here
+	// would leave the stack down. Reapply through the bare compose driver
+	// instead of activateStack (callers already hold the install lock).
+	const result = await applyStack({ kind: 'all' }, buildComposeOptions(state), undefined, {
+		pull: 'missing'
+	});
 	if (!result.ok) throw new Error(result.error ?? 'Failed to reapply restored stack');
 }
 
@@ -268,7 +271,7 @@ export async function restoreSnapshotAndApplyStack(
 	opts: { generation?: string; lock?: InstallLockHandle } = {}
 ): Promise<void> {
 	restoreSnapshot(state, opts.generation);
-	await reapplyRestoredStack(state, opts.lock);
+	await reapplyRestoredStack(state);
 }
 
 async function runWithSnapshotRollback(
@@ -276,21 +279,21 @@ async function runWithSnapshotRollback(
 	run: () => Promise<void>,
 	shouldReapplyStack: boolean | (() => boolean) = false,
 	generation?: string | (() => string | undefined),
-	preserveImages?: () => Promise<void>,
-	lock?: InstallLockHandle
+	preserveImages?: () => Promise<void>
 ): Promise<void> {
 	try {
 		await run();
 	} catch (error) {
 		let restored = false;
+		const recoveryFailures: string[] = [];
 		try {
 			const selectedGeneration = typeof generation === 'function' ? generation() : generation;
 			restoreSnapshot(state, selectedGeneration);
 			restored = true;
 		} catch (restoreError) {
-			lifecycleLogger.error('failed to restore lifecycle snapshot', {
-				error: restoreError instanceof Error ? restoreError.message : String(restoreError)
-			});
+			const message = restoreError instanceof Error ? restoreError.message : String(restoreError);
+			lifecycleLogger.error('failed to restore lifecycle snapshot', { error: message });
+			recoveryFailures.push(`snapshot restore failed: ${message}`);
 		}
 		try {
 			await preserveImages?.();
@@ -301,12 +304,18 @@ async function runWithSnapshotRollback(
 			typeof shouldReapplyStack === 'function' ? shouldReapplyStack() : shouldReapplyStack;
 		if (restored && reapplyStack) {
 			try {
-				await reapplyRestoredStack(state, lock);
+				await reapplyRestoredStack(state);
 			} catch (reapplyError) {
-				lifecycleLogger.error('failed to reapply restored stack', {
-					error: reapplyError instanceof Error ? reapplyError.message : String(reapplyError)
-				});
+				const message = reapplyError instanceof Error ? reapplyError.message : String(reapplyError);
+				lifecycleLogger.error('failed to reapply restored stack', { error: message });
+				recoveryFailures.push(`restored stack reapply failed: ${message}`);
 			}
+		}
+		// A recovery failure must reach the caller, not just the log: append it
+		// to the original error so the surfaced message says both what broke the
+		// apply AND that the automatic rollback did not fully recover.
+		if (recoveryFailures.length > 0 && error instanceof Error) {
+			error.message = `${error.message} Additionally, automatic rollback did not fully recover: ${recoveryFailures.join('; ')}`;
 		}
 		throw error;
 	}
@@ -425,8 +434,7 @@ export async function performUpgrade(
 				if (generation && Object.keys(imageSnapshot).length > 0) {
 					await restoreRunningImageIds(state, imageSnapshot, generation);
 				}
-			},
-			lock
+			}
 		);
 	} finally {
 		releaseLifecycleLock(lock, opts);

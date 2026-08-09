@@ -32,6 +32,7 @@ import {
   hasUsableOperatorId,
   isRootIds,
   type OperatorIds,
+  pinnedNonRootOperatorIds,
   resolveOperatorIds,
 } from "./operator-ids.js";
 import { STACK_DEFAULTS } from "./defaults.js";
@@ -278,21 +279,32 @@ export function writeSystemEnv(state: ControlPlaneState): void {
   // must not be silently changed.
   const ids = resolveOperatorIds(state.homeDir);
   if (ids) {
-    // Root is supported but not recommended. uid and gid resolve INDEPENDENTLY
-    // in resolveOperatorIds, so a mixed result like 1000:0 is reachable (an
-    // OP_HOME owned `1000:0` under a root process) — the message therefore
-    // reports the ids it actually resolved rather than asserting OP_UID=0.
-    // Warn on every write rather than once: it is a standing condition, not a
-    // one-time event.
     const writeUid = !hasUsableOperatorId(parsed, "OP_UID");
     const writeGid = !hasUsableOperatorId(parsed, "OP_GID");
+    // Both the opt-in gate and the standing warning judge the EFFECTIVE
+    // post-write identity, not the raw resolver result: a usable stack.env pin
+    // covers the axis it pins (compose interpolates `user:` from stack.env, so
+    // the pin — not the resolver — is what containers actually run as), and
+    // the resolver fills only the axes being written. uid and gid resolve
+    // INDEPENDENTLY in resolveOperatorIds, so a mixed result like 1000:0 is
+    // reachable (an OP_HOME owned `1000:0` under a root process) — a pinned
+    // OP_GID=1000 then makes the effective identity fully non-root, and
+    // neither the gate nor the warning fires (see pinnedNonRootOperatorIds /
+    // resolveRepairIdentity for the same pin-beats-resolver rule).
+    const effective: OperatorIds = {
+      uid: writeUid ? ids.uid : Number(parsed.OP_UID),
+      gid: writeGid ? ids.gid : Number(parsed.OP_GID),
+    };
     // Opt-in is checked only when a root identity would actually be PERSISTED.
     // A home already carrying OP_UID=0 records the operator's prior consent and
     // is never rewritten, so it does not re-trip the gate on every apply.
-    if (writeUid || writeGid) assertRootInstallAllowed(ids);
-    if (isRootIds(ids)) {
+    if (writeUid || writeGid) assertRootInstallAllowed(effective);
+    // Warn on every write rather than once: it is a standing condition, not a
+    // one-time event. The message reports the effective ids — never "0:0" on
+    // an install whose pins mean nothing root actually applies.
+    if (isRootIds(effective)) {
       logger.warn(
-        `Resolved a root operator id — containers will run as ${ids.uid}:${ids.gid}. ` +
+        `Resolved a root operator id — containers will run as ${effective.uid}:${effective.gid}. ` +
           "This is supported but NOT recommended. To avoid it, ensure OP_HOME is owned by a " +
           "non-root user and group and install as that user, or set OP_UID/OP_GID explicitly " +
           "in state/stack.env."
@@ -524,7 +536,13 @@ export function ensureComposeVolumeTargets(state: ControlPlaneState): void {
   // a root-running install (or a host UID that differs from the forced
   // container UID) are unwritable inside the non-root container — on OrbStack
   // real UIDs are preserved, so e.g. ollama's mkdir is denied (issue #452).
-  const operatorIds = resolveOperatorIds(state.homeDir);
+  // A root resolution defers to a hand-pinned non-root OP_UID/OP_GID in
+  // stack.env when one exists: compose interpolates `user:` from the pin, so
+  // the pinned ids — not root — are what the containers actually run as.
+  const resolvedIds = resolveOperatorIds(state.homeDir);
+  const operatorIds = resolvedIds && isRootIds(resolvedIds)
+    ? pinnedNonRootOperatorIds(parseEnvFile(stackEnvFile(state.homeDir))) ?? resolvedIds
+    : resolvedIds;
 
   for (const mount of discoverHomeBindMountSources(state)) {
     if (existsSync(mount.path)) continue;

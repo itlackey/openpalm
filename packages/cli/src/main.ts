@@ -96,7 +96,6 @@ async function autoRun(opts: BareRunOpts = {}): Promise<void> {
     // value nothing reads.
     await bootstrapInstall({
       force: false,
-      version: cliPkg.version,
       noStart: false,
       noOpen: opts.open === false,
       assumeYes: false,
@@ -209,14 +208,29 @@ function unknownCommandMessage(command: string): string {
  */
 export function parseBareArgs(argv: string[]): BareRunOpts {
   const parsed = parseArgs<typeof bareArgsDef>(argv, bareArgsDef);
+  // C8-residual: a positional AFTER a flag slips past isUnknownSubcommand
+  // (which only inspects argv[0]), and used to be silently discarded here — so
+  // `openpalm --no-open status` (or a typo) started the stack instead of
+  // erroring. Same error style as unknownCommandMessage.
+  const positionals = (parsed._ ?? []).map(String).filter((token) => token.length > 0);
+  if (positionals.length > 0) {
+    throw new Error(
+      `Unexpected argument: ${positionals[0]}. Flags come after the subcommand — ` +
+      'use `openpalm <subcommand> [flags]`. Run `openpalm --help` to see available commands.'
+    );
+  }
   const opts: BareRunOpts = {};
   // `open` defaults to true (bareArgsDef), so only an explicit --no-open /
   // --open=false needs to be threaded through.
   if (parsed.open === false) opts.open = false;
   if (typeof parsed.port === 'string' && parsed.port.length > 0) {
     const port = Number(parsed.port);
-    if (!Number.isFinite(port)) {
-      throw new Error(`Invalid --port value "${parsed.port}". Expected a number.`);
+    // Integer + range, matching the check startUIServer applies — a merely
+    // finite value (3880.5) passed here and failed later, opaquely.
+    if (!Number.isInteger(port) || port < 1 || port > 65535) {
+      throw new Error(
+        `Invalid --port value "${parsed.port}". Expected an integer between 1 and 65535.`
+      );
     }
     opts.port = port;
   }

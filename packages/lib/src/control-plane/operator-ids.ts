@@ -129,6 +129,20 @@ export function hasUsableOperatorId(parsed: Record<string, string>, key: "OP_UID
   return Number.isInteger(n) && n >= 0;
 }
 
+/**
+ * The hand-pinned OP_UID/OP_GID from a parsed stack.env, when both are usable
+ * and neither is root; null otherwise. The OP_ALLOW_ROOT refusal message
+ * recommends exactly this pin, so the ownership machinery honors it: a root
+ * session with a non-root pin repairs/chowns TO the pinned identity — the ids
+ * containers actually run as — instead of skipping (see volume-ownership.ts's
+ * resolveRepairIdentity).
+ */
+export function pinnedNonRootOperatorIds(parsed: Record<string, string>): OperatorIds | null {
+  if (!hasUsableOperatorId(parsed, "OP_UID") || !hasUsableOperatorId(parsed, "OP_GID")) return null;
+  const ids = { uid: Number(parsed.OP_UID), gid: Number(parsed.OP_GID) };
+  return isRootIds(ids) ? null : ids;
+}
+
 // ── Root installs: supported, opt-in, never accidental ───────────────────────
 
 const TRUE_RE = /^(true|1|yes|on)$/i;

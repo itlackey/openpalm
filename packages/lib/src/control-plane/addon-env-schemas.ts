@@ -23,6 +23,12 @@
  *
  * Declared beside the schema so a future key that needs a wider apply is one
  * entry rather than a second special case in the route.
+ *
+ * "voice" here is the CPU-profile compose service name; the CUDA/ROCm hardware
+ * profiles deploy "voice-cuda"/"voice-rocm" instead. The credentials route
+ * translates the entry through the active OP_VOICE_PROFILE selection when it
+ * turns this table into a recreate scope, so the running variant is the one
+ * recreated.
  */
 export const ADDON_ENV_RECREATE_SCOPE: Record<string, readonly string[]> = {
   OP_VOICE_LAN_ACCESS: ["voice", "assistant"],

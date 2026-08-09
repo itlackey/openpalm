@@ -104,10 +104,20 @@ export function snapshotCurrentState(
     renameSync(currentTmp, join(rollbackDir, SNAPSHOT_CURRENT_FILE));
     writeFileSync(join(rollbackDir, SNAPSHOT_TS_FILE), `${new Date().toISOString()}\n`);
   }
+  // Never prune the generation .snapshot-current points at: repeated
+  // `openpalm rollback` runs snapshot with activate:false, so the restore
+  // target is not the newest generation and would otherwise be evicted,
+  // leaving the pointer dangling.
+  let activeGeneration: string | null = null;
+  try {
+    const current = readFileSync(join(rollbackDir, SNAPSHOT_CURRENT_FILE), "utf-8").trim();
+    if (GENERATION_PATTERN.test(current)) activeGeneration = current;
+  } catch { /* no active pointer */ }
   const generations = readdirSync(rollbackDir, { withFileTypes: true })
     .filter((entry) => entry.isDirectory() && GENERATION_PATTERN.test(entry.name))
     .sort((a, b) => b.name.localeCompare(a.name, undefined, { numeric: true }));
   for (const entry of generations.slice(SNAPSHOT_GENERATIONS_KEPT)) {
+    if (entry.name === activeGeneration) continue;
     rmSync(join(rollbackDir, entry.name), { recursive: true, force: true });
   }
   return generation;
@@ -140,7 +150,15 @@ function resolveSnapshotDir(generation?: SnapshotGeneration): string {
  * but is still backed up here for safety.
  */
 export function restoreSnapshot(state: ControlPlaneState, generation?: SnapshotGeneration): void {
-  const snapshotDir = resolveSnapshotDir(generation);
+  const resolved = resolveGeneration(generation);
+  // A generation snapshot captures the COMPLETE system/ tree, so restoring it
+  // may delete-and-rebuild system/ wholesale. The legacy pre-0.13 FLAT layout
+  // (resolved null, or the '.' sentinel) only ever captured the stack compose
+  // files — for it, restore copies files over their live counterparts without
+  // deleting anything, or a rollback would destroy system/assistant,
+  // system/guardian, overlays, and .skeleton-version.
+  const isGenerationSnapshot = resolved !== null && GENERATION_PATTERN.test(resolved);
+  const snapshotDir = isGenerationSnapshot ? join(resolveRollbackDir(), resolved) : resolveRollbackDir();
   if (!existsSync(join(snapshotDir, SNAPSHOT_TS_FILE))) throw new Error("No rollback snapshot available");
 
   const preRollbackDir = join(resolveBackupsDir(), `${timestampDirName()}-pre-rollback`);
@@ -156,12 +174,12 @@ export function restoreSnapshot(state: ControlPlaneState, generation?: SnapshotG
     if (existsSync(src)) {
       rmSync(dest, { force: true, recursive: true });
       safeCopy(src, dest);
-    } else if (rel === '.skeleton-version') {
+    } else if (rel === '.skeleton-version' && isGenerationSnapshot) {
       rmSync(dest, { force: true });
     }
   }
   const liveSystem = join(state.homeDir, SYSTEM_TREE);
-  rmSync(liveSystem, { recursive: true, force: true });
+  if (isGenerationSnapshot) rmSync(liveSystem, { recursive: true, force: true });
   safeCopyTree(join(snapshotDir, SYSTEM_TREE), liveSystem);
 
   // serve.json is generated from state/stack.env and intentionally is not part

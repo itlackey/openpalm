@@ -256,4 +256,43 @@ describe("rollback snapshot/restore (0.3 — state env + non-destructive restore
     const generations = readdirSync(join(home, "data", "rollback")).filter((name) => name.startsWith("generation-"));
     expect(generations).toHaveLength(3);
   });
+
+  test("pruning never evicts the generation .snapshot-current points at (rollback retries)", () => {
+    // The activated snapshot is the restore target for every later rollback.
+    const target = snapshotCurrentState(state);
+    // Repeated `openpalm rollback` runs each take a pre-rollback snapshot with
+    // activate:false, which does NOT move the pointer.
+    for (let i = 0; i < 3; i += 1) snapshotCurrentState(state, { activate: false });
+
+    const rollbackDir = join(home, "data", "rollback");
+    expect(readFileSync(join(rollbackDir, ".snapshot-current"), "utf8").trim()).toBe(target);
+    expect(existsSync(join(rollbackDir, target))).toBe(true);
+    // The pointer target survives IN ADDITION to the three newest generations.
+    restoreSnapshot(state, target);
+  });
+
+  test("restoring a legacy flat snapshot leaves other live system/ subtrees intact", () => {
+    // Legacy pre-0.13 flat layout: files directly under data/rollback, no
+    // .snapshot-current pointer, and only the stack compose files captured.
+    const rollbackDir = join(home, "data", "rollback");
+    mkdirSync(join(rollbackDir, "system", "stack"), { recursive: true });
+    mkdirSync(join(rollbackDir, "state"), { recursive: true });
+    writeFileSync(join(rollbackDir, ".snapshot-ts"), "2026-01-01T00:00:00.000Z\n");
+    writeFileSync(join(rollbackDir, "state", "stack.env"), "OP_ENABLED_ADDONS=api\n");
+    writeFileSync(join(rollbackDir, "system", "stack", "core.compose.yml"), "services: {snapshotted: true}\n");
+
+    // Live system/ trees the flat snapshot never captured.
+    mkdirSync(join(home, "system", "assistant"), { recursive: true });
+    writeFileSync(join(home, "system", "assistant", "AGENTS.md"), "live policy\n");
+    writeFileSync(join(home, ".skeleton-version"), "0.12.9\n");
+
+    restoreSnapshot(state);
+
+    expect(readFileSync(join(home, "system", "stack", "core.compose.yml"), "utf8")).toBe("services: {snapshotted: true}\n");
+    expect(readFileSync(join(home, "state", "stack.env"), "utf8")).toContain("api");
+    // Not delete-and-rebuild: subtrees and the version stamp survive.
+    expect(readFileSync(join(home, "system", "assistant", "AGENTS.md"), "utf8")).toBe("live policy\n");
+    expect(existsSync(join(home, "system", "stack", "services.compose.yml"))).toBe(true);
+    expect(existsSync(join(home, ".skeleton-version"))).toBe(true);
+  });
 });

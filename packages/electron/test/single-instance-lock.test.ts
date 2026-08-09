@@ -38,6 +38,14 @@ const { mockWhenReady } = vi.hoisted(() => ({
   mockWhenReady: vi.fn(() => new Promise(() => {})),
 }));
 
+const { mockReadDeployJournal, mockShowMessageBoxSync } = vi.hoisted(() => ({
+  // Reports an in-flight deploy so the before-quit test below can prove the
+  // loser NEVER consults the deploy guard — even when the primary instance's
+  // journal says one is running.
+  mockReadDeployJournal: vi.fn(() => ({ deploying: true })),
+  mockShowMessageBoxSync: vi.fn(() => 1), // "Keep Waiting" (cancelId), if ever shown
+}));
+
 vi.mock('electron', () => ({
   app: {
     getVersion: vi.fn(() => '0.11.0'),
@@ -59,7 +67,7 @@ vi.mock('electron', () => ({
     { getAllWindows: vi.fn(() => []) },
   ),
   contextBridge: { exposeInMainWorld: vi.fn() },
-  dialog: { showErrorBox: vi.fn(), showMessageBoxSync: vi.fn(() => 1) },
+  dialog: { showErrorBox: vi.fn(), showMessageBoxSync: mockShowMessageBoxSync },
   Tray: function MockTray() {
     return { setToolTip: vi.fn(), setContextMenu: vi.fn(), on: vi.fn() };
   },
@@ -111,7 +119,7 @@ vi.mock('@openpalm/lib', () => ({
   applyHomeSeed: vi.fn(async () => ({ updated: [], backupDir: null })),
   createState: vi.fn(() => ({ dataDir: '/home/user/.openpalm/data' })),
   resolveDeployJournalPath: vi.fn(() => '/mock/deploy-journal.json'),
-  readDeployJournal: vi.fn(() => ({ deploying: false })),
+  readDeployJournal: mockReadDeployJournal,
   // Minimal fake of lib's UiSupervisor (adopt()/current only — main.ts never
   // calls start() here; see main.ts's uiSupervisor docblock). Constructed at
   // module load regardless of the single-instance-lock outcome.
@@ -139,5 +147,25 @@ describe('single-instance lock — denied (E1)', () => {
 
   it('never reaches app.whenReady() — no window, no tray, no second UI server', () => {
     expect(mockWhenReady).not.toHaveBeenCalled();
+  });
+
+  // The deploy-in-progress quit guard is registered at module scope, so the
+  // loser gets the handler too — but it must be inert here. Before the
+  // gotSingleInstanceLock gate, the loser's own app.quit() popped the blocking
+  // "deploy in progress" dialog and "Keep Waiting" cancelled the quit into a
+  // permanent headless zombie (no window or tray was ever registered).
+  it('before-quit lets the loser\'s quit proceed untouched, even mid-deploy', () => {
+    const entry = vi.mocked(app.on).mock.calls.find(([e]) => e === 'before-quit');
+    expect(entry, 'before-quit handler must be registered').toBeDefined();
+    const handler = entry?.[1] as (event: { preventDefault: () => void }) => void;
+
+    const event = { preventDefault: vi.fn() };
+    handler(event);
+
+    // The journal mock says a deploy IS running — the loser must not care:
+    // no dialog, no cancelled quit, no cleanup/exit of its own.
+    expect(mockShowMessageBoxSync).not.toHaveBeenCalled();
+    expect(event.preventDefault).not.toHaveBeenCalled();
+    expect(app.exit).not.toHaveBeenCalled();
   });
 });

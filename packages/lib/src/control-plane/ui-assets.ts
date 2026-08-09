@@ -74,9 +74,16 @@ function writeSkeletonVersion(homeDir: string, version: string): void { writeFil
  * via OPENPALM_SKELETON_DIR before calling this. No network fallback: every
  * consumer ships its own skeleton at build time now.
  */
-export async function applyHomeSeed(_repoRef: string, homeDir: string, _configDir: string, _dataDir: string): Promise<{ updated: string[]; backupDir: string | null }> {
+export async function applyHomeSeed(homeDir: string): Promise<{ updated: string[]; backupDir: string | null }> {
   const source = resolveLocalOpenpalmDir();
-  if (!source) return { updated: [], backupDir: null };
+  if (!source) {
+    // A silent no-op here would let an update bump image versions while
+    // deploying the previous release's compose tree. Fail loudly instead.
+    throw new Error(
+      'OpenPalm skeleton assets not found: no local skeleton source resolved. ' +
+      'Set OPENPALM_SKELETON_DIR to a materialized skeleton directory or OPENPALM_REPO_ROOT to a repo checkout.'
+    );
+  }
   const managed = overwriteSystemTree(source, homeDir);
   // K7 (product decision, not yet resolved): copyTree's skipExisting=true
   // below treats every non-system/ file — including knowledge/skills/**,

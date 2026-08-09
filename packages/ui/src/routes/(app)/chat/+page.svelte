@@ -412,6 +412,10 @@
 				if (!reachable && !visDestroyed) {
 					chat.error = 'Assistant is not reachable. Try reconnecting.';
 				} else if (!visDestroyed) {
+					// Same in-flight guard as chat-state's onConnect: starting a
+					// second load makes the first abandon its result without ever
+					// setting sessionsLoaded, desyncing the URL from the transcript.
+					if (chat.byEndpoint.get(chat.activeEndpointId)?.sessionsLoading) return;
 					await chat.loadSessions();
 				}
 			})();

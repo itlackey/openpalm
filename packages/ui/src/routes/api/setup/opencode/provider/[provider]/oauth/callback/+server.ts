@@ -50,20 +50,31 @@ export const POST: RequestHandler = async (event) => {
     // that collected one can submit it in the same long-poll request.
     const code = typeof input.code === "string" ? input.code.slice(0, 1024) : undefined;
     const client = createOpenCodeClient({ baseUrl: target.url, username: target.username, password: target.password });
+    // Honor an abort only while it can still matter — BEFORE the completion
+    // call. Once completeProviderOAuth resolves ok the provider has consumed
+    // the one-time code, so an abort that races completion must not turn that
+    // success into a 400: the wizard would retry an already-dead code.
+    if (request.signal.aborted) {
+      return errorResponse(400, "oauth_callback_aborted", "OAuth callback was cancelled", {}, requestId);
+    }
     const result = await client.completeProviderOAuth(params.provider, method, code, {
       timeoutMs: CALLBACK_TIMEOUT_MS,
       signal: request.signal,
     });
-    if (request.signal.aborted) {
-      return errorResponse(400, "oauth_callback_aborted", "OAuth callback was cancelled", {}, requestId);
-    }
     if (!result.ok) return errorResponse(400, "oauth_callback_failed", result.message ?? "OAuth callback failed", {}, requestId);
     // A wizard-spawned OpenCode writes OAuth state to the host OpenCode store,
     // not OP_HOME. Persist only the provider this callback completed. A healthy
     // deployed assistant already writes canonical auth.json directly and must
     // never trigger a redundant host import.
     if (source === "wizard") {
-      persistHostOpenCodeOAuthCredential(createState(), params.provider);
+      try {
+        persistHostOpenCodeOAuthCredential(createState(), params.provider);
+      } catch (e) {
+        // OAuth itself SUCCEEDED (the one-time code is consumed) — only the
+        // credential import failed. A generic oauth_callback_failed here would
+        // send the wizard back to retry a code the provider no longer accepts.
+        return errorResponse(500, "oauth_credential_import_failed", `OAuth completed but importing the credential failed: ${e instanceof Error ? e.message : String(e)}`, {}, requestId);
+      }
     }
     return json({ ok: true, complete: result.data });
   } catch {

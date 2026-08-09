@@ -114,10 +114,14 @@ describe("readRemoteAccessConfig", () => {
     expect(readRemoteAccessConfig({ OP_REMOTE_PUBLIC: "true" }).target).toBe("assistant");
   });
 
-  test.each(["nonsense", "", "   "])("rejects invalid target %j", (target) => {
+  test.each(["nonsense", "everything"])("rejects invalid target %j", (target) => {
     expect(() => readRemoteAccessConfig({ OP_REMOTE_TARGET: target })).toThrow(
       "Invalid OP_REMOTE_TARGET",
     );
+  });
+
+  test.each(["", "   "])("a blank target %j reads as unset — the credentials drawer persists OP_REMOTE_TARGET= verbatim", (target) => {
+    expect(readRemoteAccessConfig({ OP_REMOTE_TARGET: target }).target).toBe("assistant");
   });
 
   test("public=true cannot turn an invalid target into assistant exposure", () => {

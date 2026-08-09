@@ -107,4 +107,16 @@ describe('ProviderOAuthList - OAuth mode UI', () => {
     await expect.element(input).toBeVisible();
     await expect.element(page.getByRole('button', { name: 'Cancel' })).toBeVisible();
   });
+
+  test('an empty errorMessage still renders the fallback error text', async () => {
+    // verifyProvider's non-Error catch sets errorMessage to '' — with `??`
+    // that rendered an EMPTY role=alert span instead of the fallback.
+    showActiveOAuth('code');
+    setupState.providerState.openai.error = true;
+    setupState.providerState.openai.errorMessage = '';
+
+    render(ProviderOAuthList);
+
+    await expect.element(page.getByText('That code was not accepted. Try again.')).toBeVisible();
+  });
 });

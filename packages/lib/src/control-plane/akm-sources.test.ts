@@ -32,14 +32,17 @@ afterEach(() => {
 });
 
 describe("addHostStashToOpenpalmConfig (assistant side, parse-tolerant)", () => {
-  it("adds a writable /host-stash secondary bundle with no defaultBundle/defaultWriteTarget", () => {
+  it("creates a loadable 0.9.0 config: /host-stash secondary bundle + configVersion + primary openpalm bundle", () => {
     addHostStashToOpenpalmConfig(state, true);
     const cfg = readJson(opConfigPath);
     const bundles = cfg.bundles as Record<string, Record<string, unknown>>;
-    expect(Object.keys(bundles)).toEqual([HOST_SOURCE_NAME]);
+    expect(Object.keys(bundles).sort()).toEqual([HOST_SOURCE_NAME, "openpalm"]);
     expect(bundles[HOST_SOURCE_NAME]).toEqual({ path: "/host-stash", writable: true, enabled: true });
+    // Mirrors persistAkmConfig: akm 0.9.0 refuses a config without these.
+    expect(cfg.configVersion).toBe("0.9.0");
+    expect(bundles.openpalm).toEqual({ path: "/stash", writable: true });
+    expect(cfg.defaultBundle).toBe("openpalm");
     expect(cfg.defaultWriteTarget).toBeUndefined();
-    expect(cfg.defaultBundle).toBeUndefined();
     expect(cfg.stashDir).toBeUndefined();
   });
 
@@ -47,8 +50,41 @@ describe("addHostStashToOpenpalmConfig (assistant side, parse-tolerant)", () => 
     addHostStashToOpenpalmConfig(state, true);
     addHostStashToOpenpalmConfig(state, false);
     const bundles = readJson(opConfigPath).bundles as Record<string, Record<string, unknown>>;
-    expect(Object.keys(bundles)).toEqual([HOST_SOURCE_NAME]);
+    expect(Object.keys(bundles).sort()).toEqual([HOST_SOURCE_NAME, "openpalm"]);
     expect(bundles[HOST_SOURCE_NAME].writable).toBe(false);
+  });
+
+  it("never repoints an existing defaultBundle and preserves extra fields on the openpalm bundle", () => {
+    writeFileSync(opConfigPath, JSON.stringify({
+      configVersion: "0.9.0",
+      bundles: { openpalm: { path: "/elsewhere", writable: false, components: { docs: { root: "docs" } } } },
+      defaultBundle: "openpalm",
+    }));
+    addHostStashToOpenpalmConfig(state, true);
+    const cfg = readJson(opConfigPath);
+    const bundles = cfg.bundles as Record<string, Record<string, unknown>>;
+    // Path/writable are re-pinned (same as persistAkmConfig), extras survive.
+    expect(bundles.openpalm).toEqual({ path: "/stash", writable: true, components: { docs: { root: "docs" } } });
+    expect(cfg.defaultBundle).toBe("openpalm");
+  });
+
+  it("strips the retired 0.8 keys so akm 0.9.0 can load the result", () => {
+    writeFileSync(opConfigPath, JSON.stringify({
+      stashDir: "/old/stash",
+      sources: [{ name: "legacy", path: "/legacy" }],
+      profiles: { llm: { default: { endpoint: "x", model: "m" } } },
+      defaults: { llm: "default", llmEngine: "default" },
+      wikiName: "wiki",
+    }));
+    addHostStashToOpenpalmConfig(state, true);
+    const cfg = readJson(opConfigPath);
+    expect(cfg.stashDir).toBeUndefined();
+    expect(cfg.sources).toBeUndefined();
+    expect(cfg.profiles).toBeUndefined();
+    expect(cfg.wikiName).toBeUndefined();
+    expect((cfg.defaults as Record<string, unknown>).llm).toBeUndefined();
+    expect((cfg.defaults as Record<string, unknown>).llmEngine).toBe("default");
+    expect(cfg.configVersion).toBe("0.9.0");
   });
 
   it("preserves unrelated existing bundles and config keys", () => {
@@ -77,7 +113,8 @@ describe("addHostStashToOpenpalmConfig (assistant side, parse-tolerant)", () => 
   it("recovers from a corrupt OpenPalm config (parse-tolerant → starts from {})", () => {
     writeFileSync(opConfigPath, "{ this is not json");
     addHostStashToOpenpalmConfig(state, true);
-    expect(Object.keys(readJson(opConfigPath).bundles as Record<string, unknown>)).toHaveLength(1);
+    const bundles = readJson(opConfigPath).bundles as Record<string, unknown>;
+    expect(Object.keys(bundles).sort()).toEqual([HOST_SOURCE_NAME, "openpalm"]);
   });
 
   it("writes mode 0600", () => {
@@ -123,6 +160,30 @@ describe("importHostProfiles (read-only snapshot of host engine config)", () => 
     expect((cfg.embedding as Record<string, unknown>).model).toBe("nomic-embed-text");
     expect((cfg.embedding as Record<string, unknown>).dimension).toBe(768);
     expect(cfg.llm).toBeUndefined();
+    expect(cfg.configVersion).toBe("0.9.0");
+  });
+
+  it("strips retired 0.8 keys and stamps configVersion on the merged write (pre-0.9 OpenPalm config)", () => {
+    seedHostConfig({
+      configVersion: "0.9.0",
+      engines: { fast: { kind: "llm", endpoint: "x", model: "m" } },
+    });
+    // A pre-0.9 / versionless OpenPalm config still carrying retired keys.
+    writeFileSync(opConfigPath, JSON.stringify({
+      stashDir: "/old/stash",
+      profiles: { llm: { default: { endpoint: "x", model: "m" } } },
+      defaults: { llm: "default" },
+    }));
+    const { imported } = importHostProfiles(state, hostConfigPath);
+    expect(imported).toContain("engines");
+    const cfg = readJson(opConfigPath);
+    expect(cfg.configVersion).toBe("0.9.0");
+    expect(cfg.stashDir).toBeUndefined();
+    expect(cfg.profiles).toBeUndefined();
+    expect((cfg.defaults as Record<string, unknown>).llm).toBeUndefined();
+    // bundles/defaultBundle remain untouched by the import path.
+    expect(cfg.bundles).toBeUndefined();
+    expect(cfg.defaultBundle).toBeUndefined();
   });
 
   it("is ADDITIVE — never overwrites existing engines, defaults, or embedding fields", () => {

@@ -3,7 +3,7 @@ import { buildComposeOptions, type ComposeOptions } from './compose-args.js';
 import {
 	applyStack,
 	buildComposeCommandArgs,
-	composeConfigJsonSync,
+	composeConfigJson,
 	runComposeStreaming,
 	type ApplyStackOptions,
 	type ApplyStackResult,
@@ -42,7 +42,10 @@ export async function runComposeActivation<T>(
 	const ownsLock = activation.lock == null;
 	try {
 		const options = activation.composeOptions ?? buildComposeOptions(state);
-		const resolved = composeConfigJsonSync(options);
+		// Async on purpose: this runs on every admin-UI compose action, and the
+		// sync variant's execFileSync would block the whole event loop for the
+		// subprocess duration.
+		const resolved = await composeConfigJson(options);
 		if (!resolved.ok || !resolved.config) {
 			throw new Error(
 				`Compose ${operation} configuration resolution failed: ${resolved.stderr || 'unknown error'}`

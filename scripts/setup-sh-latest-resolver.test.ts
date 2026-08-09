@@ -75,6 +75,11 @@ describe('setup.sh latest release-asset resolver', () => {
 		);
 	});
 
+	it('retries the manifest fetch and warns visibly when the identity check is skipped fail-open (R1)', () => {
+		expect(setupShSource).toContain('curl -fsSL --retry 3 --retry-delay 3 "${MANIFEST_URL}"');
+		expect(setupShSource).toContain('skipping the release-manifest identity check');
+	});
+
 	const fnMatch = setupShSource.match(/manifest_version\(\) \{[\s\S]*?\n\}/);
 	if (!fnMatch) throw new Error('Could not locate manifest_version() in scripts/setup.sh');
 	const manifestVersionFn = fnMatch[0];
@@ -194,6 +199,11 @@ describe('setup.ps1 latest release-asset resolver', () => {
 		expect(source).toContain('$LatestResponse.BaseResponse.ResponseUri.AbsoluteUri');
 		expect(source).toContain('$LatestResponse.BaseResponse.RequestMessage.RequestUri.AbsoluteUri');
 		expect(source).not.toContain('api.github.com');
+	});
+
+	it('fetches the manifest with retries and warns when skipping the identity check for an explicit -Version (R2)', () => {
+		expect(source).toContain('Invoke-WebRequestWithRetry -Uri $ManifestUrl -OutFile $ManifestTempFile');
+		expect(source).toContain('Skipping the release-manifest identity check');
 	});
 });
 

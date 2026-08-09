@@ -515,6 +515,22 @@ export class SetupState {
       // this computer" once and switched back silently keeps a multi-GB
       // in-stack Ollama container + model pull enabled in the install payload.
       this.ollamaEnabled = false;
+      // Also revert the providerState.ollama mutations enableRecommendedOllama
+      // made — a leftover selected/verified in-stack entry is a phantom
+      // provider that inflates verifiedCount and can emit a connection to a
+      // never-deployed container. Only when the state matches the in-stack
+      // seed (ollamaMode === 'instack'): a genuinely user-configured external
+      // Ollama is theirs to keep.
+      const ollamaSt = this.providerState.ollama;
+      if (ollamaSt && ollamaSt.ollamaMode === 'instack') {
+        ollamaSt.selected = false;
+        ollamaSt.verified = false;
+        ollamaSt.ollamaMode = null;
+        ollamaSt.baseUrl = PROVIDERS.find((p) => p.id === 'ollama')?.baseUrl ?? '';
+        if (ollamaSt.models.length === 1 && ollamaSt.models[0] === OLLAMA_DEFAULT_CHAT_MODEL) {
+          ollamaSt.models = [];
+        }
+      }
       if (this.savedCloudLlm) {
         this.modelSelection.llm = this.savedCloudLlm;
       } else if (this.modelSelection.llm && LOCAL_PROVIDER_IDS.has(this.modelSelection.llm.connId)) {
@@ -1298,8 +1314,10 @@ export class SetupState {
       this.autoSelectModels();
 
       this.hostImporting = false;
-      // After host import, ensure we stay on Screen 1 (index 1).
-      if (!this.isRerun) this.goToStep(1);
+      // After host import, ensure we stay on Screen 1 (index 1) — but only if
+      // the user hasn't already advanced past it: a slow auto-triggered import
+      // resolving late must not yank the wizard back from Add-ons/Review.
+      if (!this.isRerun && this.currentStep <= 1) this.goToStep(1);
     } catch (e) {
       // Network / unexpected failure — surface it instead of swallowing.
       this.hostImportError =

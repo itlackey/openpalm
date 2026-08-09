@@ -75,12 +75,31 @@ jobs:
           set -euo pipefail
           tag=latest
           case "${VERSION}" in *-*) tag=next ;; esac
+          # bun pm pack tarballs are not byte-reproducible (member mtimes vary
+          # per run), so hashing a freshly packed tarball against npm's stored
+          # dist.integrity hard-fails every re-run of an already-published
+          # version. Compare unpacked CONTENT instead: an identical re-run
+          # skips cleanly, and only a genuine content mismatch stays a hard
+          # failure. What actually gets PUBLISHED is still the bun-packed
+          # archive from the Pack step, unchanged.
+          content_fingerprint() {
+            local extracted
+            extracted=$(mktemp -d)
+            tar -xzf "$1" -C "${extracted}"
+            (cd "${extracted}" && find . -type f | LC_ALL=C sort | xargs -r sha256sum | sha256sum | awk '{print $1}')
+            rm -rf "${extracted}"
+          }
           publish_package() {
             archive=$1
             spec=$(tar -xOf "${archive}" package/package.json | node -e "let s=''; process.stdin.on('data',d=>s+=d).on('end',()=>{const p=JSON.parse(s); console.log(p.name+'@'+p.version)})")
-            expected=$(node -e "const {createHash}=require('node:crypto'); const {readFileSync}=require('node:fs'); console.log('sha512-'+createHash('sha512').update(readFileSync(process.argv[1])).digest('base64'))" "${archive}")
-            if actual=$(npm view "${spec}" dist.integrity --json 2>/dev/null); then
-              test "${actual//\"/}" = "${expected}" || { echo "::error::${spec} exists with different contents"; exit 1; }
+            if npm view "${spec}" dist.integrity >/dev/null 2>&1; then
+              published_dir=$(mktemp -d)
+              (cd "${published_dir}" && npm pack "${spec}" >/dev/null 2>&1)
+              expected=$(content_fingerprint "${published_dir}"/*.tgz)
+              rm -rf "${published_dir}"
+              actual=$(content_fingerprint "${archive}")
+              test "${actual}" = "${expected}" || { echo "::error::${spec} exists with different contents"; exit 1; }
+              echo "${spec} is already published with identical contents — skipping"
             else
               npm publish --provenance --access public --tag "${tag}" "${archive}"
             fi

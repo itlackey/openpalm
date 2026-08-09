@@ -29,18 +29,22 @@ import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 
 /**
- * The channel electron-builder names its feed after, derived exactly the way
- * electron-builder derives it: the first prerelease identifier of the version,
- * or "latest" for a stable release. `0.13.0-beta.15` publishes `beta.yml`, NOT
- * `latest.yml`, so a validator hard-coded to the stable names would fail every
- * prerelease and let a beta release ship with no feed at all.
+ * The channel feed a release must publish for `version`.
  *
- * Mirroring the derivation rather than restating it is the point: if the two
- * ever disagree, this gate is checking for files the build never produced.
+ * Desktop clients only ever request TWO channel feeds: stable installs fetch
+ * `latest.yml` and prerelease-opted installs fetch `beta.yml` — see
+ * packages/electron/src/updater.ts (updaterChannel/updaterFeedChannel), which
+ * deliberately defines no other channel. So ANY prerelease collapses to
+ * `beta`, whatever its first identifier says: naming the feed after the
+ * identifier (rc.yml, alpha.yml) would ship files no installed app requests
+ * while beta-channel installs 404 on the beta.yml they do request.
+ *
+ * release.yml's assemble-assets step renames the electron-builder feeds via
+ * this same function, so the rename mapping and this gate cannot disagree.
  */
 export function feedChannelForVersion(version) {
   const match = /^\d+\.\d+\.\d+(?:-([0-9A-Za-z-]+))/.exec(version.trim());
-  return match ? match[1] : 'latest';
+  return match ? 'beta' : 'latest';
 }
 
 /**

@@ -118,6 +118,11 @@ vi.mock('electron-updater', () => ({
     // (which calls this) before building a new one over this singleton.
     removeListener: vi.fn(),
   },
+  // E3: createDesktopUpdater injects this so dispose() can cancel an in-flight
+  // download on a channel toggle; the real class comes from builder-util-runtime.
+  CancellationToken: class MockCancellationToken {
+    cancel = vi.fn();
+  },
 }));
 
 vi.mock('electron', () => ({
@@ -316,6 +321,7 @@ import {
   buildUIServerEnv,
   deployCompletionNotification,
   getLaunchOnLoginStatus,
+  handleQuitAndInstallRequest,
   handleWillNavigate,
   handleWindowOpen,
   isAllowedInAppWindowUrl,
@@ -331,7 +337,8 @@ import {
   supportsLaunchOnLogin,
   waitForReady,
 } from '../src/main.js';
-import { app, BrowserWindow, globalShortcut, Notification, shell } from 'electron';
+import { DesktopUpdater } from '../src/updater.js';
+import { app, BrowserWindow, dialog, globalShortcut, Notification, shell } from 'electron';
 import * as lib from '@openpalm/lib';
 import { TrayController } from '../src/tray.js';
 
@@ -665,6 +672,87 @@ describe('deployCompletionNotification', () => {
   });
 });
 
+// ── handleQuitAndInstallRequest (E2 — ask BEFORE the installer spawns) ───────
+// electron-updater's quitAndInstall() launches the installer BEFORE its own
+// internal app.quit(), so the before-quit deploy guard used to fire only after
+// the installer was already running — "Keep Waiting" cancelled the quit but
+// not the installer. The renderer's request now runs the SAME journal check +
+// dialog first. (The confirm path — and its suppression of the before-quit
+// re-prompt — lives in updater-quit-install-guard.test.ts: letting before-quit
+// proceed sets the one-way module `cleanupStarted` flag, which this long-lived
+// module instance's own before-quit suite still needs unset.)
+describe('handleQuitAndInstallRequest (E2)', () => {
+  const deployingJournal = {
+    deploying: true,
+    setupComplete: false,
+    deployStatus: [],
+    deployError: null,
+    imageWarning: null,
+    phase: 'starting' as const,
+    startedAt: new Date().toISOString(),
+    pid: 4321,
+  };
+
+  function makeDesktopUpdater() {
+    const fake = {
+      autoDownload: true,
+      autoInstallOnAppQuit: false,
+      channel: null as string | null,
+      allowPrerelease: false,
+      checkForUpdates: vi.fn(async () => ({ updateInfo: { version: '99.0.0' } })),
+      downloadUpdate: vi.fn(async () => []),
+      quitAndInstall: vi.fn(),
+      install: vi.fn(() => true),
+      on: vi.fn(),
+      removeListener: vi.fn(),
+    };
+    const updater = new DesktopUpdater({
+      updater: fake,
+      currentVersion: '1.0.0',
+      platform: 'linux',
+      isPackaged: true,
+      windowsInstallerPresent: false,
+      prerelease: false,
+    });
+    return { updater, fake };
+  }
+
+  beforeEach(() => {
+    vi.mocked(dialog.showMessageBoxSync).mockClear();
+  });
+
+  it('refuses without prompting when nothing is staged', async () => {
+    const { updater, fake } = makeDesktopUpdater();
+    await updater.check(); // 'available' — not 'downloaded'
+
+    expect(handleQuitAndInstallRequest(updater)).toBe(false);
+    expect(dialog.showMessageBoxSync).not.toHaveBeenCalled();
+    expect(fake.quitAndInstall).not.toHaveBeenCalled();
+  });
+
+  it('installs without prompting when no deploy is in progress', async () => {
+    const { updater, fake } = makeDesktopUpdater();
+    await updater.check();
+    await updater.download();
+
+    expect(handleQuitAndInstallRequest(updater)).toBe(true);
+    expect(dialog.showMessageBoxSync).not.toHaveBeenCalled();
+    expect(fake.quitAndInstall).toHaveBeenCalledWith(false, true);
+  });
+
+  it('with a deploy in progress, "Keep Waiting" refuses BEFORE the installer is launched', async () => {
+    const { updater, fake } = makeDesktopUpdater();
+    await updater.check();
+    await updater.download();
+    vi.mocked(lib.readDeployJournal).mockReturnValueOnce(deployingJournal);
+    vi.mocked(dialog.showMessageBoxSync).mockReturnValueOnce(1); // "Keep Waiting"
+
+    expect(handleQuitAndInstallRequest(updater)).toBe(false);
+    expect(dialog.showMessageBoxSync).toHaveBeenCalledOnce();
+    expect(fake.quitAndInstall).not.toHaveBeenCalled();
+  });
+});
+
 describe('popup handling', () => {
   beforeEach(() => {
     mockBrowserWindow.loadURL.mockClear();
@@ -686,6 +774,22 @@ describe('popup handling', () => {
     expect(mockBrowserWindow.focus).toHaveBeenCalledOnce();
     expect(shell.openExternal).not.toHaveBeenCalled();
     expect(vi.mocked(BrowserWindow)).toHaveBeenCalledTimes(windowCount);
+  });
+
+  // isAllowedInAppWindowUrl admits both loopback aliases, but the trusted
+  // origin (isOwnOriginUrl, the IPC sender gate) is pinned to 127.0.0.1 —
+  // loading a localhost URL as-is would strand the window on an origin where
+  // every navigation bounces external and every window.openpalm call is
+  // rejected until restart.
+  it('normalizes an allowed localhost popup onto the canonical 127.0.0.1 origin', () => {
+    const result = handleWindowOpen(
+      mockBrowserWindow as unknown as InstanceType<typeof BrowserWindow>,
+      'http://localhost:3880/chat/session-1?foo=1#frag',
+    );
+
+    expect(result).toEqual({ action: 'deny' });
+    expect(mockBrowserWindow.loadURL).toHaveBeenCalledWith('http://127.0.0.1:3880/chat/session-1?foo=1#frag');
+    expect(shell.openExternal).not.toHaveBeenCalled();
   });
 
   it('opens external URLs in the system browser and denies the popup', () => {
@@ -923,11 +1027,7 @@ describe('desktop bootstrap', () => {
     const spawnOrder = vi.mocked(spawn).mock.invocationCallOrder;
 
     expect(lib.applyHomeSeed).toHaveBeenCalled();
-    expect(vi.mocked(lib.applyHomeSeed).mock.calls[0]?.slice(1)).toEqual([
-      '/home/user/.openpalm',
-      '/home/user/.openpalm/config',
-      '/home/user/.openpalm/data',
-    ]);
+    expect(vi.mocked(lib.applyHomeSeed).mock.calls[0]).toEqual(['/home/user/.openpalm']);
     // Seeded BEFORE the child starts, or the child reads the old tree.
     expect(seedOrder[0]).toBeLessThan(spawnOrder[0]);
   });

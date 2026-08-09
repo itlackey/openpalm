@@ -32,6 +32,9 @@ export const DEFAULT_PUBLISHED_UI_PORT = STACK_DEFAULTS.ports.ui;
  * Rejects anything that is not a positive finite number, which is the strictest
  * of the parses this replaced: `Number(x) || fallback` let a negative through,
  * and no listener can bind one, so the default is the more useful answer.
+ * The explicit argument is held to the same bar — an invalid explicit port
+ * (zero, negative, fractional, out of range) falls through to env/default
+ * rather than being returned verbatim or throwing.
  */
 export function resolveEnvPort(
   key: string,
@@ -40,7 +43,14 @@ export function resolveEnvPort(
   persistedEnv: Record<string, string | undefined> = {},
   explicit?: number,
 ): number {
-  if (explicit !== undefined && Number.isFinite(explicit)) return explicit;
+  if (
+    explicit !== undefined &&
+    Number.isInteger(explicit) &&
+    explicit > 0 &&
+    explicit <= 65535
+  ) {
+    return explicit;
+  }
   const merged = { ...persistedEnv, ...env };
   const raw = merged[key]?.trim();
   const parsed = raw ? Number(raw) : Number.NaN;

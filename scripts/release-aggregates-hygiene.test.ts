@@ -223,8 +223,53 @@ describe('release completeness gate: no CLI-only releases (onboarding-setup-revi
 		const collision = steps.find((step) => step.name === 'Validate an existing immutable image tag');
 		expect(collision?.if).toBeUndefined();
 		expect(collision?.run).toContain('docker buildx imagetools inspect');
+		// Login must run on dry runs too: the guard above inspects the registry
+		// every run, and anonymous inspects from shared runner IPs get 429s that
+		// match none of the tag-absent cases and spuriously fail the dry run.
 		const login = steps.find((step) => step.name === 'Login to Docker Hub');
-		expect(login?.if).toContain('inputs.dry_run != true');
+		expect(login?.if).toBeUndefined();
+	});
+
+	test('the assistant image is smoke-verified on amd64 before the multi-arch build can push', () => {
+		const workflow = Bun.YAML.parse(readFileSync(join(WORKFLOWS, 'release.yml'), 'utf8')) as {
+			jobs: {
+				docker: { steps: Array<{ name?: string; if?: string; run?: string; with?: Record<string, unknown> }> };
+			};
+		};
+		const steps = workflow.jobs.docker.steps;
+		const smokeBuildIndex = steps.findIndex(
+			(step) => step.name === 'Build assistant smoke image (amd64, pre-push)'
+		);
+		const smokeRunIndex = steps.findIndex(
+			(step) => step.name === 'Assistant image smoke — baked UI and tools present'
+		);
+		const pushBuildIndex = steps.findIndex(
+			(step) => step.name === 'Build immutable image from candidate-local source'
+		);
+		expect(smokeBuildIndex).toBeGreaterThan(-1);
+		expect(smokeRunIndex).toBeGreaterThan(smokeBuildIndex);
+		expect(pushBuildIndex).toBeGreaterThan(smokeRunIndex);
+		expect(steps[smokeBuildIndex].with?.push).toBe(false);
+		expect(steps[smokeRunIndex].run).toContain('@openpalm/ui/build/index.js');
+		expect(steps[smokeRunIndex].run).toContain('opencode --version');
+	});
+
+	test('the release gate runs the UI vitest suites against the stamped candidate', () => {
+		const workflow = Bun.YAML.parse(readFileSync(join(WORKFLOWS, 'release.yml'), 'utf8')) as {
+			jobs: { preflight: { steps: Array<{ name?: string; run?: string }> } };
+		};
+		const run = workflow.jobs.preflight.steps.find(
+			(step) => step.name === 'Install and test candidate'
+		)?.run;
+		if (!run) throw new Error('Missing preflight step: Install and test candidate');
+		expect(run).toContain('bun run --cwd packages/ui test:browsers');
+		expect(run).toContain('bun run ui:test:unit');
+	});
+
+	test('the electron artifact upload carries the blockmaps the updater feed advertises', () => {
+		expect(readFileSync(join(WORKFLOWS, 'release.yml'), 'utf8')).toContain(
+			'packages/electron/dist/packages/*.blockmap'
+		);
 	});
 
 	test('every desktop target electron-builder.yml configures is required, with names derived from the version', () => {

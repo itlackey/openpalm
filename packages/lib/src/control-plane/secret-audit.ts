@@ -7,6 +7,9 @@ import { isSecretLikeKey } from './secrets.js';
 // shares that module's key set and path helper rather than keeping copies that
 // could drift apart.
 import { PAPERCLIP_ENV_KEYS, paperclipEnvFile } from './paperclip.js';
+// The audit must agree with the writer about which secrets live in
+// private/secrets/ — DELEGATED_SECRET_NAMES is that writer's list.
+import { DELEGATED_SECRET_NAMES } from './secrets-files.js';
 
 export { isSecretLikeKey };
 
@@ -383,6 +386,11 @@ function expectedSecretFilename(name: string): string {
 }
 
 function isDelegatedSecretNameForAudit(name: string): boolean {
+  // DELEGATED_SECRET_NAMES (secrets-files.ts) is authoritative for what the
+  // provisioner writes under private/secrets/ (e.g. ts_authkey); the pattern
+  // covers the compose-level alias names (opencode_server_password,
+  // ui_login_password) that expectedSecretFilename maps onto delegated files.
+  if (DELEGATED_SECRET_NAMES.has(name)) return true;
   return /^(op_guardian_|op_api_key|discord_bot_token|slack_bot_token|slack_app_token|opencode_server_password|ui_login_password|op_opencode_password|op_ui_login_password|portal_.*_secret$)/.test(name);
 }
 

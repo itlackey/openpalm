@@ -481,7 +481,20 @@ function createResponder(
 // "assistant" advert, i.e. `<name>.local`) is probed; see the module doc for
 // why the guardian advert is out of scope for this specific check.
 
-export type MdnsProbe = (port: number) => Promise<boolean>;
+export type MdnsProbe = (host: string, port: number) => Promise<boolean>;
+
+/**
+ * Where the self-probe connects. Docker publishes the UI/assistant port only
+ * on the configured bind address, so a specific-IP bind must be probed AT
+ * that IP — a 127.0.0.1 probe against it fails forever and the `.local`
+ * advert never starts. Wildcard/empty binds (the same classification
+ * `resolveAdvertAddresses` uses) and loopback map to 127.0.0.1.
+ */
+function resolveProbeHost(bind: string | undefined): string {
+  const v = (bind ?? "").trim();
+  if (v === "" || v === "0.0.0.0" || v === "::" || isLoopback(v)) return "127.0.0.1";
+  return v;
+}
 
 /** Test-only override consulted whenever a caller doesn't pass `deps.probe`. */
 let testMdnsProbe: MdnsProbe | null = null;
@@ -509,9 +522,9 @@ export function _setMdnsProbeForTests(probe: MdnsProbe | null): void {
  * where it does serve one). Both collapse to absent, so the headless
  * direct-only install never advertised the name the fallback exists to give it.
  */
-async function defaultMdnsProbe(port: number): Promise<boolean> {
+async function defaultMdnsProbe(host: string, port: number): Promise<boolean> {
   try {
-    await fetch(`http://127.0.0.1:${port}/`, {
+    await fetch(`http://${host}:${port}/`, {
       // HEAD keeps a UI front door from rendering a page just to be counted.
       method: "HEAD",
       signal: AbortSignal.timeout(MDNS_PROBE_TIMEOUT_MS),
@@ -557,6 +570,7 @@ let pendingProbePromise: Promise<void> | null = null;
 function scheduleSelfProbeAndStart(
   adverts: MdnsAdvertisement[],
   key: string,
+  frontDoorBind: string | undefined,
   deps: { probe?: MdnsProbe; makeMdns?: MdnsFactory },
 ): void {
   if (pendingProbeKey === key) return; // already confirming this exact desired state
@@ -568,10 +582,11 @@ function scheduleSelfProbeAndStart(
   pendingProbePromise = (async () => {
     let confirmed = true;
     if (frontDoor) {
+      const host = resolveProbeHost(frontDoorBind);
       try {
-        confirmed = await probe(frontDoor.port);
+        confirmed = await probe(host, frontDoor.port);
       } catch (err) {
-        logger.warn("mdns: self-probe failed", { error: String(err), port: frontDoor.port });
+        logger.warn("mdns: self-probe failed", { error: String(err), host, port: frontDoor.port });
         confirmed = false;
       }
     }
@@ -705,7 +720,10 @@ export function reconcileMdnsResponder(
     }
 
     if (adverts.length > 0) {
-      scheduleSelfProbeAndStart(adverts, key, deps);
+      // The probe must target the configured bind address (see
+      // resolveProbeHost) — the advert records only carry the resolved
+      // A-record addresses, not the bind itself.
+      scheduleSelfProbeAndStart(adverts, key, resolveFrontDoor(effectiveEnv)?.bind, deps);
     } else {
       // Nothing desired: drop any outstanding probe so it can't resurrect a
       // responder for a config this process has already moved away from.

@@ -30,8 +30,17 @@ export function paperclipEnvFile(homeDir: string): string {
  * Idempotent and seed-if-missing: existing secret values are preserved, so a
  * re-run never rotates `BETTER_AUTH_SECRET` (which would invalidate every
  * Paperclip session). Writes only when a value was actually generated.
+ *
+ * The strict unknown-key boundary is enforced only while the addon is
+ * `enabled` (the default): ensureSecrets seeds this file unconditionally
+ * (compose config fails on a missing env_file), and a stray key in a file
+ * for a DISABLED addon must not abort every install/update/deploy. When
+ * disabled, unknown keys are preserved untouched and the throw is skipped —
+ * the secret audit still enforces the boundary at activation once the addon
+ * is enabled.
  */
-export function preparePaperclipAddon(homeDir: string): void {
+export function preparePaperclipAddon(homeDir: string, opts: { enabled?: boolean } = {}): void {
+	const enabled = opts.enabled ?? true;
 	const envDir = join(privateDir(homeDir), 'env');
 	const envPath = paperclipEnvFile(homeDir);
 	// `mode` on create closes the window where the dir exists as 0755; the
@@ -44,8 +53,8 @@ export function preparePaperclipAddon(homeDir: string): void {
 	const unknown = Object.keys(existingEnv).filter(
 		(key) => !PAPERCLIP_ENV_KEYS.has(key) && key !== LEGACY_PAPERCLIP_SIGNING_KEY
 	);
-	if (unknown.length > 0) {
-		throw new Error(`Paperclip env contains unsupported key(s): ${unknown.join(', ')}`);
+	if (unknown.length > 0 && enabled) {
+		throw new Error(`Paperclip env ${envPath} contains unsupported key(s): ${unknown.join(', ')}`);
 	}
 
 	const betterAuth = existingEnv.BETTER_AUTH_SECRET || randomHex(32);
@@ -70,6 +79,10 @@ export function preparePaperclipAddon(homeDir: string): void {
 	writeFileAtomic(
 		envPath,
 		[
+			// Disabled addon only (`unknown` is empty otherwise — see the throw
+			// above): unknown keys ride along untouched rather than being dropped
+			// by the rewrite.
+			...unknown.map((key) => `${key}=${quoteEnvValue(existingEnv[key] ?? '')}`),
 			`BETTER_AUTH_SECRET=${quoteEnvValue(betterAuth)}`,
 			`PAPERCLIP_AGENT_JWT_SECRET=${quoteEnvValue(agentJwt)}`,
 			''

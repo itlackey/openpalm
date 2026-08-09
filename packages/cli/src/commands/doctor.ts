@@ -275,12 +275,14 @@ function resolveDoctorPortTargets(persistedEnv: Record<string, string>): Install
  *  1. The admin (host UI) port is never a container at all — it is a bare
  *     host process, so no `docker ps` lookup can ever attribute it to "us".
  *     `serverPort` short-circuits it via the same instance-identity probe
- *     `ui-server.ts`'s own D1 fix uses, but ONLY on a genuine `match`: a
- *     `mismatch` (something OpenPalm-shaped but the WRONG capability level —
- *     e.g. a bare `openpalm ui` holding the admin port) is a real conflict
- *     that the admin launcher refuses, so doctor must not call it "ours".
- *     Falling through to the plain TCP probe below for a `mismatch` reports
- *     it as a genuine conflict.
+ *     `ui-server.ts`'s own D1 fix uses. Unlike the admin LAUNCHER — which
+ *     refuses a `mismatch` because it needs the port for itself — doctor is
+ *     diagnosing health: ANY OpenPalm UI answering `/api/runtime` on the
+ *     expected port, admin or not, is this install running (the canonical
+ *     bare `openpalm` serve runs a NON-admin UI child on exactly this port),
+ *     so both `match` and `mismatch` read as "ours". Only `absent` — a
+ *     non-OpenPalm process holding the port — falls through to the plain TCP
+ *     probe and reports a genuine conflict.
  *  2. Container ownership is resolved per port by `probeInstallPorts`, using
  *     both the Compose project name and this home's working-directory label.
  *     A project existing elsewhere is not evidence that it owns this listener.
@@ -297,7 +299,7 @@ async function resolveDoctorPorts(
   let serverPort: number | undefined;
   if (adminTarget) {
     const identity: UiInstanceCheck = await deps.checkExistingUiInstance(adminTarget.port, true, {});
-    if (identity.status === 'match') serverPort = adminTarget.port;
+    if (identity.status !== 'absent') serverPort = adminTarget.port;
   }
 
   return deps.probeInstallPorts(targets, {
