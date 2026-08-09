@@ -433,6 +433,37 @@ describe('openpalm admin serve mode (#556)', () => {
   );
 });
 
+// ── --port validation ────────────────────────────────────────────────────────
+
+describe('openpalm admin --port validation', () => {
+  it('hard-errors on a malformed --port instead of silently serving on the default port', async () => {
+    // lib's resolveEnvPort discards a non-finite explicit port, so
+    // `admin --port banana` used to quietly serve on the persisted/default
+    // port with no indication the flag was ignored.
+    seedServeHome({ installed: true });
+    const calls = captureSpawns();
+    captureLogs();
+
+    const run = await runAdmin(['--port', 'banana', '--no-open']);
+
+    const err = await waitFor(() => run.error, 'admin --port rejection');
+    expect(String(err)).toContain('Invalid --port value "banana"');
+    // Rejected before startUIServer — no UI child (or anything else) spawned.
+    expect(calls.length).toBe(0);
+  });
+
+  it('hard-errors on an out-of-range --port', async () => {
+    seedServeHome({ installed: true });
+    captureSpawns();
+    captureLogs();
+
+    const run = await runAdmin(['--port', '70000', '--no-open']);
+
+    const err = await waitFor(() => run.error, 'admin --port rejection');
+    expect(String(err)).toContain('Invalid --port value "70000"');
+  });
+});
+
 // ── Spawn-env policy for the bare normal serve path ──────────────────────────
 
 describe('bare serve path spawn env', () => {

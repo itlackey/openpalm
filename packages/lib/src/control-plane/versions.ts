@@ -14,7 +14,8 @@
  * tag anymore. Each image rides its own var.
  *
  */
-import { existsSync, readFileSync, writeFileSync, mkdirSync, renameSync } from 'node:fs';
+import { existsSync, readFileSync, mkdirSync } from 'node:fs';
+import { writeFileAtomic } from './fs-atomic.js';
 import { parseEnvFile, mergeEnvContent } from './env.js';
 import { stackEnvFile } from './home.js';
 import type { ControlPlaneState } from './types.js';
@@ -167,7 +168,5 @@ function writeVersionState(state: ControlPlaneState, updates: Record<string, str
 	const path = stackEnvFile(state.homeDir);
 	mkdirSync(`${state.homeDir}/state`, { recursive: true, mode: 0o700 });
 	const current = existsSync(path) ? readFileSync(path, 'utf-8') : '';
-	const tmp = `${path}.tmp`;
-	writeFileSync(tmp, mergeEnvContent(current, updates), { mode: 0o600 });
-	renameSync(tmp, path);
+	writeFileAtomic(path, mergeEnvContent(current, updates), 0o600);
 }

@@ -123,7 +123,7 @@ describe('applyHomeSeed', () => {
     try {
       delete process.env.OPENPALM_REPO_ROOT;
       process.env.OPENPALM_SKELETON_DIR = skeletonSrc;
-      await applyHomeSeed('1.2.3', home, join(home, 'config'), join(home, 'data'));
+      await applyHomeSeed(home);
       expect(readSkeletonVersion(home)).toBe('1.2.3');
     } finally {
       rmSync(skeletonSrc, { recursive: true, force: true });

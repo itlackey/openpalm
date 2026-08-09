@@ -258,6 +258,10 @@ describe('cli main', () => {
 
 		try {
 			await main(['install', '--no-start', '--file', specFile]);
+			// C2: no --version means NO GitHub `releases/latest` lookup — the
+			// resolved ref informed a parameter nothing reads (prepareInstallFiles
+			// ignores it), and the up-to-10s wait blocked offline installs.
+			expect(fetchedUrls.some((url) => url.includes('/releases/latest'))).toBe(false);
 			// Bootstrap runs directly, creating directories
 			expect(existsSync(join(base, 'data', 'assistant'))).toBe(true);
 			expect(existsSync(join(base, 'system', 'stack', 'services.compose.yml'))).toBe(true);
@@ -937,6 +941,24 @@ describe('unknown command (C8)', () => {
 	});
 });
 
+// C8 residual: a positional AFTER a flag bypasses isUnknownSubcommand (which
+// only inspects argv[0]) and used to be silently discarded by parseBareArgs —
+// `openpalm --no-open status` started the stack instead of erroring.
+describe('positional after flags', () => {
+	it('rejects a subcommand placed after a flag instead of silently auto-running', async () => {
+		const err = await main(['--no-open', 'status']).catch((e: unknown) => e);
+		expect(err).toBeInstanceOf(Error);
+		expect((err as Error).message).toContain('Unexpected argument: status');
+		expect((err as Error).message).toContain('openpalm <subcommand> [flags]');
+	});
+
+	it('rejects a typo placed after a flag', async () => {
+		const err = await main(['--port', '4200', 'statsu']).catch((e: unknown) => e);
+		expect(err).toBeInstanceOf(Error);
+		expect((err as Error).message).toContain('Unexpected argument: statsu');
+	});
+});
+
 // C10/B6: parseBareArgs used to be a hand-rolled loop duplicating
 // mainCommand.args (help text only) — it understood --no-open but not
 // --open=false, and silently dropped a malformed --port.
@@ -959,6 +981,15 @@ describe('parseBareArgs (C10/B6)', () => {
 	it('throws on a malformed --port instead of silently falling back to the default port', () => {
 		expect(() => parseBareArgs(['--port', 'banana'])).toThrow(/Invalid --port value/);
 		expect(() => parseBareArgs(['--port=banana'])).toThrow(/Invalid --port value/);
+	});
+
+	it('throws on a non-integer --port (finite values used to pass and fail later, opaquely)', () => {
+		expect(() => parseBareArgs(['--port', '3880.5'])).toThrow(/Invalid --port value/);
+	});
+
+	it('throws on an out-of-range --port', () => {
+		expect(() => parseBareArgs(['--port', '0'])).toThrow(/Invalid --port value/);
+		expect(() => parseBareArgs(['--port', '65536'])).toThrow(/Invalid --port value/);
 	});
 });
 

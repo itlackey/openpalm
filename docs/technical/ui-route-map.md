@@ -128,12 +128,11 @@ router, which 404s because the route tree is deleted.
 | `/api/runtime-config` | Entry | **public**, `no-store` | GET the launcher-scoped, credential-free connection seed; 404 selects the assistant container's static `/runtime-config.json` fallback |
 | `/health` | Entry | public | Liveness probe |
 | `/guardian/health` | Entry | public | Guardian reachability probe |
-| `/api/auth/{login,logout,session}` | Entry | public (login) / session | Session lifecycle. Deliberately **outside** `/api/host` — a capability guard on login would lock a served (non-admin) deployment out before it could authenticate |
-| `/api/setup/*` | Host | `host:setup` + setup localhost; admin session after completion | 19 endpoints: `status`, `system-check`, `recommend`, `detect-providers`, `current-config`, `complete`, `deploy-status`, `retry-deploy`, `host-status`, `import-host`, `models/[provider]`, `ollama-profiles`, `voice-profiles`, `opencode/{ensure,status,providers,auth/[provider],provider/[provider]/oauth/{authorize,callback}}` |
+| `/api/auth/{login,logout}` | Entry | public (login) / session | Session lifecycle. Deliberately **outside** `/api/host` — a capability guard on login would lock a served (non-admin) deployment out before it could authenticate |
+| `/api/setup/*` | Host | `host:setup` + setup localhost; admin session after completion | 18 endpoints: `status`, `system-check`, `recommend`, `detect-providers`, `current-config`, `complete`, `deploy-status`, `retry-deploy`, `host-status`, `import-host`, `models/[provider]`, `ollama-profiles`, `voice-profiles`, `opencode/{ensure,status,providers,provider/[provider]/oauth/{authorize,callback}}` |
 | `/api/connections/pairing` | Connection | requireAdmin + `requireCapability('host:stack:write')` | POST-only: host-mints a one-time QR/pairing code against the LOCAL guardian (#511). Another device uses an external camera/QR app or pastes the code; the UI has no embedded camera scanner. The connection LIST itself is browser-owned (IndexedDB) — there is no server-side connection CRUD |
 | `/api/assistant/*` | Assistant | requireAdmin + `requireCapability('assistant-settings:read'/'write')` | Assistant-owned settings — editable from a non-admin served build: `persona` (config/assistant/persona.md), `akm` (config/akm/config.json), `model` (OpenCode default/small model) |
 | `/api/host/*` | Host | requireAdmin + `requireCapability('host:…')` per endpoint | Privileged host control plane (see below); 403 `capability_not_available` in a non-admin process even with a valid session |
-| `/api/electron/update-status` | Host | (Electron harness) | Control-plane self-update status |
 | `/oc/[...path]` | Assistant | requireAdmin (session only — no capability) | Transparent same-origin pass-through to **this process's own** OpenCode (`getAssistantOpencodeTarget()`), Basic auth attached server-side when `OPENCODE_AUTH` is on. Not to be confused with Guardian's own `/oc/*` — a different server, port, and auth model, reached only by external/portal clients, never by this route; see [`api-spec.md`](api-spec.md#oc-proxy-disambiguation) for the full disambiguation |
 | `/voice/[...path]` | Assistant | requireAdmin (session only — no capability) | Transparent same-origin pass-through to the local voice container's OpenAI surface (the chat client's "OpenPalm Voice" provider transport); 503 when the process can't serve it |
 
@@ -145,7 +144,7 @@ router, which 404s because the route tree is deleted.
   `backups`, `stack` (project name + bind address — the host half of the old
   assistant tab)
 - Containers (`host:containers`): `containers/{list,up,down,restart,pull,stats,events}`
-- Versions (`host:updates`): `versions`, `versions/{releases,ui}`, `ui-version`
+- Versions (`host:updates`): `versions`, `versions/releases`
 - Add-ons (`host:addons`): `addons`, `addons/[name]`, `addons/[name]/credentials`
   — voice is a normal addon here (enable/disable + hardware profile +
   bring-up job polling); client TTS/STT provider choice is browser-owned

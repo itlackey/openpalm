@@ -7,9 +7,10 @@
 set -euo pipefail
 
 # ── Colors ────────────────────────────────────────────────────────────
-RED='\033[0;31m'; GREEN='\033[0;32m'; BLUE='\033[0;34m'; NC='\033[0m'
+RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[0;33m'; BLUE='\033[0;34m'; NC='\033[0m'
 info() { printf "${BLUE}▸${NC} %s\n" "$*"; }
 ok()   { printf "${GREEN}✓${NC} %s\n" "$*"; }
+warn() { printf "${YELLOW}!${NC} %s\n" "$*" >&2; }
 die()  { printf "${RED}✗${NC} %s\n" "$*" >&2; exit 1; }
 
 # ── Helpers ───────────────────────────────────────────────────────────
@@ -79,7 +80,11 @@ else
   # Prereleases are intentionally selected only through --version/OP_VERSION.
   MANIFEST_URL="https://github.com/itlackey/openpalm/releases/latest/download/release-assets-manifest.json"
 fi
-if RELEASE_MANIFEST="$(curl -fsL "${MANIFEST_URL}")"; then
+# --retry (no -all-errors), matching the binary download below: a missing
+# manifest (typo'd --version, or a stable release predating the manifest) is a
+# permanent 404 that should fall through fast, while transient failures
+# (timeouts, connection resets, 5xx) still retry.
+if RELEASE_MANIFEST="$(curl -fsSL --retry 3 --retry-delay 3 "${MANIFEST_URL}")"; then
   # `manifest_version` is a `grep | sed` pipeline: under `set -euo pipefail`, a
   # manifest with no "version" key makes grep exit non-zero, which (via
   # pipefail) fails this whole assignment and would trigger `set -e` BEFORE
@@ -102,6 +107,11 @@ elif [ -z "${VERSION}" ]; then
   [ "${RAW_VERSION}" != "${LATEST_RELEASE_URL}" ] || die "Could not determine latest release version"
   VERSION="$(normalize_version "${RAW_VERSION}")"
   validate_version "${VERSION}"
+else
+  # Fail-open by design: the manifest identity check is an extra guard for
+  # explicit --version installs, and the checksum verification below still
+  # gates the binary itself.
+  warn "Could not fetch the release manifest from ${MANIFEST_URL}; skipping the release-manifest identity check for ${VERSION}. Checksum verification still applies."
 fi
 
 # ── Download ──────────────────────────────────────────────────────────

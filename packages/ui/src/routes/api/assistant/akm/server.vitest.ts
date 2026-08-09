@@ -321,6 +321,27 @@ describe('PATCH /api/assistant/akm — improve.strategies (0.9)', () => {
     expect(improve.eventRetentionDays).toBe(90);
   });
 
+  test('an improve PATCH without utilityDecay/eventRetentionDays leaves the stored values untouched', async () => {
+    // Key-presence merge semantics, same as defaults/embedding/output: absent
+    // keys are not deletions. A strategies-only save used to wipe both knobs.
+    seedAkmConfig({
+      configVersion: '0.9.0',
+      improve: {
+        utilityDecay: { halfLifeDays: 14, feedbackStabilityBoost: 2 },
+        eventRetentionDays: 90,
+      },
+    });
+    const { PATCH } = await loadRoute();
+    const res = await PATCH(
+      makePatchEvent({ improve: { strategies: { default: { limit: 10 } } } }),
+    );
+    expect(res.status).toBe(200);
+    const improve = readWrittenConfig().improve as Record<string, unknown>;
+    expect(improve.utilityDecay).toEqual({ halfLifeDays: 14, feedbackStabilityBoost: 2 });
+    expect(improve.eventRetentionDays).toBe(90);
+    expect((improve.strategies as Record<string, Record<string, unknown>>).default.limit).toBe(10);
+  });
+
   test('400 for the retired process mode/profile pair and judgment mode', async () => {
     const { PATCH } = await loadRoute();
     for (const proc of [

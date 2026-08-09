@@ -226,20 +226,19 @@ export async function materializeEmbeddedSkeleton(
  * flowing to child processes untouched.
  */
 export async function seedSkeletonFromEmbedded(
-  applyHomeSeed: (repoRef: string, homeDir: string, configDir: string, dataDir: string) => Promise<unknown>,
+  applyHomeSeed: (homeDir: string) => Promise<unknown>,
   homeDir: string,
-  configDir: string,
   dataDir: string,
 ): Promise<string | null> {
   const skeletonDir = await materializeEmbeddedSkeleton(dataDir);
   if (!skeletonDir) {
-    await applyHomeSeed(PLATFORM_VERSION, homeDir, configDir, dataDir);
+    await applyHomeSeed(homeDir);
     return null;
   }
   const previous = process.env.OPENPALM_SKELETON_DIR;
   try {
     process.env.OPENPALM_SKELETON_DIR = skeletonDir;
-    await applyHomeSeed(PLATFORM_VERSION, homeDir, configDir, dataDir);
+    await applyHomeSeed(homeDir);
   } finally {
     if (previous === undefined) delete process.env.OPENPALM_SKELETON_DIR;
     else process.env.OPENPALM_SKELETON_DIR = previous;

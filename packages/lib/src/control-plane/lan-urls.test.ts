@@ -41,10 +41,42 @@ describe("collectNonInternalIpv4", () => {
     expect(
       collectNonInternalIpv4({
         eth0: [{ address: "192.168.1.5", family: "IPv4", internal: false }],
-        docker0: [{ address: "172.17.0.1", family: "IPv4", internal: false }],
+        wlan0: [{ address: "192.168.1.6", family: "IPv4", internal: false }],
         tun0: undefined,
       }),
-    ).toEqual(["192.168.1.5", "172.17.0.1"]);
+    ).toEqual(["192.168.1.5", "192.168.1.6"]);
+  });
+
+  test("drops virtual-bridge interfaces by NAME — their addresses are host-only", () => {
+    // docker0/br-*/veth* flow into mDNS adverts and the printed phone URLs,
+    // and nothing off-host can connect to them.
+    expect(
+      collectNonInternalIpv4({
+        eth0: [{ address: "192.168.1.5", family: "IPv4", internal: false }],
+        docker0: [{ address: "172.17.0.1", family: "IPv4", internal: false }],
+        "br-1a2b3c4d5e6f": [{ address: "172.18.0.1", family: "IPv4", internal: false }],
+        veth1234abc: [{ address: "172.19.0.1", family: "IPv4", internal: false }],
+      }),
+    ).toEqual(["192.168.1.5"]);
+  });
+
+  test("keeps a 172.17.* address on a REAL interface — the filter is by name, not RFC1918 range", () => {
+    expect(
+      collectNonInternalIpv4({
+        eth1: [{ address: "172.17.4.20", family: "IPv4", internal: false }],
+      }),
+    ).toEqual(["172.17.4.20"]);
+  });
+
+  test("drops 169.254.0.0/16 link-local addresses", () => {
+    expect(
+      collectNonInternalIpv4({
+        eth0: [
+          { address: "169.254.12.34", family: "IPv4", internal: false },
+          { address: "192.168.1.5", family: "IPv4", internal: false },
+        ],
+      }),
+    ).toEqual(["192.168.1.5"]);
   });
 
   test("an interface list with nothing reachable yields an empty array", () => {

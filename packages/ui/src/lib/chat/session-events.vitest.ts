@@ -165,6 +165,37 @@ describe('subscribeSessionEvents', () => {
     unsub();
   });
 
+  it('removes the reconnect sleep abort listener once its timer fires', async () => {
+    const { getEventListeners } = await import('node:events');
+    const unsub = subscribeSessionEvents({
+      onCreated: vi.fn(),
+      onUpdated: vi.fn(),
+      onDeleted: vi.fn(),
+      onDisconnect: vi.fn(),
+    });
+
+    // Two clean end→sleep→reconnect cycles on the SAME controller signal (a
+    // clean end never aborts, so the controller is not swapped).
+    await waitFor(() => transport.calls.length === 1);
+    const signal = transport.calls[0].signal;
+    transport.calls[0].onFrame({ type: 'server.connected' });
+    transport.calls[0].resolve();
+    await waitFor(() => transport.calls.length === 2);
+    const afterFirst = getEventListeners(signal, 'abort').length;
+
+    transport.calls[1].onFrame({ type: 'server.connected' });
+    transport.calls[1].resolve();
+    await waitFor(() => transport.calls.length === 3);
+    const afterSecond = getEventListeners(signal, 'abort').length;
+
+    // Each cycle adds exactly ONE lasting listener (the fake transport's own,
+    // registered per subscribeEvents call and never fired). The sleep's abort
+    // listener must have been removed when its timer resolved — before the
+    // fix, each reconnect leaked one more onto the long-lived signal.
+    expect(afterSecond - afterFirst).toBe(1);
+    unsub();
+  });
+
   it('unsubscribe aborts the stream and prevents reconnection', async () => {
     const unsub = subscribeSessionEvents({
       onCreated: vi.fn(),

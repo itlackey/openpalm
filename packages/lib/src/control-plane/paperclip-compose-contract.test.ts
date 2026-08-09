@@ -147,6 +147,15 @@ describe('Paperclip addon Compose contract', () => {
 		expect(openCodeLauncherContents).toContain(
 			'.openpalm-bootstrap.lock|.openpalm-package.json|bun.lock|bun.lockb|node_modules|package.json'
 		);
+		// Published artifacts must never be transiently deleted (a sibling
+		// launcher may have just released the flock) — they are only ever
+		// atomically replaced by publish.
+		expect(openCodeLauncherContents).toContain(
+			'opencode.json|security.md) [ -f "$entry" ] && [ ! -L "$entry" ] || rm -rf -- "$entry" ;;'
+		);
+		expect(openCodeLauncherContents).toContain(
+			'akm.ts) [ -f "$entry" ] && [ ! -L "$entry" ] || rm -rf -- "$entry" ;;'
+		);
 		expect(openCodeLauncherContents).toContain('*) rm -rf -- "$entry" ;;');
 		expect(openCodeLauncherContents).toContain('$runtime/.openpalm-package.json');
 		expect(openCodeLauncherContents).toContain(

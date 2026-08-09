@@ -75,13 +75,16 @@
     }
   }
 
-  // Suppress a banner the user already dismissed for this exact version.
+  // Suppress a banner the user already dismissed for this exact version —
+  // and ONLY that version. Review E6: `dismissed` used to be a one-way
+  // boolean, so dismissing version X also suppressed a LATER version Y for
+  // the rest of the session. Re-derive it from the CURRENT availableVersion's
+  // stored key on every pushed state, so a version the user never dismissed
+  // clears the flag again.
   $effect(() => {
     const version = updateState?.availableVersion;
     if (!version || typeof localStorage === 'undefined') return;
-    if (updateState?.status === 'available' && localStorage.getItem(dismissKey(version))) {
-      dismissed = true;
-    }
+    dismissed = localStorage.getItem(dismissKey(version)) !== null;
   });
 </script>
 

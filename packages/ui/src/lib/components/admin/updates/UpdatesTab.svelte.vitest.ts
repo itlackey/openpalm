@@ -123,6 +123,46 @@ describe('UpdatesTab', () => {
 		expect(applyServiceUpdate).not.toHaveBeenCalled();
 	});
 
+	test('unsubscribes the desktop updater state listener on unmount (E5)', async () => {
+		// The onState unsubscribe used to be discarded with no unmount cleanup,
+		// leaking one IPC listener per tab visit — each still writing to
+		// destroyed component state.
+		const unsubscribe = vi.fn();
+		const updaterState: UpdaterState = {
+			status: 'idle',
+			currentVersion: '1.0.0',
+			availableVersion: null,
+			percent: null,
+			error: null,
+			channel: 'stable',
+			supported: true,
+			releasesUrl: 'https://github.com/itlackey/openpalm/releases'
+		};
+		window.openpalm = {
+			launchOnLoginStatus: vi.fn().mockResolvedValue({ supported: false, enabled: false }),
+			setLaunchOnLogin: vi.fn(),
+			updater: {
+				state: vi.fn().mockResolvedValue(updaterState),
+				check: vi.fn().mockResolvedValue(updaterState),
+				download: vi.fn().mockResolvedValue(updaterState),
+				quitAndInstall: vi.fn().mockResolvedValue(true),
+				onState: vi.fn(() => unsubscribe)
+			}
+		};
+
+		const { unmount } = await render(UpdatesTab, {
+			props: { containers, dockerAvailable: true, onRefresh }
+		});
+
+		await vi.waitFor(() => {
+			expect(window.openpalm?.updater?.onState).toHaveBeenCalledOnce();
+		});
+		expect(unsubscribe).not.toHaveBeenCalled();
+
+		await unmount();
+		expect(unsubscribe).toHaveBeenCalledOnce();
+	});
+
 	test('keeps Electron launch-on-login settings', async () => {
 		const setLaunchOnLogin = vi.fn().mockResolvedValue({ supported: true, enabled: true });
 		window.openpalm = {

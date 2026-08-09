@@ -191,7 +191,7 @@ async function spawnUiChild(
   // install, and its performSetup needs a skeleton source inside the child.
   const skeletonDir = stacklessApp
     ? await materializeEmbeddedSkeleton(state.dataDir)
-    : await seedSkeletonFromEmbedded(applyHomeSeed, homeDir, state.configDir, state.dataDir);
+    : await seedSkeletonFromEmbedded(applyHomeSeed, homeDir, state.dataDir);
 
   // Materialize the embedded UI build into data/ui BEFORE spawning, matching
   // the Electron harness's own bundled-build resolution. A no-op once data/ui

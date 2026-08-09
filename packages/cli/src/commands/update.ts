@@ -39,7 +39,6 @@ export async function runUpgradeAction(): Promise<void> {
   await seedSkeletonFromEmbedded(
     async () => { await performUpgrade(state); },
     state.homeDir,
-    state.configDir,
     state.dataDir,
   );
 

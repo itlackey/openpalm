@@ -37,8 +37,21 @@ export default defineCommand({
     },
   },
   async run({ args }) {
+    let port: number | undefined;
+    if (args.port) {
+      // Validate BEFORE resolving, same as parseBareArgs for the bare command:
+      // lib's resolveEnvPort discards a non-finite explicit value, so a
+      // malformed `--port banana` used to silently serve on the
+      // persisted/default port instead of erroring.
+      port = Number(args.port);
+      if (!Number.isInteger(port) || port < 1 || port > 65535) {
+        throw new Error(
+          `Invalid --port value "${args.port}". Expected an integer between 1 and 65535.`
+        );
+      }
+    }
     await startUIServer({
-      port: args.port ? Number(args.port) : undefined,
+      port,
       open: args.open,
       adminHostUi: true,
     });

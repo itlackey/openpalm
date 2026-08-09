@@ -40,12 +40,17 @@
 		onRefresh: () => Promise<void>;
 	} = $props();
 
+	// Captured so onMount's cleanup can remove the IPC listener again (review
+	// E5) — mirroring UpdateBanner.svelte; discarding it leaked one listener
+	// per tab visit, each still writing to destroyed component state.
+	let unsubscribeUpdaterState: (() => void) | undefined;
+
 	async function loadUpdaterState(): Promise<void> {
 		const api = window.openpalm?.updater;
 		if (!api) return;
 		try {
 			updater = await api.state();
-			api.onState((next) => {
+			unsubscribeUpdaterState = api.onState((next) => {
 				updater = next;
 			});
 		} catch {
@@ -128,6 +133,7 @@
 		replyPreviewEnabled = desktopReplyPreviewEnabled();
 		void loadVersions();
 		void hydrateLaunchOnLogin();
+		return () => unsubscribeUpdaterState?.();
 	});
 
 	async function loadVersions(): Promise<void> {

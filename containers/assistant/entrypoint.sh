@@ -103,8 +103,16 @@ opencode_auth_enabled() {
 # state/stack.env itself). Off by default: see the OP_UI_NO_LOCAL_VOICE
 # comment in start_ui below for what flips when this is on.
 voice_lan_access_enabled() {
-  case "${OP_VOICE_LAN_ACCESS:-false}" in
-    true|TRUE|True|1|yes|YES) return 0 ;;
+  # Normalize exactly like lib's isEnabledFlag (bind-warning.ts): trim +
+  # lowercase, then accept 1|true|yes. The compose overlay gate
+  # (isVoiceLanAccessEnabled) uses that helper, so any spelling it accepts
+  # (e.g. 'Yes', 'true ') must flip this gate too — diverging here applies
+  # the network overlay while leaving the UI co-process voice-disabled.
+  local value="${OP_VOICE_LAN_ACCESS:-false}"
+  value="${value#"${value%%[![:space:]]*}"}"
+  value="${value%"${value##*[![:space:]]}"}"
+  case "${value,,}" in
+    1|true|yes) return 0 ;;
     *) return 1 ;;
   esac
 }

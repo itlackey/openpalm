@@ -296,6 +296,23 @@ describe("applyAccessToggles", () => {
       expect(calls.recreated).toEqual([]);
     });
 
+    test("an invalid OP_REMOTE_TARGET returns a structured failure without half-applying intent", async () => {
+      const state = makeHome(
+        baselineEnv(ALL_OFF, { OP_ENABLED_ADDONS: "remote", OP_REMOTE_TARGET: "bogus" }),
+      );
+      const before = readEnv(state);
+      const { deps, calls } = makeDeps(["assistant", "guardian"]);
+
+      const result = await applyAccessToggles(state, { ...ALL_OFF, networkAccess: true }, { deps });
+
+      expect(result.ok).toBe(false);
+      expect(result.error).toContain("OP_REMOTE_TARGET");
+      expect(result.changedKeys).toEqual([]);
+      expect(calls.recreated).toEqual([]);
+      // Nothing written: the env is exactly what it was before the save.
+      expect(readEnv(state)).toEqual(before);
+    });
+
     test("remote NOT enabled has no effect, whatever OP_REMOTE_TARGET says", async () => {
       const state = makeHome(baselineEnv(ALL_OFF, { OP_REMOTE_TARGET: "guardian" }));
       const { deps, calls } = makeDeps(["assistant", "guardian"]);

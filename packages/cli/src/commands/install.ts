@@ -5,7 +5,6 @@ import cliPkg from '../../package.json' with { type: 'json' };
 import { defaultWorkDir } from '../lib/paths.ts';
 import { defineAction } from '../lib/action.ts';
 import { promptYesNo } from '../lib/prompt.ts';
-import { resolveLatestReleaseTag } from '../lib/github.ts';
 import type { UIServerOptions } from '../lib/ui-server.ts';
 import {
 	resolveOpenPalmHome,
@@ -53,13 +52,6 @@ import { ensureValidState } from '../lib/cli-state.ts';
 import { runComposeWithPreflight } from '../lib/cli-compose.ts';
 
 const logger = createLogger('cli:install');
-
-export async function resolveDefaultInstallRef(): Promise<string> {
-	// Prefer the latest published release tag; fall back to the packaged CLI
-	// version when the network lookup fails. cliPkg.version always exists — a
-	// further `?? 'main'` fallback here can never fire.
-	return (await resolveLatestReleaseTag()) ?? cliPkg.version;
-}
 
 export default defineCommand({
 	meta: {
@@ -110,10 +102,9 @@ export default defineCommand({
 			// A user-supplied --version pins the CONTAINER IMAGE tag only — host
 			// assets (UI, skeleton) are always this binary's own embedded build,
 			// never a downloaded ref (see prepareInstallFiles). "main" is the
-			// explicit "no pin" spelling (matches resolveDefaultInstallRef's own
-			// fallback chain); anything else must be a real release tag, or this is
-			// a typo that used to silently fall back to the default pin with no
-			// warning at all.
+			// explicit "no pin" spelling; anything else must be a real release tag,
+			// or this is a typo that used to silently fall back to the default pin
+			// with no warning at all.
 			let explicitImageTag: string | undefined;
 			if (requestedVersion && requestedVersion !== 'main') {
 				explicitImageTag = resolveRequestedImageTag(requestedVersion) ?? undefined;
@@ -132,10 +123,12 @@ export default defineCommand({
 					);
 				}
 			}
-			const version = requestedVersion || (await resolveDefaultInstallRef());
+			// No network lookup here (mirrors C9 in main.ts): host assets are
+			// always this binary's embedded build, so a `releases/latest`
+			// round-trip would inform nothing and make offline installs block on
+			// its timeout. --version affects only the image pin (explicitImageTag).
 			await bootstrapInstall({
 				force: !!args.force,
-				version: String(version),
 				explicitImageTag,
 				noStart: !args.start,
 				noOpen: !args.open,
@@ -148,7 +141,6 @@ export default defineCommand({
 
 type InstallOptions = {
 	force: boolean;
-	version: string;
 	/** Optional image tag pin from an explicit --version. */
 	explicitImageTag?: string;
 	noStart: boolean;
@@ -368,7 +360,7 @@ export async function bootstrapInstall(options: InstallOptions): Promise<void> {
 		}
 
 		// ── Bootstrap files ────────────────────────────────────────────────────
-		await prepareInstallFiles(homeDir, configDir, dataDir, workDir, options.version);
+		await prepareInstallFiles(homeDir, configDir, dataDir, workDir);
 	} finally {
 		releaseInstallLock(seedLock);
 	}
@@ -392,8 +384,7 @@ async function prepareInstallFiles(
 	homeDir: string,
 	configDir: string,
 	dataDir: string,
-	workDir: string,
-	_version: string
+	workDir: string
 ): Promise<void> {
 	console.log('Preparing directories...');
 	// The tree itself is owned by @openpalm/lib (single definition). workDir is
@@ -423,7 +414,7 @@ async function prepareInstallFiles(
 	// idempotently; but the interactive wizard serves BEFORE any applyInstall
 	// runs (deploy happens later from inside the UI), so this explicit seed is
 	// the only one that runs before the wizard comes up.
-	await seedSkeletonFromEmbedded(applyHomeSeed, homeDir, configDir, dataDir);
+	await seedSkeletonFromEmbedded(applyHomeSeed, homeDir, dataDir);
 	runHomeMigrations(homeDir);
 	// Materialize the embedded UI build into data/ui — no network, no backup:
 	// this binary's build wins unconditionally once its stamp differs from

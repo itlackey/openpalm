@@ -74,7 +74,7 @@ function writeSkeletonVersion(homeDir: string, version: string): void { writeFil
  * via OPENPALM_SKELETON_DIR before calling this. No network fallback: every
  * consumer ships its own skeleton at build time now.
  */
-export async function applyHomeSeed(_repoRef: string, homeDir: string, _configDir: string, _dataDir: string): Promise<{ updated: string[]; backupDir: string | null }> {
+export async function applyHomeSeed(homeDir: string): Promise<{ updated: string[]; backupDir: string | null }> {
   const source = resolveLocalOpenpalmDir();
   if (!source) {
     // A silent no-op here would let an update bump image versions while

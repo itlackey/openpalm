@@ -123,15 +123,20 @@ export function subscribeSessionEvents(handlers: SessionEventHandlers): () => vo
 
   const sleep = (ms: number): Promise<void> =>
     new Promise((resolve) => {
-      const timer = setTimeout(resolve, ms);
-      controller.signal.addEventListener(
-        'abort',
-        () => {
-          clearTimeout(timer);
-          resolve();
-        },
-        { once: true }
-      );
+      // Capture the signal so the timeout path removes its listener from the
+      // SAME signal it was added to (controller can be swapped between sleeps).
+      // Without the removal, every reconnect sleep left a dangling {once:true}
+      // listener on the long-lived signal — unbounded growth in long-lived tabs.
+      const signal = controller.signal;
+      const onAbort = (): void => {
+        clearTimeout(timer);
+        resolve();
+      };
+      const timer = setTimeout(() => {
+        signal.removeEventListener('abort', onAbort);
+        resolve();
+      }, ms);
+      signal.addEventListener('abort', onAbort, { once: true });
     });
 
   async function readStream(onEstablished: () => void): Promise<void> {

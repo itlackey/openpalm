@@ -205,17 +205,17 @@ describe('seedSkeletonFromEmbedded', () => {
     const before = process.env.OPENPALM_SKELETON_DIR;
 
     const result = await seedSkeletonFromEmbedded(
-      async (repoRef, homeDir, configDir, dataDir) => {
-        calls.push([repoRef, homeDir, configDir, dataDir, process.env.OPENPALM_SKELETON_DIR ?? '<unset>']);
+      async (homeDir) => {
+        calls.push([homeDir, process.env.OPENPALM_SKELETON_DIR ?? '<unset>']);
       },
-      '/home-x', '/config-x', tempDir('embedded-seed-none-'),
+      '/home-x', tempDir('embedded-seed-none-'),
     );
 
     expect(result).toBeNull();
     expect(calls).toHaveLength(1);
-    expect(calls[0]?.[0]).toBe(PLATFORM_VERSION);
+    expect(calls[0]?.[0]).toBe('/home-x');
     // Env untouched on the fallback path.
-    expect(calls[0]?.[4]).toBe(before ?? '<unset>');
+    expect(calls[0]?.[1]).toBe(before ?? '<unset>');
     expect(process.env.OPENPALM_SKELETON_DIR).toBe(before as string | undefined);
   });
 });

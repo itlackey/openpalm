@@ -205,10 +205,15 @@ $ManifestUrl = if ($Version) {
 $ManifestTempFile = "$env:TEMP\openpalm-release-manifest-$([guid]::NewGuid().ToString('N')).json"
 $Manifest = $null
 try {
-    Invoke-WebRequest -Uri $ManifestUrl -OutFile $ManifestTempFile -UseBasicParsing
+    Invoke-WebRequestWithRetry -Uri $ManifestUrl -OutFile $ManifestTempFile -MaxRetries 3 -RetryDelaySeconds 3
     $Manifest = Get-Content -Path $ManifestTempFile -Raw | ConvertFrom-Json
 } catch {
-    if (-not $Version) {
+    if ($Version) {
+        # Fail-open by design: the manifest identity check is an extra guard
+        # for explicit -Version installs, and the checksum verification below
+        # still gates the binary itself.
+        Write-Warning "Could not fetch the release manifest from ${ManifestUrl}: $($_.Exception.Message). Skipping the release-manifest identity check for $Version; checksum verification still applies."
+    } else {
         # Compatibility for stable releases that predate the release manifest.
         $LatestResponse = Invoke-WebRequest -Uri "https://github.com/$Repo/releases/latest" -UseBasicParsing
         $LatestUrl = if ($LatestResponse.BaseResponse.ResponseUri) {

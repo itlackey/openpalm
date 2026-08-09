@@ -48,6 +48,17 @@ describe("resolveHostUiPort", () => {
     expect(resolveHostUiPort(undefined, { OP_HOST_UI_PORT: "" })).toBe(DEFAULT_HOST_UI_PORT);
     expect(resolveHostUiPort(undefined, { OP_HOST_UI_PORT: "0" })).toBe(DEFAULT_HOST_UI_PORT);
   });
+
+  test("an invalid EXPLICIT port falls through to env/default instead of winning verbatim", () => {
+    // The explicit branch is held to the same bar as the env branch: no
+    // listener can bind 0, a negative, a fraction, or 65536+.
+    expect(resolveHostUiPort(0, { OP_HOST_UI_PORT: "5000" })).toBe(5000);
+    expect(resolveHostUiPort(-1, {})).toBe(DEFAULT_HOST_UI_PORT);
+    expect(resolveHostUiPort(Number.NaN, {})).toBe(DEFAULT_HOST_UI_PORT);
+    expect(resolveHostUiPort(3880.5, {})).toBe(DEFAULT_HOST_UI_PORT);
+    expect(resolveHostUiPort(65536, {})).toBe(DEFAULT_HOST_UI_PORT);
+    expect(resolveHostUiPort(65535, {})).toBe(65535);
+  });
 });
 
 describe("resolveUiListenEnv", () => {

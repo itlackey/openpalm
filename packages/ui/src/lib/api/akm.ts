@@ -112,7 +112,9 @@ export type AccessStatus = {
   port: number;
   /** `<project>.local` first, then every non-loopback IPv4 address. */
   urls: string[];
-  reachable: { status: 'absent' | 'match' | 'mismatch'; ok: boolean };
+  /** `not_published` = loopback-only bind: nothing is published on the LAN to
+   *  probe — the default healthy posture, not a failed probe. */
+  reachable: { status: 'absent' | 'match' | 'mismatch' | 'not_published'; ok: boolean };
 };
 
 export async function fetchAccessStatus(): Promise<AccessStatus> {

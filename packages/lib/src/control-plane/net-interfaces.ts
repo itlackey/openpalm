@@ -37,9 +37,25 @@ function isIpv4Family(family: string | number): boolean {
 }
 
 /**
+ * Interfaces that are container/VM plumbing, matched by NAME: the docker
+ * bridge (docker0), compose-network bridges (br-*), and container veth pairs
+ * (veth*). Their addresses are only reachable from the host itself, so
+ * advertising them (mDNS A records, printed "type this on your phone" URLs)
+ * hands out an address the phone cannot connect to. Deliberately NOT an
+ * RFC1918-range filter — 172.17.* can be a genuine LAN.
+ */
+const VIRTUAL_BRIDGE_NAME_RE = /^(?:docker\d*|br-|veth)/;
+
+/** 169.254.0.0/16 link-local addresses are not routable from another device. */
+function isLinkLocalIpv4(address: string): boolean {
+  return address.startsWith("169.254.");
+}
+
+/**
  * Every non-internal IPv4 address across all interfaces, in `node:os`'s own
- * enumeration order. Loopback and internal entries are excluded — neither is
- * reachable from another device on the LAN.
+ * enumeration order. Loopback and internal entries are excluded, as are
+ * virtual-bridge interfaces and link-local addresses — none is reachable
+ * from another device on the LAN.
  *
  * Defaults to the live host's interfaces; inject for tests.
  */
@@ -47,10 +63,12 @@ export function collectNonInternalIpv4(
   interfaces: LanInterfaceMap = networkInterfaces(),
 ): string[] {
   const addresses: string[] = [];
-  for (const entries of Object.values(interfaces)) {
-    if (!entries) continue;
+  for (const [name, entries] of Object.entries(interfaces)) {
+    if (!entries || VIRTUAL_BRIDGE_NAME_RE.test(name)) continue;
     for (const entry of entries) {
-      if (isIpv4Family(entry.family) && !entry.internal) addresses.push(entry.address);
+      if (isIpv4Family(entry.family) && !entry.internal && !isLinkLocalIpv4(entry.address)) {
+        addresses.push(entry.address);
+      }
     }
   }
   return addresses;

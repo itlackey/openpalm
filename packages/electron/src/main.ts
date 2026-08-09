@@ -37,7 +37,7 @@ import {
   UiSupervisor,
 } from '@openpalm/lib';
 import { UI_PORT } from './ui-port.js';
-import { autoUpdater } from 'electron-updater';
+import { autoUpdater, CancellationToken } from 'electron-updater';
 import { DesktopUpdater, isTrustedUpdaterSender, type UpdaterState } from './updater.js';
 import { loadSettings, saveSettings } from './settings.js';
 import { killProcessTree } from './process-tree.js';
@@ -348,7 +348,7 @@ function resolveBundledSkeletonDir(): string | null {
  * Nonfatal: a failure here must not stop the app from starting, since the
  * previous release's tree is still serviceable.
  */
-async function seedBundledSkeleton(homeDir: string, configDir: string, dataDir: string): Promise<void> {
+async function seedBundledSkeleton(homeDir: string): Promise<void> {
   const skeletonDir = resolveBundledSkeletonDir();
   if (!skeletonDir) return;
   const previous = process.env.OPENPALM_SKELETON_DIR;
@@ -356,7 +356,7 @@ async function seedBundledSkeleton(homeDir: string, configDir: string, dataDir: 
     // applyHomeSeed resolves its source through the same lib resolver the child
     // uses; point it at the bundled copy for the duration of the call.
     process.env.OPENPALM_SKELETON_DIR = skeletonDir;
-    await applyHomeSeed(app.getVersion(), homeDir, configDir, dataDir);
+    await applyHomeSeed(homeDir);
   } catch (err) {
     console.warn(
       'Bundled skeleton seed failed (non-fatal):',
@@ -471,7 +471,7 @@ async function startUIServer(): Promise<boolean> {
 
   // Refresh the managed system/ tree from THIS app version's bundled skeleton,
   // so an updated shell never serves the previous release's managed files.
-  await seedBundledSkeleton(homeDir, resolveConfigDir(), dataDir);
+  await seedBundledSkeleton(homeDir);
 
   // NOTE: home migrations are deliberately NOT run here. Anything that mutates
   // control-plane state or runs a migration belongs to the UI control plane.
@@ -1167,6 +1167,10 @@ function createDesktopUpdater(appVersion: string): DesktopUpdater {
   // `this.state` no one reads anymore but still pushing through its own
   // (stale) onStateChange closure to whatever window was current at
   // construction time.
+  // Review E3: dispose() also cancels the outgoing instance's in-flight
+  // download. A 'downloaded' artifact already staged from the old channel is
+  // deliberately dropped with the instance — acceptable by design: the user
+  // just switched away from the channel it came from.
   desktopUpdater?.dispose();
   return new DesktopUpdater({
     updater: autoUpdater as unknown as ConstructorParameters<typeof DesktopUpdater>[0]['updater'],
@@ -1178,6 +1182,11 @@ function createDesktopUpdater(appVersion: string): DesktopUpdater {
       join(dirname(process.execPath), `Uninstall ${basename(process.execPath)}`),
     ),
     prerelease: checkPrereleaseUpdates,
+    // Review E3: lets DesktopUpdater.dispose() cancel a download the OUTGOING
+    // instance started on the shared singleton, so a channel toggle can't
+    // leave the old channel's download running (and staging an artifact quit
+    // would install).
+    createCancellationToken: () => new CancellationToken(),
     onStateChange: (state) => {
       // The window may be closed-to-tray or already destroyed; a state push is
       // advisory, never a reason to throw inside the updater.
@@ -1233,8 +1242,38 @@ ipcMain.handle('updater-check', async (event): Promise<UpdaterState> =>
 ipcMain.handle('updater-download', async (event): Promise<UpdaterState> =>
   requireUpdater(event).download());
 
+/**
+ * Body of the renderer's quit-and-install request, exported for tests (review
+ * E2). electron-updater's quitAndInstall() spawns the installer BEFORE its own
+ * internal app.quit(), so the before-quit deploy guard used to fire only AFTER
+ * the installer was already running — choosing "Keep Waiting" there cancelled
+ * the quit but not the installer, leaving a half-updated app. Ask about an
+ * in-progress deploy FIRST, before anything irreversible, and stand the
+ * before-quit prompt down for the quit that follows a confirmation.
+ */
+export function handleQuitAndInstallRequest(updater: DesktopUpdater): boolean {
+  // Nothing staged → quitAndInstall() below would refuse anyway; never prompt
+  // about a deploy for a no-op.
+  if (updater.getState().status !== 'downloaded') return false;
+  if (shouldWarnBeforeQuitDuringDeploy(readCurrentDeployJournal())) {
+    if (!confirmQuitDuringDeploy()) return false;
+    deployQuitConfirmed = true;
+  }
+  // The confirmation covers exactly one installer launch. If the launch fails
+  // (throw, or a false return without the internal app.quit()), un-latch so a
+  // later quit during the still-running deploy warns again instead of
+  // silently proceeding for the rest of the session.
+  let launched = false;
+  try {
+    launched = updater.quitAndInstall();
+  } finally {
+    if (!launched) deployQuitConfirmed = false;
+  }
+  return launched;
+}
+
 ipcMain.handle('updater-quit-and-install', (event): boolean =>
-  requireUpdater(event).quitAndInstall());
+  handleQuitAndInstallRequest(requireUpdater(event)));
 
 ipcMain.handle('restart-app', (event) => {
   assertTrustedSender(event);
@@ -1380,6 +1419,44 @@ function stopDeployCompletionWatch(): void {
 
 let cleanupStarted = false;
 
+// Review E2: set by handleQuitAndInstallRequest once the user has ALREADY
+// answered the deploy-in-progress warning there. electron-updater's
+// quitAndInstall() fires its own app.quit() after spawning the installer, so
+// prompting again in before-quit would be a double prompt — and its "Keep
+// Waiting" could no longer undo the already-running installer.
+let deployQuitConfirmed = false;
+
+/**
+ * Blocking deploy-in-progress confirmation. Synchronous by necessity —
+ * before-quit cannot await an async dialog (see its docblock below);
+ * dialog.showMessageBoxSync is Electron's sync-modal API for exactly this.
+ * Shared between before-quit and the renderer's quit-and-install request
+ * (review E2), which must ask BEFORE the installer spawns. Returns true when
+ * quitting may proceed.
+ */
+function confirmQuitDuringDeploy(): boolean {
+  const CANCEL_ID = 1;
+  const dialogOptions = {
+    type: 'warning' as const,
+    title: 'Setup is still running',
+    message: 'OpenPalm is still deploying your stack.',
+    detail:
+      'Quitting now stops the in-progress deploy mid-flight. Reopening the ' +
+      'app will resume where it left off, but anything currently ' +
+      'downloading or starting will be interrupted.',
+    buttons: ['Quit Anyway', 'Keep Waiting'],
+    defaultId: CANCEL_ID,
+    cancelId: CANCEL_ID,
+  };
+  // Attach to the main window when it's still around so the warning reads
+  // as modal rather than a floating dialog with no obvious owner.
+  const choice =
+    mainWindow && !mainWindow.isDestroyed()
+      ? dialog.showMessageBoxSync(mainWindow, dialogOptions)
+      : dialog.showMessageBoxSync(dialogOptions);
+  return choice !== CANCEL_ID;
+}
+
 // Guarded shutdown. `before-quit` is intentionally NOT async — Electron does
 // not await async before-quit handlers: `event.preventDefault()` fires
 // synchronously and the async continuation runs detached, so the original quit
@@ -1409,32 +1486,24 @@ app.on('before-quit', (event) => {
   isQuitting = true;
   if (cleanupStarted) return;
 
-  if (shouldWarnBeforeQuitDuringDeploy(readCurrentDeployJournal())) {
-    // Blocking and synchronous by necessity — before-quit cannot await an
-    // async dialog (see above) — dialog.showMessageBoxSync is Electron's
-    // sync-modal API for exactly this.
-    const CANCEL_ID = 1;
-    const dialogOptions = {
-      type: 'warning' as const,
-      title: 'Setup is still running',
-      message: 'OpenPalm is still deploying your stack.',
-      detail:
-        'Quitting now stops the in-progress deploy mid-flight. Reopening the ' +
-        'app will resume where it left off, but anything currently ' +
-        'downloading or starting will be interrupted.',
-      buttons: ['Quit Anyway', 'Keep Waiting'],
-      defaultId: CANCEL_ID,
-      cancelId: CANCEL_ID,
-    };
-    // Attach to the main window when it's still around so the warning reads
-    // as modal rather than a floating dialog with no obvious owner.
-    const choice =
-      mainWindow && !mainWindow.isDestroyed()
-        ? dialog.showMessageBoxSync(mainWindow, dialogOptions)
-        : dialog.showMessageBoxSync(dialogOptions);
-    if (choice === CANCEL_ID) {
+  // deployQuitConfirmed: the user already answered this exact warning in the
+  // quit-and-install path (review E2) — asking again here would double-prompt
+  // after the installer has already spawned. Consumed one-shot: the answer
+  // covers only the quit the installer triggers, never a later unrelated one.
+  const skipDeployWarning = deployQuitConfirmed;
+  deployQuitConfirmed = false;
+  if (!skipDeployWarning && shouldWarnBeforeQuitDuringDeploy(readCurrentDeployJournal())) {
+    if (!confirmQuitDuringDeploy()) {
       isQuitting = false;
       event.preventDefault();
+      // Review E4: in the no-tray case the window is already destroyed by the
+      // time before-quit fires (close → window-all-closed → app.quit), so
+      // cancelling the quit would otherwise leave the app running with NO
+      // window and no tray — invisible and unreachable short of a process
+      // manager. Reopen the window so "Keep Waiting" leaves a way back in.
+      if (!mainWindow && !trayController.isActive()) {
+        void openWindow();
+      }
       return;
     }
   }

@@ -244,7 +244,26 @@ export async function applyAccessToggles(
   // applyRemoteAccess so the three call sites cannot drift. A toggle save
   // changes access toggles, not the remote addon's own config, so the
   // current env is always the right source.
-  const guardianIngressRequired = computeGuardianIngressRequired(currentEnv);
+  //
+  // Guarded so a poisoned env (an invalid OP_REMOTE_TARGET makes the registry
+  // throw) returns the structured failure result instead of rejecting — and
+  // returns it BEFORE the env write below, so intent is never half-applied.
+  let guardianIngressRequired: boolean;
+  try {
+    guardianIngressRequired = computeGuardianIngressRequired(currentEnv);
+  } catch (err) {
+    const error = err instanceof Error ? err.message : String(err);
+    logger.error("access toggles NOT applied — remote addon config unreadable", { error });
+    return {
+      access: readAccessToggles(currentEnv),
+      changedKeys: [],
+      recreated: [],
+      autoEnabledAddons: [],
+      ok: false,
+      error,
+      mdns: deps.reconcileMdns(state.homeDir),
+    };
+  }
 
   const nextEnv = resolveAccessEnv(toggles, { guardianIngressRequired });
   const changedKeys = diffAccessEnv(currentEnv, nextEnv);

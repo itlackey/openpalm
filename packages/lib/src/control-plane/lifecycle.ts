@@ -47,7 +47,6 @@ import type { InstallLockHandle } from './install-lock.js';
 import { getAddonServiceNames, listEnabledAddonIds, pruneRemovedAddonState } from './addons.js';
 import { backupOpenPalmHome, pruneBackupDirs } from './backup.js';
 import { hasGuardianIngressAddon } from './addon-ids.js';
-import { PLATFORM_VERSION } from './versioning.js';
 import { advanceManagedImageVersions, ensureVersionDefaults } from './versions.js';
 import {
 	captureRunningImageIds,
@@ -183,7 +182,7 @@ async function applyHome(state: ControlPlaneState): Promise<void> {
 	// state and reporting a completed install as unconfigured.
 	runHomeMigrations(state.homeDir);
 	ensureSecrets(state);
-	await applyHomeSeed(PLATFORM_VERSION, state.homeDir, state.configDir, state.dataDir);
+	await applyHomeSeed(state.homeDir);
 	// Make the `remote` addon's generated serve config match its persisted state
 	// on every install/update, and pin OP_REMOTE_HOSTNAME while doing it. This
 	// has to happen HERE, in the one function that owns OP_HOME's assets, and

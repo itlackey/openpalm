@@ -4,7 +4,7 @@
 //
 // DesktopUpdater takes its electron-updater instance as a dependency, so every
 // case below runs in plain Node against the fake — no Electron, no network.
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import {
   DesktopUpdater,
   FOCUS_CHECK_THROTTLE_MS,
@@ -14,6 +14,7 @@ import {
   updaterChannel,
   updaterFeedChannel,
   type AppUpdaterLike,
+  type CancellationTokenLike,
 } from '../src/updater.js';
 
 class FakeUpdater implements AppUpdaterLike {
@@ -50,11 +51,15 @@ class FakeUpdater implements AppUpdaterLike {
     this.pendingCheck?.();
   }
 
-  async downloadUpdate() {
+  async downloadUpdate(cancellationToken?: CancellationTokenLike) {
     this.downloadCalls += 1;
+    this.downloadTokens.push(cancellationToken);
     if (this.downloadError) throw this.downloadError;
     return [];
   }
+
+  /** Tokens passed to downloadUpdate, so tests can pin cancellation (E3). */
+  downloadTokens: Array<CancellationTokenLike | undefined> = [];
 
   quitAndInstall(isSilent?: boolean, isForceRunAfter?: boolean): void {
     this.quitCalls.push([isSilent, isForceRunAfter]);
@@ -97,6 +102,7 @@ function makeUpdater(
     windowsInstallerPresent: boolean;
     prerelease: boolean;
     now: () => number;
+    createCancellationToken: () => CancellationTokenLike;
   }> = {},
 ): { updater: DesktopUpdater; fake: FakeUpdater } {
   const fake = new FakeUpdater();
@@ -109,6 +115,7 @@ function makeUpdater(
     windowsInstallerPresent: overrides.windowsInstallerPresent ?? true,
     prerelease: overrides.prerelease ?? false,
     now: overrides.now,
+    createCancellationToken: overrides.createCancellationToken,
   });
   return { updater, fake };
 }
@@ -358,6 +365,24 @@ describe('state transitions', () => {
     expect(state.error).toBe('disk full');
   });
 
+  // E3 review: the singleton autoUpdater outlives a wrapper across
+  // prerelease-channel toggles, so a download begun by the PREVIOUS instance
+  // can complete after the rebuild and fire the NEW instance's listener with
+  // the OLD channel's artifact — which quit would then install.
+  it('ignores update-downloaded for a version this instance never reported', async () => {
+    const { updater, fake } = makeUpdater();
+    await updater.check(); // reports 2.0.0 as available
+    fake.emit('update-downloaded', { version: '9.9.9-beta.1' });
+    expect(updater.getState().status).toBe('available');
+  });
+
+  it('accepts update-downloaded carrying the version it reported', async () => {
+    const { updater, fake } = makeUpdater();
+    await updater.check();
+    fake.emit('update-downloaded', { version: '2.0.0' });
+    expect(updater.getState().status).toBe('downloaded');
+  });
+
   it('does not let a later check reset a completed download', async () => {
     const { updater, fake } = makeUpdater();
     await updater.check();
@@ -386,6 +411,21 @@ describe('silent offline checks', () => {
     const state = await updater.check();
     expect(state.status).toBe('error');
     expect(state.error).toMatch(/ENOTFOUND/);
+  });
+
+  // E1 review: a failed SILENT check used to patch {status:'idle'}, clobbering
+  // a previously discovered 'available' while leaving availableVersion set —
+  // an offline focus check silently hid a known update.
+  it('a failed silent check does not clobber an already-discovered update', async () => {
+    const { updater, fake } = makeUpdater();
+    await updater.check();
+    expect(updater.getState().status).toBe('available');
+
+    fake.checkError = new Error('getaddrinfo ENOTFOUND github.com');
+    const state = await updater.check({ silent: true });
+    expect(state.status).toBe('available');
+    expect(state.availableVersion).toBe('2.0.0');
+    expect(state.error).toBeNull();
   });
 });
 
@@ -540,6 +580,22 @@ describe('dispose (listener teardown)', () => {
 
     fake.emit('download-progress', { percent: 55 });
     expect(second.getState().percent).toBe(55);
+  });
+
+  // E3 review: a channel toggle discards the instance mid-download — the
+  // download must not keep running (and staging the old channel's artifact)
+  // on the shared singleton afterwards.
+  it('cancels an in-flight download, using the token it passed to downloadUpdate', async () => {
+    const token: CancellationTokenLike & { cancel: ReturnType<typeof vi.fn> } = { cancel: vi.fn() };
+    const { updater, fake } = makeUpdater({ createCancellationToken: () => token });
+    await updater.check();
+
+    const pending = updater.download();
+    updater.dispose();
+
+    expect(token.cancel).toHaveBeenCalledOnce();
+    expect(fake.downloadTokens).toEqual([token]);
+    await pending;
   });
 
   it('is a no-op on an unsupported (e.g. macOS) instance', () => {

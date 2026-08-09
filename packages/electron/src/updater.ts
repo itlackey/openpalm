@@ -86,7 +86,7 @@ export interface AppUpdaterLike {
   channel: string | null;
   allowPrerelease: boolean;
   checkForUpdates(): Promise<{ updateInfo?: { version?: string } } | null>;
-  downloadUpdate(): Promise<unknown>;
+  downloadUpdate(cancellationToken?: CancellationTokenLike): Promise<unknown>;
   quitAndInstall(isSilent?: boolean, isForceRunAfter?: boolean): void;
   /**
    * Trigger the installer WITHOUT quitting — unlike `quitAndInstall`, which
@@ -107,6 +107,11 @@ export interface AppUpdaterLike {
   removeListener(event: string, listener: (...args: unknown[]) => void): unknown;
 }
 
+/** Minimal cancellation surface (electron-updater's CancellationToken). */
+export interface CancellationTokenLike {
+  cancel(): void;
+}
+
 export interface UpdaterDeps {
   updater: AppUpdaterLike;
   currentVersion: string;
@@ -120,6 +125,16 @@ export interface UpdaterDeps {
   /** Injected so tests can assert throttling without real time. */
   now?: () => number;
   onStateChange?: (state: UpdaterState) => void;
+  /**
+   * Builds the token `download()` hands to `downloadUpdate` so `dispose()` can
+   * cancel an in-flight download (review E3): the prerelease-channel toggle
+   * rebuilds this wrapper over the SAME singleton `autoUpdater`, and without
+   * cancellation the old instance's download keeps running — completing on the
+   * OLD channel's artifact after the user switched away from it. Injected
+   * (main.ts passes electron-updater's own CancellationToken) so the state
+   * machine stays testable in plain Node.
+   */
+  createCancellationToken?: () => CancellationTokenLike;
 }
 
 export const RELEASES_URL = 'https://github.com/itlackey/openpalm/releases';
@@ -265,10 +280,12 @@ export class DesktopUpdater {
   private downloadInFlight: Promise<UpdaterState> | null = null;
   /** null = never checked. Not 0: that is a real (if ancient) timestamp. */
   private lastCheckAt: number | null = null;
+  /** Token for the in-flight download, so dispose() can cancel it (review E3). */
+  private downloadCancellation: CancellationTokenLike | null = null;
   // Bound listener references, kept so dispose() can remove exactly these
   // from the shared singleton updater (review E6 — see dispose() below).
   private readonly onDownloadProgress: ((...args: unknown[]) => void) | null;
-  private readonly onUpdateDownloaded: (() => void) | null;
+  private readonly onUpdateDownloaded: ((...args: unknown[]) => void) | null;
 
   constructor(deps: UpdaterDeps) {
     this.deps = deps;
@@ -310,7 +327,17 @@ export class DesktopUpdater {
       const percent = typeof progress?.percent === 'number' ? progress.percent : null;
       this.patch({ status: 'downloading', percent });
     };
-    this.onUpdateDownloaded = () => {
+    this.onUpdateDownloaded = (...args: unknown[]) => {
+      // Review E3: the singleton autoUpdater outlives this wrapper across
+      // prerelease-channel toggles, so a download begun by a PREVIOUS instance
+      // can complete after the rebuild and fire this listener with the OLD
+      // channel's artifact — which quit would then install. Ignore any version
+      // this instance never itself reported as available. (dispose() also
+      // cancels the old download; this guards the race where it completes
+      // first. Dropping that staged artifact on a channel switch is by design:
+      // the user just switched away from the channel it came from.)
+      const info = args[0] as { version?: string } | undefined;
+      if (typeof info?.version === 'string' && info.version !== this.state.availableVersion) return;
       this.patch({ status: 'downloaded', percent: 100, error: null });
     };
     u.on('download-progress', this.onDownloadProgress);
@@ -334,6 +361,13 @@ export class DesktopUpdater {
    */
   dispose(): void {
     if (!this.state.supported) return;
+    // Review E3: a download begun by THIS instance must not keep running on
+    // the shared singleton after the channel toggle discards the instance.
+    // Cancelling also drops anything it already staged — deliberate: an
+    // artifact from the OLD channel must never be what quit installs after
+    // the user switched channels.
+    this.downloadCancellation?.cancel();
+    this.downloadCancellation = null;
     if (this.onDownloadProgress) this.deps.updater.removeListener('download-progress', this.onDownloadProgress);
     if (this.onUpdateDownloaded) this.deps.updater.removeListener('update-downloaded', this.onUpdateDownloaded);
   }
@@ -362,6 +396,11 @@ export class DesktopUpdater {
     }
 
     this.lastCheckAt = this.now();
+    // Review E1: captured BEFORE patching 'checking' so a failed SILENT check
+    // can restore it — patching 'idle' there clobbered a previously discovered
+    // 'available' (while leaving availableVersion set) whenever an offline
+    // focus check failed.
+    const priorStatus = this.state.status;
     this.patch({ status: 'checking', error: null });
     const run = (async (): Promise<UpdaterState> => {
       try {
@@ -379,8 +418,10 @@ export class DesktopUpdater {
         });
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
-        // Silent checks leave the prior state intact and stay quiet.
-        if (silent) return this.patch({ status: 'idle', error: null });
+        // Silent checks leave the prior state intact and stay quiet: restore
+        // the pre-check status so an already-discovered 'available' (with its
+        // availableVersion) survives an offline focus check (review E1).
+        if (silent) return this.patch({ status: priorStatus, error: null });
         return this.patch({ status: 'error', error: message });
       } finally {
         this.checkInFlight = null;
@@ -415,9 +456,13 @@ export class DesktopUpdater {
     }
 
     this.patch({ status: 'downloading', percent: 0, error: null });
+    // Held so dispose() can cancel this download if the channel toggle
+    // discards the instance mid-flight (review E3).
+    this.downloadCancellation = this.deps.createCancellationToken?.() ?? null;
+    const token = this.downloadCancellation;
     const run = (async (): Promise<UpdaterState> => {
       try {
-        await this.deps.updater.downloadUpdate();
+        await this.deps.updater.downloadUpdate(token ?? undefined);
         // `update-downloaded` normally moves us to 'downloaded'; if a fake or a
         // provider resolves without emitting it, don't strand the UI at
         // 'downloading'.
@@ -430,6 +475,7 @@ export class DesktopUpdater {
         return this.patch({ status: 'error', percent: null, error: message });
       } finally {
         this.downloadInFlight = null;
+        if (this.downloadCancellation === token) this.downloadCancellation = null;
       }
     })();
     this.downloadInFlight = run;

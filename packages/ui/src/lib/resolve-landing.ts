@@ -9,18 +9,17 @@
  * already-resolved list.
  *
  * Landing matrix:
- *   host:setup capability present:
+ *   host (host:setup capability AND hostEnabled record):
  *     migration pending          → /attention (precedence over local state)
- *     local not_installed        → /start
- *     local setup_incomplete     → /setup
- *     local installed_offline    → HOST_ADMIN_LANDING
  *     local installed_broken     → HOST_ADMIN_LANDING?tab=diagnostics
- *     otherwise (running)        → /chat
- *   no host:setup capability (non-admin process):
- *     local not_installed        → /start
- *     0 connections              → /connections/new
- *     ≥1 connection              → /chat
- *     anything else              → /chat
+ *     local installed_offline    → HOST_ADMIN_LANDING
+ *     local running              → /chat
+ *     local not_installed
+ *       | setup_incomplete       → /setup
+ *   not a host (pure client — capability absent, or nothing hosted here):
+ *     somewhere to chat (server-visible connection OR browser-saved
+ *       connections)             → /chat
+ *     otherwise                  → /connections/new?onboarding=1
  */
 import type { LocalStackState } from '@openpalm/lib';
 import type { RuntimeContext } from '$lib/types.js';

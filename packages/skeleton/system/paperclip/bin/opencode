@@ -86,16 +86,31 @@ if [ ! -r "$managed/opencode.json" ] \
   exit 1
 fi
 
-# Keep dependency artifacts only. OpenCode auto-discovers config directories,
-# so retired managed plugins/tools must not survive a release update.
+# Keep dependency artifacts and the published config artifacts. OpenCode
+# auto-discovers config directories, so retired managed plugins/tools must not
+# survive a release update — but the published files (opencode.json,
+# security.md, plugins/akm.ts) stay in place: a sibling launcher may have just
+# released the flock and exec'd OpenCode, and publish below already replaces
+# each atomically (temp + rename), so deleting them first would only open a
+# read-during-delete window. Anything not the expected file/dir shape is stale
+# and still gets swept.
 for entry in "$runtime"/* "$runtime"/.[!.]* "$runtime"/..?*; do
   [ -e "$entry" ] || [ -L "$entry" ] || continue
   case ${entry##*/} in
     .openpalm-bootstrap.lock|.openpalm-package.json|bun.lock|bun.lockb|node_modules|package.json) ;;
+    opencode.json|security.md) [ -f "$entry" ] && [ ! -L "$entry" ] || rm -rf -- "$entry" ;;
+    plugins) [ -d "$entry" ] && [ ! -L "$entry" ] || rm -rf -- "$entry" ;;
     *) rm -rf -- "$entry" ;;
   esac
 done
 mkdir -p "$runtime/plugins"
+for entry in "$runtime"/plugins/* "$runtime"/plugins/.[!.]* "$runtime"/plugins/..?*; do
+  [ -e "$entry" ] || [ -L "$entry" ] || continue
+  case ${entry##*/} in
+    akm.ts) [ -f "$entry" ] && [ ! -L "$entry" ] || rm -rf -- "$entry" ;;
+    *) rm -rf -- "$entry" ;;
+  esac
+done
 
 publish "$managed/opencode.json" "$runtime/opencode.json"
 publish "$managed/security.md" "$runtime/security.md"
