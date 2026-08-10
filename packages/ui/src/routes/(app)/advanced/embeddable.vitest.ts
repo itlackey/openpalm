@@ -50,7 +50,7 @@ describe('resolveWorkspaceUrl — composed from the host the browser visited', (
   test('uses the visited LAN host when the assistant port is published beyond loopback', () => {
     expect(
       resolveWorkspaceUrl(
-        { port: 3810, loopbackOnly: false },
+        { port: 3810, loopbackOnly: false, requiresAuth: false },
         { hostname: '192.168.0.201' },
         LOCAL_ACTIVE_CONNECTION,
       ),
@@ -60,7 +60,7 @@ describe('resolveWorkspaceUrl — composed from the host the browser visited', (
   test('offers the local advertisement only for the active default connection', () => {
     expect(
       resolveWorkspaceUrl(
-        { port: 3810, loopbackOnly: false },
+        { port: 3810, loopbackOnly: false, requiresAuth: false },
         { hostname: '192.168.0.201' },
         REMOTE_ACTIVE_CONNECTION,
       ),
@@ -70,7 +70,7 @@ describe('resolveWorkspaceUrl — composed from the host the browser visited', (
   test('does not offer the local advertisement when the default has credentials', () => {
     expect(
       resolveWorkspaceUrl(
-        { port: 3810, loopbackOnly: false },
+        { port: 3810, loopbackOnly: false, requiresAuth: false },
         { hostname: '192.168.0.201' },
         { isDefault: true, hasPassword: true },
       ),
@@ -80,7 +80,7 @@ describe('resolveWorkspaceUrl — composed from the host the browser visited', (
   test('offers nothing to a LAN client when the publish is loopback-only', () => {
     expect(
       resolveWorkspaceUrl(
-        { port: 3810, loopbackOnly: true },
+        { port: 3810, loopbackOnly: true, requiresAuth: false },
         { hostname: '192.168.0.201' },
         LOCAL_ACTIVE_CONNECTION,
       ),
@@ -90,7 +90,7 @@ describe('resolveWorkspaceUrl — composed from the host the browser visited', (
   test('offers the loopback-only publish to a client on the machine itself', () => {
     for (const hostname of ['localhost', '127.0.0.1']) {
       expect(
-        resolveWorkspaceUrl({ port: 3810, loopbackOnly: true }, { hostname }, LOCAL_ACTIVE_CONNECTION),
+        resolveWorkspaceUrl({ port: 3810, loopbackOnly: true, requiresAuth: false }, { hostname }, LOCAL_ACTIVE_CONNECTION),
         hostname,
       ).toBe(`http://${hostname}:3810`);
     }
@@ -102,7 +102,7 @@ describe('resolveWorkspaceUrl — composed from the host the browser visited', (
     // "http://::1:3810".
     for (const hostname of ['[::1]', '::1']) {
       const url = resolveWorkspaceUrl(
-        { port: 3810, loopbackOnly: true },
+        { port: 3810, loopbackOnly: true, requiresAuth: false },
         { hostname },
         LOCAL_ACTIVE_CONNECTION,
       );
@@ -114,6 +114,41 @@ describe('resolveWorkspaceUrl — composed from the host the browser visited', (
   test('offers nothing without an advertisement', () => {
     expect(
       resolveWorkspaceUrl(undefined, { hostname: 'localhost' }, LOCAL_ACTIVE_CONNECTION),
+    ).toBeNull();
+  });
+});
+
+describe('resolveWorkspaceUrl — a credentialed workspace is only for a client that can authenticate', () => {
+  const AUTHED_HINT = { port: 3810, loopbackOnly: true, requiresAuth: true };
+  const CAN_AUTHENTICATE = true;
+
+  test('offers nothing to an ordinary browser — it holds no OpenCode credential', () => {
+    expect(
+      resolveWorkspaceUrl(AUTHED_HINT, { hostname: '127.0.0.1' }, LOCAL_ACTIVE_CONNECTION),
+    ).toBeNull();
+  });
+
+  test('offers it to the desktop shell, which answers the Basic challenge in its main process', () => {
+    // The `assistantDirect`-on desktop install: /advanced framed nothing at all
+    // while OpenCode was running and reachable one port over.
+    expect(
+      resolveWorkspaceUrl(
+        AUTHED_HINT,
+        { hostname: '127.0.0.1' },
+        LOCAL_ACTIVE_CONNECTION,
+        CAN_AUTHENTICATE,
+      ),
+    ).toBe('http://127.0.0.1:3810');
+  });
+
+  test('being able to authenticate does not override reachability', () => {
+    expect(
+      resolveWorkspaceUrl(
+        AUTHED_HINT,
+        { hostname: '192.168.0.201' },
+        LOCAL_ACTIVE_CONNECTION,
+        CAN_AUTHENTICATE,
+      ),
     ).toBeNull();
   });
 });

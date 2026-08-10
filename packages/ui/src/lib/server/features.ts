@@ -1,5 +1,5 @@
 import type { RequestEvent } from '@sveltejs/kit';
-import { listEnabledAddonIds, readStackEnv } from '@openpalm/lib';
+import { isEnabledFlag, listEnabledAddonIds, readStackEnv } from '@openpalm/lib';
 import uiPkg from '../../../package.json';
 import type { Capability, ServerRuntimeContext } from '$lib/types.js';
 import { getState } from '$lib/server/state.js';
@@ -128,12 +128,10 @@ export function computeVoiceRuntime(): { url: string } | undefined {
 /**
  * Where OpenCode's own web UI is published, when a browser can reach it.
  *
- * `/advanced` frames OpenCode only when the active connection IS an OpenCode
- * origin (see routes/(app)/advanced/embeddable.ts). The locked default
- * connection is this app's `/oc` API pass-through, which is not one — so for
- * that connection there is nothing to frame, and the workspace has to be
- * opened as its own top-level page instead. This advertisement is what lets
- * the browser build that address.
+ * The locked default connection is this app's `/oc` API pass-through, not an
+ * OpenCode origin (see routes/(app)/advanced/embeddable.ts) — so `/advanced`
+ * cannot frame the connection itself and points at THIS advertisement instead,
+ * which is the same OpenCode reached at its own root.
  *
  * It is a PORT and a reachability fact, never a URL: only the browser knows
  * which host it typed, and that is the whole reason the connection seed became
@@ -142,18 +140,23 @@ export function computeVoiceRuntime(): { url: string } | undefined {
  * client on the LAN can tell that a loopback-published port is its own machine
  * and not offer a dead address.
  *
- * Absent when OpenCode requires Basic auth: neither a frame nor a new tab can
- * carry that credential (the browser deliberately never holds it — see
- * routes/oc), so the address would dead-end at a password prompt nobody can
- * answer. Absent, too, when no port is known; a guessed default would
- * advertise a listener that may not exist.
+ * `requiresAuth` reports OpenCode's Basic auth rather than withholding the
+ * address, because the two clients differ: an ordinary browser holds no
+ * credential (the whole point of routing chat through `/oc`) and would
+ * dead-end at a password prompt nobody can answer, while the desktop shell
+ * answers the challenge from the main process, where the credential already
+ * lives. Withholding the address here decided that for both, and cost the
+ * desktop app its workspace whenever `assistantDirect` was on.
+ *
+ * Absent when no port is known; a guessed default would advertise a listener
+ * that may not exist.
  *
  * Deliberately NOT part of computeServerRuntimeContext() — same reason as
  * computeVoiceRuntime above: that function runs on requireCapability's
  * per-request hot path and this one may read the stack env from disk.
  */
 export function computeOpencodeWorkspace():
-  | { port: number; loopbackOnly: boolean }
+  | { port: number; loopbackOnly: boolean; requiresAuth: boolean }
   | undefined {
   // Lazily, and at most once per call: this runs on every layout load and
   // every GET /api/runtime, and readStackEnv is a synchronous readFileSync.
@@ -183,14 +186,19 @@ export function computeOpencodeWorkspace():
   const read = (key: string): string | undefined =>
     process.env[key]?.trim() || stackEnvValue(key);
 
-  if (TRUTHY_ENV.test(read('OPENCODE_AUTH') ?? '')) return undefined;
   const port = Number(read('OP_ASSISTANT_PORT'));
   if (!Number.isInteger(port) || port <= 0 || port > 65535) return undefined;
   const bindAddress = read('OP_ASSISTANT_BIND_ADDRESS') ?? '127.0.0.1';
-  return { port, loopbackOnly: LOOPBACK_BIND.has(bindAddress) };
+  return {
+    port,
+    loopbackOnly: LOOPBACK_BIND.has(bindAddress),
+    // The SAME parser resolveOpenCodeCredential gates the password on
+    // (control-plane/opencode-auth.ts). A second spelling here would let
+    // `OPENCODE_AUTH=on` advertise a credentialed workspace that the desktop
+    // shell then finds no credential for — a frame that can only 401.
+    requiresAuth: isEnabledFlag(read('OPENCODE_AUTH')),
+  };
 }
-
-const TRUTHY_ENV = /^(true|1|yes|on)$/i;
 /** Bind addresses that publish the assistant port to this machine only. */
 const LOOPBACK_BIND = new Set(['127.0.0.1', 'localhost', '::1', '[::1]']);
 

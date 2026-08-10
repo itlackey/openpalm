@@ -360,19 +360,31 @@ describe('computeOpencodeWorkspace — where OpenCode’s own web UI is publishe
 
   test('reads the published port and loopback-only default from the stack env', () => {
     writeStackEnv('OP_ASSISTANT_PORT=3810\n');
-    expect(computeOpencodeWorkspace()).toEqual({ port: 3810, loopbackOnly: true });
+    expect(computeOpencodeWorkspace()).toEqual({
+      port: 3810,
+      loopbackOnly: true,
+      requiresAuth: false,
+    });
   });
 
   test('reports a LAN publish as reachable beyond this machine', () => {
     writeStackEnv('OP_ASSISTANT_PORT=3810\nOP_ASSISTANT_BIND_ADDRESS=0.0.0.0\n');
-    expect(computeOpencodeWorkspace()).toEqual({ port: 3810, loopbackOnly: false });
+    expect(computeOpencodeWorkspace()).toEqual({
+      port: 3810,
+      loopbackOnly: false,
+      requiresAuth: false,
+    });
   });
 
   test('process env wins over the stack file — the container gets its values injected', () => {
     writeStackEnv('OP_ASSISTANT_PORT=3810\n');
     process.env.OP_ASSISTANT_PORT = '4810';
     process.env.OP_ASSISTANT_BIND_ADDRESS = '0.0.0.0';
-    expect(computeOpencodeWorkspace()).toEqual({ port: 4810, loopbackOnly: false });
+    expect(computeOpencodeWorkspace()).toEqual({
+      port: 4810,
+      loopbackOnly: false,
+      requiresAuth: false,
+    });
   });
 
   test('resolves from injected env alone — the container lane never reads the stack file', () => {
@@ -383,12 +395,23 @@ describe('computeOpencodeWorkspace — where OpenCode’s own web UI is publishe
     process.env.OPENCODE_AUTH = 'false';
     process.env.OP_ASSISTANT_PORT = '3810';
     process.env.OP_ASSISTANT_BIND_ADDRESS = '0.0.0.0';
-    expect(computeOpencodeWorkspace()).toEqual({ port: 3810, loopbackOnly: false });
+    expect(computeOpencodeWorkspace()).toEqual({
+      port: 3810,
+      loopbackOnly: false,
+      requiresAuth: false,
+    });
   });
 
-  test('absent when OpenCode requires Basic auth — no frame or tab can carry that credential', () => {
+  test('reports Basic auth rather than withholding the address — only the client knows if it can answer', () => {
+    // Withholding it here used to cost the DESKTOP app its workspace whenever
+    // `assistantDirect` was on, even though the Electron shell answers that
+    // challenge from its main process. The gate belongs at the consumer.
     writeStackEnv('OP_ASSISTANT_PORT=3810\nOPENCODE_AUTH=true\n');
-    expect(computeOpencodeWorkspace()).toBeUndefined();
+    expect(computeOpencodeWorkspace()).toEqual({
+      port: 3810,
+      loopbackOnly: true,
+      requiresAuth: true,
+    });
   });
 
   test('absent for a port that is not a usable TCP port', () => {

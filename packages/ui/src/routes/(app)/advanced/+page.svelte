@@ -20,27 +20,35 @@
   import { themeService } from '$lib/theme-state.svelte.js';
 
   // Phase 3b ("One UI, delete the split"): the browser owns connections and
-  // talks to OpenCode DIRECTLY — there is no host proxy to probe. Embeddability
-  // is classified from the active connection's URL + credentials:
-  //   - an unauthenticated OpenCode web UI (loopback / same-scheme, no creds)
-  //     embeds in an iframe pointed straight at connection.baseUrl;
-  //   - a credentialed / Guardian connection can't carry Basic auth into an
-  //     iframe, so we render the native chat surface (the existing chat
-  //     components against the direct transport) instead of a dead-end;
-  //   - the locked default connection now points at THIS app's own `/oc`
-  //     pass-through, which is an OpenCode API proxy and not its web UI (see
-  //     ./embeddable.ts) — that is the native surface too. Framing it produced
-  //     exactly the dead-end this classification exists to avoid: the app's own
-  //     `X-Frame-Options: DENY` refused the frame, and even without that header
-  //     the SPA inside resolves every asset and API call against the origin
-  //     root, where OpenPalm answers rather than OpenCode.
+  // talks to OpenCode DIRECTLY — there is no host proxy to probe. Which
+  // OpenCode web UI this page frames (or whether it can frame one at all) is
+  // decided in ./embeddable.ts; the two cases that reach the native chat
+  // surface instead are a credentialed / Guardian connection, and an app-origin
+  // connection with no reachable workspace advertisement.
 
   const runtimeContext = getRuntimeContext();
   const active = $derived(endpointsService.active);
   /**
-   * OpenCode's own web UI as a top-level page, when this browser can reach it.
-   * Offered wherever the frame isn't available — a new tab has none of the
-   * framing restrictions, so it works in deployments the iframe cannot serve.
+   * OpenCode's own origin for the iframe. The locked default connection is
+   * this app's `/oc` API proxy, which cannot be framed (embeddable.ts), so the
+   * frame goes to the same OpenCode at the port the server advertises. The
+   * desktop shell answers its Basic challenge in the main process
+   * (packages/electron/src/assistant-auth.ts), so a credentialed workspace is
+   * framable there and only there.
+   */
+  const framableWorkspaceUrl = $derived(
+    resolveWorkspaceUrl(
+      runtimeContext.opencodeWorkspace,
+      { hostname: page.url.hostname },
+      active,
+      runtimeContext.clientContext.displayMode === 'electron',
+    ),
+  );
+  /**
+   * The same workspace as a top-level tab — the escape hatch where the frame
+   * is unavailable. It cannot authenticate even in the desktop shell: a new tab
+   * LEAVES the shell (`setWindowOpenHandler` → `shell.openExternal`), so it
+   * never carries the credential the main process would supply to a frame.
    */
   const workspaceUrl = $derived(
     resolveWorkspaceUrl(runtimeContext.opencodeWorkspace, { hostname: page.url.hostname }, active),
@@ -95,8 +103,11 @@
       return;
     }
 
-    // Credentialed / Guardian / mixed-content connection → native chat surface.
-    if (!isEmbeddable(conn)) {
+    // Where OpenCode's own web UI lives for this connection: the connection
+    // itself when it names an OpenCode origin, otherwise this install's
+    // advertised workspace. Null when there is neither.
+    const base = isEmbeddable(conn) ? conn.baseUrl : framableWorkspaceUrl;
+    if (!base) {
       mode = 'native';
       // The chat store now talks to the active connection via the direct
       // transport; make sure this connection's sessions are loaded.
@@ -107,9 +118,10 @@
       return;
     }
 
-    // Embeddable: confirm reachability via the direct transport, then embed.
+    // Confirm the assistant answers via the direct transport, then embed. The
+    // probe goes to the CONNECTION, not to `base`: both name the same OpenCode,
+    // and the connection is the one path this browser is allowed to call.
     const connectionId = conn.id;
-    const base = conn.baseUrl;
     const sessionId = requestedSessionId;
     const health = await getTransport().probeHealth();
     if (!isCurrentProbe(token, connectionId)) return;
@@ -268,23 +280,19 @@
         {/if}
       </div>
     {:else if mode === 'native'}
-      <!-- No embeddable OpenCode web UI for this connection: either it is
+      <!-- No OpenCode web UI this browser can frame: the connection is
            credentialed (OpenPalm keeps Basic auth out of iframe URLs, so the
            embedded UI could not authenticate) or it is this app's own /oc API
-           pass-through, which is not a UI origin. Both keep the conversation
-           on the native surface rather than framing a dead end. -->
+           pass-through with no reachable workspace advertisement behind it.
+           No new-tab link here: this branch means framableWorkspaceUrl was
+           null, and workspaceUrl asks the same question with a weaker client,
+           so it is null too. -->
       <div class="native-shell">
         <section class="native-chat" aria-label="Chat with {active?.label ?? 'your assistant'}">
           <div class="native-scroll">
             <p class="native-notice" role="note">
               The OpenCode workspace can’t be embedded for this assistant — this conversation
               runs on OpenPalm’s own surface.
-              {#if workspaceUrl}
-                <!-- eslint-disable-next-line svelte/no-navigation-without-resolve -- OpenCode's own origin, composed from the server's published-port advertisement -->
-                <a href={workspaceUrl} target="_blank" rel="noopener noreferrer"
-                  >Open the workspace in a new tab</a
-                >
-              {/if}
             </p>
             {#if chat.entriesLoading}
               <p class="native-status" role="status">Loading conversation…</p>
@@ -466,14 +474,11 @@
     text-align: center;
     overflow-wrap: anywhere;
   }
-  .native-notice a,
   .workspace-link {
     color: var(--s-ink-2);
     text-decoration: underline;
     text-underline-offset: 0.15em;
     overflow-wrap: anywhere;
-  }
-  .workspace-link {
     font-family: var(--s-font-mono);
     font-size: var(--s-type-mark);
   }

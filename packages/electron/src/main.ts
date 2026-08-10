@@ -44,6 +44,7 @@ import { resolveAssetPath } from './assets.js';
 import { SplashWindow } from './splash.js';
 import { TrayController } from './tray.js';
 import { configureMediaPermissions, requestMicrophoneAccess } from './permissions.js';
+import { configureAssistantWorkspaceAuth } from './assistant-auth.js';
 import {
   getLaunchOnLoginStatus,
   setLaunchOnLogin,
@@ -1119,6 +1120,10 @@ if (!gotSingleInstanceLock) {
     if (!uiServerStarted) return;
 
     configureMediaPermissions();
+    // Must be installed before the window loads: /advanced frames OpenCode's
+    // own origin, and with `assistantDirect` on that frame is a 401 nothing
+    // in the renderer can answer.
+    configureAssistantWorkspaceAuth(resolveOpenPalmHome());
     await openWindow();
     createTray();
     startDeployCompletionWatch();
