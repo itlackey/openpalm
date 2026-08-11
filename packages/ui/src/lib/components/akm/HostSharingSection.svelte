@@ -30,10 +30,10 @@
     try {
       if (hostSharing?.enabled) {
         hostSharing = await disableHostAkmSharing();
-        notifications.push('success', 'Host stash sharing disabled. Restart the stack to apply.');
+        notifications.push('success', 'Host stash sharing disabled.');
       } else {
         hostSharing = await enableHostAkmSharing();
-        notifications.push('success', 'Host stash sharing enabled. Restart the stack to apply.');
+        notifications.push('success', 'Host stash sharing enabled.');
       }
     } catch (e) {
       notifications.push('error', e instanceof Error ? e.message : 'Failed to update host stash sharing.');
@@ -58,9 +58,7 @@
       <section class="config-section">
         <p class="section-note">
           Mount your personal AKM stash (<code>{hostSharing.hostStashPath}</code>) into the
-          assistant as a readable secondary source. Enabling also imports your host LLM and
-          agent connection profiles so the assistant can use the same providers you have
-          configured locally.
+          assistant as a readable secondary source.
         </p>
 
         <div class="controls">
@@ -78,7 +76,6 @@
             {#if busy}<Spinner />{/if}
             {hostSharing.enabled ? 'Disable host sharing' : 'Enable host sharing'}
           </button>
-          <p class="hint">Takes effect after the next stack restart.</p>
         </div>
       </section>
     {/if}
@@ -114,11 +111,5 @@
     font-family: var(--s-font-mono);
     font-size: var(--s-type-mark-sm);
     color: var(--s-ink-3);
-  }
-  .hint {
-    font-family: var(--s-font-display);
-    font-size: var(--s-type-deed);
-    color: var(--s-ink-3);
-    margin: 0;
   }
 </style>

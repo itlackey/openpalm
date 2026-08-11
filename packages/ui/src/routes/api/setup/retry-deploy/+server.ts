@@ -1,5 +1,5 @@
 import { json } from '@sveltejs/kit';
-import { checkDocker, isSetupComplete, resolveOpenPalmHome } from '@openpalm/lib';
+import { checkDocker, isSetupComplete, mapDockerError, resolveOpenPalmHome } from '@openpalm/lib';
 import { getState } from '$lib/server/state.js';
 import { getDeployState, startDeploy } from '$lib/server/setup-deploy.js';
 import { errorResponse, getRequestId } from '$lib/server/helpers.js';
@@ -19,7 +19,11 @@ export const POST: RequestHandler = async (event) => {
 
   const docker = await checkDocker();
   if (!docker.ok) {
-    return errorResponse(503, 'docker_unavailable', "Docker isn't running. Start Docker, then retry deploy.", {}, requestId);
+    // Same reasoning as setup/complete: the mapper tells not-installed and
+    // permission-denied apart from actually-stopped, and only the third is
+    // fixed by starting Docker.
+    const mapped = mapDockerError(docker.stderr ?? '');
+    return errorResponse(503, mapped.code, mapped.message, {}, requestId);
   }
 
   if (current.deploying) {

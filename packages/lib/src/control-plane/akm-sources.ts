@@ -144,7 +144,23 @@ export function addHostStashToOpenpalmConfig(state: ControlPlaneState, writable 
  * operator owns, so it must not rewrite anything it was not asked to.
  */
 export function stripRetiredAkmConfigKeys(state: ControlPlaneState): boolean {
-  const configPath = openpalmConfigPath(state);
+  // BOTH akm configs, not just the assistant's. Paperclip runs its own akm
+  // against `config/paperclip/akm/config.json` (services.compose.yml mounts it
+  // at /etc/akm), seeded once from the skeleton and never rewritten — so it
+  // drifts exactly like the assistant's did, with the same total failure: the
+  // newer CLI rejects the whole file and every akm call in that container
+  // dies. Sweeping only one of the two was half a fix.
+  let changed = false;
+  for (const configPath of [
+    openpalmConfigPath(state),
+    join(state.configDir, "paperclip", "akm", "config.json"),
+  ]) {
+    if (stripRetiredKeysAt(configPath)) changed = true;
+  }
+  return changed;
+}
+
+function stripRetiredKeysAt(configPath: string): boolean {
   if (!existsSync(configPath)) return false;
   const before = readFileSync(configPath, "utf-8");
   let config: AkmConfigObject;
