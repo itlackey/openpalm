@@ -6,6 +6,8 @@ import {
   HOST_SOURCE_NAME,
   addHostStashToOpenpalmConfig,
   stripRetiredAkmConfigKeys,
+  importHostAkmConfig,
+  detectHostAkmConfig,
 } from "./akm-sources.js";
 import type { ControlPlaneState } from "./types.js";
 
@@ -192,5 +194,68 @@ describe("stripRetiredAkmConfigKeys covers paperclip's own akm config", () => {
   it("returns false when neither config needs a change", () => {
     writeFileSync(opConfigPath, `${JSON.stringify({ configVersion: "0.9.0" }, null, 2)}\n`);
     expect(stripRetiredAkmConfigKeys(state)).toBe(false);
+  });
+});
+
+describe("importHostAkmConfig (manual host akm import)", () => {
+  const hostCfg = () => join(root, "home", ".config", "akm", "config.json");
+
+  function seedHost(obj: Record<string, unknown>): string {
+    mkdirSync(join(root, "home", ".config", "akm"), { recursive: true });
+    const raw = JSON.stringify(obj, null, 2);
+    writeFileSync(hostCfg(), raw);
+    return raw;
+  }
+
+  it("fills gaps without overwriting what the operator already set", () => {
+    seedHost({
+      engines: {
+        hostOnly: { kind: "llm", endpoint: "http://host/v1", model: "m" },
+        shared: { kind: "llm", endpoint: "http://host/OVERWRITTEN", model: "host" },
+      },
+      defaults: { llmEngine: "hostOnly" },
+    });
+    writeFileSync(opConfigPath, JSON.stringify({
+      configVersion: "0.9.0",
+      engines: { shared: { kind: "llm", endpoint: "http://mine/v1", model: "mine" } },
+      defaults: { llmEngine: "shared" },
+    }, null, 2));
+
+    const { imported } = importHostAkmConfig(state, hostCfg());
+
+    expect(imported).toContain("engines");
+    const cfg = readJson(opConfigPath);
+    const engines = cfg.engines as Record<string, Record<string, unknown>>;
+    // Host-only engine adopted…
+    expect(engines.hostOnly.endpoint).toBe("http://host/v1");
+    // …and the operator's own engine and default selection survive untouched.
+    expect(engines.shared.endpoint).toBe("http://mine/v1");
+    expect((cfg.defaults as Record<string, unknown>).llmEngine).toBe("shared");
+  });
+
+  it("never writes to the host config", () => {
+    const original = seedHost({ engines: { a: { kind: "llm", endpoint: "http://h", model: "m" } } });
+    writeFileSync(opConfigPath, "{}");
+    importHostAkmConfig(state, hostCfg());
+    expect(readFileSync(hostCfg(), "utf-8")).toBe(original);
+  });
+
+  it("imports nothing when the host config is absent", () => {
+    writeFileSync(opConfigPath, "{}");
+    expect(importHostAkmConfig(state, hostCfg()).imported).toEqual([]);
+  });
+
+  it("detects what an import would find, for the affordance", () => {
+    const savedHome = process.env.HOME;
+    process.env.HOME = join(root, "home");
+    try {
+      expect(detectHostAkmConfig().available).toBe(false);
+      seedHost({ engines: { a: {}, b: {} }, embedding: { endpoint: "http://e" } });
+      const found = detectHostAkmConfig();
+      expect(found).toMatchObject({ available: true, engineCount: 2, hasEmbedding: true });
+    } finally {
+      if (savedHome === undefined) delete process.env.HOME;
+      else process.env.HOME = savedHome;
+    }
   });
 });
