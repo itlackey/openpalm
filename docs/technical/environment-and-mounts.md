@@ -252,7 +252,7 @@ one Compose secret; delegated credentials come from `private/secrets/`.
 | Internal Guardian gateway | `8080` | None |
 | Direct Guardian `/oc` listener | `3830` | `${OP_GUARDIAN_BIND_ADDRESS:-127.0.0.1}:${OP_GUARDIAN_PORT:-3830}` |
 | Principal admin listener | `3831` | `127.0.0.1:${OP_GUARDIAN_ADMIN_PORT:-3831}` |
-| OpenAI/Anthropic-compatible listener | `8182` | `${OP_API_BIND_ADDRESS:-127.0.0.1}:${OP_API_PORT:-3821}` |
+| OpenAI/Anthropic-compatible listener | `8182` | `${OP_API_BIND_ADDRESS:-127.0.0.1}:${OP_API_PORT:-3821}` — published only when `guardian.compose.api.yml` is in the file list (`guardianOpenaiApi` toggle on, or `api` addon enabled); no host port otherwise |
 | Local OpenCode moderator | `4097` | None; loopback inside the container |
 
 There is one Guardian OpenAI-compatible listener and one host publication.
@@ -318,7 +318,7 @@ defaults to `5173`; the root `ui:dev:isolated` script explicitly uses `3880`.
 | Service | Network membership | Host exposure |
 |---|---|---|
 | `assistant` | `assistant_net` | UI `3800`, OpenCode `3810`, loopback by default |
-| `guardian` | `assistant_net`, `portal_net` | Direct `3830`, admin `3831`, compatible API `3821`, loopback by default |
+| `guardian` | `assistant_net`, `portal_net` | Direct `3830`, admin `3831`, loopback by default; compatible API `3821` only via the opt-in `guardian.compose.api.yml` overlay |
 | `discord`, `slack` | `portal_net` | None |
 | `ollama*` | `assistant_net` | None |
 | `voice*` | `addon_net` (default) | `127.0.0.1:${OP_VOICE_PORT_HOST:-8880}` |

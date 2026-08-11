@@ -297,11 +297,21 @@ describe("access toggles — the generated bind set matches compose reality (pin
     expect(core.services?.assistant?.environment?.OP_PROJECT_NAME).toBe("${OP_PROJECT_NAME:-openpalm}");
   });
 
-  test("ONE flat host port onto the guardian's OpenAI-compatible listener", () => {
+  test("the OpenAI-compatible listener has NO unconditional host publish — the overlay carries the ONE flat port", () => {
+    // Base file: no 8182 publish at all. The guardianOpenaiApi toggle's OFF
+    // position means no host listener, not a loopback one; the publish ships
+    // in guardian.compose.api.yml, included by discoverStackOverlays only
+    // when the toggle (or the api addon) asks for it.
     const guardianPorts = allServices.guardian?.ports ?? [];
-    expect(guardianPorts).toContain("${OP_API_BIND_ADDRESS:-127.0.0.1}:${OP_API_PORT:-3821}:8182");
-    // The duplicate chat host port onto the same :8182 listener is retired.
-    expect(guardianPorts.filter((p) => String(p).endsWith(":8182"))).toHaveLength(1);
+    expect(guardianPorts.filter((p) => String(p).endsWith(":8182"))).toHaveLength(0);
+
+    const overlay = loadCompose("guardian.compose.api.yml") as ComposeDoc;
+    const overlayPorts = (overlay.services?.guardian as { ports?: string[] })?.ports ?? [];
+    expect(overlayPorts).toEqual(["${OP_API_BIND_ADDRESS:-127.0.0.1}:${OP_API_PORT:-3821}:8182"]);
+    // The overlay must not re-declare profiles (it would override the base
+    // gate) and must not touch any other service.
+    expect((overlay.services?.guardian as { profiles?: string[] })?.profiles).toBeUndefined();
+    expect(Object.keys(overlay.services ?? {})).toEqual(["guardian"]);
   });
 
   test("the guardian's own front door binds flat, and its admin listener is a literal", () => {

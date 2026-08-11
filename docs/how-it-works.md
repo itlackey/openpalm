@@ -111,7 +111,10 @@ Discord and Slack adapters run from the unified `openpalm/portal` image. They
 translate their native protocols into authenticated Guardian `/oc/*` calls.
 
 The OpenAI/Anthropic-compatible edge runs inside Guardian and is published on
-host port `3821` when configured. There is one compatible listener on a
+host port `3821` only when the OpenAI-compatible API toggle (or the `api`
+addon) asks for it — the publish ships in the `guardian.compose.api.yml`
+overlay, so with the toggle off there is no host listener at all. There is
+one compatible listener on a
 single host port.
 
 Voice is a service addon rather than a portal. It is defined in
@@ -191,7 +194,7 @@ host OS scheduler and call the host `openpalm` binary.
 |---|---|
 | `3800` | Assistant-served OpenPalm UI |
 | `3810` | Assistant OpenCode |
-| `3821` | Guardian-hosted compatible API |
+| `3821` | Guardian-hosted compatible API (published only when enabled) |
 | `3830` | Guardian direct ingress |
 | `3831` | Guardian principal admin, loopback-only |
 | `3880` | Optional host UI/admin process |

@@ -139,7 +139,7 @@ Guardian listeners:
 | Internal `/oc` gateway | `8080` | None |
 | Direct `/oc` ingress | `3830` | `127.0.0.1:3830` by default |
 | Principal admin API | `3831` | Always loopback |
-| OpenAI/Anthropic-compatible API | `8182` | `127.0.0.1:3821` by default |
+| OpenAI/Anthropic-compatible API | `8182` | `127.0.0.1:3821`, only when enabled (opt-in overlay) |
 | OpenCode moderator | `4097` | Container loopback only |
 
 There is one compatible API listener, not separate chat and API listeners.

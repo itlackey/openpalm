@@ -10,7 +10,7 @@ import { errMessage } from './errors.js';
 import { dirname, resolve as resolvePath } from "node:path";
 import { composeConfigJsonSync, type ComposeConfigJsonResult } from "./docker.js";
 import { createLogger } from "../logger.js";
-import { parseEnvContent, parseEnvFile, mergeEnvContent, removeEnvKey } from './env.js';
+import { parseEnabledAddons, parseEnvContent, parseEnvFile, mergeEnvContent, removeEnvKey } from './env.js';
 import {
   ACCESS_ENV_KEYS,
   hasStoredAccessIntent,
@@ -450,6 +450,20 @@ export function dismissSecretStripNotice(state: ControlPlaneState): void {
  * is purely a writable secondary source entry in config/akm/config.json. No
  * conditional overlay file is involved.
  */
+/**
+ * True when the OpenAI-compatible edge's host publish belongs in the compose
+ * file list: the operator turned the guardianOpenaiApi toggle on, or the
+ * `api` addon (the pre-toggle exposure alias) is enabled. Reads the stored
+ * intent the same way every consumer does — via readAccessToggles, so a
+ * pre-intent row falls back to bind inference and a restored backup keeps
+ * the publish it had.
+ */
+function isOpenaiEdgePublished(homeDir: string): boolean {
+  const env = parseEnvFile(stackEnvFile(homeDir));
+  if (readAccessToggles(env).guardianOpenaiApi) return true;
+  return parseEnabledAddons(env.OP_ENABLED_ADDONS).includes('api');
+}
+
 export function discoverStackOverlays(homeDir: string): string[] {
   const files: string[] = [];
 
@@ -477,6 +491,25 @@ export function discoverStackOverlays(homeDir: string): string[] {
   if (isVoiceLanAccessEnabled(homeDir)) {
     const voiceLan = composeFilePath(homeDir, 'voice.compose.lan.yml');
     if (existsSync(voiceLan)) files.push(voiceLan);
+  }
+
+  // OpenAI-compatible edge host publish: the guardian's compatible listener
+  // (8182) has NO unconditional `ports:` entry in portals.compose.yml — this
+  // overlay carries the one host publish, so the guardianOpenaiApi toggle's
+  // OFF position means no host listener at all rather than "loopback with a
+  // fully working edge behind it". Same double-gate and same shared-file-list
+  // rationale as the voice overlay above: every compose invocation must agree
+  // on the file list, or a plain `openpalm start` would recreate the guardian
+  // without (or with) the publish and silently flip the operator's setting.
+  //
+  // The `api` addon is the second inclusion reason: it is the pre-toggle
+  // exposure alias (and the v7→v8 migration's substitute for `chat`), so an
+  // upgraded install that enabled it keeps its loopback edge byte-identical.
+  // Bind address and port still come from the flat access model
+  // (OP_API_BIND_ADDRESS / OP_API_PORT); the overlay only interpolates them.
+  if (isOpenaiEdgePublished(homeDir)) {
+    const apiPublish = composeFilePath(homeDir, 'guardian.compose.api.yml');
+    if (existsSync(apiPublish)) files.push(apiPublish);
   }
 
   // User custom overlay lives in the config/ tree (not system/stack).

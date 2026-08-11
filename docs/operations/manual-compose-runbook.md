@@ -13,16 +13,21 @@ complete install.
 | `$OP_HOME/system/stack/services.compose.yml` | Profile-gated first-party services |
 | `$OP_HOME/system/stack/portals.compose.yml` | Profile-gated Guardian and portals |
 | `$OP_HOME/system/stack/voice.compose.lan.yml` | **Conditional** — only when `OP_VOICE_LAN_ACCESS=true` in `stack.env` (see below) |
+| `$OP_HOME/system/stack/guardian.compose.api.yml` | **Conditional** — the OpenAI-compatible edge's host publish; only when `OP_ACCESS_OPENAI_API=true` or `api` is in `OP_ENABLED_ADDONS` (see below) |
 | `$OP_HOME/config/stack/custom.compose.yml` | Sole user-owned Compose overlay |
 | `$OP_HOME/state/stack.env` | Sole non-secret Compose env file |
 | `$OP_HOME/private/secrets/` | Delegated service secret sources |
 | `$OP_HOME/knowledge/secrets/auth.json` | Provider auth used by OpenCode |
 
 The first three managed files are always present in a generated install and
-are used by every command. `voice.compose.lan.yml` is not fixed: it joins the
-list only when the voice addon's **Let devices on your network use voice
-through the published UI** setting is on
-(`OP_VOICE_LAN_ACCESS=true` in `state/stack.env`). Every OpenPalm-driven
+are used by every command. Two overlays are not fixed: `voice.compose.lan.yml`
+joins the list only when the voice addon's **Let devices on your network use
+voice through the published UI** setting is on
+(`OP_VOICE_LAN_ACCESS=true` in `state/stack.env`), and
+`guardian.compose.api.yml` — the ONE host publish for the guardian's
+OpenAI-compatible listener — joins only when **Enable the OpenAI-compatible
+API** is on (`OP_ACCESS_OPENAI_API=true`) or the `api` addon is enabled.
+Without it the edge has no host port at all. Every OpenPalm-driven
 Compose invocation (`openpalm start`, an update, a settings-triggered
 recreate) includes it automatically when that flag is set — a manual command
 that leaves it out silently recreates the voice container without
@@ -69,17 +74,25 @@ op() {
     -f "$home/system/stack/portals.compose.yml"
   )
 
-  # Also picks up OP_VOICE_LAN_ACCESS so the voice LAN overlay is never
-  # silently dropped (see Runtime Inputs above).
+  # Also picks up the conditional overlays so they are never silently
+  # dropped (see Runtime Inputs above).
+  local api_publish=0
   while IFS='=' read -r key value; do
     value="${value%$'\r'}"
     if [ -z "${OP_PROJECT_NAME:-}" ] && [ "$key" = "OP_PROJECT_NAME" ]; then
       project="$value"
     elif [ "$key" = "OP_VOICE_LAN_ACCESS" ] && [ "$value" = "true" ]; then
       files+=(-f "$home/system/stack/voice.compose.lan.yml")
+    elif [ "$key" = "OP_ACCESS_OPENAI_API" ] && [ "$value" = "true" ]; then
+      api_publish=1
+    elif [ "$key" = "OP_ENABLED_ADDONS" ]; then
+      case ",$value," in *,api,*) api_publish=1 ;; esac
     fi
   done < "$home/state/stack.env"
 
+  if [ "$api_publish" = 1 ]; then
+    files+=(-f "$home/system/stack/guardian.compose.api.yml")
+  fi
   files+=(-f "$home/config/stack/custom.compose.yml")
 
   docker compose \
