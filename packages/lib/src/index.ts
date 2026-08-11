@@ -293,6 +293,7 @@ export {
 export {
   HOST_SOURCE_NAME,
   addHostStashToOpenpalmConfig,
+  stripRetiredAkmConfigKeys,
 } from "./control-plane/akm-sources.js";
 export type {
   HostAkmSharingStatus,

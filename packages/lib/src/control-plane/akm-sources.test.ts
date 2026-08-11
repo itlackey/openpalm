@@ -5,6 +5,7 @@ import { join } from "node:path";
 import {
   HOST_SOURCE_NAME,
   addHostStashToOpenpalmConfig,
+  stripRetiredAkmConfigKeys,
 } from "./akm-sources.js";
 import type { ControlPlaneState } from "./types.js";
 
@@ -120,3 +121,51 @@ describe("addHostStashToOpenpalmConfig (assistant side, parse-tolerant)", () => 
   });
 });
 
+
+describe("stripRetiredAkmConfigKeys (upgrade heals a pre-0.9 config)", () => {
+  it("removes the retired keys that make akm 0.9 reject the whole file", () => {
+    // The real report: after upgrading to an image with akm 0.9, every akm
+    // call failed with `stashDir is retired in 0.9`, because nothing rewrites
+    // this file on an upgrade — only setup and install ever did.
+    writeFileSync(opConfigPath, JSON.stringify({
+      configVersion: "0.9.0",
+      stashDir: "/stash",
+      profiles: { llm: {} },
+      bundles: { openpalm: { path: "/stash", writable: true } },
+      defaultBundle: "openpalm",
+      engines: { fast: { kind: "llm", endpoint: "http://h/v1", model: "m" } },
+      defaults: { llmEngine: "fast", llm: "retired" },
+    }, null, 2));
+
+    expect(stripRetiredAkmConfigKeys(state)).toBe(true);
+
+    const cfg = readJson(opConfigPath);
+    expect(cfg.stashDir).toBeUndefined();
+    expect(cfg.profiles).toBeUndefined();
+    expect((cfg.defaults as Record<string, unknown>).llm).toBeUndefined();
+    // Everything the operator owns survives untouched.
+    expect(cfg.bundles).toEqual({ openpalm: { path: "/stash", writable: true } });
+    expect(cfg.defaultBundle).toBe("openpalm");
+    expect(cfg.engines).toEqual({ fast: { kind: "llm", endpoint: "http://h/v1", model: "m" } });
+    expect((cfg.defaults as Record<string, unknown>).llmEngine).toBe("fast");
+  });
+
+  it("does not rewrite a config that is already clean", () => {
+    writeFileSync(opConfigPath, `${JSON.stringify({
+      configVersion: "0.9.0",
+      bundles: { openpalm: { path: "/stash", writable: true } },
+    }, null, 2)}\n`);
+    expect(stripRetiredAkmConfigKeys(state)).toBe(false);
+  });
+
+  it("leaves an unparseable config alone rather than destroying it", () => {
+    writeFileSync(opConfigPath, "{ not json");
+    expect(stripRetiredAkmConfigKeys(state)).toBe(false);
+    expect(readFileSync(opConfigPath, "utf-8")).toBe("{ not json");
+  });
+
+  it("is a no-op when there is no config yet", () => {
+    rmSync(opConfigPath, { force: true });
+    expect(stripRetiredAkmConfigKeys(state)).toBe(false);
+  });
+});

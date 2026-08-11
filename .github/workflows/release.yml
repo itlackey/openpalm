@@ -345,11 +345,38 @@ jobs:
         run: cosign sign --yes openpalm/${{ matrix.image }}@${{ steps.build.outputs.digest }}
       - name: Verify image signature (fail loudly on a broken signer)
         if: inputs.dry_run != true && steps.build.outputs.digest != ''
+        # Retried, because the signature is not readable the instant it is
+        # written. cosign 3.x attaches it as an OCI 1.1 referrer, and Docker
+        # Hub's referrers index is eventually consistent: on 0.13.0-beta.24 the
+        # portal job verified one second after signing while guardian and
+        # assistant both failed `no signatures found` at the same one-second
+        # gap — the signatures were there minutes later, and the identical
+        # re-run passed. A single immediate attempt makes every release a coin
+        # flip per image, and this step CANNOT be exercised by a dry run: both
+        # it and the sign above are gated on `dry_run != true`, so the first
+        # time it runs is the run that publishes.
+        #
+        # Still fails closed. Only "not visible yet" is retried; the last
+        # attempt's failure is the step's failure, so a genuinely broken signer
+        # (wrong identity, wrong issuer, absent signature) still stops the
+        # release — it just takes ~1 minute to say so.
         run: |
-          cosign verify \
-            --certificate-identity-regexp "^https://github.com/${{ github.repository }}/.github/workflows/release.yml@refs/.*$" \
-            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
-            openpalm/${{ matrix.image }}@${{ steps.build.outputs.digest }}
+          set -uo pipefail
+          for attempt in 1 2 3 4 5 6; do
+            if cosign verify \
+              --certificate-identity-regexp "^https://github.com/${{ github.repository }}/.github/workflows/release.yml@refs/.*$" \
+              --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+              openpalm/${{ matrix.image }}@${{ steps.build.outputs.digest }}; then
+              echo "Signature verified on attempt ${attempt}."
+              exit 0
+            fi
+            if [ "${attempt}" -eq 6 ]; then
+              echo "::error::cosign verify failed after ${attempt} attempts for openpalm/${{ matrix.image }}@${{ steps.build.outputs.digest }}"
+              exit 1
+            fi
+            echo "Attempt ${attempt} did not see the signature yet; retrying in $((attempt * 5))s."
+            sleep "$((attempt * 5))"
+          done
 
   cli:
     needs: [candidate, preflight, ui-build]

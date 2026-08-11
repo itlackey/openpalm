@@ -118,3 +118,49 @@ export function addHostStashToOpenpalmConfig(state: ControlPlaneState, writable 
   if (typeof updated.defaultBundle !== "string") updated.defaultBundle = PRIMARY_BUNDLE_ID;
   writeFileAtomic(configPath, JSON.stringify(updated, null, 2), 0o600);
 }
+
+/**
+ * Strip retired 0.8 keys from an EXISTING assistant akm config so the pinned
+ * akm-cli can still load it after an upgrade.
+ *
+ * `stripRetiredAkmKeys` already runs on every OpenPalm WRITE of this file —
+ * but the only writers are the setup wizard (`persistAkmConfig`) and install
+ * (`addHostStashToOpenpalmConfig`). Neither runs on an upgrade, so a config
+ * written before akm 0.9 keeps its retired keys forever, and the newer CLI in
+ * the upgraded image refuses the whole file:
+ *
+ *   Invalid config at /etc/akm/config.json:
+ *     - stashDir: stashDir is retired in 0.9; the stash path now comes from
+ *       `bundles`.
+ *
+ * Every `akm` invocation in the assistant then fails with INVALID_CONFIG_FILE
+ * and the UI reports AKM metrics as unavailable, with nothing naming the
+ * cause. Swept on the lifecycle pass instead, beside the retired stack.env
+ * keys, so an upgraded install heals itself.
+ *
+ * Deliberately narrow: it removes retired keys and stamps `configVersion`, and
+ * writes ONLY when one of those actually changed. It does not reshape bundles
+ * or defaults — this runs on every lifecycle action against a file the
+ * operator owns, so it must not rewrite anything it was not asked to.
+ */
+export function stripRetiredAkmConfigKeys(state: ControlPlaneState): boolean {
+  const configPath = openpalmConfigPath(state);
+  if (!existsSync(configPath)) return false;
+  const before = readFileSync(configPath, "utf-8");
+  let config: AkmConfigObject;
+  try {
+    const parsed: unknown = JSON.parse(before);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return false;
+    config = parsed as AkmConfigObject;
+  } catch {
+    // Unparseable: leave it alone. Rewriting would destroy whatever the
+    // operator has, and akm reports a parse error clearly on its own.
+    return false;
+  }
+  stripRetiredAkmKeys(config);
+  config.configVersion = "0.9.0";
+  const after = `${JSON.stringify(config, null, 2)}\n`;
+  if (after === before) return false;
+  writeFileAtomic(configPath, after, 0o600);
+  return true;
+}
