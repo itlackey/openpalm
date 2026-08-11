@@ -189,10 +189,11 @@ services:
       - "${OP_GUARDIAN_BIND_ADDRESS:-127.0.0.1}:${OP_GUARDIAN_PORT:-3830}:3830"
       # The admin listener is loopback-only, permanently — it mints principals.
       - "127.0.0.1:${OP_GUARDIAN_ADMIN_PORT:-3831}:3831"
-      # ONE host port onto the OpenAI-compatible listener. This used to be two
-      # separate chat/api host ports mapping to the same container port 8182 —
-      # two knobs, two bind addresses and two firewall holes for one service.
-      - "${OP_API_BIND_ADDRESS:-127.0.0.1}:${OP_API_PORT:-3821}:8182"
+      # The OpenAI-compatible listener (8182) has NO unconditional host
+      # publish: guardian.compose.api.yml adds the one host port, and
+      # discoverStackOverlays includes that overlay only when the
+      # guardianOpenaiApi toggle is on or the api addon is enabled — the
+      # toggle's OFF position means no host listener, not a loopback one.
     volumes:
       - ${OP_HOME}/data/guardian:/opt/openpalm/guardian
       # S1: see core.compose.yml — regenerable cache on a pre-created host

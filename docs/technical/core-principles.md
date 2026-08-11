@@ -315,7 +315,7 @@ Host-exposed OpenPalm services default to a small localhost-friendly port set. C
 | **Guardian moderator** (OpenCode) | 4097 | (loopback only) | Local content-moderation model |
 | **Guardian direct listener** | 3830 | `127.0.0.1:3830` (`OP_GUARDIAN_BIND_ADDRESS`) | Direct (non-portal) ingress; the listener 404s unless `GUARDIAN_DIRECT_INGRESS=true`; serves plain HTTP |
 | **Guardian admin listener** | 3831 | `127.0.0.1:3831` (`OP_GUARDIAN_ADMIN_PORT`; bind address is fixed) | Principal CRUD (`/admin/principals`), Bearer-token auth via `GUARDIAN_ADMIN_TOKEN_FILE` |
-| **Guardian OpenAI/Anthropic API** | 8182 | `127.0.0.1:3821` (`OP_API_BIND_ADDRESS`) | The one compatible API listener on a single host port |
+| **Guardian OpenAI/Anthropic API** | 8182 | `127.0.0.1:3821` (`OP_API_BIND_ADDRESS`; published only when `guardianOpenaiApi` is on or the `api` addon is enabled — `guardian.compose.api.yml`) | The one compatible API listener on a single host port |
 
 Port assignments live in non-secret `state/stack.env`. Configurable host binds are flat and service-specific: `OP_UI_BIND_ADDRESS`, `OP_ASSISTANT_BIND_ADDRESS`, `OP_GUARDIAN_BIND_ADDRESS`, and `OP_API_BIND_ADDRESS`; no listener inherits from a global bind. Voice, Paperclip, and the Guardian admin listener are fixed to loopback. The Guardian `/stats` endpoint is gated by the admin bearer token and denies all when no token is configured. Its internal `8080` listener binds for both `portal_net` and loopback callers inside the container.
 

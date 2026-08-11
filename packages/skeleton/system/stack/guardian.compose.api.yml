@@ -1,0 +1,31 @@
+# OpenAI-compatible API host-publish overlay — publishes the guardian's
+# compatible edge (container port 8182) onto the host.
+#
+# Opt-in, default OFF: included only when the `guardianOpenaiApi` access
+# toggle is on or the `api` addon is enabled, checked by
+# discoverStackOverlays (packages/lib/src/control-plane/config-persistence.ts).
+# Applied on EVERY compose invocation once the condition holds — `openpalm
+# start`, an update, the settings-save recreate — not just one bring-up call;
+# see discoverStackOverlays' comment for why conditional membership must live
+# in the shared file list.
+#
+# WHY an overlay: the edge process itself starts on every guardian boot (it
+# serves 8182 inside the container for portal_net peers and the loopback
+# moderator topology), but the HOST publish is exposure, and exposure is what
+# the toggle governs. With this file absent from the invocation there is no
+# host listener on ${OP_API_PORT} at all — the toggle's OFF position is
+# enforced, instead of "loopback with a fully working edge behind it".
+# The bind address still follows the flat access model: the toggle generates
+# OP_API_BIND_ADDRESS (127.0.0.1 or 0.0.0.0) and this file only interpolates
+# it. The api-addon inclusion keeps upgraded installs that enabled the addon
+# (the pre-toggle exposure alias) serving their loopback edge unchanged.
+#
+# No `profiles:` key on purpose: the merged guardian service keeps the base
+# file's profile gate, so including this overlay never deploys the guardian
+# by itself — it only adds the port publish when something else deploys it.
+services:
+  guardian:
+    ports:
+      # ONE host port onto the OpenAI-compatible listener (see the base
+      # guardian service in portals.compose.yml for the other listeners).
+      - "${OP_API_BIND_ADDRESS:-127.0.0.1}:${OP_API_PORT:-3821}:8182"

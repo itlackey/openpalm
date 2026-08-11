@@ -130,6 +130,7 @@ compose() {
     -f "${OP_E2E_HOME}/system/stack/core.compose.yml" \
     -f "${OP_E2E_HOME}/system/stack/services.compose.yml" \
     -f "${OP_E2E_HOME}/system/stack/portals.compose.yml" \
+    -f "${OP_E2E_HOME}/system/stack/guardian.compose.api.yml" \
     -f "${OP_E2E_HOME}/config/stack/custom.compose.yml" \
     -f compose.dev.yml \
     --env-file "${OP_E2E_HOME}/state/stack.env" \

@@ -37,7 +37,7 @@ targeting it).
 | Assistant UI | Always | `127.0.0.1:3800 -> 3000` |
 | Guardian direct ingress | Guardian profile | `127.0.0.1:3830 -> 3830` |
 | Guardian principal admin | Guardian profile | `127.0.0.1:3831 -> 3831` |
-| Compatible API | Guardian profile | `127.0.0.1:3821 -> 8182` |
+| Compatible API | `guardian.compose.api.yml` overlay (guardianOpenaiApi toggle or `api` addon) | `127.0.0.1:3821 -> 8182`; no host port otherwise |
 | Discord / Slack | Matching profile | No host port; outbound bot connections |
 | Voice | `addon.voice.*` | `127.0.0.1:8880 -> 8880` |
 | Ollama | `addon.ollama.*` | Internal model service |

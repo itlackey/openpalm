@@ -63,10 +63,10 @@ Managed moderation instructions come from host `system/guardian/`, mounted at
 | Internal `8080` | Docker networks only | Health, stats, and authenticated `/oc/*` proxy |
 | Direct `3830` | `127.0.0.1:3830` | Optional direct `/oc/*` and MCP ingress |
 | Admin `3831` | `127.0.0.1:3831` permanently | `/admin/principals` CRUD |
-| Compatible API `8182` | `127.0.0.1:3821` | OpenAI/Anthropic-compatible edge |
+| Compatible API `8182` | `127.0.0.1:3821` (only when the `guardian.compose.api.yml` overlay is included) | OpenAI/Anthropic-compatible edge |
 | Moderator `4097` | Container loopback only | Content-validation OpenCode process |
 
-One compatible API listener is published through `OP_API_PORT`.
+One compatible API listener; its host publish (`OP_API_PORT`) ships in the opt-in `guardian.compose.api.yml` overlay.
 
 The direct listener returns `404` until `GUARDIAN_DIRECT_INGRESS=true`. TLS
 termination is an operator reverse-proxy concern; Guardian serves plain HTTP.

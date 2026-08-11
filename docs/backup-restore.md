@@ -103,6 +103,10 @@ docker compose \
 
 Replace `guardian` with the profiles that were active for the backup. The
 value of `OP_ENABLED_ADDONS` alone is not translated by raw Docker Compose.
+If the backup had the OpenAI-compatible API enabled (`OP_ACCESS_OPENAI_API=true`
+or `api` in `OP_ENABLED_ADDONS`), also add
+`-f "$OP_HOME/system/stack/guardian.compose.api.yml"` — that overlay carries the
+edge's host publish (see the Manual Compose Runbook's conditional overlays).
 If the restored `state/stack.env` records a non-default `OP_PROJECT_NAME`, set
 the shell variable to that exact value as well; `--env-file` does not expand the
 shell's earlier `--project-name` argument.

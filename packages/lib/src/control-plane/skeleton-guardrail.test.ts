@@ -191,7 +191,14 @@ describe("skeleton: config/ structure", () => {
     expect(coreCompose).toContain('${OP_UI_BIND_ADDRESS:-127.0.0.1}:${OP_UI_PORT:-3800}:3000');
     expect(coreCompose).toContain('${OP_ASSISTANT_BIND_ADDRESS:-127.0.0.1}:${OP_ASSISTANT_PORT:-3810}:4096');
     expect(channelsCompose).toContain('${OP_GUARDIAN_BIND_ADDRESS:-127.0.0.1}:${OP_GUARDIAN_PORT:-3830}:3830');
-    expect(channelsCompose).toContain('${OP_API_BIND_ADDRESS:-127.0.0.1}:${OP_API_PORT:-3821}:8182');
+    // The OpenAI-compatible publish lives ONLY in the opt-in overlay — the
+    // base file must not publish 8182 at all.
+    expect(channelsCompose).not.toContain(':8182');
+    const apiOverlay = readFileSync(
+      join(SKELETON_DIR, 'system', 'stack', 'guardian.compose.api.yml'),
+      'utf-8',
+    );
+    expect(apiOverlay).toContain('${OP_API_BIND_ADDRESS:-127.0.0.1}:${OP_API_PORT:-3821}:8182');
 
     // Voice serves an API reached through the UI's /voice proxy — it never
     // needs a host port, so its bind is a literal, not a knob.

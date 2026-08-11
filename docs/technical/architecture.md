@@ -77,7 +77,8 @@ escalated to Guardian's loopback OpenCode moderator; a moderator failure or
 unusable verdict blocks the escalated request.
 
 Guardian also owns the one OpenAI/Anthropic-compatible listener at container
-port `8182`, published on host port `3821` by default. Chat and API are not
+port `8182`, published on host port `3821` only when the OpenAI-compatible
+API is enabled (the `guardian.compose.api.yml` overlay). Chat and API are not
 separate listeners.
 
 ## Secret Topology
