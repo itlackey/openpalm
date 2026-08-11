@@ -63,6 +63,10 @@ describe('Paperclip addon Compose contract', () => {
 		const paperclip = services.services?.paperclip;
 		expect(paperclip?.volumes).toEqual([
 			'${OP_HOME}/data/paperclip:/paperclip',
+			// The en_US.UTF-8 alias the paperclip-locale one-shot materializes,
+			// at glibc's DEFAULT lookup path — the library wipes the environment
+			// when it spawns initdb, so LOCPATH could never reach it.
+			'${OP_HOME}/data/paperclip/.locale/en_US.UTF-8:/usr/lib/locale/en_US.UTF-8:ro',
 			'${OP_HOME}/config/paperclip/opencode:/paperclip/.config/opencode:ro',
 			'${OP_HOME}/system/paperclip:/opt/openpalm/paperclip:ro',
 			'${OP_HOME}/cache/paperclip-opencode/runtime:/etc/opencode',
@@ -220,5 +224,27 @@ describe('Paperclip addon Compose contract', () => {
 		expect(akmConfig.configVersion).toBe('0.9.0');
 		expect(akmConfig.defaults?.engine).toBe('opencode');
 		expect(akmConfig.engines?.opencode).toEqual({ kind: 'agent', platform: 'opencode' });
+	});
+
+	test('the locale one-shot repairs upstream initdb before paperclip starts', () => {
+		// Upstream's embedded-postgres hardcodes `--lc-messages=en_US.UTF-8`, a
+		// locale the paperclip image does not ship, so initdb exits 1 on any FRESH
+		// data dir and the container crash-loops. This one-shot aliases the image's
+		// own C.utf8 under that name; without it, a first-time paperclip enable
+		// never comes online.
+		const locale = services.services?.['paperclip-locale'];
+		const paperclip = services.services?.paperclip;
+		expect(locale?.profiles).toEqual(['addon.paperclip']);
+		// One-shot, not a service: paperclip is gated on it EXITING cleanly.
+		expect(locale?.restart).toBe('no');
+		expect(paperclip?.depends_on?.['paperclip-locale']?.condition).toBe(
+			'service_completed_successfully'
+		);
+		// Same digest as paperclip, always. The locale it copies is glibc-version
+		// specific, so a digest bump that moved only one of the two would hand
+		// paperclip a locale built by a different libc.
+		expect(locale?.image).toBe(paperclip?.image);
+		// It must copy the image's own locale, never generate or vendor one.
+		expect(String(locale?.command)).toContain('/usr/lib/locale/C.utf8');
 	});
 });

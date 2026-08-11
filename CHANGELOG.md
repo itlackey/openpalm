@@ -9,6 +9,39 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **Paperclip can cold-start again.** Upstream's `embedded-postgres` hardcodes
+  `--lc-messages=en_US.UTF-8` when it shells out to `initdb`, and the paperclip
+  image (Debian glibc 2.41) ships only `C`, `C.utf8` and `POSIX` — so `initdb`
+  exited 1 with `invalid locale name "en_US.UTF-8"` on any FRESH data
+  directory and the container crash-looped. The library forwards only initdb's
+  stdout to its log and drops stderr, so the only symptom was two banner lines
+  and "The data directory might already exist", naming neither the locale nor
+  the real error. An install whose cluster already existed was unaffected,
+  which is how this stayed hidden through an acceptance run. A one-shot
+  `paperclip-locale` service now aliases the image's OWN `C.utf8` under the
+  name initdb demands and mounts it at glibc's default lookup path; paperclip
+  waits for it to exit cleanly. It is mounted rather than exported through
+  `LOCPATH` because the library spawns initdb with `env: { LC_MESSAGES }` and
+  nothing else, so no container variable can reach it.
+- **An upgrade no longer leaves the assistant's akm config unloadable.**
+  `stripRetiredAkmKeys` ran only on the two paths that WRITE that file — the
+  setup wizard and install — so a config written before akm 0.9 kept its
+  retired keys, and the newer CLI in an upgraded image rejected the whole file
+  (`stashDir is retired in 0.9`). Every `akm` call in the assistant then failed
+  with `INVALID_CONFIG_FILE` and the UI reported AKM metrics as unavailable
+  with nothing naming the cause. The retired keys are now swept on the
+  lifecycle pass, beside the retired `stack.env` keys.
+- **Release signature verification no longer races the registry.** cosign 3.x
+  attaches signatures as OCI 1.1 referrers and Docker Hub's referrers index is
+  eventually consistent, but `cosign verify` ran once, immediately after
+  `cosign sign`. On 0.13.0-beta.24 the portal image verified while guardian and
+  assistant both failed `no signatures found` at the same one-second gap — the
+  signatures were present minutes later and an identical re-run passed. Verify
+  now retries with backoff, and still fails closed: a genuinely broken signer
+  stops the release, it just takes about a minute to say so. This step cannot
+  be exercised by a dry run — it and the sign are both gated on
+  `dry_run != true` — so the first execution is always the publishing one.
+
 - **Enabling an addon now deploys it.** The toggle was asymmetric: disable
   stopped the addon's services through compose, enable only wrote
   `OP_ENABLED_ADDONS` and returned. The compose profile went active with

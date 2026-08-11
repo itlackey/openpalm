@@ -25,8 +25,60 @@
 # weakening.
 
 services:
+  # Upstream cannot cold-start its embedded Postgres in its own image, and this
+  # one-shot repairs that before paperclip runs.
+  #
+  # `embedded-postgres` hardcodes `--lc-messages=en_US.UTF-8` when it shells out
+  # to initdb (paperclip's own `initdbFlags` are `--encoding=UTF8 --locale=C`,
+  # and a later flag does NOT rescue the earlier bad one). The paperclip image
+  # is Debian glibc 2.41 carrying only `C`, `C.utf8` and `POSIX`, so initdb
+  # exits 1 with `invalid locale name "en_US.UTF-8"` on any FRESH data
+  # directory. The library forwards only initdb's stdout to its log and drops
+  # stderr, so the container just crash-loops with two banner lines and
+  # "The data directory might already exist" — naming neither the locale nor
+  # the real error. An install whose cluster already exists is unaffected,
+  # which is why this hid: initdb never runs again.
+  #
+  # The fix is the smallest thing that makes the name resolve: alias the
+  # image's OWN `C.utf8` under the name initdb demands, and mount it at glibc's
+  # DEFAULT lookup path. Not `LOCPATH`: the library spawns initdb with
+  # `env: { LC_MESSAGES }` and nothing else, wiping the container environment,
+  # so no variable set here can reach the process that needs it — the locale
+  # has to be somewhere glibc looks without being told. Copying the image's own
+  # locale keeps it byte-compatible with the glibc that will read it — no
+  # generated locale, no vendored binaries, no rebuilt image (this file does
+  # not rebuild upstream images, and must not start). It only ever affects
+  # `--lc-messages`, the language of initdb's own messages, which paperclip
+  # already asks to be `C` anyway.
+  #
+  # Idempotent, and NOT a persistent service: it exits 0 and paperclip waits on
+  # that. Remove this once upstream stops demanding a locale it does not ship.
+  paperclip-locale:
+    profiles: ["addon.paperclip"]
+    image: ghcr.io/paperclipai/paperclip:sha-59e29af@sha256:048034718f9922e3c1eb168f21c3fc6f4d3e1689ad7e1dd13322a331217d8457
+    restart: "no"
+    user: "${OP_UID:-1000}:${OP_GID:-1000}"
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        set -e
+        target=/paperclip/.locale/en_US.UTF-8
+        if [ ! -d "$$target" ]; then
+          mkdir -p /paperclip/.locale
+          cp -r /usr/lib/locale/C.utf8 "$$target"
+          echo "materialized en_US.UTF-8 from the image's C.utf8 at $$target"
+        else
+          echo "en_US.UTF-8 already present at $$target"
+        fi
+    volumes:
+      - ${OP_HOME}/data/paperclip:/paperclip
+    networks: [addon_net]
+
   paperclip:
     profiles: ["addon.paperclip"]
+    depends_on:
+      paperclip-locale:
+        condition: service_completed_successfully
     # Upstream image, digest-pinned — the same third-party pattern as ollama and
     # tunnel above. OpenPalm does NOT rebuild it. Paperclip's OpenCode adapter
     # gets AKM through user-owned OpenCode config and the published plugin; the
@@ -45,6 +97,9 @@ services:
       - "127.0.0.1:${OP_PAPERCLIP_PORT:-3840}:3100"
     volumes:
       - ${OP_HOME}/data/paperclip:/paperclip
+      # The `en_US.UTF-8` alias the paperclip-locale one-shot materialized, at
+      # glibc's default lookup path so initdb resolves it with no environment.
+      - ${OP_HOME}/data/paperclip/.locale/en_US.UTF-8:/usr/lib/locale/en_US.UTF-8:ro
       # User settings, read-only managed bootstrap, and a mutable regenerable
       # runtime config. OpenCode may install exact-pinned plugin dependencies,
       # but it never writes into lifecycle-owned system/.

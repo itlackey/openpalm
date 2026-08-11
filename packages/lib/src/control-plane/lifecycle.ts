@@ -48,6 +48,7 @@ import { getAddonServiceNames, listEnabledAddonIds, pruneRemovedAddonState } fro
 import { backupOpenPalmHome, pruneBackupDirs } from './backup.js';
 import { hasGuardianIngressAddon } from './addon-ids.js';
 import { advanceManagedImageVersions, ensureVersionDefaults } from './versions.js';
+import { stripRetiredAkmConfigKeys } from './akm-sources.js';
 import {
 	captureRunningImageIds,
 	restoreRunningImageIds,
@@ -209,6 +210,9 @@ async function applyHome(state: ControlPlaneState): Promise<void> {
 	}
 	pruneRemovedAddonState(state.homeDir);
 	ensureVersionDefaults(state);
+	// An upgrade can leave the assistant's akm config carrying keys the newer
+	// pinned akm-cli hard-rejects, which breaks every akm call in the container.
+	stripRetiredAkmConfigKeys(state);
 	ensureOpenCodeConfig();
 	ensureOpenCodeSystemConfig();
 }
