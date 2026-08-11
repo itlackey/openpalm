@@ -2,8 +2,16 @@
  * Shared addon enable/disable logic for admin route handlers.
  *
  * Both /admin/addons and /admin/addons/:name share the same POST flow:
- * validate → stop running services if disabling → mutate state → audit.
- * This module houses the shared mutation step so neither route duplicates it.
+ * validate → stop running services if disabling → mutate state → bring
+ * services up if enabling → audit. This module houses the shared mutation step
+ * so neither route duplicates it.
+ *
+ * A toggle is an APPLY, in both directions. Disable has always stopped the
+ * addon's services; enable used to write OP_ENABLED_ADDONS and stop there, so
+ * the compose profile went active with nothing behind it and the container
+ * appeared only at the next unrelated lifecycle action — "I enabled paperclip
+ * and it never came online". Voice escaped this only because it is routed to
+ * its own bring-up engine. Every other addon now brings its services up here.
  */
 import {
 	activateComposeCommand,
@@ -24,11 +32,43 @@ import { VOICE_ADDON, engageVoiceAddon } from './voice/bring-up.js';
 const logger = createLogger('addon-helpers');
 
 type AddonToggleResult =
-	| { ok: true; enabled: boolean; changed: boolean }
+	| { ok: true; enabled: boolean; changed: boolean; deploying?: Promise<void> }
 	| { ok: false; error: string };
 
 /**
- * Stop running services if disabling, then call setAddonEnabled.
+ * Bring an addon's services up, or null when there is nothing to deploy.
+ *
+ * Returned as a pending promise rather than awaited: a first enable pulls the
+ * addon's image, which for paperclip is minutes. The caller answers 202 and
+ * holds the admin lock until this settles (same contract as the voice engine's
+ * background pull), so a concurrent install cannot interleave with the up.
+ */
+async function deployAddonServices(
+	state: ControlPlaneState,
+	name: string,
+	requestId: string,
+	lock: InstallLockHandle
+): Promise<void> {
+	const serviceNames = getAddonServiceNames(state.homeDir, name);
+	if (serviceNames.length === 0) return;
+	try {
+		await activateComposeCommand(state, ['up', '-d', ...serviceNames], { lock });
+		logger.info('brought addon services up after enable', { name, services: serviceNames, requestId });
+	} catch (err) {
+		// Never rethrow into the deferred lock release: the addon IS enabled and
+		// the operator can retry from Containers. Logged, not silent.
+		logger.error('failed to bring addon services up after enable', {
+			name,
+			services: serviceNames,
+			error: String(err),
+			requestId
+		});
+	}
+}
+
+/**
+ * Stop running services if disabling, then call setAddonEnabled, then bring
+ * services up if enabling.
  */
 async function performAddonToggleMutation(
 	state: ControlPlaneState,
@@ -78,7 +118,18 @@ async function performAddonToggleMutation(
 	if (mutation.changed) resetState();
 
 	const resultEnabled = listEnabledAddonIds(state.homeDir).includes(name);
-	return { ok: true, enabled: resultEnabled, changed: mutation.changed };
+
+	// Newly enabled → apply it. Gated on `changed` so a no-op re-enable does not
+	// recreate a healthy container, and on Docker being reachable for the same
+	// reason the disable path checks: a host without Docker can still record the
+	// intent, it just has nothing to deploy onto yet.
+	let deploying: Promise<void> | undefined;
+	if (resultEnabled && mutation.changed) {
+		const dockerCheck = await checkDocker();
+		if (dockerCheck.ok) deploying = deployAddonServices(state, name, requestId, lock);
+	}
+
+	return { ok: true, enabled: resultEnabled, changed: mutation.changed, deploying };
 }
 
 export function performAddonToggle(
@@ -87,10 +138,21 @@ export function performAddonToggle(
 	requestedEnabled: boolean | undefined,
 	requestId: string
 ): Promise<Response> {
-	return withAdminUpdateLock(state, requestId, async (lock) => {
+	return withAdminUpdateLock(state, requestId, async (lock, deferReleaseUntil) => {
 		const toggle = await performAddonToggleMutation(state, name, requestedEnabled, requestId, lock);
 		if (!toggle.ok) {
 			return errorResponse(500, 'internal_error', toggle.error, {}, requestId);
+		}
+		if (toggle.deploying) {
+			// 202: the services are coming up behind this response (image pull).
+			// Same shape the voice engine already answers with, so the client has
+			// one rule for "enabled, not yet running".
+			deferReleaseUntil(toggle.deploying);
+			return jsonResponse(
+				202,
+				{ ok: true, addon: name, enabled: toggle.enabled, changed: toggle.changed, deploying: true },
+				requestId
+			);
 		}
 		return jsonResponse(
 			200,

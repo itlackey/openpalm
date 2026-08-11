@@ -17,7 +17,7 @@ vi.mock('@openpalm/lib', async (importOriginal) => {
 	const original = await importOriginal<typeof import('@openpalm/lib')>();
 	return {
 		...original,
-		enableHostAkmSharing: vi.fn(() => ({ profilesImported: ['profiles.llm'] })),
+		enableHostAkmSharing: vi.fn(() => undefined),
 		disableHostAkmSharing: vi.fn(() => undefined),
 		getHostAkmSharingStatus: vi.fn(() => ({ enabled: true, hostStashPath: '/home/u/akm' })),
 	};
@@ -56,7 +56,6 @@ beforeEach(() => {
 	process.env.OP_HOME = rootDir;
 	resetState('admin-token');
 	vi.clearAllMocks();
-	vi.mocked(enableHostAkmSharing).mockReturnValue({ profilesImported: ['profiles.llm'] });
 	vi.mocked(getHostAkmSharingStatus).mockReturnValue({ enabled: true, hostStashPath: '/home/u/akm' });
 });
 
@@ -85,12 +84,11 @@ describe('PUT /api/host/akm/host-sharing', () => {
 		expect((await PUT(makeEvent('PUT', {}, ''))).status).toBe(401);
 	});
 
-	test('enables sharing and returns profilesImported', async () => {
+	test('enables sharing and returns the resulting status', async () => {
 		const res = await PUT(makeEvent('PUT', {}));
 		expect(res.status).toBe(200);
 		expect(enableHostAkmSharing).toHaveBeenCalledWith(expect.anything());
-		const body = (await res.json()) as Record<string, unknown>;
-		expect(body.profilesImported).toEqual(['profiles.llm']);
+		expect(await res.json()).toMatchObject({ enabled: true, hostStashPath: '/home/u/akm' });
 	});
 
 	test('returns structured 409 without enabling while an update holds the install lock', async () => {

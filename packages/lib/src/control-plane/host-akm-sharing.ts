@@ -1,22 +1,29 @@
 /**
  * Host AKM sharing (control-plane logic — lives in lib).
  *
- * Model:
+ * Model — the ONLY thing shared with the host is the stash DIRECTORY:
  *  - The assistant ALWAYS has `/host-stash` as a secondary akm bundle (written
  *    once at install by addHostStashToOpenpalmConfig, never removed).
  *  - Enable/disable = flip OP_HOST_AKM_STASH in stack.env between the real
  *    ~/akm path (enabled) and an empty string / removal (disabled). Compose
  *    reads OP_HOST_AKM_STASH and mounts the real stash or the always-present
  *    empty-dir fallback accordingly.
- *  - Enabling also imports host engine/embedding config (best-effort, additive
- *    merge — akm >= 0.9.0 `engines`/`defaults` shape). If no host akm config
- *    exists the import is silently skipped — it is never a blocking condition.
+ *
+ * Enabling used to ALSO copy the host's engine/embedding config into
+ * `config/akm/config.json`, the file bind-mounted at the assistant's
+ * `/etc/akm`. OpenPalm does not read the host's akm config or CLI: the two
+ * are independent installs on independent upgrade cycles, and importing one
+ * into the other made the assistant's config a function of whatever akm
+ * version happened to be on the host. When the host ran a newer akm than the
+ * image, the merged keys were ones the container's CLI could not parse, so
+ * EVERY `akm` invocation in the assistant failed with INVALID_CONFIG_FILE and
+ * the UI reported "metrics unavailable" with no indication why. The stash
+ * mount is the whole of host sharing.
  */
 import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { writeFileAtomic } from "./fs-atomic.js";
 import { mergeEnvContent, removeEnvKey, parseEnvFile } from "./env.js";
-import { importHostProfiles } from "./akm-sources.js";
 import { stackEnvPath } from "./paths.js";
 import type { ControlPlaneState } from "./types.js";
 import { createLogger } from "../logger.js";
@@ -32,10 +39,6 @@ function userHome(): string {
 /** The user's personal akm stash dir (mounted into the assistant at /host-stash). */
 export function hostAkmStashPath(): string {
   return `${userHome()}/akm`;
-}
-
-function hostAkmConfigPath(): string {
-  return `${userHome()}/.config/akm/config.json`;
 }
 
 export type HostAkmSharingStatus = {
@@ -56,18 +59,12 @@ export function getHostAkmSharingStatus(state: ControlPlaneState): HostAkmSharin
   };
 }
 
-/**
- * Enable host AKM sharing: point OP_HOST_AKM_STASH at ~/akm and import host
- * engine/embedding config (best-effort — skipped if host akm config is absent).
- */
-export function enableHostAkmSharing(state: ControlPlaneState): { profilesImported: string[] } {
+/** Enable host AKM sharing: point OP_HOST_AKM_STASH at ~/akm. Nothing else. */
+export function enableHostAkmSharing(state: ControlPlaneState): void {
   const envPath = stackEnvPath(state);
   const existing = existsSync(envPath) ? readFileSync(envPath, "utf-8") : "";
   writeFileAtomic(envPath, mergeEnvContent(existing, { [ENV_KEY]: hostAkmStashPath() }), 0o600);
-
-  const { imported: profilesImported } = importHostProfiles(state, hostAkmConfigPath());
-  logger.info("host akm sharing enabled", { hostStashPath: hostAkmStashPath(), profilesImported });
-  return { profilesImported };
+  logger.info("host akm sharing enabled", { hostStashPath: hostAkmStashPath() });
 }
 
 /**

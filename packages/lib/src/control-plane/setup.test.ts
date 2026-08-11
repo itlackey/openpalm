@@ -972,12 +972,12 @@ describe('performSetup', () => {
 		}
 	});
 
-	it('enables sharing even when host has no akm config (engine import silently skipped)', async () => {
+	it('enables sharing even when the host has no akm config at all', async () => {
 		const fakeHome = mkdtempSync(join(tmpdir(), 'openpalm-fakehome-'));
 		const savedHome = process.env.HOME;
 		process.env.HOME = fakeHome;
 		try {
-			// ~/akm and ~/.config/akm/config.json both absent on host — engine import skipped.
+			// ~/akm absent on host — sharing is the mount, so there is nothing else to do.
 			const result = await performSetup(makeValidSpec({ hostAkm: true }));
 			expect(result.ok).toBe(true);
 			// Bundle entry always present (written unconditionally).

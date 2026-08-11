@@ -53,6 +53,8 @@ export type AddonToggleResult = {
   status: number;
   enabled?: boolean;
   changed?: boolean;
+  /** Set on a 202: the addon is enabled and its services are coming up. */
+  deploying?: boolean;
   /** Present for voice enables: bring-up steps, background-pull status, error. */
   voiceAddon?: {
     steps: VoiceAddonStep[];
@@ -74,9 +76,10 @@ export async function toggleAddon(
   if (res.status === 401) {
     throw Object.assign(new Error('Invalid password.'), { status: 401 });
   }
-  // Voice enables reply 202 (image pulling in the background — poll
-  // fetchAddons() for the activeJob) or 502 (bring-up failed) with a
-  // structured voiceAddon payload; plain toggles reply 200.
+  // An enable that has services to start replies 202 (they are coming up
+  // behind the response — voice adds a structured voiceAddon payload and an
+  // activeJob to poll via fetchAddons()); voice bring-up failure replies 502;
+  // everything else replies 200.
   if (res.status === 200 || res.status === 202 || res.status === 502) {
     const parsed = (await res.json()) as Omit<AddonToggleResult, 'status'>;
     return { ...parsed, status: res.status };

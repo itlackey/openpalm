@@ -64,21 +64,24 @@ describe("enableHostAkmSharing", () => {
     expect(Object.keys((cfg.bundles as Record<string, unknown>) ?? {})).toHaveLength(0);
   });
 
-  it("imports host engines when host config exists", () => {
+  it("never copies the host's akm config into the assistant's, even when one exists", () => {
+    // The regression: enabling used to merge the host's `engines`/`defaults`
+    // into config/akm/config.json — the file bind-mounted at the assistant's
+    // /etc/akm. A host running a NEWER akm than the image wrote keys the
+    // container's CLI could not parse, so every `akm` call in the assistant
+    // failed with INVALID_CONFIG_FILE. The stash mount is the whole of host
+    // sharing; the host's config and CLI are not OpenPalm's to read.
     setHostAkmConfig({
       engines: { fast: { kind: "llm", endpoint: "http://h/v1/chat/completions", model: "qwen" } },
+      defaults: { llmEngine: "fast" },
     });
     writeFileSync(opConfig, "{}");
-    const { profilesImported } = enableHostAkmSharing(state);
-    expect(profilesImported).toContain("engines");
-    const opEngines = readJson(opConfig).engines as Record<string, Record<string, unknown>>;
-    expect(opEngines.fast.model).toBe("qwen");
+    enableHostAkmSharing(state);
+    expect(readJson(opConfig)).toEqual({});
   });
 
-  it("skips engine import (no error) when host config is absent", () => {
-    // ~/akm doesn't exist, ~/.config/akm/config.json doesn't exist — just skips.
-    const { profilesImported } = enableHostAkmSharing(state);
-    expect(profilesImported).toEqual([]);
+  it("sets the env key with no host config present", () => {
+    enableHostAkmSharing(state);
     expect(readFileSync(stackEnv, "utf-8")).toContain("OP_HOST_AKM_STASH=");
   });
 

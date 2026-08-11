@@ -16,7 +16,7 @@
  */
 import { existsSync, readFileSync, mkdirSync } from 'node:fs';
 import { writeFileAtomic } from './fs-atomic.js';
-import { parseEnvFile, mergeEnvContent } from './env.js';
+import { parseEnvFile, mergeEnvContent, removeEnvKey } from './env.js';
 import { stackEnvFile } from './home.js';
 import type { ControlPlaneState } from './types.js';
 import { normalizeVersion, PLATFORM_VERSION } from './versioning.js';
@@ -51,6 +51,25 @@ export function isVersionKey(key: string): key is VersionKey {
 	return VERSION_KEY_SET.has(key);
 }
 
+/**
+ * Tool-version keys retired when tool management moved to a per-container
+ * `package.json` + `bun update` (b9478492, 2026-06-22).
+ *
+ * Nothing has written or read them since — not the images, not compose, not
+ * this package — but every stack.env written before that commit still carries
+ * them, and a stale row that LOOKS like configuration is worse than no row:
+ * `OP_TOOL_AKM_VERSION=0.8.14` sitting beside the live `OP_*_VERSION` image
+ * tags reads as the knob that pins the assistant's akm, so an operator
+ * debugging a version skew edits it and nothing happens. Swept on the same
+ * lifecycle pass that seeds the real version keys.
+ */
+export const RETIRED_TOOL_VERSION_KEYS = [
+	'OP_TOOL_AKM_VERSION',
+	'OP_TOOL_CLAUDE_CODE_VERSION',
+	'OP_TOOL_CODEX_VERSION',
+	'OP_TOOL_OPENCODE_VERSION'
+] as const;
+
 // ── Version configuration ────────────────────────────────────────────────────
 
 /**
@@ -79,6 +98,22 @@ export function ensureVersionDefaults(state: ControlPlaneState): void {
 		}
 	}
 	writeVersionState(state, missing);
+	stripRetiredToolVersions(state);
+}
+
+/** Drop {@link RETIRED_TOOL_VERSION_KEYS} from `state/stack.env`. No-op once clean. */
+export function stripRetiredToolVersions(state: ControlPlaneState): boolean {
+	const path = stackEnvFile(state.homeDir);
+	if (!existsSync(path)) return false;
+	const content = readFileSync(path, 'utf-8');
+	const parsed = parseEnvFile(path);
+	const retired = RETIRED_TOOL_VERSION_KEYS.filter((key) => Object.hasOwn(parsed, key));
+	if (retired.length === 0) return false;
+	let next = content;
+	for (const key of retired) next = removeEnvKey(next, key);
+	if (next === content) return false;
+	writeFileAtomic(path, next, 0o600);
+	return true;
 }
 
 /** Advance release-managed exact pins while preserving explicit moving or custom pins. */

@@ -10,7 +10,8 @@ import {
 	writeManagedVersions,
 	readVersions,
 	ensureVersionDefaults,
-	advanceManagedImageVersions
+	advanceManagedImageVersions,
+	stripRetiredToolVersions
 } from './versions.js';
 import type { ControlPlaneState } from './types.js';
 import { PLATFORM_VERSION } from './versioning.js';
@@ -166,5 +167,53 @@ describe('version configuration', () => {
 		advanceManagedImageVersions(home.state, PLATFORM_VERSION, '0.99.0');
 
 		expect(readVersions(home.state).OP_ASSISTANT_VERSION).toBe('0.99.0');
+	});
+});
+
+describe('retired OP_TOOL_*_VERSION keys', () => {
+	let home: ReturnType<typeof makeState>;
+	beforeEach(() => {
+		home = makeState();
+	});
+	afterEach(() => {
+		home.cleanup();
+	});
+
+	const envPath = () => join(home.state.homeDir, 'state', 'stack.env');
+
+	it('sweeps the retired tool rows and leaves everything else alone', () => {
+		// Tool management moved to per-container package.json in June 2026;
+		// nothing has read these since, but every older stack.env still has them
+		// sitting beside the live image tags, where they read as a pin that works.
+		writeFileSync(
+			envPath(),
+			[
+				'OP_ASSISTANT_VERSION=0.13.0',
+				'OP_TOOL_AKM_VERSION=0.8.14',
+				'OP_TOOL_CLAUDE_CODE_VERSION=2.1.186',
+				'OP_TOOL_CODEX_VERSION=0.142.0',
+				'OP_TOOL_OPENCODE_VERSION=1.17.9',
+				'OP_PROJECT_NAME=splinter',
+				''
+			].join('\n')
+		);
+
+		expect(stripRetiredToolVersions(home.state)).toBe(true);
+
+		const after = readFileSync(envPath(), 'utf-8');
+		expect(after).not.toContain('OP_TOOL_');
+		expect(after).toContain('OP_ASSISTANT_VERSION=0.13.0');
+		expect(after).toContain('OP_PROJECT_NAME=splinter');
+	});
+
+	it('is a no-op on an env that never had them', () => {
+		writeFileSync(envPath(), 'OP_ASSISTANT_VERSION=0.13.0\n');
+		expect(stripRetiredToolVersions(home.state)).toBe(false);
+	});
+
+	it('runs as part of the lifecycle version pass', () => {
+		writeFileSync(envPath(), 'OP_TOOL_AKM_VERSION=0.8.14\n');
+		ensureVersionDefaults(home.state);
+		expect(readFileSync(envPath(), 'utf-8')).not.toContain('OP_TOOL_AKM_VERSION');
 	});
 });

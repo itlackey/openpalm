@@ -293,7 +293,6 @@ export {
 export {
   HOST_SOURCE_NAME,
   addHostStashToOpenpalmConfig,
-  importHostProfiles,
 } from "./control-plane/akm-sources.js";
 export type {
   HostAkmSharingStatus,
@@ -368,10 +367,12 @@ export {
 // ── Version variables (stack.env image tags) ─────────────────────────────
 export {
   MANAGED_VERSION_MARKERS,
+  RETIRED_TOOL_VERSION_KEYS,
   SERVICE_VERSION_KEYS,
   VERSION_DEFAULTS,
   isVersionKey,
   readVersions,
+  stripRetiredToolVersions,
   writeVersions,
 } from "./control-plane/versions.js";
 export type { VersionKey } from "./control-plane/versions.js";

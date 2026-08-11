@@ -232,7 +232,6 @@ export async function fetchAkmKnowledgeStats(): Promise<AkmKnowledgeStats> {
 export type HostAkmSharing = {
   enabled: boolean;
   hostStashPath: string;
-  profilesImported?: string[];
 };
 
 export async function fetchHostAkmSharing(): Promise<HostAkmSharing> {
