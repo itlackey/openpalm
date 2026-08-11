@@ -1,5 +1,5 @@
 /** Secrets and capability key management. */
-import { mkdirSync, writeFileSync, readFileSync, existsSync, chmodSync, lstatSync, rmSync, renameSync, copyFileSync } from "node:fs";
+import { mkdirSync, writeFileSync, readFileSync, existsSync, chmodSync, lstatSync, statSync, rmSync, renameSync, copyFileSync } from "node:fs";
 import { errMessage } from './errors.js';
 import { createLogger } from "../logger.js";
 import { parseEnvFile, mergeEnvContent, parseEnabledAddons } from './env.js';
@@ -244,10 +244,17 @@ function ensureAuthJson(state: ControlPlaneState): void {
             error: errMessage(moveError),
           });
         }
-      } else {
+      } else if (statSync(authJsonPath).size > 0) {
         chmodSync(authJsonPath, VAULT_FILE_MODE);
         return;
       }
+      // A 0-byte auth.json is treated as ABSENT and re-seeded with `{}`, the
+      // same rule ensureSecret already applies to every other secret. Empty is
+      // reachable: `ensureComposeVolumeTargets` pre-creates single-file bind
+      // mounts with `writeFileSync(path, '')`, so deleting auth.json and then
+      // enabling an addon leaves one permanently — and nothing else repairs it.
+      // `writeCanonicalProviderCredential` then throws "must be a JSON object"
+      // and saving a provider credential fails with an opaque error.
     } catch (error) {
       logger.warn("failed to repair auth.json path", {
         path: authJsonPath,

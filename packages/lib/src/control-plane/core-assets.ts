@@ -195,12 +195,23 @@ export function overwriteSystemTree(
 
 /**
  * A target-only path the release never shipped and that must not be read as a
- * retirement. Only the assistant's runtime dependency tree qualifies today:
- * OP_HOME/system/assistant is bind-mounted as OPENCODE_CONFIG_DIR, so OpenCode
- * installs plugin dependencies into node_modules/ underneath it.
+ * retirement. OP_HOME/system/assistant is bind-mounted as OPENCODE_CONFIG_DIR,
+ * so the container writes into it:
+ *
+ *  - `node_modules/` — OpenCode installs plugin dependencies there.
+ *  - `assistant/AGENTS.md` — the entrypoint seeds the image's default there on
+ *    every boot, and the skeleton ships no copy. So it read as permanently
+ *    "retired": `changed` was true on EVERY run, which made each launch copy
+ *    the whole system/ tree into a fresh data/backups/<ts>/ and then replace
+ *    the tree — deleting the very node_modules the first entry protects, and
+ *    swapping the inode of a directory the running assistant has bind-mounted.
+ *    Electron does this per launch and the backup prune only runs on
+ *    install/update, so backups accumulated (24 where this was found).
  */
 function isRuntimeExtra(rel: string): boolean {
-	return rel.split(/[\\/]/).includes('node_modules');
+	const segments = rel.split(/[\\/]/);
+	if (segments.includes('node_modules')) return true;
+	return segments.length === 2 && segments[0] === 'assistant' && segments[1] === 'AGENTS.md';
 }
 
 function listFiles(root: string): string[] {

@@ -149,3 +149,32 @@ describe("overwriteSystemTree", () => {
 		expect(backupDir).not.toBeNull();
 	});
 });
+
+describe("AGENTS.md is a runtime extra, not a retirement", () => {
+  it("does not report changed when only the container-seeded AGENTS.md is extra", () => {
+    // The assistant entrypoint seeds the image's AGENTS.md into
+    // system/assistant on every boot and the skeleton ships none. Reading that
+    // as a retired file made `changed` true on EVERY run, so each launch
+    // backed up the whole system/ tree and then replaced it — deleting the
+    // plugin node_modules and swapping the inode of a directory the running
+    // assistant has bind-mounted. Backups are only pruned on install/update,
+    // so they accumulated (24 on the machine where this was found).
+    seedSource("managed\n");
+    overwriteSystemTree(sourceRoot, opHome);
+
+    // The container then writes its own files into the bind mount.
+    writeFileSync(join(opHome, "system", "assistant", "AGENTS.md"), "# seeded by the image\n");
+    mkdirSync(join(opHome, "system", "assistant", "node_modules", "x"), { recursive: true });
+    writeFileSync(join(opHome, "system", "assistant", "node_modules", "x", "i.js"), "//\n");
+
+    const second = overwriteSystemTree(sourceRoot, opHome);
+
+    // No backup written and nothing replaced — the observable form of
+    // "this run was a no-op".
+    expect(second.backupDir).toBeNull();
+    expect(second.updated).toEqual([]);
+    // Both survive — that is the point.
+    expect(existsSync(join(opHome, "system", "assistant", "AGENTS.md"))).toBe(true);
+    expect(existsSync(join(opHome, "system", "assistant", "node_modules", "x", "i.js"))).toBe(true);
+  });
+});

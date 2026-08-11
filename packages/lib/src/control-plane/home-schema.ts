@@ -20,6 +20,7 @@
  * not need to move when a migration is removed.
  */
 import { existsSync, readFileSync, rmSync } from 'node:fs';
+import { join } from 'node:path';
 import {
   HOME_SCHEMA_VERSION,
   hasAnyStackEnvFile,
@@ -119,6 +120,53 @@ function migrateToSingleStackEnv(homeDir: string): boolean {
  * consolidation; `migrateProfileOnlyAddonEnablement` reads the *effective*
  * env and writes the app-owned record, so it must follow it.
  */
+/**
+ * Delete skeleton files a release moved or retired.
+ *
+ * Seeding outside `system/` is add-only: `copyTree(..., skipExisting)` never
+ * overwrites and `overwriteSystemTree` prunes only inside `system/`. So a file
+ * a release DELETED from the skeleton stays on every upgraded home forever,
+ * and upgraded installs quietly diverge from fresh ones.
+ *
+ * Two sets, both confirmed present on a real upgraded home:
+ *
+ *  - `config/{assistant,guardian}/opencode.jsonc` — moved into `system/` by
+ *    3087384a. These sit in directories mounted as OpenCode's USER config, so
+ *    the stale copies are live-read: the assistant one still lists
+ *    `akm-opencode@latest` (the unpinned spec the pinned managed config exists
+ *    to eliminate) and `./instructions/*.md` paths that no longer exist there.
+ *  - `knowledge/tasks/{health-check,update-containers,validate-config}.yml` —
+ *    deleted by d9bc7ee4. akm never runs them, but OpenPalm's own task reader
+ *    does not check `version`, so the Automations tab lists them as real
+ *    automations — one of them as an enabled weekly `openpalm update`.
+ *
+ * Removal only. It never touches a file the current skeleton still ships, so
+ * an operator's own edits to live files are untouched.
+ */
+function migrateRetiredSkeletonFiles(homeDir: string): boolean {
+  const retired = [
+    "config/assistant/opencode.jsonc",
+    "config/guardian/opencode.jsonc",
+    "knowledge/tasks/health-check.yml",
+    "knowledge/tasks/update-containers.yml",
+    "knowledge/tasks/validate-config.yml",
+  ];
+  let removed = false;
+  for (const rel of retired) {
+    const path = join(homeDir, rel);
+    if (!existsSync(path)) continue;
+    try {
+      rmSync(path);
+      removed = true;
+    } catch {
+      // Best-effort: a home we cannot clean is not a home we should refuse to
+      // start. The stale file is inert config, not a blocker.
+    }
+  }
+  if (removed) logger.warn("Removed retired skeleton files from OP_HOME", { retired });
+  return removed;
+}
+
 const MIGRATIONS: { since: number; run: (homeDir: string) => boolean }[] = [
   { since: 0, run: migrateLegacyDefaultPorts },
   { since: 0, run: migrateLegacyBindAddresses },
@@ -151,6 +199,9 @@ const MIGRATIONS: { since: number; run: (homeDir: string) => boolean }[] = [
   // Paperclip originally seeded an upstream key unused by the pinned image.
   // Preserve its entropy while moving it to the agent-JWT key the image reads.
   { since: 5, run: migrateLegacyPaperclipEnv },
+  // Files a release deleted from the skeleton but that add-only seeding leaves
+  // behind on every upgraded home.
+  { since: 6, run: migrateRetiredSkeletonFiles },
 ];
 
 /**
