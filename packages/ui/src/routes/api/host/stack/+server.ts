@@ -19,6 +19,7 @@ import {
   applyAccessToggles,
   patchSecretsEnvFile,
   readStackEnv,
+  reconcileMdnsResponder,
   recordProjectRename,
   resolveMdnsStatus,
   coerceAccessToggles,
@@ -139,12 +140,33 @@ export const PUT: RequestHandler = async (event) => {
       // over mDNS only once that succeeded. Compose interpolation is the sole consumer of these values,
       // so a write alone changed nothing — and every "restart" the product
       // offers runs `compose restart`, which cannot republish a port.
-      const applied = await applyAccessToggles(state, coerceAccessToggles(body.access), {
-        extraEnv: { OP_PROJECT_NAME: projectName },
-        lock,
-      });
+      //
+      // ORDER: the toggle apply runs against the CURRENT project name, and the
+      // rename is written after it. OP_PROJECT_NAME used to ride along in this
+      // call's `extraEnv`, which landed in stack.env before the apply's own
+      // `compose ps`/`up` — and those resolve `--project-name` from the env
+      // file (buildComposeCommandArgs -> collectComposeEnvOverrides). So a
+      // save that renamed the project AND flipped a toggle addressed a project
+      // that did not exist yet: `ps` returned nothing, the recreate scope came
+      // out empty, no container was touched, and the response still advertised
+      // over mDNS. The toggle read back as applied while the running stack
+      // kept its old ports. Applying first keeps the apply pointed at the
+      // containers it must actually change; the rename then lands in its own
+      // write and is torn down by the next locked apply (#540).
+      const applied = await applyAccessToggles(state, coerceAccessToggles(body.access), { lock });
 
+      // The rename write is unconditional (it must land even when the toggle
+      // apply failed — the operator asked for both, and the failure path below
+      // reports the toggle half). recordProjectRename is what makes the next
+      // apply tear the outgoing project down.
+      patchSecretsEnvFile(state.homeDir, { OP_PROJECT_NAME: projectName });
       const projectRenamed = recordRenameIfChanged();
+
+      // mDNS names derive from OP_PROJECT_NAME (mdns-responder.ts), so the
+      // reconcile inside the apply above saw the OLD name. Re-reconcile after
+      // the rename write so the advertised `<name>.local` matches the project
+      // the operator just named — still after the containers, never before.
+      const mdns = projectRenamed ? reconcileMdnsResponder(state.homeDir) : applied.mdns;
 
       if (!applied.ok) {
         return errorResponse(
@@ -164,7 +186,7 @@ export const PUT: RequestHandler = async (event) => {
           projectName,
           projectRenamed,
           stackEnvPath: 'state/stack.env',
-          mdns: applied.mdns,
+          mdns,
           access: applied.access,
           /** Services recreated so the new binds are actually published. */
           recreated: applied.recreated,

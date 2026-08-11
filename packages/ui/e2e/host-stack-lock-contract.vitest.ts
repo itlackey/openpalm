@@ -9,7 +9,7 @@ const routeSource = readFileSync(
 describe('host stack access apply lock contract', () => {
   test('passes the outer admin update lock into applyAccessToggles', () => {
     expect(routeSource).toMatch(
-      /withAdminUpdateLock\(state,\s*requestId,\s*async \(lock\) => \{[\s\S]*?applyAccessToggles\([\s\S]*?\{\s*extraEnv:\s*\{ OP_PROJECT_NAME: projectName \},\s*lock,\s*\}\s*\)/,
+      /withAdminUpdateLock\(state,\s*requestId,\s*async \(lock\) => \{[\s\S]*?applyAccessToggles\([\s\S]*?\{ lock \}\s*\)/,
     );
   });
 });

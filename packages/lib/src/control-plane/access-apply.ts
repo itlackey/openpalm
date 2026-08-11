@@ -197,8 +197,6 @@ export async function applyAccessToggles(
   requested: unknown,
   options: {
     lock?: InstallLockHandle | null;
-    /** Extra env written in the same patch (e.g. OP_PROJECT_NAME). */
-    extraEnv?: Record<string, string>;
     /** Skip the Compose apply — the caller deploys the whole stack itself. */
     skipRecreate?: boolean;
     deps?: Partial<AccessApplyDeps>;
@@ -278,7 +276,6 @@ export async function applyAccessToggles(
   // rather than an inference from bind addresses (which is what could disagree
   // with Compose and then be made real by the following save).
   patchSecretsEnvFile(state.homeDir, {
-    ...(options.extraEnv ?? {}),
     ...resolveAccessIntentEnv(toggles),
     ...nextEnv,
   });

@@ -1,3 +1,4 @@
+import { statSync } from 'node:fs';
 import { createLogger } from './logger.ts';
 import { constantTimeEqual } from './crypto.ts';
 import { runTurn } from './openai-api-oc-events.ts';
@@ -87,8 +88,28 @@ const log = createLogger('guardian:openai-api');
 
 // Cache secret-file reads keyed by the resolved path, so the auth gate and the
 // forward/stream paths don't hit the filesystem on every request (mirrors
-// admin.ts's readAdminToken caching). A changed env path re-reads.
-const secretFileCache = new Map<string, string>();
+// admin.ts's readAdminToken caching, INCLUDING its revalidation).
+//
+// The cache is validated against the file's mtime+size on every read, not
+// held for the process lifetime. Compose grants these as file secrets — a
+// bind mount — and the Secrets tab rewrites them in place (writeFileInPlace
+// keeps the inode, so the container sees the new bytes immediately). A
+// lifetime cache therefore made a rotated `op_api_key` a no-op until someone
+// recreated the container: the revoked key kept authenticating while the UI
+// reported the new one, which is a security gap, not a staleness annoyance.
+// One `stat` per request is the same syscall admin.ts already pays.
+type CachedSecret = { mtimeMs: number; size: number; value: string };
+const secretFileCache = new Map<string, CachedSecret>();
+
+/** File identity for cache validation; `null` when it cannot be stat'd. */
+function secretFileStamp(path: string): { mtimeMs: number; size: number } | null {
+  try {
+    const stats = statSync(path);
+    return { mtimeMs: stats.mtimeMs, size: stats.size };
+  } catch {
+    return null;
+  }
+}
 // (G7) readOptionalSecretFile still THROWS SecretFileError when the env var is
 // set but the file is present-and-empty (or unreadable) — only "unset" is
 // silently optional. Left uncaught, that throw happens inside the auth-check
@@ -99,8 +120,18 @@ const secretFileCache = new Map<string, string>();
 // a clean 401, the same as "unset" and "missing file".
 function readCachedSecretFile(envKey: string): string {
   const path = Bun.env[envKey]?.trim() ?? '';
+  // An unset env var has no file to stat and no value to rotate.
+  if (!path) return '';
+
+  const stamp = secretFileStamp(path);
   const cached = secretFileCache.get(path);
-  if (cached !== undefined) return cached;
+  // A file that cannot be stat'd is re-read every time rather than served
+  // from a stale entry: the read below collapses its failure to '' (a clean
+  // 401), and caching "unreadable" would outlive the condition.
+  if (stamp && cached && cached.mtimeMs === stamp.mtimeMs && cached.size === stamp.size) {
+    return cached.value;
+  }
+
   let value = '';
   try {
     value = readOptionalSecretFile(envKey);
@@ -108,7 +139,8 @@ function readCachedSecretFile(envKey: string): string {
     if (!(err instanceof SecretFileError)) throw err;
     log.warn('secret_file_error', { envKey, reason: err.message });
   }
-  secretFileCache.set(path, value);
+  if (stamp) secretFileCache.set(path, { ...stamp, value });
+  else secretFileCache.delete(path);
   return value;
 }
 
