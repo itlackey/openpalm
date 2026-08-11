@@ -245,14 +245,19 @@ async function applyManagedFiles(
 	const backupDir = backupOpenPalmHome(state.homeDir);
 	if (backupDir) pruneBackupDirs(state.homeDir, 3);
 
-	// Migrate BEFORE rollback snapshotting: on a pre-consolidation home the snapshot
-	// list's state/stack.env does not exist yet, so snapshotting first would
-	// capture no stack env at all and a failed deploy could not roll back env
-	// mutations. The migration is value-preserving, so the snapshot still
-	// records the pre-update values — just in the canonical location.
+	// Snapshot BEFORE migrating: a rollback snapshot must pair the env with
+	// the system/ tree it was written FOR. migrateChatAddonRemoval (v7 → v8)
+	// is the first migration that is not value-preserving — it moves the
+	// guardian's deploy reason onto state only the NEW compose files
+	// understand — so a post-migration env captured beside the pre-update
+	// system tree would resolve profiles the old compose never declared.
+	// state/schema-version is part of the snapshot, so a restored home simply
+	// re-runs its migrations on the next attempt. (A pre-consolidation home's
+	// snapshot may capture no stack env at all; every migration below the
+	// consolidation is value-preserving, so there is nothing to roll back.)
+	const generation = snapshotCurrentState(state);
 	runHomeMigrations(state.homeDir);
 	const previousPlatformVersion = readSkeletonVersion(state.homeDir);
-	const generation = snapshotCurrentState(state);
 	advanceManagedImageVersions(state, previousPlatformVersion);
 	await applyHome(state);
 	await reconcileCore(state, { activateServices });

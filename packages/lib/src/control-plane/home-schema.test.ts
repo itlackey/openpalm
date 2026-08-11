@@ -231,33 +231,48 @@ describe('v7 → v8: the removed chat addon', () => {
   }
   const env = () => readFileSync(stackEnvFile(homeDir), 'utf-8');
 
-  test('chat as the only guardian reason: dropped, and guardianNetwork records the front door', () => {
-    seedV7Home('OP_ENABLED_ADDONS=chat\nOP_SETUP_COMPLETE=true\n');
+  test('chat as the only guardian reason: substituted with api, exposure untouched', () => {
+    seedV7Home('OP_ENABLED_ADDONS=chat\nOP_SETUP_COMPLETE=true\nOP_GUARDIAN_BIND_ADDRESS=127.0.0.1\n');
 
     expect(runHomeMigrations(homeDir)).toBe(true);
 
-    expect(env()).not.toMatch(/^OP_ENABLED_ADDONS=.*\bchat\b/m);
-    // The install had a guardian front door; the new-model expression of that
-    // is the guardianNetwork toggle, with the row it generates.
-    expect(env()).toMatch(/^OP_ACCESS_GUARDIAN=true$/m);
-    expect(env()).toMatch(/^OP_GUARDIAN_BIND_ADDRESS=0\.0\.0\.0$/m);
-    expect(env()).toMatch(/^GUARDIAN_DIRECT_INGRESS=true$/m);
+    // The guardian (and its loopback OpenAI-compatible edge) keeps deploying —
+    // via the api addon, which is visible and removable, with the install's
+    // exact current exposure. NOTHING may open a bind or the direct listener:
+    // any install whose door was actually open reads as guardianRequired on
+    // its own, so a toggle substitution could only ever fire on CLOSED
+    // installs (hard invariant 4).
+    expect(env()).toMatch(/^OP_ENABLED_ADDONS=api$/m);
+    expect(env()).not.toMatch(/^OP_ACCESS_GUARDIAN=true$/m);
+    expect(env()).not.toMatch(/GUARDIAN_DIRECT_INGRESS=true/);
+    expect(env()).toMatch(/^OP_GUARDIAN_BIND_ADDRESS=127\.0\.0\.1$/m);
     expect(readHomeSchemaVersion(homeDir)).toBe(HOME_SCHEMA_VERSION);
   });
 
-  test('chat beside another ingress addon: dropped with NO exposure change', () => {
+  test('chat with the guardianNetwork toggle explicitly OFF: the opt-out is honored, api still substituted', () => {
+    // The population main\'s auto-enable created: guardianNetwork turned on
+    // (auto-enabling chat), later turned off — nothing ever disabled chat.
+    seedV7Home('OP_ENABLED_ADDONS=chat\nOP_ACCESS_GUARDIAN=false\nOP_GUARDIAN_BIND_ADDRESS=127.0.0.1\nGUARDIAN_DIRECT_INGRESS=false\n');
+
+    expect(runHomeMigrations(homeDir)).toBe(true);
+
+    expect(env()).toMatch(/^OP_ENABLED_ADDONS=api$/m);
+    expect(env()).toMatch(/^OP_ACCESS_GUARDIAN=false$/m);
+    expect(env()).toMatch(/^OP_GUARDIAN_BIND_ADDRESS=127\.0\.0\.1$/m);
+    expect(env()).toMatch(/^GUARDIAN_DIRECT_INGRESS=false$/m);
+  });
+
+  test('chat beside another ingress addon: dropped with NO substitution and NO exposure change', () => {
     seedV7Home('OP_ENABLED_ADDONS=chat,discord\nOP_GUARDIAN_BIND_ADDRESS=127.0.0.1\n');
 
     expect(runHomeMigrations(homeDir)).toBe(true);
 
     expect(env()).toMatch(/^OP_ENABLED_ADDONS=discord$/m);
-    // discord keeps the guardian deployed; nothing may widen a bind the
-    // operator kept private.
     expect(env()).not.toMatch(/^OP_ACCESS_GUARDIAN=true$/m);
     expect(env()).toMatch(/^OP_GUARDIAN_BIND_ADDRESS=127\.0\.0\.1$/m);
   });
 
-  test('chat with guardianNetwork already on: dropped, toggles already express the front door', () => {
+  test('chat with guardianNetwork already on: dropped, the toggle is reason enough', () => {
     seedV7Home(
       'OP_ENABLED_ADDONS=chat\nOP_ACCESS_GUARDIAN=true\nOP_GUARDIAN_BIND_ADDRESS=0.0.0.0\nGUARDIAN_DIRECT_INGRESS=true\n',
     );
@@ -265,6 +280,7 @@ describe('v7 → v8: the removed chat addon', () => {
     expect(runHomeMigrations(homeDir)).toBe(true);
 
     expect(env()).not.toMatch(/\bchat\b/);
+    expect(env()).toMatch(/^OP_ENABLED_ADDONS=$/m);
     expect(env()).toMatch(/^OP_ACCESS_GUARDIAN=true$/m);
   });
 

@@ -4,6 +4,7 @@ import {
 	getAddonServiceNames,
 	listAvailableAddonIds,
 	listEnabledAddonIds,
+	reconcileGuardianDeployment,
 	setAddonEnabled,
 	acquireInstallLock,
 	releaseInstallLock
@@ -98,6 +99,20 @@ export async function runAddonDisableAction(name: string): Promise<void> {
 		}
 
 		console.log(`Disabled addon "${name}".`);
+
+		// The profile-matched stop above takes the shared guardian down with ANY
+		// portal, and this disable may also have removed the guardian's last
+		// reason to exist (e.g. `remote` targeting it). Reconcile settles both:
+		// bring it back if another enabled addon or toggle still needs it, leave
+		// it stopped if nothing does.
+		const reconcile = await reconcileGuardianDeployment(ensureValidState(), { lock });
+		if (reconcile.action === 'stopped') {
+			console.log('Stopped the guardian — nothing requires it anymore.');
+		} else if (reconcile.action === 'started') {
+			console.log('Restarted the guardian — something enabled still requires it.');
+		} else if (!reconcile.ok) {
+			console.warn(`Warning: could not reconcile the guardian after disabling "${name}": ${reconcile.error}`);
+		}
 	} finally {
 		releaseInstallLock(lock);
 	}

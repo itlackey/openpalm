@@ -290,6 +290,37 @@ describe("applyAccessToggles", () => {
     expect(result.ok).toBe(true);
   });
 
+  test("a failed deploy probe on the toggle-off path is fail-CLOSED: reported, guardian not assumed absent", async () => {
+    const state = makeHome(baselineEnv({ ...ALL_OFF, guardianNetwork: true }));
+    const { deps, calls } = makeDeps(["assistant", "guardian"]);
+    deps.listDeployedServices = async () => {
+      throw new Error("docker compose ps failed");
+    };
+
+    const result = await applyAccessToggles(state, ALL_OFF, { deps });
+
+    // Intent is still recorded, but the save must NOT claim success while the
+    // guardian may be running with the old published port.
+    expect(result.ok).toBe(false);
+    expect(result.error).toContain("ps failed");
+    expect(calls.stopped).toEqual([]);
+    expect(readEnv(state).OP_GUARDIAN_BIND_ADDRESS).toBe("127.0.0.1");
+  });
+
+  test("a failed deploy probe on a plain recreate save keeps the docker-less lenience: intent recorded, ok", async () => {
+    const state = makeHome(baselineEnv(ALL_OFF));
+    const { deps, calls } = makeDeps(["assistant"]);
+    deps.listDeployedServices = async () => {
+      throw new Error("docker compose ps failed");
+    };
+
+    const result = await applyAccessToggles(state, { ...ALL_OFF, networkAccess: true }, { deps });
+
+    expect(result.ok).toBe(true);
+    expect(calls.recreated).toEqual([]);
+    expect(readEnv(state).OP_UI_BIND_ADDRESS).toBe("0.0.0.0");
+  });
+
   test("toggle off with an ingress addon still enabled recreates the guardian onto loopback — no stop", async () => {
     const state = makeHome(
       baselineEnv({ ...ALL_OFF, guardianNetwork: true }, { OP_ENABLED_ADDONS: "discord" }),

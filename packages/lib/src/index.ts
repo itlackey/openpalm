@@ -702,6 +702,10 @@ export {
   guardianRequired,
   guardianRequiredForEnv,
 } from "./control-plane/guardian-required.js";
+export {
+  reconcileGuardianDeployment,
+  type GuardianReconcileResult,
+} from "./control-plane/guardian-reconcile.js";
 
 // ── Remote access (`remote` addon — Tailscale sidecar) ───────────────────────
 export {

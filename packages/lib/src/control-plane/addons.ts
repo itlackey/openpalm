@@ -12,16 +12,11 @@ import { parseComposeServices, type ComposeService } from './compose-services.js
 import { createLogger } from '../logger.js';
 import { resolveLocalOpenpalmDir } from './ui-assets.js';
 import { ensurePortalSecret, ensureComposeVolumeTargets } from './config-persistence.js';
-import { patchSecretsEnvFile, patchStateEnvFile, readStackEnv } from './secrets.js';
+import { patchStateEnvFile, readStackEnv } from './secrets.js';
 import { readBundledStackAsset, readBundledCustomCompose } from './core-assets.js';
 import { canonicalAddonProfileSelection } from './profile-ids.js';
 import { getAddonProfileAvailability } from './addon-availability.js';
 import { parseEnabledAddons, removeEnvKey } from './env.js';
-import {
-  readAccessToggles,
-  resolveAccessEnv,
-  resolveAccessIntentEnv,
-} from './access-toggles.js';
 import { guardianRequiredForEnv } from './guardian-required.js';
 import type { ControlPlaneState } from './types.js';
 import { resolveStashDir, composeFilePath, customComposeFilePath, stackEnvFile } from './home.js';
@@ -46,13 +41,6 @@ export type AddonMutationResult = (
       enabled: boolean;
       changed: boolean;
       services: string[];
-      /**
-       * Set when the mutation succeeded but left something only the operator
-       * can finish — today: enabling `remote` with a guardian target while no
-       * guardian-ingress addon is enabled. Advisory; callers surface it and
-       * carry on.
-       */
-      warning?: string;
     }
   | { ok: false; error: string }
 );
@@ -431,13 +419,23 @@ export function pruneRemovedAddonState(
  *
  * `pruneRemovedAddonState` would strip the unknown id on the next reconcile,
  * but prune has no substitution logic — an install whose ONLY reason to
- * deploy the guardian was `chat` would silently lose its front door. So:
- * drop `chat`, and if no other guardianRequired reason remains (another
- * ingress addon, a guardian toggle already on, a remote tunnel targeting the
- * guardian), record `guardianNetwork=true` — the new-model expression of
- * "this install has a guardian front door", which keeps the guardian
- * deploying. When another reason exists, the toggles are left exactly as
- * they are: no exposure is widened on an install that never asked for it.
+ * deploy the guardian was `chat` would silently stop deploying it, killing
+ * the loopback OpenAI-compatible edge such an install was actually serving.
+ * So: drop `chat`, and when no other guardianRequired reason remains,
+ * substitute `api` — which keeps the guardian deploying with the install's
+ * EXACT current exposure (every bind still follows the toggles), and is
+ * visible and removable in the Add-ons tab, unlike the auto-enabled `chat`
+ * ever was.
+ *
+ * Deliberately NOT `guardianNetwork=true`: any install whose front door was
+ * actually open already reads as guardianRequired through its own stored
+ * intent or bind inference, so a toggle substitution could only ever fire on
+ * installs whose door was CLOSED — writing it would open a LAN listener on
+ * exactly the installs that never asked for one (hard invariant 4,
+ * core-principles.md). An unreadable remote config (poisoned
+ * OP_REMOTE_TARGET) reads as guardianRequired, which skips the substitution;
+ * that fails safe — the guardian still deploys for the remote reason, and
+ * nothing is added to a broken env.
  *
  * The seeded `private/secrets/portal_chat_secret` file is deliberately NOT
  * deleted: nothing mounts it anymore, and lifecycle code does not remove
@@ -449,17 +447,21 @@ export function migrateChatAddonRemoval(homeDir: string): boolean {
   if (!enabled.includes('chat')) return false;
 
   const remaining = enabled.filter((id) => id !== 'chat');
-  patchStateEnvFile(homeDir, { OP_ENABLED_ADDONS: [...remaining].sort().join(',') });
+  const substituted = !guardianRequiredForEnv({ ...env, OP_ENABLED_ADDONS: remaining.join(',') });
+  if (substituted) remaining.push('api');
 
-  const withoutChat = { ...env, OP_ENABLED_ADDONS: remaining.join(',') };
-  if (!guardianRequiredForEnv(withoutChat)) {
-    const toggles = { ...readAccessToggles(withoutChat), guardianNetwork: true };
-    patchSecretsEnvFile(homeDir, {
-      ...resolveAccessIntentEnv(toggles),
-      ...resolveAccessEnv(toggles),
-    });
-    logger.warn('The removed chat addon was this install\'s only guardian ingress; '
-      + 'recorded guardianNetwork=true so the guardian keeps deploying.', { homeDir });
+  // One write: the drop and the substitution land together, so a crash
+  // between them cannot leave a home that no longer names `chat` (the
+  // migration's own re-run trigger) but never received the substitute.
+  patchStateEnvFile(homeDir, { OP_ENABLED_ADDONS: [...new Set(remaining)].sort().join(',') });
+
+  if (substituted) {
+    logger.warn(
+      'The removed chat addon was this install\'s only reason to deploy the guardian; '
+        + 'substituted the api addon so the guardian (and its loopback OpenAI-compatible '
+        + 'edge) keeps deploying with unchanged exposure.',
+      { homeDir },
+    );
   }
   return true;
 }
@@ -554,7 +556,6 @@ export function setAddonEnabled(homeDir: string, name: string, enabled: boolean,
         enabled: wasEnabled,
         changed: false,
         services: [...new Set([...services, ...applied.services])],
-        ...(applied.warning ? { warning: applied.warning } : {}),
       };
     }
     return {
@@ -605,7 +606,6 @@ export function setAddonEnabled(homeDir: string, name: string, enabled: boolean,
   // starts or stops any container, which is what makes disable fail-CLOSED:
   // the empty document is already on disk, so a `compose stop` that fails
   // afterwards cannot leave the tunnel publicly serving.
-  let warning: string | undefined;
   let applyServices: string[] = [];
   if (name === 'remote') {
     const applied = applyRemoteProviderConfig(homeDir);
@@ -618,7 +618,6 @@ export function setAddonEnabled(homeDir: string, name: string, enabled: boolean,
         error: `Addon "${name}" was recorded as ${enabled ? 'enabled' : 'disabled'}, but its remote access config could not be written: ${applied.error}`,
       };
     }
-    warning = applied.warning;
     applyServices = applied.services;
   }
 
@@ -630,7 +629,6 @@ export function setAddonEnabled(homeDir: string, name: string, enabled: boolean,
     // — that variable is read by the guardian's own listener at start, so
     // recreating only `tunnel` would point the new proxy at a 404.
     services: [...new Set([...services, ...applyServices])],
-    ...(warning ? { warning } : {}),
   };
 }
 

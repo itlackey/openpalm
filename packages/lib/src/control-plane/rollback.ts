@@ -19,6 +19,12 @@ import type { ControlPlaneState } from "./types.js";
  *  auth.json is backed up but not restored automatically (see RESTORE_FILES). */
 const SNAPSHOT_FILES = [
   "state/stack.env",
+  // The env's migration level travels WITH the env: restoring a pre-migration
+  // stack.env while the home stays stamped current would stop the migrations
+  // from ever re-running on the restored state (and the reverse would re-run
+  // them against already-migrated values). Absent in snapshots taken by
+  // older builds; safeCopy skips it then, which restores today's behavior.
+  "state/schema-version",
   "config/stack/custom.compose.yml",
   "knowledge/secrets/auth.json",
   ".skeleton-version",
@@ -174,7 +180,15 @@ export function restoreSnapshot(state: ControlPlaneState, generation?: SnapshotG
     if (existsSync(src)) {
       rmSync(dest, { force: true, recursive: true });
       safeCopy(src, dest);
-    } else if (rel === '.skeleton-version' && isGenerationSnapshot) {
+    } else if (
+      (rel === '.skeleton-version' || rel === 'state/schema-version') &&
+      isGenerationSnapshot
+    ) {
+      // Absent from the snapshot means the home HAD no stamp when it was
+      // taken. Leaving the live stamp would strand the restored (possibly
+      // pre-migration) files under a version that says they are current —
+      // for schema-version specifically, the restored stack.env would never
+      // re-run its migrations.
       rmSync(dest, { force: true });
     }
   }

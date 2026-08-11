@@ -132,6 +132,13 @@ export const defaultAccessApplyDeps: AccessApplyDeps = {
   listDeployedServices: async (state) => {
     const options = buildComposeOptions(state);
     const ps = await composePs({ files: options.files, envFiles: options.envFiles });
+    // A failed `ps` must THROW, not read as "nothing deployed": the stop gate
+    // below decides between `compose stop guardian` and skip on this answer,
+    // and an empty-on-error list would skip the stop while reporting ok:true —
+    // the front door stays open behind a toast that says it closed. The catch
+    // in the caller records intent and reports ok:false, which is the module's
+    // contract for every other Docker failure.
+    if (!ps.ok) throw new Error(ps.stderr?.trim() || "docker compose ps failed");
     return parseComposePsRows(ps.stdout).map((row) => row.service);
   },
   recreateServices: async (state, services, lock) => {
@@ -281,12 +288,23 @@ export async function applyAccessToggles(
 
   if (ok && !options.skipRecreate && (changedKeys.length > 0 || guardianJustRequired)) {
     try {
+      let deployed: string[];
+      try {
+        deployed = await deps.listDeployedServices(state);
+      } catch {
+        // The RECREATE half keeps the long-standing lenience for a host where
+        // Docker is unreachable: intent is recorded, nothing exists to
+        // recreate onto, and the save reports what it changed. The STOP half
+        // above deliberately does NOT share this — skipping a stop on a
+        // failed probe would leave a closed front door open behind an ok:true.
+        deployed = [];
+      }
       const scope = resolveRecreateScope(
         changedKeys,
         // The guardian's profile just became active (this save is its reason
         // to exist), so it has no container for `ps` to see yet.
         guardianJustRequired ? ["guardian"] : [],
-        await deps.listDeployedServices(state),
+        deployed,
       )
         // A guardian this save just stopped (or that is no longer required)
         // must not be brought back by the recreate: its profile is inactive

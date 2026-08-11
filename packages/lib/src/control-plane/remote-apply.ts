@@ -26,6 +26,7 @@ import {
   resolveAccessEnv,
 } from "./access-toggles.js";
 import { computeGuardianIngressRequired } from "./remote-providers.js";
+import { guardianRequiredForEnv } from "./guardian-required.js";
 import { patchSecretsEnvFile, patchStateEnvFile, readStackEnv } from "./secrets.js";
 import {
   deriveRemoteHostname,
@@ -313,20 +314,28 @@ export function applyRemoteAccess(homeDir: string): RemoteAccessApplyResult {
       patchSecretsEnvFile(homeDir, { GUARDIAN_DIRECT_INGRESS: next });
     }
 
+    // The guardian joins the recreate list only while something still
+    // REQUIRES it. When this apply is what removed the last reason (target
+    // moved off the guardian, or the addon turned off with nothing else
+    // needing it), its profile just went inactive: `compose up guardian`
+    // would either error or auto-activate the profile and restart a service
+    // that should be stopping. Recreating is the wrong verb there — callers
+    // run `reconcileGuardianDeployment` after this apply, which stops it.
+    const guardianStillRequired = guardianRequiredForEnv(env);
     const services = reconcile.enabled
-      ? ingressChanged
+      ? ingressChanged && guardianStillRequired
         ? ["tunnel", "guardian"]
         : ["tunnel"]
-      : ingressChanged
+      : ingressChanged && guardianStillRequired
         ? ["guardian"]
         : [];
 
     // No "guardian is not deployed" warning here anymore: a remote tunnel
     // targeting the guardian is itself a guardianRequired reason
     // (guardian-required.ts), so the bare `guardian` compose profile is
-    // active whenever this apply's env condition holds and the guardian
-    // deploys with the services above — there is nothing left for the
-    // operator to finish by hand.
+    // active whenever this apply's env condition holds — the guardian
+    // deploys with the services above (or via the caller's reconcile) and
+    // there is nothing left for the operator to finish by hand.
     return { ...reconcile, services, ingressChanged };
   } catch (err) {
     return {

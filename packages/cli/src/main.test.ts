@@ -140,12 +140,13 @@ function mockDockerCli(): void {
 	Bun.spawn = mock((cmd: string[] | readonly string[] | { cmd?: readonly string[] }, opts?: unknown) => {
 		// Bun implements node:child_process execFile on top of Bun.spawn (in both
 		// its (cmd, opts) and ({cmd, ...}) call shapes), so this stub also swallows
-		// the activation gate's async `docker compose config` resolution — a
-		// read-only, side-effect-free client command the gate needs to answer (its
-		// execFileSync predecessor used the unmocked spawnSync). Let exactly that
-		// through; every mutating docker spawn stays stubbed.
+		// the read-only client commands lib paths need answered: the activation
+		// gate's async `docker compose config` resolution, and the guardian
+		// reconcile's `docker compose ps` probe (which resolves fast — empty or
+		// daemonless-error — either of which the reconcile handles). Let exactly
+		// those through; every MUTATING docker spawn stays stubbed.
 		const argv = Array.isArray(cmd) ? (cmd as readonly string[]) : ((cmd as { cmd?: readonly string[] }).cmd ?? []);
-		if (argv.includes('compose') && argv.includes('config')) {
+		if (argv.includes('compose') && (argv.includes('config') || argv.includes('ps'))) {
 			return originalBunSpawn(cmd as never, opts as never);
 		}
 		return {

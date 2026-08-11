@@ -25,14 +25,12 @@ import { remoteAddonEnabled, selectedRemoteProviderId } from "./remote-providers
 /**
  * What every provider's apply reports back to the shared enable/save paths:
  * the services whose containers must be recreated for the apply to take
- * effect, an operator-facing warning when the result cannot work as
- * configured and only the operator can finish it, and an error when the
- * apply itself failed. Structurally a subset of `RemoteAccessApplyResult` —
- * the Tailscale apply's richer fields stay private to its own module.
+ * effect, and an error when the apply itself failed. Structurally a subset
+ * of `RemoteAccessApplyResult` — the Tailscale apply's richer fields stay
+ * private to its own module.
  */
 export type RemoteProviderApplyResult = {
   services: string[];
-  warning?: string;
   error?: string;
 };
 
