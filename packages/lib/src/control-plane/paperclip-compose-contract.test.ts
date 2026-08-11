@@ -65,8 +65,10 @@ describe('Paperclip addon Compose contract', () => {
 			'${OP_HOME}/data/paperclip:/paperclip',
 			// The en_US.UTF-8 alias the paperclip-locale one-shot materializes,
 			// at glibc's DEFAULT lookup path — the library wipes the environment
-			// when it spawns initdb, so LOCPATH could never reach it.
-			'${OP_HOME}/data/paperclip/.locale/en_US.UTF-8:/usr/lib/locale/en_US.UTF-8:ro',
+			// when it spawns initdb, so LOCPATH could never reach it. The HOST
+			// side is dotless so ensureComposeVolumeTargets pre-creates a
+			// directory rather than an empty file (see compose-mount-basename).
+			'${OP_HOME}/data/paperclip/locale/en_US_UTF8:/usr/lib/locale/en_US.UTF-8:ro',
 			'${OP_HOME}/config/paperclip/opencode:/paperclip/.config/opencode:ro',
 			'${OP_HOME}/system/paperclip:/opt/openpalm/paperclip:ro',
 			'${OP_HOME}/cache/paperclip-opencode/runtime:/etc/opencode',
@@ -246,5 +248,17 @@ describe('Paperclip addon Compose contract', () => {
 		expect(locale?.image).toBe(paperclip?.image);
 		// It must copy the image's own locale, never generate or vendor one.
 		expect(String(locale?.command)).toContain('/usr/lib/locale/C.utf8');
+		// It must guard on CONTENT, never on the directory. `ensureComposeVolumeTargets`
+		// pre-creates every bind-mount source — profile-gated ones included — before
+		// compose runs, so the locale path already exists as an EMPTY dir here. A
+		// `[ -d ]` guard skips on that and hands paperclip an empty locale, which
+		// fails initdb exactly as if the fix were absent. That shipped once.
+		// `$$` is compose's escape for a literal `$`, so that is what the raw
+		// document carries.
+		expect(String(locale?.command)).toContain('-s "$$target/LC_CTYPE"');
+		// Host path dotless — a dotted one is pre-created as an empty FILE and
+		// the one-shot's mkdir then dies with "File exists".
+		expect(String(locale?.command)).toContain('target=/paperclip/locale/en_US_UTF8');
+		expect(String(locale?.command)).not.toContain('[ ! -d "$$target" ]');
 	});
 });

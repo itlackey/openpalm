@@ -62,10 +62,18 @@ services:
     command:
       - |
         set -e
-        target=/paperclip/.locale/en_US.UTF-8
-        if [ ! -d "$$target" ]; then
-          mkdir -p /paperclip/.locale
-          cp -r /usr/lib/locale/C.utf8 "$$target"
+        target=/paperclip/locale/en_US_UTF8
+        # Test for CONTENT, never for the directory. `ensureComposeVolumeTargets`
+        # pre-creates every bind-mount source in the resolved compose project —
+        # profile-gated ones included — before compose runs, so this path already
+        # exists as an EMPTY dir by the time this executes. A `[ -d ]` guard skips
+        # on that and hands paperclip an empty locale, which fails initdb exactly
+        # as if the fix were not here. The host path is deliberately DOTLESS —
+        # see the mount comment on the paperclip service below.
+        if [ ! -s "$$target/LC_CTYPE" ]; then
+          mkdir -p "$$target"
+          # `src/.` copies INTO an existing destination.
+          cp -r /usr/lib/locale/C.utf8/. "$$target/"
           echo "materialized en_US.UTF-8 from the image's C.utf8 at $$target"
         else
           echo "en_US.UTF-8 already present at $$target"
@@ -97,9 +105,18 @@ services:
       - "127.0.0.1:${OP_PAPERCLIP_PORT:-3840}:3100"
     volumes:
       - ${OP_HOME}/data/paperclip:/paperclip
-      # The `en_US.UTF-8` alias the paperclip-locale one-shot materialized, at
+      # The en_US.UTF-8 alias the paperclip-locale one-shot materialized, at
       # glibc's default lookup path so initdb resolves it with no environment.
-      - ${OP_HOME}/data/paperclip/.locale/en_US.UTF-8:/usr/lib/locale/en_US.UTF-8:ro
+      #
+      # The HOST path carries no dot on purpose. `ensureComposeVolumeTargets`
+      # pre-creates every bind source before compose runs and decides
+      # file-vs-directory from the host basename alone (`isFileMount`: "a dot in
+      # the basename means a file"). A host path ending in `en_US.UTF-8` is
+      # pre-created as an empty FILE, the one-shot's `mkdir` then fails with
+      # "File exists", and `depends_on: service_completed_successfully` stops
+      # paperclip from ever starting. Only the CONTAINER side needs the exact
+      # locale name; glibc never sees the host path.
+      - ${OP_HOME}/data/paperclip/locale/en_US_UTF8:/usr/lib/locale/en_US.UTF-8:ro
       # User settings, read-only managed bootstrap, and a mutable regenerable
       # runtime config. OpenCode may install exact-pinned plugin dependencies,
       # but it never writes into lifecycle-owned system/.
