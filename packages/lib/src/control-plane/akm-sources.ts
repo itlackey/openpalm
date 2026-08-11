@@ -24,6 +24,7 @@
  *  - The OpenPalm config is parse-tolerant (we own it: corrupt → start from {}).
  */
 import { readFileSync, existsSync } from "node:fs";
+import { homedir } from "node:os";
 import { join } from "node:path";
 import { writeFileAtomic } from "./fs-atomic.js";
 import { PRIMARY_BUNDLE_ID, stripRetiredAkmKeys } from "./setup.js";
@@ -49,6 +50,16 @@ function readConfigTolerant(configPath: string): AkmConfigObject {
   } catch {
     // We own the OpenPalm config — a corrupt file is recoverable by rewriting.
     return {};
+  }
+}
+
+function readHostConfigBestEffort(configPath: string): AkmConfigObject | null {
+  if (!existsSync(configPath)) return null;
+  try {
+    const parsed = JSON.parse(readFileSync(configPath, "utf-8"));
+    return parsed && typeof parsed === "object" ? (parsed as AkmConfigObject) : null;
+  } catch {
+    return null;
   }
 }
 
@@ -179,4 +190,153 @@ function stripRetiredKeysAt(configPath: string): boolean {
   if (after === before) return false;
   writeFileAtomic(configPath, after, 0o600);
   return true;
+}
+
+/**
+ * Copy the host's akm engine/embedding configuration into the assistant's.
+ *
+ * MANUAL ONLY. Nothing calls this on install, on upgrade, or as a side effect
+ * of any toggle — it runs when an operator explicitly asks for it, the same
+ * shape as importing host OpenCode providers. That distinction is the whole
+ * fix for how this behaved before: it used to fire automatically when host
+ * STASH sharing was enabled, so an operator who wanted a shared knowledge
+ * directory silently got the host's engine config as well. When the host ran a
+ * newer akm than the image, those keys were ones the container's CLI could not
+ * parse, and every akm call in the assistant died with INVALID_CONFIG_FILE and
+ * nothing naming the cause. The caller validates the result against the
+ * running assistant and rolls back if it cannot load — see the import route.
+ *
+ * Reads the personal host config READ-ONLY; never writes back to the host.
+ *
+ * ADDITIVE MERGE: existing OpenPalm values ALWAYS win — the host only fills
+ * gaps. Returns `{ imported: [] }` when the host config is absent or
+ * unreadable (never throws — engine import is always optional).
+ *
+ * Writes the canonical akm 0.9.0 shape (engines + defaults.* + embedding +
+ * improve.strategies), stamping configVersion and stripping the retired 0.8
+ * keys so the persisted file is always loadable. NEVER touches `bundles`,
+ * `defaultBundle`, `registries`, or `defaultWriteTarget`. A host config still
+ * in the retired
+ * 0.8 `profiles` shape is skipped — akm itself refuses to load it, so there
+ * is nothing trustworthy to import.
+ */
+export function importHostAkmConfig(
+  state: ControlPlaneState,
+  hostConfigPath: string,
+): { imported: string[] } {
+  const host = readHostConfigBestEffort(hostConfigPath);
+  if (!host) return { imported: [] };
+
+  const opPath = openpalmConfigPath(state);
+  const op = readConfigTolerant(opPath);
+
+  const imported: string[] = [];
+  const isObj = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
+
+  // ADDITIVE MERGE — existing OpenPalm values always win; the host fills only
+  // gaps. Never overwrite an engine, default selection, strategy, or embedding
+  // field the operator/wizard already set. `imported` lists what was added.
+
+  // engines (akm 0.9.0 config-schema EnginesSchema).
+  const opEngines = isObj(op.engines) ? (op.engines as Record<string, unknown>) : {};
+  let engines = opEngines;
+  if (isObj(host.engines)) {
+    // host first, existing last → existing wins; only host-only engine names are added.
+    const merged: Record<string, unknown> = { ...(host.engines as Record<string, unknown>), ...opEngines };
+    if (Object.keys(merged).length > Object.keys(opEngines).length) {
+      engines = merged;
+      imported.push("engines");
+    }
+  }
+
+  // defaults.engine / defaults.llmEngine / defaults.improveStrategy — only
+  // adopt a host selection when OpenPalm has none.
+  const hostDefaults = isObj(host.defaults) ? (host.defaults as Record<string, unknown>) : {};
+  const opDefaults = isObj(op.defaults) ? { ...(op.defaults as Record<string, unknown>) } : {};
+  for (const key of ["engine", "llmEngine", "improveStrategy"] as const) {
+    if (typeof hostDefaults[key] === "string" && typeof opDefaults[key] !== "string") {
+      opDefaults[key] = hostDefaults[key];
+      imported.push(`defaults.${key}`);
+    }
+  }
+
+  // improve.strategies — additive by strategy name.
+  const hostImprove = isObj(host.improve) ? (host.improve as Record<string, unknown>) : {};
+  const opImprove = isObj(op.improve) ? { ...(op.improve as Record<string, unknown>) } : {};
+  let improveChanged = false;
+  if (isObj(hostImprove.strategies)) {
+    const opStrategies = isObj(opImprove.strategies) ? (opImprove.strategies as Record<string, unknown>) : {};
+    const merged: Record<string, unknown> = { ...(hostImprove.strategies as Record<string, unknown>), ...opStrategies };
+    if (Object.keys(merged).length > Object.keys(opStrategies).length) {
+      opImprove.strategies = merged;
+      improveChanged = true;
+      imported.push("improve.strategies");
+    }
+  }
+
+  // Top-level embedding connection. Per-field additive: existing OpenPalm
+  // fields win; host fills only missing fields.
+  let embedding: Record<string, unknown> | undefined;
+  if (isObj(host.embedding)) {
+    const existing = isObj(op.embedding) ? (op.embedding as Record<string, unknown>) : {};
+    const merged: Record<string, unknown> = { ...(host.embedding as Record<string, unknown>), ...existing };
+    if (Object.keys(merged).length > Object.keys(existing).length) {
+      embedding = merged;
+      imported.push("embedding");
+    }
+  }
+
+  if (imported.length === 0) return { imported };
+
+  const updated: AkmConfigObject = { ...op, engines, defaults: opDefaults };
+  if (improveChanged) updated.improve = opImprove;
+  if (embedding !== undefined) updated.embedding = embedding;
+  // akm 0.9.0 hard-rejects the retired 0.8 keys and requires configVersion —
+  // never persist a config akm refuses to load (same normalization as
+  // persistAkmConfig in setup.ts).
+  stripRetiredAkmKeys(updated);
+  updated.configVersion = "0.9.0";
+  writeFileAtomic(opPath, JSON.stringify(updated, null, 2), 0o600);
+  return { imported };
+}
+
+
+/** The host's own akm config path (read-only, never written). */
+export function hostAkmConfigPath(): string {
+  const home = process.env.HOME ?? process.env.USERPROFILE ?? homedir();
+  return join(home, ".config", "akm", "config.json");
+}
+
+export type HostAkmConfigStatus = {
+  /** Absolute path, present so the UI can show the operator what it read. */
+  configPath: string;
+  /** Absent or unparseable host config. */
+  available: boolean;
+  /** Named engines the host has configured. */
+  engineCount: number;
+  /** Whether the host config carries a top-level embedding connection. */
+  hasEmbedding: boolean;
+};
+
+/**
+ * What an import would find on the host — the counterpart to
+ * `detectHostOpenCode`, so the AKM import affordance can say what it will
+ * bring over before the operator commits to it.
+ */
+export function detectHostAkmConfig(): HostAkmConfigStatus {
+  const configPath = hostAkmConfigPath();
+  const host = readHostConfigBestEffort(configPath);
+  if (!host) return { configPath, available: false, engineCount: 0, hasEmbedding: false };
+  const engines = host.engines;
+  const engineCount =
+    engines && typeof engines === "object" && !Array.isArray(engines)
+      ? Object.keys(engines as Record<string, unknown>).length
+      : 0;
+  const embedding = host.embedding;
+  return {
+    configPath,
+    available: true,
+    engineCount,
+    hasEmbedding: Boolean(embedding && typeof embedding === "object"),
+  };
 }

@@ -248,3 +248,30 @@ export async function disableHostAkmSharing(): Promise<HostAkmSharing> {
   const res = await requireOk(await request('DELETE', '/api/host/akm/host-sharing'));
   return (await res.json()) as HostAkmSharing;
 }
+
+// ── Host AKM configuration import (manual, like host provider import) ────────
+
+export type HostAkmConfigStatus = {
+  configPath: string;
+  available: boolean;
+  engineCount: number;
+  hasEmbedding: boolean;
+};
+
+export type HostAkmImportResult = {
+  imported: string[];
+  changed: boolean;
+  /** False when the assistant was not running to confirm the config loads. */
+  verified?: boolean;
+};
+
+export async function fetchHostAkmConfigStatus(): Promise<HostAkmConfigStatus> {
+  const res = await requireOk(await request('GET', '/api/host/akm/import-host'));
+  return (await res.json()) as HostAkmConfigStatus;
+}
+
+/** Throws with the server's message on 404 (no host config) / 422 (rejected). */
+export async function importHostAkmConfig(): Promise<HostAkmImportResult> {
+  const res = await requireOk(await request('POST', '/api/host/akm/import-host', {}));
+  return (await res.json()) as HostAkmImportResult;
+}

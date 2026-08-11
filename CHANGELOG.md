@@ -7,6 +7,22 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **"Use your local AKM configuration" — a manual host import, like host
+  provider import.** An operator who already runs akm locally can adopt their
+  own engines and embedding connection in one click instead of re-entering the
+  same endpoints and models, matching what host OpenCode provider import
+  already does for credentials. It is additive (existing assistant settings
+  always win), read-only against the host, and — unlike the automatic import it
+  replaces — **verified**: the assistant is asked to load the result, and if it
+  cannot, the previous config is restored byte-for-byte and akm's own error is
+  shown. The automatic version fired as a side effect of enabling host STASH
+  sharing, so an operator who wanted shared knowledge silently got the host's
+  engine config too; when the two akm versions disagreed that broke every akm
+  call in the assistant with nothing naming the cause. Sharing a directory and
+  adopting a configuration are now two separate, deliberate choices.
+
 ### Fixed
 
 - **Docker preflight now names the actual problem.** The setup wizard's deploy
