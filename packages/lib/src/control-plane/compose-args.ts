@@ -13,6 +13,7 @@ import { parseEnabledAddons } from "./env.js";
 import { readStackEnv } from "./secrets.js";
 import { canonicalAddonProfileSelection } from "./profile-ids.js";
 import { DEFAULT_REMOTE_PROFILE } from "./remote-providers.js";
+import { GUARDIAN_PROFILE, guardianRequiredForEnv } from "./guardian-required.js";
 
 // ── Types ────────────────────────────────────────────────────────────────
 
@@ -72,6 +73,13 @@ export function resolveActiveProfiles(state: ControlPlaneState): string[] {
       profiles.push(`addon.${addon}`);
     }
   }
+
+  // The guardian deploys for reasons that are not addons — the guardianNetwork
+  // / guardianOpenaiApi access toggles and the remote-tunnels-to-guardian
+  // case. Those activate its bare `guardian` profile directly, so an exposure
+  // toggle never has to reach backwards and enable an integration to make its
+  // published port mean something.
+  if (guardianRequiredForEnv(env)) profiles.push(GUARDIAN_PROFILE);
 
   return [...new Set(profiles)];
 }

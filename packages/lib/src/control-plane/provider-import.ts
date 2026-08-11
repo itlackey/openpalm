@@ -1,5 +1,4 @@
-import { hasGuardianIngressAddon } from './addon-ids.js';
-import { listEnabledAddonIds } from './addons.js';
+import { guardianRequired } from './guardian-required.js';
 import { buildComposeOptions } from './compose-args.js';
 import { checkDocker, composeRestart } from './docker.js';
 import type { ControlPlaneState } from './types.js';
@@ -20,7 +19,7 @@ export async function restartProviderConsumers(
 ): Promise<ProviderConsumerRestartResult> {
   const services: string[] = [];
   if (changed.config || changed.auth) services.push('assistant');
-  if (changed.auth && hasGuardianIngressAddon(listEnabledAddonIds(state.homeDir))) {
+  if (changed.auth && guardianRequired(state.homeDir)) {
     services.push('guardian');
   }
   if (services.length === 0) return { restarted: [], failed: [] };

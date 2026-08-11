@@ -37,7 +37,7 @@ For any other deletion:
 
 OpenPalm is a self-hosted personal AI platform built on Docker Compose and OpenCode. It manages a stack of containers orchestrated by the host CLI or an optional admin web UI.
 
-One always-on core container: **assistant** (OpenCode runtime, image-baked non-admin UI, BusyBox `crond`, and akm CLI memory/skills/lessons over the shared stash). The **guardian** (principal-authenticated ingress) is not a core container; it is profile-gated in `portals.compose.yml` and deployed only when a guardian-ingress addon (`chat`, `api`, `discord`, `slack`, or `gateway`) is enabled. Portal-style ingress addons and services such as Ollama are added through Compose.
+One always-on core container: **assistant** (OpenCode runtime, image-baked non-admin UI, BusyBox `crond`, and akm CLI memory/skills/lessons over the shared stash). The **guardian** (principal-authenticated ingress) is not a core container; it is profile-gated in `portals.compose.yml` and deployed only when required — by a guardian-ingress addon (`api`, `discord`, `slack`, or `gateway`), a guardian access toggle (`guardianNetwork`, `guardianOpenaiApi`), or a remote tunnel targeting it (`guardianRequired` in `packages/lib/src/control-plane/guardian-required.ts`). Portal-style ingress addons and services such as Ollama are added through Compose.
 
 Repo layout convention:
 - `packages/*` — app/package source workspaces

@@ -1,7 +1,11 @@
 # OpenPalm first-party portal services.
-# Services are gated by Compose profiles (addon.chat, addon.api,
-# addon.discord, addon.slack). Enable profiles through the OpenPalm CLI/UI or
-# by passing --profile manually.
+# Services are gated by Compose profiles (addon.api, addon.discord,
+# addon.slack, addon.gateway). Enable profiles through the OpenPalm CLI/UI or
+# by passing --profile manually. The bare `guardian` profile deploys the
+# guardian with no portal addon: the control plane activates it whenever the
+# guardian is required for another reason (the guardianNetwork /
+# guardianOpenaiApi access toggles, or a remote tunnel targeting the
+# guardian) — pass `--profile guardian` for the same effect manually.
 
 services:
   discord:
@@ -92,7 +96,7 @@ services:
       # K5: same start_period rationale as the discord service above.
       start_period: 30s
   guardian:
-    profiles: ["addon.chat", "addon.api", "addon.discord", "addon.slack", "addon.gateway"]
+    profiles: ["addon.api", "addon.discord", "addon.slack", "addon.gateway", "guardian"]
     image: ${OP_IMAGE_NAMESPACE:-openpalm}/guardian:${OP_GUARDIAN_VERSION:?OP_GUARDIAN_VERSION is required}
     restart: unless-stopped
     # IMG-7: cap json-file logs (30 MB/service ceiling). Docker's default
@@ -156,7 +160,6 @@ services:
       OPENCODE_SERVER_PASSWORD_FILE: /run/secrets/opencode_server_password
       GUARDIAN_ADMIN_TOKEN_FILE: /run/secrets/op_guardian_admin_token
       GUARDIAN_MCP_TOKEN_FILE: /run/secrets/op_guardian_mcp_token
-      PORTAL_CHAT_SECRET_FILE: /run/secrets/portal_chat_secret
       PORTAL_API_SECRET_FILE: /run/secrets/portal_api_secret
       PORTAL_DISCORD_SECRET_FILE: /run/secrets/portal_discord_secret
       PORTAL_SLACK_SECRET_FILE: /run/secrets/portal_slack_secret
@@ -208,7 +211,6 @@ services:
       # below instead; the entrypoint copies it to
       # $HOME/.local/share/opencode/auth.json (HOME=/opt/openpalm/guardian).
     secrets:
-      - portal_chat_secret
       - portal_api_secret
       - portal_discord_secret
       - portal_slack_secret
@@ -239,8 +241,6 @@ secrets:
   # it lives under private/secrets/, NOT knowledge/secrets/ (bind-mounted
   # wholesale into the assistant at /stash and agent-reachable). The canonical
   # delegated-name list is packages/lib/src/control-plane/secrets-files.ts.
-  portal_chat_secret:
-    file: ${OP_HOME}/private/secrets/portal_chat_secret
   portal_api_secret:
     file: ${OP_HOME}/private/secrets/portal_api_secret
   portal_discord_secret:

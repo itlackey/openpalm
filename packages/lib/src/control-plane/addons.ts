@@ -17,6 +17,7 @@ import { readBundledStackAsset, readBundledCustomCompose } from './core-assets.j
 import { canonicalAddonProfileSelection } from './profile-ids.js';
 import { getAddonProfileAvailability } from './addon-availability.js';
 import { parseEnabledAddons, removeEnvKey } from './env.js';
+import { guardianRequiredForEnv } from './guardian-required.js';
 import type { ControlPlaneState } from './types.js';
 import { resolveStashDir, composeFilePath, customComposeFilePath, stackEnvFile } from './home.js';
 import { BUILTIN_ADDON_ENV_SCHEMAS } from './addon-env-schemas.js';
@@ -40,13 +41,6 @@ export type AddonMutationResult = (
       enabled: boolean;
       changed: boolean;
       services: string[];
-      /**
-       * Set when the mutation succeeded but left something only the operator
-       * can finish — today: enabling `remote` with a guardian target while no
-       * guardian-ingress addon is enabled. Advisory; callers surface it and
-       * carry on.
-       */
-      warning?: string;
     }
   | { ok: false; error: string }
 );
@@ -414,6 +408,65 @@ export function pruneRemovedAddonState(
 }
 
 /**
+ * One-time upgrade for the removed `chat` addon (schema v7 → v8).
+ *
+ * `chat` was an exposure concept squatting in the integrations list: it
+ * deployed no service of its own — its ONLY effect was activating the
+ * guardian's profile. The access toggles auto-enabled it so a published
+ * guardian port had something behind it. Both roles are gone: a guardian
+ * toggle now activates the bare `guardian` compose profile directly
+ * (guardian-required.ts).
+ *
+ * `pruneRemovedAddonState` would strip the unknown id on the next reconcile,
+ * but prune has no substitution logic — an install whose ONLY reason to
+ * deploy the guardian was `chat` would silently stop deploying it, killing
+ * the loopback OpenAI-compatible edge such an install was actually serving.
+ * So: drop `chat`, and when no other guardianRequired reason remains,
+ * substitute `api` — which keeps the guardian deploying with the install's
+ * EXACT current exposure (every bind still follows the toggles), and is
+ * visible and removable in the Add-ons tab, unlike the auto-enabled `chat`
+ * ever was.
+ *
+ * Deliberately NOT `guardianNetwork=true`: any install whose front door was
+ * actually open already reads as guardianRequired through its own stored
+ * intent or bind inference, so a toggle substitution could only ever fire on
+ * installs whose door was CLOSED — writing it would open a LAN listener on
+ * exactly the installs that never asked for one (hard invariant 4,
+ * core-principles.md). An unreadable remote config (poisoned
+ * OP_REMOTE_TARGET) reads as guardianRequired, which skips the substitution;
+ * that fails safe — the guardian still deploys for the remote reason, and
+ * nothing is added to a broken env.
+ *
+ * The seeded `private/secrets/portal_chat_secret` file is deliberately NOT
+ * deleted: nothing mounts it anymore, and lifecycle code does not remove
+ * secret files it did not just write.
+ */
+export function migrateChatAddonRemoval(homeDir: string): boolean {
+  const env = readStackEnv(homeDir);
+  const enabled = parseEnabledAddons(env.OP_ENABLED_ADDONS);
+  if (!enabled.includes('chat')) return false;
+
+  const remaining = enabled.filter((id) => id !== 'chat');
+  const substituted = !guardianRequiredForEnv({ ...env, OP_ENABLED_ADDONS: remaining.join(',') });
+  if (substituted) remaining.push('api');
+
+  // One write: the drop and the substitution land together, so a crash
+  // between them cannot leave a home that no longer names `chat` (the
+  // migration's own re-run trigger) but never received the substitute.
+  patchStateEnvFile(homeDir, { OP_ENABLED_ADDONS: [...new Set(remaining)].sort().join(',') });
+
+  if (substituted) {
+    logger.warn(
+      'The removed chat addon was this install\'s only reason to deploy the guardian; '
+        + 'substituted the api addon so the guardian (and its loopback OpenAI-compatible '
+        + 'edge) keeps deploying with unchanged exposure.',
+      { homeDir },
+    );
+  }
+  return true;
+}
+
+/**
  * Hardware-profile env keys that, before plan 2.2, implied an addon was enabled
  * even when OP_ENABLED_ADDONS never named it. Now read ONLY by the one-time
  * migration below — listEnabledAddonIds no longer reverse-parses them.
@@ -503,7 +556,6 @@ export function setAddonEnabled(homeDir: string, name: string, enabled: boolean,
         enabled: wasEnabled,
         changed: false,
         services: [...new Set([...services, ...applied.services])],
-        ...(applied.warning ? { warning: applied.warning } : {}),
       };
     }
     return {
@@ -554,7 +606,6 @@ export function setAddonEnabled(homeDir: string, name: string, enabled: boolean,
   // starts or stops any container, which is what makes disable fail-CLOSED:
   // the empty document is already on disk, so a `compose stop` that fails
   // afterwards cannot leave the tunnel publicly serving.
-  let warning: string | undefined;
   let applyServices: string[] = [];
   if (name === 'remote') {
     const applied = applyRemoteProviderConfig(homeDir);
@@ -567,7 +618,6 @@ export function setAddonEnabled(homeDir: string, name: string, enabled: boolean,
         error: `Addon "${name}" was recorded as ${enabled ? 'enabled' : 'disabled'}, but its remote access config could not be written: ${applied.error}`,
       };
     }
-    warning = applied.warning;
     applyServices = applied.services;
   }
 
@@ -579,7 +629,6 @@ export function setAddonEnabled(homeDir: string, name: string, enabled: boolean,
     // — that variable is read by the guardian's own listener at start, so
     // recreating only `tunnel` would point the new proxy at a 404.
     services: [...new Set([...services, ...applyServices])],
-    ...(warning ? { warning } : {}),
   };
 }
 

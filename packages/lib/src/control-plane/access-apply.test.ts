@@ -61,12 +61,19 @@ function readEnv(state: ControlPlaneState): Record<string, string> {
 
 /** Recording doubles; `deployed` controls what compose "already has". */
 function makeDeps(deployed: string[] = ["assistant"]) {
-  const calls: { recreated: string[][]; mdnsAfter: string[][] } = { recreated: [], mdnsAfter: [] };
+  const calls: { recreated: string[][]; stopped: string[][]; mdnsAfter: string[][] } = {
+    recreated: [],
+    stopped: [],
+    mdnsAfter: [],
+  };
   const deps: AccessApplyDeps = {
     listDeployedServices: async () => deployed,
     recreateServices: async (_state, services) => {
       calls.recreated.push(services);
       return { ok: true, started: services };
+    },
+    stopServices: async (_state, services) => {
+      calls.stopped.push(services);
     },
     reconcileMdns: () => {
       // Record the recreate history AT THE MOMENT mDNS runs, so ordering is
@@ -237,19 +244,95 @@ describe("applyAccessToggles", () => {
       .join("\n");
   }
 
-  test("guardianNetwork with no ingress addon auto-enables chat and recreates the guardian SERVICE", async () => {
-    // `reconcileGuardianIngressAddons` returns ADDON ids ('chat'), but the
-    // recreate scope is compose SERVICE names — the chat profile activates the
-    // `guardian` service. Passing the id through verbatim filtered the
-    // guardian out (no service named "chat"), so the published port had no
-    // container behind it and `up -d chat` hard-failed.
+  test("guardianNetwork with no ingress addon deploys the guardian directly — no addon is enabled on its behalf", async () => {
+    // The toggle is itself a guardianRequired reason: the bare `guardian`
+    // compose profile just became active, so the guardian joins the scope
+    // even though `ps` cannot see a container for it yet. Nothing touches
+    // OP_ENABLED_ADDONS — exposure toggles and integrations are different axes.
     const state = makeHome(baselineEnv(ALL_OFF));
     const { deps, calls } = makeDeps(["assistant"]);
 
     const result = await applyAccessToggles(state, { ...ALL_OFF, guardianNetwork: true }, { deps });
 
-    expect(result.autoEnabledAddons).toEqual(["chat"]);
     expect(calls.recreated).toEqual([["guardian"]]);
+    expect(result.stopped).toEqual([]);
+    expect(readEnv(state).OP_ENABLED_ADDONS ?? "").toBe("");
+    expect(result.ok).toBe(true);
+  });
+
+  test("guardianOpenaiApi alone is likewise a deploy reason", async () => {
+    const state = makeHome(baselineEnv(ALL_OFF));
+    const { deps, calls } = makeDeps(["assistant"]);
+
+    const result = await applyAccessToggles(state, { ...ALL_OFF, guardianOpenaiApi: true }, { deps });
+
+    expect(calls.recreated).toEqual([["guardian"]]);
+    expect(readEnv(state).OP_ENABLED_ADDONS ?? "").toBe("");
+    expect(result.ok).toBe(true);
+  });
+
+  test("turning the last guardian toggle off STOPS the guardian instead of recreating it", async () => {
+    // With the toggle off and no ingress addon or remote reason, the
+    // `guardian` profile is inactive — `compose up guardian` would be an
+    // error, and leaving the container running would keep a front door the
+    // operator just closed. Stop is the same treatment disabling the last
+    // guardian-ingress addon gets.
+    const state = makeHome(baselineEnv({ ...ALL_OFF, guardianNetwork: true }));
+    const { deps, calls } = makeDeps(["assistant", "guardian"]);
+
+    const result = await applyAccessToggles(state, ALL_OFF, { deps });
+
+    expect(calls.stopped).toEqual([["guardian"]]);
+    expect(result.stopped).toEqual(["guardian"]);
+    // The guardian must NOT be in the recreate scope: its profile is inactive.
+    expect(calls.recreated).toEqual([]);
+    expect(readEnv(state).OP_GUARDIAN_BIND_ADDRESS).toBe("127.0.0.1");
+    expect(result.ok).toBe(true);
+  });
+
+  test("a failed deploy probe on the toggle-off path is fail-CLOSED: reported, guardian not assumed absent", async () => {
+    const state = makeHome(baselineEnv({ ...ALL_OFF, guardianNetwork: true }));
+    const { deps, calls } = makeDeps(["assistant", "guardian"]);
+    deps.listDeployedServices = async () => {
+      throw new Error("docker compose ps failed");
+    };
+
+    const result = await applyAccessToggles(state, ALL_OFF, { deps });
+
+    // Intent is still recorded, but the save must NOT claim success while the
+    // guardian may be running with the old published port.
+    expect(result.ok).toBe(false);
+    expect(result.error).toContain("ps failed");
+    expect(calls.stopped).toEqual([]);
+    expect(readEnv(state).OP_GUARDIAN_BIND_ADDRESS).toBe("127.0.0.1");
+  });
+
+  test("a failed deploy probe on a plain recreate save keeps the docker-less lenience: intent recorded, ok", async () => {
+    const state = makeHome(baselineEnv(ALL_OFF));
+    const { deps, calls } = makeDeps(["assistant"]);
+    deps.listDeployedServices = async () => {
+      throw new Error("docker compose ps failed");
+    };
+
+    const result = await applyAccessToggles(state, { ...ALL_OFF, networkAccess: true }, { deps });
+
+    expect(result.ok).toBe(true);
+    expect(calls.recreated).toEqual([]);
+    expect(readEnv(state).OP_UI_BIND_ADDRESS).toBe("0.0.0.0");
+  });
+
+  test("toggle off with an ingress addon still enabled recreates the guardian onto loopback — no stop", async () => {
+    const state = makeHome(
+      baselineEnv({ ...ALL_OFF, guardianNetwork: true }, { OP_ENABLED_ADDONS: "discord" }),
+    );
+    const { deps, calls } = makeDeps(["assistant", "guardian", "discord"]);
+
+    const result = await applyAccessToggles(state, ALL_OFF, { deps });
+
+    expect(calls.stopped).toEqual([]);
+    expect(result.stopped).toEqual([]);
+    expect(calls.recreated).toEqual([["guardian"]]);
+    expect(readEnv(state).OP_GUARDIAN_BIND_ADDRESS).toBe("127.0.0.1");
     expect(result.ok).toBe(true);
   });
 
@@ -328,7 +411,7 @@ describe("applyAccessToggles", () => {
       const state = makeHome(
         baselineEnv(
           { ...ALL_OFF, guardianNetwork: true },
-          { OP_ENABLED_ADDONS: "remote,chat", OP_REMOTE_TARGET: "guardian" },
+          { OP_ENABLED_ADDONS: "remote,gateway", OP_REMOTE_TARGET: "guardian" },
         ),
       );
       const { deps, calls } = makeDeps(["assistant", "guardian"]);

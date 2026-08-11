@@ -34,14 +34,12 @@ assistant_port_default=3896
 assistant_ui_port_default=3897
 guardian_port_default=3930
 guardian_admin_port_default=3931
-chat_port_default=3920
 api_port_default=3921
 if [[ "$TARGET" == "portal-discord" ]]; then
   assistant_port_default=3996
   assistant_ui_port_default=3997
   guardian_port_default=3940
   guardian_admin_port_default=3941
-  chat_port_default=3942
   api_port_default=3943
 fi
 
@@ -94,7 +92,7 @@ dev_compose() {
 # were left dangling once its fixture dir was rm -rf'd).
 smoke_teardown_stack() {
   if [[ -f "$SMOKE_HOME/state/stack.env" ]]; then
-    dev_compose --profile addon.discord --profile addon.chat down --remove-orphans --volumes >/dev/null 2>&1 || true
+    dev_compose --profile addon.discord --profile addon.gateway down --remove-orphans --volumes >/dev/null 2>&1 || true
   fi
   docker ps -aq --filter "label=com.docker.compose.project=${COMPOSE_PROJECT_NAME}" 2>/dev/null | xargs -r docker rm -f >/dev/null 2>&1 || true
   docker network ls -q --filter "label=com.docker.compose.project=${COMPOSE_PROJECT_NAME}" 2>/dev/null | xargs -r docker network rm >/dev/null 2>&1 || true
@@ -128,7 +126,6 @@ smoke_write_stack_env "$SMOKE_HOME" "$PLATFORM_VERSION" \
   "${OP_ROOTLESS_SMOKE_CONTAINER_UI_PORT:-${assistant_ui_port_default}}" \
   "${OP_ROOTLESS_SMOKE_GUARDIAN_PORT:-${guardian_port_default}}" \
   "${OP_ROOTLESS_SMOKE_GUARDIAN_ADMIN_PORT:-${guardian_admin_port_default}}" \
-  "${OP_ROOTLESS_SMOKE_CHAT_PORT:-${chat_port_default}}" \
   "${OP_ROOTLESS_SMOKE_API_PORT:-${api_port_default}}"
 printf 'OP_HOST_UI_PORT=%s\n' "$UI_PORT" >> "$SMOKE_HOME/state/stack.env"
 smoke_seed_secrets "$SMOKE_HOME" 'rootless-smoke-password'
@@ -151,7 +148,7 @@ echo "Starting isolated stack..."
 if [[ "$TARGET" == "portal-discord" ]]; then
   dev_compose --profile addon.discord up -d assistant guardian discord >/dev/null
 else
-  dev_compose --profile addon.chat up -d assistant guardian >/dev/null
+  dev_compose --profile addon.gateway up -d assistant guardian >/dev/null
 fi
 
 echo "Waiting for assistant and guardian healthchecks..."

@@ -55,9 +55,6 @@ export const BUILTIN_ADDON_ENV_SCHEMAS: Record<string, string> = {
   api: `# API Gateway portal configuration
 # ---
 `,
-  chat: `# Web Chat portal configuration
-# ---
-`,
   discord: `# Discord bot configuration
 # ---
 

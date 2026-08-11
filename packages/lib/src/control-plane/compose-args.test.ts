@@ -74,13 +74,41 @@ describe("buildComposeOptions", () => {
 
   it("includes fixed channel compose and profile from OP_ENABLED_ADDONS", () => {
     seedCoreCompose();
-    seedAddon("chat");
+    seedAddon("gateway");
 
     const state = makeState();
     const opts = buildComposeOptions(state);
     expect(opts.files).toHaveLength(2);
     expect(opts.files[1]).toContain("portals.compose.yml");
-    expect(opts.profiles).toContain("addon.chat");
+    expect(opts.profiles).toContain("addon.gateway");
+  });
+
+  it("activates the bare guardian profile when a guardian toggle requires it", () => {
+    // guardianRequired (guardian-required.ts): the guardianNetwork /
+    // guardianOpenaiApi toggles and the remote-tunnels-to-guardian case deploy
+    // the guardian with no addon involved.
+    seedCoreCompose();
+    const stateDir = join(tempDir, "state");
+    mkdirSync(stateDir, { recursive: true });
+    writeFileSync(join(stateDir, "stack.env"), "OP_ACCESS_GUARDIAN=true\n");
+
+    expect(buildComposeOptions(makeState()).profiles).toContain("guardian");
+  });
+
+  it("activates the guardian profile for the OpenAI-edge toggle too", () => {
+    seedCoreCompose();
+    const stateDir = join(tempDir, "state");
+    mkdirSync(stateDir, { recursive: true });
+    writeFileSync(join(stateDir, "stack.env"), "OP_ACCESS_OPENAI_API=true\n");
+
+    expect(buildComposeOptions(makeState()).profiles).toContain("guardian");
+  });
+
+  it("does not activate the guardian profile when nothing requires the guardian", () => {
+    seedCoreCompose();
+    seedEnvFiles({ stack: true });
+
+    expect(buildComposeOptions(makeState()).profiles).not.toContain("guardian");
   });
 
   it("activates the profile when OP_ENABLED_ADDONS is in state/ (not legacy stack.env)", () => {
@@ -198,10 +226,10 @@ describe("buildComposeCliArgs", () => {
     seedCoreCompose();
     seedEnvFiles({ stack: true });
     mkdirSync(join(tempDir, 'state'), { recursive: true });
-    writeFileSync(join(tempDir, 'state', 'stack.env'), 'COMPOSE_PROFILES=addon.chat\n');
+    writeFileSync(join(tempDir, 'state', 'stack.env'), 'COMPOSE_PROFILES=addon.gateway\n');
     const state = makeState();
     const args = buildComposeCliArgs(state);
-    expect(args).not.toContain('addon.chat');
+    expect(args).not.toContain('addon.gateway');
   });
 
   it("includes -f flags for compose files", () => {
@@ -235,7 +263,7 @@ describe("buildComposeCliArgs", () => {
 
   it("includes fixed channel compose in -f flags", () => {
     seedCoreCompose();
-    seedAddon("chat");
+    seedAddon("gateway");
 
     const state = makeState();
     const args = buildComposeCliArgs(state);

@@ -18,12 +18,12 @@
  *
  * The guardian toggles are deliberately NOT gated on "a guardian-backed
  * integration is enabled". Publishing a front door is a statement of intent,
- * and `performSetup` makes it true: `guardianOpenaiApi` enables the `api`
- * addon that serves the edge it publishes, and `guardianNetwork` falls back to
- * the credential-less `chat` portal when nothing else provides guardian
- * ingress. Gating the toggles instead would mean an operator who wants a
- * guardian front door has to guess which unrelated integration to enable
- * first.
+ * and the toggle itself makes it true: either guardian toggle is a
+ * `guardianRequired` reason (guardian-required.ts), which activates the
+ * guardian's own compose profile — no integration is enabled on the
+ * operator's behalf. Gating the toggles instead would mean an operator who
+ * wants a guardian front door has to guess which unrelated integration to
+ * enable first.
  *
  * Browser-safe: no `node:*` imports. The wizard imports this directly via the
  * `@openpalm/lib/control-plane/access-toggles.js` subpath.

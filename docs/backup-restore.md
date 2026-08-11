@@ -97,11 +97,11 @@ docker compose \
   -f "$OP_HOME/system/stack/services.compose.yml" \
   -f "$OP_HOME/system/stack/portals.compose.yml" \
   -f "$OP_HOME/config/stack/custom.compose.yml" \
-  --profile addon.chat \
+  --profile guardian \
   up -d
 ```
 
-Replace `addon.chat` with the profiles that were active for the backup. The
+Replace `guardian` with the profiles that were active for the backup. The
 value of `OP_ENABLED_ADDONS` alone is not translated by raw Docker Compose.
 If the restored `state/stack.env` records a non-default `OP_PROJECT_NAME`, set
 the shell variable to that exact value as well; `--env-file` does not expand the

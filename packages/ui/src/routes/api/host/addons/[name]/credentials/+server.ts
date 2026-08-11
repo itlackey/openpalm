@@ -35,6 +35,7 @@ import {
   readStackSecretEnv,
   readStackEnv,
   applyRemoteProviderConfig,
+  reconcileGuardianDeployment,
   writeStackSecretEnv,
   patchSecretsEnvFile,
 } from "@openpalm/lib";
@@ -139,7 +140,7 @@ function resolveVoiceScopeService(homeDir: string, service: string): string {
  * `voice-cuda`, `voice-rocm`) because all three are declared under different
  * profiles, and recreating all of them targets two services that are not up.
  * The declared set is still consulted, so a name is never invented for an
- * addon that has no container (`chat`, `api` — guardian serves those).
+ * addon that has no container (`api` — the guardian serves that edge).
  */
 function addonOwnServices(homeDir: string, name: string): string[] {
   const resolved = resolveVoiceScopeService(homeDir, name);
@@ -301,7 +302,6 @@ export const POST: RequestHandler = async (event) => {
     // direct listener. The provider apply owns both halves and reports which
     // services that implies.
     let remoteServices: string[] = [];
-    let remoteWarning: string | undefined;
     if (name === 'remote') {
       const remote = applyRemoteProviderConfig(state.homeDir);
       if (remote.error) {
@@ -315,7 +315,6 @@ export const POST: RequestHandler = async (event) => {
         );
       }
       remoteServices = remote.services;
-      remoteWarning = remote.warning;
     }
 
     // A save is an APPLY. Every schema key reaches its container through
@@ -380,9 +379,27 @@ export const POST: RequestHandler = async (event) => {
       }
     }
 
+    // A remote save can move the guardian's LAST deploy reason (target off the
+    // guardian, with no ingress addon or toggle left): the apply above
+    // deliberately leaves the guardian out of its recreate scope in that case
+    // — recreating a service whose profile just went inactive is the wrong
+    // verb — and this reconcile is what actually stops it (or starts one a
+    // target change just made required). Logged, never fatal: the save landed.
+    if (name === 'remote') {
+      const reconcile = await reconcileGuardianDeployment(state, { lock });
+      if (!reconcile.ok) {
+        logger.warn('guardian reconcile after remote save failed', {
+          error: reconcile.error,
+          requestId,
+        });
+      } else if (reconcile.action !== 'none') {
+        logger.info(`guardian ${reconcile.action} after remote save`, { requestId });
+      }
+    }
+
     return jsonResponse(
       200,
-      { ok: true, name, updated, recreated, ...(remoteWarning ? { warning: remoteWarning } : {}) },
+      { ok: true, name, updated, recreated },
       requestId,
     );
   });

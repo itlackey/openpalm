@@ -695,9 +695,17 @@ export {
 export {
   applyAccessToggles,
   diffAccessEnv,
-  reconcileGuardianIngressAddons,
   type AccessApplyResult,
 } from "./control-plane/access-apply.js";
+export {
+  GUARDIAN_PROFILE,
+  guardianRequired,
+  guardianRequiredForEnv,
+} from "./control-plane/guardian-required.js";
+export {
+  reconcileGuardianDeployment,
+  type GuardianReconcileResult,
+} from "./control-plane/guardian-reconcile.js";
 
 // ── Remote access (`remote` addon — Tailscale sidecar) ───────────────────────
 export {

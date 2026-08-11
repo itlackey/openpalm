@@ -1,15 +1,11 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { listEnabledAddonIds, readStackEnv, resolveComposeProjectName } from "@openpalm/lib";
+import { guardianRequired, readStackEnv, resolveComposeProjectName } from "@openpalm/lib";
 import { getRequestId, jsonResponse } from "$lib/server/helpers.js";
 import { getState } from "$lib/server/state.js";
 import type { RequestHandler } from "./$types";
 
 const execFileAsync = promisify(execFile);
-
-// Guardian is portal ingress — it is profile-gated to these addons and is NOT
-// deployed when none are enabled. Mirrors PORTAL_ADDON_IDS in lifecycle.ts.
-const PORTAL_ADDON_IDS = ["api", "chat", "discord", "slack"];
 
 async function findGuardianContainerId(projectName: string): Promise<string | null> {
   const { stdout } = await execFileAsync(
@@ -47,19 +43,18 @@ async function findGuardianContainerId(projectName: string): Promise<string | nu
 export const GET: RequestHandler = async (event) => {
   const requestId = getRequestId(event);
 
-  // With no portal enabled, guardian is intentionally not in the stack — report
-  // that cleanly (200) instead of letting a `docker inspect` miss 503-spam the
-  // console. (Guardian is only deployed as portal ingress.)
+  // With no reason for the guardian to exist (guardianRequired: no ingress
+  // addon, no guardian access toggle, no remote tunnel targeting it), it is
+  // intentionally not in the stack — report that cleanly (200) instead of
+  // letting a `docker inspect` miss 503-spam the console. The previous
+  // hardcoded addon list here omitted `gateway`, so a gateway-only install
+  // reported the guardian as not deployed while it was running.
   try {
-    const homeDir = getState().homeDir;
-    const portalsEnabled = listEnabledAddonIds(homeDir).some((a) =>
-      PORTAL_ADDON_IDS.includes(a),
-    );
-    if (!portalsEnabled) {
+    if (!guardianRequired(getState().homeDir)) {
       return jsonResponse(200, { status: "not_deployed", service: "guardian" }, requestId);
     }
   } catch {
-    // Fall through to the container probe on any addon-read error.
+    // Fall through to the container probe on any state-read error.
   }
 
   try {

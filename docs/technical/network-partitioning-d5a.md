@@ -31,9 +31,10 @@ bind-address variable. Guardian's internal `8080` gateway is not host-published.
 
 ## Guardian Deployment
 
-Guardian is profile-gated and runs only when a Guardian-ingress addon is enabled:
-`chat`, `api`, `discord`, `slack`, or `gateway`. This does not make it a core
-service; the assistant is the only always-on core container.
+Guardian is profile-gated and runs only when required: a Guardian-ingress addon
+(`api`, `discord`, `slack`, or `gateway`), a guardian access toggle, or a
+remote tunnel targeting it. This does not make it a core service; the
+assistant is the only always-on core container.
 
 ## Host mDNS
 

@@ -77,8 +77,10 @@ processes are granted.
 
 ## Guardian
 
-Guardian is deployed only when a Guardian-ingress profile is active, such as
-`addon.chat`, `addon.api`, `addon.discord`, `addon.slack`, or `addon.gateway`.
+Guardian is deployed only when a Guardian profile is active — an ingress addon
+profile (`addon.api`, `addon.discord`, `addon.slack`, `addon.gateway`) or the
+bare `guardian` profile the control plane activates for the guardian access
+toggles and remote tunnels.
 It joins both `portal_net` and `assistant_net`; portals never join
 `assistant_net` directly.
 
@@ -109,8 +111,8 @@ Discord and Slack adapters run from the unified `openpalm/portal` image. They
 translate their native protocols into authenticated Guardian `/oc/*` calls.
 
 The OpenAI/Anthropic-compatible edge runs inside Guardian and is published on
-host port `3821` when configured. There is one compatible listener, not separate
-chat and API ports.
+host port `3821` when configured. There is one compatible listener on a
+single host port.
 
 Voice is a service addon rather than a portal. It is defined in
 `system/stack/services.compose.yml`, joins `addon_net`, and publishes its API

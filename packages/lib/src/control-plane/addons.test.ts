@@ -52,9 +52,9 @@ afterEach(() => {
 describe('builtin addon metadata', () => {
   it('returns static built-in addon ids', () => {
     // Canonical list from BUILTIN_ADDON_IDS (addon-ids.ts — single source of truth).
-    // chat and gateway were previously missing from BUILTIN_ADDONS in addons.ts
-    // but present in the builtin addon id set; H6 unified them.
-    expect(listAvailableAddonIds()).toEqual(['api', 'chat', 'discord', 'gateway', 'ollama', 'paperclip', 'remote', 'slack', 'voice']);
+    // `chat` is gone: it deployed nothing of its own, and the guardian now has
+    // its own bare `guardian` profile for non-addon deploy reasons.
+    expect(listAvailableAddonIds()).toEqual(['api', 'discord', 'gateway', 'ollama', 'paperclip', 'remote', 'slack', 'voice']);
   });
 
   it('returns built-in addon schemas without registry materialization', () => {
@@ -79,7 +79,7 @@ describe('builtin addon metadata', () => {
 describe('addon runtime state', () => {
   it('ignores COMPOSE_PROFILES when resolving enabled addons', () => {
     mkdirSync(join(homeDir, 'state'), { recursive: true });
-    writeFileSync(join(homeDir, 'state', 'stack.env'), 'COMPOSE_PROFILES=addon.chat\n');
+    writeFileSync(join(homeDir, 'state', 'stack.env'), 'COMPOSE_PROFILES=addon.gateway\n');
 
     expect(listEnabledAddonIds(homeDir)).toEqual([]);
   });
@@ -211,7 +211,7 @@ describe('addon runtime state', () => {
 
     it('turns on guardian ingress and recreates guardian for a guardian target', () => {
       patchStateEnvFile(homeDir, { OP_REMOTE_TARGET: 'guardian' });
-      setAddonEnabled(homeDir, 'chat', true);
+      setAddonEnabled(homeDir, 'gateway', true);
 
       const result = setAddonEnabled(homeDir, 'remote', true);
 
@@ -220,13 +220,18 @@ describe('addon runtime state', () => {
       expect(result.services).toEqual(expect.arrayContaining(['tunnel', 'guardian']));
     });
 
-    it('warns when a guardian target has no guardian deployed', () => {
+    it('does not warn on a guardian target with no ingress addon — the remote reason itself deploys the guardian', () => {
       patchStateEnvFile(homeDir, { OP_REMOTE_TARGET: 'guardian' });
 
       const result = setAddonEnabled(homeDir, 'remote', true);
 
       expect(result.ok).toBe(true);
-      expect(result.warning).toBeTruthy();
+      // A remote tunnel targeting the guardian is a guardianRequired reason
+      // (guardian-required.ts): the bare `guardian` compose profile is active,
+      // so there is no "enable an ingress addon" gap left to warn about.
+      expect(result.warning).toBeUndefined();
+      expect(readStackEnv(homeDir).GUARDIAN_DIRECT_INGRESS).toBe('true');
+      expect(result.services).toEqual(expect.arrayContaining(['tunnel', 'guardian']));
     });
 
     it('leaves other addons untouched by the remote apply', () => {

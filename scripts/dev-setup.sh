@@ -316,7 +316,7 @@ fi
 private_secrets_dir="$DEV_ROOT/private/secrets"
 mkdir -p "$private_secrets_dir"
 chmod 700 "$private_secrets_dir"
-for secret_name in portal_chat_secret portal_api_secret op_api_key portal_discord_secret portal_slack_secret; do
+for secret_name in portal_api_secret op_api_key portal_discord_secret portal_slack_secret; do
 	if [[ ! -f "$private_secrets_dir/$secret_name" || $force -eq 1 ]]; then
 		openssl rand -hex 16 >"$private_secrets_dir/$secret_name"
 		chmod 600 "$private_secrets_dir/$secret_name"

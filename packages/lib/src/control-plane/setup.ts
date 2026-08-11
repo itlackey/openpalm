@@ -35,7 +35,6 @@ import {
 	setAddonEnabled,
 	setAddonProfileSelection
 } from './addons.js';
-import { reconcileGuardianIngressAddons } from './access-apply.js';
 import {
 	coerceAccessToggles,
 	requiresAssistantKey,
@@ -557,17 +556,12 @@ export async function performSetup(
 				}
 			}
 
-			// The guardian service is profile-gated behind guardian-ingress addons,
-			// so a bind address alone deploys no guardian at all. Publishing a front
-			// door promises something reachable, so make it so.
-			//
-			// Shared with the admin PUT via lib's reconcileGuardianIngressAddons —
-			// this logic used to live only here, so a guardian toggle flipped after
-			// install published a host port onto a container that was never
-			// deployed, and read back as ON while being silently inert.
-			if (access) {
-				reconcileGuardianIngressAddons(state, coerceAccessToggles(access), addons ?? {});
-			}
+			// No addon reconciliation for the guardian toggles: a guardian toggle is
+			// itself a guardianRequired reason (guardian-required.ts), so the access
+			// row written above activates the bare `guardian` compose profile and
+			// the wizard's whole-stack deploy brings the guardian up directly. The
+			// auto-enable that used to live here flipped integrations (`chat`/`api`)
+			// the operator never asked for, just to make a port publish real.
 
 			if (voiceProfile?.trim()) {
 				setAddonProfileSelection(state.homeDir, 'voice', voiceProfile.trim());

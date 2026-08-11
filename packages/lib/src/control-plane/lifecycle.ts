@@ -46,7 +46,7 @@ import { acquireInstallLock, releaseInstallLock } from './install-lock.js';
 import type { InstallLockHandle } from './install-lock.js';
 import { getAddonServiceNames, listEnabledAddonIds, pruneRemovedAddonState } from './addons.js';
 import { backupOpenPalmHome, pruneBackupDirs } from './backup.js';
-import { hasGuardianIngressAddon } from './addon-ids.js';
+import { guardianRequired } from './guardian-required.js';
 import { advanceManagedImageVersions, ensureVersionDefaults } from './versions.js';
 import { stripRetiredAkmConfigKeys } from './akm-sources.js';
 import {
@@ -64,7 +64,7 @@ export function createState(): ControlPlaneState {
 	const dataDir = resolveDataDir();
 	const stackDir = resolveStackDir();
 
-	const withGuardian = hasGuardianIngressAddon(listEnabledAddonIds(homeDir));
+	const withGuardian = guardianRequired(homeDir);
 	const services: Record<string, 'running' | 'stopped'> = {};
 	for (const name of MANAGED_SERVICES) {
 		// Guardian is only expected when a guardian-ingress addon is enabled, so
@@ -97,7 +97,7 @@ async function reconcileCore(
 	opts: { activateServices?: boolean; deactivateServices?: boolean }
 ): Promise<string[]> {
 	if (opts.activateServices) {
-		const withGuardian = hasGuardianIngressAddon(listEnabledAddonIds(state.homeDir));
+		const withGuardian = guardianRequired(state.homeDir);
 		for (const s of MANAGED_SERVICES) {
 			if (s === 'guardian' && !withGuardian) continue;
 			state.services[s] = 'running';
@@ -245,14 +245,19 @@ async function applyManagedFiles(
 	const backupDir = backupOpenPalmHome(state.homeDir);
 	if (backupDir) pruneBackupDirs(state.homeDir, 3);
 
-	// Migrate BEFORE rollback snapshotting: on a pre-consolidation home the snapshot
-	// list's state/stack.env does not exist yet, so snapshotting first would
-	// capture no stack env at all and a failed deploy could not roll back env
-	// mutations. The migration is value-preserving, so the snapshot still
-	// records the pre-update values — just in the canonical location.
+	// Snapshot BEFORE migrating: a rollback snapshot must pair the env with
+	// the system/ tree it was written FOR. migrateChatAddonRemoval (v7 → v8)
+	// is the first migration that is not value-preserving — it moves the
+	// guardian's deploy reason onto state only the NEW compose files
+	// understand — so a post-migration env captured beside the pre-update
+	// system tree would resolve profiles the old compose never declared.
+	// state/schema-version is part of the snapshot, so a restored home simply
+	// re-runs its migrations on the next attempt. (A pre-consolidation home's
+	// snapshot may capture no stack env at all; every migration below the
+	// consolidation is value-preserving, so there is nothing to roll back.)
+	const generation = snapshotCurrentState(state);
 	runHomeMigrations(state.homeDir);
 	const previousPlatformVersion = readSkeletonVersion(state.homeDir);
-	const generation = snapshotCurrentState(state);
 	advanceManagedImageVersions(state, previousPlatformVersion);
 	await applyHome(state);
 	await reconcileCore(state, { activateServices });
@@ -449,18 +454,19 @@ export function buildComposeFileList(state: ControlPlaneState): string[] {
 	return discoverStackOverlays(state.homeDir);
 }
 
-// Guardian is shared ingress for these addons, not an addon service of its own
-// (getAddonServiceNames deliberately excludes it). The id set lives in
-// addon-ids.ts (hasGuardianIngressAddon) and mirrors the profile gate on the
-// guardian service in portals.compose.yml.
+// Guardian is shared ingress, not an addon service of its own
+// (getAddonServiceNames deliberately excludes it). Whether it deploys is
+// guardianRequired (guardian-required.ts): a guardian-ingress addon, a
+// guardian access toggle, or a remote tunnel targeting it — mirroring the
+// profile gate on the guardian service in portals.compose.yml.
 //
 // Deploy dependency contract (one place to read it):
 //   • assistant — ALWAYS deployed; depends on nothing.
-//   • guardian  — shared ingress; deployed ONLY when ≥1 guardian-ingress addon
-//                 is enabled; depends on assistant.
+//   • guardian  — shared ingress; deployed ONLY when guardianRequired;
+//                 depends on assistant.
 //   • portals  — each depends on guardian (compose `depends_on`), so they are
 //                 never deployed without it.
-// An install without guardian ingress therefore deploys assistant alone and
+// An install with no guardian reason therefore deploys assistant alone and
 // must NOT include or health-wait on guardian. The integration test in
 // guardian-gating.test.ts pins this.
 
@@ -468,16 +474,16 @@ export async function buildManagedServices(state: ControlPlaneState): Promise<st
 	const composeOpts = buildComposeOptions(state);
 
 	// The assistant is the only ALWAYS-on core service. Guardian is profile-gated
-	// to guardian-ingress addons in portals.compose.yml, so without one it is
+	// in portals.compose.yml, so without a guardianRequired reason it is
 	// never deployed. Seeding it unconditionally
 	// made the installer health-wait on a guardian that never starts (a ~5-minute
-	// hang when no ingress is selected). Add it back ONLY when ingress is
-	// enabled; that also preserves the #450 need to force-recreate guardian on
-	// upgrade when ingress profiles ARE active (it is excluded from
+	// hang when no ingress is selected). Add it back ONLY when required;
+	// that also preserves the #450 need to force-recreate guardian on
+	// upgrade when its profiles ARE active (it is excluded from
 	// getAddonServiceNames, so the fallback below would otherwise drop it).
 	const enabledAddons = listEnabledAddonIds(state.homeDir);
 	const services = new Set<string>(['assistant']);
-	if (hasGuardianIngressAddon(enabledAddons)) services.add('guardian');
+	if (guardianRequired(state.homeDir)) services.add('guardian');
 
 	// Prefer compose-derived service list when Docker is available. Resolved with
 	// the active profiles, this already includes guardian iff an ingress profile

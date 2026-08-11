@@ -25,8 +25,11 @@ $OP_HOME/config/stack/custom.compose.yml
 The assistant is the only always-on container. It runs OpenCode, the image-baked
 OpenPalm UI, and BusyBox cron for AKM tasks.
 
-Guardian is not core. It is deployed by a Guardian-ingress profile such as
-`addon.chat`, `addon.api`, `addon.discord`, `addon.slack`, or `addon.gateway`.
+Guardian is not core. It is deployed by a Guardian-ingress addon profile
+(`addon.api`, `addon.discord`, `addon.slack`, `addon.gateway`) or by the bare
+`guardian` profile, which the control plane activates whenever the guardian is
+required without an addon (the guardian access toggles, or a remote tunnel
+targeting it).
 
 | Runtime | Activation | Default host publication |
 |---|---|---|
@@ -39,8 +42,7 @@ Guardian is not core. It is deployed by a Guardian-ingress profile such as
 | Voice | `addon.voice.*` | `127.0.0.1:8880 -> 8880` |
 | Ollama | `addon.ollama.*` | Internal model service |
 
-There is one Guardian-hosted compatible API listener. The chat profile does not
-create a second host port.
+There is one Guardian-hosted compatible API listener on a single host port.
 
 Voice is defined in `services.compose.yml`, joins `addon_net`, and defaults its
 host port to loopback. Default TTS/STT models are baked into the Voice image.
@@ -86,7 +88,7 @@ docker compose \
   -f "$OP_HOME/system/stack/services.compose.yml" \
   -f "$OP_HOME/system/stack/portals.compose.yml" \
   -f "$OP_HOME/config/stack/custom.compose.yml" \
-  --profile addon.chat \
+  --profile guardian \
   up -d
 ```
 

@@ -19,6 +19,7 @@ import {
 	getAddonProfiles,
 	getAddonServiceNames,
 	listEnabledAddonIds,
+	reconcileGuardianDeployment,
 	setAddonEnabled,
 	setAddonProfileSelection,
 	checkDocker
@@ -46,10 +47,10 @@ type AddonToggleResult =
 async function deployAddonServices(
 	state: ControlPlaneState,
 	name: string,
+	serviceNames: string[],
 	requestId: string,
 	lock: InstallLockHandle
 ): Promise<void> {
-	const serviceNames = getAddonServiceNames(state.homeDir, name);
 	if (serviceNames.length === 0) return;
 	try {
 		await activateComposeCommand(state, ['up', '-d', ...serviceNames], { lock });
@@ -63,6 +64,31 @@ async function deployAddonServices(
 			error: String(err),
 			requestId
 		});
+	}
+}
+
+/**
+ * Post-mutation guardian reconcile, logged but never fatal: the mutation the
+ * operator asked for already landed. Covers the transitions the per-addon
+ * service lists cannot express — the mutation was the guardian's last reason
+ * (stop it), or its first (start it), or the shared-profile stop above took
+ * it down while another enabled addon still needs it (bring it back).
+ */
+async function reconcileGuardianAfterMutation(
+	state: ControlPlaneState,
+	name: string,
+	requestId: string,
+	lock: InstallLockHandle
+): Promise<void> {
+	const reconcile = await reconcileGuardianDeployment(state, { lock });
+	if (!reconcile.ok) {
+		logger.warn('guardian reconcile after addon toggle failed', {
+			name,
+			error: reconcile.error,
+			requestId
+		});
+	} else if (reconcile.action !== 'none') {
+		logger.info(`guardian ${reconcile.action} after addon toggle`, { name, requestId });
 	}
 }
 
@@ -123,10 +149,31 @@ async function performAddonToggleMutation(
 	// recreate a healthy container, and on Docker being reachable for the same
 	// reason the disable path checks: a host without Docker can still record the
 	// intent, it just has nothing to deploy onto yet.
+	//
+	// The up covers the UNION of the addon's own services and what the mutation
+	// reported: for `remote`, getAddonServiceNames sees only `tunnel` (the
+	// guardian's bare profile is invisible to addon.<name> matching, by design),
+	// while mutation.services carries the guardian/assistant recreates its
+	// provider apply implies — dropping those is what used to leave the tunnel
+	// proxying to a guardian that was never deployed.
 	let deploying: Promise<void> | undefined;
 	if (resultEnabled && mutation.changed) {
 		const dockerCheck = await checkDocker();
-		if (dockerCheck.ok) deploying = deployAddonServices(state, name, requestId, lock);
+		if (dockerCheck.ok) {
+			const services = [
+				...new Set([...getAddonServiceNames(state.homeDir, name), ...mutation.services])
+			];
+			deploying = deployAddonServices(state, name, services, requestId, lock).then(() =>
+				reconcileGuardianAfterMutation(state, name, requestId, lock)
+			);
+		}
+	} else if (mutation.changed) {
+		// Disable: the stop above used profile-matched service names, which takes
+		// the shared guardian down with ANY portal — and the mutation may also
+		// have removed the guardian's last reason to exist. Reconcile settles
+		// both: restart it if something still needs it, leave it stopped if not.
+		const dockerCheck = await checkDocker();
+		if (dockerCheck.ok) await reconcileGuardianAfterMutation(state, name, requestId, lock);
 	}
 
 	return { ok: true, enabled: resultEnabled, changed: mutation.changed, deploying };

@@ -106,7 +106,7 @@ connections:
     baseUrl: https://api.openai.com/v1
     apiKey: sk-...
 addons:
-  chat: true
+  gateway: true
   voice: true
 voiceProfile: addon.voice.cpu
 access:
@@ -195,7 +195,6 @@ private/secrets/op_opencode_password
 private/secrets/op_guardian_admin_token
 private/secrets/op_guardian_mcp_token
 private/secrets/op_api_key
-private/secrets/portal_chat_secret
 private/secrets/portal_api_secret
 private/secrets/portal_discord_secret
 private/secrets/portal_slack_secret

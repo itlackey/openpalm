@@ -16,13 +16,19 @@
  *   - turning `assistantDirect` OFF made the host UI stop sending Basic auth
  *     while the running OpenCode still required it, so `/oc` chat 401'd until
  *     an unrelated future `up -d`.
- *   - enabling a guardian toggle published a port with no guardian behind it,
- *     because the addon auto-enable lived only in `performSetup`.
  *
  * So a save is an APPLY here, transactionally and in one place shared by both
- * writers (the wizard and the admin PUT): reconcile addons, write the env,
- * recreate exactly the affected services, and only then advertise. mDNS moving
- * last is the point — a name is never published ahead of a reachable port.
+ * writers (the wizard and the admin PUT): write the env, recreate exactly the
+ * affected services, and only then advertise. mDNS moving last is the point —
+ * a name is never published ahead of a reachable port.
+ *
+ * The guardian's DEPLOYMENT follows the same save with no addon involved: a
+ * guardian toggle is a `guardianRequired` reason (guardian-required.ts), so
+ * the bare `guardian` compose profile activates the moment the env is
+ * written. This replaces the auto-enable hack that reached backwards into the
+ * integrations list ("enable the chat portal so the published port has
+ * something behind it") — exposure toggles and integrations are different
+ * axes, and the removed `chat` addon existed only to bridge them.
  */
 import {
   ACCESS_ENV_KEYS,
@@ -33,14 +39,14 @@ import {
   type AccessEnv,
   type AccessToggles,
 } from "./access-toggles.js";
-import { activateStack } from "./activation.js";
+import { activateComposeCommand, activateStack } from "./activation.js";
 import { buildComposeOptions } from "./compose-args.js";
 import { composePs, parseComposePsRows } from "./docker.js";
 import { createLogger } from "../logger.js";
 import { reconcileMdnsResponder } from "./mdns-responder.js";
 import { patchSecretsEnvFile, readStackEnv } from "./secrets.js";
-import { GUARDIAN_INGRESS_ADDON_IDS } from "./addon-ids.js";
-import { getAddonServiceNames, listEnabledAddonIds, setAddonEnabled } from "./addons.js";
+import { hasGuardianIngressAddon } from "./addon-ids.js";
+import { parseEnabledAddons } from "./env.js";
 import { computeGuardianIngressRequired } from "./remote-providers.js";
 import type { InstallLockHandle } from "./install-lock.js";
 import type { ControlPlaneState } from "./types.js";
@@ -77,67 +83,19 @@ export type AccessApplyResult = {
   changedKeys: (keyof AccessEnv)[];
   /** Services recreated so Docker picks the change up. */
   recreated: string[];
-  /** Addons enabled so a published guardian port has something behind it. */
-  autoEnabledAddons: string[];
-  /** False when the Compose recreate failed — the env is written but not live. */
+  /**
+   * Services stopped because this save removed their last reason to run —
+   * the guardian, when the final guardian toggle turns off and no ingress
+   * addon or remote tunnel still needs it. Stop, not remove: the same
+   * treatment disabling the last guardian-ingress addon gets.
+   */
+  stopped: string[];
+  /** False when the Compose apply failed — the env is written but not live. */
   ok: boolean;
   error?: string;
   /** mDNS advertisement state AFTER the apply (never advertised before it). */
   mdns: ReturnType<typeof reconcileMdnsResponder>;
 };
-
-/**
- * Enable an addon that makes a published guardian port mean something.
- *
- * Extracted from `performSetup`, which was the only caller — so an operator
- * who enabled a guardian toggle from the admin tab published a host port onto
- * a container that was never deployed, and the toggle read back as ON while
- * being silently inert.
- *
- * `guardianOpenaiApi` needs the `api` addon specifically (it serves that
- * edge). `guardianNetwork` needs any guardian ingress; when nothing provides
- * one, the credential-less built-in `chat` portal is the least-surprising
- * default.
- */
-export function reconcileGuardianIngressAddons(
-  state: ControlPlaneState,
-  toggles: AccessToggles,
-  pendingAddons: Record<string, boolean> = {},
-): string[] {
-  const enabled: string[] = [];
-  const enabledIds = listEnabledAddonIds(state.homeDir);
-  const pendingOn = Object.entries(pendingAddons)
-    .filter(([, on]) => on)
-    .map(([name]) => name);
-
-  if (toggles.guardianOpenaiApi) {
-    const apiEnabled =
-      pendingAddons.api === true ||
-      (pendingAddons.api !== false && enabledIds.includes("api"));
-    if (!apiEnabled) {
-      setAddonEnabled(state.homeDir, "api", true, state);
-      enabled.push("api");
-      logger.info("auto-enabled the api portal for a published OpenAI-compatible edge", {
-        reason: "the published port has nothing behind it otherwise",
-      });
-    }
-  }
-
-  if (toggles.guardianNetwork) {
-    const hasGuardianIngress = [...pendingOn, ...enabledIds, ...enabled].some((addon) =>
-      GUARDIAN_INGRESS_ADDON_IDS.includes(addon),
-    );
-    if (!hasGuardianIngress) {
-      setAddonEnabled(state.homeDir, "chat", true, state);
-      enabled.push("chat");
-      logger.info("auto-enabled the chat portal for a published guardian", {
-        reason: "guardian ingress required for the front door to exist",
-      });
-    }
-  }
-
-  return enabled;
-}
 
 /** Generated keys whose value differs between the current env and the new row. */
 export function diffAccessEnv(
@@ -161,6 +119,12 @@ export type AccessApplyDeps = {
     services: string[],
     lock: InstallLockHandle | null,
   ) => Promise<{ ok: boolean; started: string[]; error?: string }>;
+  /** `compose stop` over exactly these services. */
+  stopServices: (
+    state: ControlPlaneState,
+    services: string[],
+    lock: InstallLockHandle | null,
+  ) => Promise<void>;
   reconcileMdns: (homeDir: string) => ReturnType<typeof reconcileMdnsResponder>;
 };
 
@@ -168,6 +132,13 @@ export const defaultAccessApplyDeps: AccessApplyDeps = {
   listDeployedServices: async (state) => {
     const options = buildComposeOptions(state);
     const ps = await composePs({ files: options.files, envFiles: options.envFiles });
+    // A failed `ps` must THROW, not read as "nothing deployed": the stop gate
+    // below decides between `compose stop guardian` and skip on this answer,
+    // and an empty-on-error list would skip the stop while reporting ok:true —
+    // the front door stays open behind a toast that says it closed. The catch
+    // in the caller records intent and reports ok:false, which is the module's
+    // contract for every other Docker failure.
+    if (!ps.ok) throw new Error(ps.stderr?.trim() || "docker compose ps failed");
     return parseComposePsRows(ps.stdout).map((row) => row.service);
   },
   recreateServices: async (state, services, lock) => {
@@ -182,6 +153,9 @@ export const defaultAccessApplyDeps: AccessApplyDeps = {
           : undefined),
     };
   },
+  stopServices: async (state, services, lock) => {
+    await activateComposeCommand(state, ["stop", ...services], { lock });
+  },
   reconcileMdns: (homeDir) => reconcileMdnsResponder(homeDir),
 };
 
@@ -191,8 +165,9 @@ export const defaultAccessApplyDeps: AccessApplyDeps = {
  *
  * The restriction is what keeps this from failing on an install with no
  * guardian: `compose up guardian` on a profile-inactive service is an error,
- * and a freshly auto-enabled addon has no container yet — hence
- * `alsoInclude`, which carries services whose profile just became active.
+ * and a service whose profile just became active has no container yet — hence
+ * `alsoInclude`, which carries the guardian when this save is what turned its
+ * profile on.
  */
 export function resolveRecreateScope(
   changedKeys: (keyof AccessEnv)[],
@@ -222,11 +197,9 @@ export async function applyAccessToggles(
   requested: unknown,
   options: {
     lock?: InstallLockHandle | null;
-    /** Addon changes being written in the same operation (wizard runs). */
-    pendingAddons?: Record<string, boolean>;
     /** Extra env written in the same patch (e.g. OP_PROJECT_NAME). */
     extraEnv?: Record<string, string>;
-    /** Skip the Compose recreate — the caller deploys the whole stack itself. */
+    /** Skip the Compose apply — the caller deploys the whole stack itself. */
     skipRecreate?: boolean;
     deps?: Partial<AccessApplyDeps>;
   } = {},
@@ -241,16 +214,16 @@ export async function applyAccessToggles(
   // are all read from `currentEnv` (the stack env read BEFORE this apply's
   // own writes land) by computeGuardianIngressRequired — the registry's
   // single ingress writer (remote-providers.ts), shared with setup.ts and
-  // applyRemoteAccess so the three call sites cannot drift. A toggle save
-  // changes access toggles, not the remote addon's own config, so the
-  // current env is always the right source.
+  // applyRemoteAccess so the call sites cannot drift. A toggle save changes
+  // access toggles, not the remote addon's own config, so the current env is
+  // always the right source.
   //
   // Guarded so a poisoned env (an invalid OP_REMOTE_TARGET makes the registry
   // throw) returns the structured failure result instead of rejecting — and
   // returns it BEFORE the env write below, so intent is never half-applied.
-  let guardianIngressRequired: boolean;
+  let remoteIngressRequired: boolean;
   try {
-    guardianIngressRequired = computeGuardianIngressRequired(currentEnv);
+    remoteIngressRequired = computeGuardianIngressRequired(currentEnv);
   } catch (err) {
     const error = err instanceof Error ? err.message : String(err);
     logger.error("access toggles NOT applied — remote addon config unreadable", { error });
@@ -258,21 +231,48 @@ export async function applyAccessToggles(
       access: readAccessToggles(currentEnv),
       changedKeys: [],
       recreated: [],
-      autoEnabledAddons: [],
+      stopped: [],
       ok: false,
       error,
       mdns: deps.reconcileMdns(state.homeDir),
     };
   }
 
-  const nextEnv = resolveAccessEnv(toggles, { guardianIngressRequired });
+  const nextEnv = resolveAccessEnv(toggles, { guardianIngressRequired: remoteIngressRequired });
   const changedKeys = diffAccessEnv(currentEnv, nextEnv);
 
-  const autoEnabledAddons = reconcileGuardianIngressAddons(
-    state,
-    toggles,
-    options.pendingAddons ?? {},
-  );
+  // Whether the guardian deploys, before and after this save. The addon and
+  // remote reasons cannot change here — a toggle save writes toggles — so
+  // only the two guardian toggles can move the answer.
+  const hasNonToggleReason =
+    hasGuardianIngressAddon(parseEnabledAddons(currentEnv.OP_ENABLED_ADDONS)) ||
+    remoteIngressRequired;
+  const prevToggles = readAccessToggles(currentEnv);
+  const guardianWasRequired =
+    hasNonToggleReason || prevToggles.guardianNetwork || prevToggles.guardianOpenaiApi;
+  const guardianNowRequired =
+    hasNonToggleReason || toggles.guardianNetwork || toggles.guardianOpenaiApi;
+
+  // This save removes the guardian's last reason to run: stop it BEFORE the
+  // env write deactivates its profile, while `compose stop` can still address
+  // the service — the same stop-then-record order the addon disable path
+  // uses. Stop, not remove, for the same parity. A failed stop is reported
+  // (ok: false) but does not block recording the operator's intent below.
+  let stopped: string[] = [];
+  let ok = true;
+  let error: string | undefined;
+  if (guardianWasRequired && !guardianNowRequired && !options.skipRecreate) {
+    try {
+      const deployed = await deps.listDeployedServices(state);
+      if (deployed.includes("guardian")) {
+        await deps.stopServices(state, ["guardian"], options.lock ?? null);
+        stopped = ["guardian"];
+      }
+    } catch (err) {
+      ok = false;
+      error = err instanceof Error ? err.message : String(err);
+    }
+  }
 
   // Store the INTENT alongside the row it generates, so the next read is a read
   // rather than an inference from bind addresses (which is what could disagree
@@ -284,20 +284,32 @@ export async function applyAccessToggles(
   });
 
   let recreated: string[] = [];
-  let ok = true;
-  let error: string | undefined;
+  const guardianJustRequired = guardianNowRequired && !guardianWasRequired;
 
-  if (!options.skipRecreate && (changedKeys.length > 0 || autoEnabledAddons.length > 0)) {
+  if (ok && !options.skipRecreate && (changedKeys.length > 0 || guardianJustRequired)) {
     try {
+      let deployed: string[];
+      try {
+        deployed = await deps.listDeployedServices(state);
+      } catch {
+        // The RECREATE half keeps the long-standing lenience for a host where
+        // Docker is unreachable: intent is recorded, nothing exists to
+        // recreate onto, and the save reports what it changed. The STOP half
+        // above deliberately does NOT share this — skipping a stop on a
+        // failed probe would leave a closed front door open behind an ok:true.
+        deployed = [];
+      }
       const scope = resolveRecreateScope(
         changedKeys,
-        // `autoEnabledAddons` holds ADDON ids ('chat'/'api'), but the scope is
-        // compose SERVICE names — both ids activate the `guardian` profile,
-        // and passing the id through verbatim made `up -d --no-deps chat`
-        // fail while the guardian itself was filtered out as undeployed.
-        autoEnabledAddons.flatMap((addon) => getAddonServiceNames(state.homeDir, addon)),
-        await deps.listDeployedServices(state),
-      );
+        // The guardian's profile just became active (this save is its reason
+        // to exist), so it has no container for `ps` to see yet.
+        guardianJustRequired ? ["guardian"] : [],
+        deployed,
+      )
+        // A guardian this save just stopped (or that is no longer required)
+        // must not be brought back by the recreate: its profile is inactive
+        // now, and `compose up` on a profile-inactive service is an error.
+        .filter((service) => service !== "guardian" || guardianNowRequired);
       if (scope.length > 0) {
         const result = await deps.recreateServices(state, scope, options.lock ?? null);
         ok = result.ok;
@@ -320,5 +332,5 @@ export async function applyAccessToggles(
     logger.error("access toggles written but not applied", { error, changedKeys });
   }
 
-  return { access, changedKeys, recreated, autoEnabledAddons, ok, error, mdns };
+  return { access, changedKeys, recreated, stopped, ok, error, mdns };
 }

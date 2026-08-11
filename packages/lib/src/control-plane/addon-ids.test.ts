@@ -98,7 +98,7 @@ describe("experimental addon ids", () => {
   });
 
   it("leaves first-party addons unmarked", () => {
-    for (const id of ["voice", "chat", "api", "discord", "slack", "gateway", "ollama"]) {
+    for (const id of ["voice", "api", "discord", "slack", "gateway", "ollama"]) {
       expect(isExperimentalAddon(id)).toBe(false);
     }
   });

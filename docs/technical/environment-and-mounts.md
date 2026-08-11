@@ -255,8 +255,7 @@ one Compose secret; delegated credentials come from `private/secrets/`.
 | OpenAI/Anthropic-compatible listener | `8182` | `${OP_API_BIND_ADDRESS:-127.0.0.1}:${OP_API_PORT:-3821}` |
 | Local OpenCode moderator | `4097` | None; loopback inside the container |
 
-There is one Guardian OpenAI-compatible listener and one host publication. The
-`chat` profile does not create a second listener or a separate chat port.
+There is one Guardian OpenAI-compatible listener and one host publication.
 
 ### Key Environment
 

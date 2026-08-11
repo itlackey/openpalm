@@ -48,7 +48,7 @@ newer; see [Setup Guide](docs/setup-guide.md#headless-setup).
 ## What you get
 
 - **An AI assistant that's yours** — Runs on [OpenCode](https://opencode.ai), talks to any OpenAI-compatible model (local or remote), and remembers things between sessions.
-- **Portals** — Talk to your assistant through a web chat, an API, Discord, Slack, or build your own adapter.
+- **Portals** — Talk to your assistant through an OpenAI-compatible API, Discord, Slack, or build your own adapter.
 - **Security by default** — Portal and Guardian ingress traffic passes through principal authentication, ownership checks, and rate limits. Direct Assistant access is loopback-only by default, and the Assistant has no Docker socket.
 - **Plain control plane** — Stack and control-plane state use Compose, env, and configuration files. Service runtime data, including SQLite databases, stays under `~/.openpalm/data/`.
 - **LAN-first** — Nothing is exposed to the internet unless you explicitly choose to expose it.
@@ -160,7 +160,7 @@ setup-spec format, and the bare-metal `docker compose` path.
 ## Make it yours
 
 - **Swap models** — Point it at OpenAI, Anthropic, Groq, Ollama, LMStudio, or anything OpenAI-compatible.
-- **Add portals** — Enable Discord, Slack, API, or web chat by enabling the relevant addon in your stack.
+- **Add portals** — Enable Discord, Slack, or the OpenAI-compatible API by enabling the relevant addon in your stack.
 - **Extend the assistant** — Drop in OpenCode plugins, custom tools, or let the assistant find what they need with built-in [AKM](https://github.com/itlackey/akm) support.
 - **Schedule automations** — Add YAML files to run recurring tasks on a cron schedule.
 - **Protect your secrets** — The shared control-plane logger redacts structured values under recognized sensitive key names; this is not a blanket guarantee for every service log. `openpalm scan` inventories discovered sensitive keys and secret files as set or empty without printing their values.

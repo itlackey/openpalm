@@ -18,6 +18,7 @@ import {
   writeServeConfig,
 } from "./remote-apply.ts";
 import { listEnabledAddonIds } from "./addons.ts";
+import { guardianRequired } from "./guardian-required.ts";
 import {
   REMOTE_ACCESS_DEFAULTS,
   deriveRemoteHostname,
@@ -302,7 +303,7 @@ describe("applyRemoteAccess", () => {
   test("targeting the guardian turns GUARDIAN_DIRECT_INGRESS on and recreates guardian", () => {
     const home = makeHome();
     patchStateEnvFile(home, {
-      OP_ENABLED_ADDONS: "remote,chat",
+      OP_ENABLED_ADDONS: "remote,gateway",
       OP_REMOTE_TARGET: "guardian",
       GUARDIAN_DIRECT_INGRESS: "false",
     });
@@ -322,7 +323,7 @@ describe("applyRemoteAccess", () => {
   test("does NOT open the guardian's LAN bind when flipping ingress", () => {
     const home = makeHome();
     patchStateEnvFile(home, {
-      OP_ENABLED_ADDONS: "remote,chat",
+      OP_ENABLED_ADDONS: "remote,gateway",
       OP_REMOTE_TARGET: "both",
       GUARDIAN_DIRECT_INGRESS: "false",
       OP_GUARDIAN_BIND_ADDRESS: "127.0.0.1",
@@ -355,19 +356,55 @@ describe("applyRemoteAccess", () => {
   test("disabling remote turns ingress back off when nothing else needs it", () => {
     const home = makeHome();
     patchStateEnvFile(home, {
-      OP_ENABLED_ADDONS: "remote,chat",
+      OP_ENABLED_ADDONS: "remote,gateway",
       OP_REMOTE_TARGET: "guardian",
       GUARDIAN_DIRECT_INGRESS: "false",
     });
     applyRemoteAccess(home);
     expect(readStackEnv(home).GUARDIAN_DIRECT_INGRESS).toBe("true");
 
-    // Addon off — the only reason ingress was on is gone.
-    patchStateEnvFile(home, { OP_ENABLED_ADDONS: "chat" });
+    // Addon off — the only reason ingress was on is gone. The guardian is
+    // still REQUIRED here (gateway), so it stays in the recreate list to pick
+    // the flipped GUARDIAN_DIRECT_INGRESS up.
+    patchStateEnvFile(home, { OP_ENABLED_ADDONS: "gateway" });
     const result = applyRemoteAccess(home);
 
     expect(result.ingressChanged).toBe(true);
     expect(readStackEnv(home).GUARDIAN_DIRECT_INGRESS).toBe("false");
+    expect(result.services).toEqual(["guardian"]);
+  });
+
+  test("removing the guardian's LAST reason keeps it OUT of the recreate list — reconcile stops it instead", () => {
+    const home = makeHome();
+    patchStateEnvFile(home, {
+      OP_ENABLED_ADDONS: "remote",
+      OP_REMOTE_TARGET: "guardian",
+      GUARDIAN_DIRECT_INGRESS: "false",
+    });
+    applyRemoteAccess(home);
+    expect(readStackEnv(home).GUARDIAN_DIRECT_INGRESS).toBe("true");
+
+    // Target moves off the guardian with no other reason left: its profile
+    // just went inactive, so `up guardian` would either error or restart a
+    // service that should be stopping. Callers run
+    // reconcileGuardianDeployment after this apply, which stops it.
+    patchStateEnvFile(home, { OP_REMOTE_TARGET: "assistant" });
+    const targetMoved = applyRemoteAccess(home);
+    expect(targetMoved.ingressChanged).toBe(true);
+    expect(readStackEnv(home).GUARDIAN_DIRECT_INGRESS).toBe("false");
+    expect(targetMoved.services).toEqual(["tunnel"]);
+
+    // Same for the disable edge when remote was the sole reason.
+    patchStateEnvFile(home, {
+      OP_ENABLED_ADDONS: "remote",
+      OP_REMOTE_TARGET: "guardian",
+    });
+    applyRemoteAccess(home);
+    expect(readStackEnv(home).GUARDIAN_DIRECT_INGRESS).toBe("true");
+    patchStateEnvFile(home, { OP_ENABLED_ADDONS: "" });
+    const disabled = applyRemoteAccess(home);
+    expect(disabled.ingressChanged).toBe(true);
+    expect(disabled.services).toEqual([]);
   });
 
   test("keeps ingress on when guardianNetwork wants it, even with remote off", () => {
@@ -375,7 +412,7 @@ describe("applyRemoteAccess", () => {
     // guardianNetwork on: the LAN bind is the OTHER reason ingress is true,
     // and disabling remote must not switch it off underneath that.
     patchStateEnvFile(home, {
-      OP_ENABLED_ADDONS: "chat",
+      OP_ENABLED_ADDONS: "gateway",
       OP_GUARDIAN_BIND_ADDRESS: "0.0.0.0",
       GUARDIAN_DIRECT_INGRESS: "true",
     });
@@ -386,10 +423,13 @@ describe("applyRemoteAccess", () => {
     expect(readStackEnv(home).GUARDIAN_DIRECT_INGRESS).toBe("true");
   });
 
-  test("warns when the guardian target has no guardian deployed", () => {
+  test("a guardian target with no ingress addon needs no warning — the remote reason itself activates the guardian profile", () => {
     const home = makeHome();
-    // remote targets the guardian, but no guardian-ingress addon is on, so
-    // Compose never deploys a guardian for the tunnel to proxy to.
+    // remote targets the guardian and no guardian-ingress addon is on. That
+    // combination used to warn ("no guardian service is deployed"); now the
+    // remote-tunnels-to-guardian condition is a guardianRequired reason
+    // (guardian-required.ts), so the bare `guardian` compose profile is
+    // active and the guardian in this apply's `services` actually deploys.
     patchStateEnvFile(home, {
       OP_ENABLED_ADDONS: "remote",
       OP_REMOTE_TARGET: "guardian",
@@ -398,18 +438,8 @@ describe("applyRemoteAccess", () => {
     const result = applyRemoteAccess(home);
 
     expect(result.error).toBeUndefined();
-    expect(result.warning).toBeTruthy();
-    expect(result.warning).toContain("guardian");
-  });
-
-  test("does not warn when an ingress addon deploys the guardian", () => {
-    const home = makeHome();
-    patchStateEnvFile(home, {
-      OP_ENABLED_ADDONS: "remote,chat",
-      OP_REMOTE_TARGET: "guardian",
-    });
-
-    expect(applyRemoteAccess(home).warning).toBeUndefined();
+    expect(guardianRequired(home)).toBe(true);
+    expect(result.services).toEqual(expect.arrayContaining(["tunnel", "guardian"]));
   });
 
   test("still writes the disabled serve document when the addon is off", () => {
@@ -419,9 +449,11 @@ describe("applyRemoteAccess", () => {
     const result = applyRemoteAccess(home);
 
     expect(result.wrote).toBe(false);
-    // The absent ingress setting is reconciled even though the disabled remote
-    // addon itself must not recreate its tunnel.
-    expect(result.services).toEqual(["guardian"]);
+    // The absent ingress setting is written, but with NOTHING requiring the
+    // guardian its profile is inactive — no recreate is scheduled for it
+    // (callers reconcile a stray running guardian separately).
+    expect(readStackEnv(home).GUARDIAN_DIRECT_INGRESS).toBe("false");
+    expect(result.services).toEqual([]);
     // Fail-closed: "off" is an explicit empty document, never a missing file.
     expect(readServeDoc(home)).toEqual({ TCP: {}, Web: {}, AllowFunnel: {} });
   });
@@ -434,11 +466,11 @@ describe("applyRemoteAccess", () => {
 describe("enabled-addon read agrees with addons.ts", () => {
   for (const [label, value] of [
     ["single", "remote"],
-    ["multiple", "chat,remote"],
-    ["padded", " remote , chat "],
+    ["multiple", "gateway,remote"],
+    ["padded", " remote , gateway "],
     ["empty", ""],
     ["unknown ids", "remote,not-a-real-addon"],
-    ["duplicates", "remote,remote,chat"],
+    ["duplicates", "remote,remote,gateway"],
   ] as const) {
     test(`${label}: readRemoteAccessState matches listEnabledAddonIds`, () => {
       const home = makeHome();
