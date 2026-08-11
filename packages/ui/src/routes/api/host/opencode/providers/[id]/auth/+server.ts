@@ -9,7 +9,14 @@ import {
   jsonBodyError,
   getOpenCodeClient,
 } from '$lib/server/helpers.js';
-import { createLogger } from '@openpalm/lib';
+import {
+  buildComposeOptions,
+  composeRestart,
+  createLogger,
+  hasGuardianIngressAddon,
+  listEnabledAddonIds,
+} from '@openpalm/lib';
+import { getState } from '$lib/server/state.js';
 
 const logger = createLogger('opencode.auth');
 
@@ -85,6 +92,38 @@ export const GET: RequestHandler = async (event) => {
   return jsonResponse(200, { status: 'pending', message: 'Waiting for authorization...' }, requestId);
 };
 
+/**
+ * Propagate a credential change to the guardian.
+ *
+ * Only the guardian. This route mutates credentials THROUGH the assistant's
+ * own OpenCode API, so the assistant's running auth store is already current
+ * and restarting it would drop live chats for nothing. The guardian is
+ * different: it receives `auth.json` as a Compose secret and copies it into
+ * place at boot (containers/guardian/entrypoint.sh), so until it restarts it
+ * keeps serving every portal with the credentials it started with.
+ *
+ * That is the security half. Disconnecting a provider left the revoked
+ * credential live behind chat/api/discord/slack indefinitely — the UI said
+ * disconnected and the portals kept working.
+ *
+ * Best-effort by design: the credential change itself already succeeded and
+ * must be reported as such. A failed restart is logged and surfaced as a
+ * warning on the response, never as a failure of the save.
+ */
+async function propagateToGuardian(requestId: string): Promise<string | undefined> {
+  const state = getState();
+  if (!hasGuardianIngressAddon(listEnabledAddonIds(state.homeDir))) return undefined;
+  try {
+    const result = await composeRestart(['guardian'], buildComposeOptions(state));
+    if (result.ok) return undefined;
+    logger.warn('guardian restart after credential change failed', { requestId, stderr: result.stderr });
+    return 'The credential was saved, but the guardian could not be restarted, so portals may still use the previous credentials until it restarts.';
+  } catch (err) {
+    logger.warn('guardian restart after credential change threw', { requestId, error: String(err) });
+    return 'The credential was saved, but the guardian could not be restarted, so portals may still use the previous credentials until it restarts.';
+  }
+}
+
 export const POST: RequestHandler = async (event) => {
   const requestId = getRequestId(event);
   const capabilityError = requireCapability(event, 'host:secrets', requestId);
@@ -130,7 +169,8 @@ export const POST: RequestHandler = async (event) => {
 
     logger.info('provider API key saved to OpenCode auth.json', { providerId, requestId });
 
-    return jsonResponse(200, { ok: true, mode: 'api_key' }, requestId);
+    const warning = await propagateToGuardian(requestId);
+    return jsonResponse(200, { ok: true, mode: 'api_key', ...(warning ? { warning } : {}) }, requestId);
   }
 
   if (mode === 'oauth') {
@@ -197,5 +237,6 @@ export const DELETE: RequestHandler = async (event) => {
 
   logger.info('provider credential removed via OpenCode /auth DELETE', { providerId, requestId });
 
-  return jsonResponse(200, { ok: true }, requestId);
+  const warning = await propagateToGuardian(requestId);
+  return jsonResponse(200, { ok: true, ...(warning ? { warning } : {}) }, requestId);
 };

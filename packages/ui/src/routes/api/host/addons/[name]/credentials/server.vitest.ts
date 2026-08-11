@@ -180,8 +180,9 @@ describe('@boolean schema field (OP_VOICE_LAN_ACCESS)', () => {
 	// scope must derive from keys whose value actually CHANGED — an unchanged
 	// OP_VOICE_LAN_ACCESS round-tripped alongside a cosmetic edit must not
 	// force-recreate voice+assistant (killing live OpenCode sessions).
-	test('posting an unchanged OP_VOICE_LAN_ACCESS alongside a changed cosmetic key recreates nothing', async () => {
+	test('posting an unchanged OP_VOICE_LAN_ACCESS alongside a changed cosmetic key recreates only the addon', async () => {
 		writeRemoteStackEnv('OP_VOICE_LAN_ACCESS=true\nOP_VOICE_KOKORO_VOICE=bf_isabella\n');
+		activateStackMock.mockResolvedValue({ ok: true, started: ['voice'], failed: [] });
 
 		const res = await POST(
 			makePostEvent({ OP_VOICE_LAN_ACCESS: 'true', OP_VOICE_KOKORO_VOICE: 'am_michael' }, 'voice')
@@ -191,8 +192,14 @@ describe('@boolean schema field (OP_VOICE_LAN_ACCESS)', () => {
 		const body = (await res.json()) as { ok: boolean; updated: string[]; recreated: string[] };
 		expect(body.ok).toBe(true);
 		expect(body.updated).toContain('OP_VOICE_KOKORO_VOICE');
-		expect(body.recreated).toEqual([]);
-		expect(activateStackMock).not.toHaveBeenCalled();
+		// The cosmetic key changed, so voice is recreated to pick it up — but
+		// OP_VOICE_LAN_ACCESS did NOT change, so its wider scope (assistant) is
+		// still not dragged in. That narrowing is what this test guards.
+		expect(activateStackMock).toHaveBeenCalledTimes(1);
+		expect(activateStackMock.mock.calls[0]?.[1]).toMatchObject({
+			kind: 'services',
+			services: ['voice']
+		});
 		const after = readFileSync(join(homeDir, 'state', 'stack.env'), 'utf-8');
 		expect(after).toContain('OP_VOICE_KOKORO_VOICE=am_michael');
 	});
@@ -225,16 +232,20 @@ describe('@boolean schema field (OP_VOICE_LAN_ACCESS)', () => {
 		});
 	});
 
-	test('an ordinary schema field still saves with no compose apply at all', async () => {
-		// The guarantee that keeps the common path Docker-free: only keys listed in
-		// ADDON_ENV_RECREATE_SCOPE trigger a recreate, so a bot token or a model
-		// name saves exactly as before — 200, nothing recreated.
+	test('an ordinary schema field applies by recreating the addon container', async () => {
+		// A save is an APPLY. Every schema key reaches its container through
+		// Compose interpolation or a Compose secret, both fixed at create time,
+		// and there is no "recreate" affordance for the operator to reach for —
+		// so a bot token that saved without recreating left the OLD token
+		// authenticating while the drawer showed the new one as set.
+		activateStackMock.mockResolvedValue({ ok: true, started: ['discord'], failed: [] });
+
 		const res = await POST(makePostEvent({ DISCORD_APPLICATION_ID: '123456789' }, 'discord'));
 		expect(res.status).toBe(200);
 		const body = (await res.json()) as { ok: boolean; updated: string[]; recreated: string[] };
 		expect(body.ok).toBe(true);
 		expect(body.updated).toContain('DISCORD_APPLICATION_ID');
-		expect(body.recreated).toEqual([]);
+		expect(body.recreated).toContain('discord');
 	});
 });
 

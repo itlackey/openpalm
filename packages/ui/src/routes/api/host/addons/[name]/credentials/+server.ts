@@ -29,6 +29,7 @@ import {
   createLogger,
   getAddonProfiles,
   getAddonProfileSelection,
+  getAddonServiceNames,
   getRegistryAddonConfig,
   listAvailableAddonIds,
   readStackSecretEnv,
@@ -127,6 +128,22 @@ function resolveVoiceScopeService(homeDir: string, service: string): string {
   if (!selected) return service;
   const services = getAddonProfiles(homeDir, "voice").find((p) => p.id === selected)?.services;
   return services?.[0] ?? service;
+}
+
+/**
+ * The addon's OWN container, resolved to the variant that is actually
+ * selected, or nothing when the addon has no container of its own.
+ *
+ * Deliberately one service, not the addon's whole declared set:
+ * `getAddonServiceNames('voice')` returns every variant (`voice`,
+ * `voice-cuda`, `voice-rocm`) because all three are declared under different
+ * profiles, and recreating all of them targets two services that are not up.
+ * The declared set is still consulted, so a name is never invented for an
+ * addon that has no container (`chat`, `api` — guardian serves those).
+ */
+function addonOwnServices(homeDir: string, name: string): string[] {
+  const resolved = resolveVoiceScopeService(homeDir, name);
+  return getAddonServiceNames(homeDir, name).includes(resolved) ? [resolved] : [];
 }
 
 export const GET: RequestHandler = async (event) => {
@@ -301,13 +318,21 @@ export const POST: RequestHandler = async (event) => {
       remoteWarning = remote.warning;
     }
 
-    // Most schema keys are read by the addon container alone, so persisting them
-    // IS the apply and the operator recreates that one container when ready.
-    // A few reach further — see ADDON_ENV_RECREATE_SCOPE — and for those a write
-    // with no apply is a setting that silently does nothing. Recreate exactly
-    // the services the key reaches (scoped to keys that actually CHANGED, see
-    // changedKeys above), under the lock we already hold, so compose rebuilds
-    // its file list and the affected entrypoints re-read the value.
+    // A save is an APPLY. Every schema key reaches its container through
+    // Compose interpolation or a Compose secret, both of which are fixed at
+    // container-CREATE time — so the addon's own services are recreated
+    // whenever a key actually changed.
+    //
+    // This used to stop at ADDON_ENV_RECREATE_SCOPE, a table of the four keys
+    // that reach OTHER services, on the reasoning that a key read by the addon
+    // alone is applied by "the operator recreating that one container when
+    // ready". There is no such affordance: Containers offers start / stop /
+    // restart, and `compose restart` reuses the existing env, ports and
+    // secrets. So rotating a Discord token, narrowing DISCORD_ALLOWED_GUILDS,
+    // or moving OP_PAPERCLIP_PORT wrote to disk, reported success, and left
+    // the old value serving — the leaked token still authenticating, the port
+    // still on its old number. The table now answers only "which OTHER
+    // services does this key reach"; the addon's own services are implied.
     const scope = [
       ...new Set([
         // The remote apply owns the complete scope for remote saves. The
@@ -316,9 +341,12 @@ export const POST: RequestHandler = async (event) => {
         // state. Other addons still use their schema-declared scope.
         ...(name === 'remote'
           ? []
-          : changedKeys.flatMap((key) =>
-              (ADDON_ENV_RECREATE_SCOPE[key] ?? []).map((svc) => resolveVoiceScopeService(state.homeDir, svc)),
-            )),
+          : [
+              ...(changedKeys.length > 0 ? addonOwnServices(state.homeDir, name) : []),
+              ...changedKeys.flatMap((key) =>
+                (ADDON_ENV_RECREATE_SCOPE[key] ?? []).map((svc) => resolveVoiceScopeService(state.homeDir, svc)),
+              ),
+            ]),
         ...remoteServices,
       ]),
     ];

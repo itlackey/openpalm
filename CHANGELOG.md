@@ -7,6 +7,39 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Connecting or disconnecting a provider now reaches the guardian.** The
+  credential routes mutated auth through the assistant's OpenCode API and
+  stopped there. The guardian receives `auth.json` as a Compose secret and
+  copies it into place at boot, so until it restarts it keeps serving every
+  portal with the credentials it started with — connect a provider and
+  chat/api/discord/slack still failed with no credentials; **disconnect one and
+  the revoked credential stayed live behind them indefinitely** while the UI
+  said disconnected. The guardian is now restarted after a credential change,
+  and only the guardian: the assistant was mutated through its own API, so its
+  running auth store is already current and restarting it would drop live chats
+  for nothing. Best-effort — the save is reported as the success it was, with a
+  warning if the restart failed.
+- **Saving addon credentials applies them.** Every schema key reaches its
+  container through Compose interpolation or a Compose secret, both fixed at
+  container-create time, but only four keys triggered a recreate. The rest were
+  written on the reasoning that the operator recreates the container "when
+  ready" — an affordance that does not exist, since Containers offers only
+  start/stop/restart and `compose restart` reuses the existing env, ports and
+  secrets. Rotating a leaked bot token, narrowing an allow-list, or changing
+  `OP_PAPERCLIP_PORT` reported success and left the old value serving. The
+  addon's own container is now recreated whenever a key actually changed,
+  resolved to the selected variant.
+
+### Changed
+
+- **CI runs the self-contained browser tests (tier 4).** They were in the
+  release runbook and in no automated lane, so a PR breaking a browser-level
+  path merged green unless a human remembered the checklist. They need no
+  Docker and the browsers were already installed for the job. Tier 5 (live
+  stack) is still uncovered.
+
 ### Added
 
 - **"Use your local AKM configuration" — a manual host import, like host

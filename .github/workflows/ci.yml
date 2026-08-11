@@ -334,6 +334,16 @@ jobs:
       - name: Run client-only PWA acceptance tests (production build + Chromium)
         run: bun run ui:test:pwa
 
+      - name: Run self-contained browser tests (tier 4)
+        # Tier 4 was documented in the release runbook but run by nobody: CI had
+        # no Playwright lane for it, so a PR breaking a browser-level path
+        # merged green and the gap was only caught if a human remembered the
+        # checklist. It needs no Docker — the mocked lane serves its own UI —
+        # and the browsers are already installed two steps above, so there is
+        # no reason it was not here. Tier 5 (live stack) still is not covered;
+        # it needs a daemon and images.
+        run: bun run ui:test:e2e:mocked
+
   electron-tests:
     name: Electron unit tests (Vitest)
     runs-on: ubuntu-latest
