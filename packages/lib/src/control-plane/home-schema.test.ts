@@ -7,7 +7,7 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import {
   HOME_SCHEMA_VERSION,
   ensureHomeDirs,
@@ -175,5 +175,49 @@ describe('an existing home migrates exactly once', () => {
 
     expect(readHomeSchemaVersion(homeDir)).toBe(0);
     expect(runHomeMigrations(homeDir)).toBe(true);
+  });
+});
+
+describe("retired skeleton files are removed from an upgraded home", () => {
+  test("deletes the moved opencode.jsonc pair and the three retired tasks, and nothing else", () => {
+    // Seeding outside system/ is add-only, so a file a release DELETED stays
+    // on every upgraded home. Both orphan sets were confirmed present on a
+    // real install: the .jsonc pair is live-read USER config (the assistant's
+    // still pins akm-opencode@latest), and the retired tasks are listed by the
+    // Automations tab as real automations akm will never run.
+    const home = mkdtempSync(join(tmpdir(), "op-retired-"));
+    try {
+      const write = (rel: string, body = "x\n") => {
+        mkdirSync(dirname(join(home, rel)), { recursive: true });
+        writeFileSync(join(home, rel), body);
+      };
+      for (const rel of [
+        "config/assistant/opencode.jsonc",
+        "config/guardian/opencode.jsonc",
+        "knowledge/tasks/health-check.yml",
+        "knowledge/tasks/update-containers.yml",
+        "knowledge/tasks/validate-config.yml",
+      ]) write(rel);
+      // Live files the current skeleton still ships — must survive untouched.
+      write("config/assistant/opencode.json", '{"keep":true}\n');
+      write("knowledge/tasks/akm-improve.yml", "version: 2\n");
+
+      // Migrations correctly no-op on a home with no stack env (an absent
+      // install, not an unmigrated one), so give it one.
+      mkdirSync(join(home, "state"), { recursive: true });
+      writeFileSync(join(home, "state", "stack.env"), "OP_SETUP_COMPLETE=true\n");
+      runHomeMigrations(home);
+
+      expect(existsSync(join(home, "config/assistant/opencode.jsonc"))).toBe(false);
+      expect(existsSync(join(home, "config/guardian/opencode.jsonc"))).toBe(false);
+      expect(existsSync(join(home, "knowledge/tasks/update-containers.yml"))).toBe(false);
+      expect(existsSync(join(home, "knowledge/tasks/health-check.yml"))).toBe(false);
+      expect(existsSync(join(home, "knowledge/tasks/validate-config.yml"))).toBe(false);
+      // Untouched.
+      expect(readFileSync(join(home, "config/assistant/opencode.json"), "utf-8")).toContain("keep");
+      expect(existsSync(join(home, "knowledge/tasks/akm-improve.yml"))).toBe(true);
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
   });
 });

@@ -284,7 +284,7 @@ RUN printf 'export PATH="/opt/persistent/bin:/opt/openpalm/tools/node_modules/.b
 # OpenCode global config, mounted at ~/.config/opencode.
 # AGENTS.md is baked here as a default; the entrypoint seeds it into
 # OPENCODE_CONFIG_DIR only if the operator has not placed their own copy there.
-COPY AGENTS.md /usr/local/share/openpalm/AGENTS.md
+COPY containers/assistant/AGENTS.md /usr/local/share/openpalm/AGENTS.md
 
 EXPOSE 4096 3000
 

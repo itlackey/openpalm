@@ -26,7 +26,6 @@ packages/*/.svelte-kit
 !packages/ui/build/**
 docs/
 *.md
-!AGENTS.md
 !containers/**/*.md
 !packages/**/*.md
 !.openpalm/**/*.md

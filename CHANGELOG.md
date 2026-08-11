@@ -9,6 +9,38 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **The assistant no longer ships OpenPalm's contributor instructions as its
+  own.** The image baked the repository's root `AGENTS.md` — "all work must
+  comply with core-principles.md", commit conventions, the delivery checklist —
+  and the entrypoint seeded it into every operator's OpenCode config as global
+  agent instructions. Verified byte-identical on a real install. The image now
+  ships a user-facing default written for the operator's assistant.
+- **Every app launch no longer backs up and replaces the managed system tree.**
+  The entrypoint seeds `AGENTS.md` into `system/assistant`, which the skeleton
+  does not ship, so it read as a permanently "retired" file: `changed` was true
+  on every run, and each launch copied the whole `system/` tree into a fresh
+  `data/backups/<ts>/` and then replaced it — deleting the plugin `node_modules`
+  the exemption list exists to protect, and swapping the inode of a directory
+  the running assistant has bind-mounted. Backups are only pruned on
+  install/update, so they accumulated (24 on the machine where this was found).
+- **Retired skeleton files are removed from upgraded homes.** Seeding outside
+  `system/` is add-only, so files a release deleted stayed forever and upgraded
+  installs quietly diverged from fresh ones. A migration now removes the
+  `config/{assistant,guardian}/opencode.jsonc` pair (moved into `system/`, but
+  still live-read as OpenCode USER config, the assistant's copy still pinning
+  `akm-opencode@latest`) and the three retired automations
+  (`health-check`, `update-containers`, `validate-config`) that the Automations
+  tab still listed — one as an enabled weekly `openpalm update` — and that akm
+  would never run.
+- **A 0-byte `auth.json` is repaired rather than accepted.** `ensureAuthJson`
+  returned early on any existing file, so an empty one persisted forever and
+  saving a provider credential then failed with an opaque "must be a JSON
+  object". Empty is reachable: single-file bind mounts are pre-created empty,
+  so deleting `auth.json` and enabling an addon produces one. Now treated as
+  absent and re-seeded, the same rule `ensureSecret` already applies.
+
+### Fixed
+
 - **Connecting or disconnecting a provider now reaches the guardian.** The
   credential routes mutated auth through the assistant's OpenCode API and
   stopped there. The guardian receives `auth.json` as a Compose secret and
