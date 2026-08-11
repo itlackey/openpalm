@@ -328,7 +328,7 @@
                      clean-startup promise is withheld for this one. -->
                 <span
                   class="badge badge-experimental"
-                  title="Experimental — ships, but not fully supported. It depends on third-party pieces OpenPalm does not build or cannot verify, so it may fail to start and a failure here does not block a release."
+                  title="Experimental — ships, but not fully supported. It depends on third-party pieces OpenPalm does not build and cannot fully verify, so it may fail to start or break when they change. Enabling it works exactly like any other addon."
                 >Experimental</span>
               {/if}
             </span>

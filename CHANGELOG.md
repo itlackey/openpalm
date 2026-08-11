@@ -11,8 +11,10 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 - **Addons can be marked experimental**, and `paperclip` and `remote` now are.
   Experimental withholds one specific promise: OpenPalm does not guarantee the
-  addon comes up cleanly on every install, and a failure in it does not block a
-  release. It is advisory only — an experimental addon is listed, enabled and
+  addon comes up cleanly on every install, because what it depends on lives
+  outside this codebase. It is not a lower testing bar — paperclip's cold start
+  is a release-checklist gate precisely because it is experimental. It is
+  advisory only — an experimental addon is listed, enabled and
   deployed exactly like any other; the Add-ons tab simply says so before you
   turn it on. Both listed addons depend on third-party pieces OpenPalm does not
   build and cannot verify: paperclip on an upstream image whose embedded

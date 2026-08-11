@@ -51,11 +51,17 @@ export const PORTAL_SECRET_ADDON_IDS: ReadonlyArray<string> = [
  * Addons that work but are NOT fully supported yet.
  *
  * "Experimental" here means one specific promise is withheld: OpenPalm does
- * not guarantee this addon comes up cleanly on every install, and a failure in
- * it is not treated as a release blocker. It is not a judgement about how
- * useful the addon is, and it does not disable, hide, or gate anything —
- * enabling one is a normal enable. The only effect is that the operator is
- * told before they turn it on.
+ * not guarantee this addon comes up cleanly on every install, because what it
+ * depends on is outside this codebase. It is not a judgement about how useful
+ * the addon is, and it does not disable, hide, or gate anything — enabling one
+ * is a normal enable. The only effect is that the operator is told before they
+ * turn it on.
+ *
+ * It is NOT a lower testing bar. The checks OpenPalm does run against these
+ * addons still gate a release — paperclip's cold start is a release-checklist
+ * item precisely because it is experimental and upstream can break it. The
+ * label describes what OpenPalm cannot promise about the operator's
+ * environment, not what OpenPalm declines to verify in its own.
  *
  * The bar to be listed here is evidence, not caution:
  *

@@ -899,7 +899,9 @@ Prove the cluster was created by THIS run, from nothing:
 
 ```bash
 test -s "$TEST_HOME/data/paperclip/instances/default/db/PG_VERSION"
-docker logs "$PAPERCLIP_CONTAINER" 2>&1 | grep -qiv 'Postgres init script exited with code 1'
+# Assert the init failure is ABSENT. `grep -v` would pass on any one
+# non-matching line and never catch it.
+! docker logs "$PAPERCLIP_CONTAINER" 2>&1 | grep -qi 'Postgres init script exited with code 1'
 ```
 
 Prove the image under test is the pinned upstream one, not a local rebuild:
@@ -909,9 +911,15 @@ PINNED_PAPERCLIP_DIGEST="$(
   grep -oE 'ghcr\.io/paperclipai/paperclip:[^@]+@sha256:[0-9a-f]+' \
     "$REPO/packages/skeleton/system/stack/services.compose.yml" | head -1 | sed 's/.*@//'
 )"
-RUNNING_PAPERCLIP_DIGEST="$(docker inspect --format '{{.Image}}' "$PAPERCLIP_CONTAINER")"
 test -n "$PINNED_PAPERCLIP_DIGEST"
-test "$RUNNING_PAPERCLIP_DIGEST" = "$PINNED_PAPERCLIP_DIGEST"
+# RepoDigests, NOT the image id: the pin is a REGISTRY manifest digest, while
+# `.Image`/`.Id` is the local config digest. The two coincide under the
+# containerd image store and diverge under the classic one, so comparing ids
+# passes or fails depending on the operator's storage driver rather than on
+# what is running. A locally built image has no RepoDigest for this repo at
+# all, which is exactly the substitution this check exists to catch.
+docker image inspect "$(docker inspect --format '{{.Image}}' "$PAPERCLIP_CONTAINER")" \
+  --format '{{json .RepoDigests}}' | grep -q "$PINNED_PAPERCLIP_DIGEST"
 ```
 
 `FAIL` on a mismatch. A locally built or patched paperclip image passes the
