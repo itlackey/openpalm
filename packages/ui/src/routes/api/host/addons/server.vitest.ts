@@ -102,6 +102,16 @@ describe('GET /api/host/addons', () => {
     expect(res.status).toBe(401);
   });
 
+  test('surfaces the experimental flag so the tab can warn before an enable', async () => {
+    const res = await GET(makeGetEvent());
+    const body = (await res.json()) as { addons: { name: string; experimental: boolean }[] };
+    const flagged = body.addons.filter((a) => a.experimental).map((a) => a.name).sort();
+    expect(flagged).toEqual(['paperclip', 'remote']);
+    // Advisory, never a gate: an experimental addon is still offered like any
+    // other, so the list itself must be unchanged.
+    expect(body.addons).toHaveLength(BUILTIN_ADDON_IDS.length);
+  });
+
   test('returns built-in addons without requiring a registry', async () => {
     const res = await GET(makeGetEvent());
     expect(res.status).toBe(200);
@@ -124,7 +134,7 @@ describe('GET /api/host/addons', () => {
     expect(body.addons).toHaveLength(BUILTIN_ADDON_IDS.length);
 
     const discord = body.addons.find((a) => a.name === 'discord');
-    expect(discord).toEqual({ name: 'discord', enabled: true, available: true });
+    expect(discord).toEqual({ name: 'discord', enabled: true, available: true, experimental: false });
   });
 });
 

@@ -858,6 +858,25 @@ The tunnel must not report healthy before it has a tailnet IP.
 
 ## 6. Configure and Enable Paperclip
 
+This is a COLD START, and that is the point of the step. Paperclip initialises
+an embedded PostgreSQL cluster the first time it runs, and `initdb` runs ONLY
+against an empty data directory — an instance whose cluster already exists
+never executes that path again. A cold start broke for every new install
+between the digest bump and 0.13.0-beta.25 while this lane reported a pass,
+because the cluster under test had been created by an earlier, locally patched
+image and the step only ever re-started it. Prove the directory is absent
+first, and prove this run created it.
+
+Confirm there is no pre-existing cluster:
+
+```bash
+test ! -e "$TEST_HOME/data/paperclip/instances/default/db"
+```
+
+`FAIL` if that path exists. Do not delete it and retry — its presence means the
+launcher did not start from a clean home, so nothing after this point is a cold
+start and the whole run is invalid.
+
 In **Host > Addons > Paperclip > Configure**:
 
 1. Set `OP_PAPERCLIP_PORT` to `3940`.
@@ -876,13 +895,48 @@ Required result: the Admin enable action starts Paperclip, it becomes healthy,
 and the loopback health endpoint responds. An enabled badge with no running
 container is `FAIL`.
 
-To continue after that failure only:
+Prove the cluster was created by THIS run, from nothing:
 
 ```bash
-op_test addon disable paperclip
-op_test addon enable paperclip
-op_test start paperclip
+test -s "$TEST_HOME/data/paperclip/instances/default/db/PG_VERSION"
+# Assert the init failure is ABSENT. `grep -v` would pass on any one
+# non-matching line and never catch it.
+! docker logs "$PAPERCLIP_CONTAINER" 2>&1 | grep -qi 'Postgres init script exited with code 1'
 ```
+
+Prove the image under test is the pinned upstream one, not a local rebuild:
+
+```bash
+PINNED_PAPERCLIP_DIGEST="$(
+  grep -oE 'ghcr\.io/paperclipai/paperclip:[^@]+@sha256:[0-9a-f]+' \
+    "$REPO/packages/skeleton/system/stack/services.compose.yml" | head -1 | sed 's/.*@//'
+)"
+test -n "$PINNED_PAPERCLIP_DIGEST"
+# RepoDigests, NOT the image id: the pin is a REGISTRY manifest digest, while
+# `.Image`/`.Id` is the local config digest. The two coincide under the
+# containerd image store and diverge under the classic one, so comparing ids
+# passes or fails depending on the operator's storage driver rather than on
+# what is running. A locally built image has no RepoDigest for this repo at
+# all, which is exactly the substitution this check exists to catch.
+docker image inspect "$(docker inspect --format '{{.Image}}' "$PAPERCLIP_CONTAINER")" \
+  --format '{{json .RepoDigests}}' | grep -q "$PINNED_PAPERCLIP_DIGEST"
+```
+
+`FAIL` on a mismatch. A locally built or patched paperclip image passes the
+health check while telling you nothing about what ships — this is exactly how
+the cold-start defect above survived a full acceptance run.
+
+If the enable fails, the run has `FAIL`ed and the release is blocked. There is
+no continue-past for this step: disabling and re-enabling, running `op_test
+start paperclip`, deleting the data directory, or substituting a patched image
+all convert a real cold-start defect into a green run. Record the failure with
+`docker logs "$PAPERCLIP_CONTAINER"` attached and stop.
+
+Note that Paperclip's own logs are not sufficient evidence on their own here.
+Its embedded-postgres library forwards only `initdb`'s stdout and discards
+stderr, so a locale or permission failure surfaces as nothing more than two
+banner lines and "The data directory might already exist". To see the real
+error, re-run `initdb` by hand with stderr attached inside the container.
 
 Inspect the OpenPalm boundary without printing secret values:
 

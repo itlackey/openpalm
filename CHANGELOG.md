@@ -7,6 +7,33 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **Addons can be marked experimental**, and `paperclip` and `remote` now are.
+  Experimental withholds one specific promise: OpenPalm does not guarantee the
+  addon comes up cleanly on every install, because what it depends on lives
+  outside this codebase. It is not a lower testing bar — paperclip's cold start
+  is a release-checklist gate precisely because it is experimental. It is
+  advisory only — an experimental addon is listed, enabled and
+  deployed exactly like any other; the Add-ons tab simply says so before you
+  turn it on. Both listed addons depend on third-party pieces OpenPalm does not
+  build and cannot verify: paperclip on an upstream image whose embedded
+  Postgres could not cold-start at all until 0.13.0-beta.25, and remote on a
+  tunnel image plus an external tailnet OpenPalm can neither provision nor
+  check. `EXPERIMENTAL_ADDON_IDS` in `control-plane/addon-ids.ts` is the single
+  source of truth; removing an id is how an addon graduates.
+
+### Changed
+
+- **The manual Paperclip acceptance lane now proves a cold start.** It asserts
+  no cluster exists before the enable, that the enable created one, and that
+  the running container is on the digest pinned in `services.compose.yml` — and
+  it no longer offers a continue-past for a failed enable. The previous
+  wording let a re-enable, a hand-started container, or a locally patched image
+  turn a real cold-start defect into a green run, which is exactly how
+  paperclip shipped unable to start for every new install while this lane
+  reported a pass. Mirrored as a release-checklist gate.
+
 ### Fixed
 
 - **Paperclip can cold-start again.** Upstream's `embedded-postgres` hardcodes

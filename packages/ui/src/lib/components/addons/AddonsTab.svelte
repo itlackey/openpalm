@@ -321,7 +321,17 @@
         </div>
         {#each addons as addon (addon.name)}
           <div class="addon-row">
-            <span class="addon-col addon-col--name addon-name" title={addon.name}>{formatAddonName(addon.name)}</span>
+            <span class="addon-col addon-col--name addon-name" title={addon.name}>
+              {formatAddonName(addon.name)}
+              {#if addon.experimental}
+                <!-- Advisory, not a gate: enabling is unchanged. It says the
+                     clean-startup promise is withheld for this one. -->
+                <span
+                  class="badge badge-experimental"
+                  title="Experimental — ships, but not fully supported. It depends on third-party pieces OpenPalm does not build and cannot fully verify, so it may fail to start or break when they change. Enabling it works exactly like any other addon."
+                >Experimental</span>
+              {/if}
+            </span>
             <span class="addon-col addon-col--status">
               <span class="badge" class:badge-enabled={addon.enabled} class:badge-disabled={!addon.enabled}>
                 {addon.enabled ? 'Enabled' : 'Disabled'}
@@ -557,6 +567,15 @@
   .addon-col--name {
     flex: 3;
     min-width: 0;
+  }
+
+  .badge-experimental {
+    background: color-mix(in srgb, var(--s-seal) 10%, transparent);
+    color: var(--s-seal);
+    border: var(--s-hair) solid color-mix(in srgb, var(--s-seal) 30%, transparent);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    font-size: var(--s-type-mark);
   }
 
   .addon-col--status {

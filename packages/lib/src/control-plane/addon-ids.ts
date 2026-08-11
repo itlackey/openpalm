@@ -46,3 +46,44 @@ export function hasGuardianIngressAddon(enabledAddons: Iterable<string>): boolea
 export const PORTAL_SECRET_ADDON_IDS: ReadonlyArray<string> = [
   'api', 'chat', 'discord', 'slack',
 ] as const;
+
+/**
+ * Addons that work but are NOT fully supported yet.
+ *
+ * "Experimental" here means one specific promise is withheld: OpenPalm does
+ * not guarantee this addon comes up cleanly on every install, because what it
+ * depends on is outside this codebase. It is not a judgement about how useful
+ * the addon is, and it does not disable, hide, or gate anything — enabling one
+ * is a normal enable. The only effect is that the operator is told before they
+ * turn it on.
+ *
+ * It is NOT a lower testing bar. The checks OpenPalm does run against these
+ * addons still gate a release — paperclip's cold start is a release-checklist
+ * item precisely because it is experimental and upstream can break it. The
+ * label describes what OpenPalm cannot promise about the operator's
+ * environment, not what OpenPalm declines to verify in its own.
+ *
+ * The bar to be listed here is evidence, not caution:
+ *
+ *  - `paperclip` — depends on a third-party image OpenPalm does not build and
+ *    cannot patch. Its embedded Postgres could not initialise at all on a
+ *    fresh data directory until 0.13.0-beta.25 (upstream hardcodes a locale
+ *    its own image does not ship), and the workaround in
+ *    `services.compose.yml` is ours, not upstream's. The next digest bump can
+ *    reintroduce that class of failure without warning.
+ *  - `remote` — depends on a third-party tunnel image plus an external service
+ *    (a tailnet, its auth key, and Funnel permissions) that OpenPalm can
+ *    neither provision nor verify. Its failure modes live outside this
+ *    codebase, and the acceptance lane for it cannot run unattended.
+ *
+ * Single source of truth: the addons API surfaces this flag and the Add-ons
+ * tab renders it. Removing an id here is how an addon graduates.
+ */
+export const EXPERIMENTAL_ADDON_IDS: ReadonlyArray<string> = [
+  'paperclip', 'remote',
+] as const;
+
+/** True when `name` is an addon OpenPalm ships but does not fully support. */
+export function isExperimentalAddon(name: string): boolean {
+  return EXPERIMENTAL_ADDON_IDS.includes(name);
+}
